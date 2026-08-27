@@ -1,0 +1,122 @@
+"""The Road Rage Trip package.
+
+A PoC top-down driving game using real-world OSM data for procedural environments.
+"""
+
+from .geo import clamp, compute_bbox, dist_point_to_segment, meters_to_latlon, point_in_polygon
+from .main import BBOX, main
+from .osm import (
+    BBOX_PRESETS,
+    DEFAULT_BBOX,
+    DEFAULT_OVERPASS_ENDPOINTS,
+    DEFAULT_ROAD_HALF_WIDTH_M,
+    HIGHWAY_HALF_WIDTH,
+    AutoFetchManager,
+    Building,
+    Place,
+    Scenery,
+    Water,
+    Way,
+    build_ways,
+    fetch_osm_ways,
+    load_local_sample,
+    load_osm_cache,
+    save_osm_cache,
+)
+from .physics import (
+    ACCEL,
+    BRAKE,
+    FRICTION,
+    MAX_SPEED,
+    STEER_RATE,
+    STEER_SPEED_FACTOR,
+    Car,
+    SpatialWayGrid,
+    is_car_road,
+    is_on_road,
+    is_point_in_water,
+    is_point_on_road,
+    reset_trip,
+    respawn_car,
+    update_car_physics,
+)
+from .render import (
+    FPS,
+    PX_PER_M,
+    SCREEN_H,
+    SCREEN_W,
+    draw_buildings,
+    draw_car,
+    draw_compass,
+    draw_hud,
+    draw_labels,
+    draw_loading_screen,
+    draw_scenery,
+    draw_waters,
+    draw_ways,
+    get_viewport_bounds,
+    world_to_screen,
+)
+
+__all__ = [
+    # Geo
+    "clamp",
+    "compute_bbox",
+    "dist_point_to_segment",
+    "point_in_polygon",
+    "meters_to_latlon",
+    # OSM
+    "BBOX",
+    "BBOX_PRESETS",
+    "DEFAULT_BBOX",
+    "DEFAULT_OVERPASS_ENDPOINTS",
+    "DEFAULT_ROAD_HALF_WIDTH_M",
+    "HIGHWAY_HALF_WIDTH",
+    "Way",
+    "Water",
+    "Building",
+    "Scenery",
+    "Place",
+    "load_local_sample",
+    "load_osm_cache",
+    "save_osm_cache",
+    "fetch_osm_ways",
+    "build_ways",
+    "AutoFetchManager",
+    # Physics
+    "Car",
+    "ACCEL",
+    "BRAKE",
+    "FRICTION",
+    "STEER_RATE",
+    "STEER_SPEED_FACTOR",
+    "MAX_SPEED",
+    "SpatialWayGrid",
+    "is_car_road",
+    "is_on_road",
+    "is_point_on_road",
+    "is_point_in_water",
+    "reset_trip",
+    "respawn_car",
+    "update_car_physics",
+    # Render
+    "SCREEN_W",
+    "SCREEN_H",
+    "FPS",
+    "PX_PER_M",
+    "world_to_screen",
+    "get_viewport_bounds",
+    "draw_scenery",
+    "draw_waters",
+    "draw_buildings",
+    "draw_ways",
+    "draw_car",
+    "draw_compass",
+    "draw_hud",
+    "draw_labels",
+    "draw_loading_screen",
+    # Main
+    "main",
+]
+
+

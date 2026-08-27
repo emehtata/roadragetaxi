@@ -1,0 +1,15 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "theroadragetrip"
+version = "0.1.0"
+description = "PoC top-down driving game using OSM data"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "pygame",
+    "requests",
+    "pyproj",
+]

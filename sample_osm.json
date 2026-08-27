@@ -1,0 +1,62 @@
+{
+  "elements": [
+    { "type": "node", "id": 1, "lat": 64.970, "lon": 25.370 },
+    { "type": "node", "id": 2, "lat": 64.975, "lon": 25.380 },
+    { "type": "node", "id": 3, "lat": 64.980, "lon": 25.390 },
+    { "type": "node", "id": 4, "lat": 64.985, "lon": 25.400 },
+    { "type": "node", "id": 5, "lat": 64.990, "lon": 25.410 },
+    { "type": "way", "id": 100, "nodes": [1, 2, 3, 4, 5], "tags": { "highway": "primary", "name": "Main Highway" } },
+
+    { "type": "node", "id": 10, "lat": 64.980, "lon": 25.360 },
+    { "type": "node", "id": 11, "lat": 64.980, "lon": 25.375 },
+    { "type": "node", "id": 12, "lat": 64.980, "lon": 25.420 },
+    { "type": "way", "id": 101, "nodes": [10, 11, 3, 12], "tags": { "highway": "secondary", "name": "Cross Avenue" } },
+
+    { "type": "node", "id": 20, "lat": 64.985, "lon": 25.370 },
+    { "type": "node", "id": 21, "lat": 64.985, "lon": 25.385 },
+    { "type": "node", "id": 22, "lat": 64.975, "lon": 25.385 },
+    { "type": "node", "id": 23, "lat": 64.975, "lon": 25.370 },
+    { "type": "way", "id": 102, "nodes": [20, 21, 2, 23, 20], "tags": { "highway": "residential", "name": "Suburb Loop" } },
+
+    { "type": "node", "id": 30, "lat": 64.990, "lon": 25.380 },
+    { "type": "node", "id": 31, "lat": 64.990, "lon": 25.400 },
+    { "type": "way", "id": 103, "nodes": [30, 31, 4], "tags": { "highway": "tertiary", "name": "North Connector" } },
+
+    { "type": "node", "id": 40, "lat": 64.970, "lon": 25.390 },
+    { "type": "node", "id": 41, "lat": 64.970, "lon": 25.410 },
+    { "type": "node", "id": 42, "lat": 64.975, "lon": 25.410 },
+    { "type": "way", "id": 104, "nodes": [1, 40, 41, 42], "tags": { "highway": "residential", "name": "South Lane" } },
+
+    { "type": "node", "id": 50, "lat": 64.972, "lon": 25.375 },
+    { "type": "node", "id": 51, "lat": 64.974, "lon": 25.378 },
+    { "type": "node", "id": 52, "lat": 64.972, "lon": 25.382 },
+    { "type": "node", "id": 53, "lat": 64.970, "lon": 25.379 },
+    { "type": "way", "id": 200, "nodes": [50, 51, 52, 53, 50], "tags": { "natural": "water", "name": "Park Pond" } },
+
+    { "type": "node", "id": 60, "lat": 64.968, "lon": 25.360 },
+    { "type": "node", "id": 61, "lat": 64.975, "lon": 25.365 },
+    { "type": "node", "id": 62, "lat": 64.985, "lon": 25.365 },
+    { "type": "way", "id": 201, "nodes": [60, 61, 62], "tags": { "waterway": "river", "name": "City River" } },
+
+    { "type": "node", "id": 70, "lat": 64.982, "lon": 25.385 },
+    { "type": "node", "id": 71, "lat": 64.984, "lon": 25.385 },
+    { "type": "node", "id": 72, "lat": 64.984, "lon": 25.395 },
+    { "type": "node", "id": 73, "lat": 64.982, "lon": 25.395 },
+    { "type": "way", "id": 300, "nodes": [70, 71, 72, 73, 70], "tags": { "building": "yes", "name": "City Hall" } },
+
+    { "type": "node", "id": 75, "lat": 64.976, "lon": 25.395 },
+    { "type": "node", "id": 76, "lat": 64.978, "lon": 25.395 },
+    { "type": "node", "id": 77, "lat": 64.978, "lon": 25.402 },
+    { "type": "node", "id": 78, "lat": 64.976, "lon": 25.402 },
+    { "type": "way", "id": 301, "nodes": [75, 76, 77, 78, 75], "tags": { "building": "commercial", "name": "Shopping Mall" } },
+
+    { "type": "node", "id": 80, "lat": 64.986, "lon": 25.362 },
+    { "type": "node", "id": 81, "lat": 64.989, "lon": 25.362 },
+    { "type": "node", "id": 82, "lat": 64.989, "lon": 25.372 },
+    { "type": "node", "id": 83, "lat": 64.986, "lon": 25.372 },
+    { "type": "way", "id": 400, "nodes": [80, 81, 82, 83, 80], "tags": { "leisure": "park", "name": "Central Park" } },
+
+    { "type": "node", "id": 90, "lat": 64.982, "lon": 25.380, "tags": { "place": "suburb", "name": "Keskusta" } },
+    { "type": "node", "id": 91, "lat": 64.974, "lon": 25.405, "tags": { "place": "suburb", "name": "Maikkula" } }
+  ]
+}

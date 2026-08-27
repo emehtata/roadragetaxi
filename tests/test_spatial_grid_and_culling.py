@@ -1,0 +1,41 @@
+from theroadragetrip.geo import compute_bbox
+from theroadragetrip.osm import Way
+from theroadragetrip.physics import Car, SpatialWayGrid, is_on_road
+from theroadragetrip.render import get_viewport_bounds
+
+
+def test_compute_bbox():
+    pts = [(10.0, 20.0), (30.0, 5.0), (-5.0, 15.0)]
+    minx, miny, maxx, maxy = compute_bbox(pts)
+    assert minx == -5.0
+    assert miny == 5.0
+    assert maxx == 30.0
+    assert maxy == 20.0
+
+
+def test_get_viewport_bounds():
+    vminx, vminy, vmaxx, vmaxy = get_viewport_bounds(camx=100.0, camy=200.0, px_per_m=1.0, screen_w=800, screen_h=600, margin_m=50.0)
+    # half_w = 400 + 50 = 450 -> [ -350, 550 ]
+    # half_h = 300 + 50 = 350 -> [ -150, 550 ]
+    assert vminx == -350.0
+    assert vmaxx == 550.0
+    assert vminy == -150.0
+    assert vmaxy == 550.0
+
+
+def test_spatial_way_grid_detection():
+    w1 = Way(points_m=[(0.0, 0.0), (100.0, 0.0)], highway="primary", half_width_m=4.0)
+    w2 = Way(points_m=[(500.0, 500.0), (600.0, 500.0)], highway="residential", half_width_m=3.0)
+
+    grid = SpatialWayGrid(cell_size=200.0)
+    grid.rebuild([w1, w2])
+
+    car_on = Car(x=50.0, y=1.0, heading=0.0, speed=0.0)
+    car_off = Car(x=50.0, y=50.0, heading=0.0, speed=0.0)
+    car_on_w2 = Car(x=550.0, y=502.0, heading=0.0, speed=0.0)
+
+    assert grid.is_on_road(car_on) is True
+    assert grid.is_on_road(car_off) is False
+    assert grid.is_on_road(car_on_w2) is True
+    assert is_on_road(car_on, [w1, w2], spatial_grid=grid) is True
+    assert is_on_road(car_off, [w1, w2], spatial_grid=grid) is False
