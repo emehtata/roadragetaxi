@@ -23,3 +23,62 @@ def test_cache_save_and_load():
             except Exception:
                 pass
 
+
+def test_force_refresh_skips_cache(monkeypatch):
+    import theroadragetrip.osm as osm
+
+    monkeypatch.setattr(osm.requests, "post", lambda *args, **kwargs: type(
+        "Response", (), {
+            "status_code": 200,
+            "json": lambda self: {"elements": [{"type": "node", "id": 99}]},
+            "raise_for_status": lambda self: None,
+        }
+    )())
+    monkeypatch.setattr(osm, "load_osm_cache", lambda bbox: [{"type": "node", "id": 1}])
+
+    result = osm.fetch_osm_ways((60.0, 25.0, 60.1, 25.1), force_refresh=True)
+
+    assert result == [{"type": "node", "id": 99}]
+
+
+def test_fetch_uses_next_endpoint_after_failure(monkeypatch):
+    import requests
+    import theroadragetrip.osm as osm
+
+    monkeypatch.delenv("OVERPASS_ENDPOINTS", raising=False)
+    calls = []
+
+    class Response:
+        status_code = 200
+
+        def json(self):
+            return {"elements": [{"type": "node", "id": 2}]}
+
+        def raise_for_status(self):
+            return None
+
+    def post(endpoint, **kwargs):
+        calls.append(endpoint)
+        if endpoint == "https://first.example/api":
+            raise requests.exceptions.ConnectionError("first endpoint unavailable")
+        return Response()
+
+    monkeypatch.setattr(osm.requests, "post", post)
+    monkeypatch.setattr(osm.time, "sleep", lambda _: None)
+    monkeypatch.setattr(osm, "load_osm_cache", lambda bbox: None)
+    monkeypatch.setattr(osm, "save_osm_cache", lambda bbox, elements: None)
+
+    result = osm.fetch_osm_ways(
+        (60.0, 25.0, 60.1, 25.1),
+        endpoints=["https://first.example/api", "https://second.example/api"],
+        force_refresh=True,
+    )
+
+    assert result == [{"type": "node", "id": 2}]
+    assert calls == [
+        "https://first.example/api",
+        "https://first.example/api",
+        "https://first.example/api",
+        "https://second.example/api",
+    ]
+

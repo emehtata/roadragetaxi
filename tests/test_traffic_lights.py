@@ -53,6 +53,43 @@ def test_build_ways_traffic_signals_node():
     assert res.traffic_lights[0].id == 99
 
 
+def test_build_ways_splits_single_signal_at_four_arm_junction():
+    elements = [
+        {"type": "node", "id": 1, "lat": 65.0, "lon": 25.0, "tags": {"highway": "traffic_signals"}},
+        {"type": "node", "id": 2, "lat": 65.0, "lon": 24.999,},
+        {"type": "node", "id": 3, "lat": 65.0, "lon": 25.001,},
+        {"type": "node", "id": 4, "lat": 64.999, "lon": 25.0,},
+        {"type": "node", "id": 5, "lat": 65.001, "lon": 25.0,},
+        {"type": "way", "id": 10, "nodes": [2, 1], "tags": {"highway": "primary"}},
+        {"type": "way", "id": 11, "nodes": [1, 3], "tags": {"highway": "primary"}},
+        {"type": "way", "id": 12, "nodes": [4, 1], "tags": {"highway": "primary"}},
+        {"type": "way", "id": 13, "nodes": [1, 5], "tags": {"highway": "primary"}},
+    ]
+
+    res = build_ways(elements)
+    signals = res.traffic_lights
+
+    assert len(signals) == 4
+    assert len({signal.id for signal in signals}) == 4
+    assert all((signal.x, signal.y) != (signals[0].x, signals[0].y) for signal in signals[1:])
+
+
+def test_build_ways_splits_signal_when_node_is_not_in_road_ways():
+    elements = [
+        {"type": "node", "id": 1, "lat": 65.0, "lon": 25.0, "tags": {"highway": "traffic_signals"}},
+        {"type": "node", "id": 2, "lat": 65.0, "lon": 24.999},
+        {"type": "node", "id": 3, "lat": 65.0, "lon": 25.001},
+        {"type": "node", "id": 4, "lat": 64.999, "lon": 25.0},
+        {"type": "node", "id": 5, "lat": 65.001, "lon": 25.0},
+        {"type": "way", "id": 10, "nodes": [2, 3], "tags": {"highway": "primary"}},
+        {"type": "way", "id": 11, "nodes": [4, 5], "tags": {"highway": "primary"}},
+    ]
+
+    signals = build_ways(elements).traffic_lights
+
+    assert len(signals) == 4
+
+
 def test_npc_stops_at_red_traffic_light():
     way = Way(
         points_m=[(0.0, 0.0), (100.0, 0.0)],

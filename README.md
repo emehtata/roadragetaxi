@@ -30,8 +30,11 @@ A top-down 2D driving game proof-of-concept (PoC) in Python and Pygame that proc
 │       ├── geo.py         # Projection and geometric calculations (clamp, segment distance, lat/lon conversion)
 │       ├── main.py        # CLI arguments, logging, and Pygame main loop
 │       ├── osm.py         # OSM fetching, disk caching, parsing, and AutoFetchManager
-│       ├── physics.py     # Car dataclass, physics simulation, and on-road detection
-│       └── render.py      # Pygame rendering for roads, waters, car, HUD, and compass
+│       ├── pedestrian.py  # Pedestrian simulation, road crossing, and evasion
+│       ├── physics.py     # Car dataclass, vehicle dynamics, road collision, and lane assist
+│       ├── render.py      # Pygame rendering for roads, waters, buildings, traffic, pedestrians, HUD, and compass
+│       ├── taxi.py        # Taxi passenger missions, address generator, fares, and violations
+│       └── traffic.py     # Autonomous NPC traffic vehicles, lane switching, and overtaking
 ├── tests/                 # Unit tests (pytest)
 ├── sample_osm.json        # Bundled sample OSM data
 ├── sample_osm_large.json  # Expanded sample OSM data
@@ -89,6 +92,8 @@ python3 road_rage_trip.py --auto-fetch --fetch-margin 50 --fetch-tile-size 500
 | `X` | Cancel / discard active pickup or onboard passenger mission (score penalty) |
 | `T` | Reset trip meter to 0 |
 | `L` | Toggle street & feature name labels |
+| `K` | Toggle lane keep assist |
+| `Esc` | Open pause menu (Continue, Change City, Exit) |
 
 ---
 
@@ -96,16 +101,20 @@ python3 road_rage_trip.py --auto-fetch --fetch-margin 50 --fetch-tile-size 500
 
 | Flag | Description |
 | :--- | :--- |
-| `--preset` | Named preset (`oulu`, `helsinki`). Default: `oulu` |
+| `--preset` | Named preset (`oulu`, `helsinki`, `tampere`, `espoo`, `turku`, `vantaa`, `jyväskylä`, `kuopio`, `lahti`, `sysmä`, `pori`) |
 | `--bbox` | Custom bounding box: `south,west,north,east` |
+| `--no-menu` | Skip interactive city selection startup menu |
 | `--use-sample` | Skip network and use bundled offline sample JSON |
 | `--force-refresh` / `--no-cache` | Ignore disk cache and query Overpass fresh |
 | `--cache-ttl` | Override cache TTL in seconds (default: 86400 / 24h) |
 | `--px-per-m` | Initial camera zoom (default: `0.7`) |
 | `--log-level` | Logging level (`DEBUG`, `INFO`, `WARNING`, `ERROR`) |
 | `--auto-fetch` | Enable non-blocking background tile fetching near bounds |
-| `--fetch-margin` | Margin in meters from bounds triggering auto-fetch (default: `50.0`) |
-| `--fetch-tile-size`| Meters to expand when auto-fetching (default: `500.0`) |
+| `--no-auto-fetch` | Disable on-demand background map expansion |
+| `--fetch-margin` | Margin in meters from bounds triggering auto-fetch (default: `800.0`) |
+| `--fetch-tile-size`| Meters to expand when auto-fetching (default: `2500.0`) |
+| `--traffic-count` | Target number of autonomous NPC cars (default: `25`) |
+| `--pedestrian-count` | Target number of pedestrians (default: `20`) |
 
 ---
 

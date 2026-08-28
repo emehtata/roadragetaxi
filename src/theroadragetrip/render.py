@@ -77,6 +77,14 @@ def draw_scenery(
         pts = [world_to_screen(x, y, camx, camy, px_per_m, screen_w, screen_h) for (x, y) in sc.points_m]
         color = colors.get(sc.kind.lower(), (38, 105, 38))
         pygame.draw.polygon(screen, color, pts)
+        for tree_x, tree_y in getattr(sc, "trees", []):
+            if not (vminx <= tree_x <= vmaxx and vminy <= tree_y <= vmaxy):
+                continue
+            sx, sy = world_to_screen(tree_x, tree_y, camx, camy, px_per_m, screen_w, screen_h)
+            trunk = max(1, int(0.7 * px_per_m))
+            crown = max(2, int(2.2 * px_per_m))
+            pygame.draw.rect(screen, (92, 60, 30), (sx - trunk // 2, sy, trunk, max(2, int(1.5 * px_per_m))))
+            pygame.draw.circle(screen, (25, 85, 25), (sx, sy - crown // 2), crown)
 
 
 def draw_waters(
@@ -820,7 +828,7 @@ def draw_taxi_target(
             pygame.draw.circle(screen, (255, 255, 255), (int(hx), int(hy)), max(1, int(ped_r * 0.45)))
 
             # Passenger name tag over client
-            p_lbl = font.render(f"👤 {p.name}", True, (255, 230, 80))
+            p_lbl = font.render(f"[P] {p.name}", True, (255, 230, 80))
             p_rect = p_lbl.get_rect(center=(int(ped_sx), int(ped_sy - ped_r - 12)))
             p_bg = pygame.Surface((p_rect.width + 6, p_rect.height + 4), pygame.SRCALPHA)
             p_bg.fill((20, 20, 20, 200))
@@ -1025,7 +1033,7 @@ def draw_city_selection_menu(
         num_prefix = f"{(idx + 1) % 10}: "
         city_label = f"{num_prefix}{city}"
         if is_sel:
-            city_label = f"▶ {city_label}"
+            city_label = f"> {city_label}"
 
         c_surf = font.render(city_label, True, text_color)
         c_rect = c_surf.get_rect(midleft=(ix + 16, iy + item_h // 2))
@@ -1096,7 +1104,7 @@ def draw_pause_menu(
         pygame.draw.rect(screen, bg_color, (ix, iy, item_w, item_h), border_radius=6)
         pygame.draw.rect(screen, border_color, (ix, iy, item_w, item_h), width=2 if is_sel else 1, border_radius=6)
 
-        prefix = "▶ " if is_sel else "   "
+        prefix = "> " if is_sel else "   "
         o_surf = font.render(f"{prefix}{opt}", True, text_color)
         o_rect = o_surf.get_rect(midleft=(ix + 20, iy + item_h // 2))
         screen.blit(o_surf, o_rect)
@@ -1165,12 +1173,12 @@ def draw_hud(
 
         p = taxi_mgr.current_passenger
         if taxi_mgr.state == TaxiState.WAITING_FOR_PICKUP:
-            role_text = f"🚖 FARE: Pickup {p.name if p else 'Client'} at: {target.address if target else '...'} ({dist_s})"
+            role_text = f"[TAXI] FARE: Pickup {p.name if p else 'Client'} at: {target.address if target else '...'} ({dist_s})"
             role_color = (255, 215, 60)
         else:
             cur_speed_kmh = (dist_m / max(1.0, taxi_mgr.elapsed_time)) * 3.6 if taxi_mgr.elapsed_time > 0 else 0.0
             role_text = (
-                f"🚖 FARE: Take {p.name if p else 'Client'} to: {target.address if target else '...'} "
+                f"[TAXI] FARE: Take {p.name if p else 'Client'} to: {target.address if target else '...'} "
                 f"({dist_s} left, Time: {taxi_mgr.elapsed_time:.1f}s)"
             )
             role_color = (100, 240, 140)

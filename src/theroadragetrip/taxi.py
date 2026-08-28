@@ -4,9 +4,9 @@ import random
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple
 
-from .geo import clamp, dist_point_to_segment
-from .osm import Building, Place, Way
-from .physics import Car, SpatialWayGrid, compute_largest_connected_road_component, is_car_road, is_violating_oneway
+from .geo import clamp, dist_point_to_segment, get_oriented_box_corners, point_in_polygon
+from .osm import Building, Place, TaxiStop, Way
+from .physics import Car, SpatialWayGrid, connected_drivable_ways, is_violating_oneway
 
 logger = logging.getLogger(__name__)
 
@@ -60,22 +60,17 @@ class TaxiManager:
         ways: List[Way],
         places: Optional[List[Place]] = None,
         buildings: Optional[List[Building]] = None,
+        taxi_stops: Optional[List[TaxiStop]] = None,
         min_distance_m: float = 300.0,
         max_distance_m: float = 2500.0,
         pickup_radius_m: float = 25.0,
         max_stop_speed_mps: float = 3.0,  # Must slow down below ~10 km/h to pickup/dropoff
     ):
         # Filter to the largest connected road network to avoid isolated trapped roads
-        connected_ways = compute_largest_connected_road_component(ways)
-        # Only consider drivable car roads with valid real names
-        self.ways = [w for w in connected_ways if is_car_road(w) and len(w.points_m) >= 2 and getattr(w, "name", None)]
-        # Fallback if no named roads exist in bbox
-        if not self.ways:
-            self.ways = [w for w in connected_ways if is_car_road(w) and len(w.points_m) >= 2]
-        if not self.ways:
-            self.ways = [w for w in ways if is_car_road(w) and len(w.points_m) >= 2]
+        self.ways = connected_drivable_ways(ways, named=True)
         self.places = places or []
         self.buildings = buildings or []
+        self.taxi_stops = taxi_stops or []
         self.min_distance_m = min_distance_m
         self.max_distance_m = max_distance_m
         self.pickup_radius_m = pickup_radius_m
@@ -94,6 +89,8 @@ class TaxiManager:
         self._passed_red_signals: Dict[int, float] = {}  # signal id -> timestamp cooldown
         self._approaching_red_signals: Dict[int, float] = {}  # signal id -> last signed distance along travel
         self._crashed_npc_cooldowns: Dict[int, float] = {}  # npc id -> timestamp cooldown
+        self._crashed_building_cooldowns: Dict[int, float] = {}  # building id -> timestamp cooldown
+        self._crashed_tree_cooldowns: Dict[Tuple[int, int], float] = {}
         self.wrong_way_duration: float = 0.0  # seconds continuously driving wrong way
         self.wrong_way_penalty_cooldown: float = 0.0  # timer between recurring penalties (5.0s)
 
@@ -161,6 +158,91 @@ class TaxiManager:
                     logger.info("Player crashed into NPC vehicle: -%d pts penalty (impact speed: %.1f m/s)", penalty, impact_speed)
 
         return crashed
+
+    def check_building_collision(
+        self,
+        player_car: Car,
+        buildings: List[Building],
+        sim_time: float,
+        previous_position: Optional[Tuple[float, float]] = None,
+        penalty: int = 200,
+    ) -> bool:
+        """Stop the car at a building footprint and apply one crash penalty per impact."""
+        expired = [bid for bid, t in self._crashed_building_cooldowns.items() if sim_time - t > 3.0]
+        for bid in expired:
+            del self._crashed_building_cooldowns[bid]
+
+        car_radius = math.hypot(player_car.length_m, player_car.width_m) * 0.5
+        car_corners = get_oriented_box_corners(
+            player_car.x, player_car.y, player_car.heading, player_car.length_m, player_car.width_m
+        )
+
+        for building in buildings:
+            points = getattr(building, "points_m", [])
+            if len(points) < 3:
+                continue
+            bbox = getattr(building, "bbox", (0.0, 0.0, 0.0, 0.0))
+            if bbox != (0.0, 0.0, 0.0, 0.0):
+                if (player_car.x < bbox[0] - car_radius or player_car.x > bbox[2] + car_radius
+                        or player_car.y < bbox[1] - car_radius or player_car.y > bbox[3] + car_radius):
+                    continue
+
+            intersects = point_in_polygon(player_car.x, player_car.y, points)
+            if not intersects:
+                intersects = any(point_in_polygon(x, y, points) for x, y in car_corners)
+            if not intersects:
+                intersects = any(
+                    dist_point_to_segment(player_car.x, player_car.y, points[i][0], points[i][1],
+                                         points[(i + 1) % len(points)][0], points[(i + 1) % len(points)][1])
+                    <= car_radius
+                    for i in range(len(points))
+                )
+            if not intersects:
+                continue
+
+            if previous_position is not None:
+                player_car.x, player_car.y = previous_position
+            player_car.speed = 0.0
+            building_id = id(building)
+            if building_id not in self._crashed_building_cooldowns:
+                self._crashed_building_cooldowns[building_id] = sim_time
+                self.total_score -= penalty
+                self.notification_msg = f"Building crash! -{penalty} pts"
+                self.notification_timer = 3.5
+                logger.info("Player crashed into building: -%d pts", penalty)
+            return True
+
+        return False
+
+    def check_tree_collision(
+        self,
+        player_car: Car,
+        sceneries: List[Any],
+        sim_time: float,
+        previous_position: Optional[Tuple[float, float]] = None,
+        penalty: int = 100,
+    ) -> bool:
+        """Stop the car at a tree and apply one penalty per impact."""
+        expired = [key for key, t in self._crashed_tree_cooldowns.items() if sim_time - t > 3.0]
+        for key in expired:
+            del self._crashed_tree_cooldowns[key]
+
+        radius = math.hypot(player_car.length_m, player_car.width_m) * 0.5 + 1.0
+        for scenery in sceneries:
+            for tree_index, (tree_x, tree_y) in enumerate(getattr(scenery, "trees", [])):
+                if math.hypot(player_car.x - tree_x, player_car.y - tree_y) > radius:
+                    continue
+                if previous_position is not None:
+                    player_car.x, player_car.y = previous_position
+                player_car.speed = 0.0
+                key = (id(scenery), tree_index)
+                if key not in self._crashed_tree_cooldowns:
+                    self._crashed_tree_cooldowns[key] = sim_time
+                    self.total_score -= penalty
+                    self.notification_msg = f"Tree crash! -{penalty} pts"
+                    self.notification_timer = 3.5
+                return True
+        return False
 
     def check_red_light_violation(
         self,
@@ -295,11 +377,7 @@ class TaxiManager:
         buildings: Optional[List[Building]] = None,
     ) -> None:
         """Update road and place references when map expands dynamically."""
-        connected_ways = compute_largest_connected_road_component(ways)
-        named = [w for w in connected_ways if is_car_road(w) and len(w.points_m) >= 2 and getattr(w, "name", None)]
-        self.ways = named if named else [w for w in connected_ways if is_car_road(w) and len(w.points_m) >= 2]
-        if not self.ways:
-            self.ways = [w for w in ways if is_car_road(w) and len(w.points_m) >= 2]
+        self.ways = connected_drivable_ways(ways, named=True)
         if places is not None:
             self.places = places
         if buildings is not None:
@@ -473,23 +551,63 @@ class TaxiManager:
                 )
         return None
 
+    def pick_random_taxi_stop(
+        self,
+        ref_x: Optional[float] = None,
+        ref_y: Optional[float] = None,
+        min_dist: float = 0.0,
+        max_dist: float = float("inf"),
+    ) -> Optional[TaxiTarget]:
+        stops = self.taxi_stops[:]
+        random.shuffle(stops)
+        for stop in stops:
+            if ref_x is not None and ref_y is not None:
+                distance = math.hypot(stop.x - ref_x, stop.y - ref_y)
+                if not min_dist <= distance <= max_dist:
+                    continue
+            way_name = self.find_nearest_named_road(stop.x, stop.y)
+            address = self.generate_address_for_point(stop.x, stop.y, way_name) or "Taxi stop"
+            return TaxiTarget(
+                x=stop.x,
+                y=stop.y,
+                address=address,
+                way_name=way_name,
+                district_name=self.get_nearest_district(stop.x, stop.y),
+                radius_m=self.pickup_radius_m,
+            )
+        return None
+
     def spawn_mission(self, car_x: float, car_y: float) -> None:
         """Spawn a new passenger pickup and dropoff destination."""
-        pickup_target = self.pick_random_road_point(
+        pickup_target = self.pick_random_taxi_stop(
             ref_x=car_x,
             ref_y=car_y,
             min_dist=150.0,
             max_dist=1200.0,
         )
         if not pickup_target:
+            pickup_target = self.pick_random_road_point(
+                ref_x=car_x,
+                ref_y=car_y,
+                min_dist=150.0,
+                max_dist=1200.0,
+            )
+        if not pickup_target:
             return
 
-        dropoff_target = self.pick_random_road_point(
+        dropoff_target = self.pick_random_taxi_stop(
             ref_x=pickup_target.x,
             ref_y=pickup_target.y,
             min_dist=self.min_distance_m,
             max_dist=self.max_distance_m,
         )
+        if not dropoff_target:
+            dropoff_target = self.pick_random_road_point(
+            ref_x=pickup_target.x,
+            ref_y=pickup_target.y,
+            min_dist=self.min_distance_m,
+            max_dist=self.max_distance_m,
+            )
         if not dropoff_target:
             dropoff_target = pickup_target
 

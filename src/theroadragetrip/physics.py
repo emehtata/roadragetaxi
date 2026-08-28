@@ -12,6 +12,8 @@ FRICTION = 6.0  # m/s^2
 STEER_RATE = 2.6  # rad/s at low speed
 STEER_SPEED_FACTOR = 0.10  # less steering at higher speed
 MAX_SPEED = 36.0  # m/s (~130 km/h)
+OFFROAD_MAX_SPEED = 2.0  # m/s (~7 km/h)
+OFFROAD_DECEL = 10.0  # m/s^2 when slowing from road speed
 
 NON_DRIVABLE_HIGHWAYS = {
     "footway",
@@ -164,15 +166,48 @@ def compute_largest_connected_road_component(ways: List) -> List:
     return [drivable[i] for i in largest_comp]
 
 
+def connected_drivable_ways(ways: List, named: bool = False) -> List:
+    connected = compute_largest_connected_road_component(ways) if ways else []
+    candidates = [w for w in connected if is_car_road(w) and len(w.points_m) >= 2]
+    if named:
+        named_candidates = [w for w in candidates if getattr(w, "name", None)]
+        candidates = named_candidates or candidates
+    return candidates or [w for w in ways if is_car_road(w) and len(w.points_m) >= 2]
+
+
 def respawn_car(
     car: Car,
     ways: List,
     near_center: bool = False,
     bounds: Optional[Tuple[float, float, float, float]] = None,
     waters: Optional[List] = None,
+    taxi_stops: Optional[List] = None,
 ) -> None:
     """Place the car on a main connected drivable land road, avoiding isolated road segments."""
     if not ways:
+        return
+
+    if taxi_stops:
+        stop = random.choice(taxi_stops)
+        car.x, car.y = stop.x, stop.y
+        nearest = min(
+            (way for way in ways if len(way.points_m) >= 2),
+            key=lambda way: min(
+                dist_point_to_segment(stop.x, stop.y, p1[0], p1[1], p2[0], p2[1])
+                for p1, p2 in zip(way.points_m, way.points_m[1:])
+            ),
+            default=None,
+        )
+        if nearest:
+            segment = min(
+                zip(nearest.points_m, nearest.points_m[1:]),
+                key=lambda pair: dist_point_to_segment(stop.x, stop.y, pair[0][0], pair[0][1], pair[1][0], pair[1][1]),
+            )
+            car.heading = math.atan2(segment[1][1] - segment[0][1], segment[1][0] - segment[0][0])
+        else:
+            car.heading = 0.0
+        car.speed = 0.0
+        car.layer = getattr(nearest or ways[0], "layer", 0)
         return
 
     # Extract connected component of main road network
@@ -278,54 +313,42 @@ class SpatialWayGrid:
             self.insert(w)
         self.indexed_way_count = len(ways)
 
-    def is_point_on_road(self, px: float, py: float, car_roads_only: bool = False, layer: Optional[int] = None) -> bool:
-        gx = int(px // self.cell_size)
-        gy = int(py // self.cell_size)
-        candidates = self.grid.get((gx, gy))
-        if not candidates:
-            return False
-
-        for w in candidates:
-            if car_roads_only and not is_car_road(w):
+    def _candidate_ways(
+        self, px: float, py: float, car_roads_only: bool = False, layer: Optional[int] = None
+    ):
+        candidates = self.grid.get((int(px // self.cell_size), int(py // self.cell_size)), [])
+        for way in candidates:
+            if car_roads_only and not is_car_road(way):
                 continue
-            if layer is not None and getattr(w, "layer", 0) != layer:
+            if layer is not None and getattr(way, "layer", 0) != layer:
                 continue
-            bbox = getattr(w, "bbox", None)
-            hw = getattr(w, "half_width_m", 3.0)
+            bbox = getattr(way, "bbox", None)
+            half_width = getattr(way, "half_width_m", 3.0)
             if bbox and bbox != (0.0, 0.0, 0.0, 0.0):
-                if not (bbox[0] - hw <= px <= bbox[2] + hw and bbox[1] - hw <= py <= bbox[3] + hw):
+                if not (bbox[0] - half_width <= px <= bbox[2] + half_width and bbox[1] - half_width <= py <= bbox[3] + half_width):
                     continue
-            pts = w.points_m
+            yield way, half_width
+
+    def is_point_on_road(self, px: float, py: float, car_roads_only: bool = False, layer: Optional[int] = None) -> bool:
+        for way, half_width in self._candidate_ways(px, py, car_roads_only, layer):
+            pts = way.points_m
             for i in range(len(pts) - 1):
                 ax, ay = pts[i]
                 bx, by = pts[i + 1]
-                if dist_point_to_segment(px, py, ax, ay, bx, by) <= hw:
+                if dist_point_to_segment(px, py, ax, ay, bx, by) <= half_width:
                     return True
         return False
 
     def get_road_layer_at_point(self, px: float, py: float, current_layer: int = 0) -> int:
         """Find the matching road layer at (px, py), preferring the current layer if still on it."""
-        gx = int(px // self.cell_size)
-        gy = int(py // self.cell_size)
-        candidates = self.grid.get((gx, gy))
-        if not candidates:
-            return current_layer
-
         matching_layers = []
-        for w in candidates:
-            if not is_car_road(w):
-                continue
-            bbox = getattr(w, "bbox", None)
-            hw = getattr(w, "half_width_m", 3.0)
-            if bbox and bbox != (0.0, 0.0, 0.0, 0.0):
-                if not (bbox[0] - hw <= px <= bbox[2] + hw and bbox[1] - hw <= py <= bbox[3] + hw):
-                    continue
-            pts = w.points_m
+        for way, half_width in self._candidate_ways(px, py, car_roads_only=True):
+            pts = way.points_m
             for i in range(len(pts) - 1):
                 ax, ay = pts[i]
                 bx, by = pts[i + 1]
-                if dist_point_to_segment(px, py, ax, ay, bx, by) <= hw:
-                    w_layer = getattr(w, "layer", 0)
+                if dist_point_to_segment(px, py, ax, ay, bx, by) <= half_width:
+                    w_layer = getattr(way, "layer", 0)
                     if w_layer == current_layer:
                         return current_layer
                     matching_layers.append(w_layer)
@@ -335,32 +358,17 @@ class SpatialWayGrid:
 
     def get_current_road(self, px: float, py: float, layer: Optional[int] = None, car_roads_only: bool = True) -> Optional[Any]:
         """Find the specific road (Way) the given position is on, if any."""
-        gx = int(px // self.cell_size)
-        gy = int(py // self.cell_size)
-        candidates = self.grid.get((gx, gy))
-        if not candidates:
-            return None
-
         best_way = None
         best_dist = float("inf")
-        for w in candidates:
-            if car_roads_only and not is_car_road(w):
-                continue
-            if layer is not None and getattr(w, "layer", 0) != layer:
-                continue
-            bbox = getattr(w, "bbox", None)
-            hw = getattr(w, "half_width_m", 3.0)
-            if bbox and bbox != (0.0, 0.0, 0.0, 0.0):
-                if not (bbox[0] - hw <= px <= bbox[2] + hw and bbox[1] - hw <= py <= bbox[3] + hw):
-                    continue
-            pts = w.points_m
+        for way, half_width in self._candidate_ways(px, py, car_roads_only, layer):
+            pts = way.points_m
             for i in range(len(pts) - 1):
                 ax, ay = pts[i]
                 bx, by = pts[i + 1]
                 d = dist_point_to_segment(px, py, ax, ay, bx, by)
-                if d <= hw and d < best_dist:
+                if d <= half_width and d < best_dist:
                     best_dist = d
-                    best_way = w
+                    best_way = way
 
         return best_way
 
@@ -369,29 +377,20 @@ class SpatialWayGrid:
 
     def is_violating_oneway(self, car: Car, px: float, py: float, dx: float, dy: float) -> bool:
         """Check if vehicle movement (dx, dy) opposes a one-way road direction."""
-        gx = int(px // self.cell_size)
-        gy = int(py // self.cell_size)
-        candidates = self.grid.get((gx, gy))
-        if not candidates:
-            return False
-
         move_len = math.hypot(dx, dy)
         if move_len < 1e-5:
             return False
 
         # Find roads covering the current position
         on_roads = []
-        for w in candidates:
-            if not is_car_road(w):
-                continue
-            hw = getattr(w, "half_width_m", 3.0)
-            pts = w.points_m
+        for way, half_width in self._candidate_ways(px, py, car_roads_only=True):
+            pts = way.points_m
             for i in range(len(pts) - 1):
                 ax, ay = pts[i]
                 bx, by = pts[i + 1]
                 _, _, _, dist = closest_point_and_dist_to_segment(px, py, ax, ay, bx, by)
-                if dist <= hw:
-                    on_roads.append((w, i, ax, ay, bx, by))
+                if dist <= half_width:
+                    on_roads.append((way, i, ax, ay, bx, by))
                     break
 
         if not on_roads:
@@ -754,6 +753,23 @@ def update_car_physics(
 
     blocked = False
     has_road_data = (spatial_grid is not None) or (ways is not None and len(ways) > 0)
+
+    # Off-road driving is allowed by the game, but limited to walking pace.
+    if has_road_data and not block_offroad:
+        target_on_road = is_point_on_road(
+            target_x, target_y, ways=ways, spatial_grid=spatial_grid, car_roads_only=True
+        )
+        if not target_on_road:
+            if throttle > 0.0:
+                car.speed = max(0.0, car.speed - ACCEL * dt)
+            if car.speed > OFFROAD_MAX_SPEED:
+                car.speed = max(OFFROAD_MAX_SPEED, car.speed - OFFROAD_DECEL * dt)
+            elif car.speed < -OFFROAD_MAX_SPEED:
+                car.speed = min(-OFFROAD_MAX_SPEED, car.speed + OFFROAD_DECEL * dt)
+            dx = math.cos(car.heading) * car.speed * dt
+            dy = math.sin(car.heading) * car.speed * dt
+            target_x = car.x + dx
+            target_y = car.y + dy
 
     # Check one-way road violation
     if enforce_oneway and has_road_data and (dx != 0.0 or dy != 0.0):

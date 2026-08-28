@@ -1,4 +1,6 @@
-from theroadragetrip.osm import Way
+import math
+
+from theroadragetrip.osm import Scenery, Way
 from theroadragetrip.physics import (
     Car,
     SpatialWayGrid,
@@ -7,6 +9,7 @@ from theroadragetrip.physics import (
     is_point_on_road,
     update_car_physics,
 )
+from theroadragetrip.taxi import TaxiManager
 
 
 def test_is_car_road_filtering():
@@ -118,3 +121,54 @@ def test_block_motion_into_footway_or_pedestrian_path():
 
     assert blocked is True
     assert car.x <= 54.0  # Blocked from entering the footway corridor!
+
+
+def test_allow_slow_offroad_driving():
+    road = Way(points_m=[(0.0, 0.0), (100.0, 0.0)], highway="primary", half_width_m=5.0)
+    grid = SpatialWayGrid(cell_size=100.0)
+    grid.rebuild([road])
+    car = Car(x=50.0, y=4.0, heading=math.pi / 2.0, speed=10.0)
+
+    blocked = update_car_physics(
+        car, 1.0, 0.0, 0.0, 0.0, 0.2, ways=[road], spatial_grid=grid, block_offroad=False
+    )
+
+    assert blocked is False
+    assert 2.0 < car.speed < 10.0
+    assert car.y > 4.0
+
+
+def test_building_collision_bounces_and_penalizes_once():
+    from theroadragetrip.osm import Building
+
+    building = Building(points_m=[(4.0, -3.0), (8.0, -3.0), (8.0, 3.0), (4.0, 3.0)])
+    car = Car(x=5.0, y=0.0, heading=0.0, speed=4.0)
+    taxi_manager = TaxiManager(ways=[])
+
+    crashed = taxi_manager.check_building_collision(car, [building], sim_time=1.0, previous_position=(3.0, 0.0))
+    score_after_crash = taxi_manager.total_score
+    crashed_again = taxi_manager.check_building_collision(car, [building], sim_time=2.0, previous_position=(3.0, 0.0))
+
+    assert crashed is True
+    assert crashed_again is True
+    assert (car.x, car.y) == (3.0, 0.0)
+    assert car.speed == 0.0
+    assert score_after_crash == -200
+    assert taxi_manager.total_score == score_after_crash
+
+
+def test_tree_collision_stops_and_penalizes_once():
+    scenery = Scenery(points_m=[(-5.0, -5.0), (5.0, -5.0), (5.0, 5.0)], kind="park", trees=[(0.0, 0.0)])
+    car = Car(x=0.0, y=0.0, heading=0.0, speed=4.0)
+    taxi_manager = TaxiManager(ways=[])
+
+    crashed = taxi_manager.check_tree_collision(car, [scenery], sim_time=1.0, previous_position=(-3.0, 0.0))
+    score_after_crash = taxi_manager.total_score
+    crashed_again = taxi_manager.check_tree_collision(car, [scenery], sim_time=2.0, previous_position=(-3.0, 0.0))
+
+    assert crashed is True
+    assert crashed_again is True
+    assert (car.x, car.y) == (-3.0, 0.0)
+    assert car.speed == 0.0
+    assert score_after_crash == -100
+    assert taxi_manager.total_score == score_after_crash

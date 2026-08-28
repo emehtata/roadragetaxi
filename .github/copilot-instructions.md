@@ -19,21 +19,24 @@ Quick start (commands)
 High-level architecture / data flow
 - Package split into modular submodules under `src/theroadragetrip/`:
   - `geo.py`: Coordinate projections (`pyproj`), `clamp`, `compute_bbox`, `clip_polygon_to_rect`, `dist_point_to_segment`, `point_in_polygon`, `meters_to_latlon`.
-  - `osm.py`: Overpass API querying, disk cache, multipolygon parsing, `Way`/`Water`/`Building`/`Scenery`/`Place` dataclasses, `AutoFetchManager`.
-  - `physics.py`: `Car` dataclass, vehicle dynamics, steering, `SpatialWayGrid`, and road boundary containment collision checks.
-  - `render.py`: Pygame viewport-culled rendering for roads, waters, buildings, scenery, triangular car, HUD, labels, and compass widget.
-  - `main.py`: CLI parser, preset handler (`--preset oulu`/`helsinki`), logging setup, and main game loop.
+  - `osm.py`: Overpass API querying, disk cache, multipolygon parsing, `Way`/`Water`/`Building`/`Scenery`/`Place`/`TrafficLight`/`Crossing` dataclasses, `AutoFetchManager`, city presets.
+  - `physics.py`: `Car` dataclass, vehicle dynamics, steering, `SpatialWayGrid`, road boundary containment collision checks, and lane assist.
+  - `taxi.py`: Taxi missions, passenger spawn/pickup/dropoff, fares, and violation checks (red light, collision, wrong-way).
+  - `traffic.py`: Autonomous NPC traffic simulation, lane positioning, overtaking, and speed-limit compliance.
+  - `pedestrian.py`: Pedestrian walking simulation on footpaths/sidewalks, traffic light crossings, and car dodging.
+  - `render.py`: Pygame viewport-culled rendering for roads, waters, buildings, scenery, traffic, pedestrians, car, HUD, menus, and compass widget.
+  - `main.py`: CLI parser, preset/city selection menu, pause menu, logging setup, and main game loop.
 - `road_rage_trip.py`: Root backward-compatible shim delegating to `theroadragetrip.main`.
 
 Important implementation details for an AI agent
-- BBOX order is (south, west, north, east) lat/lon. Presets stored in `BBOX_PRESETS`.
+- BBOX order is (south, west, north, east) lat/lon. Presets stored in `BBOX_PRESETS` and `CITY_CENTERS`.
 - Transformer is created with `always_xy=True` and expects lon,lat input; be careful not to swap lat/lon.
 - Roads filtered by `tags.get("highway", "unclassified")` — adding new OSM types should account for missing tags.
 - Waters parsed from `natural=water`, `waterway`, `landuse=reservoir`, and relation multipolygons.
 - Widths: see `HIGHWAY_HALF_WIDTH` (half-width meters). Rendering thickness = half_width * 2 * PX_PER_M.
 - Units: internal geometry uses meters (EPSG:3067) and rendering scales meters→pixels via `PX_PER_M`.
-- CLI & controls: supports `--bbox`, `--preset`, `--force-refresh`, `--use-sample`, `--cache-ttl`, `--px-per-m`, `--log-level`, `--no-cache`, `--auto-fetch`, `--fetch-margin`, `--fetch-tile-size`.
-- In-game controls: WASD / Arrows to drive, `+/-` to zoom, `R` to respawn on a random way, `T` to reset trip meter, `L` to toggle labels.
+- CLI & controls: supports `--bbox`, `--preset`, `--no-menu`, `--force-refresh`, `--use-sample`, `--cache-ttl`, `--px-per-m`, `--log-level`, `--no-cache`, `--auto-fetch`, `--no-auto-fetch`, `--fetch-margin`, `--fetch-tile-size`, `--traffic-count`, `--pedestrian-count`.
+- In-game controls: WASD / Arrows to drive, `+/-` to zoom, `R` to respawn, `X` to discard fare, `T` to reset trip meter, `L` to toggle labels, `K` to toggle lane assist, `Esc` for pause menu.
 
 External integrations & failure handling
 - Overpass API endpoints are in `DEFAULT_OVERPASS_ENDPOINTS`. Requests have retries, exponential backoff, and per-endpoint attempts.
@@ -43,14 +46,14 @@ External integrations & failure handling
 - Logging: the PoC uses `logging` (configure with `--log-level` or `LOG_LEVEL` env var).
 
 Conventions & patterns
-- Single-file PoC (`road_rage_trip.py`) kept intentionally simple; prefer small, local helper functions (geometry, IO, rendering) over large classes for now.
-- Use dataclasses for simple domain types (e.g., `Way`, `Car`). Keep code imperative and explicit for readability by humans and LLMs.
-- Error handling: network failures are surfaced with print statements; the program exits with `sys.exit(1)` on critical failures (no ways loaded).
+- Modular architecture under `src/theroadragetrip/`.
+- Use dataclasses for simple domain types (e.g., `Way`, `Car`, `NPCCar`, `Pedestrian`, `TaxiPassenger`).
+- Keep code imperative and explicit for readability by humans and LLMs.
+- Error handling: network failures surface logging warnings; fallback to local sample where appropriate; exit on unrecoverable errors.
 
 Developer workflows / tests
-- There are no unit tests yet; `test_fetch_sample.py` is a quick script to validate the bundled sample JSON.
-- To add tests: isolate fetching/parsing logic (`fetch_osm_ways`/`build_ways`) and test with sample JSON fixtures.
-- Suggestion for CI: cache Overpass responses, stub network calls, and run Pygame display in dummy mode.
+- Tests in `tests/` run with `pytest tests/ -v`. Tests mock pyproj when needed.
+- Headless CI / test run: set `SDL_VIDEODRIVER=dummy`.
 
 Tasks an AI agent can safely start with
 - Add caching of fetched OSM responses to disk for repeatable runs.
@@ -64,7 +67,7 @@ Notes & pitfalls
 
 If anything is unclear or you want more detail (examples of tests, or a cached-response implementation), tell me which area to expand and I will iterate. ✅
 
-Always use python virtual environments for dependency management, default .venv is fine.
+Always use the project virtual environment for Python work. Create/use `.venv`, activate it before installing dependencies, running tests, compiling, or launching the game: `source .venv/bin/activate`. Never use system Python or install project packages globally.
 
 Follow the best practices with type hints, docstrings, and readable code. Add comments where helpful.
 

@@ -1,5 +1,5 @@
 import math
-from theroadragetrip.osm import Place, Way
+from theroadragetrip.osm import Place, TaxiStop, Way
 from theroadragetrip.physics import Car
 from theroadragetrip.taxi import TaxiManager, TaxiState, TaxiTarget
 
@@ -85,6 +85,7 @@ def test_taxi_mission_lifecycle():
     assert taxi_mgr.current_passenger is not None
     assert taxi_mgr.state == TaxiState.WAITING_FOR_PICKUP
 
+
     pickup = taxi_mgr.current_passenger.pickup
     dropoff = taxi_mgr.current_passenger.dropoff
 
@@ -120,6 +121,23 @@ def test_taxi_mission_lifecycle():
     assert taxi_mgr.total_score > 0
     assert taxi_mgr.last_fare_points > 0
     assert taxi_mgr.state == TaxiState.WAITING_FOR_PICKUP
+
+
+def test_taxi_mission_prefers_osm_taxi_stops():
+    way = Way(
+        points_m=[(0.0, 0.0), (2000.0, 0.0)],
+        highway="residential",
+        half_width_m=4.5,
+        name="Stop Street",
+    )
+    stops = [TaxiStop(500.0, 0.0), TaxiStop(1000.0, 0.0)]
+    taxi_mgr = TaxiManager(ways=[way], taxi_stops=stops, min_distance_m=100.0, max_distance_m=1200.0)
+
+    taxi_mgr.spawn_mission(0.0, 0.0)
+
+    assert taxi_mgr.current_passenger is not None
+    assert taxi_mgr.current_passenger.pickup.x in (500.0, 1000.0)
+    assert taxi_mgr.current_passenger.dropoff.x in (500.0, 1000.0)
 
 
 def test_taxi_scoring_speed_bonus():

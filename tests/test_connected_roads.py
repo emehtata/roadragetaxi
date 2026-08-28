@@ -1,5 +1,5 @@
 """Tests for largest connected road component extraction and spawning."""
-from theroadragetrip.osm import Way
+from theroadragetrip.osm import TaxiStop, Way
 from theroadragetrip.physics import (
     Car,
     compute_largest_connected_road_component,
@@ -50,3 +50,13 @@ def test_respawn_chooses_largest_connected_network():
         # Position should be on Main St (0 <= x <= 300, y == 0), not on isolated road (x >= 500)
         assert 0.0 <= car.x <= 300.0
         assert car.y == 0.0
+
+
+def test_respawn_uses_taxi_stop_when_available():
+    road = Way(points_m=[(0.0, 0.0), (100.0, 0.0)], highway="residential", half_width_m=4.0)
+    car = Car(x=0.0, y=0.0, heading=0.0, speed=0.0)
+
+    respawn_car(car, [road], taxi_stops=[TaxiStop(42.0, 1.0)])
+
+    assert (car.x, car.y) == (42.0, 1.0)
+    assert car.speed == 0.0

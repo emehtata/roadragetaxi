@@ -69,3 +69,30 @@ def test_build_ways_buildings_and_scenery_and_names():
     assert len(places) == 1
     assert places[0].name == "Downtown"
     assert places[0].kind == "suburb"
+
+
+def test_build_ways_generates_trees_in_offroad_scenery():
+    elements = [
+        {"type": "node", "id": 1, "lat": 60.1, "lon": 25.1},
+        {"type": "node", "id": 2, "lat": 60.1, "lon": 25.14},
+        {"type": "node", "id": 3, "lat": 60.14, "lon": 25.14},
+        {"type": "node", "id": 4, "lat": 60.14, "lon": 25.1},
+        {"type": "way", "id": 10, "nodes": [1, 2], "tags": {"highway": "residential"}},
+        {"type": "way", "id": 20, "nodes": [1, 2, 3, 4, 1], "tags": {"natural": "wood"}},
+    ]
+
+    ways, _, _, sceneries, _, _ = build_ways(elements)
+
+    assert sceneries[0].trees
+    assert all(tree_y > ways[0].half_width_m + 3.0 + 60100.0 for _, tree_y in sceneries[0].trees)
+
+
+def test_build_ways_parses_taxi_stops():
+    elements = [
+        {"type": "node", "id": 1, "lat": 60.0, "lon": 25.0, "tags": {"highway": "taxi_stop"}},
+        {"type": "node", "id": 2, "lat": 60.001, "lon": 25.001, "tags": {"amenity": "taxi"}},
+    ]
+
+    result = build_ways(elements)
+
+    assert [stop.id for stop in result.taxi_stops] == [1, 2]

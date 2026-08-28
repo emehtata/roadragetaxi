@@ -62,7 +62,8 @@ def test_npc_right_side_and_overtaking():
     # Spawn NPC
     npc = traffic_mgr.spawn_npc(100.0, 0.0)
     assert npc is not None
-    assert npc.lane_offset > 0  # drives on the right side of the centerline
+    assert npc.lane_offset > 0.0
+    assert npc.y * npc.direction < 0.0  # opposite directions use opposite world-side lanes
 
     # Test overtaking offset
     from theroadragetrip.traffic import compute_desired_lane_offset
@@ -70,6 +71,88 @@ def test_npc_right_side_and_overtaking():
     overtake_offset = compute_desired_lane_offset(way, is_overtaking=True)
     assert normal_offset > 0
     assert overtake_offset < 0  # shifts left to overtake
+
+
+def test_npc_reverse_direction_uses_opposite_lane():
+    from theroadragetrip.traffic import compute_desired_lane_offset
+
+    way = Way(
+        points_m=[(0.0, 0.0), (100.0, 0.0)],
+        highway="primary",
+        half_width_m=6.0,
+        name="Two-way Road",
+        oneway=0,
+    )
+
+    assert compute_desired_lane_offset(way, travel_direction=1) > 0.0
+    assert compute_desired_lane_offset(way, travel_direction=-1) > 0.0
+
+
+def test_npc_does_not_overtake_into_opposing_lane():
+    way = Way(
+        points_m=[(0.0, 0.0), (300.0, 0.0)],
+        highway="primary",
+        half_width_m=6.0,
+        oneway=0,
+    )
+    traffic_mgr = TrafficManager([way], target_count=0)
+    lead = NPCCar(
+        x=50.0, y=-2.7, heading=0.0, speed=0.0, way=way,
+        segment_idx=0, direction=1, target_speed=12.0, color=(100, 100, 100),
+        lane_offset=2.7, target_lane_offset=2.7,
+    )
+    follower = NPCCar(
+        x=40.0, y=-2.7, heading=0.0, speed=12.0, way=way,
+        segment_idx=0, direction=1, target_speed=12.0, color=(200, 50, 50),
+        lane_offset=2.7, target_lane_offset=2.7,
+    )
+    traffic_mgr.npcs = [lead, follower]
+
+    traffic_mgr.update(Car(x=200.0, y=200.0, heading=0.0, speed=0.0), dt=0.1)
+
+    assert follower.target_lane_offset > 0.0
+
+
+def test_npc_immediately_returns_to_right_lane():
+    way = Way(
+        points_m=[(0.0, 0.0), (300.0, 0.0)],
+        highway="primary",
+        half_width_m=6.0,
+        oneway=0,
+    )
+    traffic_mgr = TrafficManager([way], target_count=0)
+    npc = NPCCar(
+        x=100.0, y=-2.7, heading=3.1415926535, speed=8.0, way=way,
+        segment_idx=0, direction=-1, target_speed=12.0, color=(200, 50, 50),
+        lane_offset=2.7, target_lane_offset=2.7,
+    )
+    traffic_mgr.npcs = [npc]
+
+    traffic_mgr.update(Car(x=-200.0, y=200.0, heading=0.0, speed=0.0), dt=0.1)
+
+    assert npc.lane_offset > 0.0
+    assert npc.y < 0.0
+
+
+def test_npc_spawning_avoids_junction_conflict_zone():
+    ew_way = Way(
+        points_m=[(-100.0, 0.0), (0.0, 0.0), (100.0, 0.0)],
+        highway="primary",
+        half_width_m=4.0,
+        name="EW Street",
+    )
+    ns_way = Way(
+        points_m=[(0.0, -100.0), (0.0, 0.0), (0.0, 100.0)],
+        highway="primary",
+        half_width_m=4.0,
+        name="NS Street",
+    )
+    traffic_mgr = TrafficManager([ew_way, ns_way], target_count=6, spawn_radius_m=100.0)
+    player = Car(x=200.0, y=200.0, heading=0.0, speed=0.0)
+
+    traffic_mgr.update(player, dt=0.1)
+
+    assert all(math.hypot(npc.x, npc.y) >= 18.0 for npc in traffic_mgr.npcs)
 
 
 def test_npc_despawning_when_far():
@@ -152,6 +235,78 @@ def test_npc_avoids_180_degree_u_turns_at_junction():
     assert rev_route is not None
     assert rev_route[0] is dead_end_way
     assert rev_route[2] == -1
+
+
+def test_npc_can_leave_bridge_at_layer_transition():
+    approach = Way(
+        points_m=[(0.0, 0.0), (50.0, 0.0)],
+        highway="primary",
+        half_width_m=4.0,
+        layer=0,
+    )
+    bridge = Way(
+        points_m=[(50.0, 0.0), (50.0, 100.0)],
+        highway="primary",
+        half_width_m=4.0,
+        layer=1,
+        is_bridge=True,
+    )
+    exit_road = Way(
+        points_m=[(50.0, 100.0), (100.0, 100.0)],
+        highway="primary",
+        half_width_m=4.0,
+        layer=0,
+    )
+    traffic_mgr = TrafficManager([approach, bridge, exit_road])
+
+    route = traffic_mgr._find_next_way_and_segment(bridge, (50.0, 100.0))
+
+    assert route is not None
+    assert route[0] is exit_road
+    assert route[2] == 1
+
+
+def test_npc_waits_for_occupied_junction_to_clear():
+    approach = Way(
+        points_m=[(-50.0, 0.0), (0.0, 0.0)],
+        highway="primary",
+        half_width_m=4.0,
+    )
+    crossing = Way(
+        points_m=[(0.0, -50.0), (0.0, 50.0)],
+        highway="primary",
+        half_width_m=4.0,
+    )
+    traffic_mgr = TrafficManager([approach, crossing], target_count=0)
+    waiting = NPCCar(
+        x=-15.0,
+        y=0.0,
+        heading=0.0,
+        speed=8.0,
+        way=approach,
+        segment_idx=0,
+        direction=1,
+        target_speed=12.0,
+        color=(200, 50, 50),
+    )
+    occupying = NPCCar(
+        x=0.0,
+        y=0.0,
+        heading=1.570796,
+        speed=0.0,
+        way=crossing,
+        segment_idx=0,
+        direction=1,
+        target_speed=12.0,
+        color=(50, 50, 200),
+    )
+    traffic_mgr.npcs = [waiting, occupying]
+    player = Car(x=200.0, y=200.0, heading=0.0, speed=0.0)
+
+    traffic_mgr.update(player, dt=0.1)
+
+    assert waiting.speed < 8.0
+    assert waiting.x < -7.0
 
 
 def test_player_and_npc_car_crash_and_penalty():
@@ -274,4 +429,70 @@ def test_npc_avoids_colliding_with_leading_npc():
     # Following car stopped or maintained safe distance behind lead car
     assert following_npc.x < lead_npc.x
     assert math.hypot(lead_npc.x - following_npc.x, lead_npc.y - following_npc.y) >= 3.5
+
+
+def test_npc_escapes_after_being_blocked():
+    way = Way(
+        points_m=[(0.0, 0.0), (300.0, 0.0)],
+        highway="primary",
+        half_width_m=4.0,
+        name="Blocked Road",
+    )
+    traffic_mgr = TrafficManager([way], target_count=0)
+    lead_npc = NPCCar(
+        x=50.0,
+        y=0.0,
+        heading=0.0,
+        speed=0.0,
+        way=way,
+        segment_idx=0,
+        direction=1,
+        target_speed=0.0,
+        color=(100, 100, 100),
+    )
+    following_npc = NPCCar(
+        x=45.0,
+        y=0.0,
+        heading=0.0,
+        speed=4.0,
+        way=way,
+        segment_idx=0,
+        direction=1,
+        target_speed=12.0,
+        color=(200, 50, 50),
+    )
+    traffic_mgr.npcs = [lead_npc, following_npc]
+
+    player = Car(x=-100.0, y=100.0, heading=0.0, speed=0.0)
+    for _ in range(25):
+        traffic_mgr.update(player, dt=0.1)
+
+    assert following_npc.escape_timer > 0.0
+    assert following_npc.speed > 0.0
+
+
+def test_npc_is_removed_at_one_way_route_end():
+    way = Way(
+        points_m=[(0.0, 0.0), (10.0, 0.0)],
+        highway="motorway",
+        half_width_m=6.0,
+        oneway=1,
+    )
+    traffic_mgr = TrafficManager([way], target_count=0)
+    npc = NPCCar(
+        x=9.0,
+        y=0.0,
+        heading=0.0,
+        speed=20.0,
+        way=way,
+        segment_idx=0,
+        direction=1,
+        target_speed=20.0,
+        color=(100, 100, 100),
+    )
+    traffic_mgr.npcs = [npc]
+
+    traffic_mgr.update(Car(x=100.0, y=100.0, heading=0.0, speed=0.0), dt=0.2)
+
+    assert npc not in traffic_mgr.npcs
 

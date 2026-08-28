@@ -17,6 +17,7 @@ from .osm import (
     Building,
     Place,
     Scenery,
+    TaxiStop,
     TrafficLight,
     Water,
     Way,
@@ -88,23 +89,16 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--no-menu", action="store_true", help="Skip city selection menu and start immediately")
     p.add_argument("--force-refresh", action="store_true", help="Force refresh from Overpass (ignore cache)")
     p.add_argument("--use-sample", action="store_true", help="Use bundled sample OSM data and skip Overpass")
-    p.add_argument("--cache-ttl", type=int, help="Cache TTL in seconds (overrides OSM_CACHE_TTL env)")
     p.add_argument("--px-per-m", type=float, help="Initial pixels per meter (zoom)")
     p.add_argument("--log-level", type=str, help="Logging level (DEBUG/INFO/WARNING)")
     p.add_argument("--no-cache", action="store_true", help="Disable cache usage (treated like force-refresh)")
 
     # Auto-fetching nearby map tiles when the car approaches the bbox edge
-    p.add_argument(
-        "--auto-fetch",
-        action="store_true",
-        default=True,
-        help="Auto-fetch adjacent map tiles when near bbox edge (default: enabled)",
-    )
     p.add_argument("--no-auto-fetch", dest="auto_fetch", action="store_false", help="Disable on-demand map expansion")
     p.add_argument(
         "--fetch-margin",
         type=float,
-        default=800.0,
+        default=1200.0,
         help="Distance in meters from bbox edge that triggers auto-fetch",
     )
     p.add_argument("--fetch-tile-size", type=float, default=2500.0, help="Meters to expand when auto-fetching")
@@ -152,7 +146,12 @@ def main() -> None:
         selected_city_idx = 0
 
         # Show city selection menu if no explicit CLI override or when requested from pause menu
-        if active_city_name is not None or (not args.bbox and not args.preset and not args.use_sample and not args.no_menu):
+        if active_city_name is not None or (
+            not args.bbox
+            and not args.preset
+            and not args.use_sample
+            and not args.no_menu
+        ):
             if active_city_name is not None and active_city_name in cities_list:
                 selected_city_idx = cities_list.index(active_city_name)
             in_menu = True
@@ -225,7 +224,11 @@ def main() -> None:
                 logger.info("Using local sample (via --use-sample)")
                 on_load_progress(0.5, f"Loaded {len(elements)} sample elements")
             else:
-                elements = fetch_osm_ways(bbox, progress_callback=on_load_progress)
+                elements = fetch_osm_ways(
+                    bbox,
+                    progress_callback=on_load_progress,
+                    force_refresh=args.force_refresh or args.no_cache,
+                )
             res = build_ways(elements, progress_callback=on_load_progress)
             crossings = getattr(res, "crossings", [])
             if len(res) == 8:
@@ -244,6 +247,7 @@ def main() -> None:
             sys.exit(1)
 
         minx, miny, maxx, maxy = bounds
+        taxi_stops = getattr(res, "taxi_stops", [])
         # Spatial index for fast O(1) road collision detection
         spatial_grid = SpatialWayGrid()
         spatial_grid.rebuild(ways)
@@ -251,10 +255,10 @@ def main() -> None:
         # Spawn car on a road near center (avoiding water)
         car = Car(x=(minx + maxx) / 2, y=(miny + maxy) / 2, heading=0.0, speed=0.0)
         if ways:
-            respawn_car(car, ways, near_center=True, bounds=bounds, waters=waters)
+            respawn_car(car, ways, near_center=True, bounds=bounds, waters=waters, taxi_stops=taxi_stops)
 
         # Initialize Taxi Manager for game mode
-        taxi_mgr = TaxiManager(ways, places=places, buildings=buildings)
+        taxi_mgr = TaxiManager(ways, places=places, buildings=buildings, taxi_stops=taxi_stops)
         taxi_mgr.spawn_mission(car.x, car.y)
 
         # Initialize autonomous Traffic Manager for NPC cars
@@ -293,7 +297,10 @@ def main() -> None:
         show_labels = True
         running = True
         current_way = None
-        px_per_m = args.px_per_m if args.px_per_m is not None else PX_PER_M
+        zoom_target = args.px_per_m if args.px_per_m is not None else 9.0
+        px_per_m = max(0.25, zoom_target * 0.03)
+        zoom_elapsed = 0.0
+        zoom_duration = 3.0
         camx, camy = car.x, car.y
         clock.tick()  # Reset clock timer to avoid large dt on first frame
 
@@ -345,7 +352,7 @@ def main() -> None:
                         # Reset clock after unpausing to prevent sudden dt physics jumps
                         clock.tick()
                     elif event.key == pygame.K_r:
-                        respawn_car(car, ways, waters=waters)
+                        respawn_car(car, ways, waters=waters, taxi_stops=taxi_stops)
                         camx, camy = car.x, car.y
                         taxi_mgr.handle_respawn(car.x, car.y)
                     elif event.key == pygame.K_x:
@@ -368,13 +375,20 @@ def main() -> None:
             if not running:
                 break
 
+            if zoom_elapsed < zoom_duration:
+                zoom_elapsed = min(zoom_duration, zoom_elapsed + dt)
+                progress = zoom_elapsed / zoom_duration
+                eased = progress * progress * (3.0 - 2.0 * progress)
+                px_per_m = px_per_m + (zoom_target - px_per_m) * eased
+
             keys = pygame.key.get_pressed()
             throttle = 1.0 if keys[pygame.K_w] or keys[pygame.K_UP] else 0.0
             brake = 1.0 if keys[pygame.K_s] or keys[pygame.K_DOWN] else 0.0
             steer_left = 1.0 if keys[pygame.K_a] or keys[pygame.K_LEFT] else 0.0
             steer_right = 1.0 if keys[pygame.K_d] or keys[pygame.K_RIGHT] else 0.0
 
-            # Update physics (enforcing driving on car roads only, blocking off-road movement)
+            previous_position = (car.x, car.y)
+            # Off-road driving is allowed at a reduced speed.
             update_car_physics(
                 car,
                 throttle,
@@ -384,8 +398,11 @@ def main() -> None:
                 dt,
                 ways=ways,
                 spatial_grid=spatial_grid,
-                block_offroad=True,
+                block_offroad=False,
             )
+
+            taxi_mgr.check_building_collision(car, buildings, traffic_mgr.sim_time, previous_position)
+            taxi_mgr.check_tree_collision(car, sceneries, traffic_mgr.sim_time, previous_position)
 
             # Dynamic lookahead camera offset in vehicle driving direction
             # Look ahead proportionally to car speed and heading, clamped to a percentage of viewport so car remains visible
@@ -462,7 +479,7 @@ def main() -> None:
                 len(ways),
                 px_per_m,
                 transformer_to_ll,
-                is_auto_fetching=(args.auto_fetch and auto_fetch_manager.is_fetching),
+                is_auto_fetching=(args.auto_fetch and auto_fetch_manager.get_fetching()),
                 show_labels=show_labels,
                 auto_fetch_progress=auto_fetch_manager.get_progress(),
                 taxi_mgr=taxi_mgr,

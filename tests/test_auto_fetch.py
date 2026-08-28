@@ -49,3 +49,27 @@ def test_auto_fetch_triggers_and_merges():
     assert len(ways) == 2
     nb = m.get_bounds()
     assert nb[2] >= 1200.0
+
+
+def test_auto_fetch_triggers_before_open_road_endpoint():
+    way = Way(points_m=[(0.0, 0.0), (100.0, 0.0)], highway="motorway", half_width_m=6.0)
+    ways = [way]
+    car = Car(x=50.0, y=0.0, heading=0.0, speed=0.0)
+
+    def fake_fetch(bbox):
+        return []
+
+    def fake_build(elems):
+        return [], [], (0.0, 0.0, 1000.0, 1000.0)
+
+    m = AutoFetchManager(
+        ways,
+        (0.0, 0.0, 1000.0, 1000.0),
+        FakeTransformer(),
+        fetch_func=fake_fetch,
+        build_func=fake_build,
+        cooldown_s=0.0,
+    )
+    m.dead_ends = []
+
+    assert m.start_if_needed(car, True, margin_m=100.0, tile_size_m=500.0) is True

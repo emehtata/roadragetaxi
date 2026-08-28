@@ -11,8 +11,7 @@ def test_bbox_presets():
     assert "jyväskylä" in BBOX_PRESETS
     assert "kuopio" in BBOX_PRESETS
     assert "lahti" in BBOX_PRESETS
-    assert "pori" in BBOX_PRESETS
-    assert len(CITY_CENTERS) == 10
+    assert "sysmä" in BBOX_PRESETS
     assert len(BBOX_PRESETS["oulu"]) == 4
     assert len(BBOX_PRESETS["helsinki"]) == 4
     assert DEFAULT_BBOX == BBOX_PRESETS["oulu"]

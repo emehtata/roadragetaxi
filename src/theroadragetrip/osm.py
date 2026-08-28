@@ -4,12 +4,15 @@ import json
 import logging
 import math
 import os
+import random
 import threading
 import time
-from dataclasses import dataclass
-from typing import Callable, Dict, List, Optional, Tuple
+from dataclasses import dataclass, field
+from typing import Callable, Dict, List, Optional, Set, Tuple
 
 import requests
+
+from .geo import dist_point_to_segment, point_in_polygon
 
 logger = logging.getLogger(__name__)
 
@@ -125,8 +128,9 @@ def parse_speed_limit_kmh(maxspeed_tag: Optional[str], highway_type: str) -> int
 
 
 DEFAULT_OVERPASS_ENDPOINTS = [
-    "https://overpass.openstreetmap.fr/api/interpreter",
     "https://overpass-api.de/api/interpreter",
+    "https://overpass.openstreetmap.fr/api/interpreter",
+    "https://overpass.private.coffee/api/interpreter",
 ]
 
 OVERPASS_HEADERS = {
@@ -205,6 +209,7 @@ class Scenery:
     kind: str
     name: Optional[str] = None
     bbox: Tuple[float, float, float, float] = (0.0, 0.0, 0.0, 0.0)
+    trees: List[Tuple[float, float]] = field(default_factory=list)
 
 
 @dataclass
@@ -257,6 +262,13 @@ class Crossing:
     direction_angle: Optional[float] = None  # Road axis alignment angle in radians
     width_m: float = 3.5  # Width across road (length of crossing)
     length_m: float = 2.4  # Depth along road (stripe length)
+
+
+@dataclass
+class TaxiStop:
+    x: float
+    y: float
+    id: Optional[int] = None
 
 
 def load_local_sample(path: str = "sample_osm.json") -> Optional[List[dict]]:
@@ -320,6 +332,7 @@ def fetch_osm_ways(
     bbox: Tuple[float, float, float, float],
     endpoints: Optional[List[str]] = None,
     progress_callback: Optional[Callable[[float, str], None]] = None,
+    force_refresh: bool = False,
 ) -> List[dict]:
     south, west, north, east = bbox
     query = f"""
@@ -353,7 +366,7 @@ def fetch_osm_ways(
     if progress_callback:
         progress_callback(0.1, "Checking cache...")
 
-    force_refresh = os.getenv("OVERPASS_FORCE_REFRESH", "0").lower() in ("1", "true", "yes")
+    force_refresh = force_refresh or os.getenv("OVERPASS_FORCE_REFRESH", "0").lower() in ("1", "true", "yes")
     if not force_refresh:
         cached = load_osm_cache(bbox)
         if cached is not None:
@@ -505,10 +518,10 @@ def _stitch_member_ways_into_rings(
 class MapData(tuple):
     """Container tuple for build_ways results returning 6 elements for backward compatibility while providing traffic_lights and crossings via attributes and slicing."""
 
-    def __new__(cls, ways, waters, buildings, sceneries, places, bounds, traffic_lights=None, crossings=None):
+    def __new__(cls, ways, waters, buildings, sceneries, places, bounds, traffic_lights=None, crossings=None, taxi_stops=None):
         return super().__new__(cls, (ways, waters, buildings, sceneries, places, bounds))
 
-    def __init__(self, ways, waters, buildings, sceneries, places, bounds, traffic_lights=None, crossings=None):
+    def __init__(self, ways, waters, buildings, sceneries, places, bounds, traffic_lights=None, crossings=None, taxi_stops=None):
         self.ways = ways
         self.waters = waters
         self.buildings = buildings
@@ -517,6 +530,7 @@ class MapData(tuple):
         self.bounds = bounds
         self.traffic_lights = traffic_lights if traffic_lights is not None else []
         self.crossings = crossings if crossings is not None else []
+        self.taxi_stops = taxi_stops if taxi_stops is not None else []
 
     @property
     def traffic_signals(self):
@@ -548,6 +562,7 @@ def build_ways(
     place_nodes_raw: List[Tuple[dict, int]] = []
     traffic_signals_raw: List[Tuple[dict, int]] = []
     crossings_raw: List[Tuple[dict, int]] = []
+    taxi_stops_raw: List[Tuple[dict, int]] = []
     ways_by_id: Dict[int, dict] = {}
     ways_raw: List[Tuple[dict, str, List[int]]] = []
     water_raw: List[Tuple[dict, List[int]]] = []
@@ -567,12 +582,16 @@ def build_ways(
                 place_nodes_raw.append((tags, nid))
             if tags.get("highway") == "traffic_signals":
                 traffic_signals_raw.append((tags, nid))
+            if tags.get("highway") == "taxi_stop" or tags.get("amenity") == "taxi":
+                taxi_stops_raw.append((tags, nid))
             if tags.get("highway") == "crossing" or tags.get("crossing") in ("zebra", "marked", "uncontrolled", "traffic_signals", "yes"):
                 crossings_raw.append((tags, nid))
         elif el_type == "way":
             tags = el.get("tags", {})
             node_ids = el.get("nodes", [])
-            ways_by_id[el.get("id")] = el
+            way_id = el.get("id")
+            if way_id is not None:
+                ways_by_id[way_id] = el
             if len(node_ids) < 2:
                 continue
             if "building" in tags:
@@ -630,6 +649,7 @@ def build_ways(
     places: List[Place] = []
     traffic_lights: List[TrafficLight] = []
     crossings: List[Crossing] = []
+    taxi_stops: List[TaxiStop] = []
 
     minx = miny = float("inf")
     maxx = maxy = float("-inf")
@@ -866,6 +886,44 @@ def build_ways(
             )
         )
 
+    # Add deterministic tree centers to green areas, keeping trunks off roads.
+    tree_kinds = {"forest", "wood", "scrub", "grass", "meadow", "heath", "park", "garden"}
+
+    def add_trees(scenery: Scenery) -> None:
+        if scenery.kind.lower() not in tree_kinds or len(scenery.points_m) < 3:
+            return
+        minx, miny, maxx, maxy = scenery.bbox
+        area = max(0.0, (maxx - minx) * (maxy - miny))
+        target = min(80, max(1, int(area / 350.0)))
+        rng = random.Random(f"{round(minx)}:{round(miny)}:{scenery.kind.lower()}")
+        road_candidates = [
+            way for way in ways
+            if getattr(way, "is_drivable", True)
+            and way.bbox[2] >= minx - way.half_width_m - 3.0
+            and way.bbox[0] <= maxx + way.half_width_m + 3.0
+            and way.bbox[3] >= miny - way.half_width_m - 3.0
+            and way.bbox[1] <= maxy + way.half_width_m + 3.0
+        ]
+        for _ in range(target * 5):
+            if len(scenery.trees) >= target:
+                break
+            x = rng.uniform(minx, maxx)
+            y = rng.uniform(miny, maxy)
+            if not point_in_polygon(x, y, scenery.points_m):
+                continue
+            if any(
+                dist_point_to_segment(x, y, p1[0], p1[1], p2[0], p2[1]) < way.half_width_m + 3.0
+                for way in road_candidates
+                for p1, p2 in zip(way.points_m, way.points_m[1:])
+            ):
+                continue
+            scenery.trees.append((x, y))
+
+    if progress_callback:
+        progress_callback(0.965, f"Planting trees ({len(sceneries)} scenery areas)...")
+    for scenery in sceneries:
+        add_trees(scenery)
+
     # 5. Multipolygon Relations (stitched into proper closed rings)
     if progress_callback:
         progress_callback(0.97, f"Processing {len(relations_raw)} multipolygon relations...")
@@ -892,7 +950,9 @@ def build_ways(
                 waters.append(Water(points_m=pts, kind=kind, is_polygon=is_closed, name=name, bbox=ibbox))
             elif "leisure" in tags or "landuse" in tags or tags.get("natural") in ("wood", "scrub", "grass"):
                 kind = tags.get("leisure") or tags.get("landuse") or tags.get("natural") or "park"
-                sceneries.append(Scenery(points_m=pts, kind=kind, name=name, bbox=ibbox))
+                scenery = Scenery(points_m=pts, kind=kind, name=name, bbox=ibbox)
+                add_trees(scenery)
+                sceneries.append(scenery)
             elif "place" in tags and name and pts:
                 cx = sum(xs) / len(xs)
                 cy = sum(ys) / len(ys)
@@ -903,6 +963,11 @@ def build_ways(
         pt = nodes_m.get(nid)
         if pt:
             places.append(Place(x=pt[0], y=pt[1], name=tags["name"], kind=tags.get("place", "suburb")))
+
+    for tags, nid in taxi_stops_raw:
+        pt = nodes_m.get(nid)
+        if pt:
+            taxi_stops.append(TaxiStop(x=pt[0], y=pt[1], id=nid))
 
     # 7. Traffic signals from OSM nodes
     # Find road direction at node to assign orthogonal phase offsets for intersecting streets
@@ -975,17 +1040,78 @@ def build_ways(
                 else:
                     phase_offset = 0.0
 
-                traffic_lights.append(
-                    TrafficLight(
-                        x=pt[0],
-                        y=pt[1],
-                        cycle_time=16.0,
-                        offset=phase_offset,
-                        layer=layer_val,
-                        id=nid,
-                        direction_angle=road_angle if found_orientation else None,
+                # Some OSM junctions map one signal node at the center instead of
+                # one signal per approach. Split that incomplete representation.
+                arm_angles: List[float] = []
+                for way_tags, _highway, way_node_ids in ways_raw:
+                    if nid not in way_node_ids:
+                        continue
+                    node_index = way_node_ids.index(nid)
+                    neighbor_ids = []
+                    if node_index > 0:
+                        neighbor_ids.append(way_node_ids[node_index - 1])
+                    if node_index + 1 < len(way_node_ids):
+                        neighbor_ids.append(way_node_ids[node_index + 1])
+                    for neighbor_id in neighbor_ids:
+                        neighbor = nodes_m.get(neighbor_id)
+                        if neighbor is None:
+                            continue
+                        angle = math.atan2(neighbor[1] - pt[1], neighbor[0] - pt[0])
+                        if all(abs((angle - existing + math.pi) % (2 * math.pi) - math.pi) > math.radians(25)
+                               for existing in arm_angles):
+                            arm_angles.append(angle)
+
+                # Some extracts omit the signal node from the road ways. In
+                # that case, recover arms from nearby road geometry.
+                if len(arm_angles) < 3:
+                    for way in candidate_ways:
+                        if getattr(way, "layer", 0) != layer_val or len(way.points_m) < 2:
+                            continue
+                        closest_segment = min(
+                            zip(way.points_m, way.points_m[1:]),
+                            key=lambda segment: dist_point_to_segment(
+                                pt[0], pt[1], segment[0][0], segment[0][1], segment[1][0], segment[1][1]
+                            ),
+                        )
+                        (p1, p2) = closest_segment
+                        if dist_point_to_segment(pt[0], pt[1], p1[0], p1[1], p2[0], p2[1]) > 12.0:
+                            continue
+                        angle = math.atan2(p2[1] - p1[1], p2[0] - p1[0])
+                        for arm_angle in (angle, angle + math.pi):
+                            if all(
+                                abs((arm_angle - existing + math.pi) % (2 * math.pi) - math.pi)
+                                > math.radians(25)
+                                for existing in arm_angles
+                            ):
+                                arm_angles.append(arm_angle)
+
+                if len(arm_angles) >= 3:
+                    for arm_index, arm_angle in enumerate(arm_angles):
+                        signal_angle = arm_angle % math.pi
+                        signal_offset = 8.0 if (math.pi * 0.25) <= signal_angle < (math.pi * 0.75) else 0.0
+                        traffic_lights.append(
+                            TrafficLight(
+                                x=pt[0] + math.cos(arm_angle) * 6.0,
+                                y=pt[1] + math.sin(arm_angle) * 6.0,
+                                cycle_time=16.0,
+                                offset=signal_offset,
+                                layer=layer_val,
+                                id=nid * 10 + arm_index,
+                                direction_angle=signal_angle,
+                            )
+                        )
+                else:
+                    traffic_lights.append(
+                        TrafficLight(
+                            x=pt[0],
+                            y=pt[1],
+                            cycle_time=16.0,
+                            offset=phase_offset,
+                            layer=layer_val,
+                            id=nid,
+                            direction_angle=road_angle if found_orientation else None,
+                        )
                     )
-                )
 
     # 8. Pedestrian Crossings (suojatiet) from OSM nodes and ways
     if crossings_raw:
@@ -1111,7 +1237,7 @@ def build_ways(
             minx = miny = 0.0
             maxx = maxy = 1000.0
 
-    return MapData(ways, waters, buildings, sceneries, places, (minx, miny, maxx, maxy), traffic_lights, crossings)
+    return MapData(ways, waters, buildings, sceneries, places, (minx, miny, maxx, maxy), traffic_lights, crossings, taxi_stops)
 
 
 class AutoFetchManager:
@@ -1150,6 +1276,8 @@ class AutoFetchManager:
         self.last_fetch_time = 0.0
         # Load known dead-end boundaries from disk cache
         self.dead_ends: List[dict] = load_dead_ends_cache()
+        self._open_endpoints: List[Tuple[float, float]] = []
+        self._rebuild_endpoint_index()
 
     def get_bounds(self) -> Tuple[float, float, float, float]:
         with self.lock:
@@ -1158,6 +1286,10 @@ class AutoFetchManager:
     def get_progress(self) -> float:
         with self.lock:
             return self.fetch_progress
+
+    def get_fetching(self) -> bool:
+        with self.lock:
+            return self.is_fetching
 
     def is_known_dead_end(self, car_x: float, car_y: float, direction: str, tolerance_m: float = 300.0) -> bool:
         """Check if vehicle is near a recorded dead-end in the given expansion direction."""
@@ -1168,6 +1300,49 @@ class AutoFetchManager:
                 if (dx * dx + dy * dy) ** 0.5 < tolerance_m:
                     return True
         return False
+
+    def _rebuild_endpoint_index(self) -> None:
+        endpoint_cell_size = 15.0
+        endpoints = []
+        cells = defaultdict(list)
+        for way in self.ways:
+            if not getattr(way, "is_drivable", True) or len(way.points_m) < 2:
+                continue
+            for endpoint in (way.points_m[0], way.points_m[-1]):
+                cell = (int(endpoint[0] // endpoint_cell_size), int(endpoint[1] // endpoint_cell_size))
+                cells[cell].append((id(way), endpoint))
+                endpoints.append((id(way), endpoint))
+
+        self._open_endpoints = []
+        for way_id, endpoint in endpoints:
+            cell_x = int(endpoint[0] // endpoint_cell_size)
+            cell_y = int(endpoint[1] // endpoint_cell_size)
+            connected = any(
+                other_way_id != way_id
+                for x in range(cell_x - 1, cell_x + 2)
+                for y in range(cell_y - 1, cell_y + 2)
+                for other_way_id, other_endpoint in cells.get((x, y), [])
+                if math.hypot(endpoint[0] - other_endpoint[0], endpoint[1] - other_endpoint[1]) <= endpoint_cell_size
+            )
+            if not connected:
+                self._open_endpoints.append(endpoint)
+
+    def _approaching_open_endpoint(self, car, margin_m: float) -> Optional[str]:
+        heading_x = math.cos(car.heading)
+        heading_y = math.sin(car.heading)
+        endpoint_tolerance = 15.0
+        for endpoint in self._open_endpoints:
+            dx = endpoint[0] - car.x
+            dy = endpoint[1] - car.y
+            distance = math.hypot(dx, dy)
+            if distance > margin_m or dx * heading_x + dy * heading_y <= 0.0:
+                continue
+            if abs(dx * heading_y - dy * heading_x) > endpoint_tolerance:
+                continue
+            if abs(dx) >= abs(dy):
+                return "east" if dx > 0 else "west"
+            return "north" if dy > 0 else "south"
+        return None
 
     def start_if_needed(self, car, auto_fetch: bool, margin_m: float, tile_size_m: float) -> bool:
         if not auto_fetch:
@@ -1215,6 +1390,25 @@ class AutoFetchManager:
                         fetch_minx = car.x - half_span
                         fetch_maxx = car.x + half_span
                         expanded = True
+
+            if not expanded:
+                direction = self._approaching_open_endpoint(car, max(margin_m, 1200.0)) or ""
+                if direction and not self.is_known_dead_end(car.x, car.y, direction):
+                    half_span = tile_size_m / 2.0
+                    overlap = max(margin_m, 500.0)
+                    if direction == "east":
+                        fetch_minx, fetch_maxx = car.x - overlap, car.x + tile_size_m
+                        fetch_miny, fetch_maxy = car.y - half_span, car.y + half_span
+                    elif direction == "west":
+                        fetch_minx, fetch_maxx = car.x - tile_size_m, car.x + overlap
+                        fetch_miny, fetch_maxy = car.y - half_span, car.y + half_span
+                    elif direction == "north":
+                        fetch_minx, fetch_maxx = car.x - half_span, car.x + half_span
+                        fetch_miny, fetch_maxy = car.y - overlap, car.y + tile_size_m
+                    else:
+                        fetch_minx, fetch_maxx = car.x - half_span, car.x + half_span
+                        fetch_miny, fetch_maxy = car.y - tile_size_m, car.y + overlap
+                    expanded = True
                 elif car.y > maxy - margin_m:
                     direction = "north"
                     if not self.is_known_dead_end(car.x, car.y, direction):
@@ -1317,6 +1511,7 @@ class AutoFetchManager:
                 self.places.extend(new_places)
                 self.traffic_lights.extend(new_traffic_lights)
                 self.crossings.extend(new_crossings)
+                self._rebuild_endpoint_index()
                 minx = min(self.bounds[0], new_bounds[0])
                 miny = min(self.bounds[1], new_bounds[1])
                 maxx = max(self.bounds[2], new_bounds[2])
