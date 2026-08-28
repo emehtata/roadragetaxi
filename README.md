@@ -76,6 +76,17 @@ python3 road_rage_trip.py --bbox "60.150,24.88,60.205,25.02"
 python3 road_rage_trip.py --auto-fetch --fetch-margin 50 --fetch-tile-size 500
 ```
 
+### Windows Release
+
+Push a version tag to build and publish a Windows package containing `RoadRageTrip.exe`:
+
+```bash
+git tag v0.1.0
+git push origin v0.1.0
+```
+
+GitHub Actions builds the package on Windows with PyInstaller and attaches `RoadRageTrip-windows-x64.zip` to the GitHub Release. Extract the zip and launch `RoadRageTrip.exe`; no Python installation is required.
+
 ---
 
 ## Controls

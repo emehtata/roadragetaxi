@@ -7,6 +7,7 @@ import math
 import multiprocessing
 import os
 import random
+import sys
 import threading
 import time
 from dataclasses import dataclass, field
@@ -307,6 +308,7 @@ def load_local_sample(path: str = "sample_osm.json") -> Optional[List[dict]]:
     Tries the provided path, package-relative samples, and `sample_osm_large.json`.
     """
     root_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+    bundle_dir = getattr(sys, "_MEIPASS", "")
     candidates = [
         path,
         os.path.join(root_dir, path),
@@ -314,6 +316,12 @@ def load_local_sample(path: str = "sample_osm.json") -> Optional[List[dict]]:
         "sample_osm_large.json",
         os.path.join(root_dir, "sample_osm_large.json"),
     ]
+    if bundle_dir:
+        candidates.extend([
+            os.path.join(bundle_dir, path),
+            os.path.join(bundle_dir, "sample_osm.json"),
+            os.path.join(bundle_dir, "sample_osm_large.json"),
+        ])
     for p in candidates:
         if not os.path.exists(p):
             continue
