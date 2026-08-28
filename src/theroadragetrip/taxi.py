@@ -1,11 +1,14 @@
+import logging
 import math
 import random
 from dataclasses import dataclass
-from typing import List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from .geo import clamp, dist_point_to_segment
 from .osm import Building, Place, Way
-from .physics import Car, is_car_road
+from .physics import Car, SpatialWayGrid, compute_largest_connected_road_component, is_car_road, is_violating_oneway
+
+logger = logging.getLogger(__name__)
 
 # Finnish passenger name generator for immersion
 FIRST_NAMES = [
@@ -32,10 +35,19 @@ class TaxiPassenger:
     name: str
     pickup: TaxiTarget
     dropoff: TaxiTarget
+    # Client pedestrian representation walking into the taxi
+    ped_x: float = 0.0
+    ped_y: float = 0.0
+    ped_heading: float = 0.0
+    ped_speed: float = 2.0  # Walking speed to taxi in m/s
+    ped_color: Tuple[int, int, int] = (240, 220, 60)  # Bright gold/yellow
+    is_walking_to_car: bool = False
+    boarded: bool = False
 
 
 class TaxiState:
     WAITING_FOR_PICKUP = "PICKUP"
+    CLIENT_WALKING_TO_CAR = "WALKING"
     DRIVING_TO_DROPOFF = "DROPOFF"
     COMPLETED = "COMPLETED"
 
@@ -53,9 +65,13 @@ class TaxiManager:
         pickup_radius_m: float = 25.0,
         max_stop_speed_mps: float = 3.0,  # Must slow down below ~10 km/h to pickup/dropoff
     ):
+        # Filter to the largest connected road network to avoid isolated trapped roads
+        connected_ways = compute_largest_connected_road_component(ways)
         # Only consider drivable car roads with valid real names
-        self.ways = [w for w in ways if is_car_road(w) and len(w.points_m) >= 2 and getattr(w, "name", None)]
+        self.ways = [w for w in connected_ways if is_car_road(w) and len(w.points_m) >= 2 and getattr(w, "name", None)]
         # Fallback if no named roads exist in bbox
+        if not self.ways:
+            self.ways = [w for w in connected_ways if is_car_road(w) and len(w.points_m) >= 2]
         if not self.ways:
             self.ways = [w for w in ways if is_car_road(w) and len(w.points_m) >= 2]
         self.places = places or []
@@ -75,6 +91,202 @@ class TaxiManager:
         self.last_fare_points: int = 0
         self.notification_msg: str = "Welcome! Drive to the pickup location to collect passenger."
         self.notification_timer: float = 5.0
+        self._passed_red_signals: Dict[int, float] = {}  # signal id -> timestamp cooldown
+        self._approaching_red_signals: Dict[int, float] = {}  # signal id -> last signed distance along travel
+        self._crashed_npc_cooldowns: Dict[int, float] = {}  # npc id -> timestamp cooldown
+        self.wrong_way_duration: float = 0.0  # seconds continuously driving wrong way
+        self.wrong_way_penalty_cooldown: float = 0.0  # timer between recurring penalties (5.0s)
+
+    def check_car_collision(
+        self,
+        player_car: Car,
+        npcs: List[Any],
+        sim_time: float,
+        penalty: int = 150,
+    ) -> bool:
+        """Check if player car collided with any NPC vehicle and apply crash physics + penalty."""
+        from .geo import boxes_intersect
+
+        # Clean expired crash cooldowns (> 3.0 seconds ago)
+        expired = [nid for nid, t in self._crashed_npc_cooldowns.items() if sim_time - t > 3.0]
+        for nid in expired:
+            del self._crashed_npc_cooldowns[nid]
+
+        p_len = getattr(player_car, "length_m", 4.0)
+        p_wid = getattr(player_car, "width_m", 1.8)
+        crashed = False
+
+        for npc in npcs:
+            if getattr(npc, "layer", 0) != getattr(player_car, "layer", 0):
+                continue
+
+            npc_id = id(npc)
+            n_len = getattr(npc, "length_m", 4.0)
+            n_wid = getattr(npc, "width_m", 1.8)
+
+            if boxes_intersect(
+                player_car.x, player_car.y, player_car.heading, p_len, p_wid,
+                npc.x, npc.y, npc.heading, n_len, n_wid,
+            ):
+                # Apply bounce-back / collision impulse physics
+                dx = player_car.x - npc.x
+                dy = player_car.y - npc.y
+                dist = math.hypot(dx, dy)
+                if dist > 1e-3:
+                    nx = dx / dist
+                    ny = dy / dist
+                else:
+                    nx = math.cos(player_car.heading)
+                    ny = math.sin(player_car.heading)
+
+                # Push vehicles apart
+                separation = max(0.5, (p_wid + n_wid) * 0.5)
+                player_car.x += nx * 0.4
+                player_car.y += ny * 0.4
+                npc.x -= nx * 0.4
+                npc.y -= ny * 0.4
+
+                # Exchange and damp speeds
+                impact_speed = max(abs(player_car.speed), abs(npc.speed), 3.0)
+                player_car.speed = -player_car.speed * 0.4
+                npc.speed = 0.0
+                npc.crashed_timer = max(getattr(npc, "crashed_timer", 0.0), 5.0)  # stop & smoke for 5 seconds
+
+                crashed = True
+                if npc_id not in self._crashed_npc_cooldowns:
+                    self._crashed_npc_cooldowns[npc_id] = sim_time
+                    self.total_score -= penalty
+                    self.notification_msg = f"Crash! -{penalty} pts"
+                    self.notification_timer = 3.5
+                    logger.info("Player crashed into NPC vehicle: -%d pts penalty (impact speed: %.1f m/s)", penalty, impact_speed)
+
+        return crashed
+
+    def check_red_light_violation(
+        self,
+        car: Car,
+        traffic_lights: List[Any],
+        sim_time: float,
+        penalty: int = 100,
+    ) -> None:
+        """Check if player car passes across a red/yellow traffic light line and apply penalty upon crossing."""
+        if abs(car.speed) < 2.0:
+            return  # Standing or creeping slowly before line is not running a red light
+
+        # Clean expired signal cooldowns (> 10 seconds ago)
+        expired = [sid for sid, t in self._passed_red_signals.items() if sim_time - t > 10.0]
+        for sid in expired:
+            del self._passed_red_signals[sid]
+
+        # Unit vector along car's motion
+        move_heading = car.heading if car.speed >= 0 else (car.heading + math.pi)
+        dir_x = math.cos(move_heading)
+        dir_y = math.sin(move_heading)
+        perp_x = -math.sin(move_heading)
+        perp_y = math.cos(move_heading)
+
+        for tl in traffic_lights:
+            tl_id = getattr(tl, "id", id(tl))
+            if tl_id in self._passed_red_signals:
+                continue
+
+            # Vector from car to traffic light
+            dx = tl.x - car.x
+            dy = tl.y - car.y
+            dist = math.hypot(dx, dy)
+
+            # Only track lights within detection zone (e.g. 15 meters)
+            if dist > 15.0:
+                self._approaching_red_signals.pop(tl_id, None)
+                continue
+
+            # Check alignment with signal direction if available
+            if getattr(tl, "direction_angle", None) is not None:
+                tl_ang = tl.direction_angle
+                car_ang = car.heading % math.pi
+                ang_err = abs(tl_ang - car_ang)
+                ang_err = min(ang_err, math.pi - ang_err)
+                if ang_err > math.radians(45):
+                    self._approaching_red_signals.pop(tl_id, None)
+                    continue  # Signal is for cross traffic
+
+            # Longitudinal distance along direction of travel:
+            # Positive = traffic light is ahead of car
+            # Negative = traffic light is behind car (car has crossed the stop line)
+            long_dist = dx * dir_x + dy * dir_y
+            lat_dist = abs(dx * perp_x + dy * perp_y)
+
+            # Must be reasonably aligned laterally to the traffic light post / stop line (within 8m)
+            if lat_dist > 8.0:
+                self._approaching_red_signals.pop(tl_id, None)
+                continue
+
+            prev_long_dist = self._approaching_red_signals.get(tl_id)
+            self._approaching_red_signals[tl_id] = long_dist
+
+            state = tl.get_state(sim_time)
+            is_red = state in ("red", "red+yellow")
+
+            # Crossed line condition:
+            # 1) Previously ahead (prev >= 0.0) and now behind (long_dist < 0.0), or
+            # 2) Directly at/past line (-4.0 <= long_dist <= 0.0) while driving through at speed
+            crossed_line = False
+            if prev_long_dist is not None and prev_long_dist >= -1.0 and long_dist < 0.0:
+                crossed_line = True
+            elif -4.0 <= long_dist <= 0.0 and dist <= 6.0:
+                crossed_line = True
+
+            if crossed_line and is_red:
+                self._passed_red_signals[tl_id] = sim_time
+                self._approaching_red_signals.pop(tl_id, None)
+                self.total_score -= penalty
+                self.notification_msg = f"Red Light Violation! -{penalty} pts"
+                self.notification_timer = 4.0
+                logger.info("Player passed red traffic light %s: -%d pts penalty", tl_id, penalty)
+                break
+
+    def check_wrong_way_violation(
+        self,
+        car: Car,
+        dt: float,
+        ways: Optional[List[Way]] = None,
+        spatial_grid: Optional[SpatialWayGrid] = None,
+        penalty: int = 50,
+        interval_s: float = 5.0,
+    ) -> bool:
+        """Check if player is driving in wrong direction on a one-way road and apply penalty every 5 seconds."""
+        # Only check if car is actually moving (speed > 1.5 m/s)
+        if abs(car.speed) < 1.5:
+            self.wrong_way_duration = 0.0
+            return False
+
+        dx = math.cos(car.heading) * car.speed * dt
+        dy = math.sin(car.heading) * car.speed * dt
+
+        is_violating = is_violating_oneway(
+            car,
+            car.x,
+            car.y,
+            dx,
+            dy,
+            ways=ways,
+            spatial_grid=spatial_grid,
+        )
+
+        if is_violating:
+            self.wrong_way_duration += dt
+            self.wrong_way_penalty_cooldown += dt
+            if self.wrong_way_penalty_cooldown >= interval_s:
+                self.wrong_way_penalty_cooldown = 0.0
+                self.total_score -= penalty
+                self.notification_msg = f"Wrong Way Penalty! -{penalty} pts"
+                self.notification_timer = 3.5
+                logger.info("Player driving wrong way on one-way road: -%d pts penalty", penalty)
+            return True
+        else:
+            self.wrong_way_duration = 0.0
+            self.wrong_way_penalty_cooldown = 0.0
+            return False
 
     def sync_map_data(
         self,
@@ -83,8 +295,11 @@ class TaxiManager:
         buildings: Optional[List[Building]] = None,
     ) -> None:
         """Update road and place references when map expands dynamically."""
-        named = [w for w in ways if is_car_road(w) and len(w.points_m) >= 2 and getattr(w, "name", None)]
-        self.ways = named if named else [w for w in ways if is_car_road(w) and len(w.points_m) >= 2]
+        connected_ways = compute_largest_connected_road_component(ways)
+        named = [w for w in connected_ways if is_car_road(w) and len(w.points_m) >= 2 and getattr(w, "name", None)]
+        self.ways = named if named else [w for w in connected_ways if is_car_road(w) and len(w.points_m) >= 2]
+        if not self.ways:
+            self.ways = [w for w in ways if is_car_road(w) and len(w.points_m) >= 2]
         if places is not None:
             self.places = places
         if buildings is not None:
@@ -283,6 +498,12 @@ class TaxiManager:
             name=passenger_name,
             pickup=pickup_target,
             dropoff=dropoff_target,
+            ped_x=pickup_target.x,
+            ped_y=pickup_target.y,
+            ped_heading=0.0,
+            ped_speed=2.2,
+            is_walking_to_car=False,
+            boarded=False,
         )
         self.state = TaxiState.WAITING_FOR_PICKUP
         self.elapsed_time = 0.0
@@ -307,11 +528,31 @@ class TaxiManager:
         """Return currently active target (pickup or dropoff)."""
         if not self.current_passenger:
             return None
-        if self.state == TaxiState.WAITING_FOR_PICKUP:
+        if self.state in (TaxiState.WAITING_FOR_PICKUP, TaxiState.CLIENT_WALKING_TO_CAR):
             return self.current_passenger.pickup
         elif self.state == TaxiState.DRIVING_TO_DROPOFF:
             return self.current_passenger.dropoff
         return None
+
+    def discard_mission(self, car_x: float, car_y: float, penalty: int = 150, reason: str = "Fare cancelled") -> int:
+        """Discard the active pickup or onboard passenger mission with a score penalty."""
+        if not self.current_passenger:
+            return 0
+        p_name = self.current_passenger.name
+        self.total_score -= penalty
+        if self.state in (TaxiState.DRIVING_TO_DROPOFF, TaxiState.CLIENT_WALKING_TO_CAR):
+            msg = f"{reason}! Client {p_name} abandoned (-{penalty} pts)"
+        else:
+            msg = f"{reason}! Pickup for {p_name} cancelled (-{penalty} pts)"
+        self.notification_msg = msg
+        self.notification_timer = 5.0
+        self.spawn_mission(car_x, car_y)
+        return penalty
+
+    def handle_respawn(self, car_x: float, car_y: float) -> None:
+        """Handle car respawn: discard fare and apply penalty if a passenger is onboard."""
+        if self.current_passenger and self.state in (TaxiState.DRIVING_TO_DROPOFF, TaxiState.CLIENT_WALKING_TO_CAR):
+            self.discard_mission(car_x, car_y, penalty=200, reason="Respawned while transporting passenger")
 
     def update(self, car: Car, dt: float) -> None:
         """Update mission timers, pickup/dropoff collision, and fare progression."""
@@ -332,18 +573,53 @@ class TaxiManager:
         if self.state == TaxiState.WAITING_FOR_PICKUP:
             if dist_to_target <= target.radius_m:
                 if is_stopped:
-                    # Picked up passenger!
-                    self.state = TaxiState.DRIVING_TO_DROPOFF
-                    self.elapsed_time = 0.0
-                    p = self.current_passenger
-                    self.trip_distance_m = math.hypot(p.dropoff.x - p.pickup.x, p.dropoff.y - p.pickup.y)
-                    self.notification_msg = (
-                        f"{p.name} boarded! Destination: {p.dropoff.address}"
-                    )
-                    self.notification_timer = 6.0
+                    # Car arrived at pickup area and stopped: client begins walking to taxi
+                    self.state = TaxiState.CLIENT_WALKING_TO_CAR
+                    self.current_passenger.is_walking_to_car = True
+                    self.notification_msg = f"{self.current_passenger.name} is walking to the taxi..."
+                    self.notification_timer = 3.0
                 else:
                     self.notification_msg = "Slow down to pick up passenger!"
                     self.notification_timer = 1.0
+
+        elif self.state == TaxiState.CLIENT_WALKING_TO_CAR:
+            # Passenger walks towards the passenger side door of the taxi
+            p = self.current_passenger
+            # Passenger door position (side offset relative to car heading)
+            door_offset_side = 1.2
+            door_offset_long = -0.5
+            door_x = car.x + math.cos(car.heading) * door_offset_long + math.sin(car.heading) * door_offset_side
+            door_y = car.y - math.sin(car.heading) * door_offset_long - math.cos(car.heading) * door_offset_side
+
+            dx = door_x - p.ped_x
+            dy = door_y - p.ped_y
+            dist_to_door = math.hypot(dx, dy)
+
+            # If player drives away too fast while passenger is boarding, passenger cancels/abandons
+            if dist_to_target > target.radius_m * 1.8:
+                self.discard_mission(car.x, car.y, penalty=100, reason="Drove away during pickup")
+                return
+
+            if dist_to_door <= 0.8:
+                # Client reached taxi door and boarded!
+                p.boarded = True
+                p.is_walking_to_car = False
+                self.state = TaxiState.DRIVING_TO_DROPOFF
+                self.elapsed_time = 0.0
+                self.trip_distance_m = math.hypot(p.dropoff.x - p.pickup.x, p.dropoff.y - p.pickup.y)
+                self.notification_msg = (
+                    f"{p.name} boarded! Destination: {p.dropoff.address}"
+                )
+                self.notification_timer = 6.0
+            else:
+                p.ped_heading = math.atan2(dy, dx)
+                step = p.ped_speed * dt
+                if step < dist_to_door:
+                    p.ped_x += math.cos(p.ped_heading) * step
+                    p.ped_y += math.sin(p.ped_heading) * step
+                else:
+                    p.ped_x = door_x
+                    p.ped_y = door_y
 
         elif self.state == TaxiState.DRIVING_TO_DROPOFF:
             self.elapsed_time += dt

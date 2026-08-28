@@ -21,3 +21,19 @@ def test_car_trip_and_odometer_accumulation():
     update_car_physics(car, throttle=1.0, brake=0.0, steer_left=0.0, steer_right=0.0, dt=1.0)
     assert car.trip_m > 0.0
     assert car.odometer_m > initial_odo
+
+
+def test_stationary_car_cannot_steer_in_place():
+    car = Car(x=0.0, y=0.0, heading=0.0, speed=0.0)
+
+    # Attempt to steer while vehicle is stopped
+    update_car_physics(car, throttle=0.0, brake=0.0, steer_left=1.0, steer_right=0.0, dt=0.5)
+    assert car.heading == 0.0
+
+    update_car_physics(car, throttle=0.0, brake=0.0, steer_left=0.0, steer_right=1.0, dt=0.5)
+    assert car.heading == 0.0
+
+    # Moving vehicle can steer
+    car.speed = 5.0
+    update_car_physics(car, throttle=0.0, brake=0.0, steer_left=1.0, steer_right=0.0, dt=0.5)
+    assert car.heading > 0.0

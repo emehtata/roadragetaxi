@@ -57,6 +57,7 @@
     { "type": "way", "id": 400, "nodes": [80, 81, 82, 83, 80], "tags": { "leisure": "park", "name": "Central Park" } },
 
     { "type": "node", "id": 90, "lat": 64.982, "lon": 25.380, "tags": { "place": "suburb", "name": "Keskusta" } },
-    { "type": "node", "id": 91, "lat": 64.974, "lon": 25.405, "tags": { "place": "suburb", "name": "Maikkula" } }
+    { "type": "node", "id": 91, "lat": 64.974, "lon": 25.405, "tags": { "place": "suburb", "name": "Maikkula" } },
+    { "type": "node", "id": 95, "lat": 64.980, "lon": 25.390, "tags": { "highway": "traffic_signals" } }
   ]
 }

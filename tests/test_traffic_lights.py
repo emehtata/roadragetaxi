@@ -1,0 +1,123 @@
+"""Tests for OSM traffic signals parsing, light cycle behavior, and NPC traffic stopping."""
+from theroadragetrip.osm import TrafficLight, Way, build_ways
+from theroadragetrip.physics import Car
+from theroadragetrip.traffic import NPCCar, TrafficManager
+
+
+def test_traffic_light_states():
+    tl = TrafficLight(x=100.0, y=100.0, cycle_time=16.0, offset=0.0)
+    # 0 - 5.5s -> green
+    assert tl.get_state(0.0) == "green"
+    assert tl.get_state(5.0) == "green"
+    # 5.5 - 7.0s -> yellow
+    assert tl.get_state(6.0) == "yellow"
+    # 7.0 - 14.5s -> red
+    assert tl.get_state(8.0) == "red"
+    assert tl.get_state(14.0) == "red"
+    # 14.5 - 16.0s -> red+yellow
+    assert tl.get_state(15.0) == "red+yellow"
+    # wrap around to green
+    assert tl.get_state(16.0) == "green"
+
+
+def test_traffic_light_orthogonal_phases():
+    # Signal A along East-West road (offset 0.0s)
+    tl_ew = TrafficLight(x=100.0, y=100.0, cycle_time=16.0, offset=0.0)
+    # Signal B along North-South cross road (offset 8.0s)
+    tl_ns = TrafficLight(x=100.0, y=100.0, cycle_time=16.0, offset=8.0)
+
+    # When EW is green, NS must be red
+    for t in [0.0, 2.0, 4.0, 5.0]:
+        assert tl_ew.get_state(t) == "green"
+        assert tl_ns.get_state(t) == "red"
+
+    # When NS is green, EW must be red
+    for t in [8.0, 10.0, 12.0, 13.0]:
+        assert tl_ns.get_state(t) == "green"
+        assert tl_ew.get_state(t) == "red"
+
+
+def test_build_ways_traffic_signals_node():
+    elements = [
+        {"type": "node", "id": 1, "lat": 65.0, "lon": 25.0},
+        {"type": "node", "id": 2, "lat": 65.001, "lon": 25.0},
+        {"type": "way", "id": 10, "nodes": [1, 2], "tags": {"highway": "primary"}},
+        {"type": "node", "id": 99, "lat": 65.0005, "lon": 25.0, "tags": {"highway": "traffic_signals"}},
+    ]
+
+    res = build_ways(elements)
+    ways, waters, buildings, sceneries, places, bounds = res
+    assert len(ways) == 1
+    assert hasattr(res, "traffic_lights")
+    assert len(res.traffic_lights) == 1
+    assert res.traffic_lights[0].id == 99
+
+
+def test_npc_stops_at_red_traffic_light():
+    way = Way(
+        points_m=[(0.0, 0.0), (100.0, 0.0)],
+        highway="primary",
+        half_width_m=4.0,
+        name="Signal Road",
+        oneway=1,
+    )
+    # Traffic light at (30.0, 0.0) with phase offset set to red at t=0
+    tl = TrafficLight(x=30.0, y=0.0, cycle_time=12.0, offset=8.0)
+    assert tl.get_state(0.0) == "red"
+
+    traffic_mgr = TrafficManager([way], target_count=1, spawn_radius_m=200.0, traffic_lights=[tl])
+    npc = NPCCar(
+        x=15.0,
+        y=0.0,
+        heading=0.0,
+        speed=15.0,
+        way=way,
+        segment_idx=0,
+        direction=1,
+        target_speed=15.0,
+        color=(200, 200, 200),
+    )
+    traffic_mgr.npcs = [npc]
+
+    player = Car(x=0.0, y=0.0, heading=0.0, speed=0.0)
+    # Step simulation
+    for _ in range(20):
+        traffic_mgr.update(player, dt=0.1)
+
+    # NPC slowed down or stopped before the red light
+    assert npc.speed < 5.0
+    assert npc.x < 30.0
+
+
+def test_player_red_light_violation_penalty():
+    from theroadragetrip.taxi import TaxiManager
+
+    # Traffic light at (50, 0) with red state at sim_time=0.0
+    tl = TrafficLight(x=50.0, y=0.0, cycle_time=16.0, offset=8.0, id=101, direction_angle=0.0)
+    assert tl.get_state(0.0) == "red"
+
+    taxi_mgr = TaxiManager(ways=[])
+    taxi_mgr.total_score = 500
+
+    # 1. Car stopped/slow at red light -> no violation
+    car = Car(x=50.0, y=0.0, heading=0.0, speed=0.5)
+    taxi_mgr.check_red_light_violation(car, [tl], sim_time=0.0, penalty=100)
+    assert taxi_mgr.total_score == 500
+
+    # 2. Car drives through red light at speed -> penalty applied
+    car.speed = 10.0  # 36 km/h
+    taxi_mgr.check_red_light_violation(car, [tl], sim_time=0.1, penalty=100)
+    assert taxi_mgr.total_score == 400
+    assert "Red Light Violation" in taxi_mgr.notification_msg
+
+    # 3. Cooldown prevents multi-triggering for the same signal passing
+    taxi_mgr.check_red_light_violation(car, [tl], sim_time=0.2, penalty=100)
+    assert taxi_mgr.total_score == 400
+
+    # 4. Passing on yellow light is not a violation
+    tl_yellow = TrafficLight(x=50.0, y=0.0, cycle_time=16.0, offset=0.0, id=102, direction_angle=0.0)
+    assert tl_yellow.get_state(6.0) == "yellow"
+    car2 = Car(x=50.0, y=0.0, heading=0.0, speed=10.0)
+    taxi_mgr.check_red_light_violation(car2, [tl_yellow], sim_time=6.0, penalty=100)
+    assert taxi_mgr.total_score == 400  # Score unchanged
+

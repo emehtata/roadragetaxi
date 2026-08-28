@@ -1,14 +1,36 @@
-from theroadragetrip import Car, Water, Way, is_on_road, is_point_in_water, respawn_car
+from theroadragetrip import (
+    Car,
+    SpatialWayGrid,
+    Water,
+    Way,
+    get_current_road_at_car,
+    is_on_road,
+    is_point_in_water,
+    respawn_car,
+)
 
 
 def test_is_on_road_true_and_false():
     # Create a simple horizontal road from (0,0) to (10,0)
-    w = Way(points_m=[(0.0, 0.0), (10.0, 0.0)], highway="residential", half_width_m=2.0)
+    w = Way(points_m=[(0.0, 0.0), (10.0, 0.0)], highway="residential", half_width_m=2.0, name="Torikatu")
     car_on = Car(x=5.0, y=0.0, heading=0.0, speed=0.0)
     car_off = Car(x=100.0, y=100.0, heading=0.0, speed=0.0)
 
     assert is_on_road(car_on, [w]) is True
     assert is_on_road(car_off, [w]) is False
+
+    # Check get_current_road_at_car
+    road = get_current_road_at_car(car_on, [w])
+    assert road is not None
+    assert road.name == "Torikatu"
+
+    grid = SpatialWayGrid([w])
+    road_grid = get_current_road_at_car(car_on, spatial_grid=grid)
+    assert road_grid is not None
+    assert road_grid.name == "Torikatu"
+
+    assert get_current_road_at_car(car_off, [w]) is None
+    assert get_current_road_at_car(car_off, spatial_grid=grid) is None
 
 
 def test_respawn_car_places_on_road_with_heading():

@@ -85,7 +85,8 @@ python3 road_rage_trip.py --auto-fetch --fetch-margin 50 --fetch-tile-size 500
 | `D` / `Right Arrow` | Steer Right |
 | `+` / `=` | Zoom in (increase pixels per meter) |
 | `-` | Zoom out (decrease pixels per meter) |
-| `R` | Respawn car on a random road |
+| `R` | Respawn car on a random road (penalizes active fare if client onboard) |
+| `X` | Cancel / discard active pickup or onboard passenger mission (score penalty) |
 | `T` | Reset trip meter to 0 |
 | `L` | Toggle street & feature name labels |
 

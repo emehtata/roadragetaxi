@@ -94,18 +94,28 @@ def test_taxi_mission_lifecycle():
     taxi_mgr.update(car, dt=0.1)
     assert taxi_mgr.state == TaxiState.WAITING_FOR_PICKUP
 
-    # 2. Stop at pickup -> Passenger boards
+    # 2. Stop at pickup -> Client starts walking towards car
     car.speed = 0.5
     taxi_mgr.update(car, dt=0.1)
+    assert taxi_mgr.state == TaxiState.CLIENT_WALKING_TO_CAR
+    assert taxi_mgr.current_passenger.is_walking_to_car is True
+
+    # 3. Passenger completes walk and boards
+    for _ in range(30):
+        if taxi_mgr.state == TaxiState.DRIVING_TO_DROPOFF:
+            break
+        taxi_mgr.update(car, dt=0.2)
+
     assert taxi_mgr.state == TaxiState.DRIVING_TO_DROPOFF
+    assert taxi_mgr.current_passenger.boarded is True
     assert taxi_mgr.get_current_target() == dropoff
 
-    # 3. Drive towards dropoff
+    # 4. Drive towards dropoff
     car.x, car.y = dropoff.x, dropoff.y
     car.speed = 0.0
     taxi_mgr.update(car, dt=5.0)  # fast delivery in 5s
 
-    # 4. Should complete fare, award points based on speed, and spawn next mission
+    # 5. Should complete fare, award points based on speed, and spawn next mission
     assert taxi_mgr.completed_fares == 1
     assert taxi_mgr.total_score > 0
     assert taxi_mgr.last_fare_points > 0
@@ -118,3 +128,60 @@ def test_taxi_scoring_speed_bonus():
     fast_score = taxi_mgr.calculate_score(distance_m=1000.0, elapsed_sec=20.0)
     slow_score = taxi_mgr.calculate_score(distance_m=1000.0, elapsed_sec=100.0)
     assert fast_score > slow_score
+
+
+def test_discard_pickup_penalty():
+    way1 = Way(
+        points_m=[(0.0, 0.0), (100.0, 0.0)],
+        highway="residential",
+        half_width_m=4.5,
+        name="Torikatu",
+    )
+    taxi_mgr = TaxiManager(ways=[way1])
+    car = Car(x=0.0, y=0.0, heading=0.0, speed=0.0)
+    taxi_mgr.spawn_mission(car.x, car.y)
+    assert taxi_mgr.state == TaxiState.WAITING_FOR_PICKUP
+
+    old_score = taxi_mgr.total_score
+    old_passenger = taxi_mgr.current_passenger
+
+    # Discard pickup
+    taxi_mgr.discard_mission(car.x, car.y, penalty=150)
+    assert taxi_mgr.total_score == old_score - 150
+    assert taxi_mgr.state == TaxiState.WAITING_FOR_PICKUP
+    assert taxi_mgr.current_passenger is not None
+
+
+def test_respawn_penalizes_onboard_passenger():
+    way1 = Way(
+        points_m=[(0.0, 0.0), (100.0, 0.0)],
+        highway="residential",
+        half_width_m=4.5,
+        name="Torikatu",
+    )
+    taxi_mgr = TaxiManager(ways=[way1], pickup_radius_m=20.0, max_stop_speed_mps=2.0)
+    car = Car(x=0.0, y=0.0, heading=0.0, speed=0.0)
+    taxi_mgr.spawn_mission(car.x, car.y)
+
+    # 1. Respawn before picking up -> no penalty for respawning
+    init_score = taxi_mgr.total_score
+    taxi_mgr.handle_respawn(car.x, car.y)
+    assert taxi_mgr.total_score == init_score
+
+    # 2. Pick up passenger
+    pickup = taxi_mgr.current_passenger.pickup
+    car.x, car.y = pickup.x, pickup.y
+    car.speed = 0.0
+    taxi_mgr.update(car, dt=0.1)
+    assert taxi_mgr.state == TaxiState.CLIENT_WALKING_TO_CAR
+    for _ in range(30):
+        if taxi_mgr.state == TaxiState.DRIVING_TO_DROPOFF:
+            break
+        taxi_mgr.update(car, dt=0.2)
+    assert taxi_mgr.state == TaxiState.DRIVING_TO_DROPOFF
+
+    # 3. Respawn with passenger on board -> penalty applied & mission discarded
+    taxi_mgr.handle_respawn(car.x, car.y)
+    assert taxi_mgr.total_score == init_score - 200
+    assert taxi_mgr.state == TaxiState.WAITING_FOR_PICKUP
+
