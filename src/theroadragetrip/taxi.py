@@ -6,7 +6,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from .geo import clamp, dist_point_to_segment, get_oriented_box_corners, point_in_polygon
 from .osm import Building, Place, TaxiStop, Way
-from .physics import Car, SpatialWayGrid, connected_drivable_ways, is_violating_oneway
+from .physics import Car, SpatialWayGrid, connected_drivable_ways, is_car_road, is_violating_oneway
 
 logger = logging.getLogger(__name__)
 
@@ -45,6 +45,13 @@ class TaxiPassenger:
     boarded: bool = False
 
 
+@dataclass
+class TaxiOffer:
+    """A ride request shown in the driver's phone."""
+    passenger: TaxiPassenger
+    pickup_distance_m: float
+
+
 class TaxiState:
     WAITING_FOR_PICKUP = "PICKUP"
     CLIENT_WALKING_TO_CAR = "WALKING"
@@ -77,6 +84,7 @@ class TaxiManager:
         self.max_stop_speed_mps = max_stop_speed_mps
 
         self.current_passenger: Optional[TaxiPassenger] = None
+        self.offers: List[TaxiOffer] = []
         self.state: str = TaxiState.WAITING_FOR_PICKUP
         self.total_score: int = 0
         self.completed_fares: int = 0
@@ -88,9 +96,15 @@ class TaxiManager:
         self.notification_timer: float = 5.0
         self._passed_red_signals: Dict[int, float] = {}  # signal id -> timestamp cooldown
         self._approaching_red_signals: Dict[int, float] = {}  # signal id -> last signed distance along travel
+        self._approaching_red_headings: Dict[int, float] = {}  # signal id -> heading before intersection turn
         self._crashed_npc_cooldowns: Dict[int, float] = {}  # npc id -> timestamp cooldown
         self._crashed_building_cooldowns: Dict[int, float] = {}  # building id -> timestamp cooldown
         self._crashed_tree_cooldowns: Dict[Tuple[int, int], float] = {}
+        self._road_overlap_buildings: set[int] = set()
+        self._overlap_ways_ref = None
+        self._overlap_buildings_ref = None
+        self._overlap_way_count = -1
+        self._overlap_building_count = -1
         self.wrong_way_duration: float = 0.0  # seconds continuously driving wrong way
         self.wrong_way_penalty_cooldown: float = 0.0  # timer between recurring penalties (5.0s)
 
@@ -166,6 +180,7 @@ class TaxiManager:
         sim_time: float,
         previous_position: Optional[Tuple[float, float]] = None,
         penalty: int = 200,
+        ways: Optional[List[Way]] = None,
     ) -> bool:
         """Stop the car at a building footprint and apply one crash penalty per impact."""
         expired = [bid for bid, t in self._crashed_building_cooldowns.items() if sim_time - t > 3.0]
@@ -186,6 +201,12 @@ class TaxiManager:
                 if (player_car.x < bbox[0] - car_radius or player_car.x > bbox[2] + car_radius
                         or player_car.y < bbox[1] - car_radius or player_car.y > bbox[3] + car_radius):
                     continue
+
+            # OSM occasionally contains building footprints crossed by mapped roads.
+            if ways:
+                self._refresh_road_overlap_cache(ways, buildings)
+            if id(building) in self._road_overlap_buildings:
+                continue
 
             intersects = point_in_polygon(player_car.x, player_car.y, points)
             if not intersects:
@@ -214,6 +235,93 @@ class TaxiManager:
 
         return False
 
+    def _refresh_road_overlap_cache(self, ways: List[Way], buildings: List[Building]) -> None:
+        """Cache road/building overlaps and refresh only when map lists change."""
+        if (
+            ways is self._overlap_ways_ref
+            and buildings is self._overlap_buildings_ref
+            and len(ways) == self._overlap_way_count
+            and len(buildings) == self._overlap_building_count
+        ):
+            return
+        drivable_ways = [way for way in ways if is_car_road(way)]
+        self._road_overlap_buildings = {
+            id(building)
+            for building in buildings
+            if any(self._road_overlaps_building(way, building.points_m, building.bbox) for way in drivable_ways)
+        }
+        self._overlap_ways_ref = ways
+        self._overlap_buildings_ref = buildings
+        self._overlap_way_count = len(ways)
+        self._overlap_building_count = len(buildings)
+
+    @staticmethod
+    def _road_overlaps_building(
+        way: Way,
+        building_points: List[Tuple[float, float]],
+        building_bbox: Optional[Tuple[float, float, float, float]] = None,
+    ) -> bool:
+        """Return whether a road corridor intersects a building footprint."""
+        half_width = getattr(way, "half_width_m", 3.0)
+        road_points = getattr(way, "points_m", [])
+        if len(road_points) < 2:
+            return False
+
+        road_bbox = getattr(way, "bbox", None)
+        if road_bbox is None or road_bbox == (0.0, 0.0, 0.0, 0.0):
+            xs = [point[0] for point in road_points]
+            ys = [point[1] for point in road_points]
+            road_bbox = (min(xs), min(ys), max(xs), max(ys))
+        if building_bbox is None or building_bbox == (0.0, 0.0, 0.0, 0.0):
+            xs = [point[0] for point in building_points]
+            ys = [point[1] for point in building_points]
+            building_bbox = (min(xs), min(ys), max(xs), max(ys))
+        if (
+            road_bbox[2] + half_width < building_bbox[0]
+            or road_bbox[0] - half_width > building_bbox[2]
+            or road_bbox[3] + half_width < building_bbox[1]
+            or road_bbox[1] - half_width > building_bbox[3]
+        ):
+            return False
+
+        def orientation(a, b, c):
+            value = (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0])
+            if abs(value) < 1e-9:
+                return 0
+            return 1 if value > 0 else -1
+
+        def on_segment(a, b, c):
+            return min(a[0], b[0]) <= c[0] <= max(a[0], b[0]) and min(a[1], b[1]) <= c[1] <= max(a[1], b[1])
+
+        def segments_intersect(a, b, c, d):
+            ab_c = orientation(a, b, c)
+            ab_d = orientation(a, b, d)
+            cd_a = orientation(c, d, a)
+            cd_b = orientation(c, d, b)
+            if ab_c != ab_d and cd_a != cd_b:
+                return True
+            return (
+                (ab_c == 0 and on_segment(a, b, c))
+                or (ab_d == 0 and on_segment(a, b, d))
+                or (cd_a == 0 and on_segment(c, d, a))
+                or (cd_b == 0 and on_segment(c, d, b))
+            )
+
+        for road_start, road_end in zip(road_points, road_points[1:]):
+            if point_in_polygon(road_start[0], road_start[1], building_points):
+                return True
+            for building_start, building_end in zip(building_points, building_points[1:] + building_points[:1]):
+                if segments_intersect(road_start, road_end, building_start, building_end):
+                    return True
+                if (
+                    dist_point_to_segment(
+                        building_start[0], building_start[1],
+                        road_start[0], road_start[1], road_end[0], road_end[1],
+                    ) <= half_width
+                ):
+                    return True
+        return False
+
     def check_tree_collision(
         self,
         player_car: Car,
@@ -233,7 +341,21 @@ class TaxiManager:
                 if math.hypot(player_car.x - tree_x, player_car.y - tree_y) > radius:
                     continue
                 if previous_position is not None:
-                    player_car.x, player_car.y = previous_position
+                    restore_x, restore_y = previous_position
+                else:
+                    restore_x, restore_y = player_car.x, player_car.y
+                away_x = restore_x - tree_x
+                away_y = restore_y - tree_y
+                away_distance = math.hypot(away_x, away_y)
+                if away_distance < radius:
+                    if away_distance < 1e-6:
+                        away_x = -math.cos(player_car.heading)
+                        away_y = -math.sin(player_car.heading)
+                        away_distance = 1.0
+                    safe_distance = radius + 0.2
+                    restore_x = tree_x + away_x / away_distance * safe_distance
+                    restore_y = tree_y + away_y / away_distance * safe_distance
+                player_car.x, player_car.y = restore_x, restore_y
                 player_car.speed = 0.0
                 key = (id(scenery), tree_index)
                 if key not in self._crashed_tree_cooldowns:
@@ -260,13 +382,6 @@ class TaxiManager:
         for sid in expired:
             del self._passed_red_signals[sid]
 
-        # Unit vector along car's motion
-        move_heading = car.heading if car.speed >= 0 else (car.heading + math.pi)
-        dir_x = math.cos(move_heading)
-        dir_y = math.sin(move_heading)
-        perp_x = -math.sin(move_heading)
-        perp_y = math.cos(move_heading)
-
         for tl in traffic_lights:
             tl_id = getattr(tl, "id", id(tl))
             if tl_id in self._passed_red_signals:
@@ -282,10 +397,19 @@ class TaxiManager:
                 self._approaching_red_signals.pop(tl_id, None)
                 continue
 
-            # Check alignment with signal direction if available
-            if getattr(tl, "direction_angle", None) is not None:
+            approach_heading = self._approaching_red_headings.get(tl_id)
+            measured_heading = approach_heading if approach_heading is not None else car.heading
+            move_heading = measured_heading if car.speed >= 0 else measured_heading + math.pi
+            dir_x = math.cos(move_heading)
+            dir_y = math.sin(move_heading)
+            perp_x = -math.sin(move_heading)
+            perp_y = math.cos(move_heading)
+
+            # Once an approach is tracked, keep its coordinate frame through turns.
+            # Otherwise a 90-degree turn can make the same signal look like a new approach.
+            if approach_heading is None and getattr(tl, "direction_angle", None) is not None:
                 tl_ang = tl.direction_angle
-                car_ang = car.heading % math.pi
+                car_ang = measured_heading % math.pi
                 ang_err = abs(tl_ang - car_ang)
                 ang_err = min(ang_err, math.pi - ang_err)
                 if ang_err > math.radians(45):
@@ -300,11 +424,14 @@ class TaxiManager:
 
             # Must be reasonably aligned laterally to the traffic light post / stop line (within 8m)
             if lat_dist > 8.0:
-                self._approaching_red_signals.pop(tl_id, None)
-                continue
+                if approach_heading is None:
+                    self._approaching_red_signals.pop(tl_id, None)
+                    continue
 
             prev_long_dist = self._approaching_red_signals.get(tl_id)
             self._approaching_red_signals[tl_id] = long_dist
+            if long_dist > 0.0 and tl_id not in self._approaching_red_headings:
+                self._approaching_red_headings[tl_id] = car.heading
 
             state = tl.get_state(sim_time)
             is_red = state in ("red", "red+yellow")
@@ -319,6 +446,11 @@ class TaxiManager:
                 crossed_line = True
 
             if crossed_line and is_red:
+                approach_heading = self._approaching_red_headings.pop(tl_id, car.heading)
+                heading_change = abs((car.heading - approach_heading + math.pi) % (2 * math.pi) - math.pi)
+                if heading_change > math.radians(45):
+                    self._approaching_red_signals.pop(tl_id, None)
+                    continue
                 self._passed_red_signals[tl_id] = sim_time
                 self._approaching_red_signals.pop(tl_id, None)
                 self.total_score -= penalty
@@ -326,6 +458,44 @@ class TaxiManager:
                 self.notification_timer = 4.0
                 logger.info("Player passed red traffic light %s: -%d pts penalty", tl_id, penalty)
                 break
+
+    def get_red_light_assist_speed_limit(
+        self,
+        car: Car,
+        traffic_lights: List[Any],
+        sim_time: float,
+        detection_distance_m: float = 45.0,
+        stop_buffer_m: float = 4.0,
+        deceleration_mps2: float = 4.0,
+    ) -> Optional[float]:
+        """Return a comfortable speed target for the nearest red light ahead."""
+        heading_x = math.cos(car.heading)
+        heading_y = math.sin(car.heading)
+        nearest_light = None
+
+        for tl in traffic_lights:
+            dx = tl.x - car.x
+            dy = tl.y - car.y
+            longitudinal = dx * heading_x + dy * heading_y
+            lateral = abs(dx * -heading_y + dy * heading_x)
+            if longitudinal <= 0.0 or longitudinal > detection_distance_m or lateral > 8.0:
+                continue
+
+            direction_angle = getattr(tl, "direction_angle", None)
+            if direction_angle is not None:
+                angle_error = abs(direction_angle - (car.heading % math.pi))
+                angle_error = min(angle_error, math.pi - angle_error)
+                if angle_error > math.radians(45):
+                    continue
+
+            if nearest_light is None or longitudinal < nearest_light[0]:
+                nearest_light = (longitudinal, tl)
+
+        if nearest_light is None or nearest_light[1].get_state(sim_time) not in ("red", "red+yellow"):
+            return None
+
+        available_distance = max(0.0, nearest_light[0] - stop_buffer_m)
+        return math.sqrt(2.0 * deceleration_mps2 * available_distance)
 
     def check_wrong_way_violation(
         self,
@@ -628,6 +798,49 @@ class TaxiManager:
         self.notification_msg = f"New Fare! Pickup {passenger_name} at {pickup_target.address}"
         self.notification_timer = 5.0
 
+    def generate_offers(self, car_x: float, car_y: float, count: int = 3) -> List[TaxiOffer]:
+        """Create ride requests without activating one until the player accepts it."""
+        offers: List[TaxiOffer] = []
+        for _ in range(max(1, count)):
+            pickup = self.pick_random_taxi_stop(car_x, car_y, min_dist=150.0, max_dist=1200.0)
+            if not pickup:
+                pickup = self.pick_random_road_point(car_x, car_y, min_dist=150.0, max_dist=1200.0)
+            if not pickup:
+                continue
+            dropoff = self.pick_random_taxi_stop(pickup.x, pickup.y, self.min_distance_m, self.max_distance_m)
+            if not dropoff:
+                dropoff = self.pick_random_road_point(pickup.x, pickup.y, self.min_distance_m, self.max_distance_m)
+            if not dropoff:
+                continue
+            passenger = TaxiPassenger(
+                name=random.choice(FIRST_NAMES),
+                pickup=pickup,
+                dropoff=dropoff,
+                ped_x=pickup.x,
+                ped_y=pickup.y,
+                ped_speed=2.2,
+            )
+            offers.append(TaxiOffer(
+                passenger=passenger,
+                pickup_distance_m=math.hypot(car_x - pickup.x, car_y - pickup.y),
+            ))
+        self.offers = offers
+        return offers
+
+    def accept_offer(self, index: int, car_x: float, car_y: float) -> bool:
+        """Activate one phone offer and remove the offer list."""
+        if index < 0 or index >= len(self.offers):
+            return False
+        self.current_passenger = self.offers[index].passenger
+        self.offers = []
+        self.state = TaxiState.WAITING_FOR_PICKUP
+        self.elapsed_time = 0.0
+        self.notification_msg = (
+            f"New Fare! Pickup {self.current_passenger.name} at {self.current_passenger.pickup.address}"
+        )
+        self.notification_timer = 5.0
+        return True
+
     def calculate_score(self, distance_m: float, elapsed_sec: float) -> int:
         """Calculate points based on distance and speed (distance / time)."""
         base_points = int(distance_m * 0.5)  # 500 points per km base
@@ -664,7 +877,9 @@ class TaxiManager:
             msg = f"{reason}! Pickup for {p_name} cancelled (-{penalty} pts)"
         self.notification_msg = msg
         self.notification_timer = 5.0
-        self.spawn_mission(car_x, car_y)
+        self.current_passenger = None
+        self.state = TaxiState.WAITING_FOR_PICKUP
+        self.generate_offers(car_x, car_y)
         return penalty
 
     def handle_respawn(self, car_x: float, car_y: float) -> None:
@@ -678,7 +893,6 @@ class TaxiManager:
             self.notification_timer -= dt
 
         if not self.current_passenger:
-            self.spawn_mission(car.x, car.y)
             return
 
         target = self.get_current_target()
@@ -754,8 +968,9 @@ class TaxiManager:
                         f"Fare Complete! +{earned} pts ({avg_kmh:.0f} km/h avg in {self.elapsed_time:.1f}s)"
                     )
                     self.notification_timer = 6.0
-                    # Immediately spawn next customer
-                    self.spawn_mission(car.x, car.y)
+                    # New requests are selected through the phone.
+                    self.current_passenger = None
+                    self.generate_offers(car.x, car.y)
                 else:
                     self.notification_msg = "Slow down at destination to drop off!"
                     self.notification_timer = 1.0

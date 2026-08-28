@@ -1,14 +1,16 @@
 import collections
+import concurrent.futures
 from collections import defaultdict
 import json
 import logging
 import math
+import multiprocessing
 import os
 import random
 import threading
 import time
 from dataclasses import dataclass, field
-from typing import Callable, Dict, List, Optional, Set, Tuple
+from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 
 import requests
 
@@ -129,12 +131,12 @@ def parse_speed_limit_kmh(maxspeed_tag: Optional[str], highway_type: str) -> int
 
 DEFAULT_OVERPASS_ENDPOINTS = [
     "https://overpass-api.de/api/interpreter",
-    "https://overpass.openstreetmap.fr/api/interpreter",
     "https://overpass.private.coffee/api/interpreter",
+    "https://overpass.openstreetmap.fr/api/interpreter",
 ]
 
 OVERPASS_HEADERS = {
-    "User-Agent": "TheRoadRageTrip/0.1 (https://github.com/theroadragetrip; educational driving game poc)"
+    "User-Agent": "TheRoadRageTrip/0.0.1 (https://github.com/theroadragetrip; educational driving game poc)"
 }
 
 CACHE_DIR = "osm_cache"
@@ -183,6 +185,7 @@ class Way:
     is_tunnel: bool = False
     speed_limit_kmh: int = 50  # Finnish speed limit in km/h
     bbox: Tuple[float, float, float, float] = (0.0, 0.0, 0.0, 0.0)
+    osm_id: Optional[int] = None
 
 
 @dataclass
@@ -200,6 +203,7 @@ class Building:
     name: Optional[str] = None
     housenumber: Optional[str] = None
     street: Optional[str] = None
+    height_m: float = 8.0
     bbox: Tuple[float, float, float, float] = (0.0, 0.0, 0.0, 0.0)
 
 
@@ -210,6 +214,32 @@ class Scenery:
     name: Optional[str] = None
     bbox: Tuple[float, float, float, float] = (0.0, 0.0, 0.0, 0.0)
     trees: List[Tuple[float, float]] = field(default_factory=list)
+
+
+def _building_height(tags: Dict[str, Any], points: List[Tuple[float, float]]) -> float:
+    """Return OSM height, level-derived height, or a footprint-based default."""
+    raw_height = tags.get("height")
+    if raw_height:
+        try:
+            height = float(str(raw_height).lower().replace("m", "").strip())
+            if height > 0:
+                return max(3.0, min(height, 120.0))
+        except (TypeError, ValueError):
+            pass
+
+    raw_levels = tags.get("building:levels") or tags.get("levels")
+    if raw_levels:
+        try:
+            levels = float(raw_levels)
+            if levels > 0:
+                return max(3.0, min(3.2 * levels + 1.5, 120.0))
+        except (TypeError, ValueError):
+            pass
+
+    xs = [point[0] for point in points]
+    ys = [point[1] for point in points]
+    footprint_scale = math.sqrt(max(0.0, (max(xs) - min(xs)) * (max(ys) - min(ys))))
+    return min(24.0, 5.0 + footprint_scale * 0.18)
 
 
 @dataclass
@@ -340,6 +370,8 @@ def fetch_osm_ways(
     (
       node["highway"="traffic_signals"]({south},{west},{north},{east});
       node["highway"="crossing"]({south},{west},{north},{east});
+      node["highway"="taxi_stop"]({south},{west},{north},{east});
+      node["amenity"="taxi"]({south},{west},{north},{east});
       node["crossing"]({south},{west},{north},{east});
       node["place"~"suburb|neighbourhood|quarter|village|town|city|hamlet"]({south},{west},{north},{east});
       way["highway"]({south},{west},{north},{east});
@@ -602,7 +634,7 @@ def build_ways(
                 scenery_raw.append((tags, node_ids))
             elif "highway" in tags:
                 highway = tags.get("highway", "unclassified")
-                ways_raw.append((tags, highway, node_ids))
+                ways_raw.append((tags, highway, node_ids, way_id))
         elif el_type == "relation":
             tags = el.get("tags", {})
             if tags.get("type") == "multipolygon":
@@ -710,7 +742,14 @@ def build_ways(
         name = tags.get("name")
         housenumber = tags.get("addr:housenumber")
         street = tags.get("addr:street")
-        buildings.append(Building(points_m=pts, name=name, housenumber=housenumber, street=street, bbox=ibbox))
+        buildings.append(Building(
+            points_m=pts,
+            name=name,
+            housenumber=housenumber,
+            street=street,
+            height_m=_building_height(tags, pts),
+            bbox=ibbox,
+        ))
 
     # 4. Roads (ways)
     if progress_callback:
@@ -725,7 +764,7 @@ def build_ways(
         "corridor",
         "track",
     }
-    for tags, highway, node_ids in ways_raw:
+    for tags, highway, node_ids, way_id in ways_raw:
         pts, ibbox = process_node_ids(node_ids)
         if not pts or len(pts) < 2:
             continue
@@ -883,6 +922,7 @@ def build_ways(
                 is_tunnel=is_tunnel,
                 speed_limit_kmh=speed_lim,
                 bbox=ibbox,
+                osm_id=way_id,
             )
         )
 
@@ -944,7 +984,14 @@ def build_ways(
             if "building" in tags:
                 housenumber = tags.get("addr:housenumber")
                 street = tags.get("addr:street")
-                buildings.append(Building(points_m=pts, name=name, housenumber=housenumber, street=street, bbox=ibbox))
+                buildings.append(Building(
+                    points_m=pts,
+                    name=name,
+                    housenumber=housenumber,
+                    street=street,
+                    height_m=_building_height(tags, pts),
+                    bbox=ibbox,
+                ))
             elif tags.get("natural") == "water" or tags.get("landuse") == "reservoir":
                 kind = tags.get("natural") or tags.get("landuse") or "water"
                 waters.append(Water(points_m=pts, kind=kind, is_polygon=is_closed, name=name, bbox=ibbox))
@@ -1043,7 +1090,7 @@ def build_ways(
                 # Some OSM junctions map one signal node at the center instead of
                 # one signal per approach. Split that incomplete representation.
                 arm_angles: List[float] = []
-                for way_tags, _highway, way_node_ids in ways_raw:
+                for way_tags, _highway, way_node_ids, _way_id in ways_raw:
                     if nid not in way_node_ids:
                         continue
                     node_index = way_node_ids.index(nid)
@@ -1257,6 +1304,7 @@ class AutoFetchManager:
         fetch_func=fetch_osm_ways,
         build_func=build_ways,
         cooldown_s: float = 5.0,
+        build_in_process: bool = False,
     ):
         self.ways = ways
         self.waters = waters if waters is not None else []
@@ -1270,14 +1318,14 @@ class AutoFetchManager:
         self.fetch_func = fetch_func
         self.build_func = build_func
         self.cooldown_s = cooldown_s
+        self.build_in_process = build_in_process
         self.lock = threading.Lock()
         self.is_fetching = False
         self.fetch_progress = 0.0
         self.last_fetch_time = 0.0
+        self.last_trigger_reason = ""
         # Load known dead-end boundaries from disk cache
         self.dead_ends: List[dict] = load_dead_ends_cache()
-        self._open_endpoints: List[Tuple[float, float]] = []
-        self._rebuild_endpoint_index()
 
     def get_bounds(self) -> Tuple[float, float, float, float]:
         with self.lock:
@@ -1291,6 +1339,10 @@ class AutoFetchManager:
         with self.lock:
             return self.is_fetching
 
+    def get_trigger_reason(self) -> str:
+        with self.lock:
+            return self.last_trigger_reason
+
     def is_known_dead_end(self, car_x: float, car_y: float, direction: str, tolerance_m: float = 300.0) -> bool:
         """Check if vehicle is near a recorded dead-end in the given expansion direction."""
         for entry in self.dead_ends:
@@ -1300,49 +1352,6 @@ class AutoFetchManager:
                 if (dx * dx + dy * dy) ** 0.5 < tolerance_m:
                     return True
         return False
-
-    def _rebuild_endpoint_index(self) -> None:
-        endpoint_cell_size = 15.0
-        endpoints = []
-        cells = defaultdict(list)
-        for way in self.ways:
-            if not getattr(way, "is_drivable", True) or len(way.points_m) < 2:
-                continue
-            for endpoint in (way.points_m[0], way.points_m[-1]):
-                cell = (int(endpoint[0] // endpoint_cell_size), int(endpoint[1] // endpoint_cell_size))
-                cells[cell].append((id(way), endpoint))
-                endpoints.append((id(way), endpoint))
-
-        self._open_endpoints = []
-        for way_id, endpoint in endpoints:
-            cell_x = int(endpoint[0] // endpoint_cell_size)
-            cell_y = int(endpoint[1] // endpoint_cell_size)
-            connected = any(
-                other_way_id != way_id
-                for x in range(cell_x - 1, cell_x + 2)
-                for y in range(cell_y - 1, cell_y + 2)
-                for other_way_id, other_endpoint in cells.get((x, y), [])
-                if math.hypot(endpoint[0] - other_endpoint[0], endpoint[1] - other_endpoint[1]) <= endpoint_cell_size
-            )
-            if not connected:
-                self._open_endpoints.append(endpoint)
-
-    def _approaching_open_endpoint(self, car, margin_m: float) -> Optional[str]:
-        heading_x = math.cos(car.heading)
-        heading_y = math.sin(car.heading)
-        endpoint_tolerance = 15.0
-        for endpoint in self._open_endpoints:
-            dx = endpoint[0] - car.x
-            dy = endpoint[1] - car.y
-            distance = math.hypot(dx, dy)
-            if distance > margin_m or dx * heading_x + dy * heading_y <= 0.0:
-                continue
-            if abs(dx * heading_y - dy * heading_x) > endpoint_tolerance:
-                continue
-            if abs(dx) >= abs(dy):
-                return "east" if dx > 0 else "west"
-            return "north" if dy > 0 else "south"
-        return None
 
     def start_if_needed(self, car, auto_fetch: bool, margin_m: float, tile_size_m: float) -> bool:
         if not auto_fetch:
@@ -1356,6 +1365,7 @@ class AutoFetchManager:
 
             minx, miny, maxx, maxy = self.bounds
             expanded = False
+            trigger_reason = ""
             # Expand in the direction the car is approaching or heading
             fetch_minx, fetch_miny, fetch_maxx, fetch_maxy = minx, miny, maxx, maxy
             direction = ""
@@ -1372,6 +1382,7 @@ class AutoFetchManager:
                     fetch_miny = car.y - half_span
                     fetch_maxy = car.y + half_span
                     expanded = True
+                    trigger_reason = "bbox west edge"
             elif car.x > maxx - margin_m:
                 direction = "east"
                 if not self.is_known_dead_end(car.x, car.y, direction):
@@ -1380,6 +1391,7 @@ class AutoFetchManager:
                     fetch_miny = car.y - half_span
                     fetch_maxy = car.y + half_span
                     expanded = True
+                    trigger_reason = "bbox east edge"
 
             if not expanded:
                 if car.y < miny + margin_m:
@@ -1390,33 +1402,17 @@ class AutoFetchManager:
                         fetch_minx = car.x - half_span
                         fetch_maxx = car.x + half_span
                         expanded = True
+                        trigger_reason = "bbox south edge"
 
-            if not expanded:
-                direction = self._approaching_open_endpoint(car, max(margin_m, 1200.0)) or ""
-                if direction and not self.is_known_dead_end(car.x, car.y, direction):
-                    half_span = tile_size_m / 2.0
-                    overlap = max(margin_m, 500.0)
-                    if direction == "east":
-                        fetch_minx, fetch_maxx = car.x - overlap, car.x + tile_size_m
-                        fetch_miny, fetch_maxy = car.y - half_span, car.y + half_span
-                    elif direction == "west":
-                        fetch_minx, fetch_maxx = car.x - tile_size_m, car.x + overlap
-                        fetch_miny, fetch_maxy = car.y - half_span, car.y + half_span
-                    elif direction == "north":
-                        fetch_minx, fetch_maxx = car.x - half_span, car.x + half_span
-                        fetch_miny, fetch_maxy = car.y - overlap, car.y + tile_size_m
-                    else:
-                        fetch_minx, fetch_maxx = car.x - half_span, car.x + half_span
-                        fetch_miny, fetch_maxy = car.y - tile_size_m, car.y + overlap
+            if not expanded and car.y > maxy - margin_m:
+                direction = "north"
+                if not self.is_known_dead_end(car.x, car.y, direction):
+                    fetch_miny = car.y - overlap
+                    fetch_maxy = car.y + tile_size_m
+                    fetch_minx = car.x - half_span
+                    fetch_maxx = car.x + half_span
                     expanded = True
-                elif car.y > maxy - margin_m:
-                    direction = "north"
-                    if not self.is_known_dead_end(car.x, car.y, direction):
-                        fetch_miny = car.y - overlap
-                        fetch_maxy = car.y + tile_size_m
-                        fetch_minx = car.x - half_span
-                        fetch_maxx = car.x + half_span
-                        expanded = True
+                    trigger_reason = "bbox north edge"
 
             if not expanded:
                 return False
@@ -1424,6 +1420,7 @@ class AutoFetchManager:
             self.is_fetching = True
             self.fetch_progress = 0.1
             self.last_fetch_time = now
+            self.last_trigger_reason = trigger_reason
             target = (fetch_minx, fetch_miny, fetch_maxx, fetch_maxy)
             car_pos = (car.x, car.y)
 
@@ -1462,7 +1459,12 @@ class AutoFetchManager:
             elems = self.fetch_func((south, west, north, east))
             with self.lock:
                 self.fetch_progress = 0.65
-            res = self.build_func(elems)
+            if self.build_in_process:
+                context = multiprocessing.get_context("spawn")
+                with concurrent.futures.ProcessPoolExecutor(max_workers=1, mp_context=context) as executor:
+                    res = executor.submit(self.build_func, elems).result()
+            else:
+                res = self.build_func(elems)
             with self.lock:
                 self.fetch_progress = 0.9
             new_crossings = getattr(res, "crossings", [])
@@ -1504,25 +1506,35 @@ class AutoFetchManager:
                     self.dead_ends.append(entry)
 
             with self.lock:
-                self.ways.extend(new_ways)
+                known_way_ids = {
+                    way.osm_id for way in self.ways if getattr(way, "osm_id", None) is not None
+                }
+                unique_new_ways = [
+                    way for way in new_ways
+                    if way.osm_id is None or way.osm_id not in known_way_ids
+                ]
+                self.ways.extend(unique_new_ways)
                 self.waters.extend(new_waters)
                 self.buildings.extend(new_buildings)
                 self.sceneries.extend(new_sceneries)
                 self.places.extend(new_places)
                 self.traffic_lights.extend(new_traffic_lights)
                 self.crossings.extend(new_crossings)
-                self._rebuild_endpoint_index()
                 minx = min(self.bounds[0], new_bounds[0])
                 miny = min(self.bounds[1], new_bounds[1])
                 maxx = max(self.bounds[2], new_bounds[2])
                 maxy = max(self.bounds[3], new_bounds[3])
                 self.bounds = (minx, miny, maxx, maxy)
                 self.last_fetch_time = time.time()
+
+            # Rebuilding the segment index can be expensive; keep the game loop
+            # responsive while the background fetch finishes indexing new roads.
+            with self.lock:
                 self.fetch_progress = 1.0
                 self.is_fetching = False
             logger.info(
                 "Auto-fetched and added %d ways, %d waters, %d buildings, %d scenery, %d places, %d traffic lights, %d crossings; new bounds: %s",
-                len(new_ways),
+                len(unique_new_ways),
                 len(new_waters),
                 len(new_buildings),
                 len(new_sceneries),

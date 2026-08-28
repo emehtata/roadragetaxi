@@ -41,6 +41,35 @@ def test_force_refresh_skips_cache(monkeypatch):
     assert result == [{"type": "node", "id": 99}]
 
 
+def test_fetch_query_requests_taxi_stations(monkeypatch):
+    import theroadragetrip.osm as osm
+
+    captured = {}
+
+    class Response:
+        status_code = 200
+
+        def json(self):
+            return {"elements": []}
+
+        def raise_for_status(self):
+            return None
+
+    def post(endpoint, **kwargs):
+        captured["query"] = kwargs["data"]["data"]
+        return Response()
+
+    monkeypatch.setattr(osm.requests, "post", post)
+    monkeypatch.setattr(osm, "load_osm_cache", lambda bbox: None)
+    monkeypatch.setattr(osm, "save_osm_cache", lambda bbox, elements: None)
+    monkeypatch.delenv("OVERPASS_ENDPOINTS", raising=False)
+
+    osm.fetch_osm_ways((60.0, 25.0, 60.1, 25.1), endpoints=["https://example.test/api"], force_refresh=True)
+
+    assert 'node["highway"="taxi_stop"]' in captured["query"]
+    assert 'node["amenity"="taxi"]' in captured["query"]
+
+
 def test_fetch_uses_next_endpoint_after_failure(monkeypatch):
     import requests
     import theroadragetrip.osm as osm

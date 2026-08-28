@@ -138,6 +138,35 @@ def test_allow_slow_offroad_driving():
     assert car.y > 4.0
 
 
+def test_can_accelerate_forward_from_rest_offroad():
+    road = Way(points_m=[(0.0, 0.0), (100.0, 0.0)], highway="primary", half_width_m=5.0)
+    grid = SpatialWayGrid(cell_size=100.0)
+    grid.rebuild([road])
+    car = Car(x=50.0, y=20.0, heading=0.0, speed=0.0)
+
+    update_car_physics(
+        car, 1.0, 0.0, 0.0, 0.0, 0.2, ways=[road], spatial_grid=grid, block_offroad=False
+    )
+
+    assert car.speed > 0.0
+    assert car.x > 50.0
+
+
+def test_light_traffic_way_is_faster_than_terrain():
+    road = Way(points_m=[(0.0, 0.0), (100.0, 0.0)], highway="primary", half_width_m=5.0)
+    cycleway = Way(points_m=[(0.0, 20.0), (100.0, 20.0)], highway="cycleway", half_width_m=2.0)
+    grid = SpatialWayGrid(cell_size=100.0)
+    grid.rebuild([road, cycleway])
+
+    car = Car(x=50.0, y=20.0, heading=0.0, speed=10.0)
+    update_car_physics(
+        car, 1.0, 0.0, 0.0, 0.0, 0.2,
+        ways=[road, cycleway], spatial_grid=grid, block_offroad=False,
+    )
+
+    assert car.speed > 2.0
+
+
 def test_building_collision_bounces_and_penalizes_once():
     from theroadragetrip.osm import Building
 
@@ -157,6 +186,21 @@ def test_building_collision_bounces_and_penalizes_once():
     assert taxi_manager.total_score == score_after_crash
 
 
+def test_building_overlapping_road_does_not_cause_crash():
+    from theroadragetrip.osm import Building
+
+    road = Way(points_m=[(0.0, 0.0), (20.0, 0.0)], highway="residential", half_width_m=4.0)
+    building = Building(points_m=[(5.0, -5.0), (15.0, -5.0), (15.0, 5.0), (5.0, 5.0)])
+    car = Car(x=10.0, y=0.0, heading=0.0, speed=4.0)
+    taxi_manager = TaxiManager(ways=[road])
+
+    crashed = taxi_manager.check_building_collision(car, [building], sim_time=1.0, ways=[road])
+
+    assert crashed is False
+    assert car.speed == 4.0
+    assert taxi_manager.total_score == 0
+
+
 def test_tree_collision_stops_and_penalizes_once():
     scenery = Scenery(points_m=[(-5.0, -5.0), (5.0, -5.0), (5.0, 5.0)], kind="park", trees=[(0.0, 0.0)])
     car = Car(x=0.0, y=0.0, heading=0.0, speed=4.0)
@@ -167,8 +211,8 @@ def test_tree_collision_stops_and_penalizes_once():
     crashed_again = taxi_manager.check_tree_collision(car, [scenery], sim_time=2.0, previous_position=(-3.0, 0.0))
 
     assert crashed is True
-    assert crashed_again is True
-    assert (car.x, car.y) == (-3.0, 0.0)
+    assert crashed_again is False
+    assert math.hypot(car.x, car.y) > math.hypot(car.length_m, car.width_m) * 0.5 + 1.0
     assert car.speed == 0.0
     assert score_after_crash == -100
     assert taxi_manager.total_score == score_after_crash

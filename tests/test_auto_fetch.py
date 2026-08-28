@@ -39,6 +39,7 @@ def test_auto_fetch_triggers_and_merges():
     m = AutoFetchManager(ways, bounds, transformer, fetch_func=fake_fetch, build_func=fake_build, cooldown_s=0.0)
     started = m.start_if_needed(car, True, margin_m=10.0, tile_size_m=500.0)
     assert started is True
+    assert m.get_trigger_reason() == "bbox east edge"
 
     # wait for background thread to finish (timeout)
     timeout = time.time() + 2.0
@@ -51,10 +52,10 @@ def test_auto_fetch_triggers_and_merges():
     assert nb[2] >= 1200.0
 
 
-def test_auto_fetch_triggers_before_open_road_endpoint():
+def test_auto_fetch_does_not_trigger_from_open_road_endpoint():
     way = Way(points_m=[(0.0, 0.0), (100.0, 0.0)], highway="motorway", half_width_m=6.0)
     ways = [way]
-    car = Car(x=50.0, y=0.0, heading=0.0, speed=0.0)
+    car = Car(x=50.0, y=0.0, heading=0.0, speed=1.0)
 
     def fake_fetch(bbox):
         return []
@@ -64,7 +65,7 @@ def test_auto_fetch_triggers_before_open_road_endpoint():
 
     m = AutoFetchManager(
         ways,
-        (0.0, 0.0, 1000.0, 1000.0),
+        (-1000.0, -1000.0, 1000.0, 1000.0),
         FakeTransformer(),
         fetch_func=fake_fetch,
         build_func=fake_build,
@@ -72,4 +73,39 @@ def test_auto_fetch_triggers_before_open_road_endpoint():
     )
     m.dead_ends = []
 
-    assert m.start_if_needed(car, True, margin_m=100.0, tile_size_m=500.0) is True
+    assert m.start_if_needed(car, True, margin_m=100.0, tile_size_m=500.0) is False
+
+
+def test_auto_fetch_does_not_trigger_far_from_open_endpoint():
+    way = Way(points_m=[(0.0, 0.0), (1000.0, 0.0)], highway="motorway", half_width_m=6.0)
+    car = Car(x=500.0, y=0.0, heading=0.0, speed=0.0)
+
+    m = AutoFetchManager(
+        [way],
+        (0.0, -100.0, 2000.0, 100.0),
+        FakeTransformer(),
+        fetch_func=lambda bbox: [],
+        build_func=lambda elems: ([], [], (0.0, 0.0, 2000.0, 100.0)),
+        cooldown_s=0.0,
+    )
+    m.dead_ends = []
+
+    assert m.start_if_needed(car, True, margin_m=100.0, tile_size_m=500.0) is False
+
+
+def test_auto_fetch_does_not_treat_t_junction_as_open_endpoint():
+    through_road = Way(points_m=[(0.0, 0.0), (100.0, 0.0)], highway="residential", half_width_m=4.5)
+    side_road = Way(points_m=[(50.0, -100.0), (50.0, 0.0)], highway="residential", half_width_m=4.5)
+    car = Car(x=50.0, y=-50.0, heading=1.5708, speed=1.0)
+
+    m = AutoFetchManager(
+        [through_road, side_road],
+        (-1000.0, -1000.0, 1000.0, 1000.0),
+        FakeTransformer(),
+        fetch_func=lambda bbox: [],
+        build_func=lambda elems: ([], [], (0.0, 0.0, 2000.0, 2000.0)),
+        cooldown_s=0.0,
+    )
+    m.dead_ends = []
+
+    assert m.start_if_needed(car, True, margin_m=100.0, tile_size_m=500.0) is False

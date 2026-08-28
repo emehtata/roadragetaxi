@@ -1,7 +1,7 @@
 from theroadragetrip.geo import compute_bbox
 from theroadragetrip.osm import Way
 from theroadragetrip.physics import Car, SpatialWayGrid, is_on_road
-from theroadragetrip.render import get_viewport_bounds
+from theroadragetrip.render import _covered_by_higher_road, get_viewport_bounds
 
 
 def test_compute_bbox():
@@ -39,3 +39,11 @@ def test_spatial_way_grid_detection():
     assert grid.is_on_road(car_on_w2) is True
     assert is_on_road(car_on, [w1, w2], spatial_grid=grid) is True
     assert is_on_road(car_off, [w1, w2], spatial_grid=grid) is False
+
+
+def test_higher_layer_road_covers_lower_layer_vehicle():
+    bridge = Way(points_m=[(0.0, 0.0), (100.0, 0.0)], highway="primary", half_width_m=5.0, layer=1)
+    ways = [bridge]
+
+    assert _covered_by_higher_road(50.0, 0.0, layer=0, ways=ways) is True
+    assert _covered_by_higher_road(50.0, 0.0, layer=1, ways=ways) is False

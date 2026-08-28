@@ -1,6 +1,7 @@
 """Tests for autonomous NPC traffic manager."""
 import math
 from theroadragetrip.osm import Way
+from theroadragetrip.osm import TrafficLight
 from theroadragetrip.physics import Car
 from theroadragetrip.traffic import NPCCar, TrafficManager
 
@@ -46,6 +47,22 @@ def test_npc_traffic_spawning_and_movement():
         if (npc.x, npc.y) != initial_positions[i]
     )
     assert moved_count > 0
+
+
+def test_npc_uses_only_first_traffic_light_ahead():
+    way = Way(points_m=[(0.0, 0.0), (100.0, 0.0)], highway="primary", half_width_m=4.0)
+    near_green = TrafficLight(x=10.0, y=0.0, cycle_time=16.0, offset=0.0, direction_angle=0.0)
+    far_red = TrafficLight(x=20.0, y=0.0, cycle_time=16.0, offset=8.0, direction_angle=0.0)
+    traffic_mgr = TrafficManager([way], target_count=0, traffic_lights=[far_red, near_green])
+    npc = NPCCar(
+        x=0.0, y=0.0, heading=0.0, speed=10.0, way=way,
+        segment_idx=0, direction=1, target_speed=20.0, color=(100, 100, 100),
+    )
+    traffic_mgr.npcs = [npc]
+
+    traffic_mgr.update(Car(x=-200.0, y=200.0, heading=0.0, speed=0.0), dt=0.1)
+
+    assert npc.speed > 10.0
 
 
 def test_npc_right_side_and_overtaking():
@@ -307,6 +324,40 @@ def test_npc_waits_for_occupied_junction_to_clear():
 
     assert waiting.speed < 8.0
     assert waiting.x < -7.0
+
+
+def test_npc_does_not_stop_for_next_light_inside_junction():
+    approach = Way(points_m=[(-50.0, 0.0), (0.0, 0.0), (50.0, 0.0)], highway="primary", half_width_m=4.0)
+    crossing = Way(points_m=[(0.0, -50.0), (0.0, 50.0)], highway="primary", half_width_m=4.0)
+    near_green = TrafficLight(x=5.0, y=0.0, cycle_time=16.0, offset=0.0, direction_angle=0.0)
+    next_red = TrafficLight(x=15.0, y=0.0, cycle_time=16.0, offset=8.0, direction_angle=0.0)
+    traffic_mgr = TrafficManager([approach, crossing], target_count=0, traffic_lights=[next_red, near_green])
+    npc = NPCCar(
+        x=8.0, y=0.0, heading=0.0, speed=8.0, way=approach,
+        segment_idx=1, direction=1, target_speed=12.0, color=(200, 50, 50),
+    )
+    traffic_mgr.npcs = [npc]
+
+    traffic_mgr.update(Car(x=200.0, y=200.0, heading=0.0, speed=0.0), dt=0.1)
+
+    assert npc.speed > 0.0
+
+
+def test_npc_brakes_near_red_light_stop_line():
+    way = Way(points_m=[(0.0, 0.0), (100.0, 0.0)], highway="primary", half_width_m=4.0)
+    red_light = TrafficLight(x=30.0, y=0.0, cycle_time=16.0, offset=8.0, direction_angle=0.0)
+    traffic_mgr = TrafficManager([way], target_count=0, traffic_lights=[red_light])
+    npc = NPCCar(
+        x=0.0, y=0.0, heading=0.0, speed=10.0, way=way,
+        segment_idx=0, direction=1, target_speed=20.0, color=(200, 50, 50),
+    )
+    traffic_mgr.npcs = [npc]
+
+    for _ in range(30):
+        traffic_mgr.update(Car(x=200.0, y=200.0, heading=0.0, speed=0.0), dt=0.1)
+
+    assert 25.0 <= npc.x <= 32.0
+    assert npc.speed == 0.0
 
 
 def test_player_and_npc_car_crash_and_penalty():

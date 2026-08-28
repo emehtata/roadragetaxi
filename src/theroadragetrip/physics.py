@@ -6,13 +6,15 @@ from typing import Any, List, Optional, Tuple
 from .geo import clamp, closest_point_and_dist_to_segment, dist_point_to_segment, point_in_polygon
 
 # Car physics (arcade)
-ACCEL = 18.0  # m/s^2
+ACCEL = 4.0  # m/s^2; approximately 0-100 km/h in 7 seconds
 BRAKE = 28.0  # m/s^2
 FRICTION = 6.0  # m/s^2
 STEER_RATE = 2.6  # rad/s at low speed
 STEER_SPEED_FACTOR = 0.10  # less steering at higher speed
 MAX_SPEED = 36.0  # m/s (~130 km/h)
+SPEED_LIMIT_DECEL = 4.0  # m/s^2; smooth automatic braking at a speed limit
 OFFROAD_MAX_SPEED = 2.0  # m/s (~7 km/h)
+LIGHT_TRAFFIC_MAX_SPEED = 6.0  # m/s (~22 km/h) on footways, paths, and cycleways
 OFFROAD_DECEL = 10.0  # m/s^2 when slowing from road speed
 
 NON_DRIVABLE_HIGHWAYS = {
@@ -24,6 +26,16 @@ NON_DRIVABLE_HIGHWAYS = {
     "bridleway",
     "corridor",
     "track",
+}
+
+LIGHT_TRAFFIC_HIGHWAYS = {
+    "footway",
+    "path",
+    "pedestrian",
+    "cycleway",
+    "steps",
+    "bridleway",
+    "corridor",
 }
 
 
@@ -66,6 +78,32 @@ def is_pedestrian_way(way) -> bool:
     # Dedicated footpaths, sidewalks, cycleways, tracks, steps, and pedestrian zones
     if hw in ("footway", "path", "pedestrian", "cycleway", "steps", "track", "crossing", "bridleway", "corridor"):
         return True
+    return False
+
+
+def is_light_traffic_way(way) -> bool:
+    """Return whether a way gets the light-traffic speed cap off-road."""
+    return getattr(way, "highway", "") in LIGHT_TRAFFIC_HIGHWAYS
+
+
+def is_point_on_light_traffic_way(
+    px: float,
+    py: float,
+    ways: Optional[List] = None,
+    spatial_grid: Optional["SpatialWayGrid"] = None,
+) -> bool:
+    """Check whether a point lies on a mapped footway, path, or cycleway."""
+    candidates = (
+        spatial_grid._candidate_ways(px, py)
+        if spatial_grid is not None
+        else ((way, getattr(way, "half_width_m", 3.0)) for way in (ways or []))
+    )
+    for way, half_width in candidates:
+        if not is_light_traffic_way(way):
+            continue
+        for p1, p2 in zip(way.points_m, way.points_m[1:]):
+            if dist_point_to_segment(px, py, p1[0], p1[1], p2[0], p2[1]) <= half_width:
+                return True
     return False
 
 
@@ -189,22 +227,25 @@ def respawn_car(
 
     if taxi_stops:
         stop = random.choice(taxi_stops)
-        car.x, car.y = stop.x, stop.y
-        nearest = min(
-            (way for way in ways if len(way.points_m) >= 2),
-            key=lambda way: min(
-                dist_point_to_segment(stop.x, stop.y, p1[0], p1[1], p2[0], p2[1])
-                for p1, p2 in zip(way.points_m, way.points_m[1:])
-            ),
-            default=None,
-        )
+        road_ways = [way for way in ways if is_car_road(way) and len(way.points_m) >= 2]
+        nearest = None
+        nearest_segment = None
+        nearest_distance = float("inf")
+        for way in road_ways:
+            for p1, p2 in zip(way.points_m, way.points_m[1:]):
+                cx, cy, _, distance = closest_point_and_dist_to_segment(
+                    stop.x, stop.y, p1[0], p1[1], p2[0], p2[1]
+                )
+                if distance < nearest_distance:
+                    nearest = way
+                    nearest_segment = (p1, p2, cx, cy)
+                    nearest_distance = distance
         if nearest:
-            segment = min(
-                zip(nearest.points_m, nearest.points_m[1:]),
-                key=lambda pair: dist_point_to_segment(stop.x, stop.y, pair[0][0], pair[0][1], pair[1][0], pair[1][1]),
-            )
+            segment = nearest_segment
+            car.x, car.y = segment[2], segment[3]
             car.heading = math.atan2(segment[1][1] - segment[0][1], segment[1][0] - segment[0][0])
         else:
+            car.x, car.y = stop.x, stop.y
             car.heading = 0.0
         car.speed = 0.0
         car.layer = getattr(nearest or ways[0], "layer", 0)
@@ -625,6 +666,7 @@ def update_car_physics(
     spatial_grid: Optional[SpatialWayGrid] = None,
     block_offroad: bool = True,
     enforce_oneway: bool = False,
+    speed_limit_mps: Optional[float] = None,
 ) -> bool:
     """Update car speed, heading, and position.
 
@@ -633,10 +675,16 @@ def update_car_physics(
     When enforce_oneway is True, prevents moving against the legal direction on one-way streets.
     Returns True if vehicle movement was blocked against the road boundary or one-way restriction.
     """
-    if throttle > 0:
-        car.speed += ACCEL * dt
+    if speed_limit_mps is not None and car.speed > speed_limit_mps:
+        car.speed = max(speed_limit_mps, car.speed - SPEED_LIMIT_DECEL * dt)
+    elif speed_limit_mps is not None and car.speed < -speed_limit_mps:
+        car.speed = min(-speed_limit_mps, car.speed + SPEED_LIMIT_DECEL * dt)
+    elif throttle > 0:
+        car.speed = min(car.speed + ACCEL * dt, speed_limit_mps) if speed_limit_mps is not None else car.speed + ACCEL * dt
     elif brake > 0:
         car.speed -= BRAKE * dt
+        if speed_limit_mps is not None:
+            car.speed = max(-speed_limit_mps, car.speed)
     else:
         # friction slows towards 0
         if car.speed > 0:
@@ -754,18 +802,25 @@ def update_car_physics(
     blocked = False
     has_road_data = (spatial_grid is not None) or (ways is not None and len(ways) > 0)
 
-    # Off-road driving is allowed by the game, but limited to walking pace.
+    # Off-road driving is allowed by the game, with a higher cap on light-traffic ways.
     if has_road_data and not block_offroad:
         target_on_road = is_point_on_road(
             target_x, target_y, ways=ways, spatial_grid=spatial_grid, car_roads_only=True
         )
         if not target_on_road:
+            target_on_light_traffic = is_point_on_light_traffic_way(
+                target_x, target_y, ways=ways, spatial_grid=spatial_grid
+            )
+            speed_cap = LIGHT_TRAFFIC_MAX_SPEED if target_on_light_traffic else OFFROAD_MAX_SPEED
             if throttle > 0.0:
-                car.speed = max(0.0, car.speed - ACCEL * dt)
-            if car.speed > OFFROAD_MAX_SPEED:
-                car.speed = max(OFFROAD_MAX_SPEED, car.speed - OFFROAD_DECEL * dt)
-            elif car.speed < -OFFROAD_MAX_SPEED:
-                car.speed = min(-OFFROAD_MAX_SPEED, car.speed + OFFROAD_DECEL * dt)
+                if car.speed < 0.0:
+                    car.speed = min(0.0, car.speed + ACCEL * dt)
+                elif car.speed < speed_cap:
+                    car.speed = min(speed_cap, car.speed + ACCEL * dt)
+            if car.speed > speed_cap:
+                car.speed = max(speed_cap, car.speed - OFFROAD_DECEL * dt)
+            elif car.speed < -speed_cap:
+                car.speed = min(-speed_cap, car.speed + OFFROAD_DECEL * dt)
             dx = math.cos(car.heading) * car.speed * dt
             dy = math.sin(car.heading) * car.speed * dt
             target_x = car.x + dx

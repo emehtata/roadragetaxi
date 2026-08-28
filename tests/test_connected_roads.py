@@ -58,5 +58,5 @@ def test_respawn_uses_taxi_stop_when_available():
 
     respawn_car(car, [road], taxi_stops=[TaxiStop(42.0, 1.0)])
 
-    assert (car.x, car.y) == (42.0, 1.0)
+    assert (car.x, car.y) == (42.0, 0.0)
     assert car.speed == 0.0

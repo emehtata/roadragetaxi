@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from typing import Dict, List, Optional, Set, Tuple
 
 from .osm import TrafficLight, Way
-from .physics import Car, is_pedestrian_way
+from .physics import Car, is_car_road, is_pedestrian_way
 
 logger = logging.getLogger(__name__)
 
@@ -560,3 +560,52 @@ class PedestrianManager:
                         ped.heading = math.atan2(ndy, ndx) + sway_angle
                         ped.x += math.cos(ped.heading) * remaining_dist
                         ped.y += math.sin(ped.heading) * remaining_dist
+
+
+class CyclistManager(PedestrianManager):
+    """Manage cyclists on light-traffic paths and ordinary city roads."""
+
+    def sync_map_data(self, ways: List[Way], traffic_lights: Optional[List[TrafficLight]] = None) -> None:
+        if traffic_lights is not None:
+            self.traffic_lights = traffic_lights
+        self.ped_ways = [
+            way for way in ways
+            if len(way.points_m) >= 2
+            and (
+                is_pedestrian_way(way)
+                or (
+                    is_car_road(way)
+                    and getattr(way, "highway", "") not in {"motorway", "motorway_link", "trunk", "trunk_link"}
+                )
+            )
+        ]
+        self._way_grid.clear()
+        cs = self._way_grid_cell_size
+        for way in self.ped_ways:
+            minx = min(point[0] for point in way.points_m)
+            maxx = max(point[0] for point in way.points_m)
+            miny = min(point[1] for point in way.points_m)
+            maxy = max(point[1] for point in way.points_m)
+            for cx in range(int(math.floor(minx / cs)), int(math.floor(maxx / cs)) + 1):
+                for cy in range(int(math.floor(miny / cs)), int(math.floor(maxy / cs)) + 1):
+                    self._way_grid.setdefault((cx, cy), []).append(way)
+        self._build_junction_grid()
+
+    @property
+    def cyclists(self) -> List[Pedestrian]:
+        return self.pedestrians
+
+    def spawn_pedestrian(
+        self,
+        near_x: float,
+        near_y: float,
+        viewport_bounds: Optional[Tuple[float, float, float, float]] = None,
+    ) -> Optional[Pedestrian]:
+        cyclist = super().spawn_pedestrian(near_x, near_y, viewport_bounds)
+        if cyclist is None:
+            return None
+        cyclist.is_cyclist = True
+        cyclist.base_speed = random.uniform(3.5, 6.5)
+        cyclist.speed = cyclist.base_speed
+        cyclist.radius_m = 0.6
+        return cyclist

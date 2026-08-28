@@ -116,11 +116,12 @@ def test_taxi_mission_lifecycle():
     car.speed = 0.0
     taxi_mgr.update(car, dt=5.0)  # fast delivery in 5s
 
-    # 5. Should complete fare, award points based on speed, and spawn next mission
+    # 5. Complete fare, award points, and offer next rides through the phone
     assert taxi_mgr.completed_fares == 1
     assert taxi_mgr.total_score > 0
     assert taxi_mgr.last_fare_points > 0
-    assert taxi_mgr.state == TaxiState.WAITING_FOR_PICKUP
+    assert taxi_mgr.current_passenger is None
+    assert taxi_mgr.offers
 
 
 def test_taxi_mission_prefers_osm_taxi_stops():
@@ -138,6 +139,26 @@ def test_taxi_mission_prefers_osm_taxi_stops():
     assert taxi_mgr.current_passenger is not None
     assert taxi_mgr.current_passenger.pickup.x in (500.0, 1000.0)
     assert taxi_mgr.current_passenger.dropoff.x in (500.0, 1000.0)
+
+
+def test_phone_offers_show_distance_and_accept_selected_ride():
+    way = Way(
+        points_m=[(0.0, 0.0), (3000.0, 0.0)],
+        highway="residential",
+        half_width_m=4.5,
+        name="Phone Street",
+    )
+    stops = [TaxiStop(500.0, 0.0), TaxiStop(1000.0, 0.0), TaxiStop(1600.0, 0.0)]
+    taxi_mgr = TaxiManager(ways=[way], taxi_stops=stops, min_distance_m=100.0, max_distance_m=1200.0)
+
+    offers = taxi_mgr.generate_offers(0.0, 0.0, count=3)
+
+    assert len(offers) == 3
+    assert all(offer.pickup_distance_m > 0.0 for offer in offers)
+    selected = offers[1].passenger
+    assert taxi_mgr.accept_offer(1, 0.0, 0.0) is True
+    assert taxi_mgr.current_passenger is selected
+    assert taxi_mgr.offers == []
 
 
 def test_taxi_scoring_speed_bonus():
@@ -167,7 +188,8 @@ def test_discard_pickup_penalty():
     taxi_mgr.discard_mission(car.x, car.y, penalty=150)
     assert taxi_mgr.total_score == old_score - 150
     assert taxi_mgr.state == TaxiState.WAITING_FOR_PICKUP
-    assert taxi_mgr.current_passenger is not None
+    assert taxi_mgr.current_passenger is None
+    assert taxi_mgr.offers
 
 
 def test_respawn_penalizes_onboard_passenger():
@@ -202,4 +224,6 @@ def test_respawn_penalizes_onboard_passenger():
     taxi_mgr.handle_respawn(car.x, car.y)
     assert taxi_mgr.total_score == init_score - 200
     assert taxi_mgr.state == TaxiState.WAITING_FOR_PICKUP
+    assert taxi_mgr.current_passenger is None
+    assert taxi_mgr.offers
 

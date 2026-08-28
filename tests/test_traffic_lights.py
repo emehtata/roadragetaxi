@@ -1,4 +1,6 @@
 """Tests for OSM traffic signals parsing, light cycle behavior, and NPC traffic stopping."""
+import math
+
 from theroadragetrip.osm import TrafficLight, Way, build_ways
 from theroadragetrip.physics import Car
 from theroadragetrip.traffic import NPCCar, TrafficManager
@@ -157,4 +159,56 @@ def test_player_red_light_violation_penalty():
     car2 = Car(x=50.0, y=0.0, heading=0.0, speed=10.0)
     taxi_mgr.check_red_light_violation(car2, [tl_yellow], sim_time=6.0, penalty=100)
     assert taxi_mgr.total_score == 400  # Score unchanged
+
+
+def test_turning_at_intersection_does_not_trigger_red_light_violation():
+    from theroadragetrip.taxi import TaxiManager
+
+    tl = TrafficLight(x=10.0, y=0.0, cycle_time=16.0, offset=8.0, id=103)
+    taxi_mgr = TaxiManager(ways=[])
+    car = Car(x=0.0, y=0.0, heading=0.0, speed=8.0)
+
+    taxi_mgr.check_red_light_violation(car, [tl], sim_time=0.0)
+    car.x, car.y, car.heading = 10.0, 1.0, 1.5708
+    taxi_mgr.check_red_light_violation(car, [tl], sim_time=0.1)
+
+    assert taxi_mgr.total_score == 0
+
+
+def test_ninety_degree_turn_at_red_light_does_not_trigger_violation():
+    from theroadragetrip.taxi import TaxiManager
+
+    tl = TrafficLight(x=10.0, y=0.0, cycle_time=16.0, offset=8.0, id=104, direction_angle=0.0)
+    taxi_mgr = TaxiManager(ways=[])
+    car = Car(x=0.0, y=0.0, heading=0.0, speed=8.0)
+
+    taxi_mgr.check_red_light_violation(car, [tl], sim_time=0.0)
+    car.x, car.y, car.heading = 10.0, 1.0, math.pi / 2
+    taxi_mgr.check_red_light_violation(car, [tl], sim_time=0.1)
+
+    assert taxi_mgr.total_score == 0
+
+
+def test_red_light_assist_slows_before_red_signal():
+    from theroadragetrip.taxi import TaxiManager
+
+    tl = TrafficLight(x=30.0, y=0.0, cycle_time=16.0, offset=8.0, direction_angle=0.0)
+    car = Car(x=0.0, y=0.0, heading=0.0, speed=10.0)
+    taxi_mgr = TaxiManager(ways=[])
+
+    target = taxi_mgr.get_red_light_assist_speed_limit(car, [tl], sim_time=0.0)
+
+    assert target is not None
+    assert 14.0 < target < 15.0
+
+
+def test_red_light_assist_uses_only_first_signal_ahead():
+    from theroadragetrip.taxi import TaxiManager
+
+    green_light = TrafficLight(x=10.0, y=0.0, cycle_time=16.0, offset=0.0, direction_angle=0.0)
+    red_light = TrafficLight(x=30.0, y=0.0, cycle_time=16.0, offset=8.0, direction_angle=0.0)
+    taxi_mgr = TaxiManager(ways=[])
+    car = Car(x=0.0, y=0.0, heading=0.0, speed=10.0)
+
+    assert taxi_mgr.get_red_light_assist_speed_limit(car, [red_light, green_light], sim_time=0.0) is None
 

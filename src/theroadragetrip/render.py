@@ -1,14 +1,18 @@
 import math
+import os
 from typing import List, Optional, Tuple
 
-from .geo import clip_polygon_to_rect, meters_to_latlon
-from .osm import Building, Place, Scenery, Water, Way
+from .geo import clip_polygon_to_rect, dist_point_to_segment, meters_to_latlon
+from .osm import Building, Place, Scenery, TaxiStop, Water, Way
 from .physics import Car
 from .taxi import TaxiManager, TaxiState
 
 SCREEN_W, SCREEN_H = 1280, 720
 FPS = 60
 PX_PER_M = 0.7  # Default zoom level (pixels per meter)
+
+_loading_image = None
+_loading_image_path = os.path.join(os.path.dirname(__file__), "img", "theroadragetrip_1672_941.png")
 
 
 def world_to_screen(
@@ -38,6 +42,25 @@ def get_viewport_bounds(
     half_w = (screen_w / 2.0) / px_per_m + margin_m
     half_h = (screen_h / 2.0) / px_per_m + margin_m
     return camx - half_w, camy - half_h, camx + half_w, camy + half_h
+
+
+def _covered_by_higher_road(x: float, y: float, layer: int, ways: Optional[List[Way]]) -> bool:
+    if not ways:
+        return False
+    for way in ways:
+        if getattr(way, "layer", 0) <= layer or len(way.points_m) < 2:
+            continue
+        half_width = getattr(way, "half_width_m", 3.0)
+        bbox = getattr(way, "bbox", None)
+        if not bbox or bbox == (0.0, 0.0, 0.0, 0.0):
+            xs = [point[0] for point in way.points_m]
+            ys = [point[1] for point in way.points_m]
+            bbox = (min(xs), min(ys), max(xs), max(ys))
+        if bbox and not (bbox[0] - half_width <= x <= bbox[2] + half_width and bbox[1] - half_width <= y <= bbox[3] + half_width):
+            continue
+        if any(dist_point_to_segment(x, y, p1[0], p1[1], p2[0], p2[1]) <= half_width for p1, p2 in zip(way.points_m, way.points_m[1:])):
+            return True
+    return False
 
 
 def draw_scenery(
@@ -81,10 +104,16 @@ def draw_scenery(
             if not (vminx <= tree_x <= vmaxx and vminy <= tree_y <= vmaxy):
                 continue
             sx, sy = world_to_screen(tree_x, tree_y, camx, camy, px_per_m, screen_w, screen_h)
-            trunk = max(1, int(0.7 * px_per_m))
-            crown = max(2, int(2.2 * px_per_m))
-            pygame.draw.rect(screen, (92, 60, 30), (sx - trunk // 2, sy, trunk, max(2, int(1.5 * px_per_m))))
-            pygame.draw.circle(screen, (25, 85, 25), (sx, sy - crown // 2), crown)
+            variation = abs(math.sin(tree_x * 12.9898 + tree_y * 78.233))
+            size = 0.72 + variation * 0.62
+            trunk = max(1, int(0.7 * size * px_per_m))
+            trunk_height = max(2, int(1.5 * size * px_per_m))
+            crown = max(2, int(2.2 * size * px_per_m))
+            trunk_color = (78 + int(22 * variation), 52 + int(18 * variation), 27)
+            crown_colors = ((25, 78, 29), (34, 101, 35), (48, 119, 42), (63, 112, 34))
+            crown_color = crown_colors[min(len(crown_colors) - 1, int(variation * len(crown_colors)))]
+            pygame.draw.rect(screen, trunk_color, (sx - trunk // 2, sy, trunk, trunk_height))
+            pygame.draw.circle(screen, crown_color, (sx, sy - crown // 2), crown)
 
 
 def draw_waters(
@@ -147,8 +176,102 @@ def draw_buildings(
         if len(b.points_m) < 3:
             continue
         pts = [world_to_screen(x, y, camx, camy, px_per_m, screen_w, screen_h) for (x, y) in b.points_m]
-        pygame.draw.polygon(screen, (130, 125, 120), pts)
-        pygame.draw.lines(screen, (85, 80, 75), True, pts, 1)
+        height = max(3.0, float(getattr(b, "height_m", 8.0)))
+        depth = min(30, max(3, int(height * 0.35 * px_per_m)))
+        roof = [(x - depth * 0.7, y - depth) for x, y in pts]
+
+        building_center_x = sum(point[0] for point in b.points_m) / len(b.points_m)
+        building_center_y = sum(point[1] for point in b.points_m) / len(b.points_m)
+        texture_seed = abs(math.sin(building_center_x * 0.013 + building_center_y * 0.017))
+        wall_colors = ((158, 105, 82), (174, 166, 143), (116, 131, 119), (139, 139, 137))
+        roof_colors = ((92, 57, 48), (102, 96, 82), (66, 83, 69), (83, 86, 87))
+        texture_index = min(len(wall_colors) - 1, int(texture_seed * len(wall_colors)))
+        pygame.draw.polygon(screen, (45, 42, 39), [(x + 2, y + 3) for x, y in roof])
+        for index, point in enumerate(pts):
+            next_point = pts[(index + 1) % len(pts)]
+            next_roof = roof[(index + 1) % len(roof)]
+            pygame.draw.polygon(screen, wall_colors[texture_index], [point, next_point, next_roof, roof[index]])
+        roof_color = roof_colors[texture_index]
+        pygame.draw.polygon(screen, roof_color, roof)
+        pygame.draw.lines(screen, (70, 66, 61), True, roof, 1)
+
+        # Add small facade details after the roof so they remain visible at low zoom.
+        roof_dx = roof[0][0] - pts[0][0]
+        roof_dy = roof[0][1] - pts[0][1]
+        centroid_x = sum(point[0] for point in pts) / len(pts)
+        centroid_y = sum(point[1] for point in pts) / len(pts)
+        visible_edges = []
+        for index, point in enumerate(pts):
+            next_point = pts[(index + 1) % len(pts)]
+            midpoint_x = (point[0] + next_point[0]) * 0.5
+            midpoint_y = (point[1] + next_point[1]) * 0.5
+            frontness = (midpoint_x - centroid_x) * -roof_dx + (midpoint_y - centroid_y) * -roof_dy
+            if frontness > 0:
+                visible_edges.append(index)
+        longest_edge = max(
+            visible_edges,
+            key=lambda index: math.hypot(
+                pts[(index + 1) % len(pts)][0] - pts[index][0],
+                pts[(index + 1) % len(pts)][1] - pts[index][1],
+            ),
+            default=-1,
+        )
+        for index, point in enumerate(pts):
+            next_point = pts[(index + 1) % len(pts)]
+            roof_point = roof[index]
+            next_roof = roof[(index + 1) % len(roof)]
+            midpoint_x = (point[0] + next_point[0]) * 0.5
+            midpoint_y = (point[1] + next_point[1]) * 0.5
+            frontness = (midpoint_x - centroid_x) * -roof_dx + (midpoint_y - centroid_y) * -roof_dy
+            if frontness <= 0:
+                continue
+            edge_x = next_point[0] - point[0]
+            edge_y = next_point[1] - point[1]
+            edge_length = math.hypot(edge_x, edge_y)
+            if edge_length < 8:
+                continue
+            edge_x /= edge_length
+            edge_y /= edge_length
+            roof_x = roof_point[0] - point[0]
+            roof_y = roof_point[1] - point[1]
+            window_count = min(3, max(1, int(edge_length // 32)))
+
+            for window_index in range(window_count):
+                center = (window_index + 1) / (window_count + 1)
+                center_x = point[0] + (next_point[0] - point[0]) * center + roof_x * 0.42
+                center_y = point[1] + (next_point[1] - point[1]) * center + roof_y * 0.42
+                window_width = min(10.0, edge_length / (window_count + 2) * 0.45)
+                half_width = window_width / 2
+                window_height = max(3.0, min(7.0, abs(roof_y) * 0.22))
+                pane_x = -roof_x * window_height / max(abs(roof_y), 1.0)
+                pane_y = -roof_y * window_height / max(abs(roof_y), 1.0)
+                window = [
+                    (center_x - edge_x * half_width, center_y - edge_y * half_width),
+                    (center_x + edge_x * half_width, center_y + edge_y * half_width),
+                    (center_x + edge_x * half_width + pane_x, center_y + edge_y * half_width + pane_y),
+                    (center_x - edge_x * half_width + pane_x, center_y - edge_y * half_width + pane_y),
+                ]
+                pygame.draw.polygon(screen, (52, 82, 91), window)
+                pygame.draw.lines(screen, (25, 42, 47), True, window, 1)
+                pygame.draw.line(screen, (155, 180, 178), window[0], window[2], 1)
+
+            if index == longest_edge:
+                door_width = min(11.0, edge_length * 0.22)
+                door_height = max(5.0, min(13.0, abs(roof_y) * 0.68))
+                door_center = 0.5
+                door_x = point[0] + (next_point[0] - point[0]) * door_center + roof_x * 0.48
+                door_y = point[1] + (next_point[1] - point[1]) * door_center + roof_y * 0.48
+                door_shift_x = -roof_x * door_height / max(abs(roof_y), 1.0)
+                door_shift_y = -roof_y * door_height / max(abs(roof_y), 1.0)
+                half_door = door_width / 2
+                door = [
+                    (door_x - edge_x * half_door, door_y - edge_y * half_door),
+                    (door_x + edge_x * half_door, door_y + edge_y * half_door),
+                    (door_x + edge_x * half_door + door_shift_x, door_y + edge_y * half_door + door_shift_y),
+                    (door_x - edge_x * half_door + door_shift_x, door_y - edge_y * half_door + door_shift_y),
+                ]
+                pygame.draw.polygon(screen, (58, 48, 42), door)
+                pygame.draw.lines(screen, (32, 28, 25), True, door, 1)
 
 
 def draw_ways(
@@ -496,6 +619,8 @@ def _draw_vehicle(
     body_color: Tuple[int, int, int],
     outline_color: Tuple[int, int, int] = (20, 20, 20),
     is_taxi: bool = False,
+    turn_signal: str = "",
+    turn_signal_elapsed: float = 0.0,
 ) -> None:
     """Draw an oriented vehicle box on scale with headlights (white) and taillights (red)."""
     import pygame
@@ -562,6 +687,13 @@ def _draw_vehicle(
     pygame.draw.circle(screen, (230, 30, 30), (int(r_r[0]), int(r_r[1])), int(light_r))
     pygame.draw.circle(screen, (230, 30, 30), (int(r_l[0]), int(r_l[1])), int(light_r))
 
+    if turn_signal and (turn_signal_elapsed < 0.45 or (pygame.time.get_ticks() // 450) % 2 == 0):
+        signal_color = (255, 170, 20)
+        signal_side = 1.0 if turn_signal == "right" else -1.0
+        signal_x = cx + fx * (hl - 0.5) + rx * (light_inset * signal_side)
+        signal_y = cy + fy * (hl - 0.5) + ry * (light_inset * signal_side)
+        pygame.draw.circle(screen, signal_color, (int(signal_x), int(signal_y)), int(light_r + 0.5))
+
 
 def draw_car(
     screen,
@@ -571,8 +703,11 @@ def draw_car(
     px_per_m: float = PX_PER_M,
     screen_w: int = SCREEN_W,
     screen_h: int = SCREEN_H,
+    ways: Optional[List[Way]] = None,
 ) -> None:
     """Draw player taxi scaled in meters with headlights and taillights."""
+    if _covered_by_higher_road(car.x, car.y, getattr(car, "layer", 0), ways):
+        return
     cx, cy = world_to_screen(car.x, car.y, camx, camy, px_per_m, screen_w, screen_h)
     length_m = getattr(car, "length_m", 4.0)
     width_m = getattr(car, "width_m", 1.8)
@@ -600,12 +735,15 @@ def draw_npc_cars(
     px_per_m: float = PX_PER_M,
     screen_w: int = SCREEN_W,
     screen_h: int = SCREEN_H,
+    ways: Optional[List[Way]] = None,
 ) -> None:
     """Draw autonomous NPC cars scaled in meters with headlights and taillights."""
     vminx, vminy, vmaxx, vmaxy = get_viewport_bounds(camx, camy, px_per_m, screen_w, screen_h, 30.0)
 
     for npc in npcs:
         if not (vminx <= npc.x <= vmaxx and vminy <= npc.y <= vmaxy):
+            continue
+        if _covered_by_higher_road(npc.x, npc.y, getattr(npc, "layer", getattr(npc.way, "layer", 0)), ways):
             continue
 
         cx, cy = world_to_screen(npc.x, npc.y, camx, camy, px_per_m, screen_w, screen_h)
@@ -624,6 +762,8 @@ def draw_npc_cars(
             body_color=npc.color,
             outline_color=(20, 20, 20),
             is_taxi=False,
+            turn_signal=getattr(npc, "turn_signal", ""),
+            turn_signal_elapsed=getattr(npc, "turn_signal_elapsed", 0.0),
         )
 
         # Draw animated smoke puff effect if NPC is disabled from a crash
@@ -656,6 +796,7 @@ def draw_pedestrians(
     px_per_m: float = PX_PER_M,
     screen_w: int = SCREEN_W,
     screen_h: int = SCREEN_H,
+    ways: Optional[List[Way]] = None,
 ) -> None:
     """Draw pedestrians as colored circles with movement heading and comic cursing speech bubbles."""
     import pygame
@@ -664,6 +805,8 @@ def draw_pedestrians(
 
     for ped in pedestrians:
         if not (vminx <= ped.x <= vmaxx and vminy <= ped.y <= vmaxy):
+            continue
+        if _covered_by_higher_road(ped.x, ped.y, getattr(ped, "layer", getattr(ped.way, "layer", 0)), ways):
             continue
 
         cx, cy = world_to_screen(ped.x, ped.y, camx, camy, px_per_m, screen_w, screen_h)
@@ -700,6 +843,68 @@ def draw_pedestrians(
                 txt_surf.set_alpha(alpha)
             bubble_surf.blit(txt_surf, (4, 2))
             screen.blit(bubble_surf, (int(bx), int(by)))
+
+
+def draw_cyclists(
+    screen,
+    cyclists: List,
+    camx: float,
+    camy: float,
+    px_per_m: float = PX_PER_M,
+    screen_w: int = SCREEN_W,
+    screen_h: int = SCREEN_H,
+    ways: Optional[List[Way]] = None,
+) -> None:
+    """Draw cyclists as compact riders with bicycle wheels."""
+    import pygame
+
+    vminx, vminy, vmaxx, vmaxy = get_viewport_bounds(camx, camy, px_per_m, screen_w, screen_h, 15.0)
+    for cyclist in cyclists:
+        if not (vminx <= cyclist.x <= vmaxx and vminy <= cyclist.y <= vmaxy):
+            continue
+        if _covered_by_higher_road(cyclist.x, cyclist.y, getattr(cyclist.way, "layer", 0), ways):
+            continue
+        cx, cy = world_to_screen(cyclist.x, cyclist.y, camx, camy, px_per_m, screen_w, screen_h)
+        scale = max(3.0, px_per_m)
+        # Convert world heading to screen direction; screen y grows downward.
+        direction_x = math.cos(cyclist.heading)
+        direction_y = -math.sin(cyclist.heading)
+        side_x = -direction_y
+        side_y = direction_x
+        wheel_gap = 1.2 * scale
+        frame_width = max(1, int(0.14 * scale))
+        detail_width = max(1, int(0.12 * scale))
+        front = (cx + direction_x * wheel_gap, cy + direction_y * wheel_gap)
+        rear = (cx - direction_x * wheel_gap, cy - direction_y * wheel_gap)
+        handlebar = (front[0] - direction_x * 0.12 * scale, front[1] - direction_y * 0.12 * scale)
+        rack = (rear[0] + direction_x * 0.18 * scale, rear[1] + direction_y * 0.18 * scale)
+
+        # Top-down silhouette: tires barely protrude beyond the frame.
+        pygame.draw.line(
+            screen,
+            (28, 28, 28),
+            (rear[0] - direction_x * 0.18 * scale, rear[1] - direction_y * 0.18 * scale),
+            (front[0] + direction_x * 0.18 * scale, front[1] + direction_y * 0.18 * scale),
+            detail_width,
+        )
+        pygame.draw.line(screen, (218, 157, 45), rear, front, frame_width)
+        pygame.draw.line(
+            screen,
+            (218, 157, 45),
+            handlebar,
+            (handlebar[0] + side_x * 0.3 * scale, handlebar[1] + side_y * 0.3 * scale),
+            frame_width,
+        )
+        pygame.draw.line(
+            screen,
+            (55, 45, 35),
+            rack,
+            (rack[0] + side_x * 0.28 * scale, rack[1] + side_y * 0.28 * scale),
+            frame_width,
+        )
+        pygame.draw.circle(screen, (25, 25, 25), (int(front[0]), int(front[1])), max(1, int(0.16 * scale)))
+        pygame.draw.circle(screen, (25, 25, 25), (int(rear[0]), int(rear[1])), max(1, int(0.16 * scale)))
+        pygame.draw.circle(screen, cyclist.color, (int(cx), int(cy)), max(2, int(0.3 * scale)))
 
 
 def draw_traffic_lights(
@@ -763,6 +968,35 @@ def draw_traffic_lights(
         pygame.draw.circle(screen, g_col, (int(cx), int(bot_y)), lamp_r)
 
 
+def draw_taxi_stops(
+    screen,
+    taxi_stops: List[TaxiStop],
+    camx: float,
+    camy: float,
+    px_per_m: float = PX_PER_M,
+    screen_w: int = SCREEN_W,
+    screen_h: int = SCREEN_H,
+) -> None:
+    """Draw yellow TAXI signs at OSM taxi stops."""
+    import pygame
+
+    vminx, vminy, vmaxx, vmaxy = get_viewport_bounds(camx, camy, px_per_m, screen_w, screen_h, 30.0)
+    for stop in taxi_stops:
+        if not (vminx <= stop.x <= vmaxx and vminy <= stop.y <= vmaxy):
+            continue
+
+        cx, cy = world_to_screen(stop.x, stop.y, camx, camy, px_per_m, screen_w, screen_h)
+        pole_bottom = cy + 11
+        pygame.draw.line(screen, (55, 55, 55), (cx, cy - 1), (cx, pole_bottom), 2)
+        sign = pygame.Rect(cx - 14, cy - 13, 28, 14)
+        pygame.draw.rect(screen, (20, 20, 20), sign, border_radius=2)
+        inner_sign = sign.inflate(-2, -2)
+        pygame.draw.rect(screen, (255, 205, 25), inner_sign, border_radius=1)
+        sign_font = pygame.font.Font(None, 11)
+        sign_text = sign_font.render("TAXI", True, (20, 20, 20))
+        screen.blit(sign_text, sign_text.get_rect(center=inner_sign.center))
+
+
 def draw_taxi_target(
     screen,
     taxi_mgr: TaxiManager,
@@ -812,6 +1046,7 @@ def draw_taxi_target(
         screen.blit(bg, bg_rect.topleft)
         pygame.draw.rect(screen, main_color, bg_rect, width=1, border_radius=3)
         screen.blit(lbl_surf, rect)
+
 
         # Draw client pedestrian waiting or walking into the taxi
         p = taxi_mgr.current_passenger
@@ -878,6 +1113,51 @@ def draw_taxi_target(
         screen.blit(d_surf, d_rect)
 
 
+def draw_phone_offers(screen, taxi_mgr: TaxiManager, font, small_font, screen_w: int, screen_h: int) -> None:
+    """Draw the in-game phone with selectable taxi offers."""
+    import pygame
+
+    overlay = pygame.Surface((screen_w, screen_h), pygame.SRCALPHA)
+    overlay.fill((5, 8, 12, 170))
+    screen.blit(overlay, (0, 0))
+
+    phone = pygame.Rect(screen_w // 2 - 250, screen_h // 2 - 250, 500, 500)
+    pygame.draw.rect(screen, (18, 22, 28), phone, border_radius=18)
+    pygame.draw.rect(screen, (92, 105, 116), phone, width=3, border_radius=18)
+    pygame.draw.rect(screen, (38, 48, 57), (phone.x + 180, phone.y + 12, 140, 5), border_radius=2)
+    title = font.render("TAXI PHONE", True, (245, 220, 110))
+    screen.blit(title, title.get_rect(center=(phone.centerx, phone.y + 48)))
+    subtitle = small_font.render("Select a ride request", True, (185, 195, 202))
+    screen.blit(subtitle, subtitle.get_rect(center=(phone.centerx, phone.y + 78)))
+
+    if taxi_mgr.current_passenger:
+        message = small_font.render("Finish or cancel current fare first", True, (245, 150, 120))
+        screen.blit(message, message.get_rect(center=phone.center))
+    elif not taxi_mgr.offers:
+        message = small_font.render("No requests available", True, (220, 220, 220))
+        screen.blit(message, message.get_rect(center=phone.center))
+    else:
+        for index, offer in enumerate(taxi_mgr.offers[:3]):
+            y = phone.y + 112 + index * 105
+            row = pygame.Rect(phone.x + 28, y, phone.width - 56, 88)
+            pygame.draw.rect(screen, (30, 39, 47), row, border_radius=6)
+            pygame.draw.rect(screen, (75, 88, 97), row, width=1, border_radius=6)
+            passenger = offer.passenger
+            distance = offer.pickup_distance_m
+            distance_text = f"{distance:.0f} m" if distance < 1000 else f"{distance / 1000.0:.2f} km"
+            label = small_font.render(f"[{index + 1}]  {passenger.name}", True, (245, 245, 240))
+            pickup = small_font.render(f"Pickup: {passenger.pickup.address}", True, (190, 205, 212))
+            dropoff = small_font.render(f"To: {passenger.dropoff.address}", True, (170, 190, 175))
+            dist = small_font.render(f"Distance to client: {distance_text}", True, (255, 215, 95))
+            screen.blit(label, (row.x + 12, row.y + 8))
+            screen.blit(pickup, (row.x + 12, row.y + 29))
+            screen.blit(dropoff, (row.x + 12, row.y + 48))
+            screen.blit(dist, (row.x + 12, row.y + 67))
+
+    hint = small_font.render("P / Esc: close", True, (180, 185, 190))
+    screen.blit(hint, hint.get_rect(center=(phone.centerx, phone.bottom - 20)))
+
+
 def draw_compass(screen, car: Car, cx: int, cy: int, r: int, font, target_pos: Optional[tuple[float, float]] = None) -> None:
     """Draw circular north-up compass with heading needle, bearing degrees, and taxi nav arrow."""
     import pygame
@@ -930,8 +1210,27 @@ def draw_loading_screen(
     """Draw a standalone loading screen with a progress meter bar and message."""
     import pygame
 
-    # Background
-    screen.fill((20, 25, 30))
+    global _loading_image
+
+    if _loading_image is None and os.path.exists(_loading_image_path):
+        try:
+            _loading_image = pygame.image.load(_loading_image_path).convert()
+        except pygame.error:
+            _loading_image = False
+
+    if _loading_image:
+        image_w, image_h = _loading_image.get_size()
+        scale = max(screen_w / image_w, screen_h / image_h)
+        scaled_size = (round(image_w * scale), round(image_h * scale))
+        background = pygame.transform.smoothscale(_loading_image, scaled_size)
+        image_x = (screen_w - scaled_size[0]) // 2
+        image_y = (screen_h - scaled_size[1]) // 2
+        screen.blit(background, (image_x, image_y))
+        overlay = pygame.Surface((screen_w, screen_h), pygame.SRCALPHA)
+        overlay.fill((0, 0, 0, 105))
+        screen.blit(overlay, (0, 0))
+    else:
+        screen.fill((20, 25, 30))
 
     # Title
     title_font = font
@@ -1134,6 +1433,8 @@ def draw_hud(
     taxi_mgr: Optional[TaxiManager] = None,
     current_road_name: Optional[str] = None,
     speed_limit_kmh: Optional[int] = None,
+    speed_limiter_enabled: bool = True,
+    red_light_assist_enabled: bool = False,
 ) -> None:
     """Draw speed, trip, odometer, on-road status, current road name, lat/lon, taxi mission bar, notifications."""
     import pygame
@@ -1147,6 +1448,8 @@ def draw_hud(
 
     labels_status = "ON" if show_labels else "OFF"
     lane_assist_status = "ON" if getattr(car, "lane_assist_enabled", False) else "OFF"
+    speed_limiter_status = "ON" if speed_limiter_enabled else "OFF"
+    red_light_assist_status = "ON" if red_light_assist_enabled else "OFF"
     road_name_s = current_road_name if current_road_name else "Off-road"
     limit_s = f" [Limit: {speed_limit_kmh} km/h]" if speed_limit_kmh is not None else ""
     assist_s = " | [Lane Assist]" if getattr(car, "lane_assist_active", False) else ""
@@ -1159,7 +1462,7 @@ def draw_hud(
 
     hint = (
         f"Controls: W/S/A/D = drive | +/- = zoom | R = respawn | X = cancel fare | T = reset trip | "
-        f"L = labels ({labels_status}) | K = lane assist ({lane_assist_status}) | ESC = pause"
+        f"L = labels ({labels_status}) | K = lane assist ({lane_assist_status}) | V = limiter ({speed_limiter_status}) | B = red assist ({red_light_assist_status}) | ESC = pause"
     )
     hint_t = font.render(hint, True, (220, 220, 220))
     screen.blit(hint_t, (10, 34))

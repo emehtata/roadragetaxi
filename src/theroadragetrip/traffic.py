@@ -48,6 +48,8 @@ class NPCCar:
     crashed_timer: float = 0.0
     blocked_timer: float = 0.0
     escape_timer: float = 0.0
+    turn_signal: str = ""  # "left" or "right" while completing a turn
+    turn_signal_elapsed: float = 0.0
 
 
 def calculate_npc_target_speed(way: Way, speed_factor: float) -> float:
@@ -92,6 +94,7 @@ class TrafficManager:
         spawn_radius_m: float = 300.0,
         despawn_radius_m: float = 450.0,
         traffic_lights: Optional[List[TrafficLight]] = None,
+        crossings: Optional[List] = None,
     ):
         self.ways = connected_drivable_ways(ways)
         self.target_count = target_count
@@ -100,6 +103,7 @@ class TrafficManager:
         self.min_spawn_dist_to_player_m: float = 12.0
         self.min_spawn_dist_to_npc_m: float = 6.0
         self.traffic_lights = traffic_lights if traffic_lights is not None else []
+        self.crossings = crossings if crossings is not None else []
         self.npcs: List[NPCCar] = []
         self._log_timer: float = 0.0
         self.sim_time: float = 0.0
@@ -138,11 +142,38 @@ class TrafficManager:
                 for cy in range(min_cy, max_cy + 1):
                     self._way_grid.setdefault((cx, cy), []).append(w)
 
-    def sync_map_data(self, ways: List[Way], traffic_lights: Optional[List[TrafficLight]] = None) -> None:
+    @staticmethod
+    def _turn_signal_for_route(old_heading: float, npc: NPCCar) -> str:
+        """Return turn direction for a newly selected route."""
+        points = npc.way.points_m
+        if len(points) < 2:
+            return ""
+        if npc.direction == 1 and npc.segment_idx + 1 < len(points):
+            target = points[npc.segment_idx + 1]
+        elif npc.direction == -1 and npc.segment_idx < len(points):
+            target = points[npc.segment_idx]
+        else:
+            return ""
+        new_heading = math.atan2(target[1] - npc.y, target[0] - npc.x)
+        turn = (new_heading - old_heading + math.pi) % (2 * math.pi) - math.pi
+        if math.radians(20) < turn < math.radians(160):
+            return "left"
+        if -math.radians(160) < turn < -math.radians(20):
+            return "right"
+        return ""
+
+    def sync_map_data(
+        self,
+        ways: List[Way],
+        traffic_lights: Optional[List[TrafficLight]] = None,
+        crossings: Optional[List] = None,
+    ) -> None:
         """Update road references when dynamic tiles expand."""
         self.ways = connected_drivable_ways(ways)
         if traffic_lights is not None:
             self.traffic_lights = traffic_lights
+        if crossings is not None:
+            self.crossings = crossings
         self._build_spatial_indices()
 
     def _find_next_way_and_segment(
@@ -263,6 +294,18 @@ class TrafficManager:
             if math.hypot(other.x - junction_point[0], other.y - junction_point[1]) < 12.0:
                 return True
         return False
+
+    def _junction_near_point(self, point: Tuple[float, float], layer: int) -> bool:
+        """Return whether point is inside a shared same-layer junction."""
+        cx = int(math.floor(point[0] / self._junction_grid_cell_size))
+        cy = int(math.floor(point[1] / self._junction_grid_cell_size))
+        nearby_ways = set()
+        for dx in (-1, 0, 1):
+            for dy in (-1, 0, 1):
+                for way, _, vertex, vertex_layer, _ in self._junction_grid.get((cx + dx, cy + dy), []):
+                    if vertex_layer == layer and math.hypot(point[0] - vertex[0], point[1] - vertex[1]) <= 10.0:
+                        nearby_ways.add(id(way))
+        return len(nearby_ways) >= 2
 
     def spawn_npc(
         self,
@@ -503,6 +546,8 @@ class TrafficManager:
 
         for i, npc in enumerate(self.npcs):
             npc.escape_timer = max(0.0, npc.escape_timer - dt)
+            if npc.turn_signal:
+                npc.turn_signal_elapsed += dt
             if getattr(npc.way, "oneway", 0) == 0:
                 npc.overtaking = False
                 npc.overtake_timer = 0.0
@@ -641,17 +686,21 @@ class TrafficManager:
         for npc in self.npcs:
             must_stop = False
             junction_blocked = False
+            nearest_light = None
+            stop_distance = None
+            heading_x = math.cos(npc.heading)
+            heading_y = math.sin(npc.heading)
             for tl in self.traffic_lights:
                 if tl.layer != npc.layer:
                     continue
                 dx = tl.x - npc.x
                 dy = tl.y - npc.y
                 dist = math.hypot(dx, dy)
-                # Traffic light ahead within 25m
-                if 2.0 < dist < 25.0:
-                    angle_to_tl = math.atan2(dy, dx)
-                    angle_diff = (angle_to_tl - npc.heading + math.pi) % (2 * math.pi) - math.pi
-                    if abs(angle_diff) < 0.7:  # Directly ahead
+                # Traffic light ahead within 25m. Use longitudinal/lateral
+                # distance so lane offset does not hide a nearby signal.
+                longitudinal = dx * heading_x + dy * heading_y
+                lateral = abs(dx * -heading_y + dy * heading_x)
+                if -2.0 < longitudinal < 25.0 and lateral <= 8.0:
                         # If traffic light has orientation, check alignment with NPC heading
                         if tl.direction_angle is not None:
                             tl_ang = tl.direction_angle
@@ -661,10 +710,27 @@ class TrafficManager:
                             if ang_err > math.radians(45):
                                 continue  # Signal is for cross traffic, skip
 
-                        state = tl.get_state(self.sim_time)
-                        if state in ("red", "red+yellow", "yellow"):
-                            must_stop = True
-                            break
+                        if nearest_light is None or longitudinal < nearest_light[0]:
+                            nearest_light = (longitudinal, tl)
+
+            if nearest_light is not None:
+                state = nearest_light[1].get_state(self.sim_time)
+                if state in ("red", "red+yellow", "yellow"):
+                    stop_distance = nearest_light[0] - 1.5
+                    nearest_crossing = None
+                    for crossing in self.crossings:
+                        if getattr(crossing, "layer", 0) != npc.layer:
+                            continue
+                        crossing_dx = crossing.x - npc.x
+                        crossing_dy = crossing.y - npc.y
+                        crossing_longitudinal = crossing_dx * heading_x + crossing_dy * heading_y
+                        crossing_lateral = abs(crossing_dx * -heading_y + crossing_dy * heading_x)
+                        if 0.0 < crossing_longitudinal < nearest_light[0] and crossing_lateral <= 8.0:
+                            if nearest_crossing is None or crossing_longitudinal > nearest_crossing:
+                                nearest_crossing = crossing_longitudinal
+                    if nearest_crossing is not None:
+                        stop_distance = nearest_crossing - 2.0
+                    must_stop = stop_distance >= -1.0
 
             pts = npc.way.points_m
             target_pt = None
@@ -681,6 +747,10 @@ class TrafficManager:
                         7.0 < distance_to_junction < 20.0
                         and self._junction_is_occupied(junction_point, npc)
                     )
+
+            # Continue through the junction if the NPC has already entered it.
+            if self._junction_near_point((npc.x, npc.y), npc.layer):
+                must_stop = False
 
             # Calculate cornering speed limit based on heading angle to next vertex / sharp curves
             turn_limit_speed = npc.target_speed
@@ -704,7 +774,18 @@ class TrafficManager:
 
             if must_stop or junction_blocked:
                 # Decelerate to stop at red light
-                npc.speed = max(0.0, npc.speed - 15.0 * dt)
+                if must_stop and stop_distance is not None:
+                    target_stop_speed = math.sqrt(2.0 * 15.0 * max(0.0, stop_distance))
+                    if npc.speed > target_stop_speed:
+                        npc.speed = max(target_stop_speed, npc.speed - 15.0 * dt)
+                    else:
+                        npc.speed = min(target_stop_speed, npc.speed + 8.0 * dt)
+                    if stop_distance >= 0.0:
+                        npc.speed = min(npc.speed, stop_distance / max(dt, 1e-6))
+                    if npc.speed < 0.05:
+                        npc.speed = 0.0
+                else:
+                    npc.speed = max(0.0, npc.speed - 15.0 * dt)
             else:
                 desired_speed = min(npc.target_speed, turn_limit_speed)
                 if npc.speed < desired_speed and not npc.overtaking:
@@ -758,16 +839,18 @@ class TrafficManager:
                 to_tgt_y = shifted_target_y - npc.y
                 dist_to_tgt = math.hypot(to_tgt_x, to_tgt_y)
 
-                # Smooth heading towards target vertex with angular rate limiting
+                    # Smooth heading towards target vertex with angular rate limiting
                 if dist_to_tgt > 1e-3:
                     target_heading = math.atan2(to_tgt_y, to_tgt_x)
                     heading_diff = (target_heading - npc.heading + math.pi) % (2 * math.pi) - math.pi
-                    # Allow max turn rate (e.g., 4.5 rad/s ~ 260 deg/s) so turns are gradual
-                    max_turn = 4.5 * dt
+                    # Limit turn rate so junction turns are visibly gradual.
+                    max_turn = 1.8 * dt
                     if abs(heading_diff) <= max_turn:
                         npc.heading = target_heading
                     else:
                         npc.heading += math.copysign(max_turn, heading_diff)
+                    if npc.turn_signal and abs(heading_diff) < 0.12:
+                        npc.turn_signal = ""
 
                 if dist_step < dist_to_tgt:
                     # Advance partially along current segment
@@ -792,7 +875,10 @@ class TrafficManager:
                                     npc.way, target_pt, exclude_reverse=True, incoming_heading=npc.heading
                                 )
                                 if turn_route and turn_route[0] is not npc.way:
+                                    old_heading = npc.heading
                                     npc.way, npc.segment_idx, npc.direction = turn_route
+                                    npc.turn_signal = self._turn_signal_for_route(old_heading, npc)
+                                    npc.turn_signal_elapsed = 0.0
                                     npc.layer = getattr(npc.way, "layer", 0)
                                     npc.target_speed = calculate_npc_target_speed(npc.way, npc.speed_factor)
                                     npc.target_lane_offset = compute_desired_lane_offset(
@@ -808,7 +894,10 @@ class TrafficManager:
                                 npc.way, target_pt, incoming_heading=npc.heading
                             )
                             if next_route:
+                                old_heading = npc.heading
                                 npc.way, npc.segment_idx, npc.direction = next_route
+                                npc.turn_signal = self._turn_signal_for_route(old_heading, npc)
+                                npc.turn_signal_elapsed = 0.0
                                 npc.layer = getattr(npc.way, "layer", 0)
                                 npc.target_speed = calculate_npc_target_speed(npc.way, npc.speed_factor)
                                 npc.target_lane_offset = compute_desired_lane_offset(
@@ -836,7 +925,10 @@ class TrafficManager:
                                     npc.way, target_pt, exclude_reverse=True, incoming_heading=npc.heading
                                 )
                                 if turn_route and turn_route[0] is not npc.way:
+                                    old_heading = npc.heading
                                     npc.way, npc.segment_idx, npc.direction = turn_route
+                                    npc.turn_signal = self._turn_signal_for_route(old_heading, npc)
+                                    npc.turn_signal_elapsed = 0.0
                                     npc.layer = getattr(npc.way, "layer", 0)
                                     npc.target_speed = calculate_npc_target_speed(npc.way, npc.speed_factor)
                                     npc.target_lane_offset = compute_desired_lane_offset(
@@ -852,7 +944,10 @@ class TrafficManager:
                                 npc.way, target_pt, incoming_heading=npc.heading
                             )
                             if next_route:
+                                old_heading = npc.heading
                                 npc.way, npc.segment_idx, npc.direction = next_route
+                                npc.turn_signal = self._turn_signal_for_route(old_heading, npc)
+                                npc.turn_signal_elapsed = 0.0
                                 npc.layer = getattr(npc.way, "layer", 0)
                                 npc.target_speed = calculate_npc_target_speed(npc.way, npc.speed_factor)
                                 npc.target_lane_offset = compute_desired_lane_offset(
