@@ -48,3 +48,4 @@ htmlcov/
 osm_cache/
 
 *.ini
+screenshots/
