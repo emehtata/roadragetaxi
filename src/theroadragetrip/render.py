@@ -997,12 +997,6 @@ def draw_traffic_lights(
         cx, cy = world_to_screen(tl.x, tl.y, camx, camy, px_per_m, screen_w, screen_h)
         state = tl.get_state(sim_time)
 
-        # Draw dark housing rectangle
-        box_w, box_h = 7, 18
-        box_rect = pygame.Rect(int(cx - box_w / 2), int(cy - box_h / 2), box_w, box_h)
-        pygame.draw.rect(screen, (15, 15, 15), box_rect, border_radius=2)
-        pygame.draw.rect(screen, (70, 70, 70), box_rect, width=1, border_radius=2)
-
         # Colors for 3 lamps (dim when off, bright with glow when on)
         is_red = state in ("red", "red+yellow")
         is_yellow = state in ("yellow", "red+yellow")
@@ -1013,51 +1007,18 @@ def draw_traffic_lights(
         g_col = (40, 240, 60) if is_green else (10, 50, 15)
 
         lamp_r = 2
-        top_y = cy - 5
-        mid_y = cy
-        bot_y = cy + 5
+        signal_surface = pygame.Surface((7, 18), pygame.SRCALPHA)
+        signal_surface.fill((15, 15, 15, 255))
+        pygame.draw.rect(signal_surface, (70, 70, 70), signal_surface.get_rect(), width=1, border_radius=2)
+        for y, color, active in ((4, r_col, is_red), (9, y_col, is_yellow), (14, g_col, is_green)):
+            if active:
+                pygame.draw.circle(signal_surface, (*color, 90), (3, y), 4)
+            pygame.draw.circle(signal_surface, color, (3, y), lamp_r)
 
-        # Glowing active light halo
-        if is_red:
-            glow_surf = pygame.Surface((12, 12), pygame.SRCALPHA)
-            pygame.draw.circle(glow_surf, (255, 30, 30, 90), (6, 6), 6)
-            screen.blit(glow_surf, (int(cx - 6), int(top_y - 6)))
-        if is_yellow:
-            glow_surf = pygame.Surface((12, 12), pygame.SRCALPHA)
-            pygame.draw.circle(glow_surf, (255, 210, 0, 90), (6, 6), 6)
-            screen.blit(glow_surf, (int(cx - 6), int(mid_y - 6)))
-        if is_green:
-            glow_surf = pygame.Surface((12, 12), pygame.SRCALPHA)
-            pygame.draw.circle(glow_surf, (40, 240, 60, 90), (6, 6), 6)
-            screen.blit(glow_surf, (int(cx - 6), int(bot_y - 6)))
-
-        pygame.draw.circle(screen, r_col, (int(cx), int(top_y)), lamp_r)
-        pygame.draw.circle(screen, y_col, (int(cx), int(mid_y)), lamp_r)
-        pygame.draw.circle(screen, g_col, (int(cx), int(bot_y)), lamp_r)
-
-        # Bright road-axis arrows show which traffic direction this signal controls.
-        if tl.direction_angle is not None:
-            direction_x = math.cos(tl.direction_angle)
-            direction_y = -math.sin(tl.direction_angle)
-            arrow_center = (cx, cy + 16)
-            arrow_length = 15
-            arrow_width = 5
-            pygame.draw.line(
-                screen,
-                (255, 215, 55),
-                (arrow_center[0] - direction_x * arrow_length, arrow_center[1] - direction_y * arrow_length),
-                (arrow_center[0] + direction_x * arrow_length, arrow_center[1] + direction_y * arrow_length),
-                2,
-            )
-            tip_x = arrow_center[0] + direction_x * arrow_length
-            tip_y = arrow_center[1] + direction_y * arrow_length
-            side_x = -direction_y * arrow_width
-            side_y = direction_x * arrow_width
-            pygame.draw.polygon(screen, (255, 215, 55), [
-                (tip_x, tip_y),
-                (tip_x - direction_x * 8 + side_x, tip_y - direction_y * 8 + side_y),
-                (tip_x - direction_x * 8 - side_x, tip_y - direction_y * 8 - side_y),
-            ])
+        # Rotate the housing itself so its long axis shows the controlled approach.
+        rotation = 90.0 - math.degrees(tl.direction_angle or 0.0)
+        rotated = pygame.transform.rotate(signal_surface, rotation)
+        screen.blit(rotated, rotated.get_rect(center=(int(cx), int(cy))))
 
 
 def draw_taxi_stops(
