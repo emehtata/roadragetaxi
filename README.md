@@ -141,8 +141,8 @@ The `[cities]` section accepts any city name followed by `latitude, longitude`. 
 Push a version tag to build and publish a Windows package containing `RoadRageTrip.exe`:
 
 ```bash
-git tag v0.1.0
-git push origin v0.1.0
+git tag v0.2.0beta
+git push origin v0.2.0beta
 ```
 
 GitHub Actions builds the package on Windows with PyInstaller and attaches `RoadRageTrip-windows-x64.zip` to the GitHub Release. Extract the zip and launch `RoadRageTrip.exe`; no Python installation is required.
