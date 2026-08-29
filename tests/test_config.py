@@ -1,6 +1,6 @@
 import pytest
 
-from theroadragetrip.config import load_config, save_config
+from theroadragetrip.config import DEFAULT_OVERPASS_ENDPOINTS, get_overpass_endpoints, load_config, save_config
 from theroadragetrip.osm import OVERPASS_HEADERS, configure_user_agent
 
 
@@ -29,3 +29,13 @@ def test_save_config_creates_user_config_directory(tmp_path):
     save_config(config, config_path)
 
     assert config_path.is_file()
+
+
+def test_overpass_endpoints_are_trimmed_and_have_defaults(tmp_path):
+    config = load_config(tmp_path / "roadragetrip.ini")
+    config.set("map", "overpass_endpoints", " https://one.test , https://two.test ")
+
+    assert get_overpass_endpoints(config) == ["https://one.test", "https://two.test"]
+
+    config.set("map", "overpass_endpoints", "")
+    assert get_overpass_endpoints(config) == list(DEFAULT_OVERPASS_ENDPOINTS)

@@ -1618,11 +1618,12 @@ def draw_settings_menu(
     master_volume: float,
     music_volume: float,
     effects_volume: float,
+    overpass_endpoints: str,
     selected_idx: int,
     screen_w: int = SCREEN_W,
     screen_h: int = SCREEN_H,
 ) -> None:
-    """Draw language and audio settings."""
+    """Draw language, audio, and Overpass endpoint settings."""
     import pygame
 
     screen.fill((18, 24, 32))
@@ -1638,6 +1639,7 @@ def draw_settings_menu(
         (tr(language, "master_volume"), f"{master_volume * 100:.0f}%", master_volume),
         (tr(language, "music_volume"), f"{music_volume * 100:.0f}%", music_volume),
         (tr(language, "effects_volume"), f"{effects_volume * 100:.0f}%", effects_volume),
+        (tr(language, "overpass_endpoints"), overpass_endpoints[-55:] if len(overpass_endpoints) > 55 else overpass_endpoints, None),
     ]
     for idx, (label, value, volume) in enumerate(rows):
         y = panel.y + 100 + idx * 58
@@ -1647,7 +1649,7 @@ def draw_settings_menu(
         screen.blit(label_surface, (panel.x + 38, y))
         if volume is None:
             value_surface = font.render(value, True, color)
-            screen.blit(value_surface, (panel.right - 190, y))
+            screen.blit(value_surface, (panel.right - 400, y))
         else:
             bar = pygame.Rect(panel.right - 240, y + 5, 150, 16)
             pygame.draw.rect(screen, (45, 55, 65), bar, border_radius=3)

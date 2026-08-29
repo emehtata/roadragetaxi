@@ -139,6 +139,8 @@ oulu = 65.012000, 25.468000
 
 The `[cities]` section accepts any city name followed by `latitude, longitude`. Invalid coordinate entries are ignored. Command-line flags override matching INI values for the current launch.
 
+The `[map] overpass_endpoints` setting contains a comma-separated list of Overpass API URLs. The in-game **Asetukset / Settings** menu lets you edit this list; changes are saved immediately. The `OVERPASS_ENDPOINTS` environment variable still takes precedence for one launch.
+
 ### Windows Release
 
 Push a version tag to build and publish a Windows package containing `RoadRageTrip.exe`:

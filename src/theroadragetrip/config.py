@@ -11,6 +11,11 @@ from .osm import bbox_from_center
 
 
 USER_AGENT_KEY = "user_agent_id"
+DEFAULT_OVERPASS_ENDPOINTS = (
+    "https://overpass-api.de/api/interpreter",
+    "https://overpass.private.coffee/api/interpreter",
+    "https://overpass.openstreetmap.fr/api/interpreter",
+)
 
 
 def _default_config_path() -> Path:
@@ -36,6 +41,7 @@ DEFAULT_CONFIG = {
         "log_level": "INFO",
     },
     "map": {
+        "overpass_endpoints": ", ".join(DEFAULT_OVERPASS_ENDPOINTS),
         "auto_fetch": "true",
         "fetch_margin": "350.0",
         "fetch_tile_size": "2500.0",
@@ -145,6 +151,13 @@ def save_config(config: configparser.ConfigParser, path: Path = CONFIG_PATH) -> 
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", encoding="utf-8") as config_file:
         config.write(config_file)
+
+
+def get_overpass_endpoints(config: configparser.ConfigParser) -> list[str]:
+    """Return configured Overpass endpoints, falling back to built-in defaults."""
+    raw = config.get("map", "overpass_endpoints", fallback="")
+    endpoints = [endpoint.strip() for endpoint in raw.split(",") if endpoint.strip()]
+    return endpoints or list(DEFAULT_OVERPASS_ENDPOINTS)
 
 
 def cities_from_config(config: configparser.ConfigParser) -> tuple[dict[str, tuple[float, float]], dict[str, tuple[float, float, float, float]]]:

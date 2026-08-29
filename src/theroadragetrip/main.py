@@ -8,7 +8,7 @@ from typing import Optional, Tuple
 
 from .geo import clamp, dist_point_to_segment, meters_to_latlon
 from .audio import AudioManager
-from .config import cities_from_config, get_optional_int, load_config, save_config
+from .config import cities_from_config, get_optional_int, get_overpass_endpoints, load_config, save_config
 from .localization import LANGUAGE_NAMES, SUPPORTED_LANGUAGES, normalize_language, tr
 from .osm import (
     BBOX_PRESETS,
@@ -184,6 +184,7 @@ from .traffic import MAX_TRAFFIC_COUNT, TrafficManager, recommended_traffic_coun
 
 def main() -> None:
     config = load_config()
+    overpass_endpoints = get_overpass_endpoints(config)
     configure_user_agent(config.get("game", "user_agent_id"))
     city_centers, bbox_presets = cities_from_config(config)
     args = parse_args(config, city_names=list(bbox_presets))
@@ -320,6 +321,7 @@ def main() -> None:
             else:
                 elements = fetch_osm_ways(
                     bbox,
+                    endpoints=overpass_endpoints,
                     progress_callback=on_load_progress,
                     force_refresh=args.force_refresh or args.no_cache,
                 )
@@ -408,7 +410,7 @@ def main() -> None:
             places=places,
             traffic_lights=traffic_lights,
             crossings=crossings,
-            fetch_func=fetch_osm_ways,
+            fetch_func=lambda fetch_bbox: fetch_osm_ways(fetch_bbox, endpoints=overpass_endpoints),
             build_func=build_ways,
             build_in_process=args.build_in_process,
         )
@@ -505,6 +507,7 @@ def main() -> None:
                                                 pygame.display.flip()
                                         elif pause_selected == 2:
                                             settings_selected = 0
+                                            endpoint_text = config.get("map", "overpass_endpoints", fallback="")
                                             in_settings = True
                                             while in_settings:
                                                 clock.tick(30)
@@ -516,10 +519,27 @@ def main() -> None:
                                                         continue
                                                     if s_ev.key == pygame.K_ESCAPE:
                                                         in_settings = False
+                                                    elif settings_selected == 4 and s_ev.key == pygame.K_BACKSPACE:
+                                                        endpoint_text = endpoint_text[:-1]
+                                                        config.set("map", "overpass_endpoints", endpoint_text)
+                                                        overpass_endpoints = get_overpass_endpoints(config)
+                                                        save_config(config)
+                                                    elif settings_selected == 4 and s_ev.key == pygame.K_DELETE:
+                                                        endpoint_text = ""
+                                                        config.set("map", "overpass_endpoints", endpoint_text)
+                                                        overpass_endpoints = get_overpass_endpoints(config)
+                                                        save_config(config)
+                                                    elif settings_selected == 4 and s_ev.key == pygame.K_RETURN:
+                                                        save_config(config)
+                                                    elif settings_selected == 4 and s_ev.unicode and s_ev.unicode.isprintable():
+                                                        endpoint_text += s_ev.unicode
+                                                        config.set("map", "overpass_endpoints", endpoint_text)
+                                                        overpass_endpoints = get_overpass_endpoints(config)
+                                                        save_config(config)
                                                     elif s_ev.key == pygame.K_UP:
-                                                        settings_selected = (settings_selected - 1) % 4
+                                                        settings_selected = (settings_selected - 1) % 5
                                                     elif s_ev.key == pygame.K_DOWN:
-                                                        settings_selected = (settings_selected + 1) % 4
+                                                        settings_selected = (settings_selected + 1) % 5
                                                     elif s_ev.key in (pygame.K_LEFT, pygame.K_RIGHT):
                                                         delta = 0.05 if s_ev.key == pygame.K_RIGHT else -0.05
                                                         if settings_selected == 0:
@@ -532,7 +552,7 @@ def main() -> None:
                                                         config.set("game", "language", language)
                                                         taxi_mgr.set_language(language)
                                                         save_config(config)
-                                                draw_settings_menu(screen, font, language, config.getfloat("audio", "master_volume"), config.getfloat("audio", "music_volume"), config.getfloat("audio", "effects_volume"), settings_selected, SCREEN_W, SCREEN_H)
+                                                draw_settings_menu(screen, font, language, config.getfloat("audio", "master_volume"), config.getfloat("audio", "music_volume"), config.getfloat("audio", "effects_volume"), endpoint_text, settings_selected, SCREEN_W, SCREEN_H)
                                                 pygame.display.flip()
                                         elif pause_selected == 3:
                                             # Change City
