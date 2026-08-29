@@ -85,5 +85,5 @@ def test_oneway_penalty_every_5_seconds():
     for _ in range(11):
         mgr.check_wrong_way_violation(car, dt=0.1, spatial_grid=grid, penalty=50, interval_s=5.0)
     assert mgr.total_score == 450
-    assert "Wrong Way" in mgr.notification_msg
+    assert "Väärään suuntaan" in mgr.notification_msg
 

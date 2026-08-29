@@ -148,7 +148,7 @@ def test_player_red_light_violation_penalty():
     car.speed = 10.0  # 36 km/h
     taxi_mgr.check_red_light_violation(car, [tl], sim_time=0.1, penalty=100)
     assert taxi_mgr.total_score == 400
-    assert "Red Light Violation" in taxi_mgr.notification_msg
+    assert "Punaisen valon rikkomus" in taxi_mgr.notification_msg
 
     # 3. Cooldown prevents multi-triggering for the same signal passing
     taxi_mgr.check_red_light_violation(car, [tl], sim_time=0.2, penalty=100)

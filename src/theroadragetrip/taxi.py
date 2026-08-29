@@ -150,7 +150,7 @@ class TaxiManager:
             self.total_score -= penalty
             self.speed_camera_flash_timer = 0.35
             self.speed_camera_flash_index = camera_index
-            self.notification_msg = f"Speed camera! -{penalty} pts" if self.language == "en" else f"Peltikamera! -{penalty} pistettä"
+            self.notification_msg = tr(self.language, "speed_camera_hit", penalty=penalty)
             self.notification_timer = 4.0
             logger.info("Speed camera triggered: -%d pts", penalty)
             hit = True
@@ -200,7 +200,6 @@ class TaxiManager:
                     ny = math.sin(player_car.heading)
 
                 # Push vehicles apart
-                separation = max(0.5, (p_wid + n_wid) * 0.5)
                 player_car.x += nx * 0.4
                 player_car.y += ny * 0.4
                 npc.x -= nx * 0.4
@@ -211,13 +210,22 @@ class TaxiManager:
                 player_car.speed = -player_car.speed * 0.4
                 npc.speed = 0.0
                 npc.crashed_timer = max(getattr(npc, "crashed_timer", 0.0), 5.0)  # stop & smoke for 5 seconds
+                if getattr(npc, "vehicle_type", "car") in ("motorcycle", "moped"):
+                    right_x = math.sin(npc.heading)
+                    right_y = -math.cos(npc.heading)
+                    side = 1.0 if dx * right_x + dy * right_y >= 0.0 else -1.0
+                    road_half_width = getattr(getattr(npc, "way", None), "half_width_m", 4.0)
+                    edge_push = max(2.0, road_half_width + 1.0)
+                    npc.x += right_x * side * edge_push
+                    npc.y += right_y * side * edge_push
+                    npc.fallen = True
                 self.taxi_smoke_timer = max(self.taxi_smoke_timer, 5.0)
 
                 crashed = True
                 if npc_id not in self._crashed_npc_cooldowns:
                     self._crashed_npc_cooldowns[npc_id] = sim_time
                     self.total_score -= penalty
-                    self.notification_msg = f"Crash! -{penalty} pts"
+                    self.notification_msg = tr(self.language, "crash", penalty=penalty)
                     self.notification_timer = 3.5
                     logger.info("Player crashed into NPC vehicle: -%d pts penalty (impact speed: %.1f m/s)", penalty, impact_speed)
 
@@ -290,7 +298,7 @@ class TaxiManager:
             if building_id not in self._crashed_building_cooldowns:
                 self._crashed_building_cooldowns[building_id] = sim_time
                 self.total_score -= penalty
-                self.notification_msg = f"Building crash! -{penalty} pts"
+                self.notification_msg = tr(self.language, "building_crash", penalty=penalty)
                 self.notification_timer = 3.5
                 logger.info("Player crashed into building: -%d pts", penalty)
             return True
@@ -433,7 +441,7 @@ class TaxiManager:
                 if key not in self._crashed_tree_cooldowns:
                     self._crashed_tree_cooldowns[key] = sim_time
                     self.total_score -= penalty
-                    self.notification_msg = f"Tree crash! -{penalty} pts"
+                    self.notification_msg = tr(self.language, "tree_crash", penalty=penalty)
                     self.notification_timer = 3.5
                 return True
         return False
@@ -526,7 +534,7 @@ class TaxiManager:
                 self._passed_red_signals[tl_id] = sim_time
                 self._approaching_red_signals.pop(tl_id, None)
                 self.total_score -= penalty
-                self.notification_msg = f"Red Light Violation! -{penalty} pts"
+                self.notification_msg = tr(self.language, "red_light_violation", penalty=penalty)
                 self.notification_timer = 4.0
                 logger.info("Player passed red traffic light %s: -%d pts penalty", tl_id, penalty)
                 break
@@ -629,7 +637,7 @@ class TaxiManager:
             if self.wrong_way_penalty_cooldown >= interval_s:
                 self.wrong_way_penalty_cooldown = 0.0
                 self.total_score -= penalty
-                self.notification_msg = f"Wrong Way Penalty! -{penalty} pts"
+                self.notification_msg = tr(self.language, "wrong_way_penalty", penalty=penalty)
                 self.notification_timer = 3.5
                 logger.info("Player driving wrong way on one-way road: -%d pts penalty", penalty)
             return True
@@ -977,7 +985,9 @@ class TaxiManager:
         )
         self.state = TaxiState.WAITING_FOR_PICKUP
         self.elapsed_time = 0.0
-        self.notification_msg = f"New Fare! Pickup {passenger_name} at {pickup_target.address}"
+        self.notification_msg = tr(
+            self.language, "new_fare_at", name=passenger_name, address=pickup_target.address
+        )
         self.notification_timer = 5.0
 
     def generate_offers(self, car_x: float, car_y: float, count: int = 3) -> List[TaxiOffer]:
@@ -1017,8 +1027,11 @@ class TaxiManager:
         self.offers = []
         self.state = TaxiState.WAITING_FOR_PICKUP
         self.elapsed_time = 0.0
-        self.notification_msg = (
-            f"New Fare! Pickup {self.current_passenger.name} at {self.current_passenger.pickup.address}"
+        self.notification_msg = tr(
+            self.language,
+            "new_fare_at",
+            name=self.current_passenger.name,
+            address=self.current_passenger.pickup.address,
         )
         self.notification_timer = 5.0
         return True
@@ -1186,7 +1199,7 @@ class TaxiManager:
                     self.notification_msg = tr(self.language, "walking_named", name=self.current_passenger.name)
                     self.notification_timer = 3.0
                 else:
-                    self.notification_msg = "Slow down to pick up passenger!"
+                    self.notification_msg = tr(self.language, "slow_pickup_notice")
                     self.notification_timer = 1.0
 
         elif self.state == TaxiState.CLIENT_WALKING_TO_CAR:
@@ -1247,5 +1260,5 @@ class TaxiManager:
                     self.current_passenger = None
                     self.generate_offers(car.x, car.y)
                 else:
-                    self.notification_msg = "Slow down at destination to drop off!"
+                    self.notification_msg = tr(self.language, "slow_dropoff_notice")
                     self.notification_timer = 1.0

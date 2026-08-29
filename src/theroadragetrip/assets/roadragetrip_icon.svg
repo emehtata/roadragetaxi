@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256">
+  <rect width="256" height="256" rx="38" fill="#111820"/>
+  <path d="M22 58 48 70M234 58 208 70M18 128h28M238 128h-28M32 198l22-16M224 198l-22-16" stroke="#ef3d32" stroke-width="9" stroke-linecap="round"/>
+  <circle cx="128" cy="128" r="91" fill="#e53a32" stroke="#f7c52f" stroke-width="7"/>
+  <path d="M52 104 79 82M204 104 177 82M52 152l27 22M204 152l-27 22" stroke="#ffdf48" stroke-width="7" stroke-linecap="round"/>
+  <text x="128" y="91" text-anchor="middle" fill="#fff1a3" font-family="DejaVu Sans, sans-serif" font-size="27" font-weight="bold">@#!%</text>
+  <text x="128" y="154" text-anchor="middle" fill="#ffffff" stroke="#171116" stroke-width="3" paint-order="stroke" font-family="DejaVu Sans, sans-serif" font-size="55" font-weight="bold">TAXI</text>
+  <text x="128" y="190" text-anchor="middle" fill="#fff1a3" font-family="DejaVu Sans, sans-serif" font-size="25" font-weight="bold">$!?*</text>
+  <path d="M43 43 62 50M213 43l-19 7M43 213l19-7M213 213l-19-7" stroke="#ffffff" stroke-width="5" stroke-linecap="round"/>
+</svg>

@@ -3,10 +3,11 @@ import random
 from dataclasses import dataclass
 from typing import Any, List, Optional, Tuple
 
-from .geo import clamp, closest_point_and_dist_to_segment, dist_point_to_segment, point_in_polygon
+from .geo import clamp, closest_point_and_dist_to_segment, compute_bbox, dist_point_to_segment, point_in_polygon
 
 # Car physics (arcade)
 ACCEL = 4.0  # m/s^2; approximately 0-100 km/h in 7 seconds
+REVERSE_ACCEL = 2.5  # m/s^2; slower acceleration while reversing
 BRAKE = 28.0  # m/s^2
 FRICTION = 6.0  # m/s^2
 STEER_RATE = 2.6  # rad/s at low speed
@@ -107,13 +108,6 @@ def is_point_on_light_traffic_way(
     return False
 
 
-def _compute_bbox_2d(points_m: List[Tuple[float, float]]) -> Tuple[float, float, float, float]:
-    """Compute (minx, miny, maxx, maxy) for a list of points."""
-    xs = [p[0] for p in points_m]
-    ys = [p[1] for p in points_m]
-    return min(xs), min(ys), max(xs), max(ys)
-
-
 def is_point_in_water(px: float, py: float, waters: List) -> bool:
     """Check if point (px, py) is inside any water polygon or on a waterway with fast AABB rejection."""
     if not waters:
@@ -122,7 +116,7 @@ def is_point_in_water(px: float, py: float, waters: List) -> bool:
         # Pre-filter using bounding box if available
         bbox = getattr(w, "_bbox", None)
         if bbox is None and getattr(w, "points_m", None):
-            bbox = _compute_bbox_2d(w.points_m)
+            bbox = compute_bbox(w.points_m)
             w._bbox = bbox
 
         if bbox is not None:
@@ -684,7 +678,10 @@ def update_car_physics(
     elif throttle > 0:
         car.speed = min(car.speed + ACCEL * dt, speed_limit_mps) if speed_limit_mps is not None else car.speed + ACCEL * dt
     elif brake > 0:
-        car.speed -= BRAKE * dt
+        if car.speed > 0.0:
+            car.speed = max(0.0, car.speed - BRAKE * dt)
+        else:
+            car.speed -= REVERSE_ACCEL * dt
         if speed_limit_mps is not None:
             car.speed = max(-speed_limit_mps, car.speed)
     else:

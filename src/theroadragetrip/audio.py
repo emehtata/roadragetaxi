@@ -17,16 +17,17 @@ class AudioManager:
         self.effects_volume = max(0.0, min(1.0, effects_volume))
         self.sounds: dict[str, pygame.mixer.Sound] = {}
         self.acceleration_channel: Optional[pygame.mixer.Channel] = None
+        self.police_siren_channel: Optional[pygame.mixer.Channel] = None
 
         try:
             if not pygame.mixer.get_init():
                 pygame.mixer.init()
             sounds_dir = Path(__file__).with_name("sounds")
-            for name in ("accelerate", "car-crash", "carhorn_takes", "city-traffic-outdoor"):
+            for name in ("accelerate", "car-crash", "carhorn_takes", "car-door-open", "city-traffic-outdoor", "police_car_siren-esp"):
                 path = next(
                     (
                         sounds_dir / f"{name}{extension}"
-                        for extension in (".wav", ".ogg", ".mp3", ".aiff")
+                        for extension in (".wav", ".ogg", ".mp3", ".aiff", ".flac")
                         if (sounds_dir / f"{name}{extension}").exists()
                     ),
                     None,
@@ -71,7 +72,19 @@ class AudioManager:
             self.acceleration_channel.stop()
             self.acceleration_channel = None
 
+    def update_police_siren(self, active: bool) -> None:
+        sound = self.sounds.get("police_car_siren-esp")
+        if sound is None or not self.enabled:
+            return
+        if active:
+            if self.police_siren_channel is None or not self.police_siren_channel.get_busy():
+                self.police_siren_channel = sound.play(loops=-1)
+        elif self.police_siren_channel is not None:
+            self.police_siren_channel.stop()
+            self.police_siren_channel = None
+
     def close(self) -> None:
         self.update_acceleration(False)
+        self.update_police_siren(False)
         if self.enabled:
             pygame.mixer.stop()

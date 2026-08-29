@@ -1,4 +1,7 @@
 import math
+from types import SimpleNamespace
+
+import pytest
 from theroadragetrip.osm import Place, TaxiStop, Way
 from theroadragetrip.physics import Car
 from theroadragetrip.taxi import TaxiManager, TaxiState, TaxiTarget
@@ -183,6 +186,53 @@ def test_phone_offers_show_distance_and_accept_selected_ride():
     assert taxi_mgr.accept_offer(1, 0.0, 0.0) is True
     assert taxi_mgr.current_passenger is selected
     assert taxi_mgr.offers == []
+
+
+def test_idle_taxi_gets_one_random_phone_request_and_can_reject():
+    way = Way(
+        points_m=[(0.0, 0.0), (3000.0, 0.0)],
+        highway="residential",
+        half_width_m=4.5,
+        name="Request Street",
+    )
+    taxi_mgr = TaxiManager(ways=[way], min_distance_m=100.0, max_distance_m=1200.0)
+    taxi_mgr.next_offer_timer = 0.0
+
+    taxi_mgr.update(Car(x=0.0, y=0.0, heading=0.0, speed=0.0), dt=0.1)
+
+    assert len(taxi_mgr.offers) == 1
+    assert taxi_mgr.reject_offer() is True
+    assert taxi_mgr.offers == []
+
+
+def test_stopped_taxi_at_stand_can_board_nearby_pedestrian(monkeypatch: pytest.MonkeyPatch):
+    way = Way(
+        points_m=[(0.0, 0.0), (2000.0, 0.0)],
+        highway="residential",
+        half_width_m=4.5,
+        name="Stand Street",
+    )
+    stops = [TaxiStop(0.0, 0.0), TaxiStop(1000.0, 0.0)]
+    taxi_mgr = TaxiManager(ways=[way], taxi_stops=stops, min_distance_m=300.0, max_distance_m=1200.0)
+    pedestrian = SimpleNamespace(x=3.0, y=0.0, heading=0.0)
+    car = Car(x=0.0, y=0.0, heading=0.0, speed=0.0)
+    monkeypatch.setattr("theroadragetrip.taxi.random.random", lambda: 0.0)
+
+    boarded = taxi_mgr.check_waiting_pickup(car, [pedestrian], dt=2.0)
+
+    assert boarded is pedestrian
+    assert taxi_mgr.current_passenger is not None
+    assert taxi_mgr.current_passenger.boarded is False
+    assert taxi_mgr.current_passenger.is_walking_to_car is True
+    assert taxi_mgr.state == TaxiState.CLIENT_WALKING_TO_CAR
+
+    for _ in range(10):
+        taxi_mgr.update(car, dt=0.2)
+        if taxi_mgr.state == TaxiState.DRIVING_TO_DROPOFF:
+            break
+
+    assert taxi_mgr.current_passenger.boarded is True
+    assert taxi_mgr.state == TaxiState.DRIVING_TO_DROPOFF
 
 
 def test_taxi_scoring_speed_bonus():

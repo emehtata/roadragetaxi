@@ -48,6 +48,17 @@ def test_full_throttle_reaches_100_kmh_in_about_seven_seconds():
     assert 27.0 <= car.speed <= 28.5
 
 
+def test_reverse_acceleration_is_slower_than_forward():
+    forward = Car(x=0.0, y=0.0, heading=0.0, speed=0.0)
+    reverse = Car(x=0.0, y=0.0, heading=0.0, speed=0.0)
+
+    update_car_physics(forward, throttle=1.0, brake=0.0, steer_left=0.0, steer_right=0.0, dt=1.0)
+    update_car_physics(reverse, throttle=0.0, brake=1.0, steer_left=0.0, steer_right=0.0, dt=1.0)
+
+    assert forward.speed > abs(reverse.speed)
+    assert reverse.speed == -2.5
+
+
 def test_speed_limiter_brakes_smoothly_to_limit():
     car = Car(x=0.0, y=0.0, heading=0.0, speed=20.0)
 
@@ -68,7 +79,7 @@ def test_speed_limiter_brakes_smoothly_to_limit():
 def test_speed_limiter_caps_reverse_speed():
     car = Car(x=0.0, y=0.0, heading=0.0, speed=0.0)
 
-    for _ in range(10):
+    for _ in range(40):
         update_car_physics(
             car,
             throttle=0.0,

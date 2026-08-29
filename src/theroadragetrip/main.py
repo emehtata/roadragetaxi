@@ -936,7 +936,9 @@ def main() -> None:
                 )
             if immobilized:
                 car.speed = 0.0
-            audio.update_acceleration(throttle > 0.0 and abs(car.speed) > 0.5)
+            audio.update_acceleration(
+                abs(car.speed) > 0.5 and (throttle > 0.0 or brake > 0.0)
+            )
             driven_distance = math.hypot(car.x - previous_position[0], car.y - previous_position[1])
             road_limit_mps = current_way.speed_limit_kmh / 3.6 if current_way else None
             if road_limit_mps is not None and driven_distance > 0.0 and abs(car.speed) <= road_limit_mps + 0.01:
