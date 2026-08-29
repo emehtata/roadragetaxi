@@ -96,8 +96,10 @@ class TaxiManager:
         self.elapsed_time: float = 0.0
         self.trip_distance_m: float = 0.0
         self.last_fare_points: int = 0
-        self.notification_msg: str = tr(language, "open_phone")
-        self.notification_timer: float = 5.0
+        self.notification_msg: str = ""
+        self.notification_timer: float = 0.0
+        self.next_offer_timer: float = random.uniform(12.0, 28.0)
+        self.stand_wait_timer: float = 0.0
         self._passed_red_signals: Dict[int, float] = {}  # signal id -> timestamp cooldown
         self._approaching_red_signals: Dict[int, float] = {}  # signal id -> last signed distance along travel
         self._approaching_red_headings: Dict[int, float] = {}  # signal id -> heading before intersection turn
@@ -855,6 +857,18 @@ class TaxiManager:
             )
         return None
 
+    def make_target(self, x: float, y: float) -> TaxiTarget:
+        """Create a pickup target at an already known position."""
+        way_name = self.find_nearest_named_road(x, y)
+        return TaxiTarget(
+            x=x,
+            y=y,
+            address=self.generate_address_for_point(x, y, way_name) or "Taxi stop",
+            way_name=way_name,
+            district_name=self.get_nearest_district(x, y),
+            radius_m=self.pickup_radius_m,
+        )
+
     def spawn_mission(self, car_x: float, car_y: float) -> None:
         """Spawn a new passenger pickup and dropoff destination."""
         pickup_target = self.pick_random_building_point(
@@ -963,6 +977,67 @@ class TaxiManager:
         self.notification_timer = 5.0
         return True
 
+    def reject_offer(self, index: int = 0, car_x: float = 0.0, car_y: float = 0.0) -> bool:
+        """Reject one pending phone request without starting its fare."""
+        if index < 0 or index >= len(self.offers):
+            return False
+        self.offers.pop(index)
+        self.next_offer_timer = random.uniform(12.0, 28.0)
+        self.notification_msg = tr(self.language, "no_requests")
+        self.notification_timer = 2.0
+        return True
+
+    def _board_waiting_pedestrian(self, pedestrian: Any, pickup: TaxiTarget, message_key: str) -> bool:
+        """Turn a nearby waiting pedestrian into an immediately boarded fare."""
+        dropoff = self.pick_random_taxi_stop(pickup.x, pickup.y, self.min_distance_m, self.max_distance_m)
+        if not dropoff:
+            dropoff = self.pick_random_road_point(pickup.x, pickup.y, self.min_distance_m, self.max_distance_m)
+        if not dropoff:
+            return False
+        passenger = TaxiPassenger(
+            name=random.choice(FIRST_NAMES),
+            pickup=pickup,
+            dropoff=dropoff,
+            ped_x=pedestrian.x,
+            ped_y=pedestrian.y,
+            ped_heading=pedestrian.heading,
+            boarded=True,
+        )
+        self.current_passenger = passenger
+        self.offers = []
+        self.state = TaxiState.DRIVING_TO_DROPOFF
+        self.elapsed_time = 0.0
+        self.trip_distance_m = math.hypot(dropoff.x - pickup.x, dropoff.y - pickup.y)
+        self.notification_msg = tr(self.language, message_key, name=passenger.name, address=dropoff.address)
+        self.notification_timer = 5.0
+        return True
+
+    def check_waiting_pickup(self, car: Car, pedestrians: List[Any], dt: float) -> Optional[Any]:
+        """Let a stopped taxi pick up a pedestrian at a stand or by a rare street hail."""
+        if self.current_passenger or self.offers or abs(car.speed) > self.max_stop_speed_mps:
+            self.stand_wait_timer = 0.0
+            return None
+        self.stand_wait_timer += dt
+        if self.stand_wait_timer < 2.0:
+            return None
+        pickup = None
+        message_key = "stand_boarded"
+        if self.taxi_stops:
+            nearby_stops = [stop for stop in self.taxi_stops if math.hypot(car.x - stop.x, car.y - stop.y) <= 22.0]
+            if nearby_stops:
+                pickup = self.make_target(nearby_stops[0].x, nearby_stops[0].y)
+        candidates = [ped for ped in pedestrians if math.hypot(car.x - ped.x, car.y - ped.y) <= 15.0]
+        if pickup is None and not self.taxi_stops and candidates and random.random() < min(1.0, dt * 0.08):
+            pickup = self.make_target(candidates[0].x, candidates[0].y)
+            message_key = "hail_boarded"
+        if pickup is None or not candidates or random.random() >= min(1.0, dt * 0.35):
+            return None
+        pedestrian = candidates[0]
+        if self._board_waiting_pedestrian(pedestrian, pickup, message_key):
+            self.stand_wait_timer = 0.0
+            return pedestrian
+        return None
+
     def calculate_score(self, distance_m: float, elapsed_sec: float) -> int:
         """Calculate points based on distance and speed (distance / time)."""
         base_points = int(distance_m * 0.5)  # 500 points per km base
@@ -1023,6 +1098,15 @@ class TaxiManager:
                 del self.tree_effects[key]
         if self.notification_timer > 0.0:
             self.notification_timer -= dt
+
+        if not self.current_passenger and not self.offers:
+            self.next_offer_timer -= dt
+            if self.next_offer_timer <= 0.0:
+                self.generate_offers(car.x, car.y, count=1)
+                self.next_offer_timer = random.uniform(18.0, 40.0)
+                if self.offers:
+                    self.notification_msg = tr(self.language, "new_request")
+                    self.notification_timer = 5.0
 
         if not self.current_passenger:
             return
