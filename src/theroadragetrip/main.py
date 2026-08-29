@@ -88,6 +88,7 @@ from .render import (
     draw_speed_cameras,
     draw_taxi_stops,
     draw_taxi_target,
+    draw_tire_tracks,
     draw_traffic_lights,
     draw_waters,
     draw_ways,
@@ -613,6 +614,7 @@ def main() -> None:
         show_labels = True
         speed_limiter_enabled = True
         red_light_assist_enabled = False
+        show_compass = False
         phone_open = False
         rage_shout_timer = 0.0
         rage_shout_text = RAGE_SHOUTS[0]
@@ -625,6 +627,10 @@ def main() -> None:
         zoom_duration = 3.0
         camx, camy = car.x, car.y
         first_gameplay_frame = True
+        tire_tracks = []
+        last_track_position = None
+        track_sequence = 0
+        last_track_surface = None
         map_sync_stage = 0
         on_foot = False
         saved_gig_fares = taxi_mgr.completed_fares
@@ -648,6 +654,8 @@ def main() -> None:
                         logger.info("Screenshot saved to %s", screenshot_path)
                     elif event.key == pygame.K_p:
                         phone_open = not phone_open
+                    elif event.key == pygame.K_c:
+                        show_compass = not show_compass
                     elif event.key == pygame.K_f:
                         if not on_foot:
                             length_m = getattr(car, "length_m", 4.0)
@@ -948,6 +956,7 @@ def main() -> None:
                 )
 
             previous_position = (car.x, car.y)
+            previous_speed = car.speed
             # Off-road driving is allowed at a reduced speed.
             if not on_foot:
                 update_car_physics(
@@ -964,6 +973,7 @@ def main() -> None:
                 )
             if immobilized:
                 car.speed = 0.0
+            movement_distance = math.hypot(car.x - previous_position[0], car.y - previous_position[1])
             audio.update_acceleration(
                 abs(car.speed) > 0.5 and (throttle > 0.0 or brake > 0.0)
             )
@@ -1020,6 +1030,13 @@ def main() -> None:
                 and taxi_mgr.current_passenger is None
             ):
                 audio.play("car-door-open")
+                passenger_pedestrian = pedestrian_mgr.spawn_pedestrian_at(
+                    car.x + math.sin(car.heading) * 1.8,
+                    car.y - math.cos(car.heading) * 1.8,
+                    heading=car.heading,
+                )
+                if passenger_pedestrian is not None:
+                    pedestrian_mgr.pedestrians.append(passenger_pedestrian)
             if career is None and taxi_mgr.completed_fares > saved_gig_fares:
                 save_gig_odometer(gig_odometer_file, car.odometer_m)
                 saved_gig_fares = taxi_mgr.completed_fares
@@ -1097,6 +1114,20 @@ def main() -> None:
             # Road check (restricted to car roads, fast-checking current segment first)
             current_way = get_current_road_at_car(car, ways=ways, spatial_grid=spatial_grid, car_roads_only=True, current_way=current_way)
             on_road = current_way is not None
+            is_grass = current_way is None
+            is_skidding = brake > 0.0 and abs(previous_speed) > 4.0 and abs(steer_left - steer_right) > 0.01
+            if movement_distance > 0.0 and (is_skidding or (is_grass and abs(car.speed) > 1.0)):
+                if last_track_position is None or is_grass != last_track_surface:
+                    track_sequence += 1
+                if last_track_position is None or math.hypot(car.x - last_track_position[0], car.y - last_track_position[1]) >= 1.0:
+                    tire_tracks.append((car.x, car.y, car.heading, is_grass, track_sequence))
+                    last_track_position = (car.x, car.y)
+                    last_track_surface = is_grass
+                    if len(tire_tracks) > 4000:
+                        del tire_tracks[:500]
+            else:
+                last_track_position = None
+                last_track_surface = None
             current_road_name = getattr(current_way, "name", None) if current_way else None
             if not current_road_name and current_way:
                 current_road_name = getattr(current_way, "highway", "Road").replace("_", " ").title()
@@ -1157,6 +1188,8 @@ def main() -> None:
             if first_gameplay_frame:
                 logger.info("Gameplay frame: rendering roads")
             draw_ways(screen, ways, camx, camy, px_per_m=px_per_m)
+            draw_tire_tracks(screen, tire_tracks, camx, camy, grass=False, px_per_m=px_per_m)
+            draw_tire_tracks(screen, tire_tracks, camx, camy, grass=True, px_per_m=px_per_m)
             draw_roadworks(screen, roadworks, camx, camy, px_per_m=px_per_m)
             if first_gameplay_frame:
                 logger.info("Gameplay frame: rendering overlays")
@@ -1217,13 +1250,15 @@ def main() -> None:
                 speed_limit_kmh=current_limit_kmh,
                 speed_limiter_enabled=speed_limiter_enabled,
                 red_light_assist_enabled=red_light_assist_enabled,
+                show_compass=show_compass,
                 rage_power=rage_power,
                 language=language,
                 career_total_distance_m=car.odometer_m if career is not None else None,
             )
             if phone_open:
                 draw_phone_offers(screen, taxi_mgr, font, small_font, SCREEN_W, SCREEN_H, language)
-            draw_compass(screen, car, SCREEN_W - 64, 64, 28, font, target_pos=target_coords)
+            if show_compass:
+                draw_compass(screen, car, SCREEN_W - 64, 145, 28, font, target_pos=target_coords)
 
             if first_gameplay_frame:
                 logger.info("Gameplay frame: flipping display")

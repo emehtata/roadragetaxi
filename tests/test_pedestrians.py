@@ -84,6 +84,29 @@ def test_cyclist_spawn_assigns_body_color():
     assert cyclist.color != (230, 80, 80)
 
 
+def test_all_cyclists_continue_moving():
+    way = Way(points_m=[(0.0, 0.0), (100.0, 0.0)], highway="cycleway", half_width_m=1.5)
+    manager = CyclistManager([way], target_count=0, spawn_radius_m=120.0)
+    cyclists = [manager.spawn_pedestrian(50.0, 0.0) for _ in range(2)]
+    manager.pedestrians = [cyclist for cyclist in cyclists if cyclist is not None]
+    initial_positions = [(cyclist.x, cyclist.y) for cyclist in manager.pedestrians]
+
+    manager.update(Car(x=-100.0, y=50.0, heading=0.0, speed=0.0), dt=0.1)
+
+    assert all((cyclist.x, cyclist.y) != initial for cyclist, initial in zip(manager.pedestrians, initial_positions))
+
+
+def test_spawn_pedestrian_at_creates_walking_passenger():
+    way = Way(points_m=[(0.0, 0.0), (100.0, 0.0)], highway="footway", half_width_m=1.5)
+    manager = PedestrianManager([way], target_count=0)
+
+    passenger = manager.spawn_pedestrian_at(20.0, 1.0, heading=0.0)
+
+    assert passenger is not None
+    assert passenger.speed == passenger.base_speed == 1.3
+    assert passenger.way is way
+
+
 def test_pedestrian_speed_and_natural_distribution():
     footway = Way(
         points_m=[(0.0, 0.0), (300.0, 0.0)],

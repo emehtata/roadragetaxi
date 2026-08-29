@@ -1081,14 +1081,44 @@ class TaxiManager:
             self.state = TaxiState.DRIVING_TO_DROPOFF
         self.elapsed_time = 0.0
         self.trip_distance_m = math.hypot(dropoff.x - pickup.x, dropoff.y - pickup.y)
-        notification_key = "walking_named" if walk_to_car else message_key
+        if walk_to_car and message_key == "hail_boarded":
+            notification_key = "hail_walking"
+        else:
+            notification_key = "walking_named" if walk_to_car else message_key
         self.notification_msg = tr(self.language, notification_key, name=passenger.name, address=dropoff.address)
         self.notification_timer = 5.0
         return True
 
     def check_waiting_pickup(self, car: Car, pedestrians: List[Any], dt: float) -> Optional[Any]:
-        """Let a stopped taxi pick up a pedestrian at a stand or by a rare street hail."""
-        if self.current_passenger or abs(car.speed) > self.max_stop_speed_mps:
+        """Let a taxi pick up a pedestrian at a stand or by a street hail."""
+        if self.current_passenger:
+            self.stand_wait_timer = 0.0
+            return None
+
+        # A street hail can happen as the taxi passes a nearby pedestrian.
+        if not self.taxi_stops and abs(car.speed) > self.max_stop_speed_mps:
+            car_dir_x = math.cos(car.heading)
+            car_dir_y = math.sin(car.heading)
+            car_side_x = -car_dir_y
+            car_side_y = car_dir_x
+            passing_candidates = [
+                ped for ped in pedestrians
+                if getattr(ped, "wants_taxi", False)
+                if abs((ped.x - car.x) * car_dir_x + (ped.y - car.y) * car_dir_y) <= 6.0
+                and abs((ped.x - car.x) * car_side_x + (ped.y - car.y) * car_side_y) <= 4.0
+            ]
+            if passing_candidates and random.random() < min(1.0, dt * 1.5):
+                pedestrian = min(
+                    passing_candidates,
+                    key=lambda ped: math.hypot(car.x - ped.x, car.y - ped.y),
+                )
+                pickup = self.make_target(pedestrian.x, pedestrian.y)
+                if self._board_waiting_pedestrian(pedestrian, pickup, "hail_boarded"):
+                    return pedestrian
+            self.stand_wait_timer = 0.0
+            return None
+
+        if abs(car.speed) > self.max_stop_speed_mps:
             self.stand_wait_timer = 0.0
             return None
         self.stand_wait_timer += dt
@@ -1100,18 +1130,25 @@ class TaxiManager:
             nearby_stops = [stop for stop in self.taxi_stops if math.hypot(car.x - stop.x, car.y - stop.y) <= 22.0]
             if nearby_stops:
                 pickup = self.make_target(nearby_stops[0].x, nearby_stops[0].y)
-        candidates = [ped for ped in pedestrians if math.hypot(car.x - ped.x, car.y - ped.y) <= 15.0]
-        if pickup is None and not self.taxi_stops and candidates and random.random() < min(1.0, dt * 0.08):
+        candidates = [
+            ped for ped in pedestrians
+            if getattr(ped, "wants_taxi", True)
+            and math.hypot(car.x - ped.x, car.y - ped.y) <= 15.0
+        ]
+        is_hail = pickup is None and not self.taxi_stops and candidates
+        if is_hail and random.random() < min(1.0, dt * 0.35):
             pickup = self.make_target(candidates[0].x, candidates[0].y)
             message_key = "hail_boarded"
-        if pickup is None or not candidates or random.random() >= min(1.0, dt * 0.35):
+        if pickup is None or not candidates:
+            return None
+        if message_key == "stand_boarded" and random.random() >= min(1.0, dt * 0.35):
             return None
         pedestrian = candidates[0]
         if self._board_waiting_pedestrian(
             pedestrian,
             pickup,
             message_key,
-            walk_to_car=message_key == "stand_boarded",
+            walk_to_car=message_key in ("stand_boarded", "hail_boarded"),
         ):
             self.stand_wait_timer = 0.0
             return pedestrian

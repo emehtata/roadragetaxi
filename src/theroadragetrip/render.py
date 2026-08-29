@@ -535,6 +535,43 @@ def draw_ways(
                 cum_dist -= seg_len
 
 
+def draw_tire_tracks(
+    screen,
+    tracks,
+    camx: float,
+    camy: float,
+    grass: bool,
+    px_per_m: float = PX_PER_M,
+    screen_w: int = SCREEN_W,
+    screen_h: int = SCREEN_H,
+) -> None:
+    """Draw persistent tire marks either on grass or on paved roads."""
+    import pygame
+
+    color = (105, 68, 38) if grass else (28, 28, 28)
+    width = max(3, int((0.75 if grass else 0.24) * px_per_m))
+    previous_tires = None
+    previous_sequence = None
+    for track_x, track_y, heading, is_grass, sequence in tracks:
+        if is_grass != grass:
+            previous_tires = None
+            previous_sequence = None
+            continue
+        center_x, center_y = world_to_screen(track_x, track_y, camx, camy, px_per_m, screen_w, screen_h)
+        side_x = -math.sin(heading)
+        side_y = math.cos(heading)
+        current_tires = []
+        for side in (-1.0, 1.0):
+            tire_x = center_x + side_x * side * 0.72 * px_per_m
+            tire_y = center_y + side_y * side * 0.72 * px_per_m
+            current_tires.append((int(tire_x), int(tire_y)))
+        if previous_tires is not None and sequence == previous_sequence:
+            for previous_tire, current_tire in zip(previous_tires, current_tires):
+                pygame.draw.line(screen, color, previous_tire, current_tire, width)
+        previous_tires = current_tires
+        previous_sequence = sequence
+
+
 def draw_roadworks(
     screen,
     roadworks,
@@ -1470,7 +1507,7 @@ def draw_taxi_target(
         dist_m = math.hypot(dx, dy)
 
         # Screen margin clamp for arrow
-        edge_margin = 65
+        edge_margin = 130
         center_x = screen_w / 2
         center_y = screen_h / 2
         # Ray-intersect with screen bounding rectangle
@@ -2053,6 +2090,7 @@ def draw_hud(
     speed_limit_kmh: Optional[int] = None,
     speed_limiter_enabled: bool = True,
     red_light_assist_enabled: bool = False,
+    show_compass: bool = False,
     rage_power: float = 0.0,
     language: str = "fi",
     career_total_distance_m: Optional[float] = None,
@@ -2084,7 +2122,7 @@ def draw_hud(
 
     hint = (
         f"{tr(language, 'controls')}: W/S/A/D = {tr(language, 'drive').lower()} | +/- = {tr(language, 'zoom').lower()} | R = {tr(language, 'respawn').lower()} | X = {tr(language, 'cancel_ride').lower()} | T = {tr(language, 'reset_trip').lower()} | "
-        f"L = labels ({labels_status}) | K = lane assist ({lane_assist_status}) | V = limiter ({speed_limiter_status}) | B = red assist ({red_light_assist_status}) | Space = rage | ESC = pause"
+        f"L = labels ({labels_status}) | K = lane assist ({lane_assist_status}) | V = limiter ({speed_limiter_status}) | B = red assist ({red_light_assist_status}) | C = {tr(language, 'compass')} ({tr(language, 'on' if show_compass else 'off')}) | Space = rage | ESC = pause"
     )
     hint_t = font.render(hint, True, (220, 220, 220))
     screen.blit(hint_t, (10, 34))

@@ -214,7 +214,7 @@ def test_stopped_taxi_at_stand_can_board_nearby_pedestrian(monkeypatch: pytest.M
     )
     stops = [TaxiStop(0.0, 0.0), TaxiStop(1000.0, 0.0)]
     taxi_mgr = TaxiManager(ways=[way], taxi_stops=stops, min_distance_m=300.0, max_distance_m=1200.0)
-    pedestrian = SimpleNamespace(x=3.0, y=0.0, heading=0.0)
+    pedestrian = SimpleNamespace(x=3.0, y=0.0, heading=0.0, wants_taxi=True)
     car = Car(x=0.0, y=0.0, heading=0.0, speed=0.0)
     monkeypatch.setattr("theroadragetrip.taxi.random.random", lambda: 0.0)
 
@@ -233,6 +233,63 @@ def test_stopped_taxi_at_stand_can_board_nearby_pedestrian(monkeypatch: pytest.M
 
     assert taxi_mgr.current_passenger.boarded is True
     assert taxi_mgr.state == TaxiState.DRIVING_TO_DROPOFF
+
+
+def test_stopped_taxi_can_pick_up_street_hail_without_taxi_stops(monkeypatch: pytest.MonkeyPatch):
+    way = Way(
+        points_m=[(0.0, 0.0), (2000.0, 0.0)],
+        highway="residential",
+        half_width_m=4.5,
+        name="Hail Street",
+    )
+    taxi_mgr = TaxiManager(ways=[way], min_distance_m=300.0, max_distance_m=1200.0)
+    pedestrian = SimpleNamespace(x=3.0, y=0.0, heading=0.0)
+    car = Car(x=0.0, y=0.0, heading=0.0, speed=0.0)
+    monkeypatch.setattr("theroadragetrip.taxi.random.random", lambda: 0.0)
+
+    boarded = taxi_mgr.check_waiting_pickup(car, [pedestrian], dt=2.0)
+
+    assert boarded is pedestrian
+    assert "huusi taksin" in taxi_mgr.notification_msg
+    assert taxi_mgr.current_passenger.boarded is False
+    assert taxi_mgr.current_passenger.is_walking_to_car is True
+    assert taxi_mgr.state == TaxiState.CLIENT_WALKING_TO_CAR
+
+
+def test_moving_taxi_can_pick_up_passing_street_hail_without_taxi_stops(monkeypatch: pytest.MonkeyPatch):
+    way = Way(
+        points_m=[(0.0, 0.0), (2000.0, 0.0)],
+        highway="residential",
+        half_width_m=4.5,
+        name="Passing Hail Street",
+    )
+    taxi_mgr = TaxiManager(ways=[way], min_distance_m=300.0, max_distance_m=1200.0)
+    pedestrian = SimpleNamespace(x=5.0, y=2.0, heading=0.0, wants_taxi=True)
+    car = Car(x=0.0, y=0.0, heading=0.0, speed=8.0)
+    monkeypatch.setattr("theroadragetrip.taxi.random.random", lambda: 0.0)
+
+    boarded = taxi_mgr.check_waiting_pickup(car, [pedestrian], dt=0.1)
+
+    assert boarded is pedestrian
+    assert taxi_mgr.current_passenger is not None
+    assert taxi_mgr.current_passenger.boarded is True
+    assert taxi_mgr.state == TaxiState.DRIVING_TO_DROPOFF
+
+
+def test_pedestrian_who_does_not_want_taxi_is_ignored(monkeypatch: pytest.MonkeyPatch):
+    way = Way(
+        points_m=[(0.0, 0.0), (2000.0, 0.0)],
+        highway="residential",
+        half_width_m=4.5,
+        name="No Hail Street",
+    )
+    taxi_mgr = TaxiManager(ways=[way], min_distance_m=300.0, max_distance_m=1200.0)
+    pedestrian = SimpleNamespace(x=3.0, y=0.0, heading=0.0, wants_taxi=False)
+    car = Car(x=0.0, y=0.0, heading=0.0, speed=0.0)
+    monkeypatch.setattr("theroadragetrip.taxi.random.random", lambda: 0.0)
+
+    assert taxi_mgr.check_waiting_pickup(car, [pedestrian], dt=2.0) is None
+    assert taxi_mgr.current_passenger is None
 
 
 def test_taxi_scoring_speed_bonus():

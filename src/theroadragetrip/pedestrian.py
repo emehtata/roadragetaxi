@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from typing import Dict, List, Optional, Set, Tuple
 
 from .osm import TrafficLight, Way
+from .geo import closest_point_and_dist_to_segment, dist_point_to_segment, point_in_polygon
 from .physics import Car, is_car_road, is_pedestrian_way
 
 logger = logging.getLogger(__name__)
@@ -61,6 +62,7 @@ class Pedestrian:
     dodge_vx: float = 0.0
     dodge_vy: float = 0.0
     dodge_timer: float = 0.0
+    wants_taxi: bool = False
 
 
 @dataclass
@@ -168,6 +170,7 @@ class PedestrianManager:
             waiter.x = stop.x
             waiter.y = stop.y
             waiter.is_taxi_stop_waiter = True
+            waiter.wants_taxi = True
             waiter.speed = 0.0
             waiter.base_speed = 0.0
             self.pedestrians.append(waiter)
@@ -380,9 +383,45 @@ class PedestrianManager:
                         sway_phase=random.uniform(0.0, 2 * math.pi),
                         sway_frequency=random.uniform(3.5, 4.5),
                         pace_timer=random.uniform(1.0, 4.0),
+                        wants_taxi=random.random() < 0.05,
                     )
 
         return None
+
+    def spawn_pedestrian_at(self, x: float, y: float, heading: float = 0.0) -> Optional[Pedestrian]:
+        """Create an ordinary pedestrian at a specific location on the nearest walkable way."""
+        if not self.ped_ways:
+            return None
+
+        nearest = None
+        for way in self.ped_ways:
+            for segment_idx, (start, end) in enumerate(zip(way.points_m, way.points_m[1:])):
+                _, _, progress, distance = closest_point_and_dist_to_segment(
+                    x, y, start[0], start[1], end[0], end[1]
+                )
+                if nearest is None or distance < nearest[0]:
+                    nearest = (distance, way, segment_idx, progress)
+        if nearest is None:
+            return None
+
+        _, way, segment_idx, progress = nearest
+        start = way.points_m[segment_idx]
+        end = way.points_m[segment_idx + 1]
+        segment_heading = math.atan2(end[1] - start[1], end[0] - start[0])
+        direction = 1 if math.cos(heading - segment_heading) >= 0.0 else -1
+        return Pedestrian(
+            x=x,
+            y=y,
+            heading=heading,
+            speed=1.3,
+            base_speed=1.3,
+            way=way,
+            segment_idx=segment_idx,
+            direction=direction,
+            color=random.choice(PEDESTRIAN_COLORS),
+            lateral_offset_m=0.0,
+            target_lateral_offset_m=0.0,
+        )
 
     def _is_pedestrian_red_light(self, ped: Pedestrian) -> bool:
         """Check if pedestrian is stopped by a red traffic light at an intersection/crossing."""
@@ -638,7 +677,7 @@ class PedestrianManager:
                         ped.x += math.cos(ped.heading) * remaining_dist
                         ped.y += math.sin(ped.heading) * remaining_dist
 
-            return cyclist_collision
+        return cyclist_collision
 
 
 class CyclistManager(PedestrianManager):
