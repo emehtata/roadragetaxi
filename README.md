@@ -150,6 +150,10 @@ git push origin v0.2.0beta
 
 GitHub Actions builds the package on Windows with PyInstaller and attaches both `RoadRageTrip-windows-x64.zip` and `RoadRageTrip-Setup.exe` to the GitHub Release. Use the EXE installer for a normal Windows installation, or extract the zip and launch `RoadRageTrip.exe`; no Python installation is required.
 
+### Azure Website
+
+The static website in `web/` deploys to Azure Static Web Apps through `.github/workflows/azure-static-web-apps.yml`. Create a Static Web App in the Azure Portal, select **Other** as the source, and copy its deployment token from **Manage deployment token**. Add that token to the GitHub repository as the `AZURE_STATIC_WEB_APPS_API_TOKEN` Actions secret. Pushes to `master` that change `web/` then publish the site automatically; pull requests create Azure preview deployments.
+
 Game sounds are stored in `src/theroadragetrip/sounds/`. CC0 sounds require no attribution; the included `accelerate.aiff` is CC BY 3.0 and `city-traffic-outdoor.wav` is CC BY 4.0. Attribution details are recorded in the sounds directory license file.
 
 ---
