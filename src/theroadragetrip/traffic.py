@@ -21,6 +21,7 @@ NPC_COLORS = [
     (180, 180, 190),  # Silver
 ]
 MAX_TRAFFIC_COUNT = 50
+NPC_TAXI_COLOR = (245, 205, 35)
 
 
 def recommended_traffic_count(ways: List[Way], minimum: int = 5, maximum: int = MAX_TRAFFIC_COUNT) -> int:
@@ -65,6 +66,8 @@ class NPCCar:
     rage_timer: float = 0.0
     turn_signal: str = ""  # "left" or "right" while completing a turn
     turn_signal_elapsed: float = 0.0
+    is_taxi: bool = False
+    taxi_pickup_timer: float = 0.0
 
 
 def calculate_npc_target_speed(way: Way, speed_factor: float) -> float:
@@ -296,6 +299,26 @@ class TrafficManager:
             if player_car is not None:
                 self.npcs.sort(key=lambda npc: math.hypot(npc.x - player_car.x, npc.y - player_car.y))
             del self.npcs[self.target_count:]
+
+    def let_taxi_pick_up_waiter(self, taxi_stops: List, pedestrians: List) -> None:
+        """Let a nearby NPC taxi collect one waiting customer at a time."""
+        for npc in self.npcs:
+            if not npc.is_taxi or npc.taxi_pickup_timer > 0.0:
+                continue
+            for stop in taxi_stops:
+                if math.hypot(npc.x - stop.x, npc.y - stop.y) > 8.0:
+                    continue
+                for pedestrian in pedestrians:
+                    if not getattr(pedestrian, "is_taxi_stop_waiter", False):
+                        continue
+                    if math.hypot(pedestrian.x - stop.x, pedestrian.y - stop.y) > 5.0:
+                        continue
+                    npc.speed = 0.0
+                    npc.taxi_pickup_timer = 1.5
+                    pedestrians.remove(pedestrian)
+                    break
+                if npc.taxi_pickup_timer > 0.0:
+                    break
 
     def rage_shout(self, player_car: Car, radius_m: float = 50.0) -> int:
         """Move NPCs ahead of the player toward their road edge immediately."""
@@ -654,7 +677,10 @@ class TrafficManager:
                         width_m=width_m,
                         speed_factor=speed_factor,
                         is_speeder=is_speeder,
+                        is_taxi=random.random() < 0.12,
                     )
+                    if npc.is_taxi:
+                        npc.color = NPC_TAXI_COLOR
                     self.npcs.append(npc)
                     return npc
 
@@ -710,6 +736,10 @@ class TrafficManager:
         p_wid = getattr(player_car, "width_m", 1.8)
 
         for i, npc in enumerate(self.npcs):
+            if npc.taxi_pickup_timer > 0.0:
+                npc.taxi_pickup_timer = max(0.0, npc.taxi_pickup_timer - dt)
+                npc.speed = 0.0
+                continue
             npc.escape_timer = max(0.0, npc.escape_timer - dt)
             npc.rage_timer = max(0.0, npc.rage_timer - dt)
             if npc.turn_signal:

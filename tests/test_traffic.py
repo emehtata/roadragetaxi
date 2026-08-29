@@ -1,5 +1,6 @@
 """Tests for autonomous NPC traffic manager."""
 import math
+from types import SimpleNamespace
 from theroadragetrip.osm import Way
 from theroadragetrip.osm import TrafficLight
 from theroadragetrip.physics import Car
@@ -11,6 +12,21 @@ def test_traffic_count_scales_down_when_zoomed_in():
     assert traffic_count_for_zoom(50, px_per_m=9.0) == 17
     assert traffic_count_for_zoom(50, px_per_m=18.0) == 8
     assert traffic_count_for_zoom(50, px_per_m=1.0) == 50
+
+
+def test_rival_taxi_picks_up_taxi_stand_waiter():
+    way = Way(points_m=[(0.0, 0.0), (100.0, 0.0)], highway="residential", half_width_m=4.0)
+    manager = TrafficManager([way], target_count=0)
+    taxi = NPCCar(0.0, 0.0, 0.0, 4.0, way, 0, 1, 10.0, (245, 205, 35), is_taxi=True)
+    manager.npcs = [taxi]
+    waiter = SimpleNamespace(x=1.0, y=0.0, is_taxi_stop_waiter=True)
+    pedestrians = [waiter]
+
+    manager.let_taxi_pick_up_waiter([SimpleNamespace(x=0.0, y=0.0)], pedestrians)
+
+    assert pedestrians == []
+    assert taxi.speed == 0.0
+    assert taxi.taxi_pickup_timer == 1.5
 
 
 def test_npc_traffic_spawning_and_movement():

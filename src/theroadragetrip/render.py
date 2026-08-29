@@ -829,7 +829,7 @@ def draw_npc_cars(
             width_px=width_px,
             body_color=npc.color,
             outline_color=(20, 20, 20),
-            is_taxi=False,
+            is_taxi=getattr(npc, "is_taxi", False),
             turn_signal=getattr(npc, "turn_signal", ""),
             turn_signal_elapsed=getattr(npc, "turn_signal_elapsed", 0.0),
         )
