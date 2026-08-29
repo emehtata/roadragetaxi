@@ -147,11 +147,11 @@ def draw_taxi_smoke(screen, car: Car, camx: float, camy: float, px_per_m: float 
     cx, cy = world_to_screen(car.x, car.y, camx, camy, px_per_m, SCREEN_W, SCREEN_H)
     age = 5.0 - timer
     for index in range(5):
-        radius = max(3, int((2.0 + index * 0.8) * px_per_m))
-        x = int(cx - math.cos(car.heading) * (index + 1) * px_per_m + math.sin(age * 5 + index) * 3 * px_per_m)
-        y = int(cy + math.sin(car.heading) * (index + 1) * px_per_m - (index + 1) * 2 * px_per_m)
+        radius = max(4, int((2.8 + index * 1.0) * px_per_m))
+        x = int(cx + math.sin(age * 4.0 + index) * (index + 1) * 2.5 * px_per_m)
+        y = int(cy - (index + 1) * 1.6 * px_per_m + math.cos(age * 3.0 + index) * 2.0 * px_per_m)
         surface = pygame.Surface((radius * 2 + 2, radius * 2 + 2), pygame.SRCALPHA)
-        pygame.draw.circle(surface, (100, 105, 105, max(20, 120 - index * 18)), (radius + 1, radius + 1), radius)
+        pygame.draw.circle(surface, (145, 148, 145, max(24, 150 - index * 22)), (radius + 1, radius + 1), radius)
         screen.blit(surface, (x - radius - 1, y - radius - 1))
 
 
@@ -172,19 +172,20 @@ def draw_taxi_exhaust(
     rear_y = math.sin(car.heading)
     side_x = math.sin(car.heading)
     side_y = math.cos(car.heading)
+    rear_distance = (getattr(car, "length_m", 4.0) * 0.5 + 0.1) * px_per_m
     phase = pygame.time.get_ticks() / 260.0
     speed_factor = min(1.0, abs(car.speed) / 12.0)
 
     for pipe_index in (-1, 1):
-        pipe_offset = pipe_index * 0.42 * px_per_m
+        pipe_offset = pipe_index * (getattr(car, "width_m", 1.8) * 0.28) * px_per_m
         for puff_index in range(3):
-            distance = (0.35 + puff_index * 0.7 + (phase % 1.0) * 0.35) * px_per_m
-            radius = max(1, int((0.22 + puff_index * 0.12) * px_per_m))
+            distance = rear_distance + (0.12 + puff_index * 0.45 + (phase % 1.0) * 0.25) * px_per_m
+            radius = max(1, int((0.14 + puff_index * 0.08) * px_per_m))
             x = cx + rear_x * distance + side_x * pipe_offset
             y = cy + rear_y * distance + side_y * pipe_offset
-            alpha = max(18, int((72 - puff_index * 18) * (0.65 + speed_factor * 0.35)))
+            alpha = max(14, int((58 - puff_index * 15) * (0.65 + speed_factor * 0.35)))
             surface = pygame.Surface((radius * 2 + 2, radius * 2 + 2), pygame.SRCALPHA)
-            pygame.draw.circle(surface, (105, 108, 108, alpha), (radius + 1, radius + 1), radius)
+            pygame.draw.circle(surface, (72, 76, 75, alpha), (radius + 1, radius + 1), radius)
             screen.blit(surface, (int(x - radius - 1), int(y - radius - 1)))
 
 
