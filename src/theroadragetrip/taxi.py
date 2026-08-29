@@ -264,7 +264,10 @@ class TaxiManager:
             # Ignore that footprint only while the car is actually on the crossing road.
             if ways and any(
                 self._road_overlaps_building(way, points, bbox)
-                and getattr(way, "layer", 0) == getattr(player_car, "layer", 0)
+                and (
+                    getattr(way, "is_tunnel", False)
+                    or getattr(way, "layer", 0) == getattr(player_car, "layer", 0)
+                )
                 and any(
                     dist_point_to_segment(
                         player_car.x, player_car.y,

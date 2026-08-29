@@ -273,27 +273,32 @@ def respawn_car(
         candidate_ways = list(candidate_ways)
         random.shuffle(candidate_ways)
 
-    # Pick the first road that is not on water (lazily checking without scanning all 30k+ roads)
-    chosen_way = None
+    # Keep nearby valid roads for randomized startup placement.
+    valid_ways = []
     for w in candidate_ways:
         if len(w.points_m) >= 2:
             mx = (w.points_m[0][0] + w.points_m[1][0]) / 2
             my = (w.points_m[0][1] + w.points_m[1][1]) / 2
             if not waters or not is_point_in_water(mx, my, waters):
-                chosen_way = w
-                break
+                valid_ways.append(w)
         elif len(w.points_m) == 1:
             if not waters or not is_point_in_water(w.points_m[0][0], w.points_m[0][1], waters):
-                chosen_way = w
-                break
+                valid_ways.append(w)
+        if near_center and bounds and len(valid_ways) >= 20:
+            break
 
-    w = chosen_way or (candidate_ways[0] if candidate_ways else ways[0])
+    if near_center and bounds:
+        w = random.choice(valid_ways or candidate_ways or ways)
+    else:
+        w = valid_ways[0] if valid_ways else (candidate_ways[0] if candidate_ways else ways[0])
 
     if len(w.points_m) >= 2:
-        ax, ay = w.points_m[0]
-        bx, by = w.points_m[1]
-        car.x = (ax + bx) / 2
-        car.y = (ay + by) / 2
+        segment_idx = random.randrange(len(w.points_m) - 1) if near_center and bounds else 0
+        ax, ay = w.points_m[segment_idx]
+        bx, by = w.points_m[segment_idx + 1]
+        progress = random.uniform(0.2, 0.8) if near_center and bounds else 0.5
+        car.x = ax + (bx - ax) * progress
+        car.y = ay + (by - ay) * progress
         car.heading = math.atan2(by - ay, bx - ax)
     elif len(w.points_m) == 1:
         car.x, car.y = w.points_m[0]

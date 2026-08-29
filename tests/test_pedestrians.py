@@ -181,6 +181,26 @@ def test_pedestrian_does_not_dodge_until_car_is_close():
     assert ped.dodge_timer == 0.0
 
 
+def test_cyclist_avoidance_is_reported_but_parallel_traffic_is_not():
+    cycleway = Way(
+        points_m=[(0.0, 0.0), (100.0, 0.0)],
+        highway="cycleway",
+        half_width_m=1.5,
+    )
+    manager = CyclistManager([cycleway], target_count=0)
+    cyclist = Pedestrian(20.0, 0.0, 0.0, 4.0, 4.0, cycleway, 0, 1, (50, 120, 220))
+    cyclist.is_cyclist = True
+    manager.pedestrians = [cyclist]
+
+    assert manager.check_player_avoidance(Car(x=17.0, y=0.0, heading=0.0, speed=10.0), 0.05) is True
+    assert manager.check_player_avoidance(Car(x=17.0, y=0.0, heading=0.0, speed=10.0), 0.05) is False
+
+    cyclist.x = 20.0
+    cyclist.y = 2.0
+    cyclist.dodge_timer = 0.0
+    assert manager.check_player_avoidance(Car(x=17.0, y=0.0, heading=0.0, speed=10.0), 0.05) is False
+
+
 def test_pedestrian_traffic_light_crossing_stop():
     crossing = Way(
         points_m=[(0.0, 0.0), (20.0, 0.0)],

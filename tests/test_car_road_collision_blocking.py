@@ -1,6 +1,6 @@
 import math
 
-from theroadragetrip.osm import Scenery, Way
+from theroadragetrip.osm import Building, Scenery, Way
 from theroadragetrip.physics import (
     Car,
     SpatialWayGrid,
@@ -196,6 +196,25 @@ def test_building_overlapping_road_does_not_cause_crash():
     taxi_manager = TaxiManager(ways=[road])
 
     crashed = taxi_manager.check_building_collision(car, [building], sim_time=1.0, ways=[road])
+
+    assert crashed is False
+    assert car.speed == 4.0
+    assert taxi_manager.total_score == 0
+
+
+def test_tunnel_through_building_does_not_cause_crash_across_layers():
+    tunnel = Way(
+        points_m=[(0.0, 0.0), (20.0, 0.0)],
+        highway="primary",
+        half_width_m=4.0,
+        layer=0,
+        is_tunnel=True,
+    )
+    building = Building(points_m=[(5.0, -5.0), (15.0, -5.0), (15.0, 5.0), (5.0, 5.0)])
+    car = Car(x=10.0, y=0.0, heading=0.0, speed=4.0, layer=1)
+    taxi_manager = TaxiManager(ways=[tunnel])
+
+    crashed = taxi_manager.check_building_collision(car, [building], sim_time=1.0, ways=[tunnel])
 
     assert crashed is False
     assert car.speed == 4.0

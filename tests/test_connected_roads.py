@@ -60,3 +60,19 @@ def test_respawn_uses_taxi_stop_when_available():
 
     assert (car.x, car.y) == (42.0, 0.0)
     assert car.speed == 0.0
+
+
+def test_center_respawn_varies_without_taxi_stops():
+    roads = [
+        Way(points_m=[(0.0, 0.0), (100.0, 0.0)], highway="residential", half_width_m=4.0),
+        Way(points_m=[(0.0, 100.0), (100.0, 100.0)], highway="residential", half_width_m=4.0),
+    ]
+    bounds = (0.0, 0.0, 100.0, 100.0)
+    positions = set()
+
+    for _ in range(10):
+        car = Car(x=0.0, y=0.0, heading=0.0, speed=0.0)
+        respawn_car(car, roads, near_center=True, bounds=bounds)
+        positions.add((car.x, car.y))
+
+    assert len(positions) > 1

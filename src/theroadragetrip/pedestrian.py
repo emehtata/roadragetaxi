@@ -413,16 +413,18 @@ class PedestrianManager:
                     return True
         return False
 
-    def check_player_avoidance(self, player_car: Car, dt: float) -> None:
-        """Detect when car drives directly towards pedestrian at close range, triggering dodging and cursing."""
+    def check_player_avoidance(self, player_car: Car, dt: float) -> bool:
+        """Detect close approach and trigger pedestrian or cyclist avoidance."""
         car_speed = player_car.speed
         car_moving = abs(car_speed) > 1.5
         car_dir_x = math.cos(player_car.heading)
         car_dir_y = -math.sin(player_car.heading)
         car_perp_x = math.sin(player_car.heading)
         car_perp_y = -math.cos(player_car.heading)
+        cyclist_collision = False
 
         for ped in self.pedestrians:
+            was_dodging = ped.dodge_timer > 0.0
             # Update timers
             if ped.curse_timer > 0.0:
                 ped.curse_timer = max(0.0, ped.curse_timer - dt)
@@ -461,17 +463,21 @@ class PedestrianManager:
                 ped.dodge_vx = (dodge_fx / mag) * dodge_speed
                 ped.dodge_vy = (dodge_fy / mag) * dodge_speed
                 ped.dodge_timer = 0.4
+                if getattr(ped, "is_cyclist", False) and not was_dodging:
+                    cyclist_collision = True
 
                 if ped.curse_timer <= 0.0:
                     ped.curse_timer = 2.0
                     ped.curse_text = random.choice(CURSE_SYMBOLS)
+
+        return cyclist_collision
 
     def update(
         self,
         player_car: Car,
         dt: float,
         viewport_bounds: Optional[Tuple[float, float, float, float]] = None,
-    ) -> None:
+    ) -> bool:
         """Update pedestrian simulation: despawning, spawning, waypoint traversal, traffic lights, and evasion."""
         self.sim_time += dt
 
@@ -505,7 +511,7 @@ class PedestrianManager:
             self.pedestrians.append(new_ped)
 
         # Check interaction and dodging with player car
-        self.check_player_avoidance(player_car, dt)
+        cyclist_collision = self.check_player_avoidance(player_car, dt)
 
         # Update walking movement
         for ped in self.pedestrians:
@@ -631,6 +637,8 @@ class PedestrianManager:
                         ped.heading = math.atan2(ndy, ndx) + sway_angle
                         ped.x += math.cos(ped.heading) * remaining_dist
                         ped.y += math.sin(ped.heading) * remaining_dist
+
+            return cyclist_collision
 
 
 class CyclistManager(PedestrianManager):

@@ -1059,7 +1059,8 @@ def main() -> None:
             if not taxi_mgr.current_passenger:
                 pedestrian_mgr.ensure_taxi_stop_waiter(taxi_stops, car, viewport_bounds=viewport_bounds)
             pedestrian_mgr.update(car, dt, viewport_bounds=viewport_bounds)
-            cyclist_mgr.update(car, dt, viewport_bounds=viewport_bounds)
+            if cyclist_mgr.update(car, dt, viewport_bounds=viewport_bounds):
+                rage_power *= 0.5
             traffic_mgr.let_taxi_pick_up_waiter(taxi_stops, pedestrian_mgr.pedestrians, dt)
             waiting_pedestrian = taxi_mgr.check_waiting_pickup(car, pedestrian_mgr.pedestrians, dt)
             if waiting_pedestrian is not None:

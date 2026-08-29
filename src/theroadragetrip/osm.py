@@ -398,7 +398,9 @@ def fetch_osm_ways(
       node["amenity"="taxi"]({south},{west},{north},{east});
       node["crossing"]({south},{west},{north},{east});
       node["place"~"suburb|neighbourhood|quarter|village|town|city|hamlet"]({south},{west},{north},{east});
+    node["name"]({south},{west},{north},{east});
       way["highway"]({south},{west},{north},{east});
+    way["name"]({south},{west},{north},{east});
       way["natural"="water"]({south},{west},{north},{east});
       way["waterway"]({south},{west},{north},{east});
       way["landuse"="reservoir"]({south},{west},{north},{east});
@@ -616,6 +618,7 @@ def build_ways(
     node_lats: List[float] = []
 
     place_nodes_raw: List[Tuple[dict, int]] = []
+    named_nodes_raw: List[Tuple[dict, int]] = []
     traffic_signals_raw: List[Tuple[dict, int]] = []
     crossings_raw: List[Tuple[dict, int]] = []
     taxi_stops_raw: List[Tuple[dict, int]] = []
@@ -624,6 +627,7 @@ def build_ways(
     water_raw: List[Tuple[dict, List[int]]] = []
     building_raw: List[Tuple[dict, List[int]]] = []
     scenery_raw: List[Tuple[dict, List[int]]] = []
+    named_ways_raw: List[Tuple[dict, List[int]]] = []
     relations_raw: List[Tuple[dict, List[dict]]] = []
 
     for el in elements:
@@ -636,6 +640,8 @@ def build_ways(
             tags = el.get("tags", {})
             if "place" in tags and "name" in tags:
                 place_nodes_raw.append((tags, nid))
+            elif "name" in tags:
+                named_nodes_raw.append((tags, nid))
             if tags.get("highway") == "traffic_signals":
                 traffic_signals_raw.append((tags, nid))
             if tags.get("highway") == "taxi_stop" or tags.get("amenity") == "taxi":
@@ -659,6 +665,8 @@ def build_ways(
             elif "highway" in tags:
                 highway = tags.get("highway", "unclassified")
                 ways_raw.append((tags, highway, node_ids, way_id))
+            elif "name" in tags:
+                named_ways_raw.append((tags, node_ids))
         elif el_type == "relation":
             tags = el.get("tags", {})
             if tags.get("type") == "multipolygon":
@@ -1034,6 +1042,23 @@ def build_ways(
         pt = nodes_m.get(nid)
         if pt:
             places.append(Place(x=pt[0], y=pt[1], name=tags["name"], kind=tags.get("place", "suburb")))
+
+    # 6b. Other named OSM points and areas (e.g. attractions and named venues)
+    for tags, nid in named_nodes_raw:
+        pt = nodes_m.get(nid)
+        if pt:
+            places.append(Place(x=pt[0], y=pt[1], name=tags["name"], kind="poi"))
+    for tags, node_ids in named_ways_raw:
+        pts, _ = process_node_ids(node_ids)
+        if pts:
+            places.append(
+                Place(
+                    x=sum(point[0] for point in pts) / len(pts),
+                    y=sum(point[1] for point in pts) / len(pts),
+                    name=tags["name"],
+                    kind="poi",
+                )
+            )
 
     for tags, nid in taxi_stops_raw:
         pt = nodes_m.get(nid)

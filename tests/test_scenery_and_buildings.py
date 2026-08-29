@@ -12,7 +12,6 @@ class FakeTransformer:
     def transform(self, lon, lat):
         return (lon * 1000.0, lat * 1000.0)
 
-
 fake_pyproj.Transformer = FakeTransformer
 sys.modules["pyproj"] = fake_pyproj
 
@@ -53,6 +52,11 @@ def test_build_ways_buildings_and_scenery_and_names():
             "lon": 25.006,
             "tags": {"place": "suburb", "name": "Downtown"},
         },
+            {
+                "type": "node", "id": 41,
+                "lat": 60.007, "lon": 25.007,
+                "tags": {"tourism": "attraction", "name": "Named Attraction"},
+            },
     ]
 
     ways, waters, buildings, sceneries, places, bounds = build_ways(elements)
@@ -69,9 +73,9 @@ def test_build_ways_buildings_and_scenery_and_names():
     assert sceneries[0].name == "City Park"
     assert sceneries[0].kind == "park"
 
-    assert len(places) == 1
-    assert places[0].name == "Downtown"
-    assert places[0].kind == "suburb"
+    assert {place.name for place in places} == {"Downtown", "Named Attraction"}
+    assert next(place for place in places if place.name == "Downtown").kind == "suburb"
+    assert next(place for place in places if place.name == "Named Attraction").kind == "poi"
 
 
 def test_build_ways_generates_trees_in_offroad_scenery():

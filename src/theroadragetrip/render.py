@@ -90,7 +90,7 @@ def _get_game_version() -> str:
     try:
         return f"v{package_version('theroadragetrip')}"
     except PackageNotFoundError:
-        return "v0.3.3beta"
+        return "v0.4.0beta"
 
 
 GAME_VERSION = _get_game_version()
