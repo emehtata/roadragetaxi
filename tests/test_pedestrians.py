@@ -2,7 +2,7 @@
 import math
 from theroadragetrip.osm import TrafficLight, Way
 from theroadragetrip.osm import TaxiStop
-from theroadragetrip.pedestrian import Pedestrian, PedestrianManager
+from theroadragetrip.pedestrian import CyclistManager, Pedestrian, PedestrianManager
 from theroadragetrip.physics import Car
 
 
@@ -71,6 +71,17 @@ def test_pedestrian_spawning_and_movement():
         if (p.x, p.y) != initial_positions[i]
     )
     assert moved > 0
+
+
+def test_cyclist_spawn_assigns_body_color():
+    way = Way(points_m=[(0.0, 0.0), (100.0, 0.0)], highway="cycleway", half_width_m=1.5)
+    manager = CyclistManager([way], target_count=0, spawn_radius_m=120.0)
+
+    cyclist = manager.spawn_pedestrian(50.0, 0.0)
+
+    assert cyclist is not None
+    assert cyclist.is_cyclist is True
+    assert cyclist.color != (230, 80, 80)
 
 
 def test_pedestrian_speed_and_natural_distribution():
@@ -149,6 +160,23 @@ def test_pedestrian_does_not_dodge_when_car_drives_parallel_or_away():
     ped_mgr.check_player_avoidance(player, dt=0.05)
 
     # Should not trigger dodge
+    assert ped.curse_timer == 0.0
+    assert ped.dodge_timer == 0.0
+
+
+def test_pedestrian_does_not_dodge_until_car_is_close():
+    footway = Way(
+        points_m=[(0.0, 0.0), (100.0, 0.0)],
+        highway="footway",
+        half_width_m=1.5,
+    )
+    ped_mgr = PedestrianManager([footway], target_count=1)
+    ped = Pedestrian(20.0, 0.0, 0.0, 1.4, 1.4, footway, 0, 1, (255, 0, 0))
+    ped_mgr.pedestrians = [ped]
+
+    player = Car(x=16.0, y=0.0, heading=0.0, speed=10.0)
+    ped_mgr.check_player_avoidance(player, dt=0.05)
+
     assert ped.curse_timer == 0.0
     assert ped.dodge_timer == 0.0
 

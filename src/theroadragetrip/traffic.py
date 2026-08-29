@@ -68,6 +68,15 @@ class NPCCar:
     turn_signal_elapsed: float = 0.0
     is_taxi: bool = False
     taxi_pickup_timer: float = 0.0
+    vehicle_type: str = "car"  # "car", "motorcycle", or "moped"
+    fallen: bool = False
+    driver_spawned: bool = False
+    is_police: bool = False
+    pursuing: bool = False
+    pursuit_phase: str = "passing"
+    stopped: bool = False
+    penalty_given: bool = False
+    scared_timer: float = 0.0
 
 
 def calculate_npc_target_speed(way: Way, speed_factor: float) -> float:
@@ -113,6 +122,8 @@ class TrafficManager:
         despawn_radius_m: float = 450.0,
         traffic_lights: Optional[List[TrafficLight]] = None,
         crossings: Optional[List] = None,
+        roadworks: Optional[List] = None,
+        enable_two_wheelers: bool = False,
     ):
         self.ways = connected_drivable_ways(ways)
         self.target_count = max(0, min(MAX_TRAFFIC_COUNT, target_count))
@@ -122,6 +133,8 @@ class TrafficManager:
         self.min_spawn_dist_to_npc_m: float = 6.0
         self.traffic_lights = traffic_lights if traffic_lights is not None else []
         self.crossings = crossings if crossings is not None else []
+        self.roadworks = roadworks if roadworks is not None else []
+        self.enable_two_wheelers = enable_two_wheelers
         self.npcs: List[NPCCar] = []
         self._log_timer: float = 0.0
         self.sim_time: float = 0.0
@@ -257,6 +270,32 @@ class TrafficManager:
             for offset_y in (-1, 0, 1):
                 nearby.extend(self._crossing_grid.get((cell_x + offset_x, cell_y + offset_y), []))
         return nearby
+
+    def _roadwork_stop_distance(self, npc: NPCCar) -> Optional[float]:
+        """Return distance to an upcoming fully closed work zone."""
+        heading_x = math.cos(npc.heading)
+        heading_y = math.sin(npc.heading)
+        for work in self.roadworks:
+            if work.lane_closed or work.way is not npc.way or work.way.layer != npc.layer:
+                continue
+            axis_x = work.end[0] - work.start[0]
+            axis_y = work.end[1] - work.start[1]
+            axis_length = math.hypot(axis_x, axis_y)
+            if axis_length <= 0.0:
+                continue
+            axis_x /= axis_length
+            axis_y /= axis_length
+            if heading_x * axis_x + heading_y * axis_y < 0.7:
+                axis_x = -axis_x
+                axis_y = -axis_y
+                boundary_x, boundary_y = work.end
+            else:
+                boundary_x, boundary_y = work.start
+            lateral = abs((boundary_x - npc.x) * -heading_y + (boundary_y - npc.y) * heading_x)
+            distance = (boundary_x - npc.x) * heading_x + (boundary_y - npc.y) * heading_y
+            if 0.0 < distance < 35.0 and lateral <= getattr(work.way, "half_width_m", 4.0):
+                return max(0.0, distance - 2.0)
+        return None
 
     @staticmethod
     def _turn_signal_for_route(old_heading: float, npc: NPCCar) -> str:
@@ -516,6 +555,7 @@ class TrafficManager:
         near_x: float,
         near_y: float,
         viewport_bounds: Optional[Tuple[float, float, float, float]] = None,
+        near_heading: Optional[float] = None,
     ) -> Optional[NPCCar]:
         """Spawn a new NPC car near the given location just outside the viewport edge."""
         if not self.ways:
@@ -588,6 +628,14 @@ class TrafficManager:
                     if viewport_bounds:
                         vminx, vminy, vmaxx, vmaxy = viewport_bounds
                         if vminx <= x <= vmaxx and vminy <= y <= vmaxy:
+                            continue
+
+                    if near_heading is not None:
+                        forward_distance = (
+                            (x - near_x) * math.cos(near_heading)
+                            + (y - near_y) * math.sin(near_heading)
+                        )
+                        if forward_distance <= 0.0:
                             continue
 
                     oneway = getattr(chosen_way, "oneway", 0)
@@ -671,12 +719,28 @@ class TrafficManager:
                         is_speeder = False
                         speed_factor = random.uniform(0.78, 0.90)
 
+                    vehicle_type = "car"
+                    if self.enable_two_wheelers:
+                        vehicle_roll = random.random()
+                        if vehicle_roll < 0.12:
+                            vehicle_type = "motorcycle"
+                        elif vehicle_roll < 0.24:
+                            vehicle_type = "moped"
+
                     target_spd = calculate_npc_target_speed(chosen_way, speed_factor)
+                    if vehicle_type == "motorcycle":
+                        target_spd = min(target_spd, 32.0)
+                    elif vehicle_type == "moped":
+                        target_spd = min(target_spd, 14.0)
                     initial_spd = target_spd * random.uniform(0.85, 1.0)
                     color = random.choice(NPC_COLORS)
-                    length_m = random.uniform(3.5, 5.0)
-                    # Width proportional to length (approx 1.4m to 2.0m)
-                    width_m = max(1.7, min(2.0, length_m * 0.45))
+                    if vehicle_type == "motorcycle":
+                        length_m, width_m = 2.2, 0.8
+                    elif vehicle_type == "moped":
+                        length_m, width_m = 1.9, 0.7
+                    else:
+                        length_m = random.uniform(3.5, 5.0)
+                        width_m = max(1.7, min(2.0, length_m * 0.45))
 
                     npc = NPCCar(
                         x=x,
@@ -696,8 +760,10 @@ class TrafficManager:
                         speed_factor=speed_factor,
                         is_speeder=is_speeder,
                         is_taxi=random.random() < 0.12,
+                        vehicle_type=vehicle_type,
                     )
                     if npc.is_taxi:
+                        npc.vehicle_type = "car"
                         npc.color = NPC_TAXI_COLOR
                     self.npcs.append(npc)
                     return npc
@@ -716,9 +782,22 @@ class TrafficManager:
         # Despawn distant NPCs
         surviving = []
         for npc in self.npcs:
-            d = math.hypot(npc.x - player_car.x, npc.y - player_car.y)
-            if d <= self.despawn_radius_m:
+            if npc.is_police:
                 surviving.append(npc)
+                continue
+            d = math.hypot(npc.x - player_car.x, npc.y - player_car.y)
+            if d > self.despawn_radius_m:
+                continue
+            if viewport_bounds:
+                vminx, vminy, vmaxx, vmaxy = viewport_bounds
+                in_view = vminx <= npc.x <= vmaxx and vminy <= npc.y <= vmaxy
+                behind = (
+                    (npc.x - player_car.x) * math.cos(player_car.heading)
+                    + (npc.y - player_car.y) * math.sin(player_car.heading)
+                ) < 0.0
+                if not in_view and behind:
+                    continue
+            surviving.append(npc)
         self.npcs = surviving
 
         # Spawn new NPCs up to target_count (preferring just outside viewport)
@@ -726,10 +805,20 @@ class TrafficManager:
         max_attempts = max(200, self.target_count * 20)
         while len(self.npcs) < self.target_count and attempts < max_attempts:
             attempts += 1
-            npc = self.spawn_npc(player_car.x, player_car.y, viewport_bounds=viewport_bounds)
+            npc = self.spawn_npc(
+                player_car.x,
+                player_car.y,
+                viewport_bounds=viewport_bounds,
+                near_heading=player_car.heading,
+            )
             if not npc and viewport_bounds:
                 # Fallback without strict viewport boundary if road network is very sparse
-                npc = self.spawn_npc(player_car.x, player_car.y, viewport_bounds=None)
+                npc = self.spawn_npc(
+                    player_car.x,
+                    player_car.y,
+                    viewport_bounds=None,
+                    near_heading=player_car.heading,
+                )
             if not npc:
                 break
 
@@ -754,6 +843,8 @@ class TrafficManager:
         p_wid = getattr(player_car, "width_m", 1.8)
 
         for i, npc in enumerate(self.npcs):
+            if npc.is_police:
+                continue
             if npc.taxi_pickup_timer > 0.0:
                 npc.taxi_pickup_timer = max(0.0, npc.taxi_pickup_timer - dt)
                 npc.speed = 0.0
@@ -823,6 +914,8 @@ class TrafficManager:
 
         # Vehicle-vehicle collision avoidance and emergency braking between NPCs and obstacles
         for i, npc in enumerate(self.npcs):
+            if npc.is_police:
+                continue
             if npc.crashed_timer > 0.0:
                 continue
 
@@ -898,10 +991,16 @@ class TrafficManager:
 
         # Check red traffic lights ahead and adjust speed
         for npc in self.npcs:
+            if npc.is_police:
+                continue
             must_stop = False
             junction_blocked = False
             nearest_light = None
             stop_distance = None
+            roadwork_stop_distance = self._roadwork_stop_distance(npc)
+            if roadwork_stop_distance is not None:
+                must_stop = True
+                stop_distance = roadwork_stop_distance
             heading_x = math.cos(npc.heading)
             heading_y = math.sin(npc.heading)
             for tl in self._nearby_traffic_lights(npc.x, npc.y):
@@ -981,7 +1080,7 @@ class TrafficManager:
                         turn_limit_speed = max(3.5, npc.target_speed * turn_factor)
 
             # Check if NPC is in crashed recovery state
-            if npc.crashed_timer > 0.0:
+            if npc.crashed_timer > 0.0 or getattr(npc, "fallen", False):
                 npc.crashed_timer = max(0.0, npc.crashed_timer - dt)
                 npc.speed = 0.0
                 continue
@@ -1012,6 +1111,8 @@ class TrafficManager:
         # Move each NPC along its way segments
         finished_npcs = set()
         for npc in self.npcs:
+            if npc.is_police:
+                continue
             if npc.speed <= 0.0:
                 continue
             pts = npc.way.points_m

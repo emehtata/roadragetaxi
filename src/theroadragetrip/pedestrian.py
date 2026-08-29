@@ -22,6 +22,15 @@ PEDESTRIAN_COLORS = [
     (50, 50, 60),     # Dark
 ]
 
+CYCLIST_COLORS = [
+    (50, 120, 220),
+    (220, 60, 60),
+    (50, 170, 90),
+    (220, 150, 40),
+    (150, 70, 190),
+    (230, 230, 230),
+]
+
 
 @dataclass
 class Pedestrian:
@@ -52,6 +61,18 @@ class Pedestrian:
     dodge_vx: float = 0.0
     dodge_vy: float = 0.0
     dodge_timer: float = 0.0
+
+
+@dataclass
+class PlayerPedestrian:
+    """Player character while walking outside the taxi."""
+    x: float
+    y: float
+    heading: float = 0.0
+    speed: float = 0.0
+    color: Tuple[int, int, int] = (255, 215, 60)
+    radius_m: float = 0.55
+    way: Optional[Way] = None
 
 
 class PedestrianManager:
@@ -421,10 +442,10 @@ class PedestrianManager:
             # Check if car is heading directly at pedestrian in its driving corridor
             is_directly_ahead = (
                 car_moving
-                and 0.0 < long_dist < 5.5  # Only when close ahead (within 5.5m)
+                and 0.0 < long_dist < 3.5  # Only when close ahead (within 3.5m)
                 and lat_offset < 1.8       # Within vehicle width corridor
             )
-            is_too_close = dist_sq < (1.5 * 1.5)  # Physical touch danger distance
+            is_too_close = dist_sq < (1.25 * 1.25)  # Physical touch danger distance
 
             if is_directly_ahead or is_too_close:
                 dist = math.sqrt(dist_sq) or 1.0
@@ -439,7 +460,7 @@ class PedestrianManager:
                 dodge_speed = 3.5
                 ped.dodge_vx = (dodge_fx / mag) * dodge_speed
                 ped.dodge_vy = (dodge_fy / mag) * dodge_speed
-                ped.dodge_timer = 0.6
+                ped.dodge_timer = 0.4
 
                 if ped.curse_timer <= 0.0:
                     ped.curse_timer = 2.0
@@ -530,7 +551,10 @@ class PedestrianManager:
 
             # Slowly drift towards target lateral offset, re-rolling target periodically
             if abs(ped.lateral_offset_m - ped.target_lateral_offset_m) < 0.05 or random.random() < (0.01 * dt):
-                ped.target_lateral_offset_m = random.uniform(-max_lat, max_lat)
+                if getattr(ped, "is_cyclist", False):
+                    ped.target_lateral_offset_m = max(0.3, min(max_lat, hw * 0.45))
+                else:
+                    ped.target_lateral_offset_m = random.uniform(-max_lat, max_lat)
 
             lat_diff = ped.target_lateral_offset_m - ped.lateral_offset_m
             if abs(lat_diff) > 0.001:
@@ -539,8 +563,12 @@ class PedestrianManager:
 
             # Segment target waypoint with lateral offset
             target_base = p_end if ped.direction == 1 else p_start
-            perp_x = -math.sin(seg_heading)
-            perp_y = math.cos(seg_heading)
+            if getattr(ped, "is_cyclist", False):
+                perp_x = math.sin(seg_heading)
+                perp_y = -math.cos(seg_heading)
+            else:
+                perp_x = -math.sin(seg_heading)
+                perp_y = math.cos(seg_heading)
 
             target_x = target_base[0] + perp_x * ped.lateral_offset_m
             target_y = target_base[1] + perp_y * ped.lateral_offset_m
@@ -648,7 +676,37 @@ class CyclistManager(PedestrianManager):
         if cyclist is None:
             return None
         cyclist.is_cyclist = True
+        cyclist.color = random.choice(CYCLIST_COLORS)
         cyclist.base_speed = random.uniform(3.5, 6.5)
         cyclist.speed = cyclist.base_speed
         cyclist.radius_m = 0.6
+        cyclist.lateral_offset_m = max(
+            0.3,
+            min(
+                max(0.2, getattr(cyclist.way, "half_width_m", 1.2) * 0.7),
+                getattr(cyclist.way, "half_width_m", 1.2) * 0.45,
+            ),
+        )
+        cyclist.target_lateral_offset_m = cyclist.lateral_offset_m
+        start = cyclist.way.points_m[cyclist.segment_idx]
+        end = cyclist.way.points_m[cyclist.segment_idx + 1]
+        segment_dx = end[0] - start[0]
+        segment_dy = end[1] - start[1]
+        segment_length_sq = segment_dx * segment_dx + segment_dy * segment_dy
+        if segment_length_sq > 0.0:
+            position_dx = cyclist.x - start[0]
+            position_dy = cyclist.y - start[1]
+            progress = max(
+                0.05,
+                min(
+                    0.95,
+                    (position_dx * segment_dx + position_dy * segment_dy) / segment_length_sq,
+                ),
+            )
+            base_x = start[0] + segment_dx * progress
+            base_y = start[1] + segment_dy * progress
+            right_x = math.sin(cyclist.heading)
+            right_y = -math.cos(cyclist.heading)
+            cyclist.x = base_x + right_x * cyclist.lateral_offset_m
+            cyclist.y = base_y + right_y * cyclist.lateral_offset_m
         return cyclist

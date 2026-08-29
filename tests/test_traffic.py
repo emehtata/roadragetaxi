@@ -78,6 +78,41 @@ def test_npc_traffic_spawning_and_movement():
     assert moved_count > 0
 
 
+def test_two_wheelers_are_experimental_only(monkeypatch):
+    way = Way(points_m=[(0.0, 0.0), (100.0, 0.0)], highway="primary", half_width_m=4.0)
+    player = Car(x=50.0, y=0.0, heading=0.0, speed=0.0)
+
+    class FixedRandom:
+        calls = 0
+
+        def random(self):
+            self.calls += 1
+            return 1.0 if self.calls in (1, 4) else 0.0
+
+        def uniform(self, low, high):
+            return low
+
+        def shuffle(self, values):
+            return None
+
+        def choice(self, values):
+            return values[0]
+
+    fixed_random = FixedRandom()
+    monkeypatch.setattr("theroadragetrip.traffic.random", fixed_random)
+
+    default_manager = TrafficManager([way], target_count=0, spawn_radius_m=100.0)
+    default_npc = default_manager.spawn_npc(player.x, player.y)
+    fixed_random.calls = 0
+    experimental_manager = TrafficManager(
+        [way], target_count=0, spawn_radius_m=100.0, enable_two_wheelers=True
+    )
+    experimental_npc = experimental_manager.spawn_npc(player.x, player.y)
+
+    assert default_npc is not None and default_npc.vehicle_type == "car"
+    assert experimental_npc is not None and experimental_npc.vehicle_type == "motorcycle"
+
+
 def test_overlapping_npcs_are_separated():
     way = Way(
         points_m=[(0.0, 0.0), (200.0, 0.0)],
@@ -271,6 +306,27 @@ def test_npc_despawning_when_far():
         assert math.hypot(npc.x - player.x, npc.y - player.y) <= 400.0
 
 
+def test_npc_behind_player_despawns_outside_viewport():
+    way = Way(
+        points_m=[(-200.0, 0.0), (200.0, 0.0)],
+        highway="primary",
+        half_width_m=4.0,
+        name="Viewport Street",
+    )
+    traffic_mgr = TrafficManager([way], target_count=0, despawn_radius_m=300.0)
+    behind = NPCCar(-100.0, 0.0, 0.0, 0.0, way, 0, 1, 10.0, (20, 20, 20))
+    ahead = NPCCar(100.0, 0.0, 0.0, 0.0, way, 0, 1, 10.0, (30, 30, 30))
+    traffic_mgr.npcs = [behind, ahead]
+
+    traffic_mgr.update(
+        Car(x=0.0, y=0.0, heading=0.0, speed=0.0),
+        dt=0.0,
+        viewport_bounds=(-25.0, -25.0, 25.0, 25.0),
+    )
+
+    assert traffic_mgr.npcs == [ahead]
+
+
 def test_npc_avoids_180_degree_u_turns_at_junction():
     # + shape intersection:
     # East-West road: (-100, 0) to (100, 0)
@@ -462,12 +518,42 @@ def test_player_and_npc_car_crash_and_penalty():
     crashed = taxi_mgr.check_car_collision(player, [npc], sim_time=1.0, penalty=150)
     assert crashed is True
     assert taxi_mgr.total_score == 350
-    assert "Crash!" in taxi_mgr.notification_msg
+    assert "Kolari!" in taxi_mgr.notification_msg
     assert taxi_mgr.taxi_smoke_timer == 5.0
 
     # Cooldown prevents repeated penalties in rapid succession
     crashed2 = taxi_mgr.check_car_collision(player, [npc], sim_time=1.2, penalty=150)
     assert taxi_mgr.total_score == 350
+
+
+def test_motorcycle_crash_falls_and_moves_to_roadside():
+    from theroadragetrip.taxi import TaxiManager
+
+    way = Way(
+        points_m=[(0.0, 0.0), (100.0, 0.0)],
+        highway="primary",
+        half_width_m=4.0,
+    )
+    player = Car(x=10.0, y=0.0, heading=0.0, speed=10.0)
+    motorcycle = NPCCar(
+        x=12.0,
+        y=0.0,
+        heading=0.0,
+        speed=5.0,
+        way=way,
+        segment_idx=0,
+        direction=1,
+        target_speed=10.0,
+        color=(220, 40, 40),
+        length_m=2.2,
+        width_m=0.8,
+        vehicle_type="motorcycle",
+    )
+
+    assert TaxiManager(ways=[]).check_car_collision(player, [motorcycle], sim_time=1.0)
+    assert motorcycle.fallen is True
+    assert abs(motorcycle.y) > way.half_width_m
+    assert motorcycle.speed == 0.0
 
 
 def test_npc_does_not_spawn_on_orphaned_road_segment():

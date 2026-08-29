@@ -128,6 +128,9 @@ effects_volume = 1.0
 [police]
 taxi_stop_cameras = false
 
+[experimental]
+enable_two_wheelers = false
+
 [cities]
 helsinki = 60.169525, 24.935446
 oulu = 65.012000, 25.468000

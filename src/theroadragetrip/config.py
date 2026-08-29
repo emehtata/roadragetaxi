@@ -60,6 +60,9 @@ DEFAULT_CONFIG = {
     "police": {
         "taxi_stop_cameras": "false",
     },
+    "experimental": {
+        "enable_two_wheelers": "false",
+    },
     "cities": {
         "helsinki": "60.169525, 24.935446",
         "espoo": "60.205000, 24.652000",

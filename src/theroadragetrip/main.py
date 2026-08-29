@@ -4,11 +4,22 @@ import math
 import os
 import random
 import sys
+import time
 from typing import Optional, Tuple
 
 from .geo import clamp, dist_point_to_segment, meters_to_latlon
 from .audio import AudioManager
-from .config import cities_from_config, get_optional_int, get_overpass_endpoints, load_config, save_config
+from .config import CONFIG_PATH, cities_from_config, get_optional_int, get_overpass_endpoints, load_config, save_config
+from .career import (
+    CAREER_SCORE_LIMIT,
+    career_path,
+    gig_odometer_path,
+    load_career,
+    load_career_distance,
+    load_gig_odometer,
+    save_career,
+    save_gig_odometer,
+)
 from .localization import LANGUAGE_NAMES, SUPPORTED_LANGUAGES, normalize_language, tr
 from .osm import (
     BBOX_PRESETS,
@@ -56,6 +67,8 @@ from .render import (
     draw_car,
     draw_cyclists,
     draw_city_selection_menu,
+    draw_city_summary,
+    draw_mode_selection_menu,
     draw_compass,
     draw_crossings,
     draw_hud,
@@ -63,26 +76,29 @@ from .render import (
     draw_labels,
     draw_loading_screen,
     draw_npc_cars,
+    draw_police_cars,
     draw_pause_menu,
     draw_settings_menu,
     draw_pedestrians,
     draw_phone_offers,
     draw_scenery,
-    draw_taxi_exhaust,
     draw_taxi_smoke,
+    draw_taxi_exhaust,
     draw_speed_cameras,
     draw_taxi_stops,
     draw_taxi_target,
     draw_traffic_lights,
     draw_waters,
     draw_ways,
+    draw_roadworks,
     get_viewport_bounds,
     world_to_screen,
 )
-from .pedestrian import CyclistManager, PedestrianManager
-from .police import place_speed_cameras
-from .taxi import TaxiManager
-from .traffic import TrafficManager, recommended_traffic_count
+from .pedestrian import CyclistManager, Pedestrian, PedestrianManager, PlayerPedestrian
+from .police import PoliceManager, place_speed_cameras
+from .roadworks import create_roadworks
+from .taxi import TaxiManager, TaxiState
+from .traffic import MAX_TRAFFIC_COUNT, TrafficManager, recommended_traffic_count, traffic_count_for_zoom
 
 # Maintain BBOX constant for backward compatibility
 BBOX = DEFAULT_BBOX
@@ -91,6 +107,13 @@ logger = logging.getLogger(__name__)
 RAGE_SHOUTS = ("PRKL!", "STNA!", "VTTU!", "HLVT!", "KRPÄ!", "KSPÄ!", "PSKA!")
 RAGE_DISTANCE_TO_FULL_M = 400.0
 RAGE_SHOUT_COST = 0.25
+
+
+def _screenshot_directory() -> str:
+    if sys.platform.startswith("win"):
+        home_dir = os.getenv("USERPROFILE") or os.path.expanduser("~")
+        return os.path.join(home_dir, "Pictures", "TheRoadRageTrip")
+    return "screenshots"
 
 
 def parse_args(config=None, city_names=None) -> argparse.Namespace:
@@ -145,6 +168,45 @@ def configure_logging(level: Optional[str] = None) -> None:
     logging.basicConfig(level=getattr(logging, lvl, logging.INFO), format="%(levelname)s: %(message)s")
 
 
+def _menu_item_at_y(pos_y: int, start_y: int, item_h: int, gap_y: int, count: int) -> Optional[int]:
+    for index in range(count):
+        item_y = start_y + index * (item_h + gap_y)
+        if item_y <= pos_y <= item_y + item_h:
+            return index
+    return None
+
+
+def _city_item_at(pos: Tuple[int, int], city_count: int, screen_w: int) -> Optional[int]:
+    cols = 2
+    rows = (city_count + cols - 1) // cols
+    item_w, item_h = 320, 42
+    gap_x, gap_y = 24, 10
+    total_w = cols * item_w + (cols - 1) * gap_x
+    start_x, start_y = (screen_w - total_w) // 2, 115
+    x, y = pos
+    col = (x - start_x) // (item_w + gap_x)
+    row = (y - start_y) // (item_h + gap_y)
+    if not (0 <= col < cols and 0 <= row < rows):
+        return None
+    item_x = start_x + col * (item_w + gap_x)
+    item_y = start_y + row * (item_h + gap_y)
+    if item_x <= x <= item_x + item_w and item_y <= y <= item_y + item_h:
+        index = col * rows + row
+        return index if index < city_count else None
+    return None
+
+
+def _pause_item_at(pos: Tuple[int, int], option_count: int, screen_w: int, screen_h: int) -> Optional[int]:
+    panel_w = min(420, screen_w - 40)
+    panel_h = min(screen_h - 40, max(280, 110 + option_count * 56))
+    panel_x, panel_y = (screen_w - panel_w) // 2, (screen_h - panel_h) // 2
+    item_w, item_h = 340, 44
+    item_x = panel_x + (panel_w - item_w) // 2
+    if not (item_x <= pos[0] <= item_x + item_w):
+        return None
+    return _menu_item_at_y(pos[1], panel_y + 80, item_h, 12, option_count)
+
+
 def choose_language(screen, font, clock, current_language: str = "fi") -> str:
     """Show the first-run language chooser."""
     import pygame
@@ -156,6 +218,16 @@ def choose_language(screen, font, clock, current_language: str = "fi") -> str:
             if event.type == pygame.QUIT:
                 pygame.quit()
                 sys.exit(0)
+            if event.type == pygame.MOUSEMOTION:
+                hovered = _menu_item_at_y(event.pos[1], 280, 24, 31, len(SUPPORTED_LANGUAGES))
+                if hovered is not None:
+                    selected = hovered
+                continue
+            if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                hovered = _menu_item_at_y(event.pos[1], 280, 24, 31, len(SUPPORTED_LANGUAGES))
+                if hovered is not None:
+                    return SUPPORTED_LANGUAGES[hovered]
+                continue
             if event.type != pygame.KEYDOWN:
                 continue
             if event.key in (pygame.K_LEFT, pygame.K_UP):
@@ -180,9 +252,6 @@ def choose_language(screen, font, clock, current_language: str = "fi") -> str:
         hint = pygame.font.SysFont(None, 18).render(tr(language, "language_hint"), True, (150, 175, 195))
         screen.blit(hint, hint.get_rect(center=(screen.get_width() // 2, screen.get_height() - 80)))
         pygame.display.flip()
-from .traffic import MAX_TRAFFIC_COUNT, TrafficManager, recommended_traffic_count, traffic_count_for_zoom
-
-
 def main() -> None:
     config = load_config()
     overpass_endpoints = get_overpass_endpoints(config)
@@ -206,6 +275,11 @@ def main() -> None:
 
     pygame.init()
     screen = pygame.display.set_mode((SCREEN_W, SCREEN_H))
+    try:
+        icon_path = os.path.join(os.path.dirname(__file__), "assets", "roadragetrip_icon.png")
+        pygame.display.set_icon(pygame.image.load(icon_path).convert_alpha())
+    except (OSError, pygame.error):
+        logger.warning("Game icon could not be loaded")
     pygame.display.set_caption("The Road Rage Trip (OSM PoC)")
     clock = pygame.time.Clock()
     font = pygame.font.SysFont(None, 24)
@@ -226,10 +300,16 @@ def main() -> None:
     # Outer game loop to support picking new starting city without restarting process
     app_running = True
     active_city_name = None
+    game_mode = "gig_driver"
+    career_file = career_path(CONFIG_PATH)
+    gig_odometer_file = gig_odometer_path(CONFIG_PATH)
+    career = None
+    return_to_main_menu = False
 
     while app_running:
         cities_list = list(city_centers.keys())
         selected_city_idx = 0
+        city_summary = None
 
         # Show city selection menu if no explicit CLI override or when requested from pause menu
         if active_city_name is not None or (
@@ -237,10 +317,67 @@ def main() -> None:
             and not args.preset
             and not args.use_sample
             and not args.no_menu
+            or return_to_main_menu
         ):
+            return_to_main_menu = False
+            if active_city_name is None:
+                mode_selected = 0 if game_mode == "career" else 1
+                choosing_mode = True
+                while choosing_mode:
+                    clock.tick(30)
+                    for ev in pygame.event.get():
+                        if ev.type == pygame.QUIT:
+                            pygame.quit()
+                            sys.exit(0)
+                        if ev.type == pygame.MOUSEMOTION:
+                            hovered = _menu_item_at_y(ev.pos[1], 270, 30, 30, 3)
+                            if hovered is not None:
+                                mode_selected = hovered
+                            continue
+                        if ev.type == pygame.MOUSEBUTTONDOWN and ev.button == 1:
+                            hovered = _menu_item_at_y(ev.pos[1], 270, 30, 30, 3)
+                            if hovered is not None:
+                                mode_selected = hovered
+                                if mode_selected == 2:
+                                    save_career(career_file, 0)
+                                    mode_selected = 0
+                                else:
+                                    choosing_mode = False
+                            continue
+                        if ev.type != pygame.KEYDOWN:
+                            continue
+                        if ev.key == pygame.K_ESCAPE:
+                            pygame.quit()
+                            sys.exit(0)
+                        if ev.key in (pygame.K_UP, pygame.K_LEFT):
+                            mode_selected = (mode_selected - 1) % 3
+                        elif ev.key in (pygame.K_DOWN, pygame.K_RIGHT):
+                            mode_selected = (mode_selected + 1) % 3
+                        elif ev.key in (pygame.K_RETURN, pygame.K_SPACE, pygame.K_KP_ENTER):
+                            if mode_selected == 2:
+                                save_career(career_file, 0)
+                                mode_selected = 0
+                            else:
+                                choosing_mode = False
+                        elif ev.key in (pygame.K_1, pygame.K_KP1):
+                            mode_selected = 0
+                            choosing_mode = False
+                        elif ev.key in (pygame.K_2, pygame.K_KP2):
+                            mode_selected = 1
+                            choosing_mode = False
+                        elif ev.key in (pygame.K_3, pygame.K_KP3):
+                            save_career(career_file, 0)
+                            mode_selected = 0
+                    draw_mode_selection_menu(screen, font, mode_selected, SCREEN_W, SCREEN_H, language)
+                    pygame.display.flip()
+                game_mode = "career" if mode_selected == 0 else "gig_driver"
+
+            career = load_career(career_file, len(cities_list)) if game_mode == "career" else None
+            if career is not None:
+                selected_city_idx = len(cities_list) - 1 - int(career["city_index"])
             if active_city_name is not None and active_city_name in cities_list:
                 selected_city_idx = cities_list.index(active_city_name)
-            in_menu = True
+            in_menu = game_mode != "career"
             intro_until = pygame.time.get_ticks() + 1000
             while in_menu:
                 clock.tick(30)
@@ -248,6 +385,15 @@ def main() -> None:
                     if ev.type == pygame.QUIT:
                         pygame.quit()
                         sys.exit(0)
+                    elif ev.type == pygame.MOUSEMOTION:
+                        hovered = _city_item_at(ev.pos, len(cities_list), SCREEN_W)
+                        if hovered is not None:
+                            selected_city_idx = hovered
+                    elif ev.type == pygame.MOUSEBUTTONDOWN and ev.button == 1:
+                        hovered = _city_item_at(ev.pos, len(cities_list), SCREEN_W)
+                        if hovered is not None:
+                            selected_city_idx = hovered
+                            in_menu = False
                     elif ev.type == pygame.KEYDOWN:
                         if ev.key == pygame.K_ESCAPE:
                             pygame.quit()
@@ -345,6 +491,9 @@ def main() -> None:
 
         minx, miny, maxx, maxy = bounds
         taxi_stops = getattr(res, "taxi_stops", [])
+        roadworks, roadwork_lights = create_roadworks(ways)
+        traffic_lights.extend(roadwork_lights)
+        logger.info("Created %d random roadworks (%d temporary lights)", len(roadworks), len(roadwork_lights))
         on_load_progress(0.92, "Preparing road index...")
         # Spatial index for fast O(1) road collision detection
         spatial_grid = SpatialWayGrid()
@@ -354,6 +503,15 @@ def main() -> None:
         car = Car(x=(minx + maxx) / 2, y=(miny + maxy) / 2, heading=0.0, speed=0.0)
         if ways:
             respawn_car(car, ways, near_center=True, bounds=bounds, waters=waters, taxi_stops=taxi_stops)
+        career_total_distance_m = None
+        if career is not None:
+            career_total_distance_m = load_career_distance(career_file)
+            car.odometer_m = career_total_distance_m
+        else:
+            car.odometer_m = load_gig_odometer(gig_odometer_file)
+            if car.odometer_m == 0.0:
+                car.odometer_m = float(random.randint(100000, 600000))
+                save_gig_odometer(gig_odometer_file, car.odometer_m)
 
         # Initialize Taxi Manager for game mode
         on_load_progress(0.94, "Preparing taxi missions...")
@@ -365,9 +523,9 @@ def main() -> None:
             bounds,
             camera_city_name,
             taxi_stops=taxi_stops if taxi_stop_cameras else None,
+            seed=random.randrange(2**32),
         )
         logger.info("Placed %d hidden speed cameras", len(speed_cameras))
-
         # Initialize autonomous Traffic Manager for NPC cars
         on_load_progress(0.96, "Preparing traffic...")
         traffic_count = args.traffic_count
@@ -375,18 +533,24 @@ def main() -> None:
             traffic_count = recommended_traffic_count(ways)
         traffic_count = max(0, min(MAX_TRAFFIC_COUNT, traffic_count))
         base_traffic_count = traffic_count
+        enable_two_wheelers = config["experimental"].getboolean("enable_two_wheelers", fallback=False)
         logger.info("Target NPC traffic: %d cars for %d road ways", traffic_count, len(ways))
         traffic_mgr = TrafficManager(
             ways,
             target_count=traffic_count,
             traffic_lights=traffic_lights,
             crossings=crossings,
+            roadworks=roadworks,
+            enable_two_wheelers=enable_two_wheelers,
         )
+        police_mgr = PoliceManager(traffic_mgr, car.x, car.y, buildings=buildings)
+        logger.info("Placed %d police patrol cars among NPC traffic", len(police_mgr.cars))
 
         # Initialize autonomous Pedestrian Manager
         on_load_progress(0.98, "Preparing pedestrians...")
         pedestrian_mgr = PedestrianManager(ways, target_count=args.pedestrian_count, traffic_lights=traffic_lights)
         cyclist_mgr = CyclistManager(ways, target_count=args.cyclist_count, traffic_lights=traffic_lights)
+        player_pedestrian = PlayerPedestrian(car.x, car.y)
         base_pedestrian_count = pedestrian_mgr.target_count
         base_cyclist_count = cyclist_mgr.target_count
 
@@ -434,6 +598,8 @@ def main() -> None:
         camx, camy = car.x, car.y
         first_gameplay_frame = True
         map_sync_stage = 0
+        on_foot = False
+        saved_gig_fares = taxi_mgr.completed_fares
         clock.tick()  # Reset clock timer to avoid large dt on first frame
 
         while running:
@@ -446,11 +612,42 @@ def main() -> None:
                     running = False
                     app_running = False
                 elif event.type == pygame.KEYDOWN:
-                    if event.key == pygame.K_p:
+                    if event.key == pygame.K_F12:
+                        screenshot_dir = _screenshot_directory()
+                        os.makedirs(screenshot_dir, exist_ok=True)
+                        screenshot_path = os.path.join(screenshot_dir, f"screenshot_{time.time_ns()}.png")
+                        pygame.image.save(screen, screenshot_path)
+                        logger.info("Screenshot saved to %s", screenshot_path)
+                    elif event.key == pygame.K_p:
                         phone_open = not phone_open
+                    elif event.key == pygame.K_f:
+                        if not on_foot:
+                            length_m = getattr(car, "length_m", 4.0)
+                            width_m = getattr(car, "width_m", 1.8)
+                            left_x = -math.sin(car.heading)
+                            left_y = math.cos(car.heading)
+                            player_pedestrian.x = (
+                                car.x
+                                + math.cos(car.heading) * length_m * 0.2
+                                + left_x * width_m * 0.85
+                            )
+                            player_pedestrian.y = (
+                                car.y
+                                + math.sin(car.heading) * length_m * 0.2
+                                + left_y * width_m * 0.85
+                            )
+                            player_pedestrian.heading = car.heading
+                            car.speed = 0.0
+                            on_foot = True
+                            audio.play("car-door-open")
+                        elif math.hypot(player_pedestrian.x - car.x, player_pedestrian.y - car.y) <= 3.0:
+                            on_foot = False
+                            car.speed = 0.0
+                            audio.play("car-door-open")
                     elif event.key == pygame.K_SPACE and not phone_open:
                         if rage_power >= RAGE_SHOUT_COST:
                             traffic_mgr.rage_shout(car)
+                            police_mgr.scare()
                             audio.play("carhorn_takes", volume=0.45)
                             rage_power -= RAGE_SHOUT_COST
                             rage_shout_timer = 5.0
@@ -472,7 +669,7 @@ def main() -> None:
                         # Pause menu with options: Continue Game, Change City, Exit Game
                         pause_options = [
                             tr(language, "continue"), tr(language, "help"), tr(language, "settings_menu"),
-                            tr(language, "change_city"), tr(language, "exit"),
+                            tr(language, "change_city"), tr(language, "main_menu"), tr(language, "exit"),
                         ]
                         pause_selected = 0
                         is_paused = True
@@ -483,7 +680,21 @@ def main() -> None:
                                 if p_ev.type == pygame.QUIT:
                                     pygame.quit()
                                     sys.exit(0)
-                                elif p_ev.type == pygame.KEYDOWN:
+                                elif p_ev.type == pygame.MOUSEMOTION:
+                                    hovered = _pause_item_at(p_ev.pos, len(pause_options), SCREEN_W, SCREEN_H)
+                                    if hovered is not None:
+                                        pause_selected = hovered
+                                elif p_ev.type == pygame.MOUSEBUTTONDOWN and p_ev.button == 1:
+                                    hovered = _pause_item_at(p_ev.pos, len(pause_options), SCREEN_W, SCREEN_H)
+                                    if hovered is not None:
+                                        pause_selected = hovered
+                                        p_ev = pygame.event.Event(
+                                            pygame.KEYDOWN,
+                                            {"key": pygame.K_RETURN},
+                                        )
+                                    else:
+                                        continue
+                                if p_ev.type == pygame.KEYDOWN:
                                     if p_ev.key == pygame.K_ESCAPE:
                                         is_paused = False
                                     elif p_ev.key == pygame.K_UP:
@@ -516,6 +727,16 @@ def main() -> None:
                                                     if s_ev.type == pygame.QUIT:
                                                         pygame.quit()
                                                         sys.exit(0)
+                                                    if s_ev.type == pygame.MOUSEMOTION:
+                                                        hovered = _menu_item_at_y(s_ev.pos[1], 170, 32, 26, 5)
+                                                        if hovered is not None:
+                                                            settings_selected = hovered
+                                                        continue
+                                                    if s_ev.type == pygame.MOUSEBUTTONDOWN and s_ev.button == 1:
+                                                        hovered = _menu_item_at_y(s_ev.pos[1], 170, 32, 26, 5)
+                                                        if hovered is not None:
+                                                            settings_selected = hovered
+                                                        continue
                                                     if s_ev.type != pygame.KEYDOWN:
                                                         continue
                                                     if s_ev.key == pygame.K_ESCAPE:
@@ -561,6 +782,12 @@ def main() -> None:
                                             running = False
                                             active_city_name = cities_list[selected_city_idx]
                                         elif pause_selected == 4:
+                                            # Return to main menu
+                                            is_paused = False
+                                            running = False
+                                            active_city_name = None
+                                            return_to_main_menu = True
+                                        elif pause_selected == 5:
                                             # Exit Game
                                             pygame.quit()
                                             sys.exit(0)
@@ -633,11 +860,45 @@ def main() -> None:
             cyclist_mgr.set_target_count(traffic_count_for_zoom(base_cyclist_count, zoom_scale), car)
 
             keys = pygame.key.get_pressed()
+            if on_foot:
+                forward_input = float(keys[pygame.K_w] or keys[pygame.K_UP]) - float(
+                    keys[pygame.K_s] or keys[pygame.K_DOWN]
+                )
+                steer_input = float(keys[pygame.K_a] or keys[pygame.K_LEFT]) - float(
+                    keys[pygame.K_d] or keys[pygame.K_RIGHT]
+                )
+                sprinting = keys[pygame.K_LSHIFT] or keys[pygame.K_RSHIFT]
+                walking_speed = 8.0 if sprinting else 4.0
+                if forward_input > 0.0:
+                    player_pedestrian.speed = min(
+                        walking_speed, player_pedestrian.speed + ACCEL * dt
+                    )
+                elif forward_input < 0.0:
+                    player_pedestrian.speed = max(
+                        -walking_speed, player_pedestrian.speed - BRAKE * dt
+                    )
+                elif player_pedestrian.speed > 0.0:
+                    player_pedestrian.speed = max(0.0, player_pedestrian.speed - FRICTION * dt)
+                else:
+                    player_pedestrian.speed = min(0.0, player_pedestrian.speed + FRICTION * dt)
+
+                if abs(player_pedestrian.speed) > 0.05 and abs(steer_input) > 0.01:
+                    steer_effective = STEER_RATE / (
+                        1.0 + abs(player_pedestrian.speed) * STEER_SPEED_FACTOR
+                    )
+                    player_pedestrian.heading += (
+                        steer_input
+                        * steer_effective
+                        * dt
+                        * (1.0 if player_pedestrian.speed >= 0.0 else -1.0)
+                    )
+                player_pedestrian.x += math.cos(player_pedestrian.heading) * player_pedestrian.speed * dt
+                player_pedestrian.y += math.sin(player_pedestrian.heading) * player_pedestrian.speed * dt
             immobilized = taxi_mgr.tree_wait_timer > 0.0
-            throttle = 0.0 if immobilized else (1.0 if keys[pygame.K_w] or keys[pygame.K_UP] else 0.0)
-            brake = 0.0 if immobilized else (1.0 if keys[pygame.K_s] or keys[pygame.K_DOWN] else 0.0)
-            steer_left = 1.0 if keys[pygame.K_a] or keys[pygame.K_LEFT] else 0.0
-            steer_right = 1.0 if keys[pygame.K_d] or keys[pygame.K_RIGHT] else 0.0
+            throttle = 0.0 if on_foot or immobilized else (1.0 if keys[pygame.K_w] or keys[pygame.K_UP] else 0.0)
+            brake = 0.0 if on_foot or immobilized else (1.0 if keys[pygame.K_s] or keys[pygame.K_DOWN] else 0.0)
+            steer_left = 0.0 if on_foot else (1.0 if keys[pygame.K_a] or keys[pygame.K_LEFT] else 0.0)
+            steer_right = 0.0 if on_foot else (1.0 if keys[pygame.K_d] or keys[pygame.K_RIGHT] else 0.0)
 
             current_way = get_current_road_at_car(
                 car, ways=ways, spatial_grid=spatial_grid, car_roads_only=True, current_way=current_way
@@ -660,18 +921,19 @@ def main() -> None:
 
             previous_position = (car.x, car.y)
             # Off-road driving is allowed at a reduced speed.
-            update_car_physics(
-                car,
-                throttle,
-                brake,
-                steer_left,
-                steer_right,
-                dt,
-                ways=ways,
-                spatial_grid=spatial_grid,
-                block_offroad=False,
-                speed_limit_mps=speed_limit_mps,
-            )
+            if not on_foot:
+                update_car_physics(
+                    car,
+                    throttle,
+                    brake,
+                    steer_left,
+                    steer_right,
+                    dt,
+                    ways=ways,
+                    spatial_grid=spatial_grid,
+                    block_offroad=False,
+                    speed_limit_mps=speed_limit_mps,
+                )
             if immobilized:
                 car.speed = 0.0
             audio.update_acceleration(throttle > 0.0 and abs(car.speed) > 0.5)
@@ -679,7 +941,9 @@ def main() -> None:
             road_limit_mps = current_way.speed_limit_kmh / 3.6 if current_way else None
             if road_limit_mps is not None and driven_distance > 0.0 and abs(car.speed) <= road_limit_mps + 0.01:
                 rage_power = min(1.0, rage_power + driven_distance / RAGE_DISTANCE_TO_FULL_M)
-            if taxi_mgr.sees_red_light(car, nearby_traffic_lights, traffic_mgr.sim_time):
+            if abs(car.speed) * 3.6 < 10.0 and taxi_mgr.sees_red_light(
+                car, nearby_traffic_lights, traffic_mgr.sim_time
+            ):
                 rage_power = min(1.0, rage_power + 0.05 * dt)
             if first_gameplay_frame:
                 logger.info("Gameplay frame: physics complete")
@@ -699,8 +963,10 @@ def main() -> None:
             max_lead_m = max_lead_screen_px / max(0.01, px_per_m)
             lead_distance_m = min(max_lead_m, max(0.0, abs(car.speed) * 0.8))
 
-            target_camx = car.x + math.cos(car.heading) * lead_distance_m
-            target_camy = car.y + math.sin(car.heading) * lead_distance_m
+            focus_x = player_pedestrian.x if on_foot else car.x
+            focus_y = player_pedestrian.y if on_foot else car.y
+            target_camx = focus_x + math.cos(car.heading) * lead_distance_m
+            target_camy = focus_y + math.sin(car.heading) * lead_distance_m
 
             # Smooth camera lerp
             cam_lerp_factor = min(1.0, 4.0 * dt)
@@ -710,14 +976,84 @@ def main() -> None:
             viewport_bounds = get_viewport_bounds(camx, camy, px_per_m=px_per_m, margin_m=30.0)
 
             # Update taxi missions & pickups
+            previous_taxi_state = taxi_mgr.state
+            previous_passenger = taxi_mgr.current_passenger
             taxi_mgr.update(car, dt)
+            if (
+                previous_taxi_state == TaxiState.CLIENT_WALKING_TO_CAR
+                and taxi_mgr.state == TaxiState.DRIVING_TO_DROPOFF
+            ):
+                audio.play("car-door-open")
+            elif (
+                previous_taxi_state == TaxiState.DRIVING_TO_DROPOFF
+                and previous_passenger is not None
+                and taxi_mgr.current_passenger is None
+            ):
+                audio.play("car-door-open")
+            if career is None and taxi_mgr.completed_fares > saved_gig_fares:
+                save_gig_odometer(gig_odometer_file, car.odometer_m)
+                saved_gig_fares = taxi_mgr.completed_fares
+            if career is not None and taxi_mgr.total_score >= CAREER_SCORE_LIMIT:
+                career_index = int(career["city_index"])
+                career_total_score = int(career["total_score"]) + taxi_mgr.total_score
+                next_city_index = career_index + 1
+                if next_city_index >= len(cities_list):
+                    save_career(
+                        career_file, career_index, career_total_score, completed=True,
+                        total_distance_m=car.odometer_m,
+                    )
+                    city_summary = (chosen_city, taxi_mgr.total_score, taxi_mgr.completed_fares, None, career_total_score)
+                    logger.info("Career completed in Helsinki")
+                    running = False
+                else:
+                    save_career(
+                        career_file, next_city_index, career_total_score,
+                        total_distance_m=car.odometer_m,
+                    )
+                    next_city = list(reversed(cities_list))[next_city_index]
+                    active_city_name = next_city
+                    city_summary = (chosen_city, taxi_mgr.total_score, taxi_mgr.completed_fares, next_city, career_total_score)
+                    logger.info("Career advanced to %s", active_city_name)
+                    running = False
             if taxi_mgr.check_car_collision(car, traffic_mgr.npcs, traffic_mgr.sim_time):
                 audio.play("car-crash", volume=0.8)
+                rage_power = 0.0
+                for npc in traffic_mgr.npcs:
+                    if not getattr(npc, "fallen", False) or getattr(npc, "driver_spawned", False):
+                        continue
+                    pedestrian_mgr.pedestrians.append(Pedestrian(
+                        x=npc.x,
+                        y=npc.y,
+                        heading=npc.heading,
+                        speed=1.3,
+                        base_speed=1.3,
+                        way=npc.way,
+                        segment_idx=npc.segment_idx,
+                        direction=npc.direction,
+                        color=(230, 80, 80),
+                    ))
+                    npc.driver_spawned = True
+                    logger.info(
+                        "Two-wheeler driver became pedestrian at x=%.1f y=%.1f",
+                        npc.x,
+                        npc.y,
+                    )
             taxi_mgr.check_wrong_way_violation(car, dt, ways=ways, spatial_grid=spatial_grid)
             taxi_mgr.check_speed_cameras(car, speed_cameras)
 
             # Update autonomous traffic NPCs and pedestrians
             traffic_mgr.update(car, dt, viewport_bounds=viewport_bounds)
+            police_stopping = police_mgr.update(car, current_way, dt)
+            if police_stopping:
+                car.speed = 0.0
+                if police_mgr.collect_penalty(car, current_way):
+                    taxi_mgr.total_score -= 300
+                    taxi_mgr.notification_msg = tr(language, "police_stop", penalty=300)
+                    taxi_mgr.notification_timer = 4.0
+                    logger.info("Police traffic stop: -300 pts")
+            audio.update_police_siren(
+                any(npc.pursuing and not npc.penalty_given for npc in police_mgr.cars)
+            )
             if not taxi_mgr.current_passenger:
                 pedestrian_mgr.ensure_taxi_stop_waiter(taxi_stops, car, viewport_bounds=viewport_bounds)
             pedestrian_mgr.update(car, dt, viewport_bounds=viewport_bounds)
@@ -790,6 +1126,7 @@ def main() -> None:
             if first_gameplay_frame:
                 logger.info("Gameplay frame: rendering roads")
             draw_ways(screen, ways, camx, camy, px_per_m=px_per_m)
+            draw_roadworks(screen, roadworks, camx, camy, px_per_m=px_per_m)
             if first_gameplay_frame:
                 logger.info("Gameplay frame: rendering overlays")
             draw_crossings(screen, crossings, camx, camy, px_per_m=px_per_m)
@@ -804,9 +1141,11 @@ def main() -> None:
                 flash_index=taxi_mgr.speed_camera_flash_index,
                 flash_active=taxi_mgr.speed_camera_flash_timer > 0.0,
             )
-            draw_pedestrians(screen, pedestrian_mgr.pedestrians, camx, camy, font=small_font, px_per_m=px_per_m, ways=ways)
+            visible_pedestrians = pedestrian_mgr.pedestrians + ([player_pedestrian] if on_foot else [])
+            draw_pedestrians(screen, visible_pedestrians, camx, camy, font=small_font, px_per_m=px_per_m, ways=ways)
             draw_cyclists(screen, cyclist_mgr.cyclists, camx, camy, px_per_m=px_per_m, ways=ways)
             draw_npc_cars(screen, traffic_mgr.npcs, camx, camy, px_per_m=px_per_m, ways=ways)
+            draw_police_cars(screen, police_mgr.cars, camx, camy, px_per_m=px_per_m)
             draw_taxi_target(screen, taxi_mgr, camx, camy, font, px_per_m=px_per_m, language=language)
             draw_taxi_exhaust(screen, car, camx, camy, px_per_m=px_per_m)
             draw_car(
@@ -849,6 +1188,7 @@ def main() -> None:
                 red_light_assist_enabled=red_light_assist_enabled,
                 rage_power=rage_power,
                 language=language,
+                career_total_distance_m=car.odometer_m if career is not None else None,
             )
             if phone_open:
                 draw_phone_offers(screen, taxi_mgr, font, small_font, SCREEN_W, SCREEN_H, language)
@@ -860,6 +1200,38 @@ def main() -> None:
             if first_gameplay_frame:
                 logger.info("Gameplay frame: complete")
                 first_gameplay_frame = False
+
+        if career is not None and city_summary is None:
+            save_career(
+                career_file,
+                int(career["city_index"]),
+                int(career["total_score"]),
+                bool(career["completed"]),
+                total_distance_m=car.odometer_m,
+            )
+        elif career is None:
+            save_gig_odometer(gig_odometer_file, car.odometer_m)
+
+        if city_summary is not None:
+            summary_city, summary_score, summary_fares, summary_next_city, summary_career_total = city_summary
+            showing_summary = True
+            while showing_summary:
+                clock.tick(30)
+                for summary_event in pygame.event.get():
+                    if summary_event.type == pygame.QUIT:
+                        pygame.quit()
+                        sys.exit(0)
+                    if summary_event.type == pygame.KEYDOWN and summary_event.key in (
+                        pygame.K_RETURN, pygame.K_KP_ENTER
+                    ):
+                        showing_summary = False
+                draw_city_summary(
+                    screen, font, summary_city, summary_score, summary_fares, summary_next_city,
+                    summary_career_total, SCREEN_W, SCREEN_H, language,
+                )
+                pygame.display.flip()
+            if summary_next_city is None:
+                app_running = False
 
     audio.close()
     pygame.quit()
