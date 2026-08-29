@@ -364,7 +364,6 @@ def main() -> None:
             taxi_stops=taxi_stops if taxi_stop_cameras else None,
         )
         logger.info("Placed %d hidden speed cameras", len(speed_cameras))
-        taxi_mgr.generate_offers(car.x, car.y)
 
         # Initialize autonomous Traffic Manager for NPC cars
         on_load_progress(0.96, "Preparing traffic...")
@@ -443,7 +442,7 @@ def main() -> None:
                 elif event.type == pygame.KEYDOWN:
                     if event.key == pygame.K_p:
                         if not phone_open and taxi_mgr.current_passenger is None:
-                            taxi_mgr.generate_offers(car.x, car.y)
+                            taxi_mgr.generate_offers(car.x, car.y, count=1)
                         phone_open = not phone_open
                     elif event.key == pygame.K_SPACE and not phone_open:
                         if rage_power >= RAGE_SHOUT_COST:
@@ -455,6 +454,8 @@ def main() -> None:
                     elif phone_open:
                         if event.key == pygame.K_ESCAPE:
                             phone_open = False
+                        elif event.key == pygame.K_x:
+                            taxi_mgr.reject_offer()
                         elif event.key in (pygame.K_1, pygame.K_KP1, pygame.K_2, pygame.K_KP2, pygame.K_3, pygame.K_KP3):
                             offer_index = {
                                 pygame.K_1: 0, pygame.K_KP1: 0,
@@ -689,6 +690,9 @@ def main() -> None:
             traffic_mgr.update(car, dt, viewport_bounds=viewport_bounds)
             pedestrian_mgr.update(car, dt, viewport_bounds=viewport_bounds)
             cyclist_mgr.update(car, dt, viewport_bounds=viewport_bounds)
+            waiting_pedestrian = taxi_mgr.check_waiting_pickup(car, pedestrian_mgr.pedestrians, dt)
+            if waiting_pedestrian is not None:
+                pedestrian_mgr.pedestrians.remove(waiting_pedestrian)
 
             # Road check (restricted to car roads, fast-checking current segment first)
             current_way = get_current_road_at_car(car, ways=ways, spatial_grid=spatial_grid, car_roads_only=True, current_way=current_way)
