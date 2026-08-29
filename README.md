@@ -26,7 +26,7 @@ A top-down 2D driving game proof-of-concept (PoC) in Python and Pygame that proc
 - **Trip & Odometer**: Real-time speed, trip distance (resettable with `T`), and total odometer in the HUD.
 - **Loading Progress Meters**: Visual progress bar on startup and live scenery streaming progress meter during background auto-fetch.
 - **Orientation & Compass**: North-up screen projection with a real-time compass showing vehicle heading and bearing in degrees.
-- **Offline & Cache Support**: Local JSON caching (`osm_cache/`) with TTL and fallback to bundled sample data.
+- **Offline & Cache Support**: User-writable JSON caching (`RoadRageTrip/osm_cache/`) with TTL and fallback to bundled sample data.
 
 ---
 

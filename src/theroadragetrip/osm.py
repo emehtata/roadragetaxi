@@ -148,7 +148,15 @@ def configure_user_agent(user_agent_id: str) -> None:
         f"(https://github.com/theroadragetrip; educational driving game poc; id={user_agent_id})"
     )
 
-CACHE_DIR = "osm_cache"
+def _default_cache_dir() -> str:
+    if sys.platform.startswith("win"):
+        data_dir = os.getenv("LOCALAPPDATA") or os.getenv("APPDATA") or os.path.expanduser("~")
+    else:
+        data_dir = os.getenv("XDG_CACHE_HOME") or os.path.join(os.path.expanduser("~"), ".cache")
+    return os.path.join(data_dir, "RoadRageTrip", "osm_cache")
+
+
+CACHE_DIR = _default_cache_dir()
 DEAD_ENDS_CACHE_FILE = os.path.join(CACHE_DIR, "dead_ends.json")
 
 
