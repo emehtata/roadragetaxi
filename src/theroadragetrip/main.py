@@ -8,7 +8,8 @@ from typing import Optional, Tuple
 
 from .geo import clamp, dist_point_to_segment, meters_to_latlon
 from .audio import AudioManager
-from .config import cities_from_config, get_optional_int, load_config
+from .config import cities_from_config, get_optional_int, load_config, save_config
+from .localization import LANGUAGE_NAMES, SUPPORTED_LANGUAGES, normalize_language, tr
 from .osm import (
     BBOX_PRESETS,
     CITY_CENTERS,
@@ -63,9 +64,12 @@ from .render import (
     draw_loading_screen,
     draw_npc_cars,
     draw_pause_menu,
+    draw_settings_menu,
     draw_pedestrians,
     draw_phone_offers,
     draw_scenery,
+    draw_taxi_smoke,
+    draw_speed_cameras,
     draw_taxi_stops,
     draw_taxi_target,
     draw_traffic_lights,
@@ -75,6 +79,7 @@ from .render import (
     world_to_screen,
 )
 from .pedestrian import CyclistManager, PedestrianManager
+from .police import place_speed_cameras
 from .taxi import TaxiManager
 from .traffic import TrafficManager, recommended_traffic_count
 
@@ -137,6 +142,43 @@ def parse_args(config=None, city_names=None) -> argparse.Namespace:
 def configure_logging(level: Optional[str] = None) -> None:
     lvl = os.getenv("LOG_LEVEL", level or "INFO").upper()
     logging.basicConfig(level=getattr(logging, lvl, logging.INFO), format="%(levelname)s: %(message)s")
+
+
+def choose_language(screen, font, clock, current_language: str = "fi") -> str:
+    """Show the first-run language chooser."""
+    import pygame
+
+    selected = SUPPORTED_LANGUAGES.index(normalize_language(current_language))
+    while True:
+        clock.tick(30)
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                pygame.quit()
+                sys.exit(0)
+            if event.type != pygame.KEYDOWN:
+                continue
+            if event.key in (pygame.K_LEFT, pygame.K_UP):
+                selected = (selected - 1) % len(SUPPORTED_LANGUAGES)
+            elif event.key in (pygame.K_RIGHT, pygame.K_DOWN):
+                selected = (selected + 1) % len(SUPPORTED_LANGUAGES)
+            elif event.key in (pygame.K_RETURN, pygame.K_SPACE, pygame.K_KP_ENTER):
+                return SUPPORTED_LANGUAGES[selected]
+            elif pygame.K_1 <= event.key <= pygame.K_9:
+                index = event.key - pygame.K_1
+                if index < len(SUPPORTED_LANGUAGES):
+                    return SUPPORTED_LANGUAGES[index]
+
+        language = SUPPORTED_LANGUAGES[selected]
+        screen.fill((18, 24, 32))
+        title = font.render(tr(language, "select_language"), True, (245, 245, 245))
+        screen.blit(title, title.get_rect(center=(screen.get_width() // 2, 180)))
+        for index, code in enumerate(SUPPORTED_LANGUAGES):
+            color = (255, 215, 95) if index == selected else (210, 220, 230)
+            label = font.render(f"{index + 1}. {LANGUAGE_NAMES[code]}", True, color)
+            screen.blit(label, label.get_rect(center=(screen.get_width() // 2, 280 + index * 55)))
+        hint = pygame.font.SysFont(None, 18).render(tr(language, "language_hint"), True, (150, 175, 195))
+        screen.blit(hint, hint.get_rect(center=(screen.get_width() // 2, screen.get_height() - 80)))
+        pygame.display.flip()
 from .traffic import MAX_TRAFFIC_COUNT, TrafficManager, recommended_traffic_count
 
 
@@ -161,12 +203,23 @@ def main() -> None:
         sys.exit(1)
 
     pygame.init()
-    audio = AudioManager()
     screen = pygame.display.set_mode((SCREEN_W, SCREEN_H))
     pygame.display.set_caption("The Road Rage Trip (OSM PoC)")
     clock = pygame.time.Clock()
     font = pygame.font.SysFont(None, 24)
     small_font = pygame.font.SysFont(None, 18)
+
+    language = normalize_language(config.get("game", "language", fallback=""))
+    if not config.get("game", "language", fallback="").strip():
+        language = choose_language(screen, font, clock)
+        config.set("game", "language", language)
+        save_config(config)
+
+    audio = AudioManager(
+        master_volume=config.getfloat("audio", "master_volume", fallback=1.0),
+        music_volume=config.getfloat("audio", "music_volume", fallback=0.2),
+        effects_volume=config.getfloat("audio", "effects_volume", fallback=1.0),
+    )
 
     # Outer game loop to support picking new starting city without restarting process
     app_running = True
@@ -222,14 +275,16 @@ def main() -> None:
                 if pygame.time.get_ticks() < intro_until:
                     draw_loading_screen(screen, font, 1.0, "Ready", SCREEN_W, SCREEN_H, show_details=False)
                 else:
-                    draw_city_selection_menu(screen, font, cities_list, selected_city_idx, SCREEN_W, SCREEN_H)
+                    draw_city_selection_menu(screen, font, cities_list, selected_city_idx, SCREEN_W, SCREEN_H, language)
                 pygame.display.flip()
 
             chosen_city = cities_list[selected_city_idx]
+            camera_city_name = chosen_city
             bbox = bbox_presets.get(chosen_city.lower(), DEFAULT_BBOX)
             logger.info("Selected starting city: %s (bbox: %s)", chosen_city, bbox)
         else:
             preset_key = args.preset.lower() if args.preset else "oulu"
+            camera_city_name = args.preset
             bbox = bbox_presets.get(preset_key, DEFAULT_BBOX)
             if args.bbox:
                 try:
@@ -299,7 +354,16 @@ def main() -> None:
 
         # Initialize Taxi Manager for game mode
         on_load_progress(0.94, "Preparing taxi missions...")
-        taxi_mgr = TaxiManager(ways, places=places, buildings=buildings, taxi_stops=taxi_stops)
+        taxi_mgr = TaxiManager(ways, places=places, buildings=buildings, taxi_stops=taxi_stops, language=language)
+        police_config = config["police"]
+        taxi_stop_cameras = police_config.getboolean("taxi_stop_cameras", fallback=False)
+        speed_cameras = place_speed_cameras(
+            ways,
+            bounds,
+            camera_city_name,
+            taxi_stops=taxi_stops if taxi_stop_cameras else None,
+        )
+        logger.info("Placed %d hidden speed cameras", len(speed_cameras))
         taxi_mgr.generate_offers(car.x, car.y)
 
         # Initialize autonomous Traffic Manager for NPC cars
@@ -401,7 +465,10 @@ def main() -> None:
                                 phone_open = False
                     elif event.key == pygame.K_ESCAPE:
                         # Pause menu with options: Continue Game, Change City, Exit Game
-                        pause_options = ["Continue Game", "Controls & Objective", "Change City", "Exit Game"]
+                        pause_options = [
+                            tr(language, "continue"), tr(language, "help"), tr(language, "settings_menu"),
+                            tr(language, "change_city"), tr(language, "exit"),
+                        ]
                         pause_selected = 0
                         is_paused = True
 
@@ -432,20 +499,51 @@ def main() -> None:
                                                         sys.exit(0)
                                                     if h_ev.type == pygame.KEYDOWN and h_ev.key in (pygame.K_ESCAPE, pygame.K_F1):
                                                         show_help = False
-                                                draw_help_screen(screen, font, SCREEN_W, SCREEN_H)
+                                                draw_help_screen(screen, font, SCREEN_W, SCREEN_H, language)
                                                 pygame.display.flip()
                                         elif pause_selected == 2:
+                                            settings_selected = 0
+                                            in_settings = True
+                                            while in_settings:
+                                                clock.tick(30)
+                                                for s_ev in pygame.event.get():
+                                                    if s_ev.type == pygame.QUIT:
+                                                        pygame.quit()
+                                                        sys.exit(0)
+                                                    if s_ev.type != pygame.KEYDOWN:
+                                                        continue
+                                                    if s_ev.key == pygame.K_ESCAPE:
+                                                        in_settings = False
+                                                    elif s_ev.key == pygame.K_UP:
+                                                        settings_selected = (settings_selected - 1) % 4
+                                                    elif s_ev.key == pygame.K_DOWN:
+                                                        settings_selected = (settings_selected + 1) % 4
+                                                    elif s_ev.key in (pygame.K_LEFT, pygame.K_RIGHT):
+                                                        delta = 0.05 if s_ev.key == pygame.K_RIGHT else -0.05
+                                                        if settings_selected == 0:
+                                                            language = SUPPORTED_LANGUAGES[(SUPPORTED_LANGUAGES.index(language) + (1 if delta > 0 else -1)) % 2]
+                                                        else:
+                                                            key = ("master_volume", "music_volume", "effects_volume")[settings_selected - 1]
+                                                            value = max(0.0, min(1.0, config.getfloat("audio", key) + delta))
+                                                            config.set("audio", key, f"{value:.2f}")
+                                                            audio.set_volume(key.removesuffix("_volume"), value)
+                                                        config.set("game", "language", language)
+                                                        taxi_mgr.set_language(language)
+                                                        save_config(config)
+                                                draw_settings_menu(screen, font, language, config.getfloat("audio", "master_volume"), config.getfloat("audio", "music_volume"), config.getfloat("audio", "effects_volume"), settings_selected, SCREEN_W, SCREEN_H)
+                                                pygame.display.flip()
+                                        elif pause_selected == 3:
                                             # Change City
                                             is_paused = False
                                             running = False
                                             active_city_name = cities_list[selected_city_idx]
-                                        elif pause_selected == 3:
+                                        elif pause_selected == 4:
                                             # Exit Game
                                             pygame.quit()
                                             sys.exit(0)
 
                             # Redraw current frame beneath pause overlay
-                            draw_pause_menu(screen, font, pause_options, pause_selected, SCREEN_W, SCREEN_H)
+                            draw_pause_menu(screen, font, pause_options, pause_selected, SCREEN_W, SCREEN_H, language)
                             pygame.display.flip()
 
                         # Reset clock after unpausing to prevent sudden dt physics jumps
@@ -460,7 +558,7 @@ def main() -> None:
                                     sys.exit(0)
                                 if h_ev.type == pygame.KEYDOWN and h_ev.key in (pygame.K_ESCAPE, pygame.K_F1):
                                     show_help = False
-                            draw_help_screen(screen, font, SCREEN_W, SCREEN_H)
+                            draw_help_screen(screen, font, SCREEN_W, SCREEN_H, language)
                             pygame.display.flip()
                         clock.tick()
                     elif event.key == pygame.K_r:
@@ -507,8 +605,9 @@ def main() -> None:
                 px_per_m = px_per_m + (zoom_target - px_per_m) * eased
 
             keys = pygame.key.get_pressed()
-            throttle = 1.0 if keys[pygame.K_w] or keys[pygame.K_UP] else 0.0
-            brake = 1.0 if keys[pygame.K_s] or keys[pygame.K_DOWN] else 0.0
+            immobilized = taxi_mgr.tree_wait_timer > 0.0
+            throttle = 0.0 if immobilized else (1.0 if keys[pygame.K_w] or keys[pygame.K_UP] else 0.0)
+            brake = 0.0 if immobilized else (1.0 if keys[pygame.K_s] or keys[pygame.K_DOWN] else 0.0)
             steer_left = 1.0 if keys[pygame.K_a] or keys[pygame.K_LEFT] else 0.0
             steer_right = 1.0 if keys[pygame.K_d] or keys[pygame.K_RIGHT] else 0.0
 
@@ -544,6 +643,8 @@ def main() -> None:
                 block_offroad=False,
                 speed_limit_mps=speed_limit_mps,
             )
+            if immobilized:
+                car.speed = 0.0
             audio.update_acceleration(throttle > 0.0 and abs(car.speed) > 0.5)
             driven_distance = math.hypot(car.x - previous_position[0], car.y - previous_position[1])
             road_limit_mps = current_way.speed_limit_kmh / 3.6 if current_way else None
@@ -582,6 +683,7 @@ def main() -> None:
             if taxi_mgr.check_car_collision(car, traffic_mgr.npcs, traffic_mgr.sim_time):
                 audio.play("car-crash", volume=0.8)
             taxi_mgr.check_wrong_way_violation(car, dt, ways=ways, spatial_grid=spatial_grid)
+            taxi_mgr.check_speed_cameras(car, speed_cameras)
 
             # Update autonomous traffic NPCs and pedestrians
             traffic_mgr.update(car, dt, viewport_bounds=viewport_bounds)
@@ -633,7 +735,15 @@ def main() -> None:
             if first_gameplay_frame:
                 logger.info("Gameplay frame: rendering scenery")
             screen.fill((25, 80, 25))  # grass base
-            draw_scenery(screen, sceneries, camx, camy, px_per_m=px_per_m)
+            draw_scenery(
+                screen,
+                sceneries,
+                camx,
+                camy,
+                px_per_m=px_per_m,
+                tree_effects=taxi_mgr.tree_effects,
+                fallen_trees=taxi_mgr.fallen_trees,
+            )
             if first_gameplay_frame:
                 logger.info("Gameplay frame: rendering water")
             draw_waters(screen, waters, camx, camy, px_per_m=px_per_m)
@@ -648,10 +758,19 @@ def main() -> None:
             draw_crossings(screen, crossings, camx, camy, px_per_m=px_per_m)
             draw_traffic_lights(screen, traffic_lights, traffic_mgr.sim_time, camx, camy, px_per_m=px_per_m)
             draw_taxi_stops(screen, taxi_stops, camx, camy, px_per_m=px_per_m)
+            draw_speed_cameras(
+                screen,
+                speed_cameras,
+                camx,
+                camy,
+                px_per_m=px_per_m,
+                flash_index=taxi_mgr.speed_camera_flash_index,
+                flash_active=taxi_mgr.speed_camera_flash_timer > 0.0,
+            )
             draw_pedestrians(screen, pedestrian_mgr.pedestrians, camx, camy, font=small_font, px_per_m=px_per_m, ways=ways)
             draw_cyclists(screen, cyclist_mgr.cyclists, camx, camy, px_per_m=px_per_m, ways=ways)
             draw_npc_cars(screen, traffic_mgr.npcs, camx, camy, px_per_m=px_per_m, ways=ways)
-            draw_taxi_target(screen, taxi_mgr, camx, camy, font, px_per_m=px_per_m)
+            draw_taxi_target(screen, taxi_mgr, camx, camy, font, px_per_m=px_per_m, language=language)
             draw_car(
                 screen,
                 car,
@@ -663,6 +782,7 @@ def main() -> None:
                 shout_timer=rage_shout_timer,
                 shout_text=rage_shout_text,
             )
+            draw_taxi_smoke(screen, car, camx, camy, px_per_m=px_per_m, timer=taxi_mgr.taxi_smoke_timer)
 
             # Labels overlay (toggled with 'L')
             if show_labels:
@@ -690,9 +810,10 @@ def main() -> None:
                 speed_limiter_enabled=speed_limiter_enabled,
                 red_light_assist_enabled=red_light_assist_enabled,
                 rage_power=rage_power,
+                language=language,
             )
             if phone_open:
-                draw_phone_offers(screen, taxi_mgr, font, small_font, SCREEN_W, SCREEN_H)
+                draw_phone_offers(screen, taxi_mgr, font, small_font, SCREEN_W, SCREEN_H, language)
             draw_compass(screen, car, SCREEN_W - 64, 64, 28, font, target_pos=target_coords)
 
             if first_gameplay_frame:

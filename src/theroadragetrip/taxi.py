@@ -7,6 +7,8 @@ from typing import Any, Dict, List, Optional, Tuple
 from .geo import clamp, dist_point_to_segment, get_oriented_box_corners, point_in_polygon
 from .osm import Building, Place, TaxiStop, Way
 from .physics import Car, SpatialWayGrid, connected_drivable_ways, is_car_road, is_violating_oneway
+from .localization import tr
+from .police import SpeedCamera, camera_sees_car
 
 logger = logging.getLogger(__name__)
 
@@ -72,6 +74,7 @@ class TaxiManager:
         max_distance_m: float = 2500.0,
         pickup_radius_m: float = 25.0,
         max_stop_speed_mps: float = 3.0,  # Must slow down below ~10 km/h to pickup/dropoff
+        language: str = "fi",
     ):
         # Filter to the largest connected road network to avoid isolated trapped roads
         self.ways = connected_drivable_ways(ways, named=True)
@@ -82,6 +85,7 @@ class TaxiManager:
         self.max_distance_m = max_distance_m
         self.pickup_radius_m = pickup_radius_m
         self.max_stop_speed_mps = max_stop_speed_mps
+        self.language = language
 
         self.current_passenger: Optional[TaxiPassenger] = None
         self.offers: List[TaxiOffer] = []
@@ -92,7 +96,7 @@ class TaxiManager:
         self.elapsed_time: float = 0.0
         self.trip_distance_m: float = 0.0
         self.last_fare_points: int = 0
-        self.notification_msg: str = "Avaa puhelin (P) ja valitse kyyti aloittaaksesi."
+        self.notification_msg: str = tr(language, "open_phone")
         self.notification_timer: float = 5.0
         self._passed_red_signals: Dict[int, float] = {}  # signal id -> timestamp cooldown
         self._approaching_red_signals: Dict[int, float] = {}  # signal id -> last signed distance along travel
@@ -100,6 +104,13 @@ class TaxiManager:
         self._crashed_npc_cooldowns: Dict[int, float] = {}  # npc id -> timestamp cooldown
         self._crashed_building_cooldowns: Dict[int, float] = {}  # building id -> timestamp cooldown
         self._crashed_tree_cooldowns: Dict[Tuple[int, int], float] = {}
+        self._speed_camera_hits: set[int] = set()
+        self.tree_effects: Dict[Tuple[int, int], Dict[str, float]] = {}
+        self.fallen_trees: set[Tuple[int, int]] = set()
+        self.tree_wait_timer: float = 0.0
+        self.taxi_smoke_timer: float = 0.0
+        self.speed_camera_flash_timer: float = 0.0
+        self.speed_camera_flash_index: Optional[int] = None
         self._road_overlap_buildings: set[int] = set()
         self._overlap_ways_ref = None
         self._overlap_buildings_ref = None
@@ -107,6 +118,32 @@ class TaxiManager:
         self._overlap_building_count = -1
         self.wrong_way_duration: float = 0.0  # seconds continuously driving wrong way
         self.wrong_way_penalty_cooldown: float = 0.0  # timer between recurring penalties (5.0s)
+
+    def set_language(self, language: str) -> None:
+        self.language = language
+
+    def check_speed_cameras(self, car: Car, cameras: List[SpeedCamera], penalty: int = 300) -> bool:
+        """Fine a speeding car seen in a camera's directional 50-meter zone."""
+        hit = False
+        visible_ids: set[int] = set()
+        for camera_index, camera in enumerate(cameras):
+            if not camera_sees_car(camera, car.x, car.y, car.heading):
+                continue
+            visible_ids.add(camera_index)
+            if abs(car.speed) * 3.6 <= camera.speed_limit_kmh:
+                continue
+            if camera_index in self._speed_camera_hits:
+                continue
+            self._speed_camera_hits.add(camera_index)
+            self.total_score -= penalty
+            self.speed_camera_flash_timer = 0.35
+            self.speed_camera_flash_index = camera_index
+            self.notification_msg = f"Speed camera! -{penalty} pts" if self.language == "en" else f"Peltikamera! -{penalty} pistettä"
+            self.notification_timer = 4.0
+            logger.info("Speed camera triggered: -%d pts", penalty)
+            hit = True
+        self._speed_camera_hits.intersection_update(visible_ids)
+        return hit
 
     def check_car_collision(
         self,
@@ -359,8 +396,18 @@ class TaxiManager:
                     restore_x = tree_x + away_x / away_distance * safe_distance
                     restore_y = tree_y + away_y / away_distance * safe_distance
                 player_car.x, player_car.y = restore_x, restore_y
+                impact_speed_kmh = abs(player_car.speed) * 3.6
                 player_car.speed = 0.0
                 key = (id(scenery), tree_index)
+                self.tree_effects[key] = {
+                    "shake": 0.55,
+                    "leaves": 1.2,
+                    "angle": player_car.heading,
+                }
+                if impact_speed_kmh > 80.0:
+                    self.fallen_trees.add(key)
+                    self.tree_wait_timer = 5.0
+                    self.taxi_smoke_timer = 5.0
                 if key not in self._crashed_tree_cooldowns:
                     self._crashed_tree_cooldowns[key] = sim_time
                     self.total_score -= penalty
@@ -964,6 +1011,16 @@ class TaxiManager:
 
     def update(self, car: Car, dt: float) -> None:
         """Update mission timers, pickup/dropoff collision, and fare progression."""
+        self.speed_camera_flash_timer = max(0.0, self.speed_camera_flash_timer - dt)
+        if self.speed_camera_flash_timer <= 0.0:
+            self.speed_camera_flash_index = None
+        self.tree_wait_timer = max(0.0, self.tree_wait_timer - dt)
+        self.taxi_smoke_timer = max(0.0, self.taxi_smoke_timer - dt)
+        for key, effect in list(self.tree_effects.items()):
+            effect["shake"] = max(0.0, effect["shake"] - dt)
+            effect["leaves"] = max(0.0, effect["leaves"] - dt)
+            if effect["shake"] <= 0.0 and effect["leaves"] <= 0.0 and key not in self.fallen_trees:
+                del self.tree_effects[key]
         if self.notification_timer > 0.0:
             self.notification_timer -= dt
 
@@ -983,7 +1040,7 @@ class TaxiManager:
                     # Car arrived at pickup area and stopped: client begins walking to taxi
                     self.state = TaxiState.CLIENT_WALKING_TO_CAR
                     self.current_passenger.is_walking_to_car = True
-                    self.notification_msg = f"{self.current_passenger.name} is walking to the taxi..."
+                    self.notification_msg = tr(self.language, "walking_named", name=self.current_passenger.name)
                     self.notification_timer = 3.0
                 else:
                     self.notification_msg = "Slow down to pick up passenger!"
@@ -1014,8 +1071,8 @@ class TaxiManager:
                 self.state = TaxiState.DRIVING_TO_DROPOFF
                 self.elapsed_time = 0.0
                 self.trip_distance_m = math.hypot(p.dropoff.x - p.pickup.x, p.dropoff.y - p.pickup.y)
-                self.notification_msg = (
-                    f"{p.name} boarded! Destination: {p.dropoff.address}"
+                self.notification_msg = tr(
+                    self.language, "boarded_destination", name=p.name, address=p.dropoff.address
                 )
                 self.notification_timer = 6.0
             else:
@@ -1039,8 +1096,8 @@ class TaxiManager:
                     self.completed_fares += 1
                     self.last_fare_points = earned
                     avg_kmh = (self.trip_distance_m / max(1.0, self.elapsed_time)) * 3.6
-                    self.notification_msg = (
-                        f"Fare Complete! +{earned} pts ({avg_kmh:.0f} km/h avg in {self.elapsed_time:.1f}s)"
+                    self.notification_msg = tr(
+                        self.language, "fare_complete_points", earned=earned, avg=avg_kmh, seconds=self.elapsed_time
                     )
                     self.notification_timer = 6.0
                     # New requests are selected through the phone.

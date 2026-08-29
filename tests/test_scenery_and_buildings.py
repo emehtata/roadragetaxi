@@ -17,6 +17,9 @@ fake_pyproj.Transformer = FakeTransformer
 sys.modules["pyproj"] = fake_pyproj
 
 from theroadragetrip.osm import build_ways
+from theroadragetrip.osm import Scenery, Way
+from theroadragetrip.physics import Car
+from theroadragetrip.taxi import TaxiManager
 
 
 def test_build_ways_buildings_and_scenery_and_names():
@@ -96,3 +99,15 @@ def test_build_ways_parses_taxi_stops():
     result = build_ways(elements)
 
     assert [stop.id for stop in result.taxi_stops] == [1, 2]
+
+
+def test_hard_tree_impact_knocks_tree_down_and_smokes_taxi():
+    manager = TaxiManager([Way([(0.0, 0.0), (100.0, 0.0)], "residential", 4.0)])
+    scenery = Scenery([(0.0, -20.0), (20.0, -20.0), (20.0, 20.0)], "park", trees=[(0.0, 0.0)])
+    car = Car(x=0.0, y=0.0, heading=0.0, speed=25.0)
+
+    assert manager.check_tree_collision(car, [scenery], 1.0, previous_position=(-10.0, 0.0))
+    assert (id(scenery), 0) in manager.fallen_trees
+    assert manager.tree_effects[(id(scenery), 0)]["angle"] == car.heading
+    assert manager.tree_wait_timer == 5.0
+    assert manager.taxi_smoke_timer == 5.0

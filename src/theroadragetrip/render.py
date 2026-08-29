@@ -6,6 +6,7 @@ from .geo import clip_polygon_to_rect, dist_point_to_segment, meters_to_latlon
 from .osm import Building, Place, Scenery, TaxiStop, Water, Way
 from .physics import Car
 from .taxi import TaxiManager, TaxiState
+from .localization import tr
 
 SCREEN_W, SCREEN_H = 1280, 720
 FPS = 60
@@ -71,6 +72,8 @@ def draw_scenery(
     px_per_m: float = PX_PER_M,
     screen_w: int = SCREEN_W,
     screen_h: int = SCREEN_H,
+    tree_effects=None,
+    fallen_trees=None,
 ) -> None:
     """Draw parks, forests, and green spaces intersecting viewport."""
     import pygame
@@ -100,10 +103,15 @@ def draw_scenery(
         pts = [world_to_screen(x, y, camx, camy, px_per_m, screen_w, screen_h) for (x, y) in sc.points_m]
         color = colors.get(sc.kind.lower(), (38, 105, 38))
         pygame.draw.polygon(screen, color, pts)
-        for tree_x, tree_y in getattr(sc, "trees", []):
+        for tree_index, (tree_x, tree_y) in enumerate(getattr(sc, "trees", [])):
             if not (vminx <= tree_x <= vmaxx and vminy <= tree_y <= vmaxy):
                 continue
             sx, sy = world_to_screen(tree_x, tree_y, camx, camy, px_per_m, screen_w, screen_h)
+            tree_key = (id(sc), tree_index)
+            effect = (tree_effects or {}).get(tree_key, {})
+            shake = effect.get("shake", 0.0)
+            if shake > 0.0:
+                sx += math.sin(shake * 42.0) * max(1, int(2.0 * px_per_m))
             variation = abs(math.sin(tree_x * 12.9898 + tree_y * 78.233))
             size = 0.72 + variation * 0.62
             trunk = max(1, int(0.7 * size * px_per_m))
@@ -112,8 +120,38 @@ def draw_scenery(
             trunk_color = (78 + int(22 * variation), 52 + int(18 * variation), 27)
             crown_colors = ((25, 78, 29), (34, 101, 35), (48, 119, 42), (63, 112, 34))
             crown_color = crown_colors[min(len(crown_colors) - 1, int(variation * len(crown_colors)))]
-            pygame.draw.rect(screen, trunk_color, (sx - trunk // 2, sy, trunk, trunk_height))
-            pygame.draw.circle(screen, crown_color, (sx, sy - crown // 2), crown)
+            if tree_key in (fallen_trees or set()):
+                fall_heading = effect.get("angle", 0.0)
+                fall_x = sx + math.cos(fall_heading) * 3.2 * px_per_m
+                fall_y = sy - math.sin(fall_heading) * 3.2 * px_per_m
+                pygame.draw.line(screen, trunk_color, (sx, sy), (fall_x, fall_y), max(2, trunk))
+                pygame.draw.circle(screen, crown_color, (int(fall_x), int(fall_y)), crown)
+            else:
+                pygame.draw.rect(screen, trunk_color, (sx - trunk // 2, sy, trunk, trunk_height))
+                pygame.draw.circle(screen, crown_color, (sx, sy - crown // 2), crown)
+            leaves_left = effect.get("leaves", 0.0)
+            if leaves_left > 0.0:
+                for leaf_index in range(8):
+                    drift_x = math.sin(leaf_index * 2.7 + (1.2 - leaves_left) * 8.0) * 12.0 * px_per_m
+                    drift_y = -(1.2 - leaves_left) * 20.0 * px_per_m + math.cos(leaf_index * 1.9) * 5.0 * px_per_m
+                    pygame.draw.circle(screen, (82, 145, 44), (int(sx + drift_x), int(sy - crown + drift_y)), max(1, int(px_per_m * 0.22)))
+
+
+def draw_taxi_smoke(screen, car: Car, camx: float, camy: float, px_per_m: float = PX_PER_M, timer: float = 0.0) -> None:
+    """Draw smoke from a taxi disabled by a high-speed tree impact."""
+    if timer <= 0.0:
+        return
+    import pygame
+
+    cx, cy = world_to_screen(car.x, car.y, camx, camy, px_per_m, SCREEN_W, SCREEN_H)
+    age = 5.0 - timer
+    for index in range(5):
+        radius = max(3, int((2.0 + index * 0.8) * px_per_m))
+        x = int(cx - math.cos(car.heading) * (index + 1) * px_per_m + math.sin(age * 5 + index) * 3 * px_per_m)
+        y = int(cy + math.sin(car.heading) * (index + 1) * px_per_m - (index + 1) * 2 * px_per_m)
+        surface = pygame.Surface((radius * 2 + 2, radius * 2 + 2), pygame.SRCALPHA)
+        pygame.draw.circle(surface, (100, 105, 105, max(20, 120 - index * 18)), (radius + 1, radius + 1), radius)
+        screen.blit(surface, (x - radius - 1, y - radius - 1))
 
 
 def draw_waters(
@@ -1027,6 +1065,65 @@ def draw_taxi_stops(
         screen.blit(sign_text, sign_text.get_rect(center=inner_sign.center))
 
 
+def draw_speed_cameras(
+    screen,
+    cameras,
+    camx: float,
+    camy: float,
+    px_per_m: float = PX_PER_M,
+    screen_w: int = SCREEN_W,
+    screen_h: int = SCREEN_H,
+    flash_index: Optional[int] = None,
+    flash_active: bool = False,
+) -> None:
+    """Draw roadside speed-camera boxes and their posts."""
+    import pygame
+
+    vminx, vminy, vmaxx, vmaxy = get_viewport_bounds(camx, camy, px_per_m, screen_w, screen_h, 30.0)
+    for camera_index, camera in enumerate(cameras):
+        if not (vminx <= camera.x <= vmaxx and vminy <= camera.y <= vmaxy):
+            continue
+        cx, cy = world_to_screen(camera.x, camera.y, camx, camy, px_per_m, screen_w, screen_h)
+        scale = max(0.7, min(1.5, px_per_m / PX_PER_M))
+        pole_height = max(10, int(18 * scale))
+        pygame.draw.line(screen, (48, 52, 56), (cx, cy + 2), (cx, cy + pole_height), max(2, int(2 * scale)))
+        direction_x = -math.cos(camera.heading)
+        direction_y = math.sin(camera.heading)
+        side_x = -direction_y
+        side_y = direction_x
+        half_width = 8 * scale
+        half_height = 5.5 * scale
+        front_x = cx + direction_x * half_height
+        front_y = cy + direction_y * half_height
+        back_x = cx - direction_x * half_height
+        back_y = cy - direction_y * half_height
+        corners = [
+            (back_x + side_x * half_width, back_y + side_y * half_width),
+            (front_x + side_x * half_width, front_y + side_y * half_width),
+            (front_x - side_x * half_width, front_y - side_y * half_width),
+            (back_x - side_x * half_width, back_y - side_y * half_width),
+        ]
+        pygame.draw.polygon(screen, (35, 40, 44), corners)
+        pygame.draw.lines(screen, (190, 198, 202), True, corners, 1)
+        lens_x = front_x + direction_x * 1.5 * scale
+        lens_y = front_y + direction_y * 1.5 * scale
+        pygame.draw.circle(screen, (220, 45, 35), (int(lens_x), int(lens_y)), max(2, int(2.5 * scale)))
+        if flash_active and flash_index == camera_index:
+            flash = pygame.Surface((70, 70), pygame.SRCALPHA)
+            pygame.draw.circle(flash, (255, 255, 235, 150), (35, 35), 30)
+            pygame.draw.circle(flash, (255, 255, 255, 235), (35, 35), 12)
+            screen.blit(flash, (int(lens_x - 35), int(lens_y - 35)))
+        arrow_start = (front_x + direction_x * 3 * scale, front_y + direction_y * 3 * scale)
+        arrow_end = (front_x + direction_x * 15 * scale, front_y + direction_y * 15 * scale)
+        pygame.draw.line(screen, (245, 205, 35), arrow_start, arrow_end, max(2, int(2 * scale)))
+        arrow_side = max(2.5, 4 * scale)
+        pygame.draw.polygon(screen, (245, 205, 35), [
+            arrow_end,
+            (arrow_end[0] - direction_x * arrow_side + side_x * arrow_side, arrow_end[1] - direction_y * arrow_side + side_y * arrow_side),
+            (arrow_end[0] - direction_x * arrow_side - side_x * arrow_side, arrow_end[1] - direction_y * arrow_side - side_y * arrow_side),
+        ])
+
+
 def draw_taxi_target(
     screen,
     taxi_mgr: TaxiManager,
@@ -1036,6 +1133,7 @@ def draw_taxi_target(
     px_per_m: float = PX_PER_M,
     screen_w: int = SCREEN_W,
     screen_h: int = SCREEN_H,
+    language: str = "fi",
 ) -> None:
     """Draw pulsing waypoint circle, pin icon, and on-screen navigation arrow for active pickup/dropoff."""
     import pygame
@@ -1067,7 +1165,7 @@ def draw_taxi_target(
         pygame.draw.circle(screen, (20, 20, 20), (sx, sy), 7, 2)
 
         # Label above target
-        tag_text = "PICKUP" if is_pickup else "DROPOFF"
+        tag_text = tr(language, "pickup") if is_pickup else tr(language, "to")
         lbl_surf = font.render(f"[{tag_text}] {target.address}", True, (255, 255, 255))
         rect = lbl_surf.get_rect(center=(sx, sy - rad_px - 14))
         bg_rect = rect.inflate(8, 4)
@@ -1143,7 +1241,7 @@ def draw_taxi_target(
         screen.blit(d_surf, d_rect)
 
 
-def draw_phone_offers(screen, taxi_mgr: TaxiManager, font, small_font, screen_w: int, screen_h: int) -> None:
+def draw_phone_offers(screen, taxi_mgr: TaxiManager, font, small_font, screen_w: int, screen_h: int, language: str = "fi") -> None:
     """Draw the in-game phone with selectable taxi offers."""
     import pygame
 
@@ -1155,16 +1253,16 @@ def draw_phone_offers(screen, taxi_mgr: TaxiManager, font, small_font, screen_w:
     pygame.draw.rect(screen, (18, 22, 28), phone, border_radius=18)
     pygame.draw.rect(screen, (92, 105, 116), phone, width=3, border_radius=18)
     pygame.draw.rect(screen, (38, 48, 57), (phone.x + 180, phone.y + 12, 140, 5), border_radius=2)
-    title = font.render("TAXI PHONE", True, (245, 220, 110))
+    title = font.render("TAXI PHONE" if language == "en" else "TAKSIPUHELIN", True, (245, 220, 110))
     screen.blit(title, title.get_rect(center=(phone.centerx, phone.y + 48)))
-    subtitle = small_font.render("Select a ride request", True, (185, 195, 202))
+    subtitle = small_font.render(tr(language, "select_ride"), True, (185, 195, 202))
     screen.blit(subtitle, subtitle.get_rect(center=(phone.centerx, phone.y + 78)))
 
     if taxi_mgr.current_passenger:
-        message = small_font.render("Finish or cancel current fare first", True, (245, 150, 120))
+        message = small_font.render(tr(language, "finish_or_cancel"), True, (245, 150, 120))
         screen.blit(message, message.get_rect(center=phone.center))
     elif not taxi_mgr.offers:
-        message = small_font.render("No requests available", True, (220, 220, 220))
+        message = small_font.render(tr(language, "no_requests"), True, (220, 220, 220))
         screen.blit(message, message.get_rect(center=phone.center))
     else:
         for index, offer in enumerate(taxi_mgr.offers[:3]):
@@ -1176,15 +1274,15 @@ def draw_phone_offers(screen, taxi_mgr: TaxiManager, font, small_font, screen_w:
             distance = offer.pickup_distance_m
             distance_text = f"{distance:.0f} m" if distance < 1000 else f"{distance / 1000.0:.2f} km"
             label = small_font.render(f"[{index + 1}]  {passenger.name}", True, (245, 245, 240))
-            pickup = small_font.render(f"Pickup: {passenger.pickup.address}", True, (190, 205, 212))
-            dropoff = small_font.render(f"To: {passenger.dropoff.address}", True, (170, 190, 175))
-            dist = small_font.render(f"Distance to client: {distance_text}", True, (255, 215, 95))
+            pickup = small_font.render(f"{tr(language, 'pickup')}: {passenger.pickup.address}", True, (190, 205, 212))
+            dropoff = small_font.render(f"{tr(language, 'to')}: {passenger.dropoff.address}", True, (170, 190, 175))
+            dist = small_font.render(f"{tr(language, 'distance_client')}: {distance_text}", True, (255, 215, 95))
             screen.blit(label, (row.x + 12, row.y + 8))
             screen.blit(pickup, (row.x + 12, row.y + 29))
             screen.blit(dropoff, (row.x + 12, row.y + 48))
             screen.blit(dist, (row.x + 12, row.y + 67))
 
-    hint = small_font.render("P / Esc: close", True, (180, 185, 190))
+    hint = small_font.render(tr(language, "close_phone"), True, (180, 185, 190))
     screen.blit(hint, hint.get_rect(center=(phone.centerx, phone.bottom - 20)))
 
 
@@ -1311,6 +1409,7 @@ def draw_city_selection_menu(
     selected_idx: int,
     screen_w: int = SCREEN_W,
     screen_h: int = SCREEN_H,
+    language: str = "fi",
 ) -> None:
     """Draw city selection menu with 10 largest cities in Finland."""
     import pygame
@@ -1337,7 +1436,7 @@ def draw_city_selection_menu(
     except Exception:
         pass
 
-    sub_surf = sub_font.render("Select Starting City (4x4 km OSM map)", True, (150, 180, 210))
+    sub_surf = sub_font.render(tr(language, "select_city"), True, (150, 180, 210))
     sub_rect = sub_surf.get_rect(center=(screen_w // 2, 80))
     screen.blit(sub_surf, sub_rect)
 
@@ -1377,7 +1476,7 @@ def draw_city_selection_menu(
 
     # Navigation hint
     hint_surf = sub_font.render(
-        "Use UP/DOWN/LEFT/RIGHT or number keys 1-0 to select, ENTER / SPACE to start, ESC to quit",
+        tr(language, "city_hint"),
         True,
         (130, 150, 170),
     )
@@ -1390,6 +1489,7 @@ def draw_help_screen(
     font,
     screen_w: int = SCREEN_W,
     screen_h: int = SCREEN_H,
+    language: str = "fi",
 ) -> None:
     """Draw the game's objective and keyboard controls over the current frame."""
     import pygame
@@ -1408,24 +1508,18 @@ def draw_help_screen(
     screen.blit(title, title.get_rect(center=(screen_w // 2, panel.y + 38)))
 
     sections = [
-        (
-            "Taustatarina",
-            [
-                "Olet kaiken kokenut taksikuski, joka ajaa keikkaa Suomen eri kaupungeissa.",
-                "Joka paikkaa yhdistävät samat riesat: idiootit kanssakuskit, ääliöt pyöräilijät",
-                "ja eteen pyrkivät jalankulkijat. Vuosien ajo on kehittänyt sinulle supervoiman:",
-                "raivohuuto tyhjentää tien häiriöistä. Raivomittari kasvaa rajoitusten mukaan ajaessa",
-                "ja pienenee, kun käytät raivovoimaa tehdäksesi tietä.",
-            ],
-        ),
-        (
-            "Pelin idea",
-            [
-                "Aja asiakkaan luo, ota hänet kyytiin ja vie perille.",
-                "Nouda asiakkaat kaduilta, taksiasemilta tai nimetyiltä rakennuksilta.",
-                "Pysy tiellä, vältä kolareita ja kerää pisteitä nopeista onnistuneista kyydeistä.",
-            ],
-        ),
+        (tr(language, "story"), [
+            "Olet kaiken kokenut taksikuski, joka ajaa keikkaa Suomen eri kaupungeissa." if language == "fi" else "You are a veteran taxi driver working rides across Finnish cities.",
+            "Joka paikkaa yhdistävät samat riesat: idiootit kanssakuskit, ääliöt pyöräilijät" if language == "fi" else "Everywhere has the same problems: foolish drivers, awful cyclists",
+            "ja eteen pyrkivät jalankulkijat. Vuosien ajo on kehittänyt sinulle supervoiman:" if language == "fi" else "and pedestrians stepping in front of you. Years on the road gave you a superpower:",
+            "raivohuuto tyhjentää tien häiriöistä. Raivomittari kasvaa rajoitusten mukaan ajaessa" if language == "fi" else "the rage shout clears obstacles. Rage grows when you follow limits",
+            "ja pienenee, kun käytät raivovoimaa tehdäksesi tietä." if language == "fi" else "and drains when you use it to clear the way.",
+        ]),
+        (tr(language, "idea"), [
+            "Aja asiakkaan luo, ota hänet kyytiin ja vie perille." if language == "fi" else "Drive to clients, pick them up, and take them to their destination.",
+            "Nouda asiakkaat kaduilta, taksiasemilta tai nimetyiltä rakennuksilta." if language == "fi" else "Pick up clients from streets, taxi stops, or named buildings.",
+            "Pysy tiellä, vältä kolareita ja kerää pisteitä nopeista onnistuneista kyydeistä." if language == "fi" else "Stay on the road, avoid crashes, and score points for successful rides.",
+        ]),
     ]
     y = panel.y + 78
     for heading, lines in sections:
@@ -1440,25 +1534,25 @@ def draw_help_screen(
 
     control_font = pygame.font.SysFont("monospace", 20)
     controls = [
-        ("W / Ylös", "Kiihdytä"),
-        ("S / Alas", "Jarruta / peruuta"),
-        ("A / Vasen", "Ohjaa vasemmalle"),
-        ("D / Oikea", "Ohjaa oikealle"),
-        ("P", "Puhelin: tarjoukset"),
-        ("1 - 3", "Valitse kyyti puhelimessa"),
-        ("Space", "Raivohuuto"),
-        ("R", "Respawn"),
-        ("X", "Hylkää kyyti"),
-        ("T", "Nollaa matkamittari"),
-        ("L", "Nimet päälle / pois"),
-        ("K", "Kaista-avustin"),
-        ("V", "Nopeusrajoitin"),
-        ("B", "Liikennevaloavustin"),
-        ("+ / -", "Zoomaus"),
-        ("Esc", "Tauko"),
-        ("F1", "Avaa nämä ohjeet"),
+        ("W / Up", tr(language, "drive")),
+        ("S / Down", tr(language, "brake")),
+        ("A / Left", tr(language, "left")),
+        ("D / Right", tr(language, "right")),
+        ("P", tr(language, "phone")),
+        ("1 - 3", tr(language, "select_ride")),
+        ("Space", tr(language, "rage")),
+        ("R", tr(language, "respawn")),
+        ("X", tr(language, "cancel_ride")),
+        ("T", tr(language, "reset_trip")),
+        ("L", tr(language, "labels")),
+        ("K", tr(language, "lane_assist")),
+        ("V", tr(language, "speed_limiter")),
+        ("B", tr(language, "red_assist")),
+        ("+ / -", tr(language, "zoom")),
+        ("Esc", tr(language, "pause")),
+        ("F1", tr(language, "help_short")),
     ]
-    heading_surface = section_font.render("Ohjaus", True, (255, 215, 95))
+    heading_surface = section_font.render("Ohjaus" if language == "fi" else "Controls", True, (255, 215, 95))
     screen.blit(heading_surface, (panel.x + 28, y))
     y += 30
     column_width = panel.width // 2
@@ -1476,7 +1570,7 @@ def draw_help_screen(
             screen.blit(action_surface, (column_x + 105, y))
         y += 20
 
-    hint = font.render("Esc / F1: sulje", True, (160, 190, 215))
+    hint = font.render(tr(language, "help_close"), True, (160, 190, 215))
     screen.blit(hint, hint.get_rect(center=(screen_w // 2, panel.bottom - 25)))
 
 
@@ -1487,6 +1581,7 @@ def draw_pause_menu(
     selected_idx: int,
     screen_w: int = SCREEN_W,
     screen_h: int = SCREEN_H,
+    language: str = "fi",
 ) -> None:
     """Draw semi-transparent pause menu overlay with selectable options."""
     import pygame
@@ -1513,7 +1608,7 @@ def draw_pause_menu(
         title_font = pygame.font.SysFont(None, 36, bold=True)
     except Exception:
         pass
-    t_surf = title_font.render("GAME PAUSED", True, (245, 245, 245))
+    t_surf = title_font.render(tr(language, "paused"), True, (245, 245, 245))
     t_rect = t_surf.get_rect(center=(screen_w // 2, panel_y + 40))
     screen.blit(t_surf, t_rect)
 
@@ -1551,6 +1646,54 @@ def draw_pause_menu(
     screen.blit(h_surf, h_rect)
 
 
+def draw_settings_menu(
+    screen,
+    font,
+    language: str,
+    master_volume: float,
+    music_volume: float,
+    effects_volume: float,
+    selected_idx: int,
+    screen_w: int = SCREEN_W,
+    screen_h: int = SCREEN_H,
+) -> None:
+    """Draw language and audio settings."""
+    import pygame
+
+    screen.fill((18, 24, 32))
+    panel = pygame.Rect(100, 70, screen_w - 200, screen_h - 140)
+    pygame.draw.rect(screen, (22, 30, 40), panel, border_radius=8)
+    pygame.draw.rect(screen, (100, 170, 220), panel, width=2, border_radius=8)
+    title_font = pygame.font.SysFont(None, 36, bold=True)
+    title = title_font.render(tr(language, "settings"), True, (245, 245, 245))
+    screen.blit(title, title.get_rect(center=(screen_w // 2, panel.y + 42)))
+
+    rows = [
+        (tr(language, "language"), "Suomi" if language == "fi" else "English", None),
+        (tr(language, "master_volume"), f"{master_volume * 100:.0f}%", master_volume),
+        (tr(language, "music_volume"), f"{music_volume * 100:.0f}%", music_volume),
+        (tr(language, "effects_volume"), f"{effects_volume * 100:.0f}%", effects_volume),
+    ]
+    for idx, (label, value, volume) in enumerate(rows):
+        y = panel.y + 100 + idx * 58
+        selected = idx == selected_idx
+        color = (255, 215, 95) if selected else (220, 228, 235)
+        label_surface = font.render(label, True, color)
+        screen.blit(label_surface, (panel.x + 38, y))
+        if volume is None:
+            value_surface = font.render(value, True, color)
+            screen.blit(value_surface, (panel.right - 190, y))
+        else:
+            bar = pygame.Rect(panel.right - 240, y + 5, 150, 16)
+            pygame.draw.rect(screen, (45, 55, 65), bar, border_radius=3)
+            pygame.draw.rect(screen, (55, 180, 110), (bar.x, bar.y, int(bar.width * volume), bar.height), border_radius=3)
+            value_surface = font.render(value, True, color)
+            screen.blit(value_surface, (panel.right - 75, y))
+
+    hint = pygame.font.SysFont(None, 18).render(tr(language, "settings_hint"), True, (150, 175, 195))
+    screen.blit(hint, hint.get_rect(center=(screen_w // 2, panel.bottom - 28)))
+
+
 def draw_hud(
     screen,
     font,
@@ -1568,6 +1711,7 @@ def draw_hud(
     speed_limiter_enabled: bool = True,
     red_light_assist_enabled: bool = False,
     rage_power: float = 0.0,
+    language: str = "fi",
 ) -> None:
     """Draw speed, trip, odometer, on-road status, current road name, lat/lon, taxi mission bar, notifications."""
     import pygame
@@ -1583,11 +1727,11 @@ def draw_hud(
     lane_assist_status = "ON" if getattr(car, "lane_assist_enabled", False) else "OFF"
     speed_limiter_status = "ON" if speed_limiter_enabled else "OFF"
     red_light_assist_status = "ON" if red_light_assist_enabled else "OFF"
-    road_name_s = current_road_name if current_road_name else "Off-road"
-    limit_s = f" [Limit: {speed_limit_kmh} km/h]" if speed_limit_kmh is not None else ""
+    road_name_s = current_road_name if current_road_name else tr(language, "off_road")
+    limit_s = f" [{tr(language, 'limit')}: {speed_limit_kmh} km/h]" if speed_limit_kmh is not None else ""
     assist_s = " | [Lane Assist]" if getattr(car, "lane_assist_active", False) else ""
     hud = (
-        f"Road: {road_name_s}{limit_s}{assist_s} | Trip: {trip_s} | Odo: {odo_s} | "
+        f"{tr(language, 'road')}: {road_name_s}{limit_s}{assist_s} | {tr(language, 'trip')}: {trip_s} | {tr(language, 'odometer')}: {odo_s} | "
         f"Ways: {ways_count} | Zoom: {px_per_m:.2f} px/m | Lat: {lat_s} Lon: {lon_s}"
     )
     text = font.render(hud, True, (240, 240, 240))
@@ -1609,7 +1753,7 @@ def draw_hud(
 
         p = taxi_mgr.current_passenger
         if p is None:
-            role_text = "[TAXI] Avaa puhelin painamalla P ja valitse kyyti"
+            role_text = f"[TAXI] {tr(language, 'open_phone')}"
             role_color = (255, 215, 60)
         elif taxi_mgr.state == TaxiState.WAITING_FOR_PICKUP:
             role_text = f"[TAXI] FARE: Pickup {p.name if p else 'Client'} at: {target.address if target else '...'} ({dist_s})"
@@ -1623,7 +1767,7 @@ def draw_hud(
             role_color = (100, 240, 140)
 
         # Draw taxi score and stats on top right
-        score_text = f"SCORE: {taxi_mgr.total_score} pts | Fares: {taxi_mgr.completed_fares}"
+        score_text = f"{tr(language, 'score')}: {taxi_mgr.total_score} pts | {tr(language, 'fares')}: {taxi_mgr.completed_fares}"
         score_surf = font.render(score_text, True, (255, 230, 110))
         score_rect = score_surf.get_rect(topright=(SCREEN_W - 140, 10))
         bg_s = pygame.Surface((score_rect.width + 12, score_rect.height + 6), pygame.SRCALPHA)
@@ -1652,8 +1796,8 @@ def draw_hud(
             screen.blit(notif_surf, notif_rect)
 
     # Keep driving instruments together in the lower-left corner.
-    speed_text = font.render(f"SPEED: {car.speed * 3.6:.0f} km/h", True, (240, 240, 240))
-    rage_text = font.render(f"RAGE: {rage_power * 100:.0f}%", True, (255, 120, 100))
+    speed_text = font.render(f"{tr(language, 'speed')}: {car.speed * 3.6:.0f} km/h", True, (240, 240, 240))
+    rage_text = font.render(f"{tr(language, 'rage_meter')}: {rage_power * 100:.0f}%", True, (255, 120, 100))
     instrument_width = max(speed_text.get_width(), rage_text.get_width()) + 20
     instrument_height = speed_text.get_height() + rage_text.get_height() + 22
     instrument_x = 10

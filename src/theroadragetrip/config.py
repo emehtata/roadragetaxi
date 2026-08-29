@@ -13,6 +13,7 @@ USER_AGENT_KEY = "user_agent_id"
 
 DEFAULT_CONFIG = {
     "game": {
+        "language": "",
         "preset": "",
         "bbox": "",
         "no_menu": "false",
@@ -32,6 +33,14 @@ DEFAULT_CONFIG = {
         "traffic_count": "",
         "pedestrian_count": "20",
         "cyclist_count": "8",
+    },
+    "audio": {
+        "master_volume": "1.0",
+        "music_volume": "0.2",
+        "effects_volume": "1.0",
+    },
+    "police": {
+        "taxi_stop_cameras": "false",
     },
     "cities": {
         "helsinki": "60.169525, 24.935446",
@@ -116,6 +125,12 @@ def _is_valid_user_agent_id(value: str) -> bool:
 def get_optional_int(config: configparser.ConfigParser, section: str, key: str) -> Any:
     value = config.get(section, key, fallback="").strip()
     return int(value) if value else None
+
+
+def save_config(config: configparser.ConfigParser, path: Path = CONFIG_PATH) -> None:
+    """Persist user-editable settings while keeping the existing INI identity."""
+    with path.open("w", encoding="utf-8") as config_file:
+        config.write(config_file)
 
 
 def cities_from_config(config: configparser.ConfigParser) -> tuple[dict[str, tuple[float, float]], dict[str, tuple[float, float, float, float]]]:
