@@ -384,6 +384,8 @@ def main() -> None:
         on_load_progress(0.98, "Preparing pedestrians...")
         pedestrian_mgr = PedestrianManager(ways, target_count=args.pedestrian_count, traffic_lights=traffic_lights)
         cyclist_mgr = CyclistManager(ways, target_count=args.cyclist_count, traffic_lights=traffic_lights)
+        base_pedestrian_count = pedestrian_mgr.target_count
+        base_cyclist_count = cyclist_mgr.target_count
 
         # Prepare transformer for meters->latlon display
         try:
@@ -604,7 +606,10 @@ def main() -> None:
                 eased = progress * progress * (3.0 - 2.0 * progress)
                 px_per_m = px_per_m + (zoom_target - px_per_m) * eased
 
-            traffic_mgr.set_target_count(traffic_count_for_zoom(base_traffic_count, max(px_per_m, zoom_target)), car)
+            zoom_scale = max(px_per_m, zoom_target)
+            traffic_mgr.set_target_count(traffic_count_for_zoom(base_traffic_count, zoom_scale), car)
+            pedestrian_mgr.set_target_count(traffic_count_for_zoom(base_pedestrian_count, zoom_scale), car)
+            cyclist_mgr.set_target_count(traffic_count_for_zoom(base_cyclist_count, zoom_scale), car)
 
             keys = pygame.key.get_pressed()
             immobilized = taxi_mgr.tree_wait_timer > 0.0
@@ -620,9 +625,10 @@ def main() -> None:
             if speed_limiter_enabled and current_way:
                 speed_limit_mps = current_way.speed_limit_kmh / 3.6
             red_light_limit_mps = None
+            nearby_traffic_lights = traffic_mgr._nearby_traffic_lights(car.x, car.y)
             if red_light_assist_enabled:
                 red_light_limit_mps = taxi_mgr.get_red_light_assist_speed_limit(
-                    car, traffic_lights, traffic_mgr.sim_time
+                    car, nearby_traffic_lights, traffic_mgr.sim_time
                 )
             if red_light_limit_mps is not None:
                 speed_limit_mps = (
@@ -652,7 +658,7 @@ def main() -> None:
             road_limit_mps = current_way.speed_limit_kmh / 3.6 if current_way else None
             if road_limit_mps is not None and driven_distance > 0.0 and abs(car.speed) <= road_limit_mps + 0.01:
                 rage_power = min(1.0, rage_power + driven_distance / RAGE_DISTANCE_TO_FULL_M)
-            if taxi_mgr.sees_red_light(car, traffic_lights, traffic_mgr.sim_time):
+            if taxi_mgr.sees_red_light(car, nearby_traffic_lights, traffic_mgr.sim_time):
                 rage_power = min(1.0, rage_power + 0.05 * dt)
             if first_gameplay_frame:
                 logger.info("Gameplay frame: physics complete")

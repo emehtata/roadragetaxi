@@ -112,6 +112,14 @@ class PedestrianManager:
 
         self._build_junction_grid()
 
+    def set_target_count(self, target_count: int, player_car: Optional[Car] = None) -> None:
+        """Adjust active pedestrian count and discard farthest characters when needed."""
+        self.target_count = max(0, target_count)
+        if len(self.pedestrians) > self.target_count:
+            if player_car is not None:
+                self.pedestrians.sort(key=lambda ped: math.hypot(ped.x - player_car.x, ped.y - player_car.y))
+            del self.pedestrians[self.target_count:]
+
     def _build_junction_grid(self) -> None:
         """Build spatial grid indexing way endpoints and vertices for seamless path transitions."""
         self._junction_grid.clear()

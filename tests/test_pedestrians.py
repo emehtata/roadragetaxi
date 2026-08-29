@@ -5,6 +5,20 @@ from theroadragetrip.pedestrian import Pedestrian, PedestrianManager
 from theroadragetrip.physics import Car
 
 
+def test_pedestrian_target_count_keeps_nearest_characters():
+    way = Way(points_m=[(0.0, 0.0), (100.0, 0.0)], highway="footway", half_width_m=1.5)
+    manager = PedestrianManager([way], target_count=3)
+    manager.pedestrians = [
+        Pedestrian(1.0, 0.0, 0.0, 1.0, 1.0, way, 0, 1, (1, 1, 1)),
+        Pedestrian(10.0, 0.0, 0.0, 1.0, 1.0, way, 0, 1, (1, 1, 1)),
+        Pedestrian(30.0, 0.0, 0.0, 1.0, 1.0, way, 0, 1, (1, 1, 1)),
+    ]
+
+    manager.set_target_count(2, Car(x=0.0, y=0.0, heading=0.0, speed=0.0))
+
+    assert [ped.x for ped in manager.pedestrians] == [1.0, 10.0]
+
+
 def test_pedestrian_spawning_and_movement():
     footway1 = Way(
         points_m=[(0.0, 0.0), (100.0, 0.0)],
