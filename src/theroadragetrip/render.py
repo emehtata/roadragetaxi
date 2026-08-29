@@ -155,6 +155,39 @@ def draw_taxi_smoke(screen, car: Car, camx: float, camy: float, px_per_m: float 
         screen.blit(surface, (x - radius - 1, y - radius - 1))
 
 
+def draw_taxi_exhaust(
+    screen,
+    car: Car,
+    camx: float,
+    camy: float,
+    px_per_m: float = PX_PER_M,
+    screen_w: int = SCREEN_W,
+    screen_h: int = SCREEN_H,
+) -> None:
+    """Draw a small, continuous exhaust plume behind the taxi."""
+    import pygame
+
+    cx, cy = world_to_screen(car.x, car.y, camx, camy, px_per_m, screen_w, screen_h)
+    rear_x = -math.cos(car.heading)
+    rear_y = math.sin(car.heading)
+    side_x = math.sin(car.heading)
+    side_y = math.cos(car.heading)
+    phase = pygame.time.get_ticks() / 260.0
+    speed_factor = min(1.0, abs(car.speed) / 12.0)
+
+    for pipe_index in (-1, 1):
+        pipe_offset = pipe_index * 0.42 * px_per_m
+        for puff_index in range(3):
+            distance = (0.35 + puff_index * 0.7 + (phase % 1.0) * 0.35) * px_per_m
+            radius = max(1, int((0.22 + puff_index * 0.12) * px_per_m))
+            x = cx + rear_x * distance + side_x * pipe_offset
+            y = cy + rear_y * distance + side_y * pipe_offset
+            alpha = max(18, int((72 - puff_index * 18) * (0.65 + speed_factor * 0.35)))
+            surface = pygame.Surface((radius * 2 + 2, radius * 2 + 2), pygame.SRCALPHA)
+            pygame.draw.circle(surface, (105, 108, 108, alpha), (radius + 1, radius + 1), radius)
+            screen.blit(surface, (int(x - radius - 1), int(y - radius - 1)))
+
+
 def draw_waters(
     screen,
     waters: List[Water],

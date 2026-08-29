@@ -68,6 +68,7 @@ from .render import (
     draw_pedestrians,
     draw_phone_offers,
     draw_scenery,
+    draw_taxi_exhaust,
     draw_taxi_smoke,
     draw_speed_cameras,
     draw_taxi_stops,
@@ -807,6 +808,7 @@ def main() -> None:
             draw_cyclists(screen, cyclist_mgr.cyclists, camx, camy, px_per_m=px_per_m, ways=ways)
             draw_npc_cars(screen, traffic_mgr.npcs, camx, camy, px_per_m=px_per_m, ways=ways)
             draw_taxi_target(screen, taxi_mgr, camx, camy, font, px_per_m=px_per_m, language=language)
+            draw_taxi_exhaust(screen, car, camx, camy, px_per_m=px_per_m)
             draw_car(
                 screen,
                 car,
