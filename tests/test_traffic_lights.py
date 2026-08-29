@@ -74,6 +74,7 @@ def test_build_ways_splits_single_signal_at_four_arm_junction():
     assert len(signals) == 4
     assert len({signal.id for signal in signals}) == 4
     assert all((signal.x, signal.y) != (signals[0].x, signals[0].y) for signal in signals[1:])
+    assert len({round(signal.direction_angle, 4) for signal in signals}) == 4
 
 
 def test_build_ways_splits_signal_when_node_is_not_in_road_ways():

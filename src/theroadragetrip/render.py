@@ -1049,16 +1049,15 @@ def draw_traffic_lights(
                 (arrow_center[0] + direction_x * arrow_length, arrow_center[1] + direction_y * arrow_length),
                 2,
             )
-            for sign in (-1, 1):
-                tip_x = arrow_center[0] + sign * direction_x * arrow_length
-                tip_y = arrow_center[1] + sign * direction_y * arrow_length
-                side_x = -direction_y * arrow_width
-                side_y = direction_x * arrow_width
-                pygame.draw.polygon(screen, (255, 215, 55), [
-                    (tip_x, tip_y),
-                    (tip_x - sign * direction_x * 8 + side_x, tip_y - sign * direction_y * 8 + side_y),
-                    (tip_x - sign * direction_x * 8 - side_x, tip_y - sign * direction_y * 8 - side_y),
-                ])
+            tip_x = arrow_center[0] + direction_x * arrow_length
+            tip_y = arrow_center[1] + direction_y * arrow_length
+            side_x = -direction_y * arrow_width
+            side_y = direction_x * arrow_width
+            pygame.draw.polygon(screen, (255, 215, 55), [
+                (tip_x, tip_y),
+                (tip_x - direction_x * 8 + side_x, tip_y - direction_y * 8 + side_y),
+                (tip_x - direction_x * 8 - side_x, tip_y - direction_y * 8 - side_y),
+            ])
 
 
 def draw_taxi_stops(

@@ -1150,8 +1150,8 @@ def build_ways(
 
                 if len(arm_angles) >= 3:
                     for arm_index, arm_angle in enumerate(arm_angles):
-                        signal_angle = arm_angle % math.pi
-                        signal_offset = 8.0 if (math.pi * 0.25) <= signal_angle < (math.pi * 0.75) else 0.0
+                        signal_axis = arm_angle % math.pi
+                        signal_offset = 8.0 if (math.pi * 0.25) <= signal_axis < (math.pi * 0.75) else 0.0
                         traffic_lights.append(
                             TrafficLight(
                                 x=pt[0] + math.cos(arm_angle) * 6.0,
@@ -1160,7 +1160,8 @@ def build_ways(
                                 offset=signal_offset,
                                 layer=layer_val,
                                 id=nid * 10 + arm_index,
-                                direction_angle=signal_angle,
+                                # The signal controls traffic moving from its arm toward the junction.
+                                direction_angle=(arm_angle + math.pi) % (2.0 * math.pi),
                             )
                         )
                 else:
