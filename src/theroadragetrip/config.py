@@ -57,6 +57,14 @@ DEFAULT_CONFIG = {
         "music_volume": "0.2",
         "effects_volume": "1.0",
     },
+    "speech": {
+        "enabled": "false",
+        "piper_command": "piper",
+        "fi_model": "",
+        "en_model": "",
+        "min_interval": "18.0",
+        "max_interval": "35.0",
+    },
     "police": {
         "taxi_stop_cameras": "false",
     },

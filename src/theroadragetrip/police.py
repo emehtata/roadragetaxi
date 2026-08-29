@@ -58,7 +58,13 @@ class PoliceManager:
             way is not None
             and abs(taxi.speed) * 3.6 > way.speed_limit_kmh + 10.0
         )
-        active = next((car for car in self.cars if car.pursuing or not car.penalty_given), None)
+        active = next(
+            (
+                car for car in self.cars
+                if car.scared_timer <= 0.0 and (car.pursuing or not car.penalty_given)
+            ),
+            None,
+        )
         can_see_taxi = (
             active is not None
             and math.hypot(active.x - taxi.x, active.y - taxi.y) <= 90.0

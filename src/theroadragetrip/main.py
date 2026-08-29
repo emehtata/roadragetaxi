@@ -306,6 +306,12 @@ def main() -> None:
         master_volume=config.getfloat("audio", "master_volume", fallback=1.0),
         music_volume=config.getfloat("audio", "music_volume", fallback=0.2),
         effects_volume=config.getfloat("audio", "effects_volume", fallback=1.0),
+        speech_enabled=config.getboolean("speech", "enabled", fallback=False),
+        piper_command=config.get("speech", "piper_command", fallback="piper"),
+        piper_fi_model=config.get("speech", "fi_model", fallback="").strip(),
+        piper_en_model=config.get("speech", "en_model", fallback="").strip(),
+        speech_min_interval=config.getfloat("speech", "min_interval", fallback=18.0),
+        speech_max_interval=config.getfloat("speech", "max_interval", fallback=35.0),
     )
 
     # Outer game loop to support picking new starting city without restarting process
@@ -1019,6 +1025,12 @@ def main() -> None:
             previous_taxi_state = taxi_mgr.state
             previous_passenger = taxi_mgr.current_passenger
             taxi_mgr.update(car, dt)
+            audio.update_passenger_speech(
+                taxi_mgr.current_passenger is not None
+                and taxi_mgr.state == TaxiState.DRIVING_TO_DROPOFF,
+                language,
+                dt,
+            )
             if (
                 previous_taxi_state == TaxiState.CLIENT_WALKING_TO_CAR
                 and taxi_mgr.state == TaxiState.DRIVING_TO_DROPOFF

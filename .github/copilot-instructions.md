@@ -75,6 +75,8 @@ Follow the best practices with directory structure and modularization when refac
 
 Keep tests in a separate `tests/` directory when adding them.
 
+Update `README.md` whenever adding new features, files, commands, settings, or user-facing behavior.
+
 When in doubt, prefer the simplest solution that produces a visible working PoC quickly.
 
 ## Core Directives
