@@ -300,10 +300,27 @@ class TrafficManager:
                 self.npcs.sort(key=lambda npc: math.hypot(npc.x - player_car.x, npc.y - player_car.y))
             del self.npcs[self.target_count:]
 
-    def let_taxi_pick_up_waiter(self, taxi_stops: List, pedestrians: List) -> None:
+    def let_taxi_pick_up_waiter(self, taxi_stops: List, pedestrians: List, dt: float = 1.0 / 60.0) -> None:
         """Let a nearby NPC taxi collect one waiting customer at a time."""
         for npc in self.npcs:
-            if not npc.is_taxi or npc.taxi_pickup_timer > 0.0:
+            if not npc.is_taxi:
+                continue
+            for pedestrian in pedestrians[:]:
+                if getattr(pedestrian, "rival_taxi", None) is not npc:
+                    continue
+                dx = npc.x - pedestrian.x
+                dy = npc.y - pedestrian.y
+                distance = math.hypot(dx, dy)
+                if distance <= 1.5:
+                    pedestrians.remove(pedestrian)
+                    npc.taxi_pickup_timer = 0.8
+                else:
+                    pedestrian.heading = math.atan2(dy, dx)
+                    step = min(distance, 2.2 * dt)
+                    pedestrian.x += math.cos(pedestrian.heading) * step
+                    pedestrian.y += math.sin(pedestrian.heading) * step
+                break
+            if npc.taxi_pickup_timer > 0.0:
                 continue
             for stop in taxi_stops:
                 if math.hypot(npc.x - stop.x, npc.y - stop.y) > 8.0:
@@ -315,7 +332,8 @@ class TrafficManager:
                         continue
                     npc.speed = 0.0
                     npc.taxi_pickup_timer = 1.5
-                    pedestrians.remove(pedestrian)
+                    pedestrian.rival_taxi = npc
+                    pedestrian.is_walking_to_car = True
                     break
                 if npc.taxi_pickup_timer > 0.0:
                     break

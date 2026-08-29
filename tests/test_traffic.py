@@ -22,11 +22,17 @@ def test_rival_taxi_picks_up_taxi_stand_waiter():
     waiter = SimpleNamespace(x=1.0, y=0.0, is_taxi_stop_waiter=True)
     pedestrians = [waiter]
 
-    manager.let_taxi_pick_up_waiter([SimpleNamespace(x=0.0, y=0.0)], pedestrians)
+    manager.let_taxi_pick_up_waiter([SimpleNamespace(x=0.0, y=0.0)], pedestrians, dt=0.1)
 
-    assert pedestrians == []
+    assert pedestrians == [waiter]
+    assert waiter.rival_taxi is taxi
+    assert waiter.is_walking_to_car is True
     assert taxi.speed == 0.0
     assert taxi.taxi_pickup_timer == 1.5
+
+    waiter.x = 0.5
+    manager.let_taxi_pick_up_waiter([SimpleNamespace(x=0.0, y=0.0)], pedestrians)
+    assert pedestrians == []
 
 
 def test_npc_traffic_spawning_and_movement():
