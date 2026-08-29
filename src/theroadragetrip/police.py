@@ -2,11 +2,14 @@
 
 import math
 import random
+import logging
 from dataclasses import dataclass
 from typing import List, Optional, Tuple
 
 from .osm import TaxiStop, Way
 from .physics import connected_drivable_ways
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -81,6 +84,16 @@ def place_speed_cameras(
             way.speed_limit_kmh,
             len(result),
         ))
+    for index, camera in enumerate(result, start=1):
+        logger.info(
+            "Speed camera %d placed at x=%.1f y=%.1f heading=%.1f deg limit=%d km/h way_id=%d",
+            index,
+            camera.x,
+            camera.y,
+            math.degrees(camera.heading),
+            camera.speed_limit_kmh,
+            camera.way_id,
+        )
     return result
 
 
