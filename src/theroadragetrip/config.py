@@ -1,6 +1,8 @@
 import base64
 import configparser
 import hashlib
+import os
+import sys
 import uuid
 from pathlib import Path
 from typing import Any
@@ -8,8 +10,18 @@ from typing import Any
 from .osm import bbox_from_center
 
 
-CONFIG_PATH = Path.cwd() / "roadragetrip.ini"
 USER_AGENT_KEY = "user_agent_id"
+
+
+def _default_config_path() -> Path:
+    if sys.platform.startswith("win"):
+        config_dir = Path(os.getenv("APPDATA", Path.home() / "AppData" / "Roaming"))
+    else:
+        config_dir = Path(os.getenv("XDG_CONFIG_HOME", Path.home() / ".config"))
+    return config_dir / "RoadRageTrip" / "roadragetrip.ini"
+
+
+CONFIG_PATH = _default_config_path()
 
 DEFAULT_CONFIG = {
     "game": {
@@ -63,6 +75,7 @@ def load_config(path: Path = CONFIG_PATH) -> configparser.ConfigParser:
     if not path.exists():
         user_agent_id = _new_user_agent_id()
         config.set("game", USER_AGENT_KEY, user_agent_id)
+        path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(_format_defaults(user_agent_id), encoding="utf-8")
     else:
         config.read(path, encoding="utf-8")
@@ -129,6 +142,7 @@ def get_optional_int(config: configparser.ConfigParser, section: str, key: str) 
 
 def save_config(config: configparser.ConfigParser, path: Path = CONFIG_PATH) -> None:
     """Persist user-editable settings while keeping the existing INI identity."""
+    path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", encoding="utf-8") as config_file:
         config.write(config_file)
 
