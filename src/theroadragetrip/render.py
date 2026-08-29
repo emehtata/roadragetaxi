@@ -14,6 +14,7 @@ PX_PER_M = 0.7  # Default zoom level (pixels per meter)
 
 _loading_image = None
 _loading_image_path = os.path.join(os.path.dirname(__file__), "img", "theroadragetrip_1672_941.png")
+_cyclist_sprite = None
 
 
 def world_to_screen(
@@ -933,67 +934,14 @@ def draw_cyclists(
         if _covered_by_higher_road(cyclist.x, cyclist.y, getattr(cyclist.way, "layer", 0), ways):
             continue
         cx, cy = world_to_screen(cyclist.x, cyclist.y, camx, camy, px_per_m, screen_w, screen_h)
-        scale = max(3.0, px_per_m)
-        # Convert world heading to screen direction; screen y grows downward.
-        direction_x = math.cos(cyclist.heading)
-        direction_y = -math.sin(cyclist.heading)
-        side_x = -direction_y
-        side_y = direction_x
-        wheel_gap = 1.2 * scale
-        frame_width = max(1, int(0.14 * scale))
-        detail_width = max(1, int(0.12 * scale))
-        front = (cx + direction_x * wheel_gap, cy + direction_y * wheel_gap)
-        rear = (cx - direction_x * wheel_gap, cy - direction_y * wheel_gap)
-        handlebar = (front[0] - direction_x * 0.12 * scale, front[1] - direction_y * 0.12 * scale)
-        rack = (rear[0] + direction_x * 0.18 * scale, rear[1] + direction_y * 0.18 * scale)
-
-        # Top-down silhouette: tires barely protrude beyond the frame.
-        pygame.draw.line(
-            screen,
-            (28, 28, 28),
-            (rear[0] - direction_x * 0.18 * scale, rear[1] - direction_y * 0.18 * scale),
-            (front[0] + direction_x * 0.18 * scale, front[1] + direction_y * 0.18 * scale),
-            detail_width,
-        )
-        pygame.draw.line(screen, (218, 157, 45), rear, front, frame_width)
-        pygame.draw.line(
-            screen,
-            (218, 157, 45),
-            handlebar,
-            (handlebar[0] + side_x * 0.3 * scale, handlebar[1] + side_y * 0.3 * scale),
-            frame_width,
-        )
-        pygame.draw.line(
-            screen,
-            (55, 45, 35),
-            rack,
-            (rack[0] + side_x * 0.28 * scale, rack[1] + side_y * 0.28 * scale),
-            frame_width,
-        )
-        wheel_radius = max(2, int(0.22 * scale))
-        pygame.draw.circle(screen, (25, 25, 25), (int(front[0]), int(front[1])), wheel_radius)
-        pygame.draw.circle(screen, (25, 25, 25), (int(rear[0]), int(rear[1])), wheel_radius)
-
-        # Compact rider silhouette makes the cyclist readable at normal zoom.
-        torso_x = cx - direction_x * 0.1 * scale
-        torso_y = cy - direction_y * 0.1 * scale
-        torso = [
-            (int(torso_x - side_x * 0.28 * scale), int(torso_y - side_y * 0.28 * scale)),
-            (int(torso_x + direction_x * 0.35 * scale), int(torso_y + direction_y * 0.35 * scale)),
-            (int(torso_x + side_x * 0.28 * scale), int(torso_y + side_y * 0.28 * scale)),
-        ]
-        pygame.draw.polygon(screen, cyclist.color, torso)
-        pygame.draw.line(
-            screen,
-            (35, 35, 35),
-            (int(torso_x - side_x * 0.2 * scale), int(torso_y - side_y * 0.2 * scale)),
-            (int(handlebar[0]), int(handlebar[1])),
-            max(1, int(0.12 * scale)),
-        )
-        head_x = torso_x + direction_x * 0.28 * scale
-        head_y = torso_y + direction_y * 0.28 * scale
-        pygame.draw.circle(screen, (238, 190, 145), (int(head_x), int(head_y)), max(2, int(0.22 * scale)))
-        pygame.draw.circle(screen, (35, 70, 115), (int(head_x), int(head_y)), max(2, int(0.25 * scale)), width=1)
+        global _cyclist_sprite
+        if _cyclist_sprite is None:
+            _cyclist_sprite = pygame.image.load(
+                os.path.join(os.path.dirname(__file__), "assets", "cyclist.xpm")
+            ).convert_alpha()
+        sprite_scale = max(0.15, px_per_m * 3.2 / _cyclist_sprite.get_width())
+        sprite = pygame.transform.rotozoom(_cyclist_sprite, math.degrees(cyclist.heading), sprite_scale)
+        screen.blit(sprite, sprite.get_rect(center=(int(cx), int(cy))))
 
 
 def draw_traffic_lights(

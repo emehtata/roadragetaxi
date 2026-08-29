@@ -1,0 +1,25 @@
+/* XPM */
+static char * cyclist_xpm[] = {
+"16 16 5 1",
+"  c None",
+". c #202020",
+"b c #2D6FA3",
+"s c #E5A77C",
+"y c #E8B52D",
+"       .        ",
+"      ...       ",
+"      sss       ",
+"      sss       ",
+"      bbb       ",
+"     bbbbb      ",
+"    bbbbbbb     ",
+"    bbbbbbb     ",
+"   bbbbbbbbb    ",
+"   bbbbbbbbb    ",
+"  ..bbbbbbb..   ",
+"  .   y   .     ",
+"  .   y   .     ",
+"  .   y   .     ",
+"   .........    ",
+"                "
+};
