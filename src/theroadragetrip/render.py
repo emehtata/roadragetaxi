@@ -970,9 +970,30 @@ def draw_cyclists(
             (rack[0] + side_x * 0.28 * scale, rack[1] + side_y * 0.28 * scale),
             frame_width,
         )
-        pygame.draw.circle(screen, (25, 25, 25), (int(front[0]), int(front[1])), max(1, int(0.16 * scale)))
-        pygame.draw.circle(screen, (25, 25, 25), (int(rear[0]), int(rear[1])), max(1, int(0.16 * scale)))
-        pygame.draw.circle(screen, cyclist.color, (int(cx), int(cy)), max(2, int(0.3 * scale)))
+        wheel_radius = max(2, int(0.22 * scale))
+        pygame.draw.circle(screen, (25, 25, 25), (int(front[0]), int(front[1])), wheel_radius)
+        pygame.draw.circle(screen, (25, 25, 25), (int(rear[0]), int(rear[1])), wheel_radius)
+
+        # Compact rider silhouette makes the cyclist readable at normal zoom.
+        torso_x = cx - direction_x * 0.1 * scale
+        torso_y = cy - direction_y * 0.1 * scale
+        torso = [
+            (int(torso_x - side_x * 0.28 * scale), int(torso_y - side_y * 0.28 * scale)),
+            (int(torso_x + direction_x * 0.35 * scale), int(torso_y + direction_y * 0.35 * scale)),
+            (int(torso_x + side_x * 0.28 * scale), int(torso_y + side_y * 0.28 * scale)),
+        ]
+        pygame.draw.polygon(screen, cyclist.color, torso)
+        pygame.draw.line(
+            screen,
+            (35, 35, 35),
+            (int(torso_x - side_x * 0.2 * scale), int(torso_y - side_y * 0.2 * scale)),
+            (int(handlebar[0]), int(handlebar[1])),
+            max(1, int(0.12 * scale)),
+        )
+        head_x = torso_x + direction_x * 0.28 * scale
+        head_y = torso_y + direction_y * 0.28 * scale
+        pygame.draw.circle(screen, (238, 190, 145), (int(head_x), int(head_y)), max(2, int(0.22 * scale)))
+        pygame.draw.circle(screen, (35, 70, 115), (int(head_x), int(head_y)), max(2, int(0.25 * scale)), width=1)
 
 
 def draw_traffic_lights(
