@@ -120,6 +120,38 @@ class PedestrianManager:
                 self.pedestrians.sort(key=lambda ped: math.hypot(ped.x - player_car.x, ped.y - player_car.y))
             del self.pedestrians[self.target_count:]
 
+    def ensure_taxi_stop_waiter(
+        self,
+        taxi_stops: List,
+        player_car: Car,
+        viewport_bounds: Optional[Tuple[float, float, float, float]] = None,
+    ) -> None:
+        """Keep one stationary customer at the nearest visible taxi stop."""
+        if not taxi_stops or any(getattr(ped, "is_taxi_stop_waiter", False) for ped in self.pedestrians):
+            return
+
+        candidates = sorted(
+            taxi_stops,
+            key=lambda stop: math.hypot(stop.x - player_car.x, stop.y - player_car.y),
+        )
+        for stop in candidates:
+            if math.hypot(stop.x - player_car.x, stop.y - player_car.y) > self.spawn_radius_m:
+                continue
+            if viewport_bounds:
+                vminx, vminy, vmaxx, vmaxy = viewport_bounds
+                if not (vminx <= stop.x <= vmaxx and vminy <= stop.y <= vmaxy):
+                    continue
+            waiter = self.spawn_pedestrian(stop.x, stop.y)
+            if waiter is None:
+                continue
+            waiter.x = stop.x
+            waiter.y = stop.y
+            waiter.is_taxi_stop_waiter = True
+            waiter.speed = 0.0
+            waiter.base_speed = 0.0
+            self.pedestrians.append(waiter)
+            return
+
     def _build_junction_grid(self) -> None:
         """Build spatial grid indexing way endpoints and vertices for seamless path transitions."""
         self._junction_grid.clear()
@@ -456,6 +488,9 @@ class PedestrianManager:
 
         # Update walking movement
         for ped in self.pedestrians:
+            if getattr(ped, "is_taxi_stop_waiter", False):
+                ped.speed = 0.0
+                continue
             # Check traffic light stop
             if self._is_pedestrian_red_light(ped):
                 ped.speed = 0.0

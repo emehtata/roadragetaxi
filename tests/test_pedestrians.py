@@ -1,6 +1,7 @@
 """Tests for pedestrian simulation, movement, traffic light compliance, and dodging."""
 import math
 from theroadragetrip.osm import TrafficLight, Way
+from theroadragetrip.osm import TaxiStop
 from theroadragetrip.pedestrian import Pedestrian, PedestrianManager
 from theroadragetrip.physics import Car
 
@@ -17,6 +18,18 @@ def test_pedestrian_target_count_keeps_nearest_characters():
     manager.set_target_count(2, Car(x=0.0, y=0.0, heading=0.0, speed=0.0))
 
     assert [ped.x for ped in manager.pedestrians] == [1.0, 10.0]
+
+
+def test_taxi_stop_gets_waiting_customer():
+    way = Way(points_m=[(0.0, 0.0), (100.0, 0.0)], highway="footway", half_width_m=1.5)
+    manager = PedestrianManager([way], target_count=0, spawn_radius_m=120.0)
+    player = Car(x=10.0, y=0.0, heading=0.0, speed=0.0)
+
+    manager.ensure_taxi_stop_waiter([TaxiStop(20.0, 0.0)], player)
+
+    assert len(manager.pedestrians) == 1
+    assert manager.pedestrians[0].is_taxi_stop_waiter is True
+    assert (manager.pedestrians[0].x, manager.pedestrians[0].y) == (20.0, 0.0)
 
 
 def test_pedestrian_spawning_and_movement():
