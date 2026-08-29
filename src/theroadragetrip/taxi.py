@@ -1013,8 +1013,14 @@ class TaxiManager:
         self.notification_timer = 2.0
         return True
 
-    def _board_waiting_pedestrian(self, pedestrian: Any, pickup: TaxiTarget, message_key: str) -> bool:
-        """Turn a nearby waiting pedestrian into an immediately boarded fare."""
+    def _board_waiting_pedestrian(
+        self,
+        pedestrian: Any,
+        pickup: TaxiTarget,
+        message_key: str,
+        walk_to_car: bool = False,
+    ) -> bool:
+        """Turn a nearby waiting pedestrian into a fare, optionally walking to the car first."""
         dropoff = self.pick_random_taxi_stop(pickup.x, pickup.y, self.min_distance_m, self.max_distance_m)
         if not dropoff:
             dropoff = self.pick_random_road_point(pickup.x, pickup.y, self.min_distance_m, self.max_distance_m)
@@ -1031,10 +1037,16 @@ class TaxiManager:
         )
         self.current_passenger = passenger
         self.offers = []
-        self.state = TaxiState.DRIVING_TO_DROPOFF
+        if walk_to_car:
+            passenger.boarded = False
+            passenger.is_walking_to_car = True
+            self.state = TaxiState.CLIENT_WALKING_TO_CAR
+        else:
+            self.state = TaxiState.DRIVING_TO_DROPOFF
         self.elapsed_time = 0.0
         self.trip_distance_m = math.hypot(dropoff.x - pickup.x, dropoff.y - pickup.y)
-        self.notification_msg = tr(self.language, message_key, name=passenger.name, address=dropoff.address)
+        notification_key = "walking_named" if walk_to_car else message_key
+        self.notification_msg = tr(self.language, notification_key, name=passenger.name, address=dropoff.address)
         self.notification_timer = 5.0
         return True
 
@@ -1059,7 +1071,12 @@ class TaxiManager:
         if pickup is None or not candidates or random.random() >= min(1.0, dt * 0.35):
             return None
         pedestrian = candidates[0]
-        if self._board_waiting_pedestrian(pedestrian, pickup, message_key):
+        if self._board_waiting_pedestrian(
+            pedestrian,
+            pickup,
+            message_key,
+            walk_to_car=message_key == "stand_boarded",
+        ):
             self.stand_wait_timer = 0.0
             return pedestrian
         return None
