@@ -1481,6 +1481,9 @@ def draw_help_screen(
             "Aja asiakkaan luo, ota hänet kyytiin ja vie perille." if language == "fi" else "Drive to clients, pick them up, and take them to their destination.",
             "Nouda asiakkaat kaduilta, taksiasemilta tai nimetyiltä rakennuksilta." if language == "fi" else "Pick up clients from streets, taxi stops, or named buildings.",
             "Pysy tiellä, vältä kolareita ja kerää pisteitä nopeista onnistuneista kyydeistä." if language == "fi" else "Stay on the road, avoid crashes, and score points for successful rides.",
+            "Puhelin näyttää kolme kyytiä: valitse yksi näppäimillä 1-3 tai hylkää tarjous X:llä." if language == "fi" else "The phone shows three rides: select one with 1-3 or reject an offer with X.",
+            "Taksitolpan asiakas näyttää KYYTIIN-tekstin, kävelee autolle ja voi päätyä kilpailevalle NPC-taksille." if language == "fi" else "A taxi-stand customer shows TO TAXI, walks to the car, or may choose a rival NPC taxi.",
+            "Zoomaus vähentää kaukana olevia NPC-hahmoja suorituskyvyn parantamiseksi." if language == "fi" else "Zooming in reduces distant NPC characters to improve performance.",
         ]),
     ]
     y = panel.y + 78

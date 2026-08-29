@@ -9,11 +9,13 @@ A top-down 2D driving game proof-of-concept (PoC) in Python and Pygame that proc
 - **Real-World OSM Road Network**: Fetches and renders actual highway ways from Overpass API (motorways, primary, secondary, residential, tracks, paths).
 - **Taxi Game Mode**: Pick up passengers at generated street addresses, drop them off at their destinations, and earn points with speed and distance multiplier bonuses.
 - **Taxi Stops & Missions**: Taxi offers use street addresses, named buildings, and taxi stops as pickup and destination points.
+- **Ride Requests & Taxi Stands**: Three random ride requests arrive in the phone at a time when no passenger is onboard. Select one with `1`, `2`, or `3`, or reject the selected offer with `X`; phone offers and taxi-stand customers can coexist. Wait stopped at a taxi stand and its customer walks visibly to the taxi before boarding. Maps without taxi stands can trigger rare street hails.
 - **Navigation Waypoints & Compass Pointer**: Displays visual waypoint zones, address tags, off-screen edge indicators, and compass navigation pointers to client locations.
 - **Buildings & Scenery**: Renders building footprints, parks, forests, and green spaces with street/place name labels (`L` key).
 - **Water & Multipolygon Rendering**: Renders lakes, reservoirs, and waterways under the road network.
-- **Autonomous Traffic**: NPC cars follow connected roads, respect lane direction, vary their speed, overtake, react to traffic lights, and avoid overlapping the player.
-- **Pedestrians & Cyclists**: Pedestrians and cyclists use roads and crossings, react to traffic lights, and evade approaching vehicles.
+- **Autonomous Traffic**: NPC cars follow connected roads, respect lane direction, vary their speed, overtake, react to traffic lights, and avoid overlapping the player. Active traffic is reduced at close zoom levels while nearby cars are retained.
+- **Pedestrians & Cyclists**: Pedestrians and cyclists use roads and crossings, react to traffic lights, and evade approaching vehicles. Cyclists use a top-down image sprite, and active pedestrian/cyclist counts scale down while zoomed in.
+- **Rival NPC Taxis**: Some NPC cars are yellow rival taxis. They stop briefly at taxi stands and collect waiting customers before driving on.
 - **Traffic Violations**: Red-light, wrong-way, collision, building, and scenery penalties are tracked in the taxi score.
 - **Tree Crash Effects**: Tree impacts shake the tree and scatter leaves; impacts above 80 km/h knock the tree down, smoke the taxi, and immobilize it for five seconds.
 - **Hidden Police Cameras**: One to twenty directional speed cameras are placed from the connected road-network size; Helsinki has 20. Every taxi stop receives a nearby camera when available. Driving above the local speed limit within its 50-meter approach zone costs 300 points.
@@ -43,6 +45,7 @@ A top-down 2D driving game proof-of-concept (PoC) in Python and Pygame that proc
 │       ├── police.py      # Hidden speed-camera placement and directional detection
 │       ├── localization.py # Finnish and English translations
 │       ├── render.py      # Pygame rendering for roads, waters, buildings, traffic, pedestrians, HUD, and compass
+│       ├── assets/         # Image sprites used by the game
 │       ├── taxi.py        # Taxi passenger missions, address generator, fares, and violations
 │       └── traffic.py     # Autonomous NPC traffic vehicles, lane switching, and overtaking
 ├── tests/                 # Unit tests (pytest)
@@ -162,19 +165,19 @@ Game sounds are stored in `src/theroadragetrip/sounds/`. CC0 sounds require no a
 | `+` / `=` | Zoom in (increase pixels per meter) |
 | `-` | Zoom out (decrease pixels per meter) |
 | `R` | Respawn car on a random road (penalizes active fare if client onboard) |
-| `X` | Cancel / discard active pickup or onboard passenger mission (score penalty) |
+| `X` | Reject phone offer, or cancel / discard active pickup or onboard passenger mission (score penalty) |
 | `T` | Reset trip meter to 0 |
 | `L` | Toggle street & feature name labels |
 | `K` | Toggle lane keep assist |
 | `V` | Toggle speed limiter |
 | `B` | Toggle traffic-light assist |
 | `Space` | Rage shout: move NPC cars ahead aside within 50 m |
-| `P` | Open taxi phone and select a ride |
-| `1` - `3` | Select a ride offer in the taxi phone |
+| `P` | Open taxi phone and view three ride offers |
+| `1` - `3` | Accept a selected ride in the taxi phone |
 | `F1` | Open controls and game objective |
 | `Esc` | Open pause menu (Continue, Help, Settings, Change City, Exit) |
 
-The pause menu's **Settings** screen changes language and master, background, and effects volume. Left/right adjusts values; Escape returns to the pause menu.
+The pause menu's **Settings** screen changes language and master, background, and effects volume. Left/right adjusts values; Escape returns to the pause menu. At a taxi stand, stop the car and wait: the stand customer displays `KYYTIIN` / `TO TAXI`, walks to the taxi, and boards. A rival NPC taxi may arrive first and take that customer.
 
 ---
 
