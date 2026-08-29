@@ -441,8 +441,6 @@ def main() -> None:
                     app_running = False
                 elif event.type == pygame.KEYDOWN:
                     if event.key == pygame.K_p:
-                        if not phone_open and taxi_mgr.current_passenger is None:
-                            taxi_mgr.generate_offers(car.x, car.y, count=1)
                         phone_open = not phone_open
                     elif event.key == pygame.K_SPACE and not phone_open:
                         if rage_power >= RAGE_SHOUT_COST:
