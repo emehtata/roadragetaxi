@@ -29,6 +29,12 @@ def recommended_traffic_count(ways: List[Way], minimum: int = 5, maximum: int = 
     return max(minimum, min(maximum, round(road_count / 10)))
 
 
+def traffic_count_for_zoom(base_count: int, px_per_m: float, minimum: int = 5) -> int:
+    """Use fewer active NPCs when zoomed in, where less traffic is visible."""
+    zoom_factor = min(1.0, 3.0 / max(0.1, px_per_m))
+    return max(0, min(base_count, max(minimum, round(base_count * zoom_factor))))
+
+
 @dataclass
 class NPCCar:
     """Autonomous traffic vehicle driving along real-world road networks."""
@@ -282,6 +288,14 @@ class TrafficManager:
         if crossings is not None:
             self.crossings = crossings
         self._build_spatial_indices()
+
+    def set_target_count(self, target_count: int, player_car: Optional[Car] = None) -> None:
+        """Adjust active traffic count and discard farthest cars when zoom reduces it."""
+        self.target_count = max(0, min(MAX_TRAFFIC_COUNT, target_count))
+        if len(self.npcs) > self.target_count:
+            if player_car is not None:
+                self.npcs.sort(key=lambda npc: math.hypot(npc.x - player_car.x, npc.y - player_car.y))
+            del self.npcs[self.target_count:]
 
     def rage_shout(self, player_car: Car, radius_m: float = 50.0) -> int:
         """Move NPCs ahead of the player toward their road edge immediately."""

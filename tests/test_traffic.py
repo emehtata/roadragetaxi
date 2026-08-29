@@ -3,8 +3,14 @@ import math
 from theroadragetrip.osm import Way
 from theroadragetrip.osm import TrafficLight
 from theroadragetrip.physics import Car
-from theroadragetrip.traffic import NPCCar, TrafficManager
+from theroadragetrip.traffic import NPCCar, TrafficManager, traffic_count_for_zoom
 from theroadragetrip.geo import boxes_intersect
+
+
+def test_traffic_count_scales_down_when_zoomed_in():
+    assert traffic_count_for_zoom(50, px_per_m=9.0) == 17
+    assert traffic_count_for_zoom(50, px_per_m=18.0) == 8
+    assert traffic_count_for_zoom(50, px_per_m=1.0) == 50
 
 
 def test_npc_traffic_spawning_and_movement():

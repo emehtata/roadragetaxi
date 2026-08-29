@@ -179,7 +179,7 @@ def choose_language(screen, font, clock, current_language: str = "fi") -> str:
         hint = pygame.font.SysFont(None, 18).render(tr(language, "language_hint"), True, (150, 175, 195))
         screen.blit(hint, hint.get_rect(center=(screen.get_width() // 2, screen.get_height() - 80)))
         pygame.display.flip()
-from .traffic import MAX_TRAFFIC_COUNT, TrafficManager, recommended_traffic_count
+from .traffic import MAX_TRAFFIC_COUNT, TrafficManager, recommended_traffic_count, traffic_count_for_zoom
 
 
 def main() -> None:
@@ -371,6 +371,7 @@ def main() -> None:
         if traffic_count is None:
             traffic_count = recommended_traffic_count(ways)
         traffic_count = max(0, min(MAX_TRAFFIC_COUNT, traffic_count))
+        base_traffic_count = traffic_count
         logger.info("Target NPC traffic: %d cars for %d road ways", traffic_count, len(ways))
         traffic_mgr = TrafficManager(
             ways,
@@ -602,6 +603,8 @@ def main() -> None:
                 progress = zoom_elapsed / zoom_duration
                 eased = progress * progress * (3.0 - 2.0 * progress)
                 px_per_m = px_per_m + (zoom_target - px_per_m) * eased
+
+            traffic_mgr.set_target_count(traffic_count_for_zoom(base_traffic_count, max(px_per_m, zoom_target)), car)
 
             keys = pygame.key.get_pressed()
             immobilized = taxi_mgr.tree_wait_timer > 0.0
