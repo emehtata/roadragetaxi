@@ -61,6 +61,16 @@ class TaxiState:
     COMPLETED = "COMPLETED"
 
 
+def speed_bonus_points(speed_kmh: float) -> int:
+    """Return the nonlinear speed bonus: 10 km/h = 100, 50 = 1,000, 100 = 10,000."""
+    speed_kmh = max(0.0, speed_kmh)
+    if speed_kmh <= 50.0:
+        exponent = math.log(10.0) / math.log(5.0)
+        return round(100.0 * (speed_kmh / 10.0) ** exponent) if speed_kmh else 0
+    exponent = math.log(10.0) / math.log(2.0)
+    return round(1000.0 * (speed_kmh / 50.0) ** exponent)
+
+
 class TaxiManager:
     """Manages taxi missions, addresses, pickups, dropoffs, fares, and speed bonuses."""
 
@@ -1088,11 +1098,7 @@ class TaxiManager:
         speed_mps = distance_m / elapsed_sec
         speed_kmh = speed_mps * 3.6
 
-        # Speed multiplier bonus (e.g. 50 km/h avg -> 1.5x, 80 km/h -> 2.0x)
-        speed_bonus_factor = max(1.0, 1.0 + (speed_kmh / 80.0))
-        time_bonus = int(speed_kmh * 15.0)
-
-        fare = int(base_points * speed_bonus_factor + time_bonus)
+        fare = base_points + speed_bonus_points(speed_kmh)
         return max(50, fare)
 
     def get_current_target(self) -> Optional[TaxiTarget]:
