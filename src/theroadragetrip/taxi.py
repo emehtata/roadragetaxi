@@ -549,6 +549,32 @@ class TaxiManager:
         available_distance = max(0.0, nearest_light[0] - stop_buffer_m)
         return math.sqrt(2.0 * deceleration_mps2 * available_distance)
 
+    def sees_red_light(
+        self,
+        car: Car,
+        traffic_lights: List[Any],
+        sim_time: float,
+        detection_distance_m: float = 45.0,
+    ) -> bool:
+        """Return whether the taxi is approaching a visible red traffic light."""
+        heading_x = math.cos(car.heading)
+        heading_y = math.sin(car.heading)
+        for tl in traffic_lights:
+            dx = tl.x - car.x
+            dy = tl.y - car.y
+            longitudinal = dx * heading_x + dy * heading_y
+            lateral = abs(dx * -heading_y + dy * heading_x)
+            if longitudinal <= 0.0 or longitudinal > detection_distance_m or lateral > 8.0:
+                continue
+            direction_angle = getattr(tl, "direction_angle", None)
+            if direction_angle is not None:
+                angle_error = abs((direction_angle - car.heading + math.pi) % (2.0 * math.pi) - math.pi)
+                if angle_error > math.radians(45):
+                    continue
+            if tl.get_state(sim_time) in ("red", "red+yellow"):
+                return True
+        return False
+
     def check_wrong_way_violation(
         self,
         car: Car,

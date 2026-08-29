@@ -213,3 +213,15 @@ def test_red_light_assist_uses_only_first_signal_ahead():
 
     assert taxi_mgr.get_red_light_assist_speed_limit(car, [red_light, green_light], sim_time=0.0) is None
 
+
+def test_seeing_red_light_builds_rage_meter_rate():
+    from theroadragetrip.taxi import TaxiManager
+
+    red_light = TrafficLight(x=30.0, y=0.0, cycle_time=16.0, offset=8.0, direction_angle=0.0)
+    taxi_mgr = TaxiManager(ways=[])
+    car = Car(x=0.0, y=0.0, heading=0.0, speed=0.0)
+
+    assert taxi_mgr.sees_red_light(car, [red_light], sim_time=0.0) is True
+    assert taxi_mgr.sees_red_light(car, [red_light], sim_time=8.0) is False
+    assert taxi_mgr.sees_red_light(car, [red_light], sim_time=0.0, detection_distance_m=20.0) is False
+

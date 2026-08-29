@@ -649,6 +649,8 @@ def main() -> None:
             road_limit_mps = current_way.speed_limit_kmh / 3.6 if current_way else None
             if road_limit_mps is not None and driven_distance > 0.0 and abs(car.speed) <= road_limit_mps + 0.01:
                 rage_power = min(1.0, rage_power + driven_distance / RAGE_DISTANCE_TO_FULL_M)
+            if taxi_mgr.sees_red_light(car, traffic_lights, traffic_mgr.sim_time):
+                rage_power = min(1.0, rage_power + 0.05 * dt)
             if first_gameplay_frame:
                 logger.info("Gameplay frame: physics complete")
 
