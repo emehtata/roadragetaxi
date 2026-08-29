@@ -1052,7 +1052,7 @@ class TaxiManager:
 
     def check_waiting_pickup(self, car: Car, pedestrians: List[Any], dt: float) -> Optional[Any]:
         """Let a stopped taxi pick up a pedestrian at a stand or by a rare street hail."""
-        if self.current_passenger or self.offers or abs(car.speed) > self.max_stop_speed_mps:
+        if self.current_passenger or abs(car.speed) > self.max_stop_speed_mps:
             self.stand_wait_timer = 0.0
             return None
         self.stand_wait_timer += dt
