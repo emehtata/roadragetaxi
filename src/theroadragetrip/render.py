@@ -453,6 +453,13 @@ def draw_ways(
 
     visible_ways.sort(key=lambda w: getattr(w, "layer", 0))
 
+    def draw_joined_line(color, points, width):
+        pygame.draw.lines(screen, color, False, points, width)
+        radius = width // 2
+        if radius > 0:
+            for point in points:
+                pygame.draw.circle(screen, color, point, radius)
+
     for w in visible_ways:
         pts = [world_to_screen(x, y, camx, camy, px_per_m, screen_w, screen_h) for (x, y) in w.points_m]
 
@@ -462,14 +469,14 @@ def draw_ways(
             # Pedestrian paths, footways, cycleways, sidewalks (subtle dark slate gray)
             ped_thickness = max(1, int(getattr(w, "half_width_m", 1.2) * 2 * px_per_m))
             ped_color = (65, 65, 65)
-            pygame.draw.lines(screen, ped_color, False, pts, ped_thickness)
+            draw_joined_line(ped_color, pts, ped_thickness)
             continue
 
         # If it's a bridge or elevated layer, draw bridge outline/border
         is_bridge = getattr(w, "is_bridge", False) or getattr(w, "layer", 0) > 0
         if is_bridge:
             bridge_border_thickness = thickness + max(2, int(2 * px_per_m))
-            pygame.draw.lines(screen, (30, 30, 30), False, pts, bridge_border_thickness)
+            draw_joined_line((30, 30, 30), pts, bridge_border_thickness)
 
         if w.is_ice_road:
             road_color = (160, 200, 225)
@@ -487,7 +494,7 @@ def draw_ways(
             road_color = (70, 70, 70)
             center_color = (110, 110, 110)
 
-        pygame.draw.lines(screen, road_color, False, pts, thickness)
+        draw_joined_line(road_color, pts, thickness)
         if thickness >= 6:
             pygame.draw.lines(screen, center_color, False, pts, 1)
 
@@ -1672,6 +1679,7 @@ def draw_city_selection_menu(
     screen_w: int = SCREEN_W,
     screen_h: int = SCREEN_H,
     language: str = "fi",
+    force_refresh: bool = False,
 ) -> None:
     """Draw city selection menu with 10 largest cities in Finland."""
     import pygame
@@ -1736,6 +1744,15 @@ def draw_city_selection_menu(
         c_rect = c_surf.get_rect(midleft=(ix + 16, iy + item_h // 2))
         screen.blit(c_surf, c_rect)
 
+    checkbox_rect = pygame.Rect(screen_w // 2 - 150, start_y + rows * (item_h + gap_y) + 12, 22, 22)
+    pygame.draw.rect(screen, (28, 36, 48), checkbox_rect, border_radius=3)
+    pygame.draw.rect(screen, (100, 200, 255) if force_refresh else (100, 115, 130), checkbox_rect, width=2, border_radius=3)
+    if force_refresh:
+        pygame.draw.line(screen, (120, 235, 150), checkbox_rect.topleft, checkbox_rect.center, 3)
+        pygame.draw.line(screen, (120, 235, 150), checkbox_rect.center, checkbox_rect.bottomright, 3)
+    refresh_surf = sub_font.render(tr(language, "refresh_map"), True, (220, 230, 235))
+    screen.blit(refresh_surf, refresh_surf.get_rect(midleft=(checkbox_rect.right + 10, checkbox_rect.centery)))
+
     # Navigation hint
     hint_surf = sub_font.render(
         tr(language, "city_hint"),
@@ -1757,7 +1774,12 @@ def draw_mode_selection_menu(screen, font, selected_idx: int, screen_w: int = SC
     screen.blit(overlay, (0, 0))
     title = font.render(tr(language, "select_mode"), True, (245, 245, 245))
     screen.blit(title, title.get_rect(center=(screen_w // 2, 170)))
-    options = [tr(language, "career"), tr(language, "gig_driver"), tr(language, "reset_career")]
+    options = [
+        tr(language, "career"),
+        tr(language, "gig_driver"),
+        tr(language, "reset_career"),
+        tr(language, "clear_cache"),
+    ]
     for index, option in enumerate(options):
         color = (255, 215, 95) if index == selected_idx else (210, 220, 230)
         label = font.render(f"{index + 1}. {option}", True, color)

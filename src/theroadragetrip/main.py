@@ -37,6 +37,7 @@ from .osm import (
     Water,
     Way,
     build_ways,
+    clear_osm_cache,
     configure_user_agent,
     fetch_osm_ways,
     load_local_sample,
@@ -196,6 +197,15 @@ def _city_item_at(pos: Tuple[int, int], city_count: int, screen_w: int) -> Optio
     return None
 
 
+def _city_refresh_at(pos: Tuple[int, int], screen_w: int, screen_h: int, city_count: int) -> bool:
+    cols = 2
+    rows = (city_count + cols - 1) // cols
+    item_h = 42
+    gap_y = 10
+    checkbox_rect = pygame.Rect(screen_w // 2 - 150, 115 + rows * (item_h + gap_y) + 12, 22, 22)
+    return checkbox_rect.collidepoint(pos)
+
+
 def _pause_item_at(pos: Tuple[int, int], option_count: int, screen_w: int, screen_h: int) -> Optional[int]:
     panel_w = min(420, screen_w - 40)
     panel_h = min(screen_h - 40, max(280, 110 + option_count * 56))
@@ -305,6 +315,7 @@ def main() -> None:
     gig_odometer_file = gig_odometer_path(CONFIG_PATH)
     career = None
     return_to_main_menu = False
+    force_refresh = args.force_refresh
 
     while app_running:
         cities_list = list(city_centers.keys())
@@ -330,16 +341,19 @@ def main() -> None:
                             pygame.quit()
                             sys.exit(0)
                         if ev.type == pygame.MOUSEMOTION:
-                            hovered = _menu_item_at_y(ev.pos[1], 270, 30, 30, 3)
+                            hovered = _menu_item_at_y(ev.pos[1], 270, 30, 30, 4)
                             if hovered is not None:
                                 mode_selected = hovered
                             continue
                         if ev.type == pygame.MOUSEBUTTONDOWN and ev.button == 1:
-                            hovered = _menu_item_at_y(ev.pos[1], 270, 30, 30, 3)
+                            hovered = _menu_item_at_y(ev.pos[1], 270, 30, 30, 4)
                             if hovered is not None:
                                 mode_selected = hovered
                                 if mode_selected == 2:
                                     save_career(career_file, 0)
+                                    mode_selected = 0
+                                elif mode_selected == 3:
+                                    clear_osm_cache()
                                     mode_selected = 0
                                 else:
                                     choosing_mode = False
@@ -357,6 +371,9 @@ def main() -> None:
                             if mode_selected == 2:
                                 save_career(career_file, 0)
                                 mode_selected = 0
+                            elif mode_selected == 3:
+                                clear_osm_cache()
+                                mode_selected = 0
                             else:
                                 choosing_mode = False
                         elif ev.key in (pygame.K_1, pygame.K_KP1):
@@ -367,6 +384,9 @@ def main() -> None:
                             choosing_mode = False
                         elif ev.key in (pygame.K_3, pygame.K_KP3):
                             save_career(career_file, 0)
+                            mode_selected = 0
+                        elif ev.key in (pygame.K_4, pygame.K_KP4):
+                            clear_osm_cache()
                             mode_selected = 0
                     draw_mode_selection_menu(screen, font, mode_selected, SCREEN_W, SCREEN_H, language)
                     pygame.display.flip()
@@ -390,6 +410,9 @@ def main() -> None:
                         if hovered is not None:
                             selected_city_idx = hovered
                     elif ev.type == pygame.MOUSEBUTTONDOWN and ev.button == 1:
+                        if _city_refresh_at(ev.pos, SCREEN_W, SCREEN_H, len(cities_list)):
+                            force_refresh = not force_refresh
+                            continue
                         hovered = _city_item_at(ev.pos, len(cities_list), SCREEN_W)
                         if hovered is not None:
                             selected_city_idx = hovered
@@ -404,6 +427,8 @@ def main() -> None:
                             selected_city_idx = (selected_city_idx - 1) % len(cities_list)
                         elif ev.key == pygame.K_DOWN:
                             selected_city_idx = (selected_city_idx + 1) % len(cities_list)
+                        elif ev.key == pygame.K_f:
+                            force_refresh = not force_refresh
                         elif ev.key in (pygame.K_LEFT, pygame.K_RIGHT):
                             selected_city_idx = (selected_city_idx + 5) % len(cities_list)
                         elif pygame.K_1 <= ev.key <= pygame.K_9:
@@ -423,7 +448,10 @@ def main() -> None:
                 if pygame.time.get_ticks() < intro_until:
                     draw_loading_screen(screen, font, 1.0, "Ready", SCREEN_W, SCREEN_H, show_details=False)
                 else:
-                    draw_city_selection_menu(screen, font, cities_list, selected_city_idx, SCREEN_W, SCREEN_H, language)
+                    draw_city_selection_menu(
+                        screen, font, cities_list, selected_city_idx, SCREEN_W, SCREEN_H, language,
+                        force_refresh=force_refresh,
+                    )
                 pygame.display.flip()
 
             chosen_city = cities_list[selected_city_idx]
@@ -470,7 +498,7 @@ def main() -> None:
                     bbox,
                     endpoints=overpass_endpoints,
                     progress_callback=on_load_progress,
-                    force_refresh=args.force_refresh or args.no_cache,
+                    force_refresh=force_refresh or args.no_cache,
                 )
             res = build_ways(elements, progress_callback=on_build_progress)
             crossings = getattr(res, "crossings", [])

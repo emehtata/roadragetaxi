@@ -1,4 +1,4 @@
-from theroadragetrip.osm import load_local_sample, load_osm_cache, save_osm_cache
+from theroadragetrip.osm import clear_osm_cache, load_local_sample, load_osm_cache, save_osm_cache
 
 
 def test_cache_save_and_load(tmp_path, monkeypatch):
@@ -28,6 +28,20 @@ def test_force_refresh_skips_cache(monkeypatch):
     result = osm.fetch_osm_ways((60.0, 25.0, 60.1, 25.1), force_refresh=True)
 
     assert result == [{"type": "node", "id": 99}]
+
+
+def test_clear_osm_cache_removes_all_entries(tmp_path, monkeypatch):
+    import theroadragetrip.osm as osm
+
+    monkeypatch.setattr(osm, "CACHE_DIR", str(tmp_path))
+    (tmp_path / "map.json").write_text("cache", encoding="utf-8")
+    (tmp_path / "dead_ends.json").write_text("cache", encoding="utf-8")
+    nested = tmp_path / "nested"
+    nested.mkdir()
+    (nested / "tile.json").write_text("cache", encoding="utf-8")
+
+    assert clear_osm_cache() == 3
+    assert list(tmp_path.iterdir()) == []
 
 
 def test_fetch_query_requests_taxi_stations(monkeypatch):

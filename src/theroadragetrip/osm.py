@@ -7,6 +7,7 @@ import math
 import multiprocessing
 import os
 import random
+import shutil
 import sys
 import threading
 import time
@@ -380,6 +381,24 @@ def save_osm_cache(bbox: Tuple[float, float, float, float], elements: List[dict]
         logger.info("Saved OSM cache to %s", path)
     except Exception as e:
         logger.warning("Failed to save cache %s: %s", path, e)
+
+
+def clear_osm_cache() -> int:
+    """Delete all files stored in the OSM cache directory."""
+    if not os.path.isdir(CACHE_DIR):
+        return 0
+    removed = 0
+    for entry in os.scandir(CACHE_DIR):
+        try:
+            if entry.is_dir():
+                shutil.rmtree(entry.path)
+            else:
+                os.remove(entry.path)
+            removed += 1
+        except OSError as e:
+            logger.warning("Failed to remove OSM cache entry %s: %s", entry.path, e)
+    logger.info("Cleared OSM cache (%d entries)", removed)
+    return removed
 
 
 def fetch_osm_ways(
