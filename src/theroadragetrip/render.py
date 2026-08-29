@@ -1175,12 +1175,6 @@ def draw_taxi_target(
             hy = ped_sy + math.sin(p.ped_heading) * (ped_r * 0.9)
             pygame.draw.circle(screen, (255, 255, 255), (int(hx), int(hy)), max(1, int(ped_r * 0.45)))
 
-            if p.is_walking_to_car:
-                arrow_x = ped_sx + math.cos(p.ped_heading) * max(12.0, 7.0 * px_per_m)
-                arrow_y = ped_sy + math.sin(p.ped_heading) * max(12.0, 7.0 * px_per_m)
-                pygame.draw.line(screen, (255, 230, 80), (int(ped_sx), int(ped_sy)), (int(arrow_x), int(arrow_y)), 2)
-                pygame.draw.circle(screen, (255, 230, 80), (int(arrow_x), int(arrow_y)), 3)
-
             # Passenger name tag over client
             walking_label = "KYYTIIN" if language == "fi" else "TO TAXI"
             p_lbl = font.render(
