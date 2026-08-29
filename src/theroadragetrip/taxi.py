@@ -211,6 +211,7 @@ class TaxiManager:
                 player_car.speed = -player_car.speed * 0.4
                 npc.speed = 0.0
                 npc.crashed_timer = max(getattr(npc, "crashed_timer", 0.0), 5.0)  # stop & smoke for 5 seconds
+                self.taxi_smoke_timer = max(self.taxi_smoke_timer, 5.0)
 
                 crashed = True
                 if npc_id not in self._crashed_npc_cooldowns:
@@ -276,6 +277,7 @@ class TaxiManager:
             if previous_position is not None:
                 player_car.x, player_car.y = previous_position
             player_car.speed = 0.0
+            self.taxi_smoke_timer = max(self.taxi_smoke_timer, 5.0)
             building_id = id(building)
             if building_id not in self._crashed_building_cooldowns:
                 self._crashed_building_cooldowns[building_id] = sim_time
@@ -419,7 +421,7 @@ class TaxiManager:
                 if impact_speed_kmh > 80.0:
                     self.fallen_trees.add(key)
                     self.tree_wait_timer = 5.0
-                    self.taxi_smoke_timer = 5.0
+                self.taxi_smoke_timer = max(self.taxi_smoke_timer, 5.0)
                 if key not in self._crashed_tree_cooldowns:
                     self._crashed_tree_cooldowns[key] = sim_time
                     self.total_score -= penalty

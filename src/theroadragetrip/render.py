@@ -139,7 +139,7 @@ def draw_scenery(
 
 
 def draw_taxi_smoke(screen, car: Car, camx: float, camy: float, px_per_m: float = PX_PER_M, timer: float = 0.0) -> None:
-    """Draw smoke from a taxi disabled by a high-speed tree impact."""
+    """Draw smoke from a taxi after a collision."""
     if timer <= 0.0:
         return
     import pygame

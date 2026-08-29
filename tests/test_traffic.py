@@ -463,6 +463,7 @@ def test_player_and_npc_car_crash_and_penalty():
     assert crashed is True
     assert taxi_mgr.total_score == 350
     assert "Crash!" in taxi_mgr.notification_msg
+    assert taxi_mgr.taxi_smoke_timer == 5.0
 
     # Cooldown prevents repeated penalties in rapid succession
     crashed2 = taxi_mgr.check_car_collision(player, [npc], sim_time=1.2, penalty=150)

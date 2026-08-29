@@ -182,6 +182,7 @@ def test_building_collision_bounces_and_penalizes_once():
     assert crashed_again is True
     assert (car.x, car.y) == (3.0, 0.0)
     assert car.speed == 0.0
+    assert taxi_manager.taxi_smoke_timer == 5.0
     assert score_after_crash == -200
     assert taxi_manager.total_score == score_after_crash
 
