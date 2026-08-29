@@ -697,7 +697,7 @@ def main() -> None:
 
             # Update autonomous traffic NPCs and pedestrians
             traffic_mgr.update(car, dt, viewport_bounds=viewport_bounds)
-            if not taxi_mgr.current_passenger and not taxi_mgr.offers:
+            if not taxi_mgr.current_passenger:
                 pedestrian_mgr.ensure_taxi_stop_waiter(taxi_stops, car, viewport_bounds=viewport_bounds)
             pedestrian_mgr.update(car, dt, viewport_bounds=viewport_bounds)
             cyclist_mgr.update(car, dt, viewport_bounds=viewport_bounds)
