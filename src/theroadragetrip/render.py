@@ -940,7 +940,7 @@ def draw_cyclists(
                 os.path.join(os.path.dirname(__file__), "assets", "cyclist.xpm")
             ).convert_alpha()
         sprite_scale = max(0.15, px_per_m * 3.2 / _cyclist_sprite.get_width())
-        sprite = pygame.transform.rotozoom(_cyclist_sprite, math.degrees(cyclist.heading), sprite_scale)
+        sprite = pygame.transform.rotozoom(_cyclist_sprite, math.degrees(cyclist.heading) - 90.0, sprite_scale)
         screen.blit(sprite, sprite.get_rect(center=(int(cx), int(cy))))
 
 
