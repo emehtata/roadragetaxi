@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="fi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="The Road Rage Trip is a Finnish top-down taxi driving game built on real OpenStreetMap roads.">
+  <title>The Road Rage Trip | Taxi driving with consequences</title>
+  <link rel="stylesheet" href="styles.css">
+  <script defer src="script.js"></script>
+</head>
+<body>
+  <header class="site-header">
+    <a class="brand" href="#top" aria-label="The Road Rage Trip home">
+      <span class="brand-mark">TRT</span>
+      <span>The Road <b>Rage</b> Trip</span>
+    </a>
+    <nav aria-label="Päänavigaatio">
+      <a href="#game">Peli</a>
+      <a href="#features">Ominaisuudet</a>
+      <a href="#how-to-play">Näin pelaat</a>
+      <a class="nav-release" href="https://github.com/emehtata/roadragetaxi/releases" target="_blank" rel="noreferrer">Lataa peli <span aria-hidden="true">↗</span></a>
+    </nav>
+    <button class="language-toggle" type="button" aria-label="Vaihda kieleksi English">EN</button>
+  </header>
+
+  <main id="top">
+    <section class="hero" id="game">
+      <div class="hero-image" role="img" aria-label="The Road Rage Trip -pelin latauskuva"></div>
+      <div class="hero-wash"></div>
+      <div class="hero-content">
+        <p class="eyebrow"><span class="signal-dot"></span> Open-world taxi driving · Finland</p>
+        <h1>Deliver fares.<br><em>Defy the road.</em></h1>
+        <p class="hero-copy">Real Finnish streets. Unreasonable traffic. One taxi driver who has had enough.</p>
+        <div class="hero-actions">
+          <a class="button button-primary" href="https://github.com/emehtata/roadragetaxi/releases" target="_blank" rel="noreferrer">Lataa viimeisin julkaisu <span>↗</span></a>
+          <a class="button button-ghost" href="#features">Tutustu peliin <span>↓</span></a>
+        </div>
+        <div class="hero-meta"><span>PYTHON + PYGAME</span><span>REAL OSM DATA</span><span>OPEN SOURCE</span></div>
+      </div>
+      <div class="hero-scroll">SCROLL TO EXPLORE <span></span></div>
+    </section>
+
+    <section class="intro section-shell">
+      <div class="section-kicker">01 / THE JOB</div>
+      <div class="intro-grid">
+        <h2>One city.<br><span>Infinite excuses.</span></h2>
+        <div>
+          <p class="lead">The Road Rage Trip is a top-down taxi game powered by real-world OpenStreetMap data from Finland.</p>
+          <p>Pick up strangers, thread through living streets, dodge the chaos and get them there before your patience runs out. Every route is a little different. Every mistake costs.</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="feature-band" id="features">
+      <div class="section-shell">
+        <div class="section-kicker light">02 / UNDER THE HOOD</div>
+        <div class="feature-heading"><h2>Built for the<br><em>beautifully irritated.</em></h2><p>Not a backdrop. A living road network that pushes back.</p></div>
+        <div class="feature-grid">
+          <article class="feature-card"><span class="feature-number">01</span><div class="feature-icon road-icon">╱╲</div><h3>Real roads, real places</h3><p>Drive Finnish city streets generated from live OSM geometry, with buildings, parks, water and named destinations.</p></article>
+          <article class="feature-card accent-card"><span class="feature-number">02</span><div class="feature-icon">✦</div><h3>Taxi work with teeth</h3><p>Find fares on your phone, pick up passengers, chase bonuses and keep the meter moving through unpredictable traffic.</p></article>
+          <article class="feature-card"><span class="feature-number">03</span><div class="feature-icon camera-icon">▣</div><h3>Eyes on the road</h3><p>Hidden speed cameras watch their approach zones. Trees shake, leaves fly, and a hard enough crash leaves your taxi smoking.</p></article>
+        </div>
+      </div>
+    </section>
+
+    <section class="how section-shell" id="how-to-play">
+      <div class="section-kicker">03 / TAKE THE WHEEL</div>
+      <div class="how-grid">
+        <div><h2>Know the<br><span>rules.</span><br>Break the calm.</h2><p class="lead">The city is yours to navigate. The score is yours to ruin.</p></div>
+        <div class="controls-panel">
+          <div class="control-row"><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd><span>Drive, brake, steer</span></div>
+          <div class="control-row"><kbd>P</kbd><span>Open the taxi phone</span></div>
+          <div class="control-row"><kbd>SPACE</kbd><span>Rage shout: clear the way</span></div>
+          <div class="control-row"><kbd>F1</kbd><span>Open controls and objective</span></div>
+          <div class="control-row"><kbd>ESC</kbd><span>Pause, settings, change city</span></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="release-callout section-shell">
+      <div class="release-marker">LATEST RELEASE</div>
+      <div><h2>Your next fare<br>is waiting.</h2><p>Download the latest Windows build from GitHub Releases and hit the road.</p></div>
+      <a class="button button-primary" href="https://github.com/emehtata/roadragetaxi/releases" target="_blank" rel="noreferrer">Avaa GitHub Releases <span>↗</span></a>
+    </section>
+  </main>
+
+  <footer class="site-footer section-shell"><span>© 2026 Esa Mehtätalo</span><span>THE ROAD RAGE TRIP</span><a href="https://github.com/emehtata/roadragetaxi" target="_blank" rel="noreferrer">GitHub ↗</a></footer>
+</body>
+</html>
