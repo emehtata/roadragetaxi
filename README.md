@@ -148,7 +148,7 @@ git tag v0.2.0beta
 git push origin v0.2.0beta
 ```
 
-GitHub Actions builds the package on Windows with PyInstaller and attaches `RoadRageTrip-windows-x64.zip` to the GitHub Release. Extract the zip and launch `RoadRageTrip.exe`; no Python installation is required.
+GitHub Actions builds the package on Windows with PyInstaller and attaches both `RoadRageTrip-windows-x64.zip` and `RoadRageTrip-Setup.exe` to the GitHub Release. Use the EXE installer for a normal Windows installation, or extract the zip and launch `RoadRageTrip.exe`; no Python installation is required.
 
 Game sounds are stored in `src/theroadragetrip/sounds/`. CC0 sounds require no attribution; the included `accelerate.aiff` is CC BY 3.0 and `city-traffic-outdoor.wav` is CC BY 4.0. Attribution details are recorded in the sounds directory license file.
 

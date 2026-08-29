@@ -34,13 +34,20 @@ jobs:
           --add-data "sample_osm_large.json;."
           --add-data "src/theroadragetrip/img;theroadragetrip/img"
           --add-data "src/theroadragetrip/sounds;theroadragetrip/sounds"
+          --add-data "src/theroadragetrip/assets;theroadragetrip/assets"
           road_rage_trip.py
 
       - name: Package release
-        run: Compress-Archive -Path dist/RoadRageTrip/* -DestinationPath dist/RoadRageTrip-windows-x64.zip
+        run: |
+          Compress-Archive -Path dist/RoadRageTrip/* -DestinationPath dist/RoadRageTrip-windows-x64.zip
+          choco install innosetup --no-progress --yes
+          & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" installer/RoadRageTrip.iss
 
       - name: Publish GitHub release
         if: startsWith(github.ref, 'refs/tags/')
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "${{ github.ref_name }}" dist/RoadRageTrip-windows-x64.zip --generate-notes
+        run: >-
+          gh release create "${{ github.ref_name }}"
+          dist/RoadRageTrip-windows-x64.zip dist/RoadRageTrip-Setup.exe
+          --generate-notes
