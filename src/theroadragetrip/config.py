@@ -1,0 +1,133 @@
+import base64
+import configparser
+import hashlib
+import uuid
+from pathlib import Path
+from typing import Any
+
+from .osm import bbox_from_center
+
+
+CONFIG_PATH = Path.cwd() / "roadragetrip.ini"
+USER_AGENT_KEY = "user_agent_id"
+
+DEFAULT_CONFIG = {
+    "game": {
+        "preset": "",
+        "bbox": "",
+        "no_menu": "false",
+        "use_sample": "false",
+        "force_refresh": "false",
+        "no_cache": "false",
+        "px_per_m": "9.0",
+        "log_level": "INFO",
+    },
+    "map": {
+        "auto_fetch": "true",
+        "fetch_margin": "350.0",
+        "fetch_tile_size": "2500.0",
+        "build_in_process": "true",
+    },
+    "traffic": {
+        "traffic_count": "",
+        "pedestrian_count": "20",
+        "cyclist_count": "8",
+    },
+    "cities": {
+        "helsinki": "60.169525, 24.935446",
+        "espoo": "60.205000, 24.652000",
+        "tampere": "61.499113, 23.787117",
+        "vantaa": "60.294000, 25.041000",
+        "oulu": "65.012000, 25.468000",
+        "turku": "60.451483, 22.268686",
+        "jyväskylä": "62.241470, 25.720880",
+        "kuopio": "62.892382, 27.677028",
+        "lahti": "60.982674, 25.661509",
+        "sysmä": "61.502271, 25.680613",
+    },
+}
+
+
+def load_config(path: Path = CONFIG_PATH) -> configparser.ConfigParser:
+    config = configparser.ConfigParser()
+    config.read_dict(DEFAULT_CONFIG)
+    if not path.exists():
+        user_agent_id = _new_user_agent_id()
+        config.set("game", USER_AGENT_KEY, user_agent_id)
+        path.write_text(_format_defaults(user_agent_id), encoding="utf-8")
+    else:
+        config.read(path, encoding="utf-8")
+        file_config = configparser.ConfigParser()
+        file_config.read(path, encoding="utf-8")
+        user_agent_id = file_config.get("game", USER_AGENT_KEY, fallback="").strip()
+        if not user_agent_id:
+            user_agent_id = _new_user_agent_id()
+            config.set("game", USER_AGENT_KEY, user_agent_id)
+            with path.open("w", encoding="utf-8") as config_file:
+                config.write(config_file)
+        elif not _is_valid_user_agent_id(user_agent_id):
+            raise ValueError(
+                f"Invalid {USER_AGENT_KEY} in {path}; delete the entire INI file to create a new identity."
+            )
+        if not file_config.has_section("cities"):
+            with path.open("a", encoding="utf-8") as config_file:
+                config_file.write("\n[cities]\n")
+                for name, coordinates in DEFAULT_CONFIG["cities"].items():
+                    config_file.write(f"{name} = {coordinates}\n")
+    return config
+
+
+def _format_defaults(user_agent_id: str = "") -> str:
+    config = configparser.ConfigParser()
+    config.read_dict(DEFAULT_CONFIG)
+    lines = [
+        "; The Road Rage Trip settings. Restart the game after changing values.",
+        "; Command-line options override these values for one launch.",
+        "",
+    ]
+    for section in config.sections():
+        lines.append(f"[{section}]")
+        for key, value in config[section].items():
+            lines.append(f"{key} = {value}")
+        if section == "game":
+            lines.append(f"{USER_AGENT_KEY} = {user_agent_id}")
+        lines.append("")
+    return "\n".join(lines)
+
+
+def _new_user_agent_id() -> str:
+    identity = str(uuid.uuid4())
+    checksum = hashlib.sha256(f"TheRoadRageTrip:{identity}".encode("ascii")).hexdigest()[:16]
+    encoded = base64.urlsafe_b64encode(f"{identity}.{checksum}".encode("ascii"))
+    return encoded.decode("ascii")
+
+
+def _is_valid_user_agent_id(value: str) -> bool:
+    try:
+        decoded = base64.urlsafe_b64decode(value.encode("ascii")).decode("ascii")
+        identity, checksum = decoded.split(".", 1)
+        uuid.UUID(identity)
+    except (ValueError, UnicodeDecodeError, TypeError):
+        return False
+    expected = hashlib.sha256(f"TheRoadRageTrip:{identity}".encode("ascii")).hexdigest()[:16]
+    return checksum == expected
+
+
+def get_optional_int(config: configparser.ConfigParser, section: str, key: str) -> Any:
+    value = config.get(section, key, fallback="").strip()
+    return int(value) if value else None
+
+
+def cities_from_config(config: configparser.ConfigParser) -> tuple[dict[str, tuple[float, float]], dict[str, tuple[float, float, float, float]]]:
+    centers: dict[str, tuple[float, float]] = {}
+    for raw_name, raw_coords in config.items("cities") if config.has_section("cities") else []:
+        try:
+            latitude, longitude = (float(value.strip()) for value in raw_coords.split(","))
+            if not -90 <= latitude <= 90 or not -180 <= longitude <= 180:
+                raise ValueError("coordinates out of range")
+        except (TypeError, ValueError):
+            continue
+        name = raw_name.replace("_", " ").title()
+        centers[name] = (latitude, longitude)
+    presets = {name.lower(): bbox_from_center(*center, size_km=4.0) for name, center in centers.items()}
+    return centers, presets

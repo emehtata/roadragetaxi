@@ -58,6 +58,30 @@ def test_taxi_real_osm_housenumber():
     assert "Kauppakatu 42B" in addr
 
 
+def test_taxi_named_building_target_uses_reachable_road_point():
+    from theroadragetrip.osm import Building
+
+    way = Way(
+        points_m=[(0.0, 0.0), (300.0, 0.0)],
+        highway="residential",
+        half_width_m=4.5,
+        name="Asemakatu",
+    )
+    building = Building(
+        points_m=[(120.0, 30.0), (180.0, 30.0), (180.0, 60.0), (120.0, 60.0)],
+        name="Kaupungintalo",
+    )
+    taxi_mgr = TaxiManager(ways=[way], buildings=[building])
+
+    target = taxi_mgr.pick_random_building_point()
+
+    assert target is not None
+    assert target.address == "Kaupungintalo"
+    assert target.way_name == "Asemakatu"
+    assert target.y == 0.0
+    assert 120.0 <= target.x <= 180.0
+
+
 def test_taxi_mission_lifecycle():
     way1 = Way(
         points_m=[(0.0, 0.0), (100.0, 0.0)],

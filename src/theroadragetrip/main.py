@@ -2,10 +2,13 @@ import argparse
 import logging
 import math
 import os
+import random
 import sys
 from typing import Optional, Tuple
 
 from .geo import clamp, dist_point_to_segment, meters_to_latlon
+from .audio import AudioManager
+from .config import cities_from_config, get_optional_int, load_config
 from .osm import (
     BBOX_PRESETS,
     CITY_CENTERS,
@@ -22,6 +25,7 @@ from .osm import (
     Water,
     Way,
     build_ways,
+    configure_user_agent,
     fetch_osm_ways,
     load_local_sample,
     load_osm_cache,
@@ -54,6 +58,7 @@ from .render import (
     draw_compass,
     draw_crossings,
     draw_hud,
+    draw_help_screen,
     draw_labels,
     draw_loading_screen,
     draw_npc_cars,
@@ -71,43 +76,60 @@ from .render import (
 )
 from .pedestrian import CyclistManager, PedestrianManager
 from .taxi import TaxiManager
-from .traffic import TrafficManager
+from .traffic import TrafficManager, recommended_traffic_count
 
 # Maintain BBOX constant for backward compatibility
 BBOX = DEFAULT_BBOX
 
 logger = logging.getLogger(__name__)
+RAGE_SHOUTS = ("PRKL!", "STNA!", "VTTU!", "HLVT!", "KRPÄ!", "KSPÄ!", "PSKA!")
+RAGE_DISTANCE_TO_FULL_M = 400.0
+RAGE_SHOUT_COST = 0.25
 
 
-def parse_args() -> argparse.Namespace:
+def parse_args(config=None, city_names=None) -> argparse.Namespace:
     p = argparse.ArgumentParser(description="The Road Rage Trip (OSM PoC)")
-    p.add_argument("--bbox", type=str, help="south,west,north,east (lat/lon)")
+    game = config["game"] if config else {}
+    map_config = config["map"] if config else {}
+    traffic_config = config["traffic"] if config else {}
+    p.add_argument("--bbox", type=str, default=game.get("bbox") or None, help="south,west,north,east (lat/lon)")
     p.add_argument(
         "--preset",
         type=str,
-        choices=list(BBOX_PRESETS.keys()),
-        default=None,
+        choices=city_names or list(BBOX_PRESETS.keys()),
+        default=game.get("preset") or None,
         help="Named bounding box preset (e.g., oulu, helsinki, tampere, espoo)",
     )
-    p.add_argument("--no-menu", action="store_true", help="Skip city selection menu and start immediately")
-    p.add_argument("--force-refresh", action="store_true", help="Force refresh from Overpass (ignore cache)")
-    p.add_argument("--use-sample", action="store_true", help="Use bundled sample OSM data and skip Overpass")
-    p.add_argument("--px-per-m", type=float, help="Initial pixels per meter (zoom)")
-    p.add_argument("--log-level", type=str, help="Logging level (DEBUG/INFO/WARNING)")
-    p.add_argument("--no-cache", action="store_true", help="Disable cache usage (treated like force-refresh)")
+    p.add_argument("--no-menu", action="store_true", default=game.getboolean("no_menu", fallback=False), help="Skip interactive city menu")
+    p.add_argument("--force-refresh", action="store_true", default=game.getboolean("force_refresh", fallback=False), help="Force refresh from Overpass (ignore cache)")
+    p.add_argument("--use-sample", action="store_true", default=game.getboolean("use_sample", fallback=False), help="Use bundled sample OSM data and skip Overpass")
+    p.add_argument("--px-per-m", type=float, default=game.getfloat("px_per_m", fallback=9.0), help="Initial pixels per meter (zoom)")
+    p.add_argument("--log-level", type=str, default=game.get("log_level", "INFO"), help="Logging level (DEBUG/INFO/WARNING)")
+    p.add_argument("--no-cache", action="store_true", default=game.getboolean("no_cache", fallback=False), help="Disable cache usage (treated like force-refresh)")
 
     # Auto-fetching nearby map tiles when the car approaches the bbox edge
-    p.add_argument("--no-auto-fetch", dest="auto_fetch", action="store_false", help="Disable on-demand map expansion")
+    p.add_argument("--no-auto-fetch", dest="auto_fetch", action="store_false", default=map_config.getboolean("auto_fetch", fallback=True), help="Disable on-demand map expansion")
     p.add_argument(
         "--fetch-margin",
         type=float,
-        default=350.0,
+        default=map_config.getfloat("fetch_margin", fallback=350.0),
         help="Distance in meters from bbox edge that triggers auto-fetch",
     )
-    p.add_argument("--fetch-tile-size", type=float, default=2500.0, help="Meters to expand when auto-fetching")
-    p.add_argument("--traffic-count", type=int, default=25, help="Target number of autonomous NPC cars (default: 25)")
-    p.add_argument("--pedestrian-count", type=int, default=20, help="Target number of pedestrians (default: 20)")
-    p.add_argument("--cyclist-count", type=int, default=8, help="Target number of cyclists (default: 8)")
+    p.add_argument("--fetch-tile-size", type=float, default=map_config.getfloat("fetch_tile_size", fallback=2500.0), help="Meters to expand when auto-fetching")
+    p.add_argument(
+        "--build-in-process",
+        action="store_true",
+        default=map_config.getboolean("build_in_process", fallback=True),
+        help="Build auto-fetched map data outside the gameplay process",
+    )
+    p.add_argument(
+        "--traffic-count",
+        type=int,
+        default=get_optional_int(config, "traffic", "traffic_count") if config else None,
+        help="Target number of NPC cars (default: scales with available streets, capped at 50)",
+    )
+    p.add_argument("--pedestrian-count", type=int, default=traffic_config.getint("pedestrian_count", fallback=20), help="Target number of pedestrians")
+    p.add_argument("--cyclist-count", type=int, default=traffic_config.getint("cyclist_count", fallback=8), help="Target number of cyclists")
 
     return p.parse_args()
 
@@ -115,10 +137,14 @@ def parse_args() -> argparse.Namespace:
 def configure_logging(level: Optional[str] = None) -> None:
     lvl = os.getenv("LOG_LEVEL", level or "INFO").upper()
     logging.basicConfig(level=getattr(logging, lvl, logging.INFO), format="%(levelname)s: %(message)s")
+from .traffic import MAX_TRAFFIC_COUNT, TrafficManager, recommended_traffic_count
 
 
 def main() -> None:
-    args = parse_args()
+    config = load_config()
+    configure_user_agent(config.get("game", "user_agent_id"))
+    city_centers, bbox_presets = cities_from_config(config)
+    args = parse_args(config, city_names=list(bbox_presets))
     configure_logging(args.log_level)
 
     try:
@@ -135,6 +161,7 @@ def main() -> None:
         sys.exit(1)
 
     pygame.init()
+    audio = AudioManager()
     screen = pygame.display.set_mode((SCREEN_W, SCREEN_H))
     pygame.display.set_caption("The Road Rage Trip (OSM PoC)")
     clock = pygame.time.Clock()
@@ -146,7 +173,7 @@ def main() -> None:
     active_city_name = None
 
     while app_running:
-        cities_list = list(CITY_CENTERS.keys())
+        cities_list = list(city_centers.keys())
         selected_city_idx = 0
 
         # Show city selection menu if no explicit CLI override or when requested from pause menu
@@ -159,6 +186,7 @@ def main() -> None:
             if active_city_name is not None and active_city_name in cities_list:
                 selected_city_idx = cities_list.index(active_city_name)
             in_menu = True
+            intro_until = pygame.time.get_ticks() + 1000
             while in_menu:
                 clock.tick(30)
                 for ev in pygame.event.get():
@@ -191,15 +219,18 @@ def main() -> None:
                                 selected_city_idx = idx
                                 in_menu = False
 
-                draw_city_selection_menu(screen, font, cities_list, selected_city_idx, SCREEN_W, SCREEN_H)
+                if pygame.time.get_ticks() < intro_until:
+                    draw_loading_screen(screen, font, 1.0, "Ready", SCREEN_W, SCREEN_H, show_details=False)
+                else:
+                    draw_city_selection_menu(screen, font, cities_list, selected_city_idx, SCREEN_W, SCREEN_H)
                 pygame.display.flip()
 
             chosen_city = cities_list[selected_city_idx]
-            bbox = BBOX_PRESETS.get(chosen_city.lower(), DEFAULT_BBOX)
+            bbox = bbox_presets.get(chosen_city.lower(), DEFAULT_BBOX)
             logger.info("Selected starting city: %s (bbox: %s)", chosen_city, bbox)
         else:
             preset_key = args.preset.lower() if args.preset else "oulu"
-            bbox = BBOX_PRESETS.get(preset_key, DEFAULT_BBOX)
+            bbox = bbox_presets.get(preset_key, DEFAULT_BBOX)
             if args.bbox:
                 try:
                     parts = [float(p.strip()) for p in args.bbox.split(",")]
@@ -273,9 +304,14 @@ def main() -> None:
 
         # Initialize autonomous Traffic Manager for NPC cars
         on_load_progress(0.96, "Preparing traffic...")
+        traffic_count = args.traffic_count
+        if traffic_count is None:
+            traffic_count = recommended_traffic_count(ways)
+        traffic_count = max(0, min(MAX_TRAFFIC_COUNT, traffic_count))
+        logger.info("Target NPC traffic: %d cars for %d road ways", traffic_count, len(ways))
         traffic_mgr = TrafficManager(
             ways,
-            target_count=args.traffic_count,
+            target_count=traffic_count,
             traffic_lights=traffic_lights,
             crossings=crossings,
         )
@@ -308,7 +344,7 @@ def main() -> None:
             crossings=crossings,
             fetch_func=fetch_osm_ways,
             build_func=build_ways,
-            build_in_process=False,
+            build_in_process=args.build_in_process,
         )
         on_load_progress(1.0, "Ready")
         logger.info("Entering gameplay loop")
@@ -317,6 +353,9 @@ def main() -> None:
         speed_limiter_enabled = True
         red_light_assist_enabled = False
         phone_open = False
+        rage_shout_timer = 0.0
+        rage_shout_text = RAGE_SHOUTS[0]
+        rage_power = 0.0
         running = True
         current_way = get_current_road_at_car(car, ways=ways, spatial_grid=spatial_grid, car_roads_only=True)
         zoom_target = args.px_per_m if args.px_per_m is not None else 9.0
@@ -325,6 +364,7 @@ def main() -> None:
         zoom_duration = 3.0
         camx, camy = car.x, car.y
         first_gameplay_frame = True
+        map_sync_stage = 0
         clock.tick()  # Reset clock timer to avoid large dt on first frame
 
         while running:
@@ -341,6 +381,13 @@ def main() -> None:
                         if not phone_open and taxi_mgr.current_passenger is None:
                             taxi_mgr.generate_offers(car.x, car.y)
                         phone_open = not phone_open
+                    elif event.key == pygame.K_SPACE and not phone_open:
+                        if rage_power >= RAGE_SHOUT_COST:
+                            traffic_mgr.rage_shout(car)
+                            audio.play("carhorn_takes", volume=0.45)
+                            rage_power -= RAGE_SHOUT_COST
+                            rage_shout_timer = 5.0
+                            rage_shout_text = random.choice(RAGE_SHOUTS)
                     elif phone_open:
                         if event.key == pygame.K_ESCAPE:
                             phone_open = False
@@ -354,7 +401,7 @@ def main() -> None:
                                 phone_open = False
                     elif event.key == pygame.K_ESCAPE:
                         # Pause menu with options: Continue Game, Change City, Exit Game
-                        pause_options = ["Continue Game", "Change City", "Exit Game"]
+                        pause_options = ["Continue Game", "Controls & Objective", "Change City", "Exit Game"]
                         pause_selected = 0
                         is_paused = True
 
@@ -376,11 +423,23 @@ def main() -> None:
                                             # Continue Game
                                             is_paused = False
                                         elif pause_selected == 1:
+                                            show_help = True
+                                            while show_help:
+                                                clock.tick(30)
+                                                for h_ev in pygame.event.get():
+                                                    if h_ev.type == pygame.QUIT:
+                                                        pygame.quit()
+                                                        sys.exit(0)
+                                                    if h_ev.type == pygame.KEYDOWN and h_ev.key in (pygame.K_ESCAPE, pygame.K_F1):
+                                                        show_help = False
+                                                draw_help_screen(screen, font, SCREEN_W, SCREEN_H)
+                                                pygame.display.flip()
+                                        elif pause_selected == 2:
                                             # Change City
                                             is_paused = False
                                             running = False
                                             active_city_name = cities_list[selected_city_idx]
-                                        elif pause_selected == 2:
+                                        elif pause_selected == 3:
                                             # Exit Game
                                             pygame.quit()
                                             sys.exit(0)
@@ -390,6 +449,19 @@ def main() -> None:
                             pygame.display.flip()
 
                         # Reset clock after unpausing to prevent sudden dt physics jumps
+                        clock.tick()
+                    elif event.key == pygame.K_F1:
+                        show_help = True
+                        while show_help:
+                            clock.tick(30)
+                            for h_ev in pygame.event.get():
+                                if h_ev.type == pygame.QUIT:
+                                    pygame.quit()
+                                    sys.exit(0)
+                                if h_ev.type == pygame.KEYDOWN and h_ev.key in (pygame.K_ESCAPE, pygame.K_F1):
+                                    show_help = False
+                            draw_help_screen(screen, font, SCREEN_W, SCREEN_H)
+                            pygame.display.flip()
                         clock.tick()
                     elif event.key == pygame.K_r:
                         respawn_car(car, ways, waters=waters, taxi_stops=taxi_stops)
@@ -426,6 +498,7 @@ def main() -> None:
 
             if phone_open:
                 dt = 0.0
+            rage_shout_timer = max(0.0, rage_shout_timer - dt)
 
             if zoom_elapsed < zoom_duration:
                 zoom_elapsed = min(zoom_duration, zoom_elapsed + dt)
@@ -471,11 +544,20 @@ def main() -> None:
                 block_offroad=False,
                 speed_limit_mps=speed_limit_mps,
             )
+            audio.update_acceleration(throttle > 0.0 and abs(car.speed) > 0.5)
+            driven_distance = math.hypot(car.x - previous_position[0], car.y - previous_position[1])
+            road_limit_mps = current_way.speed_limit_kmh / 3.6 if current_way else None
+            if road_limit_mps is not None and driven_distance > 0.0 and abs(car.speed) <= road_limit_mps + 0.01:
+                rage_power = min(1.0, rage_power + driven_distance / RAGE_DISTANCE_TO_FULL_M)
             if first_gameplay_frame:
                 logger.info("Gameplay frame: physics complete")
 
-            taxi_mgr.check_building_collision(car, buildings, traffic_mgr.sim_time, previous_position, ways=ways)
-            taxi_mgr.check_tree_collision(car, sceneries, traffic_mgr.sim_time, previous_position)
+            building_crash = taxi_mgr.check_building_collision(
+                car, buildings, traffic_mgr.sim_time, previous_position, ways=ways
+            )
+            tree_crash = taxi_mgr.check_tree_collision(car, sceneries, traffic_mgr.sim_time, previous_position)
+            if building_crash or tree_crash:
+                audio.play("car-crash", volume=0.7)
             if first_gameplay_frame:
                 logger.info("Gameplay frame: collision checks complete")
 
@@ -497,7 +579,8 @@ def main() -> None:
 
             # Update taxi missions & pickups
             taxi_mgr.update(car, dt)
-            taxi_mgr.check_car_collision(car, traffic_mgr.npcs, traffic_mgr.sim_time)
+            if taxi_mgr.check_car_collision(car, traffic_mgr.npcs, traffic_mgr.sim_time):
+                audio.play("car-crash", volume=0.8)
             taxi_mgr.check_wrong_way_violation(car, dt, ways=ways, spatial_grid=spatial_grid)
 
             # Update autonomous traffic NPCs and pedestrians
@@ -525,12 +608,24 @@ def main() -> None:
                         car.heading,
                         auto_fetch_manager.get_bounds(),
                     )
-                if len(ways) != spatial_grid.indexed_way_count:
+                if len(ways) != spatial_grid.indexed_way_count and map_sync_stage == 0:
+                    map_sync_stage = 1
+
+                if map_sync_stage == 1:
                     spatial_grid.rebuild(ways)
+                    map_sync_stage = 2
+                elif map_sync_stage == 2:
                     taxi_mgr.sync_map_data(ways, places=places, buildings=buildings)
+                    map_sync_stage = 3
+                elif map_sync_stage == 3:
                     traffic_mgr.sync_map_data(ways, traffic_lights=traffic_lights, crossings=crossings)
+                    map_sync_stage = 4
+                elif map_sync_stage == 4:
                     pedestrian_mgr.sync_map_data(ways, traffic_lights=traffic_lights)
+                    map_sync_stage = 5
+                elif map_sync_stage == 5:
                     cyclist_mgr.sync_map_data(ways, traffic_lights=traffic_lights)
+                    map_sync_stage = 0
             if first_gameplay_frame:
                 logger.info("Gameplay frame: map update complete")
 
@@ -557,7 +652,17 @@ def main() -> None:
             draw_cyclists(screen, cyclist_mgr.cyclists, camx, camy, px_per_m=px_per_m, ways=ways)
             draw_npc_cars(screen, traffic_mgr.npcs, camx, camy, px_per_m=px_per_m, ways=ways)
             draw_taxi_target(screen, taxi_mgr, camx, camy, font, px_per_m=px_per_m)
-            draw_car(screen, car, camx, camy, px_per_m=px_per_m, ways=ways)
+            draw_car(
+                screen,
+                car,
+                camx,
+                camy,
+                font=font,
+                px_per_m=px_per_m,
+                ways=ways,
+                shout_timer=rage_shout_timer,
+                shout_text=rage_shout_text,
+            )
 
             # Labels overlay (toggled with 'L')
             if show_labels:
@@ -584,6 +689,7 @@ def main() -> None:
                 speed_limit_kmh=current_limit_kmh,
                 speed_limiter_enabled=speed_limiter_enabled,
                 red_light_assist_enabled=red_light_assist_enabled,
+                rage_power=rage_power,
             )
             if phone_open:
                 draw_phone_offers(screen, taxi_mgr, font, small_font, SCREEN_W, SCREEN_H)
@@ -596,6 +702,7 @@ def main() -> None:
                 logger.info("Gameplay frame: complete")
                 first_gameplay_frame = False
 
+    audio.close()
     pygame.quit()
 
 

@@ -4,6 +4,7 @@ from theroadragetrip.osm import Way
 from theroadragetrip.osm import TrafficLight
 from theroadragetrip.physics import Car
 from theroadragetrip.traffic import NPCCar, TrafficManager
+from theroadragetrip.geo import boxes_intersect
 
 
 def test_npc_traffic_spawning_and_movement():
@@ -47,6 +48,54 @@ def test_npc_traffic_spawning_and_movement():
         if (npc.x, npc.y) != initial_positions[i]
     )
     assert moved_count > 0
+
+
+def test_overlapping_npcs_are_separated():
+    way = Way(
+        points_m=[(0.0, 0.0), (200.0, 0.0)],
+        highway="primary",
+        half_width_m=6.0,
+        name="Collision Street",
+    )
+    traffic_mgr = TrafficManager([way], target_count=0)
+    first = NPCCar(50.0, 0.0, 0.0, 4.0, way, 0, 1, 10.0, (20, 20, 20))
+    second = NPCCar(50.0, 0.0, math.pi, 4.0, way, 0, -1, 10.0, (30, 30, 30))
+    traffic_mgr.npcs = [first, second]
+
+    traffic_mgr.update(Car(x=50.0, y=100.0, heading=0.0, speed=0.0), dt=0.0)
+
+    assert not boxes_intersect(
+        first.x, first.y, first.heading, first.length_m, first.width_m,
+        second.x, second.y, second.heading, second.length_m, second.width_m,
+    )
+    assert first.speed == 0.0
+    assert second.speed == 0.0
+
+
+def test_rage_shout_moves_cars_ahead_to_road_edge():
+    way = Way(
+        points_m=[(0.0, 0.0), (200.0, 0.0)],
+        highway="primary",
+        half_width_m=6.0,
+        oneway=1,
+    )
+    traffic_mgr = TrafficManager([way], target_count=0)
+    ahead = NPCCar(
+        x=30.0, y=0.0, heading=0.0, speed=8.0, way=way,
+        segment_idx=0, direction=1, target_speed=12.0, color=(100, 100, 100),
+    )
+    behind = NPCCar(
+        x=-30.0, y=0.0, heading=0.0, speed=8.0, way=way,
+        segment_idx=0, direction=1, target_speed=12.0, color=(100, 100, 100),
+    )
+    traffic_mgr.npcs = [ahead, behind]
+
+    moved = traffic_mgr.rage_shout(Car(x=0.0, y=0.0, heading=0.0, speed=0.0))
+
+    assert moved == 1
+    assert ahead.y == -7.35
+    assert ahead.rage_timer > 0.0
+    assert behind.y == 0.0
 
 
 def test_npc_uses_only_first_traffic_light_ahead():

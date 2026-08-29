@@ -4,6 +4,7 @@ import random
 from dataclasses import dataclass
 from typing import List, Optional, Tuple
 
+from .geo import boxes_intersect
 from .osm import TrafficLight, Way
 from .physics import Car, connected_drivable_ways
 
@@ -19,6 +20,13 @@ NPC_COLORS = [
     (160, 60, 180),   # Purple
     (180, 180, 190),  # Silver
 ]
+MAX_TRAFFIC_COUNT = 50
+
+
+def recommended_traffic_count(ways: List[Way], minimum: int = 5, maximum: int = MAX_TRAFFIC_COUNT) -> int:
+    """Choose a traffic population from the number of connected drivable road ways."""
+    road_count = len(connected_drivable_ways(ways))
+    return max(minimum, min(maximum, round(road_count / 10)))
 
 
 @dataclass
@@ -48,6 +56,7 @@ class NPCCar:
     crashed_timer: float = 0.0
     blocked_timer: float = 0.0
     escape_timer: float = 0.0
+    rage_timer: float = 0.0
     turn_signal: str = ""  # "left" or "right" while completing a turn
     turn_signal_elapsed: float = 0.0
 
@@ -97,7 +106,7 @@ class TrafficManager:
         crossings: Optional[List] = None,
     ):
         self.ways = connected_drivable_ways(ways)
-        self.target_count = target_count
+        self.target_count = max(0, min(MAX_TRAFFIC_COUNT, target_count))
         self.spawn_radius_m = spawn_radius_m
         self.despawn_radius_m = despawn_radius_m
         self.min_spawn_dist_to_player_m: float = 12.0
@@ -111,14 +120,92 @@ class TrafficManager:
         self._junction_grid: dict = {}
         self._way_grid_cell_size: float = 200.0
         self._way_grid: dict = {}
+        self._signal_grid_cell_size: float = 60.0
+        self._traffic_light_grid: dict[Tuple[int, int], List[TrafficLight]] = {}
+        self._crossing_grid: dict[Tuple[int, int], List] = {}
+        self._npc_grid_cell_size: float = 32.0
+        self._npc_grid: dict[Tuple[int, int], List[NPCCar]] = {}
         self._build_spatial_indices()
+
+    def _build_npc_spatial_grid(self) -> None:
+        cell_size = self._npc_grid_cell_size
+        self._npc_grid.clear()
+        for npc in self.npcs:
+            cell = (int(math.floor(npc.x / cell_size)), int(math.floor(npc.y / cell_size)))
+            self._npc_grid.setdefault(cell, []).append(npc)
+
+    def _nearby_npcs(self, npc: NPCCar) -> List[NPCCar]:
+        cell_size = self._npc_grid_cell_size
+        cell_x = int(math.floor(npc.x / cell_size))
+        cell_y = int(math.floor(npc.y / cell_size))
+        nearby: List[NPCCar] = []
+        for offset_x in (-1, 0, 1):
+            for offset_y in (-1, 0, 1):
+                nearby.extend(self._npc_grid.get((cell_x + offset_x, cell_y + offset_y), []))
+        return nearby
+
+    def _resolve_npc_collisions(self) -> None:
+        """Separate overlapping nearby NPC cars so traffic cannot occupy the same space."""
+        self._build_npc_spatial_grid()
+        resolved_pairs = set()
+        for npc in self.npcs:
+            for other in self._nearby_npcs(npc):
+                if other is npc or other.layer != npc.layer:
+                    continue
+                pair = tuple(sorted((id(npc), id(other))))
+                if pair in resolved_pairs:
+                    continue
+                resolved_pairs.add(pair)
+
+                if not boxes_intersect(
+                    npc.x, npc.y, npc.heading, npc.length_m, npc.width_m,
+                    other.x, other.y, other.heading, other.length_m, other.width_m,
+                ):
+                    continue
+
+                dx = npc.x - other.x
+                dy = npc.y - other.y
+                distance = math.hypot(dx, dy)
+                if distance <= 1e-6:
+                    dx = math.cos(npc.heading)
+                    dy = math.sin(npc.heading)
+                    normalizing_distance = 1.0
+                else:
+                    normalizing_distance = distance
+
+                min_distance = (npc.length_m + other.length_m) * 0.5 + 1.0
+                push = max(0.5, min(8.0, min_distance - distance)) * 0.5
+                nx = dx / normalizing_distance
+                ny = dy / normalizing_distance
+                npc.x += nx * push
+                npc.y += ny * push
+                other.x -= nx * push
+                other.y -= ny * push
+                npc.speed = 0.0
+                other.speed = 0.0
 
     def _build_spatial_indices(self) -> None:
         """Build spatial index for instant junction lookups and spawning."""
         self._junction_grid.clear()
         self._way_grid.clear()
+        self._traffic_light_grid.clear()
+        self._crossing_grid.clear()
         j_cs = self._junction_grid_cell_size
         w_cs = self._way_grid_cell_size
+        signal_cs = self._signal_grid_cell_size
+
+        for traffic_light in self.traffic_lights:
+            cell = (
+                int(math.floor(traffic_light.x / signal_cs)),
+                int(math.floor(traffic_light.y / signal_cs)),
+            )
+            self._traffic_light_grid.setdefault(cell, []).append(traffic_light)
+        for crossing in self.crossings:
+            cell = (
+                int(math.floor(crossing.x / signal_cs)),
+                int(math.floor(crossing.y / signal_cs)),
+            )
+            self._crossing_grid.setdefault(cell, []).append(crossing)
 
         for w in self.ways:
             layer = getattr(w, "layer", 0)
@@ -141,6 +228,26 @@ class TrafficManager:
             for cx in range(min_cx, max_cx + 1):
                 for cy in range(min_cy, max_cy + 1):
                     self._way_grid.setdefault((cx, cy), []).append(w)
+
+    def _nearby_traffic_lights(self, x: float, y: float) -> List[TrafficLight]:
+        cell_size = self._signal_grid_cell_size
+        cell_x = int(math.floor(x / cell_size))
+        cell_y = int(math.floor(y / cell_size))
+        nearby: List[TrafficLight] = []
+        for offset_x in (-1, 0, 1):
+            for offset_y in (-1, 0, 1):
+                nearby.extend(self._traffic_light_grid.get((cell_x + offset_x, cell_y + offset_y), []))
+        return nearby
+
+    def _nearby_crossings(self, x: float, y: float) -> List:
+        cell_size = self._signal_grid_cell_size
+        cell_x = int(math.floor(x / cell_size))
+        cell_y = int(math.floor(y / cell_size))
+        nearby = []
+        for offset_x in (-1, 0, 1):
+            for offset_y in (-1, 0, 1):
+                nearby.extend(self._crossing_grid.get((cell_x + offset_x, cell_y + offset_y), []))
+        return nearby
 
     @staticmethod
     def _turn_signal_for_route(old_heading: float, npc: NPCCar) -> str:
@@ -176,12 +283,54 @@ class TrafficManager:
             self.crossings = crossings
         self._build_spatial_indices()
 
+    def rage_shout(self, player_car: Car, radius_m: float = 50.0) -> int:
+        """Move NPCs ahead of the player toward their road edge immediately."""
+        moved = 0
+        player_heading_x = math.cos(player_car.heading)
+        player_heading_y = math.sin(player_car.heading)
+
+        for npc in self.npcs:
+            if npc.layer != player_car.layer:
+                continue
+            delta_x = npc.x - player_car.x
+            delta_y = npc.y - player_car.y
+            distance = math.hypot(delta_x, delta_y)
+            if distance > radius_m or delta_x * player_heading_x + delta_y * player_heading_y <= 0.0:
+                continue
+
+            road_half_width = getattr(npc.way, "half_width_m", 4.0)
+            edge_offset = road_half_width + max(1.0, npc.width_m * 0.75)
+            segment_index = min(max(npc.segment_idx, 0), len(npc.way.points_m) - 2)
+            start = npc.way.points_m[segment_index]
+            end = npc.way.points_m[segment_index + 1]
+            segment_x = end[0] - start[0]
+            segment_y = end[1] - start[1]
+            segment_length = math.hypot(segment_x, segment_y)
+            if segment_length <= 1e-3:
+                continue
+
+            normal_x = segment_y / segment_length
+            normal_y = -segment_x / segment_length
+            center_delta_x = npc.x - start[0]
+            center_delta_y = npc.y - start[1]
+            current_offset = center_delta_x * normal_x + center_delta_y * normal_y
+            edge_sign = 1.0 if current_offset >= 0.0 else -1.0
+            npc.target_lane_offset = edge_sign * edge_offset
+            npc.lane_offset = npc.target_lane_offset
+            npc.x += normal_x * (npc.target_lane_offset - current_offset)
+            npc.y += normal_y * (npc.target_lane_offset - current_offset)
+            npc.rage_timer = 5.0
+            npc.escape_timer = max(npc.escape_timer, 5.0)
+            moved += 1
+
+        return moved
+
     def _find_next_way_and_segment(
         self,
         current_way: Way,
         at_point: Tuple[float, float],
-        exclude_reverse: bool = False,
         incoming_heading: Optional[float] = None,
+        exclude_reverse: bool = False,
     ) -> Optional[Tuple[Way, int, int]]:
         """Find a connected way at junction point to continue driving seamlessly using spatial grid."""
         tol = 3.0  # 3 meter connection tolerance
@@ -526,6 +675,8 @@ class TrafficManager:
             if not npc:
                 break
 
+        self._build_npc_spatial_grid()
+
         # Periodic log of active NPC traffic count (total and in-view)
         self._log_timer += dt
         if self._log_timer >= 5.0:
@@ -546,9 +697,10 @@ class TrafficManager:
 
         for i, npc in enumerate(self.npcs):
             npc.escape_timer = max(0.0, npc.escape_timer - dt)
+            npc.rage_timer = max(0.0, npc.rage_timer - dt)
             if npc.turn_signal:
                 npc.turn_signal_elapsed += dt
-            if getattr(npc.way, "oneway", 0) == 0:
+            if getattr(npc.way, "oneway", 0) == 0 and npc.rage_timer <= 0.0:
                 npc.overtaking = False
                 npc.overtake_timer = 0.0
                 npc.target_lane_offset = compute_desired_lane_offset(
@@ -566,8 +718,8 @@ class TrafficManager:
                 # Check if there is a slower car or player car ahead in same lane
                 car_ahead = False
                 # Check against other NPCs
-                for j, other in enumerate(self.npcs):
-                    if i == j or other.layer != npc.layer:
+                for other in self._nearby_npcs(npc):
+                    if other is npc or other.layer != npc.layer:
                         continue
                     dx = other.x - npc.x
                     dy = other.y - npc.y
@@ -615,8 +767,8 @@ class TrafficManager:
             blocked_by_npc = False
 
             # Check for leading NPC in close proximity (same direction or blocking path)
-            for j, other in enumerate(self.npcs):
-                if i == j or other.layer != npc.layer:
+            for other in self._nearby_npcs(npc):
+                if other is npc or other.layer != npc.layer:
                     continue
 
                 dx = other.x - npc.x
@@ -690,7 +842,7 @@ class TrafficManager:
             stop_distance = None
             heading_x = math.cos(npc.heading)
             heading_y = math.sin(npc.heading)
-            for tl in self.traffic_lights:
+            for tl in self._nearby_traffic_lights(npc.x, npc.y):
                 if tl.layer != npc.layer:
                     continue
                 dx = tl.x - npc.x
@@ -718,7 +870,7 @@ class TrafficManager:
                 if state in ("red", "red+yellow", "yellow"):
                     stop_distance = nearest_light[0] - 1.5
                     nearest_crossing = None
-                    for crossing in self.crossings:
+                    for crossing in self._nearby_crossings(npc.x, npc.y):
                         if getattr(crossing, "layer", 0) != npc.layer:
                             continue
                         crossing_dx = crossing.x - npc.x
@@ -969,3 +1121,4 @@ class TrafficManager:
 
         if finished_npcs:
             self.npcs = [npc for npc in self.npcs if id(npc) not in finished_npcs]
+        self._resolve_npc_collisions()

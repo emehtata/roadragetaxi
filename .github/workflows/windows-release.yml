@@ -33,6 +33,7 @@ jobs:
           --add-data "sample_osm.json;."
           --add-data "sample_osm_large.json;."
           --add-data "src/theroadragetrip/img;theroadragetrip/img"
+          --add-data "src/theroadragetrip/sounds;theroadragetrip/sounds"
           road_rage_trip.py
 
       - name: Package release

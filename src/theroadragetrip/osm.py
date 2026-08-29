@@ -140,6 +140,14 @@ OVERPASS_HEADERS = {
     "User-Agent": "TheRoadRageTrip/0.0.1 (https://github.com/theroadragetrip; educational driving game poc)"
 }
 
+
+def configure_user_agent(user_agent_id: str) -> None:
+    """Attach the persistent first-run identity to Overpass requests."""
+    OVERPASS_HEADERS["User-Agent"] = (
+        "TheRoadRageTrip/0.0.1 "
+        f"(https://github.com/theroadragetrip; educational driving game poc; id={user_agent_id})"
+    )
+
 CACHE_DIR = "osm_cache"
 DEAD_ENDS_CACHE_FILE = os.path.join(CACHE_DIR, "dead_ends.json")
 

@@ -76,6 +76,10 @@ python3 road_rage_trip.py --bbox "60.150,24.88,60.205,25.02"
 python3 road_rage_trip.py --auto-fetch --fetch-margin 50 --fetch-tile-size 500
 ```
 
+On the first launch, the game creates `roadragetrip.ini` in the current directory. Edit that file to set the city, map fetching, zoom, logging, pedestrian, cyclist, and traffic counts. The `[cities]` section contains editable `name = latitude, longitude` entries; add or remove cities there. Command-line options override the INI values for one launch.
+
+For example, set `preset = helsinki` under `[game]` and `traffic_count = 100` under `[traffic]` to run Helsinki with 100 NPC cars.
+
 ### Windows Release
 
 Push a version tag to build and publish a Windows package containing `RoadRageTrip.exe`:
@@ -86,6 +90,8 @@ git push origin v0.1.0
 ```
 
 GitHub Actions builds the package on Windows with PyInstaller and attaches `RoadRageTrip-windows-x64.zip` to the GitHub Release. Extract the zip and launch `RoadRageTrip.exe`; no Python installation is required.
+
+Game sounds are stored in `src/theroadragetrip/sounds/`. CC0 sounds require no attribution; the included `accelerate.aiff` is CC BY 3.0 and `city-traffic-outdoor.wav` is CC BY 4.0. Attribution details are recorded in the sounds directory license file.
 
 ---
 
@@ -104,6 +110,7 @@ GitHub Actions builds the package on Windows with PyInstaller and attaches `Road
 | `T` | Reset trip meter to 0 |
 | `L` | Toggle street & feature name labels |
 | `K` | Toggle lane keep assist |
+| `Space` | Rage shout: move NPC cars ahead aside within 50 m |
 | `Esc` | Open pause menu (Continue, Change City, Exit) |
 
 ---

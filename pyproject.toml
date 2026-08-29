@@ -13,3 +13,6 @@ dependencies = [
     "requests",
     "pyproj",
 ]
+
+[tool.setuptools.package-data]
+theroadragetrip = ["sounds/*"]

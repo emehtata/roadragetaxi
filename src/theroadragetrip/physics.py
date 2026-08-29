@@ -165,10 +165,12 @@ def compute_largest_connected_road_component(ways: List) -> List:
     # Build adjacency graph between ways
     adj: dict[int, set[int]] = {i: set() for i in range(len(drivable))}
     for way_indices in pt_to_ways.values():
-        for i in way_indices:
-            for j in way_indices:
-                if i != j:
-                    adj[i].add(j)
+        if len(way_indices) < 2:
+            continue
+        representative = way_indices[0]
+        for way_index in way_indices[1:]:
+            adj[representative].add(way_index)
+            adj[way_index].add(representative)
 
     # Find connected components with BFS/DFS
     visited: set[int] = set()

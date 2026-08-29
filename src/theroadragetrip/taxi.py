@@ -92,7 +92,7 @@ class TaxiManager:
         self.elapsed_time: float = 0.0
         self.trip_distance_m: float = 0.0
         self.last_fare_points: int = 0
-        self.notification_msg: str = "Welcome! Drive to the pickup location to collect passenger."
+        self.notification_msg: str = "Avaa puhelin (P) ja valitse kyyti aloittaaksesi."
         self.notification_timer: float = 5.0
         self._passed_red_signals: Dict[int, float] = {}  # signal id -> timestamp cooldown
         self._approaching_red_signals: Dict[int, float] = {}  # signal id -> last signed distance along travel
@@ -203,9 +203,12 @@ class TaxiManager:
                     continue
 
             # OSM occasionally contains building footprints crossed by mapped roads.
-            if ways:
-                self._refresh_road_overlap_cache(ways, buildings)
-            if id(building) in self._road_overlap_buildings:
+            # Check only this candidate; building the full-map cache here stalls startup.
+            if ways and any(
+                self._road_overlaps_building(way, points, bbox)
+                for way in ways
+                if is_car_road(way)
+            ):
                 continue
 
             intersects = point_in_polygon(player_car.x, player_car.y, points)
@@ -649,6 +652,64 @@ class TaxiManager:
                 return f"{street}, {district}"
             return f"{street}"
 
+    def pick_random_building_point(
+        self,
+        ref_x: Optional[float] = None,
+        ref_y: Optional[float] = None,
+        min_dist: float = 0.0,
+        max_dist: float = float("inf"),
+        max_road_distance: float = 250.0,
+    ) -> Optional[TaxiTarget]:
+        """Pick a named building and place its target at the nearest reachable road point."""
+        candidates = [
+            building for building in self.buildings
+            if building.name and len(building.points_m) >= 3
+        ]
+        random.shuffle(candidates)
+
+        for building in candidates:
+            center_x = sum(point[0] for point in building.points_m) / len(building.points_m)
+            center_y = sum(point[1] for point in building.points_m) / len(building.points_m)
+            nearest: Optional[Tuple[float, float, str, float]] = None
+
+            for way in self.ways:
+                if len(way.points_m) < 2 or not way.name:
+                    continue
+                for start, end in zip(way.points_m, way.points_m[1:]):
+                    dx = end[0] - start[0]
+                    dy = end[1] - start[1]
+                    length_squared = dx * dx + dy * dy
+                    if length_squared <= 1e-9:
+                        continue
+                    fraction = clamp(
+                        ((center_x - start[0]) * dx + (center_y - start[1]) * dy) / length_squared,
+                        0.0,
+                        1.0,
+                    )
+                    road_x = start[0] + fraction * dx
+                    road_y = start[1] + fraction * dy
+                    road_distance = math.hypot(center_x - road_x, center_y - road_y)
+                    if nearest is None or road_distance < nearest[3]:
+                        nearest = (road_x, road_y, way.name, road_distance)
+
+            if nearest is None or nearest[3] > max_road_distance:
+                continue
+            road_x, road_y, way_name, _ = nearest
+            if ref_x is not None and ref_y is not None:
+                distance = math.hypot(road_x - ref_x, road_y - ref_y)
+                if not min_dist <= distance <= max_dist:
+                    continue
+
+            return TaxiTarget(
+                x=road_x,
+                y=road_y,
+                address=building.name,
+                way_name=way_name,
+                district_name=self.get_nearest_district(road_x, road_y),
+                radius_m=self.pickup_radius_m,
+            )
+        return None
+
     def pick_random_road_point(
         self,
         ref_x: Optional[float] = None,
@@ -749,12 +810,19 @@ class TaxiManager:
 
     def spawn_mission(self, car_x: float, car_y: float) -> None:
         """Spawn a new passenger pickup and dropoff destination."""
-        pickup_target = self.pick_random_taxi_stop(
+        pickup_target = self.pick_random_building_point(
             ref_x=car_x,
             ref_y=car_y,
             min_dist=150.0,
             max_dist=1200.0,
         )
+        if not pickup_target:
+            pickup_target = self.pick_random_taxi_stop(
+            ref_x=car_x,
+            ref_y=car_y,
+            min_dist=150.0,
+            max_dist=1200.0,
+            )
         if not pickup_target:
             pickup_target = self.pick_random_road_point(
                 ref_x=car_x,
@@ -765,12 +833,19 @@ class TaxiManager:
         if not pickup_target:
             return
 
-        dropoff_target = self.pick_random_taxi_stop(
+        dropoff_target = self.pick_random_building_point(
             ref_x=pickup_target.x,
             ref_y=pickup_target.y,
             min_dist=self.min_distance_m,
             max_dist=self.max_distance_m,
         )
+        if not dropoff_target:
+            dropoff_target = self.pick_random_taxi_stop(
+            ref_x=pickup_target.x,
+            ref_y=pickup_target.y,
+            min_dist=self.min_distance_m,
+            max_dist=self.max_distance_m,
+            )
         if not dropoff_target:
             dropoff_target = self.pick_random_road_point(
             ref_x=pickup_target.x,

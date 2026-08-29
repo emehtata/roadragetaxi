@@ -704,8 +704,13 @@ def draw_car(
     screen_w: int = SCREEN_W,
     screen_h: int = SCREEN_H,
     ways: Optional[List[Way]] = None,
+    shout_timer: float = 0.0,
+    font=None,
+    shout_text: str = "PRKL!",
 ) -> None:
     """Draw player taxi scaled in meters with headlights and taillights."""
+    import pygame
+
     if _covered_by_higher_road(car.x, car.y, getattr(car, "layer", 0), ways):
         return
     cx, cy = world_to_screen(car.x, car.y, camx, camy, px_per_m, screen_w, screen_h)
@@ -725,6 +730,31 @@ def draw_car(
         outline_color=(30, 30, 30),
         is_taxi=True,
     )
+
+    if shout_timer > 0.0 and font:
+        alpha = int(min(255, (shout_timer / 0.5) * 255)) if shout_timer < 0.5 else 255
+        shout_surf = font.render(shout_text, True, (240, 40, 40))
+        shout_surf.set_alpha(alpha)
+        text_width, text_height = shout_surf.get_size()
+        bubble_width, bubble_height = text_width + 8, text_height + 4
+        bubble_x = cx - bubble_width / 2
+        bubble_y = cy - max(22, int(length_px * 0.7)) - bubble_height - 6
+        bubble_surf = pygame.Surface((bubble_width, bubble_height), pygame.SRCALPHA)
+        pygame.draw.rect(
+            bubble_surf,
+            (255, 255, 255, min(240, alpha)),
+            (0, 0, bubble_width, bubble_height),
+            border_radius=4,
+        )
+        pygame.draw.rect(
+            bubble_surf,
+            (200, 30, 30, alpha),
+            (0, 0, bubble_width, bubble_height),
+            width=1,
+            border_radius=4,
+        )
+        bubble_surf.blit(shout_surf, (4, 2))
+        screen.blit(bubble_surf, (int(bubble_x), int(bubble_y)))
 
 
 def draw_npc_cars(
@@ -1206,6 +1236,7 @@ def draw_loading_screen(
     message: str = "Loading scenery...",
     screen_w: int = SCREEN_W,
     screen_h: int = SCREEN_H,
+    show_details: bool = True,
 ) -> None:
     """Draw a standalone loading screen with a progress meter bar and message."""
     import pygame
@@ -1231,6 +1262,9 @@ def draw_loading_screen(
         screen.blit(overlay, (0, 0))
     else:
         screen.fill((20, 25, 30))
+
+    if not show_details:
+        return
 
     # Title
     title_font = font
@@ -1281,7 +1315,10 @@ def draw_city_selection_menu(
     """Draw city selection menu with 10 largest cities in Finland."""
     import pygame
 
-    screen.fill((18, 24, 32))
+    draw_loading_screen(screen, font, 1.0, "Ready", screen_w, screen_h, show_details=False)
+    overlay = pygame.Surface((screen_w, screen_h), pygame.SRCALPHA)
+    overlay.fill((8, 14, 22, 135))
+    screen.blit(overlay, (0, 0))
 
     # Header / Title
     title_font = font
@@ -1348,6 +1385,101 @@ def draw_city_selection_menu(
     screen.blit(hint_surf, hint_rect)
 
 
+def draw_help_screen(
+    screen,
+    font,
+    screen_w: int = SCREEN_W,
+    screen_h: int = SCREEN_H,
+) -> None:
+    """Draw the game's objective and keyboard controls over the current frame."""
+    import pygame
+
+    overlay = pygame.Surface((screen_w, screen_h), pygame.SRCALPHA)
+    overlay.fill((5, 10, 16, 220))
+    screen.blit(overlay, (0, 0))
+
+    panel = pygame.Rect(90, 45, screen_w - 180, screen_h - 90)
+    pygame.draw.rect(screen, (22, 30, 40), panel, border_radius=8)
+    pygame.draw.rect(screen, (100, 170, 220), panel, width=2, border_radius=8)
+
+    title_font = pygame.font.SysFont(None, 38, bold=True)
+    section_font = pygame.font.SysFont(None, 25, bold=True)
+    title = title_font.render("THE ROAD RAGE TRIP", True, (245, 245, 245))
+    screen.blit(title, title.get_rect(center=(screen_w // 2, panel.y + 38)))
+
+    sections = [
+        (
+            "Taustatarina",
+            [
+                "Olet kaiken kokenut taksikuski, joka ajaa keikkaa Suomen eri kaupungeissa.",
+                "Joka paikkaa yhdistävät samat riesat: idiootit kanssakuskit, ääliöt pyöräilijät",
+                "ja eteen pyrkivät jalankulkijat. Vuosien ajo on kehittänyt sinulle supervoiman:",
+                "raivohuuto tyhjentää tien häiriöistä. Raivomittari kasvaa rajoitusten mukaan ajaessa",
+                "ja pienenee, kun käytät raivovoimaa tehdäksesi tietä.",
+            ],
+        ),
+        (
+            "Pelin idea",
+            [
+                "Aja asiakkaan luo, ota hänet kyytiin ja vie perille.",
+                "Nouda asiakkaat kaduilta, taksiasemilta tai nimetyiltä rakennuksilta.",
+                "Pysy tiellä, vältä kolareita ja kerää pisteitä nopeista onnistuneista kyydeistä.",
+            ],
+        ),
+    ]
+    y = panel.y + 78
+    for heading, lines in sections:
+        heading_surface = section_font.render(heading, True, (255, 215, 95))
+        screen.blit(heading_surface, (panel.x + 28, y))
+        y += 30
+        for line in lines:
+            line_surface = font.render(line, True, (220, 228, 235))
+            screen.blit(line_surface, (panel.x + 42, y))
+            y += 25
+        y += 16
+
+    control_font = pygame.font.SysFont("monospace", 20)
+    controls = [
+        ("W / Ylös", "Kiihdytä"),
+        ("S / Alas", "Jarruta / peruuta"),
+        ("A / Vasen", "Ohjaa vasemmalle"),
+        ("D / Oikea", "Ohjaa oikealle"),
+        ("P", "Puhelin: tarjoukset"),
+        ("1 - 3", "Valitse kyyti puhelimessa"),
+        ("Space", "Raivohuuto"),
+        ("R", "Respawn"),
+        ("X", "Hylkää kyyti"),
+        ("T", "Nollaa matkamittari"),
+        ("L", "Nimet päälle / pois"),
+        ("K", "Kaista-avustin"),
+        ("V", "Nopeusrajoitin"),
+        ("B", "Liikennevaloavustin"),
+        ("+ / -", "Zoomaus"),
+        ("Esc", "Tauko"),
+        ("F1", "Avaa nämä ohjeet"),
+    ]
+    heading_surface = section_font.render("Ohjaus", True, (255, 215, 95))
+    screen.blit(heading_surface, (panel.x + 28, y))
+    y += 30
+    column_width = panel.width // 2
+    rows_per_column = (len(controls) + 1) // 2
+    for row in range(rows_per_column):
+        for column in range(2):
+            index = row + column * rows_per_column
+            if index >= len(controls):
+                continue
+            key, action = controls[index]
+            column_x = panel.x + 28 + column * column_width
+            key_surface = control_font.render(key, True, (255, 215, 95))
+            action_surface = font.render(action, True, (220, 228, 235))
+            screen.blit(key_surface, (column_x, y))
+            screen.blit(action_surface, (column_x + 105, y))
+        y += 20
+
+    hint = font.render("Esc / F1: sulje", True, (160, 190, 215))
+    screen.blit(hint, hint.get_rect(center=(screen_w // 2, panel.bottom - 25)))
+
+
 def draw_pause_menu(
     screen,
     font,
@@ -1365,8 +1497,8 @@ def draw_pause_menu(
     screen.blit(overlay, (0, 0))
 
     # Menu panel
-    panel_w = 420
-    panel_h = 280
+    panel_w = min(420, screen_w - 40)
+    panel_h = min(screen_h - 40, max(280, 110 + len(options) * 56))
     panel_x = (screen_w - panel_w) // 2
     panel_y = (screen_h - panel_h) // 2
 
@@ -1435,6 +1567,7 @@ def draw_hud(
     speed_limit_kmh: Optional[int] = None,
     speed_limiter_enabled: bool = True,
     red_light_assist_enabled: bool = False,
+    rage_power: float = 0.0,
 ) -> None:
     """Draw speed, trip, odometer, on-road status, current road name, lat/lon, taxi mission bar, notifications."""
     import pygame
@@ -1454,7 +1587,7 @@ def draw_hud(
     limit_s = f" [Limit: {speed_limit_kmh} km/h]" if speed_limit_kmh is not None else ""
     assist_s = " | [Lane Assist]" if getattr(car, "lane_assist_active", False) else ""
     hud = (
-        f"Road: {road_name_s}{limit_s}{assist_s} | Speed: {car.speed * 3.6:.0f} km/h | Trip: {trip_s} | Odo: {odo_s} | "
+        f"Road: {road_name_s}{limit_s}{assist_s} | Trip: {trip_s} | Odo: {odo_s} | "
         f"Ways: {ways_count} | Zoom: {px_per_m:.2f} px/m | Lat: {lat_s} Lon: {lon_s}"
     )
     text = font.render(hud, True, (240, 240, 240))
@@ -1462,7 +1595,7 @@ def draw_hud(
 
     hint = (
         f"Controls: W/S/A/D = drive | +/- = zoom | R = respawn | X = cancel fare | T = reset trip | "
-        f"L = labels ({labels_status}) | K = lane assist ({lane_assist_status}) | V = limiter ({speed_limiter_status}) | B = red assist ({red_light_assist_status}) | ESC = pause"
+        f"L = labels ({labels_status}) | K = lane assist ({lane_assist_status}) | V = limiter ({speed_limiter_status}) | B = red assist ({red_light_assist_status}) | Space = rage | ESC = pause"
     )
     hint_t = font.render(hint, True, (220, 220, 220))
     screen.blit(hint_t, (10, 34))
@@ -1475,7 +1608,10 @@ def draw_hud(
         dist_s = f"{dist_m:.0f}m" if dist_m < 1000 else f"{dist_m / 1000.0:.2f}km"
 
         p = taxi_mgr.current_passenger
-        if taxi_mgr.state == TaxiState.WAITING_FOR_PICKUP:
+        if p is None:
+            role_text = "[TAXI] Avaa puhelin painamalla P ja valitse kyyti"
+            role_color = (255, 215, 60)
+        elif taxi_mgr.state == TaxiState.WAITING_FOR_PICKUP:
             role_text = f"[TAXI] FARE: Pickup {p.name if p else 'Client'} at: {target.address if target else '...'} ({dist_s})"
             role_color = (255, 215, 60)
         else:
@@ -1514,6 +1650,37 @@ def draw_hud(
             screen.blit(n_bg, (notif_rect.x - 12, notif_rect.y - 6))
             pygame.draw.rect(screen, (255, 200, 50), (notif_rect.x - 12, notif_rect.y - 6, notif_rect.width + 24, notif_rect.height + 12), 2, border_radius=5)
             screen.blit(notif_surf, notif_rect)
+
+    # Keep driving instruments together in the lower-left corner.
+    speed_text = font.render(f"SPEED: {car.speed * 3.6:.0f} km/h", True, (240, 240, 240))
+    rage_text = font.render(f"RAGE: {rage_power * 100:.0f}%", True, (255, 120, 100))
+    instrument_width = max(speed_text.get_width(), rage_text.get_width()) + 20
+    instrument_height = speed_text.get_height() + rage_text.get_height() + 22
+    instrument_x = 10
+    instrument_y = SCREEN_H - instrument_height - 10
+    pygame.draw.rect(
+        screen,
+        (20, 25, 30, 220),
+        (instrument_x, instrument_y, instrument_width, instrument_height),
+        border_radius=4,
+    )
+    pygame.draw.rect(
+        screen,
+        (130, 140, 150),
+        (instrument_x, instrument_y, instrument_width, instrument_height),
+        width=1,
+        border_radius=4,
+    )
+    screen.blit(speed_text, (instrument_x + 10, instrument_y + 6))
+    rage_y = instrument_y + speed_text.get_height() + 8
+    screen.blit(rage_text, (instrument_x + 10, rage_y))
+    rage_bar = pygame.Rect(instrument_x + 10, rage_y + rage_text.get_height() + 2, instrument_width - 20, 6)
+    pygame.draw.rect(screen, (45, 30, 30), rage_bar)
+    pygame.draw.rect(
+        screen,
+        (220, 55, 35),
+        (rage_bar.x, rage_bar.y, int(rage_bar.width * max(0.0, min(1.0, rage_power))), rage_bar.height),
+    )
 
     # Auto-fetch scenery loading progress meter
     if is_auto_fetching:
