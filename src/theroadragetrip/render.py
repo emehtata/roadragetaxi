@@ -1282,7 +1282,10 @@ def draw_phone_offers(screen, taxi_mgr: TaxiManager, font, small_font, screen_w:
             screen.blit(dropoff, (row.x + 12, row.y + 48))
             screen.blit(dist, (row.x + 12, row.y + 67))
 
-    hint = small_font.render(tr(language, "close_phone"), True, (180, 185, 190))
+    hint_text = tr(language, "close_phone")
+    if taxi_mgr.offers:
+        hint_text += f"  |  {tr(language, 'reject_phone')}"
+    hint = small_font.render(hint_text, True, (180, 185, 190))
     screen.blit(hint, hint.get_rect(center=(phone.centerx, phone.bottom - 20)))
 
 
@@ -1753,8 +1756,12 @@ def draw_hud(
 
         p = taxi_mgr.current_passenger
         if p is None:
-            role_text = f"[TAXI] {tr(language, 'open_phone')}"
-            role_color = (255, 215, 60)
+            if taxi_mgr.offers:
+                role_text = f"[TAXI] {tr(language, 'phone_available')}"
+                role_color = (255, 95, 60)
+            else:
+                role_text = f"[TAXI] {tr(language, 'no_requests')}"
+                role_color = (190, 200, 205)
         elif taxi_mgr.state == TaxiState.WAITING_FOR_PICKUP:
             role_text = f"[TAXI] FARE: Pickup {p.name if p else 'Client'} at: {target.address if target else '...'} ({dist_s})"
             role_color = (255, 215, 60)
