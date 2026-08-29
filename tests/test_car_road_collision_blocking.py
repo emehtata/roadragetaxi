@@ -202,6 +202,20 @@ def test_building_overlapping_road_does_not_cause_crash():
     assert taxi_manager.total_score == 0
 
 
+def test_building_collision_still_triggers_off_road():
+    from theroadragetrip.osm import Building
+
+    road = Way(points_m=[(0.0, 0.0), (20.0, 0.0)], highway="residential", half_width_m=1.0)
+    building = Building(points_m=[(5.0, -5.0), (15.0, -5.0), (15.0, 5.0), (5.0, 5.0)])
+    car = Car(x=10.0, y=2.5, heading=0.0, speed=4.0)
+    taxi_manager = TaxiManager(ways=[road])
+
+    crashed = taxi_manager.check_building_collision(car, [building], sim_time=1.0, ways=[road])
+
+    assert crashed is True
+    assert car.speed == 0.0
+
+
 def test_tree_collision_stops_and_penalizes_once():
     scenery = Scenery(points_m=[(-5.0, -5.0), (5.0, -5.0), (5.0, 5.0)], kind="park", trees=[(0.0, 0.0)])
     car = Car(x=0.0, y=0.0, heading=0.0, speed=4.0)

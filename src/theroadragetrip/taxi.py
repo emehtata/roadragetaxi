@@ -253,9 +253,17 @@ class TaxiManager:
                     continue
 
             # OSM occasionally contains building footprints crossed by mapped roads.
-            # Check only this candidate; building the full-map cache here stalls startup.
+            # Ignore that footprint only while the car is actually on the crossing road.
             if ways and any(
                 self._road_overlaps_building(way, points, bbox)
+                and getattr(way, "layer", 0) == getattr(player_car, "layer", 0)
+                and any(
+                    dist_point_to_segment(
+                        player_car.x, player_car.y,
+                        road_start[0], road_start[1], road_end[0], road_end[1],
+                    ) <= getattr(way, "half_width_m", 3.0)
+                    for road_start, road_end in zip(way.points_m, way.points_m[1:])
+                )
                 for way in ways
                 if is_car_road(way)
             ):
