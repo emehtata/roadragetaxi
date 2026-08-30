@@ -136,6 +136,30 @@ def is_point_in_water(px: float, py: float, waters: List) -> bool:
     return False
 
 
+def is_car_fully_in_water(car: Car, waters: List) -> bool:
+    """Return whether all four corners of the car are inside mapped water."""
+    half_length = getattr(car, "length_m", 4.0) * 0.5
+    half_width = getattr(car, "width_m", 1.8) * 0.5
+    forward_x = math.cos(car.heading)
+    forward_y = math.sin(car.heading)
+    right_x = math.sin(car.heading)
+    right_y = -math.cos(car.heading)
+    corners = (
+        (half_length, half_width),
+        (half_length, -half_width),
+        (-half_length, half_width),
+        (-half_length, -half_width),
+    )
+    return bool(waters) and all(
+        is_point_in_water(
+            car.x + forward_x * longitudinal + right_x * lateral,
+            car.y + forward_y * longitudinal + right_y * lateral,
+            waters,
+        )
+        for longitudinal, lateral in corners
+    )
+
+
 def compute_largest_connected_road_component(ways: List) -> List:
     """Find the largest connected component among drivable car roads."""
     drivable = [w for w in ways if is_car_road(w) and len(w.points_m) >= 2]
@@ -668,6 +692,7 @@ def update_car_physics(
     block_offroad: bool = True,
     enforce_oneway: bool = False,
     speed_limit_mps: Optional[float] = None,
+    nearby_vehicles: Optional[List] = None,
 ) -> bool:
     """Update car speed, heading, and position.
 
@@ -780,9 +805,20 @@ def update_car_physics(
                     current_offset = (car.x - best_px) * right_nx + (car.y - best_py) * right_ny
                     offset_error = desired_offset - current_offset  # positive -> car is too far left, steer right
 
+                    target_x = best_px + right_nx * desired_offset
+                    target_y = best_py + right_ny * desired_offset
+                    lane_blocked = any(
+                        getattr(vehicle, "layer", 0) == car.layer
+                        and math.hypot(vehicle.x - target_x, vehicle.y - target_y)
+                        < (getattr(vehicle, "length_m", 4.0) + car.length_m) * 0.5
+                        + (getattr(vehicle, "width_m", 1.8) + car.width_m) * 0.5
+                        for vehicle in (nearby_vehicles or [])
+                        if vehicle is not car
+                    )
+
                     # PD-like gentle corrective steering
                     # Steer right when offset_error > 0 (in Cartesian space, right is negative angle delta)
-                    desired_angle = road_heading - clamp(offset_error * 0.22, -0.35, 0.35)
+                    desired_angle = road_heading if lane_blocked else road_heading - clamp(offset_error * 0.22, -0.35, 0.35)
                     corrective_diff = (desired_angle - car.heading + math.pi) % (2 * math.pi) - math.pi
 
                     assist_rate = 2.0  # rad/s max assist authority

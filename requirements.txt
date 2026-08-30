@@ -2,4 +2,3 @@ pygame
 requests
 pyproj
 pytest
-piper-tts

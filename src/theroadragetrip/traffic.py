@@ -1,4 +1,5 @@
 import logging
+import heapq
 import math
 import random
 from dataclasses import dataclass
@@ -68,6 +69,7 @@ class NPCCar:
     turn_signal_elapsed: float = 0.0
     is_taxi: bool = False
     taxi_pickup_timer: float = 0.0
+    waiting_at_taxi_stop: bool = False
     vehicle_type: str = "car"  # "car", "motorcycle", or "moped"
     fallen: bool = False
     driver_spawned: bool = False
@@ -77,6 +79,7 @@ class NPCCar:
     stopped: bool = False
     penalty_given: bool = False
     scared_timer: float = 0.0
+    next_route: Optional[Tuple[Way, int, int]] = None
 
 
 def calculate_npc_target_speed(way: Way, speed_factor: float) -> float:
@@ -331,6 +334,77 @@ class TrafficManager:
             self.crossings = crossings
         self._build_spatial_indices()
 
+    def plan_route(
+        self,
+        start: Tuple[float, float],
+        target: Tuple[float, float],
+        layer: Optional[int] = None,
+    ) -> Optional[List[Tuple[float, float]]]:
+        """Return a shortest route over road vertices between two map positions."""
+        nodes: List[Tuple[float, float, int]] = []
+        node_ids: dict[Tuple[int, int, int], int] = {}
+        edges: dict[int, List[Tuple[int, float]]] = {}
+        endpoint_buckets: dict[Tuple[int, int, int], List[int]] = {}
+
+        def node_id(point: Tuple[float, float], point_layer: int) -> int:
+            bucket = (round(point[0] / 3.0), round(point[1] / 3.0), point_layer)
+            for candidate in endpoint_buckets.get(bucket, []):
+                candidate_point = nodes[candidate]
+                if math.hypot(candidate_point[0] - point[0], candidate_point[1] - point[1]) <= 3.0:
+                    return candidate
+            candidate = len(nodes)
+            nodes.append((point[0], point[1], point_layer))
+            endpoint_buckets.setdefault(bucket, []).append(candidate)
+            edges[candidate] = []
+            return candidate
+
+        for way in self.ways:
+            if len(way.points_m) < 2 or (layer is not None and getattr(way, "layer", 0) != layer):
+                continue
+            point_ids = [node_id(point, getattr(way, "layer", 0)) for point in way.points_m]
+            oneway = getattr(way, "oneway", 0)
+            for index, (first, second) in enumerate(zip(point_ids, point_ids[1:])):
+                distance = math.hypot(
+                    nodes[second][0] - nodes[first][0], nodes[second][1] - nodes[first][1]
+                )
+                if oneway >= 0:
+                    edges[first].append((second, distance))
+                if oneway <= 0:
+                    edges[second].append((first, distance))
+
+        if not nodes:
+            return None
+        start_id = min(
+            range(len(nodes)),
+            key=lambda index: (nodes[index][0] - start[0]) ** 2 + (nodes[index][1] - start[1]) ** 2,
+        )
+        target_id = min(
+            range(len(nodes)),
+            key=lambda index: (nodes[index][0] - target[0]) ** 2 + (nodes[index][1] - target[1]) ** 2,
+        )
+        distances = {start_id: 0.0}
+        previous: dict[int, int] = {}
+        queue = [(0.0, start_id)]
+        while queue:
+            distance, current = heapq.heappop(queue)
+            if current == target_id:
+                break
+            if distance != distances.get(current):
+                continue
+            for neighbor, edge_distance in edges[current]:
+                new_distance = distance + edge_distance
+                if new_distance < distances.get(neighbor, math.inf):
+                    distances[neighbor] = new_distance
+                    previous[neighbor] = current
+                    heapq.heappush(queue, (new_distance, neighbor))
+        if target_id not in distances:
+            return None
+        path = [target_id]
+        while path[-1] != start_id:
+            path.append(previous[path[-1]])
+        path.reverse()
+        return [(start[0], start[1])] + [(nodes[index][0], nodes[index][1]) for index in path[1:]] + [target]
+
     def set_target_count(self, target_count: int, player_car: Optional[Car] = None) -> None:
         """Adjust active traffic count and discard farthest cars when zoom reduces it."""
         self.target_count = max(0, min(MAX_TRAFFIC_COUNT, target_count))
@@ -417,6 +491,8 @@ class TrafficManager:
             npc.escape_timer = max(npc.escape_timer, 5.0)
             moved += 1
 
+        if moved:
+            logger.info("Rattiraivo moved %d NPC vehicles aside", moved)
         return moved
 
     def _find_next_way_and_segment(
@@ -512,6 +588,26 @@ class TrafficManager:
 
         return random.choice(valid_candidates)
 
+    def _prepare_next_route(self, npc: NPCCar) -> None:
+        """Choose the next route as soon as the NPC approaches a known junction."""
+        if npc.next_route is not None or len(npc.way.points_m) < 2:
+            return
+        if npc.direction == 1:
+            if npc.segment_idx + 1 >= len(npc.way.points_m):
+                return
+            junction_point = npc.way.points_m[npc.segment_idx + 1]
+        else:
+            if npc.segment_idx >= len(npc.way.points_m):
+                return
+            junction_point = npc.way.points_m[npc.segment_idx]
+        if self._junction_at_point(junction_point, npc.layer) is None:
+            return
+        npc.next_route = self._find_next_way_and_segment(
+            npc.way,
+            junction_point,
+            incoming_heading=npc.heading,
+        )
+
     def _junction_at_point(self, point: Tuple[float, float], layer: int) -> Optional[Tuple[float, float]]:
         """Return a shared same-layer way vertex when point belongs to a junction."""
         tol = 3.0
@@ -556,6 +652,7 @@ class TrafficManager:
         near_y: float,
         viewport_bounds: Optional[Tuple[float, float, float, float]] = None,
         near_heading: Optional[float] = None,
+        max_distance_m: Optional[float] = None,
     ) -> Optional[NPCCar]:
         """Spawn a new NPC car near the given location just outside the viewport edge."""
         if not self.ways:
@@ -629,6 +726,8 @@ class TrafficManager:
                         vminx, vminy, vmaxx, vmaxy = viewport_bounds
                         if vminx <= x <= vmaxx and vminy <= y <= vmaxy:
                             continue
+                    if max_distance_m is not None and math.hypot(x - near_x, y - near_y) > max_distance_m:
+                        continue
 
                     if near_heading is not None:
                         forward_distance = (
@@ -845,9 +944,14 @@ class TrafficManager:
         for i, npc in enumerate(self.npcs):
             if npc.is_police:
                 continue
+            self._prepare_next_route(npc)
             if npc.taxi_pickup_timer > 0.0:
                 npc.taxi_pickup_timer = max(0.0, npc.taxi_pickup_timer - dt)
                 npc.speed = 0.0
+                continue
+            if getattr(npc, "waiting_at_taxi_stop", False):
+                npc.speed = 0.0
+                npc.target_speed = 0.0
                 continue
             npc.escape_timer = max(0.0, npc.escape_timer - dt)
             npc.rage_timer = max(0.0, npc.rage_timer - dt)
@@ -1068,13 +1172,17 @@ class TrafficManager:
             # Calculate cornering speed limit based on heading angle to next vertex / sharp curves
             turn_limit_speed = npc.target_speed
             if target_pt is not None:
-                to_x = target_pt[0] - npc.x
-                to_y = target_pt[1] - npc.y
-                d_to = math.hypot(to_x, to_y)
-                if d_to > 0.5:
-                    tgt_head = math.atan2(to_y, to_x)
-                    angle_err = abs((tgt_head - npc.heading + math.pi) % (2 * math.pi) - math.pi)
-                    # Steep turn (> 30 deg): scale allowable speed inversely with angle (down to 3.5-5.0 m/s for 90 deg turns)
+                next_heading = None
+                if npc.next_route is not None:
+                    next_way, next_segment_idx, next_direction = npc.next_route
+                    next_pts = next_way.points_m
+                    if next_direction == 1:
+                        next_start, next_end = next_pts[next_segment_idx], next_pts[next_segment_idx + 1]
+                    else:
+                        next_start, next_end = next_pts[next_segment_idx + 1], next_pts[next_segment_idx]
+                    next_heading = math.atan2(next_end[1] - next_start[1], next_end[0] - next_start[0])
+                if next_heading is not None:
+                    angle_err = abs((next_heading - npc.heading + math.pi) % (2 * math.pi) - math.pi)
                     if angle_err > math.radians(25):
                         turn_factor = max(0.25, math.cos(min(math.pi / 2, angle_err)))
                         turn_limit_speed = max(3.5, npc.target_speed * turn_factor)
@@ -1186,7 +1294,7 @@ class TrafficManager:
                         if npc.segment_idx + 1 < len(pts) - 1:
                             # 35% chance to make a turn at an intersection along the way
                             if random.random() < 0.35:
-                                turn_route = self._find_next_way_and_segment(
+                                turn_route = npc.next_route or self._find_next_way_and_segment(
                                     npc.way, target_pt, exclude_reverse=True, incoming_heading=npc.heading
                                 )
                                 if turn_route and turn_route[0] is not npc.way:
@@ -1199,13 +1307,14 @@ class TrafficManager:
                                     npc.target_lane_offset = compute_desired_lane_offset(
                                         npc.way, npc.overtaking, npc.direction
                                     )
+                                    npc.next_route = None
                                     pts = npc.way.points_m
                                     turned = True
                             if not turned:
                                 npc.segment_idx += 1
                         else:
                             # Reached end of way, find connecting road
-                            next_route = self._find_next_way_and_segment(
+                            next_route = npc.next_route or self._find_next_way_and_segment(
                                 npc.way, target_pt, incoming_heading=npc.heading
                             )
                             if next_route:
@@ -1218,6 +1327,7 @@ class TrafficManager:
                                 npc.target_lane_offset = compute_desired_lane_offset(
                                     npc.way, npc.overtaking, npc.direction
                                 )
+                                npc.next_route = None
                                 pts = npc.way.points_m
                             else:
                                 # Reverse on two-way or loop (dead end)
@@ -1236,7 +1346,7 @@ class TrafficManager:
                         turned = False
                         if npc.segment_idx > 0:
                             if random.random() < 0.35:
-                                turn_route = self._find_next_way_and_segment(
+                                turn_route = npc.next_route or self._find_next_way_and_segment(
                                     npc.way, target_pt, exclude_reverse=True, incoming_heading=npc.heading
                                 )
                                 if turn_route and turn_route[0] is not npc.way:
@@ -1249,13 +1359,14 @@ class TrafficManager:
                                     npc.target_lane_offset = compute_desired_lane_offset(
                                         npc.way, npc.overtaking, npc.direction
                                     )
+                                    npc.next_route = None
                                     pts = npc.way.points_m
                                     turned = True
                             if not turned:
                                 npc.segment_idx -= 1
                         else:
                             # Reached start of way in reverse
-                            next_route = self._find_next_way_and_segment(
+                            next_route = npc.next_route or self._find_next_way_and_segment(
                                 npc.way, target_pt, incoming_heading=npc.heading
                             )
                             if next_route:
@@ -1268,6 +1379,7 @@ class TrafficManager:
                                 npc.target_lane_offset = compute_desired_lane_offset(
                                     npc.way, npc.overtaking, npc.direction
                                 )
+                                npc.next_route = None
                                 pts = npc.way.points_m
                             else:
                                 if getattr(npc.way, "oneway", 0) == 0:

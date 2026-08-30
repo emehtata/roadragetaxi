@@ -9,6 +9,7 @@ from typing import Optional, Tuple
 
 from .geo import clamp, dist_point_to_segment, meters_to_latlon
 from .audio import AudioManager
+from .brawl import TaxiBrawlManager
 from .config import CONFIG_PATH, cities_from_config, get_optional_int, get_overpass_endpoints, load_config, save_config
 from .career import (
     CAREER_SCORE_LIMIT,
@@ -54,6 +55,7 @@ from .physics import (
     Car,
     SpatialWayGrid,
     get_current_road_at_car,
+    is_car_fully_in_water,
     is_on_road,
     reset_trip,
     respawn_car,
@@ -84,11 +86,14 @@ from .render import (
     draw_phone_offers,
     draw_scenery,
     draw_taxi_smoke,
+    draw_passenger_nausea_bubble,
     draw_taxi_exhaust,
     draw_speed_cameras,
     draw_taxi_stops,
     draw_taxi_target,
     draw_tire_tracks,
+    draw_vomit_puddles,
+    draw_taxi_brawl,
     draw_traffic_lights,
     draw_waters,
     draw_ways,
@@ -165,9 +170,17 @@ def parse_args(config=None, city_names=None) -> argparse.Namespace:
     return p.parse_args()
 
 
-def configure_logging(level: Optional[str] = None) -> None:
+def configure_logging(level: Optional[str] = None, file_logging: bool = False) -> None:
     lvl = os.getenv("LOG_LEVEL", level or "INFO").upper()
-    logging.basicConfig(level=getattr(logging, lvl, logging.INFO), format="%(levelname)s: %(message)s")
+    log_level = getattr(logging, lvl, logging.INFO)
+    log_format = "%(asctime)s %(levelname)s %(name)s: %(message)s"
+    handlers = [logging.StreamHandler()]
+    handlers[0].setFormatter(logging.Formatter(log_format))
+    if file_logging:
+        file_handler = logging.FileHandler("roadragetrip.log", encoding="utf-8")
+        file_handler.setFormatter(logging.Formatter(log_format))
+        handlers.append(file_handler)
+    logging.basicConfig(level=log_level, handlers=handlers, force=True)
 
 
 def _menu_item_at_y(pos_y: int, start_y: int, item_h: int, gap_y: int, count: int) -> Optional[int]:
@@ -269,7 +282,8 @@ def main() -> None:
     configure_user_agent(config.get("game", "user_agent_id"))
     city_centers, bbox_presets = cities_from_config(config)
     args = parse_args(config, city_names=list(bbox_presets))
-    configure_logging(args.log_level)
+    configure_logging(args.log_level, file_logging=config.getboolean("game", "file_logging", fallback=False))
+    taxi_brawls_enabled = config.getboolean("game", "taxi_brawls", fallback=False)
 
     try:
         global pygame
@@ -306,12 +320,8 @@ def main() -> None:
         master_volume=config.getfloat("audio", "master_volume", fallback=1.0),
         music_volume=config.getfloat("audio", "music_volume", fallback=0.2),
         effects_volume=config.getfloat("audio", "effects_volume", fallback=1.0),
-        speech_enabled=config.getboolean("speech", "enabled", fallback=False),
-        piper_command=config.get("speech", "piper_command", fallback="piper"),
-        piper_fi_model=config.get("speech", "fi_model", fallback="").strip(),
-        piper_en_model=config.get("speech", "en_model", fallback="").strip(),
-        speech_min_interval=config.getfloat("speech", "min_interval", fallback=18.0),
-        speech_max_interval=config.getfloat("speech", "max_interval", fallback=35.0),
+        speech_min_interval=config.getfloat("speech", "min_interval", fallback=5.0),
+        speech_max_interval=config.getfloat("speech", "max_interval", fallback=20.0),
     )
 
     # Outer game loop to support picking new starting city without restarting process
@@ -625,6 +635,8 @@ def main() -> None:
         rage_shout_timer = 0.0
         rage_shout_text = RAGE_SHOUTS[0]
         rage_power = 0.0
+        brawl_manager = TaxiBrawlManager()
+        brawl_manager.bind_traffic(traffic_mgr)
         running = True
         current_way = get_current_road_at_car(car, ways=ways, spatial_grid=spatial_grid, car_roads_only=True)
         zoom_target = args.px_per_m if args.px_per_m is not None else 9.0
@@ -638,6 +650,7 @@ def main() -> None:
         track_sequence = 0
         last_track_surface = None
         map_sync_stage = 0
+        water_respawn_timer = 0.0
         on_foot = False
         saved_gig_fares = taxi_mgr.completed_fares
         clock.tick()  # Reset clock timer to avoid large dt on first frame
@@ -890,6 +903,13 @@ def main() -> None:
                 dt = 0.0
             rage_shout_timer = max(0.0, rage_shout_timer - dt)
 
+            if water_respawn_timer > 0.0:
+                water_respawn_timer -= dt
+                car.speed = 0.0
+                if water_respawn_timer <= 0.0:
+                    respawn_car(car, ways, waters=waters, taxi_stops=taxi_stops)
+                    taxi_mgr.handle_respawn(car.x, car.y)
+
             if zoom_elapsed < zoom_duration:
                 zoom_elapsed = min(zoom_duration, zoom_elapsed + dt)
                 progress = zoom_elapsed / zoom_duration
@@ -964,7 +984,7 @@ def main() -> None:
             previous_position = (car.x, car.y)
             previous_speed = car.speed
             # Off-road driving is allowed at a reduced speed.
-            if not on_foot:
+            if not on_foot and water_respawn_timer <= 0.0:
                 update_car_physics(
                     car,
                     throttle,
@@ -976,7 +996,30 @@ def main() -> None:
                     spatial_grid=spatial_grid,
                     block_offroad=False,
                     speed_limit_mps=speed_limit_mps,
+                    nearby_vehicles=traffic_mgr.npcs,
                 )
+                midpoint = (
+                    (previous_position[0] + car.x) * 0.5,
+                    (previous_position[1] + car.y) * 0.5,
+                )
+                entered_roadwork = any(
+                    not work.contains(*previous_position, margin_m=2.0)
+                    and (
+                        work.contains(*midpoint, margin_m=2.0)
+                        or work.contains(car.x, car.y, margin_m=2.0)
+                    )
+                    for work in roadworks
+                )
+                if entered_roadwork:
+                    car.x, car.y = previous_position
+                    car.speed = 0.0
+                    taxi_mgr.notification_msg = tr(language, "roadwork_blocked")
+                    taxi_mgr.notification_timer = 2.5
+                elif is_car_fully_in_water(car, waters):
+                    car.speed = 0.0
+                    water_respawn_timer = 1.5
+                    taxi_mgr.notification_msg = tr(language, "water_driving")
+                    taxi_mgr.notification_timer = 1.5
             if immobilized:
                 car.speed = 0.0
             movement_distance = math.hypot(car.x - previous_position[0], car.y - previous_position[1])
@@ -1024,10 +1067,44 @@ def main() -> None:
             # Update taxi missions & pickups
             previous_taxi_state = taxi_mgr.state
             previous_passenger = taxi_mgr.current_passenger
+            previous_nausea_warning_timer = (
+                previous_passenger.nausea_warning_timer if previous_passenger is not None else 0.0
+            )
+            previous_nausea_resolved = (
+                previous_passenger.nausea_resolved if previous_passenger is not None else False
+            )
             taxi_mgr.update(car, dt)
+            vomited_passenger = taxi_mgr.take_vomited_passenger(car)
+            if vomited_passenger is not None:
+                audio.play_passenger_line("Nyt alkaa jo helpottaa.", vomited_passenger.gender, language)
+                passenger_pedestrian = pedestrian_mgr.spawn_pedestrian_at(
+                    vomited_passenger.ped_x,
+                    vomited_passenger.ped_y,
+                    heading=vomited_passenger.ped_heading,
+                )
+                if passenger_pedestrian is not None:
+                    pedestrian_mgr.pedestrians.append(passenger_pedestrian)
+            current_passenger = taxi_mgr.current_passenger
+            if (
+                current_passenger is not None
+                and not previous_nausea_resolved
+                and current_passenger.nausea_resolved
+            ):
+                audio.play_passenger_line("Nyt alkaa jo helpottaa.", current_passenger.gender, language)
+            if (
+                current_passenger is not None
+                and previous_nausea_warning_timer <= 0.0
+                and current_passenger.nausea_warning_timer > 0.0
+            ):
+                audio.play_passenger_line(
+                    "Voisitko pysähtyä hetkeksi, tarvitsen raitista ilmaa.",
+                    current_passenger.gender,
+                    language,
+                )
             audio.update_passenger_speech(
                 taxi_mgr.current_passenger is not None
                 and taxi_mgr.state == TaxiState.DRIVING_TO_DROPOFF,
+                taxi_mgr.current_passenger.gender if taxi_mgr.current_passenger else "woman",
                 language,
                 dt,
             )
@@ -1040,6 +1117,7 @@ def main() -> None:
                 previous_taxi_state == TaxiState.DRIVING_TO_DROPOFF
                 and previous_passenger is not None
                 and taxi_mgr.current_passenger is None
+                and vomited_passenger is None
             ):
                 audio.play("car-door-open")
                 passenger_pedestrian = pedestrian_mgr.spawn_pedestrian_at(
@@ -1099,6 +1177,16 @@ def main() -> None:
                     )
             taxi_mgr.check_wrong_way_violation(car, dt, ways=ways, spatial_grid=spatial_grid)
             taxi_mgr.check_speed_cameras(car, speed_cameras)
+            if taxi_brawls_enabled:
+                brawl_manager.update(
+                    car,
+                    traffic_mgr,
+                    taxi_stops,
+                    rage_power,
+                    dt,
+                    viewport_bounds=viewport_bounds,
+                    score_callback=lambda delta: setattr(taxi_mgr, "total_score", taxi_mgr.total_score + delta),
+                )
 
             # Update autonomous traffic NPCs and pedestrians
             traffic_mgr.update(car, dt, viewport_bounds=viewport_bounds)
@@ -1123,10 +1211,16 @@ def main() -> None:
             if waiting_pedestrian is not None:
                 pedestrian_mgr.pedestrians.remove(waiting_pedestrian)
 
-            # Road check (restricted to car roads, fast-checking current segment first)
+            # Keep road logic on car roads, but recognize pedestrian ways as paved surfaces.
+            surface_way = get_current_road_at_car(
+                car,
+                ways=ways,
+                spatial_grid=spatial_grid,
+                car_roads_only=False,
+            )
             current_way = get_current_road_at_car(car, ways=ways, spatial_grid=spatial_grid, car_roads_only=True, current_way=current_way)
             on_road = current_way is not None
-            is_grass = current_way is None
+            is_grass = surface_way is None
             is_skidding = brake > 0.0 and abs(previous_speed) > 4.0 and abs(steer_left - steer_right) > 0.01
             if movement_distance > 0.0 and (is_skidding or (is_grass and abs(car.speed) > 1.0)):
                 if last_track_position is None or is_grass != last_track_surface:
@@ -1202,6 +1296,7 @@ def main() -> None:
             draw_ways(screen, ways, camx, camy, px_per_m=px_per_m)
             draw_tire_tracks(screen, tire_tracks, camx, camy, grass=False, px_per_m=px_per_m)
             draw_tire_tracks(screen, tire_tracks, camx, camy, grass=True, px_per_m=px_per_m)
+            draw_vomit_puddles(screen, taxi_mgr.vomit_puddles, camx, camy, px_per_m=px_per_m)
             draw_roadworks(screen, roadworks, camx, camy, px_per_m=px_per_m)
             if first_gameplay_frame:
                 logger.info("Gameplay frame: rendering overlays")
@@ -1222,6 +1317,7 @@ def main() -> None:
             draw_cyclists(screen, cyclist_mgr.cyclists, camx, camy, px_per_m=px_per_m, ways=ways)
             draw_npc_cars(screen, traffic_mgr.npcs, camx, camy, px_per_m=px_per_m, ways=ways)
             draw_police_cars(screen, police_mgr.cars, camx, camy, px_per_m=px_per_m)
+            draw_taxi_brawl(screen, brawl_manager.draw_data(), camx, camy, px_per_m=px_per_m)
             draw_taxi_target(screen, taxi_mgr, camx, camy, font, px_per_m=px_per_m, language=language)
             draw_taxi_exhaust(screen, car, camx, camy, px_per_m=px_per_m)
             draw_car(
@@ -1236,6 +1332,16 @@ def main() -> None:
                 shout_text=rage_shout_text,
             )
             draw_taxi_smoke(screen, car, camx, camy, px_per_m=px_per_m, timer=taxi_mgr.taxi_smoke_timer)
+            draw_passenger_nausea_bubble(
+                screen,
+                font,
+                car,
+                taxi_mgr,
+                camx,
+                camy,
+                px_per_m=px_per_m,
+                language=language,
+            )
 
             # Labels overlay (toggled with 'L')
             if show_labels:

@@ -2,9 +2,10 @@ import math
 from types import SimpleNamespace
 
 import pytest
-from theroadragetrip.osm import Place, TaxiStop, Way
+from theroadragetrip.osm import Building, Place, TaxiStop, Way
 from theroadragetrip.physics import Car
-from theroadragetrip.taxi import TaxiManager, TaxiState, TaxiTarget
+from theroadragetrip.taxi import TaxiManager, TaxiPassenger, TaxiManager, TaxiState, TaxiTarget
+from theroadragetrip.taxi import TaxiManager, TaxiPassenger, TaxiState, TaxiTarget
 
 
 def test_taxi_target_address_generation():
@@ -188,6 +189,33 @@ def test_phone_offers_show_distance_and_accept_selected_ride():
     assert taxi_mgr.offers == []
 
 
+def test_phone_offers_prefer_named_buildings_over_taxi_stops():
+    way = Way(
+        points_m=[(0.0, 0.0), (3000.0, 0.0)],
+        highway="residential",
+        half_width_m=4.5,
+        name="Keskuskatu",
+    )
+    stops = [TaxiStop(500.0, 0.0), TaxiStop(2500.0, 0.0)]
+    buildings = [
+        Building([(400.0, 20.0), (420.0, 20.0), (420.0, 40.0), (400.0, 40.0)], name="Kahvila"),
+        Building([(2200.0, 20.0), (2220.0, 20.0), (2220.0, 40.0), (2200.0, 40.0)], name="Hotelli"),
+    ]
+    taxi_mgr = TaxiManager(
+        ways=[way],
+        buildings=buildings,
+        taxi_stops=stops,
+        min_distance_m=300.0,
+        max_distance_m=2500.0,
+    )
+
+    offers = taxi_mgr.generate_offers(0.0, 0.0, count=1)
+
+    assert len(offers) == 1
+    assert offers[0].passenger.pickup.address in {"Kahvila", "Hotelli"}
+    assert offers[0].passenger.dropoff.address in {"Kahvila", "Hotelli"}
+
+
 def test_idle_taxi_gets_one_random_phone_request_and_can_reject():
     way = Way(
         points_m=[(0.0, 0.0), (3000.0, 0.0)],
@@ -256,7 +284,7 @@ def test_stopped_taxi_can_pick_up_street_hail_without_taxi_stops(monkeypatch: py
     assert taxi_mgr.state == TaxiState.CLIENT_WALKING_TO_CAR
 
 
-def test_moving_taxi_can_pick_up_passing_street_hail_without_taxi_stops(monkeypatch: pytest.MonkeyPatch):
+def test_moving_taxi_hail_waits_for_car_to_stop(monkeypatch: pytest.MonkeyPatch):
     way = Way(
         points_m=[(0.0, 0.0), (2000.0, 0.0)],
         highway="residential",
@@ -272,8 +300,9 @@ def test_moving_taxi_can_pick_up_passing_street_hail_without_taxi_stops(monkeypa
 
     assert boarded is pedestrian
     assert taxi_mgr.current_passenger is not None
-    assert taxi_mgr.current_passenger.boarded is True
-    assert taxi_mgr.state == TaxiState.DRIVING_TO_DROPOFF
+    assert taxi_mgr.current_passenger.boarded is False
+    assert taxi_mgr.current_passenger.is_walking_to_car is True
+    assert taxi_mgr.state == TaxiState.CLIENT_WALKING_TO_CAR
 
 
 def test_pedestrian_who_does_not_want_taxi_is_ignored(monkeypatch: pytest.MonkeyPatch):
@@ -298,6 +327,45 @@ def test_taxi_scoring_speed_bonus():
     fast_score = taxi_mgr.calculate_score(distance_m=1000.0, elapsed_sec=20.0)
     slow_score = taxi_mgr.calculate_score(distance_m=1000.0, elapsed_sec=100.0)
     assert fast_score > slow_score
+
+
+def test_passenger_nausea_is_relieved_when_taxi_stops():
+    way = Way(points_m=[(0.0, 0.0), (2000.0, 0.0)], highway="residential", half_width_m=4.5, name="Nausea Street")
+    pickup = TaxiTarget(0.0, 0.0, "Pickup")
+    dropoff = TaxiTarget(1000.0, 0.0, "Dropoff")
+    taxi_mgr = TaxiManager(ways=[way])
+    passenger = TaxiPassenger("Test", pickup, dropoff, boarded=True, nausea_warning_timer=3.0)
+    taxi_mgr.current_passenger = passenger
+    taxi_mgr.state = TaxiState.DRIVING_TO_DROPOFF
+    car = Car(x=100.0, y=0.0, heading=0.0, speed=0.0)
+
+    taxi_mgr.update(car, dt=0.1)
+
+    assert passenger.nausea_resolved is True
+    assert passenger.nausea_vomited is False
+    assert taxi_mgr.current_passenger is passenger
+    assert len(taxi_mgr.vomit_puddles) == 1
+
+
+def test_vomiting_ends_fare_only_after_taxi_stops():
+    way = Way(points_m=[(0.0, 0.0), (2000.0, 0.0)], highway="residential", half_width_m=4.5, name="Nausea Street")
+    pickup = TaxiTarget(0.0, 0.0, "Pickup")
+    dropoff = TaxiTarget(1000.0, 0.0, "Dropoff")
+    taxi_mgr = TaxiManager(ways=[way])
+    passenger = TaxiPassenger("Test", pickup, dropoff, boarded=True, nausea_warning_timer=0.1)
+    taxi_mgr.current_passenger = passenger
+    taxi_mgr.state = TaxiState.DRIVING_TO_DROPOFF
+    car = Car(x=100.0, y=0.0, heading=0.0, speed=10.0)
+
+    taxi_mgr.update(car, dt=0.2)
+    assert passenger.nausea_vomited is True
+    assert taxi_mgr.total_score == -500
+    assert taxi_mgr.current_passenger is passenger
+
+    car.speed = 0.0
+    released = taxi_mgr.take_vomited_passenger(car)
+    assert released is passenger
+    assert taxi_mgr.current_passenger is None
 
 
 def test_discard_pickup_penalty():

@@ -269,6 +269,59 @@ def draw_taxi_exhaust(screen, car: Car, camx: float, camy: float, px_per_m: floa
         screen.blit(smoke_surf, (int(puff_x - radius - 1), int(puff_y - radius - 1)))
 
 
+def draw_passenger_nausea_bubble(
+    screen,
+    font,
+    car: Car,
+    taxi_mgr: Optional[TaxiManager],
+    camx: float,
+    camy: float,
+    px_per_m: float = PX_PER_M,
+    language: str = "fi",
+) -> None:
+    """Draw a speech bubble above the taxi during nausea warning."""
+    import pygame
+
+    passenger = taxi_mgr.current_passenger if taxi_mgr is not None else None
+    if (
+        passenger is None
+        or taxi_mgr.state != TaxiState.DRIVING_TO_DROPOFF
+        or passenger.nausea_warning_timer <= 0.0
+    ):
+        return
+
+    cx, cy = world_to_screen(car.x, car.y, camx, camy, px_per_m)
+    text_surface = font.render(tr(language, "passenger_nausea_bubble"), True, (210, 35, 35))
+    text_width, text_height = text_surface.get_size()
+    bubble_width, bubble_height = text_width + 18, text_height + 10
+    bubble_x = cx - bubble_width // 2
+    bubble_y = cy - max(34, int(2.5 * px_per_m)) - bubble_height
+
+    bubble_surface = pygame.Surface((bubble_width, bubble_height), pygame.SRCALPHA)
+    pygame.draw.rect(
+        bubble_surface,
+        (255, 255, 255, 245),
+        (0, 0, bubble_width, bubble_height),
+        border_radius=7,
+    )
+    pygame.draw.rect(
+        bubble_surface,
+        (210, 35, 35, 255),
+        (0, 0, bubble_width, bubble_height),
+        width=2,
+        border_radius=7,
+    )
+    bubble_surface.blit(text_surface, (9, 5))
+    screen.blit(bubble_surface, (bubble_x, bubble_y))
+    pygame.draw.polygon(
+        screen,
+        (255, 255, 255),
+        [(cx - 7, bubble_y + bubble_height), (cx + 7, bubble_y + bubble_height), (cx, bubble_y + bubble_height + 8)],
+    )
+    pygame.draw.line(screen, (210, 35, 35), (cx - 7, bubble_y + bubble_height), (cx, bubble_y + bubble_height + 8), 2)
+    pygame.draw.line(screen, (210, 35, 35), (cx, bubble_y + bubble_height + 8), (cx + 7, bubble_y + bubble_height), 2)
+
+
 def draw_waters(
     screen,
     waters: List[Water],
@@ -572,6 +625,21 @@ def draw_tire_tracks(
         previous_sequence = sequence
 
 
+def draw_vomit_puddles(screen, puddles, camx: float, camy: float, px_per_m: float = PX_PER_M) -> None:
+    """Draw persistent passenger sickness spots beside the taxi route."""
+    import pygame
+
+    for puddle_x, puddle_y in puddles:
+        x, y = world_to_screen(puddle_x, puddle_y, camx, camy, px_per_m, SCREEN_W, SCREEN_H)
+        radius_x = max(3, int(1.2 * px_per_m))
+        radius_y = max(2, int(0.7 * px_per_m))
+        pygame.draw.ellipse(
+            screen,
+            (105, 115, 62),
+            (x - radius_x, y - radius_y, radius_x * 2, radius_y * 2),
+        )
+
+
 def draw_roadworks(
     screen,
     roadworks,
@@ -624,11 +692,23 @@ def draw_roadworks(
             if work.lane_closed:
                 cone_x += normal_x * barrier_width * 0.5
                 cone_y += normal_y * barrier_width * 0.5
-            pygame.draw.circle(
+            cone_radius = max(2, int(0.35 * px_per_m))
+            cone_center = (int(cone_x), int(cone_y))
+            pygame.draw.polygon(
                 screen,
                 (245, 105, 25),
-                (int(cone_x), int(cone_y)),
-                max(2, int(2.5 * px_per_m)),
+                [
+                    (cone_center[0], cone_center[1] - cone_radius * 2),
+                    (cone_center[0] - cone_radius, cone_center[1] + cone_radius),
+                    (cone_center[0] + cone_radius, cone_center[1] + cone_radius),
+                ],
+            )
+            pygame.draw.line(
+                screen,
+                (255, 220, 120),
+                (cone_center[0] - cone_radius // 2, cone_center[1]),
+                (cone_center[0] + cone_radius // 2, cone_center[1]),
+                max(1, cone_radius // 2),
             )
 
 
@@ -1287,6 +1367,56 @@ def draw_cyclists(
         screen.blit(sprite, sprite.get_rect(center=(int(cx), int(cy))))
 
 
+def draw_taxi_brawl(screen, brawl, camx: float, camy: float, px_per_m: float = PX_PER_M) -> None:
+    """Draw two drivers, a dust cloud, and a visible brawl status banner."""
+    import pygame
+
+    if brawl is None:
+        return
+    screen_w, screen_h = screen.get_size()
+    phase_text = {
+        "approach": "TAXI APPROACHING",
+        "fight": "TAXI BRAWL",
+        "return": "DRIVERS RETURNING",
+        "drive": "WINNER DRIVING",
+    }.get(brawl.state, "TAXI DRIVER CHALLENGE")
+    phase_color = (
+        (130, 205, 255) if brawl.state == "approach"
+        else (255, 110, 80) if brawl.state == "fight"
+        else (130, 255, 170) if brawl.state in ("return", "drive")
+        else (255, 215, 95)
+    )
+    banner_font = pygame.font.Font(None, 30)
+    banner = banner_font.render(phase_text, True, phase_color)
+    banner_rect = banner.get_rect(center=(screen_w // 2, 44))
+    banner_bg = pygame.Surface((banner_rect.width + 24, banner_rect.height + 12), pygame.SRCALPHA)
+    banner_bg.fill((15, 15, 18, 220))
+    screen.blit(banner_bg, (banner_rect.x - 12, banner_rect.y - 6))
+    screen.blit(banner, banner_rect)
+    timer_font = pygame.font.Font(None, 22)
+    timer = timer_font.render(f"{max(0.0, brawl.timer):.1f}s", True, (240, 240, 240))
+    screen.blit(timer, timer.get_rect(center=(screen_w // 2, 70)))
+
+    player = world_to_screen(brawl.player_x, brawl.player_y, camx, camy, px_per_m)
+    opponent = world_to_screen(brawl.opponent_x, brawl.opponent_y, camx, camy, px_per_m)
+    for center, color in ((player, (245, 205, 35)), (opponent, (70, 130, 240))):
+        radius = max(6, int(0.85 * px_per_m))
+        pygame.draw.circle(screen, color, (int(center[0]), int(center[1])), radius)
+        pygame.draw.circle(screen, (25, 25, 25), (int(center[0]), int(center[1])), radius, 2)
+    if brawl.dust_timer > 0.0:
+        middle_x = (player[0] + opponent[0]) * 0.5
+        middle_y = (player[1] + opponent[1]) * 0.5
+        radius = max(18, int(10 * px_per_m))
+        dust = pygame.Surface((radius * 2, radius * 2), pygame.SRCALPHA)
+        pygame.draw.circle(dust, (185, 155, 105, 170), (radius, radius), radius)
+        pygame.draw.circle(dust, (220, 195, 145, 120), (radius // 2, radius), max(8, radius // 2))
+        screen.blit(dust, (int(middle_x - radius), int(middle_y - radius)))
+    if brawl.curse_timer > 0.0:
+        font = pygame.font.Font(None, 22)
+        bubble = font.render("@#*!%", True, (220, 40, 40))
+        screen.blit(bubble, bubble.get_rect(center=(int(opponent[0]), int(opponent[1] - 18))))
+
+
 def draw_traffic_lights(
     screen,
     traffic_lights: List,
@@ -1884,8 +2014,8 @@ def draw_help_screen(
             "Olet kaiken kokenut taksikuski, joka ajaa keikkaa Suomen eri kaupungeissa." if language == "fi" else "You are a veteran taxi driver working rides across Finnish cities.",
             "Joka paikkaa yhdistävät samat riesat: idiootit kanssakuskit, ääliöt pyöräilijät" if language == "fi" else "Everywhere has the same problems: foolish drivers, awful cyclists",
             "ja eteen pyrkivät jalankulkijat. Vuosien ajo on kehittänyt sinulle supervoiman:" if language == "fi" else "and pedestrians stepping in front of you. Years on the road gave you a superpower:",
-            "raivohuuto tyhjentää tien häiriöistä. Raivomittari kasvaa rajoitusten mukaan ajaessa" if language == "fi" else "the rage shout clears obstacles. Rage grows when you follow limits",
-            "ja pienenee, kun käytät raivovoimaa tehdäksesi tietä." if language == "fi" else "and drains when you use it to clear the way.",
+            "rattiraivo tyhjentää tien häiriöistä. Rattiraivo-mittari kasvaa rajoitusten mukaan ajaessa" if language == "fi" else "Road Rage clears obstacles. Road Rage grows when you follow limits",
+            "ja pienenee, kun käytät rattiraivoa tehdäksesi tietä." if language == "fi" else "and drains when you use Road Rage to clear the way.",
         ]),
         (tr(language, "idea"), [
             "Aja asiakkaan luo, ota hänet kyytiin ja vie perille." if language == "fi" else "Drive to clients, pick them up, and take them to their destination.",
@@ -2120,9 +2250,17 @@ def draw_hud(
     text = font.render(hud, True, (240, 240, 240))
     screen.blit(text, (10, 10))
 
+    if speed_limit_kmh is not None:
+        sign_center = (screen.get_width() - 48, 76)
+        pygame.draw.circle(screen, (255, 210, 0), sign_center, 31)
+        pygame.draw.circle(screen, (210, 35, 35), sign_center, 31, 8)
+        sign_font = pygame.font.Font(None, 29)
+        sign_text = sign_font.render(str(speed_limit_kmh), True, (20, 20, 20))
+        screen.blit(sign_text, sign_text.get_rect(center=sign_center))
+
     hint = (
         f"{tr(language, 'controls')}: W/S/A/D = {tr(language, 'drive').lower()} | +/- = {tr(language, 'zoom').lower()} | R = {tr(language, 'respawn').lower()} | X = {tr(language, 'cancel_ride').lower()} | T = {tr(language, 'reset_trip').lower()} | "
-        f"L = labels ({labels_status}) | K = lane assist ({lane_assist_status}) | V = limiter ({speed_limiter_status}) | B = red assist ({red_light_assist_status}) | C = {tr(language, 'compass')} ({tr(language, 'on' if show_compass else 'off')}) | Space = rage | ESC = pause"
+        f"L = labels ({labels_status}) | K = lane assist ({lane_assist_status}) | V = limiter ({speed_limiter_status}) | B = red assist ({red_light_assist_status}) | C = {tr(language, 'compass')} ({tr(language, 'on' if show_compass else 'off')}) | Space = {tr(language, 'rage')} | ESC = pause"
     )
     hint_t = font.render(hint, True, (220, 220, 220))
     screen.blit(hint_t, (10, 34))

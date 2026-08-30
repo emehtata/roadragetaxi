@@ -12,8 +12,7 @@ dependencies = [
     "pygame",
     "requests",
     "pyproj",
-    "piper-tts",
 ]
 
 [tool.setuptools.package-data]
-theroadragetrip = ["assets/*", "sounds/*"]
+theroadragetrip = ["assets/*", "sounds/*", "sounds/passenger_chatter/*.wav"]

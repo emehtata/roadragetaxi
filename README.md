@@ -9,20 +9,21 @@ A top-down 2D driving game proof-of-concept (PoC) in Python and Pygame that proc
 - **Real-World OSM Road Network**: Fetches and renders actual highway ways from Overpass API (motorways, primary, secondary, residential, tracks, paths).
 - **Taxi Game Mode**: Pick up passengers at generated street addresses, drop them off at their destinations, and earn points with speed and distance multiplier bonuses.
 - **Taxi Stops & Missions**: Taxi offers use street addresses, named buildings, and taxi stops as pickup and destination points.
-- **Ride Requests & Taxi Stands**: Three random ride requests arrive in the phone at a time when no passenger is onboard. Select one with `1`, `2`, or `3`, or reject the selected offer with `X`; phone offers and taxi-stand customers can coexist. Wait stopped at a taxi stand and its customer walks visibly to the taxi before boarding. Maps without taxi stands can trigger occasional street hails; only a small share of pedestrians want a taxi, and they can hail a moving taxi as it passes.
+- **Ride Requests & Taxi Stands**: Three random ride requests arrive in the phone at a time when no passenger is onboard. Select one with `1`, `2`, or `3`, or reject the selected offer with `X`; phone offers and taxi-stand customers can coexist. Phone rides normally start and end at named buildings or street addresses, while taxi stands remain a fallback when no better map data is available. Wait stopped at a taxi stand and its customer walks visibly to the taxi before boarding. Maps without taxi stands can trigger occasional street hails; only a small share of pedestrians want a taxi, and they can hail a moving taxi as it passes.
 - **Passenger After Drop-off**: After a completed fare, the passenger leaves the taxi beside the car and continues as an ordinary walking pedestrian.
-- **Passenger Chatter & Piper TTS**: Includes 50 Finnish and English passenger lines covering weather, wellbeing, joyful moments, sadness, and everyday observations. Piper generates occasional passenger speech in a background worker while a passenger is onboard.
+- **Passenger Chatter**: Includes 50 Finnish and English passenger lines covering weather, wellbeing, joyful moments, sadness, and everyday observations. The game randomly plays pre-rendered chatter matching the onboard passenger's gender.
 - **Navigation Waypoints & Compass Pointer**: Displays visual waypoint zones, address tags, off-screen edge indicators, and an optional compass navigation pointer to client locations. The compass is hidden by default and toggled with `C`.
 - **Buildings & Scenery**: Renders building footprints, parks, forests, and green spaces with street/place name labels (`L` key).
 - **Water & Multipolygon Rendering**: Renders lakes, reservoirs, and waterways under the road network.
-- **Autonomous Traffic**: NPC cars follow connected roads, respect lane direction, vary their speed, overtake, react to traffic lights, and avoid overlapping the player. Active traffic is reduced at close zoom levels while nearby cars are retained.
+- **Autonomous Traffic**: NPC cars follow connected roads, respect lane direction, vary their speed, overtake, react to traffic lights, and avoid overlapping the player. The shared road-graph navigator can route NPCs to map targets without cutting through buildings or terrain. Active traffic is reduced at close zoom levels while nearby cars are retained.
 - **Pedestrians & Cyclists**: Pedestrians and cyclists use roads and crossings, react to traffic lights, and evade approaching vehicles. Cyclists use a top-down image sprite, and active pedestrian/cyclist counts scale down while zoomed in.
 - **Rival NPC Taxis**: Some NPC cars are yellow rival taxis. They stop briefly at taxi stands and collect waiting customers before driving on.
+- **Taxi-Driver Brawls**: Disabled by default. Set `taxi_brawls = true` under `[game]` to enable. Stopping near a taxi stand can then attract a rival taxi driver. The rival arrives from outside the view, then waits three seconds before a five-second fight under a dust cloud. Afterward both drivers walk back to their taxis; the winner drives to the stand. Road Rage charge controls the win chance, with 0% and 100% as exact boundaries. Winning gives 1,000 points; losing costs 500 points. A losing rival curses and leaves; a winning rival waits for a passenger.
 - **Traffic Violations**: Red-light, wrong-way, collision, building, and scenery penalties are tracked in the taxi score.
 - **Tree Crash Effects**: Tree impacts shake the tree and scatter leaves; impacts above 80 km/h knock the tree down, smoke the taxi, and immobilize it for five seconds.
 - **Hidden Police Cameras**: One to twenty directional speed cameras are placed from the connected road-network size; Helsinki has 20. Every taxi stop receives a nearby camera when available. Driving above the local speed limit within its 50-meter approach zone costs 300 points.
 - **Finnish & English**: The first launch asks for a language. The language can be changed later from the pause menu and is saved in `roadragetrip.ini`.
-- **Audio Settings**: Master, background, and effects volumes are adjustable at runtime from the pause menu and persist in the INI file. Piper speech follows the effects volume.
+- **Audio Settings**: Master, background, and effects volumes are adjustable at runtime from the pause menu and persist in the INI file. Passenger chatter follows the effects volume.
 - **Coordinate Projection**: Converts WGS84 (lat/lon) coordinates to metric ETRS-TM35FIN (EPSG:3067) using `pyproj`.
 - **Arcade Vehicle Physics & Road Containment**: Responsive throttle, braking, friction, speed-dependent steering, and strict car-road boundary collision containment (blocks driving off-road into pedestrian paths, lakes, or off-road scenery).
 - **Surface Tire Effects**: Hard braking while turning leaves continuous skid marks on roads. Driving across grass leaves persistent dark-brown tire tracks.
@@ -53,6 +54,7 @@ A top-down 2D driving game proof-of-concept (PoC) in Python and Pygame that proc
 │       ├── taxi.py        # Taxi passenger missions, hailing, address generator, fares, and violations
 │       └── traffic.py     # Autonomous NPC traffic vehicles, lane switching, and overtaking
 ├── tests/                 # Unit tests (pytest)
+├── utils/                 # Optional offline tools, including Azure TTS generation
 ├── sample_osm.json        # Bundled sample OSM data
 ├── sample_osm_large.json  # Expanded sample OSM data
 ├── road_rage_trip.py      # Top-level backward-compatible launch shim
@@ -69,13 +71,15 @@ A top-down 2D driving game proof-of-concept (PoC) in Python and Pygame that proc
 make install
 ```
 
-For Piper speech and both Finnish and English voice models:
+### Azure Passenger Chatter
+
+Install the utility dependency with `pip install -r utils/requirements.txt`, then set `SPEECH_KEY` and `SPEECH_REGION` in `utils/.env`. Generate all Finnish female voices with:
 
 ```bash
-make install-speech-models
+python utils/ttsazure.py f src/theroadragetrip/assets/passenger_chatter.json fi
 ```
 
-Voice models are downloaded to `~/.local/share/RoadRageTrip/voices/`. Override the location with `VOICE_DIR=/path/to/voices make install-speech-models`.
+Use `m` for male voices or `en` for English. The script stores hashes based only on each Finnish sentence in the JSON and writes WAV files named `{gender}_{language}_{hash}.wav` to `utils/output/`; set `TTS_VOICE` or `TTS_OVERWRITE=true` to override defaults.
 
 ### 2. Run the Game
 ```bash
@@ -137,12 +141,8 @@ music_volume = 0.2
 effects_volume = 1.0
 
 [speech]
-enabled = false
-piper_command = piper
-fi_model =              # path to a Finnish Piper .onnx model
-en_model =              # path to an English Piper .onnx model
-min_interval = 18.0
-max_interval = 35.0
+min_interval = 5.0
+max_interval = 20.0
 
 [police]
 taxi_stop_cameras = false
@@ -163,24 +163,9 @@ The `[cities]` section accepts any city name followed by `latitude, longitude`. 
 
 The `[map] overpass_endpoints` setting contains a comma-separated list of Overpass API URLs. The in-game **Asetukset / Settings** menu lets you edit this list; changes are saved immediately. The `OVERPASS_ENDPOINTS` environment variable still takes precedence for one launch.
 
-### Piper Speech Synthesis
+### Passenger Chatter Playback
 
-Install Piper and both voice models with:
-
-```bash
-make install-speech-models
-```
-
-The game automatically checks `~/.local/share/RoadRageTrip/voices/` for the Finnish `fi_FI-harri-medium.onnx` and English `en_US-lessac-medium.onnx` models. To use models elsewhere, set their paths in the `[speech]` section of `roadragetrip.ini`:
-
-```ini
-[speech]
-enabled = true
-fi_model = fi_FI-harri-medium.onnx
-en_model = en_US-lessac-medium.onnx
-```
-
-Speech is disabled by default. Set `[speech] enabled = true` to enable it. If Piper or a configured model is unavailable, the game continues silently. Passenger chatter is generated only during an active ride to the destination, with one line selected randomly every 18–35 seconds.
+Passenger chatter plays only during an active ride to the destination. One entry is selected randomly every 5–20 seconds from `assets/passenger_chatter.json`; the matching pre-rendered WAV is selected from `sounds/passenger_chatter/` using the passenger's gender, language, and entry hash.
 
 Other common development commands are `make test`, `make compile`, and `make check`. Run `make help` to list all available targets.
 
@@ -217,13 +202,13 @@ Game sounds are stored in `src/theroadragetrip/sounds/`. CC0 sounds require no a
 | `V` | Toggle speed limiter |
 | `B` | Toggle traffic-light assist |
 | `C` | Toggle compass (off by default) |
-| `Space` | Rage shout: move NPC cars ahead aside within 50 m |
+| `Space` | Rattiraivo / Road Rage: move NPC cars ahead aside within 50 m |
 | `P` | Open taxi phone and view three ride offers |
 | `1` - `3` | Accept a selected ride in the taxi phone |
 | `F1` | Open controls and game objective |
 | `Esc` | Open pause menu (Continue, Help, Settings, Change City, Exit) |
 
-The pause menu's **Settings** screen changes language and master, background, and effects volume. Left/right adjusts values; Escape returns to the pause menu. At a taxi stand, stop the car and wait: the stand customer displays `KYYTIIN` / `TO TAXI`, walks to the taxi, and boards. In areas without taxi stands, a nearby interested pedestrian can hail the taxi while stopped or while it passes. A rival NPC taxi may arrive first and take a stand customer. Completed passengers leave beside the taxi and continue walking.
+The pause menu's **Settings** screen changes language and master, background, and effects volume. Left/right adjusts values; Escape returns to the pause menu. At a taxi stand, customers appear occasionally when a stand enters view, either already nearby or outside the screen, then walk to the stand before boarding. Existing pedestrians can also become customers. In areas without taxi stands, a nearby interested pedestrian can hail the taxi while stopped or while it passes. A rival NPC taxi may arrive first and take a stand customer. Completed passengers leave beside the taxi and continue walking.
 
 ---
 
@@ -250,6 +235,8 @@ The pause menu's **Settings** screen changes language and master, background, an
 ---
 
 ## Testing
+
+The game logs important gameplay events at `INFO` level, including taxi mission and fare transitions, phone offers, passenger boarding, passenger chatter playback, police penalties, taxi-driver confrontations, and major settings changes. Console logging is enabled by default. Set `[game] file_logging = true` in `roadragetrip.ini` to additionally append events to `roadragetrip.log` in the working directory. Use `--log-level DEBUG` when diagnosing lower-level behavior.
 
 Run unit tests with pytest:
 ```bash

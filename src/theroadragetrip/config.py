@@ -39,6 +39,8 @@ DEFAULT_CONFIG = {
         "no_cache": "false",
         "px_per_m": "9.0",
         "log_level": "INFO",
+        "file_logging": "false",
+        "taxi_brawls": "false",
     },
     "map": {
         "overpass_endpoints": ", ".join(DEFAULT_OVERPASS_ENDPOINTS),
@@ -58,12 +60,8 @@ DEFAULT_CONFIG = {
         "effects_volume": "1.0",
     },
     "speech": {
-        "enabled": "false",
-        "piper_command": "piper",
-        "fi_model": "",
-        "en_model": "",
-        "min_interval": "18.0",
-        "max_interval": "35.0",
+        "min_interval": "5.0",
+        "max_interval": "20.0",
     },
     "police": {
         "taxi_stop_cameras": "false",

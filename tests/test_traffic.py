@@ -423,11 +423,16 @@ def test_npc_waits_for_occupied_junction_to_clear():
         half_width_m=4.0,
     )
     crossing = Way(
-        points_m=[(0.0, -50.0), (0.0, 50.0)],
+        points_m=[(0.0, -50.0), (0.0, 0.0)],
         highway="primary",
         half_width_m=4.0,
     )
-    traffic_mgr = TrafficManager([approach, crossing], target_count=0)
+    crossing_exit = Way(
+        points_m=[(0.0, 0.0), (0.0, 50.0)],
+        highway="primary",
+        half_width_m=4.0,
+    )
+    traffic_mgr = TrafficManager([approach, crossing, crossing_exit], target_count=0)
     waiting = NPCCar(
         x=-15.0,
         y=0.0,
@@ -457,6 +462,41 @@ def test_npc_waits_for_occupied_junction_to_clear():
 
     assert waiting.speed < 8.0
     assert waiting.x < -7.0
+
+
+def test_npc_prepares_next_route_before_junction():
+    approach = Way(
+        points_m=[(-50.0, 0.0), (0.0, 0.0)],
+        highway="primary",
+        half_width_m=4.0,
+    )
+    crossing = Way(
+        points_m=[(0.0, -50.0), (0.0, 0.0)],
+        highway="primary",
+        half_width_m=4.0,
+    )
+    crossing_exit = Way(
+        points_m=[(0.0, 0.0), (0.0, 50.0)],
+        highway="primary",
+        half_width_m=4.0,
+    )
+    traffic_mgr = TrafficManager([approach, crossing, crossing_exit], target_count=0)
+    npc = NPCCar(
+        x=-20.0,
+        y=0.0,
+        heading=0.0,
+        speed=8.0,
+        way=approach,
+        segment_idx=0,
+        direction=1,
+        target_speed=12.0,
+        color=(200, 50, 50),
+    )
+    traffic_mgr.npcs = [npc]
+
+    traffic_mgr.update(Car(x=200.0, y=200.0, heading=0.0, speed=0.0), dt=0.1)
+
+    assert npc.next_route is not None
 
 
 def test_npc_does_not_stop_for_next_light_inside_junction():

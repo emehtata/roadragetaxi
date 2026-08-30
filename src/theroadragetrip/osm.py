@@ -223,6 +223,7 @@ class Building:
     street: Optional[str] = None
     height_m: float = 8.0
     bbox: Tuple[float, float, float, float] = (0.0, 0.0, 0.0, 0.0)
+    venue_type: Optional[str] = None
 
 
 @dataclass
@@ -614,6 +615,48 @@ class MapData(tuple):
         return self.traffic_lights
 
 
+def plant_trees(sceneries: List[Scenery], ways: List[Way]) -> None:
+    """Add deterministic tree centers to green areas while keeping them off roads."""
+    tree_density = {
+        "forest": 100.0,
+        "wood": 100.0,
+        "scrub": 250.0,
+        "park": 1800.0,
+        "garden": 1800.0,
+    }
+    for scenery in sceneries:
+        kind = scenery.kind.lower()
+        density = tree_density.get(kind)
+        if density is None or len(scenery.points_m) < 3:
+            continue
+        minx, miny, maxx, maxy = scenery.bbox
+        area = max(0.0, (maxx - minx) * (maxy - miny))
+        target = min(80, max(1, int(area / density)))
+        rng = random.Random(f"{round(minx)}:{round(miny)}:{kind}")
+        road_candidates = [
+            way for way in ways
+            if getattr(way, "is_drivable", True)
+            and way.bbox[2] >= minx - way.half_width_m - 3.0
+            and way.bbox[0] <= maxx + way.half_width_m + 3.0
+            and way.bbox[3] >= miny - way.half_width_m - 3.0
+            and way.bbox[1] <= maxy + way.half_width_m + 3.0
+        ]
+        for _ in range(target * 5):
+            if len(scenery.trees) >= target:
+                break
+            x = rng.uniform(minx, maxx)
+            y = rng.uniform(miny, maxy)
+            if not point_in_polygon(x, y, scenery.points_m):
+                continue
+            if any(
+                dist_point_to_segment(x, y, p1[0], p1[1], p2[0], p2[1]) < way.half_width_m + 3.0
+                for way in road_candidates
+                for p1, p2 in zip(way.points_m, way.points_m[1:])
+            ):
+                continue
+            scenery.trees.append((x, y))
+
+
 def build_ways(
     elements: List[dict],
     progress_callback: Optional[Callable[[float, str], None]] = None,
@@ -800,6 +843,7 @@ def build_ways(
             street=street,
             height_m=_building_height(tags, pts),
             bbox=ibbox,
+            venue_type=tags.get("amenity"),
         ))
 
     # 4. Roads (ways)
@@ -977,43 +1021,9 @@ def build_ways(
             )
         )
 
-    # Add deterministic tree centers to green areas, keeping trunks off roads.
-    tree_kinds = {"forest", "wood", "scrub", "grass", "meadow", "heath", "park", "garden"}
-
-    def add_trees(scenery: Scenery) -> None:
-        if scenery.kind.lower() not in tree_kinds or len(scenery.points_m) < 3:
-            return
-        minx, miny, maxx, maxy = scenery.bbox
-        area = max(0.0, (maxx - minx) * (maxy - miny))
-        target = min(80, max(1, int(area / 350.0)))
-        rng = random.Random(f"{round(minx)}:{round(miny)}:{scenery.kind.lower()}")
-        road_candidates = [
-            way for way in ways
-            if getattr(way, "is_drivable", True)
-            and way.bbox[2] >= minx - way.half_width_m - 3.0
-            and way.bbox[0] <= maxx + way.half_width_m + 3.0
-            and way.bbox[3] >= miny - way.half_width_m - 3.0
-            and way.bbox[1] <= maxy + way.half_width_m + 3.0
-        ]
-        for _ in range(target * 5):
-            if len(scenery.trees) >= target:
-                break
-            x = rng.uniform(minx, maxx)
-            y = rng.uniform(miny, maxy)
-            if not point_in_polygon(x, y, scenery.points_m):
-                continue
-            if any(
-                dist_point_to_segment(x, y, p1[0], p1[1], p2[0], p2[1]) < way.half_width_m + 3.0
-                for way in road_candidates
-                for p1, p2 in zip(way.points_m, way.points_m[1:])
-            ):
-                continue
-            scenery.trees.append((x, y))
-
     if progress_callback:
         progress_callback(0.965, f"Planting trees ({len(sceneries)} scenery areas)...")
-    for scenery in sceneries:
-        add_trees(scenery)
+    plant_trees(sceneries, ways)
 
     # 5. Multipolygon Relations (stitched into proper closed rings)
     if progress_callback:
@@ -1042,14 +1052,15 @@ def build_ways(
                     street=street,
                     height_m=_building_height(tags, pts),
                     bbox=ibbox,
+                    venue_type=tags.get("amenity"),
                 ))
             elif tags.get("natural") == "water" or tags.get("landuse") == "reservoir":
                 kind = tags.get("natural") or tags.get("landuse") or "water"
                 waters.append(Water(points_m=pts, kind=kind, is_polygon=is_closed, name=name, bbox=ibbox))
-            elif "leisure" in tags or "landuse" in tags or tags.get("natural") in ("wood", "scrub", "grass"):
+            elif "leisure" in tags or "landuse" in tags or tags.get("natural") in ("forest", "wood", "scrub", "grass"):
                 kind = tags.get("leisure") or tags.get("landuse") or tags.get("natural") or "park"
                 scenery = Scenery(points_m=pts, kind=kind, name=name, bbox=ibbox)
-                add_trees(scenery)
+                plant_trees([scenery], ways)
                 sceneries.append(scenery)
             elif "place" in tags and name and pts:
                 cx = sum(xs) / len(xs)
@@ -1075,7 +1086,7 @@ def build_ways(
                     x=sum(point[0] for point in pts) / len(pts),
                     y=sum(point[1] for point in pts) / len(pts),
                     name=tags["name"],
-                    kind="poi",
+                    kind=tags.get("amenity", "poi"),
                 )
             )
 
@@ -1530,8 +1541,12 @@ class AutoFetchManager:
                 self.fetch_progress = 0.65
             if self.build_in_process:
                 context = multiprocessing.get_context("spawn")
-                with concurrent.futures.ProcessPoolExecutor(max_workers=1, mp_context=context) as executor:
-                    res = executor.submit(self.build_func, elems).result()
+                try:
+                    with concurrent.futures.ProcessPoolExecutor(max_workers=1, mp_context=context) as executor:
+                        res = executor.submit(self.build_func, elems).result()
+                except (concurrent.futures.process.BrokenProcessPool, OSError) as exc:
+                    logger.warning("Auto-fetch process build failed; retrying in background thread: %s", exc)
+                    res = self.build_func(elems)
             else:
                 res = self.build_func(elems)
             with self.lock:
@@ -1582,6 +1597,7 @@ class AutoFetchManager:
                     way for way in new_ways
                     if way.osm_id is None or way.osm_id not in known_way_ids
                 ]
+                plant_trees(new_sceneries, self.ways + unique_new_ways)
                 self.ways.extend(unique_new_ways)
                 self.waters.extend(new_waters)
                 self.buildings.extend(new_buildings)

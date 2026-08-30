@@ -63,6 +63,8 @@ class Pedestrian:
     dodge_vy: float = 0.0
     dodge_timer: float = 0.0
     wants_taxi: bool = False
+    taxi_stop_target: Optional[Tuple[float, float]] = None
+    is_walking_to_taxi_stop: bool = False
 
 
 @dataclass
@@ -94,6 +96,8 @@ class PedestrianManager:
         self.pedestrians: List[Pedestrian] = []
         self.traffic_lights: List[TrafficLight] = traffic_lights or []
         self.sim_time: float = 0.0
+        self._visible_taxi_stops: Set[Tuple[float, float, Optional[int]]] = set()
+        self._taxi_stop_visibility_initialized = False
 
         self.ped_ways: List[Way] = []
         self._way_grid: Dict[Tuple[int, int], List[Way]] = {}
@@ -149,8 +153,28 @@ class PedestrianManager:
         player_car: Car,
         viewport_bounds: Optional[Tuple[float, float, float, float]] = None,
     ) -> None:
-        """Keep one stationary customer at the nearest visible taxi stop."""
-        if not taxi_stops or any(getattr(ped, "is_taxi_stop_waiter", False) for ped in self.pedestrians):
+        """Sometimes send a visible or newly spawned pedestrian to a taxi stop."""
+        if not taxi_stops:
+            return
+
+        visible_stops = set()
+        if viewport_bounds:
+            vminx, vminy, vmaxx, vmaxy = viewport_bounds
+            visible_stops = {
+                (stop.x, stop.y, stop.id)
+                for stop in taxi_stops
+                if vminx <= stop.x <= vmaxx and vminy <= stop.y <= vmaxy
+            }
+            if self._taxi_stop_visibility_initialized:
+                newly_visible_stops = visible_stops - self._visible_taxi_stops
+            else:
+                newly_visible_stops = set()
+                self._taxi_stop_visibility_initialized = True
+            self._visible_taxi_stops = visible_stops
+        else:
+            newly_visible_stops = None
+
+        if any(getattr(ped, "is_taxi_stop_waiter", False) for ped in self.pedestrians):
             return
 
         candidates = sorted(
@@ -158,22 +182,59 @@ class PedestrianManager:
             key=lambda stop: math.hypot(stop.x - player_car.x, stop.y - player_car.y),
         )
         for stop in candidates:
+            stop_key = (stop.x, stop.y, stop.id)
+            if newly_visible_stops is not None and stop_key not in newly_visible_stops:
+                continue
             if math.hypot(stop.x - player_car.x, stop.y - player_car.y) > self.spawn_radius_m:
                 continue
+            if viewport_bounds is None:
+                waiter = self.spawn_pedestrian(stop.x, stop.y)
+                if waiter is None:
+                    continue
+                waiter.x = stop.x
+                waiter.y = stop.y
+                waiter.is_taxi_stop_waiter = True
+                waiter.wants_taxi = True
+                waiter.speed = 0.0
+                waiter.base_speed = 0.0
+                self.pedestrians.append(waiter)
+                return
+            vminx = vminy = vmaxx = vmaxy = 0.0
             if viewport_bounds:
                 vminx, vminy, vmaxx, vmaxy = viewport_bounds
-                if not (vminx <= stop.x <= vmaxx and vminy <= stop.y <= vmaxy):
-                    continue
-            waiter = self.spawn_pedestrian(stop.x, stop.y)
-            if waiter is None:
+            visible_pedestrians = [
+                ped for ped in self.pedestrians
+                if not getattr(ped, "is_walking_to_taxi_stop", False)
+                and not getattr(ped, "is_taxi_stop_waiter", False)
+                and (
+                    viewport_bounds is None
+                    or vminx <= ped.x <= vmaxx and vminy <= ped.y <= vmaxy
+                )
+            ]
+            customer = random.choice(visible_pedestrians) if visible_pedestrians else None
+            customer_chance = 0.70 if customer is not None else 0.35
+            if random.random() >= customer_chance:
                 continue
-            waiter.x = stop.x
-            waiter.y = stop.y
-            waiter.is_taxi_stop_waiter = True
-            waiter.wants_taxi = True
-            waiter.speed = 0.0
-            waiter.base_speed = 0.0
-            self.pedestrians.append(waiter)
+            if customer is None:
+                customer = self.spawn_pedestrian(
+                    player_car.x,
+                    player_car.y,
+                    viewport_bounds=viewport_bounds,
+                )
+                if customer is None:
+                    continue
+                self.pedestrians.append(customer)
+
+            customer.taxi_stop_target = (stop.x, stop.y)
+            customer.is_walking_to_taxi_stop = True
+            customer.wants_taxi = True
+            customer.is_taxi_stop_waiter = False
+            logger.info(
+                "Pedestrian heading to taxi stop: x=%.1f y=%.1f spawned=%s",
+                stop.x,
+                stop.y,
+                customer not in visible_pedestrians,
+            )
             return
 
     def _build_junction_grid(self) -> None:
@@ -463,6 +524,8 @@ class PedestrianManager:
         cyclist_collision = False
 
         for ped in self.pedestrians:
+            if getattr(ped, "is_walking_to_taxi_stop", False):
+                continue
             was_dodging = ped.dodge_timer > 0.0
             # Update timers
             if ped.curse_timer > 0.0:
@@ -554,6 +617,27 @@ class PedestrianManager:
 
         # Update walking movement
         for ped in self.pedestrians:
+            taxi_stop_target = getattr(ped, "taxi_stop_target", None)
+            if getattr(ped, "is_walking_to_taxi_stop", False) and taxi_stop_target is not None:
+                target_x, target_y = taxi_stop_target
+                dx = target_x - ped.x
+                dy = target_y - ped.y
+                distance = math.hypot(dx, dy)
+                if distance <= 1.0:
+                    ped.x = target_x
+                    ped.y = target_y
+                    ped.speed = 0.0
+                    ped.base_speed = 0.0
+                    ped.is_walking_to_taxi_stop = False
+                    ped.is_taxi_stop_waiter = True
+                    logger.info("Pedestrian arrived at taxi stop: x=%.1f y=%.1f", target_x, target_y)
+                    continue
+                ped.heading = math.atan2(dy, dx)
+                ped.speed = ped.base_speed
+                step = min(distance, ped.speed * dt)
+                ped.x += math.cos(ped.heading) * step
+                ped.y += math.sin(ped.heading) * step
+                continue
             if getattr(ped, "is_taxi_stop_waiter", False):
                 ped.speed = 0.0
                 continue

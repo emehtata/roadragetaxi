@@ -1,6 +1,6 @@
 import time
 
-from theroadragetrip import Car, Way, AutoFetchManager
+from theroadragetrip import Car, Scenery, Way, AutoFetchManager
 
 
 def test_background_auto_fetch_updates_ways_and_bounds():
@@ -21,7 +21,12 @@ def test_background_auto_fetch_updates_ways_and_bounds():
 
     def fake_build(elems):
         new_w = Way(points_m=[(1100.0, 490.0), (1200.0, 510.0)], highway="residential", half_width_m=4.5)
-        return [new_w], [], (0.0, 0.0, 1200.0, 1200.0)
+        new_scenery = Scenery(
+            points_m=[(1100.0, 450.0), (1200.0, 450.0), (1200.0, 550.0), (1100.0, 550.0)],
+            kind="wood",
+            bbox=(1100.0, 450.0, 1200.0, 550.0),
+        )
+        return [new_w], [], [], [new_scenery], [], (0.0, 0.0, 1200.0, 1200.0)
 
     m = AutoFetchManager(ways, bounds, FakeTransformer(), fetch_func=fake_fetch, build_func=fake_build, cooldown_s=0.0)
     started = m.start_if_needed(car, True, margin_m=10.0, tile_size_m=500.0)
@@ -36,3 +41,4 @@ def test_background_auto_fetch_updates_ways_and_bounds():
     assert len(ways) == 2
     nb = m.get_bounds()
     assert nb[2] >= 1200.0
+    assert m.sceneries[0].trees

@@ -49,3 +49,5 @@ osm_cache/
 
 *.ini
 screenshots/
+.env
+output/

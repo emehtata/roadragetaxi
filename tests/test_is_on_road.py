@@ -4,6 +4,7 @@ from theroadragetrip import (
     Water,
     Way,
     get_current_road_at_car,
+    is_car_fully_in_water,
     is_on_road,
     is_point_in_water,
     respawn_car,
@@ -63,4 +64,17 @@ def test_respawn_car_avoids_water_and_ice_roads():
     assert car.x == 250.0
     assert car.y == 200.0
     assert not is_point_in_water(car.x, car.y, [lake])
+
+
+def test_car_is_fully_in_water_requires_all_corners_inside():
+    lake = Water(
+        points_m=[(-10.0, -10.0), (10.0, -10.0), (10.0, 10.0), (-10.0, 10.0), (-10.0, -10.0)],
+        kind="water",
+        is_polygon=True,
+    )
+    car = Car(x=0.0, y=0.0, heading=0.0, speed=0.0)
+    assert is_car_fully_in_water(car, [lake])
+
+    car.x = 9.5
+    assert not is_car_fully_in_water(car, [lake])
 

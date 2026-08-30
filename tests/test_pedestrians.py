@@ -1,5 +1,6 @@
 """Tests for pedestrian simulation, movement, traffic light compliance, and dodging."""
 import math
+import pytest
 from theroadragetrip.osm import TrafficLight, Way
 from theroadragetrip.osm import TaxiStop
 from theroadragetrip.pedestrian import CyclistManager, Pedestrian, PedestrianManager
@@ -30,6 +31,32 @@ def test_taxi_stop_gets_waiting_customer():
     assert len(manager.pedestrians) == 1
     assert manager.pedestrians[0].is_taxi_stop_waiter is True
     assert (manager.pedestrians[0].x, manager.pedestrians[0].y) == (20.0, 0.0)
+
+
+def test_taxi_stop_waiter_spawns_when_stop_enters_view(monkeypatch: pytest.MonkeyPatch):
+    way = Way(points_m=[(0.0, 0.0), (100.0, 0.0)], highway="footway", half_width_m=1.5)
+    manager = PedestrianManager([way], target_count=0, spawn_radius_m=120.0)
+    player = Car(x=20.0, y=0.0, heading=0.0, speed=0.0)
+    stop = TaxiStop(20.0, 0.0, id=1)
+    existing_pedestrian = Pedestrian(10.0, 0.0, 0.0, 1.0, 1.0, way, 0, 1, (1, 1, 1))
+    manager.pedestrians.append(existing_pedestrian)
+
+    monkeypatch.setattr("theroadragetrip.pedestrian.random.random", lambda: 0.0)
+
+    manager.ensure_taxi_stop_waiter([stop], player, viewport_bounds=(-10.0, -10.0, 30.0, 10.0))
+    assert not existing_pedestrian.is_walking_to_taxi_stop
+
+    manager.ensure_taxi_stop_waiter([stop], player, viewport_bounds=(40.0, -10.0, 80.0, 10.0))
+    manager.ensure_taxi_stop_waiter([stop], player, viewport_bounds=(-10.0, -10.0, 30.0, 10.0))
+
+    assert len(manager.pedestrians) == 1
+    assert existing_pedestrian.is_walking_to_taxi_stop is True
+
+    for _ in range(500):
+        manager.update(player, dt=0.1)
+        if existing_pedestrian.is_taxi_stop_waiter:
+            break
+    assert existing_pedestrian.is_taxi_stop_waiter is True
 
 
 def test_pedestrian_spawning_and_movement():

@@ -15,7 +15,7 @@ class FakeTransformer:
 fake_pyproj.Transformer = FakeTransformer
 sys.modules["pyproj"] = fake_pyproj
 
-from theroadragetrip.osm import build_ways
+from theroadragetrip.osm import build_ways, plant_trees
 from theroadragetrip.osm import Scenery, Way
 from theroadragetrip.physics import Car
 from theroadragetrip.taxi import TaxiManager
@@ -92,6 +92,24 @@ def test_build_ways_generates_trees_in_offroad_scenery():
 
     assert sceneries[0].trees
     assert all(tree_y > ways[0].half_width_m + 3.0 + 60100.0 for _, tree_y in sceneries[0].trees)
+
+
+def test_tree_density_follows_osm_scenery_type():
+    forest = Scenery(
+        [(0.0, 0.0), (100.0, 0.0), (100.0, 100.0), (0.0, 100.0)],
+        "forest",
+        bbox=(0.0, 0.0, 100.0, 100.0),
+    )
+    park = Scenery(
+        [(200.0, 0.0), (300.0, 0.0), (300.0, 100.0), (200.0, 100.0)],
+        "park",
+        bbox=(200.0, 0.0, 300.0, 100.0),
+    )
+
+    plant_trees([forest, park], [])
+
+    assert len(forest.trees) > len(park.trees)
+    assert len(park.trees) <= 6
 
 
 def test_build_ways_parses_taxi_stops():

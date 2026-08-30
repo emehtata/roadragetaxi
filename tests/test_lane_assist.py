@@ -2,6 +2,7 @@
 import math
 from theroadragetrip.osm import Way
 from theroadragetrip.physics import Car, SpatialWayGrid, update_car_physics
+from theroadragetrip.traffic import NPCCar
 
 
 def test_lane_assist_activates_and_tracks_right_lane_on_two_way_road():
@@ -39,6 +40,46 @@ def test_lane_assist_activates_and_tracks_right_lane_on_two_way_road():
     assert car.y < -0.5
     # Car stays within road boundary (half_width = 4.0m)
     assert abs(car.y) <= 4.0
+
+
+def test_lane_assist_does_not_return_into_adjacent_vehicle():
+    way = Way(
+        points_m=[(0.0, 0.0), (500.0, 0.0)],
+        highway="primary",
+        half_width_m=4.0,
+        oneway=0,
+    )
+    grid = SpatialWayGrid([way])
+    car = Car(x=10.0, y=0.0, heading=0.0, speed=15.0, lane_assist_enabled=True)
+    car.time_since_last_steer = 0.5
+    adjacent_vehicle = NPCCar(
+        x=10.0,
+        y=-2.0,
+        heading=0.0,
+        speed=10.0,
+        way=way,
+        segment_idx=0,
+        direction=1,
+        target_speed=10.0,
+        color=(100, 100, 100),
+    )
+
+    for _ in range(60):
+        adjacent_vehicle.x = car.x
+        update_car_physics(
+            car,
+            throttle=1.0,
+            brake=0.0,
+            steer_left=0.0,
+            steer_right=0.0,
+            dt=0.05,
+            ways=[way],
+            spatial_grid=grid,
+            nearby_vehicles=[adjacent_vehicle],
+        )
+
+    assert car.lane_assist_active is True
+    assert car.y > -0.5
 
 
 def test_lane_assist_disabled_by_default():

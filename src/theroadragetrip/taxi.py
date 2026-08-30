@@ -13,12 +13,15 @@ from .police import SpeedCamera, camera_sees_car
 logger = logging.getLogger(__name__)
 
 # Finnish passenger name generator for immersion
-FIRST_NAMES = [
-    "Matti", "Maija", "Antti", "Liisa", "Juho", "Anna", "Mikko", "Sari",
-    "Pekka", "Tuula", "Jari", "Tiina", "Heikki", "Katri", "Kari", "Elina",
-    "Ville", "Johanna", "Aleksi", "Laura", "Janne", "Emilia", "Lauri", "Sofia",
-    "Markus", "Sanna", "Eero", "Hanna", "Petri", "Maria", "Timo", "Veera"
-]
+PASSENGER_NAMES = {
+    "woman": ("Maija", "Liisa", "Anna", "Sari", "Tuula", "Tiina", "Katri", "Elina", "Johanna", "Laura", "Emilia", "Sofia", "Sanna", "Hanna", "Maria", "Veera"),
+    "man": ("Matti", "Antti", "Juho", "Mikko", "Pekka", "Jari", "Heikki", "Kari", "Ville", "Aleksi", "Janne", "Lauri", "Markus", "Eero", "Petri", "Timo"),
+}
+
+
+def random_passenger_identity() -> tuple[str, str]:
+    gender = random.choice(tuple(PASSENGER_NAMES))
+    return random.choice(PASSENGER_NAMES[gender]), gender
 
 
 @dataclass
@@ -30,6 +33,7 @@ class TaxiTarget:
     way_name: Optional[str] = None
     district_name: Optional[str] = None
     radius_m: float = 20.0  # Pickup/dropoff stop radius
+    venue_type: Optional[str] = None
 
 
 @dataclass
@@ -37,6 +41,7 @@ class TaxiPassenger:
     name: str
     pickup: TaxiTarget
     dropoff: TaxiTarget
+    gender: str = "woman"
     # Client pedestrian representation walking into the taxi
     ped_x: float = 0.0
     ped_y: float = 0.0
@@ -45,6 +50,10 @@ class TaxiPassenger:
     ped_color: Tuple[int, int, int] = (240, 220, 60)  # Bright gold/yellow
     is_walking_to_car: bool = False
     boarded: bool = False
+    nausea_delay: float = 0.0
+    nausea_warning_timer: float = 0.0
+    nausea_resolved: bool = False
+    nausea_vomited: bool = False
 
 
 @dataclass
@@ -69,6 +78,30 @@ def speed_bonus_points(speed_kmh: float) -> int:
         return round(100.0 * (speed_kmh / 10.0) ** exponent) if speed_kmh else 0
     exponent = math.log(10.0) / math.log(2.0)
     return round(1000.0 * (speed_kmh / 50.0) ** exponent)
+
+
+def nausea_probability(venue_type: Optional[str]) -> float:
+    """Return passenger nausea probability based on the OSM amenity type."""
+    if venue_type in {"bar", "pub", "nightclub"}:
+        return 0.50
+    if venue_type in {
+        "restaurant",
+        "cafe",
+        "fast_food",
+        "food_court",
+        "biergarten",
+        "ice_cream",
+        "confectionery",
+    }:
+        return 0.10
+    return 0.0
+
+
+def nausea_delay_for_pickup(pickup: TaxiTarget) -> float:
+    """Return a random in-trip delay when a pickup triggers nausea."""
+    if random.random() >= nausea_probability(pickup.venue_type):
+        return float("inf")
+    return random.uniform(5.0, 45.0)
 
 
 class TaxiManager:
@@ -120,6 +153,7 @@ class TaxiManager:
         self.tree_effects: Dict[Tuple[int, int], Dict[str, float]] = {}
         self.fallen_trees: set[Tuple[int, int]] = set()
         self.tree_wait_timer: float = 0.0
+        self.vomit_puddles: List[Tuple[float, float]] = []
         self.taxi_smoke_timer: float = 0.0
         self.speed_camera_flash_timer: float = 0.0
         self.speed_camera_flash_index: Optional[int] = None
@@ -813,6 +847,7 @@ class TaxiManager:
                 way_name=way_name,
                 district_name=self.get_nearest_district(road_x, road_y),
                 radius_m=self.pickup_radius_m,
+                venue_type=getattr(building, "venue_type", None),
             )
         return None
 
@@ -934,20 +969,10 @@ class TaxiManager:
             min_dist=150.0,
             max_dist=1200.0,
         )
+        if not pickup_target or not pickup_target.address:
+            pickup_target = self.pick_random_taxi_stop(ref_x=car_x, ref_y=car_y, min_dist=150.0, max_dist=1200.0)
         if not pickup_target:
-            pickup_target = self.pick_random_taxi_stop(
-            ref_x=car_x,
-            ref_y=car_y,
-            min_dist=150.0,
-            max_dist=1200.0,
-            )
-        if not pickup_target:
-            pickup_target = self.pick_random_road_point(
-                ref_x=car_x,
-                ref_y=car_y,
-                min_dist=150.0,
-                max_dist=1200.0,
-            )
+            pickup_target = self.pick_random_road_point(ref_x=car_x, ref_y=car_y, min_dist=150.0, max_dist=1200.0)
         if not pickup_target:
             return
 
@@ -958,33 +983,25 @@ class TaxiManager:
             max_dist=self.max_distance_m,
         )
         if not dropoff_target:
-            dropoff_target = self.pick_random_taxi_stop(
-            ref_x=pickup_target.x,
-            ref_y=pickup_target.y,
-            min_dist=self.min_distance_m,
-            max_dist=self.max_distance_m,
-            )
+            dropoff_target = self.pick_random_taxi_stop(ref_x=pickup_target.x, ref_y=pickup_target.y, min_dist=self.min_distance_m, max_dist=self.max_distance_m)
         if not dropoff_target:
-            dropoff_target = self.pick_random_road_point(
-            ref_x=pickup_target.x,
-            ref_y=pickup_target.y,
-            min_dist=self.min_distance_m,
-            max_dist=self.max_distance_m,
-            )
+            dropoff_target = self.pick_random_road_point(ref_x=pickup_target.x, ref_y=pickup_target.y, min_dist=self.min_distance_m, max_dist=self.max_distance_m)
         if not dropoff_target:
             dropoff_target = pickup_target
 
-        passenger_name = random.choice(FIRST_NAMES)
+        passenger_name, passenger_gender = random_passenger_identity()
         self.current_passenger = TaxiPassenger(
             name=passenger_name,
             pickup=pickup_target,
             dropoff=dropoff_target,
+            gender=passenger_gender,
             ped_x=pickup_target.x,
             ped_y=pickup_target.y,
             ped_heading=0.0,
             ped_speed=2.2,
             is_walking_to_car=False,
             boarded=False,
+            nausea_delay=nausea_delay_for_pickup(pickup_target),
         )
         self.state = TaxiState.WAITING_FOR_PICKUP
         self.elapsed_time = 0.0
@@ -992,34 +1009,62 @@ class TaxiManager:
             self.language, "new_fare_at", name=passenger_name, address=pickup_target.address
         )
         self.notification_timer = 5.0
+        logger.info(
+            "Taxi mission spawned: passenger=%s pickup=%s dropoff=%s",
+            passenger_name,
+            pickup_target.address,
+            dropoff_target.address,
+        )
 
     def generate_offers(self, car_x: float, car_y: float, count: int = 3) -> List[TaxiOffer]:
-        """Create ride requests without activating one until the player accepts it."""
+        """Create realistic ride requests without activating one until accepted."""
         offers: List[TaxiOffer] = []
         for _ in range(max(1, count)):
-            pickup = self.pick_random_taxi_stop(car_x, car_y, min_dist=150.0, max_dist=1200.0)
+            pickup = self.pick_random_building_point(
+                ref_x=car_x,
+                ref_y=car_y,
+                min_dist=150.0,
+                max_dist=1200.0,
+            )
             if not pickup:
                 pickup = self.pick_random_road_point(car_x, car_y, min_dist=150.0, max_dist=1200.0)
             if not pickup:
+                pickup = self.pick_random_taxi_stop(car_x, car_y, min_dist=150.0, max_dist=1200.0)
+            if not pickup:
                 continue
-            dropoff = self.pick_random_taxi_stop(pickup.x, pickup.y, self.min_distance_m, self.max_distance_m)
+            dropoff = self.pick_random_building_point(
+                ref_x=pickup.x,
+                ref_y=pickup.y,
+                min_dist=self.min_distance_m,
+                max_dist=self.max_distance_m,
+            )
             if not dropoff:
                 dropoff = self.pick_random_road_point(pickup.x, pickup.y, self.min_distance_m, self.max_distance_m)
             if not dropoff:
+                dropoff = self.pick_random_taxi_stop(pickup.x, pickup.y, self.min_distance_m, self.max_distance_m)
+            if not dropoff:
                 continue
+            passenger_name, passenger_gender = random_passenger_identity()
             passenger = TaxiPassenger(
-                name=random.choice(FIRST_NAMES),
+                name=passenger_name,
                 pickup=pickup,
                 dropoff=dropoff,
+                gender=passenger_gender,
                 ped_x=pickup.x,
                 ped_y=pickup.y,
                 ped_speed=2.2,
+                nausea_delay=nausea_delay_for_pickup(pickup),
             )
             offers.append(TaxiOffer(
                 passenger=passenger,
                 pickup_distance_m=math.hypot(car_x - pickup.x, car_y - pickup.y),
             ))
         self.offers = offers
+        logger.info(
+            "Taxi phone offers generated: count=%d pickup_distances=%s",
+            len(offers),
+            [round(offer.pickup_distance_m) for offer in offers],
+        )
         return offers
 
     def accept_offer(self, index: int, car_x: float, car_y: float) -> bool:
@@ -1037,6 +1082,12 @@ class TaxiManager:
             address=self.current_passenger.pickup.address,
         )
         self.notification_timer = 5.0
+        logger.info(
+            "Taxi phone offer accepted: passenger=%s pickup=%s dropoff=%s",
+            self.current_passenger.name,
+            self.current_passenger.pickup.address,
+            self.current_passenger.dropoff.address,
+        )
         return True
 
     def reject_offer(self, index: int = 0, car_x: float = 0.0, car_y: float = 0.0) -> bool:
@@ -1047,6 +1098,7 @@ class TaxiManager:
         self.next_offer_timer = random.uniform(12.0, 28.0)
         self.notification_msg = tr(self.language, "no_requests")
         self.notification_timer = 2.0
+        logger.info("Taxi phone offer rejected: index=%d remaining=%d", index, len(self.offers))
         return True
 
     def _board_waiting_pedestrian(
@@ -1062,14 +1114,17 @@ class TaxiManager:
             dropoff = self.pick_random_road_point(pickup.x, pickup.y, self.min_distance_m, self.max_distance_m)
         if not dropoff:
             return False
+        passenger_name, passenger_gender = random_passenger_identity()
         passenger = TaxiPassenger(
-            name=random.choice(FIRST_NAMES),
+            name=passenger_name,
             pickup=pickup,
             dropoff=dropoff,
+            gender=passenger_gender,
             ped_x=pedestrian.x,
             ped_y=pedestrian.y,
             ped_heading=pedestrian.heading,
             boarded=True,
+            nausea_delay=nausea_delay_for_pickup(pickup),
         )
         self.current_passenger = passenger
         self.offers = []
@@ -1085,8 +1140,20 @@ class TaxiManager:
             notification_key = "hail_walking"
         else:
             notification_key = "walking_named" if walk_to_car else message_key
-        self.notification_msg = tr(self.language, notification_key, name=passenger.name, address=dropoff.address)
+        self.notification_msg = tr(
+            self.language,
+            notification_key,
+            name=passenger.name,
+            address=dropoff.address,
+        )
         self.notification_timer = 5.0
+        logger.info(
+            "Passenger boarded: passenger=%s pickup=%s dropoff=%s walking=%s",
+            passenger.name,
+            pickup.address,
+            dropoff.address,
+            walk_to_car,
+        )
         return True
 
     def check_waiting_pickup(self, car: Car, pedestrians: List[Any], dt: float) -> Optional[Any]:
@@ -1113,7 +1180,12 @@ class TaxiManager:
                     key=lambda ped: math.hypot(car.x - ped.x, car.y - ped.y),
                 )
                 pickup = self.make_target(pedestrian.x, pedestrian.y)
-                if self._board_waiting_pedestrian(pedestrian, pickup, "hail_boarded"):
+                if self._board_waiting_pedestrian(
+                    pedestrian,
+                    pickup,
+                    "hail_boarded",
+                    walk_to_car=True,
+                ):
                     return pedestrian
             self.stand_wait_timer = 0.0
             return None
@@ -1186,6 +1258,7 @@ class TaxiManager:
             msg = f"{reason}! Pickup for {p_name} cancelled (-{penalty} pts)"
         self.notification_msg = msg
         self.notification_timer = 5.0
+        logger.info("Taxi mission discarded: passenger=%s reason=%s penalty=%d", p_name, reason, penalty)
         self.current_passenger = None
         self.state = TaxiState.WAITING_FOR_PICKUP
         self.generate_offers(car_x, car_y)
@@ -1195,6 +1268,61 @@ class TaxiManager:
         """Handle car respawn: discard fare and apply penalty if a passenger is onboard."""
         if self.current_passenger and self.state in (TaxiState.DRIVING_TO_DROPOFF, TaxiState.CLIENT_WALKING_TO_CAR):
             self.discard_mission(car_x, car_y, penalty=200, reason="Respawned while transporting passenger")
+
+    def _update_passenger_nausea(self, car: Car, dt: float) -> None:
+        passenger = self.current_passenger
+        if passenger is None or not passenger.boarded or self.state != TaxiState.DRIVING_TO_DROPOFF:
+            return
+        if passenger.nausea_resolved or passenger.nausea_vomited:
+            return
+
+        is_stopped = abs(car.speed) <= self.max_stop_speed_mps
+        if passenger.nausea_warning_timer > 0.0:
+            if is_stopped:
+                passenger.nausea_warning_timer = 0.0
+                passenger.nausea_resolved = True
+                puddle_x = car.x + math.sin(car.heading) * 2.4
+                puddle_y = car.y - math.cos(car.heading) * 2.4
+                self.vomit_puddles.append((puddle_x, puddle_y))
+                if len(self.vomit_puddles) > 50:
+                    del self.vomit_puddles[:-50]
+                self.notification_msg = tr(self.language, "passenger_nausea_relieved")
+                self.notification_timer = 4.0
+                logger.info("Passenger nausea relieved after taxi stopped: passenger=%s", passenger.name)
+                return
+            passenger.nausea_warning_timer -= dt
+            if passenger.nausea_warning_timer <= 0.0:
+                passenger.nausea_vomited = True
+                self.total_score -= 500
+                self.notification_msg = tr(self.language, "passenger_vomited", penalty=500)
+                self.notification_timer = 5.0
+                logger.info("Passenger vomited in taxi: passenger=%s penalty=%d", passenger.name, 500)
+            return
+
+        passenger.nausea_delay -= dt
+        if passenger.nausea_delay <= 0.0:
+            passenger.nausea_warning_timer = 4.0
+            self.notification_msg = tr(self.language, "passenger_nausea_warning")
+            self.notification_timer = 4.0
+            logger.info("Passenger reported nausea: passenger=%s", passenger.name)
+
+    def take_vomited_passenger(self, car: Car) -> Optional[TaxiPassenger]:
+        """Release a passenger who vomited once the taxi has stopped."""
+        passenger = self.current_passenger
+        if passenger is None or not passenger.nausea_vomited or abs(car.speed) > self.max_stop_speed_mps:
+            return None
+        passenger.ped_x = car.x + math.sin(car.heading) * 1.8
+        passenger.ped_y = car.y - math.cos(car.heading) * 1.8
+        passenger.ped_heading = car.heading
+        passenger.boarded = False
+        passenger.is_walking_to_car = False
+        self.current_passenger = None
+        self.state = TaxiState.WAITING_FOR_PICKUP
+        self.generate_offers(car.x, car.y)
+        self.notification_msg = tr(self.language, "passenger_vomited_outside")
+        self.notification_timer = 5.0
+        logger.info("Passenger left taxi after vomiting: passenger=%s", passenger.name)
+        return passenger
 
     def update(self, car: Car, dt: float) -> None:
         """Update mission timers, pickup/dropoff collision, and fare progression."""
@@ -1223,6 +1351,10 @@ class TaxiManager:
         if not self.current_passenger:
             return
 
+        self._update_passenger_nausea(car, dt)
+        if self.current_passenger and self.current_passenger.nausea_vomited:
+            return
+
         target = self.get_current_target()
         if not target:
             return
@@ -1238,6 +1370,7 @@ class TaxiManager:
                     self.current_passenger.is_walking_to_car = True
                     self.notification_msg = tr(self.language, "walking_named", name=self.current_passenger.name)
                     self.notification_timer = 3.0
+                    logger.info("Passenger reached pickup: passenger=%s walking to taxi", self.current_passenger.name)
                 else:
                     self.notification_msg = tr(self.language, "slow_pickup_notice")
                     self.notification_timer = 1.0
@@ -1261,6 +1394,8 @@ class TaxiManager:
                 return
 
             if dist_to_door <= 0.8:
+                if not is_stopped:
+                    return
                 # Client reached taxi door and boarded!
                 p.boarded = True
                 p.is_walking_to_car = False
@@ -1271,6 +1406,11 @@ class TaxiManager:
                     self.language, "boarded_destination", name=p.name, address=p.dropoff.address
                 )
                 self.notification_timer = 6.0
+                logger.info(
+                    "Passenger boarded after walking: passenger=%s dropoff=%s",
+                    p.name,
+                    p.dropoff.address,
+                )
             else:
                 p.ped_heading = math.atan2(dy, dx)
                 step = p.ped_speed * dt
@@ -1296,6 +1436,13 @@ class TaxiManager:
                         self.language, "fare_complete_points", earned=earned, avg=avg_kmh, seconds=self.elapsed_time
                     )
                     self.notification_timer = 6.0
+                    logger.info(
+                        "Taxi fare completed: passenger=%s earned=%d total_score=%d elapsed=%.1fs",
+                        p.name,
+                        earned,
+                        self.total_score,
+                        self.elapsed_time,
+                    )
                     # New requests are selected through the phone.
                     self.current_passenger = None
                     self.generate_offers(car.x, car.y)

@@ -1,12 +1,8 @@
 import logging
 import json
 import random
-import shutil
-import subprocess
-import tempfile
-from concurrent.futures import Future, ThreadPoolExecutor
 from pathlib import Path
-from typing import Optional, Tuple
+from typing import Optional
 
 import pygame
 
@@ -18,36 +14,24 @@ class AudioManager:
 
     def __init__(
         self,
-        master_volume: float = 1.0,
+        master_volume: float = 0.9,
         music_volume: float = 0.2,
-        effects_volume: float = 1.0,
-        speech_enabled: bool = False,
-        piper_command: str = "piper",
-        piper_fi_model: str = "",
-        piper_en_model: str = "",
-        speech_min_interval: float = 18.0,
-        speech_max_interval: float = 35.0,
+        effects_volume: float = 0.9,
+        speech_min_interval: float = 5.0,
+        speech_max_interval: float = 20.0,
     ) -> None:
         self.enabled = False
         self.master_volume = max(0.0, min(1.0, master_volume))
         self.music_volume = max(0.0, min(1.0, music_volume))
         self.effects_volume = max(0.0, min(1.0, effects_volume))
         self.sounds: dict[str, pygame.mixer.Sound] = {}
+        self.passenger_sounds: dict[tuple[str, str, str], pygame.mixer.Sound] = {}
         self.acceleration_channel: Optional[pygame.mixer.Channel] = None
         self.police_siren_channel: Optional[pygame.mixer.Channel] = None
-        self.speech_enabled = speech_enabled
-        self.piper_command = piper_command
-        self.piper_models = {
-            "fi": self._find_piper_model("fi", piper_fi_model),
-            "en": self._find_piper_model("en", piper_en_model),
-        }
         self.speech_interval = random.uniform(speech_min_interval, speech_max_interval)
         self.speech_min_interval = speech_min_interval
         self.speech_max_interval = speech_max_interval
         self._speech_lines = self._load_speech_lines()
-        self._speech_executor: Optional[ThreadPoolExecutor] = None
-        self._speech_future: Optional[Future[str]] = None
-        self._speech_sound: Optional[pygame.mixer.Sound] = None
 
         try:
             if not pygame.mixer.get_init():
@@ -67,10 +51,19 @@ class AudioManager:
                         self.sounds[name] = pygame.mixer.Sound(str(path))
                     except pygame.error as exc:
                         logger.warning("Could not load sound %s: %s", path.name, exc)
+            chatter_dir = sounds_dir / "passenger_chatter"
+            for path in chatter_dir.glob("*.wav"):
+                parts = path.stem.split("_", 2)
+                if len(parts) != 3 or parts[0] not in ("f", "m") or parts[1] not in ("fi", "en"):
+                    continue
+                try:
+                    self.passenger_sounds[(parts[0], parts[1], parts[2])] = pygame.mixer.Sound(str(path))
+                except pygame.error as exc:
+                    logger.warning("Could not load passenger chatter %s: %s", path.name, exc)
             if "city-traffic-outdoor" in self.sounds:
                 self.sounds["city-traffic-outdoor"].set_volume(self.master_volume * self.music_volume)
                 self.sounds["city-traffic-outdoor"].play(loops=-1)
-            self.enabled = bool(self.sounds)
+            self.enabled = bool(self.sounds or self.passenger_sounds)
         except (pygame.error, OSError) as exc:
             logger.info("Audio unavailable: %s", exc)
 
@@ -85,77 +78,41 @@ class AudioManager:
             logger.warning("Could not load passenger chatter: %s", exc)
             return []
 
-    @staticmethod
-    def _find_piper_model(language: str, configured_path: str) -> str:
-        if configured_path:
-            return configured_path
-        voice_name = {
-            "fi": "fi_FI-harri-medium.onnx",
-            "en": "en_US-lessac-medium.onnx",
-        }.get(language, "")
-        default_path = Path.home() / ".local" / "share" / "RoadRageTrip" / "voices" / voice_name
-        return str(default_path) if default_path.is_file() else ""
-
-    def update_passenger_speech(self, active: bool, language: str, dt: float) -> None:
-        """Generate and play occasional passenger chatter through Piper."""
-        self._finish_speech()
+    def update_passenger_speech(self, active: bool, gender: str, language: str, dt: float) -> None:
+        """Play occasional pre-rendered chatter matching the passenger's gender."""
         if not active:
             self.speech_interval = random.uniform(self.speech_min_interval, self.speech_max_interval)
             return
         self.speech_interval -= dt
-        if self.speech_interval > 0.0 or self._speech_future is not None:
-            return
-        model = self.piper_models.get(language, self.piper_models.get("fi", ""))
-        if not self.speech_enabled or not model or not Path(model).is_file():
-            self.speech_interval = random.uniform(self.speech_min_interval, self.speech_max_interval)
-            return
-        if shutil.which(self.piper_command) is None:
-            logger.warning("Piper command not found: %s", self.piper_command)
-            self.speech_enabled = False
+        if self.speech_interval > 0.0:
             return
         candidates = [line for line in self._speech_lines if isinstance(line, dict) and line.get(language)]
         if not candidates:
             return
-        text = str(random.choice(candidates)[language])
-        self._speech_executor = self._speech_executor or ThreadPoolExecutor(max_workers=1)
-        self._speech_future = self._speech_executor.submit(self._synthesize_speech, text, model)
+        entry = random.choice(candidates)
+        gender_code = "f" if gender == "woman" else "m"
+        audio_hash = entry.get("hash")
+        sound = self.passenger_sounds.get((gender_code, language, str(audio_hash)))
+        if sound is not None and self.enabled:
+            sound.set_volume(self.master_volume * self.effects_volume)
+            sound.play()
+            logger.info("Passenger chatter played: gender=%s language=%s hash=%s", gender, language, audio_hash)
         self.speech_interval = random.uniform(self.speech_min_interval, self.speech_max_interval)
 
-    def _synthesize_speech(self, text: str, model: str) -> str:
-        output = tempfile.NamedTemporaryFile(prefix="roadrage-speech-", suffix=".wav", delete=False)
-        output_path = output.name
-        output.close()
-        try:
-            subprocess.run(
-                [self.piper_command, "--model", model, "--output_file", output_path],
-                input=text,
-                text=True,
-                check=True,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.PIPE,
-            )
-            return output_path
-        except (OSError, subprocess.CalledProcessError) as exc:
-            Path(output_path).unlink(missing_ok=True)
-            logger.warning("Piper speech generation failed: %s", exc)
-            return ""
-
-    def _finish_speech(self) -> None:
-        if self._speech_future is None or not self._speech_future.done():
+    def play_passenger_line(self, finnish_text: str, gender: str, language: str) -> None:
+        """Play one specific pre-rendered passenger line."""
+        entry = next(
+            (line for line in self._speech_lines if line.get("fi") == finnish_text),
+            None,
+        )
+        if entry is None:
             return
-        output_path = self._speech_future.result()
-        self._speech_future = None
-        if not output_path:
+        audio_hash = entry.get("hash")
+        sound = self.passenger_sounds.get(("f" if gender == "woman" else "m", language, str(audio_hash)))
+        if sound is None or not self.enabled:
             return
-        try:
-            self._speech_sound = pygame.mixer.Sound(output_path)
-            self._speech_sound.set_volume(self.master_volume * self.effects_volume)
-            if self.enabled:
-                self._speech_sound.play()
-        except (OSError, pygame.error) as exc:
-            logger.warning("Could not play Piper speech: %s", exc)
-        finally:
-            Path(output_path).unlink(missing_ok=True)
+        sound.set_volume(self.master_volume * self.effects_volume)
+        sound.play()
 
     def play(self, name: str, volume: float = 1.0) -> None:
         sound = self.sounds.get(name)
@@ -197,9 +154,6 @@ class AudioManager:
             self.police_siren_channel = None
 
     def close(self) -> None:
-        if self._speech_executor is not None:
-            self._speech_executor.shutdown(wait=False, cancel_futures=True)
-            self._speech_executor = None
         self.update_acceleration(False)
         self.update_police_siren(False)
         if self.enabled:
