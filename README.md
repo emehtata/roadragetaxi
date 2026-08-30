@@ -9,10 +9,11 @@ A top-down 2D driving game proof-of-concept (PoC) in Python and Pygame that proc
 - **Real-World OSM Road Network**: Fetches and renders actual highway ways from Overpass API (motorways, primary, secondary, residential, tracks, paths).
 - **Taxi Game Mode**: Pick up passengers at generated street addresses, drop them off at their destinations, and earn points with speed and distance multiplier bonuses.
 - **Taxi Stops & Missions**: Taxi offers use street addresses, named buildings, and taxi stops as pickup and destination points.
-- **Ride Requests & Taxi Stands**: Three random ride requests arrive in the phone at a time when no passenger is onboard. Select one with `1`, `2`, or `3`, or reject the selected offer with `X`; phone offers and taxi-stand customers can coexist. Phone rides normally start and end at named buildings or street addresses, while taxi stands remain a fallback when no better map data is available. Wait stopped at a taxi stand and its customer walks visibly to the taxi before boarding. Maps without taxi stands can trigger occasional street hails; only a small share of pedestrians want a taxi, and they can hail a moving taxi as it passes.
+- **Ride Requests & Taxi Stands**: Three random ride requests arrive in the phone at a time when no passenger is onboard. Select one with `1`, `2`, or `3`, or reject the selected offer with `X`; phone offers and taxi-stand customers can coexist. Phone rides normally start and end at named buildings or street addresses, while taxi stands remain a fallback when no better map data is available. Wait stopped at a taxi stand and its customer walks visibly to the taxi before boarding. Maps without taxi stands can trigger occasional street hails; only a small share of pedestrians want a taxi. A passing taxi can notice a hail, but the passenger only boards after the taxi stops.
 - **Passenger After Drop-off**: After a completed fare, the passenger leaves the taxi beside the car and continues as an ordinary walking pedestrian.
 - **Passenger Chatter**: Includes 50 Finnish and English passenger lines covering weather, wellbeing, joyful moments, sadness, and everyday observations. The game randomly plays pre-rendered chatter matching the onboard passenger's gender.
 - **Navigation Waypoints & Compass Pointer**: Displays visual waypoint zones, address tags, off-screen edge indicators, and an optional compass navigation pointer to client locations. The compass is hidden by default and toggled with `C`.
+- **Suggested Route**: Press `N` to show a yellow route from the taxi to the active pickup or dropoff target. The route follows connected OSM roads, respects one-way streets, refreshes when the target or streamed map changes, and recalculates when the taxi leaves it.
 - **Buildings & Scenery**: Renders building footprints, parks, forests, and green spaces with street/place name labels (`L` key).
 - **Water & Multipolygon Rendering**: Renders lakes, reservoirs, and waterways under the road network.
 - **Autonomous Traffic**: NPC cars follow connected roads, respect lane direction, vary their speed, overtake, react to traffic lights, and avoid overlapping the player. The shared road-graph navigator can route NPCs to map targets without cutting through buildings or terrain. Active traffic is reduced at close zoom levels while nearby cars are retained.
@@ -21,7 +22,8 @@ A top-down 2D driving game proof-of-concept (PoC) in Python and Pygame that proc
 - **Taxi-Driver Brawls**: Disabled by default. Set `taxi_brawls = true` under `[game]` to enable. Stopping near a taxi stand can then attract a rival taxi driver. The rival arrives from outside the view, then waits three seconds before a five-second fight under a dust cloud. Afterward both drivers walk back to their taxis; the winner drives to the stand. Road Rage charge controls the win chance, with 0% and 100% as exact boundaries. Winning gives 1,000 points; losing costs 500 points. A losing rival curses and leaves; a winning rival waits for a passenger.
 - **Traffic Violations**: Red-light, wrong-way, collision, building, and scenery penalties are tracked in the taxi score.
 - **Tree Crash Effects**: Tree impacts shake the tree and scatter leaves; impacts above 80 km/h knock the tree down, smoke the taxi, and immobilize it for five seconds.
-- **Hidden Police Cameras**: One to twenty directional speed cameras are placed from the connected road-network size; Helsinki has 20. Every taxi stop receives a nearby camera when available. Driving above the local speed limit within its 50-meter approach zone costs 300 points.
+- **Roadworks**: Random roadworks add temporary traffic lights and can make NPC traffic slow or stop naturally.
+- **Hidden Police Cameras**: One to twenty directional speed cameras are distributed across the connected road network; Helsinki has 20. Cameras are not tied to taxi stops. Driving above the local speed limit within its 50-meter approach zone costs 300 points.
 - **Finnish & English**: The first launch asks for a language. The language can be changed later from the pause menu and is saved in `roadragetrip.ini`.
 - **Audio Settings**: Master, background, and effects volumes are adjustable at runtime from the pause menu and persist in the INI file. Passenger chatter follows the effects volume.
 - **Coordinate Projection**: Converts WGS84 (lat/lon) coordinates to metric ETRS-TM35FIN (EPSG:3067) using `pyproj`.
@@ -51,6 +53,11 @@ A top-down 2D driving game proof-of-concept (PoC) in Python and Pygame that proc
 │       ├── render.py      # Pygame rendering for roads, waters, buildings, traffic, pedestrians, HUD, and compass
 │       ├── assets/         # Image sprites and passenger chatter data
 │       │   └── passenger_chatter.json # 50 Finnish/English passenger lines
+│       ├── audio.py        # Optional music, effects, and passenger chatter playback
+│       ├── brawl.py        # Optional taxi-driver brawls
+│       ├── career.py       # Career progress and odometer persistence
+│       ├── config.py       # INI loading, city configuration, and Overpass endpoints
+│       ├── roadworks.py    # Temporary roadwork and traffic-light generation
 │       ├── taxi.py        # Taxi passenger missions, hailing, address generator, fares, and violations
 │       └── traffic.py     # Autonomous NPC traffic vehicles, lane switching, and overtaking
 ├── tests/                 # Unit tests (pytest)
@@ -79,7 +86,7 @@ Install the utility dependency with `pip install -r utils/requirements.txt`, the
 python utils/ttsazure.py f src/theroadragetrip/assets/passenger_chatter.json fi
 ```
 
-Use `m` for male voices or `en` for English. The script stores hashes based only on each Finnish sentence in the JSON and writes WAV files named `{gender}_{language}_{hash}.wav` to `utils/output/`; set `TTS_VOICE` or `TTS_OVERWRITE=true` to override defaults.
+Use `m` for male voices or `en` for English. The script stores hashes based only on each Finnish sentence in the JSON and writes WAV files named `{gender}_{language}_{hash}.wav` to `src/theroadragetrip/sounds/passenger_chatter/`; set `TTS_VOICE` or `TTS_OVERWRITE=true` to override defaults.
 
 ### 2. Run the Game
 ```bash
@@ -104,13 +111,13 @@ python3 road_rage_trip.py --bbox "60.150,24.88,60.205,25.02"
 python3 road_rage_trip.py --auto-fetch --fetch-margin 50 --fetch-tile-size 500
 ```
 
-On the first launch, the game creates `roadragetrip.ini` in the current directory and asks for Finnish or English. Edit that file to set the city, map fetching, zoom, logging, pedestrian, cyclist, traffic, language, audio, and police-camera values. The `[cities]` section contains editable `name = latitude, longitude` entries; add or remove cities there. Set `[police] taxi_stop_cameras = true` to enable cameras near taxi stops for testing; it is disabled by default. Command-line options override the INI values for one launch.
+On the first launch, the game creates `roadragetrip.ini` under the platform configuration directory (`$XDG_CONFIG_HOME/RoadRageTrip/` on Linux, `%APPDATA%/RoadRageTrip/` on Windows) and asks for Finnish or English. Edit that file to set the city, map fetching, zoom, logging, pedestrian, cyclist, traffic, language, audio, and police-camera values. Career progress and the total odometer are stored beside the INI file. The `[cities]` section contains editable `name = latitude, longitude` entries; add or remove cities there. Command-line options override the INI values for one launch.
 
 For example, set `preset = helsinki` under `[game]` and `traffic_count = 100` under `[traffic]` to run Helsinki with 100 NPC cars.
 
 ### INI Settings
 
-The game reads `roadragetrip.ini` from the current working directory. Missing settings use the defaults below. Boolean values accept `true` or `false`; volume values are between `0.0` and `1.0`.
+The game reads `roadragetrip.ini` from the platform configuration directory described above. Missing settings use the defaults below. Boolean values accept `true` or `false`; volume values are between `0.0` and `1.0`.
 
 ```ini
 [game]
@@ -123,8 +130,11 @@ force_refresh = false
 no_cache = false
 px_per_m = 9.0
 log_level = INFO
+file_logging = false
+taxi_brawls = false
 
 [map]
+overpass_endpoints = https://overpass-api.de/api/interpreter, https://overpass.private.coffee/api/interpreter, https://overpass.openstreetmap.fr/api/interpreter
 auto_fetch = true
 fetch_margin = 350.0
 fetch_tile_size = 2500.0
@@ -144,20 +154,23 @@ effects_volume = 1.0
 min_interval = 5.0
 max_interval = 20.0
 
-[police]
-taxi_stop_cameras = false
-
 [experimental]
 enable_two_wheelers = false
 
 [cities]
 helsinki = 60.169525, 24.935446
+espoo = 60.205000, 24.652000
+tampere = 61.499113, 23.787117
+vantaa = 60.294000, 25.041000
 oulu = 65.012000, 25.468000
+turku = 60.451483, 22.268686
+jyväskylä = 62.241470, 25.720880
+kuopio = 62.892382, 27.677028
+lahti = 60.982674, 25.661509
+sysmä = 61.502271, 25.680613
 ```
 
 `[game] language` selects Finnish (`fi`) or English (`en`). Leave it blank only for the first-run language chooser. The pause menu can change and save the language and audio values while playing.
-
-`[police] taxi_stop_cameras` is disabled by default. Set it to `true` when testing cameras near taxi stops; regular speed cameras are still placed from the connected road network. The persistent `user_agent_id` is generated automatically and should not be edited.
 
 The `[cities]` section accepts any city name followed by `latitude, longitude`. Invalid coordinate entries are ignored. Command-line flags override matching INI values for the current launch.
 
@@ -174,8 +187,8 @@ Other common development commands are `make test`, `make compile`, and `make che
 Push a version tag to build and publish a Windows package containing `RoadRageTrip.exe`:
 
 ```bash
-git tag v0.4.1beta
-git push origin v0.4.1beta
+git tag v0.5.0beta
+git push origin v0.5.0beta
 ```
 
 GitHub Actions builds the package on Windows with PyInstaller and attaches both `RoadRageTrip-windows-x64.zip` and `RoadRageTrip-Setup.exe` to the GitHub Release. Use the EXE installer for a normal Windows installation, or extract the zip and launch `RoadRageTrip.exe`; no Python installation is required.
@@ -202,6 +215,7 @@ Game sounds are stored in `src/theroadragetrip/sounds/`. CC0 sounds require no a
 | `V` | Toggle speed limiter |
 | `B` | Toggle traffic-light assist |
 | `C` | Toggle compass (off by default) |
+| `N` | Toggle yellow route to the active pickup or dropoff target |
 | `Space` | Rattiraivo / Road Rage: move NPC cars ahead aside within 50 m |
 | `P` | Open taxi phone and view three ride offers |
 | `1` - `3` | Accept a selected ride in the taxi phone |
@@ -216,19 +230,19 @@ The pause menu's **Settings** screen changes language and master, background, an
 
 | Flag | Description |
 | :--- | :--- |
-| `--preset` | Named preset (`oulu`, `helsinki`, `tampere`, `espoo`, `turku`, `vantaa`, `jyväskylä`, `kuopio`, `lahti`, `sysmä`, `pori`) |
+| `--preset` | Named preset from `[cities]` (defaults include `oulu`, `helsinki`, `tampere`, `espoo`, `turku`, `vantaa`, `jyväskylä`, `kuopio`, `lahti`, `sysmä`) |
 | `--bbox` | Custom bounding box: `south,west,north,east` |
 | `--no-menu` | Skip interactive city selection startup menu |
 | `--use-sample` | Skip network and use bundled offline sample JSON |
 | `--force-refresh` / `--no-cache` | Ignore disk cache and query Overpass fresh |
-| `--cache-ttl` | Override cache TTL in seconds (default: 86400 / 24h) |
-| `--px-per-m` | Initial camera zoom (default: `0.7`) |
+| `--px-per-m` | Initial camera zoom (default: `9.0`) |
 | `--log-level` | Logging level (`DEBUG`, `INFO`, `WARNING`, `ERROR`) |
 | `--auto-fetch` | Enable non-blocking background tile fetching near bounds |
 | `--no-auto-fetch` | Disable on-demand background map expansion |
-| `--fetch-margin` | Margin in meters from bounds triggering auto-fetch (default: `800.0`) |
+| `--fetch-margin` | Margin in meters from bounds triggering auto-fetch (default: `350.0`) |
 | `--fetch-tile-size`| Meters to expand when auto-fetching (default: `2500.0`) |
-| `--traffic-count` | Target number of autonomous NPC cars (default: `25`) |
+| `--build-in-process` | Build auto-fetched map data outside the gameplay process |
+| `--traffic-count` | Target number of autonomous NPC cars (default: scales with available streets, capped at 50) |
 | `--pedestrian-count` | Target number of pedestrians (default: `20`) |
 | `--cyclist-count` | Target number of cyclists (default: `8`) |
 

@@ -78,3 +78,21 @@ def test_car_is_fully_in_water_requires_all_corners_inside():
     car.x = 9.5
     assert not is_car_fully_in_water(car, [lake])
 
+
+def test_bridge_over_water_does_not_trigger_water_respawn():
+    lake = Water(
+        points_m=[(-20.0, -20.0), (20.0, -20.0), (20.0, 20.0), (-20.0, 20.0), (-20.0, -20.0)],
+        kind="water",
+        is_polygon=True,
+    )
+    bridge = Way(
+        points_m=[(-100.0, 0.0), (100.0, 0.0)],
+        highway="primary",
+        half_width_m=4.0,
+        layer=1,
+        is_bridge=True,
+    )
+    car = Car(x=0.0, y=0.0, heading=0.0, speed=8.0, layer=1)
+
+    assert not is_car_fully_in_water(car, [lake], current_way=bridge)
+

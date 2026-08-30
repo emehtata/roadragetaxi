@@ -63,9 +63,6 @@ DEFAULT_CONFIG = {
         "min_interval": "5.0",
         "max_interval": "20.0",
     },
-    "police": {
-        "taxi_stop_cameras": "false",
-    },
     "experimental": {
         "enable_two_wheelers": "false",
     },

@@ -327,6 +327,24 @@ def test_npc_behind_player_despawns_outside_viewport():
     assert traffic_mgr.npcs == [ahead]
 
 
+def test_npc_does_not_fallback_to_spawning_inside_viewport():
+    way = Way(
+        points_m=[(-10.0, 0.0), (10.0, 0.0)],
+        highway="primary",
+        half_width_m=4.0,
+        name="Visible Street",
+    )
+    traffic_mgr = TrafficManager([way], target_count=1, spawn_radius_m=50.0)
+
+    traffic_mgr.update(
+        Car(x=0.0, y=0.0, heading=0.0, speed=0.0),
+        dt=0.0,
+        viewport_bounds=(-25.0, -25.0, 25.0, 25.0),
+    )
+
+    assert traffic_mgr.npcs == []
+
+
 def test_npc_avoids_180_degree_u_turns_at_junction():
     # + shape intersection:
     # East-West road: (-100, 0) to (100, 0)

@@ -51,3 +51,4 @@ osm_cache/
 screenshots/
 .env
 output/
+.log

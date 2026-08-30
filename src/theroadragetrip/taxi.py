@@ -1016,32 +1016,43 @@ class TaxiManager:
             dropoff_target.address,
         )
 
+    def pick_phone_pickup(self, car_x: float, car_y: float) -> Optional[TaxiTarget]:
+        """Pick a phone-order pickup using the intended location mix."""
+        roll = random.random()
+        if roll < 0.70:
+            sources = (self.pick_random_building_point, self.pick_random_road_point, self.pick_random_taxi_stop)
+        elif roll < 0.95:
+            sources = (self.pick_random_road_point, self.pick_random_building_point, self.pick_random_taxi_stop)
+        else:
+            sources = (self.pick_random_taxi_stop, self.pick_random_building_point, self.pick_random_road_point)
+
+        for source in sources:
+            pickup = source(car_x, car_y, min_dist=150.0, max_dist=1200.0)
+            if pickup:
+                return pickup
+        return None
+
+    def pick_phone_dropoff(self, pickup_x: float, pickup_y: float) -> Optional[TaxiTarget]:
+        """Pick a phone-order dropoff using places and addresses only."""
+        if random.random() < 0.70:
+            sources = (self.pick_random_building_point, self.pick_random_road_point)
+        else:
+            sources = (self.pick_random_road_point, self.pick_random_building_point)
+
+        for source in sources:
+            dropoff = source(pickup_x, pickup_y, self.min_distance_m, self.max_distance_m)
+            if dropoff:
+                return dropoff
+        return None
+
     def generate_offers(self, car_x: float, car_y: float, count: int = 3) -> List[TaxiOffer]:
         """Create realistic ride requests without activating one until accepted."""
         offers: List[TaxiOffer] = []
         for _ in range(max(1, count)):
-            pickup = self.pick_random_building_point(
-                ref_x=car_x,
-                ref_y=car_y,
-                min_dist=150.0,
-                max_dist=1200.0,
-            )
-            if not pickup:
-                pickup = self.pick_random_road_point(car_x, car_y, min_dist=150.0, max_dist=1200.0)
-            if not pickup:
-                pickup = self.pick_random_taxi_stop(car_x, car_y, min_dist=150.0, max_dist=1200.0)
+            pickup = self.pick_phone_pickup(car_x, car_y)
             if not pickup:
                 continue
-            dropoff = self.pick_random_building_point(
-                ref_x=pickup.x,
-                ref_y=pickup.y,
-                min_dist=self.min_distance_m,
-                max_dist=self.max_distance_m,
-            )
-            if not dropoff:
-                dropoff = self.pick_random_road_point(pickup.x, pickup.y, self.min_distance_m, self.max_distance_m)
-            if not dropoff:
-                dropoff = self.pick_random_taxi_stop(pickup.x, pickup.y, self.min_distance_m, self.max_distance_m)
+            dropoff = self.pick_phone_dropoff(pickup.x, pickup.y)
             if not dropoff:
                 continue
             passenger_name, passenger_gender = random_passenger_identity()

@@ -74,10 +74,12 @@ from .render import (
     draw_mode_selection_menu,
     draw_compass,
     draw_crossings,
+    draw_grass_texture,
     draw_hud,
     draw_help_screen,
     draw_labels,
     draw_loading_screen,
+    draw_navigation_route,
     draw_npc_cars,
     draw_police_cars,
     draw_pause_menu,
@@ -561,13 +563,10 @@ def main() -> None:
         # Initialize Taxi Manager for game mode
         on_load_progress(0.94, "Preparing taxi missions...")
         taxi_mgr = TaxiManager(ways, places=places, buildings=buildings, taxi_stops=taxi_stops, language=language)
-        police_config = config["police"]
-        taxi_stop_cameras = police_config.getboolean("taxi_stop_cameras", fallback=False)
         speed_cameras = place_speed_cameras(
             ways,
             bounds,
             camera_city_name,
-            taxi_stops=taxi_stops if taxi_stop_cameras else None,
             seed=random.randrange(2**32),
         )
         logger.info("Placed %d hidden speed cameras", len(speed_cameras))
@@ -631,6 +630,10 @@ def main() -> None:
         speed_limiter_enabled = True
         red_light_assist_enabled = False
         show_compass = False
+        show_navigation = False
+        navigation_route = None
+        navigation_target_key = None
+        navigation_route_dirty = False
         phone_open = False
         rage_shout_timer = 0.0
         rage_shout_text = RAGE_SHOUTS[0]
@@ -650,7 +653,7 @@ def main() -> None:
         track_sequence = 0
         last_track_surface = None
         map_sync_stage = 0
-        water_respawn_timer = 0.0
+        water_elapsed = 0.0
         on_foot = False
         saved_gig_fares = taxi_mgr.completed_fares
         clock.tick()  # Reset clock timer to avoid large dt on first frame
@@ -675,6 +678,11 @@ def main() -> None:
                         phone_open = not phone_open
                     elif event.key == pygame.K_c:
                         show_compass = not show_compass
+                    elif event.key == pygame.K_n:
+                        show_navigation = not show_navigation
+                        if not show_navigation:
+                            navigation_route = None
+                            navigation_target_key = None
                     elif event.key == pygame.K_f:
                         if not on_foot:
                             length_m = getattr(car, "length_m", 4.0)
@@ -903,13 +911,6 @@ def main() -> None:
                 dt = 0.0
             rage_shout_timer = max(0.0, rage_shout_timer - dt)
 
-            if water_respawn_timer > 0.0:
-                water_respawn_timer -= dt
-                car.speed = 0.0
-                if water_respawn_timer <= 0.0:
-                    respawn_car(car, ways, waters=waters, taxi_stops=taxi_stops)
-                    taxi_mgr.handle_respawn(car.x, car.y)
-
             if zoom_elapsed < zoom_duration:
                 zoom_elapsed = min(zoom_duration, zoom_elapsed + dt)
                 progress = zoom_elapsed / zoom_duration
@@ -984,7 +985,7 @@ def main() -> None:
             previous_position = (car.x, car.y)
             previous_speed = car.speed
             # Off-road driving is allowed at a reduced speed.
-            if not on_foot and water_respawn_timer <= 0.0:
+            if not on_foot:
                 update_car_physics(
                     car,
                     throttle,
@@ -1015,11 +1016,31 @@ def main() -> None:
                     car.speed = 0.0
                     taxi_mgr.notification_msg = tr(language, "roadwork_blocked")
                     taxi_mgr.notification_timer = 2.5
-                elif is_car_fully_in_water(car, waters):
-                    car.speed = 0.0
-                    water_respawn_timer = 1.5
-                    taxi_mgr.notification_msg = tr(language, "water_driving")
-                    taxi_mgr.notification_timer = 1.5
+                else:
+                    current_way = get_current_road_at_car(
+                        car,
+                        ways=ways,
+                        spatial_grid=spatial_grid,
+                        car_roads_only=True,
+                        current_way=current_way,
+                    )
+                in_water = not entered_roadwork and is_car_fully_in_water(
+                    car, waters, current_way=current_way
+                )
+                if in_water:
+                    water_elapsed = min(10.0, water_elapsed + dt)
+                    taxi_mgr.notification_msg = (
+                        f"{tr(language, 'water_timer')}: {max(0.0, 10.0 - water_elapsed):.1f} s"
+                    )
+                    taxi_mgr.notification_timer = 0.2
+                    if water_elapsed >= 10.0:
+                        respawn_car(car, ways, waters=waters, taxi_stops=taxi_stops)
+                        taxi_mgr.handle_respawn(car.x, car.y)
+                        taxi_mgr.notification_msg = tr(language, "water_driving")
+                        taxi_mgr.notification_timer = 1.5
+                        water_elapsed = 0.0
+                else:
+                    water_elapsed = 0.0
             if immobilized:
                 car.speed = 0.0
             movement_distance = math.hypot(car.x - previous_position[0], car.y - previous_position[1])
@@ -1269,13 +1290,35 @@ def main() -> None:
                 elif map_sync_stage == 5:
                     cyclist_mgr.sync_map_data(ways, traffic_lights=traffic_lights)
                     map_sync_stage = 0
+                    navigation_route_dirty = True
+            current_target = taxi_mgr.get_current_target()
+            if show_navigation and current_target:
+                target_key = (id(current_target), current_target.x, current_target.y)
+                route_deviation = False
+                if navigation_route and len(navigation_route) >= 2:
+                    route_deviation = min(
+                        dist_point_to_segment(car.x, car.y, start[0], start[1], end[0], end[1])
+                        for start, end in zip(navigation_route, navigation_route[1:])
+                    ) > 35.0
+                if target_key != navigation_target_key or navigation_route_dirty or route_deviation:
+                    route_layer = getattr(current_way, "layer", None) if current_way else None
+                    navigation_route = traffic_mgr.plan_route(
+                        (car.x, car.y),
+                        (current_target.x, current_target.y),
+                        layer=route_layer,
+                    )
+                    navigation_target_key = target_key
+                    navigation_route_dirty = False
+            elif not current_target:
+                navigation_route = None
+                navigation_target_key = None
             if first_gameplay_frame:
                 logger.info("Gameplay frame: map update complete")
 
             # Render background and scene
             if first_gameplay_frame:
                 logger.info("Gameplay frame: rendering scenery")
-            screen.fill((25, 80, 25))  # grass base
+            draw_grass_texture(screen, camx, camy, px_per_m)
             draw_scenery(
                 screen,
                 sceneries,
@@ -1318,6 +1361,8 @@ def main() -> None:
             draw_npc_cars(screen, traffic_mgr.npcs, camx, camy, px_per_m=px_per_m, ways=ways)
             draw_police_cars(screen, police_mgr.cars, camx, camy, px_per_m=px_per_m)
             draw_taxi_brawl(screen, brawl_manager.draw_data(), camx, camy, px_per_m=px_per_m)
+            if show_navigation:
+                draw_navigation_route(screen, navigation_route, camx, camy, px_per_m=px_per_m)
             draw_taxi_target(screen, taxi_mgr, camx, camy, font, px_per_m=px_per_m, language=language)
             draw_taxi_exhaust(screen, car, camx, camy, px_per_m=px_per_m)
             draw_car(
@@ -1372,6 +1417,7 @@ def main() -> None:
                 rage_power=rage_power,
                 language=language,
                 career_total_distance_m=car.odometer_m if career is not None else None,
+                water_time_remaining=(10.0 - water_elapsed) if water_elapsed > 0.0 else None,
             )
             if phone_open:
                 draw_phone_offers(screen, taxi_mgr, font, small_font, SCREEN_W, SCREEN_H, language)

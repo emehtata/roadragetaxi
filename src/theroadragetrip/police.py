@@ -232,40 +232,13 @@ def place_speed_cameras(
     taxi_stops: Optional[List[TaxiStop]] = None,
     seed: Optional[int] = None,
 ) -> List[SpeedCamera]:
-    """Place cameras at taxi stops, then fill remaining network-based slots."""
+    """Place directional cameras across the connected road network."""
     candidates = [way for way in ways if way.is_drivable and len(way.points_m) >= 2]
     if not candidates:
         return []
-    target_count = max(camera_count(ways, city_name), len(taxi_stops or []))
-    target_count = min(20, target_count)
+    target_count = camera_count(ways, city_name)
     rng = random.Random(repr(bounds) if seed is None else seed)
     result: List[SpeedCamera] = []
-
-    for stop in taxi_stops or []:
-        if len(result) >= target_count:
-            break
-        nearest = min(
-            ((way, start, end) for way in candidates for start, end in zip(way.points_m, way.points_m[1:])),
-            key=lambda item: _distance_to_segment(stop.x, stop.y, item[1], item[2]),
-        )
-        way, start, end = nearest
-        dx = end[0] - start[0]
-        dy = end[1] - start[1]
-        segment_length_squared = dx * dx + dy * dy
-        ratio = max(0.0, min(1.0, ((stop.x - start[0]) * dx + (stop.y - start[1]) * dy) / segment_length_squared))
-        road_x = start[0] + ratio * dx
-        road_y = start[1] + ratio * dy
-        side = (stop.x - road_x) * -dy + (stop.y - road_y) * dx
-        side_sign = 1.0 if side >= 0.0 else -1.0
-        offset_x = side_sign * -dy / math.sqrt(segment_length_squared) * 4.5
-        offset_y = side_sign * dx / math.sqrt(segment_length_squared) * 4.5
-        result.append(SpeedCamera(
-            road_x + offset_x,
-            road_y + offset_y,
-            math.atan2(dy, dx),
-            way.speed_limit_kmh,
-            way.osm_id,
-        ))
 
     rng.shuffle(candidates)
     for way in candidates:
@@ -280,9 +253,10 @@ def place_speed_cameras(
         if segment_length < 30.0:
             continue
         ratio = rng.uniform(0.25, 0.75)
+        right_offset = getattr(way, "half_width_m", 4.0) + 1.0
         result.append(SpeedCamera(
-            start[0] + dx * ratio,
-            start[1] + dy * ratio,
+            start[0] + dx * ratio + dy / segment_length * right_offset,
+            start[1] + dy * ratio - dx / segment_length * right_offset,
             math.atan2(dy, dx),
             way.speed_limit_kmh,
             way.osm_id,

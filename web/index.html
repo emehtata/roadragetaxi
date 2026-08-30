@@ -3,8 +3,8 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="The Road Rage Trip is a Finnish top-down taxi driving game built on real OpenStreetMap roads.">
-  <title>The Road Rage Trip | Taxi driving with consequences</title>
+  <meta name="description" content="The Road Rage Trip is a Finnish top-down taxi driving game with real OpenStreetMap roads, living traffic, missions, and road rage.">
+  <title>The Road Rage Trip | Real roads, bad decisions</title>
   <link rel="stylesheet" href="styles.css">
   <script defer src="script.js"></script>
 </head>
@@ -58,7 +58,10 @@
         <div class="feature-grid">
           <article class="feature-card"><span class="feature-number">01</span><div class="feature-icon road-icon">╱╲</div><h3>Oikeita teitä, oikeita paikkoja</h3><p>Aja suomalaisilla kaduilla, jotka muodostuvat OpenStreetMap-datasta rakennuksineen, puistoineen, vesistöineen ja kohteineen.</p></article>
           <article class="feature-card accent-card"><span class="feature-number">02</span><div class="feature-icon">✦</div><h3>Raivo on supervoimasi</h3><p>Käytä raivoa raivataksesi tien liikenteen läpi. Kun poliisi lähtee perääsi, yksi huuto voi pysäyttää poliisiauton, kääntää sen pois ja saada sen luovuttamaan.</p></article>
-          <article class="feature-card"><span class="feature-number">03</span><div class="feature-icon camera-icon">▣</div><h3>Pidä silmät tiessä</h3><p>Piilossa olevat nopeuskamerat valvovat lähestymisalueita. Poliisi ajaa holtittomien kuljettajien perässä, puut huojuvat, lehdet lentävät ja kovat kolarit saavat taksit savuamaan.</p></article>
+          <article class="feature-card"><span class="feature-number">03</span><div class="feature-icon camera-icon">▣</div><h3>Pidä silmät tiessä</h3><p>Piilossa olevat peltikamerat valvovat 50 metrin lähestymisalueita. Poliisi reagoi ylinopeuteen, puut huojuvat, lehdet lentävät ja kovat kolarit saavat taksin savuamaan.</p></article>
+          <article class="feature-card"><span class="feature-number">04</span><div class="feature-icon">⌁</div><h3>Reitti elää</h3><p>Paina N ja näet keltaisen ehdotetun reitin aktiiviselle kyydille. Reitti seuraa yksisuuntaisia katuja, päivittyy uuden karttatiedon myötä ja laskee itsensä uudelleen, jos eksyt.</p></article>
+          <article class="feature-card"><span class="feature-number">05</span><div class="feature-icon">◌</div><h3>Kaupunki kasvaa ympärillä</h3><p>Taustalla haetaan uusia OSM-karttaruutuja, kun ajat alueen reunaa kohti. Rakennukset, puistot, metsät, vesistöt, puut ja nimetyt paikat liittyvät maailmaan lennossa.</p></article>
+          <article class="feature-card"><span class="feature-number">06</span><div class="feature-icon">△</div><h3>Siltoja ja vesistöjä</h3><p>Vesistöt renderöidään teiden alle, ja sillat kuljettavat liikenteen niiden yli omalla tasollaan. Tieverkko ja vesialueet muodostavat ajettavan kaupunkimaiseman.</p></article>
         </div>
       </div>
     </section>
@@ -71,8 +74,12 @@
           <div class="control-row"><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd><span>Aja, jarruta, ohjaa</span></div>
           <div class="control-row"><kbd>P</kbd><span>Avaa taksin puhelin</span></div>
           <div class="control-row"><kbd>SPACE</kbd><span>Raivohuuto: raivaa tie</span></div>
-          <div class="control-row"><kbd>F1</kbd><span>Avaa ohjeet ja tavoite</span></div>
-          <div class="control-row"><kbd>ESC</kbd><span>Tauko, asetukset, kaupungin vaihto</span></div>
+          <div class="control-row"><kbd>N</kbd><span>Näytä ehdotettu reitti</span></div>
+          <div class="control-row"><kbd>K</kbd><span>Kaista-avustin</span></div>
+          <div class="control-row"><kbd>V</kbd><span>Nopeusrajoitin</span></div>
+          <div class="control-row"><kbd>B</kbd><span>Liikennevaloavustin</span></div>
+          <div class="control-row"><kbd>R</kbd><span>Respawn, T nollaa trippimittarin</span></div>
+          <div class="control-row"><kbd>ESC</kbd><span>Tauko, asetukset ja kaupungin vaihto</span></div>
         </div>
       </div>
     </section>

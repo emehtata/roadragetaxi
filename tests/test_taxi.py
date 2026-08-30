@@ -189,7 +189,7 @@ def test_phone_offers_show_distance_and_accept_selected_ride():
     assert taxi_mgr.offers == []
 
 
-def test_phone_offers_prefer_named_buildings_over_taxi_stops():
+def test_phone_offers_use_allowed_pickup_and_dropoff_locations():
     way = Way(
         points_m=[(0.0, 0.0), (3000.0, 0.0)],
         highway="residential",
@@ -212,8 +212,10 @@ def test_phone_offers_prefer_named_buildings_over_taxi_stops():
     offers = taxi_mgr.generate_offers(0.0, 0.0, count=1)
 
     assert len(offers) == 1
-    assert offers[0].passenger.pickup.address in {"Kahvila", "Hotelli"}
-    assert offers[0].passenger.dropoff.address in {"Kahvila", "Hotelli"}
+    pickup = offers[0].passenger.pickup
+    dropoff = offers[0].passenger.dropoff
+    assert pickup.address in {"Kahvila", "Hotelli"} or "Keskuskatu" in pickup.address
+    assert dropoff.x not in {stop.x for stop in stops}
 
 
 def test_idle_taxi_gets_one_random_phone_request_and_can_reject():

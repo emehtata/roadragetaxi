@@ -910,14 +910,6 @@ class TrafficManager:
                 viewport_bounds=viewport_bounds,
                 near_heading=player_car.heading,
             )
-            if not npc and viewport_bounds:
-                # Fallback without strict viewport boundary if road network is very sparse
-                npc = self.spawn_npc(
-                    player_car.x,
-                    player_car.y,
-                    viewport_bounds=None,
-                    near_heading=player_car.heading,
-                )
             if not npc:
                 break
 

@@ -1,3 +1,5 @@
+import math
+
 from theroadragetrip.osm import TaxiStop, Way
 from theroadragetrip.physics import Car
 from theroadragetrip.localization import tr
@@ -60,22 +62,30 @@ def test_camera_placement_is_reproducible():
     assert first == second
 
 
-def test_each_taxi_stop_gets_a_camera():
+def test_taxi_stops_do_not_force_camera_placement():
     ways = [road(name=f"Road {index}") for index in range(100)]
     stops = [TaxiStop(100.0, 0.0, 1), TaxiStop(600.0, 0.0, 2)]
     cameras = place_speed_cameras(ways, (0.0, 0.0, 1000.0, 1000.0), taxi_stops=stops)
-    assert any(abs(camera.x - stops[0].x) <= 5.0 and abs(camera.y - stops[0].y) <= 5.0 for camera in cameras)
-    assert any(abs(camera.x - stops[1].x) <= 5.0 and abs(camera.y - stops[1].y) <= 5.0 for camera in cameras)
-    assert all(abs(camera.y - stop.y) >= 4.0 for camera, stop in zip(cameras[:2], stops))
+    without_stops = place_speed_cameras(ways, (0.0, 0.0, 1000.0, 1000.0))
+
+    assert cameras == without_stops
 
 
-def test_taxi_stop_camera_option_is_opt_in_at_call_site():
+def test_speed_cameras_are_placed_on_right_side_of_road():
+    cameras = place_speed_cameras([road()], (0.0, 0.0, 1000.0, 1000.0), seed=1)
+
+    assert cameras
+    for camera in cameras:
+        assert camera.y < 0.0
+        assert math.isclose(camera.y, -5.0, abs_tol=1e-9)
+
+
+def test_taxi_stop_argument_does_not_change_camera_count():
     ways = [road(name=f"Road {index}") for index in range(100)]
     stops = [TaxiStop(100.0, 0.0, 1), TaxiStop(600.0, 0.0, 2)]
     without_stops = place_speed_cameras(ways, (0.0, 0.0, 1000.0, 1000.0))
     with_stops = place_speed_cameras(ways, (0.0, 0.0, 1000.0, 1000.0), taxi_stops=stops)
-    assert len(with_stops) >= len(without_stops)
-    assert len(with_stops) >= len(stops)
+    assert len(with_stops) == len(without_stops)
 
 
 def test_police_cars_spawn_as_traffic_npcs():

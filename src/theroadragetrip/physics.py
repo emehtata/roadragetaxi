@@ -136,8 +136,10 @@ def is_point_in_water(px: float, py: float, waters: List) -> bool:
     return False
 
 
-def is_car_fully_in_water(car: Car, waters: List) -> bool:
-    """Return whether all four corners of the car are inside mapped water."""
+def is_car_fully_in_water(car: Car, waters: List, current_way=None) -> bool:
+    """Return whether all four corners are in water, except while on a bridge."""
+    if getattr(current_way, "is_bridge", False):
+        return False
     half_length = getattr(car, "length_m", 4.0) * 0.5
     half_width = getattr(car, "width_m", 1.8) * 0.5
     forward_x = math.cos(car.heading)

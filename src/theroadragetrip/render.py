@@ -1,10 +1,11 @@
 import math
 import os
+import random
 import subprocess
 from importlib.metadata import PackageNotFoundError, version as package_version
 from typing import List, Optional, Tuple
 
-from .geo import clip_polygon_to_rect, dist_point_to_segment, meters_to_latlon
+from .geo import clip_polygon_to_rect, dist_point_to_segment, meters_to_latlon, point_in_polygon
 from .osm import Building, Place, Scenery, TaxiStop, Water, Way
 from .physics import Car
 from .taxi import TaxiManager, TaxiState
@@ -21,6 +22,7 @@ _motorcycle_sprite = None
 _moped_sprite = None
 _two_wheeler_tinted_sprites = {}
 _cyclist_tinted_sprites = {}
+_grass_texture_tile = None
 
 
 def _tinted_two_wheeler_sprite(sprite, color, cache_key):
@@ -90,7 +92,7 @@ def _get_game_version() -> str:
     try:
         return f"v{package_version('theroadragetrip')}"
     except PackageNotFoundError:
-        return "v0.4.0beta"
+        return "v0.5.0beta"
 
 
 GAME_VERSION = _get_game_version()
@@ -188,6 +190,22 @@ def draw_scenery(
         pts = [world_to_screen(x, y, camx, camy, px_per_m, screen_w, screen_h) for (x, y) in sc.points_m]
         color = colors.get(sc.kind.lower(), (38, 105, 38))
         pygame.draw.polygon(screen, color, pts)
+        if sc.kind.lower() in ("forest", "wood"):
+            min_x = max(vminx, min(point[0] for point in sc.points_m))
+            max_x = min(vmaxx, max(point[0] for point in sc.points_m))
+            min_y = max(vminy, min(point[1] for point in sc.points_m))
+            max_y = min(vmaxy, max(point[1] for point in sc.points_m))
+            for grass_x in range(math.floor(min_x / 8.0) * 8, math.ceil(max_x), 8):
+                for grass_y in range(math.floor(min_y / 8.0) * 8, math.ceil(max_y), 8):
+                    if not point_in_polygon(grass_x, grass_y, sc.points_m):
+                        continue
+                    variation = abs(math.sin(grass_x * 12.9898 + grass_y * 78.233))
+                    if variation < 0.35:
+                        continue
+                    start = world_to_screen(grass_x, grass_y, camx, camy, px_per_m, screen_w, screen_h)
+                    tuft_length = (0.35 + variation * 0.35) * px_per_m
+                    end = (start[0] + int(variation * tuft_length), start[1] - max(1, int(tuft_length)))
+                    pygame.draw.line(screen, (48, 116, 42), start, end, max(1, int(0.12 * px_per_m)))
         for tree_index, (tree_x, tree_y) in enumerate(getattr(sc, "trees", [])):
             if not (vminx <= tree_x <= vmaxx and vminy <= tree_y <= vmaxy):
                 continue
@@ -220,6 +238,33 @@ def draw_scenery(
                     drift_x = math.sin(leaf_index * 2.7 + (1.2 - leaves_left) * 8.0) * 12.0 * px_per_m
                     drift_y = -(1.2 - leaves_left) * 20.0 * px_per_m + math.cos(leaf_index * 1.9) * 5.0 * px_per_m
                     pygame.draw.circle(screen, (82, 145, 44), (int(sx + drift_x), int(sy - crown + drift_y)), max(1, int(px_per_m * 0.22)))
+
+
+def draw_grass_texture(screen, camx: float, camy: float, px_per_m: float = PX_PER_M) -> None:
+    """Fill screen with a subtle repeating grass texture."""
+    import pygame
+
+    global _grass_texture_tile
+    if _grass_texture_tile is None:
+        tile_size = 96
+        _grass_texture_tile = pygame.Surface((tile_size, tile_size))
+        _grass_texture_tile.fill((25, 80, 25))
+        rng = random.Random(17)
+        for _ in range(150):
+            x = rng.randrange(tile_size)
+            y = rng.randrange(tile_size)
+            color = rng.choice(((35, 96, 31), (42, 105, 35), (20, 70, 24), (58, 112, 39)))
+            pygame.draw.line(_grass_texture_tile, color, (x, y), (x + rng.choice((-1, 0, 1)), y - rng.randrange(1, 4)), 1)
+
+    tile_width, tile_height = _grass_texture_tile.get_size()
+    screen_width, screen_height = screen.get_size()
+    origin_x = screen_width // 2 - int(camx * px_per_m)
+    origin_y = screen_height // 2 + int(camy * px_per_m)
+    start_x = origin_x % tile_width - tile_width
+    start_y = origin_y % tile_height - tile_height
+    for x in range(start_x, screen_width, tile_width):
+        for y in range(start_y, screen_height, tile_height):
+            screen.blit(_grass_texture_tile, (x, y))
 
 
 def draw_taxi_smoke(screen, car: Car, camx: float, camy: float, px_per_m: float = PX_PER_M, timer: float = 0.0) -> None:
@@ -1673,6 +1718,28 @@ def draw_taxi_target(
         screen.blit(d_surf, d_rect)
 
 
+def draw_navigation_route(
+    screen,
+    route: Optional[List[Tuple[float, float]]],
+    camx: float,
+    camy: float,
+    px_per_m: float = PX_PER_M,
+    screen_w: int = SCREEN_W,
+    screen_h: int = SCREEN_H,
+) -> None:
+    """Draw the active taxi route above roads and below gameplay markers."""
+    import pygame
+
+    if not route or len(route) < 2:
+        return
+    points = [
+        world_to_screen(x, y, camx, camy, px_per_m, screen_w, screen_h)
+        for x, y in route
+    ]
+    pygame.draw.lines(screen, (60, 45, 5), False, points, max(5, int(px_per_m * 0.8)))
+    pygame.draw.lines(screen, (255, 215, 35), False, points, max(2, int(px_per_m * 0.45)))
+
+
 def draw_phone_offers(screen, taxi_mgr: TaxiManager, font, small_font, screen_w: int, screen_h: int, language: str = "fi") -> None:
     """Draw the in-game phone with selectable taxi offers."""
     import pygame
@@ -2224,6 +2291,7 @@ def draw_hud(
     rage_power: float = 0.0,
     language: str = "fi",
     career_total_distance_m: Optional[float] = None,
+    water_time_remaining: Optional[float] = None,
 ) -> None:
     """Draw speed, trip, odometer, on-road status, current road name, lat/lon, taxi mission bar, notifications."""
     import pygame
@@ -2257,6 +2325,25 @@ def draw_hud(
         sign_font = pygame.font.Font(None, 29)
         sign_text = sign_font.render(str(speed_limit_kmh), True, (20, 20, 20))
         screen.blit(sign_text, sign_text.get_rect(center=sign_center))
+
+    if water_time_remaining is not None:
+        water_text = font.render(
+            f"{tr(language, 'water_timer')}: {water_time_remaining:.1f} s",
+            True,
+            (255, 235, 90),
+        )
+        water_rect = water_text.get_rect(center=(screen.get_width() // 2, 78))
+        water_bg = pygame.Surface((water_rect.width + 24, water_rect.height + 10), pygame.SRCALPHA)
+        water_bg.fill((35, 25, 15, 225))
+        screen.blit(water_bg, (water_rect.x - 12, water_rect.y - 5))
+        pygame.draw.rect(
+            screen,
+            (255, 190, 40),
+            (water_rect.x - 12, water_rect.y - 5, water_rect.width + 24, water_rect.height + 10),
+            2,
+            border_radius=4,
+        )
+        screen.blit(water_text, water_rect)
 
     hint = (
         f"{tr(language, 'controls')}: W/S/A/D = {tr(language, 'drive').lower()} | +/- = {tr(language, 'zoom').lower()} | R = {tr(language, 'respawn').lower()} | X = {tr(language, 'cancel_ride').lower()} | T = {tr(language, 'reset_trip').lower()} | "
