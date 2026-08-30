@@ -1,16 +1,29 @@
 import argparse
+import json
 import logging
 import math
 import os
 import random
 import sys
 import time
+from dataclasses import asdict
 from typing import Optional, Tuple
 
 from .geo import clamp, dist_point_to_segment, meters_to_latlon
 from .audio import AudioManager
 from .brawl import TaxiBrawlManager
-from .config import CONFIG_PATH, cities_from_config, get_optional_int, get_overpass_endpoints, load_config, save_config
+from .config import (
+    CONFIG_PATH,
+    city_suggestions,
+    cities_from_config,
+    default_city_configuration,
+    get_optional_int,
+    get_overpass_endpoints,
+    load_city_catalog,
+    load_config,
+    replace_city_in_config,
+    save_config,
+)
 from .career import (
     CAREER_SCORE_LIMIT,
     career_path,
@@ -70,13 +83,14 @@ from .render import (
     draw_car,
     draw_cyclists,
     draw_city_selection_menu,
+    draw_city_editor,
     draw_city_summary,
     draw_mode_selection_menu,
     draw_compass,
     draw_crossings,
     draw_grass_texture,
     draw_hud,
-    draw_help_screen,
+    draw_tutorial_screen,
     draw_labels,
     draw_loading_screen,
     draw_navigation_route,
@@ -125,6 +139,130 @@ def _screenshot_directory() -> str:
     return "screenshots"
 
 
+def _write_debug_snapshot(
+    path: str,
+    car: Car,
+    taxi_mgr,
+    auto_fetch_manager,
+    args,
+    bbox,
+    viewport_bounds,
+    camx: float,
+    camy: float,
+    px_per_m: float,
+    current_way,
+    ways,
+    waters,
+    buildings,
+    sceneries,
+    places,
+    taxi_stops,
+    traffic_lights,
+    crossings,
+    elements_count: int,
+    traffic_mgr,
+    pedestrian_mgr,
+    cyclist_mgr,
+    spatial_grid,
+    map_sync_stage: int,
+    chosen_city: str,
+    camera_city_name,
+    game_mode: str,
+    on_foot: bool,
+) -> None:
+    minx, miny, maxx, maxy = auto_fetch_manager.get_bounds()
+    now = time.time()
+    taxi_scalars = {
+        key: value
+        for key, value in vars(taxi_mgr).items()
+        if isinstance(value, (str, int, float, bool)) or value is None
+    }
+    passenger = taxi_mgr.current_passenger
+    data = {
+        "timestamp_ns": time.time_ns(),
+        "car": asdict(car),
+        "taxi": {
+            "state": taxi_mgr.state,
+            "scalar_properties": taxi_scalars,
+            "current_passenger": asdict(passenger) if passenger is not None else None,
+            "offer_count": len(taxi_mgr.offers),
+            "tree_effect_count": len(taxi_mgr.tree_effects),
+            "fallen_tree_count": len(taxi_mgr.fallen_trees),
+            "vomit_puddle_count": len(taxi_mgr.vomit_puddles),
+        },
+        "world": {
+            "city": chosen_city,
+            "camera_city": camera_city_name,
+            "game_mode": game_mode,
+            "initial_bbox": list(bbox),
+            "current_bounds": list(auto_fetch_manager.get_bounds()),
+            "viewport_bounds": list(viewport_bounds),
+            "camera": {"x": camx, "y": camy, "px_per_m": px_per_m},
+            "feature_counts": {
+                "elements_loaded": elements_count,
+                "ways": len(ways),
+                "waters": len(waters),
+                "buildings": len(buildings),
+                "sceneries": len(sceneries),
+                "places": len(places),
+                "taxi_stops": len(taxi_stops),
+                "traffic_lights": len(traffic_lights),
+                "crossings": len(crossings),
+                "traffic_npcs": len(traffic_mgr.npcs),
+                "pedestrians": len(pedestrian_mgr.pedestrians),
+                "cyclists": len(cyclist_mgr.cyclists),
+            },
+            "current_way": {
+                "name": getattr(current_way, "name", None),
+                "highway": getattr(current_way, "highway", None),
+                "layer": getattr(current_way, "layer", None),
+                "speed_limit_kmh": getattr(current_way, "speed_limit_kmh", None),
+            } if current_way is not None else None,
+            "spatial_grid": {"indexed_way_count": spatial_grid.indexed_way_count},
+            "map_sync_stage": map_sync_stage,
+            "on_foot": on_foot,
+        },
+        "auto_fetch": {
+            "configured_enabled": bool(args.auto_fetch),
+            "call_enabled": True,
+            "margin_m": args.fetch_margin,
+            "tile_size_m": args.fetch_tile_size,
+            "build_in_process": bool(args.build_in_process),
+            "manager_enabled_state": not auto_fetch_manager.get_fetching(),
+            "is_fetching": auto_fetch_manager.get_fetching(),
+            "progress": auto_fetch_manager.get_progress(),
+            "last_trigger_reason": auto_fetch_manager.get_trigger_reason(),
+            "last_fetch_time": auto_fetch_manager.last_fetch_time,
+            "seconds_since_last_fetch": (
+                now - auto_fetch_manager.last_fetch_time
+                if auto_fetch_manager.last_fetch_time
+                else None
+            ),
+            "cooldown_s": auto_fetch_manager.cooldown_s,
+            "dead_end_count": len(auto_fetch_manager.dead_ends),
+            "dead_ends": auto_fetch_manager.dead_ends,
+            "known_dead_end": {
+                direction: auto_fetch_manager.is_known_dead_end(car.x, car.y, direction)
+                for direction in ("west", "east", "south", "north")
+            },
+            "distance_to_edges_m": {
+                "west": car.x - minx,
+                "east": maxx - car.x,
+                "south": car.y - miny,
+                "north": maxy - car.y,
+            },
+            "within_margin": {
+                "west": car.x < minx + args.fetch_margin,
+                "east": car.x > maxx - args.fetch_margin,
+                "south": car.y < miny + args.fetch_margin,
+                "north": car.y > maxy - args.fetch_margin,
+            },
+        },
+    }
+    with open(path, "w", encoding="utf-8") as debug_file:
+        json.dump(data, debug_file, ensure_ascii=False, indent=2, default=str)
+
+
 def parse_args(config=None, city_names=None) -> argparse.Namespace:
     p = argparse.ArgumentParser(description="The Road Rage Trip (OSM PoC)")
     game = config["game"] if config else {}
@@ -166,7 +304,7 @@ def parse_args(config=None, city_names=None) -> argparse.Namespace:
         default=get_optional_int(config, "traffic", "traffic_count") if config else None,
         help="Target number of NPC cars (default: scales with available streets, capped at 50)",
     )
-    p.add_argument("--pedestrian-count", type=int, default=traffic_config.getint("pedestrian_count", fallback=20), help="Target number of pedestrians")
+    p.add_argument("--pedestrian-count", type=int, default=traffic_config.getint("pedestrian_count", fallback=60), help="Target number of pedestrians")
     p.add_argument("--cyclist-count", type=int, default=traffic_config.getint("cyclist_count", fallback=8), help="Target number of cyclists")
 
     return p.parse_args()
@@ -222,6 +360,12 @@ def _city_refresh_at(pos: Tuple[int, int], screen_w: int, screen_h: int, city_co
     return checkbox_rect.collidepoint(pos)
 
 
+def _city_edit_at(pos: Tuple[int, int], screen_w: int, screen_h: int, city_count: int) -> bool:
+    rows = (city_count + 1) // 2
+    top = 115 + rows * 52 + 12 + 38
+    return pygame.Rect(screen_w // 2 - 150, top, 300, 36).collidepoint(pos)
+
+
 def _pause_item_at(pos: Tuple[int, int], option_count: int, screen_w: int, screen_h: int) -> Optional[int]:
     panel_w = min(420, screen_w - 40)
     panel_h = min(screen_h - 40, max(280, 110 + option_count * 56))
@@ -231,6 +375,95 @@ def _pause_item_at(pos: Tuple[int, int], option_count: int, screen_w: int, scree
     if not (item_x <= pos[0] <= item_x + item_w):
         return None
     return _menu_item_at_y(pos[1], panel_y + 80, item_h, 12, option_count)
+
+
+def _city_editor_suggestion_at(pos: Tuple[int, int], suggestion_count: int, screen_w: int, screen_h: int) -> Optional[int]:
+    rows = 5
+    input_y = 72 + rows * 46 + 20
+    input_rect = (screen_w // 2 - 250, input_y, 500, 42)
+    if not (input_rect[0] <= pos[0] <= input_rect[0] + input_rect[2] and input_rect[1] <= pos[1] <= input_rect[1] + input_rect[3] + 8):
+        return None
+    index = (pos[1] - input_rect[1] - input_rect[3] - 8) // 34
+    return index if 0 <= index < suggestion_count else None
+
+
+def _city_editor_item_at(pos: Tuple[int, int], city_count: int, screen_w: int) -> Optional[int]:
+    cols = 2
+    rows = (city_count + cols - 1) // cols
+    item_w, item_h, gap_x, gap_y = 300, 38, 20, 8
+    start_x, start_y = (screen_w - (2 * item_w + gap_x)) // 2, 72
+    x, y = pos
+    col = (x - start_x) // (item_w + gap_x)
+    row = (y - start_y) // (item_h + gap_y)
+    if not (0 <= col < cols and 0 <= row < rows):
+        return None
+    item_x = start_x + col * (item_w + gap_x)
+    item_y = start_y + row * (item_h + gap_y)
+    if item_x <= x <= item_x + item_w and item_y <= y <= item_y + item_h:
+        index = col * rows + row
+        return index if index < city_count else None
+    return None
+
+
+def edit_city_list(screen, font, clock, config, cities_list: list[str], selected_idx: int, language: str) -> tuple[list[str], int]:
+    catalog = load_city_catalog()
+    editor_idx = selected_idx
+    query = ""
+    suggestion_idx = 0
+    editing = True
+    pygame.key.start_text_input()
+    try:
+        while editing:
+            clock.tick(30)
+            suggestions = city_suggestions(query, catalog=catalog)
+            for ev in pygame.event.get():
+                if ev.type == pygame.QUIT:
+                    pygame.quit()
+                    sys.exit(0)
+                if ev.type == pygame.MOUSEBUTTONDOWN and ev.button == 1:
+                    city_idx = _city_editor_item_at(ev.pos, len(cities_list), SCREEN_W)
+                    if city_idx is not None:
+                        editor_idx = city_idx
+                        query = ""
+                        suggestion_idx = 0
+                        continue
+                    picked_idx = _city_editor_suggestion_at(ev.pos, len(suggestions), SCREEN_W, SCREEN_H)
+                    if picked_idx is not None:
+                        selected_name = suggestions[picked_idx]
+                        latitude, longitude = catalog[selected_name]
+                        replace_city_in_config(config, editor_idx, selected_name, latitude, longitude)
+                        save_config(config)
+                        cities_list = list(cities_from_config(config)[0])
+                        editing = False
+                        continue
+                if ev.type != pygame.KEYDOWN:
+                    continue
+                if ev.key == pygame.K_ESCAPE:
+                    editing = False
+                elif ev.key == pygame.K_BACKSPACE:
+                    query = query[:-1]
+                elif ev.key in (pygame.K_RETURN, pygame.K_KP_ENTER) and suggestions:
+                    selected_name = suggestions[suggestion_idx]
+                    latitude, longitude = catalog[selected_name]
+                    replace_city_in_config(config, editor_idx, selected_name, latitude, longitude)
+                    save_config(config)
+                    cities_list = list(cities_from_config(config)[0])
+                    editing = False
+                elif ev.key == pygame.K_UP and suggestions:
+                    suggestion_idx = (suggestion_idx - 1) % len(suggestions)
+                elif ev.key == pygame.K_DOWN and suggestions:
+                    suggestion_idx = (suggestion_idx + 1) % len(suggestions)
+                elif ev.unicode and ev.unicode.isprintable():
+                    query += ev.unicode
+                    suggestion_idx = 0
+            draw_city_editor(
+                screen, font, cities_list, editor_idx, query, suggestions, suggestion_idx,
+                SCREEN_W, SCREEN_H, language,
+            )
+            pygame.display.flip()
+    finally:
+        pygame.key.stop_text_input()
+    return cities_list, min(editor_idx, max(0, len(cities_list) - 1))
 
 
 def choose_language(screen, font, clock, current_language: str = "fi") -> str:
@@ -322,6 +555,7 @@ def main() -> None:
         master_volume=config.getfloat("audio", "master_volume", fallback=1.0),
         music_volume=config.getfloat("audio", "music_volume", fallback=0.2),
         effects_volume=config.getfloat("audio", "effects_volume", fallback=1.0),
+        comments_enabled=config.getboolean("audio", "comments_enabled", fallback=True),
         speech_min_interval=config.getfloat("speech", "min_interval", fallback=5.0),
         speech_max_interval=config.getfloat("speech", "max_interval", fallback=20.0),
     )
@@ -369,7 +603,8 @@ def main() -> None:
                             if hovered is not None:
                                 mode_selected = hovered
                                 if mode_selected == 2:
-                                    save_career(career_file, 0)
+                                    completed = bool(load_career(career_file, len(cities_list))["completed"])
+                                    save_career(career_file, 0, completed=completed)
                                     mode_selected = 0
                                 elif mode_selected == 3:
                                     clear_osm_cache()
@@ -388,7 +623,8 @@ def main() -> None:
                             mode_selected = (mode_selected + 1) % 3
                         elif ev.key in (pygame.K_RETURN, pygame.K_SPACE, pygame.K_KP_ENTER):
                             if mode_selected == 2:
-                                save_career(career_file, 0)
+                                completed = bool(load_career(career_file, len(cities_list))["completed"])
+                                save_career(career_file, 0, completed=completed)
                                 mode_selected = 0
                             elif mode_selected == 3:
                                 clear_osm_cache()
@@ -402,7 +638,8 @@ def main() -> None:
                             mode_selected = 1
                             choosing_mode = False
                         elif ev.key in (pygame.K_3, pygame.K_KP3):
-                            save_career(career_file, 0)
+                            completed = bool(load_career(career_file, len(cities_list))["completed"])
+                            save_career(career_file, 0, completed=completed)
                             mode_selected = 0
                         elif ev.key in (pygame.K_4, pygame.K_KP4):
                             clear_osm_cache()
@@ -412,6 +649,10 @@ def main() -> None:
                 game_mode = "career" if mode_selected == 0 else "gig_driver"
 
             career = load_career(career_file, len(cities_list)) if game_mode == "career" else None
+            if career is not None and not career["completed"]:
+                city_centers, bbox_presets = default_city_configuration()
+                cities_list = list(city_centers)
+                career = load_career(career_file, len(cities_list))
             if career is not None:
                 selected_city_idx = len(cities_list) - 1 - int(career["city_index"])
             if active_city_name is not None and active_city_name in cities_list:
@@ -432,6 +673,13 @@ def main() -> None:
                         if _city_refresh_at(ev.pos, SCREEN_W, SCREEN_H, len(cities_list)):
                             force_refresh = not force_refresh
                             continue
+                        if _city_edit_at(ev.pos, SCREEN_W, SCREEN_H, len(cities_list)):
+                            cities_list, selected_city_idx = edit_city_list(
+                                screen, font, clock, config, cities_list,
+                                selected_city_idx, language,
+                            )
+                            city_centers, bbox_presets = cities_from_config(config)
+                            continue
                         hovered = _city_item_at(ev.pos, len(cities_list), SCREEN_W)
                         if hovered is not None:
                             selected_city_idx = hovered
@@ -448,6 +696,12 @@ def main() -> None:
                             selected_city_idx = (selected_city_idx + 1) % len(cities_list)
                         elif ev.key == pygame.K_f:
                             force_refresh = not force_refresh
+                        elif ev.key == pygame.K_e:
+                            cities_list, selected_city_idx = edit_city_list(
+                                screen, font, clock, config, cities_list,
+                                selected_city_idx, language,
+                            )
+                            city_centers, bbox_presets = cities_from_config(config)
                         elif ev.key in (pygame.K_LEFT, pygame.K_RIGHT):
                             selected_city_idx = (selected_city_idx + 5) % len(cities_list)
                         elif pygame.K_1 <= ev.key <= pygame.K_9:
@@ -545,6 +799,16 @@ def main() -> None:
         # Spatial index for fast O(1) road collision detection
         spatial_grid = SpatialWayGrid()
         spatial_grid.rebuild(ways)
+        building_grid = SpatialWayGrid()
+        building_grid.rebuild(buildings)
+        scenery_grid = SpatialWayGrid()
+        scenery_grid.rebuild(sceneries)
+        water_grid = SpatialWayGrid()
+        water_grid.rebuild(waters)
+        crossing_grid = SpatialWayGrid()
+        crossing_grid.rebuild(crossings)
+        traffic_light_grid = SpatialWayGrid()
+        traffic_light_grid.rebuild(traffic_lights)
 
         # Spawn car on a road near center (avoiding water)
         car = Car(x=(minx + maxx) / 2, y=(miny + maxy) / 2, heading=0.0, speed=0.0)
@@ -592,7 +856,12 @@ def main() -> None:
 
         # Initialize autonomous Pedestrian Manager
         on_load_progress(0.98, "Preparing pedestrians...")
-        pedestrian_mgr = PedestrianManager(ways, target_count=args.pedestrian_count, traffic_lights=traffic_lights)
+        pedestrian_mgr = PedestrianManager(
+            ways,
+            target_count=args.pedestrian_count,
+            traffic_lights=traffic_lights,
+            venue_buildings=buildings,
+        )
         cyclist_mgr = CyclistManager(ways, target_count=args.cyclist_count, traffic_lights=traffic_lights)
         player_pedestrian = PlayerPedestrian(car.x, car.y)
         base_pedestrian_count = pedestrian_mgr.target_count
@@ -643,7 +912,7 @@ def main() -> None:
         running = True
         current_way = get_current_road_at_car(car, ways=ways, spatial_grid=spatial_grid, car_roads_only=True)
         zoom_target = args.px_per_m if args.px_per_m is not None else 9.0
-        px_per_m = max(0.25, zoom_target * 0.03)
+        px_per_m = max(0.25, zoom_target * 0.75)
         zoom_elapsed = 0.0
         zoom_duration = 3.0
         camx, camy = car.x, car.y
@@ -671,9 +940,20 @@ def main() -> None:
                     if event.key == pygame.K_F12:
                         screenshot_dir = _screenshot_directory()
                         os.makedirs(screenshot_dir, exist_ok=True)
-                        screenshot_path = os.path.join(screenshot_dir, f"screenshot_{time.time_ns()}.png")
+                        screenshot_id = time.time_ns()
+                        screenshot_path = os.path.join(screenshot_dir, f"screenshot_{screenshot_id}.png")
                         pygame.image.save(screen, screenshot_path)
+                        debug_path = os.path.join(screenshot_dir, f"screenshot_{screenshot_id}.json")
+                        _write_debug_snapshot(
+                            debug_path, car, taxi_mgr, auto_fetch_manager, args, bbox,
+                            viewport_bounds, camx, camy, px_per_m, current_way, ways,
+                            waters, buildings, sceneries, places, taxi_stops,
+                            traffic_lights, crossings, len(elements), traffic_mgr,
+                            pedestrian_mgr, cyclist_mgr, spatial_grid, map_sync_stage,
+                            chosen_city, camera_city_name, game_mode, on_foot,
+                        )
                         logger.info("Screenshot saved to %s", screenshot_path)
+                        logger.info("Runtime debug snapshot saved to %s", debug_path)
                     elif event.key == pygame.K_p:
                         phone_open = not phone_open
                     elif event.key == pygame.K_c:
@@ -711,6 +991,7 @@ def main() -> None:
                         if rage_power >= RAGE_SHOUT_COST:
                             traffic_mgr.rage_shout(car)
                             police_mgr.scare()
+                            audio.play_driver_line("rage", language)
                             audio.play("carhorn_takes", volume=0.45)
                             rage_power -= RAGE_SHOUT_COST
                             rage_shout_timer = 5.0
@@ -778,7 +1059,7 @@ def main() -> None:
                                                         sys.exit(0)
                                                     if h_ev.type == pygame.KEYDOWN and h_ev.key in (pygame.K_ESCAPE, pygame.K_F1):
                                                         show_help = False
-                                                draw_help_screen(screen, font, SCREEN_W, SCREEN_H, language)
+                                                draw_tutorial_screen(screen, font, SCREEN_W, SCREEN_H, language)
                                                 pygame.display.flip()
                                         elif pause_selected == 2:
                                             settings_selected = 0
@@ -791,12 +1072,12 @@ def main() -> None:
                                                         pygame.quit()
                                                         sys.exit(0)
                                                     if s_ev.type == pygame.MOUSEMOTION:
-                                                        hovered = _menu_item_at_y(s_ev.pos[1], 170, 32, 26, 5)
+                                                        hovered = _menu_item_at_y(s_ev.pos[1], 170, 32, 26, 7)
                                                         if hovered is not None:
                                                             settings_selected = hovered
                                                         continue
                                                     if s_ev.type == pygame.MOUSEBUTTONDOWN and s_ev.button == 1:
-                                                        hovered = _menu_item_at_y(s_ev.pos[1], 170, 32, 26, 5)
+                                                        hovered = _menu_item_at_y(s_ev.pos[1], 170, 32, 26, 7)
                                                         if hovered is not None:
                                                             settings_selected = hovered
                                                         continue
@@ -804,40 +1085,47 @@ def main() -> None:
                                                         continue
                                                     if s_ev.key == pygame.K_ESCAPE:
                                                         in_settings = False
-                                                    elif settings_selected == 4 and s_ev.key == pygame.K_BACKSPACE:
+                                                    elif settings_selected == 6 and s_ev.key == pygame.K_BACKSPACE:
                                                         endpoint_text = endpoint_text[:-1]
                                                         config.set("map", "overpass_endpoints", endpoint_text)
                                                         overpass_endpoints = get_overpass_endpoints(config)
                                                         save_config(config)
-                                                    elif settings_selected == 4 and s_ev.key == pygame.K_DELETE:
+                                                    elif settings_selected == 6 and s_ev.key == pygame.K_DELETE:
                                                         endpoint_text = ""
                                                         config.set("map", "overpass_endpoints", endpoint_text)
                                                         overpass_endpoints = get_overpass_endpoints(config)
                                                         save_config(config)
-                                                    elif settings_selected == 4 and s_ev.key == pygame.K_RETURN:
+                                                    elif settings_selected == 6 and s_ev.key == pygame.K_RETURN:
                                                         save_config(config)
-                                                    elif settings_selected == 4 and s_ev.unicode and s_ev.unicode.isprintable():
+                                                    elif settings_selected == 6 and s_ev.unicode and s_ev.unicode.isprintable():
                                                         endpoint_text += s_ev.unicode
                                                         config.set("map", "overpass_endpoints", endpoint_text)
                                                         overpass_endpoints = get_overpass_endpoints(config)
                                                         save_config(config)
                                                     elif s_ev.key == pygame.K_UP:
-                                                        settings_selected = (settings_selected - 1) % 5
+                                                        settings_selected = (settings_selected - 1) % 7
                                                     elif s_ev.key == pygame.K_DOWN:
-                                                        settings_selected = (settings_selected + 1) % 5
+                                                        settings_selected = (settings_selected + 1) % 7
                                                     elif s_ev.key in (pygame.K_LEFT, pygame.K_RIGHT):
                                                         delta = 0.05 if s_ev.key == pygame.K_RIGHT else -0.05
                                                         if settings_selected == 0:
                                                             language = SUPPORTED_LANGUAGES[(SUPPORTED_LANGUAGES.index(language) + (1 if delta > 0 else -1)) % 2]
-                                                        else:
+                                                        elif settings_selected in (1, 2, 3):
                                                             key = ("master_volume", "music_volume", "effects_volume")[settings_selected - 1]
                                                             value = max(0.0, min(1.0, config.getfloat("audio", key) + delta))
                                                             config.set("audio", key, f"{value:.2f}")
                                                             audio.set_volume(key.removesuffix("_volume"), value)
+                                                        elif settings_selected == 4:
+                                                            enabled = not config.getboolean("audio", "comments_enabled", fallback=True)
+                                                            config.set("audio", "comments_enabled", str(enabled).lower())
+                                                            audio.set_comments_enabled(enabled)
+                                                        elif settings_selected == 5:
+                                                            enabled = not config.getboolean("audio", "subtitles_enabled", fallback=True)
+                                                            config.set("audio", "subtitles_enabled", str(enabled).lower())
                                                         config.set("game", "language", language)
                                                         taxi_mgr.set_language(language)
                                                         save_config(config)
-                                                draw_settings_menu(screen, font, language, config.getfloat("audio", "master_volume"), config.getfloat("audio", "music_volume"), config.getfloat("audio", "effects_volume"), endpoint_text, settings_selected, SCREEN_W, SCREEN_H)
+                                                draw_settings_menu(screen, font, language, config.getfloat("audio", "master_volume"), config.getfloat("audio", "music_volume"), config.getfloat("audio", "effects_volume"), config.getboolean("audio", "comments_enabled", fallback=True), config.getboolean("audio", "subtitles_enabled", fallback=True), endpoint_text, settings_selected, SCREEN_W, SCREEN_H)
                                                 pygame.display.flip()
                                         elif pause_selected == 3:
                                             # Change City
@@ -871,13 +1159,24 @@ def main() -> None:
                                     sys.exit(0)
                                 if h_ev.type == pygame.KEYDOWN and h_ev.key in (pygame.K_ESCAPE, pygame.K_F1):
                                     show_help = False
-                            draw_help_screen(screen, font, SCREEN_W, SCREEN_H, language)
+                            draw_tutorial_screen(screen, font, SCREEN_W, SCREEN_H, language)
                             pygame.display.flip()
                         clock.tick()
                     elif event.key == pygame.K_r:
                         respawn_car(car, ways, waters=waters, taxi_stops=taxi_stops)
                         camx, camy = car.x, car.y
                         taxi_mgr.handle_respawn(car.x, car.y)
+                    elif event.key == pygame.K_HOME:
+                        respawn_car(
+                            car,
+                            ways,
+                            bounds=auto_fetch_manager.get_bounds(),
+                            waters=waters,
+                            near_edge=True,
+                        )
+                        camx, camy = car.x, car.y
+                        taxi_mgr.handle_respawn(car.x, car.y)
+                        logger.info("Debug respawn near bbox edge: car=(%.1f, %.1f)", car.x, car.y)
                     elif event.key == pygame.K_x:
                         taxi_mgr.discard_mission(car.x, car.y)
                         logger.info("Passenger fare discarded by player")
@@ -919,7 +1218,10 @@ def main() -> None:
 
             zoom_scale = max(px_per_m, zoom_target)
             traffic_mgr.set_target_count(traffic_count_for_zoom(base_traffic_count, zoom_scale), car)
-            pedestrian_mgr.set_target_count(traffic_count_for_zoom(base_pedestrian_count, zoom_scale), car)
+            pedestrian_mgr.set_target_count(
+                traffic_count_for_zoom(base_pedestrian_count, zoom_scale, minimum=20),
+                car,
+            )
             cyclist_mgr.set_target_count(traffic_count_for_zoom(base_cyclist_count, zoom_scale), car)
 
             keys = pygame.key.get_pressed()
@@ -1047,6 +1349,7 @@ def main() -> None:
             audio.update_acceleration(
                 abs(car.speed) > 0.5 and (throttle > 0.0 or brake > 0.0)
             )
+            audio.update_comments(dt)
             driven_distance = math.hypot(car.x - previous_position[0], car.y - previous_position[1])
             road_limit_mps = current_way.speed_limit_kmh / 3.6 if current_way else None
             if road_limit_mps is not None and driven_distance > 0.0 and abs(car.speed) <= road_limit_mps + 0.01:
@@ -1064,6 +1367,7 @@ def main() -> None:
             tree_crash = taxi_mgr.check_tree_collision(car, sceneries, traffic_mgr.sim_time, previous_position)
             if building_crash or tree_crash:
                 audio.play("car-crash", volume=0.7)
+                audio.play_driver_line("collision", language)
             if first_gameplay_frame:
                 logger.info("Gameplay frame: collision checks complete")
 
@@ -1097,7 +1401,7 @@ def main() -> None:
             taxi_mgr.update(car, dt)
             vomited_passenger = taxi_mgr.take_vomited_passenger(car)
             if vomited_passenger is not None:
-                audio.play_passenger_line("Nyt alkaa jo helpottaa.", vomited_passenger.gender, language)
+                audio.play_passenger_line("Nyt alkaa jo helpottaa.", vomited_passenger.gender, language, vomited_passenger.name)
                 passenger_pedestrian = pedestrian_mgr.spawn_pedestrian_at(
                     vomited_passenger.ped_x,
                     vomited_passenger.ped_y,
@@ -1111,16 +1415,18 @@ def main() -> None:
                 and not previous_nausea_resolved
                 and current_passenger.nausea_resolved
             ):
-                audio.play_passenger_line("Nyt alkaa jo helpottaa.", current_passenger.gender, language)
+                audio.play_passenger_line("Nyt alkaa jo helpottaa.", current_passenger.gender, language, current_passenger.name)
             if (
                 current_passenger is not None
                 and previous_nausea_warning_timer <= 0.0
                 and current_passenger.nausea_warning_timer > 0.0
             ):
+                audio.play_passenger_line_for_situation("nausea", current_passenger.gender, language, current_passenger.name)
                 audio.play_passenger_line(
                     "Voisitko pysähtyä hetkeksi, tarvitsen raitista ilmaa.",
                     current_passenger.gender,
                     language,
+                    current_passenger.name,
                 )
             audio.update_passenger_speech(
                 taxi_mgr.current_passenger is not None
@@ -1128,11 +1434,17 @@ def main() -> None:
                 taxi_mgr.current_passenger.gender if taxi_mgr.current_passenger else "woman",
                 language,
                 dt,
+                taxi_mgr.current_passenger.name if taxi_mgr.current_passenger else None,
             )
             if (
                 previous_taxi_state == TaxiState.CLIENT_WALKING_TO_CAR
                 and taxi_mgr.state == TaxiState.DRIVING_TO_DROPOFF
             ):
+                audio.play_driver_line("pickup", language)
+                audio.play_passenger_line_for_situation(
+                    "pickup", taxi_mgr.current_passenger.gender if taxi_mgr.current_passenger else "woman", language,
+                    taxi_mgr.current_passenger.name if taxi_mgr.current_passenger else None,
+                )
                 audio.play("car-door-open")
             elif (
                 previous_taxi_state == TaxiState.DRIVING_TO_DROPOFF
@@ -1140,6 +1452,8 @@ def main() -> None:
                 and taxi_mgr.current_passenger is None
                 and vomited_passenger is None
             ):
+                audio.play_driver_line("dropoff", language)
+                audio.play_passenger_line_for_situation("dropoff", previous_passenger.gender, language, previous_passenger.name)
                 audio.play("car-door-open")
                 passenger_pedestrian = pedestrian_mgr.spawn_pedestrian_at(
                     car.x + math.sin(car.heading) * 1.8,
@@ -1175,6 +1489,7 @@ def main() -> None:
                     running = False
             if taxi_mgr.check_car_collision(car, traffic_mgr.npcs, traffic_mgr.sim_time):
                 audio.play("car-crash", volume=0.8)
+                audio.play_driver_line("collision", language)
                 rage_power = 0.0
                 for npc in traffic_mgr.npcs:
                     if not getattr(npc, "fallen", False) or getattr(npc, "driver_spawned", False):
@@ -1196,8 +1511,12 @@ def main() -> None:
                         npc.x,
                         npc.y,
                     )
-            taxi_mgr.check_wrong_way_violation(car, dt, ways=ways, spatial_grid=spatial_grid)
-            taxi_mgr.check_speed_cameras(car, speed_cameras)
+            was_wrong_way = taxi_mgr.wrong_way_duration > 0.0
+            if taxi_mgr.check_wrong_way_violation(car, dt, ways=ways, spatial_grid=spatial_grid):
+                if not was_wrong_way:
+                    audio.play_driver_line("wrong_way", language)
+            if taxi_mgr.check_speed_cameras(car, speed_cameras):
+                audio.play_driver_line("speed_camera", language)
             if taxi_brawls_enabled:
                 brawl_manager.update(
                     car,
@@ -1210,9 +1529,22 @@ def main() -> None:
                 )
 
             # Update autonomous traffic NPCs and pedestrians
-            traffic_mgr.update(car, dt, viewport_bounds=viewport_bounds)
+            traffic_mgr.spawn_taxis_at_nearby_stops(
+                taxi_stops,
+                car,
+                viewport_bounds,
+            )
+            traffic_mgr.update(
+                car,
+                dt,
+                viewport_bounds=viewport_bounds,
+                pedestrians=pedestrian_mgr.pedestrians,
+                cyclists=cyclist_mgr.cyclists,
+                police_cars=police_mgr.cars,
+            )
             police_stopping = police_mgr.update(car, current_way, dt)
             if police_stopping:
+                audio.play_driver_line("police_chase", language)
                 car.speed = 0.0
                 if police_mgr.collect_penalty(car, current_way):
                     taxi_mgr.total_score -= 300
@@ -1261,7 +1593,13 @@ def main() -> None:
 
             # Auto-fetch map tiles when approaching bounds (if enabled)
             if args.auto_fetch:
-                started = auto_fetch_manager.start_if_needed(car, True, args.fetch_margin, args.fetch_tile_size)
+                started = auto_fetch_manager.start_if_needed(
+                    car,
+                    True,
+                    args.fetch_margin,
+                    args.fetch_tile_size,
+                    current_way=current_way,
+                )
                 if started:
                     logger.info(
                         "Triggered background auto-fetch (%s) at car=(%.1f, %.1f), speed=%.1f m/s, heading=%.2f rad, bounds=%s",
@@ -1272,11 +1610,26 @@ def main() -> None:
                         car.heading,
                         auto_fetch_manager.get_bounds(),
                     )
-                if len(ways) != spatial_grid.indexed_way_count and map_sync_stage == 0:
+                if (
+                    (
+                        len(ways) != spatial_grid.indexed_way_count
+                        or len(buildings) != building_grid.indexed_way_count
+                        or len(sceneries) != scenery_grid.indexed_way_count
+                        or len(waters) != water_grid.indexed_way_count
+                        or len(crossings) != crossing_grid.indexed_way_count
+                        or len(traffic_lights) != traffic_light_grid.indexed_way_count
+                    )
+                    and map_sync_stage == 0
+                ):
                     map_sync_stage = 1
 
                 if map_sync_stage == 1:
                     spatial_grid.rebuild(ways)
+                    building_grid.rebuild(buildings)
+                    scenery_grid.rebuild(sceneries)
+                    water_grid.rebuild(waters)
+                    crossing_grid.rebuild(crossings)
+                    traffic_light_grid.rebuild(traffic_lights)
                     map_sync_stage = 2
                 elif map_sync_stage == 2:
                     taxi_mgr.sync_map_data(ways, places=places, buildings=buildings)
@@ -1286,6 +1639,7 @@ def main() -> None:
                     map_sync_stage = 4
                 elif map_sync_stage == 4:
                     pedestrian_mgr.sync_map_data(ways, traffic_lights=traffic_lights)
+                    pedestrian_mgr.set_venue_buildings(buildings)
                     map_sync_stage = 5
                 elif map_sync_stage == 5:
                     cyclist_mgr.sync_map_data(ways, traffic_lights=traffic_lights)
@@ -1327,24 +1681,34 @@ def main() -> None:
                 px_per_m=px_per_m,
                 tree_effects=taxi_mgr.tree_effects,
                 fallen_trees=taxi_mgr.fallen_trees,
+                spatial_grid=scenery_grid,
             )
             if first_gameplay_frame:
                 logger.info("Gameplay frame: rendering water")
-            draw_waters(screen, waters, camx, camy, px_per_m=px_per_m)
-            if first_gameplay_frame:
-                logger.info("Gameplay frame: rendering buildings")
-            draw_buildings(screen, buildings, camx, camy, px_per_m=px_per_m)
+            draw_waters(screen, waters, camx, camy, px_per_m=px_per_m, spatial_grid=water_grid)
             if first_gameplay_frame:
                 logger.info("Gameplay frame: rendering roads")
-            draw_ways(screen, ways, camx, camy, px_per_m=px_per_m)
+            draw_ways(screen, ways, camx, camy, px_per_m=px_per_m, spatial_grid=spatial_grid)
+            if first_gameplay_frame:
+                logger.info("Gameplay frame: rendering buildings")
+            draw_buildings(screen, buildings, camx, camy, px_per_m=px_per_m, spatial_grid=building_grid)
             draw_tire_tracks(screen, tire_tracks, camx, camy, grass=False, px_per_m=px_per_m)
             draw_tire_tracks(screen, tire_tracks, camx, camy, grass=True, px_per_m=px_per_m)
             draw_vomit_puddles(screen, taxi_mgr.vomit_puddles, camx, camy, px_per_m=px_per_m)
+            draw_vomit_puddles(screen, pedestrian_mgr.vomit_puddles, camx, camy, px_per_m=px_per_m)
             draw_roadworks(screen, roadworks, camx, camy, px_per_m=px_per_m)
             if first_gameplay_frame:
                 logger.info("Gameplay frame: rendering overlays")
-            draw_crossings(screen, crossings, camx, camy, px_per_m=px_per_m)
-            draw_traffic_lights(screen, traffic_lights, traffic_mgr.sim_time, camx, camy, px_per_m=px_per_m)
+            draw_crossings(screen, crossings, camx, camy, px_per_m=px_per_m, spatial_grid=crossing_grid)
+            draw_traffic_lights(
+                screen,
+                traffic_lights,
+                traffic_mgr.sim_time,
+                camx,
+                camy,
+                px_per_m=px_per_m,
+                spatial_grid=traffic_light_grid,
+            )
             draw_taxi_stops(screen, taxi_stops, camx, camy, px_per_m=px_per_m)
             draw_speed_cameras(
                 screen,
@@ -1358,7 +1722,15 @@ def main() -> None:
             visible_pedestrians = pedestrian_mgr.pedestrians + ([player_pedestrian] if on_foot else [])
             draw_pedestrians(screen, visible_pedestrians, camx, camy, font=small_font, px_per_m=px_per_m, ways=ways)
             draw_cyclists(screen, cyclist_mgr.cyclists, camx, camy, px_per_m=px_per_m, ways=ways)
-            draw_npc_cars(screen, traffic_mgr.npcs, camx, camy, px_per_m=px_per_m, ways=ways)
+            draw_npc_cars(
+                screen,
+                traffic_mgr.npcs,
+                camx,
+                camy,
+                px_per_m=px_per_m,
+                ways=ways,
+                spatial_grid=spatial_grid,
+            )
             draw_police_cars(screen, police_mgr.cars, camx, camy, px_per_m=px_per_m)
             draw_taxi_brawl(screen, brawl_manager.draw_data(), camx, camy, px_per_m=px_per_m)
             if show_navigation:
@@ -1375,6 +1747,7 @@ def main() -> None:
                 ways=ways,
                 shout_timer=rage_shout_timer,
                 shout_text=rage_shout_text,
+                spatial_grid=spatial_grid,
             )
             draw_taxi_smoke(screen, car, camx, camy, px_per_m=px_per_m, timer=taxi_mgr.taxi_smoke_timer)
             draw_passenger_nausea_bubble(
@@ -1390,7 +1763,19 @@ def main() -> None:
 
             # Labels overlay (toggled with 'L')
             if show_labels:
-                draw_labels(screen, font, ways, waters, buildings, sceneries, places, camx, camy, px_per_m=px_per_m)
+                draw_labels(
+                    screen,
+                    font,
+                    ways,
+                    waters,
+                    buildings,
+                    sceneries,
+                    places,
+                    camx,
+                    camy,
+                    px_per_m=px_per_m,
+                    spatial_grid=spatial_grid,
+                )
 
             # Draw HUD and compass
             current_target = taxi_mgr.get_current_target()
@@ -1418,6 +1803,11 @@ def main() -> None:
                 language=language,
                 career_total_distance_m=car.odometer_m if career is not None else None,
                 water_time_remaining=(10.0 - water_elapsed) if water_elapsed > 0.0 else None,
+                comment_text=audio.comment_text,
+                comment_speaker=audio.comment_speaker,
+                comment_speaker_name=audio.comment_speaker_name,
+                subtitles_enabled=config.getboolean("audio", "subtitles_enabled", fallback=True),
+                fps=clock.get_fps(),
             )
             if phone_open:
                 draw_phone_offers(screen, taxi_mgr, font, small_font, SCREEN_W, SCREEN_H, language)

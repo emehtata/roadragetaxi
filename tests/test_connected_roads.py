@@ -47,9 +47,9 @@ def test_respawn_chooses_largest_connected_network():
     # Respawn car and ensure it never spawns on isolated road
     for _ in range(10):
         respawn_car(car, ways)
-        # Position should be on Main St (0 <= x <= 300, y == 0), not on isolated road (x >= 500)
+        # Position should be on Main St, not on isolated road (x >= 500).
         assert 0.0 <= car.x <= 300.0
-        assert car.y == 0.0
+        assert car.y < 0.0
 
 
 def test_respawn_uses_taxi_stop_when_available():
@@ -58,7 +58,7 @@ def test_respawn_uses_taxi_stop_when_available():
 
     respawn_car(car, [road], taxi_stops=[TaxiStop(42.0, 1.0)])
 
-    assert (car.x, car.y) == (42.0, 0.0)
+    assert (car.x, car.y) == (42.0, -1.8)
     assert car.speed == 0.0
 
 

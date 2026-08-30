@@ -4,350 +4,350 @@
   "lines": [
     {
       "id": 1,
-      "mood": "weather",
+      "mood": "good",
       "fi": "Onpa hieno ilma tänään.",
       "en": "What a lovely day today.",
       "hash": "a556ed233f83a8fe"
     },
     {
       "id": 2,
-      "mood": "weather",
+      "mood": "bad",
       "fi": "Tuo sade alkoi ihan yhtäkkiä.",
       "en": "That rain started so suddenly.",
       "hash": "8b2bb7c91cd002e0"
     },
     {
       "id": 3,
-      "mood": "weather",
+      "mood": "anxious",
       "fi": "Toivottavasti tiet eivät jäädy illalla.",
       "en": "I hope the roads do not freeze tonight.",
       "hash": "71bd5dd14d7cc874"
     },
     {
       "id": 4,
-      "mood": "weather",
+      "mood": "bad",
       "fi": "Aurinko paistaa, mutta tuulee kylmästi.",
       "en": "The sun is out, but the wind is cold.",
       "hash": "75658daeee705684"
     },
     {
       "id": 5,
-      "mood": "weather",
+      "mood": "good",
       "fi": "Syksyn värit ovat tänä vuonna erityisen kauniit.",
       "en": "The autumn colors are especially beautiful this year.",
       "hash": "30592cde54c07537"
     },
     {
       "id": 6,
-      "mood": "weather",
+      "mood": "bad",
       "fi": "Lumipyry taisi tulla vähän liian aikaisin.",
       "en": "The snowfall came a little too early.",
       "hash": "85abd43e35066a40"
     },
     {
       "id": 7,
-      "mood": "weather",
+      "mood": "neutral",
       "fi": "Minä pidän siitä, kun sumu peittää koko maiseman.",
       "en": "I like it when fog covers the whole landscape.",
       "hash": "2065e497af4cd92e"
     },
     {
       "id": 8,
-      "mood": "weather",
+      "mood": "good",
       "fi": "Kuulin, että viikonlopuksi luvataan hellettä.",
       "en": "I heard they are predicting hot weather for the weekend.",
       "hash": "50d2fa94983a2d15"
     },
     {
       "id": 9,
-      "mood": "weather",
+      "mood": "tired",
       "fi": "Tämä keli sopii täydellisesti päiväunille.",
       "en": "This weather is perfect for a nap.",
       "hash": "967b53905e9e1061"
     },
     {
       "id": 10,
-      "mood": "weather",
+      "mood": "anxious",
       "fi": "Toivottavasti ukkonen menee nopeasti ohi.",
       "en": "I hope the thunderstorm passes quickly.",
       "hash": "9b71dcc645d7d6c1"
     },
     {
       "id": 11,
-      "mood": "wellbeing",
+      "mood": "nausea",
       "fi": "Minua vähän huimaa, voisitko ajaa rauhallisemmin?",
       "en": "I feel a little dizzy, could you drive more gently?",
       "hash": "f09ef992fcbab803"
     },
     {
       "id": 12,
-      "mood": "wellbeing",
+      "mood": "bad",
       "fi": "En saanut aamulla mitään syötyä.",
       "en": "I could not eat anything this morning.",
       "hash": "1d900d22f10ca5a6"
     },
     {
       "id": 13,
-      "mood": "wellbeing",
+      "mood": "nausea",
       "fi": "Voisitko pysähtyä hetkeksi, tarvitsen raitista ilmaa.",
       "en": "Could you stop for a moment? I need some fresh air.",
       "hash": "453e1ff990f7f616"
     },
     {
       "id": 14,
-      "mood": "wellbeing",
+      "mood": "tired",
       "fi": "Minulla on ollut pitkä päivä.",
       "en": "I have had a long day.",
       "hash": "bf1e1a7cad8f680b"
     },
     {
       "id": 15,
-      "mood": "wellbeing",
+      "mood": "good",
       "fi": "Onneksi matka ei ole kovin pitkä.",
       "en": "Luckily the ride is not very long.",
       "hash": "d20ebe5ca9fb14e8"
     },
     {
       "id": 16,
-      "mood": "wellbeing",
+      "mood": "good",
       "fi": "Nyt alkaa jo helpottaa.",
       "en": "I am starting to feel better now.",
       "hash": "4671ed814735ceb4"
     },
     {
       "id": 17,
-      "mood": "wellbeing",
+      "mood": "bad",
       "fi": "Unohdin juoda tarpeeksi vettä tänään.",
       "en": "I forgot to drink enough water today.",
       "hash": "0665f98ba4d5a405"
     },
     {
       "id": 18,
-      "mood": "wellbeing",
+      "mood": "anxious",
       "fi": "Minua jännittää vähän tämä työhaastattelu.",
       "en": "I am a little nervous about this job interview.",
       "hash": "b4cc441f0f996167"
     },
     {
       "id": 19,
-      "mood": "wellbeing",
+      "mood": "annoyed",
       "fi": "Voisitko laittaa ilmanvaihtoa pienemmälle?",
       "en": "Could you turn the air conditioning down?",
       "hash": "cf928e0055d4ffbf"
     },
     {
       "id": 20,
-      "mood": "wellbeing",
+      "mood": "bad",
       "fi": "Taijan olla tulossa kipeäksi.",
       "en": "I think I might be coming down with something.",
       "hash": "6a1eb83c1a4d44b6"
     },
     {
       "id": 21,
-      "mood": "joy",
+      "mood": "good",
       "fi": "Sain tänään hyviä uutisia töistä.",
       "en": "I got good news from work today.",
       "hash": "dc5a5b142e28f28b"
     },
     {
       "id": 22,
-      "mood": "joy",
+      "mood": "good",
       "fi": "Lapseni oppi juuri ajamaan polkupyörällä.",
       "en": "My child just learned to ride a bicycle.",
       "hash": "8428810009bc514e"
     },
     {
       "id": 23,
-      "mood": "joy",
+      "mood": "good",
       "fi": "Olen menossa tapaamaan vanhaa ystävää.",
       "en": "I am going to meet an old friend.",
       "hash": "cd6a8c7664ca8200"
     },
     {
       "id": 24,
-      "mood": "joy",
+      "mood": "good",
       "fi": "Tänään on syntymäpäiväni.",
       "en": "It is my birthday today.",
       "hash": "c44c368496af2a85"
     },
     {
       "id": 25,
-      "mood": "joy",
+      "mood": "good",
       "fi": "Löysin vihdoin asunnon uudesta kaupungista.",
       "en": "I finally found an apartment in the new city.",
       "hash": "153b914471d5f0a7"
     },
     {
       "id": 26,
-      "mood": "joy",
+      "mood": "good",
       "fi": "Tämä kaupunki näyttää upealta iltavalaistuksessa.",
       "en": "This city looks wonderful in the evening light.",
       "hash": "46872e0a6b4c81ec"
     },
     {
       "id": 27,
-      "mood": "joy",
+      "mood": "good",
       "fi": "Voitin liput kesän konserttiin.",
       "en": "I won tickets to a summer concert.",
       "hash": "4c37d6117739e37e"
     },
     {
       "id": 28,
-      "mood": "joy",
+      "mood": "good",
       "fi": "Kylläpä teki hyvää käydä ulkona.",
       "en": "It felt so good to get outside.",
       "hash": "a8e6a07b64d6e945"
     },
     {
       "id": 29,
-      "mood": "joy",
+      "mood": "good",
       "fi": "Olen menossa kotiin juhlimaan.",
       "en": "I am going home to celebrate.",
       "hash": "892518c6b3cd5509"
     },
     {
       "id": 30,
-      "mood": "joy",
+      "mood": "good",
       "fi": "Kiitos kun tulit näin nopeasti.",
       "en": "Thank you for coming so quickly.",
       "hash": "eb1cbbbf2c9a7902"
     },
     {
       "id": 31,
-      "mood": "sadness",
+      "mood": "sad",
       "fi": "Tämä on ollut aika yksinäinen viikko.",
       "en": "This has been a rather lonely week.",
       "hash": "bc0add64cb9528d5"
     },
     {
       "id": 32,
-      "mood": "sadness",
+      "mood": "sad",
       "fi": "Kaipaan kotipaikkakuntaani paljon.",
       "en": "I miss my hometown a lot.",
       "hash": "e1e8611e6d573329"
     },
     {
       "id": 33,
-      "mood": "sadness",
+      "mood": "sad",
       "fi": "Jouduin hyvästelemään vanhan kissani eilen.",
       "en": "I had to say goodbye to my old cat yesterday.",
       "hash": "abf531dd8d5b6937"
     },
     {
       "id": 34,
-      "mood": "sadness",
+      "mood": "sad",
       "fi": "Kaikki tuntuu nyt vähän raskaalta.",
       "en": "Everything feels a little heavy right now.",
       "hash": "d5bc71510cc24a11"
     },
     {
       "id": 35,
-      "mood": "sadness",
+      "mood": "sad",
       "fi": "En saanut sitä paikkaa, jota hain.",
       "en": "I did not get the position I applied for.",
       "hash": "87a92a796d614d42"
     },
     {
       "id": 36,
-      "mood": "sadness",
+      "mood": "sad",
       "fi": "Toivon, että huominen olisi helpompi.",
       "en": "I hope tomorrow will be easier.",
       "hash": "25f2db6aac88bf25"
     },
     {
       "id": 37,
-      "mood": "sadness",
+      "mood": "sad",
       "fi": "Välillä olisi mukava, että joku vain kuuntelisi.",
       "en": "Sometimes it would be nice if someone just listened.",
       "hash": "a3af59dea85586ca"
     },
     {
       "id": 38,
-      "mood": "sadness",
+      "mood": "sad",
       "fi": "Tämä ei ollut sellainen päivä kuin suunnittelin.",
       "en": "This was not the day I had planned.",
       "hash": "705e1ac61ea2e8d9"
     },
     {
       "id": 39,
-      "mood": "sadness",
+      "mood": "sad",
       "fi": "Muutto on ollut yllättävän vaikeaa.",
       "en": "Moving has been surprisingly difficult.",
       "hash": "dbaa735bcb7763fb"
     },
     {
       "id": 40,
-      "mood": "sadness",
+      "mood": "sad",
       "fi": "Onneksi kohta pääsen kotiin.",
       "en": "At least I will be home soon.",
       "hash": "d4ae6a83c5ddfd0d"
     },
     {
       "id": 41,
-      "mood": "everyday",
+      "mood": "neutral",
       "fi": "Tiedätkö, missä täällä on lähin kahvila?",
       "en": "Do you know where the nearest cafe is?",
       "hash": "f6af5043785648e3"
     },
     {
       "id": 42,
-      "mood": "everyday",
+      "mood": "bad",
       "fi": "Unohdin taas puhelimen laturin kotiin.",
       "en": "I forgot my phone charger at home again.",
       "hash": "7c04ef3461d02064"
     },
     {
       "id": 43,
-      "mood": "everyday",
+      "mood": "neutral",
       "fi": "Minun pitäisi käydä kaupassa ennen iltaa.",
       "en": "I should go grocery shopping before evening.",
       "hash": "df5aaac46d2babd5"
     },
     {
       "id": 44,
-      "mood": "everyday",
+      "mood": "anxious",
       "fi": "Tämä reitti näyttää erilaiselta kuin muistin.",
       "en": "This route looks different from what I remember.",
       "hash": "09dad73caedf48f0"
     },
     {
       "id": 45,
-      "mood": "everyday",
+      "mood": "neutral",
       "fi": "Kuuntelen yleensä podcasteja matkalla.",
       "en": "I usually listen to podcasts while traveling.",
       "hash": "ebfd35af86f1b5a9"
     },
     {
       "id": 46,
-      "mood": "everyday",
+      "mood": "stressed",
       "fi": "Minulla on tänään aivan liikaa kokouksia.",
       "en": "I have far too many meetings today.",
       "hash": "1e8abd322e170933"
     },
     {
       "id": 47,
-      "mood": "everyday",
+      "mood": "curious",
       "fi": "Mikä tuo rakennus tuolla on?",
       "en": "What is that building over there?",
       "hash": "4e48f21f1bfaf746"
     },
     {
       "id": 48,
-      "mood": "everyday",
+      "mood": "stressed",
       "fi": "Olen aina myöhässä, vaikka lähden ajoissa.",
       "en": "I am always late even when I leave early.",
       "hash": "6ce20030183ea2a4"
     },
     {
       "id": 49,
-      "mood": "everyday",
+      "mood": "calm",
       "fi": "Täällä on yllättävän rauhallista tähän aikaan.",
       "en": "It is surprisingly quiet here at this hour.",
       "hash": "281141daf19b8e23"
     },
     {
       "id": 50,
-      "mood": "everyday",
+      "mood": "playful",
       "fi": "Kerro jotain hauskaa, kuski.",
       "en": "Tell me something funny, driver.",
       "hash": "ab1e1b449af6dfbb"

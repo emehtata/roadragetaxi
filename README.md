@@ -11,7 +11,7 @@ A top-down 2D driving game proof-of-concept (PoC) in Python and Pygame that proc
 - **Taxi Stops & Missions**: Taxi offers use street addresses, named buildings, and taxi stops as pickup and destination points.
 - **Ride Requests & Taxi Stands**: Three random ride requests arrive in the phone at a time when no passenger is onboard. Select one with `1`, `2`, or `3`, or reject the selected offer with `X`; phone offers and taxi-stand customers can coexist. Phone rides normally start and end at named buildings or street addresses, while taxi stands remain a fallback when no better map data is available. Wait stopped at a taxi stand and its customer walks visibly to the taxi before boarding. Maps without taxi stands can trigger occasional street hails; only a small share of pedestrians want a taxi. A passing taxi can notice a hail, but the passenger only boards after the taxi stops.
 - **Passenger After Drop-off**: After a completed fare, the passenger leaves the taxi beside the car and continues as an ordinary walking pedestrian.
-- **Passenger Chatter**: Includes 50 Finnish and English passenger lines covering weather, wellbeing, joyful moments, sadness, and everyday observations. The game randomly plays pre-rendered chatter matching the onboard passenger's gender.
+- **Situation Chatter**: Passenger and driver lines are selected randomly from situation-appropriate Finnish and English chatter. Driver lines cover rage, collisions, water, traffic violations, police, pickup, and dropoff; passenger lines are filtered by mood.
 - **Navigation Waypoints & Compass Pointer**: Displays visual waypoint zones, address tags, off-screen edge indicators, and an optional compass navigation pointer to client locations. The compass is hidden by default and toggled with `C`.
 - **Suggested Route**: Press `N` to show a yellow route from the taxi to the active pickup or dropoff target. The route follows connected OSM roads, respects one-way streets, refreshes when the target or streamed map changes, and recalculates when the taxi leaves it.
 - **Buildings & Scenery**: Renders building footprints, parks, forests, and green spaces with street/place name labels (`L` key).
@@ -25,7 +25,7 @@ A top-down 2D driving game proof-of-concept (PoC) in Python and Pygame that proc
 - **Roadworks**: Random roadworks add temporary traffic lights and can make NPC traffic slow or stop naturally.
 - **Hidden Police Cameras**: One to twenty directional speed cameras are distributed across the connected road network; Helsinki has 20. Cameras are not tied to taxi stops. Driving above the local speed limit within its 50-meter approach zone costs 300 points.
 - **Finnish & English**: The first launch asks for a language. The language can be changed later from the pause menu and is saved in `roadragetrip.ini`.
-- **Audio Settings**: Master, background, and effects volumes are adjustable at runtime from the pause menu and persist in the INI file. Passenger chatter follows the effects volume.
+- **Audio Settings**: Master, background, and effects volumes plus comment audio and subtitles are adjustable at runtime from the pause menu and persist in the INI file.
 - **Coordinate Projection**: Converts WGS84 (lat/lon) coordinates to metric ETRS-TM35FIN (EPSG:3067) using `pyproj`.
 - **Arcade Vehicle Physics & Road Containment**: Responsive throttle, braking, friction, speed-dependent steering, and strict car-road boundary collision containment (blocks driving off-road into pedestrian paths, lakes, or off-road scenery).
 - **Surface Tire Effects**: Hard braking while turning leaves continuous skid marks on roads. Driving across grass leaves persistent dark-brown tire tracks.
@@ -51,9 +51,12 @@ A top-down 2D driving game proof-of-concept (PoC) in Python and Pygame that proc
 │       ├── police.py      # Hidden speed-camera placement and directional detection
 │       ├── localization.py # Finnish and English translations
 │       ├── render.py      # Pygame rendering for roads, waters, buildings, traffic, pedestrians, HUD, and compass
-│       ├── assets/         # Image sprites and passenger chatter data
-│       │   └── passenger_chatter.json # 50 Finnish/English passenger lines
-│       ├── audio.py        # Optional music, effects, and passenger chatter playback
+│       ├── assets/         # Image sprites and chatter data
+│       │   ├── paikkadesi.json       # Country and city coordinates for future customization
+│       │   ├── paikkadesi.txt         # Source list for the city coordinate asset
+│       │   ├── passenger_chatter.json # 50 Finnish/English passenger lines
+│       │   └── driver_chatter.json    # Situation-specific driver lines
+│       ├── audio.py        # Optional music, effects, and situation chatter playback
 │       ├── brawl.py        # Optional taxi-driver brawls
 │       ├── career.py       # Career progress and odometer persistence
 │       ├── config.py       # INI loading, city configuration, and Overpass endpoints
@@ -149,6 +152,8 @@ cyclist_count = 8
 master_volume = 1.0
 music_volume = 0.2
 effects_volume = 1.0
+comments_enabled = true
+subtitles_enabled = true
 
 [speech]
 min_interval = 5.0
@@ -174,11 +179,17 @@ sysmä = 61.502271, 25.680613
 
 The `[cities]` section accepts any city name followed by `latitude, longitude`. Invalid coordinate entries are ignored. Command-line flags override matching INI values for the current launch.
 
+The pause-menu **Settings** screen includes **City list**. Select a configured city, type a replacement, then choose a matching catalog suggestion with the mouse or Enter. The selected INI entry is replaced in place and saved immediately. Catalog names and coordinates are loaded from `src/theroadragetrip/assets/paikkadesi.json`.
+
 The `[map] overpass_endpoints` setting contains a comma-separated list of Overpass API URLs. The in-game **Asetukset / Settings** menu lets you edit this list; changes are saved immediately. The `OVERPASS_ENDPOINTS` environment variable still takes precedence for one launch.
 
-### Passenger Chatter Playback
+### Comment Audio and Subtitles
 
-Passenger chatter plays only during an active ride to the destination. One entry is selected randomly every 5–20 seconds from `assets/passenger_chatter.json`; the matching pre-rendered WAV is selected from `sounds/passenger_chatter/` using the passenger's gender, language, and entry hash.
+The pause-menu **Comment audio** setting controls driver and passenger comment sounds. **Subtitles** displays the selected comment in a cinematic black subtitle bar at the bottom of the screen; audio and subtitles can be enabled independently.
+
+Passenger chatter plays only during an active ride to the destination. One entry is selected randomly every 5–20 seconds from `assets/passenger_chatter.json`; the matching pre-rendered WAV is selected from `sounds/passenger_chatter/` using the passenger's gender, language, and entry hash. Event chatter filters passenger lines by mood for nausea, water, pickup, dropoff, and collisions.
+
+Driver chatter uses `assets/driver_chatter.json` and matching files in `sounds/driver_chatter/`. Lines are filtered by gameplay situation and include a short per-situation cooldown so repeated physics events do not spam audio.
 
 Other common development commands are `make test`, `make compile`, and `make check`. Run `make help` to list all available targets.
 
@@ -208,6 +219,7 @@ Game sounds are stored in `src/theroadragetrip/sounds/`. CC0 sounds require no a
 | `+` / `=` | Zoom in (increase pixels per meter) |
 | `-` | Zoom out (decrease pixels per meter) |
 | `R` | Respawn car on a random road (penalizes active fare if client onboard) |
+| `Home` | Debug respawn near a random current map bbox edge (for auto-fetch testing) |
 | `X` | Reject phone offer, or cancel / discard active pickup or onboard passenger mission (score penalty) |
 | `T` | Reset trip meter to 0 |
 | `L` | Toggle street & feature name labels |
@@ -219,8 +231,11 @@ Game sounds are stored in `src/theroadragetrip/sounds/`. CC0 sounds require no a
 | `Space` | Rattiraivo / Road Rage: move NPC cars ahead aside within 50 m |
 | `P` | Open taxi phone and view three ride offers |
 | `1` - `3` | Accept a selected ride in the taxi phone |
-| `F1` | Open controls and game objective |
-| `Esc` | Open pause menu (Continue, Help, Settings, Change City, Exit) |
+| `F1` | Open the full tutorial and control list |
+| `F12` | Save screenshot plus matching runtime diagnostic JSON in `screenshots/` |
+| `Esc` | Open pause menu (Continue, Tutorial, Settings, Change City, Exit) |
+
+The F12 JSON includes all car properties, taxi mission state, map counts and bounds, camera and viewport data, and auto-fetch edge-trigger diagnostics.
 
 The pause menu's **Settings** screen changes language and master, background, and effects volume. Left/right adjusts values; Escape returns to the pause menu. At a taxi stand, customers appear occasionally when a stand enters view, either already nearby or outside the screen, then walk to the stand before boarding. Existing pedestrians can also become customers. In areas without taxi stands, a nearby interested pedestrian can hail the taxi while stopped or while it passes. A rival NPC taxi may arrive first and take a stand customer. Completed passengers leave beside the taxi and continue walking.
 

@@ -9,6 +9,7 @@ from theroadragetrip import (
     is_point_in_water,
     respawn_car,
 )
+import theroadragetrip.physics as physics
 
 
 def test_is_on_road_true_and_false():
@@ -41,8 +42,18 @@ def test_respawn_car_places_on_road_with_heading():
 
     assert is_on_road(car, [w]) is True
     assert car.x == 20.0
-    assert car.y == 20.0
+    assert car.y == 18.9
     assert car.heading == 0.0
+
+
+def test_respawn_car_near_edge_places_car_on_edge_road(monkeypatch):
+    west_road = Way(points_m=[(0.0, 20.0), (100.0, 20.0)], highway="residential", half_width_m=2.0)
+    car = Car(x=50.0, y=50.0, heading=0.0, speed=0.0)
+    monkeypatch.setattr(physics.random, "choice", lambda edges: "west")
+    respawn_car(car, [west_road], bounds=(0.0, 0.0, 100.0, 100.0), near_edge=True)
+
+    assert is_on_road(car, [west_road]) is True
+    assert car.x < 40.0
 
 
 def test_respawn_car_avoids_water_and_ice_roads():
@@ -62,7 +73,7 @@ def test_respawn_car_avoids_water_and_ice_roads():
     respawn_car(car, [ice_road, footway, land_road], waters=[lake])
 
     assert car.x == 250.0
-    assert car.y == 200.0
+    assert car.y == 197.975
     assert not is_point_in_water(car.x, car.y, [lake])
 
 

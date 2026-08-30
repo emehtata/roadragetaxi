@@ -13,6 +13,46 @@ def test_cache_save_and_load(tmp_path, monkeypatch):
     assert len(cached) == len(sample)
 
 
+def test_cache_loads_covering_bbox(tmp_path, monkeypatch):
+    import theroadragetrip.osm as osm
+
+    monkeypatch.setattr(osm, "CACHE_DIR", str(tmp_path))
+    sample = [{"type": "node", "id": 1}]
+    save_osm_cache((64.9, 25.3, 65.1, 25.5), sample)
+
+    assert load_osm_cache((64.95, 25.35, 65.0, 25.45)) == sample
+    assert load_osm_cache((64.8, 25.35, 65.0, 25.45)) is None
+
+
+def test_cache_reuses_nearly_identical_point(tmp_path, monkeypatch):
+    import theroadragetrip.osm as osm
+
+    monkeypatch.setattr(osm, "CACHE_DIR", str(tmp_path))
+    sample = [{"type": "node", "id": 1}]
+    save_osm_cache((64.9588954907, 25.4605952203, 64.9863415011, 25.5120161418), sample)
+
+    assert load_osm_cache(
+        (64.9588975146, 25.4606074748, 64.9863435208, 25.5120284128),
+        point=(64.97, 25.48),
+    ) == sample
+
+
+def test_cache_loads_when_point_is_inside_tile(tmp_path, monkeypatch, caplog):
+    import theroadragetrip.osm as osm
+    import logging
+
+    caplog.set_level(logging.INFO)
+    monkeypatch.setattr(osm, "CACHE_DIR", str(tmp_path))
+    sample = [{"type": "node", "id": 1}]
+    save_osm_cache((65.0, 25.4, 65.1, 25.5), sample)
+
+    assert load_osm_cache((64.9, 25.3, 65.2, 25.6), point=(65.05, 25.45)) == sample
+    assert load_osm_cache((64.9, 25.3, 65.2, 25.6), point=(65.2, 25.45)) is None
+    assert "CACHE HIT:" in caplog.text
+    assert "reason=car point" in caplog.text
+    assert str(tmp_path) in caplog.text
+
+
 def test_force_refresh_skips_cache(monkeypatch):
     import theroadragetrip.osm as osm
 

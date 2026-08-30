@@ -3,6 +3,7 @@ import sys
 import time
 
 from theroadragetrip import Car, Way, AutoFetchManager
+from theroadragetrip.osm import _snap_projected_bbox
 
 
 class FakeTransformer:
@@ -10,6 +11,15 @@ class FakeTransformer:
         # Very simple fake: identity for lon/lat in small coords (meters -> degrees kinda)
         # This is just to test logic, not accurate projection
         return (x / 1000.0, y / 1000.0)
+
+
+def test_auto_fetch_bbox_snaps_to_stable_tile_key():
+    assert _snap_projected_bbox((2490.0, 10.0, 2990.0, 510.0), 500.0) == (
+        2000.0, 0.0, 3000.0, 1000.0
+    )
+    assert _snap_projected_bbox((2410.0, 20.0, 2910.0, 520.0), 500.0) == (
+        2000.0, 0.0, 3000.0, 1000.0
+    )
 
 
 def test_auto_fetch_triggers_and_merges():
@@ -20,8 +30,11 @@ def test_auto_fetch_triggers_and_merges():
     car = Car(x=995.0, y=500.0, heading=0.0, speed=0.0)
 
     # fake fetch returns a simple element list (nodes & way)
+    requested_bboxes = []
+
     def fake_fetch(bbox):
         # bbox is (south, west, north, east) in lat/lon but we don't use it here
+        requested_bboxes.append(bbox)
         return [
             {"type": "node", "id": 100, "lat": 0.996, "lon": 0.5},
             {"type": "node", "id": 101, "lat": 0.997, "lon": 0.6},
@@ -50,6 +63,10 @@ def test_auto_fetch_triggers_and_merges():
     assert len(ways) == 2
     nb = m.get_bounds()
     assert nb[2] >= 1200.0
+    south, west, north, east = requested_bboxes[0]
+    assert abs((south + north) / 2.0 - car.y / 1000.0) < 1e-12
+    assert abs((west + east) / 2.0 - car.x / 1000.0) < 1e-12
+    assert m.start_if_needed(car, True, margin_m=10.0, tile_size_m=500.0) is False
 
 
 def test_auto_fetch_does_not_trigger_from_open_road_endpoint():
@@ -91,6 +108,41 @@ def test_auto_fetch_does_not_trigger_far_from_open_endpoint():
     m.dead_ends = []
 
     assert m.start_if_needed(car, True, margin_m=100.0, tile_size_m=500.0) is False
+
+
+def test_auto_fetch_triggers_near_disconnected_current_road_endpoint():
+    way = Way(points_m=[(0.0, 0.0), (100.0, 0.0)], highway="secondary", half_width_m=6.0)
+    car = Car(x=90.0, y=0.0, heading=0.0, speed=5.0)
+
+    m = AutoFetchManager(
+        [way],
+        (-1000.0, -1000.0, 1000.0, 1000.0),
+        FakeTransformer(),
+        fetch_func=lambda bbox: [],
+        build_func=lambda elems: ([], [], (-1000.0, -1000.0, 1000.0, 1000.0)),
+        cooldown_s=0.0,
+    )
+    m.dead_ends = []
+
+    assert m.start_if_needed(car, True, margin_m=20.0, tile_size_m=500.0, current_way=way) is True
+    assert m.get_trigger_reason() == "road endpoint"
+
+
+def test_auto_fetch_triggers_while_stopped_at_road_endpoint_only_once():
+    way = Way(points_m=[(0.0, 0.0), (100.0, 0.0)], highway="secondary", half_width_m=6.0)
+    car = Car(x=90.0, y=0.0, heading=0.0, speed=0.0)
+    m = AutoFetchManager(
+        [way],
+        (-1000.0, -1000.0, 1000.0, 1000.0),
+        FakeTransformer(),
+        fetch_func=lambda bbox: [],
+        build_func=lambda elems: ([], [], (-1000.0, -1000.0, 1000.0, 1000.0)),
+        cooldown_s=0.0,
+    )
+    m.dead_ends = []
+
+    assert m.start_if_needed(car, True, margin_m=20.0, tile_size_m=500.0, current_way=way) is True
+    assert m.start_if_needed(car, True, margin_m=20.0, tile_size_m=500.0, current_way=way) is False
 
 
 def test_auto_fetch_does_not_treat_t_junction_as_open_endpoint():

@@ -187,6 +187,54 @@ def save_dead_end_to_cache(entry: dict) -> None:
         logger.warning("Failed to save dead-end cache: %s", e)
 
 
+def _snap_projected_bbox(
+    bbox: Tuple[float, float, float, float], tile_size_m: float
+) -> Tuple[float, float, float, float]:
+    """Normalize auto-fetch bounds so nearby requests share one cache key."""
+    step = max(1.0, tile_size_m)
+    minx, miny, maxx, maxy = bbox
+    return (
+        math.floor(minx / step) * step,
+        math.floor(miny / step) * step,
+        math.ceil(maxx / step) * step,
+        math.ceil(maxy / step) * step,
+    )
+
+
+def _map_object_key(obj) -> tuple:
+    """Return a stable key for deduplicating overlapping auto-fetch results."""
+    object_id = getattr(obj, "osm_id", None)
+    if object_id is None:
+        object_id = getattr(obj, "id", None)
+    if object_id is not None:
+        return (type(obj).__name__, "id", object_id)
+
+    points = getattr(obj, "points_m", None)
+    if points:
+        bbox = getattr(obj, "bbox", None)
+        if bbox and bbox != (0.0, 0.0, 0.0, 0.0):
+            shape = tuple(round(value, 1) for value in bbox)
+        else:
+            shape = tuple(round(value, 1) for point in (points[0], points[-1]) for value in point)
+        return (type(obj).__name__, getattr(obj, "kind", None), getattr(obj, "name", None), shape, len(points))
+
+    return (
+        type(obj).__name__,
+        getattr(obj, "name", None),
+        getattr(obj, "kind", None),
+        round(getattr(obj, "x", 0.0), 1),
+        round(getattr(obj, "y", 0.0), 1),
+    )
+
+
+def _extend_unique(target: list, new_items: list) -> int:
+    known = {_map_object_key(item) for item in target}
+    unique_items = [item for item in new_items if _map_object_key(item) not in known]
+    target.extend(unique_items)
+    return len(unique_items)
+
+
+
 @dataclass
 class Way:
     points_m: List[Tuple[float, float]]
@@ -351,26 +399,99 @@ def load_local_sample(path: str = "sample_osm.json") -> Optional[List[dict]]:
 
 def _bbox_cache_path(bbox: Tuple[float, float, float, float]) -> str:
     south, west, north, east = bbox
+    # Keep tiny projection/float differences from creating duplicate cache files.
+    precision = 5
+    south = math.floor(south * 10**precision) / 10**precision
+    west = math.floor(west * 10**precision) / 10**precision
+    north = math.ceil(north * 10**precision) / 10**precision
+    east = math.ceil(east * 10**precision) / 10**precision
     fname = f"bbox_{south}_{west}_{north}_{east}.json"
     safe = fname.replace(".", "p").replace("-", "m")
     return os.path.join(CACHE_DIR, safe)
 
 
-def load_osm_cache(bbox: Tuple[float, float, float, float]) -> Optional[List[dict]]:
-    path = _bbox_cache_path(bbox)
-    if not os.path.exists(path):
+def _bbox_from_cache_name(name: str) -> Optional[Tuple[float, float, float, float]]:
+    if not name.startswith("bbox_"):
         return None
     try:
-        with open(path, "r", encoding="utf-8") as f:
-            d = json.load(f)
+        suffix_length = 5 if name.endswith((".json", "pjson")) else 0
+        if suffix_length == 0:
+            return None
+        values = name[5:-suffix_length].split("_")
+        if len(values) != 4:
+            return None
+        return tuple(float(value.replace("p", ".").replace("m", "-")) for value in values)
+    except ValueError:
+        return None
+
+
+def load_osm_cache(
+    bbox: Tuple[float, float, float, float],
+    point: Optional[Tuple[float, float]] = None,
+) -> Optional[List[dict]]:
+    requested_south, requested_west, requested_north, requested_east = bbox
+    point_lat, point_lon = point if point is not None else (None, None)
+    paths = [_bbox_cache_path(bbox)]
+    if os.path.isdir(CACHE_DIR):
+        paths.extend(
+            entry.path
+            for entry in os.scandir(CACHE_DIR)
+            if entry.is_file() and entry.path != paths[0] and _bbox_from_cache_name(entry.name) is not None
+        )
+
+    for path in paths:
+        try:
+            cache_bbox = _bbox_from_cache_name(os.path.basename(path))
+            if cache_bbox is not None:
+                south, west, north, east = cache_bbox
+                covers_point = (
+                    point_lat is not None
+                    and south <= point_lat <= north
+                    and west <= point_lon <= east
+                )
+                covers_request = (
+                    south <= requested_south
+                    and west <= requested_west
+                    and north >= requested_north
+                    and east >= requested_east
+                )
+                if point is not None:
+                    if not covers_point:
+                        logger.info(
+                            "Cache skip %s: point (%.6f, %.6f) outside bbox %s",
+                            os.path.basename(path), point_lat, point_lon, cache_bbox,
+                        )
+                        continue
+                elif not covers_request:
+                    continue
+                logger.info(
+                    "Cache candidate %s: point=%s request_covered=%s",
+                    os.path.basename(path), covers_point, covers_request,
+                )
+            with open(path, "r", encoding="utf-8") as f:
+                d = json.load(f)
+        except (OSError, json.JSONDecodeError) as e:
+            logger.warning("Failed to read cache %s: %s", path, e)
+            continue
         ts = d.get("fetched_at", 0)
         ttl = int(os.getenv("OSM_CACHE_TTL", str(24 * 3600)))
-        if time.time() - ts > ttl:
-            return None
-        return d.get("elements")
-    except Exception as e:
-        logger.warning("Failed to read cache %s: %s", path, e)
-        return None
+        age = time.time() - ts
+        if age <= ttl:
+            if cache_bbox is not None:
+                logger.info(
+                    "CACHE HIT: %s | bbox=%s | reason=%s | elements=%d | age=%.1fh",
+                    path,
+                    cache_bbox,
+                    "car point" if point is not None else "request covered",
+                    len(d.get("elements", [])),
+                    age / 3600.0,
+                )
+            return d.get("elements")
+        logger.info(
+            "Cache skip %s: expired (age %.1fh, TTL %.1fh)",
+            os.path.basename(path), age / 3600.0, ttl / 3600.0,
+        )
+    return None
 
 
 def save_osm_cache(bbox: Tuple[float, float, float, float], elements: List[dict]) -> None:
@@ -1404,6 +1525,8 @@ class AutoFetchManager:
         self.fetch_progress = 0.0
         self.last_fetch_time = 0.0
         self.last_trigger_reason = ""
+        self._attempted_endpoints: Set[Tuple[int, str]] = set()
+        self._completed_fetch_targets: Set[Tuple[float, float, float, float]] = set()
         # Load known dead-end boundaries from disk cache
         self.dead_ends: List[dict] = load_dead_ends_cache()
 
@@ -1433,7 +1556,14 @@ class AutoFetchManager:
                     return True
         return False
 
-    def start_if_needed(self, car, auto_fetch: bool, margin_m: float, tile_size_m: float) -> bool:
+    def start_if_needed(
+        self,
+        car,
+        auto_fetch: bool,
+        margin_m: float,
+        tile_size_m: float,
+        current_way: Optional[Way] = None,
+    ) -> bool:
         if not auto_fetch:
             return False
         with self.lock:
@@ -1494,30 +1624,91 @@ class AutoFetchManager:
                     expanded = True
                     trigger_reason = "bbox north edge"
 
+            if not expanded and current_way is not None and len(current_way.points_m) >= 2:
+                endpoint_candidates = (
+                    (current_way.points_m[0], current_way.points_m[1]),
+                    (current_way.points_m[-1], current_way.points_m[-2]),
+                )
+                endpoint, previous = min(
+                    endpoint_candidates,
+                    key=lambda candidate: math.hypot(car.x - candidate[0][0], car.y - candidate[0][1]),
+                )
+                endpoint_distance = math.hypot(car.x - endpoint[0], car.y - endpoint[1])
+                approach_x = endpoint[0] - previous[0]
+                approach_y = endpoint[1] - previous[1]
+                approach_length = math.hypot(approach_x, approach_y)
+                heading_alignment = (
+                    (math.cos(car.heading) * approach_x + math.sin(car.heading) * approach_y) / approach_length
+                    if approach_length > 0.0 else -1.0
+                )
+                connected = any(
+                    other is not current_way
+                    and any(
+                        math.hypot(endpoint[0] - point[0], endpoint[1] - point[1])
+                        <= max(12.0, current_way.half_width_m + getattr(other, "half_width_m", 3.0))
+                        for point in getattr(other, "points_m", ())
+                    )
+                    for other in self.ways
+                )
+                direction = "east" if abs(approach_x) >= abs(approach_y) and approach_x >= 0 else "west"
+                if abs(approach_y) > abs(approach_x):
+                    direction = "north" if approach_y >= 0 else "south"
+                endpoint_key = (id(current_way), direction)
+                if (
+                    endpoint_distance <= margin_m
+                    and not connected
+                    and heading_alignment > 0.2
+                    and endpoint_key not in self._attempted_endpoints
+                ):
+                    if not self.is_known_dead_end(car.x, car.y, direction):
+                        fetch_minx = car.x - (tile_size_m if approach_x < 0 else overlap)
+                        fetch_maxx = car.x + (tile_size_m if approach_x >= 0 else overlap)
+                        fetch_miny = car.y - (tile_size_m if approach_y < 0 else overlap)
+                        fetch_maxy = car.y + (tile_size_m if approach_y >= 0 else overlap)
+                        expanded = True
+                        trigger_reason = "road endpoint"
+                        self._attempted_endpoints.add((id(current_way), direction))
+
             if not expanded:
                 return False
 
+            fetch_bbox = (
+                car.x - half_span,
+                car.y - half_span,
+                car.x + half_span,
+                car.y + half_span,
+            )
+            target = _snap_projected_bbox(fetch_bbox, tile_size_m)
+            if target in self._completed_fetch_targets:
+                return False
             self.is_fetching = True
             self.fetch_progress = 0.1
             self.last_fetch_time = now
             self.last_trigger_reason = trigger_reason
-            target = (fetch_minx, fetch_miny, fetch_maxx, fetch_maxy)
             car_pos = (car.x, car.y)
 
-        t = threading.Thread(target=self._background_fetch, args=(target, direction, car_pos), daemon=True)
+        t = threading.Thread(
+            target=self._background_fetch,
+            args=(fetch_bbox, direction, car_pos, target),
+            daemon=True,
+        )
         t.start()
         return True
 
     def _background_fetch(
         self,
-        target_bbox: Tuple[float, float, float, float],
+        fetch_bbox: Tuple[float, float, float, float],
         direction: str = "",
         car_pos: Tuple[float, float] = (0.0, 0.0),
+        target_bbox: Optional[Tuple[float, float, float, float]] = None,
     ) -> None:
-        new_minx, new_miny, new_maxx, new_maxy = target_bbox
+        if target_bbox is None:
+            target_bbox = fetch_bbox
+        new_minx, new_miny, new_maxx, new_maxy = fetch_bbox
         try:
             lon1, lat1 = self.transformer.transform(new_minx, new_miny)
             lon2, lat2 = self.transformer.transform(new_maxx, new_maxy)
+            car_lon, car_lat = self.transformer.transform(car_pos[0], car_pos[1])
             south = min(lat1, lat2)
             west = min(lon1, lon2)
             north = max(lat1, lat2)
@@ -1536,7 +1727,21 @@ class AutoFetchManager:
         try:
             with self.lock:
                 self.fetch_progress = 0.25
-            elems = self.fetch_func((south, west, north, east))
+            elems = load_osm_cache(
+                (south, west, north, east),
+                point=(car_lat, car_lon),
+            )
+            if elems is None:
+                logger.info(
+                    "Auto-fetch cache miss at car point (%.6f, %.6f); requesting network",
+                    car_lat, car_lon,
+                )
+                elems = self.fetch_func((south, west, north, east))
+            else:
+                logger.info(
+                    "Auto-fetch cache hit at car point (%.6f, %.6f); network skipped",
+                    car_lat, car_lon,
+                )
             with self.lock:
                 self.fetch_progress = 0.65
             if self.build_in_process:
@@ -1599,18 +1804,19 @@ class AutoFetchManager:
                 ]
                 plant_trees(new_sceneries, self.ways + unique_new_ways)
                 self.ways.extend(unique_new_ways)
-                self.waters.extend(new_waters)
-                self.buildings.extend(new_buildings)
-                self.sceneries.extend(new_sceneries)
-                self.places.extend(new_places)
-                self.traffic_lights.extend(new_traffic_lights)
-                self.crossings.extend(new_crossings)
+                added_waters = _extend_unique(self.waters, new_waters)
+                added_buildings = _extend_unique(self.buildings, new_buildings)
+                added_sceneries = _extend_unique(self.sceneries, new_sceneries)
+                added_places = _extend_unique(self.places, new_places)
+                added_traffic_lights = _extend_unique(self.traffic_lights, new_traffic_lights)
+                added_crossings = _extend_unique(self.crossings, new_crossings)
                 minx = min(self.bounds[0], new_bounds[0])
                 miny = min(self.bounds[1], new_bounds[1])
                 maxx = max(self.bounds[2], new_bounds[2])
                 maxy = max(self.bounds[3], new_bounds[3])
                 self.bounds = (minx, miny, maxx, maxy)
                 self.last_fetch_time = time.time()
+                self._completed_fetch_targets.add(target_bbox)
 
             # Rebuilding the segment index can be expensive; keep the game loop
             # responsive while the background fetch finishes indexing new roads.
@@ -1620,12 +1826,12 @@ class AutoFetchManager:
             logger.info(
                 "Auto-fetched and added %d ways, %d waters, %d buildings, %d scenery, %d places, %d traffic lights, %d crossings; new bounds: %s",
                 len(unique_new_ways),
-                len(new_waters),
-                len(new_buildings),
-                len(new_sceneries),
-                len(new_places),
-                len(new_traffic_lights),
-                len(new_crossings),
+                added_waters,
+                added_buildings,
+                added_sceneries,
+                added_places,
+                added_traffic_lights,
+                added_crossings,
                 self.bounds,
             )
         except Exception as e:

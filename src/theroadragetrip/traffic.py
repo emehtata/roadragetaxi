@@ -79,6 +79,7 @@ class NPCCar:
     stopped: bool = False
     penalty_given: bool = False
     scared_timer: float = 0.0
+    pursuit_cancelled: bool = False
     next_route: Optional[Tuple[Way, int, int]] = None
 
 
@@ -150,6 +151,7 @@ class TrafficManager:
         self._crossing_grid: dict[Tuple[int, int], List] = {}
         self._npc_grid_cell_size: float = 32.0
         self._npc_grid: dict[Tuple[int, int], List[NPCCar]] = {}
+        self._taxi_stop_spawns: set[Tuple[float, float, object]] = set()
         self._build_spatial_indices()
 
     def _build_npc_spatial_grid(self) -> None:
@@ -412,6 +414,46 @@ class TrafficManager:
             if player_car is not None:
                 self.npcs.sort(key=lambda npc: math.hypot(npc.x - player_car.x, npc.y - player_car.y))
             del self.npcs[self.target_count:]
+
+    def spawn_taxis_at_nearby_stops(
+        self,
+        taxi_stops: List,
+        player_car: Car,
+        viewport_bounds: Optional[Tuple[float, float, float, float]],
+    ) -> int:
+        """Spawn zero to three parked taxis as an unseen stop is approached."""
+        if viewport_bounds is None:
+            return 0
+
+        vmin_x, vmin_y, vmax_x, vmax_y = viewport_bounds
+        spawned = 0
+        for stop in taxi_stops:
+            stop_key = (stop.x, stop.y, getattr(stop, "id", None))
+            if stop_key in self._taxi_stop_spawns:
+                continue
+            if vmin_x <= stop.x <= vmax_x and vmin_y <= stop.y <= vmax_y:
+                continue
+            if math.hypot(stop.x - player_car.x, stop.y - player_car.y) > 120.0:
+                continue
+
+            self._taxi_stop_spawns.add(stop_key)
+            for _ in range(random.randint(0, 3)):
+                npc = self.spawn_npc(
+                    stop.x,
+                    stop.y,
+                    viewport_bounds=viewport_bounds,
+                    near_heading=player_car.heading,
+                    max_distance_m=35.0,
+                )
+                if npc is None:
+                    break
+                npc.is_taxi = True
+                npc.vehicle_type = "car"
+                npc.speed = 0.0
+                npc.target_speed = 0.0
+                npc.waiting_at_taxi_stop = True
+                spawned += 1
+        return spawned
 
     def let_taxi_pick_up_waiter(self, taxi_stops: List, pedestrians: List, dt: float = 1.0 / 60.0) -> None:
         """Let a nearby NPC taxi collect one waiting customer at a time."""
@@ -863,7 +905,6 @@ class TrafficManager:
                     )
                     if npc.is_taxi:
                         npc.vehicle_type = "car"
-                        npc.color = NPC_TAXI_COLOR
                     self.npcs.append(npc)
                     return npc
 
@@ -874,6 +915,9 @@ class TrafficManager:
         player_car: Car,
         dt: float,
         viewport_bounds: Optional[Tuple[float, float, float, float]] = None,
+        pedestrians: Optional[List] = None,
+        cyclists: Optional[List] = None,
+        police_cars: Optional[List] = None,
     ) -> None:
         """Update all NPC cars, manage spawning/despawning around player."""
         self.sim_time += dt
@@ -919,15 +963,34 @@ class TrafficManager:
         self._log_timer += dt
         if self._log_timer >= 5.0:
             self._log_timer = 0.0
+            pedestrians = pedestrians or []
+            cyclists = cyclists or []
+            police_cars = police_cars or []
             if viewport_bounds:
                 vminx, vminy, vmaxx, vmaxy = viewport_bounds
                 in_view_count = sum(
                     1 for npc in self.npcs
                     if vminx <= npc.x <= vmaxx and vminy <= npc.y <= vmaxy
                 )
-                logger.info(f"Traffic active: {len(self.npcs)} NPC cars on roads ({in_view_count} in view)")
+                def in_view(entity) -> bool:
+                    return vminx <= entity.x <= vmaxx and vminy <= entity.y <= vmaxy
+
+                logger.info(
+                    "NPC active: cars=%d (%d view), police=%d (%d view), pedestrians=%d (%d view), cyclists=%d (%d view)",
+                    len(self.npcs),
+                    in_view_count,
+                    len(police_cars),
+                    sum(1 for car in police_cars if in_view(car)),
+                    len(pedestrians),
+                    sum(1 for ped in pedestrians if in_view(ped)),
+                    len(cyclists),
+                    sum(1 for cyclist in cyclists if in_view(cyclist)),
+                )
             else:
-                logger.info(f"Traffic active: {len(self.npcs)} NPC cars on roads")
+                logger.info(
+                    "NPC active: cars=%d, police=%d, pedestrians=%d, cyclists=%d",
+                    len(self.npcs), len(police_cars), len(pedestrians), len(cyclists),
+                )
 
         # Check vehicle-ahead distances and manage overtaking / slowing down behind player or other NPCs
         p_len = getattr(player_car, "length_m", 4.0)

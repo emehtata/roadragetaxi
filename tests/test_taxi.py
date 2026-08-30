@@ -23,6 +23,23 @@ def test_taxi_target_address_generation():
     assert "Keskusta" in addr
 
 
+def test_phone_passenger_waits_at_right_road_edge():
+    way = Way(
+        points_m=[(0.0, 0.0), (200.0, 0.0)],
+        highway="residential",
+        half_width_m=4.5,
+        name="Odotuskatu",
+    )
+    taxi_mgr = TaxiManager(ways=[way])
+    pickup = TaxiTarget(100.0, 0.0, "Odotuskatu")
+
+    passenger_x, passenger_y, heading = taxi_mgr.passenger_waiting_position(pickup)
+
+    assert passenger_x == 100.0
+    assert passenger_y < 0.0
+    assert heading == 0.0
+
+
 def test_taxi_fallback_to_named_road():
     way1 = Way(
         points_m=[(100.0, 100.0), (200.0, 100.0)],

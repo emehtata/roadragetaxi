@@ -1,0 +1,834 @@
+SUOMI
+Ahmas   26.508  64.655
+Alahärmä	22.858	63.25
+Alajärvi	23.833	63.000
+Alastaro	22.86	60.953
+Alatornio	24.167	65.828
+Alavieska	24.303	64.167
+Alavus	23.62	62.587
+Angeli	25.615	68.905
+Anjalankoski	26.84	60.737
+Antrea	30.333	60.95
+Anttola	27.65	61.587
+Artjärvi	26.078	60.745
+Asikkala	25.488	61.213
+Askainen	21.87	60.57
+Askola	25.6	60.533
+Aura	22.567	60.612
+Bromarv	23.333	59.992
+Dragsfjärd	22.483	60.072
+Eckerö	19.595	60.207
+Elimäki	26.455	60.722
+Elisenvaara	29.767	61.433
+Eno	30.167	62.788
+Enonkoski	28.917	62.09
+Enontekiö	23.635	68.385
+Enso	28.85	61.117
+Espoo	24.693	60.22
+Eura	22.372	61.133
+Eurajoki	21.738	61.205
+Evijärvi	23.485	63.375
+Finström	19.938	60.25
+Forssa	23.643	60.82
+Föglö	20.433	60.012
+Haapajärvi	25.322	63.76
+Haapakoski	27.167	62.467
+Haapasaari	27.188	60.295
+Haapavesi	25.383	64.15
+Hailuoto	24.717	65.005
+Halikko	23.072	60.4
+Halsua	24.17	63.457
+Haltiatunturi	21.267	69.3
+Hamina	27.18	60.577
+Hammarland	19.742	60.217
+Hankasalmi	26.437	62.373
+Hanko	22.978	59.822
+Harjavalta	22.148	61.32
+Harlu	30.95	61.817
+Hartola	26.167	61.575
+Hauho	24.558	61.172
+Haukipudas	25.338	65.18
+Haukivesi	28.467	62.1
+Haukivuori	27.217	62.017
+Hausjärvi	24.933	60.783
+Heinjoki	29.183	60.733
+Heinola	26.037	61.2
+Heinävesi	28.62	62.425
+Helsinki	24.928	60.178
+Hiitola	29.383	61.2
+Himanka	23.65	64.067
+Hinnerjoki	21.997	60.985
+Hirvensalmi	26.783	61.667
+Hollola	25.433	61.05
+Honkajoki	22.267	61.983
+Houtskari	21.367	60.2
+Huittinen	22.693	61.182
+Humppila	23.367	60.933
+Hyrynsalmi	28.49	64.678
+Hyvinkää	24.887	60.637
+Hämeenkangas	22.667	61.75
+Hämeenkylä	24.783	60.267
+Hämeenkyrö	23.198	61.635
+Hämeenlinna	24.477	60.998
+Ii	25.367	65.322
+Iisalmi	27.182	63.562
+Iisvesi	27.333	62.667
+Iitti	26.4	60.933
+Ikaalinen	23.053	61.77
+Ilmajoki	22.565	62.725
+Ilomantsi	30.933	62.673
+Imatra	28.825	61.223
+Impilahti	31.167	61.65
+Inari	27.167	68.9
+Iniö	21.333	60.4
+Inkeroinen	26.85	60.7
+Inkoo	24	60.045
+Isojoki	21.967	62.117
+Isokyrö	22.333	63.01
+Ivalo	27.53	68.657
+Jaala	26.5	61.05
+Jalasjärvi	22.773	62.488
+Janakkala	24.55	60.867
+Jepua	22.617	63.4
+Joensuu	29.785	62.592
+Johannes	28.683	60.533
+Jokela	25.033	60.733
+Jokioinen	23.488	60.802
+Jomala	19.883	60.167
+Joroinen	27.827	62.182
+Joutsa	26.117	61.733
+Joutseno	28.647	61.193
+Juankoski	28.317	63.067
+Jurmo	21.617	59.827
+Jurva	21.983	62.683
+Juuka	29.263	63.233
+Juupajoki	24.465	61.782
+Juustila	28.717	60.817
+Juva	27.858	61.9
+Jyväskylän_Mlk	25.82	62.227
+Jyväskylä	25.717	62.232
+Jämijärvi	22.7	61.817
+Jämsä	25.192	61.877
+Jämsänkoski	25.177	61.922
+Jäppilä	27.467	62.367
+Järvenpää	25.097	60.47
+Jääski	28.917	61.033
+Kaaresuvanto	22.5	68.45
+Kaarina	22.367	60.4
+Kaavi	28.492	62.977
+Kajaani	27.732	64.212
+Kalajoki	23.95	64.25
+Kalanti	21.567	60.817
+Kalevala	31.205	65.2
+Kalvola	24.14	61.095
+Kangasala	24.067	61.467
+Kangaslampi	28.25	62.3
+Kangasniemi	26.653	61.992
+Kankaanpää	22.395	61.807
+Kanneljärvi	29.433	60.35
+Kannonkoski	25.25	62.967
+Kannus	23.917	63.902
+Karhula	26.945	60.515
+Karhumäki	34.367	62.9
+Karigasniemi	25.867	69.383
+Karijoki	21.7	62.317
+Karinainen	22.767	60.683
+Karjaa	23.7	60.083
+Karkkila	24.227	60.538
+Karkku	23.018	61.415
+Karstula	24.793	62.873
+Karttula	26.967	62.883
+Karvia	22.567	62.135
+Kaskinen	21.225	62.383
+Kauhajoki	22.183	62.423
+Kauhava	23.048	63.113
+Kaukola	29.783	61.067
+Kauniainen	24.75	60.208
+Kaustinen	23.695	63.553
+Kauvatsa	22.512	61.337
+Keikyä	22.702	61.27
+Keitele	26.355	63.177
+Kemi	24.56	65.735
+Kemijärvi	27.445	66.705
+Keminmaa	24.5	65.783
+Kemiö	22.75	60.167
+Kempele	25.5	64.917
+Kerava	25.117	60.403
+Kerimäki	29.29	61.915
+Keskikylä	24.533	64.432
+Kestilä	26.283	64.35
+Kesälahti	29.842	61.892
+Keuruu	24.682	62.267
+Kihniö	23.188	62.203
+Kiihtelysvaara	30.25	62.483
+Kiikala	23.558	60.467
+Kiikka	22.777	61.325
+Kiikoinen	22.578	61.453
+Kiiminki	25.733	65.133
+Killinkoski	23.892	62.398
+Kilpisjärvi	20.757	69.05
+Kinnula	24.967	63.367
+Kirkkoniemi	30.017	69.717
+Kirkkonummi	24.45	60.128
+Kirvu	29.283	61.083
+Kisko	23.483	60.243
+Kitee	30.155	62.095
+Kittilä	24.933	67.65
+Kiukainen	22.083	61.217
+Kiuruvesi	26.625	63.65
+Kivennapa	29.717	60.367
+Kivijärvi	25.072	63.122
+Kodisjoki	21.683	61.025
+Koivisto	28.617	60.367
+Kokemäki	22.353	61.257
+Kokkola	23.147	63.838
+Kolari	23.767	67.33
+Konginkangas	25.8	62.767
+Konnevesi	26.583	62.667
+Korpilahti	25.562	62.017
+Korpiselkä	31.017	62.35
+Korppoo	21.567	60.167
+Korsnäs	21.183	62.783
+Kortesjärvi	23.183	63.3
+Kostamus	30.833	64.7
+Kotka	26.913	60.458
+Kouvola	26.778	60.903
+Kreivilä	23.5	60.982
+Kristiinankaup	21.377	62.27
+Kruunupyy	23.033	63.717
+Kuhmalahti	24.567	61.505
+Kuhmo	29.53	64.128
+Kuhmoinen	25.183	61.567
+Kuivaniemi	25.183	65.583
+Kullaa	22.158	61.467
+Kumlinge	20.783	60.183
+Kuokkala	25.82	62.227
+Kuolemajärvi	29.017	60.383
+Kuolismaa	31.622	62.725
+Kuopio	27.668	62.888
+Kuorevesi	24.717	61.933
+Kuortane	23.5	62.808
+Kurikka	22.402	62.618
+Kurkijoki	29.883	61.3
+Kuru	23.733	61.867
+Kustavi	21.35	60.542
+Kuusamo	29.205	65.965
+Kuusankoski	26.633	60.913
+Kuusjoki	23.217	60.522
+Kylmäkoski	23.688	61.167
+Kyyjärvi	24.567	63.033
+Käkisalmi	30.117	61.05
+Kälviä	23.45	63.863
+Kärkölä	25.267	60.917
+Kärsämäki	25.757	63.978
+Köngäs	24.867	67.917
+Köyliö	22.417	61.117
+Lahdenpohja	30.2	61.483
+Lahti	25.67	60.98
+Laihia	22.017	62.967
+Laitila	21.683	60.873
+Lammi	25.022	61.082
+Lapinjärvi	26.217	60.625
+Lapinlahti	27.387	63.36
+Lappajärvi	23.638	63.288
+Lappeenranta	28.21	61.067
+Lappi	21.833	61.1
+Lapua	23.2	62.973
+Lapväärti	21.517	62.25
+Laukaa	25.955	62.42
+Lauritsala	28.267	61.067
+Lehtimäki	23.917	62.792
+Leivonmäki	26.137	61.913
+Lemi	27.783	61.083
+Lempäälä	23.71	61.33
+Lemu	21.977	60.55
+Lentiira	29.833	64.383
+Leppävirta	27.792	62.5
+Lieksa	30.038	63.318
+Lieto	22.467	60.533
+Lievestuore	26.2	62.267
+Liinahamari	31.25	69.633
+Liminka	25.4	64.817
+Liperi	29.39	62.527
+Lohja	24.055	60.245
+Lohtaja	23.483	64.033
+Loimaa	23.118	60.852
+Loimola	31.783	61.983
+Lokka	27.583	67.833
+Loppi	24.45	60.717
+Loviisa	26.233	60.46
+Luhanka	25.707	61.8
+Lumivaara	30.15	61.433
+Luopioinen	24.65	61.36
+Luulaja	22.15	65.567
+Luumäki	27.673	60.917
+Luvia	21.633	61.367
+Längelmäki	24.683	61.683
+Maaninka	27.305	63.153
+Maarianhamina	19.937	60.117
+Masku	22.1	60.567
+Mellilä	22.85	60.783
+Merijärvi	24.442	64.3
+Merikarvia	21.5	61.86
+Messukylä	23.85	61.483
+Metsäpirtti	30.517	60.533
+Mikkeli	27.287	61.692
+Mouhijärvi	23.017	61.517
+Muhos	25.997	64.817
+Multia	24.795	62.408
+Muolaa	29.55	60.55
+Muonio	23.667	67.973
+Muurame	25.683	62.117
+Myllykoski	26.783	60.775
+Mynämäki	22	60.683
+Myrskylä	25.85	60.667
+Mäläskä	26.333	64.392
+Mäntsälä	25.333	60.63
+Mänttä	24.647	62.03
+Mäntyharju	26.883	61.417
+Naantali	22.033	60.467
+Nakkila	21.9	61.4
+Nastola	25.883	60.933
+Nauvo	21.917	60.2
+Nilsiä	28.083	63.2
+Nivala	25	63.917
+Nokia	23.538	61.473
+Noormarkku	21.855	61.597
+Nuijamaa	28.538	60.958
+Nummi	23.875	60.4
+Nurmes	29.14	63.543
+Nurmijärvi	24.8	60.467
+Nurmo	22.908	62.83
+Näljänkä	28.433	65.227
+Närpiö	21.367	62.467
+Ohrasenoja	25.767	64.967
+Oravainen	22.387	63.293
+Orimattila	25.75	60.8
+Oripää	22.688	60.863
+Orivesi	24.367	61.675
+Otava	27.083	61.643
+Oulainen	24.853	64.263
+Oulu	25.532	65.007
+Outokumpu	29.007	62.733
+Paattinen	22.383	60.59
+Padasjoki	25.283	61.35
+Paimio	22.7	60.45
+Parainen	22.302	60.287
+Parikkala	29.495	61.543
+Parkano	23.025	62.013
+Pattijoki	24.588	64.683
+Pelkosenniemi	27.5	67.108
+Pello	24	66.833
+Perniö	23.123	60.213
+Pertunmaa	26.48	61.5
+Peräseinäjoki	23.075	62.567
+Petsamo	31.183	69.567
+Petäjäskoski	25.337	66.27
+Petäjävesi	25.183	62.25
+Pieksämäki	27.152	62.303
+Pielavesi	26.75	63.233
+Pietari	30.297	59.942
+Pietarsaari	22.73	63.678
+Pihtipudas	25.597	63.367
+Polvijärvi	29.383	62.85
+Pomarkku	22.012	61.695
+Pori	21.772	61.487
+Pornainen	25.378	60.472
+Porvoo	25.69	60.383
+Posio	28.13	66.095
+Pudasjärvi	27	65.362
+Puhos	29.9	62.083
+Pulkkila	25.875	64.275
+Punkaharju	29.583	61.583
+Punkalaidun	23.1	61.117
+Puolanka	27.692	64.867
+Puumala	28.178	61.527
+Pyhtää	26.545	60.493
+Pyhäjoki	24.267	64.467
+Pyhäjärvi	25.967	63.65
+Pyhäntä	26.323	64.1
+Pylkönmäki	24.81	62.67
+Pälkäne	24.267	61.333
+Pöytyä	22.65	60.758
+Raahe	24.48	64.695
+Raisio	22.137	60.503
+Rajamäki	24.765	60.528
+Rantasalmi	28.298	62.06
+Rantsila	25.662	64.503
+Ranua	26.538	65.925
+Rauma	21.522	61.132
+Rautalammi	26.842	62.622
+Rautavaara	28.307	63.493
+Rautjärvi	29.133	61.3
+Rautu	30.267	60.567
+Renko	24.3	60.897
+Reposaari	21.45	61.61
+Riihimäki	24.758	60.748
+Rissala	27.827	63.000
+Ristiina	27.283	61.5
+Ristijärvi	28.212	64.507
+Rovaniemi	25.74	66.492
+Ruokolahti	28.833	61.283
+Ruovesi	24.083	61.972
+Ruskeala	30.6	61.933
+Rusko	22.2	60.533
+Ruutana	24.017	61.525
+Rymättylä	21.95	60.377
+Räisälä	29.75	60.917
+Rääkkylä	29.635	62.318
+Saari	29.75	61.65
+Saarijärvi	25.262	62.71
+Sahalahti	24.328	61.468
+Sakkola	30.217	61.683
+Salla	28.153	66.772
+Salmi	31.9	61.233
+Salo	23.132	60.375
+Saloinen	24.45	64.575
+Sammatti	23.817	60.317
+Sattanen	26.65	67.5
+Savonlinna	28.855	61.872
+Savonranta	29.22	62.178
+Savukoski	28.158	67.292
+Seinäjoki	22.83	62.792
+Selki	24.547	60.438
+Sieppijärvi	23.983	67.137
+Siikainen	21.817	61.875
+Siilinjärvi	27.658	63.078
+Siltakylä	26.728	60.497
+Simo	25.7	65.662
+Simpele	29.387	61.44
+Sipoo	25.267	60.367
+Sippola	27	60.733
+Siuntio	24.207	60.175
+Soanlahti	31.5	62.033
+Sodankylä	26.628	67.417
+Soini	24.215	62.877
+Somero	23.512	60.615
+Sonkajärvi	27.52	63.67
+Sortavala	30.7	61.7
+Sotkamo	28.417	64.133
+Suistamo	31.167	61.9
+Sukeva	27.453	63.88
+Sulkava	28.383	61.783
+Sumiainen	26.055	62.657
+Suojärvi	32.317	62.25
+Suolahti	25.542	62.567
+Suomenniemi	27.46	61.322
+Suomussalmi	29	64.883
+Suonenjoki	27.122	62.628
+Suurmiehikkälä	27.245	60.725
+Sykäräinen	24.403	63.617
+Sysmä	25.683	61.498
+Syväjärvi	25.912	67.298
+Säkkijärvi	28.15	60.633
+Säkylä	22.337	61.045
+Säyneinen	28.243	63.21
+Säynätsalo	25.775	62.145
+Sääminki	28.783	61.9
+Taipalsaari	28.5	61.167
+Taivalkoski	28.25	65.567
+Taivassalo	21.608	60.567
+Tammela	23.7	60.813
+Tammisaari	23.447	59.968
+Tampere	23.82	61.512
+Tarvasjoki	22.733	60.583
+Teisko	23.833	61.667
+Terijoki	29.7	60.217
+Tervakoski	24.617	60.8
+Tervola	24.8	66.083
+Teuva	21.75	62.508
+Tohmajärvi	30.4	62.467
+Toholampi	24.25	63.767
+Toijala	23.865	61.165
+Toivakka	26.083	62.1
+Tolvajärvi	31.483	62.267
+Tornio	24.153	65.85
+Turku	22.295	60.453
+Tuulos	24.8	61.147
+Tuupovaara	30.627	62.49
+Tuusniemi	28.5	62.817
+Tuusula	25	60.405
+Tyrvää	22.94	61.332
+Töysä	23.838	62.725
+Ullava	23.9	63.717
+Ulvila	21.85	61.417
+Urjala	23.55	61.082
+Utajärvi	26.417	64.767
+Utsjoki	27.032	69.908
+Utti	26.922	60.875
+Uuksu	31.633	61.483
+Uukuniemi	30.008	61.788
+Uurainen	25.425	62.503
+Uusi-Värtsilä	30.608	62.203
+Uusikaarlepyy	22.542	63.522
+Uusikaupunki	21.417	60.795
+Uusikirkko	29.267	60.317
+Vaala	26.843	64.563
+Vaasa	21.608	63.083
+Vahviala	28.433	60.783
+Valamo	28.68	62.572
+Valkeakoski	24.027	61.273
+Valkeala	26.8	60.937
+Valkjärvi	29.85	60.567
+Valtimo	28.817	63.678
+Vammala	22.938	61.332
+Vampula	23.708	61.025
+Vantaa	24.983	60.217
+Varkaus	27.897	62.328
+Varpaisjärvi	27.758	63.355
+Vehkalahti	27.25	60.583
+Vehmaa	21.617	60.683
+Vesanto	26.42	62.928
+Veteli	23.758	63.505
+Vihti	24.323	60.42
+Viiala	23.763	61.21
+Viipuri	28.75	60.717
+Viitasaari	25.863	63.075
+Viljakkala	23.277	61.707
+Vilppula	24.482	62.015
+Vimpeli	23.822	63.148
+Virkkala	24.017	60.2
+Virrat	23.77	62.237
+Virtasalmi	27.467	62.133
+Vuojärvi	26.667	67.167
+Vuokatti	28.283	64.15
+Vuoksela	29.733	60.7
+Vuoksenranta	29.483	60.867
+Vuolijoki	27.007	64.177
+Vuontisjärvi	24.048	68.437
+Vuottoniemi	31.833	62.817
+Värtsilä	30.683	62.183
+Vääksy	25.533	61.175
+Yli-Ii	25.843	65.37
+Ylihärmä	22.783	63.15
+Ylikiiminki	26.167	65.067
+Ylistaro	22.517	62.95
+Ylitornio	23.677	66.31
+Ylivieska	24.537	64.073
+Yläne	22.917	60.883
+Ylöjärvi	23.583	61.55
+Ypäjä	23.283	60.583
+Äetsä	22.667	61.617
+Ähtäri	24.077	62.558
+Äkäslompolo	24.133	67.633
+Ämmänsaari	28.888	64.878
+Äyräpää	29.533	60.717
+Äänekoski	25.735	62.595
+Öllölä	30.683	62.375
+Munchen 11.600  48.100
+Lontoo  0.0 51.500
+Kabul	34.58333333	69.2
+ALGERIA
+Algiers	0.5	36.76666667
+ARGENTINA
+Buenos Aires	-58.48333333	-34.58333333
+Cordoba	-64.25	-31.36666667
+Tucuman	-65.16666667	-26.83333333
+AUSTRALIA
+Adelaide	138.5833333	-34.93333333
+Alice Springs	133.8833333	-23.8
+Brisbane	153.0333333	-27.46666667
+Darwin	130.85	-12.46666667
+Melbourne	144.9666667	-37.81666667
+Perth	115.85	-31.95
+Sydney	151.2	-33.86666667
+AUSTRIA
+Vienna	16.36666667	48.25
+AZORES
+Lajes (Terceira)	-27.08333333	38.75
+BAHAMAS
+Nassau	-77.35	25.08333333
+BANGLADESH
+Chittagong	91.83333333	22.35
+BELGIUM
+Brussels	4.35	50.8
+BERMUDA
+Kindley AFB	-64.68333333	33.36666667
+BOLIVIA
+La Paz	-68.15	-16.5
+BRAZIL
+Belem	-48.48333333	-1.45
+Belo Horizonte	-43.95	-19.93333333
+Brasilia	-47.91666667	-15.86666667
+Curitiba	-49.28333333	-25.41666667
+Fortaleza	-38.55	-3.766666667
+Porto Alegre	-51.21666667	-30.03333333
+Recife	-34.88333333	-8.066666667
+Rio De Janeiro	-43.2	-22.91666667
+Salvador	-38.5	-13
+Sao Paulo	-46.63333333	-23.55
+BELIZE
+Belize	-88.18333333	17.51666667
+BULGARIA
+Sofia	23.33333333	42.7
+BURMA
+Mandalay	96.1	21.98333333
+Rangoon	96.15	16.78333333
+CAMBODIA
+Phnom Penh	104.85	11.55
+CHILE
+Punta Arenas	-70.9	-53.16666667
+Santiago	-70.7	-33.45
+Valparaiso	-71.63333333	-33.01666667
+CHINA
+Chongquing	106.55	29.55
+Shanghai	121.4333333	31.2
+COLOMBIA
+Baranquilla	-74.8	10.98333333
+Bogota	-74.08333333	4.6
+Cali	-76.5	3.416666667
+Medellin	-75.6	6.216666667
+CONGO
+Brazzaville	15.25	-4.25
+CUBA
+Guantanamo Bay	-75.15	19.9
+Havana	-82.35	23.13333333
+CZECHOSLOVAKIA
+Prague	14.41666667	50.08333333
+DENMARK
+Copenhagen	12.55	55.68333333
+DOMINICAN REPUBLIC
+Santo Domingo	-69.9	18.48333333
+EQUADOR
+Guayaquil	-79.88333333	-2
+Quito	-78.53333333	-0.216666667
+EGYPT
+Cairo	31.33333333	29.86666667
+EL SALVADOR
+San Salvador	-89.21666667	13.7
+ETHIOPIA
+Addis Ababa	38.75	90.03333333
+Asmara	38.91666667	15.28333333
+FRANCE
+Lyon	4.783333333	45.7
+Marseilles	5.383333333	43.3
+Nantes	-1.566666667	47.25
+Nice	7.266666667	43.7
+Paris	2.483333333	48.81666667
+Strasbourg	7.766666667	48.58333333
+FRENCH GUIANA
+Cayenne	-52.45	4.933333333
+GERMANY
+Berlin (West)	13.3	52.45
+Hamburg	9.966666667	53.55
+Hannover	9.666666667	52.4
+Mannheim	8.466666667	49.56666667
+Munich	11.56666667	48.15
+GHANA
+Accra	-0.2	5.55
+GIBRALTAR
+Gibraltar	-5.366666667	36.15
+GREECE
+Athens	23.71666667	37.96666667
+Thessaloniki	22.95	40.61666667
+GREENLAND
+Narsarssuaq	-45.41666667	61.18333333
+GUATEMALA
+Guatemala City	-90.51666667	14.61666667
+GUYANA
+Georgetown	-58.2	6.833333333
+HAITI
+Port Au Prince	-72.33333333	18.55
+HONDURAS
+Tegucigalpa	-87.21666667	14.1
+HONG KONG
+Hong Kong	114.1666667	22.3
+HUNGARY
+Budapest	19.03333333	47.51666667
+ICELAND
+Reykjavik	21.93333333	64.13333333
+INDIA
+Ahmenabad	72.58333333	23.03333333
+Bangalore	77.61666667	12.95
+Bombay	72.81666667	18.9
+Calcutta	88.33333333	22.53333333
+Madras	80.25	13.06666667
+Nagpur	79.11666667	21.15
+New Delhi	77.2	28.58333333
+INDONESIA
+Djakarta	106.8333333	-6.183333333
+Kupang	123.5666667	-10.16666667
+Makassar	119.4666667	-5.133333333
+Medan	98.68333333	3.583333333
+Palembang	104.7666667	-3
+Surabaya	112.7166667	-7.216666667
+IRAN
+Abadan	48.26666667	30.35
+Meshed	59.6	36.28333333
+Tehran	51.41666667	35.68333333
+IRAQ
+Baghdad	44.4	33.33333333
+Mosul	43.15	36.31666667
+IRELAND
+Dublin	-6.35	53.36666667
+Shannon	-8.916666667	52.68333333
+IRIAN BARAT
+Manokwari	134.0833333	-0.866666667
+ISRAEL
+Jerusalem	35.21666667	31.78333333
+Tel Aviv	34.78333333	32.1
+ITALY
+Milan	9.283333333	45.45
+Naples	14.3	40.88333333
+Rome	12.6	41.8
+IVORY COAST
+Abidjan	-4.016666667	5.316666667
+JAPAN
+Fukuoka	130.45	33.58333333
+Sapporo	141.35	43.06666667
+Tokyo	139.7666667	35.68333333
+JORDAN
+Amman	35.95	31.95
+KENYA
+Nairobi	36.8	-1.266666667
+KOREA
+Pyongyang	125.6833333	39.03333333
+Seoul	126.9666667	37.56666667
+LEBANON
+Beirut	35.46666667	33.9
+LIBERIA
+Monrovia	-10.8	6.3
+LIBYA
+Benghazi	20.06666667	32.1
+MADAGASCAR
+Tananarive	47.55	-18.91666667
+MALAYSIA
+Kuala Lumpur	101.7	3.116666667
+Penang	100.3166667	5.416666667
+MARTINIQUE
+Fort De France	-61.08333333	14.61666667
+MEXICO
+Guadalajara	-103.3333333	20.68333333
+Merida	-89.63333333	20.96666667
+Mexico City	-99.2	19.4
+Monterrey	-100.3	25.66666667
+Vera Cruz	-96.13333333	19.2
+MOROCCO
+Casablanca	-7.65	33.58333333
+NEPAL
+Katmandu	85.2	27.7
+NETHERLANDS
+Amsterdam	4.916666667	52.38333333
+NEW ZEALAND
+Auckland	174.7666667	-36.85
+Christchurch	172.6166667	-43.53333333
+Wellington	174.7666667	-41.28333333
+NICARAGUA
+Managua	-86.25	12.16666667
+NIGERIA
+Lagos	3.4	6.45
+NORWAY
+Bergen	5.316666667	60.4
+Oslo	10.73333333	59.93333333
+PAKISTAN
+Karachi	66.98333333	24.8
+Lahore	74.33333333	31.58333333
+Peshwar	71.58333333	34.01666667
+PANAMA
+Panama City	-79.55	8.966666667
+PAPUA NEW GUINEA
+Port Moresby	147.15	-9.483333333
+PARAGUAY
+Ascuncion	-57.5	-25.28333333
+PERU
+Lima	-77.05	-12.08333333
+PHILIPPINES
+Manila	120.9833333	14.58333333
+POLAND
+Krakow	19.95	50.06666667
+Warsaw	21.03333333	52.21666667
+PORTUGAL
+Lisbon	-9.133333333	38.71666667
+PUERTO RICO
+San Juan	-66.11666667	18.48333333
+RUMANIA
+Bucharest	26.1	44.41666667
+RUSSIA
+Alma Ata	76.88333333	43.23333333
+Archangel	40.53333333	64.55
+Kaliningrad	20.5	54.71666667
+Krasnoyarsk	92.95	56.01666667
+Kiev	30.5	50.45
+Kharkov	36.23333333	50
+Kuibyshev	50.1	53.18333333
+Leningrad	30.26666667	59.93333333
+Minsk	27.55	53.9
+Moscow	37.66666667	55.76666667
+Odessa	30.73333333	46.48333333
+Petropavlovsk	158.7	52.88333333
+Rostov on Don	39.71666667	47.21666667
+Sverdlovsk	60.63333333	56.81666667
+Tashkent	69.3	41.33333333
+Tbilisi	44.8	41.71666667
+Vladivostok	131.9166667	43.11666667
+Volgograd	44.51666667	48.7
+SAUDI ARABIA
+Dhahran	50.15	26.28333333
+Jedda	39.16666667	21.46666667
+Riyadh	46.7	24.65
+SENEGAL
+Dakar	-17.48333333	14.7
+SINGAPORE
+Singapore	103.8333333	1.3
+SOMALIA
+Mogadiscio	49.31666667	2.033333333
+SOUTH AFRICA
+Cape Town	18.48333333	-33.93333333
+Johannesburg	28.05	-26.18333333
+Pretoria	28.23333333	-25.75
+SOUTH YEMEN
+Aden	45.03333333	12.83333333
+SPAIN
+Barcelona	2.15	41.4
+Madrid	-3.683333333	40.41666667
+Valencia	-0.383333333	39.46666667
+SRI LANKA
+Colombo	79.86666667	6.9
+SUDAN
+Khartoum	32.55	15.61666667
+SURINAM
+Paramaribo	-55.15	5.816666667
+SWEDEN
+Stockholm		18.06666667 59.35
+SWITZERLAND
+Zurich	8.55	47.38333333
+SYRIA
+Damascus	36.33333333	33.5
+TAIWAN
+Tainan	120.2	22.95
+Taipei	121.5166667	25.03333333
+TANZANIA
+Dar es Salaam	39.3	-6.833333333
+THAILAND
+Bangkok	100.5	13.73333333
+TRINIDAD
+Port of Spain	-61.51666667	10.66666667
+TUNISIA
+Tunis	10.2	36.78333333
+TURKEY
+Adana	35.3	36.98333333
+Ankara	32.88333333	39.95
+Istanbul	28.83333333	40.96666667
+Izmir	27.16666667	38.43333333
+UNITED KINGDOM
+Belfast	-5.916666667	54.6
+Birmingham	-1.933333333	52.48333333
+Cardiff	-3.166666667	51.46666667
+Edinburgh	-3.183333333	55.91666667
+Glasgow	-4.283333333	55.86666667
+London	0	51.48333333
+URUGUAY
+Montevideo	-56.21666667	-34.85
+VENEZUELA
+Caracas	-66.93333333	10.5
+Maracaibo	-71.6	10.65
+VIETNAM
+Da Nang	108.2166667	16.06666667
+Hanoi	105.8666667	21.03333333
+Ho Chi Minh City
+(Saigon)	106.7	10.78333333
+SERBIA
+Belgrade	20.46666667	44.8
+ZAIRE
+Kinshasa (Leopoldville)	15.3	-4.333333333
+Kisangani (Stanleyville)	15.23333333	-0.433333333

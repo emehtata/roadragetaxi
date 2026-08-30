@@ -132,10 +132,14 @@ def get_viewport_bounds(
     return camx - half_w, camy - half_h, camx + half_w, camy + half_h
 
 
-def _covered_by_higher_road(x: float, y: float, layer: int, ways: Optional[List[Way]]) -> bool:
-    if not ways:
+def _covered_by_higher_road(x: float, y: float, layer: int, ways: Optional[List[Way]], spatial_grid=None) -> bool:
+    if spatial_grid is not None:
+        candidates = (way for way, _ in spatial_grid._candidate_ways(x, y))
+    else:
+        candidates = ways or []
+    if not ways and spatial_grid is None:
         return False
-    for way in ways:
+    for way in candidates:
         if getattr(way, "layer", 0) <= layer or len(way.points_m) < 2:
             continue
         half_width = getattr(way, "half_width_m", 3.0)
@@ -161,6 +165,7 @@ def draw_scenery(
     screen_h: int = SCREEN_H,
     tree_effects=None,
     fallen_trees=None,
+    spatial_grid=None,
 ) -> None:
     """Draw parks, forests, and green spaces intersecting viewport."""
     import pygame
@@ -180,7 +185,13 @@ def draw_scenery(
         "beach": (170, 160, 115),
     }
 
-    for sc in sceneries:
+    tree_budget = max(600, screen_w * screen_h // 400)
+    visible_sceneries = (
+        spatial_grid.ways_in_rect(vminx, vminy, vmaxx, vmaxy)
+        if spatial_grid is not None
+        else sceneries
+    )
+    for sc in visible_sceneries:
         bb = getattr(sc, "bbox", None)
         if bb and bb != (0.0, 0.0, 0.0, 0.0):
             if bb[2] < vminx or bb[0] > vmaxx or bb[3] < vminy or bb[1] > vmaxy:
@@ -190,28 +201,20 @@ def draw_scenery(
         pts = [world_to_screen(x, y, camx, camy, px_per_m, screen_w, screen_h) for (x, y) in sc.points_m]
         color = colors.get(sc.kind.lower(), (38, 105, 38))
         pygame.draw.polygon(screen, color, pts)
-        if sc.kind.lower() in ("forest", "wood"):
-            min_x = max(vminx, min(point[0] for point in sc.points_m))
-            max_x = min(vmaxx, max(point[0] for point in sc.points_m))
-            min_y = max(vminy, min(point[1] for point in sc.points_m))
-            max_y = min(vmaxy, max(point[1] for point in sc.points_m))
-            for grass_x in range(math.floor(min_x / 8.0) * 8, math.ceil(max_x), 8):
-                for grass_y in range(math.floor(min_y / 8.0) * 8, math.ceil(max_y), 8):
-                    if not point_in_polygon(grass_x, grass_y, sc.points_m):
-                        continue
-                    variation = abs(math.sin(grass_x * 12.9898 + grass_y * 78.233))
-                    if variation < 0.35:
-                        continue
-                    start = world_to_screen(grass_x, grass_y, camx, camy, px_per_m, screen_w, screen_h)
-                    tuft_length = (0.35 + variation * 0.35) * px_per_m
-                    end = (start[0] + int(variation * tuft_length), start[1] - max(1, int(tuft_length)))
-                    pygame.draw.line(screen, (48, 116, 42), start, end, max(1, int(0.12 * px_per_m)))
-        for tree_index, (tree_x, tree_y) in enumerate(getattr(sc, "trees", [])):
+        trees = getattr(sc, "trees", [])
+        visible_tree_count = sum(
+            1 for tree_x, tree_y in trees
+            if vminx <= tree_x <= vmaxx and vminy <= tree_y <= vmaxy
+        )
+        tree_step = max(1, math.ceil(visible_tree_count / tree_budget))
+        for tree_index, (tree_x, tree_y) in enumerate(trees):
             if not (vminx <= tree_x <= vmaxx and vminy <= tree_y <= vmaxy):
                 continue
-            sx, sy = world_to_screen(tree_x, tree_y, camx, camy, px_per_m, screen_w, screen_h)
             tree_key = (id(sc), tree_index)
             effect = (tree_effects or {}).get(tree_key, {})
+            if tree_step > 1 and tree_index % tree_step and tree_key not in (fallen_trees or set()) and effect.get("shake", 0.0) <= 0.0:
+                continue
+            sx, sy = world_to_screen(tree_x, tree_y, camx, camy, px_per_m, screen_w, screen_h)
             shake = effect.get("shake", 0.0)
             if shake > 0.0:
                 sx += math.sin(shake * 42.0) * max(1, int(2.0 * px_per_m))
@@ -375,13 +378,19 @@ def draw_waters(
     px_per_m: float = PX_PER_M,
     screen_w: int = SCREEN_W,
     screen_h: int = SCREEN_H,
+    spatial_grid=None,
 ) -> None:
     """Draw water polygons and waterways intersecting viewport."""
     import pygame
 
     vminx, vminy, vmaxx, vmaxy = get_viewport_bounds(camx, camy, px_per_m, screen_w, screen_h, 80.0)
 
-    for w in waters:
+    visible_waters = (
+        spatial_grid.ways_in_rect(vminx, vminy, vmaxx, vmaxy)
+        if spatial_grid is not None
+        else waters
+    )
+    for w in visible_waters:
         bb = getattr(w, "bbox", None)
         if bb and bb != (0.0, 0.0, 0.0, 0.0):
             if bb[2] < vminx or bb[0] > vmaxx or bb[3] < vminy or bb[1] > vmaxy:
@@ -413,13 +422,19 @@ def draw_buildings(
     px_per_m: float = PX_PER_M,
     screen_w: int = SCREEN_W,
     screen_h: int = SCREEN_H,
+    spatial_grid=None,
 ) -> None:
     """Draw building footprints intersecting viewport."""
     import pygame
 
     vminx, vminy, vmaxx, vmaxy = get_viewport_bounds(camx, camy, px_per_m, screen_w, screen_h, 50.0)
 
-    for b in buildings:
+    visible_buildings = (
+        spatial_grid.ways_in_rect(vminx, vminy, vmaxx, vmaxy)
+        if spatial_grid is not None
+        else buildings
+    )
+    for b in visible_buildings:
         bb = getattr(b, "bbox", None)
         if bb and bb != (0.0, 0.0, 0.0, 0.0):
             if bb[2] < vminx or bb[0] > vmaxx or bb[3] < vminy or bb[1] > vmaxy:
@@ -533,6 +548,7 @@ def draw_ways(
     px_per_m: float = PX_PER_M,
     screen_w: int = SCREEN_W,
     screen_h: int = SCREEN_H,
+    spatial_grid=None,
 ) -> None:
     """Draw road ways intersecting viewport with highway-type proportional thickness and layer ordering."""
     import pygame
@@ -540,23 +556,25 @@ def draw_ways(
     vminx, vminy, vmaxx, vmaxy = get_viewport_bounds(camx, camy, px_per_m, screen_w, screen_h, 60.0)
 
     # Filter visible ways first, then sort only visible ways by layer
-    visible_ways = []
-    for w in ways:
-        bb = getattr(w, "bbox", None)
-        if bb and bb != (0.0, 0.0, 0.0, 0.0):
-            if bb[2] < vminx or bb[0] > vmaxx or bb[3] < vminy or bb[1] > vmaxy:
-                continue
-        if len(w.points_m) >= 2:
-            visible_ways.append(w)
+    if spatial_grid is not None:
+        visible_ways = [w for w in spatial_grid.ways_in_rect(vminx, vminy, vmaxx, vmaxy) if len(w.points_m) >= 2]
+    else:
+        visible_ways = []
+        for w in ways:
+            bb = getattr(w, "bbox", None)
+            if bb and bb != (0.0, 0.0, 0.0, 0.0):
+                if bb[2] < vminx or bb[0] > vmaxx or bb[3] < vminy or bb[1] > vmaxy:
+                    continue
+            if len(w.points_m) >= 2:
+                visible_ways.append(w)
+
+    if px_per_m >= 6.0 or len(visible_ways) > 500:
+        visible_ways = [way for way in visible_ways if way.is_drivable]
 
     visible_ways.sort(key=lambda w: getattr(w, "layer", 0))
 
     def draw_joined_line(color, points, width):
         pygame.draw.lines(screen, color, False, points, width)
-        radius = width // 2
-        if radius > 0:
-            for point in points:
-                pygame.draw.circle(screen, color, point, radius)
 
     for w in visible_ways:
         pts = [world_to_screen(x, y, camx, camy, px_per_m, screen_w, screen_h) for (x, y) in w.points_m]
@@ -765,6 +783,7 @@ def draw_crossings(
     px_per_m: float = PX_PER_M,
     screen_w: int = SCREEN_W,
     screen_h: int = SCREEN_H,
+    spatial_grid=None,
 ) -> None:
     """Draw Finnish zebra pedestrian crossings (suojatiet) with white road stripes aligned to road geometry."""
     import pygame
@@ -774,7 +793,12 @@ def draw_crossings(
 
     vminx, vminy, vmaxx, vmaxy = get_viewport_bounds(camx, camy, px_per_m, screen_w, screen_h, 30.0)
 
-    for c in crossings:
+    visible_crossings = (
+        spatial_grid.ways_in_rect(vminx, vminy, vmaxx, vmaxy)
+        if spatial_grid is not None
+        else crossings
+    )
+    for c in visible_crossings:
         cx_w = getattr(c, "x", 0.0)
         cy_w = getattr(c, "y", 0.0)
         if not (vminx <= cx_w <= vmaxx and vminy <= cy_w <= vmaxy):
@@ -845,6 +869,7 @@ def draw_labels(
     screen_w: int = SCREEN_W,
     screen_h: int = SCREEN_H,
     max_labels: int = 35,
+    spatial_grid=None,
 ) -> None:
     """Draw text labels and street names with decluttering and collision avoidance."""
     import pygame
@@ -954,7 +979,12 @@ def draw_labels(
 
     # 4. Road / street names (white, only when sufficiently zoomed in)
     if px_per_m >= 0.35:
-        for w in ways:
+        label_ways = (
+            spatial_grid.ways_in_rect(vminx, vminy, vmaxx, vmaxy)
+            if spatial_grid is not None
+            else ways
+        )
+        for w in label_ways:
             if count >= max_labels:
                 break
             name = getattr(w, "name", None)
@@ -1121,11 +1151,12 @@ def draw_car(
     font=None,
     shout_text: str = "PRKL!",
     door_open_progress: float = 0.0,
+    spatial_grid=None,
 ) -> None:
     """Draw player taxi scaled in meters with headlights and taillights."""
     import pygame
 
-    if _covered_by_higher_road(car.x, car.y, getattr(car, "layer", 0), ways):
+    if _covered_by_higher_road(car.x, car.y, getattr(car, "layer", 0), ways, spatial_grid):
         return
     cx, cy = world_to_screen(car.x, car.y, camx, camy, px_per_m, screen_w, screen_h)
     length_m = getattr(car, "length_m", 4.0)
@@ -1181,6 +1212,7 @@ def draw_npc_cars(
     screen_w: int = SCREEN_W,
     screen_h: int = SCREEN_H,
     ways: Optional[List[Way]] = None,
+    spatial_grid=None,
 ) -> None:
     """Draw autonomous NPC cars scaled in meters with headlights and taillights."""
     vminx, vminy, vmaxx, vmaxy = get_viewport_bounds(camx, camy, px_per_m, screen_w, screen_h, 30.0)
@@ -1201,7 +1233,13 @@ def draw_npc_cars(
             continue
         if not (vminx <= npc.x <= vmaxx and vminy <= npc.y <= vmaxy):
             continue
-        if _covered_by_higher_road(npc.x, npc.y, getattr(npc, "layer", getattr(npc.way, "layer", 0)), ways):
+        if _covered_by_higher_road(
+            npc.x,
+            npc.y,
+            getattr(npc, "layer", getattr(npc.way, "layer", 0)),
+            ways,
+            spatial_grid,
+        ):
             continue
 
         cx, cy = world_to_screen(npc.x, npc.y, camx, camy, px_per_m, screen_w, screen_h)
@@ -1471,13 +1509,19 @@ def draw_traffic_lights(
     px_per_m: float = PX_PER_M,
     screen_w: int = SCREEN_W,
     screen_h: int = SCREEN_H,
+    spatial_grid=None,
 ) -> None:
     """Draw traffic signal posts and active lights."""
     import pygame
 
     vminx, vminy, vmaxx, vmaxy = get_viewport_bounds(camx, camy, px_per_m, screen_w, screen_h, 30.0)
 
-    for tl in traffic_lights:
+    visible_traffic_lights = (
+        spatial_grid.ways_in_rect(vminx, vminy, vmaxx, vmaxy)
+        if spatial_grid is not None
+        else traffic_lights
+    )
+    for tl in visible_traffic_lights:
         if not (vminx <= tl.x <= vmaxx and vminy <= tl.y <= vmaxy):
             continue
 
@@ -1987,6 +2031,12 @@ def draw_city_selection_menu(
     refresh_surf = sub_font.render(tr(language, "refresh_map"), True, (220, 230, 235))
     screen.blit(refresh_surf, refresh_surf.get_rect(midleft=(checkbox_rect.right + 10, checkbox_rect.centery)))
 
+    edit_rect = pygame.Rect(screen_w // 2 - 150, checkbox_rect.bottom + 16, 300, 36)
+    pygame.draw.rect(screen, (45, 80, 130), edit_rect, border_radius=5)
+    pygame.draw.rect(screen, (100, 200, 255), edit_rect, width=1, border_radius=5)
+    edit_surf = sub_font.render(tr(language, "edit_city_list"), True, (255, 255, 255))
+    screen.blit(edit_surf, edit_surf.get_rect(center=edit_rect.center))
+
     # Navigation hint
     hint_surf = sub_font.render(
         tr(language, "city_hint"),
@@ -2053,14 +2103,14 @@ def draw_city_summary(
     screen.blit(hint, hint.get_rect(center=(screen_w // 2, screen_h - 100)))
 
 
-def draw_help_screen(
+def draw_tutorial_screen(
     screen,
     font,
     screen_w: int = SCREEN_W,
     screen_h: int = SCREEN_H,
     language: str = "fi",
 ) -> None:
-    """Draw the game's objective and keyboard controls over the current frame."""
+    """Draw the game's tutorial, objective, and complete control list."""
     import pygame
 
     overlay = pygame.Surface((screen_w, screen_h), pygame.SRCALPHA)
@@ -2073,7 +2123,7 @@ def draw_help_screen(
 
     title_font = pygame.font.SysFont(None, 38, bold=True)
     section_font = pygame.font.SysFont(None, 25, bold=True)
-    title = title_font.render("THE ROAD RAGE TRIP", True, (245, 245, 245))
+    title = title_font.render(tr(language, "tutorial"), True, (245, 245, 245))
     screen.blit(title, title.get_rect(center=(screen_w // 2, panel.y + 38)))
 
     sections = [
@@ -2090,6 +2140,10 @@ def draw_help_screen(
             "Pysy tiellä, vältä kolareita ja kerää pisteitä nopeista onnistuneista kyydeistä." if language == "fi" else "Stay on the road, avoid crashes, and score points for successful rides.",
             "Puhelin näyttää kolme kyytiä: valitse yksi näppäimillä 1-3 tai hylkää tarjous X:llä." if language == "fi" else "The phone shows three rides: select one with 1-3 or reject an offer with X.",
             "Taksitolpan asiakas näyttää KYYTIIN-tekstin, kävelee autolle ja voi päätyä kilpailevalle NPC-taksille." if language == "fi" else "A taxi-stand customer shows TO TAXI, walks to the car, or may choose a rival NPC taxi.",
+            "Aja rajoituksen mukaan: se kasvattaa rattiraivoa. Hidas lähestyminen punaista valoa kasvattaa sitä myös." if language == "fi" else "Follow the speed limit to build Road Rage. Approaching a red light slowly also builds it.",
+            "Space kuluttaa 25 % mittarista ja siirtää edessä olevat ajoneuvot sivuun 50 metrin säteellä." if language == "fi" else "Space spends 25% of the meter and moves vehicles ahead aside within 50 meters.",
+            "Se pysäyttää aktiivisen poliisin takaa-ajon kokonaan; poliisi kääntyy pois kolmeksi sekunniksi." if language == "fi" else "It ends an active police pursuit; the police turn away for three seconds.",
+            "Kolarit nollaavat mittarin ja pyöräilijään törmääminen puolittaa sen." if language == "fi" else "Crashes empty the meter and hitting a cyclist halves it.",
             "Zoomaus vähentää kaukana olevia NPC-hahmoja suorituskyvyn parantamiseksi." if language == "fi" else "Zooming in reduces distant NPC characters to improve performance.",
         ]),
     ]
@@ -2101,10 +2155,10 @@ def draw_help_screen(
         for line in lines:
             line_surface = font.render(line, True, (220, 228, 235))
             screen.blit(line_surface, (panel.x + 42, y))
-            y += 25
-        y += 16
+            y += 21
+        y += 10
 
-    control_font = pygame.font.SysFont("monospace", 20)
+    control_font = pygame.font.SysFont("monospace", 18)
     controls = [
         ("W / Up", tr(language, "drive")),
         ("S / Down", tr(language, "brake")),
@@ -2120,6 +2174,7 @@ def draw_help_screen(
         ("K", tr(language, "lane_assist")),
         ("V", tr(language, "speed_limiter")),
         ("B", tr(language, "red_assist")),
+        ("N", "Navigointi" if language == "fi" else "Toggle navigation route"),
         ("+ / -", tr(language, "zoom")),
         ("Esc", tr(language, "pause")),
         ("F1", tr(language, "help_short")),
@@ -2129,23 +2184,27 @@ def draw_help_screen(
     heading_surface = section_font.render(tr(language, "controls"), True, (255, 215, 95))
     screen.blit(heading_surface, (panel.x + 28, y))
     y += 30
-    column_width = panel.width // 2
-    rows_per_column = (len(controls) + 1) // 2
+    column_count = 3
+    column_width = panel.width // column_count
+    rows_per_column = (len(controls) + column_count - 1) // column_count
     for row in range(rows_per_column):
-        for column in range(2):
+        for column in range(column_count):
             index = row + column * rows_per_column
             if index >= len(controls):
                 continue
             key, action = controls[index]
             column_x = panel.x + 28 + column * column_width
             key_surface = control_font.render(key, True, (255, 215, 95))
-            action_surface = font.render(action, True, (220, 228, 235))
+            action_surface = pygame.font.SysFont(None, 18).render(action, True, (220, 228, 235))
             screen.blit(key_surface, (column_x, y))
-            screen.blit(action_surface, (column_x + 105, y))
-        y += 20
+            screen.blit(action_surface, (column_x + 82, y))
+        y += 18
 
     hint = font.render(tr(language, "help_close"), True, (160, 190, 215))
     screen.blit(hint, hint.get_rect(center=(screen_w // 2, panel.bottom - 25)))
+
+
+draw_help_screen = draw_tutorial_screen
 
 
 def draw_pause_menu(
@@ -2228,6 +2287,8 @@ def draw_settings_menu(
     master_volume: float,
     music_volume: float,
     effects_volume: float,
+    comments_enabled: bool,
+    subtitles_enabled: bool,
     overpass_endpoints: str,
     selected_idx: int,
     screen_w: int = SCREEN_W,
@@ -2249,6 +2310,8 @@ def draw_settings_menu(
         (tr(language, "master_volume"), f"{master_volume * 100:.0f}%", master_volume),
         (tr(language, "music_volume"), f"{music_volume * 100:.0f}%", music_volume),
         (tr(language, "effects_volume"), f"{effects_volume * 100:.0f}%", effects_volume),
+        (tr(language, "comment_audio"), tr(language, "on" if comments_enabled else "off"), None),
+        (tr(language, "subtitles"), tr(language, "on" if subtitles_enabled else "off"), None),
         (tr(language, "overpass_endpoints"), overpass_endpoints[-55:] if len(overpass_endpoints) > 55 else overpass_endpoints, None),
     ]
     for idx, (label, value, volume) in enumerate(rows):
@@ -2269,6 +2332,49 @@ def draw_settings_menu(
 
     hint = pygame.font.SysFont(None, 18).render(tr(language, "settings_hint"), True, (150, 175, 195))
     screen.blit(hint, hint.get_rect(center=(screen_w // 2, panel.bottom - 28)))
+
+
+def draw_city_editor(
+    screen,
+    font,
+    cities: List[str],
+    selected_idx: int,
+    query: str,
+    suggestions: List[str],
+    suggestion_idx: int,
+    screen_w: int = SCREEN_W,
+    screen_h: int = SCREEN_H,
+    language: str = "fi",
+) -> None:
+    """Draw the searchable city replacement editor."""
+    import pygame
+
+    screen.fill((18, 24, 32))
+    title = pygame.font.SysFont(None, 32, bold=True).render(tr(language, "city_editor"), True, (245, 245, 245))
+    screen.blit(title, title.get_rect(center=(screen_w // 2, 38)))
+    rows = (len(cities) + 1) // 2
+    item_w, item_h, gap_x, gap_y = 300, 38, 20, 8
+    start_x = (screen_w - (2 * item_w + gap_x)) // 2
+    start_y = 72
+    for idx, city in enumerate(cities):
+        col = idx // rows
+        row = idx % rows
+        rect = pygame.Rect(start_x + col * (item_w + gap_x), start_y + row * (item_h + gap_y), item_w, item_h)
+        selected = idx == selected_idx
+        pygame.draw.rect(screen, (45, 80, 130) if selected else (28, 36, 48), rect, border_radius=5)
+        pygame.draw.rect(screen, (100, 200, 255) if selected else (60, 75, 95), rect, width=2 if selected else 1, border_radius=5)
+        screen.blit(font.render(f"{idx + 1}. {city}", True, (255, 255, 255)), (rect.x + 12, rect.y + 8))
+
+    input_rect = pygame.Rect(screen_w // 2 - 250, start_y + rows * (item_h + gap_y) + 20, 500, 42)
+    pygame.draw.rect(screen, (245, 245, 245), input_rect, border_radius=4)
+    pygame.draw.rect(screen, (255, 215, 95), input_rect, width=2, border_radius=4)
+    screen.blit(font.render(query or tr(language, "city_editor_search"), True, (30, 35, 42) if query else (120, 130, 140)), (input_rect.x + 12, input_rect.y + 9))
+    for idx, suggestion in enumerate(suggestions):
+        rect = pygame.Rect(input_rect.x, input_rect.bottom + 8 + idx * 34, input_rect.width, 30)
+        pygame.draw.rect(screen, (55, 95, 130) if idx == suggestion_idx else (32, 43, 55), rect, border_radius=3)
+        screen.blit(font.render(suggestion, True, (255, 255, 255)), (rect.x + 12, rect.y + 5))
+    hint = pygame.font.SysFont(None, 18).render(tr(language, "city_editor_hint"), True, (150, 175, 195))
+    screen.blit(hint, hint.get_rect(center=(screen_w // 2, screen_h - 25)))
 
 
 def draw_hud(
@@ -2292,6 +2398,11 @@ def draw_hud(
     language: str = "fi",
     career_total_distance_m: Optional[float] = None,
     water_time_remaining: Optional[float] = None,
+    comment_text: Optional[str] = None,
+    comment_speaker: str = "driver",
+    comment_speaker_name: Optional[str] = None,
+    subtitles_enabled: bool = True,
+    fps: float = 0.0,
 ) -> None:
     """Draw speed, trip, odometer, on-road status, current road name, lat/lon, taxi mission bar, notifications."""
     import pygame
@@ -2345,6 +2456,16 @@ def draw_hud(
         )
         screen.blit(water_text, water_rect)
 
+    if subtitles_enabled and comment_text:
+        subtitle_font = pygame.font.SysFont(None, max(22, font.get_height()))
+        speaker = comment_speaker_name or tr(language, "driver")
+        subtitle_surface = subtitle_font.render(f"{speaker}: {comment_text}", True, (255, 255, 255))
+        subtitle_rect = subtitle_surface.get_rect(center=(screen.get_width() // 2, screen.get_height() - 82))
+        subtitle_bg = pygame.Surface((subtitle_rect.width + 34, subtitle_rect.height + 16), pygame.SRCALPHA)
+        subtitle_bg.fill((0, 0, 0, 205))
+        screen.blit(subtitle_bg, (subtitle_rect.x - 17, subtitle_rect.y - 8))
+        screen.blit(subtitle_surface, subtitle_rect)
+
     hint = (
         f"{tr(language, 'controls')}: W/S/A/D = {tr(language, 'drive').lower()} | +/- = {tr(language, 'zoom').lower()} | R = {tr(language, 'respawn').lower()} | X = {tr(language, 'cancel_ride').lower()} | T = {tr(language, 'reset_trip').lower()} | "
         f"L = labels ({labels_status}) | K = lane assist ({lane_assist_status}) | V = limiter ({speed_limiter_status}) | B = red assist ({red_light_assist_status}) | C = {tr(language, 'compass')} ({tr(language, 'on' if show_compass else 'off')}) | Space = {tr(language, 'rage')} | ESC = pause"
@@ -2390,7 +2511,7 @@ def draw_hud(
             cur_speed_kmh = (dist_m / max(1.0, taxi_mgr.elapsed_time)) * 3.6 if taxi_mgr.elapsed_time > 0 else 0.0
             role_text = (
                 tr(language, "fare_dropoff", name=p.name if p else tr(language, "client"), address=target.address if target else "...")
-                + f" ({dist_s}, {tr(language, 'time_left')}: {taxi_mgr.elapsed_time:.1f}s)"
+                + f" ({dist_s}, {tr(language, 'elapsed_time')}: {taxi_mgr.elapsed_time:.1f}s)"
             )
             role_color = (100, 240, 140)
 
@@ -2403,6 +2524,14 @@ def draw_hud(
         screen.blit(bg_s, (score_rect.x - 6, score_rect.y - 3))
         pygame.draw.rect(screen, (220, 180, 50), (score_rect.x - 6, score_rect.y - 3, score_rect.width + 12, score_rect.height + 6), 1, border_radius=3)
         screen.blit(score_surf, score_rect)
+
+        fps_surf = font.render(f"FPS: {fps:.1f}", True, (170, 245, 180))
+        fps_rect = fps_surf.get_rect(topright=(SCREEN_W - 10, score_rect.bottom + 8))
+        fps_bg = pygame.Surface((fps_rect.width + 12, fps_rect.height + 6), pygame.SRCALPHA)
+        fps_bg.fill((20, 30, 25, 220))
+        screen.blit(fps_bg, (fps_rect.x - 6, fps_rect.y - 3))
+        pygame.draw.rect(screen, (90, 180, 110), (fps_rect.x - 6, fps_rect.y - 3, fps_rect.width + 12, fps_rect.height + 6), 1, border_radius=3)
+        screen.blit(fps_surf, fps_rect)
 
         # Mission header bar
         mission_surf = font.render(role_text, True, role_color)

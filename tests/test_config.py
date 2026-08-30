@@ -39,3 +39,17 @@ def test_overpass_endpoints_are_trimmed_and_have_defaults(tmp_path):
 
     config.set("map", "overpass_endpoints", "")
     assert get_overpass_endpoints(config) == list(DEFAULT_OVERPASS_ENDPOINTS)
+
+
+def test_custom_city_section_replaces_default_city_section(tmp_path):
+    config_path = tmp_path / "roadragetrip.ini"
+    config = load_config(config_path)
+    user_agent_id = config.get("game", "user_agent_id")
+    config_path.write_text(
+        f"[game]\nuser_agent_id = {user_agent_id}\n\n[cities]\nkorpilahti = 62.017, 25.562\n",
+        encoding="utf-8",
+    )
+
+    loaded = load_config(config_path)
+
+    assert list(loaded.items("cities")) == [("korpilahti", "62.017, 25.562")]

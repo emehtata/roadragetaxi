@@ -8,7 +8,7 @@ from typing import Callable, Optional
 
 from .osm import TaxiStop
 from .physics import Car
-from .traffic import NPC_TAXI_COLOR, NPCCar, TrafficManager
+from .traffic import NPCCar, TrafficManager
 
 logger = logging.getLogger(__name__)
 
@@ -79,7 +79,6 @@ class TaxiBrawlManager:
             if opponent is None:
                 return
             opponent.is_taxi = True
-            opponent.color = NPC_TAXI_COLOR
             opponent.speed = 0.0
             opponent.target_speed = 0.0
             opponent.rage_timer = 999.0

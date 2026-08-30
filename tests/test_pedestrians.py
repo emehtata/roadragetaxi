@@ -1,6 +1,7 @@
 """Tests for pedestrian simulation, movement, traffic light compliance, and dodging."""
 import math
 import pytest
+from types import SimpleNamespace
 from theroadragetrip.osm import TrafficLight, Way
 from theroadragetrip.osm import TaxiStop
 from theroadragetrip.pedestrian import CyclistManager, Pedestrian, PedestrianManager
@@ -22,7 +23,7 @@ def test_pedestrian_target_count_keeps_nearest_characters():
 
 
 def test_taxi_stop_gets_waiting_customer():
-    way = Way(points_m=[(0.0, 0.0), (100.0, 0.0)], highway="footway", half_width_m=1.5)
+    way = Way(points_m=[(0.0, -3.0), (100.0, -3.0)], highway="footway", half_width_m=1.5)
     manager = PedestrianManager([way], target_count=0, spawn_radius_m=120.0)
     player = Car(x=10.0, y=0.0, heading=0.0, speed=0.0)
 
@@ -30,7 +31,7 @@ def test_taxi_stop_gets_waiting_customer():
 
     assert len(manager.pedestrians) == 1
     assert manager.pedestrians[0].is_taxi_stop_waiter is True
-    assert (manager.pedestrians[0].x, manager.pedestrians[0].y) == (20.0, 0.0)
+    assert (manager.pedestrians[0].x, manager.pedestrians[0].y) == (20.0, -3.0)
 
 
 def test_taxi_stop_waiter_spawns_when_stop_enters_view(monkeypatch: pytest.MonkeyPatch):
@@ -57,6 +58,29 @@ def test_taxi_stop_waiter_spawns_when_stop_enters_view(monkeypatch: pytest.Monke
         if existing_pedestrian.is_taxi_stop_waiter:
             break
     assert existing_pedestrian.is_taxi_stop_waiter is True
+
+
+def test_customer_walks_to_taxi_stop_edge(monkeypatch: pytest.MonkeyPatch):
+    way = Way(points_m=[(0.0, -3.0), (100.0, -3.0)], highway="footway", half_width_m=1.5)
+    manager = PedestrianManager([way], target_count=0, spawn_radius_m=120.0)
+    customer = Pedestrian(10.0, -3.0, 0.0, 1.0, 1.0, way, 0, 1, (1, 1, 1))
+    manager.pedestrians.append(customer)
+    monkeypatch.setattr("theroadragetrip.pedestrian.random.random", lambda: 0.0)
+    stop = TaxiStop(20.0, 0.0)
+    player = Car(10.0, 0.0, 0.0, 0.0)
+    manager.ensure_taxi_stop_waiter([stop], player, viewport_bounds=(40.0, -10.0, 60.0, 10.0))
+    manager.ensure_taxi_stop_waiter([stop], player, viewport_bounds=(-10.0, -10.0, 30.0, 10.0))
+
+    assert customer.is_walking_to_taxi_stop is True
+    assert customer.taxi_stop_target == (20.0, -3.0)
+
+    for _ in range(150):
+        manager.update(Car(10.0, 0.0, 0.0, 0.0), dt=0.1)
+        if customer.is_taxi_stop_waiter:
+            break
+
+    assert customer.is_taxi_stop_waiter is True
+    assert (customer.x, customer.y) == (20.0, -3.0)
 
 
 def test_pedestrian_spawning_and_movement():
@@ -100,6 +124,36 @@ def test_pedestrian_spawning_and_movement():
     assert moved > 0
 
 
+def test_pedestrians_spawn_near_hospitality_venues(monkeypatch):
+    way = Way(points_m=[(0.0, 0.0), (200.0, 0.0)], highway="footway", half_width_m=1.5)
+    venue = SimpleNamespace(
+        venue_type="restaurant",
+        points_m=[(48.0, -4.0), (52.0, -4.0), (52.0, 4.0), (48.0, 4.0)],
+    )
+    manager = PedestrianManager([way], target_count=3, venue_buildings=[venue])
+    monkeypatch.setattr("theroadragetrip.pedestrian.random.random", lambda: 0.0)
+    monkeypatch.setattr("theroadragetrip.pedestrian.random.choice", lambda values: values[0])
+
+    manager.update(Car(x=50.0, y=0.0, heading=0.0, speed=0.0), dt=0.1)
+
+    assert len(manager.venue_locations) == 1
+    assert all(math.hypot(ped.x - 50.0, ped.y) <= 45.0 for ped in manager.pedestrians)
+
+
+def test_drunk_pedestrian_walks_unevenly_and_may_vomit(monkeypatch):
+    way = Way(points_m=[(0.0, 0.0), (200.0, 0.0)], highway="footway", half_width_m=1.5)
+    manager = PedestrianManager([way], target_count=0)
+    drunk = Pedestrian(20.0, 0.0, 0.0, 1.3, 1.3, way, 0, 1, (230, 80, 80), is_drunk=True)
+    drunk.drunk_vomit_cooldown = 0.0
+    manager.pedestrians = [drunk]
+    monkeypatch.setattr("theroadragetrip.pedestrian.random.random", lambda: 0.0)
+
+    manager.update(Car(0.0, 0.0, 0.0, 0.0), dt=0.1)
+
+    assert drunk.y != 0.0
+    assert manager.vomit_puddles == [(20.0, 0.0)]
+
+
 def test_cyclist_spawn_assigns_body_color():
     way = Way(points_m=[(0.0, 0.0), (100.0, 0.0)], highway="cycleway", half_width_m=1.5)
     manager = CyclistManager([way], target_count=0, spawn_radius_m=120.0)
@@ -109,6 +163,22 @@ def test_cyclist_spawn_assigns_body_color():
     assert cyclist is not None
     assert cyclist.is_cyclist is True
     assert cyclist.color != (230, 80, 80)
+
+
+def test_cyclists_use_right_edge_for_both_directions(monkeypatch):
+    way = Way(points_m=[(0.0, 0.0), (100.0, 0.0)], highway="residential", half_width_m=4.0)
+    manager = CyclistManager([way], target_count=0, spawn_radius_m=120.0)
+
+    monkeypatch.setattr("theroadragetrip.pedestrian.random.random", lambda: 0.0)
+    forward = manager.spawn_pedestrian(50.0, 0.0)
+    monkeypatch.setattr("theroadragetrip.pedestrian.random.random", lambda: 1.0)
+    reverse = manager.spawn_pedestrian(50.0, 0.0)
+
+    assert forward is not None and reverse is not None
+    assert forward.direction == 1
+    assert reverse.direction == -1
+    assert forward.lateral_offset_m == pytest.approx(3.0)
+    assert reverse.lateral_offset_m == pytest.approx(3.0)
 
 
 def test_all_cyclists_continue_moving():

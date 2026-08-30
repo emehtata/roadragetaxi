@@ -45,10 +45,10 @@ env/
 htmlcov/
 
 # Local cache & data files
-osm_cache/
+osm_cache
 
 *.ini
-screenshots/
+screenshots
 .env
 output/
-.log
+*.log

@@ -23,6 +23,18 @@ PEDESTRIAN_COLORS = [
     (50, 50, 60),     # Dark
 ]
 
+VENUE_TYPES = {
+    "bar",
+    "biergarten",
+    "cafe",
+    "fast_food",
+    "food_court",
+    "ice_cream",
+    "nightclub",
+    "pub",
+    "restaurant",
+}
+
 CYCLIST_COLORS = [
     (50, 120, 220),
     (220, 60, 60),
@@ -65,6 +77,9 @@ class Pedestrian:
     wants_taxi: bool = False
     taxi_stop_target: Optional[Tuple[float, float]] = None
     is_walking_to_taxi_stop: bool = False
+    is_drunk: bool = False
+    drunk_phase: float = 0.0
+    drunk_vomit_cooldown: float = 0.0
 
 
 @dataclass
@@ -89,6 +104,7 @@ class PedestrianManager:
         spawn_radius_m: float = 120.0,
         despawn_radius_m: float = 160.0,
         traffic_lights: Optional[List[TrafficLight]] = None,
+        venue_buildings: Optional[List] = None,
     ):
         self.target_count = target_count
         self.spawn_radius_m = spawn_radius_m
@@ -98,19 +114,60 @@ class PedestrianManager:
         self.sim_time: float = 0.0
         self._visible_taxi_stops: Set[Tuple[float, float, Optional[int]]] = set()
         self._taxi_stop_visibility_initialized = False
+        self.venue_locations: List[Tuple[float, float]] = []
+        self.vomit_puddles: List[Tuple[float, float]] = []
 
         self.ped_ways: List[Way] = []
         self._way_grid: Dict[Tuple[int, int], List[Way]] = {}
         self._way_grid_cell_size: float = 100.0
         self._junction_grid: Dict[Tuple[int, int], List[Tuple[Way, int, Tuple[float, float], int, int]]] = {}
         self._junction_grid_cell_size: float = 20.0
+        self._traffic_light_grid: Dict[Tuple[int, int], List[TrafficLight]] = {}
+        self._traffic_light_grid_cell_size: float = 60.0
 
         self.sync_map_data(ways, traffic_lights=traffic_lights)
+        self.set_venue_buildings(venue_buildings)
+
+    def set_venue_buildings(self, buildings: Optional[List] = None) -> None:
+        """Index hospitality venues as preferred pedestrian spawn locations."""
+        self.venue_locations = []
+        for building in buildings or []:
+            if getattr(building, "venue_type", None) not in VENUE_TYPES or len(building.points_m) < 3:
+                continue
+            self.venue_locations.append(
+                (
+                    sum(point[0] for point in building.points_m) / len(building.points_m),
+                    sum(point[1] for point in building.points_m) / len(building.points_m),
+                )
+            )
+
+    def _taxi_stop_waiting_position(self, stop) -> Tuple[float, float]:
+        """Return the nearest pedestrian-way point instead of the road center."""
+        nearest = None
+        nearest_distance = float("inf")
+        for way in self.ped_ways:
+            for p1, p2 in zip(way.points_m, way.points_m[1:]):
+                x, y, _, distance = closest_point_and_dist_to_segment(
+                    stop.x, stop.y, p1[0], p1[1], p2[0], p2[1]
+                )
+                if distance < nearest_distance:
+                    nearest = (x, y)
+                    nearest_distance = distance
+        return nearest or (stop.x, stop.y)
 
     def sync_map_data(self, ways: List[Way], traffic_lights: Optional[List[TrafficLight]] = None) -> None:
         """Update road/path network and rebuild spatial grids for pedestrian routing."""
         if traffic_lights is not None:
             self.traffic_lights = traffic_lights
+
+        self._traffic_light_grid.clear()
+        signal_cell_size = self._traffic_light_grid_cell_size
+        for traffic_light in self.traffic_lights:
+            cell = (
+                int(math.floor(traffic_light.x / signal_cell_size)),
+                int(math.floor(traffic_light.y / signal_cell_size)),
+            )
+            self._traffic_light_grid.setdefault(cell, []).append(traffic_light)
 
         # Prefer dedicated pedestrian paths (footway, path, pedestrian, cycleway, steps, track, crossing)
         dedicated = [w for w in ways if is_pedestrian_way(w) and len(w.points_m) >= 2]
@@ -191,8 +248,7 @@ class PedestrianManager:
                 waiter = self.spawn_pedestrian(stop.x, stop.y)
                 if waiter is None:
                     continue
-                waiter.x = stop.x
-                waiter.y = stop.y
+                waiter.x, waiter.y = self._taxi_stop_waiting_position(stop)
                 waiter.is_taxi_stop_waiter = True
                 waiter.wants_taxi = True
                 waiter.speed = 0.0
@@ -225,7 +281,7 @@ class PedestrianManager:
                     continue
                 self.pedestrians.append(customer)
 
-            customer.taxi_stop_target = (stop.x, stop.y)
+            customer.taxi_stop_target = self._taxi_stop_waiting_position(stop)
             customer.is_walking_to_taxi_stop = True
             customer.wants_taxi = True
             customer.is_taxi_stop_waiter = False
@@ -324,6 +380,7 @@ class PedestrianManager:
         near_x: float,
         near_y: float,
         viewport_bounds: Optional[Tuple[float, float, float, float]] = None,
+        max_distance_m: Optional[float] = None,
     ) -> Optional[Pedestrian]:
         """Spawn a new pedestrian near location, just outside viewport edge."""
         if not self.ped_ways:
@@ -421,6 +478,9 @@ class PedestrianManager:
                     x += perp_x * init_lat
                     y += perp_y * init_lat
 
+                    if max_distance_m is not None and math.hypot(x - near_x, y - near_y) > max_distance_m:
+                        continue
+
                     # Sanity check: do not spawn directly on top of player car
                     if math.hypot(x - near_x, y - near_y) < 3.0:
                         continue
@@ -489,7 +549,15 @@ class PedestrianManager:
         # For pedestrians crossing roads: when vehicular light is green, pedestrian crossing is red (wait).
         # When vehicular light is red, pedestrian crossing is green (safe to cross).
         ped_stop_dist = 6.0
-        for tl in self.traffic_lights:
+        cell_size = self._traffic_light_grid_cell_size
+        cell_x = int(math.floor(ped.x / cell_size))
+        cell_y = int(math.floor(ped.y / cell_size))
+        nearby_lights = []
+        for offset_x in (-1, 0, 1):
+            for offset_y in (-1, 0, 1):
+                nearby_lights.extend(self._traffic_light_grid.get((cell_x + offset_x, cell_y + offset_y), ()))
+
+        for tl in nearby_lights:
             dx = tl.x - ped.x
             dy = tl.y - ped.y
             dist_sq = dx * dx + dy * dy
@@ -595,13 +663,18 @@ class PedestrianManager:
         # Spawn new pedestrians up to target_count
         attempts = 0
         max_attempts = max(50, self.target_count * 5)
+        nearby_venues = [
+            location for location in self.venue_locations
+            if math.hypot(location[0] - player_car.x, location[1] - player_car.y) <= self.spawn_radius_m
+        ]
         while len(self.pedestrians) < self.target_count and attempts < max_attempts:
             attempts += 1
-            new_ped = self.spawn_pedestrian(
-                player_car.x,
-                player_car.y,
-                viewport_bounds=viewport_bounds,
-            )
+            spawned_near_venue = bool(nearby_venues and random.random() < 0.6)
+            if spawned_near_venue:
+                venue_x, venue_y = random.choice(nearby_venues)
+                new_ped = self.spawn_pedestrian(venue_x, venue_y, max_distance_m=45.0)
+            else:
+                new_ped = self.spawn_pedestrian(player_car.x, player_car.y, viewport_bounds=viewport_bounds)
             if not new_ped and viewport_bounds:
                 new_ped = self.spawn_pedestrian(
                     player_car.x,
@@ -610,6 +683,10 @@ class PedestrianManager:
                 )
             if not new_ped:
                 break
+            if spawned_near_venue and random.random() < 0.35:
+                new_ped.is_drunk = True
+                new_ped.drunk_phase = random.uniform(0.0, 2.0 * math.pi)
+                new_ped.drunk_vomit_cooldown = random.uniform(8.0, 25.0)
             self.pedestrians.append(new_ped)
 
         # Check interaction and dodging with player car
@@ -641,6 +718,14 @@ class PedestrianManager:
             if getattr(ped, "is_taxi_stop_waiter", False):
                 ped.speed = 0.0
                 continue
+            if getattr(ped, "is_drunk", False):
+                ped.drunk_phase += dt * 2.7
+                ped.drunk_vomit_cooldown = max(0.0, ped.drunk_vomit_cooldown - dt)
+                if ped.drunk_vomit_cooldown <= 0.0 and random.random() < 0.012 * dt:
+                    self.vomit_puddles.append((ped.x, ped.y))
+                    if len(self.vomit_puddles) > 50:
+                        del self.vomit_puddles[:-50]
+                    ped.drunk_vomit_cooldown = random.uniform(18.0, 40.0)
             # Check traffic light stop
             if self._is_pedestrian_red_light(ped):
                 ped.speed = 0.0
@@ -676,12 +761,12 @@ class PedestrianManager:
 
             # Lateral offset drift along sidewalk width
             hw = max(0.5, getattr(ped.way, "half_width_m", 1.2))
-            max_lat = max(0.2, hw * 0.7)
+            max_lat = max(0.2, hw * (0.85 if getattr(ped, "is_cyclist", False) else 0.7))
 
             # Slowly drift towards target lateral offset, re-rolling target periodically
             if abs(ped.lateral_offset_m - ped.target_lateral_offset_m) < 0.05 or random.random() < (0.01 * dt):
                 if getattr(ped, "is_cyclist", False):
-                    ped.target_lateral_offset_m = max(0.3, min(max_lat, hw * 0.45))
+                    ped.target_lateral_offset_m = max(0.3, min(max_lat, hw * 0.75))
                 else:
                     ped.target_lateral_offset_m = random.uniform(-max_lat, max_lat)
 
@@ -709,7 +794,9 @@ class PedestrianManager:
             # Update sway phase based on walking speed
             ped.sway_phase += ped.sway_frequency * (ped.speed / max(0.5, ped.base_speed)) * dt
             # Small natural curve/wobble in heading
-            sway_angle = math.sin(ped.sway_phase) * math.radians(3.5)
+            sway_angle = math.sin(ped.sway_phase) * math.radians(18.0 if getattr(ped, "is_drunk", False) else 3.5)
+            if getattr(ped, "is_drunk", False):
+                sway_angle += math.sin(ped.drunk_phase) * math.radians(10.0)
 
             target_heading = math.atan2(dy, dx)
             ped.heading = target_heading + sway_angle
@@ -814,8 +901,8 @@ class CyclistManager(PedestrianManager):
         cyclist.lateral_offset_m = max(
             0.3,
             min(
-                max(0.2, getattr(cyclist.way, "half_width_m", 1.2) * 0.7),
-                getattr(cyclist.way, "half_width_m", 1.2) * 0.45,
+                max(0.2, getattr(cyclist.way, "half_width_m", 1.2) * 0.85),
+                getattr(cyclist.way, "half_width_m", 1.2) * 0.75,
             ),
         )
         cyclist.target_lateral_offset_m = cyclist.lateral_offset_m

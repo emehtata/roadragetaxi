@@ -1,0 +1,3857 @@
+{
+  "schema_version": 1,
+  "coordinate_order": "longitude, latitude",
+  "source": "paikkadesi.txt",
+  "countries": {
+    "SUOMI": [
+      {
+        "name": "Ahmas",
+        "longitude": 26.508,
+        "latitude": 64.655
+      },
+      {
+        "name": "Alahärmä",
+        "longitude": 22.858,
+        "latitude": 63.25
+      },
+      {
+        "name": "Alajärvi",
+        "longitude": 23.833,
+        "latitude": 63.0
+      },
+      {
+        "name": "Alastaro",
+        "longitude": 22.86,
+        "latitude": 60.953
+      },
+      {
+        "name": "Alatornio",
+        "longitude": 24.167,
+        "latitude": 65.828
+      },
+      {
+        "name": "Alavieska",
+        "longitude": 24.303,
+        "latitude": 64.167
+      },
+      {
+        "name": "Alavus",
+        "longitude": 23.62,
+        "latitude": 62.587
+      },
+      {
+        "name": "Angeli",
+        "longitude": 25.615,
+        "latitude": 68.905
+      },
+      {
+        "name": "Anjalankoski",
+        "longitude": 26.84,
+        "latitude": 60.737
+      },
+      {
+        "name": "Antrea",
+        "longitude": 30.333,
+        "latitude": 60.95
+      },
+      {
+        "name": "Anttola",
+        "longitude": 27.65,
+        "latitude": 61.587
+      },
+      {
+        "name": "Artjärvi",
+        "longitude": 26.078,
+        "latitude": 60.745
+      },
+      {
+        "name": "Asikkala",
+        "longitude": 25.488,
+        "latitude": 61.213
+      },
+      {
+        "name": "Askainen",
+        "longitude": 21.87,
+        "latitude": 60.57
+      },
+      {
+        "name": "Askola",
+        "longitude": 25.6,
+        "latitude": 60.533
+      },
+      {
+        "name": "Aura",
+        "longitude": 22.567,
+        "latitude": 60.612
+      },
+      {
+        "name": "Bromarv",
+        "longitude": 23.333,
+        "latitude": 59.992
+      },
+      {
+        "name": "Dragsfjärd",
+        "longitude": 22.483,
+        "latitude": 60.072
+      },
+      {
+        "name": "Eckerö",
+        "longitude": 19.595,
+        "latitude": 60.207
+      },
+      {
+        "name": "Elimäki",
+        "longitude": 26.455,
+        "latitude": 60.722
+      },
+      {
+        "name": "Elisenvaara",
+        "longitude": 29.767,
+        "latitude": 61.433
+      },
+      {
+        "name": "Eno",
+        "longitude": 30.167,
+        "latitude": 62.788
+      },
+      {
+        "name": "Enonkoski",
+        "longitude": 28.917,
+        "latitude": 62.09
+      },
+      {
+        "name": "Enontekiö",
+        "longitude": 23.635,
+        "latitude": 68.385
+      },
+      {
+        "name": "Enso",
+        "longitude": 28.85,
+        "latitude": 61.117
+      },
+      {
+        "name": "Espoo",
+        "longitude": 24.652,
+        "latitude": 60.205
+      },
+      {
+        "name": "Eura",
+        "longitude": 22.372,
+        "latitude": 61.133
+      },
+      {
+        "name": "Eurajoki",
+        "longitude": 21.738,
+        "latitude": 61.205
+      },
+      {
+        "name": "Evijärvi",
+        "longitude": 23.485,
+        "latitude": 63.375
+      },
+      {
+        "name": "Finström",
+        "longitude": 19.938,
+        "latitude": 60.25
+      },
+      {
+        "name": "Forssa",
+        "longitude": 23.643,
+        "latitude": 60.82
+      },
+      {
+        "name": "Föglö",
+        "longitude": 20.433,
+        "latitude": 60.012
+      },
+      {
+        "name": "Haapajärvi",
+        "longitude": 25.322,
+        "latitude": 63.76
+      },
+      {
+        "name": "Haapakoski",
+        "longitude": 27.167,
+        "latitude": 62.467
+      },
+      {
+        "name": "Haapasaari",
+        "longitude": 27.188,
+        "latitude": 60.295
+      },
+      {
+        "name": "Haapavesi",
+        "longitude": 25.383,
+        "latitude": 64.15
+      },
+      {
+        "name": "Hailuoto",
+        "longitude": 24.717,
+        "latitude": 65.005
+      },
+      {
+        "name": "Halikko",
+        "longitude": 23.072,
+        "latitude": 60.4
+      },
+      {
+        "name": "Halsua",
+        "longitude": 24.17,
+        "latitude": 63.457
+      },
+      {
+        "name": "Haltiatunturi",
+        "longitude": 21.267,
+        "latitude": 69.3
+      },
+      {
+        "name": "Hamina",
+        "longitude": 27.18,
+        "latitude": 60.577
+      },
+      {
+        "name": "Hammarland",
+        "longitude": 19.742,
+        "latitude": 60.217
+      },
+      {
+        "name": "Hankasalmi",
+        "longitude": 26.437,
+        "latitude": 62.373
+      },
+      {
+        "name": "Hanko",
+        "longitude": 22.978,
+        "latitude": 59.822
+      },
+      {
+        "name": "Harjavalta",
+        "longitude": 22.148,
+        "latitude": 61.32
+      },
+      {
+        "name": "Harlu",
+        "longitude": 30.95,
+        "latitude": 61.817
+      },
+      {
+        "name": "Hartola",
+        "longitude": 26.167,
+        "latitude": 61.575
+      },
+      {
+        "name": "Hauho",
+        "longitude": 24.558,
+        "latitude": 61.172
+      },
+      {
+        "name": "Haukipudas",
+        "longitude": 25.338,
+        "latitude": 65.18
+      },
+      {
+        "name": "Haukivesi",
+        "longitude": 28.467,
+        "latitude": 62.1
+      },
+      {
+        "name": "Haukivuori",
+        "longitude": 27.217,
+        "latitude": 62.017
+      },
+      {
+        "name": "Hausjärvi",
+        "longitude": 24.933,
+        "latitude": 60.783
+      },
+      {
+        "name": "Heinjoki",
+        "longitude": 29.183,
+        "latitude": 60.733
+      },
+      {
+        "name": "Heinola",
+        "longitude": 26.037,
+        "latitude": 61.2
+      },
+      {
+        "name": "Heinävesi",
+        "longitude": 28.62,
+        "latitude": 62.425
+      },
+      {
+        "name": "Helsinki",
+        "longitude": 24.935446,
+        "latitude": 60.169525
+      },
+      {
+        "name": "Hiitola",
+        "longitude": 29.383,
+        "latitude": 61.2
+      },
+      {
+        "name": "Himanka",
+        "longitude": 23.65,
+        "latitude": 64.067
+      },
+      {
+        "name": "Hinnerjoki",
+        "longitude": 21.997,
+        "latitude": 60.985
+      },
+      {
+        "name": "Hirvensalmi",
+        "longitude": 26.783,
+        "latitude": 61.667
+      },
+      {
+        "name": "Hollola",
+        "longitude": 25.433,
+        "latitude": 61.05
+      },
+      {
+        "name": "Honkajoki",
+        "longitude": 22.267,
+        "latitude": 61.983
+      },
+      {
+        "name": "Houtskari",
+        "longitude": 21.367,
+        "latitude": 60.2
+      },
+      {
+        "name": "Huittinen",
+        "longitude": 22.693,
+        "latitude": 61.182
+      },
+      {
+        "name": "Humppila",
+        "longitude": 23.367,
+        "latitude": 60.933
+      },
+      {
+        "name": "Hyrynsalmi",
+        "longitude": 28.49,
+        "latitude": 64.678
+      },
+      {
+        "name": "Hyvinkää",
+        "longitude": 24.887,
+        "latitude": 60.637
+      },
+      {
+        "name": "Hämeenkangas",
+        "longitude": 22.667,
+        "latitude": 61.75
+      },
+      {
+        "name": "Hämeenkylä",
+        "longitude": 24.783,
+        "latitude": 60.267
+      },
+      {
+        "name": "Hämeenkyrö",
+        "longitude": 23.198,
+        "latitude": 61.635
+      },
+      {
+        "name": "Hämeenlinna",
+        "longitude": 24.477,
+        "latitude": 60.998
+      },
+      {
+        "name": "Ii",
+        "longitude": 25.367,
+        "latitude": 65.322
+      },
+      {
+        "name": "Iisalmi",
+        "longitude": 27.182,
+        "latitude": 63.562
+      },
+      {
+        "name": "Iisvesi",
+        "longitude": 27.333,
+        "latitude": 62.667
+      },
+      {
+        "name": "Iitti",
+        "longitude": 26.4,
+        "latitude": 60.933
+      },
+      {
+        "name": "Ikaalinen",
+        "longitude": 23.053,
+        "latitude": 61.77
+      },
+      {
+        "name": "Ilmajoki",
+        "longitude": 22.565,
+        "latitude": 62.725
+      },
+      {
+        "name": "Ilomantsi",
+        "longitude": 30.933,
+        "latitude": 62.673
+      },
+      {
+        "name": "Imatra",
+        "longitude": 28.825,
+        "latitude": 61.223
+      },
+      {
+        "name": "Impilahti",
+        "longitude": 31.167,
+        "latitude": 61.65
+      },
+      {
+        "name": "Inari",
+        "longitude": 27.167,
+        "latitude": 68.9
+      },
+      {
+        "name": "Iniö",
+        "longitude": 21.333,
+        "latitude": 60.4
+      },
+      {
+        "name": "Inkeroinen",
+        "longitude": 26.85,
+        "latitude": 60.7
+      },
+      {
+        "name": "Inkoo",
+        "longitude": 24,
+        "latitude": 60.045
+      },
+      {
+        "name": "Isojoki",
+        "longitude": 21.967,
+        "latitude": 62.117
+      },
+      {
+        "name": "Isokyrö",
+        "longitude": 22.333,
+        "latitude": 63.01
+      },
+      {
+        "name": "Ivalo",
+        "longitude": 27.53,
+        "latitude": 68.657
+      },
+      {
+        "name": "Jaala",
+        "longitude": 26.5,
+        "latitude": 61.05
+      },
+      {
+        "name": "Jalasjärvi",
+        "longitude": 22.773,
+        "latitude": 62.488
+      },
+      {
+        "name": "Janakkala",
+        "longitude": 24.55,
+        "latitude": 60.867
+      },
+      {
+        "name": "Jepua",
+        "longitude": 22.617,
+        "latitude": 63.4
+      },
+      {
+        "name": "Joensuu",
+        "longitude": 29.785,
+        "latitude": 62.592
+      },
+      {
+        "name": "Johannes",
+        "longitude": 28.683,
+        "latitude": 60.533
+      },
+      {
+        "name": "Jokela",
+        "longitude": 25.033,
+        "latitude": 60.733
+      },
+      {
+        "name": "Jokioinen",
+        "longitude": 23.488,
+        "latitude": 60.802
+      },
+      {
+        "name": "Jomala",
+        "longitude": 19.883,
+        "latitude": 60.167
+      },
+      {
+        "name": "Joroinen",
+        "longitude": 27.827,
+        "latitude": 62.182
+      },
+      {
+        "name": "Joutsa",
+        "longitude": 26.117,
+        "latitude": 61.733
+      },
+      {
+        "name": "Joutseno",
+        "longitude": 28.647,
+        "latitude": 61.193
+      },
+      {
+        "name": "Juankoski",
+        "longitude": 28.317,
+        "latitude": 63.067
+      },
+      {
+        "name": "Jurmo",
+        "longitude": 21.617,
+        "latitude": 59.827
+      },
+      {
+        "name": "Jurva",
+        "longitude": 21.983,
+        "latitude": 62.683
+      },
+      {
+        "name": "Juuka",
+        "longitude": 29.263,
+        "latitude": 63.233
+      },
+      {
+        "name": "Juupajoki",
+        "longitude": 24.465,
+        "latitude": 61.782
+      },
+      {
+        "name": "Juustila",
+        "longitude": 28.717,
+        "latitude": 60.817
+      },
+      {
+        "name": "Juva",
+        "longitude": 27.858,
+        "latitude": 61.9
+      },
+      {
+        "name": "Jyväskylän_Mlk",
+        "longitude": 25.82,
+        "latitude": 62.227
+      },
+      {
+        "name": "Jyväskylä",
+        "longitude": 25.72088,
+        "latitude": 62.24147
+      },
+      {
+        "name": "Jämijärvi",
+        "longitude": 22.7,
+        "latitude": 61.817
+      },
+      {
+        "name": "Jämsä",
+        "longitude": 25.192,
+        "latitude": 61.877
+      },
+      {
+        "name": "Jämsänkoski",
+        "longitude": 25.177,
+        "latitude": 61.922
+      },
+      {
+        "name": "Jäppilä",
+        "longitude": 27.467,
+        "latitude": 62.367
+      },
+      {
+        "name": "Järvenpää",
+        "longitude": 25.097,
+        "latitude": 60.47
+      },
+      {
+        "name": "Jääski",
+        "longitude": 28.917,
+        "latitude": 61.033
+      },
+      {
+        "name": "Kaaresuvanto",
+        "longitude": 22.5,
+        "latitude": 68.45
+      },
+      {
+        "name": "Kaarina",
+        "longitude": 22.367,
+        "latitude": 60.4
+      },
+      {
+        "name": "Kaavi",
+        "longitude": 28.492,
+        "latitude": 62.977
+      },
+      {
+        "name": "Kajaani",
+        "longitude": 27.732,
+        "latitude": 64.212
+      },
+      {
+        "name": "Kalajoki",
+        "longitude": 23.95,
+        "latitude": 64.25
+      },
+      {
+        "name": "Kalanti",
+        "longitude": 21.567,
+        "latitude": 60.817
+      },
+      {
+        "name": "Kalevala",
+        "longitude": 31.205,
+        "latitude": 65.2
+      },
+      {
+        "name": "Kalvola",
+        "longitude": 24.14,
+        "latitude": 61.095
+      },
+      {
+        "name": "Kangasala",
+        "longitude": 24.067,
+        "latitude": 61.467
+      },
+      {
+        "name": "Kangaslampi",
+        "longitude": 28.25,
+        "latitude": 62.3
+      },
+      {
+        "name": "Kangasniemi",
+        "longitude": 26.653,
+        "latitude": 61.992
+      },
+      {
+        "name": "Kankaanpää",
+        "longitude": 22.395,
+        "latitude": 61.807
+      },
+      {
+        "name": "Kanneljärvi",
+        "longitude": 29.433,
+        "latitude": 60.35
+      },
+      {
+        "name": "Kannonkoski",
+        "longitude": 25.25,
+        "latitude": 62.967
+      },
+      {
+        "name": "Kannus",
+        "longitude": 23.917,
+        "latitude": 63.902
+      },
+      {
+        "name": "Karhula",
+        "longitude": 26.945,
+        "latitude": 60.515
+      },
+      {
+        "name": "Karhumäki",
+        "longitude": 34.367,
+        "latitude": 62.9
+      },
+      {
+        "name": "Karigasniemi",
+        "longitude": 25.867,
+        "latitude": 69.383
+      },
+      {
+        "name": "Karijoki",
+        "longitude": 21.7,
+        "latitude": 62.317
+      },
+      {
+        "name": "Karinainen",
+        "longitude": 22.767,
+        "latitude": 60.683
+      },
+      {
+        "name": "Karjaa",
+        "longitude": 23.7,
+        "latitude": 60.083
+      },
+      {
+        "name": "Karkkila",
+        "longitude": 24.227,
+        "latitude": 60.538
+      },
+      {
+        "name": "Karkku",
+        "longitude": 23.018,
+        "latitude": 61.415
+      },
+      {
+        "name": "Karstula",
+        "longitude": 24.793,
+        "latitude": 62.873
+      },
+      {
+        "name": "Karttula",
+        "longitude": 26.967,
+        "latitude": 62.883
+      },
+      {
+        "name": "Karvia",
+        "longitude": 22.567,
+        "latitude": 62.135
+      },
+      {
+        "name": "Kaskinen",
+        "longitude": 21.225,
+        "latitude": 62.383
+      },
+      {
+        "name": "Kauhajoki",
+        "longitude": 22.183,
+        "latitude": 62.423
+      },
+      {
+        "name": "Kauhava",
+        "longitude": 23.048,
+        "latitude": 63.113
+      },
+      {
+        "name": "Kaukola",
+        "longitude": 29.783,
+        "latitude": 61.067
+      },
+      {
+        "name": "Kauniainen",
+        "longitude": 24.75,
+        "latitude": 60.208
+      },
+      {
+        "name": "Kaustinen",
+        "longitude": 23.695,
+        "latitude": 63.553
+      },
+      {
+        "name": "Kauvatsa",
+        "longitude": 22.512,
+        "latitude": 61.337
+      },
+      {
+        "name": "Keikyä",
+        "longitude": 22.702,
+        "latitude": 61.27
+      },
+      {
+        "name": "Keitele",
+        "longitude": 26.355,
+        "latitude": 63.177
+      },
+      {
+        "name": "Kemi",
+        "longitude": 24.56,
+        "latitude": 65.735
+      },
+      {
+        "name": "Kemijärvi",
+        "longitude": 27.445,
+        "latitude": 66.705
+      },
+      {
+        "name": "Keminmaa",
+        "longitude": 24.5,
+        "latitude": 65.783
+      },
+      {
+        "name": "Kemiö",
+        "longitude": 22.75,
+        "latitude": 60.167
+      },
+      {
+        "name": "Kempele",
+        "longitude": 25.5,
+        "latitude": 64.917
+      },
+      {
+        "name": "Kerava",
+        "longitude": 25.117,
+        "latitude": 60.403
+      },
+      {
+        "name": "Kerimäki",
+        "longitude": 29.29,
+        "latitude": 61.915
+      },
+      {
+        "name": "Keskikylä",
+        "longitude": 24.533,
+        "latitude": 64.432
+      },
+      {
+        "name": "Kestilä",
+        "longitude": 26.283,
+        "latitude": 64.35
+      },
+      {
+        "name": "Kesälahti",
+        "longitude": 29.842,
+        "latitude": 61.892
+      },
+      {
+        "name": "Keuruu",
+        "longitude": 24.682,
+        "latitude": 62.267
+      },
+      {
+        "name": "Kihniö",
+        "longitude": 23.188,
+        "latitude": 62.203
+      },
+      {
+        "name": "Kiihtelysvaara",
+        "longitude": 30.25,
+        "latitude": 62.483
+      },
+      {
+        "name": "Kiikala",
+        "longitude": 23.558,
+        "latitude": 60.467
+      },
+      {
+        "name": "Kiikka",
+        "longitude": 22.777,
+        "latitude": 61.325
+      },
+      {
+        "name": "Kiikoinen",
+        "longitude": 22.578,
+        "latitude": 61.453
+      },
+      {
+        "name": "Kiiminki",
+        "longitude": 25.733,
+        "latitude": 65.133
+      },
+      {
+        "name": "Killinkoski",
+        "longitude": 23.892,
+        "latitude": 62.398
+      },
+      {
+        "name": "Kilpisjärvi",
+        "longitude": 20.757,
+        "latitude": 69.05
+      },
+      {
+        "name": "Kinnula",
+        "longitude": 24.967,
+        "latitude": 63.367
+      },
+      {
+        "name": "Kirkkoniemi",
+        "longitude": 30.017,
+        "latitude": 69.717
+      },
+      {
+        "name": "Kirkkonummi",
+        "longitude": 24.45,
+        "latitude": 60.128
+      },
+      {
+        "name": "Kirvu",
+        "longitude": 29.283,
+        "latitude": 61.083
+      },
+      {
+        "name": "Kisko",
+        "longitude": 23.483,
+        "latitude": 60.243
+      },
+      {
+        "name": "Kitee",
+        "longitude": 30.155,
+        "latitude": 62.095
+      },
+      {
+        "name": "Kittilä",
+        "longitude": 24.933,
+        "latitude": 67.65
+      },
+      {
+        "name": "Kiukainen",
+        "longitude": 22.083,
+        "latitude": 61.217
+      },
+      {
+        "name": "Kiuruvesi",
+        "longitude": 26.625,
+        "latitude": 63.65
+      },
+      {
+        "name": "Kivennapa",
+        "longitude": 29.717,
+        "latitude": 60.367
+      },
+      {
+        "name": "Kivijärvi",
+        "longitude": 25.072,
+        "latitude": 63.122
+      },
+      {
+        "name": "Kodisjoki",
+        "longitude": 21.683,
+        "latitude": 61.025
+      },
+      {
+        "name": "Koivisto",
+        "longitude": 28.617,
+        "latitude": 60.367
+      },
+      {
+        "name": "Kokemäki",
+        "longitude": 22.353,
+        "latitude": 61.257
+      },
+      {
+        "name": "Kokkola",
+        "longitude": 23.147,
+        "latitude": 63.838
+      },
+      {
+        "name": "Kolari",
+        "longitude": 23.767,
+        "latitude": 67.33
+      },
+      {
+        "name": "Konginkangas",
+        "longitude": 25.8,
+        "latitude": 62.767
+      },
+      {
+        "name": "Konnevesi",
+        "longitude": 26.583,
+        "latitude": 62.667
+      },
+      {
+        "name": "Korpilahti",
+        "longitude": 25.562,
+        "latitude": 62.017
+      },
+      {
+        "name": "Korpiselkä",
+        "longitude": 31.017,
+        "latitude": 62.35
+      },
+      {
+        "name": "Korppoo",
+        "longitude": 21.567,
+        "latitude": 60.167
+      },
+      {
+        "name": "Korsnäs",
+        "longitude": 21.183,
+        "latitude": 62.783
+      },
+      {
+        "name": "Kortesjärvi",
+        "longitude": 23.183,
+        "latitude": 63.3
+      },
+      {
+        "name": "Kostamus",
+        "longitude": 30.833,
+        "latitude": 64.7
+      },
+      {
+        "name": "Kotka",
+        "longitude": 26.913,
+        "latitude": 60.458
+      },
+      {
+        "name": "Kouvola",
+        "longitude": 26.778,
+        "latitude": 60.903
+      },
+      {
+        "name": "Kreivilä",
+        "longitude": 23.5,
+        "latitude": 60.982
+      },
+      {
+        "name": "Kristiinankaup",
+        "longitude": 21.377,
+        "latitude": 62.27
+      },
+      {
+        "name": "Kruunupyy",
+        "longitude": 23.033,
+        "latitude": 63.717
+      },
+      {
+        "name": "Kuhmalahti",
+        "longitude": 24.567,
+        "latitude": 61.505
+      },
+      {
+        "name": "Kuhmo",
+        "longitude": 29.53,
+        "latitude": 64.128
+      },
+      {
+        "name": "Kuhmoinen",
+        "longitude": 25.183,
+        "latitude": 61.567
+      },
+      {
+        "name": "Kuivaniemi",
+        "longitude": 25.183,
+        "latitude": 65.583
+      },
+      {
+        "name": "Kullaa",
+        "longitude": 22.158,
+        "latitude": 61.467
+      },
+      {
+        "name": "Kumlinge",
+        "longitude": 20.783,
+        "latitude": 60.183
+      },
+      {
+        "name": "Kuokkala",
+        "longitude": 25.82,
+        "latitude": 62.227
+      },
+      {
+        "name": "Kuolemajärvi",
+        "longitude": 29.017,
+        "latitude": 60.383
+      },
+      {
+        "name": "Kuolismaa",
+        "longitude": 31.622,
+        "latitude": 62.725
+      },
+      {
+        "name": "Kuopio",
+        "longitude": 27.677028,
+        "latitude": 62.892382
+      },
+      {
+        "name": "Kuorevesi",
+        "longitude": 24.717,
+        "latitude": 61.933
+      },
+      {
+        "name": "Kuortane",
+        "longitude": 23.5,
+        "latitude": 62.808
+      },
+      {
+        "name": "Kurikka",
+        "longitude": 22.402,
+        "latitude": 62.618
+      },
+      {
+        "name": "Kurkijoki",
+        "longitude": 29.883,
+        "latitude": 61.3
+      },
+      {
+        "name": "Kuru",
+        "longitude": 23.733,
+        "latitude": 61.867
+      },
+      {
+        "name": "Kustavi",
+        "longitude": 21.35,
+        "latitude": 60.542
+      },
+      {
+        "name": "Kuusamo",
+        "longitude": 29.205,
+        "latitude": 65.965
+      },
+      {
+        "name": "Kuusankoski",
+        "longitude": 26.633,
+        "latitude": 60.913
+      },
+      {
+        "name": "Kuusjoki",
+        "longitude": 23.217,
+        "latitude": 60.522
+      },
+      {
+        "name": "Kylmäkoski",
+        "longitude": 23.688,
+        "latitude": 61.167
+      },
+      {
+        "name": "Kyyjärvi",
+        "longitude": 24.567,
+        "latitude": 63.033
+      },
+      {
+        "name": "Käkisalmi",
+        "longitude": 30.117,
+        "latitude": 61.05
+      },
+      {
+        "name": "Kälviä",
+        "longitude": 23.45,
+        "latitude": 63.863
+      },
+      {
+        "name": "Kärkölä",
+        "longitude": 25.267,
+        "latitude": 60.917
+      },
+      {
+        "name": "Kärsämäki",
+        "longitude": 25.757,
+        "latitude": 63.978
+      },
+      {
+        "name": "Köngäs",
+        "longitude": 24.867,
+        "latitude": 67.917
+      },
+      {
+        "name": "Köyliö",
+        "longitude": 22.417,
+        "latitude": 61.117
+      },
+      {
+        "name": "Lahdenpohja",
+        "longitude": 30.2,
+        "latitude": 61.483
+      },
+      {
+        "name": "Lahti",
+        "longitude": 25.661509,
+        "latitude": 60.982674
+      },
+      {
+        "name": "Laihia",
+        "longitude": 22.017,
+        "latitude": 62.967
+      },
+      {
+        "name": "Laitila",
+        "longitude": 21.683,
+        "latitude": 60.873
+      },
+      {
+        "name": "Lammi",
+        "longitude": 25.022,
+        "latitude": 61.082
+      },
+      {
+        "name": "Lapinjärvi",
+        "longitude": 26.217,
+        "latitude": 60.625
+      },
+      {
+        "name": "Lapinlahti",
+        "longitude": 27.387,
+        "latitude": 63.36
+      },
+      {
+        "name": "Lappajärvi",
+        "longitude": 23.638,
+        "latitude": 63.288
+      },
+      {
+        "name": "Lappeenranta",
+        "longitude": 28.21,
+        "latitude": 61.067
+      },
+      {
+        "name": "Lappi",
+        "longitude": 21.833,
+        "latitude": 61.1
+      },
+      {
+        "name": "Lapua",
+        "longitude": 23.2,
+        "latitude": 62.973
+      },
+      {
+        "name": "Lapväärti",
+        "longitude": 21.517,
+        "latitude": 62.25
+      },
+      {
+        "name": "Laukaa",
+        "longitude": 25.955,
+        "latitude": 62.42
+      },
+      {
+        "name": "Lauritsala",
+        "longitude": 28.267,
+        "latitude": 61.067
+      },
+      {
+        "name": "Lehtimäki",
+        "longitude": 23.917,
+        "latitude": 62.792
+      },
+      {
+        "name": "Leivonmäki",
+        "longitude": 26.137,
+        "latitude": 61.913
+      },
+      {
+        "name": "Lemi",
+        "longitude": 27.783,
+        "latitude": 61.083
+      },
+      {
+        "name": "Lempäälä",
+        "longitude": 23.71,
+        "latitude": 61.33
+      },
+      {
+        "name": "Lemu",
+        "longitude": 21.977,
+        "latitude": 60.55
+      },
+      {
+        "name": "Lentiira",
+        "longitude": 29.833,
+        "latitude": 64.383
+      },
+      {
+        "name": "Leppävirta",
+        "longitude": 27.792,
+        "latitude": 62.5
+      },
+      {
+        "name": "Lieksa",
+        "longitude": 30.038,
+        "latitude": 63.318
+      },
+      {
+        "name": "Lieto",
+        "longitude": 22.467,
+        "latitude": 60.533
+      },
+      {
+        "name": "Lievestuore",
+        "longitude": 26.2,
+        "latitude": 62.267
+      },
+      {
+        "name": "Liinahamari",
+        "longitude": 31.25,
+        "latitude": 69.633
+      },
+      {
+        "name": "Liminka",
+        "longitude": 25.4,
+        "latitude": 64.817
+      },
+      {
+        "name": "Liperi",
+        "longitude": 29.39,
+        "latitude": 62.527
+      },
+      {
+        "name": "Lohja",
+        "longitude": 24.055,
+        "latitude": 60.245
+      },
+      {
+        "name": "Lohtaja",
+        "longitude": 23.483,
+        "latitude": 64.033
+      },
+      {
+        "name": "Loimaa",
+        "longitude": 23.118,
+        "latitude": 60.852
+      },
+      {
+        "name": "Loimola",
+        "longitude": 31.783,
+        "latitude": 61.983
+      },
+      {
+        "name": "Lokka",
+        "longitude": 27.583,
+        "latitude": 67.833
+      },
+      {
+        "name": "Loppi",
+        "longitude": 24.45,
+        "latitude": 60.717
+      },
+      {
+        "name": "Loviisa",
+        "longitude": 26.233,
+        "latitude": 60.46
+      },
+      {
+        "name": "Luhanka",
+        "longitude": 25.707,
+        "latitude": 61.8
+      },
+      {
+        "name": "Lumivaara",
+        "longitude": 30.15,
+        "latitude": 61.433
+      },
+      {
+        "name": "Luopioinen",
+        "longitude": 24.65,
+        "latitude": 61.36
+      },
+      {
+        "name": "Luulaja",
+        "longitude": 22.15,
+        "latitude": 65.567
+      },
+      {
+        "name": "Luumäki",
+        "longitude": 27.673,
+        "latitude": 60.917
+      },
+      {
+        "name": "Luvia",
+        "longitude": 21.633,
+        "latitude": 61.367
+      },
+      {
+        "name": "Längelmäki",
+        "longitude": 24.683,
+        "latitude": 61.683
+      },
+      {
+        "name": "Maaninka",
+        "longitude": 27.305,
+        "latitude": 63.153
+      },
+      {
+        "name": "Maarianhamina",
+        "longitude": 19.937,
+        "latitude": 60.117
+      },
+      {
+        "name": "Masku",
+        "longitude": 22.1,
+        "latitude": 60.567
+      },
+      {
+        "name": "Mellilä",
+        "longitude": 22.85,
+        "latitude": 60.783
+      },
+      {
+        "name": "Merijärvi",
+        "longitude": 24.442,
+        "latitude": 64.3
+      },
+      {
+        "name": "Merikarvia",
+        "longitude": 21.5,
+        "latitude": 61.86
+      },
+      {
+        "name": "Messukylä",
+        "longitude": 23.85,
+        "latitude": 61.483
+      },
+      {
+        "name": "Metsäpirtti",
+        "longitude": 30.517,
+        "latitude": 60.533
+      },
+      {
+        "name": "Mikkeli",
+        "longitude": 27.287,
+        "latitude": 61.692
+      },
+      {
+        "name": "Mouhijärvi",
+        "longitude": 23.017,
+        "latitude": 61.517
+      },
+      {
+        "name": "Muhos",
+        "longitude": 25.997,
+        "latitude": 64.817
+      },
+      {
+        "name": "Multia",
+        "longitude": 24.795,
+        "latitude": 62.408
+      },
+      {
+        "name": "Muolaa",
+        "longitude": 29.55,
+        "latitude": 60.55
+      },
+      {
+        "name": "Muonio",
+        "longitude": 23.667,
+        "latitude": 67.973
+      },
+      {
+        "name": "Muurame",
+        "longitude": 25.683,
+        "latitude": 62.117
+      },
+      {
+        "name": "Myllykoski",
+        "longitude": 26.783,
+        "latitude": 60.775
+      },
+      {
+        "name": "Mynämäki",
+        "longitude": 22,
+        "latitude": 60.683
+      },
+      {
+        "name": "Myrskylä",
+        "longitude": 25.85,
+        "latitude": 60.667
+      },
+      {
+        "name": "Mäläskä",
+        "longitude": 26.333,
+        "latitude": 64.392
+      },
+      {
+        "name": "Mäntsälä",
+        "longitude": 25.333,
+        "latitude": 60.63
+      },
+      {
+        "name": "Mänttä",
+        "longitude": 24.647,
+        "latitude": 62.03
+      },
+      {
+        "name": "Mäntyharju",
+        "longitude": 26.883,
+        "latitude": 61.417
+      },
+      {
+        "name": "Naantali",
+        "longitude": 22.033,
+        "latitude": 60.467
+      },
+      {
+        "name": "Nakkila",
+        "longitude": 21.9,
+        "latitude": 61.4
+      },
+      {
+        "name": "Nastola",
+        "longitude": 25.883,
+        "latitude": 60.933
+      },
+      {
+        "name": "Nauvo",
+        "longitude": 21.917,
+        "latitude": 60.2
+      },
+      {
+        "name": "Nilsiä",
+        "longitude": 28.083,
+        "latitude": 63.2
+      },
+      {
+        "name": "Nivala",
+        "longitude": 25,
+        "latitude": 63.917
+      },
+      {
+        "name": "Nokia",
+        "longitude": 23.538,
+        "latitude": 61.473
+      },
+      {
+        "name": "Noormarkku",
+        "longitude": 21.855,
+        "latitude": 61.597
+      },
+      {
+        "name": "Nuijamaa",
+        "longitude": 28.538,
+        "latitude": 60.958
+      },
+      {
+        "name": "Nummi",
+        "longitude": 23.875,
+        "latitude": 60.4
+      },
+      {
+        "name": "Nurmes",
+        "longitude": 29.14,
+        "latitude": 63.543
+      },
+      {
+        "name": "Nurmijärvi",
+        "longitude": 24.8,
+        "latitude": 60.467
+      },
+      {
+        "name": "Nurmo",
+        "longitude": 22.908,
+        "latitude": 62.83
+      },
+      {
+        "name": "Näljänkä",
+        "longitude": 28.433,
+        "latitude": 65.227
+      },
+      {
+        "name": "Närpiö",
+        "longitude": 21.367,
+        "latitude": 62.467
+      },
+      {
+        "name": "Ohrasenoja",
+        "longitude": 25.767,
+        "latitude": 64.967
+      },
+      {
+        "name": "Oravainen",
+        "longitude": 22.387,
+        "latitude": 63.293
+      },
+      {
+        "name": "Orimattila",
+        "longitude": 25.75,
+        "latitude": 60.8
+      },
+      {
+        "name": "Oripää",
+        "longitude": 22.688,
+        "latitude": 60.863
+      },
+      {
+        "name": "Orivesi",
+        "longitude": 24.367,
+        "latitude": 61.675
+      },
+      {
+        "name": "Otava",
+        "longitude": 27.083,
+        "latitude": 61.643
+      },
+      {
+        "name": "Oulainen",
+        "longitude": 24.853,
+        "latitude": 64.263
+      },
+      {
+        "name": "Oulu",
+        "longitude": 25.468,
+        "latitude": 65.012
+      },
+      {
+        "name": "Outokumpu",
+        "longitude": 29.007,
+        "latitude": 62.733
+      },
+      {
+        "name": "Paattinen",
+        "longitude": 22.383,
+        "latitude": 60.59
+      },
+      {
+        "name": "Padasjoki",
+        "longitude": 25.283,
+        "latitude": 61.35
+      },
+      {
+        "name": "Paimio",
+        "longitude": 22.7,
+        "latitude": 60.45
+      },
+      {
+        "name": "Parainen",
+        "longitude": 22.302,
+        "latitude": 60.287
+      },
+      {
+        "name": "Parikkala",
+        "longitude": 29.495,
+        "latitude": 61.543
+      },
+      {
+        "name": "Parkano",
+        "longitude": 23.025,
+        "latitude": 62.013
+      },
+      {
+        "name": "Pattijoki",
+        "longitude": 24.588,
+        "latitude": 64.683
+      },
+      {
+        "name": "Pelkosenniemi",
+        "longitude": 27.5,
+        "latitude": 67.108
+      },
+      {
+        "name": "Pello",
+        "longitude": 24,
+        "latitude": 66.833
+      },
+      {
+        "name": "Perniö",
+        "longitude": 23.123,
+        "latitude": 60.213
+      },
+      {
+        "name": "Pertunmaa",
+        "longitude": 26.48,
+        "latitude": 61.5
+      },
+      {
+        "name": "Peräseinäjoki",
+        "longitude": 23.075,
+        "latitude": 62.567
+      },
+      {
+        "name": "Petsamo",
+        "longitude": 31.183,
+        "latitude": 69.567
+      },
+      {
+        "name": "Petäjäskoski",
+        "longitude": 25.337,
+        "latitude": 66.27
+      },
+      {
+        "name": "Petäjävesi",
+        "longitude": 25.183,
+        "latitude": 62.25
+      },
+      {
+        "name": "Pieksämäki",
+        "longitude": 27.152,
+        "latitude": 62.303
+      },
+      {
+        "name": "Pielavesi",
+        "longitude": 26.75,
+        "latitude": 63.233
+      },
+      {
+        "name": "Pietari",
+        "longitude": 30.297,
+        "latitude": 59.942
+      },
+      {
+        "name": "Pietarsaari",
+        "longitude": 22.73,
+        "latitude": 63.678
+      },
+      {
+        "name": "Pihtipudas",
+        "longitude": 25.597,
+        "latitude": 63.367
+      },
+      {
+        "name": "Polvijärvi",
+        "longitude": 29.383,
+        "latitude": 62.85
+      },
+      {
+        "name": "Pomarkku",
+        "longitude": 22.012,
+        "latitude": 61.695
+      },
+      {
+        "name": "Pori",
+        "longitude": 21.772,
+        "latitude": 61.487
+      },
+      {
+        "name": "Pornainen",
+        "longitude": 25.378,
+        "latitude": 60.472
+      },
+      {
+        "name": "Porvoo",
+        "longitude": 25.69,
+        "latitude": 60.383
+      },
+      {
+        "name": "Posio",
+        "longitude": 28.13,
+        "latitude": 66.095
+      },
+      {
+        "name": "Pudasjärvi",
+        "longitude": 27,
+        "latitude": 65.362
+      },
+      {
+        "name": "Puhos",
+        "longitude": 29.9,
+        "latitude": 62.083
+      },
+      {
+        "name": "Pulkkila",
+        "longitude": 25.875,
+        "latitude": 64.275
+      },
+      {
+        "name": "Punkaharju",
+        "longitude": 29.583,
+        "latitude": 61.583
+      },
+      {
+        "name": "Punkalaidun",
+        "longitude": 23.1,
+        "latitude": 61.117
+      },
+      {
+        "name": "Puolanka",
+        "longitude": 27.692,
+        "latitude": 64.867
+      },
+      {
+        "name": "Puumala",
+        "longitude": 28.178,
+        "latitude": 61.527
+      },
+      {
+        "name": "Pyhtää",
+        "longitude": 26.545,
+        "latitude": 60.493
+      },
+      {
+        "name": "Pyhäjoki",
+        "longitude": 24.267,
+        "latitude": 64.467
+      },
+      {
+        "name": "Pyhäjärvi",
+        "longitude": 25.967,
+        "latitude": 63.65
+      },
+      {
+        "name": "Pyhäntä",
+        "longitude": 26.323,
+        "latitude": 64.1
+      },
+      {
+        "name": "Pylkönmäki",
+        "longitude": 24.81,
+        "latitude": 62.67
+      },
+      {
+        "name": "Pälkäne",
+        "longitude": 24.267,
+        "latitude": 61.333
+      },
+      {
+        "name": "Pöytyä",
+        "longitude": 22.65,
+        "latitude": 60.758
+      },
+      {
+        "name": "Raahe",
+        "longitude": 24.48,
+        "latitude": 64.695
+      },
+      {
+        "name": "Raisio",
+        "longitude": 22.137,
+        "latitude": 60.503
+      },
+      {
+        "name": "Rajamäki",
+        "longitude": 24.765,
+        "latitude": 60.528
+      },
+      {
+        "name": "Rantasalmi",
+        "longitude": 28.298,
+        "latitude": 62.06
+      },
+      {
+        "name": "Rantsila",
+        "longitude": 25.662,
+        "latitude": 64.503
+      },
+      {
+        "name": "Ranua",
+        "longitude": 26.538,
+        "latitude": 65.925
+      },
+      {
+        "name": "Rauma",
+        "longitude": 21.522,
+        "latitude": 61.132
+      },
+      {
+        "name": "Rautalammi",
+        "longitude": 26.842,
+        "latitude": 62.622
+      },
+      {
+        "name": "Rautavaara",
+        "longitude": 28.307,
+        "latitude": 63.493
+      },
+      {
+        "name": "Rautjärvi",
+        "longitude": 29.133,
+        "latitude": 61.3
+      },
+      {
+        "name": "Rautu",
+        "longitude": 30.267,
+        "latitude": 60.567
+      },
+      {
+        "name": "Renko",
+        "longitude": 24.3,
+        "latitude": 60.897
+      },
+      {
+        "name": "Reposaari",
+        "longitude": 21.45,
+        "latitude": 61.61
+      },
+      {
+        "name": "Riihimäki",
+        "longitude": 24.758,
+        "latitude": 60.748
+      },
+      {
+        "name": "Rissala",
+        "longitude": 27.827,
+        "latitude": 63.0
+      },
+      {
+        "name": "Ristiina",
+        "longitude": 27.283,
+        "latitude": 61.5
+      },
+      {
+        "name": "Ristijärvi",
+        "longitude": 28.212,
+        "latitude": 64.507
+      },
+      {
+        "name": "Rovaniemi",
+        "longitude": 25.74,
+        "latitude": 66.492
+      },
+      {
+        "name": "Ruokolahti",
+        "longitude": 28.833,
+        "latitude": 61.283
+      },
+      {
+        "name": "Ruovesi",
+        "longitude": 24.083,
+        "latitude": 61.972
+      },
+      {
+        "name": "Ruskeala",
+        "longitude": 30.6,
+        "latitude": 61.933
+      },
+      {
+        "name": "Rusko",
+        "longitude": 22.2,
+        "latitude": 60.533
+      },
+      {
+        "name": "Ruutana",
+        "longitude": 24.017,
+        "latitude": 61.525
+      },
+      {
+        "name": "Rymättylä",
+        "longitude": 21.95,
+        "latitude": 60.377
+      },
+      {
+        "name": "Räisälä",
+        "longitude": 29.75,
+        "latitude": 60.917
+      },
+      {
+        "name": "Rääkkylä",
+        "longitude": 29.635,
+        "latitude": 62.318
+      },
+      {
+        "name": "Saari",
+        "longitude": 29.75,
+        "latitude": 61.65
+      },
+      {
+        "name": "Saarijärvi",
+        "longitude": 25.262,
+        "latitude": 62.71
+      },
+      {
+        "name": "Sahalahti",
+        "longitude": 24.328,
+        "latitude": 61.468
+      },
+      {
+        "name": "Sakkola",
+        "longitude": 30.217,
+        "latitude": 61.683
+      },
+      {
+        "name": "Salla",
+        "longitude": 28.153,
+        "latitude": 66.772
+      },
+      {
+        "name": "Salmi",
+        "longitude": 31.9,
+        "latitude": 61.233
+      },
+      {
+        "name": "Salo",
+        "longitude": 23.132,
+        "latitude": 60.375
+      },
+      {
+        "name": "Saloinen",
+        "longitude": 24.45,
+        "latitude": 64.575
+      },
+      {
+        "name": "Sammatti",
+        "longitude": 23.817,
+        "latitude": 60.317
+      },
+      {
+        "name": "Sattanen",
+        "longitude": 26.65,
+        "latitude": 67.5
+      },
+      {
+        "name": "Savonlinna",
+        "longitude": 28.855,
+        "latitude": 61.872
+      },
+      {
+        "name": "Savonranta",
+        "longitude": 29.22,
+        "latitude": 62.178
+      },
+      {
+        "name": "Savukoski",
+        "longitude": 28.158,
+        "latitude": 67.292
+      },
+      {
+        "name": "Seinäjoki",
+        "longitude": 22.83,
+        "latitude": 62.792
+      },
+      {
+        "name": "Selki",
+        "longitude": 24.547,
+        "latitude": 60.438
+      },
+      {
+        "name": "Sieppijärvi",
+        "longitude": 23.983,
+        "latitude": 67.137
+      },
+      {
+        "name": "Siikainen",
+        "longitude": 21.817,
+        "latitude": 61.875
+      },
+      {
+        "name": "Siilinjärvi",
+        "longitude": 27.658,
+        "latitude": 63.078
+      },
+      {
+        "name": "Siltakylä",
+        "longitude": 26.728,
+        "latitude": 60.497
+      },
+      {
+        "name": "Simo",
+        "longitude": 25.7,
+        "latitude": 65.662
+      },
+      {
+        "name": "Simpele",
+        "longitude": 29.387,
+        "latitude": 61.44
+      },
+      {
+        "name": "Sipoo",
+        "longitude": 25.267,
+        "latitude": 60.367
+      },
+      {
+        "name": "Sippola",
+        "longitude": 27,
+        "latitude": 60.733
+      },
+      {
+        "name": "Siuntio",
+        "longitude": 24.207,
+        "latitude": 60.175
+      },
+      {
+        "name": "Soanlahti",
+        "longitude": 31.5,
+        "latitude": 62.033
+      },
+      {
+        "name": "Sodankylä",
+        "longitude": 26.628,
+        "latitude": 67.417
+      },
+      {
+        "name": "Soini",
+        "longitude": 24.215,
+        "latitude": 62.877
+      },
+      {
+        "name": "Somero",
+        "longitude": 23.512,
+        "latitude": 60.615
+      },
+      {
+        "name": "Sonkajärvi",
+        "longitude": 27.52,
+        "latitude": 63.67
+      },
+      {
+        "name": "Sortavala",
+        "longitude": 30.7,
+        "latitude": 61.7
+      },
+      {
+        "name": "Sotkamo",
+        "longitude": 28.417,
+        "latitude": 64.133
+      },
+      {
+        "name": "Suistamo",
+        "longitude": 31.167,
+        "latitude": 61.9
+      },
+      {
+        "name": "Sukeva",
+        "longitude": 27.453,
+        "latitude": 63.88
+      },
+      {
+        "name": "Sulkava",
+        "longitude": 28.383,
+        "latitude": 61.783
+      },
+      {
+        "name": "Sumiainen",
+        "longitude": 26.055,
+        "latitude": 62.657
+      },
+      {
+        "name": "Suojärvi",
+        "longitude": 32.317,
+        "latitude": 62.25
+      },
+      {
+        "name": "Suolahti",
+        "longitude": 25.542,
+        "latitude": 62.567
+      },
+      {
+        "name": "Suomenniemi",
+        "longitude": 27.46,
+        "latitude": 61.322
+      },
+      {
+        "name": "Suomussalmi",
+        "longitude": 29,
+        "latitude": 64.883
+      },
+      {
+        "name": "Suonenjoki",
+        "longitude": 27.122,
+        "latitude": 62.628
+      },
+      {
+        "name": "Suurmiehikkälä",
+        "longitude": 27.245,
+        "latitude": 60.725
+      },
+      {
+        "name": "Sykäräinen",
+        "longitude": 24.403,
+        "latitude": 63.617
+      },
+      {
+        "name": "Sysmä",
+        "longitude": 25.680613,
+        "latitude": 61.502271
+      },
+      {
+        "name": "Syväjärvi",
+        "longitude": 25.912,
+        "latitude": 67.298
+      },
+      {
+        "name": "Säkkijärvi",
+        "longitude": 28.15,
+        "latitude": 60.633
+      },
+      {
+        "name": "Säkylä",
+        "longitude": 22.337,
+        "latitude": 61.045
+      },
+      {
+        "name": "Säyneinen",
+        "longitude": 28.243,
+        "latitude": 63.21
+      },
+      {
+        "name": "Säynätsalo",
+        "longitude": 25.775,
+        "latitude": 62.145
+      },
+      {
+        "name": "Sääminki",
+        "longitude": 28.783,
+        "latitude": 61.9
+      },
+      {
+        "name": "Taipalsaari",
+        "longitude": 28.5,
+        "latitude": 61.167
+      },
+      {
+        "name": "Taivalkoski",
+        "longitude": 28.25,
+        "latitude": 65.567
+      },
+      {
+        "name": "Taivassalo",
+        "longitude": 21.608,
+        "latitude": 60.567
+      },
+      {
+        "name": "Tammela",
+        "longitude": 23.7,
+        "latitude": 60.813
+      },
+      {
+        "name": "Tammisaari",
+        "longitude": 23.447,
+        "latitude": 59.968
+      },
+      {
+        "name": "Tampere",
+        "longitude": 23.787117,
+        "latitude": 61.499113
+      },
+      {
+        "name": "Tarvasjoki",
+        "longitude": 22.733,
+        "latitude": 60.583
+      },
+      {
+        "name": "Teisko",
+        "longitude": 23.833,
+        "latitude": 61.667
+      },
+      {
+        "name": "Terijoki",
+        "longitude": 29.7,
+        "latitude": 60.217
+      },
+      {
+        "name": "Tervakoski",
+        "longitude": 24.617,
+        "latitude": 60.8
+      },
+      {
+        "name": "Tervola",
+        "longitude": 24.8,
+        "latitude": 66.083
+      },
+      {
+        "name": "Teuva",
+        "longitude": 21.75,
+        "latitude": 62.508
+      },
+      {
+        "name": "Tohmajärvi",
+        "longitude": 30.4,
+        "latitude": 62.467
+      },
+      {
+        "name": "Toholampi",
+        "longitude": 24.25,
+        "latitude": 63.767
+      },
+      {
+        "name": "Toijala",
+        "longitude": 23.865,
+        "latitude": 61.165
+      },
+      {
+        "name": "Toivakka",
+        "longitude": 26.083,
+        "latitude": 62.1
+      },
+      {
+        "name": "Tolvajärvi",
+        "longitude": 31.483,
+        "latitude": 62.267
+      },
+      {
+        "name": "Tornio",
+        "longitude": 24.153,
+        "latitude": 65.85
+      },
+      {
+        "name": "Turku",
+        "longitude": 22.268686,
+        "latitude": 60.451483
+      },
+      {
+        "name": "Tuulos",
+        "longitude": 24.8,
+        "latitude": 61.147
+      },
+      {
+        "name": "Tuupovaara",
+        "longitude": 30.627,
+        "latitude": 62.49
+      },
+      {
+        "name": "Tuusniemi",
+        "longitude": 28.5,
+        "latitude": 62.817
+      },
+      {
+        "name": "Tuusula",
+        "longitude": 25,
+        "latitude": 60.405
+      },
+      {
+        "name": "Tyrvää",
+        "longitude": 22.94,
+        "latitude": 61.332
+      },
+      {
+        "name": "Töysä",
+        "longitude": 23.838,
+        "latitude": 62.725
+      },
+      {
+        "name": "Ullava",
+        "longitude": 23.9,
+        "latitude": 63.717
+      },
+      {
+        "name": "Ulvila",
+        "longitude": 21.85,
+        "latitude": 61.417
+      },
+      {
+        "name": "Urjala",
+        "longitude": 23.55,
+        "latitude": 61.082
+      },
+      {
+        "name": "Utajärvi",
+        "longitude": 26.417,
+        "latitude": 64.767
+      },
+      {
+        "name": "Utsjoki",
+        "longitude": 27.032,
+        "latitude": 69.908
+      },
+      {
+        "name": "Utti",
+        "longitude": 26.922,
+        "latitude": 60.875
+      },
+      {
+        "name": "Uuksu",
+        "longitude": 31.633,
+        "latitude": 61.483
+      },
+      {
+        "name": "Uukuniemi",
+        "longitude": 30.008,
+        "latitude": 61.788
+      },
+      {
+        "name": "Uurainen",
+        "longitude": 25.425,
+        "latitude": 62.503
+      },
+      {
+        "name": "Uusi-Värtsilä",
+        "longitude": 30.608,
+        "latitude": 62.203
+      },
+      {
+        "name": "Uusikaarlepyy",
+        "longitude": 22.542,
+        "latitude": 63.522
+      },
+      {
+        "name": "Uusikaupunki",
+        "longitude": 21.417,
+        "latitude": 60.795
+      },
+      {
+        "name": "Uusikirkko",
+        "longitude": 29.267,
+        "latitude": 60.317
+      },
+      {
+        "name": "Vaala",
+        "longitude": 26.843,
+        "latitude": 64.563
+      },
+      {
+        "name": "Vaasa",
+        "longitude": 21.608,
+        "latitude": 63.083
+      },
+      {
+        "name": "Vahviala",
+        "longitude": 28.433,
+        "latitude": 60.783
+      },
+      {
+        "name": "Valamo",
+        "longitude": 28.68,
+        "latitude": 62.572
+      },
+      {
+        "name": "Valkeakoski",
+        "longitude": 24.027,
+        "latitude": 61.273
+      },
+      {
+        "name": "Valkeala",
+        "longitude": 26.8,
+        "latitude": 60.937
+      },
+      {
+        "name": "Valkjärvi",
+        "longitude": 29.85,
+        "latitude": 60.567
+      },
+      {
+        "name": "Valtimo",
+        "longitude": 28.817,
+        "latitude": 63.678
+      },
+      {
+        "name": "Vammala",
+        "longitude": 22.938,
+        "latitude": 61.332
+      },
+      {
+        "name": "Vampula",
+        "longitude": 23.708,
+        "latitude": 61.025
+      },
+      {
+        "name": "Vantaa",
+        "longitude": 25.041,
+        "latitude": 60.294
+      },
+      {
+        "name": "Varkaus",
+        "longitude": 27.897,
+        "latitude": 62.328
+      },
+      {
+        "name": "Varpaisjärvi",
+        "longitude": 27.758,
+        "latitude": 63.355
+      },
+      {
+        "name": "Vehkalahti",
+        "longitude": 27.25,
+        "latitude": 60.583
+      },
+      {
+        "name": "Vehmaa",
+        "longitude": 21.617,
+        "latitude": 60.683
+      },
+      {
+        "name": "Vesanto",
+        "longitude": 26.42,
+        "latitude": 62.928
+      },
+      {
+        "name": "Veteli",
+        "longitude": 23.758,
+        "latitude": 63.505
+      },
+      {
+        "name": "Vihti",
+        "longitude": 24.323,
+        "latitude": 60.42
+      },
+      {
+        "name": "Viiala",
+        "longitude": 23.763,
+        "latitude": 61.21
+      },
+      {
+        "name": "Viipuri",
+        "longitude": 28.75,
+        "latitude": 60.717
+      },
+      {
+        "name": "Viitasaari",
+        "longitude": 25.863,
+        "latitude": 63.075
+      },
+      {
+        "name": "Viljakkala",
+        "longitude": 23.277,
+        "latitude": 61.707
+      },
+      {
+        "name": "Vilppula",
+        "longitude": 24.482,
+        "latitude": 62.015
+      },
+      {
+        "name": "Vimpeli",
+        "longitude": 23.822,
+        "latitude": 63.148
+      },
+      {
+        "name": "Virkkala",
+        "longitude": 24.017,
+        "latitude": 60.2
+      },
+      {
+        "name": "Virrat",
+        "longitude": 23.77,
+        "latitude": 62.237
+      },
+      {
+        "name": "Virtasalmi",
+        "longitude": 27.467,
+        "latitude": 62.133
+      },
+      {
+        "name": "Vuojärvi",
+        "longitude": 26.667,
+        "latitude": 67.167
+      },
+      {
+        "name": "Vuokatti",
+        "longitude": 28.283,
+        "latitude": 64.15
+      },
+      {
+        "name": "Vuoksela",
+        "longitude": 29.733,
+        "latitude": 60.7
+      },
+      {
+        "name": "Vuoksenranta",
+        "longitude": 29.483,
+        "latitude": 60.867
+      },
+      {
+        "name": "Vuolijoki",
+        "longitude": 27.007,
+        "latitude": 64.177
+      },
+      {
+        "name": "Vuontisjärvi",
+        "longitude": 24.048,
+        "latitude": 68.437
+      },
+      {
+        "name": "Vuottoniemi",
+        "longitude": 31.833,
+        "latitude": 62.817
+      },
+      {
+        "name": "Värtsilä",
+        "longitude": 30.683,
+        "latitude": 62.183
+      },
+      {
+        "name": "Vääksy",
+        "longitude": 25.533,
+        "latitude": 61.175
+      },
+      {
+        "name": "Yli-Ii",
+        "longitude": 25.843,
+        "latitude": 65.37
+      },
+      {
+        "name": "Ylihärmä",
+        "longitude": 22.783,
+        "latitude": 63.15
+      },
+      {
+        "name": "Ylikiiminki",
+        "longitude": 26.167,
+        "latitude": 65.067
+      },
+      {
+        "name": "Ylistaro",
+        "longitude": 22.517,
+        "latitude": 62.95
+      },
+      {
+        "name": "Ylitornio",
+        "longitude": 23.677,
+        "latitude": 66.31
+      },
+      {
+        "name": "Ylivieska",
+        "longitude": 24.537,
+        "latitude": 64.073
+      },
+      {
+        "name": "Yläne",
+        "longitude": 22.917,
+        "latitude": 60.883
+      },
+      {
+        "name": "Ylöjärvi",
+        "longitude": 23.583,
+        "latitude": 61.55
+      },
+      {
+        "name": "Ypäjä",
+        "longitude": 23.283,
+        "latitude": 60.583
+      },
+      {
+        "name": "Äetsä",
+        "longitude": 22.667,
+        "latitude": 61.617
+      },
+      {
+        "name": "Ähtäri",
+        "longitude": 24.077,
+        "latitude": 62.558
+      },
+      {
+        "name": "Äkäslompolo",
+        "longitude": 24.133,
+        "latitude": 67.633
+      },
+      {
+        "name": "Ämmänsaari",
+        "longitude": 28.888,
+        "latitude": 64.878
+      },
+      {
+        "name": "Äyräpää",
+        "longitude": 29.533,
+        "latitude": 60.717
+      },
+      {
+        "name": "Äänekoski",
+        "longitude": 25.735,
+        "latitude": 62.595
+      },
+      {
+        "name": "Öllölä",
+        "longitude": 30.683,
+        "latitude": 62.375
+      },
+      {
+        "name": "Munchen",
+        "longitude": 11.6,
+        "latitude": 48.1
+      },
+      {
+        "name": "Lontoo",
+        "longitude": 0.0,
+        "latitude": 51.5
+      },
+      {
+        "name": "Kabul",
+        "longitude": 34.58333333,
+        "latitude": 69.2
+      }
+    ],
+    "ALGERIA": [
+      {
+        "name": "Algiers",
+        "longitude": 0.5,
+        "latitude": 36.76666667
+      }
+    ],
+    "ARGENTINA": [
+      {
+        "name": "Buenos Aires",
+        "longitude": -58.48333333,
+        "latitude": -34.58333333
+      },
+      {
+        "name": "Cordoba",
+        "longitude": -64.25,
+        "latitude": -31.36666667
+      },
+      {
+        "name": "Tucuman",
+        "longitude": -65.16666667,
+        "latitude": -26.83333333
+      }
+    ],
+    "AUSTRALIA": [
+      {
+        "name": "Adelaide",
+        "longitude": 138.5833333,
+        "latitude": -34.93333333
+      },
+      {
+        "name": "Alice Springs",
+        "longitude": 133.8833333,
+        "latitude": -23.8
+      },
+      {
+        "name": "Brisbane",
+        "longitude": 153.0333333,
+        "latitude": -27.46666667
+      },
+      {
+        "name": "Darwin",
+        "longitude": 130.85,
+        "latitude": -12.46666667
+      },
+      {
+        "name": "Melbourne",
+        "longitude": 144.9666667,
+        "latitude": -37.81666667
+      },
+      {
+        "name": "Perth",
+        "longitude": 115.85,
+        "latitude": -31.95
+      },
+      {
+        "name": "Sydney",
+        "longitude": 151.2,
+        "latitude": -33.86666667
+      }
+    ],
+    "AUSTRIA": [
+      {
+        "name": "Vienna",
+        "longitude": 16.36666667,
+        "latitude": 48.25
+      }
+    ],
+    "AZORES": [
+      {
+        "name": "Lajes (Terceira)",
+        "longitude": -27.08333333,
+        "latitude": 38.75
+      }
+    ],
+    "BAHAMAS": [
+      {
+        "name": "Nassau",
+        "longitude": -77.35,
+        "latitude": 25.08333333
+      }
+    ],
+    "BANGLADESH": [
+      {
+        "name": "Chittagong",
+        "longitude": 91.83333333,
+        "latitude": 22.35
+      }
+    ],
+    "BELGIUM": [
+      {
+        "name": "Brussels",
+        "longitude": 4.35,
+        "latitude": 50.8
+      }
+    ],
+    "BERMUDA": [
+      {
+        "name": "Kindley AFB",
+        "longitude": -64.68333333,
+        "latitude": 33.36666667
+      }
+    ],
+    "BOLIVIA": [
+      {
+        "name": "La Paz",
+        "longitude": -68.15,
+        "latitude": -16.5
+      }
+    ],
+    "BRAZIL": [
+      {
+        "name": "Belem",
+        "longitude": -48.48333333,
+        "latitude": -1.45
+      },
+      {
+        "name": "Belo Horizonte",
+        "longitude": -43.95,
+        "latitude": -19.93333333
+      },
+      {
+        "name": "Brasilia",
+        "longitude": -47.91666667,
+        "latitude": -15.86666667
+      },
+      {
+        "name": "Curitiba",
+        "longitude": -49.28333333,
+        "latitude": -25.41666667
+      },
+      {
+        "name": "Fortaleza",
+        "longitude": -38.55,
+        "latitude": -3.766666667
+      },
+      {
+        "name": "Porto Alegre",
+        "longitude": -51.21666667,
+        "latitude": -30.03333333
+      },
+      {
+        "name": "Recife",
+        "longitude": -34.88333333,
+        "latitude": -8.066666667
+      },
+      {
+        "name": "Rio De Janeiro",
+        "longitude": -43.2,
+        "latitude": -22.91666667
+      },
+      {
+        "name": "Salvador",
+        "longitude": -38.5,
+        "latitude": -13
+      },
+      {
+        "name": "Sao Paulo",
+        "longitude": -46.63333333,
+        "latitude": -23.55
+      }
+    ],
+    "BELIZE": [
+      {
+        "name": "Belize",
+        "longitude": -88.18333333,
+        "latitude": 17.51666667
+      }
+    ],
+    "BULGARIA": [
+      {
+        "name": "Sofia",
+        "longitude": 23.33333333,
+        "latitude": 42.7
+      }
+    ],
+    "BURMA": [
+      {
+        "name": "Mandalay",
+        "longitude": 96.1,
+        "latitude": 21.98333333
+      },
+      {
+        "name": "Rangoon",
+        "longitude": 96.15,
+        "latitude": 16.78333333
+      }
+    ],
+    "CAMBODIA": [
+      {
+        "name": "Phnom Penh",
+        "longitude": 104.85,
+        "latitude": 11.55
+      }
+    ],
+    "CHILE": [
+      {
+        "name": "Punta Arenas",
+        "longitude": -70.9,
+        "latitude": -53.16666667
+      },
+      {
+        "name": "Santiago",
+        "longitude": -70.7,
+        "latitude": -33.45
+      },
+      {
+        "name": "Valparaiso",
+        "longitude": -71.63333333,
+        "latitude": -33.01666667
+      }
+    ],
+    "CHINA": [
+      {
+        "name": "Chongquing",
+        "longitude": 106.55,
+        "latitude": 29.55
+      },
+      {
+        "name": "Shanghai",
+        "longitude": 121.4333333,
+        "latitude": 31.2
+      }
+    ],
+    "COLOMBIA": [
+      {
+        "name": "Baranquilla",
+        "longitude": -74.8,
+        "latitude": 10.98333333
+      },
+      {
+        "name": "Bogota",
+        "longitude": -74.08333333,
+        "latitude": 4.6
+      },
+      {
+        "name": "Cali",
+        "longitude": -76.5,
+        "latitude": 3.416666667
+      },
+      {
+        "name": "Medellin",
+        "longitude": -75.6,
+        "latitude": 6.216666667
+      }
+    ],
+    "CONGO": [
+      {
+        "name": "Brazzaville",
+        "longitude": 15.25,
+        "latitude": -4.25
+      }
+    ],
+    "CUBA": [
+      {
+        "name": "Guantanamo Bay",
+        "longitude": -75.15,
+        "latitude": 19.9
+      },
+      {
+        "name": "Havana",
+        "longitude": -82.35,
+        "latitude": 23.13333333
+      }
+    ],
+    "CZECHOSLOVAKIA": [
+      {
+        "name": "Prague",
+        "longitude": 14.41666667,
+        "latitude": 50.08333333
+      }
+    ],
+    "DENMARK": [
+      {
+        "name": "Copenhagen",
+        "longitude": 12.55,
+        "latitude": 55.68333333
+      }
+    ],
+    "DOMINICAN REPUBLIC": [
+      {
+        "name": "Santo Domingo",
+        "longitude": -69.9,
+        "latitude": 18.48333333
+      }
+    ],
+    "EQUADOR": [
+      {
+        "name": "Guayaquil",
+        "longitude": -79.88333333,
+        "latitude": -2
+      },
+      {
+        "name": "Quito",
+        "longitude": -78.53333333,
+        "latitude": -0.216666667
+      }
+    ],
+    "EGYPT": [
+      {
+        "name": "Cairo",
+        "longitude": 31.33333333,
+        "latitude": 29.86666667
+      }
+    ],
+    "EL SALVADOR": [
+      {
+        "name": "San Salvador",
+        "longitude": -89.21666667,
+        "latitude": 13.7
+      }
+    ],
+    "ETHIOPIA": [
+      {
+        "name": "Addis Ababa",
+        "longitude": 38.75,
+        "latitude": 90.03333333
+      },
+      {
+        "name": "Asmara",
+        "longitude": 38.91666667,
+        "latitude": 15.28333333
+      }
+    ],
+    "FRANCE": [
+      {
+        "name": "Lyon",
+        "longitude": 4.783333333,
+        "latitude": 45.7
+      },
+      {
+        "name": "Marseilles",
+        "longitude": 5.383333333,
+        "latitude": 43.3
+      },
+      {
+        "name": "Nantes",
+        "longitude": -1.566666667,
+        "latitude": 47.25
+      },
+      {
+        "name": "Nice",
+        "longitude": 7.266666667,
+        "latitude": 43.7
+      },
+      {
+        "name": "Paris",
+        "longitude": 2.483333333,
+        "latitude": 48.81666667
+      },
+      {
+        "name": "Strasbourg",
+        "longitude": 7.766666667,
+        "latitude": 48.58333333
+      }
+    ],
+    "FRENCH GUIANA": [
+      {
+        "name": "Cayenne",
+        "longitude": -52.45,
+        "latitude": 4.933333333
+      }
+    ],
+    "GERMANY": [
+      {
+        "name": "Berlin (West)",
+        "longitude": 13.3,
+        "latitude": 52.45
+      },
+      {
+        "name": "Hamburg",
+        "longitude": 9.966666667,
+        "latitude": 53.55
+      },
+      {
+        "name": "Hannover",
+        "longitude": 9.666666667,
+        "latitude": 52.4
+      },
+      {
+        "name": "Mannheim",
+        "longitude": 8.466666667,
+        "latitude": 49.56666667
+      },
+      {
+        "name": "Munich",
+        "longitude": 11.56666667,
+        "latitude": 48.15
+      }
+    ],
+    "GHANA": [
+      {
+        "name": "Accra",
+        "longitude": -0.2,
+        "latitude": 5.55
+      }
+    ],
+    "GIBRALTAR": [
+      {
+        "name": "Gibraltar",
+        "longitude": -5.366666667,
+        "latitude": 36.15
+      }
+    ],
+    "GREECE": [
+      {
+        "name": "Athens",
+        "longitude": 23.71666667,
+        "latitude": 37.96666667
+      },
+      {
+        "name": "Thessaloniki",
+        "longitude": 22.95,
+        "latitude": 40.61666667
+      }
+    ],
+    "GREENLAND": [
+      {
+        "name": "Narsarssuaq",
+        "longitude": -45.41666667,
+        "latitude": 61.18333333
+      }
+    ],
+    "GUATEMALA": [
+      {
+        "name": "Guatemala City",
+        "longitude": -90.51666667,
+        "latitude": 14.61666667
+      }
+    ],
+    "GUYANA": [
+      {
+        "name": "Georgetown",
+        "longitude": -58.2,
+        "latitude": 6.833333333
+      }
+    ],
+    "HAITI": [
+      {
+        "name": "Port Au Prince",
+        "longitude": -72.33333333,
+        "latitude": 18.55
+      }
+    ],
+    "HONDURAS": [
+      {
+        "name": "Tegucigalpa",
+        "longitude": -87.21666667,
+        "latitude": 14.1
+      }
+    ],
+    "HONG KONG": [
+      {
+        "name": "Hong Kong",
+        "longitude": 114.1666667,
+        "latitude": 22.3
+      }
+    ],
+    "HUNGARY": [
+      {
+        "name": "Budapest",
+        "longitude": 19.03333333,
+        "latitude": 47.51666667
+      }
+    ],
+    "ICELAND": [
+      {
+        "name": "Reykjavik",
+        "longitude": 21.93333333,
+        "latitude": 64.13333333
+      }
+    ],
+    "INDIA": [
+      {
+        "name": "Ahmenabad",
+        "longitude": 72.58333333,
+        "latitude": 23.03333333
+      },
+      {
+        "name": "Bangalore",
+        "longitude": 77.61666667,
+        "latitude": 12.95
+      },
+      {
+        "name": "Bombay",
+        "longitude": 72.81666667,
+        "latitude": 18.9
+      },
+      {
+        "name": "Calcutta",
+        "longitude": 88.33333333,
+        "latitude": 22.53333333
+      },
+      {
+        "name": "Madras",
+        "longitude": 80.25,
+        "latitude": 13.06666667
+      },
+      {
+        "name": "Nagpur",
+        "longitude": 79.11666667,
+        "latitude": 21.15
+      },
+      {
+        "name": "New Delhi",
+        "longitude": 77.2,
+        "latitude": 28.58333333
+      }
+    ],
+    "INDONESIA": [
+      {
+        "name": "Djakarta",
+        "longitude": 106.8333333,
+        "latitude": -6.183333333
+      },
+      {
+        "name": "Kupang",
+        "longitude": 123.5666667,
+        "latitude": -10.16666667
+      },
+      {
+        "name": "Makassar",
+        "longitude": 119.4666667,
+        "latitude": -5.133333333
+      },
+      {
+        "name": "Medan",
+        "longitude": 98.68333333,
+        "latitude": 3.583333333
+      },
+      {
+        "name": "Palembang",
+        "longitude": 104.7666667,
+        "latitude": -3
+      },
+      {
+        "name": "Surabaya",
+        "longitude": 112.7166667,
+        "latitude": -7.216666667
+      }
+    ],
+    "IRAN": [
+      {
+        "name": "Abadan",
+        "longitude": 48.26666667,
+        "latitude": 30.35
+      },
+      {
+        "name": "Meshed",
+        "longitude": 59.6,
+        "latitude": 36.28333333
+      },
+      {
+        "name": "Tehran",
+        "longitude": 51.41666667,
+        "latitude": 35.68333333
+      }
+    ],
+    "IRAQ": [
+      {
+        "name": "Baghdad",
+        "longitude": 44.4,
+        "latitude": 33.33333333
+      },
+      {
+        "name": "Mosul",
+        "longitude": 43.15,
+        "latitude": 36.31666667
+      }
+    ],
+    "IRELAND": [
+      {
+        "name": "Dublin",
+        "longitude": -6.35,
+        "latitude": 53.36666667
+      },
+      {
+        "name": "Shannon",
+        "longitude": -8.916666667,
+        "latitude": 52.68333333
+      }
+    ],
+    "IRIAN BARAT": [
+      {
+        "name": "Manokwari",
+        "longitude": 134.0833333,
+        "latitude": -0.866666667
+      }
+    ],
+    "ISRAEL": [
+      {
+        "name": "Jerusalem",
+        "longitude": 35.21666667,
+        "latitude": 31.78333333
+      },
+      {
+        "name": "Tel Aviv",
+        "longitude": 34.78333333,
+        "latitude": 32.1
+      }
+    ],
+    "ITALY": [
+      {
+        "name": "Milan",
+        "longitude": 9.283333333,
+        "latitude": 45.45
+      },
+      {
+        "name": "Naples",
+        "longitude": 14.3,
+        "latitude": 40.88333333
+      },
+      {
+        "name": "Rome",
+        "longitude": 12.6,
+        "latitude": 41.8
+      }
+    ],
+    "IVORY COAST": [
+      {
+        "name": "Abidjan",
+        "longitude": -4.016666667,
+        "latitude": 5.316666667
+      }
+    ],
+    "JAPAN": [
+      {
+        "name": "Fukuoka",
+        "longitude": 130.45,
+        "latitude": 33.58333333
+      },
+      {
+        "name": "Sapporo",
+        "longitude": 141.35,
+        "latitude": 43.06666667
+      },
+      {
+        "name": "Tokyo",
+        "longitude": 139.7666667,
+        "latitude": 35.68333333
+      }
+    ],
+    "JORDAN": [
+      {
+        "name": "Amman",
+        "longitude": 35.95,
+        "latitude": 31.95
+      }
+    ],
+    "KENYA": [
+      {
+        "name": "Nairobi",
+        "longitude": 36.8,
+        "latitude": -1.266666667
+      }
+    ],
+    "KOREA": [
+      {
+        "name": "Pyongyang",
+        "longitude": 125.6833333,
+        "latitude": 39.03333333
+      },
+      {
+        "name": "Seoul",
+        "longitude": 126.9666667,
+        "latitude": 37.56666667
+      }
+    ],
+    "LEBANON": [
+      {
+        "name": "Beirut",
+        "longitude": 35.46666667,
+        "latitude": 33.9
+      }
+    ],
+    "LIBERIA": [
+      {
+        "name": "Monrovia",
+        "longitude": -10.8,
+        "latitude": 6.3
+      }
+    ],
+    "LIBYA": [
+      {
+        "name": "Benghazi",
+        "longitude": 20.06666667,
+        "latitude": 32.1
+      }
+    ],
+    "MADAGASCAR": [
+      {
+        "name": "Tananarive",
+        "longitude": 47.55,
+        "latitude": -18.91666667
+      }
+    ],
+    "MALAYSIA": [
+      {
+        "name": "Kuala Lumpur",
+        "longitude": 101.7,
+        "latitude": 3.116666667
+      },
+      {
+        "name": "Penang",
+        "longitude": 100.3166667,
+        "latitude": 5.416666667
+      }
+    ],
+    "MARTINIQUE": [
+      {
+        "name": "Fort De France",
+        "longitude": -61.08333333,
+        "latitude": 14.61666667
+      }
+    ],
+    "MEXICO": [
+      {
+        "name": "Guadalajara",
+        "longitude": -103.3333333,
+        "latitude": 20.68333333
+      },
+      {
+        "name": "Merida",
+        "longitude": -89.63333333,
+        "latitude": 20.96666667
+      },
+      {
+        "name": "Mexico City",
+        "longitude": -99.2,
+        "latitude": 19.4
+      },
+      {
+        "name": "Monterrey",
+        "longitude": -100.3,
+        "latitude": 25.66666667
+      },
+      {
+        "name": "Vera Cruz",
+        "longitude": -96.13333333,
+        "latitude": 19.2
+      }
+    ],
+    "MOROCCO": [
+      {
+        "name": "Casablanca",
+        "longitude": -7.65,
+        "latitude": 33.58333333
+      }
+    ],
+    "NEPAL": [
+      {
+        "name": "Katmandu",
+        "longitude": 85.2,
+        "latitude": 27.7
+      }
+    ],
+    "NETHERLANDS": [
+      {
+        "name": "Amsterdam",
+        "longitude": 4.916666667,
+        "latitude": 52.38333333
+      }
+    ],
+    "NEW ZEALAND": [
+      {
+        "name": "Auckland",
+        "longitude": 174.7666667,
+        "latitude": -36.85
+      },
+      {
+        "name": "Christchurch",
+        "longitude": 172.6166667,
+        "latitude": -43.53333333
+      },
+      {
+        "name": "Wellington",
+        "longitude": 174.7666667,
+        "latitude": -41.28333333
+      }
+    ],
+    "NICARAGUA": [
+      {
+        "name": "Managua",
+        "longitude": -86.25,
+        "latitude": 12.16666667
+      }
+    ],
+    "NIGERIA": [
+      {
+        "name": "Lagos",
+        "longitude": 3.4,
+        "latitude": 6.45
+      }
+    ],
+    "NORWAY": [
+      {
+        "name": "Bergen",
+        "longitude": 5.316666667,
+        "latitude": 60.4
+      },
+      {
+        "name": "Oslo",
+        "longitude": 10.73333333,
+        "latitude": 59.93333333
+      }
+    ],
+    "PAKISTAN": [
+      {
+        "name": "Karachi",
+        "longitude": 66.98333333,
+        "latitude": 24.8
+      },
+      {
+        "name": "Lahore",
+        "longitude": 74.33333333,
+        "latitude": 31.58333333
+      },
+      {
+        "name": "Peshwar",
+        "longitude": 71.58333333,
+        "latitude": 34.01666667
+      }
+    ],
+    "PANAMA": [
+      {
+        "name": "Panama City",
+        "longitude": -79.55,
+        "latitude": 8.966666667
+      }
+    ],
+    "PAPUA NEW GUINEA": [
+      {
+        "name": "Port Moresby",
+        "longitude": 147.15,
+        "latitude": -9.483333333
+      }
+    ],
+    "PARAGUAY": [
+      {
+        "name": "Ascuncion",
+        "longitude": -57.5,
+        "latitude": -25.28333333
+      }
+    ],
+    "PERU": [
+      {
+        "name": "Lima",
+        "longitude": -77.05,
+        "latitude": -12.08333333
+      }
+    ],
+    "PHILIPPINES": [
+      {
+        "name": "Manila",
+        "longitude": 120.9833333,
+        "latitude": 14.58333333
+      }
+    ],
+    "POLAND": [
+      {
+        "name": "Krakow",
+        "longitude": 19.95,
+        "latitude": 50.06666667
+      },
+      {
+        "name": "Warsaw",
+        "longitude": 21.03333333,
+        "latitude": 52.21666667
+      }
+    ],
+    "PORTUGAL": [
+      {
+        "name": "Lisbon",
+        "longitude": -9.133333333,
+        "latitude": 38.71666667
+      }
+    ],
+    "PUERTO RICO": [
+      {
+        "name": "San Juan",
+        "longitude": -66.11666667,
+        "latitude": 18.48333333
+      }
+    ],
+    "RUMANIA": [
+      {
+        "name": "Bucharest",
+        "longitude": 26.1,
+        "latitude": 44.41666667
+      }
+    ],
+    "RUSSIA": [
+      {
+        "name": "Alma Ata",
+        "longitude": 76.88333333,
+        "latitude": 43.23333333
+      },
+      {
+        "name": "Archangel",
+        "longitude": 40.53333333,
+        "latitude": 64.55
+      },
+      {
+        "name": "Kaliningrad",
+        "longitude": 20.5,
+        "latitude": 54.71666667
+      },
+      {
+        "name": "Krasnoyarsk",
+        "longitude": 92.95,
+        "latitude": 56.01666667
+      },
+      {
+        "name": "Kiev",
+        "longitude": 30.5,
+        "latitude": 50.45
+      },
+      {
+        "name": "Kharkov",
+        "longitude": 36.23333333,
+        "latitude": 50
+      },
+      {
+        "name": "Kuibyshev",
+        "longitude": 50.1,
+        "latitude": 53.18333333
+      },
+      {
+        "name": "Leningrad",
+        "longitude": 30.26666667,
+        "latitude": 59.93333333
+      },
+      {
+        "name": "Minsk",
+        "longitude": 27.55,
+        "latitude": 53.9
+      },
+      {
+        "name": "Moscow",
+        "longitude": 37.66666667,
+        "latitude": 55.76666667
+      },
+      {
+        "name": "Odessa",
+        "longitude": 30.73333333,
+        "latitude": 46.48333333
+      },
+      {
+        "name": "Petropavlovsk",
+        "longitude": 158.7,
+        "latitude": 52.88333333
+      },
+      {
+        "name": "Rostov on Don",
+        "longitude": 39.71666667,
+        "latitude": 47.21666667
+      },
+      {
+        "name": "Sverdlovsk",
+        "longitude": 60.63333333,
+        "latitude": 56.81666667
+      },
+      {
+        "name": "Tashkent",
+        "longitude": 69.3,
+        "latitude": 41.33333333
+      },
+      {
+        "name": "Tbilisi",
+        "longitude": 44.8,
+        "latitude": 41.71666667
+      },
+      {
+        "name": "Vladivostok",
+        "longitude": 131.9166667,
+        "latitude": 43.11666667
+      },
+      {
+        "name": "Volgograd",
+        "longitude": 44.51666667,
+        "latitude": 48.7
+      }
+    ],
+    "SAUDI ARABIA": [
+      {
+        "name": "Dhahran",
+        "longitude": 50.15,
+        "latitude": 26.28333333
+      },
+      {
+        "name": "Jedda",
+        "longitude": 39.16666667,
+        "latitude": 21.46666667
+      },
+      {
+        "name": "Riyadh",
+        "longitude": 46.7,
+        "latitude": 24.65
+      }
+    ],
+    "SENEGAL": [
+      {
+        "name": "Dakar",
+        "longitude": -17.48333333,
+        "latitude": 14.7
+      }
+    ],
+    "SINGAPORE": [
+      {
+        "name": "Singapore",
+        "longitude": 103.8333333,
+        "latitude": 1.3
+      }
+    ],
+    "SOMALIA": [
+      {
+        "name": "Mogadiscio",
+        "longitude": 49.31666667,
+        "latitude": 2.033333333
+      }
+    ],
+    "SOUTH AFRICA": [
+      {
+        "name": "Cape Town",
+        "longitude": 18.48333333,
+        "latitude": -33.93333333
+      },
+      {
+        "name": "Johannesburg",
+        "longitude": 28.05,
+        "latitude": -26.18333333
+      },
+      {
+        "name": "Pretoria",
+        "longitude": 28.23333333,
+        "latitude": -25.75
+      }
+    ],
+    "SOUTH YEMEN": [
+      {
+        "name": "Aden",
+        "longitude": 45.03333333,
+        "latitude": 12.83333333
+      }
+    ],
+    "SPAIN": [
+      {
+        "name": "Barcelona",
+        "longitude": 2.15,
+        "latitude": 41.4
+      },
+      {
+        "name": "Madrid",
+        "longitude": -3.683333333,
+        "latitude": 40.41666667
+      },
+      {
+        "name": "Valencia",
+        "longitude": -0.383333333,
+        "latitude": 39.46666667
+      }
+    ],
+    "SRI LANKA": [
+      {
+        "name": "Colombo",
+        "longitude": 79.86666667,
+        "latitude": 6.9
+      }
+    ],
+    "SUDAN": [
+      {
+        "name": "Khartoum",
+        "longitude": 32.55,
+        "latitude": 15.61666667
+      }
+    ],
+    "SURINAM": [
+      {
+        "name": "Paramaribo",
+        "longitude": -55.15,
+        "latitude": 5.816666667
+      }
+    ],
+    "SWEDEN": [
+      {
+        "name": "Stockholm",
+        "longitude": 18.06666667,
+        "latitude": 59.35
+      }
+    ],
+    "SWITZERLAND": [
+      {
+        "name": "Zurich",
+        "longitude": 8.55,
+        "latitude": 47.38333333
+      }
+    ],
+    "SYRIA": [
+      {
+        "name": "Damascus",
+        "longitude": 36.33333333,
+        "latitude": 33.5
+      }
+    ],
+    "TAIWAN": [
+      {
+        "name": "Tainan",
+        "longitude": 120.2,
+        "latitude": 22.95
+      },
+      {
+        "name": "Taipei",
+        "longitude": 121.5166667,
+        "latitude": 25.03333333
+      }
+    ],
+    "TANZANIA": [
+      {
+        "name": "Dar es Salaam",
+        "longitude": 39.3,
+        "latitude": -6.833333333
+      }
+    ],
+    "THAILAND": [
+      {
+        "name": "Bangkok",
+        "longitude": 100.5,
+        "latitude": 13.73333333
+      }
+    ],
+    "TRINIDAD": [
+      {
+        "name": "Port of Spain",
+        "longitude": -61.51666667,
+        "latitude": 10.66666667
+      }
+    ],
+    "TUNISIA": [
+      {
+        "name": "Tunis",
+        "longitude": 10.2,
+        "latitude": 36.78333333
+      }
+    ],
+    "TURKEY": [
+      {
+        "name": "Adana",
+        "longitude": 35.3,
+        "latitude": 36.98333333
+      },
+      {
+        "name": "Ankara",
+        "longitude": 32.88333333,
+        "latitude": 39.95
+      },
+      {
+        "name": "Istanbul",
+        "longitude": 28.83333333,
+        "latitude": 40.96666667
+      },
+      {
+        "name": "Izmir",
+        "longitude": 27.16666667,
+        "latitude": 38.43333333
+      }
+    ],
+    "UNITED KINGDOM": [
+      {
+        "name": "Belfast",
+        "longitude": -5.916666667,
+        "latitude": 54.6
+      },
+      {
+        "name": "Birmingham",
+        "longitude": -1.933333333,
+        "latitude": 52.48333333
+      },
+      {
+        "name": "Cardiff",
+        "longitude": -3.166666667,
+        "latitude": 51.46666667
+      },
+      {
+        "name": "Edinburgh",
+        "longitude": -3.183333333,
+        "latitude": 55.91666667
+      },
+      {
+        "name": "Glasgow",
+        "longitude": -4.283333333,
+        "latitude": 55.86666667
+      },
+      {
+        "name": "London",
+        "longitude": 0,
+        "latitude": 51.48333333
+      }
+    ],
+    "URUGUAY": [
+      {
+        "name": "Montevideo",
+        "longitude": -56.21666667,
+        "latitude": -34.85
+      }
+    ],
+    "VENEZUELA": [
+      {
+        "name": "Caracas",
+        "longitude": -66.93333333,
+        "latitude": 10.5
+      },
+      {
+        "name": "Maracaibo",
+        "longitude": -71.6,
+        "latitude": 10.65
+      }
+    ],
+    "VIETNAM": [
+      {
+        "name": "Da Nang",
+        "longitude": 108.2166667,
+        "latitude": 16.06666667
+      },
+      {
+        "name": "Hanoi",
+        "longitude": 105.8666667,
+        "latitude": 21.03333333
+      },
+      {
+        "name": "Ho Chi Minh City (Saigon)",
+        "longitude": 106.7,
+        "latitude": 10.78333333
+      }
+    ],
+    "SERBIA": [
+      {
+        "name": "Belgrade",
+        "longitude": 20.46666667,
+        "latitude": 44.8
+      }
+    ],
+    "ZAIRE": [
+      {
+        "name": "Kinshasa (Leopoldville)",
+        "longitude": 15.3,
+        "latitude": -4.333333333
+      },
+      {
+        "name": "Kisangani (Stanleyville)",
+        "longitude": 15.23333333,
+        "latitude": -0.433333333
+      }
+    ]
+  }
+}

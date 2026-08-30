@@ -4,7 +4,7 @@ import random
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple
 
-from .geo import clamp, dist_point_to_segment, get_oriented_box_corners, point_in_polygon
+from .geo import clamp, closest_point_and_dist_to_segment, dist_point_to_segment, get_oriented_box_corners, point_in_polygon
 from .osm import Building, Place, TaxiStop, Way
 from .physics import Car, SpatialWayGrid, connected_drivable_ways, is_car_road, is_violating_oneway
 from .localization import tr
@@ -153,6 +153,12 @@ class TaxiManager:
         self.tree_effects: Dict[Tuple[int, int], Dict[str, float]] = {}
         self.fallen_trees: set[Tuple[int, int]] = set()
         self.tree_wait_timer: float = 0.0
+        self._building_collision_grid: Dict[Tuple[int, int], List[Building]] = {}
+        self._building_collision_ref = None
+        self._building_collision_count = -1
+        self._tree_collision_grid: Dict[Tuple[int, int], List[Tuple[int, int, float, float]]] = {}
+        self._tree_collision_ref = None
+        self._tree_collision_count = -1
         self.vomit_puddles: List[Tuple[float, float]] = []
         self.taxi_smoke_timer: float = 0.0
         self.speed_camera_flash_timer: float = 0.0
@@ -162,8 +168,57 @@ class TaxiManager:
         self._overlap_buildings_ref = None
         self._overlap_way_count = -1
         self._overlap_building_count = -1
-        self.wrong_way_duration: float = 0.0  # seconds continuously driving wrong way
-        self.wrong_way_penalty_cooldown: float = 0.0  # timer between recurring penalties (5.0s)
+        self.wrong_way_duration: float = 0.0
+        self.wrong_way_penalty_cooldown: float = 0.0
+
+    @staticmethod
+    def _collision_cells(minx: float, miny: float, maxx: float, maxy: float, cell_size: float = 100.0):
+        for cell_x in range(math.floor(minx / cell_size), math.floor(maxx / cell_size) + 1):
+            for cell_y in range(math.floor(miny / cell_size), math.floor(maxy / cell_size) + 1):
+                yield cell_x, cell_y
+
+    def _nearby_collision_buildings(self, buildings: List[Building], x: float, y: float, radius: float):
+        if buildings is not self._building_collision_ref or len(buildings) != self._building_collision_count:
+            self._building_collision_grid.clear()
+            for building in buildings:
+                bbox = getattr(building, "bbox", (0.0, 0.0, 0.0, 0.0))
+                if bbox == (0.0, 0.0, 0.0, 0.0):
+                    points = getattr(building, "points_m", [])
+                    if not points:
+                        continue
+                    xs, ys = zip(*points)
+                    bbox = (min(xs), min(ys), max(xs), max(ys))
+                    building.bbox = bbox
+                for cell in self._collision_cells(*bbox):
+                    self._building_collision_grid.setdefault(cell, []).append(building)
+            self._building_collision_ref = buildings
+            self._building_collision_count = len(buildings)
+        nearby = []
+        seen = set()
+        for cell in self._collision_cells(x - radius, y - radius, x + radius, y + radius):
+            for building in self._building_collision_grid.get(cell, ()):
+                building_id = id(building)
+                if building_id not in seen:
+                    seen.add(building_id)
+                    nearby.append(building)
+        return nearby
+
+    def _nearby_collision_trees(self, sceneries: List[Any], x: float, y: float, radius: float):
+        tree_count = sum(len(getattr(scenery, "trees", ())) for scenery in sceneries)
+        if sceneries is not self._tree_collision_ref or tree_count != self._tree_collision_count:
+            self._tree_collision_grid.clear()
+            for scenery_index, scenery in enumerate(sceneries):
+                for tree_index, (tree_x, tree_y) in enumerate(getattr(scenery, "trees", ())):
+                    cell = (math.floor(tree_x / 100.0), math.floor(tree_y / 100.0))
+                    self._tree_collision_grid.setdefault(cell, []).append(
+                        (scenery_index, tree_index, tree_x, tree_y)
+                    )
+            self._tree_collision_ref = sceneries
+            self._tree_collision_count = tree_count
+        nearby = []
+        for cell in self._collision_cells(x - radius, y - radius, x + radius, y + radius):
+            nearby.extend(self._tree_collision_grid.get(cell, ()))
+        return nearby
 
     def set_language(self, language: str) -> None:
         self.language = language
@@ -284,7 +339,7 @@ class TaxiManager:
             player_car.x, player_car.y, player_car.heading, player_car.length_m, player_car.width_m
         )
 
-        for building in buildings:
+        for building in self._nearby_collision_buildings(buildings, player_car.x, player_car.y, car_radius):
             points = getattr(building, "points_m", [])
             if len(points) < 3:
                 continue
@@ -294,8 +349,21 @@ class TaxiManager:
                         or player_car.y < bbox[1] - car_radius or player_car.y > bbox[3] + car_radius):
                     continue
 
+            intersects = point_in_polygon(player_car.x, player_car.y, points)
+            if not intersects:
+                intersects = any(point_in_polygon(x, y, points) for x, y in car_corners)
+            if not intersects:
+                intersects = any(
+                    dist_point_to_segment(player_car.x, player_car.y, points[i][0], points[i][1],
+                                         points[(i + 1) % len(points)][0], points[(i + 1) % len(points)][1])
+                    <= car_radius
+                    for i in range(len(points))
+                )
+            if not intersects:
+                continue
+
             # OSM occasionally contains building footprints crossed by mapped roads.
-            # Ignore that footprint only while the car is actually on the crossing road.
+            # Check this expensive exception only after a real building collision.
             if ways and any(
                 self._road_overlaps_building(way, points, bbox)
                 and (
@@ -312,19 +380,6 @@ class TaxiManager:
                 for way in ways
                 if is_car_road(way)
             ):
-                continue
-
-            intersects = point_in_polygon(player_car.x, player_car.y, points)
-            if not intersects:
-                intersects = any(point_in_polygon(x, y, points) for x, y in car_corners)
-            if not intersects:
-                intersects = any(
-                    dist_point_to_segment(player_car.x, player_car.y, points[i][0], points[i][1],
-                                         points[(i + 1) % len(points)][0], points[(i + 1) % len(points)][1])
-                    <= car_radius
-                    for i in range(len(points))
-                )
-            if not intersects:
                 continue
 
             if previous_position is not None:
@@ -443,10 +498,12 @@ class TaxiManager:
             del self._crashed_tree_cooldowns[key]
 
         radius = math.hypot(player_car.length_m, player_car.width_m) * 0.5 + 1.0
-        for scenery in sceneries:
-            for tree_index, (tree_x, tree_y) in enumerate(getattr(scenery, "trees", [])):
+        for scenery_index, tree_index, tree_x, tree_y in self._nearby_collision_trees(
+            sceneries, player_car.x, player_car.y, radius
+        ):
                 if math.hypot(player_car.x - tree_x, player_car.y - tree_y) > radius:
                     continue
+                scenery = sceneries[scenery_index]
                 if previous_position is not None:
                     restore_x, restore_y = previous_position
                 else:
@@ -729,6 +786,34 @@ class TaxiManager:
             return best_name
         return None
 
+    def passenger_waiting_position(self, target: TaxiTarget) -> Tuple[float, float, float]:
+        """Place a phone passenger at the right edge of the nearest road."""
+        nearest = None
+        nearest_distance = float("inf")
+        for way in self.ways:
+            for start, end in zip(way.points_m, way.points_m[1:]):
+                px, py, _, distance = closest_point_and_dist_to_segment(
+                    target.x, target.y, start[0], start[1], end[0], end[1]
+                )
+                if distance < nearest_distance:
+                    nearest = (way, start, end, px, py)
+                    nearest_distance = distance
+        if nearest is None:
+            return target.x, target.y, 0.0
+
+        way, start, end, px, py = nearest
+        heading = math.atan2(end[1] - start[1], end[0] - start[0])
+        half_width = max(0.0, getattr(way, "half_width_m", 4.0))
+        offset = min(
+            max(1.2, half_width * 0.45),
+            max(0.0, half_width - 0.9),
+        )
+        return (
+            px + math.sin(heading) * offset,
+            py - math.cos(heading) * offset,
+            heading,
+        )
+
     def find_nearest_osm_address(
         self, x: float, y: float, street_name: Optional[str] = None, max_search_m: float = 250.0
     ) -> Optional[str]:
@@ -995,9 +1080,9 @@ class TaxiManager:
             pickup=pickup_target,
             dropoff=dropoff_target,
             gender=passenger_gender,
-            ped_x=pickup_target.x,
-            ped_y=pickup_target.y,
-            ped_heading=0.0,
+            ped_x=self.passenger_waiting_position(pickup_target)[0],
+            ped_y=self.passenger_waiting_position(pickup_target)[1],
+            ped_heading=self.passenger_waiting_position(pickup_target)[2],
             ped_speed=2.2,
             is_walking_to_car=False,
             boarded=False,
@@ -1061,8 +1146,9 @@ class TaxiManager:
                 pickup=pickup,
                 dropoff=dropoff,
                 gender=passenger_gender,
-                ped_x=pickup.x,
-                ped_y=pickup.y,
+                ped_x=self.passenger_waiting_position(pickup)[0],
+                ped_y=self.passenger_waiting_position(pickup)[1],
+                ped_heading=self.passenger_waiting_position(pickup)[2],
                 ped_speed=2.2,
                 nausea_delay=nausea_delay_for_pickup(pickup),
             )

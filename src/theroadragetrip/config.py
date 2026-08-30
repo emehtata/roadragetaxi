@@ -1,11 +1,12 @@
 import base64
 import configparser
 import hashlib
+import json
 import os
 import sys
 import uuid
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
 
 from .osm import bbox_from_center
 
@@ -27,6 +28,7 @@ def _default_config_path() -> Path:
 
 
 CONFIG_PATH = _default_config_path()
+CITY_CATALOG_PATH = Path(__file__).with_name("assets") / "paikkadesi.json"
 
 DEFAULT_CONFIG = {
     "game": {
@@ -58,6 +60,8 @@ DEFAULT_CONFIG = {
         "master_volume": "1.0",
         "music_volume": "0.2",
         "effects_volume": "1.0",
+        "comments_enabled": "true",
+        "subtitles_enabled": "true",
     },
     "speech": {
         "min_interval": "5.0",
@@ -103,7 +107,12 @@ def load_config(path: Path = CONFIG_PATH) -> configparser.ConfigParser:
             raise ValueError(
                 f"Invalid {USER_AGENT_KEY} in {path}; delete the entire INI file to create a new identity."
             )
-        if not file_config.has_section("cities"):
+        if file_config.has_section("cities") and file_config.items("cities"):
+            config.remove_section("cities")
+            config.add_section("cities")
+            for name, coordinates in file_config.items("cities"):
+                config.set("cities", name, coordinates)
+        elif not file_config.has_section("cities"):
             with path.open("a", encoding="utf-8") as config_file:
                 config_file.write("\n[cities]\n")
                 for name, coordinates in DEFAULT_CONFIG["cities"].items():
@@ -166,6 +175,47 @@ def get_overpass_endpoints(config: configparser.ConfigParser) -> list[str]:
     return endpoints or list(DEFAULT_OVERPASS_ENDPOINTS)
 
 
+def load_city_catalog(path: Path = CITY_CATALOG_PATH) -> dict[str, tuple[float, float]]:
+    """Load city names with (latitude, longitude) coordinates from the bundled catalog."""
+    data = json.loads(path.read_text(encoding="utf-8"))
+    return {
+        city["name"]: (float(city["latitude"]), float(city["longitude"]))
+        for cities in data.get("countries", {}).values()
+        for city in cities
+    }
+
+
+def city_suggestions(query: str, limit: int = 8, catalog: Optional[dict[str, tuple[float, float]]] = None) -> list[str]:
+    """Return catalog cities matching the typed text, with prefix matches first."""
+    query_key = query.strip().casefold()
+    names = catalog if catalog is not None else load_city_catalog()
+    matches = [name for name in names if not query_key or query_key in name.casefold()]
+    return sorted(matches, key=lambda name: (not name.casefold().startswith(query_key), name.casefold()))[:limit]
+
+
+def replace_city_in_config(
+    config: configparser.ConfigParser,
+    index: int,
+    city_name: str,
+    latitude: float,
+    longitude: float,
+) -> None:
+    """Replace one configured city while preserving the list order."""
+    if not config.has_section("cities"):
+        config.add_section("cities")
+    items = list(config.items("cities"))
+    if not 0 <= index < len(items):
+        raise IndexError("city index out of range")
+    city_key = city_name.strip().casefold().replace(" ", "_")
+    if not city_key:
+        raise ValueError("city name cannot be empty")
+    items[index] = (city_key, f"{latitude:.6f}, {longitude:.6f}")
+    section = config["cities"]
+    section.clear()
+    for key, value in items:
+        section[key] = value
+
+
 def cities_from_config(config: configparser.ConfigParser) -> tuple[dict[str, tuple[float, float]], dict[str, tuple[float, float, float, float]]]:
     centers: dict[str, tuple[float, float]] = {}
     for raw_name, raw_coords in config.items("cities") if config.has_section("cities") else []:
@@ -179,3 +229,10 @@ def cities_from_config(config: configparser.ConfigParser) -> tuple[dict[str, tup
         centers[name] = (latitude, longitude)
     presets = {name.lower(): bbox_from_center(*center, size_km=4.0) for name, center in centers.items()}
     return centers, presets
+
+
+def default_city_configuration() -> tuple[dict[str, tuple[float, float]], dict[str, tuple[float, float, float, float]]]:
+    """Return the original city list, independent of user customizations."""
+    defaults = configparser.ConfigParser()
+    defaults.read_dict({"cities": DEFAULT_CONFIG["cities"]})
+    return cities_from_config(defaults)

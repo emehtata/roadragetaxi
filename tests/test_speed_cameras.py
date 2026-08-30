@@ -161,3 +161,28 @@ def test_rage_shout_prevents_immediate_police_re_pursuit():
 
     assert patrol.pursuing is False
     assert patrol.scared_timer == 2.9
+
+
+def test_rage_shout_ends_pursuit_permanently():
+    traffic = TrafficManager([road()], target_count=0)
+    police = PoliceManager(traffic, 100.0, 0.0, count=1)
+    patrol = police.cars[0]
+    patrol.pursuing = True
+    taxi = Car(x=60.0, y=0.0, heading=0.0, speed=20.0)
+
+    assert police.scare()
+    police.update(taxi, road(), 4.0)
+
+    assert patrol.pursuing is False
+    assert patrol.pursuit_cancelled is True
+
+
+def test_rage_shout_ends_all_active_police_pursuits():
+    traffic = TrafficManager([road()], target_count=0)
+    police = PoliceManager(traffic, 100.0, 0.0, count=2)
+    for patrol in police.cars:
+        patrol.pursuing = True
+
+    assert police.scare()
+    assert all(not patrol.pursuing for patrol in police.cars)
+    assert all(patrol.pursuit_cancelled for patrol in police.cars)

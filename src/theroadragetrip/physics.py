@@ -235,6 +235,17 @@ def connected_drivable_ways(ways: List, named: bool = False) -> List:
     return candidates or [w for w in ways if is_car_road(w) and len(w.points_m) >= 2]
 
 
+def _place_car_on_right_lane(car: Car, way, x: float, y: float, heading: float) -> None:
+    half_width = max(0.0, getattr(way, "half_width_m", 4.0))
+    lane_offset = min(
+        max(1.2, half_width * 0.45),
+        max(0.0, half_width - car.width_m * 0.5),
+    )
+    car.heading = heading
+    car.x = x + math.sin(heading) * lane_offset
+    car.y = y - math.cos(heading) * lane_offset
+
+
 def respawn_car(
     car: Car,
     ways: List,
@@ -242,10 +253,50 @@ def respawn_car(
     bounds: Optional[Tuple[float, float, float, float]] = None,
     waters: Optional[List] = None,
     taxi_stops: Optional[List] = None,
+    near_edge: bool = False,
 ) -> None:
     """Place the car on a main connected drivable land road, avoiding isolated road segments."""
     if not ways:
         return
+
+    if near_edge and bounds:
+        minx, miny, maxx, maxy = bounds
+        edge = random.choice(("west", "east", "south", "north"))
+        segments = [
+            (way, p1, p2)
+            for way in ways
+            if is_car_road(way) and len(way.points_m) >= 2
+            for p1, p2 in zip(way.points_m, way.points_m[1:])
+        ]
+        if segments:
+            def edge_distance(segment) -> float:
+                _, p1, p2 = segment
+                if edge == "west":
+                    return min(p1[0], p2[0]) - minx
+                if edge == "east":
+                    return maxx - max(p1[0], p2[0])
+                if edge == "south":
+                    return min(p1[1], p2[1]) - miny
+                return maxy - max(p1[1], p2[1])
+
+            edge_segments = [segment for segment in segments if edge_distance(segment) <= 500.0]
+            way, p1, p2 = min(edge_segments or segments, key=edge_distance)
+            if edge == "west":
+                start, end = min((p1, p2), key=lambda point: point[0]), max((p1, p2), key=lambda point: point[0])
+            elif edge == "east":
+                start, end = max((p1, p2), key=lambda point: point[0]), min((p1, p2), key=lambda point: point[0])
+            elif edge == "south":
+                start, end = min((p1, p2), key=lambda point: point[1]), max((p1, p2), key=lambda point: point[1])
+            else:
+                start, end = max((p1, p2), key=lambda point: point[1]), min((p1, p2), key=lambda point: point[1])
+            progress = random.uniform(0.05, 0.35)
+            x = start[0] + (end[0] - start[0]) * progress
+            y = start[1] + (end[1] - start[1]) * progress
+            heading = math.atan2(end[1] - start[1], end[0] - start[0])
+            _place_car_on_right_lane(car, way, x, y, heading)
+            car.speed = 0.0
+            car.layer = getattr(way, "layer", 0)
+            return
 
     if taxi_stops:
         stop = random.choice(taxi_stops)
@@ -264,8 +315,8 @@ def respawn_car(
                     nearest_distance = distance
         if nearest:
             segment = nearest_segment
-            car.x, car.y = segment[2], segment[3]
-            car.heading = math.atan2(segment[1][1] - segment[0][1], segment[1][0] - segment[0][0])
+            heading = math.atan2(segment[1][1] - segment[0][1], segment[1][0] - segment[0][0])
+            _place_car_on_right_lane(car, nearest, segment[2], segment[3], heading)
         else:
             car.x, car.y = stop.x, stop.y
             car.heading = 0.0
@@ -323,9 +374,10 @@ def respawn_car(
         ax, ay = w.points_m[segment_idx]
         bx, by = w.points_m[segment_idx + 1]
         progress = random.uniform(0.2, 0.8) if near_center and bounds else 0.5
-        car.x = ax + (bx - ax) * progress
-        car.y = ay + (by - ay) * progress
-        car.heading = math.atan2(by - ay, bx - ax)
+        x = ax + (bx - ax) * progress
+        y = ay + (by - ay) * progress
+        heading = math.atan2(by - ay, bx - ax)
+        _place_car_on_right_lane(car, w, x, y, heading)
     elif len(w.points_m) == 1:
         car.x, car.y = w.points_m[0]
         car.heading = 0.0
@@ -355,11 +407,15 @@ class SpatialWayGrid:
     def insert(self, way) -> None:
         bbox = getattr(way, "bbox", None)
         if not bbox or bbox == (0.0, 0.0, 0.0, 0.0):
-            if not way.points_m:
+            points = getattr(way, "points_m", None)
+            if points:
+                xs = [p[0] for p in points]
+                ys = [p[1] for p in points]
+                bbox = (min(xs), min(ys), max(xs), max(ys))
+            elif hasattr(way, "x") and hasattr(way, "y"):
+                bbox = (way.x, way.y, way.x, way.y)
+            else:
                 return
-            xs = [p[0] for p in way.points_m]
-            ys = [p[1] for p in way.points_m]
-            bbox = (min(xs), min(ys), max(xs), max(ys))
             way.bbox = bbox
 
         hw = getattr(way, "half_width_m", 3.0)
@@ -396,6 +452,30 @@ class SpatialWayGrid:
                 if not (bbox[0] - half_width <= px <= bbox[2] + half_width and bbox[1] - half_width <= py <= bbox[3] + half_width):
                     continue
             yield way, half_width
+
+    def ways_in_rect(self, minx: float, miny: float, maxx: float, maxy: float):
+        """Yield unique ways whose indexed bounds intersect a rectangle."""
+        gx0 = int(minx // self.cell_size)
+        gx1 = int(maxx // self.cell_size)
+        gy0 = int(miny // self.cell_size)
+        gy1 = int(maxy // self.cell_size)
+        seen = set()
+        for gx in range(gx0, gx1 + 1):
+            for gy in range(gy0, gy1 + 1):
+                for way in self.grid.get((gx, gy), ()):
+                    way_id = id(way)
+                    if way_id in seen:
+                        continue
+                    seen.add(way_id)
+                    bbox = getattr(way, "bbox", None)
+                    half_width = getattr(way, "half_width_m", 3.0)
+                    if bbox and not (
+                        bbox[2] + half_width < minx
+                        or bbox[0] - half_width > maxx
+                        or bbox[3] + half_width < miny
+                        or bbox[1] - half_width > maxy
+                    ):
+                        yield way
 
     def is_point_on_road(self, px: float, py: float, car_roads_only: bool = False, layer: Optional[int] = None) -> bool:
         for way, half_width in self._candidate_ways(px, py, car_roads_only, layer):

@@ -61,7 +61,9 @@ class PoliceManager:
         active = next(
             (
                 car for car in self.cars
-                if car.scared_timer <= 0.0 and (car.pursuing or not car.penalty_given)
+                if not car.pursuit_cancelled
+                and car.scared_timer <= 0.0
+                and (car.pursuing or not car.penalty_given)
             ),
             None,
         )
@@ -132,16 +134,19 @@ class PoliceManager:
 
     def scare(self) -> bool:
         """Make an active patrol stop and turn away after a rage shout."""
+        interrupted = False
         for police in self.cars:
             if police.pursuing and not police.penalty_given:
                 police.pursuing = False
                 police.stopped = False
                 police.scared_timer = 3.0
+                police.pursuit_cancelled = True
                 police.heading = (police.heading + math.pi) % (2.0 * math.pi)
                 police.speed = 0.0
-                logger.info("Police pursuit interrupted by rage shout")
-                return True
-        return False
+                interrupted = True
+        if interrupted:
+            logger.info("Police pursuit interrupted by rage shout")
+        return interrupted
 
     def collect_penalty(self, taxi: Car, way: Optional[Way], penalty: int = 300) -> bool:
         """Mark a completed stop and return whether a new penalty should be issued."""

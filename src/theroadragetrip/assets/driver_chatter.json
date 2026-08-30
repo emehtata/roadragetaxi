@@ -1,0 +1,246 @@
+{
+  "version": 1,
+  "description": "Driver lines and shouts for gameplay situations.",
+  "lines": [
+    {
+      "id": 1,
+      "situation": "rage",
+      "mood": "angry",
+      "fi": "Pois alta, vittu, minulla on kiire!",
+      "en": "Move over, damn it, I am in a hurry!",
+      "hash": "8010943d90ec7464"
+    },
+    {
+      "id": 2,
+      "situation": "rage",
+      "mood": "angry",
+      "fi": "Mikä siinä on, perkele, kaasua!",
+      "en": "What is wrong with you, for God's sake, use the gas!",
+      "hash": "b02f2b15e16d59cb"
+    },
+    {
+      "id": 3,
+      "situation": "rage",
+      "mood": "furious",
+      "fi": "Nyt riitti tämä saatanan sähläys!",
+      "en": "I have had enough of this damn mess!",
+      "hash": "efddb36bbbcb311f"
+    },
+    {
+      "id": 4,
+      "situation": "rage",
+      "mood": "frustrated",
+      "fi": "Koko kaupunki on yhtä helvetin sumppua.",
+      "en": "The whole city is one hell of a traffic jam.",
+      "hash": "ad4db2b33c9ada57"
+    },
+    {
+      "id": 5,
+      "situation": "rage",
+      "mood": "angry",
+      "fi": "Älä tunge siihen väliin, saatana!",
+      "en": "Do not squeeze in there, damn it!",
+      "hash": "2e97bdb8fd2beba8"
+    },
+    {
+      "id": 6,
+      "situation": "collision",
+      "mood": "shocked",
+      "fi": "Vittu. Tuo oli minun vikani.",
+      "en": "Shit. That one was my fault.",
+      "hash": "3149a033a3b8cff4"
+    },
+    {
+      "id": 7,
+      "situation": "collision",
+      "mood": "angry",
+      "fi": "Katso nyt vähän eteesi, perkele!",
+      "en": "Watch where you are going, damn it!",
+      "hash": "1377ec433ed4257f"
+    },
+    {
+      "id": 8,
+      "situation": "collision",
+      "mood": "shocked",
+      "fi": "Ei saatana, ei kai taas yksi lommo.",
+      "en": "Oh shit, please do not tell me that is another dent.",
+      "hash": "0d26fb488c1c02a7"
+    },
+    {
+      "id": 9,
+      "situation": "collision",
+      "mood": "frustrated",
+      "fi": "Tämä päivä ei voi mennä enää huonommin, helvetti.",
+      "en": "This day cannot get any worse, damn it.",
+      "hash": "4e91e0073532b524"
+    },
+    {
+      "id": 10,
+      "situation": "collision",
+      "mood": "determined",
+      "fi": "Auto kulkee vielä. Jatketaan.",
+      "en": "The car still moves. Keep going.",
+      "hash": "5061b2c1581b0508"
+    },
+    {
+      "id": 11,
+      "situation": "passenger_nausea",
+      "mood": "concerned",
+      "fi": "Rauhoitu, etsitään sinulle paikka pysähtyä.",
+      "en": "Take it easy, I will find somewhere to stop.",
+      "hash": "c1f6a5b57d34b41b"
+    },
+    {
+      "id": 12,
+      "situation": "passenger_nausea",
+      "mood": "disgusted",
+      "fi": "Voi saatana, ei auton penkille!",
+      "en": "Oh shit, not on the car seat!",
+      "hash": "03ab85655184edfc"
+    },
+    {
+      "id": 13,
+      "situation": "passenger_nausea",
+      "mood": "panicked",
+      "fi": "Ikkuna auki, nopeasti, perkele!",
+      "en": "Open the window, quickly, damn it!",
+      "hash": "6c1d02803cc529e3"
+    },
+    {
+      "id": 14,
+      "situation": "passenger_nausea",
+      "mood": "frustrated",
+      "fi": "Tämä tulee helvetin kalliiksi siivota.",
+      "en": "This will be damn expensive to clean.",
+      "hash": "c80dfb75295d99a0"
+    },
+    {
+      "id": 15,
+      "situation": "passenger_nausea",
+      "mood": "relieved",
+      "fi": "Hyvä, ehdimme pysähtyä ajoissa.",
+      "en": "Good, we stopped in time.",
+      "hash": "aede6908fd8e67e1"
+    },
+    {
+      "id": 16,
+      "situation": "red_light",
+      "mood": "nervous",
+      "fi": "Kamera näki tuon varmasti, voi perkele.",
+      "en": "That camera definitely saw that, damn it.",
+      "hash": "d7e1dd436f3613a0"
+    },
+    {
+      "id": 17,
+      "situation": "red_light",
+      "mood": "defiant",
+      "fi": "Ei tässä risteyksessä ketään ollut, saatana.",
+      "en": "There was nobody in that intersection, damn it.",
+      "hash": "f92446f1597c628c"
+    },
+    {
+      "id": 18,
+      "situation": "speed_camera",
+      "mood": "worried",
+      "fi": "Hiljempaa, hiljempaa, vittu!",
+      "en": "Slow down, slow down, damn it!",
+      "hash": "ff66fab0b4413ee0"
+    },
+    {
+      "id": 19,
+      "situation": "wrong_way",
+      "mood": "confused",
+      "fi": "Hetkinen, tämä ei ollutkaan oikea suunta, perkele.",
+      "en": "Wait, this was not the right way, damn it.",
+      "hash": "b159b60315991f59"
+    },
+    {
+      "id": 20,
+      "situation": "wrong_way",
+      "mood": "frustrated",
+      "fi": "Yksisuuntainen katu, tietenkin, saatana.",
+      "en": "A one-way street, of course, damn it.",
+      "hash": "d3b8d4ed53512c5b"
+    },
+    {
+      "id": 21,
+      "situation": "police_chase",
+      "mood": "panicked",
+      "fi": "Poliisit ovat perässä, helvetti!",
+      "en": "The police are after me, shit!",
+      "hash": "f0104b35e4814e4c"
+    },
+    {
+      "id": 22,
+      "situation": "police_chase",
+      "mood": "defiant",
+      "fi": "Minä en pysähdy vielä, vittu.",
+      "en": "I am not stopping yet, damn it.",
+      "hash": "9f71e7d81f92e8da"
+    },
+    {
+      "id": 23,
+      "situation": "police_chase",
+      "mood": "nervous",
+      "fi": "Ehkä olisi pitänyt ajaa rauhallisemmin, perkele.",
+      "en": "Maybe I should have driven more carefully, damn it.",
+      "hash": "51c3206f01ee6aa9"
+    },
+    {
+      "id": 24,
+      "situation": "water",
+      "mood": "alarmed",
+      "fi": "Tuo ei ollut tie, se oli vettä, saatana!",
+      "en": "That was not a road, it was water, damn it!",
+      "hash": "db4ef5d270c95f7c"
+    },
+    {
+      "id": 25,
+      "situation": "water",
+      "mood": "panicked",
+      "fi": "Pois vedestä ennen kuin uppoamme, helvetti!",
+      "en": "Get out of the water before we sink, shit!",
+      "hash": "4dc59fbc254f6d65"
+    },
+    {
+      "id": 26,
+      "situation": "bridge",
+      "mood": "relieved",
+      "fi": "Silta pelasti tämän matkan.",
+      "en": "That bridge saved this trip.",
+      "hash": "bf1d24b9a9f3a6fc"
+    },
+    {
+      "id": 27,
+      "situation": "pickup",
+      "mood": "good",
+      "fi": "Asiakas kyytiin ja menoksi.",
+      "en": "Passenger aboard, let us go.",
+      "hash": "59994c799eb858b4"
+    },
+    {
+      "id": 28,
+      "situation": "dropoff",
+      "mood": "relieved",
+      "fi": "Perillä ehjänä. Se on jo saavutus.",
+      "en": "We arrived in one piece. That is something.",
+      "hash": "a47405273acb2bfb"
+    },
+    {
+      "id": 29,
+      "situation": "successful_ride",
+      "mood": "proud",
+      "fi": "Siinä oli hyvä kyyti.",
+      "en": "That was a good ride.",
+      "hash": "be0145fa1665cc7d"
+    },
+    {
+      "id": 30,
+      "situation": "failed_ride",
+      "mood": "sad",
+      "fi": "Tämä kyyti olisi voinut päättyä paremmin.",
+      "en": "This ride could have ended better.",
+      "hash": "d35b57176c59c3a4"
+    }
+  ]
+}
