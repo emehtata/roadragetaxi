@@ -1,3 +1,5 @@
+import time
+
 from theroadragetrip.osm import clear_osm_cache, load_local_sample, load_osm_cache, save_osm_cache
 
 
@@ -8,6 +10,8 @@ def test_cache_save_and_load(tmp_path, monkeypatch):
 
     monkeypatch.setattr("theroadragetrip.osm.CACHE_DIR", str(tmp_path))
     save_osm_cache(test_bbox, sample)
+    assert len(list(tmp_path.glob("*.json"))) == 1
+    assert not list(tmp_path.glob("*pjson"))
     cached = load_osm_cache(test_bbox)
     assert cached is not None, "Cache not loaded"
     assert len(cached) == len(sample)
@@ -22,6 +26,39 @@ def test_cache_loads_covering_bbox(tmp_path, monkeypatch):
 
     assert load_osm_cache((64.95, 25.35, 65.0, 25.45)) == sample
     assert load_osm_cache((64.8, 25.35, 65.0, 25.45)) is None
+
+
+def test_cache_migrates_legacy_pjson_filename(tmp_path, monkeypatch):
+    import json
+    import theroadragetrip.osm as osm
+
+    monkeypatch.setattr(osm, "CACHE_DIR", str(tmp_path))
+    bbox = (64.9, 25.3, 65.1, 25.5)
+    legacy_path = tmp_path / "bbox_64p9_25p3_65p1_25p5pjson"
+    legacy_path.write_text(
+        json.dumps({"version": osm.CACHE_VERSION, "fetched_at": time.time(), "elements": []}),
+        encoding="utf-8",
+    )
+
+    assert load_osm_cache(bbox) == []
+    assert not legacy_path.exists()
+    assert (tmp_path / "bbox_64p9_25p3_65p1_25p5.json").exists()
+
+
+def test_cache_is_removed_when_version_changes(tmp_path, monkeypatch):
+    import json
+    import theroadragetrip.osm as osm
+
+    monkeypatch.setattr(osm, "CACHE_DIR", str(tmp_path))
+    bbox = (64.9, 25.3, 65.1, 25.5)
+    cache_path = tmp_path / "bbox_64p9_25p3_65p1_25p5.json"
+    cache_path.write_text(
+        json.dumps({"version": "v-old", "fetched_at": time.time(), "elements": []}),
+        encoding="utf-8",
+    )
+
+    assert load_osm_cache(bbox) is None
+    assert not cache_path.exists()
 
 
 def test_cache_reuses_nearly_identical_point(tmp_path, monkeypatch):

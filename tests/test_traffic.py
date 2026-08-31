@@ -24,6 +24,27 @@ def test_plan_route_starts_at_car_and_ends_at_destination():
     assert (100.0, 0.0) in route
 
 
+def test_sync_map_data_rebuilds_navigation_graph():
+    initial_way = Way(
+        points_m=[(0.0, 0.0), (100.0, 0.0)],
+        highway="residential",
+        half_width_m=4.0,
+    )
+    extended_way = Way(
+        points_m=[(100.0, 0.0), (200.0, 0.0)],
+        highway="residential",
+        half_width_m=4.0,
+    )
+    manager = TrafficManager([initial_way], target_count=0)
+
+    manager.sync_map_data([initial_way, extended_way])
+
+    route = manager.plan_route((25.0, 0.0), (175.0, 0.0))
+
+    assert route is not None
+    assert (100.0, 0.0) in route
+
+
 def test_traffic_count_scales_down_when_zoomed_in():
     assert traffic_count_for_zoom(50, px_per_m=9.0) == 17
     assert traffic_count_for_zoom(50, px_per_m=18.0) == 8

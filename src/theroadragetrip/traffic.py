@@ -400,6 +400,7 @@ class TrafficManager:
             self.traffic_lights = traffic_lights
         if crossings is not None:
             self.crossings = crossings
+        self._build_route_graph()
         self._build_spatial_indices()
 
     def plan_route(

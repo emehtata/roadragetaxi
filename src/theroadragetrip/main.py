@@ -119,6 +119,7 @@ from .render import (
     draw_ways,
     draw_roadworks,
     get_viewport_bounds,
+    solar_altitude_and_events,
     world_to_screen,
 )
 from .pedestrian import CyclistManager, Pedestrian, PedestrianManager, PlayerPedestrian
@@ -873,7 +874,9 @@ def main() -> None:
             roadworks=roadworks,
             enable_two_wheelers=enable_two_wheelers,
         )
-        police_mgr = PoliceManager(traffic_mgr, car.x, car.y, buildings=buildings)
+        police_mgr = PoliceManager(
+            traffic_mgr, car.x, car.y, buildings=buildings, building_grid=building_grid
+        )
         logger.info("Placed %d police patrol cars among NPC traffic", len(police_mgr.cars))
 
         # Initialize autonomous Pedestrian Manager
@@ -937,7 +940,7 @@ def main() -> None:
         px_per_m = max(0.25, zoom_target * 0.75)
         zoom_elapsed = 0.0
         zoom_duration = 3.0
-        game_time_seconds = 8.0 * 60.0 * 60.0
+        game_time_seconds = 18.0 * 60.0 * 60.0
         solar_time_bucket = None
         camx, camy = car.x, car.y
         first_gameplay_frame = True
@@ -1455,7 +1458,7 @@ def main() -> None:
             previous_nausea_resolved = (
                 previous_passenger.nausea_resolved if previous_passenger is not None else False
             )
-            taxi_mgr.update(car, dt)
+            taxi_mgr.update(car, dt, game_time_seconds=game_time_seconds)
             vomited_passenger = taxi_mgr.take_vomited_passenger(car)
             if vomited_passenger is not None:
                 audio.play_passenger_line("Nyt alkaa jo helpottaa.", vomited_passenger.gender, language, vomited_passenger.name)
@@ -1851,7 +1854,10 @@ def main() -> None:
             render_profile_stage_start = time.perf_counter()
 
             lighting_start = time.perf_counter()
-            daylight_scene = screen.copy()
+            sun_altitude, _, _ = solar_altitude_and_events(
+                game_time_seconds, sun_latitude, sun_longitude
+            )
+            daylight_scene = screen.copy() if sun_altitude < -7.5 else None
             draw_day_night_overlay(
                 screen,
                 game_time_seconds,
@@ -1904,6 +1910,8 @@ def main() -> None:
                     camy,
                     px_per_m=px_per_m,
                     spatial_grid=spatial_grid,
+                    scenery_grid=scenery_grid,
+                    building_grid=building_grid,
                 )
             render_profile_times["labels"] = render_profile_times.get("labels", 0.0) + (
                 time.perf_counter() - render_profile_stage_start

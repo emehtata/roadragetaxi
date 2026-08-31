@@ -30,3 +30,25 @@ def test_relation_multipolygon_water():
     w = waters[0]
     assert w.is_polygon is True
     assert len(w.points_m) == 5
+
+
+def test_relation_multipolygon_bay():
+    elements = [
+        {"type": "node", "id": 1, "lat": 60.0, "lon": 25.0},
+        {"type": "node", "id": 2, "lat": 60.0, "lon": 25.001},
+        {"type": "node", "id": 3, "lat": 60.001, "lon": 25.001},
+        {"type": "node", "id": 4, "lat": 60.001, "lon": 25.0},
+        {"type": "way", "id": 101, "nodes": [1, 2, 3, 4, 1], "tags": {}},
+        {
+            "type": "relation",
+            "id": 201,
+            "members": [{"type": "way", "ref": 101, "role": "outer"}],
+            "tags": {"type": "multipolygon", "natural": "bay"},
+        },
+    ]
+
+    ways, waters, buildings, sceneries, places, bounds = build_ways(elements)
+
+    assert len(waters) == 1
+    assert waters[0].kind == "bay"
+    assert waters[0].is_polygon is True

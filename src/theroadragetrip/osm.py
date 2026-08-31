@@ -19,6 +19,7 @@ import requests
 from .geo import dist_point_to_segment, point_in_polygon
 
 logger = logging.getLogger(__name__)
+CACHE_VERSION = "v0.5.0beta"
 
 # Top 10 cities of Finland by population with center coordinates (lat, lon)
 CITY_CENTERS: Dict[str, Tuple[float, float]] = {
@@ -527,7 +528,8 @@ def _bbox_cache_path(bbox: Tuple[float, float, float, float]) -> str:
     north = math.ceil(north * 10**precision) / 10**precision
     east = math.ceil(east * 10**precision) / 10**precision
     fname = f"bbox_{south}_{west}_{north}_{east}.json"
-    safe = fname.replace(".", "p").replace("-", "m")
+    stem, extension = os.path.splitext(fname)
+    safe = stem.replace(".", "p").replace("-", "m") + extension
     return os.path.join(CACHE_DIR, safe)
 
 
@@ -544,6 +546,13 @@ def _bbox_from_cache_name(name: str) -> Optional[Tuple[float, float, float, floa
         return tuple(float(value.replace("p", ".").replace("m", "-")) for value in values)
     except ValueError:
         return None
+
+
+def _legacy_bbox_cache_path(path: str) -> str:
+    """Return the corrected .json path for a legacy pjson cache file."""
+    if not path.endswith("pjson"):
+        return path
+    return path[:-5] + ".json"
 
 
 def load_osm_cache(
@@ -595,9 +604,30 @@ def load_osm_cache(
             logger.warning("Failed to read cache %s: %s", path, e)
             continue
         ts = d.get("fetched_at", 0)
+        if d.get("version") != CACHE_VERSION:
+            logger.info(
+                "Cache skip %s: version %s != %s",
+                os.path.basename(path),
+                d.get("version", "missing"),
+                CACHE_VERSION,
+            )
+            try:
+                os.remove(path)
+            except OSError as e:
+                logger.warning("Failed to remove outdated cache %s: %s", path, e)
+            continue
         ttl = int(os.getenv("OSM_CACHE_TTL", str(24 * 3600)))
         age = time.time() - ts
         if age <= ttl:
+            if path.endswith("pjson"):
+                migrated_path = _legacy_bbox_cache_path(path)
+                try:
+                    if not os.path.exists(migrated_path):
+                        os.replace(path, migrated_path)
+                        path = migrated_path
+                        logger.info("Migrated OSM cache to %s", path)
+                except OSError as e:
+                    logger.warning("Failed to migrate legacy cache %s: %s", path, e)
             if cache_bbox is not None:
                 logger.info(
                     "CACHE HIT: %s | bbox=%s | reason=%s | elements=%d | age=%.1fh",
@@ -620,7 +650,7 @@ def save_osm_cache(bbox: Tuple[float, float, float, float], elements: List[dict]
     path = _bbox_cache_path(bbox)
     try:
         with open(path, "w", encoding="utf-8") as f:
-            json.dump({"fetched_at": time.time(), "elements": elements}, f)
+            json.dump({"version": CACHE_VERSION, "fetched_at": time.time(), "elements": elements}, f)
         logger.info("Saved OSM cache to %s", path)
     except Exception as e:
         logger.warning("Failed to save cache %s: %s", path, e)
@@ -664,6 +694,8 @@ def fetch_osm_ways(
       way["highway"]({south},{west},{north},{east});
     way["name"]({south},{west},{north},{east});
       way["natural"="water"]({south},{west},{north},{east});
+    way["natural"="bay"]({south},{west},{north},{east});
+    way["natural"="strait"]({south},{west},{north},{east});
       way["waterway"]({south},{west},{north},{east});
       way["landuse"="reservoir"]({south},{west},{north},{east});
       way["building"]({south},{west},{north},{east});
@@ -672,6 +704,8 @@ def fetch_osm_ways(
       way["natural"~"wood|scrub|grass|sand|heath"]({south},{west},{north},{east});
       way["place"~"suburb|neighbourhood|quarter|village"]({south},{west},{north},{east});
       relation["natural"="water"]({south},{west},{north},{east});
+    relation["natural"="bay"]({south},{west},{north},{east});
+    relation["natural"="strait"]({south},{west},{north},{east});
       relation["landuse"="reservoir"]({south},{west},{north},{east});
       relation["building"]({south},{west},{north},{east});
       relation["leisure"="park"]({south},{west},{north},{east});
@@ -963,7 +997,7 @@ def build_ways(
                 continue
             if "building" in tags:
                 building_raw.append((tags, node_ids))
-            elif tags.get("natural") == "water" or ("waterway" in tags) or tags.get("landuse") == "reservoir":
+            elif tags.get("natural") in ("water", "bay", "strait") or ("waterway" in tags) or tags.get("landuse") == "reservoir":
                 water_raw.append((tags, node_ids))
             elif "leisure" in tags or "landuse" in tags or tags.get("natural") in ("wood", "scrub", "grass", "sand", "heath"):
                 scenery_raw.append((tags, node_ids))
@@ -1307,7 +1341,7 @@ def build_ways(
                     center_m=(center_x, center_y),
                     texture_seed=abs(math.sin(center_x * 0.013 + center_y * 0.017)),
                 ))
-            elif tags.get("natural") == "water" or tags.get("landuse") == "reservoir":
+            elif tags.get("natural") in ("water", "bay", "strait") or tags.get("landuse") == "reservoir":
                 kind = tags.get("natural") or tags.get("landuse") or "water"
                 waters.append(Water(points_m=pts, kind=kind, is_polygon=is_closed, name=name, bbox=ibbox))
             elif "leisure" in tags or "landuse" in tags or tags.get("natural") in ("forest", "wood", "scrub", "grass"):

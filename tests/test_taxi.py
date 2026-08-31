@@ -59,14 +59,14 @@ def test_offer_generation_adds_one_offer_at_a_time(monkeypatch):
     assert requested_counts == [1, 1]
 
 
-def test_offer_generation_caps_phone_at_five_offers(monkeypatch):
+def test_offer_generation_caps_phone_at_three_offers(monkeypatch):
     way = Way(points_m=[(0.0, 0.0), (200.0, 0.0)], highway="residential", half_width_m=4.5)
     taxi_mgr = TaxiManager(ways=[way])
-    taxi_mgr.offers = [TaxiOffer(SimpleNamespace(), 100.0) for _ in range(5)]
+    taxi_mgr.offers = [TaxiOffer(SimpleNamespace(), 100.0) for _ in range(3)]
     taxi_mgr.next_offer_timer = 0.0
     taxi_mgr.update(Car(x=0.0, y=0.0, heading=0.0, speed=0.0), 0.1)
 
-    assert len(taxi_mgr.offers) == 5
+    assert len(taxi_mgr.offers) == 3
 
 
 def test_offer_generation_is_suppressed_while_passenger_is_active():
@@ -76,6 +76,23 @@ def test_offer_generation_is_suppressed_while_passenger_is_active():
     taxi_mgr.offers = [object()]
 
     assert taxi_mgr.generate_offers(0.0, 0.0) == []
+    assert taxi_mgr.offers == []
+
+
+def test_phone_offers_are_cleared_while_passenger_is_active():
+    way = Way(points_m=[(0.0, 0.0), (200.0, 0.0)], highway="residential", half_width_m=4.5)
+    taxi_mgr = TaxiManager(ways=[way])
+    taxi_mgr.current_passenger = SimpleNamespace(
+        boarded=False,
+        nausea_resolved=False,
+        nausea_vomited=False,
+        pickup=None,
+        dropoff=None,
+    )
+    taxi_mgr.offers = [object(), object()]
+
+    taxi_mgr.update(Car(x=0.0, y=0.0, heading=0.0, speed=0.0), 0.1)
+
     assert taxi_mgr.offers == []
 
 
@@ -223,7 +240,7 @@ def test_taxi_mission_lifecycle():
     assert taxi_mgr.offers
 
 
-def test_taxi_mission_prefers_osm_taxi_stops():
+def test_taxi_mission_uses_osm_taxi_stops_for_pickup_only():
     way = Way(
         points_m=[(0.0, 0.0), (2000.0, 0.0)],
         highway="residential",
@@ -237,7 +254,7 @@ def test_taxi_mission_prefers_osm_taxi_stops():
 
     assert taxi_mgr.current_passenger is not None
     assert taxi_mgr.current_passenger.pickup.x in (500.0, 1000.0)
-    assert taxi_mgr.current_passenger.dropoff.x in (500.0, 1000.0)
+    assert taxi_mgr.current_passenger.dropoff.x not in (500.0, 1000.0)
 
 
 def test_phone_offers_show_distance_and_accept_selected_ride():

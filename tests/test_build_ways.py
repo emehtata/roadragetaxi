@@ -39,3 +39,35 @@ def test_build_ways_transforms():
     assert w.points_m[0] == (x1, y1)
     assert w.points_m[1] == (x2, y2)
     assert w.highway == "residential"
+
+
+def test_build_ways_parses_closed_natural_bay_as_water():
+    elements = [
+        {"type": "node", "id": 1, "lat": 60.0, "lon": 25.0},
+        {"type": "node", "id": 2, "lat": 60.0, "lon": 25.01},
+        {"type": "node", "id": 3, "lat": 60.01, "lon": 25.01},
+        {"type": "node", "id": 4, "lat": 60.01, "lon": 25.0},
+        {"type": "way", "id": 11, "nodes": [1, 2, 3, 4, 1], "tags": {"natural": "bay"}},
+    ]
+
+    ways, waters, buildings, sceneries, places, bounds = build_ways(elements)
+
+    assert len(waters) == 1
+    assert waters[0].kind == "bay"
+    assert waters[0].is_polygon is True
+
+
+def test_build_ways_parses_closed_natural_strait_as_water():
+    elements = [
+        {"type": "node", "id": 1, "lat": 60.0, "lon": 25.0},
+        {"type": "node", "id": 2, "lat": 60.0, "lon": 25.01},
+        {"type": "node", "id": 3, "lat": 60.01, "lon": 25.01},
+        {"type": "node", "id": 4, "lat": 60.01, "lon": 25.0},
+        {"type": "way", "id": 12, "nodes": [1, 2, 3, 4, 1], "tags": {"natural": "strait"}},
+    ]
+
+    ways, waters, buildings, sceneries, places, bounds = build_ways(elements)
+
+    assert len(waters) == 1
+    assert waters[0].kind == "strait"
+    assert waters[0].is_polygon is True

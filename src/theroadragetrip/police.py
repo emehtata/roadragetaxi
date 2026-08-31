@@ -33,8 +33,10 @@ class PoliceManager:
         y: float,
         count: int = 1,
         buildings: Optional[List[Building]] = None,
+        building_grid=None,
     ):
         self.buildings = buildings or []
+        self.building_grid = building_grid
         self.cars: List[NPCCar] = []
         for _ in range(count):
             npc = traffic.spawn_npc(x, y)
@@ -71,7 +73,9 @@ class PoliceManager:
         can_see_taxi = (
             active is not None
             and math.hypot(active.x - taxi.x, active.y - taxi.y) <= 90.0
-            and _has_line_of_sight(active.x, active.y, taxi.x, taxi.y, self.buildings)
+            and _has_line_of_sight(
+                active.x, active.y, taxi.x, taxi.y, self.buildings, self.building_grid
+            )
         )
         if active is not None and speeding and can_see_taxi and not active.stopped and not active.pursuing:
             active.pursuing = True
@@ -117,7 +121,9 @@ class PoliceManager:
             dx = target_x - police.x
             dy = target_y - police.y
             distance = math.hypot(dx, dy)
-            if not _has_line_of_sight(police.x, police.y, target_x, target_y, self.buildings):
+            if not _has_line_of_sight(
+                police.x, police.y, target_x, target_y, self.buildings, self.building_grid
+            ):
                 police.speed = 0.0
                 continue
             if distance <= 2.0:
@@ -164,9 +170,20 @@ def _has_line_of_sight(
     end_x: float,
     end_y: float,
     buildings: List[Building],
+    building_grid=None,
 ) -> bool:
     """Return false when a building footprint blocks the view or direct path."""
-    for building in buildings:
+    if building_grid is not None:
+        margin = 2.0
+        candidate_buildings = building_grid.ways_in_rect(
+            min(start_x, end_x) - margin,
+            min(start_y, end_y) - margin,
+            max(start_x, end_x) + margin,
+            max(start_y, end_y) + margin,
+        )
+    else:
+        candidate_buildings = buildings
+    for building in candidate_buildings:
         polygon = building.points_m
         if len(polygon) < 3:
             continue

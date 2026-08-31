@@ -11,9 +11,21 @@ from .localization import tr
 from .police import SpeedCamera, camera_sees_car
 
 logger = logging.getLogger(__name__)
-MAX_PHONE_OFFERS = 5
+MAX_PHONE_OFFERS = 3
 PHONE_OFFER_MIN_LIFETIME_S = 30.0
-PHONE_OFFER_MAX_LIFETIME_S = 180.0
+PHONE_OFFER_MAX_LIFETIME_S = 90.0
+PHONE_OFFER_MIN_INTERVAL_S = 10.0
+PHONE_OFFER_MAX_INTERVAL_S = 60.0
+NIGHTLIFE_VENUE_TYPES = {
+    "bar",
+    "pub",
+    "nightclub",
+    "restaurant",
+    "cafe",
+    "fast_food",
+    "food_court",
+    "biergarten",
+}
 
 # Finnish passenger name generator for immersion
 PASSENGER_NAMES = {
@@ -84,11 +96,11 @@ def speed_bonus_points(speed_kmh: float) -> int:
     return round(1000.0 * (speed_kmh / 50.0) ** exponent)
 
 
-def nausea_probability(venue_type: Optional[str]) -> float:
-    """Return passenger nausea probability based on the OSM amenity type."""
+def nausea_probability(venue_type: Optional[str], game_time_seconds: float = 12.0 * 3600.0) -> float:
+    """Return passenger nausea probability based on venue and in-game time."""
     if venue_type in {"bar", "pub", "nightclub"}:
-        return 0.50
-    if venue_type in {
+        probability = 0.50
+    elif venue_type in {
         "restaurant",
         "cafe",
         "fast_food",
@@ -97,13 +109,21 @@ def nausea_probability(venue_type: Optional[str]) -> float:
         "ice_cream",
         "confectionery",
     }:
-        return 0.10
-    return 0.0
+        probability = 0.10
+    else:
+        probability = 0.0
+
+    hour = (game_time_seconds / 3600.0) % 24.0
+    if hour >= 20.0 or hour < 1.0:
+        probability += 0.10
+    elif 1.0 <= hour < 5.0:
+        probability += 0.25
+    return min(0.95, probability)
 
 
-def nausea_delay_for_pickup(pickup: TaxiTarget) -> float:
+def nausea_delay_for_pickup(pickup: TaxiTarget, game_time_seconds: float = 12.0 * 3600.0) -> float:
     """Return a random in-trip delay when a pickup triggers nausea."""
-    if random.random() >= nausea_probability(pickup.venue_type):
+    if random.random() >= nausea_probability(pickup.venue_type, game_time_seconds):
         return float("inf")
     return random.uniform(5.0, 45.0)
 
@@ -133,6 +153,7 @@ class TaxiManager:
         self.pickup_radius_m = pickup_radius_m
         self.max_stop_speed_mps = max_stop_speed_mps
         self.language = language
+        self.game_time_seconds = 18.0 * 60.0 * 60.0
 
         self.current_passenger: Optional[TaxiPassenger] = None
         self.offers: List[TaxiOffer] = []
@@ -146,7 +167,7 @@ class TaxiManager:
         self.last_fare_points: int = 0
         self.notification_msg: str = ""
         self.notification_timer: float = 0.0
-        self.next_offer_timer: float = random.uniform(12.0, 28.0)
+        self.next_offer_timer: float = random.uniform(PHONE_OFFER_MIN_INTERVAL_S, PHONE_OFFER_MAX_INTERVAL_S)
         self.stand_wait_timer: float = 0.0
         self._passed_red_signals: Dict[int, float] = {}  # signal id -> timestamp cooldown
         self._approaching_red_signals: Dict[int, float] = {}  # signal id -> last signed distance along travel
@@ -175,6 +196,9 @@ class TaxiManager:
         self._overlap_building_count = -1
         self.wrong_way_duration: float = 0.0
         self.wrong_way_penalty_cooldown: float = 0.0
+
+    def nausea_delay_for_pickup(self, pickup: TaxiTarget) -> float:
+        return nausea_delay_for_pickup(pickup, self.game_time_seconds)
 
     @staticmethod
     def _collision_cells(minx: float, miny: float, maxx: float, maxy: float, cell_size: float = 100.0):
@@ -862,11 +886,14 @@ class TaxiManager:
         min_dist: float = 0.0,
         max_dist: float = float("inf"),
         max_road_distance: float = 250.0,
+        venue_types: Optional[set] = None,
     ) -> Optional[TaxiTarget]:
         """Pick a named building and place its target at the nearest reachable road point."""
         candidates = [
             building for building in self.buildings
-            if building.name and len(building.points_m) >= 3
+            if building.name
+            and len(building.points_m) >= 3
+            and (venue_types is None or getattr(building, "venue_type", None) in venue_types)
         ]
         random.shuffle(candidates)
 
@@ -1026,29 +1053,43 @@ class TaxiManager:
 
     def spawn_mission(self, car_x: float, car_y: float) -> None:
         """Spawn a new passenger pickup and dropoff destination."""
-        pickup_target = self.pick_random_building_point(
-            ref_x=car_x,
-            ref_y=car_y,
-            min_dist=150.0,
-            max_dist=1200.0,
-        )
-        if not pickup_target or not pickup_target.address:
-            pickup_target = self.pick_random_taxi_stop(ref_x=car_x, ref_y=car_y, min_dist=150.0, max_dist=1200.0)
-        if not pickup_target:
-            pickup_target = self.pick_random_road_point(ref_x=car_x, ref_y=car_y, min_dist=150.0, max_dist=1200.0)
+        hour = (self.game_time_seconds / 3600.0) % 24.0
+        if hour < 8.0 or hour >= 20.0:
+            pickup_target = self.pick_phone_pickup(car_x, car_y)
+        else:
+            pickup_target = self.pick_random_building_point(
+                ref_x=car_x,
+                ref_y=car_y,
+                min_dist=150.0,
+                max_dist=1200.0,
+            )
+            if not pickup_target or not pickup_target.address:
+                pickup_target = self.pick_random_taxi_stop(
+                    ref_x=car_x, ref_y=car_y, min_dist=150.0, max_dist=1200.0
+                )
+            if not pickup_target:
+                pickup_target = self.pick_random_road_point(
+                    ref_x=car_x, ref_y=car_y, min_dist=150.0, max_dist=1200.0
+                )
         if not pickup_target:
             return
 
-        dropoff_target = self.pick_random_building_point(
-            ref_x=pickup_target.x,
-            ref_y=pickup_target.y,
-            min_dist=self.min_distance_m,
-            max_dist=self.max_distance_m,
-        )
-        if not dropoff_target:
-            dropoff_target = self.pick_random_taxi_stop(ref_x=pickup_target.x, ref_y=pickup_target.y, min_dist=self.min_distance_m, max_dist=self.max_distance_m)
-        if not dropoff_target:
-            dropoff_target = self.pick_random_road_point(ref_x=pickup_target.x, ref_y=pickup_target.y, min_dist=self.min_distance_m, max_dist=self.max_distance_m)
+        if hour < 8.0 or hour >= 20.0:
+            dropoff_target = self.pick_phone_dropoff(pickup_target.x, pickup_target.y)
+        else:
+            dropoff_target = self.pick_random_building_point(
+                ref_x=pickup_target.x,
+                ref_y=pickup_target.y,
+                min_dist=self.min_distance_m,
+                max_dist=float("inf"),
+            )
+            if not dropoff_target:
+                dropoff_target = self.pick_random_road_point(
+                    ref_x=pickup_target.x,
+                    ref_y=pickup_target.y,
+                    min_dist=self.min_distance_m,
+                    max_dist=float("inf"),
+                )
         if not dropoff_target:
             dropoff_target = pickup_target
 
@@ -1064,7 +1105,7 @@ class TaxiManager:
             ped_speed=2.2,
             is_walking_to_car=False,
             boarded=False,
-            nausea_delay=nausea_delay_for_pickup(pickup_target),
+            nausea_delay=self.nausea_delay_for_pickup(pickup_target),
         )
         self.state = TaxiState.WAITING_FOR_PICKUP
         self.elapsed_time = 0.0
@@ -1081,6 +1122,39 @@ class TaxiManager:
 
     def pick_phone_pickup(self, car_x: float, car_y: float) -> Optional[TaxiTarget]:
         """Pick a phone-order pickup using the intended location mix."""
+        hour = (self.game_time_seconds / 3600.0) % 24.0
+        if 0.0 <= hour < 5.0:
+            return self.pick_random_taxi_stop(ref_x=car_x, ref_y=car_y, min_dist=150.0, max_dist=1200.0)
+        if 20.0 <= hour < 24.0 and random.random() < 0.30:
+            return self.pick_random_building_point(
+                ref_x=car_x,
+                ref_y=car_y,
+                min_dist=150.0,
+                max_dist=1200.0,
+                venue_types=NIGHTLIFE_VENUE_TYPES,
+            ) or self.pick_random_building_point(
+                ref_x=car_x,
+                ref_y=car_y,
+                min_dist=150.0,
+                max_dist=1200.0,
+                venue_types={None},
+            )
+        if 5.0 <= hour < 8.0 or 20.0 <= hour < 24.0:
+            return self.pick_random_building_point(
+                ref_x=car_x,
+                ref_y=car_y,
+                min_dist=150.0,
+                max_dist=1200.0,
+                venue_types={None},
+            )
+        if 8.0 <= hour < 12.0:
+            return self.pick_random_building_point(
+                ref_x=car_x,
+                ref_y=car_y,
+                min_dist=150.0,
+                max_dist=1200.0,
+                venue_types={None},
+            )
         roll = random.random()
         if roll < 0.70:
             sources = (self.pick_random_building_point, self.pick_random_road_point, self.pick_random_taxi_stop)
@@ -1097,13 +1171,52 @@ class TaxiManager:
 
     def pick_phone_dropoff(self, pickup_x: float, pickup_y: float) -> Optional[TaxiTarget]:
         """Pick a phone-order dropoff using places and addresses only."""
+        hour = (self.game_time_seconds / 3600.0) % 24.0
+        if 0.0 <= hour < 5.0:
+            return self.pick_random_building_point(
+                ref_x=pickup_x,
+                ref_y=pickup_y,
+                min_dist=self.min_distance_m,
+                max_dist=float("inf"),
+                venue_types={None},
+            )
+        if 5.0 <= hour < 8.0:
+            return self.pick_random_building_point(
+                ref_x=pickup_x,
+                ref_y=pickup_y,
+                min_dist=self.min_distance_m,
+                max_dist=float("inf"),
+                venue_types={None},
+            )
+        if 20.0 <= hour < 24.0:
+            return self.pick_random_building_point(
+                ref_x=pickup_x,
+                ref_y=pickup_y,
+                min_dist=self.min_distance_m,
+                max_dist=float("inf"),
+                venue_types=NIGHTLIFE_VENUE_TYPES,
+            ) or self.pick_random_building_point(
+                ref_x=pickup_x,
+                ref_y=pickup_y,
+                min_dist=self.min_distance_m,
+                max_dist=float("inf"),
+                venue_types={None},
+            )
+        if 8.0 <= hour < 12.0:
+            return self.pick_random_building_point(
+                ref_x=pickup_x,
+                ref_y=pickup_y,
+                min_dist=self.min_distance_m,
+                max_dist=float("inf"),
+                venue_types={None},
+            )
         if random.random() < 0.70:
             sources = (self.pick_random_building_point, self.pick_random_road_point)
         else:
             sources = (self.pick_random_road_point, self.pick_random_building_point)
 
         for source in sources:
-            dropoff = source(pickup_x, pickup_y, self.min_distance_m, self.max_distance_m)
+            dropoff = source(pickup_x, pickup_y, self.min_distance_m, float("inf"))
             if dropoff:
                 return dropoff
         return None
@@ -1135,7 +1248,7 @@ class TaxiManager:
                 ped_y=self.passenger_waiting_position(pickup)[1],
                 ped_heading=self.passenger_waiting_position(pickup)[2],
                 ped_speed=2.2,
-                nausea_delay=nausea_delay_for_pickup(pickup),
+                nausea_delay=self.nausea_delay_for_pickup(pickup),
             )
             offers.append(TaxiOffer(
                 passenger=passenger,
@@ -1178,7 +1291,7 @@ class TaxiManager:
         if index < 0 or index >= len(self.offers):
             return False
         self.offers.pop(index)
-        self.next_offer_timer = random.uniform(12.0, 28.0)
+        self.next_offer_timer = random.uniform(PHONE_OFFER_MIN_INTERVAL_S, PHONE_OFFER_MAX_INTERVAL_S)
         self.notification_msg = tr(self.language, "no_requests")
         self.notification_timer = 2.0
         logger.info("Taxi phone offer rejected: index=%d remaining=%d", index, len(self.offers))
@@ -1192,9 +1305,11 @@ class TaxiManager:
         walk_to_car: bool = False,
     ) -> bool:
         """Turn a nearby waiting pedestrian into a fare, optionally walking to the car first."""
-        dropoff = self.pick_random_taxi_stop(pickup.x, pickup.y, self.min_distance_m, self.max_distance_m)
+        dropoff = self.pick_random_building_point(
+            pickup.x, pickup.y, self.min_distance_m, float("inf"), venue_types={None}
+        )
         if not dropoff:
-            dropoff = self.pick_random_road_point(pickup.x, pickup.y, self.min_distance_m, self.max_distance_m)
+            dropoff = self.pick_random_road_point(pickup.x, pickup.y, self.min_distance_m, float("inf"))
         if not dropoff:
             return False
         passenger_name, passenger_gender = random_passenger_identity()
@@ -1207,7 +1322,7 @@ class TaxiManager:
             ped_y=pedestrian.y,
             ped_heading=pedestrian.heading,
             boarded=True,
-            nausea_delay=nausea_delay_for_pickup(pickup),
+            nausea_delay=self.nausea_delay_for_pickup(pickup),
         )
         self.current_passenger = passenger
         self.offers = []
@@ -1344,7 +1459,7 @@ class TaxiManager:
         logger.info("Taxi mission discarded: passenger=%s reason=%s penalty=%d", p_name, reason, penalty)
         self.current_passenger = None
         self.state = TaxiState.WAITING_FOR_PICKUP
-        self.generate_offers(car_x, car_y)
+        self.generate_offers(car_x, car_y, count=1)
         return penalty
 
     def handle_respawn(self, car_x: float, car_y: float) -> None:
@@ -1401,14 +1516,18 @@ class TaxiManager:
         passenger.is_walking_to_car = False
         self.current_passenger = None
         self.state = TaxiState.WAITING_FOR_PICKUP
-        self.generate_offers(car.x, car.y)
+        self.generate_offers(car.x, car.y, count=1)
         self.notification_msg = tr(self.language, "passenger_vomited_outside")
         self.notification_timer = 5.0
         logger.info("Passenger left taxi after vomiting: passenger=%s", passenger.name)
         return passenger
 
-    def update(self, car: Car, dt: float) -> None:
+    def update(self, car: Car, dt: float, game_time_seconds: Optional[float] = None) -> None:
         """Update mission timers, pickup/dropoff collision, and fare progression."""
+        if game_time_seconds is not None:
+            self.game_time_seconds = game_time_seconds
+        if self.current_passenger:
+            self.offers.clear()
         self.speed_camera_flash_timer = max(0.0, self.speed_camera_flash_timer - dt)
         if self.speed_camera_flash_timer <= 0.0:
             self.speed_camera_flash_index = None
@@ -1431,7 +1550,7 @@ class TaxiManager:
             self.next_offer_timer -= dt
             if self.next_offer_timer <= 0.0:
                 self.generate_offers(car.x, car.y, count=1, append=True)
-                self.next_offer_timer = random.uniform(18.0, 40.0)
+                self.next_offer_timer = random.uniform(PHONE_OFFER_MIN_INTERVAL_S, PHONE_OFFER_MAX_INTERVAL_S)
                 if self.offers:
                     self.notification_msg = tr(self.language, "new_request")
                     self.notification_timer = 5.0
@@ -1533,7 +1652,7 @@ class TaxiManager:
                     )
                     # New requests are selected through the phone.
                     self.current_passenger = None
-                    self.generate_offers(car.x, car.y)
+                    self.generate_offers(car.x, car.y, count=1)
                 else:
                     self.notification_msg = tr(self.language, "slow_dropoff_notice")
                     self.notification_timer = 1.0

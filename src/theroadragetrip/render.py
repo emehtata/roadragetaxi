@@ -32,7 +32,9 @@ SCENERY_COLORS = {
 TREE_CROWN_COLORS = ((25, 78, 29), (34, 101, 35), (48, 119, 42), (63, 112, 34))
 BUILDING_WALL_COLORS = ((158, 105, 82), (174, 166, 143), (116, 131, 119), (139, 139, 137))
 BUILDING_ROOF_COLORS = ((92, 57, 48), (102, 96, 82), (66, 83, 69), (83, 86, 87))
-MAX_VISIBLE_STREET_LIGHTS = 240
+MAX_VISIBLE_STREET_LIGHTS = 400
+STREET_LIGHT_SPACING_M = 12.0
+STREET_LIGHT_JUNCTION_CLEARANCE_M = 10.0
 SOLAR_UPDATE_INTERVAL_SECONDS = 15.0 * 60.0
 GAME_DATE = date(2026, 8, 31)
 FINLAND_SUMMER_TIME_OFFSET = 3.0
@@ -653,6 +655,7 @@ def draw_ways(
 
     vminx, vminy, vmaxx, vmaxy = get_viewport_bounds(camx, camy, px_per_m, screen_w, screen_h, 60.0)
 
+
     # Filter visible ways first, then sort only visible ways by layer
     if spatial_grid is not None:
         visible_ways = [w for w in spatial_grid.ways_in_rect(vminx, vminy, vmaxx, vmaxy) if len(w.points_m) >= 2]
@@ -749,6 +752,14 @@ def draw_ways(
                             )
                     cum_dist += step_dist
                 cum_dist -= seg_len
+
+
+def _way_has_street_lighting(way: Way) -> bool:
+    """Use explicit OSM lighting, with residential street types as the fallback."""
+    lit = getattr(way, "lit", None)
+    return lit == "yes" or (
+        lit is None and getattr(way, "highway", "") in {"residential", "living_street", "secondary"}
+    )
 
 
 def draw_street_lights(
@@ -866,15 +877,33 @@ def draw_street_lights(
     _street_light_frame_world_positions = []
     lamp_centers = []
     lamp_directions = []
-    lamp_spacing = 20.0
+    lamp_spacing = STREET_LIGHT_SPACING_M
     visible_way_count = 0
+    junction_cell_size = 40.0
+    junction_min_x = math.floor(vminx / junction_cell_size)
+    junction_max_x = math.floor(vmaxx / junction_cell_size)
+    junction_min_y = math.floor(vminy / junction_cell_size)
+    junction_max_y = math.floor(vmaxy / junction_cell_size)
+    for junction_cell_x in range(junction_min_x, junction_max_x + 1):
+        for junction_cell_y in range(junction_min_y, junction_max_y + 1):
+            for junction_x, junction_y in junction_grid.get((junction_cell_x, junction_cell_y), ()):
+                if len(lamp_centers) >= MAX_VISIBLE_STREET_LIGHTS:
+                    break
+                if not (vminx <= junction_x <= vmaxx and vminy <= junction_y <= vmaxy):
+                    continue
+                screen_x, screen_y = world_to_screen(
+                    junction_x, junction_y, camx, camy, px_per_m, screen_w, screen_h
+                )
+                lamp_centers.append((int(screen_x), int(screen_y)))
+                lamp_directions.append(0.0)
+                _street_light_frame_world_positions.append((junction_x, junction_y))
     for way in visible_ways:
         visible_way_count += 1
         if len(lamp_centers) >= MAX_VISIBLE_STREET_LIGHTS:
             break
         if (
             not getattr(way, "is_drivable", True)
-            or getattr(way, "lit", None) != "yes"
+            or not _way_has_street_lighting(way)
             or len(way.points_m) < 2
         ):
             continue
@@ -908,7 +937,8 @@ def draw_street_lights(
                     junction_cell_x = math.floor(world_x / junction_cell_size)
                     junction_cell_y = math.floor(world_y / junction_cell_size)
                     if any(
-                        (world_x - junction_x) ** 2 + (world_y - junction_y) ** 2 < 18.0 * 18.0
+                        (world_x - junction_x) ** 2 + (world_y - junction_y) ** 2
+                        < STREET_LIGHT_JUNCTION_CLEARANCE_M * STREET_LIGHT_JUNCTION_CLEARANCE_M
                         for cell_x in (junction_cell_x - 1, junction_cell_x, junction_cell_x + 1)
                         for cell_y in (junction_cell_y - 1, junction_cell_y, junction_cell_y + 1)
                         for junction_x, junction_y in junction_grid.get((cell_x, cell_y), ())
@@ -975,7 +1005,7 @@ def draw_street_lights(
                 pygame.draw.polygon(daylight_mask, (255, 255, 255, 255), sector_points)
             restored_daylight = pygame.Surface(screen.get_size(), pygame.SRCALPHA)
             restored_daylight.blit(daylight_surface, (0, 0))
-            restored_daylight.blit(daylight_mask, (0, 0), special_flags=pygame.BLEND_RGBA_MULT)
+            restored_daylight.blit(daylight_mask, (0, 0), special_flags=pygame.BLEND_RGBA_MIN)
             screen.blit(restored_daylight, (0, 0))
             for lamp_center in lamp_centers:
                 pygame.draw.circle(screen, (235, 215, 120), lamp_center, lamp_radius)
@@ -1006,7 +1036,7 @@ def draw_headlight_beams(
         return
 
     vminx, vminy, vmaxx, vmaxy = get_viewport_bounds(camx, camy, px_per_m, screen_w, screen_h, 30.0)
-    beam_layer = pygame.Surface(screen.get_size(), pygame.SRCALPHA)
+    beam_mask = pygame.Surface(screen.get_size(), pygame.SRCALPHA)
     beam_length = 15.0 * px_per_m
     beam_near = 1.0 * px_per_m
     beam_width = 4.5 * px_per_m
@@ -1091,7 +1121,7 @@ def draw_headlight_beams(
             far_x = tip_x + side_x * far_width
             far_y = tip_y + side_y * far_width
             pygame.draw.polygon(
-                beam_layer,
+                beam_mask,
                     (255, 255, 255, 255),
                 [
                     (int(origin_x), int(origin_y)),
@@ -1103,7 +1133,7 @@ def draw_headlight_beams(
             cap_x = tip_x + side_x * far_width * 0.5
             cap_y = tip_y + side_y * far_width * 0.5
             pygame.draw.circle(
-                beam_layer,
+                beam_mask,
                 (255, 255, 255, 255),
                 (int(cap_x), int(cap_y)),
                 max(1, int(far_width * 0.5)),
@@ -1113,10 +1143,8 @@ def draw_headlight_beams(
         if daylight_surface is not None:
             restored_daylight = pygame.Surface(screen.get_size(), pygame.SRCALPHA)
             restored_daylight.blit(daylight_surface, (0, 0))
-            restored_daylight.blit(beam_layer, (0, 0), special_flags=pygame.BLEND_RGBA_MULT)
+            restored_daylight.blit(beam_mask, (0, 0), special_flags=pygame.BLEND_RGBA_MIN)
             screen.blit(restored_daylight, (0, 0))
-        else:
-            screen.blit(beam_layer, (0, 0))
 
 
 def draw_tire_tracks(
@@ -1338,6 +1366,8 @@ def draw_labels(
     screen_h: int = SCREEN_H,
     max_labels: int = 35,
     spatial_grid=None,
+    scenery_grid=None,
+    building_grid=None,
 ) -> None:
     """Draw text labels and street names with decluttering and collision avoidance."""
     import pygame
@@ -1353,6 +1383,16 @@ def draw_labels(
         pass
 
     count = 0
+    label_sceneries = (
+        scenery_grid.ways_in_rect(vminx, vminy, vmaxx, vmaxy)
+        if scenery_grid is not None
+        else sceneries
+    )
+    label_buildings = (
+        building_grid.ways_in_rect(vminx, vminy, vmaxx, vmaxy)
+        if building_grid is not None
+        else buildings
+    )
 
     def render_label(
         text: str,
@@ -1429,7 +1469,7 @@ def draw_labels(
                 seen_names.add(name)
 
     # 3. Scenery / Parks (green)
-    for sc in sceneries:
+    for sc in label_sceneries:
         if count >= max_labels:
             break
         name = getattr(sc, "name", None)
@@ -1472,7 +1512,7 @@ def draw_labels(
 
     # 5. Buildings (warm yellow, only when sufficiently zoomed in and room left)
     if px_per_m >= 0.45 and count < max_labels:
-        for b in buildings:
+        for b in label_buildings:
             if count >= max_labels:
                 break
             name = getattr(b, "name", None)
