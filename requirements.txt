@@ -1,1 +1,4 @@
-azure-cognitiveservices-speech
+pygame
+requests
+pyproj
+pytest
