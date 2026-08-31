@@ -1,12 +1,13 @@
 PYTHON := .venv/bin/python
 PIP := .venv/bin/pip
 
-.PHONY: help venv install run run-sample test compile check clean
+.PHONY: help venv install run run-debug run-sample test compile check clean
 
 help:
 	@printf '%s\n' \
 		'install                Create .venv and install project dependencies' \
 		'run                    Start the game' \
+		'run-debug              Start the game with DEBUG logging' \
 		'run-sample             Start offline with bundled sample data' \
 		'test                   Run the test suite' \
 		'compile                Compile-check Python sources' \
@@ -21,6 +22,9 @@ install: venv
 
 run:
 	PYTHONPATH=src $(PYTHON) road_rage_trip.py
+
+run-debug:
+	PYTHONPATH=src $(PYTHON) road_rage_trip.py --log-level DEBUG
 
 run-sample:
 	PYTHONPATH=src $(PYTHON) road_rage_trip.py --use-sample

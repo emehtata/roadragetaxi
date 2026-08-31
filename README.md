@@ -15,6 +15,7 @@ A top-down 2D driving game proof-of-concept (PoC) in Python and Pygame that proc
 - **Navigation Waypoints & Compass Pointer**: Displays visual waypoint zones, address tags, off-screen edge indicators, and an optional compass navigation pointer to client locations. The compass is hidden by default and toggled with `C`.
 - **Suggested Route**: Press `N` to show a yellow route from the taxi to the active pickup or dropoff target. The route follows connected OSM roads, respects one-way streets, refreshes when the target or streamed map changes, and recalculates when the taxi leaves it.
 - **Buildings & Scenery**: Renders building footprints, parks, forests, and green spaces with street/place name labels (`L` key).
+- **Street Lighting**: Roadside lamps are placed along urban drivable roads and their warm glow gradually turns on at dusk.
 - **Water & Multipolygon Rendering**: Renders lakes, reservoirs, and waterways under the road network.
 - **Autonomous Traffic**: NPC cars follow connected roads, respect lane direction, vary their speed, overtake, react to traffic lights, and avoid overlapping the player. The shared road-graph navigator can route NPCs to map targets without cutting through buildings or terrain. Active traffic is reduced at close zoom levels while nearby cars are retained.
 - **Pedestrians & Cyclists**: Pedestrians and cyclists use roads and crossings, react to traffic lights, and evade approaching vehicles. Cyclists use a top-down image sprite, and active pedestrian/cyclist counts scale down while zoomed in.
@@ -95,6 +96,9 @@ Use `m` for male voices or `en` for English. The script stores hashes based only
 ```bash
 # Recommended launcher (default area: Oulu)
 make run
+
+# Start with DEBUG-level logging
+make run-debug
 
 # Or run as a module
 source .venv/bin/activate
@@ -218,6 +222,7 @@ Game sounds are stored in `src/theroadragetrip/sounds/`. CC0 sounds require no a
 | `D` / `Right Arrow` | Steer Right |
 | `+` / `=` | Zoom in (increase pixels per meter) |
 | `-` | Zoom out (decrease pixels per meter) |
+| `PageUp` / `PageDown` | Advance or rewind the debug clock by one hour |
 | `R` | Respawn car on a random road (penalizes active fare if client onboard) |
 | `Home` | Debug respawn near a random current map bbox edge (for auto-fetch testing) |
 | `X` | Reject phone offer, or cancel / discard active pickup or onboard passenger mission (score penalty) |

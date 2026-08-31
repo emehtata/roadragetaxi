@@ -4,8 +4,7 @@ from types import SimpleNamespace
 import pytest
 from theroadragetrip.osm import Building, Place, TaxiStop, Way
 from theroadragetrip.physics import Car
-from theroadragetrip.taxi import TaxiManager, TaxiPassenger, TaxiManager, TaxiState, TaxiTarget
-from theroadragetrip.taxi import TaxiManager, TaxiPassenger, TaxiState, TaxiTarget
+from theroadragetrip.taxi import TaxiManager, TaxiOffer, TaxiPassenger, TaxiState, TaxiTarget
 
 
 def test_taxi_target_address_generation():
@@ -38,6 +37,61 @@ def test_phone_passenger_waits_at_right_road_edge():
     assert passenger_x == 100.0
     assert passenger_y < 0.0
     assert heading == 0.0
+
+
+def test_offer_generation_adds_one_offer_at_a_time(monkeypatch):
+    way = Way(points_m=[(0.0, 0.0), (200.0, 0.0)], highway="residential", half_width_m=4.5)
+    taxi_mgr = TaxiManager(ways=[way])
+    car = Car(x=0.0, y=0.0, heading=0.0, speed=0.0)
+    requested_counts = []
+
+    def fake_generate(car_x, car_y, count=3, append=False):
+        requested_counts.append(count)
+        taxi_mgr._initial_offer_pending = False
+        return []
+
+    monkeypatch.setattr(taxi_mgr, "generate_offers", fake_generate)
+    taxi_mgr.next_offer_timer = 0.0
+    taxi_mgr.update(car, 0.1)
+    taxi_mgr.next_offer_timer = 0.0
+    taxi_mgr.update(car, 0.1)
+
+    assert requested_counts == [1, 1]
+
+
+def test_offer_generation_caps_phone_at_five_offers(monkeypatch):
+    way = Way(points_m=[(0.0, 0.0), (200.0, 0.0)], highway="residential", half_width_m=4.5)
+    taxi_mgr = TaxiManager(ways=[way])
+    taxi_mgr.offers = [TaxiOffer(SimpleNamespace(), 100.0) for _ in range(5)]
+    taxi_mgr.next_offer_timer = 0.0
+    taxi_mgr.update(Car(x=0.0, y=0.0, heading=0.0, speed=0.0), 0.1)
+
+    assert len(taxi_mgr.offers) == 5
+
+
+def test_offer_generation_is_suppressed_while_passenger_is_active():
+    way = Way(points_m=[(0.0, 0.0), (200.0, 0.0)], highway="residential", half_width_m=4.5)
+    taxi_mgr = TaxiManager(ways=[way])
+    taxi_mgr.current_passenger = object()
+    taxi_mgr.offers = [object()]
+
+    assert taxi_mgr.generate_offers(0.0, 0.0) == []
+    assert taxi_mgr.offers == []
+
+
+def test_unaccepted_phone_offers_expire_over_time():
+    way = Way(points_m=[(0.0, 0.0), (200.0, 0.0)], highway="residential", half_width_m=4.5)
+    taxi_mgr = TaxiManager(ways=[way])
+    offer = TaxiOffer(
+        passenger=SimpleNamespace(),
+        pickup_distance_m=100.0,
+        time_remaining_s=1.0,
+    )
+    taxi_mgr.offers = [offer]
+
+    taxi_mgr.update(Car(x=0.0, y=0.0, heading=0.0, speed=0.0), 1.1)
+
+    assert taxi_mgr.offers == []
 
 
 def test_taxi_fallback_to_named_road():
@@ -200,6 +254,7 @@ def test_phone_offers_show_distance_and_accept_selected_ride():
 
     assert len(offers) == 3
     assert all(offer.pickup_distance_m > 0.0 for offer in offers)
+    assert all(30.0 <= offer.time_remaining_s <= 180.0 for offer in offers)
     selected = offers[1].passenger
     assert taxi_mgr.accept_offer(1, 0.0, 0.0) is True
     assert taxi_mgr.current_passenger is selected

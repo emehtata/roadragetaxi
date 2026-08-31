@@ -81,6 +81,8 @@ class NPCCar:
     scared_timer: float = 0.0
     pursuit_cancelled: bool = False
     next_route: Optional[Tuple[Way, int, int]] = None
+    debug_last_action: str = ""
+    debug_in_view: Optional[bool] = None
 
 
 def calculate_npc_target_speed(way: Way, speed_factor: float) -> float:
@@ -322,6 +324,29 @@ class TrafficManager:
             return "right"
         return ""
 
+    @staticmethod
+    def _turn_signal_for_next_route(npc: NPCCar) -> str:
+        """Return the indicator direction for a route prepared at the next junction."""
+        if npc.next_route is None:
+            return ""
+        next_way, next_segment_idx, next_direction = npc.next_route
+        points = next_way.points_m
+        if next_direction == 1:
+            if next_segment_idx + 1 >= len(points):
+                return ""
+            next_start, next_end = points[next_segment_idx], points[next_segment_idx + 1]
+        else:
+            if next_segment_idx < 0 or next_segment_idx + 1 >= len(points):
+                return ""
+            next_start, next_end = points[next_segment_idx + 1], points[next_segment_idx]
+        new_heading = math.atan2(next_end[1] - next_start[1], next_end[0] - next_start[0])
+        turn = (new_heading - npc.heading + math.pi) % (2 * math.pi) - math.pi
+        if math.radians(20) < turn < math.radians(160):
+            return "left"
+        if -math.radians(160) < turn < -math.radians(20):
+            return "right"
+        return ""
+
     def sync_map_data(
         self,
         ways: List[Way],
@@ -376,36 +401,47 @@ class TrafficManager:
 
         if not nodes:
             return None
-        start_id = min(
+        start_candidates = sorted(
             range(len(nodes)),
             key=lambda index: (nodes[index][0] - start[0]) ** 2 + (nodes[index][1] - start[1]) ** 2,
-        )
-        target_id = min(
+        )[:12]
+        target_candidates = sorted(
             range(len(nodes)),
             key=lambda index: (nodes[index][0] - target[0]) ** 2 + (nodes[index][1] - target[1]) ** 2,
-        )
-        distances = {start_id: 0.0}
-        previous: dict[int, int] = {}
-        queue = [(0.0, start_id)]
-        while queue:
-            distance, current = heapq.heappop(queue)
-            if current == target_id:
-                break
-            if distance != distances.get(current):
-                continue
-            for neighbor, edge_distance in edges[current]:
-                new_distance = distance + edge_distance
-                if new_distance < distances.get(neighbor, math.inf):
-                    distances[neighbor] = new_distance
-                    previous[neighbor] = current
-                    heapq.heappush(queue, (new_distance, neighbor))
-        if target_id not in distances:
+        )[:12]
+        best_path = None
+        best_score = math.inf
+        for start_id in start_candidates:
+            distances = {start_id: 0.0}
+            previous: dict[int, int] = {}
+            queue = [(0.0, start_id)]
+            while queue:
+                distance, current = heapq.heappop(queue)
+                if distance != distances.get(current):
+                    continue
+                for neighbor, edge_distance in edges[current]:
+                    new_distance = distance + edge_distance
+                    if new_distance < distances.get(neighbor, math.inf):
+                        distances[neighbor] = new_distance
+                        previous[neighbor] = current
+                        heapq.heappush(queue, (new_distance, neighbor))
+            for target_id in target_candidates:
+                if target_id not in distances:
+                    continue
+                start_connector = math.hypot(nodes[start_id][0] - start[0], nodes[start_id][1] - start[1])
+                target_connector = math.hypot(nodes[target_id][0] - target[0], nodes[target_id][1] - target[1])
+                score = distances[target_id] + start_connector + target_connector
+                if score >= best_score:
+                    continue
+                path = [target_id]
+                while path[-1] != start_id:
+                    path.append(previous[path[-1]])
+                path.reverse()
+                best_path = path
+                best_score = score
+        if best_path is None:
             return None
-        path = [target_id]
-        while path[-1] != start_id:
-            path.append(previous[path[-1]])
-        path.reverse()
-        return [(start[0], start[1])] + [(nodes[index][0], nodes[index][1]) for index in path[1:]] + [target]
+        return [(start[0], start[1])] + [(nodes[index][0], nodes[index][1]) for index in best_path] + [target]
 
     def set_target_count(self, target_count: int, player_car: Optional[Car] = None) -> None:
         """Adjust active traffic count and discard farthest cars when zoom reduces it."""
@@ -930,6 +966,7 @@ class TrafficManager:
                 continue
             d = math.hypot(npc.x - player_car.x, npc.y - player_car.y)
             if d > self.despawn_radius_m:
+                logger.debug("NPC %s despawned: distance=%.1fm exceeds %.1fm", id(npc), d, self.despawn_radius_m)
                 continue
             if viewport_bounds:
                 vminx, vminy, vmaxx, vmaxy = viewport_bounds
@@ -939,6 +976,7 @@ class TrafficManager:
                     + (npc.y - player_car.y) * math.sin(player_car.heading)
                 ) < 0.0
                 if not in_view and behind:
+                    logger.debug("NPC %s despawned: behind player and outside viewport", id(npc))
                     continue
             surviving.append(npc)
         self.npcs = surviving
@@ -956,6 +994,21 @@ class TrafficManager:
             )
             if not npc:
                 break
+            logger.debug(
+                "NPC %s spawned: position=(%.1f, %.1f), way=%s, direction=%s",
+                id(npc), npc.x, npc.y, getattr(npc.way, "osm_id", None), npc.direction,
+            )
+
+        if viewport_bounds:
+            vminx, vminy, vmaxx, vmaxy = viewport_bounds
+            for npc in self.npcs:
+                in_view = vminx <= npc.x <= vmaxx and vminy <= npc.y <= vmaxy
+                if npc.debug_in_view != in_view:
+                    logger.debug(
+                        "NPC %s viewport: %s at (%.1f, %.1f)",
+                        id(npc), "entered" if in_view else "left", npc.x, npc.y,
+                    )
+                    npc.debug_in_view = in_view
 
         self._build_npc_spatial_grid()
 
@@ -1000,6 +1053,11 @@ class TrafficManager:
             if npc.is_police:
                 continue
             self._prepare_next_route(npc)
+            if npc.next_route is not None and not npc.turn_signal:
+                next_turn_signal = self._turn_signal_for_next_route(npc)
+                if next_turn_signal:
+                    npc.turn_signal = next_turn_signal
+                    npc.turn_signal_elapsed = 0.0
             if npc.taxi_pickup_timer > 0.0:
                 npc.taxi_pickup_timer = max(0.0, npc.taxi_pickup_timer - dt)
                 npc.speed = 0.0
@@ -1156,6 +1214,7 @@ class TrafficManager:
             junction_blocked = False
             nearest_light = None
             stop_distance = None
+            passed_matching_light = False
             roadwork_stop_distance = self._roadwork_stop_distance(npc)
             if roadwork_stop_distance is not None:
                 must_stop = True
@@ -1172,20 +1231,23 @@ class TrafficManager:
                 # distance so lane offset does not hide a nearby signal.
                 longitudinal = dx * heading_x + dy * heading_y
                 lateral = abs(dx * -heading_y + dy * heading_x)
-                if -2.0 < longitudinal < 25.0 and lateral <= 8.0:
-                        # If traffic light has orientation, check alignment with NPC heading
-                        if tl.direction_angle is not None:
-                            tl_ang = tl.direction_angle
-                            npc_ang = npc.heading % math.pi
-                            ang_err = abs(tl_ang - npc_ang)
-                            ang_err = min(ang_err, math.pi - ang_err)
-                            if ang_err > math.radians(45):
-                                continue  # Signal is for cross traffic, skip
+                if lateral > 8.0:
+                    continue
+                # If traffic light has orientation, check alignment with NPC heading.
+                if tl.direction_angle is not None:
+                    tl_ang = tl.direction_angle
+                    npc_ang = npc.heading % math.pi
+                    ang_err = abs(tl_ang - npc_ang)
+                    ang_err = min(ang_err, math.pi - ang_err)
+                    if ang_err > math.radians(45):
+                        continue  # Signal is for cross traffic, skip
+                if -25.0 < longitudinal <= -2.0:
+                    passed_matching_light = True
+                elif -2.0 < longitudinal < 25.0:
+                    if nearest_light is None or longitudinal < nearest_light[0]:
+                        nearest_light = (longitudinal, tl)
 
-                        if nearest_light is None or longitudinal < nearest_light[0]:
-                            nearest_light = (longitudinal, tl)
-
-            if nearest_light is not None:
+            if nearest_light is not None and not passed_matching_light:
                 state = nearest_light[1].get_state(self.sim_time)
                 if state in ("red", "red+yellow", "yellow"):
                     stop_distance = nearest_light[0] - 1.5
@@ -1244,9 +1306,33 @@ class TrafficManager:
 
             # Check if NPC is in crashed recovery state
             if npc.crashed_timer > 0.0 or getattr(npc, "fallen", False):
+                action = "fallen" if getattr(npc, "fallen", False) else "recovering from crash"
+                if npc.debug_last_action != action:
+                    logger.debug("NPC %s action=%s reason=disabled state", id(npc), action)
+                    npc.debug_last_action = action
                 npc.crashed_timer = max(0.0, npc.crashed_timer - dt)
                 npc.speed = 0.0
                 continue
+
+            if must_stop:
+                action = "stopping"
+                reason = "red/yellow traffic light" if nearest_light is not None else "roadworks"
+            elif junction_blocked:
+                action = "stopping"
+                reason = "junction occupied"
+            elif npc.overtaking:
+                action = "overtaking"
+                reason = "blocked vehicle"
+            else:
+                action = "driving"
+                reason = "prepared turn" if npc.turn_signal else "normal route"
+            action_state = f"{action}: {reason}"
+            if npc.debug_last_action != action_state:
+                logger.debug(
+                    "NPC %s action=%s speed=%.1fm/s position=(%.1f, %.1f)",
+                    id(npc), action_state, npc.speed, npc.x, npc.y,
+                )
+                npc.debug_last_action = action_state
 
             if must_stop or junction_blocked:
                 # Decelerate to stop at red light
@@ -1302,12 +1388,12 @@ class TrafficManager:
                 if seg_len > 1e-3:
                     seg_dir_x = seg_dx / seg_len
                     seg_dir_y = seg_dy / seg_len
-                    # Right perpendicular normal
+                    # Right perpendicular normal in Cartesian space (forward=(dx,dy) -> right=(dy,-dx))
                     norm_x = seg_dir_y
                     norm_y = -seg_dir_x
                 else:
                     seg_dir_x, seg_dir_y = 1.0, 0.0
-                    norm_x, norm_y = 0.0, 1.0
+                    norm_x, norm_y = 0.0, -1.0
 
                 # Target point adjusted with lateral lane offset
                 shifted_target_x = target_pt[0] + norm_x * npc.lane_offset
@@ -1327,7 +1413,12 @@ class TrafficManager:
                         npc.heading = target_heading
                     else:
                         npc.heading += math.copysign(max_turn, heading_diff)
-                    if npc.turn_signal and abs(heading_diff) < 0.12:
+                    if (
+                        npc.turn_signal
+                        and npc.next_route is None
+                        and npc.turn_signal_elapsed >= 0.45
+                        and abs(heading_diff) < 0.12
+                    ):
                         npc.turn_signal = ""
 
                 if dist_step < dist_to_tgt:

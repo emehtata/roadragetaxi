@@ -5,7 +5,7 @@ import subprocess
 from importlib.metadata import PackageNotFoundError, version as package_version
 from typing import List, Optional, Tuple
 
-from .geo import clip_polygon_to_rect, dist_point_to_segment, meters_to_latlon, point_in_polygon
+from .geo import clip_polygon_to_rect, compute_bbox, dist_point_to_segment, meters_to_latlon, point_in_polygon
 from .osm import Building, Place, Scenery, TaxiStop, Water, Way
 from .physics import Car
 from .taxi import TaxiManager, TaxiState
@@ -23,6 +23,7 @@ _moped_sprite = None
 _two_wheeler_tinted_sprites = {}
 _cyclist_tinted_sprites = {}
 _grass_texture_tile = None
+_street_light_junction_cache = None
 
 
 def _tinted_two_wheeler_sprite(sprite, color, cache_key):
@@ -145,9 +146,7 @@ def _covered_by_higher_road(x: float, y: float, layer: int, ways: Optional[List[
         half_width = getattr(way, "half_width_m", 3.0)
         bbox = getattr(way, "bbox", None)
         if not bbox or bbox == (0.0, 0.0, 0.0, 0.0):
-            xs = [point[0] for point in way.points_m]
-            ys = [point[1] for point in way.points_m]
-            bbox = (min(xs), min(ys), max(xs), max(ys))
+            bbox = compute_bbox(way.points_m)
         if bbox and not (bbox[0] - half_width <= x <= bbox[2] + half_width and bbox[1] - half_width <= y <= bbox[3] + half_width):
             continue
         if any(dist_point_to_segment(x, y, p1[0], p1[1], p2[0], p2[1]) <= half_width for p1, p2 in zip(way.points_m, way.points_m[1:])):
@@ -568,10 +567,7 @@ def draw_ways(
             if len(w.points_m) >= 2:
                 visible_ways.append(w)
 
-    if px_per_m >= 6.0 or len(visible_ways) > 500:
-        visible_ways = [way for way in visible_ways if way.is_drivable]
-
-    visible_ways.sort(key=lambda w: getattr(w, "layer", 0))
+    visible_ways.sort(key=lambda w: (getattr(w, "layer", 0), getattr(w, "is_drivable", True)))
 
     def draw_joined_line(color, points, width):
         pygame.draw.lines(screen, color, False, points, width)
@@ -582,9 +578,10 @@ def draw_ways(
         thickness = max(1, int(w.half_width_m * 2 * px_per_m))
 
         if not w.is_drivable:
-            # Pedestrian paths, footways, cycleways, sidewalks (subtle dark slate gray)
+            # Pedestrian paths, footways, cycleways, sidewalks.
             ped_thickness = max(1, int(getattr(w, "half_width_m", 1.2) * 2 * px_per_m))
-            ped_color = (65, 65, 65)
+            ped_color = (115, 145, 150) if w.highway == "cycleway" else (150, 150, 142)
+            draw_joined_line((35, 40, 40), pts, ped_thickness + max(2, int(px_per_m * 0.25)))
             draw_joined_line(ped_color, pts, ped_thickness)
             continue
 
@@ -649,6 +646,117 @@ def draw_ways(
                             )
                     cum_dist += step_dist
                 cum_dist -= seg_len
+
+
+def draw_street_lights(
+    screen,
+    ways: List[Way],
+    camx: float,
+    camy: float,
+    game_time_seconds: float,
+    px_per_m: float = PX_PER_M,
+    screen_w: int = SCREEN_W,
+    screen_h: int = SCREEN_H,
+    spatial_grid=None,
+) -> None:
+    """Draw simple roadside lamps on visible urban roads."""
+    import pygame
+
+    hour = (game_time_seconds / 3600.0) % 24.0
+    daylight = max(0.0, math.sin((hour - 6.0) * math.pi / 12.0))
+    twilight = min(1.0, daylight * 1.8)
+    darkness = 1.0 - twilight
+    street_lighting_enabled = darkness > 0.25
+    vminx, vminy, vmaxx, vmaxy = get_viewport_bounds(camx, camy, px_per_m, screen_w, screen_h, 10.0)
+    if spatial_grid is not None:
+        visible_ways = spatial_grid.ways_in_rect(vminx, vminy, vmaxx, vmaxy)
+    else:
+        visible_ways = ways
+
+    excluded_highways = {"motorway", "motorway_link", "trunk", "trunk_link"}
+    global _street_light_junction_cache
+    cache_key = (id(ways), len(ways), id(ways[-1]) if ways else None)
+    if _street_light_junction_cache is None or _street_light_junction_cache[0] != cache_key:
+        point_ways = {}
+        for way in ways:
+            if getattr(way, "is_drivable", True):
+                for point in way.points_m:
+                    key = (round(point[0] / 5.0), round(point[1] / 5.0))
+                    point_ways.setdefault(key, set()).add(id(way))
+        junction_points = [
+            (key[0] * 5.0, key[1] * 5.0)
+            for key, way_ids in point_ways.items()
+            if len(way_ids) >= 2
+        ]
+        _street_light_junction_cache = (cache_key, junction_points)
+    else:
+        junction_points = _street_light_junction_cache[1]
+    light_layer = pygame.Surface(screen.get_size(), pygame.SRCALPHA) if street_lighting_enabled else None
+    lamp_centers = []
+    lamp_spacing = 20.0
+    for way in visible_ways:
+        if not getattr(way, "is_drivable", True) or way.highway in excluded_highways or len(way.points_m) < 2:
+            continue
+        distance_to_lamp = 0.0
+        for start, end in zip(way.points_m, way.points_m[1:]):
+            dx = end[0] - start[0]
+            dy = end[1] - start[1]
+            segment_length = math.hypot(dx, dy)
+            if segment_length < 1.0:
+                continue
+            while distance_to_lamp <= segment_length:
+                fraction = distance_to_lamp / segment_length
+                lamp_x = start[0] + dx * fraction
+                lamp_y = start[1] + dy * fraction
+                normal_x = -dy / segment_length
+                normal_y = dx / segment_length
+                edge_distance = getattr(way, "half_width_m", 4.0) + 1.0
+                for side in (-1.0, 1.0):
+                    world_x = lamp_x + normal_x * edge_distance * side
+                    world_y = lamp_y + normal_y * edge_distance * side
+                    if any(
+                        math.hypot(world_x - junction_x, world_y - junction_y) < 18.0
+                        for junction_x, junction_y in junction_points
+                    ):
+                        continue
+                    if not (vminx <= world_x <= vmaxx and vminy <= world_y <= vmaxy):
+                        continue
+                    screen_x, screen_y = world_to_screen(
+                        world_x, world_y, camx, camy, px_per_m, screen_w, screen_h
+                    )
+                    lamp_center = (int(screen_x), int(screen_y))
+                    lamp_radius = max(1, int(px_per_m * 0.28))
+                    pygame.draw.circle(screen, (24, 27, 25), lamp_center, lamp_radius)
+                    if street_lighting_enabled:
+                        lamp_alpha = int(45.0 + 190.0 * min(1.0, (darkness - 0.25) / 0.75))
+                        glow_radius = max(16, int(14.0 * px_per_m))
+                        glow_center = lamp_center
+                        road_direction = math.atan2(-normal_y * side, -normal_x * side)
+                        for gradient_step in range(10, 0, -1):
+                            radius = max(1, int(glow_radius * gradient_step / 10.0))
+                            glow_points = [glow_center]
+                            for angle_step in range(13):
+                                angle = road_direction - math.pi / 2.0 + angle_step * math.pi / 12.0
+                                glow_points.append(
+                                    (
+                                        int(glow_center[0] + math.cos(angle) * radius),
+                                        int(glow_center[1] - math.sin(angle) * radius),
+                                    )
+                                )
+                            pygame.draw.polygon(
+                                light_layer,
+                                (215, 218, 208, max(5, int(lamp_alpha * (11 - gradient_step) / 20.0))),
+                                glow_points,
+                            )
+                        lamp_centers.append(glow_center)
+                distance_to_lamp += lamp_spacing
+            distance_to_lamp -= segment_length
+
+    if light_layer is not None:
+        screen.blit(light_layer, (0, 0))
+        lamp_radius = max(1, int(px_per_m * 0.28))
+        for lamp_center in lamp_centers:
+            pygame.draw.circle(screen, (24, 27, 25), lamp_center, lamp_radius)
 
 
 def draw_tire_tracks(
@@ -1784,7 +1892,31 @@ def draw_navigation_route(
     pygame.draw.lines(screen, (255, 215, 35), False, points, max(2, int(px_per_m * 0.45)))
 
 
-def draw_phone_offers(screen, taxi_mgr: TaxiManager, font, small_font, screen_w: int, screen_h: int, language: str = "fi") -> None:
+def draw_day_night_overlay(screen, game_time_seconds: float) -> None:
+    """Tint the game world according to the simulated time of day."""
+    import pygame
+
+    hour = (game_time_seconds / 3600.0) % 24.0
+    daylight = max(0.0, math.sin((hour - 6.0) * math.pi / 12.0))
+    twilight = min(1.0, daylight * 1.8)
+    alpha = int(115.0 * (1.0 - twilight))
+    if alpha <= 0:
+        return
+    overlay = pygame.Surface(screen.get_size(), pygame.SRCALPHA)
+    overlay.fill((10, 18, 48, alpha))
+    screen.blit(overlay, (0, 0))
+
+
+def draw_phone_offers(
+    screen,
+    taxi_mgr: TaxiManager,
+    font,
+    small_font,
+    screen_w: int,
+    screen_h: int,
+    language: str = "fi",
+    car: Optional[Car] = None,
+) -> None:
     """Draw the in-game phone with selectable taxi offers."""
     import pygame
 
@@ -1814,7 +1946,11 @@ def draw_phone_offers(screen, taxi_mgr: TaxiManager, font, small_font, screen_w:
             pygame.draw.rect(screen, (30, 39, 47), row, border_radius=6)
             pygame.draw.rect(screen, (75, 88, 97), row, width=1, border_radius=6)
             passenger = offer.passenger
-            distance = offer.pickup_distance_m
+            distance = (
+                math.hypot(car.x - passenger.pickup.x, car.y - passenger.pickup.y)
+                if car is not None
+                else offer.pickup_distance_m
+            )
             distance_text = f"{distance:.0f} m" if distance < 1000 else f"{distance / 1000.0:.2f} km"
             label = small_font.render(f"[{index + 1}]  {passenger.name}", True, (245, 245, 240))
             pickup = small_font.render(f"{tr(language, 'pickup')}: {passenger.pickup.address}", True, (190, 205, 212))
@@ -2398,6 +2534,8 @@ def draw_hud(
     language: str = "fi",
     career_total_distance_m: Optional[float] = None,
     water_time_remaining: Optional[float] = None,
+    game_time_seconds: Optional[float] = None,
+    game_time_realtime: bool = False,
     comment_text: Optional[str] = None,
     comment_speaker: str = "driver",
     comment_speaker_name: Optional[str] = None,
@@ -2428,6 +2566,14 @@ def draw_hud(
     )
     text = font.render(hud, True, (240, 240, 240))
     screen.blit(text, (10, 10))
+
+    if game_time_seconds is not None:
+        total_minutes = int(game_time_seconds // 60.0) % (24 * 60)
+        clock_text = f"Kello {total_minutes // 60:02d}:{total_minutes % 60:02d}"
+        clock_text += " *" if game_time_realtime else ""
+        clock_surface = font.render(clock_text, True, (255, 230, 120))
+        clock_rect = clock_surface.get_rect(topright=(screen.get_width() - 12, 10))
+        screen.blit(clock_surface, clock_rect)
 
     if speed_limit_kmh is not None:
         sign_center = (screen.get_width() - 48, 76)

@@ -340,6 +340,111 @@ class TrafficLight:
             return "red+yellow"
 
 
+def deduplicate_traffic_lights(traffic_lights: List[TrafficLight]) -> List[TrafficLight]:
+    """Keep at most one OSM signal for each approach of a junction."""
+    kept: List[TrafficLight] = []
+    junction_radius = 60.0
+    approach_angle = math.radians(45.0)
+
+    for light in traffic_lights:
+        nearby = [
+            existing for existing in kept
+            if existing.layer == light.layer
+            and math.hypot(existing.x - light.x, existing.y - light.y) <= junction_radius
+        ]
+        same_approach = next(
+            (
+                existing for existing in nearby
+                if existing.direction_angle is None
+                or light.direction_angle is None
+                or abs(
+                    (existing.direction_angle - light.direction_angle + math.pi) % (2.0 * math.pi) - math.pi
+                ) <= approach_angle
+            ),
+            None,
+        )
+        if same_approach is None:
+            kept.append(light)
+
+    return kept
+
+
+def complete_traffic_light_approaches(traffic_lights: List[TrafficLight], ways: List) -> List[TrafficLight]:
+    """Add missing approach signals around an already signalized junction."""
+    completed = list(traffic_lights)
+    junction_radius = 60.0
+    approach_angle = math.radians(45.0)
+    visited: set[int] = set()
+
+    for index, light in enumerate(traffic_lights):
+        if index in visited:
+            continue
+        component = []
+        pending = [index]
+        visited.add(index)
+        while pending:
+            current_index = pending.pop()
+            current = traffic_lights[current_index]
+            component.append(current)
+            for other_index, other in enumerate(traffic_lights):
+                if other_index in visited or other.layer != current.layer:
+                    continue
+                if math.hypot(current.x - other.x, current.y - other.y) <= junction_radius:
+                    visited.add(other_index)
+                    pending.append(other_index)
+
+        if len(component) < 2:
+            continue
+        layer = component[0].layer
+        center_x = sum(signal.x for signal in component) / len(component)
+        center_y = sum(signal.y for signal in component) / len(component)
+        arm_angles: List[float] = []
+        for way in ways:
+            if getattr(way, "layer", 0) != layer or len(way.points_m) < 2:
+                continue
+            segment = min(
+                zip(way.points_m, way.points_m[1:]),
+                key=lambda pair: dist_point_to_segment(
+                    center_x, center_y, pair[0][0], pair[0][1], pair[1][0], pair[1][1]
+                ),
+            )
+            if dist_point_to_segment(center_x, center_y, *segment[0], *segment[1]) > 100.0:
+                continue
+            angle = math.atan2(segment[1][1] - segment[0][1], segment[1][0] - segment[0][0])
+            for arm_angle in (angle, angle + math.pi):
+                if all(
+                    abs((arm_angle - existing + math.pi) % (2.0 * math.pi) - math.pi) > math.radians(25)
+                    for existing in arm_angles
+                ):
+                    arm_angles.append(arm_angle)
+
+        for arm_index, arm_angle in enumerate(arm_angles):
+            approach_direction = (arm_angle + math.pi) % (2.0 * math.pi)
+            if any(
+                signal.direction_angle is not None
+                and abs(
+                    (signal.direction_angle - approach_direction + math.pi) % (2.0 * math.pi) - math.pi
+                ) <= approach_angle
+                for signal in component
+            ):
+                continue
+            signal_axis = arm_angle % math.pi
+            signal_offset = 8.0 if (math.pi * 0.25) <= signal_axis < (math.pi * 0.75) else 0.0
+            completed.append(
+                TrafficLight(
+                    x=center_x + math.cos(arm_angle) * 6.0,
+                    y=center_y + math.sin(arm_angle) * 6.0,
+                    cycle_time=16.0,
+                    offset=signal_offset,
+                    layer=layer,
+                    id=-(index + 1) * 100 - arm_index,
+                    direction_angle=approach_direction,
+                )
+            )
+
+    return deduplicate_traffic_lights(completed)
+
+
 @dataclass
 class Place:
     x: float
@@ -1235,6 +1340,11 @@ def build_ways(
                 for gy in range(gy0, gy1 + 1):
                     signals_grid[(gx, gy)].append(w)
 
+        signal_points = {
+            nid: nodes_m[nid]
+            for _tags, nid in traffic_signals_raw
+            if nid in nodes_m
+        }
         for tags, nid in traffic_signals_raw:
             pt = nodes_m.get(nid)
             if pt:
@@ -1332,7 +1442,24 @@ def build_ways(
                             ):
                                 arm_angles.append(arm_angle)
 
-                if len(arm_angles) >= 3:
+                nearby_signal_points = [
+                    other_pt for other_nid, other_pt in signal_points.items()
+                    if other_nid != nid
+                    and math.hypot(pt[0] - other_pt[0], pt[1] - other_pt[1]) <= 60.0
+                ]
+                has_nearby_signal = bool(nearby_signal_points)
+                if has_nearby_signal:
+                    junction_center = (
+                        sum(other_pt[0] for other_pt in nearby_signal_points) / len(nearby_signal_points),
+                        sum(other_pt[1] for other_pt in nearby_signal_points) / len(nearby_signal_points),
+                    )
+                    approach_direction = math.atan2(
+                        junction_center[1] - pt[1],
+                        junction_center[0] - pt[0],
+                    ) % (2.0 * math.pi)
+                else:
+                    approach_direction = road_angle if found_orientation else None
+                if len(arm_angles) >= 3 and not has_nearby_signal:
                     for arm_index, arm_angle in enumerate(arm_angles):
                         signal_axis = arm_angle % math.pi
                         signal_offset = 8.0 if (math.pi * 0.25) <= signal_axis < (math.pi * 0.75) else 0.0
@@ -1357,9 +1484,13 @@ def build_ways(
                             offset=phase_offset,
                             layer=layer_val,
                             id=nid,
-                            direction_angle=road_angle if found_orientation else None,
+                            direction_angle=approach_direction,
                         )
                     )
+
+        traffic_lights = complete_traffic_light_approaches(
+            deduplicate_traffic_lights(traffic_lights), ways
+        )
 
     # 8. Pedestrian Crossings (suojatiet) from OSM nodes and ways
     if crossings_raw:

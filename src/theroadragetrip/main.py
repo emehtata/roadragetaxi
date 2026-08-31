@@ -88,6 +88,7 @@ from .render import (
     draw_mode_selection_menu,
     draw_compass,
     draw_crossings,
+    draw_day_night_overlay,
     draw_grass_texture,
     draw_hud,
     draw_tutorial_screen,
@@ -101,6 +102,7 @@ from .render import (
     draw_pedestrians,
     draw_phone_offers,
     draw_scenery,
+    draw_street_lights,
     draw_taxi_smoke,
     draw_passenger_nausea_bubble,
     draw_taxi_exhaust,
@@ -915,6 +917,7 @@ def main() -> None:
         px_per_m = max(0.25, zoom_target * 0.75)
         zoom_elapsed = 0.0
         zoom_duration = 3.0
+        game_time_seconds = 8.0 * 60.0 * 60.0
         camx, camy = car.x, car.y
         first_gameplay_frame = True
         tire_tracks = []
@@ -929,6 +932,8 @@ def main() -> None:
 
         while running:
             dt = min(clock.tick(FPS) / 1000.0, 0.1)  # Clamp delta-time to prevent physics tunneling on lag spikes
+            time_scale = 1.0 if taxi_mgr.current_passenger else 60.0
+            game_time_seconds = (game_time_seconds + dt * time_scale) % (24.0 * 60.0 * 60.0)
             if first_gameplay_frame:
                 logger.info("Gameplay frame: start")
 
@@ -937,7 +942,16 @@ def main() -> None:
                     running = False
                     app_running = False
                 elif event.type == pygame.KEYDOWN:
-                    if event.key == pygame.K_F12:
+                    if event.key in (pygame.K_PAGEUP, pygame.K_PAGEDOWN):
+                        time_delta = 60.0 * 60.0 if event.key == pygame.K_PAGEUP else -60.0 * 60.0
+                        game_time_seconds = (game_time_seconds + time_delta) % (24.0 * 60.0 * 60.0)
+                        logger.debug(
+                            "Game time adjusted: delta=%+.1fh time=%02d:%02d",
+                            time_delta / 3600.0,
+                            int(game_time_seconds // 3600.0),
+                            int((game_time_seconds % 3600.0) // 60.0),
+                        )
+                    elif event.key == pygame.K_F12:
                         screenshot_dir = _screenshot_directory()
                         os.makedirs(screenshot_dir, exist_ok=True)
                         screenshot_id = time.time_ns()
@@ -960,6 +974,12 @@ def main() -> None:
                         show_compass = not show_compass
                     elif event.key == pygame.K_n:
                         show_navigation = not show_navigation
+                        logger.info(
+                            "Navigation toggled: enabled=%s target=%s route_points=%s",
+                            show_navigation,
+                            bool(taxi_mgr.get_current_target()),
+                            len(navigation_route) if navigation_route else 0,
+                        )
                         if not show_navigation:
                             navigation_route = None
                             navigation_target_key = None
@@ -1661,11 +1681,22 @@ def main() -> None:
                         (current_target.x, current_target.y),
                         layer=route_layer,
                     )
+                    logger.info(
+                        "Navigation route planned: start=(%.1f, %.1f) target=(%.1f, %.1f) "
+                        "layer=%s points=%s",
+                        car.x,
+                        car.y,
+                        current_target.x,
+                        current_target.y,
+                        route_layer,
+                        len(navigation_route) if navigation_route else 0,
+                    )
                     navigation_target_key = target_key
                     navigation_route_dirty = False
             elif not current_target:
                 navigation_route = None
                 navigation_target_key = None
+                show_navigation = False
             if first_gameplay_frame:
                 logger.info("Gameplay frame: map update complete")
 
@@ -1777,6 +1808,17 @@ def main() -> None:
                     spatial_grid=spatial_grid,
                 )
 
+            draw_day_night_overlay(screen, game_time_seconds)
+            draw_street_lights(
+                screen,
+                ways,
+                camx,
+                camy,
+                game_time_seconds,
+                px_per_m=px_per_m,
+                spatial_grid=spatial_grid,
+            )
+
             # Draw HUD and compass
             current_target = taxi_mgr.get_current_target()
             target_coords = (current_target.x, current_target.y) if current_target else None
@@ -1803,6 +1845,8 @@ def main() -> None:
                 language=language,
                 career_total_distance_m=car.odometer_m if career is not None else None,
                 water_time_remaining=(10.0 - water_elapsed) if water_elapsed > 0.0 else None,
+                game_time_seconds=game_time_seconds,
+                game_time_realtime=taxi_mgr.current_passenger is not None,
                 comment_text=audio.comment_text,
                 comment_speaker=audio.comment_speaker,
                 comment_speaker_name=audio.comment_speaker_name,
@@ -1810,7 +1854,7 @@ def main() -> None:
                 fps=clock.get_fps(),
             )
             if phone_open:
-                draw_phone_offers(screen, taxi_mgr, font, small_font, SCREEN_W, SCREEN_H, language)
+                draw_phone_offers(screen, taxi_mgr, font, small_font, SCREEN_W, SCREEN_H, language, car=car)
             if show_compass:
                 draw_compass(screen, car, SCREEN_W - 64, 145, 28, font, target_pos=target_coords)
 

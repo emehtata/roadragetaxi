@@ -8,6 +8,22 @@ from theroadragetrip.traffic import NPCCar, TrafficManager, traffic_count_for_zo
 from theroadragetrip.geo import boxes_intersect
 
 
+def test_plan_route_starts_at_car_and_ends_at_destination():
+    way = Way(
+        points_m=[(0.0, 0.0), (100.0, 0.0), (200.0, 0.0)],
+        highway="residential",
+        half_width_m=4.0,
+    )
+    manager = TrafficManager([way], target_count=0)
+
+    route = manager.plan_route((25.0, 2.0), (175.0, -3.0))
+
+    assert route is not None
+    assert route[0] == (25.0, 2.0)
+    assert route[-1] == (175.0, -3.0)
+    assert (100.0, 0.0) in route
+
+
 def test_traffic_count_scales_down_when_zoomed_in():
     assert traffic_count_for_zoom(50, px_per_m=9.0) == 17
     assert traffic_count_for_zoom(50, px_per_m=18.0) == 8
@@ -549,6 +565,18 @@ def test_npc_prepares_next_route_before_junction():
     traffic_mgr.update(Car(x=200.0, y=200.0, heading=0.0, speed=0.0), dt=0.1)
 
     assert npc.next_route is not None
+
+
+def test_npc_signals_prepared_turn_before_junction():
+    approach = Way(points_m=[(-50.0, 0.0), (0.0, 0.0)], highway="primary", half_width_m=4.0)
+    turn = Way(points_m=[(0.0, 0.0), (0.0, 50.0)], highway="primary", half_width_m=4.0)
+    npc = NPCCar(
+        x=-20.0, y=0.0, heading=0.0, speed=8.0, way=approach,
+        segment_idx=0, direction=1, target_speed=12.0, color=(200, 50, 50),
+        next_route=(turn, 0, 1),
+    )
+
+    assert TrafficManager._turn_signal_for_next_route(npc) == "left"
 
 
 def test_npc_does_not_stop_for_next_light_inside_junction():

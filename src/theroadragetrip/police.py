@@ -6,6 +6,7 @@ import logging
 from dataclasses import dataclass
 from typing import List, Optional, Tuple
 
+from .geo import point_in_polygon, segments_intersect
 from .osm import Building, TaxiStop, Way
 from .physics import Car, connected_drivable_ways
 from .traffic import NPCCar, TrafficManager
@@ -169,10 +170,10 @@ def _has_line_of_sight(
         polygon = building.points_m
         if len(polygon) < 3:
             continue
-        if _point_in_polygon(start_x, start_y, polygon) or _point_in_polygon(end_x, end_y, polygon):
+        if point_in_polygon(start_x, start_y, polygon) or point_in_polygon(end_x, end_y, polygon):
             return False
         if any(
-            _segments_intersect(
+            segments_intersect(
                 (start_x, start_y),
                 (end_x, end_y),
                 edge_start,
@@ -183,44 +184,6 @@ def _has_line_of_sight(
             return False
     return True
 
-
-def _point_in_polygon(x: float, y: float, polygon: List[Tuple[float, float]]) -> bool:
-    inside = False
-    for first, second in zip(polygon, polygon[1:] + polygon[:1]):
-        if (first[1] > y) != (second[1] > y):
-            crossing_x = (second[0] - first[0]) * (y - first[1]) / (second[1] - first[1]) + first[0]
-            if x < crossing_x:
-                inside = not inside
-    return inside
-
-
-def _segments_intersect(
-    first_start: Tuple[float, float],
-    first_end: Tuple[float, float],
-    second_start: Tuple[float, float],
-    second_end: Tuple[float, float],
-) -> bool:
-    def orientation(a, b, c):
-        return (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0])
-
-    first_a = orientation(first_start, first_end, second_start)
-    first_b = orientation(first_start, first_end, second_end)
-    second_a = orientation(second_start, second_end, first_start)
-    second_b = orientation(second_start, second_end, first_end)
-    return (first_a == 0 and _on_segment(first_start, first_end, second_start)) or (
-        first_b == 0 and _on_segment(first_start, first_end, second_end)
-    ) or (
-        second_a == 0 and _on_segment(second_start, second_end, first_start)
-    ) or (
-        second_b == 0 and _on_segment(second_start, second_end, first_end)
-    ) or ((first_a > 0) != (first_b > 0) and (second_a > 0) != (second_b > 0))
-
-
-def _on_segment(start, end, point) -> bool:
-    return (
-        min(start[0], end[0]) <= point[0] <= max(start[0], end[0])
-        and min(start[1], end[1]) <= point[1] <= max(start[1], end[1])
-    )
 
 def camera_count(ways: List[Way], city_name: Optional[str] = None) -> int:
     """Scale cameras from one to twenty; Helsinki is the maximum case."""

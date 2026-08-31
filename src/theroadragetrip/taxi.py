@@ -4,13 +4,16 @@ import random
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple
 
-from .geo import clamp, closest_point_and_dist_to_segment, dist_point_to_segment, get_oriented_box_corners, point_in_polygon
+from .geo import clamp, closest_point_and_dist_to_segment, compute_bbox, dist_point_to_segment, get_oriented_box_corners, point_in_polygon, segments_intersect
 from .osm import Building, Place, TaxiStop, Way
 from .physics import Car, SpatialWayGrid, connected_drivable_ways, is_car_road, is_violating_oneway
 from .localization import tr
 from .police import SpeedCamera, camera_sees_car
 
 logger = logging.getLogger(__name__)
+MAX_PHONE_OFFERS = 5
+PHONE_OFFER_MIN_LIFETIME_S = 30.0
+PHONE_OFFER_MAX_LIFETIME_S = 180.0
 
 # Finnish passenger name generator for immersion
 PASSENGER_NAMES = {
@@ -61,6 +64,7 @@ class TaxiOffer:
     """A ride request shown in the driver's phone."""
     passenger: TaxiPassenger
     pickup_distance_m: float
+    time_remaining_s: float = PHONE_OFFER_MIN_LIFETIME_S
 
 
 class TaxiState:
@@ -132,6 +136,7 @@ class TaxiManager:
 
         self.current_passenger: Optional[TaxiPassenger] = None
         self.offers: List[TaxiOffer] = []
+        self._initial_offer_pending = True
         self.state: str = TaxiState.WAITING_FOR_PICKUP
         self.total_score: int = 0
         self.completed_fares: int = 0
@@ -431,13 +436,9 @@ class TaxiManager:
 
         road_bbox = getattr(way, "bbox", None)
         if road_bbox is None or road_bbox == (0.0, 0.0, 0.0, 0.0):
-            xs = [point[0] for point in road_points]
-            ys = [point[1] for point in road_points]
-            road_bbox = (min(xs), min(ys), max(xs), max(ys))
+            road_bbox = compute_bbox(road_points)
         if building_bbox is None or building_bbox == (0.0, 0.0, 0.0, 0.0):
-            xs = [point[0] for point in building_points]
-            ys = [point[1] for point in building_points]
-            building_bbox = (min(xs), min(ys), max(xs), max(ys))
+            building_bbox = compute_bbox(building_points)
         if (
             road_bbox[2] + half_width < building_bbox[0]
             or road_bbox[0] - half_width > building_bbox[2]
@@ -445,29 +446,6 @@ class TaxiManager:
             or road_bbox[1] - half_width > building_bbox[3]
         ):
             return False
-
-        def orientation(a, b, c):
-            value = (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0])
-            if abs(value) < 1e-9:
-                return 0
-            return 1 if value > 0 else -1
-
-        def on_segment(a, b, c):
-            return min(a[0], b[0]) <= c[0] <= max(a[0], b[0]) and min(a[1], b[1]) <= c[1] <= max(a[1], b[1])
-
-        def segments_intersect(a, b, c, d):
-            ab_c = orientation(a, b, c)
-            ab_d = orientation(a, b, d)
-            cd_a = orientation(c, d, a)
-            cd_b = orientation(c, d, b)
-            if ab_c != ab_d and cd_a != cd_b:
-                return True
-            return (
-                (ab_c == 0 and on_segment(a, b, c))
-                or (ab_d == 0 and on_segment(a, b, d))
-                or (cd_a == 0 and on_segment(c, d, a))
-                or (cd_b == 0 and on_segment(c, d, b))
-            )
 
         for road_start, road_end in zip(road_points, road_points[1:]):
             if point_in_polygon(road_start[0], road_start[1], building_points):
@@ -1130,10 +1108,17 @@ class TaxiManager:
                 return dropoff
         return None
 
-    def generate_offers(self, car_x: float, car_y: float, count: int = 3) -> List[TaxiOffer]:
+    def generate_offers(
+        self, car_x: float, car_y: float, count: int = 3, append: bool = False
+    ) -> List[TaxiOffer]:
         """Create realistic ride requests without activating one until accepted."""
+        if self.current_passenger:
+            self.offers = []
+            return []
+        self._initial_offer_pending = False
         offers: List[TaxiOffer] = []
-        for _ in range(max(1, count)):
+        available_slots = MAX_PHONE_OFFERS - len(self.offers) if append else MAX_PHONE_OFFERS
+        for _ in range(min(max(1, count), max(0, available_slots))):
             pickup = self.pick_phone_pickup(car_x, car_y)
             if not pickup:
                 continue
@@ -1155,8 +1140,9 @@ class TaxiManager:
             offers.append(TaxiOffer(
                 passenger=passenger,
                 pickup_distance_m=math.hypot(car_x - pickup.x, car_y - pickup.y),
+                time_remaining_s=random.uniform(PHONE_OFFER_MIN_LIFETIME_S, PHONE_OFFER_MAX_LIFETIME_S),
             ))
-        self.offers = offers
+        self.offers = (self.offers + offers)[:MAX_PHONE_OFFERS] if append else offers[:MAX_PHONE_OFFERS]
         logger.info(
             "Taxi phone offers generated: count=%d pickup_distances=%s",
             len(offers),
@@ -1436,10 +1422,15 @@ class TaxiManager:
         if self.notification_timer > 0.0:
             self.notification_timer -= dt
 
-        if not self.current_passenger and not self.offers:
+        if not self.current_passenger:
+            for offer in self.offers:
+                offer.time_remaining_s -= dt
+            self.offers = [offer for offer in self.offers if offer.time_remaining_s > 0.0]
+
+        if not self.current_passenger and len(self.offers) < MAX_PHONE_OFFERS:
             self.next_offer_timer -= dt
             if self.next_offer_timer <= 0.0:
-                self.generate_offers(car.x, car.y, count=1)
+                self.generate_offers(car.x, car.y, count=1, append=True)
                 self.next_offer_timer = random.uniform(18.0, 40.0)
                 if self.offers:
                     self.notification_msg = tr(self.language, "new_request")

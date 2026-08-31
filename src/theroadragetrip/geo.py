@@ -137,6 +137,41 @@ def point_in_polygon(px: float, py: float, polygon: list[Tuple[float, float]]) -
     return inside
 
 
+def segments_intersect(
+    first_start: Tuple[float, float],
+    first_end: Tuple[float, float],
+    second_start: Tuple[float, float],
+    second_end: Tuple[float, float],
+) -> bool:
+    """Return whether two line segments intersect, including endpoints."""
+    def orientation(a, b, c) -> float:
+        return (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0])
+
+    def on_segment(start, end, point) -> bool:
+        return (
+            min(start[0], end[0]) <= point[0] <= max(start[0], end[0])
+            and min(start[1], end[1]) <= point[1] <= max(start[1], end[1])
+        )
+
+    orientations = (
+        orientation(first_start, first_end, second_start),
+        orientation(first_start, first_end, second_end),
+        orientation(second_start, second_end, first_start),
+        orientation(second_start, second_end, first_end),
+    )
+    first_a, first_b, second_a, second_b = (
+        0 if abs(value) < 1e-9 else value
+        for value in orientations
+    )
+    return (
+        (first_a == 0 and on_segment(first_start, first_end, second_start))
+        or (first_b == 0 and on_segment(first_start, first_end, second_end))
+        or (second_a == 0 and on_segment(second_start, second_end, first_start))
+        or (second_b == 0 and on_segment(second_start, second_end, first_end))
+        or ((first_a > 0) != (first_b > 0) and (second_a > 0) != (second_b > 0))
+    )
+
+
 def clip_polygon_to_rect(
     points: list[Tuple[float, float]],
     rminx: float,
@@ -146,45 +181,31 @@ def clip_polygon_to_rect(
 ) -> list[Tuple[float, float]]:
     """Sutherland-Hodgman polygon clipping algorithm against an AABB rectangle."""
     output = points
-    for edge in range(4):
+    edges = ((0, rminx, True), (0, rmaxx, False), (1, rminy, True), (1, rmaxy, False))
+    for axis, boundary, keep_greater in edges:
         input_list = output
         output = []
         if not input_list:
             break
+
+        def inside(point: Tuple[float, float]) -> bool:
+            return point[axis] >= boundary if keep_greater else point[axis] <= boundary
+
+        def intersect(start: Tuple[float, float], end: Tuple[float, float]) -> Tuple[float, float]:
+            delta = end[axis] - start[axis]
+            t = (boundary - start[axis]) / delta if delta else 0.0
+            return (
+                start[0] + t * (end[0] - start[0]),
+                start[1] + t * (end[1] - start[1]),
+            )
+
         s = input_list[-1]
         for e in input_list:
-            if edge == 0:  # left: x >= rminx
-                e_in = e[0] >= rminx
-                s_in = s[0] >= rminx
-                def intersect(p1, p2):
-                    dx = p2[0] - p1[0]
-                    t = (rminx - p1[0]) / dx if dx else 0.0
-                    return (rminx, p1[1] + t * (p2[1] - p1[1]))
-            elif edge == 1:  # right: x <= rmaxx
-                e_in = e[0] <= rmaxx
-                s_in = s[0] <= rmaxx
-                def intersect(p1, p2):
-                    dx = p2[0] - p1[0]
-                    t = (rmaxx - p1[0]) / dx if dx else 0.0
-                    return (rmaxx, p1[1] + t * (p2[1] - p1[1]))
-            elif edge == 2:  # bottom: y >= rminy
-                e_in = e[1] >= rminy
-                s_in = s[1] >= rminy
-                def intersect(p1, p2):
-                    dy = p2[1] - p1[1]
-                    t = (rminy - p1[1]) / dy if dy else 0.0
-                    return (p1[0] + t * (p2[0] - p1[0]), rminy)
-            else:  # top: y <= rmaxy
-                e_in = e[1] <= rmaxy
-                s_in = s[1] <= rmaxy
-                def intersect(p1, p2):
-                    dy = p2[1] - p1[1]
-                    t = (rmaxy - p1[1]) / dy if dy else 0.0
-                    return (p1[0] + t * (p2[0] - p1[0]), rmaxy)
-
+            e_in = inside(e)
+            s_in = inside(s)
+            if e_in and not s_in:
+                output.append(intersect(s, e))
             if e_in:
-                if not s_in:
-                    output.append(intersect(s, e))
                 output.append(e)
             elif s_in:
                 output.append(intersect(s, e))
