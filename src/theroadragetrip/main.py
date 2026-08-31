@@ -102,6 +102,7 @@ from .render import (
     draw_pause_menu,
     draw_settings_menu,
     draw_pedestrians,
+    draw_pedestrian_reflectors,
     draw_phone_offers,
     draw_scenery,
     draw_street_lights,
@@ -972,7 +973,7 @@ def main() -> None:
         on_load_progress(1.0, "Ready")
         logger.info("Entering gameplay loop")
 
-        show_labels = True
+        label_mode = 0
         speed_limiter_enabled = True
         red_light_assist_enabled = False
         show_compass = False
@@ -1295,8 +1296,8 @@ def main() -> None:
                         reset_trip(car)
                         logger.info("Trip meter reset to 0 m")
                     elif event.key == pygame.K_l:
-                        show_labels = not show_labels
-                        logger.info("Labels %s", "enabled" if show_labels else "disabled")
+                        label_mode = (label_mode + 1) % 3
+                        logger.info("Label mode %d", label_mode)
                     elif event.key == pygame.K_k:
                         car.lane_assist_enabled = not car.lane_assist_enabled
                         logger.info("Lane assist %s", "enabled" if car.lane_assist_enabled else "disabled")
@@ -1823,8 +1824,6 @@ def main() -> None:
             render_profile_stage_start = time.perf_counter()
             draw_tire_tracks(screen, tire_tracks, camx, camy, grass=False, px_per_m=px_per_m)
             draw_tire_tracks(screen, tire_tracks, camx, camy, grass=True, px_per_m=px_per_m)
-            draw_vomit_puddles(screen, taxi_mgr.vomit_puddles, camx, camy, px_per_m=px_per_m)
-            draw_vomit_puddles(screen, pedestrian_mgr.vomit_puddles, camx, camy, px_per_m=px_per_m)
             draw_roadworks(screen, roadworks, camx, camy, px_per_m=px_per_m)
             if first_gameplay_frame:
                 logger.info("Gameplay frame: rendering overlays")
@@ -1917,6 +1916,8 @@ def main() -> None:
                 latitude=sun_latitude,
                 longitude=sun_longitude,
             )
+            draw_vomit_puddles(screen, taxi_mgr.vomit_puddles, camx, camy, px_per_m=px_per_m)
+            draw_vomit_puddles(screen, pedestrian_mgr.vomit_puddles, camx, camy, px_per_m=px_per_m)
             draw_street_lights(
                 screen,
                 ways,
@@ -1929,6 +1930,7 @@ def main() -> None:
                 daylight_surface=daylight_scene,
                 latitude=sun_latitude,
                 longitude=sun_longitude,
+                buildings=buildings,
             )
             draw_headlight_beams(
                 screen,
@@ -1942,14 +1944,26 @@ def main() -> None:
                 longitude=sun_longitude,
                 npc_vehicles=[car, *traffic_mgr.npcs],
                 street_light_positions=None,
+                bicycles=cyclist_mgr.cyclists,
             )
             draw_vehicle_lights(screen, [car, *traffic_mgr.npcs], camx, camy, px_per_m=px_per_m)
+            if sun_altitude < -7.5:
+                draw_pedestrian_reflectors(
+                    screen,
+                    visible_pedestrians,
+                    camx,
+                    camy,
+                    px_per_m=px_per_m,
+                    ways=ways,
+                    light_vehicles=[car, *traffic_mgr.npcs],
+                    street_light_positions=None,
+                )
             render_profile_times["lighting"] = render_profile_times.get("lighting", 0.0) + (
                 time.perf_counter() - lighting_start
             )
 
             # Labels overlay (toggled with 'L')
-            if show_labels:
+            if label_mode:
                 draw_labels(
                     screen,
                     font,
@@ -1964,6 +1978,7 @@ def main() -> None:
                     spatial_grid=spatial_grid,
                     scenery_grid=scenery_grid,
                     building_grid=building_grid,
+                    label_mode=label_mode,
                 )
             render_profile_times["labels"] = render_profile_times.get("labels", 0.0) + (
                 time.perf_counter() - render_profile_stage_start
@@ -1985,7 +2000,7 @@ def main() -> None:
                     ",".join(f"{stage}={duration:.1f}" for stage, duration in timing_ms.items()),
                     len(ways),
                     len(buildings),
-                    show_labels,
+                    label_mode,
                 )
                 render_profile_times.clear()
                 render_profile_last_log = time.perf_counter()
@@ -2005,7 +2020,7 @@ def main() -> None:
                 px_per_m,
                 transformer_to_ll,
                 is_auto_fetching=(args.auto_fetch and auto_fetch_manager.get_fetching()),
-                show_labels=show_labels,
+                show_labels=bool(label_mode),
                 auto_fetch_progress=auto_fetch_manager.get_progress(),
                 taxi_mgr=taxi_mgr,
                 current_road_name=current_road_name,

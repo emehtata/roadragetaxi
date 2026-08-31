@@ -72,11 +72,36 @@ def test_outdated_cache_is_detected_without_removing_it(tmp_path, monkeypatch):
     import theroadragetrip.osm as osm
 
     monkeypatch.setattr(osm, "CACHE_DIR", str(tmp_path))
-    cache_path = tmp_path / "old.json"
+    cache_path = tmp_path / "bbox_64p9_25p3_65p1_25p5.json"
     cache_path.write_text(json.dumps({"version": "v-old"}), encoding="utf-8")
 
     assert has_outdated_osm_cache() is True
     assert cache_path.exists()
+
+
+def test_dead_end_metadata_does_not_trigger_outdated_cache_warning(tmp_path, monkeypatch):
+    import json
+    import theroadragetrip.osm as osm
+
+    monkeypatch.setattr(osm, "CACHE_DIR", str(tmp_path))
+    (tmp_path / "dead_ends.json").write_text(
+        json.dumps({"version": osm.CACHE_VERSION, "dead_ends": []}),
+        encoding="utf-8",
+    )
+
+    assert has_outdated_osm_cache() is False
+
+
+def test_outdated_dead_end_cache_triggers_cleanup_warning(tmp_path, monkeypatch):
+    import json
+    import theroadragetrip.osm as osm
+
+    monkeypatch.setattr(osm, "CACHE_DIR", str(tmp_path))
+    dead_ends_path = tmp_path / "dead_ends.json"
+    dead_ends_path.write_text(json.dumps({"dead_ends": []}), encoding="utf-8")
+
+    assert has_outdated_osm_cache() is True
+    assert dead_ends_path.exists()
 
 
 def test_cache_reuses_nearly_identical_point(tmp_path, monkeypatch):

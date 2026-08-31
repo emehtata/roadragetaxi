@@ -140,6 +140,15 @@ def test_pedestrians_spawn_near_hospitality_venues(monkeypatch):
     assert all(math.hypot(ped.x - 50.0, ped.y) <= 45.0 for ped in manager.pedestrians)
 
 
+def test_pedestrian_spawn_area_is_limited_to_building_radius():
+    way = Way(points_m=[(0.0, 0.0), (500.0, 0.0)], highway="footway", half_width_m=1.5)
+    building = SimpleNamespace(bbox=(100.0, 100.0, 110.0, 110.0))
+    manager = PedestrianManager([way], target_count=0, venue_buildings=[building])
+
+    assert manager._point_near_building(0.0, 105.0)
+    assert not manager._point_near_building(400.0, 0.0)
+
+
 def test_drunk_pedestrian_walks_unevenly_and_may_vomit(monkeypatch):
     way = Way(points_m=[(0.0, 0.0), (200.0, 0.0)], highway="footway", half_width_m=1.5)
     manager = PedestrianManager([way], target_count=0)

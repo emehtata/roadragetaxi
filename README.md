@@ -19,7 +19,7 @@ A top-down 2D driving game proof-of-concept (PoC) in Python and Pygame that proc
 - **Street Lighting**: Roadside lamps are placed along urban drivable roads and their warm glow gradually turns on at dusk.
 - **Water & Multipolygon Rendering**: Renders lakes, reservoirs, and waterways under the road network.
 - **Autonomous Traffic**: NPC cars follow connected roads, respect lane direction, vary their speed, overtake, react to traffic lights, and avoid overlapping the player. The shared road-graph navigator can route NPCs to map targets without cutting through buildings or terrain. Active traffic is reduced at close zoom levels while nearby cars are retained.
-- **Pedestrians & Cyclists**: Pedestrians and cyclists use roads and crossings, react to traffic lights, and evade approaching vehicles. Cyclists use a top-down image sprite, and active pedestrian/cyclist counts scale down while zoomed in.
+- **Pedestrians & Cyclists**: Pedestrians and cyclists use roads and crossings, react to traffic lights, and evade approaching vehicles. Ordinary pedestrians spawn near mapped buildings, while hospitality venues receive extra activity; at night, visible pedestrians show a bright reflector point until a car headlight or street light illuminates them. Cyclists use a top-down image sprite, and active pedestrian/cyclist counts scale down while zoomed in.
 - **Rival NPC Taxis**: Some NPC cars are yellow rival taxis. They stop briefly at taxi stands and collect waiting customers before driving on.
 - **Taxi-Driver Brawls**: Disabled by default. Set `taxi_brawls = true` under `[game]` to enable. Stopping near a taxi stand can then attract a rival taxi driver. The rival arrives from outside the view, then waits three seconds before a five-second fight under a dust cloud. Afterward both drivers walk back to their taxis; the winner drives to the stand. Road Rage charge controls the win chance, with 0% and 100% as exact boundaries. Winning gives 1,000 points; losing costs 500 points. A losing rival curses and leaves; a winning rival waits for a passenger.
 - **Traffic Violations**: Red-light, wrong-way, collision, building, and scenery penalties are tracked in the taxi score.
@@ -30,6 +30,7 @@ A top-down 2D driving game proof-of-concept (PoC) in Python and Pygame that proc
 - **Audio Settings**: Master, background, and effects volumes plus comment audio and subtitles are adjustable at runtime from the pause menu and persist in the INI file.
 - **Coordinate Projection**: Converts WGS84 (lat/lon) coordinates to metric ETRS-TM35FIN (EPSG:3067) using `pyproj`.
 - **Arcade Vehicle Physics & Road Containment**: Responsive throttle, braking, friction, speed-dependent steering, and strict car-road boundary collision containment (blocks driving off-road into pedestrian paths, lakes, or off-road scenery).
+- **Realistic Acceleration Curve**: Forward acceleration decreases progressively from 0 to 210 km/h instead of staying constant at high speed.
 - **Surface Tire Effects**: Hard braking while turning leaves continuous skid marks on roads. Driving across grass leaves persistent dark-brown tire tracks.
 - **Trip & Odometer**: Real-time speed, trip distance (resettable with `T`), and total odometer in the HUD.
 - **Loading Progress Meters**: Visual progress bar on startup and live scenery streaming progress meter during background auto-fetch.
@@ -229,7 +230,7 @@ Game sounds are stored in `src/theroadragetrip/sounds/`. CC0 sounds require no a
 | `Home` | Debug respawn near a random current map bbox edge (for auto-fetch testing) |
 | `X` | Reject phone offer, or cancel / discard active pickup or onboard passenger mission (score penalty) |
 | `T` | Reset trip meter to 0 |
-| `L` | Toggle street & feature name labels |
+| `L` | Cycle labels: off, street names, then street plus building/venue names |
 | `K` | Toggle lane keep assist |
 | `V` | Toggle speed limiter |
 | `B` | Toggle traffic-light assist |

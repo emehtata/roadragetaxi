@@ -35,6 +35,8 @@ BUILDING_ROOF_COLORS = ((92, 57, 48), (102, 96, 82), (66, 83, 69), (83, 86, 87))
 MAX_VISIBLE_STREET_LIGHTS = 400
 STREET_LIGHT_SPACING_M = 12.0
 STREET_LIGHT_JUNCTION_CLEARANCE_M = 10.0
+STREET_LIGHT_REFLECTOR_RADIUS_M = 10.0
+STREET_LIGHT_SHADE_COLOR = (0, 0, 0)
 SOLAR_UPDATE_INTERVAL_SECONDS = 15.0 * 60.0
 GAME_DATE = date(2026, 8, 31)
 FINLAND_SUMMER_TIME_OFFSET = 3.0
@@ -52,6 +54,7 @@ _cyclist_tinted_sprites = {}
 _grass_texture_tile = None
 _street_light_junction_cache = None
 _street_light_junction_grid_cache = None
+_street_light_building_grid_cache = None
 _taxi_sign_text = None
 _traffic_light_surface_cache = {}
 _street_light_glow_cache = {}
@@ -755,10 +758,48 @@ def draw_ways(
 
 
 def _way_has_street_lighting(way: Way) -> bool:
-    """Use explicit OSM lighting, with residential street types as the fallback."""
+    """Use explicit OSM lighting, with residential streets as the fallback."""
     lit = getattr(way, "lit", None)
-    return lit == "yes" or (
-        lit is None and getattr(way, "highway", "") in {"residential", "living_street", "secondary"}
+    return lit == "yes" or (lit is None and getattr(way, "highway", "") in {"residential", "living_street"})
+
+
+def _point_is_near_building(
+    point: Tuple[float, float],
+    buildings: Optional[List[Building]],
+    building_grid=None,
+) -> bool:
+    """Return whether a point is within 100 m of a building footprint."""
+    if not buildings:
+        return False
+    point_x, point_y = point
+    candidates = buildings
+    if building_grid is not None:
+        cell_size = 100.0
+        cell_x = math.floor(point_x / cell_size)
+        cell_y = math.floor(point_y / cell_size)
+        candidates = building_grid.get((cell_x, cell_y), ())
+    for building in candidates:
+        bbox = getattr(building, "bbox", None)
+        if not bbox or bbox == (0.0, 0.0, 0.0, 0.0):
+            continue
+        nearest_x = min(max(point_x, bbox[0]), bbox[2])
+        nearest_y = min(max(point_y, bbox[1]), bbox[3])
+        if (point_x - nearest_x) ** 2 + (point_y - nearest_y) ** 2 < 100.0 * 100.0:
+            return True
+    return False
+
+
+def _way_should_have_street_lighting(
+    way: Way,
+    buildings: Optional[List[Building]],
+    point: Optional[Tuple[float, float]] = None,
+    building_grid=None,
+) -> bool:
+    return _way_has_street_lighting(way) or (
+        getattr(way, "lit", None) is None
+        and getattr(way, "highway", "") == "secondary"
+        and point is not None
+        and _point_is_near_building(point, buildings, building_grid)
     )
 
 
@@ -812,6 +853,7 @@ def draw_street_lights(
         id(ways),
         len(ways),
         id(ways[-1]) if ways else None,
+        id(buildings),
         round(camx * px_per_m / cache_pixel_size),
         round(camy * px_per_m / cache_pixel_size),
         px_per_m,
@@ -849,10 +891,27 @@ def draw_street_lights(
     else:
         visible_ways = ways
 
-    global _street_light_junction_cache, _street_light_junction_grid_cache
-    cache_key = (id(ways), len(ways), id(ways[-1]) if ways else None)
+    global _street_light_junction_cache, _street_light_junction_grid_cache, _street_light_building_grid_cache
+    building_cache_key = (id(buildings), len(buildings) if buildings else 0, id(buildings[-1]) if buildings else None)
+    if _street_light_building_grid_cache is None or _street_light_building_grid_cache[0] != building_cache_key:
+        building_grid = {}
+        for building in buildings or ():
+            bbox = getattr(building, "bbox", None)
+            if not bbox or bbox == (0.0, 0.0, 0.0, 0.0):
+                continue
+            min_cell_x = math.floor((bbox[0] - 100.0) / 100.0)
+            max_cell_x = math.floor((bbox[2] + 100.0) / 100.0)
+            min_cell_y = math.floor((bbox[1] - 100.0) / 100.0)
+            max_cell_y = math.floor((bbox[3] + 100.0) / 100.0)
+            for cell_x in range(min_cell_x, max_cell_x + 1):
+                for cell_y in range(min_cell_y, max_cell_y + 1):
+                    building_grid.setdefault((cell_x, cell_y), []).append(building)
+        _street_light_building_grid_cache = (building_cache_key, building_grid)
+    building_grid = _street_light_building_grid_cache[1]
+    cache_key = (id(ways), len(ways), id(ways[-1]) if ways else None, id(buildings))
     if _street_light_junction_cache is None or _street_light_junction_cache[0] != cache_key:
         point_ways = {}
+        ways_by_object_id = {id(way): way for way in ways}
         for way in ways:
             if getattr(way, "is_drivable", True):
                 for point in way.points_m:
@@ -860,8 +919,14 @@ def draw_street_lights(
                     point_ways.setdefault(key, set()).add(id(way))
         junction_points = [
             (key[0] * 5.0, key[1] * 5.0)
-            for key, way_ids in point_ways.items()
-            if len(way_ids) >= 2
+            for key, junction_way_ids in point_ways.items()
+            if len(junction_way_ids) >= 2
+            and any(
+                _way_should_have_street_lighting(
+                    ways_by_object_id[way_id], buildings, (key[0] * 5.0, key[1] * 5.0), building_grid
+                )
+                for way_id in junction_way_ids
+            )
         ]
         _street_light_junction_cache = (cache_key, junction_points)
         junction_grid = {}
@@ -903,7 +968,10 @@ def draw_street_lights(
             break
         if (
             not getattr(way, "is_drivable", True)
-            or not _way_has_street_lighting(way)
+            or (
+                not _way_has_street_lighting(way)
+                and getattr(way, "highway", "") != "secondary"
+            )
             or len(way.points_m) < 2
         ):
             continue
@@ -928,6 +996,9 @@ def draw_street_lights(
                 normal_x = -dy / segment_length
                 normal_y = dx / segment_length
                 edge_distance = getattr(way, "half_width_m", 4.0) + 1.0
+                if not _way_should_have_street_lighting(way, buildings, (lamp_x, lamp_y), building_grid):
+                    distance_to_lamp += lamp_spacing
+                    continue
                 for side in (-1.0, 1.0):
                     if len(lamp_centers) >= MAX_VISIBLE_STREET_LIGHTS:
                         break
@@ -951,7 +1022,7 @@ def draw_street_lights(
                     )
                     lamp_center = (int(screen_x), int(screen_y))
                     lamp_radius = max(1, int(px_per_m * 0.28))
-                    lamp_color = (235, 215, 120)
+                    lamp_color = STREET_LIGHT_SHADE_COLOR
                     road_direction = math.atan2(-normal_y * side, -normal_x * side)
                     pygame.draw.circle(screen, lamp_color, lamp_center, lamp_radius)
                     lamp_centers.append(lamp_center)
@@ -963,7 +1034,7 @@ def draw_street_lights(
     if light_layer is not None:
         lamp_radius = max(1, int(px_per_m * 0.28))
         for lamp_center in lamp_centers:
-            pygame.draw.circle(light_layer, (235, 215, 120), lamp_center, lamp_radius)
+            pygame.draw.circle(light_layer, STREET_LIGHT_SHADE_COLOR, lamp_center, lamp_radius)
         _street_light_frame_cache_key = frame_cache_key
         _street_light_frame_cache_surface = light_layer
         _street_light_frame_cache_camera = (camx, camy)
@@ -1008,7 +1079,7 @@ def draw_street_lights(
             restored_daylight.blit(daylight_mask, (0, 0), special_flags=pygame.BLEND_RGBA_MIN)
             screen.blit(restored_daylight, (0, 0))
             for lamp_center in lamp_centers:
-                pygame.draw.circle(screen, (235, 215, 120), lamp_center, lamp_radius)
+                pygame.draw.circle(screen, STREET_LIGHT_SHADE_COLOR, lamp_center, lamp_radius)
 
 
 def draw_headlight_beams(
@@ -1025,6 +1096,7 @@ def draw_headlight_beams(
     longitude: float = DEFAULT_SUN_LONGITUDE,
     npc_vehicles=None,
     street_light_positions=None,
+    bicycles=None,
 ) -> None:
     """Draw lightweight forward-facing headlight beams for visible vehicles at night."""
     import pygame
@@ -1050,6 +1122,25 @@ def draw_headlight_beams(
         else street_light_positions
     )
     npc_ids = {id(vehicle) for vehicle in npc_vehicles or ()}
+    bicycle_ids = {id(bicycle) for bicycle in bicycles or ()}
+
+    def draw_beam(origin, near_edge, far_edge, tip, cap_center, cap_radius):
+        pygame.draw.polygon(
+            beam_mask,
+            (255, 255, 255, 255),
+            [
+                (int(origin[0]), int(origin[1])),
+                (int(near_edge[0]), int(near_edge[1])),
+                (int(far_edge[0]), int(far_edge[1])),
+                (int(tip[0]), int(tip[1])),
+            ],
+        )
+        pygame.draw.circle(
+            beam_mask,
+            (255, 255, 255, 255),
+            (int(cap_center[0]), int(cap_center[1])),
+            max(1, int(cap_radius)),
+        )
 
     def has_oncoming_vehicle(vehicle, x: float, y: float, heading: float) -> bool:
         forward_x = math.cos(heading)
@@ -1082,7 +1173,7 @@ def draw_headlight_beams(
         )
 
     drawn = 0
-    for vehicle in vehicles:
+    for vehicle in [*vehicles, *(bicycles or ())]:
         if drawn >= 80:
             break
         x = getattr(vehicle, "x", None)
@@ -1095,17 +1186,47 @@ def draw_headlight_beams(
         forward_y = -math.sin(heading)
         right_x = math.sin(heading)
         right_y = math.cos(heading)
-        beam_length_for_vehicle = beam_length
+        is_bicycle = id(vehicle) in bicycle_ids
+        beam_length_for_vehicle = 6.0 * px_per_m if is_bicycle else beam_length
         if (
-            id(vehicle) in npc_ids
+            not is_bicycle
+            and id(vehicle) in npc_ids
             and not is_near_street_light(x, y)
             and not has_oncoming_vehicle(vehicle, x, y, heading)
         ):
             beam_length_for_vehicle = long_beam_length
         vehicle_width = max(3.0, getattr(vehicle, "width_m", 1.8) * px_per_m)
+        if is_bicycle:
+            vehicle_width = max(2.0, getattr(vehicle, "radius_m", 0.6) * px_per_m)
         headlight_offset = vehicle_width * 0.35
-        front_x = cx + forward_x * (beam_near + max(0.0, vehicle_width * 0.55))
-        front_y = cy + forward_y * (beam_near + max(0.0, vehicle_width * 0.55))
+        bicycle_front_offset = 0.7 * px_per_m if is_bicycle else beam_near
+        front_x = cx + forward_x * (bicycle_front_offset + max(0.0, vehicle_width * 0.55))
+        front_y = cy + forward_y * (bicycle_front_offset + max(0.0, vehicle_width * 0.55))
+        if is_bicycle:
+            origin_x = front_x
+            origin_y = front_y
+            tip_x = cx + forward_x * beam_length_for_vehicle
+            tip_y = cy + forward_y * beam_length_for_vehicle
+            near_spread = min(0.20 * px_per_m, vehicle_width * 0.20)
+            far_width = 0.80 * px_per_m
+            near_left_x = origin_x - right_x * near_spread
+            near_left_y = origin_y - right_y * near_spread
+            near_right_x = origin_x + right_x * near_spread
+            near_right_y = origin_y + right_y * near_spread
+            far_left_x = tip_x - right_x * far_width
+            far_left_y = tip_y - right_y * far_width
+            far_right_x = tip_x + right_x * far_width
+            far_right_y = tip_y + right_y * far_width
+            draw_beam(
+                (near_left_x, near_left_y),
+                (near_right_x, near_right_y),
+                (far_right_x, far_right_y),
+                (far_left_x, far_left_y),
+                (tip_x, tip_y),
+                far_width,
+            )
+            drawn += 1
+            continue
         for side in (-1.0, 1.0):
             side_x = right_x * side
             side_y = right_y * side
@@ -1120,23 +1241,15 @@ def draw_headlight_beams(
             near_y = origin_y + side_y * near_spread
             far_x = tip_x + side_x * far_width
             far_y = tip_y + side_y * far_width
-            pygame.draw.polygon(
-                beam_mask,
-                    (255, 255, 255, 255),
-                [
-                    (int(origin_x), int(origin_y)),
-                    (int(near_x), int(near_y)),
-                    (int(far_x), int(far_y)),
-                    (int(tip_x), int(tip_y)),
-                ],
-            )
             cap_x = tip_x + side_x * far_width * 0.5
             cap_y = tip_y + side_y * far_width * 0.5
-            pygame.draw.circle(
-                beam_mask,
-                (255, 255, 255, 255),
-                (int(cap_x), int(cap_y)),
-                max(1, int(far_width * 0.5)),
+            draw_beam(
+                (origin_x, origin_y),
+                (near_x, near_y),
+                (far_x, far_y),
+                (tip_x, tip_y),
+                (cap_x, cap_y),
+                far_width * 0.5,
             )
         drawn += 1
     if drawn:
@@ -1145,6 +1258,12 @@ def draw_headlight_beams(
             restored_daylight.blit(daylight_surface, (0, 0))
             restored_daylight.blit(beam_mask, (0, 0), special_flags=pygame.BLEND_RGBA_MIN)
             screen.blit(restored_daylight, (0, 0))
+    lamp_radius = max(1, int(px_per_m * 0.28))
+    for light_x, light_y in active_street_light_positions:
+        if not (vminx <= light_x <= vmaxx and vminy <= light_y <= vmaxy):
+            continue
+        lamp_center = world_to_screen(light_x, light_y, camx, camy, px_per_m, screen_w, screen_h)
+        pygame.draw.circle(screen, STREET_LIGHT_SHADE_COLOR, (int(lamp_center[0]), int(lamp_center[1])), lamp_radius)
 
 
 def draw_tire_tracks(
@@ -1368,17 +1487,22 @@ def draw_labels(
     spatial_grid=None,
     scenery_grid=None,
     building_grid=None,
+    label_mode: int = 2,
 ) -> None:
-    """Draw text labels and street names with decluttering and collision avoidance."""
+    """Draw selected map labels with decluttering and collision avoidance."""
     import pygame
 
+    if label_mode <= 0:
+        return
     placed_rects: List[pygame.Rect] = []
     seen_names: set[str] = set()
     vminx, vminy, vmaxx, vmaxy = get_viewport_bounds(camx, camy, px_per_m, screen_w, screen_h, 30.0)
 
     district_font = font
+    building_font = font
     try:
         district_font = pygame.font.SysFont(None, 28, bold=True)
+        building_font = pygame.font.SysFont(None, 16)
     except Exception:
         pass
 
@@ -1434,56 +1558,57 @@ def draw_labels(
         count += 1
         return True
 
-    # 1. Kaupunginosat / Districts & Suburbs (high prominence, warm gold/amber)
-    for p in places:
-        if count >= max_labels:
-            break
-        name = getattr(p, "name", None)
-        if name and name not in seen_names:
-            if render_label(
-                name.upper(),
-                p.x,
-                p.y,
-                (255, 230, 120),
-                (30, 25, 10, 220),
-                use_font=district_font,
-                border_color=(200, 170, 70),
-            ):
-                seen_names.add(name)
+    if label_mode >= 2:
+        # 1. Kaupunginosat / Districts & Suburbs (high prominence, warm gold/amber)
+        for p in places:
+            if count >= max_labels:
+                break
+            name = getattr(p, "name", None)
+            if name and name not in seen_names:
+                if render_label(
+                    name,
+                    p.x,
+                    p.y,
+                    (255, 230, 120),
+                    (30, 25, 10, 220),
+                    use_font=district_font,
+                    border_color=(200, 170, 70),
+                ):
+                    seen_names.add(name)
 
-    # 2. Water bodies (cyan)
-    for wat in waters:
-        if count >= max_labels:
-            break
-        name = getattr(wat, "name", None)
-        if not name or name in seen_names:
-            continue
-        bb = getattr(wat, "bbox", None)
-        if bb and bb != (0.0, 0.0, 0.0, 0.0):
-            if bb[2] < vminx or bb[0] > vmaxx or bb[3] < vminy or bb[1] > vmaxy:
+        # 2. Water bodies (cyan)
+        for wat in waters:
+            if count >= max_labels:
+                break
+            name = getattr(wat, "name", None)
+            if not name or name in seen_names:
                 continue
-        if wat.points_m:
-            cx = (bb[0] + bb[2]) * 0.5 if bb and bb != (0.0, 0.0, 0.0, 0.0) else (sum(p[0] for p in wat.points_m) / len(wat.points_m))
-            cy = (bb[1] + bb[3]) * 0.5 if bb and bb != (0.0, 0.0, 0.0, 0.0) else (sum(p[1] for p in wat.points_m) / len(wat.points_m))
-            if render_label(name, cx, cy, (160, 225, 255), (10, 30, 50, 210)):
-                seen_names.add(name)
+            bb = getattr(wat, "bbox", None)
+            if bb and bb != (0.0, 0.0, 0.0, 0.0):
+                if bb[2] < vminx or bb[0] > vmaxx or bb[3] < vminy or bb[1] > vmaxy:
+                    continue
+            if wat.points_m:
+                cx = (bb[0] + bb[2]) * 0.5 if bb and bb != (0.0, 0.0, 0.0, 0.0) else (sum(p[0] for p in wat.points_m) / len(wat.points_m))
+                cy = (bb[1] + bb[3]) * 0.5 if bb and bb != (0.0, 0.0, 0.0, 0.0) else (sum(p[1] for p in wat.points_m) / len(wat.points_m))
+                if render_label(name, cx, cy, (160, 225, 255), (10, 30, 50, 210)):
+                    seen_names.add(name)
 
-    # 3. Scenery / Parks (green)
-    for sc in label_sceneries:
-        if count >= max_labels:
-            break
-        name = getattr(sc, "name", None)
-        if not name or name in seen_names:
-            continue
-        bb = getattr(sc, "bbox", None)
-        if bb and bb != (0.0, 0.0, 0.0, 0.0):
-            if bb[2] < vminx or bb[0] > vmaxx or bb[3] < vminy or bb[1] > vmaxy:
+        # 3. Scenery / Parks (green)
+        for sc in label_sceneries:
+            if count >= max_labels:
+                break
+            name = getattr(sc, "name", None)
+            if not name or name in seen_names:
                 continue
-        if sc.points_m:
-            cx = (bb[0] + bb[2]) * 0.5 if bb and bb != (0.0, 0.0, 0.0, 0.0) else (sum(p[0] for p in sc.points_m) / len(sc.points_m))
-            cy = (bb[1] + bb[3]) * 0.5 if bb and bb != (0.0, 0.0, 0.0, 0.0) else (sum(p[1] for p in sc.points_m) / len(sc.points_m))
-            if render_label(name, cx, cy, (190, 255, 190), (15, 45, 15, 210)):
-                seen_names.add(name)
+            bb = getattr(sc, "bbox", None)
+            if bb and bb != (0.0, 0.0, 0.0, 0.0):
+                if bb[2] < vminx or bb[0] > vmaxx or bb[3] < vminy or bb[1] > vmaxy:
+                    continue
+            if sc.points_m:
+                cx = (bb[0] + bb[2]) * 0.5 if bb and bb != (0.0, 0.0, 0.0, 0.0) else (sum(p[0] for p in sc.points_m) / len(sc.points_m))
+                cy = (bb[1] + bb[3]) * 0.5 if bb and bb != (0.0, 0.0, 0.0, 0.0) else (sum(p[1] for p in sc.points_m) / len(sc.points_m))
+                if render_label(name, cx, cy, (190, 255, 190), (15, 45, 15, 210)):
+                    seen_names.add(name)
 
     # 4. Road / street names (white, only when sufficiently zoomed in)
     if px_per_m >= 0.35:
@@ -1511,7 +1636,7 @@ def draw_labels(
                     seen_names.add(name)
 
     # 5. Buildings (warm yellow, only when sufficiently zoomed in and room left)
-    if px_per_m >= 0.45 and count < max_labels:
+    if label_mode >= 2 and px_per_m >= 0.45 and count < max_labels:
         for b in label_buildings:
             if count >= max_labels:
                 break
@@ -1525,7 +1650,7 @@ def draw_labels(
             if b.points_m:
                 cx = (bb[0] + bb[2]) * 0.5 if bb and bb != (0.0, 0.0, 0.0, 0.0) else (sum(p[0] for p in b.points_m) / len(b.points_m))
                 cy = (bb[1] + bb[3]) * 0.5 if bb and bb != (0.0, 0.0, 0.0, 0.0) else (sum(p[1] for p in b.points_m) / len(b.points_m))
-                if render_label(name, cx, cy, (255, 240, 180), (35, 30, 25, 210)):
+                if render_label(name, cx, cy, (255, 240, 180), (35, 30, 25, 210), use_font=building_font):
                     seen_names.add(name)
 
 
@@ -1584,7 +1709,8 @@ def _draw_vehicle_lights(
         reverse_x = (rear_right[0] + rear_left[0]) * 0.5
         reverse_y = (rear_right[1] + rear_left[1]) * 0.5
         draw_light_rectangle((245, 245, 235), (reverse_x, reverse_y), reverse_r, light_length * 0.65)
-    if turn_signal and (turn_signal_elapsed < 0.45 or (pygame.time.get_ticks() // 450) % 2 == 0):
+    turn_signal_on = turn_signal and (turn_signal_elapsed % 0.9 < 0.45)
+    if turn_signal_on:
         signal_side = 1.0 if turn_signal == "right" else -1.0
         for signal_x, signal_y in (
             (
@@ -1830,8 +1956,8 @@ def draw_npc_cars(
         vehicle_type = getattr(npc, "vehicle_type", "car")
         if vehicle_type in ("motorcycle", "moped"):
             sprite = _motorcycle_sprite if vehicle_type == "motorcycle" else _moped_sprite
-            sprite_length = max(12, int(length_px * 1.7))
-            sprite_width = max(7, int(width_px * 1.8))
+            sprite_length = max(6, int(1.8 * px_per_m))
+            sprite_width = max(4, int(0.6 * px_per_m))
             fallen_angle = 90.0 if getattr(npc, "fallen", False) else 0.0
             render_angle = round((math.degrees(npc.heading) - 90.0 + fallen_angle) / 15.0) * 15.0
             render_key = (
@@ -2007,6 +2133,57 @@ def draw_pedestrians(
                 txt_surf.set_alpha(alpha)
             bubble_surf.blit(txt_surf, (4, 2))
             screen.blit(bubble_surf, (int(bx), int(by)))
+
+
+def draw_pedestrian_reflectors(
+    screen,
+    pedestrians: List,
+    camx: float,
+    camy: float,
+    px_per_m: float = PX_PER_M,
+    screen_w: int = SCREEN_W,
+    screen_h: int = SCREEN_H,
+    ways: Optional[List[Way]] = None,
+    light_vehicles: Optional[List] = None,
+    street_light_positions: Optional[List[Tuple[float, float]]] = None,
+) -> None:
+    """Draw a bright nighttime reflector point on visible pedestrians."""
+    import pygame
+
+    vminx, vminy, vmaxx, vmaxy = get_viewport_bounds(camx, camy, px_per_m, screen_w, screen_h, 15.0)
+    street_light_positions = (
+        _street_light_frame_world_positions
+        if street_light_positions is None
+        else street_light_positions
+    )
+
+    def is_lit(pedestrian) -> bool:
+        for vehicle in light_vehicles or ():
+            vehicle_x = getattr(vehicle, "x", None)
+            vehicle_y = getattr(vehicle, "y", None)
+            heading = getattr(vehicle, "heading", None)
+            if vehicle_x is None or vehicle_y is None or heading is None:
+                continue
+            delta_x = pedestrian.x - vehicle_x
+            delta_y = pedestrian.y - vehicle_y
+            forward_distance = delta_x * math.cos(heading) + delta_y * math.sin(heading)
+            if not 0.0 < forward_distance <= 15.0:
+                continue
+            lateral_distance = abs(-delta_x * math.sin(heading) + delta_y * math.cos(heading))
+            if lateral_distance <= 1.5 + forward_distance * 0.35:
+                return True
+        return any(
+            (pedestrian.x - light_x) ** 2 + (pedestrian.y - light_y) ** 2 <= STREET_LIGHT_REFLECTOR_RADIUS_M ** 2
+            for light_x, light_y in street_light_positions
+        )
+
+    for ped in pedestrians:
+        if not (vminx <= ped.x <= vmaxx and vminy <= ped.y <= vmaxy):
+            continue
+        if is_lit(ped):
+            continue
+        cx, cy = world_to_screen(ped.x, ped.y, camx, camy, px_per_m, screen_w, screen_h)
+        pygame.draw.circle(screen, (255, 255, 245), (int(cx), int(cy)), max(1, int(px_per_m * 0.35)))
 
 
 def draw_cyclists(

@@ -19,7 +19,7 @@ import requests
 from .geo import dist_point_to_segment, point_in_polygon
 
 logger = logging.getLogger(__name__)
-CACHE_VERSION = "v0.6.1beta"
+CACHE_VERSION = "v0.6.2beta"
 
 # Top 10 cities of Finland by population with center coordinates (lat, lon)
 CITY_CENTERS: Dict[str, Tuple[float, float]] = {
@@ -182,7 +182,11 @@ def save_dead_end_to_cache(entry: dict) -> None:
     dead_ends.append(entry)
     try:
         with open(DEAD_ENDS_CACHE_FILE, "w", encoding="utf-8") as f:
-            json.dump({"updated_at": time.time(), "dead_ends": dead_ends}, f, indent=2)
+            json.dump(
+                {"version": CACHE_VERSION, "updated_at": time.time(), "dead_ends": dead_ends},
+                f,
+                indent=2,
+            )
         logger.info("Saved dead-end road record to %s", DEAD_ENDS_CACHE_FILE)
     except Exception as e:
         logger.warning("Failed to save dead-end cache: %s", e)
@@ -678,8 +682,16 @@ def has_outdated_osm_cache() -> bool:
     """Return whether the cache contains data from an older cache format."""
     if not os.path.isdir(CACHE_DIR):
         return False
+    dead_ends_path = os.path.join(CACHE_DIR, "dead_ends.json")
+    if os.path.isfile(dead_ends_path):
+        try:
+            with open(dead_ends_path, "r", encoding="utf-8") as f:
+                if json.load(f).get("version") != CACHE_VERSION:
+                    return True
+        except (OSError, json.JSONDecodeError):
+            return False
     for entry in os.scandir(CACHE_DIR):
-        if not entry.is_file():
+        if not entry.is_file() or entry.path == dead_ends_path or _bbox_from_cache_name(entry.name) is None:
             continue
         try:
             with open(entry.path, "r", encoding="utf-8") as f:

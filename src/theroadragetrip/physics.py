@@ -6,13 +6,13 @@ from typing import Any, List, Optional, Tuple
 from .geo import clamp, closest_point_and_dist_to_segment, compute_bbox, dist_point_to_segment, point_in_polygon
 
 # Car physics (arcade)
-ACCEL = 4.0  # m/s^2; approximately 0-100 km/h in 7 seconds
+ACCEL = 4.6  # m/s^2; peak forward acceleration from rest
 REVERSE_ACCEL = 2.5  # m/s^2; slower acceleration while reversing
 BRAKE = 28.0  # m/s^2
 FRICTION = 6.0  # m/s^2
 STEER_RATE = 2.6  # rad/s at low speed
 STEER_SPEED_FACTOR = 0.10  # less steering at higher speed
-MAX_SPEED = 205.0 / 3.6  # m/s (205 km/h)
+MAX_SPEED = 210.0 / 3.6  # m/s (210 km/h)
 SPEED_LIMIT_DECEL = 4.0  # m/s^2; smooth automatic braking at a speed limit
 OFFROAD_MAX_SPEED = 2.0  # m/s (~7 km/h)
 LIGHT_TRAFFIC_MAX_SPEED = 6.0  # m/s (~22 km/h) on footways, paths, and cycleways
@@ -38,6 +38,27 @@ LIGHT_TRAFFIC_HIGHWAYS = {
     "bridleway",
     "corridor",
 }
+
+FORWARD_ACCELERATION_CURVE = (
+    (0.0, 4.2),
+    (50.0 / 3.6, 4.0),
+    (100.0 / 3.6, 3.4),
+    (150.0 / 3.6, 2.5),
+    (180.0 / 3.6, 1.5),
+    (210.0 / 3.6, 0.4),
+)
+
+
+def forward_acceleration(speed_mps: float) -> float:
+    """Return available forward acceleration for the current speed."""
+    speed_mps = max(0.0, speed_mps)
+    for (start_speed, start_accel), (end_speed, end_accel) in zip(
+        FORWARD_ACCELERATION_CURVE, FORWARD_ACCELERATION_CURVE[1:]
+    ):
+        if speed_mps <= end_speed:
+            fraction = (speed_mps - start_speed) / (end_speed - start_speed)
+            return start_accel + (end_accel - start_accel) * fraction
+    return FORWARD_ACCELERATION_CURVE[-1][1]
 
 
 @dataclass
@@ -781,7 +802,8 @@ def update_car_physics(
     elif speed_limit_mps is not None and car.speed < -speed_limit_mps:
         car.speed = min(-speed_limit_mps, car.speed + SPEED_LIMIT_DECEL * dt)
     elif throttle > 0:
-        car.speed = min(car.speed + ACCEL * dt, speed_limit_mps) if speed_limit_mps is not None else car.speed + ACCEL * dt
+        acceleration = forward_acceleration(car.speed)
+        car.speed = min(car.speed + acceleration * dt, speed_limit_mps) if speed_limit_mps is not None else car.speed + acceleration * dt
     elif brake > 0:
         if car.speed > 0.0:
             car.speed = max(0.0, car.speed - BRAKE * dt)

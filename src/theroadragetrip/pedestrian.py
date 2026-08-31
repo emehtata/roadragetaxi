@@ -115,6 +115,7 @@ class PedestrianManager:
         self._visible_taxi_stops: Set[Tuple[float, float, Optional[int]]] = set()
         self._taxi_stop_visibility_initialized = False
         self.venue_locations: List[Tuple[float, float]] = []
+        self.buildings: List = []
         self.vomit_puddles: List[Tuple[float, float]] = []
 
         self.ped_ways: List[Way] = []
@@ -130,6 +131,7 @@ class PedestrianManager:
 
     def set_venue_buildings(self, buildings: Optional[List] = None) -> None:
         """Index hospitality venues as preferred pedestrian spawn locations."""
+        self.buildings = list(buildings or [])
         self.venue_locations = []
         for building in buildings or []:
             if getattr(building, "venue_type", None) not in VENUE_TYPES or len(building.points_m) < 3:
@@ -140,6 +142,25 @@ class PedestrianManager:
                     sum(point[1] for point in building.points_m) / len(building.points_m),
                 )
             )
+
+    def _point_near_building(self, x: float, y: float, radius_m: float = 250.0) -> bool:
+        """Return whether a point is near a mapped building."""
+        building_data = [
+            building
+            for building in self.buildings
+            if (bbox := getattr(building, "bbox", None))
+            and bbox != (0.0, 0.0, 0.0, 0.0)
+        ]
+        if not building_data:
+            return True
+        radius_sq = radius_m * radius_m
+        for building in building_data:
+            min_x, min_y, max_x, max_y = building.bbox
+            nearest_x = min(max(x, min_x), max_x)
+            nearest_y = min(max(y, min_y), max_y)
+            if (x - nearest_x) ** 2 + (y - nearest_y) ** 2 <= radius_sq:
+                return True
+        return False
 
     def _taxi_stop_waiting_position(self, stop) -> Tuple[float, float]:
         """Return the nearest pedestrian-way point instead of the road center."""
@@ -477,6 +498,9 @@ class PedestrianManager:
                     perp_y = math.cos(heading)
                     x += perp_x * init_lat
                     y += perp_y * init_lat
+
+                    if not self._point_near_building(x, y):
+                        continue
 
                     if max_distance_m is not None and math.hypot(x - near_x, y - near_y) > max_distance_m:
                         continue

@@ -1,4 +1,12 @@
-from theroadragetrip.physics import Car, reset_trip, update_car_physics
+import pytest
+
+from theroadragetrip.physics import Car, MAX_SPEED, forward_acceleration, reset_trip, update_car_physics
+
+
+def test_forward_acceleration_decreases_towards_210_kmh():
+    assert forward_acceleration(0.0) > forward_acceleration(100.0 / 3.6)
+    assert forward_acceleration(100.0 / 3.6) > forward_acceleration(180.0 / 3.6)
+    assert forward_acceleration(MAX_SPEED) == pytest.approx(0.4)
 
 
 def test_car_trip_and_odometer_accumulation():
