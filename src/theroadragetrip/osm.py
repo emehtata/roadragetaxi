@@ -19,7 +19,7 @@ import requests
 from .geo import dist_point_to_segment, point_in_polygon
 
 logger = logging.getLogger(__name__)
-CACHE_VERSION = "v0.6.0beta"
+CACHE_VERSION = "v0.6.1beta"
 
 # Top 10 cities of Finland by population with center coordinates (lat, lon)
 CITY_CENTERS: Dict[str, Tuple[float, float]] = {
@@ -672,6 +672,22 @@ def clear_osm_cache() -> int:
             logger.warning("Failed to remove OSM cache entry %s: %s", entry.path, e)
     logger.info("Cleared OSM cache (%d entries)", removed)
     return removed
+
+
+def has_outdated_osm_cache() -> bool:
+    """Return whether the cache contains data from an older cache format."""
+    if not os.path.isdir(CACHE_DIR):
+        return False
+    for entry in os.scandir(CACHE_DIR):
+        if not entry.is_file():
+            continue
+        try:
+            with open(entry.path, "r", encoding="utf-8") as f:
+                if json.load(f).get("version") != CACHE_VERSION:
+                    return True
+        except (OSError, json.JSONDecodeError):
+            continue
+    return False
 
 
 def fetch_osm_ways(

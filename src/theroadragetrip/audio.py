@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import logging
 import json
 import random
@@ -6,6 +8,11 @@ from pathlib import Path
 from typing import Optional
 
 import pygame
+
+try:
+    import pygame.mixer as pygame_mixer
+except (ImportError, AttributeError):
+    pygame_mixer = None
 
 logger = logging.getLogger(__name__)
 
@@ -44,9 +51,13 @@ class AudioManager:
         self._speech_lines = self._load_speech_lines()
         self._driver_lines = self._load_driver_lines()
 
+        mixer = pygame_mixer
+        if mixer is None:
+            logger.info("Audio unavailable: pygame.mixer is not included")
+            return
         try:
-            if not pygame.mixer.get_init():
-                pygame.mixer.init()
+            if not mixer.get_init():
+                mixer.init()
             sounds_dir = Path(__file__).with_name("sounds")
             for name in ("accelerate", "car-crash", "carhorn_takes", "car-door-open", "city-traffic-outdoor", "police_car_siren-esp"):
                 path = next(
@@ -59,7 +70,7 @@ class AudioManager:
                 )
                 if path is not None:
                     try:
-                        self.sounds[name] = pygame.mixer.Sound(str(path))
+                        self.sounds[name] = mixer.Sound(str(path))
                     except pygame.error as exc:
                         logger.warning("Could not load sound %s: %s", path.name, exc)
             chatter_dir = sounds_dir / "passenger_chatter"
@@ -68,7 +79,7 @@ class AudioManager:
                 if len(parts) != 3 or parts[0] not in ("f", "m") or parts[1] not in ("fi", "en"):
                     continue
                 try:
-                    self.passenger_sounds[(parts[0], parts[1], parts[2])] = pygame.mixer.Sound(str(path))
+                    self.passenger_sounds[(parts[0], parts[1], parts[2])] = mixer.Sound(str(path))
                 except pygame.error as exc:
                     logger.warning("Could not load passenger chatter %s: %s", path.name, exc)
             driver_chatter_dir = sounds_dir / "driver_chatter"
@@ -77,7 +88,7 @@ class AudioManager:
                 if len(parts) != 3 or parts[0] not in ("f", "m") or parts[1] not in ("fi", "en"):
                     continue
                 try:
-                    self.driver_sounds[(parts[0], parts[1], parts[2])] = pygame.mixer.Sound(str(path))
+                    self.driver_sounds[(parts[0], parts[1], parts[2])] = mixer.Sound(str(path))
                 except pygame.error as exc:
                     logger.warning("Could not load driver chatter %s: %s", path.name, exc)
             if "city-traffic-outdoor" in self.sounds:
@@ -267,5 +278,6 @@ class AudioManager:
             self.comment_channel = None
         self.update_acceleration(False)
         self.update_police_siren(False)
-        if self.enabled:
-            pygame.mixer.stop()
+        mixer = pygame_mixer
+        if self.enabled and mixer is not None:
+            mixer.stop()

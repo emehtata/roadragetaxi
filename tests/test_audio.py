@@ -1,3 +1,6 @@
+import pygame
+
+import theroadragetrip.audio as audio
 from theroadragetrip.audio import AudioManager
 
 
@@ -20,6 +23,14 @@ class FakeSound:
     def play(self):
         self.play_count += 1
         return self.channel
+
+
+def test_audio_manager_handles_missing_pygame_mixer(monkeypatch):
+    monkeypatch.setattr(audio, "pygame_mixer", None)
+
+    manager = AudioManager()
+
+    assert manager.enabled is False
 
 
 def test_comment_sound_does_not_overlap_existing_comment():

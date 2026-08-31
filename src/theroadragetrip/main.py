@@ -54,6 +54,7 @@ from .osm import (
     clear_osm_cache,
     configure_user_agent,
     fetch_osm_ways,
+    has_outdated_osm_cache,
     load_local_sample,
     load_osm_cache,
     save_osm_cache,
@@ -516,6 +517,53 @@ def choose_language(screen, font, clock, current_language: str = "fi") -> str:
         hint = pygame.font.SysFont(None, 18).render(tr(language, "language_hint"), True, (150, 175, 195))
         screen.blit(hint, hint.get_rect(center=(screen.get_width() // 2, screen.get_height() - 80)))
         pygame.display.flip()
+
+
+def confirm_outdated_cache(screen, font, clock, language: str) -> bool:
+    """Ask before removing cache data created by an older release."""
+    button_font = pygame.font.SysFont(None, 22)
+    message_font = pygame.font.SysFont(None, 24)
+    button_width, button_height = 130, 42
+    while True:
+        clock.tick(30)
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                pygame.quit()
+                sys.exit(0)
+            if event.type == pygame.KEYDOWN:
+                if event.key in (pygame.K_RETURN, pygame.K_SPACE, pygame.K_KP_ENTER):
+                    return True
+                if event.key == pygame.K_ESCAPE:
+                    pygame.quit()
+                    sys.exit(0)
+            if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                screen_w, screen_h = screen.get_size()
+                ok_rect = pygame.Rect(screen_w // 2 - button_width - 10, screen_h // 2 + 55, button_width, button_height)
+                cancel_rect = pygame.Rect(screen_w // 2 + 10, screen_h // 2 + 55, button_width, button_height)
+                if ok_rect.collidepoint(event.pos):
+                    return True
+                if cancel_rect.collidepoint(event.pos):
+                    pygame.quit()
+                    sys.exit(0)
+
+        screen_w, screen_h = screen.get_size()
+        screen.fill((18, 24, 32))
+        title = font.render(tr(language, "outdated_cache_title"), True, (245, 245, 245))
+        screen.blit(title, title.get_rect(center=(screen_w // 2, screen_h // 2 - 80)))
+        message = message_font.render(tr(language, "outdated_cache_message"), True, (210, 220, 230))
+        screen.blit(message, message.get_rect(center=(screen_w // 2, screen_h // 2 - 25)))
+        ok_rect = pygame.Rect(screen_w // 2 - button_width - 10, screen_h // 2 + 55, button_width, button_height)
+        cancel_rect = pygame.Rect(screen_w // 2 + 10, screen_h // 2 + 55, button_width, button_height)
+        for rect, key, color in (
+            (ok_rect, "ok", (55, 135, 85)),
+            (cancel_rect, "cancel", (125, 65, 65)),
+        ):
+            pygame.draw.rect(screen, color, rect, border_radius=4)
+            label = button_font.render(tr(language, key), True, (255, 255, 255))
+            screen.blit(label, label.get_rect(center=rect.center))
+        pygame.display.flip()
+
+
 def main() -> None:
     config = load_config()
     overpass_endpoints = get_overpass_endpoints(config)
@@ -556,6 +604,10 @@ def main() -> None:
         language = choose_language(screen, font, clock)
         config.set("game", "language", language)
         save_config(config)
+
+    if has_outdated_osm_cache():
+        confirm_outdated_cache(screen, font, clock, language)
+        clear_osm_cache()
 
     audio = AudioManager(
         master_volume=config.getfloat("audio", "master_volume", fallback=1.0),

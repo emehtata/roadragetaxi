@@ -1,6 +1,12 @@
 import time
 
-from theroadragetrip.osm import clear_osm_cache, load_local_sample, load_osm_cache, save_osm_cache
+from theroadragetrip.osm import (
+    clear_osm_cache,
+    has_outdated_osm_cache,
+    load_local_sample,
+    load_osm_cache,
+    save_osm_cache,
+)
 
 
 def test_cache_save_and_load(tmp_path, monkeypatch):
@@ -59,6 +65,18 @@ def test_cache_is_removed_when_version_changes(tmp_path, monkeypatch):
 
     assert load_osm_cache(bbox) is None
     assert not cache_path.exists()
+
+
+def test_outdated_cache_is_detected_without_removing_it(tmp_path, monkeypatch):
+    import json
+    import theroadragetrip.osm as osm
+
+    monkeypatch.setattr(osm, "CACHE_DIR", str(tmp_path))
+    cache_path = tmp_path / "old.json"
+    cache_path.write_text(json.dumps({"version": "v-old"}), encoding="utf-8")
+
+    assert has_outdated_osm_cache() is True
+    assert cache_path.exists()
 
 
 def test_cache_reuses_nearly_identical_point(tmp_path, monkeypatch):
