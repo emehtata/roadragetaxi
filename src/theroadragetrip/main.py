@@ -9,6 +9,8 @@ import time
 from dataclasses import asdict
 from typing import Optional, Tuple
 
+import pygame
+
 from .geo import clamp, dist_point_to_segment, meters_to_latlon
 from .audio import AudioManager
 from .brawl import TaxiBrawlManager
@@ -574,19 +576,6 @@ def main() -> None:
     configure_logging(args.log_level, file_logging=config.getboolean("game", "file_logging", fallback=False))
     taxi_brawls_enabled = config.getboolean("game", "taxi_brawls", fallback=False)
     roadworks_enabled = config.getboolean("game", "roadworks_enabled", fallback=False)
-
-    try:
-        global pygame
-        import pygame as _pygame
-
-        pygame = _pygame
-    except Exception as e:
-        logger.error("Missing runtime dependency 'pygame': %s", e)
-        logger.error("Install dependencies with: pip3 install -r requirements.txt")
-        logger.error(
-            "Or for headless runs (CI): set SDL_VIDEODRIVER=dummy and install headless compatible packages."
-        )
-        sys.exit(1)
 
     pygame.init()
     screen = pygame.display.set_mode((SCREEN_W, SCREEN_H))

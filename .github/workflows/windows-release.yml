@@ -30,6 +30,10 @@ jobs:
         run: >-
           python -m PyInstaller --noconfirm --clean --onedir --windowed
           --name RoadRageTrip --paths src
+          --hidden-import pygame
+          --collect-submodules pygame
+          --collect-binaries pygame
+          --collect-data pygame
           --collect-all pygame
           --icon "src/theroadragetrip/assets/roadragetrip_icon.ico"
           --add-data "sample_osm.json;."
