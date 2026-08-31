@@ -90,6 +90,7 @@ from .render import (
     draw_crossings,
     draw_day_night_overlay,
     draw_grass_texture,
+    draw_headlight_beams,
     draw_hud,
     draw_tutorial_screen,
     draw_labels,
@@ -110,6 +111,7 @@ from .render import (
     draw_taxi_stops,
     draw_taxi_target,
     draw_tire_tracks,
+    draw_vehicle_lights,
     draw_vomit_puddles,
     draw_taxi_brawl,
     draw_traffic_lights,
@@ -521,6 +523,7 @@ def main() -> None:
     args = parse_args(config, city_names=list(bbox_presets))
     configure_logging(args.log_level, file_logging=config.getboolean("game", "file_logging", fallback=False))
     taxi_brawls_enabled = config.getboolean("game", "taxi_brawls", fallback=False)
+    roadworks_enabled = config.getboolean("game", "roadworks_enabled", fallback=False)
 
     try:
         global pygame
@@ -735,7 +738,8 @@ def main() -> None:
             logger.info("Selected starting city: %s (bbox: %s)", chosen_city, bbox)
         else:
             preset_key = args.preset.lower() if args.preset else "oulu"
-            camera_city_name = args.preset
+            chosen_city = args.preset or preset_key
+            camera_city_name = chosen_city
             bbox = bbox_presets.get(preset_key, DEFAULT_BBOX)
             if args.bbox:
                 try:
@@ -744,6 +748,17 @@ def main() -> None:
                         bbox = (parts[0], parts[1], parts[2], parts[3])
                 except Exception:
                     logger.warning("Invalid bbox provided, using default preset (%s)", preset_key)
+
+        sun_latitude, sun_longitude = city_centers.get(
+            chosen_city,
+            ((bbox[0] + bbox[2]) / 2.0, (bbox[1] + bbox[3]) / 2.0),
+        )
+        logger.info(
+            "Solar model: date=2026-08-31 city=%s latitude=%.6f longitude=%.6f",
+            chosen_city,
+            sun_latitude,
+            sun_longitude,
+        )
 
         def on_load_progress(fraction: float, message: str) -> None:
             draw_loading_screen(screen, font, fraction, message)
@@ -794,9 +809,14 @@ def main() -> None:
 
         minx, miny, maxx, maxy = bounds
         taxi_stops = getattr(res, "taxi_stops", [])
-        roadworks, roadwork_lights = create_roadworks(ways)
+        roadworks, roadwork_lights = create_roadworks(ways) if roadworks_enabled else ([], [])
         traffic_lights.extend(roadwork_lights)
-        logger.info("Created %d random roadworks (%d temporary lights)", len(roadworks), len(roadwork_lights))
+        logger.info(
+            "Created %d random roadworks (%d temporary lights), enabled=%s",
+            len(roadworks),
+            len(roadwork_lights),
+            roadworks_enabled,
+        )
         on_load_progress(0.92, "Preparing road index...")
         # Spatial index for fast O(1) road collision detection
         spatial_grid = SpatialWayGrid()
@@ -918,6 +938,7 @@ def main() -> None:
         zoom_elapsed = 0.0
         zoom_duration = 3.0
         game_time_seconds = 8.0 * 60.0 * 60.0
+        solar_time_bucket = None
         camx, camy = car.x, car.y
         first_gameplay_frame = True
         tire_tracks = []
@@ -928,12 +949,27 @@ def main() -> None:
         water_elapsed = 0.0
         on_foot = False
         saved_gig_fares = taxi_mgr.completed_fares
+        render_profile_last_log = time.perf_counter()
+        render_profile_times = {}
         clock.tick()  # Reset clock timer to avoid large dt on first frame
 
         while running:
             dt = min(clock.tick(FPS) / 1000.0, 0.1)  # Clamp delta-time to prevent physics tunneling on lag spikes
             time_scale = 1.0 if taxi_mgr.current_passenger else 60.0
             game_time_seconds = (game_time_seconds + dt * time_scale) % (24.0 * 60.0 * 60.0)
+            current_solar_bucket = int(game_time_seconds // (15.0 * 60.0))
+            if current_solar_bucket != solar_time_bucket:
+                car_latitude, car_longitude = meters_to_latlon(car.x, car.y, transformer_to_ll)
+                if car_latitude is not None and car_longitude is not None:
+                    sun_latitude, sun_longitude = car_latitude, car_longitude
+                solar_time_bucket = current_solar_bucket
+                logger.debug(
+                    "Solar position updated: time=%02d:%02d latitude=%.6f longitude=%.6f",
+                    int(game_time_seconds // 3600.0),
+                    int((game_time_seconds % 3600.0) // 60.0),
+                    sun_latitude,
+                    sun_longitude,
+                )
             if first_gameplay_frame:
                 logger.info("Gameplay frame: start")
 
@@ -1321,6 +1357,7 @@ def main() -> None:
                     speed_limit_mps=speed_limit_mps,
                     nearby_vehicles=traffic_mgr.npcs,
                 )
+                car.braking = brake > 0.0 and car.speed > 0.05
                 midpoint = (
                     (previous_position[0] + car.x) * 0.5,
                     (previous_position[1] + car.y) * 0.5,
@@ -1701,6 +1738,8 @@ def main() -> None:
                 logger.info("Gameplay frame: map update complete")
 
             # Render background and scene
+            render_profile_frame_start = time.perf_counter()
+            render_profile_stage_start = render_profile_frame_start
             if first_gameplay_frame:
                 logger.info("Gameplay frame: rendering scenery")
             draw_grass_texture(screen, camx, camy, px_per_m)
@@ -1723,6 +1762,10 @@ def main() -> None:
             if first_gameplay_frame:
                 logger.info("Gameplay frame: rendering buildings")
             draw_buildings(screen, buildings, camx, camy, px_per_m=px_per_m, spatial_grid=building_grid)
+            render_profile_times["map"] = render_profile_times.get("map", 0.0) + (
+                time.perf_counter() - render_profile_stage_start
+            )
+            render_profile_stage_start = time.perf_counter()
             draw_tire_tracks(screen, tire_tracks, camx, camy, grass=False, px_per_m=px_per_m)
             draw_tire_tracks(screen, tire_tracks, camx, camy, grass=True, px_per_m=px_per_m)
             draw_vomit_puddles(screen, taxi_mgr.vomit_puddles, camx, camy, px_per_m=px_per_m)
@@ -1750,6 +1793,17 @@ def main() -> None:
                 flash_index=taxi_mgr.speed_camera_flash_index,
                 flash_active=taxi_mgr.speed_camera_flash_timer > 0.0,
             )
+            viewport_minx, viewport_miny, viewport_maxx, viewport_maxy = get_viewport_bounds(
+                camx, camy, px_per_m=px_per_m, margin_m=40.0
+            )
+            visible_road_count = sum(
+                1
+                for way in spatial_grid.ways_in_rect(
+                    viewport_minx, viewport_miny, viewport_maxx, viewport_maxy
+                )
+                if getattr(way, "is_drivable", True)
+            )
+            render_profile_stage_start = time.perf_counter()
             visible_pedestrians = pedestrian_mgr.pedestrians + ([player_pedestrian] if on_foot else [])
             draw_pedestrians(screen, visible_pedestrians, camx, camy, font=small_font, px_per_m=px_per_m, ways=ways)
             draw_cyclists(screen, cyclist_mgr.cyclists, camx, camy, px_per_m=px_per_m, ways=ways)
@@ -1791,6 +1845,50 @@ def main() -> None:
                 px_per_m=px_per_m,
                 language=language,
             )
+            render_profile_times["actors"] = render_profile_times.get("actors", 0.0) + (
+                time.perf_counter() - render_profile_stage_start
+            )
+            render_profile_stage_start = time.perf_counter()
+
+            lighting_start = time.perf_counter()
+            daylight_scene = screen.copy()
+            draw_day_night_overlay(
+                screen,
+                game_time_seconds,
+                visible_road_count,
+                latitude=sun_latitude,
+                longitude=sun_longitude,
+            )
+            draw_street_lights(
+                screen,
+                ways,
+                camx,
+                camy,
+                game_time_seconds,
+                px_per_m=px_per_m,
+                spatial_grid=spatial_grid,
+                visible_road_count=visible_road_count,
+                daylight_surface=daylight_scene,
+                latitude=sun_latitude,
+                longitude=sun_longitude,
+            )
+            draw_headlight_beams(
+                screen,
+                [car, *traffic_mgr.npcs],
+                camx,
+                camy,
+                game_time_seconds,
+                px_per_m=px_per_m,
+                daylight_surface=daylight_scene,
+                latitude=sun_latitude,
+                longitude=sun_longitude,
+                npc_vehicles=[car, *traffic_mgr.npcs],
+                street_light_positions=None,
+            )
+            draw_vehicle_lights(screen, [car, *traffic_mgr.npcs], camx, camy, px_per_m=px_per_m)
+            render_profile_times["lighting"] = render_profile_times.get("lighting", 0.0) + (
+                time.perf_counter() - lighting_start
+            )
 
             # Labels overlay (toggled with 'L')
             if show_labels:
@@ -1807,17 +1905,31 @@ def main() -> None:
                     px_per_m=px_per_m,
                     spatial_grid=spatial_grid,
                 )
-
-            draw_day_night_overlay(screen, game_time_seconds)
-            draw_street_lights(
-                screen,
-                ways,
-                camx,
-                camy,
-                game_time_seconds,
-                px_per_m=px_per_m,
-                spatial_grid=spatial_grid,
+            render_profile_times["labels"] = render_profile_times.get("labels", 0.0) + (
+                time.perf_counter() - render_profile_stage_start
             )
+            render_profile_stage_start = time.perf_counter()
+
+            render_profile_times["frame"] = render_profile_times.get("frame", 0.0) + (
+                time.perf_counter() - render_profile_frame_start
+            )
+            if logger.isEnabledFor(logging.DEBUG) and time.perf_counter() - render_profile_last_log >= 1.0:
+                frame_count = max(1, int(render_profile_times.pop("count", 0)))
+                timing_ms = {
+                    stage: total * 1000.0 / frame_count
+                    for stage, total in render_profile_times.items()
+                }
+                logger.debug(
+                    "Render profile: fps=%.1f avg_ms=%s ways=%d buildings=%d labels=%s",
+                    clock.get_fps(),
+                    ",".join(f"{stage}={duration:.1f}" for stage, duration in timing_ms.items()),
+                    len(ways),
+                    len(buildings),
+                    show_labels,
+                )
+                render_profile_times.clear()
+                render_profile_last_log = time.perf_counter()
+            render_profile_times["count"] = render_profile_times.get("count", 0) + 1
 
             # Draw HUD and compass
             current_target = taxi_mgr.get_current_target()

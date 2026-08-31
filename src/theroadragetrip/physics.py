@@ -54,6 +54,7 @@ class Car:
     time_since_last_steer: float = 0.0  # seconds elapsed without manual steer input
     lane_assist_enabled: bool = False  # user toggle for lane assist feature (default False)
     lane_assist_active: bool = False  # whether lane assist is currently steering
+    braking: bool = False  # whether brake lights should be illuminated
 
 
 def is_car_road(way) -> bool:
@@ -212,15 +213,7 @@ def compute_largest_connected_road_component(ways: List) -> List:
 
     # Find component with greatest total road length
     def component_total_length(comp: List[int]) -> float:
-        total = 0.0
-        for widx in comp:
-            w = drivable[widx]
-            for s in range(len(w.points_m) - 1):
-                total += math.hypot(
-                    w.points_m[s + 1][0] - w.points_m[s][0],
-                    w.points_m[s + 1][1] - w.points_m[s][1],
-                )
-        return total
+        return sum(drivable[widx].total_length_m for widx in comp)
 
     largest_comp = max(components, key=component_total_length)
     return [drivable[i] for i in largest_comp]

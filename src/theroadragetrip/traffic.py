@@ -67,6 +67,7 @@ class NPCCar:
     rage_timer: float = 0.0
     turn_signal: str = ""  # "left" or "right" while completing a turn
     turn_signal_elapsed: float = 0.0
+    braking: bool = False
     is_taxi: bool = False
     taxi_pickup_timer: float = 0.0
     waiting_at_taxi_stop: bool = False
@@ -153,8 +154,48 @@ class TrafficManager:
         self._crossing_grid: dict[Tuple[int, int], List] = {}
         self._npc_grid_cell_size: float = 32.0
         self._npc_grid: dict[Tuple[int, int], List[NPCCar]] = {}
+        self._route_nodes: List[Tuple[float, float, int]] = []
+        self._route_edges: dict[int, List[Tuple[int, float]]] = {}
+        self._build_route_graph()
         self._taxi_stop_spawns: set[Tuple[float, float, object]] = set()
         self._build_spatial_indices()
+        self._build_route_graph()
+
+    def _build_route_graph(self) -> None:
+        """Build the immutable vertex graph used by navigation routing."""
+        nodes: List[Tuple[float, float, int]] = []
+        edges: dict[int, List[Tuple[int, float]]] = {}
+        endpoint_buckets: dict[Tuple[int, int, int], List[int]] = {}
+
+        def node_id(point: Tuple[float, float], point_layer: int) -> int:
+            bucket = (round(point[0] / 3.0), round(point[1] / 3.0), point_layer)
+            for candidate in endpoint_buckets.get(bucket, []):
+                candidate_point = nodes[candidate]
+                if math.hypot(candidate_point[0] - point[0], candidate_point[1] - point[1]) <= 3.0:
+                    return candidate
+            candidate = len(nodes)
+            nodes.append((point[0], point[1], point_layer))
+            endpoint_buckets.setdefault(bucket, []).append(candidate)
+            edges[candidate] = []
+            return candidate
+
+        for way in self.ways:
+            if len(way.points_m) < 2:
+                continue
+            point_layer = getattr(way, "layer", 0)
+            point_ids = [node_id(point, point_layer) for point in way.points_m]
+            oneway = getattr(way, "oneway", 0)
+            for first, second in zip(point_ids, point_ids[1:]):
+                distance = math.hypot(
+                    nodes[second][0] - nodes[first][0], nodes[second][1] - nodes[first][1]
+                )
+                if oneway >= 0:
+                    edges[first].append((second, distance))
+                if oneway <= 0:
+                    edges[second].append((first, distance))
+
+        self._route_nodes = nodes
+        self._route_edges = edges
 
     def _build_npc_spatial_grid(self) -> None:
         cell_size = self._npc_grid_cell_size
@@ -368,46 +409,29 @@ class TrafficManager:
         layer: Optional[int] = None,
     ) -> Optional[List[Tuple[float, float]]]:
         """Return a shortest route over road vertices between two map positions."""
-        nodes: List[Tuple[float, float, int]] = []
-        node_ids: dict[Tuple[int, int, int], int] = {}
-        edges: dict[int, List[Tuple[int, float]]] = {}
-        endpoint_buckets: dict[Tuple[int, int, int], List[int]] = {}
-
-        def node_id(point: Tuple[float, float], point_layer: int) -> int:
-            bucket = (round(point[0] / 3.0), round(point[1] / 3.0), point_layer)
-            for candidate in endpoint_buckets.get(bucket, []):
-                candidate_point = nodes[candidate]
-                if math.hypot(candidate_point[0] - point[0], candidate_point[1] - point[1]) <= 3.0:
-                    return candidate
-            candidate = len(nodes)
-            nodes.append((point[0], point[1], point_layer))
-            endpoint_buckets.setdefault(bucket, []).append(candidate)
-            edges[candidate] = []
-            return candidate
-
-        for way in self.ways:
-            if len(way.points_m) < 2 or (layer is not None and getattr(way, "layer", 0) != layer):
-                continue
-            point_ids = [node_id(point, getattr(way, "layer", 0)) for point in way.points_m]
-            oneway = getattr(way, "oneway", 0)
-            for index, (first, second) in enumerate(zip(point_ids, point_ids[1:])):
-                distance = math.hypot(
-                    nodes[second][0] - nodes[first][0], nodes[second][1] - nodes[first][1]
-                )
-                if oneway >= 0:
-                    edges[first].append((second, distance))
-                if oneway <= 0:
-                    edges[second].append((first, distance))
+        nodes = self._route_nodes
+        edges = self._route_edges
+        if layer is not None:
+            allowed_nodes = {index for index, node in enumerate(nodes) if node[2] == layer}
+            nodes_for_route = [node for node in nodes]
+            edges_for_route = {
+                index: [(neighbor, distance) for neighbor, distance in neighbors if neighbor in allowed_nodes]
+                for index, neighbors in edges.items()
+                if index in allowed_nodes
+            }
+        else:
+            nodes_for_route = nodes
+            edges_for_route = edges
 
         if not nodes:
             return None
         start_candidates = sorted(
-            range(len(nodes)),
-            key=lambda index: (nodes[index][0] - start[0]) ** 2 + (nodes[index][1] - start[1]) ** 2,
+            edges_for_route,
+            key=lambda index: (nodes_for_route[index][0] - start[0]) ** 2 + (nodes_for_route[index][1] - start[1]) ** 2,
         )[:12]
         target_candidates = sorted(
-            range(len(nodes)),
-            key=lambda index: (nodes[index][0] - target[0]) ** 2 + (nodes[index][1] - target[1]) ** 2,
+            edges_for_route,
+            key=lambda index: (nodes_for_route[index][0] - target[0]) ** 2 + (nodes_for_route[index][1] - target[1]) ** 2,
         )[:12]
         best_path = None
         best_score = math.inf
@@ -419,7 +443,7 @@ class TrafficManager:
                 distance, current = heapq.heappop(queue)
                 if distance != distances.get(current):
                     continue
-                for neighbor, edge_distance in edges[current]:
+                for neighbor, edge_distance in edges_for_route[current]:
                     new_distance = distance + edge_distance
                     if new_distance < distances.get(neighbor, math.inf):
                         distances[neighbor] = new_distance
@@ -428,8 +452,8 @@ class TrafficManager:
             for target_id in target_candidates:
                 if target_id not in distances:
                     continue
-                start_connector = math.hypot(nodes[start_id][0] - start[0], nodes[start_id][1] - start[1])
-                target_connector = math.hypot(nodes[target_id][0] - target[0], nodes[target_id][1] - target[1])
+                start_connector = math.hypot(nodes_for_route[start_id][0] - start[0], nodes_for_route[start_id][1] - start[1])
+                target_connector = math.hypot(nodes_for_route[target_id][0] - target[0], nodes_for_route[target_id][1] - target[1])
                 score = distances[target_id] + start_connector + target_connector
                 if score >= best_score:
                     continue
@@ -441,7 +465,7 @@ class TrafficManager:
                 best_score = score
         if best_path is None:
             return None
-        return [(start[0], start[1])] + [(nodes[index][0], nodes[index][1]) for index in best_path] + [target]
+        return [(start[0], start[1])] + [(nodes_for_route[index][0], nodes_for_route[index][1]) for index in best_path] + [target]
 
     def set_target_count(self, target_count: int, player_car: Optional[Car] = None) -> None:
         """Adjust active traffic count and discard farthest cars when zoom reduces it."""
@@ -957,6 +981,7 @@ class TrafficManager:
     ) -> None:
         """Update all NPC cars, manage spawning/despawning around player."""
         self.sim_time += dt
+        previous_speeds = {id(npc): npc.speed for npc in self.npcs}
 
         # Despawn distant NPCs
         surviving = []
@@ -1542,4 +1567,7 @@ class TrafficManager:
 
         if finished_npcs:
             self.npcs = [npc for npc in self.npcs if id(npc) not in finished_npcs]
+        for npc in self.npcs:
+            previous_speed = previous_speeds.get(id(npc))
+            npc.braking = previous_speed is not None and npc.speed < previous_speed - 0.05
         self._resolve_npc_collisions()

@@ -1,7 +1,9 @@
 import math
+import logging
 import os
 import random
 import subprocess
+from datetime import date
 from importlib.metadata import PackageNotFoundError, version as package_version
 from typing import List, Optional, Tuple
 
@@ -15,15 +17,110 @@ SCREEN_W, SCREEN_H = 1280, 720
 FPS = 60
 PX_PER_M = 0.7  # Default zoom level (pixels per meter)
 
+SCENERY_COLORS = {
+    "forest": (32, 95, 32),
+    "wood": (32, 95, 32),
+    "park": (42, 120, 42),
+    "garden": (45, 125, 45),
+    "meadow": (38, 110, 38),
+    "grass": (36, 105, 36),
+    "pitch": (48, 115, 55),
+    "playground": (48, 115, 55),
+    "sand": (160, 150, 110),
+    "beach": (170, 160, 115),
+}
+TREE_CROWN_COLORS = ((25, 78, 29), (34, 101, 35), (48, 119, 42), (63, 112, 34))
+BUILDING_WALL_COLORS = ((158, 105, 82), (174, 166, 143), (116, 131, 119), (139, 139, 137))
+BUILDING_ROOF_COLORS = ((92, 57, 48), (102, 96, 82), (66, 83, 69), (83, 86, 87))
+MAX_VISIBLE_STREET_LIGHTS = 240
+SOLAR_UPDATE_INTERVAL_SECONDS = 15.0 * 60.0
+GAME_DATE = date(2026, 8, 31)
+FINLAND_SUMMER_TIME_OFFSET = 3.0
+DEFAULT_SUN_LATITUDE = 65.012
+DEFAULT_SUN_LONGITUDE = 25.468
+
 _loading_image = None
 _loading_image_path = os.path.join(os.path.dirname(__file__), "img", "theroadragetrip_1672_941.png")
 _cyclist_sprite = None
 _motorcycle_sprite = None
 _moped_sprite = None
 _two_wheeler_tinted_sprites = {}
+_two_wheeler_render_cache = {}
 _cyclist_tinted_sprites = {}
 _grass_texture_tile = None
 _street_light_junction_cache = None
+_street_light_junction_grid_cache = None
+_taxi_sign_text = None
+_traffic_light_surface_cache = {}
+_street_light_glow_cache = {}
+_street_light_frame_cache_key = None
+_street_light_frame_cache_surface = None
+_street_light_frame_cache_camera = None
+_street_light_frame_world_positions = []
+_day_night_overlay_cache = {}
+_solar_position_cache = {}
+_street_light_last_debug_log_ms = 0
+_render_logger = logging.getLogger(__name__)
+
+
+def solar_altitude_and_events(
+    game_time_seconds: float,
+    latitude: float = DEFAULT_SUN_LATITUDE,
+    longitude: float = DEFAULT_SUN_LONGITUDE,
+) -> Tuple[float, float, float]:
+    """Return sun altitude and local sunrise/sunset minutes for the fixed game date."""
+    cache_key = (
+        int(game_time_seconds // SOLAR_UPDATE_INTERVAL_SECONDS),
+        round(latitude, 6),
+        round(longitude, 6),
+    )
+    cached_result = _solar_position_cache.get(cache_key)
+    if cached_result is not None:
+        return cached_result
+    day_of_year = GAME_DATE.timetuple().tm_yday
+    declination = math.radians(
+        23.45 * math.sin(math.radians(360.0 * (284.0 + day_of_year) / 365.0))
+    )
+    latitude_radians = math.radians(latitude)
+    gamma = 2.0 * math.pi / 365.0 * (day_of_year - 1.0)
+    equation_of_time = 229.18 * (
+        0.000075
+        + 0.001868 * math.cos(gamma)
+        - 0.032077 * math.sin(gamma)
+        - 0.014615 * math.cos(2.0 * gamma)
+        - 0.040849 * math.sin(2.0 * gamma)
+    )
+    solar_minutes = game_time_seconds / 60.0 + equation_of_time + 4.0 * longitude - 60.0 * FINLAND_SUMMER_TIME_OFFSET
+    hour_angle = math.radians(solar_minutes / 4.0 - 180.0)
+    altitude = math.degrees(
+        math.asin(
+            math.sin(latitude_radians) * math.sin(declination)
+            + math.cos(latitude_radians) * math.cos(declination) * math.cos(hour_angle)
+        )
+    )
+    sunrise_cosine = (
+        math.cos(math.radians(90.833)) / (math.cos(latitude_radians) * math.cos(declination))
+        - math.tan(latitude_radians) * math.tan(declination)
+    )
+    if sunrise_cosine <= -1.0:
+        sunrise_minutes, sunset_minutes = 0.0, 1440.0
+    elif sunrise_cosine >= 1.0:
+        sunrise_minutes = sunset_minutes = float("nan")
+    else:
+        solar_noon = 720.0 - 4.0 * longitude - equation_of_time + 60.0 * FINLAND_SUMMER_TIME_OFFSET
+        hour_angle_minutes = 4.0 * math.degrees(math.acos(sunrise_cosine))
+        sunrise_minutes = solar_noon - hour_angle_minutes
+        sunset_minutes = solar_noon + hour_angle_minutes
+    result = altitude, sunrise_minutes, sunset_minutes
+    _solar_position_cache[cache_key] = result
+    return result
+
+
+def _format_solar_time(minutes: float) -> str:
+    if not math.isfinite(minutes):
+        return "--:--"
+    total_minutes = int(round(minutes)) % (24 * 60)
+    return f"{total_minutes // 60:02d}:{total_minutes % 60:02d}"
 
 
 def _tinted_two_wheeler_sprite(sprite, color, cache_key):
@@ -171,19 +268,6 @@ def draw_scenery(
 
     vminx, vminy, vmaxx, vmaxy = get_viewport_bounds(camx, camy, px_per_m, screen_w, screen_h, 80.0)
 
-    colors = {
-        "forest": (32, 95, 32),
-        "wood": (32, 95, 32),
-        "park": (42, 120, 42),
-        "garden": (45, 125, 45),
-        "meadow": (38, 110, 38),
-        "grass": (36, 105, 36),
-        "pitch": (48, 115, 55),
-        "playground": (48, 115, 55),
-        "sand": (160, 150, 110),
-        "beach": (170, 160, 115),
-    }
-
     tree_budget = max(600, screen_w * screen_h // 400)
     visible_sceneries = (
         spatial_grid.ways_in_rect(vminx, vminy, vmaxx, vmaxy)
@@ -198,7 +282,7 @@ def draw_scenery(
         if len(sc.points_m) < 3:
             continue
         pts = [world_to_screen(x, y, camx, camy, px_per_m, screen_w, screen_h) for (x, y) in sc.points_m]
-        color = colors.get(sc.kind.lower(), (38, 105, 38))
+        color = SCENERY_COLORS.get(sc.kind.lower(), (38, 105, 38))
         pygame.draw.polygon(screen, color, pts)
         trees = getattr(sc, "trees", [])
         visible_tree_count = sum(
@@ -217,14 +301,18 @@ def draw_scenery(
             shake = effect.get("shake", 0.0)
             if shake > 0.0:
                 sx += math.sin(shake * 42.0) * max(1, int(2.0 * px_per_m))
-            variation = abs(math.sin(tree_x * 12.9898 + tree_y * 78.233))
+            tree_variations = getattr(sc, "tree_variations", ())
+            variation = (
+                tree_variations[tree_index]
+                if tree_index < len(tree_variations)
+                else abs(math.sin(tree_x * 12.9898 + tree_y * 78.233))
+            )
             size = 0.72 + variation * 0.62
             trunk = max(1, int(0.7 * size * px_per_m))
             trunk_height = max(2, int(1.5 * size * px_per_m))
             crown = max(2, int(2.2 * size * px_per_m))
             trunk_color = (78 + int(22 * variation), 52 + int(18 * variation), 27)
-            crown_colors = ((25, 78, 29), (34, 101, 35), (48, 119, 42), (63, 112, 34))
-            crown_color = crown_colors[min(len(crown_colors) - 1, int(variation * len(crown_colors)))]
+            crown_color = TREE_CROWN_COLORS[min(len(TREE_CROWN_COLORS) - 1, int(variation * len(TREE_CROWN_COLORS)))]
             if tree_key in (fallen_trees or set()):
                 fall_heading = effect.get("angle", 0.0)
                 fall_x = sx + math.cos(fall_heading) * 3.2 * px_per_m
@@ -281,12 +369,15 @@ def draw_taxi_smoke(screen, car: Car, camx: float, camy: float, px_per_m: float 
     t = 5.0 - timer
     fx = math.cos(car.heading)
     fy = -math.sin(car.heading)
+    rx = math.sin(car.heading)
+    ry = math.cos(car.heading)
     front_cx = cx + fx * (length_px * 0.4)
     front_cy = cy + fy * (length_px * 0.4)
     for puff_idx in range(4):
         offset_t = (t * 2.5 + puff_idx * 0.7) % 2.0
-        puff_x = front_cx + math.sin(t * 3.0 + puff_idx) * (4.0 * offset_t)
-        puff_y = front_cy - offset_t * 14.0
+        drift = math.sin(t * 3.0 + puff_idx) * (4.0 * offset_t)
+        puff_x = front_cx + rx * drift
+        puff_y = front_cy + ry * drift - offset_t * 14.0
         radius = int(3.0 + offset_t * 5.0)
         alpha = int(max(0, min(160, (1.0 - offset_t / 2.0) * 160)))
         smoke_surf = pygame.Surface((radius * 2 + 2, radius * 2 + 2), pygame.SRCALPHA)
@@ -301,14 +392,20 @@ def draw_taxi_exhaust(screen, car: Car, camx: float, camy: float, px_per_m: floa
     cx, cy = world_to_screen(car.x, car.y, camx, camy, px_per_m, SCREEN_W, SCREEN_H)
     length_px = max(5.0, getattr(car, "length_m", 4.0) * px_per_m)
     t = pygame.time.get_ticks() / 1000.0
-    rear_cx = cx - math.cos(car.heading) * (length_px * 0.4)
-    rear_cy = cy + math.sin(car.heading) * (length_px * 0.4)
+    fx = math.cos(car.heading)
+    fy = -math.sin(car.heading)
+    rx = math.sin(car.heading)
+    ry = math.cos(car.heading)
+    rear_cx = cx - fx * (length_px * 0.4)
+    rear_cy = cy - fy * (length_px * 0.4)
     for puff_idx in range(4):
         offset_t = (t * 2.5 + puff_idx * 0.7) % 2.0
         trail_distance = offset_t * 14.0
-        puff_x = rear_cx - math.cos(car.heading) * trail_distance
-        puff_y = rear_cy + math.sin(car.heading) * trail_distance - offset_t * 3.0
-        puff_x += math.sin(t * 3.0 + puff_idx) * (2.0 * offset_t)
+        puff_x = rear_cx - fx * trail_distance
+        puff_y = rear_cy - fy * trail_distance - offset_t * 3.0
+        drift = math.sin(t * 3.0 + puff_idx) * (2.0 * offset_t)
+        puff_x += rx * drift
+        puff_y += ry * drift
         radius = int(3.0 + offset_t * 5.0)
         alpha = int(max(0, min(160, (1.0 - offset_t / 2.0) * 160)))
         smoke_surf = pygame.Surface((radius * 2 + 2, radius * 2 + 2), pygame.SRCALPHA)
@@ -445,18 +542,20 @@ def draw_buildings(
         depth = min(30, max(3, int(height * 0.35 * px_per_m)))
         roof = [(x - depth * 0.7, y - depth) for x, y in pts]
 
-        building_center_x = sum(point[0] for point in b.points_m) / len(b.points_m)
-        building_center_y = sum(point[1] for point in b.points_m) / len(b.points_m)
-        texture_seed = abs(math.sin(building_center_x * 0.013 + building_center_y * 0.017))
-        wall_colors = ((158, 105, 82), (174, 166, 143), (116, 131, 119), (139, 139, 137))
-        roof_colors = ((92, 57, 48), (102, 96, 82), (66, 83, 69), (83, 86, 87))
-        texture_index = min(len(wall_colors) - 1, int(texture_seed * len(wall_colors)))
+        center_x, center_y = getattr(b, "center_m", (0.0, 0.0))
+        if center_x == 0.0 and center_y == 0.0 and b.points_m:
+            center_x = sum(point[0] for point in b.points_m) / len(b.points_m)
+            center_y = sum(point[1] for point in b.points_m) / len(b.points_m)
+        texture_seed = getattr(b, "texture_seed", None)
+        if texture_seed is None:
+            texture_seed = abs(math.sin(center_x * 0.013 + center_y * 0.017))
+        texture_index = min(len(BUILDING_WALL_COLORS) - 1, int(texture_seed * len(BUILDING_WALL_COLORS)))
         pygame.draw.polygon(screen, (45, 42, 39), [(x + 2, y + 3) for x, y in roof])
         for index, point in enumerate(pts):
             next_point = pts[(index + 1) % len(pts)]
             next_roof = roof[(index + 1) % len(roof)]
-            pygame.draw.polygon(screen, wall_colors[texture_index], [point, next_point, next_roof, roof[index]])
-        roof_color = roof_colors[texture_index]
+            pygame.draw.polygon(screen, BUILDING_WALL_COLORS[texture_index], [point, next_point, next_roof, roof[index]])
+        roof_color = BUILDING_ROOF_COLORS[texture_index]
         pygame.draw.polygon(screen, roof_color, roof)
         pygame.draw.lines(screen, (70, 66, 61), True, roof, 1)
 
@@ -618,13 +717,17 @@ def draw_ways(
             arrow_color = (200, 200, 200)
             step_dist = 40.0  # meters between arrows
             cum_dist = 0.0
+            segment_lengths = getattr(w, "segment_lengths", ())
+            segment_headings = getattr(w, "segment_headings", ())
             for i in range(len(pts_world) - 1):
                 ax, ay = pts_world[i]
                 bx, by = pts_world[i + 1]
-                seg_len = math.hypot(bx - ax, by - ay)
+                seg_len = segment_lengths[i] if i < len(segment_lengths) else math.hypot(bx - ax, by - ay)
                 if seg_len < 1.0:
                     continue
-                seg_angle = math.atan2(by - ay, bx - ax)
+                seg_angle = segment_headings[i] if i < len(segment_headings) else math.atan2(by - ay, bx - ax)
+                if oneway_val < 0:
+                    seg_angle += math.pi
                 while cum_dist < seg_len:
                     if cum_dist > 5.0:  # avoid right at vertices
                         px_w = ax + (cum_dist / seg_len) * (bx - ax)
@@ -658,23 +761,84 @@ def draw_street_lights(
     screen_w: int = SCREEN_W,
     screen_h: int = SCREEN_H,
     spatial_grid=None,
+    visible_road_count: Optional[int] = None,
+    daylight_surface=None,
+    latitude: float = DEFAULT_SUN_LATITUDE,
+    longitude: float = DEFAULT_SUN_LONGITUDE,
+    buildings: Optional[List[Building]] = None,
 ) -> None:
     """Draw simple roadside lamps on visible urban roads."""
     import pygame
+    global _street_light_last_debug_log_ms
 
     hour = (game_time_seconds / 3600.0) % 24.0
-    daylight = max(0.0, math.sin((hour - 6.0) * math.pi / 12.0))
-    twilight = min(1.0, daylight * 1.8)
+    sun_altitude, sunrise_minutes, sunset_minutes = solar_altitude_and_events(
+        game_time_seconds, latitude, longitude
+    )
+    twilight = max(0.0, min(1.0, (sun_altitude + 12.0) / 18.0))
     darkness = 1.0 - twilight
+    street_light_brightness = int(45.0 + 190.0 * min(1.0, (darkness - 0.25) / 0.75))
     street_lighting_enabled = darkness > 0.25
-    vminx, vminy, vmaxx, vmaxy = get_viewport_bounds(camx, camy, px_per_m, screen_w, screen_h, 10.0)
+    if not street_lighting_enabled:
+        global _street_light_frame_world_positions
+        _street_light_frame_world_positions = []
+        if _render_logger.isEnabledFor(logging.DEBUG):
+            now_ms = pygame.time.get_ticks()
+            if now_ms - _street_light_last_debug_log_ms >= 1000:
+                _render_logger.debug(
+                    "Street lights: off time=%02d:%02d sun_altitude=%.2f sunrise=%s sunset=%s brightness=%d",
+                    int(hour),
+                    int((hour % 1.0) * 60.0),
+                    sun_altitude,
+                    _format_solar_time(sunrise_minutes),
+                    _format_solar_time(sunset_minutes),
+                    0,
+                )
+                _street_light_last_debug_log_ms = now_ms
+        return
+    cache_pixel_size = 16
+    frame_cache_key = (
+        id(ways),
+        len(ways),
+        id(ways[-1]) if ways else None,
+        round(camx * px_per_m / cache_pixel_size),
+        round(camy * px_per_m / cache_pixel_size),
+        px_per_m,
+        round(darkness * 32.0),
+        screen.get_size(),
+    )
+    global _street_light_frame_cache_key, _street_light_frame_cache_surface, _street_light_frame_cache_camera
+    if (
+        daylight_surface is None
+        and frame_cache_key == _street_light_frame_cache_key
+        and _street_light_frame_cache_surface is not None
+    ):
+        cached_camx, cached_camy = _street_light_frame_cache_camera
+        offset_x = round((cached_camx - camx) * px_per_m)
+        offset_y = round((camy - cached_camy) * px_per_m)
+        screen.blit(_street_light_frame_cache_surface, (offset_x, offset_y))
+        if _render_logger.isEnabledFor(logging.DEBUG):
+            now_ms = pygame.time.get_ticks()
+            if now_ms - _street_light_last_debug_log_ms >= 1000:
+                _render_logger.debug(
+                    "Street lights: cache-hit time=%02d:%02d darkness=%.2f brightness=%d camera=(%.1f,%.1f)",
+                    int(hour),
+                    int((hour % 1.0) * 60.0),
+                    darkness,
+                    street_light_brightness,
+                    camx,
+                    camy,
+                )
+                _street_light_last_debug_log_ms = now_ms
+        return
+    # Build the lighting layer beyond the visible edge so lamps are ready before entering view.
+    vminx, vminy, vmaxx, vmaxy = get_viewport_bounds(camx, camy, px_per_m, screen_w, screen_h, 40.0)
     if spatial_grid is not None:
         visible_ways = spatial_grid.ways_in_rect(vminx, vminy, vmaxx, vmaxy)
     else:
         visible_ways = ways
 
-    excluded_highways = {"motorway", "motorway_link", "trunk", "trunk_link"}
-    global _street_light_junction_cache
+    global _street_light_junction_cache, _street_light_junction_grid_cache
     cache_key = (id(ways), len(ways), id(ways[-1]) if ways else None)
     if _street_light_junction_cache is None or _street_light_junction_cache[0] != cache_key:
         point_ways = {}
@@ -689,22 +853,46 @@ def draw_street_lights(
             if len(way_ids) >= 2
         ]
         _street_light_junction_cache = (cache_key, junction_points)
+        junction_grid = {}
+        junction_cell_size = 40.0
+        for junction_x, junction_y in junction_points:
+            cell = (math.floor(junction_x / junction_cell_size), math.floor(junction_y / junction_cell_size))
+            junction_grid.setdefault(cell, []).append((junction_x, junction_y))
+        _street_light_junction_grid_cache = (cache_key, junction_grid)
     else:
         junction_points = _street_light_junction_cache[1]
+    junction_grid = _street_light_junction_grid_cache[1]
     light_layer = pygame.Surface(screen.get_size(), pygame.SRCALPHA) if street_lighting_enabled else None
+    _street_light_frame_world_positions = []
     lamp_centers = []
+    lamp_directions = []
     lamp_spacing = 20.0
+    visible_way_count = 0
     for way in visible_ways:
-        if not getattr(way, "is_drivable", True) or way.highway in excluded_highways or len(way.points_m) < 2:
+        visible_way_count += 1
+        if len(lamp_centers) >= MAX_VISIBLE_STREET_LIGHTS:
+            break
+        if (
+            not getattr(way, "is_drivable", True)
+            or getattr(way, "lit", None) != "yes"
+            or len(way.points_m) < 2
+        ):
             continue
         distance_to_lamp = 0.0
-        for start, end in zip(way.points_m, way.points_m[1:]):
+        segment_lengths = getattr(way, "segment_lengths", ())
+        for segment_index, (start, end) in enumerate(zip(way.points_m, way.points_m[1:])):
             dx = end[0] - start[0]
             dy = end[1] - start[1]
-            segment_length = math.hypot(dx, dy)
+            segment_length = (
+                segment_lengths[segment_index]
+                if segment_index < len(segment_lengths)
+                else math.hypot(dx, dy)
+            )
             if segment_length < 1.0:
                 continue
             while distance_to_lamp <= segment_length:
+                if len(lamp_centers) >= MAX_VISIBLE_STREET_LIGHTS:
+                    break
                 fraction = distance_to_lamp / segment_length
                 lamp_x = start[0] + dx * fraction
                 lamp_y = start[1] + dy * fraction
@@ -712,11 +900,18 @@ def draw_street_lights(
                 normal_y = dx / segment_length
                 edge_distance = getattr(way, "half_width_m", 4.0) + 1.0
                 for side in (-1.0, 1.0):
+                    if len(lamp_centers) >= MAX_VISIBLE_STREET_LIGHTS:
+                        break
                     world_x = lamp_x + normal_x * edge_distance * side
                     world_y = lamp_y + normal_y * edge_distance * side
+                    junction_cell_size = 40.0
+                    junction_cell_x = math.floor(world_x / junction_cell_size)
+                    junction_cell_y = math.floor(world_y / junction_cell_size)
                     if any(
-                        math.hypot(world_x - junction_x, world_y - junction_y) < 18.0
-                        for junction_x, junction_y in junction_points
+                        (world_x - junction_x) ** 2 + (world_y - junction_y) ** 2 < 18.0 * 18.0
+                        for cell_x in (junction_cell_x - 1, junction_cell_x, junction_cell_x + 1)
+                        for cell_y in (junction_cell_y - 1, junction_cell_y, junction_cell_y + 1)
+                        for junction_x, junction_y in junction_grid.get((cell_x, cell_y), ())
                     ):
                         continue
                     if not (vminx <= world_x <= vmaxx and vminy <= world_y <= vmaxy):
@@ -726,37 +921,202 @@ def draw_street_lights(
                     )
                     lamp_center = (int(screen_x), int(screen_y))
                     lamp_radius = max(1, int(px_per_m * 0.28))
-                    pygame.draw.circle(screen, (24, 27, 25), lamp_center, lamp_radius)
-                    if street_lighting_enabled:
-                        lamp_alpha = int(45.0 + 190.0 * min(1.0, (darkness - 0.25) / 0.75))
-                        glow_radius = max(16, int(14.0 * px_per_m))
-                        glow_center = lamp_center
-                        road_direction = math.atan2(-normal_y * side, -normal_x * side)
-                        for gradient_step in range(10, 0, -1):
-                            radius = max(1, int(glow_radius * gradient_step / 10.0))
-                            glow_points = [glow_center]
-                            for angle_step in range(13):
-                                angle = road_direction - math.pi / 2.0 + angle_step * math.pi / 12.0
-                                glow_points.append(
-                                    (
-                                        int(glow_center[0] + math.cos(angle) * radius),
-                                        int(glow_center[1] - math.sin(angle) * radius),
-                                    )
-                                )
-                            pygame.draw.polygon(
-                                light_layer,
-                                (215, 218, 208, max(5, int(lamp_alpha * (11 - gradient_step) / 20.0))),
-                                glow_points,
-                            )
-                        lamp_centers.append(glow_center)
+                    lamp_color = (235, 215, 120)
+                    road_direction = math.atan2(-normal_y * side, -normal_x * side)
+                    pygame.draw.circle(screen, lamp_color, lamp_center, lamp_radius)
+                    lamp_centers.append(lamp_center)
+                    lamp_directions.append(road_direction)
+                    _street_light_frame_world_positions.append((world_x, world_y))
                 distance_to_lamp += lamp_spacing
             distance_to_lamp -= segment_length
 
     if light_layer is not None:
-        screen.blit(light_layer, (0, 0))
         lamp_radius = max(1, int(px_per_m * 0.28))
         for lamp_center in lamp_centers:
-            pygame.draw.circle(screen, (24, 27, 25), lamp_center, lamp_radius)
+            pygame.draw.circle(light_layer, (235, 215, 120), lamp_center, lamp_radius)
+        _street_light_frame_cache_key = frame_cache_key
+        _street_light_frame_cache_surface = light_layer
+        _street_light_frame_cache_camera = (camx, camy)
+        screen.blit(light_layer, (0, 0))
+        if _render_logger.isEnabledFor(logging.DEBUG):
+            now_ms = pygame.time.get_ticks()
+            if now_ms - _street_light_last_debug_log_ms >= 1000:
+                _render_logger.debug(
+                    "Street lights: rendered time=%02d:%02d sun_altitude=%.2f sunrise=%s sunset=%s roads=%d lamps=%d glows=%d darkness=%.2f brightness=%d",
+                    int(hour),
+                    int((hour % 1.0) * 60.0),
+                    sun_altitude,
+                    _format_solar_time(sunrise_minutes),
+                    _format_solar_time(sunset_minutes),
+                    visible_way_count,
+                    len(lamp_centers),
+                    0,
+                    darkness,
+                    street_light_brightness,
+                )
+                _street_light_last_debug_log_ms = now_ms
+        if daylight_surface is not None and lamp_centers:
+            daylight_mask = pygame.Surface(screen.get_size(), pygame.SRCALPHA)
+            restoration_radius = max(2, int(10.0 * px_per_m))
+            for lamp_center, road_direction in zip(lamp_centers, lamp_directions):
+                sector_points = [lamp_center]
+                half_sector_angle = math.radians(135.0)
+                for angle_step in range(49):
+                    angle = (
+                        road_direction - half_sector_angle
+                        + angle_step * (2.0 * half_sector_angle / 48.0)
+                    )
+                    sector_points.append(
+                        (
+                            int(lamp_center[0] + math.cos(angle) * restoration_radius),
+                            int(lamp_center[1] - math.sin(angle) * restoration_radius),
+                        )
+                    )
+                pygame.draw.polygon(daylight_mask, (255, 255, 255, 255), sector_points)
+            restored_daylight = pygame.Surface(screen.get_size(), pygame.SRCALPHA)
+            restored_daylight.blit(daylight_surface, (0, 0))
+            restored_daylight.blit(daylight_mask, (0, 0), special_flags=pygame.BLEND_RGBA_MULT)
+            screen.blit(restored_daylight, (0, 0))
+            for lamp_center in lamp_centers:
+                pygame.draw.circle(screen, (235, 215, 120), lamp_center, lamp_radius)
+
+
+def draw_headlight_beams(
+    screen,
+    vehicles,
+    camx: float,
+    camy: float,
+    game_time_seconds: float,
+    px_per_m: float = PX_PER_M,
+    screen_w: int = SCREEN_W,
+    screen_h: int = SCREEN_H,
+    daylight_surface=None,
+    latitude: float = DEFAULT_SUN_LATITUDE,
+    longitude: float = DEFAULT_SUN_LONGITUDE,
+    npc_vehicles=None,
+    street_light_positions=None,
+) -> None:
+    """Draw lightweight forward-facing headlight beams for visible vehicles at night."""
+    import pygame
+
+    sun_altitude, _, _ = solar_altitude_and_events(game_time_seconds, latitude, longitude)
+    twilight = max(0.0, min(1.0, (sun_altitude + 12.0) / 18.0))
+    darkness = 1.0 - twilight
+    if darkness <= 0.25:
+        return
+
+    vminx, vminy, vmaxx, vmaxy = get_viewport_bounds(camx, camy, px_per_m, screen_w, screen_h, 30.0)
+    beam_layer = pygame.Surface(screen.get_size(), pygame.SRCALPHA)
+    beam_length = 15.0 * px_per_m
+    beam_near = 1.0 * px_per_m
+    beam_width = 4.5 * px_per_m
+    crossing_offset = 3.0 * px_per_m
+    long_beam_length = beam_length * 3.0
+    oncoming_detection_distance = 45.0
+    street_light_radius = 22.0
+    active_street_light_positions = (
+        _street_light_frame_world_positions
+        if street_light_positions is None
+        else street_light_positions
+    )
+    npc_ids = {id(vehicle) for vehicle in npc_vehicles or ()}
+
+    def has_oncoming_vehicle(vehicle, x: float, y: float, heading: float) -> bool:
+        forward_x = math.cos(heading)
+        forward_y = math.sin(heading)
+        for other in vehicles:
+            if other is vehicle:
+                continue
+            other_x = getattr(other, "x", None)
+            other_y = getattr(other, "y", None)
+            other_heading = getattr(other, "heading", None)
+            if other_x is None or other_y is None or other_heading is None:
+                continue
+            delta_x = other_x - x
+            delta_y = other_y - y
+            distance = math.hypot(delta_x, delta_y)
+            if distance <= 0.1 or distance > oncoming_detection_distance:
+                continue
+            ahead = (delta_x * forward_x + delta_y * forward_y) / distance
+            other_forward_x = math.cos(other_heading)
+            other_forward_y = math.sin(other_heading)
+            opposing = forward_x * other_forward_x + forward_y * other_forward_y
+            if ahead > 0.2 and opposing < -0.5:
+                return True
+        return False
+
+    def is_near_street_light(x: float, y: float) -> bool:
+        return any(
+            (x - light_x) ** 2 + (y - light_y) ** 2 <= (street_light_radius ** 2)
+            for light_x, light_y in active_street_light_positions
+        )
+
+    drawn = 0
+    for vehicle in vehicles:
+        if drawn >= 80:
+            break
+        x = getattr(vehicle, "x", None)
+        y = getattr(vehicle, "y", None)
+        heading = getattr(vehicle, "heading", None)
+        if x is None or y is None or heading is None or not (vminx <= x <= vmaxx and vminy <= y <= vmaxy):
+            continue
+        cx, cy = world_to_screen(x, y, camx, camy, px_per_m, screen_w, screen_h)
+        forward_x = math.cos(heading)
+        forward_y = -math.sin(heading)
+        right_x = math.sin(heading)
+        right_y = math.cos(heading)
+        beam_length_for_vehicle = beam_length
+        if (
+            id(vehicle) in npc_ids
+            and not is_near_street_light(x, y)
+            and not has_oncoming_vehicle(vehicle, x, y, heading)
+        ):
+            beam_length_for_vehicle = long_beam_length
+        vehicle_width = max(3.0, getattr(vehicle, "width_m", 1.8) * px_per_m)
+        headlight_offset = vehicle_width * 0.35
+        front_x = cx + forward_x * (beam_near + max(0.0, vehicle_width * 0.55))
+        front_y = cy + forward_y * (beam_near + max(0.0, vehicle_width * 0.55))
+        for side in (-1.0, 1.0):
+            side_x = right_x * side
+            side_y = right_y * side
+            origin_x = front_x + side_x * headlight_offset
+            origin_y = front_y + side_y * headlight_offset
+            tip_shift = crossing_offset if side < 0.0 else crossing_offset * 0.75
+            tip_x = cx + forward_x * beam_length_for_vehicle + right_x * tip_shift
+            tip_y = cy + forward_y * beam_length_for_vehicle + right_y * tip_shift
+            near_spread = min(beam_width * 0.08, vehicle_width * 0.10)
+            far_width = beam_width * 1.7
+            near_x = origin_x + side_x * near_spread
+            near_y = origin_y + side_y * near_spread
+            far_x = tip_x + side_x * far_width
+            far_y = tip_y + side_y * far_width
+            pygame.draw.polygon(
+                beam_layer,
+                    (255, 255, 255, 255),
+                [
+                    (int(origin_x), int(origin_y)),
+                    (int(near_x), int(near_y)),
+                    (int(far_x), int(far_y)),
+                    (int(tip_x), int(tip_y)),
+                ],
+            )
+            cap_x = tip_x + side_x * far_width * 0.5
+            cap_y = tip_y + side_y * far_width * 0.5
+            pygame.draw.circle(
+                beam_layer,
+                (255, 255, 255, 255),
+                (int(cap_x), int(cap_y)),
+                max(1, int(far_width * 0.5)),
+            )
+        drawn += 1
+    if drawn:
+        if daylight_surface is not None:
+            restored_daylight = pygame.Surface(screen.get_size(), pygame.SRCALPHA)
+            restored_daylight.blit(daylight_surface, (0, 0))
+            restored_daylight.blit(beam_layer, (0, 0), special_flags=pygame.BLEND_RGBA_MULT)
+            screen.blit(restored_daylight, (0, 0))
+        else:
+            screen.blit(beam_layer, (0, 0))
 
 
 def draw_tire_tracks(
@@ -1129,6 +1489,76 @@ def draw_labels(
                     seen_names.add(name)
 
 
+def _draw_vehicle_lights(
+    screen,
+    cx: float,
+    cy: float,
+    heading: float,
+    length_px: float,
+    width_px: float,
+    turn_signal: str = "",
+    turn_signal_elapsed: float = 0.0,
+    braking: bool = False,
+    reversing: bool = False,
+) -> None:
+    import pygame
+
+    fx = math.cos(heading)
+    fy = -math.sin(heading)
+    rx = math.sin(heading)
+    ry = math.cos(heading)
+    hl = length_px / 2.0
+    hw = width_px / 2.0
+    light_inset = hw * 0.7
+    light_r = max(1.2, width_px * 0.18)
+    def draw_light_rectangle(color, light, length, width):
+        half_length = length * 0.5
+        half_width = width * 0.5
+        corners = [
+            (light[0] + fx * half_length + rx * half_width, light[1] + fy * half_length + ry * half_width),
+            (light[0] + fx * half_length - rx * half_width, light[1] + fy * half_length - ry * half_width),
+            (light[0] - fx * half_length - rx * half_width, light[1] - fy * half_length - ry * half_width),
+            (light[0] - fx * half_length + rx * half_width, light[1] - fy * half_length + ry * half_width),
+        ]
+        pygame.draw.polygon(screen, color, corners)
+
+    front_right = (cx + fx * (hl - 0.5) + rx * light_inset, cy + fy * (hl - 0.5) + ry * light_inset)
+    front_left = (cx + fx * (hl - 0.5) - rx * light_inset, cy + fy * (hl - 0.5) - ry * light_inset)
+    rear_right = (cx - fx * (hl - 0.5) + rx * light_inset, cy - fy * (hl - 0.5) + ry * light_inset)
+    rear_left = (cx - fx * (hl - 0.5) - rx * light_inset, cy - fy * (hl - 0.5) - ry * light_inset)
+    # Keep the lamp span inside the vehicle's side edge.
+    light_length = min(width_px * 0.25, max(1.0, light_r * 2.4))
+    light_width = min(length_px * 0.08, max(1.0, light_r * 0.75))
+    for light in (front_right, front_left):
+        draw_light_rectangle((255, 255, 230), light, light_width, light_length)
+    for light in (rear_right, rear_left):
+        brake_scale = 1.2 if braking else 1.0
+        draw_light_rectangle(
+            (255, 0, 0) if braking else (230, 30, 30),
+            light,
+            light_width * brake_scale,
+            light_length * brake_scale,
+        )
+    if reversing:
+        reverse_r = max(1.0, light_r * 0.65)
+        reverse_x = (rear_right[0] + rear_left[0]) * 0.5
+        reverse_y = (rear_right[1] + rear_left[1]) * 0.5
+        draw_light_rectangle((245, 245, 235), (reverse_x, reverse_y), reverse_r, light_length * 0.65)
+    if turn_signal and (turn_signal_elapsed < 0.45 or (pygame.time.get_ticks() // 450) % 2 == 0):
+        signal_side = 1.0 if turn_signal == "right" else -1.0
+        for signal_x, signal_y in (
+            (
+                cx + fx * (hl - 0.5) + rx * (light_inset * signal_side),
+                cy + fy * (hl - 0.5) + ry * (light_inset * signal_side),
+            ),
+            (
+                cx - fx * (hl - 0.5) + rx * (light_inset * signal_side),
+                cy - fy * (hl - 0.5) + ry * (light_inset * signal_side),
+            ),
+        ):
+            draw_light_rectangle((255, 170, 20), (signal_x, signal_y), light_width, light_length)
+
+
 def _draw_vehicle(
     screen,
     cx: float,
@@ -1222,28 +1652,7 @@ def _draw_vehicle(
         pygame.draw.line(screen, outline_color, door_inner_front, door_outer_front, 1)
         pygame.draw.line(screen, outline_color, door_inner_rear, door_outer_rear, 1)
 
-    # Lights (front white, back red)
-    light_inset = hw * 0.7
-    light_r = max(1.0, min(2.5, width_px * 0.15))
-
-    # Front headlights (white / yellow-white)
-    f_r = (cx + fx * (hl - 0.5) + rx * light_inset, cy + fy * (hl - 0.5) + ry * light_inset)
-    f_l = (cx + fx * (hl - 0.5) - rx * light_inset, cy + fy * (hl - 0.5) - ry * light_inset)
-    pygame.draw.circle(screen, (255, 255, 230), (int(f_r[0]), int(f_r[1])), int(light_r))
-    pygame.draw.circle(screen, (255, 255, 230), (int(f_l[0]), int(f_l[1])), int(light_r))
-
-    # Rear taillights (red)
-    r_r = (cx - fx * (hl - 0.5) + rx * light_inset, cy - fy * (hl - 0.5) + ry * light_inset)
-    r_l = (cx - fx * (hl - 0.5) - rx * light_inset, cy - fy * (hl - 0.5) - ry * light_inset)
-    pygame.draw.circle(screen, (230, 30, 30), (int(r_r[0]), int(r_r[1])), int(light_r))
-    pygame.draw.circle(screen, (230, 30, 30), (int(r_l[0]), int(r_l[1])), int(light_r))
-
-    if turn_signal and (turn_signal_elapsed < 0.45 or (pygame.time.get_ticks() // 450) % 2 == 0):
-        signal_color = (255, 170, 20)
-        signal_side = 1.0 if turn_signal == "right" else -1.0
-        signal_x = cx + fx * (hl - 0.5) + rx * (light_inset * signal_side)
-        signal_y = cy + fy * (hl - 0.5) + ry * (light_inset * signal_side)
-        pygame.draw.circle(screen, signal_color, (int(signal_x), int(signal_y)), int(light_r + 0.5))
+    _draw_vehicle_lights(screen, cx, cy, heading, length_px, width_px, turn_signal, turn_signal_elapsed)
 
 
 def draw_car(
@@ -1311,6 +1720,28 @@ def draw_car(
         screen.blit(bubble_surf, (int(bubble_x), int(bubble_y)))
 
 
+def draw_vehicle_lights(screen, vehicles, camx: float, camy: float, px_per_m: float = PX_PER_M) -> None:
+    """Redraw vehicle lamps after night tinting so they remain visible in darkness."""
+    for vehicle in vehicles:
+        if getattr(vehicle, "is_police", False):
+            continue
+        cx, cy = world_to_screen(vehicle.x, vehicle.y, camx, camy, px_per_m)
+        length_px = max(5.0, getattr(vehicle, "length_m", 4.0) * px_per_m)
+        width_px = max(2.5, getattr(vehicle, "width_m", 1.8) * px_per_m)
+        _draw_vehicle_lights(
+            screen,
+            cx,
+            cy,
+            vehicle.heading,
+            length_px,
+            width_px,
+            getattr(vehicle, "turn_signal", ""),
+            getattr(vehicle, "turn_signal_elapsed", 0.0),
+            braking=getattr(vehicle, "braking", False),
+            reversing=getattr(vehicle, "speed", 0.0) < -0.05,
+        )
+
+
 def draw_npc_cars(
     screen,
     npcs: List,
@@ -1359,15 +1790,23 @@ def draw_npc_cars(
         vehicle_type = getattr(npc, "vehicle_type", "car")
         if vehicle_type in ("motorcycle", "moped"):
             sprite = _motorcycle_sprite if vehicle_type == "motorcycle" else _moped_sprite
-            sprite = _tinted_two_wheeler_sprite(sprite, npc.color, vehicle_type)
             sprite_length = max(12, int(length_px * 1.7))
             sprite_width = max(7, int(width_px * 1.8))
-            scaled_sprite = pygame.transform.smoothscale(sprite, (sprite_width, sprite_length))
             fallen_angle = 90.0 if getattr(npc, "fallen", False) else 0.0
-            rotated_sprite = pygame.transform.rotate(
-                scaled_sprite,
-                math.degrees(npc.heading) - 90.0 + fallen_angle,
+            render_angle = round((math.degrees(npc.heading) - 90.0 + fallen_angle) / 15.0) * 15.0
+            render_key = (
+                vehicle_type,
+                tuple(npc.color),
+                sprite_width,
+                sprite_length,
+                render_angle,
             )
+            rotated_sprite = _two_wheeler_render_cache.get(render_key)
+            if rotated_sprite is None:
+                tinted_sprite = _tinted_two_wheeler_sprite(sprite, npc.color, vehicle_type)
+                scaled_sprite = pygame.transform.smoothscale(tinted_sprite, (sprite_width, sprite_length))
+                rotated_sprite = pygame.transform.rotate(scaled_sprite, render_angle)
+                _two_wheeler_render_cache[render_key] = rotated_sprite
             screen.blit(rotated_sprite, rotated_sprite.get_rect(center=(int(cx), int(cy))))
         else:
             _draw_vehicle(
@@ -1392,12 +1831,15 @@ def draw_npc_cars(
             # 3 animated puff particles floating upwards from engine bay
             fx = math.cos(npc.heading)
             fy = -math.sin(npc.heading)
+            rx = math.sin(npc.heading)
+            ry = math.cos(npc.heading)
             front_cx = cx + fx * (length_px * 0.4)
             front_cy = cy + fy * (length_px * 0.4)
             for puff_idx in range(4):
                 offset_t = (t * 2.5 + puff_idx * 0.7) % 2.0
-                puff_x = front_cx + math.sin(t * 3.0 + puff_idx) * (4.0 * offset_t)
-                puff_y = front_cy - offset_t * 14.0  # drifts upwards
+                drift = math.sin(t * 3.0 + puff_idx) * (4.0 * offset_t)
+                puff_x = front_cx + rx * drift
+                puff_y = front_cy + ry * drift - offset_t * 14.0  # drifts upwards
                 radius = int(3.0 + offset_t * 5.0)
                 alpha = int(max(0, min(160, (1.0 - offset_t / 2.0) * 160)))
                 smoke_surf = pygame.Surface((radius * 2 + 2, radius * 2 + 2), pygame.SRCALPHA)
@@ -1622,6 +2064,8 @@ def draw_traffic_lights(
     """Draw traffic signal posts and active lights."""
     import pygame
 
+    global _traffic_light_surface_cache
+
     vminx, vminy, vmaxx, vmaxy = get_viewport_bounds(camx, camy, px_per_m, screen_w, screen_h, 30.0)
 
     visible_traffic_lights = (
@@ -1646,17 +2090,19 @@ def draw_traffic_lights(
         g_col = (40, 240, 60) if is_green else (10, 50, 15)
 
         lamp_r = 2
-        signal_surface = pygame.Surface((7, 18), pygame.SRCALPHA)
-        signal_surface.fill((15, 15, 15, 255))
-        pygame.draw.rect(signal_surface, (70, 70, 70), signal_surface.get_rect(), width=1, border_radius=2)
-        for y, color, active in ((4, r_col, is_red), (9, y_col, is_yellow), (14, g_col, is_green)):
-            if active:
-                pygame.draw.circle(signal_surface, (*color, 90), (3, y), 4)
-            pygame.draw.circle(signal_surface, color, (3, y), lamp_r)
-
-        # Rotate the housing itself so its long axis shows the controlled approach.
         rotation = 90.0 - math.degrees(tl.direction_angle or 0.0)
-        rotated = pygame.transform.rotate(signal_surface, rotation)
+        cache_key = (id(tl), state, round(rotation, 3), px_per_m)
+        rotated = _traffic_light_surface_cache.get(cache_key)
+        if rotated is None:
+            signal_surface = pygame.Surface((7, 18), pygame.SRCALPHA)
+            signal_surface.fill((15, 15, 15, 255))
+            pygame.draw.rect(signal_surface, (70, 70, 70), signal_surface.get_rect(), width=1, border_radius=2)
+            for y, color, active in ((4, r_col, is_red), (9, y_col, is_yellow), (14, g_col, is_green)):
+                if active:
+                    pygame.draw.circle(signal_surface, (*color, 90), (3, y), 4)
+                pygame.draw.circle(signal_surface, color, (3, y), lamp_r)
+            rotated = pygame.transform.rotate(signal_surface, rotation)
+            _traffic_light_surface_cache[cache_key] = rotated
         screen.blit(rotated, rotated.get_rect(center=(int(cx), int(cy))))
 
 
@@ -1672,6 +2118,11 @@ def draw_taxi_stops(
     """Draw yellow TAXI signs at OSM taxi stops."""
     import pygame
 
+    global _taxi_sign_text
+    if _taxi_sign_text is None:
+        sign_font = pygame.font.Font(None, 11)
+        _taxi_sign_text = sign_font.render("TAXI", True, (20, 20, 20))
+
     vminx, vminy, vmaxx, vmaxy = get_viewport_bounds(camx, camy, px_per_m, screen_w, screen_h, 30.0)
     for stop in taxi_stops:
         if not (vminx <= stop.x <= vmaxx and vminy <= stop.y <= vmaxy):
@@ -1684,9 +2135,7 @@ def draw_taxi_stops(
         pygame.draw.rect(screen, (20, 20, 20), sign, border_radius=2)
         inner_sign = sign.inflate(-2, -2)
         pygame.draw.rect(screen, (255, 205, 25), inner_sign, border_radius=1)
-        sign_font = pygame.font.Font(None, 11)
-        sign_text = sign_font.render("TAXI", True, (20, 20, 20))
-        screen.blit(sign_text, sign_text.get_rect(center=inner_sign.center))
+        screen.blit(_taxi_sign_text, _taxi_sign_text.get_rect(center=inner_sign.center))
 
 
 def draw_speed_cameras(
@@ -1892,18 +2341,30 @@ def draw_navigation_route(
     pygame.draw.lines(screen, (255, 215, 35), False, points, max(2, int(px_per_m * 0.45)))
 
 
-def draw_day_night_overlay(screen, game_time_seconds: float) -> None:
+def draw_day_night_overlay(
+    screen,
+    game_time_seconds: float,
+    visible_road_count: Optional[int] = None,
+    latitude: float = DEFAULT_SUN_LATITUDE,
+    longitude: float = DEFAULT_SUN_LONGITUDE,
+) -> None:
     """Tint the game world according to the simulated time of day."""
     import pygame
 
-    hour = (game_time_seconds / 3600.0) % 24.0
-    daylight = max(0.0, math.sin((hour - 6.0) * math.pi / 12.0))
-    twilight = min(1.0, daylight * 1.8)
+    sun_altitude, _, _ = solar_altitude_and_events(game_time_seconds, latitude, longitude)
+    twilight = max(0.0, min(1.0, (sun_altitude + 12.0) / 18.0))
     alpha = int(115.0 * (1.0 - twilight))
+    if visible_road_count is not None and alpha > 0:
+        sparse_area = max(0.0, min(1.0, (12.0 - visible_road_count) / 12.0))
+        alpha += int(95.0 * sparse_area)
     if alpha <= 0:
         return
-    overlay = pygame.Surface(screen.get_size(), pygame.SRCALPHA)
-    overlay.fill((10, 18, 48, alpha))
+    cache_key = (screen.get_size(), alpha)
+    overlay = _day_night_overlay_cache.get(cache_key)
+    if overlay is None:
+        overlay = pygame.Surface(screen.get_size(), pygame.SRCALPHA)
+        overlay.fill((10, 18, 48, alpha))
+        _day_night_overlay_cache[cache_key] = overlay
     screen.blit(overlay, (0, 0))
 
 

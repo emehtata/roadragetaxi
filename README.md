@@ -139,6 +139,7 @@ px_per_m = 9.0
 log_level = INFO
 file_logging = false
 taxi_brawls = false
+roadworks_enabled = false
 
 [map]
 overpass_endpoints = https://overpass-api.de/api/interpreter, https://overpass.private.coffee/api/interpreter, https://overpass.openstreetmap.fr/api/interpreter

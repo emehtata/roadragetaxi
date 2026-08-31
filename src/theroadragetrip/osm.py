@@ -241,6 +241,7 @@ class Way:
     highway: str
     half_width_m: float
     name: Optional[str] = None
+    lit: Optional[str] = None
     is_ice_road: bool = False
     is_drivable: bool = True
     is_busway: bool = False
@@ -252,6 +253,18 @@ class Way:
     speed_limit_kmh: int = 50  # Finnish speed limit in km/h
     bbox: Tuple[float, float, float, float] = (0.0, 0.0, 0.0, 0.0)
     osm_id: Optional[int] = None
+    segment_lengths: List[float] = field(default_factory=list, init=False, repr=False)
+    segment_headings: List[float] = field(default_factory=list, init=False, repr=False)
+    total_length_m: float = field(default=0.0, init=False, repr=False)
+
+    def __post_init__(self) -> None:
+        for start, end in zip(self.points_m, self.points_m[1:]):
+            dx = end[0] - start[0]
+            dy = end[1] - start[1]
+            length = math.hypot(dx, dy)
+            self.segment_lengths.append(length)
+            self.segment_headings.append(math.atan2(dy, dx) if length > 0.0 else 0.0)
+            self.total_length_m += length
 
 
 @dataclass
@@ -272,6 +285,8 @@ class Building:
     height_m: float = 8.0
     bbox: Tuple[float, float, float, float] = (0.0, 0.0, 0.0, 0.0)
     venue_type: Optional[str] = None
+    center_m: Tuple[float, float] = (0.0, 0.0)
+    texture_seed: float = 0.0
 
 
 @dataclass
@@ -281,6 +296,7 @@ class Scenery:
     name: Optional[str] = None
     bbox: Tuple[float, float, float, float] = (0.0, 0.0, 0.0, 0.0)
     trees: List[Tuple[float, float]] = field(default_factory=list)
+    tree_variations: List[float] = field(default_factory=list)
 
 
 def _building_height(tags: Dict[str, Any], points: List[Tuple[float, float]]) -> float:
@@ -881,6 +897,7 @@ def plant_trees(sceneries: List[Scenery], ways: List[Way]) -> None:
             ):
                 continue
             scenery.trees.append((x, y))
+            scenery.tree_variations.append(abs(math.sin(x * 12.9898 + y * 78.233)))
 
 
 def build_ways(
@@ -1062,6 +1079,8 @@ def build_ways(
         name = tags.get("name")
         housenumber = tags.get("addr:housenumber")
         street = tags.get("addr:street")
+        center_x = sum(point[0] for point in pts) / len(pts)
+        center_y = sum(point[1] for point in pts) / len(pts)
         buildings.append(Building(
             points_m=pts,
             name=name,
@@ -1070,6 +1089,8 @@ def build_ways(
             height_m=_building_height(tags, pts),
             bbox=ibbox,
             venue_type=tags.get("amenity"),
+            center_m=(center_x, center_y),
+            texture_seed=abs(math.sin(center_x * 0.013 + center_y * 0.017)),
         ))
 
     # 4. Roads (ways)
@@ -1226,6 +1247,7 @@ def build_ways(
 
         # Parse speed limit (OSM maxspeed tag with Finnish fallback)
         speed_lim = parse_speed_limit_kmh(tags.get("maxspeed"), highway)
+        lit_tag = str(tags.get("lit", "")).strip().lower() or None
 
         ways.append(
             Way(
@@ -1233,6 +1255,7 @@ def build_ways(
                 highway=highway,
                 half_width_m=halfw,
                 name=name,
+                lit=lit_tag,
                 is_ice_road=is_ice,
                 is_drivable=is_drivable,
                 is_busway=is_bus_route,
@@ -1271,6 +1294,8 @@ def build_ways(
             if "building" in tags:
                 housenumber = tags.get("addr:housenumber")
                 street = tags.get("addr:street")
+                center_x = sum(point[0] for point in pts) / len(pts)
+                center_y = sum(point[1] for point in pts) / len(pts)
                 buildings.append(Building(
                     points_m=pts,
                     name=name,
@@ -1279,6 +1304,8 @@ def build_ways(
                     height_m=_building_height(tags, pts),
                     bbox=ibbox,
                     venue_type=tags.get("amenity"),
+                    center_m=(center_x, center_y),
+                    texture_seed=abs(math.sin(center_x * 0.013 + center_y * 0.017)),
                 ))
             elif tags.get("natural") == "water" or tags.get("landuse") == "reservoir":
                 kind = tags.get("natural") or tags.get("landuse") or "water"
