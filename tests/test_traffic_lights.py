@@ -3,6 +3,7 @@ import math
 
 from theroadragetrip.osm import (
     TrafficLight,
+    SignalGroup,
     Way,
     build_ways,
     complete_traffic_light_approaches,
@@ -26,6 +27,15 @@ def test_traffic_light_states():
     assert tl.get_state(15.0) == "red+yellow"
     # wrap around to green
     assert tl.get_state(16.0) == "green"
+
+
+def test_signal_group_controls_multiple_physical_lights():
+    group = SignalGroup(approach_id="north", phase_id=0, offset=0.0)
+    first = TrafficLight(x=0.0, y=0.0, signal_group=group)
+    second = TrafficLight(x=2.0, y=0.0, signal_group=group)
+
+    assert first.get_state(0.0) == second.get_state(0.0) == "green"
+    assert group.allowed_movements == frozenset({"straight", "right"})
 
 
 def test_traffic_light_orthogonal_phases():
@@ -87,6 +97,7 @@ def test_single_signal_marker_generates_missing_intersection_approaches():
     generated = [light for light in result if light.id != 1]
     assert len(generated) == 4
     assert {round(light.direction_angle % math.pi, 4) for light in generated} == {0.0, round(math.pi / 2, 4)}
+    assert len({id(light.signal_group) for light in generated}) == 2
 
 
 def test_build_ways_splits_single_signal_at_four_arm_junction():

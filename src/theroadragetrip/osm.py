@@ -339,6 +339,27 @@ def _building_height(tags: Dict[str, Any], points: List[Tuple[float, float]]) ->
 
 
 @dataclass
+class SignalGroup:
+    """Logical signal controlling one or more physical traffic lights."""
+    approach_id: str
+    allowed_movements: frozenset[str] = frozenset({"straight", "right"})
+    phase_id: int = 0
+    cycle_time: float = 16.0
+    offset: float = 0.0
+
+    def get_state(self, current_time: float) -> str:
+        """Return the current state using the standard four-phase cycle."""
+        t = (current_time + self.offset) % self.cycle_time
+        if t < 5.5:
+            return "green"
+        if t < 7.0:
+            return "yellow"
+        if t < 14.5:
+            return "red"
+        return "red+yellow"
+
+
+@dataclass
 class TrafficLight:
     x: float
     y: float
@@ -347,6 +368,9 @@ class TrafficLight:
     layer: int = 0
     id: Optional[int] = None
     direction_angle: Optional[float] = None  # Road alignment heading in radians
+    signal_group: Optional[SignalGroup] = None
+    approach_id: Optional[str] = None
+    allowed_movements: frozenset[str] = frozenset({"straight", "right"})
 
     def get_state(self, current_time: float) -> str:
         """Return 'red', 'red+yellow', 'green', or 'yellow' for the traffic signal following Finnish sequence.
@@ -358,15 +382,13 @@ class TrafficLight:
         - 14.5s to 16.0s: Red+Yellow (1.5s preparation before green)
         Opposing phase has an 8.0s offset.
         """
-        t = (current_time + self.offset) % self.cycle_time
-        if t < 5.5:
-            return "green"
-        elif t < 7.0:
-            return "yellow"
-        elif t < 14.5:
-            return "red"
-        else:
-            return "red+yellow"
+        if self.signal_group is not None:
+            return self.signal_group.get_state(current_time)
+        return SignalGroup(
+            approach_id=self.approach_id or str(self.id),
+            cycle_time=self.cycle_time,
+            offset=self.offset,
+        ).get_state(current_time)
 
 
 def deduplicate_traffic_lights(traffic_lights: List[TrafficLight]) -> List[TrafficLight]:
@@ -477,6 +499,27 @@ def complete_traffic_light_approaches(traffic_lights: List[TrafficLight], ways: 
                     direction_angle=approach_direction,
                 )
             )
+
+        grouped: dict[int, SignalGroup] = {}
+        for signal in completed:
+            if signal.layer != layer or math.hypot(signal.x - center_x, signal.y - center_y) > junction_radius:
+                continue
+            if signal.direction_angle is None:
+                continue
+            axis = signal.direction_angle % math.pi
+            axis_key = round(axis / math.radians(25.0))
+            group = grouped.get(axis_key)
+            if group is None:
+                phase_id = 1 if math.sin(axis) ** 2 > 0.5 else 0
+                group = SignalGroup(
+                    approach_id=f"{layer}:{center_x:.0f}:{center_y:.0f}:{axis_key}",
+                    phase_id=phase_id,
+                    offset=8.0 if phase_id else 0.0,
+                )
+                grouped[axis_key] = group
+            signal.signal_group = group
+            signal.approach_id = group.approach_id
+            signal.allowed_movements = group.allowed_movements
 
     return deduplicate_traffic_lights(completed)
 
