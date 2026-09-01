@@ -218,6 +218,24 @@ def test_npc_stops_at_red_traffic_light():
     assert npc.state in {"braking", "waiting"}
 
 
+def test_npc_continues_through_yellow_when_stopping_is_not_safe():
+    way = Way(
+        points_m=[(0.0, 0.0), (100.0, 0.0)],
+        highway="primary",
+        half_width_m=4.0,
+        oneway=1,
+    )
+    light = TrafficLight(x=30.0, y=0.0, cycle_time=16.0, offset=5.5)
+    traffic_mgr = TrafficManager([way], target_count=0, traffic_lights=[light])
+    npc = NPCCar(26.0, 0.0, 0.0, 15.0, way, 0, 1, 15.0, (200, 200, 200))
+    traffic_mgr.npcs = [npc]
+
+    traffic_mgr.update(Car(x=0.0, y=0.0, heading=0.0, speed=0.0), dt=0.1)
+
+    assert npc.x > 26.0
+    assert npc.state == "driving"
+
+
 def test_player_red_light_violation_penalty():
     from theroadragetrip.taxi import TaxiManager
 

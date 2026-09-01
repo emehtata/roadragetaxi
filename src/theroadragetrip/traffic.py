@@ -1405,7 +1405,9 @@ class TrafficManager:
                 logical_dy = logical_stop_center[1] - npc.y
                 logical_distance = logical_dx * math.cos(npc.heading) + logical_dy * math.sin(npc.heading)
                 logical_state = self.traffic_light_manager.get_signal_state(logical_approach, self.sim_time)
-                if 0.0 < logical_distance < 35.0 and logical_state in ("red", "yellow", "red+yellow"):
+                braking_distance = npc.speed * npc.speed / (2.0 * 15.0)
+                yellow_requires_stop = logical_state != "yellow" or logical_distance >= braking_distance
+                if 0.0 < logical_distance < 35.0 and logical_state in ("red", "yellow", "red+yellow") and yellow_requires_stop:
                     stop_distance = logical_distance - 1.5
                     must_stop = stop_distance >= -1.0
             roadwork_stop_distance = self._roadwork_stop_distance(npc)
@@ -1442,7 +1444,9 @@ class TrafficManager:
 
             if nearest_light is not None and not passed_matching_light:
                 state = nearest_light[1].get_state(self.sim_time)
-                if state in ("red", "red+yellow", "yellow"):
+                braking_distance = npc.speed * npc.speed / (2.0 * 15.0)
+                yellow_requires_stop = state != "yellow" or longitudinal >= braking_distance
+                if state in ("red", "red+yellow", "yellow") and yellow_requires_stop:
                     stop_distance = nearest_light[0] - 1.5
                     nearest_crossing = None
                     for crossing in self._nearby_crossings(npc.x, npc.y):
