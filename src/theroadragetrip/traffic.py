@@ -6,7 +6,14 @@ from dataclasses import dataclass
 from typing import List, Optional, Tuple
 
 from .geo import boxes_intersect
-from .osm import TrafficLight, Way
+from .osm import (
+    IntersectionApproach,
+    LogicalIntersection,
+    SignalGroup,
+    TrafficLight,
+    Way,
+    build_logical_intersections,
+)
 from .physics import Car, connected_drivable_ways
 
 logger = logging.getLogger(__name__)
@@ -97,6 +104,29 @@ class NPCCar:
     debug_in_view: Optional[bool] = None
 
 
+class TrafficLightManager:
+    """Update cached logical signal groups and answer NPC signal queries."""
+
+    def __init__(self, intersections: List[LogicalIntersection]):
+        self.intersections = intersections
+        self._groups: dict[str, SignalGroup] = {}
+        for intersection in intersections:
+            for approach in intersection.approaches:
+                if approach.signal_group is not None:
+                    self._groups[approach.signal_group.approach_id] = approach.signal_group
+
+    def update(self, current_time: float) -> None:
+        """Advance all signal groups from simulation time without rebuilding geometry."""
+        for group in self._groups.values():
+            group.get_state(current_time)
+
+    def get_signal_state(self, approach: IntersectionApproach, current_time: float) -> str:
+        """Return the signal state for an approach, or green when uncontrolled."""
+        if approach.signal_group is None:
+            return "green"
+        return approach.signal_group.get_state(current_time)
+
+
 def calculate_npc_target_speed(way: Way, speed_factor: float) -> float:
     """Compute realistic driving target speed in m/s based on Finnish road limit and vehicle personality."""
     limit_kmh = getattr(way, "speed_limit_kmh", 50)
@@ -168,6 +198,8 @@ class TrafficManager:
         self._npc_grid_npc_ids: Tuple[int, ...] = ()
         self._route_nodes: List[Tuple[float, float, int]] = []
         self._route_edges: dict[int, List[Tuple[int, float]]] = {}
+        self.logical_intersections = build_logical_intersections(self.traffic_lights, self.ways)
+        self.traffic_light_manager = TrafficLightManager(self.logical_intersections)
         self._build_route_graph()
         self._taxi_stop_spawns: set[Tuple[float, float, object]] = set()
         self._taxi_stop_targets: dict[Tuple[float, float, object], int] = {}
@@ -1040,6 +1072,7 @@ class TrafficManager:
     ) -> None:
         """Update all NPC cars, manage spawning/despawning around player."""
         self.sim_time += dt
+        self.traffic_light_manager.update(self.sim_time)
         previous_speeds = {id(npc): npc.speed for npc in self.npcs}
         npc_population_changed = tuple(id(npc) for npc in self.npcs) != self._npc_grid_npc_ids
 

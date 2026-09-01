@@ -346,17 +346,20 @@ class SignalGroup:
     phase_id: int = 0
     cycle_time: float = 16.0
     offset: float = 0.0
+    state: str = "red"
 
     def get_state(self, current_time: float) -> str:
         """Return the current state using the standard four-phase cycle."""
         t = (current_time + self.offset) % self.cycle_time
         if t < 5.5:
-            return "green"
-        if t < 7.0:
-            return "yellow"
-        if t < 14.5:
-            return "red"
-        return "red+yellow"
+            self.state = "green"
+        elif t < 7.0:
+            self.state = "yellow"
+        elif t < 14.5:
+            self.state = "red"
+        else:
+            self.state = "red+yellow"
+        return self.state
 
 
 @dataclass

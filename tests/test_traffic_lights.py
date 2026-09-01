@@ -11,7 +11,7 @@ from theroadragetrip.osm import (
     deduplicate_traffic_lights,
 )
 from theroadragetrip.physics import Car
-from theroadragetrip.traffic import NPCCar, TrafficManager
+from theroadragetrip.traffic import NPCCar, TrafficLightManager, TrafficManager
 
 
 def test_traffic_light_states():
@@ -37,6 +37,19 @@ def test_signal_group_controls_multiple_physical_lights():
 
     assert first.get_state(0.0) == second.get_state(0.0) == "green"
     assert group.allowed_movements == frozenset({"straight", "right"})
+
+
+def test_traffic_light_manager_updates_cached_groups():
+    group = SignalGroup(approach_id="north", phase_id=0, offset=0.0)
+    light = TrafficLight(x=0.0, y=0.0, signal_group=group)
+    approach = type("Approach", (), {"signal_group": group})()
+    manager = TrafficLightManager([])
+    manager._groups[group.approach_id] = group
+
+    manager.update(6.0)
+
+    assert manager.get_signal_state(approach, 6.0) == "yellow"
+    assert group.state == "yellow"
 
 
 def test_traffic_light_orthogonal_phases():
