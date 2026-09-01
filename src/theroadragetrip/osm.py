@@ -259,6 +259,9 @@ class Way:
     speed_limit_kmh: int = 50  # Finnish speed limit in km/h
     bbox: Tuple[float, float, float, float] = (0.0, 0.0, 0.0, 0.0)
     osm_id: Optional[int] = None
+    lanes_forward: Optional[int] = None
+    lanes_backward: Optional[int] = None
+    turn_lanes: Optional[str] = None
     segment_lengths: List[float] = field(default_factory=list, init=False, repr=False)
     segment_headings: List[float] = field(default_factory=list, init=False, repr=False)
     total_length_m: float = field(default=0.0, init=False, repr=False)
@@ -629,7 +632,18 @@ def build_logical_intersections(
                     None,
                 )
                 allowed_movements = frozenset({"straight", "right"})
-                if getattr(way, "lanes", 1) >= 3:
+                turn_lanes = getattr(way, "turn_lanes", None)
+                if turn_lanes:
+                    movement_names = {
+                        movement
+                        for lane in turn_lanes.split("|")
+                        for movement in lane.split(";")
+                        if movement in {"left", "through", "right", "slight_left", "slight_right"}
+                    }
+                    allowed_movements = frozenset(
+                        {"straight" if movement == "through" else movement for movement in movement_names}
+                    ) or allowed_movements
+                elif getattr(way, "lanes", 1) >= 3:
                     allowed_movements = frozenset({"left", "straight", "right"})
                 if matching_signal is not None and allowed_movements != matching_signal.allowed_movements:
                     matching_signal.allowed_movements = allowed_movements
@@ -1583,6 +1597,14 @@ def build_ways(
 
         # Parse speed limit (OSM maxspeed tag with Finnish fallback)
         speed_lim = parse_speed_limit_kmh(tags.get("maxspeed"), highway)
+        def parse_lane_count(value: object) -> Optional[int]:
+            try:
+                return max(1, int(str(value).split(";")[0].strip()))
+            except (TypeError, ValueError):
+                return None
+
+        lanes_forward = parse_lane_count(tags.get("lanes:forward"))
+        lanes_backward = parse_lane_count(tags.get("lanes:backward"))
         lit_tag = str(tags.get("lit", "")).strip().lower() or None
         surface_tag = str(tags.get("surface", "")).strip().lower() or None
 
@@ -1605,6 +1627,9 @@ def build_ways(
                 speed_limit_kmh=speed_lim,
                 bbox=ibbox,
                 osm_id=way_id,
+                lanes_forward=lanes_forward,
+                lanes_backward=lanes_backward,
+                turn_lanes=tags.get("turn:lanes") or tags.get("turn:lanes:forward"),
             )
         )
 
