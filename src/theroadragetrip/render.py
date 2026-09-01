@@ -2991,6 +2991,8 @@ def draw_traffic_lights(
         else traffic_lights
     )
     for tl in visible_traffic_lights:
+        if not getattr(tl, "renderable", True):
+            continue
         if not (vminx <= tl.x <= vmaxx and vminy <= tl.y <= vmaxy):
             continue
 

@@ -407,6 +407,7 @@ class TrafficLight:
     signal_group: Optional[SignalGroup] = None
     approach_id: Optional[str] = None
     allowed_movements: frozenset[str] = frozenset({"straight", "right"})
+    renderable: bool = True
 
     def get_state(self, current_time: float) -> str:
         """Return a signal state following the Finnish sequence.
@@ -526,8 +527,8 @@ def complete_traffic_light_approaches(traffic_lights: List[TrafficLight], ways: 
             signal_offset = 8.0 if (math.pi * 0.25) <= signal_axis < (math.pi * 0.75) else 0.0
             completed.append(
                 TrafficLight(
-                    x=center_x + math.cos(arm_angle) * 6.0,
-                    y=center_y + math.sin(arm_angle) * 6.0,
+                    x=center_x + math.cos(arm_angle) * 14.0,
+                    y=center_y + math.sin(arm_angle) * 14.0,
                     cycle_time=16.0,
                     offset=signal_offset,
                     layer=layer,
@@ -535,6 +536,10 @@ def complete_traffic_light_approaches(traffic_lights: List[TrafficLight], ways: 
                     direction_angle=approach_direction,
                 )
             )
+
+        for signal in component:
+            if math.hypot(signal.x - center_x, signal.y - center_y) <= 10.0:
+                signal.renderable = False
 
         grouped: dict[int, SignalGroup] = {}
         for signal in completed:

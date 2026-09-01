@@ -55,6 +55,19 @@ def test_signal_group_supports_configurable_phase_durations():
     assert group.get_state(24.0) == "red"
 
 
+def test_center_signal_is_evidence_but_reconstructed_lights_are_renderable():
+    ways = [
+        Way(points_m=[(-100.0, 0.0), (100.0, 0.0)], highway="primary", half_width_m=4.0),
+        Way(points_m=[(0.0, -100.0), (0.0, 100.0)], highway="primary", half_width_m=4.0),
+    ]
+    raw = [TrafficLight(x=0.0, y=0.0, direction_angle=0.0)]
+
+    completed = complete_traffic_light_approaches(raw, ways)
+
+    assert raw[0].renderable is False
+    assert any(light.renderable and math.hypot(light.x, light.y) >= 10.0 for light in completed)
+
+
 def test_traffic_light_manager_updates_cached_groups():
     group = SignalGroup(approach_id="north", phase_id=0, offset=0.0)
     light = TrafficLight(x=0.0, y=0.0, signal_group=group)
