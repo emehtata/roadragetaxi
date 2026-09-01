@@ -141,6 +141,7 @@ def test_npc_stops_at_red_traffic_light():
     # NPC slowed down or stopped before the red light
     assert npc.speed < 5.0
     assert npc.x < 30.0
+    assert npc.state in {"braking", "waiting"}
 
 
 def test_player_red_light_violation_penalty():

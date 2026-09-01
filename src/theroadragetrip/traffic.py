@@ -1161,10 +1161,12 @@ class TrafficManager:
             if npc.taxi_pickup_timer > 0.0:
                 npc.taxi_pickup_timer = max(0.0, npc.taxi_pickup_timer - dt)
                 npc.speed = 0.0
+                npc.state = "waiting"
                 continue
             if getattr(npc, "waiting_at_taxi_stop", False):
                 npc.speed = 0.0
                 npc.target_speed = 0.0
+                npc.state = "waiting"
                 continue
             if npc.taxi_stop_target is not None:
                 target_x, target_y = npc.taxi_stop_target
@@ -1177,6 +1179,7 @@ class TrafficManager:
                     npc.waiting_at_taxi_stop = True
                     npc.speed = 0.0
                     npc.target_speed = 0.0
+                    npc.state = "waiting"
                     continue
                 npc.heading = math.atan2(dy, dx)
                 npc.speed = min(8.0, distance / max(dt, 0.001))
@@ -1428,6 +1431,7 @@ class TrafficManager:
             # Check if NPC is in crashed recovery state
             if npc.crashed_timer > 0.0 or getattr(npc, "fallen", False):
                 action = "fallen" if getattr(npc, "fallen", False) else "recovering from crash"
+                npc.state = "crashed"
                 if npc.debug_last_action != action:
                     logger.debug("NPC %s action=%s reason=disabled state", id(npc), action)
                     npc.debug_last_action = action
@@ -1447,7 +1451,12 @@ class TrafficManager:
             else:
                 action = "driving"
                 reason = "prepared turn" if npc.turn_signal else "normal route"
-            npc.state = action
+            if must_stop or junction_blocked:
+                npc.state = "waiting" if npc.speed < 1.0 else "braking"
+            elif npc.overtaking or npc.turn_signal:
+                npc.state = "turning"
+            else:
+                npc.state = "driving"
             action_state = f"{action}: {reason}"
             if npc.debug_last_action != action_state:
                 logger.debug(
