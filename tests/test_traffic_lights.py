@@ -1,7 +1,13 @@
 """Tests for OSM traffic signals parsing, light cycle behavior, and NPC traffic stopping."""
 import math
 
-from theroadragetrip.osm import TrafficLight, Way, build_ways, deduplicate_traffic_lights
+from theroadragetrip.osm import (
+    TrafficLight,
+    Way,
+    build_ways,
+    complete_traffic_light_approaches,
+    deduplicate_traffic_lights,
+)
 from theroadragetrip.physics import Car
 from theroadragetrip.traffic import NPCCar, TrafficManager
 
@@ -67,6 +73,20 @@ def test_deduplicate_traffic_lights_keeps_one_per_nearby_approach():
     result = deduplicate_traffic_lights(lights)
 
     assert {light.id for light in result} == {1, 3, 4, 5}
+
+
+def test_single_signal_marker_generates_missing_intersection_approaches():
+    ways = [
+        Way(points_m=[(-100.0, 0.0), (100.0, 0.0)], highway="primary", half_width_m=4.0, layer=0),
+        Way(points_m=[(0.0, -100.0), (0.0, 100.0)], highway="primary", half_width_m=4.0, layer=0),
+    ]
+    result = complete_traffic_light_approaches(
+        [TrafficLight(x=0.0, y=0.0, id=1)], ways
+    )
+
+    generated = [light for light in result if light.id != 1]
+    assert len(generated) == 4
+    assert {round(light.direction_angle % math.pi, 4) for light in generated} == {0.0, round(math.pi / 2, 4)}
 
 
 def test_build_ways_splits_single_signal_at_four_arm_junction():

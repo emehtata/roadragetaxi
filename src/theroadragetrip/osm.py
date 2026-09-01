@@ -384,11 +384,18 @@ def deduplicate_traffic_lights(traffic_lights: List[TrafficLight]) -> List[Traff
         same_approach = next(
             (
                 existing for existing in nearby
-                if existing.direction_angle is None
-                or light.direction_angle is None
-                or abs(
+                if (
+                    existing.direction_angle is None
+                    and light.direction_angle is None
+                    and math.hypot(existing.x - light.x, existing.y - light.y) <= 8.0
+                )
+                or (
+                    existing.direction_angle is not None
+                    and light.direction_angle is not None
+                    and abs(
                     (existing.direction_angle - light.direction_angle + math.pi) % (2.0 * math.pi) - math.pi
-                ) <= approach_angle
+                    ) <= approach_angle
+                )
             ),
             None,
         )
@@ -422,8 +429,6 @@ def complete_traffic_light_approaches(traffic_lights: List[TrafficLight], ways: 
                     visited.add(other_index)
                     pending.append(other_index)
 
-        if len(component) < 2:
-            continue
         layer = component[0].layer
         center_x = sum(signal.x for signal in component) / len(component)
         center_y = sum(signal.y for signal in component) / len(component)
@@ -447,6 +452,8 @@ def complete_traffic_light_approaches(traffic_lights: List[TrafficLight], ways: 
                 ):
                     arm_angles.append(arm_angle)
 
+        if len(arm_angles) < 3:
+            continue
         for arm_index, arm_angle in enumerate(arm_angles):
             approach_direction = (arm_angle + math.pi) % (2.0 * math.pi)
             if any(
