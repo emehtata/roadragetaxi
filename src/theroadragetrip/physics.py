@@ -84,6 +84,16 @@ def is_car_road(way) -> bool:
         return False
     if getattr(way, "is_busway", False):
         return True
+
+
+def _point_on_way(px: float, py: float, way, half_width: float) -> bool:
+        """Check line coverage or polygon coverage for mapped drivable surfaces."""
+        if getattr(way, "is_drivable_surface", False) and len(way.points_m) >= 3:
+            return point_in_polygon(px, py, way.points_m)
+        return any(
+            dist_point_to_segment(px, py, start[0], start[1], end[0], end[1]) <= half_width
+            for start, end in zip(way.points_m, way.points_m[1:])
+        )
     if getattr(way, "highway", "") == "living_street":
         return True
     if not getattr(way, "is_drivable", True):
@@ -186,7 +196,10 @@ def is_car_fully_in_water(car: Car, waters: List, current_way=None) -> bool:
 
 def compute_largest_connected_road_component(ways: List) -> List:
     """Find the largest connected component among drivable car roads."""
-    drivable = [w for w in ways if is_car_road(w) and len(w.points_m) >= 2]
+    drivable = [
+        w for w in ways
+        if is_car_road(w) and not getattr(w, "is_drivable_surface", False) and len(w.points_m) >= 2
+    ]
     if not drivable:
         return ways
 
@@ -242,11 +255,17 @@ def compute_largest_connected_road_component(ways: List) -> List:
 
 def connected_drivable_ways(ways: List, named: bool = False) -> List:
     connected = compute_largest_connected_road_component(ways) if ways else []
-    candidates = [w for w in connected if is_car_road(w) and len(w.points_m) >= 2]
+    candidates = [
+        w for w in connected
+        if is_car_road(w) and not getattr(w, "is_drivable_surface", False) and len(w.points_m) >= 2
+    ]
     if named:
         named_candidates = [w for w in candidates if getattr(w, "name", None)]
         candidates = named_candidates or candidates
-    return candidates or [w for w in ways if is_car_road(w) and len(w.points_m) >= 2]
+    return candidates or [
+        w for w in ways
+        if is_car_road(w) and not getattr(w, "is_drivable_surface", False) and len(w.points_m) >= 2
+    ]
 
 
 def _place_car_on_right_lane(car: Car, way, x: float, y: float, heading: float) -> None:
@@ -493,12 +512,8 @@ class SpatialWayGrid:
 
     def is_point_on_road(self, px: float, py: float, car_roads_only: bool = False, layer: Optional[int] = None) -> bool:
         for way, half_width in self._candidate_ways(px, py, car_roads_only, layer):
-            pts = way.points_m
-            for i in range(len(pts) - 1):
-                ax, ay = pts[i]
-                bx, by = pts[i + 1]
-                if dist_point_to_segment(px, py, ax, ay, bx, by) <= half_width:
-                    return True
+            if _point_on_way(px, py, way, half_width):
+                return True
         return False
 
     def get_road_layer_at_point(
@@ -532,6 +547,8 @@ class SpatialWayGrid:
         best_way = None
         best_dist = float("inf")
         for way, half_width in self._candidate_ways(px, py, car_roads_only, layer):
+            if getattr(way, "is_drivable_surface", False) and _point_on_way(px, py, way, half_width):
+                return way
             pts = way.points_m
             for i in range(len(pts) - 1):
                 ax, ay = pts[i]
@@ -615,6 +632,8 @@ def is_violating_oneway(
         if not is_car_road(w):
             continue
         hw = getattr(w, "half_width_m", 3.0)
+        if getattr(w, "is_drivable_surface", False) and _point_on_way(px, py, w, hw):
+            return True
         pts = w.points_m
         for i in range(len(pts) - 1):
             ax, ay = pts[i]
@@ -781,6 +800,8 @@ def get_current_road_at_car(
         if bbox and bbox != (0.0, 0.0, 0.0, 0.0):
             if not (bbox[0] - hw <= car.x <= bbox[2] + hw and bbox[1] - hw <= car.y <= bbox[3] + hw):
                 continue
+        if getattr(w, "is_drivable_surface", False) and _point_on_way(car.x, car.y, w, hw):
+                return w
         pts = w.points_m
         for i in range(len(pts) - 1):
             ax, ay = pts[i]

@@ -901,7 +901,10 @@ def draw_ways(
 
     # Filter visible ways first, then sort only visible ways by layer
     if spatial_grid is not None:
-        visible_ways = [w for w in spatial_grid.ways_in_rect(vminx, vminy, vmaxx, vmaxy) if len(w.points_m) >= 2]
+        visible_ways = [
+            w for w in spatial_grid.ways_in_rect(vminx, vminy, vmaxx, vmaxy)
+            if len(w.points_m) >= 2 and not getattr(w, "is_drivable_surface", False)
+        ]
     else:
         visible_ways = []
         for w in ways:
@@ -909,7 +912,7 @@ def draw_ways(
             if bb and bb != (0.0, 0.0, 0.0, 0.0):
                 if bb[2] < vminx or bb[0] > vmaxx or bb[3] < vminy or bb[1] > vmaxy:
                     continue
-            if len(w.points_m) >= 2:
+            if len(w.points_m) >= 2 and not getattr(w, "is_drivable_surface", False):
                 visible_ways.append(w)
 
     visible_ways.sort(
@@ -4290,4 +4293,3 @@ def draw_hud(
 
         load_t = font.render(f"{tr(language, 'loading_scenery')} {int(prog * 100)}%", True, (255, 215, 60))
         screen.blit(load_t, (bar_x + bar_w + 10, bar_y - 2))
-

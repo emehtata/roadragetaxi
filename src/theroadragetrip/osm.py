@@ -250,6 +250,7 @@ class Way:
     lit: Optional[str] = None
     is_ice_road: bool = False
     is_drivable: bool = True
+    is_drivable_surface: bool = False
     is_busway: bool = False
     oneway: int = 0  # 0: two-way, 1: forward direction, -1: backward direction
     lanes: int = 1  # number of lanes
@@ -1653,6 +1654,28 @@ def build_ways(
                 lanes_backward=lanes_backward,
                 turn_lanes=tags.get("turn:lanes") or tags.get("turn:lanes:forward"),
             )
+
+    # Keep parking areas as scenery for their existing appearance, while also
+    # indexing their polygon as a drivable surface for vehicle collision checks.
+    for tags, node_ids in scenery_raw:
+            if tags.get("amenity") != "parking" and tags.get("landuse") != "parking":
+                continue
+            pts, ibbox = process_node_ids(node_ids)
+            if not pts or len(pts) < 3:
+                continue
+            ways.append(
+                Way(
+                    points_m=pts,
+                    highway="parking",
+                    half_width_m=0.0,
+                    name=tags.get("name"),
+                    surface=str(tags.get("surface", "")).strip().lower() or None,
+                    is_drivable=True,
+                    is_drivable_surface=True,
+                    bbox=ibbox,
+                    osm_id=None,
+                )
+            )
         )
 
     if progress_callback:
@@ -1697,6 +1720,17 @@ def build_ways(
                 waters.append(Water(points_m=pts, kind=kind, is_polygon=is_closed, name=name, bbox=ibbox))
             elif tags.get("amenity") == "parking" or tags.get("landuse") == "parking":
                 sceneries.append(Scenery(points_m=pts, kind="parking", name=name, bbox=ibbox))
+                ways.append(
+                    Way(
+                        points_m=pts,
+                        highway="parking",
+                        half_width_m=0.0,
+                        name=name,
+                        is_drivable=True,
+                        is_drivable_surface=True,
+                        bbox=ibbox,
+                    )
+                )
             elif "leisure" in tags or "landuse" in tags or tags.get("natural") in ("forest", "wood", "scrub", "grass"):
                 kind = tags.get("leisure") or tags.get("landuse") or tags.get("natural") or "park"
                 scenery = Scenery(points_m=pts, kind=kind, name=name, bbox=ibbox)

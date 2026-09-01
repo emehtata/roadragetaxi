@@ -17,7 +17,7 @@ sys.modules["pyproj"] = fake_pyproj
 
 from theroadragetrip.osm import build_ways, plant_trees
 from theroadragetrip.osm import Scenery, Way
-from theroadragetrip.physics import Car
+from theroadragetrip.physics import Car, SpatialWayGrid, is_on_road
 from theroadragetrip.taxi import TaxiManager
 
 
@@ -141,6 +141,11 @@ def test_build_ways_parses_parking_area_as_scenery():
 
     assert len(result.sceneries) == 1
     assert result.sceneries[0].kind == "parking"
+    parking_surface = next(way for way in result.ways if way.is_drivable_surface)
+    assert parking_surface.is_drivable is True
+    grid = SpatialWayGrid()
+    grid.rebuild(result.ways)
+    assert is_on_road(Car(25000.5, 60000.5, 0.0, 0.0), spatial_grid=grid, car_roads_only=True)
 
 
 def test_hard_tree_impact_knocks_tree_down_and_smokes_taxi():
