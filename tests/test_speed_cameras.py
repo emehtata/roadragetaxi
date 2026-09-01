@@ -114,6 +114,27 @@ def test_police_stop_releases_taxi_after_penalty():
     assert tr("fi", "police_stop", penalty=300) == "Poliisipysäytys! -300 pistettä"
 
 
+def test_police_pursuit_does_not_drive_through_building():
+    from theroadragetrip.osm import Building
+
+    traffic = TrafficManager([road()], target_count=0)
+    building = Building(
+        points_m=[(35.0, -10.0), (55.0, -10.0), (55.0, 10.0), (35.0, 10.0)],
+    )
+    police = PoliceManager(traffic, 0.0, 0.0, count=1, buildings=[building])
+    patrol = police.cars[0]
+    patrol.x = 20.0
+    patrol.y = 0.0
+    patrol.heading = 0.0
+    patrol.pursuing = True
+    taxi = Car(x=100.0, y=0.0, heading=0.0, speed=20.0)
+
+    police.update(taxi, road(), 1.0)
+
+    assert patrol.x == 20.0
+    assert patrol.speed == 0.0
+
+
 def test_opposite_direction_police_waits_for_taxi_to_pass():
     traffic = TrafficManager([road()], target_count=0)
     police = PoliceManager(traffic, 100.0, 0.0, count=1)

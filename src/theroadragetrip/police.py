@@ -135,8 +135,15 @@ class PoliceManager:
             police.heading = math.atan2(dy, dx)
             police.speed = min(30.0, max(8.0, distance * 2.0))
             step = min(distance, police.speed * dt)
-            police.x += dx / distance * step
-            police.y += dy / distance * step
+            next_x = police.x + dx / distance * step
+            next_y = police.y + dy / distance * step
+            if _building_blocks_path(
+                police.x, police.y, next_x, next_y, self.buildings, self.building_grid
+            ):
+                police.speed = 0.0
+                continue
+            police.x = next_x
+            police.y = next_y
         return False
 
     def scare(self) -> bool:
@@ -200,6 +207,45 @@ def _has_line_of_sight(
         ):
             return False
     return True
+
+
+def _building_blocks_path(
+    start_x: float,
+    start_y: float,
+    end_x: float,
+    end_y: float,
+    buildings: List[Building],
+    building_grid=None,
+) -> bool:
+    """Return whether a police movement segment enters or crosses a building."""
+    if building_grid is not None:
+        margin = 2.0
+        candidate_buildings = building_grid.ways_in_rect(
+            min(start_x, end_x) - margin,
+            min(start_y, end_y) - margin,
+            max(start_x, end_x) + margin,
+            max(start_y, end_y) + margin,
+        )
+    else:
+        candidate_buildings = buildings
+
+    for building in candidate_buildings:
+        polygon = building.points_m
+        if len(polygon) < 3:
+            continue
+        if point_in_polygon(end_x, end_y, polygon):
+            return True
+        if any(
+            segments_intersect(
+                (start_x, start_y),
+                (end_x, end_y),
+                edge_start,
+                edge_end,
+            )
+            for edge_start, edge_end in zip(polygon, polygon[1:] + polygon[:1])
+        ):
+            return True
+    return False
 
 
 def camera_count(ways: List[Way], city_name: Optional[str] = None) -> int:
