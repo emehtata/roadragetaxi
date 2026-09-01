@@ -9,6 +9,7 @@ from .geo import boxes_intersect
 from .osm import (
     IntersectionApproach,
     LogicalIntersection,
+    ParkingSpace,
     SignalGroup,
     TrafficLight,
     Way,
@@ -103,6 +104,9 @@ class NPCCar:
     debug_last_action: str = ""
     debug_in_view: Optional[bool] = None
     reserved_intersection_id: Optional[str] = None
+    parking_space_id: Optional[int] = None
+    reserved_by_pedestrian_id: Optional[int] = None
+    current_driver_id: Optional[int] = None
 
 
 CarAI = NPCCar
@@ -252,6 +256,7 @@ class TrafficManager:
         despawn_radius_m: float = 450.0,
         traffic_lights: Optional[List[TrafficLight]] = None,
         crossings: Optional[List] = None,
+        parking_spaces: Optional[List] = None,
         roadworks: Optional[List] = None,
         enable_two_wheelers: bool = False,
     ):
@@ -263,6 +268,7 @@ class TrafficManager:
         self.min_spawn_dist_to_npc_m: float = 6.0
         self.traffic_lights = traffic_lights if traffic_lights is not None else []
         self.crossings = crossings if crossings is not None else []
+        self.parking_spaces = parking_spaces if parking_spaces is not None else []
         self.roadworks = roadworks if roadworks is not None else []
         self.enable_two_wheelers = enable_two_wheelers
         self.npcs: List[NPCCar] = []
@@ -278,12 +284,15 @@ class TrafficManager:
         self._npc_grid_cell_size: float = 32.0
         self._npc_grid: dict[Tuple[int, int], List[NPCCar]] = {}
         self._npc_grid_npc_ids: Tuple[int, ...] = ()
+        self._parking_grid_cell_size = 100.0
+        self._parking_grid: dict[Tuple[int, int], List] = {}
         self._route_nodes: List[Tuple[float, float, int]] = []
         self._route_edges: dict[int, List[Tuple[int, float]]] = {}
         self.logical_intersections = build_logical_intersections(self.traffic_lights, self.ways)
         self.traffic_light_manager = TrafficLightManager(self.logical_intersections)
         self.intersection_manager = IntersectionManager(self.logical_intersections)
         self._build_route_graph()
+        self._build_parking_grid()
         self._taxi_stop_spawns: set[Tuple[float, float, object]] = set()
         self._taxi_stop_targets: dict[Tuple[float, float, object], int] = {}
         self._build_spatial_indices()
@@ -332,6 +341,86 @@ class TrafficManager:
             cell = (int(math.floor(npc.x / cell_size)), int(math.floor(npc.y / cell_size)))
             self._npc_grid.setdefault(cell, []).append(npc)
         self._npc_grid_npc_ids = tuple(id(npc) for npc in self.npcs)
+
+    def _build_parking_grid(self) -> None:
+        cell_size = self._parking_grid_cell_size
+        self._parking_grid.clear()
+        for parking_space in self.parking_spaces:
+            center_x = (parking_space.bbox[0] + parking_space.bbox[2]) * 0.5
+            center_y = (parking_space.bbox[1] + parking_space.bbox[3]) * 0.5
+            cell = (int(math.floor(center_x / cell_size)), int(math.floor(center_y / cell_size)))
+            self._parking_grid.setdefault(cell, []).append(parking_space)
+
+    def nearby_parking_spaces(self, x: float, y: float, radius_m: float) -> List:
+        """Return existing OSM parking spaces within a radius of a world position."""
+        cell_size = self._parking_grid_cell_size
+        cell_x = int(math.floor(x / cell_size))
+        cell_y = int(math.floor(y / cell_size))
+        radius_sq = radius_m * radius_m
+        spaces: List = []
+        cell_radius = max(1, int(math.ceil(radius_m / cell_size)))
+        for offset_x in range(-cell_radius, cell_radius + 1):
+            for offset_y in range(-cell_radius, cell_radius + 1):
+                for parking_space in self._parking_grid.get((cell_x + offset_x, cell_y + offset_y), ()):
+                    center_x = (parking_space.bbox[0] + parking_space.bbox[2]) * 0.5
+                    center_y = (parking_space.bbox[1] + parking_space.bbox[3]) * 0.5
+                    if (center_x - x) ** 2 + (center_y - y) ** 2 <= radius_sq:
+                        spaces.append(parking_space)
+        return spaces
+
+    @staticmethod
+    def parking_space_id(parking_space: ParkingSpace) -> int:
+        """Return a stable runtime ID even for hand-built test parking spaces."""
+        return parking_space.osm_id if parking_space.osm_id is not None else id(parking_space)
+
+    def reserve_parking_space(self, parking_space: ParkingSpace, pedestrian_id: int) -> bool:
+        """Reserve a free OSM parking space for a pedestrian or vehicle interaction."""
+        if parking_space.occupied or parking_space.reserved:
+            return False
+        parking_space.reserved = True
+        parking_space.reserved_by_pedestrian_id = pedestrian_id
+        return True
+
+    def occupy_parking_space(self, npc: NPCCar, parking_space: ParkingSpace) -> bool:
+        """Associate an NPC with a reserved or free existing OSM parking space."""
+        if parking_space.occupied or (
+            parking_space.reserved
+            and parking_space.reserved_by_pedestrian_id not in (None, npc.current_driver_id)
+        ):
+            return False
+        parking_space.occupied = True
+        parking_space.reserved = False
+        parking_space.reserved_by_pedestrian_id = None
+        parking_space.vehicle_id = id(npc)
+        npc.parking_space_id = self.parking_space_id(parking_space)
+        npc.state = "parked"
+        npc.speed = 0.0
+        npc.target_speed = 0.0
+        return True
+
+    def release_parking_space(self, npc: NPCCar) -> None:
+        """Release the OSM space associated with an NPC and clear its reservation."""
+        for parking_space in self.parking_spaces:
+            if parking_space.vehicle_id == id(npc) or (
+                npc.parking_space_id is not None
+                and self.parking_space_id(parking_space) == npc.parking_space_id
+            ):
+                parking_space.occupied = False
+                parking_space.reserved = False
+                parking_space.vehicle_id = None
+                parking_space.reserved_by_pedestrian_id = None
+                break
+        npc.parking_space_id = None
+        npc.reserved_by_pedestrian_id = None
+
+    def activate_occupied_vehicle(self, npc: NPCCar) -> bool:
+        """Release its parking space and hand an occupied NPC back to normal CarAI."""
+        if npc.state not in {"reserved", "parked", "occupied"}:
+            return False
+        self.release_parking_space(npc)
+        npc.state = "driving"
+        npc.target_speed = max(npc.target_speed, 4.0)
+        return True
 
     def _nearby_npcs(self, npc: NPCCar) -> List[NPCCar]:
         cell_size = self._npc_grid_cell_size
@@ -1169,6 +1258,12 @@ class TrafficManager:
             if npc.is_police:
                 surviving.append(npc)
                 continue
+            if npc.state in {"parked", "reserved", "parking"} and (
+                npc.reserved_by_pedestrian_id is not None
+                or npc.current_driver_id is not None
+            ):
+                surviving.append(npc)
+                continue
             d = math.hypot(npc.x - player_car.x, npc.y - player_car.y)
             if d > self.despawn_radius_m:
                 logger.debug("NPC %s despawned: distance=%.1fm exceeds %.1fm", id(npc), d, self.despawn_radius_m)
@@ -1271,6 +1366,10 @@ class TrafficManager:
             if npc.is_police:
                 continue
             if not npc.lod_update_due:
+                continue
+            if npc.state in {"parked", "reserved"}:
+                npc.speed = 0.0
+                npc.target_speed = 0.0
                 continue
             self._prepare_next_route(npc)
             if npc.next_route is not None and not npc.turn_signal:

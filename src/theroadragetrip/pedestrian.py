@@ -4,7 +4,7 @@ import random
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Set, Tuple
 
-from .osm import TrafficLight, Way
+from .osm import Crossing, LogicalIntersection, TrafficLight, Way
 from .geo import closest_point_and_dist_to_segment, dist_point_to_segment, point_in_polygon
 from .physics import Car, is_car_road, is_pedestrian_way
 
@@ -44,6 +44,8 @@ CYCLIST_COLORS = [
     (230, 230, 230),
 ]
 
+PEDESTRIAN_LOD_UPDATE_INTERVALS = (1.0 / 30.0, 1.0 / 12.0, 0.2)
+
 
 @dataclass
 class Pedestrian:
@@ -77,12 +79,26 @@ class Pedestrian:
     wants_taxi: bool = False
     taxi_stop_target: Optional[Tuple[float, float]] = None
     is_walking_to_taxi_stop: bool = False
+    is_taxi_stop_waiter: bool = False
+    is_cyclist: bool = False
     is_drunk: bool = False
     drunk_phase: float = 0.0
     drunk_vomit_cooldown: float = 0.0
     door_grace_timer: float = 0.0
     offscreen_timer: float = 0.0
     spawned_at_door: bool = False
+    state: str = "walking"
+    animation_state: str = "walking"
+    route: Optional[List[Tuple[float, float]]] = None
+    current_route_segment: int = 0
+    destination: Optional[Tuple[float, float]] = None
+    crossing: Optional[Crossing] = None
+    lod_level: int = 0
+    lod_time_accumulator: float = 0.0
+    lod_update_due: bool = True
+    lod_update_dt: float = 0.0
+    reserved_vehicle_id: Optional[int] = None
+    current_vehicle_id: Optional[int] = None
 
 
 @dataclass
@@ -107,6 +123,10 @@ class PedestrianManager:
         spawn_radius_m: float = 120.0,
         despawn_radius_m: float = 160.0,
         traffic_lights: Optional[List[TrafficLight]] = None,
+        crossings: Optional[List[Crossing]] = None,
+        logical_intersections: Optional[List[LogicalIntersection]] = None,
+        traffic_vehicles: Optional[List] = None,
+        traffic_manager=None,
         venue_buildings: Optional[List] = None,
     ):
         self.target_count = target_count
@@ -114,6 +134,10 @@ class PedestrianManager:
         self.despawn_radius_m = despawn_radius_m
         self.pedestrians: List[Pedestrian] = []
         self.traffic_lights: List[TrafficLight] = traffic_lights or []
+        self.crossings: List[Crossing] = crossings or []
+        self.logical_intersections = logical_intersections or []
+        self.traffic_vehicles = traffic_vehicles if traffic_vehicles is not None else []
+        self.traffic_manager = traffic_manager
         self.sim_time: float = 0.0
         self._population_update_elapsed: float = 4.9
         self._visible_taxi_stops: Set[Tuple[float, float, Optional[int]]] = set()
@@ -127,14 +151,21 @@ class PedestrianManager:
         self.vomit_puddles: List[Tuple[float, float]] = []
 
         self.ped_ways: List[Way] = []
+        self._spawn_ways: List[Way] = []
         self._way_grid: Dict[Tuple[int, int], List[Way]] = {}
         self._way_grid_cell_size: float = 100.0
         self._junction_grid: Dict[Tuple[int, int], List[Tuple[Way, int, Tuple[float, float], int, int]]] = {}
         self._junction_grid_cell_size: float = 20.0
         self._traffic_light_grid: Dict[Tuple[int, int], List[TrafficLight]] = {}
         self._traffic_light_grid_cell_size: float = 60.0
+        self._crossing_grid: Dict[Tuple[int, int], List[Crossing]] = {}
 
-        self.sync_map_data(ways, traffic_lights=traffic_lights)
+        self.sync_map_data(
+            ways,
+            traffic_lights=traffic_lights,
+            crossings=crossings,
+            logical_intersections=logical_intersections,
+        )
         self.set_venue_buildings(venue_buildings)
 
     def set_venue_buildings(self, buildings: Optional[List] = None) -> None:
@@ -183,6 +214,75 @@ class PedestrianManager:
                 return True
         return False
 
+    def _choose_destination(self, x: float, y: float, way: Way, direction: int) -> Tuple[float, float]:
+        """Choose a mapped entrance when available, otherwise a route endpoint."""
+        candidates = [
+            entrance
+            for entrance in self.entrance_locations
+            if math.hypot(entrance[0] - x, entrance[1] - y) > 5.0
+        ]
+        if candidates and random.random() < 0.35:
+            return random.choice(candidates)
+        return way.points_m[-1] if direction == 1 else way.points_m[0]
+
+    def find_available_parked_vehicle(self, x: float, y: float, radius_m: float = 35.0):
+        """Find the nearest reusable parked NPC through TrafficManager's spatial grid."""
+        if self.traffic_manager is not None:
+            vehicles = self.traffic_manager.nearby_npcs_at(x, y)
+        else:
+            vehicles = self.traffic_vehicles
+        candidates = [
+            vehicle
+            for vehicle in vehicles
+            if getattr(vehicle, "state", "driving") == "parked"
+            and getattr(vehicle, "reserved_by_pedestrian_id", None) is None
+            and getattr(vehicle, "current_driver_id", None) is None
+            and math.hypot(vehicle.x - x, vehicle.y - y) <= radius_m
+        ]
+        return min(candidates, key=lambda vehicle: math.hypot(vehicle.x - x, vehicle.y - y), default=None)
+
+    def reserve_parked_vehicle(self, pedestrian: Pedestrian, vehicle) -> bool:
+        """Reserve any suitable parked vehicle without assuming prior ownership."""
+        if getattr(vehicle, "state", "driving") != "parked":
+            return False
+        if getattr(vehicle, "reserved_by_pedestrian_id", None) is not None:
+            return False
+        vehicle.reserved_by_pedestrian_id = id(pedestrian)
+        vehicle.state = "reserved"
+        pedestrian.reserved_vehicle_id = id(vehicle)
+        return True
+
+    def cancel_vehicle_reservation(self, pedestrian: Pedestrian) -> None:
+        """Release any vehicle reservation owned by a pedestrian."""
+        vehicle_id = pedestrian.reserved_vehicle_id
+        if vehicle_id is None:
+            return
+        vehicles = self.traffic_manager.npcs if self.traffic_manager is not None else self.traffic_vehicles
+        for vehicle in vehicles:
+            if id(vehicle) == vehicle_id and getattr(vehicle, "reserved_by_pedestrian_id", None) == id(pedestrian):
+                vehicle.reserved_by_pedestrian_id = None
+                if vehicle.state == "reserved":
+                    vehicle.state = "parked"
+                break
+        pedestrian.reserved_vehicle_id = None
+
+    def enter_reserved_vehicle(self, pedestrian: Pedestrian, vehicle) -> bool:
+        """Complete a reserved pedestrian-to-vehicle entry without creating entities."""
+        if (
+            pedestrian.reserved_vehicle_id != id(vehicle)
+            or vehicle.state != "reserved"
+            or math.hypot(vehicle.x - pedestrian.x, vehicle.y - pedestrian.y) > 3.0
+        ):
+            return False
+        vehicle.current_driver_id = id(pedestrian)
+        vehicle.reserved_by_pedestrian_id = None
+        vehicle.state = "occupied"
+        pedestrian.reserved_vehicle_id = None
+        pedestrian.current_vehicle_id = id(vehicle)
+        pedestrian.state = "in_vehicle"
+        pedestrian.animation_state = "idle"
+        return True
+
     def _at_building_entrance(self, x: float, y: float, radius_m: float = 1.5) -> bool:
         """Check nearby doors without scanning every mapped entrance."""
         cell_size = self._way_grid_cell_size
@@ -210,10 +310,20 @@ class PedestrianManager:
                     nearest_distance = distance
         return nearest or (stop.x, stop.y)
 
-    def sync_map_data(self, ways: List[Way], traffic_lights: Optional[List[TrafficLight]] = None) -> None:
+    def sync_map_data(
+        self,
+        ways: List[Way],
+        traffic_lights: Optional[List[TrafficLight]] = None,
+        crossings: Optional[List[Crossing]] = None,
+        logical_intersections: Optional[List[LogicalIntersection]] = None,
+    ) -> None:
         """Update road/path network and rebuild spatial grids for pedestrian routing."""
         if traffic_lights is not None:
             self.traffic_lights = traffic_lights
+        if crossings is not None:
+            self.crossings = crossings
+        if logical_intersections is not None:
+            self.logical_intersections = logical_intersections
 
         self._traffic_light_grid.clear()
         signal_cell_size = self._traffic_light_grid_cell_size
@@ -223,18 +333,32 @@ class PedestrianManager:
                 int(math.floor(traffic_light.y / signal_cell_size)),
             )
             self._traffic_light_grid.setdefault(cell, []).append(traffic_light)
+        self._crossing_grid.clear()
+        for crossing in self.crossings:
+            cell = (
+                int(math.floor(crossing.x / signal_cell_size)),
+                int(math.floor(crossing.y / signal_cell_size)),
+            )
+            self._crossing_grid.setdefault(cell, []).append(crossing)
 
         # Prefer dedicated pedestrian paths (footway, path, pedestrian, cycleway, steps, track, crossing)
         dedicated = [w for w in ways if is_pedestrian_way(w) and len(w.points_m) >= 2]
-        if dedicated:
-            self.ped_ways = dedicated
-        else:
-            # Fallback only if map has no footpaths at all (e.g. sparse highway-only maps)
-            self.ped_ways = [w for w in ways if getattr(w, "highway", "") in ("residential", "living_street", "unclassified", "service") and len(w.points_m) >= 2]
+        fallback = [
+            w for w in ways
+            if getattr(w, "highway", "") in ("residential", "living_street", "unclassified", "service")
+            and len(w.points_m) >= 2
+        ]
+        self.ped_ways = dedicated or fallback
+        self._spawn_ways = []
+        seen_way_ids: Set[int] = set()
+        for way in dedicated + fallback:
+            if id(way) not in seen_way_ids:
+                seen_way_ids.add(id(way))
+                self._spawn_ways.append(way)
 
         self._way_grid.clear()
         cs = self._way_grid_cell_size
-        for w in self.ped_ways:
+        for w in self._spawn_ways:
             minx = min(p[0] for p in w.points_m)
             maxx = max(p[0] for p in w.points_m)
             miny = min(p[1] for p in w.points_m)
@@ -259,6 +383,20 @@ class PedestrianManager:
             if player_car is not None:
                 self.pedestrians.sort(key=lambda ped: math.hypot(ped.x - player_car.x, ped.y - player_car.y))
             del self.pedestrians[self.target_count:]
+
+    def update_lod(self, player_car: Car, dt: float) -> None:
+        """Schedule pedestrian simulation using distance bands."""
+        for pedestrian in self.pedestrians:
+            distance = math.hypot(pedestrian.x - player_car.x, pedestrian.y - player_car.y)
+            pedestrian.lod_level = 0 if distance < 500.0 else 1 if distance < 1500.0 else 2
+            pedestrian.lod_time_accumulator += dt
+            interval = PEDESTRIAN_LOD_UPDATE_INTERVALS[pedestrian.lod_level]
+            if pedestrian.lod_update_due or pedestrian.lod_time_accumulator >= interval:
+                pedestrian.lod_update_dt = pedestrian.lod_time_accumulator
+                pedestrian.lod_update_due = True
+                pedestrian.lod_time_accumulator = 0.0
+            else:
+                pedestrian.lod_update_due = False
 
     def ensure_taxi_stop_waiter(
         self,
@@ -461,9 +599,6 @@ class PedestrianManager:
                             seen.add(wid)
                             nearby_ways.append(w)
 
-        if not nearby_ways:
-            return None
-
         valid_ways = []
         for w in nearby_ways:
             for p in w.points_m:
@@ -471,8 +606,28 @@ class PedestrianManager:
                     valid_ways.append(w)
                     break
 
-        if not valid_ways:
-            return None
+        if not nearby_ways or not valid_ways:
+            fallback_radius = max(r, 1000.0)
+            fallback_radius_sq = fallback_radius * fallback_radius
+            nearest_ways = sorted(
+                self._spawn_ways,
+                key=lambda way: min(
+                    (point[0] - near_x) ** 2 + (point[1] - near_y) ** 2
+                    for point in way.points_m
+                ),
+            )
+            valid_ways = [
+                way for way in nearest_ways
+                if min(
+                    (point[0] - near_x) ** 2 + (point[1] - near_y) ** 2
+                    for point in way.points_m
+                ) <= fallback_radius_sq
+            ][:30]
+            if not valid_ways:
+                return None
+
+        dedicated_ids = {id(way) for way in self.ped_ways}
+        valid_ways.sort(key=lambda way: 0 if id(way) in dedicated_ids else 1)
 
         # Try up to 30 candidate ways/segments to place pedestrians outside viewport
         random.shuffle(valid_ways)
@@ -547,7 +702,7 @@ class PedestrianManager:
                     if any(math.hypot(x - p.x, y - p.y) < 0.5 for p in self.pedestrians):
                         continue
 
-                    return Pedestrian(
+                    pedestrian = Pedestrian(
                         x=x,
                         y=y,
                         heading=heading,
@@ -564,6 +719,10 @@ class PedestrianManager:
                         pace_timer=random.uniform(1.0, 4.0),
                         wants_taxi=random.random() < 0.05,
                     )
+                    pedestrian.route = list(chosen_way.points_m)
+                    pedestrian.current_route_segment = seg_idx
+                    pedestrian.destination = self._choose_destination(x, y, chosen_way, direction)
+                    return pedestrian
 
         return None
 
@@ -588,7 +747,7 @@ class PedestrianManager:
         end = way.points_m[segment_idx + 1]
         segment_heading = math.atan2(end[1] - start[1], end[0] - start[0])
         direction = 1 if math.cos(heading - segment_heading) >= 0.0 else -1
-        return Pedestrian(
+        pedestrian = Pedestrian(
             x=x,
             y=y,
             heading=heading,
@@ -601,6 +760,10 @@ class PedestrianManager:
             lateral_offset_m=0.0,
             target_lateral_offset_m=0.0,
         )
+        pedestrian.route = list(way.points_m)
+        pedestrian.current_route_segment = segment_idx
+        pedestrian.destination = self._choose_destination(x, y, way, direction)
+        return pedestrian
 
     def spawn_pedestrian_at_door(self, x: float, y: float) -> Optional[Pedestrian]:
         """Create a pedestrian at a mapped building entrance."""
@@ -611,14 +774,68 @@ class PedestrianManager:
         pedestrian.spawned_at_door = True
         return pedestrian
 
-    def _is_pedestrian_red_light(self, ped: Pedestrian) -> bool:
-        """Check if pedestrian is stopped by a red traffic light at an intersection/crossing."""
-        # For pedestrians crossing roads: when vehicular light is green, pedestrian crossing is red (wait).
-        # When vehicular light is red, pedestrian crossing is green (safe to cross).
-        ped_stop_dist = 6.0
+    def _nearby_signalized_crossing(self, ped: Pedestrian) -> bool:
+        """Return whether a pedestrian is currently within a marked signalized crossing."""
+        return self._find_nearby_signalized_crossing(ped) is not None
+
+    def _find_nearby_signalized_crossing(self, ped: Pedestrian) -> Optional[Crossing]:
+        """Return the nearby signalized crossing, if any."""
         cell_size = self._traffic_light_grid_cell_size
         cell_x = int(math.floor(ped.x / cell_size))
         cell_y = int(math.floor(ped.y / cell_size))
+        for offset_x in (-1, 0, 1):
+            for offset_y in (-1, 0, 1):
+                for crossing in self._crossing_grid.get((cell_x + offset_x, cell_y + offset_y), ()):
+                    if (
+                        crossing.crossing_type == "traffic_signals"
+                        and math.hypot(crossing.x - ped.x, crossing.y - ped.y) <= crossing.width_m
+                    ):
+                        return crossing
+        return None
+
+    def _is_pedestrian_red_light(self, ped: Pedestrian) -> bool:
+        """Check if pedestrian is stopped by a red traffic light at an intersection/crossing."""
+        crossing_radius = 8.0
+        cell_size = self._traffic_light_grid_cell_size
+        cell_x = int(math.floor(ped.x / cell_size))
+        cell_y = int(math.floor(ped.y / cell_size))
+        nearby_crossings = []
+        for offset_x in (-1, 0, 1):
+            for offset_y in (-1, 0, 1):
+                nearby_crossings.extend(self._crossing_grid.get((cell_x + offset_x, cell_y + offset_y), ()))
+
+        controlled_crossing = next(
+            (
+                crossing
+                for crossing in nearby_crossings
+                if crossing.crossing_type == "traffic_signals"
+                and math.hypot(crossing.x - ped.x, crossing.y - ped.y) <= crossing_radius
+            ),
+            None,
+        )
+        if controlled_crossing is not None and self.logical_intersections:
+            nearest_intersection = min(
+                self.logical_intersections,
+                key=lambda intersection: math.hypot(
+                    intersection.center[0] - controlled_crossing.x,
+                    intersection.center[1] - controlled_crossing.y,
+                ),
+            )
+            if math.hypot(
+                nearest_intersection.center[0] - controlled_crossing.x,
+                nearest_intersection.center[1] - controlled_crossing.y,
+            ) <= nearest_intersection.radius_m + crossing_radius:
+                signal_states = [
+                    approach.signal_group.get_state(self.sim_time)
+                    for approach in nearest_intersection.approaches
+                    if approach.signal_group is not None
+                ]
+                if any(state in ("green", "yellow") for state in signal_states):
+                    return True
+                return not self._crossing_is_safe(controlled_crossing)
+
+        # Sparse OSM data may lack logical intersection records.
+        ped_stop_dist = 6.0
         nearby_lights = []
         for offset_x in (-1, 0, 1):
             for offset_y in (-1, 0, 1):
@@ -647,6 +864,14 @@ class PedestrianManager:
                 if state in ("green", "yellow"):
                     return True
         return False
+
+    def _crossing_is_safe(self, crossing: Crossing) -> bool:
+        """Keep pedestrians waiting when a moving vehicle is close to the crossing."""
+        for vehicle in self.traffic_vehicles:
+            distance = math.hypot(vehicle.x - crossing.x, vehicle.y - crossing.y)
+            if distance <= 10.0 and abs(getattr(vehicle, "speed", 0.0)) >= 2.0:
+                return False
+        return True
 
     def check_player_avoidance(self, player_car: Car, dt: float) -> bool:
         """Detect close approach and trigger pedestrian or cyclist avoidance."""
@@ -718,6 +943,7 @@ class PedestrianManager:
     ) -> bool:
         """Update pedestrian simulation: despawning, spawning, waypoint traversal, traffic lights, and evasion."""
         self.sim_time += dt
+        self.update_lod(player_car, dt)
         self._amenity_spawn_elapsed += dt
         self._population_update_elapsed += dt
 
@@ -737,6 +963,8 @@ class PedestrianManager:
                     outside_viewport = not (vmin_x <= ped.x <= vmax_x and vmin_y <= ped.y <= vmax_y)
                 ped.offscreen_timer = ped.offscreen_timer + population_check_dt if outside_viewport else 0.0
                 at_door = self._at_building_entrance(ped.x, ped.y)
+                if ped.state == "despawning":
+                    continue
                 if ped.spawned_at_door and not at_door:
                     ped.spawned_at_door = False
                 outside_long_enough = ped.offscreen_timer >= 5.0
@@ -805,6 +1033,9 @@ class PedestrianManager:
 
         # Update walking movement
         for ped in self.pedestrians:
+            if not ped.lod_update_due:
+                continue
+            update_dt = max(dt, ped.lod_update_dt)
             taxi_stop_target = getattr(ped, "taxi_stop_target", None)
             if getattr(ped, "is_walking_to_taxi_stop", False) and taxi_stop_target is not None:
                 target_x, target_y = taxi_stop_target
@@ -818,21 +1049,31 @@ class PedestrianManager:
                     ped.base_speed = 0.0
                     ped.is_walking_to_taxi_stop = False
                     ped.is_taxi_stop_waiter = True
+                    ped.state = "waiting"
+                    ped.animation_state = "idle"
                     logger.info("Pedestrian arrived at taxi stop: x=%.1f y=%.1f", target_x, target_y)
                     continue
                 ped.heading = math.atan2(dy, dx)
                 ped.speed = ped.base_speed
-                step = min(distance, ped.speed * dt)
+                step = min(distance, ped.speed * update_dt)
                 ped.x += math.cos(ped.heading) * step
                 ped.y += math.sin(ped.heading) * step
                 continue
             if getattr(ped, "is_taxi_stop_waiter", False):
                 ped.speed = 0.0
+                ped.state = "waiting"
+                ped.animation_state = "idle"
                 continue
+            if ped.destination is not None and self._at_building_entrance(ped.x, ped.y):
+                if math.hypot(ped.destination[0] - ped.x, ped.destination[1] - ped.y) <= 1.5:
+                    ped.speed = 0.0
+                    ped.state = "despawning"
+                    ped.animation_state = "idle"
+                    continue
             if getattr(ped, "is_drunk", False):
-                ped.drunk_phase += dt * 2.7
-                ped.drunk_vomit_cooldown = max(0.0, ped.drunk_vomit_cooldown - dt)
-                if ped.drunk_vomit_cooldown <= 0.0 and random.random() < 0.012 * dt:
+                ped.drunk_phase += update_dt * 2.7
+                ped.drunk_vomit_cooldown = max(0.0, ped.drunk_vomit_cooldown - update_dt)
+                if ped.drunk_vomit_cooldown <= 0.0 and random.random() < 0.012 * update_dt:
                     self.vomit_puddles.append((ped.x, ped.y))
                     if len(self.vomit_puddles) > 50:
                         del self.vomit_puddles[:-50]
@@ -840,6 +1081,9 @@ class PedestrianManager:
             # Check traffic light stop
             if self._is_pedestrian_red_light(ped):
                 ped.speed = 0.0
+                ped.state = "waiting_at_light"
+                ped.animation_state = "idle"
+                ped.crossing = self._find_nearby_signalized_crossing(ped)
                 continue
             else:
                 # Slight natural pace fluctuations (±8%)
@@ -848,6 +1092,9 @@ class PedestrianManager:
                     ped.pace_timer = random.uniform(2.0, 5.0)
                     ped.speed_variation_factor = random.uniform(0.92, 1.08)
                 ped.speed = ped.base_speed * ped.speed_variation_factor
+                ped.crossing = self._find_nearby_signalized_crossing(ped)
+                ped.state = "crossing" if ped.crossing is not None else "walking"
+                ped.animation_state = "walking"
 
             if ped.dodge_timer > 0.0:
                 # Controlled by dodge physics
@@ -883,7 +1130,7 @@ class PedestrianManager:
 
             lat_diff = ped.target_lateral_offset_m - ped.lateral_offset_m
             if abs(lat_diff) > 0.001:
-                shift = math.copysign(min(abs(lat_diff), ped.lateral_speed_mps * dt), lat_diff)
+                shift = math.copysign(min(abs(lat_diff), ped.lateral_speed_mps * update_dt), lat_diff)
                 ped.lateral_offset_m = max(-max_lat, min(max_lat, ped.lateral_offset_m + shift))
 
             # Segment target waypoint with lateral offset
@@ -903,16 +1150,19 @@ class PedestrianManager:
             dist_to_target = math.hypot(dx, dy)
 
             # Update sway phase based on walking speed
-            ped.sway_phase += ped.sway_frequency * (ped.speed / max(0.5, ped.base_speed)) * dt
+            ped.sway_phase += ped.sway_frequency * (ped.speed / max(0.5, ped.base_speed)) * update_dt
             # Small natural curve/wobble in heading
             sway_angle = math.sin(ped.sway_phase) * math.radians(18.0 if getattr(ped, "is_drunk", False) else 3.5)
             if getattr(ped, "is_drunk", False):
                 sway_angle += math.sin(ped.drunk_phase) * math.radians(10.0)
 
             target_heading = math.atan2(dy, dx)
-            ped.heading = target_heading + sway_angle
+            heading_delta = (target_heading - ped.heading + math.pi) % (2.0 * math.pi) - math.pi
+            max_turn = 7.0 * update_dt
+            ped.heading += max(-max_turn, min(max_turn, heading_delta))
+            ped.heading += sway_angle
 
-            move_dist = ped.speed * dt
+            move_dist = ped.speed * update_dt
             if move_dist < dist_to_target:
                 ped.x += math.cos(ped.heading) * move_dist
                 ped.y += math.sin(ped.heading) * move_dist
@@ -959,15 +1209,30 @@ class PedestrianManager:
                         ped.x += math.cos(ped.heading) * remaining_dist
                         ped.y += math.sin(ped.heading) * remaining_dist
 
+        for ped in self.pedestrians:
+            if ped.lod_update_due:
+                ped.lod_update_due = False
+                ped.lod_update_dt = 0.0
+
         return cyclist_collision
 
 
 class CyclistManager(PedestrianManager):
     """Manage cyclists on light-traffic paths and ordinary city roads."""
 
-    def sync_map_data(self, ways: List[Way], traffic_lights: Optional[List[TrafficLight]] = None) -> None:
+    def sync_map_data(
+        self,
+        ways: List[Way],
+        traffic_lights: Optional[List[TrafficLight]] = None,
+        crossings: Optional[List[Crossing]] = None,
+        logical_intersections: Optional[List[LogicalIntersection]] = None,
+    ) -> None:
         if traffic_lights is not None:
             self.traffic_lights = traffic_lights
+        if crossings is not None:
+            self.crossings = crossings
+        if logical_intersections is not None:
+            self.logical_intersections = logical_intersections
         self.ped_ways = [
             way for way in ways
             if len(way.points_m) >= 2

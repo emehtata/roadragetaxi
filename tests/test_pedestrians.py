@@ -22,6 +22,26 @@ def test_pedestrian_target_count_keeps_nearest_characters():
     assert [ped.x for ped in manager.pedestrians] == [1.0, 10.0]
 
 
+def test_pedestrian_can_reserve_any_nearby_parked_vehicle():
+    way = Way(points_m=[(0.0, 0.0), (100.0, 0.0)], highway="footway", half_width_m=1.5)
+    vehicle = SimpleNamespace(
+        x=8.0,
+        y=0.0,
+        state="parked",
+        reserved_by_pedestrian_id=None,
+        current_driver_id=None,
+    )
+    manager = PedestrianManager([way], target_count=0, traffic_vehicles=[vehicle])
+    pedestrian = Pedestrian(0.0, 0.0, 0.0, 1.0, 1.0, way, 0, 1, (1, 1, 1))
+
+    assert manager.find_available_parked_vehicle(pedestrian.x, pedestrian.y, 10.0) is vehicle
+    assert manager.reserve_parked_vehicle(pedestrian, vehicle)
+    assert not manager.reserve_parked_vehicle(pedestrian, vehicle)
+    assert vehicle.state == "reserved"
+    manager.cancel_vehicle_reservation(pedestrian)
+    assert vehicle.state == "parked"
+
+
 def test_pedestrian_can_spawn_at_and_leave_through_building_entrance():
     way = Way(points_m=[(0.0, 0.0), (100.0, 0.0)], highway="footway", half_width_m=1.5)
     building = SimpleNamespace(

@@ -1,12 +1,40 @@
 """Tests for autonomous NPC traffic manager."""
 import math
 from types import SimpleNamespace
-from theroadragetrip.osm import Way
+from theroadragetrip.osm import ParkingSpace, Way
 from theroadragetrip.osm import TrafficLight
 from theroadragetrip.physics import Car
 from theroadragetrip.traffic import IntersectionManager, NPCCar, TrafficManager, traffic_count_for_zoom
 from theroadragetrip.osm import IntersectionApproach, LogicalIntersection
 from theroadragetrip.geo import boxes_intersect
+
+
+def test_traffic_manager_nearby_parking_spaces_uses_osm_spaces():
+    near_space = ParkingSpace([(0.0, 0.0), (2.0, 0.0), (2.0, 4.0), (0.0, 4.0)], (0.0, 0.0, 2.0, 4.0), osm_id=101)
+    far_space = ParkingSpace([(500.0, 0.0), (502.0, 0.0), (502.0, 4.0), (500.0, 4.0)], (500.0, 0.0, 502.0, 4.0), osm_id=102)
+    manager = TrafficManager([], target_count=0, parking_spaces=[near_space, far_space])
+
+    assert manager.nearby_parking_spaces(0.0, 0.0, 100.0) == [near_space]
+    assert manager.nearby_parking_spaces(250.0, 0.0, 300.0) == [near_space, far_space]
+    assert near_space.occupied is False
+    near_space.reserved = True
+    near_space.reserved_by_pedestrian_id = 7
+    assert near_space.reserved_by_pedestrian_id == 7
+
+
+def test_npc_occupies_and_releases_existing_parking_space():
+    way = Way(points_m=[(0.0, 0.0), (100.0, 0.0)], highway="residential", half_width_m=4.0)
+    parking_space = ParkingSpace([(0.0, 0.0), (2.0, 0.0), (2.0, 4.0), (0.0, 4.0)], (0.0, 0.0, 2.0, 4.0), osm_id=9)
+    manager = TrafficManager([way], target_count=0, parking_spaces=[parking_space])
+    npc = NPCCar(1.0, 2.0, 0.0, 4.0, way, 0, 1, 10.0, (20, 20, 20))
+
+    assert manager.occupy_parking_space(npc, parking_space)
+    assert npc.state == "parked"
+    assert parking_space.occupied is True
+    assert parking_space.vehicle_id == id(npc)
+    assert manager.activate_occupied_vehicle(npc)
+    assert npc.state == "driving"
+    assert parking_space.occupied is False
 
 
 def test_plan_route_starts_at_car_and_ends_at_destination():

@@ -303,6 +303,24 @@ class Building:
 class ParkingSpace:
     points_m: List[Tuple[float, float]]
     bbox: Tuple[float, float, float, float]
+    orientation: float = 0.0
+    osm_id: Optional[int] = None
+    occupied: bool = False
+    reserved: bool = False
+    vehicle_id: Optional[int] = None
+    reserved_by_pedestrian_id: Optional[int] = None
+
+    def __post_init__(self) -> None:
+        if len(self.points_m) < 2 or self.orientation != 0.0:
+            return
+        longest_edge = max(
+            zip(self.points_m, self.points_m[1:] + self.points_m[:1]),
+            key=lambda edge: (edge[1][0] - edge[0][0]) ** 2 + (edge[1][1] - edge[0][1]) ** 2,
+        )
+        self.orientation = math.atan2(
+            longest_edge[1][1] - longest_edge[0][1],
+            longest_edge[1][0] - longest_edge[0][0],
+        )
 
 
 @dataclass
@@ -1226,7 +1244,7 @@ def build_ways(
     ways_raw: List[Tuple[dict, str, List[int]]] = []
     water_raw: List[Tuple[dict, List[int]]] = []
     building_raw: List[Tuple[dict, List[int]]] = []
-    parking_space_raw: List[Tuple[dict, List[int]]] = []
+    parking_space_raw: List[Tuple[dict, List[int], Optional[int]]] = []
     scenery_raw: List[Tuple[dict, List[int]]] = []
     named_ways_raw: List[Tuple[dict, List[int]]] = []
     parking_space_nodes_raw: List[Tuple[dict, int]] = []
@@ -1269,7 +1287,7 @@ def build_ways(
             if "building" in tags:
                 building_raw.append((tags, node_ids))
             elif tags.get("amenity") == "parking_space":
-                parking_space_raw.append((tags, node_ids))
+                parking_space_raw.append((tags, node_ids, way_id))
             elif tags.get("natural") in ("water", "bay", "strait") or ("waterway" in tags) or tags.get("landuse") == "reservoir":
                 water_raw.append((tags, node_ids))
             elif tags.get("amenity") == "parking" or tags.get("landuse") == "parking":
@@ -1372,7 +1390,7 @@ def build_ways(
         name = tags.get("name")
         sceneries.append(Scenery(points_m=pts, kind=kind, name=name, bbox=ibbox))
 
-    for tags, node_ids in parking_space_raw:
+    for tags, node_ids, parking_id in parking_space_raw:
         pts, ibbox = process_node_ids(node_ids)
         if not pts:
             continue
@@ -1387,7 +1405,7 @@ def build_ways(
                 (x - half_width, y + half_length),
             ]
             ibbox = (x - half_width, y - half_length, x + half_width, y + half_length)
-        parking_spaces.append(ParkingSpace(points_m=pts, bbox=ibbox))
+        parking_spaces.append(ParkingSpace(points_m=pts, bbox=ibbox, osm_id=parking_id))
     for tags, node_id in parking_space_nodes_raw:
         point = nodes_m.get(node_id)
         if point is None:
@@ -1402,7 +1420,11 @@ def build_ways(
             (x - half_width, y + half_length),
         ]
         parking_spaces.append(
-            ParkingSpace(points_m=points, bbox=(x - half_width, y - half_length, x + half_width, y + half_length))
+            ParkingSpace(
+                points_m=points,
+                bbox=(x - half_width, y - half_length, x + half_width, y + half_length),
+                osm_id=node_id,
+            )
         )
 
     # 2. Water polygons and waterways

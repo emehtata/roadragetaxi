@@ -926,6 +926,7 @@ def main() -> None:
             target_count=traffic_count,
             traffic_lights=traffic_lights,
             crossings=crossings,
+            parking_spaces=parking_spaces,
             roadworks=roadworks,
             enable_two_wheelers=enable_two_wheelers,
         )
@@ -948,6 +949,10 @@ def main() -> None:
             ways,
             target_count=args.pedestrian_count,
             traffic_lights=traffic_lights,
+            crossings=crossings,
+            logical_intersections=traffic_mgr.logical_intersections,
+            traffic_vehicles=traffic_mgr.npcs,
+            traffic_manager=traffic_mgr,
             venue_buildings=buildings,
         )
         cyclist_mgr = CyclistManager(ways, target_count=args.cyclist_count, traffic_lights=traffic_lights)
@@ -1936,7 +1941,16 @@ def main() -> None:
             visible_pedestrians = pedestrian_mgr.pedestrians + [
                 npc for npc in traffic_mgr.npcs if getattr(npc, "is_on_foot", False)
             ] + ([player_pedestrian] if on_foot else [])
-            draw_pedestrians(screen, visible_pedestrians, camx, camy, font=small_font, px_per_m=px_per_m, ways=ways)
+            draw_pedestrians(
+                screen,
+                visible_pedestrians,
+                camx,
+                camy,
+                font=small_font,
+                px_per_m=px_per_m,
+                ways=ways,
+                show_debug=show_debug_hud,
+            )
             draw_cyclists(screen, cyclist_mgr.cyclists, camx, camy, px_per_m=px_per_m, ways=ways)
             draw_npc_cars(
                 screen,

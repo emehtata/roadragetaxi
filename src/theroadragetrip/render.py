@@ -2753,6 +2753,7 @@ def draw_pedestrians(
     screen_w: int = SCREEN_W,
     screen_h: int = SCREEN_H,
     ways: Optional[List[Way]] = None,
+    show_debug: bool = False,
 ) -> None:
     """Draw pedestrians as small top-down characters and comic cursing bubbles."""
     import pygame
@@ -2767,6 +2768,31 @@ def draw_pedestrians(
 
         cx, cy = world_to_screen(ped.x, ped.y, camx, camy, px_per_m, screen_w, screen_h)
         radius_px = max(4.0, getattr(ped, "radius_m", 0.45) * px_per_m)
+
+        if show_debug:
+            route = getattr(ped, "route", None) or ()
+            route_points = [
+                world_to_screen(point[0], point[1], camx, camy, px_per_m, screen_w, screen_h)
+                for point in route
+            ]
+            if len(route_points) >= 2:
+                pygame.draw.lines(screen, (245, 210, 70), False, route_points, 1)
+            destination = getattr(ped, "destination", None)
+            if destination is not None:
+                destination_screen = world_to_screen(
+                    destination[0], destination[1], camx, camy, px_per_m, screen_w, screen_h
+                )
+                pygame.draw.circle(screen, (70, 230, 130), destination_screen, 4, 1)
+            if font:
+                crossing = getattr(ped, "crossing", None)
+                crossing_id = getattr(crossing, "id", None) if crossing is not None else "-"
+                debug_text = font.render(
+                    f"{getattr(ped, 'state', 'walking')} L{getattr(ped, 'lod_level', 0)} C{crossing_id}",
+                    True,
+                    (255, 255, 255),
+                )
+                screen.blit(debug_text, (int(cx + radius_px + 3), int(cy - radius_px - 2)))
+
         heading_x = math.cos(ped.heading)
         heading_y = -math.sin(ped.heading)
         side_x = -heading_y
