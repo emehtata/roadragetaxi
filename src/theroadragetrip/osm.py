@@ -285,14 +285,14 @@ def _parking_surface_way(
 ) -> Way:
     """Create the collision surface corresponding to an OSM parking area."""
     return Way(
-            points_m=points_m,
-            highway="parking",
-            half_width_m=0.0,
-            name=name,
-            surface=surface,
-            is_drivable=True,
-            is_drivable_surface=True,
-            bbox=bbox,
+        points_m=points_m,
+        highway="parking",
+        half_width_m=0.0,
+        name=name,
+        surface=surface,
+        is_drivable=True,
+        is_drivable_surface=True,
+        bbox=bbox,
     )
 
 
@@ -1733,7 +1733,11 @@ def build_ways(
                 waters.append(Water(points_m=pts, kind=kind, is_polygon=is_closed, name=name, bbox=ibbox))
             elif tags.get("amenity") == "parking" or tags.get("landuse") == "parking":
                 sceneries.append(Scenery(points_m=pts, kind="parking", name=name, bbox=ibbox))
-                ways.append(_parking_surface_way(pts, ibbox, name=name))
+                if not any(
+                    getattr(way, "is_drivable_surface", False) and way.bbox == ibbox
+                    for way in ways
+                ):
+                    ways.append(_parking_surface_way(pts, ibbox, name=name))
             elif "leisure" in tags or "landuse" in tags or tags.get("natural") in ("forest", "wood", "scrub", "grass"):
                 kind = tags.get("leisure") or tags.get("landuse") or tags.get("natural") or "park"
                 scenery = Scenery(points_m=pts, kind=kind, name=name, bbox=ibbox)
