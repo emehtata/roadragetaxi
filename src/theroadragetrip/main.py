@@ -103,6 +103,7 @@ from .render import (
     draw_loading_screen,
     draw_navigation_route,
     draw_npc_cars,
+    draw_logical_intersections,
     draw_npc_spatial_grid,
     draw_police_cars,
     draw_pause_menu,
@@ -1954,6 +1955,14 @@ def main() -> None:
                     traffic_mgr._npc_grid_cell_size,
                     camx,
                     camy,
+                    px_per_m=px_per_m,
+                )
+                draw_logical_intersections(
+                    screen,
+                    traffic_mgr.logical_intersections,
+                    camx,
+                    camy,
+                    traffic_mgr.sim_time,
                     px_per_m=px_per_m,
                 )
             draw_police_cars(screen, police_mgr.cars, camx, camy, px_per_m=px_per_m)

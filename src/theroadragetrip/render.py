@@ -2681,6 +2681,58 @@ def draw_npc_spatial_grid(
             screen.blit(label, rect.topleft)
 
 
+def draw_logical_intersections(
+    screen,
+    intersections,
+    camx: float,
+    camy: float,
+    current_time: float,
+    px_per_m: float = PX_PER_M,
+    screen_w: int = SCREEN_W,
+    screen_h: int = SCREEN_H,
+) -> None:
+    """Draw cached intersection bounds, approaches, stop lines, and phases."""
+    import pygame
+
+    global _npc_debug_font
+    if _npc_debug_font is None:
+        _npc_debug_font = pygame.font.Font(None, 16)
+    vminx, vminy, vmaxx, vmaxy = get_viewport_bounds(camx, camy, px_per_m, screen_w, screen_h, 30.0)
+    state_colors = {
+        "green": (70, 220, 100),
+        "yellow": (245, 205, 60),
+        "red": (235, 80, 80),
+        "red+yellow": (245, 140, 60),
+    }
+    for intersection in intersections:
+        center_x, center_y = intersection.center
+        if not (vminx - intersection.radius_m <= center_x <= vmaxx + intersection.radius_m
+                and vminy - intersection.radius_m <= center_y <= vmaxy + intersection.radius_m):
+            continue
+        center = world_to_screen(center_x, center_y, camx, camy, px_per_m, screen_w, screen_h)
+        pygame.draw.circle(screen, (180, 100, 220), center, max(2, int(intersection.radius_m * px_per_m)), 1)
+        title = _npc_debug_font.render(
+            f"{intersection.intersection_id} A{len(intersection.approaches)}",
+            True,
+            (220, 170, 240),
+        )
+        screen.blit(title, (int(center[0] + 4), int(center[1] - 12)))
+        for approach in intersection.approaches:
+            stop_start = world_to_screen(*approach.stop_line[0], camx, camy, px_per_m, screen_w, screen_h)
+            stop_end = world_to_screen(*approach.stop_line[1], camx, camy, px_per_m, screen_w, screen_h)
+            state = approach.signal_group.get_state(current_time) if approach.signal_group else "green"
+            color = state_colors.get(state, (180, 180, 180))
+            pygame.draw.line(screen, color, stop_start, stop_end, 2)
+            vector_end = (
+                center_x + approach.direction_vector[0] * 18.0,
+                center_y + approach.direction_vector[1] * 18.0,
+            )
+            vector_screen = world_to_screen(*vector_end, camx, camy, px_per_m, screen_w, screen_h)
+            pygame.draw.line(screen, color, center, vector_screen, 1)
+            label = _npc_debug_font.render(f"{approach.approach_id} {state}", True, color)
+            screen.blit(label, (int(stop_start[0] + 2), int(stop_start[1] + 2)))
+
+
 def draw_pedestrians(
     screen,
     pedestrians: List,
