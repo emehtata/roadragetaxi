@@ -2690,6 +2690,7 @@ def draw_logical_intersections(
     px_per_m: float = PX_PER_M,
     screen_w: int = SCREEN_W,
     screen_h: int = SCREEN_H,
+    intersection_manager=None,
 ) -> None:
     """Draw cached intersection bounds, approaches, stop lines, and phases."""
     import pygame
@@ -2702,6 +2703,7 @@ def draw_logical_intersections(
         "green": (70, 220, 100),
         "yellow": (245, 205, 60),
         "red": (235, 80, 80),
+        "all-red": (255, 120, 120),
         "red+yellow": (245, 140, 60),
     }
     for intersection in intersections:
@@ -2712,7 +2714,11 @@ def draw_logical_intersections(
         center = world_to_screen(center_x, center_y, camx, camy, px_per_m, screen_w, screen_h)
         pygame.draw.circle(screen, (180, 100, 220), center, max(2, int(intersection.radius_m * px_per_m)), 1)
         title = _npc_debug_font.render(
-            f"{intersection.intersection_id} A{len(intersection.approaches)}",
+            f"{intersection.intersection_id} A{len(intersection.approaches)}"
+            + (
+                f" R{len(intersection_manager._reservations.get(intersection.intersection_id, {}))}"
+                if intersection_manager is not None else ""
+            ),
             True,
             (220, 170, 240),
         )
@@ -2729,7 +2735,11 @@ def draw_logical_intersections(
             )
             vector_screen = world_to_screen(*vector_end, camx, camy, px_per_m, screen_w, screen_h)
             pygame.draw.line(screen, color, center, vector_screen, 1)
-            label = _npc_debug_font.render(f"{approach.approach_id} {state}", True, color)
+            label = _npc_debug_font.render(
+                f"{approach.approach_id} {state} M{','.join(sorted(approach.allowed_movements))}",
+                True,
+                color,
+            )
             screen.blit(label, (int(stop_start[0] + 2), int(stop_start[1] + 2)))
 
 

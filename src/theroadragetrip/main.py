@@ -1964,6 +1964,7 @@ def main() -> None:
                     camy,
                     traffic_mgr.sim_time,
                     px_per_m=px_per_m,
+                    intersection_manager=traffic_mgr.intersection_manager,
                 )
             draw_police_cars(screen, police_mgr.cars, camx, camy, px_per_m=px_per_m)
             draw_taxi_brawl(screen, brawl_manager.draw_data(), camx, camy, px_per_m=px_per_m)
