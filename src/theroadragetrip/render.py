@@ -2639,6 +2639,48 @@ def draw_police_cars(screen, police_cars, camx: float, camy: float, px_per_m: fl
             pygame.draw.circle(screen, right_color, (int(bar_end[0]), int(bar_end[1])), int(light_radius))
 
 
+def draw_npc_spatial_grid(
+    screen,
+    npc_grid,
+    cell_size: float,
+    camx: float,
+    camy: float,
+    px_per_m: float = PX_PER_M,
+    screen_w: int = SCREEN_W,
+    screen_h: int = SCREEN_H,
+) -> None:
+    """Draw occupied NPC grid cells for traffic debugging."""
+    import pygame
+
+    global _npc_debug_font
+    if _npc_debug_font is None:
+        _npc_debug_font = pygame.font.Font(None, 16)
+    vminx, vminy, vmaxx, vmaxy = get_viewport_bounds(camx, camy, px_per_m, screen_w, screen_h, 30.0)
+    min_cell_x = math.floor(vminx / cell_size)
+    max_cell_x = math.floor(vmaxx / cell_size)
+    min_cell_y = math.floor(vminy / cell_size)
+    max_cell_y = math.floor(vmaxy / cell_size)
+    for cell_x in range(min_cell_x, max_cell_x + 1):
+        for cell_y in range(min_cell_y, max_cell_y + 1):
+            occupants = npc_grid.get((cell_x, cell_y))
+            if not occupants:
+                continue
+            left, top = world_to_screen(
+                cell_x * cell_size, (cell_y + 1) * cell_size,
+                camx, camy, px_per_m, screen_w, screen_h,
+            )
+            right, bottom = world_to_screen(
+                (cell_x + 1) * cell_size, cell_y * cell_size,
+                camx, camy, px_per_m, screen_w, screen_h,
+            )
+            rect = pygame.Rect(
+                int(left), int(top), max(1, int(right - left)), max(1, int(bottom - top))
+            )
+            pygame.draw.rect(screen, (80, 180, 255), rect, 1)
+            label = _npc_debug_font.render(str(len(occupants)), True, (140, 220, 255))
+            screen.blit(label, rect.topleft)
+
+
 def draw_pedestrians(
     screen,
     pedestrians: List,

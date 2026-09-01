@@ -103,6 +103,7 @@ from .render import (
     draw_loading_screen,
     draw_navigation_route,
     draw_npc_cars,
+    draw_npc_spatial_grid,
     draw_police_cars,
     draw_pause_menu,
     draw_parking_spaces,
@@ -1946,6 +1947,15 @@ def main() -> None:
                 spatial_grid=spatial_grid,
                 show_debug=show_debug_hud,
             )
+            if show_debug_hud:
+                draw_npc_spatial_grid(
+                    screen,
+                    traffic_mgr._npc_grid,
+                    traffic_mgr._npc_grid_cell_size,
+                    camx,
+                    camy,
+                    px_per_m=px_per_m,
+                )
             draw_police_cars(screen, police_mgr.cars, camx, camy, px_per_m=px_per_m)
             draw_taxi_brawl(screen, brawl_manager.draw_data(), camx, camy, px_per_m=px_per_m)
             if show_navigation:
