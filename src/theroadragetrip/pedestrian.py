@@ -439,7 +439,6 @@ class PedestrianManager:
         if not valid_ways:
             return None
 
-        random.shuffle(valid_ways)
         # Try up to 30 candidate ways/segments to place pedestrians outside viewport
         random.shuffle(valid_ways)
         for chosen_way in valid_ways[:30]:

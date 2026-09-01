@@ -1,7 +1,17 @@
+import os
+
 from theroadragetrip.geo import compute_bbox
 from theroadragetrip.osm import Way
-from theroadragetrip.physics import Car, SpatialWayGrid, is_on_road
-from theroadragetrip.render import _covered_by_higher_road, get_viewport_bounds
+from theroadragetrip.physics import Car, SpatialWayGrid, get_road_layer_at_point, is_on_road
+from theroadragetrip.render import (
+    SCREEN_H,
+    SCREEN_W,
+    _covered_by_higher_road,
+    _vehicle_is_on_bridge,
+    draw_headlight_beams,
+    draw_vehicle_lights,
+    get_viewport_bounds,
+)
 
 
 def test_compute_bbox():
@@ -47,3 +57,76 @@ def test_higher_layer_road_covers_lower_layer_vehicle():
 
     assert _covered_by_higher_road(50.0, 0.0, layer=0, ways=ways) is True
     assert _covered_by_higher_road(50.0, 0.0, layer=1, ways=ways) is False
+
+
+def test_vehicle_on_bridge_is_not_hidden_by_overlapping_higher_bridge():
+    lower_bridge = Way(
+        points_m=[(-50.0, 0.0), (50.0, 0.0)],
+        highway="primary",
+        half_width_m=5.0,
+        layer=1,
+        is_bridge=True,
+    )
+    upper_bridge = Way(
+        points_m=[(-50.0, 0.0), (50.0, 0.0)],
+        highway="primary",
+        half_width_m=5.0,
+        layer=2,
+        is_bridge=True,
+    )
+    car_on_lower_bridge = Car(x=0.0, y=0.0, heading=0.0, speed=10.0, layer=1)
+
+    assert _covered_by_higher_road(
+        car_on_lower_bridge.x,
+        car_on_lower_bridge.y,
+        car_on_lower_bridge.layer,
+        [lower_bridge, upper_bridge],
+    ) is True
+
+    assert _vehicle_is_on_bridge(car_on_lower_bridge, lower_bridge)
+
+
+def test_layer_transition_prefers_way_matching_vehicle_heading():
+    east_west = Way(points_m=[(-20.0, 0.0), (20.0, 0.0)], highway="primary", half_width_m=5.0, layer=0)
+    north_south_bridge = Way(
+        points_m=[(0.0, -20.0), (0.0, 20.0)],
+        highway="primary",
+        half_width_m=5.0,
+        layer=1,
+        is_bridge=True,
+    )
+    grid = SpatialWayGrid([east_west, north_south_bridge])
+
+    assert get_road_layer_at_point(0.0, 0.0, current_layer=2, heading=1.5708, spatial_grid=grid) == 1
+    assert get_road_layer_at_point(0.0, 0.0, current_layer=2, heading=0.0, spatial_grid=grid) == 0
+
+
+def test_vehicle_lights_and_headlight_beams_hidden_under_bridge():
+    import pygame
+
+    os.environ["SDL_VIDEODRIVER"] = "dummy"
+    pygame.init()
+    screen = pygame.display.set_mode((SCREEN_W, SCREEN_H))
+
+    bridge = Way(points_m=[(-50.0, 0.0), (50.0, 0.0)], highway="primary", half_width_m=5.0, layer=1)
+    ways = [bridge]
+    car_under_bridge = Car(x=0.0, y=0.0, heading=0.0, speed=10.0, layer=0)
+
+    screen.fill((0, 0, 0))
+    draw_vehicle_lights(screen, [car_under_bridge], camx=0.0, camy=0.0, px_per_m=9.0, ways=ways)
+    assert screen.get_at((SCREEN_W // 2, SCREEN_H // 2))[:3] == (0, 0, 0)
+
+    screen.fill((0, 0, 0))
+    draw_headlight_beams(
+        screen,
+        [car_under_bridge],
+        camx=0.0,
+        camy=0.0,
+        game_time_seconds=0.0,
+        px_per_m=9.0,
+        daylight_surface=screen.copy(),
+        ways=ways,
+    )
+    assert screen.get_at((SCREEN_W // 2, SCREEN_H // 2 - 40))[:3] == (0, 0, 0)
+
+    pygame.quit()

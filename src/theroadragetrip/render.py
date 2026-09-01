@@ -256,6 +256,11 @@ def _covered_by_higher_road(x: float, y: float, layer: int, ways: Optional[List[
     return False
 
 
+def _vehicle_is_on_bridge(vehicle, active_way=None) -> bool:
+    way = active_way or getattr(vehicle, "way", None)
+    return bool(getattr(way, "is_bridge", False))
+
+
 def draw_scenery(
     screen,
     sceneries: List[Scenery],
@@ -1097,6 +1102,9 @@ def draw_headlight_beams(
     npc_vehicles=None,
     street_light_positions=None,
     bicycles=None,
+    ways: Optional[List[Way]] = None,
+    spatial_grid=None,
+    current_way=None,
 ) -> None:
     """Draw lightweight forward-facing headlight beams for visible vehicles at night."""
     import pygame
@@ -1180,6 +1188,12 @@ def draw_headlight_beams(
         y = getattr(vehicle, "y", None)
         heading = getattr(vehicle, "heading", None)
         if x is None or y is None or heading is None or not (vminx <= x <= vmaxx and vminy <= y <= vmaxy):
+            continue
+        vehicle_layer = getattr(vehicle, "layer", getattr(getattr(vehicle, "way", None), "layer", 0))
+        active_way = current_way if vehicle is vehicles[0] else None
+        if not _vehicle_is_on_bridge(vehicle, active_way) and _covered_by_higher_road(
+            x, y, vehicle_layer, ways, spatial_grid
+        ):
             continue
         cx, cy = world_to_screen(x, y, camx, camy, px_per_m, screen_w, screen_h)
         forward_x = math.cos(heading)
@@ -1835,11 +1849,14 @@ def draw_car(
     shout_text: str = "PRKL!",
     door_open_progress: float = 0.0,
     spatial_grid=None,
+    current_way=None,
 ) -> None:
     """Draw player taxi scaled in meters with headlights and taillights."""
     import pygame
 
-    if _covered_by_higher_road(car.x, car.y, getattr(car, "layer", 0), ways, spatial_grid):
+    if not _vehicle_is_on_bridge(car, current_way) and _covered_by_higher_road(
+        car.x, car.y, getattr(car, "layer", 0), ways, spatial_grid
+    ):
         return
     cx, cy = world_to_screen(car.x, car.y, camx, camy, px_per_m, screen_w, screen_h)
     length_m = getattr(car, "length_m", 4.0)
@@ -1886,10 +1903,25 @@ def draw_car(
         screen.blit(bubble_surf, (int(bubble_x), int(bubble_y)))
 
 
-def draw_vehicle_lights(screen, vehicles, camx: float, camy: float, px_per_m: float = PX_PER_M) -> None:
+def draw_vehicle_lights(
+    screen,
+    vehicles,
+    camx: float,
+    camy: float,
+    px_per_m: float = PX_PER_M,
+    ways: Optional[List[Way]] = None,
+    spatial_grid=None,
+    current_way=None,
+) -> None:
     """Redraw vehicle lamps after night tinting so they remain visible in darkness."""
     for vehicle in vehicles:
         if getattr(vehicle, "is_police", False):
+            continue
+        vehicle_layer = getattr(vehicle, "layer", getattr(getattr(vehicle, "way", None), "layer", 0))
+        active_way = current_way if vehicle is vehicles[0] else None
+        if not _vehicle_is_on_bridge(vehicle, active_way) and _covered_by_higher_road(
+            vehicle.x, vehicle.y, vehicle_layer, ways, spatial_grid
+        ):
             continue
         cx, cy = world_to_screen(vehicle.x, vehicle.y, camx, camy, px_per_m)
         length_px = max(5.0, getattr(vehicle, "length_m", 4.0) * px_per_m)
@@ -1938,7 +1970,7 @@ def draw_npc_cars(
             continue
         if not (vminx <= npc.x <= vmaxx and vminy <= npc.y <= vmaxy):
             continue
-        if _covered_by_higher_road(
+        if not _vehicle_is_on_bridge(npc) and _covered_by_higher_road(
             npc.x,
             npc.y,
             getattr(npc, "layer", getattr(npc.way, "layer", 0)),
@@ -2992,6 +3024,7 @@ def draw_tutorial_screen(
         ("+ / -", tr(language, "zoom")),
         ("Esc", tr(language, "pause")),
         ("F1", tr(language, "help_short")),
+        ("F3", "Näytä/piilota debug-HUD" if language == "fi" else "Toggle diagnostic HUD"),
         ("F12", tr(language, "screenshot")),
         ("F", tr(language, "exit_car")),
     ]
@@ -3219,6 +3252,7 @@ def draw_hud(
     comment_speaker_name: Optional[str] = None,
     subtitles_enabled: bool = True,
     fps: float = 0.0,
+    show_debug_hud: bool = False,
 ) -> None:
     """Draw speed, trip, odometer, on-road status, current road name, lat/lon, taxi mission bar, notifications."""
     import pygame
@@ -3242,8 +3276,9 @@ def draw_hud(
         f"{tr(language, 'ways')}: {ways_count} | {tr(language, 'zoom_level')}: {px_per_m:.2f} px/m | "
         f"{tr(language, 'latitude')}: {lat_s} {tr(language, 'longitude')}: {lon_s}"
     )
-    text = font.render(hud, True, (240, 240, 240))
-    screen.blit(text, (10, 10))
+    if show_debug_hud:
+        text = font.render(hud, True, (240, 240, 240))
+        screen.blit(text, (10, 10))
 
     if game_time_seconds is not None:
         total_minutes = int(game_time_seconds // 60.0) % (24 * 60)
@@ -3294,8 +3329,9 @@ def draw_hud(
         f"{tr(language, 'controls')}: W/S/A/D = {tr(language, 'drive').lower()} | +/- = {tr(language, 'zoom').lower()} | R = {tr(language, 'respawn').lower()} | X = {tr(language, 'cancel_ride').lower()} | T = {tr(language, 'reset_trip').lower()} | "
         f"L = labels ({labels_status}) | K = lane assist ({lane_assist_status}) | V = limiter ({speed_limiter_status}) | B = red assist ({red_light_assist_status}) | C = {tr(language, 'compass')} ({tr(language, 'on' if show_compass else 'off')}) | Space = {tr(language, 'rage')} | ESC = pause"
     )
-    hint_t = font.render(hint, True, (220, 220, 220))
-    screen.blit(hint_t, (10, 34))
+    if show_debug_hud:
+        hint_t = font.render(hint, True, (220, 220, 220))
+        screen.blit(hint_t, (10, 34))
 
     meter_s = (
         f"{tr(language, 'career_meter')}: {odo_s}   |   "

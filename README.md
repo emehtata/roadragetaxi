@@ -240,6 +240,7 @@ Game sounds are stored in `src/theroadragetrip/sounds/`. CC0 sounds require no a
 | `P` | Open taxi phone and view three ride offers |
 | `1` - `3` | Accept a selected ride in the taxi phone |
 | `F1` | Open the full tutorial and control list |
+| `F3` | Toggle the diagnostic text HUD |
 | `F12` | Save screenshot plus matching runtime diagnostic JSON in `screenshots/` |
 | `Esc` | Open pause menu (Continue, Tutorial, Settings, Change City, Exit) |
 

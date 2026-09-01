@@ -963,6 +963,7 @@ def main() -> None:
         logger.info("Entering gameplay loop")
 
         label_mode = 0
+        show_debug_hud = False
         speed_limiter_enabled = True
         red_light_assist_enabled = False
         show_compass = False
@@ -1263,6 +1264,9 @@ def main() -> None:
                             draw_tutorial_screen(screen, font, SCREEN_W, SCREEN_H, language)
                             pygame.display.flip()
                         clock.tick()
+                    elif event.key == pygame.K_F3:
+                        show_debug_hud = not show_debug_hud
+                        logger.info("Debug HUD %s", "enabled" if show_debug_hud else "disabled")
                     elif event.key == pygame.K_r:
                         respawn_car(car, ways, waters=waters, taxi_stops=taxi_stops)
                         camx, camy = car.x, car.y
@@ -1876,6 +1880,7 @@ def main() -> None:
                 shout_timer=rage_shout_timer,
                 shout_text=rage_shout_text,
                 spatial_grid=spatial_grid,
+                current_way=current_way,
             )
             draw_taxi_smoke(screen, car, camx, camy, px_per_m=px_per_m, timer=taxi_mgr.taxi_smoke_timer)
             draw_passenger_nausea_bubble(
@@ -1934,8 +1939,20 @@ def main() -> None:
                 npc_vehicles=[car, *traffic_mgr.npcs],
                 street_light_positions=None,
                 bicycles=cyclist_mgr.cyclists,
+                ways=ways,
+                spatial_grid=spatial_grid,
+                current_way=current_way,
             )
-            draw_vehicle_lights(screen, [car, *traffic_mgr.npcs], camx, camy, px_per_m=px_per_m)
+            draw_vehicle_lights(
+                screen,
+                [car, *traffic_mgr.npcs],
+                camx,
+                camy,
+                px_per_m=px_per_m,
+                ways=ways,
+                spatial_grid=spatial_grid,
+                current_way=current_way,
+            )
             if sun_altitude < -7.5:
                 draw_pedestrian_reflectors(
                     screen,
@@ -2028,6 +2045,7 @@ def main() -> None:
                 comment_speaker_name=audio.comment_speaker_name,
                 subtitles_enabled=config.getboolean("audio", "subtitles_enabled", fallback=True),
                 fps=clock.get_fps(),
+                show_debug_hud=show_debug_hud,
             )
             if phone_open:
                 draw_phone_offers(screen, taxi_mgr, font, small_font, SCREEN_W, SCREEN_H, language, car=car)

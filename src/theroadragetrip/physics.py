@@ -501,8 +501,10 @@ class SpatialWayGrid:
                     return True
         return False
 
-    def get_road_layer_at_point(self, px: float, py: float, current_layer: int = 0) -> int:
-        """Find the matching road layer at (px, py), preferring the current layer if still on it."""
+    def get_road_layer_at_point(
+        self, px: float, py: float, current_layer: int = 0, heading: Optional[float] = None
+    ) -> int:
+        """Find the matching road layer, preserving the current layer and travel direction."""
         matching_layers = []
         for way, half_width in self._candidate_ways(px, py, car_roads_only=True):
             pts = way.points_m
@@ -513,10 +515,17 @@ class SpatialWayGrid:
                     w_layer = getattr(way, "layer", 0)
                     if w_layer == current_layer:
                         return current_layer
-                    matching_layers.append(w_layer)
+                    direction_score = 0.0
+                    if heading is not None:
+                        segment_heading = math.atan2(by - ay, bx - ax)
+                        direction_score = max(
+                            math.cos(heading - segment_heading),
+                            math.cos(heading - segment_heading - math.pi),
+                        )
+                    matching_layers.append((direction_score, w_layer))
                     break
 
-        return matching_layers[0] if matching_layers else current_layer
+        return max(matching_layers)[1] if matching_layers else current_layer
 
     def get_current_road(self, px: float, py: float, layer: Optional[int] = None, car_roads_only: bool = True) -> Optional[Any]:
         """Find the specific road (Way) the given position is on, if any."""
@@ -682,17 +691,18 @@ def get_road_layer_at_point(
     current_layer: int = 0,
     ways: Optional[List] = None,
     spatial_grid: Optional[SpatialWayGrid] = None,
+    heading: Optional[float] = None,
 ) -> int:
-    """Find the matching road layer at (px, py), preferring current_layer if still on it."""
+    """Find the matching road layer, preserving the current layer and travel direction."""
     if spatial_grid is not None:
-        return spatial_grid.get_road_layer_at_point(px, py, current_layer=current_layer)
+        return spatial_grid.get_road_layer_at_point(px, py, current_layer=current_layer, heading=heading)
 
     if ways is None:
         return current_layer
 
     attached_grid = getattr(ways, "_spatial_grid", None)
     if attached_grid is not None:
-        return attached_grid.get_road_layer_at_point(px, py, current_layer=current_layer)
+        return attached_grid.get_road_layer_at_point(px, py, current_layer=current_layer, heading=heading)
 
     matching_layers = []
     for w in ways:
@@ -711,10 +721,17 @@ def get_road_layer_at_point(
                 w_layer = getattr(w, "layer", 0)
                 if w_layer == current_layer:
                     return current_layer
-                matching_layers.append(w_layer)
+                direction_score = 0.0
+                if heading is not None:
+                    segment_heading = math.atan2(by - ay, bx - ax)
+                    direction_score = max(
+                        math.cos(heading - segment_heading),
+                        math.cos(heading - segment_heading - math.pi),
+                    )
+                matching_layers.append((direction_score, w_layer))
                 break
 
-    return matching_layers[0] if matching_layers else current_layer
+    return max(matching_layers)[1] if matching_layers else current_layer
 
 
 def is_on_road(
@@ -987,7 +1004,7 @@ def update_car_physics(
             dist = math.hypot(dx, dy)
             # Update car layer if vehicle entered a transition or road at a different layer
             car.layer = get_road_layer_at_point(
-                car.x, car.y, current_layer=car.layer, ways=ways, spatial_grid=spatial_grid
+                car.x, car.y, current_layer=car.layer, ways=ways, spatial_grid=spatial_grid, heading=car.heading
             )
         else:
             # Try sliding along road edge on individual axes
@@ -1004,7 +1021,7 @@ def update_car_physics(
                 car.speed = car.speed * abs(math.cos(car.heading))
                 blocked = True
                 car.layer = get_road_layer_at_point(
-                    car.x, car.y, current_layer=car.layer, ways=ways, spatial_grid=spatial_grid
+                    car.x, car.y, current_layer=car.layer, ways=ways, spatial_grid=spatial_grid, heading=car.heading
                 )
             elif slide_y and not slide_x and abs(dy) > 1e-4:
                 car.y = target_y
@@ -1012,7 +1029,7 @@ def update_car_physics(
                 car.speed = car.speed * abs(math.sin(car.heading))
                 blocked = True
                 car.layer = get_road_layer_at_point(
-                    car.x, car.y, current_layer=car.layer, ways=ways, spatial_grid=spatial_grid
+                    car.x, car.y, current_layer=car.layer, ways=ways, spatial_grid=spatial_grid, heading=car.heading
                 )
             else:
                 # Fully blocked against road edge
@@ -1025,7 +1042,7 @@ def update_car_physics(
         dist = math.hypot(dx, dy)
         if has_road_data:
             car.layer = get_road_layer_at_point(
-                car.x, car.y, current_layer=car.layer, ways=ways, spatial_grid=spatial_grid
+                car.x, car.y, current_layer=car.layer, ways=ways, spatial_grid=spatial_grid, heading=car.heading
             )
 
     # Accumulate trip and odometer distances based on speed magnitude
