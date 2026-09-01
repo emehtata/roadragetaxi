@@ -9,7 +9,7 @@ from typing import List, Optional, Tuple
 
 from .geo import clip_polygon_to_rect, compute_bbox, dist_point_to_segment, meters_to_latlon, point_in_polygon
 from .osm import Building, BusStop, Place, Scenery, TaxiStop, Water, Way
-from .physics import Car
+from .physics import Car, MAX_SPEED
 from .taxi import TaxiManager, TaxiState
 from .localization import tr
 
@@ -74,6 +74,103 @@ _street_light_last_debug_log_ms = 0
 _road_frame_cache_key = None
 _road_frame_cache_surface = None
 _render_logger = logging.getLogger(__name__)
+_rage_face_frames = None
+_rage_face_path = os.path.join(os.path.dirname(__file__), "assets", "ragefaceatlas.png")
+_speedometer_font = None
+_speedometer_label_font = None
+
+
+def _load_rage_face_frames(pygame):
+    global _rage_face_frames
+    if _rage_face_frames is not None:
+        return _rage_face_frames
+    try:
+        atlas = pygame.image.load(_rage_face_path).convert()
+        atlas_width, atlas_height = atlas.get_size()
+        frame_size = (170, 180)
+        frames = []
+        crop_rects = [(0, 80, 296, 486), (296, 80, 592, 486), (592, 80, 888, 486)]
+        crop_rects.extend([(888, 80, 1188, 486), (1188, 80, 1484, 486)])
+        crop_rects.extend(
+            (column * (atlas_width // 6), 576, (column + 1) * (atlas_width // 6), 990)
+            for column in range(6)
+        )
+        for left, top, right, bottom in crop_rects:
+            crop = atlas.subsurface((left, top, right - left, bottom - top))
+            scale = min(frame_size[0] / crop.get_width(), frame_size[1] / crop.get_height())
+            scaled_size = (round(crop.get_width() * scale), round(crop.get_height() * scale))
+            scaled_crop = pygame.transform.smoothscale(crop, scaled_size)
+            frame = pygame.Surface(frame_size).convert()
+            frame.fill(atlas.get_at((0, 0)))
+            frame.blit(
+                scaled_crop,
+                ((frame_size[0] - scaled_size[0]) // 2, (frame_size[1] - scaled_size[1]) // 2),
+            )
+            frames.append(frame)
+        _rage_face_frames = frames
+    except (pygame.error, OSError) as exc:
+        _render_logger.warning("Could not load rage face atlas: %s", exc)
+        _rage_face_frames = []
+    return _rage_face_frames
+
+
+def default_hud_layout(screen_width: int, screen_height: int) -> dict[str, Tuple[int, int]]:
+    return {
+        "meters": (10, 10),
+        "rage": (screen_width - 190, screen_height - 246),
+        "speedometer": (10, screen_height - 180),
+    }
+
+
+def _draw_analog_speedometer(screen, speed_mps: float, position: Tuple[int, int]):
+    import pygame
+
+    global _speedometer_font
+    global _speedometer_label_font
+    if _speedometer_font is None:
+        _speedometer_font = pygame.font.SysFont(None, 18)
+    if _speedometer_label_font is None:
+        _speedometer_label_font = pygame.font.SysFont(None, 14)
+    font = _speedometer_font
+    label_font = _speedometer_label_font
+    width, height = 190, 170
+    x, y = position
+    center = (x + width // 2, y + 88)
+    radius = 68
+    pygame.draw.rect(screen, (20, 25, 30, 220), (x, y, width, height), border_radius=4)
+    pygame.draw.rect(screen, (130, 140, 150), (x, y, width, height), width=1, border_radius=4)
+    pygame.draw.circle(screen, (12, 16, 20), center, radius)
+    pygame.draw.circle(screen, (130, 140, 150), center, radius, 2)
+
+    speed_kmh = max(0.0, min(MAX_SPEED * 3.6, speed_mps * 3.6))
+    for speed_mark in range(0, 211, 10):
+        angle = math.radians(135.0 + speed_mark / 210.0 * 270.0)
+        is_major = speed_mark % 20 == 0
+        outer_radius = radius - 5
+        inner_radius = radius - (18 if is_major else 11)
+        outer = (center[0] + math.cos(angle) * outer_radius, center[1] + math.sin(angle) * outer_radius)
+        inner = (center[0] + math.cos(angle) * inner_radius, center[1] + math.sin(angle) * inner_radius)
+        pygame.draw.line(screen, (235, 220, 170), inner, outer, 3 if is_major else 2)
+        if is_major:
+            label_center = (
+                center[0] + math.cos(angle) * (radius - 25),
+                center[1] + math.sin(angle) * (radius - 25),
+            )
+            label = label_font.render(str(speed_mark), True, (220, 225, 215))
+            screen.blit(label, label.get_rect(center=label_center))
+
+    needle_angle = math.radians(135.0 + (speed_kmh / (MAX_SPEED * 3.6)) * 270.0)
+    needle_end = (
+        center[0] + math.cos(needle_angle) * (radius - 20),
+        center[1] + math.sin(needle_angle) * (radius - 20),
+    )
+    pygame.draw.line(screen, (230, 65, 45), center, needle_end, 4)
+    pygame.draw.circle(screen, (240, 220, 170), center, 6)
+    speed_text = font.render(f"{speed_kmh:.0f}", True, (240, 240, 240))
+    screen.blit(speed_text, speed_text.get_rect(center=(center[0], y + 132)))
+    unit_text = font.render("km/h", True, (190, 200, 205))
+    screen.blit(unit_text, unit_text.get_rect(center=(center[0], y + 153)))
+    return pygame.Rect(x, y, width, height)
 
 
 def solar_altitude_and_events(
@@ -1930,7 +2027,7 @@ def _draw_labels_uncached(
     district_font = font
     building_font = font
     try:
-        district_font = pygame.font.SysFont(None, 28, bold=True)
+        district_font = pygame.font.SysFont(None, 20, bold=True)
         building_font = pygame.font.SysFont(None, 16)
     except Exception:
         pass
@@ -3769,9 +3866,17 @@ def draw_hud(
     subtitles_enabled: bool = True,
     fps: float = 0.0,
     show_debug_hud: bool = False,
+    hud_layout: Optional[dict[str, Tuple[int, int]]] = None,
+    hud_rects: Optional[dict[str, object]] = None,
 ) -> None:
     """Draw speed, trip, odometer, on-road status, current road name, lat/lon, taxi mission bar, notifications."""
     import pygame
+
+    screen_width = screen.get_width()
+    screen_height = screen.get_height()
+    layout = hud_layout if hud_layout is not None else default_hud_layout(screen_width, screen_height)
+    if hud_rects is not None:
+        hud_rects.clear()
 
     lat, lon = meters_to_latlon(car.x, car.y, transformer=transformer_to_ll)
     lat_s = f"{lat:.5f}" if lat is not None else "N/A"
@@ -3859,11 +3964,12 @@ def draw_hud(
     meter_surface = font.render(meter_s, True, (255, 245, 190))
     meter_background = pygame.Surface((meter_surface.get_width() + 20, meter_surface.get_height() + 10), pygame.SRCALPHA)
     meter_background.fill((15, 20, 25, 210))
-    screen_height = screen.get_height()
-    screen_width = screen.get_width()
-    meter_x = screen_width - meter_background.get_width() - 10
-    screen.blit(meter_background, (meter_x, screen_height - meter_background.get_height() - 10))
-    screen.blit(meter_surface, (meter_x + 10, screen_height - meter_surface.get_height() - 15))
+    meter_x, meter_y = layout["meters"]
+    meter_rect = pygame.Rect(meter_x, meter_y, meter_background.get_width(), meter_background.get_height())
+    if hud_rects is not None:
+        hud_rects["meters"] = meter_rect
+    screen.blit(meter_background, (meter_x, meter_y))
+    screen.blit(meter_surface, (meter_x + 10, meter_y + 5))
 
     # Taxi mission banner / status bar
     if taxi_mgr:
@@ -3928,13 +4034,21 @@ def draw_hud(
             pygame.draw.rect(screen, (255, 200, 50), (notif_rect.x - 12, notif_rect.y - 6, notif_rect.width + 24, notif_rect.height + 12), 2, border_radius=5)
             screen.blit(notif_surf, notif_rect)
 
-    # Keep driving instruments together in the lower-left corner.
-    speed_text = font.render(f"{tr(language, 'speed')}: {car.speed * 3.6:.0f} km/h", True, (240, 240, 240))
+    # Keep the rage face and meter together in the lower-right corner.
     rage_text = font.render(f"{tr(language, 'rage_meter')}: {rage_power * 100:.0f}%", True, (255, 120, 100))
-    instrument_width = max(speed_text.get_width(), rage_text.get_width()) + 20
-    instrument_height = speed_text.get_height() + rage_text.get_height() + 22
-    instrument_x = 10
-    instrument_y = SCREEN_H - instrument_height - 10
+    rage_faces = _load_rage_face_frames(pygame)
+    rage_face = None
+    if rage_faces:
+        rage_index = min(10, max(0, int(max(0.0, min(1.0, rage_power)) * 10.0)))
+        rage_face = rage_faces[rage_index]
+    face_width = rage_face.get_width() if rage_face else 0
+    face_height = rage_face.get_height() if rage_face else 0
+    instrument_width = max(rage_text.get_width(), face_width) + 20
+    instrument_height = face_height + rage_text.get_height() + 24
+    instrument_x, instrument_y = layout["rage"]
+    rage_rect = pygame.Rect(instrument_x, instrument_y, instrument_width, instrument_height)
+    if hud_rects is not None:
+        hud_rects["rage"] = rage_rect
     pygame.draw.rect(
         screen,
         (20, 25, 30, 220),
@@ -3948,8 +4062,10 @@ def draw_hud(
         width=1,
         border_radius=4,
     )
-    screen.blit(speed_text, (instrument_x + 10, instrument_y + 6))
-    rage_y = instrument_y + speed_text.get_height() + 8
+    content_x = instrument_x + (instrument_width - face_width) // 2 if rage_face else instrument_x + 10
+    if rage_face:
+        screen.blit(rage_face, (content_x, instrument_y + 6))
+    rage_y = instrument_y + face_height + 10
     screen.blit(rage_text, (instrument_x + 10, rage_y))
     rage_bar = pygame.Rect(instrument_x + 10, rage_y + rage_text.get_height() + 2, instrument_width - 20, 6)
     pygame.draw.rect(screen, (45, 30, 30), rage_bar)
@@ -3958,6 +4074,18 @@ def draw_hud(
         (220, 55, 35),
         (rage_bar.x, rage_bar.y, int(rage_bar.width * max(0.0, min(1.0, rage_power))), rage_bar.height),
     )
+
+    speedometer_rect = _draw_analog_speedometer(screen, car.speed, layout["speedometer"])
+    if hud_rects is not None:
+        hud_rects["speedometer"] = speedometer_rect
+
+    reset_text = font.render("RESET UI", True, (245, 245, 245))
+    reset_rect = reset_text.get_rect(topright=(screen_width - 10, 10)).inflate(18, 10)
+    pygame.draw.rect(screen, (30, 35, 40), reset_rect, border_radius=3)
+    pygame.draw.rect(screen, (190, 160, 80), reset_rect, width=1, border_radius=3)
+    screen.blit(reset_text, reset_text.get_rect(center=reset_rect.center))
+    if hud_rects is not None:
+        hud_rects["reset"] = reset_rect
 
     # Auto-fetch scenery loading progress meter
     if is_auto_fetching:

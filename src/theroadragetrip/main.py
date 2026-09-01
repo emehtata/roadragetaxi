@@ -97,6 +97,7 @@ from .render import (
     draw_grass_texture,
     draw_headlight_beams,
     draw_hud,
+    default_hud_layout,
     draw_tutorial_screen,
     draw_labels,
     draw_loading_screen,
@@ -983,6 +984,10 @@ def main() -> None:
         rage_shout_timer = 0.0
         rage_shout_text = RAGE_SHOUTS[0]
         rage_power = 0.0
+        hud_layout = default_hud_layout(SCREEN_W, SCREEN_H)
+        hud_rects = {}
+        hud_dragging = None
+        hud_drag_offset = (0, 0)
         brawl_manager = TaxiBrawlManager()
         brawl_manager.bind_traffic(traffic_mgr)
         running = True
@@ -1031,6 +1036,24 @@ def main() -> None:
                 if event.type == pygame.QUIT:
                     running = False
                     app_running = False
+                elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                    if hud_rects.get("reset") and hud_rects["reset"].collidepoint(event.pos):
+                        hud_layout = default_hud_layout(screen.get_width(), screen.get_height())
+                    else:
+                        for element_name in ("rage", "speedometer", "meters"):
+                            element_rect = hud_rects.get(element_name)
+                            if element_rect and element_rect.collidepoint(event.pos):
+                                element_x, element_y = hud_layout[element_name]
+                                hud_dragging = element_name
+                                hud_drag_offset = (event.pos[0] - element_x, event.pos[1] - element_y)
+                                break
+                elif event.type == pygame.MOUSEBUTTONUP and event.button == 1:
+                    hud_dragging = None
+                elif event.type == pygame.MOUSEMOTION and hud_dragging:
+                    hud_layout[hud_dragging] = (
+                        event.pos[0] - hud_drag_offset[0],
+                        event.pos[1] - hud_drag_offset[1],
+                    )
                 elif event.type == pygame.KEYDOWN:
                     if event.key in (pygame.K_PAGEUP, pygame.K_PAGEDOWN):
                         time_delta = 60.0 * 60.0 if event.key == pygame.K_PAGEUP else -60.0 * 60.0
@@ -2079,6 +2102,8 @@ def main() -> None:
                 subtitles_enabled=config.getboolean("audio", "subtitles_enabled", fallback=True),
                 fps=clock.get_fps(),
                 show_debug_hud=show_debug_hud,
+                hud_layout=hud_layout,
+                hud_rects=hud_rects,
             )
             if phone_open:
                 draw_phone_offers(screen, taxi_mgr, font, small_font, SCREEN_W, SCREEN_H, language, car=car)
