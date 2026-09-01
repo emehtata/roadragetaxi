@@ -105,6 +105,9 @@ class NPCCar:
     reserved_intersection_id: Optional[str] = None
 
 
+CarAI = NPCCar
+
+
 class IntersectionManager:
     """Reserve signalized intersection conflict areas for near-field NPCs."""
 

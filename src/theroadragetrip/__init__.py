@@ -17,10 +17,13 @@ from .osm import (
     Building,
     BusStop,
     Crossing,
+    IntersectionApproach,
+    LogicalIntersection,
     Place,
     Scenery,
     TaxiStop,
     TrafficLight,
+    SignalGroup,
     Water,
     Way,
     bbox_from_center,
@@ -73,7 +76,7 @@ from .render import (
     get_viewport_bounds,
     world_to_screen,
 )
-from .traffic import NPCCar, TrafficManager
+from .traffic import CarAI, IntersectionManager, NPCCar, TrafficManager
 
 __all__ = [
     # Geo
@@ -100,6 +103,9 @@ __all__ = [
     "TaxiStop",
     "Place",
     "TrafficLight",
+    "SignalGroup",
+    "IntersectionApproach",
+    "LogicalIntersection",
     "Crossing",
     "load_local_sample",
     "load_osm_cache",
@@ -127,6 +133,8 @@ __all__ = [
     "update_car_physics",
     # Traffic
     "NPCCar",
+    "CarAI",
+    "IntersectionManager",
     "TrafficManager",
     # Render
     "SCREEN_W",
