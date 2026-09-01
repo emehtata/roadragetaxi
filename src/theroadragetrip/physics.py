@@ -801,7 +801,7 @@ def get_current_road_at_car(
             if not (bbox[0] - hw <= car.x <= bbox[2] + hw and bbox[1] - hw <= car.y <= bbox[3] + hw):
                 continue
         if getattr(w, "is_drivable_surface", False) and _point_on_way(car.x, car.y, w, hw):
-                return w
+            return w
         pts = w.points_m
         for i in range(len(pts) - 1):
             ax, ay = pts[i]

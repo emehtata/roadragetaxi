@@ -277,6 +277,25 @@ class Way:
             self.total_length_m += length
 
 
+def _parking_surface_way(
+    points_m: List[Tuple[float, float]],
+    bbox: Tuple[float, float, float, float],
+    name: Optional[str] = None,
+    surface: Optional[str] = None,
+) -> Way:
+    """Create the collision surface corresponding to an OSM parking area."""
+    return Way(
+            points_m=points_m,
+            highway="parking",
+            half_width_m=0.0,
+            name=name,
+            surface=surface,
+            is_drivable=True,
+            is_drivable_surface=True,
+            bbox=bbox,
+    )
+
+
 @dataclass
 class Water:
     points_m: List[Tuple[float, float]]
@@ -1659,24 +1678,19 @@ def build_ways(
     # Keep parking areas as scenery for their existing appearance, while also
     # indexing their polygon as a drivable surface for vehicle collision checks.
     for tags, node_ids in scenery_raw:
-            if tags.get("amenity") != "parking" and tags.get("landuse") != "parking":
-                continue
-            pts, ibbox = process_node_ids(node_ids)
-            if not pts or len(pts) < 3:
-                continue
-            ways.append(
-                Way(
-                    points_m=pts,
-                    highway="parking",
-                    half_width_m=0.0,
-                    name=tags.get("name"),
-                    surface=str(tags.get("surface", "")).strip().lower() or None,
-                    is_drivable=True,
-                    is_drivable_surface=True,
-                    bbox=ibbox,
-                    osm_id=None,
-                )
+        if tags.get("amenity") != "parking" and tags.get("landuse") != "parking":
+            continue
+        pts, ibbox = process_node_ids(node_ids)
+        if not pts or len(pts) < 3:
+            continue
+        ways.append(
+            _parking_surface_way(
+                pts,
+                ibbox,
+                name=tags.get("name"),
+                surface=str(tags.get("surface", "")).strip().lower() or None,
             )
+        )
     if progress_callback:
         progress_callback(0.965, f"Planting trees ({len(sceneries)} scenery areas)...")
     plant_trees(sceneries, ways)
@@ -1719,17 +1733,7 @@ def build_ways(
                 waters.append(Water(points_m=pts, kind=kind, is_polygon=is_closed, name=name, bbox=ibbox))
             elif tags.get("amenity") == "parking" or tags.get("landuse") == "parking":
                 sceneries.append(Scenery(points_m=pts, kind="parking", name=name, bbox=ibbox))
-                ways.append(
-                    Way(
-                        points_m=pts,
-                        highway="parking",
-                        half_width_m=0.0,
-                        name=name,
-                        is_drivable=True,
-                        is_drivable_surface=True,
-                        bbox=ibbox,
-                    )
-                )
+                ways.append(_parking_surface_way(pts, ibbox, name=name))
             elif "leisure" in tags or "landuse" in tags or tags.get("natural") in ("forest", "wood", "scrub", "grass"):
                 kind = tags.get("leisure") or tags.get("landuse") or tags.get("natural") or "park"
                 scenery = Scenery(points_m=pts, kind=kind, name=name, bbox=ibbox)
