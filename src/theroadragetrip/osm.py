@@ -1677,6 +1677,7 @@ def build_ways(
 
     # Keep parking areas as scenery for their existing appearance, while also
     # indexing their polygon as a drivable surface for vehicle collision checks.
+    parking_surface_bboxes = set()
     for tags, node_ids in scenery_raw:
         if tags.get("amenity") != "parking" and tags.get("landuse") != "parking":
             continue
@@ -1691,6 +1692,7 @@ def build_ways(
                 surface=str(tags.get("surface", "")).strip().lower() or None,
             )
         )
+        parking_surface_bboxes.add(ibbox)
     if progress_callback:
         progress_callback(0.965, f"Planting trees ({len(sceneries)} scenery areas)...")
     plant_trees(sceneries, ways)
@@ -1733,11 +1735,9 @@ def build_ways(
                 waters.append(Water(points_m=pts, kind=kind, is_polygon=is_closed, name=name, bbox=ibbox))
             elif tags.get("amenity") == "parking" or tags.get("landuse") == "parking":
                 sceneries.append(Scenery(points_m=pts, kind="parking", name=name, bbox=ibbox))
-                if not any(
-                    getattr(way, "is_drivable_surface", False) and way.bbox == ibbox
-                    for way in ways
-                ):
+                if ibbox not in parking_surface_bboxes:
                     ways.append(_parking_surface_way(pts, ibbox, name=name))
+                    parking_surface_bboxes.add(ibbox)
             elif "leisure" in tags or "landuse" in tags or tags.get("natural") in ("forest", "wood", "scrub", "grass"):
                 kind = tags.get("leisure") or tags.get("landuse") or tags.get("natural") or "park"
                 scenery = Scenery(points_m=pts, kind=kind, name=name, bbox=ibbox)

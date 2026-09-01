@@ -548,8 +548,9 @@ class SpatialWayGrid:
         best_dist = float("inf")
         for way, half_width in self._candidate_ways(px, py, car_roads_only, layer):
             if getattr(way, "is_drivable_surface", False) and _point_on_way(px, py, way, half_width):
-                best_way = way
-                best_dist = 0.0
+                if best_way is None:
+                    best_way = way
+                    best_dist = 0.0
                 continue
             pts = way.points_m
             for i in range(len(pts) - 1):
