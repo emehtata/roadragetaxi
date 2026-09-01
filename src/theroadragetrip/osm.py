@@ -1654,6 +1654,7 @@ def build_ways(
                 lanes_backward=lanes_backward,
                 turn_lanes=tags.get("turn:lanes") or tags.get("turn:lanes:forward"),
             )
+        )
 
     # Keep parking areas as scenery for their existing appearance, while also
     # indexing their polygon as a drivable surface for vehicle collision checks.
@@ -1676,8 +1677,6 @@ def build_ways(
                     osm_id=None,
                 )
             )
-        )
-
     if progress_callback:
         progress_callback(0.965, f"Planting trees ({len(sceneries)} scenery areas)...")
     plant_trees(sceneries, ways)

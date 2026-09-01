@@ -84,16 +84,6 @@ def is_car_road(way) -> bool:
         return False
     if getattr(way, "is_busway", False):
         return True
-
-
-def _point_on_way(px: float, py: float, way, half_width: float) -> bool:
-        """Check line coverage or polygon coverage for mapped drivable surfaces."""
-        if getattr(way, "is_drivable_surface", False) and len(way.points_m) >= 3:
-            return point_in_polygon(px, py, way.points_m)
-        return any(
-            dist_point_to_segment(px, py, start[0], start[1], end[0], end[1]) <= half_width
-            for start, end in zip(way.points_m, way.points_m[1:])
-        )
     if getattr(way, "highway", "") == "living_street":
         return True
     if not getattr(way, "is_drivable", True):
@@ -101,6 +91,16 @@ def _point_on_way(px: float, py: float, way, half_width: float) -> bool:
     if getattr(way, "highway", "") in NON_DRIVABLE_HIGHWAYS:
         return False
     return True
+
+
+def _point_on_way(px: float, py: float, way, half_width: float) -> bool:
+    """Check line coverage or polygon coverage for mapped drivable surfaces."""
+    if getattr(way, "is_drivable_surface", False) and len(way.points_m) >= 3:
+        return point_in_polygon(px, py, way.points_m)
+    return any(
+        dist_point_to_segment(px, py, start[0], start[1], end[0], end[1]) <= half_width
+        for start, end in zip(way.points_m, way.points_m[1:])
+    )
 
 
 def is_pedestrian_way(way) -> bool:
