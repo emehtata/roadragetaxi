@@ -38,10 +38,88 @@ class Brawl:
 class TaxiBrawlManager:
     """Run one visible driver confrontation at a time."""
 
-    def __init__(self) -> None:
+    def __init__(self, auto_start: bool = True) -> None:
         self.brawl: Optional[Brawl] = None
         self._stand_cooldown = 0.0
         self._active_traffic_npcs: list[NPCCar] = []
+        self.auto_start = auto_start
+        self.challenge_message = ""
+
+    def request_challenge(
+        self,
+        player_car: Car,
+        traffic: TrafficManager,
+        taxi_stops: list[TaxiStop],
+        viewport_bounds: Optional[tuple[float, float, float, float]] = None,
+    ) -> bool:
+        """Offer a nearby taxi driver a brawl; pressing Z again accepts it."""
+        if self.brawl is not None or self._stand_cooldown > 0.0:
+            return False
+        stop = min(
+            (stop for stop in taxi_stops if math.hypot(stop.x - player_car.x, stop.y - player_car.y) <= 30.0),
+            key=lambda candidate: math.hypot(candidate.x - player_car.x, candidate.y - player_car.y),
+            default=None,
+        )
+        if stop is None:
+            return False
+        opponent = next(
+            (npc for npc in traffic.npcs if npc.is_taxi and math.hypot(npc.x - stop.x, npc.y - stop.y) <= 12.0),
+            None,
+        )
+        if opponent is None:
+            opponent = traffic.spawn_npc(
+                stop.x, stop.y, viewport_bounds=viewport_bounds,
+                near_heading=player_car.heading, max_distance_m=12.0,
+            )
+            if opponent is None:
+                return False
+            opponent.is_taxi = True
+        opponent.speed = 0.0
+        opponent.target_speed = 0.0
+        opponent.blocked_timer = 999.0
+        self.brawl = Brawl(
+            opponent=opponent,
+            state="offer",
+            timer=0.0,
+            player_x=player_car.x,
+            player_y=player_car.y,
+            opponent_x=opponent.x,
+            opponent_y=opponent.y,
+            player_car_x=player_car.x,
+            player_car_y=player_car.y,
+            opponent_car_x=opponent.x,
+            opponent_car_y=opponent.y,
+            stop_x=stop.x,
+            stop_y=stop.y,
+        )
+        self.challenge_message = "Paina Z hyväksyäksesi haasteen"
+        return True
+
+    def press_z(
+        self,
+        player_car: Car,
+        score: int,
+        score_callback: Optional[Callable[[int], None]] = None,
+    ) -> str:
+        """Handle Z during a challenge and return the resulting action."""
+        if self.brawl is None:
+            return "none"
+        if self.brawl.state == "offer":
+            self.brawl.state = "approach_player"
+            self.brawl.timer = 12.0
+            self.brawl.opponent.is_on_foot = True
+            self.challenge_message = "Haaste hyväksytty"
+            return "accepted"
+        if self.brawl.state == "reaction":
+            self.brawl.winner = "player"
+            self.brawl.state = "return"
+            self.brawl.timer = 3.0
+            self.brawl.curse_timer = 2.0
+            self.challenge_message = "Voitit tappelun"
+            if score_callback is not None:
+                score_callback(1)
+            return "hit"
+        return "none"
 
     def update(
         self,
@@ -56,6 +134,8 @@ class TaxiBrawlManager:
         self._active_traffic_npcs = traffic.npcs
         self._stand_cooldown = max(0.0, self._stand_cooldown - dt)
         if self.brawl is None:
+            if not self.auto_start:
+                return
             if self._stand_cooldown > 0.0 or abs(player_car.speed) > 1.5:
                 return
             nearby_stops = [
@@ -123,6 +203,42 @@ class TaxiBrawlManager:
         opponent = brawl.opponent
         opponent.speed = 0.0
         opponent.target_speed = 0.0
+        if brawl.state == "offer":
+            return
+        if brawl.state == "approach_player":
+            dx = brawl.player_x - opponent.x
+            dy = brawl.player_y - opponent.y
+            distance = math.hypot(dx, dy)
+            if distance <= 2.5:
+                brawl.state = "reaction"
+                brawl.timer = 2.0
+                self.challenge_message = "NYT! Paina Z!"
+                return
+            step = min(distance, 3.0 * dt)
+            if distance > 1e-6:
+                opponent.heading = math.atan2(dy, dx)
+                opponent.x += dx / distance * step
+                opponent.y += dy / distance * step
+                brawl.opponent_x, brawl.opponent_y = opponent.x, opponent.y
+            brawl.timer -= dt
+            if brawl.timer <= 0.0:
+                brawl.winner = "opponent"
+                brawl.state = "return"
+                brawl.timer = 3.0
+                self.challenge_message = "Et ehtinyt: sinut tyrmättiin"
+                if score_callback is not None:
+                    score_callback(-1)
+            return
+        if brawl.state == "reaction":
+            brawl.timer -= dt
+            if brawl.timer <= 0.0:
+                brawl.winner = "opponent"
+                brawl.state = "return"
+                brawl.timer = 3.0
+                self.challenge_message = "Et ehtinyt: sinut tyrmättiin"
+                if score_callback is not None:
+                    score_callback(-1)
+            return
         if brawl.state == "approach":
             if math.hypot(player_car.x - brawl.player_x, player_car.y - brawl.player_y) > 30.0:
                 logger.info("Taxi brawl cancelled: player left before challenger arrived")
@@ -210,6 +326,8 @@ class TaxiBrawlManager:
                 brawl.player_y += player_to_opponent_y / distance * step
                 brawl.opponent_x -= player_to_opponent_x / distance * step
                 brawl.opponent_y -= player_to_opponent_y / distance * step
+            opponent.x = brawl.opponent_x
+            opponent.y = brawl.opponent_y
             if brawl.timer <= 0.0:
                 brawl.winner = "player" if rage_power >= 1.0 else ("player" if random.random() < rage_power else "opponent")
                 brawl.state = "return"
@@ -242,9 +360,12 @@ class TaxiBrawlManager:
                 step = min(walk_step, opponent_distance)
                 brawl.opponent_x += (brawl.opponent_car_x - brawl.opponent_x) / opponent_distance * step
                 brawl.opponent_y += (brawl.opponent_car_y - brawl.opponent_y) / opponent_distance * step
+            opponent.x = brawl.opponent_x
+            opponent.y = brawl.opponent_y
             if brawl.timer <= 0.0:
                 brawl.state = "drive"
                 brawl.timer = 0.0
+                opponent.is_on_foot = False
                 logger.info("Taxi brawl drivers returned to cars: winner=%s", brawl.winner)
             return
         if brawl.state == "drive":
@@ -274,6 +395,7 @@ class TaxiBrawlManager:
             return
 
     def _finish(self, opponent: NPCCar, escaped: bool, keep_opponent: bool = False) -> None:
+        opponent.is_on_foot = False
         if keep_opponent:
             opponent.speed = 0.0
             opponent.target_speed = 0.0

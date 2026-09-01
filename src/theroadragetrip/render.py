@@ -28,6 +28,7 @@ SCENERY_COLORS = {
     "playground": (48, 115, 55),
     "sand": (160, 150, 110),
     "beach": (170, 160, 115),
+    "parking": (92, 96, 94),
 }
 TREE_CROWN_COLORS = ((25, 78, 29), (34, 101, 35), (48, 119, 42), (63, 112, 34))
 BUILDING_WALL_COLORS = ((158, 105, 82), (174, 166, 143), (116, 131, 119), (139, 139, 137))
@@ -505,6 +506,21 @@ def draw_scenery(
                     pygame.draw.circle(screen, (82, 145, 44), (int(sx + drift_x), int(sy - crown + drift_y)), max(1, int(px_per_m * 0.22)))
 
 
+def draw_parking_spaces(screen, parking_spaces, camx: float, camy: float, px_per_m: float = PX_PER_M,
+                        screen_w: int = SCREEN_W, screen_h: int = SCREEN_H) -> None:
+    """Draw OSM parking spaces as small asphalt-colored polygons."""
+    import pygame
+
+    vminx, vminy, vmaxx, vmaxy = get_viewport_bounds(camx, camy, px_per_m, screen_w, screen_h, 30.0)
+    for space in parking_spaces:
+        min_x, min_y, max_x, max_y = space.bbox
+        if max_x < vminx or min_x > vmaxx or max_y < vminy or min_y > vmaxy:
+            continue
+        points = [world_to_screen(x, y, camx, camy, px_per_m, screen_w, screen_h) for x, y in space.points_m]
+        pygame.draw.polygon(screen, (72, 75, 74), points)
+        pygame.draw.lines(screen, (125, 128, 124), True, points, max(1, int(px_per_m * 0.12)))
+
+
 def draw_grass_texture(screen, camx: float, camy: float, px_per_m: float = PX_PER_M) -> None:
     """Fill screen with a subtle repeating grass texture."""
     import pygame
@@ -815,7 +831,7 @@ def draw_buildings(
                 key=edge_distances.__getitem__,
                 default=-1,
             )
-            if edge_index < 0:
+            if edge_index < 0 or edge_index not in visible_edges:
                 continue
             point = pts[edge_index]
             next_point = pts[(edge_index + 1) % len(pts)]
@@ -2478,7 +2494,7 @@ def draw_npc_cars(
         ).convert_alpha()
 
     for npc in npcs:
-        if getattr(npc, "is_police", False):
+        if getattr(npc, "is_police", False) or getattr(npc, "is_on_foot", False):
             continue
         if not (vminx <= npc.x <= vmaxx and vminy <= npc.y <= vmaxy):
             continue
@@ -2769,14 +2785,17 @@ def draw_taxi_brawl(screen, brawl, camx: float, camy: float, px_per_m: float = P
         return
     screen_w, screen_h = screen.get_size()
     phase_text = {
+        "offer": "PAINA Z HAASTAAKSESI",
         "approach": "TAXI APPROACHING",
+        "approach_player": "KUSKI LÄHESTYY",
+        "reaction": "NYT! PAINA Z!",
         "fight": "TAXI BRAWL",
         "return": "DRIVERS RETURNING",
         "drive": "WINNER DRIVING",
     }.get(brawl.state, "TAXI DRIVER CHALLENGE")
     phase_color = (
         (130, 205, 255) if brawl.state == "approach"
-        else (255, 110, 80) if brawl.state == "fight"
+        else (255, 110, 80) if brawl.state in ("fight", "reaction")
         else (130, 255, 170) if brawl.state in ("return", "drive")
         else (255, 215, 95)
     )

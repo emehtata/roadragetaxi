@@ -105,6 +105,7 @@ from .render import (
     draw_npc_cars,
     draw_police_cars,
     draw_pause_menu,
+    draw_parking_spaces,
     draw_settings_menu,
     draw_pedestrians,
     draw_pedestrian_reflectors,
@@ -861,6 +862,7 @@ def main() -> None:
         minx, miny, maxx, maxy = bounds
         taxi_stops = getattr(res, "taxi_stops", [])
         bus_stops = getattr(res, "bus_stops", [])
+        parking_spaces = getattr(res, "parking_spaces", [])
         roadworks, roadwork_lights = create_roadworks(ways) if roadworks_enabled else ([], [])
         traffic_lights.extend(roadwork_lights)
         logger.info(
@@ -925,6 +927,14 @@ def main() -> None:
             roadworks=roadworks,
             enable_two_wheelers=enable_two_wheelers,
         )
+        initial_stand_taxis = traffic_mgr.spawn_taxis_at_nearby_stops(taxi_stops, car, None, all_stops=True)
+        logger.info(
+            "Taxi stands initialized: stops=%d taxis_spawned=%d taxis_active=%d brawls_enabled=%s",
+            len(taxi_stops),
+            initial_stand_taxis,
+            sum(1 for npc in traffic_mgr.npcs if npc.is_taxi),
+            taxi_brawls_enabled,
+        )
         police_mgr = PoliceManager(
             traffic_mgr, car.x, car.y, buildings=buildings, building_grid=building_grid
         )
@@ -988,7 +998,7 @@ def main() -> None:
         hud_rects = {}
         hud_dragging = None
         hud_drag_offset = (0, 0)
-        brawl_manager = TaxiBrawlManager()
+        brawl_manager = TaxiBrawlManager(auto_start=not taxi_brawls_enabled)
         brawl_manager.bind_traffic(traffic_mgr)
         running = True
         current_way = get_current_road_at_car(car, ways=ways, spatial_grid=spatial_grid, car_roads_only=True)
@@ -1120,6 +1130,16 @@ def main() -> None:
                             on_foot = False
                             car.speed = 0.0
                             audio.play("car-door-open")
+                    elif event.key == pygame.K_z and taxi_brawls_enabled and not phone_open and on_foot:
+                        score_update = lambda result: setattr(
+                            taxi_mgr,
+                            "total_score",
+                            max(0, taxi_mgr.total_score * 2) if result == 1 else taxi_mgr.total_score - 1000,
+                        )
+                        if brawl_manager.draw_data() is None:
+                            brawl_manager.request_challenge(car, traffic_mgr, taxi_stops, viewport_bounds=None)
+                        else:
+                            action = brawl_manager.press_z(car, taxi_mgr.total_score, score_update)
                     elif event.key == pygame.K_SPACE and not phone_open:
                         if rage_power >= RAGE_SHOUT_COST:
                             traffic_mgr.rage_shout(car)
@@ -1664,14 +1684,21 @@ def main() -> None:
                     rage_power,
                     dt,
                     viewport_bounds=viewport_bounds,
-                    score_callback=lambda delta: setattr(taxi_mgr, "total_score", taxi_mgr.total_score + delta),
+                    score_callback=lambda result: setattr(
+                        taxi_mgr,
+                        "total_score",
+                        max(0, taxi_mgr.total_score * 2) if result == 1 else taxi_mgr.total_score - 1000,
+                    ),
                 )
+                if brawl_manager.draw_data() is not None and brawl_manager.draw_data().state == "drive":
+                    on_foot = False
 
             # Update autonomous traffic NPCs and pedestrians
             traffic_mgr.spawn_taxis_at_nearby_stops(
                 taxi_stops,
                 car,
                 viewport_bounds,
+                all_stops=True,
             )
             traffic_mgr.update(
                 car,
@@ -1695,7 +1722,12 @@ def main() -> None:
             )
             if not taxi_mgr.current_passenger:
                 pedestrian_mgr.ensure_taxi_stop_waiter(taxi_stops, car, viewport_bounds=viewport_bounds)
-            pedestrian_mgr.update(car, dt, viewport_bounds=viewport_bounds)
+            pedestrian_mgr.update(
+                car,
+                dt,
+                viewport_bounds=viewport_bounds,
+                game_time_seconds=game_time_seconds,
+            )
             if cyclist_mgr.update(car, dt, viewport_bounds=viewport_bounds):
                 rage_power *= 0.5
             traffic_mgr.let_taxi_pick_up_waiter(taxi_stops, pedestrian_mgr.pedestrians, dt)
@@ -1838,6 +1870,7 @@ def main() -> None:
                 fallen_trees=taxi_mgr.fallen_trees,
                 spatial_grid=scenery_grid,
             )
+            draw_parking_spaces(screen, parking_spaces, camx, camy, px_per_m=px_per_m)
             render_profile_times["map_scenery"] = render_profile_times.get("map_scenery", 0.0) + time.perf_counter() - map_stage_start
             if first_gameplay_frame:
                 logger.info("Gameplay frame: rendering water")
@@ -1898,7 +1931,9 @@ def main() -> None:
                 if getattr(way, "is_drivable", True)
             )
             render_profile_stage_start = time.perf_counter()
-            visible_pedestrians = pedestrian_mgr.pedestrians + ([player_pedestrian] if on_foot else [])
+            visible_pedestrians = pedestrian_mgr.pedestrians + [
+                npc for npc in traffic_mgr.npcs if getattr(npc, "is_on_foot", False)
+            ] + ([player_pedestrian] if on_foot else [])
             draw_pedestrians(screen, visible_pedestrians, camx, camy, font=small_font, px_per_m=px_per_m, ways=ways)
             draw_cyclists(screen, cyclist_mgr.cyclists, camx, camy, px_per_m=px_per_m, ways=ways)
             draw_npc_cars(

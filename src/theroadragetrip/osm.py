@@ -297,6 +297,12 @@ class Building:
 
 
 @dataclass
+class ParkingSpace:
+    points_m: List[Tuple[float, float]]
+    bbox: Tuple[float, float, float, float]
+
+
+@dataclass
 class Scenery:
     points_m: List[Tuple[float, float]]
     kind: str
@@ -732,6 +738,7 @@ def fetch_osm_ways(
       node["amenity"="taxi"]({south},{west},{north},{east});
       node["crossing"]({south},{west},{north},{east});
     node["entrance"]({south},{west},{north},{east});
+    node["amenity"="parking_space"]({south},{west},{north},{east});
       node["place"~"suburb|neighbourhood|quarter|village|town|city|hamlet"]({south},{west},{north},{east});
     node["name"]({south},{west},{north},{east});
       way["highway"]({south},{west},{north},{east});
@@ -742,6 +749,9 @@ def fetch_osm_ways(
       way["waterway"]({south},{west},{north},{east});
       way["landuse"="reservoir"]({south},{west},{north},{east});
       way["building"]({south},{west},{north},{east});
+    way["amenity"="parking"]({south},{west},{north},{east});
+    way["landuse"="parking"]({south},{west},{north},{east});
+    way["amenity"="parking_space"]({south},{west},{north},{east});
       way["landuse"~"forest|grass|park|meadow|residential|commercial|industrial|recreation_ground"]({south},{west},{north},{east});
       way["leisure"~"park|garden|pitch|playground"]({south},{west},{north},{east});
       way["natural"~"wood|scrub|grass|sand|heath"]({south},{west},{north},{east});
@@ -751,6 +761,8 @@ def fetch_osm_ways(
     relation["natural"="strait"]({south},{west},{north},{east});
       relation["landuse"="reservoir"]({south},{west},{north},{east});
       relation["building"]({south},{west},{north},{east});
+    relation["amenity"="parking"]({south},{west},{north},{east});
+    relation["landuse"="parking"]({south},{west},{north},{east});
       relation["leisure"="park"]({south},{west},{north},{east});
       relation["landuse"~"forest|grass|park|meadow"]({south},{west},{north},{east});
       relation["place"~"suburb|neighbourhood|quarter"]({south},{west},{north},{east});
@@ -915,10 +927,10 @@ def _stitch_member_ways_into_rings(
 class MapData(tuple):
     """Container tuple for build_ways results returning 6 elements for backward compatibility while providing traffic_lights and crossings via attributes and slicing."""
 
-    def __new__(cls, ways, waters, buildings, sceneries, places, bounds, traffic_lights=None, crossings=None, taxi_stops=None, bus_stops=None):
+    def __new__(cls, ways, waters, buildings, sceneries, places, bounds, traffic_lights=None, crossings=None, taxi_stops=None, bus_stops=None, parking_spaces=None):
         return super().__new__(cls, (ways, waters, buildings, sceneries, places, bounds))
 
-    def __init__(self, ways, waters, buildings, sceneries, places, bounds, traffic_lights=None, crossings=None, taxi_stops=None, bus_stops=None):
+    def __init__(self, ways, waters, buildings, sceneries, places, bounds, traffic_lights=None, crossings=None, taxi_stops=None, bus_stops=None, parking_spaces=None):
         self.ways = ways
         self.waters = waters
         self.buildings = buildings
@@ -929,6 +941,7 @@ class MapData(tuple):
         self.crossings = crossings if crossings is not None else []
         self.taxi_stops = taxi_stops if taxi_stops is not None else []
         self.bus_stops = bus_stops if bus_stops is not None else []
+        self.parking_spaces = parking_spaces if parking_spaces is not None else []
 
     @property
     def traffic_signals(self):
@@ -1013,8 +1026,10 @@ def build_ways(
     ways_raw: List[Tuple[dict, str, List[int]]] = []
     water_raw: List[Tuple[dict, List[int]]] = []
     building_raw: List[Tuple[dict, List[int]]] = []
+    parking_space_raw: List[Tuple[dict, List[int]]] = []
     scenery_raw: List[Tuple[dict, List[int]]] = []
     named_ways_raw: List[Tuple[dict, List[int]]] = []
+    parking_space_nodes_raw: List[Tuple[dict, int]] = []
     relations_raw: List[Tuple[dict, List[dict]]] = []
 
     for el in elements:
@@ -1037,6 +1052,8 @@ def build_ways(
                 bus_stops_raw.append((tags, nid))
             if "entrance" in tags:
                 entrance_node_ids.add(nid)
+            if tags.get("amenity") == "parking_space":
+                parking_space_nodes_raw.append((tags, nid))
             if tags.get("highway") == "crossing" or tags.get("crossing") in ("zebra", "marked", "uncontrolled", "traffic_signals", "yes"):
                 crossings_raw.append((tags, nid))
         elif el_type == "way":
@@ -1051,8 +1068,12 @@ def build_ways(
                 bus_platforms_raw.append((tags, node_ids, way_id))
             if "building" in tags:
                 building_raw.append((tags, node_ids))
+            elif tags.get("amenity") == "parking_space":
+                parking_space_raw.append((tags, node_ids))
             elif tags.get("natural") in ("water", "bay", "strait") or ("waterway" in tags) or tags.get("landuse") == "reservoir":
                 water_raw.append((tags, node_ids))
+            elif tags.get("amenity") == "parking" or tags.get("landuse") == "parking":
+                scenery_raw.append((tags, node_ids))
             elif "leisure" in tags or "landuse" in tags or tags.get("natural") in ("wood", "scrub", "grass", "sand", "heath"):
                 scenery_raw.append((tags, node_ids))
             elif "highway" in tags:
@@ -1108,6 +1129,7 @@ def build_ways(
     crossings: List[Crossing] = []
     taxi_stops: List[TaxiStop] = []
     bus_stops: List[BusStop] = []
+    parking_spaces: List[ParkingSpace] = []
 
     minx = miny = float("inf")
     maxx = maxy = float("-inf")
@@ -1142,9 +1164,46 @@ def build_ways(
         pts, ibbox = process_node_ids(node_ids)
         if not pts or len(pts) < 3:
             continue
-        kind = tags.get("leisure") or tags.get("landuse") or tags.get("natural") or "park"
+        kind = (
+            "parking"
+            if tags.get("amenity") == "parking" or tags.get("landuse") == "parking"
+            else tags.get("leisure") or tags.get("landuse") or tags.get("natural") or "park"
+        )
         name = tags.get("name")
         sceneries.append(Scenery(points_m=pts, kind=kind, name=name, bbox=ibbox))
+
+    for tags, node_ids in parking_space_raw:
+        pts, ibbox = process_node_ids(node_ids)
+        if not pts:
+            continue
+        if len(pts) < 3:
+            x, y = pts[0]
+            half_width = 1.25
+            half_length = 2.5
+            pts = [
+                (x - half_width, y - half_length),
+                (x + half_width, y - half_length),
+                (x + half_width, y + half_length),
+                (x - half_width, y + half_length),
+            ]
+            ibbox = (x - half_width, y - half_length, x + half_width, y + half_length)
+        parking_spaces.append(ParkingSpace(points_m=pts, bbox=ibbox))
+    for tags, node_id in parking_space_nodes_raw:
+        point = nodes_m.get(node_id)
+        if point is None:
+            continue
+        x, y = point
+        half_width = 1.25
+        half_length = 2.5
+        points = [
+            (x - half_width, y - half_length),
+            (x + half_width, y - half_length),
+            (x + half_width, y + half_length),
+            (x - half_width, y + half_length),
+        ]
+        parking_spaces.append(
+            ParkingSpace(points_m=points, bbox=(x - half_width, y - half_length, x + half_width, y + half_length))
+        )
 
     # 2. Water polygons and waterways
     if progress_callback:
@@ -1403,6 +1462,8 @@ def build_ways(
             elif tags.get("natural") in ("water", "bay", "strait") or tags.get("landuse") == "reservoir":
                 kind = tags.get("natural") or tags.get("landuse") or "water"
                 waters.append(Water(points_m=pts, kind=kind, is_polygon=is_closed, name=name, bbox=ibbox))
+            elif tags.get("amenity") == "parking" or tags.get("landuse") == "parking":
+                sceneries.append(Scenery(points_m=pts, kind="parking", name=name, bbox=ibbox))
             elif "leisure" in tags or "landuse" in tags or tags.get("natural") in ("forest", "wood", "scrub", "grass"):
                 kind = tags.get("leisure") or tags.get("landuse") or tags.get("natural") or "park"
                 scenery = Scenery(points_m=pts, kind=kind, name=name, bbox=ibbox)
@@ -1761,7 +1822,7 @@ def build_ways(
             minx = miny = 0.0
             maxx = maxy = 1000.0
 
-    return MapData(ways, waters, buildings, sceneries, places, (minx, miny, maxx, maxy), traffic_lights, crossings, taxi_stops, bus_stops)
+    return MapData(ways, waters, buildings, sceneries, places, (minx, miny, maxx, maxy), traffic_lights, crossings, taxi_stops, bus_stops, parking_spaces)
 
 
 class AutoFetchManager:

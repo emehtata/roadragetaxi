@@ -22,6 +22,69 @@ def test_pedestrian_target_count_keeps_nearest_characters():
     assert [ped.x for ped in manager.pedestrians] == [1.0, 10.0]
 
 
+def test_pedestrian_can_spawn_at_and_leave_through_building_entrance():
+    way = Way(points_m=[(0.0, 0.0), (100.0, 0.0)], highway="footway", half_width_m=1.5)
+    building = SimpleNamespace(
+        points_m=[(18.0, -2.0), (22.0, -2.0), (22.0, 2.0), (18.0, 2.0)],
+        entrances=[(20.0, 0.0)],
+        venue_type="school",
+    )
+    manager = PedestrianManager([way], target_count=0, venue_buildings=[building])
+
+    pedestrian = manager.spawn_pedestrian_at_door(20.0, 0.0)
+    assert pedestrian is not None
+    assert (pedestrian.x, pedestrian.y) == (20.0, 0.0)
+    manager.pedestrians.append(pedestrian)
+    pedestrian.door_grace_timer = 0.0
+    pedestrian.spawned_at_door = False
+    manager._population_update_elapsed = 5.0
+
+    manager.update(Car(0.0, 0.0, 0.0, 0.0), dt=0.1)
+
+    assert pedestrian not in manager.pedestrians
+
+
+def test_amenity_door_spawns_pedestrian_every_ten_evening_seconds(monkeypatch: pytest.MonkeyPatch):
+    way = Way(points_m=[(0.0, 0.0), (100.0, 0.0)], highway="footway", half_width_m=1.5)
+    building = SimpleNamespace(
+        points_m=[(18.0, -2.0), (22.0, -2.0), (22.0, 2.0), (18.0, 2.0)],
+        entrances=[(20.0, 0.0)],
+        venue_type="school",
+    )
+    manager = PedestrianManager([way], target_count=1, venue_buildings=[building])
+    monkeypatch.setattr(manager, "spawn_pedestrian", lambda *args, **kwargs: None)
+    random_values = iter((1.0, 1.0, 0.0))
+    monkeypatch.setattr(
+        "theroadragetrip.pedestrian.random.random",
+        lambda: next(random_values),
+    )
+    player = Car(x=10.0, y=0.0, heading=0.0, speed=0.0)
+    manager._amenity_spawn_elapsed = 0.0
+    manager._population_update_elapsed = 5.0
+
+    manager.update(player, dt=5.0, game_time_seconds=18.0 * 3600.0)
+    assert manager.pedestrians == []
+
+    manager.update(player, dt=5.0, game_time_seconds=18.0 * 3600.0)
+    assert len(manager.pedestrians) == 1
+    assert manager.pedestrians[0].spawned_at_door is True
+    assert manager.pedestrians[0].x > 20.0
+
+
+def test_pedestrian_despawns_after_remaining_offscreen():
+    way = Way(points_m=[(0.0, 0.0), (100.0, 0.0)], highway="footway", half_width_m=1.5)
+    manager = PedestrianManager([way], target_count=0, despawn_radius_m=200.0)
+    pedestrian = Pedestrian(80.0, 0.0, 0.0, 1.0, 1.0, way, 0, 1, (1, 1, 1))
+    manager.pedestrians.append(pedestrian)
+    viewport = (0.0, -10.0, 50.0, 10.0)
+
+    for _ in range(10):
+        manager._population_update_elapsed = 5.0
+        manager.update(Car(0.0, 0.0, 0.0, 0.0), dt=0.1, viewport_bounds=viewport)
+
+    assert pedestrian not in manager.pedestrians
+
+
 def test_taxi_stop_gets_waiting_customer():
     way = Way(points_m=[(0.0, -3.0), (100.0, -3.0)], highway="footway", half_width_m=1.5)
     manager = PedestrianManager([way], target_count=0, spawn_radius_m=120.0)

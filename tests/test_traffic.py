@@ -84,12 +84,12 @@ def test_nearby_offscreen_taxi_stop_spawns_taxis_once(monkeypatch):
         return taxi
 
     monkeypatch.setattr(manager, "spawn_npc", spawn_npc)
-    monkeypatch.setattr("theroadragetrip.traffic.random.randint", lambda low, high: 3)
+    monkeypatch.setattr("theroadragetrip.traffic.random.randint", lambda low, high: high)
     stop = SimpleNamespace(x=100.0, y=0.0, id=1)
     player = Car(50.0, 0.0, 0.0, 0.0)
     viewport = (-10.0, -10.0, 80.0, 10.0)
 
-    assert manager.spawn_taxis_at_nearby_stops([stop], player, viewport) == 3
+    assert manager.spawn_taxis_at_nearby_stops([stop], player, viewport) == 1
     assert all(taxi.is_taxi and taxi.waiting_at_taxi_stop for taxi in spawned)
     assert manager.spawn_taxis_at_nearby_stops([stop], player, viewport) == 0
 
@@ -97,7 +97,7 @@ def test_nearby_offscreen_taxi_stop_spawns_taxis_once(monkeypatch):
 def test_visible_taxi_stop_does_not_spawn_taxis(monkeypatch):
     way = Way(points_m=[(0.0, 0.0), (200.0, 0.0)], highway="residential", half_width_m=4.0)
     manager = TrafficManager([way], target_count=0)
-    monkeypatch.setattr("theroadragetrip.traffic.random.randint", lambda low, high: 3)
+    monkeypatch.setattr("theroadragetrip.traffic.random.randint", lambda low, high: high)
 
     assert manager.spawn_taxis_at_nearby_stops(
         [SimpleNamespace(x=50.0, y=0.0, id=1)],

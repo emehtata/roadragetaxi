@@ -24,7 +24,7 @@ A top-down 2D driving game proof-of-concept (PoC) in Python and Pygame that proc
 - **Autonomous Traffic**: NPC cars follow connected roads, respect lane direction, vary their speed, overtake, react to traffic lights, and avoid overlapping the player. The shared road-graph navigator can route NPCs to map targets without cutting through buildings or terrain. Active traffic is reduced at close zoom levels while nearby cars are retained.
 - **Pedestrians & Cyclists**: Pedestrians and cyclists use roads and crossings, react to traffic lights, and evade approaching vehicles. Ordinary pedestrians spawn near mapped buildings, while hospitality venues receive extra activity; at night, visible pedestrians show a bright reflector point until a car headlight or street light illuminates them. Cyclists use a top-down image sprite, and active pedestrian/cyclist counts scale down while zoomed in.
 - **Rival NPC Taxis**: Some NPC cars are yellow rival taxis. They stop briefly at taxi stands and collect waiting customers before driving on.
-- **Taxi-Driver Brawls**: Disabled by default. Set `taxi_brawls = true` under `[game]` to enable. Stopping near a taxi stand can then attract a rival taxi driver. The rival arrives from outside the view, then waits three seconds before a five-second fight under a dust cloud. Afterward both drivers walk back to their taxis; the winner drives to the stand. Road Rage charge controls the win chance, with 0% and 100% as exact boundaries. Winning gives 1,000 points; losing costs 500 points. A losing rival curses and leaves; a winning rival waits for a passenger.
+- **Taxi-Driver Brawls**: Enabled by default. At a taxi stand, press `Z` to challenge a rival and press `Z` again to accept. Both drivers leave their cars; when `NYT!` appears, press `Z` quickly to win, otherwise the rival knocks the player out. The drivers return to their cars afterward. A win doubles non-negative scores and resets negative scores to zero; a loss subtracts 1,000 points.
 - **Traffic Violations**: Red-light, wrong-way, collision, building, and scenery penalties are tracked in the taxi score.
 - **Tree Crash Effects**: Tree impacts shake the tree and scatter leaves; impacts above 80 km/h knock the tree down, smoke the taxi, and immobilize it for five seconds.
 - **Roadworks**: Random roadworks add temporary traffic lights and can make NPC traffic slow or stop naturally.
@@ -143,7 +143,7 @@ no_cache = false
 px_per_m = 9.0
 log_level = INFO
 file_logging = false
-taxi_brawls = false
+taxi_brawls = true
 roadworks_enabled = false
 
 [map]

@@ -123,6 +123,26 @@ def test_build_ways_parses_taxi_stops():
     assert [stop.id for stop in result.taxi_stops] == [1, 2]
 
 
+def test_build_ways_parses_parking_area_as_scenery():
+    elements = [
+        {"type": "node", "id": 1, "lat": 60.0, "lon": 25.0},
+        {"type": "node", "id": 2, "lat": 60.001, "lon": 25.0},
+        {"type": "node", "id": 3, "lat": 60.001, "lon": 25.001},
+        {"type": "node", "id": 4, "lat": 60.0, "lon": 25.001},
+        {
+            "type": "way",
+            "id": 10,
+            "nodes": [1, 2, 3, 4, 1],
+            "tags": {"amenity": "parking", "name": "Parking Area"},
+        },
+    ]
+
+    result = build_ways(elements)
+
+    assert len(result.sceneries) == 1
+    assert result.sceneries[0].kind == "parking"
+
+
 def test_hard_tree_impact_knocks_tree_down_and_smokes_taxi():
     manager = TaxiManager([Way([(0.0, 0.0), (100.0, 0.0)], "residential", 4.0)])
     scenery = Scenery([(0.0, -20.0), (20.0, -20.0), (20.0, 20.0)], "park", trees=[(0.0, 0.0)])

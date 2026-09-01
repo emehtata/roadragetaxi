@@ -80,6 +80,9 @@ class Pedestrian:
     is_drunk: bool = False
     drunk_phase: float = 0.0
     drunk_vomit_cooldown: float = 0.0
+    door_grace_timer: float = 0.0
+    offscreen_timer: float = 0.0
+    spawned_at_door: bool = False
 
 
 @dataclass
@@ -112,10 +115,14 @@ class PedestrianManager:
         self.pedestrians: List[Pedestrian] = []
         self.traffic_lights: List[TrafficLight] = traffic_lights or []
         self.sim_time: float = 0.0
-        self._population_update_elapsed: float = 0.5
+        self._population_update_elapsed: float = 4.9
         self._visible_taxi_stops: Set[Tuple[float, float, Optional[int]]] = set()
         self._taxi_stop_visibility_initialized = False
         self.venue_locations: List[Tuple[float, float]] = []
+        self.entrance_locations: List[Tuple[float, float]] = []
+        self.amenity_entrance_locations: List[Tuple[float, float]] = []
+        self._entrance_grid: Dict[Tuple[int, int], List[Tuple[float, float]]] = {}
+        self._amenity_spawn_elapsed = 10.0
         self.buildings: List = []
         self.vomit_puddles: List[Tuple[float, float]] = []
 
@@ -134,7 +141,14 @@ class PedestrianManager:
         """Index hospitality venues as preferred pedestrian spawn locations."""
         self.buildings = list(buildings or [])
         self.venue_locations = []
+        self.entrance_locations = []
+        self.amenity_entrance_locations = []
+        self._entrance_grid = {}
         for building in buildings or []:
+            entrances = getattr(building, "entrances", ())
+            self.entrance_locations.extend(entrances)
+            if getattr(building, "venue_type", None):
+                self.amenity_entrance_locations.extend(entrances)
             if getattr(building, "venue_type", None) not in VENUE_TYPES or len(building.points_m) < 3:
                 continue
             self.venue_locations.append(
@@ -143,6 +157,12 @@ class PedestrianManager:
                     sum(point[1] for point in building.points_m) / len(building.points_m),
                 )
             )
+        for entrance_x, entrance_y in self.entrance_locations:
+            cell = (
+                int(math.floor(entrance_x / self._way_grid_cell_size)),
+                int(math.floor(entrance_y / self._way_grid_cell_size)),
+            )
+            self._entrance_grid.setdefault(cell, []).append((entrance_x, entrance_y))
 
     def _point_near_building(self, x: float, y: float, radius_m: float = 250.0) -> bool:
         """Return whether a point is near a mapped building."""
@@ -161,6 +181,19 @@ class PedestrianManager:
             nearest_y = min(max(y, min_y), max_y)
             if (x - nearest_x) ** 2 + (y - nearest_y) ** 2 <= radius_sq:
                 return True
+        return False
+
+    def _at_building_entrance(self, x: float, y: float, radius_m: float = 1.5) -> bool:
+        """Check nearby doors without scanning every mapped entrance."""
+        cell_size = self._way_grid_cell_size
+        cell_x = int(math.floor(x / cell_size))
+        cell_y = int(math.floor(y / cell_size))
+        radius_sq = radius_m * radius_m
+        for offset_x in (-1, 0, 1):
+            for offset_y in (-1, 0, 1):
+                for entrance_x, entrance_y in self._entrance_grid.get((cell_x + offset_x, cell_y + offset_y), ()):
+                    if (x - entrance_x) ** 2 + (y - entrance_y) ** 2 <= radius_sq:
+                        return True
         return False
 
     def _taxi_stop_waiting_position(self, stop) -> Tuple[float, float]:
@@ -569,6 +602,15 @@ class PedestrianManager:
             target_lateral_offset_m=0.0,
         )
 
+    def spawn_pedestrian_at_door(self, x: float, y: float) -> Optional[Pedestrian]:
+        """Create a pedestrian at a mapped building entrance."""
+        pedestrian = self.spawn_pedestrian_at(x, y)
+        if pedestrian is None:
+            return None
+        pedestrian.door_grace_timer = 5.0
+        pedestrian.spawned_at_door = True
+        return pedestrian
+
     def _is_pedestrian_red_light(self, ped: Pedestrian) -> bool:
         """Check if pedestrian is stopped by a red traffic light at an intersection/crossing."""
         # For pedestrians crossing roads: when vehicular light is green, pedestrian crossing is red (wait).
@@ -672,22 +714,54 @@ class PedestrianManager:
         player_car: Car,
         dt: float,
         viewport_bounds: Optional[Tuple[float, float, float, float]] = None,
+        game_time_seconds: Optional[float] = None,
     ) -> bool:
         """Update pedestrian simulation: despawning, spawning, waypoint traversal, traffic lights, and evasion."""
         self.sim_time += dt
+        self._amenity_spawn_elapsed += dt
         self._population_update_elapsed += dt
 
-        if self._population_update_elapsed >= 0.5:
+        if self._population_update_elapsed >= 5.0:
+            population_check_dt = self._population_update_elapsed
             self._population_update_elapsed = 0.0
 
             # Despawn pedestrians outside radius
             kept_peds = []
             d_sq = self.despawn_radius_m * self.despawn_radius_m
             for ped in self.pedestrians:
+                ped.door_grace_timer = max(0.0, ped.door_grace_timer - population_check_dt)
                 dist_sq = (ped.x - player_car.x) ** 2 + (ped.y - player_car.y) ** 2
-                if dist_sq <= d_sq:
+                outside_viewport = False
+                if viewport_bounds is not None:
+                    vmin_x, vmin_y, vmax_x, vmax_y = viewport_bounds
+                    outside_viewport = not (vmin_x <= ped.x <= vmax_x and vmin_y <= ped.y <= vmax_y)
+                ped.offscreen_timer = ped.offscreen_timer + population_check_dt if outside_viewport else 0.0
+                at_door = self._at_building_entrance(ped.x, ped.y)
+                if ped.spawned_at_door and not at_door:
+                    ped.spawned_at_door = False
+                outside_long_enough = ped.offscreen_timer >= 5.0
+                if (
+                    dist_sq <= d_sq
+                    and not outside_long_enough
+                    and (not at_door or ped.spawned_at_door or ped.door_grace_timer > 0.0)
+                ):
                     kept_peds.append(ped)
             self.pedestrians = kept_peds
+
+            game_hour = ((game_time_seconds or 0.0) / 3600.0) % 24.0
+            amenity_interval = 10.0 if game_time_seconds is not None and game_hour >= 17.0 else 20.0
+            if self._amenity_spawn_elapsed >= amenity_interval:
+                nearby_amenity_entrances = [
+                    entrance for entrance in self.amenity_entrance_locations
+                    if math.hypot(entrance[0] - player_car.x, entrance[1] - player_car.y) <= self.spawn_radius_m
+                ]
+                amenity_pedestrian_limit = self.target_count + 10
+                if nearby_amenity_entrances and len(self.pedestrians) < amenity_pedestrian_limit:
+                    entrance_x, entrance_y = random.choice(nearby_amenity_entrances)
+                    amenity_pedestrian = self.spawn_pedestrian_at_door(entrance_x, entrance_y)
+                    if amenity_pedestrian is not None:
+                        self.pedestrians.append(amenity_pedestrian)
+                self._amenity_spawn_elapsed = 0.0
 
             # Spawn new pedestrians up to target_count
             attempts = 0
@@ -696,10 +770,18 @@ class PedestrianManager:
                 location for location in self.venue_locations
                 if math.hypot(location[0] - player_car.x, location[1] - player_car.y) <= self.spawn_radius_m
             ]
+            nearby_entrances = [
+                entrance for entrance in self.entrance_locations
+                if math.hypot(entrance[0] - player_car.x, entrance[1] - player_car.y) <= self.spawn_radius_m
+            ]
             while len(self.pedestrians) < self.target_count and attempts < max_attempts:
                 attempts += 1
+                spawn_at_door = bool(nearby_entrances and random.random() < 0.45)
                 spawned_near_venue = bool(nearby_venues and random.random() < 0.6)
-                if spawned_near_venue:
+                if spawn_at_door:
+                    entrance_x, entrance_y = random.choice(nearby_entrances)
+                    new_ped = self.spawn_pedestrian_at_door(entrance_x, entrance_y)
+                elif spawned_near_venue:
                     venue_x, venue_y = random.choice(nearby_venues)
                     new_ped = self.spawn_pedestrian(venue_x, venue_y, max_distance_m=45.0)
                 else:

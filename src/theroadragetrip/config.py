@@ -42,7 +42,7 @@ DEFAULT_CONFIG = {
         "px_per_m": "9.0",
         "log_level": "INFO",
         "file_logging": "false",
-        "taxi_brawls": "false",
+        "taxi_brawls": "true",
         "roadworks_enabled": "false",
         "bus_stops": "false",
     },

@@ -63,6 +63,21 @@ def test_brawl_uses_nearest_taxi_stop(monkeypatch):
     assert spawn_position == {"x": 10.0, "y": 0.0}
 
 
+def test_accepting_brawl_driver_exits_taxi():
+    traffic = TrafficManager([road()], target_count=0)
+    challenger = opponent()
+    challenger.x = 10.0
+    traffic.npcs.append(challenger)
+    manager = TaxiBrawlManager(auto_start=False)
+    car = Car(0.0, 0.0, 0.0, 0.0)
+
+    assert manager.request_challenge(car, traffic, [TaxiStop(0.0, 0.0)]) is True
+    assert challenger.is_on_foot is False
+
+    assert manager.press_z(car, 0) == "accepted"
+    assert challenger.is_on_foot is True
+
+
 def test_brawl_challenger_drives_from_outside_view_to_stop():
     traffic = TrafficManager([road()], target_count=0)
     challenger = opponent()
