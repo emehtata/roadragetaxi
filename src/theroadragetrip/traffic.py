@@ -102,6 +102,62 @@ class NPCCar:
     state: str = "driving"
     debug_last_action: str = ""
     debug_in_view: Optional[bool] = None
+    reserved_intersection_id: Optional[str] = None
+
+
+class IntersectionManager:
+    """Reserve signalized intersection conflict areas for near-field NPCs."""
+
+    def __init__(self, intersections: List[LogicalIntersection]):
+        self.intersections = intersections
+        self._reservations: dict[str, dict[int, str]] = {}
+
+    def _intersection_for(self, approach: IntersectionApproach) -> Optional[LogicalIntersection]:
+        for intersection in self.intersections:
+            if approach in intersection.approaches:
+                return intersection
+        return None
+
+    def can_enter(self, npc: NPCCar, approach: IntersectionApproach) -> bool:
+        intersection = self._intersection_for(approach)
+        if intersection is None:
+            return True
+        reservations = self._reservations.get(intersection.intersection_id, {})
+        return all(owner_id == id(npc) or reserved_approach == approach.approach_id
+                   for owner_id, reserved_approach in reservations.items())
+
+    def request_enter(self, npc: NPCCar, approach: IntersectionApproach) -> bool:
+        if not self.can_enter(npc, approach):
+            return False
+        intersection = self._intersection_for(approach)
+        if intersection is None:
+            return True
+        self._reservations.setdefault(intersection.intersection_id, {})[id(npc)] = approach.approach_id
+        npc.reserved_intersection_id = intersection.intersection_id
+        return True
+
+    def release(self, npc: NPCCar) -> None:
+        for intersection_id, reservations in list(self._reservations.items()):
+            reservations.pop(id(npc), None)
+            if not reservations:
+                self._reservations.pop(intersection_id, None)
+        npc.reserved_intersection_id = None
+
+    def update(self, npcs: List[NPCCar]) -> None:
+        active_ids = {id(npc) for npc in npcs}
+        for intersection in self.intersections:
+            reservations = self._reservations.get(intersection.intersection_id)
+            if not reservations:
+                continue
+            for npc_id in list(reservations):
+                npc = next((candidate for candidate in npcs if id(candidate) == npc_id), None)
+                if npc is None or npc_id not in active_ids:
+                    reservations.pop(npc_id, None)
+                    continue
+                if npc.layer != intersection.layer or math.hypot(
+                    npc.x - intersection.center[0], npc.y - intersection.center[1]
+                ) > intersection.radius_m + 6.0:
+                    self.release(npc)
 
 
 class TrafficLightManager:
@@ -223,6 +279,7 @@ class TrafficManager:
         self._route_edges: dict[int, List[Tuple[int, float]]] = {}
         self.logical_intersections = build_logical_intersections(self.traffic_lights, self.ways)
         self.traffic_light_manager = TrafficLightManager(self.logical_intersections)
+        self.intersection_manager = IntersectionManager(self.logical_intersections)
         self._build_route_graph()
         self._taxi_stop_spawns: set[Tuple[float, float, object]] = set()
         self._taxi_stop_targets: dict[Tuple[float, float, object], int] = {}
@@ -503,6 +560,7 @@ class TrafficManager:
             self.crossings = crossings
         self.logical_intersections = build_logical_intersections(self.traffic_lights, self.ways)
         self.traffic_light_manager = TrafficLightManager(self.logical_intersections)
+        self.intersection_manager = IntersectionManager(self.logical_intersections)
         self._build_route_graph()
         self._build_spatial_indices()
 
@@ -1098,6 +1156,7 @@ class TrafficManager:
         """Update all NPC cars, manage spawning/despawning around player."""
         self.sim_time += dt
         self.traffic_light_manager.update(self.sim_time)
+        self.intersection_manager.update(self.npcs)
         previous_speeds = {id(npc): npc.speed for npc in self.npcs}
         npc_population_changed = tuple(id(npc) for npc in self.npcs) != self._npc_grid_npc_ids
 
@@ -1407,9 +1466,12 @@ class TrafficManager:
                 logical_dy = logical_stop_center[1] - npc.y
                 logical_distance = logical_dx * math.cos(npc.heading) + logical_dy * math.sin(npc.heading)
                 logical_state = self.traffic_light_manager.get_signal_state(logical_approach, self.sim_time)
+                if logical_state == "green" and 0.0 < logical_distance < 16.0 and npc.lod_level == 0:
+                    if not self.intersection_manager.request_enter(npc, logical_approach):
+                        junction_blocked = True
                 braking_distance = npc.speed * npc.speed / (2.0 * 15.0)
                 yellow_requires_stop = logical_state != "yellow" or logical_distance >= braking_distance
-                if 0.0 < logical_distance < 35.0 and logical_state in ("red", "yellow", "red+yellow") and yellow_requires_stop:
+                if 0.0 < logical_distance < 35.0 and logical_state in ("red", "all-red", "yellow", "red+yellow") and yellow_requires_stop:
                     stop_distance = logical_distance - 1.5
                     must_stop = stop_distance >= -1.0
             roadwork_stop_distance = self._roadwork_stop_distance(npc)
@@ -1448,7 +1510,7 @@ class TrafficManager:
                 state = nearest_light[1].get_state(self.sim_time)
                 braking_distance = npc.speed * npc.speed / (2.0 * 15.0)
                 yellow_requires_stop = state != "yellow" or longitudinal >= braking_distance
-                if state in ("red", "red+yellow", "yellow") and yellow_requires_stop:
+                if state in ("red", "all-red", "red+yellow", "yellow") and yellow_requires_stop:
                     stop_distance = nearest_light[0] - 1.5
                     nearest_crossing = None
                     for crossing in self._nearby_crossings(npc.x, npc.y):

@@ -365,7 +365,7 @@ class SignalGroup:
         elif t < self.green_duration + self.yellow_duration:
             self.state = "yellow"
         elif t < self.green_duration + self.yellow_duration + self.all_red_duration:
-            self.state = "red"
+            self.state = "all-red"
         elif t < self.green_duration + self.yellow_duration + self.all_red_duration + self.red_duration:
             self.state = "red"
         else:
@@ -409,7 +409,7 @@ class TrafficLight:
     allowed_movements: frozenset[str] = frozenset({"straight", "right"})
 
     def get_state(self, current_time: float) -> str:
-        """Return 'red', 'red+yellow', 'green', or 'yellow' for the traffic signal following Finnish sequence.
+        """Return a signal state following the Finnish sequence.
 
         In a 16s cycle:
         - 0.0s to 5.5s: Green (5.5s)

@@ -51,7 +51,7 @@ def test_signal_group_supports_configurable_phase_durations():
 
     assert group.get_state(19.9) == "green"
     assert group.get_state(20.0) == "yellow"
-    assert group.get_state(23.0) == "red"
+    assert group.get_state(23.0) == "all-red"
     assert group.get_state(24.0) == "red"
 
 

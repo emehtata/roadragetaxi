@@ -4,7 +4,8 @@ from types import SimpleNamespace
 from theroadragetrip.osm import Way
 from theroadragetrip.osm import TrafficLight
 from theroadragetrip.physics import Car
-from theroadragetrip.traffic import NPCCar, TrafficManager, traffic_count_for_zoom
+from theroadragetrip.traffic import IntersectionManager, NPCCar, TrafficManager, traffic_count_for_zoom
+from theroadragetrip.osm import IntersectionApproach, LogicalIntersection
 from theroadragetrip.geo import boxes_intersect
 
 
@@ -22,6 +23,21 @@ def test_plan_route_starts_at_car_and_ends_at_destination():
     assert route[0] == (25.0, 2.0)
     assert route[-1] == (175.0, -3.0)
     assert (100.0, 0.0) in route
+
+
+def test_intersection_manager_reserves_and_releases_conflicting_approaches():
+    way = Way(points_m=[(-100.0, 0.0), (100.0, 0.0)], highway="primary", half_width_m=4.0)
+    first_approach = IntersectionApproach("east", [way], (1.0, 0.0), ((10.0, -4.0), (10.0, 4.0)))
+    second_approach = IntersectionApproach("north", [way], (0.0, 1.0), ((-4.0, 10.0), (4.0, 10.0)))
+    intersection = LogicalIntersection("junction", (0.0, 0.0), 20.0, approaches=[first_approach, second_approach])
+    manager = IntersectionManager([intersection])
+    first = NPCCar(8.0, 0.0, 0.0, 4.0, way, 0, 1, 10.0, (20, 20, 20))
+    second = NPCCar(0.0, 8.0, math.pi / 2, 4.0, way, 0, 1, 10.0, (30, 30, 30))
+
+    assert manager.request_enter(first, first_approach)
+    assert not manager.request_enter(second, second_approach)
+    manager.release(first)
+    assert manager.request_enter(second, second_approach)
 
 
 def test_sync_map_data_rebuilds_navigation_graph():
