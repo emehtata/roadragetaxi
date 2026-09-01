@@ -76,6 +76,7 @@ class NPCCar:
     driver_spawned: bool = False
     is_police: bool = False
     pursuing: bool = False
+    pursuit_elapsed: float = 0.0
     pursuit_phase: str = "passing"
     stopped: bool = False
     penalty_given: bool = False

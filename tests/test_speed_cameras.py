@@ -135,6 +135,40 @@ def test_police_pursuit_does_not_drive_through_building():
     assert patrol.speed == 0.0
 
 
+def test_police_abandons_pursuit_when_taxi_escapes_over_200m():
+    traffic = TrafficManager([road()], target_count=0)
+    police = PoliceManager(traffic, 0.0, 0.0, count=1)
+    patrol = police.cars[0]
+    patrol.pursuing = True
+    taxi = Car(x=201.0, y=0.0, heading=0.0, speed=20.0)
+
+    police.update(taxi, road(), 0.1)
+
+    assert patrol.pursuing is False
+    assert patrol.pursuit_cancelled is True
+    assert patrol.speed == 0.0
+
+
+def test_police_abandons_pursuit_after_20_seconds():
+    from theroadragetrip.osm import Building
+
+    traffic = TrafficManager([road()], target_count=0)
+    building = Building(
+        points_m=[(1.0, -10.0), (20.0, -10.0), (20.0, 10.0), (1.0, 10.0)],
+    )
+    police = PoliceManager(traffic, 0.0, 0.0, count=1, buildings=[building])
+    patrol = police.cars[0]
+    patrol.pursuing = True
+    patrol.pursuit_elapsed = 20.0
+    taxi = Car(x=100.0, y=0.0, heading=0.0, speed=20.0)
+
+    police.update(taxi, road(), 0.1)
+
+    assert patrol.pursuing is False
+    assert patrol.pursuit_cancelled is True
+    assert patrol.pursuit_elapsed == 20.1
+
+
 def test_opposite_direction_police_waits_for_taxi_to_pass():
     traffic = TrafficManager([road()], target_count=0)
     police = PoliceManager(traffic, 100.0, 0.0, count=1)

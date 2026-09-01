@@ -79,6 +79,7 @@ class PoliceManager:
         )
         if active is not None and speeding and can_see_taxi and not active.stopped and not active.pursuing:
             active.pursuing = True
+            active.pursuit_elapsed = 0.0
             relative_forward = (
                 (active.x - taxi.x) * math.cos(taxi.heading)
                 + (active.y - taxi.y) * math.sin(taxi.heading)
@@ -87,6 +88,21 @@ class PoliceManager:
             active.pursuit_phase = "yielding" if relative_forward > 0.0 and heading_error > math.pi / 2.0 else "behind"
         for police in self.cars:
             if not police.pursuing:
+                continue
+            police.pursuit_elapsed += dt
+            if (
+                math.hypot(police.x - taxi.x, police.y - taxi.y) > 200.0
+                or police.pursuit_elapsed > 20.0
+            ):
+                police.pursuing = False
+                police.stopped = False
+                police.speed = 0.0
+                police.pursuit_cancelled = True
+                logger.info(
+                    "Police pursuit abandoned: distance=%.1fm duration=%.1fs",
+                    math.hypot(police.x - taxi.x, police.y - taxi.y),
+                    police.pursuit_elapsed,
+                )
                 continue
             if police.penalty_given:
                 police.speed = 0.0
