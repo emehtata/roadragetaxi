@@ -77,6 +77,7 @@ class NPCCar:
     is_police: bool = False
     pursuing: bool = False
     pursuit_elapsed: float = 0.0
+    pursuit_distance_check_elapsed: float = 2.0
     pursuit_phase: str = "passing"
     stopped: bool = False
     penalty_given: bool = False
@@ -155,6 +156,7 @@ class TrafficManager:
         self._crossing_grid: dict[Tuple[int, int], List] = {}
         self._npc_grid_cell_size: float = 32.0
         self._npc_grid: dict[Tuple[int, int], List[NPCCar]] = {}
+        self._npc_grid_npc_ids: Tuple[int, ...] = ()
         self._route_nodes: List[Tuple[float, float, int]] = []
         self._route_edges: dict[int, List[Tuple[int, float]]] = {}
         self._build_route_graph()
@@ -204,11 +206,23 @@ class TrafficManager:
         for npc in self.npcs:
             cell = (int(math.floor(npc.x / cell_size)), int(math.floor(npc.y / cell_size)))
             self._npc_grid.setdefault(cell, []).append(npc)
+        self._npc_grid_npc_ids = tuple(id(npc) for npc in self.npcs)
 
     def _nearby_npcs(self, npc: NPCCar) -> List[NPCCar]:
         cell_size = self._npc_grid_cell_size
         cell_x = int(math.floor(npc.x / cell_size))
         cell_y = int(math.floor(npc.y / cell_size))
+        nearby: List[NPCCar] = []
+        for offset_x in (-1, 0, 1):
+            for offset_y in (-1, 0, 1):
+                nearby.extend(self._npc_grid.get((cell_x + offset_x, cell_y + offset_y), []))
+        return nearby
+
+    def nearby_npcs_at(self, x: float, y: float) -> List[NPCCar]:
+        """Return NPCs in the nine grid cells around a world position."""
+        cell_size = self._npc_grid_cell_size
+        cell_x = int(math.floor(x / cell_size))
+        cell_y = int(math.floor(y / cell_size))
         nearby: List[NPCCar] = []
         for offset_x in (-1, 0, 1):
             for offset_y in (-1, 0, 1):
@@ -984,6 +998,7 @@ class TrafficManager:
         """Update all NPC cars, manage spawning/despawning around player."""
         self.sim_time += dt
         previous_speeds = {id(npc): npc.speed for npc in self.npcs}
+        npc_population_changed = tuple(id(npc) for npc in self.npcs) != self._npc_grid_npc_ids
 
         # Despawn distant NPCs
         surviving = []
@@ -994,6 +1009,7 @@ class TrafficManager:
             d = math.hypot(npc.x - player_car.x, npc.y - player_car.y)
             if d > self.despawn_radius_m:
                 logger.debug("NPC %s despawned: distance=%.1fm exceeds %.1fm", id(npc), d, self.despawn_radius_m)
+                npc_population_changed = True
                 continue
             if viewport_bounds:
                 vminx, vminy, vmaxx, vmaxy = viewport_bounds
@@ -1004,6 +1020,7 @@ class TrafficManager:
                 ) < 0.0
                 if not in_view and behind:
                     logger.debug("NPC %s despawned: behind player and outside viewport", id(npc))
+                    npc_population_changed = True
                     continue
             surviving.append(npc)
         self.npcs = surviving
@@ -1021,6 +1038,7 @@ class TrafficManager:
             )
             if not npc:
                 break
+            npc_population_changed = True
             logger.debug(
                 "NPC %s spawned: position=(%.1f, %.1f), way=%s, direction=%s",
                 id(npc), npc.x, npc.y, getattr(npc.way, "osm_id", None), npc.direction,
@@ -1037,7 +1055,8 @@ class TrafficManager:
                     )
                     npc.debug_in_view = in_view
 
-        self._build_npc_spatial_grid()
+        if npc_population_changed:
+            self._build_npc_spatial_grid()
 
         # Periodic log of active NPC traffic count (total and in-view)
         self._log_timer += dt

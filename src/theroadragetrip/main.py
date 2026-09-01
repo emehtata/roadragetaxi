@@ -46,6 +46,7 @@ from .osm import (
     HIGHWAY_HALF_WIDTH,
     AutoFetchManager,
     Building,
+    BusStop,
     Place,
     Scenery,
     TaxiStop,
@@ -83,6 +84,7 @@ from .render import (
     SCREEN_H,
     SCREEN_W,
     draw_buildings,
+    draw_bus_stops,
     draw_car,
     draw_cyclists,
     draw_city_selection_menu,
@@ -576,6 +578,7 @@ def main() -> None:
     configure_logging(args.log_level, file_logging=config.getboolean("game", "file_logging", fallback=False))
     taxi_brawls_enabled = config.getboolean("game", "taxi_brawls", fallback=False)
     roadworks_enabled = config.getboolean("game", "roadworks_enabled", fallback=False)
+    bus_stops_enabled = config.getboolean("game", "bus_stops", fallback=False)
 
     pygame.init()
     screen = pygame.display.set_mode((SCREEN_W, SCREEN_H))
@@ -833,7 +836,11 @@ def main() -> None:
                     progress_callback=on_load_progress,
                     force_refresh=force_refresh or args.no_cache,
                 )
-            res = build_ways(elements, progress_callback=on_build_progress)
+            res = build_ways(
+                elements,
+                progress_callback=on_build_progress,
+                include_bus_stops=bus_stops_enabled,
+            )
             crossings = getattr(res, "crossings", [])
             if len(res) == 8:
                 ways, waters, buildings, sceneries, places, bounds, traffic_lights, crossings = res
@@ -852,6 +859,7 @@ def main() -> None:
 
         minx, miny, maxx, maxy = bounds
         taxi_stops = getattr(res, "taxi_stops", [])
+        bus_stops = getattr(res, "bus_stops", [])
         roadworks, roadwork_lights = create_roadworks(ways) if roadworks_enabled else ([], [])
         traffic_lights.extend(roadwork_lights)
         logger.info(
@@ -1593,7 +1601,9 @@ def main() -> None:
                     city_summary = (chosen_city, taxi_mgr.total_score, taxi_mgr.completed_fares, next_city, career_total_score)
                     logger.info("Career advanced to %s", active_city_name)
                     running = False
-            if taxi_mgr.check_car_collision(car, traffic_mgr.npcs, traffic_mgr.sim_time):
+            if taxi_mgr.check_car_collision(
+                car, traffic_mgr.nearby_npcs_at(car.x, car.y), traffic_mgr.sim_time
+            ):
                 audio.play("car-crash", volume=0.8)
                 audio.play_driver_line("collision", language)
                 rage_power = 0.0
@@ -1791,7 +1801,10 @@ def main() -> None:
             render_profile_stage_start = render_profile_frame_start
             if first_gameplay_frame:
                 logger.info("Gameplay frame: rendering scenery")
+            map_stage_start = time.perf_counter()
             draw_grass_texture(screen, camx, camy, px_per_m)
+            render_profile_times["map_grass"] = render_profile_times.get("map_grass", 0.0) + time.perf_counter() - map_stage_start
+            map_stage_start = time.perf_counter()
             draw_scenery(
                 screen,
                 sceneries,
@@ -1802,15 +1815,26 @@ def main() -> None:
                 fallen_trees=taxi_mgr.fallen_trees,
                 spatial_grid=scenery_grid,
             )
+            render_profile_times["map_scenery"] = render_profile_times.get("map_scenery", 0.0) + time.perf_counter() - map_stage_start
             if first_gameplay_frame:
                 logger.info("Gameplay frame: rendering water")
+            map_stage_start = time.perf_counter()
             draw_waters(screen, waters, camx, camy, px_per_m=px_per_m, spatial_grid=water_grid)
+            render_profile_times["map_water"] = render_profile_times.get("map_water", 0.0) + time.perf_counter() - map_stage_start
             if first_gameplay_frame:
                 logger.info("Gameplay frame: rendering roads")
+            map_stage_start = time.perf_counter()
             draw_ways(screen, ways, camx, camy, px_per_m=px_per_m, spatial_grid=spatial_grid)
+            render_profile_times["map_roads"] = render_profile_times.get("map_roads", 0.0) + time.perf_counter() - map_stage_start
+            if bus_stops_enabled:
+                map_stage_start = time.perf_counter()
+                draw_bus_stops(screen, bus_stops, ways, camx, camy, px_per_m=px_per_m, spatial_grid=spatial_grid)
+                render_profile_times["map_bus_stops"] = render_profile_times.get("map_bus_stops", 0.0) + time.perf_counter() - map_stage_start
             if first_gameplay_frame:
                 logger.info("Gameplay frame: rendering buildings")
+            map_stage_start = time.perf_counter()
             draw_buildings(screen, buildings, camx, camy, px_per_m=px_per_m, spatial_grid=building_grid)
+            render_profile_times["map_buildings"] = render_profile_times.get("map_buildings", 0.0) + time.perf_counter() - map_stage_start
             render_profile_times["map"] = render_profile_times.get("map", 0.0) + (
                 time.perf_counter() - render_profile_stage_start
             )
@@ -1999,6 +2023,7 @@ def main() -> None:
                 timing_ms = {
                     stage: total * 1000.0 / frame_count
                     for stage, total in render_profile_times.items()
+                    if not stage.startswith("map_")
                 }
                 logger.debug(
                     "Render profile: fps=%.1f avg_ms=%s ways=%d buildings=%d labels=%s",
@@ -2007,6 +2032,14 @@ def main() -> None:
                     len(ways),
                     len(buildings),
                     label_mode,
+                )
+                logger.debug(
+                    "Map render profile: %s",
+                    ",".join(
+                        f"{stage.removeprefix('map_')}={duration * 1000.0 / frame_count:.1f}"
+                        for stage, duration in render_profile_times.items()
+                        if stage.startswith("map_")
+                    ),
                 )
                 render_profile_times.clear()
                 render_profile_last_log = time.perf_counter()

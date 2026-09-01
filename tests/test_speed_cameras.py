@@ -139,6 +139,8 @@ def test_police_abandons_pursuit_when_taxi_escapes_over_200m():
     traffic = TrafficManager([road()], target_count=0)
     police = PoliceManager(traffic, 0.0, 0.0, count=1)
     patrol = police.cars[0]
+    patrol.x = 0.0
+    patrol.y = 0.0
     patrol.pursuing = True
     taxi = Car(x=201.0, y=0.0, heading=0.0, speed=20.0)
 
@@ -147,6 +149,27 @@ def test_police_abandons_pursuit_when_taxi_escapes_over_200m():
     assert patrol.pursuing is False
     assert patrol.pursuit_cancelled is True
     assert patrol.speed == 0.0
+
+
+def test_police_checks_pursuit_distance_every_two_seconds():
+    traffic = TrafficManager([road()], target_count=0)
+    police = PoliceManager(traffic, 0.0, 0.0, count=1)
+    patrol = police.cars[0]
+    patrol.x = 0.0
+    patrol.y = 0.0
+    patrol.pursuing = True
+    patrol.pursuit_distance_check_elapsed = 0.0
+    taxi = Car(x=1000.0, y=0.0, heading=0.0, speed=20.0)
+
+    police.update(taxi, road(), 1.9)
+
+    assert patrol.pursuing is True
+    assert patrol.pursuit_cancelled is False
+
+    police.update(taxi, road(), 0.1)
+
+    assert patrol.pursuing is False
+    assert patrol.pursuit_cancelled is True
 
 
 def test_police_abandons_pursuit_after_20_seconds():

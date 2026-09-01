@@ -174,6 +174,43 @@ def test_taxi_named_building_target_uses_reachable_road_point():
     assert 120.0 <= target.x <= 180.0
 
 
+def test_taxi_venue_target_prefers_nearby_unnamed_access_road():
+    from theroadragetrip.osm import Building
+
+    main_road = Way(
+        points_m=[(0.0, 0.0), (145.0, 0.0)],
+        highway="primary",
+        half_width_m=5.0,
+        name="Iso tie",
+    )
+    main_road_continuation = Way(
+        points_m=[(145.0, 0.0), (300.0, 0.0)],
+        highway="primary",
+        half_width_m=5.0,
+        name="Iso tie",
+    )
+    access_road = Way(
+        points_m=[(145.0, 0.0), (145.0, 70.0)],
+        highway="service",
+        half_width_m=3.0,
+    )
+    building = Building(
+        points_m=[(140.0, 70.0), (170.0, 70.0), (170.0, 90.0), (140.0, 90.0)],
+        name="Sysmän venue",
+        venue_type="restaurant",
+    )
+    taxi_mgr = TaxiManager(
+        ways=[main_road, main_road_continuation, access_road], buildings=[building]
+    )
+
+    target = taxi_mgr.pick_random_building_point(venue_types={"restaurant"})
+
+    assert target is not None
+    assert target.way_name == ""
+    assert target.x == 145.0
+    assert target.y == 70.0
+
+
 def test_taxi_mission_lifecycle():
     way1 = Way(
         points_m=[(0.0, 0.0), (100.0, 0.0)],

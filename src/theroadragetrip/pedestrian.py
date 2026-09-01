@@ -112,6 +112,7 @@ class PedestrianManager:
         self.pedestrians: List[Pedestrian] = []
         self.traffic_lights: List[TrafficLight] = traffic_lights or []
         self.sim_time: float = 0.0
+        self._population_update_elapsed: float = 0.5
         self._visible_taxi_stops: Set[Tuple[float, float, Optional[int]]] = set()
         self._taxi_stop_visibility_initialized = False
         self.venue_locations: List[Tuple[float, float]] = []
@@ -220,6 +221,7 @@ class PedestrianManager:
     def set_target_count(self, target_count: int, player_car: Optional[Car] = None) -> None:
         """Adjust active pedestrian count and discard farthest characters when needed."""
         self.target_count = max(0, target_count)
+        self._population_update_elapsed = 0.5
         if len(self.pedestrians) > self.target_count:
             if player_car is not None:
                 self.pedestrians.sort(key=lambda ped: math.hypot(ped.x - player_car.x, ped.y - player_car.y))
@@ -673,44 +675,48 @@ class PedestrianManager:
     ) -> bool:
         """Update pedestrian simulation: despawning, spawning, waypoint traversal, traffic lights, and evasion."""
         self.sim_time += dt
+        self._population_update_elapsed += dt
 
-        # Despawn pedestrians outside radius
-        kept_peds = []
-        d_sq = self.despawn_radius_m * self.despawn_radius_m
-        for ped in self.pedestrians:
-            dist_sq = (ped.x - player_car.x) ** 2 + (ped.y - player_car.y) ** 2
-            if dist_sq <= d_sq:
-                kept_peds.append(ped)
-        self.pedestrians = kept_peds
+        if self._population_update_elapsed >= 0.5:
+            self._population_update_elapsed = 0.0
 
-        # Spawn new pedestrians up to target_count
-        attempts = 0
-        max_attempts = max(50, self.target_count * 5)
-        nearby_venues = [
-            location for location in self.venue_locations
-            if math.hypot(location[0] - player_car.x, location[1] - player_car.y) <= self.spawn_radius_m
-        ]
-        while len(self.pedestrians) < self.target_count and attempts < max_attempts:
-            attempts += 1
-            spawned_near_venue = bool(nearby_venues and random.random() < 0.6)
-            if spawned_near_venue:
-                venue_x, venue_y = random.choice(nearby_venues)
-                new_ped = self.spawn_pedestrian(venue_x, venue_y, max_distance_m=45.0)
-            else:
-                new_ped = self.spawn_pedestrian(player_car.x, player_car.y, viewport_bounds=viewport_bounds)
-            if not new_ped and viewport_bounds:
-                new_ped = self.spawn_pedestrian(
-                    player_car.x,
-                    player_car.y,
-                    viewport_bounds=None,
-                )
-            if not new_ped:
-                break
-            if spawned_near_venue and random.random() < 0.35:
-                new_ped.is_drunk = True
-                new_ped.drunk_phase = random.uniform(0.0, 2.0 * math.pi)
-                new_ped.drunk_vomit_cooldown = random.uniform(8.0, 25.0)
-            self.pedestrians.append(new_ped)
+            # Despawn pedestrians outside radius
+            kept_peds = []
+            d_sq = self.despawn_radius_m * self.despawn_radius_m
+            for ped in self.pedestrians:
+                dist_sq = (ped.x - player_car.x) ** 2 + (ped.y - player_car.y) ** 2
+                if dist_sq <= d_sq:
+                    kept_peds.append(ped)
+            self.pedestrians = kept_peds
+
+            # Spawn new pedestrians up to target_count
+            attempts = 0
+            max_attempts = max(50, self.target_count * 5)
+            nearby_venues = [
+                location for location in self.venue_locations
+                if math.hypot(location[0] - player_car.x, location[1] - player_car.y) <= self.spawn_radius_m
+            ]
+            while len(self.pedestrians) < self.target_count and attempts < max_attempts:
+                attempts += 1
+                spawned_near_venue = bool(nearby_venues and random.random() < 0.6)
+                if spawned_near_venue:
+                    venue_x, venue_y = random.choice(nearby_venues)
+                    new_ped = self.spawn_pedestrian(venue_x, venue_y, max_distance_m=45.0)
+                else:
+                    new_ped = self.spawn_pedestrian(player_car.x, player_car.y, viewport_bounds=viewport_bounds)
+                if not new_ped and viewport_bounds:
+                    new_ped = self.spawn_pedestrian(
+                        player_car.x,
+                        player_car.y,
+                        viewport_bounds=None,
+                    )
+                if not new_ped:
+                    break
+                if spawned_near_venue and random.random() < 0.35:
+                    new_ped.is_drunk = True
+                    new_ped.drunk_phase = random.uniform(0.0, 2.0 * math.pi)
+                    new_ped.drunk_vomit_cooldown = random.uniform(8.0, 25.0)
+                self.pedestrians.append(new_ped)
 
         # Check interaction and dodging with player car
         cyclist_collision = self.check_player_avoidance(player_car, dt)

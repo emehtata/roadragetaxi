@@ -44,6 +44,7 @@ DEFAULT_CONFIG = {
         "file_logging": "false",
         "taxi_brawls": "false",
         "roadworks_enabled": "false",
+        "bus_stops": "false",
     },
     "map": {
         "overpass_endpoints": ", ".join(DEFAULT_OVERPASS_ENDPOINTS),

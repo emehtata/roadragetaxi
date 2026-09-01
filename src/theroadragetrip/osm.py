@@ -19,7 +19,7 @@ import requests
 from .geo import dist_point_to_segment, point_in_polygon
 
 logger = logging.getLogger(__name__)
-CACHE_VERSION = "v0.6.2beta3"
+CACHE_VERSION = "v0.6.2beta4"
 
 # Top 10 cities of Finland by population with center coordinates (lat, lon)
 CITY_CENTERS: Dict[str, Tuple[float, float]] = {
@@ -246,6 +246,7 @@ class Way:
     highway: str
     half_width_m: float
     name: Optional[str] = None
+    surface: Optional[str] = None
     lit: Optional[str] = None
     is_ice_road: bool = False
     is_drivable: bool = True
@@ -292,6 +293,7 @@ class Building:
     venue_type: Optional[str] = None
     center_m: Tuple[float, float] = (0.0, 0.0)
     texture_seed: float = 0.0
+    entrances: List[Tuple[float, float]] = field(default_factory=list)
 
 
 @dataclass
@@ -492,6 +494,16 @@ class TaxiStop:
     x: float
     y: float
     id: Optional[int] = None
+
+
+@dataclass
+class BusStop:
+    x: float
+    y: float
+    name: Optional[str] = None
+    id: Optional[int] = None
+    layer: int = 0
+    shelter: bool = False
 
 
 def load_local_sample(path: str = "sample_osm.json") -> Optional[List[dict]]:
@@ -715,8 +727,11 @@ def fetch_osm_ways(
       node["highway"="traffic_signals"]({south},{west},{north},{east});
       node["highway"="crossing"]({south},{west},{north},{east});
       node["highway"="taxi_stop"]({south},{west},{north},{east});
+    node["highway"="bus_stop"]({south},{west},{north},{east});
+    node["public_transport"~"platform|stop_position"]({south},{west},{north},{east});
       node["amenity"="taxi"]({south},{west},{north},{east});
       node["crossing"]({south},{west},{north},{east});
+    node["entrance"]({south},{west},{north},{east});
       node["place"~"suburb|neighbourhood|quarter|village|town|city|hamlet"]({south},{west},{north},{east});
     node["name"]({south},{west},{north},{east});
       way["highway"]({south},{west},{north},{east});
@@ -900,10 +915,10 @@ def _stitch_member_ways_into_rings(
 class MapData(tuple):
     """Container tuple for build_ways results returning 6 elements for backward compatibility while providing traffic_lights and crossings via attributes and slicing."""
 
-    def __new__(cls, ways, waters, buildings, sceneries, places, bounds, traffic_lights=None, crossings=None, taxi_stops=None):
+    def __new__(cls, ways, waters, buildings, sceneries, places, bounds, traffic_lights=None, crossings=None, taxi_stops=None, bus_stops=None):
         return super().__new__(cls, (ways, waters, buildings, sceneries, places, bounds))
 
-    def __init__(self, ways, waters, buildings, sceneries, places, bounds, traffic_lights=None, crossings=None, taxi_stops=None):
+    def __init__(self, ways, waters, buildings, sceneries, places, bounds, traffic_lights=None, crossings=None, taxi_stops=None, bus_stops=None):
         self.ways = ways
         self.waters = waters
         self.buildings = buildings
@@ -913,6 +928,7 @@ class MapData(tuple):
         self.traffic_lights = traffic_lights if traffic_lights is not None else []
         self.crossings = crossings if crossings is not None else []
         self.taxi_stops = taxi_stops if taxi_stops is not None else []
+        self.bus_stops = bus_stops if bus_stops is not None else []
 
     @property
     def traffic_signals(self):
@@ -965,6 +981,7 @@ def plant_trees(sceneries: List[Scenery], ways: List[Way]) -> None:
 def build_ways(
     elements: List[dict],
     progress_callback: Optional[Callable[[float, str], None]] = None,
+    include_bus_stops: bool = True,
 ) -> MapData:
     """Convert OSM elements to EPSG:3067 meters.
 
@@ -989,6 +1006,9 @@ def build_ways(
     traffic_signals_raw: List[Tuple[dict, int]] = []
     crossings_raw: List[Tuple[dict, int]] = []
     taxi_stops_raw: List[Tuple[dict, int]] = []
+    bus_stops_raw: List[Tuple[dict, int]] = []
+    bus_platforms_raw: List[Tuple[dict, List[int], int]] = []
+    entrance_node_ids: set[int] = set()
     ways_by_id: Dict[int, dict] = {}
     ways_raw: List[Tuple[dict, str, List[int]]] = []
     water_raw: List[Tuple[dict, List[int]]] = []
@@ -1013,6 +1033,10 @@ def build_ways(
                 traffic_signals_raw.append((tags, nid))
             if tags.get("highway") == "taxi_stop" or tags.get("amenity") == "taxi":
                 taxi_stops_raw.append((tags, nid))
+            if include_bus_stops and (tags.get("highway") == "bus_stop" or tags.get("public_transport") in ("platform", "stop_position")):
+                bus_stops_raw.append((tags, nid))
+            if "entrance" in tags:
+                entrance_node_ids.add(nid)
             if tags.get("highway") == "crossing" or tags.get("crossing") in ("zebra", "marked", "uncontrolled", "traffic_signals", "yes"):
                 crossings_raw.append((tags, nid))
         elif el_type == "way":
@@ -1023,6 +1047,8 @@ def build_ways(
                 ways_by_id[way_id] = el
             if len(node_ids) < 2:
                 continue
+            if include_bus_stops and tags.get("public_transport") == "platform":
+                bus_platforms_raw.append((tags, node_ids, way_id))
             if "building" in tags:
                 building_raw.append((tags, node_ids))
             elif tags.get("natural") in ("water", "bay", "strait") or ("waterway" in tags) or tags.get("landuse") == "reservoir":
@@ -1081,6 +1107,7 @@ def build_ways(
     traffic_lights: List[TrafficLight] = []
     crossings: List[Crossing] = []
     taxi_stops: List[TaxiStop] = []
+    bus_stops: List[BusStop] = []
 
     minx = miny = float("inf")
     maxx = maxy = float("-inf")
@@ -1143,6 +1170,7 @@ def build_ways(
         street = tags.get("addr:street")
         center_x = sum(point[0] for point in pts) / len(pts)
         center_y = sum(point[1] for point in pts) / len(pts)
+        entrances = [nodes_m[nid] for nid in node_ids if nid in entrance_node_ids]
         buildings.append(Building(
             points_m=pts,
             name=name,
@@ -1153,6 +1181,7 @@ def build_ways(
             venue_type=tags.get("amenity"),
             center_m=(center_x, center_y),
             texture_seed=abs(math.sin(center_x * 0.013 + center_y * 0.017)),
+            entrances=entrances,
         ))
 
     # 4. Roads (ways)
@@ -1310,6 +1339,7 @@ def build_ways(
         # Parse speed limit (OSM maxspeed tag with Finnish fallback)
         speed_lim = parse_speed_limit_kmh(tags.get("maxspeed"), highway)
         lit_tag = str(tags.get("lit", "")).strip().lower() or None
+        surface_tag = str(tags.get("surface", "")).strip().lower() or None
 
         ways.append(
             Way(
@@ -1317,6 +1347,7 @@ def build_ways(
                 highway=highway,
                 half_width_m=halfw,
                 name=name,
+                surface=surface_tag,
                 lit=lit_tag,
                 is_ice_road=is_ice,
                 is_drivable=is_drivable,
@@ -1409,6 +1440,31 @@ def build_ways(
         pt = nodes_m.get(nid)
         if pt:
             taxi_stops.append(TaxiStop(x=pt[0], y=pt[1], id=nid))
+
+    for tags, nid in bus_stops_raw:
+        pt = nodes_m.get(nid)
+        if pt:
+            bus_stops.append(
+                BusStop(
+                    x=pt[0],
+                    y=pt[1],
+                    name=tags.get("name"),
+                    id=nid,
+                    shelter=str(tags.get("shelter", "")).lower() in {"yes", "true", "1"},
+                )
+            )
+    for tags, node_ids, way_id in bus_platforms_raw:
+        pts, _ = process_node_ids(node_ids)
+        if pts:
+            bus_stops.append(
+                BusStop(
+                    x=sum(point[0] for point in pts) / len(pts),
+                    y=sum(point[1] for point in pts) / len(pts),
+                    name=tags.get("name"),
+                    id=way_id,
+                    shelter=str(tags.get("shelter", "")).lower() in {"yes", "true", "1"},
+                )
+            )
 
     # 7. Traffic signals from OSM nodes
     # Find road direction at node to assign orthogonal phase offsets for intersecting streets
@@ -1705,7 +1761,7 @@ def build_ways(
             minx = miny = 0.0
             maxx = maxy = 1000.0
 
-    return MapData(ways, waters, buildings, sceneries, places, (minx, miny, maxx, maxy), traffic_lights, crossings, taxi_stops)
+    return MapData(ways, waters, buildings, sceneries, places, (minx, miny, maxx, maxy), traffic_lights, crossings, taxi_stops, bus_stops)
 
 
 class AutoFetchManager:
@@ -1722,6 +1778,7 @@ class AutoFetchManager:
         places: Optional[List[Place]] = None,
         traffic_lights: Optional[List[TrafficLight]] = None,
         crossings: Optional[List[Crossing]] = None,
+        bus_stops: Optional[List[BusStop]] = None,
         fetch_func=fetch_osm_ways,
         build_func=build_ways,
         cooldown_s: float = 5.0,
@@ -1734,6 +1791,7 @@ class AutoFetchManager:
         self.places = places if places is not None else []
         self.traffic_lights = traffic_lights if traffic_lights is not None else []
         self.crossings = crossings if crossings is not None else []
+        self.bus_stops = bus_stops if bus_stops is not None else []
         self.bounds = bounds
         self.transformer = transformer
         self.fetch_func = fetch_func
@@ -1977,6 +2035,7 @@ class AutoFetchManager:
             with self.lock:
                 self.fetch_progress = 0.9
             new_crossings = getattr(res, "crossings", [])
+            new_bus_stops = getattr(res, "bus_stops", [])
             if len(res) == 8:
                 new_ways, new_waters, new_buildings, new_sceneries, new_places, new_bounds, new_traffic_lights, new_crossings = res
             elif len(res) == 7:
@@ -2030,6 +2089,7 @@ class AutoFetchManager:
                 added_places = _extend_unique(self.places, new_places)
                 added_traffic_lights = _extend_unique(self.traffic_lights, new_traffic_lights)
                 added_crossings = _extend_unique(self.crossings, new_crossings)
+                added_bus_stops = _extend_unique(self.bus_stops, new_bus_stops)
                 minx = min(self.bounds[0], new_bounds[0])
                 miny = min(self.bounds[1], new_bounds[1])
                 maxx = max(self.bounds[2], new_bounds[2])

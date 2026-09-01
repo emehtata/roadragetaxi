@@ -30,7 +30,7 @@ High-level architecture / data flow
 
 Important implementation details for an AI agent
 - BBOX order is (south, west, north, east) lat/lon. Presets stored in `BBOX_PRESETS` and `CITY_CENTERS`.
-- Transformer is created with `always_xy=True` and expects lon,lat input; be careful not to swap lat/lon.
+- Coordinate systems: OSM and BBOX values use geographic degrees in `(lat, lon)` order; BBOX remains `(south, west, north, east)`. `pyproj` with `always_xy=True` expects `(lon, lat)` and returns EPSG:3067 metric `(x, y)`. Internal geometry, spatial grids, physics, and rendering use `(x, y)` meters; convert back to lat/lon only at OSM/API boundaries. Never pass `(lat, lon)` directly to the transformer or mix degree values with meter geometry.
 - Roads filtered by `tags.get("highway", "unclassified")` — adding new OSM types should account for missing tags.
 - Waters parsed from `natural=water`, `waterway`, `landuse=reservoir`, and relation multipolygons.
 - Widths: see `HIGHWAY_HALF_WIDTH` (half-width meters). Rendering thickness = half_width * 2 * PX_PER_M.
@@ -49,6 +49,7 @@ Conventions & patterns
 - Modular architecture under `src/theroadragetrip/`.
 - Use dataclasses for simple domain types (e.g., `Way`, `Car`, `NPCCar`, `Pedestrian`, `TaxiPassenger`).
 - Keep code imperative and explicit for readability by humans and LLMs.
+- Optimize and profile every new world object or feature before considering it complete; world growth must not regress FPS.
 - Error handling: network failures surface logging warnings; fallback to local sample where appropriate; exit on unrecoverable errors.
 
 Developer workflows / tests

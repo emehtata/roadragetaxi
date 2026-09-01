@@ -7,6 +7,9 @@ A top-down 2D driving game proof-of-concept (PoC) in Python and Pygame that proc
 ## Features
 
 - **Real-World OSM Road Network**: Fetches and renders actual highway ways from Overpass API (motorways, primary, secondary, residential, tracks, paths).
+- **OSM Bus Stops**: Bus stops and platforms are rendered as roadside bays with small road-aligned shelters labeled `BUS`.
+- Bus stops are disabled by default; enable them with `bus_stops = true` under `[game]` in `roadragetrip.ini`.
+- **OSM Building Entrances**: Doors are rendered at `entrance` nodes from building geometry; buildings without entrance data have no synthetic door.
 - **Taxi Game Mode**: Pick up passengers at generated street addresses, drop them off at their destinations, and earn points with speed and distance multiplier bonuses.
 - **Taxi Stops & Missions**: Taxi offers use street addresses and named buildings as pickup and destination points. Taxi stands are pickup-only locations.
 - **Ride Requests & Taxi Stands**: Ride requests arrive one at a time by phone, 10-60 seconds apart, and expire after 30-90 seconds when no passenger is onboard. Select one with `1`, `2`, or `3`, or reject the selected offer with `X`; phone offers and taxi-stand customers can coexist. The game starts at 18:00. From 20:00 to 00:00, rides favor homes to bars, restaurants, pubs, and nightclubs, plus trips between those venues. From 00:00 to 05:00, passengers leave taxi stands for home addresses; from 05:00 to 08:00, rides run between homes. From 08:00 to 12:00, bar and nightlife destinations are excluded. Phone rides normally start and end at named buildings or street addresses. Wait stopped at a taxi stand and its customer walks visibly to the taxi before boarding. Maps without taxi stands can trigger occasional street hails; only a small share of pedestrians want a taxi. A passing taxi can notice a hail, but the passenger only boards after the taxi stops.
