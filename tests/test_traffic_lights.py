@@ -7,6 +7,7 @@ from theroadragetrip.osm import (
     Way,
     build_ways,
     complete_traffic_light_approaches,
+    build_logical_intersections,
     deduplicate_traffic_lights,
 )
 from theroadragetrip.physics import Car
@@ -98,6 +99,20 @@ def test_single_signal_marker_generates_missing_intersection_approaches():
     assert len(generated) == 4
     assert {round(light.direction_angle % math.pi, 4) for light in generated} == {0.0, round(math.pi / 2, 4)}
     assert len({id(light.signal_group) for light in generated}) == 2
+
+
+def test_logical_intersection_contains_approaches_and_stop_lines():
+    ways = [
+        Way(points_m=[(-100.0, 0.0), (100.0, 0.0)], highway="primary", half_width_m=4.0),
+        Way(points_m=[(0.0, -100.0), (0.0, 100.0)], highway="primary", half_width_m=4.0),
+    ]
+    lights = [TrafficLight(x=0.0, y=0.0, direction_angle=0.0)]
+
+    intersections = build_logical_intersections(lights, ways)
+
+    assert len(intersections) == 1
+    assert len(intersections[0].approaches) == 4
+    assert all(approach.stop_line[0] != approach.stop_line[1] for approach in intersections[0].approaches)
 
 
 def test_build_ways_splits_single_signal_at_four_arm_junction():

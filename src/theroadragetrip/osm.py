@@ -360,6 +360,26 @@ class SignalGroup:
 
 
 @dataclass
+class IntersectionApproach:
+    """Incoming road direction and generated stop line for one intersection."""
+    approach_id: str
+    road_segments: List[Way]
+    direction_vector: Tuple[float, float]
+    stop_line: Tuple[Tuple[float, float], Tuple[float, float]]
+    signal_group: Optional[SignalGroup] = None
+
+
+@dataclass
+class LogicalIntersection:
+    """Cached signal-controlled intersection assembled from OSM evidence."""
+    intersection_id: str
+    center: Tuple[float, float]
+    radius_m: float
+    approaches: List[IntersectionApproach] = field(default_factory=list)
+    traffic_lights: List["TrafficLight"] = field(default_factory=list)
+
+
+@dataclass
 class TrafficLight:
     x: float
     y: float
@@ -522,6 +542,89 @@ def complete_traffic_light_approaches(traffic_lights: List[TrafficLight], ways: 
             signal.allowed_movements = group.allowed_movements
 
     return deduplicate_traffic_lights(completed)
+
+
+def build_logical_intersections(
+    traffic_lights: List[TrafficLight], ways: List[Way], cluster_radius_m: float = 60.0
+) -> List[LogicalIntersection]:
+    """Build immutable-ish intersection geometry once from signal OSM evidence."""
+    intersections: List[LogicalIntersection] = []
+    for signal in traffic_lights:
+        if any(
+            math.hypot(signal.x - existing.center[0], signal.y - existing.center[1]) <= cluster_radius_m
+            for existing in intersections
+        ):
+            continue
+        nearby_signals = [
+            candidate for candidate in traffic_lights
+            if candidate.layer == signal.layer
+            and math.hypot(candidate.x - signal.x, candidate.y - signal.y) <= cluster_radius_m
+        ]
+        center = (
+            sum(candidate.x for candidate in nearby_signals) / len(nearby_signals),
+            sum(candidate.y for candidate in nearby_signals) / len(nearby_signals),
+        )
+        candidate_ways = [
+            way for way in ways
+            if getattr(way, "layer", 0) == signal.layer
+            and len(way.points_m) >= 2
+            and min(
+                dist_point_to_segment(center[0], center[1], start[0], start[1], end[0], end[1])
+                for start, end in zip(way.points_m, way.points_m[1:])
+            ) <= 100.0
+        ]
+        approaches: List[IntersectionApproach] = []
+        for way in candidate_ways:
+            segment = min(
+                zip(way.points_m, way.points_m[1:]),
+                key=lambda pair: dist_point_to_segment(center[0], center[1], *pair[0], *pair[1]),
+            )
+            dx = segment[1][0] - segment[0][0]
+            dy = segment[1][1] - segment[0][1]
+            length = math.hypot(dx, dy)
+            if length <= 1e-6:
+                continue
+            for direction_x, direction_y in ((dx / length, dy / length), (-dx / length, -dy / length)):
+                approach_id = f"{signal.layer}:{center[0]:.0f}:{center[1]:.0f}:{round(math.atan2(direction_y, direction_x), 2)}"
+                if any(approach.approach_id == approach_id for approach in approaches):
+                    continue
+                stop_center = (
+                    center[0] - direction_x * 12.0,
+                    center[1] - direction_y * 12.0,
+                )
+                half_width = getattr(way, "half_width_m", 4.0)
+                stop_line = (
+                    (stop_center[0] - direction_y * half_width, stop_center[1] + direction_x * half_width),
+                    (stop_center[0] + direction_y * half_width, stop_center[1] - direction_x * half_width),
+                )
+                matching_signal = next(
+                    (
+                        candidate for candidate in nearby_signals
+                        if candidate.direction_angle is not None
+                        and abs((candidate.direction_angle - math.atan2(direction_y, direction_x) + math.pi) % (2.0 * math.pi) - math.pi) <= math.radians(45.0)
+                    ),
+                    None,
+                )
+                approaches.append(
+                    IntersectionApproach(
+                        approach_id=approach_id,
+                        road_segments=[way],
+                        direction_vector=(direction_x, direction_y),
+                        stop_line=stop_line,
+                        signal_group=matching_signal.signal_group if matching_signal else None,
+                    )
+                )
+        if len(approaches) >= 3:
+            intersections.append(
+                LogicalIntersection(
+                    intersection_id=f"{signal.layer}:{center[0]:.0f}:{center[1]:.0f}",
+                    center=center,
+                    radius_m=cluster_radius_m,
+                    approaches=approaches,
+                    traffic_lights=nearby_signals,
+                )
+            )
+    return intersections
 
 
 @dataclass
@@ -977,10 +1080,10 @@ def _stitch_member_ways_into_rings(
 class MapData(tuple):
     """Container tuple for build_ways results returning 6 elements for backward compatibility while providing traffic_lights and crossings via attributes and slicing."""
 
-    def __new__(cls, ways, waters, buildings, sceneries, places, bounds, traffic_lights=None, crossings=None, taxi_stops=None, bus_stops=None, parking_spaces=None):
+    def __new__(cls, ways, waters, buildings, sceneries, places, bounds, traffic_lights=None, crossings=None, taxi_stops=None, bus_stops=None, parking_spaces=None, logical_intersections=None):
         return super().__new__(cls, (ways, waters, buildings, sceneries, places, bounds))
 
-    def __init__(self, ways, waters, buildings, sceneries, places, bounds, traffic_lights=None, crossings=None, taxi_stops=None, bus_stops=None, parking_spaces=None):
+    def __init__(self, ways, waters, buildings, sceneries, places, bounds, traffic_lights=None, crossings=None, taxi_stops=None, bus_stops=None, parking_spaces=None, logical_intersections=None):
         self.ways = ways
         self.waters = waters
         self.buildings = buildings
@@ -992,6 +1095,7 @@ class MapData(tuple):
         self.taxi_stops = taxi_stops if taxi_stops is not None else []
         self.bus_stops = bus_stops if bus_stops is not None else []
         self.parking_spaces = parking_spaces if parking_spaces is not None else []
+        self.logical_intersections = logical_intersections if logical_intersections is not None else []
 
     @property
     def traffic_signals(self):
@@ -1747,6 +1851,7 @@ def build_ways(
         traffic_lights = complete_traffic_light_approaches(
             deduplicate_traffic_lights(traffic_lights), ways
         )
+    logical_intersections = build_logical_intersections(traffic_lights, ways)
 
     # 8. Pedestrian Crossings (suojatiet) from OSM nodes and ways
     if crossings_raw:
@@ -1872,7 +1977,10 @@ def build_ways(
             minx = miny = 0.0
             maxx = maxy = 1000.0
 
-    return MapData(ways, waters, buildings, sceneries, places, (minx, miny, maxx, maxy), traffic_lights, crossings, taxi_stops, bus_stops, parking_spaces)
+    return MapData(
+        ways, waters, buildings, sceneries, places, (minx, miny, maxx, maxy),
+        traffic_lights, crossings, taxi_stops, bus_stops, parking_spaces, logical_intersections,
+    )
 
 
 class AutoFetchManager:
