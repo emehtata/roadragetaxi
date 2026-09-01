@@ -546,11 +546,11 @@ class SpatialWayGrid:
         """Find the specific road (Way) the given position is on, if any."""
         best_way = None
         best_dist = float("inf")
+        surface_way = None
         for way, half_width in self._candidate_ways(px, py, car_roads_only, layer):
             if getattr(way, "is_drivable_surface", False) and _point_on_way(px, py, way, half_width):
-                if best_way is None:
-                    best_way = way
-                    best_dist = 0.0
+                if surface_way is None:
+                    surface_way = way
                 continue
             pts = way.points_m
             for i in range(len(pts) - 1):
@@ -561,7 +561,7 @@ class SpatialWayGrid:
                     best_dist = d
                     best_way = way
 
-        return best_way
+        return best_way or surface_way
 
     def is_on_road(self, car: Car, car_roads_only: bool = False) -> bool:
         return self.is_point_on_road(car.x, car.y, car_roads_only=car_roads_only)
