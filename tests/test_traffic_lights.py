@@ -39,6 +39,22 @@ def test_signal_group_controls_multiple_physical_lights():
     assert group.allowed_movements == frozenset({"straight", "right"})
 
 
+def test_signal_group_supports_configurable_phase_durations():
+    group = SignalGroup(
+        approach_id="north",
+        green_duration=20.0,
+        yellow_duration=3.0,
+        all_red_duration=1.0,
+        red_duration=6.0,
+        red_yellow_duration=1.0,
+    )
+
+    assert group.get_state(19.9) == "green"
+    assert group.get_state(20.0) == "yellow"
+    assert group.get_state(23.0) == "red"
+    assert group.get_state(24.0) == "red"
+
+
 def test_traffic_light_manager_updates_cached_groups():
     group = SignalGroup(approach_id="north", phase_id=0, offset=0.0)
     light = TrafficLight(x=0.0, y=0.0, signal_group=group)
@@ -126,7 +142,8 @@ def test_single_signal_marker_generates_missing_intersection_approaches():
     generated = [light for light in result if light.id != 1]
     assert len(generated) == 4
     assert {round(light.direction_angle % math.pi, 4) for light in generated} == {0.0, round(math.pi / 2, 4)}
-    assert len({id(light.signal_group) for light in generated}) == 2
+    assert len({id(light.signal_group) for light in generated}) == 4
+    assert len({light.signal_group.offset for light in generated}) == 2
 
 
 def test_logical_intersection_contains_approaches_and_stop_lines():

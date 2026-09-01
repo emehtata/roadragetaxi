@@ -347,15 +347,26 @@ class SignalGroup:
     cycle_time: float = 16.0
     offset: float = 0.0
     state: str = "red"
+    green_duration: float = 5.5
+    yellow_duration: float = 1.5
+    all_red_duration: float = 0.0
+    red_duration: float = 7.5
+    red_yellow_duration: float = 1.5
 
     def get_state(self, current_time: float) -> str:
         """Return the current state using the standard four-phase cycle."""
-        t = (current_time + self.offset) % self.cycle_time
-        if t < 5.5:
+        phase_cycle = (
+            self.green_duration + self.yellow_duration + self.all_red_duration
+            + self.red_duration + self.red_yellow_duration
+        )
+        t = (current_time + self.offset) % (phase_cycle if phase_cycle > 0.0 else self.cycle_time)
+        if t < self.green_duration:
             self.state = "green"
-        elif t < 7.0:
+        elif t < self.green_duration + self.yellow_duration:
             self.state = "yellow"
-        elif t < 14.5:
+        elif t < self.green_duration + self.yellow_duration + self.all_red_duration:
+            self.state = "red"
+        elif t < self.green_duration + self.yellow_duration + self.all_red_duration + self.red_duration:
             self.state = "red"
         else:
             self.state = "red+yellow"
@@ -530,17 +541,18 @@ def complete_traffic_light_approaches(traffic_lights: List[TrafficLight], ways: 
                 continue
             if signal.direction_angle is None:
                 continue
-            axis = signal.direction_angle % math.pi
-            axis_key = round(axis / math.radians(25.0))
-            group = grouped.get(axis_key)
+            direction = signal.direction_angle % (2.0 * math.pi)
+            axis = direction % math.pi
+            direction_key = round(direction / math.radians(25.0))
+            group = grouped.get(direction_key)
             if group is None:
                 phase_id = 1 if math.sin(axis) ** 2 > 0.5 else 0
                 group = SignalGroup(
-                    approach_id=f"{layer}:{center_x:.0f}:{center_y:.0f}:{axis_key}",
+                    approach_id=f"{layer}:{center_x:.0f}:{center_y:.0f}:{direction_key}",
                     phase_id=phase_id,
                     offset=8.0 if phase_id else 0.0,
                 )
-                grouped[axis_key] = group
+                grouped[direction_key] = group
             signal.signal_group = group
             signal.approach_id = group.approach_id
             signal.allowed_movements = group.allowed_movements
