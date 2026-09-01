@@ -1633,13 +1633,16 @@ class TrafficManager:
         for npc in self.npcs:
             if npc.is_police:
                 continue
+            if not npc.lod_update_due:
+                continue
             if npc.speed <= 0.0:
                 continue
             pts = npc.way.points_m
             if len(pts) < 2:
                 continue
 
-            dist_step = npc.speed * dt
+            movement_dt = dt if npc.lod_level == 0 else NPC_LOD_UPDATE_INTERVALS[npc.lod_level]
+            dist_step = npc.speed * movement_dt
             step_limit = 10  # Prevent infinite loop on degenerate/zero-length segments
 
             while dist_step > 0 and step_limit > 0:
