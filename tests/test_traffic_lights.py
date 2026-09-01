@@ -143,6 +143,23 @@ def test_logical_intersection_contains_approaches_and_stop_lines():
     assert all(approach.stop_line[0] != approach.stop_line[1] for approach in intersections[0].approaches)
 
 
+def test_logical_intersections_do_not_merge_different_layers():
+    ways = [
+        Way(points_m=[(-100.0, 0.0), (100.0, 0.0)], highway="primary", half_width_m=4.0, layer=0),
+        Way(points_m=[(0.0, -100.0), (0.0, 100.0)], highway="primary", half_width_m=4.0, layer=0),
+        Way(points_m=[(-100.0, 0.0), (100.0, 0.0)], highway="primary", half_width_m=4.0, layer=1),
+        Way(points_m=[(0.0, -100.0), (0.0, 100.0)], highway="primary", half_width_m=4.0, layer=1),
+    ]
+    lights = [
+        TrafficLight(x=0.0, y=0.0, layer=0, direction_angle=0.0),
+        TrafficLight(x=0.0, y=0.0, layer=1, direction_angle=0.0),
+    ]
+
+    intersections = build_logical_intersections(lights, ways)
+
+    assert {intersection.layer for intersection in intersections} == {0, 1}
+
+
 def test_build_ways_splits_single_signal_at_four_arm_junction():
     elements = [
         {"type": "node", "id": 1, "lat": 65.0, "lon": 25.0, "tags": {"highway": "traffic_signals"}},

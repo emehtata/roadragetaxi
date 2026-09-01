@@ -378,6 +378,7 @@ class LogicalIntersection:
     intersection_id: str
     center: Tuple[float, float]
     radius_m: float
+    layer: int = 0
     approaches: List[IntersectionApproach] = field(default_factory=list)
     traffic_lights: List["TrafficLight"] = field(default_factory=list)
 
@@ -554,7 +555,8 @@ def build_logical_intersections(
     intersections: List[LogicalIntersection] = []
     for signal in traffic_lights:
         if any(
-            math.hypot(signal.x - existing.center[0], signal.y - existing.center[1]) <= cluster_radius_m
+            existing.layer == signal.layer
+            and math.hypot(signal.x - existing.center[0], signal.y - existing.center[1]) <= cluster_radius_m
             for existing in intersections
         ):
             continue
@@ -623,6 +625,7 @@ def build_logical_intersections(
                     intersection_id=f"{signal.layer}:{center[0]:.0f}:{center[1]:.0f}",
                     center=center,
                     radius_m=cluster_radius_m,
+                    layer=signal.layer,
                     approaches=approaches,
                     traffic_lights=nearby_signals,
                 )
