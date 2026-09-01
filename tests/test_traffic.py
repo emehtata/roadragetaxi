@@ -69,6 +69,19 @@ def test_npc_lod_assigns_distance_bands_and_schedules_updates():
     assert all(npc.lod_update_due for npc in manager.npcs)
 
 
+def test_npc_spatial_grid_refreshes_after_movement():
+    way = Way(points_m=[(0.0, 0.0), (100.0, 0.0)], highway="residential", half_width_m=4.0)
+    manager = TrafficManager([way], target_count=0)
+    npc = NPCCar(31.0, 0.0, 0.0, 10.0, way, 0, 1, 10.0, (20, 20, 20))
+    manager.npcs = [npc]
+    manager._build_npc_spatial_grid()
+
+    manager.update(Car(0.0, 0.0, 0.0, 0.0), 0.2)
+
+    new_cell = (int(npc.x // manager._npc_grid_cell_size), int(npc.y // manager._npc_grid_cell_size))
+    assert npc in manager._npc_grid[new_cell]
+
+
 def test_rival_taxi_picks_up_taxi_stand_waiter():
     way = Way(points_m=[(0.0, 0.0), (100.0, 0.0)], highway="residential", half_width_m=4.0)
     manager = TrafficManager([way], target_count=0)

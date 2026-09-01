@@ -1668,3 +1668,4 @@ class TrafficManager:
             previous_speed = previous_speeds.get(id(npc))
             npc.braking = previous_speed is not None and npc.speed < previous_speed - 0.05
         self._resolve_npc_collisions()
+        self._build_npc_spatial_grid()
