@@ -52,6 +52,21 @@ def test_traffic_light_manager_updates_cached_groups():
     assert group.state == "yellow"
 
 
+def test_traffic_light_manager_finds_matching_logical_approach():
+    way = Way(points_m=[(-100.0, 0.0), (100.0, 0.0)], highway="primary", half_width_m=4.0)
+    cross_way = Way(points_m=[(0.0, -100.0), (0.0, 100.0)], highway="primary", half_width_m=4.0)
+    intersections = build_logical_intersections(
+        [TrafficLight(x=0.0, y=0.0, direction_angle=0.0)], [way, cross_way]
+    )
+    manager = TrafficLightManager(intersections)
+    npc = NPCCar(-20.0, 0.0, 0.0, 5.0, way, 0, 1, 10.0, (20, 20, 20))
+
+    approach = manager.find_approach(npc)
+
+    assert approach is not None
+    assert approach.direction_vector[0] > 0.0
+
+
 def test_traffic_light_orthogonal_phases():
     # Signal A along East-West road (offset 0.0s)
     tl_ew = TrafficLight(x=100.0, y=100.0, cycle_time=16.0, offset=0.0)

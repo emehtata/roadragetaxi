@@ -126,6 +126,29 @@ class TrafficLightManager:
             return "green"
         return approach.signal_group.get_state(current_time)
 
+    def find_approach(self, npc: NPCCar) -> Optional[IntersectionApproach]:
+        """Find the cached incoming approach matching an NPC's road and heading."""
+        best_approach = None
+        best_distance = float("inf")
+        heading_x = math.cos(npc.heading)
+        heading_y = math.sin(npc.heading)
+        for intersection in self.intersections:
+            distance_to_center = math.hypot(
+                npc.x - intersection.center[0], npc.y - intersection.center[1]
+            )
+            if distance_to_center > intersection.radius_m + 40.0:
+                continue
+            for approach in intersection.approaches:
+                if npc.way not in approach.road_segments:
+                    continue
+                direction_x, direction_y = approach.direction_vector
+                if heading_x * direction_x + heading_y * direction_y < 0.5:
+                    continue
+                if distance_to_center < best_distance:
+                    best_approach = approach
+                    best_distance = distance_to_center
+        return best_approach
+
 
 def calculate_npc_target_speed(way: Way, speed_factor: float) -> float:
     """Compute realistic driving target speed in m/s based on Finnish road limit and vehicle personality."""
@@ -1372,13 +1395,26 @@ class TrafficManager:
             nearest_light = None
             stop_distance = None
             passed_matching_light = False
+            logical_approach = self.traffic_light_manager.find_approach(npc)
+            if logical_approach is not None:
+                logical_stop_center = (
+                    (logical_approach.stop_line[0][0] + logical_approach.stop_line[1][0]) * 0.5,
+                    (logical_approach.stop_line[0][1] + logical_approach.stop_line[1][1]) * 0.5,
+                )
+                logical_dx = logical_stop_center[0] - npc.x
+                logical_dy = logical_stop_center[1] - npc.y
+                logical_distance = logical_dx * math.cos(npc.heading) + logical_dy * math.sin(npc.heading)
+                logical_state = self.traffic_light_manager.get_signal_state(logical_approach, self.sim_time)
+                if 0.0 < logical_distance < 35.0 and logical_state in ("red", "yellow", "red+yellow"):
+                    stop_distance = logical_distance - 1.5
+                    must_stop = stop_distance >= -1.0
             roadwork_stop_distance = self._roadwork_stop_distance(npc)
             if roadwork_stop_distance is not None:
                 must_stop = True
                 stop_distance = roadwork_stop_distance
             heading_x = math.cos(npc.heading)
             heading_y = math.sin(npc.heading)
-            for tl in self._nearby_traffic_lights(npc.x, npc.y):
+            for tl in self._nearby_traffic_lights(npc.x, npc.y) if logical_approach is None else []:
                 if tl.layer != npc.layer:
                     continue
                 dx = tl.x - npc.x
