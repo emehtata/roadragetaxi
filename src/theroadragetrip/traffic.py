@@ -23,6 +23,9 @@ NPC_COLORS = [
 ]
 MAX_TRAFFIC_COUNT = 50
 NPC_TAXI_COLOR = (245, 205, 35)
+NPC_LOD_NEAR_RADIUS_M = 500.0
+NPC_LOD_MEDIUM_RADIUS_M = 1500.0
+NPC_LOD_UPDATE_INTERVALS = (1.0 / 30.0, 1.0 / 12.0, 0.2)
 
 
 def recommended_traffic_count(ways: List[Way], minimum: int = 5, maximum: int = MAX_TRAFFIC_COUNT) -> int:
@@ -86,6 +89,10 @@ class NPCCar:
     scared_timer: float = 0.0
     pursuit_cancelled: bool = False
     next_route: Optional[Tuple[Way, int, int]] = None
+    lod_level: int = 0
+    lod_time_accumulator: float = 0.0
+    lod_update_due: bool = True
+    state: str = "driving"
     debug_last_action: str = ""
     debug_in_view: Optional[bool] = None
 
@@ -231,6 +238,27 @@ class TrafficManager:
             for offset_y in (-1, 0, 1):
                 nearby.extend(self._npc_grid.get((cell_x + offset_x, cell_y + offset_y), []))
         return nearby
+
+    def update_lod(self, player_car: Car, dt: float) -> None:
+        """Assign traffic LOD and accumulate each NPC's scheduled update time."""
+        for npc in self.npcs:
+            distance = math.hypot(npc.x - player_car.x, npc.y - player_car.y)
+            if distance < NPC_LOD_NEAR_RADIUS_M:
+                npc.lod_level = 0
+            elif distance < NPC_LOD_MEDIUM_RADIUS_M:
+                npc.lod_level = 1
+            else:
+                npc.lod_level = 2
+            npc.lod_time_accumulator += dt
+            npc.lod_update_due = self._lod_update_due(npc)
+
+    @staticmethod
+    def _lod_update_due(npc: NPCCar) -> bool:
+        interval = NPC_LOD_UPDATE_INTERVALS[npc.lod_level]
+        if npc.lod_time_accumulator < interval:
+            return False
+        npc.lod_time_accumulator %= interval
+        return True
 
     def _resolve_npc_collisions(self) -> None:
         """Separate overlapping nearby NPC cars so traffic cannot occupy the same space."""
@@ -995,6 +1023,7 @@ class TrafficManager:
                     )
                     if npc.is_taxi:
                         npc.vehicle_type = "car"
+                    npc.lod_time_accumulator = 1.0
                     self.npcs.append(npc)
                     return npc
 
@@ -1071,6 +1100,7 @@ class TrafficManager:
 
         if npc_population_changed:
             self._build_npc_spatial_grid()
+        self.update_lod(player_car, dt)
 
         # Periodic log of active NPC traffic count (total and in-view)
         self._log_timer += dt
@@ -1090,7 +1120,7 @@ class TrafficManager:
                     1 for npc in self.npcs
                     if vminx <= npc.x <= vmaxx and vminy <= npc.y <= vmaxy
                 )
-                def in_view(entity) -> bool:
+                def is_entity_in_view(entity) -> bool:
                     return vminx <= entity.x <= vmaxx and vminy <= entity.y <= vmaxy
 
                 logger.info(
@@ -1100,11 +1130,11 @@ class TrafficManager:
                     len(taxi_npcs),
                     taxi_details,
                     len(police_cars),
-                    sum(1 for car in police_cars if in_view(car)),
+                    sum(1 for car in police_cars if is_entity_in_view(car)),
                     len(pedestrians),
-                    sum(1 for ped in pedestrians if in_view(ped)),
+                    sum(1 for ped in pedestrians if is_entity_in_view(ped)),
                     len(cyclists),
-                    sum(1 for cyclist in cyclists if in_view(cyclist)),
+                    sum(1 for cyclist in cyclists if is_entity_in_view(cyclist)),
                 )
             else:
                 logger.info(
@@ -1119,6 +1149,8 @@ class TrafficManager:
 
         for i, npc in enumerate(self.npcs):
             if npc.is_police:
+                continue
+            if not npc.lod_update_due:
                 continue
             self._prepare_next_route(npc)
             if npc.next_route is not None and not npc.turn_signal:
@@ -1218,6 +1250,8 @@ class TrafficManager:
         for i, npc in enumerate(self.npcs):
             if npc.is_police:
                 continue
+            if npc.lod_level > 0 or not npc.lod_update_due:
+                continue
             if npc.crashed_timer > 0.0:
                 continue
 
@@ -1294,6 +1328,8 @@ class TrafficManager:
         # Check red traffic lights ahead and adjust speed
         for npc in self.npcs:
             if npc.is_police:
+                continue
+            if not npc.lod_update_due:
                 continue
             must_stop = False
             junction_blocked = False
@@ -1411,6 +1447,7 @@ class TrafficManager:
             else:
                 action = "driving"
                 reason = "prepared turn" if npc.turn_signal else "normal route"
+            npc.state = action
             action_state = f"{action}: {reason}"
             if npc.debug_last_action != action_state:
                 logger.debug(

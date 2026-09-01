@@ -51,6 +51,7 @@ _motorcycle_sprite = None
 _moped_sprite = None
 _two_wheeler_tinted_sprites = {}
 _two_wheeler_render_cache = {}
+_npc_debug_font = None
 _cyclist_tinted_sprites = {}
 _grass_texture_tile = None
 _asphalt_texture_tile = None
@@ -2478,11 +2479,17 @@ def draw_npc_cars(
     screen_h: int = SCREEN_H,
     ways: Optional[List[Way]] = None,
     spatial_grid=None,
+    show_debug: bool = False,
 ) -> None:
     """Draw autonomous NPC cars scaled in meters with headlights and taillights."""
     vminx, vminy, vmaxx, vmaxy = get_viewport_bounds(camx, camy, px_per_m, screen_w, screen_h, 30.0)
     global _motorcycle_sprite, _moped_sprite
+    global _npc_debug_font
     import pygame
+
+    if show_debug and _npc_debug_font is None:
+        _npc_debug_font = pygame.font.Font(None, 16)
+    debug_font = _npc_debug_font
 
     if _motorcycle_sprite is None:
         _motorcycle_sprite = pygame.image.load(
@@ -2548,6 +2555,32 @@ def draw_npc_cars(
                 turn_signal=getattr(npc, "turn_signal", ""),
                 turn_signal_elapsed=getattr(npc, "turn_signal_elapsed", 0.0),
             )
+
+        if show_debug:
+            lod_colors = ((70, 220, 100), (240, 190, 60), (230, 90, 80))
+            debug_color = lod_colors[min(2, max(0, getattr(npc, "lod_level", 0)))]
+            collider_radius = max(length_px, width_px) * 0.5
+            pygame.draw.circle(screen, debug_color, (int(cx), int(cy)), max(2, int(collider_radius)), 1)
+            pts = getattr(npc.way, "points_m", None)
+            target_pt = None
+            if pts and getattr(npc, "direction", 1) == 1 and getattr(npc, "segment_idx", 0) + 1 < len(pts):
+                target_pt = pts[npc.segment_idx + 1]
+            elif pts and getattr(npc, "direction", 1) == -1 and getattr(npc, "segment_idx", 0) < len(pts):
+                target_pt = pts[npc.segment_idx]
+            if target_pt is not None:
+                target_screen = world_to_screen(
+                    target_pt[0], target_pt[1], camx, camy, px_per_m, screen_w, screen_h
+                )
+                pygame.draw.line(screen, debug_color, (int(cx), int(cy)),
+                                 (int(target_screen[0]), int(target_screen[1])), 1)
+            if debug_font is not None:
+                debug_text = debug_font.render(
+                    f"{id(npc) % 1000} {getattr(npc, 'state', 'driving')} "
+                    f"L{getattr(npc, 'lod_level', 0)} {getattr(npc, 'speed', 0.0) * 3.6:.0f} km/h",
+                    True,
+                    debug_color,
+                )
+                screen.blit(debug_text, (int(cx + collider_radius + 2), int(cy - debug_text.get_height() / 2)))
 
         # Draw animated smoke puff effect if NPC is disabled from a crash
         crashed_timer = getattr(npc, "crashed_timer", 0.0)

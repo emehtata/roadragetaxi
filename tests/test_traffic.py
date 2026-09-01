@@ -51,6 +51,24 @@ def test_traffic_count_scales_down_when_zoomed_in():
     assert traffic_count_for_zoom(50, px_per_m=1.0) == 50
 
 
+def test_npc_lod_assigns_distance_bands_and_schedules_updates():
+    way = Way(points_m=[(0.0, 0.0), (100.0, 0.0)], highway="residential", half_width_m=4.0)
+    manager = TrafficManager([way], target_count=0)
+    near = NPCCar(100.0, 0.0, 0.0, 0.0, way, 0, 1, 10.0, (20, 20, 20))
+    medium = NPCCar(600.0, 0.0, 0.0, 0.0, way, 0, 1, 10.0, (30, 30, 30))
+    distant = NPCCar(1600.0, 0.0, 0.0, 0.0, way, 0, 1, 10.0, (40, 40, 40))
+    manager.npcs = [near, medium, distant]
+
+    manager.update_lod(Car(0.0, 0.0, 0.0, 0.0), 0.1)
+
+    assert [npc.lod_level for npc in manager.npcs] == [0, 1, 2]
+    assert [npc.lod_update_due for npc in manager.npcs] == [True, True, False]
+
+    manager.update_lod(Car(0.0, 0.0, 0.0, 0.0), 0.1)
+
+    assert all(npc.lod_update_due for npc in manager.npcs)
+
+
 def test_rival_taxi_picks_up_taxi_stand_waiter():
     way = Way(points_m=[(0.0, 0.0), (100.0, 0.0)], highway="residential", half_width_m=4.0)
     manager = TrafficManager([way], target_count=0)

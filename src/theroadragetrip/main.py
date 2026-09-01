@@ -1944,6 +1944,7 @@ def main() -> None:
                 px_per_m=px_per_m,
                 ways=ways,
                 spatial_grid=spatial_grid,
+                show_debug=show_debug_hud,
             )
             draw_police_cars(screen, police_mgr.cars, camx, camy, px_per_m=px_per_m)
             draw_taxi_brawl(screen, brawl_manager.draw_data(), camx, camy, px_per_m=px_per_m)
