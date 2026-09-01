@@ -380,6 +380,7 @@ class IntersectionApproach:
     road_segments: List[Way]
     direction_vector: Tuple[float, float]
     stop_line: Tuple[Tuple[float, float], Tuple[float, float]]
+    allowed_movements: frozenset[str] = frozenset({"straight", "right"})
     signal_group: Optional[SignalGroup] = None
 
 
@@ -622,12 +623,20 @@ def build_logical_intersections(
                     ),
                     None,
                 )
+                allowed_movements = frozenset({"straight", "right"})
+                if getattr(way, "lanes", 1) >= 3:
+                    allowed_movements = frozenset({"left", "straight", "right"})
+                if matching_signal is not None and allowed_movements != matching_signal.allowed_movements:
+                    matching_signal.allowed_movements = allowed_movements
+                    if matching_signal.signal_group is not None:
+                        matching_signal.signal_group.allowed_movements = allowed_movements
                 approaches.append(
                     IntersectionApproach(
                         approach_id=approach_id,
                         road_segments=[way],
                         direction_vector=(direction_x, direction_y),
                         stop_line=stop_line,
+                        allowed_movements=allowed_movements,
                         signal_group=matching_signal.signal_group if matching_signal else None,
                     )
                 )

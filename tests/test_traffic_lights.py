@@ -160,6 +160,19 @@ def test_logical_intersection_contains_approaches_and_stop_lines():
     assert all(approach.stop_line[0] != approach.stop_line[1] for approach in intersections[0].approaches)
 
 
+def test_multi_lane_approach_infers_left_turn_movement():
+    ways = [
+        Way(points_m=[(-100.0, 0.0), (100.0, 0.0)], highway="primary", half_width_m=6.0, lanes=3),
+        Way(points_m=[(0.0, -100.0), (0.0, 100.0)], highway="primary", half_width_m=4.0),
+    ]
+
+    intersections = build_logical_intersections(
+        [TrafficLight(x=0.0, y=0.0, direction_angle=0.0)], ways
+    )
+
+    assert any("left" in approach.allowed_movements for approach in intersections[0].approaches)
+
+
 def test_logical_intersections_do_not_merge_different_layers():
     ways = [
         Way(points_m=[(-100.0, 0.0), (100.0, 0.0)], highway="primary", half_width_m=4.0, layer=0),
