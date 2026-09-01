@@ -269,7 +269,7 @@ The pause menu's **Settings** screen changes language and master, background, an
 | `--fetch-margin` | Margin in meters from bounds triggering auto-fetch (default: `350.0`) |
 | `--fetch-tile-size`| Meters to expand when auto-fetching (default: `2500.0`) |
 | `--build-in-process` | Build auto-fetched map data outside the gameplay process |
-| `--traffic-count` | Target number of autonomous NPC cars (default: scales with available streets, capped at 50) |
+| `--traffic-count` | Target number of autonomous NPC cars (default: scales with available streets, capped at 200) |
 | `--pedestrian-count` | Target number of pedestrians (default: `20`) |
 | `--cyclist-count` | Target number of cyclists (default: `8`) |
 
