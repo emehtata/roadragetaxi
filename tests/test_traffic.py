@@ -38,6 +38,27 @@ def test_npc_occupies_and_releases_existing_parking_space():
     assert parking_space.occupied is False
 
 
+def test_npc_vehicle_has_assigned_driver_identity():
+    way = Way(points_m=[(0.0, 0.0), (100.0, 0.0)], highway="residential", half_width_m=4.0)
+    npc = NPCCar(10.0, 0.0, 0.0, 4.0, way, 0, 1, 10.0, (20, 20, 20))
+
+    assert npc.assigned_driver_id == id(npc)
+
+
+def test_npc_without_driver_association_does_not_move():
+    way = Way(points_m=[(0.0, 0.0), (100.0, 0.0)], highway="residential", half_width_m=4.0)
+    manager = TrafficManager([way], target_count=0)
+    npc = NPCCar(10.0, 0.0, 0.0, 4.0, way, 0, 1, 10.0, (20, 20, 20), assigned_driver_id=None)
+    npc.assigned_driver_id = None
+    manager.npcs = [npc]
+
+    manager.update(Car(0.0, 0.0, 0.0, 0.0), dt=1.0)
+
+    assert npc.x == 10.0
+    assert npc.speed == 0.0
+    assert npc.state == "waiting"
+
+
 def test_activating_occupied_npc_clears_driver_and_parking_state():
     way = Way(
         points_m=[(0.0, 0.0), (100.0, 0.0)],

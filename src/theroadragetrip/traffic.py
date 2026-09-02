@@ -111,6 +111,12 @@ class NPCCar:
     parking_route_index: int = 0
     reserved_by_pedestrian_id: Optional[int] = None
     current_driver_id: Optional[int] = None
+    assigned_driver_id: Optional[int] = None
+
+    def __post_init__(self) -> None:
+        """Give every NPC vehicle a stable associated driver identity."""
+        if self.assigned_driver_id is None:
+            self.assigned_driver_id = id(self)
 
 
 CarAI = NPCCar
@@ -1527,6 +1533,11 @@ class TrafficManager:
                 continue
             if not npc.lod_update_due:
                 continue
+            if npc.assigned_driver_id is None and npc.current_driver_id is None:
+                npc.speed = 0.0
+                npc.target_speed = 0.0
+                npc.state = "waiting"
+                continue
             if npc.state in {"parked", "reserved"}:
                 npc.speed = 0.0
                 npc.target_speed = 0.0
@@ -1636,6 +1647,8 @@ class TrafficManager:
         for i, npc in enumerate(self.npcs):
             if npc.is_police:
                 continue
+            if npc.assigned_driver_id is None and npc.current_driver_id is None:
+                continue
             if npc.lod_level > 0 or not npc.lod_update_due:
                 continue
             if npc.crashed_timer > 0.0:
@@ -1714,6 +1727,11 @@ class TrafficManager:
         # Check red traffic lights ahead and adjust speed
         for npc in self.npcs:
             if npc.is_police:
+                continue
+            if npc.assigned_driver_id is None and npc.current_driver_id is None:
+                npc.speed = 0.0
+                npc.target_speed = 0.0
+                npc.state = "waiting"
                 continue
             if npc.state in {"parked", "reserved", "parking"}:
                 continue
