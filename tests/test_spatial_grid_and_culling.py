@@ -1,5 +1,6 @@
 import os
 
+os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
 from theroadragetrip.geo import compute_bbox
 from theroadragetrip.osm import Way
 from theroadragetrip.physics import Car, SpatialWayGrid, get_road_layer_at_point, is_on_road
