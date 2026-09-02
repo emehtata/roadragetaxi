@@ -2966,59 +2966,6 @@ def draw_cyclists(
         screen.blit(sprite, sprite.get_rect(center=(int(cx), int(cy))))
 
 
-def draw_taxi_brawl(screen, brawl, camx: float, camy: float, px_per_m: float = PX_PER_M) -> None:
-    """Draw two drivers, a dust cloud, and a visible brawl status banner."""
-    import pygame
-
-    if brawl is None:
-        return
-    screen_w, screen_h = screen.get_size()
-    phase_text = {
-        "offer": "PAINA Z HAASTAAKSESI",
-        "approach": "TAXI APPROACHING",
-        "approach_player": "KUSKI LÄHESTYY",
-        "reaction": "NYT! PAINA Z!",
-        "fight": "TAXI BRAWL",
-        "return": "DRIVERS RETURNING",
-        "drive": "WINNER DRIVING",
-    }.get(brawl.state, "TAXI DRIVER CHALLENGE")
-    phase_color = (
-        (130, 205, 255) if brawl.state == "approach"
-        else (255, 110, 80) if brawl.state in ("fight", "reaction")
-        else (130, 255, 170) if brawl.state in ("return", "drive")
-        else (255, 215, 95)
-    )
-    banner_font = pygame.font.Font(None, 30)
-    banner = banner_font.render(phase_text, True, phase_color)
-    banner_rect = banner.get_rect(center=(screen_w // 2, 44))
-    banner_bg = pygame.Surface((banner_rect.width + 24, banner_rect.height + 12), pygame.SRCALPHA)
-    banner_bg.fill((15, 15, 18, 220))
-    screen.blit(banner_bg, (banner_rect.x - 12, banner_rect.y - 6))
-    screen.blit(banner, banner_rect)
-    timer_font = pygame.font.Font(None, 22)
-    timer = timer_font.render(f"{max(0.0, brawl.timer):.1f}s", True, (240, 240, 240))
-    screen.blit(timer, timer.get_rect(center=(screen_w // 2, 70)))
-
-    player = world_to_screen(brawl.player_x, brawl.player_y, camx, camy, px_per_m)
-    opponent = world_to_screen(brawl.opponent_x, brawl.opponent_y, camx, camy, px_per_m)
-    for center, color in ((player, (245, 205, 35)), (opponent, (70, 130, 240))):
-        radius = max(6, int(0.85 * px_per_m))
-        pygame.draw.circle(screen, color, (int(center[0]), int(center[1])), radius)
-        pygame.draw.circle(screen, (25, 25, 25), (int(center[0]), int(center[1])), radius, 2)
-    if brawl.dust_timer > 0.0:
-        middle_x = (player[0] + opponent[0]) * 0.5
-        middle_y = (player[1] + opponent[1]) * 0.5
-        radius = max(18, int(10 * px_per_m))
-        dust = pygame.Surface((radius * 2, radius * 2), pygame.SRCALPHA)
-        pygame.draw.circle(dust, (185, 155, 105, 170), (radius, radius), radius)
-        pygame.draw.circle(dust, (220, 195, 145, 120), (radius // 2, radius), max(8, radius // 2))
-        screen.blit(dust, (int(middle_x - radius), int(middle_y - radius)))
-    if brawl.curse_timer > 0.0:
-        font = pygame.font.Font(None, 22)
-        bubble = font.render("@#*!%", True, (220, 40, 40))
-        screen.blit(bubble, bubble.get_rect(center=(int(opponent[0]), int(opponent[1] - 18))))
-
-
 def draw_traffic_lights(
     screen,
     traffic_lights: List,

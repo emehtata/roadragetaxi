@@ -13,7 +13,6 @@ import pygame
 
 from .geo import clamp, dist_point_to_segment, meters_to_latlon
 from .audio import AudioManager
-from .brawl import TaxiBrawlManager
 from .config import (
     CONFIG_PATH,
     city_suggestions,
@@ -123,7 +122,6 @@ from .render import (
     draw_tire_tracks,
     draw_vehicle_lights,
     draw_vomit_puddles,
-    draw_taxi_brawl,
     draw_traffic_lights,
     draw_waters,
     draw_ways,
@@ -586,7 +584,6 @@ def main() -> None:
     city_centers, bbox_presets = cities_from_config(config)
     args = parse_args(config, city_names=list(bbox_presets))
     configure_logging(args.log_level, file_logging=config.getboolean("game", "file_logging", fallback=False))
-    taxi_brawls_enabled = config.getboolean("game", "taxi_brawls", fallback=False)
     roadworks_enabled = config.getboolean("game", "roadworks_enabled", fallback=False)
     bus_stops_enabled = config.getboolean("game", "bus_stops", fallback=False)
 
@@ -939,11 +936,10 @@ def main() -> None:
         )
         initial_stand_taxis = traffic_mgr.spawn_taxis_at_nearby_stops(taxi_stops, car, None, all_stops=True)
         logger.info(
-            "Taxi stands initialized: stops=%d taxis_spawned=%d taxis_active=%d brawls_enabled=%s",
+            "Taxi stands initialized: stops=%d taxis_spawned=%d taxis_active=%d",
             len(taxi_stops),
             initial_stand_taxis,
             sum(1 for npc in traffic_mgr.npcs if npc.is_taxi),
-            taxi_brawls_enabled,
         )
         police_mgr = PoliceManager(
             traffic_mgr, car.x, car.y, buildings=buildings, building_grid=building_grid
@@ -1012,8 +1008,6 @@ def main() -> None:
         hud_rects = {}
         hud_dragging = None
         hud_drag_offset = (0, 0)
-        brawl_manager = TaxiBrawlManager(auto_start=not taxi_brawls_enabled)
-        brawl_manager.bind_traffic(traffic_mgr)
         running = True
         current_way = get_current_road_at_car(car, ways=ways, spatial_grid=spatial_grid, car_roads_only=True)
         zoom_target = args.px_per_m if args.px_per_m is not None else 9.0
@@ -1144,16 +1138,6 @@ def main() -> None:
                             on_foot = False
                             car.speed = 0.0
                             audio.play("car-door-open")
-                    elif event.key == pygame.K_z and taxi_brawls_enabled and not phone_open and on_foot:
-                        score_update = lambda result: setattr(
-                            taxi_mgr,
-                            "total_score",
-                            max(0, taxi_mgr.total_score * 2) if result == 1 else taxi_mgr.total_score - 1000,
-                        )
-                        if brawl_manager.draw_data() is None:
-                            brawl_manager.request_challenge(car, traffic_mgr, taxi_stops, viewport_bounds=None)
-                        else:
-                            action = brawl_manager.press_z(car, taxi_mgr.total_score, score_update)
                     elif event.key == pygame.K_SPACE and not phone_open:
                         if rage_power >= RAGE_SHOUT_COST:
                             traffic_mgr.rage_shout(car)
@@ -1690,23 +1674,6 @@ def main() -> None:
                     audio.play_driver_line("wrong_way", language)
             if taxi_mgr.check_speed_cameras(car, speed_cameras):
                 audio.play_driver_line("speed_camera", language)
-            if taxi_brawls_enabled:
-                brawl_manager.update(
-                    car,
-                    traffic_mgr,
-                    taxi_stops,
-                    rage_power,
-                    dt,
-                    viewport_bounds=viewport_bounds,
-                    score_callback=lambda result: setattr(
-                        taxi_mgr,
-                        "total_score",
-                        max(0, taxi_mgr.total_score * 2) if result == 1 else taxi_mgr.total_score - 1000,
-                    ),
-                )
-                if brawl_manager.draw_data() is not None and brawl_manager.draw_data().state == "drive":
-                    on_foot = False
-
             # Update autonomous traffic NPCs and pedestrians
             traffic_mgr.spawn_taxis_at_nearby_stops(
                 taxi_stops,
@@ -1988,7 +1955,6 @@ def main() -> None:
                     intersection_manager=traffic_mgr.intersection_manager,
                 )
             draw_police_cars(screen, police_mgr.cars, camx, camy, px_per_m=px_per_m)
-            draw_taxi_brawl(screen, brawl_manager.draw_data(), camx, camy, px_per_m=px_per_m)
             if show_navigation:
                 draw_navigation_route(screen, navigation_route, camx, camy, px_per_m=px_per_m)
             draw_taxi_target(screen, taxi_mgr, camx, camy, font, px_per_m=px_per_m, language=language)

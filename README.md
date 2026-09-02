@@ -25,7 +25,6 @@ A top-down 2D driving game proof-of-concept (PoC) in Python and Pygame that proc
 - **OSM Parking Traffic**: About half of regular NPC cars use existing OSM parking spaces by default. Parking density is configurable, parked cars remain spatially indexed, and occupied parking spaces stay reserved while a vehicle departs.
 - **Pedestrians & Cyclists**: Pedestrians and cyclists use dedicated paths, mapped entrances, and crossings; pedestrians track destinations, use logical traffic signals, wait before unsafe crossings, enter buildings at doors, and update at distance-based LOD rates. Ordinary pedestrians spawn near mapped buildings, while hospitality venues receive extra activity; at night, visible pedestrians show a bright reflector point until a car headlight or street light illuminates them. Cyclists use a top-down image sprite, and active pedestrian/cyclist counts scale down while zoomed in.
 - **Rival NPC Taxis**: Some NPC cars are yellow rival taxis. They stop briefly at taxi stands and collect waiting customers before driving on.
-- **Taxi-Driver Brawls**: Enabled by default. At a taxi stand, press `Z` to challenge a rival and press `Z` again to accept. Both drivers leave their cars; when `NYT!` appears, press `Z` quickly to win, otherwise the rival knocks the player out. The drivers return to their cars afterward. A win doubles non-negative scores and resets negative scores to zero; a loss subtracts 1,000 points.
 - **Traffic Violations**: Red-light, wrong-way, collision, building, and scenery penalties are tracked in the taxi score.
 - **Tree Crash Effects**: Tree impacts shake the tree and scatter leaves; impacts above 80 km/h knock the tree down, smoke the taxi, and immobilize it for five seconds.
 - **Roadworks**: Random roadworks add temporary traffic lights and can make NPC traffic slow or stop naturally.
@@ -64,7 +63,6 @@ A top-down 2D driving game proof-of-concept (PoC) in Python and Pygame that proc
 │       │   ├── passenger_chatter.json # 50 Finnish/English passenger lines
 │       │   └── driver_chatter.json    # Situation-specific driver lines
 │       ├── audio.py        # Optional music, effects, and situation chatter playback
-│       ├── brawl.py        # Optional taxi-driver brawls
 │       ├── career.py       # Career progress and odometer persistence
 │       ├── config.py       # INI loading, city configuration, and Overpass endpoints
 │       ├── roadworks.py    # Temporary roadwork and traffic-light generation
