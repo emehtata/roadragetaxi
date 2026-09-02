@@ -57,8 +57,8 @@ def test_signal_group_supports_configurable_phase_durations():
 
 def test_center_signal_is_evidence_but_reconstructed_lights_are_renderable():
     ways = [
-        Way(points_m=[(-100.0, 0.0), (100.0, 0.0)], highway="primary", half_width_m=4.0),
-        Way(points_m=[(0.0, -100.0), (0.0, 100.0)], highway="primary", half_width_m=4.0),
+        Way(points_m=[(-100.0, 0.0), (0.0, 0.0), (100.0, 0.0)], highway="primary", half_width_m=4.0),
+        Way(points_m=[(0.0, -100.0), (0.0, 0.0), (0.0, 100.0)], highway="primary", half_width_m=4.0),
     ]
     raw = [TrafficLight(x=0.0, y=0.0, direction_angle=0.0)]
 
@@ -66,6 +66,41 @@ def test_center_signal_is_evidence_but_reconstructed_lights_are_renderable():
 
     assert raw[0].renderable is False
     assert any(light.renderable and math.hypot(light.x, light.y) >= 10.0 for light in completed)
+
+
+def test_reconstructed_approach_lights_six_meters_from_center_remain_visible():
+    ways = [
+        Way(points_m=[(-100.0, 0.0), (0.0, 0.0), (100.0, 0.0)], highway="primary", half_width_m=4.0),
+        Way(points_m=[(0.0, -100.0), (0.0, 0.0), (0.0, 100.0)], highway="primary", half_width_m=4.0),
+    ]
+    raw = [
+        TrafficLight(x=0.0, y=6.0, direction_angle=3.0 * math.pi / 2.0),
+        TrafficLight(x=0.0, y=-6.0, direction_angle=math.pi / 2.0),
+    ]
+    completed = complete_traffic_light_approaches(raw, ways)
+
+    approach_lights = [
+        light for light in completed
+        if 5.0 <= math.hypot(light.x, light.y) <= 7.0
+    ]
+    assert approach_lights
+    assert all(light.renderable for light in approach_lights)
+
+
+def test_existing_center_signals_remain_renderable_when_all_approaches_exist():
+    ways = [
+        Way(points_m=[(-100.0, 0.0), (100.0, 0.0)], highway="primary", half_width_m=4.0),
+        Way(points_m=[(0.0, -100.0), (0.0, 100.0)], highway="primary", half_width_m=4.0),
+    ]
+    raw = [
+        TrafficLight(x=0.0, y=0.0, direction_angle=angle)
+        for angle in (0.0, math.pi / 2.0, math.pi, 3.0 * math.pi / 2.0)
+    ]
+
+    completed = complete_traffic_light_approaches(raw, ways)
+
+    assert len(completed) == 4
+    assert all(light.renderable for light in completed)
 
 
 def test_traffic_light_manager_updates_cached_groups():
@@ -361,6 +396,34 @@ def test_npc_stops_at_red_traffic_light():
     assert npc.speed < 5.0
     assert npc.x < 30.0
     assert npc.state in {"braking", "waiting"}
+
+
+def test_npc_does_not_depart_intersection_on_red_yellow():
+    ways = [
+        Way(points_m=[(-100.0, 0.0), (0.0, 0.0), (100.0, 0.0)], highway="primary", half_width_m=4.0),
+        Way(points_m=[(0.0, -100.0), (0.0, 0.0), (0.0, 100.0)], highway="primary", half_width_m=4.0),
+    ]
+    light = TrafficLight(x=0.0, y=0.0, cycle_time=16.0, offset=0.0, direction_angle=0.0)
+    traffic_mgr = TrafficManager(ways, target_count=0, traffic_lights=[light])
+    npc = NPCCar(
+        x=1.0,
+        y=0.0,
+        heading=0.0,
+        speed=0.0,
+        way=ways[0],
+        segment_idx=0,
+        direction=1,
+        target_speed=15.0,
+        color=(200, 200, 200),
+    )
+    traffic_mgr.npcs = [npc]
+    traffic_mgr.sim_time = 14.9
+
+    traffic_mgr.update(Car(x=-20.0, y=0.0, heading=0.0, speed=0.0), dt=0.1)
+
+    assert light.get_state(traffic_mgr.sim_time) == "red+yellow"
+    assert npc.speed == 0.0
+    assert npc.state == "waiting"
 
 
 def test_npc_continues_through_yellow_when_stopping_is_not_safe():

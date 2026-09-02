@@ -566,6 +566,7 @@ def complete_traffic_light_approaches(traffic_lights: List[TrafficLight], ways: 
 
         if len(arm_angles) < 3:
             continue
+        generated_count = 0
         for arm_index, arm_angle in enumerate(arm_angles):
             approach_direction = (arm_angle + math.pi) % (2.0 * math.pi)
             if any(
@@ -589,10 +590,12 @@ def complete_traffic_light_approaches(traffic_lights: List[TrafficLight], ways: 
                     direction_angle=approach_direction,
                 )
             )
+            generated_count += 1
 
-        for signal in component:
-            if math.hypot(signal.x - center_x, signal.y - center_y) <= 10.0:
-                signal.renderable = False
+        if generated_count:
+            for signal in component:
+                if math.hypot(signal.x - center_x, signal.y - center_y) <= 1.5:
+                    signal.renderable = False
 
         grouped: dict[int, SignalGroup] = {}
         for signal in completed:

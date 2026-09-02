@@ -5,9 +5,28 @@ from types import SimpleNamespace
 from theroadragetrip.osm import ParkingSpace, StopSign, Way
 from theroadragetrip.osm import TrafficLight
 from theroadragetrip.physics import Car
-from theroadragetrip.traffic import IntersectionManager, NPCCar, TrafficManager, traffic_count_for_zoom
+from theroadragetrip.traffic import (
+    IntersectionManager,
+    NPCCar,
+    TrafficManager,
+    calculate_npc_turning_geometry,
+    traffic_count_for_zoom,
+)
 from theroadragetrip.osm import IntersectionApproach, LogicalIntersection
 from theroadragetrip.geo import boxes_intersect
+
+
+def test_npc_turning_geometry_is_individual_and_bicycle_based():
+    short_car = calculate_npc_turning_geometry(3.5, "car")
+    long_car = calculate_npc_turning_geometry(5.0, "car")
+    motorcycle = calculate_npc_turning_geometry(2.2, "motorcycle")
+
+    assert short_car[0] < long_car[0]
+    assert short_car[2] < long_car[2]
+    assert motorcycle[1] > short_car[1]
+    assert math.isclose(
+        short_car[2], short_car[0] / math.tan(short_car[1]), rel_tol=1e-9
+    )
 
 
 def test_traffic_manager_nearby_parking_spaces_uses_osm_spaces():
@@ -385,13 +404,13 @@ def test_traffic_count_scales_down_when_zoomed_in():
     assert traffic_count_for_zoom(50, px_per_m=1.0) == 50
 
 
-def test_traffic_count_is_capped_at_fifty():
+def test_traffic_count_is_capped_at_one_hundred():
     way = Way(points_m=[(0.0, 0.0), (100.0, 0.0)], highway="residential", half_width_m=4.0)
     manager = TrafficManager([way], target_count=500)
 
-    assert manager.target_count == 50
+    assert manager.target_count == 100
     manager.set_target_count(500)
-    assert manager.target_count == 50
+    assert manager.target_count == 100
 
 
 def test_npc_lod_assigns_distance_bands_and_schedules_updates():
@@ -1071,6 +1090,40 @@ def test_npc_prepares_next_route_before_junction():
     traffic_mgr.update(Car(x=200.0, y=200.0, heading=0.0, speed=0.0), dt=0.1)
 
     assert npc.next_route is not None
+
+
+def test_npc_turn_uses_bounded_steering_and_continuous_body_heading():
+    approach = Way(
+        points_m=[(-30.0, 0.0), (0.0, 0.0)],
+        highway="residential",
+        half_width_m=4.0,
+    )
+    exit_way = Way(
+        points_m=[(0.0, 0.0), (0.0, 30.0)],
+        highway="residential",
+        half_width_m=4.0,
+    )
+    manager = TrafficManager([approach, exit_way], target_count=0)
+    npc = NPCCar(
+        x=-1.0,
+        y=0.0,
+        heading=0.0,
+        speed=8.0,
+        way=approach,
+        segment_idx=0,
+        direction=1,
+        target_speed=8.0,
+        color=(20, 20, 20),
+        next_route=(exit_way, 0, 1),
+    )
+    manager.npcs = [npc]
+
+    manager.update(Car(x=-100.0, y=-100.0, heading=0.0, speed=0.0), dt=0.1)
+
+    assert abs(npc.steering_angle) <= math.radians(32.0)
+    assert abs(npc.heading) < math.pi / 2.0
+    assert npc.x < 0.0
+    assert abs(npc.y) < 1.0
 
 
 def test_npc_signals_prepared_turn_before_junction():

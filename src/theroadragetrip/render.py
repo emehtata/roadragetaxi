@@ -764,8 +764,18 @@ def draw_buildings(
             next_point = pts[(index + 1) % len(pts)]
             midpoint_x = (point[0] + next_point[0]) * 0.5
             midpoint_y = (point[1] + next_point[1]) * 0.5
-            frontness = (midpoint_x - centroid_x) * -roof_dx + (midpoint_y - centroid_y) * -roof_dy
-            if frontness > 0:
+            edge_x = next_point[0] - point[0]
+            edge_y = next_point[1] - point[1]
+            inward_x = centroid_x - midpoint_x
+            inward_y = centroid_y - midpoint_y
+            outward_x = -edge_y
+            outward_y = edge_x
+            if outward_x * inward_x + outward_y * inward_y > 0.0:
+                outward_x = -outward_x
+                outward_y = -outward_y
+            camera_x = camx - ((point[0] + next_point[0]) * 0.5)
+            camera_y = camy - ((point[1] + next_point[1]) * 0.5)
+            if outward_x * camera_x + outward_y * camera_y > 0.0:
                 visible_edges.append(index)
         window_edge = max(
             visible_edges,
@@ -782,7 +792,7 @@ def draw_buildings(
             midpoint_x = (point[0] + next_point[0]) * 0.5
             midpoint_y = (point[1] + next_point[1]) * 0.5
             frontness = (midpoint_x - centroid_x) * -roof_dx + (midpoint_y - centroid_y) * -roof_dy
-            if frontness <= 0 or index != window_edge:
+            if index not in visible_edges or index != window_edge:
                 continue
             edge_x = next_point[0] - point[0]
             edge_y = next_point[1] - point[1]
@@ -1442,19 +1452,6 @@ def draw_street_lights(
     junction_max_x = math.floor(vmaxx / junction_cell_size)
     junction_min_y = math.floor(vminy / junction_cell_size)
     junction_max_y = math.floor(vmaxy / junction_cell_size)
-    for junction_cell_x in range(junction_min_x, junction_max_x + 1):
-        for junction_cell_y in range(junction_min_y, junction_max_y + 1):
-            for junction_x, junction_y in junction_grid.get((junction_cell_x, junction_cell_y), ()):
-                if len(lamp_centers) >= MAX_VISIBLE_STREET_LIGHTS:
-                    break
-                if not (vminx <= junction_x <= vmaxx and vminy <= junction_y <= vmaxy):
-                    continue
-                screen_x, screen_y = world_to_screen(
-                    junction_x, junction_y, camx, camy, px_per_m, screen_w, screen_h
-                )
-                lamp_centers.append((int(screen_x), int(screen_y)))
-                lamp_directions.append(0.0)
-                _street_light_frame_world_positions.append((junction_x, junction_y))
     for way in visible_ways:
         visible_way_count += 1
         if len(lamp_centers) >= MAX_VISIBLE_STREET_LIGHTS:
@@ -2996,11 +2993,8 @@ def draw_traffic_lights(
 
     vminx, vminy, vmaxx, vmaxy = get_viewport_bounds(camx, camy, px_per_m, screen_w, screen_h, 30.0)
 
-    visible_traffic_lights = (
-        spatial_grid.ways_in_rect(vminx, vminy, vmaxx, vmaxy)
-        if spatial_grid is not None
-        else traffic_lights
-    )
+    # Signal grids use the generic road-way API, so filter signal objects directly.
+    visible_traffic_lights = traffic_lights
     for tl in visible_traffic_lights:
         if not getattr(tl, "renderable", True):
             continue
