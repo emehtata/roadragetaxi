@@ -185,6 +185,29 @@ def test_pedestrian_exits_vehicle_at_vehicle_destination():
     assert vehicle.state == "driving"
 
 
+def test_pedestrian_in_vehicle_is_not_despawned_while_vehicle_is_active():
+    way = Way(points_m=[(0.0, 0.0), (100.0, 0.0)], highway="footway", half_width_m=1.5)
+    vehicle = SimpleNamespace(
+        x=200.0,
+        y=0.0,
+        state="occupied",
+        current_driver_id=None,
+    )
+    manager = PedestrianManager(
+        [way], target_count=0, despawn_radius_m=20.0, traffic_vehicles=[vehicle]
+    )
+    pedestrian = Pedestrian(200.0, 0.0, 0.0, 1.0, 1.0, way, 0, 1, (1, 1, 1))
+    pedestrian.current_vehicle_id = id(vehicle)
+    pedestrian.state = "in_vehicle"
+    vehicle.current_driver_id = id(pedestrian)
+    manager.pedestrians = [pedestrian]
+    manager._population_update_elapsed = 5.0
+
+    manager.update(Car(0.0, 0.0, 0.0, 0.0), dt=0.1)
+
+    assert manager.pedestrians == [pedestrian]
+
+
 def test_pedestrian_can_exit_occupied_vehicle():
     way = Way(points_m=[(0.0, 0.0), (100.0, 0.0)], highway="footway", half_width_m=1.5)
     vehicle = SimpleNamespace(

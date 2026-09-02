@@ -1032,7 +1032,16 @@ class PedestrianManager:
             # Despawn pedestrians outside radius
             kept_peds = []
             d_sq = self.despawn_radius_m * self.despawn_radius_m
+            vehicles = self.traffic_manager.npcs if self.traffic_manager is not None else self.traffic_vehicles
             for ped in self.pedestrians:
+                linked_vehicle_id = ped.current_vehicle_id or ped.reserved_vehicle_id
+                if (
+                    ped.state in {"approaching_vehicle", "entering_vehicle", "in_vehicle"}
+                    and linked_vehicle_id is not None
+                    and any(id(vehicle) == linked_vehicle_id for vehicle in vehicles)
+                ):
+                    kept_peds.append(ped)
+                    continue
                 ped.door_grace_timer = max(0.0, ped.door_grace_timer - population_check_dt)
                 dist_sq = (ped.x - player_car.x) ** 2 + (ped.y - player_car.y) ** 2
                 outside_viewport = False
