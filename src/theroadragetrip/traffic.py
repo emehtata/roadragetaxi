@@ -1889,6 +1889,7 @@ class TrafficManager:
             stop_distance = None
             nearest_stop_sign = None
             nearest_yield_sign = None
+            yield_slowdown = False
             passed_matching_light = False
             logical_approach = self.traffic_light_manager.find_approach(npc)
             if logical_approach is not None:
@@ -2015,6 +2016,13 @@ class TrafficManager:
                         and not self._junction_is_clear_for(npc, junction_point)
                     ):
                         junction_blocked = True
+                    if nearest_yield_sign is not None:
+                        yield_distance = nearest_yield_sign[0]
+                        if not self._junction_is_clear_for(npc, junction_point):
+                            stop_distance = yield_distance - 2.5
+                            must_stop = stop_distance >= -1.0
+                        else:
+                            yield_slowdown = 0.6
 
             # Continue through the junction if the NPC has already entered it.
             if self._junction_near_point((npc.x, npc.y), npc.layer):
@@ -2022,6 +2030,8 @@ class TrafficManager:
 
             # Calculate cornering speed limit based on heading angle to next vertex / sharp curves
             turn_limit_speed = npc.target_speed
+            if yield_slowdown:
+                turn_limit_speed = min(turn_limit_speed, max(3.0, npc.target_speed * yield_slowdown))
             if target_pt is not None:
                 next_heading = None
                 if npc.next_route is not None:
