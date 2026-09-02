@@ -2,7 +2,7 @@
 import math
 import random
 from types import SimpleNamespace
-from theroadragetrip.osm import ParkingSpace, Way
+from theroadragetrip.osm import ParkingSpace, StopSign, Way
 from theroadragetrip.osm import TrafficLight
 from theroadragetrip.physics import Car
 from theroadragetrip.traffic import IntersectionManager, NPCCar, TrafficManager, traffic_count_for_zoom
@@ -75,6 +75,19 @@ def test_npc_with_absent_assigned_driver_does_not_move():
     assert npc.x == 10.0
     assert npc.speed == 0.0
     assert npc.state == "waiting"
+
+
+def test_npc_stops_before_stop_sign():
+    way = Way(points_m=[(0.0, 0.0), (100.0, 0.0)], highway="residential", half_width_m=4.0)
+    manager = TrafficManager([way], target_count=0, stop_signs=[StopSign(20.0, 0.0, id=4)])
+    npc = NPCCar(10.0, 0.0, 0.0, 8.0, way, 0, 1, 10.0, (20, 20, 20))
+    manager.npcs = [npc]
+
+    manager.update(Car(0.0, 0.0, 0.0, 0.0), dt=1.0)
+    assert npc.x <= 18.0
+    manager.update(Car(0.0, 0.0, 0.0, 0.0), dt=1.0)
+    assert npc.speed == 0.0
+    assert npc.x <= 18.0
 
 
 def test_activating_occupied_npc_clears_driver_and_parking_state():

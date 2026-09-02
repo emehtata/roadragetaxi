@@ -11,6 +11,7 @@ from .osm import (
     LogicalIntersection,
     ParkingSpace,
     SignalGroup,
+    StopSign,
     TrafficLight,
     Way,
     build_logical_intersections,
@@ -117,6 +118,8 @@ class NPCCar:
     parking_target_id: Optional[int] = None
     parking_route: Optional[List[Tuple[float, float]]] = None
     parking_route_index: int = 0
+    stop_sign_id: Optional[int] = None
+    stop_sign_wait_timer: float = 0.0
     reserved_by_pedestrian_id: Optional[int] = None
     current_driver_id: Optional[int] = None
     assigned_driver_id: Optional[int] = None
@@ -294,6 +297,7 @@ class TrafficManager:
         spawn_radius_m: float = 300.0,
         despawn_radius_m: float = 450.0,
         traffic_lights: Optional[List[TrafficLight]] = None,
+        stop_signs: Optional[List[StopSign]] = None,
         crossings: Optional[List] = None,
         parking_spaces: Optional[List] = None,
         parking_density: float = 0.5,
@@ -307,6 +311,7 @@ class TrafficManager:
         self.min_spawn_dist_to_player_m: float = 12.0
         self.min_spawn_dist_to_npc_m: float = 6.0
         self.traffic_lights = traffic_lights if traffic_lights is not None else []
+        self.stop_signs = stop_signs if stop_signs is not None else []
         self.crossings = crossings if crossings is not None else []
         self.parking_spaces = parking_spaces if parking_spaces is not None else []
         self.parking_density = max(0.0, min(1.0, parking_density))
@@ -886,12 +891,15 @@ class TrafficManager:
         self,
         ways: List[Way],
         traffic_lights: Optional[List[TrafficLight]] = None,
+        stop_signs: Optional[List[StopSign]] = None,
         crossings: Optional[List] = None,
     ) -> None:
         """Update road references when dynamic tiles expand."""
         self.ways = connected_drivable_ways(ways)
         if traffic_lights is not None:
             self.traffic_lights = traffic_lights
+        if stop_signs is not None:
+            self.stop_signs = stop_signs
         if crossings is not None:
             self.crossings = crossings
         self.logical_intersections = build_logical_intersections(self.traffic_lights, self.ways)
@@ -1854,6 +1862,7 @@ class TrafficManager:
             junction_blocked = False
             nearest_light = None
             stop_distance = None
+            nearest_stop_sign = None
             passed_matching_light = False
             logical_approach = self.traffic_light_manager.find_approach(npc)
             if logical_approach is not None:
@@ -1879,6 +1888,28 @@ class TrafficManager:
                 stop_distance = roadwork_stop_distance
             heading_x = math.cos(npc.heading)
             heading_y = math.sin(npc.heading)
+            for stop_sign in self.stop_signs:
+                if getattr(stop_sign, "layer", 0) != npc.layer:
+                    continue
+                sign_dx = stop_sign.x - npc.x
+                sign_dy = stop_sign.y - npc.y
+                sign_longitudinal = sign_dx * heading_x + sign_dy * heading_y
+                sign_lateral = abs(sign_dx * -heading_y + sign_dy * heading_x)
+                if 0.0 < sign_longitudinal < 30.0 and sign_lateral <= 5.0:
+                    if nearest_stop_sign is None or sign_longitudinal < nearest_stop_sign[0]:
+                        nearest_stop_sign = (sign_longitudinal, stop_sign)
+            if nearest_stop_sign is not None:
+                stop_sign_distance, stop_sign = nearest_stop_sign
+                stop_distance = stop_sign_distance - 2.0
+                if npc.stop_sign_id != stop_sign.id:
+                    npc.stop_sign_id = stop_sign.id
+                    npc.stop_sign_wait_timer = 0.0
+                if npc.speed < 0.2 and stop_distance <= 0.5:
+                    npc.stop_sign_wait_timer += dt
+                must_stop = npc.stop_sign_wait_timer < 1.0 or stop_distance >= -1.0
+            elif npc.stop_sign_id is not None:
+                npc.stop_sign_id = None
+                npc.stop_sign_wait_timer = 0.0
             for tl in self._nearby_traffic_lights(npc.x, npc.y) if logical_approach is None else []:
                 if tl.layer != npc.layer:
                     continue
@@ -1977,7 +2008,12 @@ class TrafficManager:
 
             if must_stop:
                 action = "stopping"
-                reason = "red/yellow traffic light" if nearest_light is not None else "roadworks"
+                if nearest_stop_sign is not None:
+                    reason = "stop sign"
+                elif nearest_light is not None:
+                    reason = "red/yellow traffic light"
+                else:
+                    reason = "roadworks"
             elif junction_blocked:
                 action = "stopping"
                 reason = "junction occupied"

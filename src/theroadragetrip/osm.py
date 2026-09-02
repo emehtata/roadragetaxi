@@ -449,6 +449,16 @@ class TrafficLight:
         ).get_state(current_time)
 
 
+@dataclass
+class StopSign:
+    """OSM stop sign position used by NPC approach logic."""
+
+    x: float
+    y: float
+    layer: int = 0
+    id: Optional[int] = None
+
+
 def deduplicate_traffic_lights(traffic_lights: List[TrafficLight]) -> List[TrafficLight]:
     """Keep at most one OSM signal for each approach of a junction."""
     kept: List[TrafficLight] = []
@@ -948,6 +958,7 @@ def fetch_osm_ways(
     [out:json][timeout:25];
     (
       node["highway"="traffic_signals"]({south},{west},{north},{east});
+            node["highway"="stop"]({south},{west},{north},{east});
       node["highway"="crossing"]({south},{west},{north},{east});
       node["highway"="taxi_stop"]({south},{west},{north},{east});
     node["highway"="bus_stop"]({south},{west},{north},{east});
@@ -1144,10 +1155,10 @@ def _stitch_member_ways_into_rings(
 class MapData(tuple):
     """Container tuple for build_ways results returning 6 elements for backward compatibility while providing traffic_lights and crossings via attributes and slicing."""
 
-    def __new__(cls, ways, waters, buildings, sceneries, places, bounds, traffic_lights=None, crossings=None, taxi_stops=None, bus_stops=None, parking_spaces=None, logical_intersections=None):
+    def __new__(cls, ways, waters, buildings, sceneries, places, bounds, traffic_lights=None, crossings=None, taxi_stops=None, bus_stops=None, parking_spaces=None, logical_intersections=None, stop_signs=None):
         return super().__new__(cls, (ways, waters, buildings, sceneries, places, bounds))
 
-    def __init__(self, ways, waters, buildings, sceneries, places, bounds, traffic_lights=None, crossings=None, taxi_stops=None, bus_stops=None, parking_spaces=None, logical_intersections=None):
+    def __init__(self, ways, waters, buildings, sceneries, places, bounds, traffic_lights=None, crossings=None, taxi_stops=None, bus_stops=None, parking_spaces=None, logical_intersections=None, stop_signs=None):
         self.ways = ways
         self.waters = waters
         self.buildings = buildings
@@ -1160,6 +1171,7 @@ class MapData(tuple):
         self.bus_stops = bus_stops if bus_stops is not None else []
         self.parking_spaces = parking_spaces if parking_spaces is not None else []
         self.logical_intersections = logical_intersections if logical_intersections is not None else []
+        self.stop_signs = stop_signs if stop_signs is not None else []
 
     @property
     def traffic_signals(self):
@@ -1235,6 +1247,7 @@ def build_ways(
     place_nodes_raw: List[Tuple[dict, int]] = []
     named_nodes_raw: List[Tuple[dict, int]] = []
     traffic_signals_raw: List[Tuple[dict, int]] = []
+    stop_signs_raw: List[Tuple[dict, int]] = []
     crossings_raw: List[Tuple[dict, int]] = []
     taxi_stops_raw: List[Tuple[dict, int]] = []
     bus_stops_raw: List[Tuple[dict, int]] = []
@@ -1264,6 +1277,8 @@ def build_ways(
                 named_nodes_raw.append((tags, nid))
             if tags.get("highway") == "traffic_signals":
                 traffic_signals_raw.append((tags, nid))
+            if tags.get("highway") == "stop":
+                stop_signs_raw.append((tags, nid))
             if tags.get("highway") == "taxi_stop" or tags.get("amenity") == "taxi":
                 taxi_stops_raw.append((tags, nid))
             if include_bus_stops and (tags.get("highway") == "bus_stop" or tags.get("public_transport") in ("platform", "stop_position")):
@@ -1344,6 +1359,7 @@ def build_ways(
     sceneries: List[Scenery] = []
     places: List[Place] = []
     traffic_lights: List[TrafficLight] = []
+    stop_signs: List[StopSign] = []
     crossings: List[Crossing] = []
     taxi_stops: List[TaxiStop] = []
     bus_stops: List[BusStop] = []
@@ -1932,7 +1948,19 @@ def build_ways(
         )
     logical_intersections = build_logical_intersections(traffic_lights, ways)
 
-    # 8. Pedestrian Crossings (suojatiet) from OSM nodes and ways
+    # 8. Stop signs from OSM nodes
+    for tags, nid in stop_signs_raw:
+        point = nodes_m.get(nid)
+        if point is None:
+            continue
+        layer_value = 0
+        try:
+            layer_value = int(tags.get("layer", 0))
+        except (TypeError, ValueError):
+            pass
+        stop_signs.append(StopSign(point[0], point[1], layer=layer_value, id=nid))
+
+    # 9. Pedestrian Crossings (suojatiet) from OSM nodes and ways
     if crossings_raw:
         # Build spatial grid of drivable roads to find road direction and road width at crossing
         roads_grid: dict[Tuple[int, int], List[Way]] = defaultdict(list)
@@ -2058,7 +2086,7 @@ def build_ways(
 
     return MapData(
         ways, waters, buildings, sceneries, places, (minx, miny, maxx, maxy),
-        traffic_lights, crossings, taxi_stops, bus_stops, parking_spaces, logical_intersections,
+        traffic_lights, crossings, taxi_stops, bus_stops, parking_spaces, logical_intersections, stop_signs,
     )
 
 
@@ -2075,6 +2103,7 @@ class AutoFetchManager:
         sceneries: Optional[List[Scenery]] = None,
         places: Optional[List[Place]] = None,
         traffic_lights: Optional[List[TrafficLight]] = None,
+        stop_signs: Optional[List[StopSign]] = None,
         crossings: Optional[List[Crossing]] = None,
         bus_stops: Optional[List[BusStop]] = None,
         fetch_func=fetch_osm_ways,
@@ -2088,6 +2117,7 @@ class AutoFetchManager:
         self.sceneries = sceneries if sceneries is not None else []
         self.places = places if places is not None else []
         self.traffic_lights = traffic_lights if traffic_lights is not None else []
+        self.stop_signs = stop_signs if stop_signs is not None else []
         self.crossings = crossings if crossings is not None else []
         self.bus_stops = bus_stops if bus_stops is not None else []
         self.bounds = bounds
@@ -2333,6 +2363,7 @@ class AutoFetchManager:
             with self.lock:
                 self.fetch_progress = 0.9
             new_crossings = getattr(res, "crossings", [])
+            new_stop_signs = getattr(res, "stop_signs", [])
             new_bus_stops = getattr(res, "bus_stops", [])
             if len(res) == 8:
                 new_ways, new_waters, new_buildings, new_sceneries, new_places, new_bounds, new_traffic_lights, new_crossings = res
@@ -2386,6 +2417,7 @@ class AutoFetchManager:
                 added_sceneries = _extend_unique(self.sceneries, new_sceneries)
                 added_places = _extend_unique(self.places, new_places)
                 added_traffic_lights = _extend_unique(self.traffic_lights, new_traffic_lights)
+                added_stop_signs = _extend_unique(self.stop_signs, new_stop_signs)
                 added_crossings = _extend_unique(self.crossings, new_crossings)
                 added_bus_stops = _extend_unique(self.bus_stops, new_bus_stops)
                 minx = min(self.bounds[0], new_bounds[0])

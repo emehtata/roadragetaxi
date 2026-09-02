@@ -849,6 +849,7 @@ def main() -> None:
                 include_bus_stops=bus_stops_enabled,
             )
             crossings = getattr(res, "crossings", [])
+            stop_signs = getattr(res, "stop_signs", [])
             if len(res) == 8:
                 ways, waters, buildings, sceneries, places, bounds, traffic_lights, crossings = res
             elif len(res) == 7:
@@ -928,6 +929,7 @@ def main() -> None:
             ways,
             target_count=traffic_count,
             traffic_lights=traffic_lights,
+            stop_signs=stop_signs,
             crossings=crossings,
             parking_spaces=parking_spaces,
             parking_density=args.parking_density,
@@ -983,6 +985,7 @@ def main() -> None:
             sceneries=sceneries,
             places=places,
             traffic_lights=traffic_lights,
+            stop_signs=stop_signs,
             crossings=crossings,
             fetch_func=lambda fetch_bbox: fetch_osm_ways(fetch_bbox, endpoints=overpass_endpoints),
             build_func=build_ways,
@@ -1788,7 +1791,9 @@ def main() -> None:
                     taxi_mgr.sync_map_data(ways, places=places, buildings=buildings)
                     map_sync_stage = 3
                 elif map_sync_stage == 3:
-                    traffic_mgr.sync_map_data(ways, traffic_lights=traffic_lights, crossings=crossings)
+                    traffic_mgr.sync_map_data(
+                        ways, traffic_lights=traffic_lights, stop_signs=stop_signs, crossings=crossings
+                    )
                     map_sync_stage = 4
                 elif map_sync_stage == 4:
                     pedestrian_mgr.sync_map_data(ways, traffic_lights=traffic_lights)
