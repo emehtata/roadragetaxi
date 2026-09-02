@@ -434,7 +434,7 @@ class TrafficManager:
         npc.reserved_by_pedestrian_id = None
 
     def activate_occupied_vehicle(self, npc: NPCCar) -> bool:
-        """Start departure and hand an occupied NPC back to normal CarAI."""
+        """Start a physical departure before handing an occupied NPC to CarAI."""
         if npc.state not in {"reserved", "parked", "occupied"}:
             return False
         was_occupied = npc.state == "occupied"
@@ -443,8 +443,31 @@ class TrafficManager:
         else:
             npc.parking_departure_pending = npc.parking_space_id is not None
         npc.current_driver_id = None
-        npc.state = "driving"
         npc.target_speed = max(npc.target_speed, 4.0)
+        if npc.parking_departure_pending:
+            parking_space = next(
+                (
+                    space for space in self.parking_spaces
+                    if self.parking_space_id(space) == npc.parking_space_id
+                ),
+                None,
+            )
+            if parking_space is not None:
+                center_x = (parking_space.bbox[0] + parking_space.bbox[2]) * 0.5
+                center_y = (parking_space.bbox[1] + parking_space.bbox[3]) * 0.5
+                clearance = math.hypot(
+                    parking_space.bbox[2] - parking_space.bbox[0],
+                    parking_space.bbox[3] - parking_space.bbox[1],
+                ) * 0.5 + npc.length_m * 0.5 + 1.0
+                exit_position = (
+                    center_x + math.cos(parking_space.orientation) * clearance,
+                    center_y + math.sin(parking_space.orientation) * clearance,
+                )
+                npc.parking_route = [(npc.x, npc.y), exit_position]
+                npc.parking_route_index = 1
+                npc.state = "parking_departure"
+                return True
+        npc.state = "driving"
         return True
 
     def spawn_parked_npc(
@@ -553,6 +576,30 @@ class TrafficManager:
                     self.occupy_parking_space(npc, parking_space)
                 else:
                     npc.state = "driving"
+            return
+        npc.heading = math.atan2(dy, dx)
+        npc.speed = speed
+        npc.x += dx / distance * speed * dt
+        npc.y += dy / distance * speed * dt
+
+    def _advance_parking_departure(self, npc: NPCCar, dt: float) -> None:
+        """Move an NPC beyond its parking space before releasing the space."""
+        route = npc.parking_route
+        if not route or npc.parking_route_index >= len(route):
+            self.release_parking_space(npc)
+            npc.state = "driving"
+            return
+        target_x, target_y = route[npc.parking_route_index]
+        dx = target_x - npc.x
+        dy = target_y - npc.y
+        distance = math.hypot(dx, dy)
+        speed = max(2.0, min(npc.target_speed, 8.0))
+        if distance <= speed * dt or distance <= 0.01:
+            npc.x, npc.y = target_x, target_y
+            npc.heading = math.atan2(dy, dx) if distance > 0.01 else npc.heading
+            self.release_parking_space(npc)
+            npc.state = "driving"
+            npc.speed = 0.0
             return
         npc.heading = math.atan2(dy, dx)
         npc.speed = speed
@@ -1541,6 +1588,10 @@ class TrafficManager:
             if npc.state in {"parked", "reserved"}:
                 npc.speed = 0.0
                 npc.target_speed = 0.0
+                continue
+            if npc.state == "parking_departure":
+                departure_dt = dt if npc.lod_level == 0 else NPC_LOD_UPDATE_INTERVALS[npc.lod_level]
+                self._advance_parking_departure(npc, departure_dt)
                 continue
             if npc.state == "parking":
                 parking_dt = dt if npc.lod_level == 0 else NPC_LOD_UPDATE_INTERVALS[npc.lod_level]
