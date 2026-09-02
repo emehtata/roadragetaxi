@@ -226,6 +226,27 @@ def test_visible_parking_space_uses_driving_spawn_before_occupying_space():
     assert parking_space.occupied is True
 
 
+def test_destination_parking_starts_from_a_road_end():
+    way = Way(
+        points_m=[(0.0, 0.0), (100.0, 0.0)],
+        highway="residential",
+        half_width_m=4.0,
+    )
+    parking_space = ParkingSpace(
+        [(78.0, -2.0), (82.0, -2.0), (82.0, 2.0), (78.0, 2.0)],
+        (78.0, -2.0, 82.0, 2.0),
+        osm_id=16,
+    )
+    manager = TrafficManager([way], target_count=0, parking_spaces=[parking_space])
+    npc = NPCCar(100.0, 0.0, 0.0, 4.0, way, 0, 1, 10.0, (20, 20, 20))
+
+    assert manager._start_destination_parking(npc)
+    assert npc.state == "parking"
+    assert npc.parking_route is not None
+    assert parking_space.reserved is True
+    assert parking_space.vehicle_id == id(npc)
+
+
 def test_plan_route_starts_at_car_and_ends_at_destination():
     way = Way(
         points_m=[(0.0, 0.0), (100.0, 0.0), (200.0, 0.0)],

@@ -552,6 +552,37 @@ class TrafficManager:
         npc.state = "parking"
         return npc
 
+    def _start_destination_parking(self, npc: NPCCar) -> bool:
+        """Reserve a nearby OSM space and route a vehicle there from a dead end."""
+        available_spaces = [
+            space for space in self.nearby_parking_spaces(npc.x, npc.y, 80.0)
+            if not space.occupied and not space.reserved
+        ]
+        if not available_spaces:
+            return False
+        parking_space = min(
+            available_spaces,
+            key=lambda space: math.hypot(
+                (space.bbox[0] + space.bbox[2]) * 0.5 - npc.x,
+                (space.bbox[1] + space.bbox[3]) * 0.5 - npc.y,
+            ),
+        )
+        center = (
+            (parking_space.bbox[0] + parking_space.bbox[2]) * 0.5,
+            (parking_space.bbox[1] + parking_space.bbox[3]) * 0.5,
+        )
+        route = self.plan_route((npc.x, npc.y), center, layer=getattr(npc.way, "layer", 0))
+        if not route or len(route) < 2:
+            return False
+        parking_space.reserved = True
+        parking_space.vehicle_id = id(npc)
+        npc.parking_target_id = self.parking_space_id(parking_space)
+        npc.parking_route = route
+        npc.parking_route_index = 1
+        npc.state = "parking"
+        npc.speed = 0.0
+        return True
+
     def _advance_parking_npc(self, npc: NPCCar, dt: float) -> None:
         """Follow planned road points, then occupy the selected parking space."""
         route = npc.parking_route
@@ -2089,6 +2120,9 @@ class TrafficManager:
                                 pts = npc.way.points_m
                             else:
                                 # Reverse on two-way or loop (dead end)
+                                if self._start_destination_parking(npc):
+                                    dist_step = 0.0
+                                    break
                                 if getattr(npc.way, "oneway", 0) == 0:
                                     npc.direction = -1
                                     npc.segment_idx = len(pts) - 2
@@ -2140,6 +2174,9 @@ class TrafficManager:
                                 npc.next_route = None
                                 pts = npc.way.points_m
                             else:
+                                if self._start_destination_parking(npc):
+                                    dist_step = 0.0
+                                    break
                                 if getattr(npc.way, "oneway", 0) == 0:
                                     npc.direction = 1
                                     npc.segment_idx = 0
