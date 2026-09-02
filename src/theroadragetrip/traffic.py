@@ -1871,6 +1871,8 @@ class TrafficManager:
         for i, npc in enumerate(self.npcs):
             if npc.is_police:
                 continue
+            if npc.state == "parking":
+                continue
             if npc.state == "parking_departure":
                 continue
             if not npc.has_driver() and npc.current_driver_id is None:

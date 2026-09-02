@@ -584,12 +584,14 @@ def test_parking_npc_is_not_pushed_off_its_route_by_collision_resolution():
     traffic_mgr = TrafficManager([way], target_count=0)
     parked = NPCCar(50.0, 0.0, 0.0, 0.0, way, 0, 1, 0.0, (20, 20, 20), state="parking")
     active = NPCCar(50.0, 0.0, math.pi, 0.0, way, 0, -1, 0.0, (30, 30, 30))
+    parked.parking_route = [(parked.x, parked.y), (100.0, 0.0)]
+    parked.parking_route_index = 1
     traffic_mgr.npcs = [parked, active]
-    parked_position = (parked.x, parked.y)
 
-    traffic_mgr.update(Car(x=50.0, y=100.0, heading=0.0, speed=0.0), dt=0.0)
+    traffic_mgr.update(Car(x=50.0, y=100.0, heading=0.0, speed=0.0), dt=0.1)
 
-    assert (parked.x, parked.y) == parked_position
+    assert parked.x > 50.0
+    assert parked.speed > 0.0
 
 
 def test_rage_shout_moves_cars_ahead_to_road_edge():
