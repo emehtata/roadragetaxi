@@ -90,8 +90,7 @@ def _red_light_violation(manager, npc, previous_position) -> str | None:
             if light.layer != npc.layer:
                 continue
             if light.direction_angle is not None:
-                angle_error = abs((light.direction_angle - npc.heading) % math.pi)
-                angle_error = min(angle_error, math.pi - angle_error)
+                angle_error = abs((light.direction_angle - npc.heading + math.pi) % (2.0 * math.pi) - math.pi)
                 if angle_error > math.radians(45):
                     continue
             lateral = abs((light.x - npc.x) * -heading_y + (light.y - npc.y) * heading_x)
