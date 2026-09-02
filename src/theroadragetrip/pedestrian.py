@@ -377,8 +377,10 @@ class PedestrianManager:
 
     def set_target_count(self, target_count: int, player_car: Optional[Car] = None) -> None:
         """Adjust active pedestrian count and discard farthest characters when needed."""
-        self.target_count = max(0, target_count)
-        self._population_update_elapsed = 0.5
+        new_target_count = max(0, target_count)
+        if new_target_count != self.target_count:
+            self.target_count = new_target_count
+            self._population_update_elapsed = 0.5
         if len(self.pedestrians) > self.target_count:
             if player_car is not None:
                 self.pedestrians.sort(key=lambda ped: math.hypot(ped.x - player_car.x, ped.y - player_car.y))
@@ -1244,6 +1246,7 @@ class CyclistManager(PedestrianManager):
                 )
             )
         ]
+        self._spawn_ways = list(self.ped_ways)
         self._way_grid.clear()
         cs = self._way_grid_cell_size
         for way in self.ped_ways:

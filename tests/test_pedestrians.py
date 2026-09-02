@@ -22,6 +22,18 @@ def test_pedestrian_target_count_keeps_nearest_characters():
     assert [ped.x for ped in manager.pedestrians] == [1.0, 10.0]
 
 
+def test_repeated_target_count_updates_do_not_delay_population_check():
+    way = Way(points_m=[(0.0, 0.0), (100.0, 0.0)], highway="footway", half_width_m=1.5)
+    manager = PedestrianManager([way], target_count=1)
+    player = Car(x=50.0, y=0.0, heading=0.0, speed=0.0)
+    manager._population_update_elapsed = 4.9
+
+    manager.set_target_count(1, player)
+    manager.update(player, dt=0.1)
+
+    assert len(manager.pedestrians) == 1
+
+
 def test_pedestrian_can_reserve_any_nearby_parked_vehicle():
     way = Way(points_m=[(0.0, 0.0), (100.0, 0.0)], highway="footway", half_width_m=1.5)
     vehicle = SimpleNamespace(
@@ -255,6 +267,15 @@ def test_cyclist_spawn_assigns_body_color():
     assert cyclist is not None
     assert cyclist.is_cyclist is True
     assert cyclist.color != (230, 80, 80)
+
+
+def test_cyclist_spawn_uses_synced_ways_outside_local_grid():
+    way = Way(points_m=[(0.0, 0.0), (100.0, 0.0)], highway="cycleway", half_width_m=1.5)
+    manager = CyclistManager([way], target_count=0, spawn_radius_m=10.0)
+
+    cyclist = manager.spawn_pedestrian(500.0, 500.0)
+
+    assert cyclist is not None
 
 
 def test_cyclists_use_right_edge_for_both_directions(monkeypatch):
