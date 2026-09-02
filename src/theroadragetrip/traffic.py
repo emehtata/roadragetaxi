@@ -625,6 +625,9 @@ class TrafficManager:
         """Follow planned road points, then occupy the selected parking space."""
         route = npc.parking_route
         if not route or npc.parking_route_index >= len(route):
+            self.release_parking_space(npc)
+            npc.state = "driving"
+            npc.speed = 0.0
             return
         target_x, target_y = route[npc.parking_route_index]
         dx = target_x - npc.x
@@ -642,9 +645,13 @@ class TrafficManager:
                 )
                 if parking_space is not None:
                     npc.heading = parking_space.orientation
-                    self.occupy_parking_space(npc, parking_space)
+                    if not self.occupy_parking_space(npc, parking_space):
+                        self.release_parking_space(npc)
+                        npc.state = "driving"
+                        npc.speed = 0.0
                 else:
                     npc.state = "driving"
+                    npc.speed = 0.0
             return
         npc.heading = math.atan2(dy, dx)
         npc.speed = speed
@@ -2211,7 +2218,7 @@ class TrafficManager:
         for npc in self.npcs:
             if npc.is_police:
                 continue
-            if npc.state == "parking_departure":
+            if npc.state in {"parking", "parking_departure"}:
                 continue
             if not npc.lod_update_due:
                 continue
