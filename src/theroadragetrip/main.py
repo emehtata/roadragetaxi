@@ -73,6 +73,7 @@ from .physics import (
     get_current_road_at_car,
     is_car_fully_in_water,
     is_on_road,
+    is_point_on_parking_space,
     reset_trip,
     respawn_car,
     update_car_physics,
@@ -1457,6 +1458,7 @@ def main() -> None:
                     block_offroad=False,
                     speed_limit_mps=speed_limit_mps,
                     nearby_vehicles=traffic_mgr.npcs,
+                    parking_spaces=parking_spaces,
                 )
                 car.braking = brake > 0.0 and car.speed > 0.05
                 midpoint = (
@@ -1729,7 +1731,7 @@ def main() -> None:
             )
             current_way = get_current_road_at_car(car, ways=ways, spatial_grid=spatial_grid, car_roads_only=True, current_way=current_way)
             on_road = current_way is not None
-            is_grass = surface_way is None
+            is_grass = surface_way is None and not is_point_on_parking_space(car.x, car.y, parking_spaces)
             is_skidding = brake > 0.0 and abs(previous_speed) > 4.0 and abs(steer_left - steer_right) > 0.01
             if movement_distance > 0.0 and (is_skidding or (is_grass and abs(car.speed) > 1.0)):
                 if last_track_position is None or is_grass != last_track_surface:
@@ -1857,7 +1859,6 @@ def main() -> None:
                 fallen_trees=taxi_mgr.fallen_trees,
                 spatial_grid=scenery_grid,
             )
-            draw_parking_spaces(screen, parking_spaces, camx, camy, px_per_m=px_per_m)
             render_profile_times["map_scenery"] = render_profile_times.get("map_scenery", 0.0) + time.perf_counter() - map_stage_start
             if first_gameplay_frame:
                 logger.info("Gameplay frame: rendering water")
@@ -1868,6 +1869,7 @@ def main() -> None:
                 logger.info("Gameplay frame: rendering roads")
             map_stage_start = time.perf_counter()
             draw_ways(screen, ways, camx, camy, px_per_m=px_per_m, spatial_grid=spatial_grid)
+            draw_parking_spaces(screen, parking_spaces, camx, camy, px_per_m=px_per_m)
             render_profile_times["map_roads"] = render_profile_times.get("map_roads", 0.0) + time.perf_counter() - map_stage_start
             if bus_stops_enabled:
                 map_stage_start = time.perf_counter()
@@ -2204,4 +2206,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

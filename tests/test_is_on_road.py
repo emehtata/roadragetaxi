@@ -9,6 +9,7 @@ from theroadragetrip import (
     is_point_in_water,
     respawn_car,
 )
+from theroadragetrip.osm import ParkingSpace
 import theroadragetrip.physics as physics
 
 
@@ -33,6 +34,20 @@ def test_is_on_road_true_and_false():
 
     assert get_current_road_at_car(car_off, [w]) is None
     assert get_current_road_at_car(car_off, spatial_grid=grid) is None
+
+
+def test_parking_space_is_paved_surface_for_physics():
+    space = ParkingSpace(
+        points_m=[(0.0, -3.0), (6.0, -3.0), (6.0, 3.0), (0.0, 3.0)],
+        bbox=(0.0, -3.0, 6.0, 3.0),
+        osm_id=42,
+    )
+    assert physics.is_point_on_parking_space(2.0, 0.0, [space])
+
+    car = Car(x=1.0, y=0.0, heading=0.0, speed=4.0)
+    road = Way(points_m=[(20.0, 0.0), (30.0, 0.0)], highway="residential", half_width_m=2.0)
+    physics.update_car_physics(car, 1.0, 0.0, 0.0, 0.0, 0.1, ways=[road], parking_spaces=[space])
+    assert car.speed > physics.OFFROAD_MAX_SPEED
 
 
 def test_respawn_car_places_on_road_with_heading():
@@ -106,4 +121,3 @@ def test_bridge_over_water_does_not_trigger_water_respawn():
     car = Car(x=0.0, y=0.0, heading=0.0, speed=8.0, layer=1)
 
     assert not is_car_fully_in_water(car, [lake], current_way=bridge)
-

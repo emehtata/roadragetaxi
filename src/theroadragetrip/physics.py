@@ -130,6 +130,22 @@ def is_point_on_light_traffic_way(
     return False
 
 
+def is_point_on_parking_space(
+    px: float,
+    py: float,
+    parking_spaces: Optional[List] = None,
+) -> bool:
+    """Return whether a point lies inside an OSM parking-space polygon."""
+    for space in parking_spaces or ():
+        bbox = getattr(space, "bbox", None)
+        if bbox and not (bbox[0] <= px <= bbox[2] and bbox[1] <= py <= bbox[3]):
+            continue
+        points = getattr(space, "points_m", ())
+        if len(points) >= 3 and point_in_polygon(px, py, points):
+            return True
+    return False
+
+
 def is_point_in_water(px: float, py: float, waters: List) -> bool:
     """Check if point (px, py) is inside any water polygon or on a waterway with fast AABB rejection."""
     if not waters:
@@ -806,6 +822,7 @@ def update_car_physics(
     enforce_oneway: bool = False,
     speed_limit_mps: Optional[float] = None,
     nearby_vehicles: Optional[List] = None,
+    parking_spaces: Optional[List] = None,
 ) -> bool:
     """Update car speed, heading, and position.
 
@@ -961,7 +978,7 @@ def update_car_physics(
         target_on_road = is_point_on_road(
             target_x, target_y, ways=ways, spatial_grid=spatial_grid, car_roads_only=True
         )
-        if not target_on_road:
+        if not target_on_road and not is_point_on_parking_space(target_x, target_y, parking_spaces):
             target_on_light_traffic = is_point_on_light_traffic_way(
                 target_x, target_y, ways=ways, spatial_grid=spatial_grid
             )
