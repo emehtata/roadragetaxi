@@ -1663,7 +1663,7 @@ def main() -> None:
                         color=(230, 80, 80),
                     ))
                     npc.driver_spawned = True
-                    npc.driver_present = False
+                    npc.set_driver_present(False)
                     logger.info(
                         "Two-wheeler driver became pedestrian at x=%.1f y=%.1f",
                         npc.x,

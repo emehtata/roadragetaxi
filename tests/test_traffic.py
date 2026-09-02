@@ -43,6 +43,11 @@ def test_npc_vehicle_has_assigned_driver_identity():
     npc = NPCCar(10.0, 0.0, 0.0, 4.0, way, 0, 1, 10.0, (20, 20, 20))
 
     assert npc.assigned_driver_id == id(npc)
+    assert npc.driver is not None
+    assert npc.driver.driver_id == npc.assigned_driver_id
+    npc.set_driver_present(False)
+    assert npc.has_driver() is False
+    assert npc.driver.present is False
 
 
 def test_npc_without_driver_association_does_not_move():

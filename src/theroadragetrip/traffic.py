@@ -49,6 +49,14 @@ def traffic_count_for_zoom(base_count: int, px_per_m: float, minimum: int = 5) -
 
 
 @dataclass
+class NPCDriver:
+    """Persistent driver identity associated with one NPC vehicle."""
+
+    driver_id: int
+    present: bool = True
+
+
+@dataclass
 class NPCCar:
     """Autonomous traffic vehicle driving along real-world road networks."""
     x: float
@@ -113,11 +121,31 @@ class NPCCar:
     current_driver_id: Optional[int] = None
     assigned_driver_id: Optional[int] = None
     driver_present: bool = True
+    driver: Optional[NPCDriver] = None
 
     def __post_init__(self) -> None:
         """Give every NPC vehicle a stable associated driver identity."""
         if self.assigned_driver_id is None:
             self.assigned_driver_id = id(self)
+        if self.driver is None:
+            self.driver = NPCDriver(self.assigned_driver_id, self.driver_present)
+        else:
+            self.assigned_driver_id = self.driver.driver_id
+
+    def has_driver(self) -> bool:
+        """Return whether this vehicle's associated driver can currently drive."""
+        return (
+            self.driver_present
+            and self.assigned_driver_id is not None
+            and self.driver is not None
+            and self.driver.present
+        )
+
+    def set_driver_present(self, present: bool) -> None:
+        """Keep legacy presence flag and persistent driver state synchronized."""
+        self.driver_present = present
+        if self.driver is not None:
+            self.driver.present = present
 
 
 CarAI = NPCCar
@@ -1612,7 +1640,7 @@ class TrafficManager:
                 continue
             if not npc.lod_update_due:
                 continue
-            if not npc.driver_present or (npc.assigned_driver_id is None and npc.current_driver_id is None):
+            if not npc.has_driver() and npc.current_driver_id is None:
                 npc.speed = 0.0
                 npc.target_speed = 0.0
                 npc.state = "waiting"
@@ -1732,7 +1760,7 @@ class TrafficManager:
                 continue
             if npc.state == "parking_departure":
                 continue
-            if not npc.driver_present or (npc.assigned_driver_id is None and npc.current_driver_id is None):
+            if not npc.has_driver() and npc.current_driver_id is None:
                 continue
             if npc.lod_level > 0 or not npc.lod_update_due:
                 continue
@@ -1813,7 +1841,7 @@ class TrafficManager:
         for npc in self.npcs:
             if npc.is_police:
                 continue
-            if not npc.driver_present or (npc.assigned_driver_id is None and npc.current_driver_id is None):
+            if not npc.has_driver() and npc.current_driver_id is None:
                 npc.speed = 0.0
                 npc.target_speed = 0.0
                 npc.state = "waiting"
