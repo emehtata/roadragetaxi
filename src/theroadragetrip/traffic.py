@@ -584,7 +584,7 @@ class TrafficManager:
             (parking_space.bbox[0] + parking_space.bbox[2]) * 0.5,
             (parking_space.bbox[1] + parking_space.bbox[3]) * 0.5,
         )
-        route = self.plan_route((npc.x, npc.y), center, layer=getattr(npc.way, "layer", 0))
+        route = self._plan_parking_route((npc.x, npc.y), center, layer=getattr(npc.way, "layer", 0))
         if not route or len(route) < 2:
             self.npcs.remove(npc)
             return None
@@ -617,7 +617,7 @@ class TrafficManager:
             (parking_space.bbox[0] + parking_space.bbox[2]) * 0.5,
             (parking_space.bbox[1] + parking_space.bbox[3]) * 0.5,
         )
-        route = self.plan_route((npc.x, npc.y), center, layer=getattr(npc.way, "layer", 0))
+        route = self._plan_parking_route((npc.x, npc.y), center, layer=getattr(npc.way, "layer", 0))
         if not route or len(route) < 2:
             return False
         parking_space.reserved = True
@@ -630,6 +630,48 @@ class TrafficManager:
         npc.state = "parking"
         npc.speed = 0.0
         return True
+
+    def _plan_parking_route(
+        self,
+        start: Tuple[float, float],
+        parking_center: Tuple[float, float],
+        layer: Optional[int] = None,
+    ) -> Optional[List[Tuple[float, float]]]:
+        """Route on roads first, then allow only a short approach into the space."""
+        nearest_point = None
+        nearest_distance_sq = math.inf
+        for way in self.ways:
+            if layer is not None and getattr(way, "layer", 0) != layer:
+                continue
+            points = way.points_m
+            for first, second in zip(points, points[1:]):
+                segment_x = second[0] - first[0]
+                segment_y = second[1] - first[1]
+                segment_length_sq = segment_x * segment_x + segment_y * segment_y
+                if segment_length_sq <= 1e-9:
+                    continue
+                projection = (
+                    (parking_center[0] - first[0]) * segment_x
+                    + (parking_center[1] - first[1]) * segment_y
+                ) / segment_length_sq
+                projection = max(0.0, min(1.0, projection))
+                candidate = (
+                    first[0] + projection * segment_x,
+                    first[1] + projection * segment_y,
+                )
+                distance_sq = (
+                    (candidate[0] - parking_center[0]) ** 2
+                    + (candidate[1] - parking_center[1]) ** 2
+                )
+                if distance_sq < nearest_distance_sq:
+                    nearest_point = candidate
+                    nearest_distance_sq = distance_sq
+        if nearest_point is None or nearest_distance_sq > 18.0 * 18.0:
+            return None
+        route = self.plan_route(start, nearest_point, layer=layer)
+        if not route:
+            return None
+        return route + [parking_center]
 
     def _advance_parking_npc(self, npc: NPCCar, dt: float) -> None:
         """Follow planned road points, then occupy the selected parking space."""

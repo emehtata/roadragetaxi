@@ -309,6 +309,24 @@ def test_destination_parking_starts_from_a_road_end():
     assert parking_space.vehicle_id == id(npc)
 
 
+def test_destination_parking_rejects_space_far_from_road():
+    way = Way(
+        points_m=[(0.0, 0.0), (100.0, 0.0)],
+        highway="residential",
+        half_width_m=4.0,
+    )
+    parking_space = ParkingSpace(
+        [(78.0, 30.0), (82.0, 30.0), (82.0, 34.0), (78.0, 34.0)],
+        (78.0, 30.0, 82.0, 34.0),
+        osm_id=17,
+    )
+    manager = TrafficManager([way], target_count=0, parking_spaces=[parking_space])
+    npc = NPCCar(100.0, 0.0, 0.0, 4.0, way, 0, 1, 10.0, (20, 20, 20))
+
+    assert not manager._start_destination_parking(npc)
+    assert parking_space.reserved is False
+
+
 def test_plan_route_starts_at_car_and_ends_at_destination():
     way = Way(
         points_m=[(0.0, 0.0), (100.0, 0.0), (200.0, 0.0)],
