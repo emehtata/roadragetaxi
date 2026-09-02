@@ -19,7 +19,7 @@ import requests
 from .geo import dist_point_to_segment, point_in_polygon
 
 logger = logging.getLogger(__name__)
-CACHE_VERSION = "v0.6.2beta4"
+CACHE_VERSION = "v0.7.0beta"
 
 # Top 10 cities of Finland by population with center coordinates (lat, lon)
 CITY_CENTERS: Dict[str, Tuple[float, float]] = {
