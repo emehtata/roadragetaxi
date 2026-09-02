@@ -3561,9 +3561,8 @@ def draw_loading_screen(
     if fill_w > 0:
         pygame.draw.rect(screen, (40, 180, 100), (bar_x + 2, bar_y + 2, fill_w, bar_h - 4), border_radius=2)
 
-    # Percentage and message
     pct_str = f"{int(clamped_prog * 100)}%"
-    msg_surf = font.render(f"{message} ({pct_str})", True, (220, 230, 240))
+    msg_surf = font.render(pct_str, True, (220, 230, 240))
     msg_rect = msg_surf.get_rect(center=(screen_w // 2, bar_y + bar_h + 22))
     screen.blit(msg_surf, msg_rect)
 
