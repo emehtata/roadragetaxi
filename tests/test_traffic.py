@@ -10,6 +10,7 @@ from theroadragetrip.traffic import (
     NPCCar,
     TrafficManager,
     calculate_npc_turning_geometry,
+    compute_turn_lane_offset,
     traffic_count_for_zoom,
 )
 from theroadragetrip.osm import IntersectionApproach, LogicalIntersection
@@ -27,6 +28,13 @@ def test_npc_turning_geometry_is_individual_and_bicycle_based():
     assert math.isclose(
         short_car[2], short_car[0] / math.tan(short_car[1]), rel_tol=1e-9
     )
+
+
+def test_turn_lane_offset_uses_left_and_right_edges():
+    way = Way(points_m=[(0.0, 0.0), (100.0, 0.0)], highway="primary", half_width_m=6.0)
+
+    assert compute_turn_lane_offset(way, "left") == -5.0
+    assert compute_turn_lane_offset(way, "right") == 5.0
 
 
 def test_traffic_manager_nearby_parking_spaces_uses_osm_spaces():
@@ -429,6 +437,33 @@ def test_npc_lod_assigns_distance_bands_and_schedules_updates():
     manager.update_lod(Car(0.0, 0.0, 0.0, 0.0), 0.1)
 
     assert all(npc.lod_update_due for npc in manager.npcs)
+
+
+def test_traffic_manager_assigns_resident_owner_to_existing_npc():
+    way = Way(points_m=[(0.0, 0.0), (100.0, 0.0)], highway="residential", half_width_m=4.0)
+    manager = TrafficManager([way], target_count=0)
+    npc = NPCCar(20.0, 0.0, 0.0, 0.0, way, 0, 1, 10.0, (20, 20, 20))
+    manager.npcs = [npc]
+
+    manager.update(Car(0.0, 0.0, 0.0, 0.0), 0.01)
+
+    assert npc.owner_id is not None
+    owner = manager.residents.get(npc.owner_id)
+    assert owner is not None
+    assert id(npc) in owner.vehicle_ids
+    assert npc.current_driver_id == owner.resident_id
+
+
+def test_active_route_less_npc_gets_a_new_travel_route():
+    way = Way(points_m=[(0.0, 0.0), (300.0, 0.0)], highway="residential", half_width_m=4.0)
+    manager = TrafficManager([way], target_count=0)
+    npc = NPCCar(10.0, 0.0, 0.0, 0.0, way, 0, 1, 10.0, (20, 20, 20))
+    manager.npcs = [npc]
+
+    manager.update(Car(0.0, 0.0, 0.0, 0.0), 0.01)
+
+    assert npc.travel_route is not None
+    assert npc.destination is not None
 
 
 def test_npc_spatial_grid_refreshes_after_movement():
@@ -944,6 +979,16 @@ def test_uncontrolled_left_turn_yields_to_oncoming_traffic():
     assert manager._junction_is_clear_for(turning, (0.0, 0.0)) is False
 
 
+def test_stop_line_queue_does_not_occupy_junction():
+    way = Way(points_m=[(-100.0, 0.0), (100.0, 0.0)], highway="primary", half_width_m=4.0)
+    manager = TrafficManager([way], target_count=0)
+    waiting = NPCCar(-10.0, 0.0, 0.0, 0.0, way, 0, 1, 10.0, (0, 0, 0), state="waiting")
+    approaching = NPCCar(10.0, 0.0, math.pi, 0.0, way, 1, -1, 10.0, (0, 0, 0), state="waiting")
+    manager.npcs = [waiting, approaching]
+
+    assert manager._junction_is_occupied((0.0, 0.0), waiting) is False
+
+
 def test_parked_npc_does_not_block_uncontrolled_junction():
     approach = Way(points_m=[(-30.0, 0.0), (0.0, 0.0)], highway="secondary", half_width_m=4.0)
     parked_way = Way(points_m=[(0.0, -30.0), (0.0, 0.0)], highway="service", half_width_m=4.0)
@@ -960,12 +1005,12 @@ def test_stopped_junction_queue_has_deterministic_deadlock_breaker():
     horizontal = Way(points_m=[(-30.0, 0.0), (0.0, 0.0)], highway="secondary", half_width_m=4.0)
     vertical = Way(points_m=[(0.0, -30.0), (0.0, 0.0)], highway="secondary", half_width_m=4.0)
     first = NPCCar(-10.0, 0.0, 0.0, 0.0, horizontal, 0, 1, 10.0, (0, 0, 0), junction_wait_timer=2.5)
-    second = NPCCar(0.0, -10.0, math.pi / 2.0, 0.0, vertical, 0, 1, 10.0, (0, 0, 0), junction_wait_timer=2.5)
+    second = NPCCar(0.0, -8.0, math.pi / 2.0, 0.0, vertical, 0, 1, 10.0, (0, 0, 0), junction_wait_timer=1.0)
     manager = TrafficManager([horizontal, vertical])
     manager.npcs = [first, second]
 
-    assert manager._junction_deadlock_can_proceed(first, (0.0, 0.0)) is True
-    assert manager._junction_deadlock_can_proceed(second, (0.0, 0.0)) is False
+    assert manager._junction_deadlock_can_proceed(second, (0.0, 0.0)) is True
+    assert manager._junction_deadlock_can_proceed(first, (0.0, 0.0)) is False
 
 
 def test_priority_road_has_right_of_way_over_uncontrolled_approach():

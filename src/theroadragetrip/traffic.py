@@ -18,6 +18,7 @@ from .osm import (
     build_logical_intersections,
 )
 from .physics import Car, connected_drivable_ways
+from .residents import ResidentManager
 
 logger = logging.getLogger(__name__)
 
@@ -128,6 +129,10 @@ class NPCCar:
     scared_timer: float = 0.0
     pursuit_cancelled: bool = False
     next_route: Optional[Tuple[Way, int, int]] = None
+    travel_route: Optional[List[Tuple[float, float]]] = None
+    travel_route_index: int = 0
+    destination: Optional[Tuple[float, float]] = None
+    destination_parking_space_id: Optional[int] = None
     lod_level: int = 0
     lod_time_accumulator: float = 0.0
     lod_update_due: bool = True
@@ -148,6 +153,7 @@ class NPCCar:
     stop_sign_wait_timer: float = 0.0
     reserved_by_pedestrian_id: Optional[int] = None
     current_driver_id: Optional[int] = None
+    owner_id: Optional[int] = None
     assigned_driver_id: Optional[int] = None
     driver_present: bool = True
     driver: Optional[NPCDriver] = None
@@ -313,6 +319,16 @@ def compute_desired_lane_offset(way: Way, is_overtaking: bool = False, travel_di
     return offset
 
 
+def compute_turn_lane_offset(way: Way, turn_signal: str) -> float:
+    """Return the furthest practical lane offset for a left or right turn."""
+    if turn_signal not in {"left", "right"}:
+        return compute_desired_lane_offset(way)
+    half_width = getattr(way, "half_width_m", 4.0)
+    edge_clearance = 1.0
+    edge_offset = max(0.0, half_width - edge_clearance)
+    return -edge_offset if turn_signal == "left" else edge_offset
+
+
 class TrafficManager:
     """Manages autonomous NPC traffic simulation around the player."""
 
@@ -330,6 +346,7 @@ class TrafficManager:
         parking_density: float = 0.5,
         roadworks: Optional[List] = None,
         enable_two_wheelers: bool = False,
+        residents: Optional[ResidentManager] = None,
     ):
         self.ways = connected_drivable_ways(ways)
         self.target_count = max(0, min(MAX_TRAFFIC_COUNT, target_count))
@@ -345,6 +362,7 @@ class TrafficManager:
         self.parking_density = max(0.0, min(1.0, parking_density))
         self.roadworks = roadworks if roadworks is not None else []
         self.enable_two_wheelers = enable_two_wheelers
+        self.residents = residents if residents is not None else ResidentManager()
         self.npcs: List[NPCCar] = []
         self._log_timer: float = 0.0
         self.sim_time: float = 0.0
@@ -474,9 +492,17 @@ class TrafficManager:
         npc.parking_route_index = 0
         npc.parking_stuck_timer = 0.0
         npc.parking_last_distance = None
+        npc.destination = None
+        npc.travel_route = None
+        npc.travel_route_index = 0
+        npc.destination_parking_space_id = None
         npc.state = "parked"
         npc.speed = 0.0
         npc.target_speed = 0.0
+        resident = self.residents.get(npc.owner_id)
+        if resident is not None:
+            resident.mode = "walking"
+            resident.active_vehicle_id = None
         return True
 
     def release_parking_space(self, npc: NPCCar) -> None:
@@ -498,6 +524,10 @@ class TrafficManager:
         npc.parking_route_index = 0
         npc.parking_stuck_timer = 0.0
         npc.parking_last_distance = None
+        npc.destination = None
+        npc.travel_route = None
+        npc.travel_route_index = 0
+        npc.destination_parking_space_id = None
         npc.reserved_by_pedestrian_id = None
 
     def activate_occupied_vehicle(self, npc: NPCCar) -> bool:
@@ -614,6 +644,10 @@ class TrafficManager:
         parking_space.reserved = True
         parking_space.vehicle_id = id(npc)
         npc.parking_target_id = self.parking_space_id(parking_space)
+        npc.destination = center
+        npc.destination_parking_space_id = npc.parking_target_id
+        npc.travel_route = None
+        npc.travel_route_index = 0
         npc.parking_route = route
         npc.parking_route_index = 1
         npc.parking_stuck_timer = 0.0
@@ -646,6 +680,10 @@ class TrafficManager:
         parking_space.reserved = True
         parking_space.vehicle_id = id(npc)
         npc.parking_target_id = self.parking_space_id(parking_space)
+        npc.destination = center
+        npc.destination_parking_space_id = npc.parking_target_id
+        npc.travel_route = None
+        npc.travel_route_index = 0
         npc.parking_route = route
         npc.parking_route_index = 1
         npc.parking_stuck_timer = 0.0
@@ -820,6 +858,7 @@ class TrafficManager:
                 npc.lod_level = 2
             npc.lod_time_accumulator += dt
             npc.lod_update_due = self._lod_update_due(npc)
+            self.residents.update_lod(npc.owner_id, npc.x, npc.y, player_car.x, player_car.y, dt)
 
     @staticmethod
     def _lod_update_due(npc: NPCCar) -> bool:
@@ -1354,6 +1393,7 @@ class TrafficManager:
         at_point: Tuple[float, float],
         incoming_heading: Optional[float] = None,
         exclude_reverse: bool = False,
+        preferred_point: Optional[Tuple[float, float]] = None,
     ) -> Optional[Tuple[Way, int, int]]:
         """Find a connected way at junction point to continue driving seamlessly using spatial grid."""
         tol = 3.0  # 3 meter connection tolerance
@@ -1433,6 +1473,20 @@ class TrafficManager:
             if forward_candidates:
                 candidates = forward_candidates
 
+        if preferred_point is not None:
+            def exit_point(candidate: Tuple[Way, int, int]) -> Tuple[float, float]:
+                way, segment_index, direction = candidate
+                return way.points_m[segment_index + 1 if direction == 1 else segment_index]
+
+            candidates.sort(
+                key=lambda candidate: (
+                    (exit_point(candidate)[0] - preferred_point[0]) ** 2
+                    + (exit_point(candidate)[1] - preferred_point[1]) ** 2,
+                    candidate[0] is current_way,
+                )
+            )
+            return candidates[0]
+
         # Filter out exact same way if alternatives exist to encourage turns
         alternatives = [c for c in candidates if c[0] is not current_way]
         if alternatives:
@@ -1450,6 +1504,34 @@ class TrafficManager:
                 return None
 
         return random.choice(valid_candidates)
+
+    def _assign_new_travel_plan(self, npc: NPCCar) -> bool:
+        """Assign a complete road-node route to an NPC and its resident driver."""
+        if not self._route_nodes:
+            return False
+        current_layer = getattr(npc.way, "layer", 0)
+        destinations = [
+            (node[0], node[1])
+            for node in self._route_nodes
+            if node[2] == current_layer
+            and math.hypot(node[0] - npc.x, node[1] - npc.y) >= 150.0
+        ]
+        if not destinations:
+            return False
+        destination = random.choice(destinations)
+        route = self.plan_route((npc.x, npc.y), destination, layer=current_layer)
+        if not route or len(route) < 2:
+            return False
+        npc.travel_route = route
+        npc.travel_route_index = 1
+        npc.destination = route[-1]
+        npc.destination_parking_space_id = None
+        npc.next_route = None
+        resident = self.residents.get(npc.owner_id)
+        if resident is not None:
+            resident.mode = "driving"
+            resident.active_vehicle_id = id(npc)
+        return True
 
     @staticmethod
     def _roundabout_direction(way: Way) -> int:
@@ -1486,11 +1568,39 @@ class TrafficManager:
             junction_point = npc.way.points_m[npc.segment_idx]
         if self._junction_at_point(junction_point, npc.layer) is None:
             return
+        preferred_point = None
+        if npc.travel_route:
+            route_points = npc.travel_route
+            remaining_indices = range(
+                min(npc.travel_route_index, len(route_points) - 1),
+                len(route_points),
+            )
+            preferred_index = min(
+                remaining_indices,
+                key=lambda index: math.hypot(
+                    route_points[index][0] - junction_point[0],
+                    route_points[index][1] - junction_point[1],
+                ),
+            )
+            npc.travel_route_index = preferred_index
+            if preferred_index + 1 < len(route_points):
+                preferred_point = route_points[preferred_index + 1]
         npc.next_route = self._find_next_way_and_segment(
             npc.way,
             junction_point,
             incoming_heading=npc.heading,
+            preferred_point=preferred_point,
         )
+
+    def _advance_travel_route(self, npc: NPCCar, junction_point: Tuple[float, float]) -> None:
+        """Advance the persistent route cursor after crossing a planned junction."""
+        if not npc.travel_route:
+            return
+        for index in range(npc.travel_route_index, len(npc.travel_route)):
+            point = npc.travel_route[index]
+            if math.hypot(point[0] - junction_point[0], point[1] - junction_point[1]) <= 8.0:
+                npc.travel_route_index = min(index + 1, len(npc.travel_route) - 1)
+                return
 
     def _junction_at_point(self, point: Tuple[float, float], layer: int) -> Optional[Tuple[float, float]]:
         """Return a shared same-layer way vertex when point belongs to a junction."""
@@ -1514,7 +1624,8 @@ class TrafficManager:
         for other in self.npcs:
             if other is npc or other.layer != npc.layer or other.state in {"parked", "reserved", "parking"}:
                 continue
-            if math.hypot(other.x - junction_point[0], other.y - junction_point[1]) < 12.0:
+            distance = math.hypot(other.x - junction_point[0], other.y - junction_point[1])
+            if distance < 8.0 or (other.state == "turning" and distance < 12.0):
                 return True
         return False
 
@@ -1578,19 +1689,20 @@ class TrafficManager:
         return True
 
     def _junction_deadlock_can_proceed(self, npc: NPCCar, junction_point: Tuple[float, float]) -> bool:
-        """Let one fully stopped queue leader break a mutual junction wait."""
+        """Let the closest fully stopped queue leader force its planned movement."""
         candidates = []
         for other in self.npcs:
             if other.layer != npc.layer or other.state in {"parked", "reserved", "parking"} or not other.has_driver():
                 continue
-            if math.hypot(other.x - junction_point[0], other.y - junction_point[1]) > 24.0:
+            distance = math.hypot(other.x - junction_point[0], other.y - junction_point[1])
+            if distance > 24.0:
                 continue
             if other is npc or (other.state != "turning" and other.speed <= 1.0):
-                candidates.append(other)
+                candidates.append((distance, other))
         candidates.sort(
-            key=lambda other: -other.junction_wait_timer
+            key=lambda candidate: (candidate[0], -candidate[1].junction_wait_timer, id(candidate[1]))
         )
-        return bool(candidates) and candidates[0] is npc
+        return bool(candidates) and candidates[0][1] is npc
 
     def _junction_near_point(self, point: Tuple[float, float], layer: int) -> bool:
         """Return whether point is inside a shared same-layer junction."""
@@ -1830,6 +1942,10 @@ class TrafficManager:
                     )
                     if npc.is_taxi:
                         npc.vehicle_type = "car"
+                    owner = self.residents.create("driving", vehicle_id=id(npc))
+                    npc.owner_id = owner.resident_id
+                    npc.current_driver_id = owner.resident_id
+                    self._assign_new_travel_plan(npc)
                     npc.lod_time_accumulator = 1.0
                     self.npcs.append(npc)
                     return npc
@@ -1849,6 +1965,12 @@ class TrafficManager:
         self.sim_time += dt
         self.traffic_light_manager.update(self.sim_time)
         self.intersection_manager.update(self.npcs)
+        for npc in self.npcs:
+            if npc.owner_id is None:
+                owner = self.residents.create("driving", vehicle_id=id(npc))
+                npc.owner_id = owner.resident_id
+                if npc.state == "driving" and npc.assigned_driver_id is not None and npc.has_driver():
+                    npc.current_driver_id = owner.resident_id
         previous_speeds = {id(npc): npc.speed for npc in self.npcs}
         npc_population_changed = tuple(id(npc) for npc in self.npcs) != self._npc_grid_npc_ids
 
@@ -1991,6 +2113,8 @@ class TrafficManager:
         for i, npc in enumerate(self.npcs):
             if npc.is_police:
                 continue
+            if npc.travel_route is None and npc.state not in {"parked", "reserved", "parking", "parking_departure"}:
+                self._assign_new_travel_plan(npc)
             if not npc.lod_update_due:
                 continue
             if not npc.has_driver() and npc.current_driver_id is None:
@@ -2026,6 +2150,12 @@ class TrafficManager:
                 npc.target_speed = 0.0
                 npc.state = "waiting"
                 continue
+            if (
+                npc.destination is not None
+                and npc.destination_parking_space_id is None
+                and math.hypot(npc.x - npc.destination[0], npc.y - npc.destination[1]) <= max(6.0, npc.length_m)
+            ):
+                self._assign_new_travel_plan(npc)
             if npc.taxi_stop_target is not None:
                 target_x, target_y = npc.taxi_stop_target
                 dx = target_x - npc.x
@@ -2053,9 +2183,12 @@ class TrafficManager:
             if getattr(npc.way, "oneway", 0) == 0 and npc.rage_timer <= 0.0:
                 npc.overtaking = False
                 npc.overtake_timer = 0.0
-                npc.target_lane_offset = compute_desired_lane_offset(
-                    npc.way, is_overtaking=False, travel_direction=npc.direction
-                )
+                if npc.turn_signal and npc.next_route is not None:
+                    npc.target_lane_offset = compute_turn_lane_offset(npc.way, npc.turn_signal)
+                else:
+                    npc.target_lane_offset = compute_desired_lane_offset(
+                        npc.way, is_overtaking=False, travel_direction=npc.direction
+                    )
                 npc.lane_offset = npc.target_lane_offset
             if npc.overtaking:
                 npc.overtake_timer -= dt
@@ -2424,10 +2557,7 @@ class TrafficManager:
                     angle_err = abs((next_heading - npc.heading + math.pi) % (2 * math.pi) - math.pi)
                     if angle_err > math.radians(25):
                         turn_factor = max(0.25, math.cos(min(math.pi / 2, angle_err)))
-                        turn_limit_speed = min(
-                            max(3.5, npc.target_speed * turn_factor),
-                            math.sqrt(2.5 * npc.turning_radius_m),
-                        )
+                        turn_limit_speed = max(3.5, npc.target_speed * turn_factor)
 
             # Check if NPC is in crashed recovery state
             if npc.crashed_timer > 0.0 or getattr(npc, "fallen", False):
@@ -2625,12 +2755,13 @@ class TrafficManager:
                         # At intermediate vertices, check if there is an intersecting road to turn onto
                         turned = False
                         if npc.segment_idx + 1 < len(pts) - 1:
-                            # 35% chance to make a turn at an intersection along the way
-                            if random.random() < 0.35:
+                            # Follow the persistent route; unplanned test or legacy NPCs stay on this way.
+                            if npc.travel_route is not None:
                                 turn_route = npc.next_route or self._find_next_way_and_segment(
                                     npc.way, target_pt, exclude_reverse=True, incoming_heading=npc.heading
                                 )
                                 if turn_route and turn_route[0] is not npc.way:
+                                    self._advance_travel_route(npc, target_pt)
                                     old_heading = npc.heading
                                     npc.way, npc.segment_idx, npc.direction = turn_route
                                     npc.turn_signal = self._turn_signal_for_route(old_heading, npc)
@@ -2652,6 +2783,7 @@ class TrafficManager:
                                 npc.way, target_pt, incoming_heading=npc.heading
                             )
                             if next_route:
+                                self._advance_travel_route(npc, target_pt)
                                 old_heading = npc.heading
                                 npc.way, npc.segment_idx, npc.direction = next_route
                                 npc.turn_signal = self._turn_signal_for_route(old_heading, npc)
@@ -2683,11 +2815,12 @@ class TrafficManager:
                     else:
                         turned = False
                         if npc.segment_idx > 0:
-                            if random.random() < 0.35:
+                            if npc.travel_route is not None:
                                 turn_route = npc.next_route or self._find_next_way_and_segment(
                                     npc.way, target_pt, exclude_reverse=True, incoming_heading=npc.heading
                                 )
                                 if turn_route and turn_route[0] is not npc.way:
+                                    self._advance_travel_route(npc, target_pt)
                                     old_heading = npc.heading
                                     npc.way, npc.segment_idx, npc.direction = turn_route
                                     npc.turn_signal = self._turn_signal_for_route(old_heading, npc)
@@ -2709,6 +2842,7 @@ class TrafficManager:
                                 npc.way, target_pt, incoming_heading=npc.heading
                             )
                             if next_route:
+                                self._advance_travel_route(npc, target_pt)
                                 old_heading = npc.heading
                                 npc.way, npc.segment_idx, npc.direction = next_route
                                 npc.turn_signal = self._turn_signal_for_route(old_heading, npc)

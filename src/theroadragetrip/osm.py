@@ -1805,7 +1805,7 @@ def build_ways(
     for tags, nid in named_nodes_raw:
         pt = nodes_m.get(nid)
         if pt:
-            places.append(Place(x=pt[0], y=pt[1], name=tags["name"], kind="poi"))
+            places.append(Place(x=pt[0], y=pt[1], name=tags["name"], kind=tags.get("amenity", "poi")))
     for tags, node_ids in named_ways_raw:
         pts, _ = process_node_ids(node_ids)
         if pts:

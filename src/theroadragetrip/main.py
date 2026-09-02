@@ -131,6 +131,7 @@ from .render import (
     world_to_screen,
 )
 from .pedestrian import CyclistManager, Pedestrian, PedestrianManager, PlayerPedestrian
+from .residents import ResidentManager
 from .police import PoliceManager, place_speed_cameras
 from .roadworks import create_roadworks
 from .taxi import TaxiManager, TaxiState
@@ -917,7 +918,15 @@ def main() -> None:
 
         # Initialize Taxi Manager for game mode
         on_load_progress(0.94, "Preparing taxi missions...")
-        taxi_mgr = TaxiManager(ways, places=places, buildings=buildings, taxi_stops=taxi_stops, language=language)
+        residents = ResidentManager()
+        taxi_mgr = TaxiManager(
+            ways,
+            places=places,
+            buildings=buildings,
+            taxi_stops=taxi_stops,
+            language=language,
+            resident_manager=residents,
+        )
         speed_cameras = place_speed_cameras(
             ways,
             bounds,
@@ -945,6 +954,7 @@ def main() -> None:
             parking_density=args.parking_density,
             roadworks=roadworks,
             enable_two_wheelers=enable_two_wheelers,
+            residents=residents,
         )
         police_mgr = PoliceManager(
             traffic_mgr, car.x, car.y, buildings=buildings, building_grid=building_grid, count=0
@@ -960,10 +970,17 @@ def main() -> None:
             logical_intersections=traffic_mgr.logical_intersections,
             traffic_vehicles=traffic_mgr.npcs,
             traffic_manager=traffic_mgr,
+            residents=traffic_mgr.residents,
             venue_buildings=buildings,
         )
         cyclist_mgr = CyclistManager(ways, target_count=args.cyclist_count, traffic_lights=traffic_lights)
-        player_pedestrian = PlayerPedestrian(car.x, car.y)
+        player_pedestrian = PlayerPedestrian(
+            car.x - math.sin(car.heading) * getattr(car, "width_m", 1.8) * 0.85
+            + math.cos(car.heading) * getattr(car, "length_m", 4.0) * 0.2,
+            car.y + math.cos(car.heading) * getattr(car, "width_m", 1.8) * 0.85
+            + math.sin(car.heading) * getattr(car, "length_m", 4.0) * 0.2,
+            heading=car.heading,
+        )
         base_pedestrian_count = pedestrian_mgr.target_count
         base_cyclist_count = cyclist_mgr.target_count
 
@@ -1029,7 +1046,7 @@ def main() -> None:
         last_track_surface = None
         map_sync_stage = 0
         water_elapsed = 0.0
-        on_foot = False
+        on_foot = True
         saved_gig_fares = taxi_mgr.completed_fares
         render_profile_last_log = time.perf_counter()
         render_profile_times = {}
@@ -1341,6 +1358,9 @@ def main() -> None:
                     elif event.key == pygame.K_t:
                         reset_trip(car)
                         logger.info("Trip meter reset to 0 m")
+                    elif event.key == pygame.K_u:
+                        hud_layout = default_hud_layout(screen.get_width(), screen.get_height())
+                        logger.info("HUD layout reset to default")
                     elif event.key == pygame.K_l:
                         label_mode = (label_mode + 1) % 3
                         logger.info("Label mode %d", label_mode)
@@ -1600,11 +1620,11 @@ def main() -> None:
                 previous_taxi_state == TaxiState.CLIENT_WALKING_TO_CAR
                 and taxi_mgr.state == TaxiState.DRIVING_TO_DROPOFF
             ):
-                audio.play_driver_line("pickup", language)
                 audio.play_passenger_line_for_situation(
                     "pickup", taxi_mgr.current_passenger.gender if taxi_mgr.current_passenger else "woman", language,
                     taxi_mgr.current_passenger.name if taxi_mgr.current_passenger else None,
                 )
+                audio.play_driver_line("pickup", language)
                 audio.play("car-door-open")
             elif (
                 previous_taxi_state == TaxiState.DRIVING_TO_DROPOFF
@@ -1612,8 +1632,8 @@ def main() -> None:
                 and taxi_mgr.current_passenger is None
                 and vomited_passenger is None
             ):
-                audio.play_driver_line("dropoff", language)
                 audio.play_passenger_line_for_situation("dropoff", previous_passenger.gender, language, previous_passenger.name)
+                audio.play_driver_line("dropoff", language)
                 audio.play("car-door-open")
                 passenger_pedestrian = pedestrian_mgr.spawn_pedestrian_at(
                     car.x + math.sin(car.heading) * 1.8,
@@ -1926,6 +1946,7 @@ def main() -> None:
                 px_per_m=px_per_m,
                 ways=ways,
                 show_debug=show_debug_hud,
+                residents=traffic_mgr.residents,
             )
             draw_cyclists(screen, cyclist_mgr.cyclists, camx, camy, px_per_m=px_per_m, ways=ways)
             draw_npc_cars(
@@ -1937,6 +1958,7 @@ def main() -> None:
                 ways=ways,
                 spatial_grid=spatial_grid,
                 show_debug=show_debug_hud,
+                residents=traffic_mgr.residents,
             )
             if show_debug_hud:
                 draw_npc_spatial_grid(

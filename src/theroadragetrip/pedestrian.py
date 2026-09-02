@@ -9,6 +9,7 @@ from typing import Dict, List, Optional, Set, Tuple
 from .osm import Crossing, LogicalIntersection, TrafficLight, Way
 from .geo import closest_point_and_dist_to_segment, dist_point_to_segment, point_in_polygon
 from .physics import Car, is_car_road, is_pedestrian_way
+from .residents import ResidentManager
 
 logger = logging.getLogger(__name__)
 
@@ -210,6 +211,7 @@ class Pedestrian:
     lod_update_dt: float = 0.0
     reserved_vehicle_id: Optional[int] = None
     current_vehicle_id: Optional[int] = None
+    resident_id: Optional[int] = None
     vehicle_destination: Optional[Tuple[float, float]] = None
     vehicle_entry_timer: float = 0.0
     building_entry_timer: float = 0.0
@@ -244,6 +246,7 @@ class PedestrianManager:
         traffic_vehicles: Optional[List] = None,
         traffic_manager=None,
         venue_buildings: Optional[List] = None,
+        residents: Optional[ResidentManager] = None,
     ):
         self.target_count = target_count
         self.spawn_radius_m = spawn_radius_m
@@ -254,6 +257,7 @@ class PedestrianManager:
         self.logical_intersections = logical_intersections or []
         self.traffic_vehicles = traffic_vehicles if traffic_vehicles is not None else []
         self.traffic_manager = traffic_manager
+        self.residents = residents if residents is not None else ResidentManager()
         self.sim_time: float = 0.0
         self._population_update_elapsed: float = 4.9
         self._visible_taxi_stops: Set[Tuple[float, float, Optional[int]]] = set()
@@ -286,6 +290,11 @@ class PedestrianManager:
             logical_intersections=logical_intersections,
         )
         self.set_venue_buildings(venue_buildings)
+
+    def _register_resident(self, pedestrian: Pedestrian) -> Pedestrian:
+        if pedestrian.resident_id is None:
+            pedestrian.resident_id = self.residents.create("walking").resident_id
+        return pedestrian
 
     def set_venue_buildings(self, buildings: Optional[List] = None) -> None:
         """Index hospitality venues as preferred pedestrian spawn locations."""
@@ -440,6 +449,12 @@ class PedestrianManager:
         vehicle.current_driver_id = id(pedestrian)
         vehicle.reserved_by_pedestrian_id = None
         vehicle.state = "occupied"
+        if self.residents is not None and pedestrian.resident_id is not None:
+            vehicle.owner_id = pedestrian.resident_id
+            resident = self.residents.get(pedestrian.resident_id)
+            if resident is not None:
+                resident.mode = "driving"
+                resident.active_vehicle_id = id(vehicle)
         vehicle_way = getattr(vehicle, "way", None)
         vehicle_points = getattr(vehicle_way, "points_m", ())
         if len(vehicle_points) >= 2:
@@ -597,6 +612,14 @@ class PedestrianManager:
                 pedestrian.lod_time_accumulator = 0.0
             else:
                 pedestrian.lod_update_due = False
+            self.residents.update_lod(
+                pedestrian.resident_id,
+                pedestrian.x,
+                pedestrian.y,
+                player_car.x,
+                player_car.y,
+                dt,
+            )
 
     def ensure_taxi_stop_waiter(
         self,
@@ -924,7 +947,7 @@ class PedestrianManager:
                     pedestrian.route = list(chosen_way.points_m)
                     pedestrian.current_route_segment = seg_idx
                     pedestrian.destination = self._choose_destination(x, y, chosen_way, direction)
-                    return pedestrian
+                    return self._register_resident(pedestrian)
 
         return None
 
@@ -965,7 +988,7 @@ class PedestrianManager:
         pedestrian.route = list(way.points_m)
         pedestrian.current_route_segment = segment_idx
         pedestrian.destination = self._choose_destination(x, y, way, direction)
-        return pedestrian
+        return self._register_resident(pedestrian)
 
     def spawn_pedestrian_at_door(self, x: float, y: float) -> Optional[Pedestrian]:
         """Create a pedestrian at a mapped building entrance."""

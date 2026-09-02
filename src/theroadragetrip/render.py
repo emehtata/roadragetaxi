@@ -2479,6 +2479,7 @@ def draw_npc_cars(
     ways: Optional[List[Way]] = None,
     spatial_grid=None,
     show_debug: bool = False,
+    residents=None,
 ) -> None:
     """Draw autonomous NPC cars scaled in meters with headlights and taillights."""
     vminx, vminy, vmaxx, vmaxy = get_viewport_bounds(camx, camy, px_per_m, screen_w, screen_h, 30.0)
@@ -2590,6 +2591,21 @@ def draw_npc_cars(
                     screen, (255, 220, 80), (int(target_screen[0]), int(target_screen[1])), 4, 1
                 )
             else:
+                travel_route = getattr(npc, "travel_route", None) or ()
+                if len(travel_route) >= 2:
+                    route_screen = [
+                        world_to_screen(point[0], point[1], camx, camy, px_per_m, screen_w, screen_h)
+                        for point in travel_route
+                    ]
+                    pygame.draw.lines(screen, (100, 220, 255), False, route_screen, 1)
+                    destination_screen = route_screen[-1]
+                    pygame.draw.circle(
+                        screen,
+                        (100, 220, 255),
+                        (int(destination_screen[0]), int(destination_screen[1])),
+                        5,
+                        1,
+                    )
                 pts = getattr(npc.way, "points_m", None)
                 target_pt = None
                 if pts and getattr(npc, "direction", 1) == 1 and getattr(npc, "segment_idx", 0) + 1 < len(pts):
@@ -2611,10 +2627,21 @@ def draw_npc_cars(
                 service_type = getattr(npc.way, "service", "")
                 if service_type:
                     road_type += f"/{service_type}"
+                owner = residents.get(getattr(npc, "owner_id", None)) if residents is not None else None
+                owner_name = f"{owner.first_name} {owner.surname}" if owner is not None else "Unknown"
+                destination = getattr(npc, "destination", None)
+                if destination is not None:
+                    destination_distance = math.hypot(npc.x - destination[0], npc.y - destination[1])
+                    if getattr(npc, "destination_parking_space_id", None) is not None:
+                        destination_text = f"PARKING {npc.destination_parking_space_id} {destination_distance:.0f}m"
+                    else:
+                        destination_text = f"DEST ({destination[0]:.0f},{destination[1]:.0f}) {destination_distance:.0f}m"
+                else:
+                    destination_text = "DEST none"
                 debug_text = debug_font.render(
-                    f"{id(npc) % 1000} {debug_state} "
+                    f"{owner_name} {debug_state} "
                     f"{road_type} L{getattr(npc, 'lod_level', 0)} "
-                    f"{getattr(npc, 'speed', 0.0) * 3.6:.0f} km/h",
+                    f"{getattr(npc, 'speed', 0.0) * 3.6:.0f} km/h {destination_text}",
                     True,
                     debug_color,
                 )
@@ -2792,6 +2819,7 @@ def draw_pedestrians(
     screen_h: int = SCREEN_H,
     ways: Optional[List[Way]] = None,
     show_debug: bool = False,
+    residents=None,
 ) -> None:
     """Draw pedestrians as small top-down characters and comic cursing bubbles."""
     import pygame
@@ -2824,8 +2852,10 @@ def draw_pedestrians(
             if font:
                 crossing = getattr(ped, "crossing", None)
                 crossing_id = getattr(crossing, "id", None) if crossing is not None else "-"
+                resident = residents.get(getattr(ped, "resident_id", None)) if residents is not None else None
+                resident_name = f"{resident.first_name} {resident.surname}" if resident is not None else "Unknown"
                 debug_text = font.render(
-                    f"{getattr(ped, 'state', 'walking')} L{getattr(ped, 'lod_level', 0)} C{crossing_id}",
+                    f"{resident_name} {getattr(ped, 'state', 'walking')} L{getattr(ped, 'lod_level', 0)} C{crossing_id}",
                     True,
                     (255, 255, 255),
                 )
@@ -3444,10 +3474,24 @@ def draw_phone_offers(
                 else offer.pickup_distance_m
             )
             distance_text = f"{distance:.0f} m" if distance < 1000 else f"{distance / 1000.0:.2f} km"
+            trip_distance = math.hypot(
+                passenger.dropoff.x - passenger.pickup.x,
+                passenger.dropoff.y - passenger.pickup.y,
+            )
+            trip_distance_text = (
+                f"{trip_distance:.0f} m"
+                if trip_distance < 1000
+                else f"{trip_distance / 1000.0:.2f} km"
+            )
             label = small_font.render(f"[{index + 1}]  {passenger.name}", True, (245, 245, 240))
             pickup = small_font.render(f"{tr(language, 'pickup')}: {passenger.pickup.address}", True, (190, 205, 212))
             dropoff = small_font.render(f"{tr(language, 'to')}: {passenger.dropoff.address}", True, (170, 190, 175))
-            dist = small_font.render(f"{tr(language, 'distance_client')}: {distance_text}", True, (255, 215, 95))
+            dist = small_font.render(
+                f"{tr(language, 'distance_client')}: {distance_text} | "
+                f"{tr(language, 'distance_trip')}: {trip_distance_text}",
+                True,
+                (255, 215, 95),
+            )
             screen.blit(label, (row.x + 12, row.y + 8))
             screen.blit(pickup, (row.x + 12, row.y + 29))
             screen.blit(dropoff, (row.x + 12, row.y + 48))
