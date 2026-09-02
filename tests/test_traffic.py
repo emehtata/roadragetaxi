@@ -404,13 +404,13 @@ def test_traffic_count_scales_down_when_zoomed_in():
     assert traffic_count_for_zoom(50, px_per_m=1.0) == 50
 
 
-def test_traffic_count_is_capped_at_one_hundred():
+def test_traffic_count_is_capped_at_fifty():
     way = Way(points_m=[(0.0, 0.0), (100.0, 0.0)], highway="residential", half_width_m=4.0)
     manager = TrafficManager([way], target_count=500)
 
-    assert manager.target_count == 100
+    assert manager.target_count == 50
     manager.set_target_count(500)
-    assert manager.target_count == 100
+    assert manager.target_count == 50
 
 
 def test_npc_lod_assigns_distance_bands_and_schedules_updates():

@@ -105,7 +105,6 @@ from .render import (
     draw_npc_cars,
     draw_logical_intersections,
     draw_npc_spatial_grid,
-    draw_police_cars,
     draw_pause_menu,
     draw_parking_spaces,
     draw_settings_menu,
@@ -948,9 +947,8 @@ def main() -> None:
             enable_two_wheelers=enable_two_wheelers,
         )
         police_mgr = PoliceManager(
-            traffic_mgr, car.x, car.y, buildings=buildings, building_grid=building_grid
+            traffic_mgr, car.x, car.y, buildings=buildings, building_grid=building_grid, count=0
         )
-        logger.info("Placed %d police patrol cars among NPC traffic", len(police_mgr.cars))
 
         # Initialize autonomous Pedestrian Manager
         on_load_progress(0.98, "Preparing pedestrians...")
@@ -1306,8 +1304,6 @@ def main() -> None:
                         clock.tick()
                     elif event.key == pygame.K_F1:
                         show_help = True
-                    elif event.key == pygame.K_F2:
-                        hud_layout = default_hud_layout(screen.get_width(), screen.get_height())
                         while show_help:
                             clock.tick(30)
                             for h_ev in pygame.event.get():
@@ -1319,6 +1315,8 @@ def main() -> None:
                             draw_tutorial_screen(screen, font, SCREEN_W, SCREEN_H, language)
                             pygame.display.flip()
                         clock.tick()
+                    elif event.key == pygame.K_F2:
+                        hud_layout = default_hud_layout(screen.get_width(), screen.get_height())
                     elif event.key == pygame.K_F3:
                         show_debug_hud = not show_debug_hud
                         logger.info("Debug HUD %s", "enabled" if show_debug_hud else "disabled")
@@ -1958,7 +1956,6 @@ def main() -> None:
                     px_per_m=px_per_m,
                     intersection_manager=traffic_mgr.intersection_manager,
                 )
-            draw_police_cars(screen, police_mgr.cars, camx, camy, px_per_m=px_per_m)
             if show_navigation:
                 draw_navigation_route(screen, navigation_route, camx, camy, px_per_m=px_per_m)
             draw_taxi_target(screen, taxi_mgr, camx, camy, font, px_per_m=px_per_m, language=language)

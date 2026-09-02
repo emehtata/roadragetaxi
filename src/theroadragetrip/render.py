@@ -13,6 +13,8 @@ from .physics import Car, MAX_SPEED
 from .taxi import TaxiManager, TaxiState
 from .localization import tr
 
+MAX_VISIBLE_NPC_COUNT = 17
+
 SCREEN_W, SCREEN_H = 1280, 720
 FPS = 60
 PX_PER_M = 0.7  # Default zoom level (pixels per meter)
@@ -2497,6 +2499,7 @@ def draw_npc_cars(
             os.path.join(os.path.dirname(__file__), "assets", "moped.xpm")
         ).convert_alpha()
 
+    visible_npc_count = 0
     for npc in npcs:
         if getattr(npc, "is_police", False) or getattr(npc, "is_on_foot", False):
             continue
@@ -2520,6 +2523,9 @@ def draw_npc_cars(
             spatial_grid,
         ):
             continue
+        if visible_npc_count >= MAX_VISIBLE_NPC_COUNT:
+            continue
+        visible_npc_count += 1
 
         cx, cy = world_to_screen(npc.x, npc.y, camx, camy, px_per_m, screen_w, screen_h)
         length_m = getattr(npc, "length_m", 4.0)

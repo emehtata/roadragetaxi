@@ -124,7 +124,7 @@ python3 road_rage_trip.py --auto-fetch --fetch-margin 50 --fetch-tile-size 500
 
 On the first launch, the game creates `roadragetrip.ini` under the platform configuration directory (`$XDG_CONFIG_HOME/RoadRageTrip/` on Linux, `%APPDATA%/RoadRageTrip/` on Windows) and asks for Finnish or English. Edit that file to set the city, map fetching, zoom, logging, pedestrian, cyclist, traffic, language, audio, and police-camera values. Career progress and the total odometer are stored beside the INI file. The `[cities]` section contains editable `name = latitude, longitude` entries; add or remove cities there. Command-line options override the INI values for one launch.
 
-For example, set `preset = helsinki` under `[game]` and `traffic_count = 100` under `[traffic]` to run Helsinki with 100 NPC cars.
+For example, set `preset = helsinki` under `[game]` and `traffic_count = 50` under `[traffic]` to run Helsinki with up to 50 NPC cars. At most 17 NPC cars are drawn in the viewport at once.
 
 ### INI Settings
 
@@ -268,7 +268,7 @@ The pause menu's **Settings** screen changes language and master, background, an
 | `--fetch-margin` | Margin in meters from bounds triggering auto-fetch (default: `350.0`) |
 | `--fetch-tile-size`| Meters to expand when auto-fetching (default: `2500.0`) |
 | `--build-in-process` | Build auto-fetched map data outside the gameplay process |
-| `--traffic-count` | Target number of autonomous NPC cars (default: scales with available streets, capped at 200) |
+| `--traffic-count` | Target number of autonomous NPC cars (default: scales with available streets, capped at 50; max 17 drawn in the viewport) |
 | `--pedestrian-count` | Target number of pedestrians (default: `20`) |
 | `--cyclist-count` | Target number of cyclists (default: `8`) |
 | `--parking-density` | Fraction of regular NPC cars spawned in existing OSM parking spaces (default: `0.5`) |

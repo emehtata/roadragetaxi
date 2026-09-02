@@ -31,7 +31,7 @@ NPC_COLORS = [
     (160, 60, 180),   # Purple
     (180, 180, 190),  # Silver
 ]
-MAX_TRAFFIC_COUNT = 100
+MAX_TRAFFIC_COUNT = 50
 NPC_TAXI_COLOR = (245, 205, 35)
 NPC_LOD_NEAR_RADIUS_M = 500.0
 NPC_LOD_MEDIUM_RADIUS_M = 1500.0
@@ -832,9 +832,10 @@ class TrafficManager:
     def _resolve_npc_collisions(self) -> None:
         """Separate overlapping nearby NPC cars so traffic cannot occupy the same space."""
         self._build_npc_spatial_grid()
-        for _ in range(40):
+        for _ in range(24):
             self._build_npc_spatial_grid()
             resolved_pairs = set()
+            found_collision = False
             for npc in self.npcs:
                 for other in self._nearby_npcs(npc):
                     if other is npc or other.layer != npc.layer:
@@ -849,6 +850,7 @@ class TrafficManager:
                         other.x, other.y, other.heading, other.length_m, other.width_m,
                     ):
                         continue
+                    found_collision = True
 
                     npc.collision_recovery_timer = max(npc.collision_recovery_timer, 5.0)
                     other.collision_recovery_timer = max(other.collision_recovery_timer, 5.0)
@@ -958,6 +960,8 @@ class TrafficManager:
                         self._keep_npc_near_own_way(other)
                     npc.speed = 0.0
                     other.speed = 0.0
+            if not found_collision:
+                break
 
     @staticmethod
     def _keep_npc_near_own_way(npc: NPCCar) -> None:
