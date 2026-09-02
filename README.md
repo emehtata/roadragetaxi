@@ -294,3 +294,5 @@ Normalized map areas are stored as versioned `.rwc` files under
 `~/.cache/RoadRageTrip/world` (or the platform cache directory). Cache hits
 load game-ready geometry directly; OpenPass JSON is used only for misses or
 forced refreshes. Files are written atomically and validated with checksums.
+Run `PYTHONPATH=src python utils/benchmark_world_cache.py` to compare JSON and
+RWC timings and peak memory.

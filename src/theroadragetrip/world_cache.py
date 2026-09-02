@@ -188,6 +188,7 @@ class BinaryWorldCacheLoader:
 
     def load(self, path: str | os.PathLike[str]) -> Any:
         from .osm import MapData
+        started = time.perf_counter()
         target = Path(path)
         raw = target.read_bytes()
         if len(raw) < _HEADER.size:
@@ -261,17 +262,26 @@ class BinaryWorldCacheLoader:
                 light for light in restored["traffic_lights"] if light.id in light_ids
             ]
             restored["logical_intersections"].append(osm.LogicalIntersection(**record))
-        return MapData(**restored)
+        world = MapData(**restored)
+        logger.info(
+            "[WorldCache] Loaded %s in %.1f ms: nodes=%d roads=%d buildings=%d parking spaces=%d",
+            target.name, (time.perf_counter() - started) * 1000.0,
+            sum(len(way.points_m) for way in world.ways), len(world.ways),
+            len(world.buildings), len(world.parking_spaces),
+        )
+        return world
 
 
 class WorldCacheManager:
     """Central cache hit/miss manager, including safe background preloading."""
 
     def __init__(self, cache_dir: str | os.PathLike[str] | None = None,
-                 fetch_func: Callable | None = None, build_func: Callable | None = None):
+                 fetch_func: Callable | None = None, build_func: Callable | None = None,
+                 cache_ttl: float | None = None):
         self.cache_dir = Path(cache_dir or (Path.home() / ".cache" / "RoadRageTrip" / "world"))
         self.fetch_func = fetch_func
         self.build_func = build_func
+        self.cache_ttl = cache_ttl
         self.writer = BinaryWorldCacheWriter()
         self.loader = BinaryWorldCacheLoader()
         self._executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="world-cache")
@@ -286,12 +296,17 @@ class WorldCacheManager:
         return self.cache_dir / f"{area_id}.rwc"
 
     def load_area(self, area_id: str, bbox=None, *, force_refresh: bool = False, **kwargs) -> Any:
+        started = time.perf_counter()
         path = self.path_for(area_id)
-        if not force_refresh and path.exists():
+        fresh = path.exists() and (
+            self.cache_ttl is None or time.time() - path.stat().st_mtime <= self.cache_ttl
+        )
+        if not force_refresh and fresh:
             try:
                 world = self.loader.load(path)
                 logger.info("[WorldCache] Cache hit %s (%d roads, %d buildings)",
                             area_id, len(world.ways), len(world.buildings))
+                logger.info("[WorldCache] Area %s ready in %.1f ms", area_id, (time.perf_counter() - started) * 1000.0)
                 return world
             except (OSError, InvalidWorldCache, TypeError, ValueError) as error:
                 logger.warning("[WorldCache] Invalid cache %s: %s", path, error)
@@ -299,12 +314,15 @@ class WorldCacheManager:
                     path.unlink()
                 except OSError:
                     pass
+        elif path.exists() and not fresh:
+            logger.info("[WorldCache] Cache expired %s", path)
         if self.fetch_func is None or self.build_func is None or bbox is None:
             raise FileNotFoundError(f"no valid world cache for {area_id}")
         logger.info("[WorldCache] Cache miss %s; downloading OpenPass JSON", area_id)
         elements = self.fetch_func(bbox, **kwargs)
         world = self.build_func(elements)
         self.writer.write(path, world, area_id=area_id)
+        logger.info("[WorldCache] Cache created %s in %.1f ms", path, (time.perf_counter() - started) * 1000.0)
         return world
 
     def preload(self, area_id: str, bbox=None, **kwargs) -> Future:

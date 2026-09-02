@@ -839,6 +839,7 @@ def main() -> None:
         # Load map
         try:
             world_cache = WorldCacheManager(
+                cache_ttl=float(os.getenv("OSM_CACHE_TTL", 24 * 3600)),
                 fetch_func=lambda fetch_bbox, **fetch_kwargs: fetch_osm_ways(
                     fetch_bbox, endpoints=overpass_endpoints, progress_callback=on_load_progress,
                     **fetch_kwargs
@@ -1016,6 +1017,7 @@ def main() -> None:
             fetch_func=lambda fetch_bbox: fetch_osm_ways(fetch_bbox, endpoints=overpass_endpoints),
             build_func=build_ways,
             build_in_process=args.build_in_process,
+            world_cache_manager=world_cache,
         )
         on_load_progress(1.0, "Ready")
         logger.info("Entering gameplay loop")

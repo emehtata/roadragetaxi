@@ -2191,6 +2191,7 @@ class AutoFetchManager:
         build_func=build_ways,
         cooldown_s: float = 5.0,
         build_in_process: bool = False,
+        world_cache_manager=None,
     ):
         self.ways = ways
         self.waters = waters if waters is not None else []
@@ -2207,6 +2208,7 @@ class AutoFetchManager:
         self.build_func = build_func
         self.cooldown_s = cooldown_s
         self.build_in_process = build_in_process
+        self.world_cache_manager = world_cache_manager
         self.lock = threading.Lock()
         self.is_fetching = False
         self.fetch_progress = 0.0
@@ -2414,24 +2416,23 @@ class AutoFetchManager:
         try:
             with self.lock:
                 self.fetch_progress = 0.25
-            elems = load_osm_cache(
-                (south, west, north, east),
-                point=(car_lat, car_lon),
-            )
-            if elems is None:
-                logger.info(
-                    "Auto-fetch cache miss at car point (%.6f, %.6f); requesting network",
-                    car_lat, car_lon,
-                )
-                elems = self.fetch_func((south, west, north, east))
+            area_bbox = (south, west, north, east)
+            if self.world_cache_manager is not None:
+                area_id = self.world_cache_manager.area_id(area_bbox)
+                res = self.world_cache_manager.load_area(area_id, area_bbox)
+                elems = None
             else:
-                logger.info(
-                    "Auto-fetch cache hit at car point (%.6f, %.6f); network skipped",
-                    car_lat, car_lon,
-                )
+                elems = load_osm_cache(area_bbox, point=(car_lat, car_lon))
+                if elems is None:
+                    logger.info("Auto-fetch cache miss at car point (%.6f, %.6f); requesting network", car_lat, car_lon)
+                    elems = self.fetch_func(area_bbox)
+                else:
+                    logger.info("Auto-fetch cache hit at car point (%.6f, %.6f); network skipped", car_lat, car_lon)
             with self.lock:
                 self.fetch_progress = 0.65
-            if self.build_in_process:
+            if self.world_cache_manager is not None:
+                pass
+            elif self.build_in_process:
                 context = multiprocessing.get_context("spawn")
                 try:
                     with concurrent.futures.ProcessPoolExecutor(max_workers=1, mp_context=context) as executor:
