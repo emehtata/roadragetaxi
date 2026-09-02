@@ -113,6 +113,28 @@ def test_reserved_pedestrian_walks_to_vehicle_and_enters():
     assert vehicle.state == "occupied"
 
 
+def test_pedestrian_with_vehicle_goal_starts_nearby_vehicle_reservation():
+    way = Way(points_m=[(0.0, 0.0), (100.0, 0.0)], highway="footway", half_width_m=1.5)
+    vehicle = SimpleNamespace(
+        x=8.0,
+        y=0.0,
+        heading=0.0,
+        width_m=1.8,
+        state="parked",
+        reserved_by_pedestrian_id=None,
+        current_driver_id=None,
+    )
+    manager = PedestrianManager([way], target_count=0, traffic_vehicles=[vehicle])
+    pedestrian = Pedestrian(0.0, 0.0, 0.0, 2.0, 2.0, way, 0, 1, (1, 1, 1), wants_vehicle=True)
+    manager.pedestrians = [pedestrian]
+
+    manager.update(Car(0.0, 0.0, 0.0, 0.0), dt=0.1)
+
+    assert pedestrian.state == "approaching_vehicle"
+    assert pedestrian.reserved_vehicle_id == id(vehicle)
+    assert vehicle.state == "reserved"
+
+
 def test_pedestrian_in_vehicle_follows_vehicle_position():
     way = Way(points_m=[(0.0, 0.0), (100.0, 0.0)], highway="footway", half_width_m=1.5)
     vehicle = SimpleNamespace(

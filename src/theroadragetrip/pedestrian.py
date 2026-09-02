@@ -78,6 +78,7 @@ class Pedestrian:
     dodge_vy: float = 0.0
     dodge_timer: float = 0.0
     wants_taxi: bool = False
+    wants_vehicle: bool = False
     taxi_stop_target: Optional[Tuple[float, float]] = None
     is_walking_to_taxi_stop: bool = False
     is_taxi_stop_waiter: bool = False
@@ -786,6 +787,7 @@ class PedestrianManager:
                         sway_frequency=random.uniform(3.5, 4.5),
                         pace_timer=random.uniform(1.0, 4.0),
                         wants_taxi=random.random() < 0.05,
+                        wants_vehicle=random.random() < 0.05,
                     )
                     pedestrian.route = list(chosen_way.points_m)
                     pedestrian.current_route_segment = seg_idx
@@ -1117,6 +1119,11 @@ class PedestrianManager:
                     ped.x = vehicle.x
                     ped.y = vehicle.y
                 continue
+            if ped.state == "walking" and getattr(ped, "wants_vehicle", False):
+                vehicle = self.find_available_parked_vehicle(ped.x, ped.y)
+                if vehicle is not None and self.reserve_parked_vehicle(ped, vehicle):
+                    ped.wants_vehicle = False
+                    continue
             if ped.reserved_vehicle_id is not None:
                 vehicles = self.traffic_manager.npcs if self.traffic_manager is not None else self.traffic_vehicles
                 vehicle = next((candidate for candidate in vehicles if id(candidate) == ped.reserved_vehicle_id), None)
