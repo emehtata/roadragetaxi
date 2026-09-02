@@ -438,7 +438,7 @@ class PedestrianManager:
         pedestrian.animation_state = "idle"
         return True
 
-    def exit_vehicle(self, pedestrian: Pedestrian, vehicle) -> bool:
+    def exit_vehicle(self, pedestrian: Pedestrian, vehicle, animate: bool = False) -> bool:
         """Return a pedestrian beside an occupied vehicle and resume normal driving."""
         if (
             pedestrian.current_vehicle_id != id(vehicle)
@@ -452,9 +452,11 @@ class PedestrianManager:
         pedestrian.vehicle_destination = None
         pedestrian.destination = None
         pedestrian.speed = 0.0
-        pedestrian.state = PedestrianState.EXITING_VEHICLE.value
+        pedestrian.state = (
+            PedestrianState.EXITING_VEHICLE.value if animate else PedestrianState.WALKING.value
+        )
         pedestrian.animation_state = "walking"
-        pedestrian.vehicle_entry_timer = 0.35
+        pedestrian.vehicle_entry_timer = 0.35 if animate else 0.0
         if self.traffic_manager is not None:
             self.traffic_manager.activate_occupied_vehicle(vehicle)
         else:
