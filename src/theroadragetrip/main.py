@@ -851,6 +851,7 @@ def main() -> None:
             )
             crossings = getattr(res, "crossings", [])
             stop_signs = getattr(res, "stop_signs", [])
+            yield_signs = getattr(res, "yield_signs", [])
             if len(res) == 8:
                 ways, waters, buildings, sceneries, places, bounds, traffic_lights, crossings = res
             elif len(res) == 7:
@@ -858,6 +859,7 @@ def main() -> None:
             else:
                 ways, waters, buildings, sceneries, places, bounds = res[:6]
                 traffic_lights = getattr(res, "traffic_lights", [])
+                yield_signs = getattr(res, "yield_signs", [])
         except Exception as e:
             logger.error("Failed to load OSM data: %s", e)
             sys.exit(1)
@@ -931,6 +933,7 @@ def main() -> None:
             target_count=traffic_count,
             traffic_lights=traffic_lights,
             stop_signs=stop_signs,
+            yield_signs=yield_signs,
             crossings=crossings,
             parking_spaces=parking_spaces,
             parking_density=args.parking_density,

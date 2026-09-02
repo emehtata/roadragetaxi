@@ -12,6 +12,7 @@ from .osm import (
     ParkingSpace,
     SignalGroup,
     StopSign,
+    YieldSign,
     TrafficLight,
     Way,
     build_logical_intersections,
@@ -298,6 +299,7 @@ class TrafficManager:
         despawn_radius_m: float = 450.0,
         traffic_lights: Optional[List[TrafficLight]] = None,
         stop_signs: Optional[List[StopSign]] = None,
+        yield_signs: Optional[List[YieldSign]] = None,
         crossings: Optional[List] = None,
         parking_spaces: Optional[List] = None,
         parking_density: float = 0.5,
@@ -312,6 +314,7 @@ class TrafficManager:
         self.min_spawn_dist_to_npc_m: float = 6.0
         self.traffic_lights = traffic_lights if traffic_lights is not None else []
         self.stop_signs = stop_signs if stop_signs is not None else []
+        self.yield_signs = yield_signs if yield_signs is not None else []
         self.crossings = crossings if crossings is not None else []
         self.parking_spaces = parking_spaces if parking_spaces is not None else []
         self.parking_density = max(0.0, min(1.0, parking_density))
@@ -1256,6 +1259,28 @@ class TrafficManager:
                 return True
         return False
 
+    def _junction_is_clear_for(self, npc: NPCCar, junction_point: Tuple[float, float]) -> bool:
+        """Apply Finnish yield-to-right rule to an uncontrolled approach."""
+        for other in self.npcs:
+            if other is npc or other.layer != npc.layer or not other.has_driver():
+                continue
+            dx = other.x - junction_point[0]
+            dy = other.y - junction_point[1]
+            distance = math.hypot(dx, dy)
+            if distance > 24.0:
+                continue
+            toward_x = -dx / max(distance, 1e-6)
+            toward_y = -dy / max(distance, 1e-6)
+            if math.cos(other.heading) * toward_x + math.sin(other.heading) * toward_y < 0.5:
+                continue
+            right_x = math.sin(npc.heading)
+            right_y = -math.cos(npc.heading)
+            relative_x = other.x - npc.x
+            relative_y = other.y - npc.y
+            if relative_x * right_x + relative_y * right_y > 0.0:
+                return False
+        return True
+
     def _junction_near_point(self, point: Tuple[float, float], layer: int) -> bool:
         """Return whether point is inside a shared same-layer junction."""
         cx = int(math.floor(point[0] / self._junction_grid_cell_size))
@@ -1863,6 +1888,7 @@ class TrafficManager:
             nearest_light = None
             stop_distance = None
             nearest_stop_sign = None
+            nearest_yield_sign = None
             passed_matching_light = False
             logical_approach = self.traffic_light_manager.find_approach(npc)
             if logical_approach is not None:
@@ -1910,6 +1936,16 @@ class TrafficManager:
             elif npc.stop_sign_id is not None:
                 npc.stop_sign_id = None
                 npc.stop_sign_wait_timer = 0.0
+            for yield_sign in self.yield_signs:
+                if getattr(yield_sign, "layer", 0) != npc.layer:
+                    continue
+                sign_dx = yield_sign.x - npc.x
+                sign_dy = yield_sign.y - npc.y
+                sign_longitudinal = sign_dx * heading_x + sign_dy * heading_y
+                sign_lateral = abs(sign_dx * -heading_y + sign_dy * heading_x)
+                if 0.0 < sign_longitudinal < 30.0 and sign_lateral <= 5.0:
+                    if nearest_yield_sign is None or sign_longitudinal < nearest_yield_sign[0]:
+                        nearest_yield_sign = (sign_longitudinal, yield_sign)
             for tl in self._nearby_traffic_lights(npc.x, npc.y) if logical_approach is None else []:
                 if tl.layer != npc.layer:
                     continue
@@ -1972,6 +2008,12 @@ class TrafficManager:
                         7.0 < distance_to_junction < 20.0
                         and self._junction_is_occupied(junction_point, npc)
                     )
+                    if (
+                        nearest_yield_sign is not None
+                        and distance_to_junction < 20.0
+                        and not self._junction_is_clear_for(npc, junction_point)
+                    ):
+                        junction_blocked = True
 
             # Continue through the junction if the NPC has already entered it.
             if self._junction_near_point((npc.x, npc.y), npc.layer):
@@ -2010,6 +2052,8 @@ class TrafficManager:
                 action = "stopping"
                 if nearest_stop_sign is not None:
                     reason = "stop sign"
+                elif nearest_yield_sign is not None:
+                    reason = "yield sign"
                 elif nearest_light is not None:
                     reason = "red/yellow traffic light"
                 else:

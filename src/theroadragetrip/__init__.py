@@ -23,6 +23,7 @@ from .osm import (
     Scenery,
     TaxiStop,
     TrafficLight,
+    YieldSign,
     SignalGroup,
     Water,
     Way,
@@ -105,6 +106,7 @@ __all__ = [
     "TaxiStop",
     "Place",
     "TrafficLight",
+    "YieldSign",
     "SignalGroup",
     "IntersectionApproach",
     "LogicalIntersection",
@@ -166,4 +168,3 @@ __all__ = [
     # Main
     "main",
 ]
-

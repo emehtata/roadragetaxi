@@ -459,6 +459,16 @@ class StopSign:
     id: Optional[int] = None
 
 
+@dataclass
+class YieldSign:
+    """OSM give-way sign position used by NPC approach logic."""
+
+    x: float
+    y: float
+    layer: int = 0
+    id: Optional[int] = None
+
+
 def deduplicate_traffic_lights(traffic_lights: List[TrafficLight]) -> List[TrafficLight]:
     """Keep at most one OSM signal for each approach of a junction."""
     kept: List[TrafficLight] = []
@@ -1155,10 +1165,10 @@ def _stitch_member_ways_into_rings(
 class MapData(tuple):
     """Container tuple for build_ways results returning 6 elements for backward compatibility while providing traffic_lights and crossings via attributes and slicing."""
 
-    def __new__(cls, ways, waters, buildings, sceneries, places, bounds, traffic_lights=None, crossings=None, taxi_stops=None, bus_stops=None, parking_spaces=None, logical_intersections=None, stop_signs=None):
+    def __new__(cls, ways, waters, buildings, sceneries, places, bounds, traffic_lights=None, crossings=None, taxi_stops=None, bus_stops=None, parking_spaces=None, logical_intersections=None, stop_signs=None, yield_signs=None):
         return super().__new__(cls, (ways, waters, buildings, sceneries, places, bounds))
 
-    def __init__(self, ways, waters, buildings, sceneries, places, bounds, traffic_lights=None, crossings=None, taxi_stops=None, bus_stops=None, parking_spaces=None, logical_intersections=None, stop_signs=None):
+    def __init__(self, ways, waters, buildings, sceneries, places, bounds, traffic_lights=None, crossings=None, taxi_stops=None, bus_stops=None, parking_spaces=None, logical_intersections=None, stop_signs=None, yield_signs=None):
         self.ways = ways
         self.waters = waters
         self.buildings = buildings
@@ -1172,6 +1182,7 @@ class MapData(tuple):
         self.parking_spaces = parking_spaces if parking_spaces is not None else []
         self.logical_intersections = logical_intersections if logical_intersections is not None else []
         self.stop_signs = stop_signs if stop_signs is not None else []
+        self.yield_signs = yield_signs if yield_signs is not None else []
 
     @property
     def traffic_signals(self):
@@ -1248,6 +1259,7 @@ def build_ways(
     named_nodes_raw: List[Tuple[dict, int]] = []
     traffic_signals_raw: List[Tuple[dict, int]] = []
     stop_signs_raw: List[Tuple[dict, int]] = []
+    yield_signs_raw: List[Tuple[dict, int]] = []
     crossings_raw: List[Tuple[dict, int]] = []
     taxi_stops_raw: List[Tuple[dict, int]] = []
     bus_stops_raw: List[Tuple[dict, int]] = []
@@ -1279,6 +1291,8 @@ def build_ways(
                 traffic_signals_raw.append((tags, nid))
             if tags.get("highway") == "stop":
                 stop_signs_raw.append((tags, nid))
+            if tags.get("highway") == "give_way":
+                yield_signs_raw.append((tags, nid))
             if tags.get("highway") == "taxi_stop" or tags.get("amenity") == "taxi":
                 taxi_stops_raw.append((tags, nid))
             if include_bus_stops and (tags.get("highway") == "bus_stop" or tags.get("public_transport") in ("platform", "stop_position")):
@@ -1360,6 +1374,7 @@ def build_ways(
     places: List[Place] = []
     traffic_lights: List[TrafficLight] = []
     stop_signs: List[StopSign] = []
+    yield_signs: List[YieldSign] = []
     crossings: List[Crossing] = []
     taxi_stops: List[TaxiStop] = []
     bus_stops: List[BusStop] = []
@@ -1959,6 +1974,15 @@ def build_ways(
         except (TypeError, ValueError):
             pass
         stop_signs.append(StopSign(point[0], point[1], layer=layer_value, id=nid))
+    for tags, nid in yield_signs_raw:
+        point = nodes_m.get(nid)
+        if point is None:
+            continue
+        try:
+            layer_value = int(tags.get("layer", 0))
+        except (TypeError, ValueError):
+            layer_value = 0
+        yield_signs.append(YieldSign(point[0], point[1], layer=layer_value, id=nid))
 
     # 9. Pedestrian Crossings (suojatiet) from OSM nodes and ways
     if crossings_raw:
@@ -2086,7 +2110,7 @@ def build_ways(
 
     return MapData(
         ways, waters, buildings, sceneries, places, (minx, miny, maxx, maxy),
-        traffic_lights, crossings, taxi_stops, bus_stops, parking_spaces, logical_intersections, stop_signs,
+        traffic_lights, crossings, taxi_stops, bus_stops, parking_spaces, logical_intersections, stop_signs, yield_signs,
     )
 
 
