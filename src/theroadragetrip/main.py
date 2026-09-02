@@ -814,9 +814,16 @@ def main() -> None:
             sun_longitude,
         )
 
+        last_progress_draw = 0.0
+
         def on_load_progress(fraction: float, message: str) -> None:
+            nonlocal last_progress_draw
+            now = time.monotonic()
+            if fraction < 1.0 and now - last_progress_draw < 0.1:
+                return
             draw_loading_screen(screen, font, fraction, message)
             pygame.display.flip()
+            last_progress_draw = now
             for ev in pygame.event.get():
                 if ev.type == pygame.QUIT:
                     pygame.quit()

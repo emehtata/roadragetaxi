@@ -345,7 +345,6 @@ class TrafficManager:
         self._taxi_stop_spawns: set[Tuple[float, float, object]] = set()
         self._taxi_stop_targets: dict[Tuple[float, float, object], int] = {}
         self._build_spatial_indices()
-        self._build_route_graph()
 
     def _build_route_graph(self) -> None:
         """Build the immutable vertex graph used by navigation routing."""
