@@ -925,6 +925,18 @@ def test_uncontrolled_left_turn_yields_to_oncoming_traffic():
     assert manager._junction_is_clear_for(turning, (0.0, 0.0)) is False
 
 
+def test_parked_npc_does_not_block_uncontrolled_junction():
+    approach = Way(points_m=[(-30.0, 0.0), (0.0, 0.0)], highway="secondary", half_width_m=4.0)
+    parked_way = Way(points_m=[(0.0, -30.0), (0.0, 0.0)], highway="service", half_width_m=4.0)
+    approaching = NPCCar(-10.0, 0.0, 0.0, 4.0, approach, 0, 1, 10.0, (0, 0, 0))
+    parked = NPCCar(0.0, -8.0, math.pi / 2.0, 0.0, parked_way, 0, 1, 0.0, (0, 0, 0), state="parked")
+    manager = TrafficManager([approach, parked_way])
+    manager.npcs = [approaching, parked]
+
+    assert manager._junction_is_clear_for(approaching, (0.0, 0.0)) is True
+    assert manager._junction_is_occupied((0.0, 0.0), approaching) is False
+
+
 def test_priority_road_has_right_of_way_over_uncontrolled_approach():
     priority = Way(points_m=[(30.0, 0.0), (0.0, 0.0)], highway="primary", half_width_m=4.0, priority_road=True)
     side = Way(points_m=[(0.0, -30.0), (0.0, 0.0)], highway="residential", half_width_m=4.0)

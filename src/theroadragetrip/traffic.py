@@ -1383,7 +1383,7 @@ class TrafficManager:
     def _junction_is_occupied(self, junction_point: Tuple[float, float], npc: NPCCar) -> bool:
         """Check whether another same-layer NPC is still inside a junction."""
         for other in self.npcs:
-            if other is npc or other.layer != npc.layer:
+            if other is npc or other.layer != npc.layer or other.state in {"parked", "reserved", "parking"}:
                 continue
             if math.hypot(other.x - junction_point[0], other.y - junction_point[1]) < 12.0:
                 return True
@@ -1415,7 +1415,12 @@ class TrafficManager:
         npc_priority = bool(getattr(npc.way, "priority_road", False))
         npc_turn = self._planned_turn_direction(npc)
         for other in self.npcs:
-            if other is npc or other.layer != npc.layer or not other.has_driver():
+            if (
+                other is npc
+                or other.layer != npc.layer
+                or other.state in {"parked", "reserved", "parking"}
+                or not other.has_driver()
+            ):
                 continue
             dx = other.x - junction_point[0]
             dy = other.y - junction_point[1]
