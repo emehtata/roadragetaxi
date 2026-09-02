@@ -17,8 +17,8 @@ from theroadragetrip.physics import Car
 
 def test_pedestrian_network_routes_across_connected_ways():
     network = PedestrianNetwork([
-        Way(points_m=[(0.0, 0.0), (10.0, 0.0)], highway="footway"),
-        Way(points_m=[(10.0, 0.0), (10.0, 10.0)], highway="footway"),
+        Way(points_m=[(0.0, 0.0), (10.0, 0.0)], highway="footway", half_width_m=2.0),
+        Way(points_m=[(10.0, 0.0), (10.0, 10.0)], highway="footway", half_width_m=2.0),
     ])
 
     route = network.route((0.0, 0.0), (10.0, 10.0))

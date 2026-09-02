@@ -250,7 +250,7 @@ def test_logical_intersection_uses_only_incoming_directions_on_oneway_carriagewa
     }
 
 
-def test_synthetic_signals_skip_reverse_arms_of_divided_carriageways():
+def test_synthetic_signals_keep_valid_arms_of_divided_carriageways():
     eastbound = Way(
         points_m=[(-100.0, 0.0), (100.0, 0.0)],
         highway="primary",
@@ -275,12 +275,17 @@ def test_synthetic_signals_skip_reverse_arms_of_divided_carriageways():
     )
 
     synthetic = [light for light in generated if light.id != 1]
-    assert len(synthetic) == 3
+    assert len(synthetic) == 4
     assert all(light.direction_angle is not None for light in synthetic)
     assert {
         round(light.direction_angle % (2.0 * math.pi), 6)
         for light in synthetic
-    } == {round(math.pi, 6), round(math.pi / 2.0, 6), round(3.0 * math.pi / 2.0, 6)}
+    } == {
+        0.0,
+        round(math.pi, 6),
+        round(math.pi / 2.0, 6),
+        round(3.0 * math.pi / 2.0, 6),
+    }
 
 
 def test_build_ways_splits_single_signal_at_four_arm_junction():
