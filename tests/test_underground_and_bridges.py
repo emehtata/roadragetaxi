@@ -38,7 +38,8 @@ def test_underground_parking_aisles_remain_drivable():
     ways, _, _, _, _, _ = build_ways(elements)
     assert len(ways) == 2
     assert {way.name for way in ways} == {"Normal Street", None}
-    assert ways[1].service == "parking_aisle"
+    parking_aisles = [way for way in ways if way.service == "parking_aisle"]
+    assert len(parking_aisles) == 1
 
 
 def test_bridge_cross_layer_collision_isolation():
