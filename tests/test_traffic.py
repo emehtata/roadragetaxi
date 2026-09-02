@@ -937,6 +937,18 @@ def test_parked_npc_does_not_block_uncontrolled_junction():
     assert manager._junction_is_occupied((0.0, 0.0), approaching) is False
 
 
+def test_stopped_junction_queue_has_deterministic_deadlock_breaker():
+    horizontal = Way(points_m=[(-30.0, 0.0), (0.0, 0.0)], highway="secondary", half_width_m=4.0)
+    vertical = Way(points_m=[(0.0, -30.0), (0.0, 0.0)], highway="secondary", half_width_m=4.0)
+    first = NPCCar(-10.0, 0.0, 0.0, 0.0, horizontal, 0, 1, 10.0, (0, 0, 0), junction_wait_timer=2.5)
+    second = NPCCar(0.0, -10.0, math.pi / 2.0, 0.0, vertical, 0, 1, 10.0, (0, 0, 0), junction_wait_timer=2.5)
+    manager = TrafficManager([horizontal, vertical])
+    manager.npcs = [first, second]
+
+    assert manager._junction_deadlock_can_proceed(first, (0.0, 0.0)) is True
+    assert manager._junction_deadlock_can_proceed(second, (0.0, 0.0)) is False
+
+
 def test_priority_road_has_right_of_way_over_uncontrolled_approach():
     priority = Way(points_m=[(30.0, 0.0), (0.0, 0.0)], highway="primary", half_width_m=4.0, priority_road=True)
     side = Way(points_m=[(0.0, -30.0), (0.0, 0.0)], highway="residential", half_width_m=4.0)

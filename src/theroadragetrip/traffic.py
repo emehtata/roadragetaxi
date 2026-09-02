@@ -122,6 +122,7 @@ class NPCCar:
     parking_route_index: int = 0
     parking_stuck_timer: float = 0.0
     parking_last_distance: Optional[float] = None
+    junction_wait_timer: float = 0.0
     stop_sign_id: Optional[int] = None
     stop_sign_wait_timer: float = 0.0
     reserved_by_pedestrian_id: Optional[int] = None
@@ -1448,6 +1449,19 @@ class TrafficManager:
                 return False
         return True
 
+    def _junction_deadlock_can_proceed(self, npc: NPCCar, junction_point: Tuple[float, float]) -> bool:
+        """Let one fully stopped queue leader break a mutual junction wait."""
+        candidates = []
+        for other in self.npcs:
+            if other.layer != npc.layer or other.state in {"parked", "reserved", "parking"} or not other.has_driver():
+                continue
+            if math.hypot(other.x - junction_point[0], other.y - junction_point[1]) > 24.0:
+                continue
+            if other.speed > 1.0:
+                return False
+            candidates.append(other)
+        return bool(candidates) and candidates[0] is npc
+
     def _junction_near_point(self, point: Tuple[float, float], layer: int) -> bool:
         """Return whether point is inside a shared same-layer junction."""
         cx = int(math.floor(point[0] / self._junction_grid_cell_size))
@@ -2209,6 +2223,17 @@ class TrafficManager:
                             must_stop = stop_distance >= -1.0
                         else:
                             yield_slowdown = 0.6
+
+                    if junction_blocked:
+                        npc.junction_wait_timer += dt
+                        if (
+                            npc.junction_wait_timer >= 2.5
+                            and self._junction_deadlock_can_proceed(npc, junction_point)
+                        ):
+                            junction_blocked = False
+                            npc.debug_waiting_for = ""
+                    else:
+                        npc.junction_wait_timer = 0.0
 
             # Continue through the junction if the NPC has already entered it.
             if self._junction_near_point((npc.x, npc.y), npc.layer):
