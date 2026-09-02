@@ -102,7 +102,10 @@ def test_reserved_pedestrian_walks_to_vehicle_and_enters():
     manager.pedestrians = [pedestrian]
 
     assert manager.reserve_parked_vehicle(pedestrian, vehicle)
-    for _ in range(10):
+    assert pedestrian.route is not None
+    assert pedestrian.route[0] == (0.0, 0.0)
+    assert pedestrian.route[-1] == manager._vehicle_entry_position(vehicle)
+    for _ in range(15):
         manager.update(Car(0.0, 0.0, 0.0, 0.0), dt=0.5)
 
     assert pedestrian.current_vehicle_id == id(vehicle)

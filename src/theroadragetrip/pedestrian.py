@@ -255,9 +255,34 @@ class PedestrianManager:
         vehicle.state = "reserved"
         pedestrian.reserved_vehicle_id = id(vehicle)
         pedestrian.destination = self._vehicle_entry_position(vehicle)
+        pedestrian.route = self._vehicle_approach_route(pedestrian, pedestrian.destination)
+        pedestrian.current_route_segment = 1
         pedestrian.state = "approaching_vehicle"
         pedestrian.animation_state = "walking"
         return True
+
+    def _vehicle_approach_route(
+        self,
+        pedestrian: Pedestrian,
+        entry_position: Tuple[float, float],
+    ) -> List[Tuple[float, float]]:
+        """Build a short mapped-footway approach followed by the final door step."""
+        nearest = None
+        nearest_distance = float("inf")
+        for way in self.ped_ways:
+            for p1, p2 in zip(way.points_m, way.points_m[1:]):
+                point_x, point_y, _, distance = closest_point_and_dist_to_segment(
+                    entry_position[0], entry_position[1], p1[0], p1[1], p2[0], p2[1]
+                )
+                if distance < nearest_distance:
+                    nearest = (point_x, point_y)
+                    nearest_distance = distance
+        route = [(pedestrian.x, pedestrian.y)]
+        if nearest is not None and math.hypot(nearest[0] - route[0][0], nearest[1] - route[0][1]) > 0.01:
+            route.append(nearest)
+        if math.hypot(entry_position[0] - route[-1][0], entry_position[1] - route[-1][1]) > 0.01:
+            route.append(entry_position)
+        return route
 
     @staticmethod
     def _vehicle_entry_position(vehicle) -> Tuple[float, float]:
@@ -1108,18 +1133,22 @@ class PedestrianManager:
                         self.enter_reserved_vehicle(ped, vehicle)
                     continue
                 else:
-                    entry_x, entry_y = self._vehicle_entry_position(vehicle)
-                    ped.destination = (entry_x, entry_y)
-                    distance = math.hypot(entry_x - ped.x, entry_y - ped.y)
+                    route = ped.route or [(ped.x, ped.y), self._vehicle_entry_position(vehicle)]
+                    route_index = min(max(1, ped.current_route_segment), len(route) - 1)
+                    target_x, target_y = route[route_index]
+                    distance = math.hypot(target_x - ped.x, target_y - ped.y)
                     if distance <= 1.0:
-                        ped.x = entry_x
-                        ped.y = entry_y
+                        ped.x = target_x
+                        ped.y = target_y
+                        ped.current_route_segment = route_index + 1
+                        if ped.current_route_segment < len(route):
+                            continue
                         ped.speed = 0.0
                         ped.state = "entering_vehicle"
                         ped.animation_state = "idle"
                         ped.vehicle_entry_timer = 0.4
                         continue
-                    ped.heading = math.atan2(entry_y - ped.y, entry_x - ped.x)
+                    ped.heading = math.atan2(target_y - ped.y, target_x - ped.x)
                     ped.speed = ped.base_speed
                     step = min(distance, ped.speed * update_dt)
                     ped.x += math.cos(ped.heading) * step
