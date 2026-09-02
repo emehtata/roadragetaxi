@@ -41,6 +41,17 @@ def test_build_ways_transforms():
     assert w.highway == "residential"
 
 
+def test_build_ways_parses_osm_yield_sign():
+    result = build_ways([
+        {"type": "node", "id": 7, "lat": 60.0, "lon": 25.0,
+         "tags": {"highway": "give_way", "layer": "1"}},
+    ])
+
+    assert len(result.yield_signs) == 1
+    assert result.yield_signs[0].x == 25.0 * 1000.0
+    assert result.yield_signs[0].layer == 1
+
+
 def test_build_ways_parses_building_entrance_nodes():
     elements = [
         {"type": "node", "id": 1, "lat": 60.0, "lon": 25.0},

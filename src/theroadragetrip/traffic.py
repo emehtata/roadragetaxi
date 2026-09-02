@@ -2008,9 +2008,10 @@ class TrafficManager:
                         7.0 < distance_to_junction < 20.0
                         and self._junction_is_occupied(junction_point, npc)
                     )
+                    uncontrolled_approach = logical_approach is None and nearest_stop_sign is None
                     if (
-                        nearest_yield_sign is not None
-                        and distance_to_junction < 20.0
+                        distance_to_junction < 20.0
+                        and (nearest_yield_sign is not None or uncontrolled_approach)
                         and not self._junction_is_clear_for(npc, junction_point)
                     ):
                         junction_blocked = True
