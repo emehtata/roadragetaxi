@@ -59,6 +59,10 @@ def test_activating_occupied_npc_clears_driver_and_parking_state():
     assert manager.activate_occupied_vehicle(npc)
     assert npc.state == "driving"
     assert npc.current_driver_id is None
+    assert npc.parking_space_id == manager.parking_space_id(parking_space)
+    assert parking_space.occupied is True
+    npc.x = 20.0
+    manager.update(Car(x=20.0, y=0.0, heading=0.0, speed=0.0), dt=0.0)
     assert npc.parking_space_id is None
     assert parking_space.occupied is False
 

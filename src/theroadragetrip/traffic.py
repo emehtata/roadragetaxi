@@ -105,6 +105,7 @@ class NPCCar:
     debug_in_view: Optional[bool] = None
     reserved_intersection_id: Optional[str] = None
     parking_space_id: Optional[int] = None
+    parking_departure_pending: bool = False
     reserved_by_pedestrian_id: Optional[int] = None
     current_driver_id: Optional[int] = None
 
@@ -395,6 +396,7 @@ class TrafficManager:
         parking_space.reserved_by_pedestrian_id = None
         parking_space.vehicle_id = id(npc)
         npc.parking_space_id = self.parking_space_id(parking_space)
+        npc.parking_departure_pending = False
         npc.state = "parked"
         npc.speed = 0.0
         npc.target_speed = 0.0
@@ -413,13 +415,18 @@ class TrafficManager:
                 parking_space.reserved_by_pedestrian_id = None
                 break
         npc.parking_space_id = None
+        npc.parking_departure_pending = False
         npc.reserved_by_pedestrian_id = None
 
     def activate_occupied_vehicle(self, npc: NPCCar) -> bool:
-        """Release its parking space and hand an occupied NPC back to normal CarAI."""
+        """Start departure and hand an occupied NPC back to normal CarAI."""
         if npc.state not in {"reserved", "parked", "occupied"}:
             return False
-        self.release_parking_space(npc)
+        was_occupied = npc.state == "occupied"
+        if not was_occupied:
+            self.release_parking_space(npc)
+        else:
+            npc.parking_departure_pending = npc.parking_space_id is not None
         npc.current_driver_id = None
         npc.state = "driving"
         npc.target_speed = max(npc.target_speed, 4.0)
@@ -1981,6 +1988,30 @@ class TrafficManager:
                                     dist_step = 0.0
                                     finished_npcs.add(id(npc))
                                     break
+
+        for npc in self.npcs:
+            if not npc.parking_departure_pending or npc.parking_space_id is None:
+                continue
+            parking_space = next(
+                (
+                    space
+                    for space in self.parking_spaces
+                    if self.parking_space_id(space) == npc.parking_space_id
+                ),
+                None,
+            )
+            if parking_space is None:
+                npc.parking_departure_pending = False
+                npc.parking_space_id = None
+                continue
+            center_x = (parking_space.bbox[0] + parking_space.bbox[2]) * 0.5
+            center_y = (parking_space.bbox[1] + parking_space.bbox[3]) * 0.5
+            space_radius = math.hypot(
+                parking_space.bbox[2] - parking_space.bbox[0],
+                parking_space.bbox[3] - parking_space.bbox[1],
+            ) * 0.5 + npc.length_m * 0.5
+            if math.hypot(npc.x - center_x, npc.y - center_y) > space_radius:
+                self.release_parking_space(npc)
 
         if finished_npcs:
             self.npcs = [npc for npc in self.npcs if id(npc) not in finished_npcs]
