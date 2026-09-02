@@ -101,6 +101,7 @@ class Pedestrian:
     lod_update_dt: float = 0.0
     reserved_vehicle_id: Optional[int] = None
     current_vehicle_id: Optional[int] = None
+    vehicle_destination: Optional[Tuple[float, float]] = None
     vehicle_entry_timer: float = 0.0
 
 
@@ -320,6 +321,12 @@ class PedestrianManager:
         vehicle.current_driver_id = id(pedestrian)
         vehicle.reserved_by_pedestrian_id = None
         vehicle.state = "occupied"
+        vehicle_way = getattr(vehicle, "way", None)
+        vehicle_points = getattr(vehicle_way, "points_m", ())
+        if len(vehicle_points) >= 2:
+            pedestrian.vehicle_destination = (
+                vehicle_points[-1] if getattr(vehicle, "direction", 1) == 1 else vehicle_points[0]
+            )
         pedestrian.reserved_vehicle_id = None
         pedestrian.current_vehicle_id = id(vehicle)
         pedestrian.x = vehicle.x
@@ -339,6 +346,7 @@ class PedestrianManager:
         pedestrian.x, pedestrian.y = self._vehicle_entry_position(vehicle)
         pedestrian.current_vehicle_id = None
         pedestrian.reserved_vehicle_id = None
+        pedestrian.vehicle_destination = None
         pedestrian.destination = None
         pedestrian.speed = 0.0
         pedestrian.state = "walking"
@@ -1118,6 +1126,14 @@ class PedestrianManager:
                 else:
                     ped.x = vehicle.x
                     ped.y = vehicle.y
+                    if (
+                        ped.vehicle_destination is not None
+                        and math.hypot(
+                            vehicle.x - ped.vehicle_destination[0],
+                            vehicle.y - ped.vehicle_destination[1],
+                        ) <= 3.0
+                    ):
+                        self.exit_vehicle(ped, vehicle)
                 continue
             if ped.state == "walking" and getattr(ped, "wants_vehicle", False):
                 vehicle = self.find_available_parked_vehicle(ped.x, ped.y)
