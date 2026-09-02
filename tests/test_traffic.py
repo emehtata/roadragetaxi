@@ -1,5 +1,6 @@
 """Tests for autonomous NPC traffic manager."""
 import math
+import random
 from types import SimpleNamespace
 from theroadragetrip.osm import ParkingSpace, Way
 from theroadragetrip.osm import TrafficLight
@@ -166,6 +167,39 @@ def test_parked_npc_can_spawn_directly_outside_viewport():
     )
 
     assert npc is not None
+    assert npc.state == "parked"
+    assert parking_space.occupied is True
+
+
+def test_visible_parking_space_uses_driving_spawn_before_occupying_space():
+    random.seed(7)
+    way = Way(
+        points_m=[(-100.0, 0.0), (100.0, 0.0)],
+        highway="primary",
+        half_width_m=4.0,
+        name="Parking Approach",
+    )
+    parking_space = ParkingSpace(
+        [(18.0, -2.0), (22.0, -2.0), (22.0, 2.0), (18.0, 2.0)],
+        (18.0, -2.0, 22.0, 2.0),
+        osm_id=15,
+    )
+    manager = TrafficManager([way], target_count=0, parking_spaces=[parking_space])
+    viewport = (-25.0, -25.0, 25.0, 25.0)
+
+    npc = manager.spawn_parking_npc(0.0, 0.0, viewport)
+
+    assert npc is not None
+    assert npc.state == "parking"
+    assert not (viewport[0] <= npc.x <= viewport[2] and viewport[1] <= npc.y <= viewport[3])
+    assert parking_space.occupied is False
+    assert parking_space.reserved is True
+
+    for _ in range(300):
+        manager.update(Car(0.0, 0.0, 0.0, 0.0), dt=0.5, viewport_bounds=viewport)
+        if npc.state == "parked":
+            break
+
     assert npc.state == "parked"
     assert parking_space.occupied is True
 

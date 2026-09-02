@@ -106,6 +106,9 @@ class NPCCar:
     reserved_intersection_id: Optional[str] = None
     parking_space_id: Optional[int] = None
     parking_departure_pending: bool = False
+    parking_target_id: Optional[int] = None
+    parking_route: Optional[List[Tuple[float, float]]] = None
+    parking_route_index: int = 0
     reserved_by_pedestrian_id: Optional[int] = None
     current_driver_id: Optional[int] = None
 
@@ -397,6 +400,9 @@ class TrafficManager:
         parking_space.vehicle_id = id(npc)
         npc.parking_space_id = self.parking_space_id(parking_space)
         npc.parking_departure_pending = False
+        npc.parking_target_id = None
+        npc.parking_route = None
+        npc.parking_route_index = 0
         npc.state = "parked"
         npc.speed = 0.0
         npc.target_speed = 0.0
@@ -416,6 +422,9 @@ class TrafficManager:
                 break
         npc.parking_space_id = None
         npc.parking_departure_pending = False
+        npc.parking_target_id = None
+        npc.parking_route = None
+        npc.parking_route_index = 0
         npc.reserved_by_pedestrian_id = None
 
     def activate_occupied_vehicle(self, npc: NPCCar) -> bool:
@@ -473,6 +482,76 @@ class TrafficManager:
             self.npcs.remove(npc)
             return None
         return npc
+
+    def spawn_parking_npc(
+        self,
+        near_x: float,
+        near_y: float,
+        viewport_bounds: Tuple[float, float, float, float],
+    ) -> Optional[NPCCar]:
+        """Spawn outside the viewport and drive a normal NPC toward a visible OSM space."""
+        available_spaces = [
+            space for space in self.nearby_parking_spaces(near_x, near_y, self.spawn_radius_m)
+            if not space.occupied
+            and not space.reserved
+            and viewport_bounds[0]
+            <= (space.bbox[0] + space.bbox[2]) * 0.5
+            <= viewport_bounds[2]
+            and viewport_bounds[1]
+            <= (space.bbox[1] + space.bbox[3]) * 0.5
+            <= viewport_bounds[3]
+        ]
+        if not available_spaces:
+            return None
+        parking_space = random.choice(available_spaces)
+        npc = self.spawn_npc(near_x, near_y, viewport_bounds=viewport_bounds, near_heading=None)
+        if npc is None:
+            return None
+        center = (
+            (parking_space.bbox[0] + parking_space.bbox[2]) * 0.5,
+            (parking_space.bbox[1] + parking_space.bbox[3]) * 0.5,
+        )
+        route = self.plan_route((npc.x, npc.y), center, layer=getattr(npc.way, "layer", 0))
+        if not route or len(route) < 2:
+            self.npcs.remove(npc)
+            return None
+        parking_space.reserved = True
+        parking_space.vehicle_id = id(npc)
+        npc.parking_target_id = self.parking_space_id(parking_space)
+        npc.parking_route = route
+        npc.parking_route_index = 1
+        npc.state = "parking"
+        return npc
+
+    def _advance_parking_npc(self, npc: NPCCar, dt: float) -> None:
+        """Follow planned road points, then occupy the selected parking space."""
+        route = npc.parking_route
+        if not route or npc.parking_route_index >= len(route):
+            return
+        target_x, target_y = route[npc.parking_route_index]
+        dx = target_x - npc.x
+        dy = target_y - npc.y
+        distance = math.hypot(dx, dy)
+        speed = max(4.0, min(npc.target_speed, 12.0))
+        if distance <= speed * dt or distance <= 0.01:
+            npc.x, npc.y = target_x, target_y
+            npc.heading = math.atan2(dy, dx) if distance > 0.01 else npc.heading
+            npc.parking_route_index += 1
+            if npc.parking_route_index >= len(route):
+                parking_space = next(
+                    (space for space in self.parking_spaces if self.parking_space_id(space) == npc.parking_target_id),
+                    None,
+                )
+                if parking_space is not None:
+                    npc.heading = parking_space.orientation
+                    self.occupy_parking_space(npc, parking_space)
+                else:
+                    npc.state = "driving"
+            return
+        npc.heading = math.atan2(dy, dx)
+        npc.speed = speed
+        npc.x += dx / distance * speed * dt
+        npc.y += dy / distance * speed * dt
 
     def _nearby_npcs(self, npc: NPCCar) -> List[NPCCar]:
         cell_size = self._npc_grid_cell_size
@@ -1320,6 +1399,7 @@ class TrafficManager:
                 npc.reserved_by_pedestrian_id is not None
                 or npc.current_driver_id is not None
                 or npc.parking_departure_pending
+                or npc.state == "parking"
             ):
                 surviving.append(npc)
                 continue
@@ -1352,12 +1432,14 @@ class TrafficManager:
             attempts += 1
             parked_count = sum(1 for candidate in self.npcs if candidate.state == "parked" and not candidate.is_taxi)
             if parked_count < parked_target:
-                npc = self.spawn_parked_npc(
-                    player_car.x,
-                    player_car.y,
-                    near_heading=player_car.heading,
-                    viewport_bounds=viewport_bounds,
-                )
+                npc = self.spawn_parking_npc(player_car.x, player_car.y, viewport_bounds) if viewport_bounds else None
+                if npc is None:
+                    npc = self.spawn_parked_npc(
+                        player_car.x,
+                        player_car.y,
+                        near_heading=player_car.heading,
+                        viewport_bounds=viewport_bounds,
+                    )
             else:
                 npc = self.spawn_npc(
                     player_car.x,
@@ -1448,6 +1530,10 @@ class TrafficManager:
             if npc.state in {"parked", "reserved"}:
                 npc.speed = 0.0
                 npc.target_speed = 0.0
+                continue
+            if npc.state == "parking":
+                parking_dt = dt if npc.lod_level == 0 else NPC_LOD_UPDATE_INTERVALS[npc.lod_level]
+                self._advance_parking_npc(npc, parking_dt)
                 continue
             self._prepare_next_route(npc)
             if npc.next_route is not None and not npc.turn_signal:
@@ -1629,7 +1715,7 @@ class TrafficManager:
         for npc in self.npcs:
             if npc.is_police:
                 continue
-            if npc.state in {"parked", "reserved"}:
+            if npc.state in {"parked", "reserved", "parking"}:
                 continue
             if not npc.lod_update_due:
                 continue
