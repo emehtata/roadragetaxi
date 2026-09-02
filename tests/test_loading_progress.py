@@ -37,6 +37,38 @@ def test_build_ways_progress_callback():
     assert progress_records[-1][0] == 1.0
 
 
+def test_build_ways_reports_expensive_post_processing():
+    progress_records = []
+    elements = [
+        {"type": "node", "id": 1, "lat": 60.0, "lon": 25.0},
+        {"type": "node", "id": 2, "lat": 60.001, "lon": 25.001},
+        {"type": "node", "id": 3, "lat": 60.001, "lon": 25.0},
+        {
+            "type": "way",
+            "id": 10,
+            "nodes": [1, 2, 3, 1],
+            "tags": {"landuse": "park"},
+        },
+        {
+            "type": "relation",
+            "id": 20,
+            "members": [{"type": "way", "ref": 10, "role": "outer"}],
+            "tags": {"type": "multipolygon", "natural": "water"},
+        },
+    ]
+
+    build_ways(elements, progress_callback=lambda fraction, message: progress_records.append((fraction, message)))
+
+    messages = [message for _, message in progress_records]
+    assert any("Planting trees" in message for message in messages)
+    assert any("multipolygon" in message for message in messages)
+    assert any("entrances" in message for message in messages)
+    assert all(
+        current >= previous
+        for (previous, _), (current, _) in zip(progress_records, progress_records[1:])
+    )
+
+
 def test_autofetch_progress_tracking():
     ways = [Way(points_m=[(0.0, 0.0), (10.0, 0.0)], highway="residential", half_width_m=4.5)]
     bounds = (0.0, 0.0, 1000.0, 1000.0)

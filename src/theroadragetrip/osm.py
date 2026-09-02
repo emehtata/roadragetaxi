@@ -1206,7 +1206,13 @@ class MapData(tuple):
         return self.traffic_lights
 
 
-def plant_trees(sceneries: List[Scenery], ways: List[Way]) -> None:
+def plant_trees(
+    sceneries: List[Scenery],
+    ways: List[Way],
+    progress_callback: Optional[Callable[[float, str], None]] = None,
+    progress_start: float = 0.0,
+    progress_end: float = 1.0,
+) -> None:
     """Add deterministic tree centers to green areas while keeping them off roads."""
     tree_density = {
         "forest": 100.0,
@@ -1215,7 +1221,14 @@ def plant_trees(sceneries: List[Scenery], ways: List[Way]) -> None:
         "park": 1800.0,
         "garden": 1800.0,
     }
-    for scenery in sceneries:
+    total = len(sceneries)
+    for scenery_index, scenery in enumerate(sceneries):
+        if progress_callback and total:
+            progress_callback(
+                progress_start
+                + (progress_end - progress_start) * scenery_index / total,
+                f"Planting trees ({scenery_index}/{total} scenery areas)...",
+            )
         kind = scenery.kind.lower()
         density = tree_density.get(kind)
         if density is None or len(scenery.points_m) < 3:
@@ -1247,9 +1260,17 @@ def plant_trees(sceneries: List[Scenery], ways: List[Way]) -> None:
                 continue
             scenery.trees.append((x, y))
             scenery.tree_variations.append(abs(math.sin(x * 12.9898 + y * 78.233)))
+    if progress_callback:
+        progress_callback(progress_end, f"Planted trees in {total} scenery areas")
 
 
-def generate_building_entrances(buildings: List[Building], ways: List[Way]) -> None:
+def generate_building_entrances(
+    buildings: List[Building],
+    ways: List[Way],
+    progress_callback: Optional[Callable[[float, str], None]] = None,
+    progress_start: float = 0.98,
+    progress_end: float = 0.99,
+) -> None:
     """Add deterministic door points to buildings lacking mapped entrance nodes."""
     pedestrian_ways = [
         way for way in ways
@@ -1258,7 +1279,14 @@ def generate_building_entrances(buildings: List[Building], ways: List[Way]) -> N
             "footway", "path", "pedestrian", "cycleway", "steps", "bridleway", "corridor", "track",
         }
     ]
-    for building in buildings:
+    total = len(buildings)
+    for building_index, building in enumerate(buildings):
+        if progress_callback and total:
+            progress_callback(
+                progress_start
+                + (progress_end - progress_start) * building_index / total,
+                f"Generating entrances ({building_index}/{total} buildings)...",
+            )
         if building.entrances or len(building.points_m) < 2:
             continue
         boundary = list(zip(building.points_m, building.points_m[1:]))
@@ -1282,6 +1310,8 @@ def generate_building_entrances(buildings: List[Building], ways: List[Way]) -> N
         else:
             first, second = boundary[0]
         building.entrances.append(((first[0] + second[0]) * 0.5, (first[1] + second[1]) * 0.5))
+    if progress_callback:
+        progress_callback(progress_end, f"Generated entrances for {total} buildings")
 
 
 def build_ways(
@@ -1745,12 +1775,24 @@ def build_ways(
 
     if progress_callback:
         progress_callback(0.965, f"Planting trees ({len(sceneries)} scenery areas)...")
-    plant_trees(sceneries, ways)
+    plant_trees(
+        sceneries,
+        ways,
+        progress_callback=progress_callback,
+        progress_start=0.965,
+        progress_end=0.97,
+    )
 
     # 5. Multipolygon Relations (stitched into proper closed rings)
     if progress_callback:
         progress_callback(0.97, f"Processing {len(relations_raw)} multipolygon relations...")
-    for tags, members in relations_raw:
+    relation_count = len(relations_raw)
+    for relation_index, (tags, members) in enumerate(relations_raw):
+        if progress_callback and relation_count:
+            progress_callback(
+                0.97 + 0.01 * relation_index / relation_count,
+                f"Processing multipolygon {relation_index + 1}/{relation_count}...",
+            )
         outer_way_ids = [
             m["ref"]
             for m in members
@@ -1759,6 +1801,11 @@ def build_ways(
         rings = _stitch_member_ways_into_rings(
             outer_way_ids, ways_by_id, lambda nids: process_node_ids(nids)[0]
         )
+        if progress_callback and relation_count:
+            progress_callback(
+                0.97 + 0.01 * (relation_index + 1) / relation_count,
+                f"Processed multipolygon {relation_index + 1}/{relation_count}",
+            )
         name = tags.get("name")
         for pts, is_closed in rings:
             xs = [p[0] for p in pts]
@@ -1795,7 +1842,13 @@ def build_ways(
                 cy = sum(ys) / len(ys)
                 places.append(Place(x=cx, y=cy, name=name, kind=tags.get("place", "suburb")))
 
-    generate_building_entrances(buildings, ways)
+    generate_building_entrances(
+        buildings,
+        ways,
+        progress_callback=progress_callback,
+        progress_start=0.98,
+        progress_end=0.99,
+    )
 
     # 6. Place nodes (suburbs, neighbourhoods, districts)
     for tags, nid in place_nodes_raw:
