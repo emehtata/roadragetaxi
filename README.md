@@ -22,6 +22,7 @@ A top-down 2D driving game proof-of-concept (PoC) in Python and Pygame that proc
 - **Street Lighting**: Roadside lamps are placed along urban drivable roads and their warm glow gradually turns on at dusk.
 - **Water & Multipolygon Rendering**: Renders lakes, reservoirs, and waterways under the road network.
 - **Autonomous Traffic**: NPC cars follow connected roads, respect lane direction, vary their speed, overtake, react to traffic lights, and avoid overlapping the player. The shared road-graph navigator can route NPCs to map targets without cutting through buildings or terrain. Active traffic is reduced at close zoom levels while nearby cars are retained.
+- **OSM Parking Traffic**: About half of regular NPC cars use existing OSM parking spaces by default. Parking density is configurable, parked cars remain spatially indexed, and occupied parking spaces stay reserved while a vehicle departs.
 - **Pedestrians & Cyclists**: Pedestrians and cyclists use dedicated paths, mapped entrances, and crossings; pedestrians track destinations, use logical traffic signals, wait before unsafe crossings, enter buildings at doors, and update at distance-based LOD rates. Ordinary pedestrians spawn near mapped buildings, while hospitality venues receive extra activity; at night, visible pedestrians show a bright reflector point until a car headlight or street light illuminates them. Cyclists use a top-down image sprite, and active pedestrian/cyclist counts scale down while zoomed in.
 - **Rival NPC Taxis**: Some NPC cars are yellow rival taxis. They stop briefly at taxi stands and collect waiting customers before driving on.
 - **Taxi-Driver Brawls**: Enabled by default. At a taxi stand, press `Z` to challenge a rival and press `Z` again to accept. Both drivers leave their cars; when `NYT!` appears, press `Z` quickly to win, otherwise the rival knocks the player out. The drivers return to their cars afterward. A win doubles non-negative scores and resets negative scores to zero; a loss subtracts 1,000 points.
@@ -157,6 +158,7 @@ build_in_process = true
 traffic_count =        # blank enables automatic road-network scaling
 pedestrian_count = 20
 cyclist_count = 8
+parking_density = 0.5  # fraction of regular NPC cars placed in OSM parking spaces
 
 [audio]
 master_volume = 1.0
@@ -272,6 +274,7 @@ The pause menu's **Settings** screen changes language and master, background, an
 | `--traffic-count` | Target number of autonomous NPC cars (default: scales with available streets, capped at 200) |
 | `--pedestrian-count` | Target number of pedestrians (default: `20`) |
 | `--cyclist-count` | Target number of cyclists (default: `8`) |
+| `--parking-density` | Fraction of regular NPC cars spawned in existing OSM parking spaces (default: `0.5`) |
 
 ---
 
