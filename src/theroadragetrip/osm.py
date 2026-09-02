@@ -1612,8 +1612,8 @@ def build_ways(
         if layer_val < 0:
             is_underground = True
 
-        # If underground parking/service route, exclude from map
-        if is_underground and (parking_aisle or highway in ("service", "track") or "parking" in tags):
+        # Parking aisles belong to the lot, not the drivable road network.
+        if parking_aisle or (is_underground and (highway in ("service", "track") or "parking" in tags)):
             continue
 
         is_bridge = tags.get("bridge") in ("yes", "viaduct", "movable") or layer_val > 0
