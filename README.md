@@ -142,7 +142,6 @@ no_cache = false
 px_per_m = 9.0
 log_level = INFO
 file_logging = false
-taxi_brawls = true
 roadworks_enabled = false
 
 [map]
@@ -278,7 +277,7 @@ The pause menu's **Settings** screen changes language and master, background, an
 
 ## Testing
 
-The game logs important gameplay events at `INFO` level, including taxi mission and fare transitions, phone offers, passenger boarding, passenger chatter playback, police penalties, taxi-driver confrontations, and major settings changes. Console logging is enabled by default. Set `[game] file_logging = true` in `roadragetrip.ini` to additionally append events to `roadragetrip.log` in the working directory. Use `--log-level DEBUG` when diagnosing lower-level behavior.
+The game logs important gameplay events at `INFO` level, including taxi mission and fare transitions, phone offers, passenger boarding, passenger chatter playback, police penalties, and major settings changes. Console logging is enabled by default. Set `[game] file_logging = true` in `roadragetrip.ini` to additionally append events to `roadragetrip.log` in the working directory. Use `--log-level DEBUG` when diagnosing lower-level behavior.
 
 Run unit tests with pytest:
 ```bash
