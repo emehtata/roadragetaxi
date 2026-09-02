@@ -112,6 +112,7 @@ class NPCCar:
     lod_update_due: bool = True
     state: str = "driving"
     debug_last_action: str = ""
+    debug_waiting_for: str = ""
     debug_in_view: Optional[bool] = None
     reserved_intersection_id: Optional[str] = None
     parking_space_id: Optional[int] = None
@@ -1967,6 +1968,7 @@ class TrafficManager:
                 continue
 
             blocked_by_npc = False
+            npc.debug_waiting_for = ""
 
             # Check for leading NPC in close proximity (same direction or blocking path)
             for other in self._nearby_npcs(npc):
@@ -1993,12 +1995,14 @@ class TrafficManager:
                                 if npc.escape_timer <= 0.0:
                                     npc.speed = 0.0
                                 blocked_by_npc = True
+                                npc.debug_waiting_for = f"NPC {id(other) % 1000}"
                             elif dist < min_gap + 10.0 and npc.speed > other.speed:
                                 # Match or follow leader speed smoothly
                                 target_follow_speed = max(0.0, other.speed * 0.9)
                                 if npc.escape_timer <= 0.0:
                                     npc.speed = max(target_follow_speed, npc.speed - 16.0 * dt)
                                 blocked_by_npc = True
+                                npc.debug_waiting_for = f"NPC {id(other) % 1000}"
 
             # Also check player car collision avoidance
             if player_car.layer == npc.layer:
@@ -2015,9 +2019,11 @@ class TrafficManager:
                         if lat_p_offset < (npc.width_m + p_wid) * 0.75:
                             if p_dist < min_p_gap:
                                 npc.speed = max(0.0, npc.speed - 22.0 * dt)
+                                npc.debug_waiting_for = "player"
                             elif p_dist < min_p_gap + 10.0 and npc.speed > max(0.0, player_car.speed):
                                 target_p_speed = max(0.0, player_car.speed * 0.9)
                                 npc.speed = max(target_p_speed, npc.speed - 16.0 * dt)
+                                npc.debug_waiting_for = "player"
 
             if blocked_by_npc and npc.speed < 1.0:
                 npc.blocked_timer += dt
@@ -2237,16 +2243,17 @@ class TrafficManager:
             if must_stop:
                 action = "stopping"
                 if nearest_stop_sign is not None:
-                    reason = "stop sign"
+                    reason = f"stop sign {getattr(nearest_stop_sign, 'id', '?')}"
                 elif nearest_yield_sign is not None:
-                    reason = "yield sign"
+                    reason = f"yield sign {getattr(nearest_yield_sign[1], 'id', '?')}"
                 elif nearest_light is not None:
-                    reason = "red/yellow traffic light"
+                    reason = f"traffic light {getattr(nearest_light, 'id', '?')}"
                 else:
                     reason = "roadworks"
             elif junction_blocked:
                 action = "stopping"
                 reason = "junction occupied"
+                npc.debug_waiting_for = "junction"
             elif npc.overtaking:
                 action = "overtaking"
                 reason = "blocked vehicle"

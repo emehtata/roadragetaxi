@@ -2600,8 +2600,12 @@ def draw_npc_cars(
                     pygame.draw.line(screen, debug_color, (int(cx), int(cy)),
                                      (int(target_screen[0]), int(target_screen[1])), 1)
             if debug_font is not None:
+                waiting_for = getattr(npc, "debug_waiting_for", "")
+                debug_state = getattr(npc, "state", "driving")
+                if waiting_for and debug_state in {"waiting", "braking"}:
+                    debug_state = f"{debug_state} [{waiting_for}]"
                 debug_text = debug_font.render(
-                    f"{id(npc) % 1000} {getattr(npc, 'state', 'driving')} "
+                    f"{id(npc) % 1000} {debug_state} "
                     f"L{getattr(npc, 'lod_level', 0)} {getattr(npc, 'speed', 0.0) * 3.6:.0f} km/h",
                     True,
                     debug_color,

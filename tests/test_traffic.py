@@ -631,6 +631,18 @@ def test_moving_npc_avoids_parked_npc_without_moving_it():
     assert (moving.x, moving.y) != parked_position
 
 
+def test_waiting_npc_records_blocking_npc_for_debug_overlay():
+    way = Way(points_m=[(0.0, 0.0), (200.0, 0.0)], highway="primary", half_width_m=6.0)
+    traffic_mgr = TrafficManager([way], target_count=0)
+    waiting = NPCCar(50.0, 0.0, 0.0, 0.0, way, 0, 1, 10.0, (20, 20, 20))
+    blocker = NPCCar(53.0, 0.0, 0.0, 0.0, way, 0, 1, 10.0, (30, 30, 30))
+    traffic_mgr.npcs = [waiting, blocker]
+
+    traffic_mgr.update(Car(x=-100.0, y=100.0, heading=0.0, speed=0.0), dt=0.1)
+
+    assert waiting.debug_waiting_for == f"NPC {id(blocker) % 1000}"
+
+
 def test_rage_shout_moves_cars_ahead_to_road_edge():
     way = Way(
         points_m=[(0.0, 0.0), (200.0, 0.0)],
