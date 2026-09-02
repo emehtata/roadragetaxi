@@ -136,6 +136,7 @@ from .police import PoliceManager, place_speed_cameras
 from .roadworks import create_roadworks
 from .taxi import TaxiManager, TaxiState
 from .traffic import MAX_TRAFFIC_COUNT, TrafficManager, recommended_traffic_count, traffic_count_for_zoom
+from .world_cache import WorldCacheManager
 
 # Maintain BBOX constant for backward compatibility
 BBOX = DEFAULT_BBOX
@@ -837,6 +838,16 @@ def main() -> None:
 
         # Load map
         try:
+            world_cache = WorldCacheManager(
+                fetch_func=lambda fetch_bbox, **fetch_kwargs: fetch_osm_ways(
+                    fetch_bbox, endpoints=overpass_endpoints, progress_callback=on_load_progress,
+                    **fetch_kwargs
+                ),
+                build_func=lambda raw: build_ways(
+                    raw, progress_callback=on_build_progress, include_bus_stops=bus_stops_enabled
+                ),
+            )
+            area_id = world_cache.area_id(bbox)
             if args.use_sample:
                 on_load_progress(0.2, "Loading bundled offline sample data...")
                 elements = load_local_sample()
@@ -844,18 +855,14 @@ def main() -> None:
                     raise Exception("No local sample file found")
                 logger.info("Using local sample (via --use-sample)")
                 on_load_progress(0.5, f"Loaded {len(elements)} sample elements")
-            else:
-                elements = fetch_osm_ways(
-                    bbox,
-                    endpoints=overpass_endpoints,
-                    progress_callback=on_load_progress,
-                    force_refresh=force_refresh or args.no_cache,
+                res = build_ways(
+                    elements, progress_callback=on_build_progress, include_bus_stops=bus_stops_enabled
                 )
-            res = build_ways(
-                elements,
-                progress_callback=on_build_progress,
-                include_bus_stops=bus_stops_enabled,
-            )
+                world_cache.writer.write(world_cache.path_for(area_id), res, area_id=area_id)
+            else:
+                res = world_cache.load_area(
+                    area_id, bbox, force_refresh=force_refresh or args.no_cache,
+                )
             crossings = getattr(res, "crossings", [])
             stop_signs = getattr(res, "stop_signs", [])
             yield_signs = getattr(res, "yield_signs", [])

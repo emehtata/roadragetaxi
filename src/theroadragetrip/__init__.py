@@ -54,6 +54,12 @@ from .physics import (
     update_car_physics,
     is_point_on_parking_space,
 )
+from .world_cache import (
+    BinaryWorldCacheLoader,
+    BinaryWorldCacheWriter,
+    InvalidWorldCache,
+    WorldCacheManager,
+)
 from .render import (
     FPS,
     PX_PER_M,
@@ -117,6 +123,10 @@ __all__ = [
     "fetch_osm_ways",
     "build_ways",
     "AutoFetchManager",
+    "BinaryWorldCacheLoader",
+    "BinaryWorldCacheWriter",
+    "InvalidWorldCache",
+    "WorldCacheManager",
     # Physics
     "Car",
     "ACCEL",

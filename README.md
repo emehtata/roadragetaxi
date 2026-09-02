@@ -288,3 +288,9 @@ Run in headless / CI environments without a physical display:
 ```bash
 SDL_VIDEODRIVER=dummy python3 road_rage_trip.py --use-sample
 ```
+## Binary world cache
+
+Normalized map areas are stored as versioned `.rwc` files under
+`~/.cache/RoadRageTrip/world` (or the platform cache directory). Cache hits
+load game-ready geometry directly; OpenPass JSON is used only for misses or
+forced refreshes. Files are written atomically and validated with checksums.
