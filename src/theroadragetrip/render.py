@@ -2831,13 +2831,16 @@ def draw_pedestrians(
             (int(cx - radius_px * 0.8), int(cy + radius_px * 0.35),
              max(2, int(radius_px * 1.6)), max(2, int(radius_px * 0.65))),
         )
+        appearance = getattr(ped, "appearance", None)
+        leg_color = getattr(appearance, "legs", (35, 35, 45))
+        gait = math.sin(getattr(ped, "animation_time", 0.0) * 10.0) if getattr(ped, "animation_state", "walking") == "walking" else 0.0
         leg_start_x = cx - heading_x * radius_px * 0.15
         leg_start_y = cy - heading_y * radius_px * 0.15 + radius_px * 0.45
         for leg_side in (-1, 1):
-            leg_end_x = leg_start_x + side_x * radius_px * 0.42 * leg_side + heading_x * radius_px * 0.12
-            leg_end_y = leg_start_y + side_y * radius_px * 0.42 * leg_side + heading_y * radius_px * 0.12 + radius_px * 0.45
+            leg_end_x = leg_start_x + side_x * radius_px * (0.42 * leg_side + gait * 0.10 * leg_side) + heading_x * radius_px * 0.12
+            leg_end_y = leg_start_y + side_y * radius_px * (0.42 * leg_side + gait * 0.10 * leg_side) + heading_y * radius_px * 0.12 + radius_px * 0.45
             pygame.draw.line(
-                screen, (35, 35, 45),
+                screen, leg_color,
                 (int(leg_start_x), int(leg_start_y)),
                 (int(leg_end_x), int(leg_end_y)),
                 max(1, int(radius_px * 0.28)),
@@ -2851,15 +2854,15 @@ def draw_pedestrians(
         )
         pygame.draw.ellipse(
             screen,
-            ped.color,
+            getattr(appearance, "clothing", None) or ped.color,
             (int(cx - radius_px * 0.58), int(cy - radius_px * 0.22),
              max(2, int(radius_px * 1.16)), max(2, int(radius_px * 1.25))),
         )
 
         head_x = cx + heading_x * radius_px * 0.6
         head_y = cy + heading_y * radius_px * 0.6
-        pygame.draw.circle(screen, (20, 20, 20), (int(head_x), int(head_y)), max(2, int(radius_px * 0.48)))
-        pygame.draw.circle(screen, (238, 185, 145), (int(head_x), int(head_y)), max(1, int(radius_px * 0.35)))
+        pygame.draw.circle(screen, getattr(appearance, "hair", (20, 20, 20)), (int(head_x), int(head_y)), max(2, int(radius_px * 0.48)))
+        pygame.draw.circle(screen, getattr(appearance, "head", (238, 185, 145)), (int(head_x), int(head_y)), max(1, int(radius_px * 0.35)))
 
         # Comic cursing bubble when startled/dodging
         curse_timer = getattr(ped, "curse_timer", 0.0)
@@ -4263,4 +4266,3 @@ def draw_hud(
 
         load_t = font.render(f"{tr(language, 'loading_scenery')} {int(prog * 100)}%", True, (255, 215, 60))
         screen.blit(load_t, (bar_x + bar_w + 10, bar_y - 2))
-

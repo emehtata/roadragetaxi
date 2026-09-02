@@ -2,6 +2,7 @@ import logging
 import heapq
 import math
 import random
+from enum import Enum
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Set, Tuple
 
@@ -47,6 +48,34 @@ CYCLIST_COLORS = [
 
 PEDESTRIAN_LOD_UPDATE_INTERVALS = (1.0 / 30.0, 1.0 / 12.0, 0.2)
 MAX_VEHICLE_RESERVATION_DISTANCE_M = 100.0
+
+
+class PedestrianState(str, Enum):
+    """Stable state names for pedestrian AI and renderer integrations."""
+
+    WALKING = "walking"
+    APPROACHING_CROSSING = "approaching_crossing"
+    WAITING_AT_LIGHT = "waiting_at_light"
+    CROSSING = "crossing"
+    WAITING = "waiting"
+    ENTERING_BUILDING = "entering_building"
+    EXITING_BUILDING = "exiting_building"
+    ENTERING_VEHICLE = "entering_vehicle"
+    EXITING_VEHICLE = "exiting_vehicle"
+    IN_VEHICLE = "in_vehicle"
+    DESPAWNING = "despawning"
+
+
+@dataclass
+class PedestrianAppearance:
+    """Composable top-down appearance; rendering can add components later."""
+
+    body: Tuple[int, int, int]
+    head: Tuple[int, int, int] = (238, 185, 145)
+    hair: Tuple[int, int, int] = (45, 30, 25)
+    clothing: Optional[Tuple[int, int, int]] = None
+    arms: Optional[Tuple[int, int, int]] = None
+    legs: Tuple[int, int, int] = (35, 35, 45)
 
 
 @dataclass
@@ -104,6 +133,9 @@ class Pedestrian:
     current_vehicle_id: Optional[int] = None
     vehicle_destination: Optional[Tuple[float, float]] = None
     vehicle_entry_timer: float = 0.0
+    building_entry_timer: float = 0.0
+    animation_time: float = 0.0
+    appearance: Optional[PedestrianAppearance] = None
 
 
 @dataclass
@@ -420,8 +452,9 @@ class PedestrianManager:
         pedestrian.vehicle_destination = None
         pedestrian.destination = None
         pedestrian.speed = 0.0
-        pedestrian.state = "walking"
+        pedestrian.state = PedestrianState.EXITING_VEHICLE.value
         pedestrian.animation_state = "walking"
+        pedestrian.vehicle_entry_timer = 0.35
         if self.traffic_manager is not None:
             self.traffic_manager.activate_occupied_vehicle(vehicle)
         else:
@@ -868,6 +901,7 @@ class PedestrianManager:
                         pace_timer=random.uniform(1.0, 4.0),
                         wants_taxi=random.random() < 0.05,
                         wants_vehicle=random.random() < 0.05,
+                        appearance=PedestrianAppearance(body=color),
                     )
                     pedestrian.route = list(chosen_way.points_m)
                     pedestrian.current_route_segment = seg_idx
@@ -1216,6 +1250,13 @@ class PedestrianManager:
                     ):
                         self.exit_vehicle(ped, vehicle)
                 continue
+            if ped.state == PedestrianState.EXITING_VEHICLE.value:
+                ped.speed = 0.0
+                ped.vehicle_entry_timer = max(0.0, ped.vehicle_entry_timer - update_dt)
+                if ped.vehicle_entry_timer <= 0.0:
+                    ped.state = PedestrianState.WALKING.value
+                    ped.animation_state = "walking"
+                continue
             if ped.state == "walking" and getattr(ped, "wants_vehicle", False):
                 vehicle = self.find_available_parked_vehicle(ped.x, ped.y)
                 if vehicle is not None and self.reserve_parked_vehicle(ped, vehicle):
@@ -1291,9 +1332,16 @@ class PedestrianManager:
             if ped.destination is not None and self._at_building_entrance(ped.x, ped.y):
                 if math.hypot(ped.destination[0] - ped.x, ped.destination[1] - ped.y) <= 1.5:
                     ped.speed = 0.0
-                    ped.state = "despawning"
+                    ped.state = PedestrianState.ENTERING_BUILDING.value
+                    ped.building_entry_timer = 0.35
                     ped.animation_state = "idle"
                     continue
+            if ped.state == PedestrianState.ENTERING_BUILDING.value:
+                ped.speed = 0.0
+                ped.building_entry_timer = max(0.0, ped.building_entry_timer - update_dt)
+                if ped.building_entry_timer <= 0.0:
+                    ped.state = PedestrianState.DESPAWNING.value
+                continue
             if getattr(ped, "is_drunk", False):
                 ped.drunk_phase += update_dt * 2.7
                 ped.drunk_vomit_cooldown = max(0.0, ped.drunk_vomit_cooldown - update_dt)
@@ -1305,7 +1353,7 @@ class PedestrianManager:
             # Check traffic light stop
             if self._is_pedestrian_red_light(ped):
                 ped.speed = 0.0
-                ped.state = "waiting_at_light"
+                ped.state = PedestrianState.WAITING_AT_LIGHT.value
                 ped.animation_state = "idle"
                 ped.crossing = self._find_nearby_signalized_crossing(ped)
                 continue
@@ -1317,14 +1365,14 @@ class PedestrianManager:
                     ped.speed_variation_factor = random.uniform(0.92, 1.08)
                 ped.speed = ped.base_speed * ped.speed_variation_factor
                 ped.crossing = self._find_nearby_signalized_crossing(ped)
-                ped.state = "crossing" if ped.crossing is not None else "walking"
+                ped.state = PedestrianState.CROSSING.value if ped.crossing is not None else PedestrianState.WALKING.value
                 ped.animation_state = "walking"
-
             if ped.dodge_timer > 0.0:
                 # Controlled by dodge physics
                 continue
 
             pts = ped.way.points_m
+            ped.animation_time += update_dt
             n_pts = len(pts)
             if n_pts < 2:
                 continue

@@ -51,6 +51,7 @@ from .physics import (
     reset_trip,
     respawn_car,
     update_car_physics,
+    is_point_on_parking_space,
 )
 from .render import (
     FPS,
@@ -77,6 +78,7 @@ from .render import (
     world_to_screen,
 )
 from .traffic import CarAI, IntersectionManager, NPCCar, TrafficManager
+from .pedestrian import PedestrianAppearance, PedestrianState
 
 __all__ = [
     # Geo
@@ -131,6 +133,9 @@ __all__ = [
     "reset_trip",
     "respawn_car",
     "update_car_physics",
+    "is_point_on_parking_space",
+    "PedestrianAppearance",
+    "PedestrianState",
     # Traffic
     "NPCCar",
     "CarAI",
@@ -161,5 +166,4 @@ __all__ = [
     # Main
     "main",
 ]
-
 

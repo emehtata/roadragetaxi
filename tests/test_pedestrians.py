@@ -4,8 +4,21 @@ import pytest
 from types import SimpleNamespace
 from theroadragetrip.osm import TrafficLight, Way
 from theroadragetrip.osm import TaxiStop
-from theroadragetrip.pedestrian import CyclistManager, Pedestrian, PedestrianManager
+from theroadragetrip.pedestrian import (
+    CyclistManager,
+    Pedestrian,
+    PedestrianAppearance,
+    PedestrianManager,
+    PedestrianState,
+)
 from theroadragetrip.physics import Car
+
+
+def test_pedestrian_state_and_appearance_support_interactions():
+    assert PedestrianState.APPROACHING_CROSSING.value == "approaching_crossing"
+    appearance = PedestrianAppearance(body=(10, 20, 30))
+    assert appearance.body == (10, 20, 30)
+    assert appearance.head == (238, 185, 145)
 
 
 def test_pedestrian_target_count_keeps_nearest_characters():
