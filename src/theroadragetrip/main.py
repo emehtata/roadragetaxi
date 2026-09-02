@@ -1069,16 +1069,13 @@ def main() -> None:
                     running = False
                     app_running = False
                 elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-                    if hud_rects.get("reset") and hud_rects["reset"].collidepoint(event.pos):
-                        hud_layout = default_hud_layout(screen.get_width(), screen.get_height())
-                    else:
-                        for element_name in ("rage", "speedometer", "meters"):
-                            element_rect = hud_rects.get(element_name)
-                            if element_rect and element_rect.collidepoint(event.pos):
-                                element_x, element_y = hud_layout[element_name]
-                                hud_dragging = element_name
-                                hud_drag_offset = (event.pos[0] - element_x, event.pos[1] - element_y)
-                                break
+                    for element_name in ("rage", "speedometer", "meters"):
+                        element_rect = hud_rects.get(element_name)
+                        if element_rect and element_rect.collidepoint(event.pos):
+                            element_x, element_y = hud_layout[element_name]
+                            hud_dragging = element_name
+                            hud_drag_offset = (event.pos[0] - element_x, event.pos[1] - element_y)
+                            break
                 elif event.type == pygame.MOUSEBUTTONUP and event.button == 1:
                     hud_dragging = None
                 elif event.type == pygame.MOUSEMOTION and hud_dragging:
@@ -1316,6 +1313,8 @@ def main() -> None:
                         clock.tick()
                     elif event.key == pygame.K_F1:
                         show_help = True
+                    elif event.key == pygame.K_F2:
+                        hud_layout = default_hud_layout(screen.get_width(), screen.get_height())
                         while show_help:
                             clock.tick(30)
                             for h_ev in pygame.event.get():

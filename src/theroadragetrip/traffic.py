@@ -119,6 +119,8 @@ class NPCCar:
     parking_target_id: Optional[int] = None
     parking_route: Optional[List[Tuple[float, float]]] = None
     parking_route_index: int = 0
+    parking_stuck_timer: float = 0.0
+    parking_last_distance: Optional[float] = None
     stop_sign_id: Optional[int] = None
     stop_sign_wait_timer: float = 0.0
     reserved_by_pedestrian_id: Optional[int] = None
@@ -447,6 +449,8 @@ class TrafficManager:
         npc.parking_target_id = None
         npc.parking_route = None
         npc.parking_route_index = 0
+        npc.parking_stuck_timer = 0.0
+        npc.parking_last_distance = None
         npc.state = "parked"
         npc.speed = 0.0
         npc.target_speed = 0.0
@@ -469,6 +473,8 @@ class TrafficManager:
         npc.parking_target_id = None
         npc.parking_route = None
         npc.parking_route_index = 0
+        npc.parking_stuck_timer = 0.0
+        npc.parking_last_distance = None
         npc.reserved_by_pedestrian_id = None
 
     def activate_occupied_vehicle(self, npc: NPCCar) -> bool:
@@ -587,6 +593,8 @@ class TrafficManager:
         npc.parking_target_id = self.parking_space_id(parking_space)
         npc.parking_route = route
         npc.parking_route_index = 1
+        npc.parking_stuck_timer = 0.0
+        npc.parking_last_distance = None
         npc.state = "parking"
         return npc
 
@@ -617,6 +625,8 @@ class TrafficManager:
         npc.parking_target_id = self.parking_space_id(parking_space)
         npc.parking_route = route
         npc.parking_route_index = 1
+        npc.parking_stuck_timer = 0.0
+        npc.parking_last_distance = None
         npc.state = "parking"
         npc.speed = 0.0
         return True
@@ -633,6 +643,16 @@ class TrafficManager:
         dx = target_x - npc.x
         dy = target_y - npc.y
         distance = math.hypot(dx, dy)
+        if npc.parking_last_distance is not None and distance >= npc.parking_last_distance - 0.02:
+            npc.parking_stuck_timer += dt
+        else:
+            npc.parking_stuck_timer = 0.0
+        npc.parking_last_distance = distance
+        if npc.parking_stuck_timer >= 3.0:
+            self.release_parking_space(npc)
+            npc.state = "driving"
+            npc.speed = 0.0
+            return
         speed = max(4.0, min(npc.target_speed, 12.0))
         if distance <= speed * dt or distance <= 0.01:
             npc.x, npc.y = target_x, target_y

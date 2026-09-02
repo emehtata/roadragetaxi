@@ -4238,14 +4238,6 @@ def draw_hud(
     if hud_rects is not None:
         hud_rects["speedometer"] = speedometer_rect
 
-    reset_text = font.render("RESET UI", True, (245, 245, 245))
-    reset_rect = reset_text.get_rect(topright=(screen_width - 10, 10)).inflate(18, 10)
-    pygame.draw.rect(screen, (30, 35, 40), reset_rect, border_radius=3)
-    pygame.draw.rect(screen, (190, 160, 80), reset_rect, width=1, border_radius=3)
-    screen.blit(reset_text, reset_text.get_rect(center=reset_rect.center))
-    if hud_rects is not None:
-        hud_rects["reset"] = reset_rect
-
     # Auto-fetch scenery loading progress meter
     if is_auto_fetching:
         prog = max(0.0, min(1.0, auto_fetch_progress if auto_fetch_progress > 0.0 else 0.65))
