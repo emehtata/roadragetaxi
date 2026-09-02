@@ -722,8 +722,10 @@ class TrafficManager:
         self._build_npc_spatial_grid()
         resolved_pairs = set()
         for npc in self.npcs:
+            if npc.state in {"parked", "reserved"}:
+                continue
             for other in self._nearby_npcs(npc):
-                if other is npc or other.layer != npc.layer:
+                if other is npc or other.layer != npc.layer or other.state in {"parked", "reserved"}:
                     continue
                 pair = tuple(sorted((id(npc), id(other))))
                 if pair in resolved_pairs:
