@@ -2503,7 +2503,17 @@ def draw_npc_cars(
     for npc in npcs:
         if getattr(npc, "is_police", False) or getattr(npc, "is_on_foot", False):
             continue
-        if not (vminx <= npc.x <= vmaxx and vminy <= npc.y <= vmaxy):
+        in_view = vminx <= npc.x <= vmaxx and vminy <= npc.y <= vmaxy
+        parking_route = getattr(npc, "parking_route", None)
+        if not in_view and show_debug and parking_route:
+            route_screen = [
+                world_to_screen(point[0], point[1], camx, camy, px_per_m, screen_w, screen_h)
+                for point in parking_route
+            ]
+            if len(route_screen) >= 2:
+                pygame.draw.lines(screen, (255, 150, 40), False, route_screen, 2)
+            continue
+        if not in_view:
             continue
         if not _vehicle_is_on_bridge(npc) and _covered_by_higher_road(
             npc.x,
@@ -2561,18 +2571,34 @@ def draw_npc_cars(
             debug_color = lod_colors[min(2, max(0, getattr(npc, "lod_level", 0)))]
             collider_radius = max(length_px, width_px) * 0.5
             pygame.draw.circle(screen, debug_color, (int(cx), int(cy)), max(2, int(collider_radius)), 1)
-            pts = getattr(npc.way, "points_m", None)
-            target_pt = None
-            if pts and getattr(npc, "direction", 1) == 1 and getattr(npc, "segment_idx", 0) + 1 < len(pts):
-                target_pt = pts[npc.segment_idx + 1]
-            elif pts and getattr(npc, "direction", 1) == -1 and getattr(npc, "segment_idx", 0) < len(pts):
-                target_pt = pts[npc.segment_idx]
-            if target_pt is not None:
-                target_screen = world_to_screen(
-                    target_pt[0], target_pt[1], camx, camy, px_per_m, screen_w, screen_h
+            if parking_route:
+                route_screen = [
+                    world_to_screen(point[0], point[1], camx, camy, px_per_m, screen_w, screen_h)
+                    for point in parking_route
+                ]
+                if len(route_screen) >= 2:
+                    pygame.draw.lines(screen, (255, 150, 40), False, route_screen, 2)
+                target_index = min(
+                    max(0, getattr(npc, "parking_route_index", 0)),
+                    len(route_screen) - 1,
                 )
-                pygame.draw.line(screen, debug_color, (int(cx), int(cy)),
-                                 (int(target_screen[0]), int(target_screen[1])), 1)
+                target_screen = route_screen[target_index]
+                pygame.draw.circle(
+                    screen, (255, 220, 80), (int(target_screen[0]), int(target_screen[1])), 4, 1
+                )
+            else:
+                pts = getattr(npc.way, "points_m", None)
+                target_pt = None
+                if pts and getattr(npc, "direction", 1) == 1 and getattr(npc, "segment_idx", 0) + 1 < len(pts):
+                    target_pt = pts[npc.segment_idx + 1]
+                elif pts and getattr(npc, "direction", 1) == -1 and getattr(npc, "segment_idx", 0) < len(pts):
+                    target_pt = pts[npc.segment_idx]
+                if target_pt is not None:
+                    target_screen = world_to_screen(
+                        target_pt[0], target_pt[1], camx, camy, px_per_m, screen_w, screen_h
+                    )
+                    pygame.draw.line(screen, debug_color, (int(cx), int(cy)),
+                                     (int(target_screen[0]), int(target_screen[1])), 1)
             if debug_font is not None:
                 debug_text = debug_font.render(
                     f"{id(npc) % 1000} {getattr(npc, 'state', 'driving')} "
