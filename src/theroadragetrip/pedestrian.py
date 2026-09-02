@@ -302,6 +302,28 @@ class PedestrianManager:
         pedestrian.animation_state = "idle"
         return True
 
+    def exit_vehicle(self, pedestrian: Pedestrian, vehicle) -> bool:
+        """Return a pedestrian beside an occupied vehicle and resume normal driving."""
+        if (
+            pedestrian.current_vehicle_id != id(vehicle)
+            or getattr(vehicle, "current_driver_id", None) != id(pedestrian)
+            or getattr(vehicle, "state", "driving") != "occupied"
+        ):
+            return False
+        pedestrian.x, pedestrian.y = self._vehicle_entry_position(vehicle)
+        pedestrian.current_vehicle_id = None
+        pedestrian.reserved_vehicle_id = None
+        pedestrian.destination = None
+        pedestrian.speed = 0.0
+        pedestrian.state = "walking"
+        pedestrian.animation_state = "walking"
+        if self.traffic_manager is not None:
+            self.traffic_manager.activate_occupied_vehicle(vehicle)
+        else:
+            vehicle.current_driver_id = None
+            vehicle.state = "driving"
+        return True
+
     def _at_building_entrance(self, x: float, y: float, radius_m: float = 1.5) -> bool:
         """Check nearby doors without scanning every mapped entrance."""
         cell_size = self._way_grid_cell_size
