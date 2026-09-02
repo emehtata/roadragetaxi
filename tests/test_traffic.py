@@ -574,7 +574,7 @@ def test_overlapping_npcs_are_separated():
     assert second.speed == 0.0
 
 
-def test_parked_npc_is_not_shaken_by_collision_resolution():
+def test_parking_npc_is_not_pushed_off_its_route_by_collision_resolution():
     way = Way(
         points_m=[(0.0, 0.0), (200.0, 0.0)],
         highway="primary",
@@ -582,7 +582,7 @@ def test_parked_npc_is_not_shaken_by_collision_resolution():
         name="Parking Collision Street",
     )
     traffic_mgr = TrafficManager([way], target_count=0)
-    parked = NPCCar(50.0, 0.0, 0.0, 0.0, way, 0, 1, 0.0, (20, 20, 20), state="parked")
+    parked = NPCCar(50.0, 0.0, 0.0, 0.0, way, 0, 1, 0.0, (20, 20, 20), state="parking")
     active = NPCCar(50.0, 0.0, math.pi, 0.0, way, 0, -1, 0.0, (30, 30, 30))
     traffic_mgr.npcs = [parked, active]
     parked_position = (parked.x, parked.y)

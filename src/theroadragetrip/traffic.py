@@ -722,10 +722,8 @@ class TrafficManager:
         self._build_npc_spatial_grid()
         resolved_pairs = set()
         for npc in self.npcs:
-            if npc.state in {"parked", "reserved"}:
-                continue
             for other in self._nearby_npcs(npc):
-                if other is npc or other.layer != npc.layer or other.state in {"parked", "reserved"}:
+                if other is npc or other.layer != npc.layer:
                     continue
                 pair = tuple(sorted((id(npc), id(other))))
                 if pair in resolved_pairs:
@@ -752,6 +750,19 @@ class TrafficManager:
                 push = max(0.5, min(8.0, min_distance - distance)) * 0.5
                 nx = dx / normalizing_distance
                 ny = dy / normalizing_distance
+                if npc.state == "parking" or other.state == "parking":
+                    if npc.state == "parking" and other.state == "parking":
+                        npc.speed = 0.0
+                        other.speed = 0.0
+                    elif npc.state == "parking":
+                        other.x -= nx * push * 2.0
+                        other.y -= ny * push * 2.0
+                        other.speed = 0.0
+                    else:
+                        npc.x += nx * push * 2.0
+                        npc.y += ny * push * 2.0
+                        npc.speed = 0.0
+                    continue
                 npc.x += nx * push
                 npc.y += ny * push
                 other.x -= nx * push
