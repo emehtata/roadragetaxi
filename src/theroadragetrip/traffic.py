@@ -1447,7 +1447,7 @@ class TrafficManager:
                 continue
             if (
                 npc.parking_departure_pending
-                or npc.state in {"parked", "reserved", "parking"}
+                or npc.state in {"parked", "reserved", "parking", "parking_departure"}
             ) and (
                 npc.reserved_by_pedestrian_id is not None
                 or npc.current_driver_id is not None
@@ -1698,6 +1698,8 @@ class TrafficManager:
         for i, npc in enumerate(self.npcs):
             if npc.is_police:
                 continue
+            if npc.state == "parking_departure":
+                continue
             if npc.assigned_driver_id is None and npc.current_driver_id is None:
                 continue
             if npc.lod_level > 0 or not npc.lod_update_due:
@@ -1784,7 +1786,7 @@ class TrafficManager:
                 npc.target_speed = 0.0
                 npc.state = "waiting"
                 continue
-            if npc.state in {"parked", "reserved", "parking"}:
+            if npc.state in {"parked", "reserved", "parking", "parking_departure"}:
                 continue
             if not npc.lod_update_due:
                 continue
@@ -1966,6 +1968,8 @@ class TrafficManager:
         finished_npcs = set()
         for npc in self.npcs:
             if npc.is_police:
+                continue
+            if npc.state == "parking_departure":
                 continue
             if not npc.lod_update_due:
                 continue
