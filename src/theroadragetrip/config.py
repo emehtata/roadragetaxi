@@ -57,6 +57,7 @@ DEFAULT_CONFIG = {
         "traffic_count": "",
         "pedestrian_count": "20",
         "cyclist_count": "8",
+        "parking_density": "0.5",
     },
     "audio": {
         "master_volume": "1.0",

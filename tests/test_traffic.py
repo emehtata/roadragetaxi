@@ -37,6 +37,109 @@ def test_npc_occupies_and_releases_existing_parking_space():
     assert parking_space.occupied is False
 
 
+def test_activating_occupied_npc_clears_driver_and_parking_state():
+    way = Way(
+        points_m=[(0.0, 0.0), (100.0, 0.0)],
+        highway="primary",
+        half_width_m=4.0,
+        name="Departure Street",
+    )
+    parking_space = ParkingSpace(
+        [(0.0, -2.0), (2.0, -2.0), (2.0, 2.0), (0.0, 2.0)],
+        (0.0, -2.0, 2.0, 2.0),
+        osm_id=10,
+    )
+    manager = TrafficManager([way], target_count=0, parking_spaces=[parking_space])
+    npc = manager.spawn_npc(20.0, 0.0)
+    assert npc is not None
+    assert manager.occupy_parking_space(npc, parking_space)
+    npc.current_driver_id = 123
+    npc.state = "occupied"
+
+    assert manager.activate_occupied_vehicle(npc)
+    assert npc.state == "driving"
+    assert npc.current_driver_id is None
+    assert npc.parking_space_id is None
+    assert parking_space.occupied is False
+
+
+def test_traffic_update_populates_half_target_with_parked_npcs():
+    way = Way(points_m=[(0.0, 0.0), (200.0, 0.0)], highway="residential", half_width_m=4.0)
+    spaces = [
+        ParkingSpace([(x - 1.0, -2.0), (x + 1.0, -2.0), (x + 1.0, 2.0), (x - 1.0, 2.0)], (x - 1.0, -2.0, x + 1.0, 2.0), osm_id=x)
+        for x in (20.0, 40.0, 60.0, 80.0)
+    ]
+    manager = TrafficManager(ways=[way], target_count=4, parking_spaces=spaces, parking_density=0.5)
+
+    manager.update(Car(x=100.0, y=0.0, heading=0.0, speed=0.0), dt=1.0)
+
+    assert sum(npc.state == "parked" for npc in manager.npcs) == 2
+    assert sum(space.occupied for space in spaces) == 2
+
+
+def test_despawning_parked_npc_releases_osm_space():
+    way = Way(points_m=[(0.0, 0.0), (200.0, 0.0)], highway="residential", half_width_m=4.0)
+    parking_space = ParkingSpace([(0.0, -2.0), (2.0, -2.0), (2.0, 2.0), (0.0, 2.0)], (0.0, -2.0, 2.0, 2.0), osm_id=11)
+    manager = TrafficManager([way], target_count=0, despawn_radius_m=50.0, parking_spaces=[parking_space])
+    npc = NPCCar(1.0, 0.0, 0.0, 0.0, way, 0, 1, 0.0, (20, 20, 20))
+    manager.npcs = [npc]
+    assert manager.occupy_parking_space(npc, parking_space)
+
+    manager.update(Car(x=100.0, y=0.0, heading=0.0, speed=0.0), dt=0.1)
+
+    assert manager.npcs == []
+    assert parking_space.occupied is False
+
+
+def test_parked_npc_does_not_spawn_directly_inside_viewport():
+    way = Way(
+        points_m=[(-100.0, 0.0), (100.0, 0.0)],
+        highway="primary",
+        half_width_m=4.0,
+        name="Parking Street",
+    )
+    parking_space = ParkingSpace(
+        [(-2.0, -2.0), (2.0, -2.0), (2.0, 2.0), (-2.0, 2.0)],
+        (-2.0, -2.0, 2.0, 2.0),
+        osm_id=12,
+    )
+    manager = TrafficManager([way], target_count=0, parking_spaces=[parking_space])
+
+    npc = manager.spawn_parked_npc(
+        0.0,
+        0.0,
+        viewport_bounds=(-25.0, -25.0, 25.0, 25.0),
+    )
+
+    assert npc is None
+    assert parking_space.occupied is False
+
+
+def test_parked_npc_can_spawn_directly_outside_viewport():
+    way = Way(
+        points_m=[(-100.0, 0.0), (100.0, 0.0)],
+        highway="primary",
+        half_width_m=4.0,
+        name="Parking Street",
+    )
+    parking_space = ParkingSpace(
+        [(60.0, -2.0), (64.0, -2.0), (64.0, 2.0), (60.0, 2.0)],
+        (60.0, -2.0, 64.0, 2.0),
+        osm_id=13,
+    )
+    manager = TrafficManager([way], target_count=0, parking_spaces=[parking_space])
+
+    npc = manager.spawn_parked_npc(
+        0.0,
+        0.0,
+        viewport_bounds=(-25.0, -25.0, 25.0, 25.0),
+    )
+
+    assert npc is not None
+    assert npc.state == "parked"
+    assert parking_space.occupied is True
+
+
 def test_plan_route_starts_at_car_and_ends_at_destination():
     way = Way(
         points_m=[(0.0, 0.0), (100.0, 0.0), (200.0, 0.0)],

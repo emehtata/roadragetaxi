@@ -319,6 +319,12 @@ def parse_args(config=None, city_names=None) -> argparse.Namespace:
         default=get_optional_int(config, "traffic", "traffic_count") if config else None,
         help="Target number of NPC cars (default: scales with available streets, capped at 50)",
     )
+    p.add_argument(
+        "--parking-density",
+        type=float,
+        default=traffic_config.getfloat("parking_density", fallback=0.5),
+        help="Fraction of regular NPC cars spawned in existing OSM parking spaces",
+    )
     p.add_argument("--pedestrian-count", type=int, default=traffic_config.getint("pedestrian_count", fallback=60), help="Target number of pedestrians")
     p.add_argument("--cyclist-count", type=int, default=traffic_config.getint("cyclist_count", fallback=8), help="Target number of cyclists")
 
@@ -927,6 +933,7 @@ def main() -> None:
             traffic_lights=traffic_lights,
             crossings=crossings,
             parking_spaces=parking_spaces,
+            parking_density=args.parking_density,
             roadworks=roadworks,
             enable_two_wheelers=enable_two_wheelers,
         )

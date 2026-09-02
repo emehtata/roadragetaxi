@@ -45,6 +45,7 @@ CYCLIST_COLORS = [
 ]
 
 PEDESTRIAN_LOD_UPDATE_INTERVALS = (1.0 / 30.0, 1.0 / 12.0, 0.2)
+MAX_VEHICLE_RESERVATION_DISTANCE_M = 100.0
 
 
 @dataclass
@@ -99,6 +100,7 @@ class Pedestrian:
     lod_update_dt: float = 0.0
     reserved_vehicle_id: Optional[int] = None
     current_vehicle_id: Optional[int] = None
+    vehicle_entry_timer: float = 0.0
 
 
 @dataclass
@@ -225,7 +227,7 @@ class PedestrianManager:
             return random.choice(candidates)
         return way.points_m[-1] if direction == 1 else way.points_m[0]
 
-    def find_available_parked_vehicle(self, x: float, y: float, radius_m: float = 35.0):
+    def find_available_parked_vehicle(self, x: float, y: float, radius_m: float = 100.0):
         """Find the nearest reusable parked NPC through TrafficManager's spatial grid."""
         if self.traffic_manager is not None:
             vehicles = self.traffic_manager.nearby_npcs_at(x, y)
@@ -247,10 +249,25 @@ class PedestrianManager:
             return False
         if getattr(vehicle, "reserved_by_pedestrian_id", None) is not None:
             return False
+        if math.hypot(vehicle.x - pedestrian.x, vehicle.y - pedestrian.y) > MAX_VEHICLE_RESERVATION_DISTANCE_M:
+            return False
         vehicle.reserved_by_pedestrian_id = id(pedestrian)
         vehicle.state = "reserved"
         pedestrian.reserved_vehicle_id = id(vehicle)
+        pedestrian.destination = self._vehicle_entry_position(vehicle)
+        pedestrian.state = "approaching_vehicle"
+        pedestrian.animation_state = "walking"
         return True
+
+    @staticmethod
+    def _vehicle_entry_position(vehicle) -> Tuple[float, float]:
+        """Return a walkable point beside the vehicle's passenger side."""
+        offset = getattr(vehicle, "width_m", 1.8) * 0.5 + 1.0
+        heading = getattr(vehicle, "heading", 0.0)
+        return (
+            vehicle.x - math.sin(heading) * offset,
+            vehicle.y + math.cos(heading) * offset,
+        )
 
     def cancel_vehicle_reservation(self, pedestrian: Pedestrian) -> None:
         """Release any vehicle reservation owned by a pedestrian."""
@@ -279,6 +296,8 @@ class PedestrianManager:
         vehicle.state = "occupied"
         pedestrian.reserved_vehicle_id = None
         pedestrian.current_vehicle_id = id(vehicle)
+        pedestrian.x = vehicle.x
+        pedestrian.y = vehicle.y
         pedestrian.state = "in_vehicle"
         pedestrian.animation_state = "idle"
         return True
@@ -1038,6 +1057,54 @@ class PedestrianManager:
             if not ped.lod_update_due:
                 continue
             update_dt = max(dt, ped.lod_update_dt)
+            if ped.state == "in_vehicle":
+                ped.speed = 0.0
+                ped.animation_state = "idle"
+                vehicles = self.traffic_manager.npcs if self.traffic_manager is not None else self.traffic_vehicles
+                vehicle = next((candidate for candidate in vehicles if id(candidate) == ped.current_vehicle_id), None)
+                if vehicle is None or getattr(vehicle, "current_driver_id", None) != id(ped):
+                    ped.current_vehicle_id = None
+                    ped.state = "walking"
+                    ped.animation_state = "walking"
+                else:
+                    ped.x = vehicle.x
+                    ped.y = vehicle.y
+                continue
+            if ped.reserved_vehicle_id is not None:
+                vehicles = self.traffic_manager.npcs if self.traffic_manager is not None else self.traffic_vehicles
+                vehicle = next((candidate for candidate in vehicles if id(candidate) == ped.reserved_vehicle_id), None)
+                if vehicle is None or getattr(vehicle, "reserved_by_pedestrian_id", None) != id(ped):
+                    self.cancel_vehicle_reservation(ped)
+                    ped.state = "walking"
+                    ped.animation_state = "walking"
+                    ped.destination = None
+                elif ped.state == "entering_vehicle":
+                    ped.vehicle_entry_timer = max(0.0, ped.vehicle_entry_timer - update_dt)
+                    ped.speed = 0.0
+                    ped.animation_state = "idle"
+                    if ped.vehicle_entry_timer <= 0.0:
+                        self.enter_reserved_vehicle(ped, vehicle)
+                    continue
+                else:
+                    entry_x, entry_y = self._vehicle_entry_position(vehicle)
+                    ped.destination = (entry_x, entry_y)
+                    distance = math.hypot(entry_x - ped.x, entry_y - ped.y)
+                    if distance <= 1.0:
+                        ped.x = entry_x
+                        ped.y = entry_y
+                        ped.speed = 0.0
+                        ped.state = "entering_vehicle"
+                        ped.animation_state = "idle"
+                        ped.vehicle_entry_timer = 0.4
+                        continue
+                    ped.heading = math.atan2(entry_y - ped.y, entry_x - ped.x)
+                    ped.speed = ped.base_speed
+                    step = min(distance, ped.speed * update_dt)
+                    ped.x += math.cos(ped.heading) * step
+                    ped.y += math.sin(ped.heading) * step
+                    ped.state = "approaching_vehicle"
+                    ped.animation_state = "walking"
+                    continue
             taxi_stop_target = getattr(ped, "taxi_stop_target", None)
             if getattr(ped, "is_walking_to_taxi_stop", False) and taxi_stop_target is not None:
                 target_x, target_y = taxi_stop_target

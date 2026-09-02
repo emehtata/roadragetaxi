@@ -257,6 +257,7 @@ class TrafficManager:
         traffic_lights: Optional[List[TrafficLight]] = None,
         crossings: Optional[List] = None,
         parking_spaces: Optional[List] = None,
+        parking_density: float = 0.5,
         roadworks: Optional[List] = None,
         enable_two_wheelers: bool = False,
     ):
@@ -269,6 +270,7 @@ class TrafficManager:
         self.traffic_lights = traffic_lights if traffic_lights is not None else []
         self.crossings = crossings if crossings is not None else []
         self.parking_spaces = parking_spaces if parking_spaces is not None else []
+        self.parking_density = max(0.0, min(1.0, parking_density))
         self.roadworks = roadworks if roadworks is not None else []
         self.enable_two_wheelers = enable_two_wheelers
         self.npcs: List[NPCCar] = []
@@ -418,9 +420,52 @@ class TrafficManager:
         if npc.state not in {"reserved", "parked", "occupied"}:
             return False
         self.release_parking_space(npc)
+        npc.current_driver_id = None
         npc.state = "driving"
         npc.target_speed = max(npc.target_speed, 4.0)
         return True
+
+    def spawn_parked_npc(
+        self,
+        near_x: float,
+        near_y: float,
+        near_heading: float = 0.0,
+        viewport_bounds: Optional[Tuple[float, float, float, float]] = None,
+    ) -> Optional[NPCCar]:
+        """Spawn an NPC directly only into a free parking space outside the view."""
+        available_spaces = [
+            space for space in self.nearby_parking_spaces(near_x, near_y, self.spawn_radius_m)
+            if not space.occupied
+            and not space.reserved
+            and (
+                viewport_bounds is None
+                or not (
+                    viewport_bounds[0]
+                    <= (space.bbox[0] + space.bbox[2]) * 0.5
+                    <= viewport_bounds[2]
+                    and viewport_bounds[1]
+                    <= (space.bbox[1] + space.bbox[3]) * 0.5
+                    <= viewport_bounds[3]
+                )
+            )
+        ]
+        if not available_spaces:
+            return None
+        parking_space = random.choice(available_spaces)
+        center_x = (parking_space.bbox[0] + parking_space.bbox[2]) * 0.5
+        center_y = (parking_space.bbox[1] + parking_space.bbox[3]) * 0.5
+        npc = self.spawn_npc(near_x, near_y, viewport_bounds=None, near_heading=None)
+        if npc is None:
+            return None
+        npc.is_taxi = False
+        npc.vehicle_type = "car"
+        npc.x = center_x
+        npc.y = center_y
+        npc.heading = parking_space.orientation
+        if not self.occupy_parking_space(npc, parking_space):
+            self.npcs.remove(npc)
+            return None
+        return npc
 
     def _nearby_npcs(self, npc: NPCCar) -> List[NPCCar]:
         cell_size = self._npc_grid_cell_size
@@ -729,6 +774,9 @@ class TrafficManager:
             if player_car is not None:
                 regular_npcs.sort(key=lambda npc: math.hypot(npc.x - player_car.x, npc.y - player_car.y))
             keep_ids = {id(npc) for npc in regular_npcs[:self.target_count]}
+            for npc in regular_npcs:
+                if id(npc) not in keep_ids:
+                    self.release_parking_space(npc)
             self.npcs = [npc for npc in self.npcs if npc.is_taxi or id(npc) in keep_ids]
 
     def spawn_taxis_at_nearby_stops(
@@ -1267,6 +1315,7 @@ class TrafficManager:
             d = math.hypot(npc.x - player_car.x, npc.y - player_car.y)
             if d > self.despawn_radius_m:
                 logger.debug("NPC %s despawned: distance=%.1fm exceeds %.1fm", id(npc), d, self.despawn_radius_m)
+                self.release_parking_space(npc)
                 npc_population_changed = True
                 continue
             if viewport_bounds:
@@ -1286,14 +1335,32 @@ class TrafficManager:
         # Spawn new NPCs up to target_count (preferring just outside viewport)
         attempts = 0
         max_attempts = max(200, self.target_count * 20)
+        regular_target = max(0, self.target_count - sum(1 for npc in self.npcs if npc.is_taxi))
+        parked_target = round(regular_target * self.parking_density)
         while len(self.npcs) < self.target_count and attempts < max_attempts:
             attempts += 1
-            npc = self.spawn_npc(
-                player_car.x,
-                player_car.y,
-                viewport_bounds=viewport_bounds,
-                near_heading=player_car.heading,
-            )
+            parked_count = sum(1 for candidate in self.npcs if candidate.state == "parked" and not candidate.is_taxi)
+            if parked_count < parked_target:
+                npc = self.spawn_parked_npc(
+                    player_car.x,
+                    player_car.y,
+                    near_heading=player_car.heading,
+                    viewport_bounds=viewport_bounds,
+                )
+            else:
+                npc = self.spawn_npc(
+                    player_car.x,
+                    player_car.y,
+                    viewport_bounds=viewport_bounds,
+                    near_heading=player_car.heading,
+                )
+            if npc is None and parked_count < parked_target:
+                npc = self.spawn_npc(
+                    player_car.x,
+                    player_car.y,
+                    viewport_bounds=viewport_bounds,
+                    near_heading=player_car.heading,
+                )
             if not npc:
                 break
             npc_population_changed = True
@@ -1550,6 +1617,8 @@ class TrafficManager:
         # Check red traffic lights ahead and adjust speed
         for npc in self.npcs:
             if npc.is_police:
+                continue
+            if npc.state in {"parked", "reserved"}:
                 continue
             if not npc.lod_update_due:
                 continue

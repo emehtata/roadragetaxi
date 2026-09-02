@@ -54,6 +54,84 @@ def test_pedestrian_can_reserve_any_nearby_parked_vehicle():
     assert vehicle.state == "parked"
 
 
+def test_pedestrian_cannot_reserve_vehicle_over_100_meters_away():
+    way = Way(points_m=[(0.0, 0.0), (200.0, 0.0)], highway="footway", half_width_m=1.5)
+    vehicle = SimpleNamespace(
+        x=100.1,
+        y=0.0,
+        state="parked",
+        reserved_by_pedestrian_id=None,
+        current_driver_id=None,
+    )
+    manager = PedestrianManager([way], target_count=0, traffic_vehicles=[vehicle])
+    pedestrian = Pedestrian(0.0, 0.0, 0.0, 1.0, 1.0, way, 0, 1, (1, 1, 1))
+
+    assert manager.reserve_parked_vehicle(pedestrian, vehicle) is False
+    assert vehicle.reserved_by_pedestrian_id is None
+    assert vehicle.state == "parked"
+
+
+def test_pedestrian_can_reserve_vehicle_at_100_meters():
+    way = Way(points_m=[(0.0, 0.0), (100.0, 0.0)], highway="footway", half_width_m=1.5)
+    vehicle = SimpleNamespace(
+        x=100.0,
+        y=0.0,
+        state="parked",
+        reserved_by_pedestrian_id=None,
+        current_driver_id=None,
+    )
+    manager = PedestrianManager([way], target_count=0, traffic_vehicles=[vehicle])
+    pedestrian = Pedestrian(0.0, 0.0, 0.0, 1.0, 1.0, way, 0, 1, (1, 1, 1))
+
+    assert manager.reserve_parked_vehicle(pedestrian, vehicle) is True
+
+
+def test_reserved_pedestrian_walks_to_vehicle_and_enters():
+    way = Way(points_m=[(0.0, 0.0), (100.0, 0.0)], highway="footway", half_width_m=1.5)
+    vehicle = SimpleNamespace(
+        x=8.0,
+        y=0.0,
+        heading=0.0,
+        width_m=1.8,
+        state="parked",
+        reserved_by_pedestrian_id=None,
+        current_driver_id=None,
+    )
+    manager = PedestrianManager([way], target_count=0, traffic_vehicles=[vehicle])
+    pedestrian = Pedestrian(0.0, 0.0, 0.0, 2.0, 2.0, way, 0, 1, (1, 1, 1))
+    manager.pedestrians = [pedestrian]
+
+    assert manager.reserve_parked_vehicle(pedestrian, vehicle)
+    for _ in range(10):
+        manager.update(Car(0.0, 0.0, 0.0, 0.0), dt=0.5)
+
+    assert pedestrian.current_vehicle_id == id(vehicle)
+    assert pedestrian.state == "in_vehicle"
+    assert vehicle.state == "occupied"
+
+
+def test_pedestrian_in_vehicle_follows_vehicle_position():
+    way = Way(points_m=[(0.0, 0.0), (100.0, 0.0)], highway="footway", half_width_m=1.5)
+    vehicle = SimpleNamespace(
+        x=8.0,
+        y=0.0,
+        state="occupied",
+        current_driver_id=None,
+    )
+    manager = PedestrianManager([way], target_count=0, traffic_vehicles=[vehicle])
+    pedestrian = Pedestrian(8.0, 0.0, 0.0, 1.0, 1.0, way, 0, 1, (1, 1, 1))
+    vehicle.current_driver_id = id(pedestrian)
+    pedestrian.current_vehicle_id = id(vehicle)
+    pedestrian.state = "in_vehicle"
+    manager.pedestrians = [pedestrian]
+
+    vehicle.x = 30.0
+    vehicle.y = 4.0
+    manager.update(Car(0.0, 0.0, 0.0, 0.0), dt=0.1)
+
+    assert (pedestrian.x, pedestrian.y) == (30.0, 4.0)
+
+
 def test_pedestrian_can_spawn_at_and_leave_through_building_entrance():
     way = Way(points_m=[(0.0, 0.0), (100.0, 0.0)], highway="footway", half_width_m=1.5)
     building = SimpleNamespace(
