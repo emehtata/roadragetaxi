@@ -52,6 +52,20 @@ def test_build_ways_parses_osm_yield_sign():
     assert result.yield_signs[0].layer == 1
 
 
+def test_build_ways_parses_priority_road_tags():
+    elements = [
+        {"type": "node", "id": 1, "lat": 60.0, "lon": 25.0},
+        {"type": "node", "id": 2, "lat": 60.001, "lon": 25.001},
+        {"type": "node", "id": 3, "lat": 60.002, "lon": 25.002},
+        {"type": "way", "id": 10, "nodes": [1, 2], "tags": {"highway": "primary", "priority_road": "yes"}},
+        {"type": "way", "id": 11, "nodes": [2, 3], "tags": {"highway": "secondary", "junction": "priority"}},
+    ]
+
+    result = build_ways(elements)
+
+    assert [way.priority_road for way in result.ways] == [True, True]
+
+
 def test_build_ways_parses_building_entrance_nodes():
     elements = [
         {"type": "node", "id": 1, "lat": 60.0, "lon": 25.0},
@@ -65,6 +79,24 @@ def test_build_ways_parses_building_entrance_nodes():
     result = build_ways(elements)
 
     assert result.buildings[0].entrances == [(25.005 * 1000.0, 60.0 * 1000.0)]
+
+
+def test_build_ways_generates_entrance_for_building_without_node():
+    elements = [
+        {"type": "node", "id": 1, "lat": 60.0, "lon": 25.0},
+        {"type": "node", "id": 2, "lat": 60.0, "lon": 25.01},
+        {"type": "node", "id": 3, "lat": 60.01, "lon": 25.01},
+        {"type": "node", "id": 4, "lat": 60.01, "lon": 25.0},
+        {"type": "node", "id": 5, "lat": 60.005, "lon": 24.999},
+        {"type": "node", "id": 6, "lat": 60.005, "lon": 25.0},
+        {"type": "way", "id": 10, "nodes": [1, 2, 3, 4, 1], "tags": {"building": "yes"}},
+        {"type": "way", "id": 11, "nodes": [5, 6], "tags": {"highway": "footway"}},
+    ]
+
+    result = build_ways(elements)
+
+    assert len(result.buildings[0].entrances) == 1
+    assert result.buildings[0].entrances[0] == (25.0 * 1000.0, 60.005 * 1000.0)
 
 
 def test_build_ways_parses_osm_bus_stop():

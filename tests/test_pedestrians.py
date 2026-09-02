@@ -9,9 +9,22 @@ from theroadragetrip.pedestrian import (
     Pedestrian,
     PedestrianAppearance,
     PedestrianManager,
+    PedestrianNetwork,
     PedestrianState,
 )
 from theroadragetrip.physics import Car
+
+
+def test_pedestrian_network_routes_across_connected_ways():
+    network = PedestrianNetwork([
+        Way(points_m=[(0.0, 0.0), (10.0, 0.0)], highway="footway"),
+        Way(points_m=[(10.0, 0.0), (10.0, 10.0)], highway="footway"),
+    ])
+
+    route = network.route((0.0, 0.0), (10.0, 10.0))
+
+    assert (10.0, 0.0) in route
+    assert network.nearest_point((8.0, 2.0)) == (8.0, 0.0)
 
 
 def test_pedestrian_state_and_appearance_support_interactions():

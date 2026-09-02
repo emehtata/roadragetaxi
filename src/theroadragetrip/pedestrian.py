@@ -50,6 +50,85 @@ PEDESTRIAN_LOD_UPDATE_INTERVALS = (1.0 / 30.0, 1.0 / 12.0, 0.2)
 MAX_VEHICLE_RESERVATION_DISTANCE_M = 100.0
 
 
+class PedestrianNetwork:
+    """Reusable graph and spatial queries for walkable OSM ways."""
+
+    def __init__(self, ways: Optional[List[Way]] = None) -> None:
+        self.ways: List[Way] = []
+        self.nodes: List[Tuple[float, float]] = []
+        self.edges: Dict[int, List[Tuple[int, float]]] = {}
+        self.set_ways(ways or [])
+
+    def set_ways(self, ways: List[Way]) -> None:
+        self.ways = [way for way in ways if len(way.points_m) >= 2]
+        self.nodes = []
+        self.edges = {}
+        buckets: Dict[Tuple[int, int], List[int]] = {}
+
+        def node_id(point: Tuple[float, float]) -> int:
+            bucket = (round(point[0] / 3.0), round(point[1] / 3.0))
+            for candidate in buckets.get(bucket, []):
+                if math.hypot(self.nodes[candidate][0] - point[0], self.nodes[candidate][1] - point[1]) <= 3.0:
+                    return candidate
+            candidate = len(self.nodes)
+            self.nodes.append(point)
+            self.edges[candidate] = []
+            buckets.setdefault(bucket, []).append(candidate)
+            return candidate
+
+        for way in self.ways:
+            point_ids = [node_id(point) for point in way.points_m]
+            for first, second in zip(point_ids, point_ids[1:]):
+                distance = math.hypot(
+                    self.nodes[second][0] - self.nodes[first][0],
+                    self.nodes[second][1] - self.nodes[first][1],
+                )
+                self.edges[first].append((second, distance))
+                self.edges[second].append((first, distance))
+
+    def nearest_point(self, point: Tuple[float, float]) -> Optional[Tuple[float, float]]:
+        """Return closest point on network, or ``None`` when network is empty."""
+        nearest = None
+        nearest_distance = float("inf")
+        for way in self.ways:
+            for first, second in zip(way.points_m, way.points_m[1:]):
+                x, y, _, distance = closest_point_and_dist_to_segment(
+                    point[0], point[1], first[0], first[1], second[0], second[1]
+                )
+                if distance < nearest_distance:
+                    nearest, nearest_distance = (x, y), distance
+        return nearest
+
+    def route(self, start: Tuple[float, float], target: Tuple[float, float]) -> List[Tuple[float, float]]:
+        """Return shortest network route with direct connectors at both ends."""
+        if not self.nodes:
+            return [start, target] if math.hypot(target[0] - start[0], target[1] - start[1]) > 0.01 else [start]
+        start_id = min(self.edges, key=lambda i: (self.nodes[i][0] - start[0]) ** 2 + (self.nodes[i][1] - start[1]) ** 2)
+        target_id = min(self.edges, key=lambda i: (self.nodes[i][0] - target[0]) ** 2 + (self.nodes[i][1] - target[1]) ** 2)
+        distances = {start_id: 0.0}
+        previous: Dict[int, int] = {}
+        queue = [(0.0, start_id)]
+        while queue:
+            distance, current = heapq.heappop(queue)
+            if distance != distances.get(current):
+                continue
+            if current == target_id:
+                break
+            for neighbor, edge_distance in self.edges[current]:
+                new_distance = distance + edge_distance
+                if new_distance < distances.get(neighbor, math.inf):
+                    distances[neighbor] = new_distance
+                    previous[neighbor] = current
+                    heapq.heappush(queue, (new_distance, neighbor))
+        if target_id not in distances:
+            return [start, target] if math.hypot(target[0] - start[0], target[1] - start[1]) > 0.01 else [start]
+        path = [target_id]
+        while path[-1] != start_id:
+            path.append(previous[path[-1]])
+        path.reverse()
+        return [start] + [self.nodes[index] for index in path] + [target]
+
+
 class PedestrianState(str, Enum):
     """Stable state names for pedestrian AI and renderer integrations."""
 
@@ -193,6 +272,7 @@ class PedestrianManager:
         self._way_grid_cell_size: float = 100.0
         self._route_nodes: List[Tuple[float, float]] = []
         self._route_edges: Dict[int, List[Tuple[int, float]]] = {}
+        self.network = PedestrianNetwork()
         self._junction_grid: Dict[Tuple[int, int], List[Tuple[Way, int, Tuple[float, float], int, int]]] = {}
         self._junction_grid_cell_size: float = 20.0
         self._traffic_light_grid: Dict[Tuple[int, int], List[TrafficLight]] = {}
@@ -304,16 +384,7 @@ class PedestrianManager:
         entry_position: Tuple[float, float],
     ) -> List[Tuple[float, float]]:
         """Build a short mapped-footway approach followed by the final door step."""
-        nearest = None
-        nearest_distance = float("inf")
-        for way in self.ped_ways:
-            for p1, p2 in zip(way.points_m, way.points_m[1:]):
-                point_x, point_y, _, distance = closest_point_and_dist_to_segment(
-                    entry_position[0], entry_position[1], p1[0], p1[1], p2[0], p2[1]
-                )
-                if distance < nearest_distance:
-                    nearest = (point_x, point_y)
-                    nearest_distance = distance
+        nearest = self.network.nearest_point(entry_position)
         start = (pedestrian.x, pedestrian.y)
         route = self._plan_pedestrian_route(start, nearest) if nearest is not None else [start]
         if math.hypot(entry_position[0] - route[-1][0], entry_position[1] - route[-1][1]) > 0.01:
@@ -322,31 +393,9 @@ class PedestrianManager:
 
     def _build_route_graph(self) -> None:
         """Build a small undirected graph from mapped pedestrian-way vertices."""
-        nodes: List[Tuple[float, float]] = []
-        edges: Dict[int, List[Tuple[int, float]]] = {}
-        buckets: Dict[Tuple[int, int], List[int]] = {}
-
-        def node_id(point: Tuple[float, float]) -> int:
-            bucket = (round(point[0] / 3.0), round(point[1] / 3.0))
-            for candidate in buckets.get(bucket, []):
-                if math.hypot(nodes[candidate][0] - point[0], nodes[candidate][1] - point[1]) <= 3.0:
-                    return candidate
-            candidate = len(nodes)
-            nodes.append(point)
-            edges[candidate] = []
-            buckets.setdefault(bucket, []).append(candidate)
-            return candidate
-
-        for way in self.ped_ways:
-            point_ids = [node_id(point) for point in way.points_m]
-            for first, second in zip(point_ids, point_ids[1:]):
-                distance = math.hypot(
-                    nodes[second][0] - nodes[first][0], nodes[second][1] - nodes[first][1]
-                )
-                edges[first].append((second, distance))
-                edges[second].append((first, distance))
-        self._route_nodes = nodes
-        self._route_edges = edges
+        self.network.set_ways(self.ped_ways)
+        self._route_nodes = self.network.nodes
+        self._route_edges = self.network.edges
 
     def _plan_pedestrian_route(
         self,
@@ -354,40 +403,7 @@ class PedestrianManager:
         target: Tuple[float, float],
     ) -> List[Tuple[float, float]]:
         """Return a shortest mapped-footway route with direct endpoint connectors."""
-        if not self._route_nodes:
-            return [start, target] if math.hypot(target[0] - start[0], target[1] - start[1]) > 0.01 else [start]
-        start_id = min(
-            self._route_edges,
-            key=lambda index: (self._route_nodes[index][0] - start[0]) ** 2
-            + (self._route_nodes[index][1] - start[1]) ** 2,
-        )
-        target_id = min(
-            self._route_edges,
-            key=lambda index: (self._route_nodes[index][0] - target[0]) ** 2
-            + (self._route_nodes[index][1] - target[1]) ** 2,
-        )
-        distances = {start_id: 0.0}
-        previous: Dict[int, int] = {}
-        queue = [(0.0, start_id)]
-        while queue:
-            distance, current = heapq.heappop(queue)
-            if distance != distances.get(current):
-                continue
-            if current == target_id:
-                break
-            for neighbor, edge_distance in self._route_edges[current]:
-                new_distance = distance + edge_distance
-                if new_distance < distances.get(neighbor, math.inf):
-                    distances[neighbor] = new_distance
-                    previous[neighbor] = current
-                    heapq.heappush(queue, (new_distance, neighbor))
-        if target_id not in distances:
-            return [start, target] if math.hypot(target[0] - start[0], target[1] - start[1]) > 0.01 else [start]
-        node_path = [target_id]
-        while node_path[-1] != start_id:
-            node_path.append(previous[node_path[-1]])
-        node_path.reverse()
-        return [start] + [self._route_nodes[index] for index in node_path] + [target]
+        return self.network.route(start, target)
 
     @staticmethod
     def _vehicle_entry_position(vehicle) -> Tuple[float, float]:

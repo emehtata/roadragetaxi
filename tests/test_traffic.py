@@ -77,6 +77,37 @@ def test_npc_with_absent_assigned_driver_does_not_move():
     assert npc.state == "waiting"
 
 
+def test_roundabout_way_flag_and_counter_clockwise_direction():
+    roundabout = Way(
+        [(10.0, 0.0), (0.0, 10.0), (-10.0, 0.0), (0.0, -10.0), (10.0, 0.0)],
+        "secondary",
+        4.0,
+        oneway=1,
+        is_roundabout=True,
+    )
+    manager = TrafficManager([roundabout], target_count=0)
+
+    assert roundabout.is_roundabout
+    assert manager._roundabout_direction(roundabout) == 1
+
+
+def test_roundabout_entry_yields_to_circulating_npc():
+    approach = Way([(40.0, 0.0), (10.0, 0.0)], "secondary", 4.0)
+    roundabout = Way(
+        [(10.0, 0.0), (0.0, 10.0), (-10.0, 0.0), (0.0, -10.0), (10.0, 0.0)],
+        "secondary",
+        4.0,
+        oneway=1,
+        is_roundabout=True,
+    )
+    manager = TrafficManager([approach, roundabout], target_count=0)
+    entering = NPCCar(25.0, 0.0, math.pi, 4.0, approach, 0, -1, 10.0, (20, 20, 20))
+    circulating = NPCCar(10.0, 6.0, math.pi / 2, 4.0, roundabout, 0, 1, 10.0, (20, 20, 20))
+    manager.npcs = [entering, circulating]
+
+    assert manager._roundabout_entry_blocked(entering, roundabout, (10.0, 0.0))
+
+
 def test_npc_stops_before_stop_sign():
     way = Way(points_m=[(0.0, 0.0), (100.0, 0.0)], highway="residential", half_width_m=4.0)
     manager = TrafficManager([way], target_count=0, stop_signs=[StopSign(20.0, 0.0, id=4)])
@@ -813,6 +844,30 @@ def test_npc_avoids_180_degree_u_turns_at_junction():
     assert rev_route[2] == -1
 
 
+def test_uncontrolled_left_turn_yields_to_oncoming_traffic():
+    approach = Way(points_m=[(-30.0, 0.0), (0.0, 0.0)], highway="secondary", half_width_m=4.0)
+    exit_way = Way(points_m=[(0.0, 0.0), (0.0, 30.0)], highway="secondary", half_width_m=4.0)
+    opposing_way = Way(points_m=[(30.0, 0.0), (0.0, 0.0)], highway="secondary", half_width_m=4.0)
+    turning = NPCCar(-10.0, 0.0, 0.0, 4.0, approach, 0, 1, 10.0, (0, 0, 0), next_route=(exit_way, 0, 1))
+    opposing = NPCCar(10.0, 0.0, math.pi, 4.0, opposing_way, 0, -1, 10.0, (0, 0, 0))
+    manager = TrafficManager([approach, exit_way, opposing_way])
+    manager.npcs = [turning, opposing]
+
+    assert manager._junction_is_clear_for(turning, (0.0, 0.0)) is False
+
+
+def test_priority_road_has_right_of_way_over_uncontrolled_approach():
+    priority = Way(points_m=[(30.0, 0.0), (0.0, 0.0)], highway="primary", half_width_m=4.0, priority_road=True)
+    side = Way(points_m=[(0.0, -30.0), (0.0, 0.0)], highway="residential", half_width_m=4.0)
+    priority_car = NPCCar(10.0, 0.0, math.pi, 4.0, priority, 0, -1, 10.0, (0, 0, 0))
+    side_car = NPCCar(0.0, -10.0, math.pi / 2.0, 4.0, side, 0, 1, 10.0, (0, 0, 0))
+    manager = TrafficManager([priority, side])
+    manager.npcs = [priority_car, side_car]
+
+    assert manager._junction_is_clear_for(side_car, (0.0, 0.0)) is False
+    assert manager._junction_is_clear_for(priority_car, (0.0, 0.0)) is True
+
+
 def test_npc_can_leave_bridge_at_layer_transition():
     approach = Way(
         points_m=[(0.0, 0.0), (50.0, 0.0)],
@@ -1188,4 +1243,3 @@ def test_npc_is_removed_at_one_way_route_end():
     traffic_mgr.update(Car(x=100.0, y=100.0, heading=0.0, speed=0.0), dt=0.2)
 
     assert npc not in traffic_mgr.npcs
-

@@ -371,6 +371,8 @@ class TrafficManager:
             point_layer = getattr(way, "layer", 0)
             point_ids = [node_id(point, point_layer) for point in way.points_m]
             oneway = getattr(way, "oneway", 0)
+            if getattr(way, "is_roundabout", False):
+                oneway = self._roundabout_direction(way)
             for first, second in zip(point_ids, point_ids[1:]):
                 distance = math.hypot(
                     nodes[second][0] - nodes[first][0], nodes[second][1] - nodes[first][1]
@@ -1150,6 +1152,7 @@ class TrafficManager:
                         for endpoint in (current_way.points_m[0], current_way.points_m[-1])
                     )
                     candidate_endpoint = i in (0, n_pts - 1)
+                    roundabout = getattr(w, "is_roundabout", False)
                     layer_transition = (
                         current_endpoint
                         and candidate_endpoint
@@ -1165,12 +1168,21 @@ class TrafficManager:
                     dist_sq = (pt[0] - at_x) ** 2 + (pt[1] - at_y) ** 2
                     if dist_sq <= tol_sq:
                         oneway = getattr(w, "oneway", 0)
-                        # Can travel forward from vertex i (if not at the end)
-                        if i < n_pts - 1 and oneway >= 0:
-                            candidates.append((w, i, 1))
-                        # Can travel backward from vertex i (if not at the start)
-                        if i > 0 and oneway <= 0:
-                            candidates.append((w, i - 1, -1))
+                        if roundabout:
+                            # Finnish roundabouts circulate counter-clockwise, regardless
+                            # of the direction in which OSM stored the closed way.
+                            direction = self._roundabout_direction(w)
+                            if direction == 1 and i < n_pts - 1:
+                                candidates.append((w, i, 1))
+                            elif direction == -1 and i > 0:
+                                candidates.append((w, i - 1, -1))
+                        else:
+                            # Can travel forward from vertex i (if not at the end)
+                            if i < n_pts - 1 and oneway >= 0:
+                                candidates.append((w, i, 1))
+                            # Can travel backward from vertex i (if not at the start)
+                            if i > 0 and oneway <= 0:
+                                candidates.append((w, i - 1, -1))
 
         if not candidates:
             return None
@@ -1212,6 +1224,27 @@ class TrafficManager:
                 return None
 
         return random.choice(valid_candidates)
+
+    @staticmethod
+    def _roundabout_direction(way: Way) -> int:
+        """Return point traversal direction that is geometrically counter-clockwise."""
+        points = way.points_m
+        area = sum(
+            first[0] * second[1] - second[0] * first[1]
+            for first, second in zip(points, points[1:])
+        )
+        return 1 if area >= 0.0 else -1
+
+    def _roundabout_entry_blocked(
+        self, npc: NPCCar, roundabout: Way, entry: Tuple[float, float]
+    ) -> bool:
+        """Yield at a roundabout entry when circulating traffic is approaching it."""
+        for other in self.npcs:
+            if other is npc or other.way is not roundabout or other.layer != npc.layer:
+                continue
+            if math.hypot(other.x - entry[0], other.y - entry[1]) <= 28.0:
+                return True
+        return False
 
     def _prepare_next_route(self, npc: NPCCar) -> None:
         """Choose the next route as soon as the NPC approaches a known junction."""
@@ -1259,8 +1292,31 @@ class TrafficManager:
                 return True
         return False
 
+    @staticmethod
+    def _planned_turn_direction(npc: NPCCar) -> str:
+        """Return planned turn direction, treating an unknown movement as straight."""
+        if npc.turn_signal in {"left", "right"}:
+            return npc.turn_signal
+        if npc.next_route is None:
+            return "straight"
+        next_way, next_segment_idx, next_direction = npc.next_route
+        points = next_way.points_m
+        if next_direction == 1:
+            start, end = points[next_segment_idx], points[next_segment_idx + 1]
+        else:
+            start, end = points[next_segment_idx + 1], points[next_segment_idx]
+        next_heading = math.atan2(end[1] - start[1], end[0] - start[0])
+        turn = (next_heading - npc.heading + math.pi) % (2.0 * math.pi) - math.pi
+        if math.radians(20) < turn < math.radians(160):
+            return "left"
+        if -math.radians(160) < turn < -math.radians(20):
+            return "right"
+        return "straight"
+
     def _junction_is_clear_for(self, npc: NPCCar, junction_point: Tuple[float, float]) -> bool:
-        """Apply Finnish yield-to-right rule to an uncontrolled approach."""
+        """Apply priority-road, left-turn, and Finnish yield-to-right rules."""
+        npc_priority = bool(getattr(npc.way, "priority_road", False))
+        npc_turn = self._planned_turn_direction(npc)
         for other in self.npcs:
             if other is npc or other.layer != npc.layer or not other.has_driver():
                 continue
@@ -1273,6 +1329,15 @@ class TrafficManager:
             toward_y = -dy / max(distance, 1e-6)
             if math.cos(other.heading) * toward_x + math.sin(other.heading) * toward_y < 0.5:
                 continue
+            other_priority = bool(getattr(other.way, "priority_road", False))
+            if npc_priority and not other_priority:
+                continue
+            if not npc_priority and other_priority:
+                return False
+            if npc_turn == "left":
+                opposing = math.cos(other.heading) * math.cos(npc.heading) + math.sin(other.heading) * math.sin(npc.heading)
+                if opposing < -0.5 and self._planned_turn_direction(other) != "left":
+                    return False
             right_x = math.sin(npc.heading)
             right_y = -math.cos(npc.heading)
             relative_x = other.x - npc.x
@@ -1385,8 +1450,11 @@ class TrafficManager:
                             continue
 
                     oneway = getattr(chosen_way, "oneway", 0)
-                    direction = 1 if oneway >= 0 else -1
-                    if oneway == 0:
+                    if getattr(chosen_way, "is_roundabout", False):
+                        direction = self._roundabout_direction(chosen_way)
+                    else:
+                        direction = 1 if oneway >= 0 else -1
+                    if oneway == 0 and not getattr(chosen_way, "is_roundabout", False):
                         direction = 1 if random.random() < 0.5 else -1
 
                     if direction == 1:
@@ -2016,6 +2084,15 @@ class TrafficManager:
                         and not self._junction_is_clear_for(npc, junction_point)
                     ):
                         junction_blocked = True
+                    if (
+                        npc.next_route is not None
+                        and getattr(npc.next_route[0], "is_roundabout", False)
+                        and not getattr(npc.way, "is_roundabout", False)
+                        and distance_to_junction < 24.0
+                        and self._roundabout_entry_blocked(npc, npc.next_route[0], junction_point)
+                    ):
+                        junction_blocked = True
+                        stop_distance = max(0.0, distance_to_junction - 2.5)
                     if nearest_yield_sign is not None:
                         yield_distance = nearest_yield_sign[0]
                         if not self._junction_is_clear_for(npc, junction_point):

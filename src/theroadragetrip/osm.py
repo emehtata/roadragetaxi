@@ -262,6 +262,8 @@ class Way:
     lanes_forward: Optional[int] = None
     lanes_backward: Optional[int] = None
     turn_lanes: Optional[str] = None
+    is_roundabout: bool = False
+    priority_road: bool = False
     segment_lengths: List[float] = field(default_factory=list, init=False, repr=False)
     segment_headings: List[float] = field(default_factory=list, init=False, repr=False)
     total_length_m: float = field(default=0.0, init=False, repr=False)
@@ -1247,6 +1249,41 @@ def plant_trees(sceneries: List[Scenery], ways: List[Way]) -> None:
             scenery.tree_variations.append(abs(math.sin(x * 12.9898 + y * 78.233)))
 
 
+def generate_building_entrances(buildings: List[Building], ways: List[Way]) -> None:
+    """Add deterministic door points to buildings lacking mapped entrance nodes."""
+    pedestrian_ways = [
+        way for way in ways
+        if len(way.points_m) >= 2
+        and getattr(way, "highway", "") in {
+            "footway", "path", "pedestrian", "cycleway", "steps", "bridleway", "corridor", "track",
+        }
+    ]
+    for building in buildings:
+        if building.entrances or len(building.points_m) < 2:
+            continue
+        boundary = list(zip(building.points_m, building.points_m[1:]))
+        if building.points_m[0] != building.points_m[-1]:
+            boundary.append((building.points_m[-1], building.points_m[0]))
+        if not boundary:
+            continue
+        if pedestrian_ways:
+            best = min(
+                ((dist_point_to_segment(
+                    (first[0] + second[0]) * 0.5,
+                    (first[1] + second[1]) * 0.5,
+                    path_first[0], path_first[1], path_second[0], path_second[1]
+                ), first, second)
+                 for first, second in boundary
+                 for way in pedestrian_ways
+                 for path_first, path_second in zip(way.points_m, way.points_m[1:])),
+                key=lambda candidate: candidate[0],
+            )
+            first, second = best[1], best[2]
+        else:
+            first, second = boundary[0]
+        building.entrances.append(((first[0] + second[0]) * 0.5, (first[1] + second[1]) * 0.5))
+
+
 def build_ways(
     elements: List[dict],
     progress_callback: Optional[Callable[[float, str], None]] = None,
@@ -1640,6 +1677,7 @@ def build_ways(
         # oneway values in OSM: 'yes', '1', 'true', '-1', 'reverse', 'no'
         oneway_tag = str(tags.get("oneway", "")).lower()
         junction_tag = str(tags.get("junction", "")).lower()
+        is_roundabout = junction_tag == "roundabout"
         oneway_dir = 0
         if oneway_tag in ("yes", "1", "true"):
             oneway_dir = 1
@@ -1675,6 +1713,8 @@ def build_ways(
         lanes_backward = parse_lane_count(tags.get("lanes:backward"))
         lit_tag = str(tags.get("lit", "")).strip().lower() or None
         surface_tag = str(tags.get("surface", "")).strip().lower() or None
+        priority_tag = str(tags.get("priority_road", "")).strip().lower()
+        is_priority_road = priority_tag in {"yes", "designated", "true", "1"} or junction_tag == "priority"
 
         ways.append(
             Way(
@@ -1688,6 +1728,7 @@ def build_ways(
                 is_drivable=is_drivable,
                 is_busway=is_bus_route,
                 oneway=oneway_dir,
+                is_roundabout=is_roundabout,
                 lanes=lanes_val,
                 layer=layer_val,
                 is_bridge=is_bridge,
@@ -1698,6 +1739,7 @@ def build_ways(
                 lanes_forward=lanes_forward,
                 lanes_backward=lanes_backward,
                 turn_lanes=tags.get("turn:lanes") or tags.get("turn:lanes:forward"),
+                priority_road=is_priority_road,
             )
         )
 
@@ -1752,6 +1794,8 @@ def build_ways(
                 cx = sum(xs) / len(xs)
                 cy = sum(ys) / len(ys)
                 places.append(Place(x=cx, y=cy, name=name, kind=tags.get("place", "suburb")))
+
+    generate_building_entrances(buildings, ways)
 
     # 6. Place nodes (suburbs, neighbourhoods, districts)
     for tags, nid in place_nodes_raw:

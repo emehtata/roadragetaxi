@@ -79,7 +79,7 @@ from .render import (
     world_to_screen,
 )
 from .traffic import CarAI, IntersectionManager, NPCCar, TrafficManager
-from .pedestrian import PedestrianAppearance, PedestrianState
+from .pedestrian import PedestrianAppearance, PedestrianNetwork, PedestrianState
 
 __all__ = [
     # Geo
@@ -137,6 +137,7 @@ __all__ = [
     "update_car_physics",
     "is_point_on_parking_space",
     "PedestrianAppearance",
+    "PedestrianNetwork",
     "PedestrianState",
     # Traffic
     "NPCCar",
