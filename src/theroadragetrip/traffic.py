@@ -112,6 +112,7 @@ class NPCCar:
     reserved_by_pedestrian_id: Optional[int] = None
     current_driver_id: Optional[int] = None
     assigned_driver_id: Optional[int] = None
+    driver_present: bool = True
 
     def __post_init__(self) -> None:
         """Give every NPC vehicle a stable associated driver identity."""
@@ -1611,7 +1612,7 @@ class TrafficManager:
                 continue
             if not npc.lod_update_due:
                 continue
-            if npc.assigned_driver_id is None and npc.current_driver_id is None:
+            if not npc.driver_present or (npc.assigned_driver_id is None and npc.current_driver_id is None):
                 npc.speed = 0.0
                 npc.target_speed = 0.0
                 npc.state = "waiting"
@@ -1731,7 +1732,7 @@ class TrafficManager:
                 continue
             if npc.state == "parking_departure":
                 continue
-            if npc.assigned_driver_id is None and npc.current_driver_id is None:
+            if not npc.driver_present or (npc.assigned_driver_id is None and npc.current_driver_id is None):
                 continue
             if npc.lod_level > 0 or not npc.lod_update_due:
                 continue
@@ -1812,7 +1813,7 @@ class TrafficManager:
         for npc in self.npcs:
             if npc.is_police:
                 continue
-            if npc.assigned_driver_id is None and npc.current_driver_id is None:
+            if not npc.driver_present or (npc.assigned_driver_id is None and npc.current_driver_id is None):
                 npc.speed = 0.0
                 npc.target_speed = 0.0
                 npc.state = "waiting"
