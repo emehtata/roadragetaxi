@@ -947,13 +947,6 @@ def main() -> None:
             roadworks=roadworks,
             enable_two_wheelers=enable_two_wheelers,
         )
-        initial_stand_taxis = traffic_mgr.spawn_taxis_at_nearby_stops(taxi_stops, car, None, all_stops=True)
-        logger.info(
-            "Taxi stands initialized: stops=%d taxis_spawned=%d taxis_active=%d",
-            len(taxi_stops),
-            initial_stand_taxis,
-            sum(1 for npc in traffic_mgr.npcs if npc.is_taxi),
-        )
         police_mgr = PoliceManager(
             traffic_mgr, car.x, car.y, buildings=buildings, building_grid=building_grid
         )
@@ -1690,12 +1683,6 @@ def main() -> None:
             if taxi_mgr.check_speed_cameras(car, speed_cameras):
                 audio.play_driver_line("speed_camera", language)
             # Update autonomous traffic NPCs and pedestrians
-            traffic_mgr.spawn_taxis_at_nearby_stops(
-                taxi_stops,
-                car,
-                viewport_bounds,
-                all_stops=True,
-            )
             traffic_mgr.update(
                 car,
                 dt,
