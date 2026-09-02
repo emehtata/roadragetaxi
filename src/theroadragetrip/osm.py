@@ -545,7 +545,16 @@ def complete_traffic_light_approaches(traffic_lights: List[TrafficLight], ways: 
             if dist_point_to_segment(center_x, center_y, *segment[0], *segment[1]) > 100.0:
                 continue
             angle = math.atan2(segment[1][1] - segment[0][1], segment[1][0] - segment[0][0])
-            for arm_angle in (angle, angle + math.pi):
+            # A divided carriageway is commonly mapped as a one-way way.  Its
+            # reverse geometric arm is not an incoming approach and must not
+            # receive a synthetic signal.
+            oneway = getattr(way, "oneway", 0)
+            arm_angles_for_way = (
+                (angle + math.pi,) if oneway == 1 else
+                (angle,) if oneway == -1 else
+                (angle, angle + math.pi)
+            )
+            for arm_angle in arm_angles_for_way:
                 if all(
                     abs((arm_angle - existing + math.pi) % (2.0 * math.pi) - math.pi) > math.radians(25)
                     for existing in arm_angles
@@ -648,7 +657,13 @@ def build_logical_intersections(
             length = math.hypot(dx, dy)
             if length <= 1e-6:
                 continue
-            for direction_x, direction_y in ((dx / length, dy / length), (-dx / length, -dy / length)):
+            directions = ((dx / length, dy / length), (-dx / length, -dy / length))
+            oneway = getattr(way, "oneway", 0)
+            if oneway == 1:
+                directions = directions[:1]
+            elif oneway == -1:
+                directions = directions[1:]
+            for direction_x, direction_y in directions:
                 approach_id = f"{signal.layer}:{center[0]:.0f}:{center[1]:.0f}:{round(math.atan2(direction_y, direction_x), 2)}"
                 if any(approach.approach_id == approach_id for approach in approaches):
                     continue

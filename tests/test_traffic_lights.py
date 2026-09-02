@@ -220,6 +220,69 @@ def test_logical_intersections_do_not_merge_different_layers():
     assert {intersection.layer for intersection in intersections} == {0, 1}
 
 
+def test_logical_intersection_uses_only_incoming_directions_on_oneway_carriageways():
+    eastbound = Way(
+        points_m=[(-100.0, 0.0), (100.0, 0.0)],
+        highway="primary",
+        half_width_m=4.0,
+        oneway=1,
+    )
+    northbound = Way(
+        points_m=[(0.0, -100.0), (0.0, 100.0)],
+        highway="primary",
+        half_width_m=4.0,
+        oneway=1,
+    )
+    westbound = Way(
+        points_m=[(100.0, 8.0), (-100.0, 8.0)],
+        highway="primary",
+        half_width_m=4.0,
+        oneway=1,
+    )
+    approaches = build_logical_intersections(
+        [TrafficLight(x=0.0, y=0.0, direction_angle=0.0)],
+        [eastbound, northbound, westbound],
+    )[0].approaches
+
+    assert len(approaches) == 3
+    assert {approach.direction_vector for approach in approaches} == {
+        (1.0, 0.0), (0.0, 1.0), (-1.0, 0.0)
+    }
+
+
+def test_synthetic_signals_skip_reverse_arms_of_divided_carriageways():
+    eastbound = Way(
+        points_m=[(-100.0, 0.0), (100.0, 0.0)],
+        highway="primary",
+        half_width_m=4.0,
+        oneway=1,
+    )
+    westbound = Way(
+        points_m=[(100.0, 8.0), (-100.0, 8.0)],
+        highway="primary",
+        half_width_m=4.0,
+        oneway=1,
+    )
+    north_south = Way(
+        points_m=[(0.0, -100.0), (0.0, 100.0)],
+        highway="primary",
+        half_width_m=4.0,
+    )
+
+    generated = complete_traffic_light_approaches(
+        [TrafficLight(x=0.0, y=0.0, id=1)],
+        [eastbound, westbound, north_south],
+    )
+
+    synthetic = [light for light in generated if light.id != 1]
+    assert len(synthetic) == 3
+    assert all(light.direction_angle is not None for light in synthetic)
+    assert {
+        round(light.direction_angle % (2.0 * math.pi), 6)
+        for light in synthetic
+    } == {round(math.pi, 6), round(math.pi / 2.0, 6), round(3.0 * math.pi / 2.0, 6)}
+
+
 def test_build_ways_splits_single_signal_at_four_arm_junction():
     elements = [
         {"type": "node", "id": 1, "lat": 65.0, "lon": 25.0, "tags": {"highway": "traffic_signals"}},
@@ -408,4 +471,3 @@ def test_seeing_red_light_builds_rage_meter_rate():
     assert taxi_mgr.sees_red_light(car, [red_light], sim_time=0.0) is True
     assert taxi_mgr.sees_red_light(car, [red_light], sim_time=8.0) is False
     assert taxi_mgr.sees_red_light(car, [red_light], sim_time=0.0, detection_distance_m=20.0) is False
-
