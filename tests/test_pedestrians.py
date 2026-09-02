@@ -135,6 +135,18 @@ def test_pedestrian_with_vehicle_goal_starts_nearby_vehicle_reservation():
     assert vehicle.state == "reserved"
 
 
+def test_vehicle_approach_uses_connected_pedestrian_waypoints():
+    first_way = Way(points_m=[(0.0, 0.0), (10.0, 0.0)], highway="footway", half_width_m=1.5)
+    second_way = Way(points_m=[(10.0, 0.0), (10.0, 10.0)], highway="footway", half_width_m=1.5)
+    manager = PedestrianManager([first_way, second_way], target_count=0)
+    vehicle = SimpleNamespace(x=10.0, y=10.0, heading=0.0, width_m=1.8)
+    pedestrian = Pedestrian(0.0, 0.0, 0.0, 1.0, 1.0, first_way, 0, 1, (1, 1, 1))
+
+    route = manager._vehicle_approach_route(pedestrian, manager._vehicle_entry_position(vehicle))
+
+    assert (10.0, 0.0) in route
+
+
 def test_pedestrian_in_vehicle_follows_vehicle_position():
     way = Way(points_m=[(0.0, 0.0), (100.0, 0.0)], highway="footway", half_width_m=1.5)
     vehicle = SimpleNamespace(

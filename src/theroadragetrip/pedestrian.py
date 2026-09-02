@@ -1,4 +1,5 @@
 import logging
+import heapq
 import math
 import random
 from dataclasses import dataclass
@@ -158,6 +159,8 @@ class PedestrianManager:
         self._spawn_ways: List[Way] = []
         self._way_grid: Dict[Tuple[int, int], List[Way]] = {}
         self._way_grid_cell_size: float = 100.0
+        self._route_nodes: List[Tuple[float, float]] = []
+        self._route_edges: Dict[int, List[Tuple[int, float]]] = {}
         self._junction_grid: Dict[Tuple[int, int], List[Tuple[Way, int, Tuple[float, float], int, int]]] = {}
         self._junction_grid_cell_size: float = 20.0
         self._traffic_light_grid: Dict[Tuple[int, int], List[TrafficLight]] = {}
@@ -279,12 +282,80 @@ class PedestrianManager:
                 if distance < nearest_distance:
                     nearest = (point_x, point_y)
                     nearest_distance = distance
-        route = [(pedestrian.x, pedestrian.y)]
-        if nearest is not None and math.hypot(nearest[0] - route[0][0], nearest[1] - route[0][1]) > 0.01:
-            route.append(nearest)
+        start = (pedestrian.x, pedestrian.y)
+        route = self._plan_pedestrian_route(start, nearest) if nearest is not None else [start]
         if math.hypot(entry_position[0] - route[-1][0], entry_position[1] - route[-1][1]) > 0.01:
             route.append(entry_position)
         return route
+
+    def _build_route_graph(self) -> None:
+        """Build a small undirected graph from mapped pedestrian-way vertices."""
+        nodes: List[Tuple[float, float]] = []
+        edges: Dict[int, List[Tuple[int, float]]] = {}
+        buckets: Dict[Tuple[int, int], List[int]] = {}
+
+        def node_id(point: Tuple[float, float]) -> int:
+            bucket = (round(point[0] / 3.0), round(point[1] / 3.0))
+            for candidate in buckets.get(bucket, []):
+                if math.hypot(nodes[candidate][0] - point[0], nodes[candidate][1] - point[1]) <= 3.0:
+                    return candidate
+            candidate = len(nodes)
+            nodes.append(point)
+            edges[candidate] = []
+            buckets.setdefault(bucket, []).append(candidate)
+            return candidate
+
+        for way in self.ped_ways:
+            point_ids = [node_id(point) for point in way.points_m]
+            for first, second in zip(point_ids, point_ids[1:]):
+                distance = math.hypot(
+                    nodes[second][0] - nodes[first][0], nodes[second][1] - nodes[first][1]
+                )
+                edges[first].append((second, distance))
+                edges[second].append((first, distance))
+        self._route_nodes = nodes
+        self._route_edges = edges
+
+    def _plan_pedestrian_route(
+        self,
+        start: Tuple[float, float],
+        target: Tuple[float, float],
+    ) -> List[Tuple[float, float]]:
+        """Return a shortest mapped-footway route with direct endpoint connectors."""
+        if not self._route_nodes:
+            return [start, target] if math.hypot(target[0] - start[0], target[1] - start[1]) > 0.01 else [start]
+        start_id = min(
+            self._route_edges,
+            key=lambda index: (self._route_nodes[index][0] - start[0]) ** 2
+            + (self._route_nodes[index][1] - start[1]) ** 2,
+        )
+        target_id = min(
+            self._route_edges,
+            key=lambda index: (self._route_nodes[index][0] - target[0]) ** 2
+            + (self._route_nodes[index][1] - target[1]) ** 2,
+        )
+        distances = {start_id: 0.0}
+        previous: Dict[int, int] = {}
+        queue = [(0.0, start_id)]
+        while queue:
+            distance, current = heapq.heappop(queue)
+            if distance != distances.get(current):
+                continue
+            if current == target_id:
+                break
+            for neighbor, edge_distance in self._route_edges[current]:
+                new_distance = distance + edge_distance
+                if new_distance < distances.get(neighbor, math.inf):
+                    distances[neighbor] = new_distance
+                    previous[neighbor] = current
+                    heapq.heappush(queue, (new_distance, neighbor))
+        if target_id not in distances:
+            return [start, target] if math.hypot(target[0] - start[0], target[1] - start[1]) > 0.01 else [start]
+        node_path = [target_id]
+        while node_path[-1] != start_id:
+            node_path.append(previous[node_path[-1]])
+        node_path.reverse()
+        return [start] + [self._route_nodes[index] for index in node_path] + [target]
 
     @staticmethod
     def _vehicle_entry_position(vehicle) -> Tuple[float, float]:
@@ -424,6 +495,7 @@ class PedestrianManager:
             and len(w.points_m) >= 2
         ]
         self.ped_ways = dedicated or fallback
+        self._build_route_graph()
         self._spawn_ways = []
         seen_way_ids: Set[int] = set()
         for way in dedicated + fallback:
