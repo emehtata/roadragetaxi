@@ -30,4 +30,4 @@ def test_sample_covers_current_overpass_feature_tags():
     assert result.taxi_stops
     assert result.bus_stops
     assert result.parking_spaces
-    assert all(way.name != "Pysäköintiajorata" for way in result.ways)
+    assert any(way.name == "Pysäköintiajorata" for way in result.ways)

@@ -8,7 +8,7 @@ from theroadragetrip.physics import (
 )
 
 
-def test_underground_parking_aisles_filtered_out():
+def test_underground_parking_aisles_remain_drivable():
     elements = [
         {"type": "node", "id": 1, "lat": 65.0, "lon": 25.0},
         {"type": "node", "id": 2, "lat": 65.001, "lon": 25.0},
@@ -36,8 +36,9 @@ def test_underground_parking_aisles_filtered_out():
     ]
 
     ways, _, _, _, _, _ = build_ways(elements)
-    assert len(ways) == 1
-    assert ways[0].name == "Normal Street"
+    assert len(ways) == 2
+    assert {way.name for way in ways} == {"Normal Street", None}
+    assert ways[1].service == "parking_aisle"
 
 
 def test_bridge_cross_layer_collision_isolation():

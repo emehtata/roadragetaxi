@@ -2604,9 +2604,14 @@ def draw_npc_cars(
                 debug_state = getattr(npc, "state", "driving")
                 if waiting_for and debug_state in {"waiting", "braking"}:
                     debug_state = f"{debug_state} [{waiting_for}]"
+                road_type = str(getattr(npc.way, "highway", "unknown"))
+                service_type = getattr(npc.way, "service", "")
+                if service_type:
+                    road_type += f"/{service_type}"
                 debug_text = debug_font.render(
                     f"{id(npc) % 1000} {debug_state} "
-                    f"L{getattr(npc, 'lod_level', 0)} {getattr(npc, 'speed', 0.0) * 3.6:.0f} km/h",
+                    f"{road_type} L{getattr(npc, 'lod_level', 0)} "
+                    f"{getattr(npc, 'speed', 0.0) * 3.6:.0f} km/h",
                     True,
                     debug_color,
                 )

@@ -264,6 +264,7 @@ class Way:
     turn_lanes: Optional[str] = None
     is_roundabout: bool = False
     priority_road: bool = False
+    service: Optional[str] = None
     segment_lengths: List[float] = field(default_factory=list, init=False, repr=False)
     segment_headings: List[float] = field(default_factory=list, init=False, repr=False)
     total_length_m: float = field(default=0.0, init=False, repr=False)
@@ -1576,7 +1577,6 @@ def build_ways(
         # Underground / parking garage detection
         # Filter out underground aisles, underground parking garages, or underground tunnel service roads
         parking_tag = tags.get("parking", "")
-        parking_aisle = tags.get("service") == "parking_aisle"
         location_tag = tags.get("location", "")
         covered_tag = tags.get("covered", "")
         tunnel_tag = tags.get("tunnel", "")
@@ -1612,8 +1612,7 @@ def build_ways(
         if layer_val < 0:
             is_underground = True
 
-        # Parking aisles belong to the lot, not the drivable road network.
-        if parking_aisle or (is_underground and (highway in ("service", "track") or "parking" in tags)):
+        if is_underground and (highway in ("service", "track") or "parking" in tags) and tags.get("service") != "parking_aisle":
             continue
 
         is_bridge = tags.get("bridge") in ("yes", "viaduct", "movable") or layer_val > 0
@@ -1720,6 +1719,7 @@ def build_ways(
                 lanes_backward=lanes_backward,
                 turn_lanes=tags.get("turn:lanes") or tags.get("turn:lanes:forward"),
                 priority_road=is_priority_road,
+                service=tags.get("service"),
             )
         )
 

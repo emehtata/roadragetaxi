@@ -113,7 +113,7 @@ def test_build_ways_parses_osm_bus_stop():
     assert result.bus_stops[0].shelter is True
 
 
-def test_build_ways_excludes_parking_aisles_from_drivable_ways():
+def test_build_ways_includes_parking_aisles_in_drivable_ways():
     elements = [
         {"type": "node", "id": 1, "lat": 60.0, "lon": 25.0},
         {"type": "node", "id": 2, "lat": 60.0, "lon": 25.001},
@@ -122,7 +122,9 @@ def test_build_ways_excludes_parking_aisles_from_drivable_ways():
 
     result = build_ways(elements)
 
-    assert result.ways == []
+    assert len(result.ways) == 1
+    assert result.ways[0].highway == "service"
+    assert result.ways[0].service == "parking_aisle"
 
 
 def test_build_ways_parses_public_transport_platform_as_bus_stop():
