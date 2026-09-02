@@ -594,6 +594,25 @@ def test_parking_npc_is_not_pushed_off_its_route_by_collision_resolution():
     assert parked.speed > 0.0
 
 
+def test_moving_npc_avoids_parked_npc_without_moving_it():
+    way = Way(
+        points_m=[(0.0, 0.0), (200.0, 0.0)],
+        highway="primary",
+        half_width_m=6.0,
+        name="Parked Obstacle Street",
+    )
+    traffic_mgr = TrafficManager([way], target_count=0)
+    parked = NPCCar(50.0, 0.0, 0.0, 0.0, way, 0, 1, 0.0, (20, 20, 20), state="parked")
+    moving = NPCCar(50.0, 0.0, math.pi, 4.0, way, 0, -1, 10.0, (30, 30, 30))
+    traffic_mgr.npcs = [parked, moving]
+    parked_position = (parked.x, parked.y)
+
+    traffic_mgr._resolve_npc_collisions()
+
+    assert (parked.x, parked.y) == parked_position
+    assert (moving.x, moving.y) != parked_position
+
+
 def test_rage_shout_moves_cars_ahead_to_road_edge():
     way = Way(
         points_m=[(0.0, 0.0), (200.0, 0.0)],

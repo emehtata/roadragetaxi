@@ -757,6 +757,21 @@ class TrafficManager:
                 push = max(0.5, min(8.0, min_distance - distance)) * 0.5
                 nx = dx / normalizing_distance
                 ny = dy / normalizing_distance
+                npc_is_static = npc.state in {"parked", "reserved"}
+                other_is_static = other.state in {"parked", "reserved"}
+                if npc_is_static or other_is_static:
+                    if npc_is_static and other_is_static:
+                        npc.speed = 0.0
+                        other.speed = 0.0
+                    elif npc_is_static:
+                        other.x -= nx * push * 2.0
+                        other.y -= ny * push * 2.0
+                        other.speed = 0.0
+                    else:
+                        npc.x += nx * push * 2.0
+                        npc.y += ny * push * 2.0
+                        npc.speed = 0.0
+                    continue
                 if npc.state == "parking" or other.state == "parking":
                     if npc.state == "parking" and other.state == "parking":
                         npc.speed = 0.0
