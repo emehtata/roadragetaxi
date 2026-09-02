@@ -81,7 +81,7 @@ def test_build_ways_parses_building_entrance_nodes():
     assert result.buildings[0].entrances == [(25.005 * 1000.0, 60.0 * 1000.0)]
 
 
-def test_build_ways_generates_entrance_for_building_without_node():
+def test_build_ways_leaves_entrances_empty_without_osm_node():
     elements = [
         {"type": "node", "id": 1, "lat": 60.0, "lon": 25.0},
         {"type": "node", "id": 2, "lat": 60.0, "lon": 25.01},
@@ -95,8 +95,7 @@ def test_build_ways_generates_entrance_for_building_without_node():
 
     result = build_ways(elements)
 
-    assert len(result.buildings[0].entrances) == 1
-    assert result.buildings[0].entrances[0] == (25.0 * 1000.0, 60.005 * 1000.0)
+    assert result.buildings[0].entrances == []
 
 
 def test_build_ways_parses_osm_bus_stop():

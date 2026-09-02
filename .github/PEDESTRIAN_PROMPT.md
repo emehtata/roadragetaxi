@@ -161,10 +161,6 @@ Instead:
 
 If OSM contains building entrance information, use it.
 
-If entrance data is missing, the system should be able to generate plausible entrances from building geometry.
-
-Do not require every building to have perfectly mapped entrances.
-
 ---
 
 # 5. Off-Screen Spawning
@@ -850,7 +846,7 @@ Create or integrate the `PedestrianNetwork`.
 
 ### Phase 3
 
-Detect/use building entrances and pedestrian spawn points.
+Detect/use mapped building entrances and pedestrian spawn points.
 
 ### Phase 4
 
@@ -866,7 +862,7 @@ Implement `PedestrianManager`.
 
 ### Phase 7
 
-Implement building-door spawning.
+Implement spawning at mapped building doors.
 
 ### Phase 8
 

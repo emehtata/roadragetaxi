@@ -1264,56 +1264,6 @@ def plant_trees(
         progress_callback(progress_end, f"Planted trees in {total} scenery areas")
 
 
-def generate_building_entrances(
-    buildings: List[Building],
-    ways: List[Way],
-    progress_callback: Optional[Callable[[float, str], None]] = None,
-    progress_start: float = 0.98,
-    progress_end: float = 0.99,
-) -> None:
-    """Add deterministic door points to buildings lacking mapped entrance nodes."""
-    pedestrian_ways = [
-        way for way in ways
-        if len(way.points_m) >= 2
-        and getattr(way, "highway", "") in {
-            "footway", "path", "pedestrian", "cycleway", "steps", "bridleway", "corridor", "track",
-        }
-    ]
-    total = len(buildings)
-    for building_index, building in enumerate(buildings):
-        if progress_callback and total:
-            progress_callback(
-                progress_start
-                + (progress_end - progress_start) * building_index / total,
-                f"Generating entrances ({building_index}/{total} buildings)...",
-            )
-        if building.entrances or len(building.points_m) < 2:
-            continue
-        boundary = list(zip(building.points_m, building.points_m[1:]))
-        if building.points_m[0] != building.points_m[-1]:
-            boundary.append((building.points_m[-1], building.points_m[0]))
-        if not boundary:
-            continue
-        if pedestrian_ways:
-            best = min(
-                ((dist_point_to_segment(
-                    (first[0] + second[0]) * 0.5,
-                    (first[1] + second[1]) * 0.5,
-                    path_first[0], path_first[1], path_second[0], path_second[1]
-                ), first, second)
-                 for first, second in boundary
-                 for way in pedestrian_ways
-                 for path_first, path_second in zip(way.points_m, way.points_m[1:])),
-                key=lambda candidate: candidate[0],
-            )
-            first, second = best[1], best[2]
-        else:
-            first, second = boundary[0]
-        building.entrances.append(((first[0] + second[0]) * 0.5, (first[1] + second[1]) * 0.5))
-    if progress_callback:
-        progress_callback(progress_end, f"Generated entrances for {total} buildings")
-
-
 def build_ways(
     elements: List[dict],
     progress_callback: Optional[Callable[[float, str], None]] = None,
@@ -1841,14 +1791,6 @@ def build_ways(
                 cx = sum(xs) / len(xs)
                 cy = sum(ys) / len(ys)
                 places.append(Place(x=cx, y=cy, name=name, kind=tags.get("place", "suburb")))
-
-    generate_building_entrances(
-        buildings,
-        ways,
-        progress_callback=progress_callback,
-        progress_start=0.98,
-        progress_end=0.99,
-    )
 
     # 6. Place nodes (suburbs, neighbourhoods, districts)
     for tags, nid in place_nodes_raw:

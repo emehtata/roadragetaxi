@@ -62,7 +62,6 @@ def test_build_ways_reports_expensive_post_processing():
     messages = [message for _, message in progress_records]
     assert any("Planting trees" in message for message in messages)
     assert any("multipolygon" in message for message in messages)
-    assert any("entrances" in message for message in messages)
     assert all(
         current >= previous
         for (previous, _), (current, _) in zip(progress_records, progress_records[1:])
