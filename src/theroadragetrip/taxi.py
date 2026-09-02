@@ -144,7 +144,7 @@ class TaxiManager:
         language: str = "fi",
     ):
         # Filter to the largest connected road network to avoid isolated trapped roads
-        self.ways = connected_drivable_ways(ways, named=True)
+        self.ways = connected_drivable_ways(ways)
         self.places = places or []
         self.buildings = buildings or []
         self.taxi_stops = taxi_stops or []
@@ -257,6 +257,10 @@ class TaxiManager:
         hit = False
         visible_ids: set[int] = set()
         for camera_index, camera in enumerate(cameras):
+            dx = camera.x - car.x
+            dy = camera.y - car.y
+            if dx * dx + dy * dy > 60.0 * 60.0:
+                continue
             if not camera_sees_car(camera, car.x, car.y, car.heading):
                 continue
             visible_ids.add(camera_index)
@@ -903,7 +907,7 @@ class TaxiManager:
             nearest: Optional[Tuple[float, float, str, float]] = None
 
             for way in self.ways:
-                if len(way.points_m) < 2 or not way.name:
+                if len(way.points_m) < 2 or not is_car_road(way):
                     continue
                 for start, end in zip(way.points_m, way.points_m[1:]):
                     dx = end[0] - start[0]
@@ -920,7 +924,7 @@ class TaxiManager:
                     road_y = start[1] + fraction * dy
                     road_distance = math.hypot(center_x - road_x, center_y - road_y)
                     if nearest is None or road_distance < nearest[3]:
-                        nearest = (road_x, road_y, way.name, road_distance)
+                        nearest = (road_x, road_y, way.name or "", road_distance)
 
             if nearest is None or nearest[3] > max_road_distance:
                 continue

@@ -4,8 +4,45 @@ import pytest
 from types import SimpleNamespace
 from theroadragetrip.osm import TrafficLight, Way
 from theroadragetrip.osm import TaxiStop
-from theroadragetrip.pedestrian import CyclistManager, Pedestrian, PedestrianManager
+from theroadragetrip.pedestrian import (
+    CyclistManager,
+    Pedestrian,
+    PedestrianAppearance,
+    PedestrianManager,
+    PedestrianNetwork,
+    PedestrianState,
+)
 from theroadragetrip.physics import Car
+
+
+def test_pedestrian_network_routes_across_connected_ways():
+    network = PedestrianNetwork([
+        Way(points_m=[(0.0, 0.0), (10.0, 0.0)], highway="footway", half_width_m=2.0),
+        Way(points_m=[(10.0, 0.0), (10.0, 10.0)], highway="footway", half_width_m=2.0),
+    ])
+
+    route = network.route((0.0, 0.0), (10.0, 10.0))
+
+    assert (10.0, 0.0) in route
+    assert network.nearest_point((8.0, 2.0)) == (8.0, 0.0)
+
+
+def test_pedestrian_state_and_appearance_support_interactions():
+    assert PedestrianState.APPROACHING_CROSSING.value == "approaching_crossing"
+    appearance = PedestrianAppearance(body=(10, 20, 30))
+    assert appearance.body == (10, 20, 30)
+    assert appearance.head == (238, 185, 145)
+
+
+def test_vehicle_exit_can_use_explicit_transition_state():
+    way = Way(points_m=[(0.0, 0.0), (30.0, 0.0)], highway="footway", half_width_m=1.5)
+    vehicle = SimpleNamespace(x=10.0, y=0.0, heading=0.0, width_m=1.8, state="occupied", current_driver_id=None)
+    manager = PedestrianManager([way], target_count=0, traffic_vehicles=[vehicle])
+    pedestrian = Pedestrian(10.0, 0.0, 0.0, 1.0, 1.0, way, 0, 1, (1, 1, 1))
+    pedestrian.current_vehicle_id = id(vehicle)
+    vehicle.current_driver_id = id(pedestrian)
+    assert manager.exit_vehicle(pedestrian, vehicle, animate=True)
+    assert pedestrian.state == PedestrianState.EXITING_VEHICLE.value
 
 
 def test_pedestrian_target_count_keeps_nearest_characters():
@@ -20,6 +57,291 @@ def test_pedestrian_target_count_keeps_nearest_characters():
     manager.set_target_count(2, Car(x=0.0, y=0.0, heading=0.0, speed=0.0))
 
     assert [ped.x for ped in manager.pedestrians] == [1.0, 10.0]
+
+
+def test_repeated_target_count_updates_do_not_delay_population_check():
+    way = Way(points_m=[(0.0, 0.0), (100.0, 0.0)], highway="footway", half_width_m=1.5)
+    manager = PedestrianManager([way], target_count=1)
+    player = Car(x=50.0, y=0.0, heading=0.0, speed=0.0)
+    manager._population_update_elapsed = 4.9
+
+    manager.set_target_count(1, player)
+    manager.update(player, dt=0.1)
+
+    assert len(manager.pedestrians) == 1
+
+
+def test_pedestrian_can_reserve_any_nearby_parked_vehicle():
+    way = Way(points_m=[(0.0, 0.0), (100.0, 0.0)], highway="footway", half_width_m=1.5)
+    vehicle = SimpleNamespace(
+        x=8.0,
+        y=0.0,
+        state="parked",
+        reserved_by_pedestrian_id=None,
+        current_driver_id=None,
+    )
+    manager = PedestrianManager([way], target_count=0, traffic_vehicles=[vehicle])
+    pedestrian = Pedestrian(0.0, 0.0, 0.0, 1.0, 1.0, way, 0, 1, (1, 1, 1))
+
+    assert manager.find_available_parked_vehicle(pedestrian.x, pedestrian.y, 10.0) is vehicle
+    assert manager.reserve_parked_vehicle(pedestrian, vehicle)
+    assert not manager.reserve_parked_vehicle(pedestrian, vehicle)
+    assert vehicle.state == "reserved"
+    manager.cancel_vehicle_reservation(pedestrian)
+    assert vehicle.state == "parked"
+
+
+def test_pedestrian_cannot_reserve_vehicle_over_100_meters_away():
+    way = Way(points_m=[(0.0, 0.0), (200.0, 0.0)], highway="footway", half_width_m=1.5)
+    vehicle = SimpleNamespace(
+        x=100.1,
+        y=0.0,
+        state="parked",
+        reserved_by_pedestrian_id=None,
+        current_driver_id=None,
+    )
+    manager = PedestrianManager([way], target_count=0, traffic_vehicles=[vehicle])
+    pedestrian = Pedestrian(0.0, 0.0, 0.0, 1.0, 1.0, way, 0, 1, (1, 1, 1))
+
+    assert manager.reserve_parked_vehicle(pedestrian, vehicle) is False
+    assert vehicle.reserved_by_pedestrian_id is None
+    assert vehicle.state == "parked"
+
+
+def test_pedestrian_can_reserve_vehicle_at_100_meters():
+    way = Way(points_m=[(0.0, 0.0), (100.0, 0.0)], highway="footway", half_width_m=1.5)
+    vehicle = SimpleNamespace(
+        x=100.0,
+        y=0.0,
+        state="parked",
+        reserved_by_pedestrian_id=None,
+        current_driver_id=None,
+    )
+    manager = PedestrianManager([way], target_count=0, traffic_vehicles=[vehicle])
+    pedestrian = Pedestrian(0.0, 0.0, 0.0, 1.0, 1.0, way, 0, 1, (1, 1, 1))
+
+    assert manager.reserve_parked_vehicle(pedestrian, vehicle) is True
+
+
+def test_reserved_pedestrian_walks_to_vehicle_and_enters():
+    way = Way(points_m=[(0.0, 0.0), (100.0, 0.0)], highway="footway", half_width_m=1.5)
+    vehicle = SimpleNamespace(
+        x=8.0,
+        y=0.0,
+        heading=0.0,
+        width_m=1.8,
+        state="parked",
+        reserved_by_pedestrian_id=None,
+        current_driver_id=None,
+    )
+    manager = PedestrianManager([way], target_count=0, traffic_vehicles=[vehicle])
+    pedestrian = Pedestrian(0.0, 0.0, 0.0, 2.0, 2.0, way, 0, 1, (1, 1, 1))
+    manager.pedestrians = [pedestrian]
+
+    assert manager.reserve_parked_vehicle(pedestrian, vehicle)
+    assert pedestrian.route is not None
+    assert pedestrian.route[0] == (0.0, 0.0)
+    assert pedestrian.route[-1] == manager._vehicle_entry_position(vehicle)
+    for _ in range(15):
+        manager.update(Car(0.0, 0.0, 0.0, 0.0), dt=0.5)
+
+    assert pedestrian.current_vehicle_id == id(vehicle)
+    assert pedestrian.state == "in_vehicle"
+    assert vehicle.state == "occupied"
+
+
+def test_pedestrian_with_vehicle_goal_starts_nearby_vehicle_reservation():
+    way = Way(points_m=[(0.0, 0.0), (100.0, 0.0)], highway="footway", half_width_m=1.5)
+    vehicle = SimpleNamespace(
+        x=8.0,
+        y=0.0,
+        heading=0.0,
+        width_m=1.8,
+        state="parked",
+        reserved_by_pedestrian_id=None,
+        current_driver_id=None,
+    )
+    manager = PedestrianManager([way], target_count=0, traffic_vehicles=[vehicle])
+    pedestrian = Pedestrian(0.0, 0.0, 0.0, 2.0, 2.0, way, 0, 1, (1, 1, 1), wants_vehicle=True)
+    manager.pedestrians = [pedestrian]
+
+    manager.update(Car(0.0, 0.0, 0.0, 0.0), dt=0.1)
+
+    assert pedestrian.state == "approaching_vehicle"
+    assert pedestrian.reserved_vehicle_id == id(vehicle)
+    assert vehicle.state == "reserved"
+
+
+def test_vehicle_approach_uses_connected_pedestrian_waypoints():
+    first_way = Way(points_m=[(0.0, 0.0), (10.0, 0.0)], highway="footway", half_width_m=1.5)
+    second_way = Way(points_m=[(10.0, 0.0), (10.0, 10.0)], highway="footway", half_width_m=1.5)
+    manager = PedestrianManager([first_way, second_way], target_count=0)
+    vehicle = SimpleNamespace(x=10.0, y=10.0, heading=0.0, width_m=1.8)
+    pedestrian = Pedestrian(0.0, 0.0, 0.0, 1.0, 1.0, first_way, 0, 1, (1, 1, 1))
+
+    route = manager._vehicle_approach_route(pedestrian, manager._vehicle_entry_position(vehicle))
+
+    assert (10.0, 0.0) in route
+
+
+def test_pedestrian_in_vehicle_follows_vehicle_position():
+    way = Way(points_m=[(0.0, 0.0), (100.0, 0.0)], highway="footway", half_width_m=1.5)
+    vehicle = SimpleNamespace(
+        x=8.0,
+        y=0.0,
+        state="occupied",
+        current_driver_id=None,
+    )
+    manager = PedestrianManager([way], target_count=0, traffic_vehicles=[vehicle])
+    pedestrian = Pedestrian(8.0, 0.0, 0.0, 1.0, 1.0, way, 0, 1, (1, 1, 1))
+    vehicle.current_driver_id = id(pedestrian)
+    pedestrian.current_vehicle_id = id(vehicle)
+    pedestrian.state = "in_vehicle"
+    manager.pedestrians = [pedestrian]
+
+    vehicle.x = 30.0
+    vehicle.y = 4.0
+    manager.update(Car(0.0, 0.0, 0.0, 0.0), dt=0.1)
+
+    assert (pedestrian.x, pedestrian.y) == (30.0, 4.0)
+
+
+def test_pedestrian_exits_vehicle_at_vehicle_destination():
+    way = Way(points_m=[(0.0, 0.0), (100.0, 0.0)], highway="footway", half_width_m=1.5)
+    road_way = Way(points_m=[(0.0, 0.0), (30.0, 0.0)], highway="residential", half_width_m=4.0)
+    vehicle = SimpleNamespace(
+        x=30.0,
+        y=0.0,
+        heading=0.0,
+        width_m=1.8,
+        state="occupied",
+        current_driver_id=None,
+        way=road_way,
+        direction=1,
+    )
+    manager = PedestrianManager([way], target_count=0, traffic_vehicles=[vehicle])
+    pedestrian = Pedestrian(30.0, 0.0, 0.0, 1.0, 1.0, way, 0, 1, (1, 1, 1))
+    pedestrian.current_vehicle_id = id(vehicle)
+    pedestrian.vehicle_destination = (30.0, 0.0)
+    pedestrian.state = "in_vehicle"
+    vehicle.current_driver_id = id(pedestrian)
+    manager.pedestrians = [pedestrian]
+
+    manager.update(Car(0.0, 0.0, 0.0, 0.0), dt=0.1)
+
+    assert pedestrian.state == "walking"
+    assert pedestrian.current_vehicle_id is None
+    assert vehicle.state == "driving"
+
+
+def test_pedestrian_in_vehicle_is_not_despawned_while_vehicle_is_active():
+    way = Way(points_m=[(0.0, 0.0), (100.0, 0.0)], highway="footway", half_width_m=1.5)
+    vehicle = SimpleNamespace(
+        x=200.0,
+        y=0.0,
+        state="occupied",
+        current_driver_id=None,
+    )
+    manager = PedestrianManager(
+        [way], target_count=0, despawn_radius_m=20.0, traffic_vehicles=[vehicle]
+    )
+    pedestrian = Pedestrian(200.0, 0.0, 0.0, 1.0, 1.0, way, 0, 1, (1, 1, 1))
+    pedestrian.current_vehicle_id = id(vehicle)
+    pedestrian.state = "in_vehicle"
+    vehicle.current_driver_id = id(pedestrian)
+    manager.pedestrians = [pedestrian]
+    manager._population_update_elapsed = 5.0
+
+    manager.update(Car(0.0, 0.0, 0.0, 0.0), dt=0.1)
+
+    assert manager.pedestrians == [pedestrian]
+
+
+def test_pedestrian_can_exit_occupied_vehicle():
+    way = Way(points_m=[(0.0, 0.0), (100.0, 0.0)], highway="footway", half_width_m=1.5)
+    vehicle = SimpleNamespace(
+        x=20.0,
+        y=5.0,
+        heading=0.0,
+        width_m=1.8,
+        state="occupied",
+        current_driver_id=None,
+    )
+    manager = PedestrianManager([way], target_count=0, traffic_vehicles=[vehicle])
+    pedestrian = Pedestrian(20.0, 5.0, 0.0, 1.0, 1.0, way, 0, 1, (1, 1, 1))
+    pedestrian.current_vehicle_id = id(vehicle)
+    vehicle.current_driver_id = id(pedestrian)
+    pedestrian.state = "in_vehicle"
+
+    assert manager.exit_vehicle(pedestrian, vehicle)
+    assert pedestrian.state == "walking"
+    assert pedestrian.current_vehicle_id is None
+    assert (pedestrian.x, pedestrian.y) == (20.0, 6.9)
+    assert vehicle.state == "driving"
+    assert vehicle.current_driver_id is None
+
+
+def test_pedestrian_can_spawn_at_and_leave_through_building_entrance():
+    way = Way(points_m=[(0.0, 0.0), (100.0, 0.0)], highway="footway", half_width_m=1.5)
+    building = SimpleNamespace(
+        points_m=[(18.0, -2.0), (22.0, -2.0), (22.0, 2.0), (18.0, 2.0)],
+        entrances=[(20.0, 0.0)],
+        venue_type="school",
+    )
+    manager = PedestrianManager([way], target_count=0, venue_buildings=[building])
+
+    pedestrian = manager.spawn_pedestrian_at_door(20.0, 0.0)
+    assert pedestrian is not None
+    assert (pedestrian.x, pedestrian.y) == (20.0, 0.0)
+    manager.pedestrians.append(pedestrian)
+    pedestrian.door_grace_timer = 0.0
+    pedestrian.spawned_at_door = False
+    manager._population_update_elapsed = 5.0
+
+    manager.update(Car(0.0, 0.0, 0.0, 0.0), dt=0.1)
+
+    assert pedestrian not in manager.pedestrians
+
+
+def test_amenity_door_spawns_pedestrian_every_ten_evening_seconds(monkeypatch: pytest.MonkeyPatch):
+    way = Way(points_m=[(0.0, 0.0), (100.0, 0.0)], highway="footway", half_width_m=1.5)
+    building = SimpleNamespace(
+        points_m=[(18.0, -2.0), (22.0, -2.0), (22.0, 2.0), (18.0, 2.0)],
+        entrances=[(20.0, 0.0)],
+        venue_type="school",
+    )
+    manager = PedestrianManager([way], target_count=1, venue_buildings=[building])
+    monkeypatch.setattr(manager, "spawn_pedestrian", lambda *args, **kwargs: None)
+    random_values = iter((1.0, 1.0, 0.0))
+    monkeypatch.setattr(
+        "theroadragetrip.pedestrian.random.random",
+        lambda: next(random_values),
+    )
+    player = Car(x=10.0, y=0.0, heading=0.0, speed=0.0)
+    manager._amenity_spawn_elapsed = 0.0
+    manager._population_update_elapsed = 5.0
+
+    manager.update(player, dt=5.0, game_time_seconds=18.0 * 3600.0)
+    assert manager.pedestrians == []
+
+    manager.update(player, dt=5.0, game_time_seconds=18.0 * 3600.0)
+    assert len(manager.pedestrians) == 1
+    assert manager.pedestrians[0].spawned_at_door is True
+    assert manager.pedestrians[0].x > 20.0
+
+
+def test_pedestrian_despawns_after_remaining_offscreen():
+    way = Way(points_m=[(0.0, 0.0), (100.0, 0.0)], highway="footway", half_width_m=1.5)
+    manager = PedestrianManager([way], target_count=0, despawn_radius_m=200.0)
+    pedestrian = Pedestrian(80.0, 0.0, 0.0, 1.0, 1.0, way, 0, 1, (1, 1, 1))
+    manager.pedestrians.append(pedestrian)
+    viewport = (0.0, -10.0, 50.0, 10.0)
+
+    for _ in range(10):
+        manager._population_update_elapsed = 5.0
+        manager.update(Car(0.0, 0.0, 0.0, 0.0), dt=0.1, viewport_bounds=viewport)
+
+    assert pedestrian not in manager.pedestrians
 
 
 def test_taxi_stop_gets_waiting_customer():
@@ -172,6 +494,15 @@ def test_cyclist_spawn_assigns_body_color():
     assert cyclist is not None
     assert cyclist.is_cyclist is True
     assert cyclist.color != (230, 80, 80)
+
+
+def test_cyclist_spawn_uses_synced_ways_outside_local_grid():
+    way = Way(points_m=[(0.0, 0.0), (100.0, 0.0)], highway="cycleway", half_width_m=1.5)
+    manager = CyclistManager([way], target_count=0, spawn_radius_m=10.0)
+
+    cyclist = manager.spawn_pedestrian(500.0, 500.0)
+
+    assert cyclist is not None
 
 
 def test_cyclists_use_right_edge_for_both_directions(monkeypatch):

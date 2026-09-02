@@ -1,11 +1,349 @@
 """Tests for autonomous NPC traffic manager."""
 import math
+import random
 from types import SimpleNamespace
-from theroadragetrip.osm import Way
+from theroadragetrip.osm import ParkingSpace, StopSign, Way
 from theroadragetrip.osm import TrafficLight
 from theroadragetrip.physics import Car
-from theroadragetrip.traffic import NPCCar, TrafficManager, traffic_count_for_zoom
+from theroadragetrip.traffic import (
+    IntersectionManager,
+    NPCCar,
+    TrafficManager,
+    calculate_npc_turning_geometry,
+    traffic_count_for_zoom,
+)
+from theroadragetrip.osm import IntersectionApproach, LogicalIntersection
 from theroadragetrip.geo import boxes_intersect
+
+
+def test_npc_turning_geometry_is_individual_and_bicycle_based():
+    short_car = calculate_npc_turning_geometry(3.5, "car")
+    long_car = calculate_npc_turning_geometry(5.0, "car")
+    motorcycle = calculate_npc_turning_geometry(2.2, "motorcycle")
+
+    assert short_car[0] < long_car[0]
+    assert short_car[2] < long_car[2]
+    assert motorcycle[1] > short_car[1]
+    assert math.isclose(
+        short_car[2], short_car[0] / math.tan(short_car[1]), rel_tol=1e-9
+    )
+
+
+def test_traffic_manager_nearby_parking_spaces_uses_osm_spaces():
+    near_space = ParkingSpace([(0.0, 0.0), (2.0, 0.0), (2.0, 4.0), (0.0, 4.0)], (0.0, 0.0, 2.0, 4.0), osm_id=101)
+    far_space = ParkingSpace([(500.0, 0.0), (502.0, 0.0), (502.0, 4.0), (500.0, 4.0)], (500.0, 0.0, 502.0, 4.0), osm_id=102)
+    manager = TrafficManager([], target_count=0, parking_spaces=[near_space, far_space])
+
+    assert manager.nearby_parking_spaces(0.0, 0.0, 100.0) == [near_space]
+    assert manager.nearby_parking_spaces(250.0, 0.0, 300.0) == [near_space, far_space]
+    assert near_space.occupied is False
+    near_space.reserved = True
+    near_space.reserved_by_pedestrian_id = 7
+    assert near_space.reserved_by_pedestrian_id == 7
+
+
+def test_npc_occupies_and_releases_existing_parking_space():
+    way = Way(points_m=[(0.0, 0.0), (100.0, 0.0)], highway="residential", half_width_m=4.0)
+    parking_space = ParkingSpace([(0.0, 0.0), (2.0, 0.0), (2.0, 4.0), (0.0, 4.0)], (0.0, 0.0, 2.0, 4.0), osm_id=9)
+    manager = TrafficManager([way], target_count=0, parking_spaces=[parking_space])
+    npc = NPCCar(1.0, 2.0, 0.0, 4.0, way, 0, 1, 10.0, (20, 20, 20))
+
+    assert manager.occupy_parking_space(npc, parking_space)
+    assert npc.state == "parked"
+    assert parking_space.occupied is True
+    assert parking_space.vehicle_id == id(npc)
+    assert manager.activate_occupied_vehicle(npc)
+    assert npc.state == "driving"
+    assert parking_space.occupied is False
+
+
+def test_npc_vehicle_has_assigned_driver_identity():
+    way = Way(points_m=[(0.0, 0.0), (100.0, 0.0)], highway="residential", half_width_m=4.0)
+    npc = NPCCar(10.0, 0.0, 0.0, 4.0, way, 0, 1, 10.0, (20, 20, 20))
+
+    assert npc.assigned_driver_id == id(npc)
+    assert npc.driver is not None
+    assert npc.driver.driver_id == npc.assigned_driver_id
+    npc.set_driver_present(False)
+    assert npc.has_driver() is False
+    assert npc.driver.present is False
+
+
+def test_npc_without_driver_association_does_not_move():
+    way = Way(points_m=[(0.0, 0.0), (100.0, 0.0)], highway="residential", half_width_m=4.0)
+    manager = TrafficManager([way], target_count=0)
+    npc = NPCCar(10.0, 0.0, 0.0, 4.0, way, 0, 1, 10.0, (20, 20, 20), assigned_driver_id=None)
+    npc.assigned_driver_id = None
+    manager.npcs = [npc]
+
+    manager.update(Car(0.0, 0.0, 0.0, 0.0), dt=1.0)
+
+    assert npc.x == 10.0
+    assert npc.speed == 0.0
+    assert npc.state == "waiting"
+
+
+def test_npc_with_absent_assigned_driver_does_not_move():
+    way = Way(points_m=[(0.0, 0.0), (100.0, 0.0)], highway="residential", half_width_m=4.0)
+    manager = TrafficManager([way], target_count=0)
+    npc = NPCCar(10.0, 0.0, 0.0, 4.0, way, 0, 1, 10.0, (20, 20, 20), driver_present=False)
+    manager.npcs = [npc]
+
+    manager.update(Car(0.0, 0.0, 0.0, 0.0), dt=1.0)
+
+    assert npc.x == 10.0
+    assert npc.speed == 0.0
+    assert npc.state == "waiting"
+
+
+def test_roundabout_way_flag_and_counter_clockwise_direction():
+    roundabout = Way(
+        [(10.0, 0.0), (0.0, 10.0), (-10.0, 0.0), (0.0, -10.0), (10.0, 0.0)],
+        "secondary",
+        4.0,
+        oneway=1,
+        is_roundabout=True,
+    )
+    manager = TrafficManager([roundabout], target_count=0)
+
+    assert roundabout.is_roundabout
+    assert manager._roundabout_direction(roundabout) == 1
+
+
+def test_roundabout_entry_yields_to_circulating_npc():
+    approach = Way([(40.0, 0.0), (10.0, 0.0)], "secondary", 4.0)
+    roundabout = Way(
+        [(10.0, 0.0), (0.0, 10.0), (-10.0, 0.0), (0.0, -10.0), (10.0, 0.0)],
+        "secondary",
+        4.0,
+        oneway=1,
+        is_roundabout=True,
+    )
+    manager = TrafficManager([approach, roundabout], target_count=0)
+    entering = NPCCar(25.0, 0.0, math.pi, 4.0, approach, 0, -1, 10.0, (20, 20, 20))
+    circulating = NPCCar(10.0, 6.0, math.pi / 2, 4.0, roundabout, 0, 1, 10.0, (20, 20, 20))
+    manager.npcs = [entering, circulating]
+
+    assert manager._roundabout_entry_blocked(entering, roundabout, (10.0, 0.0))
+
+
+def test_npc_stops_before_stop_sign():
+    way = Way(points_m=[(0.0, 0.0), (100.0, 0.0)], highway="residential", half_width_m=4.0)
+    manager = TrafficManager([way], target_count=0, stop_signs=[StopSign(20.0, 0.0, id=4)])
+    npc = NPCCar(10.0, 0.0, 0.0, 8.0, way, 0, 1, 10.0, (20, 20, 20))
+    manager.npcs = [npc]
+
+    manager.update(Car(0.0, 0.0, 0.0, 0.0), dt=1.0)
+    assert npc.x <= 18.0
+    manager.update(Car(0.0, 0.0, 0.0, 0.0), dt=1.0)
+    assert npc.speed == 0.0
+    assert npc.x <= 18.0
+
+
+def test_activating_occupied_npc_clears_driver_and_parking_state():
+    way = Way(
+        points_m=[(0.0, 0.0), (100.0, 0.0)],
+        highway="primary",
+        half_width_m=4.0,
+        name="Departure Street",
+    )
+    parking_space = ParkingSpace(
+        [(0.0, -2.0), (2.0, -2.0), (2.0, 2.0), (0.0, 2.0)],
+        (0.0, -2.0, 2.0, 2.0),
+        osm_id=10,
+    )
+    manager = TrafficManager([way], target_count=0, parking_spaces=[parking_space])
+    npc = manager.spawn_npc(20.0, 0.0)
+    assert npc is not None
+    assert manager.occupy_parking_space(npc, parking_space)
+    npc.current_driver_id = 123
+    npc.state = "occupied"
+
+    assert manager.activate_occupied_vehicle(npc)
+    assert npc.state == "parking_departure"
+    assert npc.current_driver_id is None
+    assert npc.parking_space_id == manager.parking_space_id(parking_space)
+    assert parking_space.occupied is True
+    assert npc.parking_route is not None
+    npc.x = 20.0
+    manager.update(Car(x=20.0, y=0.0, heading=0.0, speed=0.0), dt=0.0)
+    assert npc.parking_space_id is None
+    assert parking_space.occupied is False
+
+
+def test_departing_occupied_npc_is_not_despawned_before_leaving_space():
+    way = Way(
+        points_m=[(0.0, 0.0), (100.0, 0.0)],
+        highway="primary",
+        half_width_m=4.0,
+        name="Departure Street",
+    )
+    parking_space = ParkingSpace(
+        [(0.0, -2.0), (2.0, -2.0), (2.0, 2.0), (0.0, 2.0)],
+        (0.0, -2.0, 2.0, 2.0),
+        osm_id=14,
+    )
+    manager = TrafficManager([way], target_count=0, despawn_radius_m=10.0, parking_spaces=[parking_space])
+    npc = NPCCar(1.0, 0.0, 0.0, 0.0, way, 0, 1, 0.0, (20, 20, 20), state="occupied")
+    assert manager.occupy_parking_space(npc, parking_space)
+    npc.state = "occupied"
+    npc.current_driver_id = 123
+    manager.npcs = [npc]
+
+    assert manager.activate_occupied_vehicle(npc)
+    manager.update(Car(x=100.0, y=0.0, heading=0.0, speed=0.0), dt=0.0)
+
+    assert manager.npcs == [npc]
+    assert parking_space.occupied is True
+
+
+def test_traffic_update_populates_half_target_with_parked_npcs():
+    way = Way(points_m=[(0.0, 0.0), (200.0, 0.0)], highway="residential", half_width_m=4.0)
+    spaces = [
+        ParkingSpace([(x - 1.0, -2.0), (x + 1.0, -2.0), (x + 1.0, 2.0), (x - 1.0, 2.0)], (x - 1.0, -2.0, x + 1.0, 2.0), osm_id=x)
+        for x in (20.0, 40.0, 60.0, 80.0)
+    ]
+    manager = TrafficManager(ways=[way], target_count=4, parking_spaces=spaces, parking_density=0.5)
+
+    manager.update(Car(x=100.0, y=0.0, heading=0.0, speed=0.0), dt=1.0)
+
+    assert sum(npc.state == "parked" for npc in manager.npcs) == 2
+    assert sum(space.occupied for space in spaces) == 2
+
+
+def test_despawning_parked_npc_releases_osm_space():
+    way = Way(points_m=[(0.0, 0.0), (200.0, 0.0)], highway="residential", half_width_m=4.0)
+    parking_space = ParkingSpace([(0.0, -2.0), (2.0, -2.0), (2.0, 2.0), (0.0, 2.0)], (0.0, -2.0, 2.0, 2.0), osm_id=11)
+    manager = TrafficManager([way], target_count=0, despawn_radius_m=50.0, parking_spaces=[parking_space])
+    npc = NPCCar(1.0, 0.0, 0.0, 0.0, way, 0, 1, 0.0, (20, 20, 20))
+    manager.npcs = [npc]
+    assert manager.occupy_parking_space(npc, parking_space)
+
+    manager.update(Car(x=100.0, y=0.0, heading=0.0, speed=0.0), dt=0.1)
+
+    assert manager.npcs == []
+    assert parking_space.occupied is False
+
+
+def test_parked_npc_does_not_spawn_directly_inside_viewport():
+    way = Way(
+        points_m=[(-100.0, 0.0), (100.0, 0.0)],
+        highway="primary",
+        half_width_m=4.0,
+        name="Parking Street",
+    )
+    parking_space = ParkingSpace(
+        [(-2.0, -2.0), (2.0, -2.0), (2.0, 2.0), (-2.0, 2.0)],
+        (-2.0, -2.0, 2.0, 2.0),
+        osm_id=12,
+    )
+    manager = TrafficManager([way], target_count=0, parking_spaces=[parking_space])
+
+    npc = manager.spawn_parked_npc(
+        0.0,
+        0.0,
+        viewport_bounds=(-25.0, -25.0, 25.0, 25.0),
+    )
+
+    assert npc is None
+    assert parking_space.occupied is False
+
+
+def test_parked_npc_can_spawn_directly_outside_viewport():
+    way = Way(
+        points_m=[(-100.0, 0.0), (100.0, 0.0)],
+        highway="primary",
+        half_width_m=4.0,
+        name="Parking Street",
+    )
+    parking_space = ParkingSpace(
+        [(60.0, -2.0), (64.0, -2.0), (64.0, 2.0), (60.0, 2.0)],
+        (60.0, -2.0, 64.0, 2.0),
+        osm_id=13,
+    )
+    manager = TrafficManager([way], target_count=0, parking_spaces=[parking_space])
+
+    npc = manager.spawn_parked_npc(
+        0.0,
+        0.0,
+        viewport_bounds=(-25.0, -25.0, 25.0, 25.0),
+    )
+
+    assert npc is not None
+    assert npc.state == "parked"
+    assert parking_space.occupied is True
+
+
+def test_visible_parking_space_uses_driving_spawn_before_occupying_space():
+    random.seed(7)
+    way = Way(
+        points_m=[(-100.0, 0.0), (100.0, 0.0)],
+        highway="primary",
+        half_width_m=4.0,
+        name="Parking Approach",
+    )
+    parking_space = ParkingSpace(
+        [(18.0, -2.0), (22.0, -2.0), (22.0, 2.0), (18.0, 2.0)],
+        (18.0, -2.0, 22.0, 2.0),
+        osm_id=15,
+    )
+    manager = TrafficManager([way], target_count=0, parking_spaces=[parking_space])
+    viewport = (-25.0, -25.0, 25.0, 25.0)
+
+    npc = manager.spawn_parking_npc(0.0, 0.0, viewport)
+
+    assert npc is not None
+    assert npc.state == "parking"
+    assert not (viewport[0] <= npc.x <= viewport[2] and viewport[1] <= npc.y <= viewport[3])
+    assert parking_space.occupied is False
+    assert parking_space.reserved is True
+
+    for _ in range(300):
+        manager.update(Car(0.0, 0.0, 0.0, 0.0), dt=0.5, viewport_bounds=viewport)
+        if npc.state == "parked":
+            break
+
+    assert npc.state == "parked"
+    assert parking_space.occupied is True
+
+
+def test_destination_parking_starts_from_a_road_end():
+    way = Way(
+        points_m=[(0.0, 0.0), (100.0, 0.0)],
+        highway="residential",
+        half_width_m=4.0,
+    )
+    parking_space = ParkingSpace(
+        [(78.0, -2.0), (82.0, -2.0), (82.0, 2.0), (78.0, 2.0)],
+        (78.0, -2.0, 82.0, 2.0),
+        osm_id=16,
+    )
+    manager = TrafficManager([way], target_count=0, parking_spaces=[parking_space])
+    npc = NPCCar(100.0, 0.0, 0.0, 4.0, way, 0, 1, 10.0, (20, 20, 20))
+
+    assert manager._start_destination_parking(npc)
+    assert npc.state == "parking"
+    assert npc.parking_route is not None
+    assert parking_space.reserved is True
+    assert parking_space.vehicle_id == id(npc)
+
+
+def test_destination_parking_rejects_space_far_from_road():
+    way = Way(
+        points_m=[(0.0, 0.0), (100.0, 0.0)],
+        highway="residential",
+        half_width_m=4.0,
+    )
+    parking_space = ParkingSpace(
+        [(78.0, 30.0), (82.0, 30.0), (82.0, 34.0), (78.0, 34.0)],
+        (78.0, 30.0, 82.0, 34.0),
+        osm_id=17,
+    )
+    manager = TrafficManager([way], target_count=0, parking_spaces=[parking_space])
+    npc = NPCCar(100.0, 0.0, 0.0, 4.0, way, 0, 1, 10.0, (20, 20, 20))
+
+    assert not manager._start_destination_parking(npc)
+    assert parking_space.reserved is False
 
 
 def test_plan_route_starts_at_car_and_ends_at_destination():
@@ -22,6 +360,21 @@ def test_plan_route_starts_at_car_and_ends_at_destination():
     assert route[0] == (25.0, 2.0)
     assert route[-1] == (175.0, -3.0)
     assert (100.0, 0.0) in route
+
+
+def test_intersection_manager_reserves_and_releases_conflicting_approaches():
+    way = Way(points_m=[(-100.0, 0.0), (100.0, 0.0)], highway="primary", half_width_m=4.0)
+    first_approach = IntersectionApproach("east", [way], (1.0, 0.0), ((10.0, -4.0), (10.0, 4.0)))
+    second_approach = IntersectionApproach("north", [way], (0.0, 1.0), ((-4.0, 10.0), (4.0, 10.0)))
+    intersection = LogicalIntersection("junction", (0.0, 0.0), 20.0, approaches=[first_approach, second_approach])
+    manager = IntersectionManager([intersection])
+    first = NPCCar(8.0, 0.0, 0.0, 4.0, way, 0, 1, 10.0, (20, 20, 20))
+    second = NPCCar(0.0, 8.0, math.pi / 2, 4.0, way, 0, 1, 10.0, (30, 30, 30))
+
+    assert manager.request_enter(first, first_approach)
+    assert not manager.request_enter(second, second_approach)
+    manager.release(first)
+    assert manager.request_enter(second, second_approach)
 
 
 def test_sync_map_data_rebuilds_navigation_graph():
@@ -49,6 +402,58 @@ def test_traffic_count_scales_down_when_zoomed_in():
     assert traffic_count_for_zoom(50, px_per_m=9.0) == 17
     assert traffic_count_for_zoom(50, px_per_m=18.0) == 8
     assert traffic_count_for_zoom(50, px_per_m=1.0) == 50
+
+
+def test_traffic_count_is_capped_at_fifty():
+    way = Way(points_m=[(0.0, 0.0), (100.0, 0.0)], highway="residential", half_width_m=4.0)
+    manager = TrafficManager([way], target_count=500)
+
+    assert manager.target_count == 50
+    manager.set_target_count(500)
+    assert manager.target_count == 50
+
+
+def test_npc_lod_assigns_distance_bands_and_schedules_updates():
+    way = Way(points_m=[(0.0, 0.0), (100.0, 0.0)], highway="residential", half_width_m=4.0)
+    manager = TrafficManager([way], target_count=0)
+    near = NPCCar(100.0, 0.0, 0.0, 0.0, way, 0, 1, 10.0, (20, 20, 20))
+    medium = NPCCar(600.0, 0.0, 0.0, 0.0, way, 0, 1, 10.0, (30, 30, 30))
+    distant = NPCCar(1600.0, 0.0, 0.0, 0.0, way, 0, 1, 10.0, (40, 40, 40))
+    manager.npcs = [near, medium, distant]
+
+    manager.update_lod(Car(0.0, 0.0, 0.0, 0.0), 0.1)
+
+    assert [npc.lod_level for npc in manager.npcs] == [0, 1, 2]
+    assert [npc.lod_update_due for npc in manager.npcs] == [True, True, False]
+
+    manager.update_lod(Car(0.0, 0.0, 0.0, 0.0), 0.1)
+
+    assert all(npc.lod_update_due for npc in manager.npcs)
+
+
+def test_npc_spatial_grid_refreshes_after_movement():
+    way = Way(points_m=[(0.0, 0.0), (100.0, 0.0)], highway="residential", half_width_m=4.0)
+    manager = TrafficManager([way], target_count=0)
+    npc = NPCCar(31.0, 0.0, 0.0, 10.0, way, 0, 1, 10.0, (20, 20, 20))
+    manager.npcs = [npc]
+    manager._build_npc_spatial_grid()
+
+    manager.update(Car(0.0, 0.0, 0.0, 0.0), 0.2)
+
+    new_cell = (int(npc.x // manager._npc_grid_cell_size), int(npc.y // manager._npc_grid_cell_size))
+    assert npc in manager._npc_grid[new_cell]
+
+
+def test_distant_npc_movement_is_scheduled_by_lod():
+    way = Way(points_m=[(0.0, 0.0), (5000.0, 0.0)], highway="residential", half_width_m=4.0)
+    manager = TrafficManager([way], target_count=0)
+    npc = NPCCar(2000.0, 0.0, 0.0, 10.0, way, 0, 1, 10.0, (20, 20, 20), lod_level=2)
+    npc.lod_update_due = False
+    manager.npcs = [npc]
+
+    manager.update(Car(0.0, 0.0, 0.0, 0.0), 0.01)
+
+    assert npc.x == 2000.0
 
 
 def test_rival_taxi_picks_up_taxi_stand_waiter():
@@ -84,12 +489,12 @@ def test_nearby_offscreen_taxi_stop_spawns_taxis_once(monkeypatch):
         return taxi
 
     monkeypatch.setattr(manager, "spawn_npc", spawn_npc)
-    monkeypatch.setattr("theroadragetrip.traffic.random.randint", lambda low, high: 3)
+    monkeypatch.setattr("theroadragetrip.traffic.random.randint", lambda low, high: high)
     stop = SimpleNamespace(x=100.0, y=0.0, id=1)
     player = Car(50.0, 0.0, 0.0, 0.0)
     viewport = (-10.0, -10.0, 80.0, 10.0)
 
-    assert manager.spawn_taxis_at_nearby_stops([stop], player, viewport) == 3
+    assert manager.spawn_taxis_at_nearby_stops([stop], player, viewport) == 1
     assert all(taxi.is_taxi and taxi.waiting_at_taxi_stop for taxi in spawned)
     assert manager.spawn_taxis_at_nearby_stops([stop], player, viewport) == 0
 
@@ -97,7 +502,7 @@ def test_nearby_offscreen_taxi_stop_spawns_taxis_once(monkeypatch):
 def test_visible_taxi_stop_does_not_spawn_taxis(monkeypatch):
     way = Way(points_m=[(0.0, 0.0), (200.0, 0.0)], highway="residential", half_width_m=4.0)
     manager = TrafficManager([way], target_count=0)
-    monkeypatch.setattr("theroadragetrip.traffic.random.randint", lambda low, high: 3)
+    monkeypatch.setattr("theroadragetrip.traffic.random.randint", lambda low, high: high)
 
     assert manager.spawn_taxis_at_nearby_stops(
         [SimpleNamespace(x=50.0, y=0.0, id=1)],
@@ -204,6 +609,57 @@ def test_overlapping_npcs_are_separated():
     )
     assert first.speed == 0.0
     assert second.speed == 0.0
+
+
+def test_parking_npc_does_not_drive_through_another_vehicle():
+    way = Way(
+        points_m=[(0.0, 0.0), (200.0, 0.0)],
+        highway="primary",
+        half_width_m=6.0,
+        name="Parking Collision Street",
+    )
+    traffic_mgr = TrafficManager([way], target_count=0)
+    parked = NPCCar(50.0, 0.0, 0.0, 0.0, way, 0, 1, 0.0, (20, 20, 20), state="parking")
+    active = NPCCar(50.0, 0.0, math.pi, 0.0, way, 0, -1, 0.0, (30, 30, 30))
+    parked.parking_route = [(parked.x, parked.y), (100.0, 0.0)]
+    parked.parking_route_index = 1
+    traffic_mgr.npcs = [parked, active]
+
+    traffic_mgr.update(Car(x=50.0, y=100.0, heading=0.0, speed=0.0), dt=0.1)
+
+    assert parked.x == 50.0
+    assert parked.speed == 0.0
+
+
+def test_moving_npc_avoids_parked_npc_without_moving_it():
+    way = Way(
+        points_m=[(0.0, 0.0), (200.0, 0.0)],
+        highway="primary",
+        half_width_m=6.0,
+        name="Parked Obstacle Street",
+    )
+    traffic_mgr = TrafficManager([way], target_count=0)
+    parked = NPCCar(50.0, 0.0, 0.0, 0.0, way, 0, 1, 0.0, (20, 20, 20), state="parked")
+    moving = NPCCar(50.0, 0.0, math.pi, 4.0, way, 0, -1, 10.0, (30, 30, 30))
+    traffic_mgr.npcs = [parked, moving]
+    parked_position = (parked.x, parked.y)
+
+    traffic_mgr._resolve_npc_collisions()
+
+    assert (parked.x, parked.y) == parked_position
+    assert (moving.x, moving.y) != parked_position
+
+
+def test_waiting_npc_records_blocking_npc_for_debug_overlay():
+    way = Way(points_m=[(0.0, 0.0), (200.0, 0.0)], highway="primary", half_width_m=6.0)
+    traffic_mgr = TrafficManager([way], target_count=0)
+    waiting = NPCCar(50.0, 0.0, 0.0, 0.0, way, 0, 1, 10.0, (20, 20, 20))
+    blocker = NPCCar(53.0, 0.0, 0.0, 0.0, way, 0, 1, 10.0, (30, 30, 30))
+    traffic_mgr.npcs = [waiting, blocker]
+
+    traffic_mgr.update(Car(x=-100.0, y=100.0, heading=0.0, speed=0.0), dt=0.1)
+
+    assert waiting.debug_waiting_for == f"NPC {id(blocker) % 1000}"
 
 
 def test_rage_shout_moves_cars_ahead_to_road_edge():
@@ -476,6 +932,54 @@ def test_npc_avoids_180_degree_u_turns_at_junction():
     assert rev_route[2] == -1
 
 
+def test_uncontrolled_left_turn_yields_to_oncoming_traffic():
+    approach = Way(points_m=[(-30.0, 0.0), (0.0, 0.0)], highway="secondary", half_width_m=4.0)
+    exit_way = Way(points_m=[(0.0, 0.0), (0.0, 30.0)], highway="secondary", half_width_m=4.0)
+    opposing_way = Way(points_m=[(30.0, 0.0), (0.0, 0.0)], highway="secondary", half_width_m=4.0)
+    turning = NPCCar(-10.0, 0.0, 0.0, 4.0, approach, 0, 1, 10.0, (0, 0, 0), next_route=(exit_way, 0, 1))
+    opposing = NPCCar(10.0, 0.0, math.pi, 4.0, opposing_way, 0, -1, 10.0, (0, 0, 0))
+    manager = TrafficManager([approach, exit_way, opposing_way])
+    manager.npcs = [turning, opposing]
+
+    assert manager._junction_is_clear_for(turning, (0.0, 0.0)) is False
+
+
+def test_parked_npc_does_not_block_uncontrolled_junction():
+    approach = Way(points_m=[(-30.0, 0.0), (0.0, 0.0)], highway="secondary", half_width_m=4.0)
+    parked_way = Way(points_m=[(0.0, -30.0), (0.0, 0.0)], highway="service", half_width_m=4.0)
+    approaching = NPCCar(-10.0, 0.0, 0.0, 4.0, approach, 0, 1, 10.0, (0, 0, 0))
+    parked = NPCCar(0.0, -8.0, math.pi / 2.0, 0.0, parked_way, 0, 1, 0.0, (0, 0, 0), state="parked")
+    manager = TrafficManager([approach, parked_way])
+    manager.npcs = [approaching, parked]
+
+    assert manager._junction_is_clear_for(approaching, (0.0, 0.0)) is True
+    assert manager._junction_is_occupied((0.0, 0.0), approaching) is False
+
+
+def test_stopped_junction_queue_has_deterministic_deadlock_breaker():
+    horizontal = Way(points_m=[(-30.0, 0.0), (0.0, 0.0)], highway="secondary", half_width_m=4.0)
+    vertical = Way(points_m=[(0.0, -30.0), (0.0, 0.0)], highway="secondary", half_width_m=4.0)
+    first = NPCCar(-10.0, 0.0, 0.0, 0.0, horizontal, 0, 1, 10.0, (0, 0, 0), junction_wait_timer=2.5)
+    second = NPCCar(0.0, -10.0, math.pi / 2.0, 0.0, vertical, 0, 1, 10.0, (0, 0, 0), junction_wait_timer=2.5)
+    manager = TrafficManager([horizontal, vertical])
+    manager.npcs = [first, second]
+
+    assert manager._junction_deadlock_can_proceed(first, (0.0, 0.0)) is True
+    assert manager._junction_deadlock_can_proceed(second, (0.0, 0.0)) is False
+
+
+def test_priority_road_has_right_of_way_over_uncontrolled_approach():
+    priority = Way(points_m=[(30.0, 0.0), (0.0, 0.0)], highway="primary", half_width_m=4.0, priority_road=True)
+    side = Way(points_m=[(0.0, -30.0), (0.0, 0.0)], highway="residential", half_width_m=4.0)
+    priority_car = NPCCar(10.0, 0.0, math.pi, 4.0, priority, 0, -1, 10.0, (0, 0, 0))
+    side_car = NPCCar(0.0, -10.0, math.pi / 2.0, 4.0, side, 0, 1, 10.0, (0, 0, 0))
+    manager = TrafficManager([priority, side])
+    manager.npcs = [priority_car, side_car]
+
+    assert manager._junction_is_clear_for(side_car, (0.0, 0.0)) is False
+    assert manager._junction_is_clear_for(priority_car, (0.0, 0.0)) is True
+
+
 def test_npc_can_leave_bridge_at_layer_transition():
     approach = Way(
         points_m=[(0.0, 0.0), (50.0, 0.0)],
@@ -586,6 +1090,40 @@ def test_npc_prepares_next_route_before_junction():
     traffic_mgr.update(Car(x=200.0, y=200.0, heading=0.0, speed=0.0), dt=0.1)
 
     assert npc.next_route is not None
+
+
+def test_npc_turn_uses_bounded_steering_and_continuous_body_heading():
+    approach = Way(
+        points_m=[(-30.0, 0.0), (0.0, 0.0)],
+        highway="residential",
+        half_width_m=4.0,
+    )
+    exit_way = Way(
+        points_m=[(0.0, 0.0), (0.0, 30.0)],
+        highway="residential",
+        half_width_m=4.0,
+    )
+    manager = TrafficManager([approach, exit_way], target_count=0)
+    npc = NPCCar(
+        x=-1.0,
+        y=0.0,
+        heading=0.0,
+        speed=8.0,
+        way=approach,
+        segment_idx=0,
+        direction=1,
+        target_speed=8.0,
+        color=(20, 20, 20),
+        next_route=(exit_way, 0, 1),
+    )
+    manager.npcs = [npc]
+
+    manager.update(Car(x=-100.0, y=-100.0, heading=0.0, speed=0.0), dt=0.1)
+
+    assert abs(npc.steering_angle) <= math.radians(32.0)
+    assert abs(npc.heading) < math.pi / 2.0
+    assert npc.x < 0.0
+    assert abs(npc.y) < 1.0
 
 
 def test_npc_signals_prepared_turn_before_junction():
@@ -851,4 +1389,3 @@ def test_npc_is_removed_at_one_way_route_end():
     traffic_mgr.update(Car(x=100.0, y=100.0, heading=0.0, speed=0.0), dt=0.2)
 
     assert npc not in traffic_mgr.npcs
-

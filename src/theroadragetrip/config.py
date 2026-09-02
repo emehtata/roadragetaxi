@@ -42,8 +42,8 @@ DEFAULT_CONFIG = {
         "px_per_m": "9.0",
         "log_level": "INFO",
         "file_logging": "false",
-        "taxi_brawls": "false",
         "roadworks_enabled": "false",
+        "bus_stops": "false",
     },
     "map": {
         "overpass_endpoints": ", ".join(DEFAULT_OVERPASS_ENDPOINTS),
@@ -56,6 +56,7 @@ DEFAULT_CONFIG = {
         "traffic_count": "",
         "pedestrian_count": "20",
         "cyclist_count": "8",
+        "parking_density": "0.5",
     },
     "audio": {
         "master_volume": "1.0",

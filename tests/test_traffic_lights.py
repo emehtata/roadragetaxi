@@ -1,9 +1,17 @@
 """Tests for OSM traffic signals parsing, light cycle behavior, and NPC traffic stopping."""
 import math
 
-from theroadragetrip.osm import TrafficLight, Way, build_ways, deduplicate_traffic_lights
+from theroadragetrip.osm import (
+    TrafficLight,
+    SignalGroup,
+    Way,
+    build_ways,
+    complete_traffic_light_approaches,
+    build_logical_intersections,
+    deduplicate_traffic_lights,
+)
 from theroadragetrip.physics import Car
-from theroadragetrip.traffic import NPCCar, TrafficManager
+from theroadragetrip.traffic import NPCCar, TrafficLightManager, TrafficManager
 
 
 def test_traffic_light_states():
@@ -20,6 +28,107 @@ def test_traffic_light_states():
     assert tl.get_state(15.0) == "red+yellow"
     # wrap around to green
     assert tl.get_state(16.0) == "green"
+
+
+def test_signal_group_controls_multiple_physical_lights():
+    group = SignalGroup(approach_id="north", phase_id=0, offset=0.0)
+    first = TrafficLight(x=0.0, y=0.0, signal_group=group)
+    second = TrafficLight(x=2.0, y=0.0, signal_group=group)
+
+    assert first.get_state(0.0) == second.get_state(0.0) == "green"
+    assert group.allowed_movements == frozenset({"straight", "right"})
+
+
+def test_signal_group_supports_configurable_phase_durations():
+    group = SignalGroup(
+        approach_id="north",
+        green_duration=20.0,
+        yellow_duration=3.0,
+        all_red_duration=1.0,
+        red_duration=6.0,
+        red_yellow_duration=1.0,
+    )
+
+    assert group.get_state(19.9) == "green"
+    assert group.get_state(20.0) == "yellow"
+    assert group.get_state(23.0) == "all-red"
+    assert group.get_state(24.0) == "red"
+
+
+def test_center_signal_is_evidence_but_reconstructed_lights_are_renderable():
+    ways = [
+        Way(points_m=[(-100.0, 0.0), (0.0, 0.0), (100.0, 0.0)], highway="primary", half_width_m=4.0),
+        Way(points_m=[(0.0, -100.0), (0.0, 0.0), (0.0, 100.0)], highway="primary", half_width_m=4.0),
+    ]
+    raw = [TrafficLight(x=0.0, y=0.0, direction_angle=0.0)]
+
+    completed = complete_traffic_light_approaches(raw, ways)
+
+    assert raw[0].renderable is False
+    assert any(light.renderable and math.hypot(light.x, light.y) >= 10.0 for light in completed)
+
+
+def test_reconstructed_approach_lights_six_meters_from_center_remain_visible():
+    ways = [
+        Way(points_m=[(-100.0, 0.0), (0.0, 0.0), (100.0, 0.0)], highway="primary", half_width_m=4.0),
+        Way(points_m=[(0.0, -100.0), (0.0, 0.0), (0.0, 100.0)], highway="primary", half_width_m=4.0),
+    ]
+    raw = [
+        TrafficLight(x=0.0, y=6.0, direction_angle=3.0 * math.pi / 2.0),
+        TrafficLight(x=0.0, y=-6.0, direction_angle=math.pi / 2.0),
+    ]
+    completed = complete_traffic_light_approaches(raw, ways)
+
+    approach_lights = [
+        light for light in completed
+        if 5.0 <= math.hypot(light.x, light.y) <= 7.0
+    ]
+    assert approach_lights
+    assert all(light.renderable for light in approach_lights)
+
+
+def test_existing_center_signals_remain_renderable_when_all_approaches_exist():
+    ways = [
+        Way(points_m=[(-100.0, 0.0), (100.0, 0.0)], highway="primary", half_width_m=4.0),
+        Way(points_m=[(0.0, -100.0), (0.0, 100.0)], highway="primary", half_width_m=4.0),
+    ]
+    raw = [
+        TrafficLight(x=0.0, y=0.0, direction_angle=angle)
+        for angle in (0.0, math.pi / 2.0, math.pi, 3.0 * math.pi / 2.0)
+    ]
+
+    completed = complete_traffic_light_approaches(raw, ways)
+
+    assert len(completed) == 4
+    assert all(light.renderable for light in completed)
+
+
+def test_traffic_light_manager_updates_cached_groups():
+    group = SignalGroup(approach_id="north", phase_id=0, offset=0.0)
+    light = TrafficLight(x=0.0, y=0.0, signal_group=group)
+    approach = type("Approach", (), {"signal_group": group})()
+    manager = TrafficLightManager([])
+    manager._groups[group.approach_id] = group
+
+    manager.update(6.0)
+
+    assert manager.get_signal_state(approach, 6.0) == "yellow"
+    assert group.state == "yellow"
+
+
+def test_traffic_light_manager_finds_matching_logical_approach():
+    way = Way(points_m=[(-100.0, 0.0), (100.0, 0.0)], highway="primary", half_width_m=4.0)
+    cross_way = Way(points_m=[(0.0, -100.0), (0.0, 100.0)], highway="primary", half_width_m=4.0)
+    intersections = build_logical_intersections(
+        [TrafficLight(x=0.0, y=0.0, direction_angle=0.0)], [way, cross_way]
+    )
+    manager = TrafficLightManager(intersections)
+    npc = NPCCar(-20.0, 0.0, 0.0, 5.0, way, 0, 1, 10.0, (20, 20, 20))
+
+    approach = manager.find_approach(npc)
+
+    assert approach is not None
+    assert approach.direction_vector[0] > 0.0
 
 
 def test_traffic_light_orthogonal_phases():
@@ -67,6 +176,151 @@ def test_deduplicate_traffic_lights_keeps_one_per_nearby_approach():
     result = deduplicate_traffic_lights(lights)
 
     assert {light.id for light in result} == {1, 3, 4, 5}
+
+
+def test_single_signal_marker_generates_missing_intersection_approaches():
+    ways = [
+        Way(points_m=[(-100.0, 0.0), (100.0, 0.0)], highway="primary", half_width_m=4.0, layer=0),
+        Way(points_m=[(0.0, -100.0), (0.0, 100.0)], highway="primary", half_width_m=4.0, layer=0),
+    ]
+    result = complete_traffic_light_approaches(
+        [TrafficLight(x=0.0, y=0.0, id=1)], ways
+    )
+
+    generated = [light for light in result if light.id != 1]
+    assert len(generated) == 4
+    assert {round(light.direction_angle % math.pi, 4) for light in generated} == {0.0, round(math.pi / 2, 4)}
+    assert len({id(light.signal_group) for light in generated}) == 4
+    assert len({light.signal_group.offset for light in generated}) == 2
+
+
+def test_logical_intersection_contains_approaches_and_stop_lines():
+    ways = [
+        Way(points_m=[(-100.0, 0.0), (100.0, 0.0)], highway="primary", half_width_m=4.0),
+        Way(points_m=[(0.0, -100.0), (0.0, 100.0)], highway="primary", half_width_m=4.0),
+    ]
+    lights = [TrafficLight(x=0.0, y=0.0, direction_angle=0.0)]
+
+    intersections = build_logical_intersections(lights, ways)
+
+    assert len(intersections) == 1
+    assert len(intersections[0].approaches) == 4
+    assert all(approach.stop_line[0] != approach.stop_line[1] for approach in intersections[0].approaches)
+
+
+def test_multi_lane_approach_infers_left_turn_movement():
+    ways = [
+        Way(points_m=[(-100.0, 0.0), (100.0, 0.0)], highway="primary", half_width_m=6.0, lanes=3),
+        Way(points_m=[(0.0, -100.0), (0.0, 100.0)], highway="primary", half_width_m=4.0),
+    ]
+
+    intersections = build_logical_intersections(
+        [TrafficLight(x=0.0, y=0.0, direction_angle=0.0)], ways
+    )
+
+    assert any("left" in approach.allowed_movements for approach in intersections[0].approaches)
+
+
+def test_turn_lanes_override_multi_lane_movement_fallback():
+    way = Way(
+        points_m=[(-100.0, 0.0), (100.0, 0.0)],
+        highway="primary",
+        half_width_m=6.0,
+        lanes=3,
+        turn_lanes="through|through|right",
+    )
+    crossing_way = Way(points_m=[(0.0, -100.0), (0.0, 100.0)], highway="primary", half_width_m=4.0)
+
+    intersections = build_logical_intersections(
+        [TrafficLight(x=0.0, y=0.0, direction_angle=0.0)], [way, crossing_way]
+    )
+
+    assert all("left" not in approach.allowed_movements for approach in intersections[0].approaches if way in approach.road_segments)
+
+
+def test_logical_intersections_do_not_merge_different_layers():
+    ways = [
+        Way(points_m=[(-100.0, 0.0), (100.0, 0.0)], highway="primary", half_width_m=4.0, layer=0),
+        Way(points_m=[(0.0, -100.0), (0.0, 100.0)], highway="primary", half_width_m=4.0, layer=0),
+        Way(points_m=[(-100.0, 0.0), (100.0, 0.0)], highway="primary", half_width_m=4.0, layer=1),
+        Way(points_m=[(0.0, -100.0), (0.0, 100.0)], highway="primary", half_width_m=4.0, layer=1),
+    ]
+    lights = [
+        TrafficLight(x=0.0, y=0.0, layer=0, direction_angle=0.0),
+        TrafficLight(x=0.0, y=0.0, layer=1, direction_angle=0.0),
+    ]
+
+    intersections = build_logical_intersections(lights, ways)
+
+    assert {intersection.layer for intersection in intersections} == {0, 1}
+
+
+def test_logical_intersection_uses_only_incoming_directions_on_oneway_carriageways():
+    eastbound = Way(
+        points_m=[(-100.0, 0.0), (100.0, 0.0)],
+        highway="primary",
+        half_width_m=4.0,
+        oneway=1,
+    )
+    northbound = Way(
+        points_m=[(0.0, -100.0), (0.0, 100.0)],
+        highway="primary",
+        half_width_m=4.0,
+        oneway=1,
+    )
+    westbound = Way(
+        points_m=[(100.0, 8.0), (-100.0, 8.0)],
+        highway="primary",
+        half_width_m=4.0,
+        oneway=1,
+    )
+    approaches = build_logical_intersections(
+        [TrafficLight(x=0.0, y=0.0, direction_angle=0.0)],
+        [eastbound, northbound, westbound],
+    )[0].approaches
+
+    assert len(approaches) == 3
+    assert {approach.direction_vector for approach in approaches} == {
+        (1.0, 0.0), (0.0, 1.0), (-1.0, 0.0)
+    }
+
+
+def test_synthetic_signals_keep_valid_arms_of_divided_carriageways():
+    eastbound = Way(
+        points_m=[(-100.0, 0.0), (100.0, 0.0)],
+        highway="primary",
+        half_width_m=4.0,
+        oneway=1,
+    )
+    westbound = Way(
+        points_m=[(100.0, 8.0), (-100.0, 8.0)],
+        highway="primary",
+        half_width_m=4.0,
+        oneway=1,
+    )
+    north_south = Way(
+        points_m=[(0.0, -100.0), (0.0, 100.0)],
+        highway="primary",
+        half_width_m=4.0,
+    )
+
+    generated = complete_traffic_light_approaches(
+        [TrafficLight(x=0.0, y=0.0, id=1)],
+        [eastbound, westbound, north_south],
+    )
+
+    synthetic = [light for light in generated if light.id != 1]
+    assert len(synthetic) == 4
+    assert all(light.direction_angle is not None for light in synthetic)
+    assert {
+        round(light.direction_angle % (2.0 * math.pi), 6)
+        for light in synthetic
+    } == {
+        0.0,
+        round(math.pi, 6),
+        round(math.pi / 2.0, 6),
+        round(3.0 * math.pi / 2.0, 6),
+    }
 
 
 def test_build_ways_splits_single_signal_at_four_arm_junction():
@@ -141,6 +395,53 @@ def test_npc_stops_at_red_traffic_light():
     # NPC slowed down or stopped before the red light
     assert npc.speed < 5.0
     assert npc.x < 30.0
+    assert npc.state in {"braking", "waiting"}
+
+
+def test_npc_does_not_depart_intersection_on_red_yellow():
+    ways = [
+        Way(points_m=[(-100.0, 0.0), (0.0, 0.0), (100.0, 0.0)], highway="primary", half_width_m=4.0),
+        Way(points_m=[(0.0, -100.0), (0.0, 0.0), (0.0, 100.0)], highway="primary", half_width_m=4.0),
+    ]
+    light = TrafficLight(x=0.0, y=0.0, cycle_time=16.0, offset=0.0, direction_angle=0.0)
+    traffic_mgr = TrafficManager(ways, target_count=0, traffic_lights=[light])
+    npc = NPCCar(
+        x=1.0,
+        y=0.0,
+        heading=0.0,
+        speed=0.0,
+        way=ways[0],
+        segment_idx=0,
+        direction=1,
+        target_speed=15.0,
+        color=(200, 200, 200),
+    )
+    traffic_mgr.npcs = [npc]
+    traffic_mgr.sim_time = 14.9
+
+    traffic_mgr.update(Car(x=-20.0, y=0.0, heading=0.0, speed=0.0), dt=0.1)
+
+    assert light.get_state(traffic_mgr.sim_time) == "red+yellow"
+    assert npc.speed == 0.0
+    assert npc.state == "waiting"
+
+
+def test_npc_continues_through_yellow_when_stopping_is_not_safe():
+    way = Way(
+        points_m=[(0.0, 0.0), (100.0, 0.0)],
+        highway="primary",
+        half_width_m=4.0,
+        oneway=1,
+    )
+    light = TrafficLight(x=30.0, y=0.0, cycle_time=16.0, offset=5.5)
+    traffic_mgr = TrafficManager([way], target_count=0, traffic_lights=[light])
+    npc = NPCCar(26.0, 0.0, 0.0, 15.0, way, 0, 1, 15.0, (200, 200, 200))
+    traffic_mgr.npcs = [npc]
+
+    traffic_mgr.update(Car(x=0.0, y=0.0, heading=0.0, speed=0.0), dt=0.1)
+
+    assert npc.x > 26.0
+    assert npc.state == "driving"
 
 
 def test_player_red_light_violation_penalty():
@@ -238,4 +539,3 @@ def test_seeing_red_light_builds_rage_meter_rate():
     assert taxi_mgr.sees_red_light(car, [red_light], sim_time=0.0) is True
     assert taxi_mgr.sees_red_light(car, [red_light], sim_time=8.0) is False
     assert taxi_mgr.sees_red_light(car, [red_light], sim_time=0.0, detection_distance_m=20.0) is False
-

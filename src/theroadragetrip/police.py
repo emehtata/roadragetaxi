@@ -79,6 +79,8 @@ class PoliceManager:
         )
         if active is not None and speeding and can_see_taxi and not active.stopped and not active.pursuing:
             active.pursuing = True
+            active.pursuit_elapsed = 0.0
+            active.pursuit_distance_check_elapsed = 2.0
             relative_forward = (
                 (active.x - taxi.x) * math.cos(taxi.heading)
                 + (active.y - taxi.y) * math.sin(taxi.heading)
@@ -87,6 +89,26 @@ class PoliceManager:
             active.pursuit_phase = "yielding" if relative_forward > 0.0 and heading_error > math.pi / 2.0 else "behind"
         for police in self.cars:
             if not police.pursuing:
+                continue
+            police.pursuit_elapsed += dt
+            police.pursuit_distance_check_elapsed += dt
+            pursuit_distance = math.hypot(police.x - taxi.x, police.y - taxi.y)
+            distance_exceeded = False
+            duration_exceeded = False
+            if police.pursuit_distance_check_elapsed >= 2.0:
+                police.pursuit_distance_check_elapsed = 0.0
+                distance_exceeded = pursuit_distance > 200.0
+                duration_exceeded = police.pursuit_elapsed > 20.0
+            if distance_exceeded or duration_exceeded:
+                police.pursuing = False
+                police.stopped = False
+                police.speed = 0.0
+                police.pursuit_cancelled = True
+                logger.info(
+                    "Police pursuit abandoned: distance=%.1fm duration=%.1fs",
+                    pursuit_distance,
+                    police.pursuit_elapsed,
+                )
                 continue
             if police.penalty_given:
                 police.speed = 0.0
@@ -135,8 +157,15 @@ class PoliceManager:
             police.heading = math.atan2(dy, dx)
             police.speed = min(30.0, max(8.0, distance * 2.0))
             step = min(distance, police.speed * dt)
-            police.x += dx / distance * step
-            police.y += dy / distance * step
+            next_x = police.x + dx / distance * step
+            next_y = police.y + dy / distance * step
+            if _building_blocks_path(
+                police.x, police.y, next_x, next_y, self.buildings, self.building_grid
+            ):
+                police.speed = 0.0
+                continue
+            police.x = next_x
+            police.y = next_y
         return False
 
     def scare(self) -> bool:
@@ -200,6 +229,45 @@ def _has_line_of_sight(
         ):
             return False
     return True
+
+
+def _building_blocks_path(
+    start_x: float,
+    start_y: float,
+    end_x: float,
+    end_y: float,
+    buildings: List[Building],
+    building_grid=None,
+) -> bool:
+    """Return whether a police movement segment enters or crosses a building."""
+    if building_grid is not None:
+        margin = 2.0
+        candidate_buildings = building_grid.ways_in_rect(
+            min(start_x, end_x) - margin,
+            min(start_y, end_y) - margin,
+            max(start_x, end_x) + margin,
+            max(start_y, end_y) + margin,
+        )
+    else:
+        candidate_buildings = buildings
+
+    for building in candidate_buildings:
+        polygon = building.points_m
+        if len(polygon) < 3:
+            continue
+        if point_in_polygon(end_x, end_y, polygon):
+            return True
+        if any(
+            segments_intersect(
+                (start_x, start_y),
+                (end_x, end_y),
+                edge_start,
+                edge_end,
+            )
+            for edge_start, edge_end in zip(polygon, polygon[1:] + polygon[:1])
+        ):
+            return True
+    return False
 
 
 def camera_count(ways: List[Way], city_name: Optional[str] = None) -> int:

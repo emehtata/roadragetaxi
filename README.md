@@ -7,6 +7,9 @@ A top-down 2D driving game proof-of-concept (PoC) in Python and Pygame that proc
 ## Features
 
 - **Real-World OSM Road Network**: Fetches and renders actual highway ways from Overpass API (motorways, primary, secondary, residential, tracks, paths).
+- **OSM Bus Stops**: Bus stops and platforms are rendered as roadside bays with small road-aligned shelters labeled `BUS`.
+- Bus stops are disabled by default; enable them with `bus_stops = true` under `[game]` in `roadragetrip.ini`.
+- **OSM Building Entrances**: Doors are rendered at `entrance` nodes from building geometry; buildings without entrance data have no synthetic door.
 - **Taxi Game Mode**: Pick up passengers at generated street addresses, drop them off at their destinations, and earn points with speed and distance multiplier bonuses.
 - **Taxi Stops & Missions**: Taxi offers use street addresses and named buildings as pickup and destination points. Taxi stands are pickup-only locations.
 - **Ride Requests & Taxi Stands**: Ride requests arrive one at a time by phone, 10-60 seconds apart, and expire after 30-90 seconds when no passenger is onboard. Select one with `1`, `2`, or `3`, or reject the selected offer with `X`; phone offers and taxi-stand customers can coexist. The game starts at 18:00. From 20:00 to 00:00, rides favor homes to bars, restaurants, pubs, and nightclubs, plus trips between those venues. From 00:00 to 05:00, passengers leave taxi stands for home addresses; from 05:00 to 08:00, rides run between homes. From 08:00 to 12:00, bar and nightlife destinations are excluded. Phone rides normally start and end at named buildings or street addresses. Wait stopped at a taxi stand and its customer walks visibly to the taxi before boarding. Maps without taxi stands can trigger occasional street hails; only a small share of pedestrians want a taxi. A passing taxi can notice a hail, but the passenger only boards after the taxi stops.
@@ -18,10 +21,10 @@ A top-down 2D driving game proof-of-concept (PoC) in Python and Pygame that proc
 - **Buildings & Scenery**: Renders building footprints, parks, forests, and green spaces with street/place name labels (`L` key).
 - **Street Lighting**: Roadside lamps are placed along urban drivable roads and their warm glow gradually turns on at dusk.
 - **Water & Multipolygon Rendering**: Renders lakes, reservoirs, and waterways under the road network.
-- **Autonomous Traffic**: NPC cars follow connected roads, respect lane direction, vary their speed, overtake, react to traffic lights, and avoid overlapping the player. The shared road-graph navigator can route NPCs to map targets without cutting through buildings or terrain. Active traffic is reduced at close zoom levels while nearby cars are retained.
-- **Pedestrians & Cyclists**: Pedestrians and cyclists use roads and crossings, react to traffic lights, and evade approaching vehicles. Ordinary pedestrians spawn near mapped buildings, while hospitality venues receive extra activity; at night, visible pedestrians show a bright reflector point until a car headlight or street light illuminates them. Cyclists use a top-down image sprite, and active pedestrian/cyclist counts scale down while zoomed in.
+- **Autonomous Traffic**: NPC cars follow connected roads, respect lane direction, vary their speed, overtake, react to traffic lights, and avoid overlapping the player. The shared road-graph navigator can route NPCs to map targets without cutting through buildings or terrain. Active traffic is reduced at close zoom levels while nearby cars are retained. Each vehicle uses its own wheelbase, front-wheel steering limit, minimum turning radius, gradual steering response, and bicycle-model body rotation for smooth, physically bounded turns.
+- **OSM Parking Traffic**: About half of regular NPC cars use existing OSM parking spaces by default. Parking density is configurable, parked cars remain spatially indexed, and occupied parking spaces stay reserved while a vehicle departs.
+- **Pedestrians & Cyclists**: Pedestrians and cyclists use dedicated paths, mapped entrances, and crossings; pedestrians track destinations, use logical traffic signals, wait before unsafe crossings, enter buildings at doors, and update at distance-based LOD rates. A small share of pedestrians can reserve a parked vehicle within 100 meters, walk to it, drive to a road destination, and exit automatically. Ordinary pedestrians spawn near mapped buildings, while hospitality venues receive extra activity; at night, visible pedestrians show a bright reflector point until a car headlight or street light illuminates them. Cyclists use a top-down image sprite, and active pedestrian/cyclist counts scale down while zoomed in.
 - **Rival NPC Taxis**: Some NPC cars are yellow rival taxis. They stop briefly at taxi stands and collect waiting customers before driving on.
-- **Taxi-Driver Brawls**: Disabled by default. Set `taxi_brawls = true` under `[game]` to enable. Stopping near a taxi stand can then attract a rival taxi driver. The rival arrives from outside the view, then waits three seconds before a five-second fight under a dust cloud. Afterward both drivers walk back to their taxis; the winner drives to the stand. Road Rage charge controls the win chance, with 0% and 100% as exact boundaries. Winning gives 1,000 points; losing costs 500 points. A losing rival curses and leaves; a winning rival waits for a passenger.
 - **Traffic Violations**: Red-light, wrong-way, collision, building, and scenery penalties are tracked in the taxi score.
 - **Tree Crash Effects**: Tree impacts shake the tree and scatter leaves; impacts above 80 km/h knock the tree down, smoke the taxi, and immobilize it for five seconds.
 - **Roadworks**: Random roadworks add temporary traffic lights and can make NPC traffic slow or stop naturally.
@@ -60,7 +63,6 @@ A top-down 2D driving game proof-of-concept (PoC) in Python and Pygame that proc
 │       │   ├── passenger_chatter.json # 50 Finnish/English passenger lines
 │       │   └── driver_chatter.json    # Situation-specific driver lines
 │       ├── audio.py        # Optional music, effects, and situation chatter playback
-│       ├── brawl.py        # Optional taxi-driver brawls
 │       ├── career.py       # Career progress and odometer persistence
 │       ├── config.py       # INI loading, city configuration, and Overpass endpoints
 │       ├── roadworks.py    # Temporary roadwork and traffic-light generation
@@ -122,7 +124,7 @@ python3 road_rage_trip.py --auto-fetch --fetch-margin 50 --fetch-tile-size 500
 
 On the first launch, the game creates `roadragetrip.ini` under the platform configuration directory (`$XDG_CONFIG_HOME/RoadRageTrip/` on Linux, `%APPDATA%/RoadRageTrip/` on Windows) and asks for Finnish or English. Edit that file to set the city, map fetching, zoom, logging, pedestrian, cyclist, traffic, language, audio, and police-camera values. Career progress and the total odometer are stored beside the INI file. The `[cities]` section contains editable `name = latitude, longitude` entries; add or remove cities there. Command-line options override the INI values for one launch.
 
-For example, set `preset = helsinki` under `[game]` and `traffic_count = 100` under `[traffic]` to run Helsinki with 100 NPC cars.
+For example, set `preset = helsinki` under `[game]` and `traffic_count = 50` under `[traffic]` to run Helsinki with up to 50 NPC cars. At most 17 NPC cars are drawn in the viewport at once.
 
 ### INI Settings
 
@@ -140,7 +142,6 @@ no_cache = false
 px_per_m = 9.0
 log_level = INFO
 file_logging = false
-taxi_brawls = false
 roadworks_enabled = false
 
 [map]
@@ -154,6 +155,7 @@ build_in_process = true
 traffic_count =        # blank enables automatic road-network scaling
 pedestrian_count = 20
 cyclist_count = 8
+parking_density = 0.5  # fraction of regular NPC cars placed in OSM parking spaces
 
 [audio]
 master_volume = 1.0
@@ -240,6 +242,7 @@ Game sounds are stored in `src/theroadragetrip/sounds/`. CC0 sounds require no a
 | `P` | Open taxi phone and view three ride offers |
 | `1` - `3` | Accept a selected ride in the taxi phone |
 | `F1` | Open the full tutorial and control list |
+| `F3` | Toggle the diagnostic text HUD |
 | `F12` | Save screenshot plus matching runtime diagnostic JSON in `screenshots/` |
 | `Esc` | Open pause menu (Continue, Tutorial, Settings, Change City, Exit) |
 
@@ -265,15 +268,16 @@ The pause menu's **Settings** screen changes language and master, background, an
 | `--fetch-margin` | Margin in meters from bounds triggering auto-fetch (default: `350.0`) |
 | `--fetch-tile-size`| Meters to expand when auto-fetching (default: `2500.0`) |
 | `--build-in-process` | Build auto-fetched map data outside the gameplay process |
-| `--traffic-count` | Target number of autonomous NPC cars (default: scales with available streets, capped at 50) |
+| `--traffic-count` | Target number of autonomous NPC cars (default: scales with available streets, capped at 50; max 17 drawn in the viewport) |
 | `--pedestrian-count` | Target number of pedestrians (default: `20`) |
 | `--cyclist-count` | Target number of cyclists (default: `8`) |
+| `--parking-density` | Fraction of regular NPC cars spawned in existing OSM parking spaces (default: `0.5`) |
 
 ---
 
 ## Testing
 
-The game logs important gameplay events at `INFO` level, including taxi mission and fare transitions, phone offers, passenger boarding, passenger chatter playback, police penalties, taxi-driver confrontations, and major settings changes. Console logging is enabled by default. Set `[game] file_logging = true` in `roadragetrip.ini` to additionally append events to `roadragetrip.log` in the working directory. Use `--log-level DEBUG` when diagnosing lower-level behavior.
+The game logs important gameplay events at `INFO` level, including taxi mission and fare transitions, phone offers, passenger boarding, passenger chatter playback, police penalties, and major settings changes. Console logging is enabled by default. Set `[game] file_logging = true` in `roadragetrip.ini` to additionally append events to `roadragetrip.log` in the working directory. Use `--log-level DEBUG` when diagnosing lower-level behavior.
 
 Run unit tests with pytest:
 ```bash

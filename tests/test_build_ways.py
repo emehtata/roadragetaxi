@@ -41,6 +41,129 @@ def test_build_ways_transforms():
     assert w.highway == "residential"
 
 
+def test_build_ways_parses_osm_yield_sign():
+    result = build_ways([
+        {"type": "node", "id": 7, "lat": 60.0, "lon": 25.0,
+         "tags": {"highway": "give_way", "layer": "1"}},
+    ])
+
+    assert len(result.yield_signs) == 1
+    assert result.yield_signs[0].x == 25.0 * 1000.0
+    assert result.yield_signs[0].layer == 1
+
+
+def test_build_ways_parses_priority_road_tags():
+    elements = [
+        {"type": "node", "id": 1, "lat": 60.0, "lon": 25.0},
+        {"type": "node", "id": 2, "lat": 60.001, "lon": 25.001},
+        {"type": "node", "id": 3, "lat": 60.002, "lon": 25.002},
+        {"type": "way", "id": 10, "nodes": [1, 2], "tags": {"highway": "primary", "priority_road": "yes"}},
+        {"type": "way", "id": 11, "nodes": [2, 3], "tags": {"highway": "secondary", "junction": "priority"}},
+    ]
+
+    result = build_ways(elements)
+
+    assert [way.priority_road for way in result.ways] == [True, True]
+
+
+def test_build_ways_parses_building_entrance_nodes():
+    elements = [
+        {"type": "node", "id": 1, "lat": 60.0, "lon": 25.0},
+        {"type": "node", "id": 2, "lat": 60.0, "lon": 25.01},
+        {"type": "node", "id": 3, "lat": 60.01, "lon": 25.01},
+        {"type": "node", "id": 4, "lat": 60.01, "lon": 25.0},
+        {"type": "node", "id": 5, "lat": 60.0, "lon": 25.005, "tags": {"entrance": "main"}},
+        {"type": "way", "id": 10, "nodes": [1, 5, 2, 3, 4, 1], "tags": {"building": "yes"}},
+    ]
+
+    result = build_ways(elements)
+
+    assert result.buildings[0].entrances == [(25.005 * 1000.0, 60.0 * 1000.0)]
+
+
+def test_build_ways_leaves_entrances_empty_without_osm_node():
+    elements = [
+        {"type": "node", "id": 1, "lat": 60.0, "lon": 25.0},
+        {"type": "node", "id": 2, "lat": 60.0, "lon": 25.01},
+        {"type": "node", "id": 3, "lat": 60.01, "lon": 25.01},
+        {"type": "node", "id": 4, "lat": 60.01, "lon": 25.0},
+        {"type": "node", "id": 5, "lat": 60.005, "lon": 24.999},
+        {"type": "node", "id": 6, "lat": 60.005, "lon": 25.0},
+        {"type": "way", "id": 10, "nodes": [1, 2, 3, 4, 1], "tags": {"building": "yes"}},
+        {"type": "way", "id": 11, "nodes": [5, 6], "tags": {"highway": "footway"}},
+    ]
+
+    result = build_ways(elements)
+
+    assert result.buildings[0].entrances == []
+
+
+def test_build_ways_parses_osm_bus_stop():
+    elements = [
+        {"type": "node", "id": 1, "lat": 60.0, "lon": 25.0, "tags": {"highway": "bus_stop", "name": "Keskusta", "shelter": "yes"}},
+        {"type": "node", "id": 2, "lat": 60.001, "lon": 25.0},
+        {"type": "way", "id": 10, "nodes": [1, 2], "tags": {"highway": "residential"}},
+    ]
+
+    result = build_ways(elements)
+
+    assert len(result.bus_stops) == 1
+    assert result.bus_stops[0].name == "Keskusta"
+    assert result.bus_stops[0].id == 1
+    assert result.bus_stops[0].shelter is True
+
+
+def test_build_ways_includes_parking_aisles_in_drivable_ways():
+    elements = [
+        {"type": "node", "id": 1, "lat": 60.0, "lon": 25.0},
+        {"type": "node", "id": 2, "lat": 60.0, "lon": 25.001},
+        {"type": "way", "id": 10, "nodes": [1, 2], "tags": {"highway": "service", "service": "parking_aisle"}},
+    ]
+
+    result = build_ways(elements)
+
+    assert len(result.ways) == 1
+    assert result.ways[0].highway == "service"
+    assert result.ways[0].service == "parking_aisle"
+
+
+def test_build_ways_parses_public_transport_platform_as_bus_stop():
+    elements = [
+        {"type": "node", "id": 1, "lat": 60.0, "lon": 25.0, "tags": {"public_transport": "platform"}},
+    ]
+
+    result = build_ways(elements)
+
+    assert len(result.bus_stops) == 1
+
+
+def test_build_ways_can_exclude_bus_stops_from_world():
+    elements = [
+        {"type": "node", "id": 1, "lat": 60.0, "lon": 25.0, "tags": {"highway": "bus_stop"}},
+        {"type": "node", "id": 2, "lat": 60.0, "lon": 25.001},
+        {"type": "way", "id": 10, "nodes": [1, 2], "tags": {"highway": "residential"}},
+    ]
+
+    result = build_ways(elements, include_bus_stops=False)
+
+    assert result.bus_stops == []
+
+
+def test_build_ways_parses_platform_way_as_bus_stop():
+    elements = [
+        {"type": "node", "id": 1, "lat": 60.0, "lon": 25.0},
+        {"type": "node", "id": 2, "lat": 60.0, "lon": 25.001},
+        {"type": "node", "id": 3, "lat": 60.001, "lon": 25.001},
+        {"type": "way", "id": 20, "nodes": [1, 2, 3], "tags": {"public_transport": "platform", "name": "Laituri"}},
+    ]
+
+    result = build_ways(elements)
+
+    assert len(result.bus_stops) == 1
+    assert result.bus_stops[0].name == "Laituri"
+    assert result.bus_stops[0].id == 20
+
+
 def test_build_ways_parses_closed_natural_bay_as_water():
     elements = [
         {"type": "node", "id": 1, "lat": 60.0, "lon": 25.0},

@@ -15,11 +15,16 @@ from .osm import (
     HIGHWAY_HALF_WIDTH,
     AutoFetchManager,
     Building,
+    BusStop,
     Crossing,
+    IntersectionApproach,
+    LogicalIntersection,
     Place,
     Scenery,
     TaxiStop,
     TrafficLight,
+    YieldSign,
+    SignalGroup,
     Water,
     Way,
     bbox_from_center,
@@ -47,6 +52,7 @@ from .physics import (
     reset_trip,
     respawn_car,
     update_car_physics,
+    is_point_on_parking_space,
 )
 from .render import (
     FPS,
@@ -54,6 +60,7 @@ from .render import (
     SCREEN_H,
     SCREEN_W,
     draw_buildings,
+    draw_bus_stops,
     draw_car,
     draw_city_selection_menu,
     draw_compass,
@@ -71,7 +78,8 @@ from .render import (
     get_viewport_bounds,
     world_to_screen,
 )
-from .traffic import NPCCar, TrafficManager
+from .traffic import CarAI, IntersectionManager, NPCCar, TrafficManager
+from .pedestrian import PedestrianAppearance, PedestrianNetwork, PedestrianState
 
 __all__ = [
     # Geo
@@ -93,10 +101,15 @@ __all__ = [
     "Way",
     "Water",
     "Building",
+    "BusStop",
     "Scenery",
     "TaxiStop",
     "Place",
     "TrafficLight",
+    "YieldSign",
+    "SignalGroup",
+    "IntersectionApproach",
+    "LogicalIntersection",
     "Crossing",
     "load_local_sample",
     "load_osm_cache",
@@ -122,8 +135,14 @@ __all__ = [
     "reset_trip",
     "respawn_car",
     "update_car_physics",
+    "is_point_on_parking_space",
+    "PedestrianAppearance",
+    "PedestrianNetwork",
+    "PedestrianState",
     # Traffic
     "NPCCar",
+    "CarAI",
+    "IntersectionManager",
     "TrafficManager",
     # Render
     "SCREEN_W",
@@ -135,6 +154,7 @@ __all__ = [
     "draw_scenery",
     "draw_waters",
     "draw_buildings",
+    "draw_bus_stops",
     "draw_ways",
     "draw_crossings",
     "draw_traffic_lights",
@@ -149,5 +169,3 @@ __all__ = [
     # Main
     "main",
 ]
-
-

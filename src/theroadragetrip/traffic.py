@@ -6,7 +6,17 @@ from dataclasses import dataclass
 from typing import List, Optional, Tuple
 
 from .geo import boxes_intersect
-from .osm import TrafficLight, Way
+from .osm import (
+    IntersectionApproach,
+    LogicalIntersection,
+    ParkingSpace,
+    SignalGroup,
+    StopSign,
+    YieldSign,
+    TrafficLight,
+    Way,
+    build_logical_intersections,
+)
 from .physics import Car, connected_drivable_ways
 
 logger = logging.getLogger(__name__)
@@ -23,6 +33,9 @@ NPC_COLORS = [
 ]
 MAX_TRAFFIC_COUNT = 50
 NPC_TAXI_COLOR = (245, 205, 35)
+NPC_LOD_NEAR_RADIUS_M = 500.0
+NPC_LOD_MEDIUM_RADIUS_M = 1500.0
+NPC_LOD_UPDATE_INTERVALS = (1.0 / 30.0, 1.0 / 12.0, 0.2)
 
 
 def recommended_traffic_count(ways: List[Way], minimum: int = 5, maximum: int = MAX_TRAFFIC_COUNT) -> int:
@@ -35,6 +48,29 @@ def traffic_count_for_zoom(base_count: int, px_per_m: float, minimum: int = 5) -
     """Use fewer active NPCs when zoomed in, where less traffic is visible."""
     zoom_factor = min(1.0, 3.0 / max(0.1, px_per_m))
     return max(0, min(base_count, max(minimum, round(base_count * zoom_factor))))
+
+
+def calculate_npc_turning_geometry(
+    length_m: float, vehicle_type: str = "car"
+) -> Tuple[float, float, float]:
+    """Return wheelbase, max front-wheel angle, and minimum turn radius."""
+    wheelbase_m = max(1.2, min(3.2, length_m * 0.62))
+    max_angle_by_type = {
+        "motorcycle": math.radians(35.0),
+        "moped": math.radians(30.0),
+        "car": math.radians(32.0),
+    }
+    max_steering_angle = max_angle_by_type.get(vehicle_type, math.radians(32.0))
+    turning_radius_m = wheelbase_m / math.tan(max_steering_angle)
+    return wheelbase_m, max_steering_angle, turning_radius_m
+
+
+@dataclass
+class NPCDriver:
+    """Persistent driver identity associated with one NPC vehicle."""
+
+    driver_id: int
+    present: bool = True
 
 
 @dataclass
@@ -51,6 +87,11 @@ class NPCCar:
     color: Tuple[int, int, int]
     lane_offset: float = 0.0  # Lateral offset in meters (positive = right of centerline)
     target_lane_offset: float = 0.0
+    steering_angle: float = 0.0
+    wheelbase_m: float = 2.7
+    max_steering_angle: float = math.radians(32.0)
+    turning_radius_m: float = 4.32
+    turn_recovery_timer: float = 0.0
     layer: int = 0
     length_m: float = 4.0
     width_m: float = 1.8
@@ -62,6 +103,7 @@ class NPCCar:
     overtake_timer: float = 0.0
     # Crash / disable state
     crashed_timer: float = 0.0
+    collision_recovery_timer: float = 0.0
     blocked_timer: float = 0.0
     escape_timer: float = 0.0
     rage_timer: float = 0.0
@@ -69,21 +111,174 @@ class NPCCar:
     turn_signal_elapsed: float = 0.0
     braking: bool = False
     is_taxi: bool = False
+    is_on_foot: bool = False
     taxi_pickup_timer: float = 0.0
     waiting_at_taxi_stop: bool = False
+    taxi_stop_target: Optional[Tuple[float, float]] = None
     vehicle_type: str = "car"  # "car", "motorcycle", or "moped"
     fallen: bool = False
     driver_spawned: bool = False
     is_police: bool = False
     pursuing: bool = False
+    pursuit_elapsed: float = 0.0
+    pursuit_distance_check_elapsed: float = 2.0
     pursuit_phase: str = "passing"
     stopped: bool = False
     penalty_given: bool = False
     scared_timer: float = 0.0
     pursuit_cancelled: bool = False
     next_route: Optional[Tuple[Way, int, int]] = None
+    lod_level: int = 0
+    lod_time_accumulator: float = 0.0
+    lod_update_due: bool = True
+    state: str = "driving"
     debug_last_action: str = ""
+    debug_waiting_for: str = ""
     debug_in_view: Optional[bool] = None
+    reserved_intersection_id: Optional[str] = None
+    parking_space_id: Optional[int] = None
+    parking_departure_pending: bool = False
+    parking_target_id: Optional[int] = None
+    parking_route: Optional[List[Tuple[float, float]]] = None
+    parking_route_index: int = 0
+    parking_stuck_timer: float = 0.0
+    parking_last_distance: Optional[float] = None
+    junction_wait_timer: float = 0.0
+    stop_sign_id: Optional[int] = None
+    stop_sign_wait_timer: float = 0.0
+    reserved_by_pedestrian_id: Optional[int] = None
+    current_driver_id: Optional[int] = None
+    assigned_driver_id: Optional[int] = None
+    driver_present: bool = True
+    driver: Optional[NPCDriver] = None
+
+    def __post_init__(self) -> None:
+        """Give every NPC vehicle a stable associated driver identity."""
+        if self.assigned_driver_id is None:
+            self.assigned_driver_id = id(self)
+        if self.driver is None:
+            self.driver = NPCDriver(self.assigned_driver_id, self.driver_present)
+        else:
+            self.assigned_driver_id = self.driver.driver_id
+
+    def has_driver(self) -> bool:
+        """Return whether this vehicle's associated driver can currently drive."""
+        return (
+            self.driver_present
+            and self.assigned_driver_id is not None
+            and self.driver is not None
+            and self.driver.present
+        )
+
+    def set_driver_present(self, present: bool) -> None:
+        """Keep legacy presence flag and persistent driver state synchronized."""
+        self.driver_present = present
+        if self.driver is not None:
+            self.driver.present = present
+
+
+CarAI = NPCCar
+
+
+class IntersectionManager:
+    """Reserve signalized intersection conflict areas for near-field NPCs."""
+
+    def __init__(self, intersections: List[LogicalIntersection]):
+        self.intersections = intersections
+        self._reservations: dict[str, dict[int, str]] = {}
+
+    def _intersection_for(self, approach: IntersectionApproach) -> Optional[LogicalIntersection]:
+        for intersection in self.intersections:
+            if approach in intersection.approaches:
+                return intersection
+        return None
+
+    def can_enter(self, npc: NPCCar, approach: IntersectionApproach) -> bool:
+        intersection = self._intersection_for(approach)
+        if intersection is None:
+            return True
+        reservations = self._reservations.get(intersection.intersection_id, {})
+        return all(owner_id == id(npc) or reserved_approach == approach.approach_id
+                   for owner_id, reserved_approach in reservations.items())
+
+    def request_enter(self, npc: NPCCar, approach: IntersectionApproach) -> bool:
+        if not self.can_enter(npc, approach):
+            return False
+        intersection = self._intersection_for(approach)
+        if intersection is None:
+            return True
+        self._reservations.setdefault(intersection.intersection_id, {})[id(npc)] = approach.approach_id
+        npc.reserved_intersection_id = intersection.intersection_id
+        return True
+
+    def release(self, npc: NPCCar) -> None:
+        for intersection_id, reservations in list(self._reservations.items()):
+            reservations.pop(id(npc), None)
+            if not reservations:
+                self._reservations.pop(intersection_id, None)
+        npc.reserved_intersection_id = None
+
+    def update(self, npcs: List[NPCCar]) -> None:
+        active_ids = {id(npc) for npc in npcs}
+        for intersection in self.intersections:
+            reservations = self._reservations.get(intersection.intersection_id)
+            if not reservations:
+                continue
+            for npc_id in list(reservations):
+                npc = next((candidate for candidate in npcs if id(candidate) == npc_id), None)
+                if npc is None or npc_id not in active_ids:
+                    reservations.pop(npc_id, None)
+                    continue
+                if npc.layer != intersection.layer or math.hypot(
+                    npc.x - intersection.center[0], npc.y - intersection.center[1]
+                ) > intersection.radius_m + 6.0:
+                    self.release(npc)
+
+
+class TrafficLightManager:
+    """Update cached logical signal groups and answer NPC signal queries."""
+
+    def __init__(self, intersections: List[LogicalIntersection]):
+        self.intersections = intersections
+        self._groups: dict[str, SignalGroup] = {}
+        for intersection in intersections:
+            for approach in intersection.approaches:
+                if approach.signal_group is not None:
+                    self._groups[approach.signal_group.approach_id] = approach.signal_group
+
+    def update(self, current_time: float) -> None:
+        """Advance all signal groups from simulation time without rebuilding geometry."""
+        for group in self._groups.values():
+            group.get_state(current_time)
+
+    def get_signal_state(self, approach: IntersectionApproach, current_time: float) -> str:
+        """Return the signal state for an approach, or green when uncontrolled."""
+        if approach.signal_group is None:
+            return "green"
+        return approach.signal_group.get_state(current_time)
+
+    def find_approach(self, npc: NPCCar) -> Optional[IntersectionApproach]:
+        """Find the cached incoming approach matching an NPC's road and heading."""
+        best_approach = None
+        best_distance = float("inf")
+        heading_x = math.cos(npc.heading)
+        heading_y = math.sin(npc.heading)
+        for intersection in self.intersections:
+            distance_to_center = math.hypot(
+                npc.x - intersection.center[0], npc.y - intersection.center[1]
+            )
+            if distance_to_center > intersection.radius_m + 40.0:
+                continue
+            for approach in intersection.approaches:
+                if npc.way not in approach.road_segments:
+                    continue
+                direction_x, direction_y = approach.direction_vector
+                if heading_x * direction_x + heading_y * direction_y < 0.5:
+                    continue
+                if distance_to_center < best_distance:
+                    best_approach = approach
+                    best_distance = distance_to_center
+        return best_approach
 
 
 def calculate_npc_target_speed(way: Way, speed_factor: float) -> float:
@@ -128,7 +323,11 @@ class TrafficManager:
         spawn_radius_m: float = 300.0,
         despawn_radius_m: float = 450.0,
         traffic_lights: Optional[List[TrafficLight]] = None,
+        stop_signs: Optional[List[StopSign]] = None,
+        yield_signs: Optional[List[YieldSign]] = None,
         crossings: Optional[List] = None,
+        parking_spaces: Optional[List] = None,
+        parking_density: float = 0.5,
         roadworks: Optional[List] = None,
         enable_two_wheelers: bool = False,
     ):
@@ -139,7 +338,11 @@ class TrafficManager:
         self.min_spawn_dist_to_player_m: float = 12.0
         self.min_spawn_dist_to_npc_m: float = 6.0
         self.traffic_lights = traffic_lights if traffic_lights is not None else []
+        self.stop_signs = stop_signs if stop_signs is not None else []
+        self.yield_signs = yield_signs if yield_signs is not None else []
         self.crossings = crossings if crossings is not None else []
+        self.parking_spaces = parking_spaces if parking_spaces is not None else []
+        self.parking_density = max(0.0, min(1.0, parking_density))
         self.roadworks = roadworks if roadworks is not None else []
         self.enable_two_wheelers = enable_two_wheelers
         self.npcs: List[NPCCar] = []
@@ -154,12 +357,19 @@ class TrafficManager:
         self._crossing_grid: dict[Tuple[int, int], List] = {}
         self._npc_grid_cell_size: float = 32.0
         self._npc_grid: dict[Tuple[int, int], List[NPCCar]] = {}
+        self._npc_grid_npc_ids: Tuple[int, ...] = ()
+        self._parking_grid_cell_size = 100.0
+        self._parking_grid: dict[Tuple[int, int], List] = {}
         self._route_nodes: List[Tuple[float, float, int]] = []
         self._route_edges: dict[int, List[Tuple[int, float]]] = {}
+        self.logical_intersections = build_logical_intersections(self.traffic_lights, self.ways)
+        self.traffic_light_manager = TrafficLightManager(self.logical_intersections)
+        self.intersection_manager = IntersectionManager(self.logical_intersections)
         self._build_route_graph()
+        self._build_parking_grid()
         self._taxi_stop_spawns: set[Tuple[float, float, object]] = set()
+        self._taxi_stop_targets: dict[Tuple[float, float, object], int] = {}
         self._build_spatial_indices()
-        self._build_route_graph()
 
     def _build_route_graph(self) -> None:
         """Build the immutable vertex graph used by navigation routing."""
@@ -185,6 +395,8 @@ class TrafficManager:
             point_layer = getattr(way, "layer", 0)
             point_ids = [node_id(point, point_layer) for point in way.points_m]
             oneway = getattr(way, "oneway", 0)
+            if getattr(way, "is_roundabout", False):
+                oneway = self._roundabout_direction(way)
             for first, second in zip(point_ids, point_ids[1:]):
                 distance = math.hypot(
                     nodes[second][0] - nodes[first][0], nodes[second][1] - nodes[first][1]
@@ -203,6 +415,377 @@ class TrafficManager:
         for npc in self.npcs:
             cell = (int(math.floor(npc.x / cell_size)), int(math.floor(npc.y / cell_size)))
             self._npc_grid.setdefault(cell, []).append(npc)
+        self._npc_grid_npc_ids = tuple(id(npc) for npc in self.npcs)
+
+    def _build_parking_grid(self) -> None:
+        cell_size = self._parking_grid_cell_size
+        self._parking_grid.clear()
+        for parking_space in self.parking_spaces:
+            center_x = (parking_space.bbox[0] + parking_space.bbox[2]) * 0.5
+            center_y = (parking_space.bbox[1] + parking_space.bbox[3]) * 0.5
+            cell = (int(math.floor(center_x / cell_size)), int(math.floor(center_y / cell_size)))
+            self._parking_grid.setdefault(cell, []).append(parking_space)
+
+    def nearby_parking_spaces(self, x: float, y: float, radius_m: float) -> List:
+        """Return existing OSM parking spaces within a radius of a world position."""
+        cell_size = self._parking_grid_cell_size
+        cell_x = int(math.floor(x / cell_size))
+        cell_y = int(math.floor(y / cell_size))
+        radius_sq = radius_m * radius_m
+        spaces: List = []
+        cell_radius = max(1, int(math.ceil(radius_m / cell_size)))
+        for offset_x in range(-cell_radius, cell_radius + 1):
+            for offset_y in range(-cell_radius, cell_radius + 1):
+                for parking_space in self._parking_grid.get((cell_x + offset_x, cell_y + offset_y), ()):
+                    center_x = (parking_space.bbox[0] + parking_space.bbox[2]) * 0.5
+                    center_y = (parking_space.bbox[1] + parking_space.bbox[3]) * 0.5
+                    if (center_x - x) ** 2 + (center_y - y) ** 2 <= radius_sq:
+                        spaces.append(parking_space)
+        return spaces
+
+    @staticmethod
+    def parking_space_id(parking_space: ParkingSpace) -> int:
+        """Return a stable runtime ID even for hand-built test parking spaces."""
+        return parking_space.osm_id if parking_space.osm_id is not None else id(parking_space)
+
+    def reserve_parking_space(self, parking_space: ParkingSpace, pedestrian_id: int) -> bool:
+        """Reserve a free OSM parking space for a pedestrian or vehicle interaction."""
+        if parking_space.occupied or parking_space.reserved:
+            return False
+        parking_space.reserved = True
+        parking_space.reserved_by_pedestrian_id = pedestrian_id
+        return True
+
+    def occupy_parking_space(self, npc: NPCCar, parking_space: ParkingSpace) -> bool:
+        """Associate an NPC with a reserved or free existing OSM parking space."""
+        if parking_space.occupied or (
+            parking_space.reserved
+            and parking_space.reserved_by_pedestrian_id not in (None, npc.current_driver_id)
+        ):
+            return False
+        parking_space.occupied = True
+        parking_space.reserved = False
+        parking_space.reserved_by_pedestrian_id = None
+        parking_space.vehicle_id = id(npc)
+        npc.parking_space_id = self.parking_space_id(parking_space)
+        npc.parking_departure_pending = False
+        npc.parking_target_id = None
+        npc.parking_route = None
+        npc.parking_route_index = 0
+        npc.parking_stuck_timer = 0.0
+        npc.parking_last_distance = None
+        npc.state = "parked"
+        npc.speed = 0.0
+        npc.target_speed = 0.0
+        return True
+
+    def release_parking_space(self, npc: NPCCar) -> None:
+        """Release the OSM space associated with an NPC and clear its reservation."""
+        for parking_space in self.parking_spaces:
+            if parking_space.vehicle_id == id(npc) or (
+                npc.parking_space_id is not None
+                and self.parking_space_id(parking_space) == npc.parking_space_id
+            ):
+                parking_space.occupied = False
+                parking_space.reserved = False
+                parking_space.vehicle_id = None
+                parking_space.reserved_by_pedestrian_id = None
+                break
+        npc.parking_space_id = None
+        npc.parking_departure_pending = False
+        npc.parking_target_id = None
+        npc.parking_route = None
+        npc.parking_route_index = 0
+        npc.parking_stuck_timer = 0.0
+        npc.parking_last_distance = None
+        npc.reserved_by_pedestrian_id = None
+
+    def activate_occupied_vehicle(self, npc: NPCCar) -> bool:
+        """Start a physical departure before handing an occupied NPC to CarAI."""
+        if npc.state not in {"reserved", "parked", "occupied"}:
+            return False
+        was_occupied = npc.state == "occupied"
+        if not was_occupied:
+            self.release_parking_space(npc)
+        else:
+            npc.parking_departure_pending = npc.parking_space_id is not None
+        npc.current_driver_id = None
+        npc.target_speed = max(npc.target_speed, 4.0)
+        if npc.parking_departure_pending:
+            parking_space = next(
+                (
+                    space for space in self.parking_spaces
+                    if self.parking_space_id(space) == npc.parking_space_id
+                ),
+                None,
+            )
+            if parking_space is not None:
+                center_x = (parking_space.bbox[0] + parking_space.bbox[2]) * 0.5
+                center_y = (parking_space.bbox[1] + parking_space.bbox[3]) * 0.5
+                clearance = math.hypot(
+                    parking_space.bbox[2] - parking_space.bbox[0],
+                    parking_space.bbox[3] - parking_space.bbox[1],
+                ) * 0.5 + npc.length_m * 0.5 + 1.0
+                exit_position = (
+                    center_x + math.cos(parking_space.orientation) * clearance,
+                    center_y + math.sin(parking_space.orientation) * clearance,
+                )
+                npc.parking_route = [(npc.x, npc.y), exit_position]
+                npc.parking_route_index = 1
+                npc.state = "parking_departure"
+                return True
+        npc.state = "driving"
+        return True
+
+    def spawn_parked_npc(
+        self,
+        near_x: float,
+        near_y: float,
+        near_heading: float = 0.0,
+        viewport_bounds: Optional[Tuple[float, float, float, float]] = None,
+    ) -> Optional[NPCCar]:
+        """Spawn an NPC directly only into a free parking space outside the view."""
+        available_spaces = [
+            space for space in self.nearby_parking_spaces(near_x, near_y, self.spawn_radius_m)
+            if not space.occupied
+            and not space.reserved
+            and (
+                viewport_bounds is None
+                or not (
+                    viewport_bounds[0]
+                    <= (space.bbox[0] + space.bbox[2]) * 0.5
+                    <= viewport_bounds[2]
+                    and viewport_bounds[1]
+                    <= (space.bbox[1] + space.bbox[3]) * 0.5
+                    <= viewport_bounds[3]
+                )
+            )
+        ]
+        if not available_spaces:
+            return None
+        parking_space = random.choice(available_spaces)
+        center_x = (parking_space.bbox[0] + parking_space.bbox[2]) * 0.5
+        center_y = (parking_space.bbox[1] + parking_space.bbox[3]) * 0.5
+        npc = self.spawn_npc(near_x, near_y, viewport_bounds=None, near_heading=None)
+        if npc is None:
+            return None
+        npc.is_taxi = False
+        npc.vehicle_type = "car"
+        npc.x = center_x
+        npc.y = center_y
+        npc.heading = parking_space.orientation
+        if not self.occupy_parking_space(npc, parking_space):
+            self.npcs.remove(npc)
+            return None
+        return npc
+
+    def spawn_parking_npc(
+        self,
+        near_x: float,
+        near_y: float,
+        viewport_bounds: Tuple[float, float, float, float],
+    ) -> Optional[NPCCar]:
+        """Spawn outside the viewport and drive a normal NPC toward a visible OSM space."""
+        available_spaces = [
+            space for space in self.nearby_parking_spaces(near_x, near_y, self.spawn_radius_m)
+            if not space.occupied
+            and not space.reserved
+            and viewport_bounds[0]
+            <= (space.bbox[0] + space.bbox[2]) * 0.5
+            <= viewport_bounds[2]
+            and viewport_bounds[1]
+            <= (space.bbox[1] + space.bbox[3]) * 0.5
+            <= viewport_bounds[3]
+        ]
+        if not available_spaces:
+            return None
+        parking_space = random.choice(available_spaces)
+        npc = self.spawn_npc(near_x, near_y, viewport_bounds=viewport_bounds, near_heading=None)
+        if npc is None:
+            return None
+        center = (
+            (parking_space.bbox[0] + parking_space.bbox[2]) * 0.5,
+            (parking_space.bbox[1] + parking_space.bbox[3]) * 0.5,
+        )
+        route = self._plan_parking_route((npc.x, npc.y), center, layer=getattr(npc.way, "layer", 0))
+        if not route or len(route) < 2:
+            self.npcs.remove(npc)
+            return None
+        parking_space.reserved = True
+        parking_space.vehicle_id = id(npc)
+        npc.parking_target_id = self.parking_space_id(parking_space)
+        npc.parking_route = route
+        npc.parking_route_index = 1
+        npc.parking_stuck_timer = 0.0
+        npc.parking_last_distance = None
+        npc.state = "parking"
+        return npc
+
+    def _start_destination_parking(self, npc: NPCCar) -> bool:
+        """Reserve a nearby OSM space and route a vehicle there from a dead end."""
+        available_spaces = [
+            space for space in self.nearby_parking_spaces(npc.x, npc.y, 80.0)
+            if not space.occupied and not space.reserved
+        ]
+        if not available_spaces:
+            return False
+        parking_space = min(
+            available_spaces,
+            key=lambda space: math.hypot(
+                (space.bbox[0] + space.bbox[2]) * 0.5 - npc.x,
+                (space.bbox[1] + space.bbox[3]) * 0.5 - npc.y,
+            ),
+        )
+        center = (
+            (parking_space.bbox[0] + parking_space.bbox[2]) * 0.5,
+            (parking_space.bbox[1] + parking_space.bbox[3]) * 0.5,
+        )
+        route = self._plan_parking_route((npc.x, npc.y), center, layer=getattr(npc.way, "layer", 0))
+        if not route or len(route) < 2:
+            return False
+        parking_space.reserved = True
+        parking_space.vehicle_id = id(npc)
+        npc.parking_target_id = self.parking_space_id(parking_space)
+        npc.parking_route = route
+        npc.parking_route_index = 1
+        npc.parking_stuck_timer = 0.0
+        npc.parking_last_distance = None
+        npc.state = "parking"
+        npc.speed = 0.0
+        return True
+
+    def _plan_parking_route(
+        self,
+        start: Tuple[float, float],
+        parking_center: Tuple[float, float],
+        layer: Optional[int] = None,
+    ) -> Optional[List[Tuple[float, float]]]:
+        """Route on roads first, then allow only a short approach into the space."""
+        nearest_point = None
+        nearest_distance_sq = math.inf
+        for way in self.ways:
+            if layer is not None and getattr(way, "layer", 0) != layer:
+                continue
+            points = way.points_m
+            for first, second in zip(points, points[1:]):
+                segment_x = second[0] - first[0]
+                segment_y = second[1] - first[1]
+                segment_length_sq = segment_x * segment_x + segment_y * segment_y
+                if segment_length_sq <= 1e-9:
+                    continue
+                projection = (
+                    (parking_center[0] - first[0]) * segment_x
+                    + (parking_center[1] - first[1]) * segment_y
+                ) / segment_length_sq
+                projection = max(0.0, min(1.0, projection))
+                candidate = (
+                    first[0] + projection * segment_x,
+                    first[1] + projection * segment_y,
+                )
+                distance_sq = (
+                    (candidate[0] - parking_center[0]) ** 2
+                    + (candidate[1] - parking_center[1]) ** 2
+                )
+                if distance_sq < nearest_distance_sq:
+                    nearest_point = candidate
+                    nearest_distance_sq = distance_sq
+        if nearest_point is None or nearest_distance_sq > 10.0 * 10.0:
+            return None
+        route = self.plan_route(start, nearest_point, layer=layer)
+        if not route:
+            return None
+        return route + [parking_center]
+
+    def _advance_parking_npc(self, npc: NPCCar, dt: float) -> None:
+        """Follow planned road points, then occupy the selected parking space."""
+        route = npc.parking_route
+        if not route or npc.parking_route_index >= len(route):
+            self.release_parking_space(npc)
+            npc.state = "driving"
+            npc.speed = 0.0
+            return
+        target_x, target_y = route[npc.parking_route_index]
+        dx = target_x - npc.x
+        dy = target_y - npc.y
+        distance = math.hypot(dx, dy)
+        if npc.parking_last_distance is not None and distance >= npc.parking_last_distance - 0.02:
+            npc.parking_stuck_timer += dt
+        else:
+            npc.parking_stuck_timer = 0.0
+        npc.parking_last_distance = distance
+        if npc.parking_stuck_timer >= 3.0:
+            self.release_parking_space(npc)
+            npc.state = "driving"
+            npc.speed = 0.0
+            return
+        speed = max(4.0, min(npc.target_speed, 12.0))
+        if self._parking_step_blocked(npc, target_x, target_y, speed * dt):
+            npc.speed = 0.0
+            return
+        if distance <= speed * dt or distance <= 0.01:
+            npc.x, npc.y = target_x, target_y
+            npc.heading = math.atan2(dy, dx) if distance > 0.01 else npc.heading
+            npc.parking_route_index += 1
+            if npc.parking_route_index >= len(route):
+                parking_space = next(
+                    (space for space in self.parking_spaces if self.parking_space_id(space) == npc.parking_target_id),
+                    None,
+                )
+                if parking_space is not None:
+                    npc.heading = parking_space.orientation
+                    if not self.occupy_parking_space(npc, parking_space):
+                        self.release_parking_space(npc)
+                        npc.state = "driving"
+                        npc.speed = 0.0
+                else:
+                    npc.state = "driving"
+                    npc.speed = 0.0
+            return
+        npc.heading = math.atan2(dy, dx)
+        npc.speed = speed
+        npc.x += dx / distance * speed * dt
+        npc.y += dy / distance * speed * dt
+
+    def _parking_step_blocked(self, npc: NPCCar, target_x: float, target_y: float, step: float) -> bool:
+        """Prevent a parking maneuver from driving through another vehicle."""
+        distance = math.hypot(target_x - npc.x, target_y - npc.y)
+        if distance <= 1e-6:
+            return False
+        candidate_x = npc.x + (target_x - npc.x) / distance * min(step, distance)
+        candidate_y = npc.y + (target_y - npc.y) / distance * min(step, distance)
+        for other in self.npcs:
+            if other is npc or other.layer != npc.layer:
+                continue
+            if boxes_intersect(
+                candidate_x, candidate_y, npc.heading, npc.length_m, npc.width_m,
+                other.x, other.y, other.heading, other.length_m, other.width_m,
+            ):
+                return True
+        return False
+
+    def _advance_parking_departure(self, npc: NPCCar, dt: float) -> None:
+        """Move an NPC beyond its parking space before releasing the space."""
+        route = npc.parking_route
+        if not route or npc.parking_route_index >= len(route):
+            self.release_parking_space(npc)
+            npc.state = "driving"
+            return
+        target_x, target_y = route[npc.parking_route_index]
+        dx = target_x - npc.x
+        dy = target_y - npc.y
+        distance = math.hypot(dx, dy)
+        speed = max(2.0, min(npc.target_speed, 8.0))
+        if distance <= speed * dt or distance <= 0.01:
+            npc.x, npc.y = target_x, target_y
+            npc.heading = math.atan2(dy, dx) if distance > 0.01 else npc.heading
+            self.release_parking_space(npc)
+            npc.state = "driving"
+            npc.speed = 0.0
+            return
+        npc.heading = math.atan2(dy, dx)
+        npc.speed = speed
+        npc.x += dx / distance * speed * dt
+        npc.y += dy / distance * speed * dt
 
     def _nearby_npcs(self, npc: NPCCar) -> List[NPCCar]:
         cell_size = self._npc_grid_cell_size
@@ -214,45 +797,192 @@ class TrafficManager:
                 nearby.extend(self._npc_grid.get((cell_x + offset_x, cell_y + offset_y), []))
         return nearby
 
+    def nearby_npcs_at(self, x: float, y: float) -> List[NPCCar]:
+        """Return NPCs in the nine grid cells around a world position."""
+        cell_size = self._npc_grid_cell_size
+        cell_x = int(math.floor(x / cell_size))
+        cell_y = int(math.floor(y / cell_size))
+        nearby: List[NPCCar] = []
+        for offset_x in (-1, 0, 1):
+            for offset_y in (-1, 0, 1):
+                nearby.extend(self._npc_grid.get((cell_x + offset_x, cell_y + offset_y), []))
+        return nearby
+
+    def update_lod(self, player_car: Car, dt: float) -> None:
+        """Assign traffic LOD and accumulate each NPC's scheduled update time."""
+        for npc in self.npcs:
+            distance = math.hypot(npc.x - player_car.x, npc.y - player_car.y)
+            if distance < NPC_LOD_NEAR_RADIUS_M:
+                npc.lod_level = 0
+            elif distance < NPC_LOD_MEDIUM_RADIUS_M:
+                npc.lod_level = 1
+            else:
+                npc.lod_level = 2
+            npc.lod_time_accumulator += dt
+            npc.lod_update_due = self._lod_update_due(npc)
+
+    @staticmethod
+    def _lod_update_due(npc: NPCCar) -> bool:
+        interval = NPC_LOD_UPDATE_INTERVALS[npc.lod_level]
+        if npc.lod_time_accumulator < interval:
+            return False
+        npc.lod_time_accumulator %= interval
+        return True
+
     def _resolve_npc_collisions(self) -> None:
         """Separate overlapping nearby NPC cars so traffic cannot occupy the same space."""
         self._build_npc_spatial_grid()
-        resolved_pairs = set()
-        for npc in self.npcs:
-            for other in self._nearby_npcs(npc):
-                if other is npc or other.layer != npc.layer:
-                    continue
-                pair = tuple(sorted((id(npc), id(other))))
-                if pair in resolved_pairs:
-                    continue
-                resolved_pairs.add(pair)
+        for _ in range(24):
+            self._build_npc_spatial_grid()
+            resolved_pairs = set()
+            found_collision = False
+            for npc in self.npcs:
+                for other in self._nearby_npcs(npc):
+                    if other is npc or other.layer != npc.layer:
+                        continue
+                    pair = tuple(sorted((id(npc), id(other))))
+                    if pair in resolved_pairs:
+                        continue
+                    resolved_pairs.add(pair)
 
-                if not boxes_intersect(
-                    npc.x, npc.y, npc.heading, npc.length_m, npc.width_m,
-                    other.x, other.y, other.heading, other.length_m, other.width_m,
-                ):
-                    continue
+                    if not boxes_intersect(
+                        npc.x, npc.y, npc.heading, npc.length_m, npc.width_m,
+                        other.x, other.y, other.heading, other.length_m, other.width_m,
+                    ):
+                        continue
+                    found_collision = True
 
-                dx = npc.x - other.x
-                dy = npc.y - other.y
-                distance = math.hypot(dx, dy)
-                if distance <= 1e-6:
-                    dx = math.cos(npc.heading)
-                    dy = math.sin(npc.heading)
-                    normalizing_distance = 1.0
-                else:
-                    normalizing_distance = distance
+                    npc.collision_recovery_timer = max(npc.collision_recovery_timer, 5.0)
+                    other.collision_recovery_timer = max(other.collision_recovery_timer, 5.0)
 
-                min_distance = (npc.length_m + other.length_m) * 0.5 + 1.0
-                push = max(0.5, min(8.0, min_distance - distance)) * 0.5
-                nx = dx / normalizing_distance
-                ny = dy / normalizing_distance
-                npc.x += nx * push
-                npc.y += ny * push
-                other.x -= nx * push
-                other.y -= ny * push
-                npc.speed = 0.0
-                other.speed = 0.0
+                    dx = npc.x - other.x
+                    dy = npc.y - other.y
+                    distance = math.hypot(dx, dy)
+                    if distance <= 1e-6:
+                        dx = math.cos(npc.heading)
+                        dy = math.sin(npc.heading)
+                        normalizing_distance = 1.0
+                    else:
+                        normalizing_distance = distance
+
+                    min_distance = (npc.length_m + other.length_m) * 0.5 + 1.0
+                    push = max(0.5, min(8.0, min_distance - distance)) * 0.5
+                    nx = dx / normalizing_distance
+                    ny = dy / normalizing_distance
+                    npc_is_static = npc.state in {"parked", "reserved"}
+                    other_is_static = other.state in {"parked", "reserved"}
+                    if npc_is_static or other_is_static:
+                        if npc_is_static and other_is_static:
+                            npc.speed = 0.0
+                            other.speed = 0.0
+                        elif npc_is_static:
+                            other.x -= nx * push * 2.0
+                            other.y -= ny * push * 2.0
+                            other.speed = 0.0
+                            self._keep_npc_near_own_way(other)
+                        else:
+                            npc.x += nx * push * 2.0
+                            npc.y += ny * push * 2.0
+                            npc.speed = 0.0
+                            self._keep_npc_near_own_way(npc)
+                        continue
+                    if npc.state == "parking" or other.state == "parking":
+                        if npc.state == "parking" and other.state == "parking":
+                            npc.speed = 0.0
+                            other.speed = 0.0
+                        elif npc.state == "parking":
+                            other.x -= nx * push * 2.0
+                            other.y -= ny * push * 2.0
+                            other.speed = 0.0
+                            self._keep_npc_near_own_way(other)
+                        else:
+                            npc.x += nx * push * 2.0
+                            npc.y += ny * push * 2.0
+                            npc.speed = 0.0
+                            self._keep_npc_near_own_way(npc)
+                        continue
+                    if abs(math.cos(npc.heading - other.heading)) > 0.7:
+                        separation = (
+                            (npc.x - other.x) * math.cos(npc.heading)
+                            + (npc.y - other.y) * math.sin(npc.heading)
+                        )
+                        direction = 1.0 if separation >= 0.0 else -1.0
+                        backoff = 8.0
+                        trailing_npc = other if separation >= 0.0 else npc
+                        npc.x += math.cos(npc.heading) * backoff * direction
+                        npc.y += math.sin(npc.heading) * backoff * direction
+                        other.x -= math.cos(npc.heading) * backoff * direction
+                        other.y -= math.sin(npc.heading) * backoff * direction
+                        self._keep_npc_near_own_way(npc)
+                        self._keep_npc_near_own_way(other)
+                        trailing_npc.blocked_timer = max(trailing_npc.blocked_timer, 2.0)
+                        trailing_npc.escape_timer = max(trailing_npc.escape_timer, 2.0)
+                        trailing_npc.overtaking = True
+                        trailing_npc.overtake_timer = trailing_npc.escape_timer
+                        trailing_npc.target_lane_offset = compute_desired_lane_offset(
+                            trailing_npc.way,
+                            is_overtaking=getattr(trailing_npc.way, "oneway", 0) != 0,
+                            travel_direction=trailing_npc.direction,
+                        )
+                        npc.speed = 0.0
+                        other.speed = 0.0
+                        continue
+                    npc.x += nx * push
+                    npc.y += ny * push
+                    other.x -= nx * push
+                    other.y -= ny * push
+                    self._keep_npc_near_own_way(npc)
+                    self._keep_npc_near_own_way(other)
+                    if boxes_intersect(
+                        npc.x, npc.y, npc.heading, npc.length_m, npc.width_m,
+                        other.x, other.y, other.heading, other.length_m, other.width_m,
+                    ):
+                        backoff = 6.0
+                        heading_alignment = abs(
+                            math.cos(npc.heading - other.heading)
+                        )
+                        if heading_alignment > 0.7:
+                            separation = (
+                                (npc.x - other.x) * math.cos(npc.heading)
+                                + (npc.y - other.y) * math.sin(npc.heading)
+                            )
+                            direction = 1.0 if separation >= 0.0 else -1.0
+                            npc.x += math.cos(npc.heading) * backoff * direction
+                            npc.y += math.sin(npc.heading) * backoff * direction
+                            other.x -= math.cos(other.heading) * backoff * direction
+                            other.y -= math.sin(other.heading) * backoff * direction
+                        else:
+                            npc.x -= math.cos(npc.heading) * backoff
+                            npc.y -= math.sin(npc.heading) * backoff
+                            other.x -= math.cos(other.heading) * backoff
+                            other.y -= math.sin(other.heading) * backoff
+                        self._keep_npc_near_own_way(npc)
+                        self._keep_npc_near_own_way(other)
+                    npc.speed = 0.0
+                    other.speed = 0.0
+            if not found_collision:
+                break
+
+    @staticmethod
+    def _keep_npc_near_own_way(npc: NPCCar) -> None:
+        """Undo collision displacement that would place a car off its road."""
+        best_point = None
+        best_distance_sq = math.inf
+        points = npc.way.points_m
+        for first, second in zip(points, points[1:]):
+            dx = second[0] - first[0]
+            dy = second[1] - first[1]
+            length_sq = dx * dx + dy * dy
+            if length_sq <= 1e-9:
+                continue
+            ratio = max(0.0, min(1.0, ((npc.x - first[0]) * dx + (npc.y - first[1]) * dy) / length_sq))
+            point = (first[0] + ratio * dx, first[1] + ratio * dy)
+            distance_sq = (npc.x - point[0]) ** 2 + (npc.y - point[1]) ** 2
+            if distance_sq < best_distance_sq:
+                best_distance_sq = distance_sq
+                best_point = point
+        if best_point is not None and best_distance_sq > getattr(npc.way, "half_width_m", 4.0) ** 2:
+            npc.x, npc.y = best_point
 
     def _build_spatial_indices(self) -> None:
         """Build spatial index for instant junction lookups and spawning."""
@@ -392,14 +1122,20 @@ class TrafficManager:
         self,
         ways: List[Way],
         traffic_lights: Optional[List[TrafficLight]] = None,
+        stop_signs: Optional[List[StopSign]] = None,
         crossings: Optional[List] = None,
     ) -> None:
         """Update road references when dynamic tiles expand."""
         self.ways = connected_drivable_ways(ways)
         if traffic_lights is not None:
             self.traffic_lights = traffic_lights
+        if stop_signs is not None:
+            self.stop_signs = stop_signs
         if crossings is not None:
             self.crossings = crossings
+        self.logical_intersections = build_logical_intersections(self.traffic_lights, self.ways)
+        self.traffic_light_manager = TrafficLightManager(self.logical_intersections)
+        self.intersection_manager = IntersectionManager(self.logical_intersections)
         self._build_route_graph()
         self._build_spatial_indices()
 
@@ -471,40 +1207,53 @@ class TrafficManager:
     def set_target_count(self, target_count: int, player_car: Optional[Car] = None) -> None:
         """Adjust active traffic count and discard farthest cars when zoom reduces it."""
         self.target_count = max(0, min(MAX_TRAFFIC_COUNT, target_count))
-        if len(self.npcs) > self.target_count:
+        regular_npcs = [npc for npc in self.npcs if not npc.is_taxi]
+        if len(regular_npcs) > self.target_count:
             if player_car is not None:
-                self.npcs.sort(key=lambda npc: math.hypot(npc.x - player_car.x, npc.y - player_car.y))
-            del self.npcs[self.target_count:]
+                regular_npcs.sort(key=lambda npc: math.hypot(npc.x - player_car.x, npc.y - player_car.y))
+            keep_ids = {id(npc) for npc in regular_npcs[:self.target_count]}
+            for npc in regular_npcs:
+                if id(npc) not in keep_ids:
+                    self.release_parking_space(npc)
+            self.npcs = [npc for npc in self.npcs if npc.is_taxi or id(npc) in keep_ids]
 
     def spawn_taxis_at_nearby_stops(
         self,
         taxi_stops: List,
         player_car: Car,
         viewport_bounds: Optional[Tuple[float, float, float, float]],
+        all_stops: bool = False,
     ) -> int:
-        """Spawn zero to three parked taxis as an unseen stop is approached."""
-        if viewport_bounds is None:
+        """Keep each taxi stand populated with zero to one parked taxi."""
+        if viewport_bounds is None and not all_stops:
             return 0
 
-        vmin_x, vmin_y, vmax_x, vmax_y = viewport_bounds
+        vmin_x, vmin_y, vmax_x, vmax_y = viewport_bounds or (0.0, 0.0, 0.0, 0.0)
         spawned = 0
         for stop in taxi_stops:
             stop_key = (stop.x, stop.y, getattr(stop, "id", None))
-            if stop_key in self._taxi_stop_spawns:
+            if not all_stops and stop_key in self._taxi_stop_spawns:
                 continue
-            if vmin_x <= stop.x <= vmax_x and vmin_y <= stop.y <= vmax_y:
+            if not all_stops and vmin_x <= stop.x <= vmax_x and vmin_y <= stop.y <= vmax_y:
                 continue
-            if math.hypot(stop.x - player_car.x, stop.y - player_car.y) > 120.0:
+            if not all_stops and math.hypot(stop.x - player_car.x, stop.y - player_car.y) > 120.0:
                 continue
 
-            self._taxi_stop_spawns.add(stop_key)
-            for _ in range(random.randint(0, 3)):
+            nearby_taxis = [
+                npc for npc in self.npcs
+                if npc.is_taxi and math.hypot(npc.x - stop.x, npc.y - stop.y) <= 12.0
+            ]
+            if all_stops:
+                desired_count = self._taxi_stop_targets.setdefault(stop_key, random.randint(0, 1))
+            else:
+                self._taxi_stop_spawns.add(stop_key)
+                desired_count = random.randint(0, 1)
+            for _ in range(max(0, desired_count - len(nearby_taxis))):
                 npc = self.spawn_npc(
                     stop.x,
-                    stop.y,
-                    viewport_bounds=viewport_bounds,
+                    stop.y, viewport_bounds=None if all_stops else viewport_bounds,
                     near_heading=player_car.heading,
-                    max_distance_m=35.0,
+                    max_distance_m=12.0,
                 )
                 if npc is None:
                     break
@@ -512,7 +1261,8 @@ class TrafficManager:
                 npc.vehicle_type = "car"
                 npc.speed = 0.0
                 npc.target_speed = 0.0
-                npc.waiting_at_taxi_stop = True
+                npc.taxi_stop_target = (stop.x, stop.y) if all_stops else None
+                npc.waiting_at_taxi_stop = not all_stops
                 spawned += 1
         return spawned
 
@@ -628,6 +1378,7 @@ class TrafficManager:
                         for endpoint in (current_way.points_m[0], current_way.points_m[-1])
                     )
                     candidate_endpoint = i in (0, n_pts - 1)
+                    roundabout = getattr(w, "is_roundabout", False)
                     layer_transition = (
                         current_endpoint
                         and candidate_endpoint
@@ -643,12 +1394,21 @@ class TrafficManager:
                     dist_sq = (pt[0] - at_x) ** 2 + (pt[1] - at_y) ** 2
                     if dist_sq <= tol_sq:
                         oneway = getattr(w, "oneway", 0)
-                        # Can travel forward from vertex i (if not at the end)
-                        if i < n_pts - 1 and oneway >= 0:
-                            candidates.append((w, i, 1))
-                        # Can travel backward from vertex i (if not at the start)
-                        if i > 0 and oneway <= 0:
-                            candidates.append((w, i - 1, -1))
+                        if roundabout:
+                            # Finnish roundabouts circulate counter-clockwise, regardless
+                            # of the direction in which OSM stored the closed way.
+                            direction = self._roundabout_direction(w)
+                            if direction == 1 and i < n_pts - 1:
+                                candidates.append((w, i, 1))
+                            elif direction == -1 and i > 0:
+                                candidates.append((w, i - 1, -1))
+                        else:
+                            # Can travel forward from vertex i (if not at the end)
+                            if i < n_pts - 1 and oneway >= 0:
+                                candidates.append((w, i, 1))
+                            # Can travel backward from vertex i (if not at the start)
+                            if i > 0 and oneway <= 0:
+                                candidates.append((w, i - 1, -1))
 
         if not candidates:
             return None
@@ -691,6 +1451,27 @@ class TrafficManager:
 
         return random.choice(valid_candidates)
 
+    @staticmethod
+    def _roundabout_direction(way: Way) -> int:
+        """Return point traversal direction that is geometrically counter-clockwise."""
+        points = way.points_m
+        area = sum(
+            first[0] * second[1] - second[0] * first[1]
+            for first, second in zip(points, points[1:])
+        )
+        return 1 if area >= 0.0 else -1
+
+    def _roundabout_entry_blocked(
+        self, npc: NPCCar, roundabout: Way, entry: Tuple[float, float]
+    ) -> bool:
+        """Yield at a roundabout entry when circulating traffic is approaching it."""
+        for other in self.npcs:
+            if other is npc or other.way is not roundabout or other.layer != npc.layer:
+                continue
+            if math.hypot(other.x - entry[0], other.y - entry[1]) <= 28.0:
+                return True
+        return False
+
     def _prepare_next_route(self, npc: NPCCar) -> None:
         """Choose the next route as soon as the NPC approaches a known junction."""
         if npc.next_route is not None or len(npc.way.points_m) < 2:
@@ -731,11 +1512,85 @@ class TrafficManager:
     def _junction_is_occupied(self, junction_point: Tuple[float, float], npc: NPCCar) -> bool:
         """Check whether another same-layer NPC is still inside a junction."""
         for other in self.npcs:
-            if other is npc or other.layer != npc.layer:
+            if other is npc or other.layer != npc.layer or other.state in {"parked", "reserved", "parking"}:
                 continue
             if math.hypot(other.x - junction_point[0], other.y - junction_point[1]) < 12.0:
                 return True
         return False
+
+    @staticmethod
+    def _planned_turn_direction(npc: NPCCar) -> str:
+        """Return planned turn direction, treating an unknown movement as straight."""
+        if npc.turn_signal in {"left", "right"}:
+            return npc.turn_signal
+        if npc.next_route is None:
+            return "straight"
+        next_way, next_segment_idx, next_direction = npc.next_route
+        points = next_way.points_m
+        if next_direction == 1:
+            start, end = points[next_segment_idx], points[next_segment_idx + 1]
+        else:
+            start, end = points[next_segment_idx + 1], points[next_segment_idx]
+        next_heading = math.atan2(end[1] - start[1], end[0] - start[0])
+        turn = (next_heading - npc.heading + math.pi) % (2.0 * math.pi) - math.pi
+        if math.radians(20) < turn < math.radians(160):
+            return "left"
+        if -math.radians(160) < turn < -math.radians(20):
+            return "right"
+        return "straight"
+
+    def _junction_is_clear_for(self, npc: NPCCar, junction_point: Tuple[float, float]) -> bool:
+        """Apply priority-road, left-turn, and Finnish yield-to-right rules."""
+        npc_priority = bool(getattr(npc.way, "priority_road", False))
+        npc_turn = self._planned_turn_direction(npc)
+        for other in self.npcs:
+            if (
+                other is npc
+                or other.layer != npc.layer
+                or other.state in {"parked", "reserved", "parking"}
+                or not other.has_driver()
+            ):
+                continue
+            dx = other.x - junction_point[0]
+            dy = other.y - junction_point[1]
+            distance = math.hypot(dx, dy)
+            if distance > 24.0:
+                continue
+            toward_x = -dx / max(distance, 1e-6)
+            toward_y = -dy / max(distance, 1e-6)
+            if math.cos(other.heading) * toward_x + math.sin(other.heading) * toward_y < 0.5:
+                continue
+            other_priority = bool(getattr(other.way, "priority_road", False))
+            if npc_priority and not other_priority:
+                continue
+            if not npc_priority and other_priority:
+                return False
+            if npc_turn == "left":
+                opposing = math.cos(other.heading) * math.cos(npc.heading) + math.sin(other.heading) * math.sin(npc.heading)
+                if opposing < -0.5 and self._planned_turn_direction(other) != "left":
+                    return False
+            right_x = math.sin(npc.heading)
+            right_y = -math.cos(npc.heading)
+            relative_x = other.x - npc.x
+            relative_y = other.y - npc.y
+            if relative_x * right_x + relative_y * right_y > 0.0:
+                return False
+        return True
+
+    def _junction_deadlock_can_proceed(self, npc: NPCCar, junction_point: Tuple[float, float]) -> bool:
+        """Let one fully stopped queue leader break a mutual junction wait."""
+        candidates = []
+        for other in self.npcs:
+            if other.layer != npc.layer or other.state in {"parked", "reserved", "parking"} or not other.has_driver():
+                continue
+            if math.hypot(other.x - junction_point[0], other.y - junction_point[1]) > 24.0:
+                continue
+            if other is npc or (other.state != "turning" and other.speed <= 1.0):
+                candidates.append(other)
+        candidates.sort(
+            key=lambda other: -other.junction_wait_timer
+        )
+        return bool(candidates) and candidates[0] is npc
 
     def _junction_near_point(self, point: Tuple[float, float], layer: int) -> bool:
         """Return whether point is inside a shared same-layer junction."""
@@ -841,8 +1696,11 @@ class TrafficManager:
                             continue
 
                     oneway = getattr(chosen_way, "oneway", 0)
-                    direction = 1 if oneway >= 0 else -1
-                    if oneway == 0:
+                    if getattr(chosen_way, "is_roundabout", False):
+                        direction = self._roundabout_direction(chosen_way)
+                    else:
+                        direction = 1 if oneway >= 0 else -1
+                    if oneway == 0 and not getattr(chosen_way, "is_roundabout", False):
                         direction = 1 if random.random() < 0.5 else -1
 
                     if direction == 1:
@@ -943,6 +1801,9 @@ class TrafficManager:
                     else:
                         length_m = random.uniform(3.5, 5.0)
                         width_m = max(1.7, min(2.0, length_m * 0.45))
+                    wheelbase_m, max_steering_angle, turning_radius_m = calculate_npc_turning_geometry(
+                        length_m, vehicle_type
+                    )
 
                     npc = NPCCar(
                         x=x,
@@ -956,6 +1817,9 @@ class TrafficManager:
                         color=color,
                         lane_offset=lane_offset,
                         target_lane_offset=lane_offset,
+                        wheelbase_m=wheelbase_m,
+                        max_steering_angle=max_steering_angle,
+                        turning_radius_m=turning_radius_m,
                         layer=layer,
                         length_m=length_m,
                         width_m=width_m,
@@ -966,6 +1830,7 @@ class TrafficManager:
                     )
                     if npc.is_taxi:
                         npc.vehicle_type = "car"
+                    npc.lod_time_accumulator = 1.0
                     self.npcs.append(npc)
                     return npc
 
@@ -982,7 +1847,10 @@ class TrafficManager:
     ) -> None:
         """Update all NPC cars, manage spawning/despawning around player."""
         self.sim_time += dt
+        self.traffic_light_manager.update(self.sim_time)
+        self.intersection_manager.update(self.npcs)
         previous_speeds = {id(npc): npc.speed for npc in self.npcs}
+        npc_population_changed = tuple(id(npc) for npc in self.npcs) != self._npc_grid_npc_ids
 
         # Despawn distant NPCs
         surviving = []
@@ -990,9 +1858,22 @@ class TrafficManager:
             if npc.is_police:
                 surviving.append(npc)
                 continue
+            if (
+                npc.parking_departure_pending
+                or npc.state in {"parked", "reserved", "parking", "parking_departure"}
+            ) and (
+                npc.reserved_by_pedestrian_id is not None
+                or npc.current_driver_id is not None
+                or npc.parking_departure_pending
+                or npc.state == "parking"
+            ):
+                surviving.append(npc)
+                continue
             d = math.hypot(npc.x - player_car.x, npc.y - player_car.y)
             if d > self.despawn_radius_m:
                 logger.debug("NPC %s despawned: distance=%.1fm exceeds %.1fm", id(npc), d, self.despawn_radius_m)
+                self.release_parking_space(npc)
+                npc_population_changed = True
                 continue
             if viewport_bounds:
                 vminx, vminy, vmaxx, vmaxy = viewport_bounds
@@ -1003,6 +1884,7 @@ class TrafficManager:
                 ) < 0.0
                 if not in_view and behind:
                     logger.debug("NPC %s despawned: behind player and outside viewport", id(npc))
+                    npc_population_changed = True
                     continue
             surviving.append(npc)
         self.npcs = surviving
@@ -1010,16 +1892,37 @@ class TrafficManager:
         # Spawn new NPCs up to target_count (preferring just outside viewport)
         attempts = 0
         max_attempts = max(200, self.target_count * 20)
+        regular_target = max(0, self.target_count - sum(1 for npc in self.npcs if npc.is_taxi))
+        parked_target = round(regular_target * self.parking_density)
         while len(self.npcs) < self.target_count and attempts < max_attempts:
             attempts += 1
-            npc = self.spawn_npc(
-                player_car.x,
-                player_car.y,
-                viewport_bounds=viewport_bounds,
-                near_heading=player_car.heading,
-            )
+            parked_count = sum(1 for candidate in self.npcs if candidate.state == "parked" and not candidate.is_taxi)
+            if parked_count < parked_target:
+                npc = self.spawn_parking_npc(player_car.x, player_car.y, viewport_bounds) if viewport_bounds else None
+                if npc is None:
+                    npc = self.spawn_parked_npc(
+                        player_car.x,
+                        player_car.y,
+                        near_heading=player_car.heading,
+                        viewport_bounds=viewport_bounds,
+                    )
+            else:
+                npc = self.spawn_npc(
+                    player_car.x,
+                    player_car.y,
+                    viewport_bounds=viewport_bounds,
+                    near_heading=player_car.heading,
+                )
+            if npc is None and parked_count < parked_target:
+                npc = self.spawn_npc(
+                    player_car.x,
+                    player_car.y,
+                    viewport_bounds=viewport_bounds,
+                    near_heading=player_car.heading,
+                )
             if not npc:
                 break
+            npc_population_changed = True
             logger.debug(
                 "NPC %s spawned: position=(%.1f, %.1f), way=%s, direction=%s",
                 id(npc), npc.x, npc.y, getattr(npc.way, "osm_id", None), npc.direction,
@@ -1036,7 +1939,9 @@ class TrafficManager:
                     )
                     npc.debug_in_view = in_view
 
-        self._build_npc_spatial_grid()
+        if npc_population_changed:
+            self._build_npc_spatial_grid()
+        self.update_lod(player_car, dt)
 
         # Periodic log of active NPC traffic count (total and in-view)
         self._log_timer += dt
@@ -1045,30 +1950,38 @@ class TrafficManager:
             pedestrians = pedestrians or []
             cyclists = cyclists or []
             police_cars = police_cars or []
+            taxi_npcs = [npc for npc in self.npcs if npc.is_taxi]
+            taxi_details = ",".join(
+                f"{id(npc)}@({npc.x:.0f},{npc.y:.0f}):{'stand' if npc.waiting_at_taxi_stop else 'driving'}"
+                for npc in taxi_npcs
+            ) or "none"
             if viewport_bounds:
                 vminx, vminy, vmaxx, vmaxy = viewport_bounds
                 in_view_count = sum(
                     1 for npc in self.npcs
                     if vminx <= npc.x <= vmaxx and vminy <= npc.y <= vmaxy
                 )
-                def in_view(entity) -> bool:
+                def is_entity_in_view(entity) -> bool:
                     return vminx <= entity.x <= vmaxx and vminy <= entity.y <= vmaxy
 
                 logger.info(
-                    "NPC active: cars=%d (%d view), police=%d (%d view), pedestrians=%d (%d view), cyclists=%d (%d view)",
+                    "NPC active: cars=%d (%d view), taxis=%d [%s], police=%d (%d view), pedestrians=%d (%d view), cyclists=%d (%d view)",
                     len(self.npcs),
                     in_view_count,
+                    len(taxi_npcs),
+                    taxi_details,
                     len(police_cars),
-                    sum(1 for car in police_cars if in_view(car)),
+                    sum(1 for car in police_cars if is_entity_in_view(car)),
                     len(pedestrians),
-                    sum(1 for ped in pedestrians if in_view(ped)),
+                    sum(1 for ped in pedestrians if is_entity_in_view(ped)),
                     len(cyclists),
-                    sum(1 for cyclist in cyclists if in_view(cyclist)),
+                    sum(1 for cyclist in cyclists if is_entity_in_view(cyclist)),
                 )
             else:
                 logger.info(
-                    "NPC active: cars=%d, police=%d, pedestrians=%d, cyclists=%d",
-                    len(self.npcs), len(police_cars), len(pedestrians), len(cyclists),
+                    "NPC active: cars=%d, taxis=%d [%s], police=%d, pedestrians=%d, cyclists=%d",
+                    len(self.npcs), len(taxi_npcs), taxi_details,
+                    len(police_cars), len(pedestrians), len(cyclists),
                 )
 
         # Check vehicle-ahead distances and manage overtaking / slowing down behind player or other NPCs
@@ -1077,6 +1990,25 @@ class TrafficManager:
 
         for i, npc in enumerate(self.npcs):
             if npc.is_police:
+                continue
+            if not npc.lod_update_due:
+                continue
+            if not npc.has_driver() and npc.current_driver_id is None:
+                npc.speed = 0.0
+                npc.target_speed = 0.0
+                npc.state = "waiting"
+                continue
+            if npc.state in {"parked", "reserved"}:
+                npc.speed = 0.0
+                npc.target_speed = 0.0
+                continue
+            if npc.state == "parking_departure":
+                departure_dt = dt if npc.lod_level == 0 else NPC_LOD_UPDATE_INTERVALS[npc.lod_level]
+                self._advance_parking_departure(npc, departure_dt)
+                continue
+            if npc.state == "parking":
+                parking_dt = dt if npc.lod_level == 0 else NPC_LOD_UPDATE_INTERVALS[npc.lod_level]
+                self._advance_parking_npc(npc, parking_dt)
                 continue
             self._prepare_next_route(npc)
             if npc.next_route is not None and not npc.turn_signal:
@@ -1087,12 +2019,34 @@ class TrafficManager:
             if npc.taxi_pickup_timer > 0.0:
                 npc.taxi_pickup_timer = max(0.0, npc.taxi_pickup_timer - dt)
                 npc.speed = 0.0
+                npc.state = "waiting"
                 continue
             if getattr(npc, "waiting_at_taxi_stop", False):
                 npc.speed = 0.0
                 npc.target_speed = 0.0
+                npc.state = "waiting"
+                continue
+            if npc.taxi_stop_target is not None:
+                target_x, target_y = npc.taxi_stop_target
+                dx = target_x - npc.x
+                dy = target_y - npc.y
+                distance = math.hypot(dx, dy)
+                if distance <= 3.0:
+                    npc.x, npc.y = target_x, target_y
+                    npc.taxi_stop_target = None
+                    npc.waiting_at_taxi_stop = True
+                    npc.speed = 0.0
+                    npc.target_speed = 0.0
+                    npc.state = "waiting"
+                    continue
+                npc.heading = math.atan2(dy, dx)
+                npc.speed = min(8.0, distance / max(dt, 0.001))
+                npc.x += dx / distance * npc.speed * dt
+                npc.y += dy / distance * npc.speed * dt
                 continue
             npc.escape_timer = max(0.0, npc.escape_timer - dt)
+            npc.collision_recovery_timer = max(0.0, npc.collision_recovery_timer - dt)
+            npc.turn_recovery_timer = max(0.0, npc.turn_recovery_timer - dt)
             npc.rage_timer = max(0.0, npc.rage_timer - dt)
             if npc.turn_signal:
                 npc.turn_signal_elapsed += dt
@@ -1159,10 +2113,19 @@ class TrafficManager:
         for i, npc in enumerate(self.npcs):
             if npc.is_police:
                 continue
+            if npc.state == "parking":
+                continue
+            if npc.state == "parking_departure":
+                continue
+            if not npc.has_driver() and npc.current_driver_id is None:
+                continue
+            if npc.lod_level > 0 or not npc.lod_update_due:
+                continue
             if npc.crashed_timer > 0.0:
                 continue
 
             blocked_by_npc = False
+            npc.debug_waiting_for = ""
 
             # Check for leading NPC in close proximity (same direction or blocking path)
             for other in self._nearby_npcs(npc):
@@ -1189,12 +2152,14 @@ class TrafficManager:
                                 if npc.escape_timer <= 0.0:
                                     npc.speed = 0.0
                                 blocked_by_npc = True
+                                npc.debug_waiting_for = f"NPC {id(other) % 1000}"
                             elif dist < min_gap + 10.0 and npc.speed > other.speed:
                                 # Match or follow leader speed smoothly
                                 target_follow_speed = max(0.0, other.speed * 0.9)
                                 if npc.escape_timer <= 0.0:
                                     npc.speed = max(target_follow_speed, npc.speed - 16.0 * dt)
                                 blocked_by_npc = True
+                                npc.debug_waiting_for = f"NPC {id(other) % 1000}"
 
             # Also check player car collision avoidance
             if player_car.layer == npc.layer:
@@ -1211,9 +2176,11 @@ class TrafficManager:
                         if lat_p_offset < (npc.width_m + p_wid) * 0.75:
                             if p_dist < min_p_gap:
                                 npc.speed = max(0.0, npc.speed - 22.0 * dt)
+                                npc.debug_waiting_for = "player"
                             elif p_dist < min_p_gap + 10.0 and npc.speed > max(0.0, player_car.speed):
                                 target_p_speed = max(0.0, player_car.speed * 0.9)
                                 npc.speed = max(target_p_speed, npc.speed - 16.0 * dt)
+                                npc.debug_waiting_for = "player"
 
             if blocked_by_npc and npc.speed < 1.0:
                 npc.blocked_timer += dt
@@ -1236,18 +2203,88 @@ class TrafficManager:
         for npc in self.npcs:
             if npc.is_police:
                 continue
+            if npc.state == "turning":
+                npc.junction_wait_timer = 0.0
+                if npc.debug_waiting_for == "junction":
+                    npc.debug_waiting_for = ""
+            if not npc.has_driver() and npc.current_driver_id is None:
+                npc.speed = 0.0
+                npc.target_speed = 0.0
+                npc.state = "waiting"
+                continue
+            if npc.state in {"parked", "reserved", "parking", "parking_departure"}:
+                continue
+            if not npc.lod_update_due:
+                continue
             must_stop = False
             junction_blocked = False
             nearest_light = None
             stop_distance = None
+            nearest_stop_sign = None
+            nearest_yield_sign = None
+            yield_slowdown = False
             passed_matching_light = False
+            passed_light_state = None
+            passed_light_distance = None
+            departure_signal_state = None
+            logical_approach = self.traffic_light_manager.find_approach(npc)
+            if logical_approach is not None:
+                logical_stop_center = (
+                    (logical_approach.stop_line[0][0] + logical_approach.stop_line[1][0]) * 0.5,
+                    (logical_approach.stop_line[0][1] + logical_approach.stop_line[1][1]) * 0.5,
+                )
+                logical_dx = logical_stop_center[0] - npc.x
+                logical_dy = logical_stop_center[1] - npc.y
+                logical_distance = logical_dx * math.cos(npc.heading) + logical_dy * math.sin(npc.heading)
+                logical_state = self.traffic_light_manager.get_signal_state(logical_approach, self.sim_time)
+                departure_signal_state = logical_state
+                if logical_state == "green" and 0.0 < logical_distance < 16.0 and npc.lod_level == 0:
+                    if not self.intersection_manager.request_enter(npc, logical_approach):
+                        junction_blocked = True
+                braking_distance = npc.speed * npc.speed / (2.0 * 15.0)
+                yellow_requires_stop = logical_state != "yellow" or logical_distance >= braking_distance
+                if 0.0 < logical_distance < 35.0 and logical_state in ("red", "all-red", "yellow", "red+yellow") and yellow_requires_stop:
+                    stop_distance = logical_distance - 1.5
+                    must_stop = stop_distance >= -1.0
             roadwork_stop_distance = self._roadwork_stop_distance(npc)
             if roadwork_stop_distance is not None:
                 must_stop = True
                 stop_distance = roadwork_stop_distance
             heading_x = math.cos(npc.heading)
             heading_y = math.sin(npc.heading)
-            for tl in self._nearby_traffic_lights(npc.x, npc.y):
+            for stop_sign in self.stop_signs:
+                if getattr(stop_sign, "layer", 0) != npc.layer:
+                    continue
+                sign_dx = stop_sign.x - npc.x
+                sign_dy = stop_sign.y - npc.y
+                sign_longitudinal = sign_dx * heading_x + sign_dy * heading_y
+                sign_lateral = abs(sign_dx * -heading_y + sign_dy * heading_x)
+                if 0.0 < sign_longitudinal < 30.0 and sign_lateral <= 5.0:
+                    if nearest_stop_sign is None or sign_longitudinal < nearest_stop_sign[0]:
+                        nearest_stop_sign = (sign_longitudinal, stop_sign)
+            if nearest_stop_sign is not None:
+                stop_sign_distance, stop_sign = nearest_stop_sign
+                stop_distance = stop_sign_distance - 2.0
+                if npc.stop_sign_id != stop_sign.id:
+                    npc.stop_sign_id = stop_sign.id
+                    npc.stop_sign_wait_timer = 0.0
+                if npc.speed < 0.2 and stop_distance <= 0.5:
+                    npc.stop_sign_wait_timer += dt
+                must_stop = npc.stop_sign_wait_timer < 1.0 or stop_distance >= -1.0
+            elif npc.stop_sign_id is not None:
+                npc.stop_sign_id = None
+                npc.stop_sign_wait_timer = 0.0
+            for yield_sign in self.yield_signs:
+                if getattr(yield_sign, "layer", 0) != npc.layer:
+                    continue
+                sign_dx = yield_sign.x - npc.x
+                sign_dy = yield_sign.y - npc.y
+                sign_longitudinal = sign_dx * heading_x + sign_dy * heading_y
+                sign_lateral = abs(sign_dx * -heading_y + sign_dy * heading_x)
+                if 0.0 < sign_longitudinal < 30.0 and sign_lateral <= 5.0:
+                    if nearest_yield_sign is None or sign_longitudinal < nearest_yield_sign[0]:
+                        nearest_yield_sign = (sign_longitudinal, yield_sign)
+            for tl in self._nearby_traffic_lights(npc.x, npc.y) if logical_approach is None else []:
                 if tl.layer != npc.layer:
                     continue
                 dx = tl.x - npc.x
@@ -1267,15 +2304,20 @@ class TrafficManager:
                     ang_err = min(ang_err, math.pi - ang_err)
                     if ang_err > math.radians(45):
                         continue  # Signal is for cross traffic, skip
-                if -25.0 < longitudinal <= -2.0:
+                if -25.0 < longitudinal <= 0.0:
                     passed_matching_light = True
+                    passed_light_state = tl.get_state(self.sim_time)
+                    passed_light_distance = longitudinal
                 elif -2.0 < longitudinal < 25.0:
                     if nearest_light is None or longitudinal < nearest_light[0]:
                         nearest_light = (longitudinal, tl)
 
             if nearest_light is not None and not passed_matching_light:
                 state = nearest_light[1].get_state(self.sim_time)
-                if state in ("red", "red+yellow", "yellow"):
+                departure_signal_state = state
+                braking_distance = npc.speed * npc.speed / (2.0 * 15.0)
+                yellow_requires_stop = state != "yellow" or longitudinal >= braking_distance
+                if state in ("red", "all-red", "red+yellow", "yellow") and yellow_requires_stop:
                     stop_distance = nearest_light[0] - 1.5
                     nearest_crossing = None
                     for crossing in self._nearby_crossings(npc.x, npc.y):
@@ -1291,6 +2333,15 @@ class TrafficManager:
                     if nearest_crossing is not None:
                         stop_distance = nearest_crossing - 2.0
                     must_stop = stop_distance >= -1.0
+            if (
+                passed_matching_light
+                and npc.speed < 0.5
+                and passed_light_distance is not None
+                and passed_light_distance > -10.0
+                and passed_light_state in ("red", "all-red", "red+yellow", "yellow")
+            ):
+                must_stop = True
+                stop_distance = 0.0
 
             pts = npc.way.points_m
             target_pt = None
@@ -1307,13 +2358,58 @@ class TrafficManager:
                         7.0 < distance_to_junction < 20.0
                         and self._junction_is_occupied(junction_point, npc)
                     )
+                    uncontrolled_approach = logical_approach is None and nearest_stop_sign is None
+                    if (
+                        distance_to_junction < 20.0
+                        and (nearest_yield_sign is not None or uncontrolled_approach)
+                        and not self._junction_is_clear_for(npc, junction_point)
+                    ):
+                        junction_blocked = True
+                    if (
+                        npc.next_route is not None
+                        and getattr(npc.next_route[0], "is_roundabout", False)
+                        and not getattr(npc.way, "is_roundabout", False)
+                        and distance_to_junction < 24.0
+                        and self._roundabout_entry_blocked(npc, npc.next_route[0], junction_point)
+                    ):
+                        junction_blocked = True
+                        stop_distance = max(0.0, distance_to_junction - 2.5)
+                    if nearest_yield_sign is not None:
+                        yield_distance = nearest_yield_sign[0]
+                        if not self._junction_is_clear_for(npc, junction_point):
+                            stop_distance = yield_distance - 2.5
+                            must_stop = stop_distance >= -1.0
+                        else:
+                            yield_slowdown = 0.6
+
+                    if junction_blocked:
+                        npc.junction_wait_timer += dt
+                        if (
+                            npc.junction_wait_timer >= 5.0
+                            and self._junction_deadlock_can_proceed(npc, junction_point)
+                        ):
+                            junction_blocked = False
+                            npc.debug_waiting_for = ""
+                    else:
+                        npc.junction_wait_timer = 0.0
+                        if npc.debug_waiting_for == "junction":
+                            npc.debug_waiting_for = ""
 
             # Continue through the junction if the NPC has already entered it.
             if self._junction_near_point((npc.x, npc.y), npc.layer):
                 must_stop = False
+                if npc.speed < 0.5 and departure_signal_state in (
+                    "red", "all-red", "red+yellow", "yellow"
+                ):
+                    must_stop = True
+                    stop_distance = 0.0
 
             # Calculate cornering speed limit based on heading angle to next vertex / sharp curves
             turn_limit_speed = npc.target_speed
+            if npc.turn_recovery_timer > 0.0:
+                turn_limit_speed = min(turn_limit_speed, 5.0)
+            if yield_slowdown:
+                turn_limit_speed = min(turn_limit_speed, max(3.0, npc.target_speed * yield_slowdown))
             if target_pt is not None:
                 next_heading = None
                 if npc.next_route is not None:
@@ -1328,11 +2424,15 @@ class TrafficManager:
                     angle_err = abs((next_heading - npc.heading + math.pi) % (2 * math.pi) - math.pi)
                     if angle_err > math.radians(25):
                         turn_factor = max(0.25, math.cos(min(math.pi / 2, angle_err)))
-                        turn_limit_speed = max(3.5, npc.target_speed * turn_factor)
+                        turn_limit_speed = min(
+                            max(3.5, npc.target_speed * turn_factor),
+                            math.sqrt(2.5 * npc.turning_radius_m),
+                        )
 
             # Check if NPC is in crashed recovery state
             if npc.crashed_timer > 0.0 or getattr(npc, "fallen", False):
                 action = "fallen" if getattr(npc, "fallen", False) else "recovering from crash"
+                npc.state = "crashed"
                 if npc.debug_last_action != action:
                     logger.debug("NPC %s action=%s reason=disabled state", id(npc), action)
                     npc.debug_last_action = action
@@ -1342,16 +2442,30 @@ class TrafficManager:
 
             if must_stop:
                 action = "stopping"
-                reason = "red/yellow traffic light" if nearest_light is not None else "roadworks"
+                if nearest_stop_sign is not None:
+                    reason = f"stop sign {getattr(nearest_stop_sign, 'id', '?')}"
+                elif nearest_yield_sign is not None:
+                    reason = f"yield sign {getattr(nearest_yield_sign[1], 'id', '?')}"
+                elif nearest_light is not None:
+                    reason = f"traffic light {getattr(nearest_light, 'id', '?')}"
+                else:
+                    reason = "roadworks"
             elif junction_blocked:
                 action = "stopping"
                 reason = "junction occupied"
+                npc.debug_waiting_for = "junction"
             elif npc.overtaking:
                 action = "overtaking"
                 reason = "blocked vehicle"
             else:
                 action = "driving"
                 reason = "prepared turn" if npc.turn_signal else "normal route"
+            if must_stop or junction_blocked:
+                npc.state = "waiting" if npc.speed < 1.0 else "braking"
+            elif npc.overtaking or npc.turn_signal:
+                npc.state = "turning"
+            else:
+                npc.state = "driving"
             action_state = f"{action}: {reason}"
             if npc.debug_last_action != action_state:
                 logger.debug(
@@ -1388,13 +2502,18 @@ class TrafficManager:
         for npc in self.npcs:
             if npc.is_police:
                 continue
+            if npc.state in {"parking", "parking_departure"}:
+                continue
+            if not npc.lod_update_due:
+                continue
             if npc.speed <= 0.0:
                 continue
             pts = npc.way.points_m
             if len(pts) < 2:
                 continue
 
-            dist_step = npc.speed * dt
+            movement_dt = dt if npc.lod_level == 0 else NPC_LOD_UPDATE_INTERVALS[npc.lod_level]
+            dist_step = npc.speed * movement_dt
             step_limit = 10  # Prevent infinite loop on degenerate/zero-length segments
 
             while dist_step > 0 and step_limit > 0:
@@ -1429,35 +2548,77 @@ class TrafficManager:
                 to_tgt_y = shifted_target_y - npc.y
                 dist_to_tgt = math.hypot(to_tgt_x, to_tgt_y)
 
-                    # Smooth heading towards target vertex with angular rate limiting
-                if dist_to_tgt > 1e-3:
-                    target_heading = math.atan2(to_tgt_y, to_tgt_x)
-                    heading_diff = (target_heading - npc.heading + math.pi) % (2 * math.pi) - math.pi
-                    # Limit turn rate so junction turns are visibly gradual.
-                    max_turn = 1.8 * dt
-                    if abs(heading_diff) <= max_turn:
-                        npc.heading = target_heading
-                    else:
-                        npc.heading += math.copysign(max_turn, heading_diff)
+                # Use a bounded bicycle model instead of steering directly at
+                # the next vertex.  The next-segment blend gives turns a
+                # finite radius and keeps the body heading continuous.
+                path_heading = math.atan2(seg_dir_y, seg_dir_x)
+                current_lateral = (
+                    (npc.x - seg_start[0]) * norm_x
+                    + (npc.y - seg_start[1]) * norm_y
+                )
+                lateral_error = npc.lane_offset - current_lateral
+                lookahead = max(5.0, min(12.0, npc.speed * 0.6 + 4.0))
+                path_heading -= math.atan2(1.5 * lateral_error, lookahead)
+                segment_progress = (
+                    (npc.x - seg_start[0]) * seg_dir_x
+                    + (npc.y - seg_start[1]) * seg_dir_y
+                )
+                if segment_progress >= seg_len:
+                    path_heading = math.atan2(to_tgt_y, to_tgt_x)
+                if dist_to_tgt < max(8.0, npc.speed * 0.8) and npc.next_route is not None:
+                    next_way, next_segment_idx, next_direction = npc.next_route
+                    next_points = next_way.points_m
+                    if 0 <= next_segment_idx < len(next_points) - 1:
+                        if next_direction == 1:
+                            next_start, next_end = next_points[next_segment_idx], next_points[next_segment_idx + 1]
+                        else:
+                            next_start, next_end = next_points[next_segment_idx + 1], next_points[next_segment_idx]
+                        next_heading = math.atan2(next_end[1] - next_start[1], next_end[0] - next_start[0])
+                        blend = max(0.0, min(1.0, 1.0 - dist_to_tgt / max(8.0, npc.speed * 0.8)))
+                        heading_delta = (next_heading - path_heading + math.pi) % (2.0 * math.pi) - math.pi
+                        path_heading += heading_delta * blend
+                heading_error = (path_heading - npc.heading + math.pi) % (2.0 * math.pi) - math.pi
+                # Never let a route transition demand an instantaneous
+                # right-angle body rotation; the bicycle model must settle
+                # toward the road direction over multiple updates.
+                heading_error = max(-math.radians(60.0), min(math.radians(60.0), heading_error))
+                desired_steering = math.atan2(
+                    npc.wheelbase_m * math.sin(heading_error), lookahead
+                )
+                desired_steering = max(
+                    -npc.max_steering_angle,
+                    min(npc.max_steering_angle, desired_steering),
+                )
+                steering_rate = math.radians(85.0)
+                steering_delta = desired_steering - npc.steering_angle
+                max_steering_delta = steering_rate * movement_dt
+                npc.steering_angle += max(-max_steering_delta, min(max_steering_delta, steering_delta))
+                if npc.speed > 1e-3:
+                    yaw_rate = npc.speed / npc.wheelbase_m * math.tan(npc.steering_angle)
+                    npc.heading += yaw_rate * movement_dt
+                    npc.heading = (npc.heading + math.pi) % (2.0 * math.pi) - math.pi
                     if (
                         npc.turn_signal
                         and npc.next_route is None
                         and npc.turn_signal_elapsed >= 0.45
-                        and abs(heading_diff) < 0.12
+                        and abs(heading_error) < 0.12
                     ):
                         npc.turn_signal = ""
 
-                if dist_step < dist_to_tgt:
-                    # Advance partially along current segment
-                    ratio = dist_step / dist_to_tgt
-                    npc.x += to_tgt_x * ratio
-                    npc.y += to_tgt_y * ratio
+                remaining_along_segment = max(0.0, seg_len - segment_progress)
+                if dist_step >= remaining_along_segment and dist_to_tgt > max(3.5, npc.width_m * 1.5):
+                    npc.x += math.cos(npc.heading) * dist_step
+                    npc.y += math.sin(npc.heading) * dist_step
+                    dist_step = 0.0
+                    continue
+                if dist_step < remaining_along_segment:
+                    npc.x += math.cos(npc.heading) * dist_step
+                    npc.y += math.sin(npc.heading) * dist_step
                     dist_step = 0.0
                 else:
-                    # Reach the vertex
-                    npc.x = shifted_target_x
-                    npc.y = shifted_target_y
-                    dist_step -= dist_to_tgt
+                    npc.x += math.cos(npc.heading) * remaining_along_segment
+                    npc.y += math.sin(npc.heading) * remaining_along_segment
+                    dist_step -= remaining_along_segment
 
                     # Advance to next segment or next connected way
                     if npc.direction == 1:
@@ -1480,6 +2641,7 @@ class TrafficManager:
                                         npc.way, npc.overtaking, npc.direction
                                     )
                                     npc.next_route = None
+                                    npc.turn_recovery_timer = 60.0
                                     pts = npc.way.points_m
                                     turned = True
                             if not turned:
@@ -1500,9 +2662,13 @@ class TrafficManager:
                                     npc.way, npc.overtaking, npc.direction
                                 )
                                 npc.next_route = None
+                                npc.turn_recovery_timer = 60.0
                                 pts = npc.way.points_m
                             else:
                                 # Reverse on two-way or loop (dead end)
+                                if self._start_destination_parking(npc):
+                                    dist_step = 0.0
+                                    break
                                 if getattr(npc.way, "oneway", 0) == 0:
                                     npc.direction = -1
                                     npc.segment_idx = len(pts) - 2
@@ -1532,6 +2698,7 @@ class TrafficManager:
                                         npc.way, npc.overtaking, npc.direction
                                     )
                                     npc.next_route = None
+                                    npc.turn_recovery_timer = 60.0
                                     pts = npc.way.points_m
                                     turned = True
                             if not turned:
@@ -1552,8 +2719,12 @@ class TrafficManager:
                                     npc.way, npc.overtaking, npc.direction
                                 )
                                 npc.next_route = None
+                                npc.turn_recovery_timer = 60.0
                                 pts = npc.way.points_m
                             else:
+                                if self._start_destination_parking(npc):
+                                    dist_step = 0.0
+                                    break
                                 if getattr(npc.way, "oneway", 0) == 0:
                                     npc.direction = 1
                                     npc.segment_idx = 0
@@ -1566,9 +2737,34 @@ class TrafficManager:
                                     finished_npcs.add(id(npc))
                                     break
 
+        for npc in self.npcs:
+            if not npc.parking_departure_pending or npc.parking_space_id is None:
+                continue
+            parking_space = next(
+                (
+                    space
+                    for space in self.parking_spaces
+                    if self.parking_space_id(space) == npc.parking_space_id
+                ),
+                None,
+            )
+            if parking_space is None:
+                npc.parking_departure_pending = False
+                npc.parking_space_id = None
+                continue
+            center_x = (parking_space.bbox[0] + parking_space.bbox[2]) * 0.5
+            center_y = (parking_space.bbox[1] + parking_space.bbox[3]) * 0.5
+            space_radius = math.hypot(
+                parking_space.bbox[2] - parking_space.bbox[0],
+                parking_space.bbox[3] - parking_space.bbox[1],
+            ) * 0.5 + npc.length_m * 0.5
+            if math.hypot(npc.x - center_x, npc.y - center_y) > space_radius:
+                self.release_parking_space(npc)
+
         if finished_npcs:
             self.npcs = [npc for npc in self.npcs if id(npc) not in finished_npcs]
         for npc in self.npcs:
             previous_speed = previous_speeds.get(id(npc))
             npc.braking = previous_speed is not None and npc.speed < previous_speed - 0.05
         self._resolve_npc_collisions()
+        self._build_npc_spatial_grid()

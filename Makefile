@@ -1,7 +1,7 @@
 PYTHON := .venv/bin/python
 PIP := .venv/bin/pip
 
-.PHONY: help venv install run run-debug run-sample test compile check clean
+.PHONY: help venv install run run-debug run-sample audit-ai test compile check clean
 
 help:
 	@printf '%s\n' \
@@ -9,6 +9,7 @@ help:
 		'run                    Start the game' \
 		'run-debug              Start the game with DEBUG logging' \
 		'run-sample             Start offline with bundled sample data' \
+		'audit-ai               Run headless autonomous traffic audit' \
 		'test                   Run the test suite' \
 		'compile                Compile-check Python sources' \
 		'check                  Run tests, compile-check, and diff-check' \
@@ -28,6 +29,9 @@ run-debug:
 
 run-sample:
 	PYTHONPATH=src $(PYTHON) road_rage_trip.py --use-sample
+
+audit-ai:
+	PYTHONPATH=src $(PYTHON) utils/autoplay_audit.py
 
 test:
 	PYTHONPATH=src $(PYTHON) -m pytest -q

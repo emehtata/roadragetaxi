@@ -58,6 +58,26 @@
 
     { "type": "node", "id": 90, "lat": 64.982, "lon": 25.380, "tags": { "place": "suburb", "name": "Keskusta" } },
     { "type": "node", "id": 91, "lat": 64.974, "lon": 25.405, "tags": { "place": "suburb", "name": "Maikkula" } },
-    { "type": "node", "id": 95, "lat": 64.980, "lon": 25.390, "tags": { "highway": "traffic_signals" } }
+    { "type": "node", "id": 95, "lat": 64.980, "lon": 25.390, "tags": { "highway": "traffic_signals" } },
+    { "type": "node", "id": 96, "lat": 64.980, "lon": 25.375, "tags": { "highway": "stop", "name": "Risteyksen stop" } },
+    { "type": "node", "id": 97, "lat": 64.985, "lon": 25.385, "tags": { "highway": "give_way", "name": "Liikenneympyrän väistäminen" } },
+    { "type": "node", "id": 98, "lat": 64.980, "lon": 25.391, "tags": { "highway": "crossing", "crossing": "zebra", "crossing:markings": "zebra" } },
+    { "type": "node", "id": 99, "lat": 64.980, "lon": 25.376, "tags": { "highway": "taxi_stop", "name": "Keskustan taksitolppa" } },
+    { "type": "node", "id": 100, "lat": 64.980, "lon": 25.377, "tags": { "highway": "bus_stop", "name": "Keskusta", "shelter": "yes" } },
+    { "type": "node", "id": 101, "lat": 64.980, "lon": 25.378, "tags": { "public_transport": "platform", "name": "Keskusta Laituri" } },
+    { "type": "node", "id": 102, "lat": 64.982, "lon": 25.390, "tags": { "entrance": "main", "name": "Kaupungintalon pääovi" } },
+    { "type": "node", "id": 103, "lat": 64.982, "lon": 25.381, "tags": { "amenity": "parking_space", "parking_space": "street_side" } },
+    { "type": "node", "id": 104, "lat": 64.982, "lon": 25.383, "tags": { "amenity": "parking_space", "parking_space": "street_side" } },
+    { "type": "node", "id": 105, "lat": 64.981, "lon": 25.381, "tags": { "amenity": "parking_space", "parking_space": "parallel" } },
+    { "type": "node", "id": 106, "lat": 64.981, "lon": 25.383, "tags": { "amenity": "parking_space", "parking_space": "parallel" } },
+    { "type": "node", "id": 107, "lat": 64.979, "lon": 25.376 },
+    { "type": "node", "id": 108, "lat": 64.979, "lon": 25.380 },
+    { "type": "node", "id": 109, "lat": 64.978, "lon": 25.380 },
+    { "type": "node", "id": 110, "lat": 64.978, "lon": 25.376 },
+    { "type": "way", "id": 302, "nodes": [107, 108, 109, 110, 107], "tags": { "amenity": "parking", "name": "Keskustan pysäköintialue" } },
+    { "type": "way", "id": 303, "nodes": [99, 100, 101], "tags": { "highway": "footway", "name": "Keskustan jalankulkureitti" } },
+    { "type": "way", "id": 304, "nodes": [11, 3], "tags": { "highway": "service", "service": "parking_aisle", "name": "Pysäköintiajorata", "access": "private" } },
+    { "type": "way", "id": 305, "nodes": [3, 4], "tags": { "highway": "tertiary", "bridge": "yes", "layer": "1", "name": "Siltayhteys" } },
+    { "type": "way", "id": 306, "nodes": [40, 41], "tags": { "highway": "residential", "tunnel": "yes", "layer": "-1", "name": "Alikulku" } }
   ]
 }
