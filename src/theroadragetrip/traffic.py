@@ -1313,9 +1313,13 @@ class TrafficManager:
             if npc.is_police:
                 surviving.append(npc)
                 continue
-            if npc.state in {"parked", "reserved", "parking"} and (
+            if (
+                npc.parking_departure_pending
+                or npc.state in {"parked", "reserved", "parking"}
+            ) and (
                 npc.reserved_by_pedestrian_id is not None
                 or npc.current_driver_id is not None
+                or npc.parking_departure_pending
             ):
                 surviving.append(npc)
                 continue

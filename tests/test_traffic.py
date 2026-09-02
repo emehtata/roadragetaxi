@@ -67,6 +67,32 @@ def test_activating_occupied_npc_clears_driver_and_parking_state():
     assert parking_space.occupied is False
 
 
+def test_departing_occupied_npc_is_not_despawned_before_leaving_space():
+    way = Way(
+        points_m=[(0.0, 0.0), (100.0, 0.0)],
+        highway="primary",
+        half_width_m=4.0,
+        name="Departure Street",
+    )
+    parking_space = ParkingSpace(
+        [(0.0, -2.0), (2.0, -2.0), (2.0, 2.0), (0.0, 2.0)],
+        (0.0, -2.0, 2.0, 2.0),
+        osm_id=14,
+    )
+    manager = TrafficManager([way], target_count=0, despawn_radius_m=10.0, parking_spaces=[parking_space])
+    npc = NPCCar(1.0, 0.0, 0.0, 0.0, way, 0, 1, 0.0, (20, 20, 20), state="occupied")
+    assert manager.occupy_parking_space(npc, parking_space)
+    npc.state = "occupied"
+    npc.current_driver_id = 123
+    manager.npcs = [npc]
+
+    assert manager.activate_occupied_vehicle(npc)
+    manager.update(Car(x=100.0, y=0.0, heading=0.0, speed=0.0), dt=0.0)
+
+    assert manager.npcs == [npc]
+    assert parking_space.occupied is True
+
+
 def test_traffic_update_populates_half_target_with_parked_npcs():
     way = Way(points_m=[(0.0, 0.0), (200.0, 0.0)], highway="residential", half_width_m=4.0)
     spaces = [
