@@ -592,7 +592,7 @@ def test_overlapping_npcs_are_separated():
     assert second.speed == 0.0
 
 
-def test_parking_npc_is_not_pushed_off_its_route_by_collision_resolution():
+def test_parking_npc_does_not_drive_through_another_vehicle():
     way = Way(
         points_m=[(0.0, 0.0), (200.0, 0.0)],
         highway="primary",
@@ -608,8 +608,8 @@ def test_parking_npc_is_not_pushed_off_its_route_by_collision_resolution():
 
     traffic_mgr.update(Car(x=50.0, y=100.0, heading=0.0, speed=0.0), dt=0.1)
 
-    assert parked.x > 50.0
-    assert parked.speed > 0.0
+    assert parked.x == 50.0
+    assert parked.speed == 0.0
 
 
 def test_moving_npc_avoids_parked_npc_without_moving_it():

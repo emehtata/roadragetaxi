@@ -668,7 +668,7 @@ class TrafficManager:
                 if distance_sq < nearest_distance_sq:
                     nearest_point = candidate
                     nearest_distance_sq = distance_sq
-        if nearest_point is None or nearest_distance_sq > 18.0 * 18.0:
+        if nearest_point is None or nearest_distance_sq > 10.0 * 10.0:
             return None
         route = self.plan_route(start, nearest_point, layer=layer)
         if not route:
@@ -698,6 +698,9 @@ class TrafficManager:
             npc.speed = 0.0
             return
         speed = max(4.0, min(npc.target_speed, 12.0))
+        if self._parking_step_blocked(npc, target_x, target_y, speed * dt):
+            npc.speed = 0.0
+            return
         if distance <= speed * dt or distance <= 0.01:
             npc.x, npc.y = target_x, target_y
             npc.heading = math.atan2(dy, dx) if distance > 0.01 else npc.heading
@@ -721,6 +724,23 @@ class TrafficManager:
         npc.speed = speed
         npc.x += dx / distance * speed * dt
         npc.y += dy / distance * speed * dt
+
+    def _parking_step_blocked(self, npc: NPCCar, target_x: float, target_y: float, step: float) -> bool:
+        """Prevent a parking maneuver from driving through another vehicle."""
+        distance = math.hypot(target_x - npc.x, target_y - npc.y)
+        if distance <= 1e-6:
+            return False
+        candidate_x = npc.x + (target_x - npc.x) / distance * min(step, distance)
+        candidate_y = npc.y + (target_y - npc.y) / distance * min(step, distance)
+        for other in self.npcs:
+            if other is npc or other.layer != npc.layer:
+                continue
+            if boxes_intersect(
+                candidate_x, candidate_y, npc.heading, npc.length_m, npc.width_m,
+                other.x, other.y, other.heading, other.length_m, other.width_m,
+            ):
+                return True
+        return False
 
     def _advance_parking_departure(self, npc: NPCCar, dt: float) -> None:
         """Move an NPC beyond its parking space before releasing the space."""
@@ -831,10 +851,12 @@ class TrafficManager:
                         other.x -= nx * push * 2.0
                         other.y -= ny * push * 2.0
                         other.speed = 0.0
+                        self._keep_npc_near_own_way(other)
                     else:
                         npc.x += nx * push * 2.0
                         npc.y += ny * push * 2.0
                         npc.speed = 0.0
+                        self._keep_npc_near_own_way(npc)
                     continue
                 if npc.state == "parking" or other.state == "parking":
                     if npc.state == "parking" and other.state == "parking":
@@ -844,17 +866,42 @@ class TrafficManager:
                         other.x -= nx * push * 2.0
                         other.y -= ny * push * 2.0
                         other.speed = 0.0
+                        self._keep_npc_near_own_way(other)
                     else:
                         npc.x += nx * push * 2.0
                         npc.y += ny * push * 2.0
                         npc.speed = 0.0
+                        self._keep_npc_near_own_way(npc)
                     continue
                 npc.x += nx * push
                 npc.y += ny * push
                 other.x -= nx * push
                 other.y -= ny * push
+                self._keep_npc_near_own_way(npc)
+                self._keep_npc_near_own_way(other)
                 npc.speed = 0.0
                 other.speed = 0.0
+
+    @staticmethod
+    def _keep_npc_near_own_way(npc: NPCCar) -> None:
+        """Undo collision displacement that would place a car off its road."""
+        best_point = None
+        best_distance_sq = math.inf
+        points = npc.way.points_m
+        for first, second in zip(points, points[1:]):
+            dx = second[0] - first[0]
+            dy = second[1] - first[1]
+            length_sq = dx * dx + dy * dy
+            if length_sq <= 1e-9:
+                continue
+            ratio = max(0.0, min(1.0, ((npc.x - first[0]) * dx + (npc.y - first[1]) * dy) / length_sq))
+            point = (first[0] + ratio * dx, first[1] + ratio * dy)
+            distance_sq = (npc.x - point[0]) ** 2 + (npc.y - point[1]) ** 2
+            if distance_sq < best_distance_sq:
+                best_distance_sq = distance_sq
+                best_point = point
+        if best_point is not None and best_distance_sq > getattr(npc.way, "half_width_m", 4.0) ** 2:
+            npc.x, npc.y = best_point
 
     def _build_spatial_indices(self) -> None:
         """Build spatial index for instant junction lookups and spawning."""
