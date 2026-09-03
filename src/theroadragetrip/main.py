@@ -983,7 +983,8 @@ def main() -> None:
             residents=traffic_mgr.residents,
             venue_buildings=buildings,
         )
-        cyclist_mgr = CyclistManager(ways, target_count=args.cyclist_count, traffic_lights=traffic_lights)
+        # Cyclists are disabled until their traffic interactions are complete.
+        cyclist_mgr = CyclistManager(ways, target_count=0, traffic_lights=traffic_lights)
         player_pedestrian = PlayerPedestrian(
             car.x - math.sin(car.heading) * getattr(car, "width_m", 1.8) * 0.85
             + math.cos(car.heading) * getattr(car, "length_m", 4.0) * 0.2,
@@ -992,7 +993,7 @@ def main() -> None:
             heading=car.heading,
         )
         base_pedestrian_count = pedestrian_mgr.target_count
-        base_cyclist_count = cyclist_mgr.target_count
+        base_cyclist_count = 0
 
         # Prepare transformer for meters->latlon display
         try:
@@ -1355,20 +1356,26 @@ def main() -> None:
                         show_debug_hud = not show_debug_hud
                         logger.info("Debug HUD %s", "enabled" if show_debug_hud else "disabled")
                     elif event.key == pygame.K_r:
-                        respawn_car(car, ways, waters=waters, taxi_stops=taxi_stops)
-                        camx, camy = car.x, car.y
-                        taxi_mgr.handle_respawn(car.x, car.y)
+                        if on_foot:
+                            logger.info("Respawn ignored while driver is walking outside taxi")
+                        else:
+                            respawn_car(car, ways, waters=waters, taxi_stops=taxi_stops)
+                            camx, camy = car.x, car.y
+                            taxi_mgr.handle_respawn(car.x, car.y)
                     elif event.key == pygame.K_HOME:
-                        respawn_car(
-                            car,
-                            ways,
-                            bounds=auto_fetch_manager.get_bounds(),
-                            waters=waters,
-                            near_edge=True,
-                        )
-                        camx, camy = car.x, car.y
-                        taxi_mgr.handle_respawn(car.x, car.y)
-                        logger.info("Debug respawn near bbox edge: car=(%.1f, %.1f)", car.x, car.y)
+                        if on_foot:
+                            logger.info("Debug respawn ignored while driver is walking outside taxi")
+                        else:
+                            respawn_car(
+                                car,
+                                ways,
+                                bounds=auto_fetch_manager.get_bounds(),
+                                waters=waters,
+                                near_edge=True,
+                            )
+                            camx, camy = car.x, car.y
+                            taxi_mgr.handle_respawn(car.x, car.y)
+                            logger.info("Debug respawn near bbox edge: car=(%.1f, %.1f)", car.x, car.y)
                     elif event.key == pygame.K_x:
                         taxi_mgr.discard_mission(car.x, car.y)
                         logger.info("Passenger fare discarded by player")
@@ -1417,7 +1424,7 @@ def main() -> None:
                 traffic_count_for_zoom(base_pedestrian_count, zoom_scale, minimum=20),
                 car,
             )
-            cyclist_mgr.set_target_count(traffic_count_for_zoom(base_cyclist_count, zoom_scale), car)
+            cyclist_mgr.set_target_count(0, car)
 
             keys = pygame.key.get_pressed()
             if on_foot:
@@ -1746,8 +1753,6 @@ def main() -> None:
                 viewport_bounds=viewport_bounds,
                 game_time_seconds=game_time_seconds,
             )
-            if cyclist_mgr.update(car, dt, viewport_bounds=viewport_bounds):
-                rage_power *= 0.5
             traffic_mgr.let_taxi_pick_up_waiter(taxi_stops, pedestrian_mgr.pedestrians, dt)
             waiting_pedestrian = taxi_mgr.check_waiting_pickup(car, pedestrian_mgr.pedestrians, dt)
             if waiting_pedestrian is not None:
