@@ -510,6 +510,19 @@ def test_npc_spatial_grid_refreshes_after_movement():
     assert npc in manager._npc_grid[new_cell]
 
 
+def test_nearby_npc_queries_are_cached_until_grid_rebuild():
+    way = Way(points_m=[(0.0, 0.0), (100.0, 0.0)], highway="residential", half_width_m=4.0)
+    manager = TrafficManager([way], target_count=0)
+    npc = NPCCar(31.0, 0.0, 0.0, 10.0, way, 0, 1, 10.0, (20, 20, 20))
+    manager.npcs = [npc]
+    manager._build_npc_spatial_grid()
+
+    first = manager._nearby_npcs(npc)
+    assert manager._nearby_npcs(npc) is first
+    manager._build_npc_spatial_grid()
+    assert manager._nearby_npcs(npc) is not first
+
+
 def test_distant_npc_movement_is_scheduled_by_lod():
     way = Way(points_m=[(0.0, 0.0), (5000.0, 0.0)], highway="residential", half_width_m=4.0)
     manager = TrafficManager([way], target_count=0)

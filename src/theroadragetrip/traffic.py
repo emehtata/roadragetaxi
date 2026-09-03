@@ -386,6 +386,7 @@ class TrafficManager:
         self._npc_grid_cell_size: float = 32.0
         self._npc_grid: dict[Tuple[int, int], List[NPCCar]] = {}
         self._npc_grid_npc_ids: Tuple[int, ...] = ()
+        self._nearby_npc_cache: dict[int, List[NPCCar]] = {}
         self._parking_grid_cell_size = 100.0
         self._parking_grid: dict[Tuple[int, int], List] = {}
         self._route_nodes: List[Tuple[float, float, int]] = []
@@ -598,6 +599,7 @@ class TrafficManager:
     def _build_npc_spatial_grid(self) -> None:
         cell_size = self._npc_grid_cell_size
         self._npc_grid.clear()
+        self._nearby_npc_cache.clear()
         for npc in self.npcs:
             cell = (int(math.floor(npc.x / cell_size)), int(math.floor(npc.y / cell_size)))
             self._npc_grid.setdefault(cell, []).append(npc)
@@ -1006,6 +1008,9 @@ class TrafficManager:
         npc.y += dy / distance * speed * dt
 
     def _nearby_npcs(self, npc: NPCCar) -> List[NPCCar]:
+        cached = self._nearby_npc_cache.get(id(npc))
+        if cached is not None:
+            return cached
         cell_size = self._npc_grid_cell_size
         cell_x = int(math.floor(npc.x / cell_size))
         cell_y = int(math.floor(npc.y / cell_size))
@@ -1013,6 +1018,7 @@ class TrafficManager:
         for offset_x in (-1, 0, 1):
             for offset_y in (-1, 0, 1):
                 nearby.extend(self._npc_grid.get((cell_x + offset_x, cell_y + offset_y), []))
+        self._nearby_npc_cache[id(npc)] = nearby
         return nearby
 
     def nearby_npcs_at(self, x: float, y: float) -> List[NPCCar]:
