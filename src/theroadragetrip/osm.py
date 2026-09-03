@@ -2187,6 +2187,9 @@ class AutoFetchManager:
         stop_signs: Optional[List[StopSign]] = None,
         crossings: Optional[List[Crossing]] = None,
         bus_stops: Optional[List[BusStop]] = None,
+        parking_spaces: Optional[List[ParkingSpace]] = None,
+        logical_intersections: Optional[List[LogicalIntersection]] = None,
+        yield_signs: Optional[List[YieldSign]] = None,
         fetch_func=fetch_osm_ways,
         build_func=build_ways,
         cooldown_s: float = 5.0,
@@ -2202,6 +2205,9 @@ class AutoFetchManager:
         self.stop_signs = stop_signs if stop_signs is not None else []
         self.crossings = crossings if crossings is not None else []
         self.bus_stops = bus_stops if bus_stops is not None else []
+        self.parking_spaces = parking_spaces if parking_spaces is not None else []
+        self.logical_intersections = logical_intersections if logical_intersections is not None else []
+        self.yield_signs = yield_signs if yield_signs is not None else []
         self.bounds = bounds
         self.transformer = transformer
         self.fetch_func = fetch_func
@@ -2447,6 +2453,9 @@ class AutoFetchManager:
             new_crossings = getattr(res, "crossings", [])
             new_stop_signs = getattr(res, "stop_signs", [])
             new_bus_stops = getattr(res, "bus_stops", [])
+            new_parking_spaces = getattr(res, "parking_spaces", [])
+            new_logical_intersections = getattr(res, "logical_intersections", [])
+            new_yield_signs = getattr(res, "yield_signs", [])
             if len(res) == 8:
                 new_ways, new_waters, new_buildings, new_sceneries, new_places, new_bounds, new_traffic_lights, new_crossings = res
             elif len(res) == 7:
@@ -2502,6 +2511,9 @@ class AutoFetchManager:
                 added_stop_signs = _extend_unique(self.stop_signs, new_stop_signs)
                 added_crossings = _extend_unique(self.crossings, new_crossings)
                 added_bus_stops = _extend_unique(self.bus_stops, new_bus_stops)
+                added_parking_spaces = _extend_unique(self.parking_spaces, new_parking_spaces)
+                _extend_unique(self.logical_intersections, new_logical_intersections)
+                _extend_unique(self.yield_signs, new_yield_signs)
                 minx = min(self.bounds[0], new_bounds[0])
                 miny = min(self.bounds[1], new_bounds[1])
                 maxx = max(self.bounds[2], new_bounds[2])
