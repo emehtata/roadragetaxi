@@ -2247,6 +2247,7 @@ class AutoFetchManager:
         self._edge_check_interval_s = 0.1
         self._attempted_endpoints: Set[Tuple[int, str]] = set()
         self._completed_fetch_targets: Set[Tuple[float, float, float, float]] = set()
+        self._endpoint_connection_cache: dict[tuple[int, int, int], bool] = {}
         # Load known dead-end boundaries from disk cache
         self.dead_ends: List[dict] = load_dead_ends_cache()
 
@@ -2365,15 +2366,20 @@ class AutoFetchManager:
                     (math.cos(car.heading) * approach_x + math.sin(car.heading) * approach_y) / approach_length
                     if approach_length > 0.0 else -1.0
                 )
-                connected = any(
-                    other is not current_way
-                    and any(
-                        math.hypot(endpoint[0] - point[0], endpoint[1] - point[1])
-                        <= max(12.0, current_way.half_width_m + getattr(other, "half_width_m", 3.0))
-                        for point in getattr(other, "points_m", ())
+                endpoint_index = 0 if endpoint is current_way.points_m[0] else -1
+                cache_key = (id(current_way), endpoint_index, len(self.ways))
+                connected = self._endpoint_connection_cache.get(cache_key)
+                if connected is None:
+                    connected = any(
+                        other is not current_way
+                        and any(
+                            math.hypot(endpoint[0] - point[0], endpoint[1] - point[1])
+                            <= max(12.0, current_way.half_width_m + getattr(other, "half_width_m", 3.0))
+                            for point in getattr(other, "points_m", ())
+                        )
+                        for other in self.ways
                     )
-                    for other in self.ways
-                )
+                    self._endpoint_connection_cache[cache_key] = connected
                 direction = "east" if abs(approach_x) >= abs(approach_y) and approach_x >= 0 else "west"
                 if abs(approach_y) > abs(approach_x):
                     direction = "north" if approach_y >= 0 else "south"
@@ -2396,12 +2402,7 @@ class AutoFetchManager:
             if not expanded:
                 return False
 
-            fetch_bbox = (
-                car.x - half_span,
-                car.y - half_span,
-                car.x + half_span,
-                car.y + half_span,
-            )
+            fetch_bbox = (fetch_minx, fetch_miny, fetch_maxx, fetch_maxy)
             target = _snap_projected_bbox(fetch_bbox, tile_size_m)
             if target in self._completed_fetch_targets:
                 return False
@@ -2454,7 +2455,9 @@ class AutoFetchManager:
             area_bbox = (south, west, north, east)
             if self.world_cache_manager is not None:
                 area_id = self.world_cache_manager.area_id(area_bbox)
-                res = self.world_cache_manager.preload(area_id, area_bbox).result()
+                res = self.world_cache_manager.preload(
+                    area_id, area_bbox, point=(car_lat, car_lon)
+                ).result()
                 elems = None
             else:
                 elems = load_osm_cache(area_bbox, point=(car_lat, car_lon))

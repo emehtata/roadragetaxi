@@ -84,7 +84,7 @@ def test_auto_fetch_uses_binary_cache_preload():
         def area_id(bbox):
             return "cached-area"
 
-        def preload(self, area_id, bbox):
+        def preload(self, area_id, bbox, **kwargs):
             calls.append((area_id, bbox))
             future = Future()
             future.set_result(cached)
@@ -159,6 +159,31 @@ def test_auto_fetch_triggers_near_disconnected_current_road_endpoint():
 
     assert m.start_if_needed(car, True, margin_m=20.0, tile_size_m=500.0, current_way=way) is True
     assert m.get_trigger_reason() == "road endpoint"
+
+
+def test_auto_fetch_requests_area_ahead_of_early_road_endpoint():
+    way = Way(points_m=[(0.0, 0.0), (100.0, 0.0)], highway="secondary", half_width_m=6.0)
+    car = Car(x=90.0, y=0.0, heading=0.0, speed=5.0)
+    requested = []
+
+    manager = AutoFetchManager(
+        [way],
+        (-1000.0, -1000.0, 1000.0, 1000.0),
+        FakeTransformer(),
+        fetch_func=lambda bbox: requested.append(bbox) or [],
+        build_func=lambda elems: ([], [], (-1000.0, -1000.0, 1000.0, 1000.0)),
+        cooldown_s=0.0,
+    )
+    manager.dead_ends = []
+
+    assert manager.start_if_needed(car, True, margin_m=20.0, tile_size_m=500.0, current_way=way)
+    deadline = time.time() + 2.0
+    while manager.is_fetching and time.time() < deadline:
+        time.sleep(0.01)
+
+    assert requested
+    assert requested[0][3] > car.x / 1000.0
+    assert requested[0][3] - car.x / 1000.0 >= 0.4
 
 
 def test_auto_fetch_triggers_while_stopped_at_road_endpoint_only_once():

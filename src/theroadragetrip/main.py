@@ -1127,7 +1127,7 @@ def main() -> None:
         clock.tick()  # Reset clock timer to avoid large dt on first frame
 
         while running:
-            dt = min(clock.tick(FPS) / 1000.0, 0.1)  # Clamp delta-time to prevent physics tunneling on lag spikes
+            dt = min(clock.tick_busy_loop(FPS) / 1000.0, 0.1)  # Precise pacing; clamp lag spikes for physics safety
             frame_profiler.begin_frame()
             if awaiting_start:
                 start_warmup_remaining = max(0.0, start_warmup_remaining - dt)
@@ -1861,12 +1861,15 @@ def main() -> None:
                 )
             for crashed_npc, crash_x, crash_y, curse_text in traffic_mgr.take_crashed_npc_events():
                 crashed_pedestrian = pedestrian_mgr.spawn_pedestrian_at(
-                    crash_x, crash_y, heading=crashed_npc.heading
+                    crash_x,
+                    crash_y,
+                    heading=crashed_npc.heading,
+                    resident_id=crashed_npc.owner_id,
                 )
                 if crashed_pedestrian is not None:
-                    crashed_pedestrian.resident_id = crashed_npc.owner_id
                     crashed_pedestrian.curse_timer = 2.0
                     crashed_pedestrian.curse_text = curse_text
+                    pedestrian_mgr.pedestrians.append(crashed_pedestrian)
             police_stopping = police_mgr.update(car, current_way, dt)
             if police_stopping:
                 audio.play_driver_line("police_chase", language)

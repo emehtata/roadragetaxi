@@ -53,6 +53,7 @@ _motorcycle_sprite = None
 _moped_sprite = None
 _two_wheeler_tinted_sprites = {}
 _two_wheeler_render_cache = {}
+_npc_vehicle_sprite_cache = {}
 _npc_debug_font = None
 _cyclist_tinted_sprites = {}
 _grass_texture_tile = None
@@ -78,8 +79,11 @@ _day_night_overlay_cache = {}
 _solar_position_cache = {}
 _street_light_last_debug_log_ms = 0
 _reusable_alpha_surfaces = {}
+_smoke_surface_cache = {}
+_label_surface_cache = {}
 _road_frame_cache_key = None
 _road_frame_cache_surface = None
+_road_frame_cache_camera = None
 _render_logger = logging.getLogger(__name__)
 _rage_face_frames = None
 _rage_face_path = os.path.join(os.path.dirname(__file__), "assets", "ragefaceatlas.png")
@@ -94,6 +98,16 @@ def _reusable_alpha_surface(pygame, key, size):
         _reusable_alpha_surfaces[key] = surface
     else:
         surface.fill((0, 0, 0, 0))
+    return surface
+
+
+def _smoke_surface(pygame, radius: int, alpha: int):
+    key = (radius, alpha)
+    surface = _smoke_surface_cache.get(key)
+    if surface is None:
+        surface = pygame.Surface((radius * 2 + 2, radius * 2 + 2), pygame.SRCALPHA)
+        pygame.draw.circle(surface, (180, 180, 180, alpha), (radius + 1, radius + 1), radius)
+        _smoke_surface_cache[key] = surface
     return surface
 
 
@@ -272,6 +286,54 @@ def _tinted_two_wheeler_sprite(sprite, color, cache_key):
 
     _two_wheeler_tinted_sprites[cache_key] = tinted_sprite
     return tinted_sprite
+
+
+def _npc_vehicle_sprite(pygame, length_px: float, width_px: float, color, angle: float, is_taxi: bool):
+    angle_index = round((angle % (2.0 * math.pi)) / (2.0 * math.pi) * 24.0) % 24
+    cache_key = (
+        round(length_px),
+        round(width_px),
+        tuple(color),
+        angle_index,
+        is_taxi,
+    )
+    cached = _npc_vehicle_sprite_cache.get(cache_key)
+    if cached is not None:
+        return cached
+
+    margin = 3
+    base_width = max(8, round(length_px)) + margin * 2
+    base_height = max(6, round(width_px)) + margin * 2
+    base = pygame.Surface((base_width, base_height), pygame.SRCALPHA)
+    center_x, center_y = base_width * 0.5, base_height * 0.5
+    half_length = length_px * 0.5
+    half_width = width_px * 0.5
+    body = [
+        (center_x + half_length, center_y + half_width),
+        (center_x + half_length, center_y - half_width),
+        (center_x - half_length, center_y - half_width),
+        (center_x - half_length, center_y + half_width),
+    ]
+    pygame.draw.polygon(base, color, body)
+    pygame.draw.polygon(base, (20, 20, 20), body, 1)
+    if length_px >= 6.0:
+        cabin_half_length = length_px * 0.225
+        cabin_half_width = half_width * 0.75
+        cabin = [
+            (center_x + cabin_half_length, center_y + cabin_half_width),
+            (center_x + cabin_half_length, center_y - cabin_half_width),
+            (center_x - cabin_half_length * 1.8, center_y - cabin_half_width),
+            (center_x - cabin_half_length * 1.8, center_y + cabin_half_width),
+        ]
+        pygame.draw.polygon(base, (30, 35, 45), cabin)
+    if is_taxi and length_px >= 6.0:
+        sign = pygame.Rect(round(center_x - 4), round(center_y - half_width - 2), 8, 3)
+        pygame.draw.rect(base, (240, 220, 20), sign)
+        pygame.draw.rect(base, (30, 30, 30), sign, 1)
+
+    rotated = pygame.transform.rotate(base, -angle_index * 360.0 / 24.0)
+    _npc_vehicle_sprite_cache[cache_key] = rotated
+    return rotated
 
 
 def _tinted_cyclist_sprite(sprite, color):
@@ -615,8 +677,7 @@ def draw_taxi_smoke(screen, car: Car, camx: float, camy: float, px_per_m: float 
         puff_y = front_cy + ry * drift - offset_t * 14.0
         radius = int(3.0 + offset_t * 5.0)
         alpha = int(max(0, min(160, (1.0 - offset_t / 2.0) * 160)))
-        smoke_surf = pygame.Surface((radius * 2 + 2, radius * 2 + 2), pygame.SRCALPHA)
-        pygame.draw.circle(smoke_surf, (180, 180, 180, alpha), (radius + 1, radius + 1), radius)
+        smoke_surf = _smoke_surface(pygame, radius, alpha)
         screen.blit(smoke_surf, (int(puff_x - radius - 1), int(puff_y - radius - 1)))
 
 
@@ -643,8 +704,7 @@ def draw_taxi_exhaust(screen, car: Car, camx: float, camy: float, px_per_m: floa
         puff_y += ry * drift
         radius = int(3.0 + offset_t * 5.0)
         alpha = int(max(0, min(160, (1.0 - offset_t / 2.0) * 160)))
-        smoke_surf = pygame.Surface((radius * 2 + 2, radius * 2 + 2), pygame.SRCALPHA)
-        pygame.draw.circle(smoke_surf, (180, 180, 180, alpha), (radius + 1, radius + 1), radius)
+        smoke_surf = _smoke_surface(pygame, radius, alpha)
         screen.blit(smoke_surf, (int(puff_x - radius - 1), int(puff_y - radius - 1)))
 
 
@@ -932,19 +992,26 @@ def draw_ways(
     """Draw road ways intersecting viewport with highway-type proportional thickness and layer ordering."""
     import pygame
 
-    global _road_frame_cache_key, _road_frame_cache_surface
+    global _road_frame_cache_key, _road_frame_cache_surface, _road_frame_cache_camera
     road_cache_key = (
         id(ways),
         len(ways),
         id(ways[-1]) if ways else None,
-        round(camx, 3),
-        round(camy, 3),
+        round(camx * px_per_m / 16.0),
+        round(camy * px_per_m / 16.0),
         px_per_m,
         screen_w,
         screen_h,
     )
     if road_cache_key == _road_frame_cache_key and _road_frame_cache_surface is not None:
-        screen.blit(_road_frame_cache_surface, (0, 0))
+        cached_camx, cached_camy = _road_frame_cache_camera
+        screen.blit(
+            _road_frame_cache_surface,
+            (
+                round((cached_camx - camx) * px_per_m),
+                round((camy - cached_camy) * px_per_m),
+            ),
+        )
         return
     destination_screen = screen
     screen = pygame.Surface((screen_w, screen_h), pygame.SRCALPHA)
@@ -1301,6 +1368,7 @@ def draw_ways(
     destination_screen.blit(screen, (0, 0))
     _road_frame_cache_key = road_cache_key
     _road_frame_cache_surface = screen
+    _road_frame_cache_camera = (camx, camy)
 
 
 def _way_has_street_lighting(way: Way) -> bool:
@@ -1484,7 +1552,11 @@ def draw_street_lights(
     else:
         junction_points = _street_light_junction_cache[1]
     junction_grid = _street_light_junction_grid_cache[1]
-    light_layer = pygame.Surface(screen.get_size(), pygame.SRCALPHA) if street_lighting_enabled else None
+    light_layer = (
+        _reusable_alpha_surface(pygame, "street_light_layer", screen.get_size())
+        if street_lighting_enabled
+        else None
+    )
     _street_light_frame_world_positions = []
     global _street_light_geometry_cache_key, _street_light_geometry_cache
     geometry_cache_key = (
@@ -2133,9 +2205,26 @@ def _draw_labels_uncached(
             return False
 
         f = use_font or font
-        txt_surf = f.render(text, True, text_color)
-        rect = txt_surf.get_rect(center=(sx, sy))
-        bg_rect = rect.inflate(10, 6)
+        cache_key = (id(f), text, tuple(text_color), tuple(bg_color), border_color)
+        label_surface = _label_surface_cache.get(cache_key)
+        if label_surface is None:
+            text_surface = f.render(text, True, text_color)
+            label_surface = pygame.Surface(
+                (text_surface.get_width() + 10, text_surface.get_height() + 6),
+                pygame.SRCALPHA,
+            )
+            label_surface.fill(bg_color)
+            if border_color:
+                pygame.draw.rect(
+                    label_surface,
+                    border_color,
+                    label_surface.get_rect(),
+                    width=1,
+                    border_radius=3,
+                )
+            label_surface.blit(text_surface, (5, 3))
+            _label_surface_cache[cache_key] = label_surface
+        bg_rect = label_surface.get_rect(center=(sx, sy))
 
         # Check collision with already placed labels
         for pr in placed_rects:
@@ -2143,12 +2232,7 @@ def _draw_labels_uncached(
                 return False
 
         placed_rects.append(bg_rect)
-        bg_surface = pygame.Surface((bg_rect.width, bg_rect.height), pygame.SRCALPHA)
-        bg_surface.fill(bg_color)
-        screen.blit(bg_surface, bg_rect.topleft)
-        if border_color:
-            pygame.draw.rect(screen, border_color, bg_rect, width=1, border_radius=3)
-        screen.blit(txt_surf, rect)
+        screen.blit(label_surface, bg_rect.topleft)
         count += 1
         return True
 
@@ -2568,6 +2652,8 @@ def draw_npc_cars(
             continue
         if not in_view:
             continue
+        if getattr(npc, "lod_level", 0) >= 2:
+            continue
         if not _vehicle_is_on_bridge(npc) and _covered_by_higher_road(
             npc.x,
             npc.y,
@@ -2607,6 +2693,16 @@ def draw_npc_cars(
                 rotated_sprite = pygame.transform.rotate(scaled_sprite, render_angle)
                 _two_wheeler_render_cache[render_key] = rotated_sprite
             screen.blit(rotated_sprite, rotated_sprite.get_rect(center=(int(cx), int(cy))))
+        elif getattr(npc, "lod_level", 0) > 0:
+            sprite = _npc_vehicle_sprite(
+                pygame,
+                length_px,
+                width_px,
+                npc.color,
+                npc.heading,
+                getattr(npc, "is_taxi", False),
+            )
+            screen.blit(sprite, sprite.get_rect(center=(int(cx), int(cy))))
         else:
             _draw_vehicle(
                 screen,
@@ -2722,8 +2818,7 @@ def draw_npc_cars(
                 puff_y = front_cy + ry * drift - offset_t * 14.0  # drifts upwards
                 radius = int(3.0 + offset_t * 5.0)
                 alpha = int(max(0, min(160, (1.0 - offset_t / 2.0) * 160)))
-                smoke_surf = pygame.Surface((radius * 2 + 2, radius * 2 + 2), pygame.SRCALPHA)
-                pygame.draw.circle(smoke_surf, (180, 180, 180, alpha), (radius + 1, radius + 1), radius)
+                smoke_surf = _smoke_surface(pygame, radius, alpha)
                 screen.blit(smoke_surf, (int(puff_x - radius - 1), int(puff_y - radius - 1)))
 
 
@@ -3094,13 +3189,13 @@ def draw_npc_popup(screen, font, npc, residents, screen_w: int = SCREEN_W) -> No
         occupant_ids.update(getattr(npc, attribute, ()) or ())
     if getattr(npc, "current_driver_id", None) is not None:
         occupant_ids.add(npc.current_driver_id)
-    if getattr(npc, "owner_id", None) is not None:
-        occupant_ids.add(npc.owner_id)
     occupants = [
         f"{person.first_name} {person.surname}".strip()
         for resident_id in occupant_ids
         if (person := residents.get(resident_id)) is not None
     ]
+    owner = residents.get(getattr(npc, "owner_id", None)) if residents is not None else None
+    owner_name = f"{owner.first_name} {owner.surname}".strip() if owner is not None else "-"
     vehicle_name = getattr(npc, "vehicle_type", "car")
     speed_kmh = abs(getattr(npc, "speed", 0.0)) * 3.6
     lines = (
@@ -3108,6 +3203,7 @@ def draw_npc_popup(screen, font, npc, residents, screen_w: int = SCREEN_W) -> No
         f"Tyyppi: {vehicle_name}",
         f"Tila: {getattr(npc, 'state', '-')}",
         f"Nopeus: {speed_kmh:.0f} km/h",
+        f"Omistaja: {owner_name}",
         f"Henkilöt kyydissä: {', '.join(occupants) or '-'}",
     )
     for index, text in enumerate(lines):

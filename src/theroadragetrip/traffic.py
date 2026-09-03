@@ -135,6 +135,7 @@ class NPCCar:
     travel_route_index: int = 0
     destination: Optional[Tuple[float, float]] = None
     destination_parking_space_id: Optional[int] = None
+    route_retry_timer: float = 0.0
     lod_level: int = 0
     lod_time_accumulator: float = 0.0
     lod_update_due: bool = True
@@ -391,6 +392,7 @@ class TrafficManager:
         self._parking_grid: dict[Tuple[int, int], List] = {}
         self._route_nodes: List[Tuple[float, float, int]] = []
         self._route_edges: dict[int, List[Tuple[int, float]]] = {}
+        self._route_edges_by_layer: dict[int, dict[int, List[Tuple[int, float]]]] = {}
         self.logical_intersections = build_logical_intersections(self.traffic_lights, self.ways)
         self.traffic_light_manager = TrafficLightManager(self.logical_intersections)
         self.intersection_manager = IntersectionManager(self.logical_intersections)
@@ -417,6 +419,7 @@ class TrafficManager:
         npc.speed = 0.0
         npc.target_speed = 0.0
         npc.set_driver_present(False)
+        npc.current_driver_id = None
         resident = self.residents.get(npc.owner_id)
         if resident is not None:
             resident.mode = "walking"
@@ -595,6 +598,15 @@ class TrafficManager:
 
         self._route_nodes = nodes
         self._route_edges = edges
+        layers = {node[2] for node in nodes}
+        self._route_edges_by_layer = {
+            layer: {
+                index: [(neighbor, distance) for neighbor, distance in neighbors if nodes[neighbor][2] == layer]
+                for index, neighbors in edges.items()
+                if nodes[index][2] == layer
+            }
+            for layer in layers
+        }
 
     def _build_npc_spatial_grid(self) -> None:
         cell_size = self._npc_grid_cell_size
@@ -1409,15 +1421,11 @@ class TrafficManager:
     ) -> Optional[List[Tuple[float, float]]]:
         """Return a shortest route over road vertices between two map positions."""
         nodes = self._route_nodes
-        edges = self._route_edges
+        edges = self._route_edges_by_layer.get(layer, {}) if layer is not None else self._route_edges
         if layer is not None:
             allowed_nodes = {index for index, node in enumerate(nodes) if node[2] == layer}
             nodes_for_route = [node for node in nodes]
-            edges_for_route = {
-                index: [(neighbor, distance) for neighbor, distance in neighbors if neighbor in allowed_nodes]
-                for index, neighbors in edges.items()
-                if index in allowed_nodes
-            }
+            edges_for_route = edges
         else:
             nodes_for_route = nodes
             edges_for_route = edges
@@ -1432,36 +1440,40 @@ class TrafficManager:
             edges_for_route,
             key=lambda index: (nodes_for_route[index][0] - target[0]) ** 2 + (nodes_for_route[index][1] - target[1]) ** 2,
         )[:12]
+        distances = {}
+        previous: dict[int, int] = {}
+        queue = []
+        for start_id in start_candidates:
+            connector = math.hypot(nodes_for_route[start_id][0] - start[0], nodes_for_route[start_id][1] - start[1])
+            distances[start_id] = connector
+            heapq.heappush(queue, (connector, start_id))
+        while queue:
+            distance, current = heapq.heappop(queue)
+            if distance != distances.get(current):
+                continue
+            for neighbor, edge_distance in edges_for_route[current]:
+                new_distance = distance + edge_distance
+                if new_distance < distances.get(neighbor, math.inf):
+                    distances[neighbor] = new_distance
+                    previous[neighbor] = current
+                    heapq.heappush(queue, (new_distance, neighbor))
         best_path = None
         best_score = math.inf
-        for start_id in start_candidates:
-            distances = {start_id: 0.0}
-            previous: dict[int, int] = {}
-            queue = [(0.0, start_id)]
-            while queue:
-                distance, current = heapq.heappop(queue)
-                if distance != distances.get(current):
-                    continue
-                for neighbor, edge_distance in edges_for_route[current]:
-                    new_distance = distance + edge_distance
-                    if new_distance < distances.get(neighbor, math.inf):
-                        distances[neighbor] = new_distance
-                        previous[neighbor] = current
-                        heapq.heappush(queue, (new_distance, neighbor))
-            for target_id in target_candidates:
-                if target_id not in distances:
-                    continue
-                start_connector = math.hypot(nodes_for_route[start_id][0] - start[0], nodes_for_route[start_id][1] - start[1])
-                target_connector = math.hypot(nodes_for_route[target_id][0] - target[0], nodes_for_route[target_id][1] - target[1])
-                score = distances[target_id] + start_connector + target_connector
-                if score >= best_score:
-                    continue
-                path = [target_id]
-                while path[-1] != start_id:
-                    path.append(previous[path[-1]])
-                path.reverse()
-                best_path = path
+        best_target = None
+        for target_id in target_candidates:
+            if target_id not in distances:
+                continue
+            target_connector = math.hypot(nodes_for_route[target_id][0] - target[0], nodes_for_route[target_id][1] - target[1])
+            score = distances[target_id] + target_connector
+            if score < best_score:
                 best_score = score
+                best_target = target_id
+        if best_target is not None:
+            path = [best_target]
+            while path[-1] in previous:
+                path.append(previous[path[-1]])
+            path.reverse()
+            best_path = path
         if best_path is None:
             return None
         return [(start[0], start[1])] + [(nodes_for_route[index][0], nodes_for_route[index][1]) for index in best_path] + [target]
@@ -1737,7 +1749,10 @@ class TrafficManager:
 
     def _assign_new_travel_plan(self, npc: NPCCar) -> bool:
         """Assign a complete road-node route to an NPC and its resident driver."""
+        if npc.route_retry_timer > 0.0:
+            return False
         if not self._route_nodes:
+            npc.route_retry_timer = 1.0
             return False
         current_layer = getattr(npc.way, "layer", 0)
         destinations = [
@@ -1747,6 +1762,7 @@ class TrafficManager:
             and math.hypot(node[0] - npc.x, node[1] - npc.y) >= 150.0
         ]
         if not destinations:
+            npc.route_retry_timer = 1.0
             return False
         resident = self.residents.get(npc.owner_id)
         if not self.residents.can_drive(resident):
@@ -1754,12 +1770,14 @@ class TrafficManager:
         destination = random.choice(destinations)
         route = self.plan_route((npc.x, npc.y), destination, layer=current_layer)
         if not route or len(route) < 2:
+            npc.route_retry_timer = 1.0
             return False
         npc.travel_route = route
         npc.travel_route_index = 1
         npc.destination = route[-1]
         npc.destination_parking_space_id = None
         npc.next_route = None
+        npc.route_retry_timer = 0.0
         if resident is not None:
             resident.mode = "driving"
             resident.active_vehicle_id = id(npc)
@@ -2354,6 +2372,7 @@ class TrafficManager:
         for i, npc in enumerate(self.npcs):
             if npc.is_police:
                 continue
+            npc.route_retry_timer = max(0.0, npc.route_retry_timer - dt)
             if (
                 route_plans_this_update < MAX_ROUTE_PLANS_PER_UPDATE
                 and npc.travel_route is None

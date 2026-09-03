@@ -52,3 +52,5 @@ screenshots
 .env
 output/
 *.log
+game-mechanics-optimizations
+*.pbf

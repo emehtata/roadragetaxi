@@ -319,8 +319,58 @@ class WorldCacheManager:
         """Delete all cached world files managed by this instance."""
         return clear_world_cache(self.cache_dir)
 
+    @staticmethod
+    def _area_bbox(area_id: str):
+        parts = area_id.removesuffix(".rwc").split("_")
+        if len(parts) != 4:
+            return None
+        try:
+            return tuple(float(part.replace("m", "-").replace("p", ".")) for part in parts)
+        except ValueError:
+            return None
+
+    def _load_covering_area(self, bbox=None, point=None) -> Any:
+        if (bbox is None and point is None) or not self.cache_dir.is_dir():
+            return None
+        for path in self.cache_dir.glob("*.rwc"):
+            cache_bbox = self._area_bbox(path.name)
+            if cache_bbox is None:
+                continue
+            minx, miny, maxx, maxy = cache_bbox
+            if point is not None:
+                inside = minx <= point[0] <= maxx and miny <= point[1] <= maxy
+            else:
+                requested_minx, requested_miny, requested_maxx, requested_maxy = bbox
+                inside = (
+                    minx <= requested_minx
+                    and miny <= requested_miny
+                    and maxx >= requested_maxx
+                    and maxy >= requested_maxy
+                )
+            if not inside:
+                continue
+            try:
+                if self.cache_ttl is not None and time.time() - path.stat().st_mtime > self.cache_ttl:
+                    continue
+                world = self.loader.load(path)
+            except (OSError, InvalidWorldCache, TypeError, ValueError):
+                continue
+            logger.info("[WorldCache] Point cache hit %s", path.name) if point is not None else logger.info(
+                "[WorldCache] Covering cache hit %s", path.name
+            )
+            return world
+        return None
+
     def load_area(self, area_id: str, bbox=None, *, force_refresh: bool = False, **kwargs) -> Any:
         started = time.perf_counter()
+        point = kwargs.pop("point", None)
+        logger.info(
+            "[WorldCache] Lookup area=%s point=(lat=%.6f lon=%.6f) bbox=(lat_min=%.6f lon_min=%.6f lat_max=%.6f lon_max=%.6f) force_refresh=%s",
+            area_id,
+            *(point or (float("nan"),) * 2),
+            *(bbox or (float("nan"),) * 4),
+            force_refresh,
+        )
         path = self.path_for(area_id)
         fresh = path.exists() and (
             self.cache_ttl is None or time.time() - path.stat().st_mtime <= self.cache_ttl
@@ -340,6 +390,10 @@ class WorldCacheManager:
                     pass
         elif path.exists() and not fresh:
             logger.info("[WorldCache] Cache expired %s", path)
+        if not force_refresh:
+            covering_world = self._load_covering_area(bbox, point=point)
+            if covering_world is not None:
+                return covering_world
         if self.fetch_func is None or self.build_func is None or bbox is None:
             raise FileNotFoundError(f"no valid world cache for {area_id}")
         logger.info("[WorldCache] Cache miss %s; downloading OpenPass JSON", area_id)

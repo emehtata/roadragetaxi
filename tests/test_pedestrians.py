@@ -13,6 +13,7 @@ from theroadragetrip.pedestrian import (
     PedestrianState,
 )
 from theroadragetrip.physics import Car
+from theroadragetrip.residents import ResidentManager
 from theroadragetrip.traffic import TrafficManager
 
 
@@ -80,6 +81,19 @@ def test_parked_vehicle_is_empty_and_driver_appears_beside_it():
     driver = next(ped for ped in pedestrians.pedestrians if ped.resident_id == 123)
     assert math.hypot(driver.x - vehicle.x, driver.y - vehicle.y) <= vehicle.width_m * 0.5 + 1.1
     assert driver.current_vehicle_id is None
+
+
+def test_crashed_driver_pedestrian_keeps_resident_identity():
+    way = Way(points_m=[(0.0, 0.0), (100.0, 0.0)], highway="footway", half_width_m=2.0)
+    residents = ResidentManager()
+    resident = residents.create("driving")
+    manager = PedestrianManager([way], target_count=0, residents=residents)
+
+    pedestrian = manager.spawn_pedestrian_at(20.0, 0.0, resident_id=resident.resident_id)
+
+    assert pedestrian is not None
+    assert pedestrian.resident_id == resident.resident_id
+    assert list(residents.residents).count(resident.resident_id) == 1
 
 
 def test_pedestrian_target_count_keeps_nearest_characters():

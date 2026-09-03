@@ -133,6 +133,18 @@ def test_cache_loads_when_point_is_inside_tile(tmp_path, monkeypatch, caplog):
     assert str(tmp_path) in caplog.text
 
 
+def test_cache_point_lookup_skips_non_covering_file_before_read(tmp_path, monkeypatch):
+    import theroadragetrip.osm as osm
+
+    monkeypatch.setattr(osm, "CACHE_DIR", str(tmp_path))
+    save_osm_cache((65.0, 25.4, 65.1, 25.5), [{"type": "node", "id": 1}])
+    (tmp_path / "bbox_60p0_20p0_61p0_21p0.json").write_text("not json", encoding="utf-8")
+
+    assert load_osm_cache(
+        (64.0, 24.0, 66.0, 26.0), point=(65.05, 25.45)
+    ) == [{"type": "node", "id": 1}]
+
+
 def test_force_refresh_skips_cache(monkeypatch):
     import theroadragetrip.osm as osm
 

@@ -1082,7 +1082,13 @@ class PedestrianManager:
 
         return None
 
-    def spawn_pedestrian_at(self, x: float, y: float, heading: float = 0.0) -> Optional[Pedestrian]:
+    def spawn_pedestrian_at(
+        self,
+        x: float,
+        y: float,
+        heading: float = 0.0,
+        resident_id: Optional[int] = None,
+    ) -> Optional[Pedestrian]:
         """Create an ordinary pedestrian at a specific location on the nearest walkable way."""
         if not self.ped_ways:
             return None
@@ -1115,6 +1121,7 @@ class PedestrianManager:
             color=random.choice(PEDESTRIAN_COLORS),
             lateral_offset_m=0.0,
             target_lateral_offset_m=0.0,
+            resident_id=resident_id,
         )
         pedestrian.route = list(way.points_m)
         pedestrian.current_route_segment = segment_idx

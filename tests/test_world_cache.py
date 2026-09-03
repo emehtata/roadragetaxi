@@ -69,6 +69,24 @@ def test_world_cache_manager_preload(tmp_path, sample_world):
     manager.close()
 
 
+def test_world_cache_manager_uses_covering_area_without_fetch(tmp_path, sample_world):
+    calls = []
+    sample_world.bounds = (0.0, 0.0, 100.0, 100.0)
+    manager = WorldCacheManager(
+        tmp_path,
+        fetch_func=lambda bbox: calls.append(bbox),
+        build_func=lambda elements: sample_world,
+    )
+    area_id = "1p000000_2p000000_100p000000_200p000000"
+    manager.writer.write(manager.path_for(area_id), sample_world, area_id=area_id)
+
+    loaded = manager.load_area("small-area", (10.0, 10.0, 90.0, 90.0))
+
+    assert loaded.bounds == sample_world.bounds
+    assert calls == []
+    manager.close()
+
+
 def test_world_cache_manager_force_refresh_passes_fetch_flag(tmp_path, sample_world):
     calls = []
     manager = WorldCacheManager(
