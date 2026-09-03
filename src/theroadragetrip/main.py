@@ -1864,6 +1864,21 @@ def main() -> None:
                     car, dt, viewport_bounds=viewport_bounds,
                     game_time_seconds=game_time_seconds,
                 )
+            frame_profiler.set_metric("visible_npcs", sum(
+                viewport_bounds[0] <= npc.x <= viewport_bounds[2]
+                and viewport_bounds[1] <= npc.y <= viewport_bounds[3]
+                for npc in traffic_mgr.npcs
+            ))
+            frame_profiler.set_metric("visible_pedestrians", sum(
+                viewport_bounds[0] <= ped.x <= viewport_bounds[2]
+                and viewport_bounds[1] <= ped.y <= viewport_bounds[3]
+                for ped in pedestrian_mgr.pedestrians
+            ))
+            frame_profiler.set_metric("active_residents", len(traffic_mgr.residents.residents))
+            frame_profiler.set_metric(
+                "world_cache_operations",
+                sum(not future.done() for future in getattr(world_cache, "_futures", {}).values()),
+            )
             traffic_mgr.let_taxi_pick_up_waiter(taxi_stops, pedestrian_mgr.pedestrians, dt)
             waiting_pedestrian = taxi_mgr.check_waiting_pickup(car, pedestrian_mgr.pedestrians, dt)
             if waiting_pedestrian is not None:

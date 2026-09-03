@@ -13,8 +13,10 @@ class FrameProfiler:
         self.history = deque(maxlen=history_size)
         self.spike_ms = spike_ms
         self.sections: dict[str, float] = {}
+        self.metrics: dict[str, int | float] = {}
         self.last_frame_ms = 0.0
         self.spike_count = 0
+        self.last_spike: dict[str, object] | None = None
         self._frame_start = 0.0
 
     def toggle(self) -> bool:
@@ -33,6 +35,14 @@ class FrameProfiler:
         self.history.append(self.last_frame_ms)
         if any(self.last_frame_ms >= threshold for threshold in self.spike_ms):
             self.spike_count += 1
+            self.last_spike = {
+                "frame_ms": self.last_frame_ms,
+                "sections": dict(self.sections),
+            }
+
+    def set_metric(self, name: str, value: int | float) -> None:
+        if self.enabled:
+            self.metrics[name] = value
 
     @contextmanager
     def section(self, name: str) -> Iterator[None]:
@@ -56,5 +66,7 @@ class FrameProfiler:
             "frame_ms": self.last_frame_ms,
             "fps": self.fps,
             "sections": dict(self.sections),
+            "metrics": dict(self.metrics),
             "spikes": self.spike_count,
+            "last_spike": self.last_spike,
         }

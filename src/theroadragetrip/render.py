@@ -4536,6 +4536,10 @@ def draw_frame_profiler(screen, font, profiler, npc_count: int, pedestrian_count
         f"FRAME {snapshot['frame_ms']:.1f} ms | FPS {snapshot['fps']:.1f} | spikes {snapshot['spikes']}",
         f"NPC {npc_count} | pedestrians {pedestrian_count}",
     ]
+    lines.extend(
+        f"{name}: {value}"
+        for name, value in snapshot["metrics"].items()
+    )
     lines.extend(f"{name}: {duration:.1f} ms" for name, duration in sorted(snapshot["sections"].items(), key=lambda item: -item[1])[:6])
     y = 58
     for line in lines:
