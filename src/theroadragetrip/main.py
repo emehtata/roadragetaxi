@@ -2035,7 +2035,9 @@ def main() -> None:
                 logger.info("Gameplay frame: rendering scenery")
             map_stage_start = time.perf_counter()
             draw_grass_texture(screen, camx, camy, px_per_m)
-            render_profile_times["map_grass"] = render_profile_times.get("map_grass", 0.0) + time.perf_counter() - map_stage_start
+            stage_elapsed = time.perf_counter() - map_stage_start
+            render_profile_times["map_grass"] = render_profile_times.get("map_grass", 0.0) + stage_elapsed
+            frame_profiler.record("render:grass", stage_elapsed * 1000.0)
             map_stage_start = time.perf_counter()
             draw_scenery(
                 screen,
@@ -2047,12 +2049,16 @@ def main() -> None:
                 fallen_trees=taxi_mgr.fallen_trees,
                 spatial_grid=scenery_grid,
             )
-            render_profile_times["map_scenery"] = render_profile_times.get("map_scenery", 0.0) + time.perf_counter() - map_stage_start
+            stage_elapsed = time.perf_counter() - map_stage_start
+            render_profile_times["map_scenery"] = render_profile_times.get("map_scenery", 0.0) + stage_elapsed
+            frame_profiler.record("render:scenery", stage_elapsed * 1000.0)
             if first_gameplay_frame:
                 logger.info("Gameplay frame: rendering water")
             map_stage_start = time.perf_counter()
             draw_waters(screen, waters, camx, camy, px_per_m=px_per_m, spatial_grid=water_grid)
-            render_profile_times["map_water"] = render_profile_times.get("map_water", 0.0) + time.perf_counter() - map_stage_start
+            stage_elapsed = time.perf_counter() - map_stage_start
+            render_profile_times["map_water"] = render_profile_times.get("map_water", 0.0) + stage_elapsed
+            frame_profiler.record("render:water", stage_elapsed * 1000.0)
             if first_gameplay_frame:
                 logger.info("Gameplay frame: rendering roads")
             map_stage_start = time.perf_counter()
@@ -2066,16 +2072,22 @@ def main() -> None:
                 spatial_grid=traffic_mgr._parking_grid,
                 grid_cell_size=traffic_mgr._parking_grid_cell_size,
             )
-            render_profile_times["map_roads"] = render_profile_times.get("map_roads", 0.0) + time.perf_counter() - map_stage_start
+            stage_elapsed = time.perf_counter() - map_stage_start
+            render_profile_times["map_roads"] = render_profile_times.get("map_roads", 0.0) + stage_elapsed
+            frame_profiler.record("render:roads", stage_elapsed * 1000.0)
             if bus_stops_enabled:
                 map_stage_start = time.perf_counter()
                 draw_bus_stops(screen, bus_stops, ways, camx, camy, px_per_m=px_per_m, spatial_grid=spatial_grid)
-                render_profile_times["map_bus_stops"] = render_profile_times.get("map_bus_stops", 0.0) + time.perf_counter() - map_stage_start
+                stage_elapsed = time.perf_counter() - map_stage_start
+                render_profile_times["map_bus_stops"] = render_profile_times.get("map_bus_stops", 0.0) + stage_elapsed
+                frame_profiler.record("render:bus_stops", stage_elapsed * 1000.0)
             if first_gameplay_frame:
                 logger.info("Gameplay frame: rendering buildings")
             map_stage_start = time.perf_counter()
             draw_buildings(screen, buildings, camx, camy, px_per_m=px_per_m, spatial_grid=building_grid)
-            render_profile_times["map_buildings"] = render_profile_times.get("map_buildings", 0.0) + time.perf_counter() - map_stage_start
+            stage_elapsed = time.perf_counter() - map_stage_start
+            render_profile_times["map_buildings"] = render_profile_times.get("map_buildings", 0.0) + stage_elapsed
+            frame_profiler.record("render:buildings", stage_elapsed * 1000.0)
             render_profile_times["map"] = render_profile_times.get("map", 0.0) + (
                 time.perf_counter() - render_profile_stage_start
             )
@@ -2215,9 +2227,9 @@ def main() -> None:
                 px_per_m=px_per_m,
                 language=language,
             )
-            render_profile_times["actors"] = render_profile_times.get("actors", 0.0) + (
-                time.perf_counter() - render_profile_stage_start
-            )
+            stage_elapsed = time.perf_counter() - render_profile_stage_start
+            render_profile_times["actors"] = render_profile_times.get("actors", 0.0) + stage_elapsed
+            frame_profiler.record("render:actors", stage_elapsed * 1000.0)
             render_profile_stage_start = time.perf_counter()
 
             lighting_start = time.perf_counter()
@@ -2286,9 +2298,9 @@ def main() -> None:
                     light_vehicles=[car, *traffic_mgr.npcs],
                     street_light_positions=None,
                 )
-            render_profile_times["lighting"] = render_profile_times.get("lighting", 0.0) + (
-                time.perf_counter() - lighting_start
-            )
+            stage_elapsed = time.perf_counter() - lighting_start
+            render_profile_times["lighting"] = render_profile_times.get("lighting", 0.0) + stage_elapsed
+            frame_profiler.record("render:lighting", stage_elapsed * 1000.0)
 
             # Labels overlay (toggled with 'L')
             if label_mode:
@@ -2308,9 +2320,9 @@ def main() -> None:
                     building_grid=building_grid,
                     label_mode=label_mode,
                 )
-            render_profile_times["labels"] = render_profile_times.get("labels", 0.0) + (
-                time.perf_counter() - render_profile_stage_start
-            )
+            stage_elapsed = time.perf_counter() - render_profile_stage_start
+            render_profile_times["labels"] = render_profile_times.get("labels", 0.0) + stage_elapsed
+            frame_profiler.record("render:labels", stage_elapsed * 1000.0)
             render_profile_stage_start = time.perf_counter()
 
             render_profile_times["frame"] = render_profile_times.get("frame", 0.0) + (

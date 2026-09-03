@@ -66,11 +66,19 @@ class FrameProfiler:
         return 1000.0 / self.last_frame_ms if self.last_frame_ms > 0.0 else 0.0
 
     def snapshot(self) -> dict[str, object]:
+        average_ms = sum(self.history) / len(self.history) if self.history else 0.0
+        spike_sections = (
+            sorted(self.last_spike["sections"].items(), key=lambda item: -item[1])
+            if self.last_spike
+            else []
+        )
         return {
             "frame_ms": self.last_frame_ms,
+            "average_ms": average_ms,
             "fps": self.fps,
             "sections": dict(self.sections),
             "metrics": dict(self.metrics),
             "spikes": self.spike_count,
             "last_spike": self.last_spike,
+            "spike_subsystem": spike_sections[0][0] if spike_sections else None,
         }

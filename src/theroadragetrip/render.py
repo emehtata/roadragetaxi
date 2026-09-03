@@ -4573,7 +4573,8 @@ def draw_frame_profiler(screen, font, profiler, npc_count: int, pedestrian_count
         return
     snapshot = profiler.snapshot()
     lines = [
-        f"FRAME {snapshot['frame_ms']:.1f} ms | FPS {snapshot['fps']:.1f} | spikes {snapshot['spikes']}",
+        f"FRAME {snapshot['frame_ms']:.1f} ms | AVG {snapshot['average_ms']:.1f} ms | FPS {snapshot['fps']:.1f}",
+        f"SPIKES {snapshot['spikes']} | culprit {snapshot['spike_subsystem'] or 'none'}",
         f"NPC {npc_count} | pedestrians {pedestrian_count}",
     ]
     lines.extend(

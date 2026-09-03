@@ -288,7 +288,6 @@ class TrafficLightManager:
                     best_distance = distance_to_center
         return best_approach
 
-
 def calculate_npc_target_speed(way: Way, speed_factor: float) -> float:
     """Compute realistic driving target speed in m/s based on Finnish road limit and vehicle personality."""
     limit_kmh = getattr(way, "speed_limit_kmh", 50)
@@ -3134,7 +3133,6 @@ class TrafficManager:
                                     dist_step = 0.0
                                     finished_npcs.add(id(npc))
                                     break
-
         for npc in self.npcs:
             if not npc.parking_departure_pending or npc.parking_space_id is None:
                 continue

@@ -23,5 +23,6 @@ def test_frame_profiler_records_sections_and_spikes():
     profiler.set_metric("visible_npcs", 4)
     assert profiler.snapshot()["metrics"]["visible_npcs"] == 4
     assert profiler.snapshot()["last_spike"]["sections"]["traffic"] >= 0.0
+    assert profiler.snapshot()["spike_subsystem"] == "traffic"
     profiler.record("rendering", 1.0)
     assert profiler.snapshot()["sections"]["rendering"] == 1.0
