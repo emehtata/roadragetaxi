@@ -4314,6 +4314,7 @@ def draw_hud(
         hint_t = font.render(hint, True, (220, 220, 220))
         screen.blit(hint_t, (10, 34))
 
+
     meter_s = (
         f"{tr(language, 'career_meter')}: {odo_s}   |   "
         f"{tr(language, 'trip_meter')}: {trip_s}"
@@ -4458,3 +4459,20 @@ def draw_hud(
 
         load_t = font.render(f"{tr(language, 'loading_scenery')} {int(prog * 100)}%", True, (255, 215, 60))
         screen.blit(load_t, (bar_x + bar_w + 10, bar_y - 2))
+
+
+def draw_frame_profiler(screen, font, profiler, npc_count: int, pedestrian_count: int) -> None:
+    """Draw compact frame timing diagnostics when enabled."""
+    if not profiler.enabled:
+        return
+    snapshot = profiler.snapshot()
+    lines = [
+        f"FRAME {snapshot['frame_ms']:.1f} ms | FPS {snapshot['fps']:.1f} | spikes {snapshot['spikes']}",
+        f"NPC {npc_count} | pedestrians {pedestrian_count}",
+    ]
+    lines.extend(f"{name}: {duration:.1f} ms" for name, duration in sorted(snapshot["sections"].items(), key=lambda item: -item[1])[:6])
+    y = 58
+    for line in lines:
+        surface = font.render(line, True, (255, 220, 120))
+        screen.blit(surface, (10, y))
+        y += surface.get_height() + 2

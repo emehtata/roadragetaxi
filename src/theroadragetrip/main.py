@@ -98,6 +98,7 @@ from .render import (
     draw_grass_texture,
     draw_headlight_beams,
     draw_hud,
+    draw_frame_profiler,
     default_hud_layout,
     draw_tutorial_screen,
     draw_labels,
@@ -157,6 +158,7 @@ from .roadworks import create_roadworks
 from .taxi import TaxiManager, TaxiState
 from .traffic import MAX_TRAFFIC_COUNT, TrafficManager, recommended_traffic_count, traffic_count_for_zoom
 from .world_cache import WorldCacheManager, clear_world_cache
+from .performance import FrameProfiler
 
 # Maintain BBOX constant for backward compatibility
 BBOX = DEFAULT_BBOX
@@ -1109,10 +1111,12 @@ def main() -> None:
         render_profile_times = {}
         runtime_profiler = cProfile.Profile()
         runtime_profile_active = False
+        frame_profiler = FrameProfiler()
         clock.tick()  # Reset clock timer to avoid large dt on first frame
 
         while running:
             dt = min(clock.tick(FPS) / 1000.0, 0.1)  # Clamp delta-time to prevent physics tunneling on lag spikes
+            frame_profiler.begin_frame()
             time_scale = 1.0 if taxi_mgr.current_passenger else 60.0
             game_time_seconds = (game_time_seconds + dt * time_scale) % (24.0 * 60.0 * 60.0)
             current_solar_bucket = int(game_time_seconds // (15.0 * 60.0))
@@ -1435,6 +1439,7 @@ def main() -> None:
                         hud_layout = default_hud_layout(screen.get_width(), screen.get_height())
                     elif event.key == pygame.K_F3:
                         show_debug_hud = not show_debug_hud
+                        frame_profiler.enabled = show_debug_hud
                         logger.info("Debug HUD %s", "enabled" if show_debug_hud else "disabled")
                     elif event.key == pygame.K_r:
                         if not _respawn_allowed(on_foot):
@@ -1578,20 +1583,13 @@ def main() -> None:
             previous_speed = car.speed
             # Off-road driving is allowed at a reduced speed.
             if not on_foot:
-                update_car_physics(
-                    car,
-                    throttle,
-                    brake,
-                    steer_left,
-                    steer_right,
-                    dt,
-                    ways=ways,
-                    spatial_grid=spatial_grid,
-                    block_offroad=False,
-                    speed_limit_mps=speed_limit_mps,
-                    nearby_vehicles=traffic_mgr.npcs,
-                    parking_spaces=parking_spaces,
-                )
+                with frame_profiler.section("physics"):
+                    update_car_physics(
+                        car, throttle, brake, steer_left, steer_right, dt,
+                        ways=ways, spatial_grid=spatial_grid,
+                        block_offroad=False, speed_limit_mps=speed_limit_mps,
+                        nearby_vehicles=traffic_mgr.npcs, parking_spaces=parking_spaces,
+                    )
                 car.braking = brake > 0.0 and car.speed > 0.05
                 midpoint = (
                     (previous_position[0] + car.x) * 0.5,
@@ -1690,7 +1688,8 @@ def main() -> None:
             previous_nausea_resolved = (
                 previous_passenger.nausea_resolved if previous_passenger is not None else False
             )
-            taxi_mgr.update(car, dt, game_time_seconds=game_time_seconds)
+            with frame_profiler.section("taxi"):
+                taxi_mgr.update(car, dt, game_time_seconds=game_time_seconds)
             vomited_passenger = taxi_mgr.take_vomited_passenger(car)
             if vomited_passenger is not None:
                 audio.play_passenger_line("Nyt alkaa jo helpottaa.", vomited_passenger.gender, language, vomited_passenger.name)
@@ -1817,14 +1816,12 @@ def main() -> None:
                 if taxi_mgr.check_speed_cameras(car, speed_cameras):
                     audio.play_driver_line("speed_camera", language)
             # Update autonomous traffic NPCs and pedestrians
-            traffic_mgr.update(
-                car,
-                dt,
-                viewport_bounds=viewport_bounds,
-                pedestrians=pedestrian_mgr.pedestrians,
-                cyclists=cyclist_mgr.cyclists,
-                police_cars=police_mgr.cars,
-            )
+            with frame_profiler.section("traffic"):
+                traffic_mgr.update(
+                    car, dt, viewport_bounds=viewport_bounds,
+                    pedestrians=pedestrian_mgr.pedestrians,
+                    cyclists=cyclist_mgr.cyclists, police_cars=police_mgr.cars,
+                )
             police_stopping = police_mgr.update(car, current_way, dt)
             if police_stopping:
                 audio.play_driver_line("police_chase", language)
@@ -1840,12 +1837,11 @@ def main() -> None:
             if not taxi_mgr.current_passenger and taxi_waiter_elapsed >= 0.2:
                 taxi_waiter_elapsed = 0.0
                 pedestrian_mgr.ensure_taxi_stop_waiter(taxi_stops, car, viewport_bounds=viewport_bounds)
-            pedestrian_mgr.update(
-                car,
-                dt,
-                viewport_bounds=viewport_bounds,
-                game_time_seconds=game_time_seconds,
-            )
+            with frame_profiler.section("pedestrians"):
+                pedestrian_mgr.update(
+                    car, dt, viewport_bounds=viewport_bounds,
+                    game_time_seconds=game_time_seconds,
+                )
             traffic_mgr.let_taxi_pick_up_waiter(taxi_stops, pedestrian_mgr.pedestrians, dt)
             waiting_pedestrian = taxi_mgr.check_waiting_pickup(car, pedestrian_mgr.pedestrians, dt)
             if waiting_pedestrian is not None:
@@ -2338,6 +2334,11 @@ def main() -> None:
 
             if first_gameplay_frame:
                 logger.info("Gameplay frame: flipping display")
+            frame_profiler.end_frame()
+            draw_frame_profiler(
+                screen, small_font, frame_profiler,
+                len(traffic_mgr.npcs), len(pedestrian_mgr.pedestrians),
+            )
             pygame.display.flip()
             if first_gameplay_frame:
                 logger.info("Gameplay frame: complete")
