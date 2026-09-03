@@ -838,6 +838,7 @@ def main() -> None:
 
         # Load map
         try:
+            elements_count = 0
             world_cache = WorldCacheManager(
                 cache_ttl=float(os.getenv("OSM_CACHE_TTL", 24 * 3600)),
                 fetch_func=lambda fetch_bbox, **fetch_kwargs: fetch_osm_ways(
@@ -856,6 +857,7 @@ def main() -> None:
                     raise Exception("No local sample file found")
                 logger.info("Using local sample (via --use-sample)")
                 on_load_progress(0.5, f"Loaded {len(elements)} sample elements")
+                elements_count = len(elements)
                 res = build_ways(
                     elements, progress_callback=on_build_progress, include_bus_stops=bus_stops_enabled
                 )
@@ -1120,11 +1122,14 @@ def main() -> None:
                         screenshot_path = os.path.join(screenshot_dir, f"screenshot_{screenshot_id}.png")
                         pygame.image.save(screen, screenshot_path)
                         debug_path = os.path.join(screenshot_dir, f"screenshot_{screenshot_id}.json")
+                        screenshot_viewport = get_viewport_bounds(
+                            camx, camy, px_per_m=px_per_m, margin_m=30.0
+                        )
                         _write_debug_snapshot(
                             debug_path, car, taxi_mgr, auto_fetch_manager, args, bbox,
-                            viewport_bounds, camx, camy, px_per_m, current_way, ways,
+                            screenshot_viewport, camx, camy, px_per_m, current_way, ways,
                             waters, buildings, sceneries, places, taxi_stops,
-                            traffic_lights, crossings, len(elements), traffic_mgr,
+                            traffic_lights, crossings, elements_count, traffic_mgr,
                             pedestrian_mgr, cyclist_mgr, spatial_grid, map_sync_stage,
                             chosen_city, camera_city_name, game_mode, on_foot,
                         )
