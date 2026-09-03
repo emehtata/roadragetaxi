@@ -44,6 +44,10 @@ class FrameProfiler:
         if self.enabled:
             self.metrics[name] = value
 
+    def record(self, name: str, milliseconds: float) -> None:
+        if self.enabled:
+            self.sections[name] = self.sections.get(name, 0.0) + milliseconds
+
     @contextmanager
     def section(self, name: str) -> Iterator[None]:
         if not self.enabled:

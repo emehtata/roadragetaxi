@@ -1151,7 +1151,9 @@ def main() -> None:
             if first_gameplay_frame:
                 logger.info("Gameplay frame: start")
 
-            for event in pygame.event.get():
+            frame_events = pygame.event.get()
+            frame_profiler.set_metric("events", len(frame_events))
+            for event in frame_events:
                 if event.type == pygame.QUIT:
                     running = False
                     app_running = False
@@ -2026,6 +2028,7 @@ def main() -> None:
                 logger.info("Gameplay frame: map update complete")
 
             # Render background and scene
+            render_profiler_start = time.perf_counter()
             render_profile_frame_start = time.perf_counter()
             render_profile_stage_start = render_profile_frame_start
             if first_gameplay_frame:
@@ -2399,6 +2402,9 @@ def main() -> None:
 
             if first_gameplay_frame:
                 logger.info("Gameplay frame: flipping display")
+            frame_profiler.record(
+                "rendering", (time.perf_counter() - render_profiler_start) * 1000.0
+            )
             frame_profiler.end_frame()
             draw_frame_profiler(
                 screen, small_font, frame_profiler,
