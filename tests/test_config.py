@@ -52,4 +52,4 @@ def test_custom_city_section_replaces_default_city_section(tmp_path):
 
     loaded = load_config(config_path)
 
-    assert list(loaded.items("cities")) == [("korpilahti", "62.017, 25.562")]
+    assert list(loaded.items("cities")) == [("korpilahti", "")]

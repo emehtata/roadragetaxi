@@ -306,7 +306,7 @@ class Building:
 class ParkingSpace:
     points_m: List[Tuple[float, float]]
     bbox: Tuple[float, float, float, float]
-    orientation: float = 0.0
+    orientation: object = None
     osm_id: Optional[int] = None
     occupied: bool = False
     reserved: bool = False
@@ -314,16 +314,30 @@ class ParkingSpace:
     reserved_by_pedestrian_id: Optional[int] = None
 
     def __post_init__(self) -> None:
-        if len(self.points_m) < 2 or self.orientation != 0.0:
+        orientation = self.orientation
+        if isinstance(orientation, str):
+            orientation = orientation.strip().casefold()
+            self.orientation = orientation
+        if len(self.points_m) < 2:
             return
         longest_edge = max(
             zip(self.points_m, self.points_m[1:] + self.points_m[:1]),
             key=lambda edge: (edge[1][0] - edge[0][0]) ** 2 + (edge[1][1] - edge[0][1]) ** 2,
         )
-        self.orientation = math.atan2(
+        axis = math.atan2(
             longest_edge[1][1] - longest_edge[0][1],
             longest_edge[1][0] - longest_edge[0][0],
         )
+        if isinstance(orientation, str):
+            self.orientation = {
+                "parallel": axis,
+                "perpendicular": axis + math.pi / 2.0,
+                "diagonal": axis + math.pi / 4.0,
+                "across": axis + math.pi / 2.0,
+                "multi": axis,
+            }.get(orientation, axis)
+        elif orientation == 0.0:
+            self.orientation = axis
 
 
 @dataclass
@@ -1472,7 +1486,14 @@ def build_ways(
                 (x - half_width, y + half_length),
             ]
             ibbox = (x - half_width, y - half_length, x + half_width, y + half_length)
-        parking_spaces.append(ParkingSpace(points_m=pts, bbox=ibbox, osm_id=parking_id))
+        parking_spaces.append(
+            ParkingSpace(
+                points_m=pts,
+                bbox=ibbox,
+                orientation=tags.get("orientation"),
+                osm_id=parking_id,
+            )
+        )
     for tags, node_id in parking_space_nodes_raw:
         point = nodes_m.get(node_id)
         if point is None:
@@ -1490,6 +1511,7 @@ def build_ways(
             ParkingSpace(
                 points_m=points,
                 bbox=(x - half_width, y - half_length, x + half_width, y + half_length),
+                orientation=tags.get("orientation"),
                 osm_id=node_id,
             )
         )
@@ -1805,7 +1827,7 @@ def build_ways(
     for tags, nid in named_nodes_raw:
         pt = nodes_m.get(nid)
         if pt:
-            places.append(Place(x=pt[0], y=pt[1], name=tags["name"], kind="poi"))
+            places.append(Place(x=pt[0], y=pt[1], name=tags["name"], kind=tags.get("amenity", "poi")))
     for tags, node_ids in named_ways_raw:
         pts, _ = process_node_ids(node_ids)
         if pts:
@@ -2187,10 +2209,14 @@ class AutoFetchManager:
         stop_signs: Optional[List[StopSign]] = None,
         crossings: Optional[List[Crossing]] = None,
         bus_stops: Optional[List[BusStop]] = None,
+        parking_spaces: Optional[List[ParkingSpace]] = None,
+        logical_intersections: Optional[List[LogicalIntersection]] = None,
+        yield_signs: Optional[List[YieldSign]] = None,
         fetch_func=fetch_osm_ways,
         build_func=build_ways,
         cooldown_s: float = 5.0,
         build_in_process: bool = False,
+        world_cache_manager=None,
     ):
         self.ways = ways
         self.waters = waters if waters is not None else []
@@ -2201,19 +2227,27 @@ class AutoFetchManager:
         self.stop_signs = stop_signs if stop_signs is not None else []
         self.crossings = crossings if crossings is not None else []
         self.bus_stops = bus_stops if bus_stops is not None else []
+        self.parking_spaces = parking_spaces if parking_spaces is not None else []
+        self.logical_intersections = logical_intersections if logical_intersections is not None else []
+        self.yield_signs = yield_signs if yield_signs is not None else []
         self.bounds = bounds
         self.transformer = transformer
         self.fetch_func = fetch_func
         self.build_func = build_func
         self.cooldown_s = cooldown_s
         self.build_in_process = build_in_process
+        self.world_cache_manager = world_cache_manager
+        self._build_executor = None
         self.lock = threading.Lock()
         self.is_fetching = False
         self.fetch_progress = 0.0
         self.last_fetch_time = 0.0
         self.last_trigger_reason = ""
+        self._last_edge_check_time = 0.0
+        self._edge_check_interval_s = 0.1
         self._attempted_endpoints: Set[Tuple[int, str]] = set()
         self._completed_fetch_targets: Set[Tuple[float, float, float, float]] = set()
+        self._endpoint_connection_cache: dict[tuple[int, int, int], bool] = {}
         # Load known dead-end boundaries from disk cache
         self.dead_ends: List[dict] = load_dead_ends_cache()
 
@@ -2254,10 +2288,14 @@ class AutoFetchManager:
         if not auto_fetch:
             return False
         with self.lock:
+            now = time.monotonic()
+            if now - self._last_edge_check_time < self._edge_check_interval_s:
+                return False
+            self._last_edge_check_time = now
             if self.is_fetching:
                 return False
-            now = time.time()
-            if now - self.last_fetch_time < self.cooldown_s:
+            wall_time = time.time()
+            if wall_time - self.last_fetch_time < self.cooldown_s:
                 return False
 
             minx, miny, maxx, maxy = self.bounds
@@ -2328,15 +2366,20 @@ class AutoFetchManager:
                     (math.cos(car.heading) * approach_x + math.sin(car.heading) * approach_y) / approach_length
                     if approach_length > 0.0 else -1.0
                 )
-                connected = any(
-                    other is not current_way
-                    and any(
-                        math.hypot(endpoint[0] - point[0], endpoint[1] - point[1])
-                        <= max(12.0, current_way.half_width_m + getattr(other, "half_width_m", 3.0))
-                        for point in getattr(other, "points_m", ())
+                endpoint_index = 0 if endpoint is current_way.points_m[0] else -1
+                cache_key = (id(current_way), endpoint_index, len(self.ways))
+                connected = self._endpoint_connection_cache.get(cache_key)
+                if connected is None:
+                    connected = any(
+                        other is not current_way
+                        and any(
+                            math.hypot(endpoint[0] - point[0], endpoint[1] - point[1])
+                            <= max(12.0, current_way.half_width_m + getattr(other, "half_width_m", 3.0))
+                            for point in getattr(other, "points_m", ())
+                        )
+                        for other in self.ways
                     )
-                    for other in self.ways
-                )
+                    self._endpoint_connection_cache[cache_key] = connected
                 direction = "east" if abs(approach_x) >= abs(approach_y) and approach_x >= 0 else "west"
                 if abs(approach_y) > abs(approach_x):
                     direction = "north" if approach_y >= 0 else "south"
@@ -2359,18 +2402,13 @@ class AutoFetchManager:
             if not expanded:
                 return False
 
-            fetch_bbox = (
-                car.x - half_span,
-                car.y - half_span,
-                car.x + half_span,
-                car.y + half_span,
-            )
+            fetch_bbox = (fetch_minx, fetch_miny, fetch_maxx, fetch_maxy)
             target = _snap_projected_bbox(fetch_bbox, tile_size_m)
             if target in self._completed_fetch_targets:
                 return False
             self.is_fetching = True
             self.fetch_progress = 0.1
-            self.last_fetch_time = now
+            self.last_fetch_time = wall_time
             self.last_trigger_reason = trigger_reason
             car_pos = (car.x, car.y)
 
@@ -2414,38 +2452,47 @@ class AutoFetchManager:
         try:
             with self.lock:
                 self.fetch_progress = 0.25
-            elems = load_osm_cache(
-                (south, west, north, east),
-                point=(car_lat, car_lon),
-            )
-            if elems is None:
-                logger.info(
-                    "Auto-fetch cache miss at car point (%.6f, %.6f); requesting network",
-                    car_lat, car_lon,
-                )
-                elems = self.fetch_func((south, west, north, east))
+            area_bbox = (south, west, north, east)
+            if self.world_cache_manager is not None:
+                area_id = self.world_cache_manager.area_id(area_bbox)
+                res = self.world_cache_manager.preload(
+                    area_id, area_bbox, point=(car_lat, car_lon)
+                ).result()
+                elems = None
             else:
-                logger.info(
-                    "Auto-fetch cache hit at car point (%.6f, %.6f); network skipped",
-                    car_lat, car_lon,
-                )
+                elems = load_osm_cache(area_bbox, point=(car_lat, car_lon))
+                if elems is None:
+                    logger.info("Auto-fetch cache miss at car point (%.6f, %.6f); requesting network", car_lat, car_lon)
+                    elems = self.fetch_func(area_bbox)
+                else:
+                    logger.info("Auto-fetch cache hit at car point (%.6f, %.6f); network skipped", car_lat, car_lon)
             with self.lock:
                 self.fetch_progress = 0.65
-            if self.build_in_process:
-                context = multiprocessing.get_context("spawn")
-                try:
-                    with concurrent.futures.ProcessPoolExecutor(max_workers=1, mp_context=context) as executor:
-                        res = executor.submit(self.build_func, elems).result()
-                except (concurrent.futures.process.BrokenProcessPool, OSError) as exc:
-                    logger.warning("Auto-fetch process build failed; retrying in background thread: %s", exc)
+            if self.world_cache_manager is None:
+                if self.build_in_process:
+                    context = multiprocessing.get_context("spawn")
+                    try:
+                        if self._build_executor is None:
+                            self._build_executor = concurrent.futures.ProcessPoolExecutor(
+                                max_workers=1, mp_context=context
+                            )
+                        res = self._build_executor.submit(self.build_func, elems).result()
+                    except (concurrent.futures.process.BrokenProcessPool, OSError) as exc:
+                        logger.warning("Auto-fetch process build failed; retrying in background thread: %s", exc)
+                        if self._build_executor is not None:
+                            self._build_executor.shutdown(wait=False, cancel_futures=True)
+                            self._build_executor = None
+                        res = self.build_func(elems)
+                else:
                     res = self.build_func(elems)
-            else:
-                res = self.build_func(elems)
             with self.lock:
                 self.fetch_progress = 0.9
             new_crossings = getattr(res, "crossings", [])
             new_stop_signs = getattr(res, "stop_signs", [])
             new_bus_stops = getattr(res, "bus_stops", [])
+            new_parking_spaces = getattr(res, "parking_spaces", [])
+            new_logical_intersections = getattr(res, "logical_intersections", [])
+            new_yield_signs = getattr(res, "yield_signs", [])
             if len(res) == 8:
                 new_ways, new_waters, new_buildings, new_sceneries, new_places, new_bounds, new_traffic_lights, new_crossings = res
             elif len(res) == 7:
@@ -2501,6 +2548,9 @@ class AutoFetchManager:
                 added_stop_signs = _extend_unique(self.stop_signs, new_stop_signs)
                 added_crossings = _extend_unique(self.crossings, new_crossings)
                 added_bus_stops = _extend_unique(self.bus_stops, new_bus_stops)
+                added_parking_spaces = _extend_unique(self.parking_spaces, new_parking_spaces)
+                _extend_unique(self.logical_intersections, new_logical_intersections)
+                _extend_unique(self.yield_signs, new_yield_signs)
                 minx = min(self.bounds[0], new_bounds[0])
                 miny = min(self.bounds[1], new_bounds[1])
                 maxx = max(self.bounds[2], new_bounds[2])
@@ -2530,3 +2580,9 @@ class AutoFetchManager:
             with self.lock:
                 self.is_fetching = False
                 self.fetch_progress = 0.0
+
+    def shutdown(self) -> None:
+        """Stop the persistent map-building worker, if it was started."""
+        if self._build_executor is not None:
+            self._build_executor.shutdown(wait=False, cancel_futures=True)
+            self._build_executor = None

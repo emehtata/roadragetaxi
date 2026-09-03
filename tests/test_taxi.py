@@ -211,6 +211,24 @@ def test_taxi_venue_target_prefers_nearby_unnamed_access_road():
     assert target.y == 70.0
 
 
+def test_taxi_venue_target_accepts_named_amenity_place():
+    way = Way(
+        points_m=[(0.0, 0.0), (100.0, 0.0)],
+        highway="service",
+        half_width_m=3.0,
+        name="Pihakatu",
+    )
+    pub = Place(x=40.0, y=6.0, name="Kulmapubi", kind="pub")
+    taxi_mgr = TaxiManager(ways=[way], places=[pub])
+
+    target = taxi_mgr.pick_random_building_point(venue_types={"pub"})
+
+    assert target is not None
+    assert target.address == "Kulmapubi"
+    assert target.venue_type == "pub"
+    assert target.way_name == "Pihakatu"
+
+
 def test_taxi_mission_lifecycle():
     way1 = Way(
         points_m=[(0.0, 0.0), (100.0, 0.0)],

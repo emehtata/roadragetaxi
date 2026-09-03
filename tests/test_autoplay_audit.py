@@ -7,6 +7,7 @@ from utils.autoplay_audit import (
     _has_lane_exception,
     _lane_offset_from_way,
     _red_light_violation,
+    _turning_loop_violation,
     run_audit,
 )
 
@@ -78,3 +79,9 @@ def test_red_light_audit_ignores_stopped_car():
     manager.npcs = [npc]
 
     assert _red_light_violation(manager, npc, (8.0, 0.0)) is None
+
+
+def test_turning_audit_detects_stuck_turn_signal():
+    npc = _lane_npc(state="turning", turn_signal="left", turn_signal_elapsed=4.0, next_route=None)
+
+    assert _turning_loop_violation(npc) == "turn_signal='left' elapsed=4.0s"

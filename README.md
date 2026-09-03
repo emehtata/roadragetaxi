@@ -1,6 +1,11 @@
+- **Autonomous Traffic**: NPC cars follow connected roads, respect lane direction, vary their speed, overtake, react to traffic lights, and avoid overlapping the player. Osa hidastelee, osa törttöilee, eikä yksikään helpota työvuoroasi. The shared road-graph navigator can route NPCs to map targets without cutting through buildings or terrain. Active traffic is reduced at close zoom levels while nearby cars are retained. Each vehicle uses its own wheelbase and front-wheel steering limit. Risteyksen muoto ohjaa kaaren suunnan, ja bicycle-malli laskee hetkellisen kääntösäteen ohjauskulmasta sekä pitää korin ympyränkaarella.
 # The Road Rage Trip 🚗
 
 A top-down 2D driving game proof-of-concept (PoC) in Python and Pygame that proceduralizes environment creation using real-world OpenStreetMap (OSM) data from Finland.
+
+## Miksi rattiraivo?
+
+Koska muut kuskit ovat idiootteja ja ajavat miten sattuu. Vähemmästäkin hermostuu, kun joutuu pujottelemaan hidastelijoiden, törttöilijöiden ja arvaamattomien liikkujien seassa. The Road Rage Trip tekee tästä tutusta liikennekaaoksesta pelin ytimen: asiakkaat pitää kuljettaa perille, vaikka muun liikenteen sähläys nostaisi verenpaineen kattoon.
 
 ---
 
@@ -21,7 +26,7 @@ A top-down 2D driving game proof-of-concept (PoC) in Python and Pygame that proc
 - **Buildings & Scenery**: Renders building footprints, parks, forests, and green spaces with street/place name labels (`L` key).
 - **Street Lighting**: Roadside lamps are placed along urban drivable roads and their warm glow gradually turns on at dusk.
 - **Water & Multipolygon Rendering**: Renders lakes, reservoirs, and waterways under the road network.
-- **Autonomous Traffic**: NPC cars follow connected roads, respect lane direction, vary their speed, overtake, react to traffic lights, and avoid overlapping the player. The shared road-graph navigator can route NPCs to map targets without cutting through buildings or terrain. Active traffic is reduced at close zoom levels while nearby cars are retained. Each vehicle uses its own wheelbase, front-wheel steering limit, minimum turning radius, gradual steering response, and bicycle-model body rotation for smooth, physically bounded turns.
+- **Autonomous Traffic**: NPC cars follow connected roads, respect lane direction, vary their speed, overtake, react to traffic lights, and avoid overlapping the player. Osa hidastelee, osa törttöilee, eikä yksikään helpota työvuoroasi. The shared road-graph navigator can route NPCs to map targets without cutting through buildings or terrain. Active traffic is reduced at close zoom levels while nearby cars are retained. Each vehicle uses its own wheelbase, front-wheel steering limit, minimum turning radius, gradual steering response, and bicycle-model body rotation for smooth, physically bounded turns.
 - **OSM Parking Traffic**: About half of regular NPC cars use existing OSM parking spaces by default. Parking density is configurable, parked cars remain spatially indexed, and occupied parking spaces stay reserved while a vehicle departs.
 - **Pedestrians & Cyclists**: Pedestrians and cyclists use dedicated paths, mapped entrances, and crossings; pedestrians track destinations, use logical traffic signals, wait before unsafe crossings, enter buildings at doors, and update at distance-based LOD rates. A small share of pedestrians can reserve a parked vehicle within 100 meters, walk to it, drive to a road destination, and exit automatically. Ordinary pedestrians spawn near mapped buildings, while hospitality venues receive extra activity; at night, visible pedestrians show a bright reflector point until a car headlight or street light illuminates them. Cyclists use a top-down image sprite, and active pedestrian/cyclist counts scale down while zoomed in.
 - **Rival NPC Taxis**: Some NPC cars are yellow rival taxis. They stop briefly at taxi stands and collect waiting customers before driving on.
@@ -120,6 +125,7 @@ python3 road_rage_trip.py --bbox "60.150,24.88,60.205,25.02"
 
 # Enable dynamic background auto-fetch
 python3 road_rage_trip.py --auto-fetch --fetch-margin 50 --fetch-tile-size 500
+
 ```
 
 On the first launch, the game creates `roadragetrip.ini` under the platform configuration directory (`$XDG_CONFIG_HOME/RoadRageTrip/` on Linux, `%APPDATA%/RoadRageTrip/` on Windows) and asks for Finnish or English. Edit that file to set the city, map fetching, zoom, logging, pedestrian, cyclist, traffic, language, audio, and police-camera values. Career progress and the total odometer are stored beside the INI file. The `[cities]` section contains editable `name = latitude, longitude` entries; add or remove cities there. Command-line options override the INI values for one launch.
@@ -242,11 +248,17 @@ Game sounds are stored in `src/theroadragetrip/sounds/`. CC0 sounds require no a
 | `P` | Open taxi phone and view three ride offers |
 | `1` - `3` | Accept a selected ride in the taxi phone |
 | `F1` | Open the full tutorial and control list |
-| `F3` | Toggle the diagnostic text HUD |
+| `F3` | Toggle the diagnostic text HUD and frame profiler |
+| `F9` | Start or stop runtime `cProfile` collection |
+| `F10` | Save collected runtime profile as `.prof` in `screenshots/` |
 | `F12` | Save screenshot plus matching runtime diagnostic JSON in `screenshots/` |
 | `Esc` | Open pause menu (Continue, Tutorial, Settings, Change City, Exit) |
 
 The F12 JSON includes all car properties, taxi mission state, map counts and bounds, camera and viewport data, and auto-fetch edge-trigger diagnostics.
+
+To inspect a saved profile, run `python -m pstats screenshots/profile_*.prof` or open it with a compatible profiler such as SnakeViz. Collect 10-20 seconds of normal gameplay between `F9` and `F10`; profiling can lower FPS while active.
+
+With `F3` enabled, the profiler overlay reports frame time, rolling average, FPS, spike count, and the slowest subsystem from the last spike. It also records render stages (roads, buildings, actors, lighting, and labels); spike thresholds are 25, 50, and 100 ms.
 
 The pause menu's **Settings** screen changes language and master, background, and effects volume. Left/right adjusts values; Escape returns to the pause menu. At a taxi stand, customers appear occasionally when a stand enters view, either already nearby or outside the screen, then walk to the stand before boarding. Existing pedestrians can also become customers. In areas without taxi stands, a nearby interested pedestrian can hail the taxi while stopped or while it passes. A rival NPC taxi may arrive first and take a stand customer. Completed passengers leave beside the taxi and continue walking.
 
@@ -288,3 +300,11 @@ Run in headless / CI environments without a physical display:
 ```bash
 SDL_VIDEODRIVER=dummy python3 road_rage_trip.py --use-sample
 ```
+## Binary world cache
+
+Normalized map areas are stored as versioned `.rwc` files under
+`~/.cache/RoadRageTrip/world` (or the platform cache directory). Cache hits
+load game-ready geometry directly; OpenPass JSON is used only for misses or
+forced refreshes. Files are written atomically and validated with checksums.
+Run `PYTHONPATH=src python utils/benchmark_world_cache.py` to compare JSON and
+RWC timings and peak memory.

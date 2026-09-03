@@ -1,7 +1,9 @@
 import base64
 import configparser
+import gzip
 import hashlib
 import json
+import math
 import os
 import sys
 import uuid
@@ -28,7 +30,48 @@ def _default_config_path() -> Path:
 
 
 CONFIG_PATH = _default_config_path()
-CITY_CATALOG_PATH = Path(__file__).with_name("assets") / "paikkadesi.json"
+CITY_CATALOG_PATH = Path(__file__).with_name("assets") / "kunnat.json.gz"
+LEGACY_DEFAULT_CITY_NAMES = {
+    "helsinki",
+    "espoo",
+    "tampere",
+    "vantaa",
+    "oulu",
+    "turku",
+    "jyväskylä",
+    "kuopio",
+    "lahti",
+    "sysmä",
+}
+
+
+def _default_city_names() -> list[str]:
+    with gzip.open(CITY_CATALOG_PATH, "rt", encoding="utf-8") as source:
+        data = json.load(source)
+    places = data.get("places", [])
+    selected_places: list[dict[str, Any]] = []
+    latitude_zones = sorted(
+        {math.floor(float(place["koordinaatit"]["latitude"])) for place in places}
+    )
+    for zone in latitude_zones:
+        zone_places = [
+            place
+            for place in places
+            if math.floor(float(place["koordinaatit"]["latitude"])) == zone
+        ]
+        selected_places.extend(
+            sorted(
+                zone_places,
+                key=lambda place: (-int(place["väkiluku"]), place["taajama"].casefold()),
+            )[:2]
+        )
+
+    sysma = next((place for place in places if place["taajama"] == "Sysmä"), None)
+    if sysma is not None and all(place["taajama"] != "Sysmä" for place in selected_places):
+        least_populous = min(selected_places, key=lambda place: int(place["väkiluku"]))
+        selected_places.remove(least_populous)
+        selected_places.append(sysma)
+    return [place["taajama"] for place in selected_places]
 
 DEFAULT_CONFIG = {
     "game": {
@@ -73,16 +116,7 @@ DEFAULT_CONFIG = {
         "enable_two_wheelers": "false",
     },
     "cities": {
-        "helsinki": "60.169525, 24.935446",
-        "espoo": "60.205000, 24.652000",
-        "tampere": "61.499113, 23.787117",
-        "vantaa": "60.294000, 25.041000",
-        "oulu": "65.012000, 25.468000",
-        "turku": "60.451483, 22.268686",
-        "jyväskylä": "62.241470, 25.720880",
-        "kuopio": "62.892382, 27.677028",
-        "lahti": "60.982674, 25.661509",
-        "sysmä": "61.502271, 25.680613",
+        name.casefold(): "" for name in _default_city_names()
     },
 }
 
@@ -112,13 +146,17 @@ def load_config(path: Path = CONFIG_PATH) -> configparser.ConfigParser:
         if file_config.has_section("cities") and file_config.items("cities"):
             config.remove_section("cities")
             config.add_section("cities")
-            for name, coordinates in file_config.items("cities"):
-                config.set("cities", name, coordinates)
+            has_legacy_city_values = False
+            for name, value in file_config.items("cities"):
+                config.set("cities", name, "")
+                has_legacy_city_values |= bool(value.strip())
+            if has_legacy_city_values:
+                save_config(config, path)
         elif not file_config.has_section("cities"):
             with path.open("a", encoding="utf-8") as config_file:
                 config_file.write("\n[cities]\n")
-                for name, coordinates in DEFAULT_CONFIG["cities"].items():
-                    config_file.write(f"{name} = {coordinates}\n")
+                for name in DEFAULT_CONFIG["cities"]:
+                    config_file.write(f"{name} =\n")
     return config
 
 
@@ -178,12 +216,23 @@ def get_overpass_endpoints(config: configparser.ConfigParser) -> list[str]:
 
 
 def load_city_catalog(path: Path = CITY_CATALOG_PATH) -> dict[str, tuple[float, float]]:
-    """Load city names with (latitude, longitude) coordinates from the bundled catalog."""
-    data = json.loads(path.read_text(encoding="utf-8"))
+    """Load city names with coordinates from the bundled municipality data."""
+    if path.suffix == ".gz":
+        with gzip.open(path, "rt", encoding="utf-8") as source:
+            data = json.load(source)
+    else:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    if "places" in data:
+        return {
+            place["taajama"]: (
+                float(place["koordinaatit"]["latitude"]),
+                float(place["koordinaatit"]["longitude"]),
+            )
+            for place in data["places"]
+        }
     return {
         city["name"]: (float(city["latitude"]), float(city["longitude"]))
-        for cities in data.get("countries", {}).values()
-        for city in cities
+        for city in data.get("countries", {}).get("SUOMI", [])
     }
 
 
@@ -211,7 +260,7 @@ def replace_city_in_config(
     city_key = city_name.strip().casefold().replace(" ", "_")
     if not city_key:
         raise ValueError("city name cannot be empty")
-    items[index] = (city_key, f"{latitude:.6f}, {longitude:.6f}")
+    items[index] = (city_key, "")
     section = config["cities"]
     section.clear()
     for key, value in items:
@@ -219,16 +268,21 @@ def replace_city_in_config(
 
 
 def cities_from_config(config: configparser.ConfigParser) -> tuple[dict[str, tuple[float, float]], dict[str, tuple[float, float, float, float]]]:
+    catalog = load_city_catalog()
+    configured_items = list(config.items("cities")) if config.has_section("cities") else []
+    configured_names = {raw_name.replace("_", " ").casefold() for raw_name, _ in configured_items}
+    catalog_names = {name.casefold() for name in catalog}
+    valid_configured_names = configured_names & catalog_names
+    default_names = _default_city_names()
+    if configured_names == LEGACY_DEFAULT_CITY_NAMES:
+        configured_items = [(name.casefold(), "") for name in default_names]
+
     centers: dict[str, tuple[float, float]] = {}
-    for raw_name, raw_coords in config.items("cities") if config.has_section("cities") else []:
-        try:
-            latitude, longitude = (float(value.strip()) for value in raw_coords.split(","))
-            if not -90 <= latitude <= 90 or not -180 <= longitude <= 180:
-                raise ValueError("coordinates out of range")
-        except (TypeError, ValueError):
-            continue
+    for raw_name, _ in configured_items:
         name = raw_name.replace("_", " ").title()
-        centers[name] = (latitude, longitude)
+        if name not in catalog:
+            continue
+        centers[name] = catalog[name]
     presets = {name.lower(): bbox_from_center(*center, size_km=4.0) for name, center in centers.items()}
     return centers, presets
 

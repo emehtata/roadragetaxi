@@ -169,10 +169,10 @@ class AudioManager:
         sound = self.passenger_sounds.get(("f" if gender == "woman" else "m", language, audio_hash))
         if sound is None or not self.enabled or not self.comments_enabled:
             return
+        sound.set_volume(self.master_volume * self.effects_volume)
         if not self._play_comment_sound(sound):
             return
         self._set_comment(str(entry.get(language, "")), "passenger", speaker_name)
-        sound.set_volume(self.master_volume * self.effects_volume)
 
     def update_passenger_speech(self, active: bool, gender: str, language: str, dt: float, speaker_name: Optional[str] = None) -> None:
         """Play occasional pre-rendered chatter matching the passenger's gender."""
@@ -207,10 +207,10 @@ class AudioManager:
         sound = self.passenger_sounds.get(("f" if gender == "woman" else "m", language, str(audio_hash)))
         if sound is None or not self.enabled or not self.comments_enabled:
             return
+        sound.set_volume(self.master_volume * self.effects_volume)
         if not self._play_comment_sound(sound):
             return
         self._set_comment(str(entry.get(language, "")), "passenger", speaker_name)
-        sound.set_volume(self.master_volume * self.effects_volume)
 
     def _play_comment_sound(self, sound: pygame.mixer.Sound) -> bool:
         if self.comment_channel is not None and self.comment_channel.get_busy():

@@ -9,6 +9,7 @@ from .osm import Building, Place, TaxiStop, Way
 from .physics import Car, SpatialWayGrid, connected_drivable_ways, is_car_road, is_violating_oneway
 from .localization import tr
 from .police import SpeedCamera, camera_sees_car
+from .residents import Resident, ResidentManager
 
 logger = logging.getLogger(__name__)
 MAX_PHONE_OFFERS = 3
@@ -57,6 +58,7 @@ class TaxiPassenger:
     pickup: TaxiTarget
     dropoff: TaxiTarget
     gender: str = "woman"
+    resident_id: Optional[int] = None
     # Client pedestrian representation walking into the taxi
     ped_x: float = 0.0
     ped_y: float = 0.0
@@ -142,6 +144,7 @@ class TaxiManager:
         pickup_radius_m: float = 25.0,
         max_stop_speed_mps: float = 3.0,  # Must slow down below ~10 km/h to pickup/dropoff
         language: str = "fi",
+        resident_manager: Optional[ResidentManager] = None,
     ):
         # Filter to the largest connected road network to avoid isolated trapped roads
         self.ways = connected_drivable_ways(ways)
@@ -153,6 +156,7 @@ class TaxiManager:
         self.pickup_radius_m = pickup_radius_m
         self.max_stop_speed_mps = max_stop_speed_mps
         self.language = language
+        self.residents = resident_manager if resident_manager is not None else ResidentManager()
         self.game_time_seconds = 18.0 * 60.0 * 60.0
 
         self.current_passenger: Optional[TaxiPassenger] = None
@@ -173,6 +177,7 @@ class TaxiManager:
         self._approaching_red_signals: Dict[int, float] = {}  # signal id -> last signed distance along travel
         self._approaching_red_headings: Dict[int, float] = {}  # signal id -> heading before intersection turn
         self._crashed_npc_cooldowns: Dict[int, float] = {}  # npc id -> timestamp cooldown
+
         self._crashed_building_cooldowns: Dict[int, float] = {}  # building id -> timestamp cooldown
         self._crashed_tree_cooldowns: Dict[Tuple[int, int], float] = {}
         self._speed_camera_hits: set[int] = set()
@@ -189,6 +194,8 @@ class TaxiManager:
         self.taxi_smoke_timer: float = 0.0
         self.speed_camera_flash_timer: float = 0.0
         self.speed_camera_flash_index: Optional[int] = None
+        self.speed_camera_notice_timer: float = 0.0
+        self.speed_camera_notice_msg: str = ""
         self._road_overlap_buildings: set[int] = set()
         self._overlap_ways_ref = None
         self._overlap_buildings_ref = None
@@ -196,6 +203,11 @@ class TaxiManager:
         self._overlap_building_count = -1
         self.wrong_way_duration: float = 0.0
         self.wrong_way_penalty_cooldown: float = 0.0
+
+    def _new_passenger_identity(self, resident: Optional[Resident] = None) -> tuple[str, str, int]:
+        resident = resident or self.residents.create("walking")
+        gender = {"female": "woman", "male": "man"}.get(resident.gender, "woman")
+        return f"{resident.first_name} {resident.surname}", gender, resident.resident_id
 
     def nausea_delay_for_pickup(self, pickup: TaxiTarget) -> float:
         return nausea_delay_for_pickup(pickup, self.game_time_seconds)
@@ -272,7 +284,15 @@ class TaxiManager:
             self.total_score -= penalty
             self.speed_camera_flash_timer = 0.35
             self.speed_camera_flash_index = camera_index
-            self.notification_msg = tr(self.language, "speed_camera_hit", penalty=penalty)
+            speeding_kmh = max(0, round(abs(car.speed) * 3.6 - camera.speed_limit_kmh))
+            self.speed_camera_notice_timer = 4.0
+            self.speed_camera_notice_msg = tr(
+                self.language,
+                "speed_camera_hit",
+                penalty=penalty,
+                excess=speeding_kmh,
+            )
+            self.notification_msg = self.speed_camera_notice_msg
             self.notification_timer = 4.0
             logger.info("Speed camera triggered: -%d pts", penalty)
             hit = True
@@ -899,32 +919,47 @@ class TaxiManager:
             and len(building.points_m) >= 3
             and (venue_types is None or getattr(building, "venue_type", None) in venue_types)
         ]
+        candidates.extend(
+            place for place in self.places
+            if place.name
+            and getattr(place, "kind", None) in NIGHTLIFE_VENUE_TYPES
+            and (venue_types is None or place.kind in venue_types)
+        )
         random.shuffle(candidates)
 
         for building in candidates:
-            center_x = sum(point[0] for point in building.points_m) / len(building.points_m)
-            center_y = sum(point[1] for point in building.points_m) / len(building.points_m)
+            points = getattr(building, "points_m", ())
+            if points:
+                center_x = sum(point[0] for point in points) / len(points)
+                center_y = sum(point[1] for point in points) / len(points)
+                anchors = list(getattr(building, "entrances", ())) or list(points)
+            else:
+                center_x = building.x
+                center_y = building.y
+                anchors = [(center_x, center_y)]
+            anchors.append((center_x, center_y))
             nearest: Optional[Tuple[float, float, str, float]] = None
 
-            for way in self.ways:
-                if len(way.points_m) < 2 or not is_car_road(way):
-                    continue
-                for start, end in zip(way.points_m, way.points_m[1:]):
-                    dx = end[0] - start[0]
-                    dy = end[1] - start[1]
-                    length_squared = dx * dx + dy * dy
-                    if length_squared <= 1e-9:
+            for anchor_x, anchor_y in anchors:
+                for way in self.ways:
+                    if len(way.points_m) < 2 or not is_car_road(way):
                         continue
-                    fraction = clamp(
-                        ((center_x - start[0]) * dx + (center_y - start[1]) * dy) / length_squared,
-                        0.0,
-                        1.0,
-                    )
-                    road_x = start[0] + fraction * dx
-                    road_y = start[1] + fraction * dy
-                    road_distance = math.hypot(center_x - road_x, center_y - road_y)
-                    if nearest is None or road_distance < nearest[3]:
-                        nearest = (road_x, road_y, way.name or "", road_distance)
+                    for start, end in zip(way.points_m, way.points_m[1:]):
+                        dx = end[0] - start[0]
+                        dy = end[1] - start[1]
+                        length_squared = dx * dx + dy * dy
+                        if length_squared <= 1e-9:
+                            continue
+                        fraction = clamp(
+                            ((anchor_x - start[0]) * dx + (anchor_y - start[1]) * dy) / length_squared,
+                            0.0,
+                            1.0,
+                        )
+                        road_x = start[0] + fraction * dx
+                        road_y = start[1] + fraction * dy
+                        road_distance = math.hypot(anchor_x - road_x, anchor_y - road_y)
+                        if nearest is None or road_distance < nearest[3]:
+                            nearest = (road_x, road_y, way.name or "", road_distance)
 
             if nearest is None or nearest[3] > max_road_distance:
                 continue
@@ -934,6 +969,7 @@ class TaxiManager:
                 if not min_dist <= distance <= max_dist:
                     continue
 
+            venue_type = getattr(building, "venue_type", None) or getattr(building, "kind", None)
             return TaxiTarget(
                 x=road_x,
                 y=road_y,
@@ -941,7 +977,7 @@ class TaxiManager:
                 way_name=way_name,
                 district_name=self.get_nearest_district(road_x, road_y),
                 radius_m=self.pickup_radius_m,
-                venue_type=getattr(building, "venue_type", None),
+                venue_type=venue_type,
             )
         return None
 
@@ -1097,12 +1133,13 @@ class TaxiManager:
         if not dropoff_target:
             dropoff_target = pickup_target
 
-        passenger_name, passenger_gender = random_passenger_identity()
+        passenger_name, passenger_gender, resident_id = self._new_passenger_identity()
         self.current_passenger = TaxiPassenger(
             name=passenger_name,
             pickup=pickup_target,
             dropoff=dropoff_target,
             gender=passenger_gender,
+            resident_id=resident_id,
             ped_x=self.passenger_waiting_position(pickup_target)[0],
             ped_y=self.passenger_waiting_position(pickup_target)[1],
             ped_heading=self.passenger_waiting_position(pickup_target)[2],
@@ -1141,7 +1178,7 @@ class TaxiManager:
                 ref_y=car_y,
                 min_dist=150.0,
                 max_dist=1200.0,
-                venue_types={None},
+                venue_types=None,
             )
         if 5.0 <= hour < 8.0 or 20.0 <= hour < 24.0:
             return self.pick_random_building_point(
@@ -1149,7 +1186,7 @@ class TaxiManager:
                 ref_y=car_y,
                 min_dist=150.0,
                 max_dist=1200.0,
-                venue_types={None},
+                venue_types=None,
             )
         if 8.0 <= hour < 12.0:
             return self.pick_random_building_point(
@@ -1157,7 +1194,7 @@ class TaxiManager:
                 ref_y=car_y,
                 min_dist=150.0,
                 max_dist=1200.0,
-                venue_types={None},
+                venue_types=None,
             )
         roll = random.random()
         if roll < 0.70:
@@ -1242,12 +1279,13 @@ class TaxiManager:
             dropoff = self.pick_phone_dropoff(pickup.x, pickup.y)
             if not dropoff:
                 continue
-            passenger_name, passenger_gender = random_passenger_identity()
+            passenger_name, passenger_gender, resident_id = self._new_passenger_identity()
             passenger = TaxiPassenger(
                 name=passenger_name,
                 pickup=pickup,
                 dropoff=dropoff,
                 gender=passenger_gender,
+                resident_id=resident_id,
                 ped_x=self.passenger_waiting_position(pickup)[0],
                 ped_y=self.passenger_waiting_position(pickup)[1],
                 ped_heading=self.passenger_waiting_position(pickup)[2],
@@ -1316,12 +1354,14 @@ class TaxiManager:
             dropoff = self.pick_random_road_point(pickup.x, pickup.y, self.min_distance_m, float("inf"))
         if not dropoff:
             return False
-        passenger_name, passenger_gender = random_passenger_identity()
+        resident = self.residents.get(getattr(pedestrian, "resident_id", None))
+        passenger_name, passenger_gender, resident_id = self._new_passenger_identity(resident)
         passenger = TaxiPassenger(
             name=passenger_name,
             pickup=pickup,
             dropoff=dropoff,
             gender=passenger_gender,
+            resident_id=resident_id,
             ped_x=pedestrian.x,
             ped_y=pedestrian.y,
             ped_heading=pedestrian.heading,
@@ -1535,6 +1575,9 @@ class TaxiManager:
         self.speed_camera_flash_timer = max(0.0, self.speed_camera_flash_timer - dt)
         if self.speed_camera_flash_timer <= 0.0:
             self.speed_camera_flash_index = None
+        self.speed_camera_notice_timer = max(0.0, self.speed_camera_notice_timer - dt)
+        if self.speed_camera_notice_timer <= 0.0:
+            self.speed_camera_notice_msg = ""
         self.tree_wait_timer = max(0.0, self.tree_wait_timer - dt)
         self.taxi_smoke_timer = max(0.0, self.taxi_smoke_timer - dt)
         for key, effect in list(self.tree_effects.items()):
