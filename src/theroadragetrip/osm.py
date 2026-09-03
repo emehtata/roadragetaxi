@@ -2425,7 +2425,7 @@ class AutoFetchManager:
             area_bbox = (south, west, north, east)
             if self.world_cache_manager is not None:
                 area_id = self.world_cache_manager.area_id(area_bbox)
-                res = self.world_cache_manager.load_area(area_id, area_bbox)
+                res = self.world_cache_manager.preload(area_id, area_bbox).result()
                 elems = None
             else:
                 elems = load_osm_cache(area_bbox, point=(car_lat, car_lon))
@@ -2436,18 +2436,17 @@ class AutoFetchManager:
                     logger.info("Auto-fetch cache hit at car point (%.6f, %.6f); network skipped", car_lat, car_lon)
             with self.lock:
                 self.fetch_progress = 0.65
-            if self.world_cache_manager is not None:
-                pass
-            elif self.build_in_process:
-                context = multiprocessing.get_context("spawn")
-                try:
-                    with concurrent.futures.ProcessPoolExecutor(max_workers=1, mp_context=context) as executor:
-                        res = executor.submit(self.build_func, elems).result()
-                except (concurrent.futures.process.BrokenProcessPool, OSError) as exc:
-                    logger.warning("Auto-fetch process build failed; retrying in background thread: %s", exc)
+            if self.world_cache_manager is None:
+                if self.build_in_process:
+                    context = multiprocessing.get_context("spawn")
+                    try:
+                        with concurrent.futures.ProcessPoolExecutor(max_workers=1, mp_context=context) as executor:
+                            res = executor.submit(self.build_func, elems).result()
+                    except (concurrent.futures.process.BrokenProcessPool, OSError) as exc:
+                        logger.warning("Auto-fetch process build failed; retrying in background thread: %s", exc)
+                        res = self.build_func(elems)
+                else:
                     res = self.build_func(elems)
-            else:
-                res = self.build_func(elems)
             with self.lock:
                 self.fetch_progress = 0.9
             new_crossings = getattr(res, "crossings", [])

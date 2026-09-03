@@ -1,9 +1,10 @@
 import types
 import sys
 import time
+from concurrent.futures import Future
 
 from theroadragetrip import Car, Way, AutoFetchManager
-from theroadragetrip.osm import _snap_projected_bbox
+from theroadragetrip.osm import MapData, _snap_projected_bbox
 
 
 class FakeTransformer:
@@ -67,6 +68,38 @@ def test_auto_fetch_triggers_and_merges():
     assert abs((south + north) / 2.0 - car.y / 1000.0) < 1e-12
     assert abs((west + east) / 2.0 - car.x / 1000.0) < 1e-12
     assert m.start_if_needed(car, True, margin_m=10.0, tile_size_m=500.0) is False
+
+
+def test_auto_fetch_uses_binary_cache_preload():
+    way = Way(points_m=[(0.0, 0.0), (10.0, 0.0)], highway="residential", half_width_m=4.5)
+    cached = MapData(
+        [Way(points_m=[(1100.0, 490.0), (1200.0, 510.0)], highway="residential", half_width_m=4.5)],
+        [], [], [], [], (0.0, 0.0, 1200.0, 1200.0),
+        [], [], [], [], [], [], [], [],
+    )
+    calls = []
+
+    class Cache:
+        @staticmethod
+        def area_id(bbox):
+            return "cached-area"
+
+        def preload(self, area_id, bbox):
+            calls.append((area_id, bbox))
+            future = Future()
+            future.set_result(cached)
+            return future
+
+    m = AutoFetchManager(
+        [way], (0.0, 0.0, 1000.0, 1000.0), FakeTransformer(),
+        world_cache_manager=Cache(), cooldown_s=0.0,
+    )
+    m.start_if_needed(Car(x=995.0, y=500.0, heading=0.0, speed=0.0), True, margin_m=10.0, tile_size_m=500.0)
+    deadline = time.time() + 2.0
+    while m.is_fetching and time.time() < deadline:
+        time.sleep(0.01)
+    assert calls and calls[0][0] == "cached-area"
+    assert len(m.ways) == 2
 
 
 def test_auto_fetch_does_not_trigger_from_open_road_endpoint():
