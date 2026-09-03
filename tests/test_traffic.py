@@ -135,6 +135,22 @@ def test_roundabout_entry_yields_to_circulating_npc():
     assert manager._roundabout_entry_blocked(entering, roundabout, (10.0, 0.0))
 
 
+def test_planned_route_does_not_reselect_current_way_at_junction():
+    approach = Way([(10.0, 0.0), (0.0, 10.0), (-10.0, 0.0), (0.0, -10.0), (10.0, 0.0)], "secondary", 4.0, oneway=1, is_roundabout=True)
+    exit_way = Way([(10.0, 0.0), (10.0, 30.0)], "secondary", 4.0)
+    manager = TrafficManager([approach, exit_way], target_count=0)
+
+    route = manager._find_next_way_and_segment(
+        approach,
+        (10.0, 0.0),
+        incoming_heading=0.0,
+        preferred_point=(20.0, 0.0),
+    )
+
+    assert route is not None
+    assert route[0] is exit_way
+
+
 def test_npc_stops_before_stop_sign():
     way = Way(points_m=[(0.0, 0.0), (100.0, 0.0)], highway="residential", half_width_m=4.0)
     manager = TrafficManager([way], target_count=0, stop_signs=[StopSign(20.0, 0.0, id=4)])

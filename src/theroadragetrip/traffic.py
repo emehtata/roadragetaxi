@@ -1486,6 +1486,13 @@ class TrafficManager:
                     candidate[0] is current_way,
                 )
             )
+            alternatives = (
+                [candidate for candidate in candidates if candidate[0] is not current_way]
+                if getattr(current_way, "is_roundabout", False)
+                else []
+            )
+            if alternatives:
+                return alternatives[0]
             return candidates[0]
 
         # Filter out exact same way if alternatives exist to encourage turns
