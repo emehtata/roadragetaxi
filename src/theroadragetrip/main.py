@@ -1702,10 +1702,13 @@ def main() -> None:
             if first_gameplay_frame:
                 logger.info("Gameplay frame: physics complete")
 
-            building_crash = taxi_mgr.check_building_collision(
-                car, buildings, traffic_mgr.sim_time, previous_position, ways=ways
-            )
-            tree_crash = taxi_mgr.check_tree_collision(car, sceneries, traffic_mgr.sim_time, previous_position)
+            with frame_profiler.section("collisions"):
+                building_crash = taxi_mgr.check_building_collision(
+                    car, buildings, traffic_mgr.sim_time, previous_position, ways=ways
+                )
+                tree_crash = taxi_mgr.check_tree_collision(
+                    car, sceneries, traffic_mgr.sim_time, previous_position
+                )
             if building_crash or tree_crash:
                 audio.play("car-crash", volume=0.7)
                 audio.play_driver_line("collision", language)
