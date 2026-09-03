@@ -1088,6 +1088,17 @@ def test_stopped_junction_queue_has_deterministic_deadlock_breaker():
     assert manager._junction_deadlock_can_proceed(first, (0.0, 0.0)) is False
 
 
+def test_older_junction_queue_can_break_nearer_approach_deadlock():
+    horizontal = Way(points_m=[(-30.0, 0.0), (0.0, 0.0)], highway="secondary", half_width_m=4.0)
+    vertical = Way(points_m=[(0.0, -30.0), (0.0, 0.0)], highway="secondary", half_width_m=4.0)
+    older = NPCCar(-10.0, 0.0, 0.0, 0.0, horizontal, 0, 1, 10.0, (0, 0, 0), junction_wait_timer=6.0)
+    nearer = NPCCar(0.0, -8.0, math.pi / 2.0, 0.0, vertical, 0, 1, 10.0, (0, 0, 0), junction_wait_timer=3.0)
+    manager = TrafficManager([horizontal, vertical])
+    manager.npcs = [older, nearer]
+
+    assert manager._junction_deadlock_can_proceed(older, (0.0, 0.0)) is True
+
+
 def test_priority_road_has_right_of_way_over_uncontrolled_approach():
     priority = Way(points_m=[(30.0, 0.0), (0.0, 0.0)], highway="primary", half_width_m=4.0, priority_road=True)
     side = Way(points_m=[(0.0, -30.0), (0.0, 0.0)], highway="residential", half_width_m=4.0)

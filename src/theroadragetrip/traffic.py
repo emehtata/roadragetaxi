@@ -1928,7 +1928,14 @@ class TrafficManager:
         candidates.sort(
             key=lambda candidate: (candidate[0], -candidate[1].junction_wait_timer, id(candidate[1]))
         )
-        return bool(candidates) and candidates[0][1] is npc
+        if not candidates:
+            return False
+        leader = candidates[0][1]
+        if leader is npc:
+            return True
+        # Let an aging queue move after the nearer approach has had a fair turn.
+        # This breaks cyclic right-of-way waits without changing normal ordering.
+        return npc.junction_wait_timer >= leader.junction_wait_timer + 2.0
 
     def _junction_near_point(self, point: Tuple[float, float], layer: int) -> bool:
         """Return whether point is inside a shared same-layer junction."""
@@ -3133,6 +3140,9 @@ class TrafficManager:
                                     dist_step = 0.0
                                     finished_npcs.add(id(npc))
                                     break
+            if npc.state not in {"parking", "parking_departure"} and npc.speed > 0.0:
+                self._keep_npc_near_own_way(npc)
+
         for npc in self.npcs:
             if not npc.parking_departure_pending or npc.parking_space_id is None:
                 continue
