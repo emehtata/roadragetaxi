@@ -1843,13 +1843,12 @@ def main() -> None:
                         continue
                     traffic_mgr._crash_npc(npc, crashed_timer=npc.crashed_timer)
             was_wrong_way = taxi_mgr.wrong_way_duration > 0.0
-            if slow_check_elapsed == 0.0:
-                if taxi_mgr.check_wrong_way_violation(car, slow_check_dt, ways=ways, spatial_grid=spatial_grid):
-                    if not was_wrong_way:
-                        audio.play_driver_line("wrong_way", language)
             if slow_check_elapsed >= 0.1:
                 slow_check_dt = slow_check_elapsed
                 slow_check_elapsed = 0.0
+                if taxi_mgr.check_wrong_way_violation(car, slow_check_dt, ways=ways, spatial_grid=spatial_grid):
+                    if not was_wrong_way:
+                        audio.play_driver_line("wrong_way", language)
                 if taxi_mgr.check_speed_cameras(car, speed_cameras):
                     audio.play_driver_line("speed_camera", language)
             # Update autonomous traffic NPCs and pedestrians
