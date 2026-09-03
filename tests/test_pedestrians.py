@@ -2,7 +2,7 @@
 import math
 import pytest
 from types import SimpleNamespace
-from theroadragetrip.osm import TrafficLight, Way
+from theroadragetrip.osm import Building, ParkingSpace, TrafficLight, Way
 from theroadragetrip.osm import TaxiStop
 from theroadragetrip.pedestrian import (
     CyclistManager,
@@ -13,6 +13,7 @@ from theroadragetrip.pedestrian import (
     PedestrianState,
 )
 from theroadragetrip.physics import Car
+from theroadragetrip.traffic import TrafficManager
 
 
 def test_pedestrian_network_routes_across_connected_ways():
@@ -43,6 +44,42 @@ def test_vehicle_exit_can_use_explicit_transition_state():
     vehicle.current_driver_id = id(pedestrian)
     assert manager.exit_vehicle(pedestrian, vehicle, animate=True)
     assert pedestrian.state == PedestrianState.EXITING_VEHICLE.value
+
+
+def test_parked_vehicle_is_empty_and_driver_appears_beside_it():
+    road = Way(points_m=[(0.0, 0.0), (100.0, 0.0)], highway="residential", half_width_m=4.0)
+    footway = Way(points_m=[(0.0, 8.0), (100.0, 8.0)], highway="footway", half_width_m=2.0)
+    building = Building(
+        points_m=[(40.0, 5.0), (50.0, 5.0), (50.0, 15.0), (40.0, 15.0)],
+        entrances=[(40.0, 8.0)],
+    )
+    parking_space = ParkingSpace(
+        points_m=[(20.0, -2.0), (24.0, -2.0), (24.0, 2.0), (20.0, 2.0)],
+        bbox=(20.0, -2.0, 24.0, 2.0),
+        orientation=0.0,
+    )
+    traffic = TrafficManager([road], target_count=0, parking_spaces=[parking_space])
+    vehicle = traffic.spawn_npc(50.0, 50.0)
+    assert vehicle is not None
+    vehicle.owner_id = 123
+    vehicle.current_driver_id = 123
+    vehicle.x, vehicle.y = 22.0, 0.0
+    assert traffic.occupy_parking_space(vehicle, parking_space)
+    assert vehicle.state == "parked"
+    assert vehicle.current_driver_id is None
+
+    pedestrians = PedestrianManager(
+        [footway],
+        target_count=0,
+        traffic_manager=traffic,
+        traffic_vehicles=traffic.npcs,
+        venue_buildings=[building],
+    )
+    pedestrians.update(Car(x=50.0, y=50.0, heading=0.0, speed=0.0), dt=0.1)
+
+    driver = next(ped for ped in pedestrians.pedestrians if ped.resident_id == 123)
+    assert math.hypot(driver.x - vehicle.x, driver.y - vehicle.y) <= vehicle.width_m * 0.5 + 1.1
+    assert driver.current_vehicle_id is None
 
 
 def test_pedestrian_target_count_keeps_nearest_characters():

@@ -139,6 +139,7 @@ class PedestrianState(str, Enum):
     CROSSING = "crossing"
     WAITING = "waiting"
     ENTERING_BUILDING = "entering_building"
+    IN_BUILDING = "in_building"
     EXITING_BUILDING = "exiting_building"
     ENTERING_VEHICLE = "entering_vehicle"
     EXITING_VEHICLE = "exiting_vehicle"
@@ -213,6 +214,9 @@ class Pedestrian:
     current_vehicle_id: Optional[int] = None
     resident_id: Optional[int] = None
     vehicle_destination: Optional[Tuple[float, float]] = None
+    linked_vehicle_id: Optional[int] = None
+    linked_building_entrance: Optional[Tuple[float, float]] = None
+    building_visit_timer: float = 0.0
     vehicle_entry_timer: float = 0.0
     building_entry_timer: float = 0.0
     animation_time: float = 0.0
@@ -268,6 +272,8 @@ class PedestrianManager:
         self._entrance_grid: Dict[Tuple[int, int], List[Tuple[float, float]]] = {}
         self._amenity_spawn_elapsed = 10.0
         self.buildings: List = []
+        self._building_grid: Dict[Tuple[int, int], List] = {}
+        self._building_grid_cell_size = 100.0
         self.vomit_puddles: List[Tuple[float, float]] = []
 
         self.ped_ways: List[Way] = []
@@ -296,6 +302,109 @@ class PedestrianManager:
             pedestrian.resident_id = self.residents.create("walking").resident_id
         return pedestrian
 
+    def _materialize_parked_drivers(self) -> None:
+        """Keep parked cars empty while placing their owners beside the car."""
+        vehicles = self.traffic_manager.npcs if self.traffic_manager is not None else self.traffic_vehicles
+        linked_residents = {
+            pedestrian.resident_id
+            for pedestrian in self.pedestrians
+            if pedestrian.resident_id is not None
+        }
+        for vehicle in vehicles:
+            if getattr(vehicle, "state", "driving") != "parked":
+                continue
+            resident_id = getattr(vehicle, "owner_id", None)
+            if resident_id is None or resident_id in linked_residents:
+                continue
+            if not self.entrance_locations:
+                continue
+            entry_x, entry_y = self._vehicle_entry_position(vehicle)
+            pedestrian = self.spawn_pedestrian_at(
+                entry_x,
+                entry_y,
+                getattr(vehicle, "heading", 0.0),
+            )
+            if pedestrian is None:
+                continue
+            pedestrian.resident_id = resident_id
+            pedestrian.linked_vehicle_id = id(vehicle)
+            pedestrian.linked_building_entrance = min(
+                self.entrance_locations,
+                key=lambda entrance: math.hypot(entrance[0] - entry_x, entrance[1] - entry_y),
+            )
+            pedestrian.destination = pedestrian.linked_building_entrance
+            pedestrian.state = "walking_to_building"
+            pedestrian.animation_state = "walking"
+            pedestrian.door_grace_timer = 5.0
+            self.pedestrians.append(pedestrian)
+            linked_residents.add(resident_id)
+
+    def _update_linked_driver(self, pedestrian: Pedestrian, update_dt: float) -> bool:
+        """Move a parked vehicle owner between its building and the same car."""
+        if pedestrian.linked_vehicle_id is None:
+            return False
+        vehicles = self.traffic_manager.npcs if self.traffic_manager is not None else self.traffic_vehicles
+        vehicle = next((candidate for candidate in vehicles if id(candidate) == pedestrian.linked_vehicle_id), None)
+        if vehicle is None:
+            pedestrian.linked_vehicle_id = None
+            return False
+        if pedestrian.state == "walking_to_building":
+            target = pedestrian.linked_building_entrance
+            if target is None:
+                return False
+            target_x, target_y = target
+            distance = math.hypot(target_x - pedestrian.x, target_y - pedestrian.y)
+            if distance <= 1.0:
+                pedestrian.x, pedestrian.y = target
+                pedestrian.speed = 0.0
+                pedestrian.state = PedestrianState.ENTERING_BUILDING.value
+                pedestrian.building_entry_timer = 0.35
+                pedestrian.building_visit_timer = 8.0
+                pedestrian.animation_state = "idle"
+                return True
+            pedestrian.heading = math.atan2(target_y - pedestrian.y, target_x - pedestrian.x)
+            pedestrian.speed = pedestrian.base_speed
+            step = min(distance, pedestrian.speed * update_dt)
+            pedestrian.x += math.cos(pedestrian.heading) * step
+            pedestrian.y += math.sin(pedestrian.heading) * step
+            pedestrian.animation_state = "walking"
+            return True
+        if pedestrian.state == PedestrianState.ENTERING_BUILDING.value:
+            pedestrian.speed = 0.0
+            pedestrian.building_entry_timer = max(0.0, pedestrian.building_entry_timer - update_dt)
+            if pedestrian.building_entry_timer <= 0.0:
+                pedestrian.state = PedestrianState.IN_BUILDING.value
+                pedestrian.animation_state = "idle"
+            return True
+        if pedestrian.state == PedestrianState.IN_BUILDING.value:
+            pedestrian.building_visit_timer = max(0.0, pedestrian.building_visit_timer - update_dt)
+            if pedestrian.building_visit_timer <= 0.0:
+                pedestrian.state = "returning_to_vehicle"
+                pedestrian.destination = self._vehicle_entry_position(vehicle)
+            return True
+        if pedestrian.state == "returning_to_vehicle":
+            target_x, target_y = self._vehicle_entry_position(vehicle)
+            distance = math.hypot(target_x - pedestrian.x, target_y - pedestrian.y)
+            if distance <= 1.0:
+                pedestrian.x, pedestrian.y = target_x, target_y
+                vehicle.reserved_by_pedestrian_id = id(pedestrian)
+                vehicle.state = "reserved"
+                pedestrian.reserved_vehicle_id = id(vehicle)
+                pedestrian.current_route_segment = 1
+                pedestrian.route = [(pedestrian.x, pedestrian.y), (target_x, target_y)]
+                pedestrian.state = PedestrianState.ENTERING_VEHICLE.value
+                pedestrian.vehicle_entry_timer = 0.4
+                pedestrian.animation_state = "idle"
+                return True
+            pedestrian.heading = math.atan2(target_y - pedestrian.y, target_x - pedestrian.x)
+            pedestrian.speed = pedestrian.base_speed
+            step = min(distance, pedestrian.speed * update_dt)
+            pedestrian.x += math.cos(pedestrian.heading) * step
+            pedestrian.y += math.sin(pedestrian.heading) * step
+            pedestrian.animation_state = "walking"
+            return True
+        return False
+
     def set_venue_buildings(self, buildings: Optional[List] = None) -> None:
         """Index hospitality venues as preferred pedestrian spawn locations."""
         self.buildings = list(buildings or [])
@@ -303,7 +412,14 @@ class PedestrianManager:
         self.entrance_locations = []
         self.amenity_entrance_locations = []
         self._entrance_grid = {}
+        self._building_grid = {}
         for building in buildings or []:
+            bbox = getattr(building, "bbox", None)
+            if bbox and bbox != (0.0, 0.0, 0.0, 0.0):
+                cell_size = self._building_grid_cell_size
+                for cell_x in range(math.floor(bbox[0] / cell_size), math.floor(bbox[2] / cell_size) + 1):
+                    for cell_y in range(math.floor(bbox[1] / cell_size), math.floor(bbox[3] / cell_size) + 1):
+                        self._building_grid.setdefault((cell_x, cell_y), []).append(building)
             entrances = getattr(building, "entrances", ())
             self.entrance_locations.extend(entrances)
             if getattr(building, "venue_type", None):
@@ -325,14 +441,21 @@ class PedestrianManager:
 
     def _point_near_building(self, x: float, y: float, radius_m: float = 250.0) -> bool:
         """Return whether a point is near a mapped building."""
-        building_data = [
-            building
-            for building in self.buildings
-            if (bbox := getattr(building, "bbox", None))
-            and bbox != (0.0, 0.0, 0.0, 0.0)
-        ]
+        cell_size = self._building_grid_cell_size
+        min_cell_x = math.floor((x - radius_m) / cell_size)
+        max_cell_x = math.floor((x + radius_m) / cell_size)
+        min_cell_y = math.floor((y - radius_m) / cell_size)
+        max_cell_y = math.floor((y + radius_m) / cell_size)
+        building_data = []
+        seen = set()
+        for cell_x in range(min_cell_x, max_cell_x + 1):
+            for cell_y in range(min_cell_y, max_cell_y + 1):
+                for building in self._building_grid.get((cell_x, cell_y), ()):
+                    if id(building) not in seen:
+                        seen.add(id(building))
+                        building_data.append(building)
         if not building_data:
-            return True
+            return not self._building_grid
         radius_sq = radius_m * radius_m
         for building in building_data:
             min_x, min_y, max_x, max_y = building.bbox
@@ -463,6 +586,11 @@ class PedestrianManager:
             )
         pedestrian.reserved_vehicle_id = None
         pedestrian.current_vehicle_id = id(vehicle)
+        if pedestrian.linked_vehicle_id == id(vehicle):
+            pedestrian.linked_vehicle_id = None
+            pedestrian.linked_building_entrance = None
+            pedestrian.building_visit_timer = 0.0
+            pedestrian.vehicle_destination = None
         pedestrian.x = vehicle.x
         pedestrian.y = vehicle.y
         pedestrian.state = "in_vehicle"
@@ -914,6 +1042,9 @@ class PedestrianManager:
                     if not self._point_near_building(x, y):
                         continue
 
+                    if random.random() > self.residents.density_spawn_probability(x, y):
+                        continue
+
                     if max_distance_m is not None and math.hypot(x - near_x, y - near_y) > max_distance_m:
                         continue
 
@@ -1169,6 +1300,7 @@ class PedestrianManager:
         """Update pedestrian simulation: despawning, spawning, waypoint traversal, traffic lights, and evasion."""
         self.sim_time += dt
         self.update_lod(player_car, dt)
+        self._materialize_parked_drivers()
         self._amenity_spawn_elapsed += dt
         self._population_update_elapsed += dt
 
@@ -1227,6 +1359,8 @@ class PedestrianManager:
 
             # Spawn new pedestrians up to target_count
             attempts = 0
+            spawned_this_update = 0
+            spawn_limit = self.target_count if viewport_bounds is None else 2
             max_attempts = max(50, self.target_count * 5)
             nearby_venues = [
                 location for location in self.venue_locations
@@ -1236,7 +1370,11 @@ class PedestrianManager:
                 entrance for entrance in self.entrance_locations
                 if math.hypot(entrance[0] - player_car.x, entrance[1] - player_car.y) <= self.spawn_radius_m
             ]
-            while len(self.pedestrians) < self.target_count and attempts < max_attempts:
+            while (
+                len(self.pedestrians) < self.target_count
+                and attempts < max_attempts
+                and spawned_this_update < spawn_limit
+            ):
                 attempts += 1
                 spawn_at_door = bool(nearby_entrances and random.random() < 0.45)
                 spawned_near_venue = bool(nearby_venues and random.random() < 0.6)
@@ -1256,6 +1394,7 @@ class PedestrianManager:
                     )
                 if not new_ped:
                     break
+                spawned_this_update += 1
                 if spawned_near_venue and random.random() < 0.35:
                     new_ped.is_drunk = True
                     new_ped.drunk_phase = random.uniform(0.0, 2.0 * math.pi)
@@ -1270,6 +1409,8 @@ class PedestrianManager:
             if not ped.lod_update_due:
                 continue
             update_dt = max(dt, ped.lod_update_dt)
+            if self._update_linked_driver(ped, update_dt):
+                continue
             if ped.state == "in_vehicle":
                 ped.speed = 0.0
                 ped.animation_state = "idle"

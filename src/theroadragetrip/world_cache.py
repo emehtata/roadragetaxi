@@ -5,6 +5,7 @@ from __future__ import annotations
 import binascii
 import logging
 import os
+import shutil
 import struct
 import threading
 import time
@@ -272,6 +273,25 @@ class BinaryWorldCacheLoader:
         return world
 
 
+def clear_world_cache(cache_dir: str | os.PathLike[str] | None = None) -> int:
+    """Delete all cached world files."""
+    target_dir = Path(cache_dir or (Path.home() / ".cache" / "RoadRageTrip" / "world"))
+    if not target_dir.is_dir():
+        return 0
+    removed = 0
+    for entry in target_dir.iterdir():
+        try:
+            if entry.is_dir():
+                shutil.rmtree(entry)
+            else:
+                entry.unlink()
+            removed += 1
+        except OSError as error:
+            logger.warning("[WorldCache] Failed to remove %s: %s", entry, error)
+    logger.info("[WorldCache] Cleared %d entries from %s", removed, target_dir)
+    return removed
+
+
 class WorldCacheManager:
     """Central cache hit/miss manager, including safe background preloading."""
 
@@ -294,6 +314,10 @@ class WorldCacheManager:
 
     def path_for(self, area_id: str) -> Path:
         return self.cache_dir / f"{area_id}.rwc"
+
+    def clear(self) -> int:
+        """Delete all cached world files managed by this instance."""
+        return clear_world_cache(self.cache_dir)
 
     def load_area(self, area_id: str, bbox=None, *, force_refresh: bool = False, **kwargs) -> Any:
         started = time.perf_counter()
@@ -319,7 +343,13 @@ class WorldCacheManager:
         if self.fetch_func is None or self.build_func is None or bbox is None:
             raise FileNotFoundError(f"no valid world cache for {area_id}")
         logger.info("[WorldCache] Cache miss %s; downloading OpenPass JSON", area_id)
-        elements = self.fetch_func(bbox, **kwargs)
+        if force_refresh:
+            elements = self.fetch_func(bbox, force_refresh=True, **kwargs)
+        else:
+            if force_refresh:
+                elements = self.fetch_func(bbox, force_refresh=True, **kwargs)
+            else:
+                elements = self.fetch_func(bbox, **kwargs)
         world = self.build_func(elements)
         self.writer.write(path, world, area_id=area_id)
         logger.info("[WorldCache] Cache created %s in %.1f ms", path, (time.perf_counter() - started) * 1000.0)

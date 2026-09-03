@@ -75,6 +75,7 @@ _street_light_frame_world_positions = []
 _day_night_overlay_cache = {}
 _solar_position_cache = {}
 _street_light_last_debug_log_ms = 0
+_reusable_alpha_surfaces = {}
 _road_frame_cache_key = None
 _road_frame_cache_surface = None
 _render_logger = logging.getLogger(__name__)
@@ -82,6 +83,16 @@ _rage_face_frames = None
 _rage_face_path = os.path.join(os.path.dirname(__file__), "assets", "ragefaceatlas.png")
 _speedometer_font = None
 _speedometer_label_font = None
+
+
+def _reusable_alpha_surface(pygame, key, size):
+    surface = _reusable_alpha_surfaces.get(key)
+    if surface is None or surface.get_size() != size:
+        surface = pygame.Surface(size, pygame.SRCALPHA)
+        _reusable_alpha_surfaces[key] = surface
+    else:
+        surface.fill((0, 0, 0, 0))
+    return surface
 
 
 def _load_rage_face_frames(pygame):
@@ -403,6 +414,15 @@ def get_viewport_bounds(
     half_h = (screen_h / 2.0) / px_per_m + margin_m
     return camx - half_w, camy - half_h, camx + half_w, camy + half_h
 
+def minimum_px_per_m_for_viewport_width(
+    max_width_m: float = 500.0,
+    screen_w: int = SCREEN_W,
+    margin_m: float = 30.0,
+) -> float:
+    """Return the minimum zoom that keeps the viewport width within its limit."""
+    drawable_width_m = max(1.0, max_width_m - 2.0 * margin_m)
+    return screen_w / drawable_width_m
+
 
 def _covered_by_higher_road(x: float, y: float, layer: int, ways: Optional[List[Way]], spatial_grid=None) -> bool:
     if spatial_grid is not None:
@@ -510,12 +530,31 @@ def draw_scenery(
 
 
 def draw_parking_spaces(screen, parking_spaces, camx: float, camy: float, px_per_m: float = PX_PER_M,
-                        screen_w: int = SCREEN_W, screen_h: int = SCREEN_H) -> None:
+                        screen_w: int = SCREEN_W, screen_h: int = SCREEN_H,
+                        spatial_grid=None, grid_cell_size: float = 100.0) -> None:
     """Draw OSM parking spaces as small asphalt-colored polygons."""
     import pygame
 
     vminx, vminy, vmaxx, vmaxy = get_viewport_bounds(camx, camy, px_per_m, screen_w, screen_h, 30.0)
-    for space in parking_spaces:
+    if spatial_grid is not None:
+        cell_size = max(1.0, grid_cell_size)
+        min_cell_x = math.floor(vminx / cell_size)
+        max_cell_x = math.floor(vmaxx / cell_size)
+        min_cell_y = math.floor(vminy / cell_size)
+        max_cell_y = math.floor(vmaxy / cell_size)
+        visible_spaces = []
+        seen_ids = set()
+        for cell_x in range(min_cell_x, max_cell_x + 1):
+            for cell_y in range(min_cell_y, max_cell_y + 1):
+                for space in spatial_grid.get((cell_x, cell_y), ()):
+                    space_id = id(space)
+                    if space_id not in seen_ids:
+                        seen_ids.add(space_id)
+                        visible_spaces.append(space)
+    else:
+        visible_spaces = parking_spaces
+
+    for space in visible_spaces:
         min_x, min_y, max_x, max_y = space.bbox
         if max_x < vminx or min_x > vmaxx or max_y < vminy or min_y > vmaxy:
             continue
@@ -1549,15 +1588,15 @@ def draw_street_lights(
                 )
                 _street_light_last_debug_log_ms = now_ms
         if daylight_surface is not None and lamp_centers:
-            daylight_mask = pygame.Surface(screen.get_size(), pygame.SRCALPHA)
+            daylight_mask = _reusable_alpha_surface(pygame, "street_daylight_mask", screen.get_size())
             restoration_radius = max(2, int(10.0 * px_per_m))
             for lamp_center, road_direction in zip(lamp_centers, lamp_directions):
                 sector_points = [lamp_center]
                 half_sector_angle = math.radians(135.0)
-                for angle_step in range(49):
+                for angle_step in range(17):
                     angle = (
                         road_direction - half_sector_angle
-                        + angle_step * (2.0 * half_sector_angle / 48.0)
+                        + angle_step * (2.0 * half_sector_angle / 16.0)
                     )
                     sector_points.append(
                         (
@@ -1566,7 +1605,7 @@ def draw_street_lights(
                         )
                     )
                 pygame.draw.polygon(daylight_mask, (255, 255, 255, 255), sector_points)
-            restored_daylight = pygame.Surface(screen.get_size(), pygame.SRCALPHA)
+            restored_daylight = _reusable_alpha_surface(pygame, "street_restored_daylight", screen.get_size())
             restored_daylight.blit(daylight_surface, (0, 0))
             restored_daylight.blit(daylight_mask, (0, 0), special_flags=pygame.BLEND_RGBA_MIN)
             screen.blit(restored_daylight, (0, 0))
@@ -1603,7 +1642,7 @@ def draw_headlight_beams(
         return
 
     vminx, vminy, vmaxx, vmaxy = get_viewport_bounds(camx, camy, px_per_m, screen_w, screen_h, 30.0)
-    beam_mask = pygame.Surface(screen.get_size(), pygame.SRCALPHA)
+    beam_mask = _reusable_alpha_surface(pygame, "headlight_beam_mask", screen.get_size())
     beam_length = 15.0 * px_per_m
     beam_near = 1.0 * px_per_m
     beam_width = 4.5 * px_per_m
@@ -1755,7 +1794,7 @@ def draw_headlight_beams(
         drawn += 1
     if drawn:
         if daylight_surface is not None:
-            restored_daylight = pygame.Surface(screen.get_size(), pygame.SRCALPHA)
+            restored_daylight = _reusable_alpha_surface(pygame, "headlight_restored_daylight", screen.get_size())
             restored_daylight.blit(daylight_surface, (0, 0))
             restored_daylight.blit(beam_mask, (0, 0), special_flags=pygame.BLEND_RGBA_MIN)
             screen.blit(restored_daylight, (0, 0))
@@ -1776,6 +1815,7 @@ def draw_tire_tracks(
     px_per_m: float = PX_PER_M,
     screen_w: int = SCREEN_W,
     screen_h: int = SCREEN_H,
+    viewport_bounds=None,
 ) -> None:
     """Draw persistent tire marks either on grass or on paved roads."""
     import pygame
@@ -1789,6 +1829,12 @@ def draw_tire_tracks(
             previous_tires = None
             previous_sequence = None
             continue
+        if viewport_bounds is not None:
+            vminx, vminy, vmaxx, vmaxy = viewport_bounds
+            if not (vminx <= track_x <= vmaxx and vminy <= track_y <= vmaxy):
+                previous_tires = None
+                previous_sequence = None
+                continue
         center_x, center_y = world_to_screen(track_x, track_y, camx, camy, px_per_m, screen_w, screen_h)
         side_x = -math.sin(heading)
         side_y = math.cos(heading)
@@ -2820,6 +2866,7 @@ def draw_pedestrians(
     ways: Optional[List[Way]] = None,
     show_debug: bool = False,
     residents=None,
+    spatial_grid=None,
 ) -> None:
     """Draw pedestrians as small top-down characters and comic cursing bubbles."""
     import pygame
@@ -2827,9 +2874,17 @@ def draw_pedestrians(
     vminx, vminy, vmaxx, vmaxy = get_viewport_bounds(camx, camy, px_per_m, screen_w, screen_h, 15.0)
 
     for ped in pedestrians:
+        if getattr(ped, "state", "walking") in {"entering_building", "in_building"}:
+            continue
         if not (vminx <= ped.x <= vmaxx and vminy <= ped.y <= vmaxy):
             continue
-        if _covered_by_higher_road(ped.x, ped.y, getattr(ped, "layer", getattr(ped.way, "layer", 0)), ways):
+        if _covered_by_higher_road(
+            ped.x,
+            ped.y,
+            getattr(ped, "layer", getattr(ped.way, "layer", 0)),
+            ways,
+            spatial_grid=spatial_grid,
+        ):
             continue
 
         cx, cy = world_to_screen(ped.x, ped.y, camx, camy, px_per_m, screen_w, screen_h)
@@ -2853,7 +2908,11 @@ def draw_pedestrians(
                 crossing = getattr(ped, "crossing", None)
                 crossing_id = getattr(crossing, "id", None) if crossing is not None else "-"
                 resident = residents.get(getattr(ped, "resident_id", None)) if residents is not None else None
-                resident_name = f"{resident.first_name} {resident.surname}" if resident is not None else "Unknown"
+                resident_name = (
+                    "Pelaaja"
+                    if getattr(ped, "is_player", False)
+                    else f"{resident.first_name} {resident.surname}" if resident is not None else "Unknown"
+                )
                 debug_text = font.render(
                     f"{resident_name} {getattr(ped, 'state', 'walking')} L{getattr(ped, 'lod_level', 0)} C{crossing_id}",
                     True,
@@ -2929,6 +2988,85 @@ def draw_pedestrians(
             screen.blit(bubble_surf, (int(bx), int(by)))
 
 
+def resident_at_screen_position(
+    pedestrians: List,
+    residents,
+    pos: Tuple[int, int],
+    camx: float,
+    camy: float,
+    px_per_m: float = PX_PER_M,
+    screen_w: int = SCREEN_W,
+    screen_h: int = SCREEN_H,
+) -> Optional[int]:
+    """Return the nearest clickable resident at a screen position."""
+    best_id = None
+    best_distance = float("inf")
+    for pedestrian in pedestrians:
+        if getattr(pedestrian, "state", "walking") in {"entering_building", "in_building"}:
+            continue
+        resident_id = getattr(pedestrian, "resident_id", None)
+        if resident_id is None or residents.get(resident_id) is None:
+            continue
+        screen_x, screen_y = world_to_screen(
+            pedestrian.x, pedestrian.y, camx, camy, px_per_m, screen_w, screen_h
+        )
+        distance = math.hypot(pos[0] - screen_x, pos[1] - screen_y)
+        hit_radius = max(10.0, getattr(pedestrian, "radius_m", 0.45) * px_per_m)
+        if distance <= hit_radius and distance < best_distance:
+            best_id = resident_id
+            best_distance = distance
+    return best_id
+
+
+def draw_resident_popup(
+    screen,
+    font,
+    resident,
+    residents=None,
+    screen_w: int = SCREEN_W,
+    screen_h: int = SCREEN_H,
+) -> None:
+    """Draw selected resident details above the gameplay view."""
+    import pygame
+
+    if resident is None:
+        return
+    popup_width, popup_height = 420, 242
+    popup_rect = pygame.Rect(screen_w - popup_width - 24, 24, popup_width, popup_height)
+    shade = pygame.Surface((popup_width, popup_height), pygame.SRCALPHA)
+    shade.fill((12, 20, 30, 242))
+    screen.blit(shade, popup_rect.topleft)
+    pygame.draw.rect(screen, (105, 205, 255), popup_rect, width=2, border_radius=6)
+
+    birth_date = getattr(resident, "birth_date", None)
+    birth_text = birth_date.isoformat() if birth_date is not None else "-"
+    vehicle_count = len(getattr(resident, "vehicle_ids", ()))
+    residents = residents or {}
+
+    def names_for(ids) -> str:
+        names = [
+            f"{person.first_name} {person.surname}".strip()
+            for person_id in ids
+            if (person := residents.get(person_id)) is not None
+        ]
+        return ", ".join(names) or "-"
+
+    lines = (
+        f"Resident #{resident.resident_id}",
+        f"{resident.first_name} {resident.surname}".strip(),
+        f"Sukupuoli: {resident.gender or '-'}",
+        f"Syntynyt: {birth_text}",
+        f"Tila: {getattr(resident, 'mode', '-')}",
+        f"Ajoneuvoja: {vehicle_count}",
+        f"Vanhemmat: {names_for(getattr(resident, 'parent_ids', ())) }",
+        f"Lapset: {names_for(getattr(resident, 'child_ids', ())) }",
+    )
+    for index, text in enumerate(lines):
+        color = (245, 250, 255) if index == 0 else (205, 220, 232)
+        text_surface = font.render(text, True, color)
+        screen.blit(text_surface, (popup_rect.x + 16, popup_rect.y + 14 + index * 26))
+
+
 def draw_pedestrian_reflectors(
     screen,
     pedestrians: List,
@@ -2989,6 +3127,7 @@ def draw_cyclists(
     screen_w: int = SCREEN_W,
     screen_h: int = SCREEN_H,
     ways: Optional[List[Way]] = None,
+    spatial_grid=None,
 ) -> None:
     """Draw cyclists as compact riders with bicycle wheels."""
     import pygame
@@ -2997,7 +3136,13 @@ def draw_cyclists(
     for cyclist in cyclists:
         if not (vminx <= cyclist.x <= vmaxx and vminy <= cyclist.y <= vmaxy):
             continue
-        if _covered_by_higher_road(cyclist.x, cyclist.y, getattr(cyclist.way, "layer", 0), ways):
+        if _covered_by_higher_road(
+            cyclist.x,
+            cyclist.y,
+            getattr(cyclist.way, "layer", 0),
+            ways,
+            spatial_grid=spatial_grid,
+        ):
             continue
         cx, cy = world_to_screen(cyclist.x, cyclist.y, camx, camy, px_per_m, screen_w, screen_h)
         global _cyclist_sprite
@@ -3029,8 +3174,11 @@ def draw_traffic_lights(
 
     vminx, vminy, vmaxx, vmaxy = get_viewport_bounds(camx, camy, px_per_m, screen_w, screen_h, 30.0)
 
-    # Signal grids use the generic road-way API, so filter signal objects directly.
-    visible_traffic_lights = traffic_lights
+    visible_traffic_lights = (
+        spatial_grid.ways_in_rect(vminx, vminy, vmaxx, vmaxy)
+        if spatial_grid is not None
+        else traffic_lights
+    )
     for tl in visible_traffic_lights:
         if not getattr(tl, "renderable", True):
             continue
@@ -3684,7 +3832,7 @@ def draw_city_selection_menu(
         pygame.draw.rect(screen, bg_color, (ix, iy, item_w, item_h), border_radius=6)
         pygame.draw.rect(screen, border_color, (ix, iy, item_w, item_h), width=2 if is_sel else 1, border_radius=6)
 
-        num_prefix = f"{(idx + 1) % 10}: "
+        num_prefix = f"{('1234567890ABCDEFGHIJKLMNOPQRSTUVWXYZ'[idx])}: "
         city_label = f"{num_prefix}{city}"
         if is_sel:
             city_label = f"> {city_label}"

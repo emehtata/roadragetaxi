@@ -2,7 +2,7 @@
 import math
 import random
 from types import SimpleNamespace
-from theroadragetrip.osm import ParkingSpace, StopSign, Way
+from theroadragetrip.osm import Building, ParkingSpace, Scenery, StopSign, Way
 from theroadragetrip.osm import TrafficLight
 from theroadragetrip.physics import Car
 from theroadragetrip.traffic import (
@@ -23,11 +23,7 @@ def test_npc_turning_geometry_is_individual_and_bicycle_based():
     motorcycle = calculate_npc_turning_geometry(2.2, "motorcycle")
 
     assert short_car[0] < long_car[0]
-    assert short_car[2] < long_car[2]
     assert motorcycle[1] > short_car[1]
-    assert math.isclose(
-        short_car[2], short_car[0] / math.tan(short_car[1]), rel_tol=1e-9
-    )
 
 
 def test_turn_lane_offset_uses_left_and_right_edges():
@@ -448,11 +444,11 @@ def test_npc_lod_assigns_distance_bands_and_schedules_updates():
     manager.update_lod(Car(0.0, 0.0, 0.0, 0.0), 0.1)
 
     assert [npc.lod_level for npc in manager.npcs] == [0, 1, 2]
-    assert [npc.lod_update_due for npc in manager.npcs] == [True, True, False]
+    assert [npc.lod_update_due for npc in manager.npcs] == [True, False, False]
 
     manager.update_lod(Car(0.0, 0.0, 0.0, 0.0), 0.1)
 
-    assert all(npc.lod_update_due for npc in manager.npcs)
+    assert [npc.lod_update_due for npc in manager.npcs] == [True, True, False]
 
 
 def test_traffic_manager_assigns_resident_owner_to_existing_npc():
@@ -660,6 +656,33 @@ def test_overlapping_npcs_are_separated():
     )
     assert first.speed == 0.0
     assert second.speed == 0.0
+
+
+def test_npc_static_collision_stops_at_building():
+    way = Way(points_m=[(0.0, 0.0), (100.0, 0.0)], highway="residential", half_width_m=2.0)
+    building = Building(points_m=[(20.0, -10.0), (30.0, -10.0), (30.0, 10.0), (20.0, 10.0)])
+    manager = TrafficManager([way], target_count=0, buildings=[building])
+    npc = NPCCar(22.0, 4.0, 0.0, 8.0, way, 0, 1, 8.0, (20, 20, 20))
+
+    crashed = manager._npc_hits_static_obstacle(npc, (15.0, 4.0))
+
+    assert crashed is True
+    assert (npc.x, npc.y) == (15.0, 4.0)
+    assert npc.speed == 0.0
+    assert npc.crashed_timer == 3.0
+
+
+def test_npc_static_collision_stops_at_tree():
+    way = Way(points_m=[(0.0, 0.0), (100.0, 0.0)], highway="residential", half_width_m=2.0)
+    scenery = Scenery([(0.0, -10.0), (100.0, -10.0), (100.0, 10.0)], "park", trees=[(20.0, 0.0)])
+    manager = TrafficManager([way], target_count=0, sceneries=[scenery])
+    npc = NPCCar(20.0, 0.0, 0.0, 8.0, way, 0, 1, 8.0, (20, 20, 20))
+
+    crashed = manager._npc_hits_static_obstacle(npc, (15.0, 0.0))
+
+    assert crashed is True
+    assert math.hypot(npc.x - 20.0, npc.y) > 3.0
+    assert npc.speed == 0.0
 
 
 def test_parking_npc_does_not_drive_through_another_vehicle():
@@ -1216,6 +1239,39 @@ def test_npc_advances_route_when_turn_node_is_already_behind_it():
     manager.update(Car(x=-100.0, y=-100.0, heading=0.0, speed=0.0), dt=0.1)
 
     assert npc.way is exit_way
+
+
+def test_npc_right_turn_joins_exit_way_right_lane():
+    approach = Way(
+        points_m=[(-30.0, 0.0), (0.0, 0.0)],
+        highway="residential",
+        half_width_m=4.0,
+    )
+    exit_way = Way(
+        points_m=[(0.0, 0.0), (0.0, -40.0)],
+        highway="residential",
+        half_width_m=4.0,
+    )
+    manager = TrafficManager([approach, exit_way], target_count=0)
+    npc = NPCCar(
+        x=-8.0,
+        y=0.0,
+        heading=0.0,
+        speed=5.0,
+        way=approach,
+        segment_idx=0,
+        direction=1,
+        target_speed=5.0,
+        color=(20, 20, 20),
+        next_route=(exit_way, 0, 1),
+    )
+    manager.npcs = [npc]
+
+    for _ in range(60):
+        manager.update(Car(x=-100.0, y=100.0, heading=0.0, speed=0.0), dt=0.1)
+
+    assert npc.way is exit_way
+    assert npc.x < 0.0
 
 
 def test_npc_signals_prepared_turn_before_junction():

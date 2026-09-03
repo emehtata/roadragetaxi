@@ -2215,11 +2215,14 @@ class AutoFetchManager:
         self.cooldown_s = cooldown_s
         self.build_in_process = build_in_process
         self.world_cache_manager = world_cache_manager
+        self._build_executor = None
         self.lock = threading.Lock()
         self.is_fetching = False
         self.fetch_progress = 0.0
         self.last_fetch_time = 0.0
         self.last_trigger_reason = ""
+        self._last_edge_check_time = 0.0
+        self._edge_check_interval_s = 0.1
         self._attempted_endpoints: Set[Tuple[int, str]] = set()
         self._completed_fetch_targets: Set[Tuple[float, float, float, float]] = set()
         # Load known dead-end boundaries from disk cache
@@ -2262,10 +2265,14 @@ class AutoFetchManager:
         if not auto_fetch:
             return False
         with self.lock:
+            now = time.monotonic()
+            if now - self._last_edge_check_time < self._edge_check_interval_s:
+                return False
+            self._last_edge_check_time = now
             if self.is_fetching:
                 return False
-            now = time.time()
-            if now - self.last_fetch_time < self.cooldown_s:
+            wall_time = time.time()
+            if wall_time - self.last_fetch_time < self.cooldown_s:
                 return False
 
             minx, miny, maxx, maxy = self.bounds
@@ -2378,7 +2385,7 @@ class AutoFetchManager:
                 return False
             self.is_fetching = True
             self.fetch_progress = 0.1
-            self.last_fetch_time = now
+            self.last_fetch_time = wall_time
             self.last_trigger_reason = trigger_reason
             car_pos = (car.x, car.y)
 
@@ -2440,10 +2447,16 @@ class AutoFetchManager:
                 if self.build_in_process:
                     context = multiprocessing.get_context("spawn")
                     try:
-                        with concurrent.futures.ProcessPoolExecutor(max_workers=1, mp_context=context) as executor:
-                            res = executor.submit(self.build_func, elems).result()
+                        if self._build_executor is None:
+                            self._build_executor = concurrent.futures.ProcessPoolExecutor(
+                                max_workers=1, mp_context=context
+                            )
+                        res = self._build_executor.submit(self.build_func, elems).result()
                     except (concurrent.futures.process.BrokenProcessPool, OSError) as exc:
                         logger.warning("Auto-fetch process build failed; retrying in background thread: %s", exc)
+                        if self._build_executor is not None:
+                            self._build_executor.shutdown(wait=False, cancel_futures=True)
+                            self._build_executor = None
                         res = self.build_func(elems)
                 else:
                     res = self.build_func(elems)
@@ -2542,3 +2555,9 @@ class AutoFetchManager:
             with self.lock:
                 self.is_fetching = False
                 self.fetch_progress = 0.0
+
+    def shutdown(self) -> None:
+        """Stop the persistent map-building worker, if it was started."""
+        if self._build_executor is not None:
+            self._build_executor.shutdown(wait=False, cancel_futures=True)
+            self._build_executor = None

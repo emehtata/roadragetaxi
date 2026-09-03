@@ -67,3 +67,27 @@ def test_world_cache_manager_preload(tmp_path, sample_world):
     assert future.result().ways
     assert manager.path_for("preloaded").exists()
     manager.close()
+
+
+def test_world_cache_manager_force_refresh_passes_fetch_flag(tmp_path, sample_world):
+    calls = []
+    manager = WorldCacheManager(
+        tmp_path,
+        fetch_func=lambda bbox, **kwargs: calls.append(kwargs) or [],
+        build_func=lambda elements: sample_world,
+    )
+
+    manager.load_area("forced", (1, 2, 3, 4), force_refresh=True)
+    manager.close()
+
+    assert calls == [{"force_refresh": True}]
+
+
+def test_clear_world_cache_removes_entries(tmp_path):
+    from theroadragetrip.world_cache import clear_world_cache
+
+    (tmp_path / "area.rwc").write_bytes(b"cache")
+    (tmp_path / "nested").mkdir()
+
+    assert clear_world_cache(tmp_path) == 2
+    assert list(tmp_path.iterdir()) == []

@@ -1,4 +1,5 @@
 import argparse
+import cProfile
 import json
 import logging
 import math
@@ -110,6 +111,8 @@ from .render import (
     draw_settings_menu,
     draw_pedestrians,
     draw_pedestrian_reflectors,
+    draw_resident_popup,
+    resident_at_screen_position,
     draw_phone_offers,
     draw_scenery,
     draw_street_lights,
@@ -127,16 +130,33 @@ from .render import (
     draw_ways,
     draw_roadworks,
     get_viewport_bounds,
+    minimum_px_per_m_for_viewport_width,
     solar_altitude_and_events,
     world_to_screen,
 )
+
+
+CITY_MENU_KEYS = "1234567890ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+
+
+def _city_menu_index(key: int, city_count: int) -> Optional[int]:
+    """Return the city index for a menu shortcut key."""
+    index = next(
+        (index for index, shortcut in enumerate(CITY_MENU_KEYS)
+         if key in (getattr(pygame, f"K_{shortcut.lower()}"),
+                    getattr(pygame, f"K_KP{shortcut}") if shortcut.isdigit() else -1)),
+        None,
+    )
+    if index is None:
+        return None
+    return index if index < city_count else None
 from .pedestrian import CyclistManager, Pedestrian, PedestrianManager, PlayerPedestrian
 from .residents import ResidentManager
 from .police import PoliceManager, place_speed_cameras
 from .roadworks import create_roadworks
 from .taxi import TaxiManager, TaxiState
 from .traffic import MAX_TRAFFIC_COUNT, TrafficManager, recommended_traffic_count, traffic_count_for_zoom
-from .world_cache import WorldCacheManager
+from .world_cache import WorldCacheManager, clear_world_cache
 
 # Maintain BBOX constant for backward compatibility
 BBOX = DEFAULT_BBOX
@@ -375,6 +395,11 @@ def _city_item_at(pos: Tuple[int, int], city_count: int, screen_w: int) -> Optio
         index = col * rows + row
         return index if index < city_count else None
     return None
+
+
+def _city_horizontal_index(index: int, direction: int, city_count: int) -> int:
+    rows = (city_count + 1) // 2
+    return (index + direction * rows) % city_count
 
 
 def _city_refresh_at(pos: Tuple[int, int], screen_w: int, screen_h: int, city_count: int) -> bool:
@@ -673,6 +698,7 @@ def main() -> None:
                                     mode_selected = 0
                                 elif mode_selected == 3:
                                     clear_osm_cache()
+                                    clear_world_cache()
                                     mode_selected = 0
                                 else:
                                     choosing_mode = False
@@ -693,6 +719,7 @@ def main() -> None:
                                 mode_selected = 0
                             elif mode_selected == 3:
                                 clear_osm_cache()
+                                clear_world_cache()
                                 mode_selected = 0
                             else:
                                 choosing_mode = False
@@ -708,6 +735,7 @@ def main() -> None:
                             mode_selected = 0
                         elif ev.key in (pygame.K_4, pygame.K_KP4):
                             clear_osm_cache()
+                            clear_world_cache()
                             mode_selected = 0
                     draw_mode_selection_menu(screen, font, mode_selected, SCREEN_W, SCREEN_H, language)
                     pygame.display.flip()
@@ -768,18 +796,13 @@ def main() -> None:
                             )
                             city_centers, bbox_presets = cities_from_config(config)
                         elif ev.key in (pygame.K_LEFT, pygame.K_RIGHT):
-                            selected_city_idx = (selected_city_idx + 5) % len(cities_list)
-                        elif pygame.K_1 <= ev.key <= pygame.K_9:
-                            idx = ev.key - pygame.K_1
-                            if idx < len(cities_list):
-                                selected_city_idx = idx
-                                in_menu = False
-                        elif ev.key in (pygame.K_0, pygame.K_KP0):
-                            selected_city_idx = 9
-                            in_menu = False
-                        elif pygame.K_KP1 <= ev.key <= pygame.K_KP9:
-                            idx = ev.key - pygame.K_KP1
-                            if idx < len(cities_list):
+                            direction = 1 if ev.key == pygame.K_RIGHT else -1
+                            selected_city_idx = _city_horizontal_index(
+                                selected_city_idx, direction, len(cities_list)
+                            )
+                        else:
+                            idx = _city_menu_index(ev.key, len(cities_list))
+                            if idx is not None:
                                 selected_city_idx = idx
                                 in_menu = False
 
@@ -866,7 +889,6 @@ def main() -> None:
                 res = build_ways(
                     elements, progress_callback=on_build_progress, include_bus_stops=bus_stops_enabled
                 )
-                world_cache.writer.write(world_cache.path_for(area_id), res, area_id=area_id)
             else:
                 res = world_cache.load_area(
                     area_id, bbox, force_refresh=force_refresh or args.no_cache,
@@ -933,7 +955,11 @@ def main() -> None:
 
         # Initialize Taxi Manager for game mode
         on_load_progress(0.94, "Preparing taxi missions...")
-        residents = ResidentManager()
+        residents = ResidentManager(city_name=chosen_city)
+        residents.set_city_center_m((minx + maxx) / 2.0, (miny + maxy) / 2.0)
+        city_center = city_centers.get(chosen_city)
+        if city_center is not None:
+            residents.set_city_center_latlon(*city_center)
         taxi_mgr = TaxiManager(
             ways,
             places=places,
@@ -970,6 +996,8 @@ def main() -> None:
             roadworks=roadworks,
             enable_two_wheelers=enable_two_wheelers,
             residents=residents,
+            buildings=buildings,
+            sceneries=sceneries,
         )
         police_mgr = PoliceManager(
             traffic_mgr, car.x, car.y, buildings=buildings, building_grid=building_grid, count=0
@@ -997,6 +1025,7 @@ def main() -> None:
             + math.sin(car.heading) * getattr(car, "length_m", 4.0) * 0.2,
             heading=car.heading,
         )
+        player_pedestrian.is_player = True
         base_pedestrian_count = pedestrian_mgr.target_count
         base_cyclist_count = 0
 
@@ -1050,16 +1079,24 @@ def main() -> None:
         hud_rects = {}
         hud_dragging = None
         hud_drag_offset = (0, 0)
+        selected_resident_id = None
         running = True
         current_way = get_current_road_at_car(car, ways=ways, spatial_grid=spatial_grid, car_roads_only=True)
-        zoom_target = args.px_per_m if args.px_per_m is not None else 9.0
-        px_per_m = max(0.25, zoom_target * 0.75)
+        min_px_per_m = minimum_px_per_m_for_viewport_width(screen_w=SCREEN_W, margin_m=30.0)
+        zoom_target = max(
+            min_px_per_m,
+            args.px_per_m if args.px_per_m is not None else 9.0,
+        )
+        px_per_m = max(min_px_per_m, zoom_target * 0.75)
         zoom_elapsed = 0.0
         zoom_duration = 3.0
         game_time_seconds = 18.0 * 60.0 * 60.0
         solar_time_bucket = None
         camx, camy = car.x, car.y
         first_gameplay_frame = True
+        slow_check_elapsed = 0.0
+        taxi_waiter_elapsed = 0.0
+        last_zoom_scale = None
         tire_tracks = []
         last_track_position = None
         track_sequence = 0
@@ -1070,6 +1107,8 @@ def main() -> None:
         saved_gig_fares = taxi_mgr.completed_fares
         render_profile_last_log = time.perf_counter()
         render_profile_times = {}
+        runtime_profiler = cProfile.Profile()
+        runtime_profile_active = False
         clock.tick()  # Reset clock timer to avoid large dt on first frame
 
         while running:
@@ -1097,13 +1136,29 @@ def main() -> None:
                     running = False
                     app_running = False
                 elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                    clicked_hud = False
                     for element_name in ("rage", "speedometer", "meters"):
                         element_rect = hud_rects.get(element_name)
                         if element_rect and element_rect.collidepoint(event.pos):
                             element_x, element_y = hud_layout[element_name]
                             hud_dragging = element_name
                             hud_drag_offset = (event.pos[0] - element_x, event.pos[1] - element_y)
+                            clicked_hud = True
                             break
+                    if not clicked_hud:
+                        visible_pedestrians = pedestrian_mgr.pedestrians + [
+                            npc for npc in traffic_mgr.npcs if getattr(npc, "is_on_foot", False)
+                        ] + ([player_pedestrian] if on_foot else [])
+                        selected_resident_id = resident_at_screen_position(
+                            visible_pedestrians,
+                            traffic_mgr.residents,
+                            event.pos,
+                            camx,
+                            camy,
+                            px_per_m=px_per_m,
+                            screen_w=SCREEN_W,
+                            screen_h=SCREEN_H,
+                        )
                 elif event.type == pygame.MOUSEBUTTONUP and event.button == 1:
                     hud_dragging = None
                 elif event.type == pygame.MOUSEMOTION and hud_dragging:
@@ -1141,6 +1196,24 @@ def main() -> None:
                         )
                         logger.info("Screenshot saved to %s", screenshot_path)
                         logger.info("Runtime debug snapshot saved to %s", debug_path)
+                    elif event.key == pygame.K_F9:
+                        if runtime_profile_active:
+                            runtime_profiler.disable()
+                            runtime_profile_active = False
+                            logger.info("Runtime profiler stopped; press F10 to save profile")
+                        else:
+                            runtime_profiler.enable()
+                            runtime_profile_active = True
+                            logger.info("Runtime profiler started")
+                    elif event.key == pygame.K_F10:
+                        if runtime_profile_active:
+                            runtime_profiler.disable()
+                            runtime_profile_active = False
+                        profile_dir = _screenshot_directory()
+                        os.makedirs(profile_dir, exist_ok=True)
+                        profile_path = os.path.join(profile_dir, f"profile_{time.time_ns()}.prof")
+                        runtime_profiler.dump_stats(profile_path)
+                        logger.info("Runtime profile saved to %s", profile_path)
                     elif event.key == pygame.K_p:
                         phone_open = not phone_open
                     elif event.key == pygame.K_c:
@@ -1203,6 +1276,9 @@ def main() -> None:
                             if taxi_mgr.accept_offer(offer_index, car.x, car.y):
                                 phone_open = False
                     elif event.key == pygame.K_ESCAPE:
+                        if selected_resident_id is not None:
+                            selected_resident_id = None
+                            continue
                         # Pause menu with options: Continue Game, Change City, Exit Game
                         pause_options = [
                             tr(language, "continue"), tr(language, "help"), tr(language, "settings_menu"),
@@ -1403,9 +1479,9 @@ def main() -> None:
                         red_light_assist_enabled = not red_light_assist_enabled
                         logger.info("Red light assist %s", "enabled" if red_light_assist_enabled else "disabled")
                     elif event.key in (pygame.K_EQUALS, pygame.K_PLUS):
-                        px_per_m *= 1.1
+                        px_per_m = max(min_px_per_m, px_per_m * 1.1)
                     elif event.key == pygame.K_MINUS:
-                        px_per_m *= 0.9
+                        px_per_m = max(min_px_per_m, px_per_m * 0.9)
 
             if first_gameplay_frame:
                 logger.info("Gameplay frame: events complete")
@@ -1415,20 +1491,27 @@ def main() -> None:
 
             if phone_open:
                 dt = 0.0
+            slow_check_elapsed += dt
+            taxi_waiter_elapsed += dt
             rage_shout_timer = max(0.0, rage_shout_timer - dt)
 
             if zoom_elapsed < zoom_duration:
                 zoom_elapsed = min(zoom_duration, zoom_elapsed + dt)
                 progress = zoom_elapsed / zoom_duration
                 eased = progress * progress * (3.0 - 2.0 * progress)
-                px_per_m = px_per_m + (zoom_target - px_per_m) * eased
+                px_per_m = max(
+                    min_px_per_m,
+                    px_per_m + (zoom_target - px_per_m) * eased,
+                )
 
             zoom_scale = max(px_per_m, zoom_target)
-            traffic_mgr.set_target_count(traffic_count_for_zoom(base_traffic_count, zoom_scale), car)
-            pedestrian_mgr.set_target_count(
-                traffic_count_for_zoom(base_pedestrian_count, zoom_scale, minimum=20),
-                car,
-            )
+            if last_zoom_scale is None or abs(zoom_scale - last_zoom_scale) > 0.001:
+                traffic_mgr.set_target_count(traffic_count_for_zoom(base_traffic_count, zoom_scale), car)
+                pedestrian_mgr.set_target_count(
+                    traffic_count_for_zoom(base_pedestrian_count, zoom_scale, minimum=20),
+                    car,
+                )
+                last_zoom_scale = zoom_scale
             cyclist_mgr.set_target_count(0, car)
 
             keys = pygame.key.get_pressed()
@@ -1724,11 +1807,15 @@ def main() -> None:
                         npc.y,
                     )
             was_wrong_way = taxi_mgr.wrong_way_duration > 0.0
-            if taxi_mgr.check_wrong_way_violation(car, dt, ways=ways, spatial_grid=spatial_grid):
-                if not was_wrong_way:
-                    audio.play_driver_line("wrong_way", language)
-            if taxi_mgr.check_speed_cameras(car, speed_cameras):
-                audio.play_driver_line("speed_camera", language)
+            if slow_check_elapsed == 0.0:
+                if taxi_mgr.check_wrong_way_violation(car, slow_check_dt, ways=ways, spatial_grid=spatial_grid):
+                    if not was_wrong_way:
+                        audio.play_driver_line("wrong_way", language)
+            if slow_check_elapsed >= 0.1:
+                slow_check_dt = slow_check_elapsed
+                slow_check_elapsed = 0.0
+                if taxi_mgr.check_speed_cameras(car, speed_cameras):
+                    audio.play_driver_line("speed_camera", language)
             # Update autonomous traffic NPCs and pedestrians
             traffic_mgr.update(
                 car,
@@ -1750,7 +1837,8 @@ def main() -> None:
             audio.update_police_siren(
                 any(npc.pursuing and not npc.penalty_given for npc in police_mgr.cars)
             )
-            if not taxi_mgr.current_passenger:
+            if not taxi_mgr.current_passenger and taxi_waiter_elapsed >= 0.2:
+                taxi_waiter_elapsed = 0.0
                 pedestrian_mgr.ensure_taxi_stop_waiter(taxi_stops, car, viewport_bounds=viewport_bounds)
             pedestrian_mgr.update(
                 car,
@@ -1835,7 +1923,12 @@ def main() -> None:
                     map_sync_stage = 3
                 elif map_sync_stage == 3:
                     traffic_mgr.sync_map_data(
-                        ways, traffic_lights=traffic_lights, stop_signs=stop_signs, crossings=crossings
+                        ways,
+                        traffic_lights=traffic_lights,
+                        stop_signs=stop_signs,
+                        crossings=crossings,
+                        buildings=buildings,
+                        sceneries=sceneries,
                     )
                     map_sync_stage = 4
                 elif map_sync_stage == 4:
@@ -1910,7 +2003,15 @@ def main() -> None:
                 logger.info("Gameplay frame: rendering roads")
             map_stage_start = time.perf_counter()
             draw_ways(screen, ways, camx, camy, px_per_m=px_per_m, spatial_grid=spatial_grid)
-            draw_parking_spaces(screen, parking_spaces, camx, camy, px_per_m=px_per_m)
+            draw_parking_spaces(
+                screen,
+                parking_spaces,
+                camx,
+                camy,
+                px_per_m=px_per_m,
+                spatial_grid=traffic_mgr._parking_grid,
+                grid_cell_size=traffic_mgr._parking_grid_cell_size,
+            )
             render_profile_times["map_roads"] = render_profile_times.get("map_roads", 0.0) + time.perf_counter() - map_stage_start
             if bus_stops_enabled:
                 map_stage_start = time.perf_counter()
@@ -1925,8 +2026,14 @@ def main() -> None:
                 time.perf_counter() - render_profile_stage_start
             )
             render_profile_stage_start = time.perf_counter()
-            draw_tire_tracks(screen, tire_tracks, camx, camy, grass=False, px_per_m=px_per_m)
-            draw_tire_tracks(screen, tire_tracks, camx, camy, grass=True, px_per_m=px_per_m)
+            draw_tire_tracks(
+                screen, tire_tracks, camx, camy, grass=False, px_per_m=px_per_m,
+                viewport_bounds=viewport_bounds,
+            )
+            draw_tire_tracks(
+                screen, tire_tracks, camx, camy, grass=True, px_per_m=px_per_m,
+                viewport_bounds=viewport_bounds,
+            )
             draw_roadworks(screen, roadworks, camx, camy, px_per_m=px_per_m)
             if first_gameplay_frame:
                 logger.info("Gameplay frame: rendering overlays")
@@ -1953,6 +2060,14 @@ def main() -> None:
             viewport_minx, viewport_miny, viewport_maxx, viewport_maxy = get_viewport_bounds(
                 camx, camy, px_per_m=px_per_m, margin_m=40.0
             )
+            light_vehicles = [
+                car,
+                *(
+                    npc for npc in traffic_mgr.npcs
+                    if viewport_minx - 45.0 <= npc.x <= viewport_maxx + 45.0
+                    and viewport_miny - 45.0 <= npc.y <= viewport_maxy + 45.0
+                ),
+            ]
             visible_road_count = sum(
                 1
                 for way in spatial_grid.ways_in_rect(
@@ -1974,8 +2089,17 @@ def main() -> None:
                 ways=ways,
                 show_debug=show_debug_hud,
                 residents=traffic_mgr.residents,
+                spatial_grid=spatial_grid,
             )
-            draw_cyclists(screen, cyclist_mgr.cyclists, camx, camy, px_per_m=px_per_m, ways=ways)
+            draw_cyclists(
+                screen,
+                cyclist_mgr.cyclists,
+                camx,
+                camy,
+                px_per_m=px_per_m,
+                ways=ways,
+                spatial_grid=spatial_grid,
+            )
             draw_npc_cars(
                 screen,
                 traffic_mgr.npcs,
@@ -2068,7 +2192,7 @@ def main() -> None:
             )
             draw_headlight_beams(
                 screen,
-                [car, *traffic_mgr.npcs],
+                light_vehicles,
                 camx,
                 camy,
                 game_time_seconds,
@@ -2076,7 +2200,7 @@ def main() -> None:
                 daylight_surface=daylight_scene,
                 latitude=sun_latitude,
                 longitude=sun_longitude,
-                npc_vehicles=[car, *traffic_mgr.npcs],
+                npc_vehicles=light_vehicles,
                 street_light_positions=None,
                 bicycles=cyclist_mgr.cyclists,
                 ways=ways,
@@ -2085,7 +2209,7 @@ def main() -> None:
             )
             draw_vehicle_lights(
                 screen,
-                [car, *traffic_mgr.npcs],
+                light_vehicles,
                 camx,
                 camy,
                 px_per_m=px_per_m,
@@ -2202,6 +2326,15 @@ def main() -> None:
                 draw_phone_offers(screen, taxi_mgr, font, small_font, SCREEN_W, SCREEN_H, language, car=car)
             if show_compass:
                 draw_compass(screen, car, SCREEN_W - 64, 145, 28, font, target_pos=target_coords)
+            if selected_resident_id is not None:
+                draw_resident_popup(
+                    screen,
+                    small_font,
+                    traffic_mgr.residents.get(selected_resident_id),
+                    traffic_mgr.residents,
+                    SCREEN_W,
+                    SCREEN_H,
+                )
 
             if first_gameplay_frame:
                 logger.info("Gameplay frame: flipping display")
@@ -2242,6 +2375,7 @@ def main() -> None:
             if summary_next_city is None:
                 app_running = False
 
+    auto_fetch_manager.shutdown()
     audio.close()
     pygame.quit()
 

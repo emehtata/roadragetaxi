@@ -15,6 +15,7 @@ from theroadragetrip.render import (
     draw_ways,
     draw_vehicle_lights,
     get_viewport_bounds,
+        minimum_px_per_m_for_viewport_width,
     road_color_for_way,
     road_render_priority,
     world_to_screen,
@@ -38,6 +39,17 @@ def test_get_viewport_bounds():
     assert vmaxx == 550.0
     assert vminy == -150.0
     assert vmaxy == 550.0
+
+
+def test_minimum_zoom_keeps_viewport_width_at_or_below_limit():
+    min_px_per_m = minimum_px_per_m_for_viewport_width(
+        max_width_m=500.0, screen_w=1280, margin_m=30.0
+    )
+    vminx, _, vmaxx, _ = get_viewport_bounds(
+        camx=0.0, camy=0.0, px_per_m=min_px_per_m, screen_w=1280, screen_h=720, margin_m=30.0
+    )
+
+    assert vmaxx - vminx == 500.0
 
 
 def test_spatial_way_grid_detection():
