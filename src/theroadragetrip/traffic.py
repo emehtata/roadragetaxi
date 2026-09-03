@@ -971,7 +971,7 @@ class TrafficManager:
             return False
         candidate_x = npc.x + (target_x - npc.x) / distance * min(step, distance)
         candidate_y = npc.y + (target_y - npc.y) / distance * min(step, distance)
-        for other in self.npcs:
+        for other in self._nearby_npcs(npc):
             if other is npc or other.layer != npc.layer:
                 continue
             if boxes_intersect(
@@ -2244,13 +2244,13 @@ class TrafficManager:
         max_attempts = max(200, self.target_count * 20)
         regular_target = max(0, self.target_count - sum(1 for npc in self.npcs if npc.is_taxi))
         parked_target = round(regular_target * self.parking_density)
+        parked_count = sum(1 for candidate in self.npcs if candidate.state == "parked" and not candidate.is_taxi)
         while (
             len(self.npcs) < self.target_count
             and attempts < max_attempts
             and spawned_this_update < spawn_limit
         ):
             attempts += 1
-            parked_count = sum(1 for candidate in self.npcs if candidate.state == "parked" and not candidate.is_taxi)
             if parked_count < parked_target:
                 npc = self.spawn_parking_npc(player_car.x, player_car.y, viewport_bounds) if viewport_bounds else None
                 if npc is None:
@@ -2277,6 +2277,8 @@ class TrafficManager:
             if not npc:
                 break
             spawned_this_update += 1
+            if npc.state == "parked" and not npc.is_taxi:
+                parked_count += 1
             npc_population_changed = True
             logger.debug(
                 "NPC %s spawned: position=(%.1f, %.1f), way=%s, direction=%s",
