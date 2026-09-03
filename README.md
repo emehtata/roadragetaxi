@@ -248,7 +248,7 @@ Game sounds are stored in `src/theroadragetrip/sounds/`. CC0 sounds require no a
 | `P` | Open taxi phone and view three ride offers |
 | `1` - `3` | Accept a selected ride in the taxi phone |
 | `F1` | Open the full tutorial and control list |
-| `F3` | Toggle the diagnostic text HUD |
+| `F3` | Toggle the diagnostic text HUD and frame profiler |
 | `F9` | Start or stop runtime `cProfile` collection |
 | `F10` | Save collected runtime profile as `.prof` in `screenshots/` |
 | `F12` | Save screenshot plus matching runtime diagnostic JSON in `screenshots/` |
@@ -257,6 +257,8 @@ Game sounds are stored in `src/theroadragetrip/sounds/`. CC0 sounds require no a
 The F12 JSON includes all car properties, taxi mission state, map counts and bounds, camera and viewport data, and auto-fetch edge-trigger diagnostics.
 
 To inspect a saved profile, run `python -m pstats screenshots/profile_*.prof` or open it with a compatible profiler such as SnakeViz. Collect 10-20 seconds of normal gameplay between `F9` and `F10`; profiling can lower FPS while active.
+
+With `F3` enabled, the profiler overlay reports frame time, rolling average, FPS, spike count, and the slowest subsystem from the last spike. It also records render stages (roads, buildings, actors, lighting, and labels); spike thresholds are 25, 50, and 100 ms.
 
 The pause menu's **Settings** screen changes language and master, background, and effects volume. Left/right adjusts values; Escape returns to the pause menu. At a taxi stand, customers appear occasionally when a stand enters view, either already nearby or outside the screen, then walk to the stand before boarding. Existing pedestrians can also become customers. In areas without taxi stands, a nearby interested pedestrian can hail the taxi while stopped or while it passes. A rival NPC taxi may arrive first and take a stand customer. Completed passengers leave beside the taxi and continue walking.
 
