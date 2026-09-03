@@ -2036,13 +2036,20 @@ def main() -> None:
             render_profiler_start = time.perf_counter()
             render_profile_frame_start = time.perf_counter()
             render_profile_stage_start = render_profile_frame_start
-            if first_gameplay_frame:
-                logger.info("Gameplay frame: rendering scenery")
             map_stage_start = time.perf_counter()
             draw_grass_texture(screen, camx, camy, px_per_m)
             stage_elapsed = time.perf_counter() - map_stage_start
             render_profile_times["map_grass"] = render_profile_times.get("map_grass", 0.0) + stage_elapsed
             frame_profiler.record("render:grass", stage_elapsed * 1000.0)
+            if first_gameplay_frame:
+                logger.info("Gameplay frame: rendering water")
+            map_stage_start = time.perf_counter()
+            draw_waters(screen, waters, camx, camy, px_per_m=px_per_m, spatial_grid=water_grid)
+            stage_elapsed = time.perf_counter() - map_stage_start
+            render_profile_times["map_water"] = render_profile_times.get("map_water", 0.0) + stage_elapsed
+            frame_profiler.record("render:water", stage_elapsed * 1000.0)
+            if first_gameplay_frame:
+                logger.info("Gameplay frame: rendering scenery")
             map_stage_start = time.perf_counter()
             draw_scenery(
                 screen,
@@ -2057,13 +2064,6 @@ def main() -> None:
             stage_elapsed = time.perf_counter() - map_stage_start
             render_profile_times["map_scenery"] = render_profile_times.get("map_scenery", 0.0) + stage_elapsed
             frame_profiler.record("render:scenery", stage_elapsed * 1000.0)
-            if first_gameplay_frame:
-                logger.info("Gameplay frame: rendering water")
-            map_stage_start = time.perf_counter()
-            draw_waters(screen, waters, camx, camy, px_per_m=px_per_m, spatial_grid=water_grid)
-            stage_elapsed = time.perf_counter() - map_stage_start
-            render_profile_times["map_water"] = render_profile_times.get("map_water", 0.0) + stage_elapsed
-            frame_profiler.record("render:water", stage_elapsed * 1000.0)
             if first_gameplay_frame:
                 logger.info("Gameplay frame: rendering roads")
             map_stage_start = time.perf_counter()
