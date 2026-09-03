@@ -1109,6 +1109,12 @@ class PedestrianManager:
         end = way.points_m[segment_idx + 1]
         segment_heading = math.atan2(end[1] - start[1], end[0] - start[0])
         direction = 1 if math.cos(heading - segment_heading) >= 0.0 else -1
+        if resident_id is not None:
+            self.pedestrians[:] = [
+                pedestrian
+                for pedestrian in self.pedestrians
+                if pedestrian.resident_id != resident_id
+            ]
         pedestrian = Pedestrian(
             x=x,
             y=y,

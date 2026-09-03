@@ -1348,6 +1348,41 @@ def test_npc_right_turn_joins_exit_way_right_lane():
     assert npc.x < 0.0
 
 
+def test_npc_right_turn_uses_turn_lane_on_oneway_exit():
+    approach = Way(
+        points_m=[(-30.0, 0.0), (0.0, 0.0)],
+        highway="primary",
+        half_width_m=6.0,
+        oneway=1,
+    )
+    exit_way = Way(
+        points_m=[(0.0, 0.0), (0.0, -40.0)],
+        highway="primary",
+        half_width_m=6.0,
+        oneway=1,
+    )
+    manager = TrafficManager([approach, exit_way], target_count=0)
+    npc = NPCCar(
+        x=-8.0,
+        y=0.0,
+        heading=0.0,
+        speed=5.0,
+        way=approach,
+        segment_idx=0,
+        direction=1,
+        target_speed=5.0,
+        color=(20, 20, 20),
+        next_route=(exit_way, 0, 1),
+    )
+    manager.npcs = [npc]
+
+    for _ in range(60):
+        manager.update(Car(x=-100.0, y=100.0, heading=0.0, speed=0.0), dt=0.1)
+
+    assert npc.way is exit_way
+    assert npc.target_lane_offset == compute_turn_lane_offset(exit_way, "right")
+
+
 def test_npc_signals_prepared_turn_before_junction():
     approach = Way(points_m=[(-50.0, 0.0), (0.0, 0.0)], highway="primary", half_width_m=4.0)
     turn = Way(points_m=[(0.0, 0.0), (0.0, 50.0)], highway="primary", half_width_m=4.0)

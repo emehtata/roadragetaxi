@@ -96,6 +96,19 @@ def test_crashed_driver_pedestrian_keeps_resident_identity():
     assert list(residents.residents).count(resident.resident_id) == 1
 
 
+def test_spawn_pedestrian_for_resident_replaces_existing_pedestrian():
+    way = Way(points_m=[(0.0, 0.0), (100.0, 0.0)], highway="footway", half_width_m=2.0)
+    manager = PedestrianManager([way], target_count=0)
+    first = manager.spawn_pedestrian_at(20.0, 0.0, resident_id=42)
+    manager.pedestrians.append(first)
+
+    second = manager.spawn_pedestrian_at(80.0, 0.0, resident_id=42)
+    manager.pedestrians.append(second)
+
+    residents = [ped for ped in manager.pedestrians if ped.resident_id == 42]
+    assert residents == [second]
+
+
 def test_pedestrian_target_count_keeps_nearest_characters():
     way = Way(points_m=[(0.0, 0.0), (100.0, 0.0)], highway="footway", half_width_m=1.5)
     manager = PedestrianManager([way], target_count=3)

@@ -2989,10 +2989,14 @@ class TrafficManager:
                         if next_length > 1e-3:
                             next_norm_x = next_dy / next_length
                             next_norm_y = -next_dx / next_length
-                            next_lane_offset = compute_desired_lane_offset(
-                                next_way,
-                                is_overtaking=False,
-                                travel_direction=next_direction,
+                            next_lane_offset = (
+                                compute_turn_lane_offset(next_way, npc.turn_signal)
+                                if npc.turn_signal
+                                else compute_desired_lane_offset(
+                                    next_way,
+                                    is_overtaking=False,
+                                    travel_direction=next_direction,
+                                )
                             )
                             next_start = (
                                 next_start[0] + next_norm_x * next_lane_offset,
@@ -3065,8 +3069,12 @@ class TrafficManager:
                                     npc.turn_signal_elapsed = 0.0
                                     npc.layer = getattr(npc.way, "layer", 0)
                                     npc.target_speed = calculate_npc_target_speed(npc.way, npc.speed_factor)
-                                    npc.target_lane_offset = compute_desired_lane_offset(
-                                        npc.way, npc.overtaking, npc.direction
+                                    npc.target_lane_offset = (
+                                        compute_turn_lane_offset(npc.way, npc.turn_signal)
+                                        if npc.turn_signal
+                                        else compute_desired_lane_offset(
+                                            npc.way, npc.overtaking, npc.direction
+                                        )
                                     )
                                     npc.next_route = None
                                     npc.turn_recovery_timer = 60.0
@@ -3087,8 +3095,12 @@ class TrafficManager:
                                 npc.turn_signal_elapsed = 0.0
                                 npc.layer = getattr(npc.way, "layer", 0)
                                 npc.target_speed = calculate_npc_target_speed(npc.way, npc.speed_factor)
-                                npc.target_lane_offset = compute_desired_lane_offset(
-                                    npc.way, npc.overtaking, npc.direction
+                                npc.target_lane_offset = (
+                                    compute_turn_lane_offset(npc.way, npc.turn_signal)
+                                    if npc.turn_signal
+                                    else compute_desired_lane_offset(
+                                        npc.way, npc.overtaking, npc.direction
+                                    )
                                 )
                                 npc.next_route = None
                                 npc.turn_recovery_timer = 60.0
@@ -3124,8 +3136,12 @@ class TrafficManager:
                                     npc.turn_signal_elapsed = 0.0
                                     npc.layer = getattr(npc.way, "layer", 0)
                                     npc.target_speed = calculate_npc_target_speed(npc.way, npc.speed_factor)
-                                    npc.target_lane_offset = compute_desired_lane_offset(
-                                        npc.way, npc.overtaking, npc.direction
+                                    npc.target_lane_offset = (
+                                        compute_turn_lane_offset(npc.way, npc.turn_signal)
+                                        if npc.turn_signal
+                                        else compute_desired_lane_offset(
+                                            npc.way, npc.overtaking, npc.direction
+                                        )
                                     )
                                     npc.next_route = None
                                     npc.turn_recovery_timer = 60.0
@@ -3146,8 +3162,12 @@ class TrafficManager:
                                 npc.turn_signal_elapsed = 0.0
                                 npc.layer = getattr(npc.way, "layer", 0)
                                 npc.target_speed = calculate_npc_target_speed(npc.way, npc.speed_factor)
-                                npc.target_lane_offset = compute_desired_lane_offset(
-                                    npc.way, npc.overtaking, npc.direction
+                                npc.target_lane_offset = (
+                                    compute_turn_lane_offset(npc.way, npc.turn_signal)
+                                    if npc.turn_signal
+                                    else compute_desired_lane_offset(
+                                        npc.way, npc.overtaking, npc.direction
+                                    )
                                 )
                                 npc.next_route = None
                                 npc.turn_recovery_timer = 60.0
