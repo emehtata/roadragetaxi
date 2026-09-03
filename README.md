@@ -213,8 +213,8 @@ Other common development commands are `make test`, `make compile`, and `make che
 Push a version tag to build and publish a Windows package containing `RoadRageTrip.exe`:
 
 ```bash
-git tag v0.7.0beta
-git push origin v0.7.0beta
+git tag v0.8.0beta
+git push origin v0.8.0beta
 ```
 
 GitHub Actions builds the package on Windows with PyInstaller and attaches both `RoadRageTrip-windows-x64.zip` and `RoadRageTrip-Setup.exe` to the GitHub Release. Use the EXE installer for a normal Windows installation, or extract the zip and launch `RoadRageTrip.exe`; no Python installation is required.

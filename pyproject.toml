@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "theroadragetrip"
-version = "0.7.0beta"
+version = "0.8.0beta"
 description = "PoC top-down driving game using OSM data"
 readme = "README.md"
 requires-python = ">=3.10"
