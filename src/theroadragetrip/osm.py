@@ -306,7 +306,7 @@ class Building:
 class ParkingSpace:
     points_m: List[Tuple[float, float]]
     bbox: Tuple[float, float, float, float]
-    orientation: float = 0.0
+    orientation: object = None
     osm_id: Optional[int] = None
     occupied: bool = False
     reserved: bool = False
@@ -314,16 +314,30 @@ class ParkingSpace:
     reserved_by_pedestrian_id: Optional[int] = None
 
     def __post_init__(self) -> None:
-        if len(self.points_m) < 2 or self.orientation != 0.0:
+        orientation = self.orientation
+        if isinstance(orientation, str):
+            orientation = orientation.strip().casefold()
+            self.orientation = orientation
+        if len(self.points_m) < 2:
             return
         longest_edge = max(
             zip(self.points_m, self.points_m[1:] + self.points_m[:1]),
             key=lambda edge: (edge[1][0] - edge[0][0]) ** 2 + (edge[1][1] - edge[0][1]) ** 2,
         )
-        self.orientation = math.atan2(
+        axis = math.atan2(
             longest_edge[1][1] - longest_edge[0][1],
             longest_edge[1][0] - longest_edge[0][0],
         )
+        if isinstance(orientation, str):
+            self.orientation = {
+                "parallel": axis,
+                "perpendicular": axis + math.pi / 2.0,
+                "diagonal": axis + math.pi / 4.0,
+                "across": axis + math.pi / 2.0,
+                "multi": axis,
+            }.get(orientation, axis)
+        elif orientation == 0.0:
+            self.orientation = axis
 
 
 @dataclass
@@ -1472,7 +1486,14 @@ def build_ways(
                 (x - half_width, y + half_length),
             ]
             ibbox = (x - half_width, y - half_length, x + half_width, y + half_length)
-        parking_spaces.append(ParkingSpace(points_m=pts, bbox=ibbox, osm_id=parking_id))
+        parking_spaces.append(
+            ParkingSpace(
+                points_m=pts,
+                bbox=ibbox,
+                orientation=tags.get("orientation"),
+                osm_id=parking_id,
+            )
+        )
     for tags, node_id in parking_space_nodes_raw:
         point = nodes_m.get(node_id)
         if point is None:
@@ -1490,6 +1511,7 @@ def build_ways(
             ParkingSpace(
                 points_m=points,
                 bbox=(x - half_width, y - half_length, x + half_width, y + half_length),
+                orientation=tags.get("orientation"),
                 osm_id=node_id,
             )
         )

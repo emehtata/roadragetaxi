@@ -125,6 +125,7 @@ python3 road_rage_trip.py --bbox "60.150,24.88,60.205,25.02"
 
 # Enable dynamic background auto-fetch
 python3 road_rage_trip.py --auto-fetch --fetch-margin 50 --fetch-tile-size 500
+
 ```
 
 On the first launch, the game creates `roadragetrip.ini` under the platform configuration directory (`$XDG_CONFIG_HOME/RoadRageTrip/` on Linux, `%APPDATA%/RoadRageTrip/` on Windows) and asks for Finnish or English. Edit that file to set the city, map fetching, zoom, logging, pedestrian, cyclist, traffic, language, audio, and police-camera values. Career progress and the total odometer are stored beside the INI file. The `[cities]` section contains editable `name = latitude, longitude` entries; add or remove cities there. Command-line options override the INI values for one launch.

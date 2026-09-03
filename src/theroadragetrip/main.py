@@ -6,6 +6,7 @@ import math
 import os
 import random
 import sys
+import threading
 import time
 from dataclasses import asdict
 from typing import Optional, Tuple
@@ -89,6 +90,8 @@ from .render import (
     draw_car,
     draw_cyclists,
     draw_city_selection_menu,
+    draw_game_start_hint,
+    draw_game_start_overlay,
     draw_city_editor,
     draw_city_summary,
     draw_mode_selection_menu,
@@ -849,6 +852,8 @@ def main() -> None:
 
         def on_load_progress(fraction: float, message: str) -> None:
             nonlocal last_progress_draw
+            if threading.current_thread() is not threading.main_thread():
+                return
             now = time.monotonic()
             if fraction < 1.0 and now - last_progress_draw < 0.1:
                 return
@@ -1096,6 +1101,9 @@ def main() -> None:
         solar_time_bucket = None
         camx, camy = car.x, car.y
         first_gameplay_frame = True
+        awaiting_start = True
+        start_warmup_remaining = 1.5
+        start_hint_remaining = 0.0
         slow_check_elapsed = 0.0
         taxi_waiter_elapsed = 0.0
         last_zoom_scale = None
@@ -1105,6 +1113,8 @@ def main() -> None:
         last_track_surface = None
         map_sync_stage = 0
         water_elapsed = 0.0
+        visible_road_count_elapsed = 0.0
+        visible_road_count = 0
         on_foot = True
         saved_gig_fares = taxi_mgr.completed_fares
         render_profile_last_log = time.perf_counter()
@@ -1117,6 +1127,10 @@ def main() -> None:
         while running:
             dt = min(clock.tick(FPS) / 1000.0, 0.1)  # Clamp delta-time to prevent physics tunneling on lag spikes
             frame_profiler.begin_frame()
+            if awaiting_start:
+                start_warmup_remaining = max(0.0, start_warmup_remaining - dt)
+            elif start_hint_remaining > 0.0:
+                start_hint_remaining = max(0.0, start_hint_remaining - dt)
             time_scale = 1.0 if taxi_mgr.current_passenger else 60.0
             game_time_seconds = (game_time_seconds + dt * time_scale) % (24.0 * 60.0 * 60.0)
             current_solar_bucket = int(game_time_seconds // (15.0 * 60.0))
@@ -1171,6 +1185,12 @@ def main() -> None:
                         event.pos[1] - hud_drag_offset[1],
                     )
                 elif event.type == pygame.KEYDOWN:
+                    if awaiting_start:
+                        if start_warmup_remaining > 0.0:
+                            continue
+                        awaiting_start = False
+                        start_hint_remaining = 8.0
+                        continue
                     if event.key in (pygame.K_PAGEUP, pygame.K_PAGEDOWN):
                         time_delta = 60.0 * 60.0 if event.key == pygame.K_PAGEUP else -60.0 * 60.0
                         game_time_seconds = (game_time_seconds + time_delta) % (24.0 * 60.0 * 60.0)
@@ -1255,6 +1275,7 @@ def main() -> None:
                             audio.play("car-door-open")
                         elif math.hypot(player_pedestrian.x - car.x, player_pedestrian.y - car.y) <= 3.0:
                             on_foot = False
+                            start_hint_remaining = 0.0
                             car.speed = 0.0
                             audio.play("car-door-open")
                     elif event.key == pygame.K_SPACE and not phone_open:
@@ -1498,6 +1519,7 @@ def main() -> None:
                 dt = 0.0
             slow_check_elapsed += dt
             taxi_waiter_elapsed += dt
+            visible_road_count_elapsed += dt
             rage_shout_timer = max(0.0, rage_shout_timer - dt)
 
             if zoom_elapsed < zoom_duration:
@@ -2064,13 +2086,15 @@ def main() -> None:
                     and viewport_miny - 45.0 <= npc.y <= viewport_maxy + 45.0
                 ),
             ]
-            visible_road_count = sum(
-                1
-                for way in spatial_grid.ways_in_rect(
-                    viewport_minx, viewport_miny, viewport_maxx, viewport_maxy
+            if visible_road_count_elapsed >= 0.1:
+                visible_road_count = sum(
+                    1
+                    for way in spatial_grid.ways_in_rect(
+                        viewport_minx, viewport_miny, viewport_maxx, viewport_maxy
+                    )
+                    if getattr(way, "is_drivable", True)
                 )
-                if getattr(way, "is_drivable", True)
-            )
+                visible_road_count_elapsed = 0.0
             render_profile_stage_start = time.perf_counter()
             visible_pedestrians = pedestrian_mgr.pedestrians + [
                 npc for npc in traffic_mgr.npcs if getattr(npc, "is_on_foot", False)
@@ -2331,6 +2355,10 @@ def main() -> None:
                     SCREEN_W,
                     SCREEN_H,
                 )
+            if awaiting_start:
+                draw_game_start_overlay(screen, font, chosen_city, SCREEN_W, SCREEN_H)
+            elif start_hint_remaining > 0.0 and on_foot:
+                draw_game_start_hint(screen, font, SCREEN_W)
 
             if first_gameplay_frame:
                 logger.info("Gameplay frame: flipping display")

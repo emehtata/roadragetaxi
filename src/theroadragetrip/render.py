@@ -72,6 +72,8 @@ _street_light_frame_cache_key = None
 _street_light_frame_cache_surface = None
 _street_light_frame_cache_camera = None
 _street_light_frame_world_positions = []
+_street_light_geometry_cache_key = None
+_street_light_geometry_cache = []
 _day_night_overlay_cache = {}
 _solar_position_cache = {}
 _street_light_last_debug_log_ms = 0
@@ -1484,84 +1486,88 @@ def draw_street_lights(
     junction_grid = _street_light_junction_grid_cache[1]
     light_layer = pygame.Surface(screen.get_size(), pygame.SRCALPHA) if street_lighting_enabled else None
     _street_light_frame_world_positions = []
+    global _street_light_geometry_cache_key, _street_light_geometry_cache
+    geometry_cache_key = (
+        id(ways),
+        len(ways),
+        id(ways[-1]) if ways else None,
+        id(buildings),
+        len(buildings) if buildings else 0,
+        id(buildings[-1]) if buildings else None,
+    )
+    if geometry_cache_key != _street_light_geometry_cache_key:
+        cached_lamps = []
+        lamp_spacing = STREET_LIGHT_SPACING_M
+        junction_cell_size = 40.0
+        for way in ways:
+            if (
+                not getattr(way, "is_drivable", True)
+                or (
+                    not _way_has_street_lighting(way)
+                    and getattr(way, "highway", "") != "secondary"
+                )
+                or len(way.points_m) < 2
+            ):
+                continue
+            distance_to_lamp = 0.0
+            segment_lengths = getattr(way, "segment_lengths", ())
+            for segment_index, (start, end) in enumerate(zip(way.points_m, way.points_m[1:])):
+                dx = end[0] - start[0]
+                dy = end[1] - start[1]
+                segment_length = (
+                    segment_lengths[segment_index]
+                    if segment_index < len(segment_lengths)
+                    else math.hypot(dx, dy)
+                )
+                if segment_length < 1.0:
+                    continue
+                while distance_to_lamp <= segment_length:
+                    fraction = distance_to_lamp / segment_length
+                    lamp_x = start[0] + dx * fraction
+                    lamp_y = start[1] + dy * fraction
+                    normal_x = -dy / segment_length
+                    normal_y = dx / segment_length
+                    edge_distance = getattr(way, "half_width_m", 4.0) + 1.0
+                    if _way_should_have_street_lighting(way, buildings, (lamp_x, lamp_y), building_grid):
+                        for side in (-1.0, 1.0):
+                            world_x = lamp_x + normal_x * edge_distance * side
+                            world_y = lamp_y + normal_y * edge_distance * side
+                            junction_cell_x = math.floor(world_x / junction_cell_size)
+                            junction_cell_y = math.floor(world_y / junction_cell_size)
+                            if any(
+                                (world_x - junction_x) ** 2 + (world_y - junction_y) ** 2
+                                < STREET_LIGHT_JUNCTION_CLEARANCE_M * STREET_LIGHT_JUNCTION_CLEARANCE_M
+                                for cell_x in (junction_cell_x - 1, junction_cell_x, junction_cell_x + 1)
+                                for cell_y in (junction_cell_y - 1, junction_cell_y, junction_cell_y + 1)
+                                for junction_x, junction_y in junction_grid.get((cell_x, cell_y), ())
+                            ):
+                                continue
+                            road_direction = math.atan2(-normal_y * side, -normal_x * side)
+                            cached_lamps.append((world_x, world_y, road_direction))
+                    distance_to_lamp += lamp_spacing
+                distance_to_lamp -= segment_length
+        _street_light_geometry_cache_key = geometry_cache_key
+        _street_light_geometry_cache = cached_lamps
+
     lamp_centers = []
     lamp_directions = []
-    lamp_spacing = STREET_LIGHT_SPACING_M
-    visible_way_count = 0
-    junction_cell_size = 40.0
-    junction_min_x = math.floor(vminx / junction_cell_size)
-    junction_max_x = math.floor(vmaxx / junction_cell_size)
-    junction_min_y = math.floor(vminy / junction_cell_size)
-    junction_max_y = math.floor(vmaxy / junction_cell_size)
-    for way in visible_ways:
-        visible_way_count += 1
+    visible_way_count = visible_road_count if visible_road_count is not None else len(ways)
+    _street_light_frame_world_positions = []
+    for world_x, world_y, road_direction in _street_light_geometry_cache:
         if len(lamp_centers) >= MAX_VISIBLE_STREET_LIGHTS:
             break
-        if (
-            not getattr(way, "is_drivable", True)
-            or (
-                not _way_has_street_lighting(way)
-                and getattr(way, "highway", "") != "secondary"
-            )
-            or len(way.points_m) < 2
-        ):
+        if not (vminx <= world_x <= vmaxx and vminy <= world_y <= vmaxy):
             continue
-        distance_to_lamp = 0.0
-        segment_lengths = getattr(way, "segment_lengths", ())
-        for segment_index, (start, end) in enumerate(zip(way.points_m, way.points_m[1:])):
-            dx = end[0] - start[0]
-            dy = end[1] - start[1]
-            segment_length = (
-                segment_lengths[segment_index]
-                if segment_index < len(segment_lengths)
-                else math.hypot(dx, dy)
-            )
-            if segment_length < 1.0:
-                continue
-            while distance_to_lamp <= segment_length:
-                if len(lamp_centers) >= MAX_VISIBLE_STREET_LIGHTS:
-                    break
-                fraction = distance_to_lamp / segment_length
-                lamp_x = start[0] + dx * fraction
-                lamp_y = start[1] + dy * fraction
-                normal_x = -dy / segment_length
-                normal_y = dx / segment_length
-                edge_distance = getattr(way, "half_width_m", 4.0) + 1.0
-                if not _way_should_have_street_lighting(way, buildings, (lamp_x, lamp_y), building_grid):
-                    distance_to_lamp += lamp_spacing
-                    continue
-                for side in (-1.0, 1.0):
-                    if len(lamp_centers) >= MAX_VISIBLE_STREET_LIGHTS:
-                        break
-                    world_x = lamp_x + normal_x * edge_distance * side
-                    world_y = lamp_y + normal_y * edge_distance * side
-                    junction_cell_size = 40.0
-                    junction_cell_x = math.floor(world_x / junction_cell_size)
-                    junction_cell_y = math.floor(world_y / junction_cell_size)
-                    if any(
-                        (world_x - junction_x) ** 2 + (world_y - junction_y) ** 2
-                        < STREET_LIGHT_JUNCTION_CLEARANCE_M * STREET_LIGHT_JUNCTION_CLEARANCE_M
-                        for cell_x in (junction_cell_x - 1, junction_cell_x, junction_cell_x + 1)
-                        for cell_y in (junction_cell_y - 1, junction_cell_y, junction_cell_y + 1)
-                        for junction_x, junction_y in junction_grid.get((cell_x, cell_y), ())
-                    ):
-                        continue
-                    if not (vminx <= world_x <= vmaxx and vminy <= world_y <= vmaxy):
-                        continue
-                    screen_x, screen_y = world_to_screen(
-                        world_x, world_y, camx, camy, px_per_m, screen_w, screen_h
-                    )
-                    lamp_center = (int(screen_x), int(screen_y))
-                    lamp_radius = max(1, int(px_per_m * 0.28))
-                    lamp_color = STREET_LIGHT_SHADE_COLOR
-                    road_direction = math.atan2(-normal_y * side, -normal_x * side)
-                    pygame.draw.circle(screen, lamp_color, lamp_center, lamp_radius)
-                    lamp_centers.append(lamp_center)
-                    lamp_directions.append(road_direction)
-                    _street_light_frame_world_positions.append((world_x, world_y))
-                distance_to_lamp += lamp_spacing
-            distance_to_lamp -= segment_length
-
+        screen_x, screen_y = world_to_screen(
+            world_x, world_y, camx, camy, px_per_m, screen_w, screen_h
+        )
+        lamp_center = (int(screen_x), int(screen_y))
+        lamp_radius = max(1, int(px_per_m * 0.28))
+        lamp_color = STREET_LIGHT_SHADE_COLOR
+        pygame.draw.circle(screen, lamp_color, lamp_center, lamp_radius)
+        lamp_centers.append(lamp_center)
+        lamp_directions.append(road_direction)
+        _street_light_frame_world_positions.append((world_x, world_y))
     if light_layer is not None:
         lamp_radius = max(1, int(px_per_m * 0.28))
         for lamp_center in lamp_centers:
@@ -3768,6 +3774,55 @@ def draw_loading_screen(
     screen.blit(msg_surf, msg_rect)
 
 
+def draw_game_start_overlay(
+    screen,
+    font,
+    city: str,
+    screen_w: int = SCREEN_W,
+    screen_h: int = SCREEN_H,
+) -> None:
+    """Draw the city sign and prompt shown before gameplay starts."""
+    import pygame
+
+    overlay = pygame.Surface((screen_w, screen_h), pygame.SRCALPHA)
+    overlay.fill((0, 0, 0, 105))
+    screen.blit(overlay, (0, 0))
+
+    sign_font = pygame.font.SysFont(None, max(34, min(68, screen_w // 12)), bold=True)
+    prompt_font = pygame.font.SysFont(None, max(22, min(34, screen_w // 24)))
+    city_surface = sign_font.render(city.upper(), True, (255, 255, 255))
+    prompt_surface = prompt_font.render("Paina mitä tahansa aloittaaksesi", True, (255, 255, 255))
+    sign_width = max(city_surface.get_width(), prompt_surface.get_width()) + 80
+    sign_height = city_surface.get_height() + prompt_surface.get_height() + 54
+    sign = pygame.Rect(0, 0, sign_width, sign_height)
+    sign.center = (screen_w // 2, screen_h // 2)
+    pygame.draw.rect(screen, (28, 84, 155), sign, border_radius=8)
+    pygame.draw.rect(screen, (220, 235, 255), sign, width=3, border_radius=8)
+    screen.blit(city_surface, city_surface.get_rect(center=(sign.centerx, sign.top + city_surface.get_height() // 2 + 14)))
+    screen.blit(
+        prompt_surface,
+        prompt_surface.get_rect(center=(sign.centerx, sign.bottom - prompt_surface.get_height() // 2 - 14)),
+    )
+
+
+def draw_game_start_hint(
+    screen,
+    font,
+    screen_w: int = SCREEN_W,
+) -> None:
+    """Draw the first gameplay control hint."""
+    import pygame
+
+    hint_font = pygame.font.SysFont(None, max(20, min(30, screen_w // 28)), bold=True)
+    hint = hint_font.render("Painamalla F pääset sisään taksiisi", True, (255, 255, 255))
+    padding_x = 18
+    padding_y = 10
+    box = hint.get_rect(center=(screen_w // 2, 76)).inflate(padding_x * 2, padding_y * 2)
+    pygame.draw.rect(screen, (16, 35, 55), box, border_radius=5)
+    pygame.draw.rect(screen, (100, 190, 240), box, width=2, border_radius=5)
+    screen.blit(hint, hint.get_rect(center=box.center))
+
+
 def draw_city_selection_menu(
     screen,
     font,
@@ -4387,12 +4442,23 @@ def draw_hud(
 
         # In-game notification banner (e.g. Fare completed, new pickup)
         if taxi_mgr.notification_timer > 0.0 and taxi_mgr.notification_msg:
-            notif_surf = font.render(taxi_mgr.notification_msg, True, (255, 255, 255))
-            notif_rect = notif_surf.get_rect(center=(SCREEN_W // 2, SCREEN_H - 45))
+            is_speed_camera_notice = (
+                getattr(taxi_mgr, "speed_camera_notice_timer", 0.0) > 0.0
+                and getattr(taxi_mgr, "speed_camera_notice_msg", "")
+            )
+            notice_text = (
+                taxi_mgr.speed_camera_notice_msg
+                if is_speed_camera_notice
+                else taxi_mgr.notification_msg
+            )
+            notif_surf = font.render(notice_text, True, (255, 255, 255))
+            notice_center = (SCREEN_W // 2, SCREEN_H // 2) if is_speed_camera_notice else (SCREEN_W // 2, SCREEN_H - 45)
+            notif_rect = notif_surf.get_rect(center=notice_center)
             n_bg = pygame.Surface((notif_rect.width + 24, notif_rect.height + 12), pygame.SRCALPHA)
             n_bg.fill((20, 30, 40, 235))
             screen.blit(n_bg, (notif_rect.x - 12, notif_rect.y - 6))
-            pygame.draw.rect(screen, (255, 200, 50), (notif_rect.x - 12, notif_rect.y - 6, notif_rect.width + 24, notif_rect.height + 12), 2, border_radius=5)
+            border_color = (255, 70, 45) if is_speed_camera_notice else (255, 200, 50)
+            pygame.draw.rect(screen, border_color, (notif_rect.x - 12, notif_rect.y - 6, notif_rect.width + 24, notif_rect.height + 12), 2, border_radius=5)
             screen.blit(notif_surf, notif_rect)
 
     # Keep the rage face and meter together in the lower-right corner.

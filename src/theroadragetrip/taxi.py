@@ -194,6 +194,8 @@ class TaxiManager:
         self.taxi_smoke_timer: float = 0.0
         self.speed_camera_flash_timer: float = 0.0
         self.speed_camera_flash_index: Optional[int] = None
+        self.speed_camera_notice_timer: float = 0.0
+        self.speed_camera_notice_msg: str = ""
         self._road_overlap_buildings: set[int] = set()
         self._overlap_ways_ref = None
         self._overlap_buildings_ref = None
@@ -282,7 +284,15 @@ class TaxiManager:
             self.total_score -= penalty
             self.speed_camera_flash_timer = 0.35
             self.speed_camera_flash_index = camera_index
-            self.notification_msg = tr(self.language, "speed_camera_hit", penalty=penalty)
+            speeding_kmh = max(0, round(abs(car.speed) * 3.6 - camera.speed_limit_kmh))
+            self.speed_camera_notice_timer = 4.0
+            self.speed_camera_notice_msg = tr(
+                self.language,
+                "speed_camera_hit",
+                penalty=penalty,
+                excess=speeding_kmh,
+            )
+            self.notification_msg = self.speed_camera_notice_msg
             self.notification_timer = 4.0
             logger.info("Speed camera triggered: -%d pts", penalty)
             hit = True
@@ -1565,6 +1575,9 @@ class TaxiManager:
         self.speed_camera_flash_timer = max(0.0, self.speed_camera_flash_timer - dt)
         if self.speed_camera_flash_timer <= 0.0:
             self.speed_camera_flash_index = None
+        self.speed_camera_notice_timer = max(0.0, self.speed_camera_notice_timer - dt)
+        if self.speed_camera_notice_timer <= 0.0:
+            self.speed_camera_notice_msg = ""
         self.tree_wait_timer = max(0.0, self.tree_wait_timer - dt)
         self.taxi_smoke_timer = max(0.0, self.taxi_smoke_timer - dt)
         for key, effect in list(self.tree_effects.items()):

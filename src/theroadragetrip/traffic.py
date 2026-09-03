@@ -616,6 +616,16 @@ class TrafficManager:
         """Return a stable runtime ID even for hand-built test parking spaces."""
         return parking_space.osm_id if parking_space.osm_id is not None else id(parking_space)
 
+    @staticmethod
+    def parking_heading(parking_space: ParkingSpace) -> float:
+        """Return the tagged parking direction for an eligible space."""
+        orientation = parking_space.orientation
+        return float(orientation) if orientation is not None else random.uniform(-math.pi, math.pi)
+
+    @staticmethod
+    def parking_space_has_orientation(parking_space: ParkingSpace) -> bool:
+        return parking_space.orientation is not None
+
     def reserve_parking_space(self, parking_space: ParkingSpace, pedestrian_id: int) -> bool:
         """Reserve a free OSM parking space for a pedestrian or vehicle interaction."""
         if parking_space.occupied or parking_space.reserved:
@@ -703,13 +713,14 @@ class TrafficManager:
             if parking_space is not None:
                 center_x = (parking_space.bbox[0] + parking_space.bbox[2]) * 0.5
                 center_y = (parking_space.bbox[1] + parking_space.bbox[3]) * 0.5
+                parking_heading = self.parking_heading(parking_space)
                 clearance = math.hypot(
                     parking_space.bbox[2] - parking_space.bbox[0],
                     parking_space.bbox[3] - parking_space.bbox[1],
                 ) * 0.5 + npc.length_m * 0.5 + 1.0
                 exit_position = (
-                    center_x + math.cos(parking_space.orientation) * clearance,
-                    center_y + math.sin(parking_space.orientation) * clearance,
+                    center_x + math.cos(parking_heading) * clearance,
+                    center_y + math.sin(parking_heading) * clearance,
                 )
                 npc.parking_route = [(npc.x, npc.y), exit_position]
                 npc.parking_route_index = 1
@@ -728,7 +739,7 @@ class TrafficManager:
         """Spawn an NPC directly only into a free parking space outside the view."""
         available_spaces = [
             space for space in self.nearby_parking_spaces(near_x, near_y, self.spawn_radius_m)
-            if not space.occupied
+            if self.parking_space_has_orientation(space) and not space.occupied
             and not space.reserved
             and (
                 viewport_bounds is None
@@ -754,7 +765,7 @@ class TrafficManager:
         npc.vehicle_type = "car"
         npc.x = center_x
         npc.y = center_y
-        npc.heading = parking_space.orientation
+        npc.heading = self.parking_heading(parking_space)
         if not self.occupy_parking_space(npc, parking_space):
             self.npcs.remove(npc)
             return None
@@ -769,7 +780,7 @@ class TrafficManager:
         """Spawn outside the viewport and drive a normal NPC toward a visible OSM space."""
         available_spaces = [
             space for space in self.nearby_parking_spaces(near_x, near_y, self.spawn_radius_m)
-            if not space.occupied
+            if self.parking_space_has_orientation(space) and not space.occupied
             and not space.reserved
             and viewport_bounds[0]
             <= (space.bbox[0] + space.bbox[2]) * 0.5
@@ -810,7 +821,7 @@ class TrafficManager:
         """Reserve a nearby OSM space and route a vehicle there from a dead end."""
         available_spaces = [
             space for space in self.nearby_parking_spaces(npc.x, npc.y, 80.0)
-            if not space.occupied and not space.reserved
+            if self.parking_space_has_orientation(space) and not space.occupied and not space.reserved
         ]
         if not available_spaces:
             return False
@@ -921,7 +932,7 @@ class TrafficManager:
                     None,
                 )
                 if parking_space is not None:
-                    npc.heading = parking_space.orientation
+                    npc.heading = self.parking_heading(parking_space)
                     if not self.occupy_parking_space(npc, parking_space):
                         self.release_parking_space(npc)
                         npc.state = "driving"
@@ -2079,7 +2090,7 @@ class TrafficManager:
                         target_spd = min(target_spd, 32.0)
                     elif vehicle_type == "moped":
                         target_spd = min(target_spd, 14.0)
-                    initial_spd = target_spd * random.uniform(0.85, 1.0)
+                    initial_spd = target_spd
                     color = random.choice(NPC_COLORS)
                     if vehicle_type == "motorcycle":
                         length_m, width_m = 2.2, 0.8

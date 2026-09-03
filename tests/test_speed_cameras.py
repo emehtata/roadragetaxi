@@ -41,6 +41,7 @@ def test_speeding_at_camera_costs_300_once_per_pass():
     assert manager.total_score == -300
     assert manager.speed_camera_flash_timer == 0.35
     assert manager.speed_camera_flash_index == 0
+    assert manager.speed_camera_notice_msg == "Peltipoliisi! Ylinopeutta 22 km/h -300 pistettä"
     assert not manager.check_speed_cameras(car, [camera])
     assert manager.total_score == -300
 

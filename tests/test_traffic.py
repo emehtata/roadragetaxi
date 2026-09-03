@@ -220,7 +220,7 @@ def test_departing_occupied_npc_is_not_despawned_before_leaving_space():
 def test_traffic_update_populates_half_target_with_parked_npcs():
     way = Way(points_m=[(0.0, 0.0), (200.0, 0.0)], highway="residential", half_width_m=4.0)
     spaces = [
-        ParkingSpace([(x - 1.0, -2.0), (x + 1.0, -2.0), (x + 1.0, 2.0), (x - 1.0, 2.0)], (x - 1.0, -2.0, x + 1.0, 2.0), osm_id=x)
+        ParkingSpace([(x - 1.0, -2.0), (x + 1.0, -2.0), (x + 1.0, 2.0), (x - 1.0, 2.0)], (x - 1.0, -2.0, x + 1.0, 2.0), orientation=0.0, osm_id=x)
         for x in (20.0, 40.0, 60.0, 80.0)
     ]
     manager = TrafficManager(ways=[way], target_count=4, parking_spaces=spaces, parking_density=0.5)
@@ -279,6 +279,7 @@ def test_parked_npc_can_spawn_directly_outside_viewport():
     parking_space = ParkingSpace(
         [(60.0, -2.0), (64.0, -2.0), (64.0, 2.0), (60.0, 2.0)],
         (60.0, -2.0, 64.0, 2.0),
+            orientation=0.0,
         osm_id=13,
     )
     manager = TrafficManager([way], target_count=0, parking_spaces=[parking_space])
@@ -294,6 +295,22 @@ def test_parked_npc_can_spawn_directly_outside_viewport():
     assert parking_space.occupied is True
 
 
+def test_parking_without_orientation_is_not_used():
+    way = Way(
+        points_m=[(-100.0, 0.0), (100.0, 0.0)],
+        highway="primary",
+        half_width_m=4.0,
+    )
+    parking_space = ParkingSpace(
+        [(18.0, -2.0), (22.0, -2.0), (22.0, 2.0), (18.0, 2.0)],
+        (18.0, -2.0, 22.0, 2.0),
+        osm_id=14,
+    )
+    manager = TrafficManager([way], target_count=0, parking_spaces=[parking_space])
+
+    assert manager.spawn_parked_npc(0.0, 0.0, viewport_bounds=(-25.0, -25.0, 25.0, 25.0)) is None
+
+
 def test_visible_parking_space_uses_driving_spawn_before_occupying_space():
     random.seed(7)
     way = Way(
@@ -305,6 +322,7 @@ def test_visible_parking_space_uses_driving_spawn_before_occupying_space():
     parking_space = ParkingSpace(
         [(18.0, -2.0), (22.0, -2.0), (22.0, 2.0), (18.0, 2.0)],
         (18.0, -2.0, 22.0, 2.0),
+            orientation=0.0,
         osm_id=15,
     )
     manager = TrafficManager([way], target_count=0, parking_spaces=[parking_space])
@@ -336,6 +354,7 @@ def test_destination_parking_starts_from_a_road_end():
     parking_space = ParkingSpace(
         [(78.0, -2.0), (82.0, -2.0), (82.0, 2.0), (78.0, 2.0)],
         (78.0, -2.0, 82.0, 2.0),
+            orientation=0.0,
         osm_id=16,
     )
     manager = TrafficManager([way], target_count=0, parking_spaces=[parking_space])
@@ -599,6 +618,23 @@ def test_npc_traffic_spawning_and_movement():
         if (npc.x, npc.y) != initial_positions[i]
     )
     assert moved_count > 0
+
+
+def test_spawned_driving_npc_starts_at_target_speed_and_follows_road_direction():
+    way = Way(
+        points_m=[(0.0, 0.0), (100.0, 0.0)],
+        highway="primary",
+        half_width_m=4.0,
+        speed_limit_kmh=50,
+    )
+    traffic_mgr = TrafficManager([way], target_count=0, spawn_radius_m=300.0)
+
+    npc = traffic_mgr.spawn_npc(50.0, 50.0)
+
+    assert npc is not None
+    assert npc.speed == npc.target_speed
+    assert npc.speed > 0.0
+    assert abs(npc.heading) in (0.0, math.pi)
 
 
 def test_two_wheelers_are_experimental_only(monkeypatch):
