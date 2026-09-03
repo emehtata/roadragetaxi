@@ -2703,7 +2703,11 @@ def draw_npc_cars(
         crashed_timer = getattr(npc, "crashed_timer", 0.0)
         if crashed_timer > 0.0:
             import pygame
-            t = 5.0 - crashed_timer
+            t = (
+                5.0 - crashed_timer
+                if math.isfinite(crashed_timer)
+                else pygame.time.get_ticks() / 1000.0
+            )
             # 3 animated puff particles floating upwards from engine bay
             fx = math.cos(npc.heading)
             fy = -math.sin(npc.heading)
@@ -3043,7 +3047,6 @@ def draw_resident_popup(
     shade.fill((12, 20, 30, 242))
     screen.blit(shade, popup_rect.topleft)
     pygame.draw.rect(screen, (105, 205, 255), popup_rect, width=2, border_radius=6)
-
     birth_date = getattr(resident, "birth_date", None)
     birth_text = birth_date.isoformat() if birth_date is not None else "-"
     vehicle_count = len(getattr(resident, "vehicle_ids", ()))
@@ -3073,6 +3076,43 @@ def draw_resident_popup(
         screen.blit(text_surface, (popup_rect.x + 16, popup_rect.y + 14 + index * 26))
 
 
+def draw_npc_popup(screen, font, npc, residents, screen_w: int = SCREEN_W) -> None:
+    """Draw vehicle details and the residents currently associated with it."""
+    import pygame
+
+    if npc is None:
+        return
+    popup_width, popup_height = 420, 210
+    popup_rect = pygame.Rect(screen_w - popup_width - 24, 24, popup_width, popup_height)
+    shade = pygame.Surface((popup_width, popup_height), pygame.SRCALPHA)
+    shade.fill((12, 20, 30, 242))
+    screen.blit(shade, popup_rect.topleft)
+    pygame.draw.rect(screen, (255, 190, 80), popup_rect, width=2, border_radius=6)
+
+    occupant_ids = set()
+    for attribute in ("occupant_ids", "passenger_ids"):
+        occupant_ids.update(getattr(npc, attribute, ()) or ())
+    if getattr(npc, "current_driver_id", None) is not None:
+        occupant_ids.add(npc.current_driver_id)
+    if getattr(npc, "owner_id", None) is not None:
+        occupant_ids.add(npc.owner_id)
+    occupants = [
+        f"{person.first_name} {person.surname}".strip()
+        for resident_id in occupant_ids
+        if (person := residents.get(resident_id)) is not None
+    ]
+    vehicle_name = getattr(npc, "vehicle_type", "car")
+    speed_kmh = abs(getattr(npc, "speed", 0.0)) * 3.6
+    lines = (
+        "NPC-ajoneuvo",
+        f"Tyyppi: {vehicle_name}",
+        f"Tila: {getattr(npc, 'state', '-')}",
+        f"Nopeus: {speed_kmh:.0f} km/h",
+        f"Henkilöt kyydissä: {', '.join(occupants) or '-'}",
+    )
+    for index, text in enumerate(lines):
+        color = (245, 250, 255) if index == 0 else (205, 220, 232)
+        screen.blit(font.render(text, True, color), (popup_rect.x + 16, popup_rect.y + 14 + index * 32))
 def draw_pedestrian_reflectors(
     screen,
     pedestrians: List,

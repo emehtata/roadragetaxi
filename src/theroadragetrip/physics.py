@@ -72,6 +72,7 @@ class Car:
     odometer_m: float = 0.0  # total odometer distance in meters
     length_m: float = 4.0  # length in meters
     width_m: float = 1.8  # width in meters
+    engine_on: bool = True  # engine runs only while the player is in the car
     time_since_last_steer: float = 0.0  # seconds elapsed without manual steer input
     lane_assist_enabled: bool = False  # user toggle for lane assist feature (default False)
     lane_assist_active: bool = False  # whether lane assist is currently steering

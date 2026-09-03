@@ -181,6 +181,10 @@ class ResidentManager:
             (today.month, today.day) < (resident.birth_date.month, resident.birth_date.day)
         ))
 
+    @classmethod
+    def can_drive(cls, resident: Optional[Resident]) -> bool:
+        return resident is not None and cls.age_of(resident) >= 17
+
     def get(self, resident_id: Optional[int]) -> Optional[Resident]:
         return self.residents.get(resident_id) if resident_id is not None else None
 

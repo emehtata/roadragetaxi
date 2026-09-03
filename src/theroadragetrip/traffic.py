@@ -399,7 +399,30 @@ class TrafficManager:
         self._build_static_collision_grids()
         self._taxi_stop_spawns: set[Tuple[float, float, object]] = set()
         self._taxi_stop_targets: dict[Tuple[float, float, object], int] = {}
+        self._crashed_npc_events: List[Tuple[NPCCar, float, float, str]] = []
         self._build_spatial_indices()
+
+    def take_crashed_npc_events(self) -> List[Tuple[NPCCar, float, float, str]]:
+        """Return newly crashed NPCs that need to exit their vehicles."""
+        events = self._crashed_npc_events
+        self._crashed_npc_events = []
+        return events
+
+    def _crash_npc(self, npc: NPCCar, crashed_timer: float = math.inf) -> None:
+        """Leave a crashed NPC at the collision site and notify its resident."""
+        if npc.state == "crashed":
+            return
+        npc.state = "crashed"
+        npc.crashed_timer = crashed_timer
+        npc.speed = 0.0
+        npc.target_speed = 0.0
+        npc.set_driver_present(False)
+        resident = self.residents.get(npc.owner_id)
+        if resident is not None:
+            resident.mode = "walking"
+            resident.active_vehicle_id = None
+        curse_text = random.choice(("@#*!%", "#$@&!", "!%#&*", "%$!#@", "@!*#$"))
+        self._crashed_npc_events.append((npc, npc.x, npc.y, curse_text))
 
     def _static_collision_cells(self, minx: float, miny: float, maxx: float, maxy: float):
         cell_size = self._static_collision_cell_size
@@ -514,9 +537,7 @@ class TrafficManager:
             ):
                 continue
             npc.x, npc.y = previous_position
-            npc.speed = 0.0
-            npc.crashed_timer = max(npc.crashed_timer, 3.0)
-            npc.state = "crashed"
+            self._crash_npc(npc, crashed_timer=3.0)
             return True
 
         tree_radius = car_radius + 1.0
@@ -533,9 +554,7 @@ class TrafficManager:
             safe_distance = tree_radius + 0.2
             npc.x = tree_x + away_x / away_distance * safe_distance
             npc.y = tree_y + away_y / away_distance * safe_distance
-            npc.speed = 0.0
-            npc.crashed_timer = max(npc.crashed_timer, 3.0)
-            npc.state = "crashed"
+            self._crash_npc(npc, crashed_timer=3.0)
             return True
         return False
 
@@ -1168,8 +1187,28 @@ class TrafficManager:
                         self._keep_npc_near_own_way(other)
                     npc.speed = 0.0
                     other.speed = 0.0
+                    self._crash_npc(npc)
+                    self._crash_npc(other)
             if not found_collision:
                 break
+
+    @staticmethod
+    def _speed_profile_for_age(age: int) -> Tuple[bool, float]:
+        """Return an age-weighted driving profile for an NPC resident."""
+        if 17 <= age <= 25:
+            if random.random() < 0.55:
+                return True, random.uniform(1.25, 1.55)
+            return False, random.uniform(0.92, 1.05)
+        if age > 60:
+            if random.random() < 0.55:
+                return False, random.uniform(0.68, 0.84)
+            return False, random.uniform(0.85, 0.98)
+        roll = random.random()
+        if roll < 0.18:
+            return True, random.uniform(1.25, 1.55)
+        if roll < 0.85:
+            return False, random.uniform(0.92, 1.05)
+        return False, random.uniform(0.78, 0.90)
 
     @staticmethod
     def _keep_npc_near_own_way(npc: NPCCar) -> None:
@@ -1704,6 +1743,9 @@ class TrafficManager:
         ]
         if not destinations:
             return False
+        resident = self.residents.get(npc.owner_id)
+        if not self.residents.can_drive(resident):
+            return False
         destination = random.choice(destinations)
         route = self.plan_route((npc.x, npc.y), destination, layer=current_layer)
         if not route or len(route) < 2:
@@ -1713,7 +1755,6 @@ class TrafficManager:
         npc.destination = route[-1]
         npc.destination_parking_space_id = None
         npc.next_route = None
-        resident = self.residents.get(npc.owner_id)
         if resident is not None:
             resident.mode = "driving"
             resident.active_vehicle_id = id(npc)
@@ -2062,20 +2103,10 @@ class TrafficManager:
                     if too_close_to_npc:
                         continue
 
-                    # Speed behavior distribution:
-                    # ~15% are aggressive speeders (kaaharit, 1.25x - 1.55x limit)
-                    # ~70% follow limits closely (0.92x - 1.05x limit)
-                    # ~15% are cautious/slow drivers (0.78x - 0.90x limit)
-                    r_prof = random.random()
-                    if r_prof < 0.18:
-                        is_speeder = True
-                        speed_factor = random.uniform(1.25, 1.55)
-                    elif r_prof < 0.85:
-                        is_speeder = False
-                        speed_factor = random.uniform(0.92, 1.05)
-                    else:
-                        is_speeder = False
-                        speed_factor = random.uniform(0.78, 0.90)
+                    owner = self.residents.create("driving", age=17)
+                    is_speeder, speed_factor = self._speed_profile_for_age(
+                        self.residents.age_of(owner)
+                    )
 
                     vehicle_type = "car"
                     if self.enable_two_wheelers:
@@ -2127,7 +2158,8 @@ class TrafficManager:
                     )
                     if npc.is_taxi:
                         npc.vehicle_type = "car"
-                    owner = self.residents.create("driving", vehicle_id=id(npc))
+                    owner.vehicle_ids.add(id(npc))
+                    owner.active_vehicle_id = id(npc)
                     npc.owner_id = owner.resident_id
                     npc.current_driver_id = owner.resident_id
                     npc.lod_time_accumulator = 1.0
@@ -2155,7 +2187,7 @@ class TrafficManager:
             self._signal_update_elapsed = 0.0
         for npc in self.npcs:
             if npc.owner_id is None:
-                owner = self.residents.create("driving", vehicle_id=id(npc))
+                owner = self.residents.create("driving", vehicle_id=id(npc), age=17)
                 npc.owner_id = owner.resident_id
                 if npc.state == "driving" and npc.assigned_driver_id is not None and npc.has_driver():
                     npc.current_driver_id = owner.resident_id
@@ -2456,7 +2488,7 @@ class TrafficManager:
                 continue
             if npc.lod_level > 0 or not npc.lod_update_due:
                 continue
-            if npc.crashed_timer > 0.0:
+            if npc.state == "crashed" or npc.crashed_timer > 0.0:
                 continue
 
             blocked_by_npc = False
@@ -2762,7 +2794,7 @@ class TrafficManager:
                         turn_limit_speed = max(3.5, npc.target_speed * turn_factor)
 
             # Check if NPC is in crashed recovery state
-            if npc.crashed_timer > 0.0 or getattr(npc, "fallen", False):
+            if npc.state == "crashed" or npc.crashed_timer > 0.0 or getattr(npc, "fallen", False):
                 action = "fallen" if getattr(npc, "fallen", False) else "recovering from crash"
                 npc.state = "crashed"
                 if npc.debug_last_action != action:

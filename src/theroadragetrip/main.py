@@ -108,6 +108,7 @@ from .render import (
     draw_loading_screen,
     draw_navigation_route,
     draw_npc_cars,
+    draw_npc_popup,
     draw_logical_intersections,
     draw_npc_spatial_grid,
     draw_pause_menu,
@@ -1087,6 +1088,7 @@ def main() -> None:
         hud_dragging = None
         hud_drag_offset = (0, 0)
         selected_resident_id = None
+        selected_npc = None
         running = True
         current_way = get_current_road_at_car(car, ways=ways, spatial_grid=spatial_grid, car_roads_only=True)
         min_px_per_m = minimum_px_per_m_for_viewport_width(screen_w=SCREEN_W, margin_m=30.0)
@@ -1164,6 +1166,26 @@ def main() -> None:
                             clicked_hud = True
                             break
                     if not clicked_hud:
+                        selected_npc = None
+                        for npc in traffic_mgr.npcs:
+                            if getattr(npc, "is_police", False) or getattr(npc, "is_on_foot", False):
+                                continue
+                            npc_x, npc_y = world_to_screen(
+                                npc.x, npc.y, camx, camy, px_per_m, SCREEN_W, SCREEN_H
+                            )
+                            hit_radius = max(
+                                12.0,
+                                math.hypot(
+                                    getattr(npc, "length_m", 4.0),
+                                    getattr(npc, "width_m", 1.8),
+                                ) * px_per_m * 0.5,
+                            )
+                            if math.hypot(event.pos[0] - npc_x, event.pos[1] - npc_y) <= hit_radius:
+                                selected_npc = npc
+                                selected_resident_id = None
+                                break
+                        if selected_npc is not None:
+                            continue
                         visible_pedestrians = pedestrian_mgr.pedestrians + [
                             npc for npc in traffic_mgr.npcs if getattr(npc, "is_on_foot", False)
                         ] + ([player_pedestrian] if on_foot else [])
@@ -1271,12 +1293,14 @@ def main() -> None:
                             )
                             player_pedestrian.heading = car.heading
                             car.speed = 0.0
+                            car.engine_on = False
                             on_foot = True
                             audio.play("car-door-open")
                         elif math.hypot(player_pedestrian.x - car.x, player_pedestrian.y - car.y) <= 3.0:
                             on_foot = False
                             start_hint_remaining = 0.0
                             car.speed = 0.0
+                            car.engine_on = True
                             audio.play("car-door-open")
                     elif event.key == pygame.K_SPACE and not phone_open:
                         if rage_power >= RAGE_SHOUT_COST:
@@ -1301,6 +1325,9 @@ def main() -> None:
                             if taxi_mgr.accept_offer(offer_index, car.x, car.y):
                                 phone_open = False
                     elif event.key == pygame.K_ESCAPE:
+                        if selected_npc is not None:
+                            selected_npc = None
+                            continue
                         if selected_resident_id is not None:
                             selected_resident_id = None
                             continue
@@ -1806,27 +1833,10 @@ def main() -> None:
                 audio.play("car-crash", volume=0.8)
                 audio.play_driver_line("collision", language)
                 rage_power = 0.0
-                for npc in traffic_mgr.npcs:
-                    if not getattr(npc, "fallen", False) or getattr(npc, "driver_spawned", False):
+                for npc in traffic_mgr.nearby_npcs_at(car.x, car.y):
+                    if getattr(npc, "crashed_timer", 0.0) <= 0.0:
                         continue
-                    pedestrian_mgr.pedestrians.append(Pedestrian(
-                        x=npc.x,
-                        y=npc.y,
-                        heading=npc.heading,
-                        speed=1.3,
-                        base_speed=1.3,
-                        way=npc.way,
-                        segment_idx=npc.segment_idx,
-                        direction=npc.direction,
-                        color=(230, 80, 80),
-                    ))
-                    npc.driver_spawned = True
-                    npc.set_driver_present(False)
-                    logger.info(
-                        "Two-wheeler driver became pedestrian at x=%.1f y=%.1f",
-                        npc.x,
-                        npc.y,
-                    )
+                    traffic_mgr._crash_npc(npc, crashed_timer=npc.crashed_timer)
             was_wrong_way = taxi_mgr.wrong_way_duration > 0.0
             if slow_check_elapsed == 0.0:
                 if taxi_mgr.check_wrong_way_violation(car, slow_check_dt, ways=ways, spatial_grid=spatial_grid):
@@ -1844,6 +1854,14 @@ def main() -> None:
                     pedestrians=pedestrian_mgr.pedestrians,
                     cyclists=cyclist_mgr.cyclists, police_cars=police_mgr.cars,
                 )
+            for crashed_npc, crash_x, crash_y, curse_text in traffic_mgr.take_crashed_npc_events():
+                crashed_pedestrian = pedestrian_mgr.spawn_pedestrian_at(
+                    crash_x, crash_y, heading=crashed_npc.heading
+                )
+                if crashed_pedestrian is not None:
+                    crashed_pedestrian.resident_id = crashed_npc.owner_id
+                    crashed_pedestrian.curse_timer = 2.0
+                    crashed_pedestrian.curse_text = curse_text
             police_stopping = police_mgr.update(car, current_way, dt)
             if police_stopping:
                 audio.play_driver_line("police_chase", language)
@@ -2167,7 +2185,8 @@ def main() -> None:
             if show_navigation:
                 draw_navigation_route(screen, navigation_route, camx, camy, px_per_m=px_per_m)
             draw_taxi_target(screen, taxi_mgr, camx, camy, font, px_per_m=px_per_m, language=language)
-            draw_taxi_exhaust(screen, car, camx, camy, px_per_m=px_per_m)
+            if car.engine_on and not on_foot:
+                draw_taxi_exhaust(screen, car, camx, camy, px_per_m=px_per_m)
             draw_car(
                 screen,
                 car,
@@ -2181,7 +2200,8 @@ def main() -> None:
                 spatial_grid=spatial_grid,
                 current_way=current_way,
             )
-            draw_taxi_smoke(screen, car, camx, camy, px_per_m=px_per_m, timer=taxi_mgr.taxi_smoke_timer)
+            if not on_foot:
+                draw_taxi_smoke(screen, car, camx, camy, px_per_m=px_per_m, timer=taxi_mgr.taxi_smoke_timer)
             draw_passenger_nausea_bubble(
                 screen,
                 font,
@@ -2370,6 +2390,8 @@ def main() -> None:
                     SCREEN_W,
                     SCREEN_H,
                 )
+            if selected_npc is not None:
+                draw_npc_popup(screen, small_font, selected_npc, traffic_mgr.residents, SCREEN_W)
             if awaiting_start:
                 draw_game_start_overlay(screen, font, chosen_city, SCREEN_W, SCREEN_H)
             elif start_hint_remaining > 0.0 and on_foot:
