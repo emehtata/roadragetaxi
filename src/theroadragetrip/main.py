@@ -154,6 +154,11 @@ def _screenshot_directory() -> str:
     return os.path.abspath("screenshots")
 
 
+def _respawn_allowed(on_foot: bool) -> bool:
+    """Only allow taxi respawn while the driver is in the taxi."""
+    return not on_foot
+
+
 def _write_debug_snapshot(
     path: str,
     car: Car,
@@ -1356,14 +1361,14 @@ def main() -> None:
                         show_debug_hud = not show_debug_hud
                         logger.info("Debug HUD %s", "enabled" if show_debug_hud else "disabled")
                     elif event.key == pygame.K_r:
-                        if on_foot:
+                        if not _respawn_allowed(on_foot):
                             logger.info("Respawn ignored while driver is walking outside taxi")
                         else:
                             respawn_car(car, ways, waters=waters, taxi_stops=taxi_stops)
                             camx, camy = car.x, car.y
                             taxi_mgr.handle_respawn(car.x, car.y)
                     elif event.key == pygame.K_HOME:
-                        if on_foot:
+                        if not _respawn_allowed(on_foot):
                             logger.info("Debug respawn ignored while driver is walking outside taxi")
                         else:
                             respawn_car(
