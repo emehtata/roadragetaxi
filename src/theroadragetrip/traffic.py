@@ -1120,6 +1120,7 @@ class TrafficManager:
         points = npc.way.points_m
         if len(points) < 2:
             return ""
+
         if npc.direction == 1 and npc.segment_idx + 1 < len(points):
             target = points[npc.segment_idx + 1]
         elif npc.direction == -1 and npc.segment_idx < len(points):
@@ -2730,10 +2731,13 @@ class TrafficManager:
                     if (
                         npc.turn_signal
                         and npc.next_route is None
-                        and npc.turn_signal_elapsed >= 0.45
-                        and abs(heading_error) < 0.12
+                        and (
+                            (npc.turn_signal_elapsed >= 0.45 and abs(heading_error) < 0.12)
+                            or npc.turn_signal_elapsed >= 3.0
+                        )
                     ):
                         npc.turn_signal = ""
+                        npc.turn_recovery_timer = max(npc.turn_recovery_timer, 2.0)
 
                 remaining_along_segment = max(0.0, seg_len - segment_progress)
                 if dist_step >= remaining_along_segment and dist_to_tgt > max(3.5, npc.width_m * 1.5):

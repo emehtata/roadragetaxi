@@ -129,6 +129,13 @@ def _turning_at_junction(manager, npc) -> bool:
     return False
 
 
+def _turning_loop_violation(npc) -> str | None:
+    """Report turn signals that keep an NPC turning indefinitely."""
+    if npc.state == "turning" and npc.next_route is None and npc.turn_signal_elapsed > 3.5:
+        return f"turn_signal={npc.turn_signal!r} elapsed={npc.turn_signal_elapsed:.1f}s"
+    return None
+
+
 def run_audit(steps: int = 1200, dt: float = 0.1, seed: int = 7) -> List[AuditFailure]:
     """Play the traffic simulation headlessly and return invariant violations."""
     random.seed(seed)
@@ -171,6 +178,9 @@ def run_audit(steps: int = 1200, dt: float = 0.1, seed: int = 7) -> List[AuditFa
             if red_light_detail is not None:
                 failures.append(AuditFailure(step, "red_light_violation", npc_key, red_light_detail))
             previous_positions[npc_key] = (npc.x, npc.y)
+            turning_detail = _turning_loop_violation(npc)
+            if turning_detail is not None:
+                failures.append(AuditFailure(step, "turning_loop", npc_key, turning_detail))
             if npc.state == "parked":
                 position = (npc.x, npc.y)
                 previous = parked_positions.get(npc_key)
