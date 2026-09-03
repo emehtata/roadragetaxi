@@ -1187,6 +1187,37 @@ def test_npc_turn_uses_bounded_steering_and_continuous_body_heading():
     assert abs(npc.y) < 1.0
 
 
+def test_npc_advances_route_when_turn_node_is_already_behind_it():
+    approach = Way(
+        points_m=[(-30.0, 0.0), (0.0, 0.0)],
+        highway="residential",
+        half_width_m=4.0,
+    )
+    exit_way = Way(
+        points_m=[(0.0, 0.0), (0.0, 30.0)],
+        highway="residential",
+        half_width_m=4.0,
+    )
+    manager = TrafficManager([approach, exit_way], target_count=0)
+    npc = NPCCar(
+        x=2.0,
+        y=0.0,
+        heading=0.0,
+        speed=8.0,
+        way=approach,
+        segment_idx=0,
+        direction=1,
+        target_speed=8.0,
+        color=(20, 20, 20),
+        next_route=(exit_way, 0, 1),
+    )
+    manager.npcs = [npc]
+
+    manager.update(Car(x=-100.0, y=-100.0, heading=0.0, speed=0.0), dt=0.1)
+
+    assert npc.way is exit_way
+
+
 def test_npc_signals_prepared_turn_before_junction():
     approach = Way(points_m=[(-50.0, 0.0), (0.0, 0.0)], highway="primary", half_width_m=4.0)
     turn = Way(points_m=[(0.0, 0.0), (0.0, 50.0)], highway="primary", half_width_m=4.0)

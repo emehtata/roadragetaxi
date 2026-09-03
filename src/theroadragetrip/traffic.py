@@ -2701,7 +2701,12 @@ class TrafficManager:
                     (npc.x - seg_start[0]) * seg_dir_x
                     + (npc.y - seg_start[1]) * seg_dir_y
                 )
-                if segment_progress >= seg_len:
+                target_behind_vehicle = (
+                    (target_pt[0] - npc.x) * math.cos(npc.heading)
+                    + (target_pt[1] - npc.y) * math.sin(npc.heading)
+                ) <= 0.0
+                node_was_passed = segment_progress >= seg_len and target_behind_vehicle
+                if node_was_passed:
                     path_heading = math.atan2(to_tgt_y, to_tgt_x)
                 if dist_to_tgt < max(8.0, npc.speed * 0.8) and npc.next_route is not None:
                     next_way, next_segment_idx, next_direction = npc.next_route
@@ -2746,12 +2751,7 @@ class TrafficManager:
                         npc.turn_signal = ""
                         npc.turn_recovery_timer = max(npc.turn_recovery_timer, 2.0)
 
-                remaining_along_segment = max(0.0, seg_len - segment_progress)
-                if dist_step >= remaining_along_segment and dist_to_tgt > max(3.5, npc.width_m * 1.5):
-                    npc.x += math.cos(npc.heading) * dist_step
-                    npc.y += math.sin(npc.heading) * dist_step
-                    dist_step = 0.0
-                    continue
+                remaining_along_segment = 0.0 if node_was_passed else max(0.0, seg_len - segment_progress)
                 if dist_step < remaining_along_segment:
                     npc.x += math.cos(npc.heading) * dist_step
                     npc.y += math.sin(npc.heading) * dist_step
