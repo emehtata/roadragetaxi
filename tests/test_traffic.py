@@ -1,6 +1,7 @@
 """Tests for autonomous NPC traffic manager."""
 import math
 import random
+import pytest
 from types import SimpleNamespace
 from theroadragetrip.osm import Building, ParkingSpace, Scenery, StopSign, Way
 from theroadragetrip.osm import TrafficLight
@@ -1346,6 +1347,35 @@ def test_npc_right_turn_joins_exit_way_right_lane():
 
     assert npc.way is exit_way
     assert npc.x < 0.0
+
+
+def test_turn_trajectory_is_curved_and_tangent_for_left_and_non_right_angles():
+    approach = Way([(-40.0, 0.0), (0.0, 0.0)], "residential", 6.0)
+    left_exit = Way([(0.0, 0.0), (20.0, 30.0)], "residential", 5.0)
+    npc = NPCCar(-8.0, 0.0, 0.0, 4.0, approach, 0, 1, 8.0, (1, 1, 1))
+    manager = TrafficManager([approach, left_exit], target_count=0)
+
+    path = manager._turn_path(npc, (left_exit, 0, 1), (0.0, 0.0))
+
+    assert path is not None
+    assert len(path) > 8
+    assert path[1][1] == pytest.approx(0.0, abs=0.2)
+    assert path[-1][0] > 0.0
+    headings = [
+        math.atan2(path[i + 1][1] - path[i][1], path[i + 1][0] - path[i][0])
+        for i in range(len(path) - 1)
+    ]
+    assert all(abs((headings[i + 1] - headings[i] + math.pi) % (2 * math.pi) - math.pi) < 0.4
+               for i in range(len(headings) - 1))
+
+
+def test_straight_route_has_no_turn_trajectory():
+    approach = Way([(-30.0, 0.0), (0.0, 0.0)], "residential", 4.0)
+    straight_exit = Way([(0.0, 0.0), (40.0, 0.0)], "residential", 4.0)
+    npc = NPCCar(-1.0, 0.0, 0.0, 4.0, approach, 0, 1, 8.0, (1, 1, 1))
+    manager = TrafficManager([approach, straight_exit], target_count=0)
+
+    assert manager._turn_path(npc, (straight_exit, 0, 1), (0.0, 0.0)) is None
 
 
 def test_npc_signals_prepared_turn_before_junction():
