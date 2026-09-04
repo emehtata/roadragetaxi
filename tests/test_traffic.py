@@ -1378,6 +1378,41 @@ def test_straight_route_has_no_turn_trajectory():
     assert manager._turn_path(npc, (straight_exit, 0, 1), (0.0, 0.0)) is None
 
 
+def test_right_turn_simulation_stays_on_destination_right_lane_without_snap():
+    approach = Way([(-30.0, 0.0), (0.0, 0.0)], "residential", 4.0)
+    exit_way = Way([(0.0, 0.0), (0.0, -40.0)], "residential", 4.0)
+    manager = TrafficManager([approach, exit_way], target_count=0)
+    npc = NPCCar(-8.0, 0.0, 0.0, 5.0, approach, 0, 1, 5.0, (1, 1, 1),
+                 next_route=(exit_way, 0, 1))
+    manager.npcs = [npc]
+    samples = []
+    for _ in range(60):
+        manager.update(Car(-100.0, 100.0, 0.0, 0.0), dt=0.1)
+        samples.append((npc.x, npc.y))
+
+    assert npc.way is exit_way
+    assert npc.x == pytest.approx(-compute_desired_lane_offset(exit_way, False, 1), abs=0.2)
+    assert npc.y < -10.0
+    assert max(math.hypot(samples[i + 1][0] - samples[i][0],
+                          samples[i + 1][1] - samples[i][1]) for i in range(len(samples) - 1)) < 1.0
+
+
+def test_left_turn_simulation_reaches_destination_lane_and_heading():
+    approach = Way([(-30.0, 0.0), (0.0, 0.0)], "residential", 4.0)
+    exit_way = Way([(0.0, 0.0), (0.0, 40.0)], "residential", 4.0)
+    manager = TrafficManager([approach, exit_way], target_count=0)
+    npc = NPCCar(-8.0, 0.0, 0.0, 5.0, approach, 0, 1, 5.0, (1, 1, 1),
+                 next_route=(exit_way, 0, 1))
+    manager.npcs = [npc]
+    for _ in range(60):
+        manager.update(Car(-100.0, -100.0, 0.0, 0.0), dt=0.1)
+
+    assert npc.way is exit_way
+    assert npc.x == pytest.approx(0.0, abs=0.2)
+    assert npc.y > 10.0
+    assert npc.heading == pytest.approx(math.pi / 2.0, abs=0.2)
+
+
 def test_npc_signals_prepared_turn_before_junction():
     approach = Way(points_m=[(-50.0, 0.0), (0.0, 0.0)], highway="primary", half_width_m=4.0)
     turn = Way(points_m=[(0.0, 0.0), (0.0, 50.0)], highway="primary", half_width_m=4.0)
