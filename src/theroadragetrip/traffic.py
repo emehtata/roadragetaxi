@@ -2911,11 +2911,6 @@ class TrafficManager:
             # Continue through the junction if the NPC has already entered it.
             if self._junction_near_point((npc.x, npc.y), npc.layer):
                 must_stop = False
-                if npc.speed < 0.5 and departure_signal_state in (
-                    "red", "all-red", "red+yellow", "yellow"
-                ):
-                    must_stop = True
-                    stop_distance = 0.0
 
             # Calculate cornering speed limit based on heading angle to next vertex / sharp curves
             turn_limit_speed = npc.target_speed
@@ -3091,37 +3086,6 @@ class TrafficManager:
                     + (target_pt[1] - npc.y) * math.sin(npc.heading)
                 ) <= 0.0
                 node_was_passed = segment_progress >= seg_len and target_behind_vehicle
-                if dist_to_tgt < max(14.0, npc.speed * 1.5) and npc.next_route is not None:
-                    next_way, next_segment_idx, next_direction = npc.next_route
-                    next_points = next_way.points_m
-                    if 0 <= next_segment_idx < len(next_points) - 1:
-                        if next_direction == 1:
-                            next_start, next_end = next_points[next_segment_idx], next_points[next_segment_idx + 1]
-                        else:
-                            next_start, next_end = next_points[next_segment_idx + 1], next_points[next_segment_idx]
-                        next_dx = next_end[0] - next_start[0]
-                        next_dy = next_end[1] - next_start[1]
-                        next_length = math.hypot(next_dx, next_dy)
-                        if next_length > 1e-3:
-                            next_norm_x = next_dy / next_length
-                            next_norm_y = -next_dx / next_length
-                            next_lane_offset = compute_desired_lane_offset(
-                                next_way,
-                                is_overtaking=False,
-                                travel_direction=next_direction,
-                            )
-                            next_start = (
-                                next_start[0] + next_norm_x * next_lane_offset,
-                                next_start[1] + next_norm_y * next_lane_offset,
-                            )
-                            next_end = (
-                                next_end[0] + next_norm_x * next_lane_offset,
-                                next_end[1] + next_norm_y * next_lane_offset,
-                            )
-                        next_heading = math.atan2(next_end[1] - next_start[1], next_end[0] - next_start[0])
-                        blend = max(0.0, min(1.0, 1.0 - dist_to_tgt / max(14.0, npc.speed * 1.5)))
-                        heading_delta = (next_heading - path_heading + math.pi) % (2.0 * math.pi) - math.pi
-                        path_heading += heading_delta * blend
                 heading_error = (path_heading - npc.heading + math.pi) % (2.0 * math.pi) - math.pi
                 # Never let a route transition demand an instantaneous
                 # right-angle body rotation; the bicycle model must settle
