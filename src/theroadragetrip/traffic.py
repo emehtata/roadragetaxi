@@ -2763,3 +2763,12 @@ class TrafficManager:
             npc.braking = previous_speed is not None and npc.speed < previous_speed - 0.05
         self._resolve_npc_collisions()
         self._build_npc_spatial_grid()
+
+    def advance_time(self, dt: float) -> None:
+        """Advance signal time without spawning or updating autonomous vehicles."""
+        self.sim_time += dt
+        self._signal_update_elapsed += dt
+        if self._signal_update_elapsed >= 0.1:
+            self.traffic_light_manager.update(self.sim_time)
+            self.intersection_manager.update(self.npcs)
+            self._signal_update_elapsed = 0.0

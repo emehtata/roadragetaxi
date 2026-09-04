@@ -88,7 +88,6 @@ from .render import (
     draw_buildings,
     draw_bus_stops,
     draw_car,
-    draw_cyclists,
     draw_city_selection_menu,
     draw_game_start_hint,
     draw_game_start_overlay,
@@ -107,10 +106,7 @@ from .render import (
     draw_labels,
     draw_loading_screen,
     draw_navigation_route,
-    draw_npc_cars,
-    draw_npc_popup,
     draw_logical_intersections,
-    draw_npc_spatial_grid,
     draw_pause_menu,
     draw_parking_spaces,
     draw_settings_menu,
@@ -155,12 +151,12 @@ def _city_menu_index(key: int, city_count: int) -> Optional[int]:
     if index is None:
         return None
     return index if index < city_count else None
-from .pedestrian import CyclistManager, Pedestrian, PedestrianManager, PlayerPedestrian
+from .pedestrian import Pedestrian, PedestrianManager, PlayerPedestrian
 from .residents import ResidentManager
-from .police import PoliceManager, place_speed_cameras
+from .police import place_speed_cameras
 from .roadworks import create_roadworks
 from .taxi import TaxiManager, TaxiState
-from .traffic import MAX_TRAFFIC_COUNT, TrafficManager, recommended_traffic_count, traffic_count_for_zoom
+from .traffic import TrafficManager
 from .world_cache import WorldCacheManager, clear_world_cache
 from .performance import FrameProfiler
 
@@ -208,7 +204,6 @@ def _write_debug_snapshot(
     elements_count: int,
     traffic_mgr,
     pedestrian_mgr,
-    cyclist_mgr,
     spatial_grid,
     map_sync_stage: int,
     chosen_city: str,
@@ -254,9 +249,7 @@ def _write_debug_snapshot(
                 "taxi_stops": len(taxi_stops),
                 "traffic_lights": len(traffic_lights),
                 "crossings": len(crossings),
-                "traffic_npcs": len(traffic_mgr.npcs),
                 "pedestrians": len(pedestrian_mgr.pedestrians),
-                "cyclists": len(cyclist_mgr.cyclists),
             },
             "current_way": {
                 "name": getattr(current_way, "name", None),
@@ -344,20 +337,7 @@ def parse_args(config=None, city_names=None) -> argparse.Namespace:
         default=map_config.getboolean("build_in_process", fallback=True),
         help="Build auto-fetched map data outside the gameplay process",
     )
-    p.add_argument(
-        "--traffic-count",
-        type=int,
-        default=get_optional_int(config, "traffic", "traffic_count") if config else None,
-        help="Target number of NPC cars (default: scales with available streets, capped at 50)",
-    )
-    p.add_argument(
-        "--parking-density",
-        type=float,
-        default=traffic_config.getfloat("parking_density", fallback=0.5),
-        help="Fraction of regular NPC cars spawned in existing OSM parking spaces",
-    )
     p.add_argument("--pedestrian-count", type=int, default=traffic_config.getint("pedestrian_count", fallback=60), help="Target number of pedestrians")
-    p.add_argument("--cyclist-count", type=int, default=traffic_config.getint("cyclist_count", fallback=8), help="Target number of cyclists")
 
     return p.parse_args()
 
@@ -983,34 +963,23 @@ def main() -> None:
             seed=random.randrange(2**32),
         )
         logger.info("Placed %d hidden speed cameras", len(speed_cameras))
-        # Initialize autonomous Traffic Manager for NPC cars
-        on_load_progress(0.96, "Preparing traffic...")
-        traffic_count = args.traffic_count
-        if traffic_count is None:
-            traffic_count = recommended_traffic_count(ways)
-        traffic_count = max(0, min(MAX_TRAFFIC_COUNT, traffic_count))
-        base_traffic_count = traffic_count
-        enable_two_wheelers = config["experimental"].getboolean("enable_two_wheelers", fallback=False)
-        logger.info("Target NPC traffic: %d cars for %d road ways", traffic_count, len(ways))
+        # Keep road, signal, and resident services for taxi missions.
+        on_load_progress(0.96, "Preparing taxi world...")
         traffic_mgr = TrafficManager(
             ways,
-            target_count=traffic_count,
+            target_count=0,
             traffic_lights=traffic_lights,
             stop_signs=stop_signs,
             yield_signs=yield_signs,
             crossings=crossings,
             parking_spaces=parking_spaces,
-            parking_density=args.parking_density,
+            parking_density=0.0,
             roadworks=roadworks,
-            enable_two_wheelers=enable_two_wheelers,
+            enable_two_wheelers=False,
             residents=residents,
             buildings=buildings,
             sceneries=sceneries,
         )
-        police_mgr = PoliceManager(
-            traffic_mgr, car.x, car.y, buildings=buildings, building_grid=building_grid, count=0
-        )
-
         # Initialize autonomous Pedestrian Manager
         on_load_progress(0.98, "Preparing pedestrians...")
         pedestrian_mgr = PedestrianManager(
@@ -1018,14 +987,13 @@ def main() -> None:
             target_count=args.pedestrian_count,
             traffic_lights=traffic_lights,
             crossings=crossings,
-            logical_intersections=traffic_mgr.logical_intersections,
-            traffic_vehicles=traffic_mgr.npcs,
-            traffic_manager=traffic_mgr,
-            residents=traffic_mgr.residents,
+            logical_intersections=[],
+            traffic_vehicles=[],
+            traffic_manager=None,
+            residents=residents,
             venue_buildings=buildings,
         )
         # Cyclists are disabled until their traffic interactions are complete.
-        cyclist_mgr = CyclistManager(ways, target_count=0, traffic_lights=traffic_lights)
         player_pedestrian = PlayerPedestrian(
             car.x - math.sin(car.heading) * getattr(car, "width_m", 1.8) * 0.85
             + math.cos(car.heading) * getattr(car, "length_m", 4.0) * 0.2,
@@ -1035,7 +1003,6 @@ def main() -> None:
         )
         player_pedestrian.is_player = True
         base_pedestrian_count = pedestrian_mgr.target_count
-        base_cyclist_count = 0
 
         # Prepare transformer for meters->latlon display
         try:
@@ -1088,7 +1055,6 @@ def main() -> None:
         hud_dragging = None
         hud_drag_offset = (0, 0)
         selected_resident_id = None
-        selected_npc = None
         running = True
         current_way = get_current_road_at_car(car, ways=ways, spatial_grid=spatial_grid, car_roads_only=True)
         min_px_per_m = minimum_px_per_m_for_viewport_width(screen_w=SCREEN_W, margin_m=30.0)
@@ -1168,29 +1134,7 @@ def main() -> None:
                             clicked_hud = True
                             break
                     if not clicked_hud:
-                        selected_npc = None
-                        for npc in traffic_mgr.npcs:
-                            if getattr(npc, "is_police", False) or getattr(npc, "is_on_foot", False):
-                                continue
-                            npc_x, npc_y = world_to_screen(
-                                npc.x, npc.y, camx, camy, px_per_m, SCREEN_W, SCREEN_H
-                            )
-                            hit_radius = max(
-                                12.0,
-                                math.hypot(
-                                    getattr(npc, "length_m", 4.0),
-                                    getattr(npc, "width_m", 1.8),
-                                ) * px_per_m * 0.5,
-                            )
-                            if math.hypot(event.pos[0] - npc_x, event.pos[1] - npc_y) <= hit_radius:
-                                selected_npc = npc
-                                selected_resident_id = None
-                                break
-                        if selected_npc is not None:
-                            continue
-                        visible_pedestrians = pedestrian_mgr.pedestrians + [
-                            npc for npc in traffic_mgr.npcs if getattr(npc, "is_on_foot", False)
-                        ] + ([player_pedestrian] if on_foot else [])
+                        visible_pedestrians = pedestrian_mgr.pedestrians + ([player_pedestrian] if on_foot else [])
                         selected_resident_id = resident_at_screen_position(
                             visible_pedestrians,
                             traffic_mgr.residents,
@@ -1239,7 +1183,7 @@ def main() -> None:
                             screenshot_viewport, camx, camy, px_per_m, current_way, ways,
                             waters, buildings, sceneries, places, taxi_stops,
                             traffic_lights, crossings, elements_count, traffic_mgr,
-                            pedestrian_mgr, cyclist_mgr, spatial_grid, map_sync_stage,
+                            pedestrian_mgr, spatial_grid, map_sync_stage,
                             chosen_city, camera_city_name, game_mode, on_foot,
                         )
                         logger.info("Screenshot saved to %s", screenshot_path)
@@ -1306,8 +1250,6 @@ def main() -> None:
                             audio.play("car-door-open")
                     elif event.key == pygame.K_SPACE and not phone_open:
                         if rage_power >= RAGE_SHOUT_COST:
-                            traffic_mgr.rage_shout(car)
-                            police_mgr.scare()
                             audio.play_driver_line("rage", language)
                             audio.play("carhorn_takes", volume=0.45)
                             rage_power -= RAGE_SHOUT_COST
@@ -1327,9 +1269,6 @@ def main() -> None:
                             if taxi_mgr.accept_offer(offer_index, car.x, car.y):
                                 phone_open = False
                     elif event.key == pygame.K_ESCAPE:
-                        if selected_npc is not None:
-                            selected_npc = None
-                            continue
                         if selected_resident_id is not None:
                             selected_resident_id = None
                             continue
@@ -1562,13 +1501,8 @@ def main() -> None:
 
             zoom_scale = max(px_per_m, zoom_target)
             if last_zoom_scale is None or abs(zoom_scale - last_zoom_scale) > 0.001:
-                traffic_mgr.set_target_count(traffic_count_for_zoom(base_traffic_count, zoom_scale), car)
-                pedestrian_mgr.set_target_count(
-                    traffic_count_for_zoom(base_pedestrian_count, zoom_scale, minimum=20),
-                    car,
-                )
+                pedestrian_mgr.set_target_count(base_pedestrian_count, car)
                 last_zoom_scale = zoom_scale
-            cyclist_mgr.set_target_count(0, car)
 
             keys = pygame.key.get_pressed()
             if on_foot:
@@ -1639,7 +1573,7 @@ def main() -> None:
                         car, throttle, brake, steer_left, steer_right, dt,
                         ways=ways, spatial_grid=spatial_grid,
                         block_offroad=False, speed_limit_mps=speed_limit_mps,
-                        nearby_vehicles=traffic_mgr.npcs, parking_spaces=parking_spaces,
+                        nearby_vehicles=[], parking_spaces=parking_spaces,
                     )
                 car.braking = brake > 0.0 and car.speed > 0.05
                 midpoint = (
@@ -1832,16 +1766,6 @@ def main() -> None:
                     city_summary = (chosen_city, taxi_mgr.total_score, taxi_mgr.completed_fares, next_city, career_total_score)
                     logger.info("Career advanced to %s", active_city_name)
                     running = False
-            if taxi_mgr.check_car_collision(
-                car, traffic_mgr.nearby_npcs_at(car.x, car.y), traffic_mgr.sim_time
-            ):
-                audio.play("car-crash", volume=0.8)
-                audio.play_driver_line("collision", language)
-                rage_power = 0.0
-                for npc in traffic_mgr.nearby_npcs_at(car.x, car.y):
-                    if getattr(npc, "crashed_timer", 0.0) <= 0.0:
-                        continue
-                    traffic_mgr._crash_npc(npc, crashed_timer=npc.crashed_timer)
             was_wrong_way = taxi_mgr.wrong_way_duration > 0.0
             if slow_check_elapsed >= 0.1:
                 slow_check_dt = slow_check_elapsed
@@ -1851,37 +1775,9 @@ def main() -> None:
                         audio.play_driver_line("wrong_way", language)
                 if taxi_mgr.check_speed_cameras(car, speed_cameras):
                     audio.play_driver_line("speed_camera", language)
-            # Update autonomous traffic NPCs and pedestrians
+            # Advance signals and taxi-world time; no autonomous vehicle update.
             with frame_profiler.section("traffic"):
-                traffic_mgr.update(
-                    car, dt, viewport_bounds=viewport_bounds,
-                    pedestrians=pedestrian_mgr.pedestrians,
-                    cyclists=cyclist_mgr.cyclists, police_cars=police_mgr.cars,
-                )
-            for crashed_npc, crash_x, crash_y, curse_text in traffic_mgr.take_crashed_npc_events():
-                crashed_pedestrian, is_new_pedestrian = pedestrian_mgr.prepare_crashed_driver(
-                    crashed_npc,
-                    crash_x,
-                    crash_y,
-                    heading=crashed_npc.heading,
-                )
-                if crashed_pedestrian is not None:
-                    crashed_pedestrian.curse_timer = 2.0
-                    crashed_pedestrian.curse_text = curse_text
-                    if is_new_pedestrian:
-                        pedestrian_mgr.add_pedestrian(crashed_pedestrian)
-            police_stopping = police_mgr.update(car, current_way, dt)
-            if police_stopping:
-                audio.play_driver_line("police_chase", language)
-                car.speed = 0.0
-                if police_mgr.collect_penalty(car, current_way):
-                    taxi_mgr.total_score -= 300
-                    taxi_mgr.notification_msg = tr(language, "police_stop", penalty=300)
-                    taxi_mgr.notification_timer = 4.0
-                    logger.info("Police traffic stop: -300 pts")
-            audio.update_police_siren(
-                any(npc.pursuing and not npc.penalty_given for npc in police_mgr.cars)
-            )
+                traffic_mgr.advance_time(dt)
             if not taxi_mgr.current_passenger and taxi_waiter_elapsed >= 0.2:
                 taxi_waiter_elapsed = 0.0
                 pedestrian_mgr.ensure_taxi_stop_waiter(taxi_stops, car, viewport_bounds=viewport_bounds)
@@ -1893,7 +1789,7 @@ def main() -> None:
             frame_profiler.set_metric("visible_npcs", sum(
                 viewport_bounds[0] <= npc.x <= viewport_bounds[2]
                 and viewport_bounds[1] <= npc.y <= viewport_bounds[3]
-                for npc in traffic_mgr.npcs
+                for npc in ()
             ))
             frame_profiler.set_metric("visible_pedestrians", sum(
                 viewport_bounds[0] <= ped.x <= viewport_bounds[2]
@@ -1995,7 +1891,6 @@ def main() -> None:
                     pedestrian_mgr.set_venue_buildings(buildings)
                     map_sync_stage = 5
                 elif map_sync_stage == 5:
-                    cyclist_mgr.sync_map_data(ways, traffic_lights=traffic_lights)
                     map_sync_stage = 0
                     navigation_route_dirty = True
             current_target = taxi_mgr.get_current_target()
@@ -2135,7 +2030,7 @@ def main() -> None:
             light_vehicles = [
                 car,
                 *(
-                    npc for npc in traffic_mgr.npcs
+                    npc for npc in ()
                     if viewport_minx - 45.0 <= npc.x <= viewport_maxx + 45.0
                     and viewport_miny - 45.0 <= npc.y <= viewport_maxy + 45.0
                 ),
@@ -2151,7 +2046,7 @@ def main() -> None:
                 visible_road_count_elapsed = 0.0
             render_profile_stage_start = time.perf_counter()
             visible_pedestrians = pedestrian_mgr.pedestrians + [
-                npc for npc in traffic_mgr.npcs if getattr(npc, "is_on_foot", False)
+                npc for npc in () if getattr(npc, "is_on_foot", False)
             ] + ([player_pedestrian] if on_foot else [])
             draw_pedestrians(
                 screen,
@@ -2165,35 +2060,7 @@ def main() -> None:
                 residents=traffic_mgr.residents,
                 spatial_grid=spatial_grid,
             )
-            draw_cyclists(
-                screen,
-                cyclist_mgr.cyclists,
-                camx,
-                camy,
-                px_per_m=px_per_m,
-                ways=ways,
-                spatial_grid=spatial_grid,
-            )
-            draw_npc_cars(
-                screen,
-                traffic_mgr.npcs,
-                camx,
-                camy,
-                px_per_m=px_per_m,
-                ways=ways,
-                spatial_grid=spatial_grid,
-                show_debug=show_debug_hud,
-                residents=traffic_mgr.residents,
-            )
             if show_debug_hud:
-                draw_npc_spatial_grid(
-                    screen,
-                    traffic_mgr._npc_grid,
-                    traffic_mgr._npc_grid_cell_size,
-                    camx,
-                    camy,
-                    px_per_m=px_per_m,
-                )
                 draw_logical_intersections(
                     screen,
                     traffic_mgr.logical_intersections,
@@ -2278,7 +2145,7 @@ def main() -> None:
                 longitude=sun_longitude,
                 npc_vehicles=light_vehicles,
                 street_light_positions=None,
-                bicycles=cyclist_mgr.cyclists,
+                    bicycles=[],
                 ways=ways,
                 spatial_grid=spatial_grid,
                 current_way=current_way,
@@ -2301,7 +2168,7 @@ def main() -> None:
                     camy,
                     px_per_m=px_per_m,
                     ways=ways,
-                    light_vehicles=[car, *traffic_mgr.npcs],
+                    light_vehicles=[car],
                     street_light_positions=None,
                 )
             stage_elapsed = time.perf_counter() - lighting_start
@@ -2411,8 +2278,6 @@ def main() -> None:
                     SCREEN_W,
                     SCREEN_H,
                 )
-            if selected_npc is not None:
-                draw_npc_popup(screen, small_font, selected_npc, traffic_mgr.residents, SCREEN_W)
             if awaiting_start:
                 draw_game_start_overlay(screen, font, chosen_city, SCREEN_W, SCREEN_H)
             elif start_hint_remaining > 0.0 and on_foot:
@@ -2426,7 +2291,7 @@ def main() -> None:
             frame_profiler.end_frame()
             draw_frame_profiler(
                 screen, small_font, frame_profiler,
-                len(traffic_mgr.npcs), len(pedestrian_mgr.pedestrians),
+                0, len(pedestrian_mgr.pedestrians),
             )
             pygame.display.flip()
             if first_gameplay_frame:
