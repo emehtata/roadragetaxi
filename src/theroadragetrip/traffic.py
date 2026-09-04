@@ -132,6 +132,8 @@ class NPCCar:
     next_route: Optional[Tuple[Way, int, int]] = None
     travel_route: Optional[List[Tuple[float, float]]] = None
     travel_route_index: int = 0
+    turn_trajectory: Optional[List[Tuple[float, float]]] = None
+    turn_trajectory_index: int = 0
     destination: Optional[Tuple[float, float]] = None
     destination_parking_space_id: Optional[int] = None
     route_retry_timer: float = 0.0
@@ -1362,6 +1364,117 @@ class TrafficManager:
         """Return the indicator direction for a route prepared at the next junction."""
         if npc.next_route is None:
             return ""
+
+    @staticmethod
+    def _turn_path(
+            npc: NPCCar, next_route: Tuple[Way, int, int], start: Tuple[float, float]
+    ) -> Optional[List[Tuple[float, float]]]:
+            """Build a sampled tangent Bézier path through a non-straight junction."""
+            next_way, next_segment_idx, next_direction = next_route
+            incoming_points = npc.way.points_m
+            if npc.direction == 1:
+                incoming_start = incoming_points[max(0, npc.segment_idx)]
+                incoming_end = incoming_points[min(len(incoming_points) - 1, npc.segment_idx + 1)]
+            else:
+                incoming_start = incoming_points[min(len(incoming_points) - 1, npc.segment_idx + 1)]
+                incoming_end = incoming_points[max(0, npc.segment_idx)]
+            outgoing_points = next_way.points_m
+            if next_direction == 1:
+                outgoing_start = outgoing_points[next_segment_idx]
+                outgoing_end = outgoing_points[next_segment_idx + 1]
+            else:
+                outgoing_start = outgoing_points[next_segment_idx + 1]
+                outgoing_end = outgoing_points[next_segment_idx]
+            in_length = math.hypot(incoming_end[0] - incoming_start[0], incoming_end[1] - incoming_start[1])
+            out_length = math.hypot(outgoing_end[0] - outgoing_start[0], outgoing_end[1] - outgoing_start[1])
+            if in_length < 1e-3 or out_length < 1e-3:
+                return None
+            in_dir = ((incoming_end[0] - incoming_start[0]) / in_length,
+                      (incoming_end[1] - incoming_start[1]) / in_length)
+            out_dir = ((outgoing_end[0] - outgoing_start[0]) / out_length,
+                       (outgoing_end[1] - outgoing_start[1]) / out_length)
+            out_normal = (out_dir[1], -out_dir[0])
+            lane_offset = compute_desired_lane_offset(next_way, False, next_direction)
+            exit_point = (
+                outgoing_start[0] + out_normal[0] * lane_offset,
+                outgoing_start[1] + out_normal[1] * lane_offset,
+            )
+            # Scale handles by road width, wheelbase, and angle without imposing one radius.
+            angle = abs(math.atan2(in_dir[0] * out_dir[1] - in_dir[1] * out_dir[0],
+                                   in_dir[0] * out_dir[0] + in_dir[1] * out_dir[1]))
+            if angle <= math.radians(20.0) or angle >= math.radians(160.0):
+                return None
+            handle = max(3.0, min(12.0, npc.turning_radius_m * (0.7 + angle / math.pi)))
+            handle = min(handle, in_length * 0.45, out_length * 0.45)
+            p0 = start
+            p1 = (p0[0] + in_dir[0] * handle, p0[1] + in_dir[1] * handle)
+            p2 = (exit_point[0] - out_dir[0] * handle, exit_point[1] - out_dir[1] * handle)
+            points = []
+            for index in range(1, 17):
+                t = index / 16.0
+                inv = 1.0 - t
+                points.append((
+                    inv**3 * p0[0] + 3 * inv**2 * t * p1[0] + 3 * inv * t**2 * p2[0] + t**3 * exit_point[0],
+                    inv**3 * p0[1] + 3 * inv**2 * t * p1[1] + 3 * inv * t**2 * p2[1] + t**3 * exit_point[1],
+                ))
+            return [p0] + points
+
+    def _transition_to_route(
+            self, npc: NPCCar, next_route: Tuple[Way, int, int], old_heading: float
+    ) -> None:
+            """Switch logical roads while bridging a turn with a physical trajectory."""
+            turn_path = self._turn_path(npc, next_route, (npc.x, npc.y))
+            next_way, next_segment_idx, next_direction = next_route
+            npc.way, npc.segment_idx, npc.direction = next_way, next_segment_idx, next_direction
+            npc.layer = getattr(next_way, "layer", 0)
+            npc.target_speed = calculate_npc_target_speed(next_way, npc.speed_factor)
+            npc.turn_signal = self._turn_signal_for_route(old_heading, npc)
+            npc.turn_signal_elapsed = 0.0
+            npc.target_lane_offset = compute_desired_lane_offset(next_way, npc.overtaking, next_direction)
+            npc.next_route = None
+            npc.turn_recovery_timer = 60.0
+            npc.turn_trajectory = turn_path
+            npc.turn_trajectory_index = 0
+
+    @staticmethod
+    def _advance_turn_trajectory(npc: NPCCar, distance: float, movement_dt: float) -> bool:
+            """Move along the sampled turn path; return whether it is still active."""
+            path = npc.turn_trajectory
+            if not path:
+                return False
+            while distance > 1e-6 and npc.turn_trajectory_index < len(path) - 1:
+                index = npc.turn_trajectory_index
+                start, end = path[index], path[index + 1]
+                dx, dy = end[0] - start[0], end[1] - start[1]
+                length = math.hypot(dx, dy)
+                if length < 1e-6:
+                    npc.turn_trajectory_index += 1
+                    continue
+                direction = (dx / length, dy / length)
+                next_heading = math.atan2(direction[1], direction[0])
+                heading_delta = (next_heading - npc.heading + math.pi) % (2.0 * math.pi) - math.pi
+                desired_steering = max(
+                    -npc.max_steering_angle,
+                    min(npc.max_steering_angle, math.atan2(npc.wheelbase_m * heading_delta, max(length, 1.0))),
+                )
+                steering_delta = desired_steering - npc.steering_angle
+                max_delta = math.radians(85.0) * movement_dt
+                npc.steering_angle += max(-max_delta, min(max_delta, steering_delta))
+                step = min(distance, length)
+                ratio = step / length
+                npc.x += dx * ratio
+                npc.y += dy * ratio
+                npc.heading = next_heading
+                distance -= step
+                if step >= length - 1e-6:
+                    npc.turn_trajectory_index += 1
+            if npc.turn_trajectory_index >= len(path) - 1:
+                npc.x, npc.y = path[-1]
+                npc.turn_trajectory = None
+                npc.turn_trajectory_index = 0
+                npc.lane_offset = npc.target_lane_offset
+                return False
+            return True
         next_way, next_segment_idx, next_direction = npc.next_route
         points = next_way.points_m
         if next_direction == 1:
@@ -2917,6 +3030,9 @@ class TrafficManager:
 
             movement_dt = dt if npc.lod_level == 0 else NPC_LOD_UPDATE_INTERVALS[npc.lod_level]
             dist_step = npc.speed * movement_dt
+            if npc.turn_trajectory is not None:
+                self._advance_turn_trajectory(npc, dist_step, movement_dt)
+                continue
             step_limit = 10  # Prevent infinite loop on degenerate/zero-length segments
 
             while dist_step > 0 and step_limit > 0:
@@ -3056,16 +3172,7 @@ class TrafficManager:
                                 if turn_route and turn_route[0] is not npc.way:
                                     self._advance_travel_route(npc, target_pt)
                                     old_heading = npc.heading
-                                    npc.way, npc.segment_idx, npc.direction = turn_route
-                                    npc.turn_signal = self._turn_signal_for_route(old_heading, npc)
-                                    npc.turn_signal_elapsed = 0.0
-                                    npc.layer = getattr(npc.way, "layer", 0)
-                                    npc.target_speed = calculate_npc_target_speed(npc.way, npc.speed_factor)
-                                    npc.target_lane_offset = compute_desired_lane_offset(
-                                        npc.way, npc.overtaking, npc.direction
-                                    )
-                                    npc.next_route = None
-                                    npc.turn_recovery_timer = 60.0
+                                    self._transition_to_route(npc, turn_route, old_heading)
                                     pts = npc.way.points_m
                                     turned = True
                             if not turned:
@@ -3078,16 +3185,7 @@ class TrafficManager:
                             if next_route:
                                 self._advance_travel_route(npc, target_pt)
                                 old_heading = npc.heading
-                                npc.way, npc.segment_idx, npc.direction = next_route
-                                npc.turn_signal = self._turn_signal_for_route(old_heading, npc)
-                                npc.turn_signal_elapsed = 0.0
-                                npc.layer = getattr(npc.way, "layer", 0)
-                                npc.target_speed = calculate_npc_target_speed(npc.way, npc.speed_factor)
-                                npc.target_lane_offset = compute_desired_lane_offset(
-                                    npc.way, npc.overtaking, npc.direction
-                                )
-                                npc.next_route = None
-                                npc.turn_recovery_timer = 60.0
+                                self._transition_to_route(npc, next_route, old_heading)
                                 pts = npc.way.points_m
                             else:
                                 # Reverse on two-way or loop (dead end)
@@ -3115,16 +3213,7 @@ class TrafficManager:
                                 if turn_route and turn_route[0] is not npc.way:
                                     self._advance_travel_route(npc, target_pt)
                                     old_heading = npc.heading
-                                    npc.way, npc.segment_idx, npc.direction = turn_route
-                                    npc.turn_signal = self._turn_signal_for_route(old_heading, npc)
-                                    npc.turn_signal_elapsed = 0.0
-                                    npc.layer = getattr(npc.way, "layer", 0)
-                                    npc.target_speed = calculate_npc_target_speed(npc.way, npc.speed_factor)
-                                    npc.target_lane_offset = compute_desired_lane_offset(
-                                        npc.way, npc.overtaking, npc.direction
-                                    )
-                                    npc.next_route = None
-                                    npc.turn_recovery_timer = 60.0
+                                    self._transition_to_route(npc, turn_route, old_heading)
                                     pts = npc.way.points_m
                                     turned = True
                             if not turned:
@@ -3137,16 +3226,7 @@ class TrafficManager:
                             if next_route:
                                 self._advance_travel_route(npc, target_pt)
                                 old_heading = npc.heading
-                                npc.way, npc.segment_idx, npc.direction = next_route
-                                npc.turn_signal = self._turn_signal_for_route(old_heading, npc)
-                                npc.turn_signal_elapsed = 0.0
-                                npc.layer = getattr(npc.way, "layer", 0)
-                                npc.target_speed = calculate_npc_target_speed(npc.way, npc.speed_factor)
-                                npc.target_lane_offset = compute_desired_lane_offset(
-                                    npc.way, npc.overtaking, npc.direction
-                                )
-                                npc.next_route = None
-                                npc.turn_recovery_timer = 60.0
+                                self._transition_to_route(npc, next_route, old_heading)
                                 pts = npc.way.points_m
                             else:
                                 if self._start_destination_parking(npc):
@@ -3163,7 +3243,11 @@ class TrafficManager:
                                     dist_step = 0.0
                                     finished_npcs.add(id(npc))
                                     break
-            if npc.state not in {"parking", "parking_departure"} and npc.speed > 0.0:
+            if (
+                npc.state not in {"parking", "parking_departure"}
+                and npc.speed > 0.0
+                and npc.turn_trajectory is None
+            ):
                 self._keep_npc_near_own_way(npc)
 
         for npc in self.npcs:
