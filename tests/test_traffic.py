@@ -1128,6 +1128,25 @@ def test_older_junction_queue_can_break_nearer_approach_deadlock():
     assert manager._junction_deadlock_can_proceed(older, (0.0, 0.0)) is True
 
 
+def test_stalled_turning_vehicle_can_break_junction_deadlock():
+    horizontal = Way([(-30.0, 0.0), (0.0, 0.0)], "secondary", 4.0)
+    vertical = Way([(0.0, -30.0), (0.0, 0.0)], "secondary", 4.0)
+    stalled = NPCCar(
+        -8.0, 0.0, 0.0, 0.0, horizontal, 0, 1, 10.0, (0, 0, 0),
+        state="turning", turn_trajectory=[(-8.0, 0.0), (0.0, 2.0)],
+        junction_wait_timer=6.0,
+    )
+    waiting = NPCCar(
+        0.0, -10.0, math.pi / 2.0, 0.0, vertical, 0, 1, 10.0, (0, 0, 0),
+        junction_wait_timer=3.0,
+    )
+    manager = TrafficManager([horizontal, vertical])
+    manager.npcs = [stalled, waiting]
+
+    assert manager._junction_deadlock_can_proceed(stalled, (0.0, 0.0)) is True
+    assert manager._junction_deadlock_can_proceed(waiting, (0.0, 0.0)) is False
+
+
 def test_priority_road_has_right_of_way_over_uncontrolled_approach():
     priority = Way(points_m=[(30.0, 0.0), (0.0, 0.0)], highway="primary", half_width_m=4.0, priority_road=True)
     side = Way(points_m=[(0.0, -30.0), (0.0, 0.0)], highway="residential", half_width_m=4.0)

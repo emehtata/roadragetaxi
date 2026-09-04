@@ -2061,7 +2061,10 @@ class TrafficManager:
             distance = math.hypot(other.x - junction_point[0], other.y - junction_point[1])
             if distance > 24.0:
                 continue
-            if other is npc or (other.state != "turning" and other.speed <= 1.0):
+            if other is npc or (
+                other.speed <= 1.0
+                and (other.state != "turning" or other.turn_trajectory is not None)
+            ):
                 candidates.append((distance, other))
         candidates.sort(
             key=lambda candidate: (candidate[0], -candidate[1].junction_wait_timer, id(candidate[1]))
