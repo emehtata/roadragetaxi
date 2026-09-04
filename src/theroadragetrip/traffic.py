@@ -134,6 +134,7 @@ class NPCCar:
     travel_route_index: int = 0
     turn_trajectory: Optional[List[Tuple[float, float]]] = None
     turn_trajectory_index: int = 0
+    turn_trajectory_distance: float = 0.0
     destination: Optional[Tuple[float, float]] = None
     destination_parking_space_id: Optional[int] = None
     route_retry_timer: float = 0.0
@@ -239,9 +240,16 @@ class IntersectionManager:
                 if npc is None or npc_id not in active_ids:
                     reservations.pop(npc_id, None)
                     continue
-                if npc.layer != intersection.layer or math.hypot(
-                    npc.x - intersection.center[0], npc.y - intersection.center[1]
-                ) > intersection.radius_m + 6.0:
+                if (
+                    npc.layer != intersection.layer
+                    or (
+                        npc.turn_trajectory is None
+                        and math.hypot(
+                            npc.x - intersection.center[0],
+                            npc.y - intersection.center[1],
+                        ) > intersection.radius_m + 6.0
+                    )
+                ):
                     self.release(npc)
 
 
@@ -1453,6 +1461,7 @@ class TrafficManager:
             npc.turn_recovery_timer = 60.0
             npc.turn_trajectory = turn_path
             npc.turn_trajectory_index = 0
+            npc.turn_trajectory_distance = 0.0
 
     @staticmethod
     def _advance_turn_trajectory(npc: NPCCar, distance: float, movement_dt: float) -> bool:
@@ -1462,7 +1471,8 @@ class TrafficManager:
                 return False
             while distance > 1e-6 and npc.turn_trajectory_index < len(path) - 1:
                 index = npc.turn_trajectory_index
-                start, end = path[index], path[index + 1]
+                start = (npc.x, npc.y) if index == npc.turn_trajectory_index else path[index]
+                end = path[index + 1]
                 dx, dy = end[0] - start[0], end[1] - start[1]
                 length = math.hypot(dx, dy)
                 if length < 1e-6:
@@ -1482,18 +1492,15 @@ class TrafficManager:
                 ratio = step / length
                 npc.x += dx * ratio
                 npc.y += dy * ratio
+                npc.turn_trajectory_distance += step
                 npc.heading = next_heading
                 distance -= step
                 if step >= length - 1e-6:
                     npc.turn_trajectory_index += 1
-                else:
-                    # Consume the polyline segment so the next frame continues
-                    # from the vehicle rather than replaying its first portion.
-                    path[index] = (npc.x, npc.y)
             if npc.turn_trajectory_index >= len(path) - 1:
-                npc.x, npc.y = path[-1]
                 npc.turn_trajectory = None
                 npc.turn_trajectory_index = 0
+                npc.turn_trajectory_distance = 0.0
                 npc.lane_offset = npc.target_lane_offset
                 return False
             return True

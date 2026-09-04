@@ -418,6 +418,20 @@ def test_intersection_manager_reserves_and_releases_conflicting_approaches():
     assert manager.request_enter(second, second_approach)
 
 
+def test_intersection_reservation_survives_active_turn_trajectory():
+    way = Way(points_m=[(-100.0, 0.0), (100.0, 0.0)], highway="primary", half_width_m=4.0)
+    approach = IntersectionApproach("east", [way], (1.0, 0.0), ((10.0, -4.0), (10.0, 4.0)))
+    intersection = LogicalIntersection("junction", (0.0, 0.0), 20.0, approaches=[approach])
+    manager = IntersectionManager([intersection])
+    npc = NPCCar(30.0, 0.0, 0.0, 4.0, way, 0, 1, 10.0, (20, 20, 20))
+    npc.turn_trajectory = [(30.0, 0.0), (0.0, 2.0)]
+    assert manager.request_enter(npc, approach)
+
+    manager.update([npc])
+
+    assert npc.reserved_intersection_id == "junction"
+
+
 def test_sync_map_data_rebuilds_navigation_graph():
     initial_way = Way(
         points_m=[(0.0, 0.0), (100.0, 0.0)],
@@ -1387,6 +1401,20 @@ def test_turn_trajectory_is_curved_and_tangent_for_left_and_non_right_angles():
     ]
     assert all(abs((headings[i + 1] - headings[i] + math.pi) % (2 * math.pi) - math.pi) < 0.4
                for i in range(len(headings) - 1))
+
+
+def test_turn_trajectory_is_not_mutated_while_advancing():
+    approach = Way([(-40.0, 0.0), (0.0, 0.0)], "residential", 6.0)
+    exit_way = Way([(0.0, 0.0), (0.0, -40.0)], "residential", 5.0)
+    npc = NPCCar(0.0, 0.0, 0.0, 4.0, approach, 0, 1, 8.0, (1, 1, 1))
+    manager = TrafficManager([approach, exit_way], target_count=0)
+    path = manager._turn_path(npc, (exit_way, 0, 1), (0.0, 0.0))
+    npc.turn_trajectory = path
+    original = list(path)
+
+    manager._advance_turn_trajectory(npc, 1.0, 0.1)
+
+    assert path == original
 
 
 def test_straight_route_has_no_turn_trajectory():
