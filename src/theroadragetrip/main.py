@@ -1859,6 +1859,7 @@ def main() -> None:
                     cyclists=cyclist_mgr.cyclists, police_cars=police_mgr.cars,
                 )
             for crashed_npc, crash_x, crash_y, curse_text in traffic_mgr.take_crashed_npc_events():
+                pedestrian_mgr.abandon_vehicle(crashed_npc)
                 crashed_pedestrian = pedestrian_mgr.spawn_pedestrian_at(
                     crash_x,
                     crash_y,

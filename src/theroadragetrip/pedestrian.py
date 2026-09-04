@@ -275,6 +275,7 @@ class PedestrianManager:
         self._building_grid: Dict[Tuple[int, int], List] = {}
         self._building_grid_cell_size = 100.0
         self.vomit_puddles: List[Tuple[float, float]] = []
+        self._abandoned_vehicle_ids: Set[int] = set()
 
         self.ped_ways: List[Way] = []
         self._spawn_ways: List[Way] = []
@@ -311,6 +312,8 @@ class PedestrianManager:
             if pedestrian.resident_id is not None
         }
         for vehicle in vehicles:
+            if id(vehicle) in self._abandoned_vehicle_ids:
+                continue
             if getattr(vehicle, "state", "driving") != "parked":
                 continue
             resident_id = getattr(vehicle, "owner_id", None)
@@ -338,6 +341,14 @@ class PedestrianManager:
             pedestrian.door_grace_timer = 5.0
             self.pedestrians.append(pedestrian)
             linked_residents.add(resident_id)
+
+    def abandon_vehicle(self, vehicle) -> None:
+        """Prevent a resident from returning to a vehicle until it despawns."""
+        self._abandoned_vehicle_ids.add(id(vehicle))
+
+    def _prune_abandoned_vehicles(self, vehicles) -> None:
+        active_vehicle_ids = {id(vehicle) for vehicle in vehicles}
+        self._abandoned_vehicle_ids.intersection_update(active_vehicle_ids)
 
     def _update_linked_driver(self, pedestrian: Pedestrian, update_dt: float) -> bool:
         """Move a parked vehicle owner between its building and the same car."""
@@ -486,6 +497,7 @@ class PedestrianManager:
             vehicle
             for vehicle in vehicles
             if getattr(vehicle, "state", "driving") == "parked"
+            and id(vehicle) not in self._abandoned_vehicle_ids
             and getattr(vehicle, "reserved_by_pedestrian_id", None) is None
             and getattr(vehicle, "current_driver_id", None) is None
             and math.hypot(vehicle.x - x, vehicle.y - y) <= radius_m
@@ -565,6 +577,7 @@ class PedestrianManager:
         """Complete a reserved pedestrian-to-vehicle entry without creating entities."""
         if (
             pedestrian.reserved_vehicle_id != id(vehicle)
+            or id(vehicle) in self._abandoned_vehicle_ids
             or vehicle.state != "reserved"
             or math.hypot(vehicle.x - pedestrian.x, vehicle.y - pedestrian.y) > 3.0
         ):
@@ -1313,6 +1326,8 @@ class PedestrianManager:
         """Update pedestrian simulation: despawning, spawning, waypoint traversal, traffic lights, and evasion."""
         self.sim_time += dt
         self.update_lod(player_car, dt)
+        vehicles = self.traffic_manager.npcs if self.traffic_manager is not None else self.traffic_vehicles
+        self._prune_abandoned_vehicles(vehicles)
         self._materialize_parked_drivers()
         self._amenity_spawn_elapsed += dt
         self._population_update_elapsed += dt

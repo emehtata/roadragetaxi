@@ -109,6 +109,26 @@ def test_spawn_pedestrian_for_resident_replaces_existing_pedestrian():
     assert residents == [second]
 
 
+def test_abandoned_vehicle_is_not_reused_until_despawned():
+    footway = Way(points_m=[(0.0, 8.0), (100.0, 8.0)], highway="footway", half_width_m=2.0)
+    vehicle = SimpleNamespace(x=20.0, y=0.0, heading=0.0, state="parked")
+    manager = PedestrianManager([footway], target_count=0, traffic_vehicles=[vehicle])
+    pedestrian = manager.spawn_pedestrian_at(20.0, 8.0, resident_id=42)
+    manager.pedestrians.append(pedestrian)
+    manager.abandon_vehicle(vehicle)
+
+    assert manager.find_available_parked_vehicle(20.0, 8.0) is None
+    vehicle.state = "driving"
+    manager.update(Car(x=20.0, y=8.0, heading=0.0, speed=0.0), dt=0.1)
+    vehicle.state = "parked"
+    assert manager.find_available_parked_vehicle(20.0, 8.0) is None
+
+    manager.traffic_vehicles.remove(vehicle)
+    manager.update(Car(x=20.0, y=8.0, heading=0.0, speed=0.0), dt=0.1)
+    manager.traffic_vehicles.append(vehicle)
+    assert manager.find_available_parked_vehicle(20.0, 8.0) is vehicle
+
+
 def test_pedestrian_target_count_keeps_nearest_characters():
     way = Way(points_m=[(0.0, 0.0), (100.0, 0.0)], highway="footway", half_width_m=1.5)
     manager = PedestrianManager([way], target_count=3)
