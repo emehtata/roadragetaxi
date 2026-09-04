@@ -499,6 +499,30 @@ def test_crashed_npc_clears_driver_and_owner_walks():
     assert manager.residents.get(owner.resident_id).mode == "walking"
 
 
+def test_crashed_npc_driver_stays_abandoned_after_repeated_crashes_and_timer_expiry():
+    way = Way(points_m=[(0.0, 0.0), (100.0, 0.0)], highway="residential", half_width_m=4.0)
+    manager = TrafficManager([way], target_count=0)
+    npc = NPCCar(20.0, 0.0, 0.0, 4.0, way, 0, 1, 10.0, (20, 20, 20))
+    owner = manager.residents.create("driving", vehicle_id=id(npc))
+    npc.owner_id = owner.resident_id
+    npc.current_driver_id = owner.resident_id
+    driver_id = npc.driver.driver_id
+
+    manager._crash_npc(npc, crashed_timer=0.1)
+    npc.crashed_timer = 0.0
+    manager.update(Car(0.0, 0.0, 0.0, 0.0), dt=0.2)
+    manager._crash_npc(npc, crashed_timer=5.0)
+    npc.set_driver_present(True)
+
+    assert npc.state == "crashed"
+    assert npc.driver_abandoned is True
+    assert npc.driver_present is False
+    assert npc.driver.present is False
+    assert npc.driver.driver_id == driver_id
+    assert npc.current_driver_id is None
+    assert manager.activate_occupied_vehicle(npc) is False
+
+
 def test_active_route_less_npc_gets_a_new_travel_route():
     way = Way(points_m=[(0.0, 0.0), (300.0, 0.0)], highway="residential", half_width_m=4.0)
     manager = TrafficManager([way], target_count=0)

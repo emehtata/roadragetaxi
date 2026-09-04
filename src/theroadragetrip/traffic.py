@@ -159,6 +159,7 @@ class NPCCar:
     owner_id: Optional[int] = None
     assigned_driver_id: Optional[int] = None
     driver_present: bool = True
+    driver_abandoned: bool = False
     driver: Optional[NPCDriver] = None
 
     def __post_init__(self) -> None:
@@ -173,7 +174,9 @@ class NPCCar:
     def has_driver(self) -> bool:
         """Return whether this vehicle's associated driver can currently drive."""
         return (
-            self.driver_present
+            self.state != "crashed"
+            and not self.driver_abandoned
+            and self.driver_present
             and self.assigned_driver_id is not None
             and self.driver is not None
             and self.driver.present
@@ -181,6 +184,8 @@ class NPCCar:
 
     def set_driver_present(self, present: bool) -> None:
         """Keep legacy presence flag and persistent driver state synchronized."""
+        if self.driver_abandoned and present:
+            return
         self.driver_present = present
         if self.driver is not None:
             self.driver.present = present
@@ -411,10 +416,11 @@ class TrafficManager:
         return events
 
     def _crash_npc(self, npc: NPCCar, crashed_timer: float = math.inf) -> None:
-        """Leave a crashed NPC at the collision site and notify its resident."""
+        """Permanently abandon the driver when an NPC reaches the crashed state."""
         if npc.state == "crashed":
             return
         npc.state = "crashed"
+        npc.driver_abandoned = True
         npc.crashed_timer = crashed_timer
         npc.speed = 0.0
         npc.target_speed = 0.0
@@ -725,6 +731,8 @@ class TrafficManager:
 
     def activate_occupied_vehicle(self, npc: NPCCar) -> bool:
         """Start a physical departure before handing an occupied NPC to CarAI."""
+        if npc.state == "crashed" or npc.driver_abandoned:
+            return False
         if npc.state not in {"reserved", "parked", "occupied"}:
             return False
         was_occupied = npc.state == "occupied"
@@ -2219,7 +2227,12 @@ class TrafficManager:
             if npc.owner_id is None:
                 owner = self.residents.create("driving", vehicle_id=id(npc), age=17)
                 npc.owner_id = owner.resident_id
-                if npc.state == "driving" and npc.assigned_driver_id is not None and npc.has_driver():
+                if (
+                    npc.state == "driving"
+                    and not npc.driver_abandoned
+                    and npc.assigned_driver_id is not None
+                    and npc.has_driver()
+                ):
                     npc.current_driver_id = owner.resident_id
         previous_speeds = {id(npc): npc.speed for npc in self.npcs}
         npc_population_changed = tuple(id(npc) for npc in self.npcs) != self._npc_grid_npc_ids
@@ -2381,6 +2394,10 @@ class TrafficManager:
                 if self._assign_new_travel_plan(npc):
                     route_plans_this_update += 1
             if not npc.lod_update_due:
+                continue
+            if npc.state == "crashed":
+                npc.speed = 0.0
+                npc.target_speed = 0.0
                 continue
             if not npc.has_driver() and npc.current_driver_id is None:
                 npc.speed = 0.0
