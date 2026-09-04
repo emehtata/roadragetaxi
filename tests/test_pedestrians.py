@@ -129,6 +129,29 @@ def test_abandoned_vehicle_is_not_reused_until_despawned():
     assert manager.find_available_parked_vehicle(20.0, 8.0) is vehicle
 
 
+def test_linked_driver_does_not_reserve_crashed_vehicle():
+    footway = Way(points_m=[(0.0, 8.0), (100.0, 8.0)], highway="footway", half_width_m=2.0)
+    vehicle = SimpleNamespace(
+        x=20.0,
+        y=0.0,
+        heading=0.0,
+        state="crashed",
+        reserved_by_pedestrian_id=None,
+    )
+    manager = PedestrianManager([footway], target_count=0, traffic_vehicles=[vehicle])
+    pedestrian = manager.spawn_pedestrian_at(20.0, 8.0, resident_id=42)
+    manager.pedestrians.append(pedestrian)
+    pedestrian.linked_vehicle_id = id(vehicle)
+    pedestrian.linked_building_entrance = (20.0, 8.0)
+    pedestrian.state = "returning_to_vehicle"
+    manager.abandon_vehicle(vehicle)
+
+    assert manager._update_linked_driver(pedestrian, 0.1)
+    assert vehicle.state == "crashed"
+    assert pedestrian.state == PedestrianState.WALKING.value
+    assert pedestrian.linked_vehicle_id is None
+
+
 def test_pedestrian_target_count_keeps_nearest_characters():
     way = Way(points_m=[(0.0, 0.0), (100.0, 0.0)], highway="footway", half_width_m=1.5)
     manager = PedestrianManager([way], target_count=3)

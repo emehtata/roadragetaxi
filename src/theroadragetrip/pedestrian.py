@@ -394,6 +394,16 @@ class PedestrianManager:
                 pedestrian.destination = self._vehicle_entry_position(vehicle)
             return True
         if pedestrian.state == "returning_to_vehicle":
+            if (
+                getattr(vehicle, "state", "driving") == "crashed"
+                or id(vehicle) in self._abandoned_vehicle_ids
+            ):
+                pedestrian.linked_vehicle_id = None
+                pedestrian.linked_building_entrance = None
+                pedestrian.state = PedestrianState.WALKING.value
+                pedestrian.animation_state = "walking"
+                pedestrian.destination = None
+                return True
             target_x, target_y = self._vehicle_entry_position(vehicle)
             distance = math.hypot(target_x - pedestrian.x, target_y - pedestrian.y)
             if distance <= 1.0:
@@ -578,6 +588,7 @@ class PedestrianManager:
         if (
             pedestrian.reserved_vehicle_id != id(vehicle)
             or id(vehicle) in self._abandoned_vehicle_ids
+            or getattr(vehicle, "state", "driving") == "crashed"
             or vehicle.state != "reserved"
             or math.hypot(vehicle.x - pedestrian.x, vehicle.y - pedestrian.y) > 3.0
         ):
