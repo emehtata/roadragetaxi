@@ -106,7 +106,6 @@ class NPCCar:
     overtake_timer: float = 0.0
     # Crash / disable state
     crashed_timer: float = 0.0
-    collision_recovery_timer: float = 0.0
     blocked_timer: float = 0.0
     escape_timer: float = 0.0
     rage_timer: float = 0.0
@@ -1096,8 +1095,6 @@ class TrafficManager:
                         continue
                     found_collision = True
 
-                    npc.collision_recovery_timer = max(npc.collision_recovery_timer, 5.0)
-                    other.collision_recovery_timer = max(other.collision_recovery_timer, 5.0)
 
                     dx = npc.x - other.x
                     dy = npc.y - other.y
@@ -2442,7 +2439,6 @@ class TrafficManager:
                 npc.y += dy / distance * npc.speed * dt
                 continue
             npc.escape_timer = max(0.0, npc.escape_timer - dt)
-            npc.collision_recovery_timer = max(0.0, npc.collision_recovery_timer - dt)
             npc.turn_recovery_timer = max(0.0, npc.turn_recovery_timer - dt)
             npc.rage_timer = max(0.0, npc.rage_timer - dt)
             if npc.turn_signal:
@@ -2826,9 +2822,9 @@ class TrafficManager:
                         turn_factor = max(0.25, math.cos(min(math.pi / 2, angle_err)))
                         turn_limit_speed = max(3.5, npc.target_speed * turn_factor)
 
-            # Check if NPC is in crashed recovery state
+            # Keep crashed NPCs disabled.
             if npc.state == "crashed" or npc.crashed_timer > 0.0 or getattr(npc, "fallen", False):
-                action = "fallen" if getattr(npc, "fallen", False) else "recovering from crash"
+                action = "fallen" if getattr(npc, "fallen", False) else "crashed"
                 npc.state = "crashed"
                 if npc.debug_last_action != action:
                     logger.debug("NPC %s action=%s reason=disabled state", id(npc), action)

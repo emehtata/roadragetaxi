@@ -1859,16 +1859,17 @@ def main() -> None:
                     cyclists=cyclist_mgr.cyclists, police_cars=police_mgr.cars,
                 )
             for crashed_npc, crash_x, crash_y, curse_text in traffic_mgr.take_crashed_npc_events():
-                crashed_pedestrian = pedestrian_mgr.spawn_pedestrian_at(
+                crashed_pedestrian, is_new_pedestrian = pedestrian_mgr.prepare_crashed_driver(
+                    crashed_npc,
                     crash_x,
                     crash_y,
                     heading=crashed_npc.heading,
-                    resident_id=crashed_npc.owner_id,
                 )
                 if crashed_pedestrian is not None:
                     crashed_pedestrian.curse_timer = 2.0
                     crashed_pedestrian.curse_text = curse_text
-                    pedestrian_mgr.pedestrians.append(crashed_pedestrian)
+                    if is_new_pedestrian:
+                        pedestrian_mgr.add_pedestrian(crashed_pedestrian)
             police_stopping = police_mgr.update(car, current_way, dt)
             if police_stopping:
                 audio.play_driver_line("police_chase", language)

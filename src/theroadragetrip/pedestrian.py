@@ -262,6 +262,7 @@ class PedestrianManager:
         self.traffic_vehicles = traffic_vehicles if traffic_vehicles is not None else []
         self.traffic_manager = traffic_manager
         self.residents = residents if residents is not None else ResidentManager()
+        self._crashed_resident_ids: Set[int] = set()
         self.sim_time: float = 0.0
         self._population_update_elapsed: float = 4.9
         self._visible_taxi_stops: Set[Tuple[float, float, Optional[int]]] = set()
@@ -302,6 +303,16 @@ class PedestrianManager:
             pedestrian.resident_id = self.residents.create("walking").resident_id
         return pedestrian
 
+    def add_pedestrian(self, pedestrian: Pedestrian) -> bool:
+        """Keep one active pedestrian per resident."""
+        if pedestrian.resident_id is not None and any(
+            candidate.resident_id == pedestrian.resident_id
+            for candidate in self.pedestrians
+        ):
+            return False
+        self.pedestrians.append(pedestrian)
+        return True
+
     def _materialize_parked_drivers(self) -> None:
         """Keep parked cars empty while placing their owners beside the car."""
         vehicles = self.traffic_manager.npcs if self.traffic_manager is not None else self.traffic_vehicles
@@ -336,8 +347,60 @@ class PedestrianManager:
             pedestrian.state = "walking_to_building"
             pedestrian.animation_state = "walking"
             pedestrian.door_grace_timer = 5.0
-            self.pedestrians.append(pedestrian)
+            self.add_pedestrian(pedestrian)
             linked_residents.add(resident_id)
+
+    def prepare_crashed_driver(
+        self,
+        vehicle,
+        x: float,
+        y: float,
+        heading: float,
+    ) -> Tuple[Optional[Pedestrian], bool]:
+        """Release an existing vehicle owner, or create one if absent."""
+        resident_id = getattr(vehicle, "owner_id", None)
+        if resident_id is not None and resident_id in self._crashed_resident_ids:
+            return next(
+                (
+                    candidate
+                    for candidate in self.pedestrians
+                    if candidate.resident_id == resident_id
+                ),
+                None,
+            ), False
+        if resident_id is not None:
+            self._crashed_resident_ids.add(resident_id)
+        pedestrian = next(
+            (
+                candidate
+                for candidate in self.pedestrians
+                if resident_id is not None and candidate.resident_id == resident_id
+            ),
+            None,
+        )
+        if pedestrian is None:
+            pedestrian = self.spawn_pedestrian_at(
+                x,
+                y,
+                heading=heading,
+                resident_id=resident_id,
+            )
+            return pedestrian, pedestrian is not None
+
+        pedestrian.x = x
+        pedestrian.y = y
+        pedestrian.heading = heading
+        pedestrian.current_vehicle_id = None
+        pedestrian.reserved_vehicle_id = None
+        pedestrian.vehicle_destination = None
+        pedestrian.linked_vehicle_id = None
+        pedestrian.linked_building_entrance = None
+        pedestrian.destination = None
+        pedestrian.wants_vehicle = False
+        pedestrian.state = PedestrianState.WALKING.value
+        pedestrian.animation_state = "walking"
+        pedestrian.speed = pedestrian.base_speed
+        return pedestrian, False
 
     def _update_linked_driver(self, pedestrian: Pedestrian, update_dt: float) -> bool:
         """Move a parked vehicle owner between its building and the same car."""
@@ -798,7 +861,7 @@ class PedestrianManager:
                 waiter.wants_taxi = True
                 waiter.speed = 0.0
                 waiter.base_speed = 0.0
-                self.pedestrians.append(waiter)
+                self.add_pedestrian(waiter)
                 return
             vminx = vminy = vmaxx = vmaxy = 0.0
             if viewport_bounds:
@@ -824,7 +887,7 @@ class PedestrianManager:
                 )
                 if customer is None:
                     continue
-                self.pedestrians.append(customer)
+                    self.add_pedestrian(customer)
 
             customer.taxi_stop_target = self._taxi_stop_waiting_position(stop)
             customer.is_walking_to_taxi_stop = True
@@ -1361,7 +1424,7 @@ class PedestrianManager:
                     entrance_x, entrance_y = random.choice(nearby_amenity_entrances)
                     amenity_pedestrian = self.spawn_pedestrian_at_door(entrance_x, entrance_y)
                     if amenity_pedestrian is not None:
-                        self.pedestrians.append(amenity_pedestrian)
+                        self.add_pedestrian(amenity_pedestrian)
                 self._amenity_spawn_elapsed = 0.0
 
             # Spawn new pedestrians up to target_count
@@ -1406,7 +1469,7 @@ class PedestrianManager:
                     new_ped.is_drunk = True
                     new_ped.drunk_phase = random.uniform(0.0, 2.0 * math.pi)
                     new_ped.drunk_vomit_cooldown = random.uniform(8.0, 25.0)
-                self.pedestrians.append(new_ped)
+                self.add_pedestrian(new_ped)
 
         # Check interaction and dodging with player car
         cyclist_collision = self.check_player_avoidance(player_car, dt)

@@ -28,18 +28,6 @@ NIGHTLIFE_VENUE_TYPES = {
     "biergarten",
 }
 
-# Finnish passenger name generator for immersion
-PASSENGER_NAMES = {
-    "woman": ("Maija", "Liisa", "Anna", "Sari", "Tuula", "Tiina", "Katri", "Elina", "Johanna", "Laura", "Emilia", "Sofia", "Sanna", "Hanna", "Maria", "Veera"),
-    "man": ("Matti", "Antti", "Juho", "Mikko", "Pekka", "Jari", "Heikki", "Kari", "Ville", "Aleksi", "Janne", "Lauri", "Markus", "Eero", "Petri", "Timo"),
-}
-
-
-def random_passenger_identity() -> tuple[str, str]:
-    gender = random.choice(tuple(PASSENGER_NAMES))
-    return random.choice(PASSENGER_NAMES[gender]), gender
-
-
 @dataclass
 class TaxiTarget:
     """A target destination or pickup point with generated realistic address."""
