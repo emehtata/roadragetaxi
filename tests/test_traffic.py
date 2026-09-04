@@ -11,6 +11,7 @@ from theroadragetrip.traffic import (
     NPCCar,
     TrafficManager,
     calculate_npc_turning_geometry,
+    compute_desired_lane_offset,
     compute_turn_lane_offset,
     traffic_count_for_zoom,
 )
@@ -1408,7 +1409,7 @@ def test_left_turn_simulation_reaches_destination_lane_and_heading():
         manager.update(Car(-100.0, -100.0, 0.0, 0.0), dt=0.1)
 
     assert npc.way is exit_way
-    assert npc.x == pytest.approx(0.0, abs=0.2)
+    assert npc.x == pytest.approx(compute_desired_lane_offset(exit_way, False, 1), abs=0.2)
     assert npc.y > 10.0
     assert npc.heading == pytest.approx(math.pi / 2.0, abs=0.2)
 

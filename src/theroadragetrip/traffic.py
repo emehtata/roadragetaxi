@@ -3258,6 +3258,7 @@ class TrafficManager:
             if (
                 npc.state not in {"parking", "parking_departure"}
                 and npc.speed > 0.0
+                and npc.next_route is None
                 and npc.turn_trajectory is None
             ):
                 self._keep_npc_near_own_way(npc)
