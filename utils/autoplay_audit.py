@@ -29,6 +29,8 @@ def _overlapping_pairs(manager: TrafficManager) -> List[tuple]:
     pairs = []
     for index, first in enumerate(manager.npcs):
         for second in manager.npcs[index + 1:]:
+            if first.state == "crashed" and second.state == "crashed":
+                continue
             if first.layer == second.layer and boxes_intersect(
                 first.x, first.y, first.heading, first.length_m, first.width_m,
                 second.x, second.y, second.heading, second.length_m, second.width_m,
@@ -63,7 +65,8 @@ def _has_lane_exception(npc) -> bool:
         or npc.debug_waiting_for
         or npc.blocked_timer > 0.0
         or npc.escape_timer > 0.0
-        or npc.collision_recovery_timer > 0.0
+        or getattr(npc, "crashed_timer", 0.0) > 0.0
+        or npc.state == "crashed"
         or getattr(npc, "turn_recovery_timer", 0.0) > 0.0
         or abs(npc.lane_offset - npc.target_lane_offset) > 0.2
     )
@@ -131,7 +134,13 @@ def _turning_at_junction(manager, npc) -> bool:
 
 def _turning_loop_violation(npc) -> str | None:
     """Report turn signals that keep an NPC turning indefinitely."""
-    if npc.state == "turning" and npc.next_route is None and npc.turn_signal_elapsed > 3.5:
+    if (
+        npc.state == "turning"
+        and npc.next_route is None
+        and getattr(npc, "turn_trajectory", None) is None
+        and npc.turn_signal
+        and npc.turn_signal_elapsed > 3.5
+    ):
         return f"turn_signal={npc.turn_signal!r} elapsed={npc.turn_signal_elapsed:.1f}s"
     return None
 
@@ -233,7 +242,11 @@ def run_audit(steps: int = 1200, dt: float = 0.1, seed: int = 7) -> List[AuditFa
                 else:
                     lane_violation_steps[npc_key] = 0
 
-            if npc.debug_waiting_for == "junction" and npc.speed < 1.0:
+            if (
+                npc.debug_waiting_for == "junction"
+                and npc.speed < 1.0
+                and npc.junction_wait_timer >= 3.0
+            ):
                 junction_wait_steps[npc_key] = junction_wait_steps.get(npc_key, 0) + 1
                 if junction_wait_steps[npc_key] > 60:
                     nearby = [

@@ -21,6 +21,15 @@ def test_headless_autoplay_traffic_audit():
     )
 
 
+def test_headless_autoplay_regression_seeds():
+    for seed in (1, 42):
+        failures = run_audit(steps=1200, dt=0.1, seed=seed)
+        assert failures == [], f"seed={seed}: " + "\n".join(
+            f"step={failure.step} rule={failure.rule} npc={failure.npc_id}: {failure.detail}"
+            for failure in failures
+        )
+
+
 def _lane_npc(y=-2.0, **overrides):
     way = Way(points_m=[(0.0, 0.0), (100.0, 0.0)], highway="residential", half_width_m=4.0)
     values = {
@@ -36,7 +45,7 @@ def _lane_npc(y=-2.0, **overrides):
         "debug_waiting_for": "",
         "blocked_timer": 0.0,
         "escape_timer": 0.0,
-        "collision_recovery_timer": 0.0,
+        "crashed_timer": 0.0,
     }
     values.update(overrides)
     return SimpleNamespace(**values)
@@ -53,7 +62,7 @@ def test_lane_audit_allows_only_explicit_lane_deviation_reasons():
     wrong_lane = _lane_npc(y=2.0)
     overtaking = _lane_npc(y=2.0, overtaking=True)
     collision_recovery = _lane_npc(y=2.0, escape_timer=1.0)
-    separation_recovery = _lane_npc(y=2.0, collision_recovery_timer=1.0)
+    separation_recovery = _lane_npc(y=2.0, crashed_timer=1.0)
 
     assert _has_lane_exception(wrong_lane) is False
     assert _has_lane_exception(overtaking) is True

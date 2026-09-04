@@ -597,7 +597,7 @@ def complete_traffic_light_approaches(traffic_lights: List[TrafficLight], ways: 
                 TrafficLight(
                     x=center_x + math.cos(arm_angle) * 14.0,
                     y=center_y + math.sin(arm_angle) * 14.0,
-                    cycle_time=16.0,
+                    cycle_time=24.0,
                     offset=signal_offset,
                     layer=layer,
                     id=-(index + 1) * 100 - arm_index,
@@ -627,6 +627,12 @@ def complete_traffic_light_approaches(traffic_lights: List[TrafficLight], ways: 
                     approach_id=f"{layer}:{center_x:.0f}:{center_y:.0f}:{direction_key}",
                     phase_id=phase_id,
                     offset=8.0 if phase_id else 0.0,
+                    cycle_time=24.0,
+                    green_duration=10.0,
+                    yellow_duration=2.0,
+                    all_red_duration=1.0,
+                    red_duration=9.0,
+                    red_yellow_duration=2.0,
                 )
                 grouped[direction_key] = group
             signal.signal_group = group

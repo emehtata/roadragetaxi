@@ -418,18 +418,17 @@ def test_intersection_manager_reserves_and_releases_conflicting_approaches():
     assert manager.request_enter(second, second_approach)
 
 
-def test_intersection_reservation_survives_active_turn_trajectory():
+def test_intersection_reservation_releases_after_leaving_intersection():
     way = Way(points_m=[(-100.0, 0.0), (100.0, 0.0)], highway="primary", half_width_m=4.0)
     approach = IntersectionApproach("east", [way], (1.0, 0.0), ((10.0, -4.0), (10.0, 4.0)))
     intersection = LogicalIntersection("junction", (0.0, 0.0), 20.0, approaches=[approach])
     manager = IntersectionManager([intersection])
     npc = NPCCar(30.0, 0.0, 0.0, 4.0, way, 0, 1, 10.0, (20, 20, 20))
-    npc.turn_trajectory = [(30.0, 0.0), (0.0, 2.0)]
     assert manager.request_enter(npc, approach)
 
     manager.update([npc])
 
-    assert npc.reserved_intersection_id == "junction"
+    assert npc.reserved_intersection_id is None
 
 
 def test_sync_map_data_rebuilds_navigation_graph():
@@ -1147,7 +1146,7 @@ def test_stalled_turning_vehicle_can_break_junction_deadlock():
     vertical = Way([(0.0, -30.0), (0.0, 0.0)], "secondary", 4.0)
     stalled = NPCCar(
         -8.0, 0.0, 0.0, 0.0, horizontal, 0, 1, 10.0, (0, 0, 0),
-        state="turning", turn_trajectory=[(-8.0, 0.0), (0.0, 2.0)],
+        state="turning",
         junction_wait_timer=6.0,
     )
     waiting = NPCCar(
@@ -1383,66 +1382,55 @@ def test_npc_right_turn_joins_exit_way_right_lane():
     assert npc.x < 0.0
 
 
-def test_turn_trajectory_is_curved_and_tangent_for_left_and_non_right_angles():
+def test_route_transition_uses_direct_destination_heading_and_lane():
     approach = Way([(-40.0, 0.0), (0.0, 0.0)], "residential", 6.0)
     left_exit = Way([(0.0, 0.0), (20.0, 30.0)], "residential", 5.0)
     npc = NPCCar(-8.0, 0.0, 0.0, 4.0, approach, 0, 1, 8.0, (1, 1, 1))
     manager = TrafficManager([approach, left_exit], target_count=0)
 
-    path = manager._turn_path(npc, (left_exit, 0, 1), (0.0, 0.0))
+    manager._transition_to_route(npc, (left_exit, 0, 1), 0.0)
 
-    assert path is not None
-    assert len(path) > 8
-    assert path[1][1] == pytest.approx(0.0, abs=0.2)
-    assert path[-1][0] > 0.0
-    headings = [
-        math.atan2(path[i + 1][1] - path[i][1], path[i + 1][0] - path[i][0])
-        for i in range(len(path) - 1)
-    ]
-    assert all(abs((headings[i + 1] - headings[i] + math.pi) % (2 * math.pi) - math.pi) < 0.4
-               for i in range(len(headings) - 1))
+    assert npc.way is left_exit
+    assert npc.heading == pytest.approx(math.atan2(30.0, 20.0))
+    assert npc.lane_offset == npc.target_lane_offset
 
 
-def test_turn_trajectory_is_not_mutated_while_advancing():
+def test_route_transition_does_not_create_turn_trajectory():
     approach = Way([(-40.0, 0.0), (0.0, 0.0)], "residential", 6.0)
     exit_way = Way([(0.0, 0.0), (0.0, -40.0)], "residential", 5.0)
     npc = NPCCar(0.0, 0.0, 0.0, 4.0, approach, 0, 1, 8.0, (1, 1, 1))
     manager = TrafficManager([approach, exit_way], target_count=0)
-    path = manager._turn_path(npc, (exit_way, 0, 1), (0.0, 0.0))
-    npc.turn_trajectory = path
-    original = list(path)
+    manager._transition_to_route(npc, (exit_way, 0, 1), 0.0)
 
-    manager._advance_turn_trajectory(npc, 1.0, 0.1)
-
-    assert path == original
+    assert not hasattr(npc, "turn_trajectory")
 
 
-def test_straight_route_has_no_turn_trajectory():
+def test_straight_route_uses_direct_transition():
     approach = Way([(-30.0, 0.0), (0.0, 0.0)], "residential", 4.0)
     straight_exit = Way([(0.0, 0.0), (40.0, 0.0)], "residential", 4.0)
     npc = NPCCar(-1.0, 0.0, 0.0, 4.0, approach, 0, 1, 8.0, (1, 1, 1))
     manager = TrafficManager([approach, straight_exit], target_count=0)
 
-    assert manager._turn_path(npc, (straight_exit, 0, 1), (0.0, 0.0)) is None
+    manager._transition_to_route(npc, (straight_exit, 0, 1), 0.0)
+
+    assert npc.way is straight_exit
+    assert npc.heading == 0.0
 
 
-def test_right_turn_simulation_stays_on_destination_right_lane_without_snap():
+def test_right_turn_simulation_stays_on_destination_right_lane():
     approach = Way([(-30.0, 0.0), (0.0, 0.0)], "residential", 4.0)
     exit_way = Way([(0.0, 0.0), (0.0, -40.0)], "residential", 4.0)
     manager = TrafficManager([approach, exit_way], target_count=0)
     npc = NPCCar(-8.0, 0.0, 0.0, 5.0, approach, 0, 1, 5.0, (1, 1, 1),
                  next_route=(exit_way, 0, 1))
     manager.npcs = [npc]
-    samples = []
     for _ in range(60):
         manager.update(Car(-100.0, 100.0, 0.0, 0.0), dt=0.1)
-        samples.append((npc.x, npc.y))
 
     assert npc.way is exit_way
     assert npc.x == pytest.approx(-compute_desired_lane_offset(exit_way, False, 1), abs=0.2)
     assert npc.y < -10.0
-    assert max(math.hypot(samples[i + 1][0] - samples[i][0],
-                          samples[i + 1][1] - samples[i][1]) for i in range(len(samples) - 1)) < 1.0
+    assert npc.heading == pytest.approx(-math.pi / 2.0, abs=0.2)
 
 
 def test_left_turn_simulation_reaches_destination_lane_and_heading():
