@@ -2137,20 +2137,6 @@ def main() -> None:
             )
             draw_vomit_puddles(screen, taxi_mgr.vomit_puddles, camx, camy, px_per_m=px_per_m)
             draw_vomit_puddles(screen, pedestrian_mgr.vomit_puddles, camx, camy, px_per_m=px_per_m)
-            draw_street_lights(
-                screen,
-                ways,
-                camx,
-                camy,
-                game_time_seconds,
-                px_per_m=px_per_m,
-                spatial_grid=spatial_grid,
-                visible_road_count=visible_road_count,
-                daylight_surface=daylight_scene,
-                latitude=sun_latitude,
-                longitude=sun_longitude,
-                buildings=buildings,
-            )
             draw_headlight_beams(
                 screen,
                 light_vehicles,
@@ -2177,6 +2163,20 @@ def main() -> None:
                 ways=ways,
                 spatial_grid=spatial_grid,
                 current_way=current_way,
+            )
+            draw_street_lights(
+                screen,
+                ways,
+                camx,
+                camy,
+                game_time_seconds,
+                px_per_m=px_per_m,
+                spatial_grid=spatial_grid,
+                visible_road_count=visible_road_count,
+                daylight_surface=daylight_scene,
+                latitude=sun_latitude,
+                longitude=sun_longitude,
+                buildings=buildings,
             )
             if sun_altitude < -7.5:
                 draw_pedestrian_reflectors(

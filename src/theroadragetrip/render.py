@@ -40,9 +40,15 @@ BUILDING_WALL_COLORS = ((158, 105, 82), (174, 166, 143), (116, 131, 119), (139, 
 BUILDING_ROOF_COLORS = ((92, 57, 48), (102, 96, 82), (66, 83, 69), (83, 86, 87))
 MAX_VISIBLE_STREET_LIGHTS = 400
 STREET_LIGHT_SPACING_M = 12.0
-STREET_LIGHT_JUNCTION_CLEARANCE_M = 10.0
+STREET_LIGHT_JUNCTION_CLEARANCE_M = 3.0
 STREET_LIGHT_REFLECTOR_RADIUS_M = 10.0
 STREET_LIGHT_SHADE_COLOR = (0, 0, 0)
+STREET_LIGHT_BUILDING_DISTANCE_M = 200.0
+STREET_LIGHT_POOL_COLOR = (255, 226, 165, 72)
+STREET_LIGHT_POOL_ADD_COLOR = (28, 22, 12)
+STREET_LIGHT_POOL_HALF_ANGLE = math.radians(135.0)
+STREET_LIGHT_POOL_STEPS = 16
+STREET_LIGHT_CORE_COLOR = (255, 236, 165, 230)
 SOLAR_UPDATE_INTERVAL_SECONDS = 15.0 * 60.0
 GAME_DATE = date(2026, 8, 31)
 FINLAND_SUMMER_TIME_OFFSET = 3.0
@@ -74,10 +80,13 @@ _traffic_light_surface_cache = {}
 _street_light_glow_cache = {}
 _street_light_frame_cache_key = None
 _street_light_frame_cache_surface = None
+_street_light_frame_pool_surface = None
 _street_light_frame_cache_camera = None
 _street_light_frame_world_positions = []
 _street_light_geometry_cache_key = None
 _street_light_geometry_cache = []
+_street_light_way_lit_cache_key = None
+_street_light_way_lit_cache = {}
 _day_night_overlay_cache = {}
 _solar_position_cache = {}
 _street_light_last_debug_log_ms = 0
@@ -1513,23 +1522,43 @@ def _point_is_near_building(
     buildings: Optional[List[Building]],
     building_grid=None,
 ) -> bool:
-    """Return whether a point is within 100 m of a building footprint."""
+    """Return whether a point is within the taajama building distance."""
     if not buildings:
         return False
     point_x, point_y = point
     candidates = buildings
     if building_grid is not None:
-        cell_size = 100.0
+        cell_size = STREET_LIGHT_BUILDING_DISTANCE_M
         cell_x = math.floor(point_x / cell_size)
         cell_y = math.floor(point_y / cell_size)
-        candidates = building_grid.get((cell_x, cell_y), ())
+        candidates = {
+            id(building): building
+            for nearby_x in (cell_x - 1, cell_x, cell_x + 1)
+            for nearby_y in (cell_y - 1, cell_y, cell_y + 1)
+            for building in building_grid.get((nearby_x, nearby_y), ())
+        }.values()
     for building in candidates:
+        points = getattr(building, "points_m", ())
+        if len(points) >= 3:
+            if point_in_polygon(point_x, point_y, points):
+                return True
+            if any(
+                dist_point_to_segment(
+                    point_x, point_y, start[0], start[1], end[0], end[1]
+                ) < STREET_LIGHT_BUILDING_DISTANCE_M
+                for start, end in zip(points, points[1:] + points[:1])
+            ):
+                return True
+            continue
         bbox = getattr(building, "bbox", None)
         if not bbox or bbox == (0.0, 0.0, 0.0, 0.0):
             continue
         nearest_x = min(max(point_x, bbox[0]), bbox[2])
         nearest_y = min(max(point_y, bbox[1]), bbox[3])
-        if (point_x - nearest_x) ** 2 + (point_y - nearest_y) ** 2 < 100.0 * 100.0:
+        if (
+            (point_x - nearest_x) ** 2 + (point_y - nearest_y) ** 2
+            < STREET_LIGHT_BUILDING_DISTANCE_M * STREET_LIGHT_BUILDING_DISTANCE_M
+        ):
             return True
     return False
 
@@ -1540,9 +1569,14 @@ def _way_should_have_street_lighting(
     point: Optional[Tuple[float, float]] = None,
     building_grid=None,
 ) -> bool:
+    urban_highways = {
+        "primary", "primary_link", "secondary", "secondary_link",
+        "tertiary", "tertiary_link", "unclassified", "residential",
+        "living_street", "service",
+    }
     return _way_has_street_lighting(way) or (
         getattr(way, "lit", None) is None
-        and getattr(way, "highway", "") == "secondary"
+        and getattr(way, "highway", "") in urban_highways
         and point is not None
         and _point_is_near_building(point, buildings, building_grid)
     )
@@ -1593,11 +1627,23 @@ def draw_street_lights(
                 )
                 _street_light_last_debug_log_ms = now_ms
         return
+    road_cache_signature = tuple(
+        (
+            getattr(way, "osm_id", None),
+            len(way.points_m),
+            way.points_m[0] if way.points_m else None,
+            way.points_m[-1] if way.points_m else None,
+            getattr(way, "half_width_m", 0.0),
+            getattr(way, "lit", None),
+        )
+        for way in ways
+    )
     cache_pixel_size = 16
     frame_cache_key = (
         id(ways),
         len(ways),
         id(ways[-1]) if ways else None,
+        road_cache_signature,
         id(buildings),
         round(camx * px_per_m / cache_pixel_size),
         round(camy * px_per_m / cache_pixel_size),
@@ -1605,15 +1651,21 @@ def draw_street_lights(
         round(darkness * 32.0),
         screen.get_size(),
     )
-    global _street_light_frame_cache_key, _street_light_frame_cache_surface, _street_light_frame_cache_camera
+    global _street_light_frame_cache_key, _street_light_frame_cache_surface
+    global _street_light_frame_pool_surface, _street_light_frame_cache_camera
     if (
-        daylight_surface is None
-        and frame_cache_key == _street_light_frame_cache_key
+        frame_cache_key == _street_light_frame_cache_key
         and _street_light_frame_cache_surface is not None
     ):
         cached_camx, cached_camy = _street_light_frame_cache_camera
         offset_x = round((cached_camx - camx) * px_per_m)
         offset_y = round((camy - cached_camy) * px_per_m)
+        if _street_light_frame_pool_surface is not None:
+            screen.blit(
+                _street_light_frame_pool_surface,
+                (offset_x, offset_y),
+                special_flags=pygame.BLEND_RGB_ADD,
+            )
         screen.blit(_street_light_frame_cache_surface, (offset_x, offset_y))
         if _render_logger.isEnabledFor(logging.DEBUG):
             now_ms = pygame.time.get_ticks()
@@ -1644,10 +1696,11 @@ def draw_street_lights(
             bbox = getattr(building, "bbox", None)
             if not bbox or bbox == (0.0, 0.0, 0.0, 0.0):
                 continue
-            min_cell_x = math.floor((bbox[0] - 100.0) / 100.0)
-            max_cell_x = math.floor((bbox[2] + 100.0) / 100.0)
-            min_cell_y = math.floor((bbox[1] - 100.0) / 100.0)
-            max_cell_y = math.floor((bbox[3] + 100.0) / 100.0)
+            cell_size = STREET_LIGHT_BUILDING_DISTANCE_M
+            min_cell_x = math.floor((bbox[0] - cell_size) / cell_size)
+            max_cell_x = math.floor((bbox[2] + cell_size) / cell_size)
+            min_cell_y = math.floor((bbox[1] - cell_size) / cell_size)
+            max_cell_y = math.floor((bbox[3] + cell_size) / cell_size)
             for cell_x in range(min_cell_x, max_cell_x + 1):
                 for cell_y in range(min_cell_y, max_cell_y + 1):
                     building_grid.setdefault((cell_x, cell_y), []).append(building)
@@ -1690,14 +1743,51 @@ def draw_street_lights(
     )
     _street_light_frame_world_positions = []
     global _street_light_geometry_cache_key, _street_light_geometry_cache
+    global _street_light_way_lit_cache_key, _street_light_way_lit_cache
     geometry_cache_key = (
         id(ways),
         len(ways),
         id(ways[-1]) if ways else None,
+        tuple(
+            (
+                getattr(way, "osm_id", None),
+                len(way.points_m),
+                way.points_m[0] if way.points_m else None,
+                way.points_m[-1] if way.points_m else None,
+                getattr(way, "half_width_m", 0.0),
+                getattr(way, "lit", None),
+            )
+            for way in ways
+        ),
         id(buildings),
         len(buildings) if buildings else 0,
         id(buildings[-1]) if buildings else None,
     )
+    if geometry_cache_key != _street_light_way_lit_cache_key:
+        way_lit_cache = {}
+        for way in ways:
+            if not getattr(way, "is_drivable", True) or len(way.points_m) < 2:
+                way_lit_cache[id(way)] = []
+                continue
+            if _way_has_street_lighting(way):
+                way_lit_cache[id(way)] = [True] * (len(way.points_m) - 1)
+                continue
+            if getattr(way, "lit", None) == "no" or getattr(way, "highway", "") not in {
+                "primary", "primary_link", "secondary", "secondary_link",
+                "tertiary", "tertiary_link", "unclassified", "residential",
+                "living_street", "service",
+            }:
+                way_lit_cache[id(way)] = [False] * (len(way.points_m) - 1)
+                continue
+            segment_lighting = []
+            for start, end in zip(way.points_m, way.points_m[1:]):
+                samples = (start, end, ((start[0] + end[0]) * 0.5, (start[1] + end[1]) * 0.5))
+                segment_lighting.append(
+                    any(_point_is_near_building(sample, buildings, building_grid) for sample in samples)
+                )
+            way_lit_cache[id(way)] = segment_lighting
+        _street_light_way_lit_cache_key = geometry_cache_key
+        _street_light_way_lit_cache = way_lit_cache
     if geometry_cache_key != _street_light_geometry_cache_key:
         cached_lamps = []
         lamp_spacing = STREET_LIGHT_SPACING_M
@@ -1707,7 +1797,11 @@ def draw_street_lights(
                 not getattr(way, "is_drivable", True)
                 or (
                     not _way_has_street_lighting(way)
-                    and getattr(way, "highway", "") != "secondary"
+                    and getattr(way, "highway", "") not in {
+                        "primary", "primary_link", "secondary", "secondary_link",
+                        "tertiary", "tertiary_link", "unclassified", "residential",
+                        "living_street", "service",
+                    }
                 )
                 or len(way.points_m) < 2
             ):
@@ -1731,10 +1825,33 @@ def draw_street_lights(
                     normal_x = -dy / segment_length
                     normal_y = dx / segment_length
                     edge_distance = getattr(way, "half_width_m", 4.0) + 1.0
-                    if _way_should_have_street_lighting(way, buildings, (lamp_x, lamp_y), building_grid):
+                    segment_lighting = _street_light_way_lit_cache.get(id(way), ())
+                    if segment_index < len(segment_lighting) and segment_lighting[segment_index]:
                         for side in (-1.0, 1.0):
                             world_x = lamp_x + normal_x * edge_distance * side
                             world_y = lamp_y + normal_y * edge_distance * side
+                            candidate_ways = (
+                                spatial_grid.ways_in_rect(
+                                    world_x - 1.0, world_y - 1.0,
+                                    world_x + 1.0, world_y + 1.0,
+                                )
+                                if spatial_grid is not None
+                                else ways
+                            )
+                            if any(
+                                getattr(candidate, "is_drivable", True)
+                                and any(
+                                    dist_point_to_segment(
+                                        world_x, world_y,
+                                        first[0], first[1], second[0], second[1],
+                                    ) <= getattr(candidate, "half_width_m", 3.0)
+                                    for first, second in zip(
+                                        candidate.points_m, candidate.points_m[1:]
+                                    )
+                                )
+                                for candidate in candidate_ways
+                            ):
+                                continue
                             junction_cell_x = math.floor(world_x / junction_cell_size)
                             junction_cell_y = math.floor(world_y / junction_cell_size)
                             if any(
@@ -1746,7 +1863,8 @@ def draw_street_lights(
                             ):
                                 continue
                             road_direction = math.atan2(-normal_y * side, -normal_x * side)
-                            cached_lamps.append((world_x, world_y, road_direction))
+                            pool_radius_m = edge_distance + getattr(way, "half_width_m", 4.0) + 1.0
+                            cached_lamps.append((world_x, world_y, road_direction, pool_radius_m))
                     distance_to_lamp += lamp_spacing
                 distance_to_lamp -= segment_length
         _street_light_geometry_cache_key = geometry_cache_key
@@ -1754,9 +1872,10 @@ def draw_street_lights(
 
     lamp_centers = []
     lamp_directions = []
+    lamp_pool_radii = []
     visible_way_count = visible_road_count if visible_road_count is not None else len(ways)
     _street_light_frame_world_positions = []
-    for world_x, world_y, road_direction in _street_light_geometry_cache:
+    for world_x, world_y, road_direction, pool_radius_m in _street_light_geometry_cache:
         if len(lamp_centers) >= MAX_VISIBLE_STREET_LIGHTS:
             break
         if not (vminx <= world_x <= vmaxx and vminy <= world_y <= vmaxy):
@@ -1770,15 +1889,49 @@ def draw_street_lights(
         pygame.draw.circle(screen, lamp_color, lamp_center, lamp_radius)
         lamp_centers.append(lamp_center)
         lamp_directions.append(road_direction)
+        lamp_pool_radii.append(pool_radius_m)
         _street_light_frame_world_positions.append((world_x, world_y))
     if light_layer is not None:
         lamp_radius = max(1, int(px_per_m * 0.28))
-        for lamp_center in lamp_centers:
-            pygame.draw.circle(light_layer, STREET_LIGHT_SHADE_COLOR, lamp_center, lamp_radius)
+        shade_radius = lamp_radius // 3
+        pool_add_layer = _reusable_alpha_surface(
+            pygame, "street_light_pool_add_layer", screen.get_size()
+        )
+        for lamp_center, road_direction, lamp_pool_radius_m in zip(
+            lamp_centers, lamp_directions, lamp_pool_radii
+        ):
+            pool_radius = max(
+                lamp_radius + 2,
+                int(lamp_pool_radius_m * px_per_m),
+            )
+            sector_points = [lamp_center]
+            for step in range(STREET_LIGHT_POOL_STEPS + 1):
+                angle = (
+                    road_direction
+                    - STREET_LIGHT_POOL_HALF_ANGLE
+                    + step * (2.0 * STREET_LIGHT_POOL_HALF_ANGLE / STREET_LIGHT_POOL_STEPS)
+                )
+                sector_points.append(
+                    (
+                        int(lamp_center[0] + math.cos(angle) * pool_radius),
+                        int(lamp_center[1] - math.sin(angle) * pool_radius),
+                    )
+                )
+            pygame.draw.polygon(pool_add_layer, (*STREET_LIGHT_POOL_ADD_COLOR, 255), sector_points)
+            pygame.draw.polygon(light_layer, STREET_LIGHT_POOL_COLOR, sector_points)
+            pygame.draw.circle(light_layer, STREET_LIGHT_CORE_COLOR, lamp_center, lamp_radius)
+            if shade_radius:
+                pygame.draw.circle(light_layer, STREET_LIGHT_SHADE_COLOR, lamp_center, shade_radius)
         _street_light_frame_cache_key = frame_cache_key
         _street_light_frame_cache_surface = light_layer
+        _street_light_frame_pool_surface = pool_add_layer
         _street_light_frame_cache_camera = (camx, camy)
+        screen.blit(pool_add_layer, (0, 0), special_flags=pygame.BLEND_RGB_ADD)
         screen.blit(light_layer, (0, 0))
+        for lamp_center in lamp_centers:
+            pygame.draw.circle(screen, STREET_LIGHT_CORE_COLOR[:3], lamp_center, lamp_radius)
+            if shade_radius:
+                pygame.draw.circle(screen, STREET_LIGHT_SHADE_COLOR, lamp_center, shade_radius)
         if _render_logger.isEnabledFor(logging.DEBUG):
             now_ms = pygame.time.get_ticks()
             if now_ms - _street_light_last_debug_log_ms >= 1000:
@@ -1796,30 +1949,6 @@ def draw_street_lights(
                     street_light_brightness,
                 )
                 _street_light_last_debug_log_ms = now_ms
-        if daylight_surface is not None and lamp_centers:
-            daylight_mask = _reusable_alpha_surface(pygame, "street_daylight_mask", screen.get_size())
-            restoration_radius = max(2, int(10.0 * px_per_m))
-            for lamp_center, road_direction in zip(lamp_centers, lamp_directions):
-                sector_points = [lamp_center]
-                half_sector_angle = math.radians(135.0)
-                for angle_step in range(17):
-                    angle = (
-                        road_direction - half_sector_angle
-                        + angle_step * (2.0 * half_sector_angle / 16.0)
-                    )
-                    sector_points.append(
-                        (
-                            int(lamp_center[0] + math.cos(angle) * restoration_radius),
-                            int(lamp_center[1] - math.sin(angle) * restoration_radius),
-                        )
-                    )
-                pygame.draw.polygon(daylight_mask, (255, 255, 255, 255), sector_points)
-            restored_daylight = _reusable_alpha_surface(pygame, "street_restored_daylight", screen.get_size())
-            restored_daylight.blit(daylight_surface, (0, 0))
-            restored_daylight.blit(daylight_mask, (0, 0), special_flags=pygame.BLEND_RGBA_MIN)
-            screen.blit(restored_daylight, (0, 0))
-            for lamp_center in lamp_centers:
-                pygame.draw.circle(screen, STREET_LIGHT_SHADE_COLOR, lamp_center, lamp_radius)
 
 
 def draw_headlight_beams(
