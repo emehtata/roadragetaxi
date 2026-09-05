@@ -159,37 +159,6 @@ def _default_cache_dir() -> str:
 
 
 CACHE_DIR = _default_cache_dir()
-DEAD_ENDS_CACHE_FILE = os.path.join(CACHE_DIR, "dead_ends.json")
-
-
-def load_dead_ends_cache() -> List[dict]:
-    """Load cached dead-end / empty-tile fetch boundaries."""
-    if not os.path.exists(DEAD_ENDS_CACHE_FILE):
-        return []
-    try:
-        with open(DEAD_ENDS_CACHE_FILE, "r", encoding="utf-8") as f:
-            data = json.load(f)
-            return data.get("dead_ends", [])
-    except Exception as e:
-        logger.warning("Failed to load dead-ends cache: %s", e)
-        return []
-
-
-def save_dead_end_to_cache(entry: dict) -> None:
-    """Save a dead-end entry (coordinates, direction/bbox, reason) to cache file."""
-    os.makedirs(CACHE_DIR, exist_ok=True)
-    dead_ends = load_dead_ends_cache()
-    dead_ends.append(entry)
-    try:
-        with open(DEAD_ENDS_CACHE_FILE, "w", encoding="utf-8") as f:
-            json.dump(
-                {"version": CACHE_VERSION, "updated_at": time.time(), "dead_ends": dead_ends},
-                f,
-                indent=2,
-            )
-        logger.info("Saved dead-end road record to %s", DEAD_ENDS_CACHE_FILE)
-    except Exception as e:
-        logger.warning("Failed to save dead-end cache: %s", e)
 
 
 def _snap_projected_bbox(
@@ -286,6 +255,7 @@ class Water:
     is_polygon: bool
     name: Optional[str] = None
     bbox: Tuple[float, float, float, float] = (0.0, 0.0, 0.0, 0.0)
+    layer: int = 0
 
 
 @dataclass
@@ -978,16 +948,8 @@ def has_outdated_osm_cache() -> bool:
     """Return whether the cache contains data from an older cache format."""
     if not os.path.isdir(CACHE_DIR):
         return False
-    dead_ends_path = os.path.join(CACHE_DIR, "dead_ends.json")
-    if os.path.isfile(dead_ends_path):
-        try:
-            with open(dead_ends_path, "r", encoding="utf-8") as f:
-                if json.load(f).get("version") != CACHE_VERSION:
-                    return True
-        except (OSError, json.JSONDecodeError):
-            return False
     for entry in os.scandir(CACHE_DIR):
-        if not entry.is_file() or entry.path == dead_ends_path or _bbox_from_cache_name(entry.name) is None:
+        if not entry.is_file() or _bbox_from_cache_name(entry.name) is None:
             continue
         try:
             with open(entry.path, "r", encoding="utf-8") as f:
@@ -1288,6 +1250,63 @@ def plant_trees(
         progress_callback(progress_end, f"Planted trees in {total} scenery areas")
 
 
+def remove_trees_under_roads(sceneries: List[Scenery], ways: List[Way]) -> None:
+    """Remove tree centers covered by drivable road geometry."""
+    road_ways = [way for way in ways if getattr(way, "is_drivable", True)]
+    if not road_ways:
+        return
+
+    cell_size = 64.0
+    road_grid = defaultdict(list)
+    for way in road_ways:
+        points = way.points_m
+        if len(points) < 2:
+            continue
+        half_width = way.half_width_m
+        minx = min(point[0] for point in points) - half_width
+        miny = min(point[1] for point in points) - half_width
+        maxx = max(point[0] for point in points) + half_width
+        maxy = max(point[1] for point in points) + half_width
+        for grid_x in range(math.floor(minx / cell_size), math.floor(maxx / cell_size) + 1):
+            for grid_y in range(math.floor(miny / cell_size), math.floor(maxy / cell_size) + 1):
+                road_grid[(grid_x, grid_y)].append(way)
+
+    for scenery in sceneries:
+        kept_trees = []
+        kept_variations = []
+        for index, (tree_x, tree_y) in enumerate(scenery.trees):
+            covered = False
+            candidate_ways = road_grid.get(
+                (math.floor(tree_x / cell_size), math.floor(tree_y / cell_size)),
+                (),
+            )
+            for way in candidate_ways:
+                half_width = way.half_width_m
+                points = way.points_m
+                minx = min(point[0] for point in points)
+                miny = min(point[1] for point in points)
+                maxx = max(point[0] for point in points)
+                maxy = max(point[1] for point in points)
+                if not (
+                    minx - half_width <= tree_x <= maxx + half_width
+                    and miny - half_width <= tree_y <= maxy + half_width
+                ):
+                    continue
+                if any(
+                    dist_point_to_segment(tree_x, tree_y, p1[0], p1[1], p2[0], p2[1]) <= half_width
+                    for p1, p2 in zip(points, points[1:])
+                ):
+                    covered = True
+                    break
+            if covered:
+                continue
+            kept_trees.append((tree_x, tree_y))
+            if index < len(scenery.tree_variations):
+                kept_variations.append(scenery.tree_variations[index])
+        scenery.trees = kept_trees
+        scenery.tree_variations = kept_variations
+
+
 def build_ways(
     elements: List[dict],
     progress_callback: Optional[Callable[[float, str], None]] = None,
@@ -1532,7 +1551,11 @@ def build_ways(
         is_poly = pts[0] == pts[-1]
         kind = tags.get("natural") or tags.get("waterway") or tags.get("landuse") or "water"
         name = tags.get("name")
-        waters.append(Water(points_m=pts, kind=kind, is_polygon=is_poly, name=name, bbox=ibbox))
+        try:
+            layer = int(float(str(tags.get("layer", 0)).strip()))
+        except (TypeError, ValueError):
+            layer = 0
+        waters.append(Water(points_m=pts, kind=kind, is_polygon=is_poly, name=name, bbox=ibbox, layer=layer))
 
     # 3. Buildings
     if progress_callback:
@@ -1810,7 +1833,11 @@ def build_ways(
                 ))
             elif tags.get("natural") in ("water", "bay", "strait") or tags.get("landuse") == "reservoir":
                 kind = tags.get("natural") or tags.get("landuse") or "water"
-                waters.append(Water(points_m=pts, kind=kind, is_polygon=is_closed, name=name, bbox=ibbox))
+                try:
+                    layer = int(float(str(tags.get("layer", 0)).strip()))
+                except (TypeError, ValueError):
+                    layer = 0
+                waters.append(Water(points_m=pts, kind=kind, is_polygon=is_closed, name=name, bbox=ibbox, layer=layer))
             elif tags.get("amenity") == "parking" or tags.get("landuse") == "parking":
                 sceneries.append(Scenery(points_m=pts, kind="parking", name=name, bbox=ibbox))
             elif "leisure" in tags or "landuse" in tags or tags.get("natural") in ("forest", "wood", "scrub", "grass"):
@@ -2255,7 +2282,7 @@ class AutoFetchManager:
         self._completed_fetch_targets: Set[Tuple[float, float, float, float]] = set()
         self._endpoint_connection_cache: dict[tuple[int, int, int], bool] = {}
         # Load known dead-end boundaries from disk cache
-        self.dead_ends: List[dict] = load_dead_ends_cache()
+        self.dead_ends: List[dict] = []
 
     def get_bounds(self) -> Tuple[float, float, float, float]:
         with self.lock:
@@ -2282,6 +2309,90 @@ class AutoFetchManager:
                 if (dx * dx + dy * dy) ** 0.5 < tolerance_m:
                     return True
         return False
+
+    def _nearest_way_endpoint(self, car_x: float, car_y: float, max_distance: float) -> Optional[Way]:
+        """Find the closest drivable road with an endpoint near the car."""
+        nearest_way = None
+        nearest_distance = max_distance
+        for way in self.ways:
+            if not getattr(way, "is_drivable", False) or len(way.points_m) < 2:
+                continue
+            endpoint_distance = min(
+                math.hypot(car_x - way.points_m[0][0], car_y - way.points_m[0][1]),
+                math.hypot(car_x - way.points_m[-1][0], car_y - way.points_m[-1][1]),
+            )
+            if endpoint_distance <= nearest_distance:
+                nearest_way = way
+                nearest_distance = endpoint_distance
+        return nearest_way
+
+    def get_endpoint_fetch_audit(
+        self,
+        car,
+        margin_m: float,
+        tile_size_m: float,
+        current_way: Optional[Way] = None,
+    ) -> dict:
+        """Return the road-endpoint fetch decision inputs for runtime diagnostics."""
+        with self.lock:
+            lookahead_m = min(
+                tile_size_m * 0.5,
+                max(margin_m, max(0.0, car.speed) * 8.0),
+            )
+            endpoint_way = current_way or self._nearest_way_endpoint(car.x, car.y, lookahead_m)
+            if endpoint_way is None or len(endpoint_way.points_m) < 2:
+                return {"status": "no_nearby_drivable_endpoint", "lookahead_m": lookahead_m}
+
+            endpoint_candidates = (
+                (endpoint_way.points_m[0], endpoint_way.points_m[1]),
+                (endpoint_way.points_m[-1], endpoint_way.points_m[-2]),
+            )
+            endpoint, previous = min(
+                endpoint_candidates,
+                key=lambda candidate: math.hypot(car.x - candidate[0][0], car.y - candidate[0][1]),
+            )
+            endpoint_distance = math.hypot(car.x - endpoint[0], car.y - endpoint[1])
+            approach_x = endpoint[0] - previous[0]
+            approach_y = endpoint[1] - previous[1]
+            approach_length = math.hypot(approach_x, approach_y)
+            heading_alignment = (
+                (math.cos(car.heading) * approach_x + math.sin(car.heading) * approach_y) / approach_length
+                if approach_length > 0.0 else -1.0
+            )
+            endpoint_index = 0 if endpoint is endpoint_way.points_m[0] else -1
+            cache_key = (id(endpoint_way), endpoint_index, len(self.ways))
+            connected = self._endpoint_connection_cache.get(cache_key)
+            if connected is None:
+                connected = any(
+                    other is not endpoint_way
+                    and getattr(other, "is_drivable", False)
+                    and any(
+                        math.hypot(endpoint[0] - point[0], endpoint[1] - point[1])
+                        <= max(12.0, endpoint_way.half_width_m + getattr(other, "half_width_m", 3.0))
+                        for point in getattr(other, "points_m", ())
+                    )
+                    for other in self.ways
+                )
+                self._endpoint_connection_cache[cache_key] = connected
+            direction = "east" if abs(approach_x) >= abs(approach_y) and approach_x >= 0 else "west"
+            if abs(approach_y) > abs(approach_x):
+                direction = "north" if approach_y >= 0 else "south"
+            endpoint_key = (id(endpoint_way), direction)
+            return {
+                "status": "evaluated",
+                "way": {
+                    "osm_id": endpoint_way.osm_id,
+                    "highway": endpoint_way.highway,
+                    "name": endpoint_way.name,
+                },
+                "endpoint": list(endpoint),
+                "endpoint_distance_m": endpoint_distance,
+                "lookahead_m": lookahead_m,
+                "heading_alignment": heading_alignment,
+                "connected_to_drivable_road": connected,
+                "already_attempted": endpoint_key in self._attempted_endpoints,
+                "known_dead_end": self.is_known_dead_end(car.x, car.y, direction),
+            }
 
     def start_if_needed(
         self,
@@ -2314,8 +2425,14 @@ class AutoFetchManager:
             # Determine expansion boxes centered around car's position with overlap into existing area
             half_span = tile_size_m / 2.0
             overlap = max(margin_m, 500.0)
+            lookahead_m = min(
+                half_span,
+                max(margin_m, max(0.0, car.speed) * 8.0),
+            )
+            ahead_x = car.x + math.cos(car.heading) * lookahead_m
+            ahead_y = car.y + math.sin(car.heading) * lookahead_m
 
-            if car.x < minx + margin_m:
+            if car.x < minx + margin_m or ahead_x < minx + margin_m:
                 direction = "west"
                 if not self.is_known_dead_end(car.x, car.y, direction):
                     fetch_minx = car.x - tile_size_m
@@ -2324,7 +2441,7 @@ class AutoFetchManager:
                     fetch_maxy = car.y + half_span
                     expanded = True
                     trigger_reason = "bbox west edge"
-            elif car.x > maxx - margin_m:
+            elif car.x > maxx - margin_m or ahead_x > maxx - margin_m:
                 direction = "east"
                 if not self.is_known_dead_end(car.x, car.y, direction):
                     fetch_minx = car.x - overlap
@@ -2335,7 +2452,7 @@ class AutoFetchManager:
                     trigger_reason = "bbox east edge"
 
             if not expanded:
-                if car.y < miny + margin_m:
+                if car.y < miny + margin_m or ahead_y < miny + margin_m:
                     direction = "south"
                     if not self.is_known_dead_end(car.x, car.y, direction):
                         fetch_miny = car.y - tile_size_m
@@ -2345,7 +2462,7 @@ class AutoFetchManager:
                         expanded = True
                         trigger_reason = "bbox south edge"
 
-            if not expanded and car.y > maxy - margin_m:
+            if not expanded and (car.y > maxy - margin_m or ahead_y > maxy - margin_m):
                 direction = "north"
                 if not self.is_known_dead_end(car.x, car.y, direction):
                     fetch_miny = car.y - overlap
@@ -2355,10 +2472,11 @@ class AutoFetchManager:
                     expanded = True
                     trigger_reason = "bbox north edge"
 
-            if not expanded and current_way is not None and len(current_way.points_m) >= 2:
+            endpoint_way = current_way or self._nearest_way_endpoint(car.x, car.y, lookahead_m)
+            if not expanded and endpoint_way is not None and len(endpoint_way.points_m) >= 2:
                 endpoint_candidates = (
-                    (current_way.points_m[0], current_way.points_m[1]),
-                    (current_way.points_m[-1], current_way.points_m[-2]),
+                    (endpoint_way.points_m[0], endpoint_way.points_m[1]),
+                    (endpoint_way.points_m[-1], endpoint_way.points_m[-2]),
                 )
                 endpoint, previous = min(
                     endpoint_candidates,
@@ -2372,15 +2490,16 @@ class AutoFetchManager:
                     (math.cos(car.heading) * approach_x + math.sin(car.heading) * approach_y) / approach_length
                     if approach_length > 0.0 else -1.0
                 )
-                endpoint_index = 0 if endpoint is current_way.points_m[0] else -1
-                cache_key = (id(current_way), endpoint_index, len(self.ways))
+                endpoint_index = 0 if endpoint is endpoint_way.points_m[0] else -1
+                cache_key = (id(endpoint_way), endpoint_index, len(self.ways))
                 connected = self._endpoint_connection_cache.get(cache_key)
                 if connected is None:
                     connected = any(
-                        other is not current_way
+                        other is not endpoint_way
+                        and getattr(other, "is_drivable", False)
                         and any(
                             math.hypot(endpoint[0] - point[0], endpoint[1] - point[1])
-                            <= max(12.0, current_way.half_width_m + getattr(other, "half_width_m", 3.0))
+                            <= max(12.0, endpoint_way.half_width_m + getattr(other, "half_width_m", 3.0))
                             for point in getattr(other, "points_m", ())
                         )
                         for other in self.ways
@@ -2389,9 +2508,9 @@ class AutoFetchManager:
                 direction = "east" if abs(approach_x) >= abs(approach_y) and approach_x >= 0 else "west"
                 if abs(approach_y) > abs(approach_x):
                     direction = "north" if approach_y >= 0 else "south"
-                endpoint_key = (id(current_way), direction)
+                endpoint_key = (id(endpoint_way), direction)
                 if (
-                    endpoint_distance <= margin_m
+                    endpoint_distance <= lookahead_m
                     and not connected
                     and heading_alignment > 0.2
                     and endpoint_key not in self._attempted_endpoints
@@ -2403,7 +2522,7 @@ class AutoFetchManager:
                         fetch_maxy = car.y + (tile_size_m if approach_y >= 0 else overlap)
                         expanded = True
                         trigger_reason = "road endpoint"
-                        self._attempted_endpoints.add((id(current_way), direction))
+                        self._attempted_endpoints.add((id(endpoint_way), direction))
 
             if not expanded:
                 return False
@@ -2460,10 +2579,17 @@ class AutoFetchManager:
                 self.fetch_progress = 0.25
             area_bbox = (south, west, north, east)
             if self.world_cache_manager is not None:
-                area_id = self.world_cache_manager.area_id(area_bbox)
-                res = self.world_cache_manager.preload(
-                    area_id, area_bbox, point=(car_lat, car_lon)
-                ).result()
+                target_minx, target_miny, target_maxx, target_maxy = target_bbox
+                target_lon1, target_lat1 = self.transformer.transform(target_minx, target_miny)
+                target_lon2, target_lat2 = self.transformer.transform(target_maxx, target_maxy)
+                target_bbox_ll = (
+                    min(target_lat1, target_lat2),
+                    min(target_lon1, target_lon2),
+                    max(target_lat1, target_lat2),
+                    max(target_lon1, target_lon2),
+                )
+                area_id = self.world_cache_manager.area_id(target_bbox_ll)
+                res = self.world_cache_manager.preload(area_id, target_bbox_ll).result()
                 elems = None
             else:
                 elems = load_osm_cache(area_bbox, point=(car_lat, car_lon))
@@ -2532,7 +2658,6 @@ class AutoFetchManager:
                     "target_bbox": list(target_bbox),
                     "recorded_at": time.time(),
                 }
-                save_dead_end_to_cache(entry)
                 with self.lock:
                     self.dead_ends.append(entry)
 

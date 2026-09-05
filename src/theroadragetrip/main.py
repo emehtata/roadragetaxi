@@ -61,6 +61,7 @@ from .osm import (
     has_outdated_osm_cache,
     load_local_sample,
     load_osm_cache,
+    remove_trees_under_roads,
     save_osm_cache,
 )
 from .physics import (
@@ -73,11 +74,13 @@ from .physics import (
     Car,
     SpatialWayGrid,
     get_current_road_at_car,
+    is_car_colliding_with_bridge_edge,
     is_car_fully_in_water,
     is_on_road,
     is_point_on_parking_space,
     reset_trip,
     respawn_car,
+    pull_car_inside_bridge_edge,
     update_car_physics,
 )
 from .render import (
@@ -156,7 +159,7 @@ from .residents import ResidentManager
 from .police import place_speed_cameras
 from .roadworks import create_roadworks
 from .taxi import TaxiManager, TaxiState
-from .traffic import TrafficManager
+from .traffic_world import TrafficWorld
 from .world_cache import WorldCacheManager, clear_world_cache
 from .performance import FrameProfiler
 
@@ -296,6 +299,12 @@ def _write_debug_snapshot(
                 "south": car.y < miny + args.fetch_margin,
                 "north": car.y > maxy - args.fetch_margin,
             },
+            "endpoint_audit": auto_fetch_manager.get_endpoint_fetch_audit(
+                car,
+                args.fetch_margin,
+                args.fetch_tile_size,
+                current_way=current_way,
+            ),
         },
     }
     with open(path, "w", encoding="utf-8") as debug_file:
@@ -913,6 +922,7 @@ def main() -> None:
             roadworks_enabled,
         )
         on_load_progress(0.92, "Preparing road index...")
+        remove_trees_under_roads(sceneries, ways)
         # Spatial index for fast O(1) road collision detection
         spatial_grid = SpatialWayGrid()
         spatial_grid.rebuild(ways)
@@ -965,20 +975,11 @@ def main() -> None:
         logger.info("Placed %d hidden speed cameras", len(speed_cameras))
         # Keep road, signal, and resident services for taxi missions.
         on_load_progress(0.96, "Preparing taxi world...")
-        traffic_mgr = TrafficManager(
+        traffic_mgr = TrafficWorld(
             ways,
-            target_count=0,
             traffic_lights=traffic_lights,
-            stop_signs=stop_signs,
-            yield_signs=yield_signs,
             crossings=crossings,
-            parking_spaces=parking_spaces,
-            parking_density=0.0,
-            roadworks=roadworks,
-            enable_two_wheelers=False,
             residents=residents,
-            buildings=buildings,
-            sceneries=sceneries,
         )
         # Initialize autonomous Pedestrian Manager
         on_load_progress(0.98, "Preparing pedestrians...")
@@ -1081,6 +1082,7 @@ def main() -> None:
         last_track_surface = None
         map_sync_stage = 0
         water_elapsed = 0.0
+        bridge_edge_crash_cooldown = 0.0
         visible_road_count_elapsed = 0.0
         visible_road_count = 0
         on_foot = True
@@ -1489,6 +1491,7 @@ def main() -> None:
             taxi_waiter_elapsed += dt
             visible_road_count_elapsed += dt
             rage_shout_timer = max(0.0, rage_shout_timer - dt)
+            bridge_edge_crash_cooldown = max(0.0, bridge_edge_crash_cooldown - dt)
 
             if zoom_elapsed < zoom_duration:
                 zoom_elapsed = min(zoom_duration, zoom_elapsed + dt)
@@ -1641,9 +1644,19 @@ def main() -> None:
                     car, buildings, traffic_mgr.sim_time, previous_position, ways=ways
                 )
                 tree_crash = taxi_mgr.check_tree_collision(
-                    car, sceneries, traffic_mgr.sim_time, previous_position
+                    car, sceneries, traffic_mgr.sim_time, previous_position, ways=ways
                 )
-            if building_crash or tree_crash:
+                bridge_edge_crash = is_car_colliding_with_bridge_edge(car, current_way)
+                if bridge_edge_crash:
+                    pull_car_inside_bridge_edge(car, current_way)
+                    car.speed = 0.0
+                    taxi_mgr.taxi_smoke_timer = max(taxi_mgr.taxi_smoke_timer, 5.0)
+                    if bridge_edge_crash_cooldown <= 0.0:
+                        bridge_edge_crash_cooldown = 3.0
+                        taxi_mgr.total_score -= 200
+                        taxi_mgr.notification_msg = tr(language, "bridge_crash", penalty=200)
+                        taxi_mgr.notification_timer = 3.5
+            if building_crash or tree_crash or bridge_edge_crash:
                 audio.play("car-crash", volume=0.7)
                 audio.play_driver_line("collision", language)
             if first_gameplay_frame:
@@ -1866,12 +1879,15 @@ def main() -> None:
                     map_sync_stage = 1
 
                 if map_sync_stage == 1:
+                    remove_trees_under_roads(sceneries, ways)
                     spatial_grid.rebuild(ways)
                     building_grid.rebuild(buildings)
                     scenery_grid.rebuild(sceneries)
                     water_grid.rebuild(waters)
                     crossing_grid.rebuild(crossings)
                     traffic_light_grid.rebuild(traffic_lights)
+                    if args.auto_fetch:
+                        auto_fetch_manager._attempted_endpoints.clear()
                     map_sync_stage = 2
                 elif map_sync_stage == 2:
                     taxi_mgr.sync_map_data(ways, places=places, buildings=buildings)
@@ -1938,13 +1954,6 @@ def main() -> None:
             render_profile_times["map_grass"] = render_profile_times.get("map_grass", 0.0) + stage_elapsed
             frame_profiler.record("render:grass", stage_elapsed * 1000.0)
             if first_gameplay_frame:
-                logger.info("Gameplay frame: rendering water")
-            map_stage_start = time.perf_counter()
-            draw_waters(screen, waters, camx, camy, px_per_m=px_per_m, spatial_grid=water_grid)
-            stage_elapsed = time.perf_counter() - map_stage_start
-            render_profile_times["map_water"] = render_profile_times.get("map_water", 0.0) + stage_elapsed
-            frame_profiler.record("render:water", stage_elapsed * 1000.0)
-            if first_gameplay_frame:
                 logger.info("Gameplay frame: rendering scenery")
             map_stage_start = time.perf_counter()
             draw_scenery(
@@ -1956,10 +1965,19 @@ def main() -> None:
                 tree_effects=taxi_mgr.tree_effects,
                 fallen_trees=taxi_mgr.fallen_trees,
                 spatial_grid=scenery_grid,
+                ways=ways,
+                road_spatial_grid=spatial_grid,
             )
             stage_elapsed = time.perf_counter() - map_stage_start
             render_profile_times["map_scenery"] = render_profile_times.get("map_scenery", 0.0) + stage_elapsed
             frame_profiler.record("render:scenery", stage_elapsed * 1000.0)
+            if first_gameplay_frame:
+                logger.info("Gameplay frame: rendering water")
+            map_stage_start = time.perf_counter()
+            draw_waters(screen, waters, camx, camy, px_per_m=px_per_m, spatial_grid=water_grid)
+            stage_elapsed = time.perf_counter() - map_stage_start
+            render_profile_times["map_water"] = render_profile_times.get("map_water", 0.0) + stage_elapsed
+            frame_profiler.record("render:water", stage_elapsed * 1000.0)
             if first_gameplay_frame:
                 logger.info("Gameplay frame: rendering roads")
             map_stage_start = time.perf_counter()
@@ -2270,6 +2288,14 @@ def main() -> None:
             if show_compass:
                 draw_compass(screen, car, SCREEN_W - 64, 145, 28, font, target_pos=target_coords)
             if selected_resident_id is not None:
+                selected_pedestrian = next(
+                    (
+                        pedestrian
+                        for pedestrian in pedestrian_mgr.pedestrians
+                        if getattr(pedestrian, "resident_id", None) == selected_resident_id
+                    ),
+                    None,
+                )
                 draw_resident_popup(
                     screen,
                     small_font,
@@ -2277,6 +2303,7 @@ def main() -> None:
                     traffic_mgr.residents,
                     SCREEN_W,
                     SCREEN_H,
+                    pedestrian=selected_pedestrian,
                 )
             if awaiting_start:
                 draw_game_start_overlay(screen, font, chosen_city, SCREEN_W, SCREEN_H)

@@ -147,11 +147,19 @@ def is_point_on_parking_space(
     return False
 
 
-def is_point_in_water(px: float, py: float, waters: List) -> bool:
-    """Check if point (px, py) is inside any water polygon or on a waterway with fast AABB rejection."""
+def is_point_in_water(
+    px: float,
+    py: float,
+    waters: List,
+    layer: Optional[int] = None,
+    include_open_waterways: bool = True,
+) -> bool:
+    """Check if point is inside water or on an included open waterway."""
     if not waters:
         return False
     for w in waters:
+        if layer is not None and getattr(w, "layer", 0) != layer:
+            continue
         # Pre-filter using bounding box if available
         bbox = getattr(w, "_bbox", None)
         if bbox is None and getattr(w, "points_m", None):
@@ -166,7 +174,7 @@ def is_point_in_water(px: float, py: float, waters: List) -> bool:
         if getattr(w, "is_polygon", False) and len(w.points_m) >= 3:
             if point_in_polygon(px, py, w.points_m):
                 return True
-        elif len(w.points_m) >= 2:
+        elif include_open_waterways and len(w.points_m) >= 2:
             for i in range(len(w.points_m) - 1):
                 ax, ay = w.points_m[i]
                 bx, by = w.points_m[i + 1]
@@ -177,8 +185,8 @@ def is_point_in_water(px: float, py: float, waters: List) -> bool:
 
 def is_car_fully_in_water(car: Car, waters: List, current_way=None) -> bool:
     """Return whether all four corners are in water, except while on a bridge."""
-    if getattr(current_way, "is_bridge", False):
-        return False
+    road_layer = getattr(current_way, "layer", getattr(car, "layer", 0))
+    include_open_waterways = not (current_way is not None and is_car_road(current_way))
     half_length = getattr(car, "length_m", 4.0) * 0.5
     half_width = getattr(car, "width_m", 1.8) * 0.5
     forward_x = math.cos(car.heading)
@@ -196,9 +204,93 @@ def is_car_fully_in_water(car: Car, waters: List, current_way=None) -> bool:
             car.x + forward_x * longitudinal + right_x * lateral,
             car.y + forward_y * longitudinal + right_y * lateral,
             waters,
+            layer=road_layer,
+            include_open_waterways=include_open_waterways,
         )
         for longitudinal, lateral in corners
     )
+
+
+def is_car_colliding_with_bridge_edge(car: Car, current_way=None) -> bool:
+    """Return whether a car corner has reached the outer edge of its bridge road."""
+    if current_way is None or not getattr(current_way, "is_bridge", False):
+        return False
+    points = getattr(current_way, "points_m", ())
+    if len(points) < 2:
+        return False
+    road_half_width = getattr(current_way, "half_width_m", 0.0)
+    edge_distance = max(0.0, road_half_width - 0.2)
+    half_length = getattr(car, "length_m", 4.0) * 0.5
+    car_half_width = getattr(car, "width_m", 1.8) * 0.5
+    forward_x = math.cos(car.heading)
+    forward_y = math.sin(car.heading)
+    right_x = math.sin(car.heading)
+    right_y = -math.cos(car.heading)
+    corners = (
+        (half_length, car_half_width),
+        (half_length, -car_half_width),
+        (-half_length, car_half_width),
+        (-half_length, -car_half_width),
+    )
+    for longitudinal, lateral in corners:
+        corner_x = car.x + forward_x * longitudinal + right_x * lateral
+        corner_y = car.y + forward_y * longitudinal + right_y * lateral
+        for first, second in zip(points, points[1:]):
+            dx = second[0] - first[0]
+            dy = second[1] - first[1]
+            segment_length_sq = dx * dx + dy * dy
+            if segment_length_sq <= 1e-9:
+                continue
+            ratio = ((corner_x - first[0]) * dx + (corner_y - first[1]) * dy) / segment_length_sq
+            if 0.0 <= ratio <= 1.0:
+                center_ratio = ((car.x - first[0]) * dx + (car.y - first[1]) * dy) / segment_length_sq
+                if not 0.0 <= center_ratio <= 1.0:
+                    continue
+                center_side_distance = abs(
+                    (car.x - first[0]) * dy - (car.y - first[1]) * dx
+                ) / math.sqrt(segment_length_sq)
+                if center_side_distance > road_half_width:
+                    continue
+                side_distance = abs(
+                    (corner_x - first[0]) * dy - (corner_y - first[1]) * dx
+                ) / math.sqrt(segment_length_sq)
+                if side_distance >= edge_distance:
+                    return True
+    return False
+
+
+def pull_car_inside_bridge_edge(car: Car, current_way=None) -> None:
+    """Move a car just inside the bridge boundary after a guardrail impact."""
+    if current_way is None or not getattr(current_way, "is_bridge", False):
+        return
+    points = getattr(current_way, "points_m", ())
+    if len(points) < 2:
+        return
+    nearest = None
+    nearest_distance = float("inf")
+    for first, second in zip(points, points[1:]):
+        dx = second[0] - first[0]
+        dy = second[1] - first[1]
+        segment_length_sq = dx * dx + dy * dy
+        if segment_length_sq <= 1e-9:
+            continue
+        ratio = max(0.0, min(1.0, ((car.x - first[0]) * dx + (car.y - first[1]) * dy) / segment_length_sq))
+        point = (first[0] + dx * ratio, first[1] + dy * ratio)
+        distance = math.hypot(car.x - point[0], car.y - point[1])
+        if distance < nearest_distance:
+            nearest = point
+            nearest_distance = distance
+    if nearest is None:
+        return
+    allowed_distance = max(0.0, getattr(current_way, "half_width_m", 0.0) - getattr(car, "width_m", 1.8) * 0.5 - 0.35)
+    if nearest_distance <= allowed_distance:
+        return
+    if nearest_distance <= 1e-9:
+        car.x, car.y = nearest
+        return
+    scale = allowed_distance / nearest_distance
+    car.x = nearest[0] + (car.x - nearest[0]) * scale
+    car.y = nearest[1] + (car.y - nearest[1]) * scale
 
 
 def compute_largest_connected_road_component(ways: List) -> List:

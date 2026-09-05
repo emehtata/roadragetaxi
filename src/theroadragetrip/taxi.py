@@ -6,7 +6,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from .geo import clamp, closest_point_and_dist_to_segment, compute_bbox, dist_point_to_segment, get_oriented_box_corners, point_in_polygon, segments_intersect
 from .osm import Building, Place, TaxiStop, Way
-from .physics import Car, SpatialWayGrid, connected_drivable_ways, is_car_road, is_violating_oneway
+from .physics import Car, SpatialWayGrid, connected_drivable_ways, is_car_road, is_point_on_road, is_violating_oneway
 from .localization import tr
 from .police import SpeedCamera, camera_sees_car
 from .residents import Resident, ResidentManager
@@ -505,6 +505,7 @@ class TaxiManager:
         sim_time: float,
         previous_position: Optional[Tuple[float, float]] = None,
         penalty: int = 100,
+        ways: Optional[List[Way]] = None,
     ) -> bool:
         """Stop the car at a tree and apply one penalty per impact."""
         expired = [key for key, t in self._crashed_tree_cooldowns.items() if sim_time - t > 3.0]
@@ -516,6 +517,8 @@ class TaxiManager:
             sceneries, player_car.x, player_car.y, radius
         ):
                 if math.hypot(player_car.x - tree_x, player_car.y - tree_y) > radius:
+                    continue
+                if ways and is_point_on_road(tree_x, tree_y, ways=ways, car_roads_only=True):
                     continue
                 scenery = sceneries[scenery_index]
                 if previous_position is not None:

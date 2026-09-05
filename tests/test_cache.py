@@ -79,7 +79,7 @@ def test_outdated_cache_is_detected_without_removing_it(tmp_path, monkeypatch):
     assert cache_path.exists()
 
 
-def test_dead_end_metadata_does_not_trigger_outdated_cache_warning(tmp_path, monkeypatch):
+def test_dead_end_metadata_is_ignored_by_cache_validation(tmp_path, monkeypatch):
     import json
     import theroadragetrip.osm as osm
 
@@ -92,7 +92,7 @@ def test_dead_end_metadata_does_not_trigger_outdated_cache_warning(tmp_path, mon
     assert has_outdated_osm_cache() is False
 
 
-def test_outdated_dead_end_cache_triggers_cleanup_warning(tmp_path, monkeypatch):
+def test_outdated_dead_end_metadata_is_ignored(tmp_path, monkeypatch):
     import json
     import theroadragetrip.osm as osm
 
@@ -100,7 +100,7 @@ def test_outdated_dead_end_cache_triggers_cleanup_warning(tmp_path, monkeypatch)
     dead_ends_path = tmp_path / "dead_ends.json"
     dead_ends_path.write_text(json.dumps({"dead_ends": []}), encoding="utf-8")
 
-    assert has_outdated_osm_cache() is True
+    assert has_outdated_osm_cache() is False
     assert dead_ends_path.exists()
 
 

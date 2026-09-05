@@ -87,6 +87,24 @@ def test_world_cache_manager_uses_covering_area_without_fetch(tmp_path, sample_w
     manager.close()
 
 
+def test_world_cache_manager_accepts_nearly_identical_tile_bbox(tmp_path, sample_world):
+    calls = []
+    sample_world.bounds = (0.0, 0.0, 100.0, 100.0)
+    manager = WorldCacheManager(
+        tmp_path,
+        fetch_func=lambda bbox: calls.append(bbox),
+        build_func=lambda elements: sample_world,
+    )
+    area_id = "0p000000_0p000000_100p000000_100p000000"
+    manager.writer.write(manager.path_for(area_id), sample_world, area_id=area_id)
+
+    loaded = manager.load_area("nearby-tile", (-0.00005, -0.00005, 99.99995, 99.99995))
+
+    assert loaded.bounds == sample_world.bounds
+    assert calls == []
+    manager.close()
+
+
 def test_world_cache_manager_force_refresh_passes_fetch_flag(tmp_path, sample_world):
     calls = []
     manager = WorldCacheManager(

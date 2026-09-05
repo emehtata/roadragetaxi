@@ -194,3 +194,16 @@ def test_build_ways_parses_closed_natural_strait_as_water():
     assert len(waters) == 1
     assert waters[0].kind == "strait"
     assert waters[0].is_polygon is True
+
+
+def test_build_ways_preserves_water_layer():
+    elements = [
+        {"type": "node", "id": 1, "lat": 60.0, "lon": 25.0},
+        {"type": "node", "id": 2, "lat": 60.0, "lon": 25.01},
+        {"type": "way", "id": 13, "nodes": [1, 2], "tags": {"natural": "water", "water": "river", "layer": "-1"}},
+    ]
+
+    ways, waters, buildings, sceneries, places, bounds = build_ways(elements)
+
+    assert len(waters) == 1
+    assert waters[0].layer == -1

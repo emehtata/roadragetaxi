@@ -7,9 +7,12 @@ from datetime import date
 from importlib.metadata import PackageNotFoundError, version as package_version
 from typing import List, Optional, Tuple
 
+from shapely.geometry import LineString
+from shapely.ops import unary_union
+
 from .geo import clip_polygon_to_rect, compute_bbox, dist_point_to_segment, meters_to_latlon, point_in_polygon
 from .osm import Building, BusStop, Place, Scenery, TaxiStop, Water, Way
-from .physics import Car, MAX_SPEED
+from .physics import Car, MAX_SPEED, is_point_on_road
 from .taxi import TaxiManager, TaxiState
 from .localization import tr
 
@@ -488,7 +491,14 @@ def minimum_px_per_m_for_viewport_width(
     return screen_w / drawable_width_m
 
 
-def _covered_by_higher_road(x: float, y: float, layer: int, ways: Optional[List[Way]], spatial_grid=None) -> bool:
+def _covered_by_higher_road(
+    x: float,
+    y: float,
+    layer: int,
+    ways: Optional[List[Way]],
+    spatial_grid=None,
+    active_way=None,
+) -> bool:
     if spatial_grid is not None:
         candidates = (way for way, _ in spatial_grid._candidate_ways(x, y))
     else:
@@ -497,6 +507,12 @@ def _covered_by_higher_road(x: float, y: float, layer: int, ways: Optional[List[
         return False
     for way in candidates:
         if getattr(way, "layer", 0) <= layer or len(way.points_m) < 2:
+            continue
+        if (
+            active_way is not None
+            and getattr(active_way, "name", None)
+            and getattr(way, "name", None) == getattr(active_way, "name", None)
+        ):
             continue
         half_width = getattr(way, "half_width_m", 3.0)
         bbox = getattr(way, "bbox", None)
@@ -525,6 +541,8 @@ def draw_scenery(
     tree_effects=None,
     fallen_trees=None,
     spatial_grid=None,
+    ways: Optional[List[Way]] = None,
+    road_spatial_grid=None,
 ) -> None:
     """Draw parks, forests, and green spaces intersecting viewport."""
     import pygame
@@ -532,6 +550,15 @@ def draw_scenery(
     vminx, vminy, vmaxx, vmaxy = get_viewport_bounds(camx, camy, px_per_m, screen_w, screen_h, 80.0)
 
     tree_budget = max(600, screen_w * screen_h // 400)
+
+    def tree_is_on_road(tree_x: float, tree_y: float) -> bool:
+        return ways is not None and is_point_on_road(
+            tree_x,
+            tree_y,
+            ways=ways,
+            spatial_grid=road_spatial_grid,
+            car_roads_only=True,
+        )
     visible_sceneries = (
         spatial_grid.ways_in_rect(vminx, vminy, vmaxx, vmaxy)
         if spatial_grid is not None
@@ -550,11 +577,15 @@ def draw_scenery(
         trees = getattr(sc, "trees", [])
         visible_tree_count = sum(
             1 for tree_x, tree_y in trees
-            if vminx <= tree_x <= vmaxx and vminy <= tree_y <= vmaxy
+            if vminx <= tree_x <= vmaxx
+            and vminy <= tree_y <= vmaxy
+            and not tree_is_on_road(tree_x, tree_y)
         )
         tree_step = max(1, math.ceil(visible_tree_count / tree_budget))
         for tree_index, (tree_x, tree_y) in enumerate(trees):
             if not (vminx <= tree_x <= vmaxx and vminy <= tree_y <= vmaxy):
+                continue
+            if tree_is_on_road(tree_x, tree_y):
                 continue
             tree_key = (id(sc), tree_index)
             effect = (tree_effects or {}).get(tree_key, {})
@@ -1085,6 +1116,7 @@ def draw_ways(
 
     asphalt_polygons = []
     center_lines = []
+    bridge_edges = []
 
     def draw_joined_line(color, points, width, connections=()):
         if len(points) < 2:
@@ -1247,6 +1279,46 @@ def draw_ways(
                     texture_surface.blit(mask, (0, 0), special_flags=pygame.BLEND_RGBA_MULT)
                     screen.blit(texture_surface, (min_x, min_y))
 
+    def draw_center_line(color, points, connections=(), solid=False):
+        if solid:
+            draw_joined_line(color, points, 1, connections)
+            return
+        dash_length = max(6.0, 8.0 * px_per_m)
+        gap_length = max(4.0, 6.0 * px_per_m)
+        distance = 0.0
+        for first, second in zip(points, points[1:]):
+            dx = second[0] - first[0]
+            dy = second[1] - first[1]
+            segment_length = math.hypot(dx, dy)
+            if segment_length <= 1e-9:
+                continue
+            segment_offset = 0.0
+            while segment_offset < segment_length:
+                cycle_position = distance % (dash_length + gap_length)
+                remaining = (
+                    dash_length - cycle_position
+                    if cycle_position < dash_length
+                    else dash_length + gap_length - cycle_position
+                )
+                piece_length = min(segment_length - segment_offset, remaining)
+                if piece_length <= 1e-6:
+                    piece_length = min(segment_length - segment_offset, 1e-6)
+                if cycle_position < dash_length:
+                    start_ratio = segment_offset / segment_length
+                    end_ratio = (segment_offset + piece_length) / segment_length
+                    pygame.draw.line(
+                        screen,
+                        color,
+                        (first[0] + dx * start_ratio, first[1] + dy * start_ratio),
+                        (first[0] + dx * end_ratio, first[1] + dy * end_ratio),
+                        1,
+                    )
+                segment_offset += piece_length
+                distance += piece_length
+
+        for start, end in connections:
+            pygame.draw.line(screen, color, start, end, 1)
+
     for w in visible_ways:
         if px_per_m <= 1.5 and not w.is_drivable:
             continue
@@ -1282,8 +1354,6 @@ def draw_ways(
         road_color = road_color_for_way(w)
         if w.is_ice_road:
             center_color = (210, 235, 250)
-        elif getattr(w, "is_busway", False) or w.highway == "busway":
-            center_color = (220, 180, 60)
         elif w.highway == "living_street":
             center_color = (130, 125, 120)
         else:
@@ -1291,7 +1361,20 @@ def draw_ways(
 
         draw_joined_line(road_color, pts, thickness, connections)
         if thickness >= 6:
-            center_lines.append((center_color, pts, connections))
+            lanes = max(1, int(getattr(w, "lanes", 1) or 1))
+            lanes_forward = getattr(w, "lanes_forward", None)
+            lanes_backward = getattr(w, "lanes_backward", None)
+            solid_center_line = (
+                getattr(w, "oneway", 0) == 0
+                and (
+                    lanes >= 3
+                    or (lanes_forward is not None and lanes_forward >= 2)
+                    or (lanes_backward is not None and lanes_backward >= 2)
+                )
+            )
+            center_lines.append((center_color, pts, connections, solid_center_line))
+        if getattr(w, "is_bridge", False) and px_per_m > 1.5:
+            bridge_edges.append((w, pts, thickness))
 
         # Draw one-way directional chevron indicators if zoomed in
         oneway_val = getattr(w, "oneway", 0)
@@ -1362,8 +1445,56 @@ def draw_ways(
             texture_surface.blit(mask, (0, 0), special_flags=pygame.BLEND_RGBA_MULT)
             screen.blit(texture_surface, (0, 0))
 
-    for center_color, points, connections in center_lines:
-        draw_joined_line(center_color, points, 1, connections)
+    for center_color, points, connections, solid_center_line in center_lines:
+        draw_center_line(center_color, points, connections, solid_center_line)
+
+    # Draw guardrails only on the outer boundary of the union of all overlapping
+    # bridge lanes, so parallel/adjacent bridge ways never get a railing between them.
+    bridge_polygons = []
+    for way, points, thickness in bridge_edges:
+        if len(points) < 2:
+            continue
+        half_width = max(thickness * 0.5, 0.5)
+        line = LineString(points)
+        if line.length <= 1e-9:
+            continue
+        bridge_polygons.append(line.buffer(half_width, cap_style="flat", join_style="mitre"))
+
+    edge_color = (196, 200, 204)  # light guardrail, contrasts against dark asphalt
+    edge_width = max(2, round(px_per_m * 0.18))
+    if bridge_polygons:
+        # Original centerline segments, used to tell side edges (parallel to a
+        # bridge way) apart from flat end caps (perpendicular, at bridge ends).
+        centerline_segments = [
+            (first, second)
+            for _, points, _ in bridge_edges
+            for first, second in zip(points, points[1:])
+        ]
+
+        def is_side_edge(edge_start, edge_end):
+            edge_angle = math.atan2(edge_end[1] - edge_start[1], edge_end[0] - edge_start[0])
+            mid_x = (edge_start[0] + edge_end[0]) * 0.5
+            mid_y = (edge_start[1] + edge_end[1]) * 0.5
+            best_distance = float("inf")
+            best_angle_diff = math.pi / 2.0
+            for seg_start, seg_end in centerline_segments:
+                distance = dist_point_to_segment(mid_x, mid_y, seg_start[0], seg_start[1], seg_end[0], seg_end[1])
+                if distance < best_distance:
+                    seg_angle = math.atan2(seg_end[1] - seg_start[1], seg_end[0] - seg_start[0])
+                    angle_diff = abs((edge_angle - seg_angle + math.pi / 2.0) % math.pi - math.pi / 2.0)
+                    best_distance = distance
+                    best_angle_diff = angle_diff
+            return best_angle_diff < math.radians(30)
+
+        merged = unary_union(bridge_polygons)
+        polygons = merged.geoms if merged.geom_type == "MultiPolygon" else [merged]
+        for polygon in polygons:
+            boundary_rings = [polygon.exterior]
+            for ring in boundary_rings:
+                ring_points = list(ring.coords)
+                for edge_start, edge_end in zip(ring_points, ring_points[1:]):
+                    if is_side_edge(edge_start, edge_end):
+                        pygame.draw.line(screen, edge_color, edge_start, edge_end, edge_width)
 
     destination_screen.blit(screen, (0, 0))
     _road_frame_cache_key = road_cache_key
@@ -2499,6 +2630,25 @@ def _draw_vehicle(
     _draw_vehicle_lights(screen, cx, cy, heading, length_px, width_px, turn_signal, turn_signal_elapsed)
 
 
+def _draw_vehicle_outline(screen, cx, cy, heading, length_px, width_px, color=(235, 235, 235)) -> None:
+    import pygame
+
+    cos_h = math.cos(heading)
+    sin_h = math.sin(heading)
+    fx, fy = cos_h, -sin_h
+    rx, ry = sin_h, cos_h
+    half_length = length_px * 0.5
+    half_width = width_px * 0.5
+    corners = [
+        (cx + fx * half_length + rx * half_width, cy + fy * half_length + ry * half_width),
+        (cx + fx * half_length - rx * half_width, cy + fy * half_length - ry * half_width),
+        (cx - fx * half_length - rx * half_width, cy - fy * half_length - ry * half_width),
+        (cx - fx * half_length + rx * half_width, cy - fy * half_length + ry * half_width),
+    ]
+    outline_width = max(1, round(min(2.0, width_px * 0.1)))
+    pygame.draw.lines(screen, color, True, corners, outline_width)
+
+
 def draw_car(
     screen,
     car: Car,
@@ -2518,9 +2668,19 @@ def draw_car(
     """Draw player taxi scaled in meters with headlights and taillights."""
     import pygame
 
-    if not _vehicle_is_on_bridge(car, current_way) and _covered_by_higher_road(
-        car.x, car.y, getattr(car, "layer", 0), ways, spatial_grid
-    ):
+    covered_by_higher_road = not _vehicle_is_on_bridge(car, current_way) and _covered_by_higher_road(
+        car.x, car.y, getattr(car, "layer", 0), ways, spatial_grid, current_way
+    )
+    if covered_by_higher_road:
+        cx, cy = world_to_screen(car.x, car.y, camx, camy, px_per_m, screen_w, screen_h)
+        _draw_vehicle_outline(
+            screen,
+            cx,
+            cy,
+            car.heading,
+            max(6.0, getattr(car, "length_m", 4.0) * px_per_m),
+            max(3.0, getattr(car, "width_m", 1.8) * px_per_m),
+        )
         return
     cx, cy = world_to_screen(car.x, car.y, camx, camy, px_per_m, screen_w, screen_h)
     length_m = getattr(car, "length_m", 4.0)
@@ -2654,14 +2814,13 @@ def draw_npc_cars(
             continue
         if getattr(npc, "lod_level", 0) >= 2:
             continue
-        if not _vehicle_is_on_bridge(npc) and _covered_by_higher_road(
+        covered_by_higher_road = not _vehicle_is_on_bridge(npc) and _covered_by_higher_road(
             npc.x,
             npc.y,
             getattr(npc, "layer", getattr(npc.way, "layer", 0)),
             ways,
             spatial_grid,
-        ):
-            continue
+        )
         if visible_npc_count >= MAX_VISIBLE_NPC_COUNT:
             continue
         visible_npc_count += 1
@@ -2671,6 +2830,10 @@ def draw_npc_cars(
         width_m = getattr(npc, "width_m", 1.8)
         length_px = max(5.0, length_m * px_per_m)
         width_px = max(2.5, width_m * px_per_m)
+
+        if covered_by_higher_road:
+            _draw_vehicle_outline(screen, cx, cy, npc.heading, length_px, width_px)
+            continue
 
         vehicle_type = getattr(npc, "vehicle_type", "car")
         if vehicle_type in ("motorcycle", "moped"):
@@ -3038,6 +3201,20 @@ def draw_pedestrians(
              max(2, int(radius_px * 1.6)), max(2, int(radius_px * 0.65))),
         )
         appearance = getattr(ped, "appearance", None)
+        if getattr(ped, "animation_state", "walking") == "fallen":
+            pygame.draw.ellipse(
+                screen,
+                getattr(appearance, "clothing", None) or ped.color,
+                (int(cx - radius_px * 1.15), int(cy - radius_px * 0.35),
+                 max(3, int(radius_px * 2.3)), max(3, int(radius_px * 0.7))),
+            )
+            pygame.draw.circle(
+                screen,
+                getattr(appearance, "head", (238, 185, 145)),
+                (int(cx + radius_px * 1.0), int(cy - radius_px * 0.1)),
+                max(2, int(radius_px * 0.35)),
+            )
+            continue
         leg_color = getattr(appearance, "legs", (35, 35, 45))
         gait = math.sin(getattr(ped, "animation_time", 0.0) * 10.0) if getattr(ped, "animation_state", "walking") == "walking" else 0.0
         leg_start_x = cx - heading_x * radius_px * 0.15
@@ -3130,13 +3307,14 @@ def draw_resident_popup(
     residents=None,
     screen_w: int = SCREEN_W,
     screen_h: int = SCREEN_H,
+    pedestrian=None,
 ) -> None:
     """Draw selected resident details above the gameplay view."""
     import pygame
 
     if resident is None:
         return
-    popup_width, popup_height = 420, 242
+    popup_width, popup_height = 420, 268
     popup_rect = pygame.Rect(screen_w - popup_width - 24, 24, popup_width, popup_height)
     shade = pygame.Surface((popup_width, popup_height), pygame.SRCALPHA)
     shade.fill((12, 20, 30, 242))
@@ -3161,6 +3339,7 @@ def draw_resident_popup(
         f"Sukupuoli: {resident.gender or '-'}",
         f"Syntynyt: {birth_text}",
         f"Tila: {getattr(resident, 'mode', '-')}",
+        f"Promillet: {getattr(pedestrian, 'blood_alcohol_promille', 0.0):.2f} ‰",
         f"Ajoneuvoja: {vehicle_count}",
         f"Vanhemmat: {names_for(getattr(resident, 'parent_ids', ())) }",
         f"Lapset: {names_for(getattr(resident, 'child_ids', ())) }",

@@ -1,4 +1,3 @@
-- **Autonomous Traffic**: NPC cars follow connected roads, respect lane direction, vary their speed, overtake, react to traffic lights, and avoid overlapping the player. Osa hidastelee, osa törttöilee, eikä yksikään helpota työvuoroasi. The shared road-graph navigator can route NPCs to map targets without cutting through buildings or terrain. Active traffic is reduced at close zoom levels while nearby cars are retained. Each vehicle uses its own wheelbase and front-wheel steering limit. Risteyksen muoto ohjaa kaaren suunnan, ja bicycle-malli laskee hetkellisen kääntösäteen ohjauskulmasta sekä pitää korin ympyränkaarella.
 # The Road Rage Trip 🚗
 
 A top-down 2D driving game proof-of-concept (PoC) in Python and Pygame that proceduralizes environment creation using real-world OpenStreetMap (OSM) data from Finland.
@@ -26,10 +25,8 @@ Koska muut kuskit ovat idiootteja ja ajavat miten sattuu. Vähemmästäkin hermo
 - **Buildings & Scenery**: Renders building footprints, parks, forests, and green spaces with street/place name labels (`L` key).
 - **Street Lighting**: Roadside lamps are placed along urban drivable roads and their warm glow gradually turns on at dusk.
 - **Water & Multipolygon Rendering**: Renders lakes, reservoirs, and waterways under the road network.
-- **Autonomous Traffic**: NPC cars follow connected roads, respect lane direction, vary their speed, overtake, react to traffic lights, and avoid overlapping the player. Osa hidastelee, osa törttöilee, eikä yksikään helpota työvuoroasi. The shared road-graph navigator can route NPCs to map targets without cutting through buildings or terrain. Active traffic is reduced at close zoom levels while nearby cars are retained. Each vehicle uses its own wheelbase, front-wheel steering limit, minimum turning radius, gradual steering response, and bicycle-model body rotation for smooth, physically bounded turns.
-- **OSM Parking Traffic**: About half of regular NPC cars use existing OSM parking spaces by default. Parking density is configurable, parked cars remain spatially indexed, and occupied parking spaces stay reserved while a vehicle departs.
-- **Pedestrians & Cyclists**: Pedestrians and cyclists use dedicated paths, mapped entrances, and crossings; pedestrians track destinations, use logical traffic signals, wait before unsafe crossings, enter buildings at doors, and update at distance-based LOD rates. A small share of pedestrians can reserve a parked vehicle within 100 meters, walk to it, drive to a road destination, and exit automatically. Ordinary pedestrians spawn near mapped buildings, while hospitality venues receive extra activity; at night, visible pedestrians show a bright reflector point until a car headlight or street light illuminates them. Cyclists use a top-down image sprite, and active pedestrian/cyclist counts scale down while zoomed in.
-- **Rival NPC Taxis**: Some NPC cars are yellow rival taxis. They stop briefly at taxi stands and collect waiting customers before driving on.
+- **Resident-First Traffic World**: The runtime traffic architecture contains residents, pedestrians, crossings, traffic lights, roads, and taxi interactions. Autonomous NPC cars, rival taxis, and NPC parking traffic are disabled while the new traffic simulation is developed around persistent residents and pedestrians.
+- **Pedestrians**: Pedestrians use dedicated paths, mapped entrances, and crossings; they track destinations, use logical traffic signals, wait before unsafe crossings, enter buildings at doors, and update at distance-based LOD rates. Hospitality venues receive extra activity, including drunk pedestrians with 0.5-3.0 promille, slower unstable walking, and occasional falls; selecting a resident shows their promille value. At night, visible pedestrians show a bright reflector point until a car headlight or street light illuminates them.
 - **Traffic Violations**: Red-light, wrong-way, collision, building, and scenery penalties are tracked in the taxi score.
 - **Tree Crash Effects**: Tree impacts shake the tree and scatter leaves; impacts above 80 km/h knock the tree down, smoke the taxi, and immobilize it for five seconds.
 - **Roadworks**: Random roadworks add temporary traffic lights and can make NPC traffic slow or stop naturally.
@@ -61,7 +58,7 @@ Koska muut kuskit ovat idiootteja ja ajavat miten sattuu. Vähemmästäkin hermo
 │       ├── physics.py     # Car dataclass, vehicle dynamics, road collision, and lane assist
 │       ├── police.py      # Hidden speed-camera placement and directional detection
 │       ├── localization.py # Finnish and English translations
-│       ├── render.py      # Pygame rendering for roads, waters, buildings, traffic, pedestrians, HUD, and compass
+│       ├── render.py      # Pygame rendering for roads, waters, buildings, pedestrians, HUD, and compass
 │       ├── assets/         # Image sprites and chatter data
 │       │   ├── paikkadesi.json       # Country and city coordinates for future customization
 │       │   ├── paikkadesi.txt         # Source list for the city coordinate asset
@@ -72,7 +69,7 @@ Koska muut kuskit ovat idiootteja ja ajavat miten sattuu. Vähemmästäkin hermo
 │       ├── config.py       # INI loading, city configuration, and Overpass endpoints
 │       ├── roadworks.py    # Temporary roadwork and traffic-light generation
 │       ├── taxi.py        # Taxi passenger missions, hailing, address generator, fares, and violations
-│       └── traffic.py     # Autonomous NPC traffic vehicles, lane switching, and overtaking
+│       └── traffic_world.py # Resident-first traffic services, route navigation, and signal queries
 ├── tests/                 # Unit tests (pytest)
 ├── utils/                 # Optional offline tools, including Azure TTS generation
 ├── sample_osm.json        # Bundled sample OSM data
@@ -128,9 +125,9 @@ python3 road_rage_trip.py --auto-fetch --fetch-margin 50 --fetch-tile-size 500
 
 ```
 
-On the first launch, the game creates `roadragetrip.ini` under the platform configuration directory (`$XDG_CONFIG_HOME/RoadRageTrip/` on Linux, `%APPDATA%/RoadRageTrip/` on Windows) and asks for Finnish or English. Edit that file to set the city, map fetching, zoom, logging, pedestrian, cyclist, traffic, language, audio, and police-camera values. Career progress and the total odometer are stored beside the INI file. The `[cities]` section contains editable `name = latitude, longitude` entries; add or remove cities there. Command-line options override the INI values for one launch.
+On the first launch, the game creates `roadragetrip.ini` under the platform configuration directory (`$XDG_CONFIG_HOME/RoadRageTrip/` on Linux, `%APPDATA%/RoadRageTrip/` on Windows) and asks for Finnish or English. Edit that file to set the city, map fetching, zoom, logging, pedestrian, language, audio, and police-camera values. Career progress and the total odometer are stored beside the INI file. The `[cities]` section contains editable `name = latitude, longitude` entries; add or remove cities there. Command-line options override the INI values for one launch.
 
-For example, set `preset = helsinki` under `[game]` and `traffic_count = 50` under `[traffic]` to run Helsinki with up to 50 NPC cars. At most 17 NPC cars are drawn in the viewport at once.
+For example, set `preset = helsinki` under `[game]` to run Helsinki with its resident and pedestrian simulation.
 
 ### INI Settings
 
@@ -158,10 +155,7 @@ fetch_tile_size = 2500.0
 build_in_process = true
 
 [traffic]
-traffic_count =        # blank enables automatic road-network scaling
 pedestrian_count = 20
-cyclist_count = 8
-parking_density = 0.5  # fraction of regular NPC cars placed in OSM parking spaces
 
 [audio]
 master_volume = 1.0
@@ -244,7 +238,7 @@ Game sounds are stored in `src/theroadragetrip/sounds/`. CC0 sounds require no a
 | `B` | Toggle traffic-light assist |
 | `C` | Toggle compass (off by default) |
 | `N` | Toggle yellow route to the active pickup or dropoff target |
-| `Space` | Rattiraivo / Road Rage: move NPC cars ahead aside within 50 m |
+| `Space` | Rattiraivo / Road Rage: trigger the taxi rage effect |
 | `P` | Open taxi phone and view three ride offers |
 | `1` - `3` | Accept a selected ride in the taxi phone |
 | `F1` | Open the full tutorial and control list |
@@ -260,7 +254,7 @@ To inspect a saved profile, run `python -m pstats screenshots/profile_*.prof` or
 
 With `F3` enabled, the profiler overlay reports frame time, rolling average, FPS, spike count, and the slowest subsystem from the last spike. It also records render stages (roads, buildings, actors, lighting, and labels); spike thresholds are 25, 50, and 100 ms.
 
-The pause menu's **Settings** screen changes language and master, background, and effects volume. Left/right adjusts values; Escape returns to the pause menu. At a taxi stand, customers appear occasionally when a stand enters view, either already nearby or outside the screen, then walk to the stand before boarding. Existing pedestrians can also become customers. In areas without taxi stands, a nearby interested pedestrian can hail the taxi while stopped or while it passes. A rival NPC taxi may arrive first and take a stand customer. Completed passengers leave beside the taxi and continue walking.
+The pause menu's **Settings** screen changes language and master, background, and effects volume. Left/right adjusts values; Escape returns to the pause menu. At a taxi stand, customers appear occasionally when a stand enters view, either already nearby or outside the screen, then walk to the stand before boarding. Existing pedestrians can also become customers. In areas without taxi stands, a nearby interested pedestrian can hail the taxi while stopped or while it passes. Completed passengers leave beside the taxi and continue walking.
 
 ---
 
@@ -277,13 +271,10 @@ The pause menu's **Settings** screen changes language and master, background, an
 | `--log-level` | Logging level (`DEBUG`, `INFO`, `WARNING`, `ERROR`) |
 | `--auto-fetch` | Enable non-blocking background tile fetching near bounds |
 | `--no-auto-fetch` | Disable on-demand background map expansion |
-| `--fetch-margin` | Margin in meters from bounds triggering auto-fetch (default: `350.0`) |
+| `--fetch-margin` | Minimum margin in meters from bounds triggering auto-fetch; fast driving extends this with an 8-second lookahead (default: `350.0`) |
 | `--fetch-tile-size`| Meters to expand when auto-fetching (default: `2500.0`) |
 | `--build-in-process` | Build auto-fetched map data outside the gameplay process |
-| `--traffic-count` | Target number of autonomous NPC cars (default: scales with available streets, capped at 50; max 17 drawn in the viewport) |
 | `--pedestrian-count` | Target number of pedestrians (default: `20`) |
-| `--cyclist-count` | Target number of cyclists (default: `8`) |
-| `--parking-density` | Fraction of regular NPC cars spawned in existing OSM parking spaces (default: `0.5`) |
 
 ---
 

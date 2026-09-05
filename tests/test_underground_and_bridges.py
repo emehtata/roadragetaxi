@@ -3,6 +3,7 @@ from theroadragetrip.osm import Way, build_ways
 from theroadragetrip.physics import (
     Car,
     SpatialWayGrid,
+    is_car_colliding_with_bridge_edge,
     is_point_on_road,
     update_car_physics,
 )
@@ -85,3 +86,33 @@ def test_bridge_cross_layer_collision_isolation():
     # Check that a point to the East (70, 100) is on road for layer 0 but NOT for layer 1
     assert is_point_on_road(70.0, 100.0, spatial_grid=grid, layer=0)
     assert not is_point_on_road(70.0, 100.0, spatial_grid=grid, layer=1)
+
+
+def test_car_hits_bridge_guardrail_with_a_corner():
+    bridge = Way(
+        points_m=[(0.0, 0.0), (100.0, 0.0)],
+        highway="primary",
+        half_width_m=4.0,
+        is_bridge=True,
+        layer=1,
+    )
+    centered_car = Car(x=50.0, y=0.0, heading=0.0, speed=0.0, layer=1)
+    edge_car = Car(x=50.0, y=3.2, heading=0.0, speed=0.0, layer=1)
+    bridge_end_car = Car(x=102.0, y=0.0, heading=0.0, speed=0.0, layer=1)
+
+    assert not is_car_colliding_with_bridge_edge(centered_car, bridge)
+    assert is_car_colliding_with_bridge_edge(edge_car, bridge)
+    assert not is_car_colliding_with_bridge_edge(bridge_end_car, bridge)
+
+
+def test_bridge_guardrail_ignores_segment_when_car_is_not_on_it():
+    bridge = Way(
+        points_m=[(0.0, 0.0), (100.0, 0.0)],
+        highway="primary",
+        half_width_m=4.0,
+        is_bridge=True,
+        layer=1,
+    )
+    crossing_car = Car(x=50.0, y=6.0, heading=0.0, speed=0.0, layer=1)
+
+    assert not is_car_colliding_with_bridge_edge(crossing_car, bridge)

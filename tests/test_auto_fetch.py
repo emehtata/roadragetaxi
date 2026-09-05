@@ -86,6 +86,7 @@ def test_auto_fetch_uses_binary_cache_preload():
 
         def preload(self, area_id, bbox, **kwargs):
             calls.append((area_id, bbox))
+            assert "point" not in kwargs
             future = Future()
             future.set_result(cached)
             return future
@@ -100,6 +101,33 @@ def test_auto_fetch_uses_binary_cache_preload():
         time.sleep(0.01)
     assert calls and calls[0][0] == "cached-area"
     assert len(m.ways) == 2
+
+
+def test_auto_fetch_reuses_same_snapped_world_cache_tile():
+    way = Way(points_m=[(0.0, 0.0), (10.0, 0.0)], highway="residential", half_width_m=4.5)
+    calls = []
+
+    class Cache:
+        @staticmethod
+        def area_id(bbox):
+            calls.append(bbox)
+            return "same-tile"
+
+        def preload(self, area_id, bbox, **kwargs):
+            future = Future()
+            future.set_result(MapData([way], [], [], [], [], (0.0, 0.0, 1000.0, 1000.0), [], [], [], [], [], [], [], []))
+            return future
+
+    manager = AutoFetchManager(
+        [way], (0.0, 0.0, 1000.0, 1000.0), FakeTransformer(),
+        world_cache_manager=Cache(), cooldown_s=0.0,
+    )
+    car = Car(x=995.0, y=500.0, heading=0.0, speed=0.0)
+    assert manager.start_if_needed(car, True, margin_m=10.0, tile_size_m=500.0)
+    deadline = time.time() + 2.0
+    while manager.is_fetching and time.time() < deadline:
+        time.sleep(0.01)
+    assert calls[0] == calls[-1]
 
 
 def test_auto_fetch_does_not_trigger_from_open_road_endpoint():
@@ -159,6 +187,79 @@ def test_auto_fetch_triggers_near_disconnected_current_road_endpoint():
 
     assert m.start_if_needed(car, True, margin_m=20.0, tile_size_m=500.0, current_way=way) is True
     assert m.get_trigger_reason() == "road endpoint"
+
+
+def test_auto_fetch_finds_nearby_endpoint_after_car_leaves_road():
+    way = Way(points_m=[(0.0, 0.0), (100.0, 0.0)], highway="secondary", half_width_m=6.0)
+    car = Car(x=110.0, y=0.0, heading=0.0, speed=0.0)
+    manager = AutoFetchManager(
+        [way],
+        (-1000.0, -1000.0, 1000.0, 1000.0),
+        FakeTransformer(),
+        fetch_func=lambda bbox: [],
+        build_func=lambda elems: ([], [], (-1000.0, -1000.0, 1000.0, 1000.0)),
+        cooldown_s=0.0,
+    )
+
+    assert manager.start_if_needed(car, True, margin_m=20.0, tile_size_m=500.0) is True
+    assert manager.get_trigger_reason() == "road endpoint"
+
+
+def test_auto_fetch_ignores_cycleway_at_drivable_road_endpoint():
+    road = Way(points_m=[(0.0, 0.0), (100.0, 0.0)], highway="secondary", half_width_m=6.0)
+    cycleway = Way(
+        points_m=[(100.0, 0.0), (200.0, 0.0)],
+        highway="cycleway",
+        half_width_m=2.0,
+        is_drivable=False,
+    )
+    car = Car(x=90.0, y=0.0, heading=0.0, speed=0.0)
+    manager = AutoFetchManager(
+        [road, cycleway],
+        (-1_000.0, -1_000.0, 1_000.0, 1_000.0),
+        FakeTransformer(),
+        fetch_func=lambda bbox: [],
+        build_func=lambda elems: ([], [], (-1_000.0, -1_000.0, 1_000.0, 1_000.0)),
+        cooldown_s=0.0,
+    )
+
+    assert manager.start_if_needed(car, True, margin_m=20.0, tile_size_m=500.0, current_way=road) is True
+    assert manager.get_trigger_reason() == "road endpoint"
+
+
+def test_endpoint_fetch_audit_reports_cycleway_as_non_blocking():
+    road = Way(points_m=[(0.0, 0.0), (100.0, 0.0)], highway="secondary", half_width_m=6.0)
+    cycleway = Way(
+        points_m=[(100.0, 0.0), (200.0, 0.0)],
+        highway="cycleway",
+        half_width_m=2.0,
+        is_drivable=False,
+    )
+    car = Car(x=90.0, y=0.0, heading=0.0, speed=0.0)
+    manager = AutoFetchManager([road, cycleway], (-1_000.0, -1_000.0, 1_000.0, 1_000.0), FakeTransformer())
+
+    audit = manager.get_endpoint_fetch_audit(car, margin_m=20.0, tile_size_m=500.0, current_way=road)
+
+    assert audit["status"] == "evaluated"
+    assert audit["connected_to_drivable_road"] is False
+    assert audit["endpoint_distance_m"] == 10.0
+    assert audit["heading_alignment"] == 1.0
+
+
+def test_auto_fetch_anticipates_a_fast_approach_to_road_endpoint():
+    way = Way(points_m=[(0.0, 0.0), (1_000.0, 0.0)], highway="secondary", half_width_m=6.0)
+    car = Car(x=600.0, y=0.0, heading=0.0, speed=50.0)
+    manager = AutoFetchManager(
+        [way],
+        (-2_000.0, -2_000.0, 2_000.0, 2_000.0),
+        FakeTransformer(),
+        fetch_func=lambda bbox: [],
+        build_func=lambda elems: ([], [], (-2_000.0, -2_000.0, 2_000.0, 2_000.0)),
+        cooldown_s=0.0,
+    )
+
+    assert manager.start_if_needed(car, True, margin_m=20.0, tile_size_m=1_000.0, current_way=way) is True
+    assert manager.get_trigger_reason() == "road endpoint"
 
 
 def test_auto_fetch_requests_area_ahead_of_early_road_endpoint():

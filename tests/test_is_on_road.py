@@ -1,3 +1,5 @@
+import math
+
 from theroadragetrip import (
     Car,
     SpatialWayGrid,
@@ -121,3 +123,39 @@ def test_bridge_over_water_does_not_trigger_water_respawn():
     car = Car(x=0.0, y=0.0, heading=0.0, speed=8.0, layer=1)
 
     assert not is_car_fully_in_water(car, [lake], current_way=bridge)
+
+
+def test_raised_road_layer_does_not_trigger_water_respawn():
+    lake = Water(
+        points_m=[(-20.0, -20.0), (20.0, -20.0), (20.0, 20.0), (-20.0, 20.0), (-20.0, -20.0)],
+        kind="water",
+        is_polygon=True,
+        layer=0,
+    )
+    raised_road = Way(
+        points_m=[(-50.0, 0.0), (50.0, 0.0)],
+        highway="primary",
+        half_width_m=5.0,
+        layer=1,
+    )
+    car = Car(x=0.0, y=0.0, heading=0.0, speed=8.0, layer=1)
+
+    assert not is_car_fully_in_water(car, [lake], current_way=raised_road)
+
+
+def test_drivable_road_crossing_open_waterway_does_not_trigger_water_respawn():
+    stream = Water(
+        points_m=[(-20.0, 0.0), (20.0, 0.0)],
+        kind="stream",
+        is_polygon=False,
+        layer=0,
+    )
+    road = Way(
+        points_m=[(0.0, -20.0), (0.0, 20.0)],
+        highway="residential",
+        half_width_m=4.0,
+        layer=0,
+    )
+    car = Car(x=0.0, y=0.0, heading=math.pi / 2, speed=8.0, layer=0)
+
+    assert not is_car_fully_in_water(car, [stream], current_way=road)

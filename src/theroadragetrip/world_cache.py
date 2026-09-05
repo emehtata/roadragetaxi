@@ -332,6 +332,7 @@ class WorldCacheManager:
     def _load_covering_area(self, bbox=None, point=None) -> Any:
         if (bbox is None and point is None) or not self.cache_dir.is_dir():
             return None
+        coordinate_tolerance = 0.0001
         for path in self.cache_dir.glob("*.rwc"):
             cache_bbox = self._area_bbox(path.name)
             if cache_bbox is None:
@@ -342,10 +343,10 @@ class WorldCacheManager:
             else:
                 requested_minx, requested_miny, requested_maxx, requested_maxy = bbox
                 inside = (
-                    minx <= requested_minx
-                    and miny <= requested_miny
-                    and maxx >= requested_maxx
-                    and maxy >= requested_maxy
+                    minx <= requested_minx + coordinate_tolerance
+                    and miny <= requested_miny + coordinate_tolerance
+                    and maxx >= requested_maxx - coordinate_tolerance
+                    and maxy >= requested_maxy - coordinate_tolerance
                 )
             if not inside:
                 continue

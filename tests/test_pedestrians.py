@@ -2,7 +2,8 @@
 import math
 import pytest
 from types import SimpleNamespace
-from theroadragetrip.osm import Building, ParkingSpace, TrafficLight, Way
+from theroadragetrip.geo import point_in_polygon
+from theroadragetrip.osm import TrafficLight, Way
 from theroadragetrip.osm import TaxiStop
 from theroadragetrip.pedestrian import (
     CyclistManager,
@@ -14,7 +15,6 @@ from theroadragetrip.pedestrian import (
 )
 from theroadragetrip.physics import Car
 from theroadragetrip.residents import ResidentManager
-from theroadragetrip.traffic import TrafficManager
 
 
 def test_pedestrian_network_routes_across_connected_ways():
@@ -29,11 +29,58 @@ def test_pedestrian_network_routes_across_connected_ways():
     assert network.nearest_point((8.0, 2.0)) == (8.0, 0.0)
 
 
+def test_pedestrian_routes_and_spawns_stay_outside_buildings():
+    ways = [Way(
+        points_m=[(0.0, 0.0), (10.0, 0.0), (30.0, 0.0), (40.0, 0.0)],
+        highway="footway",
+        half_width_m=1.5,
+    )]
+    building = SimpleNamespace(
+        points_m=[(18.0, -2.0), (22.0, -2.0), (22.0, 2.0), (18.0, 2.0)],
+        bbox=(18.0, -2.0, 22.0, 2.0),
+        entrances=[(20.0, 0.0)],
+        venue_type=None,
+    )
+    manager = PedestrianManager(ways, target_count=0, venue_buildings=[building])
+
+    assert manager.spawn_pedestrian_at(20.0, 0.0) is None
+    assert all(
+        not point_in_polygon(point[0], point[1], building.points_m)
+        for way in manager.ped_ways
+        for point in way.points_m
+    )
+    assert manager.spawn_pedestrian_at_door(20.0, 0.0) is not None
+
+
 def test_pedestrian_state_and_appearance_support_interactions():
     assert PedestrianState.APPROACHING_CROSSING.value == "approaching_crossing"
     appearance = PedestrianAppearance(body=(10, 20, 30))
     assert appearance.body == (10, 20, 30)
     assert appearance.head == (238, 185, 145)
+
+
+def test_drunk_promille_changes_walking_and_can_cause_a_fall(monkeypatch: pytest.MonkeyPatch):
+    way = Way(points_m=[(0.0, 0.0), (100.0, 0.0)], highway="footway", half_width_m=1.5)
+    manager = PedestrianManager([way], target_count=0)
+    pedestrian = Pedestrian(10.0, 0.0, 0.0, 1.0, 1.0, way, 0, 1, (1, 1, 1))
+    pedestrian.is_drunk = True
+    pedestrian.blood_alcohol_promille = 3.0
+    pedestrian.fall_cooldown = 100.0
+    pedestrian.drunk_vomit_cooldown = 100.0
+    manager.pedestrians = [pedestrian]
+
+    monkeypatch.setattr("theroadragetrip.pedestrian.random.random", lambda: 1.0)
+    manager.update(Car(0.0, 0.0, 0.0, 0.0), dt=0.1)
+
+    assert 0.5 <= pedestrian.blood_alcohol_promille <= 3.0
+    assert pedestrian.speed < pedestrian.base_speed
+
+    pedestrian.fall_cooldown = 0.0
+    monkeypatch.setattr("theroadragetrip.pedestrian.random.random", lambda: 0.0)
+    manager.update(Car(0.0, 0.0, 0.0, 0.0), dt=0.1)
+
+    assert pedestrian.state == "fallen"
+    assert pedestrian.animation_state == "fallen"
 
 
 def test_vehicle_exit_can_use_explicit_transition_state():
@@ -45,42 +92,6 @@ def test_vehicle_exit_can_use_explicit_transition_state():
     vehicle.current_driver_id = id(pedestrian)
     assert manager.exit_vehicle(pedestrian, vehicle, animate=True)
     assert pedestrian.state == PedestrianState.EXITING_VEHICLE.value
-
-
-def test_parked_vehicle_is_empty_and_driver_appears_beside_it():
-    road = Way(points_m=[(0.0, 0.0), (100.0, 0.0)], highway="residential", half_width_m=4.0)
-    footway = Way(points_m=[(0.0, 8.0), (100.0, 8.0)], highway="footway", half_width_m=2.0)
-    building = Building(
-        points_m=[(40.0, 5.0), (50.0, 5.0), (50.0, 15.0), (40.0, 15.0)],
-        entrances=[(40.0, 8.0)],
-    )
-    parking_space = ParkingSpace(
-        points_m=[(20.0, -2.0), (24.0, -2.0), (24.0, 2.0), (20.0, 2.0)],
-        bbox=(20.0, -2.0, 24.0, 2.0),
-        orientation=0.0,
-    )
-    traffic = TrafficManager([road], target_count=0, parking_spaces=[parking_space])
-    vehicle = traffic.spawn_npc(50.0, 50.0)
-    assert vehicle is not None
-    vehicle.owner_id = 123
-    vehicle.current_driver_id = 123
-    vehicle.x, vehicle.y = 22.0, 0.0
-    assert traffic.occupy_parking_space(vehicle, parking_space)
-    assert vehicle.state == "parked"
-    assert vehicle.current_driver_id is None
-
-    pedestrians = PedestrianManager(
-        [footway],
-        target_count=0,
-        traffic_manager=traffic,
-        traffic_vehicles=traffic.npcs,
-        venue_buildings=[building],
-    )
-    pedestrians.update(Car(x=50.0, y=50.0, heading=0.0, speed=0.0), dt=0.1)
-
-    driver = next(ped for ped in pedestrians.pedestrians if ped.resident_id == 123)
-    assert math.hypot(driver.x - vehicle.x, driver.y - vehicle.y) <= vehicle.width_m * 0.5 + 1.1
-    assert driver.current_vehicle_id is None
 
 
 def test_crashed_driver_pedestrian_keeps_resident_identity():
@@ -120,6 +131,27 @@ def test_repeated_target_count_updates_do_not_delay_population_check():
     manager.update(player, dt=0.1)
 
     assert len(manager.pedestrians) == 1
+
+
+def test_population_spawn_does_not_fallback_into_viewport(monkeypatch: pytest.MonkeyPatch):
+    way = Way(points_m=[(0.0, 0.0), (100.0, 0.0)], highway="footway", half_width_m=1.5)
+    manager = PedestrianManager([way], target_count=1)
+    calls = []
+
+    def blocked_spawn(*args, **kwargs):
+        calls.append(kwargs.get("viewport_bounds"))
+        return None
+
+    monkeypatch.setattr(manager, "spawn_pedestrian", blocked_spawn)
+    manager._population_update_elapsed = 5.0
+    manager.update(
+        Car(x=50.0, y=0.0, heading=0.0, speed=0.0),
+        dt=0.1,
+        viewport_bounds=(0.0, -10.0, 100.0, 10.0),
+    )
+
+    assert calls == [(0.0, -10.0, 100.0, 10.0)]
+    assert manager.pedestrians == []
 
 
 def test_pedestrian_can_reserve_any_nearby_parked_vehicle():
