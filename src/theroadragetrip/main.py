@@ -1887,7 +1887,8 @@ def main() -> None:
                     crossing_grid.rebuild(crossings)
                     traffic_light_grid.rebuild(traffic_lights)
                     if args.auto_fetch:
-                        auto_fetch_manager._attempted_endpoints.clear()
+                        with auto_fetch_manager.lock:
+                            auto_fetch_manager._attempted_endpoints.clear()
                     map_sync_stage = 2
                 elif map_sync_stage == 2:
                     taxi_mgr.sync_map_data(ways, places=places, buildings=buildings)

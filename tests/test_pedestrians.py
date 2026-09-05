@@ -150,7 +150,9 @@ def test_population_spawn_does_not_fallback_into_viewport(monkeypatch: pytest.Mo
         viewport_bounds=(0.0, -10.0, 100.0, 10.0),
     )
 
-    assert calls == [(0.0, -10.0, 100.0, 10.0)]
+    assert calls
+    assert all(call == (0.0, -10.0, 100.0, 10.0) for call in calls)
+    assert len(calls) > 1
     assert manager.pedestrians == []
 
 

@@ -1470,7 +1470,8 @@ class PedestrianManager:
 
             game_hour = ((game_time_seconds or 0.0) / 3600.0) % 24.0
             amenity_interval = 10.0 if game_time_seconds is not None and game_hour >= 17.0 else 20.0
-            if self._amenity_spawn_elapsed >= amenity_interval:
+            amenity_spawn_ready = self._amenity_spawn_elapsed >= amenity_interval
+            if amenity_spawn_ready:
                 nearby_amenity_entrances = [
                     entrance for entrance in self.amenity_entrance_locations
                     if math.hypot(entrance[0] - player_car.x, entrance[1] - player_car.y) <= self.spawn_radius_m
@@ -1502,7 +1503,7 @@ class PedestrianManager:
                 and spawned_this_update < spawn_limit
             ):
                 attempts += 1
-                spawn_at_door = bool(nearby_entrances and random.random() < 0.45)
+                spawn_at_door = bool(amenity_spawn_ready and nearby_entrances and random.random() < 0.45)
                 spawned_near_venue = bool(nearby_venues and random.random() < 0.6)
                 if spawn_at_door:
                     entrance_x, entrance_y = random.choice(nearby_entrances)
@@ -1518,7 +1519,7 @@ class PedestrianManager:
                 else:
                     new_ped = self.spawn_pedestrian(player_car.x, player_car.y, viewport_bounds=viewport_bounds)
                 if not new_ped:
-                    break
+                    continue
                 spawned_this_update += 1
                 if spawned_near_venue and random.random() < 0.35:
                     new_ped.is_drunk = True

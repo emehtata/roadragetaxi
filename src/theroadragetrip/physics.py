@@ -185,6 +185,8 @@ def is_point_in_water(
 
 def is_car_fully_in_water(car: Car, waters: List, current_way=None) -> bool:
     """Return whether all four corners are in water, except while on a bridge."""
+    if current_way is not None and getattr(current_way, "is_bridge", False):
+        return False
     road_layer = getattr(current_way, "layer", getattr(car, "layer", 0))
     include_open_waterways = not (current_way is not None and is_car_road(current_way))
     half_length = getattr(car, "length_m", 4.0) * 0.5
