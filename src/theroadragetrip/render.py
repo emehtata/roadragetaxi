@@ -44,11 +44,10 @@ STREET_LIGHT_JUNCTION_CLEARANCE_M = 3.0
 STREET_LIGHT_REFLECTOR_RADIUS_M = 10.0
 STREET_LIGHT_SHADE_COLOR = (0, 0, 0)
 STREET_LIGHT_BUILDING_DISTANCE_M = 200.0
-STREET_LIGHT_POOL_COLOR = (255, 226, 165, 72)
-STREET_LIGHT_POOL_ADD_COLOR = (28, 22, 12)
+STREET_LIGHT_POOL_ADD_COLOR = (22, 22, 22)
 STREET_LIGHT_POOL_HALF_ANGLE = math.radians(135.0)
 STREET_LIGHT_POOL_STEPS = 16
-STREET_LIGHT_CORE_COLOR = (255, 236, 165, 230)
+STREET_LIGHT_CORE_COLOR = (215, 215, 200, 230)
 SOLAR_UPDATE_INTERVAL_SECONDS = 15.0 * 60.0
 GAME_DATE = date(2026, 8, 31)
 FINLAND_SUMMER_TIME_OFFSET = 3.0
@@ -1900,10 +1899,7 @@ def draw_street_lights(
         for lamp_center, road_direction, lamp_pool_radius_m in zip(
             lamp_centers, lamp_directions, lamp_pool_radii
         ):
-            pool_radius = max(
-                lamp_radius + 2,
-                int(lamp_pool_radius_m * px_per_m),
-            )
+            pool_radius = max(lamp_radius + 2, int(lamp_pool_radius_m * px_per_m))
             sector_points = [lamp_center]
             for step in range(STREET_LIGHT_POOL_STEPS + 1):
                 angle = (
@@ -1918,7 +1914,6 @@ def draw_street_lights(
                     )
                 )
             pygame.draw.polygon(pool_add_layer, (*STREET_LIGHT_POOL_ADD_COLOR, 255), sector_points)
-            pygame.draw.polygon(light_layer, STREET_LIGHT_POOL_COLOR, sector_points)
             pygame.draw.circle(light_layer, STREET_LIGHT_CORE_COLOR, lamp_center, lamp_radius)
             if shade_radius:
                 pygame.draw.circle(light_layer, STREET_LIGHT_SHADE_COLOR, lamp_center, shade_radius)
