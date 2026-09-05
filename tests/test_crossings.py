@@ -28,11 +28,63 @@ def test_secondary_explicit_lighting_overrides_area_fallback():
     assert not _way_should_have_street_lighting(road, [Building([], bbox=(0.0, 0.0, 1.0, 1.0))])
 
 
-def test_building_proximity_does_not_light_other_unlit_road_types():
-    road = Way(points_m=[(0.0, 0.0), (100.0, 0.0)], highway="tertiary", half_width_m=4.0)
+def test_explicit_lit_yes_has_priority_without_buildings():
+    road = Way(points_m=[(0.0, 0.0), (100.0, 0.0)], highway="tertiary", half_width_m=4.0, lit="yes")
+
+    assert _way_should_have_street_lighting(road, [])
+
+
+def test_explicit_lit_no_has_priority_near_buildings():
+    road = Way(points_m=[(0.0, 0.0), (100.0, 0.0)], highway="tertiary", half_width_m=4.0, lit="no")
     building = Building([], bbox=(0.0, 0.0, 1.0, 1.0))
 
     assert not _way_should_have_street_lighting(road, [building], (0.0, 0.0))
+
+
+def test_building_proximity_lights_urban_unlit_road_types():
+    road = Way(points_m=[(0.0, 0.0), (100.0, 0.0)], highway="tertiary", half_width_m=4.0)
+    building = Building([], bbox=(0.0, 0.0, 1.0, 1.0))
+
+    assert _way_should_have_street_lighting(road, [building], (0.0, 0.0))
+
+
+def test_building_proximity_does_not_light_motorways():
+    road = Way(points_m=[(0.0, 0.0), (100.0, 0.0)], highway="motorway", half_width_m=6.0)
+    building = Building([], bbox=(0.0, 0.0, 1.0, 1.0))
+
+    assert not _way_should_have_street_lighting(road, [building], (0.0, 0.0))
+
+
+def test_building_outer_edge_and_neighbor_grid_cell_count_as_near():
+    road = Way(points_m=[(99.0, 0.0), (199.0, 0.0)], highway="tertiary", half_width_m=4.0)
+    building = Building(
+        points_m=[(0.0, 20.0), (10.0, 20.0), (10.0, 30.0), (0.0, 30.0)],
+        bbox=(0.0, 20.0, 10.0, 30.0),
+    )
+    grid = {(0, 0): [building]}
+
+    assert _way_should_have_street_lighting(road, [building], (99.0, 0.0), grid)
+
+
+def test_taajama_building_distance_reaches_200_metres():
+    road = Way(points_m=[(0.0, 0.0), (100.0, 0.0)], highway="tertiary", half_width_m=4.0)
+    building = Building(
+        points_m=[(150.0, 0.0), (160.0, 0.0), (160.0, 10.0), (150.0, 10.0)],
+        bbox=(150.0, 0.0, 160.0, 10.0),
+    )
+
+    assert _way_should_have_street_lighting(road, [building], (0.0, 0.0))
+
+
+def test_named_road_does_not_inherit_lighting_into_rural_segment():
+    road = Way(
+        points_m=[(0.0, 0.0), (100.0, 0.0)],
+        highway="tertiary",
+        half_width_m=4.0,
+        name="Rautatienkatu",
+    )
+
+    assert not _way_should_have_street_lighting(road, [], (0.0, 0.0))
 
 
 def test_build_ways_extracts_crossings_and_aligns_with_road():
