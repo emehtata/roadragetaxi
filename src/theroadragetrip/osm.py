@@ -326,21 +326,21 @@ class Scenery:
 
 def _building_height(tags: Dict[str, Any], points: List[Tuple[float, float]]) -> float:
     """Return OSM height, level-derived height, or a footprint-based default."""
+    raw_levels = tags.get("building:levels") or tags.get("levels")
+    if raw_levels:
+        try:
+            levels = float(raw_levels)
+            if levels > 0:
+                return max(3.0, min(levels * 3.0, 120.0))
+        except (TypeError, ValueError):
+            pass
+
     raw_height = tags.get("height")
     if raw_height:
         try:
             height = float(str(raw_height).lower().replace("m", "").strip())
             if height > 0:
                 return max(3.0, min(height, 120.0))
-        except (TypeError, ValueError):
-            pass
-
-    raw_levels = tags.get("building:levels") or tags.get("levels")
-    if raw_levels:
-        try:
-            levels = float(raw_levels)
-            if levels > 0:
-                return max(3.0, min(3.2 * levels + 1.5, 120.0))
         except (TypeError, ValueError):
             pass
 
