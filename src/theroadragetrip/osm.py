@@ -2433,6 +2433,13 @@ class AutoFetchManager:
                         if tile.y in {current_tile.y, edge_y}
                     }
             request_tiles = tuple(sorted(request_tiles))
+            logger.info(
+                "Tile streaming transition: player_tile=%s missing=%d request_tiles=%d bbox_world=%s",
+                self.player_tile,
+                len(missing),
+                len(request_tiles),
+                self._tiles_bbox(request_tiles),
+            )
         threading.Thread(
             target=self._background_tile_fetch,
             args=(tuple(sorted(missing)), request_tiles),
@@ -2450,12 +2457,28 @@ class AutoFetchManager:
             self.is_fetching = True
             self.fetch_progress = 0.0
             request_tiles = tuple(sorted(self.active_tiles))
+            logger.info(
+                "Initial tile streaming: missing=%d request_tiles=%d bbox_world=%s",
+                len(missing),
+                len(request_tiles),
+                self._tiles_bbox(request_tiles),
+            )
         threading.Thread(
             target=self._background_tile_fetch,
             args=(tuple(sorted(missing)), request_tiles),
             daemon=True,
         ).start()
         return True
+
+    @staticmethod
+    def _tiles_bbox(tiles: tuple[TileCoord, ...]) -> tuple[float, float, float, float]:
+        boxes = [tile_bbox(tile) for tile in tiles]
+        return (
+            min(box[0] for box in boxes),
+            min(box[1] for box in boxes),
+            max(box[2] for box in boxes),
+            max(box[3] for box in boxes),
+        ) if boxes else (0.0, 0.0, 0.0, 0.0)
 
     def initialize_player_tile(self, x: float, y: float) -> TileCoord:
         """Seed tile tracking from the already loaded startup world."""
@@ -2552,6 +2575,12 @@ class AutoFetchManager:
                 self.last_tile_load_ms = load_ms
                 self.is_fetching = False
                 self.fetch_progress = 1.0
+                logger.info(
+                    "Tile streaming loaded: tiles=%d ways=%d load_ms=%.1f",
+                    len(tiles),
+                    len(world.ways),
+                    load_ms,
+                )
         except Exception as exc:
             logger.warning("Tile streaming failed: %s", exc)
             with self.lock:
@@ -2586,6 +2615,12 @@ class AutoFetchManager:
                     remaining -= 1
             if integrated:
                 self.map_revision += 1
+                logger.info(
+                    "Tile integration complete: integrated_tiles=%d ways=%d map_revision=%d",
+                    integrated,
+                    len(self.ways),
+                    self.map_revision,
+                )
             self.last_tile_integration_ms = (time.perf_counter() - started) * 1000.0
         return integrated
 

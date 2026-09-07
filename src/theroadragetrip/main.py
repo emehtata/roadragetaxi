@@ -1887,6 +1887,13 @@ def main() -> None:
                     )
                     and map_sync_stage == 0
                 ):
+                    if map_sync_stage == 0:
+                        logger.info(
+                            "Map sync started: revision=%d ways=%d buildings=%d",
+                            auto_fetch_manager.get_map_revision(),
+                            len(ways),
+                            len(buildings),
+                        )
                     map_sync_stage = 1
 
                 map_sync_started = time.perf_counter() if map_sync_stage else None
@@ -1945,6 +1952,11 @@ def main() -> None:
                     with frame_profiler.section("map_sync:finalize"):
                         navigation_route_dirty = True
                         last_map_revision = auto_fetch_manager.get_map_revision()
+                        logger.info(
+                            "Map sync complete: revision=%d indexed_ways=%d",
+                            last_map_revision,
+                            spatial_grid.indexed_way_count,
+                        )
                     map_sync_stage = 0
                 if map_sync_started is not None:
                     frame_profiler.record(
