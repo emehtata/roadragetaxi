@@ -218,6 +218,22 @@ def test_tile_object_survives_until_last_tile_owner_is_unloaded():
     assert manager.ways == []
 
 
+def test_combined_region_assigns_crossing_way_to_both_tiles():
+    crossing_way = Way(
+        [(450.0, 250.0), (550.0, 250.0)], "residential", 4.0, osm_id=99,
+        bbox=(450.0, 250.0, 550.0, 250.0),
+    )
+    manager = AutoFetchManager([], (0.0, 0.0, 1000.0, 1000.0), transformer=None)
+    manager._merge_tile_world_for_tiles(
+        {TileCoord(0, 0), TileCoord(1, 0)},
+        MapData([crossing_way], [], [], [], [], (0.0, 0.0, 1000.0, 1000.0)),
+    )
+
+    assert manager.ways == [crossing_way]
+    assert manager._tile_objects[TileCoord(0, 0)]["ways"][("Way", "id", 99)] is crossing_way
+    assert manager._tile_objects[TileCoord(1, 0)]["ways"][("Way", "id", 99)] is crossing_way
+
+
 def test_startup_world_is_registered_and_trimmed_to_active_tiles():
     inside = Way([(100.0, 100.0), (200.0, 100.0)], "residential", 4.0, osm_id=1, bbox=(100.0, 100.0, 200.0, 100.0))
     outside = Way([(5000.0, 100.0), (5100.0, 100.0)], "residential", 4.0, osm_id=2, bbox=(5000.0, 100.0, 5100.0, 100.0))

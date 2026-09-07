@@ -2542,7 +2542,7 @@ class AutoFetchManager:
                 world = self.world_cache_manager.preload_region(bbox).result()
             else:
                 world = self.build_func(self.fetch_func(bbox))
-            loaded.append((tiles, world))
+            loaded.append((tiles, request_tiles, world))
             with self.lock:
                 self.fetch_progress = 1.0
             load_ms = (time.perf_counter() - load_started) * 1000.0
@@ -2574,12 +2574,13 @@ class AutoFetchManager:
         with self.lock:
             remaining = max(1, max_tiles)
             for batch in batches:
-                for tile_group, world in batch:
+                for tile_group, request_tiles, world in batch:
                     active_group = set(tile_group) & active_tiles_now
                     if not active_group or remaining <= 0:
                         continue
                     self.pending_tiles.difference_update(tile_group)
-                    self._merge_tile_world_for_tiles(active_group, world)
+                    ownership_tiles = set(request_tiles) & active_tiles_now
+                    self._merge_tile_world_for_tiles(ownership_tiles, world)
                     self.loaded_tiles.update(active_group)
                     integrated += len(active_group)
                     remaining -= 1
