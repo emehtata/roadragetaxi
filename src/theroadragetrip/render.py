@@ -1871,7 +1871,12 @@ def draw_ways(
                     best_angle_diff = angle_diff
             return best_angle_diff < math.radians(30)
 
-        merged = unary_union(bridge_polygons)
+        # OSM often represents one carriageway with parallel bridge ways. Close
+        # small gaps before union so their shared inner boundary is not railed.
+        join_tolerance = max(1.0, px_per_m * 3.0)
+        merged = unary_union(
+            [polygon.buffer(join_tolerance) for polygon in bridge_polygons]
+        ).buffer(-join_tolerance)
         polygons = merged.geoms if merged.geom_type == "MultiPolygon" else [merged]
         for polygon in polygons:
             boundary_rings = [polygon.exterior]
