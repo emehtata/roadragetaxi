@@ -16,7 +16,7 @@ fake_pyproj.Transformer = FakeTransformer
 sys.modules["pyproj"] = fake_pyproj
 
 from theroadragetrip.osm import build_ways, plant_trees
-from theroadragetrip.osm import Scenery, Way
+from theroadragetrip.osm import Building, Place, Scenery, Way, associate_places_with_buildings
 from theroadragetrip.physics import Car
 from theroadragetrip.taxi import TaxiManager
 
@@ -77,6 +77,25 @@ def test_build_ways_buildings_and_scenery_and_names():
     assert {place.name for place in places} == {"Downtown", "Named Attraction"}
     assert next(place for place in places if place.name == "Downtown").kind == "suburb"
     assert next(place for place in places if place.name == "Named Attraction").kind == "poi"
+
+
+def test_associate_places_with_buildings_uses_building_geometry():
+    buildings = [
+        Building(
+            [(0.0, 0.0), (20.0, 0.0), (20.0, 20.0), (0.0, 20.0)],
+            bbox=(0.0, 0.0, 20.0, 20.0),
+        ),
+        Building(
+            [(40.0, 0.0), (60.0, 0.0), (60.0, 20.0), (40.0, 20.0)],
+            bbox=(40.0, 0.0, 60.0, 20.0),
+        ),
+    ]
+    places = [Place(10.0, 10.0, "Cafe", "cafe"), Place(80.0, 10.0, "Outside", "poi")]
+
+    associate_places_with_buildings(buildings, places)
+
+    assert [place.name for place in buildings[0].associated_places] == ["Cafe"]
+    assert buildings[1].associated_places == []
 
 
 def test_build_ways_generates_trees_in_offroad_scenery():

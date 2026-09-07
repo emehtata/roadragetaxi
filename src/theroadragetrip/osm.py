@@ -271,6 +271,7 @@ class Building:
     center_m: Tuple[float, float] = (0.0, 0.0)
     texture_seed: float = 0.0
     entrances: List[Tuple[float, float]] = field(default_factory=list)
+    associated_places: List["Place"] = field(default_factory=list, repr=False)
 
 
 @dataclass
@@ -737,6 +738,38 @@ class Place:
     y: float
     name: str
     kind: str  # suburb, neighbourhood, quarter, village, town, city
+
+
+def associate_places_with_buildings(buildings: List[Building], places: List[Place]) -> None:
+    """Attach named venue places to buildings once, before rendering."""
+    cell_size = 128.0
+    building_cells = defaultdict(list)
+    for building in buildings:
+        building.associated_places.clear()
+        bbox = getattr(building, "bbox", (0.0, 0.0, 0.0, 0.0))
+        if bbox == (0.0, 0.0, 0.0, 0.0):
+            continue
+        for cell_x in range(math.floor(bbox[0] / cell_size), math.floor(bbox[2] / cell_size) + 1):
+            for cell_y in range(math.floor(bbox[1] / cell_size), math.floor(bbox[3] / cell_size) + 1):
+                building_cells[(cell_x, cell_y)].append(building)
+    venue_places = [
+        place for place in places
+        if place.name and place.kind not in {
+            "suburb", "neighbourhood", "quarter", "village", "town", "city",
+        }
+    ]
+    for place in venue_places:
+        candidates = building_cells.get(
+            (math.floor(place.x / cell_size), math.floor(place.y / cell_size)),
+            (),
+        )
+        for building in candidates:
+            bbox = getattr(building, "bbox", (0.0, 0.0, 0.0, 0.0))
+            if not (bbox[0] <= place.x <= bbox[2] and bbox[1] <= place.y <= bbox[3]):
+                continue
+            if point_in_polygon(place.x, place.y, building.points_m):
+                building.associated_places.append(place)
+                break
 
 
 @dataclass
@@ -2215,6 +2248,7 @@ def build_ways(
         len(traffic_lights),
         len(crossings),
     )
+    associate_places_with_buildings(buildings, places)
 
     if progress_callback:
         progress_callback(
@@ -2694,6 +2728,7 @@ class AutoFetchManager:
                 added_buildings = _extend_unique(self.buildings, new_buildings)
                 added_sceneries = _extend_unique(self.sceneries, new_sceneries)
                 added_places = _extend_unique(self.places, new_places)
+                associate_places_with_buildings(self.buildings, self.places)
                 added_traffic_lights = _extend_unique(self.traffic_lights, new_traffic_lights)
                 added_stop_signs = _extend_unique(self.stop_signs, new_stop_signs)
                 added_crossings = _extend_unique(self.crossings, new_crossings)

@@ -3,6 +3,7 @@ import logging
 import os
 import random
 import subprocess
+import time
 from datetime import date
 from importlib.metadata import PackageNotFoundError, version as package_version
 from typing import List, Optional, Tuple
@@ -47,6 +48,7 @@ MAX_VISIBLE_STREET_LIGHTS = 400
 STREET_LIGHT_SPACING_M = 12.0
 STREET_LIGHT_JUNCTION_CLEARANCE_M = 3.0
 CACHE_PADDING_PX = 96
+STATIC_ZOOM_STEP = 0.05
 STREET_LIGHT_REFLECTOR_RADIUS_M = 10.0
 STREET_LIGHT_SHADE_COLOR = (0, 0, 0)
 STREET_LIGHT_BUILDING_DISTANCE_M = 200.0
@@ -119,6 +121,13 @@ _rage_face_path = os.path.join(os.path.dirname(__file__), "assets", "ragefaceatl
 _speedometer_font = None
 _speedometer_label_font = None
 _building_sign_font_cache = {}
+_building_sign_surface_cache = {}
+_building_visual_plan_cache = {}
+
+
+def _static_cache_zoom(px_per_m: float) -> float:
+    """Quantize static-layer zoom to avoid rebuilding during smooth zoom animation."""
+    return max(STATIC_ZOOM_STEP, round(px_per_m / STATIC_ZOOM_STEP) * STATIC_ZOOM_STEP)
 
 
 def _reusable_alpha_surface(pygame, key, size):
@@ -129,6 +138,63 @@ def _reusable_alpha_surface(pygame, key, size):
     else:
         surface.fill((0, 0, 0, 0))
     return surface
+
+
+def _building_visual_plan(building):
+    """Cache camera-independent facade measurements for one building."""
+    points = tuple(getattr(building, "points_m", ()))
+    entrances = tuple(getattr(building, "entrances", ()))
+    cache_key = (
+        id(building),
+        points,
+        entrances,
+        getattr(building, "levels", None),
+        getattr(building, "height_m", 8.0),
+        getattr(building, "venue_type", None),
+        tuple((place.x, place.y, place.name) for place in getattr(building, "associated_places", ())),
+    )
+    cached = _building_visual_plan_cache.get(id(building))
+    if cached is not None and cached[0] == cache_key:
+        return cached[1]
+
+    edge_lengths = []
+    for index, point in enumerate(points):
+        next_point = points[(index + 1) % len(points)]
+        edge_lengths.append(math.hypot(next_point[0] - point[0], next_point[1] - point[1]))
+    entrance_edges = set()
+    for entrance_x, entrance_y in entrances:
+        entrance_edges.add(min(
+            range(len(points)),
+            key=lambda candidate: dist_point_to_segment(
+                entrance_x,
+                entrance_y,
+                points[candidate][0],
+                points[candidate][1],
+                points[(candidate + 1) % len(points)][0],
+                points[(candidate + 1) % len(points)][1],
+            ),
+            default=-1,
+        ))
+    plan = (tuple(edge_lengths), frozenset(entrance_edges))
+    _building_visual_plan_cache[id(building)] = (cache_key, plan)
+    return plan
+
+
+def _building_sign_surface(pygame, font, text, sign_width, sign_depth, angle):
+    """Reuse static venue sign text across viewport cache rebuilds."""
+    key = (id(font), text, sign_width, sign_depth, round(angle, 3))
+    cached = _building_sign_surface_cache.get(key)
+    if cached is not None:
+        return cached
+    text_surface = font.render(text, True, (250, 239, 190))
+    if text_surface.get_width() + 8 > sign_width:
+        text_surface = pygame.transform.smoothscale(
+            text_surface,
+            (max(4, sign_width - 8), max(4, sign_depth - 2)),
+        )
+    cached = pygame.transform.rotate(text_surface, angle)
+    _building_sign_surface_cache[key] = cached
+    return cached
 
 
 def _smoke_surface(pygame, radius: int, alpha: int):
@@ -570,9 +636,11 @@ def draw_scenery(
     spatial_grid=None,
     ways: Optional[List[Way]] = None,
     road_spatial_grid=None,
+    profiler=None,
 ) -> None:
     """Draw cached static scenery, or dynamic tree effects when active."""
     import pygame
+    cache_zoom = _static_cache_zoom(px_per_m)
 
     if tree_effects or fallen_trees:
         _draw_scenery_uncached(
@@ -585,26 +653,29 @@ def draw_scenery(
     frame_cache_key = (
         id(sceneries), len(sceneries), id(sceneries[-1]) if sceneries else None,
         id(ways), id(spatial_grid), id(road_spatial_grid),
-        round(camx * px_per_m / 128.0), round(camy * px_per_m / 128.0),
-        px_per_m, screen.get_size(),
+        round(camx * cache_zoom / 128.0), round(camy * cache_zoom / 128.0),
+        cache_zoom, screen.get_size(),
     )
     if frame_cache_key == _scenery_frame_cache_key and _scenery_frame_cache_surface is not None:
         cached_camx, cached_camy = _scenery_frame_cache_camera
         screen.blit(
             _scenery_frame_cache_surface,
             (
-                round((cached_camx - camx) * px_per_m) - CACHE_PADDING_PX,
-                round((camy - cached_camy) * px_per_m) - CACHE_PADDING_PX,
+                round((cached_camx - camx) * cache_zoom) - CACHE_PADDING_PX,
+                round((camy - cached_camy) * cache_zoom) - CACHE_PADDING_PX,
             ),
         )
         return
     cache_width = screen_w + CACHE_PADDING_PX * 2
     cache_height = screen_h + CACHE_PADDING_PX * 2
     cache_surface = pygame.Surface((cache_width, cache_height), pygame.SRCALPHA)
+    rebuild_started = time.perf_counter() if profiler is not None else 0.0
     _draw_scenery_uncached(
-        cache_surface, sceneries, camx, camy, px_per_m, cache_width, cache_height,
+        cache_surface, sceneries, camx, camy, cache_zoom, cache_width, cache_height,
         None, None, spatial_grid, ways, road_spatial_grid,
     )
+    if profiler is not None:
+        profiler.record("render:scenery_cache_rebuild", (time.perf_counter() - rebuild_started) * 1000.0)
     _scenery_frame_cache_key = frame_cache_key
     _scenery_frame_cache_surface = cache_surface
     _scenery_frame_cache_camera = (camx, camy)
@@ -882,32 +953,37 @@ def draw_waters(
     screen_w: int = SCREEN_W,
     screen_h: int = SCREEN_H,
     spatial_grid=None,
+    profiler=None,
 ) -> None:
     """Draw cached static water geometry."""
     import pygame
+    cache_zoom = _static_cache_zoom(px_per_m)
 
     global _water_frame_cache_key, _water_frame_cache_surface, _water_frame_cache_camera
     frame_cache_key = (
         id(waters), len(waters), id(waters[-1]) if waters else None,
-        id(spatial_grid), round(camx * px_per_m / 128.0), round(camy * px_per_m / 128.0),
-        px_per_m, screen.get_size(),
+        id(spatial_grid), round(camx * cache_zoom / 128.0), round(camy * cache_zoom / 128.0),
+        cache_zoom, screen.get_size(),
     )
     if frame_cache_key == _water_frame_cache_key and _water_frame_cache_surface is not None:
         cached_camx, cached_camy = _water_frame_cache_camera
         screen.blit(
             _water_frame_cache_surface,
             (
-                round((cached_camx - camx) * px_per_m) - CACHE_PADDING_PX,
-                round((camy - cached_camy) * px_per_m) - CACHE_PADDING_PX,
+                round((cached_camx - camx) * cache_zoom) - CACHE_PADDING_PX,
+                round((camy - cached_camy) * cache_zoom) - CACHE_PADDING_PX,
             ),
         )
         return
     cache_width = screen_w + CACHE_PADDING_PX * 2
     cache_height = screen_h + CACHE_PADDING_PX * 2
     cache_surface = pygame.Surface((cache_width, cache_height), pygame.SRCALPHA)
+    rebuild_started = time.perf_counter() if profiler is not None else 0.0
     _draw_waters_uncached(
-        cache_surface, waters, camx, camy, px_per_m, cache_width, cache_height, spatial_grid,
+        cache_surface, waters, camx, camy, cache_zoom, cache_width, cache_height, spatial_grid,
     )
+    if profiler is not None:
+        profiler.record("render:water_cache_rebuild", (time.perf_counter() - rebuild_started) * 1000.0)
     _water_frame_cache_key = frame_cache_key
     _water_frame_cache_surface = cache_surface
     _water_frame_cache_camera = (camx, camy)
@@ -968,9 +1044,11 @@ def draw_buildings(
     screen_h: int = SCREEN_H,
     spatial_grid=None,
     places: Optional[List[Place]] = None,
+    profiler=None,
 ) -> None:
     """Draw cached static building geometry and facade details."""
     import pygame
+    cache_zoom = _static_cache_zoom(px_per_m)
 
     global _building_frame_cache_key, _building_frame_cache_surface, _building_frame_cache_camera
     frame_cache_key = (
@@ -980,32 +1058,35 @@ def draw_buildings(
         id(places),
         len(places) if places else 0,
         id(spatial_grid),
-        round(camx * px_per_m / 128.0),
-        round(camy * px_per_m / 128.0),
-        px_per_m,
+        round(camx * cache_zoom / 128.0),
+        round(camy * cache_zoom / 128.0),
+        cache_zoom,
         screen.get_size(),
     )
     if frame_cache_key == _building_frame_cache_key and _building_frame_cache_surface is not None:
         cached_camx, cached_camy = _building_frame_cache_camera
-        offset_x = round((cached_camx - camx) * px_per_m) - CACHE_PADDING_PX
-        offset_y = round((camy - cached_camy) * px_per_m) - CACHE_PADDING_PX
+        offset_x = round((cached_camx - camx) * cache_zoom) - CACHE_PADDING_PX
+        offset_y = round((camy - cached_camy) * cache_zoom) - CACHE_PADDING_PX
         screen.blit(_building_frame_cache_surface, (offset_x, offset_y))
         return
 
     cache_width = screen_w + CACHE_PADDING_PX * 2
     cache_height = screen_h + CACHE_PADDING_PX * 2
     cache_surface = pygame.Surface((cache_width, cache_height), pygame.SRCALPHA)
+    rebuild_started = time.perf_counter() if profiler is not None else 0.0
     _draw_buildings_uncached(
         cache_surface,
         buildings,
         camx,
         camy,
-        px_per_m=px_per_m,
+        px_per_m=cache_zoom,
         screen_w=cache_width,
         screen_h=cache_height,
         spatial_grid=spatial_grid,
         places=places,
     )
+    if profiler is not None:
+        profiler.record("render:buildings_cache_rebuild", (time.perf_counter() - rebuild_started) * 1000.0)
     _building_frame_cache_key = frame_cache_key
     _building_frame_cache_surface = cache_surface
     _building_frame_cache_camera = (camx, camy)
@@ -1092,38 +1173,14 @@ def _draw_buildings_uncached(
             camera_y = camy - ((point[1] + next_point[1]) * 0.5)
             if outward_x * camera_x + outward_y * camera_y > 0.0:
                 visible_edges.append(index)
+        edge_lengths, entrance_edge_indices = _building_visual_plan(b)
         window_edge = max(
             visible_edges,
-            key=lambda index: math.hypot(
-                b.points_m[(index + 1) % len(pts)][0] - b.points_m[index][0],
-                b.points_m[(index + 1) % len(pts)][1] - b.points_m[index][1],
-            ),
+            key=edge_lengths.__getitem__,
             default=-1,
         )
-        entrance_edge_indices = set()
-        for entrance_x, entrance_y in getattr(b, "entrances", ()):
-            entrance_edge_indices.add(min(
-                range(len(b.points_m)),
-                key=lambda candidate: dist_point_to_segment(
-                    entrance_x,
-                    entrance_y,
-                    b.points_m[candidate][0],
-                    b.points_m[candidate][1],
-                    b.points_m[(candidate + 1) % len(b.points_m)][0],
-                    b.points_m[(candidate + 1) % len(b.points_m)][1],
-                ),
-                default=-1,
-            ))
         has_named_venue = bool(
-            places
-            and any(
-                getattr(place, "name", None)
-                and getattr(place, "kind", "") not in {
-                    "suburb", "neighbourhood", "quarter", "village", "town", "city",
-                }
-                and point_in_polygon(place.x, place.y, b.points_m)
-                for place in places
-            )
+            getattr(b, "associated_places", ())
         )
         is_commercial = (
             getattr(b, "venue_type", None) in COMMERCIAL_AMENITIES
@@ -1143,7 +1200,7 @@ def _draw_buildings_uncached(
                 continue
             edge_x = next_point[0] - point[0]
             edge_y = next_point[1] - point[1]
-            edge_length = math.hypot(edge_x, edge_y)
+            edge_length = edge_lengths[index]
             if edge_length < 8:
                 continue
             edge_x /= edge_length
@@ -1247,14 +1304,7 @@ def _draw_buildings_uncached(
             if sign_font is None:
                 sign_font = pygame.font.SysFont(None, sign_font_size, bold=True)
                 _building_sign_font_cache[sign_font_size] = sign_font
-            building_places = [
-                place for place in places
-                if getattr(place, "name", None)
-                and getattr(place, "kind", "") not in {
-                    "suburb", "neighbourhood", "quarter", "village", "town", "city",
-                }
-                and point_in_polygon(place.x, place.y, b.points_m)
-            ]
+            building_places = getattr(b, "associated_places", ())
             for place in building_places:
                 anchor_x, anchor_y = place.x, place.y
                 entrances = getattr(b, "entrances", ())
@@ -1300,20 +1350,17 @@ def _draw_buildings_uncached(
                 )
                 sign_center_x += wall_depth_x * 0.64
                 sign_center_y += wall_depth_y * 0.64
-                text_surface = sign_font.render(place.name, True, (250, 239, 190))
-                sign_width = min(text_surface.get_width() + 8, max(18, int(edge_length * 0.72)))
+                text_width = sign_font.size(place.name)[0]
+                sign_width = min(text_width + 8, max(18, int(edge_length * 0.72)))
                 sign_depth = max(6, min(18, int(wall_depth * 0.28)))
-                if text_surface.get_width() + 8 > sign_width:
-                    text_surface = pygame.transform.smoothscale(
-                        text_surface,
-                        (max(4, sign_width - 8), max(4, sign_depth - 2)),
-                    )
                 angle = math.degrees(math.atan2(-edge_y, edge_x))
                 if angle > 90.0:
                     angle -= 180.0
                 elif angle < -90.0:
                     angle += 180.0
-                text_surface = pygame.transform.rotate(text_surface, angle)
+                text_surface = _building_sign_surface(
+                    pygame, sign_font, place.name, sign_width, sign_depth, angle,
+                )
                 tangent_x = edge_x * sign_width * 0.5
                 tangent_y = edge_y * sign_width * 0.5
                 depth_x = wall_normal_x * sign_depth * 0.5
@@ -1338,18 +1385,20 @@ def draw_ways(
     screen_w: int = SCREEN_W,
     screen_h: int = SCREEN_H,
     spatial_grid=None,
+    profiler=None,
 ) -> None:
     """Draw road ways intersecting viewport with highway-type proportional thickness and layer ordering."""
     import pygame
+    cache_zoom = _static_cache_zoom(px_per_m)
 
     global _road_frame_cache_key, _road_frame_cache_surface, _road_frame_cache_camera
     road_cache_key = (
         id(ways),
         len(ways),
         id(ways[-1]) if ways else None,
-        round(camx * px_per_m / 128.0),
-        round(camy * px_per_m / 128.0),
-        px_per_m,
+        round(camx * cache_zoom / 128.0),
+        round(camy * cache_zoom / 128.0),
+        cache_zoom,
         screen_w,
         screen_h,
     )
@@ -1358,14 +1407,16 @@ def draw_ways(
         screen.blit(
             _road_frame_cache_surface,
             (
-                round((cached_camx - camx) * px_per_m) - CACHE_PADDING_PX,
-                round((camy - cached_camy) * px_per_m) - CACHE_PADDING_PX,
+                round((cached_camx - camx) * cache_zoom) - CACHE_PADDING_PX,
+                round((camy - cached_camy) * cache_zoom) - CACHE_PADDING_PX,
             ),
         )
         return
+    px_per_m = cache_zoom
     destination_screen = screen
     cache_width = screen_w + CACHE_PADDING_PX * 2
     cache_height = screen_h + CACHE_PADDING_PX * 2
+    rebuild_started = time.perf_counter() if profiler is not None else 0.0
     screen = pygame.Surface((cache_width, cache_height), pygame.SRCALPHA)
     screen_w = cache_width
     screen_h = cache_height
@@ -1820,6 +1871,8 @@ def draw_ways(
                         pygame.draw.line(screen, edge_color, edge_start, edge_end, edge_width)
 
     destination_screen.blit(screen, (-CACHE_PADDING_PX, -CACHE_PADDING_PX))
+    if profiler is not None:
+        profiler.record("render:roads_cache_rebuild", (time.perf_counter() - rebuild_started) * 1000.0)
     _road_frame_cache_key = road_cache_key
     _road_frame_cache_surface = screen
     _road_frame_cache_camera = (camx, camy)
@@ -1915,6 +1968,7 @@ def draw_street_lights(
     """Draw simple roadside lamps on visible urban roads."""
     import pygame
     global _street_light_last_debug_log_ms
+    cache_zoom = _static_cache_zoom(px_per_m)
 
     hour = (game_time_seconds / 3600.0) % 24.0
     sun_altitude, sunrise_minutes, sunset_minutes = solar_altitude_and_events(
@@ -1959,9 +2013,9 @@ def draw_street_lights(
         id(ways[-1]) if ways else None,
         road_cache_signature,
         id(buildings),
-        round(camx * px_per_m / cache_pixel_size),
-        round(camy * px_per_m / cache_pixel_size),
-        px_per_m,
+        round(camx * cache_zoom / cache_pixel_size),
+        round(camy * cache_zoom / cache_pixel_size),
+        cache_zoom,
         round(darkness * 32.0),
         screen.get_size(),
     )
@@ -1972,8 +2026,8 @@ def draw_street_lights(
         and _street_light_frame_cache_surface is not None
     ):
         cached_camx, cached_camy = _street_light_frame_cache_camera
-        offset_x = round((cached_camx - camx) * px_per_m)
-        offset_y = round((camy - cached_camy) * px_per_m)
+        offset_x = round((cached_camx - camx) * cache_zoom)
+        offset_y = round((camy - cached_camy) * cache_zoom)
         if _street_light_frame_pool_surface is not None:
             screen.blit(
                 _street_light_frame_pool_surface,
@@ -1995,6 +2049,7 @@ def draw_street_lights(
                 )
                 _street_light_last_debug_log_ms = now_ms
         return
+    px_per_m = cache_zoom
     # Build the lighting layer beyond the visible edge so lamps are ready before entering view.
     vminx, vminy, vmaxx, vmaxy = get_viewport_bounds(camx, camy, px_per_m, screen_w, screen_h, 40.0)
     if spatial_grid is not None:
@@ -2680,9 +2735,11 @@ def draw_labels(
     scenery_grid=None,
     building_grid=None,
     label_mode: int = 2,
+    profiler=None,
 ) -> None:
     """Draw cached map labels with decluttering and collision avoidance."""
     import pygame
+    cache_zoom = _static_cache_zoom(px_per_m)
 
     global _label_frame_cache_key, _label_frame_cache_surface, _label_frame_cache_camera
     frame_cache_key = (
@@ -2700,23 +2757,24 @@ def draw_labels(
         id(spatial_grid),
         id(scenery_grid),
         id(building_grid),
-        round(camx * px_per_m / 128.0),
-        round(camy * px_per_m / 128.0),
-        px_per_m,
+        round(camx * cache_zoom / 128.0),
+        round(camy * cache_zoom / 128.0),
+        cache_zoom,
         max_labels,
         label_mode,
         screen.get_size(),
     )
     if frame_cache_key == _label_frame_cache_key and _label_frame_cache_surface is not None:
         cached_camx, cached_camy = _label_frame_cache_camera
-        offset_x = round((cached_camx - camx) * px_per_m) - CACHE_PADDING_PX
-        offset_y = round((camy - cached_camy) * px_per_m) - CACHE_PADDING_PX
+        offset_x = round((cached_camx - camx) * cache_zoom) - CACHE_PADDING_PX
+        offset_y = round((camy - cached_camy) * cache_zoom) - CACHE_PADDING_PX
         screen.blit(_label_frame_cache_surface, (offset_x, offset_y))
         return
 
     cache_width = screen_w + CACHE_PADDING_PX * 2
     cache_height = screen_h + CACHE_PADDING_PX * 2
     cache_surface = pygame.Surface((cache_width, cache_height), pygame.SRCALPHA)
+    rebuild_started = time.perf_counter() if profiler is not None else 0.0
     _draw_labels_uncached(
         cache_surface,
         font,
@@ -2727,7 +2785,7 @@ def draw_labels(
         places,
         camx,
         camy,
-        px_per_m,
+        cache_zoom,
         cache_width,
         cache_height,
         max_labels,
@@ -2736,6 +2794,8 @@ def draw_labels(
         building_grid,
         label_mode,
     )
+    if profiler is not None:
+        profiler.record("render:labels_cache_rebuild", (time.perf_counter() - rebuild_started) * 1000.0)
     _label_frame_cache_key = frame_cache_key
     _label_frame_cache_surface = cache_surface
     _label_frame_cache_camera = (camx, camy)

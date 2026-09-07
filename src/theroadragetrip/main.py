@@ -1878,38 +1878,67 @@ def main() -> None:
                 ):
                     map_sync_stage = 1
 
+                map_sync_started = time.perf_counter() if map_sync_stage else None
                 if map_sync_stage == 1:
-                    remove_trees_under_roads(sceneries, ways)
-                    spatial_grid.rebuild(ways)
-                    building_grid.rebuild(buildings)
-                    scenery_grid.rebuild(sceneries)
-                    water_grid.rebuild(waters)
-                    crossing_grid.rebuild(crossings)
-                    traffic_light_grid.rebuild(traffic_lights)
+                    with frame_profiler.section("map_sync:remove_trees"):
+                        remove_trees_under_roads(sceneries, ways)
+                    map_sync_stage = 2
+                elif map_sync_stage == 2:
+                    with frame_profiler.section("map_sync:spatial_grid"):
+                        spatial_grid.rebuild(ways)
+                    map_sync_stage = 3
+                elif map_sync_stage == 3:
+                    with frame_profiler.section("map_sync:building_grid"):
+                        building_grid.rebuild(buildings)
+                    map_sync_stage = 4
+                elif map_sync_stage == 4:
+                    with frame_profiler.section("map_sync:scenery_grid"):
+                        scenery_grid.rebuild(sceneries)
+                    map_sync_stage = 5
+                elif map_sync_stage == 5:
+                    with frame_profiler.section("map_sync:water_grid"):
+                        water_grid.rebuild(waters)
+                    map_sync_stage = 6
+                elif map_sync_stage == 6:
+                    with frame_profiler.section("map_sync:crossing_grid"):
+                        crossing_grid.rebuild(crossings)
+                    map_sync_stage = 7
+                elif map_sync_stage == 7:
+                    with frame_profiler.section("map_sync:traffic_light_grid"):
+                        traffic_light_grid.rebuild(traffic_lights)
                     if args.auto_fetch:
                         with auto_fetch_manager.lock:
                             auto_fetch_manager._attempted_endpoints.clear()
-                    map_sync_stage = 2
-                elif map_sync_stage == 2:
-                    taxi_mgr.sync_map_data(ways, places=places, buildings=buildings)
-                    map_sync_stage = 3
-                elif map_sync_stage == 3:
-                    traffic_mgr.sync_map_data(
-                        ways,
-                        traffic_lights=traffic_lights,
-                        stop_signs=stop_signs,
-                        crossings=crossings,
-                        buildings=buildings,
-                        sceneries=sceneries,
-                    )
-                    map_sync_stage = 4
-                elif map_sync_stage == 4:
-                    pedestrian_mgr.sync_map_data(ways, traffic_lights=traffic_lights)
-                    pedestrian_mgr.set_venue_buildings(buildings)
-                    map_sync_stage = 5
-                elif map_sync_stage == 5:
+                    map_sync_stage = 8
+                elif map_sync_stage == 8:
+                    with frame_profiler.section("map_sync:taxi"):
+                        taxi_mgr.sync_map_data(ways, places=places, buildings=buildings)
+                    map_sync_stage = 9
+                elif map_sync_stage == 9:
+                    with frame_profiler.section("map_sync:traffic"):
+                        traffic_mgr.sync_map_data(
+                            ways,
+                            traffic_lights=traffic_lights,
+                            stop_signs=stop_signs,
+                            crossings=crossings,
+                            buildings=buildings,
+                            sceneries=sceneries,
+                        )
+                    map_sync_stage = 10
+                elif map_sync_stage == 10:
+                    with frame_profiler.section("map_sync:pedestrians"):
+                        pedestrian_mgr.sync_map_data(ways, traffic_lights=traffic_lights)
+                        pedestrian_mgr.set_venue_buildings(buildings)
+                    map_sync_stage = 11
+                elif map_sync_stage == 11:
+                    with frame_profiler.section("map_sync:finalize"):
+                        navigation_route_dirty = True
                     map_sync_stage = 0
-                    navigation_route_dirty = True
+                if map_sync_started is not None:
+                    frame_profiler.record(
+                        "map_sync",
+                        (time.perf_counter() - map_sync_started) * 1000.0,
+                    )
             current_target = taxi_mgr.get_current_target()
             if show_navigation and current_target:
                 target_key = (id(current_target), current_target.x, current_target.y)
@@ -1968,6 +1997,7 @@ def main() -> None:
                 spatial_grid=scenery_grid,
                 ways=ways,
                 road_spatial_grid=spatial_grid,
+                profiler=frame_profiler,
             )
             stage_elapsed = time.perf_counter() - map_stage_start
             render_profile_times["map_scenery"] = render_profile_times.get("map_scenery", 0.0) + stage_elapsed
@@ -1975,14 +2005,20 @@ def main() -> None:
             if first_gameplay_frame:
                 logger.info("Gameplay frame: rendering water")
             map_stage_start = time.perf_counter()
-            draw_waters(screen, waters, camx, camy, px_per_m=px_per_m, spatial_grid=water_grid)
+            draw_waters(
+                screen, waters, camx, camy, px_per_m=px_per_m,
+                spatial_grid=water_grid, profiler=frame_profiler,
+            )
             stage_elapsed = time.perf_counter() - map_stage_start
             render_profile_times["map_water"] = render_profile_times.get("map_water", 0.0) + stage_elapsed
             frame_profiler.record("render:water", stage_elapsed * 1000.0)
             if first_gameplay_frame:
                 logger.info("Gameplay frame: rendering roads")
             map_stage_start = time.perf_counter()
-            draw_ways(screen, ways, camx, camy, px_per_m=px_per_m, spatial_grid=spatial_grid)
+            draw_ways(
+                screen, ways, camx, camy, px_per_m=px_per_m,
+                spatial_grid=spatial_grid, profiler=frame_profiler,
+            )
             draw_parking_spaces(
                 screen,
                 parking_spaces,
@@ -2012,6 +2048,7 @@ def main() -> None:
                 px_per_m=px_per_m,
                 spatial_grid=building_grid,
                 places=places,
+                profiler=frame_profiler,
             )
             stage_elapsed = time.perf_counter() - map_stage_start
             render_profile_times["map_buildings"] = render_profile_times.get("map_buildings", 0.0) + stage_elapsed
@@ -2219,6 +2256,7 @@ def main() -> None:
                     scenery_grid=scenery_grid,
                     building_grid=building_grid,
                     label_mode=label_mode,
+                    profiler=frame_profiler,
                 )
             stage_elapsed = time.perf_counter() - render_profile_stage_start
             render_profile_times["labels"] = render_profile_times.get("labels", 0.0) + stage_elapsed
