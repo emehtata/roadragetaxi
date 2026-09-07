@@ -338,7 +338,7 @@ class WorldCacheManager:
 
     def preload_region(self, bbox, **kwargs) -> Future:
         """Load one combined streaming region instead of one request per tile."""
-        return self.preload(self.area_id(bbox), bbox, **kwargs)
+        return self.preload(self.area_id(bbox), bbox, allow_covering=False, **kwargs)
 
     def clear(self) -> int:
         """Delete all cached world files managed by this instance."""
@@ -390,6 +390,7 @@ class WorldCacheManager:
     def load_area(self, area_id: str, bbox=None, *, force_refresh: bool = False, **kwargs) -> Any:
         started = time.perf_counter()
         point = kwargs.pop("point", None)
+        allow_covering = kwargs.pop("allow_covering", True)
         logger.info(
             "[WorldCache] Lookup area=%s point=(lat=%.6f lon=%.6f) bbox=(lat_min=%.6f lon_min=%.6f lat_max=%.6f lon_max=%.6f) force_refresh=%s",
             area_id,
@@ -416,7 +417,7 @@ class WorldCacheManager:
                     pass
         elif path.exists() and not fresh:
             logger.info("[WorldCache] Cache expired %s", path)
-        if not force_refresh:
+        if not force_refresh and allow_covering:
             covering_world = self._load_covering_area(bbox, point=point)
             if covering_world is not None:
                 return covering_world

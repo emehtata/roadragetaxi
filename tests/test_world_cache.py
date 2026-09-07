@@ -87,6 +87,24 @@ def test_world_cache_manager_uses_covering_area_without_fetch(tmp_path, sample_w
     manager.close()
 
 
+def test_region_preload_does_not_use_covering_legacy_area(tmp_path, sample_world):
+    calls = []
+    sample_world.bounds = (0.0, 0.0, 100.0, 100.0)
+    manager = WorldCacheManager(
+        tmp_path,
+        fetch_func=lambda bbox, **kwargs: calls.append(bbox) or [],
+        build_func=lambda elements: sample_world,
+    )
+    legacy_id = "1p000000_2p000000_100p000000_200p000000"
+    manager.writer.write(manager.path_for(legacy_id), sample_world, area_id=legacy_id)
+
+    loaded = manager.preload_region((10.0, 10.0, 90.0, 90.0)).result()
+
+    assert loaded.bounds == sample_world.bounds
+    assert calls == [(10.0, 10.0, 90.0, 90.0)]
+    manager.close()
+
+
 def test_world_cache_manager_accepts_nearly_identical_tile_bbox(tmp_path, sample_world):
     calls = []
     sample_world.bounds = (0.0, 0.0, 100.0, 100.0)
