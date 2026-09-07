@@ -44,3 +44,18 @@ def test_navigation_route_connects_from_middle_of_long_road_segment():
 
     assert route is not None
     assert route[-1] == (200.0, 100.0)
+
+
+def test_sync_map_data_adds_streamed_road_to_route_graph():
+    streamed_road = Way(
+        points_m=[(0.0, 0.0), (100.0, 0.0)],
+        highway="residential",
+        half_width_m=4.0,
+        is_drivable=True,
+    )
+    world = TrafficWorld([])
+
+    world.sync_map_data([streamed_road])
+
+    assert (0.0, 0.0, 0) in world._route_nodes
+    assert world.plan_route((0.0, 0.0), (100.0, 0.0)) is not None

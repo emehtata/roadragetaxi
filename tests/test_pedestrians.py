@@ -29,6 +29,21 @@ def test_pedestrian_network_routes_across_connected_ways():
     assert network.nearest_point((8.0, 2.0)) == (8.0, 0.0)
 
 
+def test_sync_map_data_adds_streamed_footway():
+    initial_way = Way(
+        points_m=[(0.0, 0.0), (10.0, 0.0)], highway="footway", half_width_m=2.0,
+    )
+    streamed_way = Way(
+        points_m=[(20.0, 0.0), (30.0, 0.0)], highway="footway", half_width_m=2.0,
+    )
+    manager = PedestrianManager([initial_way], target_count=0)
+
+    manager.sync_map_data([initial_way, streamed_way])
+
+    assert streamed_way in manager.ped_ways
+    assert streamed_way in manager._spawn_ways
+
+
 def test_pedestrian_routes_and_spawns_stay_outside_buildings():
     ways = [Way(
         points_m=[(0.0, 0.0), (10.0, 0.0), (30.0, 0.0), (40.0, 0.0)],
