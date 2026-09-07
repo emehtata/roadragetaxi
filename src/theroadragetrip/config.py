@@ -283,7 +283,7 @@ def cities_from_config(config: configparser.ConfigParser) -> tuple[dict[str, tup
         if name not in catalog:
             continue
         centers[name] = catalog[name]
-    presets = {name.lower(): bbox_from_center(*center, size_km=0.5) for name, center in centers.items()}
+    presets = {name.lower(): bbox_from_center(*center, size_km=1.5) for name, center in centers.items()}
     return centers, presets
 
 

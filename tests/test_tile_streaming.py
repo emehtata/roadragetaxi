@@ -90,7 +90,7 @@ def test_start_tile_streaming_does_not_fetch_on_initial_same_tile_check():
     assert manager.is_fetching is False
 
 
-def test_initial_tile_streaming_starts_one_active_region_batch():
+def test_initial_tile_streaming_is_not_repeated_after_full_startup_region():
     class Transformer:
         def transform(self, x, y):
             return x, y
@@ -110,12 +110,8 @@ def test_initial_tile_streaming_starts_one_active_region_batch():
         [], (0.0, 0.0, 1000.0, 1000.0), Transformer(), world_cache_manager=cache,
     )
     manager.initialize_player_tile(500.0, 500.0)
-    assert manager.start_initial_tile_streaming()
-    deadline = time.time() + 2.0
-    while manager.is_fetching and time.time() < deadline:
-        time.sleep(0.01)
-
-    assert cache.calls == [(0.0, 0.0, 1500.0, 1500.0)]
+    assert manager.start_initial_tile_streaming() is False
+    assert cache.calls == []
 
 
 def test_world_cache_persists_tiles_by_coordinate(tmp_path):
@@ -244,7 +240,7 @@ def test_startup_world_is_registered_and_trimmed_to_active_tiles():
 
     assert manager.ways == [inside]
     assert len(manager.active_tiles) == 9
-    assert manager.loaded_tiles == set()
+    assert manager.loaded_tiles == manager.active_tiles
 
 
 def test_tile_map_revision_changes_when_streamed_map_changes():
