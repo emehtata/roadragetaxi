@@ -1,5 +1,6 @@
 import argparse
 import cProfile
+import concurrent.futures
 import json
 import logging
 import math
@@ -844,6 +845,8 @@ def main() -> None:
 
         def on_load_progress(fraction: float, message: str) -> None:
             nonlocal last_progress_draw
+            loading_state[0] = max(0.0, min(1.0, fraction))
+            loading_state[1] = message
             if threading.current_thread() is not threading.main_thread():
                 return
             now = time.monotonic()
@@ -857,6 +860,7 @@ def main() -> None:
                     pygame.quit()
                     sys.exit(0)
 
+        loading_state = [0.05, "Initializing scenery engine..."]
         on_load_progress(0.05, "Initializing scenery engine...")
 
         def on_build_progress(fraction: float, message: str) -> None:
@@ -876,21 +880,30 @@ def main() -> None:
                 ),
             )
             area_id = world_cache.area_id(bbox)
-            if args.use_sample:
-                on_load_progress(0.2, "Loading bundled offline sample data...")
-                elements = load_local_sample()
-                if elements is None:
-                    raise Exception("No local sample file found")
-                logger.info("Using local sample (via --use-sample)")
-                on_load_progress(0.5, f"Loaded {len(elements)} sample elements")
-                elements_count = len(elements)
-                res = build_ways(
-                    elements, progress_callback=on_build_progress, include_bus_stops=bus_stops_enabled
-                )
-            else:
-                res = world_cache.load_area(
+
+            def load_map_data():
+                if args.use_sample:
+                    on_load_progress(0.2, "Loading bundled offline sample data...")
+                    elements = load_local_sample()
+                    if elements is None:
+                        raise Exception("No local sample file found")
+                    logger.info("Using local sample (via --use-sample)")
+                    on_load_progress(0.5, f"Loaded {len(elements)} sample elements")
+                    result = build_ways(
+                        elements, progress_callback=on_build_progress, include_bus_stops=bus_stops_enabled
+                    )
+                    return result, len(elements)
+                return world_cache.load_area(
                     area_id, bbox, force_refresh=force_refresh or args.no_cache,
-                )
+                ), 0
+
+            load_executor = concurrent.futures.ThreadPoolExecutor(max_workers=1, thread_name_prefix="startup-map")
+            load_future = load_executor.submit(load_map_data)
+            while not load_future.done():
+                on_load_progress(loading_state[0], loading_state[1])
+                clock.tick(30)
+            res, elements_count = load_future.result()
+            load_executor.shutdown(wait=True)
             crossings = getattr(res, "crossings", [])
             stop_signs = getattr(res, "stop_signs", [])
             yield_signs = getattr(res, "yield_signs", [])
