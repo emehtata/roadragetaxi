@@ -993,6 +993,7 @@ def main() -> None:
             ways,
             traffic_lights=traffic_lights,
             crossings=crossings,
+            parking_spaces=parking_spaces,
             residents=residents,
         )
         # Initialize autonomous Pedestrian Manager
@@ -1958,6 +1959,7 @@ def main() -> None:
                             crossings=crossings,
                             buildings=buildings,
                             sceneries=sceneries,
+                            parking_spaces=parking_spaces,
                         )
                     map_sync_stage = 10
                 elif map_sync_stage == 10:

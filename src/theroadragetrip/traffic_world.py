@@ -19,6 +19,7 @@ class TrafficWorld:
         ways: List[Way],
         traffic_lights: Optional[List[TrafficLight]] = None,
         crossings: Optional[List] = None,
+        parking_spaces: Optional[List] = None,
         residents: Optional[ResidentManager] = None,
     ) -> None:
         self.ways = ways
@@ -32,7 +33,12 @@ class TrafficWorld:
         self._parking_grid_cell_size = 100.0
         self._route_nodes: List[Tuple[float, float, int]] = []
         self._route_edges: dict[int, List[Tuple[int, float]]] = {}
-        self.sync_map_data(ways, traffic_lights=traffic_lights, crossings=crossings)
+        self.sync_map_data(
+            ways,
+            traffic_lights=traffic_lights,
+            crossings=crossings,
+            parking_spaces=parking_spaces,
+        )
 
     def advance_time(self, dt: float) -> None:
         self.sim_time += dt
@@ -173,10 +179,21 @@ class TrafficWorld:
     def let_taxi_pick_up_waiter(self, taxi_stops, pedestrians, dt: float = 1.0 / 60.0) -> None:
         return None
 
-    def sync_map_data(self, ways, traffic_lights=None, crossings=None, **_kwargs) -> None:
+    def sync_map_data(self, ways, traffic_lights=None, crossings=None, parking_spaces=None, **_kwargs) -> None:
         self.ways = ways
         if traffic_lights is not None:
             self.traffic_lights = traffic_lights
         if crossings is not None:
             self.crossings = crossings
+        if parking_spaces is not None:
+            self._parking_grid.clear()
+            for space in parking_spaces:
+                min_x, min_y, max_x, max_y = space.bbox
+                min_cell_x = math.floor(min_x / self._parking_grid_cell_size)
+                max_cell_x = math.floor(max_x / self._parking_grid_cell_size)
+                min_cell_y = math.floor(min_y / self._parking_grid_cell_size)
+                max_cell_y = math.floor(max_y / self._parking_grid_cell_size)
+                for cell_x in range(min_cell_x, max_cell_x + 1):
+                    for cell_y in range(min_cell_y, max_cell_y + 1):
+                        self._parking_grid.setdefault((cell_x, cell_y), []).append(space)
         self._build_route_graph()
