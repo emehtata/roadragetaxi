@@ -265,6 +265,7 @@ class Building:
     housenumber: Optional[str] = None
     street: Optional[str] = None
     height_m: float = 8.0
+    levels: Optional[int] = None
     bbox: Tuple[float, float, float, float] = (0.0, 0.0, 0.0, 0.0)
     venue_type: Optional[str] = None
     center_m: Tuple[float, float] = (0.0, 0.0)
@@ -344,6 +345,14 @@ def _building_height(tags: Dict[str, Any], points: List[Tuple[float, float]]) ->
     ys = [point[1] for point in points]
     footprint_scale = math.sqrt(max(0.0, (max(xs) - min(xs)) * (max(ys) - min(ys))))
     return min(24.0, 5.0 + footprint_scale * 0.18)
+
+def _building_levels(tags: Dict[str, Any]) -> Optional[int]:
+    raw_levels = tags.get("building:levels") or tags.get("levels")
+    try:
+        levels = int(float(raw_levels))
+    except (TypeError, ValueError):
+        return None
+    return max(1, min(levels, 40)) if levels > 0 else None
 
 
 @dataclass
@@ -1576,8 +1585,13 @@ def build_ways(
             housenumber=housenumber,
             street=street,
             height_m=_building_height(tags, pts),
+            levels=_building_levels(tags),
             bbox=ibbox,
-            venue_type=tags.get("amenity"),
+            venue_type=tags.get("amenity") or tags.get("shop") or (
+                tags.get("building")
+                if tags.get("building") in {"commercial", "retail", "shop"}
+                else None
+            ),
             center_m=(center_x, center_y),
             texture_seed=abs(math.sin(center_x * 0.013 + center_y * 0.017)),
             entrances=entrances,
@@ -1826,8 +1840,13 @@ def build_ways(
                     housenumber=housenumber,
                     street=street,
                     height_m=_building_height(tags, pts),
+                    levels=_building_levels(tags),
                     bbox=ibbox,
-                    venue_type=tags.get("amenity"),
+                    venue_type=tags.get("amenity") or tags.get("shop") or (
+                        tags.get("building")
+                        if tags.get("building") in {"commercial", "retail", "shop"}
+                        else None
+                    ),
                     center_m=(center_x, center_y),
                     texture_seed=abs(math.sin(center_x * 0.013 + center_y * 0.017)),
                 ))

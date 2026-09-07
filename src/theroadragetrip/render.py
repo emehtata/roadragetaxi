@@ -38,9 +38,15 @@ SCENERY_COLORS = {
 TREE_CROWN_COLORS = ((25, 78, 29), (34, 101, 35), (48, 119, 42), (63, 112, 34))
 BUILDING_WALL_COLORS = ((158, 105, 82), (174, 166, 143), (116, 131, 119), (139, 139, 137))
 BUILDING_ROOF_COLORS = ((92, 57, 48), (102, 96, 82), (66, 83, 69), (83, 86, 87))
+COMMERCIAL_AMENITIES = {
+    "bar", "biergarten", "cafe", "fast_food", "food_court", "ice_cream",
+    "nightclub", "pub", "restaurant",
+}
+COMMERCIAL_BUILDING_TYPES = {"commercial", "retail", "shop"}
 MAX_VISIBLE_STREET_LIGHTS = 400
 STREET_LIGHT_SPACING_M = 12.0
 STREET_LIGHT_JUNCTION_CLEARANCE_M = 3.0
+CACHE_PADDING_PX = 96
 STREET_LIGHT_REFLECTOR_RADIUS_M = 10.0
 STREET_LIGHT_SHADE_COLOR = (0, 0, 0)
 STREET_LIGHT_BUILDING_DISTANCE_M = 200.0
@@ -92,6 +98,18 @@ _street_light_last_debug_log_ms = 0
 _reusable_alpha_surfaces = {}
 _smoke_surface_cache = {}
 _label_surface_cache = {}
+_label_frame_cache_key = None
+_label_frame_cache_surface = None
+_label_frame_cache_camera = None
+_building_frame_cache_key = None
+_building_frame_cache_surface = None
+_building_frame_cache_camera = None
+_scenery_frame_cache_key = None
+_scenery_frame_cache_surface = None
+_scenery_frame_cache_camera = None
+_water_frame_cache_key = None
+_water_frame_cache_surface = None
+_water_frame_cache_camera = None
 _road_frame_cache_key = None
 _road_frame_cache_surface = None
 _road_frame_cache_camera = None
@@ -100,6 +118,7 @@ _rage_face_frames = None
 _rage_face_path = os.path.join(os.path.dirname(__file__), "assets", "ragefaceatlas.png")
 _speedometer_font = None
 _speedometer_label_font = None
+_building_sign_font_cache = {}
 
 
 def _reusable_alpha_surface(pygame, key, size):
@@ -552,6 +571,60 @@ def draw_scenery(
     ways: Optional[List[Way]] = None,
     road_spatial_grid=None,
 ) -> None:
+    """Draw cached static scenery, or dynamic tree effects when active."""
+    import pygame
+
+    if tree_effects or fallen_trees:
+        _draw_scenery_uncached(
+            screen, sceneries, camx, camy, px_per_m, screen_w, screen_h,
+            tree_effects, fallen_trees, spatial_grid, ways, road_spatial_grid,
+        )
+        return
+
+    global _scenery_frame_cache_key, _scenery_frame_cache_surface, _scenery_frame_cache_camera
+    frame_cache_key = (
+        id(sceneries), len(sceneries), id(sceneries[-1]) if sceneries else None,
+        id(ways), id(spatial_grid), id(road_spatial_grid),
+        round(camx * px_per_m / 128.0), round(camy * px_per_m / 128.0),
+        px_per_m, screen.get_size(),
+    )
+    if frame_cache_key == _scenery_frame_cache_key and _scenery_frame_cache_surface is not None:
+        cached_camx, cached_camy = _scenery_frame_cache_camera
+        screen.blit(
+            _scenery_frame_cache_surface,
+            (
+                round((cached_camx - camx) * px_per_m) - CACHE_PADDING_PX,
+                round((camy - cached_camy) * px_per_m) - CACHE_PADDING_PX,
+            ),
+        )
+        return
+    cache_width = screen_w + CACHE_PADDING_PX * 2
+    cache_height = screen_h + CACHE_PADDING_PX * 2
+    cache_surface = pygame.Surface((cache_width, cache_height), pygame.SRCALPHA)
+    _draw_scenery_uncached(
+        cache_surface, sceneries, camx, camy, px_per_m, cache_width, cache_height,
+        None, None, spatial_grid, ways, road_spatial_grid,
+    )
+    _scenery_frame_cache_key = frame_cache_key
+    _scenery_frame_cache_surface = cache_surface
+    _scenery_frame_cache_camera = (camx, camy)
+    screen.blit(cache_surface, (-CACHE_PADDING_PX, -CACHE_PADDING_PX))
+
+
+def _draw_scenery_uncached(
+    screen,
+    sceneries: List[Scenery],
+    camx: float,
+    camy: float,
+    px_per_m: float = PX_PER_M,
+    screen_w: int = SCREEN_W,
+    screen_h: int = SCREEN_H,
+    tree_effects=None,
+    fallen_trees=None,
+    spatial_grid=None,
+    ways: Optional[List[Way]] = None,
+    road_spatial_grid=None,
+) -> None:
     """Draw parks, forests, and green spaces intersecting viewport."""
     import pygame
 
@@ -810,6 +883,47 @@ def draw_waters(
     screen_h: int = SCREEN_H,
     spatial_grid=None,
 ) -> None:
+    """Draw cached static water geometry."""
+    import pygame
+
+    global _water_frame_cache_key, _water_frame_cache_surface, _water_frame_cache_camera
+    frame_cache_key = (
+        id(waters), len(waters), id(waters[-1]) if waters else None,
+        id(spatial_grid), round(camx * px_per_m / 128.0), round(camy * px_per_m / 128.0),
+        px_per_m, screen.get_size(),
+    )
+    if frame_cache_key == _water_frame_cache_key and _water_frame_cache_surface is not None:
+        cached_camx, cached_camy = _water_frame_cache_camera
+        screen.blit(
+            _water_frame_cache_surface,
+            (
+                round((cached_camx - camx) * px_per_m) - CACHE_PADDING_PX,
+                round((camy - cached_camy) * px_per_m) - CACHE_PADDING_PX,
+            ),
+        )
+        return
+    cache_width = screen_w + CACHE_PADDING_PX * 2
+    cache_height = screen_h + CACHE_PADDING_PX * 2
+    cache_surface = pygame.Surface((cache_width, cache_height), pygame.SRCALPHA)
+    _draw_waters_uncached(
+        cache_surface, waters, camx, camy, px_per_m, cache_width, cache_height, spatial_grid,
+    )
+    _water_frame_cache_key = frame_cache_key
+    _water_frame_cache_surface = cache_surface
+    _water_frame_cache_camera = (camx, camy)
+    screen.blit(cache_surface, (-CACHE_PADDING_PX, -CACHE_PADDING_PX))
+
+
+def _draw_waters_uncached(
+    screen,
+    waters: List[Water],
+    camx: float,
+    camy: float,
+    px_per_m: float = PX_PER_M,
+    screen_w: int = SCREEN_W,
+    screen_h: int = SCREEN_H,
+    spatial_grid=None,
+) -> None:
     """Draw water polygons and waterways intersecting viewport."""
     import pygame
 
@@ -853,6 +967,61 @@ def draw_buildings(
     screen_w: int = SCREEN_W,
     screen_h: int = SCREEN_H,
     spatial_grid=None,
+    places: Optional[List[Place]] = None,
+) -> None:
+    """Draw cached static building geometry and facade details."""
+    import pygame
+
+    global _building_frame_cache_key, _building_frame_cache_surface, _building_frame_cache_camera
+    frame_cache_key = (
+        id(buildings),
+        len(buildings),
+        id(buildings[-1]) if buildings else None,
+        id(places),
+        len(places) if places else 0,
+        id(spatial_grid),
+        round(camx * px_per_m / 128.0),
+        round(camy * px_per_m / 128.0),
+        px_per_m,
+        screen.get_size(),
+    )
+    if frame_cache_key == _building_frame_cache_key and _building_frame_cache_surface is not None:
+        cached_camx, cached_camy = _building_frame_cache_camera
+        offset_x = round((cached_camx - camx) * px_per_m) - CACHE_PADDING_PX
+        offset_y = round((camy - cached_camy) * px_per_m) - CACHE_PADDING_PX
+        screen.blit(_building_frame_cache_surface, (offset_x, offset_y))
+        return
+
+    cache_width = screen_w + CACHE_PADDING_PX * 2
+    cache_height = screen_h + CACHE_PADDING_PX * 2
+    cache_surface = pygame.Surface((cache_width, cache_height), pygame.SRCALPHA)
+    _draw_buildings_uncached(
+        cache_surface,
+        buildings,
+        camx,
+        camy,
+        px_per_m=px_per_m,
+        screen_w=cache_width,
+        screen_h=cache_height,
+        spatial_grid=spatial_grid,
+        places=places,
+    )
+    _building_frame_cache_key = frame_cache_key
+    _building_frame_cache_surface = cache_surface
+    _building_frame_cache_camera = (camx, camy)
+    screen.blit(cache_surface, (-CACHE_PADDING_PX, -CACHE_PADDING_PX))
+
+
+def _draw_buildings_uncached(
+    screen,
+    buildings: List[Building],
+    camx: float,
+    camy: float,
+    px_per_m: float = PX_PER_M,
+    screen_w: int = SCREEN_W,
+    screen_h: int = SCREEN_H,
+    spatial_grid=None,
+    places: Optional[List[Place]] = None,
 ) -> None:
     """Draw building footprints intersecting viewport."""
     import pygame
@@ -872,10 +1041,14 @@ def draw_buildings(
         if len(b.points_m) < 3:
             continue
         pts = [world_to_screen(x, y, camx, camy, px_per_m, screen_w, screen_h) for (x, y) in b.points_m]
-        if px_per_m <= 1.5:
+        if px_per_m <= 0.45:
             pygame.draw.polygon(screen, BUILDING_ROOF_COLORS[0], pts)
             continue
         height = max(3.0, float(getattr(b, "height_m", 8.0)))
+        level_count = getattr(b, "levels", None)
+        if level_count is None:
+            level_count = max(1, round((height - 1.5) / 3.2))
+        level_count = max(1, min(40, int(level_count)))
         depth = min(30, max(3, int(height * 0.35 * px_per_m)))
         roof = [(x - depth * 0.7, y - depth) for x, y in pts]
 
@@ -927,6 +1100,38 @@ def draw_buildings(
             ),
             default=-1,
         )
+        entrance_edge_indices = set()
+        for entrance_x, entrance_y in getattr(b, "entrances", ()):
+            entrance_edge_indices.add(min(
+                range(len(b.points_m)),
+                key=lambda candidate: dist_point_to_segment(
+                    entrance_x,
+                    entrance_y,
+                    b.points_m[candidate][0],
+                    b.points_m[candidate][1],
+                    b.points_m[(candidate + 1) % len(b.points_m)][0],
+                    b.points_m[(candidate + 1) % len(b.points_m)][1],
+                ),
+                default=-1,
+            ))
+        has_named_venue = bool(
+            places
+            and any(
+                getattr(place, "name", None)
+                and getattr(place, "kind", "") not in {
+                    "suburb", "neighbourhood", "quarter", "village", "town", "city",
+                }
+                and point_in_polygon(place.x, place.y, b.points_m)
+                for place in places
+            )
+        )
+        is_commercial = (
+            getattr(b, "venue_type", None) in COMMERCIAL_AMENITIES
+            or getattr(b, "venue_type", None) in COMMERCIAL_BUILDING_TYPES
+            or bool(getattr(b, "venue_type", None)) and getattr(b, "venue_type", "") not in {"school", "hospital", "place_of_worship"}
+            or has_named_venue and bool(getattr(b, "entrances", ()))
+        )
+        storefront_edges = entrance_edge_indices or ({window_edge} if is_commercial else set())
         for index, point in enumerate(pts):
             next_point = pts[(index + 1) % len(pts)]
             roof_point = roof[index]
@@ -934,7 +1139,7 @@ def draw_buildings(
             midpoint_x = (point[0] + next_point[0]) * 0.5
             midpoint_y = (point[1] + next_point[1]) * 0.5
             frontness = (midpoint_x - centroid_x) * -roof_dx + (midpoint_y - centroid_y) * -roof_dy
-            if index not in visible_edges or index != window_edge:
+            if index not in visible_edges or (index != window_edge and index not in storefront_edges):
                 continue
             edge_x = next_point[0] - point[0]
             edge_y = next_point[1] - point[1]
@@ -945,26 +1150,44 @@ def draw_buildings(
             edge_y /= edge_length
             roof_x = roof_point[0] - point[0]
             roof_y = roof_point[1] - point[1]
-            window_count = min(3, max(1, int(edge_length // 32)))
-
-            for window_index in range(window_count):
-                center = (window_index + 1) / (window_count + 1)
-                center_x = point[0] + (next_point[0] - point[0]) * center + roof_x * 0.42
-                center_y = point[1] + (next_point[1] - point[1]) * center + roof_y * 0.42
-                window_width = min(10.0, edge_length / (window_count + 2) * 0.45)
-                half_width = window_width / 2
-                window_height = max(3.0, min(7.0, abs(roof_y) * 0.22))
-                pane_x = -roof_x * window_height / max(abs(roof_y), 1.0)
-                pane_y = -roof_y * window_height / max(abs(roof_y), 1.0)
-                window = [
-                    (center_x - edge_x * half_width, center_y - edge_y * half_width),
-                    (center_x + edge_x * half_width, center_y + edge_y * half_width),
-                    (center_x + edge_x * half_width + pane_x, center_y + edge_y * half_width + pane_y),
-                    (center_x - edge_x * half_width + pane_x, center_y - edge_y * half_width + pane_y),
-                ]
-                pygame.draw.polygon(screen, (52, 82, 91), window)
-                pygame.draw.lines(screen, (25, 42, 47), True, window, 1)
-                pygame.draw.line(screen, (155, 180, 178), window[0], window[2], 1)
+            is_storefront = is_commercial and index in storefront_edges
+            window_count = min(5 if is_storefront else 3, max(1 if not is_storefront else 2, int(edge_length // (18 if is_storefront else 32))))
+            for floor_index in range(level_count):
+                floor_is_storefront = is_storefront and floor_index == 0
+                floor_position = (
+                    0.12 + 0.22 / level_count
+                    if floor_is_storefront
+                    else 0.18 + 0.64 * (floor_index + 0.5) / level_count
+                )
+                for window_index in range(window_count):
+                    center = (window_index + 1) / (window_count + 1)
+                    center_x = point[0] + (next_point[0] - point[0]) * center + roof_x * floor_position
+                    center_y = point[1] + (next_point[1] - point[1]) * center + roof_y * floor_position
+                    window_width = min(18.0 if floor_is_storefront else 10.0, edge_length / (window_count + 2) * (0.68 if floor_is_storefront else 0.45))
+                    half_width = window_width / 2
+                    window_height = max(
+                        6.0 if floor_is_storefront else 3.0,
+                        min(
+                            16.0 if floor_is_storefront else 7.0,
+                            abs(roof_y) * (0.78 if floor_is_storefront else 0.22) / level_count,
+                        ),
+                    )
+                    pane_x = -roof_x * window_height / max(abs(roof_y), 1.0)
+                    pane_y = -roof_y * window_height / max(abs(roof_y), 1.0)
+                    window = [
+                        (center_x - edge_x * half_width, center_y - edge_y * half_width),
+                        (center_x + edge_x * half_width, center_y + edge_y * half_width),
+                        (center_x + edge_x * half_width + pane_x, center_y + edge_y * half_width + pane_y),
+                        (center_x - edge_x * half_width + pane_x, center_y - edge_y * half_width + pane_y),
+                    ]
+                    pygame.draw.polygon(screen, (62, 122, 137) if floor_is_storefront else (52, 82, 91), window)
+                    pygame.draw.lines(screen, (25, 42, 47), True, window, 1)
+                    pygame.draw.line(screen, (155, 180, 178), window[0], window[2], 1)
+                if floor_index < level_count - 1:
+                    divider_position = 0.18 + 0.64 * (floor_index + 1) / level_count
+                    divider_start = (point[0] + roof_x * divider_position, point[1] + roof_y * divider_position)
+                    divider_end = (next_point[0] + (next_roof[0] - next_point[0]) * divider_position, next_point[1] + (next_roof[1] - next_point[1]) * divider_position)
+                    pygame.draw.line(screen, (82, 75, 68), divider_start, divider_end, 1)
 
         for entrance_x, entrance_y in getattr(b, "entrances", ()):
             edge_distances = [
@@ -1017,6 +1240,94 @@ def draw_buildings(
             pygame.draw.polygon(screen, (58, 48, 42), door)
             pygame.draw.lines(screen, (32, 28, 25), True, door, 1)
 
+        if places and px_per_m > 0.45:
+            global _building_sign_font_cache
+            sign_font_size = max(12, min(40, round(12.0 * px_per_m / 0.7)))
+            sign_font = _building_sign_font_cache.get(sign_font_size)
+            if sign_font is None:
+                sign_font = pygame.font.SysFont(None, sign_font_size, bold=True)
+                _building_sign_font_cache[sign_font_size] = sign_font
+            building_places = [
+                place for place in places
+                if getattr(place, "name", None)
+                and getattr(place, "kind", "") not in {
+                    "suburb", "neighbourhood", "quarter", "village", "town", "city",
+                }
+                and point_in_polygon(place.x, place.y, b.points_m)
+            ]
+            for place in building_places:
+                anchor_x, anchor_y = place.x, place.y
+                entrances = getattr(b, "entrances", ())
+                if entrances:
+                    anchor_x, anchor_y = min(
+                        entrances,
+                        key=lambda entrance: (entrance[0] - place.x) ** 2 + (entrance[1] - place.y) ** 2,
+                    )
+                edge_index = min(
+                    range(len(b.points_m)),
+                    key=lambda candidate: dist_point_to_segment(
+                        anchor_x,
+                        anchor_y,
+                        b.points_m[candidate][0],
+                        b.points_m[candidate][1],
+                        b.points_m[(candidate + 1) % len(b.points_m)][0],
+                        b.points_m[(candidate + 1) % len(b.points_m)][1],
+                    ),
+                    default=-1,
+                )
+                if edge_index < 0 or edge_index not in visible_edges:
+                    continue
+                point = pts[edge_index]
+                next_point = pts[(edge_index + 1) % len(pts)]
+                roof_point = roof[edge_index]
+                next_roof = roof[(edge_index + 1) % len(roof)]
+                edge_x = next_point[0] - point[0]
+                edge_y = next_point[1] - point[1]
+                edge_length = math.hypot(edge_x, edge_y)
+                if edge_length < 14.0:
+                    continue
+                edge_x /= edge_length
+                edge_y /= edge_length
+                wall_depth_x = roof_point[0] - point[0]
+                wall_depth_y = roof_point[1] - point[1]
+                wall_depth = math.hypot(wall_depth_x, wall_depth_y)
+                if wall_depth < 4.0:
+                    continue
+                wall_normal_x = wall_depth_x / wall_depth
+                wall_normal_y = wall_depth_y / wall_depth
+                sign_center_x, sign_center_y = world_to_screen(
+                    anchor_x, anchor_y, camx, camy, px_per_m, screen_w, screen_h
+                )
+                sign_center_x += wall_depth_x * 0.64
+                sign_center_y += wall_depth_y * 0.64
+                text_surface = sign_font.render(place.name, True, (250, 239, 190))
+                sign_width = min(text_surface.get_width() + 8, max(18, int(edge_length * 0.72)))
+                sign_depth = max(6, min(18, int(wall_depth * 0.28)))
+                if text_surface.get_width() + 8 > sign_width:
+                    text_surface = pygame.transform.smoothscale(
+                        text_surface,
+                        (max(4, sign_width - 8), max(4, sign_depth - 2)),
+                    )
+                angle = math.degrees(math.atan2(-edge_y, edge_x))
+                if angle > 90.0:
+                    angle -= 180.0
+                elif angle < -90.0:
+                    angle += 180.0
+                text_surface = pygame.transform.rotate(text_surface, angle)
+                tangent_x = edge_x * sign_width * 0.5
+                tangent_y = edge_y * sign_width * 0.5
+                depth_x = wall_normal_x * sign_depth * 0.5
+                depth_y = wall_normal_y * sign_depth * 0.5
+                sign_corners = [
+                    (round(sign_center_x - tangent_x - depth_x), round(sign_center_y - tangent_y - depth_y)),
+                    (round(sign_center_x + tangent_x - depth_x), round(sign_center_y + tangent_y - depth_y)),
+                    (round(sign_center_x + tangent_x + depth_x), round(sign_center_y + tangent_y + depth_y)),
+                    (round(sign_center_x - tangent_x + depth_x), round(sign_center_y - tangent_y + depth_y)),
+                ]
+                pygame.draw.polygon(screen, (40, 31, 22, 245), sign_corners)
+                pygame.draw.lines(screen, (211, 169, 70, 255), True, sign_corners, 1)
+                screen.blit(text_surface, text_surface.get_rect(center=(round(sign_center_x), round(sign_center_y))))
+
 
 def draw_ways(
     screen,
@@ -1036,8 +1347,8 @@ def draw_ways(
         id(ways),
         len(ways),
         id(ways[-1]) if ways else None,
-        round(camx * px_per_m / 16.0),
-        round(camy * px_per_m / 16.0),
+        round(camx * px_per_m / 128.0),
+        round(camy * px_per_m / 128.0),
         px_per_m,
         screen_w,
         screen_h,
@@ -1047,13 +1358,17 @@ def draw_ways(
         screen.blit(
             _road_frame_cache_surface,
             (
-                round((cached_camx - camx) * px_per_m),
-                round((camy - cached_camy) * px_per_m),
+                round((cached_camx - camx) * px_per_m) - CACHE_PADDING_PX,
+                round((camy - cached_camy) * px_per_m) - CACHE_PADDING_PX,
             ),
         )
         return
     destination_screen = screen
-    screen = pygame.Surface((screen_w, screen_h), pygame.SRCALPHA)
+    cache_width = screen_w + CACHE_PADDING_PX * 2
+    cache_height = screen_h + CACHE_PADDING_PX * 2
+    screen = pygame.Surface((cache_width, cache_height), pygame.SRCALPHA)
+    screen_w = cache_width
+    screen_h = cache_height
 
     vminx, vminy, vmaxx, vmaxy = get_viewport_bounds(camx, camy, px_per_m, screen_w, screen_h, 60.0)
 
@@ -1504,7 +1819,7 @@ def draw_ways(
                     if is_side_edge(edge_start, edge_end):
                         pygame.draw.line(screen, edge_color, edge_start, edge_end, edge_width)
 
-    destination_screen.blit(screen, (0, 0))
+    destination_screen.blit(screen, (-CACHE_PADDING_PX, -CACHE_PADDING_PX))
     _road_frame_cache_key = road_cache_key
     _road_frame_cache_surface = screen
     _road_frame_cache_camera = (camx, camy)
@@ -1917,16 +2232,13 @@ def draw_street_lights(
             pygame.draw.circle(light_layer, STREET_LIGHT_CORE_COLOR, lamp_center, lamp_radius)
             if shade_radius:
                 pygame.draw.circle(light_layer, STREET_LIGHT_SHADE_COLOR, lamp_center, shade_radius)
+            pygame.draw.circle(light_layer, STREET_LIGHT_CORE_COLOR[:3], lamp_center, lamp_radius)
         _street_light_frame_cache_key = frame_cache_key
         _street_light_frame_cache_surface = light_layer
         _street_light_frame_pool_surface = pool_add_layer
         _street_light_frame_cache_camera = (camx, camy)
         screen.blit(pool_add_layer, (0, 0), special_flags=pygame.BLEND_RGB_ADD)
         screen.blit(light_layer, (0, 0))
-        for lamp_center in lamp_centers:
-            pygame.draw.circle(screen, STREET_LIGHT_CORE_COLOR[:3], lamp_center, lamp_radius)
-            if shade_radius:
-                pygame.draw.circle(screen, STREET_LIGHT_SHADE_COLOR, lamp_center, shade_radius)
         if _render_logger.isEnabledFor(logging.DEBUG):
             now_ms = pygame.time.get_ticks()
             if now_ms - _street_light_last_debug_log_ms >= 1000:
@@ -2369,9 +2681,44 @@ def draw_labels(
     building_grid=None,
     label_mode: int = 2,
 ) -> None:
-    """Draw selected map labels with decluttering and collision avoidance."""
+    """Draw cached map labels with decluttering and collision avoidance."""
+    import pygame
+
+    global _label_frame_cache_key, _label_frame_cache_surface, _label_frame_cache_camera
+    frame_cache_key = (
+        id(font),
+        id(ways),
+        len(ways),
+        id(waters),
+        len(waters),
+        id(buildings),
+        len(buildings),
+        id(sceneries),
+        len(sceneries),
+        id(places),
+        len(places),
+        id(spatial_grid),
+        id(scenery_grid),
+        id(building_grid),
+        round(camx * px_per_m / 128.0),
+        round(camy * px_per_m / 128.0),
+        px_per_m,
+        max_labels,
+        label_mode,
+        screen.get_size(),
+    )
+    if frame_cache_key == _label_frame_cache_key and _label_frame_cache_surface is not None:
+        cached_camx, cached_camy = _label_frame_cache_camera
+        offset_x = round((cached_camx - camx) * px_per_m) - CACHE_PADDING_PX
+        offset_y = round((camy - cached_camy) * px_per_m) - CACHE_PADDING_PX
+        screen.blit(_label_frame_cache_surface, (offset_x, offset_y))
+        return
+
+    cache_width = screen_w + CACHE_PADDING_PX * 2
+    cache_height = screen_h + CACHE_PADDING_PX * 2
+    cache_surface = pygame.Surface((cache_width, cache_height), pygame.SRCALPHA)
     _draw_labels_uncached(
-        screen,
+        cache_surface,
         font,
         ways,
         waters,
@@ -2381,14 +2728,18 @@ def draw_labels(
         camx,
         camy,
         px_per_m,
-        screen_w,
-        screen_h,
+        cache_width,
+        cache_height,
         max_labels,
         spatial_grid,
         scenery_grid,
         building_grid,
         label_mode,
     )
+    _label_frame_cache_key = frame_cache_key
+    _label_frame_cache_surface = cache_surface
+    _label_frame_cache_camera = (camx, camy)
+    screen.blit(cache_surface, (-CACHE_PADDING_PX, -CACHE_PADDING_PX))
 
 
 def _draw_labels_uncached(

@@ -35,6 +35,7 @@ Important implementation details for an AI agent
 - Waters parsed from `natural=water`, `waterway`, `landuse=reservoir`, and relation multipolygons.
 - Widths: see `HIGHWAY_HALF_WIDTH` (half-width meters). Rendering thickness = half_width * 2 * PX_PER_M.
 - Units: internal geometry uses meters (EPSG:3067) and rendering scales meters→pixels via `PX_PER_M`.
+- Static rendering: every static world layer (roads, water, scenery, buildings, facade windows/signs, and labels) must use a frame cache. Cache keys must include all geometry/data inputs, viewport size, and zoom (`px_per_m`); cached geometry, font sizes, sprite sizes, and surfaces must scale with zoom. Dynamic objects/effects may bypass cache only when they animate or change every frame.
 - CLI & controls: supports `--bbox`, `--preset`, `--no-menu`, `--force-refresh`, `--use-sample`, `--cache-ttl`, `--px-per-m`, `--log-level`, `--no-cache`, `--auto-fetch`, `--no-auto-fetch`, `--fetch-margin`, `--fetch-tile-size`, `--traffic-count`, `--pedestrian-count`.
 - In-game controls: WASD / Arrows to drive, `+/-` to zoom, `R` to respawn, `X` to discard fare, `T` to reset trip meter, `L` to toggle labels, `K` to toggle lane assist, `Esc` for pause menu.
 

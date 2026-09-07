@@ -34,7 +34,7 @@ def test_build_ways_buildings_and_scenery_and_names():
             "type": "way",
             "id": 20,
             "nodes": [3, 4, 5, 6, 3],
-            "tags": {"building": "yes", "name": "Town Hall"},
+            "tags": {"building": "yes", "name": "Town Hall", "building:levels": "3"},
         },
         {"type": "node", "id": 7, "lat": 60.004, "lon": 25.004},
         {"type": "node", "id": 8, "lat": 60.005, "lon": 25.004},
@@ -67,6 +67,7 @@ def test_build_ways_buildings_and_scenery_and_names():
 
     assert len(buildings) == 1
     assert buildings[0].name == "Town Hall"
+    assert buildings[0].levels == 3
     assert len(buildings[0].points_m) == 5
 
     assert len(sceneries) == 1

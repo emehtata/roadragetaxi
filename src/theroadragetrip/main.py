@@ -2004,7 +2004,15 @@ def main() -> None:
             if first_gameplay_frame:
                 logger.info("Gameplay frame: rendering buildings")
             map_stage_start = time.perf_counter()
-            draw_buildings(screen, buildings, camx, camy, px_per_m=px_per_m, spatial_grid=building_grid)
+            draw_buildings(
+                screen,
+                buildings,
+                camx,
+                camy,
+                px_per_m=px_per_m,
+                spatial_grid=building_grid,
+                places=places,
+            )
             stage_elapsed = time.perf_counter() - map_stage_start
             render_profile_times["map_buildings"] = render_profile_times.get("map_buildings", 0.0) + stage_elapsed
             frame_profiler.record("render:buildings", stage_elapsed * 1000.0)
