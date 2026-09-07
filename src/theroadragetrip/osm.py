@@ -53,9 +53,9 @@ def bbox_from_center(lat: float, lon: float, size_km: float = 4.0) -> Tuple[floa
 
 
 # Bounding box presets: south, west, north, east (lat/lon).
-# Startup loads the complete 1.5 km active region; later transitions stream tiles.
+# Startup loads the complete 3 km active region; later transitions stream tiles.
 BBOX_PRESETS: Dict[str, Tuple[float, float, float, float]] = {
-    name.lower(): bbox_from_center(lat, lon, size_km=1.5)
+    name.lower(): bbox_from_center(lat, lon, size_km=3.0)
     for name, (lat, lon) in CITY_CENTERS.items()
 }
 DEFAULT_BBOX = BBOX_PRESETS["oulu"]

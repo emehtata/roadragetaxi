@@ -151,7 +151,7 @@ roadworks_enabled = false
 overpass_endpoints = https://overpass-api.de/api/interpreter, https://overpass.private.coffee/api/interpreter, https://overpass.openstreetmap.fr/api/interpreter
 auto_fetch = true
 fetch_margin = 350.0
-fetch_tile_size = 500.0
+fetch_tile_size = 1000.0
 build_in_process = true
 
 [traffic]
@@ -272,7 +272,7 @@ The pause menu's **Settings** screen changes language and master, background, an
 | `--auto-fetch` | Enable non-blocking background tile fetching near bounds |
 | `--no-auto-fetch` | Disable on-demand background map expansion |
 | `--fetch-margin` | Minimum margin in meters from bounds triggering auto-fetch; fast driving extends this with an 8-second lookahead (default: `350.0`) |
-| `--fetch-tile-size`| Meters to expand when auto-fetching (default: `2500.0`) |
+| `--fetch-tile-size`| Base auto-fetch tile size in meters (default: `1000.0`) |
 | `--build-in-process` | Build auto-fetched map data outside the gameplay process |
 | `--pedestrian-count` | Target number of pedestrians (default: `20`) |
 

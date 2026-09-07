@@ -15,12 +15,12 @@ import time
 
 
 def test_world_to_tile_uses_floor_for_negative_coordinates():
-    assert world_to_tile(499.9, 500.0) == TileCoord(0, 1)
-    assert world_to_tile(-0.1, -500.0) == TileCoord(-1, -1)
+    assert world_to_tile(999.9, 1000.0) == TileCoord(0, 1)
+    assert world_to_tile(-0.1, -1000.0) == TileCoord(-1, -1)
 
 
 def test_tile_bbox_is_deterministic_in_world_coordinates():
-    assert tile_bbox(TileCoord(-2, 3)) == (-1000.0, 1500.0, -500.0, 2000.0)
+    assert tile_bbox(TileCoord(-2, 3)) == (-2000.0, 3000.0, -1000.0, 4000.0)
 
 
 def test_active_tiles_contains_exactly_nine_tiles():
@@ -69,14 +69,14 @@ def test_auto_fetch_manager_tracks_tile_transitions_without_repeating_same_tile(
 
     initial = manager.update_player_tile(500.0, 500.0)
     assert initial is not None
-    assert initial[0] == TileCoord(1, 1)
+    assert initial[0] == TileCoord(0, 0)
     assert len(initial[1]) == 9
     assert initial[2] == set()
     assert manager.update_player_tile(999.0, 999.0) is None
 
     east = manager.update_player_tile(1000.0, 500.0)
     assert east is not None
-    assert east[0] == TileCoord(2, 1)
+    assert east[0] == TileCoord(1, 0)
     assert len(east[1]) == 3
     assert len(east[2]) == 3
 
@@ -165,7 +165,7 @@ def test_tile_streaming_loads_missing_tiles_in_background():
         integrated += batch_count
     assert integrated == 9
     assert len(cache.calls) == 1
-    assert cache.calls[0] == (0.0, 0.0, 1500.0, 1500.0)
+    assert cache.calls[0] == (-1000.0, -1000.0, 2000.0, 2000.0)
     assert len(manager.loaded_tiles) == 9
     assert manager.pending_tiles == set()
     metrics = manager.get_tile_metrics()
@@ -198,7 +198,7 @@ def test_cardinal_tile_transition_batches_two_by_three_region():
     while manager.is_fetching and time.time() < deadline:
         time.sleep(0.01)
 
-    assert cache.calls == [(0.0, 500.0, 1500.0, 1500.0)]
+    assert cache.calls == [(-1000.0, 0.0, 2000.0, 2000.0)]
 
 
 def test_tile_transition_during_fetch_queues_next_region_request():
@@ -253,8 +253,8 @@ def test_tile_object_survives_until_last_tile_owner_is_unloaded():
 
 def test_combined_region_assigns_crossing_way_to_both_tiles():
     crossing_way = Way(
-        [(450.0, 250.0), (550.0, 250.0)], "residential", 4.0, osm_id=99,
-        bbox=(450.0, 250.0, 550.0, 250.0),
+        [(950.0, 250.0), (1050.0, 250.0)], "residential", 4.0, osm_id=99,
+        bbox=(950.0, 250.0, 1050.0, 250.0),
     )
     manager = AutoFetchManager([], (0.0, 0.0, 1000.0, 1000.0), transformer=None)
     manager._merge_tile_world_for_tiles(
@@ -291,7 +291,7 @@ def test_tile_map_revision_changes_when_streamed_map_changes():
 
 
 def test_integrated_streamed_road_reaches_live_world_and_stale_tile_is_released():
-    road = Way([(600.0, 100.0), (700.0, 100.0)], "residential", 4.0, osm_id=123)
+    road = Way([(1600.0, 100.0), (1700.0, 100.0)], "residential", 4.0, osm_id=123)
     manager = AutoFetchManager([], (0.0, 0.0, 1000.0, 1000.0), transformer=None)
     manager.active_tiles = {TileCoord(1, 0)}
     manager.pending_tiles = {TileCoord(1, 0), TileCoord(2, 0)}
@@ -315,8 +315,8 @@ def test_integrated_streamed_road_reaches_live_world_and_stale_tile_is_released(
 
 def test_integrated_streamed_road_reaches_spatial_grid():
     road = Way(
-        [(600.0, 100.0), (700.0, 100.0)], "residential", 4.0, osm_id=124,
-        bbox=(600.0, 100.0, 700.0, 100.0),
+        [(1600.0, 100.0), (1700.0, 100.0)], "residential", 4.0, osm_id=124,
+        bbox=(1600.0, 100.0, 1700.0, 100.0),
     )
     manager = AutoFetchManager([], (0.0, 0.0, 1000.0, 1000.0), transformer=None)
     manager.active_tiles = {TileCoord(1, 0)}
@@ -333,7 +333,7 @@ def test_integrated_streamed_road_reaches_spatial_grid():
     grid = SpatialWayGrid()
     grid.rebuild(manager.ways)
 
-    assert list(grid.ways_in_rect(590.0, 90.0, 710.0, 110.0)) == [road]
+    assert list(grid.ways_in_rect(1590.0, 90.0, 1710.0, 110.0)) == [road]
 
 
 def test_static_cache_invalidation_is_available_for_tile_changes():
