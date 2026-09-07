@@ -53,9 +53,9 @@ def bbox_from_center(lat: float, lon: float, size_km: float = 4.0) -> Tuple[floa
 
 
 # Bounding box presets: south, west, north, east (lat/lon).
-# Each preset loads one 500 m base tile; neighboring tiles stream separately.
+# Startup loads the complete 1.5 km active region; later transitions stream tiles.
 BBOX_PRESETS: Dict[str, Tuple[float, float, float, float]] = {
-    name.lower(): bbox_from_center(lat, lon, size_km=0.5)
+    name.lower(): bbox_from_center(lat, lon, size_km=1.5)
     for name, (lat, lon) in CITY_CENTERS.items()
 }
 DEFAULT_BBOX = BBOX_PRESETS["oulu"]
@@ -113,14 +113,15 @@ DEFAULT_SPEED_LIMITS_KMH = {
 def parse_speed_limit_kmh(maxspeed_tag: Optional[str], highway_type: str) -> int:
     """Parse OSM maxspeed tag into integer km/h with Finnish statutory fallbacks."""
     if maxspeed_tag:
-        tag_str = str(maxspeed_tag).strip().lower()
-        if tag_str.isdigit():
-            return int(tag_str)
-        # Handle formats like "50 km/h" or "FI:urban" / "FI:rural"
-        if " " in tag_str:
-            num_part = tag_str.split()[0]
-            if num_part.isdigit():
-                return int(num_part)
+        tag_str = str(maxspeed_tag).strip().lower().split(";")[0].strip()
+        unit_multiplier = 1.609344 if "mph" in tag_str else 1.0
+        numeric = tag_str.replace("km/h", "").replace("kph", "").replace("mph", "").strip()
+        try:
+            value = float(numeric)
+            if value > 0.0:
+                return round(value * unit_multiplier)
+        except ValueError:
+            pass
         if "urban" in tag_str:
             return 50
         if "rural" in tag_str:
@@ -2487,9 +2488,8 @@ class AutoFetchManager:
             self.player_tile = current_tile
             self.active_tiles = set(active_tiles(current_tile))
             self._register_existing_world()
-            # Startup data comes from one legacy bbox, not from complete tiles.
-            # Keep its objects, but force the active-region batch to fill missing coverage.
-            self.loaded_tiles = set()
+            # Startup bbox is the complete active 1.5 km region.
+            self.loaded_tiles = set(self.active_tiles)
             self._unload_tiles(set(self._tile_objects) - self.active_tiles)
         return current_tile
 

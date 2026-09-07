@@ -1,3 +1,12 @@
+from theroadragetrip.osm import build_ways, parse_speed_limit_kmh
+
+
+def test_maxspeed_tag_is_primary_speed_limit_source():
+    assert parse_speed_limit_kmh("30", "residential") == 30
+    assert parse_speed_limit_kmh("30 km/h", "residential") == 30
+    assert parse_speed_limit_kmh("20 mph", "residential") == 32
+    assert parse_speed_limit_kmh("50;30", "residential") == 50
+    assert parse_speed_limit_kmh("invalid", "residential") == 40
 import sys
 import types
 
