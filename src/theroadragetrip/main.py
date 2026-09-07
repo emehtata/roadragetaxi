@@ -1050,7 +1050,6 @@ def main() -> None:
             world_cache_manager=world_cache,
         )
         auto_fetch_manager.initialize_player_tile(car.x, car.y)
-        auto_fetch_manager.start_initial_tile_streaming()
         on_load_progress(1.0, "Ready")
         logger.info("Entering gameplay loop")
 
@@ -1875,7 +1874,12 @@ def main() -> None:
             # Stream the active 3x3 tile region only after a tile transition.
             if args.auto_fetch:
                 revision_before_stream = auto_fetch_manager.get_map_revision()
-                auto_fetch_manager.integrate_completed_tiles(max_tiles=1)
+                integrated_tiles = auto_fetch_manager.integrate_completed_tiles(max_tiles=1)
+                if integrated_tiles:
+                    # Roads are rendered and collision-queried immediately; do not
+                    # expose a frame where the live list and road grid disagree.
+                    with frame_profiler.section("map_sync:spatial_grid_immediate"):
+                        spatial_grid.rebuild(ways)
                 started = auto_fetch_manager.start_tile_streaming(car.x, car.y)
                 if auto_fetch_manager.get_map_revision() != revision_before_stream:
                     invalidate_static_caches()
