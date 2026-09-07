@@ -340,7 +340,7 @@ def parse_args(config=None, city_names=None) -> argparse.Namespace:
         default=map_config.getfloat("fetch_margin", fallback=350.0),
         help="Distance in meters from bbox edge that triggers auto-fetch",
     )
-    p.add_argument("--fetch-tile-size", type=float, default=map_config.getfloat("fetch_tile_size", fallback=2500.0), help="Meters to expand when auto-fetching")
+    p.add_argument("--fetch-tile-size", type=float, default=map_config.getfloat("fetch_tile_size", fallback=500.0), help="Base auto-fetch bbox size in meters")
     p.add_argument(
         "--build-in-process",
         action="store_true",
@@ -636,6 +636,7 @@ def main() -> None:
     if has_outdated_osm_cache():
         confirm_outdated_cache(screen, font, clock, language)
         clear_osm_cache()
+        clear_world_cache()
 
     audio = AudioManager(
         master_volume=config.getfloat("audio", "master_volume", fallback=1.0),
@@ -859,8 +860,7 @@ def main() -> None:
         on_load_progress(0.05, "Initializing scenery engine...")
 
         def on_build_progress(fraction: float, message: str) -> None:
-            # Map construction is only part of startup; reserve final progress for manager setup.
-            on_load_progress(min(0.9, fraction * 0.9), message)
+            on_load_progress(0.05 + min(1.0, fraction) * 0.65, message)
 
         # Load map
         try:
@@ -922,7 +922,7 @@ def main() -> None:
             len(roadwork_lights),
             roadworks_enabled,
         )
-        on_load_progress(0.92, "Preparing road index...")
+        on_load_progress(0.70, "Preparing road index...")
         remove_trees_under_roads(sceneries, ways)
         # Spatial index for fast O(1) road collision detection
         spatial_grid = SpatialWayGrid()
@@ -953,7 +953,7 @@ def main() -> None:
                 save_gig_odometer(gig_odometer_file, car.odometer_m)
 
         # Initialize Taxi Manager for game mode
-        on_load_progress(0.94, "Preparing taxi missions...")
+        on_load_progress(0.80, "Preparing taxi missions...")
         residents = ResidentManager(city_name=chosen_city)
         residents.set_city_center_m((minx + maxx) / 2.0, (miny + maxy) / 2.0)
         city_center = city_centers.get(chosen_city)
@@ -975,7 +975,7 @@ def main() -> None:
         )
         logger.info("Placed %d hidden speed cameras", len(speed_cameras))
         # Keep road, signal, and resident services for taxi missions.
-        on_load_progress(0.96, "Preparing taxi world...")
+        on_load_progress(0.86, "Preparing taxi world...")
         traffic_mgr = TrafficWorld(
             ways,
             traffic_lights=traffic_lights,
@@ -983,7 +983,7 @@ def main() -> None:
             residents=residents,
         )
         # Initialize autonomous Pedestrian Manager
-        on_load_progress(0.98, "Preparing pedestrians...")
+        on_load_progress(0.92, "Preparing pedestrians...")
         pedestrian_mgr = PedestrianManager(
             ways,
             target_count=args.pedestrian_count,
@@ -1016,7 +1016,7 @@ def main() -> None:
             logger.debug("pyproj not available; lat/lon display disabled")
 
         # Auto fetch manager (background)
-        on_load_progress(0.99, "Starting game...")
+        on_load_progress(0.97, "Starting game...")
         auto_fetch_manager = AutoFetchManager(
             ways,
             bounds,
@@ -1037,6 +1037,7 @@ def main() -> None:
             world_cache_manager=world_cache,
         )
         auto_fetch_manager.initialize_player_tile(car.x, car.y)
+        auto_fetch_manager.start_initial_tile_streaming()
         on_load_progress(1.0, "Ready")
         logger.info("Entering gameplay loop")
 
@@ -1861,7 +1862,7 @@ def main() -> None:
             # Stream the active 3x3 tile region only after a tile transition.
             if args.auto_fetch:
                 revision_before_stream = auto_fetch_manager.get_map_revision()
-                auto_fetch_manager.integrate_completed_tiles()
+                auto_fetch_manager.integrate_completed_tiles(max_tiles=1)
                 started = auto_fetch_manager.start_tile_streaming(car.x, car.y)
                 if auto_fetch_manager.get_map_revision() != revision_before_stream:
                     invalidate_static_caches()
@@ -2194,6 +2195,7 @@ def main() -> None:
             )
             draw_vomit_puddles(screen, taxi_mgr.vomit_puddles, camx, camy, px_per_m=px_per_m)
             draw_vomit_puddles(screen, pedestrian_mgr.vomit_puddles, camx, camy, px_per_m=px_per_m)
+            street_light_base = screen.copy()
             draw_headlight_beams(
                 screen,
                 light_vehicles,
@@ -2234,6 +2236,7 @@ def main() -> None:
                 latitude=sun_latitude,
                 longitude=sun_longitude,
                 buildings=buildings,
+                base_surface=street_light_base,
             )
             if sun_altitude < -7.5:
                 draw_pedestrian_reflectors(

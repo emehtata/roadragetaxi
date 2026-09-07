@@ -40,7 +40,7 @@ Koska muut kuskit ovat idiootteja ja ajavat miten sattuu. Vähemmästäkin hermo
 - **Trip & Odometer**: Real-time speed, trip distance (resettable with `T`), and total odometer in the HUD.
 - **Loading Progress Meters**: Visual progress bar on startup and live scenery streaming progress meter during background auto-fetch.
 - **Orientation & Compass**: North-up screen projection with a real-time compass showing vehicle heading and bearing in degrees.
-- **Offline & Cache Support**: User-writable JSON caching (`RoadRageTrip/osm_cache/`) with TTL and fallback to bundled sample data.
+- **Offline & Cache Support**: User-writable JSON caching (`RoadRageTrip/osm_cache/`) with TTL; bundled sample data requires explicit `--use-sample`.
 
 ---
 
@@ -151,7 +151,7 @@ roadworks_enabled = false
 overpass_endpoints = https://overpass-api.de/api/interpreter, https://overpass.private.coffee/api/interpreter, https://overpass.openstreetmap.fr/api/interpreter
 auto_fetch = true
 fetch_margin = 350.0
-fetch_tile_size = 2500.0
+fetch_tile_size = 500.0
 build_in_process = true
 
 [traffic]

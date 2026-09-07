@@ -1975,6 +1975,7 @@ def draw_street_lights(
     latitude: float = DEFAULT_SUN_LATITUDE,
     longitude: float = DEFAULT_SUN_LONGITUDE,
     buildings: Optional[List[Building]] = None,
+    base_surface=None,
 ) -> None:
     """Draw simple roadside lamps on visible urban roads."""
     import pygame
@@ -2039,6 +2040,17 @@ def draw_street_lights(
         cached_camx, cached_camy = _street_light_frame_cache_camera
         offset_x = round((cached_camx - camx) * cache_zoom)
         offset_y = round((camy - cached_camy) * cache_zoom)
+        street_light_surface = base_surface
+        if street_light_surface is not None:
+            street_light_surface = street_light_surface.copy()
+            street_light_surface.blit(
+                _street_light_frame_pool_surface,
+                (offset_x, offset_y),
+                special_flags=pygame.BLEND_RGB_ADD,
+            )
+            street_light_surface.blit(_street_light_frame_cache_surface, (offset_x, offset_y))
+            screen.blit(street_light_surface, (0, 0), special_flags=pygame.BLEND_RGB_MAX)
+            return
         if _street_light_frame_pool_surface is not None:
             screen.blit(
                 _street_light_frame_pool_surface,
@@ -2303,8 +2315,14 @@ def draw_street_lights(
         _street_light_frame_cache_surface = light_layer
         _street_light_frame_pool_surface = pool_add_layer
         _street_light_frame_cache_camera = (camx, camy)
-        screen.blit(pool_add_layer, (0, 0), special_flags=pygame.BLEND_RGB_ADD)
-        screen.blit(light_layer, (0, 0))
+        if base_surface is not None:
+            street_light_surface = base_surface.copy()
+            street_light_surface.blit(pool_add_layer, (0, 0), special_flags=pygame.BLEND_RGB_ADD)
+            street_light_surface.blit(light_layer, (0, 0))
+            screen.blit(street_light_surface, (0, 0), special_flags=pygame.BLEND_RGB_MAX)
+        else:
+            screen.blit(pool_add_layer, (0, 0), special_flags=pygame.BLEND_RGB_ADD)
+            screen.blit(light_layer, (0, 0))
         if _render_logger.isEnabledFor(logging.DEBUG):
             now_ms = pygame.time.get_ticks()
             if now_ms - _street_light_last_debug_log_ms >= 1000:

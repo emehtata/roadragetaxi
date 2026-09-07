@@ -52,10 +52,10 @@ def bbox_from_center(lat: float, lon: float, size_km: float = 4.0) -> Tuple[floa
     )
 
 
-# Bounding box presets: south, west, north, east (lat/lon)
-# Generate presets for all top 10 cities (4x4 km area) while preserving lowercase lookups
+# Bounding box presets: south, west, north, east (lat/lon).
+# Each preset loads one 500 m base tile; neighboring tiles stream separately.
 BBOX_PRESETS: Dict[str, Tuple[float, float, float, float]] = {
-    name.lower(): bbox_from_center(lat, lon, size_km=4.0)
+    name.lower(): bbox_from_center(lat, lon, size_km=0.5)
     for name, (lat, lon) in CITY_CENTERS.items()
 }
 DEFAULT_BBOX = BBOX_PRESETS["oulu"]
@@ -1080,6 +1080,14 @@ def fetch_osm_ways(
                 if progress_callback:
                     progress_callback(0.25, f"Fetching scenery from {ep[:35]}...")
                 r = requests.post(ep, data={"data": query}, headers=OVERPASS_HEADERS, timeout=60)
+                if r.status_code == 429:
+                    last_err = Exception(f"429 Too Many Requests from {ep}")
+                    logger.warning(
+                        "Overpass rate limited %s; switching endpoint (attempt %d)",
+                        ep,
+                        attempt,
+                    )
+                    break
                 if r.status_code >= 500:
                     last_err = Exception(f"{r.status_code} Server Error from {ep}")
                     time.sleep(2 ** (attempt - 1))
@@ -1122,13 +1130,7 @@ def fetch_osm_ways(
                 time.sleep(2 ** (attempt - 1))
                 continue
 
-    sample = load_local_sample()
-    if sample:
-        logger.info("Using local sample OSM data as fallback.")
-        if progress_callback:
-            progress_callback(0.5, f"Loaded {len(sample)} sample elements")
-        return sample
-    raise last_err or Exception("Failed to fetch OSM data from any endpoint or local sample.")
+    raise last_err or Exception("Failed to fetch OSM data from any Overpass endpoint.")
 
 
 def _stitch_member_ways_into_rings(
@@ -2398,22 +2400,59 @@ class AutoFetchManager:
 
     def start_tile_streaming(self, x: float, y: float) -> bool:
         """Load newly required tiles in a background thread."""
+        previous_player_tile = self.player_tile
         transition = self.update_player_tile(x, y)
+        if transition is None:
+            return False
         with self.lock:
-            if transition is not None:
-                _, _, removed = transition
-                unload_started = time.perf_counter()
-                self._unload_tiles(removed)
-                self.last_tile_unload_ms = (time.perf_counter() - unload_started) * 1000.0
+            _, _, removed = transition
+            unload_started = time.perf_counter()
+            self._unload_tiles(removed)
+            self.last_tile_unload_ms = (time.perf_counter() - unload_started) * 1000.0
             missing = self.active_tiles - self.loaded_tiles - self.pending_tiles
             if not missing or self.is_fetching or time.monotonic() < self._tile_retry_after:
                 return False
             self.pending_tiles.update(missing)
             self.is_fetching = True
             self.fetch_progress = 0.0
+            request_tiles = set(self.active_tiles)
+            current_tile = self.player_tile
+            if previous_player_tile is not None and current_tile is not None:
+                delta_x = current_tile.x - previous_player_tile.x
+                delta_y = current_tile.y - previous_player_tile.y
+                if delta_x and not delta_y:
+                    edge_x = current_tile.x - (1 if delta_x > 0 else -1)
+                    request_tiles = {
+                        tile for tile in request_tiles
+                        if tile.x in {current_tile.x, edge_x}
+                    }
+                elif delta_y and not delta_x:
+                    edge_y = current_tile.y - (1 if delta_y > 0 else -1)
+                    request_tiles = {
+                        tile for tile in request_tiles
+                        if tile.y in {current_tile.y, edge_y}
+                    }
+            request_tiles = tuple(sorted(request_tiles))
         threading.Thread(
             target=self._background_tile_fetch,
-            args=(tuple(sorted(missing)),),
+            args=(tuple(sorted(missing)), request_tiles),
+            daemon=True,
+        ).start()
+        return True
+
+    def start_initial_tile_streaming(self) -> bool:
+        """Fetch missing tiles for the initial active 3x3 region once."""
+        with self.lock:
+            missing = self.active_tiles - self.loaded_tiles - self.pending_tiles
+            if not missing or self.is_fetching:
+                return False
+            self.pending_tiles.update(missing)
+            self.is_fetching = True
+            self.fetch_progress = 0.0
+            request_tiles = tuple(sorted(self.active_tiles))
+        threading.Thread(
+            target=self._background_tile_fetch,
+            args=(tuple(sorted(missing)), request_tiles),
             daemon=True,
         ).start()
         return True
@@ -2425,7 +2464,9 @@ class AutoFetchManager:
             self.player_tile = current_tile
             self.active_tiles = set(active_tiles(current_tile))
             self._register_existing_world()
-            self.loaded_tiles = set(self._tile_objects) & self.active_tiles
+            # Startup data comes from one legacy bbox, not from complete tiles.
+            # Keep its objects, but force the active-region batch to fill missing coverage.
+            self.loaded_tiles = set()
             self._unload_tiles(set(self._tile_objects) - self.active_tiles)
         return current_tile
 
@@ -2482,19 +2523,28 @@ class AutoFetchManager:
         lon2, lat2 = self.transformer.transform(max_x, max_y)
         return min(lat1, lat2), min(lon1, lon2), max(lat1, lat2), max(lon1, lon2)
 
-    def _background_tile_fetch(self, tiles: tuple[TileCoord, ...]) -> None:
+    def _background_tile_fetch(
+        self,
+        tiles: tuple[TileCoord, ...],
+        request_tiles: tuple[TileCoord, ...],
+    ) -> None:
         loaded = []
         load_started = time.perf_counter()
         try:
-            for index, tile in enumerate(tiles):
-                bbox = self._tile_bbox_latlon(tile)
-                if self.world_cache_manager is not None:
-                    world = self.world_cache_manager.preload_tile(tile, bbox).result()
-                else:
-                    world = self.build_func(self.fetch_func(bbox))
-                loaded.append((tile, world))
-                with self.lock:
-                    self.fetch_progress = (index + 1) / len(tiles)
+            min_x = min(tile_bbox(tile)[0] for tile in request_tiles)
+            min_y = min(tile_bbox(tile)[1] for tile in request_tiles)
+            max_x = max(tile_bbox(tile)[2] for tile in request_tiles)
+            max_y = max(tile_bbox(tile)[3] for tile in request_tiles)
+            lon1, lat1 = self.transformer.transform(min_x, min_y)
+            lon2, lat2 = self.transformer.transform(max_x, max_y)
+            bbox = (min(lat1, lat2), min(lon1, lon2), max(lat1, lat2), max(lon1, lon2))
+            if self.world_cache_manager is not None:
+                world = self.world_cache_manager.preload_region(bbox).result()
+            else:
+                world = self.build_func(self.fetch_func(bbox))
+            loaded.append((tiles, world))
+            with self.lock:
+                self.fetch_progress = 1.0
             load_ms = (time.perf_counter() - load_started) * 1000.0
 
             with self.lock:
@@ -2511,8 +2561,8 @@ class AutoFetchManager:
                 self.is_fetching = False
                 self.fetch_progress = 0.0
 
-    def integrate_completed_tiles(self) -> int:
-        """Integrate background tile results on the main thread."""
+    def integrate_completed_tiles(self, max_tiles: int = 1) -> int:
+        """Integrate a bounded number of background tile results per frame."""
         with self.lock:
             batches = self._completed_tile_batches
             self._completed_tile_batches = []
@@ -2522,14 +2572,17 @@ class AutoFetchManager:
         started = time.perf_counter()
         integrated = 0
         with self.lock:
+            remaining = max(1, max_tiles)
             for batch in batches:
-                for tile, world in batch:
-                    self.pending_tiles.discard(tile)
-                    if tile not in active_tiles_now:
+                for tile_group, world in batch:
+                    active_group = set(tile_group) & active_tiles_now
+                    if not active_group or remaining <= 0:
                         continue
-                    self._merge_tile_world_for(tile, world)
-                    self.loaded_tiles.add(tile)
-                    integrated += 1
+                    self.pending_tiles.difference_update(tile_group)
+                    self._merge_tile_world_for_tiles(active_group, world)
+                    self.loaded_tiles.update(active_group)
+                    integrated += len(active_group)
+                    remaining -= 1
             if integrated:
                 self.map_revision += 1
             self.last_tile_integration_ms = (time.perf_counter() - started) * 1000.0
@@ -2539,6 +2592,11 @@ class AutoFetchManager:
         raise RuntimeError("tile world merge requires tile ownership")
 
     def _merge_tile_world_for(self, tile: TileCoord, world) -> None:
+        self._merge_tile_world_for_tiles({tile}, world, force_tile=True)
+
+    def _merge_tile_world_for_tiles(
+        self, tiles: set[TileCoord], world, force_tile: bool = False,
+    ) -> None:
         sections = {
             "ways": self.ways,
             "waters": self.waters,
@@ -2553,16 +2611,28 @@ class AutoFetchManager:
             "stop_signs": self.stop_signs,
             "yield_signs": self.yield_signs,
         }
-        tile_objects = self._tile_objects.setdefault(tile, {})
         for section, target in sections.items():
-            by_key = tile_objects.setdefault(section, {})
+            target_keys = {_map_object_key(existing) for existing in target}
             for item in getattr(world, section, ()):
                 key = _map_object_key(item)
-                by_key[key] = item
+                owned_tiles = tiles if force_tile else self._item_tiles(item) & tiles
+                if not owned_tiles:
+                    continue
+                for tile in owned_tiles:
+                    self._tile_objects.setdefault(tile, {}).setdefault(section, {})[key] = item
                 owners = self._object_tiles.setdefault(section, {}).setdefault(key, set())
-                owners.add(tile)
-                if not any(_map_object_key(existing) == key for existing in target):
+                owners.update(owned_tiles)
+                if key not in target_keys:
                     target.append(item)
+                    target_keys.add(key)
+        world_bounds = getattr(world, "bounds", None)
+        if world_bounds and world_bounds != (0.0, 0.0, 0.0, 0.0):
+            self.bounds = (
+                min(self.bounds[0], world_bounds[0]),
+                min(self.bounds[1], world_bounds[1]),
+                max(self.bounds[2], world_bounds[2]),
+                max(self.bounds[3], world_bounds[3]),
+            )
         associate_places_with_buildings(self.buildings, self.places)
 
     def _unload_tiles(self, tiles: set[TileCoord]) -> None:

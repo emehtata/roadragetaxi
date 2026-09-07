@@ -209,3 +209,28 @@ def test_cached_streetlight_frame_keeps_lamp_without_flicker():
         assert pygame.image.tostring(first, "RGB") == pygame.image.tostring(second, "RGB")
     finally:
         pygame.quit()
+
+
+def test_street_light_pool_does_not_amplify_headlight_brightness():
+    pygame.init()
+    try:
+        screen = pygame.Surface((240, 180), pygame.SRCALPHA)
+        screen.fill((240, 240, 240, 255))
+        pre_headlight = pygame.Surface((240, 180), pygame.SRCALPHA)
+        pre_headlight.fill((10, 10, 10, 255))
+        road = Way(
+            points_m=[(0.0, 0.0), (100.0, 0.0)],
+            highway="tertiary",
+            half_width_m=4.0,
+            lit="yes",
+        )
+
+        draw_street_lights(
+            screen, [road], 50.0, 0.0, 0.0,
+            px_per_m=2.0, screen_w=240, screen_h=180,
+            buildings=[], base_surface=pre_headlight,
+        )
+
+        assert max(screen.get_at((120, 90))[:3]) <= 240
+    finally:
+        pygame.quit()

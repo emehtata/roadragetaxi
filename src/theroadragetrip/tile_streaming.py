@@ -1,11 +1,11 @@
-"""Deterministic 1 km world-tile calculations."""
+"""Deterministic 500 m world-tile calculations."""
 
 from __future__ import annotations
 
 import math
 from typing import NamedTuple
 
-TILE_SIZE_M = 1000.0
+TILE_SIZE_M = 500.0
 
 
 class TileCoord(NamedTuple):

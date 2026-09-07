@@ -336,6 +336,10 @@ class WorldCacheManager:
     def preload_tile(self, tile: TileCoord, bbox=None, **kwargs) -> Future:
         return self.preload(self.tile_id(tile), bbox, **kwargs)
 
+    def preload_region(self, bbox, **kwargs) -> Future:
+        """Load one combined streaming region instead of one request per tile."""
+        return self.preload(self.area_id(bbox), bbox, **kwargs)
+
     def clear(self) -> int:
         """Delete all cached world files managed by this instance."""
         return clear_world_cache(self.cache_dir)
