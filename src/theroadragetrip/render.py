@@ -1057,6 +1057,18 @@ def _building_window_story_count(building: Building) -> int:
     return max(1, min(40, int(round(height / 3.0))))
 
 
+def _building_is_commercial(building: Building) -> bool:
+    """Return whether the building should render a storefront ground floor."""
+    venue_type = str(getattr(building, "venue_type", "") or "").lower()
+    if venue_type in COMMERCIAL_AMENITIES or venue_type in COMMERCIAL_BUILDING_TYPES:
+        return True
+    for place in getattr(building, "associated_places", ()):
+        place_type = str(getattr(place, "kind", "") or "").lower()
+        if place_type in COMMERCIAL_AMENITIES or place_type in COMMERCIAL_BUILDING_TYPES:
+            return True
+    return False
+
+
 def draw_buildings(
     screen,
     buildings: List[Building],
@@ -1197,6 +1209,7 @@ def _draw_buildings_uncached(
             if outward_x * camera_x + outward_y * camera_y > 0.0:
                 visible_edges.append(index)
         story_count = _building_window_story_count(b)
+        is_commercial = _building_is_commercial(b)
         for index in visible_edges:
             point = pts[index]
             next_point = pts[(index + 1) % len(pts)]
@@ -1214,23 +1227,32 @@ def _draw_buildings_uncached(
             for floor_index in range(story_count):
                 floor_position = 0.18 + 0.64 * (floor_index + 0.5) / story_count
                 floor_height = abs(roof_y) / story_count
+                storefront_row = is_commercial and floor_index == 0
                 window_height = max(3.0, min(7.0, floor_height * 0.55))
+                if storefront_row:
+                    window_height *= 1.45
                 for window_index in range(window_count):
                     center = (window_index + 1) / (window_count + 1)
                     center_x = point[0] + (next_point[0] - point[0]) * center + roof_x * floor_position
                     center_y = point[1] + (next_point[1] - point[1]) * center + roof_y * floor_position
                     half_width = min(10.0, edge_length / (window_count + 2) * 0.45) / 2
+                    if storefront_row:
+                        half_width *= 1.35
                     pane_x = -roof_x * window_height / max(abs(roof_y), 1.0)
                     pane_y = -roof_y * window_height / max(abs(roof_y), 1.0)
+                    window_color = (58, 80, 94) if not storefront_row else (84, 106, 122)
+                    frame_color = (25, 42, 47) if not storefront_row else (29, 42, 48)
                     window = [
                         (center_x - edge_x * half_width, center_y - edge_y * half_width),
                         (center_x + edge_x * half_width, center_y + edge_y * half_width),
                         (center_x + edge_x * half_width + pane_x, center_y + edge_y * half_width + pane_y),
                         (center_x - edge_x * half_width + pane_x, center_y - edge_y * half_width + pane_y),
                     ]
-                    pygame.draw.polygon(screen, (52, 82, 91), window)
-                    pygame.draw.lines(screen, (25, 42, 47), True, window, 1)
+                    pygame.draw.polygon(screen, window_color, window)
+                    pygame.draw.lines(screen, frame_color, True, window, 1)
                     pygame.draw.line(screen, (155, 180, 178), window[0], window[2], 1)
+                    if storefront_row:
+                        pygame.draw.line(screen, (118, 120, 122), window[1], window[3], 1)
         for entrance_x, entrance_y in getattr(b, "entrances", ()):
             edge_distances = [
                 dist_point_to_segment(

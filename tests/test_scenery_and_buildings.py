@@ -18,7 +18,7 @@ sys.modules["pyproj"] = fake_pyproj
 from theroadragetrip.osm import build_ways, plant_trees
 from theroadragetrip.osm import Building, Place, Scenery, Way, associate_places_with_buildings
 from theroadragetrip.physics import Car
-from theroadragetrip.render import _building_window_story_count
+from theroadragetrip.render import _building_is_commercial, _building_window_story_count
 from theroadragetrip.taxi import TaxiManager
 
 
@@ -185,3 +185,19 @@ def test_building_window_rows_follow_osm_levels():
     )
 
     assert _building_window_story_count(building) == 4
+
+
+def test_commercial_buildings_are_marked_for_storefront_ground_floor():
+    commercial = Building(
+        [(0.0, 0.0), (10.0, 0.0), (10.0, 12.0), (0.0, 12.0)],
+        levels=5,
+        venue_type="restaurant",
+    )
+    residential = Building(
+        [(20.0, 0.0), (30.0, 0.0), (30.0, 12.0), (20.0, 12.0)],
+        levels=5,
+        venue_type="residential",
+    )
+
+    assert _building_is_commercial(commercial) is True
+    assert _building_is_commercial(residential) is False
