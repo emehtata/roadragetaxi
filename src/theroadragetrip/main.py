@@ -1666,7 +1666,9 @@ def main() -> None:
                 bridge_edge_crash = is_car_colliding_with_bridge_edge(car, current_way)
                 if bridge_edge_crash:
                     pull_car_inside_bridge_edge(car, current_way)
-                    car.speed = 0.0
+                    # Bounce away from the rail so a held throttle cannot keep
+                    # the car pinned against the same bridge edge.
+                    car.speed = -max(2.5, min(abs(car.speed), 6.0))
                     taxi_mgr.taxi_smoke_timer = max(taxi_mgr.taxi_smoke_timer, 5.0)
                     if bridge_edge_crash_cooldown <= 0.0:
                         bridge_edge_crash_cooldown = 3.0

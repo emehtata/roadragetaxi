@@ -5,6 +5,7 @@ from theroadragetrip.physics import (
     SpatialWayGrid,
     is_car_colliding_with_bridge_edge,
     is_point_on_road,
+    pull_car_inside_bridge_edge,
     update_car_physics,
 )
 
@@ -103,6 +104,22 @@ def test_car_hits_bridge_guardrail_with_a_corner():
     assert not is_car_colliding_with_bridge_edge(centered_car, bridge)
     assert is_car_colliding_with_bridge_edge(edge_car, bridge)
     assert not is_car_colliding_with_bridge_edge(bridge_end_car, bridge)
+
+
+def test_bridge_guardrail_recovery_moves_car_inside_road():
+    bridge = Way(
+        points_m=[(0.0, 0.0), (100.0, 0.0)],
+        highway="primary",
+        half_width_m=5.0,
+        is_bridge=True,
+    )
+    car = Car(x=50.0, y=4.8, heading=0.0, speed=0.0)
+
+    assert is_car_colliding_with_bridge_edge(car, bridge)
+    pull_car_inside_bridge_edge(car, bridge)
+
+    assert abs(car.y) <= bridge.half_width_m - car.width_m * 0.5 - 0.35
+    assert not is_car_colliding_with_bridge_edge(car, bridge)
 
 
 def test_bridge_guardrail_ignores_segment_when_car_is_not_on_it():
