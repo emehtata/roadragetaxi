@@ -2575,10 +2575,10 @@ class AutoFetchManager:
             remaining = max(1, max_tiles)
             for batch in batches:
                 for tile_group, request_tiles, world in batch:
+                    self.pending_tiles.difference_update(tile_group)
                     active_group = set(tile_group) & active_tiles_now
                     if not active_group or remaining <= 0:
                         continue
-                    self.pending_tiles.difference_update(tile_group)
                     ownership_tiles = set(request_tiles) & active_tiles_now
                     self._merge_tile_world_for_tiles(ownership_tiles, world)
                     self.loaded_tiles.update(active_group)

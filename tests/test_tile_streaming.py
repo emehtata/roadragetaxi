@@ -257,5 +257,28 @@ def test_tile_map_revision_changes_when_streamed_map_changes():
     assert manager.get_map_revision() == 1
 
 
+def test_integrated_streamed_road_reaches_live_world_and_stale_tile_is_released():
+    road = Way([(600.0, 100.0), (700.0, 100.0)], "residential", 4.0, osm_id=123)
+    manager = AutoFetchManager([], (0.0, 0.0, 1000.0, 1000.0), transformer=None)
+    manager.active_tiles = {TileCoord(1, 0)}
+    manager.pending_tiles = {TileCoord(1, 0), TileCoord(2, 0)}
+    manager._completed_tile_batches = [[
+        (
+            (TileCoord(2, 0),),
+            (TileCoord(2, 0),),
+            MapData([road], [], [], [], [], (0.0, 0.0, 1.0, 1.0)),
+        ),
+        (
+            (TileCoord(1, 0),),
+            (TileCoord(1, 0),),
+            MapData([road], [], [], [], [], (0.0, 0.0, 1.0, 1.0)),
+        ),
+    ]]
+
+    assert manager.integrate_completed_tiles(max_tiles=2) == 1
+    assert manager.ways == [road]
+    assert manager.pending_tiles == set()
+
+
 def test_static_cache_invalidation_is_available_for_tile_changes():
     invalidate_static_caches()
