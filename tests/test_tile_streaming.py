@@ -9,6 +9,7 @@ from theroadragetrip.osm import AutoFetchManager, Way
 from theroadragetrip.osm import MapData
 from theroadragetrip.world_cache import WorldCacheManager
 from theroadragetrip.render import invalidate_static_caches
+from theroadragetrip.physics import SpatialWayGrid
 from concurrent.futures import Future
 import time
 
@@ -278,6 +279,29 @@ def test_integrated_streamed_road_reaches_live_world_and_stale_tile_is_released(
     assert manager.integrate_completed_tiles(max_tiles=2) == 1
     assert manager.ways == [road]
     assert manager.pending_tiles == set()
+
+
+def test_integrated_streamed_road_reaches_spatial_grid():
+    road = Way(
+        [(600.0, 100.0), (700.0, 100.0)], "residential", 4.0, osm_id=124,
+        bbox=(600.0, 100.0, 700.0, 100.0),
+    )
+    manager = AutoFetchManager([], (0.0, 0.0, 1000.0, 1000.0), transformer=None)
+    manager.active_tiles = {TileCoord(1, 0)}
+    manager.pending_tiles = {TileCoord(1, 0)}
+    manager._completed_tile_batches = [[
+        (
+            (TileCoord(1, 0),),
+            (TileCoord(1, 0),),
+            MapData([road], [], [], [], [], (0.0, 0.0, 1000.0, 1000.0)),
+        ),
+    ]]
+
+    assert manager.integrate_completed_tiles(max_tiles=1) == 1
+    grid = SpatialWayGrid()
+    grid.rebuild(manager.ways)
+
+    assert list(grid.ways_in_rect(590.0, 90.0, 710.0, 110.0)) == [road]
 
 
 def test_static_cache_invalidation_is_available_for_tile_changes():
