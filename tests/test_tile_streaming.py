@@ -201,6 +201,42 @@ def test_cardinal_tile_transition_batches_two_by_three_region():
     assert cache.calls == [(0.0, 500.0, 1500.0, 1500.0)]
 
 
+def test_tile_transition_during_fetch_queues_next_region_request():
+    class Transformer:
+        def transform(self, x, y):
+            return x, y
+
+    class TileCache:
+        def __init__(self):
+            self.calls = []
+            self.futures = []
+
+        def preload_region(self, bbox):
+            self.calls.append(bbox)
+            future = Future()
+            self.futures.append(future)
+            return future
+
+    cache = TileCache()
+    manager = AutoFetchManager(
+        [], (0.0, 0.0, 1000.0, 1000.0), Transformer(), world_cache_manager=cache,
+    )
+    manager.initialize_player_tile(500.0, 500.0)
+    assert manager.start_tile_streaming(1000.0, 500.0)
+    assert manager.start_tile_streaming(1000.0, 1500.0) is False
+
+    cache.futures[0].set_result(
+        MapData([Way([(1000.0, 500.0), (1100.0, 500.0)], "residential", 4.0)], [], [], [], [], (0.0, 0.0, 1500.0, 1500.0))
+    )
+    deadline = time.time() + 2.0
+    while manager.is_fetching and time.time() < deadline:
+        time.sleep(0.01)
+    manager.integrate_completed_tiles(max_tiles=1)
+
+    assert manager.start_tile_streaming(1000.0, 1500.0)
+    assert len(cache.calls) == 2
+
+
 def test_tile_object_survives_until_last_tile_owner_is_unloaded():
     shared = Way([(0.0, 0.0), (10.0, 0.0)], "residential", 4.0, osm_id=42)
     manager = AutoFetchManager([], (0.0, 0.0, 1000.0, 1000.0), transformer=None)

@@ -2403,13 +2403,12 @@ class AutoFetchManager:
         """Load newly required tiles in a background thread."""
         previous_player_tile = self.player_tile
         transition = self.update_player_tile(x, y)
-        if transition is None:
-            return False
         with self.lock:
-            _, _, removed = transition
-            unload_started = time.perf_counter()
-            self._unload_tiles(removed)
-            self.last_tile_unload_ms = (time.perf_counter() - unload_started) * 1000.0
+            if transition is not None:
+                _, _, removed = transition
+                unload_started = time.perf_counter()
+                self._unload_tiles(removed)
+                self.last_tile_unload_ms = (time.perf_counter() - unload_started) * 1000.0
             missing = self.active_tiles - self.loaded_tiles - self.pending_tiles
             if not missing or self.is_fetching or time.monotonic() < self._tile_retry_after:
                 return False
