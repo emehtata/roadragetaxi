@@ -14,6 +14,8 @@ from dataclasses import fields, is_dataclass
 from pathlib import Path
 from typing import Any, Callable, Mapping
 
+from .tile_streaming import TileCoord
+
 logger = logging.getLogger(__name__)
 
 MAGIC = b"RWC\0"
@@ -313,7 +315,26 @@ class WorldCacheManager:
         return "_".join(f"{value:.6f}".replace("-", "m").replace(".", "p") for value in bbox)
 
     def path_for(self, area_id: str) -> Path:
+        if area_id.startswith("tile_"):
+            return self.cache_dir / "tiles" / f"{area_id}.rwc"
         return self.cache_dir / f"{area_id}.rwc"
+
+    @staticmethod
+    def tile_id(tile: TileCoord) -> str:
+        return f"tile_{tile.x}_{tile.y}"
+
+    def path_for_tile(self, tile: TileCoord) -> Path:
+        return self.path_for(self.tile_id(tile))
+
+    def save_tile(self, tile: TileCoord, world: Any) -> Path:
+        path = self.path_for_tile(tile)
+        return self.writer.write(path, world, area_id=self.tile_id(tile))
+
+    def load_tile(self, tile: TileCoord, bbox=None, *, force_refresh: bool = False, **kwargs) -> Any:
+        return self.load_area(self.tile_id(tile), bbox, force_refresh=force_refresh, **kwargs)
+
+    def preload_tile(self, tile: TileCoord, bbox=None, **kwargs) -> Future:
+        return self.preload(self.tile_id(tile), bbox, **kwargs)
 
     def clear(self) -> int:
         """Delete all cached world files managed by this instance."""

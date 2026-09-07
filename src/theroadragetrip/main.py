@@ -104,6 +104,7 @@ from .render import (
     draw_headlight_beams,
     draw_hud,
     draw_frame_profiler,
+    invalidate_static_caches,
     default_hud_layout,
     draw_tutorial_screen,
     draw_labels,
@@ -1035,6 +1036,7 @@ def main() -> None:
             build_in_process=args.build_in_process,
             world_cache_manager=world_cache,
         )
+        auto_fetch_manager.initialize_player_tile(car.x, car.y)
         on_load_progress(1.0, "Ready")
         logger.info("Entering gameplay loop")
 
@@ -1081,6 +1083,7 @@ def main() -> None:
         track_sequence = 0
         last_track_surface = None
         map_sync_stage = 0
+        last_map_revision = auto_fetch_manager.get_map_revision()
         water_elapsed = 0.0
         bridge_edge_crash_cooldown = 0.0
         visible_road_count_elapsed = 0.0
@@ -1814,6 +1817,15 @@ def main() -> None:
                 "world_cache_operations",
                 sum(not future.done() for future in getattr(world_cache, "_futures", {}).values()),
             )
+            tile_metrics = auto_fetch_manager.get_tile_metrics()
+            current_tile = tile_metrics["player_tile"]
+            frame_profiler.set_metric("current_tile_x", current_tile.x if current_tile else 0)
+            frame_profiler.set_metric("current_tile_y", current_tile.y if current_tile else 0)
+            frame_profiler.set_metric("tiles_in_memory", tile_metrics["tiles_in_memory"])
+            frame_profiler.set_metric("tiles_pending", tile_metrics["tiles_pending"])
+            frame_profiler.set_metric("tile_load_ms", tile_metrics["tile_load_ms"])
+            frame_profiler.set_metric("tile_integration_ms", tile_metrics["tile_integration_ms"])
+            frame_profiler.set_metric("tile_unload_ms", tile_metrics["tile_unload_ms"])
             traffic_mgr.let_taxi_pick_up_waiter(taxi_stops, pedestrian_mgr.pedestrians, dt)
             waiting_pedestrian = taxi_mgr.check_waiting_pickup(car, pedestrian_mgr.pedestrians, dt)
             if waiting_pedestrian is not None:
@@ -1846,26 +1858,23 @@ def main() -> None:
             if not current_road_name and current_way:
                 current_road_name = getattr(current_way, "highway", "Road").replace("_", " ").title()
 
-            # Auto-fetch map tiles when approaching bounds (if enabled)
+            # Stream the active 3x3 tile region only after a tile transition.
             if args.auto_fetch:
-                started = auto_fetch_manager.start_if_needed(
-                    car,
-                    True,
-                    args.fetch_margin,
-                    args.fetch_tile_size,
-                    current_way=current_way,
-                )
+                revision_before_stream = auto_fetch_manager.get_map_revision()
+                auto_fetch_manager.integrate_completed_tiles()
+                started = auto_fetch_manager.start_tile_streaming(car.x, car.y)
+                if auto_fetch_manager.get_map_revision() != revision_before_stream:
+                    invalidate_static_caches()
                 if started:
                     logger.info(
-                        "Triggered background auto-fetch (%s) at car=(%.1f, %.1f), speed=%.1f m/s, heading=%.2f rad, bounds=%s",
-                        auto_fetch_manager.get_trigger_reason(),
+                        "Triggered background tile streaming at car=(%.1f, %.1f), tile=%s",
                         car.x,
                         car.y,
-                        car.speed,
-                        car.heading,
-                        auto_fetch_manager.get_bounds(),
+                        auto_fetch_manager.player_tile,
                     )
                 if (
+                    auto_fetch_manager.get_map_revision() != last_map_revision
+                    or (
                     (
                         len(ways) != spatial_grid.indexed_way_count
                         or len(buildings) != building_grid.indexed_way_count
@@ -1873,6 +1882,7 @@ def main() -> None:
                         or len(waters) != water_grid.indexed_way_count
                         or len(crossings) != crossing_grid.indexed_way_count
                         or len(traffic_lights) != traffic_light_grid.indexed_way_count
+                    )
                     )
                     and map_sync_stage == 0
                 ):
@@ -1933,6 +1943,7 @@ def main() -> None:
                 elif map_sync_stage == 11:
                     with frame_profiler.section("map_sync:finalize"):
                         navigation_route_dirty = True
+                        last_map_revision = auto_fetch_manager.get_map_revision()
                     map_sync_stage = 0
                 if map_sync_started is not None:
                     frame_profiler.record(

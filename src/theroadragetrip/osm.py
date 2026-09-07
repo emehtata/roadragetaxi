@@ -17,6 +17,7 @@ from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 import requests
 
 from .geo import dist_point_to_segment, point_in_polygon
+from .tile_streaming import TileCoord, active_tiles, tile_bbox, tile_changes, world_to_tile
 
 logger = logging.getLogger(__name__)
 CACHE_VERSION = "v0.9.0alpha"
@@ -2334,6 +2335,18 @@ class AutoFetchManager:
         self._attempted_endpoints: Set[Tuple[int, str]] = set()
         self._completed_fetch_targets: Set[Tuple[float, float, float, float]] = set()
         self._endpoint_connection_cache: dict[tuple[int, int, int], bool] = {}
+        self.player_tile: Optional[TileCoord] = None
+        self.active_tiles: set[TileCoord] = set()
+        self.loaded_tiles: set[TileCoord] = set()
+        self.pending_tiles: set[TileCoord] = set()
+        self._completed_tile_batches: list[list[tuple[TileCoord, object]]] = []
+        self._tile_retry_after = 0.0
+        self.map_revision = 0
+        self.last_tile_load_ms = 0.0
+        self.last_tile_integration_ms = 0.0
+        self.last_tile_unload_ms = 0.0
+        self._tile_objects: dict[TileCoord, dict[str, dict[tuple, object]]] = {}
+        self._object_tiles: dict[str, dict[tuple, set[TileCoord]]] = {}
         # Load known dead-end boundaries from disk cache
         self.dead_ends: List[dict] = []
 
@@ -2352,6 +2365,239 @@ class AutoFetchManager:
     def get_trigger_reason(self) -> str:
         with self.lock:
             return self.last_trigger_reason
+
+    def get_map_revision(self) -> int:
+        with self.lock:
+            return self.map_revision
+
+    def get_tile_metrics(self) -> dict[str, object]:
+        with self.lock:
+            return {
+                "player_tile": self.player_tile,
+                "tiles_in_memory": len(self.loaded_tiles),
+                "tiles_pending": len(self.pending_tiles),
+                "tile_load_ms": self.last_tile_load_ms,
+                "tile_integration_ms": self.last_tile_integration_ms,
+                "tile_unload_ms": self.last_tile_unload_ms,
+            }
+
+    def update_player_tile(
+        self, x: float, y: float,
+    ) -> Optional[tuple[TileCoord, set[TileCoord], set[TileCoord]]]:
+        """Return tile additions/removals only when the player changes tile."""
+        current_tile = world_to_tile(x, y)
+        with self.lock:
+            if current_tile == self.player_tile:
+                return None
+            previous_tiles = self.active_tiles
+            current_tiles = set(active_tiles(current_tile))
+            added, removed = tile_changes(previous_tiles, current_tiles)
+            self.player_tile = current_tile
+            self.active_tiles = current_tiles
+            return current_tile, added, removed
+
+    def start_tile_streaming(self, x: float, y: float) -> bool:
+        """Load newly required tiles in a background thread."""
+        transition = self.update_player_tile(x, y)
+        with self.lock:
+            if transition is not None:
+                _, _, removed = transition
+                unload_started = time.perf_counter()
+                self._unload_tiles(removed)
+                self.last_tile_unload_ms = (time.perf_counter() - unload_started) * 1000.0
+            missing = self.active_tiles - self.loaded_tiles - self.pending_tiles
+            if not missing or self.is_fetching or time.monotonic() < self._tile_retry_after:
+                return False
+            self.pending_tiles.update(missing)
+            self.is_fetching = True
+            self.fetch_progress = 0.0
+        threading.Thread(
+            target=self._background_tile_fetch,
+            args=(tuple(sorted(missing)),),
+            daemon=True,
+        ).start()
+        return True
+
+    def initialize_player_tile(self, x: float, y: float) -> TileCoord:
+        """Seed tile tracking from the already loaded startup world."""
+        current_tile = world_to_tile(x, y)
+        with self.lock:
+            self.player_tile = current_tile
+            self.active_tiles = set(active_tiles(current_tile))
+            self._register_existing_world()
+            self.loaded_tiles = set(self._tile_objects) & self.active_tiles
+            self._unload_tiles(set(self._tile_objects) - self.active_tiles)
+        return current_tile
+
+    def _register_existing_world(self) -> None:
+        sections = {
+            "ways": self.ways,
+            "waters": self.waters,
+            "buildings": self.buildings,
+            "sceneries": self.sceneries,
+            "places": self.places,
+            "traffic_lights": self.traffic_lights,
+            "crossings": self.crossings,
+            "bus_stops": self.bus_stops,
+            "parking_spaces": self.parking_spaces,
+            "logical_intersections": self.logical_intersections,
+            "stop_signs": self.stop_signs,
+            "yield_signs": self.yield_signs,
+        }
+        for section, objects in sections.items():
+            for item in objects:
+                key = _map_object_key(item)
+                owners = self._object_tiles.setdefault(section, {}).setdefault(key, set())
+                for tile in self._item_tiles(item):
+                    owners.add(tile)
+                    self._tile_objects.setdefault(tile, {}).setdefault(section, {})[key] = item
+
+    @staticmethod
+    def _item_tiles(item) -> set[TileCoord]:
+        bbox = getattr(item, "bbox", None)
+        if bbox and bbox != (0.0, 0.0, 0.0, 0.0):
+            min_x, min_y, max_x, max_y = bbox
+        elif hasattr(item, "x") and hasattr(item, "y"):
+            min_x = max_x = item.x
+            min_y = max_y = item.y
+        else:
+            points = getattr(item, "points_m", ())
+            if not points:
+                return set()
+            min_x = min(point[0] for point in points)
+            min_y = min(point[1] for point in points)
+            max_x = max(point[0] for point in points)
+            max_y = max(point[1] for point in points)
+        first = world_to_tile(min_x, min_y)
+        last = world_to_tile(max_x, max_y)
+        return {
+            TileCoord(tile_x, tile_y)
+            for tile_x in range(first.x, last.x + 1)
+            for tile_y in range(first.y, last.y + 1)
+        }
+
+    def _tile_bbox_latlon(self, tile: TileCoord) -> Tuple[float, float, float, float]:
+        min_x, min_y, max_x, max_y = tile_bbox(tile)
+        lon1, lat1 = self.transformer.transform(min_x, min_y)
+        lon2, lat2 = self.transformer.transform(max_x, max_y)
+        return min(lat1, lat2), min(lon1, lon2), max(lat1, lat2), max(lon1, lon2)
+
+    def _background_tile_fetch(self, tiles: tuple[TileCoord, ...]) -> None:
+        loaded = []
+        load_started = time.perf_counter()
+        try:
+            for index, tile in enumerate(tiles):
+                bbox = self._tile_bbox_latlon(tile)
+                if self.world_cache_manager is not None:
+                    world = self.world_cache_manager.preload_tile(tile, bbox).result()
+                else:
+                    world = self.build_func(self.fetch_func(bbox))
+                loaded.append((tile, world))
+                with self.lock:
+                    self.fetch_progress = (index + 1) / len(tiles)
+            load_ms = (time.perf_counter() - load_started) * 1000.0
+
+            with self.lock:
+                self._completed_tile_batches.append(loaded)
+                self.last_tile_load_ms = load_ms
+                self.is_fetching = False
+                self.fetch_progress = 1.0
+        except Exception as exc:
+            logger.warning("Tile streaming failed: %s", exc)
+            with self.lock:
+                for tile in tiles:
+                    self.pending_tiles.discard(tile)
+                self._tile_retry_after = time.monotonic() + 1.0
+                self.is_fetching = False
+                self.fetch_progress = 0.0
+
+    def integrate_completed_tiles(self) -> int:
+        """Integrate background tile results on the main thread."""
+        with self.lock:
+            batches = self._completed_tile_batches
+            self._completed_tile_batches = []
+            active_tiles_now = set(self.active_tiles)
+        if not batches:
+            return 0
+        started = time.perf_counter()
+        integrated = 0
+        with self.lock:
+            for batch in batches:
+                for tile, world in batch:
+                    self.pending_tiles.discard(tile)
+                    if tile not in active_tiles_now:
+                        continue
+                    self._merge_tile_world_for(tile, world)
+                    self.loaded_tiles.add(tile)
+                    integrated += 1
+            if integrated:
+                self.map_revision += 1
+            self.last_tile_integration_ms = (time.perf_counter() - started) * 1000.0
+        return integrated
+
+    def _merge_tile_world(self, world) -> None:
+        raise RuntimeError("tile world merge requires tile ownership")
+
+    def _merge_tile_world_for(self, tile: TileCoord, world) -> None:
+        sections = {
+            "ways": self.ways,
+            "waters": self.waters,
+            "buildings": self.buildings,
+            "sceneries": self.sceneries,
+            "places": self.places,
+            "traffic_lights": self.traffic_lights,
+            "crossings": self.crossings,
+            "bus_stops": self.bus_stops,
+            "parking_spaces": self.parking_spaces,
+            "logical_intersections": self.logical_intersections,
+            "stop_signs": self.stop_signs,
+            "yield_signs": self.yield_signs,
+        }
+        tile_objects = self._tile_objects.setdefault(tile, {})
+        for section, target in sections.items():
+            by_key = tile_objects.setdefault(section, {})
+            for item in getattr(world, section, ()):
+                key = _map_object_key(item)
+                by_key[key] = item
+                owners = self._object_tiles.setdefault(section, {}).setdefault(key, set())
+                owners.add(tile)
+                if not any(_map_object_key(existing) == key for existing in target):
+                    target.append(item)
+        associate_places_with_buildings(self.buildings, self.places)
+
+    def _unload_tiles(self, tiles: set[TileCoord]) -> None:
+        if not tiles:
+            return
+        sections = {
+            "ways": self.ways,
+            "waters": self.waters,
+            "buildings": self.buildings,
+            "sceneries": self.sceneries,
+            "places": self.places,
+            "traffic_lights": self.traffic_lights,
+            "crossings": self.crossings,
+            "bus_stops": self.bus_stops,
+            "parking_spaces": self.parking_spaces,
+            "logical_intersections": self.logical_intersections,
+            "stop_signs": self.stop_signs,
+            "yield_signs": self.yield_signs,
+        }
+        for tile in tiles:
+            tile_objects = self._tile_objects.pop(tile, {})
+            self.loaded_tiles.discard(tile)
+            for section, objects in tile_objects.items():
+                owners_by_key = self._object_tiles.get(section, {})
+                target = sections[section]
+                for key in objects:
+                    owners = owners_by_key.get(key, set())
+                    owners.discard(tile)
+                    if owners:
+                        continue
+                    owners_by_key.pop(key, None)
+                    target[:] = [item for item in target if _map_object_key(item) != key]
+            if tile_objects:
+                self.map_revision += 1
+        associate_places_with_buildings(self.buildings, self.places)
 
     def is_known_dead_end(self, car_x: float, car_y: float, direction: str, tolerance_m: float = 300.0) -> bool:
         """Check if vehicle is near a recorded dead-end in the given expansion direction."""

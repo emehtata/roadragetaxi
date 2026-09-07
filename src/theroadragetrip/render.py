@@ -125,6 +125,17 @@ _building_sign_surface_cache = {}
 _building_visual_plan_cache = {}
 
 
+def invalidate_static_caches() -> None:
+    """Discard viewport surfaces after streamed world data changes."""
+    global _label_frame_cache_key, _building_frame_cache_key
+    global _scenery_frame_cache_key, _water_frame_cache_key, _road_frame_cache_key
+    _label_frame_cache_key = None
+    _building_frame_cache_key = None
+    _scenery_frame_cache_key = None
+    _water_frame_cache_key = None
+    _road_frame_cache_key = None
+
+
 def _static_cache_zoom(px_per_m: float) -> float:
     """Quantize static-layer zoom to avoid rebuilding during smooth zoom animation."""
     return max(STATIC_ZOOM_STEP, round(px_per_m / STATIC_ZOOM_STEP) * STATIC_ZOOM_STEP)
