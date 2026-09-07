@@ -1045,6 +1045,18 @@ def _draw_waters_uncached(
                 pygame.draw.lines(screen, (30, 100, 200), False, pts, max(2, int(3 * px_per_m)))
 
 
+def _building_window_story_count(building: Building) -> int:
+    """Return the OSM floor count, or a height-based fallback."""
+    levels = getattr(building, "levels", None)
+    if levels is not None:
+        try:
+            return max(1, min(40, int(levels)))
+        except (TypeError, ValueError):
+            pass
+    height = max(3.0, float(getattr(building, "height_m", 8.0)))
+    return max(1, min(40, int(round(height / 3.0))))
+
+
 def draw_buildings(
     screen,
     buildings: List[Building],
@@ -1184,62 +1196,30 @@ def _draw_buildings_uncached(
             camera_y = camy - ((point[1] + next_point[1]) * 0.5)
             if outward_x * camera_x + outward_y * camera_y > 0.0:
                 visible_edges.append(index)
-        edge_lengths, entrance_edge_indices = _building_visual_plan(b)
-        window_edge = max(
-            visible_edges,
-            key=edge_lengths.__getitem__,
-            default=-1,
-        )
-        has_named_venue = bool(
-            getattr(b, "associated_places", ())
-        )
-        is_commercial = (
-            getattr(b, "venue_type", None) in COMMERCIAL_AMENITIES
-            or getattr(b, "venue_type", None) in COMMERCIAL_BUILDING_TYPES
-            or bool(getattr(b, "venue_type", None)) and getattr(b, "venue_type", "") not in {"school", "hospital", "place_of_worship"}
-            or has_named_venue and bool(getattr(b, "entrances", ()))
-        )
-        storefront_edges = entrance_edge_indices or ({window_edge} if is_commercial else set())
-        for index, point in enumerate(pts):
+        story_count = _building_window_story_count(b)
+        for index in visible_edges:
+            point = pts[index]
             next_point = pts[(index + 1) % len(pts)]
             roof_point = roof[index]
-            next_roof = roof[(index + 1) % len(roof)]
-            midpoint_x = (point[0] + next_point[0]) * 0.5
-            midpoint_y = (point[1] + next_point[1]) * 0.5
-            frontness = (midpoint_x - centroid_x) * -roof_dx + (midpoint_y - centroid_y) * -roof_dy
-            if index not in visible_edges or (index != window_edge and index not in storefront_edges):
-                continue
             edge_x = next_point[0] - point[0]
             edge_y = next_point[1] - point[1]
-            edge_length = edge_lengths[index]
-            if edge_length < 8:
+            edge_length = math.hypot(edge_x, edge_y)
+            if edge_length < 12.0:
                 continue
             edge_x /= edge_length
             edge_y /= edge_length
             roof_x = roof_point[0] - point[0]
             roof_y = roof_point[1] - point[1]
-            is_storefront = is_commercial and index in storefront_edges
-            window_count = min(5 if is_storefront else 3, max(1 if not is_storefront else 2, int(edge_length // (18 if is_storefront else 32))))
-            for floor_index in range(level_count):
-                floor_is_storefront = is_storefront and floor_index == 0
-                floor_position = (
-                    0.12 + 0.22 / level_count
-                    if floor_is_storefront
-                    else 0.18 + 0.64 * (floor_index + 0.5) / level_count
-                )
+            window_count = max(1, min(3, int(edge_length // 32.0)))
+            for floor_index in range(story_count):
+                floor_position = 0.18 + 0.64 * (floor_index + 0.5) / story_count
+                floor_height = abs(roof_y) / story_count
+                window_height = max(3.0, min(7.0, floor_height * 0.55))
                 for window_index in range(window_count):
                     center = (window_index + 1) / (window_count + 1)
                     center_x = point[0] + (next_point[0] - point[0]) * center + roof_x * floor_position
                     center_y = point[1] + (next_point[1] - point[1]) * center + roof_y * floor_position
-                    window_width = min(18.0 if floor_is_storefront else 10.0, edge_length / (window_count + 2) * (0.68 if floor_is_storefront else 0.45))
-                    half_width = window_width / 2
-                    window_height = max(
-                        6.0 if floor_is_storefront else 3.0,
-                        min(
-                            16.0 if floor_is_storefront else 7.0,
-                            abs(roof_y) * (0.78 if floor_is_storefront else 0.22) / level_count,
-                        ),
-                    )
+                    half_width = min(10.0, edge_length / (window_count + 2) * 0.45) / 2
                     pane_x = -roof_x * window_height / max(abs(roof_y), 1.0)
                     pane_y = -roof_y * window_height / max(abs(roof_y), 1.0)
                     window = [
@@ -1248,15 +1228,9 @@ def _draw_buildings_uncached(
                         (center_x + edge_x * half_width + pane_x, center_y + edge_y * half_width + pane_y),
                         (center_x - edge_x * half_width + pane_x, center_y - edge_y * half_width + pane_y),
                     ]
-                    pygame.draw.polygon(screen, (62, 122, 137) if floor_is_storefront else (52, 82, 91), window)
+                    pygame.draw.polygon(screen, (52, 82, 91), window)
                     pygame.draw.lines(screen, (25, 42, 47), True, window, 1)
                     pygame.draw.line(screen, (155, 180, 178), window[0], window[2], 1)
-                if floor_index < level_count - 1:
-                    divider_position = 0.18 + 0.64 * (floor_index + 1) / level_count
-                    divider_start = (point[0] + roof_x * divider_position, point[1] + roof_y * divider_position)
-                    divider_end = (next_point[0] + (next_roof[0] - next_point[0]) * divider_position, next_point[1] + (next_roof[1] - next_point[1]) * divider_position)
-                    pygame.draw.line(screen, (82, 75, 68), divider_start, divider_end, 1)
-
         for entrance_x, entrance_y in getattr(b, "entrances", ()):
             edge_distances = [
                 dist_point_to_segment(

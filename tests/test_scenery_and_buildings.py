@@ -18,6 +18,7 @@ sys.modules["pyproj"] = fake_pyproj
 from theroadragetrip.osm import build_ways, plant_trees
 from theroadragetrip.osm import Building, Place, Scenery, Way, associate_places_with_buildings
 from theroadragetrip.physics import Car
+from theroadragetrip.render import _building_window_story_count
 from theroadragetrip.taxi import TaxiManager
 
 
@@ -68,6 +69,7 @@ def test_build_ways_buildings_and_scenery_and_names():
     assert len(buildings) == 1
     assert buildings[0].name == "Town Hall"
     assert buildings[0].levels == 3
+    assert buildings[0].height_m == 9.0
     assert len(buildings[0].points_m) == 5
 
     assert len(sceneries) == 1
@@ -173,3 +175,13 @@ def test_hard_tree_impact_knocks_tree_down_and_smokes_taxi():
     assert manager.tree_effects[(id(scenery), 0)]["angle"] == car.heading
     assert manager.tree_wait_timer == 5.0
     assert manager.taxi_smoke_timer == 5.0
+
+
+def test_building_window_rows_follow_osm_levels():
+    building = Building(
+        [(0.0, 0.0), (10.0, 0.0), (10.0, 12.0), (0.0, 12.0)],
+        height_m=99.0,
+        levels=4,
+    )
+
+    assert _building_window_story_count(building) == 4
