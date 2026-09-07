@@ -1877,10 +1877,12 @@ def main() -> None:
                 revision_before_stream = auto_fetch_manager.get_map_revision()
                 integrated_tiles = auto_fetch_manager.integrate_completed_tiles(max_tiles=1)
                 if integrated_tiles:
-                    # Roads are rendered and collision-queried immediately; do not
-                    # expose a frame where the live list and road grid disagree.
+                    # Static render/collision indexes must match the live lists
+                    # immediately; service graphs can continue in later stages.
                     with frame_profiler.section("map_sync:spatial_grid_immediate"):
                         spatial_grid.rebuild(ways)
+                    with frame_profiler.section("map_sync:building_grid_immediate"):
+                        building_grid.rebuild(buildings)
                 started = auto_fetch_manager.start_tile_streaming(car.x, car.y)
                 if auto_fetch_manager.get_map_revision() != revision_before_stream:
                     invalidate_static_caches()
