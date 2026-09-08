@@ -214,3 +214,7 @@ def test_visible_facades_work_for_different_building_shapes():
         visible = _visible_building_edges(points, roof)
         assert visible
         assert len(visible) < len(points)
+
+    rectangle = [(0.0, 0.0), (20.0, 0.0), (20.0, 20.0), (0.0, 20.0)]
+    rectangle_roof = [(x - 7.0, y - 10.0) for x, y in rectangle]
+    assert _visible_building_edges(rectangle, rectangle_roof) == {1, 2}

@@ -1106,25 +1106,19 @@ def _building_is_commercial(building: Building) -> bool:
 
 
 def _visible_building_edges(points, roof) -> set[int]:
-    """Return facade edges on the camera-facing side of the pseudo-3D roof."""
+    """Return facade edges whose wall projection is not covered by the roof."""
     if not points or len(points) != len(roof):
         return set()
-    roof_offset_x = roof[0][0] - points[0][0]
-    roof_offset_y = roof[0][1] - points[0][1]
-    front_x = -roof_offset_x
-    front_y = -roof_offset_y
-    centroid_x = sum(point[0] for point in points) / len(points)
-    centroid_y = sum(point[1] for point in points) / len(points)
     visible = set()
     for index, point in enumerate(points):
         next_point = points[(index + 1) % len(points)]
-        midpoint_x = (point[0] + next_point[0]) * 0.5
-        midpoint_y = (point[1] + next_point[1]) * 0.5
-        frontness = (
-            (midpoint_x - centroid_x) * front_x
-            + (midpoint_y - centroid_y) * front_y
+        roof_point = roof[index]
+        next_roof = roof[(index + 1) % len(roof)]
+        wall_midpoint = (
+            (point[0] + next_point[0] + roof_point[0] + next_roof[0]) * 0.25,
+            (point[1] + next_point[1] + roof_point[1] + next_roof[1]) * 0.25,
         )
-        if frontness > 0.0:
+        if not point_in_polygon(wall_midpoint[0], wall_midpoint[1], roof):
             visible.add(index)
     return visible
 
