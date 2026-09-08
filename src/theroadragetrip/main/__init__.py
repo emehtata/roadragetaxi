@@ -176,6 +176,210 @@ RAGE_DISTANCE_TO_FULL_M = 400.0
 RAGE_SHOUT_COST = 0.25
 
 
+def _choose_city(
+    active_city_name,
+    game_mode: str,
+    city_centers,
+    bbox_presets,
+    career_file,
+    career,
+    screen,
+    font,
+    clock,
+    config,
+    language: str,
+    args,
+    force_refresh: bool,
+    return_to_main_menu: bool,
+):
+    """Run the mode/city selection menus (or resolve --preset/--bbox) for one
+    outer app_running iteration of main(), and return the chosen starting
+    point plus whatever menu state the gameplay loop still needs afterward.
+    """
+    cities_list = list(city_centers.keys())
+    selected_city_idx = 0
+
+    # Show city selection menu if no explicit CLI override or when requested from pause menu
+    if active_city_name is not None or (
+        not args.bbox
+        and not args.preset
+        and not args.use_sample
+        and not args.no_menu
+        or return_to_main_menu
+    ):
+        return_to_main_menu = False
+        if active_city_name is None:
+            mode_selected = 0 if game_mode == "career" else 1
+            choosing_mode = True
+            while choosing_mode:
+                clock.tick(30)
+                for ev in pygame.event.get():
+                    if ev.type == pygame.QUIT:
+                        pygame.quit()
+                        sys.exit(0)
+                    if ev.type == pygame.MOUSEMOTION:
+                        hovered = _menu_item_at_y(ev.pos[1], 270, 30, 30, 4)
+                        if hovered is not None:
+                            mode_selected = hovered
+                        continue
+                    if ev.type == pygame.MOUSEBUTTONDOWN and ev.button == 1:
+                        hovered = _menu_item_at_y(ev.pos[1], 270, 30, 30, 4)
+                        if hovered is not None:
+                            mode_selected = hovered
+                            if mode_selected == 2:
+                                completed = bool(load_career(career_file, len(cities_list))["completed"])
+                                save_career(career_file, 0, completed=completed)
+                                mode_selected = 0
+                            elif mode_selected == 3:
+                                clear_osm_cache()
+                                clear_world_cache()
+                                mode_selected = 0
+                            else:
+                                choosing_mode = False
+                        continue
+                    if ev.type != pygame.KEYDOWN:
+                        continue
+                    if ev.key == pygame.K_ESCAPE:
+                        pygame.quit()
+                        sys.exit(0)
+                    if ev.key in (pygame.K_UP, pygame.K_LEFT):
+                        mode_selected = (mode_selected - 1) % 3
+                    elif ev.key in (pygame.K_DOWN, pygame.K_RIGHT):
+                        mode_selected = (mode_selected + 1) % 3
+                    elif ev.key in (pygame.K_RETURN, pygame.K_SPACE, pygame.K_KP_ENTER):
+                        if mode_selected == 2:
+                            completed = bool(load_career(career_file, len(cities_list))["completed"])
+                            save_career(career_file, 0, completed=completed)
+                            mode_selected = 0
+                        elif mode_selected == 3:
+                            clear_osm_cache()
+                            clear_world_cache()
+                            mode_selected = 0
+                        else:
+                            choosing_mode = False
+                    elif ev.key in (pygame.K_1, pygame.K_KP1):
+                        mode_selected = 0
+                        choosing_mode = False
+                    elif ev.key in (pygame.K_2, pygame.K_KP2):
+                        mode_selected = 1
+                        choosing_mode = False
+                    elif ev.key in (pygame.K_3, pygame.K_KP3):
+                        completed = bool(load_career(career_file, len(cities_list))["completed"])
+                        save_career(career_file, 0, completed=completed)
+                        mode_selected = 0
+                    elif ev.key in (pygame.K_4, pygame.K_KP4):
+                        clear_osm_cache()
+                        clear_world_cache()
+                        mode_selected = 0
+                draw_mode_selection_menu(screen, font, mode_selected, SCREEN_W, SCREEN_H, language)
+                pygame.display.flip()
+            game_mode = "career" if mode_selected == 0 else "gig_driver"
+
+        career = load_career(career_file, len(cities_list)) if game_mode == "career" else None
+        if career is not None and not career["completed"]:
+            city_centers, bbox_presets = default_city_configuration()
+            cities_list = list(city_centers)
+            career = load_career(career_file, len(cities_list))
+        if career is not None:
+            selected_city_idx = len(cities_list) - 1 - int(career["city_index"])
+        if active_city_name is not None and active_city_name in cities_list:
+            selected_city_idx = cities_list.index(active_city_name)
+        in_menu = game_mode != "career"
+        intro_until = pygame.time.get_ticks() + 1000
+        while in_menu:
+            clock.tick(30)
+            for ev in pygame.event.get():
+                if ev.type == pygame.QUIT:
+                    pygame.quit()
+                    sys.exit(0)
+                elif ev.type == pygame.MOUSEMOTION:
+                    hovered = _city_item_at(ev.pos, len(cities_list), SCREEN_W)
+                    if hovered is not None:
+                        selected_city_idx = hovered
+                elif ev.type == pygame.MOUSEBUTTONDOWN and ev.button == 1:
+                    if _city_refresh_at(ev.pos, SCREEN_W, SCREEN_H, len(cities_list)):
+                        force_refresh = not force_refresh
+                        continue
+                    if _city_edit_at(ev.pos, SCREEN_W, SCREEN_H, len(cities_list)):
+                        cities_list, selected_city_idx = edit_city_list(
+                            screen, font, clock, config, cities_list,
+                            selected_city_idx, language,
+                        )
+                        city_centers, bbox_presets = cities_from_config(config)
+                        continue
+                    hovered = _city_item_at(ev.pos, len(cities_list), SCREEN_W)
+                    if hovered is not None:
+                        selected_city_idx = hovered
+                        in_menu = False
+                elif ev.type == pygame.KEYDOWN:
+                    if ev.key == pygame.K_ESCAPE:
+                        pygame.quit()
+                        sys.exit(0)
+                    elif ev.key in (pygame.K_RETURN, pygame.K_SPACE, pygame.K_KP_ENTER):
+                        in_menu = False
+                    elif ev.key == pygame.K_UP:
+                        selected_city_idx = (selected_city_idx - 1) % len(cities_list)
+                    elif ev.key == pygame.K_DOWN:
+                        selected_city_idx = (selected_city_idx + 1) % len(cities_list)
+                    elif ev.key == pygame.K_f:
+                        force_refresh = not force_refresh
+                    elif ev.key == pygame.K_e:
+                        cities_list, selected_city_idx = edit_city_list(
+                            screen, font, clock, config, cities_list,
+                            selected_city_idx, language,
+                        )
+                        city_centers, bbox_presets = cities_from_config(config)
+                    elif ev.key in (pygame.K_LEFT, pygame.K_RIGHT):
+                        direction = 1 if ev.key == pygame.K_RIGHT else -1
+                        selected_city_idx = _city_horizontal_index(
+                            selected_city_idx, direction, len(cities_list)
+                        )
+                    else:
+                        idx = _city_menu_index(ev.key, len(cities_list))
+                        if idx is not None:
+                            selected_city_idx = idx
+                            in_menu = False
+
+            if pygame.time.get_ticks() < intro_until:
+                draw_loading_screen(screen, font, 1.0, "Ready", SCREEN_W, SCREEN_H, show_details=False)
+            else:
+                draw_city_selection_menu(
+                    screen, font, cities_list, selected_city_idx, SCREEN_W, SCREEN_H, language,
+                    force_refresh=force_refresh,
+                )
+            pygame.display.flip()
+
+        chosen_city = cities_list[selected_city_idx]
+        camera_city_name = chosen_city
+        bbox = bbox_presets.get(chosen_city.lower(), DEFAULT_BBOX)
+        logger.info("Selected starting city: %s (bbox: %s)", chosen_city, bbox)
+    else:
+        preset_key = args.preset.lower() if args.preset else "oulu"
+        chosen_city = args.preset or preset_key
+        camera_city_name = chosen_city
+        bbox = bbox_presets.get(preset_key, DEFAULT_BBOX)
+        if args.bbox:
+            try:
+                parts = [float(p.strip()) for p in args.bbox.split(",")]
+                if len(parts) == 4:
+                    bbox = (parts[0], parts[1], parts[2], parts[3])
+            except Exception:
+                logger.warning("Invalid bbox provided, using default preset (%s)", preset_key)
+
+    return SimpleNamespace(
+        chosen_city=chosen_city,
+        camera_city_name=camera_city_name,
+        bbox=bbox,
+        city_centers=city_centers,
+        bbox_presets=bbox_presets,
+        game_mode=game_mode,
+        career=career,
+        force_refresh=force_refresh,
+        cities_list=cities_list,
+        selected_city_idx=selected_city_idx,
+    )
+
+
 def _load_world(
     chosen_city: str,
     camera_city_name: str,
@@ -516,176 +720,24 @@ def main() -> None:
     force_refresh = args.force_refresh
 
     while app_running:
-        cities_list = list(city_centers.keys())
-        selected_city_idx = 0
         city_summary = None
 
         # Show city selection menu if no explicit CLI override or when requested from pause menu
-        if active_city_name is not None or (
-            not args.bbox
-            and not args.preset
-            and not args.use_sample
-            and not args.no_menu
-            or return_to_main_menu
-        ):
-            return_to_main_menu = False
-            if active_city_name is None:
-                mode_selected = 0 if game_mode == "career" else 1
-                choosing_mode = True
-                while choosing_mode:
-                    clock.tick(30)
-                    for ev in pygame.event.get():
-                        if ev.type == pygame.QUIT:
-                            pygame.quit()
-                            sys.exit(0)
-                        if ev.type == pygame.MOUSEMOTION:
-                            hovered = _menu_item_at_y(ev.pos[1], 270, 30, 30, 4)
-                            if hovered is not None:
-                                mode_selected = hovered
-                            continue
-                        if ev.type == pygame.MOUSEBUTTONDOWN and ev.button == 1:
-                            hovered = _menu_item_at_y(ev.pos[1], 270, 30, 30, 4)
-                            if hovered is not None:
-                                mode_selected = hovered
-                                if mode_selected == 2:
-                                    completed = bool(load_career(career_file, len(cities_list))["completed"])
-                                    save_career(career_file, 0, completed=completed)
-                                    mode_selected = 0
-                                elif mode_selected == 3:
-                                    clear_osm_cache()
-                                    clear_world_cache()
-                                    mode_selected = 0
-                                else:
-                                    choosing_mode = False
-                            continue
-                        if ev.type != pygame.KEYDOWN:
-                            continue
-                        if ev.key == pygame.K_ESCAPE:
-                            pygame.quit()
-                            sys.exit(0)
-                        if ev.key in (pygame.K_UP, pygame.K_LEFT):
-                            mode_selected = (mode_selected - 1) % 3
-                        elif ev.key in (pygame.K_DOWN, pygame.K_RIGHT):
-                            mode_selected = (mode_selected + 1) % 3
-                        elif ev.key in (pygame.K_RETURN, pygame.K_SPACE, pygame.K_KP_ENTER):
-                            if mode_selected == 2:
-                                completed = bool(load_career(career_file, len(cities_list))["completed"])
-                                save_career(career_file, 0, completed=completed)
-                                mode_selected = 0
-                            elif mode_selected == 3:
-                                clear_osm_cache()
-                                clear_world_cache()
-                                mode_selected = 0
-                            else:
-                                choosing_mode = False
-                        elif ev.key in (pygame.K_1, pygame.K_KP1):
-                            mode_selected = 0
-                            choosing_mode = False
-                        elif ev.key in (pygame.K_2, pygame.K_KP2):
-                            mode_selected = 1
-                            choosing_mode = False
-                        elif ev.key in (pygame.K_3, pygame.K_KP3):
-                            completed = bool(load_career(career_file, len(cities_list))["completed"])
-                            save_career(career_file, 0, completed=completed)
-                            mode_selected = 0
-                        elif ev.key in (pygame.K_4, pygame.K_KP4):
-                            clear_osm_cache()
-                            clear_world_cache()
-                            mode_selected = 0
-                    draw_mode_selection_menu(screen, font, mode_selected, SCREEN_W, SCREEN_H, language)
-                    pygame.display.flip()
-                game_mode = "career" if mode_selected == 0 else "gig_driver"
-
-            career = load_career(career_file, len(cities_list)) if game_mode == "career" else None
-            if career is not None and not career["completed"]:
-                city_centers, bbox_presets = default_city_configuration()
-                cities_list = list(city_centers)
-                career = load_career(career_file, len(cities_list))
-            if career is not None:
-                selected_city_idx = len(cities_list) - 1 - int(career["city_index"])
-            if active_city_name is not None and active_city_name in cities_list:
-                selected_city_idx = cities_list.index(active_city_name)
-            in_menu = game_mode != "career"
-            intro_until = pygame.time.get_ticks() + 1000
-            while in_menu:
-                clock.tick(30)
-                for ev in pygame.event.get():
-                    if ev.type == pygame.QUIT:
-                        pygame.quit()
-                        sys.exit(0)
-                    elif ev.type == pygame.MOUSEMOTION:
-                        hovered = _city_item_at(ev.pos, len(cities_list), SCREEN_W)
-                        if hovered is not None:
-                            selected_city_idx = hovered
-                    elif ev.type == pygame.MOUSEBUTTONDOWN and ev.button == 1:
-                        if _city_refresh_at(ev.pos, SCREEN_W, SCREEN_H, len(cities_list)):
-                            force_refresh = not force_refresh
-                            continue
-                        if _city_edit_at(ev.pos, SCREEN_W, SCREEN_H, len(cities_list)):
-                            cities_list, selected_city_idx = edit_city_list(
-                                screen, font, clock, config, cities_list,
-                                selected_city_idx, language,
-                            )
-                            city_centers, bbox_presets = cities_from_config(config)
-                            continue
-                        hovered = _city_item_at(ev.pos, len(cities_list), SCREEN_W)
-                        if hovered is not None:
-                            selected_city_idx = hovered
-                            in_menu = False
-                    elif ev.type == pygame.KEYDOWN:
-                        if ev.key == pygame.K_ESCAPE:
-                            pygame.quit()
-                            sys.exit(0)
-                        elif ev.key in (pygame.K_RETURN, pygame.K_SPACE, pygame.K_KP_ENTER):
-                            in_menu = False
-                        elif ev.key == pygame.K_UP:
-                            selected_city_idx = (selected_city_idx - 1) % len(cities_list)
-                        elif ev.key == pygame.K_DOWN:
-                            selected_city_idx = (selected_city_idx + 1) % len(cities_list)
-                        elif ev.key == pygame.K_f:
-                            force_refresh = not force_refresh
-                        elif ev.key == pygame.K_e:
-                            cities_list, selected_city_idx = edit_city_list(
-                                screen, font, clock, config, cities_list,
-                                selected_city_idx, language,
-                            )
-                            city_centers, bbox_presets = cities_from_config(config)
-                        elif ev.key in (pygame.K_LEFT, pygame.K_RIGHT):
-                            direction = 1 if ev.key == pygame.K_RIGHT else -1
-                            selected_city_idx = _city_horizontal_index(
-                                selected_city_idx, direction, len(cities_list)
-                            )
-                        else:
-                            idx = _city_menu_index(ev.key, len(cities_list))
-                            if idx is not None:
-                                selected_city_idx = idx
-                                in_menu = False
-
-                if pygame.time.get_ticks() < intro_until:
-                    draw_loading_screen(screen, font, 1.0, "Ready", SCREEN_W, SCREEN_H, show_details=False)
-                else:
-                    draw_city_selection_menu(
-                        screen, font, cities_list, selected_city_idx, SCREEN_W, SCREEN_H, language,
-                        force_refresh=force_refresh,
-                    )
-                pygame.display.flip()
-
-            chosen_city = cities_list[selected_city_idx]
-            camera_city_name = chosen_city
-            bbox = bbox_presets.get(chosen_city.lower(), DEFAULT_BBOX)
-            logger.info("Selected starting city: %s (bbox: %s)", chosen_city, bbox)
-        else:
-            preset_key = args.preset.lower() if args.preset else "oulu"
-            chosen_city = args.preset or preset_key
-            camera_city_name = chosen_city
-            bbox = bbox_presets.get(preset_key, DEFAULT_BBOX)
-            if args.bbox:
-                try:
-                    parts = [float(p.strip()) for p in args.bbox.split(",")]
-                    if len(parts) == 4:
-                        bbox = (parts[0], parts[1], parts[2], parts[3])
-                except Exception:
-                    logger.warning("Invalid bbox provided, using default preset (%s)", preset_key)
+        city_choice = _choose_city(
+            active_city_name, game_mode, city_centers, bbox_presets, career_file, career,
+            screen, font, clock, config, language, args, force_refresh, return_to_main_menu,
+        )
+        return_to_main_menu = False
+        chosen_city = city_choice.chosen_city
+        camera_city_name = city_choice.camera_city_name
+        bbox = city_choice.bbox
+        city_centers = city_choice.city_centers
+        bbox_presets = city_choice.bbox_presets
+        game_mode = city_choice.game_mode
+        career = city_choice.career
+        force_refresh = city_choice.force_refresh
+        cities_list = city_choice.cities_list
+        selected_city_idx = city_choice.selected_city_idx
 
         world = _load_world(
             chosen_city, camera_city_name, bbox, city_centers, screen, font, clock,
