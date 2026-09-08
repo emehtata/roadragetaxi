@@ -14,9 +14,9 @@ from typing import Optional, Tuple
 
 import pygame
 
-from .geo import clamp, dist_point_to_segment, meters_to_latlon
-from .audio import AudioManager
-from .config import (
+from ..geo import clamp, dist_point_to_segment, meters_to_latlon
+from ..audio import AudioManager
+from ..config import (
     CONFIG_PATH,
     city_suggestions,
     cities_from_config,
@@ -28,7 +28,7 @@ from .config import (
     replace_city_in_config,
     save_config,
 )
-from .career import (
+from ..career import (
     CAREER_SCORE_LIMIT,
     career_path,
     gig_odometer_path,
@@ -38,8 +38,8 @@ from .career import (
     save_career,
     save_gig_odometer,
 )
-from .localization import LANGUAGE_NAMES, SUPPORTED_LANGUAGES, normalize_language, tr
-from .osm import (
+from ..localization import LANGUAGE_NAMES, SUPPORTED_LANGUAGES, normalize_language, tr
+from ..osm import (
     BBOX_PRESETS,
     CITY_CENTERS,
     DEFAULT_BBOX,
@@ -65,7 +65,7 @@ from .osm import (
     remove_trees_under_roads,
     save_osm_cache,
 )
-from .physics import (
+from ..physics import (
     ACCEL,
     BRAKE,
     FRICTION,
@@ -84,7 +84,7 @@ from .physics import (
     pull_car_inside_bridge_edge,
     update_car_physics,
 )
-from .render import (
+from ..render import (
     FPS,
     PX_PER_M,
     SCREEN_H,
@@ -141,30 +141,30 @@ from .render import (
     solar_altitude_and_events,
     world_to_screen,
 )
+from ..pedestrian import Pedestrian, PedestrianManager, PlayerPedestrian
+from ..residents import ResidentManager
+from ..police import place_speed_cameras
+from ..roadworks import create_roadworks
+from ..taxi import TaxiManager, TaxiState
+from ..traffic_world import TrafficWorld
+from ..world_cache import WorldCacheManager, clear_world_cache
+from ..performance import FrameProfiler
 
-
-CITY_MENU_KEYS = "1234567890ABCDEFGHIJKLMNOPQRSTUVWXYZ"
-
-
-def _city_menu_index(key: int, city_count: int) -> Optional[int]:
-    """Return the city index for a menu shortcut key."""
-    index = next(
-        (index for index, shortcut in enumerate(CITY_MENU_KEYS)
-         if key in (getattr(pygame, f"K_{shortcut.lower()}"),
-                    getattr(pygame, f"K_KP{shortcut}") if shortcut.isdigit() else -1)),
-        None,
-    )
-    if index is None:
-        return None
-    return index if index < city_count else None
-from .pedestrian import Pedestrian, PedestrianManager, PlayerPedestrian
-from .residents import ResidentManager
-from .police import place_speed_cameras
-from .roadworks import create_roadworks
-from .taxi import TaxiManager, TaxiState
-from .traffic_world import TrafficWorld
-from .world_cache import WorldCacheManager, clear_world_cache
-from .performance import FrameProfiler
+from .cli import configure_logging, parse_args
+from .menu_input import (
+    CITY_MENU_KEYS,
+    _city_edit_at,
+    _city_editor_item_at,
+    _city_editor_suggestion_at,
+    _city_horizontal_index,
+    _city_item_at,
+    _city_menu_index,
+    _menu_item_at_y,
+    _pause_item_at,
+    _respawn_allowed,
+)
+from .startup_screens import choose_language, confirm_outdated_cache, edit_city_list
+from .debug_tools import _screenshot_directory, _write_debug_snapshot
 
 # Maintain BBOX constant for backward compatibility
 BBOX = DEFAULT_BBOX
@@ -173,438 +173,6 @@ logger = logging.getLogger(__name__)
 RAGE_SHOUTS = ("PRKL!", "STNA!", "VTTU!", "HLVT!", "KRPÄ!", "KSPÄ!", "PSKA!")
 RAGE_DISTANCE_TO_FULL_M = 400.0
 RAGE_SHOUT_COST = 0.25
-
-
-def _screenshot_directory() -> str:
-    if sys.platform.startswith("win"):
-        home_dir = os.getenv("USERPROFILE") or os.path.expanduser("~")
-        return os.path.join(home_dir, "Pictures", "TheRoadRageTrip")
-    return os.path.abspath("screenshots")
-
-
-def _respawn_allowed(on_foot: bool) -> bool:
-    """Only allow taxi respawn while the driver is in the taxi."""
-    return not on_foot
-
-
-def _write_debug_snapshot(
-    path: str,
-    car: Car,
-    taxi_mgr,
-    auto_fetch_manager,
-    args,
-    bbox,
-    viewport_bounds,
-    camx: float,
-    camy: float,
-    px_per_m: float,
-    current_way,
-    ways,
-    waters,
-    buildings,
-    sceneries,
-    places,
-    taxi_stops,
-    traffic_lights,
-    crossings,
-    elements_count: int,
-    traffic_mgr,
-    pedestrian_mgr,
-    spatial_grid,
-    map_sync_stage: int,
-    chosen_city: str,
-    camera_city_name,
-    game_mode: str,
-    on_foot: bool,
-) -> None:
-    minx, miny, maxx, maxy = auto_fetch_manager.get_bounds()
-    now = time.time()
-    taxi_scalars = {
-        key: value
-        for key, value in vars(taxi_mgr).items()
-        if isinstance(value, (str, int, float, bool)) or value is None
-    }
-    passenger = taxi_mgr.current_passenger
-    data = {
-        "timestamp_ns": time.time_ns(),
-        "car": asdict(car),
-        "taxi": {
-            "state": taxi_mgr.state,
-            "scalar_properties": taxi_scalars,
-            "current_passenger": asdict(passenger) if passenger is not None else None,
-            "offer_count": len(taxi_mgr.offers),
-            "tree_effect_count": len(taxi_mgr.tree_effects),
-            "fallen_tree_count": len(taxi_mgr.fallen_trees),
-            "vomit_puddle_count": len(taxi_mgr.vomit_puddles),
-        },
-        "world": {
-            "city": chosen_city,
-            "camera_city": camera_city_name,
-            "game_mode": game_mode,
-            "initial_bbox": list(bbox),
-            "current_bounds": list(auto_fetch_manager.get_bounds()),
-            "viewport_bounds": list(viewport_bounds),
-            "camera": {"x": camx, "y": camy, "px_per_m": px_per_m},
-            "feature_counts": {
-                "elements_loaded": elements_count,
-                "ways": len(ways),
-                "waters": len(waters),
-                "buildings": len(buildings),
-                "sceneries": len(sceneries),
-                "places": len(places),
-                "taxi_stops": len(taxi_stops),
-                "traffic_lights": len(traffic_lights),
-                "crossings": len(crossings),
-                "pedestrians": len(pedestrian_mgr.pedestrians),
-            },
-            "current_way": {
-                "name": getattr(current_way, "name", None),
-                "highway": getattr(current_way, "highway", None),
-                "layer": getattr(current_way, "layer", None),
-                "speed_limit_kmh": getattr(current_way, "speed_limit_kmh", None),
-            } if current_way is not None else None,
-            "spatial_grid": {"indexed_way_count": spatial_grid.indexed_way_count},
-            "map_sync_stage": map_sync_stage,
-            "on_foot": on_foot,
-        },
-        "auto_fetch": {
-            "configured_enabled": bool(args.auto_fetch),
-            "call_enabled": True,
-            "margin_m": args.fetch_margin,
-            "tile_size_m": args.fetch_tile_size,
-            "build_in_process": bool(args.build_in_process),
-            "manager_enabled_state": not auto_fetch_manager.get_fetching(),
-            "is_fetching": auto_fetch_manager.get_fetching(),
-            "progress": auto_fetch_manager.get_progress(),
-            "last_trigger_reason": auto_fetch_manager.get_trigger_reason(),
-            "last_fetch_time": auto_fetch_manager.last_fetch_time,
-            "seconds_since_last_fetch": (
-                now - auto_fetch_manager.last_fetch_time
-                if auto_fetch_manager.last_fetch_time
-                else None
-            ),
-            "cooldown_s": auto_fetch_manager.cooldown_s,
-            "dead_end_count": len(auto_fetch_manager.dead_ends),
-            "dead_ends": auto_fetch_manager.dead_ends,
-            "known_dead_end": {
-                direction: auto_fetch_manager.is_known_dead_end(car.x, car.y, direction)
-                for direction in ("west", "east", "south", "north")
-            },
-            "distance_to_edges_m": {
-                "west": car.x - minx,
-                "east": maxx - car.x,
-                "south": car.y - miny,
-                "north": maxy - car.y,
-            },
-            "within_margin": {
-                "west": car.x < minx + args.fetch_margin,
-                "east": car.x > maxx - args.fetch_margin,
-                "south": car.y < miny + args.fetch_margin,
-                "north": car.y > maxy - args.fetch_margin,
-            },
-            "endpoint_audit": auto_fetch_manager.get_endpoint_fetch_audit(
-                car,
-                args.fetch_margin,
-                args.fetch_tile_size,
-                current_way=current_way,
-            ),
-        },
-    }
-    with open(path, "w", encoding="utf-8") as debug_file:
-        json.dump(data, debug_file, ensure_ascii=False, indent=2, default=str)
-
-
-def parse_args(config=None, city_names=None) -> argparse.Namespace:
-    p = argparse.ArgumentParser(description="The Road Rage Trip (OSM PoC)")
-    game = config["game"] if config else {}
-    map_config = config["map"] if config else {}
-    traffic_config = config["traffic"] if config else {}
-    p.add_argument("--bbox", type=str, default=game.get("bbox") or None, help="south,west,north,east (lat/lon)")
-    p.add_argument(
-        "--preset",
-        type=str,
-        choices=city_names or list(BBOX_PRESETS.keys()),
-        default=game.get("preset") or None,
-        help="Named bounding box preset (e.g., oulu, helsinki, tampere, espoo)",
-    )
-    p.add_argument("--no-menu", action="store_true", default=game.getboolean("no_menu", fallback=False), help="Skip interactive city menu")
-    p.add_argument("--force-refresh", action="store_true", default=game.getboolean("force_refresh", fallback=False), help="Force refresh from Overpass (ignore cache)")
-    p.add_argument("--use-sample", action="store_true", default=game.getboolean("use_sample", fallback=False), help="Use bundled sample OSM data and skip Overpass")
-    p.add_argument("--px-per-m", type=float, default=game.getfloat("px_per_m", fallback=9.0), help="Initial pixels per meter (zoom)")
-    p.add_argument("--log-level", type=str, default=game.get("log_level", "INFO"), help="Logging level (DEBUG/INFO/WARNING)")
-    p.add_argument("--no-cache", action="store_true", default=game.getboolean("no_cache", fallback=False), help="Disable cache usage (treated like force-refresh)")
-
-    # Auto-fetching nearby map tiles when the car approaches the bbox edge
-    p.add_argument("--no-auto-fetch", dest="auto_fetch", action="store_false", default=map_config.getboolean("auto_fetch", fallback=True), help="Disable on-demand map expansion")
-    p.add_argument(
-        "--fetch-margin",
-        type=float,
-        default=map_config.getfloat("fetch_margin", fallback=350.0),
-        help="Distance in meters from bbox edge that triggers auto-fetch",
-    )
-    p.add_argument("--fetch-tile-size", type=float, default=map_config.getfloat("fetch_tile_size", fallback=500.0), help="Base auto-fetch bbox size in meters")
-    p.add_argument(
-        "--build-in-process",
-        action="store_true",
-        default=map_config.getboolean("build_in_process", fallback=True),
-        help="Build auto-fetched map data outside the gameplay process",
-    )
-    p.add_argument("--pedestrian-count", type=int, default=traffic_config.getint("pedestrian_count", fallback=60), help="Target number of pedestrians")
-
-    return p.parse_args()
-
-
-def configure_logging(level: Optional[str] = None, file_logging: bool = False) -> None:
-    lvl = os.getenv("LOG_LEVEL", level or "INFO").upper()
-    log_level = getattr(logging, lvl, logging.INFO)
-    log_format = "%(asctime)s %(levelname)s %(name)s: %(message)s"
-    handlers = [logging.StreamHandler()]
-    handlers[0].setFormatter(logging.Formatter(log_format))
-    if file_logging:
-        file_handler = logging.FileHandler("roadragetrip.log", encoding="utf-8")
-        file_handler.setFormatter(logging.Formatter(log_format))
-        handlers.append(file_handler)
-    logging.basicConfig(level=log_level, handlers=handlers, force=True)
-
-
-def _menu_item_at_y(pos_y: int, start_y: int, item_h: int, gap_y: int, count: int) -> Optional[int]:
-    for index in range(count):
-        item_y = start_y + index * (item_h + gap_y)
-        if item_y <= pos_y <= item_y + item_h:
-            return index
-    return None
-
-
-def _city_item_at(pos: Tuple[int, int], city_count: int, screen_w: int) -> Optional[int]:
-    cols = 2
-    rows = (city_count + cols - 1) // cols
-    item_w, item_h = 320, 42
-    gap_x, gap_y = 24, 10
-    total_w = cols * item_w + (cols - 1) * gap_x
-    start_x, start_y = (screen_w - total_w) // 2, 115
-    x, y = pos
-    col = (x - start_x) // (item_w + gap_x)
-    row = (y - start_y) // (item_h + gap_y)
-    if not (0 <= col < cols and 0 <= row < rows):
-        return None
-    item_x = start_x + col * (item_w + gap_x)
-    item_y = start_y + row * (item_h + gap_y)
-    if item_x <= x <= item_x + item_w and item_y <= y <= item_y + item_h:
-        index = col * rows + row
-        return index if index < city_count else None
-    return None
-
-
-def _city_horizontal_index(index: int, direction: int, city_count: int) -> int:
-    rows = (city_count + 1) // 2
-    return (index + direction * rows) % city_count
-
-
-def _city_refresh_at(pos: Tuple[int, int], screen_w: int, screen_h: int, city_count: int) -> bool:
-    cols = 2
-    rows = (city_count + cols - 1) // cols
-    item_h = 42
-    gap_y = 10
-    checkbox_rect = pygame.Rect(screen_w // 2 - 150, 115 + rows * (item_h + gap_y) + 12, 22, 22)
-    return checkbox_rect.collidepoint(pos)
-
-
-def _city_edit_at(pos: Tuple[int, int], screen_w: int, screen_h: int, city_count: int) -> bool:
-    rows = (city_count + 1) // 2
-    top = 115 + rows * 52 + 12 + 38
-    return pygame.Rect(screen_w // 2 - 150, top, 300, 36).collidepoint(pos)
-
-
-def _pause_item_at(pos: Tuple[int, int], option_count: int, screen_w: int, screen_h: int) -> Optional[int]:
-    panel_w = min(420, screen_w - 40)
-    panel_h = min(screen_h - 40, max(280, 110 + option_count * 56))
-    panel_x, panel_y = (screen_w - panel_w) // 2, (screen_h - panel_h) // 2
-    item_w, item_h = 340, 44
-    item_x = panel_x + (panel_w - item_w) // 2
-    if not (item_x <= pos[0] <= item_x + item_w):
-        return None
-    return _menu_item_at_y(pos[1], panel_y + 80, item_h, 12, option_count)
-
-
-def _city_editor_suggestion_at(pos: Tuple[int, int], suggestion_count: int, screen_w: int, screen_h: int) -> Optional[int]:
-    rows = 5
-    input_y = 72 + rows * 46 + 20
-    input_rect = (screen_w // 2 - 250, input_y, 500, 42)
-    if not (input_rect[0] <= pos[0] <= input_rect[0] + input_rect[2] and input_rect[1] <= pos[1] <= input_rect[1] + input_rect[3] + 8):
-        return None
-    index = (pos[1] - input_rect[1] - input_rect[3] - 8) // 34
-    return index if 0 <= index < suggestion_count else None
-
-
-def _city_editor_item_at(pos: Tuple[int, int], city_count: int, screen_w: int) -> Optional[int]:
-    cols = 2
-    rows = (city_count + cols - 1) // cols
-    item_w, item_h, gap_x, gap_y = 300, 38, 20, 8
-    start_x, start_y = (screen_w - (2 * item_w + gap_x)) // 2, 72
-    x, y = pos
-    col = (x - start_x) // (item_w + gap_x)
-    row = (y - start_y) // (item_h + gap_y)
-    if not (0 <= col < cols and 0 <= row < rows):
-        return None
-    item_x = start_x + col * (item_w + gap_x)
-    item_y = start_y + row * (item_h + gap_y)
-    if item_x <= x <= item_x + item_w and item_y <= y <= item_y + item_h:
-        index = col * rows + row
-        return index if index < city_count else None
-    return None
-
-
-def edit_city_list(screen, font, clock, config, cities_list: list[str], selected_idx: int, language: str) -> tuple[list[str], int]:
-    catalog = load_city_catalog()
-    editor_idx = selected_idx
-    query = ""
-    suggestion_idx = 0
-    editing = True
-    pygame.key.start_text_input()
-    try:
-        while editing:
-            clock.tick(30)
-            suggestions = city_suggestions(query, catalog=catalog)
-            for ev in pygame.event.get():
-                if ev.type == pygame.QUIT:
-                    pygame.quit()
-                    sys.exit(0)
-                if ev.type == pygame.MOUSEBUTTONDOWN and ev.button == 1:
-                    city_idx = _city_editor_item_at(ev.pos, len(cities_list), SCREEN_W)
-                    if city_idx is not None:
-                        editor_idx = city_idx
-                        query = ""
-                        suggestion_idx = 0
-                        continue
-                    picked_idx = _city_editor_suggestion_at(ev.pos, len(suggestions), SCREEN_W, SCREEN_H)
-                    if picked_idx is not None:
-                        selected_name = suggestions[picked_idx]
-                        latitude, longitude = catalog[selected_name]
-                        replace_city_in_config(config, editor_idx, selected_name, latitude, longitude)
-                        save_config(config)
-                        cities_list = list(cities_from_config(config)[0])
-                        editing = False
-                        continue
-                if ev.type != pygame.KEYDOWN:
-                    continue
-                if ev.key == pygame.K_ESCAPE:
-                    editing = False
-                elif ev.key == pygame.K_BACKSPACE:
-                    query = query[:-1]
-                elif ev.key in (pygame.K_RETURN, pygame.K_KP_ENTER) and suggestions:
-                    selected_name = suggestions[suggestion_idx]
-                    latitude, longitude = catalog[selected_name]
-                    replace_city_in_config(config, editor_idx, selected_name, latitude, longitude)
-                    save_config(config)
-                    cities_list = list(cities_from_config(config)[0])
-                    editing = False
-                elif ev.key == pygame.K_UP and suggestions:
-                    suggestion_idx = (suggestion_idx - 1) % len(suggestions)
-                elif ev.key == pygame.K_DOWN and suggestions:
-                    suggestion_idx = (suggestion_idx + 1) % len(suggestions)
-                elif ev.unicode and ev.unicode.isprintable():
-                    query += ev.unicode
-                    suggestion_idx = 0
-            draw_city_editor(
-                screen, font, cities_list, editor_idx, query, suggestions, suggestion_idx,
-                SCREEN_W, SCREEN_H, language,
-            )
-            pygame.display.flip()
-    finally:
-        pygame.key.stop_text_input()
-    return cities_list, min(editor_idx, max(0, len(cities_list) - 1))
-
-
-def choose_language(screen, font, clock, current_language: str = "fi") -> str:
-    """Show the first-run language chooser."""
-    import pygame
-
-    selected = SUPPORTED_LANGUAGES.index(normalize_language(current_language))
-    while True:
-        clock.tick(30)
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                pygame.quit()
-                sys.exit(0)
-            if event.type == pygame.MOUSEMOTION:
-                hovered = _menu_item_at_y(event.pos[1], 280, 24, 31, len(SUPPORTED_LANGUAGES))
-                if hovered is not None:
-                    selected = hovered
-                continue
-            if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-                hovered = _menu_item_at_y(event.pos[1], 280, 24, 31, len(SUPPORTED_LANGUAGES))
-                if hovered is not None:
-                    return SUPPORTED_LANGUAGES[hovered]
-                continue
-            if event.type != pygame.KEYDOWN:
-                continue
-            if event.key in (pygame.K_LEFT, pygame.K_UP):
-                selected = (selected - 1) % len(SUPPORTED_LANGUAGES)
-            elif event.key in (pygame.K_RIGHT, pygame.K_DOWN):
-                selected = (selected + 1) % len(SUPPORTED_LANGUAGES)
-            elif event.key in (pygame.K_RETURN, pygame.K_SPACE, pygame.K_KP_ENTER):
-                return SUPPORTED_LANGUAGES[selected]
-            elif pygame.K_1 <= event.key <= pygame.K_9:
-                index = event.key - pygame.K_1
-                if index < len(SUPPORTED_LANGUAGES):
-                    return SUPPORTED_LANGUAGES[index]
-
-        language = SUPPORTED_LANGUAGES[selected]
-        screen.fill((18, 24, 32))
-        title = font.render(tr(language, "select_language"), True, (245, 245, 245))
-        screen.blit(title, title.get_rect(center=(screen.get_width() // 2, 180)))
-        for index, code in enumerate(SUPPORTED_LANGUAGES):
-            color = (255, 215, 95) if index == selected else (210, 220, 230)
-            label = font.render(f"{index + 1}. {LANGUAGE_NAMES[code]}", True, color)
-            screen.blit(label, label.get_rect(center=(screen.get_width() // 2, 280 + index * 55)))
-        hint = pygame.font.SysFont(None, 18).render(tr(language, "language_hint"), True, (150, 175, 195))
-        screen.blit(hint, hint.get_rect(center=(screen.get_width() // 2, screen.get_height() - 80)))
-        pygame.display.flip()
-
-
-def confirm_outdated_cache(screen, font, clock, language: str) -> bool:
-    """Ask before removing cache data created by an older release."""
-    button_font = pygame.font.SysFont(None, 22)
-    message_font = pygame.font.SysFont(None, 24)
-    button_width, button_height = 130, 42
-    while True:
-        clock.tick(30)
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                pygame.quit()
-                sys.exit(0)
-            if event.type == pygame.KEYDOWN:
-                if event.key in (pygame.K_RETURN, pygame.K_SPACE, pygame.K_KP_ENTER):
-                    return True
-                if event.key == pygame.K_ESCAPE:
-                    pygame.quit()
-                    sys.exit(0)
-            if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-                screen_w, screen_h = screen.get_size()
-                ok_rect = pygame.Rect(screen_w // 2 - button_width - 10, screen_h // 2 + 55, button_width, button_height)
-                cancel_rect = pygame.Rect(screen_w // 2 + 10, screen_h // 2 + 55, button_width, button_height)
-                if ok_rect.collidepoint(event.pos):
-                    return True
-                if cancel_rect.collidepoint(event.pos):
-                    pygame.quit()
-                    sys.exit(0)
-
-        screen_w, screen_h = screen.get_size()
-        screen.fill((18, 24, 32))
-        title = font.render(tr(language, "outdated_cache_title"), True, (245, 245, 245))
-        screen.blit(title, title.get_rect(center=(screen_w // 2, screen_h // 2 - 80)))
-        message = message_font.render(tr(language, "outdated_cache_message"), True, (210, 220, 230))
-        screen.blit(message, message.get_rect(center=(screen_w // 2, screen_h // 2 - 25)))
-        ok_rect = pygame.Rect(screen_w // 2 - button_width - 10, screen_h // 2 + 55, button_width, button_height)
-        cancel_rect = pygame.Rect(screen_w // 2 + 10, screen_h // 2 + 55, button_width, button_height)
-        for rect, key, color in (
-            (ok_rect, "ok", (55, 135, 85)),
-            (cancel_rect, "cancel", (125, 65, 65)),
-        ):
-            pygame.draw.rect(screen, color, rect, border_radius=4)
-            label = button_font.render(tr(language, key), True, (255, 255, 255))
-            screen.blit(label, label.get_rect(center=rect.center))
-        pygame.display.flip()
 
 
 def main() -> None:

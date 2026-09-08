@@ -52,7 +52,12 @@ Koska muut kuskit ovat idiootteja ja ajavat miten sattuu. Vähemmästäkin hermo
 │       ├── __init__.py    # Package exports
 │       ├── __main__.py    # Module entrypoint (`python3 -m theroadragetrip`)
 │       ├── geo.py         # Projection and geometric calculations (clamp, segment distance, lat/lon conversion)
-│       ├── main.py        # CLI arguments, logging, and Pygame main loop
+│       ├── main/           # CLI arguments and the Pygame main loop
+│       │   ├── __init__.py       # main(): the Pygame main loop itself (still one large function)
+│       │   ├── cli.py             # Argument parsing and logging setup
+│       │   ├── menu_input.py      # Small hit-testing/shortcut helpers shared by the menus below
+│       │   ├── startup_screens.py # Language chooser, city editor, and outdated-cache confirmation screens
+│       │   └── debug_tools.py     # F12 screenshot + debug JSON snapshot
 │       ├── osm/            # OSM data models, fetching, disk caching, and tile streaming
 │       │   ├── __init__.py       # Re-exports the full public OSM API from the submodules below
 │       │   ├── constants.py      # City/bbox presets, road widths, and OSM speed-limit parsing
