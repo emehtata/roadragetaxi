@@ -1413,7 +1413,7 @@ def _draw_buildings_uncached(
                         key=lambda entrance: (entrance[0] - place_x) ** 2 + (entrance[1] - place_y) ** 2,
                     )
                 edge_index = min(
-                    range(len(b.points_m)),
+                    visible_edges,
                     key=lambda candidate: dist_point_to_segment(
                         anchor_x,
                         anchor_y,

@@ -18,6 +18,7 @@ sys.modules["pyproj"] = fake_pyproj
 
 os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
 import pygame
+import theroadragetrip.render as render_module
 
 from theroadragetrip.osm import build_ways, plant_trees
 from theroadragetrip.osm import Building, Place, Scenery, Way, associate_places_with_buildings
@@ -338,6 +339,32 @@ def test_toscana_draw_buildings_renders_facade_sign_pixels():
         ]
         roof_points = [(x - 30.0 * 0.7, y - 30.0) for x, y in screen_points]
         assert not any(point_in_polygon(x, y, roof_points) for x, y in gold_pixels)
+    finally:
+        pygame.quit()
+
+
+def test_named_building_renders_name_on_visible_facade():
+    pygame.init()
+    try:
+        render_module._building_sign_font_cache.clear()
+        render_module._building_sign_surface_cache.clear()
+        building = Building(
+            [(0.0, 0.0), (40.0, 0.0), (40.0, 40.0), (0.0, 40.0)],
+            name="Generic Hall",
+            bbox=(0.0, 0.0, 40.0, 40.0),
+        )
+        screen = pygame.Surface((400, 400), pygame.SRCALPHA)
+        _draw_buildings_uncached(
+            screen, [building], 20.0, 20.0, px_per_m=9.0,
+            screen_w=400, screen_h=400,
+        )
+        gold_pixels = [
+            (x, y)
+            for y in range(400)
+            for x in range(400)
+            if tuple(screen.get_at((x, y)))[:3] == (211, 169, 70)
+        ]
+        assert gold_pixels, "named building facade sign did not render"
     finally:
         pygame.quit()
 
