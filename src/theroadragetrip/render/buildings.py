@@ -1,0 +1,563 @@
+from . import common
+from .common import (
+    SCREEN_W,
+    SCREEN_H,
+    FPS,
+    PX_PER_M,
+    CACHE_PADDING_PX,
+    STATIC_ZOOM_STEP,
+    SOLAR_UPDATE_INTERVAL_SECONDS,
+    GAME_DATE,
+    FINLAND_SUMMER_TIME_OFFSET,
+    DEFAULT_SUN_LATITUDE,
+    DEFAULT_SUN_LONGITUDE,
+    _solar_position_cache,
+    _reusable_alpha_surfaces,
+    _smoke_surface_cache,
+    _render_logger,
+    _pending_static_rebuilds,
+    _static_rebuilds_this_frame,
+    invalidate_static_caches,
+    begin_static_cache_frame,
+    _allow_static_rebuild,
+    _blit_stale_static_cache,
+    _static_cache_zoom,
+    _reusable_alpha_surface,
+    _smoke_surface,
+    solar_altitude_and_events,
+    _format_solar_time,
+    _get_game_version,
+    _draw_version,
+    world_to_screen,
+    asphalt_texture_tile_size,
+    road_color_for_way,
+    road_render_priority,
+    get_viewport_bounds,
+    minimum_px_per_m_for_viewport_width,
+    _covered_by_higher_road,
+    _vehicle_is_on_bridge,
+    GAME_VERSION,
+)
+import math
+import logging
+import os
+import random
+import subprocess
+import time
+from datetime import date
+from importlib.metadata import PackageNotFoundError, version as package_version
+from typing import List, Optional, Tuple
+
+from shapely.geometry import LineString
+from shapely.ops import unary_union
+
+from ..geo import clip_polygon_to_rect, compute_bbox, dist_point_to_segment, meters_to_latlon, point_in_polygon
+from ..osm import Building, BusStop, Place, Scenery, TaxiStop, Water, Way
+from ..physics import Car, MAX_SPEED, is_point_on_road
+from ..taxi import TaxiManager, TaxiState
+from ..localization import tr
+
+
+BUILDING_WALL_COLORS = ((158, 105, 82), (174, 166, 143), (116, 131, 119), (139, 139, 137))
+BUILDING_ROOF_COLORS = ((92, 57, 48), (102, 96, 82), (66, 83, 69), (83, 86, 87))
+COMMERCIAL_AMENITIES = {
+    "bar", "biergarten", "cafe", "fast_food", "food_court", "ice_cream",
+    "nightclub", "pub", "restaurant",
+}
+COMMERCIAL_BUILDING_TYPES = {"commercial", "retail", "shop"}
+_building_sign_font_cache = {}
+_building_sign_surface_cache = {}
+_building_visual_plan_cache = {}
+MIN_BUILDING_SIGN_WIDTH_PX = 24
+MIN_BUILDING_SIGN_DEPTH_PX = 8
+MAX_BUILDING_SIGN_WIDTH_PX = 180
+MAX_BUILDING_SIGN_FONT_SIZE = 32
+
+
+def _building_visual_plan(building):
+    """Cache camera-independent facade measurements for one building."""
+    points = tuple(getattr(building, "points_m", ()))
+    entrances = tuple(getattr(building, "entrances", ()))
+    cache_key = (
+        id(building),
+        points,
+        entrances,
+        getattr(building, "levels", None),
+        getattr(building, "height_m", 8.0),
+        getattr(building, "venue_type", None),
+        tuple((place.x, place.y, place.name) for place in getattr(building, "associated_places", ())),
+    )
+    cached = _building_visual_plan_cache.get(id(building))
+    if cached is not None and cached[0] == cache_key:
+        return cached[1]
+
+    edge_lengths = []
+    for index, point in enumerate(points):
+        next_point = points[(index + 1) % len(points)]
+        edge_lengths.append(math.hypot(next_point[0] - point[0], next_point[1] - point[1]))
+    entrance_edges = set()
+    for entrance_x, entrance_y in entrances:
+        entrance_edges.add(min(
+            range(len(points)),
+            key=lambda candidate: dist_point_to_segment(
+                entrance_x,
+                entrance_y,
+                points[candidate][0],
+                points[candidate][1],
+                points[(candidate + 1) % len(points)][0],
+                points[(candidate + 1) % len(points)][1],
+            ),
+            default=-1,
+        ))
+    plan = (tuple(edge_lengths), frozenset(entrance_edges))
+    _building_visual_plan_cache[id(building)] = (cache_key, plan)
+    return plan
+
+
+def _building_sign_surface(pygame, font, text, sign_width, sign_depth, angle):
+    """Reuse static venue sign text across viewport cache rebuilds."""
+    key = (id(font), text, sign_width, sign_depth, round(angle, 3))
+    cached = _building_sign_surface_cache.get(key)
+    if cached is not None:
+        return cached
+    text_surface = font.render(text, True, (250, 239, 190))
+    if text_surface.get_width() + 8 > sign_width:
+        text_surface = pygame.transform.smoothscale(
+            text_surface,
+            (max(4, sign_width - 8), max(4, sign_depth - 2)),
+        )
+    cached = pygame.transform.rotate(text_surface, angle)
+    _building_sign_surface_cache[key] = cached
+    return cached
+
+
+def _building_window_story_count(building: Building) -> int:
+    """Return the OSM floor count, or a height-based fallback."""
+    levels = getattr(building, "levels", None)
+    if levels is not None:
+        try:
+            return max(1, min(40, int(levels)))
+        except (TypeError, ValueError):
+            pass
+    height = max(3.0, float(getattr(building, "height_m", 8.0)))
+    return max(1, min(40, int(round(height / 3.0))))
+
+
+def _building_is_commercial(building: Building) -> bool:
+    """Return whether the building should render a storefront ground floor."""
+    venue_type = str(getattr(building, "venue_type", "") or "").lower()
+    if venue_type in COMMERCIAL_AMENITIES or venue_type in COMMERCIAL_BUILDING_TYPES:
+        return True
+    for place in getattr(building, "associated_places", ()):
+        place_type = str(getattr(place, "kind", "") or "").lower()
+        if place_type in COMMERCIAL_AMENITIES or place_type in COMMERCIAL_BUILDING_TYPES:
+            return True
+    return False
+
+
+def _visible_building_edges(points, roof) -> set[int]:
+    """Return facade edges whose wall projection is not covered by the roof."""
+    if not points or len(points) != len(roof):
+        return set()
+    visible = set()
+    for index, point in enumerate(points):
+        next_point = points[(index + 1) % len(points)]
+        roof_point = roof[index]
+        next_roof = roof[(index + 1) % len(roof)]
+        wall_midpoint = (
+            (point[0] + next_point[0] + roof_point[0] + next_roof[0]) * 0.25,
+            (point[1] + next_point[1] + roof_point[1] + next_roof[1]) * 0.25,
+        )
+        if not point_in_polygon(wall_midpoint[0], wall_midpoint[1], roof):
+            visible.add(index)
+    return visible
+
+
+def _building_sign_anchor(building: Building, place_x: float, place_y: float, edge_index: int):
+    """Project a venue point inside a building onto its facade edge."""
+    start = building.points_m[edge_index]
+    end = building.points_m[(edge_index + 1) % len(building.points_m)]
+    dx = end[0] - start[0]
+    dy = end[1] - start[1]
+    length_sq = dx * dx + dy * dy
+    ratio = 0.5
+    if length_sq > 1e-9:
+        ratio = max(0.0, min(1.0, ((place_x - start[0]) * dx + (place_y - start[1]) * dy) / length_sq))
+    return start[0] + dx * ratio, start[1] + dy * ratio
+
+
+def _building_sign_corners(point, next_point, roof_point, next_roof, center_ratio, width_px, depth_px):
+    """Return a sign quad lying on the projected facade wall."""
+    edge_x = next_point[0] - point[0]
+    edge_y = next_point[1] - point[1]
+    edge_length = math.hypot(edge_x, edge_y)
+    wall_x = roof_point[0] - point[0]
+    wall_y = roof_point[1] - point[1]
+    wall_depth = math.hypot(wall_x, wall_y)
+    if edge_length <= 1e-9 or wall_depth <= 1e-9:
+        return None
+    half_u = min(0.36, width_px / (2.0 * edge_length))
+    half_v = min(0.16, depth_px / (2.0 * wall_depth))
+    center_v = 0.22
+
+    def point_at(u, v):
+        base_x = point[0] + edge_x * u
+        base_y = point[1] + edge_y * u
+        top_x = roof_point[0] + (next_roof[0] - roof_point[0]) * u
+        top_y = roof_point[1] + (next_roof[1] - roof_point[1]) * u
+        return (
+            base_x + (top_x - base_x) * v,
+            base_y + (top_y - base_y) * v,
+        )
+
+    return [
+        point_at(center_ratio - half_u, center_v - half_v),
+        point_at(center_ratio + half_u, center_v - half_v),
+        point_at(center_ratio + half_u, center_v + half_v),
+        point_at(center_ratio - half_u, center_v + half_v),
+    ]
+
+
+def _building_sign_angle(point, next_point) -> float:
+    """Return the upright screen-space tangent angle for a facade sign."""
+    angle = math.degrees(math.atan2(-(next_point[1] - point[1]), next_point[0] - point[0]))
+    if angle > 90.0:
+        angle -= 180.0
+    elif angle < -90.0:
+        angle += 180.0
+    return angle
+
+
+def draw_buildings(
+    screen,
+    buildings: List[Building],
+    camx: float,
+    camy: float,
+    px_per_m: float = PX_PER_M,
+    screen_w: int = SCREEN_W,
+    screen_h: int = SCREEN_H,
+    spatial_grid=None,
+    places: Optional[List[Place]] = None,
+    profiler=None,
+) -> None:
+    """Draw cached static building geometry and facade details."""
+    import pygame
+    cache_zoom = _static_cache_zoom(px_per_m)
+
+    frame_cache_key = (
+        id(buildings),
+        len(buildings),
+        id(buildings[-1]) if buildings else None,
+        id(places),
+        len(places) if places else 0,
+        id(spatial_grid),
+        round(camx * cache_zoom / 128.0),
+        round(camy * cache_zoom / 128.0),
+        cache_zoom,
+        screen.get_size(),
+    )
+    if frame_cache_key == common._building_frame_cache_key and common._building_frame_cache_surface is not None:
+        cached_camx, cached_camy = common._building_frame_cache_camera
+        offset_x = round((cached_camx - camx) * cache_zoom) - CACHE_PADDING_PX
+        offset_y = round((camy - cached_camy) * cache_zoom) - CACHE_PADDING_PX
+        screen.blit(common._building_frame_cache_surface, (offset_x, offset_y))
+        return
+
+    cache_width = screen_w + CACHE_PADDING_PX * 2
+    cache_height = screen_h + CACHE_PADDING_PX * 2
+    cache_surface = pygame.Surface((cache_width, cache_height), pygame.SRCALPHA)
+    rebuild_started = time.perf_counter() if profiler is not None else 0.0
+    _draw_buildings_uncached(
+        cache_surface,
+        buildings,
+        camx,
+        camy,
+        px_per_m=cache_zoom,
+        screen_w=cache_width,
+        screen_h=cache_height,
+        spatial_grid=spatial_grid,
+        places=places,
+    )
+    if profiler is not None:
+        profiler.record("render:buildings_cache_rebuild", (time.perf_counter() - rebuild_started) * 1000.0)
+    common._building_frame_cache_key = frame_cache_key
+    common._building_frame_cache_surface = cache_surface
+    common._building_frame_cache_camera = (camx, camy)
+    screen.blit(cache_surface, (-CACHE_PADDING_PX, -CACHE_PADDING_PX))
+
+
+def _draw_buildings_uncached(
+    screen,
+    buildings: List[Building],
+    camx: float,
+    camy: float,
+    px_per_m: float = PX_PER_M,
+    screen_w: int = SCREEN_W,
+    screen_h: int = SCREEN_H,
+    spatial_grid=None,
+    places: Optional[List[Place]] = None,
+) -> None:
+    """Draw building footprints intersecting viewport."""
+    import pygame
+
+    vminx, vminy, vmaxx, vmaxy = get_viewport_bounds(camx, camy, px_per_m, screen_w, screen_h, 50.0)
+
+    visible_buildings = (
+        spatial_grid.ways_in_rect(vminx, vminy, vmaxx, vmaxy)
+        if spatial_grid is not None
+        else buildings
+    )
+    placed_sign_rects = []
+    for b in visible_buildings:
+        bb = getattr(b, "bbox", None)
+        if bb and bb != (0.0, 0.0, 0.0, 0.0):
+            if bb[2] < vminx or bb[0] > vmaxx or bb[3] < vminy or bb[1] > vmaxy:
+                continue
+        if len(b.points_m) < 3:
+            continue
+        pts = [world_to_screen(x, y, camx, camy, px_per_m, screen_w, screen_h) for (x, y) in b.points_m]
+        if px_per_m <= 0.45:
+            pygame.draw.polygon(screen, BUILDING_ROOF_COLORS[0], pts)
+            continue
+        height = max(3.0, float(getattr(b, "height_m", 8.0)))
+        level_count = getattr(b, "levels", None)
+        if level_count is None:
+            level_count = max(1, round((height - 1.5) / 3.2))
+        level_count = max(1, min(40, int(level_count)))
+        depth = min(30, max(3, int(height * 0.35 * px_per_m)))
+        roof = [(x - depth * 0.7, y - depth) for x, y in pts]
+
+        center_x, center_y = getattr(b, "center_m", (0.0, 0.0))
+        if center_x == 0.0 and center_y == 0.0 and b.points_m:
+            center_x = sum(point[0] for point in b.points_m) / len(b.points_m)
+            center_y = sum(point[1] for point in b.points_m) / len(b.points_m)
+        texture_seed = getattr(b, "texture_seed", None)
+        if texture_seed is None:
+            texture_seed = abs(math.sin(center_x * 0.013 + center_y * 0.017))
+        texture_index = min(len(BUILDING_WALL_COLORS) - 1, int(texture_seed * len(BUILDING_WALL_COLORS)))
+        pygame.draw.polygon(screen, (45, 42, 39), [(x + 2, y + 3) for x, y in roof])
+        for index, point in enumerate(pts):
+            next_point = pts[(index + 1) % len(pts)]
+            next_roof = roof[(index + 1) % len(roof)]
+            pygame.draw.polygon(screen, BUILDING_WALL_COLORS[texture_index], [point, next_point, next_roof, roof[index]])
+        roof_color = BUILDING_ROOF_COLORS[texture_index]
+        pygame.draw.polygon(screen, roof_color, roof)
+        pygame.draw.lines(screen, (70, 66, 61), True, roof, 1)
+
+        # Add small facade details after the roof so they remain visible at low zoom.
+        visible_edges = _visible_building_edges(pts, roof)
+        story_count = _building_window_story_count(b)
+        is_commercial = _building_is_commercial(b)
+        for index in visible_edges:
+            point = pts[index]
+            next_point = pts[(index + 1) % len(pts)]
+            roof_point = roof[index]
+            edge_x = next_point[0] - point[0]
+            edge_y = next_point[1] - point[1]
+            edge_length = math.hypot(edge_x, edge_y)
+            if edge_length < 12.0:
+                continue
+            edge_x /= edge_length
+            edge_y /= edge_length
+            roof_x = roof_point[0] - point[0]
+            roof_y = roof_point[1] - point[1]
+            window_count = max(1, min(3, int(edge_length // 32.0)))
+            for floor_index in range(story_count):
+                floor_position = 0.18 + 0.64 * (floor_index + 0.5) / story_count
+                floor_height = abs(roof_y) / story_count
+                storefront_row = is_commercial and floor_index == 0
+                # Keep separate rows visible on tall buildings; a fixed 3 px
+                # minimum makes closely spaced floors merge into one band.
+                window_height = max(1.0, min(7.0, floor_height * 0.55))
+                if storefront_row:
+                    window_height *= 1.45
+                for window_index in range(window_count):
+                    center = (window_index + 1) / (window_count + 1)
+                    center_x = point[0] + (next_point[0] - point[0]) * center + roof_x * floor_position
+                    center_y = point[1] + (next_point[1] - point[1]) * center + roof_y * floor_position
+                    half_width = min(10.0, edge_length / (window_count + 2) * 0.45) / 2
+                    if storefront_row:
+                        half_width *= 1.35
+                    pane_x = -roof_x * window_height / max(abs(roof_y), 1.0)
+                    pane_y = -roof_y * window_height / max(abs(roof_y), 1.0)
+                    window_color = (58, 80, 94) if not storefront_row else (84, 106, 122)
+                    frame_color = (25, 42, 47) if not storefront_row else (29, 42, 48)
+                    window = [
+                        (center_x - edge_x * half_width, center_y - edge_y * half_width),
+                        (center_x + edge_x * half_width, center_y + edge_y * half_width),
+                        (center_x + edge_x * half_width + pane_x, center_y + edge_y * half_width + pane_y),
+                        (center_x - edge_x * half_width + pane_x, center_y - edge_y * half_width + pane_y),
+                    ]
+                    pygame.draw.polygon(screen, window_color, window)
+                    pygame.draw.lines(screen, frame_color, True, window, 1)
+                    pygame.draw.line(screen, (155, 180, 178), window[0], window[2], 1)
+                    if storefront_row:
+                        pygame.draw.line(screen, (118, 120, 122), window[1], window[3], 1)
+        for entrance_x, entrance_y in getattr(b, "entrances", ()):
+            edge_distances = [
+                dist_point_to_segment(
+                    entrance_x,
+                    entrance_y,
+                    b.points_m[candidate][0],
+                    b.points_m[candidate][1],
+                    b.points_m[(candidate + 1) % len(pts)][0],
+                    b.points_m[(candidate + 1) % len(pts)][1],
+                )
+                for candidate in range(len(pts))
+            ]
+            nearest_distance = min(edge_distances, default=float("inf"))
+            edge_index = min(
+                (candidate for candidate in range(len(pts)) if edge_distances[candidate] <= nearest_distance + 0.01),
+                key=edge_distances.__getitem__,
+                default=-1,
+            )
+            if edge_index < 0 or edge_index not in visible_edges:
+                continue
+            point = pts[edge_index]
+            next_point = pts[(edge_index + 1) % len(pts)]
+            roof_point = roof[edge_index]
+            edge_x = next_point[0] - point[0]
+            edge_y = next_point[1] - point[1]
+            edge_length = math.hypot(edge_x, edge_y)
+            if edge_length < 2:
+                continue
+            edge_x /= edge_length
+            edge_y /= edge_length
+            roof_x = roof_point[0] - point[0]
+            roof_y = roof_point[1] - point[1]
+            door_width = min(11.0, max(3.0, edge_length * 0.22))
+            door_height = max(5.0, min(13.0, abs(roof_y) * 0.68))
+            door_x, door_y = world_to_screen(
+                entrance_x, entrance_y, camx, camy, px_per_m, screen_w, screen_h
+            )
+            door_x += roof_x * 0.48
+            door_y += roof_y * 0.48
+            door_shift_x = -roof_x * door_height / max(abs(roof_y), 1.0)
+            door_shift_y = -roof_y * door_height / max(abs(roof_y), 1.0)
+            half_door = door_width / 2
+            door = [
+                (door_x - edge_x * half_door, door_y - edge_y * half_door),
+                (door_x + edge_x * half_door, door_y + edge_y * half_door),
+                (door_x + edge_x * half_door + door_shift_x, door_y + edge_y * half_door + door_shift_y),
+                (door_x - edge_x * half_door + door_shift_x, door_y - edge_y * half_door + door_shift_y),
+            ]
+            pygame.draw.polygon(screen, (58, 48, 42), door)
+            pygame.draw.lines(screen, (32, 28, 25), True, door, 1)
+
+        if px_per_m > 0.45:
+            global _building_sign_font_cache
+            sign_font_size = max(16, min(MAX_BUILDING_SIGN_FONT_SIZE, round(18.0 * px_per_m / 0.7)))
+            sign_font = _building_sign_font_cache.get(sign_font_size)
+            if sign_font is None:
+                sign_font = pygame.font.SysFont(None, sign_font_size, bold=True)
+                _building_sign_font_cache[sign_font_size] = sign_font
+            building_places = list(getattr(b, "associated_places", ()))
+            building_name = getattr(b, "name", None)
+            sign_entries = [(place.name, place.x, place.y) for place in building_places]
+            if building_name and not any(name == building_name for name, _, _ in sign_entries):
+                sign_entries.append((building_name, b.center_m[0], b.center_m[1]))
+            for place_name, place_x, place_y in sign_entries:
+                anchor_x, anchor_y = place_x, place_y
+                entrances = getattr(b, "entrances", ())
+                if entrances:
+                    anchor_x, anchor_y = min(
+                        entrances,
+                        key=lambda entrance: (entrance[0] - place_x) ** 2 + (entrance[1] - place_y) ** 2,
+                    )
+                edge_index = min(
+                    visible_edges,
+                    key=lambda candidate: dist_point_to_segment(
+                        anchor_x,
+                        anchor_y,
+                        b.points_m[candidate][0],
+                        b.points_m[candidate][1],
+                        b.points_m[(candidate + 1) % len(b.points_m)][0],
+                        b.points_m[(candidate + 1) % len(b.points_m)][1],
+                    ),
+                    default=-1,
+                )
+                if edge_index < 0 or edge_index not in visible_edges:
+                    continue
+                point = pts[edge_index]
+                next_point = pts[(edge_index + 1) % len(pts)]
+                roof_point = roof[edge_index]
+                next_roof = roof[(edge_index + 1) % len(roof)]
+                edge_x = next_point[0] - point[0]
+                edge_y = next_point[1] - point[1]
+                edge_length = math.hypot(edge_x, edge_y)
+                if edge_length < 14.0:
+                    continue
+                edge_x /= edge_length
+                edge_y /= edge_length
+                wall_depth_x = roof_point[0] - point[0]
+                wall_depth_y = roof_point[1] - point[1]
+                wall_depth = math.hypot(wall_depth_x, wall_depth_y)
+                if wall_depth < 4.0:
+                    continue
+                wall_normal_x = wall_depth_x / wall_depth
+                wall_normal_y = wall_depth_y / wall_depth
+                world_start = b.points_m[edge_index]
+                world_end = b.points_m[(edge_index + 1) % len(b.points_m)]
+                segment_dx = world_end[0] - world_start[0]
+                segment_dy = world_end[1] - world_start[1]
+                segment_length_sq = segment_dx * segment_dx + segment_dy * segment_dy
+                wall_anchor_x, wall_anchor_y = _building_sign_anchor(
+                    b, anchor_x, anchor_y, edge_index,
+                )
+                segment_ratio = 0.5
+                if segment_length_sq > 1e-9:
+                    segment_ratio = max(
+                        0.0,
+                        min(
+                            1.0,
+                            ((anchor_x - world_start[0]) * segment_dx
+                             + (anchor_y - world_start[1]) * segment_dy)
+                            / segment_length_sq,
+                        ),
+                    )
+                sign_center_x, sign_center_y = world_to_screen(
+                    wall_anchor_x, wall_anchor_y, camx, camy, px_per_m, screen_w, screen_h
+                )
+                sign_text = place_name.upper()
+                text_width = sign_font.size(sign_text)[0]
+                sign_width = min(
+                    MAX_BUILDING_SIGN_WIDTH_PX,
+                    text_width + 8,
+                    int(edge_length * 0.72),
+                )
+                sign_depth = min(18, int(wall_depth * 0.28))
+                if sign_width < MIN_BUILDING_SIGN_WIDTH_PX or sign_depth < MIN_BUILDING_SIGN_DEPTH_PX:
+                    continue
+                angle = _building_sign_angle(point, next_point)
+                text_surface = _building_sign_surface(
+                    pygame, sign_font, sign_text, sign_width, sign_depth, angle,
+                )
+                sign_corners_world = _building_sign_corners(
+                    point,
+                    next_point,
+                    roof_point,
+                    next_roof,
+                    segment_ratio,
+                    sign_width,
+                    sign_depth,
+                )
+                if sign_corners_world is None:
+                    continue
+                sign_corners = [
+                    tuple(round(value) for value in corner)
+                    for corner in sign_corners_world
+                ]
+                sign_center_x = sum(corner[0] for corner in sign_corners) / 4.0
+                sign_center_y = sum(corner[1] for corner in sign_corners) / 4.0
+                sign_rect = pygame.Rect(
+                    min(corner[0] for corner in sign_corners),
+                    min(corner[1] for corner in sign_corners),
+                    max(corner[0] for corner in sign_corners) - min(corner[0] for corner in sign_corners) + 1,
+                    max(corner[1] for corner in sign_corners) - min(corner[1] for corner in sign_corners) + 1,
+                ).inflate(4, 4)
+                if any(sign_rect.colliderect(existing) for existing in placed_sign_rects):
+                    continue
+                placed_sign_rects.append(sign_rect)
+                pygame.draw.polygon(screen, (40, 31, 22, 245), sign_corners)
+                pygame.draw.lines(screen, (211, 169, 70, 255), True, sign_corners, 1)
+                screen.blit(text_surface, text_surface.get_rect(center=(round(sign_center_x), round(sign_center_y))))

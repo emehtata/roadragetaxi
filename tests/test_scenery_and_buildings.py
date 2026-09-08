@@ -29,6 +29,7 @@ from theroadragetrip.render import (
     MAX_BUILDING_SIGN_FONT_SIZE,
     _building_is_commercial,
     _building_sign_anchor,
+    _building_sign_angle,
     _building_window_story_count,
     _visible_building_edges,
     _draw_buildings_uncached,
@@ -305,6 +306,12 @@ def test_toscana_render_sign_anchor_lands_on_facade_not_roof_center():
 
     assert anchor == (10.0, 0.0)
     assert anchor != (restaurant.x, restaurant.y)
+
+
+def test_facade_sign_angle_stays_upright_across_zoom():
+    assert _building_sign_angle((0.0, 0.0), (100.0, 100.0)) == -45.0
+    assert _building_sign_angle((0.0, 0.0), (1000.0, 1000.0)) == -45.0
+    assert _building_sign_angle((0.0, 0.0), (-100.0, -100.0)) == -45.0
 
 
 def test_toscana_draw_buildings_renders_facade_sign_pixels():

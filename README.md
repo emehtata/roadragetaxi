@@ -58,7 +58,19 @@ Koska muut kuskit ovat idiootteja ja ajavat miten sattuu. Vähemmästäkin hermo
 │       ├── physics.py     # Car dataclass, vehicle dynamics, road collision, and lane assist
 │       ├── police.py      # Hidden speed-camera placement and directional detection
 │       ├── localization.py # Finnish and English translations
-│       ├── render.py      # Pygame rendering for roads, waters, buildings, pedestrians, HUD, and compass
+│       ├── render/         # Pygame rendering, split by concern
+│       │   ├── __init__.py    # Re-exports the full public rendering API from the submodules below
+│       │   ├── common.py      # Shared constants, coordinate/viewport helpers, and the static-cache infrastructure
+│       │   ├── scenery.py     # Parks, forests, grass texture, and parking spaces
+│       │   ├── waters.py      # Lakes, reservoirs, and waterways
+│       │   ├── buildings.py   # Building footprints, facades, windows, and venue signs
+│       │   ├── roads.py       # Road surfaces, street lighting, roadworks, crossings, traffic lights, bus/taxi stops, speed cameras
+│       │   ├── vehicles.py    # Taxi, NPC, and police car rendering, headlights, cyclists, NPC debug overlays
+│       │   ├── pedestrians.py # Pedestrian rendering, resident popups, and night reflectors
+│       │   ├── labels.py      # Street and place name labels
+│       │   ├── navigation.py  # Compass, suggested route, and taxi target waypoint
+│       │   ├── hud.py         # HUD, speedometer, rage face, day/night overlay, phone offers, frame profiler
+│       │   └── menus.py       # Loading, city/mode selection, pause, settings, tutorial, and city-editor screens
 │       ├── assets/         # Image sprites and chatter data
 │       │   ├── paikkadesi.json       # Country and city coordinates for future customization
 │       │   ├── paikkadesi.txt         # Source list for the city coordinate asset
