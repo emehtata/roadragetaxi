@@ -123,6 +123,8 @@ _speedometer_label_font = None
 _building_sign_font_cache = {}
 _building_sign_surface_cache = {}
 _building_visual_plan_cache = {}
+_pending_static_rebuilds = set()
+_static_rebuilds_this_frame = 0
 
 
 def invalidate_static_caches() -> None:
@@ -134,6 +136,34 @@ def invalidate_static_caches() -> None:
     _scenery_frame_cache_key = None
     _water_frame_cache_key = None
     _road_frame_cache_key = None
+    _pending_static_rebuilds.update({"labels", "buildings", "scenery", "water", "roads"})
+
+
+def begin_static_cache_frame() -> None:
+    global _static_rebuilds_this_frame
+    _static_rebuilds_this_frame = 0
+
+
+def _allow_static_rebuild(layer: str, surface) -> bool:
+    global _static_rebuilds_this_frame
+    if surface is None or layer not in _pending_static_rebuilds:
+        return True
+    if _static_rebuilds_this_frame >= 1:
+        return False
+    _static_rebuilds_this_frame += 1
+    _pending_static_rebuilds.discard(layer)
+    return True
+
+
+def _blit_stale_static_cache(screen, surface, camera, camx, camy, cache_zoom) -> None:
+    cached_camx, cached_camy = camera
+    screen.blit(
+        surface,
+        (
+            round((cached_camx - camx) * cache_zoom) - CACHE_PADDING_PX,
+            round((camy - cached_camy) * cache_zoom) - CACHE_PADDING_PX,
+        ),
+    )
 
 
 def _static_cache_zoom(px_per_m: float) -> float:
@@ -677,6 +707,9 @@ def draw_scenery(
             ),
         )
         return
+    if not _allow_static_rebuild("scenery", _scenery_frame_cache_surface):
+        _blit_stale_static_cache(screen, _scenery_frame_cache_surface, _scenery_frame_cache_camera, camx, camy, cache_zoom)
+        return
     cache_width = screen_w + CACHE_PADDING_PX * 2
     cache_height = screen_h + CACHE_PADDING_PX * 2
     cache_surface = pygame.Surface((cache_width, cache_height), pygame.SRCALPHA)
@@ -985,6 +1018,9 @@ def draw_waters(
                 round((camy - cached_camy) * cache_zoom) - CACHE_PADDING_PX,
             ),
         )
+        return
+    if not _allow_static_rebuild("water", _water_frame_cache_surface):
+        _blit_stale_static_cache(screen, _water_frame_cache_surface, _water_frame_cache_camera, camx, camy, cache_zoom)
         return
     cache_width = screen_w + CACHE_PADDING_PX * 2
     cache_height = screen_h + CACHE_PADDING_PX * 2
@@ -1418,6 +1454,12 @@ def draw_ways(
                 round((camy - cached_camy) * cache_zoom) - CACHE_PADDING_PX,
             ),
         )
+        return
+    if not _allow_static_rebuild("roads", _road_frame_cache_surface):
+        _blit_stale_static_cache(screen, _road_frame_cache_surface, _road_frame_cache_camera, camx, camy, cache_zoom)
+        return
+    if not _allow_static_rebuild("buildings", _building_frame_cache_surface):
+        _blit_stale_static_cache(screen, _building_frame_cache_surface, _building_frame_cache_camera, camx, camy, cache_zoom)
         return
     px_per_m = cache_zoom
     destination_screen = screen
@@ -3246,6 +3288,9 @@ def draw_car(
             max(6.0, getattr(car, "length_m", 4.0) * px_per_m),
             max(3.0, getattr(car, "width_m", 1.8) * px_per_m),
         )
+        return
+    if not _allow_static_rebuild("labels", _label_frame_cache_surface):
+        _blit_stale_static_cache(screen, _label_frame_cache_surface, _label_frame_cache_camera, camx, camy, cache_zoom)
         return
     cx, cy = world_to_screen(car.x, car.y, camx, camy, px_per_m, screen_w, screen_h)
     length_m = getattr(car, "length_m", 4.0)

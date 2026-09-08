@@ -245,6 +245,24 @@ class BinaryWorldCacheLoader:
                         record["signal_group"] = osm.SignalGroup(**record["signal_group"])
                     record["allowed_movements"] = frozenset(record.get("allowed_movements", ()))
                 restored[name].append(getattr(osm, class_name)(**record))
+        places_by_key = {
+            (round(place.x, 3), round(place.y, 3), place.name, place.kind): place
+            for place in restored["places"]
+        }
+        for building in restored["buildings"]:
+            restored_places = []
+            for place in getattr(building, "associated_places", ()):
+                if isinstance(place, dict):
+                    key = (
+                        round(float(place.get("x", 0.0)), 3),
+                        round(float(place.get("y", 0.0)), 3),
+                        place.get("name", ""),
+                        place.get("kind", ""),
+                    )
+                    place = places_by_key.get(key)
+                if place is not None:
+                    restored_places.append(place)
+            building.associated_places = restored_places
         restored["bounds"] = tuple(decoded["metadata"]["bounds"])
         ways = restored["ways"]
         restored["logical_intersections"] = []

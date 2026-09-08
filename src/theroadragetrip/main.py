@@ -105,6 +105,7 @@ from .render import (
     draw_headlight_beams,
     draw_hud,
     draw_frame_profiler,
+    begin_static_cache_frame,
     invalidate_static_caches,
     default_hud_layout,
     draw_tutorial_screen,
@@ -2022,6 +2023,7 @@ def main() -> None:
                 logger.info("Gameplay frame: map update complete")
 
             # Render background and scene
+            begin_static_cache_frame()
             render_profiler_start = time.perf_counter()
             render_profile_frame_start = time.perf_counter()
             render_profile_stage_start = render_profile_frame_start

@@ -2,7 +2,7 @@ import struct
 
 import pytest
 
-from theroadragetrip.osm import build_ways, load_local_sample
+from theroadragetrip.osm import Building, Place, build_ways, load_local_sample
 from theroadragetrip.world_cache import (
     BinaryWorldCacheLoader,
     BinaryWorldCacheWriter,
@@ -25,6 +25,28 @@ def test_rwc_round_trip_preserves_game_data(tmp_path, sample_world):
     assert len(loaded.parking_spaces) == len(sample_world.parking_spaces)
     assert loaded.ways[0].points_m == sample_world.ways[0].points_m
     assert loaded.ways[0].speed_limit_kmh == sample_world.ways[0].speed_limit_kmh
+
+
+def test_rwc_rehydrates_building_place_associations(tmp_path, sample_world):
+    place = Place(10.0, 10.0, "K-Market", "poi")
+    building = Building(
+        [(0.0, 0.0), (20.0, 0.0), (20.0, 20.0), (0.0, 20.0)],
+        name="Shop",
+        bbox=(0.0, 0.0, 20.0, 20.0),
+        associated_places=[place],
+    )
+    sample_world.buildings.append(building)
+    sample_world.places.append(place)
+    path = tmp_path / "associated.rwc"
+
+    BinaryWorldCacheWriter().write(path, sample_world, area_id="associated")
+    loaded = BinaryWorldCacheLoader().load(path)
+
+    loaded_building = next(item for item in loaded.buildings if item.name == building.name)
+    assert loaded_building.associated_places
+    assert loaded_building.associated_places[0] is next(
+        item for item in loaded.places if item.name == place.name and item.kind == place.kind
+    )
 
 
 def test_rwc_rejects_corrupt_and_unsupported_files(tmp_path, sample_world):
