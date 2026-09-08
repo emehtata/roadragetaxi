@@ -78,8 +78,25 @@ def begin_static_cache_frame() -> None:
 
 
 def _allow_static_rebuild(layer: str, surface) -> bool:
+    """Throttle expensive static-cache rebuilds to at most one per frame.
+
+    Applies regardless of *why* a layer's cache went stale: a streamed
+    map-data change (invalidate_static_caches(), which used to be the only
+    case this throttled, tracking a layer's queued turn via
+    _pending_static_rebuilds) or simply the camera moving or zooming far
+    enough to exceed the cache padding on its own. Without covering the
+    second case too, a big instantaneous camera jump - a debug respawn is
+    the main one, since it can land the car far outside the previously
+    cached viewport - invalidates every layer's frame_cache_key on the
+    same frame, and only the map-data case was throttled, so every layer
+    rebuilt fully and uncached in that one frame instead of one per frame
+    like this function already did for streamed data.
+
+    The very first build for a layer (surface is None) is exempt: there's
+    nothing to show yet, so it can't be deferred to a later frame.
+    """
     global _static_rebuilds_this_frame
-    if surface is None or layer not in _pending_static_rebuilds:
+    if surface is None:
         return True
     if _static_rebuilds_this_frame >= 1:
         return False

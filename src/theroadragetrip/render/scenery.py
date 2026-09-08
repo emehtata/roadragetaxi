@@ -329,6 +329,15 @@ def draw_grass_texture(
             ),
         )
         return
+    if not _allow_static_rebuild("grass", common._grass_frame_cache_surface):
+        # A big camera jump (e.g. a debug respawn) can invalidate every
+        # static layer's cache on the same frame; sharing the same
+        # one-rebuild-per-frame throttle as the other five layers spreads
+        # that cost across several frames instead of stalling on one.
+        _blit_stale_static_cache(
+            screen, common._grass_frame_cache_surface, common._grass_frame_cache_camera, camx, camy, cache_zoom,
+        )
+        return
 
     cache_width = screen_w + CACHE_PADDING_PX * 2
     cache_height = screen_h + CACHE_PADDING_PX * 2

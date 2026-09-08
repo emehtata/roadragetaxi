@@ -122,6 +122,22 @@ def test_respawn_does_not_crash(tmp_path):
     )
 
 
+def test_debug_respawn_to_bbox_edge_does_not_crash(tmp_path):
+    """K_HOME jumps the car near a random edge of the current map bbox
+    ("for auto-fetch testing", per the README) - a large, instant camera
+    move rather than the gradual panning normal driving produces. Repeated
+    a few times since the reported symptom (a game freeze followed by a
+    sustained FPS drop) was specifically triggered by a respawn jump."""
+    _run_main(
+        tmp_path,
+        event_frames=[
+            [], [pygame.K_HOME], [], [],
+            [pygame.K_HOME], [], [],
+            [pygame.K_HOME], [], [],
+        ],
+    )
+
+
 def test_hud_toggle_keys_do_not_crash(tmp_path):
     """Cycle through the single-key HUD/assist toggles used during normal
     play; each is handled by its own elif branch in the gameplay loop."""

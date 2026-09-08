@@ -688,6 +688,17 @@ def draw_car(
         )
         return
     if not _allow_static_rebuild("labels", common._label_frame_cache_surface):
+        # This layer-throttle check needs the same quantized zoom the label
+        # cache itself was built at (see draw_labels) to compute the correct
+        # blit offset; cache_zoom was never actually computed here, so this
+        # branch raised NameError whenever it was reached. It went
+        # unnoticed because _allow_static_rebuild previously only denied a
+        # layer while a streamed map-data change had it queued in
+        # _pending_static_rebuilds, which rarely lined up with this
+        # specific check; broadening the throttle to also cover a
+        # camera-jump-triggered cache miss (see _allow_static_rebuild's
+        # docstring) made it reachable far more often.
+        cache_zoom = _static_cache_zoom(px_per_m)
         _blit_stale_static_cache(screen, common._label_frame_cache_surface, common._label_frame_cache_camera, camx, camy, cache_zoom)
         return
     cx, cy = world_to_screen(car.x, car.y, camx, camy, px_per_m, screen_w, screen_h)

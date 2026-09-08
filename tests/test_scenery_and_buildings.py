@@ -590,6 +590,12 @@ def test_grass_texture_is_cached_across_stationary_frames():
         common_module._grass_frame_cache_surface = None
         screen = pygame.Surface((400, 300))
 
+        # _allow_static_rebuild's one-rebuild-per-frame throttle uses a
+        # module-level counter shared across every static layer and reset
+        # once per real game frame via begin_static_cache_frame(); reset it
+        # explicitly here so an earlier test's leftover state can't make an
+        # "allowed" rebuild below spuriously get throttled.
+        common_module.begin_static_cache_frame()
         draw_grass_texture(screen, 0.0, 0.0, px_per_m=9.0, screen_w=400, screen_h=300)
         first_surface = common_module._grass_frame_cache_surface
         assert first_surface is not None
@@ -602,7 +608,10 @@ def test_grass_texture_is_cached_across_stationary_frames():
         draw_grass_texture(screen, 1.0, 1.0, px_per_m=9.0, screen_w=400, screen_h=300)
         assert common_module._grass_frame_cache_surface is first_surface
 
-        # A move far past the padding: must rebuild.
+        # A move far past the padding: must rebuild (a fresh frame's budget,
+        # since real gameplay would have called begin_static_cache_frame()
+        # again by now too).
+        common_module.begin_static_cache_frame()
         draw_grass_texture(screen, 500.0, 500.0, px_per_m=9.0, screen_w=400, screen_h=300)
         assert common_module._grass_frame_cache_surface is not first_surface
     finally:
@@ -619,6 +628,7 @@ def test_grass_texture_rebuild_does_not_redraw_every_tile_every_frame():
     try:
         common_module._grass_frame_cache_key = None
         common_module._grass_frame_cache_surface = None
+        common_module.begin_static_cache_frame()
         screen = pygame.Surface((400, 300))
 
         rebuild_calls = 0
@@ -640,3 +650,41 @@ def test_grass_texture_rebuild_does_not_redraw_every_tile_every_frame():
         assert rebuild_calls == 1
     finally:
         pygame.quit()
+
+
+def test_static_rebuild_throttle_applies_even_without_pending_invalidation():
+    """Regression: _allow_static_rebuild used to only throttle a layer if it
+    had been explicitly queued via invalidate_static_caches() (a streamed
+    map-data change adding it to _pending_static_rebuilds). A plain camera
+    jump - a debug respawn landing far outside the previously cached
+    viewport is the main case - invalidates every layer's frame_cache_key
+    on its own, with no call to invalidate_static_caches() at all, so it
+    used to bypass the throttle entirely: every stale layer rebuilt fully
+    and uncached on the very same frame, all at once."""
+    from theroadragetrip.render import common as common_module
+
+    common_module.begin_static_cache_frame()
+    fake_surface = object()  # anything that isn't None
+
+    # Not the very first build (surface is not None) and nothing queued via
+    # invalidate_static_caches() for either layer - this frame's one
+    # rebuild is still shared between them.
+    assert common_module._allow_static_rebuild("roads", fake_surface) is True
+    assert common_module._allow_static_rebuild("buildings", fake_surface) is False
+
+    # Next frame: the budget resets, so the denied layer can go now.
+    common_module.begin_static_cache_frame()
+    assert common_module._allow_static_rebuild("buildings", fake_surface) is True
+
+
+def test_static_rebuild_always_allows_the_very_first_build():
+    """A layer with no cached surface yet has nothing to show if denied, so
+    it's exempt from the throttle regardless of how many other layers are
+    also building for the first time on the same frame (e.g. initial world
+    load)."""
+    from theroadragetrip.render import common as common_module
+
+    common_module.begin_static_cache_frame()
+    assert common_module._allow_static_rebuild("roads", None) is True
+    assert common_module._allow_static_rebuild("buildings", None) is True
+    assert common_module._allow_static_rebuild("scenery", None) is True

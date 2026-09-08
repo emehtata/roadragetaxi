@@ -10,6 +10,7 @@ from theroadragetrip.render import (
     _covered_by_higher_road,
     _vehicle_is_on_bridge,
     asphalt_texture_tile_size,
+    draw_car,
     draw_headlight_beams,
     draw_bus_stops,
     draw_ways,
@@ -245,3 +246,31 @@ def test_draw_bus_stop_adds_roadside_bay_and_shelter():
         for y in range(70, 75)
     )
     pygame.quit()
+
+
+def test_draw_car_does_not_crash_when_labels_cache_rebuild_is_denied():
+    """Regression: draw_car's "skip drawing this frame if the labels cache
+    hasn't gotten its turn to rebuild yet" branch referenced an undefined
+    cache_zoom - a NameError that was unreachable in practice as long as
+    _allow_static_rebuild only denied a layer queued via
+    invalidate_static_caches(), but became reachable once that throttle was
+    broadened to also cover a plain camera jump (e.g. a debug respawn)."""
+    import pygame
+    from theroadragetrip.render import common as common_module
+    from theroadragetrip.physics import Car
+
+    pygame.init()
+    try:
+        screen = pygame.Surface((240, 160), pygame.SRCALPHA)
+        common_module._label_frame_cache_surface = pygame.Surface((100, 100))
+        common_module._label_frame_cache_camera = (0.0, 0.0)
+        common_module.begin_static_cache_frame()
+        # Spend this frame's one allowed rebuild on an unrelated layer, so
+        # draw_car's own check below is denied - exactly the branch that
+        # used to raise NameError.
+        common_module._allow_static_rebuild("some_other_layer", object())
+
+        car = Car(x=0.0, y=0.0, heading=0.0, speed=0.0)
+        draw_car(screen, car, 0.0, 0.0, px_per_m=9.0, screen_w=240, screen_h=160)
+    finally:
+        pygame.quit()
