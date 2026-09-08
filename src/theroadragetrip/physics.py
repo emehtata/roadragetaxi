@@ -18,6 +18,16 @@ OFFROAD_MAX_SPEED = 2.0  # m/s (~7 km/h)
 LIGHT_TRAFFIC_MAX_SPEED = 6.0  # m/s (~22 km/h) on footways, paths, and cycleways
 OFFROAD_DECEL = 10.0  # m/s^2 when slowing from road speed
 
+GRAVITY_MPS2 = 9.81
+# Cornering grip limit, as a fraction of g, before the tires lose traction.
+# "Arcade" is forgiving (steering just goes mushy past the limit, no separate
+# slide); "simulation" is stricter and adds a genuine drift angle that has to
+# be steered out of. A real road-going car maxes out around 0.8-1.0g in the
+# dry; ice_road ways get a much lower limit on top of whichever mode is set.
+GRIP_LIMIT_G = {"arcade": 0.9, "simulation": 0.55}
+ICE_GRIP_MULTIPLIER = 0.35
+DRIFT_RECOVERY_RATE = 2.5  # rad/s; how fast a "simulation"-mode drift angle decays once grip is regained
+
 NON_DRIVABLE_HIGHWAYS = {
     "footway",
     "path",
@@ -77,6 +87,10 @@ class Car:
     lane_assist_enabled: bool = False  # user toggle for lane assist feature (default False)
     lane_assist_active: bool = False  # whether lane assist is currently steering
     braking: bool = False  # whether brake lights should be illuminated
+    forward_g: float = 0.0  # last frame's longitudinal g (+accelerating, -braking)
+    lateral_g: float = 0.0  # last frame's cornering g (+left, -right)
+    drift_angle: float = 0.0  # radians; how far the car's motion has slid from its heading
+    is_sliding: bool = False  # true the frame cornering grip was exceeded
 
 
 def is_car_road(way) -> bool:
@@ -921,6 +935,22 @@ def get_current_road_at_car(
     return best_way
 
 
+def _cornering_grip_limit_g(current_way, physics_mode: str) -> float:
+    """Return the lateral-g grip ceiling for the current road surface/mode."""
+    limit = GRIP_LIMIT_G.get(physics_mode, GRIP_LIMIT_G["arcade"])
+    if current_way is not None and getattr(current_way, "is_ice_road", False):
+        limit *= ICE_GRIP_MULTIPLIER
+    return limit
+
+
+def _decay_toward_zero(value: float, rate: float, dt: float) -> float:
+    if value > 0.0:
+        return max(0.0, value - rate * dt)
+    if value < 0.0:
+        return min(0.0, value + rate * dt)
+    return 0.0
+
+
 def update_car_physics(
     car: Car,
     throttle: float,
@@ -935,6 +965,8 @@ def update_car_physics(
     speed_limit_mps: Optional[float] = None,
     nearby_vehicles: Optional[List] = None,
     parking_spaces: Optional[List] = None,
+    current_way=None,
+    physics_mode: str = "arcade",
 ) -> bool:
     """Update car speed, heading, and position.
 
@@ -942,7 +974,15 @@ def update_car_physics(
     car roads only, blocking movement if the vehicle attempts to leave the road.
     When enforce_oneway is True, prevents moving against the legal direction on one-way streets.
     Returns True if vehicle movement was blocked against the road boundary or one-way restriction.
+
+    `current_way` (the road the car is currently on, if known) and
+    `physics_mode` ("arcade" or "simulation") feed the cornering-grip model:
+    exceeding the surface's lateral-g limit softens steering authority
+    (arcade) or, in simulation mode, also builds up a drift angle the car
+    has to steer out of. car.forward_g/lateral_g/is_sliding are updated
+    every call for the debug HUD and other systems (skid tracks, rage).
     """
+    previous_speed = car.speed
     if speed_limit_mps is not None and car.speed > speed_limit_mps:
         car.speed = max(speed_limit_mps, car.speed - SPEED_LIMIT_DECEL * dt)
     elif speed_limit_mps is not None and car.speed < -speed_limit_mps:
@@ -965,6 +1005,7 @@ def update_car_physics(
             car.speed = min(0.0, car.speed + FRICTION * dt)
 
     car.speed = clamp(car.speed, -10.0, MAX_SPEED)
+    car.forward_g = (car.speed - previous_speed) / dt / GRAVITY_MPS2 if dt > 0.0 else 0.0
 
     # Manual steering check
     steer_input = steer_left - steer_right
@@ -974,12 +1015,34 @@ def update_car_physics(
     else:
         car.time_since_last_steer += dt
 
+    heading_before_steer = car.heading
+    car.is_sliding = False
+    # Drift decays by default every frame; the grip-exceeded branch below
+    # builds it back up on top of this when the driver is actively
+    # oversteering past the surface's limit.
+    car.drift_angle = _decay_toward_zero(car.drift_angle, DRIFT_RECOVERY_RATE, dt)
+
     # steer: positive -> turn left (counter-clockwise), negative -> turn right
     # Cars cannot steer in-place while stationary; turning requires moving forward or backward
     if abs(car.speed) > 0.05:
         if abs(steer_input) > 0.01:
             steer_effective = STEER_RATE / (1.0 + abs(car.speed) * STEER_SPEED_FACTOR)
-            car.heading += steer_input * steer_effective * dt * (1.0 if car.speed >= 0 else -1.0)
+            heading_rate = steer_input * steer_effective * (1.0 if car.speed >= 0 else -1.0)
+            grip_limit_g = _cornering_grip_limit_g(current_way, physics_mode)
+            max_heading_rate = grip_limit_g * GRAVITY_MPS2 / abs(car.speed)
+            if abs(heading_rate) > max_heading_rate:
+                car.is_sliding = True
+                if physics_mode == "simulation":
+                    # Drift builds up proportionally to how far over the grip
+                    # limit the driver is asking to turn, and has to be
+                    # steered/waited out once grip is regained.
+                    overshoot = abs(heading_rate) - max_heading_rate
+                    car.drift_angle = clamp(
+                        car.drift_angle + math.copysign(overshoot * dt * 0.6, heading_rate),
+                        -math.radians(45), math.radians(45),
+                    )
+                heading_rate = math.copysign(max_heading_rate, heading_rate)
+            car.heading += heading_rate * dt
         elif car.lane_assist_enabled and car.time_since_last_steer >= 0.35 and car.speed > 1.5:
             # Lane assist: when enabled and driver hasn't steered for a moment, gently track lane center
             current_road = get_current_road_at_car(
@@ -1077,8 +1140,11 @@ def update_car_physics(
     else:
         car.lane_assist_active = False
 
-    dx = math.cos(car.heading) * car.speed * dt
-    dy = math.sin(car.heading) * car.speed * dt
+    car.lateral_g = (car.heading - heading_before_steer) / dt * car.speed / GRAVITY_MPS2 if dt > 0.0 else 0.0
+
+    movement_heading = car.heading + car.drift_angle
+    dx = math.cos(movement_heading) * car.speed * dt
+    dy = math.sin(movement_heading) * car.speed * dt
     target_x = car.x + dx
     target_y = car.y + dy
 

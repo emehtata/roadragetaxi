@@ -50,7 +50,7 @@ from typing import List, Optional, Tuple
 from shapely.geometry import LineString
 from shapely.ops import unary_union
 
-from ..geo import clip_polygon_to_rect, compute_bbox, dist_point_to_segment, meters_to_latlon, point_in_polygon
+from ..geo import clamp, clip_polygon_to_rect, compute_bbox, dist_point_to_segment, meters_to_latlon, point_in_polygon
 from ..osm import Building, BusStop, Place, Scenery, TaxiStop, Water, Way
 from ..physics import Car, MAX_SPEED, is_point_on_road
 from ..taxi import TaxiManager, TaxiState
@@ -554,3 +554,48 @@ def draw_frame_profiler(screen, font, profiler, npc_count: int, pedestrian_count
         surface = font.render(line, True, (255, 220, 120))
         screen.blit(surface, (10, y))
         y += surface.get_height() + 2
+
+
+def draw_g_force_meter(
+    screen,
+    font,
+    forward_g: float,
+    lateral_g: float,
+    is_sliding: bool = False,
+    screen_h: int = SCREEN_H,
+    max_g: float = 1.2,
+) -> None:
+    """Debug-HUD g-force meter: a dot on a crosshair circle, positioned
+    beside the speedometer. Forward/back is the vertical axis (accelerating
+    up, braking down), left/right is horizontal - the classic racing-
+    telemetry layout, so all four directions read at a glance."""
+    import pygame
+
+    radius = 60
+    center = (210 + radius, screen_h - 180 + radius)
+    ring_color = (210, 60, 60) if is_sliding else (130, 140, 150)
+
+    pygame.draw.circle(screen, (20, 25, 30), center, radius)
+    pygame.draw.circle(screen, ring_color, center, radius, 2)
+    pygame.draw.line(screen, (70, 78, 86), (center[0] - radius, center[1]), (center[0] + radius, center[1]), 1)
+    pygame.draw.line(screen, (70, 78, 86), (center[0], center[1] - radius), (center[0], center[1] + radius), 1)
+    # A ring at 1g marks the typical dry-asphalt grip limit, for scale.
+    pygame.draw.circle(screen, (70, 78, 86), center, int(radius / max_g), 1)
+
+    label_color = (170, 178, 186)
+    for text, offset in (
+        ("F", (0, -radius - 12)), ("B", (0, radius + 4)),
+        ("L", (-radius - 14, -6)), ("R", (radius + 4, -6)),
+    ):
+        label = font.render(text, True, label_color)
+        screen.blit(label, (center[0] + offset[0], center[1] + offset[1]))
+
+    # Screen X grows right (matches "R" = +lateral_g); screen Y grows down,
+    # so accelerating (+forward_g) plots upward, hence the minus sign.
+    dot_x = center[0] + clamp(lateral_g / max_g, -1.0, 1.0) * radius
+    dot_y = center[1] - clamp(forward_g / max_g, -1.0, 1.0) * radius
+    dot_color = (255, 90, 70) if is_sliding else (255, 210, 60)
+    pygame.draw.circle(screen, dot_color, (int(dot_x), int(dot_y)), 6)
+
+    readout = font.render(f"{math.hypot(forward_g, lateral_g):.2f} g", True, dot_color)
+    screen.blit(readout, readout.get_rect(midtop=(center[0], center[1] + radius + 16)))

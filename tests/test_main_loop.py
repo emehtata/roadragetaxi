@@ -152,6 +152,22 @@ def test_hud_toggle_keys_do_not_crash(tmp_path):
             [pygame.K_n],  # navigation route
             [pygame.K_t],  # reset trip meter
             [pygame.K_SPACE],  # road rage shout
+            [pygame.K_F3],  # debug HUD (frame profiler + g-force meter)
+            [],
+        ],
+    )
+
+
+def test_hard_cornering_at_speed_with_debug_hud_does_not_crash(tmp_path):
+    """Drive forward, then steer hard while the debug HUD (and its g-force
+    meter) is on - exercises the cornering-grip limit and the meter's draw
+    path together in the real loop, not just in isolation."""
+    _run_main(
+        tmp_path,
+        event_frames=[
+            [pygame.K_F3],
+            *([[pygame.K_w]] * 20),  # build up speed
+            *([[pygame.K_w, pygame.K_a]] * 20),  # hard turn at speed
             [],
         ],
     )

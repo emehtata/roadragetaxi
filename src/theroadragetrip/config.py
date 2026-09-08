@@ -87,6 +87,7 @@ DEFAULT_CONFIG = {
         "file_logging": "false",
         "roadworks_enabled": "false",
         "bus_stops": "false",
+        "physics_realism": "arcade",
     },
     "map": {
         "overpass_endpoints": ", ".join(DEFAULT_OVERPASS_ENDPOINTS),

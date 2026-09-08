@@ -179,6 +179,7 @@ from .hud import (
     default_hud_layout,
     draw_day_night_overlay,
     draw_frame_profiler,
+    draw_g_force_meter,
     draw_hud,
     draw_phone_offers,
 )

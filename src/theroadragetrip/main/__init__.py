@@ -106,6 +106,7 @@ from ..render import (
     draw_headlight_beams,
     draw_hud,
     draw_frame_profiler,
+    draw_g_force_meter,
     begin_static_cache_frame,
     invalidate_static_caches,
     invalidate_static_caches_for_camera_jump,
@@ -816,6 +817,7 @@ def main() -> None:
 
         label_mode = 0
         show_debug_hud = False
+        physics_mode = config.get("game", "physics_realism", fallback="arcade")
         speed_limiter_enabled = True
         red_light_assist_enabled = False
         show_compass = False
@@ -1118,12 +1120,12 @@ def main() -> None:
                                                         pygame.quit()
                                                         sys.exit(0)
                                                     if s_ev.type == pygame.MOUSEMOTION:
-                                                        hovered = _menu_item_at_y(s_ev.pos[1], 170, 32, 26, 7)
+                                                        hovered = _menu_item_at_y(s_ev.pos[1], 170, 32, 26, 8)
                                                         if hovered is not None:
                                                             settings_selected = hovered
                                                         continue
                                                     if s_ev.type == pygame.MOUSEBUTTONDOWN and s_ev.button == 1:
-                                                        hovered = _menu_item_at_y(s_ev.pos[1], 170, 32, 26, 7)
+                                                        hovered = _menu_item_at_y(s_ev.pos[1], 170, 32, 26, 8)
                                                         if hovered is not None:
                                                             settings_selected = hovered
                                                         continue
@@ -1149,9 +1151,9 @@ def main() -> None:
                                                         overpass_endpoints = get_overpass_endpoints(config)
                                                         save_config(config)
                                                     elif s_ev.key == pygame.K_UP:
-                                                        settings_selected = (settings_selected - 1) % 7
+                                                        settings_selected = (settings_selected - 1) % 8
                                                     elif s_ev.key == pygame.K_DOWN:
-                                                        settings_selected = (settings_selected + 1) % 7
+                                                        settings_selected = (settings_selected + 1) % 8
                                                     elif s_ev.key in (pygame.K_LEFT, pygame.K_RIGHT):
                                                         delta = 0.05 if s_ev.key == pygame.K_RIGHT else -0.05
                                                         if settings_selected == 0:
@@ -1168,10 +1170,13 @@ def main() -> None:
                                                         elif settings_selected == 5:
                                                             enabled = not config.getboolean("audio", "subtitles_enabled", fallback=True)
                                                             config.set("audio", "subtitles_enabled", str(enabled).lower())
+                                                        elif settings_selected == 7:
+                                                            physics_mode = "simulation" if physics_mode == "arcade" else "arcade"
+                                                            config.set("game", "physics_realism", physics_mode)
                                                         config.set("game", "language", language)
                                                         taxi_mgr.set_language(language)
                                                         save_config(config)
-                                                draw_settings_menu(screen, font, language, config.getfloat("audio", "master_volume"), config.getfloat("audio", "music_volume"), config.getfloat("audio", "effects_volume"), config.getboolean("audio", "comments_enabled", fallback=True), config.getboolean("audio", "subtitles_enabled", fallback=True), endpoint_text, settings_selected, SCREEN_W, SCREEN_H)
+                                                draw_settings_menu(screen, font, language, config.getfloat("audio", "master_volume"), config.getfloat("audio", "music_volume"), config.getfloat("audio", "effects_volume"), config.getboolean("audio", "comments_enabled", fallback=True), config.getboolean("audio", "subtitles_enabled", fallback=True), endpoint_text, settings_selected, SCREEN_W, SCREEN_H, physics_mode=physics_mode)
                                                 pygame.display.flip()
                                         elif pause_selected == 3:
                                             # Change City
@@ -1361,6 +1366,7 @@ def main() -> None:
                         ways=ways, spatial_grid=spatial_grid,
                         block_offroad=False, speed_limit_mps=speed_limit_mps,
                         nearby_vehicles=[], parking_spaces=parking_spaces,
+                        current_way=current_way, physics_mode=physics_mode,
                     )
                 car.braking = brake > 0.0 and car.speed > 0.05
                 midpoint = (
@@ -1420,6 +1426,10 @@ def main() -> None:
                 car, nearby_traffic_lights, traffic_mgr.sim_time
             ):
                 rage_power = min(1.0, rage_power + 0.05 * dt)
+            if car.is_sliding:
+                # Adrenaline from a hard, tire-losing-grip corner feeds the
+                # rage meter too, same as frustrated in-limit driving does.
+                rage_power = min(1.0, rage_power + 0.15 * dt)
             if first_gameplay_frame:
                 logger.info("Gameplay frame: physics complete")
 
@@ -1624,7 +1634,10 @@ def main() -> None:
             current_way = get_current_road_at_car(car, ways=ways, spatial_grid=spatial_grid, car_roads_only=True, current_way=current_way)
             on_road = current_way is not None
             is_grass = surface_way is None and not is_point_on_parking_space(car.x, car.y, parking_spaces)
-            is_skidding = brake > 0.0 and abs(previous_speed) > 4.0 and abs(steer_left - steer_right) > 0.01
+            is_skidding = (
+                (brake > 0.0 and abs(previous_speed) > 4.0 and abs(steer_left - steer_right) > 0.01)
+                or car.is_sliding
+            )
             if movement_distance > 0.0 and (is_skidding or (is_grass and abs(car.speed) > 1.0)):
                 if last_track_position is None or is_grass != last_track_surface:
                     track_sequence += 1
@@ -2193,6 +2206,8 @@ def main() -> None:
                 screen, small_font, frame_profiler,
                 0, len(pedestrian_mgr.pedestrians),
             )
+            if show_debug_hud:
+                draw_g_force_meter(screen, small_font, car.forward_g, car.lateral_g, car.is_sliding)
             pygame.display.flip()
             if first_gameplay_frame:
                 logger.info("Gameplay frame: complete")
