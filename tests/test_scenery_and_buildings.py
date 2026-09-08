@@ -29,6 +29,8 @@ from theroadragetrip.render import (
     MAX_BUILDING_DEPTH_PX,
     MAX_BUILDING_SIGN_FONT_SIZE,
     BUILDING_WALL_COLORS,
+    FINNISH_BUILDING_COLOR_NAMES,
+    _building_colors_from_name,
     _building_is_commercial,
     _building_sign_anchor,
     _building_sign_angle,
@@ -133,6 +135,8 @@ def test_building_sign_foreshorten_shrinks_for_edge_on_walls():
     # strictly between the floor and the unsquashed maximum.
     moderate = _building_sign_foreshorten(1.0, 0.0, 0.7071, 0.7071)
     assert MIN_SIGN_FORESHORTEN < moderate < 1.0
+
+
 from theroadragetrip.taxi import TaxiManager
 
 
@@ -732,3 +736,48 @@ def test_static_rebuild_always_allows_the_very_first_build():
     assert common_module._allow_static_rebuild("roads", None) is True
     assert common_module._allow_static_rebuild("buildings", None) is True
     assert common_module._allow_static_rebuild("scenery", None) is True
+
+
+def test_finnish_color_name_maps_to_expected_wall_color():
+    assert _building_colors_from_name("Sininen talo")[0] == FINNISH_BUILDING_COLOR_NAMES["sini"]
+    assert _building_colors_from_name("Punatalo Oy")[0] == FINNISH_BUILDING_COLOR_NAMES["puna"]
+    assert _building_colors_from_name("Valkea Kartano")[0] == FINNISH_BUILDING_COLOR_NAMES["valkea"]
+    assert _building_colors_from_name("Kissankulma") is None
+    assert _building_colors_from_name(None) is None
+
+
+def test_building_named_with_a_color_renders_in_that_color():
+    """A building whose OSM name names a Finnish color (e.g. "Sininen
+    talo") should render with that color instead of the usual
+    pseudo-random per-building wall/roof pick."""
+    pygame.init()
+    try:
+        # Font/surface objects cached across a pygame.quit()/init() cycle are
+        # invalid; clear the sign caches so an earlier test's Font isn't reused.
+        render_module._building_sign_font_cache.clear()
+        render_module._building_sign_surface_cache.clear()
+        screen = pygame.Surface((200, 200))
+        sentinel_bg = (255, 0, 255)  # not used by any building/roof color
+        screen.fill(sentinel_bg)
+
+        building = Building(
+            [(-10.0, -10.0), (10.0, -10.0), (10.0, 10.0), (-10.0, 10.0)],
+            name="Sininen talo",
+            height_m=8.0,
+        )
+        _draw_buildings_uncached(
+            screen, [building], camx=0.0, camy=0.0, px_per_m=5.0, screen_w=200, screen_h=200,
+        )
+
+        expected_wall = FINNISH_BUILDING_COLOR_NAMES["sini"]
+        seen_colors = {
+            tuple(screen.get_at((x, y))[:3])
+            for x in range(30, 170)
+            for y in range(30, 170)
+        }
+        assert expected_wall in seen_colors
+        assert not seen_colors & set(BUILDING_WALL_COLORS), (
+            "named building still used the default pseudo-random palette"
+        )
+    finally:
+        pygame.quit()

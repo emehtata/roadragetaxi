@@ -59,6 +59,34 @@ from ..localization import tr
 
 BUILDING_WALL_COLORS = ((158, 105, 82), (174, 166, 143), (116, 131, 119), (139, 139, 137))
 BUILDING_ROOF_COLORS = ((92, 57, 48), (102, 96, 82), (66, 83, 69), (83, 86, 87))
+# A Finnish building name naming its own color (e.g. "Sininen talo",
+# "Punatalo", "Valkea Kartano") should render in that color rather than the
+# usual per-building pseudo-random wall/roof pick. Keyed by the color's
+# root/prefix so both the adjective ("sininen") and compound-name form
+# ("Sinikoti") match via substring search.
+FINNISH_BUILDING_COLOR_NAMES = {
+    "sininen": (70, 110, 160),
+    "sini": (70, 110, 160),
+    "punainen": (150, 60, 55),
+    "puna": (150, 60, 55),
+    "valkoinen": (215, 212, 200),
+    "valkea": (215, 212, 200),
+    "valko": (215, 212, 200),
+    "vihreä": (80, 120, 85),
+    "viher": (80, 120, 85),
+    "keltainen": (200, 175, 90),
+    "kelta": (200, 175, 90),
+    "musta": (55, 55, 58),
+    "harmaa": (140, 140, 138),
+    "ruskea": (120, 85, 60),
+    "oranssi": (195, 120, 60),
+    "vaaleanpunainen": (200, 140, 150),
+    "pinkki": (200, 140, 150),
+    "violetti": (110, 80, 130),
+    "purppura": (110, 80, 130),
+    "hopea": (170, 172, 175),
+    "kulta": (185, 155, 80),
+}
 COMMERCIAL_AMENITIES = {
     "bar", "biergarten", "cafe", "fast_food", "food_court", "ice_cream",
     "nightclub", "pub", "restaurant",
@@ -236,6 +264,20 @@ def _building_window_story_count(building: Building) -> int:
             pass
     height = max(3.0, float(getattr(building, "height_m", 8.0)))
     return max(1, min(40, int(round(height / 3.0))))
+
+
+def _building_colors_from_name(name):
+    """Return (wall_color, roof_color) if `name` names a color in Finnish,
+    else None. The roof is a darkened tint of the same color, matching how
+    BUILDING_ROOF_COLORS pairs with BUILDING_WALL_COLORS."""
+    if not name:
+        return None
+    lowered = name.lower()
+    for word, wall_color in FINNISH_BUILDING_COLOR_NAMES.items():
+        if word in lowered:
+            roof_color = tuple(max(0, int(channel * 0.58)) for channel in wall_color)
+            return wall_color, roof_color
+    return None
 
 
 def _building_is_commercial(building: Building) -> bool:
@@ -427,16 +469,21 @@ def _draw_buildings_uncached(
         if center_x == 0.0 and center_y == 0.0 and b.points_m:
             center_x = sum(point[0] for point in b.points_m) / len(b.points_m)
             center_y = sum(point[1] for point in b.points_m) / len(b.points_m)
-        texture_seed = getattr(b, "texture_seed", None)
-        if texture_seed is None:
-            texture_seed = abs(math.sin(center_x * 0.013 + center_y * 0.017))
-        texture_index = min(len(BUILDING_WALL_COLORS) - 1, int(texture_seed * len(BUILDING_WALL_COLORS)))
+        named_colors = _building_colors_from_name(getattr(b, "name", None))
+        if named_colors is not None:
+            wall_color, roof_color = named_colors
+        else:
+            texture_seed = getattr(b, "texture_seed", None)
+            if texture_seed is None:
+                texture_seed = abs(math.sin(center_x * 0.013 + center_y * 0.017))
+            texture_index = min(len(BUILDING_WALL_COLORS) - 1, int(texture_seed * len(BUILDING_WALL_COLORS)))
+            wall_color = BUILDING_WALL_COLORS[texture_index]
+            roof_color = BUILDING_ROOF_COLORS[texture_index]
         pygame.draw.polygon(screen, (45, 42, 39), [(x + 2, y + 3) for x, y in roof])
         for index, point in enumerate(pts):
             next_point = pts[(index + 1) % len(pts)]
             next_roof = roof[(index + 1) % len(roof)]
-            pygame.draw.polygon(screen, BUILDING_WALL_COLORS[texture_index], [point, next_point, next_roof, roof[index]])
-        roof_color = BUILDING_ROOF_COLORS[texture_index]
+            pygame.draw.polygon(screen, wall_color, [point, next_point, next_roof, roof[index]])
         pygame.draw.polygon(screen, roof_color, roof)
         pygame.draw.lines(screen, (70, 66, 61), True, roof, 1)
 
