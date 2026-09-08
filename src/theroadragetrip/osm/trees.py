@@ -86,9 +86,29 @@ def plant_trees(
 
 
 def remove_trees_under_roads(sceneries: List[Scenery], ways: List[Way]) -> None:
-    """Remove tree centers covered by drivable road geometry."""
+    """Remove tree centers covered by drivable road geometry.
+
+    Each scenery is only swept once (tracked via
+    trees_checked_against_roads): called after every tile-streaming merge
+    with the full accumulated ways/sceneries lists, re-scanning sceneries
+    already checked in an earlier call got slower every merge as the
+    explored map grew, turning into multi-second/main-thread-blocking
+    stalls in a large city. A newly loaded scenery still gets checked
+    against every currently known road (needed since a neighboring tile's
+    road can arrive after this one's trees were planted).
+    # ponytail: a road that streams in *after* an old, already-checked
+    # scenery next to it (rare - usually the player is moving away from
+    # checked ground, not backfilling next to it) won't retroactively
+    # clear that scenery's trees. Reset trees_checked_against_roads for
+    # sceneries near newly-merged ways if that turns out to matter.
+    """
+    pending = [scenery for scenery in sceneries if not scenery.trees_checked_against_roads]
+    if not pending:
+        return
     road_ways = [way for way in ways if getattr(way, "is_drivable", True)]
     if not road_ways:
+        for scenery in pending:
+            scenery.trees_checked_against_roads = True
         return
 
     cell_size = 64.0
@@ -106,7 +126,7 @@ def remove_trees_under_roads(sceneries: List[Scenery], ways: List[Way]) -> None:
             for grid_y in range(math.floor(miny / cell_size), math.floor(maxy / cell_size) + 1):
                 road_grid[(grid_x, grid_y)].append(way)
 
-    for scenery in sceneries:
+    for scenery in pending:
         kept_trees = []
         kept_variations = []
         for index, (tree_x, tree_y) in enumerate(scenery.trees):
@@ -140,3 +160,4 @@ def remove_trees_under_roads(sceneries: List[Scenery], ways: List[Way]) -> None:
                 kept_variations.append(scenery.tree_variations[index])
         scenery.trees = kept_trees
         scenery.tree_variations = kept_variations
+        scenery.trees_checked_against_roads = True

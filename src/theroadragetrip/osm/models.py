@@ -133,6 +133,11 @@ class Scenery:
     bbox: Tuple[float, float, float, float] = (0.0, 0.0, 0.0, 0.0)
     trees: List[Tuple[float, float]] = field(default_factory=list)
     tree_variations: List[float] = field(default_factory=list)
+    # Set by remove_trees_under_roads() once it has swept this scenery's
+    # trees against the road network, so a later re-sync (a new tile
+    # merging in) doesn't re-scan every scenery ever loaded - just the
+    # newly-added ones.
+    trees_checked_against_roads: bool = field(default=False, repr=False)
 
 
 def _building_height(tags: Dict[str, Any], points: List[Tuple[float, float]]) -> float:
