@@ -33,6 +33,7 @@ from theroadragetrip.render import (
     _building_sign_anchor,
     _building_sign_angle,
     _building_sign_foreshorten,
+    _building_sign_theme,
     _building_window_story_count,
     _visible_building_edges,
     _draw_buildings_uncached,
@@ -418,11 +419,12 @@ def test_toscana_draw_buildings_renders_facade_sign_pixels():
             screen_w=400, screen_h=400,
         )
 
+        _, border_color, _ = _building_sign_theme("restaurant")
         gold_pixels = []
         for pixel_y in range(screen.get_height()):
             for pixel_x in range(screen.get_width()):
                 red, green, blue, alpha = screen.get_at((pixel_x, pixel_y))
-                if (red, green, blue) == (211, 169, 70) and alpha:
+                if (red, green, blue) == border_color and alpha:
                     gold_pixels.append((pixel_x, pixel_y))
 
         assert gold_pixels, "Toscana facade sign did not render"
@@ -467,3 +469,108 @@ def test_named_building_renders_name_on_visible_facade():
 
 def test_building_sign_font_stays_realistic_when_zoomed_in():
     assert MAX_BUILDING_SIGN_FONT_SIZE == 32
+
+
+def test_facade_sign_does_not_cover_the_door():
+    """A sign anchored at the same entrance as a door must not be drawn over
+    it (regression: signs used to anchor directly on top of the door)."""
+    pygame.init()
+    try:
+        render_module._building_sign_font_cache.clear()
+        render_module._building_sign_surface_cache.clear()
+        building = Building(
+            [(0.0, 0.0), (40.0, 0.0), (40.0, 40.0), (0.0, 40.0)],
+            bbox=(0.0, 0.0, 40.0, 40.0),
+            entrances=[(20.0, 0.0)],
+            associated_places=[Place(20.0, 20.0, "Toscana", "restaurant")],
+        )
+        screen = pygame.Surface((400, 400), pygame.SRCALPHA)
+        _draw_buildings_uncached(
+            screen, [building], 20.0, 20.0, px_per_m=9.0, screen_w=400, screen_h=400,
+        )
+
+        door_pixels = {
+            (x, y)
+            for y in range(400)
+            for x in range(400)
+            if tuple(screen.get_at((x, y)))[:3] == (58, 48, 42)
+        }
+        _, border_color, _ = _building_sign_theme("restaurant")
+        sign_pixels = {
+            (x, y)
+            for y in range(400)
+            for x in range(400)
+            if tuple(screen.get_at((x, y)))[:3] == border_color
+        }
+        assert door_pixels, "door did not render"
+        assert sign_pixels, "sign did not render"
+        assert door_pixels.isdisjoint(sign_pixels)
+
+        # The sign should sit entirely above where doors are drawn.
+        door_top_y = min(y for _, y in door_pixels)
+        sign_bottom_y = max(y for _, y in sign_pixels)
+        assert sign_bottom_y <= door_top_y
+    finally:
+        pygame.quit()
+
+
+def test_facade_sign_size_scales_with_zoom_like_a_real_object():
+    """Sign dimensions are capped in meters, not pixels, so they stay a
+    believable real-world size (a few metres wide) at every zoom instead of
+    a fixed pixel size that shrinks or balloons as the camera zooms."""
+    pygame.init()
+    try:
+        render_module._building_sign_font_cache.clear()
+        render_module._building_sign_surface_cache.clear()
+        building = Building(
+            [(0.0, 0.0), (60.0, 0.0), (60.0, 40.0), (0.0, 40.0)],
+            bbox=(0.0, 0.0, 60.0, 40.0),
+            height_m=14.0,
+            # A long name so the rendered text is always wider than the real-world
+            # sign-width cap (the thing under test), not the other way around.
+            associated_places=[Place(30.0, 20.0, "Ravintola Toscana Deluxe", "restaurant")],
+        )
+        _, border_color, _ = _building_sign_theme("restaurant")
+
+        def sign_pixel_width(px_per_m):
+            screen = pygame.Surface((1200, 1200), pygame.SRCALPHA)
+            _draw_buildings_uncached(
+                screen, [building], 30.0, 20.0, px_per_m=px_per_m, screen_w=1200, screen_h=1200,
+            )
+            xs = [
+                x for y in range(1200) for x in range(1200)
+                if tuple(screen.get_at((x, y)))[:3] == border_color
+            ]
+            assert xs, f"sign did not render at px_per_m={px_per_m}"
+            return max(xs) - min(xs)
+
+        narrow_zoom_width = sign_pixel_width(9.0)
+        wide_zoom_width = sign_pixel_width(18.0)
+
+        # Roughly double the zoom should roughly double the on-screen sign
+        # size, not keep a fixed pixel size.
+        assert wide_zoom_width > narrow_zoom_width * 1.4
+        # And it should stay within a believable real-world sign footprint
+        # (some slack for the sign quad's facade skew widening its on-screen
+        # bounding box beyond its own u-axis width).
+        from theroadragetrip.render.buildings import MAX_BUILDING_SIGN_WIDTH_M
+        slack_px = 20
+        assert narrow_zoom_width <= MAX_BUILDING_SIGN_WIDTH_M * 9.0 + slack_px
+        assert wide_zoom_width <= MAX_BUILDING_SIGN_WIDTH_M * 18.0 + slack_px
+    finally:
+        pygame.quit()
+
+
+def test_facade_sign_color_matches_business_type():
+    default_theme = _building_sign_theme(None)
+    restaurant_theme = _building_sign_theme("restaurant")
+    pharmacy_theme = _building_sign_theme("pharmacy")
+    bank_theme = _building_sign_theme("bank")
+
+    # Distinct business categories get visibly distinct colors...
+    assert len({restaurant_theme[1], pharmacy_theme[1], bank_theme[1]}) == 3
+    assert restaurant_theme != default_theme
+    # ...and anything unrecognized falls back to the original look rather
+    # than an arbitrary color.
+    assert _building_sign_theme("some_unmapped_osm_tag") == default_theme
+    assert _building_sign_theme(None) == default_theme

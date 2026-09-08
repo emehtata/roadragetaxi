@@ -65,13 +65,69 @@ COMMERCIAL_AMENITIES = {
     "nightclub", "pub", "restaurant",
 }
 COMMERCIAL_BUILDING_TYPES = {"commercial", "retail", "shop"}
+
+# Facade sign colors by venue category, loosely matching real-world signage
+# conventions (warm red for dining, a pharmacy-style green cross, navy and
+# gold for banks/hotels, ...). Each entry is (background, border, text).
+# Anything not covered by SIGN_CATEGORY_BY_VENUE_TYPE below falls back to
+# SIGN_THEME_DEFAULT, the original dark-wood-and-gold look.
+SIGN_THEME_DEFAULT = ((40, 31, 22), (211, 169, 70), (250, 239, 190))
+SIGN_THEMES = {
+    "food": ((92, 24, 22), (219, 150, 60), (250, 235, 210)),
+    "drink": ((46, 20, 56), (176, 120, 200), (240, 225, 245)),
+    "grocery": ((22, 58, 30), (140, 200, 110), (235, 245, 225)),
+    "health": ((16, 66, 56), (120, 220, 170), (230, 250, 240)),
+    "finance": ((18, 28, 48), (190, 170, 90), (230, 232, 240)),
+    "lodging": ((26, 34, 58), (200, 190, 150), (235, 235, 225)),
+    "beauty": ((70, 28, 46), (230, 160, 190), (250, 235, 240)),
+    "automotive": ((54, 40, 20), (230, 150, 60), (245, 230, 205)),
+    "retail": ((20, 34, 58), (130, 170, 220), (230, 238, 248)),
+}
+SIGN_CATEGORY_BY_VENUE_TYPE = {
+    "restaurant": "food", "fast_food": "food", "food_court": "food",
+    "cafe": "food", "ice_cream": "food", "bakery": "food",
+    "bar": "drink", "pub": "drink", "biergarten": "drink", "nightclub": "drink",
+    "supermarket": "grocery", "convenience": "grocery", "grocery": "grocery",
+    "greengrocer": "grocery", "butcher": "grocery", "deli": "grocery",
+    "pharmacy": "health", "doctors": "health", "dentist": "health",
+    "clinic": "health", "hospital": "health", "veterinary": "health",
+    "bank": "finance", "atm": "finance", "bureau_de_change": "finance",
+    "hotel": "lodging", "hostel": "lodging", "motel": "lodging", "guest_house": "lodging",
+    "hairdresser": "beauty", "beauty": "beauty", "spa": "beauty", "massage": "beauty",
+    "fuel": "automotive", "car_repair": "automotive", "car": "automotive", "car_wash": "automotive",
+    "clothes": "retail", "shoes": "retail", "electronics": "retail", "furniture": "retail",
+    "books": "retail", "gift": "retail", "department_store": "retail", "mall": "retail",
+    "kiosk": "retail", "florist": "retail", "jewelry": "retail", "toys": "retail",
+    "sports": "retail", "mobile_phone": "retail", "hardware": "retail", "variety_store": "retail",
+}
+
+
+def _building_sign_theme(venue_type) -> tuple:
+    """Return the (background, border, text) sign colors for a venue kind."""
+    key = str(venue_type or "").lower()
+    category = SIGN_CATEGORY_BY_VENUE_TYPE.get(key)
+    if category is None and key in COMMERCIAL_BUILDING_TYPES:
+        category = "retail"
+    return SIGN_THEMES.get(category, SIGN_THEME_DEFAULT)
+
+
 _building_sign_font_cache = {}
 _building_sign_surface_cache = {}
 _building_visual_plan_cache = {}
 MIN_BUILDING_SIGN_WIDTH_PX = 24
 MIN_BUILDING_SIGN_DEPTH_PX = 8
-MAX_BUILDING_SIGN_WIDTH_PX = 180
 MAX_BUILDING_SIGN_FONT_SIZE = 32
+# Real-world fascia-sign size (a shopfront board spanning most of a single
+# storefront, roughly eye-level tall) rather than a fixed pixel cap, so signs
+# stay a believable size at every zoom level instead of ballooning at low
+# zoom or shrinking to nothing at high zoom.
+MAX_BUILDING_SIGN_WIDTH_M = 3.0
+MAX_BUILDING_SIGN_HEIGHT_M = 1.0
+# Doors are always drawn spanning up to this fraction of the wall height from
+# the ground (see the entrance-drawing loop below); signs are anchored above
+# this line, with a little clearance, so a sign never covers a doorway.
+DOOR_TOP_V_RATIO = 0.48
+SIGN_V_CLEARANCE = 0.04
 # Cap on the on-screen facade "depth" (the pseudo-3D roof-offset used to draw
 # walls). Previously capped at 30px, which - at the default 9.0 px/m zoom -
 # is reached by any building taller than ~9.5m (about 3 storeys), so taller
@@ -152,13 +208,13 @@ def _building_sign_foreshorten(edge_x: float, edge_y: float, wall_normal_x: floa
     return max(MIN_SIGN_FORESHORTEN, min(1.0, sine))
 
 
-def _building_sign_surface(pygame, font, text, sign_width, sign_depth, angle, foreshorten=1.0):
+def _building_sign_surface(pygame, font, text, sign_width, sign_depth, angle, foreshorten=1.0, text_color=(250, 239, 190)):
     """Reuse static venue sign text across viewport cache rebuilds."""
-    key = (id(font), text, sign_width, sign_depth, round(angle, 3), round(foreshorten, 3))
+    key = (id(font), text, sign_width, sign_depth, round(angle, 3), round(foreshorten, 3), text_color)
     cached = _building_sign_surface_cache.get(key)
     if cached is not None:
         return cached
-    text_surface = font.render(text, True, (250, 239, 190))
+    text_surface = font.render(text, True, text_color)
     target_width = max(4, sign_width - 8)
     # Always rescale to the wall-foreshortened height, not just when the
     # rendered text is too wide, so the sign is squashed to match the wall's
@@ -238,7 +294,10 @@ def _building_sign_corners(point, next_point, roof_point, next_roof, center_rati
         return None
     half_u = min(0.36, width_px / (2.0 * edge_length))
     half_v = min(0.16, depth_px / (2.0 * wall_depth))
-    center_v = 0.22
+    # Anchor above where doors are drawn (see DOOR_TOP_V_RATIO) so a sign
+    # never covers a doorway, with a small gap and a ceiling that keeps it
+    # clear of the roofline.
+    center_v = min(0.88 - half_v, DOOR_TOP_V_RATIO + SIGN_V_CLEARANCE + half_v)
 
     def point_at(u, v):
         base_x = point[0] + edge_x * u
@@ -469,8 +528,8 @@ def _draw_buildings_uncached(
             door_x, door_y = world_to_screen(
                 entrance_x, entrance_y, camx, camy, px_per_m, screen_w, screen_h
             )
-            door_x += roof_x * 0.48
-            door_y += roof_y * 0.48
+            door_x += roof_x * DOOR_TOP_V_RATIO
+            door_y += roof_y * DOOR_TOP_V_RATIO
             door_shift_x = -roof_x * door_height / max(abs(roof_y), 1.0)
             door_shift_y = -roof_y * door_height / max(abs(roof_y), 1.0)
             half_door = door_width / 2
@@ -492,10 +551,15 @@ def _draw_buildings_uncached(
                 _building_sign_font_cache[sign_font_size] = sign_font
             building_places = list(getattr(b, "associated_places", ()))
             building_name = getattr(b, "name", None)
-            sign_entries = [(place.name, place.x, place.y) for place in building_places]
-            if building_name and not any(name == building_name for name, _, _ in sign_entries):
-                sign_entries.append((building_name, b.center_m[0], b.center_m[1]))
-            for place_name, place_x, place_y in sign_entries:
+            sign_entries = [
+                (place.name, place.x, place.y, getattr(place, "kind", None))
+                for place in building_places
+            ]
+            if building_name and not any(name == building_name for name, _, _, _ in sign_entries):
+                sign_entries.append(
+                    (building_name, b.center_m[0], b.center_m[1], getattr(b, "venue_type", None))
+                )
+            for place_name, place_x, place_y, venue_kind in sign_entries:
                 anchor_x, anchor_y = place_x, place_y
                 entrances = getattr(b, "entrances", ())
                 if entrances:
@@ -560,17 +624,18 @@ def _draw_buildings_uncached(
                 sign_text = place_name.upper()
                 text_width = sign_font.size(sign_text)[0]
                 sign_width = min(
-                    MAX_BUILDING_SIGN_WIDTH_PX,
+                    int(MAX_BUILDING_SIGN_WIDTH_M * px_per_m),
                     text_width + 8,
                     int(edge_length * 0.72),
                 )
-                sign_depth = min(18, int(wall_depth * 0.28))
+                sign_depth = min(int(MAX_BUILDING_SIGN_HEIGHT_M * px_per_m), int(wall_depth * 0.28))
                 if sign_width < MIN_BUILDING_SIGN_WIDTH_PX or sign_depth < MIN_BUILDING_SIGN_DEPTH_PX:
                     continue
                 angle = _building_sign_angle(point, next_point)
                 foreshorten = _building_sign_foreshorten(edge_x, edge_y, wall_normal_x, wall_normal_y)
+                sign_background, sign_border, sign_text_color = _building_sign_theme(venue_kind)
                 text_surface = _building_sign_surface(
-                    pygame, sign_font, sign_text, sign_width, sign_depth, angle, foreshorten,
+                    pygame, sign_font, sign_text, sign_width, sign_depth, angle, foreshorten, sign_text_color,
                 )
                 sign_corners_world = _building_sign_corners(
                     point,
@@ -598,6 +663,6 @@ def _draw_buildings_uncached(
                 if any(sign_rect.colliderect(existing) for existing in placed_sign_rects):
                     continue
                 placed_sign_rects.append(sign_rect)
-                pygame.draw.polygon(screen, (40, 31, 22, 245), sign_corners)
-                pygame.draw.lines(screen, (211, 169, 70, 255), True, sign_corners, 1)
+                pygame.draw.polygon(screen, (*sign_background, 245), sign_corners)
+                pygame.draw.lines(screen, (*sign_border, 255), True, sign_corners, 1)
                 screen.blit(text_surface, text_surface.get_rect(center=(round(sign_center_x), round(sign_center_y))))
