@@ -21,6 +21,19 @@ from .tile_streaming import TileCoord, active_tiles, tile_bbox, tile_changes, wo
 
 logger = logging.getLogger(__name__)
 CACHE_VERSION = "v0.9.0alpha"
+_overpass_stats_lock = threading.Lock()
+_overpass_stats = {
+    "requests": 0,
+    "responses": 0,
+    "last_status": 0,
+    "last_elements": 0,
+    "last_endpoint": "",
+}
+
+
+def get_overpass_diagnostics() -> dict[str, object]:
+    with _overpass_stats_lock:
+        return dict(_overpass_stats)
 
 # Top 10 cities of Finland by population with center coordinates (lat, lon)
 CITY_CENTERS: Dict[str, Tuple[float, float]] = {
@@ -1080,7 +1093,20 @@ def fetch_osm_ways(
             try:
                 if progress_callback:
                     progress_callback(0.25, f"Fetching scenery from {ep[:35]}...")
+                with _overpass_stats_lock:
+                    _overpass_stats["requests"] += 1
+                logger.info("Overpass request: endpoint=%s attempt=%d", ep, attempt)
                 r = requests.post(ep, data={"data": query}, headers=OVERPASS_HEADERS, timeout=60)
+                with _overpass_stats_lock:
+                    _overpass_stats["responses"] += 1
+                    _overpass_stats["last_status"] = r.status_code
+                    _overpass_stats["last_endpoint"] = ep
+                logger.info(
+                    "Overpass response: endpoint=%s status=%d bytes=%d",
+                    ep,
+                    r.status_code,
+                    len(getattr(r, "content", b"")),
+                )
                 if r.status_code == 429:
                     last_err = Exception(f"429 Too Many Requests from {ep}")
                     logger.warning(
@@ -1098,6 +1124,9 @@ def fetch_osm_ways(
                     progress_callback(0.5, "Parsing OSM payload...")
                 data = r.json()
                 els = data.get("elements", [])
+                with _overpass_stats_lock:
+                    _overpass_stats["last_elements"] = len(els)
+                logger.info("Overpass response data: endpoint=%s elements=%d", ep, len(els))
                 logger.info("Loaded OSM data from %s (%d elements)", ep, len(els))
                 try:
                     save_osm_cache(bbox, els)
@@ -2339,6 +2368,7 @@ class AutoFetchManager:
         self._completed_fetch_targets: Set[Tuple[float, float, float, float]] = set()
         self._endpoint_connection_cache: dict[tuple[int, int, int], bool] = {}
         self.player_tile: Optional[TileCoord] = None
+        self.start_tile: Optional[TileCoord] = None
         self.active_tiles: set[TileCoord] = set()
         self.loaded_tiles: set[TileCoord] = set()
         self.pending_tiles: set[TileCoord] = set()
@@ -2375,8 +2405,15 @@ class AutoFetchManager:
 
     def get_tile_metrics(self) -> dict[str, object]:
         with self.lock:
+            relative_tile = None
+            if self.player_tile is not None and self.start_tile is not None:
+                relative_tile = TileCoord(
+                    self.player_tile.x - self.start_tile.x,
+                    self.player_tile.y - self.start_tile.y,
+                )
             return {
                 "player_tile": self.player_tile,
+                "relative_tile": relative_tile,
                 "tiles_in_memory": len(self.loaded_tiles),
                 "tiles_pending": len(self.pending_tiles),
                 "tile_load_ms": self.last_tile_load_ms,
@@ -2390,6 +2427,8 @@ class AutoFetchManager:
         """Return tile additions/removals only when the player changes tile."""
         current_tile = world_to_tile(x, y)
         with self.lock:
+            if self.start_tile is None:
+                self.start_tile = current_tile
             if current_tile == self.player_tile:
                 return None
             previous_tiles = self.active_tiles
@@ -2485,6 +2524,7 @@ class AutoFetchManager:
         current_tile = world_to_tile(x, y)
         with self.lock:
             self.player_tile = current_tile
+            self.start_tile = current_tile
             self.active_tiles = set(active_tiles(current_tile))
             self._register_existing_world()
             # Startup bbox is the complete active 1.5 km region.

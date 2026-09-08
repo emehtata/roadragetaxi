@@ -1222,26 +1222,24 @@ def _draw_buildings_uncached(
         pygame.draw.lines(screen, (70, 66, 61), True, roof, 1)
 
         # Add small facade details after the roof so they remain visible at low zoom.
-        roof_dx = roof[0][0] - pts[0][0]
-        roof_dy = roof[0][1] - pts[0][1]
-        centroid_x = sum(point[0] for point in pts) / len(pts)
-        centroid_y = sum(point[1] for point in pts) / len(pts)
         visible_edges = []
-        for index, point in enumerate(pts):
-            next_point = pts[(index + 1) % len(pts)]
+        world_centroid_x = sum(point[0] for point in b.points_m) / len(b.points_m)
+        world_centroid_y = sum(point[1] for point in b.points_m) / len(b.points_m)
+        for index, point in enumerate(b.points_m):
+            next_point = b.points_m[(index + 1) % len(b.points_m)]
             midpoint_x = (point[0] + next_point[0]) * 0.5
             midpoint_y = (point[1] + next_point[1]) * 0.5
             edge_x = next_point[0] - point[0]
             edge_y = next_point[1] - point[1]
-            inward_x = centroid_x - midpoint_x
-            inward_y = centroid_y - midpoint_y
+            inward_x = world_centroid_x - midpoint_x
+            inward_y = world_centroid_y - midpoint_y
             outward_x = -edge_y
             outward_y = edge_x
             if outward_x * inward_x + outward_y * inward_y > 0.0:
                 outward_x = -outward_x
                 outward_y = -outward_y
-            camera_x = camx - ((point[0] + next_point[0]) * 0.5)
-            camera_y = camy - ((point[1] + next_point[1]) * 0.5)
+            camera_x = camx - midpoint_x
+            camera_y = camy - midpoint_y
             if outward_x * camera_x + outward_y * camera_y > 0.0:
                 visible_edges.append(index)
         story_count = _building_window_story_count(b)
