@@ -135,8 +135,20 @@ def draw_ways(
     screen_w = cache_width
     screen_h = cache_height
 
-    vminx, vminy, vmaxx, vmaxy = get_viewport_bounds(camx, camy, px_per_m, screen_w, screen_h, 60.0)
-
+    # screen_w/screen_h here are already the padded cache surface's own
+    # dimensions (CACHE_PADDING_PX baked in above), so this margin is pure
+    # extra beyond that - and the cache's offset-blit reuse can never take
+    # advantage of more than CACHE_PADDING_PX/px_per_m of it anyway (that's
+    # the whole pan distance a reuse can cover before a real rebuild is
+    # needed regardless). A wide margin here was making every rebuild
+    # select and fully render roads tens of meters past anything the cache
+    # could ever actually show before its next rebuild - real cost in a
+    # busy area (occasional multi-ten-millisecond "culprit: rendering"
+    # spikes) for no visual benefit. A small fixed margin is still kept as
+    # pop-in insurance for wide roads/long endpoint-joins near the edge -
+    # 25m comfortably covers the widest endpoint join_distance possible
+    # (a motorway's 2*7.0+4.0=18m) with headroom to spare.
+    vminx, vminy, vmaxx, vmaxy = get_viewport_bounds(camx, camy, px_per_m, screen_w, screen_h, 25.0)
 
     # Filter visible ways first, then sort only visible ways by layer
     if spatial_grid is not None:
