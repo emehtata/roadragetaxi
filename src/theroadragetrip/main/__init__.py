@@ -188,7 +188,7 @@ def main() -> None:
     pygame.init()
     screen = pygame.display.set_mode((SCREEN_W, SCREEN_H))
     try:
-        icon_path = os.path.join(os.path.dirname(__file__), "assets", "roadragetrip_icon.png")
+        icon_path = os.path.join(os.path.dirname(__file__), "..", "assets", "roadragetrip_icon.png")
         pygame.display.set_icon(pygame.image.load(icon_path).convert_alpha())
     except (OSError, pygame.error):
         logger.warning("Game icon could not be loaded")

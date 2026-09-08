@@ -41,7 +41,7 @@ def load_local_sample(path: str = "sample_osm.json") -> Optional[List[dict]]:
 
     Tries the provided path, package-relative samples, and `sample_osm_large.json`.
     """
-    root_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+    root_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
     bundle_dir = getattr(sys, "_MEIPASS", "")
     candidates = [
         path,
