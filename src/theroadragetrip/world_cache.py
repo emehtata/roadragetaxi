@@ -19,7 +19,15 @@ from .tile_streaming import TileCoord
 logger = logging.getLogger(__name__)
 
 MAGIC = b"RWC\0"
-FORMAT_VERSION = 2
+# Bump whenever a change to map-generation logic (not just this file's byte
+# layout) would make an already-cached .rwc's *contents* wrong even though
+# its bytes are still perfectly well-formed - load_area() only checks this
+# against a wall-clock TTL otherwise (default 24h), so a code fix has no
+# way to invalidate a cache written minutes before it shipped. Concretely:
+# the traffic-light phase-grouping fix (safety-critical - it stops
+# conflicting approaches from both showing green) would otherwise sit
+# unused in already-explored areas for up to a day.
+FORMAT_VERSION = 3
 COORDINATE_SYSTEM = "EPSG:3067"
 _HEADER = struct.Struct("<4sHHQQ32s12s")
 _DIRECTORY = struct.Struct("<8sQQI")

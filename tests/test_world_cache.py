@@ -64,6 +64,43 @@ def test_rwc_rejects_corrupt_and_unsupported_files(tmp_path, sample_world):
         BinaryWorldCacheLoader().load(path)
 
 
+def test_stale_format_version_forces_a_rebuild_even_within_the_ttl(tmp_path, sample_world):
+    """A fix to map-generation logic (e.g. the traffic-light phase-grouping
+    safety fix) makes an already-written .rwc's *content* wrong even
+    though its bytes are still well-formed. load_area()'s TTL check alone
+    can't catch that - it only looks at wall-clock age (default 24h) - so
+    a cache written minutes before a fix shipped would keep serving the
+    old, buggy data for the rest of that day. FORMAT_VERSION exists
+    exactly to be bumped for this: an old-version cache must be rebuilt
+    on the very next load, regardless of how fresh its mtime is."""
+    import struct
+
+    from theroadragetrip.world_cache import FORMAT_VERSION
+
+    calls = []
+    manager = WorldCacheManager(
+        tmp_path,
+        fetch_func=lambda bbox: calls.append(bbox) or [],
+        build_func=lambda elements: sample_world,
+    )
+    area_id = "stale-version-area"
+    path = manager.path_for(area_id)
+    manager.writer.write(path, sample_world, area_id=area_id)
+
+    # Simulate a cache written by an older build: rewrite its format
+    # version byte to one less than current, leaving mtime (and therefore
+    # TTL freshness) untouched.
+    raw = bytearray(path.read_bytes())
+    raw[4:6] = struct.pack("<H", FORMAT_VERSION - 1)
+    path.write_bytes(bytes(raw))
+
+    loaded = manager.load_area(area_id, (1, 2, 3, 4))
+    manager.close()
+
+    assert loaded is sample_world
+    assert calls == [(1, 2, 3, 4)], "a stale-format cache must trigger a rebuild, not be reused"
+
+
 def test_world_cache_manager_hit_avoids_fetch(tmp_path, sample_world):
     calls = []
     manager = WorldCacheManager(
