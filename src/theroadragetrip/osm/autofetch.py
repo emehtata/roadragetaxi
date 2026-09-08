@@ -239,11 +239,23 @@ class AutoFetchManager:
                 self._unload_tiles(removed)
                 self.last_tile_unload_ms = (time.perf_counter() - unload_started) * 1000.0
             missing = self.active_tiles - self.loaded_tiles - self.pending_tiles
-            if not missing or self.is_fetching or time.monotonic() < self._tile_retry_after:
+            wall_time = time.time()
+            if (
+                not missing
+                or self.is_fetching
+                or time.monotonic() < self._tile_retry_after
+                # Crossing tiles quickly (driving fast) used to fire a new
+                # Overpass request the instant the previous one finished,
+                # with nothing else pacing them - fast enough to get an IP
+                # rate-limited/blocked by public endpoints. The still-missing
+                # tiles just wait for the next call once the cooldown clears.
+                or wall_time - self.last_fetch_time < self.cooldown_s
+            ):
                 return False
             self.pending_tiles.update(missing)
             self.is_fetching = True
             self.fetch_progress = 0.0
+            self.last_fetch_time = wall_time
             request_tiles = set(self.active_tiles)
             current_tile = self.player_tile
             if previous_player_tile is not None and current_tile is not None:

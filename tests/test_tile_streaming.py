@@ -177,6 +177,51 @@ def test_tile_streaming_loads_missing_tiles_in_background():
     assert metrics["tile_integration_ms"] >= 0.0
 
 
+def test_tile_streaming_respects_cooldown_between_requests():
+    """Regression: crossing tiles quickly (driving fast) used to fire a new
+    Overpass request the instant the previous one finished, with nothing
+    pacing successive requests - fast enough to get IP rate-limited by
+    public endpoints. A second tile transition within cooldown_s of the
+    last request must wait; the still-missing tiles are picked up once the
+    cooldown clears."""
+    class Transformer:
+        def transform(self, x, y):
+            return x, y
+
+    class TileCache:
+        def __init__(self):
+            self.calls = []
+
+        def preload_region(self, bbox):
+            self.calls.append(bbox)
+            future = Future()
+            future.set_result(MapData([], [], [], [], [], (0.0, 0.0, 1.0, 1.0)))
+            return future
+
+    cache = TileCache()
+    manager = AutoFetchManager(
+        [], (0.0, 0.0, 1000.0, 1000.0), Transformer(),
+        world_cache_manager=cache, cooldown_s=60.0,
+    )
+
+    assert manager.start_tile_streaming(500.0, 500.0)
+    deadline = time.time() + 2.0
+    while manager.is_fetching and time.time() < deadline:
+        time.sleep(0.01)
+    while manager.integrate_completed_tiles(max_tiles=1):
+        pass
+    assert len(cache.calls) == 1
+
+    # Player immediately crosses into another tile - still within cooldown.
+    assert manager.start_tile_streaming(1500.0, 500.0) is False
+    assert len(cache.calls) == 1
+
+    # Cooldown has elapsed: the still-missing tile is now fetched.
+    manager.last_fetch_time = 0.0
+    assert manager.start_tile_streaming(1500.0, 500.0) is True
+    assert len(cache.calls) == 2
+
+
 def test_cardinal_tile_transition_batches_two_by_three_region():
     class Transformer:
         def transform(self, x, y):
@@ -220,8 +265,10 @@ def test_tile_transition_during_fetch_queues_next_region_request():
             return future
 
     cache = TileCache()
+    # cooldown_s=0.0: this test triggers two real fetches back-to-back to
+    # exercise transition-queueing, not the request-rate cooldown.
     manager = AutoFetchManager(
-        [], (0.0, 0.0, 1000.0, 1000.0), Transformer(), world_cache_manager=cache,
+        [], (0.0, 0.0, 1000.0, 1000.0), Transformer(), world_cache_manager=cache, cooldown_s=0.0,
     )
     manager.initialize_player_tile(500.0, 500.0)
     assert manager.start_tile_streaming(1000.0, 500.0)
