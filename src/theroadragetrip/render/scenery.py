@@ -19,8 +19,7 @@ from .common import (
     _static_rebuilds_this_frame,
     invalidate_static_caches,
     begin_static_cache_frame,
-    _allow_static_rebuild,
-    _blit_stale_static_cache,
+    _rebuild_or_stale,
     _static_cache_zoom,
     _reusable_alpha_surface,
     _smoke_surface,
@@ -117,8 +116,7 @@ def draw_scenery(
             ),
         )
         return
-    if not _allow_static_rebuild("scenery", common._scenery_frame_cache_surface):
-        _blit_stale_static_cache(screen, common._scenery_frame_cache_surface, common._scenery_frame_cache_camera, camx, camy, cache_zoom)
+    if _rebuild_or_stale(screen, "scenery", common._scenery_frame_cache_surface, common._scenery_frame_cache_camera, camx, camy, cache_zoom):
         return
     cache_width = screen_w + CACHE_PADDING_PX * 2
     cache_height = screen_h + CACHE_PADDING_PX * 2
@@ -329,14 +327,11 @@ def draw_grass_texture(
             ),
         )
         return
-    if not _allow_static_rebuild("grass", common._grass_frame_cache_surface):
-        # A big camera jump (e.g. a debug respawn) can invalidate every
-        # static layer's cache on the same frame; sharing the same
-        # one-rebuild-per-frame throttle as the other five layers spreads
-        # that cost across several frames instead of stalling on one.
-        _blit_stale_static_cache(
-            screen, common._grass_frame_cache_surface, common._grass_frame_cache_camera, camx, camy, cache_zoom,
-        )
+    # A big camera jump (e.g. a debug respawn) can invalidate every static
+    # layer's cache on the same frame; sharing the same one-rebuild-per-frame
+    # throttle as the other five layers spreads that cost across several
+    # frames instead of stalling on one.
+    if _rebuild_or_stale(screen, "grass", common._grass_frame_cache_surface, common._grass_frame_cache_camera, camx, camy, cache_zoom):
         return
 
     cache_width = screen_w + CACHE_PADDING_PX * 2

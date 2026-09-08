@@ -19,8 +19,7 @@ from .common import (
     _static_rebuilds_this_frame,
     invalidate_static_caches,
     begin_static_cache_frame,
-    _allow_static_rebuild,
-    _blit_stale_static_cache,
+    _rebuild_or_stale,
     _static_cache_zoom,
     _reusable_alpha_surface,
     _smoke_surface,
@@ -125,8 +124,7 @@ def draw_ways(
             ),
         )
         return
-    if not _allow_static_rebuild("roads", common._road_frame_cache_surface):
-        _blit_stale_static_cache(screen, common._road_frame_cache_surface, common._road_frame_cache_camera, camx, camy, cache_zoom)
+    if _rebuild_or_stale(screen, "roads", common._road_frame_cache_surface, common._road_frame_cache_camera, camx, camy, cache_zoom):
         return
     px_per_m = cache_zoom
     destination_screen = screen

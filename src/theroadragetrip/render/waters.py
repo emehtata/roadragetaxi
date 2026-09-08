@@ -19,8 +19,7 @@ from .common import (
     _static_rebuilds_this_frame,
     invalidate_static_caches,
     begin_static_cache_frame,
-    _allow_static_rebuild,
-    _blit_stale_static_cache,
+    _rebuild_or_stale,
     _static_cache_zoom,
     _reusable_alpha_surface,
     _smoke_surface,
@@ -88,8 +87,7 @@ def draw_waters(
             ),
         )
         return
-    if not _allow_static_rebuild("water", common._water_frame_cache_surface):
-        _blit_stale_static_cache(screen, common._water_frame_cache_surface, common._water_frame_cache_camera, camx, camy, cache_zoom)
+    if _rebuild_or_stale(screen, "water", common._water_frame_cache_surface, common._water_frame_cache_camera, camx, camy, cache_zoom):
         return
     cache_width = screen_w + CACHE_PADDING_PX * 2
     cache_height = screen_h + CACHE_PADDING_PX * 2

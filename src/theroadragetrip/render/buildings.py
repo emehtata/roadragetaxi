@@ -19,8 +19,7 @@ from .common import (
     _static_rebuilds_this_frame,
     invalidate_static_caches,
     begin_static_cache_frame,
-    _allow_static_rebuild,
-    _blit_stale_static_cache,
+    _rebuild_or_stale,
     _static_cache_zoom,
     _reusable_alpha_surface,
     _smoke_surface,
@@ -361,8 +360,7 @@ def draw_buildings(
         offset_y = round((camy - cached_camy) * cache_zoom) - CACHE_PADDING_PX
         screen.blit(common._building_frame_cache_surface, (offset_x, offset_y))
         return
-    if not _allow_static_rebuild("buildings", common._building_frame_cache_surface):
-        _blit_stale_static_cache(screen, common._building_frame_cache_surface, common._building_frame_cache_camera, camx, camy, cache_zoom)
+    if _rebuild_or_stale(screen, "buildings", common._building_frame_cache_surface, common._building_frame_cache_camera, camx, camy, cache_zoom):
         return
 
     cache_width = screen_w + CACHE_PADDING_PX * 2

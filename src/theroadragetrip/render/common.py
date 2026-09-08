@@ -146,6 +146,17 @@ def _blit_stale_static_cache(screen, surface, camera, camx, camy, cache_zoom) ->
     )
 
 
+def _rebuild_or_stale(screen, layer: str, surface, camera, camx, camy, cache_zoom) -> bool:
+    """Throttle-gate a layer's rebuild: if this isn't its turn yet, blit
+    its stale cache in place of a fresh redraw and report that. Shared by
+    every draw_* that owns a static-cache layer, so each just does
+    ``if _rebuild_or_stale(...): return`` before rebuilding."""
+    if _allow_static_rebuild(layer, surface):
+        return False
+    _blit_stale_static_cache(screen, surface, camera, camx, camy, cache_zoom)
+    return True
+
+
 def _static_cache_zoom(px_per_m: float) -> float:
     """Quantize static-layer zoom to avoid rebuilding during smooth zoom animation."""
     return max(STATIC_ZOOM_STEP, round(px_per_m / STATIC_ZOOM_STEP) * STATIC_ZOOM_STEP)
