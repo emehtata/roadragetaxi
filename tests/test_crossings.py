@@ -130,6 +130,42 @@ def test_build_ways_extracts_crossings_and_aligns_with_road():
     assert abs(c.direction_angle) < 0.2 or abs(c.direction_angle - math.pi) < 0.2
 
 
+def test_crossing_node_off_road_centerline_snaps_onto_the_road():
+    """OSM often digitizes a crossing node a few meters off the road it
+    belongs to. Regression: build_ways used to keep the raw OSM node
+    position, so the rendered zebra stripes floated beside the road
+    instead of sitting flush on it - snap onto the nearest point of the
+    matched road instead."""
+    elements = [
+        {"type": "node", "id": 1, "lat": 65.0, "lon": 25.0},
+        {"type": "node", "id": 2, "lat": 65.0, "lon": 25.01},
+        {
+            "type": "way",
+            "id": 10,
+            "nodes": [1, 2],
+            "tags": {"highway": "residential", "name": "Torikatu"},
+        },
+        # Crossing node ~3m off the (flat, east-west) road's latitude.
+        {
+            "type": "node",
+            "id": 3,
+            "lat": 65.00003,
+            "lon": 25.005,
+            "tags": {"highway": "crossing", "crossing": "zebra"},
+        },
+    ]
+
+    res = build_ways(elements)
+    c = res.crossings[0]
+    (ax, ay), (bx, by) = res.ways[0].points_m
+    from theroadragetrip.geo import dist_point_to_segment
+
+    offset_from_road_m = dist_point_to_segment(c.x, c.y, ax, ay, bx, by)
+    assert offset_from_road_m < 0.5, (
+        f"crossing not snapped onto its road: {offset_from_road_m:.2f}m off centerline"
+    )
+
+
 def test_draw_crossings_runs_without_error():
     import pygame
     pygame.init()

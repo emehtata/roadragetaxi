@@ -980,6 +980,11 @@ def build_ways(
             road_half_w = 3.5
             best_dist = 8.0
             found_orientation = False
+            # The OSM crossing node itself is often digitized a little off the
+            # road centerline (up to best_dist=8m in practice) - snap to the
+            # nearest point on the matched road so the rendered zebra stripes
+            # sit flush on the road surface instead of floating beside it.
+            snap_x, snap_y = pt
 
             gx = int(pt[0] // r_grid_size)
             gy = int(pt[1] // r_grid_size)
@@ -1008,11 +1013,12 @@ def build_ways(
                             road_angle = ang
                             road_half_w = getattr(w, "half_width_m", 3.5)
                             found_orientation = True
+                            snap_x, snap_y = px, py
 
             crossings.append(
                 Crossing(
-                    x=pt[0],
-                    y=pt[1],
+                    x=snap_x,
+                    y=snap_y,
                     layer=layer_val,
                     id=nid,
                     crossing_type=crossing_type,
