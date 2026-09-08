@@ -477,19 +477,36 @@ class AutoFetchManager:
             "yield_signs": self.yield_signs,
         }
         for section, target in sections.items():
-            target_keys = {_map_object_key(existing) for existing in target}
-            for item in getattr(world, section, ()):
+            new_items = getattr(world, section, ())
+            if not new_items:
+                continue
+            # _object_tiles[section] already tracks exactly the set of keys
+            # currently present in `target` (kept in lockstep by this method
+            # and _unload_tiles), so it doubles as an O(1) "is this key
+            # already known" membership test. Previously this rebuilt a
+            # fresh key set from the *entire* existing target list on every
+            # call - for the "ways"/"buildings" sections that cost grows
+            # with how much of the map is already loaded, not with how much
+            # is actually new, so it got slower the longer a play session
+            # ran and turned every tile merge (main.py calls this on the
+            # main thread) into a longer stall the more of the map was
+            # already streamed in.
+            section_owners = self._object_tiles.setdefault(section, {})
+            for item in new_items:
                 key = _map_object_key(item)
                 owned_tiles = tiles if force_tile else self._item_tiles(item) & tiles
                 if not owned_tiles:
                     continue
                 for tile in owned_tiles:
                     self._tile_objects.setdefault(tile, {}).setdefault(section, {})[key] = item
-                owners = self._object_tiles.setdefault(section, {}).setdefault(key, set())
+                owners = section_owners.get(key)
+                is_new_key = owners is None
+                if is_new_key:
+                    owners = set()
+                    section_owners[key] = owners
                 owners.update(owned_tiles)
-                if key not in target_keys:
+                if is_new_key:
                     target.append(item)
-                    target_keys.add(key)
         world_bounds = getattr(world, "bounds", None)
         if world_bounds and world_bounds != (0.0, 0.0, 0.0, 0.0):
             self.bounds = (

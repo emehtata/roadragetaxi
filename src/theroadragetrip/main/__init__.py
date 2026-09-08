@@ -1602,7 +1602,15 @@ def main() -> None:
             # Stream the active 3x3 tile region only after a tile transition.
             if args.auto_fetch:
                 revision_before_stream = auto_fetch_manager.get_map_revision()
-                integrated_tiles = auto_fetch_manager.integrate_completed_tiles(max_tiles=1)
+                # Drain every tile that has already finished background-fetching
+                # in one pass (bounded by the 3x3 active region, 9 tiles) rather
+                # than one per frame. The grid rebuilds below are O(total ways/
+                # buildings) regardless of how many tiles were just integrated,
+                # so draining several tiles across several frames used to pay
+                # that same full-rebuild cost once per frame instead of once
+                # per burst - a multi-frame stall right when several tiles
+                # complete around the same time (e.g. a fast or diagonal move).
+                integrated_tiles = auto_fetch_manager.integrate_completed_tiles(max_tiles=9)
                 if integrated_tiles:
                     # Static render/collision indexes must match the live lists
                     # immediately; service graphs can continue in later stages.

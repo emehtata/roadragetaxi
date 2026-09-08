@@ -340,3 +340,46 @@ def test_integrated_streamed_road_reaches_spatial_grid():
 
 def test_static_cache_invalidation_is_available_for_tile_changes():
     invalidate_static_caches()
+
+
+def test_tile_merge_cost_does_not_scale_with_already_loaded_ways(monkeypatch):
+    """Regression: merging one freshly-fetched tile used to rebuild a key set
+    from *every* already-loaded way (and every other section) on every call,
+    so the main-thread tile-merge stall main.py pays on every completed tile
+    got worse the longer a play session ran and more of the map was already
+    streamed in. Merging should only do work proportional to the new tile's
+    own content."""
+    import theroadragetrip.osm.autofetch as autofetch_module
+
+    call_count = 0
+    real_key = autofetch_module._map_object_key
+
+    def counting_key(obj):
+        nonlocal call_count
+        call_count += 1
+        return real_key(obj)
+
+    monkeypatch.setattr(autofetch_module, "_map_object_key", counting_key)
+
+    existing_ways = [
+        Way([(x, 0.0), (x + 5.0, 0.0)], "residential", 4.0, osm_id=i, bbox=(x, 0.0, x + 5.0, 0.0))
+        for i, x in enumerate(float(n) * 20.0 for n in range(2000))
+    ]
+    manager = AutoFetchManager(list(existing_ways), (0.0, 0.0, 40000.0, 1000.0), transformer=None)
+    manager.active_tiles = {TileCoord(0, 0)}
+    for way in existing_ways:
+        manager._object_tiles.setdefault("ways", {})[("Way", "id", way.osm_id)] = {TileCoord(0, 0)}
+
+    call_count = 0
+    new_ways = [
+        Way([(x, 500.0), (x + 5.0, 500.0)], "residential", 4.0, osm_id=100000 + i, bbox=(x, 500.0, x + 5.0, 500.0))
+        for i, x in enumerate(float(n) * 20.0 for n in range(3))
+    ]
+    manager._merge_tile_world_for(
+        TileCoord(0, 0), MapData(new_ways, [], [], [], [], (0.0, 0.0, 40000.0, 1000.0)),
+    )
+
+    assert manager.ways == existing_ways + new_ways
+    # One _map_object_key call per new way, not one per new way *plus* one
+    # per already-loaded way to rebuild a "what's already known" set.
+    assert call_count <= len(new_ways) + 1
