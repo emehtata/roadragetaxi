@@ -1208,6 +1208,7 @@ def _draw_buildings_uncached(
         if spatial_grid is not None
         else buildings
     )
+    placed_sign_rects = []
     for b in visible_buildings:
         bb = getattr(b, "bbox", None)
         if bb and bb != (0.0, 0.0, 0.0, 0.0):
@@ -1266,7 +1267,9 @@ def _draw_buildings_uncached(
                 floor_position = 0.18 + 0.64 * (floor_index + 0.5) / story_count
                 floor_height = abs(roof_y) / story_count
                 storefront_row = is_commercial and floor_index == 0
-                window_height = max(3.0, min(7.0, floor_height * 0.55))
+                # Keep separate rows visible on tall buildings; a fixed 3 px
+                # minimum makes closely spaced floors merge into one band.
+                window_height = max(1.0, min(7.0, floor_height * 0.55))
                 if storefront_row:
                     window_height *= 1.45
                 for window_index in range(window_count):
@@ -1394,11 +1397,30 @@ def _draw_buildings_uncached(
                     continue
                 wall_normal_x = wall_depth_x / wall_depth
                 wall_normal_y = wall_depth_y / wall_depth
+                world_start = b.points_m[edge_index]
+                world_end = b.points_m[(edge_index + 1) % len(b.points_m)]
+                segment_dx = world_end[0] - world_start[0]
+                segment_dy = world_end[1] - world_start[1]
+                segment_length_sq = segment_dx * segment_dx + segment_dy * segment_dy
+                segment_ratio = 0.5
+                if segment_length_sq > 1e-9:
+                    segment_ratio = max(
+                        0.0,
+                        min(
+                            1.0,
+                            ((anchor_x - world_start[0]) * segment_dx
+                             + (anchor_y - world_start[1]) * segment_dy)
+                            / segment_length_sq,
+                        ),
+                    )
+                wall_anchor_x = world_start[0] + segment_dx * segment_ratio
+                wall_anchor_y = world_start[1] + segment_dy * segment_ratio
                 sign_center_x, sign_center_y = world_to_screen(
-                    anchor_x, anchor_y, camx, camy, px_per_m, screen_w, screen_h
+                    wall_anchor_x, wall_anchor_y, camx, camy, px_per_m, screen_w, screen_h
                 )
-                sign_center_x += wall_depth_x * 0.64
-                sign_center_y += wall_depth_y * 0.64
+                # Venue signs sit at street level, not on the roof edge.
+                sign_center_x += wall_depth_x * 0.22
+                sign_center_y += wall_depth_y * 0.22
                 sign_text = place_name.upper()
                 text_width = sign_font.size(sign_text)[0]
                 sign_width = min(text_width + 8, int(edge_length * 0.72))
@@ -1423,6 +1445,15 @@ def _draw_buildings_uncached(
                     (round(sign_center_x + tangent_x + depth_x), round(sign_center_y + tangent_y + depth_y)),
                     (round(sign_center_x - tangent_x + depth_x), round(sign_center_y - tangent_y + depth_y)),
                 ]
+                sign_rect = pygame.Rect(
+                    min(corner[0] for corner in sign_corners),
+                    min(corner[1] for corner in sign_corners),
+                    max(corner[0] for corner in sign_corners) - min(corner[0] for corner in sign_corners) + 1,
+                    max(corner[1] for corner in sign_corners) - min(corner[1] for corner in sign_corners) + 1,
+                ).inflate(4, 4)
+                if any(sign_rect.colliderect(existing) for existing in placed_sign_rects):
+                    continue
+                placed_sign_rects.append(sign_rect)
                 pygame.draw.polygon(screen, (40, 31, 22, 245), sign_corners)
                 pygame.draw.lines(screen, (211, 169, 70, 255), True, sign_corners, 1)
                 screen.blit(text_surface, text_surface.get_rect(center=(round(sign_center_x), round(sign_center_y))))
