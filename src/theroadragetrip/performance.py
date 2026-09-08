@@ -40,7 +40,7 @@ class FrameProfiler:
                 "sections": dict(self.sections),
             }
 
-    def set_metric(self, name: str, value: int | float) -> None:
+    def set_metric(self, name: str, value: object) -> None:
         if self.enabled:
             self.metrics[name] = value
 

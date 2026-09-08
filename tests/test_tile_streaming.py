@@ -79,6 +79,7 @@ def test_auto_fetch_manager_tracks_tile_transitions_without_repeating_same_tile(
     assert east[0] == TileCoord(1, 0)
     assert len(east[1]) == 3
     assert len(east[2]) == 3
+    assert manager.get_tile_metrics()["relative_tile"] == TileCoord(1, 0)
 
 
 def test_start_tile_streaming_does_not_fetch_on_initial_same_tile_check():
@@ -88,6 +89,7 @@ def test_start_tile_streaming_does_not_fetch_on_initial_same_tile_check():
     assert manager.start_tile_streaming(500.0, 500.0) is False
     assert manager.pending_tiles == set()
     assert manager.is_fetching is False
+    assert manager.get_tile_metrics()["relative_tile"] == TileCoord(0, 0)
 
 
 def test_initial_tile_streaming_is_not_repeated_after_full_startup_region():

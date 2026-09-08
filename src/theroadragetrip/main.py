@@ -1835,7 +1835,7 @@ def main() -> None:
                 sum(not future.done() for future in getattr(world_cache, "_futures", {}).values()),
             )
             tile_metrics = auto_fetch_manager.get_tile_metrics()
-            current_tile = tile_metrics["player_tile"]
+            current_tile = tile_metrics["relative_tile"]
             frame_profiler.set_metric("current_tile_x", current_tile.x if current_tile else 0)
             frame_profiler.set_metric("current_tile_y", current_tile.y if current_tile else 0)
             frame_profiler.set_metric("tiles_in_memory", tile_metrics["tiles_in_memory"])

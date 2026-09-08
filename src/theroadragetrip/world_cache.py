@@ -19,7 +19,7 @@ from .tile_streaming import TileCoord
 logger = logging.getLogger(__name__)
 
 MAGIC = b"RWC\0"
-FORMAT_VERSION = 1
+FORMAT_VERSION = 2
 COORDINATE_SYSTEM = "EPSG:3067"
 _HEADER = struct.Struct("<4sHHQQ32s12s")
 _DIRECTORY = struct.Struct("<8sQQI")
