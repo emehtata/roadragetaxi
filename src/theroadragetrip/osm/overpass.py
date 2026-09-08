@@ -39,6 +39,34 @@ def get_overpass_diagnostics() -> dict[str, object]:
         return dict(_overpass_stats)
 
 
+# Public Overpass instances hand out 429s with their own, much longer
+# cooldown than any one caller's retry backoff - immediately retrying the
+# same endpoint on the next fetch (e.g. the next tile crossing, seconds
+# later) just draws another 429 and stretches out how long that endpoint
+# stays rate-limited. Remember which endpoints are cooling down across
+# calls, keyed by URL (shared by every fetch_osm_ways() caller/thread), and
+# skip straight to a mirror instead of re-poking a still-limited one.
+_endpoint_cooldown_until: dict[str, float] = {}
+_endpoint_cooldown_lock = threading.Lock()
+DEFAULT_RATE_LIMIT_COOLDOWN_S = 60.0
+
+
+def _endpoint_on_cooldown(endpoint: str) -> bool:
+    with _endpoint_cooldown_lock:
+        return time.monotonic() < _endpoint_cooldown_until.get(endpoint, 0.0)
+
+
+def _mark_endpoint_rate_limited(endpoint: str, retry_after_header: Optional[str]) -> None:
+    cooldown_s = DEFAULT_RATE_LIMIT_COOLDOWN_S
+    if retry_after_header:
+        try:
+            cooldown_s = max(cooldown_s, float(retry_after_header))
+        except ValueError:
+            pass  # Retry-After can also be an HTTP date; not worth parsing here.
+    with _endpoint_cooldown_lock:
+        _endpoint_cooldown_until[endpoint] = time.monotonic() + cooldown_s
+
+
 DEFAULT_OVERPASS_ENDPOINTS = [
     "https://overpass-api.de/api/interpreter",
     "https://overpass.private.coffee/api/interpreter",
@@ -135,6 +163,13 @@ def fetch_osm_ways(
     last_err = None
 
     for ep in endpoints:
+        # Skip an endpoint still cooling down from an earlier 429, as long
+        # as some other endpoint might actually be available right now; if
+        # every endpoint is cooling down, there's no better option, so try
+        # anyway rather than failing the fetch outright.
+        if _endpoint_on_cooldown(ep) and any(not _endpoint_on_cooldown(other) for other in endpoints):
+            logger.info("Skipping rate-limited endpoint %s (cooldown active)", ep)
+            continue
         for attempt in range(1, 4):
             try:
                 if progress_callback:
@@ -154,6 +189,7 @@ def fetch_osm_ways(
                     len(getattr(r, "content", b"")),
                 )
                 if r.status_code == 429:
+                    _mark_endpoint_rate_limited(ep, r.headers.get("Retry-After"))
                     last_err = Exception(f"429 Too Many Requests from {ep}")
                     logger.warning(
                         "Overpass rate limited %s; switching endpoint (attempt %d)",
