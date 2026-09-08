@@ -18,7 +18,12 @@ sys.modules["pyproj"] = fake_pyproj
 from theroadragetrip.osm import build_ways, plant_trees
 from theroadragetrip.osm import Building, Place, Scenery, Way, associate_places_with_buildings
 from theroadragetrip.physics import Car
-from theroadragetrip.render import _building_is_commercial, _building_window_story_count, _visible_building_edges
+from theroadragetrip.render import (
+    DISTRICT_PLACE_KINDS,
+    _building_is_commercial,
+    _building_window_story_count,
+    _visible_building_edges,
+)
 from theroadragetrip.taxi import TaxiManager
 
 
@@ -218,3 +223,8 @@ def test_visible_facades_work_for_different_building_shapes():
     rectangle = [(0.0, 0.0), (20.0, 0.0), (20.0, 20.0), (0.0, 20.0)]
     rectangle_roof = [(x - 7.0, y - 10.0) for x, y in rectangle]
     assert _visible_building_edges(rectangle, rectangle_roof) == {1, 2}
+
+
+def test_restaurant_place_is_not_a_map_district_label():
+    assert "restaurant" not in DISTRICT_PLACE_KINDS
+    assert "city" in DISTRICT_PLACE_KINDS

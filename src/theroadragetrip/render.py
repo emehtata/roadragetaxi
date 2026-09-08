@@ -44,6 +44,9 @@ COMMERCIAL_AMENITIES = {
     "nightclub", "pub", "restaurant",
 }
 COMMERCIAL_BUILDING_TYPES = {"commercial", "retail", "shop"}
+DISTRICT_PLACE_KINDS = {
+    "suburb", "neighbourhood", "quarter", "village", "town", "city", "hamlet",
+}
 MAX_VISIBLE_STREET_LIGHTS = 400
 STREET_LIGHT_SPACING_M = 12.0
 STREET_LIGHT_JUNCTION_CLEARANCE_M = 3.0
@@ -1339,21 +1342,25 @@ def _draw_buildings_uncached(
             pygame.draw.polygon(screen, (58, 48, 42), door)
             pygame.draw.lines(screen, (32, 28, 25), True, door, 1)
 
-        if places and px_per_m > 0.45:
+        if px_per_m > 0.45:
             global _building_sign_font_cache
-            sign_font_size = max(12, min(40, round(12.0 * px_per_m / 0.7)))
+            sign_font_size = max(16, min(52, round(18.0 * px_per_m / 0.7)))
             sign_font = _building_sign_font_cache.get(sign_font_size)
             if sign_font is None:
                 sign_font = pygame.font.SysFont(None, sign_font_size, bold=True)
                 _building_sign_font_cache[sign_font_size] = sign_font
-            building_places = getattr(b, "associated_places", ())
-            for place in building_places:
-                anchor_x, anchor_y = place.x, place.y
+            building_places = list(getattr(b, "associated_places", ()))
+            building_name = getattr(b, "name", None)
+            sign_entries = [(place.name, place.x, place.y) for place in building_places]
+            if building_name and not any(name == building_name for name, _, _ in sign_entries):
+                sign_entries.append((building_name, b.center_m[0], b.center_m[1]))
+            for place_name, place_x, place_y in sign_entries:
+                anchor_x, anchor_y = place_x, place_y
                 entrances = getattr(b, "entrances", ())
                 if entrances:
                     anchor_x, anchor_y = min(
                         entrances,
-                        key=lambda entrance: (entrance[0] - place.x) ** 2 + (entrance[1] - place.y) ** 2,
+                        key=lambda entrance: (entrance[0] - place_x) ** 2 + (entrance[1] - place_y) ** 2,
                     )
                 edge_index = min(
                     range(len(b.points_m)),
@@ -1392,7 +1399,8 @@ def _draw_buildings_uncached(
                 )
                 sign_center_x += wall_depth_x * 0.64
                 sign_center_y += wall_depth_y * 0.64
-                text_width = sign_font.size(place.name)[0]
+                sign_text = place_name.upper()
+                text_width = sign_font.size(sign_text)[0]
                 sign_width = min(text_width + 8, int(edge_length * 0.72))
                 sign_depth = min(18, int(wall_depth * 0.28))
                 if sign_width < MIN_BUILDING_SIGN_WIDTH_PX or sign_depth < MIN_BUILDING_SIGN_DEPTH_PX:
@@ -1403,7 +1411,7 @@ def _draw_buildings_uncached(
                 elif angle < -90.0:
                     angle += 180.0
                 text_surface = _building_sign_surface(
-                    pygame, sign_font, place.name, sign_width, sign_depth, angle,
+                    pygame, sign_font, sign_text, sign_width, sign_depth, angle,
                 )
                 tangent_x = edge_x * sign_width * 0.5
                 tangent_y = edge_y * sign_width * 0.5
@@ -2907,7 +2915,7 @@ def _draw_labels_uncached(
     building_font = font
     try:
         district_font = pygame.font.SysFont(None, 20, bold=True)
-        building_font = pygame.font.SysFont(None, 16)
+        building_font = pygame.font.SysFont(None, 24, bold=True)
     except Exception:
         pass
 
@@ -2981,7 +2989,7 @@ def _draw_labels_uncached(
             if count >= max_labels:
                 break
             name = getattr(p, "name", None)
-            if name and name not in seen_names:
+            if name and getattr(p, "kind", None) in DISTRICT_PLACE_KINDS and name not in seen_names:
                 if render_label(
                     name,
                     p.x,
@@ -3064,11 +3072,6 @@ def _draw_labels_uncached(
             if bb and bb != (0.0, 0.0, 0.0, 0.0):
                 if bb[2] < vminx or bb[0] > vmaxx or bb[3] < vminy or bb[1] > vmaxy:
                     continue
-            if b.points_m:
-                cx = (bb[0] + bb[2]) * 0.5 if bb and bb != (0.0, 0.0, 0.0, 0.0) else (sum(p[0] for p in b.points_m) / len(b.points_m))
-                cy = (bb[1] + bb[3]) * 0.5 if bb and bb != (0.0, 0.0, 0.0, 0.0) else (sum(p[1] for p in b.points_m) / len(b.points_m))
-                if render_label(name, cx, cy, (255, 240, 180), (35, 30, 25, 210), use_font=building_font):
-                    seen_names.add(name)
 
 
 def _draw_vehicle_lights(
