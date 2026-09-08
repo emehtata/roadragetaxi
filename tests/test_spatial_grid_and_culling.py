@@ -320,14 +320,21 @@ def test_road_and_buildings_stay_visible_through_continuous_camera_panning():
         )
         px_per_m = 1.0
         screen_w, screen_h = 240, 160
+        # Static-cache keys include id(list) - a stable list reference, like
+        # real gameplay's persistent ways/buildings lists, not a fresh
+        # literal rebuilt every call (which would make every layer look
+        # "dirty" every single frame and starve everything behind whichever
+        # is drawn first).
+        ways = [road]
+        buildings = [building]
 
         for step in range(120):
             camx = step * 15.0  # crosses a cache-padding/zoom-bucket boundary every few frames
             begin_static_cache_frame()
             screen = pygame.Surface((screen_w, screen_h))
             screen.fill((20, 120, 40))
-            draw_ways(screen, [road], camx, 0.0, px_per_m=px_per_m, screen_w=screen_w, screen_h=screen_h)
-            draw_buildings(screen, [building], camx, 0.0, px_per_m=px_per_m, screen_w=screen_w, screen_h=screen_h)
+            draw_ways(screen, ways, camx, 0.0, px_per_m=px_per_m, screen_w=screen_w, screen_h=screen_h)
+            draw_buildings(screen, buildings, camx, 0.0, px_per_m=px_per_m, screen_w=screen_w, screen_h=screen_h)
 
             # The road passes directly under the camera at every step; check
             # the same screen offset from center the road-priority test above
@@ -386,13 +393,22 @@ def test_all_static_layers_recover_visibly_after_a_camera_jump():
             bbox=(new_x - 15.0, 5.0, new_x - 5.0, 15.0),
         )
 
+        # Static-cache keys include id(list) - stable list references, like
+        # real gameplay's persistent lists, not a fresh literal rebuilt on
+        # every call (which would make every layer look "dirty" every
+        # single frame and starve everything behind whichever draws first).
+        ways = [road]
+        buildings = [building]
+        sceneries = [scenery]
+        waters = [water]
+
         def render_frame(camx):
             screen = pygame.Surface((screen_w, screen_h))
             screen.fill((20, 120, 40))
-            draw_ways(screen, [road], camx, 0.0, px_per_m=px_per_m, screen_w=screen_w, screen_h=screen_h)
-            draw_buildings(screen, [building], camx, 0.0, px_per_m=px_per_m, screen_w=screen_w, screen_h=screen_h)
-            draw_scenery(screen, [scenery], camx, 0.0, px_per_m=px_per_m, screen_w=screen_w, screen_h=screen_h)
-            draw_waters(screen, [water], camx, 0.0, px_per_m=px_per_m, screen_w=screen_w, screen_h=screen_h)
+            draw_ways(screen, ways, camx, 0.0, px_per_m=px_per_m, screen_w=screen_w, screen_h=screen_h)
+            draw_buildings(screen, buildings, camx, 0.0, px_per_m=px_per_m, screen_w=screen_w, screen_h=screen_h)
+            draw_scenery(screen, sceneries, camx, 0.0, px_per_m=px_per_m, screen_w=screen_w, screen_h=screen_h)
+            draw_waters(screen, waters, camx, 0.0, px_per_m=px_per_m, screen_w=screen_w, screen_h=screen_h)
             return screen
 
         background = (20, 120, 40)
