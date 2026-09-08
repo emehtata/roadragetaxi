@@ -264,8 +264,7 @@ def draw_parking_spaces(screen, parking_spaces, camx: float, camy: float, px_per
         pygame.draw.lines(screen, (125, 128, 124), True, points, max(1, int(px_per_m * 0.12)))
 
 
-def draw_grass_texture(screen, camx: float, camy: float, px_per_m: float = PX_PER_M) -> None:
-    """Fill screen with a subtle repeating grass texture."""
+def _draw_grass_texture_uncached(screen, camx: float, camy: float, px_per_m: float, screen_w: int, screen_h: int) -> None:
     import pygame
 
     global _grass_texture_tile
@@ -281,11 +280,64 @@ def draw_grass_texture(screen, camx: float, camy: float, px_per_m: float = PX_PE
             pygame.draw.line(_grass_texture_tile, color, (x, y), (x + rng.choice((-1, 0, 1)), y - rng.randrange(1, 4)), 1)
 
     tile_width, tile_height = _grass_texture_tile.get_size()
-    screen_width, screen_height = screen.get_size()
-    origin_x = screen_width // 2 - int(camx * px_per_m)
-    origin_y = screen_height // 2 + int(camy * px_per_m)
+    origin_x = screen_w // 2 - int(camx * px_per_m)
+    origin_y = screen_h // 2 + int(camy * px_per_m)
     start_x = origin_x % tile_width - tile_width
     start_y = origin_y % tile_height - tile_height
-    for x in range(start_x, screen_width, tile_width):
-        for y in range(start_y, screen_height, tile_height):
+    for x in range(start_x, screen_w, tile_width):
+        for y in range(start_y, screen_h, tile_height):
             screen.blit(_grass_texture_tile, (x, y))
+
+
+def draw_grass_texture(
+    screen,
+    camx: float,
+    camy: float,
+    px_per_m: float = PX_PER_M,
+    screen_w: Optional[int] = None,
+    screen_h: Optional[int] = None,
+    profiler=None,
+) -> None:
+    """Fill screen with a subtle repeating grass texture.
+
+    Cached exactly like the other static layers (draw_scenery, draw_waters,
+    ...): unlike them the tile pattern doesn't depend on any streamed world
+    data, only on camera position and zoom, so it never needs
+    invalidate_static_caches() - it only goes stale when the camera moves
+    past the cache padding or the zoom changes. Was previously redrawn from
+    scratch every frame via ~100+ individual small blits (one per 96px tile
+    covering the screen); now that happens only on a cache miss, and most
+    frames are a single blit of the cached surface.
+    """
+    import pygame
+
+    if screen_w is None or screen_h is None:
+        screen_w, screen_h = screen.get_size()
+    cache_zoom = _static_cache_zoom(px_per_m)
+
+    frame_cache_key = (
+        round(camx * cache_zoom / 128.0), round(camy * cache_zoom / 128.0),
+        cache_zoom, (screen_w, screen_h),
+    )
+    if frame_cache_key == common._grass_frame_cache_key and common._grass_frame_cache_surface is not None:
+        cached_camx, cached_camy = common._grass_frame_cache_camera
+        screen.blit(
+            common._grass_frame_cache_surface,
+            (
+                round((cached_camx - camx) * cache_zoom) - CACHE_PADDING_PX,
+                round((camy - cached_camy) * cache_zoom) - CACHE_PADDING_PX,
+            ),
+        )
+        return
+
+    cache_width = screen_w + CACHE_PADDING_PX * 2
+    cache_height = screen_h + CACHE_PADDING_PX * 2
+    cache_surface = pygame.Surface((cache_width, cache_height))
+    rebuild_started = time.perf_counter() if profiler is not None else 0.0
+    _draw_grass_texture_uncached(cache_surface, camx, camy, cache_zoom, cache_width, cache_height)
+    if profiler is not None:
+        profiler.record("render:grass_cache_rebuild", (time.perf_counter() - rebuild_started) * 1000.0)
+    common._grass_frame_cache_key = frame_cache_key
+    common._grass_frame_cache_surface = cache_surface
+    common._grass_frame_cache_camera = (camx, camy)
+    screen.blit(cache_surface, (-CACHE_PADDING_PX, -CACHE_PADDING_PX))

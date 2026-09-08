@@ -1760,7 +1760,7 @@ def main() -> None:
             render_profile_frame_start = time.perf_counter()
             render_profile_stage_start = render_profile_frame_start
             map_stage_start = time.perf_counter()
-            draw_grass_texture(screen, camx, camy, px_per_m)
+            draw_grass_texture(screen, camx, camy, px_per_m, profiler=frame_profiler)
             stage_elapsed = time.perf_counter() - map_stage_start
             render_profile_times["map_grass"] = render_profile_times.get("map_grass", 0.0) + stage_elapsed
             frame_profiler.record("render:grass", stage_elapsed * 1000.0)

@@ -37,6 +37,7 @@ from theroadragetrip.render import (
     _building_window_story_count,
     _visible_building_edges,
     _draw_buildings_uncached,
+    draw_grass_texture,
     world_to_screen,
 )
 
@@ -574,3 +575,68 @@ def test_facade_sign_color_matches_business_type():
     # than an arbitrary color.
     assert _building_sign_theme("some_unmapped_osm_tag") == default_theme
     assert _building_sign_theme(None) == default_theme
+
+
+def test_grass_texture_is_cached_across_stationary_frames():
+    """Regression: draw_grass_texture used to redraw the whole screen from
+    scratch (~100+ individual tile blits) every single frame regardless of
+    whether the camera had moved. It should now behave like the other
+    static layers: rebuild only on a genuine cache miss."""
+    from theroadragetrip.render import common as common_module
+
+    pygame.init()
+    try:
+        common_module._grass_frame_cache_key = None
+        common_module._grass_frame_cache_surface = None
+        screen = pygame.Surface((400, 300))
+
+        draw_grass_texture(screen, 0.0, 0.0, px_per_m=9.0, screen_w=400, screen_h=300)
+        first_surface = common_module._grass_frame_cache_surface
+        assert first_surface is not None
+
+        # Same camera and zoom: must reuse the cached surface, not rebuild.
+        draw_grass_texture(screen, 0.0, 0.0, px_per_m=9.0, screen_w=400, screen_h=300)
+        assert common_module._grass_frame_cache_surface is first_surface
+
+        # A small move within the cache padding: still reused.
+        draw_grass_texture(screen, 1.0, 1.0, px_per_m=9.0, screen_w=400, screen_h=300)
+        assert common_module._grass_frame_cache_surface is first_surface
+
+        # A move far past the padding: must rebuild.
+        draw_grass_texture(screen, 500.0, 500.0, px_per_m=9.0, screen_w=400, screen_h=300)
+        assert common_module._grass_frame_cache_surface is not first_surface
+    finally:
+        pygame.quit()
+
+
+def test_grass_texture_rebuild_does_not_redraw_every_tile_every_frame():
+    """The uncached tile-blitting path should only run on an actual cache
+    miss, not once per frame."""
+    from theroadragetrip.render import common as common_module
+    from theroadragetrip.render.scenery import _draw_grass_texture_uncached
+
+    pygame.init()
+    try:
+        common_module._grass_frame_cache_key = None
+        common_module._grass_frame_cache_surface = None
+        screen = pygame.Surface((400, 300))
+
+        rebuild_calls = 0
+        original = _draw_grass_texture_uncached
+
+        def counting_uncached(*args, **kwargs):
+            nonlocal rebuild_calls
+            rebuild_calls += 1
+            return original(*args, **kwargs)
+
+        import theroadragetrip.render.scenery as scenery_module
+        scenery_module._draw_grass_texture_uncached = counting_uncached
+        try:
+            for _ in range(10):
+                draw_grass_texture(screen, 0.0, 0.0, px_per_m=9.0, screen_w=400, screen_h=300)
+        finally:
+            scenery_module._draw_grass_texture_uncached = original
+
+        assert rebuild_calls == 1
+    finally:
+        pygame.quit()

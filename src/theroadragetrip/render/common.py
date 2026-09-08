@@ -47,6 +47,14 @@ _water_frame_cache_camera = None
 _road_frame_cache_key = None
 _road_frame_cache_surface = None
 _road_frame_cache_camera = None
+# The grass background doesn't depend on any streamed world data (it's a
+# fixed tile pattern positioned purely by camera/zoom), so unlike the other
+# five layers it never needs invalidate_static_caches() - it only goes stale
+# when the camera moves past its padding or the zoom changes, exactly like
+# CACHE_PADDING_PX already does for the others.
+_grass_frame_cache_key = None
+_grass_frame_cache_surface = None
+_grass_frame_cache_camera = None
 _render_logger = logging.getLogger(__name__)
 _pending_static_rebuilds = set()
 _static_rebuilds_this_frame = 0
