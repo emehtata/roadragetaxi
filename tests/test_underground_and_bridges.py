@@ -133,3 +133,37 @@ def test_bridge_guardrail_ignores_segment_when_car_is_not_on_it():
     crossing_car = Car(x=50.0, y=6.0, heading=0.0, speed=0.0, layer=1)
 
     assert not is_car_colliding_with_bridge_edge(crossing_car, bridge)
+
+
+def test_no_false_guardrail_crash_on_the_seam_between_divided_bridge_lanes():
+    """Regression: a divided highway bridge is often split into one Way per
+    direction. draw_ways already unions overlapping bridge lanes so no
+    guardrail is drawn between them (see bridge_polygons in
+    render/roads.py) - but the collision check used to know nothing about
+    the neighboring lane, so a car near the shared inner seam (well inside
+    the combined bridge deck, nowhere near a real rail) registered a crash."""
+    northbound = Way(
+        points_m=[(0.0, 0.0), (100.0, 0.0)],
+        highway="primary",
+        half_width_m=4.0,
+        is_bridge=True,
+        layer=1,
+    )
+    southbound = Way(
+        points_m=[(0.0, 8.0), (100.0, 8.0)],
+        highway="primary",
+        half_width_m=4.0,
+        is_bridge=True,
+        layer=1,
+    )
+    # y=3.9 is inside northbound's own half-width (4.0) but past its
+    # edge_distance (3.8) - and inside southbound's half-width too, since
+    # the lanes touch at y=4.0.
+    seam_car = Car(x=50.0, y=3.9, heading=0.0, speed=0.0, layer=1)
+
+    assert not is_car_colliding_with_bridge_edge(seam_car, northbound, ways=[northbound, southbound])
+    # Without the neighboring lane, the same edge is still a real crash.
+    assert is_car_colliding_with_bridge_edge(seam_car, northbound)
+    # A car past the outer edge of the combined deck still crashes.
+    outer_car = Car(x=50.0, y=-3.9, heading=0.0, speed=0.0, layer=1)
+    assert is_car_colliding_with_bridge_edge(outer_car, northbound, ways=[northbound, southbound])

@@ -213,8 +213,17 @@ def is_car_fully_in_water(car: Car, waters: List, current_way=None) -> bool:
     )
 
 
-def is_car_colliding_with_bridge_edge(car: Car, current_way=None) -> bool:
-    """Return whether a car corner has reached the outer edge of its bridge road."""
+def is_car_colliding_with_bridge_edge(car: Car, current_way=None, ways: Optional[List] = None) -> bool:
+    """Return whether a car corner has reached the outer edge of its bridge road.
+
+    A divided bridge is often split into parallel carriageway Ways (e.g. one
+    per direction); the boundary between them is an inner seam, not a real
+    guardrail - the renderer already unions overlapping bridge lanes so no
+    rail is drawn between them (see draw_ways's bridge_polygons in
+    render/roads.py). A corner that crosses current_way's own edge but is
+    still within another bridge way's half-width is on that shared seam,
+    not a real crash.
+    """
     if current_way is None or not getattr(current_way, "is_bridge", False):
         return False
     points = getattr(current_way, "points_m", ())
@@ -228,6 +237,12 @@ def is_car_colliding_with_bridge_edge(car: Car, current_way=None) -> bool:
     forward_y = math.sin(car.heading)
     right_x = math.sin(car.heading)
     right_y = -math.cos(car.heading)
+    neighbor_bridges = [
+        w for w in (ways or ())
+        if w is not current_way
+        and getattr(w, "is_bridge", False)
+        and getattr(w, "layer", 0) == getattr(current_way, "layer", 0)
+    ]
     corners = (
         (half_length, car_half_width),
         (half_length, -car_half_width),
@@ -257,6 +272,8 @@ def is_car_colliding_with_bridge_edge(car: Car, current_way=None) -> bool:
                     (corner_x - first[0]) * dy - (corner_y - first[1]) * dx
                 ) / math.sqrt(segment_length_sq)
                 if side_distance >= edge_distance:
+                    if neighbor_bridges and is_point_on_road(corner_x, corner_y, ways=neighbor_bridges):
+                        continue
                     return True
     return False
 

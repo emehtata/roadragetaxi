@@ -1396,7 +1396,7 @@ def main() -> None:
                 tree_crash = taxi_mgr.check_tree_collision(
                     car, sceneries, traffic_mgr.sim_time, previous_position, ways=ways
                 )
-                bridge_edge_crash = is_car_colliding_with_bridge_edge(car, current_way)
+                bridge_edge_crash = is_car_colliding_with_bridge_edge(car, current_way, ways=ways)
                 if bridge_edge_crash:
                     pull_car_inside_bridge_edge(car, current_way)
                     # Bounce away from the rail so a held throttle cannot keep
