@@ -667,6 +667,40 @@ def _load_world(
     )
 
 
+def _wait_for_active_tile_fetch(
+    auto_fetch_manager,
+    clock,
+    screen,
+    font,
+    language: str,
+    deadline_s: float = 20.0,
+) -> None:
+    """Block behind a full loading screen while a tile fetch is in flight.
+
+    Called right after triggering a background tile fetch, instead of
+    letting the player keep driving and potentially cross into yet another
+    tile before this one even lands - stacking up simultaneous Overpass
+    requests is exactly what draws rate limits. Bounded by `deadline_s`
+    (well under the fetch's own 60s-per-attempt HTTP timeout, but long
+    enough for a slow real fetch) so a genuinely stuck connection can't
+    freeze the game outright - gameplay resumes and whatever the fetch
+    eventually returns is picked up later, same as any other background
+    completion.
+    """
+    wait_deadline = time.monotonic() + deadline_s
+    while auto_fetch_manager.get_fetching() and time.monotonic() < wait_deadline:
+        clock.tick(30)
+        for wait_event in pygame.event.get():
+            if wait_event.type == pygame.QUIT:
+                pygame.quit()
+                sys.exit(0)
+        draw_loading_screen(
+            screen, font, auto_fetch_manager.get_progress(),
+            tr(language, "loading_osm"), language=language,
+        )
+        pygame.display.flip()
+    clock.tick()  # Don't let dt jump on the frame after waiting.
+
 
 def main() -> None:
     config = load_config()
@@ -1636,6 +1670,7 @@ def main() -> None:
                         car.y,
                         auto_fetch_manager.player_tile,
                     )
+                    _wait_for_active_tile_fetch(auto_fetch_manager, clock, screen, font, language)
                 if (
                     auto_fetch_manager.get_map_revision() != last_map_revision
                     or (

@@ -48,6 +48,10 @@ def get_overpass_diagnostics() -> dict[str, object]:
 # skip straight to a mirror instead of re-poking a still-limited one.
 _endpoint_cooldown_until: dict[str, float] = {}
 _endpoint_cooldown_lock = threading.Lock()
+# https://wiki.openstreetmap.org/wiki/Overpass_API : "If you receive an
+# HTTP error code such as 429 or 406, pause for 30 seconds before making a
+# new request." Default to double that as a margin unless the endpoint's
+# own Retry-After says otherwise.
 DEFAULT_RATE_LIMIT_COOLDOWN_S = 60.0
 
 
@@ -188,11 +192,15 @@ def fetch_osm_ways(
                     r.status_code,
                     len(getattr(r, "content", b"")),
                 )
-                if r.status_code == 429:
+                if r.status_code in (429, 406):
+                    # Per https://wiki.openstreetmap.org/wiki/Overpass_API :
+                    # a 429 or 406 means back off this endpoint for at least
+                    # 30s before trying it again.
                     _mark_endpoint_rate_limited(ep, r.headers.get("Retry-After"))
-                    last_err = Exception(f"429 Too Many Requests from {ep}")
+                    last_err = Exception(f"{r.status_code} rate limited by {ep}")
                     logger.warning(
-                        "Overpass rate limited %s; switching endpoint (attempt %d)",
+                        "Overpass rate limited (%d) %s; switching endpoint (attempt %d)",
+                        r.status_code,
                         ep,
                         attempt,
                     )
