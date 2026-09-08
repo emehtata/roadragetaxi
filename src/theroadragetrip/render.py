@@ -1223,6 +1223,7 @@ def _draw_buildings_uncached(
 
         # Add small facade details after the roof so they remain visible at low zoom.
         visible_edges = []
+        edge_facing_scores = {}
         world_centroid_x = sum(point[0] for point in b.points_m) / len(b.points_m)
         world_centroid_y = sum(point[1] for point in b.points_m) / len(b.points_m)
         for index, point in enumerate(b.points_m):
@@ -1240,11 +1241,21 @@ def _draw_buildings_uncached(
                 outward_y = -outward_y
             camera_x = camx - midpoint_x
             camera_y = camy - midpoint_y
-            if outward_x * camera_x + outward_y * camera_y > 0.0:
+            facing_score = outward_x * camera_x + outward_y * camera_y
+            if facing_score > 0.0:
                 visible_edges.append(index)
+                edge_facing_scores[index] = facing_score
+        window_edges = set()
+        if edge_facing_scores:
+            nearest_score = max(edge_facing_scores.values())
+            tolerance = max(1e-6, nearest_score * 1e-6)
+            window_edges = {
+                index for index, score in edge_facing_scores.items()
+                if nearest_score - score <= tolerance
+            }
         story_count = _building_window_story_count(b)
         is_commercial = _building_is_commercial(b)
-        for index in visible_edges:
+        for index in window_edges:
             point = pts[index]
             next_point = pts[(index + 1) % len(pts)]
             roof_point = roof[index]
