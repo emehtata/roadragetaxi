@@ -108,6 +108,7 @@ from ..render import (
     draw_frame_profiler,
     begin_static_cache_frame,
     invalidate_static_caches,
+    invalidate_static_caches_for_camera_jump,
     default_hud_layout,
     draw_tutorial_screen,
     draw_labels,
@@ -810,6 +811,11 @@ def main() -> None:
         game_time_seconds = 18.0 * 60.0 * 60.0
         solar_time_bucket = None
         camx, camy = car.x, car.y
+        # A fresh city session's camera lands far from wherever the
+        # previous city's static caches were last built (e.g. after
+        # "Change city" from the pause menu), so queue a throttled rebuild
+        # instead of letting every layer redraw uncached on the same frame.
+        invalidate_static_caches_for_camera_jump()
         first_gameplay_frame = True
         awaiting_start = True
         start_warmup_remaining = 1.5
@@ -1180,6 +1186,7 @@ def main() -> None:
                         else:
                             respawn_car(car, ways, waters=waters, taxi_stops=taxi_stops)
                             camx, camy = car.x, car.y
+                            invalidate_static_caches_for_camera_jump()
                             taxi_mgr.handle_respawn(car.x, car.y)
                     elif event.key == pygame.K_HOME:
                         if not _respawn_allowed(on_foot):
@@ -1193,6 +1200,7 @@ def main() -> None:
                                 near_edge=True,
                             )
                             camx, camy = car.x, car.y
+                            invalidate_static_caches_for_camera_jump()
                             taxi_mgr.handle_respawn(car.x, car.y)
                             logger.info("Debug respawn near bbox edge: car=(%.1f, %.1f)", car.x, car.y)
                     elif event.key == pygame.K_x:

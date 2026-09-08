@@ -43,6 +43,7 @@ from .common import (
     begin_static_cache_frame,
     get_viewport_bounds,
     invalidate_static_caches,
+    invalidate_static_caches_for_camera_jump,
     minimum_px_per_m_for_viewport_width,
     road_color_for_way,
     road_render_priority,
