@@ -10,6 +10,7 @@ import sys
 import threading
 import time
 from dataclasses import asdict
+from types import SimpleNamespace
 from typing import Optional, Tuple
 
 import pygame
@@ -173,6 +174,293 @@ logger = logging.getLogger(__name__)
 RAGE_SHOUTS = ("PRKL!", "STNA!", "VTTU!", "HLVT!", "KRPÄ!", "KSPÄ!", "PSKA!")
 RAGE_DISTANCE_TO_FULL_M = 400.0
 RAGE_SHOUT_COST = 0.25
+
+
+def _load_world(
+    chosen_city: str,
+    camera_city_name: str,
+    bbox,
+    city_centers,
+    screen,
+    font,
+    clock,
+    args,
+    force_refresh: bool,
+    overpass_endpoints,
+    bus_stops_enabled: bool,
+    roadworks_enabled: bool,
+    career,
+    career_file,
+    gig_odometer_file,
+    language: str,
+):
+    """Load OSM data for `bbox` and build every world/gameplay-manager object
+    the gameplay loop needs, showing loading-screen progress as it goes.
+
+    Exits the process (matching main()'s prior inline behavior) if the OSM
+    data fails to load or the bbox contains no map features.
+    """
+    sun_latitude, sun_longitude = city_centers.get(
+        chosen_city,
+        ((bbox[0] + bbox[2]) / 2.0, (bbox[1] + bbox[3]) / 2.0),
+    )
+    logger.info(
+        "Solar model: date=2026-08-31 city=%s latitude=%.6f longitude=%.6f",
+        chosen_city,
+        sun_latitude,
+        sun_longitude,
+    )
+
+    last_progress_draw = 0.0
+
+    def on_load_progress(fraction: float, message: str) -> None:
+        nonlocal last_progress_draw
+        loading_state[0] = max(0.0, min(1.0, fraction))
+        loading_state[1] = message
+        if threading.current_thread() is not threading.main_thread():
+            return
+        now = time.monotonic()
+        if fraction < 1.0 and now - last_progress_draw < 0.1:
+            return
+        draw_loading_screen(screen, font, fraction, message)
+        pygame.display.flip()
+        last_progress_draw = now
+        for ev in pygame.event.get():
+            if ev.type == pygame.QUIT:
+                pygame.quit()
+                sys.exit(0)
+
+    loading_state = [0.05, "Initializing scenery engine..."]
+    on_load_progress(0.05, "Initializing scenery engine...")
+
+    def on_build_progress(fraction: float, message: str) -> None:
+        on_load_progress(0.05 + min(1.0, fraction) * 0.65, message)
+
+    # Load map
+    try:
+        elements_count = 0
+        world_cache = WorldCacheManager(
+            cache_ttl=float(os.getenv("OSM_CACHE_TTL", 24 * 3600)),
+            fetch_func=lambda fetch_bbox, **fetch_kwargs: fetch_osm_ways(
+                fetch_bbox, endpoints=overpass_endpoints, progress_callback=on_load_progress,
+                **fetch_kwargs
+            ),
+            build_func=lambda raw: build_ways(
+                raw, progress_callback=on_build_progress, include_bus_stops=bus_stops_enabled
+            ),
+        )
+        area_id = world_cache.area_id(bbox)
+
+        def load_map_data():
+            if args.use_sample:
+                on_load_progress(0.2, "Loading bundled offline sample data...")
+                elements = load_local_sample()
+                if elements is None:
+                    raise Exception("No local sample file found")
+                logger.info("Using local sample (via --use-sample)")
+                on_load_progress(0.5, f"Loaded {len(elements)} sample elements")
+                result = build_ways(
+                    elements, progress_callback=on_build_progress, include_bus_stops=bus_stops_enabled
+                )
+                return result, len(elements)
+            return world_cache.load_area(
+                area_id, bbox, force_refresh=force_refresh or args.no_cache,
+            ), 0
+
+        load_executor = concurrent.futures.ThreadPoolExecutor(max_workers=1, thread_name_prefix="startup-map")
+        load_future = load_executor.submit(load_map_data)
+        while not load_future.done():
+            on_load_progress(loading_state[0], loading_state[1])
+            clock.tick(30)
+        res, elements_count = load_future.result()
+        load_executor.shutdown(wait=True)
+        crossings = getattr(res, "crossings", [])
+        stop_signs = getattr(res, "stop_signs", [])
+        yield_signs = getattr(res, "yield_signs", [])
+        if len(res) == 8:
+            ways, waters, buildings, sceneries, places, bounds, traffic_lights, crossings = res
+        elif len(res) == 7:
+            ways, waters, buildings, sceneries, places, bounds, traffic_lights = res
+        else:
+            ways, waters, buildings, sceneries, places, bounds = res[:6]
+            traffic_lights = getattr(res, "traffic_lights", [])
+            yield_signs = getattr(res, "yield_signs", [])
+    except Exception as e:
+        logger.error("Failed to load OSM data: %s", e)
+        sys.exit(1)
+
+    if not ways and not waters and not buildings and not sceneries and not places:
+        logger.error("No map features found in bbox. Try a different bbox.")
+        sys.exit(1)
+
+    minx, miny, maxx, maxy = bounds
+    taxi_stops = getattr(res, "taxi_stops", [])
+    bus_stops = getattr(res, "bus_stops", [])
+    parking_spaces = getattr(res, "parking_spaces", [])
+    roadworks, roadwork_lights = create_roadworks(ways) if roadworks_enabled else ([], [])
+    traffic_lights.extend(roadwork_lights)
+    logger.info(
+        "Created %d random roadworks (%d temporary lights), enabled=%s",
+        len(roadworks),
+        len(roadwork_lights),
+        roadworks_enabled,
+    )
+    on_load_progress(0.70, "Preparing road index...")
+    remove_trees_under_roads(sceneries, ways)
+    # Spatial index for fast O(1) road collision detection
+    spatial_grid = SpatialWayGrid()
+    spatial_grid.rebuild(ways)
+    building_grid = SpatialWayGrid()
+    building_grid.rebuild(buildings)
+    scenery_grid = SpatialWayGrid()
+    scenery_grid.rebuild(sceneries)
+    water_grid = SpatialWayGrid()
+    water_grid.rebuild(waters)
+    crossing_grid = SpatialWayGrid()
+    crossing_grid.rebuild(crossings)
+    traffic_light_grid = SpatialWayGrid()
+    traffic_light_grid.rebuild(traffic_lights)
+
+    # Spawn car on a road near center (avoiding water)
+    car = Car(x=(minx + maxx) / 2, y=(miny + maxy) / 2, heading=0.0, speed=0.0)
+    if ways:
+        respawn_car(car, ways, near_center=True, bounds=bounds, waters=waters, taxi_stops=taxi_stops)
+    career_total_distance_m = None
+    if career is not None:
+        career_total_distance_m = load_career_distance(career_file)
+        car.odometer_m = career_total_distance_m
+    else:
+        car.odometer_m = load_gig_odometer(gig_odometer_file)
+        if car.odometer_m == 0.0:
+            car.odometer_m = float(random.randint(100000, 600000))
+            save_gig_odometer(gig_odometer_file, car.odometer_m)
+
+    # Initialize Taxi Manager for game mode
+    on_load_progress(0.80, "Preparing taxi missions...")
+    residents = ResidentManager(city_name=chosen_city)
+    residents.set_city_center_m((minx + maxx) / 2.0, (miny + maxy) / 2.0)
+    city_center = city_centers.get(chosen_city)
+    if city_center is not None:
+        residents.set_city_center_latlon(*city_center)
+    taxi_mgr = TaxiManager(
+        ways,
+        places=places,
+        buildings=buildings,
+        taxi_stops=taxi_stops,
+        language=language,
+        resident_manager=residents,
+    )
+    speed_cameras = place_speed_cameras(
+        ways,
+        bounds,
+        camera_city_name,
+        seed=random.randrange(2**32),
+    )
+    logger.info("Placed %d hidden speed cameras", len(speed_cameras))
+    # Keep road, signal, and resident services for taxi missions.
+    on_load_progress(0.86, "Preparing taxi world...")
+    traffic_mgr = TrafficWorld(
+        ways,
+        traffic_lights=traffic_lights,
+        crossings=crossings,
+        parking_spaces=parking_spaces,
+        residents=residents,
+    )
+    # Initialize autonomous Pedestrian Manager
+    on_load_progress(0.92, "Preparing pedestrians...")
+    pedestrian_mgr = PedestrianManager(
+        ways,
+        target_count=args.pedestrian_count,
+        traffic_lights=traffic_lights,
+        crossings=crossings,
+        logical_intersections=[],
+        traffic_vehicles=[],
+        traffic_manager=None,
+        residents=residents,
+        venue_buildings=buildings,
+    )
+    # Cyclists are disabled until their traffic interactions are complete.
+    player_pedestrian = PlayerPedestrian(
+        car.x - math.sin(car.heading) * getattr(car, "width_m", 1.8) * 0.85
+        + math.cos(car.heading) * getattr(car, "length_m", 4.0) * 0.2,
+        car.y + math.cos(car.heading) * getattr(car, "width_m", 1.8) * 0.85
+        + math.sin(car.heading) * getattr(car, "length_m", 4.0) * 0.2,
+        heading=car.heading,
+    )
+    player_pedestrian.is_player = True
+    base_pedestrian_count = pedestrian_mgr.target_count
+
+    # Prepare transformer for meters->latlon display
+    try:
+        from pyproj import Transformer
+
+        transformer_to_ll = Transformer.from_crs("EPSG:3067", "EPSG:4326", always_xy=True)
+    except Exception:
+        transformer_to_ll = None
+        logger.debug("pyproj not available; lat/lon display disabled")
+
+    # Auto fetch manager (background)
+    on_load_progress(0.97, "Starting game...")
+    auto_fetch_manager = AutoFetchManager(
+        ways,
+        bounds,
+        transformer_to_ll,
+        waters=waters,
+        buildings=buildings,
+        sceneries=sceneries,
+        places=places,
+        traffic_lights=traffic_lights,
+        stop_signs=stop_signs,
+        crossings=crossings,
+        parking_spaces=parking_spaces,
+        logical_intersections=getattr(res, "logical_intersections", []),
+        yield_signs=yield_signs,
+        fetch_func=lambda fetch_bbox: fetch_osm_ways(fetch_bbox, endpoints=overpass_endpoints),
+        build_func=build_ways,
+        build_in_process=args.build_in_process,
+        world_cache_manager=world_cache,
+    )
+    auto_fetch_manager.initialize_player_tile(car.x, car.y)
+    on_load_progress(1.0, "Ready")
+    logger.info("Entering gameplay loop")
+
+    return SimpleNamespace(
+        auto_fetch_manager=auto_fetch_manager,
+        base_pedestrian_count=base_pedestrian_count,
+        bounds=bounds,
+        building_grid=building_grid,
+        buildings=buildings,
+        bus_stops=bus_stops,
+        car=car,
+        career_total_distance_m=career_total_distance_m,
+        crossing_grid=crossing_grid,
+        crossings=crossings,
+        elements_count=elements_count,
+        parking_spaces=parking_spaces,
+        pedestrian_mgr=pedestrian_mgr,
+        places=places,
+        player_pedestrian=player_pedestrian,
+        residents=residents,
+        roadworks=roadworks,
+        sceneries=sceneries,
+        scenery_grid=scenery_grid,
+        spatial_grid=spatial_grid,
+        speed_cameras=speed_cameras,
+        stop_signs=stop_signs,
+        sun_latitude=sun_latitude,
+        sun_longitude=sun_longitude,
+        taxi_mgr=taxi_mgr,
+        taxi_stops=taxi_stops,
+        traffic_light_grid=traffic_light_grid,
+        traffic_lights=traffic_lights,
+        traffic_mgr=traffic_mgr,
+        transformer_to_ll=transformer_to_ll,
+        water_grid=water_grid,
+        waters=waters,
+        ways=ways,
+        world_cache=world_cache,
+    )
+
 
 
 def main() -> None:
@@ -399,229 +687,45 @@ def main() -> None:
                 except Exception:
                     logger.warning("Invalid bbox provided, using default preset (%s)", preset_key)
 
-        sun_latitude, sun_longitude = city_centers.get(
-            chosen_city,
-            ((bbox[0] + bbox[2]) / 2.0, (bbox[1] + bbox[3]) / 2.0),
+        world = _load_world(
+            chosen_city, camera_city_name, bbox, city_centers, screen, font, clock,
+            args, force_refresh, overpass_endpoints, bus_stops_enabled, roadworks_enabled,
+            career, career_file, gig_odometer_file, language,
         )
-        logger.info(
-            "Solar model: date=2026-08-31 city=%s latitude=%.6f longitude=%.6f",
-            chosen_city,
-            sun_latitude,
-            sun_longitude,
-        )
-
-        last_progress_draw = 0.0
-
-        def on_load_progress(fraction: float, message: str) -> None:
-            nonlocal last_progress_draw
-            loading_state[0] = max(0.0, min(1.0, fraction))
-            loading_state[1] = message
-            if threading.current_thread() is not threading.main_thread():
-                return
-            now = time.monotonic()
-            if fraction < 1.0 and now - last_progress_draw < 0.1:
-                return
-            draw_loading_screen(screen, font, fraction, message)
-            pygame.display.flip()
-            last_progress_draw = now
-            for ev in pygame.event.get():
-                if ev.type == pygame.QUIT:
-                    pygame.quit()
-                    sys.exit(0)
-
-        loading_state = [0.05, "Initializing scenery engine..."]
-        on_load_progress(0.05, "Initializing scenery engine...")
-
-        def on_build_progress(fraction: float, message: str) -> None:
-            on_load_progress(0.05 + min(1.0, fraction) * 0.65, message)
-
-        # Load map
-        try:
-            elements_count = 0
-            world_cache = WorldCacheManager(
-                cache_ttl=float(os.getenv("OSM_CACHE_TTL", 24 * 3600)),
-                fetch_func=lambda fetch_bbox, **fetch_kwargs: fetch_osm_ways(
-                    fetch_bbox, endpoints=overpass_endpoints, progress_callback=on_load_progress,
-                    **fetch_kwargs
-                ),
-                build_func=lambda raw: build_ways(
-                    raw, progress_callback=on_build_progress, include_bus_stops=bus_stops_enabled
-                ),
-            )
-            area_id = world_cache.area_id(bbox)
-
-            def load_map_data():
-                if args.use_sample:
-                    on_load_progress(0.2, "Loading bundled offline sample data...")
-                    elements = load_local_sample()
-                    if elements is None:
-                        raise Exception("No local sample file found")
-                    logger.info("Using local sample (via --use-sample)")
-                    on_load_progress(0.5, f"Loaded {len(elements)} sample elements")
-                    result = build_ways(
-                        elements, progress_callback=on_build_progress, include_bus_stops=bus_stops_enabled
-                    )
-                    return result, len(elements)
-                return world_cache.load_area(
-                    area_id, bbox, force_refresh=force_refresh or args.no_cache,
-                ), 0
-
-            load_executor = concurrent.futures.ThreadPoolExecutor(max_workers=1, thread_name_prefix="startup-map")
-            load_future = load_executor.submit(load_map_data)
-            while not load_future.done():
-                on_load_progress(loading_state[0], loading_state[1])
-                clock.tick(30)
-            res, elements_count = load_future.result()
-            load_executor.shutdown(wait=True)
-            crossings = getattr(res, "crossings", [])
-            stop_signs = getattr(res, "stop_signs", [])
-            yield_signs = getattr(res, "yield_signs", [])
-            if len(res) == 8:
-                ways, waters, buildings, sceneries, places, bounds, traffic_lights, crossings = res
-            elif len(res) == 7:
-                ways, waters, buildings, sceneries, places, bounds, traffic_lights = res
-            else:
-                ways, waters, buildings, sceneries, places, bounds = res[:6]
-                traffic_lights = getattr(res, "traffic_lights", [])
-                yield_signs = getattr(res, "yield_signs", [])
-        except Exception as e:
-            logger.error("Failed to load OSM data: %s", e)
-            sys.exit(1)
-
-        if not ways and not waters and not buildings and not sceneries and not places:
-            logger.error("No map features found in bbox. Try a different bbox.")
-            sys.exit(1)
-
-        minx, miny, maxx, maxy = bounds
-        taxi_stops = getattr(res, "taxi_stops", [])
-        bus_stops = getattr(res, "bus_stops", [])
-        parking_spaces = getattr(res, "parking_spaces", [])
-        roadworks, roadwork_lights = create_roadworks(ways) if roadworks_enabled else ([], [])
-        traffic_lights.extend(roadwork_lights)
-        logger.info(
-            "Created %d random roadworks (%d temporary lights), enabled=%s",
-            len(roadworks),
-            len(roadwork_lights),
-            roadworks_enabled,
-        )
-        on_load_progress(0.70, "Preparing road index...")
-        remove_trees_under_roads(sceneries, ways)
-        # Spatial index for fast O(1) road collision detection
-        spatial_grid = SpatialWayGrid()
-        spatial_grid.rebuild(ways)
-        building_grid = SpatialWayGrid()
-        building_grid.rebuild(buildings)
-        scenery_grid = SpatialWayGrid()
-        scenery_grid.rebuild(sceneries)
-        water_grid = SpatialWayGrid()
-        water_grid.rebuild(waters)
-        crossing_grid = SpatialWayGrid()
-        crossing_grid.rebuild(crossings)
-        traffic_light_grid = SpatialWayGrid()
-        traffic_light_grid.rebuild(traffic_lights)
-
-        # Spawn car on a road near center (avoiding water)
-        car = Car(x=(minx + maxx) / 2, y=(miny + maxy) / 2, heading=0.0, speed=0.0)
-        if ways:
-            respawn_car(car, ways, near_center=True, bounds=bounds, waters=waters, taxi_stops=taxi_stops)
-        career_total_distance_m = None
-        if career is not None:
-            career_total_distance_m = load_career_distance(career_file)
-            car.odometer_m = career_total_distance_m
-        else:
-            car.odometer_m = load_gig_odometer(gig_odometer_file)
-            if car.odometer_m == 0.0:
-                car.odometer_m = float(random.randint(100000, 600000))
-                save_gig_odometer(gig_odometer_file, car.odometer_m)
-
-        # Initialize Taxi Manager for game mode
-        on_load_progress(0.80, "Preparing taxi missions...")
-        residents = ResidentManager(city_name=chosen_city)
-        residents.set_city_center_m((minx + maxx) / 2.0, (miny + maxy) / 2.0)
-        city_center = city_centers.get(chosen_city)
-        if city_center is not None:
-            residents.set_city_center_latlon(*city_center)
-        taxi_mgr = TaxiManager(
-            ways,
-            places=places,
-            buildings=buildings,
-            taxi_stops=taxi_stops,
-            language=language,
-            resident_manager=residents,
-        )
-        speed_cameras = place_speed_cameras(
-            ways,
-            bounds,
-            camera_city_name,
-            seed=random.randrange(2**32),
-        )
-        logger.info("Placed %d hidden speed cameras", len(speed_cameras))
-        # Keep road, signal, and resident services for taxi missions.
-        on_load_progress(0.86, "Preparing taxi world...")
-        traffic_mgr = TrafficWorld(
-            ways,
-            traffic_lights=traffic_lights,
-            crossings=crossings,
-            parking_spaces=parking_spaces,
-            residents=residents,
-        )
-        # Initialize autonomous Pedestrian Manager
-        on_load_progress(0.92, "Preparing pedestrians...")
-        pedestrian_mgr = PedestrianManager(
-            ways,
-            target_count=args.pedestrian_count,
-            traffic_lights=traffic_lights,
-            crossings=crossings,
-            logical_intersections=[],
-            traffic_vehicles=[],
-            traffic_manager=None,
-            residents=residents,
-            venue_buildings=buildings,
-        )
-        # Cyclists are disabled until their traffic interactions are complete.
-        player_pedestrian = PlayerPedestrian(
-            car.x - math.sin(car.heading) * getattr(car, "width_m", 1.8) * 0.85
-            + math.cos(car.heading) * getattr(car, "length_m", 4.0) * 0.2,
-            car.y + math.cos(car.heading) * getattr(car, "width_m", 1.8) * 0.85
-            + math.sin(car.heading) * getattr(car, "length_m", 4.0) * 0.2,
-            heading=car.heading,
-        )
-        player_pedestrian.is_player = True
-        base_pedestrian_count = pedestrian_mgr.target_count
-
-        # Prepare transformer for meters->latlon display
-        try:
-            from pyproj import Transformer
-
-            transformer_to_ll = Transformer.from_crs("EPSG:3067", "EPSG:4326", always_xy=True)
-        except Exception:
-            transformer_to_ll = None
-            logger.debug("pyproj not available; lat/lon display disabled")
-
-        # Auto fetch manager (background)
-        on_load_progress(0.97, "Starting game...")
-        auto_fetch_manager = AutoFetchManager(
-            ways,
-            bounds,
-            transformer_to_ll,
-            waters=waters,
-            buildings=buildings,
-            sceneries=sceneries,
-            places=places,
-            traffic_lights=traffic_lights,
-            stop_signs=stop_signs,
-            crossings=crossings,
-            parking_spaces=parking_spaces,
-            logical_intersections=getattr(res, "logical_intersections", []),
-            yield_signs=yield_signs,
-            fetch_func=lambda fetch_bbox: fetch_osm_ways(fetch_bbox, endpoints=overpass_endpoints),
-            build_func=build_ways,
-            build_in_process=args.build_in_process,
-            world_cache_manager=world_cache,
-        )
-        auto_fetch_manager.initialize_player_tile(car.x, car.y)
-        on_load_progress(1.0, "Ready")
-        logger.info("Entering gameplay loop")
+        auto_fetch_manager = world.auto_fetch_manager
+        base_pedestrian_count = world.base_pedestrian_count
+        bounds = world.bounds
+        building_grid = world.building_grid
+        buildings = world.buildings
+        bus_stops = world.bus_stops
+        car = world.car
+        career_total_distance_m = world.career_total_distance_m
+        crossing_grid = world.crossing_grid
+        crossings = world.crossings
+        elements_count = world.elements_count
+        parking_spaces = world.parking_spaces
+        pedestrian_mgr = world.pedestrian_mgr
+        places = world.places
+        player_pedestrian = world.player_pedestrian
+        residents = world.residents
+        roadworks = world.roadworks
+        sceneries = world.sceneries
+        scenery_grid = world.scenery_grid
+        spatial_grid = world.spatial_grid
+        speed_cameras = world.speed_cameras
+        stop_signs = world.stop_signs
+        sun_latitude = world.sun_latitude
+        sun_longitude = world.sun_longitude
+        taxi_mgr = world.taxi_mgr
+        taxi_stops = world.taxi_stops
+        traffic_light_grid = world.traffic_light_grid
+        traffic_lights = world.traffic_lights
+        traffic_mgr = world.traffic_mgr
+        transformer_to_ll = world.transformer_to_ll
+        water_grid = world.water_grid
+        waters = world.waters
+        ways = world.ways
+        world_cache = world.world_cache
 
         label_mode = 0
         show_debug_hud = False
