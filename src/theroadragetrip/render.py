@@ -123,6 +123,8 @@ _speedometer_label_font = None
 _building_sign_font_cache = {}
 _building_sign_surface_cache = {}
 _building_visual_plan_cache = {}
+MIN_BUILDING_SIGN_WIDTH_PX = 24
+MIN_BUILDING_SIGN_DEPTH_PX = 8
 _pending_static_rebuilds = set()
 _static_rebuilds_this_frame = 0
 
@@ -1391,8 +1393,10 @@ def _draw_buildings_uncached(
                 sign_center_x += wall_depth_x * 0.64
                 sign_center_y += wall_depth_y * 0.64
                 text_width = sign_font.size(place.name)[0]
-                sign_width = min(text_width + 8, max(18, int(edge_length * 0.72)))
-                sign_depth = max(6, min(18, int(wall_depth * 0.28)))
+                sign_width = min(text_width + 8, int(edge_length * 0.72))
+                sign_depth = min(18, int(wall_depth * 0.28))
+                if sign_width < MIN_BUILDING_SIGN_WIDTH_PX or sign_depth < MIN_BUILDING_SIGN_DEPTH_PX:
+                    continue
                 angle = math.degrees(math.atan2(-edge_y, edge_x))
                 if angle > 90.0:
                     angle -= 180.0
