@@ -79,14 +79,6 @@ def place_speed_cameras(
     return result
 
 
-def _distance_to_segment(x: float, y: float, start: Tuple[float, float], end: Tuple[float, float]) -> float:
-    dx = end[0] - start[0]
-    dy = end[1] - start[1]
-    length_squared = dx * dx + dy * dy
-    ratio = 0.0 if length_squared == 0.0 else max(0.0, min(1.0, ((x - start[0]) * dx + (y - start[1]) * dy) / length_squared))
-    return math.hypot(x - (start[0] + ratio * dx), y - (start[1] + ratio * dy))
-
-
 def camera_sees_car(camera: SpeedCamera, car_x: float, car_y: float, heading: float) -> bool:
     """Return true while a car approaches from the camera's 50-meter viewing direction."""
     dx = car_x - camera.x

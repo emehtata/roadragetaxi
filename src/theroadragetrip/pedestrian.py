@@ -265,7 +265,6 @@ class PedestrianManager:
         self.traffic_vehicles = traffic_vehicles if traffic_vehicles is not None else []
         self.traffic_manager = traffic_manager
         self.residents = residents if residents is not None else ResidentManager()
-        self._crashed_resident_ids: Set[int] = set()
         self.sim_time: float = 0.0
         self._population_update_elapsed: float = 4.9
         self._visible_taxi_stops: Set[Tuple[float, float, Optional[int]]] = set()
@@ -353,58 +352,6 @@ class PedestrianManager:
             pedestrian.door_grace_timer = 5.0
             self.add_pedestrian(pedestrian)
             linked_residents.add(resident_id)
-
-    def prepare_crashed_driver(
-        self,
-        vehicle,
-        x: float,
-        y: float,
-        heading: float,
-    ) -> Tuple[Optional[Pedestrian], bool]:
-        """Release an existing vehicle owner, or create one if absent."""
-        resident_id = getattr(vehicle, "owner_id", None)
-        if resident_id is not None and resident_id in self._crashed_resident_ids:
-            return next(
-                (
-                    candidate
-                    for candidate in self.pedestrians
-                    if candidate.resident_id == resident_id
-                ),
-                None,
-            ), False
-        if resident_id is not None:
-            self._crashed_resident_ids.add(resident_id)
-        pedestrian = next(
-            (
-                candidate
-                for candidate in self.pedestrians
-                if resident_id is not None and candidate.resident_id == resident_id
-            ),
-            None,
-        )
-        if pedestrian is None:
-            pedestrian = self.spawn_pedestrian_at(
-                x,
-                y,
-                heading=heading,
-                resident_id=resident_id,
-            )
-            return pedestrian, pedestrian is not None
-
-        pedestrian.x = x
-        pedestrian.y = y
-        pedestrian.heading = heading
-        pedestrian.current_vehicle_id = None
-        pedestrian.reserved_vehicle_id = None
-        pedestrian.vehicle_destination = None
-        pedestrian.linked_vehicle_id = None
-        pedestrian.linked_building_entrance = None
-        pedestrian.destination = None
-        pedestrian.wants_vehicle = False
-        pedestrian.state = PedestrianState.WALKING.value
-        pedestrian.animation_state = "walking"
-        pedestrian.speed = pedestrian.base_speed
-        return pedestrian, False
 
     def _update_linked_driver(self, pedestrian: Pedestrian, update_dt: float) -> bool:
         """Move a parked vehicle owner between its building and the same car."""
@@ -1255,10 +1202,6 @@ class PedestrianManager:
         pedestrian.door_grace_timer = 5.0
         pedestrian.spawned_at_door = True
         return pedestrian
-
-    def _nearby_signalized_crossing(self, ped: Pedestrian) -> bool:
-        """Return whether a pedestrian is currently within a marked signalized crossing."""
-        return self._find_nearby_signalized_crossing(ped) is not None
 
     def _find_nearby_signalized_crossing(self, ped: Pedestrian) -> Optional[Crossing]:
         """Return the nearby signalized crossing, if any."""

@@ -161,10 +161,6 @@ class TaxiManager:
         self.notification_timer: float = 0.0
         self.next_offer_timer: float = random.uniform(PHONE_OFFER_MIN_INTERVAL_S, PHONE_OFFER_MAX_INTERVAL_S)
         self.stand_wait_timer: float = 0.0
-        self._passed_red_signals: Dict[int, float] = {}  # signal id -> timestamp cooldown
-        self._approaching_red_signals: Dict[int, float] = {}  # signal id -> last signed distance along travel
-        self._approaching_red_headings: Dict[int, float] = {}  # signal id -> heading before intersection turn
-        self._crashed_npc_cooldowns: Dict[int, float] = {}  # npc id -> timestamp cooldown
 
         self._crashed_building_cooldowns: Dict[int, float] = {}  # building id -> timestamp cooldown
         self._crashed_tree_cooldowns: Dict[Tuple[int, int], float] = {}
@@ -184,11 +180,6 @@ class TaxiManager:
         self.speed_camera_flash_index: Optional[int] = None
         self.speed_camera_notice_timer: float = 0.0
         self.speed_camera_notice_msg: str = ""
-        self._road_overlap_buildings: set[int] = set()
-        self._overlap_ways_ref = None
-        self._overlap_buildings_ref = None
-        self._overlap_way_count = -1
-        self._overlap_building_count = -1
         self.wrong_way_duration: float = 0.0
         self.wrong_way_penalty_cooldown: float = 0.0
 
@@ -287,80 +278,6 @@ class TaxiManager:
         self._speed_camera_hits.intersection_update(visible_ids)
         return hit
 
-    def check_car_collision(
-        self,
-        player_car: Car,
-        npcs: List[Any],
-        sim_time: float,
-        penalty: int = 150,
-    ) -> bool:
-        """Check if player car collided with any NPC vehicle and apply crash physics + penalty."""
-        from .geo import boxes_intersect
-
-        # Clean expired crash cooldowns (> 3.0 seconds ago)
-        expired = [nid for nid, t in self._crashed_npc_cooldowns.items() if sim_time - t > 3.0]
-        for nid in expired:
-            del self._crashed_npc_cooldowns[nid]
-
-        p_len = getattr(player_car, "length_m", 4.0)
-        p_wid = getattr(player_car, "width_m", 1.8)
-        crashed = False
-
-        for npc in npcs:
-            if getattr(npc, "layer", 0) != getattr(player_car, "layer", 0):
-                continue
-
-            npc_id = id(npc)
-            n_len = getattr(npc, "length_m", 4.0)
-            n_wid = getattr(npc, "width_m", 1.8)
-
-            if boxes_intersect(
-                player_car.x, player_car.y, player_car.heading, p_len, p_wid,
-                npc.x, npc.y, npc.heading, n_len, n_wid,
-            ):
-                # Apply bounce-back / collision impulse physics
-                dx = player_car.x - npc.x
-                dy = player_car.y - npc.y
-                dist = math.hypot(dx, dy)
-                if dist > 1e-3:
-                    nx = dx / dist
-                    ny = dy / dist
-                else:
-                    nx = math.cos(player_car.heading)
-                    ny = math.sin(player_car.heading)
-
-                # Push vehicles apart
-                player_car.x += nx * 0.4
-                player_car.y += ny * 0.4
-                npc.x -= nx * 0.4
-                npc.y -= ny * 0.4
-
-                # Exchange and damp speeds
-                impact_speed = max(abs(player_car.speed), abs(npc.speed), 3.0)
-                player_car.speed = -player_car.speed * 0.4
-                npc.speed = 0.0
-                npc.crashed_timer = max(getattr(npc, "crashed_timer", 0.0), 5.0)  # stop & smoke for 5 seconds
-                if getattr(npc, "vehicle_type", "car") in ("motorcycle", "moped"):
-                    right_x = math.sin(npc.heading)
-                    right_y = -math.cos(npc.heading)
-                    side = 1.0 if dx * right_x + dy * right_y >= 0.0 else -1.0
-                    road_half_width = getattr(getattr(npc, "way", None), "half_width_m", 4.0)
-                    edge_push = max(2.0, road_half_width + 1.0)
-                    npc.x += right_x * side * edge_push
-                    npc.y += right_y * side * edge_push
-                    npc.fallen = True
-                self.taxi_smoke_timer = max(self.taxi_smoke_timer, 5.0)
-
-                crashed = True
-                if npc_id not in self._crashed_npc_cooldowns:
-                    self._crashed_npc_cooldowns[npc_id] = sim_time
-                    self.total_score -= penalty
-                    self.notification_msg = tr(self.language, "crash", penalty=penalty)
-                    self.notification_timer = 3.5
-                    logger.info("Player crashed into NPC vehicle: -%d pts penalty (impact speed: %.1f m/s)", penalty, impact_speed)
-
-        return crashed
-
     def check_building_collision(
         self,
         player_car: Car,
@@ -437,26 +354,6 @@ class TaxiManager:
             return True
 
         return False
-
-    def _refresh_road_overlap_cache(self, ways: List[Way], buildings: List[Building]) -> None:
-        """Cache road/building overlaps and refresh only when map lists change."""
-        if (
-            ways is self._overlap_ways_ref
-            and buildings is self._overlap_buildings_ref
-            and len(ways) == self._overlap_way_count
-            and len(buildings) == self._overlap_building_count
-        ):
-            return
-        drivable_ways = [way for way in ways if is_car_road(way)]
-        self._road_overlap_buildings = {
-            id(building)
-            for building in buildings
-            if any(self._road_overlaps_building(way, building.points_m, building.bbox) for way in drivable_ways)
-        }
-        self._overlap_ways_ref = ways
-        self._overlap_buildings_ref = buildings
-        self._overlap_way_count = len(ways)
-        self._overlap_building_count = len(buildings)
 
     @staticmethod
     def _road_overlaps_building(
@@ -556,99 +453,6 @@ class TaxiManager:
                     self.notification_timer = 3.5
                 return True
         return False
-
-    def check_red_light_violation(
-        self,
-        car: Car,
-        traffic_lights: List[Any],
-        sim_time: float,
-        penalty: int = 100,
-    ) -> None:
-        """Check if player car passes across a red/yellow traffic light line and apply penalty upon crossing."""
-        if abs(car.speed) < 2.0:
-            return  # Standing or creeping slowly before line is not running a red light
-
-        # Clean expired signal cooldowns (> 10 seconds ago)
-        expired = [sid for sid, t in self._passed_red_signals.items() if sim_time - t > 10.0]
-        for sid in expired:
-            del self._passed_red_signals[sid]
-
-        for tl in traffic_lights:
-            tl_id = getattr(tl, "id", id(tl))
-            if tl_id in self._passed_red_signals:
-                continue
-
-            # Vector from car to traffic light
-            dx = tl.x - car.x
-            dy = tl.y - car.y
-            dist = math.hypot(dx, dy)
-
-            # Only track lights within detection zone (e.g. 15 meters)
-            if dist > 15.0:
-                self._approaching_red_signals.pop(tl_id, None)
-                continue
-
-            approach_heading = self._approaching_red_headings.get(tl_id)
-            measured_heading = approach_heading if approach_heading is not None else car.heading
-            move_heading = measured_heading if car.speed >= 0 else measured_heading + math.pi
-            dir_x = math.cos(move_heading)
-            dir_y = math.sin(move_heading)
-            perp_x = -math.sin(move_heading)
-            perp_y = math.cos(move_heading)
-
-            # Once an approach is tracked, keep its coordinate frame through turns.
-            # Otherwise a 90-degree turn can make the same signal look like a new approach.
-            if approach_heading is None and getattr(tl, "direction_angle", None) is not None:
-                tl_ang = tl.direction_angle
-                car_ang = measured_heading % math.pi
-                ang_err = abs(tl_ang - car_ang)
-                ang_err = min(ang_err, math.pi - ang_err)
-                if ang_err > math.radians(45):
-                    self._approaching_red_signals.pop(tl_id, None)
-                    continue  # Signal is for cross traffic
-
-            # Longitudinal distance along direction of travel:
-            # Positive = traffic light is ahead of car
-            # Negative = traffic light is behind car (car has crossed the stop line)
-            long_dist = dx * dir_x + dy * dir_y
-            lat_dist = abs(dx * perp_x + dy * perp_y)
-
-            # Must be reasonably aligned laterally to the traffic light post / stop line (within 8m)
-            if lat_dist > 8.0:
-                if approach_heading is None:
-                    self._approaching_red_signals.pop(tl_id, None)
-                    continue
-
-            prev_long_dist = self._approaching_red_signals.get(tl_id)
-            self._approaching_red_signals[tl_id] = long_dist
-            if long_dist > 0.0 and tl_id not in self._approaching_red_headings:
-                self._approaching_red_headings[tl_id] = car.heading
-
-            state = tl.get_state(sim_time)
-            is_red = state in ("red", "red+yellow")
-
-            # Crossed line condition:
-            # 1) Previously ahead (prev >= 0.0) and now behind (long_dist < 0.0), or
-            # 2) Directly at/past line (-4.0 <= long_dist <= 0.0) while driving through at speed
-            crossed_line = False
-            if prev_long_dist is not None and prev_long_dist >= -1.0 and long_dist < 0.0:
-                crossed_line = True
-            elif -4.0 <= long_dist <= 0.0 and dist <= 6.0:
-                crossed_line = True
-
-            if crossed_line and is_red:
-                approach_heading = self._approaching_red_headings.pop(tl_id, car.heading)
-                heading_change = abs((car.heading - approach_heading + math.pi) % (2 * math.pi) - math.pi)
-                if heading_change > math.radians(45):
-                    self._approaching_red_signals.pop(tl_id, None)
-                    continue
-                self._passed_red_signals[tl_id] = sim_time
-                self._approaching_red_signals.pop(tl_id, None)
-                self.total_score -= penalty
-                self.notification_msg = tr(self.language, "red_light_violation", penalty=penalty)
-                self.notification_timer = 4.0
-                logger.info("Player passed red traffic light %s: -%d pts penalty", tl_id, penalty)
-                break
 
     def get_red_light_assist_speed_limit(
         self,

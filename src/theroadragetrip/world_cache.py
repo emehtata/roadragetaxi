@@ -351,9 +351,6 @@ class WorldCacheManager:
     def load_tile(self, tile: TileCoord, bbox=None, *, force_refresh: bool = False, **kwargs) -> Any:
         return self.load_area(self.tile_id(tile), bbox, force_refresh=force_refresh, **kwargs)
 
-    def preload_tile(self, tile: TileCoord, bbox=None, **kwargs) -> Future:
-        return self.preload(self.tile_id(tile), bbox, **kwargs)
-
     def preload_region(self, bbox, **kwargs) -> Future:
         """Load one combined streaming region instead of one request per tile."""
         return self.preload(self.area_id(bbox), bbox, allow_covering=False, **kwargs)

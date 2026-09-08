@@ -369,12 +369,6 @@ class AutoFetchManager:
             for tile_y in range(first.y, last.y + 1)
         }
 
-    def _tile_bbox_latlon(self, tile: TileCoord) -> Tuple[float, float, float, float]:
-        min_x, min_y, max_x, max_y = tile_bbox(tile)
-        lon1, lat1 = self.transformer.transform(min_x, min_y)
-        lon2, lat2 = self.transformer.transform(max_x, max_y)
-        return min(lat1, lat2), min(lon1, lon2), max(lat1, lat2), max(lon1, lon2)
-
     def _background_tile_fetch(
         self,
         tiles: tuple[TileCoord, ...],
@@ -452,9 +446,6 @@ class AutoFetchManager:
                 )
             self.last_tile_integration_ms = (time.perf_counter() - started) * 1000.0
         return integrated
-
-    def _merge_tile_world(self, world) -> None:
-        raise RuntimeError("tile world merge requires tile ownership")
 
     def _merge_tile_world_for(self, tile: TileCoord, world) -> None:
         self._merge_tile_world_for_tiles({tile}, world, force_tile=True)
@@ -820,10 +811,6 @@ class AutoFetchManager:
                 self.is_fetching = False
                 self.fetch_progress = 0.0
             return
-
-        def _bg_progress(fraction: float, msg: str):
-            with self.lock:
-                self.fetch_progress = fraction
 
         try:
             with self.lock:
