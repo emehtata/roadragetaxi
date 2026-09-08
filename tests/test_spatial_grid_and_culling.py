@@ -254,13 +254,14 @@ def test_draw_bus_stop_adds_roadside_bay_and_shelter():
     pygame.quit()
 
 
-def test_draw_car_does_not_crash_when_labels_cache_rebuild_is_denied():
-    """Regression: draw_car's "skip drawing this frame if the labels cache
-    hasn't gotten its turn to rebuild yet" branch referenced an undefined
-    cache_zoom - a NameError that was unreachable in practice as long as
-    _allow_static_rebuild only denied a layer queued via
-    invalidate_static_caches(), but became reachable once that throttle was
-    broadened to also cover a plain camera jump (e.g. a debug respawn)."""
+def test_draw_car_is_unaffected_by_an_unrelated_layers_throttle_state():
+    """Regression: draw_car used to carry its own "skip drawing this frame
+    if the *labels* cache hasn't gotten its turn to rebuild yet" branch - a
+    leftover that (a) had nothing to do with drawing the car, (b) referenced
+    an undefined cache_zoom (a NameError once reachable), and (c) when
+    reachable, replaced the car with a stale labels-layer blit instead of
+    drawing it at all. draw_car should draw the car every time regardless of
+    any other layer's throttle state."""
     import pygame
     from theroadragetrip.render import common as common_module
     from theroadragetrip.physics import Car
@@ -268,16 +269,22 @@ def test_draw_car_does_not_crash_when_labels_cache_rebuild_is_denied():
     pygame.init()
     try:
         screen = pygame.Surface((240, 160), pygame.SRCALPHA)
+        screen.fill((0, 0, 0))
         common_module._label_frame_cache_surface = pygame.Surface((100, 100))
         common_module._label_frame_cache_camera = (0.0, 0.0)
         common_module.begin_static_cache_frame()
         # Spend this frame's one allowed rebuild on an unrelated layer, so
-        # draw_car's own check below is denied - exactly the branch that
-        # used to raise NameError.
+        # any leftover cross-layer check in draw_car would be denied - this
+        # used to be exactly the branch that raised NameError, or, once
+        # "fixed" to not crash, silently skipped the car.
         common_module._allow_static_rebuild("some_other_layer", object())
 
         car = Car(x=0.0, y=0.0, heading=0.0, speed=0.0)
         draw_car(screen, car, 0.0, 0.0, px_per_m=9.0, screen_w=240, screen_h=160)
+        assert screen.get_at((120, 80))[:3] != (0, 0, 0), (
+            "draw_car did not draw the car when an unrelated layer's "
+            "throttle was denied"
+        )
     finally:
         pygame.quit()
 

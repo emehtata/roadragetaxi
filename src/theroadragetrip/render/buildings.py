@@ -361,6 +361,9 @@ def draw_buildings(
         offset_y = round((camy - cached_camy) * cache_zoom) - CACHE_PADDING_PX
         screen.blit(common._building_frame_cache_surface, (offset_x, offset_y))
         return
+    if not _allow_static_rebuild("buildings", common._building_frame_cache_surface):
+        _blit_stale_static_cache(screen, common._building_frame_cache_surface, common._building_frame_cache_camera, camx, camy, cache_zoom)
+        return
 
     cache_width = screen_w + CACHE_PADDING_PX * 2
     cache_height = screen_h + CACHE_PADDING_PX * 2

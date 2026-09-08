@@ -116,6 +116,9 @@ def draw_labels(
         offset_y = round((camy - cached_camy) * cache_zoom) - CACHE_PADDING_PX
         screen.blit(common._label_frame_cache_surface, (offset_x, offset_y))
         return
+    if not _allow_static_rebuild("labels", common._label_frame_cache_surface):
+        _blit_stale_static_cache(screen, common._label_frame_cache_surface, common._label_frame_cache_camera, camx, camy, cache_zoom)
+        return
 
     cache_width = screen_w + CACHE_PADDING_PX * 2
     cache_height = screen_h + CACHE_PADDING_PX * 2

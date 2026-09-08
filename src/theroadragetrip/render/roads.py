@@ -128,9 +128,6 @@ def draw_ways(
     if not _allow_static_rebuild("roads", common._road_frame_cache_surface):
         _blit_stale_static_cache(screen, common._road_frame_cache_surface, common._road_frame_cache_camera, camx, camy, cache_zoom)
         return
-    if not _allow_static_rebuild("buildings", common._building_frame_cache_surface):
-        _blit_stale_static_cache(screen, common._building_frame_cache_surface, common._building_frame_cache_camera, camx, camy, cache_zoom)
-        return
     px_per_m = cache_zoom
     destination_screen = screen
     cache_width = screen_w + CACHE_PADDING_PX * 2

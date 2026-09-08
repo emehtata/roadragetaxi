@@ -652,56 +652,73 @@ def test_grass_texture_rebuild_does_not_redraw_every_tile_every_frame():
         pygame.quit()
 
 
-def test_routine_cache_misses_are_not_throttled_against_each_other():
-    """A layer's own routine cache miss (it panned past its padding, or its
-    zoom bucket changed) must rebuild immediately rather than competing
-    with unrelated layers for one shared per-frame slot. Regression: an
-    earlier version of this throttle denied *any* non-first-time rebuild
-    once one layer had used the frame's slot, with no way for a
-    never-queued layer to ever get its own turn back - during ordinary
-    driving, every layer's frame_cache_key shares the same camera-position
-    component and so goes stale on the same frame routinely (not just on a
-    jump), which made roads (and other layers) stop redrawing and stay
-    stuck showing whatever was last on screen, at the wrong offset, for as
-    long as new staleness kept arriving before the queue could drain -
-    i.e. indefinitely, under ordinary continuous driving."""
+def test_simultaneous_routine_cache_misses_are_spread_across_frames():
+    """Most of a layer's frame_cache_key is a shared, quantized camera
+    position, so an entirely ordinary cache-padding/zoom-bucket crossing
+    during continuous driving goes stale for *every* layer on the very same
+    frame just as reliably as an explicit camera jump does. Regression: an
+    earlier version of this throttle only denied a layer already queued via
+    invalidate_static_caches()/invalidate_static_caches_for_camera_jump(),
+    so a routine multi-layer staleness burst (no explicit invalidation
+    involved) let every layer rebuild on the same frame, uncached - the
+    periodic full-cost spike ("FPS drops... every few seconds") that this
+    throttle exists to prevent. Every miss must now queue and be spread
+    across frames, one layer's rebuild per frame, regardless of how it went
+    stale."""
     from theroadragetrip.render import common as common_module
 
     common_module.begin_static_cache_frame()
     common_module._pending_static_rebuilds.clear()
     fake_surface = object()  # anything that isn't None
 
-    # Neither layer is queued (no invalidate_static_caches_for_camera_jump()
-    # / invalidate_static_caches() call) - both must be allowed on the very
-    # same frame, exactly like ordinary panning needs.
+    # Two unrelated layers go stale on the same frame with no explicit
+    # invalidate_static_caches() call at all - just like an ordinary
+    # bucket-crossing during continuous panning.
     assert common_module._allow_static_rebuild("roads", fake_surface) is True
+    assert common_module._allow_static_rebuild("buildings", fake_surface) is False
+
+    # Next frame: budget resets, so the layer that lost the race gets its turn.
+    common_module.begin_static_cache_frame()
     assert common_module._allow_static_rebuild("buildings", fake_surface) is True
 
 
-def test_camera_jump_throttles_every_layer_including_grass():
+def test_camera_jump_lets_every_layer_take_its_turn_without_starvation():
     """invalidate_static_caches_for_camera_jump() - called after a respawn
-    or a fresh session's starting camera snaps somewhere new - queues every
-    layer (grass included, since unlike the other five it's not covered by
-    invalidate_static_caches()) so they take turns rebuilding across
-    several frames instead of six full, uncached redraws landing on one."""
+    or a fresh session's starting camera snaps somewhere new - only resets
+    each layer's frame_cache_key so its next draw call notices it's stale;
+    _allow_static_rebuild's self-queuing (see its docstring) is what
+    actually spreads the resulting simultaneous staleness burst (grass
+    included, since unlike the other five it's not covered by
+    invalidate_static_caches()) across several frames instead of six full,
+    uncached redraws landing on one, while still guaranteeing every layer
+    eventually gets its turn."""
     from theroadragetrip.render import common as common_module
 
     common_module.begin_static_cache_frame()
+    common_module._pending_static_rebuilds.clear()
     common_module.invalidate_static_caches_for_camera_jump()
     fake_surface = object()
+    layers = ["roads", "buildings", "scenery", "water", "labels", "grass"]
 
-    assert common_module._pending_static_rebuilds == {
-        "labels", "buildings", "scenery", "water", "roads", "grass",
-    }
-    # First layer checked this frame gets to rebuild...
-    assert common_module._allow_static_rebuild("roads", fake_surface) is True
-    # ...and every other queued layer must wait its turn.
-    assert common_module._allow_static_rebuild("buildings", fake_surface) is False
-    assert common_module._allow_static_rebuild("grass", fake_surface) is False
+    # Nothing is queued yet - invalidating just clears the cache keys;
+    # queuing happens lazily as each layer's draw call actually notices its
+    # own miss.
+    assert common_module._pending_static_rebuilds == set()
 
-    # Next frame: budget resets, so the next queued layer can go.
-    common_module.begin_static_cache_frame()
-    assert common_module._allow_static_rebuild("buildings", fake_surface) is True
+    allowed = set()
+    for _ in range(len(layers)):
+        common_module.begin_static_cache_frame()
+        for layer in layers:
+            if layer in allowed:
+                continue
+            if common_module._allow_static_rebuild(layer, fake_surface):
+                allowed.add(layer)
+                break  # only one rebuild allowed per frame
+
+    # Every layer got its turn within one frame per other layer, with none
+    # starved out indefinitely.
+    assert allowed == set(layers)
+    assert common_module._pending_static_rebuilds == set()
 
 
 def test_static_rebuild_always_allows_the_very_first_build():

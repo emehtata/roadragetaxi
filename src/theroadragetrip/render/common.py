@@ -61,7 +61,14 @@ _static_rebuilds_this_frame = 0
 
 
 def invalidate_static_caches() -> None:
-    """Discard viewport surfaces after streamed world data changes."""
+    """Force every map-data-dependent layer to notice it's stale even if
+    the camera hasn't moved (streamed world data changed under it).
+
+    Grass isn't included: its cache depends only on camera position and
+    zoom, both already covered by _allow_static_rebuild's self-queuing (see
+    below), never on world data, so forcing it here would just be a no-op
+    key reset chasing a key that wasn't actually valid to reuse anyway.
+    """
     global _label_frame_cache_key, _building_frame_cache_key
     global _scenery_frame_cache_key, _water_frame_cache_key, _road_frame_cache_key
     _label_frame_cache_key = None
@@ -69,26 +76,18 @@ def invalidate_static_caches() -> None:
     _scenery_frame_cache_key = None
     _water_frame_cache_key = None
     _road_frame_cache_key = None
-    _pending_static_rebuilds.update({"labels", "buildings", "scenery", "water", "roads"})
 
 
-def invalidate_static_caches_for_camera_jump() -> None:
-    """Queue every static layer for a throttled rebuild after the camera
-    snaps to a new position outright (a respawn, or a fresh session's
-    starting camera) instead of panning there gradually.
-
-    A jump invalidates every layer's frame_cache_key on the very same
-    frame - camera position is the only thing gating grass's cache, and one
-    shared component of every other layer's key - which without queuing
-    them here would make each one independently decide "not pending, so
-    rebuild immediately" (see _allow_static_rebuild) and all six fire their
-    full, uncached redraw together. Ordinary driving crosses one cache's
-    padding at a time (or, when several line up, drains the queue this
-    same way within a handful of frames), so it's specifically the
-    "camera teleported" case this needs to be called for explicitly.
-    """
-    invalidate_static_caches()
-    _pending_static_rebuilds.add("grass")
+# Kept as an alias: callers at a camera-snap site (a respawn, or a fresh
+# session's starting camera) don't need anything beyond what
+# invalidate_static_caches() already does - a jump makes every layer's
+# frame_cache_key miss on its own (camera position is either the whole key,
+# for grass, or one shared component of it, for the other five), and
+# _allow_static_rebuild queues *any* miss for its throttled turn now, not
+# just ones this function forced. Naming the call at each jump site for
+# what it's responding to is still worth keeping distinct from the
+# streamed-data case.
+invalidate_static_caches_for_camera_jump = invalidate_static_caches
 
 
 def begin_static_cache_frame() -> None:
@@ -97,20 +96,38 @@ def begin_static_cache_frame() -> None:
 
 
 def _allow_static_rebuild(layer: str, surface) -> bool:
-    """Throttle a layer's static-cache rebuild to at most one per frame,
-    but only while it's queued in _pending_static_rebuilds - an explicit
-    signal that several layers need rebuilding together (streamed map data
-    via invalidate_static_caches(), or a camera jump via
-    invalidate_static_caches_for_camera_jump()) and so should take turns
-    rather than all paying their full, uncached redraw cost on the same
-    frame. A layer's *routine* per-frame cache miss (it alone panned past
-    its padding, or its zoom bucket changed) is not queued and rebuilds
-    immediately, same as an always-exempt first-ever build (surface is
-    None, nothing to show yet if deferred).
+    """Throttle a layer's static-cache rebuild to at most one per frame.
+
+    Every miss is queued in _pending_static_rebuilds here, not just ones
+    that arrived via invalidate_static_caches() as an earlier version of
+    this function required - because most of a layer's frame_cache_key is
+    a shared, quantized camera position, an entirely ordinary
+    cache-padding/zoom-bucket crossing during continuous driving goes stale
+    for *every* layer on the very same frame just as reliably as a camera
+    jump does, not just occasionally. Queuing every miss means a
+    simultaneous burst - whichever caused it - always drains one layer per
+    frame instead of paying for all of them at once, which is what turned
+    into periodic FPS dips every time driving crossed a bucket boundary.
+
+    Because _pending_static_rebuilds is a set, a layer already queued for
+    its turn is never queued twice, so even under continuous new staleness
+    (the camera never stops panning) each layer is guaranteed a turn within,
+    worst case, one frame per other layer simultaneously waiting - not
+    indefinitely, which was the previous, too-narrow version's bug: a
+    layer's *un*-queued miss returned "not pending, so allow immediately"
+    unconditionally, which was fine in isolation but meant every other
+    layer's simultaneous miss (the routine case above) raced it for
+    attention every single frame, forever, whenever more than one layer
+    needed rebuilding at once - it just never mattered until several
+    layers' misses started lining up on the same frame routinely.
+
+    The very first build for a layer (surface is None) is exempt: there's
+    nothing to show yet, so it can't be deferred to a later frame.
     """
     global _static_rebuilds_this_frame
-    if surface is None or layer not in _pending_static_rebuilds:
+    if surface is None:
         return True
+    _pending_static_rebuilds.add(layer)
     if _static_rebuilds_this_frame >= 1:
         return False
     _static_rebuilds_this_frame += 1
