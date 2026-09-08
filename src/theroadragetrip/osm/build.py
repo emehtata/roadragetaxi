@@ -48,9 +48,7 @@ from .models import (
 )
 
 from .traffic_signals import (
-    deduplicate_traffic_lights,
-    complete_traffic_light_approaches,
-    build_logical_intersections,
+    build_traffic_light_system,
 )
 
 from .trees import (
@@ -741,177 +739,29 @@ def build_ways(
                 )
             )
 
-    # 7. Traffic signals from OSM nodes
-    # Find road direction at node to assign orthogonal phase offsets for intersecting streets
+    # 7. Traffic signals from OSM nodes.
+    #
+    # OSM traffic-signal nodes are evidence that an intersection is
+    # signal-controlled, not a complete physical description of it - one
+    # extract may have a single node for a whole 4-way junction, another
+    # may tag only one of its roads. build_traffic_light_system treats
+    # these node positions purely as that evidence and derives the actual
+    # approaches, signals, and phases from the surrounding road geometry
+    # (see osm/traffic_signals.py).
     if traffic_signals_raw:
-        # Build spatial grid for fast candidate lookup
-        signals_grid: dict[Tuple[int, int], List[Way]] = defaultdict(list)
-        grid_size = 50.0
-        for w in ways:
-            bbox = getattr(w, "bbox", None)
-            if not bbox or bbox == (0.0, 0.0, 0.0, 0.0):
-                continue
-            minx_b, miny_b, maxx_b, maxy_b = bbox
-            gx0 = int((minx_b - 5.0) // grid_size)
-            gx1 = int((maxx_b + 5.0) // grid_size)
-            gy0 = int((miny_b - 5.0) // grid_size)
-            gy1 = int((maxy_b + 5.0) // grid_size)
-            for gx in range(gx0, gx1 + 1):
-                for gy in range(gy0, gy1 + 1):
-                    signals_grid[(gx, gy)].append(w)
-
-        signal_points = {
-            nid: nodes_m[nid]
-            for _tags, nid in traffic_signals_raw
-            if nid in nodes_m
-        }
+        signal_points = []
         for tags, nid in traffic_signals_raw:
-            pt = nodes_m.get(nid)
-            if pt:
-                layer_tag = tags.get("layer", "")
-                layer_val = 0
-                if layer_tag:
-                    try:
-                        layer_val = int(layer_tag)
-                    except ValueError:
-                        pass
-
-                # Detect road orientation at signal position (0 to pi)
-                road_angle = 0.0
-                best_dist = 5.0
-                found_orientation = False
-
-                gx = int(pt[0] // grid_size)
-                gy = int(pt[1] // grid_size)
-                candidate_ways = []
-                for dx_c in (-1, 0, 1):
-                    for dy_c in (-1, 0, 1):
-                        candidate_ways.extend(signals_grid.get((gx + dx_c, gy + dy_c), []))
-
-                for w in candidate_ways:
-                    if getattr(w, "layer", 0) != layer_val:
-                        continue
-                    pts = w.points_m
-                    for i in range(len(pts) - 1):
-                        p1, p2 = pts[i], pts[i + 1]
-                        dx = p2[0] - p1[0]
-                        dy = p2[1] - p1[1]
-                        seg_len = math.hypot(dx, dy)
-                        if seg_len > 1e-3:
-                            # Distance to line segment
-                            t = max(0.0, min(1.0, ((pt[0] - p1[0]) * dx + (pt[1] - p1[1]) * dy) / (seg_len * seg_len)))
-                            px = p1[0] + t * dx
-                            py = p1[1] + t * dy
-                            d = math.hypot(pt[0] - px, pt[1] - py)
-                            if d < best_dist:
-                                best_dist = d
-                                ang = math.atan2(dy, dx) % math.pi  # Normalized direction 0 to pi
-                                road_angle = ang
-                                found_orientation = True
-
-                # Phase offset: Group into two orthogonal corridors (e.g., North-South vs East-West)
-                # If road is closer to EW (angles < pi/4 or > 3pi/4), offset is 0.0s; if NS (pi/4 to 3pi/4), offset is 8.0s.
-                if found_orientation:
-                    is_north_south = (math.pi * 0.25) <= road_angle < (math.pi * 0.75)
-                    phase_offset = 8.0 if is_north_south else 0.0
-                else:
-                    phase_offset = 0.0
-
-                # Some OSM junctions map one signal node at the center instead of
-                # one signal per approach. Split that incomplete representation.
-                arm_angles: List[float] = []
-                for way_tags, _highway, way_node_ids, _way_id in ways_raw:
-                    if nid not in way_node_ids:
-                        continue
-                    node_index = way_node_ids.index(nid)
-                    neighbor_ids = []
-                    if node_index > 0:
-                        neighbor_ids.append(way_node_ids[node_index - 1])
-                    if node_index + 1 < len(way_node_ids):
-                        neighbor_ids.append(way_node_ids[node_index + 1])
-                    for neighbor_id in neighbor_ids:
-                        neighbor = nodes_m.get(neighbor_id)
-                        if neighbor is None:
-                            continue
-                        angle = math.atan2(neighbor[1] - pt[1], neighbor[0] - pt[0])
-                        if all(abs((angle - existing + math.pi) % (2 * math.pi) - math.pi) > math.radians(25)
-                               for existing in arm_angles):
-                            arm_angles.append(angle)
-
-                # Some extracts omit the signal node from the road ways. In
-                # that case, recover arms from nearby road geometry.
-                if len(arm_angles) < 3:
-                    for way in candidate_ways:
-                        if getattr(way, "layer", 0) != layer_val or len(way.points_m) < 2:
-                            continue
-                        closest_segment = min(
-                            zip(way.points_m, way.points_m[1:]),
-                            key=lambda segment: dist_point_to_segment(
-                                pt[0], pt[1], segment[0][0], segment[0][1], segment[1][0], segment[1][1]
-                            ),
-                        )
-                        (p1, p2) = closest_segment
-                        if dist_point_to_segment(pt[0], pt[1], p1[0], p1[1], p2[0], p2[1]) > 12.0:
-                            continue
-                        angle = math.atan2(p2[1] - p1[1], p2[0] - p1[0])
-                        for arm_angle in (angle, angle + math.pi):
-                            if all(
-                                abs((arm_angle - existing + math.pi) % (2 * math.pi) - math.pi)
-                                > math.radians(25)
-                                for existing in arm_angles
-                            ):
-                                arm_angles.append(arm_angle)
-
-                nearby_signal_points = [
-                    other_pt for other_nid, other_pt in signal_points.items()
-                    if other_nid != nid
-                    and math.hypot(pt[0] - other_pt[0], pt[1] - other_pt[1]) <= 60.0
-                ]
-                has_nearby_signal = bool(nearby_signal_points)
-                if has_nearby_signal:
-                    junction_center = (
-                        sum(other_pt[0] for other_pt in nearby_signal_points) / len(nearby_signal_points),
-                        sum(other_pt[1] for other_pt in nearby_signal_points) / len(nearby_signal_points),
-                    )
-                    approach_direction = math.atan2(
-                        junction_center[1] - pt[1],
-                        junction_center[0] - pt[0],
-                    ) % (2.0 * math.pi)
-                else:
-                    approach_direction = road_angle if found_orientation else None
-                if len(arm_angles) >= 3 and not has_nearby_signal:
-                    for arm_index, arm_angle in enumerate(arm_angles):
-                        signal_axis = arm_angle % math.pi
-                        signal_offset = 8.0 if (math.pi * 0.25) <= signal_axis < (math.pi * 0.75) else 0.0
-                        traffic_lights.append(
-                            TrafficLight(
-                                x=pt[0] + math.cos(arm_angle) * 6.0,
-                                y=pt[1] + math.sin(arm_angle) * 6.0,
-                                cycle_time=16.0,
-                                offset=signal_offset,
-                                layer=layer_val,
-                                id=nid * 10 + arm_index,
-                                # The signal controls traffic moving from its arm toward the junction.
-                                direction_angle=(arm_angle + math.pi) % (2.0 * math.pi),
-                            )
-                        )
-                else:
-                    traffic_lights.append(
-                        TrafficLight(
-                            x=pt[0],
-                            y=pt[1],
-                            cycle_time=16.0,
-                            offset=phase_offset,
-                            layer=layer_val,
-                            id=nid,
-                            direction_angle=approach_direction,
-                        )
-                    )
-
-        traffic_lights = complete_traffic_light_approaches(
-            deduplicate_traffic_lights(traffic_lights), ways
-        )
-    logical_intersections = build_logical_intersections(traffic_lights, ways)
+            point = nodes_m.get(nid)
+            if point is None:
+                continue
+            try:
+                signal_layer = int(tags.get("layer", 0))
+            except (TypeError, ValueError):
+                signal_layer = 0
+            signal_points.append((point[0], point[1], signal_layer))
+        traffic_lights, logical_intersections = build_traffic_light_system(signal_points, ways)
+    else:
+        logical_intersections = []
 
     # 8. Stop signs from OSM nodes
     for tags, nid in stop_signs_raw:

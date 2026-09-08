@@ -72,9 +72,7 @@ from .models import (
 )
 
 from .traffic_signals import (
-    build_logical_intersections,
-    complete_traffic_light_approaches,
-    deduplicate_traffic_lights,
+    build_traffic_light_system,
 )
 
 from .trees import (
