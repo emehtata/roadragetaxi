@@ -1293,7 +1293,12 @@ def draw_traffic_lights(
         state = tl.get_state(sim_time)
 
         # Colors for 3 lamps (dim when off, bright with glow when on)
-        is_red = state in ("red", "red+yellow")
+        # "all-red" isn't part of the normal red -> red+yellow -> green ->
+        # yellow sequence (SignalGroup's all_red_duration defaults to 0),
+        # but treat it as red defensively rather than lighting nothing -
+        # every lamp going dark for a beat reads as a broken traffic light,
+        # not a red one.
+        is_red = state in ("red", "red+yellow", "all-red")
         is_yellow = state in ("yellow", "red+yellow")
         is_green = state == "green"
 

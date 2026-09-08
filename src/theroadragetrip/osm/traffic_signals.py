@@ -55,11 +55,25 @@ MIN_SIGNALIZED_ARMS = 3
 SIGNAL_CYCLE_S = 24.0
 SIGNAL_GREEN_S = 10.0
 SIGNAL_YELLOW_S = 2.0
-SIGNAL_ALL_RED_S = 1.0
+# No separate all-red clearance phase: the sequence is exactly
+# red -> red+yellow -> green -> yellow -> red, matching the local
+# (Finnish) signal convention this game otherwise follows. render's
+# draw_traffic_lights doesn't light anything for an "all-red" state, so a
+# non-zero duration here used to show as every lamp going dark for a beat
+# every cycle.
+SIGNAL_ALL_RED_S = 0.0
 SIGNAL_RED_YELLOW_S = 2.0
 # Derived so both phase groups' cycles add up to exactly SIGNAL_CYCLE_S.
 SIGNAL_RED_S = SIGNAL_CYCLE_S - SIGNAL_GREEN_S - SIGNAL_YELLOW_S - SIGNAL_ALL_RED_S - SIGNAL_RED_YELLOW_S
+# Two phase groups split a cycle exactly in half; as long as one phase
+# group's green+yellow (its "not red" window) fits within half the cycle,
+# the two groups' green windows can never overlap - see
+# test_conflicting_phases_are_never_green_at_the_same_time.
 SIGNAL_PHASE_OFFSET_S = SIGNAL_CYCLE_S / 2.0
+assert SIGNAL_GREEN_S + SIGNAL_YELLOW_S <= SIGNAL_PHASE_OFFSET_S, (
+    "a phase group's green+yellow window must fit within half the cycle, "
+    "or the two phase groups' green windows could overlap"
+)
 
 
 def _way_arm_angles(way: Way, center: Tuple[float, float], layer: int) -> Tuple[float, ...]:

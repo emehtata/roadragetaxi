@@ -7,7 +7,7 @@ of scope for this pipeline (see the module's own docstring).
 """
 import math
 
-from theroadragetrip.osm import Way, build_ways
+from theroadragetrip.osm import SignalGroup, TrafficLight, Way, build_ways
 from theroadragetrip.osm.traffic_signals import (
     MIN_SIGNALIZED_ARMS,
     SIGNAL_CYCLE_S,
@@ -72,6 +72,42 @@ def test_conflicting_phases_are_never_green_at_the_same_time():
         both_saw_green[1] = both_saw_green[1] or state_b == "green"
 
     assert all(both_saw_green), "each phase should get a green turn somewhere in the cycle"
+
+
+def test_generated_signal_never_reaches_the_all_red_state():
+    """Regression: draw_traffic_lights doesn't light any lamp for an
+    "all-red" state (it isn't part of the normal cycle), so a non-zero
+    all_red_duration made every generated light go fully dark for a beat
+    every cycle - "no lights shown". Generated signal groups must never
+    produce it."""
+    arms = _four_way_ways()
+    lights, _ = build_traffic_light_system([(0.0, 0.0, 0)], list(arms.values()))
+    groups = {light.signal_group.approach_id: light.signal_group for light in lights}
+
+    steps = 240
+    for group in groups.values():
+        for i in range(steps):
+            t = (SIGNAL_CYCLE_S * i) / steps
+            assert group.get_state(t) != "all-red"
+
+
+def test_signal_state_sequence_is_red_red_yellow_green_yellow():
+    arms = _four_way_ways()
+    lights, _ = build_traffic_light_system([(0.0, 0.0, 0)], list(arms.values()))
+    group = lights[0].signal_group
+
+    steps = 480
+    observed_order = []
+    for i in range(steps):
+        t = (SIGNAL_CYCLE_S * i) / steps
+        state = group.get_state(t)
+        if not observed_order or observed_order[-1] != state:
+            observed_order.append(state)
+    # The cycle repeats, so the sampled sequence is some rotation of the
+    # 4-state loop - normalize by rotating back to start at "red".
+    start = observed_order.index("red")
+    normalized = observed_order[start:] + observed_order[:start]
+    assert normalized[:4] == ["red", "red+yellow", "green", "yellow"]
 
 
 def test_t_junction_generates_three_lights_on_two_phases():
@@ -236,3 +272,41 @@ def test_build_ways_end_to_end_generates_logical_intersections():
     intersection = result.logical_intersections[0]
     assert len(intersection.approaches) == 4
     assert len(result.traffic_lights) == 4
+
+
+def test_traffic_light_always_lights_at_least_one_lamp():
+    """Regression: an "all-red" state (which the generator itself never
+    produces any more, but the dataclass still allows) lit no lamp at all
+    - every color rendered dim, reading as a broken/off light rather than
+    a red one. Every reachable state must light at least one lamp bright."""
+    import pygame
+
+    from theroadragetrip.render import draw_traffic_lights
+
+    pygame.init()
+    try:
+        screen = pygame.Surface((100, 100))
+        bright_colors = {(255, 30, 30), (255, 210, 0), (40, 240, 60)}
+
+        for state in ("red", "red+yellow", "green", "yellow", "all-red"):
+            group = SignalGroup(
+                approach_id="test",
+                cycle_time=10.0,
+                green_duration=10.0 if state == "green" else 0.0,
+                yellow_duration=10.0 if state == "yellow" else 0.0,
+                all_red_duration=10.0 if state == "all-red" else 0.0,
+                red_duration=10.0 if state == "red" else 0.0,
+                red_yellow_duration=10.0 if state == "red+yellow" else 0.0,
+            )
+            assert group.get_state(0.0) == state
+            light = TrafficLight(x=0.0, y=0.0, signal_group=group, direction_angle=0.0)
+
+            screen.fill((0, 0, 0))
+            draw_traffic_lights(screen, [light], 0.0, 0.0, 0.0, px_per_m=10.0, screen_w=100, screen_h=100)
+
+            colors_seen = {
+                tuple(screen.get_at((x, y)))[:3] for x in range(100) for y in range(100)
+            }
+            assert colors_seen & bright_colors, f"state {state!r} lit no lamp"
+    finally:
+        pygame.quit()
