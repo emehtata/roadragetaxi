@@ -10,7 +10,6 @@ import math
 from theroadragetrip.osm import SignalGroup, TrafficLight, Way, build_ways
 from theroadragetrip.osm.traffic_signals import (
     MIN_SIGNALIZED_ARMS,
-    SIGNAL_CYCLE_S,
     build_traffic_light_system,
 )
 
@@ -64,7 +63,7 @@ def test_conflicting_phases_are_never_green_at_the_same_time():
     both_saw_green = [False, False]
     steps = 200
     for i in range(steps):
-        t = (SIGNAL_CYCLE_S * i) / steps
+        t = (group_a.cycle_time * i) / steps
         state_a = group_a.get_state(t)
         state_b = group_b.get_state(t)
         assert not (state_a == "green" and state_b == "green"), f"both phases green at t={t}"
@@ -72,6 +71,48 @@ def test_conflicting_phases_are_never_green_at_the_same_time():
         both_saw_green[1] = both_saw_green[1] or state_b == "green"
 
     assert all(both_saw_green), "each phase should get a green turn somewhere in the cycle"
+
+
+def test_irregular_five_way_junction_never_shows_conflicting_greens():
+    """Regression, from a real production intersection: 5 approaches at
+    roughly 111, -120(240), 60, 146, and -35(325) degrees. Two of those
+    (111 and 60) are only 51 degrees apart - not opposite - but both used
+    to land in the same coarse "axis half" phase bucket and got green at
+    the same time, which is exactly the kind of conflict a real traffic
+    light must never create. The other four arms *do* form two genuine
+    opposite pairs (240<->60 and 146<->325) and should still be able to
+    share a phase with their actual opposite."""
+    center = (0.0, 0.0)
+
+    def arm(angle_deg):
+        angle = math.radians(angle_deg)
+        far = (center[0] + math.cos(angle) * 100.0, center[1] + math.sin(angle) * 100.0)
+        return Way([center, far], "residential", 4.0)
+
+    angles = [111.1, -120.0, 60.0, 145.9, -34.5]
+    ways = [arm(a) for a in angles]
+    lights, intersections = build_traffic_light_system([(0.0, 0.0, 0)], ways)
+
+    assert len(lights) == 5
+    groups = {light.signal_group.approach_id: light.signal_group for light in lights}
+    # The lone 111.1-degree arm has no real opposite among the other four,
+    # so it must end up alone in its own phase.
+    assert len(groups) == 3
+
+    steps = 400
+    cycle = next(iter(groups.values())).cycle_time
+    for i in range(steps):
+        t = (cycle * i) / steps
+        green_lights = [light for light in lights if light.signal_group.get_state(t) == "green"]
+        for a in green_lights:
+            for b in green_lights:
+                if a is b:
+                    continue
+                diff = abs((a.direction_angle - b.direction_angle + math.pi) % (2.0 * math.pi) - math.pi)
+                assert abs(diff - math.pi) <= math.radians(30.0) + 1e-6, (
+                    f"non-opposite arms both green at t={t}: {math.degrees(a.direction_angle):.1f} "
+                    f"and {math.degrees(b.direction_angle):.1f}"
+                )
 
 
 def test_generated_signal_never_reaches_the_all_red_state():
@@ -87,7 +128,7 @@ def test_generated_signal_never_reaches_the_all_red_state():
     steps = 240
     for group in groups.values():
         for i in range(steps):
-            t = (SIGNAL_CYCLE_S * i) / steps
+            t = (group.cycle_time * i) / steps
             assert group.get_state(t) != "all-red"
 
 
@@ -99,7 +140,7 @@ def test_signal_state_sequence_is_red_red_yellow_green_yellow():
     steps = 480
     observed_order = []
     for i in range(steps):
-        t = (SIGNAL_CYCLE_S * i) / steps
+        t = (group.cycle_time * i) / steps
         state = group.get_state(t)
         if not observed_order or observed_order[-1] != state:
             observed_order.append(state)

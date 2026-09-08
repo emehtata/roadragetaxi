@@ -24,7 +24,7 @@ deliberately out of scope here - this module only builds and runs the
 signal state machine and the physical/logical intersection model.
 """
 import math
-from typing import Dict, List, Optional, Tuple
+from typing import List, Tuple
 
 from .models import IntersectionApproach, LogicalIntersection, SignalGroup, TrafficLight, Way
 
@@ -52,7 +52,6 @@ ARM_MERGE_ANGLE = math.radians(25.0)
 # fewer is usually a mid-block pedestrian signal, not a real junction.
 MIN_SIGNALIZED_ARMS = 3
 
-SIGNAL_CYCLE_S = 24.0
 SIGNAL_GREEN_S = 10.0
 SIGNAL_YELLOW_S = 2.0
 # No separate all-red clearance phase: the sequence is exactly
@@ -63,17 +62,32 @@ SIGNAL_YELLOW_S = 2.0
 # every cycle.
 SIGNAL_ALL_RED_S = 0.0
 SIGNAL_RED_YELLOW_S = 2.0
-# Derived so both phase groups' cycles add up to exactly SIGNAL_CYCLE_S.
-SIGNAL_RED_S = SIGNAL_CYCLE_S - SIGNAL_GREEN_S - SIGNAL_YELLOW_S - SIGNAL_ALL_RED_S - SIGNAL_RED_YELLOW_S
-# Two phase groups split a cycle exactly in half; as long as one phase
-# group's green+yellow (its "not red" window) fits within half the cycle,
-# the two groups' green windows can never overlap - see
-# test_conflicting_phases_are_never_green_at_the_same_time.
-SIGNAL_PHASE_OFFSET_S = SIGNAL_CYCLE_S / 2.0
-assert SIGNAL_GREEN_S + SIGNAL_YELLOW_S <= SIGNAL_PHASE_OFFSET_S, (
-    "a phase group's green+yellow window must fit within half the cycle, "
-    "or the two phase groups' green windows could overlap"
-)
+# Red buffer between one phase's green+yellow ending and the next phase's
+# slot starting.
+SIGNAL_PHASE_MARGIN_S = 2.0
+# How many arms one signal cycle is built for by default - a plain 4-way
+# has 2 (see _group_arms_into_phases). Real intersections aren't always a
+# clean +, so this is *not* assumed to be the final phase count; it only
+# sizes the constants below for the common case.
+# Every phase gets an equal slot long enough for its own green+yellow plus
+# the margin; the full cycle is however many phases a given intersection
+# actually needs times this slot (see build_traffic_light_system) - a
+# fixed cycle length would either force too-short green windows on a
+# complex junction or waste time on a simple one.
+SIGNAL_PHASE_SLOT_S = SIGNAL_GREEN_S + SIGNAL_YELLOW_S + SIGNAL_PHASE_MARGIN_S
+
+# Two arms only ever share a phase (get green at the same time) when
+# they're close enough to exactly opposite (a straight through-road) that
+# their traffic doesn't cross - anything else gets its own phase. This is
+# the actual safety property ("never show green to all directions" /
+# never show it to two conflicting ones); it happens to reduce to the
+# textbook "N/S green, then E/W green" for a plain 4-way, but - unlike
+# picking a phase from which half of 0-180 degrees an arm's axis falls
+# into - it doesn't depend on the intersection being close to a perfect
+# grid. A real, only-mildly-skewed 5-way junction found in production data
+# had two arms just 51 degrees apart bucketed into the same "axis half" by
+# that approach and given simultaneous green - this replaces it.
+OPPOSITE_ARM_TOLERANCE = math.radians(30.0)
 
 
 def _way_arm_angles(way: Way, center: Tuple[float, float], layer: int) -> Tuple[float, ...]:
@@ -175,16 +189,43 @@ def _intersection_arms(center: Tuple[float, float], layer: int, ways: List[Way])
     return [(entry["angle"], entry["incoming"], entry["way"]) for entry in arms]
 
 
-def _phase_group_for_angle(angle: float) -> int:
-    """Bucket an arm's axis into one of two non-conflicting phase groups.
+def _arms_may_share_a_phase(angle_a: float, angle_b: float) -> bool:
+    """Whether two arms are close enough to exactly opposite (a straight
+    through-road) that giving them green at the same time is safe."""
+    diff = abs((angle_a - angle_b + math.pi) % (2.0 * math.pi) - math.pi)
+    return abs(diff - math.pi) <= OPPOSITE_ARM_TOLERANCE
 
-    A real intersection's arms naturally fall into two roughly-opposite
-    pairs (e.g. N/S and E/W); splitting on axis orientation like this
-    generalizes beyond a perfect 4-way (T-junctions, staggered crossings,
-    5-way junctions) without needing to assume exactly 4 arms.
+
+def _group_arms_into_phases(arm_angles: List[float]) -> List[List[int]]:
+    """Partition arm indices into phases: an arm only ever joins a phase
+    when it's genuinely opposite *every* arm already in it (see
+    _arms_may_share_a_phase); everything else gets its own phase.
+
+    A phase never ends up with more than 2 members: three distinct arm
+    directions can't be pairwise opposite each other (if A is ~180 degrees
+    from B and B is ~180 degrees from C, then A and C are at ~0 degrees
+    from each other - and _intersection_arms already merges arms that
+    close together into one before this ever runs). For a plain 4-way this
+    reduces to exactly the familiar 2 phases (opposite pairs); an
+    irregular junction (T-junction, 5-way, a skewed crossing) safely gets
+    one phase per arm that has no real opposite instead of being forced
+    into a pair it actually conflicts with.
     """
-    axis = angle % math.pi
-    return 1 if math.sin(axis) ** 2 > 0.5 else 0
+    groups: List[List[int]] = []
+    assigned = [False] * len(arm_angles)
+    for i, angle_i in enumerate(arm_angles):
+        if assigned[i]:
+            continue
+        group = [i]
+        assigned[i] = True
+        for j in range(i + 1, len(arm_angles)):
+            if assigned[j]:
+                continue
+            if all(_arms_may_share_a_phase(arm_angles[member], arm_angles[j]) for member in group):
+                group.append(j)
+                assigned[j] = True
+        groups.append(group)
+    return groups
 
 
 def _movements_for_way(way: Way) -> frozenset:
@@ -283,67 +324,69 @@ def build_traffic_light_system(
             continue
 
         intersection_id = f"{layer}:{center[0]:.0f}:{center[1]:.0f}"
-        phase_groups: Dict[int, SignalGroup] = {}
         approaches: List[IntersectionApproach] = []
         cluster_lights: List[TrafficLight] = []
 
-        for arm_angle, _incoming, way in incoming_arms:
-            phase_id = _phase_group_for_angle(arm_angle)
-            group = phase_groups.get(phase_id)
-            if group is None:
-                group = SignalGroup(
-                    approach_id=f"{intersection_id}:{phase_id}",
-                    phase_id=phase_id,
-                    offset=SIGNAL_PHASE_OFFSET_S if phase_id else 0.0,
-                    cycle_time=SIGNAL_CYCLE_S,
-                    green_duration=SIGNAL_GREEN_S,
-                    yellow_duration=SIGNAL_YELLOW_S,
-                    all_red_duration=SIGNAL_ALL_RED_S,
-                    red_duration=SIGNAL_RED_S,
-                    red_yellow_duration=SIGNAL_RED_YELLOW_S,
-                )
-                phase_groups[phase_id] = group
+        phase_assignment = _group_arms_into_phases([arm[0] for arm in incoming_arms])
+        num_phases = len(phase_assignment)
+        cycle_s = num_phases * SIGNAL_PHASE_SLOT_S
 
-            movements = _movements_for_way(way)
-            group.allowed_movements = group.allowed_movements | movements
-
-            # The physical light sits a little inside the arm, facing back
-            # along the direction approaching traffic travels.
-            light_x = center[0] + math.cos(arm_angle) * 14.0
-            light_y = center[1] + math.sin(arm_angle) * 14.0
-            light = TrafficLight(
-                x=light_x,
-                y=light_y,
-                cycle_time=group.cycle_time,
-                offset=group.offset,
-                layer=layer,
-                id=_stable_light_id(layer, light_x, light_y),
-                direction_angle=(arm_angle + math.pi) % (2.0 * math.pi),
-                signal_group=group,
-                approach_id=group.approach_id,
-                allowed_movements=movements,
+        for phase_id, member_indices in enumerate(phase_assignment):
+            group = SignalGroup(
+                approach_id=f"{intersection_id}:{phase_id}",
+                phase_id=phase_id,
+                offset=phase_id * SIGNAL_PHASE_SLOT_S,
+                cycle_time=cycle_s,
+                green_duration=SIGNAL_GREEN_S,
+                yellow_duration=SIGNAL_YELLOW_S,
+                all_red_duration=SIGNAL_ALL_RED_S,
+                red_duration=cycle_s - SIGNAL_GREEN_S - SIGNAL_YELLOW_S - SIGNAL_ALL_RED_S - SIGNAL_RED_YELLOW_S,
+                red_yellow_duration=SIGNAL_RED_YELLOW_S,
             )
-            traffic_lights.append(light)
-            cluster_lights.append(light)
 
-            half_width = getattr(way, "half_width_m", 4.0)
-            # Stop line sits just outside the intersection along the arm,
-            # perpendicular to the direction of travel (prompt Section 11).
-            stop_center = (center[0] + math.cos(arm_angle) * 12.0, center[1] + math.sin(arm_angle) * 12.0)
-            perp_x, perp_y = -math.sin(arm_angle), math.cos(arm_angle)
-            approaches.append(
-                IntersectionApproach(
-                    approach_id=f"{intersection_id}:{round(arm_angle, 2)}",
-                    road_segments=[way],
-                    direction_vector=(math.cos(arm_angle), math.sin(arm_angle)),
-                    stop_line=(
-                        (stop_center[0] - perp_x * half_width, stop_center[1] - perp_y * half_width),
-                        (stop_center[0] + perp_x * half_width, stop_center[1] + perp_y * half_width),
-                    ),
-                    allowed_movements=movements,
+            for member_index in member_indices:
+                arm_angle, _incoming, way = incoming_arms[member_index]
+                movements = _movements_for_way(way)
+                group.allowed_movements = group.allowed_movements | movements
+
+                # The physical light sits a little inside the arm, facing
+                # back along the direction approaching traffic travels.
+                light_x = center[0] + math.cos(arm_angle) * 14.0
+                light_y = center[1] + math.sin(arm_angle) * 14.0
+                light = TrafficLight(
+                    x=light_x,
+                    y=light_y,
+                    cycle_time=group.cycle_time,
+                    offset=group.offset,
+                    layer=layer,
+                    id=_stable_light_id(layer, light_x, light_y),
+                    direction_angle=(arm_angle + math.pi) % (2.0 * math.pi),
                     signal_group=group,
+                    approach_id=group.approach_id,
+                    allowed_movements=movements,
                 )
-            )
+                traffic_lights.append(light)
+                cluster_lights.append(light)
+
+                half_width = getattr(way, "half_width_m", 4.0)
+                # Stop line sits just outside the intersection along the
+                # arm, perpendicular to the direction of travel (prompt
+                # Section 11).
+                stop_center = (center[0] + math.cos(arm_angle) * 12.0, center[1] + math.sin(arm_angle) * 12.0)
+                perp_x, perp_y = -math.sin(arm_angle), math.cos(arm_angle)
+                approaches.append(
+                    IntersectionApproach(
+                        approach_id=f"{intersection_id}:{round(arm_angle, 2)}",
+                        road_segments=[way],
+                        direction_vector=(math.cos(arm_angle), math.sin(arm_angle)),
+                        stop_line=(
+                            (stop_center[0] - perp_x * half_width, stop_center[1] - perp_y * half_width),
+                            (stop_center[0] + perp_x * half_width, stop_center[1] + perp_y * half_width),
+                        ),
+                        allowed_movements=movements,
+                        signal_group=group,
+                    )
+                )
 
         logical_intersections.append(
             LogicalIntersection(
