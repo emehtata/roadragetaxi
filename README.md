@@ -53,7 +53,16 @@ Koska muut kuskit ovat idiootteja ja ajavat miten sattuu. Vähemmästäkin hermo
 │       ├── __main__.py    # Module entrypoint (`python3 -m theroadragetrip`)
 │       ├── geo.py         # Projection and geometric calculations (clamp, segment distance, lat/lon conversion)
 │       ├── main.py        # CLI arguments, logging, and Pygame main loop
-│       ├── osm.py         # OSM fetching, disk caching, parsing, and AutoFetchManager
+│       ├── osm/            # OSM data models, fetching, disk caching, and tile streaming
+│       │   ├── __init__.py       # Re-exports the full public OSM API from the submodules below
+│       │   ├── constants.py      # City/bbox presets, road widths, and OSM speed-limit parsing
+│       │   ├── overpass.py       # Overpass query building, diagnostics, and network fetching
+│       │   ├── cache.py          # Disk JSON cache for fetched OSM elements
+│       │   ├── models.py         # Way/Water/Building/TrafficLight/Place/... data classes
+│       │   ├── traffic_signals.py # Traffic-light deduplication and logical intersection building
+│       │   ├── trees.py          # Procedural tree placement in off-road scenery
+│       │   ├── build.py          # build_ways: assembles parsed OSM elements into game objects
+│       │   └── autofetch.py      # AutoFetchManager: background tile streaming
 │       ├── pedestrian.py  # Pedestrian and cyclist simulation, road crossing, and evasion
 │       ├── physics.py     # Car dataclass, vehicle dynamics, road collision, and lane assist
 │       ├── police.py      # Hidden speed-camera placement and directional detection
