@@ -128,6 +128,8 @@ _building_sign_surface_cache = {}
 _building_visual_plan_cache = {}
 MIN_BUILDING_SIGN_WIDTH_PX = 24
 MIN_BUILDING_SIGN_DEPTH_PX = 8
+MAX_BUILDING_SIGN_WIDTH_PX = 180
+MAX_BUILDING_SIGN_FONT_SIZE = 32
 _pending_static_rebuilds = set()
 _static_rebuilds_this_frame = 0
 
@@ -1128,6 +1130,51 @@ def _visible_building_edges(points, roof) -> set[int]:
     return visible
 
 
+def _building_sign_anchor(building: Building, place_x: float, place_y: float, edge_index: int):
+    """Project a venue point inside a building onto its facade edge."""
+    start = building.points_m[edge_index]
+    end = building.points_m[(edge_index + 1) % len(building.points_m)]
+    dx = end[0] - start[0]
+    dy = end[1] - start[1]
+    length_sq = dx * dx + dy * dy
+    ratio = 0.5
+    if length_sq > 1e-9:
+        ratio = max(0.0, min(1.0, ((place_x - start[0]) * dx + (place_y - start[1]) * dy) / length_sq))
+    return start[0] + dx * ratio, start[1] + dy * ratio
+
+
+def _building_sign_corners(point, next_point, roof_point, next_roof, center_ratio, width_px, depth_px):
+    """Return a sign quad lying on the projected facade wall."""
+    edge_x = next_point[0] - point[0]
+    edge_y = next_point[1] - point[1]
+    edge_length = math.hypot(edge_x, edge_y)
+    wall_x = roof_point[0] - point[0]
+    wall_y = roof_point[1] - point[1]
+    wall_depth = math.hypot(wall_x, wall_y)
+    if edge_length <= 1e-9 or wall_depth <= 1e-9:
+        return None
+    half_u = min(0.36, width_px / (2.0 * edge_length))
+    half_v = min(0.16, depth_px / (2.0 * wall_depth))
+    center_v = 0.22
+
+    def point_at(u, v):
+        base_x = point[0] + edge_x * u
+        base_y = point[1] + edge_y * u
+        top_x = roof_point[0] + (next_roof[0] - roof_point[0]) * u
+        top_y = roof_point[1] + (next_roof[1] - roof_point[1]) * u
+        return (
+            base_x + (top_x - base_x) * v,
+            base_y + (top_y - base_y) * v,
+        )
+
+    return [
+        point_at(center_ratio - half_u, center_v - half_v),
+        point_at(center_ratio + half_u, center_v - half_v),
+        point_at(center_ratio + half_u, center_v + half_v),
+        point_at(center_ratio - half_u, center_v + half_v),
+    ]
+
+
 def draw_buildings(
     screen,
     buildings: List[Building],
@@ -1347,7 +1394,7 @@ def _draw_buildings_uncached(
 
         if px_per_m > 0.45:
             global _building_sign_font_cache
-            sign_font_size = max(16, min(52, round(18.0 * px_per_m / 0.7)))
+            sign_font_size = max(16, min(MAX_BUILDING_SIGN_FONT_SIZE, round(18.0 * px_per_m / 0.7)))
             sign_font = _building_sign_font_cache.get(sign_font_size)
             if sign_font is None:
                 sign_font = pygame.font.SysFont(None, sign_font_size, bold=True)
@@ -1402,6 +1449,9 @@ def _draw_buildings_uncached(
                 segment_dx = world_end[0] - world_start[0]
                 segment_dy = world_end[1] - world_start[1]
                 segment_length_sq = segment_dx * segment_dx + segment_dy * segment_dy
+                wall_anchor_x, wall_anchor_y = _building_sign_anchor(
+                    b, anchor_x, anchor_y, edge_index,
+                )
                 segment_ratio = 0.5
                 if segment_length_sq > 1e-9:
                     segment_ratio = max(
@@ -1413,17 +1463,16 @@ def _draw_buildings_uncached(
                             / segment_length_sq,
                         ),
                     )
-                wall_anchor_x = world_start[0] + segment_dx * segment_ratio
-                wall_anchor_y = world_start[1] + segment_dy * segment_ratio
                 sign_center_x, sign_center_y = world_to_screen(
                     wall_anchor_x, wall_anchor_y, camx, camy, px_per_m, screen_w, screen_h
                 )
-                # Venue signs sit at street level, not on the roof edge.
-                sign_center_x += wall_depth_x * 0.22
-                sign_center_y += wall_depth_y * 0.22
                 sign_text = place_name.upper()
                 text_width = sign_font.size(sign_text)[0]
-                sign_width = min(text_width + 8, int(edge_length * 0.72))
+                sign_width = min(
+                    MAX_BUILDING_SIGN_WIDTH_PX,
+                    text_width + 8,
+                    int(edge_length * 0.72),
+                )
                 sign_depth = min(18, int(wall_depth * 0.28))
                 if sign_width < MIN_BUILDING_SIGN_WIDTH_PX or sign_depth < MIN_BUILDING_SIGN_DEPTH_PX:
                     continue
@@ -1435,16 +1484,23 @@ def _draw_buildings_uncached(
                 text_surface = _building_sign_surface(
                     pygame, sign_font, sign_text, sign_width, sign_depth, angle,
                 )
-                tangent_x = edge_x * sign_width * 0.5
-                tangent_y = edge_y * sign_width * 0.5
-                depth_x = wall_normal_x * sign_depth * 0.5
-                depth_y = wall_normal_y * sign_depth * 0.5
+                sign_corners_world = _building_sign_corners(
+                    point,
+                    next_point,
+                    roof_point,
+                    next_roof,
+                    segment_ratio,
+                    sign_width,
+                    sign_depth,
+                )
+                if sign_corners_world is None:
+                    continue
                 sign_corners = [
-                    (round(sign_center_x - tangent_x - depth_x), round(sign_center_y - tangent_y - depth_y)),
-                    (round(sign_center_x + tangent_x - depth_x), round(sign_center_y + tangent_y - depth_y)),
-                    (round(sign_center_x + tangent_x + depth_x), round(sign_center_y + tangent_y + depth_y)),
-                    (round(sign_center_x - tangent_x + depth_x), round(sign_center_y - tangent_y + depth_y)),
+                    tuple(round(value) for value in corner)
+                    for corner in sign_corners_world
                 ]
+                sign_center_x = sum(corner[0] for corner in sign_corners) / 4.0
+                sign_center_y = sum(corner[1] for corner in sign_corners) / 4.0
                 sign_rect = pygame.Rect(
                     min(corner[0] for corner in sign_corners),
                     min(corner[1] for corner in sign_corners),

@@ -1,5 +1,6 @@
 import sys
 import types
+import os
 
 fake_pyproj = types.SimpleNamespace()
 
@@ -15,15 +16,32 @@ class FakeTransformer:
 fake_pyproj.Transformer = FakeTransformer
 sys.modules["pyproj"] = fake_pyproj
 
+os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
+import pygame
+
 from theroadragetrip.osm import build_ways, plant_trees
 from theroadragetrip.osm import Building, Place, Scenery, Way, associate_places_with_buildings
+from theroadragetrip.geo import point_in_polygon
 from theroadragetrip.physics import Car
 from theroadragetrip.render import (
     DISTRICT_PLACE_KINDS,
+    MAX_BUILDING_SIGN_FONT_SIZE,
     _building_is_commercial,
+    _building_sign_anchor,
     _building_window_story_count,
     _visible_building_edges,
+    _draw_buildings_uncached,
+    world_to_screen,
 )
+
+
+def test_seven_floor_building_keeps_floor_rows_separate():
+    building = Building(
+        [(0.0, 0.0), (20.0, 0.0), (20.0, 20.0), (0.0, 20.0)],
+        levels=7,
+    )
+
+    assert _building_window_story_count(building) == 7
 from theroadragetrip.taxi import TaxiManager
 
 
@@ -84,6 +102,50 @@ def test_build_ways_buildings_and_scenery_and_names():
     assert {place.name for place in places} == {"Downtown", "Named Attraction"}
     assert next(place for place in places if place.name == "Downtown").kind == "suburb"
     assert next(place for place in places if place.name == "Named Attraction").kind == "poi"
+
+
+def test_building_height_precedes_levels_for_facade_depth():
+    elements = [
+        {"type": "node", "id": 1, "lat": 60.0, "lon": 25.0},
+        {"type": "node", "id": 2, "lat": 60.0, "lon": 25.001},
+        {"type": "node", "id": 3, "lat": 60.001, "lon": 25.001},
+        {"type": "node", "id": 4, "lat": 60.001, "lon": 25.0},
+        {
+            "type": "way", "id": 99, "nodes": [1, 2, 3, 4, 1],
+            "tags": {"building": "yes", "height": "30", "building:levels": "7"},
+        },
+    ]
+
+    result = build_ways(elements)
+
+    assert result.buildings[0].height_m == 30.0
+    assert result.buildings[0].levels == 7
+
+
+def test_building_part_with_height_and_levels_is_renderable_building_data():
+    elements = [
+        {"type": "node", "id": 1, "lat": 60.0, "lon": 25.0},
+        {"type": "node", "id": 2, "lat": 60.0, "lon": 25.001},
+        {"type": "node", "id": 3, "lat": 60.001, "lon": 25.001},
+        {"type": "node", "id": 4, "lat": 60.001, "lon": 25.0},
+        {
+            "type": "way", "id": 100, "nodes": [1, 2, 3, 4, 1],
+            "tags": {"building": "yes", "name": "Valkealinnantalo"},
+        },
+        {"type": "node", "id": 5, "lat": 60.0002, "lon": 25.0002},
+        {"type": "node", "id": 6, "lat": 60.0002, "lon": 25.0008},
+        {"type": "node", "id": 7, "lat": 60.0008, "lon": 25.0008},
+        {"type": "node", "id": 8, "lat": 60.0008, "lon": 25.0002},
+        {
+            "type": "way", "id": 101, "nodes": [5, 6, 7, 8, 5],
+            "tags": {"building:part": "yes", "height": "30", "building:levels": "7"},
+        },
+    ]
+
+    result = build_ways(elements)
+
+    part = next(building for building in result.buildings if building.levels == 7)
+    assert part.height_m == 30.0
 
 
 def test_associate_places_with_buildings_uses_building_geometry():
@@ -228,3 +290,57 @@ def test_visible_facades_work_for_different_building_shapes():
 def test_restaurant_place_is_not_a_map_district_label():
     assert "restaurant" not in DISTRICT_PLACE_KINDS
     assert "city" in DISTRICT_PLACE_KINDS
+
+
+def test_toscana_render_sign_anchor_lands_on_facade_not_roof_center():
+    building = Building(
+        [(0.0, 0.0), (20.0, 0.0), (20.0, 20.0), (0.0, 20.0)],
+        bbox=(0.0, 0.0, 20.0, 20.0),
+    )
+    restaurant = Place(10.0, 10.0, "Toscana", "restaurant")
+    building.associated_places = [restaurant]
+
+    anchor = _building_sign_anchor(building, restaurant.x, restaurant.y, 0)
+
+    assert anchor == (10.0, 0.0)
+    assert anchor != (restaurant.x, restaurant.y)
+
+
+def test_toscana_draw_buildings_renders_facade_sign_pixels():
+    pygame.init()
+    try:
+        building = Building(
+            [(0.0, 0.0), (40.0, 0.0), (40.0, 40.0), (0.0, 40.0)],
+            bbox=(0.0, 0.0, 40.0, 40.0),
+            associated_places=[Place(20.0, 20.0, "Toscana", "restaurant")],
+        )
+        screen = pygame.Surface((400, 400), pygame.SRCALPHA)
+        screen.fill((0, 0, 0, 0))
+        _draw_buildings_uncached(
+            screen, [building], 20.0, 20.0, px_per_m=9.0,
+            screen_w=400, screen_h=400,
+        )
+
+        gold_pixels = []
+        for pixel_y in range(screen.get_height()):
+            for pixel_x in range(screen.get_width()):
+                red, green, blue, alpha = screen.get_at((pixel_x, pixel_y))
+                if (red, green, blue) == (211, 169, 70) and alpha:
+                    gold_pixels.append((pixel_x, pixel_y))
+
+        assert gold_pixels, "Toscana facade sign did not render"
+        center_y = sum(pixel_y for _, pixel_y in gold_pixels) / len(gold_pixels)
+        roof_center_y = world_to_screen(20.0, 20.0, 20.0, 20.0, 9.0, 400, 400)[1]
+        assert abs(center_y - roof_center_y) > 8.0
+        screen_points = [
+            world_to_screen(x, y, 20.0, 20.0, 9.0, 400, 400)
+            for x, y in building.points_m
+        ]
+        roof_points = [(x - 30.0 * 0.7, y - 30.0) for x, y in screen_points]
+        assert not any(point_in_polygon(x, y, roof_points) for x, y in gold_pixels)
+    finally:
+        pygame.quit()
+
+
+def test_building_sign_font_stays_realistic_when_zoomed_in():
+    assert MAX_BUILDING_SIGN_FONT_SIZE == 32
