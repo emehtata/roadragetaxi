@@ -97,10 +97,10 @@ def test_ice_road_has_a_much_lower_grip_limit():
     dry_road = Way(points_m=[(0.0, 0.0), (100.0, 0.0)], highway="primary", half_width_m=6.0)
 
     # A turn gentle enough to keep grip on dry asphalt...
-    speed = 15.0
+    speed = 20.0
     dry_car = Car(x=0.0, y=0.0, heading=0.0, speed=speed)
     update_car_physics(
-        dry_car, throttle=0.0, brake=0.0, steer_left=0.3, steer_right=0.0, dt=0.1,
+        dry_car, throttle=0.0, brake=0.0, steer_left=0.5, steer_right=0.0, dt=0.1,
         current_way=dry_road, physics_mode="arcade",
     )
     assert dry_car.is_sliding is False
@@ -108,7 +108,7 @@ def test_ice_road_has_a_much_lower_grip_limit():
     # ...should still break loose on the same road covered in ice.
     ice_car = Car(x=0.0, y=0.0, heading=0.0, speed=speed)
     update_car_physics(
-        ice_car, throttle=0.0, brake=0.0, steer_left=0.3, steer_right=0.0, dt=0.1,
+        ice_car, throttle=0.0, brake=0.0, steer_left=0.5, steer_right=0.0, dt=0.1,
         current_way=ice_road, physics_mode="arcade",
     )
     assert ice_car.is_sliding is True

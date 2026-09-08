@@ -22,10 +22,21 @@ GRAVITY_MPS2 = 9.81
 # Cornering grip limit, as a fraction of g, before the tires lose traction.
 # "Arcade" is forgiving (steering just goes mushy past the limit, no separate
 # slide); "simulation" is stricter and adds a genuine drift angle that has to
-# be steered out of. A real road-going car maxes out around 0.8-1.0g in the
-# dry; ice_road ways get a much lower limit on top of whichever mode is set.
-GRIP_LIMIT_G = {"arcade": 0.9, "simulation": 0.55}
-ICE_GRIP_MULTIPLIER = 0.35
+# be steered out of.
+#
+# These are calibrated against this game's steering model, not real tire
+# grip: steer_left/right is a binary "wheel fully turned" input with no
+# in-between, so at any given speed a "gentle" turn and a "hard" turn demand
+# the *same* lateral g while the key is held - there's no smaller-magnitude
+# input to tell them apart. The only variable left to gate on is speed, so
+# the limit has to sit high enough that full-lock steering stays planted
+# through ordinary city/arterial driving and only lets go once a turn is
+# actually taken at speeding-level speed - not literally the first tap of
+# the turn key at 20 km/h. Regression: 0.9/0.55 g made full-lock steering
+# break loose above ~20 km/h / ~10 km/h - "skid marks came too easy" and the
+# g-meter pinned to its edge on almost any turn.
+GRIP_LIMIT_G = {"arcade": 1.9, "simulation": 1.3}
+ICE_GRIP_MULTIPLIER = 0.3
 DRIFT_RECOVERY_RATE = 2.5  # rad/s; how fast a "simulation"-mode drift angle decays once grip is regained
 
 NON_DRIVABLE_HIGHWAYS = {

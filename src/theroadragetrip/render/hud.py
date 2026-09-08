@@ -563,7 +563,7 @@ def draw_g_force_meter(
     lateral_g: float,
     is_sliding: bool = False,
     screen_h: int = SCREEN_H,
-    max_g: float = 1.2,
+    max_g: float = 2.5,
 ) -> None:
     """Debug-HUD g-force meter: a dot on a crosshair circle, positioned
     beside the speedometer. Forward/back is the vertical axis (accelerating
