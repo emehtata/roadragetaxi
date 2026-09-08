@@ -26,10 +26,13 @@ from theroadragetrip.geo import point_in_polygon
 from theroadragetrip.physics import Car
 from theroadragetrip.render import (
     DISTRICT_PLACE_KINDS,
+    MAX_BUILDING_DEPTH_PX,
     MAX_BUILDING_SIGN_FONT_SIZE,
+    BUILDING_WALL_COLORS,
     _building_is_commercial,
     _building_sign_anchor,
     _building_sign_angle,
+    _building_sign_foreshorten,
     _building_window_story_count,
     _visible_building_edges,
     _draw_buildings_uncached,
@@ -44,6 +47,90 @@ def test_seven_floor_building_keeps_floor_rows_separate():
     )
 
     assert _building_window_story_count(building) == 7
+
+
+def _facade_wall_pixel_span(screen):
+    """Return the vertical span of drawn wall-color pixels (facade depth)."""
+    min_y, max_y = None, None
+    for y in range(screen.get_height()):
+        for x in range(screen.get_width()):
+            if tuple(screen.get_at((x, y)))[:3] in BUILDING_WALL_COLORS:
+                min_y = y if min_y is None else min(min_y, y)
+                max_y = y if max_y is None else max(max_y, y)
+    assert min_y is not None, "no facade wall pixels rendered"
+    return max_y - min_y
+
+
+def test_taller_buildings_render_a_deeper_facade():
+    """A much taller building should extrude visibly further than a short
+    one instead of hitting the same depth cap (regression for buildings
+    beyond ~3 storeys all rendering at the same height)."""
+    short = Building(
+        [(0.0, 0.0), (20.0, 0.0), (20.0, 20.0), (0.0, 20.0)],
+        bbox=(0.0, 0.0, 20.0, 20.0), height_m=6.0,
+    )
+    tall = Building(
+        [(0.0, 0.0), (20.0, 0.0), (20.0, 20.0), (0.0, 20.0)],
+        bbox=(0.0, 0.0, 20.0, 20.0), height_m=60.0,
+    )
+
+    pygame.init()
+    try:
+        # Font/surface objects cached across a pygame.quit()/init() cycle are
+        # invalid; clear the sign caches so an earlier test's Font isn't reused.
+        render_module._building_sign_font_cache.clear()
+        render_module._building_sign_surface_cache.clear()
+        short_screen = pygame.Surface((400, 400), pygame.SRCALPHA)
+        _draw_buildings_uncached(short_screen, [short], 10.0, 10.0, px_per_m=9.0, screen_w=400, screen_h=400)
+        tall_screen = pygame.Surface((400, 400), pygame.SRCALPHA)
+        _draw_buildings_uncached(tall_screen, [tall], 10.0, 10.0, px_per_m=9.0, screen_w=400, screen_h=400)
+
+        assert _facade_wall_pixel_span(tall_screen) > _facade_wall_pixel_span(short_screen)
+    finally:
+        pygame.quit()
+
+
+def test_very_tall_building_facade_depth_stays_bounded():
+    """Extremely tall buildings should cap out rather than growing without
+    bound and dwarfing the rest of the scene. Uses a small footprint so the
+    measured pixel span reflects the roof-offset depth, not the building's
+    own on-screen size."""
+    building = Building(
+        [(0.0, 0.0), (4.0, 0.0), (4.0, 4.0), (0.0, 4.0)],
+        bbox=(0.0, 0.0, 4.0, 4.0), height_m=120.0,
+    )
+    pygame.init()
+    try:
+        render_module._building_sign_font_cache.clear()
+        render_module._building_sign_surface_cache.clear()
+        screen = pygame.Surface((600, 600), pygame.SRCALPHA)
+        _draw_buildings_uncached(screen, [building], 2.0, 2.0, px_per_m=9.0, screen_w=600, screen_h=600)
+
+        footprint_span_px = 4.0 * 9.0
+        assert _facade_wall_pixel_span(screen) <= footprint_span_px + MAX_BUILDING_DEPTH_PX + 4
+    finally:
+        pygame.quit()
+
+
+def test_building_sign_foreshorten_is_full_when_wall_faces_the_camera():
+    # Edge tangent and wall-normal direction perpendicular: no correction needed.
+    assert _building_sign_foreshorten(1.0, 0.0, 0.0, 1.0) == 1.0
+
+
+def test_building_sign_foreshorten_shrinks_for_edge_on_walls():
+    # Edge tangent and wall-normal nearly parallel: wall is close to edge-on
+    # to the fixed extrusion direction, so the sign is squashed down to the
+    # floor clamp rather than disappearing (a raw sine of ~0) or staying at
+    # its unsquashed, face-on size.
+    from theroadragetrip.render.buildings import MIN_SIGN_FORESHORTEN
+
+    nearly_parallel = _building_sign_foreshorten(1.0, 0.0, 0.999, 0.001)
+    assert nearly_parallel == MIN_SIGN_FORESHORTEN
+
+    # A moderate (45 degree) deviation from perpendicular should land
+    # strictly between the floor and the unsquashed maximum.
+    moderate = _building_sign_foreshorten(1.0, 0.0, 0.7071, 0.7071)
+    assert MIN_SIGN_FORESHORTEN < moderate < 1.0
 from theroadragetrip.taxi import TaxiManager
 
 
@@ -317,6 +404,8 @@ def test_facade_sign_angle_stays_upright_across_zoom():
 def test_toscana_draw_buildings_renders_facade_sign_pixels():
     pygame.init()
     try:
+        render_module._building_sign_font_cache.clear()
+        render_module._building_sign_surface_cache.clear()
         building = Building(
             [(0.0, 0.0), (40.0, 0.0), (40.0, 40.0), (0.0, 40.0)],
             bbox=(0.0, 0.0, 40.0, 40.0),

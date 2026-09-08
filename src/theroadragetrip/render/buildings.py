@@ -72,6 +72,20 @@ MIN_BUILDING_SIGN_WIDTH_PX = 24
 MIN_BUILDING_SIGN_DEPTH_PX = 8
 MAX_BUILDING_SIGN_WIDTH_PX = 180
 MAX_BUILDING_SIGN_FONT_SIZE = 32
+# Cap on the on-screen facade "depth" (the pseudo-3D roof-offset used to draw
+# walls). Previously capped at 30px, which - at the default 9.0 px/m zoom -
+# is reached by any building taller than ~9.5m (about 3 storeys), so taller
+# buildings all rendered at the same visual height regardless of their real
+# height_m/levels. Raised well past the height of a typical multi-storey
+# building in the bundled Finnish city data so height differences stay
+# visible across more of the realistic range; very tall buildings still cap
+# out rather than growing without bound.
+MAX_BUILDING_DEPTH_PX = 100
+# Minimum on-screen height for one drawn floor row before floors start
+# visually merging together; used to cap how many of a tall building's
+# storeys are actually drawn as separate window rows within MAX_BUILDING_DEPTH_PX,
+# so a many-storey building doesn't garble its facade into overlapping bands.
+MIN_FLOOR_HEIGHT_PX = 3.0
 
 
 def _building_visual_plan(building):
@@ -114,18 +128,44 @@ def _building_visual_plan(building):
     return plan
 
 
-def _building_sign_surface(pygame, font, text, sign_width, sign_depth, angle):
+MIN_SIGN_FORESHORTEN = 0.35
+
+
+def _building_sign_foreshorten(edge_x: float, edge_y: float, wall_normal_x: float, wall_normal_y: float) -> float:
+    """Return how strongly a facade sign should be squashed for this wall.
+
+    `draw_buildings` fakes a 3D facade by offsetting every building's roof by
+    one fixed screen-space vector rather than a true per-wall normal, so a
+    wall's on-screen "depth" side (point -> roof_point) is not generally
+    perpendicular to its "width" side (point -> next_point). The sign quad
+    already reflects that (its corners follow both directions), but the sign
+    *text* was only ever rotated to match the width direction, never
+    foreshortened to match the depth direction - so it kept its normal,
+    unsquashed aspect ratio no matter how obliquely the wall sat relative to
+    the fixed extrusion, making it look pasted on flat instead of lying on
+    the wall. The sine of the angle between the two unit directions is 1.0
+    when they're perpendicular (no correction needed) and shrinks toward 0.0
+    as the wall becomes edge-on to the extrusion direction (most oblique);
+    clamped to a floor so text never disappears entirely.
+    """
+    sine = abs(edge_x * wall_normal_y - edge_y * wall_normal_x)
+    return max(MIN_SIGN_FORESHORTEN, min(1.0, sine))
+
+
+def _building_sign_surface(pygame, font, text, sign_width, sign_depth, angle, foreshorten=1.0):
     """Reuse static venue sign text across viewport cache rebuilds."""
-    key = (id(font), text, sign_width, sign_depth, round(angle, 3))
+    key = (id(font), text, sign_width, sign_depth, round(angle, 3), round(foreshorten, 3))
     cached = _building_sign_surface_cache.get(key)
     if cached is not None:
         return cached
     text_surface = font.render(text, True, (250, 239, 190))
-    if text_surface.get_width() + 8 > sign_width:
-        text_surface = pygame.transform.smoothscale(
-            text_surface,
-            (max(4, sign_width - 8), max(4, sign_depth - 2)),
-        )
+    target_width = max(4, sign_width - 8)
+    # Always rescale to the wall-foreshortened height, not just when the
+    # rendered text is too wide, so the sign is squashed to match the wall's
+    # perspective even when the glyphs would otherwise already fit.
+    target_height = max(4, int(round((sign_depth - 2) * foreshorten)))
+    if text_surface.get_width() != target_width or text_surface.get_height() != target_height:
+        text_surface = pygame.transform.smoothscale(text_surface, (target_width, target_height))
     cached = pygame.transform.rotate(text_surface, angle)
     _building_sign_surface_cache[key] = cached
     return cached
@@ -320,11 +360,7 @@ def _draw_buildings_uncached(
             pygame.draw.polygon(screen, BUILDING_ROOF_COLORS[0], pts)
             continue
         height = max(3.0, float(getattr(b, "height_m", 8.0)))
-        level_count = getattr(b, "levels", None)
-        if level_count is None:
-            level_count = max(1, round((height - 1.5) / 3.2))
-        level_count = max(1, min(40, int(level_count)))
-        depth = min(30, max(3, int(height * 0.35 * px_per_m)))
+        depth = min(MAX_BUILDING_DEPTH_PX, max(3, int(height * 0.35 * px_per_m)))
         roof = [(x - depth * 0.7, y - depth) for x, y in pts]
 
         center_x, center_y = getattr(b, "center_m", (0.0, 0.0))
@@ -346,7 +382,10 @@ def _draw_buildings_uncached(
 
         # Add small facade details after the roof so they remain visible at low zoom.
         visible_edges = _visible_building_edges(pts, roof)
-        story_count = _building_window_story_count(b)
+        # `depth` (== abs(roof_y) for every point, since the roof offset is
+        # the same fixed vector everywhere) bounds how many separate floor
+        # rows can actually be drawn without them visually merging together.
+        story_count = min(_building_window_story_count(b), max(1, int(depth / MIN_FLOOR_HEIGHT_PX)))
         is_commercial = _building_is_commercial(b)
         for index in visible_edges:
             point = pts[index]
@@ -529,8 +568,9 @@ def _draw_buildings_uncached(
                 if sign_width < MIN_BUILDING_SIGN_WIDTH_PX or sign_depth < MIN_BUILDING_SIGN_DEPTH_PX:
                     continue
                 angle = _building_sign_angle(point, next_point)
+                foreshorten = _building_sign_foreshorten(edge_x, edge_y, wall_normal_x, wall_normal_y)
                 text_surface = _building_sign_surface(
-                    pygame, sign_font, sign_text, sign_width, sign_depth, angle,
+                    pygame, sign_font, sign_text, sign_width, sign_depth, angle, foreshorten,
                 )
                 sign_corners_world = _building_sign_corners(
                     point,
