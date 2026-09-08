@@ -1105,6 +1105,30 @@ def _building_is_commercial(building: Building) -> bool:
     return False
 
 
+def _visible_building_edges(points, roof) -> set[int]:
+    """Return facade edges on the camera-facing side of the pseudo-3D roof."""
+    if not points or len(points) != len(roof):
+        return set()
+    roof_offset_x = roof[0][0] - points[0][0]
+    roof_offset_y = roof[0][1] - points[0][1]
+    front_x = -roof_offset_x
+    front_y = -roof_offset_y
+    centroid_x = sum(point[0] for point in points) / len(points)
+    centroid_y = sum(point[1] for point in points) / len(points)
+    visible = set()
+    for index, point in enumerate(points):
+        next_point = points[(index + 1) % len(points)]
+        midpoint_x = (point[0] + next_point[0]) * 0.5
+        midpoint_y = (point[1] + next_point[1]) * 0.5
+        frontness = (
+            (midpoint_x - centroid_x) * front_x
+            + (midpoint_y - centroid_y) * front_y
+        )
+        if frontness > 0.0:
+            visible.add(index)
+    return visible
+
+
 def draw_buildings(
     screen,
     buildings: List[Building],
@@ -1222,40 +1246,10 @@ def _draw_buildings_uncached(
         pygame.draw.lines(screen, (70, 66, 61), True, roof, 1)
 
         # Add small facade details after the roof so they remain visible at low zoom.
-        visible_edges = []
-        edge_facing_scores = {}
-        world_centroid_x = sum(point[0] for point in b.points_m) / len(b.points_m)
-        world_centroid_y = sum(point[1] for point in b.points_m) / len(b.points_m)
-        for index, point in enumerate(b.points_m):
-            next_point = b.points_m[(index + 1) % len(b.points_m)]
-            midpoint_x = (point[0] + next_point[0]) * 0.5
-            midpoint_y = (point[1] + next_point[1]) * 0.5
-            edge_x = next_point[0] - point[0]
-            edge_y = next_point[1] - point[1]
-            inward_x = world_centroid_x - midpoint_x
-            inward_y = world_centroid_y - midpoint_y
-            outward_x = -edge_y
-            outward_y = edge_x
-            if outward_x * inward_x + outward_y * inward_y > 0.0:
-                outward_x = -outward_x
-                outward_y = -outward_y
-            camera_x = camx - midpoint_x
-            camera_y = camy - midpoint_y
-            facing_score = outward_x * camera_x + outward_y * camera_y
-            if facing_score > 0.0:
-                visible_edges.append(index)
-                edge_facing_scores[index] = facing_score
-        window_edges = set()
-        if edge_facing_scores:
-            nearest_score = max(edge_facing_scores.values())
-            tolerance = max(1e-6, nearest_score * 1e-6)
-            window_edges = {
-                index for index, score in edge_facing_scores.items()
-                if nearest_score - score <= tolerance
-            }
+        visible_edges = _visible_building_edges(pts, roof)
         story_count = _building_window_story_count(b)
         is_commercial = _building_is_commercial(b)
-        for index in window_edges:
+        for index in visible_edges:
             point = pts[index]
             next_point = pts[(index + 1) % len(pts)]
             roof_point = roof[index]

@@ -18,7 +18,7 @@ sys.modules["pyproj"] = fake_pyproj
 from theroadragetrip.osm import build_ways, plant_trees
 from theroadragetrip.osm import Building, Place, Scenery, Way, associate_places_with_buildings
 from theroadragetrip.physics import Car
-from theroadragetrip.render import _building_is_commercial, _building_window_story_count
+from theroadragetrip.render import _building_is_commercial, _building_window_story_count, _visible_building_edges
 from theroadragetrip.taxi import TaxiManager
 
 
@@ -201,3 +201,16 @@ def test_commercial_buildings_are_marked_for_storefront_ground_floor():
 
     assert _building_is_commercial(commercial) is True
     assert _building_is_commercial(residential) is False
+
+
+def test_visible_facades_work_for_different_building_shapes():
+    shapes = [
+        [(0.0, 0.0), (20.0, 0.0), (20.0, 20.0), (0.0, 20.0)],
+        [(0.0, 0.0), (20.0, 0.0), (10.0, 20.0)],
+        [(0.0, 0.0), (30.0, 0.0), (30.0, 10.0), (15.0, 10.0), (15.0, 25.0), (0.0, 25.0)],
+    ]
+    for points in shapes:
+        roof = [(x - 7.0, y - 10.0) for x, y in points]
+        visible = _visible_building_edges(points, roof)
+        assert visible
+        assert len(visible) < len(points)
