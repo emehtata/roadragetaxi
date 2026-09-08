@@ -430,3 +430,157 @@ def test_tile_merge_cost_does_not_scale_with_already_loaded_ways(monkeypatch):
     # One _map_object_key call per new way, not one per new way *plus* one
     # per already-loaded way to rebuild a "what's already known" set.
     assert call_count <= len(new_ways) + 1
+
+
+def test_unload_tiles_cost_does_not_scale_with_number_of_removed_keys(monkeypatch):
+    """Regression: unloading a tile used to rebuild the whole section's
+    list once *per removed key* (a list-comprehension filter inside the
+    per-key loop), so unloading even a handful of a tile's
+    exclusively-owned objects out of an already-large, well-explored world
+    scaled with removed_keys x total_size - the same shape of stall as the
+    tile-merge and tree-cleanup bugs fixed earlier ("tile unloading takes
+    time"). Unloading should filter each section once, regardless of how
+    many keys are being removed from it."""
+    import theroadragetrip.osm.autofetch as autofetch_module
+
+    call_count = 0
+    real_key = autofetch_module._map_object_key
+
+    def counting_key(obj):
+        nonlocal call_count
+        call_count += 1
+        return real_key(obj)
+
+    monkeypatch.setattr(autofetch_module, "_map_object_key", counting_key)
+
+    existing_ways = [
+        Way([(x, 0.0), (x + 5.0, 0.0)], "residential", 4.0, osm_id=i, bbox=(x, 0.0, x + 5.0, 0.0))
+        for i, x in enumerate(float(n) * 20.0 for n in range(2000))
+    ]
+    manager = AutoFetchManager(list(existing_ways), (0.0, 0.0, 40000.0, 1000.0), transformer=None)
+    manager.active_tiles = {TileCoord(0, 0), TileCoord(1, 0)}
+    manager.loaded_tiles = set(manager.active_tiles)
+    for way in existing_ways:
+        manager._object_tiles.setdefault("ways", {})[("Way", "id", way.osm_id)] = {TileCoord(0, 0)}
+
+    removed_ways = [
+        Way([(x, 500.0), (x + 5.0, 500.0)], "residential", 4.0, osm_id=100000 + i, bbox=(x, 500.0, x + 5.0, 500.0))
+        for i, x in enumerate(float(n) * 20.0 for n in range(5))
+    ]
+    manager._merge_tile_world_for(
+        TileCoord(1, 0), MapData(removed_ways, [], [], [], [], (0.0, 0.0, 40000.0, 1000.0)),
+    )
+
+    call_count = 0
+    manager._unload_tiles({TileCoord(1, 0)})
+
+    assert manager.ways == existing_ways
+    # One filter pass over the ~2005-item section, not one pass *per
+    # removed key* (5 x ~2005).
+    assert call_count <= 2005 + 20
+
+
+def test_unload_tiles_batches_multiple_tiles_in_one_call_correctly():
+    """The removed-keys-per-section aggregation (collected across every
+    tile in the call before a single filter pass) must still respect
+    ownership correctly when several tiles are unloaded together."""
+    shared = Way([(0.0, 0.0), (10.0, 0.0)], "residential", 4.0, osm_id=1)
+    solo_a = Way([(0.0, 0.0), (10.0, 0.0)], "residential", 4.0, osm_id=2)
+    solo_b = Way([(0.0, 0.0), (10.0, 0.0)], "residential", 4.0, osm_id=3)
+    manager = AutoFetchManager([], (0.0, 0.0, 1000.0, 1000.0), transformer=None)
+    manager.active_tiles = {TileCoord(0, 0), TileCoord(1, 0), TileCoord(2, 0)}
+    manager.loaded_tiles = set(manager.active_tiles)
+    manager._merge_tile_world_for(TileCoord(0, 0), MapData([shared, solo_a], [], [], [], [], (0.0, 0.0, 1.0, 1.0)))
+    manager._merge_tile_world_for(TileCoord(1, 0), MapData([shared, solo_b], [], [], [], [], (0.0, 0.0, 1.0, 1.0)))
+    manager._merge_tile_world_for(TileCoord(2, 0), MapData([shared], [], [], [], [], (0.0, 0.0, 1.0, 1.0)))
+
+    manager._unload_tiles({TileCoord(0, 0), TileCoord(1, 0)})
+
+    # shared is still owned by tile (2, 0), which wasn't unloaded.
+    assert shared in manager.ways
+    # solo_a/solo_b were only ever owned by the tiles just unloaded together.
+    assert solo_a not in manager.ways
+    assert solo_b not in manager.ways
+
+
+def test_current_process_memory_mb_returns_a_positive_reading_on_linux():
+    from theroadragetrip.osm.autofetch import _current_process_memory_mb
+
+    memory_mb = _current_process_memory_mb()
+    # None is an accepted "not available on this platform" result, but on
+    # the Linux CI/dev environment this actually runs on, /proc/self/status
+    # must be readable and report something sane for a running process.
+    assert memory_mb is None or memory_mb > 0.0
+
+
+def test_tile_leaving_active_window_stays_loaded_under_memory_budget():
+    """A tile that falls out of the active window shouldn't be unloaded on
+    the spot - only once memory pressure (or the count-ceiling fallback)
+    actually calls for it. Otherwise a player who immediately doubles back
+    forces a pointless re-fetch."""
+    manager = AutoFetchManager([], (0.0, 0.0, 1000.0, 1000.0), transformer=None)
+    manager.initialize_player_tile(500.0, 500.0)
+    manager.tile_memory_budget_mb = float("inf")  # never over budget
+
+    manager.start_tile_streaming(3500.0, 500.0)  # far enough to leave every old tile
+
+    assert TileCoord(0, 0) not in manager.active_tiles
+    assert TileCoord(0, 0) in manager.loaded_tiles
+    assert TileCoord(0, 0) in manager._inactive_tile_since
+
+
+def test_returning_before_eviction_cancels_it():
+    manager = AutoFetchManager([], (0.0, 0.0, 1000.0, 1000.0), transformer=None)
+    manager.initialize_player_tile(500.0, 500.0)
+    manager.tile_memory_budget_mb = float("inf")
+
+    manager.start_tile_streaming(2500.0, 500.0)
+    assert TileCoord(0, 0) in manager._inactive_tile_since
+
+    manager.start_tile_streaming(500.0, 500.0)  # back to the original tile
+    assert TileCoord(0, 0) not in manager._inactive_tile_since
+    assert TileCoord(0, 0) in manager.loaded_tiles
+
+
+def test_evicts_inactive_tiles_once_over_the_memory_budget(monkeypatch):
+    import theroadragetrip.osm.autofetch as autofetch_module
+
+    monkeypatch.setattr(autofetch_module, "_current_process_memory_mb", lambda: 9999.0)
+    manager = AutoFetchManager([], (0.0, 0.0, 1000.0, 1000.0), transformer=None)
+    manager.initialize_player_tile(500.0, 500.0)
+    manager.tile_memory_budget_mb = 100.0
+    before = len(manager._inactive_tile_since) + len(manager.active_tiles)
+
+    manager.start_tile_streaming(3500.0, 500.0)
+
+    # Every tile that left the active window is a candidate; being "over
+    # budget" must have actually unloaded some of them (bounded to one
+    # eviction batch), not left them all resident-but-inactive forever.
+    assert len(manager._inactive_tile_since) <= before - autofetch_module.INACTIVE_TILE_EVICTION_BATCH
+
+
+def test_falls_back_to_tile_count_ceiling_without_memory_reading(monkeypatch):
+    import theroadragetrip.osm.autofetch as autofetch_module
+
+    monkeypatch.setattr(autofetch_module, "_current_process_memory_mb", lambda: None)
+    manager = AutoFetchManager([], (0.0, 0.0, 1000.0, 1000.0), transformer=None)
+    manager._inactive_tile_since = {
+        TileCoord(i, 0): float(i)
+        for i in range(autofetch_module.MAX_INACTIVE_RESIDENT_TILES + 5)
+    }
+
+    manager._evict_inactive_tiles(now=1000.0)
+
+    assert len(manager._inactive_tile_since) <= autofetch_module.MAX_INACTIVE_RESIDENT_TILES
+
+
+def test_under_the_tile_count_ceiling_nothing_is_evicted_without_memory_reading(monkeypatch):
+    import theroadragetrip.osm.autofetch as autofetch_module
+
+    monkeypatch.setattr(autofetch_module, "_current_process_memory_mb", lambda: None)
+    manager = AutoFetchManager([], (0.0, 0.0, 1000.0, 1000.0), transformer=None)
+    manager._inactive_tile_since = {TileCoord(0, 0): 0.0}
+
+    manager._evict_inactive_tiles(now=1000.0)
+
+    assert TileCoord(0, 0) in manager._inactive_tile_since

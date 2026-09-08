@@ -95,6 +95,40 @@ def _map_object_key(obj) -> tuple:
     )
 
 
+DEFAULT_TILE_MEMORY_BUDGET_MB = 768.0
+# Without /proc (no live memory reading available), fall back to a hard
+# ceiling on how many inactive tiles can stay resident, so behavior is still
+# bounded rather than growing without limit.
+MAX_INACTIVE_RESIDENT_TILES = 80
+# How many oldest-inactive tiles to unload per over-budget check. Freeing
+# memory back to the OS after dropping references isn't instant/guaranteed
+# (CPython's allocator often keeps it in its own free lists), so re-checking
+# memory after every single tile would be false precision; a fixed batch
+# makes steady progress and self-corrects over a few more tile transitions
+# if pressure persists.
+INACTIVE_TILE_EVICTION_BATCH = 6
+
+
+def _current_process_memory_mb() -> Optional[float]:
+    """Best-effort *current* resident memory for this process, in MB.
+
+    Reads /proc/self/status on Linux - a live figure, unlike
+    resource.getrusage()'s ru_maxrss, which is a high-water mark that never
+    drops even after memory is freed, making it useless for noticing
+    pressure has eased off. Returns None on platforms without /proc (e.g.
+    Windows, macOS) so callers fall back to a proxy heuristic (resident
+    tile count) instead of taking on a dependency like psutil just for this.
+    """
+    try:
+        with open("/proc/self/status", "r", encoding="utf-8") as status_file:
+            for line in status_file:
+                if line.startswith("VmRSS:"):
+                    return float(line.split()[1]) / 1024.0
+    except (OSError, ValueError, IndexError):
+        pass
+    return None
+
+
 def _extend_unique(target: list, new_items: list) -> int:
     known = {_map_object_key(item) for item in target}
     unique_items = [item for item in new_items if _map_object_key(item) not in known]
@@ -126,6 +160,7 @@ class AutoFetchManager:
         cooldown_s: float = 5.0,
         build_in_process: bool = False,
         world_cache_manager=None,
+        tile_memory_budget_mb: float = DEFAULT_TILE_MEMORY_BUDGET_MB,
     ):
         self.ways = ways
         self.waters = waters if waters is not None else []
@@ -170,6 +205,16 @@ class AutoFetchManager:
         self.last_tile_unload_ms = 0.0
         self._tile_objects: dict[TileCoord, dict[str, dict[tuple, object]]] = {}
         self._object_tiles: dict[str, dict[tuple, set[TileCoord]]] = {}
+        # Tiles that left the active window but aren't unloaded yet - kept
+        # resident (map_revision-cheap on their own, since staying loaded
+        # touches nothing) so a player who immediately doubles back doesn't
+        # force a re-fetch, and so the actual unload cost is only paid when
+        # memory pressure (or, without /proc, a hard tile-count ceiling)
+        # says it's worth it. Value is the time.monotonic() the tile went
+        # inactive, for oldest-first eviction.
+        self._inactive_tile_since: dict[TileCoord, float] = {}
+        self.tile_memory_budget_mb = tile_memory_budget_mb
+        self.last_process_memory_mb: Optional[float] = None
         # Load known dead-end boundaries from disk cache
         self.dead_ends: List[dict] = []
 
@@ -206,6 +251,8 @@ class AutoFetchManager:
                 "relative_tile": relative_tile,
                 "tiles_in_memory": len(self.loaded_tiles),
                 "tiles_pending": len(self.pending_tiles),
+                "tiles_inactive_resident": len(self._inactive_tile_since),
+                "process_memory_mb": self.last_process_memory_mb,
                 "tile_load_ms": self.last_tile_load_ms,
                 "tile_integration_ms": self.last_tile_integration_ms,
                 "tile_unload_ms": self.last_tile_unload_ms,
@@ -235,8 +282,15 @@ class AutoFetchManager:
         with self.lock:
             if transition is not None:
                 _, _, removed = transition
+                now = time.monotonic()
+                for tile in removed:
+                    self._inactive_tile_since.setdefault(tile, now)
+                # A tile that's active again (the player came right back)
+                # is no longer an eviction candidate.
+                for tile in self.active_tiles:
+                    self._inactive_tile_since.pop(tile, None)
                 unload_started = time.perf_counter()
-                self._unload_tiles(removed)
+                self._evict_inactive_tiles(now)
                 self.last_tile_unload_ms = (time.perf_counter() - unload_started) * 1000.0
             missing = self.active_tiles - self.loaded_tiles - self.pending_tiles
             wall_time = time.time()
@@ -537,22 +591,60 @@ class AutoFetchManager:
             "stop_signs": self.stop_signs,
             "yield_signs": self.yield_signs,
         }
+        # Collect every key actually losing its last owner across *all*
+        # unloading tiles first, then filter each section's list once at the
+        # end. Rebuilding a section's list per removed key (as this used to
+        # do) was O(total items in that section) *per key*, so unloading a
+        # single tile's worth of exclusively-owned objects in an
+        # already-large, well-explored world turned into the same kind of
+        # multi-second stall as the tree/road-merge amortization bugs fixed
+        # earlier - this is the tile-streaming equivalent of that.
+        keys_to_remove: dict[str, set] = {}
+        any_removed = False
         for tile in tiles:
             tile_objects = self._tile_objects.pop(tile, {})
             self.loaded_tiles.discard(tile)
             for section, objects in tile_objects.items():
                 owners_by_key = self._object_tiles.get(section, {})
-                target = sections[section]
                 for key in objects:
                     owners = owners_by_key.get(key, set())
                     owners.discard(tile)
                     if owners:
                         continue
                     owners_by_key.pop(key, None)
-                    target[:] = [item for item in target if _map_object_key(item) != key]
+                    keys_to_remove.setdefault(section, set()).add(key)
             if tile_objects:
+                any_removed = True
                 self.map_revision += 1
-        associate_places_with_buildings(self.buildings, self.places)
+        for section, keys in keys_to_remove.items():
+            target = sections[section]
+            target[:] = [item for item in target if _map_object_key(item) not in keys]
+        if any_removed:
+            associate_places_with_buildings(self.buildings, self.places)
+
+    def _evict_inactive_tiles(self, now: float) -> None:
+        """Unload resident-but-inactive tiles once memory pressure - or,
+        where live memory can't be read, a hard tile-count ceiling - says
+        it's worth paying the cost, rather than the instant a tile leaves
+        the active window. A player who doubles right back finds it still
+        loaded (no re-fetch), and the actual unload cost only lands when it
+        buys something back.
+        """
+        if not self._inactive_tile_since:
+            return
+        memory_mb = _current_process_memory_mb()
+        if memory_mb is not None:
+            self.last_process_memory_mb = memory_mb
+            should_evict = memory_mb > self.tile_memory_budget_mb
+        else:
+            should_evict = len(self._inactive_tile_since) > MAX_INACTIVE_RESIDENT_TILES
+        if not should_evict:
+            return
+        oldest_first = sorted(self._inactive_tile_since, key=self._inactive_tile_since.get)
+        to_evict = set(oldest_first[:INACTIVE_TILE_EVICTION_BATCH])
+        for tile in to_evict:
+            self._inactive_tile_since.pop(tile, None)
+        self._unload_tiles(to_evict)
 
     def is_known_dead_end(self, car_x: float, car_y: float, direction: str, tolerance_m: float = 300.0) -> bool:
         """Check if vehicle is near a recorded dead-end in the given expansion direction."""
