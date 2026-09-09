@@ -22,6 +22,7 @@ from ..tile_streaming import TileCoord, active_tiles, tile_bbox, tile_changes, w
 logger = logging.getLogger(__name__)
 
 from .constants import (
+    CROSSING_OVERLAP_SEARCH_RADIUS_M,
     DEFAULT_ROAD_HALF_WIDTH_M,
     HIGHWAY_HALF_WIDTH,
     parse_speed_limit_kmh,
@@ -877,6 +878,22 @@ def build_ways(
                     length_m=2.4,
                 )
             )
+
+        # A compact real junction can map several crossing nodes (one per
+        # leg) within a few meters of each other; each sized to its own
+        # road's width otherwise bleeds into the open junction and into
+        # its neighbors (see CROSSING_OVERLAP_SEARCH_RADIUS_M). Clip every
+        # crossing's width to the distance to its nearest neighbor so its
+        # stripes never extend past the midpoint between the two.
+        for crossing in crossings:
+            nearest_dist = CROSSING_OVERLAP_SEARCH_RADIUS_M
+            for other in crossings:
+                if other is crossing or other.layer != crossing.layer:
+                    continue
+                dist = math.hypot(other.x - crossing.x, other.y - crossing.y)
+                if dist < nearest_dist:
+                    nearest_dist = dist
+            crossing.width_m = min(crossing.width_m, nearest_dist)
 
     t_total = time.time() - t_start
     logger.info(

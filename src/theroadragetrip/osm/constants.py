@@ -62,6 +62,15 @@ DEFAULT_BBOX = BBOX_PRESETS["oulu"]
 
 DEFAULT_ROAD_HALF_WIDTH_M = 3.0
 
+# A crossing's own road can be wide enough that its rendered zebra-stripe
+# width overlaps a *different* crossing nearby - real, compact junctions
+# routinely map one highway=crossing node per leg within a few meters of
+# each other, and each one sized to its own road's width bleeds into the
+# open junction interior and into its neighbors. Search this far for the
+# nearest other crossing and clip width_m to that distance, so no
+# crossing's stripes extend past the midpoint toward another one.
+CROSSING_OVERLAP_SEARCH_RADIUS_M = 25.0
+
 
 HIGHWAY_HALF_WIDTH = {
     "motorway": 7.0,
