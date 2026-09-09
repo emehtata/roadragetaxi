@@ -330,6 +330,24 @@ def test_signal_per_arm_positions_that_arms_light_without_multiplying_it():
     assert north_lights[0].x == 0.0 and north_lights[0].y == 10.0
 
 
+def test_arms_with_no_lane_evidence_get_no_light_when_others_do():
+    """If OSM has a real physical signal on a lane, use it right there and
+    do not create any more signals: when a cluster has real per-arm
+    evidence for *some* arms, an arm without any must get no light at
+    all - not a guessed one. Guessing here (the same synthesis used for
+    the lone-central-point case) is exactly what put a light off any
+    pavement at a real Oulu junction, so it's reserved for when a single
+    ambiguous "somewhere in the junction" point is the only evidence."""
+    arms = _four_way_ways()
+    # Real evidence for only 2 of the 4 arms.
+    signal_points = [(0.0, 10.0, 0), (10.0, 0.0, 0)]
+    lights, intersections = build_traffic_light_system(signal_points, list(arms.values()))
+
+    assert len(lights) == 2
+    assert {(light.x, light.y) for light in lights} == {(0.0, 10.0), (10.0, 0.0)}
+    assert len(intersections[0].approaches) == 2
+
+
 def test_single_central_signal_point_is_divided_not_pinned_to_one_arm():
     """The opposite of the per-lane case: a single OSM node carries no
     directional evidence, so every arm must get its own (synthesized)

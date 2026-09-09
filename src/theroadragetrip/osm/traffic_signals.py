@@ -469,15 +469,23 @@ def build_traffic_light_system(
         cycle_s = num_phases * SIGNAL_PHASE_SLOT_S
 
         # A lone signal point is just "somewhere in the junction" - no
-        # evidence for which arm it belongs to, so every arm gets a
-        # synthesized light (see _assign_signal_points_to_arms). Two or
-        # more points are real per-arm evidence, used to place that arm's
-        # one light instead of guessing.
+        # evidence for which arm it belongs to, so every incoming arm gets
+        # a synthesized light (see _assign_signal_points_to_arms). Two or
+        # more points are real per-lane/per-arm evidence: each arm they
+        # cover uses that real position outright, and - unlike the lone-
+        # point case - an arm they *don't* cover gets no light manufactured
+        # for it. Guessing a position for it (the same 14m-from-center
+        # synthesis used below) is exactly what put a light off any
+        # pavement at a real Oulu junction: a curving arm's synthesized
+        # position, projected from its initial tangent, missed the curve
+        # entirely. Real per-lane evidence for *some* arms is grounds to
+        # trust that evidence, not to start guessing at the rest.
+        has_lane_evidence = len(points) > 1
         points_per_arm = (
             _assign_signal_points_to_arms(
                 points, center, [arm[0] for arm in incoming_arms], [arm[2] for arm in incoming_arms],
             )
-            if len(points) > 1 else [None for _ in incoming_arms]
+            if has_lane_evidence else [None for _ in incoming_arms]
         )
 
         for phase_id, member_indices in enumerate(phase_assignment):
@@ -507,11 +515,17 @@ def build_traffic_light_system(
 
                 # One physical light per arm (prompt Section 6): use the
                 # real OSM evidence attributed to this arm, if any, for its
-                # position; otherwise synthesize one a little inside the
-                # arm, facing back along the direction approaching traffic
-                # travels.
+                # position. Otherwise: if this cluster has real per-lane
+                # evidence for *other* arms, this arm gets no light at all
+                # (don't invent one OSM gave no evidence for); only when
+                # the cluster's only evidence is one ambiguous "somewhere
+                # in the junction" point does every incoming arm get a
+                # synthesized light, a little inside the arm, facing back
+                # along the direction approaching traffic travels.
                 arm_point = points_per_arm[member_index]
                 if arm_point is None:
+                    if has_lane_evidence:
+                        continue
                     light_x = center[0] + math.cos(arm_angle) * 14.0
                     light_y = center[1] + math.sin(arm_angle) * 14.0
                 else:
