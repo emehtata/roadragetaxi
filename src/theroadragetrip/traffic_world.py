@@ -21,13 +21,14 @@ class TrafficWorld:
         crossings: Optional[List] = None,
         parking_spaces: Optional[List] = None,
         residents: Optional[ResidentManager] = None,
+        logical_intersections: Optional[List] = None,
     ) -> None:
         self.ways = ways
         self.traffic_lights = traffic_lights or []
         self.crossings = crossings or []
         self.residents = residents or ResidentManager()
         self.sim_time = 0.0
-        self.logical_intersections: List = []
+        self.logical_intersections: List = logical_intersections if logical_intersections is not None else []
         self.intersection_manager = None
         self._parking_grid = {}
         self._parking_grid_cell_size = 100.0
@@ -38,6 +39,7 @@ class TrafficWorld:
             traffic_lights=traffic_lights,
             crossings=crossings,
             parking_spaces=parking_spaces,
+            logical_intersections=logical_intersections,
         )
 
     def advance_time(self, dt: float) -> None:
@@ -179,12 +181,17 @@ class TrafficWorld:
     def let_taxi_pick_up_waiter(self, taxi_stops, pedestrians, dt: float = 1.0 / 60.0) -> None:
         return None
 
-    def sync_map_data(self, ways, traffic_lights=None, crossings=None, parking_spaces=None, **_kwargs) -> None:
+    def sync_map_data(
+        self, ways, traffic_lights=None, crossings=None, parking_spaces=None,
+        logical_intersections=None, **_kwargs,
+    ) -> None:
         self.ways = ways
         if traffic_lights is not None:
             self.traffic_lights = traffic_lights
         if crossings is not None:
             self.crossings = crossings
+        if logical_intersections is not None:
+            self.logical_intersections = logical_intersections
         if parking_spaces is not None:
             self._parking_grid.clear()
             for space in parking_spaces:
