@@ -623,6 +623,35 @@ def test_returning_before_eviction_cancels_it():
     assert TileCoord(0, 0) in manager.loaded_tiles
 
 
+def test_quick_there_and_back_survives_eviction_even_over_memory_budget(monkeypatch):
+    """Regression: a real, long play session routinely already sits over
+    tile_memory_budget_mb just from everything else loaded (pygame, the
+    rest of the process, a big already-streamed world) - so without a
+    grace period, "should_evict" was true essentially always, and driving
+    one tile over and immediately back (a common quick out-and-back move)
+    evicted the tile just left before the player had any chance to
+    return, forcing a real re-fetch and re-merge on the way back every
+    single time."""
+    import theroadragetrip.osm.autofetch as autofetch_module
+
+    monkeypatch.setattr(autofetch_module, "_current_process_memory_mb", lambda: 9999.0)
+    manager = AutoFetchManager([], (0.0, 0.0, 1000.0, 1000.0), transformer=None)
+    manager.initialize_player_tile(500.0, 500.0)
+    manager.tile_memory_budget_mb = 100.0  # always "over budget"
+
+    # (0, 0) itself never leaves active_tiles here - moving one tile over
+    # and back keeps it in both 3x3 windows. It's the trailing edge column,
+    # (-1, *), that goes inactive on the way there and is needed again the
+    # instant the player comes back - exactly the tile eviction-under-
+    # pressure must not have already thrown away.
+    manager.start_tile_streaming(1500.0, 500.0)  # one tile over
+    assert TileCoord(-1, 0) in manager._inactive_tile_since
+
+    manager.start_tile_streaming(500.0, 500.0)  # immediately back
+    assert TileCoord(-1, 0) in manager.loaded_tiles
+    assert TileCoord(-1, 0) not in manager._inactive_tile_since
+
+
 def test_evicts_inactive_tiles_once_over_the_memory_budget(monkeypatch):
     import theroadragetrip.osm.autofetch as autofetch_module
 
@@ -634,9 +663,15 @@ def test_evicts_inactive_tiles_once_over_the_memory_budget(monkeypatch):
 
     manager.start_tile_streaming(3500.0, 500.0)
 
-    # Every tile that left the active window is a candidate; being "over
-    # budget" must have actually unloaded some of them (bounded to one
-    # eviction batch), not left them all resident-but-inactive forever.
+    # Freshly-inactive tiles get a grace period before they're even
+    # eviction candidates, regardless of memory pressure - see
+    # MIN_INACTIVE_S_BEFORE_EVICTION. None should be gone yet.
+    assert len(manager._inactive_tile_since) == before
+
+    # Once they've genuinely sat inactive long enough, over-budget pressure
+    # does evict some of them (bounded to one eviction batch), not leave
+    # them all resident-but-inactive forever.
+    manager._evict_inactive_tiles(time.monotonic() + autofetch_module.MIN_INACTIVE_S_BEFORE_EVICTION + 1.0)
     assert len(manager._inactive_tile_since) <= before - autofetch_module.INACTIVE_TILE_EVICTION_BATCH
 
 

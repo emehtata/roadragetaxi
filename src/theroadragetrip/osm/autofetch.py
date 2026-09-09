@@ -104,6 +104,17 @@ MAX_INACTIVE_RESIDENT_TILES = 80
 # makes steady progress and self-corrects over a few more tile transitions
 # if pressure persists.
 INACTIVE_TILE_EVICTION_BATCH = 6
+# Minimum time a tile must have sat inactive before it's even a candidate
+# for eviction - independent of memory pressure. A long real play session
+# routinely already sits over tile_memory_budget_mb just from everything
+# else loaded (pygame, the rest of the process, a big already-streamed
+# world), so without this floor a tile became eligible the instant it left
+# the active window: a player driving one tile over and immediately back
+# (a very common "quick look, then return" movement) evicted the tile they
+# just left before they had any chance to return to it, forcing a real
+# re-fetch and re-merge on the way back - defeating the entire point of
+# keeping recently-left tiles resident (see _evict_inactive_tiles).
+MIN_INACTIVE_S_BEFORE_EVICTION = 20.0
 
 
 def _current_process_memory_mb() -> Optional[float]:
@@ -647,6 +658,14 @@ class AutoFetchManager:
         the active window. A player who doubles right back finds it still
         loaded (no re-fetch), and the actual unload cost only lands when it
         buys something back.
+
+        That "doubles right back" guarantee needs every tile to survive at
+        least MIN_INACTIVE_S_BEFORE_EVICTION regardless of memory pressure:
+        a long real session routinely already sits over budget just from
+        everything else loaded, so without this floor "should_evict" is
+        true essentially always, and a tile became a candidate the instant
+        it went inactive - evicting the one tile a quick there-and-back
+        move needs kept, before the player ever got a chance to return.
         """
         if not self._inactive_tile_since:
             return
@@ -658,7 +677,13 @@ class AutoFetchManager:
             should_evict = len(self._inactive_tile_since) > MAX_INACTIVE_RESIDENT_TILES
         if not should_evict:
             return
-        oldest_first = sorted(self._inactive_tile_since, key=self._inactive_tile_since.get)
+        eligible = [
+            tile for tile, since in self._inactive_tile_since.items()
+            if now - since >= MIN_INACTIVE_S_BEFORE_EVICTION
+        ]
+        if not eligible:
+            return
+        oldest_first = sorted(eligible, key=self._inactive_tile_since.get)
         to_evict = set(oldest_first[:INACTIVE_TILE_EVICTION_BATCH])
         for tile in to_evict:
             self._inactive_tile_since.pop(tile, None)
