@@ -274,6 +274,20 @@ def test_single_central_signal_point_is_divided_not_pinned_to_one_arm():
     assert len({(light.x, light.y) for light in lights}) == 4
 
 
+def test_footway_arms_dont_get_traffic_lights():
+    """A pedestrian path threading through a signal-controlled plaza is not
+    a vehicle approach - it must not add its own arm/light, or count
+    towards the intersection's phases. Regression: a real, busy plaza with
+    several footways near the signal cluster was generating far more
+    lights than there were actual vehicle arms."""
+    arms = _four_way_ways()
+    arms["path"] = Way([(0.0, 0.0), (60.0, 60.0)], "footway", 1.0, is_drivable=False)
+    lights, intersections = build_traffic_light_system([(0.0, 0.0, 0)], list(arms.values()))
+
+    assert len(lights) == 4
+    assert len(intersections[0].approaches) == 4
+
+
 def test_stop_line_sits_outside_the_intersection_along_the_approach():
     arms = _four_way_ways()
     _, intersections = build_traffic_light_system([(0.0, 0.0, 0)], list(arms.values()))

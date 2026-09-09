@@ -166,6 +166,13 @@ def _intersection_arms(center: Tuple[float, float], layer: int, ways: List[Way])
     for way in ways:
         if getattr(way, "layer", 0) != layer or len(way.points_m) < 2:
             continue
+        # Vehicle traffic signals only ever control vehicle arms - a
+        # footway/cycleway/path crossing near the same node cluster is not
+        # one, and counting it as one was inflating real, busy plazas
+        # (lots of pedestrian paths threading through) into intersections
+        # with far more "arms" - and lights - than actual traffic lanes.
+        if not getattr(way, "is_drivable", True):
+            continue
         bbox = getattr(way, "bbox", None)
         if bbox and bbox != (0.0, 0.0, 0.0, 0.0):
             if (
