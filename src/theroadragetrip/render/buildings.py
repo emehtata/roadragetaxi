@@ -150,9 +150,11 @@ MAX_BUILDING_SIGN_FONT_SIZE = 32
 # zoom or shrinking to nothing at high zoom.
 MAX_BUILDING_SIGN_WIDTH_M = 3.0
 MAX_BUILDING_SIGN_HEIGHT_M = 1.0
-# Doors are always drawn spanning up to this fraction of the wall height from
-# the ground (see the entrance-drawing loop below); signs are anchored above
-# this line, with a little clearance, so a sign never covers a doorway.
+# A door itself is always ground-anchored and one storey tall (see the
+# entrance-drawing loop below) - this ratio no longer describes the door,
+# only where a facade sign is anchored: comfortably above where even a
+# tall building's ground-floor door reaches, with a little clearance, so
+# a sign never covers a doorway.
 DOOR_TOP_V_RATIO = 0.48
 SIGN_V_CLEARANCE = 0.04
 # Cap on the on-screen facade "depth" (the pseudo-3D roof-offset used to draw
@@ -572,20 +574,26 @@ def _draw_buildings_uncached(
             roof_x = roof_point[0] - point[0]
             roof_y = roof_point[1] - point[1]
             door_width = min(11.0, max(3.0, edge_length * 0.22))
-            door_height = max(5.0, min(13.0, abs(roof_y) * 0.68))
-            door_x, door_y = world_to_screen(
+            # A door is one story tall, never a fraction of the *whole*
+            # building's facade - sizing/anchoring it off the full wall
+            # depth (as DOOR_TOP_V_RATIO of abs(roof_y) used to) put it
+            # floating well above the ground on anything taller than one
+            # storey. Ground_x/y (the entrance's own point, v=0 on the
+            # wall) is always the door's base; it only ever extends
+            # upward by one storey's worth of the facade.
+            one_story_px = abs(roof_y) / max(1, story_count)
+            door_height = max(5.0, min(13.0, one_story_px * 0.68))
+            ground_x, ground_y = world_to_screen(
                 entrance_x, entrance_y, camx, camy, px_per_m, screen_w, screen_h
             )
-            door_x += roof_x * DOOR_TOP_V_RATIO
-            door_y += roof_y * DOOR_TOP_V_RATIO
-            door_shift_x = -roof_x * door_height / max(abs(roof_y), 1.0)
-            door_shift_y = -roof_y * door_height / max(abs(roof_y), 1.0)
+            door_shift_x = roof_x * door_height / max(abs(roof_y), 1.0)
+            door_shift_y = roof_y * door_height / max(abs(roof_y), 1.0)
             half_door = door_width / 2
             door = [
-                (door_x - edge_x * half_door, door_y - edge_y * half_door),
-                (door_x + edge_x * half_door, door_y + edge_y * half_door),
-                (door_x + edge_x * half_door + door_shift_x, door_y + edge_y * half_door + door_shift_y),
-                (door_x - edge_x * half_door + door_shift_x, door_y - edge_y * half_door + door_shift_y),
+                (ground_x - edge_x * half_door, ground_y - edge_y * half_door),
+                (ground_x + edge_x * half_door, ground_y + edge_y * half_door),
+                (ground_x + edge_x * half_door + door_shift_x, ground_y + edge_y * half_door + door_shift_y),
+                (ground_x - edge_x * half_door + door_shift_x, ground_y - edge_y * half_door + door_shift_y),
             ]
             pygame.draw.polygon(screen, (58, 48, 42), door)
             pygame.draw.lines(screen, (32, 28, 25), True, door, 1)

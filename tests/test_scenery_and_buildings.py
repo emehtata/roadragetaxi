@@ -519,6 +519,40 @@ def test_facade_sign_does_not_cover_the_door():
         pygame.quit()
 
 
+def test_door_sits_at_ground_level_on_a_tall_building():
+    """Regression: doors were anchored/sized off DOOR_TOP_V_RATIO of the
+    *whole* facade depth, which only reached the ground by coincidence on
+    a short building - a tall, multi-storey building's door floated a
+    third to half way up its wall instead of sitting at its base."""
+    pygame.init()
+    try:
+        tall_building = Building(
+            [(0.0, 0.0), (40.0, 0.0), (40.0, 40.0), (0.0, 40.0)],
+            bbox=(0.0, 0.0, 40.0, 40.0),
+            entrances=[(20.0, 0.0)],
+            height_m=24.0,
+        )
+        screen = pygame.Surface((400, 400), pygame.SRCALPHA)
+        _draw_buildings_uncached(
+            screen, [tall_building], 20.0, 20.0, px_per_m=9.0, screen_w=400, screen_h=400,
+        )
+        door_pixels = {
+            (x, y)
+            for y in range(400)
+            for x in range(400)
+            if tuple(screen.get_at((x, y)))[:3] == (58, 48, 42)
+        }
+        assert door_pixels, "door did not render"
+
+        ground_y = world_to_screen(20.0, 0.0, 20.0, 20.0, 9.0, 400, 400)[1]
+        door_bottom_y = max(y for _, y in door_pixels)
+        # The door's base must sit right at the entrance's ground point,
+        # not floating well above it (a few px of line thickness/AA only).
+        assert abs(door_bottom_y - ground_y) <= 3
+    finally:
+        pygame.quit()
+
+
 def test_facade_sign_size_scales_with_zoom_like_a_real_object():
     """Sign dimensions are capped in meters, not pixels, so they stay a
     believable real-world size (a few metres wide) at every zoom instead of
