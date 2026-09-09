@@ -50,7 +50,7 @@ def test_draw_tire_tracks_darkens_with_intensity():
     os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
     import pygame
 
-    from theroadragetrip.render import draw_tire_tracks
+    from theroadragetrip.render import TireTrail, draw_tire_tracks
 
     pygame.init()
     try:
@@ -58,11 +58,9 @@ def test_draw_tire_tracks_darkens_with_intensity():
 
         def track_color(intensity):
             screen.fill((255, 255, 255))
-            tracks = [
-                (0.0, 0.0, 0.0, False, 1, intensity),
-                (5.0, 0.0, 0.0, False, 1, intensity),
-            ]
-            draw_tire_tracks(screen, tracks, 2.5, 0.0, grass=False, px_per_m=20.0, screen_w=400, screen_h=400)
+            trail = TireTrail(False, 0.0, 0.0, 0.0, intensity)
+            trail.add(5.0, 0.0, 0.0, intensity)
+            draw_tire_tracks(screen, [trail], 2.5, 0.0, grass=False, px_per_m=20.0, screen_w=400, screen_h=400)
             # Sample near the drawn line's expected screen position.
             colors = {
                 tuple(screen.get_at((x, y)))[:3]
@@ -75,5 +73,50 @@ def test_draw_tire_tracks_darkens_with_intensity():
         dark = track_color(1.0)
         # Darker (lower RGB sum) at higher intensity.
         assert sum(dark) < sum(faint)
+    finally:
+        pygame.quit()
+
+
+def test_trail_bbox_lets_out_of_view_trails_be_skipped_cheaply():
+    """Regression: draw_tire_tracks used to scan every point of every
+    accumulated tire track every frame regardless of visibility - at a
+    realistic session's worth of tracks (~4000 points) this measured
+    ~10ms/frame on its own, enough by itself to occasionally drop below
+    50 fps. Trails now carry a running bbox so a trail nowhere near the
+    viewport is skipped with one cheap check - verified here by behavior
+    (an out-of-view trail draws nothing, an in-view one still does),
+    since the actual speed win isn't reliably assertable as a timing
+    threshold in CI."""
+    os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
+    import pygame
+
+    from theroadragetrip.render import TireTrail, draw_tire_tracks
+    from theroadragetrip.render.common import get_viewport_bounds
+
+    pygame.init()
+    try:
+        screen = pygame.display.set_mode((400, 400))
+        camx, camy, px_per_m = 0.0, 0.0, 20.0
+        viewport_bounds = get_viewport_bounds(camx, camy, px_per_m, 400, 400, 10.0)
+
+        near_trail = TireTrail(False, 0.0, 0.0, 0.0, 1.0)
+        near_trail.add(5.0, 0.0, 0.0, 1.0)
+        far_trail = TireTrail(False, 100_000.0, 100_000.0, 0.0, 1.0)
+        far_trail.add(100_005.0, 100_000.0, 0.0, 1.0)
+
+        screen.fill((255, 255, 255))
+        draw_tire_tracks(
+            screen, [far_trail], camx, camy, grass=False, px_per_m=px_per_m,
+            screen_w=400, screen_h=400, viewport_bounds=viewport_bounds,
+        )
+        assert screen.get_at((10, 10))[:3] == (255, 255, 255), "an out-of-view trail drew something"
+
+        screen.fill((255, 255, 255))
+        draw_tire_tracks(
+            screen, [far_trail, near_trail], camx, camy, grass=False, px_per_m=px_per_m,
+            screen_w=400, screen_h=400, viewport_bounds=viewport_bounds,
+        )
+        colors = {tuple(screen.get_at((x, y)))[:3] for x in range(400) for y in range(150, 250)}
+        assert colors - {(255, 255, 255)}, "the in-view trail should still draw normally"
     finally:
         pygame.quit()

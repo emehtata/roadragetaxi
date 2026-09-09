@@ -92,6 +92,7 @@ from ..render import (
     PX_PER_M,
     SCREEN_H,
     SCREEN_W,
+    TireTrail,
     draw_buildings,
     draw_bus_stops,
     draw_car,
@@ -897,9 +898,9 @@ def main() -> None:
         slow_check_elapsed = 0.0
         taxi_waiter_elapsed = 0.0
         last_zoom_scale = None
-        tire_tracks = []
+        tire_tracks: list[TireTrail] = []
+        tire_track_point_count = 0
         last_track_position = None
-        track_sequence = 0
         last_track_surface = None
         map_sync_stage = 0
         last_map_revision = auto_fetch_manager.get_map_revision()
@@ -1684,17 +1685,26 @@ def main() -> None:
             # skidmark_should_mark's lower threshold).
             is_skidding = skidmark_should_mark(car.slip_amount)
             if movement_distance > 0.0 and (is_skidding or (is_grass and abs(car.speed) > 1.0)):
-                if last_track_position is None or is_grass != last_track_surface:
-                    track_sequence += 1
-                if last_track_position is None or math.hypot(car.x - last_track_position[0], car.y - last_track_position[1]) >= 1.0:
+                start_new_trail = last_track_position is None or is_grass != last_track_surface
+                if start_new_trail or math.hypot(car.x - last_track_position[0], car.y - last_track_position[1]) >= 1.0:
                     # The grass trail isn't a slip mark - it's a constant-
                     # weight dirt track from driving off-road at all.
                     intensity = skidmark_intensity(car.slip_amount) if is_skidding else 1.0
-                    tire_tracks.append((car.x, car.y, car.heading, is_grass, track_sequence, intensity))
+                    if start_new_trail:
+                        tire_tracks.append(TireTrail(is_grass, car.x, car.y, car.heading, intensity))
+                    else:
+                        tire_tracks[-1].add(car.x, car.y, car.heading, intensity)
+                    tire_track_point_count += 1
                     last_track_position = (car.x, car.y)
                     last_track_surface = is_grass
-                    if len(tire_tracks) > 4000:
-                        del tire_tracks[:500]
+                    # Drop the oldest trails (each one a single unbroken
+                    # skid/dirt-trail event, see TireTrail) once accumulated
+                    # points pass the cap, back down to a lower watermark -
+                    # same "evict a chunk, not one at a time" shape as
+                    # before, just counted per trail instead of per point.
+                    if tire_track_point_count > 4000:
+                        while tire_tracks and tire_track_point_count > 3500:
+                            tire_track_point_count -= len(tire_tracks.pop(0).points)
             else:
                 last_track_position = None
                 last_track_surface = None
@@ -1945,6 +1955,7 @@ def main() -> None:
                 time.perf_counter() - render_profile_stage_start
             )
             render_profile_stage_start = time.perf_counter()
+            map_stage_start = time.perf_counter()
             draw_tire_tracks(
                 screen, tire_tracks, camx, camy, grass=False, px_per_m=px_per_m,
                 viewport_bounds=viewport_bounds,
@@ -1996,6 +2007,15 @@ def main() -> None:
                     if getattr(way, "is_drivable", True)
                 )
                 visible_road_count_elapsed = 0.0
+            # This whole stretch (tire tracks, roadworks, crossings, traffic
+            # lights, taxi stops, speed cameras) used to run between two
+            # profiler timestamps whose interval was never actually
+            # recorded - the *next* reset below silently discarded it, so a
+            # slowdown anywhere in here was invisible to both the frame
+            # profiler and the live debug HUD's spike/culprit readout.
+            stage_elapsed = time.perf_counter() - map_stage_start
+            render_profile_times["map_markings"] = render_profile_times.get("map_markings", 0.0) + stage_elapsed
+            frame_profiler.record("render:markings", stage_elapsed * 1000.0)
             render_profile_stage_start = time.perf_counter()
             visible_pedestrians = pedestrian_mgr.pedestrians + [
                 npc for npc in () if getattr(npc, "is_on_foot", False)

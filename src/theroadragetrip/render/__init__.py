@@ -108,6 +108,7 @@ from .roads import (
     STREET_LIGHT_POOL_STEPS,
     STREET_LIGHT_SHADE_COLOR,
     STREET_LIGHT_SPACING_M,
+    TireTrail,
     _point_is_near_building,
     _street_light_glow_cache,
     _way_has_street_lighting,

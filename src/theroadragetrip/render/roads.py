@@ -1061,9 +1061,37 @@ def draw_street_lights(
                 _street_light_last_debug_log_ms = now_ms
 
 
+class TireTrail:
+    """One continuous run of tire-track points (a single skid/dirt-trail
+    event - see main.py's track_sequence). Keeps its own running bounding
+    box so draw_tire_tracks can reject a whole trail with one cheap check
+    instead of touching every one of its points - a session's accumulated
+    tracks can number in the thousands, and most of them are nowhere near
+    the current viewport at any given moment."""
+
+    __slots__ = ("is_grass", "points", "min_x", "min_y", "max_x", "max_y")
+
+    def __init__(self, is_grass: bool, x: float, y: float, heading: float, intensity: float) -> None:
+        self.is_grass = is_grass
+        self.points: List[Tuple[float, float, float, float]] = [(x, y, heading, intensity)]
+        self.min_x = self.max_x = x
+        self.min_y = self.max_y = y
+
+    def add(self, x: float, y: float, heading: float, intensity: float) -> None:
+        self.points.append((x, y, heading, intensity))
+        if x < self.min_x:
+            self.min_x = x
+        elif x > self.max_x:
+            self.max_x = x
+        if y < self.min_y:
+            self.min_y = y
+        elif y > self.max_y:
+            self.max_y = y
+
+
 def draw_tire_tracks(
     screen,
-    tracks,
+    trails: List[TireTrail],
     camx: float,
     camy: float,
     grass: bool,
@@ -1083,35 +1111,39 @@ def draw_tire_tracks(
     faint_color = (150, 138, 118) if grass else (110, 110, 110)
     dark_color = (105, 68, 38) if grass else (28, 28, 28)
     width = max(3, int((0.75 if grass else 0.24) * px_per_m))
-    previous_tires = None
-    previous_sequence = None
-    for track_x, track_y, heading, is_grass, sequence, intensity in tracks:
-        if is_grass != grass:
-            previous_tires = None
-            previous_sequence = None
+
+    if viewport_bounds is not None:
+        vminx, vminy, vmaxx, vmaxy = viewport_bounds
+
+    for trail in trails:
+        if trail.is_grass != grass:
             continue
-        if viewport_bounds is not None:
-            vminx, vminy, vmaxx, vmaxy = viewport_bounds
-            if not (vminx <= track_x <= vmaxx and vminy <= track_y <= vmaxy):
+        if viewport_bounds is not None and (
+            trail.max_x < vminx or trail.min_x > vmaxx or trail.max_y < vminy or trail.min_y > vmaxy
+        ):
+            continue
+        previous_tires = None
+        for track_x, track_y, heading, intensity in trail.points:
+            if viewport_bounds is not None and not (vminx <= track_x <= vmaxx and vminy <= track_y <= vmaxy):
                 previous_tires = None
-                previous_sequence = None
                 continue
-        center_x, center_y = world_to_screen(track_x, track_y, camx, camy, px_per_m, screen_w, screen_h)
-        side_x = -math.sin(heading)
-        side_y = math.cos(heading)
-        current_tires = []
-        for side in (-1.0, 1.0):
-            tire_x = center_x + side_x * side * 0.72 * px_per_m
-            tire_y = center_y + side_y * side * 0.72 * px_per_m
-            current_tires.append((int(tire_x), int(tire_y)))
-        if previous_tires is not None and sequence == previous_sequence:
-            color = tuple(
-                int(faint + (dark - faint) * intensity) for faint, dark in zip(faint_color, dark_color)
-            )
-            for previous_tire, current_tire in zip(previous_tires, current_tires):
-                pygame.draw.line(screen, color, previous_tire, current_tire, width)
-        previous_tires = current_tires
-        previous_sequence = sequence
+            center_x, center_y = world_to_screen(track_x, track_y, camx, camy, px_per_m, screen_w, screen_h)
+            side_x = -math.sin(heading)
+            side_y = math.cos(heading)
+            current_tires = [
+                (
+                    int(center_x + side_x * side * 0.72 * px_per_m),
+                    int(center_y + side_y * side * 0.72 * px_per_m),
+                )
+                for side in (-1.0, 1.0)
+            ]
+            if previous_tires is not None:
+                color = tuple(
+                    int(faint + (dark - faint) * intensity) for faint, dark in zip(faint_color, dark_color)
+                )
+                for previous_tire, current_tire in zip(previous_tires, current_tires):
+                    pygame.draw.line(screen, color, previous_tire, current_tire, width)
+            previous_tires = current_tires
 
 
 def draw_vomit_puddles(screen, puddles, camx: float, camy: float, px_per_m: float = PX_PER_M) -> None:
