@@ -236,6 +236,35 @@ def test_scattered_signal_nodes_around_one_junction_cluster_together():
     assert len(intersections[0].approaches) == 4
 
 
+def test_wide_real_junction_stays_one_intersection():
+    """Regression: a real 4-street Oulu junction (Kajaanintie / Heikinkatu
+    / Tulliväylä / Rautatienkatu) has one traffic_signals node per
+    approach, spread up to ~48m apart - wider than the old 30m clustering
+    radius, which split it into 3 separate LogicalIntersections. Each then
+    picked its own (wrong) mix of nearby roads as arms, scattering lights
+    across the real junction instead of placing one per actual approach."""
+    center = (0.0, 0.0)
+
+    def arm(angle_deg):
+        angle = math.radians(angle_deg)
+        far = (center[0] + math.cos(angle) * 150.0, center[1] + math.sin(angle) * 150.0)
+        return Way([center, far], "primary", 5.0)
+
+    # Real relative bearings/positions of the 4 traffic_signals nodes,
+    # translated so their centroid sits at the origin (same processing
+    # order as the real data).
+    signal_points = [
+        (17.77, -6.27, 0), (11.34, 20.56, 0), (-20.35, 8.22, 0), (-8.75, -22.51, 0),
+    ]
+    ways = [arm(-19.4), arm(61.1), arm(158.0), arm(-111.2)]
+
+    lights, intersections = build_traffic_light_system(signal_points, ways)
+
+    assert len(intersections) == 1
+    assert len(intersections[0].approaches) == 4
+    assert len(lights) == 4
+
+
 def test_signal_per_arm_positions_that_arms_light_without_multiplying_it():
     """When OSM maps a separate signal node per arrival direction - and two
     of them for the north arm (e.g. one per lane) - that real evidence

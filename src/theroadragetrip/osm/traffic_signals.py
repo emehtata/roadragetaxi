@@ -33,9 +33,16 @@ from .models import IntersectionApproach, LogicalIntersection, SignalGroup, Traf
 
 # How close together raw OSM signal nodes must be to count as evidence of
 # the *same* physical intersection (prompt Section 9: logical intersection
-# clustering). Real intersections rarely spread signal nodes further than
-# this even when OSM maps one node per approach.
-INTERSECTION_CLUSTER_RADIUS_M = 30.0
+# clustering). Was 30m; a real 4-street junction (Kajaanintie / Heikinkatu
+# / Tulliväylä / Rautatienkatu in the Oulu data set) has one node per
+# approach spread up to 47.5m apart - a wide junction, but still one
+# intersection. At 30m the greedy centroid clustering below split it into
+# 3 separate ones, each then finding its own (wrong) mix of nearby roads
+# as "arms" - lights scattered across the junction instead of one per
+# real approach. 35m merges it back into one without over-merging real,
+# separate junctions elsewhere in the same data set (checked: cluster
+# count keeps dropping past 35m only for genuinely oversized clusters).
+INTERSECTION_CLUSTER_RADIUS_M = 35.0
 # A way is treated as "ending at" the intersection - the common case, since
 # OSM almost always splits ways exactly at junctions - when one of its
 # endpoints falls within this distance of the intersection center.
