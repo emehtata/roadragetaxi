@@ -727,6 +727,21 @@ def main() -> None:
     font = pygame.font.SysFont(None, 24)
     small_font = pygame.font.SysFont(None, 18)
 
+    # A freshly created window doesn't always have OS keyboard focus on its
+    # very first frame (most noticeable on Windows) - the window manager
+    # grants focus shortly after creation, not necessarily before the first
+    # blocking screen (choose_language / confirm_outdated_cache below)
+    # starts reading input. A mouse click both hits a button AND happens to
+    # grant focus, which is why an early screen can look like it only
+    # responds to the mouse. Give the window manager a brief, bounded
+    # window to hand over focus first. Skipped under the dummy driver
+    # (tests) where there's no real window manager to grant it.
+    if os.environ.get("SDL_VIDEODRIVER") != "dummy":
+        focus_deadline = time.monotonic() + 1.0
+        while not pygame.key.get_focused() and time.monotonic() < focus_deadline:
+            pygame.event.pump()
+            clock.tick(60)
+
     language = normalize_language(config.get("game", "language", fallback=""))
     if not config.get("game", "language", fallback="").strip():
         language = choose_language(screen, font, clock)
