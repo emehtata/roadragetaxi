@@ -1,23 +1,11 @@
 import collections
-import concurrent.futures
 from collections import defaultdict
-import json
 import logging
 import math
-import multiprocessing
-import os
-import random
-import shutil
-import sys
-import threading
 import time
-from dataclasses import dataclass, field
-from typing import Any, Callable, Dict, List, Optional, Set, Tuple
+from typing import Callable, Dict, List, Optional, Set, Tuple
 
-import requests
 
-from ..geo import dist_point_to_segment, point_in_polygon
-from ..tile_streaming import TileCoord, active_tiles, tile_bbox, tile_changes, world_to_tile
 
 logger = logging.getLogger(__name__)
 
@@ -36,7 +24,6 @@ from .models import (
     Scenery,
     _building_height,
     _building_levels,
-    SignalGroup,
     TrafficLight,
     StopSign,
     YieldSign,
