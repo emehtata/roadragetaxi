@@ -1243,7 +1243,7 @@ def draw_curbs(
     screen_h: int = SCREEN_H,
     spatial_grid=None,
 ) -> None:
-    """Draw raised kerbstone lines (OSM barrier=kerb) as a thin light-grey edge."""
+    """Draw raised kerbstone lines (OSM barrier=kerb) as a thin dark-grey edge."""
     import pygame
 
     if not curbs:
@@ -1262,7 +1262,7 @@ def draw_curbs(
             for x, y in curb.points_m
         ]
         if len(points) >= 2:
-            pygame.draw.lines(screen, (200, 200, 195), False, points, thickness)
+            pygame.draw.lines(screen, (55, 55, 52), False, points, thickness)
 
 
 def draw_crossings(
