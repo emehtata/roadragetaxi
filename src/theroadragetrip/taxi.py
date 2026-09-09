@@ -957,12 +957,22 @@ class TaxiManager:
         )
 
     def pick_phone_pickup(self, car_x: float, car_y: float) -> Optional[TaxiTarget]:
-        """Pick a phone-order pickup using the intended location mix."""
+        """Pick a phone-order pickup using the intended location mix.
+
+        Every hour bracket falls back to any nearby named road point if its
+        preferred source(s) come up empty (e.g. no taxi stop within range
+        at night, no building at all in a sparse area) - matching
+        spawn_mission's robustness. Without this, a sparse area/time-of-
+        day combination could leave generate_offers stuck returning
+        nothing indefinitely, since (unlike spawn_mission) it has no other
+        fallback of its own.
+        """
         hour = (self.game_time_seconds / 3600.0) % 24.0
+        pickup: Optional[TaxiTarget] = None
         if 0.0 <= hour < 5.0:
-            return self.pick_random_taxi_stop(ref_x=car_x, ref_y=car_y, min_dist=150.0, max_dist=1200.0)
-        if 20.0 <= hour < 24.0 and random.random() < 0.30:
-            return self.pick_random_building_point(
+            pickup = self.pick_random_taxi_stop(ref_x=car_x, ref_y=car_y, min_dist=150.0, max_dist=1200.0)
+        elif 20.0 <= hour < 24.0 and random.random() < 0.30:
+            pickup = self.pick_random_building_point(
                 ref_x=car_x,
                 ref_y=car_y,
                 min_dist=150.0,
@@ -975,57 +985,48 @@ class TaxiManager:
                 max_dist=1200.0,
                 venue_types=None,
             )
-        if 5.0 <= hour < 8.0 or 20.0 <= hour < 24.0:
-            return self.pick_random_building_point(
+        elif 5.0 <= hour < 8.0 or 20.0 <= hour < 24.0 or 8.0 <= hour < 12.0:
+            pickup = self.pick_random_building_point(
                 ref_x=car_x,
                 ref_y=car_y,
                 min_dist=150.0,
                 max_dist=1200.0,
                 venue_types=None,
             )
-        if 8.0 <= hour < 12.0:
-            return self.pick_random_building_point(
-                ref_x=car_x,
-                ref_y=car_y,
-                min_dist=150.0,
-                max_dist=1200.0,
-                venue_types=None,
-            )
-        roll = random.random()
-        if roll < 0.70:
-            sources = (self.pick_random_building_point, self.pick_random_road_point, self.pick_random_taxi_stop)
-        elif roll < 0.95:
-            sources = (self.pick_random_road_point, self.pick_random_building_point, self.pick_random_taxi_stop)
         else:
-            sources = (self.pick_random_taxi_stop, self.pick_random_building_point, self.pick_random_road_point)
-
-        for source in sources:
-            pickup = source(car_x, car_y, min_dist=150.0, max_dist=1200.0)
-            if pickup:
-                return pickup
-        return None
+            roll = random.random()
+            if roll < 0.70:
+                sources = (self.pick_random_building_point, self.pick_random_road_point, self.pick_random_taxi_stop)
+            elif roll < 0.95:
+                sources = (self.pick_random_road_point, self.pick_random_building_point, self.pick_random_taxi_stop)
+            else:
+                sources = (self.pick_random_taxi_stop, self.pick_random_building_point, self.pick_random_road_point)
+            for source in sources:
+                pickup = source(car_x, car_y, min_dist=150.0, max_dist=1200.0)
+                if pickup:
+                    break
+        if pickup:
+            return pickup
+        return self.pick_random_road_point(ref_x=car_x, ref_y=car_y, min_dist=150.0, max_dist=1200.0)
 
     def pick_phone_dropoff(self, pickup_x: float, pickup_y: float) -> Optional[TaxiTarget]:
-        """Pick a phone-order dropoff using places and addresses only."""
+        """Pick a phone-order dropoff using places and addresses only.
+
+        Falls back to any nearby named road point for every hour bracket
+        if the preferred building search comes up empty - see
+        pick_phone_pickup's docstring for why."""
         hour = (self.game_time_seconds / 3600.0) % 24.0
-        if 0.0 <= hour < 5.0:
-            return self.pick_random_building_point(
+        dropoff: Optional[TaxiTarget] = None
+        if 0.0 <= hour < 5.0 or 5.0 <= hour < 8.0 or 8.0 <= hour < 12.0:
+            dropoff = self.pick_random_building_point(
                 ref_x=pickup_x,
                 ref_y=pickup_y,
                 min_dist=self.min_distance_m,
                 max_dist=float("inf"),
                 venue_types={None},
             )
-        if 5.0 <= hour < 8.0:
-            return self.pick_random_building_point(
-                ref_x=pickup_x,
-                ref_y=pickup_y,
-                min_dist=self.min_distance_m,
-                max_dist=float("inf"),
-                venue_types={None},
-            )
-        if 20.0 <= hour < 24.0:
-            return self.pick_random_building_point(
+        elif 20.0 <= hour < 24.0:
+            dropoff = self.pick_random_building_point(
                 ref_x=pickup_x,
                 ref_y=pickup_y,
                 min_dist=self.min_distance_m,
@@ -1038,24 +1039,18 @@ class TaxiManager:
                 max_dist=float("inf"),
                 venue_types={None},
             )
-        if 8.0 <= hour < 12.0:
-            return self.pick_random_building_point(
-                ref_x=pickup_x,
-                ref_y=pickup_y,
-                min_dist=self.min_distance_m,
-                max_dist=float("inf"),
-                venue_types={None},
-            )
-        if random.random() < 0.70:
-            sources = (self.pick_random_building_point, self.pick_random_road_point)
         else:
-            sources = (self.pick_random_road_point, self.pick_random_building_point)
-
-        for source in sources:
-            dropoff = source(pickup_x, pickup_y, self.min_distance_m, float("inf"))
-            if dropoff:
-                return dropoff
-        return None
+            if random.random() < 0.70:
+                sources = (self.pick_random_building_point, self.pick_random_road_point)
+            else:
+                sources = (self.pick_random_road_point, self.pick_random_building_point)
+            for source in sources:
+                dropoff = source(pickup_x, pickup_y, self.min_distance_m, float("inf"))
+                if dropoff:
+                    break
+        if dropoff:
+            return dropoff
+        return self.pick_random_road_point(ref_x=pickup_x, ref_y=pickup_y, min_dist=self.min_distance_m, max_dist=float("inf"))
 
     def generate_offers(
         self, car_x: float, car_y: float, count: int = 3, append: bool = False
@@ -1098,6 +1093,17 @@ class TaxiManager:
             len(offers),
             [round(offer.pickup_distance_m) for offer in offers],
         )
+        if not append and not self.offers:
+            # A fresh "player just became available" attempt (discard,
+            # dropoff, vomit-abandon - see their call sites) found nothing,
+            # e.g. no eligible pickup/dropoff in range for the current
+            # time of day/location. next_offer_timer isn't decremented
+            # while a passenger is aboard, so it can be sitting on a stale
+            # value up to PHONE_OFFER_MAX_INTERVAL_S old from before that
+            # ride even started - without this, the player could be stuck
+            # staring at zero offers for up to a minute after this attempt
+            # already failed, instead of the game retrying soon.
+            self.next_offer_timer = min(self.next_offer_timer, random.uniform(2.0, 6.0))
         return offers
 
     def accept_offer(self, index: int, car_x: float, car_y: float) -> bool:

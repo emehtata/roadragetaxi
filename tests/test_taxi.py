@@ -537,6 +537,46 @@ def test_discard_pickup_penalty():
     assert taxi_mgr.offers
 
 
+@pytest.mark.parametrize("hour", [1.0, 6.0, 9.0, 14.0, 21.0, 22.5])
+def test_phone_offers_fall_back_to_a_road_point_with_no_buildings_or_stands(hour):
+    """Regression: discarding/finishing a ride in an area with no named
+    buildings or taxi stops nearby - a real, sparsely-mapped area, or just
+    one the game hasn't loaded much of yet - left generate_offers stuck
+    returning nothing for every hour bracket except the default (12-20h)
+    one, which was the only one with a fallback past its preferred
+    source. spawn_mission already falls back to any named road point;
+    pick_phone_pickup/dropoff now do too, for every hour."""
+    way = Way(
+        points_m=[(0.0, 0.0), (500.0, 0.0)],
+        highway="residential",
+        half_width_m=4.5,
+        name="Torikatu",
+    )
+    taxi_mgr = TaxiManager(ways=[way])  # no buildings, no places, no taxi stops
+    taxi_mgr.game_time_seconds = hour * 3600.0
+
+    offers = taxi_mgr.generate_offers(0.0, 0.0, count=1)
+
+    assert len(offers) == 1
+
+
+def test_generate_offers_shortens_the_retry_wait_after_coming_up_empty():
+    """Regression: next_offer_timer is frozen (not decremented) while a
+    passenger is aboard, so right after a discard/dropoff/vomit-abandon it
+    can still hold a stale value up to PHONE_OFFER_MAX_INTERVAL_S (60s)
+    old from before that ride even started. If the immediate
+    generate_offers(count=1) those call sites make also finds nothing,
+    the player was stuck watching zero offers for up to a minute with no
+    indication anything was happening."""
+    taxi_mgr = TaxiManager(ways=[])  # nothing anywhere can ever be picked
+    taxi_mgr.next_offer_timer = 55.0
+
+    offers = taxi_mgr.generate_offers(0.0, 0.0, count=1)
+
+    assert offers == []
+    assert taxi_mgr.next_offer_timer <= 6.0
+
+
 def test_respawn_penalizes_onboard_passenger():
     way1 = Way(
         points_m=[(0.0, 0.0), (100.0, 0.0)],
