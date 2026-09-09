@@ -360,6 +360,27 @@ def test_logical_intersections_from_different_tiles_all_survive_merge():
     assert manager.logical_intersections == [first, second]
 
 
+def test_logical_intersections_survive_the_real_non_forced_tile_merge():
+    """_item_tiles() (used by the real tile-streaming merge path, unlike
+    the force_tile=True helper above) had no case for LogicalIntersection:
+    it has no bbox/x/y/points_m, only `center`/`radius_m`, so it fell
+    through to the points_m branch, got an empty tuple back, and
+    _item_tiles returned set() - meaning owned_tiles was *always* empty
+    for it, so it was silently dropped on every real (non-forced) tile
+    merge, unconditionally, regardless of the dedup key."""
+    from theroadragetrip.osm import LogicalIntersection
+
+    intersection = LogicalIntersection("0:500:500", (500.0, 500.0), 10.0)
+    manager = AutoFetchManager([], (0.0, 0.0, 1000.0, 1000.0), transformer=None)
+    manager._merge_tile_world_for_tiles(
+        {TileCoord(0, 0)},
+        MapData([], [], [], [], [], (0.0, 0.0, 1.0, 1.0), logical_intersections=[intersection]),
+        force_tile=False,
+    )
+
+    assert manager.logical_intersections == [intersection]
+
+
 def test_combined_region_assigns_crossing_way_to_both_tiles():
     crossing_way = Way(
         [(950.0, 250.0), (1050.0, 250.0)], "residential", 4.0, osm_id=99,

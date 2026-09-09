@@ -424,6 +424,17 @@ class AutoFetchManager:
         elif hasattr(item, "x") and hasattr(item, "y"):
             min_x = max_x = item.x
             min_y = max_y = item.y
+        elif getattr(item, "center", None) is not None:
+            # LogicalIntersection: no bbox/x/y/points_m, so this used to
+            # fall through to the points_m branch below, get an empty
+            # tuple, and return set() - meaning owned_tiles was *always*
+            # empty for it in the real (non-force_tile) tile-streaming
+            # merge path, so every logical intersection from every
+            # streamed tile was silently dropped, unconditionally.
+            cx, cy = item.center
+            radius = getattr(item, "radius_m", 0.0) or 0.0
+            min_x, max_x = cx - radius, cx + radius
+            min_y, max_y = cy - radius, cy + radius
         else:
             points = getattr(item, "points_m", ())
             if not points:
