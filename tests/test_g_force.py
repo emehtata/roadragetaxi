@@ -13,7 +13,6 @@ from theroadragetrip.physics import (
     Car,
     GRAVITY_MPS2,
     MIN_SPEED_FOR_LATERAL_G_MPS,
-    MAX_PLAUSIBLE_ACCEL_MPS2,
     _update_g_force,
 )
 
@@ -46,14 +45,13 @@ def _drive_arc(speed: float, radius: float, dt: float, steps: int) -> Car:
         car.y = radius * (1 - math.cos(theta1))
         car.heading = theta1
         car.speed = speed
-        _update_g_force(car, entry_x, entry_y, dt)
-        del theta0  # only used for clarity of the arc's step boundaries
+        _update_g_force(car, entry_x, entry_y, theta0, dt)
     return car
 
 
 def test_stationary_car_has_zero_g():
     car = _primed_car(speed=0.0)
-    _update_g_force(car, car.x, car.y, 0.1)
+    _update_g_force(car, car.x, car.y, car.heading, 0.1)
     assert car.raw_forward_g == 0.0
     assert car.raw_lateral_g == 0.0
 
@@ -62,7 +60,7 @@ def test_straight_constant_speed_is_approximately_zero_g():
     car = _primed_car(speed=20.0)
     entry_x, entry_y = car.x, car.y
     car.x += 20.0 * 0.1  # moved exactly speed*dt along heading 0: no accel
-    _update_g_force(car, entry_x, entry_y, 0.1)
+    _update_g_force(car, entry_x, entry_y, car.heading, 0.1)
     assert abs(car.raw_forward_g) < 1e-9
     assert abs(car.raw_lateral_g) < 1e-9
 
@@ -72,7 +70,7 @@ def test_straight_acceleration_is_positive_forward_g_only():
     entry_x, entry_y = car.x, car.y
     car.speed = 24.0  # sped up during this frame
     car.x += 24.0 * 0.1
-    _update_g_force(car, entry_x, entry_y, 0.1)
+    _update_g_force(car, entry_x, entry_y, car.heading, 0.1)
     assert car.raw_forward_g > 0.0
     assert abs(car.raw_lateral_g) < 1e-9
 
@@ -82,7 +80,7 @@ def test_straight_braking_is_negative_forward_g():
     entry_x, entry_y = car.x, car.y
     car.speed = 15.0
     car.x += 15.0 * 0.1
-    _update_g_force(car, entry_x, entry_y, 0.1)
+    _update_g_force(car, entry_x, entry_y, car.heading, 0.1)
     assert car.raw_forward_g < 0.0
     assert abs(car.raw_lateral_g) < 1e-9
 
@@ -120,14 +118,14 @@ def test_steering_while_stationary_gives_zero_lateral_g():
     entry_x, entry_y = car.x, car.y
     car.heading = math.radians(30.0)  # spun in place, didn't actually move
     assert abs(car.speed) < MIN_SPEED_FOR_LATERAL_G_MPS
-    _update_g_force(car, entry_x, entry_y, 0.1)
+    _update_g_force(car, entry_x, entry_y, car.heading, 0.1)
     assert car.raw_lateral_g == 0.0
 
 
 def test_first_measurement_reads_zero_and_primes_history():
     car = Car(x=0.0, y=0.0, heading=0.0, speed=25.0)
     assert car._g_force_initialized is False
-    _update_g_force(car, car.x - 2.5, car.y, 0.1)  # implies a 25 m/s entry velocity
+    _update_g_force(car, car.x - 2.5, car.y, car.heading, 0.1)  # implies a 25 m/s entry velocity
     assert car.raw_forward_g == 0.0
     assert car.raw_lateral_g == 0.0
     assert car._g_force_initialized is True
@@ -140,13 +138,13 @@ def test_teleport_does_not_spike_g_force():
     entry_x, entry_y = car.x, car.y
     car.x += 500.0  # a teleport, not a 0.1s drive
     car.speed = 10.0
-    _update_g_force(car, entry_x, entry_y, 0.1)
-    assert abs(car.raw_forward_g) < MAX_PLAUSIBLE_ACCEL_MPS2 / GRAVITY_MPS2
+    _update_g_force(car, entry_x, entry_y, car.heading, 0.1)
+    assert car.raw_forward_g == 0.0  # discarded outright, not just capped
 
     # And the car keeps reporting sane values on the next real frame.
     entry_x2, entry_y2 = car.x, car.y
     car.x += 1.0  # 10 m/s * 0.1s
-    _update_g_force(car, entry_x2, entry_y2, 0.1)
+    _update_g_force(car, entry_x2, entry_y2, car.heading, 0.1)
     assert abs(car.raw_forward_g) < 1e-6
 
 
@@ -155,7 +153,7 @@ def test_smoothed_g_lags_but_matches_sign_of_raw():
     entry_x, entry_y = car.x, car.y
     car.speed = 30.0
     car.x += 30.0 * 0.1
-    _update_g_force(car, entry_x, entry_y, 0.1)
+    _update_g_force(car, entry_x, entry_y, car.heading, 0.1)
     assert 0.0 < car.forward_g < car.raw_forward_g
     assert car.total_g == math.hypot(car.forward_g, car.lateral_g)
     assert car.raw_total_g == math.hypot(car.raw_forward_g, car.raw_lateral_g)

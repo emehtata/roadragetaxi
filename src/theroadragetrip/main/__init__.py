@@ -2231,7 +2231,10 @@ def main() -> None:
                 0, len(pedestrian_mgr.pedestrians),
             )
             if show_debug_hud:
-                draw_g_force_meter(screen, small_font, car.forward_g, car.lateral_g, car.is_sliding)
+                draw_g_force_meter(
+                    screen, small_font, car.forward_g, car.lateral_g, car.is_sliding,
+                    grip_usage=car.grip_usage, max_grip_g=car.max_grip_g,
+                )
             pygame.display.flip()
             if first_gameplay_frame:
                 logger.info("Gameplay frame: complete")

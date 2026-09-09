@@ -4,7 +4,8 @@ from theroadragetrip.osm import Way
 from theroadragetrip.physics import (
     Car,
     GRAVITY_MPS2,
-    GRIP_LIMIT_G,
+    PHYSICS_MODE_GRIP_MULTIPLIER,
+    SURFACE_MAX_GRIP_G,
     update_car_physics,
 )
 
@@ -57,19 +58,28 @@ def test_hard_turn_at_high_speed_exceeds_grip_and_softens_steering():
     assert car.is_sliding is True
     assert abs(applied_heading_rate) < abs(uncapped_heading_rate)
     # Applied lateral g should sit right at (not past) the arcade grip ceiling.
-    assert abs(car.lateral_g) <= GRIP_LIMIT_G["arcade"] + 1e-6
+    arcade_max_grip_g = SURFACE_MAX_GRIP_G["dry_asphalt"] * PHYSICS_MODE_GRIP_MULTIPLIER["arcade"]
+    assert abs(car.raw_lateral_g) <= arcade_max_grip_g + 1e-6
 
 
 def test_simulation_mode_has_a_lower_grip_ceiling_than_arcade():
-    def lateral_g_at_limit(mode):
+    """Checks the configured ceiling (car.max_grip_g) directly rather than
+    inferring it from measured lateral_g: now that lateral_g is measured
+    from the car's actual velocity-vector change (GFORCE.md), a hard-
+    oversteering "simulation"-mode car genuinely sliding (drift_angle
+    swinging the tail out, on top of the understeer-clamped heading rate)
+    can measure a *higher* instantaneous lateral g than arcade's calmer,
+    drift-free understeer - that's correct physical behaviour, not a
+    lower ceiling, so it's no longer the right proxy for this check."""
+    def max_grip_g_for(mode):
         car = _fast_car(speed=30.0)
         update_car_physics(
             car, throttle=0.0, brake=0.0, steer_left=1.0, steer_right=0.0, dt=0.1,
             physics_mode=mode,
         )
-        return abs(car.lateral_g)
+        return car.max_grip_g
 
-    assert lateral_g_at_limit("simulation") < lateral_g_at_limit("arcade")
+    assert max_grip_g_for("simulation") < max_grip_g_for("arcade")
 
 
 def test_simulation_mode_builds_a_drift_angle_that_recovers():
@@ -108,7 +118,7 @@ def test_ice_road_has_a_much_lower_grip_limit():
 
     # A turn gentle enough to keep grip on dry asphalt...
     speed = 20.0
-    dry_car = Car(x=0.0, y=0.0, heading=0.0, speed=speed)
+    dry_car = _fast_car(speed)
     update_car_physics(
         dry_car, throttle=0.0, brake=0.0, steer_left=0.5, steer_right=0.0, dt=0.1,
         current_way=dry_road, physics_mode="arcade",
@@ -116,7 +126,7 @@ def test_ice_road_has_a_much_lower_grip_limit():
     assert dry_car.is_sliding is False
 
     # ...should still break loose on the same road covered in ice.
-    ice_car = Car(x=0.0, y=0.0, heading=0.0, speed=speed)
+    ice_car = _fast_car(speed)
     update_car_physics(
         ice_car, throttle=0.0, brake=0.0, steer_left=0.5, steer_right=0.0, dt=0.1,
         current_way=ice_road, physics_mode="arcade",

@@ -564,11 +564,18 @@ def draw_g_force_meter(
     is_sliding: bool = False,
     screen_h: int = SCREEN_H,
     max_g: float = 2.5,
+    grip_usage: float = 0.0,
+    max_grip_g: Optional[float] = None,
 ) -> None:
     """Debug-HUD g-force meter: a dot on a crosshair circle, positioned
     beside the speedometer. Forward/back is the vertical axis (accelerating
     up, braking down), left/right is horizontal - the classic racing-
-    telemetry layout, so all four directions read at a glance."""
+    telemetry layout, so all four directions read at a glance.
+
+    `grip_usage`/`max_grip_g` (GRIP.md section 13) extend it with the
+    current surface/mode's actual grip ceiling and how much of it is in
+    use, rather than a fixed "1g" reference that no longer means anything
+    once grip varies by surface (dry asphalt down to ice)."""
     import pygame
 
     radius = 60
@@ -579,8 +586,9 @@ def draw_g_force_meter(
     pygame.draw.circle(screen, ring_color, center, radius, 2)
     pygame.draw.line(screen, (70, 78, 86), (center[0] - radius, center[1]), (center[0] + radius, center[1]), 1)
     pygame.draw.line(screen, (70, 78, 86), (center[0], center[1] - radius), (center[0], center[1] + radius), 1)
-    # A ring at 1g marks the typical dry-asphalt grip limit, for scale.
-    pygame.draw.circle(screen, (70, 78, 86), center, int(radius / max_g), 1)
+    # A ring at the current surface/mode's grip ceiling, for scale.
+    grip_ring_g = max_grip_g if max_grip_g is not None else 1.0
+    pygame.draw.circle(screen, (70, 78, 86), center, int(radius * grip_ring_g / max_g), 1)
 
     label_color = (170, 178, 186)
     for text, offset in (
@@ -598,4 +606,9 @@ def draw_g_force_meter(
     pygame.draw.circle(screen, dot_color, (int(dot_x), int(dot_y)), 6)
 
     readout = font.render(f"{math.hypot(forward_g, lateral_g):.2f} g", True, dot_color)
-    screen.blit(readout, readout.get_rect(midtop=(center[0], center[1] + radius + 16)))
+    readout_rect = readout.get_rect(midtop=(center[0], center[1] + radius + 16))
+    screen.blit(readout, readout_rect)
+    if max_grip_g is not None:
+        grip_color = (255, 90, 70) if is_sliding else (170, 178, 186)
+        grip_readout = font.render(f"grip {grip_usage * 100.0:.0f}%", True, grip_color)
+        screen.blit(grip_readout, grip_readout.get_rect(midtop=(center[0], readout_rect.bottom + 2)))
