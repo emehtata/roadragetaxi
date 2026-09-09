@@ -26,6 +26,7 @@ signal state machine and the physical/logical intersection model.
 import math
 from typing import List, Optional, Tuple
 
+from ..geo import dist_point_to_segment
 from .models import IntersectionApproach, LogicalIntersection, SignalGroup, TrafficLight, Way
 
 
@@ -215,12 +216,25 @@ def _intersection_arms(center: Tuple[float, float], layer: int, ways: List[Way])
     return [(entry["angle"], entry["incoming"], entry["way"]) for entry in arms]
 
 
+def _point_to_way_distance(point: Tuple[float, float], way: Way) -> float:
+    points_m = way.points_m
+    if len(points_m) < 2:
+        return math.inf
+    return min(
+        dist_point_to_segment(point[0], point[1], a[0], a[1], b[0], b[1])
+        for a, b in zip(points_m, points_m[1:])
+    )
+
+
 def _assign_signal_points_to_arms(
-    points: List[Tuple[float, float]], center: Tuple[float, float], arm_angles: List[float],
+    points: List[Tuple[float, float]],
+    center: Tuple[float, float],
+    arm_angles: List[float],
+    arm_ways: List[Way],
 ) -> List[Optional[Tuple[float, float]]]:
-    """Attribute raw OSM signal-node positions to their nearest incoming arm
-    by bearing from `center`, one representative point per arm (the average
-    of whatever was attributed to it, or None if nothing was).
+    """Attribute raw OSM signal-node positions to their nearest incoming arm,
+    one representative point per arm (the average of whatever was
+    attributed to it, or None if nothing was).
 
     Only called when a cluster has more than one point: a single point
     carries no directional evidence (it's "one signal in the middle of the
@@ -234,14 +248,46 @@ def _assign_signal_points_to_arms(
     intersection; per prompt Section 6 this module models at most one
     physical light per approach, so an arm's evidence is collapsed to its
     average position instead of fanned out one-for-one.
+
+    Distance to the arm's own road geometry is the primary signal - a real
+    OSM traffic_signals node is normally right on (or a lane's width from)
+    the road it belongs to. A real Kajaanintie junction with a curving
+    motorway_link ramp regressed under the previous bearing-only version:
+    the ramp's real signal node landed closer *by angle* to the through
+    road on the opposite side of an imprecise cluster center than to the
+    ramp's own geometry (just 10° apart in bearing), starving the ramp's
+    arm of real evidence and falling back to its synthesized position -
+    a straight line from center along the ramp's initial tangent, which
+    missed the curve entirely and landed in the grass beside it. Falls
+    back to bearing when a point isn't clearly closest to exactly one
+    *street's* geometry: either it isn't near any (shouldn't normally
+    happen - every incoming arm has a way), or it's tied between arms
+    belonging to genuinely different ways - e.g. every arm sharing the
+    same vertex at the junction center, and a point placed right there (a
+    real OSM pattern: "one signal, somewhere in the junction") is equally
+    close (~0m) to all of them, which distance can't disambiguate but
+    bearing still can. A through road split into two direction-arms
+    (arm0 westbound, arm1 eastbound) shares one Way object between them,
+    so a point tied between *those* isn't ambiguous at all - either is
+    the same street, and picking one arbitrarily beats risking bearing
+    sending it to a wrong, different street instead (bearing from an
+    imprecise cluster center is exactly what put a point on the wrong
+    street in the first place).
     """
     sums: List[List[float]] = [[0.0, 0.0, 0] for _ in arm_angles]
     for point in points:
-        bearing = math.atan2(point[1] - center[1], point[0] - center[0])
-        nearest = min(
-            range(len(arm_angles)),
-            key=lambda i: abs((bearing - arm_angles[i] + math.pi) % (2.0 * math.pi) - math.pi),
-        )
+        distances = [_point_to_way_distance(point, way) for way in arm_ways]
+        closest = min(distances)
+        tied = [i for i, d in enumerate(distances) if d <= closest + 0.5]
+        distinct_ways = {id(arm_ways[i]) for i in tied}
+        if closest == math.inf or len(distinct_ways) > 1:
+            bearing = math.atan2(point[1] - center[1], point[0] - center[0])
+            nearest = min(
+                range(len(arm_angles)),
+                key=lambda i: abs((bearing - arm_angles[i] + math.pi) % (2.0 * math.pi) - math.pi),
+            )
+        else:
+            nearest = tied[0]
         sums[nearest][0] += point[0]
         sums[nearest][1] += point[1]
         sums[nearest][2] += 1
@@ -428,7 +474,9 @@ def build_traffic_light_system(
         # more points are real per-arm evidence, used to place that arm's
         # one light instead of guessing.
         points_per_arm = (
-            _assign_signal_points_to_arms(points, center, [arm[0] for arm in incoming_arms])
+            _assign_signal_points_to_arms(
+                points, center, [arm[0] for arm in incoming_arms], [arm[2] for arm in incoming_arms],
+            )
             if len(points) > 1 else [None for _ in incoming_arms]
         )
 
