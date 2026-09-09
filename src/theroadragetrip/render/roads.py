@@ -1072,14 +1072,20 @@ def draw_tire_tracks(
     screen_h: int = SCREEN_H,
     viewport_bounds=None,
 ) -> None:
-    """Draw persistent tire marks either on grass or on paved roads."""
+    """Draw persistent tire marks either on grass or on paved roads.
+
+    Each mark's `intensity` (0..1, see physics.skidmark_intensity) fades it
+    from barely-visible toward full-black rather than an invisible/solid
+    binary switch (SKIDMARK.md section 22.9) - a real skid darkens
+    gradually as slip worsens, it doesn't snap into existence."""
     import pygame
 
-    color = (105, 68, 38) if grass else (28, 28, 28)
+    faint_color = (150, 138, 118) if grass else (110, 110, 110)
+    dark_color = (105, 68, 38) if grass else (28, 28, 28)
     width = max(3, int((0.75 if grass else 0.24) * px_per_m))
     previous_tires = None
     previous_sequence = None
-    for track_x, track_y, heading, is_grass, sequence in tracks:
+    for track_x, track_y, heading, is_grass, sequence, intensity in tracks:
         if is_grass != grass:
             previous_tires = None
             previous_sequence = None
@@ -1099,6 +1105,9 @@ def draw_tire_tracks(
             tire_y = center_y + side_y * side * 0.72 * px_per_m
             current_tires.append((int(tire_x), int(tire_y)))
         if previous_tires is not None and sequence == previous_sequence:
+            color = tuple(
+                int(faint + (dark - faint) * intensity) for faint, dark in zip(faint_color, dark_color)
+            )
             for previous_tire, current_tire in zip(previous_tires, current_tires):
                 pygame.draw.line(screen, color, previous_tire, current_tire, width)
         previous_tires = current_tires

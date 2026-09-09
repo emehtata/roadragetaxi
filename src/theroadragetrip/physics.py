@@ -81,6 +81,13 @@ FULL_SLIDE_RATIO = 1.00 / 0.90
 # flicker for a car riding right at the boundary.
 SLIDE_ENTER_THRESHOLD = 0.80
 SLIDE_EXIT_THRESHOLD = 0.65
+# Visible skidmarks (.github/prompts/SKIDMARK.md), as thresholds on
+# car.slip_amount (already a continuous 0..1 - see _slip_amount_from_ratio)
+# rather than a second slip metric. Deliberately below SLIDE_ENTER_THRESHOLD:
+# a tire can be visibly slipping (worth a mark on the road) before the
+# whole car counts as "sliding".
+SKIDMARK_SLIP_THRESHOLD = 0.65
+SKIDMARK_FULL_SLIP_THRESHOLD = 0.90
 # Below this speed the velocity vector direction is numerically unstable
 # (near-zero-length), so slip angle isn't meaningful (GRIP.md section 5) -
 # reuses the same cutoff as lateral g for the same reason.
@@ -1051,6 +1058,28 @@ def _slip_amount_from_ratio(grip_ratio: float) -> float:
     if grip_ratio >= FULL_SLIDE_RATIO:
         return 1.0
     return _smoothstep((grip_ratio - GRIP_WARNING_RATIO) / (FULL_SLIDE_RATIO - GRIP_WARNING_RATIO))
+
+
+def skidmark_intensity(slip_amount: float) -> float:
+    """How dark a skidmark segment should be (0 = invisible, 1 = full
+    black) for a tire at this slip_amount - SKIDMARK.md section 22.9: a
+    continuous fade between the visible and full-slip thresholds, not an
+    invisible/black binary switch. 0 below SKIDMARK_SLIP_THRESHOLD (no
+    mark at all - see skidmark_should_mark)."""
+    if slip_amount <= SKIDMARK_SLIP_THRESHOLD:
+        return 0.0
+    if slip_amount >= SKIDMARK_FULL_SLIP_THRESHOLD:
+        return 1.0
+    return _smoothstep(
+        (slip_amount - SKIDMARK_SLIP_THRESHOLD) / (SKIDMARK_FULL_SLIP_THRESHOLD - SKIDMARK_SLIP_THRESHOLD)
+    )
+
+
+def skidmark_should_mark(slip_amount: float) -> bool:
+    """Whether a tire at this slip_amount should leave a mark at all
+    (SKIDMARK.md section 22.2) - a lower bar than is_sliding's hysteresis:
+    a tire can be visibly slipping before the whole car is "sliding"."""
+    return slip_amount >= SKIDMARK_SLIP_THRESHOLD
 
 
 def _available_lateral_budget_g(max_grip_g: float, longitudinal_g: float) -> float:

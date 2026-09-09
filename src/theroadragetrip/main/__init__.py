@@ -83,6 +83,8 @@ from ..physics import (
     reset_trip,
     respawn_car,
     pull_car_inside_bridge_edge,
+    skidmark_intensity,
+    skidmark_should_mark,
     update_car_physics,
 )
 from ..render import (
@@ -1249,6 +1251,10 @@ def main() -> None:
                             camx, camy = car.x, car.y
                             invalidate_static_caches_for_camera_jump()
                             taxi_mgr.handle_respawn(car.x, car.y)
+                            # Don't let the next tire-track segment rubber-
+                            # band across the teleport (SKIDMARK.md #22.21.13).
+                            last_track_position = None
+                            last_track_surface = None
                     elif event.key == pygame.K_HOME:
                         if not _respawn_allowed(on_foot):
                             logger.info("Debug respawn ignored while driver is walking outside taxi")
@@ -1263,6 +1269,8 @@ def main() -> None:
                             camx, camy = car.x, car.y
                             invalidate_static_caches_for_camera_jump()
                             taxi_mgr.handle_respawn(car.x, car.y)
+                            last_track_position = None
+                            last_track_surface = None
                             logger.info("Debug respawn near bbox edge: car=(%.1f, %.1f)", car.x, car.y)
                     elif event.key == pygame.K_x:
                         taxi_mgr.discard_mission(car.x, car.y)
@@ -1379,7 +1387,6 @@ def main() -> None:
                 )
 
             previous_position = (car.x, car.y)
-            previous_speed = car.speed
             # Off-road driving is allowed at a reduced speed.
             if not on_foot:
                 with frame_profiler.section("physics"):
@@ -1431,6 +1438,8 @@ def main() -> None:
                         taxi_mgr.notification_msg = tr(language, "water_driving")
                         taxi_mgr.notification_timer = 1.5
                         water_elapsed = 0.0
+                        last_track_position = None
+                        last_track_surface = None
                 else:
                     water_elapsed = 0.0
             if immobilized:
@@ -1656,15 +1665,19 @@ def main() -> None:
             current_way = get_current_road_at_car(car, ways=ways, spatial_grid=spatial_grid, car_roads_only=True, current_way=current_way)
             on_road = current_way is not None
             is_grass = surface_way is None and not is_point_on_parking_space(car.x, car.y, parking_spaces)
-            is_skidding = (
-                (brake > 0.0 and abs(previous_speed) > 4.0 and abs(steer_left - steer_right) > 0.01)
-                or car.is_sliding
-            )
+            # Tire slip is the source of truth for a skidmark (SKIDMARK.md) -
+            # not brake input, not even is_sliding alone (a tire can be
+            # visibly slipping before the whole car counts as sliding; see
+            # skidmark_should_mark's lower threshold).
+            is_skidding = skidmark_should_mark(car.slip_amount)
             if movement_distance > 0.0 and (is_skidding or (is_grass and abs(car.speed) > 1.0)):
                 if last_track_position is None or is_grass != last_track_surface:
                     track_sequence += 1
                 if last_track_position is None or math.hypot(car.x - last_track_position[0], car.y - last_track_position[1]) >= 1.0:
-                    tire_tracks.append((car.x, car.y, car.heading, is_grass, track_sequence))
+                    # The grass trail isn't a slip mark - it's a constant-
+                    # weight dirt track from driving off-road at all.
+                    intensity = skidmark_intensity(car.slip_amount) if is_skidding else 1.0
+                    tire_tracks.append((car.x, car.y, car.heading, is_grass, track_sequence, intensity))
                     last_track_position = (car.x, car.y)
                     last_track_surface = is_grass
                     if len(tire_tracks) > 4000:
