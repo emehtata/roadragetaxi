@@ -180,14 +180,17 @@ def _intersection_arms(center: Tuple[float, float], layer: int, ways: List[Way])
         # with far more "arms" - and lights - than actual traffic lanes.
         if not getattr(way, "is_drivable", True):
             continue
-        # A service road (driveway, parking-lot aisle, ...) is drivable
-        # but not a real signalized approach - a real intersection with a
-        # driveway a few meters from it still has only its actual streets
-        # on the signal cycle, not the driveway (it yields instead). Real
-        # case: a parking_aisle branching off at nearly the same angle as
-        # a genuine signalized street (Lävistäjä) was getting counted as
-        # its own arm and its own synthesized light.
-        if getattr(way, "highway", None) == "service":
+        # Certain service subtypes (driveways / parking aisles) are
+        # drivable but not real signalized approaches - a real
+        # intersection with one a few meters from it still has only its
+        # actual streets on the signal cycle, not the yielding driveway.
+        # Real case: a parking_aisle branching off at nearly the same
+        # angle as a genuine signalized street (Lävistäjä) was getting
+        # counted as its own arm and its own synthesized light.
+        if (
+            getattr(way, "highway", None) == "service"
+            and getattr(way, "service", None) in {"driveway", "parking_aisle"}
+        ):
             continue
         bbox = getattr(way, "bbox", None)
         if bbox and bbox != (0.0, 0.0, 0.0, 0.0):
@@ -348,6 +351,7 @@ def _cluster_signal_positions(
         by_layer.setdefault(layer, []).append((x, y))
 
     clusters: List[dict] = []
+    cell_size = cluster_radius_m if cluster_radius_m > 0.0 else 1.0
     for layer, points in by_layer.items():
         parent = list(range(len(points)))
 
@@ -357,10 +361,21 @@ def _cluster_signal_positions(
                 i = parent[i]
             return i
 
-        for i in range(len(points)):
-            for j in range(i + 1, len(points)):
-                if math.hypot(points[i][0] - points[j][0], points[i][1] - points[j][1]) <= cluster_radius_m:
-                    parent[find(i)] = find(j)
+        def union(i: int, j: int) -> None:
+            root_i = find(i)
+            root_j = find(j)
+            if root_i != root_j:
+                parent[root_i] = root_j
+
+        grid: dict = {}
+        for i, (x, y) in enumerate(points):
+            cell = (math.floor(x / cell_size), math.floor(y / cell_size))
+            for dx in (-1, 0, 1):
+                for dy in (-1, 0, 1):
+                    for j in grid.get((cell[0] + dx, cell[1] + dy), ()):
+                        if math.hypot(x - points[j][0], y - points[j][1]) <= cluster_radius_m:
+                            union(i, j)
+            grid.setdefault(cell, []).append(i)
 
         groups: dict = {}
         for i, point in enumerate(points):

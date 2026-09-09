@@ -359,6 +359,15 @@ def test_parking_aisle_arm_doesnt_get_a_traffic_light():
     assert len(intersections[0].approaches) == 4
 
 
+def test_service_alley_arm_still_counts_as_a_traffic_light_approach():
+    arms = _four_way_ways()
+    arms["alley"] = Way([(0.0, 0.0), (60.0, 60.0)], "service", 2.0, service="alley")
+    lights, intersections = build_traffic_light_system([(0.0, 0.0, 0)], list(arms.values()))
+
+    assert len(lights) == 5
+    assert len(intersections[0].approaches) == 5
+
+
 def test_footway_arms_dont_get_traffic_lights():
     """A pedestrian path threading through a signal-controlled plaza is not
     a vehicle approach - it must not add its own arm/light, or count
