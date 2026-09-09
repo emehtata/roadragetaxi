@@ -1,7 +1,5 @@
-import argparse
 import cProfile
 import concurrent.futures
-import json
 import logging
 import math
 import os
@@ -9,24 +7,19 @@ import random
 import sys
 import threading
 import time
-from dataclasses import asdict
 from types import SimpleNamespace
-from typing import Optional, Tuple
+from typing import Optional
 
 import pygame
 
-from ..geo import clamp, dist_point_to_segment, meters_to_latlon
+from ..geo import dist_point_to_segment, meters_to_latlon
 from ..audio import AudioManager
 from ..config import (
     CONFIG_PATH,
-    city_suggestions,
     cities_from_config,
     default_city_configuration,
-    get_optional_int,
     get_overpass_endpoints,
-    load_city_catalog,
     load_config,
-    replace_city_in_config,
     save_config,
 )
 from ..career import (
@@ -39,37 +32,22 @@ from ..career import (
     save_career,
     save_gig_odometer,
 )
-from ..localization import LANGUAGE_NAMES, SUPPORTED_LANGUAGES, normalize_language, tr
+from ..localization import SUPPORTED_LANGUAGES, normalize_language, tr
 from ..osm import (
-    BBOX_PRESETS,
     DEFAULT_BBOX,
-    DEFAULT_OVERPASS_ENDPOINTS,
-    DEFAULT_ROAD_HALF_WIDTH_M,
-    HIGHWAY_HALF_WIDTH,
     AutoFetchManager,
-    Building,
-    BusStop,
-    Place,
-    Scenery,
-    TaxiStop,
-    TrafficLight,
-    Water,
-    Way,
     build_ways,
     clear_osm_cache,
     configure_user_agent,
     fetch_osm_ways,
     has_outdated_osm_cache,
     load_local_sample,
-    load_osm_cache,
     remove_trees_under_roads,
-    save_osm_cache,
 )
 from ..physics import (
     ACCEL,
     BRAKE,
     FRICTION,
-    MAX_SPEED,
     STEER_RATE,
     STEER_SPEED_FACTOR,
     Car,
@@ -77,7 +55,6 @@ from ..physics import (
     get_current_road_at_car,
     is_car_colliding_with_bridge_edge,
     is_car_fully_in_water,
-    is_on_road,
     is_point_on_parking_space,
     reset_trip,
     respawn_car,
@@ -88,7 +65,6 @@ from ..physics import (
 )
 from ..render import (
     FPS,
-    PX_PER_M,
     SCREEN_H,
     SCREEN_W,
     TireTrail,
@@ -98,7 +74,6 @@ from ..render import (
     draw_city_selection_menu,
     draw_game_start_hint,
     draw_game_start_overlay,
-    draw_city_editor,
     draw_city_summary,
     draw_mode_selection_menu,
     draw_compass,
@@ -144,9 +119,8 @@ from ..render import (
     get_viewport_bounds,
     minimum_px_per_m_for_viewport_width,
     solar_altitude_and_events,
-    world_to_screen,
 )
-from ..pedestrian import Pedestrian, PedestrianManager, PlayerPedestrian
+from ..pedestrian import PedestrianManager, PlayerPedestrian
 from ..residents import ResidentManager
 from ..police import place_speed_cameras
 from ..roadworks import create_roadworks
@@ -157,10 +131,7 @@ from ..performance import FrameProfiler
 
 from .cli import configure_logging, parse_args
 from .menu_input import (
-    CITY_MENU_KEYS,
     _city_edit_at,
-    _city_editor_item_at,
-    _city_editor_suggestion_at,
     _city_horizontal_index,
     _city_item_at,
     _city_menu_index,
