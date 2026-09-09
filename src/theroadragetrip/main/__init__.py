@@ -78,6 +78,7 @@ from ..render import (
     draw_mode_selection_menu,
     draw_compass,
     draw_crossings,
+    draw_curbs,
     draw_day_night_overlay,
     draw_grass_texture,
     draw_headlight_beams,
@@ -475,6 +476,7 @@ def _load_world(
         stop_signs = getattr(res, "stop_signs", [])
         yield_signs = getattr(res, "yield_signs", [])
         logical_intersections = getattr(res, "logical_intersections", [])
+        curbs = getattr(res, "curbs", [])
         if len(res) == 8:
             ways, waters, buildings, sceneries, places, bounds, traffic_lights, crossings = res
         elif len(res) == 7:
@@ -518,6 +520,8 @@ def _load_world(
     crossing_grid.rebuild(crossings)
     traffic_light_grid = SpatialWayGrid()
     traffic_light_grid.rebuild(traffic_lights)
+    curb_grid = SpatialWayGrid()
+    curb_grid.rebuild(curbs)
 
     # Spawn car on a road near center (avoiding water)
     car = Car(x=(minx + maxx) / 2, y=(miny + maxy) / 2, heading=0.0, speed=0.0)
@@ -614,6 +618,7 @@ def _load_world(
         parking_spaces=parking_spaces,
         logical_intersections=logical_intersections,
         yield_signs=yield_signs,
+        curbs=curbs,
         fetch_func=lambda fetch_bbox: fetch_osm_ways(fetch_bbox, endpoints=overpass_endpoints),
         build_func=build_ways,
         build_in_process=args.build_in_process,
@@ -634,6 +639,8 @@ def _load_world(
         career_total_distance_m=career_total_distance_m,
         crossing_grid=crossing_grid,
         crossings=crossings,
+        curb_grid=curb_grid,
+        curbs=curbs,
         elements_count=elements_count,
         logical_intersections=logical_intersections,
         parking_spaces=parking_spaces,
@@ -798,6 +805,8 @@ def main() -> None:
         career_total_distance_m = world.career_total_distance_m
         crossing_grid = world.crossing_grid
         crossings = world.crossings
+        curb_grid = world.curb_grid
+        curbs = world.curbs
         elements_count = world.elements_count
         logical_intersections = world.logical_intersections
         parking_spaces = world.parking_spaces
@@ -1455,6 +1464,9 @@ def main() -> None:
                 tree_crash = taxi_mgr.check_tree_collision(
                     car, sceneries, traffic_mgr.sim_time, previous_position, ways=ways
                 )
+                taxi_mgr.check_curb_bump(
+                    car, curbs, previous_position, traffic_mgr.sim_time, curb_grid=curb_grid
+                )
                 bridge_edge_crash = is_car_colliding_with_bridge_edge(car, current_way, ways=ways)
                 if bridge_edge_crash:
                     pull_car_inside_bridge_edge(car, current_way)
@@ -1721,6 +1733,7 @@ def main() -> None:
                         or len(sceneries) != scenery_grid.indexed_way_count
                         or len(waters) != water_grid.indexed_way_count
                         or len(crossings) != crossing_grid.indexed_way_count
+                        or len(curbs) != curb_grid.indexed_way_count
                         or len(traffic_lights) != traffic_light_grid.indexed_way_count
                     )
                     )
@@ -1761,17 +1774,21 @@ def main() -> None:
                         crossing_grid.rebuild(crossings)
                     map_sync_stage = 7
                 elif map_sync_stage == 7:
+                    with frame_profiler.section("map_sync:curb_grid"):
+                        curb_grid.rebuild(curbs)
+                    map_sync_stage = 8
+                elif map_sync_stage == 8:
                     with frame_profiler.section("map_sync:traffic_light_grid"):
                         traffic_light_grid.rebuild(traffic_lights)
                     if args.auto_fetch:
                         with auto_fetch_manager.lock:
                             auto_fetch_manager._attempted_endpoints.clear()
-                    map_sync_stage = 8
-                elif map_sync_stage == 8:
-                    with frame_profiler.section("map_sync:taxi"):
-                        taxi_mgr.sync_map_data(ways, places=places, buildings=buildings)
                     map_sync_stage = 9
                 elif map_sync_stage == 9:
+                    with frame_profiler.section("map_sync:taxi"):
+                        taxi_mgr.sync_map_data(ways, places=places, buildings=buildings)
+                    map_sync_stage = 10
+                elif map_sync_stage == 10:
                     with frame_profiler.section("map_sync:traffic"):
                         traffic_mgr.sync_map_data(
                             ways,
@@ -1783,15 +1800,15 @@ def main() -> None:
                             parking_spaces=parking_spaces,
                             logical_intersections=logical_intersections,
                         )
-                    map_sync_stage = 10
-                elif map_sync_stage == 10:
+                    map_sync_stage = 11
+                elif map_sync_stage == 11:
                     with frame_profiler.section("map_sync:pedestrians"):
                         pedestrian_mgr.sync_map_data(
                             ways, traffic_lights=traffic_lights, logical_intersections=logical_intersections,
                         )
                         pedestrian_mgr.set_venue_buildings(buildings)
-                    map_sync_stage = 11
-                elif map_sync_stage == 11:
+                    map_sync_stage = 12
+                elif map_sync_stage == 12:
                     with frame_profiler.section("map_sync:finalize"):
                         navigation_route_dirty = True
                         last_map_revision = auto_fetch_manager.get_map_revision()
@@ -1937,6 +1954,7 @@ def main() -> None:
             draw_roadworks(screen, roadworks, camx, camy, px_per_m=px_per_m)
             if first_gameplay_frame:
                 logger.info("Gameplay frame: rendering overlays")
+            draw_curbs(screen, curbs, camx, camy, px_per_m=px_per_m, spatial_grid=curb_grid)
             draw_crossings(screen, crossings, camx, camy, px_per_m=px_per_m, spatial_grid=crossing_grid)
             draw_traffic_lights(
                 screen,

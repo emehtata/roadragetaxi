@@ -52,6 +52,7 @@ from .models import (
     Building,
     BusStop,
     Crossing,
+    Curb,
     IntersectionApproach,
     LogicalIntersection,
     MapData,

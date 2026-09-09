@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple
 
 from .geo import clamp, closest_point_and_dist_to_segment, compute_bbox, dist_point_to_segment, get_oriented_box_corners, point_in_polygon, segments_intersect
-from .osm import Building, Place, TaxiStop, Way
+from .osm import Building, Curb, Place, TaxiStop, Way
 from .physics import Car, SpatialWayGrid, connected_drivable_ways, is_car_road, is_point_on_road, is_violating_oneway
 from .localization import tr
 from .police import SpeedCamera, camera_sees_car
@@ -164,6 +164,7 @@ class TaxiManager:
 
         self._crashed_building_cooldowns: Dict[int, float] = {}  # building id -> timestamp cooldown
         self._crashed_tree_cooldowns: Dict[Tuple[int, int], float] = {}
+        self._curb_bump_cooldowns: Dict[int, float] = {}  # curb id -> timestamp cooldown
         self._speed_camera_hits: set[int] = set()
         self.tree_effects: Dict[Tuple[int, int], Dict[str, float]] = {}
         self.fallen_trees: set[Tuple[int, int]] = set()
@@ -452,6 +453,47 @@ class TaxiManager:
                     self.notification_msg = tr(self.language, "tree_crash", penalty=penalty)
                     self.notification_timer = 3.5
                 return True
+        return False
+
+    def check_curb_bump(
+        self,
+        player_car: Car,
+        curbs: List[Curb],
+        previous_position: Optional[Tuple[float, float]],
+        sim_time: float,
+        curb_grid: Optional[SpatialWayGrid] = None,
+        speed_factor: float = 0.85,
+    ) -> bool:
+        """Bump and slow the car when it drives over a mapped kerb line."""
+        if not curbs or previous_position is None:
+            return False
+        px, py = previous_position
+        if px == player_car.x and py == player_car.y:
+            return False
+
+        expired = [key for key, t in self._curb_bump_cooldowns.items() if sim_time - t > 0.5]
+        for key in expired:
+            del self._curb_bump_cooldowns[key]
+
+        radius = math.hypot(player_car.length_m, player_car.width_m) * 0.5
+        candidates = (
+            curb_grid.ways_in_rect(
+                min(px, player_car.x) - radius, min(py, player_car.y) - radius,
+                max(px, player_car.x) + radius, max(py, player_car.y) + radius,
+            )
+            if curb_grid is not None
+            else curbs
+        )
+        for curb in candidates:
+            curb_id = id(curb)
+            if curb_id in self._curb_bump_cooldowns:
+                continue
+            points = curb.points_m
+            for start, end in zip(points, points[1:]):
+                if segments_intersect((px, py), (player_car.x, player_car.y), start, end):
+                    self._curb_bump_cooldowns[curb_id] = sim_time
+                    player_car.speed *= speed_factor
+                    return True
         return False
 
     def get_red_light_assist_speed_limit(

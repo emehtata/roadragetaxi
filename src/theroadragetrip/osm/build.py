@@ -19,6 +19,7 @@ from .constants import (
 from .models import (
     Way,
     Water,
+    Curb,
     Building,
     ParkingSpace,
     Scenery,
@@ -157,6 +158,7 @@ def build_ways(
     ways_by_id: Dict[int, dict] = {}
     ways_raw: List[Tuple[dict, str, List[int]]] = []
     water_raw: List[Tuple[dict, List[int]]] = []
+    curb_raw: List[Tuple[dict, List[int]]] = []
     building_raw: List[Tuple[dict, List[int]]] = []
     parking_space_raw: List[Tuple[dict, List[int], Optional[int]]] = []
     scenery_raw: List[Tuple[dict, List[int]]] = []
@@ -206,6 +208,8 @@ def build_ways(
                 building_raw.append((tags, node_ids))
             elif tags.get("amenity") == "parking_space":
                 parking_space_raw.append((tags, node_ids, way_id))
+            elif tags.get("barrier") == "kerb":
+                curb_raw.append((tags, node_ids))
             elif tags.get("natural") in ("water", "bay", "strait") or ("waterway" in tags) or tags.get("landuse") == "reservoir":
                 water_raw.append((tags, node_ids))
             elif tags.get("amenity") == "parking" or tags.get("landuse") == "parking":
@@ -258,6 +262,7 @@ def build_ways(
 
     ways: List[Way] = []
     waters: List[Water] = []
+    curbs: List[Curb] = []
     buildings: List[Building] = []
     sceneries: List[Scenery] = []
     places: List[Place] = []
@@ -370,6 +375,12 @@ def build_ways(
         except (TypeError, ValueError):
             layer = 0
         waters.append(Water(points_m=pts, kind=kind, is_polygon=is_poly, name=name, bbox=ibbox, layer=layer))
+
+    for tags, node_ids in curb_raw:
+        pts, ibbox = process_node_ids(node_ids)
+        if not pts or len(pts) < 2:
+            continue
+        curbs.append(Curb(points_m=pts, bbox=ibbox))
 
     # 3. Buildings
     if progress_callback:
@@ -922,4 +933,5 @@ def build_ways(
     return MapData(
         ways, waters, buildings, sceneries, places, (minx, miny, maxx, maxy),
         traffic_lights, crossings, taxi_stops, bus_stops, parking_spaces, logical_intersections, stop_signs, yield_signs,
+        curbs=curbs,
     )

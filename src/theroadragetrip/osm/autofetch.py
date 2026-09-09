@@ -14,6 +14,7 @@ logger = logging.getLogger(__name__)
 from .models import (
     Way,
     Water,
+    Curb,
     Building,
     ParkingSpace,
     Scenery,
@@ -144,6 +145,7 @@ class AutoFetchManager:
         parking_spaces: Optional[List[ParkingSpace]] = None,
         logical_intersections: Optional[List[LogicalIntersection]] = None,
         yield_signs: Optional[List[YieldSign]] = None,
+        curbs: Optional[List[Curb]] = None,
         fetch_func=fetch_osm_ways,
         build_func=build_ways,
         cooldown_s: float = 5.0,
@@ -163,6 +165,7 @@ class AutoFetchManager:
         self.parking_spaces = parking_spaces if parking_spaces is not None else []
         self.logical_intersections = logical_intersections if logical_intersections is not None else []
         self.yield_signs = yield_signs if yield_signs is not None else []
+        self.curbs = curbs if curbs is not None else []
         self.bounds = bounds
         self.transformer = transformer
         self.fetch_func = fetch_func
@@ -391,6 +394,7 @@ class AutoFetchManager:
             "logical_intersections": self.logical_intersections,
             "stop_signs": self.stop_signs,
             "yield_signs": self.yield_signs,
+            "curbs": self.curbs,
         }
         for section, objects in sections.items():
             for item in objects:
@@ -521,6 +525,7 @@ class AutoFetchManager:
             "logical_intersections": self.logical_intersections,
             "stop_signs": self.stop_signs,
             "yield_signs": self.yield_signs,
+            "curbs": self.curbs,
         }
         for section, target in sections.items():
             new_items = getattr(world, section, ())
@@ -579,6 +584,7 @@ class AutoFetchManager:
             "logical_intersections": self.logical_intersections,
             "stop_signs": self.stop_signs,
             "yield_signs": self.yield_signs,
+            "curbs": self.curbs,
         }
         # Collect every key actually losing its last owner across *all*
         # unloading tiles first, then filter each section's list once at the
@@ -956,6 +962,7 @@ class AutoFetchManager:
             new_parking_spaces = getattr(res, "parking_spaces", [])
             new_logical_intersections = getattr(res, "logical_intersections", [])
             new_yield_signs = getattr(res, "yield_signs", [])
+            new_curbs = getattr(res, "curbs", [])
             if len(res) == 8:
                 new_ways, new_waters, new_buildings, new_sceneries, new_places, new_bounds, new_traffic_lights, new_crossings = res
             elif len(res) == 7:
@@ -1014,6 +1021,7 @@ class AutoFetchManager:
                 added_parking_spaces = _extend_unique(self.parking_spaces, new_parking_spaces)
                 _extend_unique(self.logical_intersections, new_logical_intersections)
                 _extend_unique(self.yield_signs, new_yield_signs)
+                _extend_unique(self.curbs, new_curbs)
                 minx = min(self.bounds[0], new_bounds[0])
                 miny = min(self.bounds[1], new_bounds[1])
                 maxx = max(self.bounds[2], new_bounds[2])

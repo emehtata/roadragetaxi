@@ -1233,6 +1233,38 @@ def draw_roadworks(
             )
 
 
+def draw_curbs(
+    screen,
+    curbs: List,
+    camx: float,
+    camy: float,
+    px_per_m: float = PX_PER_M,
+    screen_w: int = SCREEN_W,
+    screen_h: int = SCREEN_H,
+    spatial_grid=None,
+) -> None:
+    """Draw raised kerbstone lines (OSM barrier=kerb) as a thin light-grey edge."""
+    import pygame
+
+    if not curbs:
+        return
+
+    vminx, vminy, vmaxx, vmaxy = get_viewport_bounds(camx, camy, px_per_m, screen_w, screen_h, 10.0)
+    visible_curbs = (
+        spatial_grid.ways_in_rect(vminx, vminy, vmaxx, vmaxy)
+        if spatial_grid is not None
+        else curbs
+    )
+    thickness = max(1, int(0.15 * px_per_m))
+    for curb in visible_curbs:
+        points = [
+            world_to_screen(x, y, camx, camy, px_per_m, screen_w, screen_h)
+            for x, y in curb.points_m
+        ]
+        if len(points) >= 2:
+            pygame.draw.lines(screen, (200, 200, 195), False, points, thickness)
+
+
 def draw_crossings(
     screen,
     crossings: List,

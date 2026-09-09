@@ -115,6 +115,7 @@ from .roads import (
     _way_should_have_street_lighting,
     draw_bus_stops,
     draw_crossings,
+    draw_curbs,
     draw_roadworks,
     draw_speed_cameras,
     draw_street_lights,

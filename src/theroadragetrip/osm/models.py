@@ -60,6 +60,13 @@ class Water:
 
 
 @dataclass
+class Curb:
+    """A raised kerbstone line (OSM barrier=kerb). Driving over one bumps the car."""
+    points_m: List[Tuple[float, float]]
+    bbox: Tuple[float, float, float, float] = (0.0, 0.0, 0.0, 0.0)
+
+
+@dataclass
 class Building:
     points_m: List[Tuple[float, float]]
     name: Optional[str] = None
@@ -346,10 +353,10 @@ class BusStop:
 class MapData(tuple):
     """Container tuple for build_ways results returning 6 elements for backward compatibility while providing traffic_lights and crossings via attributes and slicing."""
 
-    def __new__(cls, ways, waters, buildings, sceneries, places, bounds, traffic_lights=None, crossings=None, taxi_stops=None, bus_stops=None, parking_spaces=None, logical_intersections=None, stop_signs=None, yield_signs=None):
+    def __new__(cls, ways, waters, buildings, sceneries, places, bounds, traffic_lights=None, crossings=None, taxi_stops=None, bus_stops=None, parking_spaces=None, logical_intersections=None, stop_signs=None, yield_signs=None, curbs=None):
         return super().__new__(cls, (ways, waters, buildings, sceneries, places, bounds))
 
-    def __init__(self, ways, waters, buildings, sceneries, places, bounds, traffic_lights=None, crossings=None, taxi_stops=None, bus_stops=None, parking_spaces=None, logical_intersections=None, stop_signs=None, yield_signs=None):
+    def __init__(self, ways, waters, buildings, sceneries, places, bounds, traffic_lights=None, crossings=None, taxi_stops=None, bus_stops=None, parking_spaces=None, logical_intersections=None, stop_signs=None, yield_signs=None, curbs=None):
         self.ways = ways
         self.waters = waters
         self.buildings = buildings
@@ -364,6 +371,7 @@ class MapData(tuple):
         self.logical_intersections = logical_intersections if logical_intersections is not None else []
         self.stop_signs = stop_signs if stop_signs is not None else []
         self.yield_signs = yield_signs if yield_signs is not None else []
+        self.curbs = curbs if curbs is not None else []
 
     @property
     def traffic_signals(self):

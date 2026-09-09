@@ -107,6 +107,7 @@ def fetch_osm_ways(
     node["name"]({south},{west},{north},{east});
       way["highway"]({south},{west},{north},{east});
     way["name"]({south},{west},{north},{east});
+      way["barrier"="kerb"]({south},{west},{north},{east});
       way["natural"="water"]({south},{west},{north},{east});
     way["natural"="bay"]({south},{west},{north},{east});
     way["natural"="strait"]({south},{west},{north},{east});

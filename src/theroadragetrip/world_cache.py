@@ -30,8 +30,10 @@ MAGIC = b"RWC\0"
 # 0.11.0alpha: traffic-signal arm/clustering fixes (service-road
 # exclusion, order-independent signal clustering) and the cache's own
 # SignalGroup-sharing fix all change what a cached tile's traffic-light
-# data should look like.
-FORMAT_VERSION = 4
+# data should look like. Bumped again to add the curbs section (a
+# cached tile written before curbs existed has none, and would render
+# and collide as if no curbs were ever there).
+FORMAT_VERSION = 5
 COORDINATE_SYSTEM = "EPSG:3067"
 _HEADER = struct.Struct("<4sHHQQ32s12s")
 _DIRECTORY = struct.Struct("<8sQQI")
@@ -40,7 +42,7 @@ _TYPES = {"none": 0, "bool": 1, "int": 2, "float": 3, "str": 4, "list": 5, "tupl
 _TYPE_NAMES = {value: key for key, value in _TYPES.items()}
 _SECTIONS = ("ways", "waters", "buildings", "sceneries", "places", "traffic_lights",
              "crossings", "taxi_stops", "bus_stops", "parking_spaces", "logical_intersections",
-             "stop_signs", "yield_signs", "metadata")
+             "stop_signs", "yield_signs", "curbs", "metadata")
 _SECTION_CODES = {
     "buildings": "bldgs", "sceneries": "scenery",
     "traffic_lights": "signals", "crossings": "crossing",
@@ -244,7 +246,7 @@ class BinaryWorldCacheLoader:
             "ways": "Way", "waters": "Water", "buildings": "Building", "sceneries": "Scenery",
             "places": "Place", "traffic_lights": "TrafficLight", "crossings": "Crossing",
             "taxi_stops": "TaxiStop", "bus_stops": "BusStop", "parking_spaces": "ParkingSpace",
-            "stop_signs": "StopSign", "yield_signs": "YieldSign",
+            "stop_signs": "StopSign", "yield_signs": "YieldSign", "curbs": "Curb",
         }
         import theroadragetrip.osm as osm
         # Every physical TrafficLight/IntersectionApproach on the same
