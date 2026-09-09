@@ -34,6 +34,12 @@ from .overpass import (
     get_overpass_diagnostics,
 )
 
+from .pbf_source import (
+    DEFAULT_FINLAND_PBF_PATH,
+    fetch_osm_ways_from_pbf,
+    local_pbf_available,
+)
+
 from .cache import (
     CACHE_DIR,
     CACHE_VERSION,

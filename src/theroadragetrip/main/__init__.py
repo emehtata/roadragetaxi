@@ -40,7 +40,9 @@ from ..osm import (
     clear_osm_cache,
     configure_user_agent,
     fetch_osm_ways,
+    fetch_osm_ways_from_pbf,
     has_outdated_osm_cache,
+    local_pbf_available,
     load_local_sample,
     remove_trees_under_roads,
 )
@@ -185,6 +187,35 @@ def _map_sync_should_start(revision_changed: bool, any_grid_stale: bool, map_syn
     like it's "syncing".
     """
     return map_sync_stage == 0 and (revision_changed or any_grid_stale)
+
+
+def _resolve_osm_fetch_func(args, overpass_endpoints, progress_callback=None):
+    """Pick where OSM data comes from: live Overpass, or a local .osm.pbf
+    extract via osmium-tool (osm_source=pbf) - no downloads, no rate
+    limits, works offline. Falls back to Overpass with a warning if "pbf"
+    was requested but the local file or the `osmium` tool aren't actually
+    usable, so a missing extract doesn't just crash map loading outright.
+    """
+    def _use_overpass(fetch_bbox, **fetch_kwargs):
+        if progress_callback is not None:
+            fetch_kwargs.setdefault("progress_callback", progress_callback)
+        return fetch_osm_ways(fetch_bbox, endpoints=overpass_endpoints, **fetch_kwargs)
+
+    if getattr(args, "osm_source", "overpass") == "pbf":
+        pbf_path = getattr(args, "osm_pbf_path", None)
+        if local_pbf_available(pbf_path):
+            def _use_pbf(fetch_bbox, **fetch_kwargs):
+                if progress_callback is not None:
+                    fetch_kwargs.setdefault("progress_callback", progress_callback)
+                return fetch_osm_ways_from_pbf(fetch_bbox, pbf_path=pbf_path, **fetch_kwargs)
+
+            return _use_pbf
+        logger.warning(
+            "osm_source=pbf requested but no usable local .osm.pbf/osmium-tool "
+            "found (path=%s) - falling back to the Overpass API",
+            pbf_path or "assets/osm/finland-latest.osm.pbf",
+        )
+    return _use_overpass
 
 
 def _choose_city(
@@ -456,10 +487,7 @@ def _load_world(
         elements_count = 0
         world_cache = WorldCacheManager(
             cache_ttl=float(os.getenv("OSM_CACHE_TTL", 24 * 3600)),
-            fetch_func=lambda fetch_bbox, **fetch_kwargs: fetch_osm_ways(
-                fetch_bbox, endpoints=overpass_endpoints, progress_callback=on_load_progress,
-                **fetch_kwargs
-            ),
+            fetch_func=_resolve_osm_fetch_func(args, overpass_endpoints, progress_callback=on_load_progress),
             build_func=lambda raw: build_ways(
                 raw, progress_callback=on_build_progress, include_bus_stops=bus_stops_enabled
             ),
@@ -636,7 +664,7 @@ def _load_world(
         logical_intersections=logical_intersections,
         yield_signs=yield_signs,
         curbs=curbs,
-        fetch_func=lambda fetch_bbox: fetch_osm_ways(fetch_bbox, endpoints=overpass_endpoints),
+        fetch_func=_resolve_osm_fetch_func(args, overpass_endpoints),
         build_func=build_ways,
         build_in_process=args.build_in_process,
         world_cache_manager=world_cache,

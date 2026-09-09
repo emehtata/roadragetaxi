@@ -95,6 +95,13 @@ DEFAULT_CONFIG = {
         "fetch_margin": "350.0",
         "fetch_tile_size": "1000.0",
         "build_in_process": "true",
+        # "pbf" reads assets/osm/finland-latest.osm.pbf (or osm_pbf_path)
+        # via the local `osmium` tool instead of live Overpass requests -
+        # no downloads, no rate limits, works offline. Requires osmium-tool
+        # installed and the .pbf file present; falls back to "overpass"
+        # with a warning otherwise.
+        "osm_source": "overpass",
+        "osm_pbf_path": "",
     },
     "traffic": {
         "traffic_count": "",

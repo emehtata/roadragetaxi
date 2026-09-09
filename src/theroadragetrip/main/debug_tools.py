@@ -107,6 +107,7 @@ def _write_debug_snapshot(
             "margin_m": args.fetch_margin,
             "tile_size_m": args.fetch_tile_size,
             "build_in_process": bool(args.build_in_process),
+            "osm_source": args.osm_source,
             "manager_enabled_state": not auto_fetch_manager.get_fetching(),
             "is_fetching": auto_fetch_manager.get_fetching(),
             "progress": auto_fetch_manager.get_progress(),

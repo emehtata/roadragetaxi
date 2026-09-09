@@ -62,6 +62,7 @@ Koska muut kuskit ovat idiootteja ja ajavat miten sattuu. Vähemmästäkin hermo
 │       │   ├── __init__.py       # Re-exports the full public OSM API from the submodules below
 │       │   ├── constants.py      # City/bbox presets, road widths, and OSM speed-limit parsing
 │       │   ├── overpass.py       # Overpass query building, diagnostics, and network fetching
+│       │   ├── pbf_source.py     # Local .osm.pbf extract via osmium-tool - offline alternative to Overpass
 │       │   ├── cache.py          # Disk JSON cache for fetched OSM elements
 │       │   ├── models.py         # Way/Water/Building/TrafficLight/Place/... data classes
 │       │   ├── traffic_signals.py # Traffic-light deduplication and logical intersection building
@@ -293,6 +294,8 @@ The pause menu's **Settings** screen changes language and master, background, an
 | `--no-menu` | Skip interactive city selection startup menu |
 | `--use-sample` | Skip network and use bundled offline sample JSON |
 | `--force-refresh` / `--no-cache` | Ignore disk cache and query Overpass fresh |
+| `--osm-source` | `overpass` (default) or `pbf` - read OSM data from a local `.osm.pbf` extract instead of the network, via `osmium extract` (requires `osmium-tool` installed: `apt install osmium-tool` / `brew install osmium-tool`) |
+| `--osm-pbf-path` | Path to the `.osm.pbf` file for `--osm-source pbf` (default: `assets/osm/finland-latest.osm.pbf`) |
 | `--px-per-m` | Initial camera zoom (default: `9.0`) |
 | `--log-level` | Logging level (`DEBUG`, `INFO`, `WARNING`, `ERROR`) |
 | `--auto-fetch` | Enable non-blocking background tile fetching near bounds |
