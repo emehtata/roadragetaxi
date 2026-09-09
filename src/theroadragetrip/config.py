@@ -87,12 +87,13 @@ DEFAULT_CONFIG = {
         "file_logging": "false",
         "roadworks_enabled": "false",
         "bus_stops": "false",
+        "physics_realism": "arcade",
     },
     "map": {
         "overpass_endpoints": ", ".join(DEFAULT_OVERPASS_ENDPOINTS),
         "auto_fetch": "true",
         "fetch_margin": "350.0",
-        "fetch_tile_size": "2500.0",
+        "fetch_tile_size": "1000.0",
         "build_in_process": "true",
     },
     "traffic": {
@@ -283,7 +284,7 @@ def cities_from_config(config: configparser.ConfigParser) -> tuple[dict[str, tup
         if name not in catalog:
             continue
         centers[name] = catalog[name]
-    presets = {name.lower(): bbox_from_center(*center, size_km=4.0) for name, center in centers.items()}
+    presets = {name.lower(): bbox_from_center(*center, size_km=3.0) for name, center in centers.items()}
     return centers, presets
 
 

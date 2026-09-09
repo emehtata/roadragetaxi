@@ -18,6 +18,27 @@ OFFROAD_MAX_SPEED = 2.0  # m/s (~7 km/h)
 LIGHT_TRAFFIC_MAX_SPEED = 6.0  # m/s (~22 km/h) on footways, paths, and cycleways
 OFFROAD_DECEL = 10.0  # m/s^2 when slowing from road speed
 
+GRAVITY_MPS2 = 9.81
+# Cornering grip limit, as a fraction of g, before the tires lose traction.
+# "Arcade" is forgiving (steering just goes mushy past the limit, no separate
+# slide); "simulation" is stricter and adds a genuine drift angle that has to
+# be steered out of.
+#
+# These are calibrated against this game's steering model, not real tire
+# grip: steer_left/right is a binary "wheel fully turned" input with no
+# in-between, so at any given speed a "gentle" turn and a "hard" turn demand
+# the *same* lateral g while the key is held - there's no smaller-magnitude
+# input to tell them apart. The only variable left to gate on is speed, so
+# the limit has to sit high enough that full-lock steering stays planted
+# through ordinary city/arterial driving and only lets go once a turn is
+# actually taken at speeding-level speed - not literally the first tap of
+# the turn key at 20 km/h. Regression: 0.9/0.55 g made full-lock steering
+# break loose above ~20 km/h / ~10 km/h - "skid marks came too easy" and the
+# g-meter pinned to its edge on almost any turn.
+GRIP_LIMIT_G = {"arcade": 1.9, "simulation": 1.3}
+ICE_GRIP_MULTIPLIER = 0.3
+DRIFT_RECOVERY_RATE = 2.5  # rad/s; how fast a "simulation"-mode drift angle decays once grip is regained
+
 NON_DRIVABLE_HIGHWAYS = {
     "footway",
     "path",
@@ -77,6 +98,10 @@ class Car:
     lane_assist_enabled: bool = False  # user toggle for lane assist feature (default False)
     lane_assist_active: bool = False  # whether lane assist is currently steering
     braking: bool = False  # whether brake lights should be illuminated
+    forward_g: float = 0.0  # last frame's longitudinal g (+accelerating, -braking)
+    lateral_g: float = 0.0  # last frame's cornering g (+left, -right)
+    drift_angle: float = 0.0  # radians; how far the car's motion has slid from its heading
+    is_sliding: bool = False  # true the frame cornering grip was exceeded
 
 
 def is_car_road(way) -> bool:
@@ -147,11 +172,19 @@ def is_point_on_parking_space(
     return False
 
 
-def is_point_in_water(px: float, py: float, waters: List) -> bool:
-    """Check if point (px, py) is inside any water polygon or on a waterway with fast AABB rejection."""
+def is_point_in_water(
+    px: float,
+    py: float,
+    waters: List,
+    layer: Optional[int] = None,
+    include_open_waterways: bool = True,
+) -> bool:
+    """Check if point is inside water or on an included open waterway."""
     if not waters:
         return False
     for w in waters:
+        if layer is not None and getattr(w, "layer", 0) != layer:
+            continue
         # Pre-filter using bounding box if available
         bbox = getattr(w, "_bbox", None)
         if bbox is None and getattr(w, "points_m", None):
@@ -166,7 +199,7 @@ def is_point_in_water(px: float, py: float, waters: List) -> bool:
         if getattr(w, "is_polygon", False) and len(w.points_m) >= 3:
             if point_in_polygon(px, py, w.points_m):
                 return True
-        elif len(w.points_m) >= 2:
+        elif include_open_waterways and len(w.points_m) >= 2:
             for i in range(len(w.points_m) - 1):
                 ax, ay = w.points_m[i]
                 bx, by = w.points_m[i + 1]
@@ -177,8 +210,10 @@ def is_point_in_water(px: float, py: float, waters: List) -> bool:
 
 def is_car_fully_in_water(car: Car, waters: List, current_way=None) -> bool:
     """Return whether all four corners are in water, except while on a bridge."""
-    if getattr(current_way, "is_bridge", False):
+    if current_way is not None and getattr(current_way, "is_bridge", False):
         return False
+    road_layer = getattr(current_way, "layer", getattr(car, "layer", 0))
+    include_open_waterways = not (current_way is not None and is_car_road(current_way))
     half_length = getattr(car, "length_m", 4.0) * 0.5
     half_width = getattr(car, "width_m", 1.8) * 0.5
     forward_x = math.cos(car.heading)
@@ -196,9 +231,110 @@ def is_car_fully_in_water(car: Car, waters: List, current_way=None) -> bool:
             car.x + forward_x * longitudinal + right_x * lateral,
             car.y + forward_y * longitudinal + right_y * lateral,
             waters,
+            layer=road_layer,
+            include_open_waterways=include_open_waterways,
         )
         for longitudinal, lateral in corners
     )
+
+
+def is_car_colliding_with_bridge_edge(car: Car, current_way=None, ways: Optional[List] = None) -> bool:
+    """Return whether a car corner has reached the outer edge of its bridge road.
+
+    A divided bridge is often split into parallel carriageway Ways (e.g. one
+    per direction); the boundary between them is an inner seam, not a real
+    guardrail - the renderer already unions overlapping bridge lanes so no
+    rail is drawn between them (see draw_ways's bridge_polygons in
+    render/roads.py). A corner that crosses current_way's own edge but is
+    still within another bridge way's half-width is on that shared seam,
+    not a real crash.
+    """
+    if current_way is None or not getattr(current_way, "is_bridge", False):
+        return False
+    points = getattr(current_way, "points_m", ())
+    if len(points) < 2:
+        return False
+    road_half_width = getattr(current_way, "half_width_m", 0.0)
+    edge_distance = max(0.0, road_half_width - 0.2)
+    half_length = getattr(car, "length_m", 4.0) * 0.5
+    car_half_width = getattr(car, "width_m", 1.8) * 0.5
+    forward_x = math.cos(car.heading)
+    forward_y = math.sin(car.heading)
+    right_x = math.sin(car.heading)
+    right_y = -math.cos(car.heading)
+    neighbor_bridges = [
+        w for w in (ways or ())
+        if w is not current_way
+        and getattr(w, "is_bridge", False)
+        and getattr(w, "layer", 0) == getattr(current_way, "layer", 0)
+    ]
+    corners = (
+        (half_length, car_half_width),
+        (half_length, -car_half_width),
+        (-half_length, car_half_width),
+        (-half_length, -car_half_width),
+    )
+    for longitudinal, lateral in corners:
+        corner_x = car.x + forward_x * longitudinal + right_x * lateral
+        corner_y = car.y + forward_y * longitudinal + right_y * lateral
+        for first, second in zip(points, points[1:]):
+            dx = second[0] - first[0]
+            dy = second[1] - first[1]
+            segment_length_sq = dx * dx + dy * dy
+            if segment_length_sq <= 1e-9:
+                continue
+            ratio = ((corner_x - first[0]) * dx + (corner_y - first[1]) * dy) / segment_length_sq
+            if 0.0 <= ratio <= 1.0:
+                center_ratio = ((car.x - first[0]) * dx + (car.y - first[1]) * dy) / segment_length_sq
+                if not 0.0 <= center_ratio <= 1.0:
+                    continue
+                center_side_distance = abs(
+                    (car.x - first[0]) * dy - (car.y - first[1]) * dx
+                ) / math.sqrt(segment_length_sq)
+                if center_side_distance > road_half_width:
+                    continue
+                side_distance = abs(
+                    (corner_x - first[0]) * dy - (corner_y - first[1]) * dx
+                ) / math.sqrt(segment_length_sq)
+                if side_distance >= edge_distance:
+                    if neighbor_bridges and is_point_on_road(corner_x, corner_y, ways=neighbor_bridges):
+                        continue
+                    return True
+    return False
+
+
+def pull_car_inside_bridge_edge(car: Car, current_way=None) -> None:
+    """Move a car just inside the bridge boundary after a guardrail impact."""
+    if current_way is None or not getattr(current_way, "is_bridge", False):
+        return
+    points = getattr(current_way, "points_m", ())
+    if len(points) < 2:
+        return
+    nearest = None
+    nearest_distance = float("inf")
+    for first, second in zip(points, points[1:]):
+        dx = second[0] - first[0]
+        dy = second[1] - first[1]
+        segment_length_sq = dx * dx + dy * dy
+        if segment_length_sq <= 1e-9:
+            continue
+        ratio = max(0.0, min(1.0, ((car.x - first[0]) * dx + (car.y - first[1]) * dy) / segment_length_sq))
+        point = (first[0] + dx * ratio, first[1] + dy * ratio)
+        distance = math.hypot(car.x - point[0], car.y - point[1])
+        if distance < nearest_distance:
+            nearest = point
+            nearest_distance = distance
+    if nearest is None:
+        return
+    allowed_distance = max(0.0, getattr(current_way, "half_width_m", 0.0) - getattr(car, "width_m", 1.8) * 0.5 - 0.35)
+    if nearest_distance <= allowed_distance:
+        return
+    if nearest_distance <= 1e-9:
+        car.x, car.y = nearest
+        return
+    scale = allowed_distance / nearest_distance
+    car.x = nearest[0] + (car.x - nearest[0]) * scale
+    car.y = nearest[1] + (car.y - nearest[1]) * scale
 
 
 def compute_largest_connected_road_component(ways: List) -> List:
@@ -810,6 +946,22 @@ def get_current_road_at_car(
     return best_way
 
 
+def _cornering_grip_limit_g(current_way, physics_mode: str) -> float:
+    """Return the lateral-g grip ceiling for the current road surface/mode."""
+    limit = GRIP_LIMIT_G.get(physics_mode, GRIP_LIMIT_G["arcade"])
+    if current_way is not None and getattr(current_way, "is_ice_road", False):
+        limit *= ICE_GRIP_MULTIPLIER
+    return limit
+
+
+def _decay_toward_zero(value: float, rate: float, dt: float) -> float:
+    if value > 0.0:
+        return max(0.0, value - rate * dt)
+    if value < 0.0:
+        return min(0.0, value + rate * dt)
+    return 0.0
+
+
 def update_car_physics(
     car: Car,
     throttle: float,
@@ -824,6 +976,8 @@ def update_car_physics(
     speed_limit_mps: Optional[float] = None,
     nearby_vehicles: Optional[List] = None,
     parking_spaces: Optional[List] = None,
+    current_way=None,
+    physics_mode: str = "arcade",
 ) -> bool:
     """Update car speed, heading, and position.
 
@@ -831,7 +985,15 @@ def update_car_physics(
     car roads only, blocking movement if the vehicle attempts to leave the road.
     When enforce_oneway is True, prevents moving against the legal direction on one-way streets.
     Returns True if vehicle movement was blocked against the road boundary or one-way restriction.
+
+    `current_way` (the road the car is currently on, if known) and
+    `physics_mode` ("arcade" or "simulation") feed the cornering-grip model:
+    exceeding the surface's lateral-g limit softens steering authority
+    (arcade) or, in simulation mode, also builds up a drift angle the car
+    has to steer out of. car.forward_g/lateral_g/is_sliding are updated
+    every call for the debug HUD and other systems (skid tracks, rage).
     """
+    previous_speed = car.speed
     if speed_limit_mps is not None and car.speed > speed_limit_mps:
         car.speed = max(speed_limit_mps, car.speed - SPEED_LIMIT_DECEL * dt)
     elif speed_limit_mps is not None and car.speed < -speed_limit_mps:
@@ -854,6 +1016,7 @@ def update_car_physics(
             car.speed = min(0.0, car.speed + FRICTION * dt)
 
     car.speed = clamp(car.speed, -10.0, MAX_SPEED)
+    car.forward_g = (car.speed - previous_speed) / dt / GRAVITY_MPS2 if dt > 0.0 else 0.0
 
     # Manual steering check
     steer_input = steer_left - steer_right
@@ -863,12 +1026,34 @@ def update_car_physics(
     else:
         car.time_since_last_steer += dt
 
+    heading_before_steer = car.heading
+    car.is_sliding = False
+    # Drift decays by default every frame; the grip-exceeded branch below
+    # builds it back up on top of this when the driver is actively
+    # oversteering past the surface's limit.
+    car.drift_angle = _decay_toward_zero(car.drift_angle, DRIFT_RECOVERY_RATE, dt)
+
     # steer: positive -> turn left (counter-clockwise), negative -> turn right
     # Cars cannot steer in-place while stationary; turning requires moving forward or backward
     if abs(car.speed) > 0.05:
         if abs(steer_input) > 0.01:
             steer_effective = STEER_RATE / (1.0 + abs(car.speed) * STEER_SPEED_FACTOR)
-            car.heading += steer_input * steer_effective * dt * (1.0 if car.speed >= 0 else -1.0)
+            heading_rate = steer_input * steer_effective * (1.0 if car.speed >= 0 else -1.0)
+            grip_limit_g = _cornering_grip_limit_g(current_way, physics_mode)
+            max_heading_rate = grip_limit_g * GRAVITY_MPS2 / abs(car.speed)
+            if abs(heading_rate) > max_heading_rate:
+                car.is_sliding = True
+                if physics_mode == "simulation":
+                    # Drift builds up proportionally to how far over the grip
+                    # limit the driver is asking to turn, and has to be
+                    # steered/waited out once grip is regained.
+                    overshoot = abs(heading_rate) - max_heading_rate
+                    car.drift_angle = clamp(
+                        car.drift_angle + math.copysign(overshoot * dt * 0.6, heading_rate),
+                        -math.radians(45), math.radians(45),
+                    )
+                heading_rate = math.copysign(max_heading_rate, heading_rate)
+            car.heading += heading_rate * dt
         elif car.lane_assist_enabled and car.time_since_last_steer >= 0.35 and car.speed > 1.5:
             # Lane assist: when enabled and driver hasn't steered for a moment, gently track lane center
             current_road = get_current_road_at_car(
@@ -966,8 +1151,11 @@ def update_car_physics(
     else:
         car.lane_assist_active = False
 
-    dx = math.cos(car.heading) * car.speed * dt
-    dy = math.sin(car.heading) * car.speed * dt
+    car.lateral_g = (car.heading - heading_before_steer) / dt * car.speed / GRAVITY_MPS2 if dt > 0.0 else 0.0
+
+    movement_heading = car.heading + car.drift_angle
+    dx = math.cos(movement_heading) * car.speed * dt
+    dy = math.sin(movement_heading) * car.speed * dt
     target_x = car.x + dx
     target_y = car.y + dy
 

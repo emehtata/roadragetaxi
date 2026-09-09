@@ -84,7 +84,7 @@ from .render import (
     get_viewport_bounds,
     world_to_screen,
 )
-from .traffic import CarAI, IntersectionManager, NPCCar, TrafficManager
+from .traffic_world import TrafficWorld
 from .pedestrian import PedestrianAppearance, PedestrianNetwork, PedestrianState
 
 __all__ = [
@@ -149,11 +149,8 @@ __all__ = [
     "PedestrianAppearance",
     "PedestrianNetwork",
     "PedestrianState",
-    # Traffic
-    "NPCCar",
-    "CarAI",
-    "IntersectionManager",
-    "TrafficManager",
+    # Resident-first traffic services
+    "TrafficWorld",
     # Render
     "SCREEN_W",
     "SCREEN_H",

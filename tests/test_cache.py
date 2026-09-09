@@ -79,7 +79,7 @@ def test_outdated_cache_is_detected_without_removing_it(tmp_path, monkeypatch):
     assert cache_path.exists()
 
 
-def test_dead_end_metadata_does_not_trigger_outdated_cache_warning(tmp_path, monkeypatch):
+def test_dead_end_metadata_is_ignored_by_cache_validation(tmp_path, monkeypatch):
     import json
     import theroadragetrip.osm as osm
 
@@ -92,7 +92,7 @@ def test_dead_end_metadata_does_not_trigger_outdated_cache_warning(tmp_path, mon
     assert has_outdated_osm_cache() is False
 
 
-def test_outdated_dead_end_cache_triggers_cleanup_warning(tmp_path, monkeypatch):
+def test_outdated_dead_end_metadata_is_ignored(tmp_path, monkeypatch):
     import json
     import theroadragetrip.osm as osm
 
@@ -100,7 +100,7 @@ def test_outdated_dead_end_cache_triggers_cleanup_warning(tmp_path, monkeypatch)
     dead_ends_path = tmp_path / "dead_ends.json"
     dead_ends_path.write_text(json.dumps({"dead_ends": []}), encoding="utf-8")
 
-    assert has_outdated_osm_cache() is True
+    assert has_outdated_osm_cache() is False
     assert dead_ends_path.exists()
 
 
@@ -245,4 +245,48 @@ def test_fetch_uses_next_endpoint_after_failure(monkeypatch):
         "https://first.example/api",
         "https://second.example/api",
     ]
+
+
+def test_rate_limited_endpoint_is_skipped_on_the_next_fetch(monkeypatch):
+    """Regression: a 429 from a public Overpass endpoint used to be
+    forgotten as soon as the call returned, so the very next fetch (e.g.
+    the next tile crossing, seconds later) tried that same still-limited
+    endpoint again first - drawing another 429 and stretching out how long
+    it stayed rate-limited. An endpoint that just 429'd should be skipped
+    on a later call while a working mirror exists."""
+    import theroadragetrip.osm as osm
+
+    osm.overpass._endpoint_cooldown_until.clear()
+    calls = []
+
+    class RateLimited:
+        status_code = 429
+        headers = {}
+
+    class Ok:
+        status_code = 200
+        headers = {}
+
+        def json(self):
+            return {"elements": [{"type": "node", "id": 2}]}
+
+        def raise_for_status(self):
+            return None
+
+    def post(endpoint, **kwargs):
+        calls.append(endpoint)
+        return RateLimited() if endpoint == "https://limited.example/api" else Ok()
+
+    monkeypatch.setattr(osm.requests, "post", post)
+    monkeypatch.setattr(osm.time, "sleep", lambda _: None)
+    monkeypatch.setattr(osm, "load_osm_cache", lambda bbox: None)
+    monkeypatch.setattr(osm, "save_osm_cache", lambda bbox, elements: None)
+
+    endpoints = ["https://limited.example/api", "https://mirror.example/api"]
+    osm.fetch_osm_ways((60.0, 25.0, 60.1, 25.1), endpoints=endpoints, force_refresh=True)
+    assert calls == ["https://limited.example/api", "https://mirror.example/api"]
+
+    calls.clear()
+    osm.fetch_osm_ways((60.0, 25.0, 60.1, 25.1), endpoints=endpoints, force_refresh=True)
+    assert calls == ["https://mirror.example/api"], "still-cooling-down endpoint was retried"
 

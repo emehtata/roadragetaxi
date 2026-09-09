@@ -14,10 +14,20 @@ from dataclasses import fields, is_dataclass
 from pathlib import Path
 from typing import Any, Callable, Mapping
 
+from .tile_streaming import TileCoord
+
 logger = logging.getLogger(__name__)
 
 MAGIC = b"RWC\0"
-FORMAT_VERSION = 1
+# Bump whenever a change to map-generation logic (not just this file's byte
+# layout) would make an already-cached .rwc's *contents* wrong even though
+# its bytes are still perfectly well-formed - load_area() only checks this
+# against a wall-clock TTL otherwise (default 24h), so a code fix has no
+# way to invalidate a cache written minutes before it shipped. Concretely:
+# the traffic-light phase-grouping fix (safety-critical - it stops
+# conflicting approaches from both showing green) would otherwise sit
+# unused in already-explored areas for up to a day.
+FORMAT_VERSION = 3
 COORDINATE_SYSTEM = "EPSG:3067"
 _HEADER = struct.Struct("<4sHHQQ32s12s")
 _DIRECTORY = struct.Struct("<8sQQI")
@@ -243,6 +253,24 @@ class BinaryWorldCacheLoader:
                         record["signal_group"] = osm.SignalGroup(**record["signal_group"])
                     record["allowed_movements"] = frozenset(record.get("allowed_movements", ()))
                 restored[name].append(getattr(osm, class_name)(**record))
+        places_by_key = {
+            (round(place.x, 3), round(place.y, 3), place.name, place.kind): place
+            for place in restored["places"]
+        }
+        for building in restored["buildings"]:
+            restored_places = []
+            for place in getattr(building, "associated_places", ()):
+                if isinstance(place, dict):
+                    key = (
+                        round(float(place.get("x", 0.0)), 3),
+                        round(float(place.get("y", 0.0)), 3),
+                        place.get("name", ""),
+                        place.get("kind", ""),
+                    )
+                    place = places_by_key.get(key)
+                if place is not None:
+                    restored_places.append(place)
+            building.associated_places = restored_places
         restored["bounds"] = tuple(decoded["metadata"]["bounds"])
         ways = restored["ways"]
         restored["logical_intersections"] = []
@@ -313,7 +341,27 @@ class WorldCacheManager:
         return "_".join(f"{value:.6f}".replace("-", "m").replace(".", "p") for value in bbox)
 
     def path_for(self, area_id: str) -> Path:
+        if area_id.startswith("tile_"):
+            return self.cache_dir / "tiles" / f"{area_id}.rwc"
         return self.cache_dir / f"{area_id}.rwc"
+
+    @staticmethod
+    def tile_id(tile: TileCoord) -> str:
+        return f"tile_{tile.x}_{tile.y}"
+
+    def path_for_tile(self, tile: TileCoord) -> Path:
+        return self.path_for(self.tile_id(tile))
+
+    def save_tile(self, tile: TileCoord, world: Any) -> Path:
+        path = self.path_for_tile(tile)
+        return self.writer.write(path, world, area_id=self.tile_id(tile))
+
+    def load_tile(self, tile: TileCoord, bbox=None, *, force_refresh: bool = False, **kwargs) -> Any:
+        return self.load_area(self.tile_id(tile), bbox, force_refresh=force_refresh, **kwargs)
+
+    def preload_region(self, bbox, **kwargs) -> Future:
+        """Load one combined streaming region instead of one request per tile."""
+        return self.preload(self.area_id(bbox), bbox, allow_covering=False, **kwargs)
 
     def clear(self) -> int:
         """Delete all cached world files managed by this instance."""
@@ -332,6 +380,7 @@ class WorldCacheManager:
     def _load_covering_area(self, bbox=None, point=None) -> Any:
         if (bbox is None and point is None) or not self.cache_dir.is_dir():
             return None
+        coordinate_tolerance = 0.0001
         for path in self.cache_dir.glob("*.rwc"):
             cache_bbox = self._area_bbox(path.name)
             if cache_bbox is None:
@@ -342,10 +391,10 @@ class WorldCacheManager:
             else:
                 requested_minx, requested_miny, requested_maxx, requested_maxy = bbox
                 inside = (
-                    minx <= requested_minx
-                    and miny <= requested_miny
-                    and maxx >= requested_maxx
-                    and maxy >= requested_maxy
+                    minx <= requested_minx + coordinate_tolerance
+                    and miny <= requested_miny + coordinate_tolerance
+                    and maxx >= requested_maxx - coordinate_tolerance
+                    and maxy >= requested_maxy - coordinate_tolerance
                 )
             if not inside:
                 continue
@@ -364,6 +413,7 @@ class WorldCacheManager:
     def load_area(self, area_id: str, bbox=None, *, force_refresh: bool = False, **kwargs) -> Any:
         started = time.perf_counter()
         point = kwargs.pop("point", None)
+        allow_covering = kwargs.pop("allow_covering", True)
         logger.info(
             "[WorldCache] Lookup area=%s point=(lat=%.6f lon=%.6f) bbox=(lat_min=%.6f lon_min=%.6f lat_max=%.6f lon_max=%.6f) force_refresh=%s",
             area_id,
@@ -390,7 +440,7 @@ class WorldCacheManager:
                     pass
         elif path.exists() and not fresh:
             logger.info("[WorldCache] Cache expired %s", path)
-        if not force_refresh:
+        if not force_refresh and allow_covering:
             covering_world = self._load_covering_area(bbox, point=point)
             if covering_world is not None:
                 return covering_world

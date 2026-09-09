@@ -1,8 +1,8 @@
 """Tests for automated lane keeping assistance."""
 import math
+from types import SimpleNamespace
 from theroadragetrip.osm import Way
 from theroadragetrip.physics import Car, SpatialWayGrid, update_car_physics
-from theroadragetrip.traffic import NPCCar
 
 
 def test_lane_assist_activates_and_tracks_right_lane_on_two_way_road():
@@ -52,16 +52,13 @@ def test_lane_assist_does_not_return_into_adjacent_vehicle():
     grid = SpatialWayGrid([way])
     car = Car(x=10.0, y=0.0, heading=0.0, speed=15.0, lane_assist_enabled=True)
     car.time_since_last_steer = 0.5
-    adjacent_vehicle = NPCCar(
+    adjacent_vehicle = SimpleNamespace(
         x=10.0,
         y=-2.0,
         heading=0.0,
         speed=10.0,
-        way=way,
-        segment_idx=0,
-        direction=1,
-        target_speed=10.0,
-        color=(100, 100, 100),
+        length_m=4.0,
+        width_m=1.8,
     )
 
     for _ in range(60):

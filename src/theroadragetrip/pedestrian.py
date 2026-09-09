@@ -2,12 +2,12 @@ import logging
 import heapq
 import math
 import random
+from dataclasses import dataclass, replace
 from enum import Enum
-from dataclasses import dataclass
 from typing import Dict, List, Optional, Set, Tuple
 
 from .osm import Crossing, LogicalIntersection, TrafficLight, Way
-from .geo import closest_point_and_dist_to_segment, dist_point_to_segment, point_in_polygon
+from .geo import closest_point_and_dist_to_segment, compute_bbox, dist_point_to_segment, point_in_polygon
 from .physics import Car, is_car_road, is_pedestrian_way
 from .residents import ResidentManager
 
@@ -195,8 +195,11 @@ class Pedestrian:
     is_taxi_stop_waiter: bool = False
     is_cyclist: bool = False
     is_drunk: bool = False
+    blood_alcohol_promille: float = 0.0
     drunk_phase: float = 0.0
     drunk_vomit_cooldown: float = 0.0
+    fall_timer: float = 0.0
+    fall_cooldown: float = 0.0
     door_grace_timer: float = 0.0
     offscreen_timer: float = 0.0
     spawned_at_door: bool = False
@@ -262,7 +265,6 @@ class PedestrianManager:
         self.traffic_vehicles = traffic_vehicles if traffic_vehicles is not None else []
         self.traffic_manager = traffic_manager
         self.residents = residents if residents is not None else ResidentManager()
-        self._crashed_resident_ids: Set[int] = set()
         self.sim_time: float = 0.0
         self._population_update_elapsed: float = 4.9
         self._visible_taxi_stops: Set[Tuple[float, float, Optional[int]]] = set()
@@ -289,14 +291,15 @@ class PedestrianManager:
         self._traffic_light_grid: Dict[Tuple[int, int], List[TrafficLight]] = {}
         self._traffic_light_grid_cell_size: float = 60.0
         self._crossing_grid: Dict[Tuple[int, int], List[Crossing]] = {}
+        self._source_ways: List[Way] = []
 
+        self.set_venue_buildings(venue_buildings)
         self.sync_map_data(
             ways,
             traffic_lights=traffic_lights,
             crossings=crossings,
             logical_intersections=logical_intersections,
         )
-        self.set_venue_buildings(venue_buildings)
 
     def _register_resident(self, pedestrian: Pedestrian) -> Pedestrian:
         if pedestrian.resident_id is None:
@@ -349,58 +352,6 @@ class PedestrianManager:
             pedestrian.door_grace_timer = 5.0
             self.add_pedestrian(pedestrian)
             linked_residents.add(resident_id)
-
-    def prepare_crashed_driver(
-        self,
-        vehicle,
-        x: float,
-        y: float,
-        heading: float,
-    ) -> Tuple[Optional[Pedestrian], bool]:
-        """Release an existing vehicle owner, or create one if absent."""
-        resident_id = getattr(vehicle, "owner_id", None)
-        if resident_id is not None and resident_id in self._crashed_resident_ids:
-            return next(
-                (
-                    candidate
-                    for candidate in self.pedestrians
-                    if candidate.resident_id == resident_id
-                ),
-                None,
-            ), False
-        if resident_id is not None:
-            self._crashed_resident_ids.add(resident_id)
-        pedestrian = next(
-            (
-                candidate
-                for candidate in self.pedestrians
-                if resident_id is not None and candidate.resident_id == resident_id
-            ),
-            None,
-        )
-        if pedestrian is None:
-            pedestrian = self.spawn_pedestrian_at(
-                x,
-                y,
-                heading=heading,
-                resident_id=resident_id,
-            )
-            return pedestrian, pedestrian is not None
-
-        pedestrian.x = x
-        pedestrian.y = y
-        pedestrian.heading = heading
-        pedestrian.current_vehicle_id = None
-        pedestrian.reserved_vehicle_id = None
-        pedestrian.vehicle_destination = None
-        pedestrian.linked_vehicle_id = None
-        pedestrian.linked_building_entrance = None
-        pedestrian.destination = None
-        pedestrian.wants_vehicle = False
-        pedestrian.state = PedestrianState.WALKING.value
-        pedestrian.animation_state = "walking"
-        pedestrian.speed = pedestrian.base_speed
-        return pedestrian, False
 
     def _update_linked_driver(self, pedestrian: Pedestrian, update_dt: float) -> bool:
         """Move a parked vehicle owner between its building and the same car."""
@@ -501,6 +452,54 @@ class PedestrianManager:
                 int(math.floor(entrance_y / self._way_grid_cell_size)),
             )
             self._entrance_grid.setdefault(cell, []).append((entrance_x, entrance_y))
+        if self._source_ways:
+            self.sync_map_data(
+                self._source_ways,
+                traffic_lights=self.traffic_lights,
+                crossings=self.crossings,
+                logical_intersections=self.logical_intersections,
+            )
+
+    def _point_inside_building(self, x: float, y: float) -> bool:
+        """Return whether a point is inside a mapped building footprint."""
+        cell_size = self._building_grid_cell_size
+        cell = (math.floor(x / cell_size), math.floor(y / cell_size))
+        for building in self._building_grid.get(cell, ()):
+            min_x, min_y, max_x, max_y = building.bbox
+            if min_x <= x <= max_x and min_y <= y <= max_y and point_in_polygon(x, y, building.points_m):
+                return True
+        return False
+
+    def _segment_inside_building(self, start: Tuple[float, float], end: Tuple[float, float]) -> bool:
+        """Return whether a walkable segment enters a building footprint."""
+        for progress in (0.0, 0.25, 0.5, 0.75, 1.0):
+            x = start[0] + (end[0] - start[0]) * progress
+            y = start[1] + (end[1] - start[1]) * progress
+            if self._point_inside_building(x, y):
+                return True
+        return False
+
+    def _building_free_ways(self, ways: List[Way]) -> List[Way]:
+        """Split mapped ways so pedestrian routes cannot cross building interiors."""
+        if not self._building_grid:
+            return ways
+        safe_ways: List[Way] = []
+        for way in ways:
+            way_safe_ways: List[Way] = []
+            safe_points: List[Tuple[float, float]] = []
+            for start, end in zip(way.points_m, way.points_m[1:]):
+                if self._segment_inside_building(start, end):
+                    if len(safe_points) >= 2:
+                        way_safe_ways.append(replace(way, points_m=safe_points, bbox=compute_bbox(safe_points)))
+                    safe_points = []
+                    continue
+                if not safe_points:
+                    safe_points = [start]
+                safe_points.append(end)
+            if len(safe_points) >= 2:
+                way_safe_ways.append(replace(way, points_m=safe_points, bbox=compute_bbox(safe_points)))
+            safe_ways.extend(way_safe_ways or [way])
+        return safe_ways
 
     def _point_near_building(self, x: float, y: float, radius_m: float = 250.0) -> bool:
         """Return whether a point is near a mapped building."""
@@ -540,7 +539,7 @@ class PedestrianManager:
         return way.points_m[-1] if direction == 1 else way.points_m[0]
 
     def find_available_parked_vehicle(self, x: float, y: float, radius_m: float = 100.0):
-        """Find the nearest reusable parked NPC through TrafficManager's spatial grid."""
+        """Find the nearest reusable parked vehicle from the supplied vehicle source."""
         if self.traffic_manager is not None:
             vehicles = self.traffic_manager.nearby_npcs_at(x, y)
         else:
@@ -745,17 +744,18 @@ class PedestrianManager:
             self._crossing_grid.setdefault(cell, []).append(crossing)
 
         # Prefer dedicated pedestrian paths (footway, path, pedestrian, cycleway, steps, track, crossing)
+        self._source_ways = list(ways)
         dedicated = [w for w in ways if is_pedestrian_way(w) and len(w.points_m) >= 2]
         fallback = [
             w for w in ways
             if getattr(w, "highway", "") in ("residential", "living_street", "unclassified", "service")
             and len(w.points_m) >= 2
         ]
-        self.ped_ways = dedicated or fallback
+        self.ped_ways = self._building_free_ways(dedicated or fallback)
         self._build_route_graph()
         self._spawn_ways = []
         seen_way_ids: Set[int] = set()
-        for way in dedicated + fallback:
+        for way in self.ped_ways:
             if id(way) not in seen_way_ids:
                 seen_way_ids.add(id(way))
                 self._spawn_ways.append(way)
@@ -1102,6 +1102,8 @@ class PedestrianManager:
                     x += perp_x * init_lat
                     y += perp_y * init_lat
 
+                    if self._point_inside_building(x, y):
+                        continue
                     if not self._point_near_building(x, y):
                         continue
 
@@ -1151,9 +1153,10 @@ class PedestrianManager:
         y: float,
         heading: float = 0.0,
         resident_id: Optional[int] = None,
+        allow_building_interior: bool = False,
     ) -> Optional[Pedestrian]:
         """Create an ordinary pedestrian at a specific location on the nearest walkable way."""
-        if not self.ped_ways:
+        if not self.ped_ways or (not allow_building_interior and self._point_inside_building(x, y)):
             return None
 
         nearest = None
@@ -1193,16 +1196,12 @@ class PedestrianManager:
 
     def spawn_pedestrian_at_door(self, x: float, y: float) -> Optional[Pedestrian]:
         """Create a pedestrian at a mapped building entrance."""
-        pedestrian = self.spawn_pedestrian_at(x, y)
+        pedestrian = self.spawn_pedestrian_at(x, y, allow_building_interior=True)
         if pedestrian is None:
             return None
         pedestrian.door_grace_timer = 5.0
         pedestrian.spawned_at_door = True
         return pedestrian
-
-    def _nearby_signalized_crossing(self, ped: Pedestrian) -> bool:
-        """Return whether a pedestrian is currently within a marked signalized crossing."""
-        return self._find_nearby_signalized_crossing(ped) is not None
 
     def _find_nearby_signalized_crossing(self, ped: Pedestrian) -> Optional[Crossing]:
         """Return the nearby signalized crossing, if any."""
@@ -1414,7 +1413,8 @@ class PedestrianManager:
 
             game_hour = ((game_time_seconds or 0.0) / 3600.0) % 24.0
             amenity_interval = 10.0 if game_time_seconds is not None and game_hour >= 17.0 else 20.0
-            if self._amenity_spawn_elapsed >= amenity_interval:
+            amenity_spawn_ready = self._amenity_spawn_elapsed >= amenity_interval
+            if amenity_spawn_ready:
                 nearby_amenity_entrances = [
                     entrance for entrance in self.amenity_entrance_locations
                     if math.hypot(entrance[0] - player_car.x, entrance[1] - player_car.y) <= self.spawn_radius_m
@@ -1446,27 +1446,27 @@ class PedestrianManager:
                 and spawned_this_update < spawn_limit
             ):
                 attempts += 1
-                spawn_at_door = bool(nearby_entrances and random.random() < 0.45)
+                spawn_at_door = bool(amenity_spawn_ready and nearby_entrances and random.random() < 0.45)
                 spawned_near_venue = bool(nearby_venues and random.random() < 0.6)
                 if spawn_at_door:
                     entrance_x, entrance_y = random.choice(nearby_entrances)
                     new_ped = self.spawn_pedestrian_at_door(entrance_x, entrance_y)
                 elif spawned_near_venue:
                     venue_x, venue_y = random.choice(nearby_venues)
-                    new_ped = self.spawn_pedestrian(venue_x, venue_y, max_distance_m=45.0)
+                    new_ped = self.spawn_pedestrian(
+                        venue_x,
+                        venue_y,
+                        viewport_bounds=viewport_bounds,
+                        max_distance_m=45.0,
+                    )
                 else:
                     new_ped = self.spawn_pedestrian(player_car.x, player_car.y, viewport_bounds=viewport_bounds)
-                if not new_ped and viewport_bounds:
-                    new_ped = self.spawn_pedestrian(
-                        player_car.x,
-                        player_car.y,
-                        viewport_bounds=None,
-                    )
                 if not new_ped:
-                    break
+                    continue
                 spawned_this_update += 1
                 if spawned_near_venue and random.random() < 0.35:
                     new_ped.is_drunk = True
+                    new_ped.blood_alcohol_promille = random.uniform(0.5, 3.0)
                     new_ped.drunk_phase = random.uniform(0.0, 2.0 * math.pi)
                     new_ped.drunk_vomit_cooldown = random.uniform(8.0, 25.0)
                 self.add_pedestrian(new_ped)
@@ -1594,14 +1594,32 @@ class PedestrianManager:
                 if ped.building_entry_timer <= 0.0:
                     ped.state = PedestrianState.DESPAWNING.value
                 continue
+            if ped.fall_timer > 0.0:
+                ped.fall_timer = max(0.0, ped.fall_timer - update_dt)
+                ped.speed = 0.0
+                ped.animation_state = "fallen"
+                if ped.fall_timer <= 0.0:
+                    ped.state = PedestrianState.WALKING.value
+                    ped.animation_state = "walking"
+                continue
             if getattr(ped, "is_drunk", False):
-                ped.drunk_phase += update_dt * 2.7
+                promille = max(0.5, min(3.0, getattr(ped, "blood_alcohol_promille", 0.5)))
+                drunk_level = (promille - 0.5) / 2.5
+                ped.drunk_phase += update_dt * (2.7 + drunk_level * 2.5)
+                ped.fall_cooldown = max(0.0, ped.fall_cooldown - update_dt)
                 ped.drunk_vomit_cooldown = max(0.0, ped.drunk_vomit_cooldown - update_dt)
                 if ped.drunk_vomit_cooldown <= 0.0 and random.random() < 0.012 * update_dt:
                     self.vomit_puddles.append((ped.x, ped.y))
                     if len(self.vomit_puddles) > 50:
                         del self.vomit_puddles[:-50]
                     ped.drunk_vomit_cooldown = random.uniform(18.0, 40.0)
+                if promille >= 1.5 and ped.fall_cooldown <= 0.0 and random.random() < (0.004 + drunk_level * 0.018) * update_dt:
+                    ped.fall_timer = 1.0 + drunk_level * 2.0
+                    ped.fall_cooldown = 8.0 - drunk_level * 3.0
+                    ped.speed = 0.0
+                    ped.state = "fallen"
+                    ped.animation_state = "fallen"
+                    continue
             # Check traffic light stop
             if self._is_pedestrian_red_light(ped):
                 ped.speed = 0.0
@@ -1615,7 +1633,9 @@ class PedestrianManager:
                 if ped.pace_timer <= 0.0:
                     ped.pace_timer = random.uniform(2.0, 5.0)
                     ped.speed_variation_factor = random.uniform(0.92, 1.08)
-                ped.speed = ped.base_speed * ped.speed_variation_factor
+                promille = max(0.5, min(3.0, getattr(ped, "blood_alcohol_promille", 0.5)))
+                drunk_level = (promille - 0.5) / 2.5 if getattr(ped, "is_drunk", False) else 0.0
+                ped.speed = ped.base_speed * ped.speed_variation_factor * (1.0 - drunk_level * 0.35)
                 ped.crossing = self._find_nearby_signalized_crossing(ped)
                 ped.state = PedestrianState.CROSSING.value if ped.crossing is not None else PedestrianState.WALKING.value
                 ped.animation_state = "walking"
@@ -1676,9 +1696,11 @@ class PedestrianManager:
             # Update sway phase based on walking speed
             ped.sway_phase += ped.sway_frequency * (ped.speed / max(0.5, ped.base_speed)) * update_dt
             # Small natural curve/wobble in heading
-            sway_angle = math.sin(ped.sway_phase) * math.radians(18.0 if getattr(ped, "is_drunk", False) else 3.5)
+            drunk_promille = max(0.5, min(3.0, getattr(ped, "blood_alcohol_promille", 0.5)))
+            drunk_level = (drunk_promille - 0.5) / 2.5 if getattr(ped, "is_drunk", False) else 0.0
+            sway_angle = math.sin(ped.sway_phase) * math.radians(3.5 + drunk_level * 38.0)
             if getattr(ped, "is_drunk", False):
-                sway_angle += math.sin(ped.drunk_phase) * math.radians(10.0)
+                sway_angle += math.sin(ped.drunk_phase) * math.radians(8.0 + drunk_level * 24.0)
 
             target_heading = math.atan2(dy, dx)
             heading_delta = (target_heading - ped.heading + math.pi) % (2.0 * math.pi) - math.pi
@@ -1688,12 +1710,14 @@ class PedestrianManager:
 
             move_dist = ped.speed * update_dt
             if move_dist < dist_to_target:
-                ped.x += math.cos(ped.heading) * move_dist
-                ped.y += math.sin(ped.heading) * move_dist
+                next_x = ped.x + math.cos(ped.heading) * move_dist
+                next_y = ped.y + math.sin(ped.heading) * move_dist
+                if not self._point_inside_building(next_x, next_y):
+                    ped.x, ped.y = next_x, next_y
             else:
                 # Reached waypoint target
-                ped.x = target_x
-                ped.y = target_y
+                if not self._point_inside_building(target_x, target_y):
+                    ped.x, ped.y = target_x, target_y
                 remaining_dist = move_dist - dist_to_target
 
                 reached_end = (ped.direction == 1 and ped.segment_idx >= n_pts - 2) or (
@@ -1730,8 +1754,10 @@ class PedestrianManager:
                     ndy = p_next[1] - ped.y
                     if math.hypot(ndx, ndy) > 0.001:
                         ped.heading = math.atan2(ndy, ndx) + sway_angle
-                        ped.x += math.cos(ped.heading) * remaining_dist
-                        ped.y += math.sin(ped.heading) * remaining_dist
+                        next_x = ped.x + math.cos(ped.heading) * remaining_dist
+                        next_y = ped.y + math.sin(ped.heading) * remaining_dist
+                        if not self._point_inside_building(next_x, next_y):
+                            ped.x, ped.y = next_x, next_y
 
         for ped in self.pedestrians:
             if ped.lod_update_due:

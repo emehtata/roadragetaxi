@@ -28,11 +28,63 @@ def test_secondary_explicit_lighting_overrides_area_fallback():
     assert not _way_should_have_street_lighting(road, [Building([], bbox=(0.0, 0.0, 1.0, 1.0))])
 
 
-def test_building_proximity_does_not_light_other_unlit_road_types():
-    road = Way(points_m=[(0.0, 0.0), (100.0, 0.0)], highway="tertiary", half_width_m=4.0)
+def test_explicit_lit_yes_has_priority_without_buildings():
+    road = Way(points_m=[(0.0, 0.0), (100.0, 0.0)], highway="tertiary", half_width_m=4.0, lit="yes")
+
+    assert _way_should_have_street_lighting(road, [])
+
+
+def test_explicit_lit_no_has_priority_near_buildings():
+    road = Way(points_m=[(0.0, 0.0), (100.0, 0.0)], highway="tertiary", half_width_m=4.0, lit="no")
     building = Building([], bbox=(0.0, 0.0, 1.0, 1.0))
 
     assert not _way_should_have_street_lighting(road, [building], (0.0, 0.0))
+
+
+def test_building_proximity_lights_urban_unlit_road_types():
+    road = Way(points_m=[(0.0, 0.0), (100.0, 0.0)], highway="tertiary", half_width_m=4.0)
+    building = Building([], bbox=(0.0, 0.0, 1.0, 1.0))
+
+    assert _way_should_have_street_lighting(road, [building], (0.0, 0.0))
+
+
+def test_building_proximity_does_not_light_motorways():
+    road = Way(points_m=[(0.0, 0.0), (100.0, 0.0)], highway="motorway", half_width_m=6.0)
+    building = Building([], bbox=(0.0, 0.0, 1.0, 1.0))
+
+    assert not _way_should_have_street_lighting(road, [building], (0.0, 0.0))
+
+
+def test_building_outer_edge_and_neighbor_grid_cell_count_as_near():
+    road = Way(points_m=[(99.0, 0.0), (199.0, 0.0)], highway="tertiary", half_width_m=4.0)
+    building = Building(
+        points_m=[(0.0, 20.0), (10.0, 20.0), (10.0, 30.0), (0.0, 30.0)],
+        bbox=(0.0, 20.0, 10.0, 30.0),
+    )
+    grid = {(0, 0): [building]}
+
+    assert _way_should_have_street_lighting(road, [building], (99.0, 0.0), grid)
+
+
+def test_taajama_building_distance_reaches_200_metres():
+    road = Way(points_m=[(0.0, 0.0), (100.0, 0.0)], highway="tertiary", half_width_m=4.0)
+    building = Building(
+        points_m=[(150.0, 0.0), (160.0, 0.0), (160.0, 10.0), (150.0, 10.0)],
+        bbox=(150.0, 0.0, 160.0, 10.0),
+    )
+
+    assert _way_should_have_street_lighting(road, [building], (0.0, 0.0))
+
+
+def test_named_road_does_not_inherit_lighting_into_rural_segment():
+    road = Way(
+        points_m=[(0.0, 0.0), (100.0, 0.0)],
+        highway="tertiary",
+        half_width_m=4.0,
+        name="Rautatienkatu",
+    )
+
+    assert not _way_should_have_street_lighting(road, [], (0.0, 0.0))
 
 
 def test_build_ways_extracts_crossings_and_aligns_with_road():
@@ -76,6 +128,42 @@ def test_build_ways_extracts_crossings_and_aligns_with_road():
     # Direction angle should be aligned with the road (roughly horizontal / 0 radians)
     assert c.direction_angle is not None
     assert abs(c.direction_angle) < 0.2 or abs(c.direction_angle - math.pi) < 0.2
+
+
+def test_crossing_node_off_road_centerline_snaps_onto_the_road():
+    """OSM often digitizes a crossing node a few meters off the road it
+    belongs to. Regression: build_ways used to keep the raw OSM node
+    position, so the rendered zebra stripes floated beside the road
+    instead of sitting flush on it - snap onto the nearest point of the
+    matched road instead."""
+    elements = [
+        {"type": "node", "id": 1, "lat": 65.0, "lon": 25.0},
+        {"type": "node", "id": 2, "lat": 65.0, "lon": 25.01},
+        {
+            "type": "way",
+            "id": 10,
+            "nodes": [1, 2],
+            "tags": {"highway": "residential", "name": "Torikatu"},
+        },
+        # Crossing node ~3m off the (flat, east-west) road's latitude.
+        {
+            "type": "node",
+            "id": 3,
+            "lat": 65.00003,
+            "lon": 25.005,
+            "tags": {"highway": "crossing", "crossing": "zebra"},
+        },
+    ]
+
+    res = build_ways(elements)
+    c = res.crossings[0]
+    (ax, ay), (bx, by) = res.ways[0].points_m
+    from theroadragetrip.geo import dist_point_to_segment
+
+    offset_from_road_m = dist_point_to_segment(c.x, c.y, ax, ay, bx, by)
+    assert offset_from_road_m < 0.5, (
+        f"crossing not snapped onto its road: {offset_from_road_m:.2f}m off centerline"
+    )
 
 
 def test_draw_crossings_runs_without_error():

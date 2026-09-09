@@ -1,3 +1,12 @@
+from theroadragetrip.osm import build_ways, parse_speed_limit_kmh
+
+
+def test_maxspeed_tag_is_primary_speed_limit_source():
+    assert parse_speed_limit_kmh("30", "residential") == 30
+    assert parse_speed_limit_kmh("30 km/h", "residential") == 30
+    assert parse_speed_limit_kmh("20 mph", "residential") == 32
+    assert parse_speed_limit_kmh("50;30", "residential") == 50
+    assert parse_speed_limit_kmh("invalid", "residential") == 40
 import sys
 import types
 
@@ -194,3 +203,16 @@ def test_build_ways_parses_closed_natural_strait_as_water():
     assert len(waters) == 1
     assert waters[0].kind == "strait"
     assert waters[0].is_polygon is True
+
+
+def test_build_ways_preserves_water_layer():
+    elements = [
+        {"type": "node", "id": 1, "lat": 60.0, "lon": 25.0},
+        {"type": "node", "id": 2, "lat": 60.0, "lon": 25.01},
+        {"type": "way", "id": 13, "nodes": [1, 2], "tags": {"natural": "water", "water": "river", "layer": "-1"}},
+    ]
+
+    ways, waters, buildings, sceneries, places, bounds = build_ways(elements)
+
+    assert len(waters) == 1
+    assert waters[0].layer == -1

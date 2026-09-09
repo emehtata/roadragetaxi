@@ -3,7 +3,9 @@ from theroadragetrip.osm import Way, build_ways
 from theroadragetrip.physics import (
     Car,
     SpatialWayGrid,
+    is_car_colliding_with_bridge_edge,
     is_point_on_road,
+    pull_car_inside_bridge_edge,
     update_car_physics,
 )
 
@@ -85,3 +87,83 @@ def test_bridge_cross_layer_collision_isolation():
     # Check that a point to the East (70, 100) is on road for layer 0 but NOT for layer 1
     assert is_point_on_road(70.0, 100.0, spatial_grid=grid, layer=0)
     assert not is_point_on_road(70.0, 100.0, spatial_grid=grid, layer=1)
+
+
+def test_car_hits_bridge_guardrail_with_a_corner():
+    bridge = Way(
+        points_m=[(0.0, 0.0), (100.0, 0.0)],
+        highway="primary",
+        half_width_m=4.0,
+        is_bridge=True,
+        layer=1,
+    )
+    centered_car = Car(x=50.0, y=0.0, heading=0.0, speed=0.0, layer=1)
+    edge_car = Car(x=50.0, y=3.2, heading=0.0, speed=0.0, layer=1)
+    bridge_end_car = Car(x=102.0, y=0.0, heading=0.0, speed=0.0, layer=1)
+
+    assert not is_car_colliding_with_bridge_edge(centered_car, bridge)
+    assert is_car_colliding_with_bridge_edge(edge_car, bridge)
+    assert not is_car_colliding_with_bridge_edge(bridge_end_car, bridge)
+
+
+def test_bridge_guardrail_recovery_moves_car_inside_road():
+    bridge = Way(
+        points_m=[(0.0, 0.0), (100.0, 0.0)],
+        highway="primary",
+        half_width_m=5.0,
+        is_bridge=True,
+    )
+    car = Car(x=50.0, y=4.8, heading=0.0, speed=0.0)
+
+    assert is_car_colliding_with_bridge_edge(car, bridge)
+    pull_car_inside_bridge_edge(car, bridge)
+
+    assert abs(car.y) <= bridge.half_width_m - car.width_m * 0.5 - 0.35
+    assert not is_car_colliding_with_bridge_edge(car, bridge)
+
+
+def test_bridge_guardrail_ignores_segment_when_car_is_not_on_it():
+    bridge = Way(
+        points_m=[(0.0, 0.0), (100.0, 0.0)],
+        highway="primary",
+        half_width_m=4.0,
+        is_bridge=True,
+        layer=1,
+    )
+    crossing_car = Car(x=50.0, y=6.0, heading=0.0, speed=0.0, layer=1)
+
+    assert not is_car_colliding_with_bridge_edge(crossing_car, bridge)
+
+
+def test_no_false_guardrail_crash_on_the_seam_between_divided_bridge_lanes():
+    """Regression: a divided highway bridge is often split into one Way per
+    direction. draw_ways already unions overlapping bridge lanes so no
+    guardrail is drawn between them (see bridge_polygons in
+    render/roads.py) - but the collision check used to know nothing about
+    the neighboring lane, so a car near the shared inner seam (well inside
+    the combined bridge deck, nowhere near a real rail) registered a crash."""
+    northbound = Way(
+        points_m=[(0.0, 0.0), (100.0, 0.0)],
+        highway="primary",
+        half_width_m=4.0,
+        is_bridge=True,
+        layer=1,
+    )
+    southbound = Way(
+        points_m=[(0.0, 8.0), (100.0, 8.0)],
+        highway="primary",
+        half_width_m=4.0,
+        is_bridge=True,
+        layer=1,
+    )
+    # y=3.9 is inside northbound's own half-width (4.0) but past its
+    # edge_distance (3.8) - and inside southbound's half-width too, since
+    # the lanes touch at y=4.0.
+    seam_car = Car(x=50.0, y=3.9, heading=0.0, speed=0.0, layer=1)
+
+    assert not is_car_colliding_with_bridge_edge(seam_car, northbound, ways=[northbound, southbound])
+    # Without the neighboring lane, the same edge is still a real crash.
+    assert is_car_colliding_with_bridge_edge(seam_car, northbound)
+    # A car past the outer edge of the combined deck still crashes.
+    outer_car = Car(x=50.0, y=-3.9, heading=0.0, speed=0.0, layer=1)
+    assert is_car_colliding_with_bridge_edge(outer_car, northbound, ways=[northbound, southbound])
