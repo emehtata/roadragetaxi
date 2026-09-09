@@ -84,6 +84,11 @@ from ..physics import (
     pull_car_inside_bridge_edge,
     update_car_physics,
 )
+from .menu_input import (
+    _city_editor_item_at,
+    _city_editor_suggestion_at,
+    _menu_item_at_y,
+)
 from ..render import (
     FPS,
     PX_PER_M,

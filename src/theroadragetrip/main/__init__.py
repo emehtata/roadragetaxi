@@ -162,6 +162,7 @@ from .menu_input import (
     _city_horizontal_index,
     _city_item_at,
     _city_menu_index,
+    _city_refresh_at,
     _menu_item_at_y,
     _mode_menu_navigate,
     MODE_MENU_OPTION_COUNT,
