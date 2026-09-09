@@ -19,6 +19,21 @@ LIGHT_TRAFFIC_MAX_SPEED = 6.0  # m/s (~22 km/h) on footways, paths, and cycleway
 OFFROAD_DECEL = 10.0  # m/s^2 when slowing from road speed
 
 GRAVITY_MPS2 = 9.81
+# Below this speed, any heading change (steering while nearly stopped,
+# heading noise from lane assist, ...) is not a real turn - per GFORCE.md
+# section 3, lateral g must read ~0 rather than swing on meaningless
+# rotation at a standstill.
+MIN_SPEED_FOR_LATERAL_G_MPS = 0.3
+# Time constant for the EMA smoothing applied to the *displayed* g-force
+# (car.forward_g/lateral_g/total_g); car.raw_*_g stays unsmoothed. Small
+# enough to feel responsive, large enough to not visibly jitter frame to
+# frame - see _smoothed_g.
+G_FORCE_SMOOTHING_TIME_CONSTANT_S = 0.15
+# A one-frame position jump implying more than this is not a real
+# acceleration - it's a teleport (respawn, pickup relocation, ...) - so
+# the resulting velocity-vector delta is discarded instead of reported as
+# a g-force spike (GFORCE.md section 9).
+MAX_PLAUSIBLE_ACCEL_MPS2 = 200.0  # ~20g; a hard crash, not a teleport
 # Cornering grip limit, as a fraction of g, before the tires lose traction.
 # "Arcade" is forgiving (steering just goes mushy past the limit, no separate
 # slide); "simulation" is stricter and adds a genuine drift angle that has to
@@ -98,10 +113,22 @@ class Car:
     lane_assist_enabled: bool = False  # user toggle for lane assist feature (default False)
     lane_assist_active: bool = False  # whether lane assist is currently steering
     braking: bool = False  # whether brake lights should be illuminated
-    forward_g: float = 0.0  # last frame's longitudinal g (+accelerating, -braking)
-    lateral_g: float = 0.0  # last frame's cornering g (+left, -right)
+    # Smoothed g-force (see _smoothed_g/_update_g_force) - what the HUD meter
+    # and any future rage reaction should read for a stable value.
+    forward_g: float = 0.0  # +accelerating, -braking
+    lateral_g: float = 0.0  # +left, -right (see _update_g_force's sign note)
+    total_g: float = 0.0  # hypot(forward_g, lateral_g), NOT sum of magnitudes
+    # Unsmoothed, same-frame g-force - for anything that needs the actual
+    # instantaneous value rather than the display-friendly one (GFORCE.md
+    # section 10).
+    raw_forward_g: float = 0.0
+    raw_lateral_g: float = 0.0
+    raw_total_g: float = 0.0
     drift_angle: float = 0.0  # radians; how far the car's motion has slid from its heading
     is_sliding: bool = False  # true the frame cornering grip was exceeded
+    _prev_vx: float = 0.0  # world-frame velocity, previous frame (g-force calc only)
+    _prev_vy: float = 0.0
+    _g_force_initialized: bool = False  # False until a first real dt has primed _prev_vx/vy
 
 
 def is_car_road(way) -> bool:
@@ -962,6 +989,68 @@ def _decay_toward_zero(value: float, rate: float, dt: float) -> float:
     return 0.0
 
 
+def _smoothed_g(previous: float, raw: float, dt: float) -> float:
+    """Exponential smoothing toward `raw`, with a time constant rather than
+    a fixed per-frame blend factor so the result doesn't depend on frame
+    rate (GFORCE.md sections 6-7)."""
+    if dt <= 0.0:
+        return previous
+    alpha = 1.0 - math.exp(-dt / G_FORCE_SMOOTHING_TIME_CONSTANT_S)
+    return previous + (raw - previous) * alpha
+
+
+def _update_g_force(car: Car, entry_x: float, entry_y: float, dt: float) -> None:
+    """Measure g-force from the car's *actual* velocity-vector change this
+    frame (GFORCE.md) rather than from steering input or a heading-rate
+    formula: entry_x/y is where the car was before any of this frame's
+    speed/steering/collision/road-edge-blocking logic ran, so
+    (car.x/y - entry_x/y) / dt is the true velocity this frame, including
+    drift, being blocked, or anything else that moved (or stopped) it.
+
+    Decomposed relative to the car's own heading: the forward-axis
+    component is longitudinal g (+accelerating, -braking), the
+    left-axis component is lateral g (+left, -right - a left turn pushes
+    an occupant's body to the right, matching the HUD's convention).
+    """
+    if dt <= 0.0:
+        return
+    velocity_x = (car.x - entry_x) / dt
+    velocity_y = (car.y - entry_y) / dt
+
+    if not car._g_force_initialized:
+        # First measurement: nothing to diff against yet - per GFORCE.md
+        # section 8, prime the velocity history and report ~0 rather than
+        # spike off an assumed-zero previous velocity.
+        car._prev_vx, car._prev_vy = velocity_x, velocity_y
+        car._g_force_initialized = True
+        car.raw_forward_g = car.raw_lateral_g = car.raw_total_g = 0.0
+        car.forward_g = car.lateral_g = car.total_g = 0.0
+        return
+
+    accel_x = (velocity_x - car._prev_vx) / dt
+    accel_y = (velocity_y - car._prev_vy) / dt
+    if math.hypot(accel_x, accel_y) > MAX_PLAUSIBLE_ACCEL_MPS2:
+        # A teleport (respawn, pickup relocation, ...), not a real impact -
+        # resync silently instead of reporting a spike (GFORCE.md section 9).
+        car._prev_vx, car._prev_vy = velocity_x, velocity_y
+        return
+    car._prev_vx, car._prev_vy = velocity_x, velocity_y
+
+    forward_x, forward_y = math.cos(car.heading), math.sin(car.heading)
+    left_x, left_y = -forward_y, forward_x
+    raw_forward_g = (accel_x * forward_x + accel_y * forward_y) / GRAVITY_MPS2
+    raw_lateral_g = (accel_x * left_x + accel_y * left_y) / GRAVITY_MPS2
+    if abs(car.speed) < MIN_SPEED_FOR_LATERAL_G_MPS:
+        raw_lateral_g = 0.0
+
+    car.raw_forward_g = raw_forward_g
+    car.raw_lateral_g = raw_lateral_g
+    car.raw_total_g = math.hypot(raw_forward_g, raw_lateral_g)
+    car.forward_g = _smoothed_g(car.forward_g, raw_forward_g, dt)
+    car.lateral_g = _smoothed_g(car.lateral_g, raw_lateral_g, dt)
+    car.total_g = math.hypot(car.forward_g, car.lateral_g)
+
+
 def update_car_physics(
     car: Car,
     throttle: float,
@@ -990,10 +1079,12 @@ def update_car_physics(
     `physics_mode` ("arcade" or "simulation") feed the cornering-grip model:
     exceeding the surface's lateral-g limit softens steering authority
     (arcade) or, in simulation mode, also builds up a drift angle the car
-    has to steer out of. car.forward_g/lateral_g/is_sliding are updated
-    every call for the debug HUD and other systems (skid tracks, rage).
+    has to steer out of. car.forward_g/lateral_g/total_g (smoothed) and
+    car.raw_forward_g/raw_lateral_g/raw_total_g/is_sliding are updated
+    every call for the debug HUD and other systems (skid tracks, rage) -
+    see _update_g_force for how they're actually measured.
     """
-    previous_speed = car.speed
+    entry_x, entry_y = car.x, car.y
     if speed_limit_mps is not None and car.speed > speed_limit_mps:
         car.speed = max(speed_limit_mps, car.speed - SPEED_LIMIT_DECEL * dt)
     elif speed_limit_mps is not None and car.speed < -speed_limit_mps:
@@ -1016,7 +1107,6 @@ def update_car_physics(
             car.speed = min(0.0, car.speed + FRICTION * dt)
 
     car.speed = clamp(car.speed, -10.0, MAX_SPEED)
-    car.forward_g = (car.speed - previous_speed) / dt / GRAVITY_MPS2 if dt > 0.0 else 0.0
 
     # Manual steering check
     steer_input = steer_left - steer_right
@@ -1026,7 +1116,6 @@ def update_car_physics(
     else:
         car.time_since_last_steer += dt
 
-    heading_before_steer = car.heading
     car.is_sliding = False
     # Drift decays by default every frame; the grip-exceeded branch below
     # builds it back up on top of this when the driver is actively
@@ -1151,8 +1240,6 @@ def update_car_physics(
     else:
         car.lane_assist_active = False
 
-    car.lateral_g = (car.heading - heading_before_steer) / dt * car.speed / GRAVITY_MPS2 if dt > 0.0 else 0.0
-
     movement_heading = car.heading + car.drift_angle
     dx = math.cos(movement_heading) * car.speed * dt
     dy = math.sin(movement_heading) * car.speed * dt
@@ -1254,4 +1341,9 @@ def update_car_physics(
     # Accumulate trip and odometer distances based on speed magnitude
     car.trip_m += dist
     car.odometer_m += dist
+    # Measured from the car's actual net movement this frame (entry_x/y to
+    # here), so it reflects whatever actually happened above - acceleration,
+    # braking, steering, drift, being blocked by a road edge, everything -
+    # not just steering input (see _update_g_force).
+    _update_g_force(car, entry_x, entry_y, dt)
     return blocked

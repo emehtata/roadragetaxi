@@ -10,7 +10,17 @@ from theroadragetrip.physics import (
 
 
 def _fast_car(speed=30.0):
-    return Car(x=0.0, y=0.0, heading=0.0, speed=speed)
+    car = Car(x=0.0, y=0.0, heading=0.0, speed=speed)
+    # Prime the g-force velocity history (see physics._update_g_force): the
+    # very first update_car_physics call on a car always reports ~0 g
+    # (GFORCE.md section 8 - no previous velocity to diff against yet), so
+    # a throwaway warm-up call is needed before a single real call's g
+    # reading means anything. Reset position/speed/velocity-history
+    # afterward so the warm-up itself has no side effect on the test.
+    update_car_physics(car, throttle=0.0, brake=0.0, steer_left=0.0, steer_right=0.0, dt=0.1)
+    car.x, car.y, car.speed = 0.0, 0.0, speed
+    car._prev_vx, car._prev_vy = speed * math.cos(car.heading), speed * math.sin(car.heading)
+    return car
 
 
 def test_forward_g_reflects_acceleration_and_braking():
