@@ -326,27 +326,47 @@ def _cluster_signal_positions(
     """Group raw OSM signal-node positions into intersection clusters.
 
     OSM commonly maps one traffic_signals node per approach - sometimes
-    just one for the entire junction. Nodes belonging to the same physical
-    intersection are rarely more than a lane width or two apart, so a
-    simple greedy nearest-cluster-centroid grouping is enough (prompt
-    Section 9 calls for "a configurable clustering distance", not a
-    general-purpose clustering algorithm).
+    just one for the entire junction. Two points belong to the same
+    cluster when EITHER is within `cluster_radius_m` of the other
+    (single-link/connected-components): a real, wide junction with a node
+    per approach is essentially a ring around the intersection, so its
+    far corners are often further from each other than the radius even
+    though each is close to its neighbors - that ring still has to end up
+    as one cluster.
+
+    A real regression from an earlier, order-dependent greedy version:
+    processing one node per centroid-distance-to-existing-clusters (not
+    pairwise) let the *order* signal_points happened to arrive in decide
+    the result - a real 3-street Oulu junction (Uusikatu / Lävistäjä /
+    Kajaaninkatu) split into 2 clusters purely because its OSM node order
+    checked the wrong node first, even though every node was within range
+    of at least one other. Connected components doesn't have that
+    failure mode: the same input always produces the same clusters.
     """
-    clusters: List[dict] = []
+    by_layer: dict = {}
     for x, y, layer in signal_points:
-        target = None
-        for cluster in clusters:
-            if cluster["layer"] != layer:
-                continue
-            cx = sum(point[0] for point in cluster["points"]) / len(cluster["points"])
-            cy = sum(point[1] for point in cluster["points"]) / len(cluster["points"])
-            if math.hypot(x - cx, y - cy) <= cluster_radius_m:
-                target = cluster
-                break
-        if target is None:
-            clusters.append({"layer": layer, "points": [(x, y)]})
-        else:
-            target["points"].append((x, y))
+        by_layer.setdefault(layer, []).append((x, y))
+
+    clusters: List[dict] = []
+    for layer, points in by_layer.items():
+        parent = list(range(len(points)))
+
+        def find(i: int) -> int:
+            while parent[i] != i:
+                parent[i] = parent[parent[i]]
+                i = parent[i]
+            return i
+
+        for i in range(len(points)):
+            for j in range(i + 1, len(points)):
+                if math.hypot(points[i][0] - points[j][0], points[i][1] - points[j][1]) <= cluster_radius_m:
+                    parent[find(i)] = find(j)
+
+        groups: dict = {}
+        for i, point in enumerate(points):
+            groups.setdefault(find(i), []).append(point)
+        for group_points in groups.values():
+            clusters.append({"layer": layer, "points": group_points})
     return clusters
 
 

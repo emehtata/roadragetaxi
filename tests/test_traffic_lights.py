@@ -236,6 +236,45 @@ def test_scattered_signal_nodes_around_one_junction_cluster_together():
     assert len(intersections[0].approaches) == 4
 
 
+def test_three_way_junction_clusters_regardless_of_node_order():
+    """Regression: a real 3-street Oulu junction (Uusikatu / Lävistäjä /
+    Kajaaninkatu) has one traffic_signals node per street - A=43.5m from
+    B, but A=32.5m from C and B=28.7m from C, so all three belong to one
+    physical junction via C. The old greedy centroid clustering checked
+    each new point against existing cluster centroids one at a time: in
+    OSM's actual node order (A, B, C) it saw A alone first, missed the
+    A-B merge (43.5m > radius), and only afterwards merged C into A -
+    leaving B stranded in its own cluster and getting its own light
+    synthesized from the wrong (2-point) center instead of using B's real
+    position. Clustering must not depend on the arrival order of nodes
+    that are otherwise identical evidence."""
+    center = (0.0, 0.0)
+
+    def arm(angle_deg):
+        angle = math.radians(angle_deg)
+        far = (center[0] + math.cos(angle) * 150.0, center[1] + math.sin(angle) * 150.0)
+        return Way([center, far], "primary", 5.0)
+
+    point_a = (32.18, 4.44, 0)   # Lävistäjä
+    point_b = (3.78, -28.46, 0)  # Uusikatu
+    point_c = (0.0, 0.0, 0)      # Kajaaninkatu
+    ways = [arm(31.6), arm(-111.9), arm(146.3)]
+    real_positions = {(point_a[0], point_a[1]), (point_b[0], point_b[1]), (point_c[0], point_c[1])}
+
+    for order in ([point_a, point_b, point_c], [point_c, point_b, point_a], [point_b, point_a, point_c]):
+        lights, intersections = build_traffic_light_system(order, ways)
+        assert len(intersections) == 1, f"order {order} split into {len(intersections)} intersections"
+        assert len(lights) == 3
+        # Every light must sit at its arm's real OSM position, not a
+        # synthesized fallback - the bug this regression targets left one
+        # light's position wrong even when the count/intersection count
+        # happened to still look right.
+        assert {(light.x, light.y) for light in lights} == real_positions, (
+            f"order {order} produced wrong light positions: "
+            f"{[(light.x, light.y) for light in lights]}"
+        )
+
+
 def test_wide_real_junction_stays_one_intersection():
     """Regression: a real 4-street Oulu junction (Kajaanintie / Heikinkatu
     / Tulliväylä / Rautatienkatu) has one traffic_signals node per
