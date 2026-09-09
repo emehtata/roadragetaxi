@@ -170,6 +170,23 @@ def _rage_from_speeding(
     return max(0.0, rage_power - delta)
 
 
+def _map_sync_should_start(revision_changed: bool, any_grid_stale: bool, map_sync_stage: int) -> bool:
+    """Whether the multi-frame map-sync pipeline should (re)start this frame.
+
+    Must require map_sync_stage == 0 regardless of which trigger fired.
+    The pipeline advances exactly one stage per frame across many frames
+    (spreading an O(total ways/buildings) rebuild out so it isn't one big
+    stall) - restarting it back to stage 1 every time a new revision
+    arrives mid-flight, which used to happen here because `or` binds
+    looser than `and` so `revision_changed or (any_grid_stale and stage ==
+    0)` let a bare revision change reset progress regardless of stage,
+    means a late stage (e.g. the traffic-light grid rebuild) can starve
+    forever under sustained tile streaming, even though it always looks
+    like it's "syncing".
+    """
+    return map_sync_stage == 0 and (revision_changed or any_grid_stale)
+
+
 def _choose_city(
     active_city_name,
     game_mode: str,
@@ -1724,28 +1741,26 @@ def main() -> None:
                         auto_fetch_manager.player_tile,
                     )
                     _wait_for_active_tile_fetch(auto_fetch_manager, clock, screen, font, language)
-                if (
-                    auto_fetch_manager.get_map_revision() != last_map_revision
-                    or (
-                    (
-                        len(ways) != spatial_grid.indexed_way_count
-                        or len(buildings) != building_grid.indexed_way_count
-                        or len(sceneries) != scenery_grid.indexed_way_count
-                        or len(waters) != water_grid.indexed_way_count
-                        or len(crossings) != crossing_grid.indexed_way_count
-                        or len(curbs) != curb_grid.indexed_way_count
-                        or len(traffic_lights) != traffic_light_grid.indexed_way_count
-                    )
-                    )
-                    and map_sync_stage == 0
+                any_grid_stale = (
+                    len(ways) != spatial_grid.indexed_way_count
+                    or len(buildings) != building_grid.indexed_way_count
+                    or len(sceneries) != scenery_grid.indexed_way_count
+                    or len(waters) != water_grid.indexed_way_count
+                    or len(crossings) != crossing_grid.indexed_way_count
+                    or len(curbs) != curb_grid.indexed_way_count
+                    or len(traffic_lights) != traffic_light_grid.indexed_way_count
+                )
+                if _map_sync_should_start(
+                    auto_fetch_manager.get_map_revision() != last_map_revision,
+                    any_grid_stale,
+                    map_sync_stage,
                 ):
-                    if map_sync_stage == 0:
-                        logger.info(
-                            "Map sync started: revision=%d ways=%d buildings=%d",
-                            auto_fetch_manager.get_map_revision(),
-                            len(ways),
-                            len(buildings),
-                        )
+                    logger.info(
+                        "Map sync started: revision=%d ways=%d buildings=%d",
+                        auto_fetch_manager.get_map_revision(),
+                        len(ways),
+                        len(buildings),
+                    )
                     map_sync_stage = 1
 
                 map_sync_started = time.perf_counter() if map_sync_stage else None

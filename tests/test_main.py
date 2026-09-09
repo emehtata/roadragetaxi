@@ -3,6 +3,7 @@ import pygame
 from theroadragetrip.main import (
     _city_horizontal_index,
     _city_menu_index,
+    _map_sync_should_start,
     _mode_menu_navigate,
     _rage_from_speeding,
     _respawn_allowed,
@@ -35,6 +36,23 @@ def test_rage_from_speeding_is_clamped_to_0_1():
 
 def test_rage_unaffected_without_a_known_speed_limit():
     assert _rage_from_speeding(0.4, speed_mps=100.0, road_limit_mps=None, driven_distance_m=100.0) == 0.4
+
+
+def test_map_sync_does_not_start_mid_pipeline():
+    """A revision bump (or a stale grid) must never restart the multi-frame
+    map-sync pipeline while a sync is already in progress - restarting on
+    every revision change starves late stages (e.g. the traffic-light grid
+    rebuild) forever under sustained tile streaming, since a new tile
+    finishing loading every few seconds is enough to keep resetting stage
+    back to 1 before it ever reaches the later stages."""
+    assert _map_sync_should_start(revision_changed=True, any_grid_stale=False, map_sync_stage=5) is False
+    assert _map_sync_should_start(revision_changed=False, any_grid_stale=True, map_sync_stage=5) is False
+
+
+def test_map_sync_starts_when_idle_and_something_changed():
+    assert _map_sync_should_start(revision_changed=True, any_grid_stale=False, map_sync_stage=0) is True
+    assert _map_sync_should_start(revision_changed=False, any_grid_stale=True, map_sync_stage=0) is True
+    assert _map_sync_should_start(revision_changed=False, any_grid_stale=False, map_sync_stage=0) is False
 
 
 def test_city_menu_supports_numeric_and_letter_shortcuts():
