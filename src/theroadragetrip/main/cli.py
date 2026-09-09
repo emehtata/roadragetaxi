@@ -41,7 +41,6 @@ from ..career import (
 from ..localization import LANGUAGE_NAMES, SUPPORTED_LANGUAGES, normalize_language, tr
 from ..osm import (
     BBOX_PRESETS,
-    CITY_CENTERS,
     DEFAULT_BBOX,
     DEFAULT_OVERPASS_ENDPOINTS,
     DEFAULT_ROAD_HALF_WIDTH_M,

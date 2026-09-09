@@ -7,7 +7,6 @@ from .geo import clamp, compute_bbox, dist_point_to_segment, meters_to_latlon, p
 from .main import BBOX, main
 from .osm import (
     BBOX_PRESETS,
-    CITY_CENTERS,
     DEFAULT_BBOX,
     DEFAULT_OVERPASS_ENDPOINTS,
     DEFAULT_ROAD_HALF_WIDTH_M,
@@ -97,7 +96,6 @@ __all__ = [
     # OSM
     "BBOX",
     "BBOX_PRESETS",
-    "CITY_CENTERS",
     "DEFAULT_BBOX",
     "DEFAULT_OVERPASS_ENDPOINTS",
     "DEFAULT_ROAD_HALF_WIDTH_M",

@@ -22,7 +22,11 @@ from ..tile_streaming import TileCoord, active_tiles, tile_bbox, tile_changes, w
 logger = logging.getLogger(__name__)
 
 
-CITY_CENTERS: Dict[str, Tuple[float, float]] = {
+# Superseded by config.py's catalog-based city list (load_city_catalog/
+# cities_from_config, backed by the bundled municipality data) for actual
+# city selection - kept here, private, only to seed BBOX_PRESETS/
+# DEFAULT_BBOX below. Nothing outside this module reads it.
+_CITY_CENTERS: Dict[str, Tuple[float, float]] = {
     "Helsinki": (60.169525, 24.935446),
     "Espoo": (60.205000, 24.652000),
     "Tampere": (61.499113, 23.787117),
@@ -53,7 +57,7 @@ def bbox_from_center(lat: float, lon: float, size_km: float = 4.0) -> Tuple[floa
 
 BBOX_PRESETS: Dict[str, Tuple[float, float, float, float]] = {
     name.lower(): bbox_from_center(lat, lon, size_km=3.0)
-    for name, (lat, lon) in CITY_CENTERS.items()
+    for name, (lat, lon) in _CITY_CENTERS.items()
 }
 
 

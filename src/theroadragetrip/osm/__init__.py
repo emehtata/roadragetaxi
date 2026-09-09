@@ -16,7 +16,6 @@ have that patch actually take effect, matching the original flat module.
 
 from .constants import (
     BBOX_PRESETS,
-    CITY_CENTERS,
     DEFAULT_BBOX,
     DEFAULT_ROAD_HALF_WIDTH_M,
     DEFAULT_SPEED_LIMITS_KMH,
