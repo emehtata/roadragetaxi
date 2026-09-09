@@ -49,6 +49,39 @@ def test_rwc_rehydrates_building_place_associations(tmp_path, sample_world):
     )
 
 
+def test_rwc_round_trip_shares_one_signal_group_per_phase(tmp_path, sample_world):
+    """Every physical TrafficLight and IntersectionApproach on the same
+    signal phase shares one SignalGroup object before saving - that's how
+    build_traffic_light_system wires them up, and it's what lets a
+    pedestrian or the red-light-assist logic trust that querying one
+    light's phase reflects every other light on the same phase. Naive
+    per-record reconstruction on load would silently give each of them
+    its own separate (if equal) SignalGroup instead."""
+    assert sample_world.logical_intersections, "fixture must include a signalized intersection"
+    intersection = sample_world.logical_intersections[0]
+    assert len(intersection.traffic_lights) >= 2
+
+    path = tmp_path / "signals.rwc"
+    BinaryWorldCacheWriter().write(path, sample_world, area_id="signals")
+    loaded = BinaryWorldCacheLoader().load(path)
+
+    loaded_intersection = loaded.logical_intersections[0]
+    lights_by_approach = {}
+    for light in loaded_intersection.traffic_lights:
+        lights_by_approach.setdefault(light.signal_group.approach_id, []).append(light)
+    same_phase = next(group for group in lights_by_approach.values() if len(group) >= 2)
+    assert same_phase[0].signal_group is same_phase[1].signal_group
+
+    # An approach on that phase must share the very same object too, not
+    # just an equal one - so changing the controller's state is visible
+    # everywhere at once.
+    approach = next(
+        a for a in loaded_intersection.approaches
+        if a.signal_group is not None and a.signal_group.approach_id == same_phase[0].signal_group.approach_id
+    )
+    assert approach.signal_group is same_phase[0].signal_group
+
+
 def test_rwc_rejects_corrupt_and_unsupported_files(tmp_path, sample_world):
     path = tmp_path / "area.rwc"
     BinaryWorldCacheWriter().write(path, sample_world)

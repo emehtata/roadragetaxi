@@ -403,8 +403,15 @@ def build_traffic_light_system(
 
             for member_index in member_indices:
                 arm_angle, _incoming, way = incoming_arms[member_index]
+                # Per-arm movements belong on that arm's own TrafficLight/
+                # IntersectionApproach below, not unioned onto the shared
+                # SignalGroup: a phase can pair two opposite arms with
+                # different turn options (e.g. one has a left-turn lane,
+                # the other doesn't), and nothing reads a phase-wide
+                # "allowed_movements" - conflating them there would just be
+                # a second, wrong, answer to a question already answered
+                # correctly per-arm.
                 movements = _movements_for_way(way)
-                group.allowed_movements = group.allowed_movements | movements
 
                 # One physical light per arm (prompt Section 6): use the
                 # real OSM evidence attributed to this arm, if any, for its
