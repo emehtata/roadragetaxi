@@ -236,10 +236,13 @@ def test_scattered_signal_nodes_around_one_junction_cluster_together():
     assert len(intersections[0].approaches) == 4
 
 
-def test_signal_per_lane_is_used_as_is_not_redivided():
-    """When OSM already maps a separate signal node per arrival direction -
-    and two of them for the north arm's two lanes - those real positions
-    must be used directly, not thrown away for synthesized ones."""
+def test_signal_per_arm_positions_that_arms_light_without_multiplying_it():
+    """When OSM maps a separate signal node per arrival direction - and two
+    of them for the north arm (e.g. one per lane) - that real evidence
+    should position each arm's one light, not multiply it into several
+    lights per arm (a real, densely-signalled junction produced exactly
+    that mess: many more rendered lights than approaches, scattered off
+    the road)."""
     arms = _four_way_ways()
     signal_points = [
         (-1.5, 10.0, 0), (1.5, 10.0, 0),  # north's two lanes
@@ -249,11 +252,14 @@ def test_signal_per_lane_is_used_as_is_not_redivided():
 
     assert len(intersections) == 1
     assert len(intersections[0].approaches) == 4
-    # 2 real north lights + 1 real light each for south/east/west.
-    assert len(lights) == 5
+    # Still exactly one light per arm, never more.
+    assert len(lights) == 4
 
     north_lights = [light for light in lights if light.y > 5.0]
-    assert {(light.x, light.y) for light in north_lights} == {(-1.5, 10.0), (1.5, 10.0)}
+    assert len(north_lights) == 1
+    # Positioned at the average of the two attributed OSM nodes, not the
+    # synthesized fallback.
+    assert north_lights[0].x == 0.0 and north_lights[0].y == 10.0
 
 
 def test_single_central_signal_point_is_divided_not_pinned_to_one_arm():
