@@ -1,4 +1,7 @@
-"""Tests for the loading-screen pause while a background tile fetch is in flight."""
+"""Tests for the loading-screen pause while a background tile fetch is in
+flight - the whole point being that this covers the *entire* fetch, with
+no small in-HUD progress bar and no gameplay resuming while it's still
+running (see the removed "Ladataan maisemaa" bar)."""
 import os
 import time
 
@@ -24,16 +27,6 @@ class _FakeAutoFetchManager:
         return 0.5
 
 
-class _StuckAutoFetchManager:
-    """Simulates a fetch that never completes (e.g. a hung connection)."""
-
-    def get_fetching(self) -> bool:
-        return True
-
-    def get_progress(self) -> float:
-        return 0.1
-
-
 def _screen_and_font():
     os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
     pygame.init()
@@ -47,26 +40,25 @@ def test_wait_for_active_tile_fetch_returns_once_fetch_completes():
     screen, font, clock = _screen_and_font()
     try:
         manager = _FakeAutoFetchManager(fetching_checks=3)
-        started = time.monotonic()
-        _wait_for_active_tile_fetch(manager, clock, screen, font, "en", deadline_s=5.0)
-        elapsed = time.monotonic() - started
-
+        _wait_for_active_tile_fetch(manager, clock, screen, font, "en")
         assert manager._remaining == 0, "did not wait for the fetch to finish"
-        assert elapsed < 5.0, "waited past what the fetch actually needed"
     finally:
         pygame.quit()
 
 
-def test_wait_for_active_tile_fetch_gives_up_after_its_deadline():
-    """Regression: a genuinely stuck fetch (e.g. a hung connection, well
-    under the fetch's own 60s-per-attempt HTTP timeout) must not freeze the
-    game outright - the wait has its own bounded deadline."""
+def test_wait_for_active_tile_fetch_does_not_give_up_early():
+    """Regression target: the wait used to have its own UI-level deadline
+    (independent of the fetch's real progress) that let gameplay resume
+    with the fetch still running, covered by a small in-HUD progress bar.
+    That bar is gone now, so the wait itself must not bail out while
+    get_fetching() still reports True - only the fetch's own HTTP timeout
+    (osm/overpass.py) should ever end it."""
     screen, font, clock = _screen_and_font()
     try:
-        started = time.monotonic()
-        _wait_for_active_tile_fetch(_StuckAutoFetchManager(), clock, screen, font, "en", deadline_s=0.1)
-        elapsed = time.monotonic() - started
-
-        assert elapsed < 2.0, "did not honor the wait deadline"
+        # A slow fetch - many checks before it reports done - must still be
+        # waited out in full, not cut off after some fixed short window.
+        manager = _FakeAutoFetchManager(fetching_checks=50)
+        _wait_for_active_tile_fetch(manager, clock, screen, font, "en")
+        assert manager._remaining == 0
     finally:
         pygame.quit()

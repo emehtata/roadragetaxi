@@ -682,22 +682,21 @@ def _wait_for_active_tile_fetch(
     screen,
     font,
     language: str,
-    deadline_s: float = 20.0,
 ) -> None:
-    """Block behind a full loading screen while a tile fetch is in flight.
+    """Block behind a full loading screen for as long as a tile fetch is in
+    flight - no small in-HUD progress bar, no gameplay resuming mid-fetch.
 
     Called right after triggering a background tile fetch, instead of
     letting the player keep driving and potentially cross into yet another
     tile before this one even lands - stacking up simultaneous Overpass
-    requests is exactly what draws rate limits. Bounded by `deadline_s`
-    (well under the fetch's own 60s-per-attempt HTTP timeout, but long
-    enough for a slow real fetch) so a genuinely stuck connection can't
-    freeze the game outright - gameplay resumes and whatever the fetch
-    eventually returns is picked up later, same as any other background
-    completion.
+    requests is exactly what draws rate limits. Waits for as long as it
+    takes: the underlying HTTP request already carries its own 60s-per-
+    attempt timeout (osm/overpass.py), so this can't hang forever even
+    without its own deadline - and cutting it off early here would be
+    exactly the "resume with an incomplete fetch, show a small bar
+    instead" behavior this replaces.
     """
-    wait_deadline = time.monotonic() + deadline_s
-    while auto_fetch_manager.get_fetching() and time.monotonic() < wait_deadline:
+    while auto_fetch_manager.get_fetching():
         clock.tick(30)
         for wait_event in pygame.event.get():
             if wait_event.type == pygame.QUIT:
@@ -2183,9 +2182,7 @@ def main() -> None:
                 len(ways),
                 px_per_m,
                 transformer_to_ll,
-                is_auto_fetching=(args.auto_fetch and auto_fetch_manager.get_fetching()),
                 show_labels=bool(label_mode),
-                auto_fetch_progress=auto_fetch_manager.get_progress(),
                 taxi_mgr=taxi_mgr,
                 current_road_name=current_road_name,
                 speed_limit_kmh=current_limit_kmh,

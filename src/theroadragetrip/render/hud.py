@@ -267,9 +267,7 @@ def draw_hud(
     ways_count: int,
     px_per_m: float,
     transformer_to_ll,
-    is_auto_fetching: bool = False,
     show_labels: bool = True,
-    auto_fetch_progress: float = 0.0,
     taxi_mgr: Optional[TaxiManager] = None,
     current_road_name: Optional[str] = None,
     speed_limit_kmh: Optional[int] = None,
@@ -512,26 +510,6 @@ def draw_hud(
     speedometer_rect = _draw_analog_speedometer(screen, car.speed, layout["speedometer"])
     if hud_rects is not None:
         hud_rects["speedometer"] = speedometer_rect
-
-    # Auto-fetch scenery loading progress meter
-    if is_auto_fetching:
-        prog = max(0.0, min(1.0, auto_fetch_progress if auto_fetch_progress > 0.0 else 0.65))
-        bar_w = 160
-        bar_h = 14
-        bar_x = 10
-        bar_y = 86 if taxi_mgr else 58
-
-        # Background and border
-        pygame.draw.rect(screen, (30, 35, 40), (bar_x, bar_y, bar_w, bar_h), border_radius=3)
-        pygame.draw.rect(screen, (140, 150, 160), (bar_x, bar_y, bar_w, bar_h), width=1, border_radius=3)
-
-        # Progress fill
-        fill_w = int((bar_w - 2) * prog)
-        if fill_w > 0:
-            pygame.draw.rect(screen, (255, 190, 40), (bar_x + 1, bar_y + 1, fill_w, bar_h - 2), border_radius=2)
-
-        load_t = font.render(f"{tr(language, 'loading_scenery')} {int(prog * 100)}%", True, (255, 215, 60))
-        screen.blit(load_t, (bar_x + bar_w + 10, bar_y - 2))
 
 
 def draw_frame_profiler(screen, font, profiler, npc_count: int, pedestrian_count: int) -> None:
