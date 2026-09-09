@@ -163,6 +163,8 @@ from .menu_input import (
     _city_item_at,
     _city_menu_index,
     _menu_item_at_y,
+    _mode_menu_navigate,
+    MODE_MENU_OPTION_COUNT,
     _pause_item_at,
     _respawn_allowed,
 )
@@ -220,12 +222,12 @@ def _choose_city(
                         pygame.quit()
                         sys.exit(0)
                     if ev.type == pygame.MOUSEMOTION:
-                        hovered = _menu_item_at_y(ev.pos[1], 270, 30, 30, 4)
+                        hovered = _menu_item_at_y(ev.pos[1], 270, 30, 30, MODE_MENU_OPTION_COUNT)
                         if hovered is not None:
                             mode_selected = hovered
                         continue
                     if ev.type == pygame.MOUSEBUTTONDOWN and ev.button == 1:
-                        hovered = _menu_item_at_y(ev.pos[1], 270, 30, 30, 4)
+                        hovered = _menu_item_at_y(ev.pos[1], 270, 30, 30, MODE_MENU_OPTION_COUNT)
                         if hovered is not None:
                             mode_selected = hovered
                             if mode_selected == 2:
@@ -245,9 +247,9 @@ def _choose_city(
                         pygame.quit()
                         sys.exit(0)
                     if ev.key in (pygame.K_UP, pygame.K_LEFT):
-                        mode_selected = (mode_selected - 1) % 3
+                        mode_selected = _mode_menu_navigate(mode_selected, -1)
                     elif ev.key in (pygame.K_DOWN, pygame.K_RIGHT):
-                        mode_selected = (mode_selected + 1) % 3
+                        mode_selected = _mode_menu_navigate(mode_selected, 1)
                     elif ev.key in (pygame.K_RETURN, pygame.K_SPACE, pygame.K_KP_ENTER):
                         if mode_selected == 2:
                             completed = bool(load_career(career_file, len(cities_list))["completed"])

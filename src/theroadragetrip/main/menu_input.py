@@ -167,6 +167,22 @@ def _respawn_allowed(on_foot: bool) -> bool:
     return not on_foot
 
 
+# Keep in sync with draw_mode_selection_menu()'s options list
+# (career, gig_driver, reset_career, clear_cache).
+MODE_MENU_OPTION_COUNT = 4
+
+
+def _mode_menu_navigate(current: int, direction: int) -> int:
+    """Cycle the mode-selection menu's highlighted option, wrapping around.
+
+    Regression: this used to hardcode a modulo of 3 while the menu has 4
+    options, so arrow-key navigation could never reach the last one
+    (clear_cache) - only a mouse click, or the undocumented "4" shortcut
+    key, could select it.
+    """
+    return (current + direction) % MODE_MENU_OPTION_COUNT
+
+
 def _menu_item_at_y(pos_y: int, start_y: int, item_h: int, gap_y: int, count: int) -> Optional[int]:
     for index in range(count):
         item_y = start_y + index * (item_h + gap_y)
