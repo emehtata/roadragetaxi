@@ -22,7 +22,7 @@ from ..tile_streaming import TileCoord, active_tiles, tile_bbox, tile_changes, w
 logger = logging.getLogger(__name__)
 
 
-CACHE_VERSION = "v0.10.0alpha"
+CACHE_VERSION = "v0.11.0alpha"
 
 
 def _default_cache_dir() -> str:

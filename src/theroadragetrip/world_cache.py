@@ -26,8 +26,12 @@ MAGIC = b"RWC\0"
 # way to invalidate a cache written minutes before it shipped. Concretely:
 # the traffic-light phase-grouping fix (safety-critical - it stops
 # conflicting approaches from both showing green) would otherwise sit
-# unused in already-explored areas for up to a day.
-FORMAT_VERSION = 3
+# unused in already-explored areas for up to a day. Bumped again in
+# 0.11.0alpha: traffic-signal arm/clustering fixes (service-road
+# exclusion, order-independent signal clustering) and the cache's own
+# SignalGroup-sharing fix all change what a cached tile's traffic-light
+# data should look like.
+FORMAT_VERSION = 4
 COORDINATE_SYSTEM = "EPSG:3067"
 _HEADER = struct.Struct("<4sHHQQ32s12s")
 _DIRECTORY = struct.Struct("<8sQQI")
