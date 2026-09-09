@@ -26,3 +26,20 @@ def _reset_static_render_cache_throttle():
 
     _render_common.begin_static_cache_frame()
     yield
+
+
+@pytest.fixture(autouse=True)
+def _reset_solar_position_cache():
+    """Clear the shared sun-position cache before every test.
+
+    solar_altitude_and_events() now caches by (lat, lon) only, refreshing
+    at most once per SOLAR_UPDATE_INTERVAL_SECONDS of real time (not
+    keyed by game_time_seconds) - without this, a test could get another
+    test's stale cached result for the same default lat/lon just because
+    it ran within that real-time window, not because the sun actually
+    hasn't moved.
+    """
+    from theroadragetrip.render import common as _render_common
+
+    _render_common._solar_position_cache.clear()
+    yield

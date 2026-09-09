@@ -23,7 +23,7 @@ FPS = 60
 PX_PER_M = 0.7
 CACHE_PADDING_PX = 96
 STATIC_ZOOM_STEP = 0.05
-SOLAR_UPDATE_INTERVAL_SECONDS = 15.0 * 60.0
+SOLAR_UPDATE_INTERVAL_SECONDS = 20.0
 GAME_DATE = date(2026, 8, 31)
 FINLAND_SUMMER_TIME_OFFSET = 3.0
 DEFAULT_SUN_LATITUDE = 65.012
@@ -187,15 +187,25 @@ def solar_altitude_and_events(
     latitude: float = DEFAULT_SUN_LATITUDE,
     longitude: float = DEFAULT_SUN_LONGITUDE,
 ) -> Tuple[float, float, float]:
-    """Return sun altitude and local sunrise/sunset minutes for the fixed game date."""
-    cache_key = (
-        int(game_time_seconds // SOLAR_UPDATE_INTERVAL_SECONDS),
-        round(latitude, 6),
-        round(longitude, 6),
-    )
-    cached_result = _solar_position_cache.get(cache_key)
-    if cached_result is not None:
-        return cached_result
+    """Return sun altitude and local sunrise/sunset minutes for the fixed
+    game date, refreshed at most once every SOLAR_UPDATE_INTERVAL_SECONDS
+    of real (wall-clock) time.
+
+    Game time can run up to 60x real time (driving without a passenger -
+    see main()'s time_scale), so bucketing this by game time alone used to
+    refresh as often as every ~15 real seconds - and every lighting effect
+    derived from it (day/night tint, street light brightness, headlight
+    glow) rebuilds along with it. The sun doesn't move enough in 15-20
+    seconds for that to be visible; gating by real time instead keeps the
+    cadence predictable regardless of how fast game time is running.
+    """
+    cache_key = (round(latitude, 6), round(longitude, 6))
+    now = time.monotonic()
+    cached = _solar_position_cache.get(cache_key)
+    if cached is not None:
+        last_updated, cached_result = cached
+        if now - last_updated < SOLAR_UPDATE_INTERVAL_SECONDS:
+            return cached_result
     day_of_year = GAME_DATE.timetuple().tm_yday
     declination = math.radians(
         23.45 * math.sin(math.radians(360.0 * (284.0 + day_of_year) / 365.0))
@@ -231,7 +241,7 @@ def solar_altitude_and_events(
         sunrise_minutes = solar_noon - hour_angle_minutes
         sunset_minutes = solar_noon + hour_angle_minutes
     result = altitude, sunrise_minutes, sunset_minutes
-    _solar_position_cache[cache_key] = result
+    _solar_position_cache[cache_key] = (now, result)
     return result
 
 
