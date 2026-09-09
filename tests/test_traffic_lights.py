@@ -236,6 +236,152 @@ def test_scattered_signal_nodes_around_one_junction_cluster_together():
     assert len(intersections[0].approaches) == 4
 
 
+def test_three_way_junction_clusters_regardless_of_node_order():
+    """Regression: a real 3-street Oulu junction (Uusikatu / Lävistäjä /
+    Kajaaninkatu) has one traffic_signals node per street - A=43.5m from
+    B, but A=32.5m from C and B=28.7m from C, so all three belong to one
+    physical junction via C. The old greedy centroid clustering checked
+    each new point against existing cluster centroids one at a time: in
+    OSM's actual node order (A, B, C) it saw A alone first, missed the
+    A-B merge (43.5m > radius), and only afterwards merged C into A -
+    leaving B stranded in its own cluster and getting its own light
+    synthesized from the wrong (2-point) center instead of using B's real
+    position. Clustering must not depend on the arrival order of nodes
+    that are otherwise identical evidence."""
+    center = (0.0, 0.0)
+
+    def arm(angle_deg):
+        angle = math.radians(angle_deg)
+        far = (center[0] + math.cos(angle) * 150.0, center[1] + math.sin(angle) * 150.0)
+        return Way([center, far], "primary", 5.0)
+
+    point_a = (32.18, 4.44, 0)   # Lävistäjä
+    point_b = (3.78, -28.46, 0)  # Uusikatu
+    point_c = (0.0, 0.0, 0)      # Kajaaninkatu
+    ways = [arm(31.6), arm(-111.9), arm(146.3)]
+    real_positions = {(point_a[0], point_a[1]), (point_b[0], point_b[1]), (point_c[0], point_c[1])}
+
+    for order in ([point_a, point_b, point_c], [point_c, point_b, point_a], [point_b, point_a, point_c]):
+        lights, intersections = build_traffic_light_system(order, ways)
+        assert len(intersections) == 1, f"order {order} split into {len(intersections)} intersections"
+        assert len(lights) == 3
+        # Every light must sit at its arm's real OSM position, not a
+        # synthesized fallback - the bug this regression targets left one
+        # light's position wrong even when the count/intersection count
+        # happened to still look right.
+        assert {(light.x, light.y) for light in lights} == real_positions, (
+            f"order {order} produced wrong light positions: "
+            f"{[(light.x, light.y) for light in lights]}"
+        )
+
+
+def test_wide_real_junction_stays_one_intersection():
+    """Regression: a real 4-street Oulu junction (Kajaanintie / Heikinkatu
+    / Tulliväylä / Rautatienkatu) has one traffic_signals node per
+    approach, spread up to ~48m apart - wider than the old 30m clustering
+    radius, which split it into 3 separate LogicalIntersections. Each then
+    picked its own (wrong) mix of nearby roads as arms, scattering lights
+    across the real junction instead of placing one per actual approach."""
+    center = (0.0, 0.0)
+
+    def arm(angle_deg):
+        angle = math.radians(angle_deg)
+        far = (center[0] + math.cos(angle) * 150.0, center[1] + math.sin(angle) * 150.0)
+        return Way([center, far], "primary", 5.0)
+
+    # Real relative bearings/positions of the 4 traffic_signals nodes,
+    # translated so their centroid sits at the origin (same processing
+    # order as the real data).
+    signal_points = [
+        (17.77, -6.27, 0), (11.34, 20.56, 0), (-20.35, 8.22, 0), (-8.75, -22.51, 0),
+    ]
+    ways = [arm(-19.4), arm(61.1), arm(158.0), arm(-111.2)]
+
+    lights, intersections = build_traffic_light_system(signal_points, ways)
+
+    assert len(intersections) == 1
+    assert len(intersections[0].approaches) == 4
+    assert len(lights) == 4
+
+
+def test_signal_per_arm_positions_that_arms_light_without_multiplying_it():
+    """When OSM maps a separate signal node per arrival direction - and two
+    of them for the north arm (e.g. one per lane) - that real evidence
+    should position each arm's one light, not multiply it into several
+    lights per arm (a real, densely-signalled junction produced exactly
+    that mess: many more rendered lights than approaches, scattered off
+    the road)."""
+    arms = _four_way_ways()
+    signal_points = [
+        (-1.5, 10.0, 0), (1.5, 10.0, 0),  # north's two lanes
+        (0.0, -10.0, 0), (10.0, 0.0, 0), (-10.0, 0.0, 0),  # south, east, west
+    ]
+    lights, intersections = build_traffic_light_system(signal_points, list(arms.values()))
+
+    assert len(intersections) == 1
+    assert len(intersections[0].approaches) == 4
+    # Still exactly one light per arm, never more.
+    assert len(lights) == 4
+
+    north_lights = [light for light in lights if light.y > 5.0]
+    assert len(north_lights) == 1
+    # Positioned at the average of the two attributed OSM nodes, not the
+    # synthesized fallback.
+    assert north_lights[0].x == 0.0 and north_lights[0].y == 10.0
+
+
+def test_single_central_signal_point_is_divided_not_pinned_to_one_arm():
+    """The opposite of the per-lane case: a single OSM node carries no
+    directional evidence, so every arm must get its own (synthesized)
+    light rather than the one real point being assigned to whichever arm
+    it happens to be nearest."""
+    arms = _four_way_ways()
+    lights, _ = build_traffic_light_system([(1.0, 1.0, 0)], list(arms.values()))
+
+    assert len(lights) == 4
+    assert len({(light.x, light.y) for light in lights}) == 4
+
+
+def test_parking_aisle_arm_doesnt_get_a_traffic_light():
+    """Regression: a real 3-street signalized junction (Uusikatu /
+    Lävistäjä / Kajaaninkatu in Oulu) had a highway=service,
+    service=parking_aisle branching off at nearly the same angle as the
+    genuine Lävistäjä approach. It's drivable (unlike a footway) but not a
+    real signalized approach - it was still getting counted as a 4th arm
+    with its own synthesized light."""
+    arms = _four_way_ways()
+    arms["driveway"] = Way(
+        [(0.0, 0.0), (60.0, 60.0)], "service", 2.0, service="parking_aisle",
+    )
+    lights, intersections = build_traffic_light_system([(0.0, 0.0, 0)], list(arms.values()))
+
+    assert len(lights) == 4
+    assert len(intersections[0].approaches) == 4
+
+
+def test_service_alley_arm_still_counts_as_a_traffic_light_approach():
+    arms = _four_way_ways()
+    arms["alley"] = Way([(0.0, 0.0), (60.0, 60.0)], "service", 2.0, service="alley")
+    lights, intersections = build_traffic_light_system([(0.0, 0.0, 0)], list(arms.values()))
+
+    assert len(lights) == 5
+    assert len(intersections[0].approaches) == 5
+
+
+def test_footway_arms_dont_get_traffic_lights():
+    """A pedestrian path threading through a signal-controlled plaza is not
+    a vehicle approach - it must not add its own arm/light, or count
+    towards the intersection's phases. Regression: a real, busy plaza with
+    several footways near the signal cluster was generating far more
+    lights than there were actual vehicle arms."""
+    arms = _four_way_ways()
+    arms["path"] = Way([(0.0, 0.0), (60.0, 60.0)], "footway", 1.0, is_drivable=False)
+    lights, intersections = build_traffic_light_system([(0.0, 0.0, 0)], list(arms.values()))
+
+    assert len(lights) == 4
+    assert len(intersections[0].approaches) == 4
+
+
 def test_stop_line_sits_outside_the_intersection_along_the_approach():
     arms = _four_way_ways()
     _, intersections = build_traffic_light_system([(0.0, 0.0, 0)], list(arms.values()))

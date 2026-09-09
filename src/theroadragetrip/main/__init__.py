@@ -485,6 +485,7 @@ def _load_world(
         crossings = getattr(res, "crossings", [])
         stop_signs = getattr(res, "stop_signs", [])
         yield_signs = getattr(res, "yield_signs", [])
+        logical_intersections = getattr(res, "logical_intersections", [])
         if len(res) == 8:
             ways, waters, buildings, sceneries, places, bounds, traffic_lights, crossings = res
         elif len(res) == 7:
@@ -573,6 +574,7 @@ def _load_world(
         crossings=crossings,
         parking_spaces=parking_spaces,
         residents=residents,
+        logical_intersections=logical_intersections,
     )
     # Initialize autonomous Pedestrian Manager
     on_load_progress(0.92, "Preparing pedestrians...")
@@ -581,7 +583,7 @@ def _load_world(
         target_count=args.pedestrian_count,
         traffic_lights=traffic_lights,
         crossings=crossings,
-        logical_intersections=[],
+        logical_intersections=logical_intersections,
         traffic_vehicles=[],
         traffic_manager=None,
         residents=residents,
@@ -621,7 +623,7 @@ def _load_world(
         stop_signs=stop_signs,
         crossings=crossings,
         parking_spaces=parking_spaces,
-        logical_intersections=getattr(res, "logical_intersections", []),
+        logical_intersections=logical_intersections,
         yield_signs=yield_signs,
         fetch_func=lambda fetch_bbox: fetch_osm_ways(fetch_bbox, endpoints=overpass_endpoints),
         build_func=build_ways,
@@ -644,6 +646,7 @@ def _load_world(
         crossing_grid=crossing_grid,
         crossings=crossings,
         elements_count=elements_count,
+        logical_intersections=logical_intersections,
         parking_spaces=parking_spaces,
         pedestrian_mgr=pedestrian_mgr,
         places=places,
@@ -808,6 +811,7 @@ def main() -> None:
         crossing_grid = world.crossing_grid
         crossings = world.crossings
         elements_count = world.elements_count
+        logical_intersections = world.logical_intersections
         parking_spaces = world.parking_spaces
         pedestrian_mgr = world.pedestrian_mgr
         places = world.places
@@ -1770,11 +1774,14 @@ def main() -> None:
                             buildings=buildings,
                             sceneries=sceneries,
                             parking_spaces=parking_spaces,
+                            logical_intersections=logical_intersections,
                         )
                     map_sync_stage = 10
                 elif map_sync_stage == 10:
                     with frame_profiler.section("map_sync:pedestrians"):
-                        pedestrian_mgr.sync_map_data(ways, traffic_lights=traffic_lights)
+                        pedestrian_mgr.sync_map_data(
+                            ways, traffic_lights=traffic_lights, logical_intersections=logical_intersections,
+                        )
                         pedestrian_mgr.set_venue_buildings(buildings)
                     map_sync_stage = 11
                 elif map_sync_stage == 11:

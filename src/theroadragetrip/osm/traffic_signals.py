@@ -24,7 +24,7 @@ deliberately out of scope here - this module only builds and runs the
 signal state machine and the physical/logical intersection model.
 """
 import math
-from typing import List, Tuple
+from typing import List, Optional, Tuple
 
 from .models import IntersectionApproach, LogicalIntersection, SignalGroup, TrafficLight, Way
 
@@ -33,9 +33,16 @@ from .models import IntersectionApproach, LogicalIntersection, SignalGroup, Traf
 
 # How close together raw OSM signal nodes must be to count as evidence of
 # the *same* physical intersection (prompt Section 9: logical intersection
-# clustering). Real intersections rarely spread signal nodes further than
-# this even when OSM maps one node per approach.
-INTERSECTION_CLUSTER_RADIUS_M = 30.0
+# clustering). Was 30m; a real 4-street junction (Kajaanintie / Heikinkatu
+# / Tulliväylä / Rautatienkatu in the Oulu data set) has one node per
+# approach spread up to 47.5m apart - a wide junction, but still one
+# intersection. At 30m the greedy centroid clustering below split it into
+# 3 separate ones, each then finding its own (wrong) mix of nearby roads
+# as "arms" - lights scattered across the junction instead of one per
+# real approach. 35m merges it back into one without over-merging real,
+# separate junctions elsewhere in the same data set (checked: cluster
+# count keeps dropping past 35m only for genuinely oversized clusters).
+INTERSECTION_CLUSTER_RADIUS_M = 35.0
 # A way is treated as "ending at" the intersection - the common case, since
 # OSM almost always splits ways exactly at junctions - when one of its
 # endpoints falls within this distance of the intersection center.
@@ -166,6 +173,25 @@ def _intersection_arms(center: Tuple[float, float], layer: int, ways: List[Way])
     for way in ways:
         if getattr(way, "layer", 0) != layer or len(way.points_m) < 2:
             continue
+        # Vehicle traffic signals only ever control vehicle arms - a
+        # footway/cycleway/path crossing near the same node cluster is not
+        # one, and counting it as one was inflating real, busy plazas
+        # (lots of pedestrian paths threading through) into intersections
+        # with far more "arms" - and lights - than actual traffic lanes.
+        if not getattr(way, "is_drivable", True):
+            continue
+        # Certain service subtypes (driveways / parking aisles) are
+        # drivable but not real signalized approaches - a real
+        # intersection with one a few meters from it still has only its
+        # actual streets on the signal cycle, not the yielding driveway.
+        # Real case: a parking_aisle branching off at nearly the same
+        # angle as a genuine signalized street (Lävistäjä) was getting
+        # counted as its own arm and its own synthesized light.
+        if (
+            getattr(way, "highway", None) == "service"
+            and getattr(way, "service", None) in {"driveway", "parking_aisle"}
+        ):
+            continue
         bbox = getattr(way, "bbox", None)
         if bbox and bbox != (0.0, 0.0, 0.0, 0.0):
             if (
@@ -187,6 +213,39 @@ def _intersection_arms(center: Tuple[float, float], layer: int, ways: List[Way])
             elif incoming and not existing["incoming"]:
                 existing.update(angle=arm_angle, incoming=True, way=way)
     return [(entry["angle"], entry["incoming"], entry["way"]) for entry in arms]
+
+
+def _assign_signal_points_to_arms(
+    points: List[Tuple[float, float]], center: Tuple[float, float], arm_angles: List[float],
+) -> List[Optional[Tuple[float, float]]]:
+    """Attribute raw OSM signal-node positions to their nearest incoming arm
+    by bearing from `center`, one representative point per arm (the average
+    of whatever was attributed to it, or None if nothing was).
+
+    Only called when a cluster has more than one point: a single point
+    carries no directional evidence (it's "one signal in the middle of the
+    junction") and must be divided across every arm instead of pinned to
+    one, which is what build_traffic_light_system falls back to when this
+    isn't used. Multiple points are evidence that OSM *does* distinguish
+    arrival directions here - real intersections often carry several
+    traffic_signals nodes per arm (near/far-side poles, one per lane, a
+    pedestrian-crossing signal, ...), and rendering one physical light per
+    such node produced a scattered mess of lights rather than a believable
+    intersection; per prompt Section 6 this module models at most one
+    physical light per approach, so an arm's evidence is collapsed to its
+    average position instead of fanned out one-for-one.
+    """
+    sums: List[List[float]] = [[0.0, 0.0, 0] for _ in arm_angles]
+    for point in points:
+        bearing = math.atan2(point[1] - center[1], point[0] - center[0])
+        nearest = min(
+            range(len(arm_angles)),
+            key=lambda i: abs((bearing - arm_angles[i] + math.pi) % (2.0 * math.pi) - math.pi),
+        )
+        sums[nearest][0] += point[0]
+        sums[nearest][1] += point[1]
+        sums[nearest][2] += 1
+    return [(sx / n, sy / n) if n else None for sx, sy, n in sums]
 
 
 def _arms_may_share_a_phase(angle_a: float, angle_b: float) -> bool:
@@ -270,27 +329,59 @@ def _cluster_signal_positions(
     """Group raw OSM signal-node positions into intersection clusters.
 
     OSM commonly maps one traffic_signals node per approach - sometimes
-    just one for the entire junction. Nodes belonging to the same physical
-    intersection are rarely more than a lane width or two apart, so a
-    simple greedy nearest-cluster-centroid grouping is enough (prompt
-    Section 9 calls for "a configurable clustering distance", not a
-    general-purpose clustering algorithm).
+    just one for the entire junction. Two points belong to the same
+    cluster when EITHER is within `cluster_radius_m` of the other
+    (single-link/connected-components): a real, wide junction with a node
+    per approach is essentially a ring around the intersection, so its
+    far corners are often further from each other than the radius even
+    though each is close to its neighbors - that ring still has to end up
+    as one cluster.
+
+    A real regression from an earlier, order-dependent greedy version:
+    processing one node per centroid-distance-to-existing-clusters (not
+    pairwise) let the *order* signal_points happened to arrive in decide
+    the result - a real 3-street Oulu junction (Uusikatu / Lävistäjä /
+    Kajaaninkatu) split into 2 clusters purely because its OSM node order
+    checked the wrong node first, even though every node was within range
+    of at least one other. Connected components doesn't have that
+    failure mode: the same input always produces the same clusters.
     """
-    clusters: List[dict] = []
+    by_layer: dict = {}
     for x, y, layer in signal_points:
-        target = None
-        for cluster in clusters:
-            if cluster["layer"] != layer:
-                continue
-            cx = sum(point[0] for point in cluster["points"]) / len(cluster["points"])
-            cy = sum(point[1] for point in cluster["points"]) / len(cluster["points"])
-            if math.hypot(x - cx, y - cy) <= cluster_radius_m:
-                target = cluster
-                break
-        if target is None:
-            clusters.append({"layer": layer, "points": [(x, y)]})
-        else:
-            target["points"].append((x, y))
+        by_layer.setdefault(layer, []).append((x, y))
+
+    clusters: List[dict] = []
+    cell_size = cluster_radius_m if cluster_radius_m > 0.0 else 1.0
+    for layer, points in by_layer.items():
+        parent = list(range(len(points)))
+
+        def find(i: int) -> int:
+            while parent[i] != i:
+                parent[i] = parent[parent[i]]
+                i = parent[i]
+            return i
+
+        def union(i: int, j: int) -> None:
+            root_i = find(i)
+            root_j = find(j)
+            if root_i != root_j:
+                parent[root_i] = root_j
+
+        grid: dict = {}
+        for i, (x, y) in enumerate(points):
+            cell = (math.floor(x / cell_size), math.floor(y / cell_size))
+            for dx in (-1, 0, 1):
+                for dy in (-1, 0, 1):
+                    for j in grid.get((cell[0] + dx, cell[1] + dy), ()):
+                        if math.hypot(x - points[j][0], y - points[j][1]) <= cluster_radius_m:
+                            union(i, j)
+            grid.setdefault(cell, []).append(i)
+
+        groups: dict = {}
+        for i, point in enumerate(points):
+            groups.setdefault(find(i), []).append(point)
+        for group_points in groups.values():
+            clusters.append({"layer": layer, "points": group_points})
     return clusters
 
 
@@ -331,6 +422,16 @@ def build_traffic_light_system(
         num_phases = len(phase_assignment)
         cycle_s = num_phases * SIGNAL_PHASE_SLOT_S
 
+        # A lone signal point is just "somewhere in the junction" - no
+        # evidence for which arm it belongs to, so every arm gets a
+        # synthesized light (see _assign_signal_points_to_arms). Two or
+        # more points are real per-arm evidence, used to place that arm's
+        # one light instead of guessing.
+        points_per_arm = (
+            _assign_signal_points_to_arms(points, center, [arm[0] for arm in incoming_arms])
+            if len(points) > 1 else [None for _ in incoming_arms]
+        )
+
         for phase_id, member_indices in enumerate(phase_assignment):
             group = SignalGroup(
                 approach_id=f"{intersection_id}:{phase_id}",
@@ -346,13 +447,27 @@ def build_traffic_light_system(
 
             for member_index in member_indices:
                 arm_angle, _incoming, way = incoming_arms[member_index]
+                # Per-arm movements belong on that arm's own TrafficLight/
+                # IntersectionApproach below, not unioned onto the shared
+                # SignalGroup: a phase can pair two opposite arms with
+                # different turn options (e.g. one has a left-turn lane,
+                # the other doesn't), and nothing reads a phase-wide
+                # "allowed_movements" - conflating them there would just be
+                # a second, wrong, answer to a question already answered
+                # correctly per-arm.
                 movements = _movements_for_way(way)
-                group.allowed_movements = group.allowed_movements | movements
 
-                # The physical light sits a little inside the arm, facing
-                # back along the direction approaching traffic travels.
-                light_x = center[0] + math.cos(arm_angle) * 14.0
-                light_y = center[1] + math.sin(arm_angle) * 14.0
+                # One physical light per arm (prompt Section 6): use the
+                # real OSM evidence attributed to this arm, if any, for its
+                # position; otherwise synthesize one a little inside the
+                # arm, facing back along the direction approaching traffic
+                # travels.
+                arm_point = points_per_arm[member_index]
+                if arm_point is None:
+                    light_x = center[0] + math.cos(arm_angle) * 14.0
+                    light_y = center[1] + math.sin(arm_angle) * 14.0
+                else:
+                    light_x, light_y = arm_point
                 light = TrafficLight(
                     x=light_x,
                     y=light_y,

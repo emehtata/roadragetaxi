@@ -243,6 +243,26 @@ class BinaryWorldCacheLoader:
             "stop_signs": "StopSign", "yield_signs": "YieldSign",
         }
         import theroadragetrip.osm as osm
+        # Every physical TrafficLight/IntersectionApproach on the same
+        # signal phase shares one SignalGroup object before saving (that's
+        # how build_traffic_light_system wires them up, and how the
+        # pedestrian/red-light-assist code queries a phase's state exactly
+        # once and expects it to hold for every light on it). Naively doing
+        # `SignalGroup(**dict)` per record on load reconstructs equal but
+        # separate objects instead - harmless only by accident, since
+        # get_state() is a pure function of its own fields and sim_time.
+        # Rebuild one instance per approach_id and reuse it everywhere that
+        # approach_id appears, restoring the sharing.
+        signal_groups_by_approach_id: dict = {}
+
+        def shared_signal_group(sg_dict: dict) -> "osm.SignalGroup":
+            approach_id = sg_dict.get("approach_id")
+            group = signal_groups_by_approach_id.get(approach_id)
+            if group is None:
+                group = osm.SignalGroup(**sg_dict)
+                signal_groups_by_approach_id[approach_id] = group
+            return group
+
         restored = {}
         for name, class_name in classes.items():
             restored[name] = []
@@ -250,7 +270,7 @@ class BinaryWorldCacheLoader:
                 record = dict(record)
                 if class_name == "TrafficLight":
                     if isinstance(record.get("signal_group"), dict):
-                        record["signal_group"] = osm.SignalGroup(**record["signal_group"])
+                        record["signal_group"] = shared_signal_group(record["signal_group"])
                     record["allowed_movements"] = frozenset(record.get("allowed_movements", ()))
                 restored[name].append(getattr(osm, class_name)(**record))
         places_by_key = {
@@ -282,7 +302,7 @@ class BinaryWorldCacheLoader:
                 approach["road_segments"] = [ways[i] for i in approach["road_segments"] if 0 <= i < len(ways)]
                 signal_group = approach.get("signal_group")
                 if isinstance(signal_group, dict):
-                    approach["signal_group"] = osm.SignalGroup(**signal_group)
+                    approach["signal_group"] = shared_signal_group(signal_group)
                 approach["allowed_movements"] = frozenset(approach.get("allowed_movements", ()))
                 approaches.append(osm.IntersectionApproach(**approach))
             record["approaches"] = approaches
