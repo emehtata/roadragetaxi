@@ -245,7 +245,46 @@ def test_cardinal_tile_transition_batches_two_by_three_region():
     while manager.is_fetching and time.time() < deadline:
         time.sleep(0.01)
 
-    assert cache.calls == [(-1000.0, 0.0, 2000.0, 2000.0)]
+    # Region must include the genuinely new leading column (x=2, the
+    # direction of travel) plus the current one for edge continuity - not
+    # the trailing, already-loaded column behind the player.
+    assert cache.calls == [(-1000.0, 1000.0, 2000.0, 3000.0)]
+
+
+def test_cardinal_tile_transition_requests_the_leading_not_trailing_edge():
+    """Regression test for a sign bug: request_tiles picked the column the
+    player was leaving instead of the one they were entering, so a straight
+    cardinal drive never actually queried the new tile's territory - new
+    roads, buildings and traffic lights there would never be fetched at
+    all until some later, differently-shaped move happened to cover it."""
+    class Transformer:
+        def transform(self, x, y):
+            return x, y
+
+    class TileCache:
+        def __init__(self):
+            self.calls = []
+
+        def preload_region(self, bbox):
+            self.calls.append(bbox)
+            future = Future()
+            future.set_result(MapData([], [], [], [], [], (0.0, 0.0, 1.0, 1.0)))
+            return future
+
+    cache = TileCache()
+    manager = AutoFetchManager([], (0.0, 0.0, 1000.0, 1000.0), Transformer(), world_cache_manager=cache)
+    manager.initialize_player_tile(500.0, 500.0)
+    manager.start_tile_streaming(1000.0, 500.0)
+    deadline = time.time() + 2.0
+    while manager.is_fetching and time.time() < deadline:
+        time.sleep(0.01)
+
+    (min_lat, min_lon, max_lat, max_lon) = cache.calls[0]
+    # x maps to lon here (the fake Transformer is an identity passthrough).
+    # The player moved from tile x=0 into tile x=1, so the newly active,
+    # not-yet-loaded column is x=2 (world x in [2000, 3000)); that range
+    # must be covered by the fetched region.
+    assert max_lon >= 3000.0, "fetch region must cover the newly entered tile column, not just tiles already loaded"
 
 
 def test_tile_transition_during_fetch_queues_next_region_request():
@@ -298,6 +337,27 @@ def test_tile_object_survives_until_last_tile_owner_is_unloaded():
     assert manager.ways == [shared]
     manager._unload_tiles({TileCoord(1, 0)})
     assert manager.ways == []
+
+
+def test_logical_intersections_from_different_tiles_all_survive_merge():
+    """LogicalIntersection has no osm_id/id/points_m/x/y, so _map_object_key
+    used to fall through to a (name, kind, x, y) fallback that's identical
+    (None, None, 0.0, 0.0) for every instance - every intersection after
+    the first looked like a duplicate of it and was silently dropped on
+    later tile merges."""
+    from theroadragetrip.osm import LogicalIntersection
+
+    first = LogicalIntersection("0:100:100", (100.0, 100.0), 10.0)
+    second = LogicalIntersection("0:2100:100", (2100.0, 100.0), 10.0)
+    manager = AutoFetchManager([], (0.0, 0.0, 3000.0, 1000.0), transformer=None)
+    manager._merge_tile_world_for(
+        TileCoord(0, 0), MapData([], [], [], [], [], (0.0, 0.0, 1.0, 1.0), logical_intersections=[first]),
+    )
+    manager._merge_tile_world_for(
+        TileCoord(2, 0), MapData([], [], [], [], [], (0.0, 0.0, 1.0, 1.0), logical_intersections=[second]),
+    )
+
+    assert manager.logical_intersections == [first, second]
 
 
 def test_combined_region_assigns_crossing_way_to_both_tiles():

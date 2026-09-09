@@ -64,6 +64,13 @@ def _map_object_key(obj) -> tuple:
     object_id = getattr(obj, "osm_id", None)
     if object_id is None:
         object_id = getattr(obj, "id", None)
+    if object_id is None:
+        # LogicalIntersection has neither osm_id/id nor points_m/x/y, so it
+        # fell through to the final (name, kind, x, y) fallback below - all
+        # None/0.0 for every instance, colliding every intersection after
+        # the first onto one key and silently dropping the rest on later
+        # tile merges.
+        object_id = getattr(obj, "intersection_id", None)
     if object_id is not None:
         return (type(obj).__name__, "id", object_id)
 
@@ -308,13 +315,18 @@ class AutoFetchManager:
                 delta_x = current_tile.x - previous_player_tile.x
                 delta_y = current_tile.y - previous_player_tile.y
                 if delta_x and not delta_y:
-                    edge_x = current_tile.x - (1 if delta_x > 0 else -1)
+                    # +sign(delta_x): the genuinely new leading column, not
+                    # the trailing one - it was `-` here, which kept only
+                    # already-loaded columns and silently skipped querying
+                    # the new column's territory at all on every straight
+                    # cardinal move (the common case while driving).
+                    edge_x = current_tile.x + (1 if delta_x > 0 else -1)
                     request_tiles = {
                         tile for tile in request_tiles
                         if tile.x in {current_tile.x, edge_x}
                     }
                 elif delta_y and not delta_x:
-                    edge_y = current_tile.y - (1 if delta_y > 0 else -1)
+                    edge_y = current_tile.y + (1 if delta_y > 0 else -1)
                     request_tiles = {
                         tile for tile in request_tiles
                         if tile.y in {current_tile.y, edge_y}
