@@ -259,41 +259,56 @@ def confirm_outdated_cache(screen, font, clock, language: str) -> bool:
     button_font = pygame.font.SysFont(None, 22)
     message_font = pygame.font.SysFont(None, 24)
     button_width, button_height = 130, 42
+    selected = 0  # 0 = OK, 1 = Cancel - matches the other menus' selected-item highlight
     while True:
         clock.tick(30)
+        screen_w, screen_h = screen.get_size()
+        ok_rect = pygame.Rect(screen_w // 2 - button_width - 10, screen_h // 2 + 55, button_width, button_height)
+        cancel_rect = pygame.Rect(screen_w // 2 + 10, screen_h // 2 + 55, button_width, button_height)
+
+        def activate(index: int) -> bool:
+            if index == 0:
+                return True
+            pygame.quit()
+            sys.exit(0)
+
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 pygame.quit()
                 sys.exit(0)
+            if event.type == pygame.MOUSEMOTION:
+                if ok_rect.collidepoint(event.pos):
+                    selected = 0
+                elif cancel_rect.collidepoint(event.pos):
+                    selected = 1
+                continue
             if event.type == pygame.KEYDOWN:
-                if event.key in (pygame.K_RETURN, pygame.K_SPACE, pygame.K_KP_ENTER):
-                    return True
-                if event.key == pygame.K_ESCAPE:
+                if event.key in (pygame.K_LEFT, pygame.K_RIGHT, pygame.K_UP, pygame.K_DOWN, pygame.K_TAB):
+                    selected = 1 - selected
+                elif event.key in (pygame.K_RETURN, pygame.K_SPACE, pygame.K_KP_ENTER):
+                    return activate(selected)
+                elif event.key == pygame.K_ESCAPE:
                     pygame.quit()
                     sys.exit(0)
             if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-                screen_w, screen_h = screen.get_size()
-                ok_rect = pygame.Rect(screen_w // 2 - button_width - 10, screen_h // 2 + 55, button_width, button_height)
-                cancel_rect = pygame.Rect(screen_w // 2 + 10, screen_h // 2 + 55, button_width, button_height)
                 if ok_rect.collidepoint(event.pos):
-                    return True
+                    return activate(0)
                 if cancel_rect.collidepoint(event.pos):
-                    pygame.quit()
-                    sys.exit(0)
+                    return activate(1)
 
-        screen_w, screen_h = screen.get_size()
         screen.fill((18, 24, 32))
         title = font.render(tr(language, "outdated_cache_title"), True, (245, 245, 245))
         screen.blit(title, title.get_rect(center=(screen_w // 2, screen_h // 2 - 80)))
         message = message_font.render(tr(language, "outdated_cache_message"), True, (210, 220, 230))
         screen.blit(message, message.get_rect(center=(screen_w // 2, screen_h // 2 - 25)))
-        ok_rect = pygame.Rect(screen_w // 2 - button_width - 10, screen_h // 2 + 55, button_width, button_height)
-        cancel_rect = pygame.Rect(screen_w // 2 + 10, screen_h // 2 + 55, button_width, button_height)
-        for rect, key, color in (
+        for index, (rect, key, color) in enumerate((
             (ok_rect, "ok", (55, 135, 85)),
             (cancel_rect, "cancel", (125, 65, 65)),
-        ):
+        )):
             pygame.draw.rect(screen, color, rect, border_radius=4)
+            if index == selected:
+                # Same selected-item accent color as the mode/pause menus.
+                pygame.draw.rect(screen, (255, 215, 95), rect, width=3, border_radius=4)
             label = button_font.render(tr(language, key), True, (255, 255, 255))
             screen.blit(label, label.get_rect(center=rect.center))
         pygame.display.flip()
