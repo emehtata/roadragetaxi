@@ -236,6 +236,38 @@ def test_scattered_signal_nodes_around_one_junction_cluster_together():
     assert len(intersections[0].approaches) == 4
 
 
+def test_signal_per_lane_is_used_as_is_not_redivided():
+    """When OSM already maps a separate signal node per arrival direction -
+    and two of them for the north arm's two lanes - those real positions
+    must be used directly, not thrown away for synthesized ones."""
+    arms = _four_way_ways()
+    signal_points = [
+        (-1.5, 10.0, 0), (1.5, 10.0, 0),  # north's two lanes
+        (0.0, -10.0, 0), (10.0, 0.0, 0), (-10.0, 0.0, 0),  # south, east, west
+    ]
+    lights, intersections = build_traffic_light_system(signal_points, list(arms.values()))
+
+    assert len(intersections) == 1
+    assert len(intersections[0].approaches) == 4
+    # 2 real north lights + 1 real light each for south/east/west.
+    assert len(lights) == 5
+
+    north_lights = [light for light in lights if light.y > 5.0]
+    assert {(light.x, light.y) for light in north_lights} == {(-1.5, 10.0), (1.5, 10.0)}
+
+
+def test_single_central_signal_point_is_divided_not_pinned_to_one_arm():
+    """The opposite of the per-lane case: a single OSM node carries no
+    directional evidence, so every arm must get its own (synthesized)
+    light rather than the one real point being assigned to whichever arm
+    it happens to be nearest."""
+    arms = _four_way_ways()
+    lights, _ = build_traffic_light_system([(1.0, 1.0, 0)], list(arms.values()))
+
+    assert len(lights) == 4
+    assert len({(light.x, light.y) for light in lights}) == 4
+
+
 def test_stop_line_sits_outside_the_intersection_along_the_approach():
     arms = _four_way_ways()
     _, intersections = build_traffic_light_system([(0.0, 0.0, 0)], list(arms.values()))

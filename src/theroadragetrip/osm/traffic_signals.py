@@ -189,6 +189,34 @@ def _intersection_arms(center: Tuple[float, float], layer: int, ways: List[Way])
     return [(entry["angle"], entry["incoming"], entry["way"]) for entry in arms]
 
 
+def _assign_signal_points_to_arms(
+    points: List[Tuple[float, float]], center: Tuple[float, float], arm_angles: List[float],
+) -> List[List[Tuple[float, float]]]:
+    """Attribute each raw OSM signal-node position to its nearest incoming
+    arm by bearing from `center`.
+
+    Only called when a cluster has more than one point: a single point
+    carries no directional evidence (it's "one signal in the middle of the
+    junction") and must be divided across every arm instead of pinned to
+    one, which is what build_traffic_light_system falls back to when this
+    isn't used. Multiple points, in contrast, are exactly what OSM looks
+    like when it *does* map a signal per arrival direction or per lane -
+    that real per-point data should be used as-is rather than discarded in
+    favor of a synthesized position, and an arm with several attributed
+    points (one OSM node per lane) keeps all of them rather than being
+    collapsed to a single light.
+    """
+    assignment: List[List[Tuple[float, float]]] = [[] for _ in arm_angles]
+    for point in points:
+        bearing = math.atan2(point[1] - center[1], point[0] - center[0])
+        nearest = min(
+            range(len(arm_angles)),
+            key=lambda i: abs((bearing - arm_angles[i] + math.pi) % (2.0 * math.pi) - math.pi),
+        )
+        assignment[nearest].append(point)
+    return assignment
+
+
 def _arms_may_share_a_phase(angle_a: float, angle_b: float) -> bool:
     """Whether two arms are close enough to exactly opposite (a straight
     through-road) that giving them green at the same time is safe."""
@@ -331,6 +359,16 @@ def build_traffic_light_system(
         num_phases = len(phase_assignment)
         cycle_s = num_phases * SIGNAL_PHASE_SLOT_S
 
+        # A lone signal point is just "somewhere in the junction" - no
+        # evidence for which arm it belongs to, so every arm gets a
+        # synthesized light (see _assign_signal_points_to_arms). Two or
+        # more points are real per-arm/per-lane evidence and are used as
+        # given instead of being redivided.
+        points_per_arm = (
+            _assign_signal_points_to_arms(points, center, [arm[0] for arm in incoming_arms])
+            if len(points) > 1 else [[] for _ in incoming_arms]
+        )
+
         for phase_id, member_indices in enumerate(phase_assignment):
             group = SignalGroup(
                 approach_id=f"{intersection_id}:{phase_id}",
@@ -349,24 +387,31 @@ def build_traffic_light_system(
                 movements = _movements_for_way(way)
                 group.allowed_movements = group.allowed_movements | movements
 
-                # The physical light sits a little inside the arm, facing
-                # back along the direction approaching traffic travels.
-                light_x = center[0] + math.cos(arm_angle) * 14.0
-                light_y = center[1] + math.sin(arm_angle) * 14.0
-                light = TrafficLight(
-                    x=light_x,
-                    y=light_y,
-                    cycle_time=group.cycle_time,
-                    offset=group.offset,
-                    layer=layer,
-                    id=_stable_light_id(layer, light_x, light_y),
-                    direction_angle=(arm_angle + math.pi) % (2.0 * math.pi),
-                    signal_group=group,
-                    approach_id=group.approach_id,
-                    allowed_movements=movements,
-                )
-                traffic_lights.append(light)
-                cluster_lights.append(light)
+                # Real OSM points already attributed to this arm (one per
+                # lane, if that's what OSM mapped) each get their own
+                # light; an arm with no such evidence gets one light
+                # synthesized a little inside the arm, facing back along
+                # the direction approaching traffic travels.
+                for arm_point in points_per_arm[member_index] or [None]:
+                    if arm_point is None:
+                        light_x = center[0] + math.cos(arm_angle) * 14.0
+                        light_y = center[1] + math.sin(arm_angle) * 14.0
+                    else:
+                        light_x, light_y = arm_point
+                    light = TrafficLight(
+                        x=light_x,
+                        y=light_y,
+                        cycle_time=group.cycle_time,
+                        offset=group.offset,
+                        layer=layer,
+                        id=_stable_light_id(layer, light_x, light_y),
+                        direction_angle=(arm_angle + math.pi) % (2.0 * math.pi),
+                        signal_group=group,
+                        approach_id=group.approach_id,
+                        allowed_movements=movements,
+                    )
+                    traffic_lights.append(light)
+                    cluster_lights.append(light)
 
                 half_width = getattr(way, "half_width_m", 4.0)
                 # Stop line sits just outside the intersection along the
