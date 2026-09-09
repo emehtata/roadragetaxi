@@ -183,6 +183,21 @@ RAGE_DISTANCE_TO_FULL_M = 400.0
 RAGE_SHOUT_COST = 0.25
 
 
+def _rage_from_speeding(
+    rage_power: float, speed_mps: float, road_limit_mps: Optional[float], driven_distance_m: float,
+) -> float:
+    """Speeding builds rage; driving within the limit calms it back down -
+    both at the same rate (RAGE_DISTANCE_TO_FULL_M of speeding fills the
+    meter, the same distance under the limit empties it). No current road
+    (unknown limit) leaves rage unchanged either way."""
+    if road_limit_mps is None or driven_distance_m <= 0.0:
+        return rage_power
+    delta = driven_distance_m / RAGE_DISTANCE_TO_FULL_M
+    if abs(speed_mps) > road_limit_mps + 0.01:
+        return min(1.0, rage_power + delta)
+    return max(0.0, rage_power - delta)
+
+
 def _choose_city(
     active_city_name,
     game_mode: str,
@@ -1450,15 +1465,14 @@ def main() -> None:
             audio.update_comments(dt)
             driven_distance = math.hypot(car.x - previous_position[0], car.y - previous_position[1])
             road_limit_mps = current_way.speed_limit_kmh / 3.6 if current_way else None
-            if road_limit_mps is not None and driven_distance > 0.0 and abs(car.speed) <= road_limit_mps + 0.01:
-                rage_power = min(1.0, rage_power + driven_distance / RAGE_DISTANCE_TO_FULL_M)
+            rage_power = _rage_from_speeding(rage_power, car.speed, road_limit_mps, driven_distance)
             if abs(car.speed) * 3.6 < 10.0 and taxi_mgr.sees_red_light(
                 car, nearby_traffic_lights, traffic_mgr.sim_time
             ):
                 rage_power = min(1.0, rage_power + 0.05 * dt)
             if car.is_sliding:
                 # Adrenaline from a hard, tire-losing-grip corner feeds the
-                # rage meter too, same as frustrated in-limit driving does.
+                # rage meter too, same as speeding does.
                 rage_power = min(1.0, rage_power + 0.15 * dt)
             if first_gameplay_frame:
                 logger.info("Gameplay frame: physics complete")
