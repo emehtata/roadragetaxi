@@ -180,6 +180,15 @@ def _intersection_arms(center: Tuple[float, float], layer: int, ways: List[Way])
         # with far more "arms" - and lights - than actual traffic lanes.
         if not getattr(way, "is_drivable", True):
             continue
+        # A service road (driveway, parking-lot aisle, ...) is drivable
+        # but not a real signalized approach - a real intersection with a
+        # driveway a few meters from it still has only its actual streets
+        # on the signal cycle, not the driveway (it yields instead). Real
+        # case: a parking_aisle branching off at nearly the same angle as
+        # a genuine signalized street (Lävistäjä) was getting counted as
+        # its own arm and its own synthesized light.
+        if getattr(way, "highway", None) == "service":
+            continue
         bbox = getattr(way, "bbox", None)
         if bbox and bbox != (0.0, 0.0, 0.0, 0.0):
             if (

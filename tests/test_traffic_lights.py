@@ -303,6 +303,23 @@ def test_single_central_signal_point_is_divided_not_pinned_to_one_arm():
     assert len({(light.x, light.y) for light in lights}) == 4
 
 
+def test_parking_aisle_arm_doesnt_get_a_traffic_light():
+    """Regression: a real 3-street signalized junction (Uusikatu /
+    Lävistäjä / Kajaaninkatu in Oulu) had a highway=service,
+    service=parking_aisle branching off at nearly the same angle as the
+    genuine Lävistäjä approach. It's drivable (unlike a footway) but not a
+    real signalized approach - it was still getting counted as a 4th arm
+    with its own synthesized light."""
+    arms = _four_way_ways()
+    arms["driveway"] = Way(
+        [(0.0, 0.0), (60.0, 60.0)], "service", 2.0, service="parking_aisle",
+    )
+    lights, intersections = build_traffic_light_system([(0.0, 0.0, 0)], list(arms.values()))
+
+    assert len(lights) == 4
+    assert len(intersections[0].approaches) == 4
+
+
 def test_footway_arms_dont_get_traffic_lights():
     """A pedestrian path threading through a signal-controlled plaza is not
     a vehicle approach - it must not add its own arm/light, or count
