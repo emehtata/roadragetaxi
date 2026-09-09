@@ -128,6 +128,7 @@ from ..residents import ResidentManager
 from ..police import place_speed_cameras
 from ..roadworks import create_roadworks
 from ..taxi import TaxiManager, TaxiState
+from ..tile_streaming import PBF_TILE_SIZE_M, set_tile_size_m
 from ..traffic_world import TrafficWorld
 from ..world_cache import WorldCacheManager, clear_world_cache
 from ..performance import FrameProfiler
@@ -754,6 +755,13 @@ def main() -> None:
     configure_user_agent(config.get("game", "user_agent_id"))
     city_centers, bbox_presets = cities_from_config(config)
     args = parse_args(config, city_names=list(bbox_presets))
+    if args.osm_source == "pbf":
+        # A local extract's cost is dominated by the fixed full-file scan,
+        # not by how much area is cut out (see PBF_TILE_SIZE_M) - bigger,
+        # less frequent tiles trade that fixed cost against fewer fetches
+        # overall. Only safe here: an Overpass query this large risks
+        # timing out or tripping a public instance's response-size limit.
+        set_tile_size_m(PBF_TILE_SIZE_M)
     configure_logging(args.log_level, file_logging=config.getboolean("game", "file_logging", fallback=False))
     roadworks_enabled = config.getboolean("game", "roadworks_enabled", fallback=False)
     bus_stops_enabled = config.getboolean("game", "bus_stops", fallback=False)

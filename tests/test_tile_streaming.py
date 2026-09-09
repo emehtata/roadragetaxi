@@ -1,6 +1,9 @@
+import theroadragetrip.tile_streaming as tile_streaming
 from theroadragetrip.tile_streaming import (
+    PBF_TILE_SIZE_M,
     TileCoord,
     active_tiles,
+    set_tile_size_m,
     tile_bbox,
     tile_changes,
     world_to_tile,
@@ -29,6 +32,29 @@ def test_active_tiles_contains_exactly_nine_tiles():
     assert TileCoord(10, 20) in tiles
     assert TileCoord(9, 19) in tiles
     assert TileCoord(11, 21) in tiles
+
+
+def test_set_tile_size_m_changes_the_grid():
+    """set_tile_size_m must actually take effect on the very next call -
+    world_to_tile/tile_bbox read the module global directly, not a value
+    captured at some earlier time."""
+    original = tile_streaming.TILE_SIZE_M
+    try:
+        set_tile_size_m(2000.0)
+        assert world_to_tile(2500.0, -100.0) == TileCoord(1, -1)
+        assert tile_bbox(TileCoord(1, -1)) == (2000.0, -2000.0, 4000.0, 0.0)
+    finally:
+        set_tile_size_m(original)
+
+
+def test_pbf_tile_size_keeps_the_active_window_at_or_under_10km():
+    """The active window is always the full 3x3 grid (its worst case,
+    hit on the initial load and on diagonal-ish moves) - PBF_TILE_SIZE_M
+    is chosen so that comes out to ~10x10km, the practical ceiling
+    measured against the real Finland PBF (~28s/530MB; 25x25km already
+    balloons to ~80s/1GB). This guards that calibration from silent
+    drift, not the exact value."""
+    assert PBF_TILE_SIZE_M * 3 <= 10000.0
 
 
 def test_tile_changes_for_cardinal_and_diagonal_moves():
