@@ -6,9 +6,8 @@ import logging
 from dataclasses import dataclass
 from typing import List, Optional, Tuple
 
-from .geo import point_in_polygon, segments_intersect
 from .osm import TaxiStop, Way
-from .physics import Car, connected_drivable_ways
+from .physics import connected_drivable_ways
 
 logger = logging.getLogger(__name__)
 
