@@ -47,6 +47,19 @@ _tree_frame_cache_camera = None
 _scenery_object_frame_cache_key = None
 _scenery_object_frame_cache_surface = None
 _scenery_object_frame_cache_camera = None
+# Railways are static map data, drawn from scratch every frame like every
+# other rail/tie/ballast line - unlike roads/buildings/etc. above, which
+# reuse a cached bitmap unless the camera/zoom/data actually changed. Two
+# layers, not one: ground-level track is blitted early (same point in the
+# frame as roads) and bridge track again late, after the car/pedestrians
+# (see draw_railways's only_bridges and main.py) - they can't share one
+# cached surface since they're blitted at different points in the frame.
+_railway_ground_frame_cache_key = None
+_railway_ground_frame_cache_surface = None
+_railway_ground_frame_cache_camera = None
+_railway_bridge_frame_cache_key = None
+_railway_bridge_frame_cache_surface = None
+_railway_bridge_frame_cache_camera = None
 # The grass background doesn't depend on any streamed world data (it's a
 # fixed tile pattern positioned purely by camera/zoom), so unlike the other
 # five layers it never needs invalidate_static_caches() - it only goes stale
@@ -77,6 +90,7 @@ def invalidate_static_caches() -> None:
     global _label_frame_cache_key, _building_frame_cache_key
     global _scenery_frame_cache_key, _water_frame_cache_key, _road_frame_cache_key
     global _tree_frame_cache_key, _scenery_object_frame_cache_key
+    global _railway_ground_frame_cache_key, _railway_bridge_frame_cache_key
     _label_frame_cache_key = None
     _building_frame_cache_key = None
     _scenery_frame_cache_key = None
@@ -84,6 +98,8 @@ def invalidate_static_caches() -> None:
     _road_frame_cache_key = None
     _tree_frame_cache_key = None
     _scenery_object_frame_cache_key = None
+    _railway_ground_frame_cache_key = None
+    _railway_bridge_frame_cache_key = None
 
 
 # Kept as an alias: callers at a camera-snap site (a respawn, or a fresh

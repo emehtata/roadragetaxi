@@ -317,3 +317,78 @@ def test_draw_railings_skips_dashes_far_outside_the_viewport():
     # dashes; if the far-off-screen 10km segment wasn't culled it would
     # add thousands more.
     assert len(draw_calls) < 200
+
+
+def test_draw_railways_bridge_and_ground_layers_are_cached_across_stationary_frames():
+    """Regression: unlike roads/buildings/etc. (render/common.py's other
+    _*_frame_cache_* layers), draw_railways used to fully re-walk every
+    visible way's segments and redraw every rail/tie/ballast line from
+    scratch every single frame, camera-stationary or not - doubled, once
+    main.py started calling it twice per frame for bridge occlusion. It
+    should now behave like every sibling static layer: rebuild only on a
+    genuine cache miss, and the ground/bridge layers must be independent
+    of each other (they're blitted at different points in the frame)."""
+    import pygame
+    from theroadragetrip.render import common as common_module
+
+    pygame.init()
+    try:
+        common_module._railway_ground_frame_cache_key = None
+        common_module._railway_ground_frame_cache_surface = None
+        common_module._railway_bridge_frame_cache_key = None
+        common_module._railway_bridge_frame_cache_surface = None
+        screen = pygame.Surface((400, 300))
+        railways = [
+            Railway(points_m=[(80.0, 100.0), (120.0, 100.0)], bbox=(80.0, 100.0, 120.0, 100.0), is_bridge=False),
+            Railway(points_m=[(80.0, 130.0), (120.0, 130.0)], bbox=(80.0, 130.0, 120.0, 130.0), is_bridge=True),
+        ]
+
+        common_module.begin_static_cache_frame()
+        draw_railways(screen, railways, 100.0, 100.0, px_per_m=8.0, screen_w=400, screen_h=300, only_bridges=False)
+        first_ground = common_module._railway_ground_frame_cache_surface
+        assert first_ground is not None
+        # The ground call must not have touched the bridge layer at all.
+        assert common_module._railway_bridge_frame_cache_surface is None
+
+        draw_railways(screen, railways, 100.0, 100.0, px_per_m=8.0, screen_w=400, screen_h=300, only_bridges=True)
+        first_bridge = common_module._railway_bridge_frame_cache_surface
+        assert first_bridge is not None
+        assert first_bridge is not first_ground
+
+        # Same camera and zoom, both layers again: both must reuse their
+        # own cached surface, not rebuild.
+        draw_railways(screen, railways, 100.0, 100.0, px_per_m=8.0, screen_w=400, screen_h=300, only_bridges=False)
+        draw_railways(screen, railways, 100.0, 100.0, px_per_m=8.0, screen_w=400, screen_h=300, only_bridges=True)
+        assert common_module._railway_ground_frame_cache_surface is first_ground
+        assert common_module._railway_bridge_frame_cache_surface is first_bridge
+
+        # A move far past the cache padding, on a fresh frame's rebuild
+        # budget: must actually rebuild.
+        common_module.begin_static_cache_frame()
+        draw_railways(screen, railways, 5000.0, 5000.0, px_per_m=8.0, screen_w=400, screen_h=300, only_bridges=False)
+        assert common_module._railway_ground_frame_cache_surface is not first_ground
+    finally:
+        pygame.quit()
+
+
+def test_draw_railways_only_bridges_none_stays_uncached():
+    """The mixed-draw mode (only_bridges=None) is only used by tests/other
+    single-call callers today, not main.py - it must keep working exactly
+    as before (no caching involved) rather than silently going through
+    either cached layer."""
+    import pygame
+    from theroadragetrip.render import common as common_module
+
+    pygame.init()
+    try:
+        common_module._railway_ground_frame_cache_key = None
+        common_module._railway_bridge_frame_cache_key = None
+        screen = pygame.Surface((400, 300))
+        railway = Railway(points_m=[(80.0, 100.0), (120.0, 100.0)], bbox=(80.0, 100.0, 120.0, 100.0))
+
+        draw_railways(screen, [railway], 100.0, 100.0, px_per_m=8.0, screen_w=400, screen_h=300)
+
+        assert common_module._railway_ground_frame_cache_key is None
+        assert common_module._railway_bridge_frame_cache_key is None
+    finally:
+        pygame.quit()

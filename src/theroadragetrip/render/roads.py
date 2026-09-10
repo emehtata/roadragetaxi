@@ -1288,13 +1288,79 @@ def draw_railways(
     whatever's below it instead of track painted on the ground.
 
     only_bridges filters which tracks this call draws: None (default) draws
-    everything; True/False draws only bridge/only ground-level tracks. main.py
-    calls this twice per frame with True and False - ground-level track is
+    everything, live, uncached (kept for tests/other single-call
+    callers - main.py never uses it). True/False draws only bridge/only
+    ground-level tracks and *is* cached, static-layer style like roads/
+    buildings (see render/common.py's _road_frame_cache_* for the
+    pattern this mirrors) - railways are just as static as roads between
+    tile streams, but were being fully re-walked and redrawn live every
+    single frame regardless, unlike every sibling layer. main.py calls
+    this twice per frame with True and False - ground-level track is
     drawn early, in the same pass as roads, so a car crossing it at grade
     still renders on top like any other road marking; a bridge track is
     drawn again in a *later* pass, after cars/pedestrians, so anything
     actually underneath the bridge gets covered the way a real elevated
     structure would cover it - not left showing through it."""
+    if only_bridges is None:
+        _draw_railways_uncached(screen, railways, camx, camy, px_per_m, screen_w, screen_h, spatial_grid, None)
+        return
+
+    cache_zoom = _static_cache_zoom(px_per_m)
+    cache_key = (
+        id(railways),
+        len(railways),
+        id(railways[-1]) if railways else None,
+        round(camx * cache_zoom / 128.0),
+        round(camy * cache_zoom / 128.0),
+        cache_zoom,
+        screen_w,
+        screen_h,
+    )
+    layer = "railways_bridge" if only_bridges else "railways_ground"
+    key_attr = "_railway_bridge_frame_cache_key" if only_bridges else "_railway_ground_frame_cache_key"
+    surface_attr = "_railway_bridge_frame_cache_surface" if only_bridges else "_railway_ground_frame_cache_surface"
+    camera_attr = "_railway_bridge_frame_cache_camera" if only_bridges else "_railway_ground_frame_cache_camera"
+
+    if cache_key == getattr(common, key_attr) and getattr(common, surface_attr) is not None:
+        cached_camx, cached_camy = getattr(common, camera_attr)
+        screen.blit(
+            getattr(common, surface_attr),
+            (
+                round((cached_camx - camx) * cache_zoom) - CACHE_PADDING_PX,
+                round((camy - cached_camy) * cache_zoom) - CACHE_PADDING_PX,
+            ),
+        )
+        return
+    if _rebuild_or_stale(screen, layer, getattr(common, surface_attr), getattr(common, camera_attr), camx, camy, cache_zoom):
+        return
+
+    import pygame
+
+    cache_width = screen_w + CACHE_PADDING_PX * 2
+    cache_height = screen_h + CACHE_PADDING_PX * 2
+    cache_surface = pygame.Surface((cache_width, cache_height), pygame.SRCALPHA)
+    _draw_railways_uncached(
+        cache_surface, railways, camx, camy, cache_zoom, cache_width, cache_height, spatial_grid, only_bridges,
+    )
+    screen.blit(cache_surface, (-CACHE_PADDING_PX, -CACHE_PADDING_PX))
+    setattr(common, key_attr, cache_key)
+    setattr(common, surface_attr, cache_surface)
+    setattr(common, camera_attr, (camx, camy))
+
+
+def _draw_railways_uncached(
+    screen,
+    railways: List,
+    camx: float,
+    camy: float,
+    px_per_m: float,
+    screen_w: int,
+    screen_h: int,
+    spatial_grid,
+    only_bridges: Optional[bool],
+) -> None:
+    """The actual per-frame (or, via draw_railways, per-cache-rebuild) walk
+    and draw - see draw_railways for what only_bridges means."""
     import pygame
 
     if not railways:
