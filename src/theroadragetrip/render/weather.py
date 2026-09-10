@@ -213,7 +213,10 @@ def draw_wet_roads(
         if darken_alpha > 0:
             pygame.draw.lines(overlay, (*WET_ROAD_DARKEN_COLOR, darken_alpha), False, points, thickness)
         if sheen_alpha > 0:
-            pygame.draw.lines(overlay, (*WET_ROAD_SHEEN_COLOR, sheen_alpha), False, points, max(1, thickness // 5))
+            # Full road width, not a thin centerline stroke - a narrow sheen
+            # line reads as a distinct light "dry" stripe down the middle of
+            # a lane rather than the whole wet surface glistening.
+            pygame.draw.lines(overlay, (*WET_ROAD_SHEEN_COLOR, sheen_alpha), False, points, thickness)
     screen.blit(overlay, (0, 0))
 
 
