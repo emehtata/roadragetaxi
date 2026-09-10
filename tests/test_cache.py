@@ -247,6 +247,41 @@ def test_fetch_query_requests_any_landuse_or_leisure_way(monkeypatch):
     assert "forest|grass|park|meadow" not in captured["query"]
 
 
+def test_fetch_query_natural_whitelist_is_built_from_the_shared_constant(monkeypatch):
+    """natural=* (unlike landuse/leisure) does need a whitelist - see
+    NATURAL_SCENERY_KINDS's docstring in osm/constants.py - but it must be
+    *one* whitelist, not a copy hand-typed into the query string and a
+    second one hand-typed into build_ways()'s classification (osm/build.py)
+    that can drift out of sync the way landuse/leisure just did."""
+    import theroadragetrip.osm as osm
+    from theroadragetrip.osm.constants import NATURAL_SCENERY_KINDS
+
+    captured = {}
+
+    class Response:
+        status_code = 200
+
+        def json(self):
+            return {"elements": []}
+
+        def raise_for_status(self):
+            return None
+
+    def post(endpoint, **kwargs):
+        captured["query"] = kwargs["data"]["data"]
+        return Response()
+
+    monkeypatch.setattr(osm.requests, "post", post)
+    monkeypatch.setattr(osm, "load_osm_cache", lambda bbox: None)
+    monkeypatch.setattr(osm, "save_osm_cache", lambda bbox, elements: None)
+    monkeypatch.delenv("OVERPASS_ENDPOINTS", raising=False)
+
+    osm.fetch_osm_ways((60.0, 25.0, 60.1, 25.1), endpoints=["https://example.test/api"], force_refresh=True)
+
+    expected_regex = "|".join(NATURAL_SCENERY_KINDS)
+    assert captured["query"].count(f'"natural"~"{expected_regex}"') == 2  # way + relation
+
+
 def test_fetch_uses_next_endpoint_after_failure(monkeypatch):
     import requests
     import theroadragetrip.osm as osm

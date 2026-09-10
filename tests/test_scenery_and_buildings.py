@@ -285,6 +285,39 @@ def test_build_ways_generates_trees_in_offroad_scenery():
     assert all(tree_y > ways[0].half_width_m + 3.0 + 60100.0 for _, tree_y in sceneries[0].trees)
 
 
+def test_build_ways_classifies_every_natural_scenery_kind_as_a_relation_too():
+    """Regression: build_ways()'s multipolygon-relation branch used to
+    whitelist a different, inconsistent set of natural=* values (forest/
+    wood/scrub/grass - no sand/heath, plus "forest" which isn't a real OSM
+    natural=* value) than its own way branch (wood/scrub/grass/sand/heath).
+    Both now read NATURAL_SCENERY_KINDS (osm/constants.py) - the same
+    constant the Overpass query builds its whitelist from - so a
+    multipolygon-mapped heath or dune (common real OSM patterns) is
+    classified the same way a plain way with the same tag would be."""
+    from theroadragetrip.osm.constants import NATURAL_SCENERY_KINDS
+
+    for i, kind in enumerate(NATURAL_SCENERY_KINDS):
+        base = i * 10
+        elements = [
+            {"type": "node", "id": base + 1, "lat": 60.0 + i * 0.01, "lon": 25.0},
+            {"type": "node", "id": base + 2, "lat": 60.0 + i * 0.01, "lon": 25.001},
+            {"type": "node", "id": base + 3, "lat": 60.001 + i * 0.01, "lon": 25.001},
+            {"type": "node", "id": base + 4, "lat": 60.001 + i * 0.01, "lon": 25.0},
+            {"type": "way", "id": base + 100, "nodes": [base + 1, base + 2, base + 3, base + 4, base + 1], "tags": {}},
+            {
+                "type": "relation",
+                "id": base + 200,
+                "members": [{"type": "way", "ref": base + 100, "role": "outer"}],
+                "tags": {"type": "multipolygon", "natural": kind},
+            },
+        ]
+
+        ways, waters, buildings, sceneries, places, bounds = build_ways(elements)
+
+        assert len(sceneries) == 1, f"natural={kind} was not classified as scenery"
+        assert sceneries[0].kind == kind
+
+
 def test_tree_density_follows_osm_scenery_type():
     forest = Scenery(
         [(0.0, 0.0), (100.0, 0.0), (100.0, 100.0), (0.0, 100.0)],

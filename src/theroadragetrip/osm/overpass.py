@@ -6,6 +6,8 @@ from typing import Callable, List, Optional, Tuple
 
 import requests
 
+from .constants import NATURAL_SCENERY_KINDS
+
 
 logger = logging.getLogger(__name__)
 
@@ -90,6 +92,19 @@ def fetch_osm_ways(
     from . import load_osm_cache, save_osm_cache
 
     south, west, north, east = bbox
+    # landuse/leisure below are unfiltered by value, not a whitelist regex:
+    # build_ways() (osm/build.py) classifies any landuse=*/leisure=* way as
+    # scenery regardless of its value, and render/scenery.py:SCENERY_COLORS
+    # already covers dozens of specific values (farmland, cemetery,
+    # sports_centre, nature_reserve, ...) - a narrower whitelist here just
+    # meant osm_source=overpass silently dropped everything outside it,
+    # while osm_source=pbf (osmium extract, no tag filtering at all) kept
+    # it, so the two sources rendered different scenery for the same real
+    # area. natural=* still needs a whitelist (see NATURAL_SCENERY_KINDS's
+    # docstring in osm/constants.py, the single source of truth this is
+    # built from - also used by build_ways()'s classification, so the two
+    # can't drift apart the way landuse/leisure did).
+    natural_scenery_regex = "|".join(NATURAL_SCENERY_KINDS)
     query = f"""
     [out:json][timeout:25];
     (
@@ -123,17 +138,9 @@ def fetch_osm_ways(
     way["amenity"="parking"]({south},{west},{north},{east});
     way["landuse"="parking"]({south},{west},{north},{east});
     way["amenity"="parking_space"]({south},{west},{north},{east});
-      # landuse/leisure unfiltered by value (not a whitelist regex): build_ways()
-      # (osm/build.py) classifies any landuse=*/leisure=* way as scenery
-      # regardless of its value and render/scenery.py:SCENERY_COLORS already
-      # covers dozens of specific values (farmland, cemetery, sports_centre,
-      # nature_reserve, ...) - a narrower whitelist here just meant osm_source=
-      # overpass silently dropped everything outside it, while osm_source=pbf
-      # (osmium extract, no tag filtering at all) kept it, so the two sources
-      # rendered different scenery for the same real area.
       way["landuse"]({south},{west},{north},{east});
       way["leisure"]({south},{west},{north},{east});
-      way["natural"~"wood|scrub|grass|sand|heath"]({south},{west},{north},{east});
+      way["natural"~"{natural_scenery_regex}"]({south},{west},{north},{east});
       way["place"~"suburb|neighbourhood|quarter|village"]({south},{west},{north},{east});
       relation["natural"="water"]({south},{west},{north},{east});
     relation["natural"="bay"]({south},{west},{north},{east});
@@ -144,7 +151,7 @@ def fetch_osm_ways(
     relation["landuse"="parking"]({south},{west},{north},{east});
       relation["leisure"]({south},{west},{north},{east});
       relation["landuse"]({south},{west},{north},{east});
-      relation["natural"~"wood|scrub|grass|sand|heath"]({south},{west},{north},{east});
+      relation["natural"~"{natural_scenery_regex}"]({south},{west},{north},{east});
       relation["place"~"suburb|neighbourhood|quarter"]({south},{west},{north},{east});
     );
     out body;

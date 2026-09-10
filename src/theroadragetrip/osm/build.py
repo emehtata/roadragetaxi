@@ -13,6 +13,7 @@ from .constants import (
     CROSSING_OVERLAP_SEARCH_RADIUS_M,
     DEFAULT_ROAD_HALF_WIDTH_M,
     HIGHWAY_HALF_WIDTH,
+    NATURAL_SCENERY_KINDS,
     parse_speed_limit_kmh,
 )
 
@@ -363,7 +364,7 @@ def build_ways(
                 water_raw.append((tags, node_ids))
             elif tags.get("amenity") == "parking" or tags.get("landuse") == "parking":
                 scenery_raw.append((tags, node_ids))
-            elif "leisure" in tags or "landuse" in tags or tags.get("natural") in ("wood", "scrub", "grass", "sand", "heath"):
+            elif "leisure" in tags or "landuse" in tags or tags.get("natural") in NATURAL_SCENERY_KINDS:
                 scenery_raw.append((tags, node_ids))
             elif "highway" in tags:
                 highway = tags.get("highway", "unclassified")
@@ -858,7 +859,7 @@ def build_ways(
                 waters.append(Water(points_m=pts, kind=kind, is_polygon=is_closed, name=name, bbox=ibbox, layer=layer))
             elif tags.get("amenity") == "parking" or tags.get("landuse") == "parking":
                 sceneries.append(Scenery(points_m=pts, kind="parking", name=name, bbox=ibbox))
-            elif "leisure" in tags or "landuse" in tags or tags.get("natural") in ("forest", "wood", "scrub", "grass"):
+            elif "leisure" in tags or "landuse" in tags or tags.get("natural") in NATURAL_SCENERY_KINDS:
                 kind = tags.get("leisure") or tags.get("landuse") or tags.get("natural") or "park"
                 scenery = Scenery(points_m=pts, kind=kind, name=name, bbox=ibbox)
                 plant_trees([scenery], ways, real_trees=real_trees_m)

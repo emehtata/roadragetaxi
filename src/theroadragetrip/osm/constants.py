@@ -49,6 +49,21 @@ BBOX_PRESETS: Dict[str, Tuple[float, float, float, float]] = {
 DEFAULT_BBOX = BBOX_PRESETS["oulu"]
 
 
+# natural=* ground-cover values that count as Scenery (osm/build.py). Unlike
+# landuse=*/leisure=* (any value is safe to treat as generic ground-cover
+# scenery - see build.py), natural=* also covers values that must NOT become
+# a Scenery polygon: water/bay/strait (their own Water feature, handled
+# first), tree (a point, not an area), coastline/peak/cliff/ridge (not
+# ground cover at all - unhandled here). So natural genuinely needs a
+# whitelist, unlike the other two - kept in exactly one place and shared by
+# both the Overpass query (overpass.py builds its regex from this) and
+# build_ways()'s classification, so the two can't drift apart the way
+# landuse/leisure did (see git history: overpass.py once hand-maintained
+# its own separate landuse/leisure whitelist that fell out of sync with
+# what build_ways() actually classified).
+NATURAL_SCENERY_KINDS: Tuple[str, ...] = ("wood", "scrub", "grass", "sand", "heath")
+
+
 DEFAULT_ROAD_HALF_WIDTH_M = 3.0
 
 # A crossing's own road can be wide enough that its rendered zebra-stripe
