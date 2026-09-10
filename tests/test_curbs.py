@@ -21,8 +21,12 @@ def test_build_ways_parses_barrier_kerb_as_curb():
 
 def test_build_ways_classifies_curb_over_landuse_tag():
     # A kerb way that also carries a landuse tag (common in real OSM data,
-    # describing the adjacent lawn) must still be classified as a curb, not
-    # absorbed as grass scenery.
+    # describing the adjacent lawn) must still be classified as a curb.
+    # This particular way is just a 2-point open line (not a closed area),
+    # so it can never form scenery either way - see
+    # test_kerb_around_a_real_planting_island_renders_both_curb_and_fill
+    # below for the case that actually matters: a *closed* kerb+landuse
+    # way, which must produce both.
     elements = [
         {"type": "node", "id": 1, "lat": 60.0, "lon": 25.0},
         {"type": "node", "id": 2, "lat": 60.0, "lon": 25.001},
@@ -33,6 +37,33 @@ def test_build_ways_classifies_curb_over_landuse_tag():
 
     assert len(result.curbs) == 1
     assert len(result.sceneries) == 0
+
+
+def test_kerb_around_a_real_planting_island_renders_both_curb_and_fill():
+    """Regression: a real Oulu parking lot has small planting islands
+    mapped as ONE closed way carrying both barrier=kerb (the physical
+    raised edge) and natural=scrub or landuse=grass (what's growing
+    inside it) - e.g. {barrier=kerb, kerb=raised, natural=scrub}. Kerb
+    used to be checked in the same elif chain as the area tags, so it
+    matched first and the area tag was never even looked at: the kerb
+    outline rendered but its scrub/grass fill silently never existed."""
+    elements = [
+        {"type": "node", "id": 1, "lat": 60.0, "lon": 25.0},
+        {"type": "node", "id": 2, "lat": 60.0005, "lon": 25.0},
+        {"type": "node", "id": 3, "lat": 60.0005, "lon": 25.0005},
+        {"type": "node", "id": 4, "lat": 60.0, "lon": 25.0005},
+        {
+            "type": "way", "id": 16, "nodes": [1, 2, 3, 4, 1],
+            "tags": {"barrier": "kerb", "kerb": "raised", "natural": "scrub"},
+        },
+    ]
+
+    result = build_ways(elements)
+
+    assert len(result.curbs) == 1
+    assert len(result.sceneries) == 1
+    assert result.sceneries[0].kind == "scrub"
+    assert len(result.sceneries[0].points_m) == 5
 
 
 def test_curbs_round_trip_through_world_cache(tmp_path):

@@ -354,8 +354,6 @@ def build_ways(
                 building_raw.append((tags, node_ids))
             elif tags.get("amenity") == "parking_space":
                 parking_space_raw.append((tags, node_ids, way_id))
-            elif tags.get("barrier") == "kerb":
-                curb_raw.append((tags, node_ids))
             elif tags.get("barrier") in ("fence", "railing"):
                 railing_raw.append((tags, node_ids))
             elif tags.get("railway") in ("rail", "light_rail", "tram", "narrow_gauge", "funicular"):
@@ -371,6 +369,18 @@ def build_ways(
                 ways_raw.append((tags, highway, node_ids, way_id))
             elif "name" in tags:
                 named_ways_raw.append((tags, node_ids))
+            # Independent of the classification above, not part of the
+            # elif chain: a real, raised planting island is commonly
+            # mapped as ONE closed way carrying both barrier=kerb (the
+            # physical edge) and an area tag like natural=scrub or
+            # landuse=grass (what's inside it) - e.g. a real Oulu parking
+            # lot island tagged {barrier=kerb, kerb=raised,
+            # natural=scrub}. Putting this check in the elif chain (as it
+            # used to be) meant "barrier=kerb" matched first and the area
+            # tag was never even looked at, so the kerb outline rendered
+            # but its scrub/grass fill silently never existed.
+            if tags.get("barrier") == "kerb":
+                curb_raw.append((tags, node_ids))
         elif el_type == "relation":
             tags = el.get("tags", {})
             if tags.get("type") == "multipolygon":
