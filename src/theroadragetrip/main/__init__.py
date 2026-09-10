@@ -106,6 +106,7 @@ from ..render import (
     draw_pedestrians,
     draw_pedestrian_reflectors,
     draw_rain,
+    draw_wet_roads,
     draw_resident_popup,
     resident_at_screen_position,
     draw_phone_offers,
@@ -2011,6 +2012,7 @@ def main() -> None:
                 screen, ways, camx, camy, px_per_m=px_per_m,
                 spatial_grid=spatial_grid, profiler=frame_profiler,
             )
+            draw_wet_roads(screen, ways, weather, camx, camy, px_per_m=px_per_m, spatial_grid=spatial_grid)
             draw_parking_spaces(
                 screen,
                 parking_spaces,
