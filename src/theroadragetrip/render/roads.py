@@ -1274,13 +1274,23 @@ def draw_railways(
     screen_w: int = SCREEN_W,
     screen_h: int = SCREEN_H,
     spatial_grid=None,
+    only_bridges: Optional[bool] = None,
 ) -> None:
     """Draw rail lines (OSM railway=rail/light_rail/tram/...) as two steel
     rails over periodic wooden sleepers, like draw_curbs but track-styled.
     A track marked is_bridge (OSM bridge=yes/viaduct/movable, or a positive
     layer) also gets a pair of guardrail-colored deck edges - the same cue
     draw_ways uses for road bridges - so it reads as a structure spanning
-    whatever's below it instead of track painted on the ground."""
+    whatever's below it instead of track painted on the ground.
+
+    only_bridges filters which tracks this call draws: None (default) draws
+    everything; True/False draws only bridge/only ground-level tracks. main.py
+    calls this twice per frame with True and False - ground-level track is
+    drawn early, in the same pass as roads, so a car crossing it at grade
+    still renders on top like any other road marking; a bridge track is
+    drawn again in a *later* pass, after cars/pedestrians, so anything
+    actually underneath the bridge gets covered the way a real elevated
+    structure would cover it - not left showing through it."""
     import pygame
 
     if not railways:
@@ -1292,6 +1302,8 @@ def draw_railways(
         if spatial_grid is not None
         else railways
     )
+    if only_bridges is not None:
+        visible_railways = [rw for rw in visible_railways if bool(getattr(rw, "is_bridge", False)) == only_bridges]
     rail_thickness = max(1, int(0.08 * px_per_m))
     tie_thickness = max(1, int(0.18 * px_per_m))
     half_gauge = _RAILWAY_GAUGE_M / 2.0

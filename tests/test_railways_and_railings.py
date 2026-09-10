@@ -145,6 +145,47 @@ def test_draw_railways_gives_a_bridge_track_deck_edges():
     pygame.quit()
 
 
+def test_draw_railways_only_bridges_filters_ground_track_and_bridge_track():
+    """Regression: main.py draws ground-level track once early (before the
+    car) and bridge track again once late (after the car/pedestrians), so
+    a bridge actually covers what's underneath it instead of the car
+    rendering on top of a bridge it's really driving under (the bug
+    reported: a taxi visible through a rail bridge). That split only works
+    if only_bridges=False/True actually excludes the other kind - not just
+    "renders fine when both are drawn together", which the deck-edges test
+    above already covers."""
+    import pygame
+    from theroadragetrip.render.roads import RAILWAY_RAIL_COLOR
+    pygame.init()
+
+    def rail_pixel_count(only_bridges) -> int:
+        surf = pygame.Surface((800, 600))
+        surf.fill((0, 0, 0))
+        ground = Railway(points_m=[(80.0, 100.0), (120.0, 100.0)], bbox=(80.0, 100.0, 120.0, 100.0), is_bridge=False)
+        bridge = Railway(points_m=[(80.0, 130.0), (120.0, 130.0)], bbox=(80.0, 130.0, 120.0, 130.0), is_bridge=True)
+        draw_railways(
+            surf, [ground, bridge], camx=100.0, camy=115.0, px_per_m=8.0, screen_w=800, screen_h=600,
+            only_bridges=only_bridges,
+        )
+        return sum(
+            1
+            for x in range(800)
+            for y in range(600)
+            if tuple(surf.get_at((x, y)))[:3] == RAILWAY_RAIL_COLOR
+        )
+
+    ground_and_bridge = rail_pixel_count(None)
+    only_ground = rail_pixel_count(False)
+    only_bridge = rail_pixel_count(True)
+
+    assert only_ground > 0
+    assert only_bridge > 0
+    assert only_ground < ground_and_bridge
+    assert only_bridge < ground_and_bridge
+    assert only_ground + only_bridge == ground_and_bridge
+    pygame.quit()
+
+
 def test_draw_railings_runs_without_error():
     import pygame
     pygame.init()

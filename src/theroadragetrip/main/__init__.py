@@ -2043,7 +2043,14 @@ def main() -> None:
                 spatial_grid=traffic_mgr._parking_grid,
                 grid_cell_size=traffic_mgr._parking_grid_cell_size,
             )
-            draw_railways(screen, railways, camx, camy, px_per_m=px_per_m, spatial_grid=railway_grid)
+            # Ground-level track only here - a bridge track is drawn again,
+            # after the car/pedestrians (see the only_bridges=True call
+            # below), so it actually covers whatever's underneath it
+            # instead of the car rendering on top of the bridge deck it's
+            # really driving under.
+            draw_railways(
+                screen, railways, camx, camy, px_per_m=px_per_m, spatial_grid=railway_grid, only_bridges=False,
+            )
             stage_elapsed = time.perf_counter() - map_stage_start
             render_profile_times["map_roads"] = render_profile_times.get("map_roads", 0.0) + stage_elapsed
             frame_profiler.record("render:roads", stage_elapsed * 1000.0)
@@ -2216,6 +2223,14 @@ def main() -> None:
                 camy,
                 px_per_m=px_per_m,
                 language=language,
+            )
+            # Bridge track only here, redrawn after the car/pedestrians
+            # above (see the only_bridges=False call near draw_ways) so an
+            # elevated railway actually covers whatever's underneath it -
+            # matches the bridge the screenshot flagged, where the taxi
+            # rendered on top of a rail bridge it was really driving under.
+            draw_railways(
+                screen, railways, camx, camy, px_per_m=px_per_m, spatial_grid=railway_grid, only_bridges=True,
             )
             stage_elapsed = time.perf_counter() - render_profile_stage_start
             render_profile_times["actors"] = render_profile_times.get("actors", 0.0) + stage_elapsed
