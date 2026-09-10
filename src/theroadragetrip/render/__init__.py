@@ -183,6 +183,7 @@ from .labels import (
 
 from .weather import (
     RAIN_COLOR,
+    draw_puddles,
     draw_rain,
     draw_wet_roads,
 )

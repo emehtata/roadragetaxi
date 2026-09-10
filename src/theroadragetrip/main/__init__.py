@@ -105,6 +105,7 @@ from ..render import (
     draw_settings_menu,
     draw_pedestrians,
     draw_pedestrian_reflectors,
+    draw_puddles,
     draw_rain,
     draw_wet_roads,
     draw_resident_popup,
@@ -2013,6 +2014,7 @@ def main() -> None:
                 spatial_grid=spatial_grid, profiler=frame_profiler,
             )
             draw_wet_roads(screen, ways, weather, camx, camy, px_per_m=px_per_m, spatial_grid=spatial_grid)
+            draw_puddles(screen, ways, weather, camx, camy, px_per_m=px_per_m, spatial_grid=spatial_grid)
             draw_parking_spaces(
                 screen,
                 parking_spaces,

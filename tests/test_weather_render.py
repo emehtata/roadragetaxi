@@ -1,12 +1,13 @@
-"""Tests for weather rendering (render/weather.py): rain particles and
-wet-road tint."""
+"""Tests for weather rendering (render/weather.py): rain particles,
+wet-road tint, and puddles."""
 import os
 
 os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
 import pygame
 
 from theroadragetrip.osm import Way
-from theroadragetrip.render import draw_rain, draw_wet_roads
+from theroadragetrip.render import draw_puddles, draw_rain, draw_wet_roads
+from theroadragetrip.render import weather as weather_render
 from theroadragetrip.weather import WeatherSystem, WeatherType
 
 
@@ -117,5 +118,55 @@ def test_draw_wet_roads_scales_with_visible_ways_only():
         weather.wetness = 1.0
         draw_wet_roads(screen, [near, far_away], weather, camx=0.0, camy=0.0, px_per_m=2.5, screen_w=640, screen_h=360)
         assert screen.get_at((320, 180))[:3] != (100, 100, 100)
+    finally:
+        pygame.quit()
+
+
+def test_puddle_for_way_is_computed_once_and_cached():
+    """WEATHER_RAIN.md #4: puddle placement must be deterministic, not
+    rerolled every call - or they'd jump around every frame."""
+    way = Way(points_m=[(0.0, 0.0), (100.0, 0.0)], highway="residential", half_width_m=5.0, osm_id=555)
+    first = weather_render._puddle_for_way(way)
+    second = weather_render._puddle_for_way(way)
+    assert first is second
+
+
+def test_puddle_shape_is_irregular_not_a_perfect_circle():
+    """WEATHER_RAIN.md #4: irregular shapes, not perfect circles."""
+    spot = None
+    for osm_id in range(50):  # deterministic per way identity - some get a puddle, some don't
+        way = Way(points_m=[(0.0, 0.0), (100.0, 0.0)], highway="residential", half_width_m=5.0, osm_id=osm_id)
+        spot = weather_render._puddle_for_way(way)
+        if spot is not None:
+            break
+    assert spot is not None, "none of the sampled ways got a puddle candidate"
+    assert any(abs(radius_multiplier - 1.0) > 0.01 for radius_multiplier in spot["shape"])
+
+
+def test_draw_puddles_reveals_gradually_and_fades_as_it_dries():
+    pygame.init()
+    try:
+        way = Way(points_m=[(0.0, 0.0), (100.0, 0.0)], highway="residential", half_width_m=5.0, osm_id=9001)
+        weather_render._puddle_cache[id(way)] = {
+            "x": 50.0, "y": 0.0, "radius_m": 2.0,
+            "reveal_wetness": 0.5, "shape": [1.0] * 7, "ripple_phase": 0.0,
+        }
+        screen = pygame.Surface((300, 300))
+        weather = WeatherSystem(WeatherType.RAIN)
+
+        screen.fill((100, 100, 100))
+        weather.wetness = 0.3  # below this puddle's reveal threshold
+        draw_puddles(screen, [way], weather, camx=50.0, camy=0.0, px_per_m=9.0, screen_w=300, screen_h=300)
+        assert pygame.transform.average_color(screen)[:3] == (100, 100, 100), "puddle appeared before its threshold"
+
+        weather.wetness = 0.9  # above threshold - fully rained on
+        draw_puddles(screen, [way], weather, camx=50.0, camy=0.0, px_per_m=9.0, screen_w=300, screen_h=300)
+        assert pygame.transform.average_color(screen)[:3] != (100, 100, 100), "puddle did not appear above its threshold"
+
+        # Drying back down below the threshold makes it disappear again.
+        screen.fill((100, 100, 100))
+        weather.wetness = 0.1
+        draw_puddles(screen, [way], weather, camx=50.0, camy=0.0, px_per_m=9.0, screen_w=300, screen_h=300)
+        assert pygame.transform.average_color(screen)[:3] == (100, 100, 100), "puddle did not fade out while drying"
     finally:
         pygame.quit()
