@@ -123,8 +123,16 @@ def fetch_osm_ways(
     way["amenity"="parking"]({south},{west},{north},{east});
     way["landuse"="parking"]({south},{west},{north},{east});
     way["amenity"="parking_space"]({south},{west},{north},{east});
-      way["landuse"~"forest|grass|park|meadow|residential|commercial|industrial|recreation_ground|construction|brownfield"]({south},{west},{north},{east});
-      way["leisure"~"park|garden|pitch|playground"]({south},{west},{north},{east});
+      # landuse/leisure unfiltered by value (not a whitelist regex): build_ways()
+      # (osm/build.py) classifies any landuse=*/leisure=* way as scenery
+      # regardless of its value and render/scenery.py:SCENERY_COLORS already
+      # covers dozens of specific values (farmland, cemetery, sports_centre,
+      # nature_reserve, ...) - a narrower whitelist here just meant osm_source=
+      # overpass silently dropped everything outside it, while osm_source=pbf
+      # (osmium extract, no tag filtering at all) kept it, so the two sources
+      # rendered different scenery for the same real area.
+      way["landuse"]({south},{west},{north},{east});
+      way["leisure"]({south},{west},{north},{east});
       way["natural"~"wood|scrub|grass|sand|heath"]({south},{west},{north},{east});
       way["place"~"suburb|neighbourhood|quarter|village"]({south},{west},{north},{east});
       relation["natural"="water"]({south},{west},{north},{east});
@@ -134,8 +142,9 @@ def fetch_osm_ways(
       relation["building"]({south},{west},{north},{east});
     relation["amenity"="parking"]({south},{west},{north},{east});
     relation["landuse"="parking"]({south},{west},{north},{east});
-      relation["leisure"="park"]({south},{west},{north},{east});
-      relation["landuse"~"forest|grass|park|meadow"]({south},{west},{north},{east});
+      relation["leisure"]({south},{west},{north},{east});
+      relation["landuse"]({south},{west},{north},{east});
+      relation["natural"~"wood|scrub|grass|sand|heath"]({south},{west},{north},{east});
       relation["place"~"suburb|neighbourhood|quarter"]({south},{west},{north},{east});
     );
     out body;

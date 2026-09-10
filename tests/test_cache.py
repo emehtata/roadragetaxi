@@ -205,6 +205,48 @@ def test_fetch_query_requests_taxi_stations(monkeypatch):
     assert 'node["amenity"="taxi"]' in captured["query"]
 
 
+def test_fetch_query_requests_any_landuse_or_leisure_way(monkeypatch):
+    """Regression: the query used to whitelist a handful of landuse/leisure
+    values (forest|grass|park|meadow|...), but build_ways() (osm/build.py)
+    classifies *any* landuse=*/leisure=* way as scenery and render/scenery.
+    py:SCENERY_COLORS already has colors for dozens more (farmland,
+    cemetery, sports_centre, nature_reserve, ...) - the narrower query just
+    meant osm_source=overpass silently dropped everything outside its
+    whitelist, while osm_source=pbf (unfiltered osmium extract) kept it, so
+    the two sources rendered different scenery for the same real area."""
+    import theroadragetrip.osm as osm
+
+    captured = {}
+
+    class Response:
+        status_code = 200
+
+        def json(self):
+            return {"elements": []}
+
+        def raise_for_status(self):
+            return None
+
+    def post(endpoint, **kwargs):
+        captured["query"] = kwargs["data"]["data"]
+        return Response()
+
+    monkeypatch.setattr(osm.requests, "post", post)
+    monkeypatch.setattr(osm, "load_osm_cache", lambda bbox: None)
+    monkeypatch.setattr(osm, "save_osm_cache", lambda bbox, elements: None)
+    monkeypatch.delenv("OVERPASS_ENDPOINTS", raising=False)
+
+    osm.fetch_osm_ways((60.0, 25.0, 60.1, 25.1), endpoints=["https://example.test/api"], force_refresh=True)
+
+    assert 'way["landuse"](' in captured["query"]
+    assert 'way["leisure"](' in captured["query"]
+    assert 'relation["landuse"](' in captured["query"]
+    assert 'relation["leisure"](' in captured["query"]
+    # Value-restricted, not tag-presence: a bare whitelist regex like
+    # this would silently exclude landuse=quarry, leisure=nature_reserve, etc.
+    assert "forest|grass|park|meadow" not in captured["query"]
+
+
 def test_fetch_uses_next_endpoint_after_failure(monkeypatch):
     import requests
     import theroadragetrip.osm as osm
