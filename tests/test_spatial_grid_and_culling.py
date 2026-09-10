@@ -78,6 +78,88 @@ def test_spatial_way_grid_detection():
     assert is_on_road(car_off, [w1, w2], spatial_grid=grid) is False
 
 
+def test_ways_in_rect_draw_order_is_stable_across_different_viewports():
+    """Regression: a real Oulu park (small, nested inside a much bigger
+    landuse polygon that's far larger than the screen) rendered fine from
+    one camera position and vanished - fully painted over by the big
+    polygon's own fill - from a camera position only ~24m away, with
+    nothing about the map having changed. ways_in_rect() used to yield
+    results in grid-scan order: a small viewport only ever sees a *few*
+    of a huge polygon's many indexed cells, and *which* of those cells it
+    happens to reach first (deciding whether the huge polygon is "seen"
+    before or only at the same cell as the small one nested inside it)
+    depends on the query rectangle's own corner - not on anything about
+    the ways themselves. Two viewports panned a few meters apart, both
+    still fully inside the huge polygon and both still containing the
+    small one, could get them back in a different relative order.
+
+    Reproduces the exact mechanism: `big` is much larger than either
+    viewport (as a real landuse polygon is next to a car's view), so
+    neither viewport sees its far edge - one starts west of `small`'s own
+    cell (finding `big` there first, before ever reaching `small`'s
+    cell); the other starts exactly at `small`'s cell (finding both there
+    together, at the mercy of insertion order)."""
+    cell_size = 100.0
+    big = Scenery(
+        [(0.0, 0.0), (1000.0, 0.0), (1000.0, 1000.0), (0.0, 1000.0)],
+        "parking", bbox=(0.0, 0.0, 1000.0, 1000.0),
+    )
+    small = Scenery(
+        [(410.0, 410.0), (490.0, 410.0), (490.0, 490.0), (410.0, 490.0)],
+        "park", bbox=(410.0, 410.0, 490.0, 490.0),
+    )
+
+    grid = SpatialWayGrid(cell_size=cell_size)
+    grid.rebuild([small, big])  # `small` listed first - must not decide anything on its own
+
+    # Viewport A starts west of `small`'s cell (reaches `big` via a cell
+    # `small` isn't in, first). Viewport B starts exactly at `small`'s own
+    # cell corner (reaches both together). Both fully contain `small` and
+    # are entirely inside `big`'s extent - neither sees `big`'s far edge.
+    viewport_a = (0.0, 400.0, 600.0, 600.0)
+    viewport_b = (400.0, 400.0, 600.0, 600.0)
+
+    order_a = [sc.kind for sc in grid.ways_in_rect(*viewport_a)]
+    order_b = [sc.kind for sc in grid.ways_in_rect(*viewport_b)]
+
+    assert order_a == order_b == ["parking", "park"], (
+        f"draw order must not depend on the viewport: got {order_a!r} vs {order_b!r} "
+        "for the same two overlapping polygons"
+    )
+
+
+def test_ways_in_rect_draws_the_smaller_more_specific_area_last():
+    """Independent of the stability fix above: a small, specific area
+    (a named park) nested inside a large, general one (a landuse polygon
+    far bigger than the current view) must draw on top of it, not be at
+    the mercy of whichever happened to come first in the source OSM data
+    or of grid-scan order - a real hand-drawn map layers the specific
+    feature over its surroundings. Uses the same "big bigger than the
+    viewport, small nested in one of its cells" shape as the stability
+    test above, which is exactly the layout where insertion order (small
+    listed first) used to win the scan and draw the small area first -
+    i.e. underneath."""
+    cell_size = 100.0
+    small = Scenery(
+        [(410.0, 410.0), (490.0, 410.0), (490.0, 490.0), (410.0, 490.0)],
+        "grass", bbox=(410.0, 410.0, 490.0, 490.0),
+    )
+    big = Scenery(
+        [(0.0, 0.0), (1000.0, 0.0), (1000.0, 1000.0), (0.0, 1000.0)],
+        "residential", bbox=(0.0, 0.0, 1000.0, 1000.0),
+    )
+
+    grid = SpatialWayGrid(cell_size=cell_size)
+    grid.rebuild([small, big])  # small listed FIRST in the source data - must not matter
+
+    # A viewport starting exactly at small's own cell corner, entirely
+    # inside big's extent - the case where both are first found together,
+    # at the mercy of insertion order rather than area.
+    order = [sc.kind for sc in grid.ways_in_rect(400.0, 400.0, 600.0, 600.0)]
+
+    assert order == ["residential", "grass"]
+
+
 def test_higher_layer_road_covers_lower_layer_vehicle():
     bridge = Way(points_m=[(0.0, 0.0), (100.0, 0.0)], highway="primary", half_width_m=5.0, layer=1)
     ways = [bridge]

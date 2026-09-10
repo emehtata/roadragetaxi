@@ -674,6 +674,11 @@ class SpatialWayGrid:
     """Spatial hash grid indexing road ways for fast O(1) road collision checks."""
 
     def __init__(self, ways_or_cell_size=200.0, cell_size: float = 200.0):
+        # id(way) -> its index in the last rebuild()'s list - lets
+        # ways_in_rect() return results in that stable order regardless of
+        # which grid cell a query happens to reach an item through first
+        # (see ways_in_rect's docstring for why that matters).
+        self._insertion_order: dict[int, int] = {}
         if isinstance(ways_or_cell_size, (list, tuple)):
             self.cell_size = cell_size
             self.grid: dict[Tuple[int, int], List] = {}
@@ -713,6 +718,7 @@ class SpatialWayGrid:
 
     def rebuild(self, ways: List) -> None:
         self.grid.clear()
+        self._insertion_order = {id(w): index for index, w in enumerate(ways)}
         for w in ways:
             self.insert(w)
         self.indexed_way_count = len(ways)
@@ -734,12 +740,45 @@ class SpatialWayGrid:
             yield way, half_width
 
     def ways_in_rect(self, minx: float, miny: float, maxx: float, maxy: float):
-        """Yield unique ways whose indexed bounds intersect a rectangle."""
+        """Yield unique ways whose indexed bounds intersect a rectangle,
+        sorted largest-bbox-first (original list position breaking ties).
+
+        Two things used to go wrong here because results came out in scan
+        order - whichever grid cell the (gx, gy) loop happened to reach
+        each way through first, which depends on the *query's own* corner
+        (gx0, gy0), not on anything intrinsic to the way:
+
+        1. Unstable draw order. A way spanning several cells could be
+           reached through a different one of its cells by two viewports
+           only a few meters apart, changing where it fell relative to an
+           unrelated way that only occupies one cell. Real symptom: a
+           small park polygon nested inside a much bigger landuse polygon
+           flipped between drawn-on-top and drawn-underneath as the
+           camera panned - the park visibly appearing and disappearing.
+
+        2. Even where it happened to be stable, scan order has no
+           relationship to which polygon should visually win. A big
+           landuse/parking polygon and a small named park inside it are
+           both real, correctly-shaped areas - the specific, small one is
+           what should be visible, the same way a good hand-drawn map
+           layers a park on top of the neighborhood it sits in, not the
+           other way around.
+
+        Sorting largest-bbox-area-first (so smaller, more specific areas
+        draw later, on top) fixes both: it's independent of any query, and
+        it's the ordering every current caller actually wants for drawing
+        area fills, waters, or buildings. Original list position remains
+        the tie-break for equal-area or point-like (zero-area) ways, so
+        e.g. two points still render in a stable relative order too. The
+        cost is one sort over however many ways are in view, not the
+        whole map.
+        """
         gx0 = int(minx // self.cell_size)
         gx1 = int(maxx // self.cell_size)
         gy0 = int(miny // self.cell_size)
         gy1 = int(maxy // self.cell_size)
         seen = set()
+        matches = []
         for gx in range(gx0, gx1 + 1):
             for gy in range(gy0, gy1 + 1):
                 for way in self.grid.get((gx, gy), ()):
@@ -755,7 +794,15 @@ class SpatialWayGrid:
                         or bbox[3] + half_width < miny
                         or bbox[1] - half_width > maxy
                     ):
-                        yield way
+                        matches.append(way)
+
+        def sort_key(way):
+            bbox = getattr(way, "bbox", None)
+            area = (bbox[2] - bbox[0]) * (bbox[3] - bbox[1]) if bbox else 0.0
+            return (-area, self._insertion_order.get(id(way), -1))
+
+        matches.sort(key=sort_key)
+        yield from matches
 
     def is_point_on_road(self, px: float, py: float, car_roads_only: bool = False, layer: Optional[int] = None) -> bool:
         for way, half_width in self._candidate_ways(px, py, car_roads_only, layer):
