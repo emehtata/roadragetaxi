@@ -17,6 +17,7 @@ from .common import (
     road_color_for_way,
     road_render_priority,
     get_viewport_bounds,
+    _segment_viewport_t_range,
 )
 import math
 import logging
@@ -1231,12 +1232,28 @@ def draw_curbs(
     )
     thickness = max(1, int(0.15 * px_per_m))
     for curb in visible_curbs:
-        points = [
-            world_to_screen(x, y, camx, camy, px_per_m, screen_w, screen_h)
-            for x, y in curb.points_m
-        ]
-        if len(points) >= 2:
-            pygame.draw.lines(screen, (55, 55, 52), False, points, thickness)
+        bb = getattr(curb, "bbox", None)
+        if bb and bb != (0.0, 0.0, 0.0, 0.0):
+            if bb[2] < vminx or bb[0] > vmaxx or bb[3] < vminy or bb[1] > vmaxy:
+                continue
+        points = curb.points_m
+        if len(points) < 2:
+            continue
+        # A curb can run continuously for kilometers along a road, so
+        # (like draw_railways) only walk the segments that actually cross
+        # the viewport instead of converting the way's entire point list
+        # through world_to_screen every frame regardless of visibility.
+        for (x0, y0), (x1, y1) in zip(points, points[1:]):
+            dx, dy = x1 - x0, y1 - y0
+            seg_len = math.hypot(dx, dy)
+            if seg_len < 1e-6:
+                continue
+            ux, uy = dx / seg_len, dy / seg_len
+            if _segment_viewport_t_range(x0, y0, ux, uy, seg_len, vminx, vminy, vmaxx, vmaxy) is None:
+                continue
+            s0 = world_to_screen(x0, y0, camx, camy, px_per_m, screen_w, screen_h)
+            s1 = world_to_screen(x1, y1, camx, camy, px_per_m, screen_w, screen_h)
+            pygame.draw.line(screen, (55, 55, 52), s0, s1, thickness)
 
 
 RAILWAY_RAIL_COLOR = (150, 145, 135)  # steel rail
@@ -1244,30 +1261,6 @@ RAILWAY_TIE_COLOR = (90, 65, 45)  # wooden sleeper
 _RAILWAY_GAUGE_M = 1.435  # standard gauge
 _RAILWAY_TIE_SPACING_M = 2.0
 _RAILWAY_TIE_LENGTH_M = 2.6
-
-
-def _segment_viewport_t_range(x0, y0, ux, uy, seg_len, vminx, vminy, vmaxx, vmaxy):
-    """Return the (t_lo, t_hi) sub-range of [0, seg_len] along a unit-
-    direction (ux, uy) segment starting at (x0, y0) that falls inside the
-    viewport rect, or None if none of it does. O(1) - standard axis-
-    aligned line/box clip (Liang-Barsky), used so a long segment with only
-    one end near the camera doesn't get treated as visible along its
-    entire length."""
-    t_lo, t_hi = 0.0, seg_len
-    for coord0, u, lo, hi in ((x0, ux, vminx, vmaxx), (y0, uy, vminy, vmaxy)):
-        if abs(u) < 1e-9:
-            if coord0 < lo or coord0 > hi:
-                return None
-            continue
-        ta = (lo - coord0) / u
-        tb = (hi - coord0) / u
-        if ta > tb:
-            ta, tb = tb, ta
-        t_lo = max(t_lo, ta)
-        t_hi = min(t_hi, tb)
-        if t_lo > t_hi:
-            return None
-    return t_lo, t_hi
 
 
 def draw_railways(
@@ -1392,7 +1385,7 @@ def draw_railings(
             continue
         common._draw_dashed_polyline(
             screen, railing.points_m, camx, camy, px_per_m, screen_w, screen_h,
-            RAILING_COLOR, thickness, dash_m=0.8, gap_m=0.4,
+            RAILING_COLOR, thickness, vminx, vminy, vmaxx, vmaxy, dash_m=0.8, gap_m=0.4,
         )
 
 

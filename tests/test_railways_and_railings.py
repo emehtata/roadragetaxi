@@ -136,3 +136,36 @@ def test_draw_railways_skips_sleeper_ties_far_outside_the_viewport():
     # lines (ties + 2 rails); if the far-off-screen 10km segment wasn't
     # culled it would add thousands more.
     assert len(draw_calls) < 200
+
+
+def test_draw_railings_skips_dashes_far_outside_the_viewport():
+    """A fence/railing way can run continuously for kilometers (a highway
+    median barrier) - _draw_dashed_polyline used to walk a dash every
+    dash_m+gap_m along a segment's *entire* length with no viewport check
+    at all, so a way that merely clips the viewport corner would generate
+    thousands of off-screen dashes."""
+    import pygame
+    pygame.init()
+    surf = pygame.Surface((800, 600))
+
+    # One segment stretching 10km off to the west (at dash+gap=1.2m that's
+    # over 8000 dashes if not culled), then a short segment actually
+    # crossing the visible area near the camera.
+    railing = Railing(
+        points_m=[(-9900.0, 100.0), (80.0, 100.0), (120.0, 100.0)],
+        bbox=(-9900.0, 100.0, 120.0, 100.0),
+    )
+
+    draw_calls = []
+    real_line = pygame.draw.line
+    try:
+        pygame.draw.line = lambda *a, **k: (draw_calls.append(1), real_line(*a, **k))[1]
+        draw_railings(surf, [railing], camx=100.0, camy=100.0, px_per_m=8.0, screen_w=800, screen_h=600)
+    finally:
+        pygame.draw.line = real_line
+    pygame.quit()
+
+    # The visible ~120m segment alone draws on the order of dozens of
+    # dashes; if the far-off-screen 10km segment wasn't culled it would
+    # add thousands more.
+    assert len(draw_calls) < 200

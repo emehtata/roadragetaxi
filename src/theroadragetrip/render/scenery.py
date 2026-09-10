@@ -214,7 +214,8 @@ def draw_construction_fences(
             ring.append(ring[0])
         common._draw_dashed_polyline(
             screen, ring, camx, camy, px_per_m, screen_w, screen_h,
-            CONSTRUCTION_FENCE_COLOR, thickness, _FENCE_DASH_M, _FENCE_GAP_M,
+            CONSTRUCTION_FENCE_COLOR, thickness, vminx, vminy, vmaxx, vmaxy,
+            dash_m=_FENCE_DASH_M, gap_m=_FENCE_GAP_M,
         )
 
 

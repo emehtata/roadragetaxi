@@ -330,6 +330,30 @@ def world_to_screen(
     return int(sx), int(sy)
 
 
+def _segment_viewport_t_range(x0, y0, ux, uy, seg_len, vminx, vminy, vmaxx, vmaxy):
+    """Return the (t_lo, t_hi) sub-range of [0, seg_len] along a unit-
+    direction (ux, uy) segment starting at (x0, y0) that falls inside the
+    viewport rect, or None if none of it does. O(1) - standard axis-
+    aligned line/box clip (Liang-Barsky), used so a long segment with only
+    one end near the camera doesn't get treated as visible along its
+    entire length."""
+    t_lo, t_hi = 0.0, seg_len
+    for coord0, u, lo, hi in ((x0, ux, vminx, vmaxx), (y0, uy, vminy, vmaxy)):
+        if abs(u) < 1e-9:
+            if coord0 < lo or coord0 > hi:
+                return None
+            continue
+        ta = (lo - coord0) / u
+        tb = (hi - coord0) / u
+        if ta > tb:
+            ta, tb = tb, ta
+        t_lo = max(t_lo, ta)
+        t_hi = min(t_hi, tb)
+        if t_lo > t_hi:
+            return None
+    return t_lo, t_hi
+
+
 def _draw_dashed_polyline(
     screen,
     points_m,
@@ -340,6 +364,10 @@ def _draw_dashed_polyline(
     screen_h: int,
     color: Tuple[int, int, int],
     thickness: int,
+    vminx: float,
+    vminy: float,
+    vmaxx: float,
+    vmaxy: float,
     dash_m: float = 1.5,
     gap_m: float = 1.0,
 ) -> None:
@@ -347,6 +375,13 @@ def _draw_dashed_polyline(
 
     Shared by draw_construction_fences and draw_railings - both are thin
     hazard/barrier lines that should read as segmented, not solid.
+
+    (vminx, vminy, vmaxx, vmaxy) bounds the dash-walk to each segment's
+    on-screen sub-range (same approach draw_railways uses for its sleeper
+    ties, see _segment_viewport_t_range) - a long fence/railing way with
+    only one end near the camera used to still walk dash-by-dash across
+    its *entire* length, most of it off-screen, paying a world_to_screen
+    call and a line draw every dash_m+gap_m regardless of visibility.
     """
     import pygame
 
@@ -358,8 +393,11 @@ def _draw_dashed_polyline(
         if edge_len < 1e-6:
             continue
         ux, uy = (x1 - x0) / edge_len, (y1 - y0) / edge_len
-        dist = 0.0
-        while dist < edge_len:
+        t_range = _segment_viewport_t_range(x0, y0, ux, uy, edge_len, vminx, vminy, vmaxx, vmaxy)
+        if t_range is None:
+            continue
+        dist, t_hi = t_range
+        while dist < t_hi:
             dash_end = min(dist + dash_px, edge_len)
             sx0, sy0 = world_to_screen(x0 + ux * dist, y0 + uy * dist, camx, camy, px_per_m, screen_w, screen_h)
             sx1, sy1 = world_to_screen(x0 + ux * dash_end, y0 + uy * dash_end, camx, camy, px_per_m, screen_w, screen_h)
