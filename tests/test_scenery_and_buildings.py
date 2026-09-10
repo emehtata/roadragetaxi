@@ -40,6 +40,9 @@ from theroadragetrip.render import (
     _building_window_story_count,
     _visible_building_edges,
     _draw_buildings_uncached,
+    CONSTRUCTION_FENCE_COLOR,
+    SCENERY_COLORS,
+    draw_construction_fences,
     draw_grass_texture,
     draw_scenery,
     draw_scenery_objects,
@@ -504,6 +507,63 @@ def test_draw_scenery_objects_renders_each_kind_and_respects_viewport():
     )
     assert non_background > 0  # the on-screen bench did draw something
     assert non_background < screen_w * screen_h // 4  # nowhere near "covers everything"
+
+
+def test_scenery_colors_differ_by_landuse_value():
+    """Different landuse/leisure/natural kinds must render distinct colors
+    (regression: everything used to fall back to one generic green)."""
+    assert SCENERY_COLORS["forest"] != SCENERY_COLORS["grass"]
+    assert SCENERY_COLORS["residential"] != SCENERY_COLORS["forest"]
+    assert SCENERY_COLORS["brownfield"] != SCENERY_COLORS["construction"]
+    assert SCENERY_COLORS["farmland"] != SCENERY_COLORS["grass"]
+    # No accidental collisions among the most common real-world kinds.
+    common_kinds = [
+        "forest", "grass", "residential", "commercial", "retail",
+        "industrial", "farmland", "brownfield", "construction",
+        "playground", "park",
+    ]
+    colors = [SCENERY_COLORS[k] for k in common_kinds]
+    assert len(set(colors)) == len(colors)
+
+
+def test_draw_construction_fences_outlines_construction_scenery_only():
+    from theroadragetrip.render import common as common_module
+
+    common_module.begin_static_cache_frame()
+    common_module._pending_static_rebuilds.clear()
+
+    screen_w, screen_h, px_per_m = 200, 200, 8.0
+    construction = Scenery(
+        [(-10.0, -10.0), (10.0, -10.0), (10.0, 10.0), (-10.0, 10.0)],
+        "construction",
+        bbox=(-10.0, -10.0, 10.0, 10.0),
+    )
+    park = Scenery(
+        [(-10.0, -10.0), (10.0, -10.0), (10.0, 10.0), (-10.0, 10.0)],
+        "park",
+        bbox=(-10.0, -10.0, 10.0, 10.0),
+    )
+    screen = pygame.Surface((screen_w, screen_h))
+    screen.fill((0, 0, 0))
+
+    draw_construction_fences(screen, [construction], 0.0, 0.0, px_per_m=px_per_m, screen_w=screen_w, screen_h=screen_h)
+    fence_pixels = sum(
+        1
+        for x in range(screen_w)
+        for y in range(screen_h)
+        if tuple(screen.get_at((x, y)))[:3] == CONSTRUCTION_FENCE_COLOR
+    )
+    assert fence_pixels > 0
+
+    screen.fill((0, 0, 0))
+    draw_construction_fences(screen, [park], 0.0, 0.0, px_per_m=px_per_m, screen_w=screen_w, screen_h=screen_h)
+    fence_pixels_park = sum(
+        1
+        for x in range(screen_w)
+        for y in range(screen_h)
+        if tuple(screen.get_at((x, y)))[:3] == CONSTRUCTION_FENCE_COLOR
+    )
+    assert fence_pixels_park == 0
 
 
 def test_plant_trees_uses_real_osm_positions_in_kinds_with_no_procedural_density():

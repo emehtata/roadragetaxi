@@ -81,6 +81,7 @@ from ..render import (
     draw_compass,
     draw_crossings,
     draw_speed_bumps,
+    draw_construction_fences,
     draw_curbs,
     draw_day_night_overlay,
     draw_grass_texture,
@@ -2040,6 +2041,7 @@ def main() -> None:
             if first_gameplay_frame:
                 logger.info("Gameplay frame: rendering overlays")
             draw_curbs(screen, curbs, camx, camy, px_per_m=px_per_m, spatial_grid=curb_grid)
+            draw_construction_fences(screen, sceneries, camx, camy, px_per_m=px_per_m, spatial_grid=scenery_grid)
             draw_crossings(screen, crossings, camx, camy, px_per_m=px_per_m, spatial_grid=crossing_grid)
             draw_speed_bumps(screen, speed_bumps, camx, camy, px_per_m=px_per_m)
             draw_traffic_lights(

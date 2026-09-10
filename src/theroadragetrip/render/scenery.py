@@ -58,16 +58,68 @@ from ..localization import tr
 
 
 SCENERY_COLORS = {
+    # Natural / green (osm/build.py: leisure=*, landuse=*, or natural in
+    # wood/scrub/grass/sand/heath all become a Scenery, kind = that raw
+    # OSM value) - counts below are from a real regional extract (Oulu),
+    # ranked so the frequent ones got picked first.
     "forest": (32, 95, 32),
     "wood": (32, 95, 32),
+    "scrub": (52, 90, 42),
+    "heath": (98, 110, 68),
     "park": (42, 120, 42),
     "garden": (45, 125, 45),
     "meadow": (38, 110, 38),
     "grass": (36, 105, 36),
+    "greenfield": (150, 165, 110),
+    "nature_reserve": (40, 102, 46),
     "pitch": (48, 115, 55),
     "playground": (48, 115, 55),
+    "dog_park": (44, 118, 52),
+    "track": (52, 108, 58),
     "sand": (160, 150, 110),
     "beach": (170, 160, 115),
+    # Farmed / cultivated - warm, dry tones, not park-green.
+    "farmland": (190, 175, 110),
+    "farmyard": (150, 125, 90),
+    "allotments": (140, 130, 80),
+    "flowerbed": (150, 90, 120),
+    "greenhouse_horticulture": (140, 160, 150),
+    # Built-up zoning - muted, not green (these are usually mostly covered
+    # by buildings/roads drawn on top; the fill only shows through gaps).
+    "residential": (95, 92, 85),
+    "commercial": (100, 95, 110),
+    "retail": (110, 95, 92),
+    "industrial": (90, 90, 95),
+    "institutional": (105, 100, 90),
+    "education": (105, 100, 90),
+    "civil": (105, 100, 90),
+    "religious": (95, 90, 82),
+    "military": (95, 100, 80),
+    "railway": (100, 96, 92),
+    "recreation_ground": (60, 115, 62),
+    # Bare ground / disturbed land.
+    "brownfield": (140, 120, 95),
+    "construction": (168, 140, 95),
+    "quarry": (120, 110, 100),
+    "landfill": (110, 100, 80),
+    "cemetery": (70, 95, 70),
+    # Water-adjacent leisure (the water body itself is a separate Water,
+    # not Scenery - this is the surrounding shore/facility ground).
+    "marina": (95, 130, 140),
+    "slipway": (95, 130, 140),
+    "bathing_place": (150, 165, 125),
+    "swimming_pool": (110, 150, 165),
+    # Sports/recreation facilities without their own building footprint.
+    "sports_centre": (115, 100, 80),
+    "sports_hall": (115, 100, 80),
+    "fitness_centre": (115, 100, 80),
+    "fitness_station": (60, 118, 62),
+    "stadium": (115, 100, 80),
+    "ice_rink": (170, 190, 200),
+    "horse_riding": (150, 130, 90),
+    "firepit": (100, 90, 70),
+    "outdoor_seating": (110, 100, 90),
+    "sauna": (110, 90, 70),
     "parking": (92, 96, 94),
 }
 TREE_CROWN_COLORS = ((25, 78, 29), (34, 101, 35), (48, 119, 42), (63, 112, 34))
@@ -156,6 +208,65 @@ def _draw_scenery_uncached(
         pts = [world_to_screen(x, y, camx, camy, px_per_m, screen_w, screen_h) for (x, y) in sc.points_m]
         color = SCENERY_COLORS.get(sc.kind.lower(), (38, 105, 38))
         pygame.draw.polygon(screen, color, pts)
+
+
+CONSTRUCTION_FENCE_COLOR = (235, 140, 30)  # hi-vis hazard orange
+_FENCE_DASH_M = 1.5
+_FENCE_GAP_M = 1.0
+
+
+def draw_construction_fences(
+    screen,
+    sceneries: List[Scenery],
+    camx: float,
+    camy: float,
+    px_per_m: float = PX_PER_M,
+    screen_w: int = SCREEN_W,
+    screen_h: int = SCREEN_H,
+    spatial_grid=None,
+) -> None:
+    """Outline landuse=construction sceneries with a dashed hazard fence.
+
+    Uncached like draw_curbs/draw_crossings - construction zones are rare
+    (a few dozen per city), not worth a static-cache slot.
+    """
+    import pygame
+
+    vminx, vminy, vmaxx, vmaxy = get_viewport_bounds(camx, camy, px_per_m, screen_w, screen_h, 20.0)
+    candidates = (
+        spatial_grid.ways_in_rect(vminx, vminy, vmaxx, vmaxy)
+        if spatial_grid is not None
+        else sceneries
+    )
+    thickness = max(1, int(0.25 * px_per_m))
+    dash_px = max(1.0, _FENCE_DASH_M * px_per_m)
+    gap_px = max(1.0, _FENCE_GAP_M * px_per_m)
+    step_px = dash_px + gap_px
+
+    for sc in candidates:
+        if sc.kind.lower() != "construction":
+            continue
+        bb = getattr(sc, "bbox", None)
+        if bb and bb != (0.0, 0.0, 0.0, 0.0):
+            if bb[2] < vminx or bb[0] > vmaxx or bb[3] < vminy or bb[1] > vmaxy:
+                continue
+        if len(sc.points_m) < 3:
+            continue
+        ring = list(sc.points_m)
+        if ring[0] != ring[-1]:
+            ring.append(ring[0])
+        for (x0, y0), (x1, y1) in zip(ring, ring[1:]):
+            edge_len = math.hypot(x1 - x0, y1 - y0)
+            if edge_len < 1e-6:
+                continue
+            ux, uy = (x1 - x0) / edge_len, (y1 - y0) / edge_len
+            dist = 0.0
+            while dist < edge_len:
+                dash_end = min(dist + dash_px, edge_len)
+                sx0, sy0 = world_to_screen(x0 + ux * dist, y0 + uy * dist, camx, camy, px_per_m, screen_w, screen_h)
+                sx1, sy1 = world_to_screen(x0 + ux * dash_end, y0 + uy * dash_end, camx, camy, px_per_m, screen_w, screen_h)
+                pygame.draw.line(screen, CONSTRUCTION_FENCE_COLOR, (sx0, sy0), (sx1, sy1), thickness)
+                dist += step_px
 
 
 def draw_trees(

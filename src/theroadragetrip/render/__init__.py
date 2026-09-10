@@ -19,11 +19,13 @@ from .common import (
     FPS,
     GAME_DATE,
     GAME_VERSION,
+    LEGACY_HIGHWAY_COLORS,
     PX_PER_M,
     SCREEN_H,
     SCREEN_W,
     SOLAR_UPDATE_INTERVAL_SECONDS,
     STATIC_ZOOM_STEP,
+    SURFACE_COLORS,
     _allow_static_rebuild,
     _blit_stale_static_cache,
     _covered_by_higher_road,
@@ -52,10 +54,12 @@ from .common import (
 )
 
 from .scenery import (
+    CONSTRUCTION_FENCE_COLOR,
     SCENERY_COLORS,
     SCENERY_OBJECT_COLORS,
     TREE_CROWN_COLORS,
     _draw_scenery_uncached,
+    draw_construction_fences,
     draw_grass_texture,
     draw_parking_spaces,
     draw_scenery,
