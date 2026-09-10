@@ -15,7 +15,7 @@ import time
 from typing import List, Optional
 
 
-from ..osm import Scenery, SceneryObject, Way
+from ..osm import Scenery, SceneryObject, Way, classify_tree_kind
 from ..physics import is_point_on_road
 
 
@@ -85,6 +85,17 @@ SCENERY_COLORS = {
     "parking": (92, 96, 94),
 }
 TREE_CROWN_COLORS = ((25, 78, 29), (34, 101, 35), (48, 119, 42), (63, 112, 34))
+# Finland's three dominant forest trees (see osm/trees.py:classify_tree_kind
+# for how a tree gets assigned one), each with its own silhouette drawn in
+# _draw_trees_uncached: spruce a dark conical shape, pine a flatter crown
+# on a taller bare trunk, birch the plain round crown (already what every
+# tree used to look like) with a whitish trunk instead of brown.
+TREE_CROWN_PALETTES = {
+    "spruce": ((14, 54, 20), (18, 64, 24), (24, 76, 30)),
+    "pine": ((88, 108, 42), (102, 122, 50), (118, 136, 60)),
+    "birch": TREE_CROWN_COLORS,
+}
+BIRCH_TRUNK_COLOR = (222, 218, 206)
 _grass_texture_tile = None
 
 
@@ -363,12 +374,27 @@ def _draw_trees_uncached(
                 if tree_index < len(tree_variations)
                 else abs(math.sin(tree_x * 12.9898 + tree_y * 78.233))
             )
+            tree_kinds = getattr(sc, "tree_kinds", ())
+            kind = (
+                tree_kinds[tree_index] if tree_index < len(tree_kinds)
+                # Scenery cached before tree_kinds existed - classify on the
+                # fly (no tags to go on, same as any other untagged tree)
+                # rather than leave it stuck as the old one-shape-fits-all
+                # look until the area happens to get re-fetched.
+                else classify_tree_kind({}, tree_x, tree_y)
+            )
             size = 0.72 + variation * 0.62
             trunk = max(1, int(0.7 * size * px_per_m))
-            trunk_height = max(2, int(1.5 * size * px_per_m))
-            crown = max(2, int(2.2 * size * px_per_m))
-            trunk_color = (78 + int(22 * variation), 52 + int(18 * variation), 27)
-            crown_color = TREE_CROWN_COLORS[min(len(TREE_CROWN_COLORS) - 1, int(variation * len(TREE_CROWN_COLORS)))]
+            trunk_height = max(2, int((1.8 if kind == "pine" else 1.5) * size * px_per_m))
+            crown = max(2, int((1.9 if kind == "pine" else 2.2) * size * px_per_m))
+            if kind == "birch":
+                trunk_color = BIRCH_TRUNK_COLOR
+            elif kind == "pine":
+                trunk_color = (112 + int(20 * variation), 70 + int(14 * variation), 36)
+            else:
+                trunk_color = (78 + int(22 * variation), 52 + int(18 * variation), 27)
+            palette = TREE_CROWN_PALETTES.get(kind, TREE_CROWN_COLORS)
+            crown_color = palette[min(len(palette) - 1, int(variation * len(palette)))]
             if tree_key in (fallen_trees or set()):
                 fall_heading = effect.get("angle", 0.0)
                 fall_x = sx + math.cos(fall_heading) * 3.2 * px_per_m
@@ -377,7 +403,21 @@ def _draw_trees_uncached(
                 pygame.draw.circle(screen, crown_color, (int(fall_x), int(fall_y)), crown)
             else:
                 pygame.draw.rect(screen, trunk_color, (sx - trunk // 2, sy, trunk, trunk_height))
-                pygame.draw.circle(screen, crown_color, (sx, sy - crown // 2), crown)
+                crown_center = sy - crown // 2
+                if kind == "spruce":
+                    # Conical evergreen silhouette.
+                    pygame.draw.polygon(screen, crown_color, [
+                        (sx, crown_center - crown),
+                        (sx - crown, crown_center + int(crown * 0.6)),
+                        (sx + crown, crown_center + int(crown * 0.6)),
+                    ])
+                elif kind == "pine":
+                    # Flatter, rounded crown set high on a bare trunk.
+                    pygame.draw.ellipse(screen, crown_color, (
+                        sx - crown, crown_center - int(crown * 0.5), crown * 2, int(crown * 1.0),
+                    ))
+                else:
+                    pygame.draw.circle(screen, crown_color, (sx, crown_center), crown)
             leaves_left = effect.get("leaves", 0.0)
             if leaves_left > 0.0:
                 for leaf_index in range(8):

@@ -15,10 +15,57 @@ from .models import (
 )
 
 
+# Real OSM genus/species tags (Latin or Finnish common name) that map onto
+# one of the three shapes this game actually renders - Finland's three
+# dominant forest trees. Matched as a substring of the lowercased tag
+# value, so e.g. "Betula pendula" or "Betula pubescens" both hit "betula".
+_TREE_SPECIES_KEYWORDS = {
+    "picea": "spruce", "kuusi": "spruce", "spruce": "spruce",
+    "pinus": "pine", "mänty": "pine", "manty": "pine", "pine": "pine",
+    "betula": "birch", "koivu": "birch", "birch": "birch",
+}
+
+
+def classify_tree_kind(tags: dict, x: float, y: float) -> str:
+    """Pick a rendered species ("spruce"/"pine"/"birch") for one tree.
+
+    Real OSM data wins outright when it says enough: a genus/species tag
+    names the tree directly; leaf_type narrows it to the broadleaf shape
+    (birch - the dominant Finnish broadleaf; this game doesn't render a
+    separate aspen/oak/etc. shape) or, for "needleleaved", a 50/50 pick
+    between the two conifers by position (still deterministic, still
+    respects "definitely a conifer").
+
+    With no usable tag at all, mix all three by a deterministic position
+    hash, roughly matching real Finnish forest composition (pine-
+    dominant, then spruce, then birch) - this is what makes an unspecified
+    forest look like a real mixed stand instead of a wall of one shape.
+    """
+    for tag_name in ("genus", "genus:fi", "species", "species:fi", "taxon"):
+        value = str(tags.get(tag_name, "") or "").strip().lower()
+        if not value:
+            continue
+        for keyword, kind in _TREE_SPECIES_KEYWORDS.items():
+            if keyword in value:
+                return kind
+    roll = abs(math.sin(x * 39.425 + y * 11.317))
+    leaf_type = str(tags.get("leaf_type", "") or "").strip().lower()
+    if leaf_type == "broadleaved":
+        return "birch"
+    if leaf_type == "needleleaved":
+        return "pine" if roll < 0.5 else "spruce"
+    if roll < 0.50:
+        return "pine"
+    if roll < 0.85:
+        return "spruce"
+    return "birch"
+
+
 def plant_trees(
     sceneries: List[Scenery],
     ways: List[Way],
     real_trees: Optional[List[Tuple[float, float]]] = None,
+    real_tree_tags: Optional[List[dict]] = None,
     progress_callback: Optional[Callable[[float, str], None]] = None,
     progress_start: float = 0.0,
     progress_end: float = 1.0,
@@ -26,12 +73,14 @@ def plant_trees(
     """Add deterministic tree centers to green areas while keeping them off roads.
 
     `real_trees` is the (x, y) meter positions of any real natural=tree OSM
-    nodes covering this batch. A scenery area that actually contains some
-    of them uses those exact positions instead of procedural placement -
-    some OSM areas (mapped parks, tree-lined squares) have every real tree
-    surveyed, and made-up trees on top of (or instead of) real ones would
-    just be wrong there. Areas with no real tree data fall back to the
-    existing density-based procedural placement, unchanged.
+    nodes covering this batch, `real_tree_tags` their OSM tags in the same
+    order (genus/species/leaf_type, if surveyed - see classify_tree_kind).
+    A scenery area that actually contains some of them uses those exact
+    positions instead of procedural placement - some OSM areas (mapped
+    parks, tree-lined squares) have every real tree surveyed, and made-up
+    trees on top of (or instead of) real ones would just be wrong there.
+    Areas with no real tree data fall back to the existing density-based
+    procedural placement, unchanged.
     """
     tree_density = {
         "forest": 100.0,
@@ -62,12 +111,16 @@ def plant_trees(
         # other kind of area even though the data says they're there.
         if real_trees:
             matched = [
-                (x, y) for x, y in real_trees
+                (index, x, y) for index, (x, y) in enumerate(real_trees)
                 if minx <= x <= maxx and miny <= y <= maxy and point_in_polygon(x, y, scenery.points_m)
             ]
             if matched:
-                scenery.trees = matched
-                scenery.tree_variations = [abs(math.sin(x * 12.9898 + y * 78.233)) for x, y in matched]
+                scenery.trees = [(x, y) for _, x, y in matched]
+                scenery.tree_variations = [abs(math.sin(x * 12.9898 + y * 78.233)) for _, x, y in matched]
+                scenery.tree_kinds = [
+                    classify_tree_kind((real_tree_tags[index] if real_tree_tags else {}) or {}, x, y)
+                    for index, x, y in matched
+                ]
                 scenery.trees_from_osm = True
                 continue
 
@@ -101,6 +154,7 @@ def plant_trees(
                 continue
             scenery.trees.append((x, y))
             scenery.tree_variations.append(abs(math.sin(x * 12.9898 + y * 78.233)))
+            scenery.tree_kinds.append(classify_tree_kind({}, x, y))
     if progress_callback:
         progress_callback(progress_end, f"Planted trees in {total} scenery areas")
 
@@ -149,6 +203,7 @@ def remove_trees_under_roads(sceneries: List[Scenery], ways: List[Way]) -> None:
     for scenery in pending:
         kept_trees = []
         kept_variations = []
+        kept_kinds = []
         for index, (tree_x, tree_y) in enumerate(scenery.trees):
             covered = False
             candidate_ways = road_grid.get(
@@ -178,6 +233,9 @@ def remove_trees_under_roads(sceneries: List[Scenery], ways: List[Way]) -> None:
             kept_trees.append((tree_x, tree_y))
             if index < len(scenery.tree_variations):
                 kept_variations.append(scenery.tree_variations[index])
+            if index < len(scenery.tree_kinds):
+                kept_kinds.append(scenery.tree_kinds[index])
         scenery.trees = kept_trees
         scenery.tree_variations = kept_variations
+        scenery.tree_kinds = kept_kinds
         scenery.trees_checked_against_roads = True

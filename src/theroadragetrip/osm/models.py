@@ -151,6 +151,14 @@ class Scenery:
     surface: Optional[str] = None
     trees: List[Tuple[float, float]] = field(default_factory=list)
     tree_variations: List[float] = field(default_factory=list)
+    # Rendered species, one per entry in `trees` - "spruce"/"pine"/"birch"
+    # (see osm/trees.py:classify_tree_kind). Always resolved to a concrete
+    # kind at planting time, real OSM genus/species/leaf_type tags if
+    # given, otherwise a deterministic per-position mix - never left
+    # ambiguous for the renderer to guess at. Empty for a Scenery cached
+    # before this field existed; draw_trees() falls back to classifying
+    # on the fly from position in that case.
+    tree_kinds: List[str] = field(default_factory=list)
     # Set by remove_trees_under_roads() once it has swept this scenery's
     # trees against the road network, so a later re-sync (a new tile
     # merging in) doesn't re-scan every scenery ever loaded - just the

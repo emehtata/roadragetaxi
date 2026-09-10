@@ -86,6 +86,7 @@ from .traffic_signals import (
 )
 
 from .trees import (
+    classify_tree_kind,
     plant_trees,
     remove_trees_under_roads,
 )

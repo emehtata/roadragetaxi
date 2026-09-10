@@ -291,6 +291,7 @@ def build_ways(
     bus_stops_raw: List[Tuple[dict, int]] = []
     bus_platforms_raw: List[Tuple[dict, List[int], int]] = []
     tree_node_ids: List[int] = []
+    tree_node_tags: Dict[int, dict] = {}
     scenery_object_nodes_raw: List[Tuple[dict, int]] = []
     entrance_node_ids: set[int] = set()
     ways_by_id: Dict[int, dict] = {}
@@ -338,6 +339,8 @@ def build_ways(
                 speed_bumps_raw.append((tags, nid))
             if tags.get("natural") == "tree":
                 tree_node_ids.append(nid)
+                if tags:
+                    tree_node_tags[nid] = tags
             if _scenery_object_kind(tags) is not None:
                 scenery_object_nodes_raw.append((tags, nid))
         elif el_type == "way":
@@ -422,6 +425,9 @@ def build_ways(
 
     real_trees_m: List[Tuple[float, float]] = [
         nodes_m[nid] for nid in tree_node_ids if nid in nodes_m
+    ]
+    real_tree_tags: List[dict] = [
+        tree_node_tags.get(nid, {}) for nid in tree_node_ids if nid in nodes_m
     ]
     if real_trees_m:
         logger.info("Found %d real OSM tree positions (natural=tree)", len(real_trees_m))
@@ -808,6 +814,7 @@ def build_ways(
         sceneries,
         ways,
         real_trees=real_trees_m,
+        real_tree_tags=real_tree_tags,
         progress_callback=progress_callback,
         progress_start=0.965,
         progress_end=0.97,
@@ -877,7 +884,7 @@ def build_ways(
             elif "leisure" in tags or "landuse" in tags or tags.get("natural") in NATURAL_SCENERY_KINDS:
                 kind = tags.get("leisure") or tags.get("landuse") or tags.get("natural") or "park"
                 scenery = Scenery(points_m=pts, kind=kind, name=name, bbox=ibbox)
-                plant_trees([scenery], ways, real_trees=real_trees_m)
+                plant_trees([scenery], ways, real_trees=real_trees_m, real_tree_tags=real_tree_tags)
                 sceneries.append(scenery)
             elif "place" in tags and name and pts:
                 cx = sum(xs) / len(xs)
