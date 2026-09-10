@@ -49,7 +49,9 @@ SCENERY_COLORS = {
     "greenhouse_horticulture": (140, 160, 150),
     # Built-up zoning - muted, not green (these are usually mostly covered
     # by buildings/roads drawn on top; the fill only shows through gaps).
-    "residential": (95, 92, 85),
+    # residential is the exception - requested light grass green, since
+    # yards/verges are what actually shows through the gaps there.
+    "residential": (150, 180, 130),
     "commercial": (100, 95, 110),
     "retail": (110, 95, 92),
     "industrial": (90, 90, 95),
