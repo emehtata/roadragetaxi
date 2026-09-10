@@ -20,6 +20,14 @@ The result is converted from OSM XML to the same list-of-element-dicts
 shape build_ways() already expects from Overpass's JSON, and shares its
 on-disk bbox cache - so this is a drop-in fetch_func, no changes needed
 anywhere else in the pipeline.
+
+If utils/pbf_index.py has already built a grid index for the source file
+(see that module - it's a separate, optional preprocessing step, not run
+automatically here), extraction reads the small regional cell(s) covering
+the bbox instead of the full source file. A missing or stale index (no
+index built yet, or the source .pbf changed since it was) falls back to
+extracting from the full source file exactly as before - the index is
+purely a speed optimization, never required for correctness.
 """
 import logging
 import os
@@ -29,6 +37,8 @@ import tempfile
 import xml.etree.ElementTree as ET
 from pathlib import Path
 from typing import Callable, List, Optional, Tuple
+
+from ..utils.pbf_index import default_index_dir, index_is_stale, tiles_for_bbox
 
 logger = logging.getLogger(__name__)
 
@@ -70,8 +80,6 @@ def fetch_osm_ways_from_pbf(
     # theroadragetrip.osm.load_osm_cache / .save_osm_cache.
     from . import load_osm_cache, save_osm_cache
 
-    south, west, north, east = bbox
-
     if progress_callback:
         progress_callback(0.1, "Checking cache...")
     force_refresh = force_refresh or os.getenv("OVERPASS_FORCE_REFRESH", "0").lower() in ("1", "true", "yes")
@@ -97,6 +105,42 @@ def fetch_osm_ways_from_pbf(
     if progress_callback:
         progress_callback(0.2, f"Extracting from {path.name}...")
 
+    index_dir = default_index_dir(path)
+    tiles = [] if index_is_stale(path, index_dir) else tiles_for_bbox(index_dir, bbox)
+
+    if tiles:
+        # A cell is a "smart"-complete superset for anything touching it
+        # (see utils/pbf_index.py), so extracting the same query bbox from
+        # each overlapping cell and merging by (type, id) reproduces
+        # exactly what extracting from the full source file would give -
+        # just from much smaller inputs. Usually one cell; more than one
+        # only for a bbox straddling a cell boundary.
+        logger.info("Using PBF grid index: %d cell(s) for bbox %s", len(tiles), bbox)
+        by_key = {}
+        for tile in tiles:
+            for el in _extract_elements(tile, bbox):
+                by_key[(el["type"], el["id"])] = el
+        elements = list(by_key.values())
+    else:
+        elements = _extract_elements(path, bbox)
+
+    if progress_callback:
+        progress_callback(0.5, "Parsing local extract...")
+    logger.info("Loaded %d elements from local PBF extract (%s)", len(elements), path.name)
+    try:
+        save_osm_cache(bbox, elements)
+    except Exception:
+        pass
+    if progress_callback:
+        progress_callback(0.6, f"Loaded {len(elements)} elements")
+    return elements
+
+
+def _extract_elements(source_pbf: Path, bbox: Tuple[float, float, float, float]) -> List[dict]:
+    """Run one `osmium extract` for `bbox` against `source_pbf` - the full
+    source file, or (from the grid index) one small regional cell of it -
+    and parse the result. Raises RuntimeError on an osmium failure."""
+    south, west, north, east = bbox
     with tempfile.TemporaryDirectory() as tmp_dir:
         out_path = os.path.join(tmp_dir, "extract.osm")
         cmd = [
@@ -106,25 +150,13 @@ def fetch_osm_ways_from_pbf(
             "-f", "osm",
             "-O",
             "-o", out_path,
-            str(path),
+            str(source_pbf),
         ]
         logger.info("Extracting local OSM data: %s", " ".join(cmd))
         result = subprocess.run(cmd, capture_output=True, text=True)
         if result.returncode != 0:
             raise RuntimeError(f"osmium extract failed (exit {result.returncode}): {result.stderr.strip()}")
-
-        if progress_callback:
-            progress_callback(0.5, "Parsing local extract...")
-        elements = _parse_osm_xml(out_path)
-
-    logger.info("Loaded %d elements from local PBF extract (%s)", len(elements), path.name)
-    try:
-        save_osm_cache(bbox, elements)
-    except Exception:
-        pass
-    if progress_callback:
-        progress_callback(0.6, f"Loaded {len(elements)} elements")
-    return elements
+        return _parse_osm_xml(out_path)
 
 
 def _parse_osm_xml(path: str) -> List[dict]:

@@ -142,3 +142,56 @@ def test_fetch_from_pbf_end_to_end_with_a_real_extract(tmp_path, monkeypatch):
     by_id = {(el["type"], el["id"]): el for el in elements}
     assert by_id[("node", 1)]["tags"] == {"highway": "traffic_signals"}
     assert by_id[("way", 10)]["nodes"] == [1, 2]
+
+
+@pytest.mark.skipif(shutil.which("osmium") is None, reason="requires the osmium CLI (osmium-tool)")
+def test_fetch_from_pbf_uses_the_grid_index_when_present(tmp_path, monkeypatch):
+    """With a grid index built next to the source file (utils/pbf_index.py),
+    extraction must read the small regional cell(s) instead of the full
+    source file - and still return the same elements a full-file extract
+    would."""
+    from theroadragetrip.utils.pbf_index import build_index, default_index_dir
+
+    monkeypatch.setattr(osm, "CACHE_DIR", str(tmp_path / "cache"))
+    fixture_xml = tmp_path / "fixture.osm"
+    fixture_xml.write_text(
+        """<?xml version="1.0" encoding="UTF-8"?>
+        <osm version="0.6">
+          <node id="1" lat="65.0" lon="25.0">
+            <tag k="highway" v="traffic_signals"/>
+          </node>
+          <node id="2" lat="65.001" lon="25.001"/>
+          <way id="10">
+            <nd ref="1"/>
+            <nd ref="2"/>
+            <tag k="highway" v="primary"/>
+          </way>
+        </osm>
+        """,
+        encoding="utf-8",
+    )
+    fixture_pbf = tmp_path / "fixture.osm.pbf"
+    subprocess.run(["osmium", "cat", str(fixture_xml), "-o", str(fixture_pbf)], check=True, capture_output=True)
+    build_index(fixture_pbf, grid_size_deg=0.25)
+    assert default_index_dir(fixture_pbf).is_dir()
+
+    real_run = subprocess.run
+    extract_sources = []
+
+    def spy_run(cmd, *args, **kwargs):
+        if cmd[:2] == ["osmium", "extract"]:
+            extract_sources.append(cmd[-1])
+        return real_run(cmd, *args, **kwargs)
+
+    monkeypatch.setattr(subprocess, "run", spy_run)
+
+    elements = fetch_osm_ways_from_pbf((64.9, 24.9, 65.1, 25.1), pbf_path=fixture_pbf)
+
+    by_id = {(el["type"], el["id"]): el for el in elements}
+    assert by_id[("node", 1)]["tags"] == {"highway": "traffic_signals"}
+    assert by_id[("way", 10)]["nodes"] == [1, 2]
+
+    assert extract_sources, "expected at least one 'osmium extract' call"
+    assert all(src != str(fixture_pbf) for src in extract_sources), (
+        "with an index present, extraction must read an index cell, not the full source file"
+    )
