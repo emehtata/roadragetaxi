@@ -142,6 +142,13 @@ class Scenery:
     kind: str
     name: Optional[str] = None
     bbox: Tuple[float, float, float, float] = (0.0, 0.0, 0.0, 0.0)
+    # Ground material, currently only populated for kind="parking" (OSM's
+    # surface=* tag, defaulting to "asphalt" when the lot doesn't specify
+    # one - a mapped parking lot is a paved area even when nobody bothered
+    # tagging it, unlike an untagged patch of open ground). None for every
+    # other kind: their color is already keyed by `kind` itself (forest,
+    # grass, ...), which already says what the ground is.
+    surface: Optional[str] = None
     trees: List[Tuple[float, float]] = field(default_factory=list)
     tree_variations: List[float] = field(default_factory=list)
     # Set by remove_trees_under_roads() once it has swept this scenery's

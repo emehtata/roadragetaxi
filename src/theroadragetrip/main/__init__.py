@@ -57,6 +57,7 @@ from ..physics import (
     get_current_road_at_car,
     is_car_colliding_with_bridge_edge,
     is_car_fully_in_water,
+    is_point_in_parking_lot,
     is_point_on_parking_space,
     reset_trip,
     respawn_car,
@@ -1491,6 +1492,7 @@ def main() -> None:
                         ways=ways, spatial_grid=spatial_grid,
                         block_offroad=False, speed_limit_mps=speed_limit_mps,
                         nearby_vehicles=[], parking_spaces=parking_spaces,
+                        scenery_grid=scenery_grid,
                         current_way=current_way, physics_mode=physics_mode,
                         wetness=weather.wetness,
                     )
@@ -1769,7 +1771,11 @@ def main() -> None:
             )
             current_way = get_current_road_at_car(car, ways=ways, spatial_grid=spatial_grid, car_roads_only=True, current_way=current_way)
             on_road = current_way is not None
-            is_grass = surface_way is None and not is_point_on_parking_space(car.x, car.y, parking_spaces)
+            is_grass = (
+                surface_way is None
+                and not is_point_on_parking_space(car.x, car.y, parking_spaces)
+                and not is_point_in_parking_lot(car.x, car.y, scenery_grid=scenery_grid)
+            )
             # Tire slip is the source of truth for a skidmark (SKIDMARK.md) -
             # not brake input, not even is_sliding alone (a tire can be
             # visibly slipping before the whole car counts as sliding; see

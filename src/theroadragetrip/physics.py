@@ -251,6 +251,40 @@ def is_point_on_parking_space(
     return False
 
 
+def is_point_in_parking_lot(
+    px: float,
+    py: float,
+    sceneries: Optional[List] = None,
+    scenery_grid: Optional["SpatialWayGrid"] = None,
+) -> bool:
+    """Return whether a point lies inside a mapped parking lot (Scenery
+    kind="parking") - the whole lot's paved ground, not just an
+    individually-tagged parking_space within it (is_point_on_parking_space
+    above). Without this, driving the drive aisles of a real parking lot
+    - anywhere that isn't one of the few explicitly marked spaces - reads
+    as off-road (grass/dirt trail), even though it's paved.
+
+    Uses scenery_grid for an O(1) lookup when given (sceneries can run to
+    thousands of entries for a real map - see the tire-track/road-cache
+    scans this session already had to fix for the same reason); falls
+    back to a linear scan of `sceneries` directly for callers/tests that
+    don't have a grid built.
+    """
+    candidates = (
+        scenery_grid.ways_in_rect(px, py, px, py) if scenery_grid is not None else (sceneries or ())
+    )
+    for scenery in candidates:
+        if getattr(scenery, "kind", None) != "parking":
+            continue
+        bbox = getattr(scenery, "bbox", None)
+        if bbox and bbox != (0.0, 0.0, 0.0, 0.0) and not (bbox[0] <= px <= bbox[2] and bbox[1] <= py <= bbox[3]):
+            continue
+        points = getattr(scenery, "points_m", ())
+        if len(points) >= 3 and point_in_polygon(px, py, points):
+            return True
+    return False
+
+
 def is_point_in_water(
     px: float,
     py: float,
@@ -1220,6 +1254,7 @@ def update_car_physics(
     speed_limit_mps: Optional[float] = None,
     nearby_vehicles: Optional[List] = None,
     parking_spaces: Optional[List] = None,
+    scenery_grid: Optional[SpatialWayGrid] = None,
     current_way=None,
     physics_mode: str = "arcade",
     wetness: float = 0.0,
@@ -1230,6 +1265,12 @@ def update_car_physics(
     car roads only, blocking movement if the vehicle attempts to leave the road.
     When enforce_oneway is True, prevents moving against the legal direction on one-way streets.
     Returns True if vehicle movement was blocked against the road boundary or one-way restriction.
+
+    Off-road speed capping (block_offroad=False) treats both an OSM
+    parking_space (`parking_spaces`) and a mapped parking lot's whole
+    paved area (`scenery_grid`, Scenery kind="parking") as drivable
+    ground, not just an actual road - a parking lot's drive aisles are
+    real pavement even though they're not a highway=* way.
 
     `current_way` (the road the car is currently on, if known) and
     `physics_mode` ("arcade" or "simulation") feed the cornering-grip model,
@@ -1438,7 +1479,11 @@ def update_car_physics(
         target_on_road = is_point_on_road(
             target_x, target_y, ways=ways, spatial_grid=spatial_grid, car_roads_only=True
         )
-        if not target_on_road and not is_point_on_parking_space(target_x, target_y, parking_spaces):
+        if (
+            not target_on_road
+            and not is_point_on_parking_space(target_x, target_y, parking_spaces)
+            and not is_point_in_parking_lot(target_x, target_y, scenery_grid=scenery_grid)
+        ):
             target_on_light_traffic = is_point_on_light_traffic_way(
                 target_x, target_y, ways=ways, spatial_grid=spatial_grid
             )

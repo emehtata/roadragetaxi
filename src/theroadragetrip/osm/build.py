@@ -467,13 +467,15 @@ def build_ways(
         pts, ibbox = process_node_ids(node_ids)
         if not pts or len(pts) < 3:
             continue
-        kind = (
-            "parking"
-            if tags.get("amenity") == "parking" or tags.get("landuse") == "parking"
-            else tags.get("leisure") or tags.get("landuse") or tags.get("natural") or "park"
-        )
+        is_parking = tags.get("amenity") == "parking" or tags.get("landuse") == "parking"
+        kind = "parking" if is_parking else tags.get("leisure") or tags.get("landuse") or tags.get("natural") or "park"
         name = tags.get("name")
-        sceneries.append(Scenery(points_m=pts, kind=kind, name=name, bbox=ibbox))
+        # A mapped parking lot is paved ground even when nobody bothered
+        # tagging surface=* - only every other scenery kind (forest,
+        # grass, ...) leaves this None, since kind itself already says
+        # what that ground is.
+        surface = (tags.get("surface") or "asphalt") if is_parking else None
+        sceneries.append(Scenery(points_m=pts, kind=kind, name=name, bbox=ibbox, surface=surface))
 
     for tags, node_ids, parking_id in parking_space_raw:
         pts, ibbox = process_node_ids(node_ids)
@@ -858,7 +860,10 @@ def build_ways(
                     layer = 0
                 waters.append(Water(points_m=pts, kind=kind, is_polygon=is_closed, name=name, bbox=ibbox, layer=layer))
             elif tags.get("amenity") == "parking" or tags.get("landuse") == "parking":
-                sceneries.append(Scenery(points_m=pts, kind="parking", name=name, bbox=ibbox))
+                sceneries.append(Scenery(
+                    points_m=pts, kind="parking", name=name, bbox=ibbox,
+                    surface=tags.get("surface") or "asphalt",
+                ))
             elif "leisure" in tags or "landuse" in tags or tags.get("natural") in NATURAL_SCENERY_KINDS:
                 kind = tags.get("leisure") or tags.get("landuse") or tags.get("natural") or "park"
                 scenery = Scenery(points_m=pts, kind=kind, name=name, bbox=ibbox)

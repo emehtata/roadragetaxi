@@ -206,6 +206,35 @@ def test_build_ways_buildings_and_scenery_and_names():
     assert next(place for place in places if place.name == "Named Attraction").kind == "poi"
 
 
+def test_parking_lot_defaults_to_asphalt_surface_but_keeps_an_explicit_one():
+    elements = [
+        {"type": "node", "id": 1, "lat": 60.0, "lon": 25.0},
+        {"type": "node", "id": 2, "lat": 60.001, "lon": 25.0},
+        {"type": "node", "id": 3, "lat": 60.001, "lon": 25.001},
+        {"type": "node", "id": 4, "lat": 60.0, "lon": 25.001},
+        {
+            "type": "way", "id": 10, "nodes": [1, 2, 3, 4, 1],
+            "tags": {"amenity": "parking"},  # no surface tag at all
+        },
+        {"type": "node", "id": 5, "lat": 60.002, "lon": 25.002},
+        {"type": "node", "id": 6, "lat": 60.003, "lon": 25.002},
+        {"type": "node", "id": 7, "lat": 60.003, "lon": 25.003},
+        {"type": "node", "id": 8, "lat": 60.002, "lon": 25.003},
+        {
+            "type": "way", "id": 20, "nodes": [5, 6, 7, 8, 5],
+            "tags": {"landuse": "parking", "surface": "gravel"},
+        },
+    ]
+
+    _, _, _, sceneries, _, _ = build_ways(elements)
+
+    parking_lots = sorted((s for s in sceneries if s.kind == "parking"), key=lambda s: s.bbox[0])
+    assert len(parking_lots) == 2
+    untagged, tagged = parking_lots  # the untagged way's nodes are west of the tagged one's
+    assert untagged.surface == "asphalt"
+    assert tagged.surface == "gravel"
+
+
 def test_building_height_precedes_levels_for_facade_depth():
     elements = [
         {"type": "node", "id": 1, "lat": 60.0, "lon": 25.0},
