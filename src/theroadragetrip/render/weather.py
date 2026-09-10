@@ -48,6 +48,17 @@ PUDDLE_MAX_ALPHA = 150
 PUDDLE_SHAPE_POINTS = 7
 PUDDLE_SHAPE_JITTER = 0.35  # +/- fraction of radius per vertex - an irregular outline, not a perfect circle
 
+# Ambient ripples: raindrops striking a puddle (WEATHER_RAIN.md #6) - purely
+# procedural from pygame.time.get_ticks() (same real-time animation source
+# draw_taxi_smoke already uses) and each puddle's own ripple_phase, so
+# there's no extra list to spawn into/prune - one more circle draw inside
+# the loop draw_puddles is already running. Only shown while rain is
+# actively falling (not just "wet from earlier").
+RIPPLE_CYCLE_S = 2.4  # time between one ripple ending and the next starting, per puddle
+RIPPLE_DURATION_S = 1.0  # must be well under RIPPLE_CYCLE_S so ripples read as "occasional", not constant
+RIPPLE_COLOR = (190, 202, 218)
+RIPPLE_MAX_ALPHA = 70
+
 # id(way) -> puddle spec dict, or None if this way has no puddle candidate.
 # Computed once per way and never recomputed, so puddles stay put rather
 # than jittering to a new random spot every frame (WEATHER_RAIN.md #4).
@@ -221,6 +232,9 @@ def draw_puddles(
     and fade out as it falls - each puddle's position/size/shape is fixed
     once computed (see _puddle_for_way), only its visible strength changes
     frame to frame, so puddles never relocate or reroll (WEATHER_RAIN.md #4).
+    While it's actively raining, each puddle also gets an occasional
+    ambient ripple ring, computed purely from the clock and the puddle's
+    own ripple_phase - no extra state to spawn or prune (#6).
 
     Same live-per-frame, viewport-culled approach as draw_wet_roads, for
     the same reasons (continuous wetness doesn't fit the static road
@@ -236,6 +250,10 @@ def draw_puddles(
         return
 
     overlay = _reusable_alpha_surface(pygame, "puddles", (screen_w, screen_h))
+    # Ambient ripples only make sense while rain is actively falling, not
+    # on a puddle just sitting there after it stopped (WEATHER_RAIN.md #6).
+    show_ripples = weather.is_precipitating
+    now_s = pygame.time.get_ticks() / 1000.0 if show_ripples else 0.0
     drew_any = False
     for way in visible_ways:
         spot = _puddle_for_way(way)
@@ -263,6 +281,15 @@ def draw_puddles(
         ]
         pygame.draw.polygon(overlay, (*PUDDLE_COLOR, alpha), polygon)
         drew_any = True
+
+        if show_ripples:
+            cycle_time = (now_s + spot["ripple_phase"] * RIPPLE_CYCLE_S) % RIPPLE_CYCLE_S
+            if cycle_time < RIPPLE_DURATION_S:
+                ripple_progress = cycle_time / RIPPLE_DURATION_S
+                ripple_alpha = round(RIPPLE_MAX_ALPHA * (1.0 - ripple_progress) * strength)
+                ripple_radius_px = round(radius_px * (0.25 + 0.85 * ripple_progress))
+                if ripple_alpha > 0 and ripple_radius_px >= 1:
+                    pygame.draw.circle(overlay, (*RIPPLE_COLOR, ripple_alpha), (center_x, center_y), ripple_radius_px, width=1)
     if drew_any:
         screen.blit(overlay, (0, 0))
 

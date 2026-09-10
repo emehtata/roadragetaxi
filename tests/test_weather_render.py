@@ -241,3 +241,63 @@ def test_draw_splashes_draws_a_visible_ring_then_fades_out():
         assert not _region_has_a_nonblack_pixel(screen, 100, 75, half=15), "expired splash still drew"
     finally:
         pygame.quit()
+
+
+def _puddle_scan_row(way, weather, scan_half=20):
+    """Render just this puddle and return the red-channel value along a
+    horizontal line through its center, as a list. Comparing two such
+    scans (identical puddle geometry, different ripple state) isolates
+    exactly the ripple ring's visual contribution."""
+    screen = pygame.Surface((300, 300))
+    screen.fill((100, 100, 100))
+    draw_puddles(screen, [way], weather, camx=50.0, camy=0.0, px_per_m=9.0, screen_w=300, screen_h=300)
+    center = (150, 150)
+    return [screen.get_at((center[0] + dx, center[1]))[0] for dx in range(-scan_half, scan_half + 1)]
+
+
+def test_draw_puddles_shows_a_ripple_ring_mid_cycle_while_raining(monkeypatch):
+    """WEATHER_RAIN.md #6: raindrops hitting a puddle create occasional
+    ripple rings while it's actively raining."""
+    pygame.init()
+    try:
+        way = _way_with_known_puddle(reveal_wetness=0.1)
+        weather = WeatherSystem(WeatherType.RAIN)
+        weather.wetness = 0.9
+
+        monkeypatch.setattr(pygame.time, "get_ticks", lambda: 2000)  # between ripples (cycle 2400ms, duration 1000ms)
+        silent_row = _puddle_scan_row(way, weather)
+
+        monkeypatch.setattr(pygame.time, "get_ticks", lambda: 500)  # mid-way through a ripple (phase 0)
+        active_row = _puddle_scan_row(way, weather)
+
+        max_diff = max(abs(a - s) for a, s in zip(active_row, silent_row))
+        assert max_diff > 15, "no ripple ring pixel found mid-cycle"
+    finally:
+        pygame.quit()
+
+
+def test_draw_puddles_ripple_is_silent_once_rain_stops_even_if_still_wet(monkeypatch):
+    """WEATHER_RAIN.md #6/#9: the puddle itself persists while wet, but
+    ambient ripples require actively-falling rain, not just wetness."""
+    pygame.init()
+    try:
+        way = _way_with_known_puddle(reveal_wetness=0.1)
+        monkeypatch.setattr(pygame.time, "get_ticks", lambda: 500)  # would be mid-ripple if it were raining
+
+        raining = WeatherSystem(WeatherType.RAIN)
+        raining.wetness = 0.9
+        active_row = _puddle_scan_row(way, raining)
+
+        stopped = WeatherSystem(WeatherType.CLEAR)
+        stopped.wetness = 0.9  # still very wet, just not raining anymore
+        quiet_row = _puddle_scan_row(way, stopped)
+
+        max_diff = max(abs(a - q) for a, q in zip(active_row, quiet_row))
+        assert max_diff > 15, "ripple appeared even though it isn't raining"
+
+        screen = pygame.Surface((300, 300))
+        screen.fill((100, 100, 100))
+        draw_puddles(screen, [way], stopped, camx=50.0, camy=0.0, px_per_m=9.0, screen_w=300, screen_h=300)
+        assert pygame.transform.average_color(screen)[:3] != (100, 100, 100), "the puddle itself should still show"
+    finally:
+        pygame.quit()
