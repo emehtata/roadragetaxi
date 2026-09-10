@@ -98,6 +98,14 @@ def test_draw_wet_roads_darkens_the_road_proportionally_to_wetness():
         # one uniformly wet surface, not a light "dry" stripe down the
         # middle of a lane.
         assert fully_wet_edge == fully_wet_center
+        # Regression: the sheen pass used to be drawn onto the same
+        # SRCALPHA overlay surface as the darken pass, which *replaces*
+        # pixels rather than blending with them - once the sheen covered
+        # the full road width it silently wiped out the darkening
+        # everywhere, leaving a road that never visibly got darker in the
+        # rain despite puddles still showing. Must still read as clearly
+        # darker than the dry (100, 100, 100) background.
+        assert sum(fully_wet_edge) < 250, "fully wet road should read as clearly darker than dry asphalt"
     finally:
         pygame.quit()
 

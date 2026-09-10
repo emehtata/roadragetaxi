@@ -24,7 +24,13 @@ RAIN_STREAK_LEN_MAX_PX = 20.0
 WET_ROAD_DARKEN_COLOR = (8, 10, 14)
 WET_ROAD_DARKEN_MAX_ALPHA = 90
 WET_ROAD_SHEEN_COLOR = (205, 215, 230)
-WET_ROAD_SHEEN_MAX_ALPHA = 55
+# Tuned for full road-width coverage (see draw_wet_roads) - this used to be
+# a thin ~20%-width centerline stroke at alpha 55; spread across the whole
+# road at the same alpha, the light sheen visually cancelled out the dark
+# tint entirely (a real complaint: "road has puddles but color did not
+# change to dark"). Scaled down so the net look is still clearly darker,
+# not just a lighter-toned road.
+WET_ROAD_SHEEN_MAX_ALPHA = 12
 WET_ROAD_SHEEN_MIN_WETNESS = 0.15  # no sheen at all below this - just darkening
 
 # Puddles: at most one deterministic candidate spot per way, so the count
@@ -203,7 +209,14 @@ def draw_wet_roads(
     sheen_wetness = max(0.0, weather.wetness - WET_ROAD_SHEEN_MIN_WETNESS) / (1.0 - WET_ROAD_SHEEN_MIN_WETNESS)
     sheen_alpha = round(WET_ROAD_SHEEN_MAX_ALPHA * sheen_wetness)
 
-    overlay = _reusable_alpha_surface(pygame, "wet_roads", (screen_w, screen_h))
+    # Two separate overlay surfaces, not one shared one: pygame.draw.lines
+    # onto an SRCALPHA surface *replaces* pixels rather than blending with
+    # whatever was already drawn there, so a second pass on the same
+    # surface silently erases the first everywhere the two overlap. Only
+    # the final screen.blit() (a real alpha-composited blit) actually
+    # blends - hence two overlays, blitted in order.
+    darken_overlay = _reusable_alpha_surface(pygame, "wet_roads_darken", (screen_w, screen_h))
+    sheen_overlay = _reusable_alpha_surface(pygame, "wet_roads_sheen", (screen_w, screen_h)) if sheen_alpha > 0 else None
     for way in visible_ways:
         points = [
             world_to_screen(x, y, camx, camy, px_per_m, screen_w, screen_h)
@@ -211,13 +224,12 @@ def draw_wet_roads(
         ]
         thickness = max(1, round(way.half_width_m * 2 * px_per_m))
         if darken_alpha > 0:
-            pygame.draw.lines(overlay, (*WET_ROAD_DARKEN_COLOR, darken_alpha), False, points, thickness)
-        if sheen_alpha > 0:
-            # Full road width, not a thin centerline stroke - a narrow sheen
-            # line reads as a distinct light "dry" stripe down the middle of
-            # a lane rather than the whole wet surface glistening.
-            pygame.draw.lines(overlay, (*WET_ROAD_SHEEN_COLOR, sheen_alpha), False, points, thickness)
-    screen.blit(overlay, (0, 0))
+            pygame.draw.lines(darken_overlay, (*WET_ROAD_DARKEN_COLOR, darken_alpha), False, points, thickness)
+        if sheen_overlay is not None:
+            pygame.draw.lines(sheen_overlay, (*WET_ROAD_SHEEN_COLOR, sheen_alpha), False, points, thickness)
+    screen.blit(darken_overlay, (0, 0))
+    if sheen_overlay is not None:
+        screen.blit(sheen_overlay, (0, 0))
 
 
 def draw_puddles(
