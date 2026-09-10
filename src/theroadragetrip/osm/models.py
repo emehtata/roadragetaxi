@@ -72,6 +72,7 @@ class Railway:
     points_m: List[Tuple[float, float]]
     kind: str = "rail"
     bbox: Tuple[float, float, float, float] = (0.0, 0.0, 0.0, 0.0)
+    is_bridge: bool = False
 
 
 @dataclass

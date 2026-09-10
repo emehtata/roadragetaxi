@@ -545,7 +545,18 @@ def build_ways(
         pts, ibbox = process_node_ids(node_ids)
         if not pts or len(pts) < 2:
             continue
-        railways.append(Railway(points_m=pts, kind=tags.get("railway", "rail"), bbox=ibbox))
+        # Same bridge detection as roads (see is_bridge above): an explicit
+        # bridge tag, or a positive OSM layer with no bridge tag at all
+        # (some rail bridges are mapped that way) - both mean this track is
+        # a structure spanning whatever is below it, not ground-level rail.
+        try:
+            railway_layer = int(tags.get("layer", "") or 0)
+        except ValueError:
+            railway_layer = 0
+        railway_is_bridge = tags.get("bridge") in ("yes", "viaduct", "movable") or railway_layer > 0
+        railways.append(
+            Railway(points_m=pts, kind=tags.get("railway", "rail"), bbox=ibbox, is_bridge=railway_is_bridge)
+        )
 
     for tags, node_ids in railing_raw:
         pts, ibbox = process_node_ids(node_ids)

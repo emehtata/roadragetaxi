@@ -18,6 +18,26 @@ def test_build_ways_parses_railway_rail_as_railway():
     assert len(result.railways[0].points_m) == 2
 
 
+def test_build_ways_marks_railway_bridge_yes_as_is_bridge():
+    """A rail line tagged bridge=yes (or a positive layer with no bridge
+    tag) is a structure spanning whatever's below it, not ground-level
+    track - same detection as roads' is_bridge (osm/build.py)."""
+    elements = [
+        {"type": "node", "id": 1, "lat": 60.0, "lon": 25.0},
+        {"type": "node", "id": 2, "lat": 60.0, "lon": 25.001},
+        {"type": "way", "id": 30, "nodes": [1, 2], "tags": {"railway": "rail", "bridge": "yes", "layer": "1"}},
+        {"type": "node", "id": 3, "lat": 60.001, "lon": 25.0},
+        {"type": "node", "id": 4, "lat": 60.001, "lon": 25.001},
+        {"type": "way", "id": 31, "nodes": [3, 4], "tags": {"railway": "rail"}},
+    ]
+
+    result = build_ways(elements)
+
+    assert len(result.railways) == 2
+    assert result.railways[0].is_bridge is True
+    assert result.railways[1].is_bridge is False
+
+
 def test_build_ways_ignores_subway_railway():
     """Subway is underground and invisible from street level - must not
     render as a surface rail line."""
@@ -92,6 +112,36 @@ def test_draw_railways_paints_rail_colored_pixels():
         if tuple(surf.get_at((x, y)))[:3] == RAILWAY_RAIL_COLOR
     )
     assert rail_pixels > 0
+    pygame.quit()
+
+
+def test_draw_railways_gives_a_bridge_track_deck_edges():
+    """A rail line marked is_bridge must render with the same guardrail
+    cue road bridges use (BRIDGE_GUARDRAIL_COLOR) - otherwise a bridge and
+    ground-level track look identical, which is exactly the bug this
+    covers (a rail bridge over a road rendered as if painted on it)."""
+    import pygame
+    from theroadragetrip.render.roads import BRIDGE_GUARDRAIL_COLOR
+    pygame.init()
+
+    def guardrail_pixel_count(is_bridge: bool) -> int:
+        surf = pygame.Surface((800, 600))
+        surf.fill((0, 0, 0))
+        railway = Railway(
+            points_m=[(80.0, 100.0), (120.0, 100.0)],
+            bbox=(80.0, 100.0, 120.0, 100.0),
+            is_bridge=is_bridge,
+        )
+        draw_railways(surf, [railway], camx=100.0, camy=100.0, px_per_m=8.0, screen_w=800, screen_h=600)
+        return sum(
+            1
+            for x in range(800)
+            for y in range(600)
+            if tuple(surf.get_at((x, y)))[:3] == BRIDGE_GUARDRAIL_COLOR
+        )
+
+    assert guardrail_pixel_count(is_bridge=False) == 0
+    assert guardrail_pixel_count(is_bridge=True) > 0
     pygame.quit()
 
 

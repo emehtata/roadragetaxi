@@ -32,6 +32,7 @@ from ..geo import dist_point_to_segment, point_in_polygon
 from ..osm import Building, BusStop, TaxiStop, Way
 
 
+BRIDGE_GUARDRAIL_COLOR = (196, 200, 204)  # light guardrail, contrasts against dark asphalt - shared by road and rail bridges so both read as the same "elevated structure" cue
 MAX_VISIBLE_STREET_LIGHTS = 400
 STREET_LIGHT_SPACING_M = 12.0
 STREET_LIGHT_JUNCTION_CLEARANCE_M = 3.0
@@ -535,7 +536,7 @@ def draw_ways(
             continue
         bridge_polygons.append(line.buffer(half_width, cap_style="flat", join_style="mitre"))
 
-    edge_color = (196, 200, 204)  # light guardrail, contrasts against dark asphalt
+    edge_color = BRIDGE_GUARDRAIL_COLOR
     edge_width = max(2, round(px_per_m * 0.18))
     if bridge_polygons:
         # Original centerline segments, used to tell side edges (parallel to a
@@ -1261,6 +1262,7 @@ RAILWAY_TIE_COLOR = (90, 65, 45)  # wooden sleeper
 _RAILWAY_GAUGE_M = 1.435  # standard gauge
 _RAILWAY_TIE_SPACING_M = 2.0
 _RAILWAY_TIE_LENGTH_M = 2.6
+_RAILWAY_BRIDGE_DECK_MARGIN_M = 0.4  # deck edge beyond the tie ends
 
 
 def draw_railways(
@@ -1274,7 +1276,11 @@ def draw_railways(
     spatial_grid=None,
 ) -> None:
     """Draw rail lines (OSM railway=rail/light_rail/tram/...) as two steel
-    rails over periodic wooden sleepers, like draw_curbs but track-styled."""
+    rails over periodic wooden sleepers, like draw_curbs but track-styled.
+    A track marked is_bridge (OSM bridge=yes/viaduct/movable, or a positive
+    layer) also gets a pair of guardrail-colored deck edges - the same cue
+    draw_ways uses for road bridges - so it reads as a structure spanning
+    whatever's below it instead of track painted on the ground."""
     import pygame
 
     if not railways:
@@ -1290,6 +1296,15 @@ def draw_railways(
     tie_thickness = max(1, int(0.18 * px_per_m))
     half_gauge = _RAILWAY_GAUGE_M / 2.0
     half_tie = _RAILWAY_TIE_LENGTH_M / 2.0
+    half_deck = half_tie + _RAILWAY_BRIDGE_DECK_MARGIN_M
+    deck_edge_width = max(2, round(px_per_m * 0.15))
+    # Ground-level track and a rail bridge over a road/river/valley look
+    # identical without this - both are just two rails over sleepers, at
+    # the same z-order as whatever's underneath (see is_bridge on Railway/
+    # Way in osm/models.py). A pair of deck edges, the same guardrail color
+    # roads use for their own bridges, is the minimal cue that this track
+    # is a structure, not paint on the ground.
+    show_bridge_decks = px_per_m > 1.5
 
     for rw in visible_railways:
         bb = getattr(rw, "bbox", None)
@@ -1329,6 +1344,13 @@ def draw_railways(
                     s0 = world_to_screen(x0 + nx * offset, y0 + ny * offset, camx, camy, px_per_m, screen_w, screen_h)
                     s1 = world_to_screen(x1 + nx * offset, y1 + ny * offset, camx, camy, px_per_m, screen_w, screen_h)
                     pygame.draw.line(screen, RAILWAY_RAIL_COLOR, s0, s1, rail_thickness)
+                if rw.is_bridge and show_bridge_decks:
+                    lo_x, lo_y = x0 + ux * t_lo, y0 + uy * t_lo
+                    hi_x, hi_y = x0 + ux * t_hi, y0 + uy * t_hi
+                    for offset in (-half_deck, half_deck):
+                        s0 = world_to_screen(lo_x + nx * offset, lo_y + ny * offset, camx, camy, px_per_m, screen_w, screen_h)
+                        s1 = world_to_screen(hi_x + nx * offset, hi_y + ny * offset, camx, camy, px_per_m, screen_w, screen_h)
+                        pygame.draw.line(screen, BRIDGE_GUARDRAIL_COLOR, s0, s1, deck_edge_width)
                 window_lo = dist_along + t_lo
                 window_hi = dist_along + t_hi
                 if next_tie < window_lo:
