@@ -49,6 +49,12 @@ from .trees import (
 )
 
 
+def _tile_intersects_bounds(tile: TileCoord, bounds: Tuple[float, float, float, float]) -> bool:
+    tminx, tminy, tmaxx, tmaxy = tile_bbox(tile)
+    bminx, bminy, bmaxx, bmaxy = bounds
+    return not (tmaxx < bminx or tminx > bmaxx or tmaxy < bminy or tminy > bmaxy)
+
+
 def _snap_projected_bbox(
     bbox: Tuple[float, float, float, float], tile_size_m: float
 ) -> Tuple[float, float, float, float]:
@@ -434,8 +440,22 @@ class AutoFetchManager:
             self.start_tile = current_tile
             self.active_tiles = set(active_tiles(current_tile))
             self._register_existing_world()
-            # Startup bbox is the complete active 1.5 km region.
-            self.loaded_tiles = set(self.active_tiles)
+            # Only mark a tile "loaded" if the startup world's own bounds
+            # actually reach it - assuming the whole active window's tiles
+            # are all covered (true when a tile is smaller than the
+            # startup region, as it always used to be) breaks the moment
+            # a tile is *bigger* than the startup region - e.g.
+            # PBF_TILE_SIZE_M's 3300m tiles against a several-km startup
+            # city load: the 3x3 active window (9900m across) can then be
+            # mostly empty space nobody has actually fetched. The player
+            # reaches the true edge of the loaded data while still
+            # nominally inside the same oversized starting tile, so
+            # start_tile_streaming() never sees anything "missing" and no
+            # fetch is ever triggered - the road just runs out.
+            self.loaded_tiles = {
+                tile for tile in self.active_tiles
+                if _tile_intersects_bounds(tile, self.bounds)
+            }
             self._unload_tiles(set(self._tile_objects) - self.active_tiles)
         return current_tile
 

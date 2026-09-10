@@ -553,6 +553,40 @@ def test_startup_world_is_registered_and_trimmed_to_active_tiles():
     assert manager.loaded_tiles == manager.active_tiles
 
 
+def test_startup_does_not_claim_tiles_the_startup_world_never_reached():
+    """Regression: with a big enough tile size (osm_source=pbf's
+    PBF_TILE_SIZE_M, ~3300m), the initial 3x3 active window (~9900m
+    across) can be far bigger than the actual startup city load (a few
+    km) - initialize_player_tile() used to mark the *entire* window
+    "loaded" regardless, so a player could drive straight to the true
+    edge of the fetched data while still nominally inside their starting
+    tile: start_tile_streaming() never saw anything "missing", so no
+    fetch ever triggered and the road just ran out. Only a tile the
+    startup world's own bounds actually reach may be marked loaded."""
+    original = tile_streaming.TILE_SIZE_M
+    try:
+        set_tile_size_m(3300.0)
+        # Startup world only covers a small area near the origin - nowhere
+        # near the full ~9900m 3x3 window a player tile of (0, 0) implies.
+        manager = AutoFetchManager([], (0.0, 0.0, 1000.0, 1000.0), transformer=None)
+
+        manager.initialize_player_tile(500.0, 500.0)
+
+        assert len(manager.active_tiles) == 9
+        # Tiles whose own bbox happens to touch the small bounds rectangle
+        # near the origin are fairly claimed loaded; ones that don't touch
+        # it at all - the far side of the 3x3 window, e.g. straight north
+        # or east of the startup area - must not be, regardless of being
+        # nominally "in the active window".
+        assert TileCoord(0, 0) in manager.loaded_tiles
+        far_tiles = {TileCoord(1, 1), TileCoord(1, 0), TileCoord(0, 1), TileCoord(1, -1), TileCoord(-1, 1)}
+        assert manager.loaded_tiles.isdisjoint(far_tiles)
+        missing = manager.active_tiles - manager.loaded_tiles - manager.pending_tiles
+        assert far_tiles <= missing
+    finally:
+        set_tile_size_m(original)
+
+
 def test_tile_map_revision_changes_when_streamed_map_changes():
     manager = AutoFetchManager([], (0.0, 0.0, 1000.0, 1000.0), transformer=None)
     assert manager.get_map_revision() == 0
