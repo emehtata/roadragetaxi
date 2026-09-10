@@ -138,6 +138,7 @@ from ..tile_streaming import PBF_TILE_SIZE_M, set_tile_size_m
 from ..traffic_world import TrafficWorld
 from ..world_cache import WorldCacheManager, clear_world_cache
 from ..performance import FrameProfiler
+from ..weather import WeatherSystem
 
 from .cli import configure_logging, parse_args
 from .menu_input import (
@@ -977,6 +978,7 @@ def main() -> None:
         runtime_profiler = cProfile.Profile()
         runtime_profile_active = False
         frame_profiler = FrameProfiler()
+        weather = WeatherSystem()
         clock.tick()  # Reset clock timer to avoid large dt on first frame
 
         while running:
@@ -988,6 +990,10 @@ def main() -> None:
                 start_hint_remaining = max(0.0, start_hint_remaining - dt)
             time_scale = 1.0 if taxi_mgr.current_passenger else 60.0
             game_time_seconds = (game_time_seconds + dt * time_scale) % (24.0 * 60.0 * 60.0)
+            weather.update(dt * time_scale)
+            frame_profiler.set_metric(
+                "weather", f"{weather.weather_type.value} wetness={weather.wetness:.0%}"
+            )
             current_solar_bucket = int(game_time_seconds // (15.0 * 60.0))
             if current_solar_bucket != solar_time_bucket:
                 car_latitude, car_longitude = meters_to_latlon(car.x, car.y, transformer_to_ll)
@@ -1324,6 +1330,9 @@ def main() -> None:
                         show_debug_hud = not show_debug_hud
                         frame_profiler.enabled = show_debug_hud
                         logger.info("Debug HUD %s", "enabled" if show_debug_hud else "disabled")
+                    elif event.key == pygame.K_F8:
+                        weather.toggle_rain()
+                        logger.info("Weather toggled: %s", weather.weather_type.value)
                     elif event.key == pygame.K_r:
                         if not _respawn_allowed(on_foot):
                             logger.info("Respawn ignored while driver is walking outside taxi")
