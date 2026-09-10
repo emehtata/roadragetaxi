@@ -1,58 +1,18 @@
 from .common import (
     SCREEN_W,
     SCREEN_H,
-    FPS,
-    PX_PER_M,
-    CACHE_PADDING_PX,
-    STATIC_ZOOM_STEP,
-    SOLAR_UPDATE_INTERVAL_SECONDS,
-    GAME_DATE,
-    FINLAND_SUMMER_TIME_OFFSET,
     DEFAULT_SUN_LATITUDE,
     DEFAULT_SUN_LONGITUDE,
-    _solar_position_cache,
-    _reusable_alpha_surfaces,
-    _smoke_surface_cache,
     _render_logger,
-    _pending_static_rebuilds,
-    _static_rebuilds_this_frame,
-    invalidate_static_caches,
-    begin_static_cache_frame,
-    _allow_static_rebuild,
-    _blit_stale_static_cache,
-    _static_cache_zoom,
-    _reusable_alpha_surface,
-    _smoke_surface,
     solar_altitude_and_events,
-    _format_solar_time,
-    _get_game_version,
-    _draw_version,
-    world_to_screen,
-    asphalt_texture_tile_size,
-    road_color_for_way,
-    road_render_priority,
-    get_viewport_bounds,
-    minimum_px_per_m_for_viewport_width,
-    _covered_by_higher_road,
-    _vehicle_is_on_bridge,
-    GAME_VERSION,
 )
 import math
-import logging
 import os
-import random
-import subprocess
-import time
-from datetime import date
-from importlib.metadata import PackageNotFoundError, version as package_version
-from typing import List, Optional, Tuple
+from typing import Optional, Tuple
 
-from shapely.geometry import LineString
-from shapely.ops import unary_union
 
-from ..geo import clamp, clip_polygon_to_rect, compute_bbox, dist_point_to_segment, meters_to_latlon, point_in_polygon
-from ..osm import Building, BusStop, Place, Scenery, TaxiStop, Water, Way
-from ..physics import Car, MAX_SPEED, is_point_on_road
+from ..geo import clamp, meters_to_latlon
+from ..physics import Car, MAX_SPEED
 from ..taxi import TaxiManager, TaxiState
 from ..localization import tr
 
