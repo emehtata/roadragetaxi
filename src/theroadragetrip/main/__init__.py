@@ -105,6 +105,7 @@ from ..render import (
     draw_settings_menu,
     draw_pedestrians,
     draw_pedestrian_reflectors,
+    draw_rain,
     draw_resident_popup,
     resident_at_screen_position,
     draw_phone_offers,
@@ -990,7 +991,7 @@ def main() -> None:
                 start_hint_remaining = max(0.0, start_hint_remaining - dt)
             time_scale = 1.0 if taxi_mgr.current_passenger else 60.0
             game_time_seconds = (game_time_seconds + dt * time_scale) % (24.0 * 60.0 * 60.0)
-            weather.update(dt * time_scale)
+            weather.update(dt * time_scale, dt)
             frame_profiler.set_metric(
                 "weather", f"{weather.weather_type.value} wetness={weather.wetness:.0%}"
             )
@@ -2268,6 +2269,9 @@ def main() -> None:
             stage_elapsed = time.perf_counter() - lighting_start
             render_profile_times["lighting"] = render_profile_times.get("lighting", 0.0) + stage_elapsed
             frame_profiler.record("render:lighting", stage_elapsed * 1000.0)
+
+            with frame_profiler.section("render:weather"):
+                draw_rain(screen, weather)
 
             # Labels overlay (toggled with 'L')
             if label_mode:

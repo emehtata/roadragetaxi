@@ -181,6 +181,11 @@ from .labels import (
     draw_labels,
 )
 
+from .weather import (
+    RAIN_COLOR,
+    draw_rain,
+)
+
 from .navigation import (
     draw_compass,
     draw_navigation_route,
