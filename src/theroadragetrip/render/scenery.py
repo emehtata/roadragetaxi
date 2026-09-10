@@ -51,7 +51,7 @@ from shapely.geometry import LineString
 from shapely.ops import unary_union
 
 from ..geo import clip_polygon_to_rect, compute_bbox, dist_point_to_segment, meters_to_latlon, point_in_polygon
-from ..osm import Building, BusStop, Place, Scenery, TaxiStop, Water, Way
+from ..osm import Building, BusStop, Place, Scenery, SceneryObject, TaxiStop, Water, Way
 from ..physics import Car, MAX_SPEED, is_point_on_road
 from ..taxi import TaxiManager, TaxiState
 from ..localization import tr
@@ -82,27 +82,22 @@ def draw_scenery(
     px_per_m: float = PX_PER_M,
     screen_w: int = SCREEN_W,
     screen_h: int = SCREEN_H,
-    tree_effects=None,
-    fallen_trees=None,
     spatial_grid=None,
-    ways: Optional[List[Way]] = None,
-    road_spatial_grid=None,
     profiler=None,
 ) -> None:
-    """Draw cached static scenery, or dynamic tree effects when active."""
+    """Draw cached scenery fills (parks, forests, grass, parking, ...).
+
+    Trees are NOT drawn here - see draw_trees(), called separately later
+    in the frame (after roads/parking, before buildings) so a scenery
+    fill, and more importantly a road or parking surface painted well
+    after this static-cached layer, can never end up covering a tree.
+    """
     import pygame
     cache_zoom = _static_cache_zoom(px_per_m)
 
-    if tree_effects or fallen_trees:
-        _draw_scenery_uncached(
-            screen, sceneries, camx, camy, px_per_m, screen_w, screen_h,
-            tree_effects, fallen_trees, spatial_grid, ways, road_spatial_grid,
-        )
-        return
-
     frame_cache_key = (
         id(sceneries), len(sceneries), id(sceneries[-1]) if sceneries else None,
-        id(ways), id(spatial_grid), id(road_spatial_grid),
+        id(spatial_grid),
         round(camx * cache_zoom / 128.0), round(camy * cache_zoom / 128.0),
         cache_zoom, screen.get_size(),
     )
@@ -122,10 +117,7 @@ def draw_scenery(
     cache_height = screen_h + CACHE_PADDING_PX * 2
     cache_surface = pygame.Surface((cache_width, cache_height), pygame.SRCALPHA)
     rebuild_started = time.perf_counter() if profiler is not None else 0.0
-    _draw_scenery_uncached(
-        cache_surface, sceneries, camx, camy, cache_zoom, cache_width, cache_height,
-        None, None, spatial_grid, ways, road_spatial_grid,
-    )
+    _draw_scenery_uncached(cache_surface, sceneries, camx, camy, cache_zoom, cache_width, cache_height, spatial_grid)
     if profiler is not None:
         profiler.record("render:scenery_cache_rebuild", (time.perf_counter() - rebuild_started) * 1000.0)
     common._scenery_frame_cache_key = frame_cache_key
@@ -142,27 +134,13 @@ def _draw_scenery_uncached(
     px_per_m: float = PX_PER_M,
     screen_w: int = SCREEN_W,
     screen_h: int = SCREEN_H,
-    tree_effects=None,
-    fallen_trees=None,
     spatial_grid=None,
-    ways: Optional[List[Way]] = None,
-    road_spatial_grid=None,
 ) -> None:
     """Draw parks, forests, and green spaces intersecting viewport."""
     import pygame
 
     vminx, vminy, vmaxx, vmaxy = get_viewport_bounds(camx, camy, px_per_m, screen_w, screen_h, 80.0)
 
-    tree_budget = max(600, screen_w * screen_h // 400)
-
-    def tree_is_on_road(tree_x: float, tree_y: float) -> bool:
-        return ways is not None and is_point_on_road(
-            tree_x,
-            tree_y,
-            ways=ways,
-            spatial_grid=road_spatial_grid,
-            car_roads_only=True,
-        )
     visible_sceneries = (
         spatial_grid.ways_in_rect(vminx, vminy, vmaxx, vmaxy)
         if spatial_grid is not None
@@ -178,7 +156,126 @@ def _draw_scenery_uncached(
         pts = [world_to_screen(x, y, camx, camy, px_per_m, screen_w, screen_h) for (x, y) in sc.points_m]
         color = SCENERY_COLORS.get(sc.kind.lower(), (38, 105, 38))
         pygame.draw.polygon(screen, color, pts)
+
+
+def draw_trees(
+    screen,
+    sceneries: List[Scenery],
+    camx: float,
+    camy: float,
+    px_per_m: float = PX_PER_M,
+    screen_w: int = SCREEN_W,
+    screen_h: int = SCREEN_H,
+    tree_effects=None,
+    fallen_trees=None,
+    spatial_grid=None,
+    ways: Optional[List[Way]] = None,
+    road_spatial_grid=None,
+    profiler=None,
+) -> None:
+    """Draw cached trees, on top of everything ground-level drawn earlier
+    in the frame - scenery fills, water, roads, parking spaces.
+
+    Deliberately NOT part of draw_scenery()'s cache, and called from main
+    after draw_ways()/draw_parking_spaces(), not before: a real OSM tree
+    (osm/trees.py plants every one it finds, regardless of what other
+    polygon it geometrically overlaps - a park's tree can sit right at the
+    edge of a bordering parking lot or a big landuse area) must never end
+    up invisible under a road or parking surface painted over it later in
+    the frame. Has its own static cache, same as every other map layer -
+    an active tree_effect/fallen_tree (shake, falling, leaf particles - a
+    tree the player just hit) forces the uncached path, same as the old
+    combined scenery+trees pass used to, since those animate every frame
+    and a cache can't represent that.
+    """
+    import pygame
+    cache_zoom = _static_cache_zoom(px_per_m)
+
+    if tree_effects or fallen_trees:
+        _draw_trees_uncached(
+            screen, sceneries, camx, camy, px_per_m, screen_w, screen_h,
+            tree_effects, fallen_trees, spatial_grid, ways, road_spatial_grid,
+        )
+        return
+
+    frame_cache_key = (
+        id(sceneries), len(sceneries), id(sceneries[-1]) if sceneries else None,
+        id(ways), id(spatial_grid), id(road_spatial_grid),
+        round(camx * cache_zoom / 128.0), round(camy * cache_zoom / 128.0),
+        cache_zoom, screen.get_size(),
+    )
+    if frame_cache_key == common._tree_frame_cache_key and common._tree_frame_cache_surface is not None:
+        cached_camx, cached_camy = common._tree_frame_cache_camera
+        screen.blit(
+            common._tree_frame_cache_surface,
+            (
+                round((cached_camx - camx) * cache_zoom) - CACHE_PADDING_PX,
+                round((camy - cached_camy) * cache_zoom) - CACHE_PADDING_PX,
+            ),
+        )
+        return
+    if _rebuild_or_stale(screen, "trees", common._tree_frame_cache_surface, common._tree_frame_cache_camera, camx, camy, cache_zoom):
+        return
+    cache_width = screen_w + CACHE_PADDING_PX * 2
+    cache_height = screen_h + CACHE_PADDING_PX * 2
+    cache_surface = pygame.Surface((cache_width, cache_height), pygame.SRCALPHA)
+    rebuild_started = time.perf_counter() if profiler is not None else 0.0
+    _draw_trees_uncached(
+        cache_surface, sceneries, camx, camy, cache_zoom, cache_width, cache_height,
+        None, None, spatial_grid, ways, road_spatial_grid,
+    )
+    if profiler is not None:
+        profiler.record("render:trees_cache_rebuild", (time.perf_counter() - rebuild_started) * 1000.0)
+    common._tree_frame_cache_key = frame_cache_key
+    common._tree_frame_cache_surface = cache_surface
+    common._tree_frame_cache_camera = (camx, camy)
+    screen.blit(cache_surface, (-CACHE_PADDING_PX, -CACHE_PADDING_PX))
+
+
+def _draw_trees_uncached(
+    screen,
+    sceneries: List[Scenery],
+    camx: float,
+    camy: float,
+    px_per_m: float = PX_PER_M,
+    screen_w: int = SCREEN_W,
+    screen_h: int = SCREEN_H,
+    tree_effects=None,
+    fallen_trees=None,
+    spatial_grid=None,
+    ways: Optional[List[Way]] = None,
+    road_spatial_grid=None,
+) -> None:
+    """Draw every tree. Bounded the same way regardless of cache/uncached
+    path: tree_budget-limited and viewport-culled, so cost stays
+    proportional to what's on screen, not the whole loaded map."""
+    import pygame
+
+    vminx, vminy, vmaxx, vmaxy = get_viewport_bounds(camx, camy, px_per_m, screen_w, screen_h, 80.0)
+    tree_budget = max(600, screen_w * screen_h // 400)
+
+    def tree_is_on_road(tree_x: float, tree_y: float) -> bool:
+        return ways is not None and is_point_on_road(
+            tree_x,
+            tree_y,
+            ways=ways,
+            spatial_grid=road_spatial_grid,
+            car_roads_only=True,
+        )
+
+    visible_sceneries = (
+        spatial_grid.ways_in_rect(vminx, vminy, vmaxx, vmaxy)
+        if spatial_grid is not None
+        else sceneries
+    )
+    for sc in visible_sceneries:
+        bb = getattr(sc, "bbox", None)
+        if bb and bb != (0.0, 0.0, 0.0, 0.0):
+            if bb[2] < vminx or bb[0] > vmaxx or bb[3] < vminy or bb[1] > vmaxy:
+                continue
         trees = getattr(sc, "trees", [])
+        if not trees:
+            continue
         visible_tree_count = sum(
             1 for tree_x, tree_y in trees
             if vminx <= tree_x <= vmaxx
@@ -226,6 +323,114 @@ def _draw_scenery_uncached(
                     drift_x = math.sin(leaf_index * 2.7 + (1.2 - leaves_left) * 8.0) * 12.0 * px_per_m
                     drift_y = -(1.2 - leaves_left) * 20.0 * px_per_m + math.cos(leaf_index * 1.9) * 5.0 * px_per_m
                     pygame.draw.circle(screen, (82, 145, 44), (int(sx + drift_x), int(sy - crown + drift_y)), max(1, int(px_per_m * 0.22)))
+
+
+SCENERY_OBJECT_COLORS = {
+    "bench": (120, 82, 45),
+    "waste_basket": (58, 66, 56),
+    "bicycle_parking": (75, 95, 115),
+    "statue": (150, 130, 85),
+}
+_STATUE_PEDESTAL_COLOR = (110, 110, 105)
+
+
+def draw_scenery_objects(
+    screen,
+    scenery_objects: List[SceneryObject],
+    camx: float,
+    camy: float,
+    px_per_m: float = PX_PER_M,
+    screen_w: int = SCREEN_W,
+    screen_h: int = SCREEN_H,
+    profiler=None,
+) -> None:
+    """Draw cached small decorative OSM point objects - benches, waste
+    baskets, bicycle parking, statues/memorials - as simple primitive
+    icons (no sprite assets exist in this project; every other point/area
+    feature is drawn the same way).
+
+    Called from the same spot as draw_trees(), after roads/parking - same
+    reasoning as there (see draw_trees docstring): one of these can sit
+    near a road or parking-lot edge just like a real tree can, and must
+    not end up invisible under a surface painted over it earlier in the
+    frame. No dynamic per-object effects exist (unlike trees), so unlike
+    draw_trees() this never needs to bypass its cache.
+    """
+    import pygame
+    cache_zoom = _static_cache_zoom(px_per_m)
+
+    frame_cache_key = (
+        id(scenery_objects), len(scenery_objects), id(scenery_objects[-1]) if scenery_objects else None,
+        round(camx * cache_zoom / 128.0), round(camy * cache_zoom / 128.0),
+        cache_zoom, screen.get_size(),
+    )
+    if frame_cache_key == common._scenery_object_frame_cache_key and common._scenery_object_frame_cache_surface is not None:
+        cached_camx, cached_camy = common._scenery_object_frame_cache_camera
+        screen.blit(
+            common._scenery_object_frame_cache_surface,
+            (
+                round((cached_camx - camx) * cache_zoom) - CACHE_PADDING_PX,
+                round((camy - cached_camy) * cache_zoom) - CACHE_PADDING_PX,
+            ),
+        )
+        return
+    if _rebuild_or_stale(
+        screen, "scenery_objects", common._scenery_object_frame_cache_surface,
+        common._scenery_object_frame_cache_camera, camx, camy, cache_zoom,
+    ):
+        return
+    cache_width = screen_w + CACHE_PADDING_PX * 2
+    cache_height = screen_h + CACHE_PADDING_PX * 2
+    cache_surface = pygame.Surface((cache_width, cache_height), pygame.SRCALPHA)
+    rebuild_started = time.perf_counter() if profiler is not None else 0.0
+    _draw_scenery_objects_uncached(cache_surface, scenery_objects, camx, camy, cache_zoom, cache_width, cache_height)
+    if profiler is not None:
+        profiler.record("render:scenery_objects_cache_rebuild", (time.perf_counter() - rebuild_started) * 1000.0)
+    common._scenery_object_frame_cache_key = frame_cache_key
+    common._scenery_object_frame_cache_surface = cache_surface
+    common._scenery_object_frame_cache_camera = (camx, camy)
+    screen.blit(cache_surface, (-CACHE_PADDING_PX, -CACHE_PADDING_PX))
+
+
+def _draw_scenery_objects_uncached(
+    screen,
+    scenery_objects: List[SceneryObject],
+    camx: float,
+    camy: float,
+    px_per_m: float = PX_PER_M,
+    screen_w: int = SCREEN_W,
+    screen_h: int = SCREEN_H,
+) -> None:
+    import pygame
+
+    if not scenery_objects:
+        return
+
+    vminx, vminy, vmaxx, vmaxy = get_viewport_bounds(camx, camy, px_per_m, screen_w, screen_h, 20.0)
+    for obj in scenery_objects:
+        if not (vminx <= obj.x <= vmaxx and vminy <= obj.y <= vmaxy):
+            continue
+        sx, sy = world_to_screen(obj.x, obj.y, camx, camy, px_per_m, screen_w, screen_h)
+        if obj.kind == "bench":
+            width = max(2, int(1.4 * px_per_m))
+            depth = max(1, int(0.4 * px_per_m))
+            pygame.draw.rect(screen, SCENERY_OBJECT_COLORS["bench"], (sx - width // 2, sy - depth // 2, width, depth))
+        elif obj.kind == "waste_basket":
+            size = max(2, int(0.6 * px_per_m))
+            pygame.draw.rect(screen, SCENERY_OBJECT_COLORS["waste_basket"], (sx - size // 2, sy - size // 2, size, size))
+        elif obj.kind == "bicycle_parking":
+            color = SCENERY_OBJECT_COLORS["bicycle_parking"]
+            size = max(2, int(0.8 * px_per_m))
+            pygame.draw.rect(screen, color, (sx - size // 2, sy - size // 4, size, max(1, size // 2)))
+            bar_height = max(2, int(0.5 * px_per_m))
+            for dx in (-size // 3, 0, size // 3):
+                pygame.draw.line(screen, color, (sx + dx, sy - bar_height), (sx + dx, sy), max(1, int(px_per_m * 0.08)))
+        elif obj.kind == "statue":
+            pedestal_w = max(2, int(0.9 * px_per_m))
+            pedestal_h = max(2, int(0.6 * px_per_m))
+            pygame.draw.rect(screen, _STATUE_PEDESTAL_COLOR, (sx - pedestal_w // 2, sy, pedestal_w, pedestal_h))
+            radius = max(2, int(0.5 * px_per_m))
+            pygame.draw.circle(screen, SCENERY_OBJECT_COLORS["statue"], (sx, sy - radius // 2), radius)
 
 
 def draw_parking_spaces(screen, parking_spaces, camx: float, camy: float, px_per_m: float = PX_PER_M,

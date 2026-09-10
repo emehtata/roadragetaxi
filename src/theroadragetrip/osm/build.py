@@ -33,6 +33,8 @@ from .models import (
     Crossing,
     TaxiStop,
     BusStop,
+    SceneryObject,
+    SpeedBump,
     MapData,
 )
 
@@ -43,6 +45,136 @@ from .traffic_signals import (
 from .trees import (
     plant_trees,
 )
+
+# OSM tags -> SceneryObject.kind for small decorative point features (see
+# render/scenery.py:draw_scenery_objects() for how each kind is drawn).
+# Deliberately narrow: only the statue-like historic/tourism subtypes count
+# as "statue" - a flat plaque or a bare stele isn't a 3D object worth its
+# own icon the way a statue/bust/sculpture is.
+_STATUE_MEMORIAL_TYPES = {"statue", "bust", "sculpture"}
+_STATUE_ARTWORK_TYPES = {"statue", "sculpture"}
+
+
+def _scenery_object_kind(tags: Dict[str, str]) -> Optional[str]:
+    amenity = tags.get("amenity")
+    if amenity in ("bench", "waste_basket", "bicycle_parking"):
+        return amenity
+    if tags.get("historic") == "memorial" and tags.get("memorial") in _STATUE_MEMORIAL_TYPES:
+        return "statue"
+    if tags.get("tourism") == "artwork" and tags.get("artwork_type") in _STATUE_ARTWORK_TYPES:
+        return "statue"
+    return None
+
+
+def _build_roads_grid(ways: List["Way"], r_grid_size: float) -> Dict[Tuple[int, int], List["Way"]]:
+    """Spatial grid of drivable roads, for finding the nearest road's
+    direction/width at a point (crossings, speed bumps: both need to snap
+    an OSM node - often digitized a little off the centerline - onto the
+    road it actually belongs to)."""
+    roads_grid: Dict[Tuple[int, int], List["Way"]] = defaultdict(list)
+    for w in ways:
+        if not getattr(w, "is_drivable", True):
+            continue
+        bbox = getattr(w, "bbox", None)
+        if not bbox or bbox == (0.0, 0.0, 0.0, 0.0):
+            continue
+        minx_b, miny_b, maxx_b, maxy_b = bbox
+        gx0 = int((minx_b - 5.0) // r_grid_size)
+        gx1 = int((maxx_b + 5.0) // r_grid_size)
+        gy0 = int((miny_b - 5.0) // r_grid_size)
+        gy1 = int((maxy_b + 5.0) // r_grid_size)
+        for gx in range(gx0, gx1 + 1):
+            for gy in range(gy0, gy1 + 1):
+                roads_grid[(gx, gy)].append(w)
+    return roads_grid
+
+
+def _snap_to_nearest_road(
+    pt: Tuple[float, float],
+    layer_val: int,
+    roads_grid: Dict[Tuple[int, int], List["Way"]],
+    r_grid_size: float,
+    max_dist: float = 8.0,
+    junction_tie_m: float = 1.5,
+) -> Tuple[float, float, float, float, bool]:
+    """Snap `pt` onto the nearest same-layer drivable road within
+    `max_dist`. Returns (x, y, direction_angle_rad, road_half_width_m,
+    found) - (pt[0], pt[1], 0.0, 3.5, False) if nothing was close enough.
+
+    OSM splits a road into a separate way object at every junction, so a
+    node sitting exactly at a T-junction (a highway=crossing/traffic_calming
+    node is sometimes digitized right on the junction vertex rather than
+    slightly along the road it actually crosses) is equidistant from
+    *every* road meeting there - including a short side street that merely
+    starts or ends at that point. Picking whichever happens to be nearest
+    by a hair is then a coin flip between the through road being crossed
+    and that side street - showing up as the crossing/bump rendering along
+    the wrong road, up to 90 degrees off real-world data confirmed this:
+    a crossing/table node at the exact junction of two residential streets
+    snapped to the short side street's ~142 deg heading instead of the
+    through road's ~57 deg one. Among roads tied for nearest (within
+    junction_tie_m of each other), prefer one whose name has *another*
+    tied candidate sharing it - the through road, split into two way
+    objects by the junction, unlike a side street that only touches this
+    point once.
+    """
+    gx = int(pt[0] // r_grid_size)
+    gy = int(pt[1] // r_grid_size)
+    # A way spanning multiple grid cells is registered in each of them (see
+    # _build_roads_grid), so the same way object can turn up more than once
+    # here - dedupe by identity, or its name would be over-counted in the
+    # junction tie-break below (a lone side street inflated to look like a
+    # through road split into pieces, defeating the whole tie-break).
+    candidate_roads = []
+    seen_way_ids: set = set()
+    for dx_c in (-1, 0, 1):
+        for dy_c in (-1, 0, 1):
+            for w in roads_grid.get((gx + dx_c, gy + dy_c), []):
+                if id(w) not in seen_way_ids:
+                    seen_way_ids.add(id(w))
+                    candidate_roads.append(w)
+
+    matches = []  # (distance, x, y, angle, half_width, name) - closest point per candidate way
+    for w in candidate_roads:
+        if getattr(w, "layer", 0) != layer_val:
+            continue
+        pts = w.points_m
+        best_for_way = None
+        for i in range(len(pts) - 1):
+            p1, p2 = pts[i], pts[i + 1]
+            dx = p2[0] - p1[0]
+            dy = p2[1] - p1[1]
+            seg_len = math.hypot(dx, dy)
+            if seg_len <= 1e-3:
+                continue
+            t = max(0.0, min(1.0, ((pt[0] - p1[0]) * dx + (pt[1] - p1[1]) * dy) / (seg_len * seg_len)))
+            px = p1[0] + t * dx
+            py = p1[1] + t * dy
+            d = math.hypot(pt[0] - px, pt[1] - py)
+            if d > max_dist:
+                continue
+            if best_for_way is None or d < best_for_way[0]:
+                angle = math.atan2(dy, dx) % math.pi
+                best_for_way = (d, px, py, angle, getattr(w, "half_width_m", 3.5), getattr(w, "name", None))
+        if best_for_way is not None:
+            matches.append(best_for_way)
+
+    if not matches:
+        return pt[0], pt[1], 0.0, 3.5, False
+
+    matches.sort(key=lambda m: m[0])
+    tied = [m for m in matches if m[0] <= matches[0][0] + junction_tie_m]
+    if len(tied) > 1:
+        name_counts: Dict[Optional[str], int] = {}
+        for m in tied:
+            name_counts[m[5]] = name_counts.get(m[5], 0) + 1
+        through_roads = [m for m in tied if m[5] is not None and name_counts[m[5]] > 1]
+        if through_roads:
+            through_roads.sort(key=lambda m: m[0])
+            tied = through_roads
+
+    _, snap_x, snap_y, road_angle, road_half_w, _ = tied[0]
+    return snap_x, snap_y, road_angle, road_half_w, True
 
 
 def _stitch_member_ways_into_rings(
@@ -151,9 +283,12 @@ def build_ways(
     stop_signs_raw: List[Tuple[dict, int]] = []
     yield_signs_raw: List[Tuple[dict, int]] = []
     crossings_raw: List[Tuple[dict, int]] = []
+    speed_bumps_raw: List[Tuple[dict, int]] = []
     taxi_stops_raw: List[Tuple[dict, int]] = []
     bus_stops_raw: List[Tuple[dict, int]] = []
     bus_platforms_raw: List[Tuple[dict, List[int], int]] = []
+    tree_node_ids: List[int] = []
+    scenery_object_nodes_raw: List[Tuple[dict, int]] = []
     entrance_node_ids: set[int] = set()
     ways_by_id: Dict[int, dict] = {}
     ways_raw: List[Tuple[dict, str, List[int]]] = []
@@ -194,6 +329,12 @@ def build_ways(
                 parking_space_nodes_raw.append((tags, nid))
             if tags.get("highway") == "crossing" or tags.get("crossing") in ("zebra", "marked", "uncontrolled", "traffic_signals", "yes"):
                 crossings_raw.append((tags, nid))
+            if tags.get("traffic_calming") in ("bump", "table", "cushion", "hump"):
+                speed_bumps_raw.append((tags, nid))
+            if tags.get("natural") == "tree":
+                tree_node_ids.append(nid)
+            if _scenery_object_kind(tags) is not None:
+                scenery_object_nodes_raw.append((tags, nid))
         elif el_type == "way":
             tags = el.get("tags", {})
             node_ids = el.get("nodes", [])
@@ -260,6 +401,12 @@ def build_ways(
     t_transform = time.time() - t_start
     logger.info("Coordinate transformation finished in %.3fs (%d nodes)", t_transform, len(nodes_m))
 
+    real_trees_m: List[Tuple[float, float]] = [
+        nodes_m[nid] for nid in tree_node_ids if nid in nodes_m
+    ]
+    if real_trees_m:
+        logger.info("Found %d real OSM tree positions (natural=tree)", len(real_trees_m))
+
     ways: List[Way] = []
     waters: List[Water] = []
     curbs: List[Curb] = []
@@ -270,9 +417,11 @@ def build_ways(
     stop_signs: List[StopSign] = []
     yield_signs: List[YieldSign] = []
     crossings: List[Crossing] = []
+    speed_bumps: List[SpeedBump] = []
     taxi_stops: List[TaxiStop] = []
     bus_stops: List[BusStop] = []
     parking_spaces: List[ParkingSpace] = []
+    scenery_objects: List[SceneryObject] = []
 
     minx = miny = float("inf")
     maxx = maxy = float("-inf")
@@ -612,6 +761,7 @@ def build_ways(
     plant_trees(
         sceneries,
         ways,
+        real_trees=real_trees_m,
         progress_callback=progress_callback,
         progress_start=0.965,
         progress_end=0.97,
@@ -678,7 +828,7 @@ def build_ways(
             elif "leisure" in tags or "landuse" in tags or tags.get("natural") in ("forest", "wood", "scrub", "grass"):
                 kind = tags.get("leisure") or tags.get("landuse") or tags.get("natural") or "park"
                 scenery = Scenery(points_m=pts, kind=kind, name=name, bbox=ibbox)
-                plant_trees([scenery], ways)
+                plant_trees([scenery], ways, real_trees=real_trees_m)
                 sceneries.append(scenery)
             elif "place" in tags and name and pts:
                 cx = sum(xs) / len(xs)
@@ -712,6 +862,12 @@ def build_ways(
         pt = nodes_m.get(nid)
         if pt:
             taxi_stops.append(TaxiStop(x=pt[0], y=pt[1], id=nid))
+
+    for tags, nid in scenery_object_nodes_raw:
+        pt = nodes_m.get(nid)
+        kind = _scenery_object_kind(tags)
+        if pt and kind is not None:
+            scenery_objects.append(SceneryObject(x=pt[0], y=pt[1], kind=kind, name=tags.get("name"), id=nid))
 
     for tags, nid in bus_stops_raw:
         pt = nodes_m.get(nid)
@@ -783,25 +939,12 @@ def build_ways(
             layer_value = 0
         yield_signs.append(YieldSign(point[0], point[1], layer=layer_value, id=nid))
 
-    # 9. Pedestrian Crossings (suojatiet) from OSM nodes and ways
-    if crossings_raw:
-        # Build spatial grid of drivable roads to find road direction and road width at crossing
-        roads_grid: dict[Tuple[int, int], List[Way]] = defaultdict(list)
+    # 9. Pedestrian Crossings (suojatiet) and speed bumps from OSM nodes -
+    # both are "snap this node onto the nearest road, get its direction
+    # and width" problems, so they share one roads_grid/_snap_to_nearest_road.
+    if crossings_raw or speed_bumps_raw:
         r_grid_size = 50.0
-        for w in ways:
-            if not getattr(w, "is_drivable", True):
-                continue
-            bbox = getattr(w, "bbox", None)
-            if not bbox or bbox == (0.0, 0.0, 0.0, 0.0):
-                continue
-            minx_b, miny_b, maxx_b, maxy_b = bbox
-            gx0 = int((minx_b - 5.0) // r_grid_size)
-            gx1 = int((maxx_b + 5.0) // r_grid_size)
-            gy0 = int((miny_b - 5.0) // r_grid_size)
-            gy1 = int((maxy_b + 5.0) // r_grid_size)
-            for gx in range(gx0, gx1 + 1):
-                for gy in range(gy0, gy1 + 1):
-                    roads_grid[(gx, gy)].append(w)
+        roads_grid = _build_roads_grid(ways, r_grid_size)
 
         seen_crossing_locs: Set[Tuple[int, int]] = set()
 
@@ -825,44 +968,13 @@ def build_ways(
                     pass
 
             crossing_type = tags.get("crossing") or tags.get("crossing_ref") or "zebra"
-            road_angle = 0.0
-            road_half_w = 3.5
-            best_dist = 8.0
-            found_orientation = False
             # The OSM crossing node itself is often digitized a little off the
-            # road centerline (up to best_dist=8m in practice) - snap to the
-            # nearest point on the matched road so the rendered zebra stripes
-            # sit flush on the road surface instead of floating beside it.
-            snap_x, snap_y = pt
-
-            gx = int(pt[0] // r_grid_size)
-            gy = int(pt[1] // r_grid_size)
-            candidate_roads = []
-            for dx_c in (-1, 0, 1):
-                for dy_c in (-1, 0, 1):
-                    candidate_roads.extend(roads_grid.get((gx + dx_c, gy + dy_c), []))
-
-            for w in candidate_roads:
-                if getattr(w, "layer", 0) != layer_val:
-                    continue
-                pts = w.points_m
-                for i in range(len(pts) - 1):
-                    p1, p2 = pts[i], pts[i + 1]
-                    dx = p2[0] - p1[0]
-                    dy = p2[1] - p1[1]
-                    seg_len = math.hypot(dx, dy)
-                    if seg_len > 1e-3:
-                        t = max(0.0, min(1.0, ((pt[0] - p1[0]) * dx + (pt[1] - p1[1]) * dy) / (seg_len * seg_len)))
-                        px = p1[0] + t * dx
-                        py = p1[1] + t * dy
-                        d = math.hypot(pt[0] - px, pt[1] - py)
-                        if d < best_dist:
-                            best_dist = d
-                            ang = math.atan2(dy, dx) % math.pi
-                            road_angle = ang
-                            road_half_w = getattr(w, "half_width_m", 3.5)
-                            found_orientation = True
-                            snap_x, snap_y = px, py
+            # road centerline - snap to the nearest point on the matched road
+            # so the rendered zebra stripes sit flush on the road surface
+            # instead of floating beside it.
+            snap_x, snap_y, road_angle, road_half_w, found_orientation = _snap_to_nearest_road(
+                pt, layer_val, roads_grid, r_grid_size
+            )
 
             crossings.append(
                 Crossing(
@@ -892,6 +1004,44 @@ def build_ways(
                 if dist < nearest_dist:
                     nearest_dist = dist
             crossing.width_m = min(crossing.width_m, nearest_dist)
+
+        # 9b. Speed bumps/tables/cushions - real physical raised road
+        # features (as opposed to traffic_calming=no/island, which aren't).
+        # A "table" is very often also a raised pedestrian crossing (see
+        # osm/build.py's tag mapping), so it can legitimately land right on
+        # top of a Crossing above - that's correct, not a duplicate.
+        seen_bump_locs: Set[Tuple[int, int]] = set()
+        for tags, nid in speed_bumps_raw:
+            pt = nodes_m.get(nid)
+            if not pt:
+                continue
+            loc_key = (int(round(pt[0] / 2.0)), int(round(pt[1] / 2.0)))
+            if loc_key in seen_bump_locs:
+                continue
+            seen_bump_locs.add(loc_key)
+
+            layer_tag = tags.get("layer", "")
+            layer_val = 0
+            if layer_tag:
+                try:
+                    layer_val = int(layer_tag)
+                except ValueError:
+                    pass
+
+            snap_x, snap_y, road_angle, road_half_w, found_orientation = _snap_to_nearest_road(
+                pt, layer_val, roads_grid, r_grid_size
+            )
+            speed_bumps.append(
+                SpeedBump(
+                    x=snap_x,
+                    y=snap_y,
+                    layer=layer_val,
+                    id=nid,
+                    kind=tags["traffic_calming"],
+                    direction_angle=road_angle if found_orientation else None,
+                    width_m=max(3.0, road_half_w * 1.8),
+                )
+            )
 
     t_total = time.time() - t_start
     logger.info(
@@ -933,5 +1083,5 @@ def build_ways(
     return MapData(
         ways, waters, buildings, sceneries, places, (minx, miny, maxx, maxy),
         traffic_lights, crossings, taxi_stops, bus_stops, parking_spaces, logical_intersections, stop_signs, yield_signs,
-        curbs=curbs,
+        curbs=curbs, scenery_objects=scenery_objects, speed_bumps=speed_bumps,
     )

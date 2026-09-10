@@ -2,7 +2,7 @@ from collections import defaultdict
 import logging
 import math
 import random
-from typing import Callable, List, Optional
+from typing import Callable, List, Optional, Tuple
 
 
 from ..geo import dist_point_to_segment, point_in_polygon
@@ -18,11 +18,21 @@ from .models import (
 def plant_trees(
     sceneries: List[Scenery],
     ways: List[Way],
+    real_trees: Optional[List[Tuple[float, float]]] = None,
     progress_callback: Optional[Callable[[float, str], None]] = None,
     progress_start: float = 0.0,
     progress_end: float = 1.0,
 ) -> None:
-    """Add deterministic tree centers to green areas while keeping them off roads."""
+    """Add deterministic tree centers to green areas while keeping them off roads.
+
+    `real_trees` is the (x, y) meter positions of any real natural=tree OSM
+    nodes covering this batch. A scenery area that actually contains some
+    of them uses those exact positions instead of procedural placement -
+    some OSM areas (mapped parks, tree-lined squares) have every real tree
+    surveyed, and made-up trees on top of (or instead of) real ones would
+    just be wrong there. Areas with no real tree data fall back to the
+    existing density-based procedural placement, unchanged.
+    """
     tree_density = {
         "forest": 100.0,
         "wood": 100.0,
@@ -38,11 +48,33 @@ def plant_trees(
                 + (progress_end - progress_start) * scenery_index / total,
                 f"Planting trees ({scenery_index}/{total} scenery areas)...",
             )
-        kind = scenery.kind.lower()
-        density = tree_density.get(kind)
-        if density is None or len(scenery.points_m) < 3:
+        if scenery.trees_from_osm:
+            continue  # already has real tree positions - never top up with fake ones
+        if len(scenery.points_m) < 3:
             continue
         minx, miny, maxx, maxy = scenery.bbox
+
+        # Real OSM tree data wins regardless of scenery kind - a "grass"
+        # strip or a "residential"-landuse courtyard can have individually
+        # surveyed trees too, not just forest/park/wood/scrub/garden (the
+        # only kinds that get *procedural* filling below). Gating this on
+        # `kind in tree_density` would silently drop real trees in every
+        # other kind of area even though the data says they're there.
+        if real_trees:
+            matched = [
+                (x, y) for x, y in real_trees
+                if minx <= x <= maxx and miny <= y <= maxy and point_in_polygon(x, y, scenery.points_m)
+            ]
+            if matched:
+                scenery.trees = matched
+                scenery.tree_variations = [abs(math.sin(x * 12.9898 + y * 78.233)) for x, y in matched]
+                scenery.trees_from_osm = True
+                continue
+
+        kind = scenery.kind.lower()
+        density = tree_density.get(kind)
+        if density is None:
+            continue
         area = max(0.0, (maxx - minx) * (maxy - miny))
         target = min(80, max(1, int(area / density)))
         rng = random.Random(f"{round(minx)}:{round(miny)}:{kind}")

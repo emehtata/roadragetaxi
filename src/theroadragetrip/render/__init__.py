@@ -53,11 +53,14 @@ from .common import (
 
 from .scenery import (
     SCENERY_COLORS,
+    SCENERY_OBJECT_COLORS,
     TREE_CROWN_COLORS,
     _draw_scenery_uncached,
     draw_grass_texture,
     draw_parking_spaces,
     draw_scenery,
+    draw_scenery_objects,
+    draw_trees,
 )
 
 from .waters import (
@@ -108,6 +111,7 @@ from .roads import (
     STREET_LIGHT_POOL_STEPS,
     STREET_LIGHT_SHADE_COLOR,
     STREET_LIGHT_SPACING_M,
+    SPEED_BUMP_COLOR,
     TireTrail,
     _point_is_near_building,
     _street_light_glow_cache,
@@ -117,6 +121,7 @@ from .roads import (
     draw_crossings,
     draw_curbs,
     draw_roadworks,
+    draw_speed_bumps,
     draw_speed_cameras,
     draw_street_lights,
     draw_taxi_stops,

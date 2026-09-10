@@ -47,6 +47,12 @@ _water_frame_cache_camera = None
 _road_frame_cache_key = None
 _road_frame_cache_surface = None
 _road_frame_cache_camera = None
+_tree_frame_cache_key = None
+_tree_frame_cache_surface = None
+_tree_frame_cache_camera = None
+_scenery_object_frame_cache_key = None
+_scenery_object_frame_cache_surface = None
+_scenery_object_frame_cache_camera = None
 # The grass background doesn't depend on any streamed world data (it's a
 # fixed tile pattern positioned purely by camera/zoom), so unlike the other
 # five layers it never needs invalidate_static_caches() - it only goes stale
@@ -56,8 +62,13 @@ _grass_frame_cache_key = None
 _grass_frame_cache_surface = None
 _grass_frame_cache_camera = None
 _render_logger = logging.getLogger(__name__)
-_pending_static_rebuilds = set()
+# Insertion-ordered (dict, not set) so the oldest-waiting layer can be told
+# apart from one that just missed for the first time - see
+# _allow_static_rebuild.
+_pending_static_rebuilds: dict = {}
 _static_rebuilds_this_frame = 0
+_frame_priority_layer = None
+_frame_priority_layer_computed = False
 
 
 def invalidate_static_caches() -> None:
@@ -71,11 +82,14 @@ def invalidate_static_caches() -> None:
     """
     global _label_frame_cache_key, _building_frame_cache_key
     global _scenery_frame_cache_key, _water_frame_cache_key, _road_frame_cache_key
+    global _tree_frame_cache_key, _scenery_object_frame_cache_key
     _label_frame_cache_key = None
     _building_frame_cache_key = None
     _scenery_frame_cache_key = None
     _water_frame_cache_key = None
     _road_frame_cache_key = None
+    _tree_frame_cache_key = None
+    _scenery_object_frame_cache_key = None
 
 
 # Kept as an alias: callers at a camera-snap site (a respawn, or a fresh
@@ -91,8 +105,25 @@ invalidate_static_caches_for_camera_jump = invalidate_static_caches
 
 
 def begin_static_cache_frame() -> None:
-    global _static_rebuilds_this_frame
+    global _static_rebuilds_this_frame, _frame_priority_layer_computed, _frame_priority_layer
+    if _static_rebuilds_this_frame == 0 and _frame_priority_layer is not None:
+        # Last frame's designated priority layer never even got asked -
+        # its draw_* call didn't run at all that frame (the only such
+        # case today: draw_labels(), skipped whenever label_mode is 0).
+        # If it had been asked, it would have succeeded unconditionally
+        # (nothing else can consume the frame's one rebuild ahead of the
+        # designated priority layer - see _allow_static_rebuild), so
+        # budget staying at 0 definitively means it was never called, not
+        # that it lost a race. Drop it: otherwise a layer that's stopped
+        # being drawn at all would sit at the front of the queue forever
+        # and starve every *other* layer permanently, not just delay them.
+        _pending_static_rebuilds.pop(_frame_priority_layer, None)
     _static_rebuilds_this_frame = 0
+    # Priority layer is computed lazily, on the first _allow_static_rebuild
+    # call of the frame, not eagerly here - so it snapshots whatever is
+    # actually pending at the moment the frame's layers start asking, not
+    # a stale read from before this frame's callers have even run.
+    _frame_priority_layer_computed = False
 
 
 def _allow_static_rebuild(layer: str, surface) -> bool:
@@ -109,29 +140,42 @@ def _allow_static_rebuild(layer: str, surface) -> bool:
     frame instead of paying for all of them at once, which is what turned
     into periodic FPS dips every time driving crossed a bucket boundary.
 
-    Because _pending_static_rebuilds is a set, a layer already queued for
-    its turn is never queued twice, so even under continuous new staleness
-    (the camera never stops panning) each layer is guaranteed a turn within,
-    worst case, one frame per other layer simultaneously waiting - not
-    indefinitely, which was the previous, too-narrow version's bug: a
-    layer's *un*-queued miss returned "not pending, so allow immediately"
-    unconditionally, which was fine in isolation but meant every other
-    layer's simultaneous miss (the routine case above) raced it for
-    attention every single frame, forever, whenever more than one layer
-    needed rebuilding at once - it just never mattered until several
-    layers' misses started lining up on the same frame routinely.
+    The single rebuild each frame goes to whichever pending layer has been
+    waiting longest (oldest entry in the insertion-ordered
+    _pending_static_rebuilds), not to whichever layer's draw call simply
+    happens to run first this frame. Layers are drawn in a fixed order
+    every frame (grass, scenery, trees, water, roads, buildings, labels,
+    ...) - checking only "is the per-frame budget still free" without that
+    priority meant a layer early in that order (e.g. grass) reliably won
+    the single slot on every frame it was *also* stale, since it's always
+    asked first, starving whatever's later in the order (labels, drawn
+    last) for as long as an earlier layer kept going stale too - which
+    during continuous driving is routinely every frame, not a rare
+    coincidence. That's the bug this priority fixes: label mode 2 (which
+    forces a rebuild the instant it's toggled, same as any other cache
+    miss) could get stuck showing mode 1's stale cached labels
+    indefinitely while driving, never actually winning the race. With
+    priority given to the longest-waiting layer, each one is guaranteed
+    its turn within, worst case, one frame per *other* layer simultaneously
+    waiting - not indefinitely.
 
     The very first build for a layer (surface is None) is exempt: there's
     nothing to show yet, so it can't be deferred to a later frame.
     """
-    global _static_rebuilds_this_frame
+    global _static_rebuilds_this_frame, _frame_priority_layer, _frame_priority_layer_computed
     if surface is None:
         return True
-    _pending_static_rebuilds.add(layer)
+    if not _frame_priority_layer_computed:
+        _frame_priority_layer = next(iter(_pending_static_rebuilds), None)
+        _frame_priority_layer_computed = True
     if _static_rebuilds_this_frame >= 1:
+        _pending_static_rebuilds.setdefault(layer, None)
+        return False
+    if _frame_priority_layer is not None and layer != _frame_priority_layer:
+        _pending_static_rebuilds.setdefault(layer, None)
         return False
     _static_rebuilds_this_frame += 1
-    _pending_static_rebuilds.discard(layer)
+    _pending_static_rebuilds.pop(layer, None)
     return True
 
 

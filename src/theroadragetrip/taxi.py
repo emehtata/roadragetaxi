@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple
 
 from .geo import clamp, closest_point_and_dist_to_segment, compute_bbox, dist_point_to_segment, get_oriented_box_corners, point_in_polygon, segments_intersect
-from .osm import Building, Curb, Place, TaxiStop, Way
+from .osm import Building, Curb, Place, SpeedBump, TaxiStop, Way
 from .physics import Car, SpatialWayGrid, connected_drivable_ways, is_car_road, is_point_on_road, is_violating_oneway
 from .localization import tr
 from .police import SpeedCamera, camera_sees_car
@@ -165,6 +165,7 @@ class TaxiManager:
         self._crashed_building_cooldowns: Dict[int, float] = {}  # building id -> timestamp cooldown
         self._crashed_tree_cooldowns: Dict[Tuple[int, int], float] = {}
         self._curb_bump_cooldowns: Dict[int, float] = {}  # curb id -> timestamp cooldown
+        self._speed_bump_cooldowns: Dict[int, float] = {}  # speed bump id -> timestamp cooldown
         self._speed_camera_hits: set[int] = set()
         self.tree_effects: Dict[Tuple[int, int], Dict[str, float]] = {}
         self.fallen_trees: set[Tuple[int, int]] = set()
@@ -494,6 +495,64 @@ class TaxiManager:
                     self._curb_bump_cooldowns[curb_id] = sim_time
                     player_car.speed *= speed_factor
                     return True
+        return False
+
+    def check_speed_bump(
+        self,
+        player_car: Car,
+        speed_bumps: List[SpeedBump],
+        previous_position: Optional[Tuple[float, float]],
+        sim_time: float,
+        speed_bump_grid: Optional[SpatialWayGrid] = None,
+        safe_speed_kmh: float = 25.0,
+        max_slowdown: float = 0.5,
+    ) -> bool:
+        """Jolt and slow the car when it drives over a speed bump/table/
+        cushion - harder the faster it was going, like a real one. Under
+        `safe_speed_kmh` (a driver taking it properly slow) there's no
+        penalty at all; above it, the car loses more speed the further
+        over that it was going, capped at `max_slowdown` so it can never
+        outright stop the car."""
+        if not speed_bumps or previous_position is None:
+            return False
+        px, py = previous_position
+        if px == player_car.x and py == player_car.y:
+            return False
+
+        expired = [key for key, t in self._speed_bump_cooldowns.items() if sim_time - t > 1.0]
+        for key in expired:
+            del self._speed_bump_cooldowns[key]
+
+        radius = math.hypot(player_car.length_m, player_car.width_m) * 0.5
+        candidates = (
+            speed_bump_grid.ways_in_rect(
+                min(px, player_car.x) - radius, min(py, player_car.y) - radius,
+                max(px, player_car.x) + radius, max(py, player_car.y) + radius,
+            )
+            if speed_bump_grid is not None
+            else speed_bumps
+        )
+        for bump in candidates:
+            bump_id = id(bump)
+            if bump_id in self._speed_bump_cooldowns:
+                continue
+            # The bump spans width_m across the road, centered on (x, y);
+            # build that short perpendicular segment and test whether the
+            # car's movement this frame crossed it - same shape draw_speed_bumps()
+            # renders.
+            angle = getattr(bump, "direction_angle", None) or 0.0
+            half_w = getattr(bump, "width_m", 3.5) * 0.5
+            perp_x, perp_y = -math.sin(angle), math.cos(angle)
+            start = (bump.x - perp_x * half_w, bump.y - perp_y * half_w)
+            end = (bump.x + perp_x * half_w, bump.y + perp_y * half_w)
+            if segments_intersect((px, py), (player_car.x, player_car.y), start, end):
+                self._speed_bump_cooldowns[bump_id] = sim_time
+                speed_kmh = abs(player_car.speed) * 3.6
+                if speed_kmh > safe_speed_kmh:
+                    excess_kmh = speed_kmh - safe_speed_kmh
+                    slowdown = min(max_slowdown, excess_kmh / 150.0)
+                    player_car.speed *= (1.0 - slowdown)
+                return True
         return False
 
     def get_red_light_assist_speed_limit(

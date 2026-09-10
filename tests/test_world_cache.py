@@ -27,6 +27,29 @@ def test_rwc_round_trip_preserves_game_data(tmp_path, sample_world):
     assert loaded.ways[0].speed_limit_kmh == sample_world.ways[0].speed_limit_kmh
 
 
+def test_rwc_round_trip_preserves_scenery_objects(tmp_path):
+    """Benches/waste baskets/bicycle parking/statues (osm/build.py's
+    scenery_objects) must survive a save/load round trip - the bundled
+    sample map used by `sample_world` has none of these tags, so this
+    needs its own small synthetic fixture with some."""
+    elements = [
+        {"type": "node", "id": 1, "lat": 60.0, "lon": 25.0, "tags": {"amenity": "bench"}},
+        {"type": "node", "id": 2, "lat": 60.001, "lon": 25.001, "tags": {"historic": "memorial", "memorial": "statue", "name": "Founder"}},
+    ]
+    world = build_ways(elements)
+    assert len(world.scenery_objects) == 2  # sanity: the fixture actually produced some
+
+    path = tmp_path / "furniture.rwc"
+    BinaryWorldCacheWriter().write(path, world, area_id="area")
+    loaded = BinaryWorldCacheLoader().load(path)
+
+    assert len(loaded.scenery_objects) == 2
+    by_id = {obj.id: obj for obj in loaded.scenery_objects}
+    assert by_id[1].kind == "bench"
+    assert by_id[2].kind == "statue"
+    assert by_id[2].name == "Founder"
+
+
 def test_rwc_rehydrates_building_place_associations(tmp_path, sample_world):
     place = Place(10.0, 10.0, "K-Market", "poi")
     building = Building(

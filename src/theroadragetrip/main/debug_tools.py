@@ -50,6 +50,8 @@ def _write_debug_snapshot(
     camera_city_name,
     game_mode: str,
     on_foot: bool,
+    scenery_objects=(),
+    speed_bumps=(),
 ) -> None:
     minx, miny, maxx, maxy = auto_fetch_manager.get_bounds()
     now = time.time()
@@ -89,6 +91,8 @@ def _write_debug_snapshot(
                 "taxi_stops": len(taxi_stops),
                 "traffic_lights": len(traffic_lights),
                 "crossings": len(crossings),
+                "scenery_objects": len(scenery_objects),
+                "speed_bumps": len(speed_bumps),
                 "pedestrians": len(pedestrian_mgr.pedestrians),
             },
             "current_way": {

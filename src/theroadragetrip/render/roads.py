@@ -1345,6 +1345,70 @@ def draw_crossings(
             pygame.draw.line(screen, stripe_color, p1, p2, stripe_thickness)
 
 
+# Darker than every surface_colors entry in road_color_for_way (darkest is
+# asphalt at (70, 70, 70)) - reads as a shadowed raised bump regardless of
+# what the road underneath is paved with, without needing the specific
+# Way a bump snapped to at render time (only its color would be needed;
+# not worth the extra field/coupling for a fixed, always-correct darkening).
+SPEED_BUMP_COLOR = (45, 42, 40)
+
+
+def draw_speed_bumps(
+    screen,
+    speed_bumps: List,
+    camx: float,
+    camy: float,
+    px_per_m: float = PX_PER_M,
+    screen_w: int = SCREEN_W,
+    screen_h: int = SCREEN_H,
+    spatial_grid=None,
+) -> None:
+    """Draw speed bumps/tables/cushions as a solid darker bar across the
+    road - same "bar across the road" geometry as draw_crossings, just
+    filled instead of striped, and typically narrower along the road."""
+    import pygame
+
+    if not speed_bumps:
+        return
+
+    vminx, vminy, vmaxx, vmaxy = get_viewport_bounds(camx, camy, px_per_m, screen_w, screen_h, 20.0)
+
+    visible_bumps = (
+        spatial_grid.ways_in_rect(vminx, vminy, vmaxx, vmaxy)
+        if spatial_grid is not None
+        else speed_bumps
+    )
+    # Real-world lengths along the direction of travel - a "table" is a
+    # flat-topped platform (often also a raised crossing), noticeably
+    # longer than a rounded "bump" or a narrower "cushion".
+    length_m_by_kind = {"table": 2.2, "bump": 0.6, "cushion": 0.4, "hump": 0.6}
+    for b in visible_bumps:
+        bx, by = getattr(b, "x", 0.0), getattr(b, "y", 0.0)
+        if not (vminx <= bx <= vmaxx and vminy <= by <= vmaxy):
+            continue
+
+        sx, sy = world_to_screen(bx, by, camx, camy, px_per_m, screen_w, screen_h)
+        road_angle = getattr(b, "direction_angle", None) or 0.0
+        width_m = getattr(b, "width_m", 3.5)
+        length_m = length_m_by_kind.get(getattr(b, "kind", "bump"), 0.6)
+
+        u_along_x, u_along_y = math.cos(road_angle), -math.sin(road_angle)
+        u_across_x, u_across_y = -u_along_y, u_along_x
+
+        half_len_x = u_along_x * (length_m * px_per_m / 2.0)
+        half_len_y = u_along_y * (length_m * px_per_m / 2.0)
+        half_wid_x = u_across_x * (width_m * px_per_m / 2.0)
+        half_wid_y = u_across_y * (width_m * px_per_m / 2.0)
+
+        corners = [
+            (sx - half_len_x - half_wid_x, sy - half_len_y - half_wid_y),
+            (sx + half_len_x - half_wid_x, sy + half_len_y - half_wid_y),
+            (sx + half_len_x + half_wid_x, sy + half_len_y + half_wid_y),
+            (sx - half_len_x + half_wid_x, sy - half_len_y + half_wid_y),
+        ]
+        pygame.draw.polygon(screen, SPEED_BUMP_COLOR, corners)
+
+
 def draw_traffic_lights(
     screen,
     traffic_lights: List,

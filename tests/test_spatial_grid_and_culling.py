@@ -216,6 +216,7 @@ def test_major_same_layer_road_renders_over_minor_road():
     )
 
     import pygame
+    from theroadragetrip.render import common as common_module
 
     pygame.init()
     screen = pygame.display.set_mode((240, 160))
@@ -223,6 +224,14 @@ def test_major_same_layer_road_renders_over_minor_road():
     minor = Way([(-60.0, -60.0), (60.0, 60.0)], "residential", 4.0)
     major = Way([(-60.0, 0.0), (60.0, 0.0)], "primary", 4.0, surface="concrete")
 
+    # Unlike most other tests in this file, this one previously skipped
+    # resetting the shared static-cache throttle - relying on the "roads"
+    # layer's surface still being None (so _allow_static_rebuild's
+    # first-build exemption bypasses the throttle) whenever this test
+    # happened to run before any other test had ever built one. Order- and
+    # leftover-state-dependent; reset explicitly like the other tests here do.
+    begin_static_cache_frame()
+    common_module._pending_static_rebuilds.clear()
     draw_ways(screen, [minor, major], 0.0, 0.0, px_per_m=1.0, screen_w=240, screen_h=160)
 
     assert screen.get_at((120, 77))[:3] == (142, 142, 138)

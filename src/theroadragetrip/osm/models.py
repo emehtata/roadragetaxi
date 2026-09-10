@@ -133,6 +133,12 @@ class Scenery:
     # merging in) doesn't re-scan every scenery ever loaded - just the
     # newly-added ones.
     trees_checked_against_roads: bool = field(default=False, repr=False)
+    # Set by plant_trees() when .trees came from real OSM natural=tree
+    # nodes rather than procedural placement - marks this scenery as done
+    # so a later plant_trees() call (e.g. autofetch's re-merge with a
+    # fuller road list) never tops it up with fake trees alongside real
+    # ones.
+    trees_from_osm: bool = field(default=False, repr=False)
 
 
 def _building_height(tags: Dict[str, Any], points: List[Tuple[float, float]]) -> float:
@@ -334,6 +340,22 @@ class Crossing:
 
 
 @dataclass
+class SpeedBump:
+    """OSM traffic_calming=bump/table/cushion/hump (a real physical raised
+    road feature, not just a "traffic_calming=no/island" tag with no
+    physical bump). Same shape as Crossing - a bar across the road at a
+    point along it - since it's the same "snap to nearest road, get
+    direction+width" geometry problem; see osm/build.py."""
+    x: float
+    y: float
+    layer: int = 0
+    id: Optional[int] = None
+    kind: str = "bump"  # bump, table, cushion, hump
+    direction_angle: Optional[float] = None  # Road axis alignment angle in radians
+    width_m: float = 3.5  # Across-road width
+
+
+@dataclass
 class TaxiStop:
     x: float
     y: float
@@ -350,13 +372,32 @@ class BusStop:
     shelter: bool = False
 
 
+@dataclass
+class SceneryObject:
+    """A small decorative point object from OSM (bench, waste basket,
+    bicycle parking, statue/memorial, ...), differentiated by `kind`.
+
+    One shared class rather than one per kind: none of these need their
+    own behavior (unlike e.g. TrafficLight's signal timing) - they're all
+    just a position, a kind to pick a small icon by, and an id for
+    dedup/caching. See osm/build.py for the OSM tags -> kind mapping and
+    render/scenery.py:draw_scenery_objects() for how each kind is drawn.
+    """
+
+    x: float
+    y: float
+    kind: str
+    name: Optional[str] = None
+    id: Optional[int] = None
+
+
 class MapData(tuple):
     """Container tuple for build_ways results returning 6 elements for backward compatibility while providing traffic_lights and crossings via attributes and slicing."""
 
-    def __new__(cls, ways, waters, buildings, sceneries, places, bounds, traffic_lights=None, crossings=None, taxi_stops=None, bus_stops=None, parking_spaces=None, logical_intersections=None, stop_signs=None, yield_signs=None, curbs=None):
+    def __new__(cls, ways, waters, buildings, sceneries, places, bounds, traffic_lights=None, crossings=None, taxi_stops=None, bus_stops=None, parking_spaces=None, logical_intersections=None, stop_signs=None, yield_signs=None, curbs=None, scenery_objects=None, speed_bumps=None):
         return super().__new__(cls, (ways, waters, buildings, sceneries, places, bounds))
 
-    def __init__(self, ways, waters, buildings, sceneries, places, bounds, traffic_lights=None, crossings=None, taxi_stops=None, bus_stops=None, parking_spaces=None, logical_intersections=None, stop_signs=None, yield_signs=None, curbs=None):
+    def __init__(self, ways, waters, buildings, sceneries, places, bounds, traffic_lights=None, crossings=None, taxi_stops=None, bus_stops=None, parking_spaces=None, logical_intersections=None, stop_signs=None, yield_signs=None, curbs=None, scenery_objects=None, speed_bumps=None):
         self.ways = ways
         self.waters = waters
         self.buildings = buildings
@@ -371,7 +412,9 @@ class MapData(tuple):
         self.logical_intersections = logical_intersections if logical_intersections is not None else []
         self.stop_signs = stop_signs if stop_signs is not None else []
         self.yield_signs = yield_signs if yield_signs is not None else []
+        self.scenery_objects = scenery_objects if scenery_objects is not None else []
         self.curbs = curbs if curbs is not None else []
+        self.speed_bumps = speed_bumps if speed_bumps is not None else []
 
     @property
     def traffic_signals(self):

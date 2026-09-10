@@ -80,6 +80,7 @@ from ..render import (
     draw_mode_selection_menu,
     draw_compass,
     draw_crossings,
+    draw_speed_bumps,
     draw_curbs,
     draw_day_night_overlay,
     draw_grass_texture,
@@ -105,6 +106,8 @@ from ..render import (
     resident_at_screen_position,
     draw_phone_offers,
     draw_scenery,
+    draw_scenery_objects,
+    draw_trees,
     draw_street_lights,
     draw_taxi_smoke,
     draw_passenger_nausea_bubble,
@@ -543,6 +546,8 @@ def _load_world(
     taxi_stops = getattr(res, "taxi_stops", [])
     bus_stops = getattr(res, "bus_stops", [])
     parking_spaces = getattr(res, "parking_spaces", [])
+    scenery_objects = getattr(res, "scenery_objects", [])
+    speed_bumps = getattr(res, "speed_bumps", [])
     roadworks, roadwork_lights = create_roadworks(ways) if roadworks_enabled else ([], [])
     traffic_lights.extend(roadwork_lights)
     logger.info(
@@ -665,6 +670,8 @@ def _load_world(
         logical_intersections=logical_intersections,
         yield_signs=yield_signs,
         curbs=curbs,
+        scenery_objects=scenery_objects,
+        speed_bumps=speed_bumps,
         fetch_func=_resolve_osm_fetch_func(args, overpass_endpoints),
         build_func=build_ways,
         build_in_process=args.build_in_process,
@@ -697,7 +704,9 @@ def _load_world(
         roadworks=roadworks,
         sceneries=sceneries,
         scenery_grid=scenery_grid,
+        scenery_objects=scenery_objects,
         spatial_grid=spatial_grid,
+        speed_bumps=speed_bumps,
         speed_cameras=speed_cameras,
         stop_signs=stop_signs,
         sun_latitude=sun_latitude,
@@ -870,7 +879,9 @@ def main() -> None:
         roadworks = world.roadworks
         sceneries = world.sceneries
         scenery_grid = world.scenery_grid
+        scenery_objects = world.scenery_objects
         spatial_grid = world.spatial_grid
+        speed_bumps = world.speed_bumps
         speed_cameras = world.speed_cameras
         stop_signs = world.stop_signs
         sun_latitude = world.sun_latitude
@@ -1042,6 +1053,8 @@ def main() -> None:
                             traffic_lights, crossings, elements_count, traffic_mgr,
                             pedestrian_mgr, spatial_grid, map_sync_stage,
                             chosen_city, camera_city_name, game_mode, on_foot,
+                            scenery_objects=scenery_objects,
+                            speed_bumps=speed_bumps,
                         )
                         logger.info("Screenshot saved to %s", screenshot_path)
                         logger.info("Runtime debug snapshot saved to %s", debug_path)
@@ -1520,6 +1533,9 @@ def main() -> None:
                 taxi_mgr.check_curb_bump(
                     car, curbs, previous_position, traffic_mgr.sim_time, curb_grid=curb_grid
                 )
+                taxi_mgr.check_speed_bump(
+                    car, speed_bumps, previous_position, traffic_mgr.sim_time
+                )
                 bridge_edge_crash = is_car_colliding_with_bridge_edge(car, current_way, ways=ways)
                 if bridge_edge_crash:
                     pull_car_inside_bridge_edge(car, current_way)
@@ -1928,11 +1944,7 @@ def main() -> None:
                 camx,
                 camy,
                 px_per_m=px_per_m,
-                tree_effects=taxi_mgr.tree_effects,
-                fallen_trees=taxi_mgr.fallen_trees,
                 spatial_grid=scenery_grid,
-                ways=ways,
-                road_spatial_grid=spatial_grid,
                 profiler=frame_profiler,
             )
             stage_elapsed = time.perf_counter() - map_stage_start
@@ -1967,6 +1979,28 @@ def main() -> None:
             stage_elapsed = time.perf_counter() - map_stage_start
             render_profile_times["map_roads"] = render_profile_times.get("map_roads", 0.0) + stage_elapsed
             frame_profiler.record("render:roads", stage_elapsed * 1000.0)
+            # Trees are drawn here, after roads/parking - not inside
+            # draw_scenery() above - so a road or parking surface (both
+            # just painted) can never end up covering a real tree (see
+            # render/scenery.py:draw_trees docstring).
+            map_stage_start = time.perf_counter()
+            draw_trees(
+                screen,
+                sceneries,
+                camx,
+                camy,
+                px_per_m=px_per_m,
+                tree_effects=taxi_mgr.tree_effects,
+                fallen_trees=taxi_mgr.fallen_trees,
+                spatial_grid=scenery_grid,
+                ways=ways,
+                road_spatial_grid=spatial_grid,
+                profiler=frame_profiler,
+            )
+            stage_elapsed = time.perf_counter() - map_stage_start
+            render_profile_times["map_trees"] = render_profile_times.get("map_trees", 0.0) + stage_elapsed
+            frame_profiler.record("render:trees", stage_elapsed * 1000.0)
+            draw_scenery_objects(screen, scenery_objects, camx, camy, px_per_m=px_per_m, profiler=frame_profiler)
             if bus_stops_enabled:
                 map_stage_start = time.perf_counter()
                 draw_bus_stops(screen, bus_stops, ways, camx, camy, px_per_m=px_per_m, spatial_grid=spatial_grid)
@@ -2007,6 +2041,7 @@ def main() -> None:
                 logger.info("Gameplay frame: rendering overlays")
             draw_curbs(screen, curbs, camx, camy, px_per_m=px_per_m, spatial_grid=curb_grid)
             draw_crossings(screen, crossings, camx, camy, px_per_m=px_per_m, spatial_grid=crossing_grid)
+            draw_speed_bumps(screen, speed_bumps, camx, camy, px_per_m=px_per_m)
             draw_traffic_lights(
                 screen,
                 traffic_lights,

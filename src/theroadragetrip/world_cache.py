@@ -32,8 +32,11 @@ MAGIC = b"RWC\0"
 # SignalGroup-sharing fix all change what a cached tile's traffic-light
 # data should look like. Bumped again to add the curbs section (a
 # cached tile written before curbs existed has none, and would render
-# and collide as if no curbs were ever there).
-FORMAT_VERSION = 5
+# and collide as if no curbs were ever there). Bumped again to add the
+# scenery_objects section (benches, waste baskets, bicycle parking,
+# statues/memorials) - same reasoning as curbs. Bumped again to add the
+# speed_bumps section, same reasoning again.
+FORMAT_VERSION = 7
 COORDINATE_SYSTEM = "EPSG:3067"
 _HEADER = struct.Struct("<4sHHQQ32s12s")
 _DIRECTORY = struct.Struct("<8sQQI")
@@ -42,13 +45,14 @@ _TYPES = {"none": 0, "bool": 1, "int": 2, "float": 3, "str": 4, "list": 5, "tupl
 _TYPE_NAMES = {value: key for key, value in _TYPES.items()}
 _SECTIONS = ("ways", "waters", "buildings", "sceneries", "places", "traffic_lights",
              "crossings", "taxi_stops", "bus_stops", "parking_spaces", "logical_intersections",
-             "stop_signs", "yield_signs", "curbs", "metadata")
+             "stop_signs", "yield_signs", "curbs", "scenery_objects", "speed_bumps", "metadata")
 _SECTION_CODES = {
     "buildings": "bldgs", "sceneries": "scenery",
     "traffic_lights": "signals", "crossings": "crossing",
     "logical_intersections": "intersct",
     "parking_spaces": "parking", "taxi_stops": "taxistop", "bus_stops": "busstop",
-    "stop_signs": "stops", "yield_signs": "yields",
+    "stop_signs": "stops", "yield_signs": "yields", "scenery_objects": "furnitur",
+    "speed_bumps": "bumps",
 }
 _SECTION_NAMES = {code: name for name, code in _SECTION_CODES.items()}
 
@@ -247,6 +251,7 @@ class BinaryWorldCacheLoader:
             "places": "Place", "traffic_lights": "TrafficLight", "crossings": "Crossing",
             "taxi_stops": "TaxiStop", "bus_stops": "BusStop", "parking_spaces": "ParkingSpace",
             "stop_signs": "StopSign", "yield_signs": "YieldSign", "curbs": "Curb",
+            "scenery_objects": "SceneryObject", "speed_bumps": "SpeedBump",
         }
         import theroadragetrip.osm as osm
         # Every physical TrafficLight/IntersectionApproach on the same

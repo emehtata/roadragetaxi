@@ -407,6 +407,23 @@ def test_logical_intersections_survive_the_real_non_forced_tile_merge():
     assert manager.logical_intersections == [intersection]
 
 
+def test_scenery_objects_survive_the_real_non_forced_tile_merge():
+    """scenery_objects (benches, statues, ...) must flow through the same
+    real tile-streaming merge path as every other section - a plain x/y
+    point, so _item_tiles() already handles it generically."""
+    from theroadragetrip.osm import SceneryObject
+
+    bench = SceneryObject(x=500.0, y=500.0, kind="bench", id=1)
+    manager = AutoFetchManager([], (0.0, 0.0, 1000.0, 1000.0), transformer=None)
+    manager._merge_tile_world_for_tiles(
+        {TileCoord(0, 0)},
+        MapData([], [], [], [], [], (0.0, 0.0, 1.0, 1.0), scenery_objects=[bench]),
+        force_tile=False,
+    )
+
+    assert manager.scenery_objects == [bench]
+
+
 def test_combined_region_assigns_crossing_way_to_both_tiles():
     crossing_way = Way(
         [(950.0, 250.0), (1050.0, 250.0)], "residential", 4.0, osm_id=99,

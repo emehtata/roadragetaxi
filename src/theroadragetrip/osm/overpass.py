@@ -104,6 +104,10 @@ def fetch_osm_ways(
     node["entrance"]({south},{west},{north},{east});
     node["amenity"="parking_space"]({south},{west},{north},{east});
       node["place"~"suburb|neighbourhood|quarter|village|town|city|hamlet"]({south},{west},{north},{east});
+    node["natural"="tree"]({south},{west},{north},{east});
+    node["amenity"~"bench|waste_basket|bicycle_parking"]({south},{west},{north},{east});
+    node["historic"="memorial"]({south},{west},{north},{east});
+    node["tourism"="artwork"]({south},{west},{north},{east});
     node["name"]({south},{west},{north},{east});
       way["highway"]({south},{west},{north},{east});
     way["name"]({south},{west},{north},{east});
