@@ -35,8 +35,10 @@ MAGIC = b"RWC\0"
 # and collide as if no curbs were ever there). Bumped again to add the
 # scenery_objects section (benches, waste baskets, bicycle parking,
 # statues/memorials) - same reasoning as curbs. Bumped again to add the
-# speed_bumps section, same reasoning again.
-FORMAT_VERSION = 7
+# speed_bumps section, same reasoning again. Bumped again to add the
+# railways/railings sections (rail lines, fence/railing barriers), same
+# reasoning again.
+FORMAT_VERSION = 8
 COORDINATE_SYSTEM = "EPSG:3067"
 _HEADER = struct.Struct("<4sHHQQ32s12s")
 _DIRECTORY = struct.Struct("<8sQQI")
@@ -45,7 +47,8 @@ _TYPES = {"none": 0, "bool": 1, "int": 2, "float": 3, "str": 4, "list": 5, "tupl
 _TYPE_NAMES = {value: key for key, value in _TYPES.items()}
 _SECTIONS = ("ways", "waters", "buildings", "sceneries", "places", "traffic_lights",
              "crossings", "taxi_stops", "bus_stops", "parking_spaces", "logical_intersections",
-             "stop_signs", "yield_signs", "curbs", "scenery_objects", "speed_bumps", "metadata")
+             "stop_signs", "yield_signs", "curbs", "scenery_objects", "speed_bumps",
+             "railways", "railings", "metadata")
 _SECTION_CODES = {
     "buildings": "bldgs", "sceneries": "scenery",
     "traffic_lights": "signals", "crossings": "crossing",
@@ -252,6 +255,7 @@ class BinaryWorldCacheLoader:
             "taxi_stops": "TaxiStop", "bus_stops": "BusStop", "parking_spaces": "ParkingSpace",
             "stop_signs": "StopSign", "yield_signs": "YieldSign", "curbs": "Curb",
             "scenery_objects": "SceneryObject", "speed_bumps": "SpeedBump",
+            "railways": "Railway", "railings": "Railing",
         }
         import theroadragetrip.osm as osm
         # Every physical TrafficLight/IntersectionApproach on the same

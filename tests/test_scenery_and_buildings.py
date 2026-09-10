@@ -655,6 +655,33 @@ def test_hard_tree_impact_knocks_tree_down_and_smokes_taxi():
     assert manager.taxi_smoke_timer == 5.0
 
 
+def test_driving_into_construction_fence_stops_the_car_and_penalizes():
+    """A construction-site scenery is fenced off - a car driving into it
+    must crash the same way a building does, not pass straight through."""
+    manager = TaxiManager([Way([(0.0, 0.0), (100.0, 0.0)], "residential", 4.0)])
+    construction = Scenery(
+        [(-10.0, -10.0), (10.0, -10.0), (10.0, 10.0), (-10.0, 10.0)],
+        "construction",
+        bbox=(-10.0, -10.0, 10.0, 10.0),
+    )
+    car = Car(x=0.0, y=0.0, heading=0.0, speed=20.0)
+    score_before = manager.total_score
+
+    assert manager.check_fence_collision(car, [construction], 1.0, previous_position=(-20.0, 0.0))
+    assert (car.x, car.y) == (-20.0, 0.0)
+    assert car.speed == 0.0
+    assert manager.total_score < score_before
+
+    # A non-construction scenery (e.g. a park) must not trigger a crash.
+    park = Scenery(
+        [(-10.0, -10.0), (10.0, -10.0), (10.0, 10.0), (-10.0, 10.0)],
+        "park",
+        bbox=(-10.0, -10.0, 10.0, 10.0),
+    )
+    car2 = Car(x=0.0, y=0.0, heading=0.0, speed=20.0)
+    assert not manager.check_fence_collision(car2, [park], 1.0, previous_position=(-20.0, 0.0))
+
+
 def test_building_window_rows_follow_osm_levels():
     building = Building(
         [(0.0, 0.0), (10.0, 0.0), (10.0, 12.0), (0.0, 12.0)],

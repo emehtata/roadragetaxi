@@ -15,6 +15,8 @@ from .models import (
     Way,
     Water,
     Curb,
+    Railway,
+    Railing,
     Building,
     ParkingSpace,
     Scenery,
@@ -168,6 +170,8 @@ class AutoFetchManager:
         curbs: Optional[List[Curb]] = None,
         scenery_objects: Optional[List[SceneryObject]] = None,
         speed_bumps: Optional[List[SpeedBump]] = None,
+        railways: Optional[List[Railway]] = None,
+        railings: Optional[List[Railing]] = None,
         fetch_func=fetch_osm_ways,
         build_func=build_ways,
         cooldown_s: float = 5.0,
@@ -190,6 +194,8 @@ class AutoFetchManager:
         self.curbs = curbs if curbs is not None else []
         self.scenery_objects = scenery_objects if scenery_objects is not None else []
         self.speed_bumps = speed_bumps if speed_bumps is not None else []
+        self.railways = railways if railways is not None else []
+        self.railings = railings if railings is not None else []
         self.bounds = bounds
         self.transformer = transformer
         self.fetch_func = fetch_func
@@ -426,6 +432,8 @@ class AutoFetchManager:
             "curbs": self.curbs,
             "scenery_objects": self.scenery_objects,
             "speed_bumps": self.speed_bumps,
+            "railways": self.railways,
+            "railings": self.railings,
         }
         for section, objects in sections.items():
             for item in objects:
@@ -588,6 +596,8 @@ class AutoFetchManager:
             "curbs": self.curbs,
             "scenery_objects": self.scenery_objects,
             "speed_bumps": self.speed_bumps,
+            "railways": self.railways,
+            "railings": self.railings,
         }
         for section, target in sections.items():
             new_items = getattr(world, section, ())
@@ -649,6 +659,8 @@ class AutoFetchManager:
             "curbs": self.curbs,
             "scenery_objects": self.scenery_objects,
             "speed_bumps": self.speed_bumps,
+            "railways": self.railways,
+            "railings": self.railings,
         }
         # Collect every key actually losing its last owner across *all*
         # unloading tiles first, then filter each section's list once at the
@@ -1043,6 +1055,8 @@ class AutoFetchManager:
             new_curbs = getattr(res, "curbs", [])
             new_scenery_objects = getattr(res, "scenery_objects", [])
             new_speed_bumps = getattr(res, "speed_bumps", [])
+            new_railways = getattr(res, "railways", [])
+            new_railings = getattr(res, "railings", [])
             if len(res) == 8:
                 new_ways, new_waters, new_buildings, new_sceneries, new_places, new_bounds, new_traffic_lights, new_crossings = res
             elif len(res) == 7:
@@ -1104,6 +1118,8 @@ class AutoFetchManager:
                 _extend_unique(self.curbs, new_curbs)
                 _extend_unique(self.scenery_objects, new_scenery_objects)
                 _extend_unique(self.speed_bumps, new_speed_bumps)
+                _extend_unique(self.railways, new_railways)
+                _extend_unique(self.railings, new_railings)
                 minx = min(self.bounds[0], new_bounds[0])
                 miny = min(self.bounds[1], new_bounds[1])
                 maxx = max(self.bounds[2], new_bounds[2])

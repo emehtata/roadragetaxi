@@ -67,6 +67,21 @@ class Curb:
 
 
 @dataclass
+class Railway:
+    """A rail line (OSM railway=rail/light_rail/tram/narrow_gauge/funicular). Visual only."""
+    points_m: List[Tuple[float, float]]
+    kind: str = "rail"
+    bbox: Tuple[float, float, float, float] = (0.0, 0.0, 0.0, 0.0)
+
+
+@dataclass
+class Railing:
+    """A fence/handrail line (OSM barrier=fence/railing). Visual only."""
+    points_m: List[Tuple[float, float]]
+    bbox: Tuple[float, float, float, float] = (0.0, 0.0, 0.0, 0.0)
+
+
+@dataclass
 class Building:
     points_m: List[Tuple[float, float]]
     name: Optional[str] = None
@@ -394,10 +409,10 @@ class SceneryObject:
 class MapData(tuple):
     """Container tuple for build_ways results returning 6 elements for backward compatibility while providing traffic_lights and crossings via attributes and slicing."""
 
-    def __new__(cls, ways, waters, buildings, sceneries, places, bounds, traffic_lights=None, crossings=None, taxi_stops=None, bus_stops=None, parking_spaces=None, logical_intersections=None, stop_signs=None, yield_signs=None, curbs=None, scenery_objects=None, speed_bumps=None):
+    def __new__(cls, ways, waters, buildings, sceneries, places, bounds, traffic_lights=None, crossings=None, taxi_stops=None, bus_stops=None, parking_spaces=None, logical_intersections=None, stop_signs=None, yield_signs=None, curbs=None, scenery_objects=None, speed_bumps=None, railways=None, railings=None):
         return super().__new__(cls, (ways, waters, buildings, sceneries, places, bounds))
 
-    def __init__(self, ways, waters, buildings, sceneries, places, bounds, traffic_lights=None, crossings=None, taxi_stops=None, bus_stops=None, parking_spaces=None, logical_intersections=None, stop_signs=None, yield_signs=None, curbs=None, scenery_objects=None, speed_bumps=None):
+    def __init__(self, ways, waters, buildings, sceneries, places, bounds, traffic_lights=None, crossings=None, taxi_stops=None, bus_stops=None, parking_spaces=None, logical_intersections=None, stop_signs=None, yield_signs=None, curbs=None, scenery_objects=None, speed_bumps=None, railways=None, railings=None):
         self.ways = ways
         self.waters = waters
         self.buildings = buildings
@@ -415,6 +430,8 @@ class MapData(tuple):
         self.scenery_objects = scenery_objects if scenery_objects is not None else []
         self.curbs = curbs if curbs is not None else []
         self.speed_bumps = speed_bumps if speed_bumps is not None else []
+        self.railways = railways if railways is not None else []
+        self.railings = railings if railings is not None else []
 
     @property
     def traffic_signals(self):

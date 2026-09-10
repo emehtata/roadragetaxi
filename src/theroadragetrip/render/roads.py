@@ -2,59 +2,33 @@ from . import common
 from .common import (
     SCREEN_W,
     SCREEN_H,
-    FPS,
     PX_PER_M,
     CACHE_PADDING_PX,
-    STATIC_ZOOM_STEP,
-    SOLAR_UPDATE_INTERVAL_SECONDS,
-    GAME_DATE,
-    FINLAND_SUMMER_TIME_OFFSET,
     DEFAULT_SUN_LATITUDE,
     DEFAULT_SUN_LONGITUDE,
-    _solar_position_cache,
-    _reusable_alpha_surfaces,
-    _smoke_surface_cache,
     _render_logger,
-    _pending_static_rebuilds,
-    _static_rebuilds_this_frame,
-    invalidate_static_caches,
-    begin_static_cache_frame,
     _rebuild_or_stale,
     _static_cache_zoom,
     _reusable_alpha_surface,
-    _smoke_surface,
     solar_altitude_and_events,
     _format_solar_time,
-    _get_game_version,
-    _draw_version,
     world_to_screen,
     asphalt_texture_tile_size,
     road_color_for_way,
     road_render_priority,
     get_viewport_bounds,
-    minimum_px_per_m_for_viewport_width,
-    _covered_by_higher_road,
-    _vehicle_is_on_bridge,
-    GAME_VERSION,
 )
 import math
 import logging
 import os
-import random
-import subprocess
 import time
-from datetime import date
-from importlib.metadata import PackageNotFoundError, version as package_version
 from typing import List, Optional, Tuple
 
 from shapely.geometry import LineString
 from shapely.ops import unary_union
 
-from ..geo import clip_polygon_to_rect, compute_bbox, dist_point_to_segment, meters_to_latlon, point_in_polygon
-from ..osm import Building, BusStop, Place, Scenery, TaxiStop, Water, Way
-from ..physics import Car, MAX_SPEED, is_point_on_road
-from ..taxi import TaxiManager, TaxiState
-from ..localization import tr
+from ..geo import dist_point_to_segment, point_in_polygon
+from ..osm import Building, BusStop, TaxiStop, Way
 
 
 MAX_VISIBLE_STREET_LIGHTS = 400
@@ -1263,6 +1237,120 @@ def draw_curbs(
         ]
         if len(points) >= 2:
             pygame.draw.lines(screen, (55, 55, 52), False, points, thickness)
+
+
+RAILWAY_RAIL_COLOR = (150, 145, 135)  # steel rail
+RAILWAY_TIE_COLOR = (90, 65, 45)  # wooden sleeper
+_RAILWAY_GAUGE_M = 1.435  # standard gauge
+_RAILWAY_TIE_SPACING_M = 2.0
+_RAILWAY_TIE_LENGTH_M = 2.6
+
+
+def draw_railways(
+    screen,
+    railways: List,
+    camx: float,
+    camy: float,
+    px_per_m: float = PX_PER_M,
+    screen_w: int = SCREEN_W,
+    screen_h: int = SCREEN_H,
+    spatial_grid=None,
+) -> None:
+    """Draw rail lines (OSM railway=rail/light_rail/tram/...) as two steel
+    rails over periodic wooden sleepers, like draw_curbs but track-styled."""
+    import pygame
+
+    if not railways:
+        return
+
+    vminx, vminy, vmaxx, vmaxy = get_viewport_bounds(camx, camy, px_per_m, screen_w, screen_h, 10.0)
+    visible_railways = (
+        spatial_grid.ways_in_rect(vminx, vminy, vmaxx, vmaxy)
+        if spatial_grid is not None
+        else railways
+    )
+    rail_thickness = max(1, int(0.08 * px_per_m))
+    tie_thickness = max(1, int(0.18 * px_per_m))
+    half_gauge = _RAILWAY_GAUGE_M / 2.0
+    half_tie = _RAILWAY_TIE_LENGTH_M / 2.0
+
+    for rw in visible_railways:
+        bb = getattr(rw, "bbox", None)
+        if bb and bb != (0.0, 0.0, 0.0, 0.0):
+            if bb[2] < vminx or bb[0] > vmaxx or bb[3] < vminy or bb[1] > vmaxy:
+                continue
+        points = rw.points_m
+        if len(points) < 2:
+            continue
+
+        # Sleepers first so the rails draw on top of them.
+        dist_along = 0.0
+        next_tie = 0.0
+        for (x0, y0), (x1, y1) in zip(points, points[1:]):
+            dx, dy = x1 - x0, y1 - y0
+            seg_len = math.hypot(dx, dy)
+            if seg_len < 1e-6:
+                continue
+            ux, uy = dx / seg_len, dy / seg_len
+            nx, ny = -uy, ux
+            while next_tie <= dist_along + seg_len:
+                t = next_tie - dist_along
+                tx, ty = x0 + ux * t, y0 + uy * t
+                s0 = world_to_screen(tx - nx * half_tie, ty - ny * half_tie, camx, camy, px_per_m, screen_w, screen_h)
+                s1 = world_to_screen(tx + nx * half_tie, ty + ny * half_tie, camx, camy, px_per_m, screen_w, screen_h)
+                pygame.draw.line(screen, RAILWAY_TIE_COLOR, s0, s1, tie_thickness)
+                next_tie += _RAILWAY_TIE_SPACING_M
+            dist_along += seg_len
+
+        for (x0, y0), (x1, y1) in zip(points, points[1:]):
+            dx, dy = x1 - x0, y1 - y0
+            seg_len = math.hypot(dx, dy)
+            if seg_len < 1e-6:
+                continue
+            ux, uy = dx / seg_len, dy / seg_len
+            nx, ny = -uy, ux
+            for offset in (-half_gauge, half_gauge):
+                s0 = world_to_screen(x0 + nx * offset, y0 + ny * offset, camx, camy, px_per_m, screen_w, screen_h)
+                s1 = world_to_screen(x1 + nx * offset, y1 + ny * offset, camx, camy, px_per_m, screen_w, screen_h)
+                pygame.draw.line(screen, RAILWAY_RAIL_COLOR, s0, s1, rail_thickness)
+
+
+RAILING_COLOR = (150, 145, 130)
+
+
+def draw_railings(
+    screen,
+    railings: List,
+    camx: float,
+    camy: float,
+    px_per_m: float = PX_PER_M,
+    screen_w: int = SCREEN_W,
+    screen_h: int = SCREEN_H,
+    spatial_grid=None,
+) -> None:
+    """Draw fence/handrail lines (OSM barrier=fence/railing) - visual only,
+    dashed like draw_construction_fences but in a neutral (non-hazard) color."""
+    if not railings:
+        return
+
+    vminx, vminy, vmaxx, vmaxy = get_viewport_bounds(camx, camy, px_per_m, screen_w, screen_h, 10.0)
+    visible_railings = (
+        spatial_grid.ways_in_rect(vminx, vminy, vmaxx, vmaxy)
+        if spatial_grid is not None
+        else railings
+    )
+    thickness = max(1, int(0.12 * px_per_m))
+    for railing in visible_railings:
+        bb = getattr(railing, "bbox", None)
+        if bb and bb != (0.0, 0.0, 0.0, 0.0):
+            if bb[2] < vminx or bb[0] > vmaxx or bb[3] < vminy or bb[1] > vmaxy:
+                continue
+        if len(railing.points_m) < 2:
+            continue
+        common._draw_dashed_polyline(
+            screen, railing.points_m, camx, camy, px_per_m, screen_w, screen_h,
+            RAILING_COLOR, thickness, dash_m=0.8, gap_m=0.4,
+        )
 
 
 def draw_crossings(

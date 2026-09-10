@@ -20,6 +20,8 @@ from .models import (
     Way,
     Water,
     Curb,
+    Railway,
+    Railing,
     Building,
     ParkingSpace,
     Scenery,
@@ -294,6 +296,8 @@ def build_ways(
     ways_raw: List[Tuple[dict, str, List[int]]] = []
     water_raw: List[Tuple[dict, List[int]]] = []
     curb_raw: List[Tuple[dict, List[int]]] = []
+    railway_raw: List[Tuple[dict, List[int]]] = []
+    railing_raw: List[Tuple[dict, List[int]]] = []
     building_raw: List[Tuple[dict, List[int]]] = []
     parking_space_raw: List[Tuple[dict, List[int], Optional[int]]] = []
     scenery_raw: List[Tuple[dict, List[int]]] = []
@@ -351,6 +355,10 @@ def build_ways(
                 parking_space_raw.append((tags, node_ids, way_id))
             elif tags.get("barrier") == "kerb":
                 curb_raw.append((tags, node_ids))
+            elif tags.get("barrier") in ("fence", "railing"):
+                railing_raw.append((tags, node_ids))
+            elif tags.get("railway") in ("rail", "light_rail", "tram", "narrow_gauge", "funicular"):
+                railway_raw.append((tags, node_ids))
             elif tags.get("natural") in ("water", "bay", "strait") or ("waterway" in tags) or tags.get("landuse") == "reservoir":
                 water_raw.append((tags, node_ids))
             elif tags.get("amenity") == "parking" or tags.get("landuse") == "parking":
@@ -410,6 +418,8 @@ def build_ways(
     ways: List[Way] = []
     waters: List[Water] = []
     curbs: List[Curb] = []
+    railways: List[Railway] = []
+    railings: List[Railing] = []
     buildings: List[Building] = []
     sceneries: List[Scenery] = []
     places: List[Place] = []
@@ -530,6 +540,18 @@ def build_ways(
         if not pts or len(pts) < 2:
             continue
         curbs.append(Curb(points_m=pts, bbox=ibbox))
+
+    for tags, node_ids in railway_raw:
+        pts, ibbox = process_node_ids(node_ids)
+        if not pts or len(pts) < 2:
+            continue
+        railways.append(Railway(points_m=pts, kind=tags.get("railway", "rail"), bbox=ibbox))
+
+    for tags, node_ids in railing_raw:
+        pts, ibbox = process_node_ids(node_ids)
+        if not pts or len(pts) < 2:
+            continue
+        railings.append(Railing(points_m=pts, bbox=ibbox))
 
     # 3. Buildings
     if progress_callback:
@@ -1084,4 +1106,5 @@ def build_ways(
         ways, waters, buildings, sceneries, places, (minx, miny, maxx, maxy),
         traffic_lights, crossings, taxi_stops, bus_stops, parking_spaces, logical_intersections, stop_signs, yield_signs,
         curbs=curbs, scenery_objects=scenery_objects, speed_bumps=speed_bumps,
+        railways=railways, railings=railings,
     )

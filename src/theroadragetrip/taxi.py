@@ -164,6 +164,7 @@ class TaxiManager:
 
         self._crashed_building_cooldowns: Dict[int, float] = {}  # building id -> timestamp cooldown
         self._crashed_tree_cooldowns: Dict[Tuple[int, int], float] = {}
+        self._crashed_fence_cooldowns: Dict[int, float] = {}  # scenery id -> timestamp cooldown
         self._curb_bump_cooldowns: Dict[int, float] = {}  # curb id -> timestamp cooldown
         self._speed_bump_cooldowns: Dict[int, float] = {}  # speed bump id -> timestamp cooldown
         self._speed_camera_hits: set[int] = set()
@@ -176,6 +177,9 @@ class TaxiManager:
         self._tree_collision_grid: Dict[Tuple[int, int], List[Tuple[int, int, float, float]]] = {}
         self._tree_collision_ref = None
         self._tree_collision_count = -1
+        self._fence_collision_grid: Dict[Tuple[int, int], List[Any]] = {}
+        self._fence_collision_ref = None
+        self._fence_collision_count = -1
         self.vomit_puddles: List[Tuple[float, float]] = []
         self.taxi_smoke_timer: float = 0.0
         self.speed_camera_flash_timer: float = 0.0
@@ -240,6 +244,33 @@ class TaxiManager:
         nearby = []
         for cell in self._collision_cells(x - radius, y - radius, x + radius, y + radius):
             nearby.extend(self._tree_collision_grid.get(cell, ()))
+        return nearby
+
+    def _nearby_collision_fences(self, sceneries: List[Any], x: float, y: float, radius: float):
+        if sceneries is not self._fence_collision_ref or len(sceneries) != self._fence_collision_count:
+            self._fence_collision_grid.clear()
+            for scenery in sceneries:
+                if str(getattr(scenery, "kind", "")).lower() != "construction":
+                    continue
+                bbox = getattr(scenery, "bbox", (0.0, 0.0, 0.0, 0.0))
+                if bbox == (0.0, 0.0, 0.0, 0.0):
+                    points = getattr(scenery, "points_m", [])
+                    if not points:
+                        continue
+                    xs, ys = zip(*points)
+                    bbox = (min(xs), min(ys), max(xs), max(ys))
+                for cell in self._collision_cells(*bbox):
+                    self._fence_collision_grid.setdefault(cell, []).append(scenery)
+            self._fence_collision_ref = sceneries
+            self._fence_collision_count = len(sceneries)
+        nearby = []
+        seen = set()
+        for cell in self._collision_cells(x - radius, y - radius, x + radius, y + radius):
+            for scenery in self._fence_collision_grid.get(cell, ()):
+                scenery_id = id(scenery)
+                if scenery_id not in seen:
+                    seen.add(scenery_id)
+                    nearby.append(scenery)
         return nearby
 
     def set_language(self, language: str) -> None:
@@ -454,6 +485,62 @@ class TaxiManager:
                     self.notification_msg = tr(self.language, "tree_crash", penalty=penalty)
                     self.notification_timer = 3.5
                 return True
+        return False
+
+    def check_fence_collision(
+        self,
+        player_car: Car,
+        sceneries: List[Any],
+        sim_time: float,
+        previous_position: Optional[Tuple[float, float]] = None,
+        penalty: int = 150,
+    ) -> bool:
+        """Stop the car at a construction-site fence and apply one crash penalty per impact."""
+        expired = [fid for fid, t in self._crashed_fence_cooldowns.items() if sim_time - t > 3.0]
+        for fid in expired:
+            del self._crashed_fence_cooldowns[fid]
+
+        car_radius = math.hypot(player_car.length_m, player_car.width_m) * 0.5
+        car_corners = get_oriented_box_corners(
+            player_car.x, player_car.y, player_car.heading, player_car.length_m, player_car.width_m
+        )
+
+        for scenery in self._nearby_collision_fences(sceneries, player_car.x, player_car.y, car_radius):
+            points = getattr(scenery, "points_m", [])
+            if len(points) < 3:
+                continue
+            bbox = getattr(scenery, "bbox", (0.0, 0.0, 0.0, 0.0))
+            if bbox != (0.0, 0.0, 0.0, 0.0):
+                if (player_car.x < bbox[0] - car_radius or player_car.x > bbox[2] + car_radius
+                        or player_car.y < bbox[1] - car_radius or player_car.y > bbox[3] + car_radius):
+                    continue
+
+            intersects = point_in_polygon(player_car.x, player_car.y, points)
+            if not intersects:
+                intersects = any(point_in_polygon(x, y, points) for x, y in car_corners)
+            if not intersects:
+                intersects = any(
+                    dist_point_to_segment(player_car.x, player_car.y, points[i][0], points[i][1],
+                                         points[(i + 1) % len(points)][0], points[(i + 1) % len(points)][1])
+                    <= car_radius
+                    for i in range(len(points))
+                )
+            if not intersects:
+                continue
+
+            if previous_position is not None:
+                player_car.x, player_car.y = previous_position
+            player_car.speed = 0.0
+            self.taxi_smoke_timer = max(self.taxi_smoke_timer, 5.0)
+            fence_id = id(scenery)
+            if fence_id not in self._crashed_fence_cooldowns:
+                self._crashed_fence_cooldowns[fence_id] = sim_time
+                self.total_score -= penalty
+                self.notification_msg = tr(self.language, "fence_crash", penalty=penalty)
+                self.notification_timer = 3.5
+                logger.info("Player crashed into construction fence: -%d pts", penalty)
+            return True
+
         return False
 
     def check_curb_bump(

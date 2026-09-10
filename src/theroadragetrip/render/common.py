@@ -1,21 +1,15 @@
 import math
 import logging
 import os
-import random
 import subprocess
 import time
 from datetime import date
 from importlib.metadata import PackageNotFoundError, version as package_version
 from typing import List, Optional, Tuple
 
-from shapely.geometry import LineString
-from shapely.ops import unary_union
 
-from ..geo import clip_polygon_to_rect, compute_bbox, dist_point_to_segment, meters_to_latlon, point_in_polygon
-from ..osm import Building, BusStop, Place, Scenery, TaxiStop, Water, Way
-from ..physics import Car, MAX_SPEED, is_point_on_road
-from ..taxi import TaxiManager, TaxiState
-from ..localization import tr
+from ..geo import compute_bbox, dist_point_to_segment
+from ..osm import Way
 
 
 SCREEN_W, SCREEN_H = 1280, 720
@@ -334,6 +328,43 @@ def world_to_screen(
     sx = (wx - camx) * px_per_m + screen_w / 2
     sy = screen_h / 2 - (wy - camy) * px_per_m
     return int(sx), int(sy)
+
+
+def _draw_dashed_polyline(
+    screen,
+    points_m,
+    camx: float,
+    camy: float,
+    px_per_m: float,
+    screen_w: int,
+    screen_h: int,
+    color: Tuple[int, int, int],
+    thickness: int,
+    dash_m: float = 1.5,
+    gap_m: float = 1.0,
+) -> None:
+    """Draw a dashed line along points_m (a polyline, not necessarily closed).
+
+    Shared by draw_construction_fences and draw_railings - both are thin
+    hazard/barrier lines that should read as segmented, not solid.
+    """
+    import pygame
+
+    dash_px = max(1.0, dash_m * px_per_m)
+    gap_px = max(1.0, gap_m * px_per_m)
+    step_px = dash_px + gap_px
+    for (x0, y0), (x1, y1) in zip(points_m, points_m[1:]):
+        edge_len = math.hypot(x1 - x0, y1 - y0)
+        if edge_len < 1e-6:
+            continue
+        ux, uy = (x1 - x0) / edge_len, (y1 - y0) / edge_len
+        dist = 0.0
+        while dist < edge_len:
+            dash_end = min(dist + dash_px, edge_len)
+            sx0, sy0 = world_to_screen(x0 + ux * dist, y0 + uy * dist, camx, camy, px_per_m, screen_w, screen_h)
+            sx1, sy1 = world_to_screen(x0 + ux * dash_end, y0 + uy * dash_end, camx, camy, px_per_m, screen_w, screen_h)
+            pygame.draw.line(screen, color, (sx0, sy0), (sx1, sy1), thickness)
+            dist += step_px
 
 
 def asphalt_texture_tile_size(px_per_m: float) -> int:

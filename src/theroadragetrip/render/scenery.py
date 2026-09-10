@@ -2,59 +2,21 @@ from . import common
 from .common import (
     SCREEN_W,
     SCREEN_H,
-    FPS,
     PX_PER_M,
     CACHE_PADDING_PX,
-    STATIC_ZOOM_STEP,
-    SOLAR_UPDATE_INTERVAL_SECONDS,
-    GAME_DATE,
-    FINLAND_SUMMER_TIME_OFFSET,
-    DEFAULT_SUN_LATITUDE,
-    DEFAULT_SUN_LONGITUDE,
-    _solar_position_cache,
-    _reusable_alpha_surfaces,
-    _smoke_surface_cache,
-    _render_logger,
-    _pending_static_rebuilds,
-    _static_rebuilds_this_frame,
-    invalidate_static_caches,
-    begin_static_cache_frame,
     _rebuild_or_stale,
     _static_cache_zoom,
-    _reusable_alpha_surface,
-    _smoke_surface,
-    solar_altitude_and_events,
-    _format_solar_time,
-    _get_game_version,
-    _draw_version,
     world_to_screen,
-    asphalt_texture_tile_size,
-    road_color_for_way,
-    road_render_priority,
     get_viewport_bounds,
-    minimum_px_per_m_for_viewport_width,
-    _covered_by_higher_road,
-    _vehicle_is_on_bridge,
-    GAME_VERSION,
 )
 import math
-import logging
-import os
 import random
-import subprocess
 import time
-from datetime import date
-from importlib.metadata import PackageNotFoundError, version as package_version
-from typing import List, Optional, Tuple
+from typing import List, Optional
 
-from shapely.geometry import LineString
-from shapely.ops import unary_union
 
-from ..geo import clip_polygon_to_rect, compute_bbox, dist_point_to_segment, meters_to_latlon, point_in_polygon
-from ..osm import Building, BusStop, Place, Scenery, SceneryObject, TaxiStop, Water, Way
-from ..physics import Car, MAX_SPEED, is_point_on_road
-from ..taxi import TaxiManager, TaxiState
-from ..localization import tr
+from ..osm import Scenery, SceneryObject, Way
+from ..physics import is_point_on_road
 
 
 SCENERY_COLORS = {
@@ -230,8 +192,6 @@ def draw_construction_fences(
     Uncached like draw_curbs/draw_crossings - construction zones are rare
     (a few dozen per city), not worth a static-cache slot.
     """
-    import pygame
-
     vminx, vminy, vmaxx, vmaxy = get_viewport_bounds(camx, camy, px_per_m, screen_w, screen_h, 20.0)
     candidates = (
         spatial_grid.ways_in_rect(vminx, vminy, vmaxx, vmaxy)
@@ -239,9 +199,6 @@ def draw_construction_fences(
         else sceneries
     )
     thickness = max(1, int(0.25 * px_per_m))
-    dash_px = max(1.0, _FENCE_DASH_M * px_per_m)
-    gap_px = max(1.0, _FENCE_GAP_M * px_per_m)
-    step_px = dash_px + gap_px
 
     for sc in candidates:
         if sc.kind.lower() != "construction":
@@ -255,18 +212,10 @@ def draw_construction_fences(
         ring = list(sc.points_m)
         if ring[0] != ring[-1]:
             ring.append(ring[0])
-        for (x0, y0), (x1, y1) in zip(ring, ring[1:]):
-            edge_len = math.hypot(x1 - x0, y1 - y0)
-            if edge_len < 1e-6:
-                continue
-            ux, uy = (x1 - x0) / edge_len, (y1 - y0) / edge_len
-            dist = 0.0
-            while dist < edge_len:
-                dash_end = min(dist + dash_px, edge_len)
-                sx0, sy0 = world_to_screen(x0 + ux * dist, y0 + uy * dist, camx, camy, px_per_m, screen_w, screen_h)
-                sx1, sy1 = world_to_screen(x0 + ux * dash_end, y0 + uy * dash_end, camx, camy, px_per_m, screen_w, screen_h)
-                pygame.draw.line(screen, CONSTRUCTION_FENCE_COLOR, (sx0, sy0), (sx1, sy1), thickness)
-                dist += step_px
+        common._draw_dashed_polyline(
+            screen, ring, camx, camy, px_per_m, screen_w, screen_h,
+            CONSTRUCTION_FENCE_COLOR, thickness, _FENCE_DASH_M, _FENCE_GAP_M,
+        )
 
 
 def draw_trees(

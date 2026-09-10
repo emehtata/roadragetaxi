@@ -112,6 +112,8 @@ def fetch_osm_ways(
       way["highway"]({south},{west},{north},{east});
     way["name"]({south},{west},{north},{east});
       way["barrier"="kerb"]({south},{west},{north},{east});
+      way["barrier"~"fence|railing"]({south},{west},{north},{east});
+      way["railway"~"rail|light_rail|tram|narrow_gauge|funicular"]({south},{west},{north},{east});
       way["natural"="water"]({south},{west},{north},{east});
     way["natural"="bay"]({south},{west},{north},{east});
     way["natural"="strait"]({south},{west},{north},{east});
@@ -121,7 +123,7 @@ def fetch_osm_ways(
     way["amenity"="parking"]({south},{west},{north},{east});
     way["landuse"="parking"]({south},{west},{north},{east});
     way["amenity"="parking_space"]({south},{west},{north},{east});
-      way["landuse"~"forest|grass|park|meadow|residential|commercial|industrial|recreation_ground"]({south},{west},{north},{east});
+      way["landuse"~"forest|grass|park|meadow|residential|commercial|industrial|recreation_ground|construction|brownfield"]({south},{west},{north},{east});
       way["leisure"~"park|garden|pitch|playground"]({south},{west},{north},{east});
       way["natural"~"wood|scrub|grass|sand|heath"]({south},{west},{north},{east});
       way["place"~"suburb|neighbourhood|quarter|village"]({south},{west},{north},{east});

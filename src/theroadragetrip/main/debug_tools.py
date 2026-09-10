@@ -52,6 +52,8 @@ def _write_debug_snapshot(
     on_foot: bool,
     scenery_objects=(),
     speed_bumps=(),
+    railways=(),
+    railings=(),
 ) -> None:
     minx, miny, maxx, maxy = auto_fetch_manager.get_bounds()
     now = time.time()
@@ -93,6 +95,8 @@ def _write_debug_snapshot(
                 "crossings": len(crossings),
                 "scenery_objects": len(scenery_objects),
                 "speed_bumps": len(speed_bumps),
+                "railways": len(railways),
+                "railings": len(railings),
                 "pedestrians": len(pedestrian_mgr.pedestrians),
             },
             "current_way": {

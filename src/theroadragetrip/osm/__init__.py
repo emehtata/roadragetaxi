@@ -64,6 +64,8 @@ from .models import (
     MapData,
     ParkingSpace,
     Place,
+    Railing,
+    Railway,
     Scenery,
     SceneryObject,
     SignalGroup,
