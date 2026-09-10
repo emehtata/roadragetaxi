@@ -169,6 +169,39 @@ def test_draw_railways_gives_a_bridge_track_deck_edges():
     pygame.quit()
 
 
+def test_draw_railways_bridge_deck_is_a_solid_fill_not_just_thin_lines():
+    """Regression: rails+ties+edges alone are thin lines with real gaps
+    between them - not enough to actually hide something underneath the
+    bridge (reported: the taxi still fully visible under a rail bridge
+    even with the only_bridges late-redraw pass, because that pass only
+    painted the same sparse lines on top of it). The deck needs a solid
+    ballast-bed fill spanning its full width, so nothing sentinel-colored
+    survives anywhere under a straight, unobstructed stretch of bridge."""
+    import pygame
+    pygame.init()
+    surf = pygame.Surface((800, 600))
+    sentinel = (1, 2, 3)
+    surf.fill(sentinel)
+    railway = Railway(
+        points_m=[(50.0, 100.0), (150.0, 100.0)],
+        bbox=(50.0, 100.0, 150.0, 100.0),
+        is_bridge=True,
+    )
+    draw_railways(surf, [railway], camx=100.0, camy=100.0, px_per_m=8.0, screen_w=800, screen_h=600)
+
+    # A band around the centerline, away from the segment's own endpoints
+    # (ballast fill is only drawn within the visible t-range, and a plain
+    # line has flat, not rounded, end caps).
+    remaining_sentinel = sum(
+        1
+        for x in range(300, 500)
+        for y in range(290, 311)
+        if tuple(surf.get_at((x, y)))[:3] == sentinel
+    )
+    assert remaining_sentinel == 0
+    pygame.quit()
+
+
 def test_draw_railways_only_bridges_filters_ground_track_and_bridge_track():
     """Regression: main.py draws ground-level track once early (before the
     car) and bridge track again once late (after the car/pedestrians), so
