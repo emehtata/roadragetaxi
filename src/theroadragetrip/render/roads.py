@@ -1345,11 +1345,13 @@ def draw_crossings(
             pygame.draw.line(screen, stripe_color, p1, p2, stripe_thickness)
 
 
-# Darker than every surface_colors entry in road_color_for_way (darkest is
-# asphalt at (70, 70, 70)) - reads as a shadowed raised bump regardless of
-# what the road underneath is paved with, without needing the specific
-# Way a bump snapped to at render time (only its color would be needed;
-# not worth the extra field/coupling for a fixed, always-correct darkening).
+# Darker than any color road_color_for_way can return (SURFACE_COLORS and
+# LEGACY_HIGHWAY_COLORS both included; the darkest is motorway/trunk's
+# legacy fallback at (58, 58, 60)) - reads as a shadowed raised bump
+# regardless of what the road underneath is paved with, without needing
+# the specific Way a bump snapped to at render time (only its color would
+# be needed; not worth the extra field/coupling for a fixed, always-correct
+# darkening).
 SPEED_BUMP_COLOR = (45, 42, 40)
 
 

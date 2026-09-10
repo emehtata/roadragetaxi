@@ -341,29 +341,54 @@ def asphalt_texture_tile_size(px_per_m: float) -> int:
     return max(24, min(256, round(64.0 * px_per_m / PX_PER_M)))
 
 
+SURFACE_COLORS = {
+    "asphalt": (70, 70, 70),
+    "concrete": (142, 142, 138),
+    "concrete:lanes": (142, 142, 138),
+    "paving_stones": (125, 120, 112),
+    "sett": (105, 100, 94),
+    "cobblestone": (105, 100, 94),
+    "compacted": (125, 112, 92),
+    "fine_gravel": (145, 132, 108),
+    "gravel": (150, 135, 105),
+    "unpaved": (155, 140, 108),
+    "dirt": (125, 98, 68),
+    "ground": (130, 105, 75),
+    "earth": (130, 105, 75),
+    "sand": (190, 170, 120),
+    "grass": (75, 125, 62),
+    "wood": (112, 83, 55),
+}
+# Legacy fallback for a way with no (or unrecognized) surface tag - the
+# per-highway-class asphalt shading this game used before surface colors
+# existed. Kept subtle (all still read as "asphalt", not cartographic
+# primary colors): a bit lighter/cleaner for a highway class the higher up
+# road_render_priority ranks it, a bit rougher/browner as it drops toward
+# unpaved-adjacent classes like track.
+LEGACY_HIGHWAY_COLORS = {
+    "motorway": (58, 58, 60),
+    "motorway_link": (58, 58, 60),
+    "trunk": (60, 60, 60),
+    "trunk_link": (60, 60, 60),
+    "primary": (63, 61, 58),
+    "primary_link": (63, 61, 58),
+    "secondary": (66, 64, 60),
+    "secondary_link": (66, 64, 60),
+    "tertiary": (68, 66, 62),
+    "tertiary_link": (68, 66, 62),
+    "unclassified": (70, 68, 63),
+    "residential": (72, 70, 65),
+    "service": (78, 75, 68),
+    "track": (120, 105, 80),
+}
+
+
 def road_color_for_way(way: Way) -> Tuple[int, int, int]:
-    """Return a road color from OSM surface, with highway as fallback."""
+    """Return a road color from OSM surface, with the legacy per-highway-
+    class color as fallback when surface is missing or unrecognized."""
     surface = str(getattr(way, "surface", "") or "").lower().split(";")[0].strip()
-    surface_colors = {
-        "asphalt": (70, 70, 70),
-        "concrete": (142, 142, 138),
-        "concrete:lanes": (142, 142, 138),
-        "paving_stones": (125, 120, 112),
-        "sett": (105, 100, 94),
-        "cobblestone": (105, 100, 94),
-        "compacted": (125, 112, 92),
-        "fine_gravel": (145, 132, 108),
-        "gravel": (150, 135, 105),
-        "unpaved": (155, 140, 108),
-        "dirt": (125, 98, 68),
-        "ground": (130, 105, 75),
-        "earth": (130, 105, 75),
-        "sand": (190, 170, 120),
-        "grass": (75, 125, 62),
-        "wood": (112, 83, 55),
-    }
-    if surface in surface_colors:
-        return surface_colors[surface]
+    if surface in SURFACE_COLORS:
+        return SURFACE_COLORS[surface]
     if not way.is_drivable:
         return (115, 145, 150) if way.highway == "cycleway" else (150, 150, 142)
     if getattr(way, "is_ice_road", False):
@@ -372,7 +397,7 @@ def road_color_for_way(way: Way) -> Tuple[int, int, int]:
         return (80, 72, 60)
     if way.highway == "living_street":
         return (85, 80, 78)
-    return (70, 70, 70)
+    return LEGACY_HIGHWAY_COLORS.get(way.highway, (70, 70, 70))
 
 
 def road_render_priority(way: Way) -> int:
