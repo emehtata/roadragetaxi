@@ -67,6 +67,30 @@ def test_build_ways_parses_barrier_fence_and_railing():
     assert len(result.railings) == 2
 
 
+def test_railway_is_bridge_round_trips_through_world_cache(tmp_path):
+    """Regression: a Railway loaded from a cached .rwc written before
+    is_bridge existed on the dataclass silently reconstructs with
+    is_bridge=False (Railway(**record) just uses the field's default for
+    a missing key) - no error, no warning. That's exactly what
+    FORMAT_VERSION (world_cache.py) exists to catch by forcing a rebuild
+    instead of a silent wrong reload; this only confirms today's format
+    actually carries the field through, not the version-bump discipline
+    itself (see test_stale_format_version_forces_a_rebuild_even_within_
+    the_ttl in test_world_cache.py for that)."""
+    elements = [
+        {"type": "node", "id": 1, "lat": 60.0, "lon": 25.0},
+        {"type": "node", "id": 2, "lat": 60.0, "lon": 25.001},
+        {"type": "way", "id": 30, "nodes": [1, 2], "tags": {"railway": "rail", "bridge": "yes"}},
+    ]
+    world = build_ways(elements)
+    assert world.railways[0].is_bridge is True
+    path = tmp_path / "bridge.rwc"
+    BinaryWorldCacheWriter().write(path, world, area_id="bridge")
+    loaded = BinaryWorldCacheLoader().load(path)
+
+    assert loaded.railways[0].is_bridge is True
+
+
 def test_railways_and_railings_round_trip_through_world_cache(tmp_path):
     elements = [
         {"type": "node", "id": 1, "lat": 60.0, "lon": 25.0},

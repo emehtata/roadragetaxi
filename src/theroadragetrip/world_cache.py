@@ -37,8 +37,17 @@ MAGIC = b"RWC\0"
 # statues/memorials) - same reasoning as curbs. Bumped again to add the
 # speed_bumps section, same reasoning again. Bumped again to add the
 # railways/railings sections (rail lines, fence/railing barriers), same
-# reasoning again.
-FORMAT_VERSION = 8
+# reasoning again. Bumped again to add Railway.is_bridge: a record
+# written before this field existed loads fine under the *same* version
+# (dataclass construction just uses the default, False) - silently, with
+# no error to notice - so a rail bridge cached even minutes before this
+# shipped kept rendering as ground-level track, on every osm_source,
+# until its 24h TTL happened to expire. Forcing a rebuild here is exactly
+# what FORMAT_VERSION is for (see test_stale_format_version_forces_a_
+# rebuild_even_within_the_ttl in test_world_cache.py) - a new persisted
+# field needs a bump precisely because missing-field construction fails
+# silent, not loud.
+FORMAT_VERSION = 9
 COORDINATE_SYSTEM = "EPSG:3067"
 _HEADER = struct.Struct("<4sHHQQ32s12s")
 _DIRECTORY = struct.Struct("<8sQQI")
