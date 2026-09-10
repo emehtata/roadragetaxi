@@ -164,7 +164,16 @@ def _draw_scenery_uncached(
     """Draw parks, forests, and green spaces intersecting viewport."""
     import pygame
 
-    vminx, vminy, vmaxx, vmaxy = get_viewport_bounds(camx, camy, px_per_m, screen_w, screen_h, 80.0)
+    # See draw_buildings' identical margin fix for the full reasoning: a
+    # rebuild always re-queries with the *current* camera position, so it
+    # catches a huge scenery polygon (a whole forest) astride the edge
+    # just as correctly with a small margin as a large one - the margin
+    # only needs to cover the between-rebuilds camera drift
+    # (CACHE_PADDING_PX/px_per_m, ~11m at a typical zoom), not the
+    # polygon's own size. 80m was selecting and filling thousands of
+    # scenery polygons tens of meters past anything the cache could ever
+    # show before its next rebuild - a real "culprit: rendering" cost.
+    vminx, vminy, vmaxx, vmaxy = get_viewport_bounds(camx, camy, px_per_m, screen_w, screen_h, 20.0)
 
     visible_sceneries = (
         spatial_grid.ways_in_rect(vminx, vminy, vmaxx, vmaxy)

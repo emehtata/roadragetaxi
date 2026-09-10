@@ -405,7 +405,22 @@ def _draw_buildings_uncached(
     """Draw building footprints intersecting viewport."""
     import pygame
 
-    vminx, vminy, vmaxx, vmaxy = get_viewport_bounds(camx, camy, px_per_m, screen_w, screen_h, 50.0)
+    # screen_w/screen_h here are already the padded cache surface's own
+    # dimensions (CACHE_PADDING_PX baked in by the caller), so this margin
+    # is pure extra beyond that - and the cache's offset-blit reuse can
+    # never take advantage of more than CACHE_PADDING_PX/px_per_m of it
+    # anyway (~11m at a typical driving zoom), regardless of how big any
+    # individual building is: a rebuild always re-queries with the
+    # *current* camera position, so it catches a huge building astride
+    # the edge just as correctly with a small margin as a large one - the
+    # margin only needs to cover the in-between-rebuilds camera drift, not
+    # the building's own size. A wide margin here was selecting and fully
+    # drawing buildings tens of meters past anything the cache could ever
+    # actually show before its next rebuild, in a real city with tens of
+    # thousands of buildings loaded - real cost (the same "culprit:
+    # rendering" FPS-drop pattern already fixed for roads) for no visual
+    # benefit.
+    vminx, vminy, vmaxx, vmaxy = get_viewport_bounds(camx, camy, px_per_m, screen_w, screen_h, 20.0)
 
     visible_buildings = (
         spatial_grid.ways_in_rect(vminx, vminy, vmaxx, vmaxy)
