@@ -116,6 +116,35 @@ def test_check_curb_bump_ignores_a_move_that_does_not_cross_the_line():
     assert car.speed == 20.0
 
 
+def test_check_curb_bump_pushes_the_car_back_onto_the_road_at_low_speed():
+    """A real curb is a hard stop at parking/walking speed - the car
+    shouldn't just slow down and keep climbing it, it should stop dead at
+    the curb, back on the side it approached from."""
+    curb = Curb(points_m=[(10.0, -5.0), (10.0, 5.0)], bbox=(10.0, -5.0, 10.0, 5.0))
+    car = Car(x=15.0, y=0.0, heading=0.0, speed=3.0)  # 10.8 km/h
+    taxi_mgr = TaxiManager(ways=[])
+
+    hit = taxi_mgr.check_curb_bump(car, [curb], previous_position=(5.0, 0.0), sim_time=0.0)
+
+    assert hit is True
+    assert (car.x, car.y) == (5.0, 0.0)
+    assert car.speed == 0.0
+
+
+def test_check_curb_bump_only_slows_down_at_higher_speed():
+    """Fast enough to have the momentum to climb the curb: no hard stop,
+    the car keeps its position and just loses speed (existing behavior)."""
+    curb = Curb(points_m=[(10.0, -5.0), (10.0, 5.0)], bbox=(10.0, -5.0, 10.0, 5.0))
+    car = Car(x=15.0, y=0.0, heading=0.0, speed=20.0)  # 72 km/h
+    taxi_mgr = TaxiManager(ways=[])
+
+    hit = taxi_mgr.check_curb_bump(car, [curb], previous_position=(5.0, 0.0), sim_time=0.0)
+
+    assert hit is True
+    assert (car.x, car.y) == (15.0, 0.0)
+    assert 0.0 < car.speed < 20.0
+
+
 def test_check_curb_bump_has_a_cooldown_per_curb():
     # Without a cooldown, a car scraping back and forth across the same
     # curb point (position jitter, tight cornering) would get the 15%

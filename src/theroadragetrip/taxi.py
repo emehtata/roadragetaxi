@@ -551,8 +551,12 @@ class TaxiManager:
         sim_time: float,
         curb_grid: Optional[SpatialWayGrid] = None,
         speed_factor: float = 0.85,
+        bump_back_max_speed_kmh: float = 15.0,
     ) -> bool:
-        """Bump and slow the car when it drives over a mapped kerb line."""
+        """Hit a mapped kerb line: at parking/walking speed a real curb is
+        a hard stop, so bump the car back onto the road side it came from;
+        faster than that it's just a jolt (the car has enough momentum to
+        climb it) that slows the car down without stopping it outright."""
         if not curbs or previous_position is None:
             return False
         px, py = previous_position
@@ -580,7 +584,11 @@ class TaxiManager:
             for start, end in zip(points, points[1:]):
                 if segments_intersect((px, py), (player_car.x, player_car.y), start, end):
                     self._curb_bump_cooldowns[curb_id] = sim_time
-                    player_car.speed *= speed_factor
+                    if abs(player_car.speed) * 3.6 <= bump_back_max_speed_kmh:
+                        player_car.x, player_car.y = px, py
+                        player_car.speed = 0.0
+                    else:
+                        player_car.speed *= speed_factor
                     return True
         return False
 
