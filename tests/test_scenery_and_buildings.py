@@ -1,4 +1,6 @@
+import math
 import sys
+import time
 import types
 import os
 
@@ -48,6 +50,7 @@ from theroadragetrip.render import (
     draw_scenery_objects,
     draw_trees,
     world_to_screen,
+    _draw_scenery_uncached,
 )
 
 
@@ -455,6 +458,37 @@ def test_draw_trees_paints_over_a_road_drawn_after_the_scenery_layer():
     tree_px = world_to_screen(20.0, 20.0, 20.0, 20.0, px_per_m, screen_w, screen_h)
     pixel = tuple(screen.get_at(tree_px))[:3]
     assert pixel != road_color, "tree pixel is the road fill color - tree got painted over"
+
+
+def test_draw_scenery_clips_a_huge_offscreen_polygon_instead_of_stalling():
+    """Regression for a real freeze: a single OSM forest/farmland relation
+    can have a bounding box tens of kilometers wide while only a couple of
+    its points are ever near the camera - the rest bulge far off in every
+    direction. pygame.draw.polygon's fill cost scales with how far past
+    the surface the points run, not with what's actually visible, so
+    handing it the raw world polygon (viewport-culling only checks bbox
+    *intersection*, not containment) could take the better part of a
+    second per cache rebuild despite drawing nothing on screen. A
+    real-data profile of this exact shape measured ~800ms before the
+    world-space clip-before-project fix; this bounds it generously."""
+    huge_ring = []
+    # A zigzag ring: mostly points kilometers away, with two close to the
+    # camera at (0, 0) so its bbox intersects a small viewport there.
+    for i in range(300):
+        far = 10_000.0 + (i % 7) * 500.0
+        huge_ring.append((far * math.cos(i), far * math.sin(i)))
+    huge_ring[0] = (5.0, 5.0)
+    huge_ring[1] = (-5.0, 5.0)
+    forest = Scenery(huge_ring, "forest", bbox=(-10_500.0, -10_500.0, 10_500.0, 10_500.0))
+
+    screen_w, screen_h, px_per_m = 1280, 720, 9.0
+    screen = pygame.Surface((screen_w, screen_h), pygame.SRCALPHA)
+
+    started = time.perf_counter()
+    _draw_scenery_uncached(screen, [forest], 0.0, 0.0, px_per_m, screen_w, screen_h)
+    elapsed_ms = (time.perf_counter() - started) * 1000.0
+
+    assert elapsed_ms < 200.0, f"scenery rebuild took {elapsed_ms:.1f}ms - huge polygon likely isn't being clipped"
 
 
 def test_draw_trees_and_scenery_objects_are_cached_across_stationary_frames():

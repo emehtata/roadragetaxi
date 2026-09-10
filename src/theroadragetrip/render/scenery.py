@@ -9,6 +9,7 @@ from .common import (
     world_to_screen,
     get_viewport_bounds,
 )
+from ..geo import clip_polygon_to_rect
 import math
 import random
 import time
@@ -187,7 +188,18 @@ def _draw_scenery_uncached(
                 continue
         if len(sc.points_m) < 3:
             continue
-        pts = [world_to_screen(x, y, camx, camy, px_per_m, screen_w, screen_h) for (x, y) in sc.points_m]
+        points_m = sc.points_m
+        # Same fix as draw_waters: a real forest/farmland relation's bbox
+        # can span tens of kilometers while only a handful of its points
+        # are ever near the camera - pygame.draw.polygon's fill cost scales
+        # with how far off-surface the points run, not with what's actually
+        # visible, so a huge, mostly-off-screen ring can cost hundreds of
+        # ms per rebuild despite drawing nothing. Clip in world space first.
+        if len(points_m) > 40:
+            points_m = clip_polygon_to_rect(points_m, vminx, vminy, vmaxx, vmaxy)
+            if len(points_m) < 3:
+                continue
+        pts = [world_to_screen(x, y, camx, camy, px_per_m, screen_w, screen_h) for (x, y) in points_m]
         color = SCENERY_COLORS.get(sc.kind.lower(), (38, 105, 38))
         pygame.draw.polygon(screen, color, pts)
 
