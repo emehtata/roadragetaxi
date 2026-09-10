@@ -1025,10 +1025,20 @@ def get_current_road_at_car(
     return best_way
 
 
-def _surface_max_grip_g(current_way, physics_mode: str) -> float:
+def _surface_max_grip_g(current_way, physics_mode: str, wetness: float = 0.0) -> float:
     """Return this surface's maximum combined-g tire grip (GRIP.md section
     9), reusing the game's existing Way.surface/is_ice_road fields rather
-    than a second surface classification."""
+    than a second surface classification.
+
+    `wetness` (0..1, from WeatherSystem - see weather.py) only affects the
+    asphalt bucket: it interpolates continuously from dry_asphalt toward
+    wet_asphalt rather than switching at a threshold, the same "progressive,
+    not a hard instant transition" approach GRIP.md already uses for grip
+    loss in general (section 1). Other surfaces (grass/gravel/snow/ice)
+    aren't in GRIP.md's surface list as "wet" variants, so wetness doesn't
+    touch them - this was unreachable before a weather system existed to
+    report wetness at all.
+    """
     if current_way is not None and getattr(current_way, "is_ice_road", False):
         base = SURFACE_MAX_GRIP_G["ice"]
     else:
@@ -1040,7 +1050,9 @@ def _surface_max_grip_g(current_way, physics_mode: str) -> float:
         elif surface in _GRAVEL_SURFACES:
             base = SURFACE_MAX_GRIP_G["gravel"]
         else:
-            base = SURFACE_MAX_GRIP_G["dry_asphalt"]
+            dry = SURFACE_MAX_GRIP_G["dry_asphalt"]
+            wet = SURFACE_MAX_GRIP_G["wet_asphalt"]
+            base = dry + (wet - dry) * clamp(wetness, 0.0, 1.0)
     return base * PHYSICS_MODE_GRIP_MULTIPLIER.get(physics_mode, 1.0)
 
 
@@ -1210,6 +1222,7 @@ def update_car_physics(
     parking_spaces: Optional[List] = None,
     current_way=None,
     physics_mode: str = "arcade",
+    wetness: float = 0.0,
 ) -> bool:
     """Update car speed, heading, and position.
 
@@ -1219,7 +1232,9 @@ def update_car_physics(
     Returns True if vehicle movement was blocked against the road boundary or one-way restriction.
 
     `current_way` (the road the car is currently on, if known) and
-    `physics_mode` ("arcade" or "simulation") feed the cornering-grip model:
+    `physics_mode` ("arcade" or "simulation") feed the cornering-grip model,
+    along with `wetness` (0..1, from WeatherSystem.wetness - see
+    _surface_max_grip_g):
     exceeding the surface's lateral-g limit softens steering authority
     (arcade) or, in simulation mode, also builds up a drift angle the car
     has to steer out of. car.forward_g/lateral_g/total_g (smoothed) and
@@ -1262,7 +1277,7 @@ def update_car_physics(
     # is_sliding is hysteresis on the *measured* slip_amount (set at the
     # end of the frame by _update_g_force, GRIP.md section 12) - not reset
     # here, so that hysteresis can see its own previous value.
-    car.max_grip_g = _surface_max_grip_g(current_way, physics_mode)
+    car.max_grip_g = _surface_max_grip_g(current_way, physics_mode, wetness)
     # Drift decays by default every frame; the grip-exceeded branch below
     # builds it back up on top of this when the driver is actively
     # oversteering past the surface's limit.

@@ -1492,6 +1492,7 @@ def main() -> None:
                         block_offroad=False, speed_limit_mps=speed_limit_mps,
                         nearby_vehicles=[], parking_spaces=parking_spaces,
                         current_way=current_way, physics_mode=physics_mode,
+                        wetness=weather.wetness,
                     )
                 car.braking = brake > 0.0 and car.speed > 0.05
                 midpoint = (

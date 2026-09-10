@@ -7,6 +7,7 @@ from theroadragetrip.osm import Way
 from theroadragetrip.physics import (
     Car,
     SURFACE_MAX_GRIP_G,
+    _surface_max_grip_g,
     update_car_physics,
 )
 
@@ -167,3 +168,52 @@ def test_hysteresis_keeps_is_sliding_from_flickering_at_the_boundary():
     car.is_sliding = False
     is_sliding = car.slip_amount > SLIDE_EXIT_THRESHOLD if car.is_sliding else car.slip_amount >= SLIDE_ENTER_THRESHOLD
     assert is_sliding is False  # stays not-sliding: wasn't sliding, hasn't reached enter
+
+
+def test_13_wetness_interpolates_asphalt_grip_toward_wet_asphalt():
+    """Rain (weather.py's WeatherSystem.wetness) makes asphalt grip fall
+    progressively toward wet_asphalt, not switch at a threshold - same
+    "progressive, not instant" approach GRIP.md already uses elsewhere."""
+    dry = SURFACE_MAX_GRIP_G["dry_asphalt"]
+    wet = SURFACE_MAX_GRIP_G["wet_asphalt"]
+
+    assert _surface_max_grip_g(None, "simulation", wetness=0.0) == dry
+    assert _surface_max_grip_g(None, "simulation", wetness=1.0) == wet
+    half = _surface_max_grip_g(None, "simulation", wetness=0.5)
+    assert wet < half < dry
+    assert abs(half - (dry + wet) / 2.0) < 1e-9
+
+    # Out-of-range wetness is clamped rather than extrapolated past wet_asphalt.
+    assert _surface_max_grip_g(None, "simulation", wetness=5.0) == wet
+    assert _surface_max_grip_g(None, "simulation", wetness=-1.0) == dry
+
+
+def test_14_wetness_does_not_affect_non_asphalt_surfaces():
+    """GRIP.md's surface list has no "wet grass"/"wet gravel" bucket -
+    wetness only interpolates the asphalt (default) surface."""
+    grass = Way([(0.0, 0.0), (100.0, 0.0)], "primary", 6.0, surface="grass")
+    gravel = Way([(0.0, 0.0), (100.0, 0.0)], "primary", 6.0, surface="gravel")
+    ice = Way([(0.0, 0.0), (100.0, 0.0)], "primary", 6.0, is_ice_road=True)
+
+    for way, key in ((grass, "grass"), (gravel, "gravel"), (ice, "ice")):
+        dry_wetness = _surface_max_grip_g(way, "simulation", wetness=0.0)
+        full_wetness = _surface_max_grip_g(way, "simulation", wetness=1.0)
+        assert dry_wetness == full_wetness == SURFACE_MAX_GRIP_G[key]
+
+
+def test_15_rain_lowers_the_cornering_grip_ceiling_for_the_same_corner_and_speed():
+    """Integration-level version of test_12, with wetness standing in for
+    a surface change: the same corner/speed slides sooner on wet asphalt
+    than dry."""
+    dry_car = _fast_car(speed=20.0)
+    update_car_physics(
+        dry_car, throttle=0.0, brake=0.0, steer_left=0.5, steer_right=0.0, dt=0.1,
+        physics_mode="simulation", wetness=0.0,
+    )
+    wet_car = _fast_car(speed=20.0)
+    update_car_physics(
+        wet_car, throttle=0.0, brake=0.0, steer_left=0.5, steer_right=0.0, dt=0.1,
+        physics_mode="simulation", wetness=1.0,
+    )
+    assert wet_car.max_grip_g < dry_car.max_grip_g
+    assert wet_car.grip_usage > dry_car.grip_usage
