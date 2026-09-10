@@ -23,6 +23,7 @@ from theroadragetrip.render import (
     get_viewport_bounds,
         minimum_px_per_m_for_viewport_width,
     invalidate_static_caches_for_camera_jump,
+    LEGACY_HIGHWAY_COLORS,
     road_color_for_way,
     road_render_priority,
     world_to_screen,
@@ -205,9 +206,26 @@ def test_road_color_prefers_osm_surface_over_highway():
     cycleway = Way(points_m=[(0.0, 0.0), (10.0, 0.0)], highway="cycleway", half_width_m=1.5, is_drivable=False)
 
     assert road_color_for_way(asphalt) == (142, 142, 138)
-    assert road_color_for_way(unknown) == (70, 70, 70)
+    # No recognized surface - falls back to the legacy per-highway-class
+    # color (residential), not a flat generic grey.
+    assert road_color_for_way(unknown) == LEGACY_HIGHWAY_COLORS["residential"]
     assert road_color_for_way(sidewalk) == (70, 70, 70)
     assert road_color_for_way(cycleway) == (115, 145, 150)
+
+
+def test_road_color_falls_back_to_legacy_highway_class_without_a_surface_tag():
+    """No surface tag at all (common in real OSM data) must still
+    differentiate by road class, not collapse every highway type to the
+    same flat grey."""
+    motorway = Way(points_m=[(0.0, 0.0), (10.0, 0.0)], highway="motorway", half_width_m=6.0)
+    residential = Way(points_m=[(0.0, 0.0), (10.0, 0.0)], highway="residential", half_width_m=4.0)
+    track = Way(points_m=[(0.0, 0.0), (10.0, 0.0)], highway="track", half_width_m=2.0)
+
+    assert road_color_for_way(motorway) == LEGACY_HIGHWAY_COLORS["motorway"]
+    assert road_color_for_way(residential) == LEGACY_HIGHWAY_COLORS["residential"]
+    assert road_color_for_way(track) == LEGACY_HIGHWAY_COLORS["track"]
+    # Different classes must actually look different, not all the same grey.
+    assert len({road_color_for_way(motorway), road_color_for_way(residential), road_color_for_way(track)}) == 3
 
 
 def test_major_same_layer_road_renders_over_minor_road():

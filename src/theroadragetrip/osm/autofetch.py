@@ -532,10 +532,28 @@ class AutoFetchManager:
                     active_group = set(tile_group) & active_tiles_now
                     if not active_group or remaining <= 0:
                         continue
+                    # tile_group is start_tile_streaming()'s full missing
+                    # set, but the actual fetch bbox (and so `world`) only
+                    # covers request_tiles - narrowed to the leading edge
+                    # on an ordinary straight-line move (see
+                    # start_tile_streaming's delta_x/delta_y comment). A
+                    # missing tile outside that narrowed set (typically one
+                    # evicted while the player was elsewhere, now sitting
+                    # in the *trailing* edge of a new straight-line move)
+                    # was still marked loaded here - permanently, since
+                    # nothing else ever asks for it again - even though its
+                    # own territory was never actually extracted. That's
+                    # what made a road (regularly: the opposite carriageway
+                    # of a divided highway, spread wide enough to land in a
+                    # different tile) silently stop loading and never
+                    # recover: only mark - and assign ownership of `world`
+                    # to - the tiles this fetch's bbox genuinely covered;
+                    # anything else in tile_group stays missing and gets
+                    # picked up by a later call.
                     ownership_tiles = set(request_tiles) & active_tiles_now
                     self._merge_tile_world_for_tiles(ownership_tiles, world)
-                    self.loaded_tiles.update(active_group)
-                    integrated += len(active_group)
+                    self.loaded_tiles.update(ownership_tiles)
+                    integrated += len(ownership_tiles)
                     remaining -= 1
             if integrated:
                 self.map_revision += 1

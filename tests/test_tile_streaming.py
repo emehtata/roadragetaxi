@@ -313,6 +313,62 @@ def test_cardinal_tile_transition_requests_the_leading_not_trailing_edge():
     assert max_lon >= 3000.0, "fetch region must cover the newly entered tile column, not just tiles already loaded"
 
 
+def test_evicted_tile_in_the_trailing_column_is_not_marked_loaded_without_being_fetched():
+    """Regression: on a straight cardinal move, integrate_completed_tiles()
+    used to mark *every* tile from start_tile_streaming()'s full missing
+    set as loaded - including ones outside the narrowed request_tiles bbox
+    that move actually fetched (the trailing column, skipped on purpose as
+    a perf optimization - see the "leading not trailing edge" test above,
+    normally safe since the trailing column is already loaded). If a tile
+    there had been evicted earlier (player drove away, came back later) it
+    was genuinely missing, not just "not re-requested" - but got marked
+    loaded anyway, so its own territory was never actually extracted and
+    nothing ever asked for it again. This is what made a road spread wide
+    enough to land in a different tile (regularly: the far carriageway of
+    a divided highway) silently stop loading, permanently."""
+    class Transformer:
+        def transform(self, x, y):
+            return x, y
+
+    class TileCache:
+        def __init__(self):
+            self.calls = []
+
+        def preload_region(self, bbox):
+            self.calls.append(bbox)
+            future = Future()
+            future.set_result(MapData([], [], [], [], [], (0.0, 0.0, 1.0, 1.0)))
+            return future
+
+    cache = TileCache()
+    manager = AutoFetchManager([], (0.0, 0.0, 1000.0, 1000.0), Transformer(), world_cache_manager=cache)
+
+    # Player was at tile (1, 0); everything in that 3x3 window was loaded
+    # *except* (1, -1) - simulating it got evicted at some earlier point
+    # despite remaining active across this transition.
+    manager.player_tile = TileCoord(1, 0)
+    manager.active_tiles = set(active_tiles(TileCoord(1, 0)))
+    manager.loaded_tiles = set(manager.active_tiles)
+    evicted = TileCoord(1, -1)
+    manager.loaded_tiles.discard(evicted)
+
+    # Player moves one tile west, to (0, 0) - a pure cardinal move, so the
+    # fetch narrows to the x in {-1, 0} columns (current + leading/west
+    # edge), excluding x=1 (the trailing column `evicted` sits in).
+    assert manager.start_tile_streaming(500.0, 500.0)
+    deadline = time.time() + 2.0
+    while manager.is_fetching and time.time() < deadline:
+        time.sleep(0.01)
+    while manager.integrate_completed_tiles(max_tiles=1):
+        pass
+
+    assert evicted not in manager.loaded_tiles, (
+        "evicted tile outside the fetched bbox was marked loaded anyway - its territory will never be re-fetched"
+    )
+    # And it must still show up as missing, so a later call picks it up.
+    assert evicted in manager.active_tiles - manager.loaded_tiles - manager.pending_tiles
+
+
 def test_tile_transition_during_fetch_queues_next_region_request():
     class Transformer:
         def transform(self, x, y):
