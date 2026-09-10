@@ -185,7 +185,9 @@ from .weather import (
     RAIN_COLOR,
     draw_puddles,
     draw_rain,
+    draw_splashes,
     draw_wet_roads,
+    find_puddle_overlap,
 )
 
 from .navigation import (

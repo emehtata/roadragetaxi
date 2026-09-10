@@ -6,9 +6,9 @@ os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
 import pygame
 
 from theroadragetrip.osm import Way
-from theroadragetrip.render import draw_puddles, draw_rain, draw_wet_roads
+from theroadragetrip.render import draw_puddles, draw_rain, draw_splashes, draw_wet_roads, find_puddle_overlap
 from theroadragetrip.render import weather as weather_render
-from theroadragetrip.weather import WeatherSystem, WeatherType
+from theroadragetrip.weather import SPLASH_LIFETIME_S, WeatherSystem, WeatherType
 
 
 def test_draw_rain_draws_nothing_when_clear():
@@ -168,5 +168,76 @@ def test_draw_puddles_reveals_gradually_and_fades_as_it_dries():
         weather.wetness = 0.1
         draw_puddles(screen, [way], weather, camx=50.0, camy=0.0, px_per_m=9.0, screen_w=300, screen_h=300)
         assert pygame.transform.average_color(screen)[:3] == (100, 100, 100), "puddle did not fade out while drying"
+    finally:
+        pygame.quit()
+
+
+def _way_with_known_puddle(osm_id=9002, reveal_wetness=0.3):
+    way = Way(points_m=[(0.0, 0.0), (100.0, 0.0)], highway="residential", half_width_m=5.0, osm_id=osm_id)
+    weather_render._puddle_cache[id(way)] = {
+        "x": 50.0, "y": 0.0, "radius_m": 2.0,
+        "reveal_wetness": reveal_wetness, "shape": [1.0] * 7, "ripple_phase": 0.0,
+    }
+    return way
+
+
+def test_find_puddle_overlap_requires_actual_distance_overlap():
+    way = _way_with_known_puddle()
+    weather = WeatherSystem(WeatherType.RAIN)
+    weather.wetness = 0.9  # well above the puddle's reveal threshold
+
+    # Far from the puddle (50, 0): no overlap.
+    assert find_puddle_overlap([way], weather, x=0.0, y=0.0, probe_radius_m=1.0) is None
+    # Right on top of it: overlap.
+    assert find_puddle_overlap([way], weather, x=50.0, y=0.0, probe_radius_m=1.0) is not None
+
+
+def test_find_puddle_overlap_ignores_a_puddle_not_yet_revealed():
+    """A puddle candidate that exists but hasn't appeared yet (wetness
+    below its reveal threshold) must not be considered a real hazard."""
+    way = _way_with_known_puddle(reveal_wetness=0.6)
+    weather = WeatherSystem(WeatherType.RAIN)
+    weather.wetness = 0.2  # below the puddle's reveal threshold
+    assert find_puddle_overlap([way], weather, x=50.0, y=0.0, probe_radius_m=1.0) is None
+
+
+def test_draw_splashes_draws_nothing_with_no_active_splashes():
+    pygame.init()
+    try:
+        weather = WeatherSystem()
+        screen = pygame.Surface((200, 150))
+        screen.fill((0, 0, 0))
+        draw_splashes(screen, weather, camx=0.0, camy=0.0, screen_w=200, screen_h=150)
+        assert pygame.transform.average_color(screen)[:3] == (0, 0, 0)
+    finally:
+        pygame.quit()
+
+
+def _region_has_a_nonblack_pixel(screen, cx, cy, half=6):
+    for dx in range(-half, half + 1):
+        for dy in range(-half, half + 1):
+            if screen.get_at((cx + dx, cy + dy))[:3] != (0, 0, 0):
+                return True
+    return False
+
+
+def test_draw_splashes_draws_a_visible_ring_then_fades_out():
+    pygame.init()
+    try:
+        # Give the splash a few frames of age so its ring has expanded past
+        # the ~2px radius at spawn - big enough to reliably sample pixels
+        # from, mid-life rather than the very first instant.
+        weather = WeatherSystem()
+        weather.spawn_splash(0.0, 0.0, 1.0)
+        weather.update(0.0, SPLASH_LIFETIME_S * 0.4)
+        screen = pygame.Surface((200, 150))
+        screen.fill((0, 0, 0))
+        draw_splashes(screen, weather, camx=0.0, camy=0.0, px_per_m=9.0, screen_w=200, screen_h=150)
+        assert _region_has_a_nonblack_pixel(screen, 100, 75, half=10), "no splash ring pixels found"
+
+        weather.update(0.0, 10.0)  # well past SPLASH_LIFETIME_S
+        screen.fill((0, 0, 0))
+        draw_splashes(screen, weather, camx=0.0, camy=0.0, px_per_m=9.0, screen_w=200, screen_h=150)
+        assert not _region_has_a_nonblack_pixel(screen, 100, 75, half=15), "expired splash still drew"
     finally:
         pygame.quit()

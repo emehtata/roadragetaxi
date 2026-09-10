@@ -107,7 +107,9 @@ from ..render import (
     draw_pedestrian_reflectors,
     draw_puddles,
     draw_rain,
+    draw_splashes,
     draw_wet_roads,
+    find_puddle_overlap,
     draw_resident_popup,
     resident_at_screen_position,
     draw_phone_offers,
@@ -141,7 +143,7 @@ from ..tile_streaming import PBF_TILE_SIZE_M, set_tile_size_m
 from ..traffic_world import TrafficWorld
 from ..world_cache import WorldCacheManager, clear_world_cache
 from ..performance import FrameProfiler
-from ..weather import WeatherSystem
+from ..weather import SPLASH_MIN_SPEED_MPS, WeatherSystem
 
 from .cli import configure_logging, parse_args
 from .menu_input import (
@@ -968,6 +970,7 @@ def main() -> None:
         tire_track_point_count = 0
         last_track_position = None
         last_track_surface = None
+        car_was_in_puddle = False
         map_sync_stage = 0
         last_map_revision = auto_fetch_manager.get_map_revision()
         water_elapsed = 0.0
@@ -1795,6 +1798,21 @@ def main() -> None:
             else:
                 last_track_position = None
                 last_track_surface = None
+
+            # Splash when the car drives into a puddle (WEATHER_RAIN.md #5):
+            # visual only, no physics change. Edge-triggered on entering
+            # the puddle (not every frame spent inside it) via
+            # car_was_in_puddle, same one-event-per-pass-through shape as
+            # a real splash.
+            puddle_hit = find_puddle_overlap(
+                ways, weather, car.x, car.y, max(car.length_m, car.width_m) * 0.5,
+                spatial_grid=spatial_grid,
+            )
+            car_in_puddle_now = puddle_hit is not None and abs(car.speed) >= SPLASH_MIN_SPEED_MPS
+            if car_in_puddle_now and not car_was_in_puddle:
+                weather.spawn_splash(car.x, car.y, min(1.0, abs(car.speed) * 3.6 / 60.0))
+            car_was_in_puddle = car_in_puddle_now
+
             current_road_name = getattr(current_way, "name", None) if current_way else None
             if not current_road_name and current_way:
                 current_road_name = getattr(current_way, "highway", "Road").replace("_", " ").title()
@@ -2185,6 +2203,7 @@ def main() -> None:
                 spatial_grid=spatial_grid,
                 current_way=current_way,
             )
+            draw_splashes(screen, weather, camx, camy, px_per_m=px_per_m)
             if not on_foot:
                 draw_taxi_smoke(screen, car, camx, camy, px_per_m=px_per_m, timer=taxi_mgr.taxi_smoke_timer)
             draw_passenger_nausea_bubble(

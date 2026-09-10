@@ -5,7 +5,13 @@ from typing import List, Optional
 from .common import PX_PER_M, SCREEN_W, SCREEN_H, _reusable_alpha_surface, get_viewport_bounds, world_to_screen
 
 from ..osm import Way
-from ..weather import RAIN_DRIFT_FRACTION_PER_S, RAIN_FALL_FRACTION_PER_S, RAIN_SPEED_VARIATION, WeatherSystem
+from ..weather import (
+    RAIN_DRIFT_FRACTION_PER_S,
+    RAIN_FALL_FRACTION_PER_S,
+    RAIN_SPEED_VARIATION,
+    SPLASH_LIFETIME_S,
+    WeatherSystem,
+)
 
 RAIN_COLOR = (196, 206, 222)
 RAIN_STREAK_LEN_MIN_PX = 9.0
@@ -46,6 +52,13 @@ PUDDLE_SHAPE_JITTER = 0.35  # +/- fraction of radius per vertex - an irregular o
 # Computed once per way and never recomputed, so puddles stay put rather
 # than jittering to a new random spot every frame (WEATHER_RAIN.md #4).
 _puddle_cache: dict = {}
+
+# Splash rings: expand and fade over SPLASH_LIFETIME_S, doubling as the
+# "disturb the puddle surface with ripples" effect (WEATHER_RAIN.md #5) -
+# no separate ripple mechanism needed for a splash impact.
+SPLASH_RING_COLOR = (215, 225, 238)
+SPLASH_MAX_RADIUS_M = 1.4
+SPLASH_MAX_ALPHA = 200
 
 
 def _puddle_for_way(way: Way) -> Optional[dict]:
@@ -249,6 +262,84 @@ def draw_puddles(
             for i, jitter in enumerate(spot["shape"])
         ]
         pygame.draw.polygon(overlay, (*PUDDLE_COLOR, alpha), polygon)
+        drew_any = True
+    if drew_any:
+        screen.blit(overlay, (0, 0))
+
+
+def find_puddle_overlap(
+    ways: List[Way],
+    weather: WeatherSystem,
+    x: float,
+    y: float,
+    probe_radius_m: float,
+    spatial_grid=None,
+) -> Optional[dict]:
+    """Return the puddle spot currently overlapping a circle of
+    probe_radius_m centered at (x, y) - e.g. the vehicle's position and
+    half-length - or None.
+
+    Simple circle-circle distance test, not pixel-perfect collision
+    (WEATHER_RAIN.md #5). Only considers ways near (x, y) (via the
+    spatial grid, or a bbox check without one), never the full ways list -
+    same reasoning as _visible_drivable_ways, just centered on a point
+    instead of the camera viewport.
+    """
+    if weather.wetness <= 0.0 or not ways:
+        return None
+    margin = probe_radius_m + PUDDLE_MAX_RADIUS_M
+    if spatial_grid is not None:
+        candidates = spatial_grid.ways_in_rect(x - margin, y - margin, x + margin, y + margin)
+    else:
+        candidates = []
+        for w in ways:
+            bbox = getattr(w, "bbox", None)
+            if bbox and bbox != (0.0, 0.0, 0.0, 0.0):
+                if bbox[2] < x - margin or bbox[0] > x + margin or bbox[3] < y - margin or bbox[1] > y + margin:
+                    continue
+            candidates.append(w)
+
+    for way in candidates:
+        if not getattr(way, "is_drivable", True):
+            continue
+        spot = _puddle_for_way(way)
+        if spot is None or weather.wetness <= spot["reveal_wetness"]:
+            continue  # not (yet) visible at the current wetness
+        if math.hypot(x - spot["x"], y - spot["y"]) <= spot["radius_m"] + probe_radius_m:
+            return spot
+    return None
+
+
+def draw_splashes(
+    screen,
+    weather: WeatherSystem,
+    camx: float,
+    camy: float,
+    px_per_m: float = PX_PER_M,
+    screen_w: int = SCREEN_W,
+    screen_h: int = SCREEN_H,
+) -> None:
+    """Draw active splash ripples spawned by WeatherSystem.spawn_splash()
+    (see main()'s puddle-overlap check) as expanding, fading rings -
+    short-lived and pooled (WEATHER_RAIN.md #5), never more than
+    SPLASH_POOL_MAX at once.
+    """
+    if not weather.splashes:
+        return
+    import pygame
+
+    overlay = _reusable_alpha_surface(pygame, "splashes", (screen_w, screen_h))
+    drew_any = False
+    for x, y, age, strength in weather.splashes:
+        progress = min(1.0, age / SPLASH_LIFETIME_S)
+        alpha = round(SPLASH_MAX_ALPHA * (1.0 - progress) * (0.5 + 0.5 * strength))
+        if alpha <= 0:
+            continue
+        center_x, center_y = world_to_screen(x, y, camx, camy, px_per_m, screen_w, screen_h)
+        radius_px = round((0.25 + progress * SPLASH_MAX_RADIUS_M * strength) * px_per_m)
+        if radius_px < 1:
+            continue
+        pygame.draw.circle(overlay, (*SPLASH_RING_COLOR, alpha), (center_x, center_y), radius_px, width=1)
         drew_any = True
     if drew_any:
         screen.blit(overlay, (0, 0))

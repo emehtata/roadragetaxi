@@ -39,6 +39,15 @@ RAIN_FALL_FRACTION_PER_S = 0.9  # base screen-heights/second fall speed
 RAIN_DRIFT_FRACTION_PER_S = 0.05  # constant screen-widths/second wind drift
 RAIN_SPEED_VARIATION = (0.75, 1.3)  # per-particle multiplier, assigned once at spawn
 
+# Splashes: visual only (WEATHER_RAIN.md #5 - vehicle physics are never
+# touched here), real-time lifetime like rain particles. Edge-triggered by
+# the caller (main() only spawns one when the car *enters* a puddle, not
+# every frame it spends inside one) so continuously driving through a
+# puddle doesn't flood the pool.
+SPLASH_LIFETIME_S = 0.5
+SPLASH_MIN_SPEED_MPS = 1.0  # below this, "driving through" doesn't splash
+SPLASH_POOL_MAX = 40  # defensive cap; splashes expire well before this matters
+
 
 class WeatherSystem:
     """Owns the current weather type and road wetness.
@@ -58,6 +67,17 @@ class WeatherSystem:
         # bottom) rather than reallocated - render/weather.py maps these
         # to actual screen pixels.
         self.rain_particles = [self._spawn_rain_particle() for _ in range(RAIN_PARTICLE_COUNT)]
+        # Each entry: [x, y, age_s, strength]. Short-lived (SPLASH_LIFETIME_S)
+        # and pruned in update() - never grows large enough to need the
+        # rain-particle pool's recycle-in-place treatment.
+        self.splashes: list = []
+
+    def spawn_splash(self, x: float, y: float, strength: float) -> None:
+        """Trigger a splash effect (world position, 0..1 strength - see
+        WEATHER_RAIN.md #5: stronger/larger at higher vehicle speed)."""
+        self.splashes.append([x, y, 0.0, max(0.0, min(1.0, strength))])
+        if len(self.splashes) > SPLASH_POOL_MAX:
+            del self.splashes[: len(self.splashes) - SPLASH_POOL_MAX]
 
     def _spawn_rain_particle(self) -> list:
         return [
@@ -101,3 +121,8 @@ class WeatherSystem:
                     x -= 1.0
                 particle[0] = x
                 particle[1] = y
+
+        if self.splashes and real_dt > 0.0:
+            for splash in self.splashes:
+                splash[2] += real_dt
+            self.splashes = [s for s in self.splashes if s[2] < SPLASH_LIFETIME_S]
