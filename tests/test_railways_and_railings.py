@@ -102,3 +102,37 @@ def test_draw_railings_runs_without_error():
     railing = Railing(points_m=[(90.0, 100.0), (110.0, 100.0)], bbox=(90.0, 100.0, 110.0, 100.0))
     draw_railings(surf, [railing], camx=100.0, camy=100.0, px_per_m=5.0, screen_w=800, screen_h=600)
     pygame.quit()
+
+
+def test_draw_railways_skips_sleeper_ties_far_outside_the_viewport():
+    """A rail line's whole-way bbox check only says "this way touches the
+    viewport somewhere" - a real rail yard siding can run for kilometers,
+    so without per-segment culling a way that merely clips the viewport
+    corner would still walk its *entire* length generating a sleeper tie
+    every 2m, almost all of them off-screen (measured: one dense real-data
+    rail yard cost 5.8ms/frame before this fix, ~1.1ms after)."""
+    import pygame
+    pygame.init()
+    surf = pygame.Surface((800, 600))
+
+    # One segment stretching 10km straight off to the west (every 2m would
+    # be ~5000 sleeper ties if not culled), then a short segment actually
+    # crossing the visible area near the camera.
+    railway = Railway(
+        points_m=[(-9900.0, 100.0), (80.0, 100.0), (120.0, 100.0)],
+        bbox=(-9900.0, 100.0, 120.0, 100.0),
+    )
+
+    draw_calls = []
+    real_line = pygame.draw.line
+    try:
+        pygame.draw.line = lambda *a, **k: (draw_calls.append(1), real_line(*a, **k))[1]
+        draw_railways(surf, [railway], camx=100.0, camy=100.0, px_per_m=8.0, screen_w=800, screen_h=600)
+    finally:
+        pygame.draw.line = real_line
+    pygame.quit()
+
+    # The visible ~120m segment alone draws on the order of a few dozen
+    # lines (ties + 2 rails); if the far-off-screen 10km segment wasn't
+    # culled it would add thousands more.
+    assert len(draw_calls) < 200

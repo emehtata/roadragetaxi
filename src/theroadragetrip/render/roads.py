@@ -1246,6 +1246,30 @@ _RAILWAY_TIE_SPACING_M = 2.0
 _RAILWAY_TIE_LENGTH_M = 2.6
 
 
+def _segment_viewport_t_range(x0, y0, ux, uy, seg_len, vminx, vminy, vmaxx, vmaxy):
+    """Return the (t_lo, t_hi) sub-range of [0, seg_len] along a unit-
+    direction (ux, uy) segment starting at (x0, y0) that falls inside the
+    viewport rect, or None if none of it does. O(1) - standard axis-
+    aligned line/box clip (Liang-Barsky), used so a long segment with only
+    one end near the camera doesn't get treated as visible along its
+    entire length."""
+    t_lo, t_hi = 0.0, seg_len
+    for coord0, u, lo, hi in ((x0, ux, vminx, vmaxx), (y0, uy, vminy, vmaxy)):
+        if abs(u) < 1e-9:
+            if coord0 < lo or coord0 > hi:
+                return None
+            continue
+        ta = (lo - coord0) / u
+        tb = (hi - coord0) / u
+        if ta > tb:
+            ta, tb = tb, ta
+        t_lo = max(t_lo, ta)
+        t_hi = min(t_hi, tb)
+        if t_lo > t_hi:
+            return None
+    return t_lo, t_hi
+
+
 def draw_railways(
     screen,
     railways: List,
@@ -1283,7 +1307,18 @@ def draw_railways(
         if len(points) < 2:
             continue
 
-        # Sleepers first so the rails draw on top of them.
+        # bbox above only culls the whole way - a real rail line can run for
+        # kilometers (a yard's sidings, a long corridor), so a way that just
+        # clips the viewport corner would otherwise still walk its entire
+        # length generating a sleeper tie every 2m, almost all of them
+        # off-screen (measured: one dense rail-yard viewport pulled in 17
+        # ways totaling 8.7km of track - over 4000 ties - for a 162x100m
+        # visible area). A single *segment* can itself be long enough to
+        # have the same problem (one endpoint inside the viewport, the
+        # other kilometers away) - so ties are bounded to each segment's
+        # actual on-screen t-range, not its full length. The tie phase
+        # (next_tie) still advances continuously across the whole way so
+        # ties stay aligned wherever the next visible stretch is.
         dist_along = 0.0
         next_tie = 0.0
         for (x0, y0), (x1, y1) in zip(points, points[1:]):
@@ -1293,26 +1328,34 @@ def draw_railways(
                 continue
             ux, uy = dx / seg_len, dy / seg_len
             nx, ny = -uy, ux
-            while next_tie <= dist_along + seg_len:
-                t = next_tie - dist_along
-                tx, ty = x0 + ux * t, y0 + uy * t
-                s0 = world_to_screen(tx - nx * half_tie, ty - ny * half_tie, camx, camy, px_per_m, screen_w, screen_h)
-                s1 = world_to_screen(tx + nx * half_tie, ty + ny * half_tie, camx, camy, px_per_m, screen_w, screen_h)
-                pygame.draw.line(screen, RAILWAY_TIE_COLOR, s0, s1, tie_thickness)
-                next_tie += _RAILWAY_TIE_SPACING_M
+            t_range = _segment_viewport_t_range(x0, y0, ux, uy, seg_len, vminx, vminy, vmaxx, vmaxy)
+            target = dist_along + seg_len
+            if t_range is not None:
+                t_lo, t_hi = t_range
+                for offset in (-half_gauge, half_gauge):
+                    s0 = world_to_screen(x0 + nx * offset, y0 + ny * offset, camx, camy, px_per_m, screen_w, screen_h)
+                    s1 = world_to_screen(x1 + nx * offset, y1 + ny * offset, camx, camy, px_per_m, screen_w, screen_h)
+                    pygame.draw.line(screen, RAILWAY_RAIL_COLOR, s0, s1, rail_thickness)
+                window_lo = dist_along + t_lo
+                window_hi = dist_along + t_hi
+                if next_tie < window_lo:
+                    steps = math.ceil((window_lo - next_tie) / _RAILWAY_TIE_SPACING_M)
+                    next_tie += steps * _RAILWAY_TIE_SPACING_M
+                while next_tie <= window_hi:
+                    t = next_tie - dist_along
+                    tx, ty = x0 + ux * t, y0 + uy * t
+                    s0 = world_to_screen(tx - nx * half_tie, ty - ny * half_tie, camx, camy, px_per_m, screen_w, screen_h)
+                    s1 = world_to_screen(tx + nx * half_tie, ty + ny * half_tie, camx, camy, px_per_m, screen_w, screen_h)
+                    pygame.draw.line(screen, RAILWAY_TIE_COLOR, s0, s1, tie_thickness)
+                    next_tie += _RAILWAY_TIE_SPACING_M
+            # Advance the tie phase past whatever of this segment is left
+            # (fully off-screen, or the off-screen tail beyond t_hi) in
+            # closed form - never iterate tie-by-tie over distance that
+            # isn't going to be drawn.
+            if next_tie <= target:
+                steps = math.floor((target - next_tie) / _RAILWAY_TIE_SPACING_M) + 1
+                next_tie += steps * _RAILWAY_TIE_SPACING_M
             dist_along += seg_len
-
-        for (x0, y0), (x1, y1) in zip(points, points[1:]):
-            dx, dy = x1 - x0, y1 - y0
-            seg_len = math.hypot(dx, dy)
-            if seg_len < 1e-6:
-                continue
-            ux, uy = dx / seg_len, dy / seg_len
-            nx, ny = -uy, ux
-            for offset in (-half_gauge, half_gauge):
-                s0 = world_to_screen(x0 + nx * offset, y0 + ny * offset, camx, camy, px_per_m, screen_w, screen_h)
-                s1 = world_to_screen(x1 + nx * offset, y1 + ny * offset, camx, camy, px_per_m, screen_w, screen_h)
-                pygame.draw.line(screen, RAILWAY_RAIL_COLOR, s0, s1, rail_thickness)
 
 
 RAILING_COLOR = (150, 145, 130)
