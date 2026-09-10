@@ -136,10 +136,24 @@ def fetch_osm_ways_from_pbf(
     return elements
 
 
+# A cell-indexed extract normally finishes in ~1-2s; the full-source
+# fallback (no index, or a not-yet-built one - see fetch_osm_ways_from_pbf)
+# scans the whole national file and has been observed to take 30+
+# real-world seconds. 180s gives real margin above that while still
+# bounding a genuinely stuck/hung osmium process - without this, a hang
+# here blocks forever, since _wait_for_active_tile_fetch (main.py) waits
+# for exactly as long as a fetch reports itself in-flight and relies on
+# the fetch's own timeout to eventually give up (true for Overpass's
+# requests.post(..., timeout=60), but subprocess.run() here previously had
+# none at all).
+EXTRACT_TIMEOUT_S = 180.0
+
+
 def _extract_elements(source_pbf: Path, bbox: Tuple[float, float, float, float]) -> List[dict]:
     """Run one `osmium extract` for `bbox` against `source_pbf` - the full
     source file, or (from the grid index) one small regional cell of it -
-    and parse the result. Raises RuntimeError on an osmium failure."""
+    and parse the result. Raises RuntimeError on an osmium failure or
+    timeout."""
     south, west, north, east = bbox
     with tempfile.TemporaryDirectory() as tmp_dir:
         out_path = os.path.join(tmp_dir, "extract.osm")
@@ -153,7 +167,10 @@ def _extract_elements(source_pbf: Path, bbox: Tuple[float, float, float, float])
             str(source_pbf),
         ]
         logger.info("Extracting local OSM data: %s", " ".join(cmd))
-        result = subprocess.run(cmd, capture_output=True, text=True)
+        try:
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=EXTRACT_TIMEOUT_S)
+        except subprocess.TimeoutExpired as exc:
+            raise RuntimeError(f"osmium extract timed out after {EXTRACT_TIMEOUT_S:.0f}s: {' '.join(cmd)}") from exc
         if result.returncode != 0:
             raise RuntimeError(f"osmium extract failed (exit {result.returncode}): {result.stderr.strip()}")
         return _parse_osm_xml(out_path)

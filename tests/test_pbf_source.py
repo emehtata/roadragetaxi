@@ -98,6 +98,25 @@ def test_fetch_from_pbf_raises_when_pbf_file_is_missing(tmp_path, monkeypatch):
         fetch_osm_ways_from_pbf((64.0, 25.0, 64.1, 25.1), pbf_path=tmp_path / "does-not-exist.osm.pbf")
 
 
+def test_fetch_from_pbf_raises_cleanly_when_osmium_extract_hangs(tmp_path, monkeypatch):
+    """Regression: _extract_elements's subprocess.run() used to have no
+    timeout at all, so a stuck/hung osmium process blocked forever -
+    _wait_for_active_tile_fetch (main.py) only waits as long as the fetch
+    itself takes and relies on it to eventually give up, which was true for
+    Overpass's requests.post(timeout=60) but not for this subprocess call."""
+    monkeypatch.setattr(osm, "CACHE_DIR", str(tmp_path / "cache"))
+    pbf_path = tmp_path / "finland-latest.osm.pbf"
+    pbf_path.write_bytes(b"not a real pbf, just needs to exist")
+
+    def _hangs(cmd, **kwargs):
+        raise subprocess.TimeoutExpired(cmd, kwargs.get("timeout"))
+
+    monkeypatch.setattr(subprocess, "run", _hangs)
+
+    with pytest.raises(RuntimeError, match="timed out"):
+        fetch_osm_ways_from_pbf((64.0, 25.0, 64.1, 25.1), pbf_path=pbf_path)
+
+
 def test_fetch_from_pbf_gives_an_actionable_error_when_osmium_is_missing(tmp_path, monkeypatch):
     monkeypatch.setattr(osm, "CACHE_DIR", str(tmp_path / "cache"))
     pbf_path = tmp_path / "finland-latest.osm.pbf"

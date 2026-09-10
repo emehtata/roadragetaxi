@@ -203,6 +203,51 @@ def test_tile_streaming_loads_missing_tiles_in_background():
     assert metrics["tile_integration_ms"] >= 0.0
 
 
+def test_tile_fetch_projects_all_four_corners_not_just_the_diagonal():
+    """Regression: EPSG:3067 rotates meridians relative to true north away
+    from its central meridian, so a straight meters-space tile rectangle
+    becomes a rotated quadrilateral in lat/lon - transforming only the
+    (min_x,min_y)/(max_x,max_y) diagonal (as opposed to all 4 corners) can
+    compute a lat/lon bbox narrower than the tile actually is, silently
+    excluding a real strip of OSM data at the tile edges even though the
+    tile is then marked fully loaded by its untouched meters coordinates.
+    A fake rotation-like transform (mixing x and y, unlike the other tests'
+    identity/separable fakes, which can't expose this) makes the corner
+    that actually produces the min/max lon fall on the *other* diagonal."""
+    class RotatingTransformer:
+        def transform(self, x, y):
+            return x + y * 0.5, y - x * 0.5
+
+    class TileCache:
+        def __init__(self):
+            self.calls = []
+
+        def preload_region(self, bbox):
+            self.calls.append(bbox)
+            future = Future()
+            future.set_result(MapData([], [], [], [], [], (0.0, 0.0, 1.0, 1.0)))
+            return future
+
+    cache = TileCache()
+    manager = AutoFetchManager(
+        [], (0.0, 0.0, 1000.0, 1000.0), RotatingTransformer(),
+        world_cache_manager=cache,
+    )
+
+    assert manager.start_tile_streaming(500.0, 500.0)
+    deadline = time.time() + 2.0
+    while manager.is_fetching and time.time() < deadline:
+        time.sleep(0.01)
+
+    t = RotatingTransformer()
+    corners = [t.transform(x, y) for x in (-1000.0, 2000.0) for y in (-1000.0, 2000.0)]
+    lons = [lon for lon, _ in corners]
+    lats = [lat for _, lat in corners]
+    expected = (min(lats), min(lons), max(lats), max(lons))
+    assert len(cache.calls) == 1
+    assert cache.calls[0] == expected
+
+
 def test_tile_streaming_respects_cooldown_between_requests():
     """Regression: crossing tiles quickly (driving fast) used to fire a new
     Overpass request the instant the previous one finished, with nothing

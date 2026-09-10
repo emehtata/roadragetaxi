@@ -63,6 +63,30 @@ def _snap_projected_bbox(
     )
 
 
+def _meters_bbox_to_latlon(
+    transformer, min_x: float, min_y: float, max_x: float, max_y: float,
+) -> Tuple[float, float, float, float]:
+    """Project a meters-space (EPSG:3067) rectangle to a lat/lon bbox.
+
+    Must transform all 4 corners, not just the (min_x,min_y)/(max_x,max_y)
+    diagonal - EPSG:3067 (TM35FIN) rotates meridians relative to true north
+    away from its central meridian (27E), so a straight rectangle in meters
+    becomes a rotated quadrilateral in lat/lon. Taking min/max of only 2
+    opposite corners silently cuts a real strip (a couple hundred meters at
+    Finland's populated latitudes/tile size) off the west and east edges of
+    the *queried* area, even though the tile grid marks that tile fully
+    loaded by its untouched meters coordinates - a permanent, silent hole
+    at tile edges (a real OSM way ending short, never re-fetched) rather
+    than a survivable rounding error.
+    """
+    lons, lats = zip(*(
+        transformer.transform(x, y)
+        for x in (min_x, max_x)
+        for y in (min_y, max_y)
+    ))
+    return (min(lats), min(lons), max(lats), max(lons))
+
+
 def _map_object_key(obj) -> tuple:
     """Return a stable key for deduplicating overlapping auto-fetch results."""
     object_id = getattr(obj, "osm_id", None)
@@ -490,9 +514,7 @@ class AutoFetchManager:
             min_y = min(tile_bbox(tile)[1] for tile in request_tiles)
             max_x = max(tile_bbox(tile)[2] for tile in request_tiles)
             max_y = max(tile_bbox(tile)[3] for tile in request_tiles)
-            lon1, lat1 = self.transformer.transform(min_x, min_y)
-            lon2, lat2 = self.transformer.transform(max_x, max_y)
-            bbox = (min(lat1, lat2), min(lon1, lon2), max(lat1, lat2), max(lon1, lon2))
+            bbox = _meters_bbox_to_latlon(self.transformer, min_x, min_y, max_x, max_y)
             if self.world_cache_manager is not None:
                 world = self.world_cache_manager.preload_region(bbox).result()
             else:

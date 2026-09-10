@@ -6,6 +6,7 @@ import time
 from dataclasses import asdict
 
 
+from .. import tile_streaming
 from ..physics import (
     Car,
 )
@@ -113,7 +114,14 @@ def _write_debug_snapshot(
             "configured_enabled": bool(args.auto_fetch),
             "call_enabled": True,
             "margin_m": args.fetch_margin,
-            "tile_size_m": args.fetch_tile_size,
+            # The real live tile-streaming grid size (tile_streaming.
+            # TILE_SIZE_M, set once at startup - see set_tile_size_m in
+            # main()), NOT args.fetch_tile_size: that CLI value only feeds
+            # AutoFetchManager.start_if_needed(), a legacy margin-based
+            # fetch path no longer called anywhere - reporting it here was
+            # reporting a number that has nothing to do with the tiles
+            # actually being streamed.
+            "tile_size_m": tile_streaming.TILE_SIZE_M,
             "build_in_process": bool(args.build_in_process),
             "osm_source": args.osm_source,
             "manager_enabled_state": not auto_fetch_manager.get_fetching(),
@@ -148,7 +156,7 @@ def _write_debug_snapshot(
             "endpoint_audit": auto_fetch_manager.get_endpoint_fetch_audit(
                 car,
                 args.fetch_margin,
-                args.fetch_tile_size,
+                tile_streaming.TILE_SIZE_M,
                 current_way=current_way,
             ),
         },
