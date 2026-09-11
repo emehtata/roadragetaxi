@@ -622,6 +622,34 @@ def test_scenery_colors_differ_by_landuse_value():
     assert len(set(colors)) == len(colors)
 
 
+def test_draw_scenery_adds_a_speckle_texture_for_natural_ground_kinds():
+    """Real aerial imagery shows visible grain (tree canopy, tilled soil,
+    loose sand, ...) for these kinds, not a flat fill - forest must render
+    more than one distinct color (the base fill plus jittered-brightness
+    speckle dots), while a flat zoning kind like commercial (usually
+    covered by buildings anyway) stays untextured."""
+    forest = Scenery(
+        [(0.0, 0.0), (100.0, 0.0), (100.0, 100.0), (0.0, 100.0)], "forest",
+        bbox=(0.0, 0.0, 100.0, 100.0),
+    )
+    commercial = Scenery(
+        [(0.0, 0.0), (100.0, 0.0), (100.0, 100.0), (0.0, 100.0)], "commercial",
+        bbox=(0.0, 0.0, 100.0, 100.0),
+    )
+
+    def rendered_colors(scenery):
+        screen = pygame.Surface((300, 300), pygame.SRCALPHA)
+        _draw_scenery_uncached(screen, [scenery], 50.0, 50.0, 4.0, 300, 300)
+        return {tuple(screen.get_at((x, y)))[:3] for x in range(300) for y in range(300)}
+
+    forest_colors = rendered_colors(forest)
+    commercial_colors = rendered_colors(commercial)
+
+    assert SCENERY_COLORS["forest"] in forest_colors
+    assert len(forest_colors) > 1, "forest rendered as one flat color - no speckle texture drawn"
+    assert commercial_colors == {SCENERY_COLORS["commercial"]}, "commercial must stay a flat fill, not textured"
+
+
 def test_draw_construction_fences_outlines_construction_scenery_only():
     from theroadragetrip.render import common as common_module
 

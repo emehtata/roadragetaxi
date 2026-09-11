@@ -90,6 +90,103 @@ SCENERY_COLORS = {
     "sauna": (112, 92, 72),
     "parking": (98, 98, 98),  # plain asphalt grey, no green/blue tint
 }
+# Kinds that read as visibly grainy/textured ground in real aerial imagery -
+# tree canopy, mown/unmown grass, tilled soil, loose sand - as opposed to
+# the flat, mostly-building-covered zoning kinds (commercial, industrial,
+# ...) or small point-like facilities, where a speckle texture would just
+# be wasted cost under something else drawn on top. See _speckle_tile_for_
+# color/_draw_scenery_uncached: same generalized procedural-noise idea as
+# _grass_texture_tile - a small repeating tile of jittered-brightness dots -
+# just polygon-clipped (mask + BLEND_RGBA_MULT, the same technique used for
+# the grass/asphalt texture-through-a-shape problem elsewhere in this
+# module) instead of tiled unclipped across the whole screen, and tinted
+# from each kind's own SCENERY_COLORS entry instead of a hand-picked
+# palette per kind.
+_SPECKLE_SCENERY_KINDS = frozenset({
+    "forest", "wood", "scrub", "heath", "park", "garden", "meadow", "grass",
+    "greenfield", "nature_reserve", "recreation_ground", "dog_park",
+    "fitness_station", "cemetery", "farmland", "farmyard", "allotments",
+    "sand", "beach",
+})
+_SPECKLE_TILE_SIZE_PX = 40
+_SPECKLE_DOTS_PER_TILE = 34
+_SPECKLE_MIN_PX_PER_M = 2.0  # below this the dots would be sub-pixel noise, not texture - skip entirely
+_speckle_tile_cache: dict = {}
+
+
+def _speckle_color(base: Tuple[int, int, int], variant: float) -> Tuple[int, int, int]:
+    """A brightness-jittered variant of a base color - the same noise idea
+    _grass_texture_tile uses, generalized to work from any kind's own
+    color instead of a hand-picked per-kind palette."""
+    factor = 0.72 + variant * 0.56
+    return tuple(max(0, min(255, int(channel * factor))) for channel in base)
+
+
+def _speckle_tile_for_color(pygame_module, color: Tuple[int, int, int]):
+    """A small reusable SRCALPHA tile of jittered-brightness dots on a
+    transparent background, cached per base color - built once, then
+    tiled+clipped by _draw_scenery_uncached for every scenery polygon of
+    that color, the same way _grass_texture_tile is built once and tiled
+    for the whole background."""
+    tile = _speckle_tile_cache.get(color)
+    if tile is not None:
+        return tile
+    size = _SPECKLE_TILE_SIZE_PX
+    tile = pygame_module.Surface((size, size), pygame_module.SRCALPHA)
+    rng = random.Random((color[0] << 16) | (color[1] << 8) | color[2])
+    for _ in range(_SPECKLE_DOTS_PER_TILE):
+        x = rng.randrange(size)
+        y = rng.randrange(size)
+        dot_color = _speckle_color(color, rng.random())
+        pygame_module.draw.circle(tile, dot_color, (x, y), 1)
+    _speckle_tile_cache[color] = tile
+    return tile
+
+
+def _draw_polygon_texture(
+    pygame_module, screen, tile, pts, screen_w: int, screen_h: int, camx: float, camy: float, px_per_m: float,
+) -> None:
+    """Tile `tile` across pts' bounding box and clip it to the polygon's
+    exact shape (mask + BLEND_RGBA_MULT - see _speckle_tile_for_color's
+    docstring), then blit the result onto screen. Bounded to the
+    on-screen portion of that bbox, same reasoning as draw_waters/
+    draw_scenery's own world-space clip: cost must follow what's
+    actually visible, not a polygon's full extent.
+
+    The tile's phase is anchored to world position (camx/camy), the same
+    way _draw_grass_texture_uncached anchors its own tiling - not to this
+    polygon's own bbox origin. Anchoring to the bbox would make the dot
+    pattern visibly slide as the camera pans (a fresh, differently-placed
+    bbox every rebuild) and misalign at the shared border between two
+    same-kind polygons, instead of reading as one continuous texture."""
+    min_x = max(0, int(math.floor(min(p[0] for p in pts))))
+    min_y = max(0, int(math.floor(min(p[1] for p in pts))))
+    max_x = min(screen_w, int(math.ceil(max(p[0] for p in pts))) + 1)
+    max_y = min(screen_h, int(math.ceil(max(p[1] for p in pts))) + 1)
+    if max_x <= min_x or max_y <= min_y:
+        return
+    size = (max_x - min_x, max_y - min_y)
+    tile_w, tile_h = tile.get_size()
+    texture_surface = pygame_module.Surface(size, pygame_module.SRCALPHA)
+    origin_x = screen_w * 0.5 - camx * px_per_m
+    origin_y = screen_h * 0.5 + camy * px_per_m
+    first_tile_x = int((min_x - origin_x) % tile_w) - tile_w
+    first_tile_y = int((min_y - origin_y) % tile_h) - tile_h
+    for tile_x in range(first_tile_x, size[0], tile_w):
+        for tile_y in range(first_tile_y, size[1], tile_h):
+            texture_surface.blit(tile, (tile_x, tile_y))
+    mask = pygame_module.Surface(size, pygame_module.SRCALPHA)
+    pygame_module.draw.polygon(mask, (255, 255, 255, 255), [(p[0] - min_x, p[1] - min_y) for p in pts])
+    texture_surface.blit(mask, (0, 0), special_flags=pygame_module.BLEND_RGBA_MULT)
+    screen.blit(texture_surface, (min_x, min_y))
+
+
+def _speckle_color(base: Tuple[int, int, int], variant: float) -> Tuple[int, int, int]:
+    """A brightness-jittered variant of a base color - the same noise idea
+    _grass_texture_tile uses, generalized to work from any kind's own
+    color instead of a hand-picked per-kind palette."""
+    factor = 0.76 + variant * 0.5
+    return tuple(max(0, min(255, int(channel * factor))) for channel in base)
 TREE_CROWN_COLORS = ((25, 78, 29), (34, 101, 35), (48, 119, 42), (63, 112, 34))
 # Finland's three dominant forest trees (see osm/trees.py:classify_tree_kind
 # for how a tree gets assigned one) - distinguished by crown color/size only
@@ -228,8 +325,12 @@ def _draw_scenery_uncached(
             if len(points_m) < 3:
                 continue
         pts = [world_to_screen(x, y, camx, camy, px_per_m, screen_w, screen_h) for (x, y) in points_m]
-        color = SCENERY_COLORS.get(sc.kind.lower(), (38, 105, 38))
+        kind = sc.kind.lower()
+        color = SCENERY_COLORS.get(kind, (38, 105, 38))
         pygame.draw.polygon(screen, color, pts)
+        if kind in _SPECKLE_SCENERY_KINDS and px_per_m >= _SPECKLE_MIN_PX_PER_M:
+            tile = _speckle_tile_for_color(pygame, color)
+            _draw_polygon_texture(pygame, screen, tile, pts, screen_w, screen_h, camx, camy, px_per_m)
 
 
 CONSTRUCTION_FENCE_COLOR = (235, 140, 30)  # hi-vis hazard orange
