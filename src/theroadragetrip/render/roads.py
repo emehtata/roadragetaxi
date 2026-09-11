@@ -702,23 +702,26 @@ def draw_street_lights(
                 )
                 _street_light_last_debug_log_ms = now_ms
         return
-    road_cache_signature = tuple(
-        (
-            getattr(way, "osm_id", None),
-            len(way.points_m),
-            way.points_m[0] if way.points_m else None,
-            way.points_m[-1] if way.points_m else None,
-            getattr(way, "half_width_m", 0.0),
-            getattr(way, "lit", None),
-        )
-        for way in ways
-    )
+    # Identity + length + last-element-identity is the same cheap staleness
+    # signal `geometry_cache_key` below uses for `buildings` - sufficient
+    # because nothing in this codebase mutates a Way's fields after
+    # construction (autofetch.py only ever grows the list via .extend(),
+    # which already changes len() and the last element's identity). A
+    # per-way tuple signature used to be rebuilt from scratch here on
+    # *every* frame regardless of cache hit/miss - cheap for a test map,
+    # but a real city's full way list (not just the visible subset) is
+    # tens of thousands of Ways, and this ran unconditionally the moment
+    # street lighting turned on at dusk: measured ~38ms per rebuild against
+    # a real ~31k-way Oulu extract, ~76ms doubled with the identical
+    # signature rebuilt again below for geometry_cache_key - most of a
+    # frame budget, and the reason night driving in a dense real area
+    # dropped to single-digit fps while daytime (lighting code short-
+    # circuits before any of this) was unaffected.
     cache_pixel_size = 16
     frame_cache_key = (
         id(ways),
         len(ways),
         id(ways[-1]) if ways else None,
-        road_cache_signature,
         id(buildings),
         round(camx * cache_zoom / cache_pixel_size),
         round(camy * cache_zoom / cache_pixel_size),
@@ -774,6 +777,10 @@ def draw_street_lights(
         visible_ways = spatial_grid.ways_in_rect(vminx, vminy, vmaxx, vmaxy)
     else:
         visible_ways = ways
+    # Coarse camera cell (world meters, well inside the 40m viewport padding
+    # above) so the caches below refresh as the car drives into new
+    # territory even when `ways`/`buildings` themselves haven't changed.
+    geometry_cache_cell = (math.floor(camx / 20.0), math.floor(camy / 20.0))
 
     global _street_light_junction_cache, _street_light_junction_grid_cache, _street_light_building_grid_cache
     building_cache_key = (id(buildings), len(buildings) if buildings else 0, id(buildings[-1]) if buildings else None)
@@ -793,11 +800,17 @@ def draw_street_lights(
                     building_grid.setdefault((cell_x, cell_y), []).append(building)
         _street_light_building_grid_cache = (building_cache_key, building_grid)
     building_grid = _street_light_building_grid_cache[1]
-    cache_key = (id(ways), len(ways), id(ways[-1]) if ways else None, id(buildings))
+    # Scoped to visible_ways (viewport + padding), not the full `ways` list -
+    # `ways` is every way loaded for the whole session, which for a real
+    # city keeps growing as autofetch streams in new tiles while driving
+    # and was, before this fix, walked here in full on every cache miss
+    # (see geometry_cache_key's docstring-comment below for the concrete
+    # cost this had in a real Oulu-scale extract).
+    cache_key = (id(ways), len(ways), id(ways[-1]) if ways else None, id(buildings), geometry_cache_cell)
     if _street_light_junction_cache is None or _street_light_junction_cache[0] != cache_key:
         point_ways = {}
-        ways_by_object_id = {id(way): way for way in ways}
-        for way in ways:
+        ways_by_object_id = {id(way): way for way in visible_ways}
+        for way in visible_ways:
             if getattr(way, "is_drivable", True):
                 for point in way.points_m:
                     key = (round(point[0] / 5.0), round(point[1] / 5.0))
@@ -831,28 +844,30 @@ def draw_street_lights(
     common._street_light_frame_world_positions = []
     global _street_light_geometry_cache_key, _street_light_geometry_cache
     global _street_light_way_lit_cache_key, _street_light_way_lit_cache
+    # geometry_cache_cell (see above) makes this refresh as the car moves
+    # into new territory. Both loops below walk visible_ways, not the full
+    # `ways` - `ways` is the whole session's loaded world (unbounded: it
+    # only grows as autofetch streams tiles in while driving, never
+    # shrinks), and this used to be rebuilt from *all* of it on every
+    # ways/buildings change. Measured against a real ~31k-way, ~1000km-of-
+    # lit-road Oulu extract: ~19 SECONDS for one rebuild (168k lamp
+    # candidates, each doing a spatial occlusion + junction-clearance
+    # check) - and since autofetch appends new ways continuously while
+    # driving, that rebuild kept re-triggering, each time over a bigger
+    # `ways`. Scoped to visible_ways it's bounded by what's actually near
+    # the camera regardless of how much of the city has been explored.
     geometry_cache_key = (
         id(ways),
         len(ways),
         id(ways[-1]) if ways else None,
-        tuple(
-            (
-                getattr(way, "osm_id", None),
-                len(way.points_m),
-                way.points_m[0] if way.points_m else None,
-                way.points_m[-1] if way.points_m else None,
-                getattr(way, "half_width_m", 0.0),
-                getattr(way, "lit", None),
-            )
-            for way in ways
-        ),
         id(buildings),
         len(buildings) if buildings else 0,
         id(buildings[-1]) if buildings else None,
+        geometry_cache_cell,
     )
     if geometry_cache_key != _street_light_way_lit_cache_key:
         way_lit_cache = {}
-        for way in ways:
+        for way in visible_ways:
             if not getattr(way, "is_drivable", True) or len(way.points_m) < 2:
                 way_lit_cache[id(way)] = []
                 continue
@@ -879,7 +894,7 @@ def draw_street_lights(
         cached_lamps = []
         lamp_spacing = STREET_LIGHT_SPACING_M
         junction_cell_size = 40.0
-        for way in ways:
+        for way in visible_ways:
             if (
                 not getattr(way, "is_drivable", True)
                 or (

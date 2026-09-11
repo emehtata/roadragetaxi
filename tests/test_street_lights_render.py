@@ -211,6 +211,68 @@ def test_cached_streetlight_frame_keeps_lamp_without_flicker():
         pygame.quit()
 
 
+def test_draw_street_lights_geometry_rebuild_is_scoped_to_visible_ways():
+    """Regression: the lamp-geometry rebuild (junctions, lit-segment cache,
+    lamp placement) used to walk the *entire* `ways` list on every cache
+    miss, not the viewport-scoped subset it already computes for exactly
+    this purpose (`visible_ways` - it was built and then never read).
+    `ways` is the whole session's loaded world, which only grows as
+    autofetch streams in tiles while driving - against a real ~31k-way
+    Oulu extract this cost ~19 SECONDS per rebuild. Build one lit road
+    near the camera plus many lit roads far away (outside the viewport +
+    padding) and confirm the far ones are never even visited."""
+    import theroadragetrip.render.roads as roads_module
+    from theroadragetrip.physics import SpatialWayGrid
+
+    pygame.init()
+    try:
+        near_road = Way(
+            points_m=[(0.0, 0.0), (100.0, 0.0)],
+            highway="tertiary",
+            half_width_m=4.0,
+            lit="yes",
+        )
+        far_roads = [
+            Way(
+                points_m=[(100_000.0 + i * 200.0, 0.0), (100_000.0 + i * 200.0 + 100.0, 0.0)],
+                highway="tertiary",
+                half_width_m=4.0,
+                lit="yes",
+            )
+            for i in range(500)
+        ]
+        ways = [near_road] + far_roads
+        spatial_grid = SpatialWayGrid(ways)
+
+        call_count = 0
+        real_fn = roads_module._way_has_street_lighting
+
+        def counting_fn(way):
+            nonlocal call_count
+            call_count += 1
+            return real_fn(way)
+
+        screen = pygame.Surface((240, 180), pygame.SRCALPHA)
+        screen.fill((180, 170, 140, 255))
+        draw_day_night_overlay(screen, 0.0, 100, latitude=65.0, longitude=25.0)
+
+        roads_module._way_has_street_lighting = counting_fn
+        try:
+            draw_street_lights(
+                screen, ways, camx=50.0, camy=0.0, game_time_seconds=0.0,
+                px_per_m=2.0, screen_w=240, screen_h=180,
+                daylight_surface=None, buildings=[], spatial_grid=spatial_grid,
+            )
+        finally:
+            roads_module._way_has_street_lighting = real_fn
+
+        # Only the near road (and maybe a couple of near-boundary calls)
+        # should ever reach this - nowhere close to visiting all 501 ways.
+        assert call_count < 20, f"visited {call_count} ways - geometry rebuild is not scoped to visible_ways"
+    finally:
+        pygame.quit()
+
+
 def test_street_light_pool_does_not_amplify_headlight_brightness():
     pygame.init()
     try:
