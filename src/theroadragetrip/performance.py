@@ -52,6 +52,28 @@ class FrameProfiler:
                 "sections": dict(self.sections),
             }
 
+    def advance(self, real_frame_ms: float | None = None) -> None:
+        """End the frame whose sections/metrics are already recorded, then
+        immediately start the next one.
+
+        `real_frame_ms` (typically Clock.tick_busy_loop()'s return value)
+        describes the iteration that just finished - the one whose
+        section() / record() calls already populated self.sections - not
+        the iteration about to start. Call this once per loop iteration as
+        soon as that duration is known (right after fetching it, before any
+        of this iteration's own work), not at the bottom of the iteration:
+        calling end_frame() there pairs the just-fetched duration with the
+        CURRENT (about-to-begin) iteration's sections instead, which is a
+        real, previously-shipped bug - a frame's displayed spike/section
+        breakdown (last_spike, spike_subsystem) was silently the *next*
+        frame's work, not the one that actually took that long. Confirmed
+        against a real profiled drive: a 208ms outlier frame's own sections
+        totaled ~18ms of ordinary work, while the *next* recorded frame's
+        sections held a 152ms static-cache rebuild - the real cause,
+        misattributed one frame later."""
+        self.end_frame(real_frame_ms=real_frame_ms)
+        self.begin_frame()
+
     def set_metric(self, name: str, value: object) -> None:
         if self.enabled:
             self.metrics[name] = value
