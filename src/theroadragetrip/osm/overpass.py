@@ -61,6 +61,35 @@ def _mark_endpoint_rate_limited(endpoint: str, retry_after_header: Optional[str]
         _endpoint_cooldown_until[endpoint] = time.monotonic() + cooldown_s
 
 
+# A courtesy limit independent of anything the server says: never contact the
+# same public Overpass instance again within this long, even on an ordinary
+# success - not just after an explicit 429/406 (_endpoint_cooldown_until
+# above). Kept as a genuinely separate dict/lock rather than folded into
+# that one: _endpoint_cooldown_until's "try anyway if every endpoint is
+# equally bad" escape valve exists so a real, server-mandated 429 can't
+# wedge the fetch entirely - but that reasoning must not extend to this
+# self-imposed limit, or a courtesy cooldown on a perfectly healthy mirror
+# would make the escape valve treat an *actually* rate-limited endpoint as
+# "no better option" and retry it anyway, defeating the whole point of
+# honoring its 429. A courtesy-limited endpoint is always a hard skip -
+# if every endpoint is within its own window, the fetch fails this attempt
+# and the caller's own retry loop (AutoFetchManager) tries again shortly.
+_endpoint_last_contact: dict[str, float] = {}
+_endpoint_contact_lock = threading.Lock()
+DEFAULT_CONTACT_COOLDOWN_S = 30.0
+
+
+def _endpoint_recently_contacted(endpoint: str, cooldown_s: float = DEFAULT_CONTACT_COOLDOWN_S) -> bool:
+    with _endpoint_contact_lock:
+        last = _endpoint_last_contact.get(endpoint)
+    return last is not None and time.monotonic() - last < cooldown_s
+
+
+def _mark_endpoint_contacted(endpoint: str) -> None:
+    with _endpoint_contact_lock:
+        _endpoint_last_contact[endpoint] = time.monotonic()
+
+
 DEFAULT_OVERPASS_ENDPOINTS = [
     "https://overpass-api.de/api/interpreter",
     "https://overpass.private.coffee/api/interpreter",
@@ -188,6 +217,19 @@ def fetch_osm_ways(
         if _endpoint_on_cooldown(ep) and any(not _endpoint_on_cooldown(other) for other in endpoints):
             logger.info("Skipping rate-limited endpoint %s (cooldown active)", ep)
             continue
+        # Unlike the rate-limit cooldown above, this courtesy limit has no
+        # "try anyway" escape valve - see _endpoint_recently_contacted's
+        # docstring for why that must stay true.
+        if _endpoint_recently_contacted(ep):
+            logger.info("Skipping recently-contacted endpoint %s (30s courtesy cooldown)", ep)
+            continue
+        # Mark before the first attempt, not after - covers every outcome
+        # (success, 5xx, exception) with the same 30s-minimum gap, not just
+        # the explicit 429/406 path below. The retry-with-backoff attempts
+        # just below are one logical connection episode to this endpoint,
+        # not three separate ones, so this fires once per endpoint here,
+        # not once per attempt.
+        _mark_endpoint_contacted(ep)
         for attempt in range(1, 4):
             try:
                 if progress_callback:

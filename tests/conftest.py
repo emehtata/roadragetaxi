@@ -85,6 +85,23 @@ def _reset_solar_position_cache():
 
 
 @pytest.fixture(autouse=True)
+def _reset_overpass_endpoint_cooldowns():
+    """Clear both Overpass endpoint-cooldown maps before every test.
+
+    Keyed by URL, shared across the whole test process - without this, a
+    test that hits e.g. "https://mirror.example/api" could inherit a
+    cooldown (rate-limit or courtesy) another, unrelated test left behind
+    for the same URL, spuriously changing which endpoint a later fetch
+    picks.
+    """
+    from theroadragetrip.osm import overpass as _overpass
+
+    _overpass._endpoint_cooldown_until.clear()
+    _overpass._endpoint_last_contact.clear()
+    yield
+
+
+@pytest.fixture(autouse=True)
 def _reset_puddle_cache():
     """Clear the shared id(way) -> puddle-spot cache before every test.
 

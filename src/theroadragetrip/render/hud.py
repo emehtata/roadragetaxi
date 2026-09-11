@@ -22,6 +22,7 @@ _rage_face_frames = None
 _rage_face_path = os.path.join(os.path.dirname(__file__), "..", "assets", "ragefaceatlas.png")
 _speedometer_font = None
 _speedometer_label_font = None
+_speedometer_indicator_font = None
 
 
 def _load_rage_face_frames(pygame):
@@ -62,7 +63,11 @@ def default_hud_layout(screen_width: int, screen_height: int) -> dict[str, Tuple
     return {
         "meters": (10, 10),
         "rage": (screen_width - 190, screen_height - 246),
-        "speedometer": (10, screen_height - 180),
+        # Shifted up from the speedometer box's own 170px height (was
+        # screen_height - 180, flush with the bottom edge) to leave room
+        # for the lane-assist/speed-limiter indicator chips drawn just
+        # below it - see _draw_speedometer_indicators.
+        "speedometer": (10, screen_height - 214),
     }
 
 
@@ -115,6 +120,57 @@ def _draw_analog_speedometer(screen, speed_mps: float, position: Tuple[int, int]
     unit_text = font.render("km/h", True, (190, 200, 205))
     screen.blit(unit_text, unit_text.get_rect(center=(center[0], y + 153)))
     return pygame.Rect(x, y, width, height)
+
+
+def _draw_speedometer_indicators(
+    screen,
+    speedometer_rect,
+    lane_assist_enabled: bool,
+    lane_assist_active: bool,
+    speed_limiter_enabled: bool,
+) -> None:
+    """Two compact status chips under the speedometer for the K (lane
+    assist) and V (speed limiter) toggles - previously visible only as
+    text in the debug HUD's status line, easy to miss during normal play.
+
+    Fixed English abbreviations rather than tr()-localized labels: a
+    dashboard telltale reads the same regardless of UI language (real
+    cars don't translate their ABS/ISA icons either), and the full
+    localized words ("Kaista-avustin", "Nopeusrajoitin") don't fit a
+    compact chip at a legible size.
+    """
+    import pygame
+
+    global _speedometer_indicator_font
+    if _speedometer_indicator_font is None:
+        _speedometer_indicator_font = pygame.font.SysFont(None, 15, bold=True)
+    font = _speedometer_indicator_font
+
+    chip_w, chip_h, gap = 82, 22, 6
+    total_w = chip_w * 2 + gap
+    x = speedometer_rect.x + (speedometer_rect.width - total_w) // 2
+    y = speedometer_rect.bottom + gap
+
+    def _chip(offset_x: int, label: str, enabled: bool, engaged: bool) -> None:
+        rect = pygame.Rect(x + offset_x, y, chip_w, chip_h)
+        if not enabled:
+            bg, border, text_color = (28, 32, 36), (70, 78, 86), (120, 128, 135)
+        elif engaged:
+            bg, border, text_color = (30, 90, 45), (80, 220, 110), (230, 255, 235)
+        else:
+            bg, border, text_color = (60, 55, 30), (200, 165, 60), (245, 230, 190)
+        pygame.draw.rect(screen, bg, rect, border_radius=4)
+        pygame.draw.rect(screen, border, rect, width=1, border_radius=4)
+        text = font.render(label, True, text_color)
+        screen.blit(text, text.get_rect(center=rect.center))
+
+    # Lane assist gets a third visual state speed limiter doesn't need:
+    # "on but not currently steering" (dim amber, matching the "armed but
+    # idle" telltale color real cars use) vs "actively correcting the
+    # car's heading right now" (bright green) - speed limiter has no such
+    # idle/active distinction, it's simply capping speed or not.
+    _chip(0, "LANE", lane_assist_enabled, lane_assist_active)
+    _chip(chip_w + gap, "LIMIT", speed_limiter_enabled, speed_limiter_enabled)
 
 
 def draw_day_night_overlay(
@@ -470,6 +526,13 @@ def draw_hud(
     speedometer_rect = _draw_analog_speedometer(screen, car.speed, layout["speedometer"])
     if hud_rects is not None:
         hud_rects["speedometer"] = speedometer_rect
+    _draw_speedometer_indicators(
+        screen,
+        speedometer_rect,
+        getattr(car, "lane_assist_enabled", False),
+        getattr(car, "lane_assist_active", False),
+        speed_limiter_enabled,
+    )
 
 
 def draw_frame_profiler(screen, font, profiler, npc_count: int, pedestrian_count: int) -> None:

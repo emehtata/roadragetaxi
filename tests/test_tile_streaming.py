@@ -127,7 +127,7 @@ def test_initial_tile_streaming_is_not_repeated_after_full_startup_region():
         def __init__(self):
             self.calls = []
 
-        def preload_region(self, bbox):
+        def preload_region(self, bbox, **kwargs):
             self.calls.append(bbox)
             future = Future()
             future.set_result(MapData([], [], [], [], [], (0.0, 0.0, 1.0, 1.0)))
@@ -167,7 +167,7 @@ def test_tile_streaming_loads_missing_tiles_in_background():
         def __init__(self):
             self.calls = []
 
-        def preload_region(self, bbox):
+        def preload_region(self, bbox, **kwargs):
             self.calls.append(bbox)
             future = Future()
             future.set_result(MapData([], [], [], [], [], (0.0, 0.0, 1.0, 1.0)))
@@ -203,6 +203,43 @@ def test_tile_streaming_loads_missing_tiles_in_background():
     assert metrics["tile_integration_ms"] >= 0.0
 
 
+def test_background_tile_fetch_reports_progress_message():
+    """Regression: the loading screen shown while a background tile fetch
+    is in flight (main()'s _wait_for_active_tile_fetch) got stuck at 0%
+    with no detail the whole time - _background_tile_fetch never wired a
+    progress_callback into fetch_func/build_func at all, so fetch_progress
+    only ever jumped straight from 0.0 to 1.0 and fetch_message (which the
+    loading screen now also shows - see render/menus.py) stayed empty."""
+
+    class Transformer:
+        def transform(self, x, y):
+            return x, y
+
+    def fetch_func(bbox, progress_callback=None):
+        if progress_callback:
+            progress_callback(0.25, "Fetching scenery from https://example.test/api...")
+        return []
+
+    def build_func(elems):
+        return [], [], [], [], [], (0.0, 0.0, 1.0, 1.0)
+
+    manager = AutoFetchManager(
+        [], (0.0, 0.0, 1000.0, 1000.0), Transformer(),
+        fetch_func=fetch_func, build_func=build_func,
+    )
+    manager.initialize_player_tile(500.0, 500.0)
+    assert manager.start_tile_streaming(1000.0, 500.0)
+
+    deadline = time.time() + 2.0
+    while manager.is_fetching and time.time() < deadline:
+        time.sleep(0.005)
+
+    assert not manager.is_fetching
+    assert "example.test" in manager.get_progress_message(), (
+        "fetch_message never reflected the fetch's own progress_callback"
+    )
+
+
 def test_tile_fetch_projects_all_four_corners_not_just_the_diagonal():
     """Regression: EPSG:3067 rotates meridians relative to true north away
     from its central meridian, so a straight meters-space tile rectangle
@@ -222,7 +259,7 @@ def test_tile_fetch_projects_all_four_corners_not_just_the_diagonal():
         def __init__(self):
             self.calls = []
 
-        def preload_region(self, bbox):
+        def preload_region(self, bbox, **kwargs):
             self.calls.append(bbox)
             future = Future()
             future.set_result(MapData([], [], [], [], [], (0.0, 0.0, 1.0, 1.0)))
@@ -263,7 +300,7 @@ def test_tile_streaming_respects_cooldown_between_requests():
         def __init__(self):
             self.calls = []
 
-        def preload_region(self, bbox):
+        def preload_region(self, bbox, **kwargs):
             self.calls.append(bbox)
             future = Future()
             future.set_result(MapData([], [], [], [], [], (0.0, 0.0, 1.0, 1.0)))
@@ -302,7 +339,7 @@ def test_cardinal_tile_transition_batches_two_by_three_region():
         def __init__(self):
             self.calls = []
 
-        def preload_region(self, bbox):
+        def preload_region(self, bbox, **kwargs):
             self.calls.append(bbox)
             future = Future()
             future.set_result(MapData([], [], [], [], [], (0.0, 0.0, 1.0, 1.0)))
@@ -336,7 +373,7 @@ def test_cardinal_tile_transition_requests_the_leading_not_trailing_edge():
         def __init__(self):
             self.calls = []
 
-        def preload_region(self, bbox):
+        def preload_region(self, bbox, **kwargs):
             self.calls.append(bbox)
             future = Future()
             future.set_result(MapData([], [], [], [], [], (0.0, 0.0, 1.0, 1.0)))
@@ -379,7 +416,7 @@ def test_evicted_tile_in_the_trailing_column_is_not_marked_loaded_without_being_
         def __init__(self):
             self.calls = []
 
-        def preload_region(self, bbox):
+        def preload_region(self, bbox, **kwargs):
             self.calls.append(bbox)
             future = Future()
             future.set_result(MapData([], [], [], [], [], (0.0, 0.0, 1.0, 1.0)))
@@ -424,7 +461,7 @@ def test_tile_transition_during_fetch_queues_next_region_request():
             self.calls = []
             self.futures = []
 
-        def preload_region(self, bbox):
+        def preload_region(self, bbox, **kwargs):
             self.calls.append(bbox)
             future = Future()
             self.futures.append(future)

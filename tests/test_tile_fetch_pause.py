@@ -26,6 +26,9 @@ class _FakeAutoFetchManager:
     def get_progress(self) -> float:
         return 0.5
 
+    def get_progress_message(self) -> str:
+        return ""
+
 
 def _screen_and_font():
     os.environ.setdefault("SDL_VIDEODRIVER", "dummy")

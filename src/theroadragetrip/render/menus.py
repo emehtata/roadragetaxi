@@ -88,6 +88,21 @@ def draw_loading_screen(
     msg_rect = msg_surf.get_rect(center=(screen_w // 2, bar_y + bar_h + 22))
     screen.blit(msg_surf, msg_rect)
 
+    # Live status line - what's actually happening right now (which
+    # endpoint/file is being read, cache hit, parsing, ...), not just a
+    # percentage. `message` carries this from the fetch's own
+    # progress_callback (see osm/overpass.py, osm/pbf_source.py) - it used
+    # to be computed and passed all the way here but never actually drawn.
+    if message:
+        detail_font = font
+        try:
+            detail_font = pygame.font.SysFont(None, 18)
+        except Exception:
+            pass
+        detail_surf = detail_font.render(message, True, (150, 165, 180))
+        detail_rect = detail_surf.get_rect(center=(screen_w // 2, bar_y + bar_h + 44))
+        screen.blit(detail_surf, detail_rect)
+
 
 def draw_game_start_overlay(
     screen,
