@@ -1175,6 +1175,40 @@ class PedestrianManager:
 
         return None
 
+    def _nearby_ped_ways(self, x: float, y: float) -> List[Way]:
+        """Return ped_ways within an expanding radius of (x, y) via
+        self._way_grid, instead of the full self.ped_ways list.
+
+        spawn_pedestrian_at() used to scan every mapped walkable way (tens
+        of thousands once autofetch has grown the map) to find the single
+        nearest segment to one door/entrance point - real cost, confirmed
+        via profiling a real drive: ~20000 closest_point_and_dist_to_segment
+        calls per spawn_pedestrian_at() call, dominating the periodic
+        population-update pass. spawn_pedestrian() (the other spawn path)
+        already avoided this via the same self._way_grid; this gives
+        spawn_pedestrian_at() the same locality.
+        """
+        cs = self._way_grid_cell_size
+        radius = cs * 2.0
+        max_radius = max(self.spawn_radius_m, 1000.0) * 2.0
+        while radius <= max_radius:
+            min_cx = int(math.floor((x - radius) / cs))
+            max_cx = int(math.floor((x + radius) / cs))
+            min_cy = int(math.floor((y - radius) / cs))
+            max_cy = int(math.floor((y + radius) / cs))
+            seen: Set[int] = set()
+            nearby: List[Way] = []
+            for cx in range(min_cx, max_cx + 1):
+                for cy in range(min_cy, max_cy + 1):
+                    for w in self._way_grid.get((cx, cy), ()):
+                        if id(w) not in seen:
+                            seen.add(id(w))
+                            nearby.append(w)
+            if nearby:
+                return nearby
+            radius *= 2.0
+        return self._spawn_ways
+
     def spawn_pedestrian_at(
         self,
         x: float,
@@ -1188,7 +1222,7 @@ class PedestrianManager:
             return None
 
         nearest = None
-        for way in self.ped_ways:
+        for way in self._nearby_ped_ways(x, y):
             for segment_idx, (start, end) in enumerate(zip(way.points_m, way.points_m[1:])):
                 _, _, progress, distance = closest_point_and_dist_to_segment(
                     x, y, start[0], start[1], end[0], end[1]

@@ -909,3 +909,46 @@ def test_spawn_pedestrian_gives_up_immediately_when_search_area_is_fully_onscree
     # not be so broad it breaks ordinary spawning.
     tight_viewport = (near_x - 10.0, near_y - 10.0, near_x + 10.0, near_y + 10.0)
     assert manager.spawn_pedestrian(near_x, near_y, viewport_bounds=tight_viewport) is not None
+
+
+def test_spawn_pedestrian_at_does_not_scan_every_ped_way():
+    """Regression: spawn_pedestrian_at() (used for every door/amenity
+    spawn - see spawn_pedestrian_at_door) scanned the *entire* self.ped_ways
+    list, every segment, to find the single nearest one to one point -
+    unlike spawn_pedestrian() (the other spawn path), which was already
+    scoped to self._way_grid. Confirmed via profiling a real drive (real
+    Oulu cache data, autofetch on): one call to spawn_pedestrian_at() cost
+    ~20000 closest_point_and_dist_to_segment calls, dominating the periodic
+    population-update pass whenever a door spawn was attempted. Must use
+    _nearby_ped_ways() (the same grid spawn_pedestrian() already relies on)
+    instead of the full list.
+
+    300 calls against 15000 ped_ways: fixed measures well under a second;
+    unfixed (O(len(ped_ways)) per call) takes several seconds - the
+    threshold is set well clear of both."""
+    import time
+
+    ways = _grid_of_ways(15000)
+    manager = PedestrianManager(ways, target_count=0)
+    assert len(manager.ped_ways) >= 12000
+
+    start = time.perf_counter()
+    for _ in range(300):
+        result = manager.spawn_pedestrian_at(20.0, 0.0)
+        assert result is not None
+    elapsed = time.perf_counter() - start
+    assert elapsed < 1.0, (
+        f"300 spawn_pedestrian_at calls against {len(manager.ped_ways)} ped_ways "
+        f"took {elapsed:.2f}s - looks like the full-ped_ways scan regressed"
+    )
+
+
+def test_nearby_ped_ways_falls_back_to_every_way_when_grid_is_empty():
+    """_nearby_ped_ways()'s expanding-radius search must still find
+    something (spawn_pedestrian_at's whole-map fallback, restored) when a
+    point sits farther from every ped_way than the grid search ever
+    expands to - correctness over the common-case speed path."""
+    ways = [Way(points_m=[(0.0, 0.0), (10.0, 0.0)], highway="footway", half_width_m=1.5)]
+    manager = PedestrianManager(ways, target_count=0, spawn_radius_m=50.0)
+    far_away = manager._nearby_ped_ways(1_000_000.0, 1_000_000.0)
+    assert far_away == manager._spawn_ways
