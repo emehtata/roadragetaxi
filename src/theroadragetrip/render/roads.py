@@ -1468,6 +1468,8 @@ def _draw_railways_uncached(
 
 
 RAILING_COLOR = (150, 145, 130)
+HEDGE_COLOR = (58, 92, 48)  # trimmed shrub green, darker/denser than any scenery fill
+WALL_COLOR = (128, 122, 112)  # stone/masonry grey
 
 
 def draw_railings(
@@ -1480,8 +1482,12 @@ def draw_railings(
     screen_h: int = SCREEN_H,
     spatial_grid=None,
 ) -> None:
-    """Draw fence/handrail lines (OSM barrier=fence/railing) - visual only,
-    dashed like draw_construction_fences but in a neutral (non-hazard) color."""
+    """Draw linear barriers (OSM barrier=fence/railing/hedge/wall) - visual
+    only. fence/railing stay dashed (thin, see-through); hedge/wall are
+    drawn as solid, thicker lines since a real hedge or wall reads as a
+    continuous, opaque edge, not a segmented one."""
+    import pygame
+
     if not railings:
         return
 
@@ -1492,17 +1498,34 @@ def draw_railings(
         else railings
     )
     thickness = max(1, int(0.12 * px_per_m))
+    solid_thickness = max(2, int(0.25 * px_per_m))
     for railing in visible_railings:
         bb = getattr(railing, "bbox", None)
         if bb and bb != (0.0, 0.0, 0.0, 0.0):
             if bb[2] < vminx or bb[0] > vmaxx or bb[3] < vminy or bb[1] > vmaxy:
                 continue
-        if len(railing.points_m) < 2:
+        points = railing.points_m
+        if len(points) < 2:
             continue
-        common._draw_dashed_polyline(
-            screen, railing.points_m, camx, camy, px_per_m, screen_w, screen_h,
-            RAILING_COLOR, thickness, vminx, vminy, vmaxx, vmaxy, dash_m=0.8, gap_m=0.4,
-        )
+        kind = getattr(railing, "kind", "fence")
+        if kind in ("hedge", "wall"):
+            color = HEDGE_COLOR if kind == "hedge" else WALL_COLOR
+            for (x0, y0), (x1, y1) in zip(points, points[1:]):
+                dx, dy = x1 - x0, y1 - y0
+                seg_len = math.hypot(dx, dy)
+                if seg_len < 1e-6:
+                    continue
+                ux, uy = dx / seg_len, dy / seg_len
+                if _segment_viewport_t_range(x0, y0, ux, uy, seg_len, vminx, vminy, vmaxx, vmaxy) is None:
+                    continue
+                s0 = world_to_screen(x0, y0, camx, camy, px_per_m, screen_w, screen_h)
+                s1 = world_to_screen(x1, y1, camx, camy, px_per_m, screen_w, screen_h)
+                pygame.draw.line(screen, color, s0, s1, solid_thickness)
+        else:
+            common._draw_dashed_polyline(
+                screen, points, camx, camy, px_per_m, screen_w, screen_h,
+                RAILING_COLOR, thickness, vminx, vminy, vmaxx, vmaxy, dash_m=0.8, gap_m=0.4,
+            )
 
 
 def draw_crossings(

@@ -44,6 +44,9 @@ SCENERY_COLORS = {
     "track": (176, 96, 70),  # a real running track is a rubberized red/terracotta oval, not grass
     "sand": (196, 180, 130),
     "beach": (206, 192, 150),
+    "grassland": (146, 158, 96),  # unmanaged wild grass - between "meadow" and "scrub", more olive than a mown lawn
+    "shrubbery": (100, 118, 76),  # planted/ornamental shrubs - denser and greener than open scrub
+    "wetland": (118, 130, 96),  # marsh/reed cover - muted olive-green, wetter and duller than dry heath
     # Farmed / cultivated - warm, dry tones, not park-green.
     "farmland": (172, 148, 88),
     "farmyard": (146, 130, 100),
@@ -89,6 +92,7 @@ SCENERY_COLORS = {
     "outdoor_seating": (112, 102, 92),
     "sauna": (112, 92, 72),
     "parking": (98, 98, 98),  # plain asphalt grey, no green/blue tint
+    "fuel": (92, 88, 84),  # paved forecourt - close to parking's grey, slightly warmer
 }
 # Kinds that read as visibly grainy/textured ground in real aerial imagery -
 # tree canopy, mown/unmown grass, tilled soil, loose sand - as opposed to
@@ -110,7 +114,7 @@ _SPECKLE_SCENERY_KINDS = frozenset({
     "forest", "wood", "scrub", "heath", "park", "garden", "meadow", "grass",
     "greenfield", "nature_reserve", "recreation_ground", "dog_park",
     "fitness_station", "cemetery", "farmland", "farmyard", "allotments",
-    "sand", "beach",
+    "sand", "beach", "grassland", "shrubbery", "wetland",
 })
 _SPECKLE_SPACING_M = 1.3  # world-space grid spacing between candidate dots
 _SPECKLE_INSET = 0.15  # keep jitter off the exact cell edge, avoids a visible grid line
@@ -606,8 +610,16 @@ SCENERY_OBJECT_COLORS = {
     "waste_basket": (58, 66, 56),
     "bicycle_parking": (75, 95, 115),
     "statue": (150, 130, 85),
+    "picnic_table": (135, 95, 55),
+    "firepit": (60, 58, 55),
+    "fountain": (90, 165, 185),
+    "fuel": (185, 90, 60),
+    "gate": (100, 92, 80),
+    "bollard": (48, 48, 46),
 }
 _STATUE_PEDESTAL_COLOR = (110, 110, 105)
+_FIREPIT_FLAME_COLOR = (216, 120, 40)
+_FOUNTAIN_SPRAY_COLOR = (220, 240, 245)
 
 
 def draw_scenery_objects(
@@ -621,7 +633,8 @@ def draw_scenery_objects(
     profiler=None,
 ) -> None:
     """Draw cached small decorative OSM point objects - benches, waste
-    baskets, bicycle parking, statues/memorials - as simple primitive
+    baskets, bicycle parking, statues/memorials, picnic tables, firepits,
+    fountains, fuel stations, gates, bollards - as simple primitive
     icons (no sprite assets exist in this project; every other point/area
     feature is drawn the same way).
 
@@ -707,6 +720,28 @@ def _draw_scenery_objects_uncached(
             pygame.draw.rect(screen, _STATUE_PEDESTAL_COLOR, (sx - pedestal_w // 2, sy, pedestal_w, pedestal_h))
             radius = max(2, int(0.5 * px_per_m))
             pygame.draw.circle(screen, SCENERY_OBJECT_COLORS["statue"], (sx, sy - radius // 2), radius)
+        elif obj.kind == "picnic_table":
+            width = max(2, int(1.6 * px_per_m))
+            depth = max(2, int(0.9 * px_per_m))
+            pygame.draw.rect(screen, SCENERY_OBJECT_COLORS["picnic_table"], (sx - width // 2, sy - depth // 2, width, depth))
+        elif obj.kind == "firepit":
+            radius = max(2, int(0.5 * px_per_m))
+            pygame.draw.circle(screen, SCENERY_OBJECT_COLORS["firepit"], (sx, sy), radius, max(1, radius // 3))
+            pygame.draw.circle(screen, _FIREPIT_FLAME_COLOR, (sx, sy), max(1, radius // 2))
+        elif obj.kind == "fountain":
+            radius = max(2, int(0.7 * px_per_m))
+            pygame.draw.circle(screen, SCENERY_OBJECT_COLORS["fountain"], (sx, sy), radius)
+            pygame.draw.circle(screen, _FOUNTAIN_SPRAY_COLOR, (sx, sy), max(1, radius // 3))
+        elif obj.kind == "fuel":
+            width = max(2, int(0.6 * px_per_m))
+            height = max(3, int(1.1 * px_per_m))
+            pygame.draw.rect(screen, SCENERY_OBJECT_COLORS["fuel"], (sx - width // 2, sy - height, width, height))
+        elif obj.kind == "gate":
+            half_len = max(2, int(1.0 * px_per_m))
+            pygame.draw.line(screen, SCENERY_OBJECT_COLORS["gate"], (sx - half_len, sy), (sx + half_len, sy), max(1, int(px_per_m * 0.15)))
+        elif obj.kind == "bollard":
+            radius = max(1, int(0.25 * px_per_m))
+            pygame.draw.circle(screen, SCENERY_OBJECT_COLORS["bollard"], (sx, sy), radius)
 
 
 def draw_parking_spaces(screen, parking_spaces, camx: float, camy: float, px_per_m: float = PX_PER_M,

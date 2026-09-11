@@ -538,6 +538,12 @@ def test_build_ways_parses_benches_waste_baskets_and_bicycle_parking():
         {"type": "node", "id": 1, "lat": 60.0, "lon": 25.0, "tags": {"amenity": "bench"}},
         {"type": "node", "id": 2, "lat": 60.001, "lon": 25.001, "tags": {"amenity": "waste_basket"}},
         {"type": "node", "id": 3, "lat": 60.002, "lon": 25.002, "tags": {"amenity": "bicycle_parking"}},
+        {"type": "node", "id": 5, "lat": 60.004, "lon": 25.004, "tags": {"amenity": "fountain"}},
+        {"type": "node", "id": 6, "lat": 60.005, "lon": 25.005, "tags": {"amenity": "fuel"}},
+        {"type": "node", "id": 7, "lat": 60.006, "lon": 25.006, "tags": {"leisure": "picnic_table"}},
+        {"type": "node", "id": 8, "lat": 60.007, "lon": 25.007, "tags": {"leisure": "firepit"}},
+        {"type": "node", "id": 9, "lat": 60.008, "lon": 25.008, "tags": {"barrier": "gate"}},
+        {"type": "node", "id": 10, "lat": 60.009, "lon": 25.009, "tags": {"barrier": "bollard"}},
         # Not street furniture - must not show up.
         {"type": "node", "id": 4, "lat": 60.003, "lon": 25.003, "tags": {"amenity": "restaurant"}},
     ]
@@ -545,10 +551,19 @@ def test_build_ways_parses_benches_waste_baskets_and_bicycle_parking():
     result = build_ways(elements)
 
     by_kind = {obj.kind: obj for obj in result.scenery_objects}
-    assert set(by_kind) == {"bench", "waste_basket", "bicycle_parking"}
+    assert set(by_kind) == {
+        "bench", "waste_basket", "bicycle_parking", "fountain", "fuel",
+        "picnic_table", "firepit", "gate", "bollard",
+    }
     assert by_kind["bench"].id == 1
     assert by_kind["waste_basket"].id == 2
     assert by_kind["bicycle_parking"].id == 3
+    assert by_kind["fountain"].id == 5
+    assert by_kind["fuel"].id == 6
+    assert by_kind["picnic_table"].id == 7
+    assert by_kind["firepit"].id == 8
+    assert by_kind["gate"].id == 9
+    assert by_kind["bollard"].id == 10
 
 
 def test_build_ways_parses_statues_but_not_plain_plaques():
@@ -603,6 +618,33 @@ def test_draw_scenery_objects_renders_each_kind_and_respects_viewport():
     )
     assert non_background > 0  # the on-screen bench did draw something
     assert non_background < screen_w * screen_h // 4  # nowhere near "covers everything"
+
+
+def test_draw_scenery_objects_draws_every_new_point_kind():
+    """picnic_table/firepit/fountain/fuel/gate/bollard must each paint at
+    least one non-background pixel - regression for kinds that reach
+    draw_scenery_objects() but fall through every branch silently."""
+    from theroadragetrip.render import common as common_module
+
+    common_module.begin_static_cache_frame()
+    common_module._pending_static_rebuilds.clear()
+
+    screen_w, screen_h, px_per_m = 200, 200, 8.0
+    background = (20, 120, 40)
+    for kind in ("picnic_table", "firepit", "fountain", "fuel", "gate", "bollard"):
+        screen = pygame.Surface((screen_w, screen_h))
+        screen.fill(background)
+        obj = SceneryObject(x=0.0, y=0.0, kind=kind)
+        common_module._scenery_object_frame_cache_key = None
+        common_module._scenery_object_frame_cache_surface = None
+        draw_scenery_objects(screen, [obj], 0.0, 0.0, px_per_m=px_per_m, screen_w=screen_w, screen_h=screen_h)
+        non_background = sum(
+            1
+            for x in range(screen_w)
+            for y in range(screen_h)
+            if tuple(screen.get_at((x, y)))[:3] != background
+        )
+        assert non_background > 0, f"{kind} drew nothing"
 
 
 def test_scenery_colors_differ_by_landuse_value():
@@ -823,6 +865,31 @@ def test_build_ways_parses_parking_area_as_scenery():
 
     assert len(result.sceneries) == 1
     assert result.sceneries[0].kind == "parking"
+
+
+def test_build_ways_parses_fuel_forecourt_as_paved_scenery():
+    """A fuel-station forecourt (amenity=fuel way) used to fall through
+    every branch entirely - no landuse/leisure tag, not "amenity=parking" -
+    and vanished (or became a bare text label if named). It should render
+    like a parking lot: a paved Scenery, defaulting to asphalt."""
+    elements = [
+        {"type": "node", "id": 1, "lat": 60.0, "lon": 25.0},
+        {"type": "node", "id": 2, "lat": 60.001, "lon": 25.0},
+        {"type": "node", "id": 3, "lat": 60.001, "lon": 25.001},
+        {"type": "node", "id": 4, "lat": 60.0, "lon": 25.001},
+        {
+            "type": "way",
+            "id": 10,
+            "nodes": [1, 2, 3, 4, 1],
+            "tags": {"amenity": "fuel", "name": "Neste"},
+        },
+    ]
+
+    result = build_ways(elements)
+
+    assert len(result.sceneries) == 1
+    assert result.sceneries[0].kind == "fuel"
+    assert result.sceneries[0].surface == "asphalt"
 
 
 def test_hard_tree_impact_knocks_tree_down_and_smokes_taxi():

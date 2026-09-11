@@ -60,12 +60,16 @@ _STATUE_ARTWORK_TYPES = {"statue", "sculpture"}
 
 def _scenery_object_kind(tags: Dict[str, str]) -> Optional[str]:
     amenity = tags.get("amenity")
-    if amenity in ("bench", "waste_basket", "bicycle_parking"):
+    if amenity in ("bench", "waste_basket", "bicycle_parking", "fountain", "fuel"):
         return amenity
     if tags.get("historic") == "memorial" and tags.get("memorial") in _STATUE_MEMORIAL_TYPES:
         return "statue"
     if tags.get("tourism") == "artwork" and tags.get("artwork_type") in _STATUE_ARTWORK_TYPES:
         return "statue"
+    if tags.get("leisure") in ("picnic_table", "firepit"):
+        return tags["leisure"]
+    if tags.get("barrier") in ("gate", "bollard"):
+        return tags["barrier"]
     return None
 
 
@@ -357,13 +361,13 @@ def build_ways(
                 building_raw.append((tags, node_ids))
             elif tags.get("amenity") == "parking_space":
                 parking_space_raw.append((tags, node_ids, way_id))
-            elif tags.get("barrier") in ("fence", "railing"):
+            elif tags.get("barrier") in ("fence", "railing", "hedge", "wall"):
                 railing_raw.append((tags, node_ids))
             elif tags.get("railway") in ("rail", "light_rail", "tram", "narrow_gauge", "funicular"):
                 railway_raw.append((tags, node_ids))
             elif tags.get("natural") in ("water", "bay", "strait") or ("waterway" in tags) or tags.get("landuse") == "reservoir":
                 water_raw.append((tags, node_ids))
-            elif tags.get("amenity") == "parking" or tags.get("landuse") == "parking":
+            elif tags.get("amenity") in ("parking", "fuel") or tags.get("landuse") == "parking":
                 scenery_raw.append((tags, node_ids))
             elif "leisure" in tags or "landuse" in tags or tags.get("natural") in NATURAL_SCENERY_KINDS:
                 scenery_raw.append((tags, node_ids))
@@ -484,13 +488,14 @@ def build_ways(
         if not pts or len(pts) < 3:
             continue
         is_parking = tags.get("amenity") == "parking" or tags.get("landuse") == "parking"
-        kind = "parking" if is_parking else tags.get("leisure") or tags.get("landuse") or tags.get("natural") or "park"
+        is_fuel = tags.get("amenity") == "fuel"
+        kind = "parking" if is_parking else "fuel" if is_fuel else tags.get("leisure") or tags.get("landuse") or tags.get("natural") or "park"
         name = tags.get("name")
-        # A mapped parking lot is paved ground even when nobody bothered
-        # tagging surface=* - only every other scenery kind (forest,
-        # grass, ...) leaves this None, since kind itself already says
-        # what that ground is.
-        surface = (tags.get("surface") or "asphalt") if is_parking else None
+        # A mapped parking lot (or fuel station forecourt) is paved ground
+        # even when nobody bothered tagging surface=* - only every other
+        # scenery kind (forest, grass, ...) leaves this None, since kind
+        # itself already says what that ground is.
+        surface = (tags.get("surface") or "asphalt") if (is_parking or is_fuel) else None
         sceneries.append(Scenery(points_m=pts, kind=kind, name=name, bbox=ibbox, surface=surface))
 
     for tags, node_ids, parking_id in parking_space_raw:
@@ -581,7 +586,7 @@ def build_ways(
         pts, ibbox = process_node_ids(node_ids)
         if not pts or len(pts) < 2:
             continue
-        railings.append(Railing(points_m=pts, bbox=ibbox))
+        railings.append(Railing(points_m=pts, bbox=ibbox, kind=tags.get("barrier", "fence")))
 
     # 3. Buildings
     if progress_callback:

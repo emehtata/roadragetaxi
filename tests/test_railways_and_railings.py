@@ -67,6 +67,42 @@ def test_build_ways_parses_barrier_fence_and_railing():
     assert len(result.railings) == 2
 
 
+def test_build_ways_parses_barrier_hedge_and_wall_with_kind():
+    elements = [
+        {"type": "node", "id": 1, "lat": 60.0, "lon": 25.0},
+        {"type": "node", "id": 2, "lat": 60.0, "lon": 25.001},
+        {"type": "way", "id": 32, "nodes": [1, 2], "tags": {"barrier": "hedge"}},
+        {"type": "node", "id": 3, "lat": 60.001, "lon": 25.0},
+        {"type": "node", "id": 4, "lat": 60.001, "lon": 25.001},
+        {"type": "way", "id": 33, "nodes": [3, 4], "tags": {"barrier": "wall"}},
+    ]
+
+    result = build_ways(elements)
+
+    by_kind = {r.kind for r in result.railings}
+    assert by_kind == {"hedge", "wall"}
+
+
+def test_draw_railings_styles_hedge_and_wall_differently_from_fence():
+    """hedge/wall must draw as solid, opaque lines - a real hedge or wall
+    doesn't read as a segmented dashed barrier the way an open fence does."""
+    import pygame
+    from theroadragetrip.render.roads import HEDGE_COLOR, WALL_COLOR, RAILING_COLOR
+    pygame.init()
+
+    def rendered_colors(kind):
+        surf = pygame.Surface((200, 200))
+        surf.fill((0, 0, 0))
+        railing = Railing(points_m=[(80.0, 100.0), (120.0, 100.0)], bbox=(80.0, 100.0, 120.0, 100.0), kind=kind)
+        draw_railings(surf, [railing], camx=100.0, camy=100.0, px_per_m=8.0, screen_w=200, screen_h=200)
+        return {tuple(surf.get_at((x, y)))[:3] for x in range(200) for y in range(200)} - {(0, 0, 0)}
+
+    assert rendered_colors("hedge") == {HEDGE_COLOR}
+    assert rendered_colors("wall") == {WALL_COLOR}
+    assert RAILING_COLOR in rendered_colors("fence")
+    pygame.quit()
+
+
 def test_railway_is_bridge_round_trips_through_world_cache(tmp_path):
     """Regression: a Railway loaded from a cached .rwc written before
     is_bridge existed on the dataclass silently reconstructs with

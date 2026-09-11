@@ -205,6 +205,43 @@ def test_fetch_query_requests_taxi_stations(monkeypatch):
     assert 'node["amenity"="taxi"]' in captured["query"]
 
 
+def test_fetch_query_requests_the_newly_rendered_point_and_barrier_kinds(monkeypatch):
+    """fountain/fuel/picnic_table/firepit/gate/bollard/hedge/wall all got a
+    build_ways() classification but the live Overpass query still had to be
+    taught to fetch them too - osm_source=pbf (no tag filtering) already
+    carried them, which is how the gap stayed invisible for so long."""
+    import theroadragetrip.osm as osm
+
+    captured = {}
+
+    class Response:
+        status_code = 200
+
+        def json(self):
+            return {"elements": []}
+
+        def raise_for_status(self):
+            return None
+
+    def post(endpoint, **kwargs):
+        captured["query"] = kwargs["data"]["data"]
+        return Response()
+
+    monkeypatch.setattr(osm.requests, "post", post)
+    monkeypatch.setattr(osm, "load_osm_cache", lambda bbox: None)
+    monkeypatch.setattr(osm, "save_osm_cache", lambda bbox, elements: None)
+    monkeypatch.delenv("OVERPASS_ENDPOINTS", raising=False)
+
+    osm.fetch_osm_ways((60.0, 25.0, 60.1, 25.1), endpoints=["https://example.test/api"], force_refresh=True)
+
+    query = captured["query"]
+    assert "fountain" in query and "fuel" in query
+    assert 'node["leisure"~"picnic_table|firepit"]' in query
+    assert 'node["barrier"~"gate|bollard"]' in query
+    assert 'way["barrier"~"fence|railing|hedge|wall"]' in query
+    assert 'way["amenity"="fuel"]' in query
+
+
 def test_fetch_query_requests_any_landuse_or_leisure_way(monkeypatch):
     """Regression: the query used to whitelist a handful of landuse/leisure
     values (forest|grass|park|meadow|...), but build_ways() (osm/build.py)

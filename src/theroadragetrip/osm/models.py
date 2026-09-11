@@ -77,9 +77,10 @@ class Railway:
 
 @dataclass
 class Railing:
-    """A fence/handrail line (OSM barrier=fence/railing). Visual only."""
+    """A linear barrier (OSM barrier=fence/railing/hedge/wall). Visual only."""
     points_m: List[Tuple[float, float]]
     bbox: Tuple[float, float, float, float] = (0.0, 0.0, 0.0, 0.0)
+    kind: str = "fence"
 
 
 @dataclass

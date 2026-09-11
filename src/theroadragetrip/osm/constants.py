@@ -61,7 +61,10 @@ DEFAULT_BBOX = BBOX_PRESETS["oulu"]
 # landuse/leisure did (see git history: overpass.py once hand-maintained
 # its own separate landuse/leisure whitelist that fell out of sync with
 # what build_ways() actually classified).
-NATURAL_SCENERY_KINDS: Tuple[str, ...] = ("wood", "scrub", "grass", "sand", "heath")
+NATURAL_SCENERY_KINDS: Tuple[str, ...] = (
+    "wood", "scrub", "grass", "sand", "heath",
+    "beach", "wetland", "grassland", "shrubbery",
+)
 
 
 DEFAULT_ROAD_HALF_WIDTH_M = 3.0
