@@ -989,7 +989,8 @@ def main() -> None:
         clock.tick()  # Reset clock timer to avoid large dt on first frame
 
         while running:
-            dt = min(clock.tick_busy_loop(FPS) / 1000.0, 0.1)  # Precise pacing; clamp lag spikes for physics safety
+            raw_frame_ms = clock.tick_busy_loop(FPS)  # Precise pacing; real per-frame duration for the debug HUD
+            dt = min(raw_frame_ms / 1000.0, 0.1)  # clamp lag spikes for physics safety
             frame_profiler.begin_frame()
             if awaiting_start:
                 start_warmup_remaining = max(0.0, start_warmup_remaining - dt)
@@ -2440,7 +2441,7 @@ def main() -> None:
             frame_profiler.record(
                 "rendering", (time.perf_counter() - render_profiler_start) * 1000.0
             )
-            frame_profiler.end_frame()
+            frame_profiler.end_frame(real_frame_ms=raw_frame_ms)
             draw_frame_profiler(
                 screen, small_font, frame_profiler,
                 0, len(pedestrian_mgr.pedestrians),

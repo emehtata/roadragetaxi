@@ -28,10 +28,22 @@ class FrameProfiler:
             self.sections.clear()
             self._frame_start = time.perf_counter()
 
-    def end_frame(self) -> None:
+    def end_frame(self, real_frame_ms: float | None = None) -> None:
+        """`real_frame_ms`, when given, is the actual wall-clock duration
+        of this frame's *whole* loop iteration (e.g. Clock.tick_busy_loop()'s
+        own return value) - including the pacing wait that throttles to
+        the target FPS, not just the work measured between begin_frame()
+        and here. Without it, a capped game (a real, ~60fps-paced frame)
+        reports FPS from work time alone, which excludes that wait and so
+        over-reports - e.g. 8ms of work on a 60fps-capped frame reads as
+        "125 FPS" even though only 60 real frames are ever displayed a
+        second. Callers that drive a real paced loop should pass it;
+        callers with no pacing concept (most tests) can omit it and get
+        the previous work-time-only behavior."""
         if not self.enabled:
             return
-        self.last_frame_ms = (time.perf_counter() - self._frame_start) * 1000.0
+        work_ms = (time.perf_counter() - self._frame_start) * 1000.0
+        self.last_frame_ms = real_frame_ms if real_frame_ms is not None else work_ms
         self.history.append(self.last_frame_ms)
         if any(self.last_frame_ms >= threshold for threshold in self.spike_ms):
             self.spike_count += 1
