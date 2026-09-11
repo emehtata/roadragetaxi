@@ -1278,14 +1278,17 @@ def draw_railways(
     only_bridges: Optional[bool] = None,
 ) -> None:
     """Draw rail lines (OSM railway=rail/light_rail/tram/...) as two steel
-    rails over periodic wooden sleepers, like draw_curbs but track-styled.
-    A track marked is_bridge (OSM bridge=yes/viaduct/movable, or a positive
-    layer) also gets a solid ballast-bed fill the full deck width (rails
-    and ties alone are thin lines with real gaps between them - not
-    enough to actually cover whatever's underneath) plus a pair of
-    guardrail-colored deck edges on top of that fill - the same cue
-    draw_ways uses for road bridges - so it reads as a structure spanning
-    whatever's below it instead of track painted on the ground.
+    rails and periodic wooden sleepers over a solid crushed-rock ballast
+    bed the full width of the sleepers - a real track always sits on one,
+    ground-level or not, and without it whatever's underneath just showed
+    through the gaps between the sparse rail/tie lines (usually the plain
+    grass/forest background, since real-world OSM landuse=railway ground
+    polygons alongside the track itself are inconsistently mapped). A
+    track additionally marked is_bridge (OSM bridge=yes/viaduct/movable,
+    or a positive layer) also gets a pair of guardrail-colored deck edges
+    on top of that same fill - the same cue draw_ways uses for road
+    bridges - so it reads as a structure spanning whatever's below it
+    instead of track painted on the ground.
 
     only_bridges filters which tracks this call draws: None (default) draws
     everything, live, uncached (kept for tests/other single-call
@@ -1381,16 +1384,15 @@ def _draw_railways_uncached(
     half_deck = half_tie + _RAILWAY_BRIDGE_DECK_MARGIN_M
     deck_edge_width = max(2, round(px_per_m * 0.15))
     ballast_width = max(1, round(2.0 * half_deck * px_per_m))
-    # Ground-level track and a rail bridge over a road/river/valley look
-    # identical without this - both are just two thin rails over sparse
-    # sleepers, at the same z-order as whatever's underneath (see
-    # is_bridge on Railway/Way in osm/models.py). A solid ballast-bed fill
-    # the full deck width, drawn *before* the rails/ties/edges so they
-    # still show as detail on top of it, is what actually makes a bridge
-    # opaque - the rails and ties alone are thin lines with gaps between
-    # them, which (main.py's only_bridges=True late pass notwithstanding)
-    # still let most of whatever's underneath show through.
-    show_bridge_decks = px_per_m > 1.5
+    # A track (ground-level or bridge) with just two thin rails over sparse
+    # sleepers leaves real gaps showing whatever's underneath - usually the
+    # plain grass/forest background, since a real-world OSM landuse=railway
+    # ground polygon alongside the track itself is inconsistently mapped.
+    # The solid ballast-bed fill below, drawn *before* the rails/ties so
+    # they still show as detail on top of it, covers that regardless of
+    # is_bridge; only the guardrail deck edges further below stay
+    # bridge-only (a ground-level ballast bed has no guardrails).
+    show_ballast = px_per_m > 1.5
 
     for rw in visible_railways:
         bb = getattr(rw, "bbox", None)
@@ -1426,7 +1428,7 @@ def _draw_railways_uncached(
             target = dist_along + seg_len
             if t_range is not None:
                 t_lo, t_hi = t_range
-                if rw.is_bridge and show_bridge_decks:
+                if show_ballast:
                     lo_x, lo_y = x0 + ux * t_lo, y0 + uy * t_lo
                     hi_x, hi_y = x0 + ux * t_hi, y0 + uy * t_hi
                     s0 = world_to_screen(lo_x, lo_y, camx, camy, px_per_m, screen_w, screen_h)
@@ -1436,7 +1438,7 @@ def _draw_railways_uncached(
                     s0 = world_to_screen(x0 + nx * offset, y0 + ny * offset, camx, camy, px_per_m, screen_w, screen_h)
                     s1 = world_to_screen(x1 + nx * offset, y1 + ny * offset, camx, camy, px_per_m, screen_w, screen_h)
                     pygame.draw.line(screen, RAILWAY_RAIL_COLOR, s0, s1, rail_thickness)
-                if rw.is_bridge and show_bridge_decks:
+                if rw.is_bridge and show_ballast:
                     lo_x, lo_y = x0 + ux * t_lo, y0 + uy * t_lo
                     hi_x, hi_y = x0 + ux * t_hi, y0 + uy * t_hi
                     for offset in (-half_deck, half_deck):

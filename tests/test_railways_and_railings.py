@@ -202,6 +202,45 @@ def test_draw_railways_bridge_deck_is_a_solid_fill_not_just_thin_lines():
     pygame.quit()
 
 
+def test_draw_railways_ground_level_track_also_gets_a_ballast_bed():
+    """Real track always sits on a ballast bed, elevated or not - a
+    ground-level track without one just showed whatever's underneath
+    (usually plain grass/forest, since a real-world OSM landuse=railway
+    ground polygon alongside the track itself is inconsistently mapped)
+    through the gaps between the sparse rail/tie lines. Same coverage
+    check as the bridge version above, but is_bridge=False - and this
+    ground-level track must still get no guardrail edges (those stay
+    bridge-only, see BRIDGE_GUARDRAIL_COLOR)."""
+    import pygame
+    from theroadragetrip.render.roads import BRIDGE_GUARDRAIL_COLOR
+    pygame.init()
+    surf = pygame.Surface((800, 600))
+    sentinel = (1, 2, 3)
+    surf.fill(sentinel)
+    railway = Railway(
+        points_m=[(50.0, 100.0), (150.0, 100.0)],
+        bbox=(50.0, 100.0, 150.0, 100.0),
+        is_bridge=False,
+    )
+    draw_railways(surf, [railway], camx=100.0, camy=100.0, px_per_m=8.0, screen_w=800, screen_h=600)
+
+    remaining_sentinel = sum(
+        1
+        for x in range(300, 500)
+        for y in range(290, 311)
+        if tuple(surf.get_at((x, y)))[:3] == sentinel
+    )
+    assert remaining_sentinel == 0
+    guardrail_pixels = sum(
+        1
+        for x in range(800)
+        for y in range(600)
+        if tuple(surf.get_at((x, y)))[:3] == BRIDGE_GUARDRAIL_COLOR
+    )
+    assert guardrail_pixels == 0
+    pygame.quit()
+
+
 def test_draw_railways_only_bridges_filters_ground_track_and_bridge_track():
     """Regression: main.py draws ground-level track once early (before the
     car) and bridge track again once late (after the car/pedestrians), so
