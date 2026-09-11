@@ -1407,15 +1407,20 @@ def test_static_rebuild_always_allows_the_very_first_build():
 
 def test_stale_static_cache_blit_never_overflows_its_padding_during_driving():
     """Regression: every static-cache layer's frame_cache_key used the same
-    unphased round(cam * cache_zoom / 128.0) grid, so a routine boundary
-    crossing made *every* layer stale on the same frame (confirmed against
-    real OSM data). _allow_static_rebuild only rebuilds one layer per frame
-    (see the tests above), so the rest kept blitting their previous-cycle
-    cache at a growing pixel offset - and the old CACHE_PADDING_PX (96px)
-    was already smaller than that 128px grid step, so *every* stale blit
-    showed a real transparent gap at the screen edge, not just an unlucky
-    one. This is the "screen flickers at the edges... regardless of game
-    time" bug: independent of day/night, general to every map layer.
+    unphased round(cam * cache_zoom / STATIC_CACHE_GRID_PX) grid, so a
+    routine boundary crossing made *every* layer stale on the same frame
+    (confirmed against real OSM data). _allow_static_rebuild only rebuilds
+    one layer per frame (see the tests above), so the rest kept blitting
+    their previous-cycle cache at a growing pixel offset - and the
+    original CACHE_PADDING_PX (96px) was already smaller than the original
+    128px grid step, so *every* stale blit showed a real transparent gap
+    at the screen edge, not just an unlucky one. This is the "screen
+    flickers at the edges... regardless of game time" bug: independent of
+    day/night, general to every map layer. (CACHE_PADDING_PX and
+    STATIC_CACHE_GRID_PX were both retuned afterwards - see common.py's
+    comments - to fix a second regression: the first fix's bigger padding,
+    at the original small grid step, made every rebuild pricier for no
+    drop in how often they fired, which read as "heavy twitching".)
 
     Simulates continuous driving (varying speed, one simulated fps hitch)
     across every static-cache layer name and asserts the pixel offset a
