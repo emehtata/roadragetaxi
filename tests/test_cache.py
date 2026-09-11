@@ -367,11 +367,19 @@ def test_rate_limited_endpoint_is_skipped_on_the_next_fetch(monkeypatch):
     the next tile crossing, seconds later) tried that same still-limited
     endpoint again first - drawing another 429 and stretching out how long
     it stayed rate-limited. An endpoint that just 429'd should be skipped
-    on a later call while a working mirror exists."""
+    on a later call while a working mirror exists.
+
+    Fake-advances time.monotonic() by 31s between the two fetches - just
+    past the 30s courtesy cooldown every successful contact also now gets
+    (see test_endpoint_is_not_recontacted_within_30_seconds_even_on_a_clean_
+    success below), so the mirror is available again, but well short of
+    the rate-limited endpoint's own 60s cooldown, which must still hold."""
     import theroadragetrip.osm as osm
 
     osm.overpass._endpoint_cooldown_until.clear()
+    osm.overpass._endpoint_last_contact.clear()
     calls = []
+    fake_now = [1000.0]
 
     class RateLimited:
         status_code = 429
@@ -393,6 +401,7 @@ def test_rate_limited_endpoint_is_skipped_on_the_next_fetch(monkeypatch):
 
     monkeypatch.setattr(osm.requests, "post", post)
     monkeypatch.setattr(osm.time, "sleep", lambda _: None)
+    monkeypatch.setattr(osm.time, "monotonic", lambda: fake_now[0])
     monkeypatch.setattr(osm, "load_osm_cache", lambda bbox: None)
     monkeypatch.setattr(osm, "save_osm_cache", lambda bbox, elements: None)
 
@@ -401,6 +410,49 @@ def test_rate_limited_endpoint_is_skipped_on_the_next_fetch(monkeypatch):
     assert calls == ["https://limited.example/api", "https://mirror.example/api"]
 
     calls.clear()
+    fake_now[0] += 31.0
     osm.fetch_osm_ways((60.0, 25.0, 60.1, 25.1), endpoints=endpoints, force_refresh=True)
     assert calls == ["https://mirror.example/api"], "still-cooling-down endpoint was retried"
+
+
+def test_endpoint_is_not_recontacted_within_30_seconds_even_on_a_clean_success(monkeypatch):
+    """A courtesy limit independent of anything the server says: never
+    contact the same public Overpass instance again within 30s, not just
+    after an explicit 429/406 (see the 429 case above). An ordinary,
+    successful 200 response must still start the same cooldown - crossing
+    tiles quickly enough to trigger back-to-back fetches must rotate to a
+    mirror rather than hammering the endpoint that just answered fine."""
+    import theroadragetrip.osm as osm
+
+    osm.overpass._endpoint_cooldown_until.clear()
+    calls = []
+
+    class Ok:
+        status_code = 200
+        headers = {}
+
+        def json(self):
+            return {"elements": [{"type": "node", "id": 2}]}
+
+        def raise_for_status(self):
+            return None
+
+    def post(endpoint, **kwargs):
+        calls.append(endpoint)
+        return Ok()
+
+    monkeypatch.setattr(osm.requests, "post", post)
+    monkeypatch.setattr(osm.time, "sleep", lambda _: None)
+    monkeypatch.setattr(osm, "load_osm_cache", lambda bbox: None)
+    monkeypatch.setattr(osm, "save_osm_cache", lambda bbox, elements: None)
+
+    endpoints = ["https://first.example/api", "https://mirror.example/api"]
+    osm.fetch_osm_ways((60.0, 25.0, 60.1, 25.1), endpoints=endpoints, force_refresh=True)
+    assert calls == ["https://first.example/api"]
+
+    calls.clear()
+    osm.fetch_osm_ways((60.0, 25.0, 60.1, 25.1), endpoints=endpoints, force_refresh=True)
+    assert calls == ["https://mirror.example/api"], (
+        "the endpoint that just answered successfully was contacted again within 30s"
+    )
 
