@@ -130,6 +130,22 @@ _SPECKLE_MIN_PX_PER_M = 2.0  # below this the dots would be sub-pixel noise, not
 # whole rebuild means many small polygons simply divide up the same
 # fixed total instead of each drawing their own full share on top.
 _SPECKLE_GLOBAL_BUDGET = 2200
+# Separate ceiling on point_in_polygon *tests* (accepted + rejected), not
+# just accepted dots. _scenery_speckle_positions sizes its candidate-cell
+# stride to land near _SPECKLE_GLOBAL_BUDGET *accepted* dots, which assumes
+# a near-100% acceptance rate - true for a simple, mostly-filled shape, but
+# a low-fill-ratio one (thin, L-shaped, or mostly-off-screen-clipped
+# polygon) rejects far more candidates than it accepts, so it barely
+# depletes speckle_budget (which only counts acceptances) and the *next*
+# polygon gets handed almost the same enormous per-polygon candidate cap.
+# Confirmed via profiling a real drive: a rebuild with ~17 such polygons in
+# view cost ~970ms in point_in_polygon alone (105209 calls) despite the
+# "budget" being 2200 - cost scaled with polygon count, not one shared
+# total. This second budget bounds total tests regardless of acceptance
+# rate. 4x the accepted-dot budget: cheap per-test, so still bounds a
+# realistic worst case (~25% fill ratio) without visibly thinning normal,
+# mostly-filled scenery.
+_SPECKLE_CANDIDATE_BUDGET = _SPECKLE_GLOBAL_BUDGET * 4
 
 
 def _speckle_color(base: Tuple[int, int, int], variant: float) -> Tuple[int, int, int]:
@@ -156,11 +172,15 @@ def _grid_hash(seed: int, gx: int, gy: int) -> int:
 def _scenery_speckle_positions(
     points_m: List[Tuple[float, float]], seed: int,
     vminx: float, vminy: float, vmaxx: float, vmaxy: float,
-    max_points: int,
-) -> List[Tuple[float, float, float]]:
+    max_points: int, max_candidates: int,
+) -> Tuple[List[Tuple[float, float, float]], int]:
     """World-space speckle positions for one scenery polygon, capped at
-    max_points (the caller passes whatever's left of the shared per-
-    rebuild _SPECKLE_GLOBAL_BUDGET - see _draw_scenery_uncached).
+    max_points accepted dots (the caller passes whatever's left of the
+    shared per-rebuild _SPECKLE_GLOBAL_BUDGET - see _draw_scenery_uncached).
+    Returns (points, candidates_examined) - the caller also charges
+    candidates_examined against a separate _SPECKLE_CANDIDATE_BUDGET, since
+    a low-fill-ratio polygon (see max_candidates below) can examine far more
+    candidates than it ever accepts.
 
     The scan grid is bounded to the *intersection* of this polygon's own
     bbox and the viewport - not the polygon's full extent - so a small
@@ -170,22 +190,26 @@ def _scenery_speckle_positions(
     extends well past the visible area doesn't waste the whole scan on
     its invisible part before ever reaching the visible one.
 
-    When the intersected area has more grid cells than max_points, a 2D
+    When the intersected area has more grid cells than max_candidates, a 2D
     stride subsamples the *whole* scan range evenly rather than capping
     after the first N cells found in raster order - capping by early-
     return instead of striding was a real bug: for a polygon bigger than
     what's on screen, "first N cells" can be entirely the off-screen band
     before the visible region even starts, silently drawing zero dots
     despite "succeeding" (no error, no count-zero warning - just an
-    invisible no-op every rebuild).
+    invisible no-op every rebuild). max_candidates (not max_points) sizes
+    the stride: a thin/concave polygon whose bbox is mostly empty space
+    would otherwise get a stride sized as if every candidate will be
+    accepted, examining (and testing point_in_polygon on) far more cells
+    than max_points ever needed - see _SPECKLE_CANDIDATE_BUDGET.
 
     Seeded from the scenery's own geometry, not the viewport (stable
     across cache rebuilds and camera pans - the same real-world spot
     always lands on the same candidate point, unlike a per-rebuild random
     draw, which would make the texture visibly reshuffle itself every
     time the camera moves)."""
-    if max_points <= 0:
-        return []
+    if max_points <= 0 or max_candidates <= 0:
+        return [], 0
     xs = [p[0] for p in points_m]
     ys = [p[1] for p in points_m]
     minx = max(min(xs), vminx)
@@ -193,7 +217,7 @@ def _scenery_speckle_positions(
     miny = max(min(ys), vminy)
     maxy = min(max(ys), vmaxy)
     if minx >= maxx or miny >= maxy:
-        return []
+        return [], 0
     spacing = _SPECKLE_SPACING_M
     start_gx = int(minx // spacing)
     end_gx = int(maxx // spacing) + 1
@@ -203,11 +227,13 @@ def _scenery_speckle_positions(
     rows = max(1, end_gy - start_gy)
     total_cells = cols * rows
     stride = 1
-    if total_cells > max_points:
-        stride = max(1, math.ceil(math.sqrt(total_cells / max_points)))
+    if total_cells > max_candidates:
+        stride = max(1, math.ceil(math.sqrt(total_cells / max_candidates)))
     points: List[Tuple[float, float, float]] = []
+    examined = 0
     for gx in range(start_gx, end_gx, stride):
         for gy in range(start_gy, end_gy, stride):
+            examined += 1
             h = _grid_hash(seed, gx, gy)
             jx = (h & 0xFFF) / 4095.0
             jy = ((h >> 12) & 0xFFF) / 4095.0
@@ -217,8 +243,10 @@ def _scenery_speckle_positions(
                 variant = ((h >> 24) & 0xFF) / 255.0
                 points.append((x, y, variant))
                 if len(points) >= max_points:
-                    return points
-    return points
+                    return points, examined
+            if examined >= max_candidates:
+                return points, examined
+    return points, examined
 
 
 TREE_CROWN_COLORS = ((25, 78, 29), (34, 101, 35), (48, 119, 42), (63, 112, 34))
@@ -353,6 +381,7 @@ def _draw_scenery_uncached(
     show_speckles = px_per_m >= _SPECKLE_MIN_PX_PER_M
     dot_radius = max(1, round(px_per_m * 0.1))
     speckle_budget = _SPECKLE_GLOBAL_BUDGET
+    speckle_candidate_budget = _SPECKLE_CANDIDATE_BUDGET
     for sc in visible_sceneries:
         bb = getattr(sc, "bbox", None)
         if bb and bb != (0.0, 0.0, 0.0, 0.0):
@@ -375,10 +404,18 @@ def _draw_scenery_uncached(
         kind = sc.kind.lower()
         color = SCENERY_COLORS.get(kind, (38, 105, 38))
         pygame.draw.polygon(screen, color, pts)
-        if show_speckles and kind in _SPECKLE_SCENERY_KINDS and speckle_budget > 0:
+        if (
+            show_speckles
+            and kind in _SPECKLE_SCENERY_KINDS
+            and speckle_budget > 0
+            and speckle_candidate_budget > 0
+        ):
             seed = hash(bb) if bb else hash(points_m[0])
-            speckles = _scenery_speckle_positions(points_m, seed, vminx, vminy, vmaxx, vmaxy, speckle_budget)
+            speckles, examined = _scenery_speckle_positions(
+                points_m, seed, vminx, vminy, vmaxx, vmaxy, speckle_budget, speckle_budget
+            )
             speckle_budget -= len(speckles)
+            speckle_candidate_budget -= examined
             for wx, wy, variant in speckles:
                 sx, sy = world_to_screen(wx, wy, camx, camy, px_per_m, screen_w, screen_h)
                 pygame.draw.circle(screen, _speckle_color(color, variant), (sx, sy), dot_radius)

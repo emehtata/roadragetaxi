@@ -800,6 +800,65 @@ def test_draw_scenery_speckle_dot_count_is_bounded_regardless_of_polygon_count()
     assert len(circle_calls) <= 2500
 
 
+def test_draw_scenery_speckle_candidate_tests_are_bounded_for_sparse_polygons():
+    """Regression: _scenery_speckle_positions used to size its candidate-
+    cell stride to land near _SPECKLE_GLOBAL_BUDGET *accepted* dots, which
+    assumes near-100% acceptance. A low-fill-ratio polygon (bbox mostly
+    empty - a thin diagonal sliver, here) rejects far more candidates than
+    it accepts, so it barely depletes the accepted-dot budget, and each
+    *next* sparse polygon got handed almost the same enormous per-polygon
+    candidate cap - point_in_polygon call count scaled with polygon count,
+    not one shared total. Confirmed via profiling a real drive: ~970ms in
+    point_in_polygon alone for ~17 such polygons in one rebuild.
+
+    20 thin diagonal slivers here (each a large bbox, ~1% actual fill
+    ratio) must still keep total point_in_polygon calls bounded by the
+    separate _SPECKLE_CANDIDATE_BUDGET, not multiply with polygon count."""
+    import theroadragetrip.render.scenery as scenery_module
+
+    sceneries = []
+    for i in range(20):
+        ox, oy = float(i) * 200.0, 0.0
+        # A thin sliver along the diagonal of a 200x200 bbox: tiny actual
+        # area, huge bounding box - low fill ratio.
+        pts = [
+            (ox + 0.0, oy + 0.0), (ox + 200.0, oy + 200.0),
+            (ox + 201.0, oy + 199.0), (ox + 1.0, oy - 1.0),
+        ]
+        sceneries.append(Scenery(pts, "grass", bbox=(ox, oy - 1.0, ox + 201.0, oy + 200.0)))
+
+    # Camera/screen sized (at px_per_m=2.0 - must clear _SPECKLE_MIN_PX_PER_M
+    # or speckling is skipped entirely) to cover the whole ~4000m span all
+    # 20 slivers sit across, so every one of them is actually visible and
+    # eligible for speckling in this one rebuild.
+    screen = pygame.Surface((8600, 600), pygame.SRCALPHA)
+    call_count = [0]
+    real_point_in_polygon = scenery_module.point_in_polygon
+
+    def _counting_point_in_polygon(*args, **kwargs):
+        call_count[0] += 1
+        return real_point_in_polygon(*args, **kwargs)
+
+    scenery_module.point_in_polygon = _counting_point_in_polygon
+    try:
+        _draw_scenery_uncached(screen, sceneries, 1950.0, 100.0, 2.0, 8600, 600)
+    finally:
+        scenery_module.point_in_polygon = real_point_in_polygon
+
+    # Sanity: this scene must actually exercise the low-fill-ratio shape -
+    # otherwise the bound below would pass vacuously. Reverting the fix (one
+    # shared budget for both accepted dots and candidates examined) measures
+    # ~30000 calls for this exact scene - well past the bound.
+    assert call_count[0] > scenery_module._SPECKLE_GLOBAL_BUDGET, (
+        "too few point_in_polygon calls to exercise the low-fill-ratio case - test is vacuous"
+    )
+    assert call_count[0] <= scenery_module._SPECKLE_CANDIDATE_BUDGET * 1.1, (
+        f"{call_count[0]} point_in_polygon calls for 20 sparse polygons - "
+        f"looks like the per-polygon candidate cap regressed back to scaling "
+        f"with polygon count instead of one shared candidate budget"
+    )
+
+
 def test_draw_construction_fences_outlines_construction_scenery_only():
     from theroadragetrip.render import common as common_module
 
