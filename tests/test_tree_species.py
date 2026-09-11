@@ -7,7 +7,11 @@ import pygame
 
 from theroadragetrip.osm import Scenery, build_ways, classify_tree_kind, plant_trees
 from theroadragetrip.render import draw_trees
-from theroadragetrip.render.scenery import BIRCH_TRUNK_COLOR, TREE_CROWN_PALETTES
+from theroadragetrip.render.scenery import (
+    BIRCH_TRUNK_COLOR,
+    TREE_CROWN_PALETTES,
+    _irregular_crown_points,
+)
 
 
 def test_classify_tree_kind_uses_genus_tag_outright():
@@ -88,10 +92,11 @@ def test_build_ways_real_tree_genus_tag_picks_its_species():
     assert sceneries[0].tree_kinds == ["spruce"]
 
 
-def test_draw_trees_renders_a_visually_distinct_shape_per_species():
-    """Regression: every tree used to render as the exact same trunk +
-    circle-crown shape regardless of species - this is the actual visible
-    fix, not just the data model behind it."""
+def test_draw_trees_renders_a_visually_distinct_crown_color_per_species():
+    """A standing tree, seen straight from above, shows only its canopy -
+    no trunk (its own crown would hide it in reality) - so species must
+    still read as visually distinct via crown color, not a trunk or a
+    per-species silhouette (both removed - see draw_trees' docstring)."""
     from theroadragetrip.render import common as common_module
 
     def render_crown_colors(scenery, camx, camy):
@@ -120,5 +125,77 @@ def test_draw_trees_renders_a_visually_distinct_shape_per_species():
 
     assert spruce_colors & set(TREE_CROWN_PALETTES["spruce"])
     assert birch_colors & set(TREE_CROWN_PALETTES["birch"])
-    assert BIRCH_TRUNK_COLOR in birch_colors
+    # No trunk while standing - straight overhead, a real tree's own
+    # canopy would hide it completely (see draw_trees' docstring). Only a
+    # *fallen* tree (drawn lying down) shows BIRCH_TRUNK_COLOR.
+    assert BIRCH_TRUNK_COLOR not in birch_colors
     assert spruce_colors.isdisjoint(birch_colors), "spruce and birch must not render identically"
+
+
+def test_irregular_crown_points_are_not_a_perfect_circle():
+    """A perfect circle/ellipse/cone reads as a diagram, not foliage -
+    straight overhead, a real canopy's outline is an irregular blob."""
+    points = _irregular_crown_points(0.0, 0.0, 10.0, seed=1)
+    radii = {round((x * x + y * y) ** 0.5, 3) for x, y in points}
+    assert len(radii) > 1, "every vertex sits at the same radius - that's a perfect circle, not a blob"
+
+
+def test_irregular_crown_points_are_deterministic_by_position():
+    """Same seed (in practice, the tree's own world position - see
+    draw_trees) must draw the exact same blob every time, not a new
+    random shape each cache rebuild - a tree can't visibly change shape
+    just because the camera moved and forced a static-cache rebuild."""
+    first = _irregular_crown_points(5.0, -3.0, 8.0, seed=42)
+    second = _irregular_crown_points(5.0, -3.0, 8.0, seed=42)
+    assert first == second
+
+
+def test_draw_trees_standing_tree_shows_no_trunk_of_any_species():
+    """Straight overhead, a standing tree's own canopy hides its trunk -
+    true for every species, not just birch (BIRCH_TRUNK_COLOR is the only
+    one directly distinguishable from a crown color, but every kind's
+    trunk_color computation runs the same way, so this checks the two
+    less distinguishable ones can't leak a trunk rect onto the screen
+    either, by requiring every rendered pixel to be one this species'
+    crown palette actually contains)."""
+    from theroadragetrip.render import common as common_module
+
+    for kind in ("spruce", "pine", "birch"):
+        common_module._tree_frame_cache_key = None
+        common_module._tree_frame_cache_surface = None
+        common_module.begin_static_cache_frame()
+        common_module._pending_static_rebuilds.clear()
+        scenery = Scenery(
+            [(0.0, 0.0), (40.0, 0.0), (40.0, 40.0), (0.0, 40.0)], "forest",
+            bbox=(0.0, 0.0, 40.0, 40.0), trees=[(20.0, 20.0)], tree_variations=[0.5], tree_kinds=[kind],
+        )
+        screen = pygame.Surface((200, 200))
+        screen.fill((0, 0, 0))
+        draw_trees(screen, [scenery], 20.0, 20.0, px_per_m=4.0, screen_w=200, screen_h=200)
+        colors = {tuple(screen.get_at((x, y)))[:3] for x in range(200) for y in range(200)}
+        colors.discard((0, 0, 0))
+        assert colors <= set(TREE_CROWN_PALETTES[kind]), f"{kind}: non-crown-palette pixel found - a trunk leaked through"
+
+
+def test_draw_trees_fallen_tree_still_shows_a_trunk():
+    """Regression guard: the request that removed the standing trunk was
+    explicit that a *fallen* tree keeps looking like it does now (trunk
+    line + crown circle) - only the standing case changed."""
+    from theroadragetrip.render import common as common_module
+
+    common_module.begin_static_cache_frame()
+    common_module._pending_static_rebuilds.clear()
+    scenery = Scenery(
+        [(0.0, 0.0), (40.0, 0.0), (40.0, 40.0), (0.0, 40.0)], "forest",
+        bbox=(0.0, 0.0, 40.0, 40.0), trees=[(20.0, 20.0)], tree_variations=[0.5], tree_kinds=["birch"],
+    )
+    screen = pygame.Surface((200, 200))
+    screen.fill((0, 0, 0))
+    tree_key = (id(scenery), 0)
+    draw_trees(
+        screen, [scenery], 20.0, 20.0, px_per_m=4.0, screen_w=200, screen_h=200,
+        fallen_trees={tree_key}, tree_effects={tree_key: {"angle": 0.0}},
+    )
+    colors = {tuple(screen.get_at((x, y)))[:3] for x in range(200) for y in range(200)}
+    colors.discard((0, 0, 0))
+    assert BIRCH_TRUNK_COLOR in colors

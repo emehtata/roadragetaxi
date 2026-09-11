@@ -13,7 +13,7 @@ from ..geo import clip_polygon_to_rect
 import math
 import random
 import time
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
 
 from ..osm import Scenery, SceneryObject, Way, classify_tree_kind
@@ -89,16 +89,39 @@ SCENERY_COLORS = {
 }
 TREE_CROWN_COLORS = ((25, 78, 29), (34, 101, 35), (48, 119, 42), (63, 112, 34))
 # Finland's three dominant forest trees (see osm/trees.py:classify_tree_kind
-# for how a tree gets assigned one), each with its own silhouette drawn in
-# _draw_trees_uncached: spruce a dark conical shape, pine a flatter crown
-# on a taller bare trunk, birch the plain round crown (already what every
-# tree used to look like) with a whitish trunk instead of brown.
+# for how a tree gets assigned one) - distinguished by crown color/size only
+# (_draw_trees_uncached), not by silhouette: straight overhead, a standing
+# tree's own canopy hides its trunk and any species-specific outline
+# completely, so every kind draws as the same irregular circle blob
+# (_irregular_crown_points), just a different palette. trunk_color is still
+# used for a *fallen* tree (drawn lying down, trunk visible - see
+# draw_trees' docstring) - BIRCH_TRUNK_COLOR whitish, spruce/pine brown.
 TREE_CROWN_PALETTES = {
     "spruce": ((14, 54, 20), (18, 64, 24), (24, 76, 30)),
     "pine": ((88, 108, 42), (102, 122, 50), (118, 136, 60)),
     "birch": TREE_CROWN_COLORS,
 }
 BIRCH_TRUNK_COLOR = (222, 218, 206)
+_TREE_CROWN_POINTS = 8
+_TREE_CROWN_JITTER = (0.78, 1.15)  # radius multiplier range - a perfect
+# circle/cone/ellipse reads as a diagram, not foliage; a straight-down
+# view of a real canopy is an irregular blob, not a precise geometric
+# shape.
+
+
+def _irregular_crown_points(cx: float, cy: float, radius: float, seed) -> List[Tuple[int, int]]:
+    """Deterministic, position-seeded blob approximating a circle - looks
+    like foliage seen from directly above, and (seeded from the tree's own
+    world position, not anything per-frame/per-rebuild) draws the exact
+    same shape every time this tree is on screen, not a new random blob
+    each cache rebuild."""
+    rng = random.Random(seed)
+    points = []
+    for i in range(_TREE_CROWN_POINTS):
+        angle = (2.0 * math.pi * i) / _TREE_CROWN_POINTS + rng.uniform(-0.2, 0.2)
+        r = radius * rng.uniform(*_TREE_CROWN_JITTER)
+        points.append((int(cx + math.cos(angle) * r), int(cy + math.sin(angle) * r)))
+    return points
 _grass_texture_tile = None
 
 
@@ -408,7 +431,6 @@ def _draw_trees_uncached(
             )
             size = 0.72 + variation * 0.62
             trunk = max(1, int(0.7 * size * px_per_m))
-            trunk_height = max(2, int((1.8 if kind == "pine" else 1.5) * size * px_per_m))
             crown = max(2, int((1.9 if kind == "pine" else 2.2) * size * px_per_m))
             if kind == "birch":
                 trunk_color = BIRCH_TRUNK_COLOR
@@ -425,22 +447,11 @@ def _draw_trees_uncached(
                 pygame.draw.line(screen, trunk_color, (sx, sy), (fall_x, fall_y), max(2, trunk))
                 pygame.draw.circle(screen, crown_color, (int(fall_x), int(fall_y)), crown)
             else:
-                pygame.draw.rect(screen, trunk_color, (sx - trunk // 2, sy, trunk, trunk_height))
-                crown_center = sy - crown // 2
-                if kind == "spruce":
-                    # Conical evergreen silhouette.
-                    pygame.draw.polygon(screen, crown_color, [
-                        (sx, crown_center - crown),
-                        (sx - crown, crown_center + int(crown * 0.6)),
-                        (sx + crown, crown_center + int(crown * 0.6)),
-                    ])
-                elif kind == "pine":
-                    # Flatter, rounded crown set high on a bare trunk.
-                    pygame.draw.ellipse(screen, crown_color, (
-                        sx - crown, crown_center - int(crown * 0.5), crown * 2, int(crown * 1.0),
-                    ))
-                else:
-                    pygame.draw.circle(screen, crown_color, (sx, crown_center), crown)
+                # Straight overhead, a standing tree's own canopy hides its
+                # trunk completely - no rect/silhouette drawn here, just the
+                # irregular crown blob centered on the tree's actual position.
+                seed = hash((round(tree_x, 2), round(tree_y, 2)))
+                pygame.draw.polygon(screen, crown_color, _irregular_crown_points(sx, sy, crown, seed))
             leaves_left = effect.get("leaves", 0.0)
             if leaves_left > 0.0:
                 for leaf_index in range(8):
