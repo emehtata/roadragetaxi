@@ -9,7 +9,7 @@ from .common import (
     world_to_screen,
     get_viewport_bounds,
 )
-from ..geo import clip_polygon_to_rect
+from ..geo import clip_polygon_to_rect, point_in_polygon
 import math
 import random
 import time
@@ -94,24 +94,38 @@ SCENERY_COLORS = {
 # tree canopy, mown/unmown grass, tilled soil, loose sand - as opposed to
 # the flat, mostly-building-covered zoning kinds (commercial, industrial,
 # ...) or small point-like facilities, where a speckle texture would just
-# be wasted cost under something else drawn on top. See _speckle_tile_for_
-# color/_draw_scenery_uncached: same generalized procedural-noise idea as
-# _grass_texture_tile - a small repeating tile of jittered-brightness dots -
-# just polygon-clipped (mask + BLEND_RGBA_MULT, the same technique used for
-# the grass/asphalt texture-through-a-shape problem elsewhere in this
-# module) instead of tiled unclipped across the whole screen, and tinted
-# from each kind's own SCENERY_COLORS entry instead of a hand-picked
-# palette per kind.
+# be wasted cost under something else drawn on top. See
+# _scenery_speckle_positions/_draw_scenery_uncached: same generalized
+# procedural-noise idea as _grass_texture_tile - a jittered grid of dots -
+# but drawn directly (no intermediate Surface/mask/tile-blit machinery:
+# tried that first, and it made cost scale with either polygon *count*
+# (many small per-polygon Surfaces) or distinct-color count times the
+# *whole visible area* (one shared full-viewport Surface per color) -
+# either way a real fps drop, confirmed by benchmarking both against a
+# realistic many-small-polygons scene). Direct dot draws instead bound
+# cost to each polygon's own (already viewport-clipped) area, the same
+# way the flat fill itself is bounded - and tinted from each kind's own
+# SCENERY_COLORS entry instead of a hand-picked palette per kind.
 _SPECKLE_SCENERY_KINDS = frozenset({
     "forest", "wood", "scrub", "heath", "park", "garden", "meadow", "grass",
     "greenfield", "nature_reserve", "recreation_ground", "dog_park",
     "fitness_station", "cemetery", "farmland", "farmyard", "allotments",
     "sand", "beach",
 })
-_SPECKLE_TILE_SIZE_PX = 40
-_SPECKLE_DOTS_PER_TILE = 34
+_SPECKLE_SPACING_M = 1.3  # world-space grid spacing between candidate dots
+_SPECKLE_INSET = 0.15  # keep jitter off the exact cell edge, avoids a visible grid line
+_SPECKLE_JITTER_SPAN = 0.7
 _SPECKLE_MIN_PX_PER_M = 2.0  # below this the dots would be sub-pixel noise, not texture - skip entirely
-_speckle_tile_cache: dict = {}
+# Total speckle dots per *rebuild*, shared across every textured polygon on
+# screen - not a per-polygon cap. A per-polygon-only budget still let cost
+# scale with polygon count: a real area can have hundreds of small
+# textured parcels at once, each individually well under any reasonable
+# per-polygon cap, but tens of thousands of world_to_screen+draw.circle
+# calls combined - confirmed as the actual cause of a real fps drop by
+# benchmarking a many-small-polygons scene. Sharing one budget across the
+# whole rebuild means many small polygons simply divide up the same
+# fixed total instead of each drawing their own full share on top.
+_SPECKLE_GLOBAL_BUDGET = 2200
 
 
 def _speckle_color(base: Tuple[int, int, int], variant: float) -> Tuple[int, int, int]:
@@ -122,71 +136,87 @@ def _speckle_color(base: Tuple[int, int, int], variant: float) -> Tuple[int, int
     return tuple(max(0, min(255, int(channel * factor))) for channel in base)
 
 
-def _speckle_tile_for_color(pygame_module, color: Tuple[int, int, int]):
-    """A small reusable SRCALPHA tile of jittered-brightness dots on a
-    transparent background, cached per base color - built once, then
-    tiled+clipped by _draw_scenery_uncached for every scenery polygon of
-    that color, the same way _grass_texture_tile is built once and tiled
-    for the whole background."""
-    tile = _speckle_tile_cache.get(color)
-    if tile is not None:
-        return tile
-    size = _SPECKLE_TILE_SIZE_PX
-    tile = pygame_module.Surface((size, size), pygame_module.SRCALPHA)
-    rng = random.Random((color[0] << 16) | (color[1] << 8) | color[2])
-    for _ in range(_SPECKLE_DOTS_PER_TILE):
-        x = rng.randrange(size)
-        y = rng.randrange(size)
-        dot_color = _speckle_color(color, rng.random())
-        pygame_module.draw.circle(tile, dot_color, (x, y), 1)
-    _speckle_tile_cache[color] = tile
-    return tile
+def _grid_hash(seed: int, gx: int, gy: int) -> int:
+    """Cheap deterministic hash of (seed, gx, gy) - one call yields enough
+    mixed bits for both jitter axes and the color variant (see
+    _scenery_speckle_positions), instead of three separate calls. Used
+    instead of constructing a fresh random.Random() per grid cell - a
+    textured scenery polygon can cover hundreds of cells, and even a
+    single extra Python function call per cell measurably adds up over a
+    whole rebuild's worth of them."""
+    h = (seed * 1000003 + gx) & 0xFFFFFFFF
+    h = (h * 1000003 + gy) & 0xFFFFFFFF
+    return h
 
 
-def _draw_polygon_texture(
-    pygame_module, screen, tile, pts, screen_w: int, screen_h: int, camx: float, camy: float, px_per_m: float,
-) -> None:
-    """Tile `tile` across pts' bounding box and clip it to the polygon's
-    exact shape (mask + BLEND_RGBA_MULT - see _speckle_tile_for_color's
-    docstring), then blit the result onto screen. Bounded to the
-    on-screen portion of that bbox, same reasoning as draw_waters/
-    draw_scenery's own world-space clip: cost must follow what's
-    actually visible, not a polygon's full extent.
+def _scenery_speckle_positions(
+    points_m: List[Tuple[float, float]], seed: int,
+    vminx: float, vminy: float, vmaxx: float, vmaxy: float,
+    max_points: int,
+) -> List[Tuple[float, float, float]]:
+    """World-space speckle positions for one scenery polygon, capped at
+    max_points (the caller passes whatever's left of the shared per-
+    rebuild _SPECKLE_GLOBAL_BUDGET - see _draw_scenery_uncached).
 
-    The tile's phase is anchored to world position (camx/camy), the same
-    way _draw_grass_texture_uncached anchors its own tiling - not to this
-    polygon's own bbox origin. Anchoring to the bbox would make the dot
-    pattern visibly slide as the camera pans (a fresh, differently-placed
-    bbox every rebuild) and misalign at the shared border between two
-    same-kind polygons, instead of reading as one continuous texture."""
-    min_x = max(0, int(math.floor(min(p[0] for p in pts))))
-    min_y = max(0, int(math.floor(min(p[1] for p in pts))))
-    max_x = min(screen_w, int(math.ceil(max(p[0] for p in pts))) + 1)
-    max_y = min(screen_h, int(math.ceil(max(p[1] for p in pts))) + 1)
-    if max_x <= min_x or max_y <= min_y:
-        return
-    size = (max_x - min_x, max_y - min_y)
-    tile_w, tile_h = tile.get_size()
-    texture_surface = pygame_module.Surface(size, pygame_module.SRCALPHA)
-    origin_x = screen_w * 0.5 - camx * px_per_m
-    origin_y = screen_h * 0.5 + camy * px_per_m
-    first_tile_x = int((min_x - origin_x) % tile_w) - tile_w
-    first_tile_y = int((min_y - origin_y) % tile_h) - tile_h
-    for tile_x in range(first_tile_x, size[0], tile_w):
-        for tile_y in range(first_tile_y, size[1], tile_h):
-            texture_surface.blit(tile, (tile_x, tile_y))
-    mask = pygame_module.Surface(size, pygame_module.SRCALPHA)
-    pygame_module.draw.polygon(mask, (255, 255, 255, 255), [(p[0] - min_x, p[1] - min_y) for p in pts])
-    texture_surface.blit(mask, (0, 0), special_flags=pygame_module.BLEND_RGBA_MULT)
-    screen.blit(texture_surface, (min_x, min_y))
+    The scan grid is bounded to the *intersection* of this polygon's own
+    bbox and the viewport - not the polygon's full extent - so a small
+    parcel only ever scans its own small area, and (this is the part
+    that actually matters for a large polygon under 40 points, so never
+    run through draw_scenery's own clip_polygon_to_rect) a polygon that
+    extends well past the visible area doesn't waste the whole scan on
+    its invisible part before ever reaching the visible one.
+
+    When the intersected area has more grid cells than max_points, a 2D
+    stride subsamples the *whole* scan range evenly rather than capping
+    after the first N cells found in raster order - capping by early-
+    return instead of striding was a real bug: for a polygon bigger than
+    what's on screen, "first N cells" can be entirely the off-screen band
+    before the visible region even starts, silently drawing zero dots
+    despite "succeeding" (no error, no count-zero warning - just an
+    invisible no-op every rebuild).
+
+    Seeded from the scenery's own geometry, not the viewport (stable
+    across cache rebuilds and camera pans - the same real-world spot
+    always lands on the same candidate point, unlike a per-rebuild random
+    draw, which would make the texture visibly reshuffle itself every
+    time the camera moves)."""
+    if max_points <= 0:
+        return []
+    xs = [p[0] for p in points_m]
+    ys = [p[1] for p in points_m]
+    minx = max(min(xs), vminx)
+    maxx = min(max(xs), vmaxx)
+    miny = max(min(ys), vminy)
+    maxy = min(max(ys), vmaxy)
+    if minx >= maxx or miny >= maxy:
+        return []
+    spacing = _SPECKLE_SPACING_M
+    start_gx = int(minx // spacing)
+    end_gx = int(maxx // spacing) + 1
+    start_gy = int(miny // spacing)
+    end_gy = int(maxy // spacing) + 1
+    cols = max(1, end_gx - start_gx)
+    rows = max(1, end_gy - start_gy)
+    total_cells = cols * rows
+    stride = 1
+    if total_cells > max_points:
+        stride = max(1, math.ceil(math.sqrt(total_cells / max_points)))
+    points: List[Tuple[float, float, float]] = []
+    for gx in range(start_gx, end_gx, stride):
+        for gy in range(start_gy, end_gy, stride):
+            h = _grid_hash(seed, gx, gy)
+            jx = (h & 0xFFF) / 4095.0
+            jy = ((h >> 12) & 0xFFF) / 4095.0
+            x = gx * spacing + (_SPECKLE_INSET + jx * _SPECKLE_JITTER_SPAN) * spacing
+            y = gy * spacing + (_SPECKLE_INSET + jy * _SPECKLE_JITTER_SPAN) * spacing
+            if point_in_polygon(x, y, points_m):
+                variant = ((h >> 24) & 0xFF) / 255.0
+                points.append((x, y, variant))
+                if len(points) >= max_points:
+                    return points
+    return points
 
 
-def _speckle_color(base: Tuple[int, int, int], variant: float) -> Tuple[int, int, int]:
-    """A brightness-jittered variant of a base color - the same noise idea
-    _grass_texture_tile uses, generalized to work from any kind's own
-    color instead of a hand-picked per-kind palette."""
-    factor = 0.76 + variant * 0.5
-    return tuple(max(0, min(255, int(channel * factor))) for channel in base)
 TREE_CROWN_COLORS = ((25, 78, 29), (34, 101, 35), (48, 119, 42), (63, 112, 34))
 # Finland's three dominant forest trees (see osm/trees.py:classify_tree_kind
 # for how a tree gets assigned one) - distinguished by crown color/size only
@@ -306,6 +336,9 @@ def _draw_scenery_uncached(
         if spatial_grid is not None
         else sceneries
     )
+    show_speckles = px_per_m >= _SPECKLE_MIN_PX_PER_M
+    dot_radius = max(1, round(px_per_m * 0.1))
+    speckle_budget = _SPECKLE_GLOBAL_BUDGET
     for sc in visible_sceneries:
         bb = getattr(sc, "bbox", None)
         if bb and bb != (0.0, 0.0, 0.0, 0.0):
@@ -328,9 +361,13 @@ def _draw_scenery_uncached(
         kind = sc.kind.lower()
         color = SCENERY_COLORS.get(kind, (38, 105, 38))
         pygame.draw.polygon(screen, color, pts)
-        if kind in _SPECKLE_SCENERY_KINDS and px_per_m >= _SPECKLE_MIN_PX_PER_M:
-            tile = _speckle_tile_for_color(pygame, color)
-            _draw_polygon_texture(pygame, screen, tile, pts, screen_w, screen_h, camx, camy, px_per_m)
+        if show_speckles and kind in _SPECKLE_SCENERY_KINDS and speckle_budget > 0:
+            seed = hash(bb) if bb else hash(points_m[0])
+            speckles = _scenery_speckle_positions(points_m, seed, vminx, vminy, vmaxx, vmaxy, speckle_budget)
+            speckle_budget -= len(speckles)
+            for wx, wy, variant in speckles:
+                sx, sy = world_to_screen(wx, wy, camx, camy, px_per_m, screen_w, screen_h)
+                pygame.draw.circle(screen, _speckle_color(color, variant), (sx, sy), dot_radius)
 
 
 CONSTRUCTION_FENCE_COLOR = (235, 140, 30)  # hi-vis hazard orange

@@ -650,6 +650,64 @@ def test_draw_scenery_adds_a_speckle_texture_for_natural_ground_kinds():
     assert commercial_colors == {SCENERY_COLORS["commercial"]}, "commercial must stay a flat fill, not textured"
 
 
+def test_draw_scenery_speckle_texture_is_still_visible_off_center():
+    """Regression: the speckle grid used to scan starting from each
+    polygon's own corner and stop after a fixed per-polygon dot count -
+    for a polygon bigger than the visible viewport (the common case: a
+    forest/field bbox starting well outside what's on screen), that cap
+    could fill up entirely on the invisible part of the polygon before
+    the scan ever reached the visible region, silently drawing zero dots
+    despite "succeeding" (no exception, no empty-result warning - the
+    flat fill alone still looked correct). Camera centered well away from
+    the polygon's own (0, 0) corner reproduces exactly that case."""
+    forest = Scenery(
+        [(0.0, 0.0), (400.0, 0.0), (400.0, 400.0), (0.0, 400.0)], "forest",
+        bbox=(0.0, 0.0, 400.0, 400.0),
+    )
+    screen = pygame.Surface((300, 300), pygame.SRCALPHA)
+    _draw_scenery_uncached(screen, [forest], 200.0, 200.0, 4.0, 300, 300)
+    colors = {tuple(screen.get_at((x, y)))[:3] for x in range(300) for y in range(300)}
+    assert len(colors) > 1, "no speckle dots visible when the camera is centered away from the polygon's own corner"
+
+
+def test_draw_scenery_speckle_dot_count_is_bounded_regardless_of_polygon_count():
+    """Regression: texturing many small polygons individually (a per-
+    polygon Surface, or a full-viewport Surface per color) made total
+    rebuild cost scale with polygon *count* or distinct-color count - a
+    real fps drop, confirmed by benchmarking a many-small-textured-
+    polygons scene. Total speckle dots drawn in one rebuild must stay
+    bounded no matter how many textured polygons are visible at once -
+    checked against a fixed number, not the budget constant itself
+    (comparing against the same constant the code enforces would pass
+    trivially however large that constant is set to)."""
+    import random as random_module
+
+    rng = random_module.Random(11)
+    sceneries = []
+    for i in range(300):
+        cx = rng.uniform(-150.0, 150.0)
+        cy = rng.uniform(-80.0, 80.0)
+        half = rng.uniform(2.0, 8.0)
+        pts = [
+            (cx - half, cy - half), (cx + half, cy - half),
+            (cx + half, cy + half), (cx - half, cy + half),
+        ]
+        sceneries.append(Scenery(pts, "grass", bbox=(cx - half, cy - half, cx + half, cy + half)))
+
+    screen = pygame.Surface((1280, 720), pygame.SRCALPHA)
+    circle_calls = []
+    real_circle = pygame.draw.circle
+    try:
+        pygame.draw.circle = lambda *a, **k: (circle_calls.append(1), real_circle(*a, **k))[1]
+        _draw_scenery_uncached(screen, sceneries, 0.0, 0.0, 9.0, 1280, 720)
+    finally:
+        pygame.draw.circle = real_circle
+
+    # 300 polygons at full local density (spacing ~1.3m) would draw many
+    # thousands of dots on their own - this bounds the total regardless.
+    assert len(circle_calls) <= 2500
+
+
 def test_draw_construction_fences_outlines_construction_scenery_only():
     from theroadragetrip.render import common as common_module
 
