@@ -93,8 +93,7 @@ def draw_ways(
         id(ways),
         len(ways),
         id(ways[-1]) if ways else None,
-        round(camx * cache_zoom / 128.0),
-        round(camy * cache_zoom / 128.0),
+        *common._phased_cache_grid_cell("roads", camx, camy, cache_zoom),
         cache_zoom,
         screen_w,
         screen_h,
@@ -1392,17 +1391,16 @@ def draw_railways(
         return
 
     cache_zoom = _static_cache_zoom(px_per_m)
+    layer = "railways_bridge" if only_bridges else "railways_ground"
     cache_key = (
         id(railways),
         len(railways),
         id(railways[-1]) if railways else None,
-        round(camx * cache_zoom / 128.0),
-        round(camy * cache_zoom / 128.0),
+        *common._phased_cache_grid_cell(layer, camx, camy, cache_zoom),
         cache_zoom,
         screen_w,
         screen_h,
     )
-    layer = "railways_bridge" if only_bridges else "railways_ground"
     key_attr = "_railway_bridge_frame_cache_key" if only_bridges else "_railway_ground_frame_cache_key"
     surface_attr = "_railway_bridge_frame_cache_surface" if only_bridges else "_railway_ground_frame_cache_surface"
     camera_attr = "_railway_bridge_frame_cache_camera" if only_bridges else "_railway_ground_frame_cache_camera"

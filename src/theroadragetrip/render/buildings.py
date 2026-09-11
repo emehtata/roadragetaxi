@@ -354,8 +354,7 @@ def draw_buildings(
         id(places),
         len(places) if places else 0,
         id(spatial_grid),
-        round(camx * cache_zoom / 128.0),
-        round(camy * cache_zoom / 128.0),
+        *common._phased_cache_grid_cell("buildings", camx, camy, cache_zoom),
         cache_zoom,
         screen.get_size(),
     )

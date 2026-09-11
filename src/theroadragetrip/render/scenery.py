@@ -283,7 +283,7 @@ def draw_scenery(
     frame_cache_key = (
         id(sceneries), len(sceneries), id(sceneries[-1]) if sceneries else None,
         id(spatial_grid),
-        round(camx * cache_zoom / 128.0), round(camy * cache_zoom / 128.0),
+        *common._phased_cache_grid_cell("scenery", camx, camy, cache_zoom),
         cache_zoom, screen.get_size(),
     )
     if frame_cache_key == common._scenery_frame_cache_key and common._scenery_frame_cache_surface is not None:
@@ -464,7 +464,7 @@ def draw_trees(
     frame_cache_key = (
         id(sceneries), len(sceneries), id(sceneries[-1]) if sceneries else None,
         id(ways), id(spatial_grid), id(road_spatial_grid),
-        round(camx * cache_zoom / 128.0), round(camy * cache_zoom / 128.0),
+        *common._phased_cache_grid_cell("trees", camx, camy, cache_zoom),
         cache_zoom, screen.get_size(),
     )
     if frame_cache_key == common._tree_frame_cache_key and common._tree_frame_cache_surface is not None:
@@ -650,7 +650,7 @@ def draw_scenery_objects(
 
     frame_cache_key = (
         id(scenery_objects), len(scenery_objects), id(scenery_objects[-1]) if scenery_objects else None,
-        round(camx * cache_zoom / 128.0), round(camy * cache_zoom / 128.0),
+        *common._phased_cache_grid_cell("scenery_objects", camx, camy, cache_zoom),
         cache_zoom, screen.get_size(),
     )
     if frame_cache_key == common._scenery_object_frame_cache_key and common._scenery_object_frame_cache_surface is not None:
@@ -830,7 +830,7 @@ def draw_grass_texture(
     cache_zoom = _static_cache_zoom(px_per_m)
 
     frame_cache_key = (
-        round(camx * cache_zoom / 128.0), round(camy * cache_zoom / 128.0),
+        *common._phased_cache_grid_cell("grass", camx, camy, cache_zoom),
         cache_zoom, (screen_w, screen_h),
     )
     if frame_cache_key == common._grass_frame_cache_key and common._grass_frame_cache_surface is not None:

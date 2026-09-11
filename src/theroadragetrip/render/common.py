@@ -15,8 +15,51 @@ from ..osm import Way
 SCREEN_W, SCREEN_H = 1280, 720
 FPS = 60
 PX_PER_M = 0.7
-CACHE_PADDING_PX = 96
+# Must exceed the 128px rebuild-trigger grid step used by every static-
+# cache frame_cache_key below (round(cam * cache_zoom / 128.0)) plus a
+# couple of frames' worth of travel: a layer can go stale right at that
+# grid's edge and, if it has to wait even one round-robin turn (see
+# _allow_static_rebuild), already needs to blit its old cache offset by
+# nearly a full grid step before its rebuild catches up. At the old 96px
+# this was smaller than the 128px grid step itself, so *every* stale-blit
+# (not just unlucky ones) showed real gaps at the screen edge - confirmed
+# against real OSM data (100% of stale-blits overflowed the old buffer).
+CACHE_PADDING_PX = 192
 STATIC_ZOOM_STEP = 0.05
+
+# Distinct per-layer phase (in cache-grid pixels, spread across the 128px
+# grid below) so the many static-cache layers sharing the same
+# round(cam * cache_zoom / 128.0) rebuild-trigger grid don't all cross
+# their boundary on the same frame. Unphased, driving in a straight line
+# hit the boundary for grass/scenery/trees/scenery_objects/water/roads/
+# buildings/labels/railways_ground/railways_bridge simultaneously - but
+# _allow_static_rebuild only rebuilds one layer per frame (see its
+# docstring), so the other ~9 kept blitting their previous-cycle cache at
+# a pixel offset already past CACHE_PADDING_PX (96px < the 128px grid
+# spacing itself, so this always overflowed, not just on a bad frame) -
+# a real transparent gap at the screen edge every single crossing, i.e.
+# every ~14m of driving regardless of time of day. Confirmed against real
+# OSM data: 100% of stale-blits overflowed the buffer, up to 9 layers at
+# once. Staggering the phase spreads those crossings across the ~14m
+# instead of stacking them on one frame, so in the common case a layer's
+# turn comes up before its own buffer is exhausted.
+_STATIC_CACHE_LAYER_PHASE_PX = {
+    "grass": 0.0, "scenery": 12.8, "trees": 25.6, "scenery_objects": 38.4,
+    "water": 51.2, "roads": 64.0, "buildings": 76.8, "labels": 89.6,
+    "railways_ground": 102.4, "railways_bridge": 115.2,
+}
+
+
+def _phased_cache_grid_cell(layer: str, camx: float, camy: float, cache_zoom: float) -> Tuple[int, int]:
+    """Quantized (x, y) grid cell for a layer's frame_cache_key, phase-
+    shifted per layer - see _STATIC_CACHE_LAYER_PHASE_PX above."""
+    phase = _STATIC_CACHE_LAYER_PHASE_PX.get(layer, 0.0)
+    return (
+        round((camx * cache_zoom + phase) / 128.0),
+        round((camy * cache_zoom + phase) / 128.0),
+    )
+
+
 SOLAR_UPDATE_INTERVAL_SECONDS = 20.0
 GAME_DATE = date(2026, 9, 4) # Friday
 FINLAND_SUMMER_TIME_OFFSET = 3.0

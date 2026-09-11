@@ -1405,6 +1405,62 @@ def test_static_rebuild_always_allows_the_very_first_build():
     assert common_module._allow_static_rebuild("scenery", None) is True
 
 
+def test_stale_static_cache_blit_never_overflows_its_padding_during_driving():
+    """Regression: every static-cache layer's frame_cache_key used the same
+    unphased round(cam * cache_zoom / 128.0) grid, so a routine boundary
+    crossing made *every* layer stale on the same frame (confirmed against
+    real OSM data). _allow_static_rebuild only rebuilds one layer per frame
+    (see the tests above), so the rest kept blitting their previous-cycle
+    cache at a growing pixel offset - and the old CACHE_PADDING_PX (96px)
+    was already smaller than that 128px grid step, so *every* stale blit
+    showed a real transparent gap at the screen edge, not just an unlucky
+    one. This is the "screen flickers at the edges... regardless of game
+    time" bug: independent of day/night, general to every map layer.
+
+    Simulates continuous driving (varying speed, one simulated fps hitch)
+    across every static-cache layer name and asserts the pixel offset a
+    stale blit would use never exceeds CACHE_PADDING_PX - i.e. the old
+    cache surface still fully covers the screen every single frame."""
+    from theroadragetrip.render import common as common_module
+
+    layers = [
+        "grass", "scenery", "trees", "scenery_objects", "water", "roads",
+        "buildings", "labels", "railways_ground", "railways_bridge",
+    ]
+    cache_zoom = 9.0
+    common_module._pending_static_rebuilds.clear()
+    fake_surface = object()
+    last_rebuilt_at = {layer: (0.0, 0.0) for layer in layers}
+
+    camx = camy = 0.0
+    heading = 0.6
+    for frame in range(600):
+        speed = 25.0 + 20.0 * math.sin(frame * 0.05)  # 5..45 m/s
+        dt = 1.0 / 15.0 if frame % 47 == 0 else 1.0 / 60.0  # occasional hitch
+        camx += speed * dt * math.cos(heading)
+        camy += speed * dt * math.sin(heading)
+
+        common_module.begin_static_cache_frame()
+        for layer in layers:
+            key = common_module._phased_cache_grid_cell(layer, camx, camy, cache_zoom)
+            cached_camx, cached_camy = last_rebuilt_at[layer]
+            cached_key = common_module._phased_cache_grid_cell(layer, cached_camx, cached_camy, cache_zoom)
+            if key == cached_key:
+                continue  # fast path: no blit-offset risk at all
+            if common_module._allow_static_rebuild(layer, fake_surface):
+                last_rebuilt_at[layer] = (camx, camy)
+                continue
+            # Stale: still blitting the cache from its last rebuild -
+            # this is exactly what _blit_stale_static_cache computes.
+            raw_dx = round((cached_camx - camx) * cache_zoom)
+            raw_dy = round((camy - cached_camy) * cache_zoom)
+            overflow = max(abs(raw_dx), abs(raw_dy)) - common_module.CACHE_PADDING_PX
+            assert overflow <= 0, (
+                f"frame {frame} layer {layer!r}: stale cache blit overflows "
+                f"CACHE_PADDING_PX by {overflow}px - a real gap at the screen edge"
+            )
+
+
 def test_finnish_color_name_maps_to_expected_wall_color():
     assert _building_colors_from_name("Sininen talo")[0] == FINNISH_BUILDING_COLOR_NAMES["sini"]
     assert _building_colors_from_name("Punatalo Oy")[0] == FINNISH_BUILDING_COLOR_NAMES["puna"]

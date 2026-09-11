@@ -34,7 +34,7 @@ def draw_waters(
 
     frame_cache_key = (
         id(waters), len(waters), id(waters[-1]) if waters else None,
-        id(spatial_grid), round(camx * cache_zoom / 128.0), round(camy * cache_zoom / 128.0),
+        id(spatial_grid), *common._phased_cache_grid_cell("water", camx, camy, cache_zoom),
         cache_zoom, screen.get_size(),
     )
     if frame_cache_key == common._water_frame_cache_key and common._water_frame_cache_surface is not None:
