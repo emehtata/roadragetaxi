@@ -173,13 +173,13 @@ class TaxiManager:
         self.tree_wait_timer: float = 0.0
         self._building_collision_grid: Dict[Tuple[int, int], List[Building]] = {}
         self._building_collision_ref = None
-        self._building_collision_count = -1
+        self._building_collision_count = 0
         self._tree_collision_grid: Dict[Tuple[int, int], List[Tuple[int, int, float, float]]] = {}
         self._tree_collision_ref = None
-        self._tree_collision_count = -1
+        self._tree_collision_indexed: Dict[int, int] = {}  # scenery_index -> trees already indexed
         self._fence_collision_grid: Dict[Tuple[int, int], List[Any]] = {}
         self._fence_collision_ref = None
-        self._fence_collision_count = -1
+        self._fence_collision_count = 0
         self.vomit_puddles: List[Tuple[float, float]] = []
         self.taxi_smoke_timer: float = 0.0
         self.speed_camera_flash_timer: float = 0.0
@@ -204,9 +204,30 @@ class TaxiManager:
                 yield cell_x, cell_y
 
     def _nearby_collision_buildings(self, buildings: List[Building], x: float, y: float, radius: float):
-        if buildings is not self._building_collision_ref or len(buildings) != self._building_collision_count:
+        # autofetch.py's _extend_unique() only ever grows this list in
+        # place (target.extend(...) - same list object, never reordered
+        # or shrunk) as new tiles stream in, so a real, growing city map
+        # made this fire on nearly every frame right after a tile
+        # integrated - and rebuilt the *entire* grid from every building
+        # ever loaded, not just the new ones, every single time. Confirmed
+        # via a real autofetch-enabled drive: "collisions" dominated 97%
+        # of frames that missed the 60fps budget, several ms each,
+        # clustered right around tile-integration frames, car speed
+        # irrelevant (0 m/s reproduced it too - this scales with total
+        # loaded map size, not how far the player has driven). Indexing
+        # only the newly appended tail is safe exactly because of that
+        # append-only guarantee; only fall back to a full rebuild for a
+        # genuinely different list (a new city) or the list somehow
+        # shrinking (defensive - autofetch never does this today).
+        if buildings is not self._building_collision_ref:
             self._building_collision_grid.clear()
-            for building in buildings:
+            self._building_collision_ref = buildings
+            self._building_collision_count = 0
+        if len(buildings) < self._building_collision_count:
+            self._building_collision_grid.clear()
+            self._building_collision_count = 0
+        if len(buildings) > self._building_collision_count:
+            for building in buildings[self._building_collision_count:]:
                 bbox = getattr(building, "bbox", (0.0, 0.0, 0.0, 0.0))
                 if bbox == (0.0, 0.0, 0.0, 0.0):
                     points = getattr(building, "points_m", [])
@@ -217,7 +238,6 @@ class TaxiManager:
                     building.bbox = bbox
                 for cell in self._collision_cells(*bbox):
                     self._building_collision_grid.setdefault(cell, []).append(building)
-            self._building_collision_ref = buildings
             self._building_collision_count = len(buildings)
         nearby = []
         seen = set()
@@ -230,26 +250,63 @@ class TaxiManager:
         return nearby
 
     def _nearby_collision_trees(self, sceneries: List[Any], x: float, y: float, radius: float):
-        tree_count = sum(len(getattr(scenery, "trees", ())) for scenery in sceneries)
-        if sceneries is not self._tree_collision_ref or tree_count != self._tree_collision_count:
+        # Unlike buildings/fences, an individual scenery's own .trees list
+        # can change after that scenery is already indexed - osm/trees.py
+        # both appends to it (trees planted as a tile streams in) and
+        # reassigns it outright (remove_trees_under_roads() pruning), so
+        # the outer sceneries list being append-only isn't enough on its
+        # own here. Track how many of each scenery's trees are already
+        # indexed (by its position in the list, which *is* stable -
+        # autofetch never reorders it) and only walk the ones that
+        # changed, rather than every tree in the whole loaded map on every
+        # call. A per-scenery tree count going down (pruned) can't be
+        # cheaply un-indexed from the cell-bucketed grid, so that still
+        # falls back to a full rebuild - but that only happens once per
+        # map-sync cycle (remove_trees_under_roads runs once, not every
+        # frame), while plain growth from autofetch - the hot path this
+        # is actually for - stays cheap.
+        if sceneries is not self._tree_collision_ref:
             self._tree_collision_grid.clear()
-            for scenery_index, scenery in enumerate(sceneries):
-                for tree_index, (tree_x, tree_y) in enumerate(getattr(scenery, "trees", ())):
-                    cell = (math.floor(tree_x / 100.0), math.floor(tree_y / 100.0))
-                    self._tree_collision_grid.setdefault(cell, []).append(
-                        (scenery_index, tree_index, tree_x, tree_y)
-                    )
+            self._tree_collision_indexed = {}
             self._tree_collision_ref = sceneries
-            self._tree_collision_count = tree_count
+        shrank = any(
+            len(getattr(scenery, "trees", ())) < self._tree_collision_indexed.get(scenery_index, 0)
+            for scenery_index, scenery in enumerate(sceneries)
+        )
+        if shrank:
+            self._tree_collision_grid.clear()
+            self._tree_collision_indexed = {}
+        for scenery_index, scenery in enumerate(sceneries):
+            trees = getattr(scenery, "trees", ())
+            indexed = self._tree_collision_indexed.get(scenery_index, 0)
+            if len(trees) <= indexed:
+                continue
+            for tree_index in range(indexed, len(trees)):
+                tree_x, tree_y = trees[tree_index]
+                cell = (math.floor(tree_x / 100.0), math.floor(tree_y / 100.0))
+                self._tree_collision_grid.setdefault(cell, []).append(
+                    (scenery_index, tree_index, tree_x, tree_y)
+                )
+            self._tree_collision_indexed[scenery_index] = len(trees)
         nearby = []
         for cell in self._collision_cells(x - radius, y - radius, x + radius, y + radius):
             nearby.extend(self._tree_collision_grid.get(cell, ()))
         return nearby
 
     def _nearby_collision_fences(self, sceneries: List[Any], x: float, y: float, radius: float):
-        if sceneries is not self._fence_collision_ref or len(sceneries) != self._fence_collision_count:
+        # Same fix, same reason, as _nearby_collision_buildings above -
+        # autofetch only ever appends to this list, so index just the new
+        # tail on growth instead of rebuilding from every scenery ever
+        # loaded.
+        if sceneries is not self._fence_collision_ref:
             self._fence_collision_grid.clear()
-            for scenery in sceneries:
+            self._fence_collision_ref = sceneries
+            self._fence_collision_count = 0
+        if len(sceneries) < self._fence_collision_count:
+            self._fence_collision_grid.clear()
+            self._fence_collision_count = 0
+        if len(sceneries) > self._fence_collision_count:
+            for scenery in sceneries[self._fence_collision_count:]:
                 if str(getattr(scenery, "kind", "")).lower() != "construction":
                     continue
                 bbox = getattr(scenery, "bbox", (0.0, 0.0, 0.0, 0.0))
@@ -261,7 +318,6 @@ class TaxiManager:
                     bbox = (min(xs), min(ys), max(xs), max(ys))
                 for cell in self._collision_cells(*bbox):
                     self._fence_collision_grid.setdefault(cell, []).append(scenery)
-            self._fence_collision_ref = sceneries
             self._fence_collision_count = len(sceneries)
         nearby = []
         seen = set()

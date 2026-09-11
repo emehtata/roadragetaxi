@@ -1,8 +1,9 @@
 import math
+import time
 from types import SimpleNamespace
 
 import pytest
-from theroadragetrip.osm import Building, Place, TaxiStop, Way
+from theroadragetrip.osm import Building, Place, Scenery, TaxiStop, Way
 from theroadragetrip.physics import Car
 from theroadragetrip.taxi import TaxiManager, TaxiOffer, TaxiPassenger, TaxiState, TaxiTarget
 
@@ -611,4 +612,185 @@ def test_respawn_penalizes_onboard_passenger():
     assert taxi_mgr.state == TaxiState.WAITING_FOR_PICKUP
     assert taxi_mgr.current_passenger is None
     assert taxi_mgr.offers
+
+
+def _grid_buildings(count, spacing=30.0, size=10.0, cols=200):
+    buildings = []
+    for i in range(count):
+        x = float(i % cols) * spacing
+        y = float(i // cols) * spacing
+        pts = [(x, y), (x + size, y), (x + size, y + size), (x, y + size)]
+        buildings.append(Building(points_m=pts, bbox=(x, y, x + size, y + size)))
+    return buildings
+
+
+def test_nearby_collision_buildings_indexes_incrementally_not_the_whole_list():
+    """Regression: _nearby_collision_buildings() rebuilt its whole spatial
+    grid - every building ever loaded, not just the newly-added ones -
+    every time the buildings list changed length, which fired on nearly
+    every frame right after autofetch integrated a tile (osm/autofetch.py's
+    _extend_unique() only ever appends in place - same list object,
+    never reordered or shrunk). Confirmed via profiling a real
+    autofetch-enabled drive: "collisions" dominated 97% of frames that
+    missed the 60fps budget, at car speed 0 (this scales with total
+    loaded map size, not distance driven).
+
+    Reproduces the growth pattern directly - .extend() in batches on one
+    list object, exactly like autofetch - and asserts on wall time.
+    Fixed measured ~6ms total for 20 growth calls against 6000 buildings;
+    unfixed (rebuilding the whole grid every growth) measured ~52ms."""
+    mgr = TaxiManager(ways=[], language="en")
+    all_buildings = _grid_buildings(6000)
+    live_buildings: list = []
+    batch = 300
+
+    total_ms = 0.0
+    for start in range(0, len(all_buildings), batch):
+        live_buildings.extend(all_buildings[start:start + batch])
+        t0 = time.perf_counter()
+        mgr._nearby_collision_buildings(live_buildings, 0.0, 0.0, 5.0)
+        total_ms += (time.perf_counter() - t0) * 1000.0
+
+    assert total_ms < 25.0, (
+        f"20 growth calls against 6000 buildings took {total_ms:.1f}ms total - "
+        f"looks like the whole list is being re-indexed on every growth"
+    )
+
+
+def test_nearby_collision_buildings_stays_correct_across_incremental_growth():
+    """The incremental-indexing optimization above must never change what
+    _nearby_collision_buildings() actually returns - only how cheaply it
+    gets there."""
+    mgr = TaxiManager(ways=[], language="en")
+    all_buildings = _grid_buildings(300)
+    live_buildings: list = []
+    for start in range(0, len(all_buildings), 50):
+        live_buildings.extend(all_buildings[start:start + 50])
+        mgr._nearby_collision_buildings(live_buildings, 0.0, 0.0, 5.0)
+
+    # A building placed well within the query radius of the origin - the
+    # very first one in the grid - must be found once everything's loaded.
+    found = mgr._nearby_collision_buildings(live_buildings, 0.0, 0.0, 5.0)
+    assert all_buildings[0] in found
+    # One far outside must not be.
+    assert all_buildings[-1] not in found
+
+
+def _grid_fences(count, spacing=30.0, size=10.0, cols=200):
+    fences = []
+    for i in range(count):
+        x = float(i % cols) * spacing
+        y = float(i // cols) * spacing
+        pts = [(x, y), (x + size, y), (x + size, y + size), (x, y + size)]
+        fences.append(SimpleNamespace(kind="construction", points_m=pts, bbox=(x, y, x + size, y + size)))
+    return fences
+
+
+def test_nearby_collision_fences_indexes_incrementally_not_the_whole_list():
+    """Same fix, same reason, as the buildings test above -
+    _nearby_collision_fences() had the identical whole-list-rebuild bug."""
+    mgr = TaxiManager(ways=[], language="en")
+    all_fences = _grid_fences(6000)
+    live_fences: list = []
+    batch = 300
+
+    total_ms = 0.0
+    for start in range(0, len(all_fences), batch):
+        live_fences.extend(all_fences[start:start + batch])
+        t0 = time.perf_counter()
+        mgr._nearby_collision_fences(live_fences, 0.0, 0.0, 5.0)
+        total_ms += (time.perf_counter() - t0) * 1000.0
+
+    assert total_ms < 25.0, (
+        f"20 growth calls against 6000 fences took {total_ms:.1f}ms total - "
+        f"looks like the whole list is being re-indexed on every growth"
+    )
+
+
+def test_nearby_collision_fences_stays_correct_across_incremental_growth():
+    mgr = TaxiManager(ways=[], language="en")
+    all_fences = _grid_fences(300)
+    live_fences: list = []
+    for start in range(0, len(all_fences), 50):
+        live_fences.extend(all_fences[start:start + 50])
+        mgr._nearby_collision_fences(live_fences, 0.0, 0.0, 5.0)
+
+    found = mgr._nearby_collision_fences(live_fences, 0.0, 0.0, 5.0)
+    assert all_fences[0] in found
+    assert all_fences[-1] not in found
+
+
+def _grid_sceneries_with_trees(count, trees_per=8, spacing=50.0, cols=100):
+    out = []
+    for i in range(count):
+        x = float(i % cols) * spacing
+        y = float(i // cols) * spacing
+        trees = [(x + t * 2.0, y + t * 2.0) for t in range(trees_per)]
+        out.append(Scenery(
+            points_m=[(x, y), (x + 10, y), (x + 10, y + 10), (x, y + 10)],
+            kind="forest", trees=trees,
+        ))
+    return out
+
+
+def test_nearby_collision_trees_indexes_incrementally_not_the_whole_map():
+    """Regression: same bug family as buildings/fences, but trickier -
+    an individual scenery's own .trees list can change after that
+    scenery is already indexed (osm/trees.py both appends to it as
+    tiles stream in and reassigns it outright when
+    remove_trees_under_roads() prunes some), so _nearby_collision_trees()
+    tracks how many of each scenery's trees are already indexed rather
+    than assuming the whole sceneries list is append-only. Confirmed via
+    profiling: unfixed, growing to 1500 sceneries (8 trees each, in
+    batches of 75) cost ~68ms total; fixed, ~11ms."""
+    mgr = TaxiManager(ways=[], language="en")
+    all_sceneries = _grid_sceneries_with_trees(1500)
+    live_sceneries: list = []
+    batch = 75
+
+    total_ms = 0.0
+    for start in range(0, len(all_sceneries), batch):
+        live_sceneries.extend(all_sceneries[start:start + batch])
+        t0 = time.perf_counter()
+        mgr._nearby_collision_trees(live_sceneries, 0.0, 0.0, 5.0)
+        total_ms += (time.perf_counter() - t0) * 1000.0
+
+    assert total_ms < 35.0, (
+        f"20 growth calls against 1500 tree-bearing sceneries took {total_ms:.1f}ms "
+        f"total - looks like the whole tree map is being re-indexed on every growth"
+    )
+
+
+def test_nearby_collision_trees_stays_correct_across_incremental_growth():
+    mgr = TaxiManager(ways=[], language="en")
+    all_sceneries = _grid_sceneries_with_trees(60)
+    live_sceneries: list = []
+    for start in range(0, len(all_sceneries), 10):
+        live_sceneries.extend(all_sceneries[start:start + 10])
+        mgr._nearby_collision_trees(live_sceneries, 0.0, 0.0, 5.0)
+
+    found = mgr._nearby_collision_trees(live_sceneries, 0.0, 0.0, 5.0)
+    found_positions = {(fx, fy) for _, _, fx, fy in found}
+    assert all_sceneries[0].trees[0] in found_positions
+    assert all_sceneries[-1].trees[0] not in found_positions
+
+
+def test_nearby_collision_trees_reflects_removal_from_an_already_indexed_scenery():
+    """remove_trees_under_roads() (osm/trees.py) reassigns an existing,
+    already-indexed scenery's .trees to a shorter list - a pruned tree
+    must actually disappear from collision queries, not linger as a
+    stale grid entry pointing at a tree that no longer exists."""
+    mgr = TaxiManager(ways=[], language="en")
+    scenery = Scenery(
+        points_m=[(0.0, 0.0), (10.0, 0.0), (10.0, 10.0), (0.0, 10.0)],
+        kind="forest", trees=[(1.0, 1.0), (2.0, 2.0)],
+    )
+    sceneries = [scenery]
+    mgr._nearby_collision_trees(sceneries, 0.0, 0.0, 5.0)
+    found = mgr._nearby_collision_trees(sceneries, 0.0, 0.0, 5.0)
+    assert {(fx, fy) for _, _, fx, fy in found} == {(1.0, 1.0), (2.0, 2.0)}
+
+    scenery.trees = [(1.0, 1.0)]  # (2.0, 2.0) pruned
+    found_after = mgr._nearby_collision_trees(sceneries, 0.0, 0.0, 5.0)
+    assert {(fx, fy) for _, _, fx, fy in found_after} == {(1.0, 1.0)}
 
