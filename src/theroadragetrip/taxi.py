@@ -530,6 +530,14 @@ class TaxiManager:
                     "shake": 0.55,
                     "leaves": 1.2,
                     "angle": player_car.heading,
+                    # World position, so render/scenery.py's draw_trees()
+                    # can tell whether this specific tree could even be
+                    # visible right now, instead of treating *any* effect
+                    # anywhere in the whole loaded map as a reason to
+                    # bypass the tree cache globally, forever (see its
+                    # docstring for why that mattered).
+                    "x": tree_x,
+                    "y": tree_y,
                 }
                 if impact_speed_kmh > 80.0:
                     self.fallen_trees.add(key)

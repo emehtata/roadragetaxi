@@ -533,6 +533,56 @@ def test_draw_trees_and_scenery_objects_are_cached_across_stationary_frames():
     assert common_module._scenery_object_frame_cache_surface is first_object_surface
 
 
+def test_draw_trees_only_bypasses_its_cache_for_a_nearby_fallen_tree():
+    """Regression: fallen_trees (taxi.py) only ever grows - a knocked-over
+    tree stays fallen for the rest of the session, never removed - and a
+    fallen tree's tree_effects entry is kept forever too (its own cleanup
+    explicitly skips deleting one). draw_trees() used to treat *any*
+    fallen/shaking tree anywhere in the whole loaded map as a reason to
+    skip its cache and redraw live every frame - so one single tree
+    falling anywhere permanently disabled the cache for the rest of the
+    session, confirmed via profiling: ~0.5ms/frame with the cache,
+    ~4ms/frame without it, and the broken version paid the ~4ms even for
+    a tree 10000m away. Must only go uncached when an affected tree could
+    actually be near the current viewport."""
+    from theroadragetrip.render import common as common_module
+
+    grass = Scenery(
+        [(0.0, 0.0), (40.0, 0.0), (40.0, 40.0), (0.0, 40.0)],
+        "grass", bbox=(0.0, 0.0, 40.0, 40.0), trees=[(20.0, 20.0)], tree_variations=[0.5],
+    )
+    screen = pygame.Surface((200, 200))
+    camx, camy = 20.0, 20.0
+
+    far_key = (id(grass), 0)
+    far_effects = {far_key: {"shake": 0.0, "leaves": 0.0, "angle": 0.3, "x": 50000.0, "y": 50000.0}}
+    common_module._tree_frame_cache_key = None
+    common_module._tree_frame_cache_surface = None
+    common_module.begin_static_cache_frame()
+    common_module._pending_static_rebuilds.clear()
+    draw_trees(
+        screen, [grass], camx, camy, px_per_m=4.0, screen_w=200, screen_h=200,
+        tree_effects=far_effects, fallen_trees={far_key},
+    )
+    assert common_module._tree_frame_cache_surface is not None, (
+        "a fallen tree 50000m away forced the uncached path - cache was never used"
+    )
+
+    near_key = (id(grass), 0)
+    near_effects = {near_key: {"shake": 0.0, "leaves": 0.0, "angle": 0.3, "x": camx, "y": camy}}
+    common_module._tree_frame_cache_key = None
+    common_module._tree_frame_cache_surface = None
+    common_module.begin_static_cache_frame()
+    common_module._pending_static_rebuilds.clear()
+    draw_trees(
+        screen, [grass], camx, camy, px_per_m=4.0, screen_w=200, screen_h=200,
+        tree_effects=near_effects, fallen_trees={near_key},
+    )
+    assert common_module._tree_frame_cache_surface is None, (
+        "a fallen tree right at the camera used the cache instead of the live uncached path"
+    )
+
+
 def test_build_ways_parses_benches_waste_baskets_and_bicycle_parking():
     elements = [
         {"type": "node", "id": 1, "lat": 60.0, "lon": 25.0, "tags": {"amenity": "bench"}},
@@ -902,6 +952,11 @@ def test_hard_tree_impact_knocks_tree_down_and_smokes_taxi():
     assert manager.tree_effects[(id(scenery), 0)]["angle"] == car.heading
     assert manager.tree_wait_timer == 5.0
     assert manager.taxi_smoke_timer == 5.0
+    # render/scenery.py's draw_trees() relies on this position to decide
+    # whether a fallen/shaking tree is anywhere near the current viewport
+    # (see its docstring) - it must match the actual tree, not the car.
+    assert manager.tree_effects[(id(scenery), 0)]["x"] == 0.0
+    assert manager.tree_effects[(id(scenery), 0)]["y"] == 0.0
 
 
 def test_driving_into_construction_fence_stops_the_car_and_penalizes():

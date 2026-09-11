@@ -236,6 +236,16 @@ TREE_CROWN_PALETTES = {
     "birch": TREE_CROWN_COLORS,
 }
 BIRCH_TRUNK_COLOR = (222, 218, 206)
+# How far outside the tight viewport a fallen/shaking tree still counts
+# as "could affect what's on screen" (see draw_trees below). Must safely
+# exceed the static tree cache's own effective padding
+# (CACHE_PADDING_PX / cache_zoom, in meters) at every zoom level so a
+# tree this check calls "not nearby" is also genuinely outside the
+# region a cache rebuild would actually draw - at the lowest zoom the
+# game allows (~2.9 px/m), that's already ~77m; 150m keeps a comfortable
+# margin above that without needing to import CACHE_PADDING_PX and
+# recompute it here.
+_TREE_EFFECT_NEARBY_PADDING_M = 150.0
 _TREE_CROWN_POINTS = 8
 _TREE_CROWN_JITTER = (0.78, 1.15)  # radius multiplier range - a perfect
 # circle/cone/ellipse reads as a diagram, not foliage; a straight-down
@@ -450,16 +460,50 @@ def draw_trees(
     tree the player just hit) forces the uncached path, same as the old
     combined scenery+trees pass used to, since those animate every frame
     and a cache can't represent that.
+
+    But only when one of them is actually near enough to be visible.
+    taxi.py's fallen_trees only ever grows (a knocked-over tree stays
+    fallen for the rest of the session, never removed) and tree_effects
+    keeps a fallen tree's entry forever too (its own cleanup explicitly
+    skips deleting one) - so treating *any* entry anywhere in the whole
+    loaded map as a reason to go uncached, as this used to, meant one
+    single tree falling anywhere permanently disabled the tree cache for
+    the rest of the session: every frame from then on paid a full live
+    redraw of every visible tree (confirmed via a real drive: avg
+    render:trees cost jumped from ~0.7ms to ~7ms/frame, sustained for
+    4800+ consecutive frames after the first fall, never recovering).
+    Each effect carries its own world position (see taxi.py's
+    check_tree_collision) precisely so this can check that instead.
     """
     import pygame
     cache_zoom = _static_cache_zoom(px_per_m)
 
     if tree_effects or fallen_trees:
-        _draw_trees_uncached(
-            screen, sceneries, camx, camy, px_per_m, screen_w, screen_h,
-            tree_effects, fallen_trees, spatial_grid, ways, road_spatial_grid,
+        vminx, vminy, vmaxx, vmaxy = get_viewport_bounds(
+            camx, camy, px_per_m, screen_w, screen_h, _TREE_EFFECT_NEARBY_PADDING_M
         )
-        return
+
+        def _effect_is_near(effect) -> bool:
+            ex, ey = effect.get("x"), effect.get("y")
+            # No stored position - can't verify, so stay conservative and
+            # treat it as visible rather than risk rendering it wrong.
+            return ex is None or ey is None or (vminx <= ex <= vmaxx and vminy <= ey <= vmaxy)
+
+        affected_nearby = any(_effect_is_near(effect) for effect in (tree_effects or {}).values())
+        if not affected_nearby and fallen_trees:
+            # A fallen tree's effect entry is never deleted (see above), so
+            # this should always already be covered by tree_effects - but
+            # fall back to checking fallen_trees' own keys directly in case
+            # that invariant is ever broken elsewhere.
+            affected_nearby = any(
+                _effect_is_near((tree_effects or {}).get(key, {})) for key in fallen_trees
+            )
+        if affected_nearby:
+            _draw_trees_uncached(
+                screen, sceneries, camx, camy, px_per_m, screen_w, screen_h,
+                tree_effects, fallen_trees, spatial_grid, ways, road_spatial_grid,
+            )
+            return
 
     frame_cache_key = (
         id(sceneries), len(sceneries), id(sceneries[-1]) if sceneries else None,
