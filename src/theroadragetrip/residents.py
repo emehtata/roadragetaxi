@@ -35,17 +35,28 @@ def _load_city_data() -> dict[str, dict]:
 CITY_DATA = _load_city_data()
 
 
+# (id(entries), group) -> (candidates, weights), built once per group
+# instead of on every call - FIRST_NAMES/SURNAMES are fixed module-level
+# lists (loaded once, never mutated), so a name lookup used to rebuild
+# the same filtered-and-weighted list from scratch (thousands of names)
+# every single resident created, which during a pedestrian-population
+# spawn burst (several residents at once) added real, avoidable cost.
+_weighted_name_cache: Dict[tuple, tuple] = {}
+
+
 def _weighted_name(entries: list[dict], group: Optional[str] = None) -> tuple[str, Optional[str]]:
-    candidates = [entry for entry in entries if group is None or entry.get("group") == group]
-    if not candidates:
-        candidates = entries
-    if not candidates:
-        return "Asukas", None
-    selected = random.choices(
-        candidates,
-        weights=[max(1, int(entry.get("people", 1))) for entry in candidates],
-        k=1,
-    )[0]
+    cache_key = (id(entries), group)
+    cached = _weighted_name_cache.get(cache_key)
+    if cached is None:
+        candidates = [entry for entry in entries if group is None or entry.get("group") == group]
+        if not candidates:
+            candidates = entries
+        if not candidates:
+            return "Asukas", None
+        cached = (candidates, [max(1, int(entry.get("people", 1))) for entry in candidates])
+        _weighted_name_cache[cache_key] = cached
+    candidates, weights = cached
+    selected = random.choices(candidates, weights=weights, k=1)[0]
     return selected["name"], selected.get("group")
 
 

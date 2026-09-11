@@ -281,6 +281,14 @@ class PedestrianManager:
 
         self.ped_ways: List[Way] = []
         self._spawn_ways: List[Way] = []
+        # id(way) for way in self.ped_ways, kept up to date wherever
+        # ped_ways is (re)built - spawn_pedestrian() used to recompute this
+        # set from scratch on every single spawn *attempt* (not just
+        # successful spawns), which against a real city-scale ped_ways
+        # (tens of thousands of ways after autofetch has grown the map)
+        # dominated the whole 5-second population-update pass: ~300 wasted
+        # attempts x rebuilding a tens-of-thousands-entry set each time.
+        self._ped_way_ids: Set[int] = set()
         self._way_grid: Dict[Tuple[int, int], List[Way]] = {}
         self._way_grid_cell_size: float = 100.0
         self._route_nodes: List[Tuple[float, float]] = []
@@ -759,6 +767,7 @@ class PedestrianManager:
             if id(way) not in seen_way_ids:
                 seen_way_ids.add(id(way))
                 self._spawn_ways.append(way)
+        self._ped_way_ids = seen_way_ids
 
         self._way_grid.clear()
         cs = self._way_grid_cell_size
@@ -996,6 +1005,20 @@ class PedestrianManager:
 
         w_cs = self._way_grid_cell_size
         r = self.spawn_radius_m
+        if viewport_bounds is not None:
+            vminx, vminy, vmaxx, vmaxy = viewport_bounds
+            if vminx <= near_x - r and near_x + r <= vmaxx and vminy <= near_y - r and near_y + r <= vmaxy:
+                # The whole spawn_radius_m search area already sits inside
+                # the viewport, so every candidate point the retry loop
+                # below would generate is guaranteed to fail its "outside
+                # viewport" check anyway - at low zoom (viewport wider than
+                # 2x spawn_radius_m), this was burning the entire retry
+                # budget (up to 30 candidate ways x every segment x 8
+                # points each) on attempts that could never have
+                # succeeded, every single one of the (up to
+                # max(50, target_count*5)) attempts update() makes per
+                # 5-second population pass.
+                return None
         min_cx = int(math.floor((near_x - r) / w_cs))
         max_cx = int(math.floor((near_x + r) / w_cs))
         min_cy = int(math.floor((near_y - r) / w_cs))
@@ -1040,8 +1063,13 @@ class PedestrianManager:
             if not valid_ways:
                 return None
 
-        dedicated_ids = {id(way) for way in self.ped_ways}
-        valid_ways.sort(key=lambda way: 0 if id(way) in dedicated_ids else 1)
+        # self._ped_way_ids is exactly {id(way) for way in self.ped_ways},
+        # kept up to date in sync_map_data() - rebuilding that set here
+        # instead, on every single spawn *attempt* (not just successful
+        # ones - see the retry loop in update()), was the actual cost of
+        # the periodic population-update freeze: against a real city-scale
+        # ped_ways this one line dominated the whole 5-second pass.
+        valid_ways.sort(key=lambda way: 0 if id(way) in self._ped_way_ids else 1)
 
         # Try up to 30 candidate ways/segments to place pedestrians outside viewport
         random.shuffle(valid_ways)
@@ -1795,6 +1823,7 @@ class CyclistManager(PedestrianManager):
             )
         ]
         self._spawn_ways = list(self.ped_ways)
+        self._ped_way_ids = {id(way) for way in self.ped_ways}
         self._way_grid.clear()
         cs = self._way_grid_cell_size
         for way in self.ped_ways:
