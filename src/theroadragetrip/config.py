@@ -95,6 +95,13 @@ DEFAULT_CONFIG = {
         "fetch_margin": "350.0",
         "fetch_tile_size": "1000.0",
         "build_in_process": "true",
+        # "pbf" reads assets/osm/finland-latest.osm.pbf (or osm_pbf_path)
+        # via the local `osmium` tool instead of live Overpass requests -
+        # no downloads, no rate limits, works offline. Requires osmium-tool
+        # installed and the .pbf file present; falls back to "overpass"
+        # with a warning otherwise.
+        "osm_source": "overpass",
+        "osm_pbf_path": "",
     },
     "traffic": {
         "traffic_count": "",
@@ -134,16 +141,17 @@ def load_config(path: Path = CONFIG_PATH) -> configparser.ConfigParser:
         config.read(path, encoding="utf-8")
         file_config = configparser.ConfigParser()
         file_config.read(path, encoding="utf-8")
-        user_agent_id = file_config.get("game", USER_AGENT_KEY, fallback="").strip()
-        if not user_agent_id:
-            user_agent_id = _new_user_agent_id()
-            config.set("game", USER_AGENT_KEY, user_agent_id)
-            with path.open("w", encoding="utf-8") as config_file:
-                config.write(config_file)
-        elif not _is_valid_user_agent_id(user_agent_id):
-            raise ValueError(
-                f"Invalid {USER_AGENT_KEY} in {path}; delete the entire INI file to create a new identity."
-            )
+
+        # Reconcile the cities section against the file's own content
+        # FIRST, before anything below saves `config` back to disk.
+        # config.read() above merges the file's cities into the
+        # read_dict-seeded defaults rather than replacing them, so at this
+        # point config's cities section can be the union of "current
+        # defaults" and whatever the file actually had (e.g. names left
+        # over from an older default city list). Doing this reconciliation
+        # before the user_agent_id save below - rather than after, as it
+        # used to run - stops that inflated union from ever reaching disk.
+        needs_save = False
         if file_config.has_section("cities") and file_config.items("cities"):
             config.remove_section("cities")
             config.add_section("cities")
@@ -151,13 +159,24 @@ def load_config(path: Path = CONFIG_PATH) -> configparser.ConfigParser:
             for name, value in file_config.items("cities"):
                 config.set("cities", name, "")
                 has_legacy_city_values |= bool(value.strip())
-            if has_legacy_city_values:
-                save_config(config, path)
+            needs_save = has_legacy_city_values
         elif not file_config.has_section("cities"):
             with path.open("a", encoding="utf-8") as config_file:
                 config_file.write("\n[cities]\n")
                 for name in DEFAULT_CONFIG["cities"]:
                     config_file.write(f"{name} =\n")
+
+        user_agent_id = file_config.get("game", USER_AGENT_KEY, fallback="").strip()
+        if not user_agent_id:
+            user_agent_id = _new_user_agent_id()
+            config.set("game", USER_AGENT_KEY, user_agent_id)
+            needs_save = True
+        elif not _is_valid_user_agent_id(user_agent_id):
+            raise ValueError(
+                f"Invalid {USER_AGENT_KEY} in {path}; delete the entire INI file to create a new identity."
+            )
+        if needs_save:
+            save_config(config, path)
     return config
 
 
@@ -275,8 +294,24 @@ def cities_from_config(config: configparser.ConfigParser) -> tuple[dict[str, tup
     catalog_names = {name.casefold() for name in catalog}
     valid_configured_names = configured_names & catalog_names
     default_names = _default_city_names()
+    default_name_set = {name.casefold() for name in default_names}
     if configured_names == LEGACY_DEFAULT_CITY_NAMES:
         configured_items = [(name.casefold(), "") for name in default_names]
+    else:
+        # A config saved before load_config's cities-reconciliation fix
+        # (see its comment) can still have the full current default list
+        # plus leftover names from an older default set (e.g. "espoo",
+        # "lahti") baked into the file. If every current default is
+        # present, the user hasn't customized their list away from
+        # defaults, so it's safe to drop just those known-stale extras -
+        # anything the user actually added themselves is left alone.
+        stale_names = (LEGACY_DEFAULT_CITY_NAMES - default_name_set) & configured_names
+        if stale_names and default_name_set <= configured_names:
+            configured_items = [
+                (raw_name, value)
+                for raw_name, value in configured_items
+                if raw_name.replace("_", " ").casefold() not in stale_names
+            ]
 
     centers: dict[str, tuple[float, float]] = {}
     for raw_name, _ in configured_items:

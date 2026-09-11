@@ -1,4 +1,6 @@
+import math
 import sys
+import time
 import types
 import os
 
@@ -21,7 +23,7 @@ import pygame
 import theroadragetrip.render as render_module
 
 from theroadragetrip.osm import build_ways, plant_trees
-from theroadragetrip.osm import Building, Place, Scenery, Way, associate_places_with_buildings
+from theroadragetrip.osm import Building, Place, Scenery, SceneryObject, Way, associate_places_with_buildings
 from theroadragetrip.geo import point_in_polygon
 from theroadragetrip.physics import Car
 from theroadragetrip.render import (
@@ -30,6 +32,7 @@ from theroadragetrip.render import (
     MAX_BUILDING_SIGN_FONT_SIZE,
     BUILDING_WALL_COLORS,
     FINNISH_BUILDING_COLOR_NAMES,
+    SCENERY_OBJECT_COLORS,
     _building_colors_from_name,
     _building_is_commercial,
     _building_sign_anchor,
@@ -39,8 +42,15 @@ from theroadragetrip.render import (
     _building_window_story_count,
     _visible_building_edges,
     _draw_buildings_uncached,
+    CONSTRUCTION_FENCE_COLOR,
+    SCENERY_COLORS,
+    draw_construction_fences,
     draw_grass_texture,
+    draw_scenery,
+    draw_scenery_objects,
+    draw_trees,
     world_to_screen,
+    _draw_scenery_uncached,
 )
 
 
@@ -199,6 +209,35 @@ def test_build_ways_buildings_and_scenery_and_names():
     assert next(place for place in places if place.name == "Named Attraction").kind == "poi"
 
 
+def test_parking_lot_defaults_to_asphalt_surface_but_keeps_an_explicit_one():
+    elements = [
+        {"type": "node", "id": 1, "lat": 60.0, "lon": 25.0},
+        {"type": "node", "id": 2, "lat": 60.001, "lon": 25.0},
+        {"type": "node", "id": 3, "lat": 60.001, "lon": 25.001},
+        {"type": "node", "id": 4, "lat": 60.0, "lon": 25.001},
+        {
+            "type": "way", "id": 10, "nodes": [1, 2, 3, 4, 1],
+            "tags": {"amenity": "parking"},  # no surface tag at all
+        },
+        {"type": "node", "id": 5, "lat": 60.002, "lon": 25.002},
+        {"type": "node", "id": 6, "lat": 60.003, "lon": 25.002},
+        {"type": "node", "id": 7, "lat": 60.003, "lon": 25.003},
+        {"type": "node", "id": 8, "lat": 60.002, "lon": 25.003},
+        {
+            "type": "way", "id": 20, "nodes": [5, 6, 7, 8, 5],
+            "tags": {"landuse": "parking", "surface": "gravel"},
+        },
+    ]
+
+    _, _, _, sceneries, _, _ = build_ways(elements)
+
+    parking_lots = sorted((s for s in sceneries if s.kind == "parking"), key=lambda s: s.bbox[0])
+    assert len(parking_lots) == 2
+    untagged, tagged = parking_lots  # the untagged way's nodes are west of the tagged one's
+    assert untagged.surface == "asphalt"
+    assert tagged.surface == "gravel"
+
+
 def test_building_height_precedes_levels_for_facade_depth():
     elements = [
         {"type": "node", "id": 1, "lat": 60.0, "lon": 25.0},
@@ -278,6 +317,39 @@ def test_build_ways_generates_trees_in_offroad_scenery():
     assert all(tree_y > ways[0].half_width_m + 3.0 + 60100.0 for _, tree_y in sceneries[0].trees)
 
 
+def test_build_ways_classifies_every_natural_scenery_kind_as_a_relation_too():
+    """Regression: build_ways()'s multipolygon-relation branch used to
+    whitelist a different, inconsistent set of natural=* values (forest/
+    wood/scrub/grass - no sand/heath, plus "forest" which isn't a real OSM
+    natural=* value) than its own way branch (wood/scrub/grass/sand/heath).
+    Both now read NATURAL_SCENERY_KINDS (osm/constants.py) - the same
+    constant the Overpass query builds its whitelist from - so a
+    multipolygon-mapped heath or dune (common real OSM patterns) is
+    classified the same way a plain way with the same tag would be."""
+    from theroadragetrip.osm.constants import NATURAL_SCENERY_KINDS
+
+    for i, kind in enumerate(NATURAL_SCENERY_KINDS):
+        base = i * 10
+        elements = [
+            {"type": "node", "id": base + 1, "lat": 60.0 + i * 0.01, "lon": 25.0},
+            {"type": "node", "id": base + 2, "lat": 60.0 + i * 0.01, "lon": 25.001},
+            {"type": "node", "id": base + 3, "lat": 60.001 + i * 0.01, "lon": 25.001},
+            {"type": "node", "id": base + 4, "lat": 60.001 + i * 0.01, "lon": 25.0},
+            {"type": "way", "id": base + 100, "nodes": [base + 1, base + 2, base + 3, base + 4, base + 1], "tags": {}},
+            {
+                "type": "relation",
+                "id": base + 200,
+                "members": [{"type": "way", "ref": base + 100, "role": "outer"}],
+                "tags": {"type": "multipolygon", "natural": kind},
+            },
+        ]
+
+        ways, waters, buildings, sceneries, places, bounds = build_ways(elements)
+
+        assert len(sceneries) == 1, f"natural={kind} was not classified as scenery"
+        assert sceneries[0].kind == kind
+
+
 def test_tree_density_follows_osm_scenery_type():
     forest = Scenery(
         [(0.0, 0.0), (100.0, 0.0), (100.0, 100.0), (0.0, 100.0)],
@@ -294,6 +366,583 @@ def test_tree_density_follows_osm_scenery_type():
 
     assert len(forest.trees) > len(park.trees)
     assert len(park.trees) <= 6
+
+
+def test_plant_trees_uses_real_osm_positions_instead_of_procedural():
+    """A scenery area with real natural=tree data must use exactly those
+    positions - not a procedurally-generated count/layout - and must never
+    get topped up with fake trees by a later plant_trees() call (e.g.
+    autofetch's road-recheck pass)."""
+    forest = Scenery(
+        [(0.0, 0.0), (100.0, 0.0), (100.0, 100.0), (0.0, 100.0)],
+        "forest",
+        bbox=(0.0, 0.0, 100.0, 100.0),
+    )
+    real_trees = [(10.0, 10.0), (50.0, 50.0), (90.0, 10.0)]
+    # A tree outside the polygon (and one far away) must not leak in.
+    real_trees_with_noise = real_trees + [(500.0, 500.0)]
+
+    plant_trees([forest], [], real_trees=real_trees_with_noise)
+
+    assert forest.trees == real_trees
+    assert forest.trees_from_osm is True
+    assert len(forest.tree_variations) == len(forest.trees)
+
+    plant_trees([forest], [])  # simulate a later re-merge call, no real_trees passed
+    assert forest.trees == real_trees  # still untouched, not topped up procedurally
+
+
+def test_plant_trees_plants_a_real_tree_even_where_it_overlaps_a_parking_lot():
+    """Every real natural=tree OSM node must be planted, full stop - even
+    one that geometrically falls inside a parking-lot polygon (a common
+    OSM edge case: a tree right at the edge of a bordering grass/park area
+    that also falls within a neighboring lot's boundary). OSM says the
+    tree is there, so it must be there too; dropping it would mean a real
+    tree silently missing from the map. (Keeping it visible despite a
+    parking lot possibly painting over it is a rendering z-order concern,
+    not a reason to discard real data.)"""
+    grass = Scenery(
+        [(0.0, 0.0), (100.0, 0.0), (100.0, 100.0), (0.0, 100.0)],
+        "grass",
+        bbox=(0.0, 0.0, 100.0, 100.0),
+    )
+    parking = Scenery(
+        [(40.0, 40.0), (100.0, 40.0), (100.0, 100.0), (40.0, 100.0)],
+        "parking",
+        bbox=(40.0, 40.0, 100.0, 100.0),
+    )
+    inside_lot = (60.0, 60.0)  # inside both grass and parking
+    clear_of_lot = (10.0, 10.0)  # inside grass only
+
+    plant_trees([grass, parking], [], real_trees=[inside_lot, clear_of_lot])
+
+    assert sorted(grass.trees) == sorted([inside_lot, clear_of_lot])
+    assert grass.trees_from_osm is True
+
+
+def test_draw_trees_paints_over_a_road_drawn_after_the_scenery_layer():
+    """Regression for a real tree rendering invisible under a road/parking
+    surface: those are drawn as their *own*, later frame layers (draw_ways,
+    draw_parking_spaces), well after the static-cached draw_scenery() pass
+    - so a tree drawn as part of that scenery pass can end up covered by a
+    road painted right over it afterwards, even though the tree isn't
+    logically "on" that road. draw_trees() must be called (as main/__init__.py
+    now does) *after* every ground-level layer, so nothing painted earlier
+    in the frame - scenery fill, water, road, parking - can hide a real
+    tree."""
+    import pygame as pygame_module
+    from theroadragetrip.render import common as common_module
+
+    # draw_trees() has its own static cache now (see its docstring) -
+    # reset the shared throttle so this test's call isn't denied by
+    # leftover state from another test in the same run.
+    common_module.begin_static_cache_frame()
+    common_module._pending_static_rebuilds.clear()
+
+    overlap = [(0.0, 0.0), (40.0, 0.0), (40.0, 40.0), (0.0, 40.0)]
+    grass = Scenery(overlap, "grass", bbox=(0.0, 0.0, 40.0, 40.0), trees=[(20.0, 20.0)], tree_variations=[0.5])
+
+    screen_w, screen_h, px_per_m = 200, 200, 4.0
+    screen = pygame.Surface((screen_w, screen_h))
+    draw_scenery(screen, [grass], 20.0, 20.0, px_per_m=px_per_m, screen_w=screen_w, screen_h=screen_h)
+
+    # Simulate a road/parking surface drawn after the scenery layer,
+    # covering the whole viewport (as draw_ways/draw_parking_spaces would
+    # for a wide driveway loop) - same opaque-fill mechanism, standing in
+    # for the real thing without needing a Way + spatial grid here.
+    road_color = (142, 142, 138)
+    pygame_module.draw.rect(screen, road_color, screen.get_rect())
+
+    draw_trees(screen, [grass], 20.0, 20.0, px_per_m=px_per_m, screen_w=screen_w, screen_h=screen_h)
+
+    tree_px = world_to_screen(20.0, 20.0, 20.0, 20.0, px_per_m, screen_w, screen_h)
+    pixel = tuple(screen.get_at(tree_px))[:3]
+    assert pixel != road_color, "tree pixel is the road fill color - tree got painted over"
+
+
+def test_draw_scenery_clips_a_huge_offscreen_polygon_instead_of_stalling():
+    """Regression for a real freeze: a single OSM forest/farmland relation
+    can have a bounding box tens of kilometers wide while only a couple of
+    its points are ever near the camera - the rest bulge far off in every
+    direction. pygame.draw.polygon's fill cost scales with how far past
+    the surface the points run, not with what's actually visible, so
+    handing it the raw world polygon (viewport-culling only checks bbox
+    *intersection*, not containment) could take the better part of a
+    second per cache rebuild despite drawing nothing on screen. A
+    real-data profile of this exact shape measured ~800ms before the
+    world-space clip-before-project fix; this bounds it generously."""
+    huge_ring = []
+    # A zigzag ring: mostly points kilometers away, with two close to the
+    # camera at (0, 0) so its bbox intersects a small viewport there.
+    for i in range(300):
+        far = 10_000.0 + (i % 7) * 500.0
+        huge_ring.append((far * math.cos(i), far * math.sin(i)))
+    huge_ring[0] = (5.0, 5.0)
+    huge_ring[1] = (-5.0, 5.0)
+    forest = Scenery(huge_ring, "forest", bbox=(-10_500.0, -10_500.0, 10_500.0, 10_500.0))
+
+    screen_w, screen_h, px_per_m = 1280, 720, 9.0
+    screen = pygame.Surface((screen_w, screen_h), pygame.SRCALPHA)
+
+    started = time.perf_counter()
+    _draw_scenery_uncached(screen, [forest], 0.0, 0.0, px_per_m, screen_w, screen_h)
+    elapsed_ms = (time.perf_counter() - started) * 1000.0
+
+    assert elapsed_ms < 200.0, f"scenery rebuild took {elapsed_ms:.1f}ms - huge polygon likely isn't being clipped"
+
+
+def test_draw_trees_and_scenery_objects_are_cached_across_stationary_frames():
+    """Regression: splitting trees/scenery_objects out of draw_scenery()'s
+    cache (to fix them rendering under a road, see the test above) briefly
+    left them with no cache of their own at all - redrawing every tree and
+    every bench/statue from scratch every single frame regardless of
+    whether the camera moved, a real perf regression (most visible at
+    night, when the lighting pass already eats most of the frame budget).
+    Each must now behave like every other static layer: rebuild only on a
+    genuine cache miss, reuse the surface object otherwise."""
+    from theroadragetrip.render import common as common_module
+
+    common_module._tree_frame_cache_key = None
+    common_module._tree_frame_cache_surface = None
+    common_module._scenery_object_frame_cache_key = None
+    common_module._scenery_object_frame_cache_surface = None
+    common_module.begin_static_cache_frame()
+    common_module._pending_static_rebuilds.clear()
+
+    grass = Scenery(
+        [(0.0, 0.0), (40.0, 0.0), (40.0, 40.0), (0.0, 40.0)],
+        "grass", bbox=(0.0, 0.0, 40.0, 40.0), trees=[(20.0, 20.0)], tree_variations=[0.5],
+    )
+    bench = SceneryObject(x=20.0, y=20.0, kind="bench")
+    screen = pygame.Surface((200, 200))
+
+    draw_trees(screen, [grass], 20.0, 20.0, px_per_m=4.0, screen_w=200, screen_h=200)
+    first_tree_surface = common_module._tree_frame_cache_surface
+    assert first_tree_surface is not None
+
+    draw_scenery_objects(screen, [bench], 20.0, 20.0, px_per_m=4.0, screen_w=200, screen_h=200)
+    first_object_surface = common_module._scenery_object_frame_cache_surface
+    assert first_object_surface is not None
+
+    # Same camera and zoom, next frame: both must reuse their cached
+    # surface, not rebuild from scratch.
+    common_module.begin_static_cache_frame()
+    draw_trees(screen, [grass], 20.0, 20.0, px_per_m=4.0, screen_w=200, screen_h=200)
+    assert common_module._tree_frame_cache_surface is first_tree_surface
+    draw_scenery_objects(screen, [bench], 20.0, 20.0, px_per_m=4.0, screen_w=200, screen_h=200)
+    assert common_module._scenery_object_frame_cache_surface is first_object_surface
+
+
+def test_draw_trees_only_bypasses_its_cache_for_a_nearby_fallen_tree():
+    """Regression: fallen_trees (taxi.py) only ever grows - a knocked-over
+    tree stays fallen for the rest of the session, never removed - and a
+    fallen tree's tree_effects entry is kept forever too (its own cleanup
+    explicitly skips deleting one). draw_trees() used to treat *any*
+    fallen/shaking tree anywhere in the whole loaded map as a reason to
+    skip its cache and redraw live every frame - so one single tree
+    falling anywhere permanently disabled the cache for the rest of the
+    session, confirmed via profiling: ~0.5ms/frame with the cache,
+    ~4ms/frame without it, and the broken version paid the ~4ms even for
+    a tree 10000m away. Must only go uncached when an affected tree could
+    actually be near the current viewport."""
+    from theroadragetrip.render import common as common_module
+
+    grass = Scenery(
+        [(0.0, 0.0), (40.0, 0.0), (40.0, 40.0), (0.0, 40.0)],
+        "grass", bbox=(0.0, 0.0, 40.0, 40.0), trees=[(20.0, 20.0)], tree_variations=[0.5],
+    )
+    screen = pygame.Surface((200, 200))
+    camx, camy = 20.0, 20.0
+
+    far_key = (id(grass), 0)
+    far_effects = {far_key: {"shake": 0.0, "leaves": 0.0, "angle": 0.3, "x": 50000.0, "y": 50000.0}}
+    common_module._tree_frame_cache_key = None
+    common_module._tree_frame_cache_surface = None
+    common_module.begin_static_cache_frame()
+    common_module._pending_static_rebuilds.clear()
+    draw_trees(
+        screen, [grass], camx, camy, px_per_m=4.0, screen_w=200, screen_h=200,
+        tree_effects=far_effects, fallen_trees={far_key},
+    )
+    assert common_module._tree_frame_cache_surface is not None, (
+        "a fallen tree 50000m away forced the uncached path - cache was never used"
+    )
+
+    near_key = (id(grass), 0)
+    near_effects = {near_key: {"shake": 0.0, "leaves": 0.0, "angle": 0.3, "x": camx, "y": camy}}
+    common_module._tree_frame_cache_key = None
+    common_module._tree_frame_cache_surface = None
+    common_module.begin_static_cache_frame()
+    common_module._pending_static_rebuilds.clear()
+    draw_trees(
+        screen, [grass], camx, camy, px_per_m=4.0, screen_w=200, screen_h=200,
+        tree_effects=near_effects, fallen_trees={near_key},
+    )
+    assert common_module._tree_frame_cache_surface is None, (
+        "a fallen tree right at the camera used the cache instead of the live uncached path"
+    )
+
+
+def test_build_ways_parses_benches_waste_baskets_and_bicycle_parking():
+    elements = [
+        {"type": "node", "id": 1, "lat": 60.0, "lon": 25.0, "tags": {"amenity": "bench"}},
+        {"type": "node", "id": 2, "lat": 60.001, "lon": 25.001, "tags": {"amenity": "waste_basket"}},
+        {"type": "node", "id": 3, "lat": 60.002, "lon": 25.002, "tags": {"amenity": "bicycle_parking"}},
+        {"type": "node", "id": 5, "lat": 60.004, "lon": 25.004, "tags": {"amenity": "fountain"}},
+        {"type": "node", "id": 6, "lat": 60.005, "lon": 25.005, "tags": {"amenity": "fuel"}},
+        {"type": "node", "id": 7, "lat": 60.006, "lon": 25.006, "tags": {"leisure": "picnic_table"}},
+        {"type": "node", "id": 8, "lat": 60.007, "lon": 25.007, "tags": {"leisure": "firepit"}},
+        {"type": "node", "id": 9, "lat": 60.008, "lon": 25.008, "tags": {"barrier": "gate"}},
+        {"type": "node", "id": 10, "lat": 60.009, "lon": 25.009, "tags": {"barrier": "bollard"}},
+        # Not street furniture - must not show up.
+        {"type": "node", "id": 4, "lat": 60.003, "lon": 25.003, "tags": {"amenity": "restaurant"}},
+    ]
+
+    result = build_ways(elements)
+
+    by_kind = {obj.kind: obj for obj in result.scenery_objects}
+    assert set(by_kind) == {
+        "bench", "waste_basket", "bicycle_parking", "fountain", "fuel",
+        "picnic_table", "firepit", "gate", "bollard",
+    }
+    assert by_kind["bench"].id == 1
+    assert by_kind["waste_basket"].id == 2
+    assert by_kind["bicycle_parking"].id == 3
+    assert by_kind["fountain"].id == 5
+    assert by_kind["fuel"].id == 6
+    assert by_kind["picnic_table"].id == 7
+    assert by_kind["firepit"].id == 8
+    assert by_kind["gate"].id == 9
+    assert by_kind["bollard"].id == 10
+
+
+def test_build_ways_parses_statues_but_not_plain_plaques():
+    """Only 3D statue-like memorials/artwork become a "statue" scenery
+    object - a flat plaque or bare stele isn't worth its own icon."""
+    elements = [
+        {"type": "node", "id": 1, "lat": 60.0, "lon": 25.0, "tags": {"historic": "memorial", "memorial": "statue", "name": "Founder"}},
+        {"type": "node", "id": 2, "lat": 60.001, "lon": 25.001, "tags": {"historic": "memorial", "memorial": "bust"}},
+        {"type": "node", "id": 3, "lat": 60.002, "lon": 25.002, "tags": {"tourism": "artwork", "artwork_type": "sculpture"}},
+        # Excluded: flat/text memorials, not statues.
+        {"type": "node", "id": 4, "lat": 60.003, "lon": 25.003, "tags": {"historic": "memorial", "memorial": "plaque"}},
+        {"type": "node", "id": 5, "lat": 60.004, "lon": 25.004, "tags": {"historic": "memorial", "memorial": "stele"}},
+        {"type": "node", "id": 6, "lat": 60.005, "lon": 25.005, "tags": {"tourism": "artwork", "artwork_type": "mural"}},
+    ]
+
+    result = build_ways(elements)
+
+    statues = {obj.id: obj for obj in result.scenery_objects}
+    assert set(statues) == {1, 2, 3}
+    assert all(obj.kind == "statue" for obj in statues.values())
+    assert statues[1].name == "Founder"
+
+
+def test_draw_scenery_objects_renders_each_kind_and_respects_viewport():
+    from theroadragetrip.render import common as common_module
+
+    # draw_scenery_objects() has its own static cache now - reset the
+    # shared throttle so this test's call isn't denied by leftover state
+    # from another test in the same run.
+    common_module.begin_static_cache_frame()
+    common_module._pending_static_rebuilds.clear()
+
+    screen_w, screen_h, px_per_m = 200, 200, 8.0
+    on_screen = SceneryObject(x=0.0, y=0.0, kind="bench")
+    off_screen = SceneryObject(x=5000.0, y=5000.0, kind="bench")
+    screen = pygame.Surface((screen_w, screen_h))
+    background = (20, 120, 40)
+    screen.fill(background)
+
+    draw_scenery_objects(screen, [on_screen, off_screen], 0.0, 0.0, px_per_m=px_per_m, screen_w=screen_w, screen_h=screen_h)
+
+    sx, sy = world_to_screen(0.0, 0.0, 0.0, 0.0, px_per_m, screen_w, screen_h)
+    assert tuple(screen.get_at((sx, sy)))[:3] == SCENERY_OBJECT_COLORS["bench"]
+
+    # The off-screen bench must not have touched any pixel - the whole
+    # surface besides the on-screen bench's icon should still be background.
+    non_background = sum(
+        1
+        for x in range(screen_w)
+        for y in range(screen_h)
+        if tuple(screen.get_at((x, y)))[:3] != background
+    )
+    assert non_background > 0  # the on-screen bench did draw something
+    assert non_background < screen_w * screen_h // 4  # nowhere near "covers everything"
+
+
+def test_draw_scenery_objects_draws_every_new_point_kind():
+    """picnic_table/firepit/fountain/fuel/gate/bollard must each paint at
+    least one non-background pixel - regression for kinds that reach
+    draw_scenery_objects() but fall through every branch silently."""
+    from theroadragetrip.render import common as common_module
+
+    common_module.begin_static_cache_frame()
+    common_module._pending_static_rebuilds.clear()
+
+    screen_w, screen_h, px_per_m = 200, 200, 8.0
+    background = (20, 120, 40)
+    for kind in ("picnic_table", "firepit", "fountain", "fuel", "gate", "bollard"):
+        screen = pygame.Surface((screen_w, screen_h))
+        screen.fill(background)
+        obj = SceneryObject(x=0.0, y=0.0, kind=kind)
+        common_module._scenery_object_frame_cache_key = None
+        common_module._scenery_object_frame_cache_surface = None
+        draw_scenery_objects(screen, [obj], 0.0, 0.0, px_per_m=px_per_m, screen_w=screen_w, screen_h=screen_h)
+        non_background = sum(
+            1
+            for x in range(screen_w)
+            for y in range(screen_h)
+            if tuple(screen.get_at((x, y)))[:3] != background
+        )
+        assert non_background > 0, f"{kind} drew nothing"
+
+
+def test_scenery_colors_differ_by_landuse_value():
+    """Different landuse/leisure/natural kinds must render distinct colors
+    (regression: everything used to fall back to one generic green)."""
+    assert SCENERY_COLORS["forest"] != SCENERY_COLORS["grass"]
+    assert SCENERY_COLORS["residential"] != SCENERY_COLORS["forest"]
+    assert SCENERY_COLORS["brownfield"] != SCENERY_COLORS["construction"]
+    assert SCENERY_COLORS["farmland"] != SCENERY_COLORS["grass"]
+    # No accidental collisions among the most common real-world kinds.
+    common_kinds = [
+        "forest", "grass", "residential", "commercial", "retail",
+        "industrial", "farmland", "brownfield", "construction",
+        "playground", "park",
+    ]
+    colors = [SCENERY_COLORS[k] for k in common_kinds]
+    assert len(set(colors)) == len(colors)
+
+
+def test_draw_scenery_adds_a_speckle_texture_for_natural_ground_kinds():
+    """Real aerial imagery shows visible grain (tree canopy, tilled soil,
+    loose sand, ...) for these kinds, not a flat fill - forest must render
+    more than one distinct color (the base fill plus jittered-brightness
+    speckle dots), while a flat zoning kind like commercial (usually
+    covered by buildings anyway) stays untextured."""
+    forest = Scenery(
+        [(0.0, 0.0), (100.0, 0.0), (100.0, 100.0), (0.0, 100.0)], "forest",
+        bbox=(0.0, 0.0, 100.0, 100.0),
+    )
+    commercial = Scenery(
+        [(0.0, 0.0), (100.0, 0.0), (100.0, 100.0), (0.0, 100.0)], "commercial",
+        bbox=(0.0, 0.0, 100.0, 100.0),
+    )
+
+    def rendered_colors(scenery):
+        screen = pygame.Surface((300, 300), pygame.SRCALPHA)
+        _draw_scenery_uncached(screen, [scenery], 50.0, 50.0, 4.0, 300, 300)
+        return {tuple(screen.get_at((x, y)))[:3] for x in range(300) for y in range(300)}
+
+    forest_colors = rendered_colors(forest)
+    commercial_colors = rendered_colors(commercial)
+
+    assert SCENERY_COLORS["forest"] in forest_colors
+    assert len(forest_colors) > 1, "forest rendered as one flat color - no speckle texture drawn"
+    assert commercial_colors == {SCENERY_COLORS["commercial"]}, "commercial must stay a flat fill, not textured"
+
+
+def test_draw_scenery_speckle_texture_is_still_visible_off_center():
+    """Regression: the speckle grid used to scan starting from each
+    polygon's own corner and stop after a fixed per-polygon dot count -
+    for a polygon bigger than the visible viewport (the common case: a
+    forest/field bbox starting well outside what's on screen), that cap
+    could fill up entirely on the invisible part of the polygon before
+    the scan ever reached the visible region, silently drawing zero dots
+    despite "succeeding" (no exception, no empty-result warning - the
+    flat fill alone still looked correct). Camera centered well away from
+    the polygon's own (0, 0) corner reproduces exactly that case."""
+    forest = Scenery(
+        [(0.0, 0.0), (400.0, 0.0), (400.0, 400.0), (0.0, 400.0)], "forest",
+        bbox=(0.0, 0.0, 400.0, 400.0),
+    )
+    screen = pygame.Surface((300, 300), pygame.SRCALPHA)
+    _draw_scenery_uncached(screen, [forest], 200.0, 200.0, 4.0, 300, 300)
+    colors = {tuple(screen.get_at((x, y)))[:3] for x in range(300) for y in range(300)}
+    assert len(colors) > 1, "no speckle dots visible when the camera is centered away from the polygon's own corner"
+
+
+def test_draw_scenery_speckle_dot_count_is_bounded_regardless_of_polygon_count():
+    """Regression: texturing many small polygons individually (a per-
+    polygon Surface, or a full-viewport Surface per color) made total
+    rebuild cost scale with polygon *count* or distinct-color count - a
+    real fps drop, confirmed by benchmarking a many-small-textured-
+    polygons scene. Total speckle dots drawn in one rebuild must stay
+    bounded no matter how many textured polygons are visible at once -
+    checked against a fixed number, not the budget constant itself
+    (comparing against the same constant the code enforces would pass
+    trivially however large that constant is set to)."""
+    import random as random_module
+
+    rng = random_module.Random(11)
+    sceneries = []
+    for i in range(300):
+        cx = rng.uniform(-150.0, 150.0)
+        cy = rng.uniform(-80.0, 80.0)
+        half = rng.uniform(2.0, 8.0)
+        pts = [
+            (cx - half, cy - half), (cx + half, cy - half),
+            (cx + half, cy + half), (cx - half, cy + half),
+        ]
+        sceneries.append(Scenery(pts, "grass", bbox=(cx - half, cy - half, cx + half, cy + half)))
+
+    screen = pygame.Surface((1280, 720), pygame.SRCALPHA)
+    circle_calls = []
+    real_circle = pygame.draw.circle
+    try:
+        pygame.draw.circle = lambda *a, **k: (circle_calls.append(1), real_circle(*a, **k))[1]
+        _draw_scenery_uncached(screen, sceneries, 0.0, 0.0, 9.0, 1280, 720)
+    finally:
+        pygame.draw.circle = real_circle
+
+    # 300 polygons at full local density (spacing ~1.3m) would draw many
+    # thousands of dots on their own - this bounds the total regardless.
+    assert len(circle_calls) <= 2500
+
+
+def test_draw_scenery_speckle_candidate_tests_are_bounded_for_sparse_polygons():
+    """Regression: _scenery_speckle_positions used to size its candidate-
+    cell stride to land near _SPECKLE_GLOBAL_BUDGET *accepted* dots, which
+    assumes near-100% acceptance. A low-fill-ratio polygon (bbox mostly
+    empty - a thin diagonal sliver, here) rejects far more candidates than
+    it accepts, so it barely depletes the accepted-dot budget, and each
+    *next* sparse polygon got handed almost the same enormous per-polygon
+    candidate cap - point_in_polygon call count scaled with polygon count,
+    not one shared total. Confirmed via profiling a real drive: ~970ms in
+    point_in_polygon alone for ~17 such polygons in one rebuild.
+
+    20 thin diagonal slivers here (each a large bbox, ~1% actual fill
+    ratio) must still keep total point_in_polygon calls bounded by the
+    separate _SPECKLE_CANDIDATE_BUDGET, not multiply with polygon count."""
+    import theroadragetrip.render.scenery as scenery_module
+
+    sceneries = []
+    for i in range(20):
+        ox, oy = float(i) * 200.0, 0.0
+        # A thin sliver along the diagonal of a 200x200 bbox: tiny actual
+        # area, huge bounding box - low fill ratio.
+        pts = [
+            (ox + 0.0, oy + 0.0), (ox + 200.0, oy + 200.0),
+            (ox + 201.0, oy + 199.0), (ox + 1.0, oy - 1.0),
+        ]
+        sceneries.append(Scenery(pts, "grass", bbox=(ox, oy - 1.0, ox + 201.0, oy + 200.0)))
+
+    # Camera/screen sized (at px_per_m=2.0 - must clear _SPECKLE_MIN_PX_PER_M
+    # or speckling is skipped entirely) to cover the whole ~4000m span all
+    # 20 slivers sit across, so every one of them is actually visible and
+    # eligible for speckling in this one rebuild.
+    screen = pygame.Surface((8600, 600), pygame.SRCALPHA)
+    call_count = [0]
+    real_point_in_polygon = scenery_module.point_in_polygon
+
+    def _counting_point_in_polygon(*args, **kwargs):
+        call_count[0] += 1
+        return real_point_in_polygon(*args, **kwargs)
+
+    scenery_module.point_in_polygon = _counting_point_in_polygon
+    try:
+        _draw_scenery_uncached(screen, sceneries, 1950.0, 100.0, 2.0, 8600, 600)
+    finally:
+        scenery_module.point_in_polygon = real_point_in_polygon
+
+    # Sanity: this scene must actually exercise the low-fill-ratio shape -
+    # otherwise the bound below would pass vacuously. Reverting the fix (one
+    # shared budget for both accepted dots and candidates examined) measures
+    # ~30000 calls for this exact scene - well past the bound.
+    assert call_count[0] > scenery_module._SPECKLE_GLOBAL_BUDGET, (
+        "too few point_in_polygon calls to exercise the low-fill-ratio case - test is vacuous"
+    )
+    assert call_count[0] <= scenery_module._SPECKLE_CANDIDATE_BUDGET * 1.1, (
+        f"{call_count[0]} point_in_polygon calls for 20 sparse polygons - "
+        f"looks like the per-polygon candidate cap regressed back to scaling "
+        f"with polygon count instead of one shared candidate budget"
+    )
+
+
+def test_draw_construction_fences_outlines_construction_scenery_only():
+    from theroadragetrip.render import common as common_module
+
+    common_module.begin_static_cache_frame()
+    common_module._pending_static_rebuilds.clear()
+
+    screen_w, screen_h, px_per_m = 200, 200, 8.0
+    construction = Scenery(
+        [(-10.0, -10.0), (10.0, -10.0), (10.0, 10.0), (-10.0, 10.0)],
+        "construction",
+        bbox=(-10.0, -10.0, 10.0, 10.0),
+    )
+    park = Scenery(
+        [(-10.0, -10.0), (10.0, -10.0), (10.0, 10.0), (-10.0, 10.0)],
+        "park",
+        bbox=(-10.0, -10.0, 10.0, 10.0),
+    )
+    screen = pygame.Surface((screen_w, screen_h))
+    screen.fill((0, 0, 0))
+
+    draw_construction_fences(screen, [construction], 0.0, 0.0, px_per_m=px_per_m, screen_w=screen_w, screen_h=screen_h)
+    fence_pixels = sum(
+        1
+        for x in range(screen_w)
+        for y in range(screen_h)
+        if tuple(screen.get_at((x, y)))[:3] == CONSTRUCTION_FENCE_COLOR
+    )
+    assert fence_pixels > 0
+
+    screen.fill((0, 0, 0))
+    draw_construction_fences(screen, [park], 0.0, 0.0, px_per_m=px_per_m, screen_w=screen_w, screen_h=screen_h)
+    fence_pixels_park = sum(
+        1
+        for x in range(screen_w)
+        for y in range(screen_h)
+        if tuple(screen.get_at((x, y)))[:3] == CONSTRUCTION_FENCE_COLOR
+    )
+    assert fence_pixels_park == 0
+
+
+def test_plant_trees_uses_real_osm_positions_in_kinds_with_no_procedural_density():
+    """A scenery kind with no procedural density (e.g. "grass", or any
+    landuse/leisure value not in tree_density) must still use real OSM
+    tree data when the area actually has some - real data shouldn't
+    require also being a kind eligible for made-up trees."""
+    grass = Scenery(
+        [(0.0, 0.0), (100.0, 0.0), (100.0, 100.0), (0.0, 100.0)],
+        "grass",
+        bbox=(0.0, 0.0, 100.0, 100.0),
+    )
+    real_trees = [(20.0, 20.0), (60.0, 40.0)]
+
+    plant_trees([grass], [], real_trees=real_trees)
+
+    assert grass.trees == real_trees
+    assert grass.trees_from_osm is True
+
+    # And still gets nothing procedural when no real trees are nearby.
+    empty_grass = Scenery(
+        [(200.0, 0.0), (300.0, 0.0), (300.0, 100.0), (200.0, 100.0)],
+        "grass",
+        bbox=(200.0, 0.0, 300.0, 100.0),
+    )
+    plant_trees([empty_grass], [], real_trees=real_trees)
+    assert empty_grass.trees == []
+    assert empty_grass.trees_from_osm is False
+
+
+def test_build_ways_uses_real_osm_trees_instead_of_procedural():
+    elements = [
+        {"type": "node", "id": 1, "lat": 60.1, "lon": 25.1},
+        {"type": "node", "id": 2, "lat": 60.1, "lon": 25.14},
+        {"type": "node", "id": 3, "lat": 60.14, "lon": 25.14},
+        {"type": "node", "id": 4, "lat": 60.14, "lon": 25.1},
+        {"type": "way", "id": 20, "nodes": [1, 2, 3, 4, 1], "tags": {"natural": "wood"}},
+        # Two surveyed real trees inside the wood polygon.
+        {"type": "node", "id": 5, "lat": 60.12, "lon": 25.12, "tags": {"natural": "tree"}},
+        {"type": "node", "id": 6, "lat": 60.13, "lon": 25.13, "tags": {"natural": "tree"}},
+    ]
+
+    ways, _, _, sceneries, _, _ = build_ways(elements)
+
+    assert sceneries[0].trees_from_osm is True
+    assert sorted(sceneries[0].trees) == sorted([(25120.0, 60120.0), (25130.0, 60130.0)])
 
 
 def test_build_ways_parses_taxi_stops():
@@ -327,6 +976,31 @@ def test_build_ways_parses_parking_area_as_scenery():
     assert result.sceneries[0].kind == "parking"
 
 
+def test_build_ways_parses_fuel_forecourt_as_paved_scenery():
+    """A fuel-station forecourt (amenity=fuel way) used to fall through
+    every branch entirely - no landuse/leisure tag, not "amenity=parking" -
+    and vanished (or became a bare text label if named). It should render
+    like a parking lot: a paved Scenery, defaulting to asphalt."""
+    elements = [
+        {"type": "node", "id": 1, "lat": 60.0, "lon": 25.0},
+        {"type": "node", "id": 2, "lat": 60.001, "lon": 25.0},
+        {"type": "node", "id": 3, "lat": 60.001, "lon": 25.001},
+        {"type": "node", "id": 4, "lat": 60.0, "lon": 25.001},
+        {
+            "type": "way",
+            "id": 10,
+            "nodes": [1, 2, 3, 4, 1],
+            "tags": {"amenity": "fuel", "name": "Neste"},
+        },
+    ]
+
+    result = build_ways(elements)
+
+    assert len(result.sceneries) == 1
+    assert result.sceneries[0].kind == "fuel"
+    assert result.sceneries[0].surface == "asphalt"
+
+
 def test_hard_tree_impact_knocks_tree_down_and_smokes_taxi():
     manager = TaxiManager([Way([(0.0, 0.0), (100.0, 0.0)], "residential", 4.0)])
     scenery = Scenery([(0.0, -20.0), (20.0, -20.0), (20.0, 20.0)], "park", trees=[(0.0, 0.0)])
@@ -337,6 +1011,38 @@ def test_hard_tree_impact_knocks_tree_down_and_smokes_taxi():
     assert manager.tree_effects[(id(scenery), 0)]["angle"] == car.heading
     assert manager.tree_wait_timer == 5.0
     assert manager.taxi_smoke_timer == 5.0
+    # render/scenery.py's draw_trees() relies on this position to decide
+    # whether a fallen/shaking tree is anywhere near the current viewport
+    # (see its docstring) - it must match the actual tree, not the car.
+    assert manager.tree_effects[(id(scenery), 0)]["x"] == 0.0
+    assert manager.tree_effects[(id(scenery), 0)]["y"] == 0.0
+
+
+def test_driving_into_construction_fence_stops_the_car_and_penalizes():
+    """A construction-site scenery is fenced off - a car driving into it
+    must crash the same way a building does, not pass straight through."""
+    manager = TaxiManager([Way([(0.0, 0.0), (100.0, 0.0)], "residential", 4.0)])
+    construction = Scenery(
+        [(-10.0, -10.0), (10.0, -10.0), (10.0, 10.0), (-10.0, 10.0)],
+        "construction",
+        bbox=(-10.0, -10.0, 10.0, 10.0),
+    )
+    car = Car(x=0.0, y=0.0, heading=0.0, speed=20.0)
+    score_before = manager.total_score
+
+    assert manager.check_fence_collision(car, [construction], 1.0, previous_position=(-20.0, 0.0))
+    assert (car.x, car.y) == (-20.0, 0.0)
+    assert car.speed == 0.0
+    assert manager.total_score < score_before
+
+    # A non-construction scenery (e.g. a park) must not trigger a crash.
+    park = Scenery(
+        [(-10.0, -10.0), (10.0, -10.0), (10.0, 10.0), (-10.0, 10.0)],
+        "park",
+        bbox=(-10.0, -10.0, 10.0, 10.0),
+    )
+    car2 = Car(x=0.0, y=0.0, heading=0.0, speed=20.0)
+    assert not manager.check_fence_collision(car2, [park], 1.0, previous_position=(-20.0, 0.0))
 
 
 def test_building_window_rows_follow_osm_levels():
@@ -515,6 +1221,40 @@ def test_facade_sign_does_not_cover_the_door():
         door_top_y = min(y for _, y in door_pixels)
         sign_bottom_y = max(y for _, y in sign_pixels)
         assert sign_bottom_y <= door_top_y
+    finally:
+        pygame.quit()
+
+
+def test_door_sits_at_ground_level_on_a_tall_building():
+    """Regression: doors were anchored/sized off DOOR_TOP_V_RATIO of the
+    *whole* facade depth, which only reached the ground by coincidence on
+    a short building - a tall, multi-storey building's door floated a
+    third to half way up its wall instead of sitting at its base."""
+    pygame.init()
+    try:
+        tall_building = Building(
+            [(0.0, 0.0), (40.0, 0.0), (40.0, 40.0), (0.0, 40.0)],
+            bbox=(0.0, 0.0, 40.0, 40.0),
+            entrances=[(20.0, 0.0)],
+            height_m=24.0,
+        )
+        screen = pygame.Surface((400, 400), pygame.SRCALPHA)
+        _draw_buildings_uncached(
+            screen, [tall_building], 20.0, 20.0, px_per_m=9.0, screen_w=400, screen_h=400,
+        )
+        door_pixels = {
+            (x, y)
+            for y in range(400)
+            for x in range(400)
+            if tuple(screen.get_at((x, y)))[:3] == (58, 48, 42)
+        }
+        assert door_pixels, "door did not render"
+
+        ground_y = world_to_screen(20.0, 0.0, 20.0, 20.0, 9.0, 400, 400)[1]
+        door_bottom_y = max(y for _, y in door_pixels)
+        # The door's base must sit right at the entrance's ground point,
+        # not floating well above it (a few px of line thickness/AA only).
+        assert abs(door_bottom_y - ground_y) <= 3
     finally:
         pygame.quit()
 
@@ -707,7 +1447,7 @@ def test_camera_jump_lets_every_layer_take_its_turn_without_starvation():
     # Nothing is queued yet - invalidating just clears the cache keys;
     # queuing happens lazily as each layer's draw call actually notices its
     # own miss.
-    assert common_module._pending_static_rebuilds == set()
+    assert not common_module._pending_static_rebuilds
 
     allowed = set()
     for _ in range(len(layers)):
@@ -722,7 +1462,48 @@ def test_camera_jump_lets_every_layer_take_its_turn_without_starvation():
     # Every layer got its turn within one frame per other layer, with none
     # starved out indefinitely.
     assert allowed == set(layers)
-    assert common_module._pending_static_rebuilds == set()
+    assert not common_module._pending_static_rebuilds
+
+
+def test_last_drawn_layer_is_not_starved_by_continuously_stale_earlier_ones():
+    """Regression: labels is drawn dead last every frame (after grass,
+    scenery, water, roads, buildings, ...). The old throttle granted its
+    single per-frame rebuild to whichever layer's draw call simply
+    happened to run first and was stale *that* frame - with no memory of
+    who'd been waiting - so during continuous driving (bucket-crossings
+    make every layer miss on the same frame routinely, not rarely) an
+    earlier layer that kept going stale too, frame after frame, could win
+    every single time, starving labels indefinitely. This is exactly what
+    made toggling to label mode 2 appear to do nothing while driving: its
+    forced cache miss just kept losing the race and stayed stuck showing
+    mode 1's stale surface. Priority must go to the longest-waiting layer,
+    not whoever's asked first this frame."""
+    from theroadragetrip.render import common as common_module
+
+    common_module.begin_static_cache_frame()
+    common_module._pending_static_rebuilds.clear()
+    fake_surface = object()
+    # "grass" first, "labels" last - the real per-frame draw order.
+    layers = ["grass", "scenery", "water", "roads", "buildings", "labels"]
+
+    serviced_order = []
+    for _ in range(len(layers) * 2):  # generous budget - real bound is len(layers)
+        common_module.begin_static_cache_frame()
+        for layer in layers:
+            # Every layer goes stale on every frame - continuous driving,
+            # not a one-off burst that settles once each layer succeeds
+            # once (unlike the camera-jump test above).
+            if common_module._allow_static_rebuild(layer, fake_surface):
+                serviced_order.append(layer)
+        if len(set(serviced_order)) == len(layers):
+            break
+
+    assert set(serviced_order) == set(layers), (
+        f"labels (and/or others) never got a turn - serviced: {serviced_order}"
+    )
+    # "labels" must win within one frame per other layer waiting alongside
+    # it, not be pushed out indefinitely by "grass" re-qualifying every frame.
+    assert serviced_order.index("labels") < len(layers)
 
 
 def test_static_rebuild_always_allows_the_very_first_build():
@@ -736,6 +1517,144 @@ def test_static_rebuild_always_allows_the_very_first_build():
     assert common_module._allow_static_rebuild("roads", None) is True
     assert common_module._allow_static_rebuild("buildings", None) is True
     assert common_module._allow_static_rebuild("scenery", None) is True
+
+
+def test_stale_static_cache_blit_never_overflows_its_padding_during_driving():
+    """Regression: every static-cache layer's frame_cache_key used the same
+    unphased round(cam * cache_zoom / STATIC_CACHE_GRID_PX) grid, so a
+    routine boundary crossing made *every* layer stale on the same frame
+    (confirmed against real OSM data). _allow_static_rebuild only rebuilds
+    one layer per frame (see the tests above), so the rest kept blitting
+    their previous-cycle cache at a growing pixel offset - and the
+    original CACHE_PADDING_PX (96px) was already smaller than the original
+    128px grid step, so *every* stale blit showed a real transparent gap
+    at the screen edge, not just an unlucky one. This is the "screen
+    flickers at the edges... regardless of game time" bug: independent of
+    day/night, general to every map layer. (CACHE_PADDING_PX and
+    STATIC_CACHE_GRID_PX were both retuned afterwards - see common.py's
+    comments - to fix a second regression: the first fix's bigger padding,
+    at the original small grid step, made every rebuild pricier for no
+    drop in how often they fired, which read as "heavy twitching".)
+
+    Simulates continuous driving (varying speed, one simulated fps hitch)
+    across every static-cache layer name and asserts the pixel offset a
+    stale blit would use never exceeds CACHE_PADDING_PX - i.e. the old
+    cache surface still fully covers the screen every single frame."""
+    from theroadragetrip.render import common as common_module
+
+    layers = [
+        "grass", "scenery", "trees", "scenery_objects", "water", "roads",
+        "buildings", "labels", "railways_ground", "railways_bridge",
+    ]
+    cache_zoom = 9.0
+    common_module._pending_static_rebuilds.clear()
+    fake_surface = object()
+    last_rebuilt_at = {layer: (0.0, 0.0) for layer in layers}
+
+    camx = camy = 0.0
+    heading = 0.6
+    for frame in range(600):
+        speed = 25.0 + 20.0 * math.sin(frame * 0.05)  # 5..45 m/s
+        dt = 1.0 / 15.0 if frame % 47 == 0 else 1.0 / 60.0  # occasional hitch
+        camx += speed * dt * math.cos(heading)
+        camy += speed * dt * math.sin(heading)
+
+        common_module.begin_static_cache_frame()
+        for layer in layers:
+            key = common_module._phased_cache_grid_cell(layer, camx, camy, cache_zoom)
+            cached_camx, cached_camy = last_rebuilt_at[layer]
+            cached_key = common_module._phased_cache_grid_cell(layer, cached_camx, cached_camy, cache_zoom)
+            if key == cached_key:
+                continue  # fast path: no blit-offset risk at all
+            if common_module._allow_static_rebuild(layer, fake_surface):
+                last_rebuilt_at[layer] = (camx, camy)
+                continue
+            # Stale: still blitting the cache from its last rebuild -
+            # this is exactly what _blit_stale_static_cache computes.
+            raw_dx = round((cached_camx - camx) * cache_zoom)
+            raw_dy = round((camy - cached_camy) * cache_zoom)
+            overflow = max(abs(raw_dx), abs(raw_dy)) - common_module.CACHE_PADDING_PX
+            assert overflow <= 0, (
+                f"frame {frame} layer {layer!r}: stale cache blit overflows "
+                f"CACHE_PADDING_PX by {overflow}px - a real gap at the screen edge"
+            )
+
+
+def test_bulk_invalidation_pile_up_never_overflows_padding():
+    """Regression: invalidate_static_caches() (called from main/__init__.py
+    whenever autofetch integrates a new tile) clears every layer's
+    frame_cache_key at once, regardless of camera position - unlike an
+    ordinary boundary crossing, the phase offsets in
+    _STATIC_CACHE_LAYER_PHASE_PX do nothing to spread this kind of
+    pile-up out, since it isn't position-triggered at all. With up to
+    all ~10 layers queued behind the 1-rebuild-per-frame throttle at
+    once, and the camera still moving while each waits its turn,
+    CACHE_PADDING_PX (tuned against the *ordinary* few-layers-queued
+    case) can be outrun before a layer near the back of the queue gets
+    served. _rebuild_or_stale's safety valve (see its docstring) must
+    force such a layer's rebuild through immediately instead of letting
+    it show a visible gap.
+
+    Simulates exactly that pile-up - all ~10 layers going stale on the
+    same frame, as invalidate_static_caches() causes - while driving at
+    the game's max speed (physics.MAX_SPEED), and asserts every
+    stale-blit _rebuild_or_stale actually takes (real call, not a
+    reimplementation of its logic) stays within CACHE_PADDING_PX for
+    every layer, all the way to the last one served.
+
+    Each layer's cache was last actually rebuilt at some point *before*
+    the invalidation too - up to a full STATIC_CACHE_GRID_PX step behind,
+    same as the ordinary-crossing test above already allows for - so the
+    worst case stacks both: a layer already at the edge of its own grid
+    step, invalidated, then made to wait out the full queue behind it
+    while the camera keeps moving. Only that combination is enough to
+    exceed CACHE_PADDING_PX; using camx=0 as every layer's last-rebuilt
+    position (no pre-existing drift) passed even without the fix below,
+    so this reproduces the pile-up alone stacked with realistic drift."""
+    import pygame
+    from theroadragetrip.physics import MAX_SPEED
+    from theroadragetrip.render import common as common_module
+
+    layers = [
+        "grass", "scenery", "trees", "scenery_objects", "water", "roads",
+        "buildings", "labels", "railways_ground", "railways_bridge",
+    ]
+    cache_zoom = 9.0
+    screen = pygame.Surface((1280, 720))
+    pad = int(common_module.CACHE_PADDING_PX)
+    fake_surface = pygame.Surface((1280 + 2 * pad, 720 + 2 * pad))
+
+    common_module._pending_static_rebuilds.clear()
+    camx = camy = 0.0
+    grid_step_m = common_module.STATIC_CACHE_GRID_PX / cache_zoom
+    # Every layer's cache was last actually rebuilt a full grid step
+    # behind the instant invalidate_static_caches() would have cleared
+    # their keys - the worst case, not the best case, for how stale each
+    # one already was going into the pile-up.
+    last_rebuilt_at = {layer: (camx - grid_step_m, camy) for layer in layers}
+
+    dt = 1.0 / 60.0
+    for frame in range(20):  # far more than the ~10 frames needed to drain the queue
+        camx += MAX_SPEED * dt
+        common_module.begin_static_cache_frame()
+        for layer in layers:
+            cached_camx, cached_camy = last_rebuilt_at[layer]
+            stale = common_module._rebuild_or_stale(
+                screen, layer, fake_surface, (cached_camx, cached_camy), camx, camy, cache_zoom,
+            )
+            if stale:
+                raw_dx = round((cached_camx - camx) * cache_zoom)
+                raw_dy = round((camy - cached_camy) * cache_zoom)
+                overflow = max(abs(raw_dx), abs(raw_dy)) - pad
+                assert overflow <= 0, (
+                    f"frame {frame} layer {layer!r} stale-blitting a gap "
+                    f"{overflow}px past CACHE_PADDING_PX after a bulk invalidation pile-up"
+                )
+            else:
+                # Rebuilt - via its throttled turn or the safety valve -
+                # so its cache now matches the current camera position,
+                # exactly like the real draw_* callers do after this call.
+                last_rebuilt_at[layer] = (camx, camy)
 
 
 def test_finnish_color_name_maps_to_expected_wall_color():

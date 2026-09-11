@@ -16,7 +16,6 @@ have that patch actually take effect, matching the original flat module.
 
 from .constants import (
     BBOX_PRESETS,
-    CITY_CENTERS,
     DEFAULT_BBOX,
     DEFAULT_ROAD_HALF_WIDTH_M,
     DEFAULT_SPEED_LIMITS_KMH,
@@ -33,6 +32,12 @@ from .overpass import (
     configure_user_agent,
     fetch_osm_ways,
     get_overpass_diagnostics,
+)
+
+from .pbf_source import (
+    DEFAULT_FINLAND_PBF_PATH,
+    fetch_osm_ways_from_pbf,
+    local_pbf_available,
 )
 
 from .cache import (
@@ -53,13 +58,18 @@ from .models import (
     Building,
     BusStop,
     Crossing,
+    Curb,
     IntersectionApproach,
     LogicalIntersection,
     MapData,
     ParkingSpace,
     Place,
+    Railing,
+    Railway,
     Scenery,
+    SceneryObject,
     SignalGroup,
+    SpeedBump,
     StopSign,
     TaxiStop,
     TrafficLight,
@@ -76,6 +86,7 @@ from .traffic_signals import (
 )
 
 from .trees import (
+    classify_tree_kind,
     plant_trees,
     remove_trees_under_roads,
 )

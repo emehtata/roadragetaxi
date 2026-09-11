@@ -1,22 +1,12 @@
-import collections
 import concurrent.futures
-from collections import defaultdict
-import json
 import logging
 import math
 import multiprocessing
-import os
-import random
-import shutil
-import sys
 import threading
 import time
-from dataclasses import dataclass, field
-from typing import Any, Callable, Dict, List, Optional, Set, Tuple
+from typing import List, Optional, Set, Tuple
 
-import requests
 
-from ..geo import dist_point_to_segment, point_in_polygon
 from ..tile_streaming import TileCoord, active_tiles, tile_bbox, tile_changes, world_to_tile
 
 logger = logging.getLogger(__name__)
@@ -24,6 +14,9 @@ logger = logging.getLogger(__name__)
 from .models import (
     Way,
     Water,
+    Curb,
+    Railway,
+    Railing,
     Building,
     ParkingSpace,
     Scenery,
@@ -34,8 +27,9 @@ from .models import (
     Place,
     associate_places_with_buildings,
     Crossing,
-    TaxiStop,
     BusStop,
+    SceneryObject,
+    SpeedBump,
 )
 
 from .cache import (
@@ -55,6 +49,12 @@ from .trees import (
 )
 
 
+def _tile_intersects_bounds(tile: TileCoord, bounds: Tuple[float, float, float, float]) -> bool:
+    tminx, tminy, tmaxx, tmaxy = tile_bbox(tile)
+    bminx, bminy, bmaxx, bmaxy = bounds
+    return not (tmaxx < bminx or tminx > bmaxx or tmaxy < bminy or tminy > bmaxy)
+
+
 def _snap_projected_bbox(
     bbox: Tuple[float, float, float, float], tile_size_m: float
 ) -> Tuple[float, float, float, float]:
@@ -69,11 +69,42 @@ def _snap_projected_bbox(
     )
 
 
+def _meters_bbox_to_latlon(
+    transformer, min_x: float, min_y: float, max_x: float, max_y: float,
+) -> Tuple[float, float, float, float]:
+    """Project a meters-space (EPSG:3067) rectangle to a lat/lon bbox.
+
+    Must transform all 4 corners, not just the (min_x,min_y)/(max_x,max_y)
+    diagonal - EPSG:3067 (TM35FIN) rotates meridians relative to true north
+    away from its central meridian (27E), so a straight rectangle in meters
+    becomes a rotated quadrilateral in lat/lon. Taking min/max of only 2
+    opposite corners silently cuts a real strip (a couple hundred meters at
+    Finland's populated latitudes/tile size) off the west and east edges of
+    the *queried* area, even though the tile grid marks that tile fully
+    loaded by its untouched meters coordinates - a permanent, silent hole
+    at tile edges (a real OSM way ending short, never re-fetched) rather
+    than a survivable rounding error.
+    """
+    lons, lats = zip(*(
+        transformer.transform(x, y)
+        for x in (min_x, max_x)
+        for y in (min_y, max_y)
+    ))
+    return (min(lats), min(lons), max(lats), max(lons))
+
+
 def _map_object_key(obj) -> tuple:
     """Return a stable key for deduplicating overlapping auto-fetch results."""
     object_id = getattr(obj, "osm_id", None)
     if object_id is None:
         object_id = getattr(obj, "id", None)
+    if object_id is None:
+        # LogicalIntersection has neither osm_id/id nor points_m/x/y, so it
+        # fell through to the final (name, kind, x, y) fallback below - all
+        # None/0.0 for every instance, colliding every intersection after
+        # the first onto one key and silently dropping the rest on later
+        # tile merges.
+        object_id = getattr(obj, "intersection_id", None)
     if object_id is not None:
         return (type(obj).__name__, "id", object_id)
 
@@ -107,6 +138,17 @@ MAX_INACTIVE_RESIDENT_TILES = 80
 # makes steady progress and self-corrects over a few more tile transitions
 # if pressure persists.
 INACTIVE_TILE_EVICTION_BATCH = 6
+# Minimum time a tile must have sat inactive before it's even a candidate
+# for eviction - independent of memory pressure. A long real play session
+# routinely already sits over tile_memory_budget_mb just from everything
+# else loaded (pygame, the rest of the process, a big already-streamed
+# world), so without this floor a tile became eligible the instant it left
+# the active window: a player driving one tile over and immediately back
+# (a very common "quick look, then return" movement) evicted the tile they
+# just left before they had any chance to return to it, forcing a real
+# re-fetch and re-merge on the way back - defeating the entire point of
+# keeping recently-left tiles resident (see _evict_inactive_tiles).
+MIN_INACTIVE_S_BEFORE_EVICTION = 20.0
 
 
 def _current_process_memory_mb() -> Optional[float]:
@@ -155,6 +197,11 @@ class AutoFetchManager:
         parking_spaces: Optional[List[ParkingSpace]] = None,
         logical_intersections: Optional[List[LogicalIntersection]] = None,
         yield_signs: Optional[List[YieldSign]] = None,
+        curbs: Optional[List[Curb]] = None,
+        scenery_objects: Optional[List[SceneryObject]] = None,
+        speed_bumps: Optional[List[SpeedBump]] = None,
+        railways: Optional[List[Railway]] = None,
+        railings: Optional[List[Railing]] = None,
         fetch_func=fetch_osm_ways,
         build_func=build_ways,
         cooldown_s: float = 5.0,
@@ -174,6 +221,11 @@ class AutoFetchManager:
         self.parking_spaces = parking_spaces if parking_spaces is not None else []
         self.logical_intersections = logical_intersections if logical_intersections is not None else []
         self.yield_signs = yield_signs if yield_signs is not None else []
+        self.curbs = curbs if curbs is not None else []
+        self.scenery_objects = scenery_objects if scenery_objects is not None else []
+        self.speed_bumps = speed_bumps if speed_bumps is not None else []
+        self.railways = railways if railways is not None else []
+        self.railings = railings if railings is not None else []
         self.bounds = bounds
         self.transformer = transformer
         self.fetch_func = fetch_func
@@ -316,13 +368,18 @@ class AutoFetchManager:
                 delta_x = current_tile.x - previous_player_tile.x
                 delta_y = current_tile.y - previous_player_tile.y
                 if delta_x and not delta_y:
-                    edge_x = current_tile.x - (1 if delta_x > 0 else -1)
+                    # +sign(delta_x): the genuinely new leading column, not
+                    # the trailing one - it was `-` here, which kept only
+                    # already-loaded columns and silently skipped querying
+                    # the new column's territory at all on every straight
+                    # cardinal move (the common case while driving).
+                    edge_x = current_tile.x + (1 if delta_x > 0 else -1)
                     request_tiles = {
                         tile for tile in request_tiles
                         if tile.x in {current_tile.x, edge_x}
                     }
                 elif delta_y and not delta_x:
-                    edge_y = current_tile.y - (1 if delta_y > 0 else -1)
+                    edge_y = current_tile.y + (1 if delta_y > 0 else -1)
                     request_tiles = {
                         tile for tile in request_tiles
                         if tile.y in {current_tile.y, edge_y}
@@ -383,8 +440,22 @@ class AutoFetchManager:
             self.start_tile = current_tile
             self.active_tiles = set(active_tiles(current_tile))
             self._register_existing_world()
-            # Startup bbox is the complete active 1.5 km region.
-            self.loaded_tiles = set(self.active_tiles)
+            # Only mark a tile "loaded" if the startup world's own bounds
+            # actually reach it - assuming the whole active window's tiles
+            # are all covered (true when a tile is smaller than the
+            # startup region, as it always used to be) breaks the moment
+            # a tile is *bigger* than the startup region - e.g.
+            # PBF_TILE_SIZE_M's 3300m tiles against a several-km startup
+            # city load: the 3x3 active window (9900m across) can then be
+            # mostly empty space nobody has actually fetched. The player
+            # reaches the true edge of the loaded data while still
+            # nominally inside the same oversized starting tile, so
+            # start_tile_streaming() never sees anything "missing" and no
+            # fetch is ever triggered - the road just runs out.
+            self.loaded_tiles = {
+                tile for tile in self.active_tiles
+                if _tile_intersects_bounds(tile, self.bounds)
+            }
             self._unload_tiles(set(self._tile_objects) - self.active_tiles)
         return current_tile
 
@@ -402,6 +473,11 @@ class AutoFetchManager:
             "logical_intersections": self.logical_intersections,
             "stop_signs": self.stop_signs,
             "yield_signs": self.yield_signs,
+            "curbs": self.curbs,
+            "scenery_objects": self.scenery_objects,
+            "speed_bumps": self.speed_bumps,
+            "railways": self.railways,
+            "railings": self.railings,
         }
         for section, objects in sections.items():
             for item in objects:
@@ -419,6 +495,17 @@ class AutoFetchManager:
         elif hasattr(item, "x") and hasattr(item, "y"):
             min_x = max_x = item.x
             min_y = max_y = item.y
+        elif getattr(item, "center", None) is not None:
+            # LogicalIntersection: no bbox/x/y/points_m, so this used to
+            # fall through to the points_m branch below, get an empty
+            # tuple, and return set() - meaning owned_tiles was *always*
+            # empty for it in the real (non-force_tile) tile-streaming
+            # merge path, so every logical intersection from every
+            # streamed tile was silently dropped, unconditionally.
+            cx, cy = item.center
+            radius = getattr(item, "radius_m", 0.0) or 0.0
+            min_x, max_x = cx - radius, cx + radius
+            min_y, max_y = cy - radius, cy + radius
         else:
             points = getattr(item, "points_m", ())
             if not points:
@@ -447,9 +534,7 @@ class AutoFetchManager:
             min_y = min(tile_bbox(tile)[1] for tile in request_tiles)
             max_x = max(tile_bbox(tile)[2] for tile in request_tiles)
             max_y = max(tile_bbox(tile)[3] for tile in request_tiles)
-            lon1, lat1 = self.transformer.transform(min_x, min_y)
-            lon2, lat2 = self.transformer.transform(max_x, max_y)
-            bbox = (min(lat1, lat2), min(lon1, lon2), max(lat1, lat2), max(lon1, lon2))
+            bbox = _meters_bbox_to_latlon(self.transformer, min_x, min_y, max_x, max_y)
             if self.world_cache_manager is not None:
                 world = self.world_cache_manager.preload_region(bbox).result()
             else:
@@ -497,10 +582,28 @@ class AutoFetchManager:
                     active_group = set(tile_group) & active_tiles_now
                     if not active_group or remaining <= 0:
                         continue
+                    # tile_group is start_tile_streaming()'s full missing
+                    # set, but the actual fetch bbox (and so `world`) only
+                    # covers request_tiles - narrowed to the leading edge
+                    # on an ordinary straight-line move (see
+                    # start_tile_streaming's delta_x/delta_y comment). A
+                    # missing tile outside that narrowed set (typically one
+                    # evicted while the player was elsewhere, now sitting
+                    # in the *trailing* edge of a new straight-line move)
+                    # was still marked loaded here - permanently, since
+                    # nothing else ever asks for it again - even though its
+                    # own territory was never actually extracted. That's
+                    # what made a road (regularly: the opposite carriageway
+                    # of a divided highway, spread wide enough to land in a
+                    # different tile) silently stop loading and never
+                    # recover: only mark - and assign ownership of `world`
+                    # to - the tiles this fetch's bbox genuinely covered;
+                    # anything else in tile_group stays missing and gets
+                    # picked up by a later call.
                     ownership_tiles = set(request_tiles) & active_tiles_now
                     self._merge_tile_world_for_tiles(ownership_tiles, world)
-                    self.loaded_tiles.update(active_group)
-                    integrated += len(active_group)
+                    self.loaded_tiles.update(ownership_tiles)
+                    integrated += len(ownership_tiles)
                     remaining -= 1
             if integrated:
                 self.map_revision += 1
@@ -532,6 +635,11 @@ class AutoFetchManager:
             "logical_intersections": self.logical_intersections,
             "stop_signs": self.stop_signs,
             "yield_signs": self.yield_signs,
+            "curbs": self.curbs,
+            "scenery_objects": self.scenery_objects,
+            "speed_bumps": self.speed_bumps,
+            "railways": self.railways,
+            "railings": self.railings,
         }
         for section, target in sections.items():
             new_items = getattr(world, section, ())
@@ -590,6 +698,11 @@ class AutoFetchManager:
             "logical_intersections": self.logical_intersections,
             "stop_signs": self.stop_signs,
             "yield_signs": self.yield_signs,
+            "curbs": self.curbs,
+            "scenery_objects": self.scenery_objects,
+            "speed_bumps": self.speed_bumps,
+            "railways": self.railways,
+            "railings": self.railings,
         }
         # Collect every key actually losing its last owner across *all*
         # unloading tiles first, then filter each section's list once at the
@@ -629,6 +742,14 @@ class AutoFetchManager:
         the active window. A player who doubles right back finds it still
         loaded (no re-fetch), and the actual unload cost only lands when it
         buys something back.
+
+        That "doubles right back" guarantee needs every tile to survive at
+        least MIN_INACTIVE_S_BEFORE_EVICTION regardless of memory pressure:
+        a long real session routinely already sits over budget just from
+        everything else loaded, so without this floor "should_evict" is
+        true essentially always, and a tile became a candidate the instant
+        it went inactive - evicting the one tile a quick there-and-back
+        move needs kept, before the player ever got a chance to return.
         """
         if not self._inactive_tile_since:
             return
@@ -640,7 +761,13 @@ class AutoFetchManager:
             should_evict = len(self._inactive_tile_since) > MAX_INACTIVE_RESIDENT_TILES
         if not should_evict:
             return
-        oldest_first = sorted(self._inactive_tile_since, key=self._inactive_tile_since.get)
+        eligible = [
+            tile for tile, since in self._inactive_tile_since.items()
+            if now - since >= MIN_INACTIVE_S_BEFORE_EVICTION
+        ]
+        if not eligible:
+            return
+        oldest_first = sorted(eligible, key=self._inactive_tile_since.get)
         to_evict = set(oldest_first[:INACTIVE_TILE_EVICTION_BATCH])
         for tile in to_evict:
             self._inactive_tile_since.pop(tile, None)
@@ -967,6 +1094,11 @@ class AutoFetchManager:
             new_parking_spaces = getattr(res, "parking_spaces", [])
             new_logical_intersections = getattr(res, "logical_intersections", [])
             new_yield_signs = getattr(res, "yield_signs", [])
+            new_curbs = getattr(res, "curbs", [])
+            new_scenery_objects = getattr(res, "scenery_objects", [])
+            new_speed_bumps = getattr(res, "speed_bumps", [])
+            new_railways = getattr(res, "railways", [])
+            new_railings = getattr(res, "railings", [])
             if len(res) == 8:
                 new_ways, new_waters, new_buildings, new_sceneries, new_places, new_bounds, new_traffic_lights, new_crossings = res
             elif len(res) == 7:
@@ -1025,6 +1157,11 @@ class AutoFetchManager:
                 added_parking_spaces = _extend_unique(self.parking_spaces, new_parking_spaces)
                 _extend_unique(self.logical_intersections, new_logical_intersections)
                 _extend_unique(self.yield_signs, new_yield_signs)
+                _extend_unique(self.curbs, new_curbs)
+                _extend_unique(self.scenery_objects, new_scenery_objects)
+                _extend_unique(self.speed_bumps, new_speed_bumps)
+                _extend_unique(self.railways, new_railways)
+                _extend_unique(self.railings, new_railings)
                 minx = min(self.bounds[0], new_bounds[0])
                 miny = min(self.bounds[1], new_bounds[1])
                 maxx = max(self.bounds[2], new_bounds[2])

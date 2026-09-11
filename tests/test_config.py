@@ -1,6 +1,13 @@
 import pytest
 
-from theroadragetrip.config import DEFAULT_OVERPASS_ENDPOINTS, get_overpass_endpoints, load_config, save_config
+from theroadragetrip.config import (
+    DEFAULT_OVERPASS_ENDPOINTS,
+    _default_city_names,
+    cities_from_config,
+    get_overpass_endpoints,
+    load_config,
+    save_config,
+)
 from theroadragetrip.osm import OVERPASS_HEADERS, configure_user_agent
 
 
@@ -53,3 +60,43 @@ def test_custom_city_section_replaces_default_city_section(tmp_path):
     loaded = load_config(config_path)
 
     assert list(loaded.items("cities")) == [("korpilahti", "")]
+
+
+def test_regenerating_a_missing_user_agent_id_does_not_inflate_the_city_list(tmp_path):
+    # Regression test: load_config used to reconcile the [cities] section
+    # AFTER saving a regenerated user_agent_id, so the save persisted
+    # config.read()'s union of "current defaults" + "whatever the file
+    # already had" instead of the file's own (smaller) set - permanently
+    # baking leftover names from an older default city list into the file.
+    config_path = tmp_path / "roadragetrip.ini"
+    default_names = [name.casefold() for name in _default_city_names()]
+    lines = ["[game]", "language = fi", "", "[cities]"]
+    lines.extend(f"{name} = " for name in default_names)
+    lines.append("lahti = ")  # a name no longer in the current defaults
+    config_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+    config = load_config(config_path)  # missing user_agent_id triggers a save
+
+    centers, _ = cities_from_config(config)
+    assert len(centers) == len(default_names)
+
+    disk_names = [name for name, _ in load_config(config_path).items("cities")]
+    assert len(disk_names) == len(default_names) + 1  # the file's own content, not further inflated
+
+
+def test_stale_legacy_name_pruning_does_not_touch_a_genuinely_customized_list():
+    # If the user has deliberately dropped a default city, the configured
+    # set is no longer a superset of the current defaults, so a leftover
+    # legacy name (here "lahti") must be left alone rather than pruned.
+    import configparser
+
+    default_names = [name.casefold() for name in _default_city_names()]
+    customized = default_names[1:]  # drop one default city on purpose
+    customized.append("lahti")
+    config = configparser.ConfigParser()
+    config.read_dict({"cities": {name: "" for name in customized}})
+
+    centers, _ = cities_from_config(config)
+
+    assert "Lahti" in centers
+    assert len(centers) == len(customized)

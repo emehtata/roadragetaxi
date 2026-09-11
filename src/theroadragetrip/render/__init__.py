@@ -19,11 +19,13 @@ from .common import (
     FPS,
     GAME_DATE,
     GAME_VERSION,
+    LEGACY_HIGHWAY_COLORS,
     PX_PER_M,
     SCREEN_H,
     SCREEN_W,
     SOLAR_UPDATE_INTERVAL_SECONDS,
     STATIC_ZOOM_STEP,
+    SURFACE_COLORS,
     _allow_static_rebuild,
     _blit_stale_static_cache,
     _covered_by_higher_road,
@@ -52,12 +54,17 @@ from .common import (
 )
 
 from .scenery import (
+    CONSTRUCTION_FENCE_COLOR,
     SCENERY_COLORS,
+    SCENERY_OBJECT_COLORS,
     TREE_CROWN_COLORS,
     _draw_scenery_uncached,
+    draw_construction_fences,
     draw_grass_texture,
     draw_parking_spaces,
     draw_scenery,
+    draw_scenery_objects,
+    draw_trees,
 )
 
 from .waters import (
@@ -108,13 +115,22 @@ from .roads import (
     STREET_LIGHT_POOL_STEPS,
     STREET_LIGHT_SHADE_COLOR,
     STREET_LIGHT_SPACING_M,
+    SPEED_BUMP_COLOR,
+    RAILING_COLOR,
+    RAILWAY_RAIL_COLOR,
+    RAILWAY_TIE_COLOR,
+    TireTrail,
     _point_is_near_building,
     _street_light_glow_cache,
     _way_has_street_lighting,
     _way_should_have_street_lighting,
     draw_bus_stops,
     draw_crossings,
+    draw_curbs,
+    draw_railings,
+    draw_railways,
     draw_roadworks,
+    draw_speed_bumps,
     draw_speed_cameras,
     draw_street_lights,
     draw_taxi_stops,
@@ -163,6 +179,15 @@ from .labels import (
     _draw_labels_uncached,
     _label_surface_cache,
     draw_labels,
+)
+
+from .weather import (
+    RAIN_COLOR,
+    draw_puddles,
+    draw_rain,
+    draw_splashes,
+    draw_wet_roads,
+    find_puddle_overlap,
 )
 
 from .navigation import (

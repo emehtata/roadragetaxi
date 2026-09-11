@@ -1,5 +1,6 @@
 from datetime import date
 
+from theroadragetrip import residents as residents_module
 from theroadragetrip.residents import ResidentManager
 
 
@@ -68,3 +69,31 @@ def test_minor_parent_age_gap_is_between_18_and_44_years():
 
     parent_age_gap = manager.age_of(parent) - manager.age_of(child)
     assert 18 <= parent_age_gap <= 44
+
+
+def test_weighted_name_cache_is_reused_across_calls():
+    """Regression: _weighted_name() used to rebuild its filtered-and-
+    weighted candidate list (a full scan plus a max()/int() per entry)
+    from scratch on *every single call*, against the full FIRST_NAMES/
+    SURNAMES datasets (thousands of entries each, fixed at import time,
+    never mutated). During a pedestrian population-update burst that
+    creates several residents in one pass, this measurably added up on
+    top of the ped_ways bug in the same burst (see test_pedestrians.py).
+    _weighted_name_cache must hold one (candidates, weights) pair per
+    (id(entries), group) and reuse the same object across calls, not
+    rebuild it every time."""
+    residents_module._weighted_name_cache.clear()
+    entries = [
+        {"name": "Testi", "group": "a", "people": 5},
+        {"name": "Toinen", "group": "b", "people": 3},
+    ]
+
+    residents_module._weighted_name(entries, "a")
+    assert (id(entries), "a") in residents_module._weighted_name_cache
+    cached_first = residents_module._weighted_name_cache[(id(entries), "a")]
+
+    residents_module._weighted_name(entries, "a")
+    cached_second = residents_module._weighted_name_cache[(id(entries), "a")]
+    assert cached_first is cached_second, (
+        "candidates/weights were rebuilt on the second call instead of reused from cache"
+    )

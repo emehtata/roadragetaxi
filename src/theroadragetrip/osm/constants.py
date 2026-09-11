@@ -1,28 +1,17 @@
-import collections
-import concurrent.futures
-from collections import defaultdict
-import json
 import logging
 import math
-import multiprocessing
-import os
-import random
-import shutil
-import sys
-import threading
-import time
-from dataclasses import dataclass, field
-from typing import Any, Callable, Dict, List, Optional, Set, Tuple
+from typing import Dict, Optional, Tuple
 
-import requests
 
-from ..geo import dist_point_to_segment, point_in_polygon
-from ..tile_streaming import TileCoord, active_tiles, tile_bbox, tile_changes, world_to_tile
 
 logger = logging.getLogger(__name__)
 
 
-CITY_CENTERS: Dict[str, Tuple[float, float]] = {
+# Superseded by config.py's catalog-based city list (load_city_catalog/
+# cities_from_config, backed by the bundled municipality data) for actual
+# city selection - kept here, private, only to seed BBOX_PRESETS/
+# DEFAULT_BBOX below. Nothing outside this module reads it.
+_CITY_CENTERS: Dict[str, Tuple[float, float]] = {
     "Helsinki": (60.169525, 24.935446),
     "Espoo": (60.205000, 24.652000),
     "Tampere": (61.499113, 23.787117),
@@ -53,14 +42,41 @@ def bbox_from_center(lat: float, lon: float, size_km: float = 4.0) -> Tuple[floa
 
 BBOX_PRESETS: Dict[str, Tuple[float, float, float, float]] = {
     name.lower(): bbox_from_center(lat, lon, size_km=3.0)
-    for name, (lat, lon) in CITY_CENTERS.items()
+    for name, (lat, lon) in _CITY_CENTERS.items()
 }
 
 
 DEFAULT_BBOX = BBOX_PRESETS["oulu"]
 
 
+# natural=* ground-cover values that count as Scenery (osm/build.py). Unlike
+# landuse=*/leisure=* (any value is safe to treat as generic ground-cover
+# scenery - see build.py), natural=* also covers values that must NOT become
+# a Scenery polygon: water/bay/strait (their own Water feature, handled
+# first), tree (a point, not an area), coastline/peak/cliff/ridge (not
+# ground cover at all - unhandled here). So natural genuinely needs a
+# whitelist, unlike the other two - kept in exactly one place and shared by
+# both the Overpass query (overpass.py builds its regex from this) and
+# build_ways()'s classification, so the two can't drift apart the way
+# landuse/leisure did (see git history: overpass.py once hand-maintained
+# its own separate landuse/leisure whitelist that fell out of sync with
+# what build_ways() actually classified).
+NATURAL_SCENERY_KINDS: Tuple[str, ...] = (
+    "wood", "scrub", "grass", "sand", "heath",
+    "beach", "wetland", "grassland", "shrubbery",
+)
+
+
 DEFAULT_ROAD_HALF_WIDTH_M = 3.0
+
+# A crossing's own road can be wide enough that its rendered zebra-stripe
+# width overlaps a *different* crossing nearby - real, compact junctions
+# routinely map one highway=crossing node per leg within a few meters of
+# each other, and each one sized to its own road's width bleeds into the
+# open junction interior and into its neighbors. Search this far for the
+# nearest other crossing and clip width_m to that distance, so no
+# crossing's stripes extend past the midpoint toward another one.
+CROSSING_OVERLAP_SEARCH_RADIUS_M = 25.0
 
 
 HIGHWAY_HALF_WIDTH = {

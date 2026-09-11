@@ -1,4 +1,4 @@
-from theroadragetrip.osm import BBOX_PRESETS, CITY_CENTERS, DEFAULT_BBOX, bbox_from_center
+from theroadragetrip.osm import BBOX_PRESETS, DEFAULT_BBOX, bbox_from_center
 
 
 def test_bbox_presets():

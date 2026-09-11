@@ -787,3 +787,168 @@ def test_pedestrian_traffic_light_crossing_stop():
     ped_mgr.update(player, dt=0.1)
     # Pedestrian stopped at red light
     assert ped.speed == 0.0
+
+
+def _grid_of_ways(count: int) -> list:
+    """`count` short, disconnected footway segments spread over a wide
+    area - enough distinct ways in ped_ways to make an O(len(ped_ways))
+    per-call cost show up, while still landing plenty of them within any
+    given spawn_radius_m so spawn_pedestrian can actually succeed."""
+    ways = []
+    for i in range(count):
+        x = float(i % 100) * 40.0
+        y = float(i // 100) * 40.0
+        ways.append(Way(points_m=[(x, y), (x + 20.0, y)], highway="footway", half_width_m=1.5))
+    return ways
+
+
+def test_sync_map_data_keeps_ped_way_ids_cache_in_sync():
+    """Regression: spawn_pedestrian() reads self._ped_way_ids (see its
+    docstring) instead of rebuilding {id(way) for way in self.ped_ways}
+    itself - sync_map_data() (both PedestrianManager's and
+    CyclistManager's, which overrides it) must keep that cache exactly
+    in sync with ped_ways, on every call, not just the first."""
+    way_a = Way(points_m=[(0.0, 0.0), (10.0, 0.0)], highway="footway", half_width_m=1.5)
+    way_b = Way(points_m=[(20.0, 0.0), (30.0, 0.0)], highway="footway", half_width_m=1.5)
+    manager = PedestrianManager([way_a], target_count=0)
+    assert manager._ped_way_ids == {id(w) for w in manager.ped_ways}
+
+    manager.sync_map_data([way_a, way_b])
+    assert manager._ped_way_ids == {id(w) for w in manager.ped_ways}
+    assert manager._ped_way_ids  # non-empty: actually exercised, not just equal-by-emptiness
+
+    cyclists = CyclistManager([way_a], target_count=0)
+    assert cyclists._ped_way_ids == {id(w) for w in cyclists.ped_ways}
+    cyclists.sync_map_data([way_a, way_b])
+    assert cyclists._ped_way_ids == {id(w) for w in cyclists.ped_ways}
+
+
+def test_spawn_pedestrian_does_not_rescan_ped_ways_per_attempt():
+    """Regression: spawn_pedestrian() used to rebuild
+    {id(way) for way in self.ped_ways} from scratch on *every single
+    call* - every spawn attempt, not just successful ones, and update()
+    can make up to max(50, target_count * 5) attempts per 5-second
+    population pass (most of them failing, e.g. at low zoom where the
+    whole spawn_radius_m search area already sits inside the viewport -
+    see the other regression test below). Against a real city-scale
+    ped_ways (tens of thousands of ways after autofetch grows the map)
+    this one line dominated the whole pass: ~900ms in a single frame,
+    confirmed via profiling against real Oulu OSM data (30949 ways).
+
+    Reproduces that shape directly: a large ped_ways and many calls that
+    all fail to place anyone (max_distance_m=0.001 - effectively zero -
+    rejects every candidate point, the same "burn the whole retry budget
+    with nothing to show for it" shape a real doomed-to-fail attempt has),
+    asserting on wall time. A successful placement's own cost would
+    otherwise dwarf and hide the one line this covers, so this isolates
+    it: fixed, 300 calls against 15000 ped_ways measured ~0.21s;
+    unfixed (rebuilding the id() set from scratch each call) measured
+    ~0.58s. The threshold is set well clear of both."""
+    import time
+
+    ways = _grid_of_ways(15000)
+    manager = PedestrianManager(ways, target_count=0)
+    assert len(manager.ped_ways) >= 12000
+
+    start = time.perf_counter()
+    for _ in range(300):
+        result = manager.spawn_pedestrian(20.0, 0.0, max_distance_m=0.001)
+        assert result is None  # every candidate point must fail the distance check
+    elapsed = time.perf_counter() - start
+    assert elapsed < 0.35, (
+        f"300 always-failing spawn_pedestrian calls against {len(manager.ped_ways)} "
+        f"ped_ways took {elapsed:.2f}s - looks like the per-call ped-way-id-set rebuild regressed"
+    )
+
+
+def test_spawn_pedestrian_gives_up_immediately_when_search_area_is_fully_onscreen(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """Regression: at low zoom, the viewport can be wider than
+    2 * spawn_radius_m - every candidate point spawn_pedestrian's retry
+    loop could generate near `near_x, near_y` is then guaranteed to land
+    inside the viewport (and get rejected), yet the old code still ran
+    the full retry budget (up to 30 candidate ways x every segment x 8
+    points) on every one of the up to max(50, target_count * 5) attempts
+    update() makes - confirmed via profiling: ~900ms in a single frame
+    against real OSM data (340800 wasted random.uniform() calls alone).
+    Must recognize a fully-onscreen search area and return None
+    immediately instead of exhausting the retry budget on attempts that
+    can never succeed.
+
+    Verified by call count rather than wall time - real Oulu ways carry
+    many points each, so the retry loop's cost scales with segments per
+    way; this repo's small synthetic ways don't reproduce that volume,
+    which makes a timing threshold here either too loose to catch a
+    regression or too tight to be reliable. random.shuffle() is called
+    exactly once per candidate way inside that retry loop (to randomize
+    which segment is tried first) - zero calls is a direct, robust
+    signal that the loop never started."""
+    ways = _grid_of_ways(6000)
+    manager = PedestrianManager(ways, target_count=0)
+    near_x, near_y = 20.0, 0.0
+    r = manager.spawn_radius_m
+    huge_viewport = (near_x - r - 50.0, near_y - r - 50.0, near_x + r + 50.0, near_y + r + 50.0)
+
+    shuffle_calls = []
+    real_shuffle = __import__("random").shuffle
+    monkeypatch.setattr(
+        "theroadragetrip.pedestrian.random.shuffle",
+        lambda seq: (shuffle_calls.append(len(seq)), real_shuffle(seq))[-1],
+    )
+
+    result = manager.spawn_pedestrian(near_x, near_y, viewport_bounds=huge_viewport)
+    assert result is None  # every candidate would be onscreen - never a valid spot
+    assert shuffle_calls == [], (
+        f"spawn_pedestrian shuffled candidates {len(shuffle_calls)} time(s) despite a "
+        f"fully-onscreen search area - looks like the early-exit shortcut regressed"
+    )
+
+    # Sanity: a normal, screen-sized viewport (smaller than the search
+    # area) must still let a real spawn succeed - the shortcut above must
+    # not be so broad it breaks ordinary spawning.
+    tight_viewport = (near_x - 10.0, near_y - 10.0, near_x + 10.0, near_y + 10.0)
+    assert manager.spawn_pedestrian(near_x, near_y, viewport_bounds=tight_viewport) is not None
+
+
+def test_spawn_pedestrian_at_does_not_scan_every_ped_way():
+    """Regression: spawn_pedestrian_at() (used for every door/amenity
+    spawn - see spawn_pedestrian_at_door) scanned the *entire* self.ped_ways
+    list, every segment, to find the single nearest one to one point -
+    unlike spawn_pedestrian() (the other spawn path), which was already
+    scoped to self._way_grid. Confirmed via profiling a real drive (real
+    Oulu cache data, autofetch on): one call to spawn_pedestrian_at() cost
+    ~20000 closest_point_and_dist_to_segment calls, dominating the periodic
+    population-update pass whenever a door spawn was attempted. Must use
+    _nearby_ped_ways() (the same grid spawn_pedestrian() already relies on)
+    instead of the full list.
+
+    300 calls against 15000 ped_ways: fixed measures well under a second;
+    unfixed (O(len(ped_ways)) per call) takes several seconds - the
+    threshold is set well clear of both."""
+    import time
+
+    ways = _grid_of_ways(15000)
+    manager = PedestrianManager(ways, target_count=0)
+    assert len(manager.ped_ways) >= 12000
+
+    start = time.perf_counter()
+    for _ in range(300):
+        result = manager.spawn_pedestrian_at(20.0, 0.0)
+        assert result is not None
+    elapsed = time.perf_counter() - start
+    assert elapsed < 1.0, (
+        f"300 spawn_pedestrian_at calls against {len(manager.ped_ways)} ped_ways "
+        f"took {elapsed:.2f}s - looks like the full-ped_ways scan regressed"
+    )
+
+
+def test_nearby_ped_ways_falls_back_to_every_way_when_grid_is_empty():
+    """_nearby_ped_ways()'s expanding-radius search must still find
+    something (spawn_pedestrian_at's whole-map fallback, restored) when a
+    point sits farther from every ped_way than the grid search ever
+    expands to - correctness over the common-case speed path."""
+    ways = [Way(points_m=[(0.0, 0.0), (10.0, 0.0)], highway="footway", half_width_m=1.5)]
+    manager = PedestrianManager(ways, target_count=0, spawn_radius_m=50.0)
+    far_away = manager._nearby_ped_ways(1_000_000.0, 1_000_000.0)
+    assert far_away == manager._spawn_ways

@@ -1,23 +1,13 @@
-import collections
-import concurrent.futures
-from collections import defaultdict
-import json
 import logging
-import math
-import multiprocessing
 import os
-import random
-import shutil
-import sys
 import threading
 import time
-from dataclasses import dataclass, field
-from typing import Any, Callable, Dict, List, Optional, Set, Tuple
+from typing import Callable, List, Optional, Tuple
 
 import requests
 
-from ..geo import dist_point_to_segment, point_in_polygon
-from ..tile_streaming import TileCoord, active_tiles, tile_bbox, tile_changes, world_to_tile
+from .constants import NATURAL_SCENERY_KINDS
+
 
 logger = logging.getLogger(__name__)
 
@@ -102,6 +92,19 @@ def fetch_osm_ways(
     from . import load_osm_cache, save_osm_cache
 
     south, west, north, east = bbox
+    # landuse/leisure below are unfiltered by value, not a whitelist regex:
+    # build_ways() (osm/build.py) classifies any landuse=*/leisure=* way as
+    # scenery regardless of its value, and render/scenery.py:SCENERY_COLORS
+    # already covers dozens of specific values (farmland, cemetery,
+    # sports_centre, nature_reserve, ...) - a narrower whitelist here just
+    # meant osm_source=overpass silently dropped everything outside it,
+    # while osm_source=pbf (osmium extract, no tag filtering at all) kept
+    # it, so the two sources rendered different scenery for the same real
+    # area. natural=* still needs a whitelist (see NATURAL_SCENERY_KINDS's
+    # docstring in osm/constants.py, the single source of truth this is
+    # built from - also used by build_ways()'s classification, so the two
+    # can't drift apart the way landuse/leisure did).
+    natural_scenery_regex = "|".join(NATURAL_SCENERY_KINDS)
     query = f"""
     [out:json][timeout:25];
     (
@@ -116,9 +119,18 @@ def fetch_osm_ways(
     node["entrance"]({south},{west},{north},{east});
     node["amenity"="parking_space"]({south},{west},{north},{east});
       node["place"~"suburb|neighbourhood|quarter|village|town|city|hamlet"]({south},{west},{north},{east});
+    node["natural"="tree"]({south},{west},{north},{east});
+    node["amenity"~"bench|waste_basket|bicycle_parking|fountain|fuel"]({south},{west},{north},{east});
+    node["leisure"~"picnic_table|firepit"]({south},{west},{north},{east});
+    node["barrier"~"gate|bollard"]({south},{west},{north},{east});
+    node["historic"="memorial"]({south},{west},{north},{east});
+    node["tourism"="artwork"]({south},{west},{north},{east});
     node["name"]({south},{west},{north},{east});
       way["highway"]({south},{west},{north},{east});
     way["name"]({south},{west},{north},{east});
+      way["barrier"="kerb"]({south},{west},{north},{east});
+      way["barrier"~"fence|railing|hedge|wall"]({south},{west},{north},{east});
+      way["railway"~"rail|light_rail|tram|narrow_gauge|funicular"]({south},{west},{north},{east});
       way["natural"="water"]({south},{west},{north},{east});
     way["natural"="bay"]({south},{west},{north},{east});
     way["natural"="strait"]({south},{west},{north},{east});
@@ -126,11 +138,12 @@ def fetch_osm_ways(
       way["landuse"="reservoir"]({south},{west},{north},{east});
       way["building"]({south},{west},{north},{east});
     way["amenity"="parking"]({south},{west},{north},{east});
+    way["amenity"="fuel"]({south},{west},{north},{east});
     way["landuse"="parking"]({south},{west},{north},{east});
     way["amenity"="parking_space"]({south},{west},{north},{east});
-      way["landuse"~"forest|grass|park|meadow|residential|commercial|industrial|recreation_ground"]({south},{west},{north},{east});
-      way["leisure"~"park|garden|pitch|playground"]({south},{west},{north},{east});
-      way["natural"~"wood|scrub|grass|sand|heath"]({south},{west},{north},{east});
+      way["landuse"]({south},{west},{north},{east});
+      way["leisure"]({south},{west},{north},{east});
+      way["natural"~"{natural_scenery_regex}"]({south},{west},{north},{east});
       way["place"~"suburb|neighbourhood|quarter|village"]({south},{west},{north},{east});
       relation["natural"="water"]({south},{west},{north},{east});
     relation["natural"="bay"]({south},{west},{north},{east});
@@ -139,8 +152,9 @@ def fetch_osm_ways(
       relation["building"]({south},{west},{north},{east});
     relation["amenity"="parking"]({south},{west},{north},{east});
     relation["landuse"="parking"]({south},{west},{north},{east});
-      relation["leisure"="park"]({south},{west},{north},{east});
-      relation["landuse"~"forest|grass|park|meadow"]({south},{west},{north},{east});
+      relation["leisure"]({south},{west},{north},{east});
+      relation["landuse"]({south},{west},{north},{east});
+      relation["natural"~"{natural_scenery_regex}"]({south},{west},{north},{east});
       relation["place"~"suburb|neighbourhood|quarter"]({south},{west},{north},{east});
     );
     out body;

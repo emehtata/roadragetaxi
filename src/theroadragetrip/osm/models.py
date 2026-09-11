@@ -1,23 +1,11 @@
-import collections
-import concurrent.futures
 from collections import defaultdict
-import json
 import logging
 import math
-import multiprocessing
-import os
-import random
-import shutil
-import sys
-import threading
-import time
 from dataclasses import dataclass, field
-from typing import Any, Callable, Dict, List, Optional, Set, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
-import requests
 
-from ..geo import dist_point_to_segment, point_in_polygon
-from ..tile_streaming import TileCoord, active_tiles, tile_bbox, tile_changes, world_to_tile
+from ..geo import point_in_polygon
 
 logger = logging.getLogger(__name__)
 
@@ -69,6 +57,30 @@ class Water:
     name: Optional[str] = None
     bbox: Tuple[float, float, float, float] = (0.0, 0.0, 0.0, 0.0)
     layer: int = 0
+
+
+@dataclass
+class Curb:
+    """A raised kerbstone line (OSM barrier=kerb). Driving over one bumps the car."""
+    points_m: List[Tuple[float, float]]
+    bbox: Tuple[float, float, float, float] = (0.0, 0.0, 0.0, 0.0)
+
+
+@dataclass
+class Railway:
+    """A rail line (OSM railway=rail/light_rail/tram/narrow_gauge/funicular). Visual only."""
+    points_m: List[Tuple[float, float]]
+    kind: str = "rail"
+    bbox: Tuple[float, float, float, float] = (0.0, 0.0, 0.0, 0.0)
+    is_bridge: bool = False
+
+
+@dataclass
+class Railing:
+    """A linear barrier (OSM barrier=fence/railing/hedge/wall). Visual only."""
+    points_m: List[Tuple[float, float]]
+    bbox: Tuple[float, float, float, float] = (0.0, 0.0, 0.0, 0.0)
+    kind: str = "fence"
 
 
 @dataclass
@@ -131,13 +143,34 @@ class Scenery:
     kind: str
     name: Optional[str] = None
     bbox: Tuple[float, float, float, float] = (0.0, 0.0, 0.0, 0.0)
+    # Ground material, currently only populated for kind="parking" (OSM's
+    # surface=* tag, defaulting to "asphalt" when the lot doesn't specify
+    # one - a mapped parking lot is a paved area even when nobody bothered
+    # tagging it, unlike an untagged patch of open ground). None for every
+    # other kind: their color is already keyed by `kind` itself (forest,
+    # grass, ...), which already says what the ground is.
+    surface: Optional[str] = None
     trees: List[Tuple[float, float]] = field(default_factory=list)
     tree_variations: List[float] = field(default_factory=list)
+    # Rendered species, one per entry in `trees` - "spruce"/"pine"/"birch"
+    # (see osm/trees.py:classify_tree_kind). Always resolved to a concrete
+    # kind at planting time, real OSM genus/species/leaf_type tags if
+    # given, otherwise a deterministic per-position mix - never left
+    # ambiguous for the renderer to guess at. Empty for a Scenery cached
+    # before this field existed; draw_trees() falls back to classifying
+    # on the fly from position in that case.
+    tree_kinds: List[str] = field(default_factory=list)
     # Set by remove_trees_under_roads() once it has swept this scenery's
     # trees against the road network, so a later re-sync (a new tile
     # merging in) doesn't re-scan every scenery ever loaded - just the
     # newly-added ones.
     trees_checked_against_roads: bool = field(default=False, repr=False)
+    # Set by plant_trees() when .trees came from real OSM natural=tree
+    # nodes rather than procedural placement - marks this scenery as done
+    # so a later plant_trees() call (e.g. autofetch's re-merge with a
+    # fuller road list) never tops it up with fake trees alongside real
+    # ones.
+    trees_from_osm: bool = field(default=False, repr=False)
 
 
 def _building_height(tags: Dict[str, Any], points: List[Tuple[float, float]]) -> float:
@@ -339,6 +372,22 @@ class Crossing:
 
 
 @dataclass
+class SpeedBump:
+    """OSM traffic_calming=bump/table/cushion/hump (a real physical raised
+    road feature, not just a "traffic_calming=no/island" tag with no
+    physical bump). Same shape as Crossing - a bar across the road at a
+    point along it - since it's the same "snap to nearest road, get
+    direction+width" geometry problem; see osm/build.py."""
+    x: float
+    y: float
+    layer: int = 0
+    id: Optional[int] = None
+    kind: str = "bump"  # bump, table, cushion, hump
+    direction_angle: Optional[float] = None  # Road axis alignment angle in radians
+    width_m: float = 3.5  # Across-road width
+
+
+@dataclass
 class TaxiStop:
     x: float
     y: float
@@ -355,13 +404,32 @@ class BusStop:
     shelter: bool = False
 
 
+@dataclass
+class SceneryObject:
+    """A small decorative point object from OSM (bench, waste basket,
+    bicycle parking, statue/memorial, ...), differentiated by `kind`.
+
+    One shared class rather than one per kind: none of these need their
+    own behavior (unlike e.g. TrafficLight's signal timing) - they're all
+    just a position, a kind to pick a small icon by, and an id for
+    dedup/caching. See osm/build.py for the OSM tags -> kind mapping and
+    render/scenery.py:draw_scenery_objects() for how each kind is drawn.
+    """
+
+    x: float
+    y: float
+    kind: str
+    name: Optional[str] = None
+    id: Optional[int] = None
+
+
 class MapData(tuple):
     """Container tuple for build_ways results returning 6 elements for backward compatibility while providing traffic_lights and crossings via attributes and slicing."""
 
-    def __new__(cls, ways, waters, buildings, sceneries, places, bounds, traffic_lights=None, crossings=None, taxi_stops=None, bus_stops=None, parking_spaces=None, logical_intersections=None, stop_signs=None, yield_signs=None):
+    def __new__(cls, ways, waters, buildings, sceneries, places, bounds, traffic_lights=None, crossings=None, taxi_stops=None, bus_stops=None, parking_spaces=None, logical_intersections=None, stop_signs=None, yield_signs=None, curbs=None, scenery_objects=None, speed_bumps=None, railways=None, railings=None):
         return super().__new__(cls, (ways, waters, buildings, sceneries, places, bounds))
 
-    def __init__(self, ways, waters, buildings, sceneries, places, bounds, traffic_lights=None, crossings=None, taxi_stops=None, bus_stops=None, parking_spaces=None, logical_intersections=None, stop_signs=None, yield_signs=None):
+    def __init__(self, ways, waters, buildings, sceneries, places, bounds, traffic_lights=None, crossings=None, taxi_stops=None, bus_stops=None, parking_spaces=None, logical_intersections=None, stop_signs=None, yield_signs=None, curbs=None, scenery_objects=None, speed_bumps=None, railways=None, railings=None):
         self.ways = ways
         self.waters = waters
         self.buildings = buildings
@@ -376,6 +444,11 @@ class MapData(tuple):
         self.logical_intersections = logical_intersections if logical_intersections is not None else []
         self.stop_signs = stop_signs if stop_signs is not None else []
         self.yield_signs = yield_signs if yield_signs is not None else []
+        self.scenery_objects = scenery_objects if scenery_objects is not None else []
+        self.curbs = curbs if curbs is not None else []
+        self.speed_bumps = speed_bumps if speed_bumps is not None else []
+        self.railways = railways if railways is not None else []
+        self.railings = railings if railings is not None else []
 
     @property
     def traffic_signals(self):

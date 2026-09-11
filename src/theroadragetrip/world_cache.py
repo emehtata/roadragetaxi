@@ -26,8 +26,28 @@ MAGIC = b"RWC\0"
 # way to invalidate a cache written minutes before it shipped. Concretely:
 # the traffic-light phase-grouping fix (safety-critical - it stops
 # conflicting approaches from both showing green) would otherwise sit
-# unused in already-explored areas for up to a day.
-FORMAT_VERSION = 3
+# unused in already-explored areas for up to a day. Bumped again in
+# 0.11.0alpha: traffic-signal arm/clustering fixes (service-road
+# exclusion, order-independent signal clustering) and the cache's own
+# SignalGroup-sharing fix all change what a cached tile's traffic-light
+# data should look like. Bumped again to add the curbs section (a
+# cached tile written before curbs existed has none, and would render
+# and collide as if no curbs were ever there). Bumped again to add the
+# scenery_objects section (benches, waste baskets, bicycle parking,
+# statues/memorials) - same reasoning as curbs. Bumped again to add the
+# speed_bumps section, same reasoning again. Bumped again to add the
+# railways/railings sections (rail lines, fence/railing barriers), same
+# reasoning again. Bumped again to add Railway.is_bridge: a record
+# written before this field existed loads fine under the *same* version
+# (dataclass construction just uses the default, False) - silently, with
+# no error to notice - so a rail bridge cached even minutes before this
+# shipped kept rendering as ground-level track, on every osm_source,
+# until its 24h TTL happened to expire. Forcing a rebuild here is exactly
+# what FORMAT_VERSION is for (see test_stale_format_version_forces_a_
+# rebuild_even_within_the_ttl in test_world_cache.py) - a new persisted
+# field needs a bump precisely because missing-field construction fails
+# silent, not loud.
+FORMAT_VERSION = 9
 COORDINATE_SYSTEM = "EPSG:3067"
 _HEADER = struct.Struct("<4sHHQQ32s12s")
 _DIRECTORY = struct.Struct("<8sQQI")
@@ -36,13 +56,15 @@ _TYPES = {"none": 0, "bool": 1, "int": 2, "float": 3, "str": 4, "list": 5, "tupl
 _TYPE_NAMES = {value: key for key, value in _TYPES.items()}
 _SECTIONS = ("ways", "waters", "buildings", "sceneries", "places", "traffic_lights",
              "crossings", "taxi_stops", "bus_stops", "parking_spaces", "logical_intersections",
-             "stop_signs", "yield_signs", "metadata")
+             "stop_signs", "yield_signs", "curbs", "scenery_objects", "speed_bumps",
+             "railways", "railings", "metadata")
 _SECTION_CODES = {
     "buildings": "bldgs", "sceneries": "scenery",
     "traffic_lights": "signals", "crossings": "crossing",
     "logical_intersections": "intersct",
     "parking_spaces": "parking", "taxi_stops": "taxistop", "bus_stops": "busstop",
-    "stop_signs": "stops", "yield_signs": "yields",
+    "stop_signs": "stops", "yield_signs": "yields", "scenery_objects": "furnitur",
+    "speed_bumps": "bumps",
 }
 _SECTION_NAMES = {code: name for name, code in _SECTION_CODES.items()}
 
@@ -240,7 +262,9 @@ class BinaryWorldCacheLoader:
             "ways": "Way", "waters": "Water", "buildings": "Building", "sceneries": "Scenery",
             "places": "Place", "traffic_lights": "TrafficLight", "crossings": "Crossing",
             "taxi_stops": "TaxiStop", "bus_stops": "BusStop", "parking_spaces": "ParkingSpace",
-            "stop_signs": "StopSign", "yield_signs": "YieldSign",
+            "stop_signs": "StopSign", "yield_signs": "YieldSign", "curbs": "Curb",
+            "scenery_objects": "SceneryObject", "speed_bumps": "SpeedBump",
+            "railways": "Railway", "railings": "Railing",
         }
         import theroadragetrip.osm as osm
         # Every physical TrafficLight/IntersectionApproach on the same

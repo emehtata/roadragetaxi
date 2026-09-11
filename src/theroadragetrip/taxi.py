@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple
 
 from .geo import clamp, closest_point_and_dist_to_segment, compute_bbox, dist_point_to_segment, get_oriented_box_corners, point_in_polygon, segments_intersect
-from .osm import Building, Place, TaxiStop, Way
+from .osm import Building, Curb, Place, SpeedBump, TaxiStop, Way
 from .physics import Car, SpatialWayGrid, connected_drivable_ways, is_car_road, is_point_on_road, is_violating_oneway
 from .localization import tr
 from .police import SpeedCamera, camera_sees_car
@@ -164,16 +164,22 @@ class TaxiManager:
 
         self._crashed_building_cooldowns: Dict[int, float] = {}  # building id -> timestamp cooldown
         self._crashed_tree_cooldowns: Dict[Tuple[int, int], float] = {}
+        self._crashed_fence_cooldowns: Dict[int, float] = {}  # scenery id -> timestamp cooldown
+        self._curb_bump_cooldowns: Dict[int, float] = {}  # curb id -> timestamp cooldown
+        self._speed_bump_cooldowns: Dict[int, float] = {}  # speed bump id -> timestamp cooldown
         self._speed_camera_hits: set[int] = set()
         self.tree_effects: Dict[Tuple[int, int], Dict[str, float]] = {}
         self.fallen_trees: set[Tuple[int, int]] = set()
         self.tree_wait_timer: float = 0.0
         self._building_collision_grid: Dict[Tuple[int, int], List[Building]] = {}
         self._building_collision_ref = None
-        self._building_collision_count = -1
+        self._building_collision_count = 0
         self._tree_collision_grid: Dict[Tuple[int, int], List[Tuple[int, int, float, float]]] = {}
         self._tree_collision_ref = None
-        self._tree_collision_count = -1
+        self._tree_collision_indexed: Dict[int, int] = {}  # scenery_index -> trees already indexed
+        self._fence_collision_grid: Dict[Tuple[int, int], List[Any]] = {}
+        self._fence_collision_ref = None
+        self._fence_collision_count = 0
         self.vomit_puddles: List[Tuple[float, float]] = []
         self.taxi_smoke_timer: float = 0.0
         self.speed_camera_flash_timer: float = 0.0
@@ -198,9 +204,30 @@ class TaxiManager:
                 yield cell_x, cell_y
 
     def _nearby_collision_buildings(self, buildings: List[Building], x: float, y: float, radius: float):
-        if buildings is not self._building_collision_ref or len(buildings) != self._building_collision_count:
+        # autofetch.py's _extend_unique() only ever grows this list in
+        # place (target.extend(...) - same list object, never reordered
+        # or shrunk) as new tiles stream in, so a real, growing city map
+        # made this fire on nearly every frame right after a tile
+        # integrated - and rebuilt the *entire* grid from every building
+        # ever loaded, not just the new ones, every single time. Confirmed
+        # via a real autofetch-enabled drive: "collisions" dominated 97%
+        # of frames that missed the 60fps budget, several ms each,
+        # clustered right around tile-integration frames, car speed
+        # irrelevant (0 m/s reproduced it too - this scales with total
+        # loaded map size, not how far the player has driven). Indexing
+        # only the newly appended tail is safe exactly because of that
+        # append-only guarantee; only fall back to a full rebuild for a
+        # genuinely different list (a new city) or the list somehow
+        # shrinking (defensive - autofetch never does this today).
+        if buildings is not self._building_collision_ref:
             self._building_collision_grid.clear()
-            for building in buildings:
+            self._building_collision_ref = buildings
+            self._building_collision_count = 0
+        if len(buildings) < self._building_collision_count:
+            self._building_collision_grid.clear()
+            self._building_collision_count = 0
+        if len(buildings) > self._building_collision_count:
+            for building in buildings[self._building_collision_count:]:
                 bbox = getattr(building, "bbox", (0.0, 0.0, 0.0, 0.0))
                 if bbox == (0.0, 0.0, 0.0, 0.0):
                     points = getattr(building, "points_m", [])
@@ -211,7 +238,6 @@ class TaxiManager:
                     building.bbox = bbox
                 for cell in self._collision_cells(*bbox):
                     self._building_collision_grid.setdefault(cell, []).append(building)
-            self._building_collision_ref = buildings
             self._building_collision_count = len(buildings)
         nearby = []
         seen = set()
@@ -224,20 +250,83 @@ class TaxiManager:
         return nearby
 
     def _nearby_collision_trees(self, sceneries: List[Any], x: float, y: float, radius: float):
-        tree_count = sum(len(getattr(scenery, "trees", ())) for scenery in sceneries)
-        if sceneries is not self._tree_collision_ref or tree_count != self._tree_collision_count:
+        # Unlike buildings/fences, an individual scenery's own .trees list
+        # can change after that scenery is already indexed - osm/trees.py
+        # both appends to it (trees planted as a tile streams in) and
+        # reassigns it outright (remove_trees_under_roads() pruning), so
+        # the outer sceneries list being append-only isn't enough on its
+        # own here. Track how many of each scenery's trees are already
+        # indexed (by its position in the list, which *is* stable -
+        # autofetch never reorders it) and only walk the ones that
+        # changed, rather than every tree in the whole loaded map on every
+        # call. A per-scenery tree count going down (pruned) can't be
+        # cheaply un-indexed from the cell-bucketed grid, so that still
+        # falls back to a full rebuild - but that only happens once per
+        # map-sync cycle (remove_trees_under_roads runs once, not every
+        # frame), while plain growth from autofetch - the hot path this
+        # is actually for - stays cheap.
+        if sceneries is not self._tree_collision_ref:
             self._tree_collision_grid.clear()
-            for scenery_index, scenery in enumerate(sceneries):
-                for tree_index, (tree_x, tree_y) in enumerate(getattr(scenery, "trees", ())):
-                    cell = (math.floor(tree_x / 100.0), math.floor(tree_y / 100.0))
-                    self._tree_collision_grid.setdefault(cell, []).append(
-                        (scenery_index, tree_index, tree_x, tree_y)
-                    )
+            self._tree_collision_indexed = {}
             self._tree_collision_ref = sceneries
-            self._tree_collision_count = tree_count
+        shrank = any(
+            len(getattr(scenery, "trees", ())) < self._tree_collision_indexed.get(scenery_index, 0)
+            for scenery_index, scenery in enumerate(sceneries)
+        )
+        if shrank:
+            self._tree_collision_grid.clear()
+            self._tree_collision_indexed = {}
+        for scenery_index, scenery in enumerate(sceneries):
+            trees = getattr(scenery, "trees", ())
+            indexed = self._tree_collision_indexed.get(scenery_index, 0)
+            if len(trees) <= indexed:
+                continue
+            for tree_index in range(indexed, len(trees)):
+                tree_x, tree_y = trees[tree_index]
+                cell = (math.floor(tree_x / 100.0), math.floor(tree_y / 100.0))
+                self._tree_collision_grid.setdefault(cell, []).append(
+                    (scenery_index, tree_index, tree_x, tree_y)
+                )
+            self._tree_collision_indexed[scenery_index] = len(trees)
         nearby = []
         for cell in self._collision_cells(x - radius, y - radius, x + radius, y + radius):
             nearby.extend(self._tree_collision_grid.get(cell, ()))
+        return nearby
+
+    def _nearby_collision_fences(self, sceneries: List[Any], x: float, y: float, radius: float):
+        # Same fix, same reason, as _nearby_collision_buildings above -
+        # autofetch only ever appends to this list, so index just the new
+        # tail on growth instead of rebuilding from every scenery ever
+        # loaded.
+        if sceneries is not self._fence_collision_ref:
+            self._fence_collision_grid.clear()
+            self._fence_collision_ref = sceneries
+            self._fence_collision_count = 0
+        if len(sceneries) < self._fence_collision_count:
+            self._fence_collision_grid.clear()
+            self._fence_collision_count = 0
+        if len(sceneries) > self._fence_collision_count:
+            for scenery in sceneries[self._fence_collision_count:]:
+                if str(getattr(scenery, "kind", "")).lower() != "construction":
+                    continue
+                bbox = getattr(scenery, "bbox", (0.0, 0.0, 0.0, 0.0))
+                if bbox == (0.0, 0.0, 0.0, 0.0):
+                    points = getattr(scenery, "points_m", [])
+                    if not points:
+                        continue
+                    xs, ys = zip(*points)
+                    bbox = (min(xs), min(ys), max(xs), max(ys))
+                for cell in self._collision_cells(*bbox):
+                    self._fence_collision_grid.setdefault(cell, []).append(scenery)
+            self._fence_collision_count = len(sceneries)
+        nearby = []
+        seen = set()
+        for cell in self._collision_cells(x - radius, y - radius, x + radius, y + radius):
+            for scenery in self._fence_collision_grid.get(cell, ()):
+                scenery_id = id(scenery)
+                if scenery_id not in seen:
+                    seen.add(scenery_id)
+                    nearby.append(scenery)
         return nearby
 
     def set_language(self, language: str) -> None:
@@ -441,6 +530,14 @@ class TaxiManager:
                     "shake": 0.55,
                     "leaves": 1.2,
                     "angle": player_car.heading,
+                    # World position, so render/scenery.py's draw_trees()
+                    # can tell whether this specific tree could even be
+                    # visible right now, instead of treating *any* effect
+                    # anywhere in the whole loaded map as a reason to
+                    # bypass the tree cache globally, forever (see its
+                    # docstring for why that mattered).
+                    "x": tree_x,
+                    "y": tree_y,
                 }
                 if impact_speed_kmh > 80.0:
                     self.fallen_trees.add(key)
@@ -451,6 +548,169 @@ class TaxiManager:
                     self.total_score -= penalty
                     self.notification_msg = tr(self.language, "tree_crash", penalty=penalty)
                     self.notification_timer = 3.5
+                return True
+        return False
+
+    def check_fence_collision(
+        self,
+        player_car: Car,
+        sceneries: List[Any],
+        sim_time: float,
+        previous_position: Optional[Tuple[float, float]] = None,
+        penalty: int = 150,
+    ) -> bool:
+        """Stop the car at a construction-site fence and apply one crash penalty per impact."""
+        expired = [fid for fid, t in self._crashed_fence_cooldowns.items() if sim_time - t > 3.0]
+        for fid in expired:
+            del self._crashed_fence_cooldowns[fid]
+
+        car_radius = math.hypot(player_car.length_m, player_car.width_m) * 0.5
+        car_corners = get_oriented_box_corners(
+            player_car.x, player_car.y, player_car.heading, player_car.length_m, player_car.width_m
+        )
+
+        for scenery in self._nearby_collision_fences(sceneries, player_car.x, player_car.y, car_radius):
+            points = getattr(scenery, "points_m", [])
+            if len(points) < 3:
+                continue
+            bbox = getattr(scenery, "bbox", (0.0, 0.0, 0.0, 0.0))
+            if bbox != (0.0, 0.0, 0.0, 0.0):
+                if (player_car.x < bbox[0] - car_radius or player_car.x > bbox[2] + car_radius
+                        or player_car.y < bbox[1] - car_radius or player_car.y > bbox[3] + car_radius):
+                    continue
+
+            intersects = point_in_polygon(player_car.x, player_car.y, points)
+            if not intersects:
+                intersects = any(point_in_polygon(x, y, points) for x, y in car_corners)
+            if not intersects:
+                intersects = any(
+                    dist_point_to_segment(player_car.x, player_car.y, points[i][0], points[i][1],
+                                         points[(i + 1) % len(points)][0], points[(i + 1) % len(points)][1])
+                    <= car_radius
+                    for i in range(len(points))
+                )
+            if not intersects:
+                continue
+
+            if previous_position is not None:
+                player_car.x, player_car.y = previous_position
+            player_car.speed = 0.0
+            self.taxi_smoke_timer = max(self.taxi_smoke_timer, 5.0)
+            fence_id = id(scenery)
+            if fence_id not in self._crashed_fence_cooldowns:
+                self._crashed_fence_cooldowns[fence_id] = sim_time
+                self.total_score -= penalty
+                self.notification_msg = tr(self.language, "fence_crash", penalty=penalty)
+                self.notification_timer = 3.5
+                logger.info("Player crashed into construction fence: -%d pts", penalty)
+            return True
+
+        return False
+
+    def check_curb_bump(
+        self,
+        player_car: Car,
+        curbs: List[Curb],
+        previous_position: Optional[Tuple[float, float]],
+        sim_time: float,
+        curb_grid: Optional[SpatialWayGrid] = None,
+        speed_factor: float = 0.85,
+        bump_back_max_speed_kmh: float = 15.0,
+    ) -> bool:
+        """Hit a mapped kerb line: at parking/walking speed a real curb is
+        a hard stop, so bump the car back onto the road side it came from;
+        faster than that it's just a jolt (the car has enough momentum to
+        climb it) that slows the car down without stopping it outright."""
+        if not curbs or previous_position is None:
+            return False
+        px, py = previous_position
+        if px == player_car.x and py == player_car.y:
+            return False
+
+        expired = [key for key, t in self._curb_bump_cooldowns.items() if sim_time - t > 0.5]
+        for key in expired:
+            del self._curb_bump_cooldowns[key]
+
+        radius = math.hypot(player_car.length_m, player_car.width_m) * 0.5
+        candidates = (
+            curb_grid.ways_in_rect(
+                min(px, player_car.x) - radius, min(py, player_car.y) - radius,
+                max(px, player_car.x) + radius, max(py, player_car.y) + radius,
+            )
+            if curb_grid is not None
+            else curbs
+        )
+        for curb in candidates:
+            curb_id = id(curb)
+            if curb_id in self._curb_bump_cooldowns:
+                continue
+            points = curb.points_m
+            for start, end in zip(points, points[1:]):
+                if segments_intersect((px, py), (player_car.x, player_car.y), start, end):
+                    self._curb_bump_cooldowns[curb_id] = sim_time
+                    if abs(player_car.speed) * 3.6 <= bump_back_max_speed_kmh:
+                        player_car.x, player_car.y = px, py
+                        player_car.speed = 0.0
+                    else:
+                        player_car.speed *= speed_factor
+                    return True
+        return False
+
+    def check_speed_bump(
+        self,
+        player_car: Car,
+        speed_bumps: List[SpeedBump],
+        previous_position: Optional[Tuple[float, float]],
+        sim_time: float,
+        speed_bump_grid: Optional[SpatialWayGrid] = None,
+        safe_speed_kmh: float = 25.0,
+        max_slowdown: float = 0.5,
+    ) -> bool:
+        """Jolt and slow the car when it drives over a speed bump/table/
+        cushion - harder the faster it was going, like a real one. Under
+        `safe_speed_kmh` (a driver taking it properly slow) there's no
+        penalty at all; above it, the car loses more speed the further
+        over that it was going, capped at `max_slowdown` so it can never
+        outright stop the car."""
+        if not speed_bumps or previous_position is None:
+            return False
+        px, py = previous_position
+        if px == player_car.x and py == player_car.y:
+            return False
+
+        expired = [key for key, t in self._speed_bump_cooldowns.items() if sim_time - t > 1.0]
+        for key in expired:
+            del self._speed_bump_cooldowns[key]
+
+        radius = math.hypot(player_car.length_m, player_car.width_m) * 0.5
+        candidates = (
+            speed_bump_grid.ways_in_rect(
+                min(px, player_car.x) - radius, min(py, player_car.y) - radius,
+                max(px, player_car.x) + radius, max(py, player_car.y) + radius,
+            )
+            if speed_bump_grid is not None
+            else speed_bumps
+        )
+        for bump in candidates:
+            bump_id = id(bump)
+            if bump_id in self._speed_bump_cooldowns:
+                continue
+            # The bump spans width_m across the road, centered on (x, y);
+            # build that short perpendicular segment and test whether the
+            # car's movement this frame crossed it - same shape draw_speed_bumps()
+            # renders.
+            angle = getattr(bump, "direction_angle", None) or 0.0
+            half_w = getattr(bump, "width_m", 3.5) * 0.5
+            perp_x, perp_y = -math.sin(angle), math.cos(angle)
+            start = (bump.x - perp_x * half_w, bump.y - perp_y * half_w)
+            end = (bump.x + perp_x * half_w, bump.y + perp_y * half_w)
+            if segments_intersect((px, py), (player_car.x, player_car.y), start, end):
+                self._speed_bump_cooldowns[bump_id] = sim_time
+                speed_kmh = abs(player_car.speed) * 3.6
+                if speed_kmh > safe_speed_kmh:
+                    excess_kmh = speed_kmh - safe_speed_kmh
+                    slowdown = min(max_slowdown, excess_kmh / 150.0)
+                    player_car.speed *= (1.0 - slowdown)
                 return True
         return False
 
@@ -957,12 +1217,22 @@ class TaxiManager:
         )
 
     def pick_phone_pickup(self, car_x: float, car_y: float) -> Optional[TaxiTarget]:
-        """Pick a phone-order pickup using the intended location mix."""
+        """Pick a phone-order pickup using the intended location mix.
+
+        Every hour bracket falls back to any nearby named road point if its
+        preferred source(s) come up empty (e.g. no taxi stop within range
+        at night, no building at all in a sparse area) - matching
+        spawn_mission's robustness. Without this, a sparse area/time-of-
+        day combination could leave generate_offers stuck returning
+        nothing indefinitely, since (unlike spawn_mission) it has no other
+        fallback of its own.
+        """
         hour = (self.game_time_seconds / 3600.0) % 24.0
+        pickup: Optional[TaxiTarget] = None
         if 0.0 <= hour < 5.0:
-            return self.pick_random_taxi_stop(ref_x=car_x, ref_y=car_y, min_dist=150.0, max_dist=1200.0)
-        if 20.0 <= hour < 24.0 and random.random() < 0.30:
-            return self.pick_random_building_point(
+            pickup = self.pick_random_taxi_stop(ref_x=car_x, ref_y=car_y, min_dist=150.0, max_dist=1200.0)
+        elif 20.0 <= hour < 24.0 and random.random() < 0.30:
+            pickup = self.pick_random_building_point(
                 ref_x=car_x,
                 ref_y=car_y,
                 min_dist=150.0,
@@ -975,57 +1245,48 @@ class TaxiManager:
                 max_dist=1200.0,
                 venue_types=None,
             )
-        if 5.0 <= hour < 8.0 or 20.0 <= hour < 24.0:
-            return self.pick_random_building_point(
+        elif 5.0 <= hour < 8.0 or 20.0 <= hour < 24.0 or 8.0 <= hour < 12.0:
+            pickup = self.pick_random_building_point(
                 ref_x=car_x,
                 ref_y=car_y,
                 min_dist=150.0,
                 max_dist=1200.0,
                 venue_types=None,
             )
-        if 8.0 <= hour < 12.0:
-            return self.pick_random_building_point(
-                ref_x=car_x,
-                ref_y=car_y,
-                min_dist=150.0,
-                max_dist=1200.0,
-                venue_types=None,
-            )
-        roll = random.random()
-        if roll < 0.70:
-            sources = (self.pick_random_building_point, self.pick_random_road_point, self.pick_random_taxi_stop)
-        elif roll < 0.95:
-            sources = (self.pick_random_road_point, self.pick_random_building_point, self.pick_random_taxi_stop)
         else:
-            sources = (self.pick_random_taxi_stop, self.pick_random_building_point, self.pick_random_road_point)
-
-        for source in sources:
-            pickup = source(car_x, car_y, min_dist=150.0, max_dist=1200.0)
-            if pickup:
-                return pickup
-        return None
+            roll = random.random()
+            if roll < 0.70:
+                sources = (self.pick_random_building_point, self.pick_random_road_point, self.pick_random_taxi_stop)
+            elif roll < 0.95:
+                sources = (self.pick_random_road_point, self.pick_random_building_point, self.pick_random_taxi_stop)
+            else:
+                sources = (self.pick_random_taxi_stop, self.pick_random_building_point, self.pick_random_road_point)
+            for source in sources:
+                pickup = source(car_x, car_y, min_dist=150.0, max_dist=1200.0)
+                if pickup:
+                    break
+        if pickup:
+            return pickup
+        return self.pick_random_road_point(ref_x=car_x, ref_y=car_y, min_dist=150.0, max_dist=1200.0)
 
     def pick_phone_dropoff(self, pickup_x: float, pickup_y: float) -> Optional[TaxiTarget]:
-        """Pick a phone-order dropoff using places and addresses only."""
+        """Pick a phone-order dropoff using places and addresses only.
+
+        Falls back to any nearby named road point for every hour bracket
+        if the preferred building search comes up empty - see
+        pick_phone_pickup's docstring for why."""
         hour = (self.game_time_seconds / 3600.0) % 24.0
-        if 0.0 <= hour < 5.0:
-            return self.pick_random_building_point(
+        dropoff: Optional[TaxiTarget] = None
+        if 0.0 <= hour < 5.0 or 5.0 <= hour < 8.0 or 8.0 <= hour < 12.0:
+            dropoff = self.pick_random_building_point(
                 ref_x=pickup_x,
                 ref_y=pickup_y,
                 min_dist=self.min_distance_m,
                 max_dist=float("inf"),
                 venue_types={None},
             )
-        if 5.0 <= hour < 8.0:
-            return self.pick_random_building_point(
-                ref_x=pickup_x,
-                ref_y=pickup_y,
-                min_dist=self.min_distance_m,
-                max_dist=float("inf"),
-                venue_types={None},
-            )
-        if 20.0 <= hour < 24.0:
-            return self.pick_random_building_point(
+        elif 20.0 <= hour < 24.0:
+            dropoff = self.pick_random_building_point(
                 ref_x=pickup_x,
                 ref_y=pickup_y,
                 min_dist=self.min_distance_m,
@@ -1038,24 +1299,18 @@ class TaxiManager:
                 max_dist=float("inf"),
                 venue_types={None},
             )
-        if 8.0 <= hour < 12.0:
-            return self.pick_random_building_point(
-                ref_x=pickup_x,
-                ref_y=pickup_y,
-                min_dist=self.min_distance_m,
-                max_dist=float("inf"),
-                venue_types={None},
-            )
-        if random.random() < 0.70:
-            sources = (self.pick_random_building_point, self.pick_random_road_point)
         else:
-            sources = (self.pick_random_road_point, self.pick_random_building_point)
-
-        for source in sources:
-            dropoff = source(pickup_x, pickup_y, self.min_distance_m, float("inf"))
-            if dropoff:
-                return dropoff
-        return None
+            if random.random() < 0.70:
+                sources = (self.pick_random_building_point, self.pick_random_road_point)
+            else:
+                sources = (self.pick_random_road_point, self.pick_random_building_point)
+            for source in sources:
+                dropoff = source(pickup_x, pickup_y, self.min_distance_m, float("inf"))
+                if dropoff:
+                    break
+        if dropoff:
+            return dropoff
+        return self.pick_random_road_point(ref_x=pickup_x, ref_y=pickup_y, min_dist=self.min_distance_m, max_dist=float("inf"))
 
     def generate_offers(
         self, car_x: float, car_y: float, count: int = 3, append: bool = False
@@ -1098,6 +1353,17 @@ class TaxiManager:
             len(offers),
             [round(offer.pickup_distance_m) for offer in offers],
         )
+        if not append and not self.offers:
+            # A fresh "player just became available" attempt (discard,
+            # dropoff, vomit-abandon - see their call sites) found nothing,
+            # e.g. no eligible pickup/dropoff in range for the current
+            # time of day/location. next_offer_timer isn't decremented
+            # while a passenger is aboard, so it can be sitting on a stale
+            # value up to PHONE_OFFER_MAX_INTERVAL_S old from before that
+            # ride even started - without this, the player could be stuck
+            # staring at zero offers for up to a minute after this attempt
+            # already failed, instead of the game retrying soon.
+            self.next_offer_timer = min(self.next_offer_timer, random.uniform(2.0, 6.0))
         return offers
 
     def accept_offer(self, index: int, car_x: float, car_y: float) -> bool:

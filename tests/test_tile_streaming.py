@@ -1,6 +1,9 @@
+import theroadragetrip.tile_streaming as tile_streaming
 from theroadragetrip.tile_streaming import (
+    PBF_TILE_SIZE_M,
     TileCoord,
     active_tiles,
+    set_tile_size_m,
     tile_bbox,
     tile_changes,
     world_to_tile,
@@ -29,6 +32,29 @@ def test_active_tiles_contains_exactly_nine_tiles():
     assert TileCoord(10, 20) in tiles
     assert TileCoord(9, 19) in tiles
     assert TileCoord(11, 21) in tiles
+
+
+def test_set_tile_size_m_changes_the_grid():
+    """set_tile_size_m must actually take effect on the very next call -
+    world_to_tile/tile_bbox read the module global directly, not a value
+    captured at some earlier time."""
+    original = tile_streaming.TILE_SIZE_M
+    try:
+        set_tile_size_m(2000.0)
+        assert world_to_tile(2500.0, -100.0) == TileCoord(1, -1)
+        assert tile_bbox(TileCoord(1, -1)) == (2000.0, -2000.0, 4000.0, 0.0)
+    finally:
+        set_tile_size_m(original)
+
+
+def test_pbf_tile_size_keeps_the_active_window_at_or_under_10km():
+    """The active window is always the full 3x3 grid (its worst case,
+    hit on the initial load and on diagonal-ish moves) - PBF_TILE_SIZE_M
+    is chosen so that comes out to ~10x10km, the practical ceiling
+    measured against the real Finland PBF (~28s/530MB; 25x25km already
+    balloons to ~80s/1GB). This guards that calibration from silent
+    drift, not the exact value."""
+    assert PBF_TILE_SIZE_M * 3 <= 10000.0
 
 
 def test_tile_changes_for_cardinal_and_diagonal_moves():
@@ -177,6 +203,51 @@ def test_tile_streaming_loads_missing_tiles_in_background():
     assert metrics["tile_integration_ms"] >= 0.0
 
 
+def test_tile_fetch_projects_all_four_corners_not_just_the_diagonal():
+    """Regression: EPSG:3067 rotates meridians relative to true north away
+    from its central meridian, so a straight meters-space tile rectangle
+    becomes a rotated quadrilateral in lat/lon - transforming only the
+    (min_x,min_y)/(max_x,max_y) diagonal (as opposed to all 4 corners) can
+    compute a lat/lon bbox narrower than the tile actually is, silently
+    excluding a real strip of OSM data at the tile edges even though the
+    tile is then marked fully loaded by its untouched meters coordinates.
+    A fake rotation-like transform (mixing x and y, unlike the other tests'
+    identity/separable fakes, which can't expose this) makes the corner
+    that actually produces the min/max lon fall on the *other* diagonal."""
+    class RotatingTransformer:
+        def transform(self, x, y):
+            return x + y * 0.5, y - x * 0.5
+
+    class TileCache:
+        def __init__(self):
+            self.calls = []
+
+        def preload_region(self, bbox):
+            self.calls.append(bbox)
+            future = Future()
+            future.set_result(MapData([], [], [], [], [], (0.0, 0.0, 1.0, 1.0)))
+            return future
+
+    cache = TileCache()
+    manager = AutoFetchManager(
+        [], (0.0, 0.0, 1000.0, 1000.0), RotatingTransformer(),
+        world_cache_manager=cache,
+    )
+
+    assert manager.start_tile_streaming(500.0, 500.0)
+    deadline = time.time() + 2.0
+    while manager.is_fetching and time.time() < deadline:
+        time.sleep(0.01)
+
+    t = RotatingTransformer()
+    corners = [t.transform(x, y) for x in (-1000.0, 2000.0) for y in (-1000.0, 2000.0)]
+    lons = [lon for lon, _ in corners]
+    lats = [lat for _, lat in corners]
+    expected = (min(lats), min(lons), max(lats), max(lons))
+    assert len(cache.calls) == 1
+    assert cache.calls[0] == expected
+
+
 def test_tile_streaming_respects_cooldown_between_requests():
     """Regression: crossing tiles quickly (driving fast) used to fire a new
     Overpass request the instant the previous one finished, with nothing
@@ -245,7 +316,102 @@ def test_cardinal_tile_transition_batches_two_by_three_region():
     while manager.is_fetching and time.time() < deadline:
         time.sleep(0.01)
 
-    assert cache.calls == [(-1000.0, 0.0, 2000.0, 2000.0)]
+    # Region must include the genuinely new leading column (x=2, the
+    # direction of travel) plus the current one for edge continuity - not
+    # the trailing, already-loaded column behind the player.
+    assert cache.calls == [(-1000.0, 1000.0, 2000.0, 3000.0)]
+
+
+def test_cardinal_tile_transition_requests_the_leading_not_trailing_edge():
+    """Regression test for a sign bug: request_tiles picked the column the
+    player was leaving instead of the one they were entering, so a straight
+    cardinal drive never actually queried the new tile's territory - new
+    roads, buildings and traffic lights there would never be fetched at
+    all until some later, differently-shaped move happened to cover it."""
+    class Transformer:
+        def transform(self, x, y):
+            return x, y
+
+    class TileCache:
+        def __init__(self):
+            self.calls = []
+
+        def preload_region(self, bbox):
+            self.calls.append(bbox)
+            future = Future()
+            future.set_result(MapData([], [], [], [], [], (0.0, 0.0, 1.0, 1.0)))
+            return future
+
+    cache = TileCache()
+    manager = AutoFetchManager([], (0.0, 0.0, 1000.0, 1000.0), Transformer(), world_cache_manager=cache)
+    manager.initialize_player_tile(500.0, 500.0)
+    manager.start_tile_streaming(1000.0, 500.0)
+    deadline = time.time() + 2.0
+    while manager.is_fetching and time.time() < deadline:
+        time.sleep(0.01)
+
+    (min_lat, min_lon, max_lat, max_lon) = cache.calls[0]
+    # x maps to lon here (the fake Transformer is an identity passthrough).
+    # The player moved from tile x=0 into tile x=1, so the newly active,
+    # not-yet-loaded column is x=2 (world x in [2000, 3000)); that range
+    # must be covered by the fetched region.
+    assert max_lon >= 3000.0, "fetch region must cover the newly entered tile column, not just tiles already loaded"
+
+
+def test_evicted_tile_in_the_trailing_column_is_not_marked_loaded_without_being_fetched():
+    """Regression: on a straight cardinal move, integrate_completed_tiles()
+    used to mark *every* tile from start_tile_streaming()'s full missing
+    set as loaded - including ones outside the narrowed request_tiles bbox
+    that move actually fetched (the trailing column, skipped on purpose as
+    a perf optimization - see the "leading not trailing edge" test above,
+    normally safe since the trailing column is already loaded). If a tile
+    there had been evicted earlier (player drove away, came back later) it
+    was genuinely missing, not just "not re-requested" - but got marked
+    loaded anyway, so its own territory was never actually extracted and
+    nothing ever asked for it again. This is what made a road spread wide
+    enough to land in a different tile (regularly: the far carriageway of
+    a divided highway) silently stop loading, permanently."""
+    class Transformer:
+        def transform(self, x, y):
+            return x, y
+
+    class TileCache:
+        def __init__(self):
+            self.calls = []
+
+        def preload_region(self, bbox):
+            self.calls.append(bbox)
+            future = Future()
+            future.set_result(MapData([], [], [], [], [], (0.0, 0.0, 1.0, 1.0)))
+            return future
+
+    cache = TileCache()
+    manager = AutoFetchManager([], (0.0, 0.0, 1000.0, 1000.0), Transformer(), world_cache_manager=cache)
+
+    # Player was at tile (1, 0); everything in that 3x3 window was loaded
+    # *except* (1, -1) - simulating it got evicted at some earlier point
+    # despite remaining active across this transition.
+    manager.player_tile = TileCoord(1, 0)
+    manager.active_tiles = set(active_tiles(TileCoord(1, 0)))
+    manager.loaded_tiles = set(manager.active_tiles)
+    evicted = TileCoord(1, -1)
+    manager.loaded_tiles.discard(evicted)
+
+    # Player moves one tile west, to (0, 0) - a pure cardinal move, so the
+    # fetch narrows to the x in {-1, 0} columns (current + leading/west
+    # edge), excluding x=1 (the trailing column `evicted` sits in).
+    assert manager.start_tile_streaming(500.0, 500.0)
+    deadline = time.time() + 2.0
+    while manager.is_fetching and time.time() < deadline:
+        time.sleep(0.01)
+    while manager.integrate_completed_tiles(max_tiles=1):
+        pass
+
+    assert evicted not in manager.loaded_tiles, (
+        "evicted tile outside the fetched bbox was marked loaded anyway - its territory will never be re-fetched"
+    )
+    # And it must still show up as missing, so a later call picks it up.
+    assert evicted in manager.active_tiles - manager.loaded_tiles - manager.pending_tiles
 
 
 def test_tile_transition_during_fetch_queues_next_region_request():
@@ -300,6 +466,65 @@ def test_tile_object_survives_until_last_tile_owner_is_unloaded():
     assert manager.ways == []
 
 
+def test_logical_intersections_from_different_tiles_all_survive_merge():
+    """LogicalIntersection has no osm_id/id/points_m/x/y, so _map_object_key
+    used to fall through to a (name, kind, x, y) fallback that's identical
+    (None, None, 0.0, 0.0) for every instance - every intersection after
+    the first looked like a duplicate of it and was silently dropped on
+    later tile merges."""
+    from theroadragetrip.osm import LogicalIntersection
+
+    first = LogicalIntersection("0:100:100", (100.0, 100.0), 10.0)
+    second = LogicalIntersection("0:2100:100", (2100.0, 100.0), 10.0)
+    manager = AutoFetchManager([], (0.0, 0.0, 3000.0, 1000.0), transformer=None)
+    manager._merge_tile_world_for(
+        TileCoord(0, 0), MapData([], [], [], [], [], (0.0, 0.0, 1.0, 1.0), logical_intersections=[first]),
+    )
+    manager._merge_tile_world_for(
+        TileCoord(2, 0), MapData([], [], [], [], [], (0.0, 0.0, 1.0, 1.0), logical_intersections=[second]),
+    )
+
+    assert manager.logical_intersections == [first, second]
+
+
+def test_logical_intersections_survive_the_real_non_forced_tile_merge():
+    """_item_tiles() (used by the real tile-streaming merge path, unlike
+    the force_tile=True helper above) had no case for LogicalIntersection:
+    it has no bbox/x/y/points_m, only `center`/`radius_m`, so it fell
+    through to the points_m branch, got an empty tuple back, and
+    _item_tiles returned set() - meaning owned_tiles was *always* empty
+    for it, so it was silently dropped on every real (non-forced) tile
+    merge, unconditionally, regardless of the dedup key."""
+    from theroadragetrip.osm import LogicalIntersection
+
+    intersection = LogicalIntersection("0:500:500", (500.0, 500.0), 10.0)
+    manager = AutoFetchManager([], (0.0, 0.0, 1000.0, 1000.0), transformer=None)
+    manager._merge_tile_world_for_tiles(
+        {TileCoord(0, 0)},
+        MapData([], [], [], [], [], (0.0, 0.0, 1.0, 1.0), logical_intersections=[intersection]),
+        force_tile=False,
+    )
+
+    assert manager.logical_intersections == [intersection]
+
+
+def test_scenery_objects_survive_the_real_non_forced_tile_merge():
+    """scenery_objects (benches, statues, ...) must flow through the same
+    real tile-streaming merge path as every other section - a plain x/y
+    point, so _item_tiles() already handles it generically."""
+    from theroadragetrip.osm import SceneryObject
+
+    bench = SceneryObject(x=500.0, y=500.0, kind="bench", id=1)
+    manager = AutoFetchManager([], (0.0, 0.0, 1000.0, 1000.0), transformer=None)
+    manager._merge_tile_world_for_tiles(
+        {TileCoord(0, 0)},
+        MapData([], [], [], [], [], (0.0, 0.0, 1.0, 1.0), scenery_objects=[bench]),
+        force_tile=False,
+    )
+
+    assert manager.scenery_objects == [bench]
+
+
 def test_combined_region_assigns_crossing_way_to_both_tiles():
     crossing_way = Way(
         [(950.0, 250.0), (1050.0, 250.0)], "residential", 4.0, osm_id=99,
@@ -326,6 +551,40 @@ def test_startup_world_is_registered_and_trimmed_to_active_tiles():
     assert manager.ways == [inside]
     assert len(manager.active_tiles) == 9
     assert manager.loaded_tiles == manager.active_tiles
+
+
+def test_startup_does_not_claim_tiles_the_startup_world_never_reached():
+    """Regression: with a big enough tile size (osm_source=pbf's
+    PBF_TILE_SIZE_M, ~3300m), the initial 3x3 active window (~9900m
+    across) can be far bigger than the actual startup city load (a few
+    km) - initialize_player_tile() used to mark the *entire* window
+    "loaded" regardless, so a player could drive straight to the true
+    edge of the fetched data while still nominally inside their starting
+    tile: start_tile_streaming() never saw anything "missing", so no
+    fetch ever triggered and the road just ran out. Only a tile the
+    startup world's own bounds actually reach may be marked loaded."""
+    original = tile_streaming.TILE_SIZE_M
+    try:
+        set_tile_size_m(3300.0)
+        # Startup world only covers a small area near the origin - nowhere
+        # near the full ~9900m 3x3 window a player tile of (0, 0) implies.
+        manager = AutoFetchManager([], (0.0, 0.0, 1000.0, 1000.0), transformer=None)
+
+        manager.initialize_player_tile(500.0, 500.0)
+
+        assert len(manager.active_tiles) == 9
+        # Tiles whose own bbox happens to touch the small bounds rectangle
+        # near the origin are fairly claimed loaded; ones that don't touch
+        # it at all - the far side of the 3x3 window, e.g. straight north
+        # or east of the startup area - must not be, regardless of being
+        # nominally "in the active window".
+        assert TileCoord(0, 0) in manager.loaded_tiles
+        far_tiles = {TileCoord(1, 1), TileCoord(1, 0), TileCoord(0, 1), TileCoord(1, -1), TileCoord(-1, 1)}
+        assert manager.loaded_tiles.isdisjoint(far_tiles)
+        missing = manager.active_tiles - manager.loaded_tiles - manager.pending_tiles
+        assert far_tiles <= missing
+    finally:
+        set_tile_size_m(original)
 
 
 def test_tile_map_revision_changes_when_streamed_map_changes():
@@ -542,6 +801,35 @@ def test_returning_before_eviction_cancels_it():
     assert TileCoord(0, 0) in manager.loaded_tiles
 
 
+def test_quick_there_and_back_survives_eviction_even_over_memory_budget(monkeypatch):
+    """Regression: a real, long play session routinely already sits over
+    tile_memory_budget_mb just from everything else loaded (pygame, the
+    rest of the process, a big already-streamed world) - so without a
+    grace period, "should_evict" was true essentially always, and driving
+    one tile over and immediately back (a common quick out-and-back move)
+    evicted the tile just left before the player had any chance to
+    return, forcing a real re-fetch and re-merge on the way back every
+    single time."""
+    import theroadragetrip.osm.autofetch as autofetch_module
+
+    monkeypatch.setattr(autofetch_module, "_current_process_memory_mb", lambda: 9999.0)
+    manager = AutoFetchManager([], (0.0, 0.0, 1000.0, 1000.0), transformer=None)
+    manager.initialize_player_tile(500.0, 500.0)
+    manager.tile_memory_budget_mb = 100.0  # always "over budget"
+
+    # (0, 0) itself never leaves active_tiles here - moving one tile over
+    # and back keeps it in both 3x3 windows. It's the trailing edge column,
+    # (-1, *), that goes inactive on the way there and is needed again the
+    # instant the player comes back - exactly the tile eviction-under-
+    # pressure must not have already thrown away.
+    manager.start_tile_streaming(1500.0, 500.0)  # one tile over
+    assert TileCoord(-1, 0) in manager._inactive_tile_since
+
+    manager.start_tile_streaming(500.0, 500.0)  # immediately back
+    assert TileCoord(-1, 0) in manager.loaded_tiles
+    assert TileCoord(-1, 0) not in manager._inactive_tile_since
+
+
 def test_evicts_inactive_tiles_once_over_the_memory_budget(monkeypatch):
     import theroadragetrip.osm.autofetch as autofetch_module
 
@@ -553,9 +841,15 @@ def test_evicts_inactive_tiles_once_over_the_memory_budget(monkeypatch):
 
     manager.start_tile_streaming(3500.0, 500.0)
 
-    # Every tile that left the active window is a candidate; being "over
-    # budget" must have actually unloaded some of them (bounded to one
-    # eviction batch), not left them all resident-but-inactive forever.
+    # Freshly-inactive tiles get a grace period before they're even
+    # eviction candidates, regardless of memory pressure - see
+    # MIN_INACTIVE_S_BEFORE_EVICTION. None should be gone yet.
+    assert len(manager._inactive_tile_since) == before
+
+    # Once they've genuinely sat inactive long enough, over-budget pressure
+    # does evict some of them (bounded to one eviction batch), not leave
+    # them all resident-but-inactive forever.
+    manager._evict_inactive_tiles(time.monotonic() + autofetch_module.MIN_INACTIVE_S_BEFORE_EVICTION + 1.0)
     assert len(manager._inactive_tile_since) <= before - autofetch_module.INACTIVE_TILE_EVICTION_BATCH
 
 

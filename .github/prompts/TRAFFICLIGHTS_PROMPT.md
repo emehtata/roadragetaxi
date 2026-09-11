@@ -195,6 +195,12 @@ Do not require separate OSM traffic signal markers for every approach.
 
 The procedural system should generate missing signals where necessary.
 
+Exception: this only fills gaps when there is no real, lane-specific
+signal evidence anywhere in the junction (see Section 20, Case A vs
+Case B). The moment even one arm has a real signal node placed on its
+own lane, trust that evidence instead - an approach the data gives no
+node for gets no light, not a guess.
+
 ---
 
 # 6. Multi-Lane Intersections
@@ -742,7 +748,7 @@ The implementation must be resilient to incomplete OSM data.
 
 Examples:
 
-### Case A: One traffic signal node
+### Case A: One traffic signal node, in the middle of the junction
 
 ```text
        ●
@@ -753,16 +759,26 @@ Examples:
 Interpretation:
 
 ```text
-Likely signal-controlled intersection.
-Analyse all approaches.
-Generate missing signal groups.
+No lane-specific evidence - this one point could belong to any arm.
+Likely still a signal-controlled intersection.
+Spread a synthesized signal to every incoming approach.
 ```
 
-### Case B: Signal tags only on one road
+### Case B: A physical signal node on a specific lane/road
 
-Do not assume only that road is controlled.
+Use that node's real position for that lane's signal outright - do not
+move it, average it toward the junction center, or invent a nearby
+alternative.
 
-Analyse the entire intersection.
+Do not also invent signals for the other approaches just because they
+lack their own node: if this junction has *any* real, lane-attributed
+evidence, trust it. An approach without its own signal node gets no
+light, not a guess - guessing (the same synthesis Case A uses) is what
+puts a light off any pavement on a curving or irregular approach.
+
+Case A's "spread to every approach" behaviour is reserved for when the
+*only* evidence in the whole junction is one ambiguous, non-lane-
+specific point - not for every junction with incomplete OSM coverage.
 
 ### Case C: No lane information
 

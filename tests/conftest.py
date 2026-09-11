@@ -43,3 +43,18 @@ def _reset_solar_position_cache():
 
     _render_common._solar_position_cache.clear()
     yield
+
+
+@pytest.fixture(autouse=True)
+def _reset_puddle_cache():
+    """Clear the shared id(way) -> puddle-spot cache before every test.
+
+    Keyed by id(way), which Python can reuse for an unrelated Way once an
+    earlier test's object is garbage collected - without this, a later
+    test could spuriously inherit a stale puddle spot for a different way
+    that happens to land on the same id().
+    """
+    from theroadragetrip.render import weather as _render_weather
+
+    _render_weather._puddle_cache.clear()
+    yield

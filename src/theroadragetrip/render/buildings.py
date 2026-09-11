@@ -2,59 +2,20 @@ from . import common
 from .common import (
     SCREEN_W,
     SCREEN_H,
-    FPS,
     PX_PER_M,
     CACHE_PADDING_PX,
-    STATIC_ZOOM_STEP,
-    SOLAR_UPDATE_INTERVAL_SECONDS,
-    GAME_DATE,
-    FINLAND_SUMMER_TIME_OFFSET,
-    DEFAULT_SUN_LATITUDE,
-    DEFAULT_SUN_LONGITUDE,
-    _solar_position_cache,
-    _reusable_alpha_surfaces,
-    _smoke_surface_cache,
-    _render_logger,
-    _pending_static_rebuilds,
-    _static_rebuilds_this_frame,
-    invalidate_static_caches,
-    begin_static_cache_frame,
     _rebuild_or_stale,
     _static_cache_zoom,
-    _reusable_alpha_surface,
-    _smoke_surface,
-    solar_altitude_and_events,
-    _format_solar_time,
-    _get_game_version,
-    _draw_version,
     world_to_screen,
-    asphalt_texture_tile_size,
-    road_color_for_way,
-    road_render_priority,
     get_viewport_bounds,
-    minimum_px_per_m_for_viewport_width,
-    _covered_by_higher_road,
-    _vehicle_is_on_bridge,
-    GAME_VERSION,
 )
 import math
-import logging
-import os
-import random
-import subprocess
 import time
-from datetime import date
-from importlib.metadata import PackageNotFoundError, version as package_version
-from typing import List, Optional, Tuple
+from typing import List, Optional
 
-from shapely.geometry import LineString
-from shapely.ops import unary_union
 
-from ..geo import clip_polygon_to_rect, compute_bbox, dist_point_to_segment, meters_to_latlon, point_in_polygon
-from ..osm import Building, BusStop, Place, Scenery, TaxiStop, Water, Way
-from ..physics import Car, MAX_SPEED, is_point_on_road
-from ..taxi import TaxiManager, TaxiState
-from ..localization import tr
+from ..geo import dist_point_to_segment, point_in_polygon
+from ..osm import Building, Place
 
 
 BUILDING_WALL_COLORS = ((158, 105, 82), (174, 166, 143), (116, 131, 119), (139, 139, 137))
@@ -150,9 +111,11 @@ MAX_BUILDING_SIGN_FONT_SIZE = 32
 # zoom or shrinking to nothing at high zoom.
 MAX_BUILDING_SIGN_WIDTH_M = 3.0
 MAX_BUILDING_SIGN_HEIGHT_M = 1.0
-# Doors are always drawn spanning up to this fraction of the wall height from
-# the ground (see the entrance-drawing loop below); signs are anchored above
-# this line, with a little clearance, so a sign never covers a doorway.
+# A door itself is always ground-anchored and one storey tall (see the
+# entrance-drawing loop below) - this ratio no longer describes the door,
+# only where a facade sign is anchored: comfortably above where even a
+# tall building's ground-floor door reaches, with a little clearance, so
+# a sign never covers a doorway.
 DOOR_TOP_V_RATIO = 0.48
 SIGN_V_CLEARANCE = 0.04
 # Cap on the on-screen facade "depth" (the pseudo-3D roof-offset used to draw
@@ -391,8 +354,7 @@ def draw_buildings(
         id(places),
         len(places) if places else 0,
         id(spatial_grid),
-        round(camx * cache_zoom / 128.0),
-        round(camy * cache_zoom / 128.0),
+        *common._phased_cache_grid_cell("buildings", camx, camy, cache_zoom),
         cache_zoom,
         screen.get_size(),
     )
@@ -442,7 +404,22 @@ def _draw_buildings_uncached(
     """Draw building footprints intersecting viewport."""
     import pygame
 
-    vminx, vminy, vmaxx, vmaxy = get_viewport_bounds(camx, camy, px_per_m, screen_w, screen_h, 50.0)
+    # screen_w/screen_h here are already the padded cache surface's own
+    # dimensions (CACHE_PADDING_PX baked in by the caller), so this margin
+    # is pure extra beyond that - and the cache's offset-blit reuse can
+    # never take advantage of more than CACHE_PADDING_PX/px_per_m of it
+    # anyway (~11m at a typical driving zoom), regardless of how big any
+    # individual building is: a rebuild always re-queries with the
+    # *current* camera position, so it catches a huge building astride
+    # the edge just as correctly with a small margin as a large one - the
+    # margin only needs to cover the in-between-rebuilds camera drift, not
+    # the building's own size. A wide margin here was selecting and fully
+    # drawing buildings tens of meters past anything the cache could ever
+    # actually show before its next rebuild, in a real city with tens of
+    # thousands of buildings loaded - real cost (the same "culprit:
+    # rendering" FPS-drop pattern already fixed for roads) for no visual
+    # benefit.
+    vminx, vminy, vmaxx, vmaxy = get_viewport_bounds(camx, camy, px_per_m, screen_w, screen_h, 20.0)
 
     visible_buildings = (
         spatial_grid.ways_in_rect(vminx, vminy, vmaxx, vmaxy)
@@ -572,20 +549,26 @@ def _draw_buildings_uncached(
             roof_x = roof_point[0] - point[0]
             roof_y = roof_point[1] - point[1]
             door_width = min(11.0, max(3.0, edge_length * 0.22))
-            door_height = max(5.0, min(13.0, abs(roof_y) * 0.68))
-            door_x, door_y = world_to_screen(
+            # A door is one story tall, never a fraction of the *whole*
+            # building's facade - sizing/anchoring it off the full wall
+            # depth (as DOOR_TOP_V_RATIO of abs(roof_y) used to) put it
+            # floating well above the ground on anything taller than one
+            # storey. Ground_x/y (the entrance's own point, v=0 on the
+            # wall) is always the door's base; it only ever extends
+            # upward by one storey's worth of the facade.
+            one_story_px = abs(roof_y) / max(1, story_count)
+            door_height = max(5.0, min(13.0, one_story_px * 0.68))
+            ground_x, ground_y = world_to_screen(
                 entrance_x, entrance_y, camx, camy, px_per_m, screen_w, screen_h
             )
-            door_x += roof_x * DOOR_TOP_V_RATIO
-            door_y += roof_y * DOOR_TOP_V_RATIO
-            door_shift_x = -roof_x * door_height / max(abs(roof_y), 1.0)
-            door_shift_y = -roof_y * door_height / max(abs(roof_y), 1.0)
+            door_shift_x = roof_x * door_height / max(abs(roof_y), 1.0)
+            door_shift_y = roof_y * door_height / max(abs(roof_y), 1.0)
             half_door = door_width / 2
             door = [
-                (door_x - edge_x * half_door, door_y - edge_y * half_door),
-                (door_x + edge_x * half_door, door_y + edge_y * half_door),
-                (door_x + edge_x * half_door + door_shift_x, door_y + edge_y * half_door + door_shift_y),
-                (door_x - edge_x * half_door + door_shift_x, door_y - edge_y * half_door + door_shift_y),
+                (ground_x - edge_x * half_door, ground_y - edge_y * half_door),
+                (ground_x + edge_x * half_door, ground_y + edge_y * half_door),
+                (ground_x + edge_x * half_door + door_shift_x, ground_y + edge_y * half_door + door_shift_y),
+                (ground_x - edge_x * half_door + door_shift_x, ground_y - edge_y * half_door + door_shift_y),
             ]
             pygame.draw.polygon(screen, (58, 48, 42), door)
             pygame.draw.lines(screen, (32, 28, 25), True, door, 1)

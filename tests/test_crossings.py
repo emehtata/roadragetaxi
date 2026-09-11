@@ -166,6 +166,48 @@ def test_crossing_node_off_road_centerline_snaps_onto_the_road():
     )
 
 
+def test_nearby_crossings_at_a_compact_junction_dont_overlap():
+    """Regression: a real, compact junction mapped one highway=crossing
+    node per leg a few meters apart (Torikatu/Pakkahuoneenkatu in Oulu).
+    Each crossing sized to its own road's full width rendered as an
+    ~8m-wide zebra field regardless of how close the next crossing was,
+    so two crossings on roughly perpendicular roads overlapped into an
+    hourglass/X pattern in the middle of the junction instead of two
+    separate, non-overlapping crossings."""
+    elements = [
+        {"type": "node", "id": 1, "lat": 65.0, "lon": 25.0},
+        {"type": "node", "id": 2, "lat": 65.0, "lon": 25.01},
+        {
+            "type": "way", "id": 10, "nodes": [1, 2],
+            "tags": {"highway": "residential", "name": "Torikatu"},
+        },
+        {"type": "node", "id": 3, "lat": 64.998, "lon": 25.005},
+        {"type": "node", "id": 4, "lat": 65.002, "lon": 25.005},
+        {
+            "type": "way", "id": 11, "nodes": [3, 4],
+            "tags": {"highway": "residential", "name": "Pakkahuoneenkatu"},
+        },
+        # Two crossings close to each other (~4m apart) near the junction -
+        # one on each road.
+        {"type": "node", "id": 5, "lat": 65.0, "lon": 25.00505, "tags": {"highway": "crossing"}},
+        {"type": "node", "id": 6, "lat": 65.00003, "lon": 25.005, "tags": {"highway": "crossing"}},
+        # A third, isolated crossing far from the cluster, on the same road.
+        {"type": "node", "id": 7, "lat": 65.0, "lon": 25.008, "tags": {"highway": "crossing"}},
+    ]
+
+    res = build_ways(elements)
+    by_id = {c.id: c for c in res.crossings}
+    assert set(by_id) == {5, 6, 7}
+
+    close_pair_distance = math.hypot(by_id[5].x - by_id[6].x, by_id[5].y - by_id[6].y)
+    assert close_pair_distance < 5.0, "test setup: the pair should actually be close together"
+    assert by_id[5].width_m <= close_pair_distance + 1e-6
+    assert by_id[6].width_m <= close_pair_distance + 1e-6
+
+    # The isolated crossing is unaffected by clipping.
+    assert by_id[7].width_m > close_pair_distance
+
+
 def test_draw_crossings_runs_without_error():
     import pygame
     pygame.init()

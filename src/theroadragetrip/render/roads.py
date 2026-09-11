@@ -2,62 +2,46 @@ from . import common
 from .common import (
     SCREEN_W,
     SCREEN_H,
-    FPS,
     PX_PER_M,
     CACHE_PADDING_PX,
-    STATIC_ZOOM_STEP,
-    SOLAR_UPDATE_INTERVAL_SECONDS,
-    GAME_DATE,
-    FINLAND_SUMMER_TIME_OFFSET,
     DEFAULT_SUN_LATITUDE,
     DEFAULT_SUN_LONGITUDE,
-    _solar_position_cache,
-    _reusable_alpha_surfaces,
-    _smoke_surface_cache,
     _render_logger,
-    _pending_static_rebuilds,
-    _static_rebuilds_this_frame,
-    invalidate_static_caches,
-    begin_static_cache_frame,
     _rebuild_or_stale,
     _static_cache_zoom,
     _reusable_alpha_surface,
-    _smoke_surface,
     solar_altitude_and_events,
     _format_solar_time,
-    _get_game_version,
-    _draw_version,
     world_to_screen,
     asphalt_texture_tile_size,
     road_color_for_way,
     road_render_priority,
     get_viewport_bounds,
-    minimum_px_per_m_for_viewport_width,
-    _covered_by_higher_road,
-    _vehicle_is_on_bridge,
-    GAME_VERSION,
+    _segment_viewport_t_range,
 )
 import math
 import logging
 import os
-import random
-import subprocess
 import time
-from datetime import date
-from importlib.metadata import PackageNotFoundError, version as package_version
 from typing import List, Optional, Tuple
 
 from shapely.geometry import LineString
 from shapely.ops import unary_union
 
-from ..geo import clip_polygon_to_rect, compute_bbox, dist_point_to_segment, meters_to_latlon, point_in_polygon
-from ..osm import Building, BusStop, Place, Scenery, TaxiStop, Water, Way
-from ..physics import Car, MAX_SPEED, is_point_on_road
-from ..taxi import TaxiManager, TaxiState
-from ..localization import tr
+from ..geo import dist_point_to_segment, point_in_polygon
+from ..osm import Building, BusStop, TaxiStop, Way
 
 
+BRIDGE_GUARDRAIL_COLOR = (196, 200, 204)  # light guardrail, contrasts against dark asphalt - shared by road and rail bridges so both read as the same "elevated structure" cue
 MAX_VISIBLE_STREET_LIGHTS = 400
+# How far past the viewport the lamp-geometry rebuild (junctions,
+# lit-segment classification, lamp placement) scopes itself - much wider
+# than the 40m draw-time padding above so the expensive part of a rebuild
+# happens roughly every this-many meters of driving, not every frame the
+# tight viewport edge nears a smaller cached region. ~19ms/rebuild against
+# a real dense Oulu extract at this size (measured); tune down if a
+# slower device needs smaller, more frequent rebuilds instead.
+STREET_LIGHT_GEOMETRY_REGION_PADDING_M = 150.0
 STREET_LIGHT_SPACING_M = 12.0
 STREET_LIGHT_JUNCTION_CLEARANCE_M = 3.0
 STREET_LIGHT_SHADE_COLOR = (0, 0, 0)
@@ -84,6 +68,7 @@ _street_light_frame_pool_surface = None
 _street_light_frame_cache_camera = None
 _street_light_geometry_cache_key = None
 _street_light_geometry_cache = []
+_street_light_geometry_region = None
 _street_light_way_lit_cache_key = None
 _street_light_way_lit_cache = {}
 _street_light_last_debug_log_ms = 0
@@ -108,8 +93,7 @@ def draw_ways(
         id(ways),
         len(ways),
         id(ways[-1]) if ways else None,
-        round(camx * cache_zoom / 128.0),
-        round(camy * cache_zoom / 128.0),
+        *common._phased_cache_grid_cell("roads", camx, camy, cache_zoom),
         cache_zoom,
         screen_w,
         screen_h,
@@ -560,7 +544,7 @@ def draw_ways(
             continue
         bridge_polygons.append(line.buffer(half_width, cap_style="flat", join_style="mitre"))
 
-    edge_color = (196, 200, 204)  # light guardrail, contrasts against dark asphalt
+    edge_color = BRIDGE_GUARDRAIL_COLOR
     edge_width = max(2, round(px_per_m * 0.18))
     if bridge_polygons:
         # Original centerline segments, used to tell side edges (parallel to a
@@ -696,6 +680,7 @@ def draw_street_lights(
     longitude: float = DEFAULT_SUN_LONGITUDE,
     buildings: Optional[List[Building]] = None,
     base_surface=None,
+    building_spatial_grid=None,
 ) -> None:
     """Draw simple roadside lamps on visible urban roads."""
     import pygame
@@ -726,23 +711,26 @@ def draw_street_lights(
                 )
                 _street_light_last_debug_log_ms = now_ms
         return
-    road_cache_signature = tuple(
-        (
-            getattr(way, "osm_id", None),
-            len(way.points_m),
-            way.points_m[0] if way.points_m else None,
-            way.points_m[-1] if way.points_m else None,
-            getattr(way, "half_width_m", 0.0),
-            getattr(way, "lit", None),
-        )
-        for way in ways
-    )
+    # Identity + length + last-element-identity is the same cheap staleness
+    # signal `geometry_cache_key` below uses for `buildings` - sufficient
+    # because nothing in this codebase mutates a Way's fields after
+    # construction (autofetch.py only ever grows the list via .extend(),
+    # which already changes len() and the last element's identity). A
+    # per-way tuple signature used to be rebuilt from scratch here on
+    # *every* frame regardless of cache hit/miss - cheap for a test map,
+    # but a real city's full way list (not just the visible subset) is
+    # tens of thousands of Ways, and this ran unconditionally the moment
+    # street lighting turned on at dusk: measured ~38ms per rebuild against
+    # a real ~31k-way Oulu extract, ~76ms doubled with the identical
+    # signature rebuilt again below for geometry_cache_key - most of a
+    # frame budget, and the reason night driving in a dense real area
+    # dropped to single-digit fps while daytime (lighting code short-
+    # circuits before any of this) was unaffected.
     cache_pixel_size = 16
     frame_cache_key = (
         id(ways),
         len(ways),
         id(ways[-1]) if ways else None,
-        road_cache_signature,
         id(buildings),
         round(camx * cache_zoom / cache_pixel_size),
         round(camy * cache_zoom / cache_pixel_size),
@@ -794,16 +782,77 @@ def draw_street_lights(
     px_per_m = cache_zoom
     # Build the lighting layer beyond the visible edge so lamps are ready before entering view.
     vminx, vminy, vmaxx, vmaxy = get_viewport_bounds(camx, camy, px_per_m, screen_w, screen_h, 40.0)
+    # Geometry (junctions/lit-segments/lamp placement) is rebuilt over a
+    # much wider region than the draw-time viewport above, and kept as
+    # long as the *tight* viewport stays inside it - see
+    # _street_light_geometry_region below. A first version of this instead
+    # recomputed on every 20m grid-cell crossing: cheap in isolation
+    # (bounded by the region, not the whole city - see geometry_cache_key's
+    # comment), but at normal driving speed that's a rebuild roughly every
+    # 1-2 seconds, each one a real (if small) synchronous stall - visible
+    # as a periodic stutter/flicker with its own fps dip, not a smooth
+    # frame. A wider region rebuilt far less often removes that cadence
+    # without bringing back the unbounded whole-city cost this replaced.
+    region_vminx, region_vminy, region_vmaxx, region_vmaxy = get_viewport_bounds(
+        camx, camy, px_per_m, screen_w, screen_h, STREET_LIGHT_GEOMETRY_REGION_PADDING_M
+    )
     if spatial_grid is not None:
-        visible_ways = spatial_grid.ways_in_rect(vminx, vminy, vmaxx, vmaxy)
+        # ways_in_rect() is a generator - materialize it, since below this
+        # gets walked three separate times (junctions, lit-segment cache,
+        # lamp placement); consuming a generator three times silently
+        # yields nothing on the 2nd and 3rd pass instead of an error,
+        # which is exactly how this shipped with zero lamps ever placed.
+        visible_ways = list(spatial_grid.ways_in_rect(region_vminx, region_vminy, region_vmaxx, region_vmaxy))
     else:
         visible_ways = ways
+    global _street_light_geometry_region
+    region = _street_light_geometry_region
+    region_covers_viewport = (
+        region is not None
+        and region[0] <= vminx and region[1] <= vminy
+        and region[2] >= vmaxx and region[3] >= vmaxy
+    )
 
     global _street_light_junction_cache, _street_light_junction_grid_cache, _street_light_building_grid_cache
-    building_cache_key = (id(buildings), len(buildings) if buildings else 0, id(buildings[-1]) if buildings else None)
-    if _street_light_building_grid_cache is None or _street_light_building_grid_cache[0] != building_cache_key:
+    # Nearby-buildings source for the fine building_grid below: query the
+    # caller's own building spatial index (main.py already maintains one
+    # for building collision/lookup, rebuilt incrementally as autofetch
+    # streams buildings in) if given, scoped to the region + the distance
+    # _point_is_near_building actually cares about. Falls back to the full
+    # `buildings` list when no index is passed (e.g. existing tests), same
+    # as before. Without this, a plain `for building in buildings` here -
+    # same shape as the `ways` bug this file was already fixed for twice -
+    # cost ~67ms against a real ~21k-building Oulu extract and, like the
+    # ways case, only grows as autofetch streams more buildings in.
+    building_margin = STREET_LIGHT_BUILDING_DISTANCE_M
+    building_cache_key = (
+        id(buildings), len(buildings) if buildings else 0, id(buildings[-1]) if buildings else None,
+    )
+    if building_spatial_grid is not None:
+        nearby_buildings = list(building_spatial_grid.ways_in_rect(
+            region_vminx - building_margin, region_vminy - building_margin,
+            region_vmaxx + building_margin, region_vmaxy + building_margin,
+        ))
+        # Scoped to the region, so it needs the same region-covers-viewport
+        # gate as the ways-side caches below (checked via `or`, not baked
+        # into building_cache_key - region_covers_viewport flips back to
+        # True the moment this rebuild completes, so folding it into an
+        # equality-compared key would just make every *other* call rebuild
+        # too, chasing its own tail). The unscoped fallback below has no
+        # such gate: the whole `buildings` list is already in there
+        # regardless of where the camera is, so a region change alone
+        # never invalidates it.
+        needs_rebuild = not region_covers_viewport
+    else:
+        nearby_buildings = buildings or ()
+        needs_rebuild = False
+    if (
+        _street_light_building_grid_cache is None
+        or _street_light_building_grid_cache[0] != building_cache_key
+        or needs_rebuild
+    ):
         building_grid = {}
-        for building in buildings or ():
+        for building in nearby_buildings:
             bbox = getattr(building, "bbox", None)
             if not bbox or bbox == (0.0, 0.0, 0.0, 0.0):
                 continue
@@ -817,11 +866,17 @@ def draw_street_lights(
                     building_grid.setdefault((cell_x, cell_y), []).append(building)
         _street_light_building_grid_cache = (building_cache_key, building_grid)
     building_grid = _street_light_building_grid_cache[1]
+    # Scoped to visible_ways (viewport + padding), not the full `ways` list -
+    # `ways` is every way loaded for the whole session, which for a real
+    # city keeps growing as autofetch streams in new tiles while driving
+    # and was, before this fix, walked here in full on every cache miss
+    # (see geometry_cache_key's docstring-comment below for the concrete
+    # cost this had in a real Oulu-scale extract).
     cache_key = (id(ways), len(ways), id(ways[-1]) if ways else None, id(buildings))
-    if _street_light_junction_cache is None or _street_light_junction_cache[0] != cache_key:
+    if _street_light_junction_cache is None or _street_light_junction_cache[0] != cache_key or not region_covers_viewport:
         point_ways = {}
-        ways_by_object_id = {id(way): way for way in ways}
-        for way in ways:
+        ways_by_object_id = {id(way): way for way in visible_ways}
+        for way in visible_ways:
             if getattr(way, "is_drivable", True):
                 for point in way.points_m:
                     key = (round(point[0] / 5.0), round(point[1] / 5.0))
@@ -855,28 +910,30 @@ def draw_street_lights(
     common._street_light_frame_world_positions = []
     global _street_light_geometry_cache_key, _street_light_geometry_cache
     global _street_light_way_lit_cache_key, _street_light_way_lit_cache
+    # region_covers_viewport (see above) makes this refresh as the car
+    # drives past the edge of the last-scoped region. Both loops below
+    # walk visible_ways, not the full `ways` - `ways` is the whole
+    # session's loaded world (unbounded: it only grows as autofetch
+    # streams tiles in while driving, never shrinks), and this used to be
+    # rebuilt from *all* of it on every ways/buildings change. Measured
+    # against a real ~31k-way, ~1000km-of-lit-road Oulu extract: ~19
+    # SECONDS for one rebuild (168k lamp candidates, each doing a spatial
+    # occlusion + junction-clearance check) - and since autofetch appends
+    # new ways continuously while driving, that rebuild kept re-triggering,
+    # each time over a bigger `ways`. Scoped to visible_ways it's bounded
+    # by what's actually near the camera regardless of how much of the
+    # city has been explored.
     geometry_cache_key = (
         id(ways),
         len(ways),
         id(ways[-1]) if ways else None,
-        tuple(
-            (
-                getattr(way, "osm_id", None),
-                len(way.points_m),
-                way.points_m[0] if way.points_m else None,
-                way.points_m[-1] if way.points_m else None,
-                getattr(way, "half_width_m", 0.0),
-                getattr(way, "lit", None),
-            )
-            for way in ways
-        ),
         id(buildings),
         len(buildings) if buildings else 0,
         id(buildings[-1]) if buildings else None,
     )
-    if geometry_cache_key != _street_light_way_lit_cache_key:
+    if geometry_cache_key != _street_light_way_lit_cache_key or not region_covers_viewport:
         way_lit_cache = {}
-        for way in ways:
+        for way in visible_ways:
             if not getattr(way, "is_drivable", True) or len(way.points_m) < 2:
                 way_lit_cache[id(way)] = []
                 continue
@@ -899,11 +956,11 @@ def draw_street_lights(
             way_lit_cache[id(way)] = segment_lighting
         _street_light_way_lit_cache_key = geometry_cache_key
         _street_light_way_lit_cache = way_lit_cache
-    if geometry_cache_key != _street_light_geometry_cache_key:
+    if geometry_cache_key != _street_light_geometry_cache_key or not region_covers_viewport:
         cached_lamps = []
         lamp_spacing = STREET_LIGHT_SPACING_M
         junction_cell_size = 40.0
-        for way in ways:
+        for way in visible_ways:
             if (
                 not getattr(way, "is_drivable", True)
                 or (
@@ -980,6 +1037,7 @@ def draw_street_lights(
                 distance_to_lamp -= segment_length
         _street_light_geometry_cache_key = geometry_cache_key
         _street_light_geometry_cache = cached_lamps
+        _street_light_geometry_region = (region_vminx, region_vminy, region_vmaxx, region_vmaxy)
 
     lamp_centers = []
     lamp_directions = []
@@ -1061,9 +1119,37 @@ def draw_street_lights(
                 _street_light_last_debug_log_ms = now_ms
 
 
+class TireTrail:
+    """One continuous run of tire-track points (a single skid/dirt-trail
+    event - see main.py's track_sequence). Keeps its own running bounding
+    box so draw_tire_tracks can reject a whole trail with one cheap check
+    instead of touching every one of its points - a session's accumulated
+    tracks can number in the thousands, and most of them are nowhere near
+    the current viewport at any given moment."""
+
+    __slots__ = ("is_grass", "points", "min_x", "min_y", "max_x", "max_y")
+
+    def __init__(self, is_grass: bool, x: float, y: float, heading: float, intensity: float) -> None:
+        self.is_grass = is_grass
+        self.points: List[Tuple[float, float, float, float]] = [(x, y, heading, intensity)]
+        self.min_x = self.max_x = x
+        self.min_y = self.max_y = y
+
+    def add(self, x: float, y: float, heading: float, intensity: float) -> None:
+        self.points.append((x, y, heading, intensity))
+        if x < self.min_x:
+            self.min_x = x
+        elif x > self.max_x:
+            self.max_x = x
+        if y < self.min_y:
+            self.min_y = y
+        elif y > self.max_y:
+            self.max_y = y
+
+
 def draw_tire_tracks(
     screen,
-    tracks,
+    trails: List[TireTrail],
     camx: float,
     camy: float,
     grass: bool,
@@ -1072,37 +1158,50 @@ def draw_tire_tracks(
     screen_h: int = SCREEN_H,
     viewport_bounds=None,
 ) -> None:
-    """Draw persistent tire marks either on grass or on paved roads."""
+    """Draw persistent tire marks either on grass or on paved roads.
+
+    Each mark's `intensity` (0..1, see physics.skidmark_intensity) fades it
+    from barely-visible toward full-black rather than an invisible/solid
+    binary switch (SKIDMARK.md section 22.9) - a real skid darkens
+    gradually as slip worsens, it doesn't snap into existence."""
     import pygame
 
-    color = (105, 68, 38) if grass else (28, 28, 28)
+    faint_color = (150, 138, 118) if grass else (110, 110, 110)
+    dark_color = (105, 68, 38) if grass else (28, 28, 28)
     width = max(3, int((0.75 if grass else 0.24) * px_per_m))
-    previous_tires = None
-    previous_sequence = None
-    for track_x, track_y, heading, is_grass, sequence in tracks:
-        if is_grass != grass:
-            previous_tires = None
-            previous_sequence = None
+
+    if viewport_bounds is not None:
+        vminx, vminy, vmaxx, vmaxy = viewport_bounds
+
+    for trail in trails:
+        if trail.is_grass != grass:
             continue
-        if viewport_bounds is not None:
-            vminx, vminy, vmaxx, vmaxy = viewport_bounds
-            if not (vminx <= track_x <= vmaxx and vminy <= track_y <= vmaxy):
+        if viewport_bounds is not None and (
+            trail.max_x < vminx or trail.min_x > vmaxx or trail.max_y < vminy or trail.min_y > vmaxy
+        ):
+            continue
+        previous_tires = None
+        for track_x, track_y, heading, intensity in trail.points:
+            if viewport_bounds is not None and not (vminx <= track_x <= vmaxx and vminy <= track_y <= vmaxy):
                 previous_tires = None
-                previous_sequence = None
                 continue
-        center_x, center_y = world_to_screen(track_x, track_y, camx, camy, px_per_m, screen_w, screen_h)
-        side_x = -math.sin(heading)
-        side_y = math.cos(heading)
-        current_tires = []
-        for side in (-1.0, 1.0):
-            tire_x = center_x + side_x * side * 0.72 * px_per_m
-            tire_y = center_y + side_y * side * 0.72 * px_per_m
-            current_tires.append((int(tire_x), int(tire_y)))
-        if previous_tires is not None and sequence == previous_sequence:
-            for previous_tire, current_tire in zip(previous_tires, current_tires):
-                pygame.draw.line(screen, color, previous_tire, current_tire, width)
-        previous_tires = current_tires
-        previous_sequence = sequence
+            center_x, center_y = world_to_screen(track_x, track_y, camx, camy, px_per_m, screen_w, screen_h)
+            side_x = -math.sin(heading)
+            side_y = math.cos(heading)
+            current_tires = [
+                (
+                    int(center_x + side_x * side * 0.72 * px_per_m),
+                    int(center_y + side_y * side * 0.72 * px_per_m),
+                )
+                for side in (-1.0, 1.0)
+            ]
+            if previous_tires is not None:
+                color = tuple(
+                    int(faint + (dark - faint) * intensity) for faint, dark in zip(faint_color, dark_color)
+                )
+                for previous_tire, current_tire in zip(previous_tires, current_tires):
+                    pygame.draw.line(screen, color, previous_tire, current_tire, width)
+            previous_tires = current_tires
 
 
 def draw_vomit_puddles(screen, puddles, camx: float, camy: float, px_per_m: float = PX_PER_M) -> None:
@@ -1192,6 +1291,324 @@ def draw_roadworks(
             )
 
 
+def draw_curbs(
+    screen,
+    curbs: List,
+    camx: float,
+    camy: float,
+    px_per_m: float = PX_PER_M,
+    screen_w: int = SCREEN_W,
+    screen_h: int = SCREEN_H,
+    spatial_grid=None,
+) -> None:
+    """Draw raised kerbstone lines (OSM barrier=kerb) as a thin dark-grey edge."""
+    import pygame
+
+    if not curbs:
+        return
+
+    vminx, vminy, vmaxx, vmaxy = get_viewport_bounds(camx, camy, px_per_m, screen_w, screen_h, 10.0)
+    visible_curbs = (
+        spatial_grid.ways_in_rect(vminx, vminy, vmaxx, vmaxy)
+        if spatial_grid is not None
+        else curbs
+    )
+    thickness = max(1, int(0.15 * px_per_m))
+    for curb in visible_curbs:
+        bb = getattr(curb, "bbox", None)
+        if bb and bb != (0.0, 0.0, 0.0, 0.0):
+            if bb[2] < vminx or bb[0] > vmaxx or bb[3] < vminy or bb[1] > vmaxy:
+                continue
+        points = curb.points_m
+        if len(points) < 2:
+            continue
+        # A curb can run continuously for kilometers along a road, so
+        # (like draw_railways) only walk the segments that actually cross
+        # the viewport instead of converting the way's entire point list
+        # through world_to_screen every frame regardless of visibility.
+        for (x0, y0), (x1, y1) in zip(points, points[1:]):
+            dx, dy = x1 - x0, y1 - y0
+            seg_len = math.hypot(dx, dy)
+            if seg_len < 1e-6:
+                continue
+            ux, uy = dx / seg_len, dy / seg_len
+            if _segment_viewport_t_range(x0, y0, ux, uy, seg_len, vminx, vminy, vmaxx, vmaxy) is None:
+                continue
+            s0 = world_to_screen(x0, y0, camx, camy, px_per_m, screen_w, screen_h)
+            s1 = world_to_screen(x1, y1, camx, camy, px_per_m, screen_w, screen_h)
+            pygame.draw.line(screen, (55, 55, 52), s0, s1, thickness)
+
+
+RAILWAY_RAIL_COLOR = (150, 145, 135)  # steel rail
+RAILWAY_TIE_COLOR = (90, 65, 45)  # wooden sleeper
+RAILWAY_BALLAST_COLOR = (108, 100, 92)  # crushed-rock bed under a bridge deck
+_RAILWAY_GAUGE_M = 1.435  # standard gauge
+_RAILWAY_TIE_SPACING_M = 2.0
+_RAILWAY_TIE_LENGTH_M = 2.6
+_RAILWAY_BRIDGE_DECK_MARGIN_M = 0.4  # deck edge beyond the tie ends
+
+
+def draw_railways(
+    screen,
+    railways: List,
+    camx: float,
+    camy: float,
+    px_per_m: float = PX_PER_M,
+    screen_w: int = SCREEN_W,
+    screen_h: int = SCREEN_H,
+    spatial_grid=None,
+    only_bridges: Optional[bool] = None,
+) -> None:
+    """Draw rail lines (OSM railway=rail/light_rail/tram/...) as two steel
+    rails and periodic wooden sleepers over a solid crushed-rock ballast
+    bed the full width of the sleepers - a real track always sits on one,
+    ground-level or not, and without it whatever's underneath just showed
+    through the gaps between the sparse rail/tie lines (usually the plain
+    grass/forest background, since real-world OSM landuse=railway ground
+    polygons alongside the track itself are inconsistently mapped). A
+    track additionally marked is_bridge (OSM bridge=yes/viaduct/movable,
+    or a positive layer) also gets a pair of guardrail-colored deck edges
+    on top of that same fill - the same cue draw_ways uses for road
+    bridges - so it reads as a structure spanning whatever's below it
+    instead of track painted on the ground.
+
+    only_bridges filters which tracks this call draws: None (default) draws
+    everything, live, uncached (kept for tests/other single-call
+    callers - main.py never uses it). True/False draws only bridge/only
+    ground-level tracks and *is* cached, static-layer style like roads/
+    buildings (see render/common.py's _road_frame_cache_* for the
+    pattern this mirrors) - railways are just as static as roads between
+    tile streams, but were being fully re-walked and redrawn live every
+    single frame regardless, unlike every sibling layer. main.py calls
+    this twice per frame with True and False - ground-level track is
+    drawn early, in the same pass as roads, so a car crossing it at grade
+    still renders on top like any other road marking; a bridge track is
+    drawn again in a *later* pass, after cars/pedestrians, so anything
+    actually underneath the bridge gets covered the way a real elevated
+    structure would cover it - not left showing through it."""
+    if only_bridges is None:
+        _draw_railways_uncached(screen, railways, camx, camy, px_per_m, screen_w, screen_h, spatial_grid, None)
+        return
+
+    cache_zoom = _static_cache_zoom(px_per_m)
+    layer = "railways_bridge" if only_bridges else "railways_ground"
+    cache_key = (
+        id(railways),
+        len(railways),
+        id(railways[-1]) if railways else None,
+        *common._phased_cache_grid_cell(layer, camx, camy, cache_zoom),
+        cache_zoom,
+        screen_w,
+        screen_h,
+    )
+    key_attr = "_railway_bridge_frame_cache_key" if only_bridges else "_railway_ground_frame_cache_key"
+    surface_attr = "_railway_bridge_frame_cache_surface" if only_bridges else "_railway_ground_frame_cache_surface"
+    camera_attr = "_railway_bridge_frame_cache_camera" if only_bridges else "_railway_ground_frame_cache_camera"
+
+    if cache_key == getattr(common, key_attr) and getattr(common, surface_attr) is not None:
+        cached_camx, cached_camy = getattr(common, camera_attr)
+        screen.blit(
+            getattr(common, surface_attr),
+            (
+                round((cached_camx - camx) * cache_zoom) - CACHE_PADDING_PX,
+                round((camy - cached_camy) * cache_zoom) - CACHE_PADDING_PX,
+            ),
+        )
+        return
+    if _rebuild_or_stale(screen, layer, getattr(common, surface_attr), getattr(common, camera_attr), camx, camy, cache_zoom):
+        return
+
+    import pygame
+
+    cache_width = screen_w + CACHE_PADDING_PX * 2
+    cache_height = screen_h + CACHE_PADDING_PX * 2
+    cache_surface = pygame.Surface((cache_width, cache_height), pygame.SRCALPHA)
+    _draw_railways_uncached(
+        cache_surface, railways, camx, camy, cache_zoom, cache_width, cache_height, spatial_grid, only_bridges,
+    )
+    screen.blit(cache_surface, (-CACHE_PADDING_PX, -CACHE_PADDING_PX))
+    setattr(common, key_attr, cache_key)
+    setattr(common, surface_attr, cache_surface)
+    setattr(common, camera_attr, (camx, camy))
+
+
+def _draw_railways_uncached(
+    screen,
+    railways: List,
+    camx: float,
+    camy: float,
+    px_per_m: float,
+    screen_w: int,
+    screen_h: int,
+    spatial_grid,
+    only_bridges: Optional[bool],
+) -> None:
+    """The actual per-frame (or, via draw_railways, per-cache-rebuild) walk
+    and draw - see draw_railways for what only_bridges means."""
+    import pygame
+
+    if not railways:
+        return
+
+    vminx, vminy, vmaxx, vmaxy = get_viewport_bounds(camx, camy, px_per_m, screen_w, screen_h, 10.0)
+    visible_railways = (
+        spatial_grid.ways_in_rect(vminx, vminy, vmaxx, vmaxy)
+        if spatial_grid is not None
+        else railways
+    )
+    if only_bridges is not None:
+        visible_railways = [rw for rw in visible_railways if bool(getattr(rw, "is_bridge", False)) == only_bridges]
+    rail_thickness = max(1, int(0.08 * px_per_m))
+    tie_thickness = max(1, int(0.18 * px_per_m))
+    half_gauge = _RAILWAY_GAUGE_M / 2.0
+    half_tie = _RAILWAY_TIE_LENGTH_M / 2.0
+    half_deck = half_tie + _RAILWAY_BRIDGE_DECK_MARGIN_M
+    deck_edge_width = max(2, round(px_per_m * 0.15))
+    ballast_width = max(1, round(2.0 * half_deck * px_per_m))
+    # A track (ground-level or bridge) with just two thin rails over sparse
+    # sleepers leaves real gaps showing whatever's underneath - usually the
+    # plain grass/forest background, since a real-world OSM landuse=railway
+    # ground polygon alongside the track itself is inconsistently mapped.
+    # The solid ballast-bed fill below, drawn *before* the rails/ties so
+    # they still show as detail on top of it, covers that regardless of
+    # is_bridge; only the guardrail deck edges further below stay
+    # bridge-only (a ground-level ballast bed has no guardrails).
+    show_ballast = px_per_m > 1.5
+
+    for rw in visible_railways:
+        bb = getattr(rw, "bbox", None)
+        if bb and bb != (0.0, 0.0, 0.0, 0.0):
+            if bb[2] < vminx or bb[0] > vmaxx or bb[3] < vminy or bb[1] > vmaxy:
+                continue
+        points = rw.points_m
+        if len(points) < 2:
+            continue
+
+        # bbox above only culls the whole way - a real rail line can run for
+        # kilometers (a yard's sidings, a long corridor), so a way that just
+        # clips the viewport corner would otherwise still walk its entire
+        # length generating a sleeper tie every 2m, almost all of them
+        # off-screen (measured: one dense rail-yard viewport pulled in 17
+        # ways totaling 8.7km of track - over 4000 ties - for a 162x100m
+        # visible area). A single *segment* can itself be long enough to
+        # have the same problem (one endpoint inside the viewport, the
+        # other kilometers away) - so ties are bounded to each segment's
+        # actual on-screen t-range, not its full length. The tie phase
+        # (next_tie) still advances continuously across the whole way so
+        # ties stay aligned wherever the next visible stretch is.
+        dist_along = 0.0
+        next_tie = 0.0
+        for (x0, y0), (x1, y1) in zip(points, points[1:]):
+            dx, dy = x1 - x0, y1 - y0
+            seg_len = math.hypot(dx, dy)
+            if seg_len < 1e-6:
+                continue
+            ux, uy = dx / seg_len, dy / seg_len
+            nx, ny = -uy, ux
+            t_range = _segment_viewport_t_range(x0, y0, ux, uy, seg_len, vminx, vminy, vmaxx, vmaxy)
+            target = dist_along + seg_len
+            if t_range is not None:
+                t_lo, t_hi = t_range
+                if show_ballast:
+                    lo_x, lo_y = x0 + ux * t_lo, y0 + uy * t_lo
+                    hi_x, hi_y = x0 + ux * t_hi, y0 + uy * t_hi
+                    s0 = world_to_screen(lo_x, lo_y, camx, camy, px_per_m, screen_w, screen_h)
+                    s1 = world_to_screen(hi_x, hi_y, camx, camy, px_per_m, screen_w, screen_h)
+                    pygame.draw.line(screen, RAILWAY_BALLAST_COLOR, s0, s1, ballast_width)
+                for offset in (-half_gauge, half_gauge):
+                    s0 = world_to_screen(x0 + nx * offset, y0 + ny * offset, camx, camy, px_per_m, screen_w, screen_h)
+                    s1 = world_to_screen(x1 + nx * offset, y1 + ny * offset, camx, camy, px_per_m, screen_w, screen_h)
+                    pygame.draw.line(screen, RAILWAY_RAIL_COLOR, s0, s1, rail_thickness)
+                if rw.is_bridge and show_ballast:
+                    lo_x, lo_y = x0 + ux * t_lo, y0 + uy * t_lo
+                    hi_x, hi_y = x0 + ux * t_hi, y0 + uy * t_hi
+                    for offset in (-half_deck, half_deck):
+                        s0 = world_to_screen(lo_x + nx * offset, lo_y + ny * offset, camx, camy, px_per_m, screen_w, screen_h)
+                        s1 = world_to_screen(hi_x + nx * offset, hi_y + ny * offset, camx, camy, px_per_m, screen_w, screen_h)
+                        pygame.draw.line(screen, BRIDGE_GUARDRAIL_COLOR, s0, s1, deck_edge_width)
+                window_lo = dist_along + t_lo
+                window_hi = dist_along + t_hi
+                if next_tie < window_lo:
+                    steps = math.ceil((window_lo - next_tie) / _RAILWAY_TIE_SPACING_M)
+                    next_tie += steps * _RAILWAY_TIE_SPACING_M
+                while next_tie <= window_hi:
+                    t = next_tie - dist_along
+                    tx, ty = x0 + ux * t, y0 + uy * t
+                    s0 = world_to_screen(tx - nx * half_tie, ty - ny * half_tie, camx, camy, px_per_m, screen_w, screen_h)
+                    s1 = world_to_screen(tx + nx * half_tie, ty + ny * half_tie, camx, camy, px_per_m, screen_w, screen_h)
+                    pygame.draw.line(screen, RAILWAY_TIE_COLOR, s0, s1, tie_thickness)
+                    next_tie += _RAILWAY_TIE_SPACING_M
+            # Advance the tie phase past whatever of this segment is left
+            # (fully off-screen, or the off-screen tail beyond t_hi) in
+            # closed form - never iterate tie-by-tie over distance that
+            # isn't going to be drawn.
+            if next_tie <= target:
+                steps = math.floor((target - next_tie) / _RAILWAY_TIE_SPACING_M) + 1
+                next_tie += steps * _RAILWAY_TIE_SPACING_M
+            dist_along += seg_len
+
+
+RAILING_COLOR = (150, 145, 130)
+HEDGE_COLOR = (58, 92, 48)  # trimmed shrub green, darker/denser than any scenery fill
+WALL_COLOR = (128, 122, 112)  # stone/masonry grey
+
+
+def draw_railings(
+    screen,
+    railings: List,
+    camx: float,
+    camy: float,
+    px_per_m: float = PX_PER_M,
+    screen_w: int = SCREEN_W,
+    screen_h: int = SCREEN_H,
+    spatial_grid=None,
+) -> None:
+    """Draw linear barriers (OSM barrier=fence/railing/hedge/wall) - visual
+    only. fence/railing stay dashed (thin, see-through); hedge/wall are
+    drawn as solid, thicker lines since a real hedge or wall reads as a
+    continuous, opaque edge, not a segmented one."""
+    import pygame
+
+    if not railings:
+        return
+
+    vminx, vminy, vmaxx, vmaxy = get_viewport_bounds(camx, camy, px_per_m, screen_w, screen_h, 10.0)
+    visible_railings = (
+        spatial_grid.ways_in_rect(vminx, vminy, vmaxx, vmaxy)
+        if spatial_grid is not None
+        else railings
+    )
+    thickness = max(1, int(0.12 * px_per_m))
+    solid_thickness = max(2, int(0.25 * px_per_m))
+    for railing in visible_railings:
+        bb = getattr(railing, "bbox", None)
+        if bb and bb != (0.0, 0.0, 0.0, 0.0):
+            if bb[2] < vminx or bb[0] > vmaxx or bb[3] < vminy or bb[1] > vmaxy:
+                continue
+        points = railing.points_m
+        if len(points) < 2:
+            continue
+        kind = getattr(railing, "kind", "fence")
+        if kind in ("hedge", "wall"):
+            color = HEDGE_COLOR if kind == "hedge" else WALL_COLOR
+            for (x0, y0), (x1, y1) in zip(points, points[1:]):
+                dx, dy = x1 - x0, y1 - y0
+                seg_len = math.hypot(dx, dy)
+                if seg_len < 1e-6:
+                    continue
+                ux, uy = dx / seg_len, dy / seg_len
+                if _segment_viewport_t_range(x0, y0, ux, uy, seg_len, vminx, vminy, vmaxx, vmaxy) is None:
+                    continue
+                s0 = world_to_screen(x0, y0, camx, camy, px_per_m, screen_w, screen_h)
+                s1 = world_to_screen(x1, y1, camx, camy, px_per_m, screen_w, screen_h)
+                pygame.draw.line(screen, color, s0, s1, solid_thickness)
+        else:
+            common._draw_dashed_polyline(
+                screen, points, camx, camy, px_per_m, screen_w, screen_h,
+                RAILING_COLOR, thickness, vminx, vminy, vmaxx, vmaxy, dash_m=0.8, gap_m=0.4,
+            )
+
+
 def draw_crossings(
     screen,
     crossings: List,
@@ -1270,6 +1687,72 @@ def draw_crossings(
             p2 = (stripe_center_x + half_len_x, stripe_center_y + half_len_y)
 
             pygame.draw.line(screen, stripe_color, p1, p2, stripe_thickness)
+
+
+# Darker than any color road_color_for_way can return (SURFACE_COLORS and
+# LEGACY_HIGHWAY_COLORS both included; the darkest is motorway/trunk's
+# legacy fallback at (58, 58, 60)) - reads as a shadowed raised bump
+# regardless of what the road underneath is paved with, without needing
+# the specific Way a bump snapped to at render time (only its color would
+# be needed; not worth the extra field/coupling for a fixed, always-correct
+# darkening).
+SPEED_BUMP_COLOR = (45, 42, 40)
+
+
+def draw_speed_bumps(
+    screen,
+    speed_bumps: List,
+    camx: float,
+    camy: float,
+    px_per_m: float = PX_PER_M,
+    screen_w: int = SCREEN_W,
+    screen_h: int = SCREEN_H,
+    spatial_grid=None,
+) -> None:
+    """Draw speed bumps/tables/cushions as a solid darker bar across the
+    road - same "bar across the road" geometry as draw_crossings, just
+    filled instead of striped, and typically narrower along the road."""
+    import pygame
+
+    if not speed_bumps:
+        return
+
+    vminx, vminy, vmaxx, vmaxy = get_viewport_bounds(camx, camy, px_per_m, screen_w, screen_h, 20.0)
+
+    visible_bumps = (
+        spatial_grid.ways_in_rect(vminx, vminy, vmaxx, vmaxy)
+        if spatial_grid is not None
+        else speed_bumps
+    )
+    # Real-world lengths along the direction of travel - a "table" is a
+    # flat-topped platform (often also a raised crossing), noticeably
+    # longer than a rounded "bump" or a narrower "cushion".
+    length_m_by_kind = {"table": 2.2, "bump": 0.6, "cushion": 0.4, "hump": 0.6}
+    for b in visible_bumps:
+        bx, by = getattr(b, "x", 0.0), getattr(b, "y", 0.0)
+        if not (vminx <= bx <= vmaxx and vminy <= by <= vmaxy):
+            continue
+
+        sx, sy = world_to_screen(bx, by, camx, camy, px_per_m, screen_w, screen_h)
+        road_angle = getattr(b, "direction_angle", None) or 0.0
+        width_m = getattr(b, "width_m", 3.5)
+        length_m = length_m_by_kind.get(getattr(b, "kind", "bump"), 0.6)
+
+        u_along_x, u_along_y = math.cos(road_angle), -math.sin(road_angle)
+        u_across_x, u_across_y = -u_along_y, u_along_x
+
+        half_len_x = u_along_x * (length_m * px_per_m / 2.0)
+        half_len_y = u_along_y * (length_m * px_per_m / 2.0)
+        half_wid_x = u_across_x * (width_m * px_per_m / 2.0)
+        half_wid_y = u_across_y * (width_m * px_per_m / 2.0)
+
+        corners = [
+            (sx - half_len_x - half_wid_x, sy - half_len_y - half_wid_y),
+            (sx + half_len_x - half_wid_x, sy + half_len_y - half_wid_y),
+            (sx + half_len_x + half_wid_x, sy + half_len_y + half_wid_y),
+            (sx - half_len_x + half_wid_x, sy - half_len_y + half_wid_y),
+        ]
+        pygame.draw.polygon(screen, SPEED_BUMP_COLOR, corners)
 
 
 def draw_traffic_lights(

@@ -1,58 +1,18 @@
 from .common import (
     SCREEN_W,
     SCREEN_H,
-    FPS,
-    PX_PER_M,
-    CACHE_PADDING_PX,
-    STATIC_ZOOM_STEP,
-    SOLAR_UPDATE_INTERVAL_SECONDS,
-    GAME_DATE,
-    FINLAND_SUMMER_TIME_OFFSET,
     DEFAULT_SUN_LATITUDE,
     DEFAULT_SUN_LONGITUDE,
-    _solar_position_cache,
-    _reusable_alpha_surfaces,
-    _smoke_surface_cache,
     _render_logger,
-    _pending_static_rebuilds,
-    _static_rebuilds_this_frame,
-    invalidate_static_caches,
-    begin_static_cache_frame,
-    _allow_static_rebuild,
-    _blit_stale_static_cache,
-    _static_cache_zoom,
-    _reusable_alpha_surface,
-    _smoke_surface,
     solar_altitude_and_events,
-    _format_solar_time,
-    _get_game_version,
-    _draw_version,
-    world_to_screen,
-    asphalt_texture_tile_size,
-    road_color_for_way,
-    road_render_priority,
-    get_viewport_bounds,
-    minimum_px_per_m_for_viewport_width,
-    _covered_by_higher_road,
-    _vehicle_is_on_bridge,
-    GAME_VERSION,
 )
 import math
-import logging
 import os
-import random
-import subprocess
-import time
-from datetime import date
-from importlib.metadata import PackageNotFoundError, version as package_version
-from typing import List, Optional, Tuple
+from typing import Optional, Tuple
 
-from shapely.geometry import LineString
-from shapely.ops import unary_union
 
-from ..geo import clamp, clip_polygon_to_rect, compute_bbox, dist_point_to_segment, meters_to_latlon, point_in_polygon
-from ..osm import Building, BusStop, Place, Scenery, TaxiStop, Water, Way
-from ..physics import Car, MAX_SPEED, is_point_on_road
+from ..geo import clamp, meters_to_latlon
+from ..physics import Car, MAX_SPEED
 from ..taxi import TaxiManager, TaxiState
 from ..localization import tr
 
@@ -267,9 +227,7 @@ def draw_hud(
     ways_count: int,
     px_per_m: float,
     transformer_to_ll,
-    is_auto_fetching: bool = False,
     show_labels: bool = True,
-    auto_fetch_progress: float = 0.0,
     taxi_mgr: Optional[TaxiManager] = None,
     current_road_name: Optional[str] = None,
     speed_limit_kmh: Optional[int] = None,
@@ -513,26 +471,6 @@ def draw_hud(
     if hud_rects is not None:
         hud_rects["speedometer"] = speedometer_rect
 
-    # Auto-fetch scenery loading progress meter
-    if is_auto_fetching:
-        prog = max(0.0, min(1.0, auto_fetch_progress if auto_fetch_progress > 0.0 else 0.65))
-        bar_w = 160
-        bar_h = 14
-        bar_x = 10
-        bar_y = 86 if taxi_mgr else 58
-
-        # Background and border
-        pygame.draw.rect(screen, (30, 35, 40), (bar_x, bar_y, bar_w, bar_h), border_radius=3)
-        pygame.draw.rect(screen, (140, 150, 160), (bar_x, bar_y, bar_w, bar_h), width=1, border_radius=3)
-
-        # Progress fill
-        fill_w = int((bar_w - 2) * prog)
-        if fill_w > 0:
-            pygame.draw.rect(screen, (255, 190, 40), (bar_x + 1, bar_y + 1, fill_w, bar_h - 2), border_radius=2)
-
-        load_t = font.render(f"{tr(language, 'loading_scenery')} {int(prog * 100)}%", True, (255, 215, 60))
-        screen.blit(load_t, (bar_x + bar_w + 10, bar_y - 2))
-
 
 def draw_frame_profiler(screen, font, profiler, npc_count: int, pedestrian_count: int) -> None:
     """Draw compact frame timing diagnostics when enabled."""
@@ -564,11 +502,18 @@ def draw_g_force_meter(
     is_sliding: bool = False,
     screen_h: int = SCREEN_H,
     max_g: float = 2.5,
+    grip_usage: float = 0.0,
+    max_grip_g: Optional[float] = None,
 ) -> None:
     """Debug-HUD g-force meter: a dot on a crosshair circle, positioned
     beside the speedometer. Forward/back is the vertical axis (accelerating
     up, braking down), left/right is horizontal - the classic racing-
-    telemetry layout, so all four directions read at a glance."""
+    telemetry layout, so all four directions read at a glance.
+
+    `grip_usage`/`max_grip_g` (GRIP.md section 13) extend it with the
+    current surface/mode's actual grip ceiling and how much of it is in
+    use, rather than a fixed "1g" reference that no longer means anything
+    once grip varies by surface (dry asphalt down to ice)."""
     import pygame
 
     radius = 60
@@ -579,8 +524,9 @@ def draw_g_force_meter(
     pygame.draw.circle(screen, ring_color, center, radius, 2)
     pygame.draw.line(screen, (70, 78, 86), (center[0] - radius, center[1]), (center[0] + radius, center[1]), 1)
     pygame.draw.line(screen, (70, 78, 86), (center[0], center[1] - radius), (center[0], center[1] + radius), 1)
-    # A ring at 1g marks the typical dry-asphalt grip limit, for scale.
-    pygame.draw.circle(screen, (70, 78, 86), center, int(radius / max_g), 1)
+    # A ring at the current surface/mode's grip ceiling, for scale.
+    grip_ring_g = max_grip_g if max_grip_g is not None else 1.0
+    pygame.draw.circle(screen, (70, 78, 86), center, int(radius * grip_ring_g / max_g), 1)
 
     label_color = (170, 178, 186)
     for text, offset in (
@@ -598,4 +544,9 @@ def draw_g_force_meter(
     pygame.draw.circle(screen, dot_color, (int(dot_x), int(dot_y)), 6)
 
     readout = font.render(f"{math.hypot(forward_g, lateral_g):.2f} g", True, dot_color)
-    screen.blit(readout, readout.get_rect(midtop=(center[0], center[1] + radius + 16)))
+    readout_rect = readout.get_rect(midtop=(center[0], center[1] + radius + 16))
+    screen.blit(readout, readout_rect)
+    if max_grip_g is not None:
+        grip_color = (255, 90, 70) if is_sliding else (170, 178, 186)
+        grip_readout = font.render(f"grip {grip_usage * 100.0:.0f}%", True, grip_color)
+        screen.blit(grip_readout, grip_readout.get_rect(midtop=(center[0], readout_rect.bottom + 2)))

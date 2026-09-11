@@ -54,3 +54,4 @@ output/
 *.log
 game-mechanics-optimizations
 *.pbf
+*.pbf.index/

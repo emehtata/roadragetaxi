@@ -15,6 +15,51 @@ def test_draw_g_force_meter_renders_without_crashing():
 
         draw_g_force_meter(screen, font, forward_g=0.0, lateral_g=0.0, is_sliding=False)
         draw_g_force_meter(screen, font, forward_g=0.8, lateral_g=-1.5, is_sliding=True)
+        draw_g_force_meter(
+            screen, font, forward_g=0.5, lateral_g=0.3, is_sliding=False,
+            grip_usage=0.62, max_grip_g=0.9,
+        )
+    finally:
+        pygame.quit()
+
+
+def test_grip_usage_readout_renders_when_max_grip_g_is_given():
+    """GRIP.md section 13: extend the meter with grip usage rather than
+    leaving it g-force-only - checked by comparing the specific row the
+    grip readout occupies (below the g-force readout) with and without
+    max_grip_g, since the dial's F/B/L/R labels share the same color and
+    would otherwise make this pass even if the readout were missing."""
+    os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
+    pygame.init()
+    try:
+        screen = pygame.display.set_mode((1280, 720))
+        font = pygame.font.SysFont(None, 18)
+        radius = 60
+        center = (210 + radius, 720 - 180 + radius)
+        # The "x.xx g" readout always renders at radius+16; the grip row (if
+        # any) starts right below it - well past its own bottom edge so the
+        # two never get confused with each other.
+        g_readout_height = font.size("0.00 g")[1]
+        row_y = center[1] + radius + 16 + g_readout_height + 4
+        row_range = range(row_y, row_y + 16)
+        x_range = range(max(0, center[0] - 60), center[0] + 60)
+
+        def row_has_content():
+            return any(
+                tuple(screen.get_at((x, y)))[:3] != (0, 0, 0)
+                for x in x_range for y in row_range
+            )
+
+        screen.fill((0, 0, 0))
+        draw_g_force_meter(screen, font, forward_g=0.0, lateral_g=0.0, is_sliding=False)
+        assert not row_has_content(), "grip row should be empty without max_grip_g"
+
+        screen.fill((0, 0, 0))
+        draw_g_force_meter(
+            screen, font, forward_g=0.0, lateral_g=0.0, is_sliding=False,
+            grip_usage=0.5, max_grip_g=0.9,
+        )
+        assert row_has_content(), "grip usage readout did not render"
     finally:
         pygame.quit()
 

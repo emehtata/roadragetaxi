@@ -1,0 +1,228 @@
+"""Local OSM .pbf extract as an alternative to live Overpass API fetches.
+
+Overpass needs a network round-trip per bbox and is subject to public-
+instance rate limits, outages, and plain internet flakiness. When a local
+.osm.pbf file is available (e.g. assets/osm/finland-latest.osm.pbf from
+Geofabrik), this module answers the exact same bbox queries from it instead -
+no downloads, no rate limits, works offline.
+
+Extraction itself is delegated to the `osmium` command-line tool
+(osmium-tool - https://osmcode.org/osmium-tool/, apt/brew/conda package
+"osmium-tool") rather than hand-rolled: cutting a bbox with fully-resolved
+way and multipolygon-relation geometry out of a nationwide file correctly
+needs multiple passes over the data and careful handling of dense-node
+encoding, relation completeness, etc. - exactly what libosmium already does
+and osmium-tool already exposes as `osmium extract --strategy=smart`.
+Reimplementing that in Python would be a much bigger, riskier piece of code
+for the same result.
+
+The result is converted from OSM XML to the same list-of-element-dicts
+shape build_ways() already expects from Overpass's JSON, and shares its
+on-disk bbox cache - so this is a drop-in fetch_func, no changes needed
+anywhere else in the pipeline.
+
+If utils/pbf_index.py has already built a grid index for the source file
+(see that module - it's a separate, optional preprocessing step, not run
+automatically here), extraction reads the small regional cell(s) covering
+the bbox instead of the full source file. A missing or stale index (no
+index built yet, or the source .pbf changed since it was) falls back to
+extracting from the full source file exactly as before - the index is
+purely a speed optimization, never required for correctness.
+"""
+import logging
+import os
+import shutil
+import subprocess
+import tempfile
+import xml.etree.ElementTree as ET
+from pathlib import Path
+from typing import Callable, List, Optional, Tuple
+
+from ..utils.pbf_index import default_index_dir, index_is_stale, tiles_for_bbox
+
+logger = logging.getLogger(__name__)
+
+
+DEFAULT_FINLAND_PBF_PATH = Path(__file__).resolve().parent.parent / "assets" / "osm" / "finland-latest.osm.pbf"
+
+# "complete_ways" (osmium's own default) leaves multipolygon relations
+# possibly incomplete at the edges (see `osmium help extract`); "smart"
+# additionally makes multipolygon relations touching the bbox reference-
+# complete, matching Overpass's recursive `>;` fetch of every element a
+# match depends on. Both run in comparable wall-clock time in practice
+# (I/O and decompression bound, not pass-count bound), so there is no real
+# reason to accept the extra risk of an incomplete water body or building
+# outline for a marginal speed difference.
+EXTRACT_STRATEGY = "smart"
+
+
+def local_pbf_available(pbf_path: Optional[Path] = None) -> bool:
+    """Whether a local .pbf extract source is actually usable here: the
+    file exists and the `osmium` CLI (osmium-tool) is on PATH."""
+    path = Path(pbf_path) if pbf_path else DEFAULT_FINLAND_PBF_PATH
+    return path.is_file() and shutil.which("osmium") is not None
+
+
+def fetch_osm_ways_from_pbf(
+    bbox: Tuple[float, float, float, float],
+    pbf_path: Optional[Path] = None,
+    progress_callback: Optional[Callable[[float, str], None]] = None,
+    force_refresh: bool = False,
+) -> List[dict]:
+    """Extract OSM elements for `bbox` from a local .osm.pbf file.
+
+    Signature and return shape match fetch_osm_ways() (Overpass) closely
+    enough to be used as a drop-in fetch_func - including sharing its
+    on-disk bbox cache, so a re-visited area is a cache hit here too and
+    doesn't pay the extraction cost again.
+    """
+    # Re-read from the package each call so tests can monkeypatch
+    # theroadragetrip.osm.load_osm_cache / .save_osm_cache.
+    from . import load_osm_cache, save_osm_cache
+
+    if progress_callback:
+        progress_callback(0.1, "Checking cache...")
+    force_refresh = force_refresh or os.getenv("OVERPASS_FORCE_REFRESH", "0").lower() in ("1", "true", "yes")
+    if not force_refresh:
+        cached = load_osm_cache(bbox)
+        if cached is not None:
+            logger.info("Loaded OSM data from local cache")
+            if progress_callback:
+                progress_callback(0.5, f"Loaded {len(cached)} cached elements")
+            return cached
+
+    path = Path(pbf_path) if pbf_path else DEFAULT_FINLAND_PBF_PATH
+    if not path.is_file():
+        raise FileNotFoundError(f"Local OSM extract not found: {path}")
+    if shutil.which("osmium") is None:
+        raise RuntimeError(
+            "osm_source=pbf requires the 'osmium' command-line tool "
+            "(osmium-tool). Install it with your package manager, e.g. "
+            "'apt install osmium-tool', 'brew install osmium-tool', or "
+            "'conda install -c conda-forge osmium-tool'."
+        )
+
+    if progress_callback:
+        progress_callback(0.2, f"Extracting from {path.name}...")
+
+    index_dir = default_index_dir(path)
+    tiles = [] if index_is_stale(path, index_dir) else tiles_for_bbox(index_dir, bbox)
+
+    if tiles:
+        # A cell is a "smart"-complete superset for anything touching it
+        # (see utils/pbf_index.py), so extracting the same query bbox from
+        # each overlapping cell and merging by (type, id) reproduces
+        # exactly what extracting from the full source file would give -
+        # just from much smaller inputs. Usually one cell; more than one
+        # only for a bbox straddling a cell boundary.
+        logger.info("Using PBF grid index: %d cell(s) for bbox %s", len(tiles), bbox)
+        by_key = {}
+        for tile in tiles:
+            for el in _extract_elements(tile, bbox):
+                by_key[(el["type"], el["id"])] = el
+        elements = list(by_key.values())
+    else:
+        elements = _extract_elements(path, bbox)
+
+    if progress_callback:
+        progress_callback(0.5, "Parsing local extract...")
+    logger.info("Loaded %d elements from local PBF extract (%s)", len(elements), path.name)
+    try:
+        save_osm_cache(bbox, elements)
+    except Exception:
+        pass
+    if progress_callback:
+        progress_callback(0.6, f"Loaded {len(elements)} elements")
+    return elements
+
+
+# A cell-indexed extract normally finishes in ~1-2s; the full-source
+# fallback (no index, or a not-yet-built one - see fetch_osm_ways_from_pbf)
+# scans the whole national file and has been observed to take 30+
+# real-world seconds. 180s gives real margin above that while still
+# bounding a genuinely stuck/hung osmium process - without this, a hang
+# here blocks forever, since _wait_for_active_tile_fetch (main.py) waits
+# for exactly as long as a fetch reports itself in-flight and relies on
+# the fetch's own timeout to eventually give up (true for Overpass's
+# requests.post(..., timeout=60), but subprocess.run() here previously had
+# none at all).
+EXTRACT_TIMEOUT_S = 180.0
+
+
+def _extract_elements(source_pbf: Path, bbox: Tuple[float, float, float, float]) -> List[dict]:
+    """Run one `osmium extract` for `bbox` against `source_pbf` - the full
+    source file, or (from the grid index) one small regional cell of it -
+    and parse the result. Raises RuntimeError on an osmium failure or
+    timeout."""
+    south, west, north, east = bbox
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        out_path = os.path.join(tmp_dir, "extract.osm")
+        cmd = [
+            "osmium", "extract",
+            "--bbox", f"{west},{south},{east},{north}",
+            f"--strategy={EXTRACT_STRATEGY}",
+            "-f", "osm",
+            "-O",
+            "-o", out_path,
+            str(source_pbf),
+        ]
+        logger.info("Extracting local OSM data: %s", " ".join(cmd))
+        try:
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=EXTRACT_TIMEOUT_S)
+        except subprocess.TimeoutExpired as exc:
+            raise RuntimeError(f"osmium extract timed out after {EXTRACT_TIMEOUT_S:.0f}s: {' '.join(cmd)}") from exc
+        if result.returncode != 0:
+            raise RuntimeError(f"osmium extract failed (exit {result.returncode}): {result.stderr.strip()}")
+        return _parse_osm_xml(out_path)
+
+
+def _parse_osm_xml(path: str) -> List[dict]:
+    """Stream-parse OSM XML into the same element-dict shape Overpass's
+    JSON output uses (node: lat/lon/tags; way: nodes/tags; relation:
+    members/tags), so build_ways() can't tell the two apart.
+
+    Uses "start"+"end" events (not just "end") so each processed top-level
+    element can be detached from the root once done - the plain
+    Element.clear() idiom alone only frees the element's own children, not
+    its slot in the root's own children list, which would otherwise hold
+    the entire (potentially many-MB) parsed tree in memory regardless.
+    """
+    elements: List[dict] = []
+    root = None
+    for event, elem in ET.iterparse(path, events=("start", "end")):
+        if event == "start":
+            if root is None:
+                root = elem
+            continue
+        tag = elem.tag
+        if tag == "node":
+            elements.append({
+                "type": "node",
+                "id": int(elem.get("id")),
+                "lat": float(elem.get("lat")),
+                "lon": float(elem.get("lon")),
+                "tags": {t.get("k"): t.get("v") for t in elem.findall("tag")},
+            })
+        elif tag == "way":
+            elements.append({
+                "type": "way",
+                "id": int(elem.get("id")),
+                "nodes": [int(nd.get("ref")) for nd in elem.findall("nd")],
+                "tags": {t.get("k"): t.get("v") for t in elem.findall("tag")},
+            })
+        elif tag == "relation":
+            elements.append({
+                "type": "relation",
+                "id": int(elem.get("id")),
+                "members": [
+                    {"type": m.get("type"), "ref": int(m.get("ref")), "role": m.get("role") or ""}
+                    for m in elem.findall("member")
+                ],
+                "tags": {t.get("k"): t.get("v") for t in elem.findall("tag")},
+            })
+        else:
+            continue
+        elem.clear()
+        if root is not None:
+            root.remove(elem)
+    return elements

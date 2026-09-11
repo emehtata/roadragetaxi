@@ -11,7 +11,7 @@ from theroadragetrip import (
     is_point_in_water,
     respawn_car,
 )
-from theroadragetrip.osm import ParkingSpace
+from theroadragetrip.osm import ParkingSpace, Scenery
 import theroadragetrip.physics as physics
 
 
@@ -49,6 +49,29 @@ def test_parking_space_is_paved_surface_for_physics():
     car = Car(x=1.0, y=0.0, heading=0.0, speed=4.0)
     road = Way(points_m=[(20.0, 0.0), (30.0, 0.0)], highway="residential", half_width_m=2.0)
     physics.update_car_physics(car, 1.0, 0.0, 0.0, 0.0, 0.1, ways=[road], parking_spaces=[space])
+    assert car.speed > physics.OFFROAD_MAX_SPEED
+
+
+def test_parking_lot_is_paved_surface_for_physics():
+    """Regression: driving the drive aisles of a real parking lot - not on
+    one of the few individually-tagged parking_space rectangles, just the
+    lot's general paved area - used to be speed-capped as off-road/grass,
+    because update_car_physics only ever checked parking_spaces, never
+    the lot's own Scenery polygon."""
+    lot = Scenery(
+        points_m=[(0.0, -10.0), (20.0, -10.0), (20.0, 10.0), (0.0, 10.0)],
+        kind="parking",
+        bbox=(0.0, -10.0, 20.0, 10.0),
+        surface="asphalt",
+    )
+    grid = SpatialWayGrid([lot])
+    assert physics.is_point_in_parking_lot(10.0, 0.0, scenery_grid=grid)
+    assert physics.is_point_in_parking_lot(10.0, 0.0, sceneries=[lot])
+    assert not physics.is_point_in_parking_lot(1000.0, 1000.0, scenery_grid=grid)
+
+    car = Car(x=10.0, y=0.0, heading=0.0, speed=4.0)
+    road = Way(points_m=[(100.0, 0.0), (110.0, 0.0)], highway="residential", half_width_m=2.0)
+    physics.update_car_physics(car, 1.0, 0.0, 0.0, 0.0, 0.1, ways=[road], scenery_grid=grid)
     assert car.speed > physics.OFFROAD_MAX_SPEED
 
 

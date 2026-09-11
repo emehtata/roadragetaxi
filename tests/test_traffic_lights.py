@@ -330,6 +330,24 @@ def test_signal_per_arm_positions_that_arms_light_without_multiplying_it():
     assert north_lights[0].x == 0.0 and north_lights[0].y == 10.0
 
 
+def test_arms_with_no_lane_evidence_get_no_light_when_others_do():
+    """If OSM has a real physical signal on a lane, use it right there and
+    do not create any more signals: when a cluster has real per-arm
+    evidence for *some* arms, an arm without any must get no light at
+    all - not a guessed one. Guessing here (the same synthesis used for
+    the lone-central-point case) is exactly what put a light off any
+    pavement at a real Oulu junction, so it's reserved for when a single
+    ambiguous "somewhere in the junction" point is the only evidence."""
+    arms = _four_way_ways()
+    # Real evidence for only 2 of the 4 arms.
+    signal_points = [(0.0, 10.0, 0), (10.0, 0.0, 0)]
+    lights, intersections = build_traffic_light_system(signal_points, list(arms.values()))
+
+    assert len(lights) == 2
+    assert {(light.x, light.y) for light in lights} == {(0.0, 10.0), (10.0, 0.0)}
+    assert len(intersections[0].approaches) == 2
+
+
 def test_single_central_signal_point_is_divided_not_pinned_to_one_arm():
     """The opposite of the per-lane case: a single OSM node carries no
     directional evidence, so every arm must get its own (synthesized)
@@ -497,3 +515,42 @@ def test_traffic_light_always_lights_at_least_one_lamp():
             assert colors_seen & bright_colors, f"state {state!r} lit no lamp"
     finally:
         pygame.quit()
+
+
+def test_signal_point_is_assigned_to_the_arm_it_actually_sits_on():
+    """Regression: a real Kajaanintie / motorway_link junction in Oulu has
+    a ramp signal node that sits exactly on the ramp's own geometry, but
+    is closer *by bearing from the cluster center* to the through road on
+    the opposite side (just ~10 degrees separates them) - bearing-only
+    assignment gave the point to the wrong arm. That starved the ramp of
+    real evidence, so it fell back to a synthesized position (a straight
+    line from center along the ramp's initial tangent) that missed the
+    ramp's curve entirely and landed off any road, in the grass.
+
+    Coordinates below are the real junction's geometry, relative to its
+    cluster center."""
+    kajaanintie = Way(
+        [(32.73, -6.03), (6.19, -8.53), (-8.89, -10.14), (-21.77, -11.53)],
+        "primary", 6.0, osm_id=1,
+    )
+    ramp = Way(
+        [(-1.09, 17.51), (-6.19, 8.54), (-10.42, 2.09)],
+        "motorway_link", 3.0, osm_id=2,
+    )
+    side_street = Way(
+        [(-7.39, -35.79), (-8.11, -22.33), (-8.89, -10.14)],
+        "residential", 4.5, osm_id=3,
+    )
+    kajaanintie_point = (6.19, -8.53, 0)
+    ramp_point = (-6.19, 8.54, 0)
+
+    lights, _ = build_traffic_light_system([kajaanintie_point, ramp_point], [kajaanintie, ramp, side_street])
+
+    ramp_light = next(light for light in lights if (round(light.x, 2), round(light.y, 2)) == ramp_point[:2])
+    # direction_angle points back along the arm the light belongs to; the
+    # ramp's arm angle is ~56.7 degrees, so its light's direction_angle is
+    # ~180 degrees from that (~236.7) - not Kajaanintie's (~5.6).
+    assert math.isclose(math.degrees(ramp_light.direction_angle), 236.7, abs_tol=1.0), (
+        f"the point sitting on the ramp's own vertex was attached to the wrong arm "
+        f"(direction_angle={math.degrees(ramp_light.direction_angle):.1f} degrees)"
+    )

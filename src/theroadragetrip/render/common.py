@@ -1,30 +1,77 @@
 import math
 import logging
 import os
-import random
 import subprocess
 import time
 from datetime import date
 from importlib.metadata import PackageNotFoundError, version as package_version
 from typing import List, Optional, Tuple
 
-from shapely.geometry import LineString
-from shapely.ops import unary_union
 
-from ..geo import clip_polygon_to_rect, compute_bbox, dist_point_to_segment, meters_to_latlon, point_in_polygon
-from ..osm import Building, BusStop, Place, Scenery, TaxiStop, Water, Way
-from ..physics import Car, MAX_SPEED, is_point_on_road
-from ..taxi import TaxiManager, TaxiState
-from ..localization import tr
+from ..geo import compute_bbox, dist_point_to_segment
+from ..osm import Way
 
 
 SCREEN_W, SCREEN_H = 1280, 720
 FPS = 60
 PX_PER_M = 0.7
-CACHE_PADDING_PX = 96
 STATIC_ZOOM_STEP = 0.05
+
+# The rebuild-trigger grid step shared by every static-cache
+# frame_cache_key below (round(cam * cache_zoom / STATIC_CACHE_GRID_PX)).
+# Was 128 with CACHE_PADDING_PX=96 - smaller than the grid step itself, so
+# *every* stale-blit (not just unlucky ones) showed a real transparent gap
+# at the screen edge (confirmed against real OSM data: 100% overflowed).
+# Raising the padding to comfortably cover a 128px step fixed the gap but
+# made every rebuild ~37% bigger in area for no change in how often they
+# fire, which showed up as noticeably heavier per-rebuild stutter ("heavy
+# twitching... at least once a second"). Raising the grid step instead
+# (to 192) is the better trade: rebuild *frequency* drops (each layer goes
+# stale roughly 2/3 as often), more than paying for the larger padding a
+# bigger step still requires - confirmed via direct simulation: total
+# sustained rebuild cost (frequency x per-rebuild area) is ~22% lower at
+# grid=192/pad=224 than at grid=128/pad=192, for the same zero-overflow
+# guarantee.
+STATIC_CACHE_GRID_PX = 192.0
+# Must exceed STATIC_CACHE_GRID_PX plus a couple of frames' worth of
+# travel (a layer can go stale right at the grid's edge and, if it has to
+# wait even one round-robin turn - see _allow_static_rebuild - already
+# needs to blit its old cache offset by nearly a full grid step before its
+# rebuild catches up).
+CACHE_PADDING_PX = 224
+
+# Distinct per-layer phase (in cache-grid pixels, spread across
+# STATIC_CACHE_GRID_PX) so the many static-cache layers sharing the same
+# rebuild-trigger grid don't all cross their boundary on the same frame.
+# Unphased, driving in a straight line hit the boundary for grass/scenery/
+# trees/scenery_objects/water/roads/buildings/labels/railways_ground/
+# railways_bridge simultaneously - but _allow_static_rebuild only rebuilds
+# one layer per frame (see its docstring), so the other ~9 kept blitting
+# their previous-cycle cache at a pixel offset already past
+# CACHE_PADDING_PX - a real gap at the screen edge every single crossing,
+# regardless of time of day. Staggering the phase spreads those crossings
+# across the full grid step of driving instead of stacking them on one
+# frame, so in the common case a layer's turn comes up before its own
+# buffer is exhausted.
+_STATIC_CACHE_LAYER_PHASE_PX = {
+    "grass": 0.0, "scenery": 19.2, "trees": 38.4, "scenery_objects": 57.6,
+    "water": 76.8, "roads": 96.0, "buildings": 115.2, "labels": 134.4,
+    "railways_ground": 153.6, "railways_bridge": 172.8,
+}
+
+
+def _phased_cache_grid_cell(layer: str, camx: float, camy: float, cache_zoom: float) -> Tuple[int, int]:
+    """Quantized (x, y) grid cell for a layer's frame_cache_key, phase-
+    shifted per layer - see _STATIC_CACHE_LAYER_PHASE_PX above."""
+    phase = _STATIC_CACHE_LAYER_PHASE_PX.get(layer, 0.0)
+    return (
+        round((camx * cache_zoom + phase) / STATIC_CACHE_GRID_PX),
+        round((camy * cache_zoom + phase) / STATIC_CACHE_GRID_PX),
+    )
+
+
 SOLAR_UPDATE_INTERVAL_SECONDS = 20.0
-GAME_DATE = date(2026, 8, 31)
+GAME_DATE = date(2026, 9, 4) # Friday
 FINLAND_SUMMER_TIME_OFFSET = 3.0
 DEFAULT_SUN_LATITUDE = 65.012
 DEFAULT_SUN_LONGITUDE = 25.468
@@ -47,6 +94,25 @@ _water_frame_cache_camera = None
 _road_frame_cache_key = None
 _road_frame_cache_surface = None
 _road_frame_cache_camera = None
+_tree_frame_cache_key = None
+_tree_frame_cache_surface = None
+_tree_frame_cache_camera = None
+_scenery_object_frame_cache_key = None
+_scenery_object_frame_cache_surface = None
+_scenery_object_frame_cache_camera = None
+# Railways are static map data, drawn from scratch every frame like every
+# other rail/tie/ballast line - unlike roads/buildings/etc. above, which
+# reuse a cached bitmap unless the camera/zoom/data actually changed. Two
+# layers, not one: ground-level track is blitted early (same point in the
+# frame as roads) and bridge track again late, after the car/pedestrians
+# (see draw_railways's only_bridges and main.py) - they can't share one
+# cached surface since they're blitted at different points in the frame.
+_railway_ground_frame_cache_key = None
+_railway_ground_frame_cache_surface = None
+_railway_ground_frame_cache_camera = None
+_railway_bridge_frame_cache_key = None
+_railway_bridge_frame_cache_surface = None
+_railway_bridge_frame_cache_camera = None
 # The grass background doesn't depend on any streamed world data (it's a
 # fixed tile pattern positioned purely by camera/zoom), so unlike the other
 # five layers it never needs invalidate_static_caches() - it only goes stale
@@ -56,8 +122,13 @@ _grass_frame_cache_key = None
 _grass_frame_cache_surface = None
 _grass_frame_cache_camera = None
 _render_logger = logging.getLogger(__name__)
-_pending_static_rebuilds = set()
+# Insertion-ordered (dict, not set) so the oldest-waiting layer can be told
+# apart from one that just missed for the first time - see
+# _allow_static_rebuild.
+_pending_static_rebuilds: dict = {}
 _static_rebuilds_this_frame = 0
+_frame_priority_layer = None
+_frame_priority_layer_computed = False
 
 
 def invalidate_static_caches() -> None:
@@ -71,11 +142,17 @@ def invalidate_static_caches() -> None:
     """
     global _label_frame_cache_key, _building_frame_cache_key
     global _scenery_frame_cache_key, _water_frame_cache_key, _road_frame_cache_key
+    global _tree_frame_cache_key, _scenery_object_frame_cache_key
+    global _railway_ground_frame_cache_key, _railway_bridge_frame_cache_key
     _label_frame_cache_key = None
     _building_frame_cache_key = None
     _scenery_frame_cache_key = None
     _water_frame_cache_key = None
     _road_frame_cache_key = None
+    _tree_frame_cache_key = None
+    _scenery_object_frame_cache_key = None
+    _railway_ground_frame_cache_key = None
+    _railway_bridge_frame_cache_key = None
 
 
 # Kept as an alias: callers at a camera-snap site (a respawn, or a fresh
@@ -91,8 +168,25 @@ invalidate_static_caches_for_camera_jump = invalidate_static_caches
 
 
 def begin_static_cache_frame() -> None:
-    global _static_rebuilds_this_frame
+    global _static_rebuilds_this_frame, _frame_priority_layer_computed, _frame_priority_layer
+    if _static_rebuilds_this_frame == 0 and _frame_priority_layer is not None:
+        # Last frame's designated priority layer never even got asked -
+        # its draw_* call didn't run at all that frame (the only such
+        # case today: draw_labels(), skipped whenever label_mode is 0).
+        # If it had been asked, it would have succeeded unconditionally
+        # (nothing else can consume the frame's one rebuild ahead of the
+        # designated priority layer - see _allow_static_rebuild), so
+        # budget staying at 0 definitively means it was never called, not
+        # that it lost a race. Drop it: otherwise a layer that's stopped
+        # being drawn at all would sit at the front of the queue forever
+        # and starve every *other* layer permanently, not just delay them.
+        _pending_static_rebuilds.pop(_frame_priority_layer, None)
     _static_rebuilds_this_frame = 0
+    # Priority layer is computed lazily, on the first _allow_static_rebuild
+    # call of the frame, not eagerly here - so it snapshots whatever is
+    # actually pending at the moment the frame's layers start asking, not
+    # a stale read from before this frame's callers have even run.
+    _frame_priority_layer_computed = False
 
 
 def _allow_static_rebuild(layer: str, surface) -> bool:
@@ -109,29 +203,42 @@ def _allow_static_rebuild(layer: str, surface) -> bool:
     frame instead of paying for all of them at once, which is what turned
     into periodic FPS dips every time driving crossed a bucket boundary.
 
-    Because _pending_static_rebuilds is a set, a layer already queued for
-    its turn is never queued twice, so even under continuous new staleness
-    (the camera never stops panning) each layer is guaranteed a turn within,
-    worst case, one frame per other layer simultaneously waiting - not
-    indefinitely, which was the previous, too-narrow version's bug: a
-    layer's *un*-queued miss returned "not pending, so allow immediately"
-    unconditionally, which was fine in isolation but meant every other
-    layer's simultaneous miss (the routine case above) raced it for
-    attention every single frame, forever, whenever more than one layer
-    needed rebuilding at once - it just never mattered until several
-    layers' misses started lining up on the same frame routinely.
+    The single rebuild each frame goes to whichever pending layer has been
+    waiting longest (oldest entry in the insertion-ordered
+    _pending_static_rebuilds), not to whichever layer's draw call simply
+    happens to run first this frame. Layers are drawn in a fixed order
+    every frame (grass, scenery, trees, water, roads, buildings, labels,
+    ...) - checking only "is the per-frame budget still free" without that
+    priority meant a layer early in that order (e.g. grass) reliably won
+    the single slot on every frame it was *also* stale, since it's always
+    asked first, starving whatever's later in the order (labels, drawn
+    last) for as long as an earlier layer kept going stale too - which
+    during continuous driving is routinely every frame, not a rare
+    coincidence. That's the bug this priority fixes: label mode 2 (which
+    forces a rebuild the instant it's toggled, same as any other cache
+    miss) could get stuck showing mode 1's stale cached labels
+    indefinitely while driving, never actually winning the race. With
+    priority given to the longest-waiting layer, each one is guaranteed
+    its turn within, worst case, one frame per *other* layer simultaneously
+    waiting - not indefinitely.
 
     The very first build for a layer (surface is None) is exempt: there's
     nothing to show yet, so it can't be deferred to a later frame.
     """
-    global _static_rebuilds_this_frame
+    global _static_rebuilds_this_frame, _frame_priority_layer, _frame_priority_layer_computed
     if surface is None:
         return True
-    _pending_static_rebuilds.add(layer)
+    if not _frame_priority_layer_computed:
+        _frame_priority_layer = next(iter(_pending_static_rebuilds), None)
+        _frame_priority_layer_computed = True
     if _static_rebuilds_this_frame >= 1:
+        _pending_static_rebuilds.setdefault(layer, None)
+        return False
+    if _frame_priority_layer is not None and layer != _frame_priority_layer:
+        _pending_static_rebuilds.setdefault(layer, None)
         return False
     _static_rebuilds_this_frame += 1
-    _pending_static_rebuilds.discard(layer)
+    _pending_static_rebuilds.pop(layer, None)
     return True
 
 
@@ -150,7 +257,34 @@ def _rebuild_or_stale(screen, layer: str, surface, camera, camx, camy, cache_zoo
     """Throttle-gate a layer's rebuild: if this isn't its turn yet, blit
     its stale cache in place of a fresh redraw and report that. Shared by
     every draw_* that owns a static-cache layer, so each just does
-    ``if _rebuild_or_stale(...): return`` before rebuilding."""
+    ``if _rebuild_or_stale(...): return`` before rebuilding.
+
+    Safety valve first: invalidate_static_caches() (called whenever
+    autofetch integrates a new tile) clears every layer's frame_cache_key
+    at once, regardless of camera position - unlike an ordinary position-
+    based crossing, that's a real, unstaggered pile-up of up to all ~10
+    layers on the same frame, which the phase offsets above (see
+    _STATIC_CACHE_LAYER_PHASE_PX) do nothing for since they only spread
+    out *when* a layer's own position crosses its grid step, not this
+    kind of explicit, simultaneous invalidation. CACHE_PADDING_PX is
+    tuned against the ordinary case (a handful of layers queued at once);
+    a 10-layer pile-up queued behind the throttle, with the camera still
+    moving while each waits its turn, can outrun that buffer. So: if
+    blitting the existing stale cache at the *current* camera offset
+    would already show a real gap (past CACHE_PADDING_PX), force this
+    layer's rebuild through immediately regardless of whose turn it is -
+    correctness (no visible gap, ever) over the throttle's smoothing in
+    that rare pile-up case. Left uncounted against
+    _static_rebuilds_this_frame on purpose: the layer that was actually
+    due its turn this frame still gets it undisturbed.
+    """
+    if surface is not None and camera is not None:
+        cached_camx, cached_camy = camera
+        raw_dx = round((cached_camx - camx) * cache_zoom)
+        raw_dy = round((camy - cached_camy) * cache_zoom)
+        if max(abs(raw_dx), abs(raw_dy)) > CACHE_PADDING_PX:
+            _pending_static_rebuilds.pop(layer, None)
+            return False
     if _allow_static_rebuild(layer, surface):
         return False
     _blit_stale_static_cache(screen, surface, camera, camx, camy, cache_zoom)
@@ -269,7 +403,7 @@ def _get_game_version() -> str:
     try:
         return f"v{package_version('theroadragetrip')}"
     except PackageNotFoundError:
-        return "v0.10.0alpha"
+        return "v0.11.0alpha"
 
 
 def _draw_version(screen, font, screen_w: int, screen_h: int) -> None:
@@ -292,34 +426,134 @@ def world_to_screen(
     return int(sx), int(sy)
 
 
+def _segment_viewport_t_range(x0, y0, ux, uy, seg_len, vminx, vminy, vmaxx, vmaxy):
+    """Return the (t_lo, t_hi) sub-range of [0, seg_len] along a unit-
+    direction (ux, uy) segment starting at (x0, y0) that falls inside the
+    viewport rect, or None if none of it does. O(1) - standard axis-
+    aligned line/box clip (Liang-Barsky), used so a long segment with only
+    one end near the camera doesn't get treated as visible along its
+    entire length."""
+    t_lo, t_hi = 0.0, seg_len
+    for coord0, u, lo, hi in ((x0, ux, vminx, vmaxx), (y0, uy, vminy, vmaxy)):
+        if abs(u) < 1e-9:
+            if coord0 < lo or coord0 > hi:
+                return None
+            continue
+        ta = (lo - coord0) / u
+        tb = (hi - coord0) / u
+        if ta > tb:
+            ta, tb = tb, ta
+        t_lo = max(t_lo, ta)
+        t_hi = min(t_hi, tb)
+        if t_lo > t_hi:
+            return None
+    return t_lo, t_hi
+
+
+def _draw_dashed_polyline(
+    screen,
+    points_m,
+    camx: float,
+    camy: float,
+    px_per_m: float,
+    screen_w: int,
+    screen_h: int,
+    color: Tuple[int, int, int],
+    thickness: int,
+    vminx: float,
+    vminy: float,
+    vmaxx: float,
+    vmaxy: float,
+    dash_m: float = 1.5,
+    gap_m: float = 1.0,
+) -> None:
+    """Draw a dashed line along points_m (a polyline, not necessarily closed).
+
+    Shared by draw_construction_fences and draw_railings - both are thin
+    hazard/barrier lines that should read as segmented, not solid.
+
+    (vminx, vminy, vmaxx, vmaxy) bounds the dash-walk to each segment's
+    on-screen sub-range (same approach draw_railways uses for its sleeper
+    ties, see _segment_viewport_t_range) - a long fence/railing way with
+    only one end near the camera used to still walk dash-by-dash across
+    its *entire* length, most of it off-screen, paying a world_to_screen
+    call and a line draw every dash_m+gap_m regardless of visibility.
+    """
+    import pygame
+
+    dash_px = max(1.0, dash_m * px_per_m)
+    gap_px = max(1.0, gap_m * px_per_m)
+    step_px = dash_px + gap_px
+    for (x0, y0), (x1, y1) in zip(points_m, points_m[1:]):
+        edge_len = math.hypot(x1 - x0, y1 - y0)
+        if edge_len < 1e-6:
+            continue
+        ux, uy = (x1 - x0) / edge_len, (y1 - y0) / edge_len
+        t_range = _segment_viewport_t_range(x0, y0, ux, uy, edge_len, vminx, vminy, vmaxx, vmaxy)
+        if t_range is None:
+            continue
+        dist, t_hi = t_range
+        while dist < t_hi:
+            dash_end = min(dist + dash_px, edge_len)
+            sx0, sy0 = world_to_screen(x0 + ux * dist, y0 + uy * dist, camx, camy, px_per_m, screen_w, screen_h)
+            sx1, sy1 = world_to_screen(x0 + ux * dash_end, y0 + uy * dash_end, camx, camy, px_per_m, screen_w, screen_h)
+            pygame.draw.line(screen, color, (sx0, sy0), (sx1, sy1), thickness)
+            dist += step_px
+
+
 def asphalt_texture_tile_size(px_per_m: float) -> int:
     """Return the screen-space tile size for a zoom level."""
     return max(24, min(256, round(64.0 * px_per_m / PX_PER_M)))
 
 
+SURFACE_COLORS = {
+    "asphalt": (70, 70, 70),
+    "concrete": (142, 142, 138),
+    "concrete:lanes": (142, 142, 138),
+    "paving_stones": (125, 120, 112),
+    "sett": (105, 100, 94),
+    "cobblestone": (105, 100, 94),
+    "compacted": (125, 112, 92),
+    "fine_gravel": (145, 132, 108),
+    "gravel": (150, 135, 105),
+    "unpaved": (155, 140, 108),
+    "dirt": (125, 98, 68),
+    "ground": (130, 105, 75),
+    "earth": (130, 105, 75),
+    "sand": (190, 170, 120),
+    "grass": (75, 125, 62),
+    "wood": (112, 83, 55),
+}
+# Legacy fallback for a way with no (or unrecognized) surface tag - the
+# per-highway-class asphalt shading this game used before surface colors
+# existed. Kept subtle (all still read as "asphalt", not cartographic
+# primary colors): a bit lighter/cleaner for a highway class the higher up
+# road_render_priority ranks it, a bit rougher/browner as it drops toward
+# unpaved-adjacent classes like track.
+LEGACY_HIGHWAY_COLORS = {
+    "motorway": (58, 58, 60),
+    "motorway_link": (58, 58, 60),
+    "trunk": (60, 60, 60),
+    "trunk_link": (60, 60, 60),
+    "primary": (63, 61, 58),
+    "primary_link": (63, 61, 58),
+    "secondary": (66, 64, 60),
+    "secondary_link": (66, 64, 60),
+    "tertiary": (68, 66, 62),
+    "tertiary_link": (68, 66, 62),
+    "unclassified": (70, 68, 63),
+    "residential": (72, 70, 65),
+    "service": (78, 75, 68),
+    "track": (120, 105, 80),
+}
+
+
 def road_color_for_way(way: Way) -> Tuple[int, int, int]:
-    """Return a road color from OSM surface, with highway as fallback."""
+    """Return a road color from OSM surface, with the legacy per-highway-
+    class color as fallback when surface is missing or unrecognized."""
     surface = str(getattr(way, "surface", "") or "").lower().split(";")[0].strip()
-    surface_colors = {
-        "asphalt": (70, 70, 70),
-        "concrete": (142, 142, 138),
-        "concrete:lanes": (142, 142, 138),
-        "paving_stones": (125, 120, 112),
-        "sett": (105, 100, 94),
-        "cobblestone": (105, 100, 94),
-        "compacted": (125, 112, 92),
-        "fine_gravel": (145, 132, 108),
-        "gravel": (150, 135, 105),
-        "unpaved": (155, 140, 108),
-        "dirt": (125, 98, 68),
-        "ground": (130, 105, 75),
-        "earth": (130, 105, 75),
-        "sand": (190, 170, 120),
-        "grass": (75, 125, 62),
-        "wood": (112, 83, 55),
-    }
-    if surface in surface_colors:
-        return surface_colors[surface]
+    if surface in SURFACE_COLORS:
+        return SURFACE_COLORS[surface]
     if not way.is_drivable:
         return (115, 145, 150) if way.highway == "cycleway" else (150, 150, 142)
     if getattr(way, "is_ice_road", False):
@@ -328,7 +562,7 @@ def road_color_for_way(way: Way) -> Tuple[int, int, int]:
         return (80, 72, 60)
     if way.highway == "living_street":
         return (85, 80, 78)
-    return (70, 70, 70)
+    return LEGACY_HIGHWAY_COLORS.get(way.highway, (70, 70, 70))
 
 
 def road_render_priority(way: Way) -> int:

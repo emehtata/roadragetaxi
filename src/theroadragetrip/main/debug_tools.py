@@ -1,145 +1,14 @@
-import argparse
-import cProfile
-import concurrent.futures
 import json
 import logging
-import math
 import os
-import random
 import sys
-import threading
 import time
 from dataclasses import asdict
-from typing import Optional, Tuple
 
-import pygame
 
-from ..geo import clamp, dist_point_to_segment, meters_to_latlon
-from ..audio import AudioManager
-from ..config import (
-    CONFIG_PATH,
-    city_suggestions,
-    cities_from_config,
-    default_city_configuration,
-    get_optional_int,
-    get_overpass_endpoints,
-    load_city_catalog,
-    load_config,
-    replace_city_in_config,
-    save_config,
-)
-from ..career import (
-    CAREER_SCORE_LIMIT,
-    career_path,
-    gig_odometer_path,
-    load_career,
-    load_career_distance,
-    load_gig_odometer,
-    save_career,
-    save_gig_odometer,
-)
-from ..localization import LANGUAGE_NAMES, SUPPORTED_LANGUAGES, normalize_language, tr
-from ..osm import (
-    BBOX_PRESETS,
-    CITY_CENTERS,
-    DEFAULT_BBOX,
-    DEFAULT_OVERPASS_ENDPOINTS,
-    DEFAULT_ROAD_HALF_WIDTH_M,
-    HIGHWAY_HALF_WIDTH,
-    AutoFetchManager,
-    Building,
-    BusStop,
-    Place,
-    Scenery,
-    TaxiStop,
-    TrafficLight,
-    Water,
-    Way,
-    build_ways,
-    clear_osm_cache,
-    configure_user_agent,
-    fetch_osm_ways,
-    has_outdated_osm_cache,
-    load_local_sample,
-    load_osm_cache,
-    remove_trees_under_roads,
-    save_osm_cache,
-)
+from .. import tile_streaming
 from ..physics import (
-    ACCEL,
-    BRAKE,
-    FRICTION,
-    MAX_SPEED,
-    STEER_RATE,
-    STEER_SPEED_FACTOR,
     Car,
-    SpatialWayGrid,
-    get_current_road_at_car,
-    is_car_colliding_with_bridge_edge,
-    is_car_fully_in_water,
-    is_on_road,
-    is_point_on_parking_space,
-    reset_trip,
-    respawn_car,
-    pull_car_inside_bridge_edge,
-    update_car_physics,
-)
-from ..render import (
-    FPS,
-    PX_PER_M,
-    SCREEN_H,
-    SCREEN_W,
-    draw_buildings,
-    draw_bus_stops,
-    draw_car,
-    draw_city_selection_menu,
-    draw_game_start_hint,
-    draw_game_start_overlay,
-    draw_city_editor,
-    draw_city_summary,
-    draw_mode_selection_menu,
-    draw_compass,
-    draw_crossings,
-    draw_day_night_overlay,
-    draw_grass_texture,
-    draw_headlight_beams,
-    draw_hud,
-    draw_frame_profiler,
-    begin_static_cache_frame,
-    invalidate_static_caches,
-    default_hud_layout,
-    draw_tutorial_screen,
-    draw_labels,
-    draw_loading_screen,
-    draw_navigation_route,
-    draw_logical_intersections,
-    draw_pause_menu,
-    draw_parking_spaces,
-    draw_settings_menu,
-    draw_pedestrians,
-    draw_pedestrian_reflectors,
-    draw_resident_popup,
-    resident_at_screen_position,
-    draw_phone_offers,
-    draw_scenery,
-    draw_street_lights,
-    draw_taxi_smoke,
-    draw_passenger_nausea_bubble,
-    draw_taxi_exhaust,
-    draw_speed_cameras,
-    draw_taxi_stops,
-    draw_taxi_target,
-    draw_tire_tracks,
-    draw_vehicle_lights,
-    draw_vomit_puddles,
-    draw_traffic_lights,
-    draw_waters,
-    draw_ways,
-    draw_roadworks,
-    get_viewport_bounds,
-    minimum_px_per_m_for_viewport_width,
-    solar_altitude_and_events,
-    world_to_screen,
 )
 
 
@@ -182,6 +51,10 @@ def _write_debug_snapshot(
     camera_city_name,
     game_mode: str,
     on_foot: bool,
+    scenery_objects=(),
+    speed_bumps=(),
+    railways=(),
+    railings=(),
 ) -> None:
     minx, miny, maxx, maxy = auto_fetch_manager.get_bounds()
     now = time.time()
@@ -221,6 +94,10 @@ def _write_debug_snapshot(
                 "taxi_stops": len(taxi_stops),
                 "traffic_lights": len(traffic_lights),
                 "crossings": len(crossings),
+                "scenery_objects": len(scenery_objects),
+                "speed_bumps": len(speed_bumps),
+                "railways": len(railways),
+                "railings": len(railings),
                 "pedestrians": len(pedestrian_mgr.pedestrians),
             },
             "current_way": {
@@ -237,8 +114,16 @@ def _write_debug_snapshot(
             "configured_enabled": bool(args.auto_fetch),
             "call_enabled": True,
             "margin_m": args.fetch_margin,
-            "tile_size_m": args.fetch_tile_size,
+            # The real live tile-streaming grid size (tile_streaming.
+            # TILE_SIZE_M, set once at startup - see set_tile_size_m in
+            # main()), NOT args.fetch_tile_size: that CLI value only feeds
+            # AutoFetchManager.start_if_needed(), a legacy margin-based
+            # fetch path no longer called anywhere - reporting it here was
+            # reporting a number that has nothing to do with the tiles
+            # actually being streamed.
+            "tile_size_m": tile_streaming.TILE_SIZE_M,
             "build_in_process": bool(args.build_in_process),
+            "osm_source": args.osm_source,
             "manager_enabled_state": not auto_fetch_manager.get_fetching(),
             "is_fetching": auto_fetch_manager.get_fetching(),
             "progress": auto_fetch_manager.get_progress(),
@@ -271,7 +156,7 @@ def _write_debug_snapshot(
             "endpoint_audit": auto_fetch_manager.get_endpoint_fetch_audit(
                 car,
                 args.fetch_margin,
-                args.fetch_tile_size,
+                tile_streaming.TILE_SIZE_M,
                 current_way=current_way,
             ),
         },

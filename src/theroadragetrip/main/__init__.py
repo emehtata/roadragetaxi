@@ -1,7 +1,5 @@
-import argparse
 import cProfile
 import concurrent.futures
-import json
 import logging
 import math
 import os
@@ -9,24 +7,19 @@ import random
 import sys
 import threading
 import time
-from dataclasses import asdict
 from types import SimpleNamespace
-from typing import Optional, Tuple
+from typing import Optional
 
 import pygame
 
-from ..geo import clamp, dist_point_to_segment, meters_to_latlon
+from ..geo import dist_point_to_segment, meters_to_latlon
 from ..audio import AudioManager
 from ..config import (
     CONFIG_PATH,
-    city_suggestions,
     cities_from_config,
     default_city_configuration,
-    get_optional_int,
     get_overpass_endpoints,
-    load_city_catalog,
     load_config,
-    replace_city_in_config,
     save_config,
 )
 from ..career import (
@@ -39,38 +32,24 @@ from ..career import (
     save_career,
     save_gig_odometer,
 )
-from ..localization import LANGUAGE_NAMES, SUPPORTED_LANGUAGES, normalize_language, tr
+from ..localization import SUPPORTED_LANGUAGES, normalize_language, tr
 from ..osm import (
-    BBOX_PRESETS,
-    CITY_CENTERS,
     DEFAULT_BBOX,
-    DEFAULT_OVERPASS_ENDPOINTS,
-    DEFAULT_ROAD_HALF_WIDTH_M,
-    HIGHWAY_HALF_WIDTH,
     AutoFetchManager,
-    Building,
-    BusStop,
-    Place,
-    Scenery,
-    TaxiStop,
-    TrafficLight,
-    Water,
-    Way,
     build_ways,
     clear_osm_cache,
     configure_user_agent,
     fetch_osm_ways,
+    fetch_osm_ways_from_pbf,
     has_outdated_osm_cache,
+    local_pbf_available,
     load_local_sample,
-    load_osm_cache,
     remove_trees_under_roads,
-    save_osm_cache,
 )
 from ..physics import (
     ACCEL,
     BRAKE,
     FRICTION,
-    MAX_SPEED,
     STEER_RATE,
     STEER_SPEED_FACTOR,
     Car,
@@ -78,29 +57,35 @@ from ..physics import (
     get_current_road_at_car,
     is_car_colliding_with_bridge_edge,
     is_car_fully_in_water,
-    is_on_road,
+    is_point_in_parking_lot,
     is_point_on_parking_space,
     reset_trip,
     respawn_car,
     pull_car_inside_bridge_edge,
+    skidmark_intensity,
+    skidmark_should_mark,
     update_car_physics,
 )
 from ..render import (
     FPS,
-    PX_PER_M,
     SCREEN_H,
     SCREEN_W,
+    TireTrail,
     draw_buildings,
     draw_bus_stops,
     draw_car,
     draw_city_selection_menu,
     draw_game_start_hint,
     draw_game_start_overlay,
-    draw_city_editor,
     draw_city_summary,
     draw_mode_selection_menu,
     draw_compass,
     draw_crossings,
+    draw_speed_bumps,
+    draw_construction_fences,
+    draw_curbs,
+    draw_railings,
+    draw_railways,
     draw_day_night_overlay,
     draw_grass_texture,
     draw_headlight_beams,
@@ -121,10 +106,17 @@ from ..render import (
     draw_settings_menu,
     draw_pedestrians,
     draw_pedestrian_reflectors,
+    draw_puddles,
+    draw_rain,
+    draw_splashes,
+    draw_wet_roads,
+    find_puddle_overlap,
     draw_resident_popup,
     resident_at_screen_position,
     draw_phone_offers,
     draw_scenery,
+    draw_scenery_objects,
+    draw_trees,
     draw_street_lights,
     draw_taxi_smoke,
     draw_passenger_nausea_bubble,
@@ -142,26 +134,25 @@ from ..render import (
     get_viewport_bounds,
     minimum_px_per_m_for_viewport_width,
     solar_altitude_and_events,
-    world_to_screen,
 )
-from ..pedestrian import Pedestrian, PedestrianManager, PlayerPedestrian
+from ..pedestrian import PedestrianManager, PlayerPedestrian
 from ..residents import ResidentManager
 from ..police import place_speed_cameras
 from ..roadworks import create_roadworks
 from ..taxi import TaxiManager, TaxiState
+from ..tile_streaming import PBF_TILE_SIZE_M, set_tile_size_m
 from ..traffic_world import TrafficWorld
 from ..world_cache import WorldCacheManager, clear_world_cache
 from ..performance import FrameProfiler
+from ..weather import SPLASH_MIN_SPEED_MPS, WeatherSystem
 
 from .cli import configure_logging, parse_args
 from .menu_input import (
-    CITY_MENU_KEYS,
     _city_edit_at,
-    _city_editor_item_at,
-    _city_editor_suggestion_at,
     _city_horizontal_index,
     _city_item_at,
     _city_menu_index,
+    _city_refresh_at,
     _menu_item_at_y,
     _mode_menu_navigate,
     MODE_MENU_OPTION_COUNT,
@@ -178,6 +169,67 @@ logger = logging.getLogger(__name__)
 RAGE_SHOUTS = ("PRKL!", "STNA!", "VTTU!", "HLVT!", "KRPÄ!", "KSPÄ!", "PSKA!")
 RAGE_DISTANCE_TO_FULL_M = 400.0
 RAGE_SHOUT_COST = 0.25
+
+
+def _rage_from_speeding(
+    rage_power: float, speed_mps: float, road_limit_mps: Optional[float], driven_distance_m: float,
+) -> float:
+    """Speeding builds rage; driving within the limit calms it back down -
+    both at the same rate (RAGE_DISTANCE_TO_FULL_M of speeding fills the
+    meter, the same distance under the limit empties it). No current road
+    (unknown limit) leaves rage unchanged either way."""
+    if road_limit_mps is None or driven_distance_m <= 0.0:
+        return rage_power
+    delta = driven_distance_m / RAGE_DISTANCE_TO_FULL_M
+    if abs(speed_mps) > road_limit_mps + 0.01:
+        return min(1.0, rage_power + delta)
+    return max(0.0, rage_power - delta)
+
+
+def _map_sync_should_start(revision_changed: bool, any_grid_stale: bool, map_sync_stage: int) -> bool:
+    """Whether the multi-frame map-sync pipeline should (re)start this frame.
+
+    Must require map_sync_stage == 0 regardless of which trigger fired.
+    The pipeline advances exactly one stage per frame across many frames
+    (spreading an O(total ways/buildings) rebuild out so it isn't one big
+    stall) - restarting it back to stage 1 every time a new revision
+    arrives mid-flight, which used to happen here because `or` binds
+    looser than `and` so `revision_changed or (any_grid_stale and stage ==
+    0)` let a bare revision change reset progress regardless of stage,
+    means a late stage (e.g. the traffic-light grid rebuild) can starve
+    forever under sustained tile streaming, even though it always looks
+    like it's "syncing".
+    """
+    return map_sync_stage == 0 and (revision_changed or any_grid_stale)
+
+
+def _resolve_osm_fetch_func(args, overpass_endpoints, progress_callback=None):
+    """Pick where OSM data comes from: live Overpass, or a local .osm.pbf
+    extract via osmium-tool (osm_source=pbf) - no downloads, no rate
+    limits, works offline. Falls back to Overpass with a warning if "pbf"
+    was requested but the local file or the `osmium` tool aren't actually
+    usable, so a missing extract doesn't just crash map loading outright.
+    """
+    def _use_overpass(fetch_bbox, **fetch_kwargs):
+        if progress_callback is not None:
+            fetch_kwargs.setdefault("progress_callback", progress_callback)
+        return fetch_osm_ways(fetch_bbox, endpoints=overpass_endpoints, **fetch_kwargs)
+
+    if getattr(args, "osm_source", "overpass") == "pbf":
+        pbf_path = getattr(args, "osm_pbf_path", None)
+        if local_pbf_available(pbf_path):
+            def _use_pbf(fetch_bbox, **fetch_kwargs):
+                if progress_callback is not None:
+                    fetch_kwargs.setdefault("progress_callback", progress_callback)
+                return fetch_osm_ways_from_pbf(fetch_bbox, pbf_path=pbf_path, **fetch_kwargs)
+
+            return _use_pbf
+        logger.warning(
+            "osm_source=pbf requested but no usable local .osm.pbf/osmium-tool "
+            "found (path=%s) - falling back to the Overpass API",
+            pbf_path or "assets/osm/finland-latest.osm.pbf",
+        )
+    return _use_overpass
 
 
 def _choose_city(
@@ -449,10 +501,7 @@ def _load_world(
         elements_count = 0
         world_cache = WorldCacheManager(
             cache_ttl=float(os.getenv("OSM_CACHE_TTL", 24 * 3600)),
-            fetch_func=lambda fetch_bbox, **fetch_kwargs: fetch_osm_ways(
-                fetch_bbox, endpoints=overpass_endpoints, progress_callback=on_load_progress,
-                **fetch_kwargs
-            ),
+            fetch_func=_resolve_osm_fetch_func(args, overpass_endpoints, progress_callback=on_load_progress),
             build_func=lambda raw: build_ways(
                 raw, progress_callback=on_build_progress, include_bus_stops=bus_stops_enabled
             ),
@@ -486,6 +535,7 @@ def _load_world(
         stop_signs = getattr(res, "stop_signs", [])
         yield_signs = getattr(res, "yield_signs", [])
         logical_intersections = getattr(res, "logical_intersections", [])
+        curbs = getattr(res, "curbs", [])
         if len(res) == 8:
             ways, waters, buildings, sceneries, places, bounds, traffic_lights, crossings = res
         elif len(res) == 7:
@@ -506,6 +556,10 @@ def _load_world(
     taxi_stops = getattr(res, "taxi_stops", [])
     bus_stops = getattr(res, "bus_stops", [])
     parking_spaces = getattr(res, "parking_spaces", [])
+    scenery_objects = getattr(res, "scenery_objects", [])
+    speed_bumps = getattr(res, "speed_bumps", [])
+    railways = getattr(res, "railways", [])
+    railings = getattr(res, "railings", [])
     roadworks, roadwork_lights = create_roadworks(ways) if roadworks_enabled else ([], [])
     traffic_lights.extend(roadwork_lights)
     logger.info(
@@ -529,6 +583,12 @@ def _load_world(
     crossing_grid.rebuild(crossings)
     traffic_light_grid = SpatialWayGrid()
     traffic_light_grid.rebuild(traffic_lights)
+    curb_grid = SpatialWayGrid()
+    curb_grid.rebuild(curbs)
+    railway_grid = SpatialWayGrid()
+    railway_grid.rebuild(railways)
+    railing_grid = SpatialWayGrid()
+    railing_grid.rebuild(railings)
 
     # Spawn car on a road near center (avoiding water)
     car = Car(x=(minx + maxx) / 2, y=(miny + maxy) / 2, heading=0.0, speed=0.0)
@@ -625,7 +685,12 @@ def _load_world(
         parking_spaces=parking_spaces,
         logical_intersections=logical_intersections,
         yield_signs=yield_signs,
-        fetch_func=lambda fetch_bbox: fetch_osm_ways(fetch_bbox, endpoints=overpass_endpoints),
+        curbs=curbs,
+        scenery_objects=scenery_objects,
+        speed_bumps=speed_bumps,
+        railways=railways,
+        railings=railings,
+        fetch_func=_resolve_osm_fetch_func(args, overpass_endpoints),
         build_func=build_ways,
         build_in_process=args.build_in_process,
         world_cache_manager=world_cache,
@@ -645,6 +710,12 @@ def _load_world(
         career_total_distance_m=career_total_distance_m,
         crossing_grid=crossing_grid,
         crossings=crossings,
+        curb_grid=curb_grid,
+        curbs=curbs,
+        railway_grid=railway_grid,
+        railways=railways,
+        railing_grid=railing_grid,
+        railings=railings,
         elements_count=elements_count,
         logical_intersections=logical_intersections,
         parking_spaces=parking_spaces,
@@ -655,7 +726,9 @@ def _load_world(
         roadworks=roadworks,
         sceneries=sceneries,
         scenery_grid=scenery_grid,
+        scenery_objects=scenery_objects,
         spatial_grid=spatial_grid,
+        speed_bumps=speed_bumps,
         speed_cameras=speed_cameras,
         stop_signs=stop_signs,
         sun_latitude=sun_latitude,
@@ -679,22 +752,21 @@ def _wait_for_active_tile_fetch(
     screen,
     font,
     language: str,
-    deadline_s: float = 20.0,
 ) -> None:
-    """Block behind a full loading screen while a tile fetch is in flight.
+    """Block behind a full loading screen for as long as a tile fetch is in
+    flight - no small in-HUD progress bar, no gameplay resuming mid-fetch.
 
     Called right after triggering a background tile fetch, instead of
     letting the player keep driving and potentially cross into yet another
     tile before this one even lands - stacking up simultaneous Overpass
-    requests is exactly what draws rate limits. Bounded by `deadline_s`
-    (well under the fetch's own 60s-per-attempt HTTP timeout, but long
-    enough for a slow real fetch) so a genuinely stuck connection can't
-    freeze the game outright - gameplay resumes and whatever the fetch
-    eventually returns is picked up later, same as any other background
-    completion.
+    requests is exactly what draws rate limits. Waits for as long as it
+    takes: the underlying HTTP request already carries its own 60s-per-
+    attempt timeout (osm/overpass.py), so this can't hang forever even
+    without its own deadline - and cutting it off early here would be
+    exactly the "resume with an incomplete fetch, show a small bar
+    instead" behavior this replaces.
     """
-    wait_deadline = time.monotonic() + deadline_s
-    while auto_fetch_manager.get_fetching() and time.monotonic() < wait_deadline:
+    while auto_fetch_manager.get_fetching():
         clock.tick(30)
         for wait_event in pygame.event.get():
             if wait_event.type == pygame.QUIT:
@@ -714,6 +786,13 @@ def main() -> None:
     configure_user_agent(config.get("game", "user_agent_id"))
     city_centers, bbox_presets = cities_from_config(config)
     args = parse_args(config, city_names=list(bbox_presets))
+    if args.osm_source == "pbf":
+        # A local extract's cost is dominated by the fixed full-file scan,
+        # not by how much area is cut out (see PBF_TILE_SIZE_M) - bigger,
+        # less frequent tiles trade that fixed cost against fewer fetches
+        # overall. Only safe here: an Overpass query this large risks
+        # timing out or tripping a public instance's response-size limit.
+        set_tile_size_m(PBF_TILE_SIZE_M)
     configure_logging(args.log_level, file_logging=config.getboolean("game", "file_logging", fallback=False))
     roadworks_enabled = config.getboolean("game", "roadworks_enabled", fallback=False)
     bus_stops_enabled = config.getboolean("game", "bus_stops", fallback=False)
@@ -810,6 +889,12 @@ def main() -> None:
         career_total_distance_m = world.career_total_distance_m
         crossing_grid = world.crossing_grid
         crossings = world.crossings
+        curb_grid = world.curb_grid
+        curbs = world.curbs
+        railway_grid = world.railway_grid
+        railways = world.railways
+        railing_grid = world.railing_grid
+        railings = world.railings
         elements_count = world.elements_count
         logical_intersections = world.logical_intersections
         parking_spaces = world.parking_spaces
@@ -820,7 +905,9 @@ def main() -> None:
         roadworks = world.roadworks
         sceneries = world.sceneries
         scenery_grid = world.scenery_grid
+        scenery_objects = world.scenery_objects
         spatial_grid = world.spatial_grid
+        speed_bumps = world.speed_bumps
         speed_cameras = world.speed_cameras
         stop_signs = world.stop_signs
         sun_latitude = world.sun_latitude
@@ -880,10 +967,11 @@ def main() -> None:
         slow_check_elapsed = 0.0
         taxi_waiter_elapsed = 0.0
         last_zoom_scale = None
-        tire_tracks = []
+        tire_tracks: list[TireTrail] = []
+        tire_track_point_count = 0
         last_track_position = None
-        track_sequence = 0
         last_track_surface = None
+        car_was_in_puddle = False
         map_sync_stage = 0
         last_map_revision = auto_fetch_manager.get_map_revision()
         water_elapsed = 0.0
@@ -897,17 +985,27 @@ def main() -> None:
         runtime_profiler = cProfile.Profile()
         runtime_profile_active = False
         frame_profiler = FrameProfiler()
+        weather = WeatherSystem()
         clock.tick()  # Reset clock timer to avoid large dt on first frame
 
         while running:
-            dt = min(clock.tick_busy_loop(FPS) / 1000.0, 0.1)  # Precise pacing; clamp lag spikes for physics safety
-            frame_profiler.begin_frame()
+            raw_frame_ms = clock.tick_busy_loop(FPS)  # Precise pacing; real per-frame duration for the debug HUD
+            # advance() (not begin_frame() + a later end_frame()) - raw_frame_ms
+            # describes the iteration that just finished, so it must be paired
+            # with that iteration's sections before begin_frame() clears them
+            # for this one. See FrameProfiler.advance()'s docstring.
+            frame_profiler.advance(raw_frame_ms)
+            dt = min(raw_frame_ms / 1000.0, 0.1)  # clamp lag spikes for physics safety
             if awaiting_start:
                 start_warmup_remaining = max(0.0, start_warmup_remaining - dt)
             elif start_hint_remaining > 0.0:
                 start_hint_remaining = max(0.0, start_hint_remaining - dt)
             time_scale = 1.0 if taxi_mgr.current_passenger else 60.0
             game_time_seconds = (game_time_seconds + dt * time_scale) % (24.0 * 60.0 * 60.0)
+            weather.update(dt * time_scale, dt)
+            frame_profiler.set_metric(
+                "weather", f"{weather.weather_type.value} wetness={weather.wetness:.0%}"
+            )
             current_solar_bucket = int(game_time_seconds // (15.0 * 60.0))
             if current_solar_bucket != solar_time_bucket:
                 car_latitude, car_longitude = meters_to_latlon(car.x, car.y, transformer_to_ll)
@@ -992,6 +1090,10 @@ def main() -> None:
                             traffic_lights, crossings, elements_count, traffic_mgr,
                             pedestrian_mgr, spatial_grid, map_sync_stage,
                             chosen_city, camera_city_name, game_mode, on_foot,
+                            scenery_objects=scenery_objects,
+                            speed_bumps=speed_bumps,
+                            railways=railways,
+                            railings=railings,
                         )
                         logger.info("Screenshot saved to %s", screenshot_path)
                         logger.info("Runtime debug snapshot saved to %s", debug_path)
@@ -1240,6 +1342,9 @@ def main() -> None:
                         show_debug_hud = not show_debug_hud
                         frame_profiler.enabled = show_debug_hud
                         logger.info("Debug HUD %s", "enabled" if show_debug_hud else "disabled")
+                    elif event.key == pygame.K_F8:
+                        weather.toggle_rain()
+                        logger.info("Weather toggled: %s", weather.weather_type.value)
                     elif event.key == pygame.K_r:
                         if not _respawn_allowed(on_foot):
                             logger.info("Respawn ignored while driver is walking outside taxi")
@@ -1248,6 +1353,10 @@ def main() -> None:
                             camx, camy = car.x, car.y
                             invalidate_static_caches_for_camera_jump()
                             taxi_mgr.handle_respawn(car.x, car.y)
+                            # Don't let the next tire-track segment rubber-
+                            # band across the teleport (SKIDMARK.md #22.21.13).
+                            last_track_position = None
+                            last_track_surface = None
                     elif event.key == pygame.K_HOME:
                         if not _respawn_allowed(on_foot):
                             logger.info("Debug respawn ignored while driver is walking outside taxi")
@@ -1262,6 +1371,8 @@ def main() -> None:
                             camx, camy = car.x, car.y
                             invalidate_static_caches_for_camera_jump()
                             taxi_mgr.handle_respawn(car.x, car.y)
+                            last_track_position = None
+                            last_track_surface = None
                             logger.info("Debug respawn near bbox edge: car=(%.1f, %.1f)", car.x, car.y)
                     elif event.key == pygame.K_x:
                         taxi_mgr.discard_mission(car.x, car.y)
@@ -1378,7 +1489,6 @@ def main() -> None:
                 )
 
             previous_position = (car.x, car.y)
-            previous_speed = car.speed
             # Off-road driving is allowed at a reduced speed.
             if not on_foot:
                 with frame_profiler.section("physics"):
@@ -1387,7 +1497,9 @@ def main() -> None:
                         ways=ways, spatial_grid=spatial_grid,
                         block_offroad=False, speed_limit_mps=speed_limit_mps,
                         nearby_vehicles=[], parking_spaces=parking_spaces,
+                        scenery_grid=scenery_grid,
                         current_way=current_way, physics_mode=physics_mode,
+                        wetness=weather.wetness,
                     )
                 car.braking = brake > 0.0 and car.speed > 0.05
                 midpoint = (
@@ -1430,6 +1542,8 @@ def main() -> None:
                         taxi_mgr.notification_msg = tr(language, "water_driving")
                         taxi_mgr.notification_timer = 1.5
                         water_elapsed = 0.0
+                        last_track_position = None
+                        last_track_surface = None
                 else:
                     water_elapsed = 0.0
             if immobilized:
@@ -1441,15 +1555,14 @@ def main() -> None:
             audio.update_comments(dt)
             driven_distance = math.hypot(car.x - previous_position[0], car.y - previous_position[1])
             road_limit_mps = current_way.speed_limit_kmh / 3.6 if current_way else None
-            if road_limit_mps is not None and driven_distance > 0.0 and abs(car.speed) <= road_limit_mps + 0.01:
-                rage_power = min(1.0, rage_power + driven_distance / RAGE_DISTANCE_TO_FULL_M)
+            rage_power = _rage_from_speeding(rage_power, car.speed, road_limit_mps, driven_distance)
             if abs(car.speed) * 3.6 < 10.0 and taxi_mgr.sees_red_light(
                 car, nearby_traffic_lights, traffic_mgr.sim_time
             ):
                 rage_power = min(1.0, rage_power + 0.05 * dt)
             if car.is_sliding:
                 # Adrenaline from a hard, tire-losing-grip corner feeds the
-                # rage meter too, same as frustrated in-limit driving does.
+                # rage meter too, same as speeding does.
                 rage_power = min(1.0, rage_power + 0.15 * dt)
             if first_gameplay_frame:
                 logger.info("Gameplay frame: physics complete")
@@ -1460,6 +1573,15 @@ def main() -> None:
                 )
                 tree_crash = taxi_mgr.check_tree_collision(
                     car, sceneries, traffic_mgr.sim_time, previous_position, ways=ways
+                )
+                fence_crash = taxi_mgr.check_fence_collision(
+                    car, sceneries, traffic_mgr.sim_time, previous_position
+                )
+                taxi_mgr.check_curb_bump(
+                    car, curbs, previous_position, traffic_mgr.sim_time, curb_grid=curb_grid
+                )
+                taxi_mgr.check_speed_bump(
+                    car, speed_bumps, previous_position, traffic_mgr.sim_time
                 )
                 bridge_edge_crash = is_car_colliding_with_bridge_edge(car, current_way, ways=ways)
                 if bridge_edge_crash:
@@ -1473,7 +1595,7 @@ def main() -> None:
                         taxi_mgr.total_score -= 200
                         taxi_mgr.notification_msg = tr(language, "bridge_crash", penalty=200)
                         taxi_mgr.notification_timer = 3.5
-            if building_crash or tree_crash or bridge_edge_crash:
+            if building_crash or tree_crash or fence_crash or bridge_edge_crash:
                 audio.play("car-crash", volume=0.7)
                 audio.play_driver_line("collision", language)
             if first_gameplay_frame:
@@ -1654,23 +1776,55 @@ def main() -> None:
             )
             current_way = get_current_road_at_car(car, ways=ways, spatial_grid=spatial_grid, car_roads_only=True, current_way=current_way)
             on_road = current_way is not None
-            is_grass = surface_way is None and not is_point_on_parking_space(car.x, car.y, parking_spaces)
-            is_skidding = (
-                (brake > 0.0 and abs(previous_speed) > 4.0 and abs(steer_left - steer_right) > 0.01)
-                or car.is_sliding
+            is_grass = (
+                surface_way is None
+                and not is_point_on_parking_space(car.x, car.y, parking_spaces)
+                and not is_point_in_parking_lot(car.x, car.y, scenery_grid=scenery_grid)
             )
+            # Tire slip is the source of truth for a skidmark (SKIDMARK.md) -
+            # not brake input, not even is_sliding alone (a tire can be
+            # visibly slipping before the whole car counts as sliding; see
+            # skidmark_should_mark's lower threshold).
+            is_skidding = skidmark_should_mark(car.slip_amount)
             if movement_distance > 0.0 and (is_skidding or (is_grass and abs(car.speed) > 1.0)):
-                if last_track_position is None or is_grass != last_track_surface:
-                    track_sequence += 1
-                if last_track_position is None or math.hypot(car.x - last_track_position[0], car.y - last_track_position[1]) >= 1.0:
-                    tire_tracks.append((car.x, car.y, car.heading, is_grass, track_sequence))
+                start_new_trail = last_track_position is None or is_grass != last_track_surface
+                if start_new_trail or math.hypot(car.x - last_track_position[0], car.y - last_track_position[1]) >= 1.0:
+                    # The grass trail isn't a slip mark - it's a constant-
+                    # weight dirt track from driving off-road at all.
+                    intensity = skidmark_intensity(car.slip_amount) if is_skidding else 1.0
+                    if start_new_trail:
+                        tire_tracks.append(TireTrail(is_grass, car.x, car.y, car.heading, intensity))
+                    else:
+                        tire_tracks[-1].add(car.x, car.y, car.heading, intensity)
+                    tire_track_point_count += 1
                     last_track_position = (car.x, car.y)
                     last_track_surface = is_grass
-                    if len(tire_tracks) > 4000:
-                        del tire_tracks[:500]
+                    # Drop the oldest trails (each one a single unbroken
+                    # skid/dirt-trail event, see TireTrail) once accumulated
+                    # points pass the cap, back down to a lower watermark -
+                    # same "evict a chunk, not one at a time" shape as
+                    # before, just counted per trail instead of per point.
+                    if tire_track_point_count > 4000:
+                        while tire_tracks and tire_track_point_count > 3500:
+                            tire_track_point_count -= len(tire_tracks.pop(0).points)
             else:
                 last_track_position = None
                 last_track_surface = None
+
+            # Splash when the car drives into a puddle (WEATHER_RAIN.md #5):
+            # visual only, no physics change. Edge-triggered on entering
+            # the puddle (not every frame spent inside it) via
+            # car_was_in_puddle, same one-event-per-pass-through shape as
+            # a real splash.
+            puddle_hit = find_puddle_overlap(
+                ways, weather, car.x, car.y, max(car.length_m, car.width_m) * 0.5,
+                spatial_grid=spatial_grid,
+            )
+            car_in_puddle_now = puddle_hit is not None and abs(car.speed) >= SPLASH_MIN_SPEED_MPS
+            if car_in_puddle_now and not car_was_in_puddle:
+                weather.spawn_splash(car.x, car.y, min(1.0, abs(car.speed) * 3.6 / 60.0))
+            car_was_in_puddle = car_in_puddle_now
+
             current_road_name = getattr(current_way, "name", None) if current_way else None
             if not current_road_name and current_way:
                 current_road_name = getattr(current_way, "highway", "Road").replace("_", " ").title()
@@ -1705,27 +1859,28 @@ def main() -> None:
                         auto_fetch_manager.player_tile,
                     )
                     _wait_for_active_tile_fetch(auto_fetch_manager, clock, screen, font, language)
-                if (
-                    auto_fetch_manager.get_map_revision() != last_map_revision
-                    or (
-                    (
-                        len(ways) != spatial_grid.indexed_way_count
-                        or len(buildings) != building_grid.indexed_way_count
-                        or len(sceneries) != scenery_grid.indexed_way_count
-                        or len(waters) != water_grid.indexed_way_count
-                        or len(crossings) != crossing_grid.indexed_way_count
-                        or len(traffic_lights) != traffic_light_grid.indexed_way_count
-                    )
-                    )
-                    and map_sync_stage == 0
+                any_grid_stale = (
+                    len(ways) != spatial_grid.indexed_way_count
+                    or len(buildings) != building_grid.indexed_way_count
+                    or len(sceneries) != scenery_grid.indexed_way_count
+                    or len(waters) != water_grid.indexed_way_count
+                    or len(crossings) != crossing_grid.indexed_way_count
+                    or len(curbs) != curb_grid.indexed_way_count
+                    or len(railways) != railway_grid.indexed_way_count
+                    or len(railings) != railing_grid.indexed_way_count
+                    or len(traffic_lights) != traffic_light_grid.indexed_way_count
+                )
+                if _map_sync_should_start(
+                    auto_fetch_manager.get_map_revision() != last_map_revision,
+                    any_grid_stale,
+                    map_sync_stage,
                 ):
-                    if map_sync_stage == 0:
-                        logger.info(
-                            "Map sync started: revision=%d ways=%d buildings=%d",
-                            auto_fetch_manager.get_map_revision(),
-                            len(ways),
-                            len(buildings),
-                        )
+                    logger.info(
+                        "Map sync started: revision=%d ways=%d buildings=%d",
+                        auto_fetch_manager.get_map_revision(),
+                        len(ways),
+                        len(buildings),
+                    )
                     map_sync_stage = 1
 
                 map_sync_started = time.perf_counter() if map_sync_stage else None
@@ -1754,17 +1909,29 @@ def main() -> None:
                         crossing_grid.rebuild(crossings)
                     map_sync_stage = 7
                 elif map_sync_stage == 7:
+                    with frame_profiler.section("map_sync:curb_grid"):
+                        curb_grid.rebuild(curbs)
+                    map_sync_stage = 8
+                elif map_sync_stage == 8:
+                    with frame_profiler.section("map_sync:railway_grid"):
+                        railway_grid.rebuild(railways)
+                    map_sync_stage = 9
+                elif map_sync_stage == 9:
+                    with frame_profiler.section("map_sync:railing_grid"):
+                        railing_grid.rebuild(railings)
+                    map_sync_stage = 10
+                elif map_sync_stage == 10:
                     with frame_profiler.section("map_sync:traffic_light_grid"):
                         traffic_light_grid.rebuild(traffic_lights)
                     if args.auto_fetch:
                         with auto_fetch_manager.lock:
                             auto_fetch_manager._attempted_endpoints.clear()
-                    map_sync_stage = 8
-                elif map_sync_stage == 8:
+                    map_sync_stage = 11
+                elif map_sync_stage == 11:
                     with frame_profiler.section("map_sync:taxi"):
                         taxi_mgr.sync_map_data(ways, places=places, buildings=buildings)
-                    map_sync_stage = 9
-                elif map_sync_stage == 9:
+                    map_sync_stage = 12
+                elif map_sync_stage == 12:
                     with frame_profiler.section("map_sync:traffic"):
                         traffic_mgr.sync_map_data(
                             ways,
@@ -1776,15 +1943,15 @@ def main() -> None:
                             parking_spaces=parking_spaces,
                             logical_intersections=logical_intersections,
                         )
-                    map_sync_stage = 10
-                elif map_sync_stage == 10:
+                    map_sync_stage = 13
+                elif map_sync_stage == 13:
                     with frame_profiler.section("map_sync:pedestrians"):
                         pedestrian_mgr.sync_map_data(
                             ways, traffic_lights=traffic_lights, logical_intersections=logical_intersections,
                         )
                         pedestrian_mgr.set_venue_buildings(buildings)
-                    map_sync_stage = 11
-                elif map_sync_stage == 11:
+                    map_sync_stage = 14
+                elif map_sync_stage == 14:
                     with frame_profiler.section("map_sync:finalize"):
                         navigation_route_dirty = True
                         last_map_revision = auto_fetch_manager.get_map_revision()
@@ -1853,11 +2020,7 @@ def main() -> None:
                 camx,
                 camy,
                 px_per_m=px_per_m,
-                tree_effects=taxi_mgr.tree_effects,
-                fallen_trees=taxi_mgr.fallen_trees,
                 spatial_grid=scenery_grid,
-                ways=ways,
-                road_spatial_grid=spatial_grid,
                 profiler=frame_profiler,
             )
             stage_elapsed = time.perf_counter() - map_stage_start
@@ -1880,6 +2043,8 @@ def main() -> None:
                 screen, ways, camx, camy, px_per_m=px_per_m,
                 spatial_grid=spatial_grid, profiler=frame_profiler,
             )
+            draw_wet_roads(screen, ways, weather, camx, camy, px_per_m=px_per_m, spatial_grid=spatial_grid)
+            draw_puddles(screen, ways, weather, camx, camy, px_per_m=px_per_m, spatial_grid=spatial_grid)
             draw_parking_spaces(
                 screen,
                 parking_spaces,
@@ -1889,9 +2054,39 @@ def main() -> None:
                 spatial_grid=traffic_mgr._parking_grid,
                 grid_cell_size=traffic_mgr._parking_grid_cell_size,
             )
+            # Ground-level track only here - a bridge track is drawn again,
+            # after the car/pedestrians (see the only_bridges=True call
+            # below), so it actually covers whatever's underneath it
+            # instead of the car rendering on top of the bridge deck it's
+            # really driving under.
+            draw_railways(
+                screen, railways, camx, camy, px_per_m=px_per_m, spatial_grid=railway_grid, only_bridges=False,
+            )
             stage_elapsed = time.perf_counter() - map_stage_start
             render_profile_times["map_roads"] = render_profile_times.get("map_roads", 0.0) + stage_elapsed
             frame_profiler.record("render:roads", stage_elapsed * 1000.0)
+            # Trees are drawn here, after roads/parking - not inside
+            # draw_scenery() above - so a road or parking surface (both
+            # just painted) can never end up covering a real tree (see
+            # render/scenery.py:draw_trees docstring).
+            map_stage_start = time.perf_counter()
+            draw_trees(
+                screen,
+                sceneries,
+                camx,
+                camy,
+                px_per_m=px_per_m,
+                tree_effects=taxi_mgr.tree_effects,
+                fallen_trees=taxi_mgr.fallen_trees,
+                spatial_grid=scenery_grid,
+                ways=ways,
+                road_spatial_grid=spatial_grid,
+                profiler=frame_profiler,
+            )
+            stage_elapsed = time.perf_counter() - map_stage_start
+            render_profile_times["map_trees"] = render_profile_times.get("map_trees", 0.0) + stage_elapsed
+            frame_profiler.record("render:trees", stage_elapsed * 1000.0)
+            draw_scenery_objects(screen, scenery_objects, camx, camy, px_per_m=px_per_m, profiler=frame_profiler)
             if bus_stops_enabled:
                 map_stage_start = time.perf_counter()
                 draw_bus_stops(screen, bus_stops, ways, camx, camy, px_per_m=px_per_m, spatial_grid=spatial_grid)
@@ -1918,6 +2113,7 @@ def main() -> None:
                 time.perf_counter() - render_profile_stage_start
             )
             render_profile_stage_start = time.perf_counter()
+            map_stage_start = time.perf_counter()
             draw_tire_tracks(
                 screen, tire_tracks, camx, camy, grass=False, px_per_m=px_per_m,
                 viewport_bounds=viewport_bounds,
@@ -1929,7 +2125,11 @@ def main() -> None:
             draw_roadworks(screen, roadworks, camx, camy, px_per_m=px_per_m)
             if first_gameplay_frame:
                 logger.info("Gameplay frame: rendering overlays")
+            draw_curbs(screen, curbs, camx, camy, px_per_m=px_per_m, spatial_grid=curb_grid)
+            draw_railings(screen, railings, camx, camy, px_per_m=px_per_m, spatial_grid=railing_grid)
+            draw_construction_fences(screen, sceneries, camx, camy, px_per_m=px_per_m, spatial_grid=scenery_grid)
             draw_crossings(screen, crossings, camx, camy, px_per_m=px_per_m, spatial_grid=crossing_grid)
+            draw_speed_bumps(screen, speed_bumps, camx, camy, px_per_m=px_per_m)
             draw_traffic_lights(
                 screen,
                 traffic_lights,
@@ -1969,6 +2169,15 @@ def main() -> None:
                     if getattr(way, "is_drivable", True)
                 )
                 visible_road_count_elapsed = 0.0
+            # This whole stretch (tire tracks, roadworks, crossings, traffic
+            # lights, taxi stops, speed cameras) used to run between two
+            # profiler timestamps whose interval was never actually
+            # recorded - the *next* reset below silently discarded it, so a
+            # slowdown anywhere in here was invisible to both the frame
+            # profiler and the live debug HUD's spike/culprit readout.
+            stage_elapsed = time.perf_counter() - map_stage_start
+            render_profile_times["map_markings"] = render_profile_times.get("map_markings", 0.0) + stage_elapsed
+            frame_profiler.record("render:markings", stage_elapsed * 1000.0)
             render_profile_stage_start = time.perf_counter()
             visible_pedestrians = pedestrian_mgr.pedestrians + [
                 npc for npc in () if getattr(npc, "is_on_foot", False)
@@ -2013,6 +2222,7 @@ def main() -> None:
                 spatial_grid=spatial_grid,
                 current_way=current_way,
             )
+            draw_splashes(screen, weather, camx, camy, px_per_m=px_per_m)
             if not on_foot:
                 draw_taxi_smoke(screen, car, camx, camy, px_per_m=px_per_m, timer=taxi_mgr.taxi_smoke_timer)
             draw_passenger_nausea_bubble(
@@ -2024,6 +2234,14 @@ def main() -> None:
                 camy,
                 px_per_m=px_per_m,
                 language=language,
+            )
+            # Bridge track only here, redrawn after the car/pedestrians
+            # above (see the only_bridges=False call near draw_ways) so an
+            # elevated railway actually covers whatever's underneath it -
+            # matches the bridge the screenshot flagged, where the taxi
+            # rendered on top of a rail bridge it was really driving under.
+            draw_railways(
+                screen, railways, camx, camy, px_per_m=px_per_m, spatial_grid=railway_grid, only_bridges=True,
             )
             stage_elapsed = time.perf_counter() - render_profile_stage_start
             render_profile_times["actors"] = render_profile_times.get("actors", 0.0) + stage_elapsed
@@ -2086,6 +2304,7 @@ def main() -> None:
                 longitude=sun_longitude,
                 buildings=buildings,
                 base_surface=street_light_base,
+                building_spatial_grid=building_grid,
             )
             if sun_altitude < -7.5:
                 draw_pedestrian_reflectors(
@@ -2101,6 +2320,9 @@ def main() -> None:
             stage_elapsed = time.perf_counter() - lighting_start
             render_profile_times["lighting"] = render_profile_times.get("lighting", 0.0) + stage_elapsed
             frame_profiler.record("render:lighting", stage_elapsed * 1000.0)
+
+            with frame_profiler.section("render:weather"):
+                draw_rain(screen, weather)
 
             # Labels overlay (toggled with 'L')
             if label_mode:
@@ -2169,9 +2391,7 @@ def main() -> None:
                 len(ways),
                 px_per_m,
                 transformer_to_ll,
-                is_auto_fetching=(args.auto_fetch and auto_fetch_manager.get_fetching()),
                 show_labels=bool(label_mode),
-                auto_fetch_progress=auto_fetch_manager.get_progress(),
                 taxi_mgr=taxi_mgr,
                 current_road_name=current_road_name,
                 speed_limit_kmh=current_limit_kmh,
@@ -2225,13 +2445,15 @@ def main() -> None:
             frame_profiler.record(
                 "rendering", (time.perf_counter() - render_profiler_start) * 1000.0
             )
-            frame_profiler.end_frame()
             draw_frame_profiler(
                 screen, small_font, frame_profiler,
                 0, len(pedestrian_mgr.pedestrians),
             )
             if show_debug_hud:
-                draw_g_force_meter(screen, small_font, car.forward_g, car.lateral_g, car.is_sliding)
+                draw_g_force_meter(
+                    screen, small_font, car.forward_g, car.lateral_g, car.is_sliding,
+                    grip_usage=car.grip_usage, max_grip_g=car.max_grip_g,
+                )
             pygame.display.flip()
             if first_gameplay_frame:
                 logger.info("Gameplay frame: complete")

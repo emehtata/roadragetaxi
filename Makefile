@@ -1,7 +1,7 @@
 PYTHON := .venv/bin/python
 PIP := .venv/bin/pip
 
-.PHONY: help venv install run run-debug run-sample audit-ai test compile check clean
+.PHONY: help venv install run run-debug run-sample run-pbf index-pbf audit-ai test compile check clean
 
 help:
 	@printf '%s\n' \
@@ -9,6 +9,8 @@ help:
 		'run                    Start the game' \
 		'run-debug              Start the game with DEBUG logging' \
 		'run-sample             Start offline with bundled sample data' \
+		'run-pbf                Start using the local .osm.pbf extract instead of Overpass' \
+		'index-pbf              Build the grid index for the local .osm.pbf extract (faster run-pbf)' \
 		'audit-ai               Run headless autonomous traffic audit' \
 		'test                   Run the test suite' \
 		'compile                Compile-check Python sources' \
@@ -29,6 +31,12 @@ run-debug:
 
 run-sample:
 	PYTHONPATH=src $(PYTHON) road_rage_trip.py --use-sample
+
+run-pbf:
+	PYTHONPATH=src $(PYTHON) road_rage_trip.py --osm-source pbf
+
+index-pbf:
+	PYTHONPATH=src $(PYTHON) -m theroadragetrip.utils.pbf_index src/theroadragetrip/assets/osm/finland-latest.osm.pbf
 
 audit-ai:
 	PYTHONPATH=src $(PYTHON) utils/autoplay_audit.py

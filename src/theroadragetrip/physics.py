@@ -19,25 +19,87 @@ LIGHT_TRAFFIC_MAX_SPEED = 6.0  # m/s (~22 km/h) on footways, paths, and cycleway
 OFFROAD_DECEL = 10.0  # m/s^2 when slowing from road speed
 
 GRAVITY_MPS2 = 9.81
-# Cornering grip limit, as a fraction of g, before the tires lose traction.
-# "Arcade" is forgiving (steering just goes mushy past the limit, no separate
-# slide); "simulation" is stricter and adds a genuine drift angle that has to
-# be steered out of.
+# Below this speed, any heading change (steering while nearly stopped,
+# heading noise from lane assist, ...) is not a real turn - per GFORCE.md
+# section 3, lateral g must read ~0 rather than swing on meaningless
+# rotation at a standstill.
+MIN_SPEED_FOR_LATERAL_G_MPS = 0.3
+# Time constant for the EMA smoothing applied to the *displayed* g-force
+# (car.forward_g/lateral_g/total_g); car.raw_*_g stays unsmoothed. Small
+# enough to feel responsive, large enough to not visibly jitter frame to
+# frame - see _smoothed_g.
+G_FORCE_SMOOTHING_TIME_CONSTANT_S = 0.15
+# A one-frame position jump implying a speed beyond this is not real
+# motion - it's a teleport (respawn, pickup relocation, ...) - so the
+# resulting velocity-vector delta is discarded instead of reported as a
+# g-force spike (GFORCE.md/GRIP.md section 9/16). This has to gate on the
+# *implied speed*, not on how abrupt the change was: a genuine hard crash
+# decelerating from top speed to a dead stop in one frame is a legitimate,
+# large acceleration spike (spec explicitly wants that reported), but its
+# speed before and after both stay within what the car could actually be
+# doing; a teleport implies a speed no real drive could ever reach.
+MAX_PLAUSIBLE_SPEED_MPS = MAX_SPEED * 3.0
+# --- Tire grip model (.github/prompts/GRIP.md) -----------------------------
 #
-# These are calibrated against this game's steering model, not real tire
-# grip: steer_left/right is a binary "wheel fully turned" input with no
-# in-between, so at any given speed a "gentle" turn and a "hard" turn demand
-# the *same* lateral g while the key is held - there's no smaller-magnitude
-# input to tell them apart. The only variable left to gate on is speed, so
-# the limit has to sit high enough that full-lock steering stays planted
-# through ordinary city/arterial driving and only lets go once a turn is
-# actually taken at speeding-level speed - not literally the first tap of
-# the turn key at 20 km/h. Regression: 0.9/0.55 g made full-lock steering
-# break loose above ~20 km/h / ~10 km/h - "skid marks came too easy" and the
-# g-meter pinned to its edge on almost any turn.
-GRIP_LIMIT_G = {"arcade": 1.9, "simulation": 1.3}
-ICE_GRIP_MULTIPLIER = 0.3
+# Maximum *combined* tire grip in g, by road surface - a friction circle:
+# longitudinal (accel/brake) and lateral (cornering) forces share this one
+# budget (see _available_lateral_budget_g), not two independent ceilings.
+# Values are GRIP.md's own suggested starting points, not measured physics.
+SURFACE_MAX_GRIP_G = {
+    "dry_asphalt": 0.90,
+    "wet_asphalt": 0.60,
+    "gravel": 0.55,
+    "grass": 0.35,
+    "snow": 0.20,
+    "ice": 0.10,
+}
+# OSM Way.surface values that map to a rougher-than-asphalt bucket. There's
+# no in-game weather system to ever pick "wet_asphalt" (no rain state
+# exists), so it's defined for completeness/future use but unreachable today.
+_GRAVEL_SURFACES = {"gravel", "fine_gravel", "compacted", "unpaved", "dirt", "ground", "sand"}
+# The steering model is unchanged from before this file's grip rework:
+# steer_left/right is a binary "wheel fully turned" input, no partial-turn
+# magnitude, so at a given speed a "gentle" and a "hard" turn demand the
+# *same* lateral g while the key is held. That still needs a per-mode
+# fudge on top of the surface's real grip, or full-lock steering breaks
+# loose on almost any ordinary turn (regression: a flat 0.9g ceiling with
+# a hard cutoff made "skid marks came too easy" and pinned the g-meter on
+# nearly every corner) - "arcade" stays additionally forgiving on top,
+# while "simulation" uses GRIP.md's numbers as written.
+PHYSICS_MODE_GRIP_MULTIPLIER = {"arcade": 2.0, "simulation": 1.0}
+# Ratios of max_grip_g (GRIP.md section 1's 0.75/0.90/1.00 for a 0.90 dry
+# max) - scaled per-surface so e.g. gravel starts warning/sliding at the
+# same *proportion* of its own (much lower) grip ceiling. Used to grade
+# the *measured* slip_amount/is_sliding and the oversteer drift-angle
+# buildup rate continuously (GRIP.md sections 6-7, 11-12); the understeer
+# heading-rate clamp itself (update_car_physics) is a hard physical
+# ceiling at GRIP_LIMIT_RATIO - the tires genuinely cannot deliver more.
+GRIP_WARNING_RATIO = 0.75 / 0.90
+GRIP_LIMIT_RATIO = 1.0
+FULL_SLIDE_RATIO = 1.00 / 0.90
+# Hysteresis on slip_amount (GRIP.md section 12) so is_sliding doesn't
+# flicker for a car riding right at the boundary.
+SLIDE_ENTER_THRESHOLD = 0.80
+SLIDE_EXIT_THRESHOLD = 0.65
+# Visible skidmarks (.github/prompts/SKIDMARK.md), as thresholds on
+# car.slip_amount (already a continuous 0..1 - see _slip_amount_from_ratio)
+# rather than a second slip metric. Deliberately below SLIDE_ENTER_THRESHOLD:
+# a tire can be visibly slipping (worth a mark on the road) before the
+# whole car counts as "sliding".
+SKIDMARK_SLIP_THRESHOLD = 0.65
+SKIDMARK_FULL_SLIP_THRESHOLD = 0.90
+# Below this speed the velocity vector direction is numerically unstable
+# (near-zero-length), so slip angle isn't meaningful (GRIP.md section 5) -
+# reuses the same cutoff as lateral g for the same reason.
+MIN_SPEED_FOR_SLIP_ANGLE_MPS = MIN_SPEED_FOR_LATERAL_G_MPS
 DRIFT_RECOVERY_RATE = 2.5  # rad/s; how fast a "simulation"-mode drift angle decays once grip is regained
+# rad/s per unit of overshoot_ratio (how many multiples of the grip limit
+# is demanded, past 1.0). Calibrated to build up similarly gradually to
+# the pre-GRIP.md tuning for a comparable overshoot, for the same reason
+# that tuning existed (see PHYSICS_MODE_GRIP_MULTIPLIER's comment) - a
+# bigger rate here made hard oversteer spin out within 1-2 frames.
+DRIFT_BUILD_RATE = math.radians(8.0)
+MAX_DRIFT_ANGLE = math.radians(45.0)
 
 NON_DRIVABLE_HIGHWAYS = {
     "footway",
@@ -98,10 +160,27 @@ class Car:
     lane_assist_enabled: bool = False  # user toggle for lane assist feature (default False)
     lane_assist_active: bool = False  # whether lane assist is currently steering
     braking: bool = False  # whether brake lights should be illuminated
-    forward_g: float = 0.0  # last frame's longitudinal g (+accelerating, -braking)
-    lateral_g: float = 0.0  # last frame's cornering g (+left, -right)
+    # Smoothed g-force (see _smoothed_g/_update_g_force) - what the HUD meter
+    # and any future rage reaction should read for a stable value.
+    forward_g: float = 0.0  # +accelerating, -braking
+    lateral_g: float = 0.0  # +left, -right (see _update_g_force's sign note)
+    total_g: float = 0.0  # hypot(forward_g, lateral_g), NOT sum of magnitudes
+    # Unsmoothed, same-frame g-force - for anything that needs the actual
+    # instantaneous value rather than the display-friendly one (GFORCE.md
+    # section 10).
+    raw_forward_g: float = 0.0
+    raw_lateral_g: float = 0.0
+    raw_total_g: float = 0.0
     drift_angle: float = 0.0  # radians; how far the car's motion has slid from its heading
-    is_sliding: bool = False  # true the frame cornering grip was exceeded
+    is_sliding: bool = False  # hysteresis on slip_amount (GRIP.md section 12), not a raw threshold
+    # Tire grip model (GRIP.md) - see _update_g_force/_slip_amount_from_ratio.
+    max_grip_g: float = SURFACE_MAX_GRIP_G["dry_asphalt"]  # current surface/mode's combined-g ceiling
+    grip_usage: float = 0.0  # raw_total_g / max_grip_g
+    slip_amount: float = 0.0  # 0 = full grip, 1 = fully slid (continuous, see _slip_amount_from_ratio)
+    slip_angle: float = 0.0  # radians, heading vs. actual velocity direction; +left, -right
+    _prev_vx: float = 0.0  # world-frame velocity, previous frame (g-force calc only)
+    _prev_vy: float = 0.0
+    _g_force_initialized: bool = False  # False until a first real dt has primed _prev_vx/vy
 
 
 def is_car_road(way) -> bool:
@@ -167,6 +246,40 @@ def is_point_on_parking_space(
         if bbox and not (bbox[0] <= px <= bbox[2] and bbox[1] <= py <= bbox[3]):
             continue
         points = getattr(space, "points_m", ())
+        if len(points) >= 3 and point_in_polygon(px, py, points):
+            return True
+    return False
+
+
+def is_point_in_parking_lot(
+    px: float,
+    py: float,
+    sceneries: Optional[List] = None,
+    scenery_grid: Optional["SpatialWayGrid"] = None,
+) -> bool:
+    """Return whether a point lies inside a mapped parking lot (Scenery
+    kind="parking") - the whole lot's paved ground, not just an
+    individually-tagged parking_space within it (is_point_on_parking_space
+    above). Without this, driving the drive aisles of a real parking lot
+    - anywhere that isn't one of the few explicitly marked spaces - reads
+    as off-road (grass/dirt trail), even though it's paved.
+
+    Uses scenery_grid for an O(1) lookup when given (sceneries can run to
+    thousands of entries for a real map - see the tire-track/road-cache
+    scans this session already had to fix for the same reason); falls
+    back to a linear scan of `sceneries` directly for callers/tests that
+    don't have a grid built.
+    """
+    candidates = (
+        scenery_grid.ways_in_rect(px, py, px, py) if scenery_grid is not None else (sceneries or ())
+    )
+    for scenery in candidates:
+        if getattr(scenery, "kind", None) != "parking":
+            continue
+        bbox = getattr(scenery, "bbox", None)
+        if bbox and bbox != (0.0, 0.0, 0.0, 0.0) and not (bbox[0] <= px <= bbox[2] and bbox[1] <= py <= bbox[3]):
+            continue
+        points = getattr(scenery, "points_m", ())
         if len(points) >= 3 and point_in_polygon(px, py, points):
             return True
     return False
@@ -561,6 +674,11 @@ class SpatialWayGrid:
     """Spatial hash grid indexing road ways for fast O(1) road collision checks."""
 
     def __init__(self, ways_or_cell_size=200.0, cell_size: float = 200.0):
+        # id(way) -> its index in the last rebuild()'s list - lets
+        # ways_in_rect() return results in that stable order regardless of
+        # which grid cell a query happens to reach an item through first
+        # (see ways_in_rect's docstring for why that matters).
+        self._insertion_order: dict[int, int] = {}
         if isinstance(ways_or_cell_size, (list, tuple)):
             self.cell_size = cell_size
             self.grid: dict[Tuple[int, int], List] = {}
@@ -600,6 +718,7 @@ class SpatialWayGrid:
 
     def rebuild(self, ways: List) -> None:
         self.grid.clear()
+        self._insertion_order = {id(w): index for index, w in enumerate(ways)}
         for w in ways:
             self.insert(w)
         self.indexed_way_count = len(ways)
@@ -621,12 +740,45 @@ class SpatialWayGrid:
             yield way, half_width
 
     def ways_in_rect(self, minx: float, miny: float, maxx: float, maxy: float):
-        """Yield unique ways whose indexed bounds intersect a rectangle."""
+        """Yield unique ways whose indexed bounds intersect a rectangle,
+        sorted largest-bbox-first (original list position breaking ties).
+
+        Two things used to go wrong here because results came out in scan
+        order - whichever grid cell the (gx, gy) loop happened to reach
+        each way through first, which depends on the *query's own* corner
+        (gx0, gy0), not on anything intrinsic to the way:
+
+        1. Unstable draw order. A way spanning several cells could be
+           reached through a different one of its cells by two viewports
+           only a few meters apart, changing where it fell relative to an
+           unrelated way that only occupies one cell. Real symptom: a
+           small park polygon nested inside a much bigger landuse polygon
+           flipped between drawn-on-top and drawn-underneath as the
+           camera panned - the park visibly appearing and disappearing.
+
+        2. Even where it happened to be stable, scan order has no
+           relationship to which polygon should visually win. A big
+           landuse/parking polygon and a small named park inside it are
+           both real, correctly-shaped areas - the specific, small one is
+           what should be visible, the same way a good hand-drawn map
+           layers a park on top of the neighborhood it sits in, not the
+           other way around.
+
+        Sorting largest-bbox-area-first (so smaller, more specific areas
+        draw later, on top) fixes both: it's independent of any query, and
+        it's the ordering every current caller actually wants for drawing
+        area fills, waters, or buildings. Original list position remains
+        the tie-break for equal-area or point-like (zero-area) ways, so
+        e.g. two points still render in a stable relative order too. The
+        cost is one sort over however many ways are in view, not the
+        whole map.
+        """
         gx0 = int(minx // self.cell_size)
         gx1 = int(maxx // self.cell_size)
         gy0 = int(miny // self.cell_size)
         gy1 = int(maxy // self.cell_size)
         seen = set()
+        matches = []
         for gx in range(gx0, gx1 + 1):
             for gy in range(gy0, gy1 + 1):
                 for way in self.grid.get((gx, gy), ()):
@@ -642,7 +794,15 @@ class SpatialWayGrid:
                         or bbox[3] + half_width < miny
                         or bbox[1] - half_width > maxy
                     ):
-                        yield way
+                        matches.append(way)
+
+        def sort_key(way):
+            bbox = getattr(way, "bbox", None)
+            area = (bbox[2] - bbox[0]) * (bbox[3] - bbox[1]) if bbox else 0.0
+            return (-area, self._insertion_order.get(id(way), -1))
+
+        matches.sort(key=sort_key)
+        yield from matches
 
     def is_point_on_road(self, px: float, py: float, car_roads_only: bool = False, layer: Optional[int] = None) -> bool:
         for way, half_width in self._candidate_ways(px, py, car_roads_only, layer):
@@ -946,12 +1106,80 @@ def get_current_road_at_car(
     return best_way
 
 
-def _cornering_grip_limit_g(current_way, physics_mode: str) -> float:
-    """Return the lateral-g grip ceiling for the current road surface/mode."""
-    limit = GRIP_LIMIT_G.get(physics_mode, GRIP_LIMIT_G["arcade"])
+def _surface_max_grip_g(current_way, physics_mode: str, wetness: float = 0.0) -> float:
+    """Return this surface's maximum combined-g tire grip (GRIP.md section
+    9), reusing the game's existing Way.surface/is_ice_road fields rather
+    than a second surface classification.
+
+    `wetness` (0..1, from WeatherSystem - see weather.py) only affects the
+    asphalt bucket: it interpolates continuously from dry_asphalt toward
+    wet_asphalt rather than switching at a threshold, the same "progressive,
+    not a hard instant transition" approach GRIP.md already uses for grip
+    loss in general (section 1). Other surfaces (grass/gravel/snow/ice)
+    aren't in GRIP.md's surface list as "wet" variants, so wetness doesn't
+    touch them - this was unreachable before a weather system existed to
+    report wetness at all.
+    """
     if current_way is not None and getattr(current_way, "is_ice_road", False):
-        limit *= ICE_GRIP_MULTIPLIER
-    return limit
+        base = SURFACE_MAX_GRIP_G["ice"]
+    else:
+        surface = str(getattr(current_way, "surface", "") or "").lower() if current_way is not None else ""
+        if surface == "grass":
+            base = SURFACE_MAX_GRIP_G["grass"]
+        elif surface == "snow":
+            base = SURFACE_MAX_GRIP_G["snow"]
+        elif surface in _GRAVEL_SURFACES:
+            base = SURFACE_MAX_GRIP_G["gravel"]
+        else:
+            dry = SURFACE_MAX_GRIP_G["dry_asphalt"]
+            wet = SURFACE_MAX_GRIP_G["wet_asphalt"]
+            base = dry + (wet - dry) * clamp(wetness, 0.0, 1.0)
+    return base * PHYSICS_MODE_GRIP_MULTIPLIER.get(physics_mode, 1.0)
+
+
+def _smoothstep(t: float) -> float:
+    t = clamp(t, 0.0, 1.0)
+    return t * t * (3.0 - 2.0 * t)
+
+
+def _slip_amount_from_ratio(grip_ratio: float) -> float:
+    """Map combined_g/max_grip_g to a continuous 0..1 slip amount (GRIP.md
+    sections 6-7, 11): flat at 0 below the warning ratio, flat at 1 at/past
+    full slide, smoothstep-interpolated between - no binary jump."""
+    if grip_ratio <= GRIP_WARNING_RATIO:
+        return 0.0
+    if grip_ratio >= FULL_SLIDE_RATIO:
+        return 1.0
+    return _smoothstep((grip_ratio - GRIP_WARNING_RATIO) / (FULL_SLIDE_RATIO - GRIP_WARNING_RATIO))
+
+
+def skidmark_intensity(slip_amount: float) -> float:
+    """How dark a skidmark segment should be (0 = invisible, 1 = full
+    black) for a tire at this slip_amount - SKIDMARK.md section 22.9: a
+    continuous fade between the visible and full-slip thresholds, not an
+    invisible/black binary switch. 0 below SKIDMARK_SLIP_THRESHOLD (no
+    mark at all - see skidmark_should_mark)."""
+    if slip_amount <= SKIDMARK_SLIP_THRESHOLD:
+        return 0.0
+    if slip_amount >= SKIDMARK_FULL_SLIP_THRESHOLD:
+        return 1.0
+    return _smoothstep(
+        (slip_amount - SKIDMARK_SLIP_THRESHOLD) / (SKIDMARK_FULL_SLIP_THRESHOLD - SKIDMARK_SLIP_THRESHOLD)
+    )
+
+
+def skidmark_should_mark(slip_amount: float) -> bool:
+    """Whether a tire at this slip_amount should leave a mark at all
+    (SKIDMARK.md section 22.2) - a lower bar than is_sliding's hysteresis:
+    a tire can be visibly slipping before the whole car is "sliding"."""
+    return slip_amount >= SKIDMARK_SLIP_THRESHOLD
+
+
+def _available_lateral_budget_g(max_grip_g: float, longitudinal_g: float) -> float:
+    """Friction-circle remaining lateral budget (GRIP.md section 2) after
+    `longitudinal_g` of the surface's total grip is already spent on
+    accelerating/braking."""
+    return math.sqrt(max(0.0, max_grip_g ** 2 - longitudinal_g ** 2))
 
 
 def _decay_toward_zero(value: float, rate: float, dt: float) -> float:
@@ -960,6 +1188,103 @@ def _decay_toward_zero(value: float, rate: float, dt: float) -> float:
     if value < 0.0:
         return min(0.0, value + rate * dt)
     return 0.0
+
+
+def _smoothed_g(previous: float, raw: float, dt: float) -> float:
+    """Exponential smoothing toward `raw`, with a time constant rather than
+    a fixed per-frame blend factor so the result doesn't depend on frame
+    rate (GFORCE.md sections 6-7)."""
+    if dt <= 0.0:
+        return previous
+    alpha = 1.0 - math.exp(-dt / G_FORCE_SMOOTHING_TIME_CONSTANT_S)
+    return previous + (raw - previous) * alpha
+
+
+def _update_g_force(car: Car, entry_x: float, entry_y: float, entry_heading: float, dt: float) -> None:
+    """Measure g-force from the car's *actual* velocity-vector change this
+    frame (GFORCE.md) rather than from steering input or a heading-rate
+    formula: entry_x/y is where the car was before any of this frame's
+    speed/steering/collision/road-edge-blocking logic ran, so
+    (car.x/y - entry_x/y) / dt is the true velocity this frame, including
+    drift, being blocked, or anything else that moved (or stopped) it.
+
+    Decomposed relative to entry_heading - the car's heading at the start
+    of the frame, before this frame's own steering rotated it - rather
+    than the post-rotation car.heading: using the end-of-frame heading
+    would rotate the forward/left axes out from under a chunk of this
+    same frame's motion, leaking part of a pure deceleration into the
+    lateral axis (and vice versa) purely from the coordinate change, not
+    any real sideways force. The forward-axis component is longitudinal g
+    (+accelerating, -braking), the left-axis component is lateral g
+    (+left, -right - a left turn pushes an occupant's body to the right,
+    matching the HUD's convention).
+    """
+    if dt <= 0.0:
+        return
+    velocity_x = (car.x - entry_x) / dt
+    velocity_y = (car.y - entry_y) / dt
+
+    # Slip angle (GRIP.md section 5) needs no velocity history - just this
+    # frame's actual travel direction vs. where the car points - so it's
+    # computed unconditionally, even on the very first frame.
+    velocity_speed = math.hypot(velocity_x, velocity_y)
+    if velocity_speed < MIN_SPEED_FOR_SLIP_ANGLE_MPS:
+        car.slip_angle = 0.0
+    else:
+        velocity_heading = math.atan2(velocity_y, velocity_x)
+        car.slip_angle = (velocity_heading - car.heading + math.pi) % (2.0 * math.pi) - math.pi
+
+    if not car._g_force_initialized:
+        # First measurement: nothing to diff against yet - per GFORCE.md
+        # section 8, prime the velocity history and report ~0 rather than
+        # spike off an assumed-zero previous velocity.
+        car._prev_vx, car._prev_vy = velocity_x, velocity_y
+        car._g_force_initialized = True
+        car.raw_forward_g = car.raw_lateral_g = car.raw_total_g = 0.0
+        car.forward_g = car.lateral_g = car.total_g = 0.0
+        car.grip_usage = 0.0
+        car.slip_amount = 0.0
+        car.is_sliding = False
+        return
+
+    if velocity_speed > MAX_PLAUSIBLE_SPEED_MPS:
+        # A teleport (respawn, pickup relocation, ...), not a real impact -
+        # resync to the car's own reported speed/heading rather than this
+        # frame's bogus implied velocity (GFORCE.md section 9), or the very
+        # next frame would diff against that bogus value and spike instead.
+        car._prev_vx = car.speed * math.cos(car.heading)
+        car._prev_vy = car.speed * math.sin(car.heading)
+        return
+
+    accel_x = (velocity_x - car._prev_vx) / dt
+    accel_y = (velocity_y - car._prev_vy) / dt
+    car._prev_vx, car._prev_vy = velocity_x, velocity_y
+
+    forward_x, forward_y = math.cos(entry_heading), math.sin(entry_heading)
+    left_x, left_y = -forward_y, forward_x
+    raw_forward_g = (accel_x * forward_x + accel_y * forward_y) / GRAVITY_MPS2
+    raw_lateral_g = (accel_x * left_x + accel_y * left_y) / GRAVITY_MPS2
+    if abs(car.speed) < MIN_SPEED_FOR_LATERAL_G_MPS:
+        raw_lateral_g = 0.0
+
+    car.raw_forward_g = raw_forward_g
+    car.raw_lateral_g = raw_lateral_g
+    car.raw_total_g = math.hypot(raw_forward_g, raw_lateral_g)
+    car.forward_g = _smoothed_g(car.forward_g, raw_forward_g, dt)
+    car.lateral_g = _smoothed_g(car.lateral_g, raw_lateral_g, dt)
+    car.total_g = math.hypot(car.forward_g, car.lateral_g)
+
+    # Grip usage, slip amount and sliding state (GRIP.md sections 2, 6-7,
+    # 11-12) - all derived from the *measured* combined g against this
+    # surface's actual grip ceiling, distinct from the pre-emptive
+    # steering-authority softening in update_car_physics above (section
+    # 15: g-force, grip usage, slip angle and sliding are related but not
+    # the same signal).
+    car.grip_usage = car.raw_total_g / car.max_grip_g if car.max_grip_g > 1e-6 else 0.0
+    car.slip_amount = _slip_amount_from_ratio(car.grip_usage)
+    car.is_sliding = (
+        car.slip_amount > SLIDE_EXIT_THRESHOLD if car.is_sliding else car.slip_amount >= SLIDE_ENTER_THRESHOLD
+    )
 
 
 def update_car_physics(
@@ -976,8 +1301,10 @@ def update_car_physics(
     speed_limit_mps: Optional[float] = None,
     nearby_vehicles: Optional[List] = None,
     parking_spaces: Optional[List] = None,
+    scenery_grid: Optional[SpatialWayGrid] = None,
     current_way=None,
     physics_mode: str = "arcade",
+    wetness: float = 0.0,
 ) -> bool:
     """Update car speed, heading, and position.
 
@@ -986,14 +1313,24 @@ def update_car_physics(
     When enforce_oneway is True, prevents moving against the legal direction on one-way streets.
     Returns True if vehicle movement was blocked against the road boundary or one-way restriction.
 
+    Off-road speed capping (block_offroad=False) treats both an OSM
+    parking_space (`parking_spaces`) and a mapped parking lot's whole
+    paved area (`scenery_grid`, Scenery kind="parking") as drivable
+    ground, not just an actual road - a parking lot's drive aisles are
+    real pavement even though they're not a highway=* way.
+
     `current_way` (the road the car is currently on, if known) and
-    `physics_mode` ("arcade" or "simulation") feed the cornering-grip model:
+    `physics_mode` ("arcade" or "simulation") feed the cornering-grip model,
+    along with `wetness` (0..1, from WeatherSystem.wetness - see
+    _surface_max_grip_g):
     exceeding the surface's lateral-g limit softens steering authority
     (arcade) or, in simulation mode, also builds up a drift angle the car
-    has to steer out of. car.forward_g/lateral_g/is_sliding are updated
-    every call for the debug HUD and other systems (skid tracks, rage).
+    has to steer out of. car.forward_g/lateral_g/total_g (smoothed) and
+    car.raw_forward_g/raw_lateral_g/raw_total_g/is_sliding are updated
+    every call for the debug HUD and other systems (skid tracks, rage) -
+    see _update_g_force for how they're actually measured.
     """
-    previous_speed = car.speed
+    entry_x, entry_y, entry_heading = car.x, car.y, car.heading
     if speed_limit_mps is not None and car.speed > speed_limit_mps:
         car.speed = max(speed_limit_mps, car.speed - SPEED_LIMIT_DECEL * dt)
     elif speed_limit_mps is not None and car.speed < -speed_limit_mps:
@@ -1016,7 +1353,6 @@ def update_car_physics(
             car.speed = min(0.0, car.speed + FRICTION * dt)
 
     car.speed = clamp(car.speed, -10.0, MAX_SPEED)
-    car.forward_g = (car.speed - previous_speed) / dt / GRAVITY_MPS2 if dt > 0.0 else 0.0
 
     # Manual steering check
     steer_input = steer_left - steer_right
@@ -1026,8 +1362,10 @@ def update_car_physics(
     else:
         car.time_since_last_steer += dt
 
-    heading_before_steer = car.heading
-    car.is_sliding = False
+    # is_sliding is hysteresis on the *measured* slip_amount (set at the
+    # end of the frame by _update_g_force, GRIP.md section 12) - not reset
+    # here, so that hysteresis can see its own previous value.
+    car.max_grip_g = _surface_max_grip_g(current_way, physics_mode, wetness)
     # Drift decays by default every frame; the grip-exceeded branch below
     # builds it back up on top of this when the driver is actively
     # oversteering past the surface's limit.
@@ -1038,21 +1376,44 @@ def update_car_physics(
     if abs(car.speed) > 0.05:
         if abs(steer_input) > 0.01:
             steer_effective = STEER_RATE / (1.0 + abs(car.speed) * STEER_SPEED_FACTOR)
-            heading_rate = steer_input * steer_effective * (1.0 if car.speed >= 0 else -1.0)
-            grip_limit_g = _cornering_grip_limit_g(current_way, physics_mode)
-            max_heading_rate = grip_limit_g * GRAVITY_MPS2 / abs(car.speed)
-            if abs(heading_rate) > max_heading_rate:
-                car.is_sliding = True
+            desired_heading_rate = steer_input * steer_effective * (1.0 if car.speed >= 0 else -1.0)
+
+            # Friction circle (GRIP.md section 2): last frame's measured
+            # longitudinal g eats into this frame's lateral budget. Using
+            # last frame's raw_forward_g (this frame's isn't measured yet)
+            # is a one-frame lag, standard for this kind of feedback and
+            # avoids a same-frame circular dependency.
+            lateral_budget_g = _available_lateral_budget_g(car.max_grip_g, abs(car.raw_forward_g))
+            max_heading_rate = lateral_budget_g * GRAVITY_MPS2 / abs(car.speed)
+
+            heading_rate = desired_heading_rate
+            if abs(desired_heading_rate) > max_heading_rate:
+                # Understeer (GRIP.md section 8): the tires physically
+                # cannot deliver more curvature than the surface's grip
+                # budget allows, so the car turns at that rate rather than
+                # the (larger) one steering asked for - it pushes wide,
+                # exactly like a real front-end losing grip. This is a
+                # genuine physical ceiling, not something to "soften": what
+                # GRIP.md's progressive-slip curve actually governs is
+                # slip_amount/is_sliding (_update_g_force, from the
+                # *measured* result) and the oversteer drift buildup below,
+                # not this clamp itself.
+                overshoot_ratio = (
+                    abs(desired_heading_rate) / max_heading_rate - GRIP_LIMIT_RATIO
+                    if max_heading_rate > 1e-9
+                    else FULL_SLIDE_RATIO * 4.0  # no lateral budget left at all (e.g. braking at the limit)
+                )
+                heading_rate = math.copysign(max_heading_rate, desired_heading_rate)
                 if physics_mode == "simulation":
-                    # Drift builds up proportionally to how far over the grip
-                    # limit the driver is asking to turn, and has to be
-                    # steered/waited out once grip is regained.
-                    overshoot = abs(heading_rate) - max_heading_rate
+                    # Oversteer: rear grip lost beyond the front's understeer
+                    # limit builds a genuine drift angle, proportional to how
+                    # far past the limit the driver is asking to turn, that
+                    # has to be steered/waited out - never instantaneous
+                    # (GRIP.md section 6).
                     car.drift_angle = clamp(
-                        car.drift_angle + math.copysign(overshoot * dt * 0.6, heading_rate),
-                        -math.radians(45), math.radians(45),
+                        car.drift_angle + math.copysign(max(0.0, overshoot_ratio) * DRIFT_BUILD_RATE * dt, heading_rate),
+                        -MAX_DRIFT_ANGLE, MAX_DRIFT_ANGLE,
                     )
-                heading_rate = math.copysign(max_heading_rate, heading_rate)
             car.heading += heading_rate * dt
         elif car.lane_assist_enabled and car.time_since_last_steer >= 0.35 and car.speed > 1.5:
             # Lane assist: when enabled and driver hasn't steered for a moment, gently track lane center
@@ -1151,8 +1512,6 @@ def update_car_physics(
     else:
         car.lane_assist_active = False
 
-    car.lateral_g = (car.heading - heading_before_steer) / dt * car.speed / GRAVITY_MPS2 if dt > 0.0 else 0.0
-
     movement_heading = car.heading + car.drift_angle
     dx = math.cos(movement_heading) * car.speed * dt
     dy = math.sin(movement_heading) * car.speed * dt
@@ -1167,7 +1526,11 @@ def update_car_physics(
         target_on_road = is_point_on_road(
             target_x, target_y, ways=ways, spatial_grid=spatial_grid, car_roads_only=True
         )
-        if not target_on_road and not is_point_on_parking_space(target_x, target_y, parking_spaces):
+        if (
+            not target_on_road
+            and not is_point_on_parking_space(target_x, target_y, parking_spaces)
+            and not is_point_in_parking_lot(target_x, target_y, scenery_grid=scenery_grid)
+        ):
             target_on_light_traffic = is_point_on_light_traffic_way(
                 target_x, target_y, ways=ways, spatial_grid=spatial_grid
             )
@@ -1254,4 +1617,9 @@ def update_car_physics(
     # Accumulate trip and odometer distances based on speed magnitude
     car.trip_m += dist
     car.odometer_m += dist
+    # Measured from the car's actual net movement this frame (entry_x/y to
+    # here), so it reflects whatever actually happened above - acceleration,
+    # braking, steering, drift, being blocked by a road edge, everything -
+    # not just steering input (see _update_g_force).
+    _update_g_force(car, entry_x, entry_y, entry_heading, dt)
     return blocked
