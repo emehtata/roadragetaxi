@@ -774,7 +774,8 @@ def _wait_for_active_tile_fetch(
                 sys.exit(0)
         draw_loading_screen(
             screen, font, auto_fetch_manager.get_progress(),
-            tr(language, "loading_osm"), language=language,
+            auto_fetch_manager.get_progress_message() or tr(language, "loading_osm"),
+            language=language,
         )
         pygame.display.flip()
     clock.tick()  # Don't let dt jump on the frame after waiting.

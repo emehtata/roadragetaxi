@@ -237,6 +237,12 @@ class AutoFetchManager:
         self.lock = threading.Lock()
         self.is_fetching = False
         self.fetch_progress = 0.0
+        # Live progress message (e.g. "Fetching scenery from https://...")
+        # from whichever fetch_func/build_func chain is actually in
+        # flight - see _background_tile_fetch. Surfaced to the loading
+        # screen via get_progress_message() so the player can see what
+        # address it's connecting to, not just a percentage.
+        self.fetch_message = ""
         self.last_fetch_time = 0.0
         self.last_trigger_reason = ""
         self._last_edge_check_time = 0.0
@@ -277,6 +283,10 @@ class AutoFetchManager:
     def get_progress(self) -> float:
         with self.lock:
             return self.fetch_progress
+
+    def get_progress_message(self) -> str:
+        with self.lock:
+            return self.fetch_message
 
     def get_fetching(self) -> bool:
         with self.lock:
@@ -361,6 +371,7 @@ class AutoFetchManager:
             self.pending_tiles.update(missing)
             self.is_fetching = True
             self.fetch_progress = 0.0
+            self.fetch_message = ""
             self.last_fetch_time = wall_time
             request_tiles = set(self.active_tiles)
             current_tile = self.player_tile
@@ -408,6 +419,7 @@ class AutoFetchManager:
             self.pending_tiles.update(missing)
             self.is_fetching = True
             self.fetch_progress = 0.0
+            self.fetch_message = ""
             request_tiles = tuple(sorted(self.active_tiles))
             logger.info(
                 "Initial tile streaming: missing=%d request_tiles=%d bbox_world=%s",
@@ -529,6 +541,17 @@ class AutoFetchManager:
     ) -> None:
         loaded = []
         load_started = time.perf_counter()
+
+        def _on_fetch_progress(fraction: float, message: str) -> None:
+            # Called from whichever thread actually does the fetch - the
+            # world_cache_manager's own executor thread, or (no world
+            # cache configured) this same background thread - so this
+            # must go through self.lock like every other cross-thread
+            # write to fetch_progress/fetch_message.
+            with self.lock:
+                self.fetch_progress = fraction
+                self.fetch_message = message
+
         try:
             min_x = min(tile_bbox(tile)[0] for tile in request_tiles)
             min_y = min(tile_bbox(tile)[1] for tile in request_tiles)
@@ -536,9 +559,9 @@ class AutoFetchManager:
             max_y = max(tile_bbox(tile)[3] for tile in request_tiles)
             bbox = _meters_bbox_to_latlon(self.transformer, min_x, min_y, max_x, max_y)
             if self.world_cache_manager is not None:
-                world = self.world_cache_manager.preload_region(bbox).result()
+                world = self.world_cache_manager.preload_region(bbox, progress_callback=_on_fetch_progress).result()
             else:
-                world = self.build_func(self.fetch_func(bbox))
+                world = self.build_func(self.fetch_func(bbox, progress_callback=_on_fetch_progress))
             loaded.append((tiles, request_tiles, world))
             with self.lock:
                 self.fetch_progress = 1.0
