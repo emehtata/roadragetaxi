@@ -42,16 +42,16 @@ SCENERY_COLORS = {
     "sand": (160, 150, 110),
     "beach": (170, 160, 115),
     # Farmed / cultivated - warm, dry tones, not park-green.
-    "farmland": (190, 175, 110),
+    "farmland": (168, 143, 72),
     "farmyard": (150, 125, 90),
     "allotments": (140, 130, 80),
     "flowerbed": (150, 90, 120),
     "greenhouse_horticulture": (140, 160, 150),
     # Built-up zoning - muted, not green (these are usually mostly covered
     # by buildings/roads drawn on top; the fill only shows through gaps).
-    # residential is the exception - requested light grass green, since
+    # residential is the exception - a muted grass green, since
     # yards/verges are what actually shows through the gaps there.
-    "residential": (150, 180, 130),
+    "residential": (108, 138, 92),
     "commercial": (100, 95, 110),
     "retail": (110, 95, 92),
     "industrial": (90, 90, 95),
