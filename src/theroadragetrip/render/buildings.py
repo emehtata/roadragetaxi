@@ -4,7 +4,9 @@ from .common import (
     SCREEN_H,
     PX_PER_M,
     CACHE_PADDING_PX,
+    INCREMENTAL_REBUILD_BUDGET_S,
     _rebuild_or_stale,
+    _blit_stale_static_cache,
     _static_cache_zoom,
     world_to_screen,
     get_viewport_bounds,
@@ -102,6 +104,14 @@ def _building_sign_theme(venue_type) -> tuple:
 _building_sign_font_cache = {}
 _building_sign_surface_cache = {}
 _building_visual_plan_cache = {}
+# In-progress incremental buildings-cache rebuild, or None - same mechanism
+# as roads.py's _road_wip (see its docstring for the full rationale): a
+# real drive showed draw_buildings' rebuild routinely costing 15-27ms on
+# its own, past a whole frame's 16.67ms budget, every time the camera
+# crossed a cache-grid boundary. Unlike roads, buildings' per-item drawing
+# loop is the only expensive phase (no separate O(n^2) precompute like
+# roads' endpoint-join), so this only needs the one chunked stage.
+_building_wip = None
 MIN_BUILDING_SIGN_WIDTH_PX = 24
 MIN_BUILDING_SIGN_DEPTH_PX = 8
 MAX_BUILDING_SIGN_FONT_SIZE = 32
@@ -343,8 +353,15 @@ def draw_buildings(
     places: Optional[List[Place]] = None,
     profiler=None,
 ) -> None:
-    """Draw cached static building geometry and facade details."""
-    import pygame
+    """Draw cached static building geometry and facade details.
+
+    Like roads.py's draw_ways (see its docstring for the full rationale),
+    a stale buildings cache does not rebuild atomically - it advances an
+    incremental rebuild by one time-budgeted chunk per call, blitting
+    whatever's currently committed (the previous cache, until the new one
+    finishes) either way, except for the very first build ever (nothing to
+    fall back to), which stays a one-time synchronous cost.
+    """
     cache_zoom = _static_cache_zoom(px_per_m)
 
     frame_cache_key = (
@@ -364,30 +381,37 @@ def draw_buildings(
         offset_y = round((camy - cached_camy) * cache_zoom) - CACHE_PADDING_PX
         screen.blit(common._building_frame_cache_surface, (offset_x, offset_y))
         return
-    if _rebuild_or_stale(screen, "buildings", common._building_frame_cache_surface, common._building_frame_cache_camera, camx, camy, cache_zoom):
-        return
 
-    cache_width = screen_w + CACHE_PADDING_PX * 2
-    cache_height = screen_h + CACHE_PADDING_PX * 2
-    cache_surface = pygame.Surface((cache_width, cache_height), pygame.SRCALPHA)
-    rebuild_started = time.perf_counter() if profiler is not None else 0.0
-    _draw_buildings_uncached(
-        cache_surface,
-        buildings,
-        camx,
-        camy,
-        px_per_m=cache_zoom,
-        screen_w=cache_width,
-        screen_h=cache_height,
-        spatial_grid=spatial_grid,
-        places=places,
-    )
+    global _building_wip
+    if _building_wip is not None and _building_wip["key"] != frame_cache_key:
+        # The world/zoom bucket this WIP was mid-drawing for is no longer
+        # the one we need (invalidate_static_caches() fired under it, or -
+        # rare - the grid cell moved on again before the WIP finished).
+        # Restart clean rather than trying to patch up a stale snapshot.
+        _building_wip = None
+
+    is_first_ever_build = common._building_frame_cache_surface is None
+    if _building_wip is None:
+        _building_wip = _start_building_rebuild(
+            buildings, spatial_grid, places, frame_cache_key, camx, camy, cache_zoom, screen_w, screen_h
+        )
+
+    rebuild_started = time.perf_counter() if profiler is not None else None
+    deadline = float("inf") if is_first_ever_build else time.perf_counter() + INCREMENTAL_REBUILD_BUDGET_S
+    finished = _advance_building_rebuild(_building_wip, deadline)
     if profiler is not None:
         profiler.record("render:buildings_cache_rebuild", (time.perf_counter() - rebuild_started) * 1000.0)
-    common._building_frame_cache_key = frame_cache_key
-    common._building_frame_cache_surface = cache_surface
-    common._building_frame_cache_camera = (camx, camy)
-    screen.blit(cache_surface, (-CACHE_PADDING_PX, -CACHE_PADDING_PX))
+
+    if finished:
+        common._building_frame_cache_key = _building_wip["key"]
+        common._building_frame_cache_surface = _building_wip["surface"]
+        common._building_frame_cache_camera = _building_wip["camera"]
+        _building_wip = None
+
+    if common._building_frame_cache_surface is not None:
+        _blit_stale_static_cache(
+            screen, common._building_frame_cache_surface, common._building_frame_cache_camera, camx, camy, cache_zoom
+        )
 
 
 def _draw_buildings_uncached(
@@ -401,33 +425,107 @@ def _draw_buildings_uncached(
     spatial_grid=None,
     places: Optional[List[Place]] = None,
 ) -> None:
-    """Draw building footprints intersecting viewport."""
+    """Draw building footprints intersecting viewport, unconditionally and
+    in one call, directly onto `screen` at the given screen_w/screen_h (no
+    cache padding) - the pre-incremental-rebuild contract this function
+    always had, kept for tests that exercise the per-building drawing
+    logic directly without going through draw_buildings' caching/
+    incremental wrapper. Shares that logic (_advance_building_rebuild)
+    rather than duplicating it: a plain job with an infinite deadline runs
+    to full completion in this one call, same as the old unbounded loop
+    did."""
+    vminx, vminy, vmaxx, vmaxy = get_viewport_bounds(camx, camy, px_per_m, screen_w, screen_h, 20.0)
+    visible_buildings = (
+        spatial_grid.ways_in_rect(vminx, vminy, vmaxx, vmaxy)
+        if spatial_grid is not None
+        else buildings
+    )
+    job = {
+        "surface": screen,
+        "camera": (camx, camy),
+        "px_per_m": px_per_m,
+        "screen_w": screen_w,
+        "screen_h": screen_h,
+        "vminx": vminx, "vminy": vminy, "vmaxx": vmaxx, "vmaxy": vmaxy,
+        "visible_buildings": list(visible_buildings),
+        "places": places,
+        "index": 0,
+        "placed_sign_rects": [],
+    }
+    _advance_building_rebuild(job, deadline=float("inf"))
+
+
+def _start_building_rebuild(
+    buildings: List[Building], spatial_grid, places: Optional[List[Place]], frame_cache_key,
+    camx: float, camy: float, cache_zoom: float, screen_w: int, screen_h: int,
+) -> dict:
+    """Begin a new incremental buildings-cache rebuild job: select the
+    visible buildings (cheap, O(visible buildings), no nested search - see
+    roads.py's endpoint-join precompute for a case where that wasn't true)
+    and snapshot the camera/zoom this job's every chunk (see
+    _advance_building_rebuild, which may run across several frames) must
+    draw into, consistently - never whatever live camx/camy draw_buildings()
+    happens to be called with on a later frame."""
     import pygame
 
-    # screen_w/screen_h here are already the padded cache surface's own
-    # dimensions (CACHE_PADDING_PX baked in by the caller), so this margin
-    # is pure extra beyond that - and the cache's offset-blit reuse can
-    # never take advantage of more than CACHE_PADDING_PX/px_per_m of it
-    # anyway (~11m at a typical driving zoom), regardless of how big any
-    # individual building is: a rebuild always re-queries with the
-    # *current* camera position, so it catches a huge building astride
-    # the edge just as correctly with a small margin as a large one - the
-    # margin only needs to cover the in-between-rebuilds camera drift, not
-    # the building's own size. A wide margin here was selecting and fully
-    # drawing buildings tens of meters past anything the cache could ever
-    # actually show before its next rebuild, in a real city with tens of
-    # thousands of buildings loaded - real cost (the same "culprit:
-    # rendering" FPS-drop pattern already fixed for roads) for no visual
-    # benefit.
-    vminx, vminy, vmaxx, vmaxy = get_viewport_bounds(camx, camy, px_per_m, screen_w, screen_h, 20.0)
+    px_per_m = cache_zoom
+    cache_width = screen_w + CACHE_PADDING_PX * 2
+    cache_height = screen_h + CACHE_PADDING_PX * 2
+
+    # See draw_buildings' historical note (kept from the previous
+    # single-shot version): this margin is pure extra beyond
+    # CACHE_PADDING_PX, which already bounds how much of it a cache reuse
+    # could ever take advantage of regardless of any individual building's
+    # size - a small fixed margin only needs to cover the in-between-
+    # rebuilds camera drift.
+    vminx, vminy, vmaxx, vmaxy = get_viewport_bounds(camx, camy, px_per_m, cache_width, cache_height, 20.0)
 
     visible_buildings = (
         spatial_grid.ways_in_rect(vminx, vminy, vmaxx, vmaxy)
         if spatial_grid is not None
         else buildings
     )
-    placed_sign_rects = []
-    for b in visible_buildings:
+
+    return {
+        "key": frame_cache_key,
+        "camera": (camx, camy),
+        "px_per_m": px_per_m,
+        "screen_w": cache_width,
+        "screen_h": cache_height,
+        "vminx": vminx, "vminy": vminy, "vmaxx": vmaxx, "vmaxy": vmaxy,
+        "surface": pygame.Surface((cache_width, cache_height), pygame.SRCALPHA),
+        "visible_buildings": list(visible_buildings),
+        "places": places,
+        "index": 0,
+        "placed_sign_rects": [],
+    }
+
+
+def _advance_building_rebuild(job: dict, deadline: float) -> bool:
+    """Draw job's remaining visible buildings one at a time, checking
+    `deadline` (a time.perf_counter() cutoff) before each - once at least
+    one building has already been drawn this call, so a deadline computed
+    as "now + a tiny/zero budget" can never cause a call to make zero
+    progress (see roads.py's _advance_road_rebuild, which needed the exact
+    same guarantee for the same reason). Returns True once every building
+    is drawn - job["surface"] is then ready to commit as the new cache."""
+    import pygame
+
+    screen = job["surface"]
+    camx, camy = job["camera"]
+    px_per_m = job["px_per_m"]
+    screen_w, screen_h = job["screen_w"], job["screen_h"]
+    vminx, vminy, vmaxx, vmaxy = job["vminx"], job["vminy"], job["vmaxx"], job["vmaxy"]
+    visible_buildings = job["visible_buildings"]
+    placed_sign_rects = job["placed_sign_rects"]
+
+    made_progress_this_call = False
+    while job["index"] < len(visible_buildings):
+        if made_progress_this_call and time.perf_counter() >= deadline:
+            return False
+        b = visible_buildings[job["index"]]
+        job["index"] += 1
+        made_progress_this_call = True
         bb = getattr(b, "bbox", None)
         if bb and bb != (0.0, 0.0, 0.0, 0.0):
             if bb[2] < vminx or bb[0] > vmaxx or bb[3] < vminy or bb[1] > vmaxy:
@@ -697,3 +795,5 @@ def _draw_buildings_uncached(
                 pygame.draw.polygon(screen, (*sign_background, 245), sign_corners)
                 pygame.draw.lines(screen, (*sign_border, 255), True, sign_corners, 1)
                 screen.blit(text_surface, text_surface.get_rect(center=(round(sign_center_x), round(sign_center_y))))
+
+    return True

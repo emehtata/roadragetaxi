@@ -4,7 +4,9 @@ from .common import (
     SCREEN_H,
     PX_PER_M,
     CACHE_PADDING_PX,
+    INCREMENTAL_REBUILD_BUDGET_S,
     _rebuild_or_stale,
+    _blit_stale_static_cache,
     _static_cache_zoom,
     world_to_screen,
     get_viewport_bounds,
@@ -146,6 +148,12 @@ _SPECKLE_GLOBAL_BUDGET = 2200
 # realistic worst case (~25% fill ratio) without visibly thinning normal,
 # mostly-filled scenery.
 _SPECKLE_CANDIDATE_BUDGET = _SPECKLE_GLOBAL_BUDGET * 4
+# In-progress incremental scenery-cache rebuild, or None - same mechanism
+# as roads.py's _road_wip / buildings.py's _building_wip (see roads.py's
+# docstring for the full rationale): a real drive showed draw_scenery's
+# rebuild routinely costing 15-77ms on its own, past a whole frame's
+# 16.67ms budget, every time the camera crossed a cache-grid boundary.
+_scenery_wip = None
 
 
 def _speckle_color(base: Tuple[int, int, int], variant: float) -> Tuple[int, int, int]:
@@ -314,8 +322,14 @@ def draw_scenery(
     in the frame (after roads/parking, before buildings) so a scenery
     fill, and more importantly a road or parking surface painted well
     after this static-cached layer, can never end up covering a tree.
+
+    Like roads.py's draw_ways (see its docstring for the full rationale),
+    a stale scenery cache does not rebuild atomically - it advances an
+    incremental rebuild by one time-budgeted chunk per call, blitting
+    whatever's currently committed either way, except for the very first
+    build ever (nothing to fall back to), which stays a one-time
+    synchronous cost.
     """
-    import pygame
     cache_zoom = _static_cache_zoom(px_per_m)
 
     frame_cache_key = (
@@ -334,19 +348,35 @@ def draw_scenery(
             ),
         )
         return
-    if _rebuild_or_stale(screen, "scenery", common._scenery_frame_cache_surface, common._scenery_frame_cache_camera, camx, camy, cache_zoom):
-        return
-    cache_width = screen_w + CACHE_PADDING_PX * 2
-    cache_height = screen_h + CACHE_PADDING_PX * 2
-    cache_surface = pygame.Surface((cache_width, cache_height), pygame.SRCALPHA)
-    rebuild_started = time.perf_counter() if profiler is not None else 0.0
-    _draw_scenery_uncached(cache_surface, sceneries, camx, camy, cache_zoom, cache_width, cache_height, spatial_grid)
+
+    global _scenery_wip
+    if _scenery_wip is not None and _scenery_wip["key"] != frame_cache_key:
+        # The world/zoom bucket this WIP was mid-drawing for is no longer
+        # the one we need (invalidate_static_caches() fired under it, or -
+        # rare - the grid cell moved on again before the WIP finished).
+        # Restart clean rather than trying to patch up a stale snapshot.
+        _scenery_wip = None
+
+    is_first_ever_build = common._scenery_frame_cache_surface is None
+    if _scenery_wip is None:
+        _scenery_wip = _start_scenery_rebuild(sceneries, spatial_grid, frame_cache_key, camx, camy, cache_zoom, screen_w, screen_h)
+
+    rebuild_started = time.perf_counter() if profiler is not None else None
+    deadline = float("inf") if is_first_ever_build else time.perf_counter() + INCREMENTAL_REBUILD_BUDGET_S
+    finished = _advance_scenery_rebuild(_scenery_wip, deadline)
     if profiler is not None:
         profiler.record("render:scenery_cache_rebuild", (time.perf_counter() - rebuild_started) * 1000.0)
-    common._scenery_frame_cache_key = frame_cache_key
-    common._scenery_frame_cache_surface = cache_surface
-    common._scenery_frame_cache_camera = (camx, camy)
-    screen.blit(cache_surface, (-CACHE_PADDING_PX, -CACHE_PADDING_PX))
+
+    if finished:
+        common._scenery_frame_cache_key = _scenery_wip["key"]
+        common._scenery_frame_cache_surface = _scenery_wip["surface"]
+        common._scenery_frame_cache_camera = _scenery_wip["camera"]
+        _scenery_wip = None
+
+    if common._scenery_frame_cache_surface is not None:
+        _blit_stale_static_cache(
+            screen, common._scenery_frame_cache_surface, common._scenery_frame_cache_camera, camx, camy, cache_zoom
+        )
 
 
 def _draw_scenery_uncached(
@@ -359,8 +389,51 @@ def _draw_scenery_uncached(
     screen_h: int = SCREEN_H,
     spatial_grid=None,
 ) -> None:
-    """Draw parks, forests, and green spaces intersecting viewport."""
+    """Draw parks, forests, and green spaces intersecting viewport,
+    unconditionally and in one call, directly onto `screen` at the given
+    screen_w/screen_h (no cache padding) - the pre-incremental-rebuild
+    contract this function always had, kept for tests that exercise the
+    per-scenery drawing logic directly without going through draw_scenery's
+    caching/incremental wrapper. Shares that logic
+    (_advance_scenery_rebuild) rather than duplicating it: a plain job
+    with an infinite deadline runs to full completion in this one call,
+    same as the old unbounded loop did."""
+    vminx, vminy, vmaxx, vmaxy = get_viewport_bounds(camx, camy, px_per_m, screen_w, screen_h, 20.0)
+    visible_sceneries = (
+        spatial_grid.ways_in_rect(vminx, vminy, vmaxx, vmaxy)
+        if spatial_grid is not None
+        else sceneries
+    )
+    job = {
+        "surface": screen,
+        "camera": (camx, camy),
+        "px_per_m": px_per_m,
+        "screen_w": screen_w,
+        "screen_h": screen_h,
+        "vminx": vminx, "vminy": vminy, "vmaxx": vmaxx, "vmaxy": vmaxy,
+        "visible_sceneries": list(visible_sceneries),
+        "index": 0,
+        "speckle_budget": _SPECKLE_GLOBAL_BUDGET,
+        "speckle_candidate_budget": _SPECKLE_CANDIDATE_BUDGET,
+    }
+    _advance_scenery_rebuild(job, deadline=float("inf"))
+
+
+def _start_scenery_rebuild(
+    sceneries: List[Scenery], spatial_grid, frame_cache_key,
+    camx: float, camy: float, cache_zoom: float, screen_w: int, screen_h: int,
+) -> dict:
+    """Begin a new incremental scenery-cache rebuild job: select the
+    visible sceneries (cheap, O(visible sceneries), no nested search) and
+    snapshot the camera/zoom this job's every chunk (see
+    _advance_scenery_rebuild, which may run across several frames) must
+    draw into, consistently - never whatever live camx/camy draw_scenery()
+    happens to be called with on a later frame."""
     import pygame
+
+    px_per_m = cache_zoom
+    cache_width = screen_w + CACHE_PADDING_PX * 2
+    cache_height = screen_h + CACHE_PADDING_PX * 2
 
     # See draw_buildings' identical margin fix for the full reasoning: a
     # rebuild always re-queries with the *current* camera position, so it
@@ -371,18 +444,60 @@ def _draw_scenery_uncached(
     # polygon's own size. 80m was selecting and filling thousands of
     # scenery polygons tens of meters past anything the cache could ever
     # show before its next rebuild - a real "culprit: rendering" cost.
-    vminx, vminy, vmaxx, vmaxy = get_viewport_bounds(camx, camy, px_per_m, screen_w, screen_h, 20.0)
+    vminx, vminy, vmaxx, vmaxy = get_viewport_bounds(camx, camy, px_per_m, cache_width, cache_height, 20.0)
 
     visible_sceneries = (
         spatial_grid.ways_in_rect(vminx, vminy, vmaxx, vmaxy)
         if spatial_grid is not None
         else sceneries
     )
+
+    return {
+        "key": frame_cache_key,
+        "camera": (camx, camy),
+        "px_per_m": px_per_m,
+        "screen_w": cache_width,
+        "screen_h": cache_height,
+        "vminx": vminx, "vminy": vminy, "vmaxx": vmaxx, "vmaxy": vmaxy,
+        "surface": pygame.Surface((cache_width, cache_height), pygame.SRCALPHA),
+        "visible_sceneries": list(visible_sceneries),
+        "index": 0,
+        # Speckle budgets are per-*rebuild*, shared across every textured
+        # polygon in it - see _SPECKLE_GLOBAL_BUDGET/_SPECKLE_CANDIDATE_BUDGET -
+        # so they live in job state and carry over between chunks exactly
+        # like `index`, not reset per chunk.
+        "speckle_budget": _SPECKLE_GLOBAL_BUDGET,
+        "speckle_candidate_budget": _SPECKLE_CANDIDATE_BUDGET,
+    }
+
+
+def _advance_scenery_rebuild(job: dict, deadline: float) -> bool:
+    """Draw job's remaining visible sceneries one at a time, checking
+    `deadline` (a time.perf_counter() cutoff) before each - once at least
+    one scenery has already been drawn this call, so a deadline computed
+    as "now + a tiny/zero budget" can never cause a call to make zero
+    progress (see roads.py's _advance_road_rebuild, which needed the exact
+    same guarantee). Returns True once every scenery is drawn -
+    job["surface"] is then ready to commit as the new cache."""
+    import pygame
+
+    screen = job["surface"]
+    camx, camy = job["camera"]
+    px_per_m = job["px_per_m"]
+    screen_w, screen_h = job["screen_w"], job["screen_h"]
+    vminx, vminy, vmaxx, vmaxy = job["vminx"], job["vminy"], job["vmaxx"], job["vmaxy"]
+    visible_sceneries = job["visible_sceneries"]
     show_speckles = px_per_m >= _SPECKLE_MIN_PX_PER_M
     dot_radius = max(1, round(px_per_m * 0.1))
-    speckle_budget = _SPECKLE_GLOBAL_BUDGET
-    speckle_candidate_budget = _SPECKLE_CANDIDATE_BUDGET
-    for sc in visible_sceneries:
+
+    made_progress_this_call = False
+    while job["index"] < len(visible_sceneries):
+        if made_progress_this_call and time.perf_counter() >= deadline:
+            return False
+        sc = visible_sceneries[job["index"]]
+        job["index"] += 1
+        made_progress_this_call = True
+
         bb = getattr(sc, "bbox", None)
         if bb and bb != (0.0, 0.0, 0.0, 0.0):
             if bb[2] < vminx or bb[0] > vmaxx or bb[3] < vminy or bb[1] > vmaxy:
@@ -407,18 +522,19 @@ def _draw_scenery_uncached(
         if (
             show_speckles
             and kind in _SPECKLE_SCENERY_KINDS
-            and speckle_budget > 0
-            and speckle_candidate_budget > 0
+            and job["speckle_budget"] > 0
+            and job["speckle_candidate_budget"] > 0
         ):
             seed = hash(bb) if bb else hash(points_m[0])
             speckles, examined = _scenery_speckle_positions(
-                points_m, seed, vminx, vminy, vmaxx, vmaxy, speckle_budget, speckle_budget
+                points_m, seed, vminx, vminy, vmaxx, vmaxy, job["speckle_budget"], job["speckle_candidate_budget"]
             )
-            speckle_budget -= len(speckles)
-            speckle_candidate_budget -= examined
+            job["speckle_budget"] -= len(speckles)
+            job["speckle_candidate_budget"] -= examined
             for wx, wy, variant in speckles:
                 sx, sy = world_to_screen(wx, wy, camx, camy, px_per_m, screen_w, screen_h)
                 pygame.draw.circle(screen, _speckle_color(color, variant), (sx, sy), dot_radius)
+    return True
 
 
 CONSTRUCTION_FENCE_COLOR = (235, 140, 30)  # hi-vis hazard orange
