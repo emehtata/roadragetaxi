@@ -304,6 +304,15 @@ def test_draw_street_lights_geometry_region_survives_small_camera_moves():
         ways = [road]
         spatial_grid = SpatialWayGrid(ways)
         screen = pygame.Surface((240, 180), pygame.SRCALPHA)
+        # A stable reference, not a fresh `[]` literal per call: real
+        # gameplay passes the same buildings list every frame (main.py
+        # mutates it in place as autofetch streams tiles in), and
+        # geometry_cache_key below is keyed in part by id(buildings) - a
+        # new empty list's own identity differs every call, which forced
+        # a "changed" cache key (and therefore a rebuild) on every single
+        # render_at() regardless of region_covers_viewport, defeating the
+        # exact behavior this test means to check.
+        buildings = []
 
         def render_at(camx):
             screen.fill((180, 170, 140, 255))
@@ -311,7 +320,7 @@ def test_draw_street_lights_geometry_region_survives_small_camera_moves():
             draw_street_lights(
                 screen, ways, camx=camx, camy=0.0, game_time_seconds=0.0,
                 px_per_m=2.0, screen_w=240, screen_h=180,
-                daylight_surface=None, buildings=[], spatial_grid=spatial_grid,
+                daylight_surface=None, buildings=buildings, spatial_grid=spatial_grid,
             )
 
         roads_module._street_light_geometry_region = None
