@@ -2299,6 +2299,7 @@ def main() -> None:
                 longitude=sun_longitude,
                 buildings=buildings,
                 base_surface=street_light_base,
+                building_spatial_grid=building_grid,
             )
             if sun_altitude < -7.5:
                 draw_pedestrian_reflectors(

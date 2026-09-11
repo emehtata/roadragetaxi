@@ -34,6 +34,14 @@ from ..osm import Building, BusStop, TaxiStop, Way
 
 BRIDGE_GUARDRAIL_COLOR = (196, 200, 204)  # light guardrail, contrasts against dark asphalt - shared by road and rail bridges so both read as the same "elevated structure" cue
 MAX_VISIBLE_STREET_LIGHTS = 400
+# How far past the viewport the lamp-geometry rebuild (junctions,
+# lit-segment classification, lamp placement) scopes itself - much wider
+# than the 40m draw-time padding above so the expensive part of a rebuild
+# happens roughly every this-many meters of driving, not every frame the
+# tight viewport edge nears a smaller cached region. ~19ms/rebuild against
+# a real dense Oulu extract at this size (measured); tune down if a
+# slower device needs smaller, more frequent rebuilds instead.
+STREET_LIGHT_GEOMETRY_REGION_PADDING_M = 150.0
 STREET_LIGHT_SPACING_M = 12.0
 STREET_LIGHT_JUNCTION_CLEARANCE_M = 3.0
 STREET_LIGHT_SHADE_COLOR = (0, 0, 0)
@@ -60,6 +68,7 @@ _street_light_frame_pool_surface = None
 _street_light_frame_cache_camera = None
 _street_light_geometry_cache_key = None
 _street_light_geometry_cache = []
+_street_light_geometry_region = None
 _street_light_way_lit_cache_key = None
 _street_light_way_lit_cache = {}
 _street_light_last_debug_log_ms = 0
@@ -672,6 +681,7 @@ def draw_street_lights(
     longitude: float = DEFAULT_SUN_LONGITUDE,
     buildings: Optional[List[Building]] = None,
     base_surface=None,
+    building_spatial_grid=None,
 ) -> None:
     """Draw simple roadside lamps on visible urban roads."""
     import pygame
@@ -773,25 +783,77 @@ def draw_street_lights(
     px_per_m = cache_zoom
     # Build the lighting layer beyond the visible edge so lamps are ready before entering view.
     vminx, vminy, vmaxx, vmaxy = get_viewport_bounds(camx, camy, px_per_m, screen_w, screen_h, 40.0)
+    # Geometry (junctions/lit-segments/lamp placement) is rebuilt over a
+    # much wider region than the draw-time viewport above, and kept as
+    # long as the *tight* viewport stays inside it - see
+    # _street_light_geometry_region below. A first version of this instead
+    # recomputed on every 20m grid-cell crossing: cheap in isolation
+    # (bounded by the region, not the whole city - see geometry_cache_key's
+    # comment), but at normal driving speed that's a rebuild roughly every
+    # 1-2 seconds, each one a real (if small) synchronous stall - visible
+    # as a periodic stutter/flicker with its own fps dip, not a smooth
+    # frame. A wider region rebuilt far less often removes that cadence
+    # without bringing back the unbounded whole-city cost this replaced.
+    region_vminx, region_vminy, region_vmaxx, region_vmaxy = get_viewport_bounds(
+        camx, camy, px_per_m, screen_w, screen_h, STREET_LIGHT_GEOMETRY_REGION_PADDING_M
+    )
     if spatial_grid is not None:
         # ways_in_rect() is a generator - materialize it, since below this
         # gets walked three separate times (junctions, lit-segment cache,
         # lamp placement); consuming a generator three times silently
         # yields nothing on the 2nd and 3rd pass instead of an error,
         # which is exactly how this shipped with zero lamps ever placed.
-        visible_ways = list(spatial_grid.ways_in_rect(vminx, vminy, vmaxx, vmaxy))
+        visible_ways = list(spatial_grid.ways_in_rect(region_vminx, region_vminy, region_vmaxx, region_vmaxy))
     else:
         visible_ways = ways
-    # Coarse camera cell (world meters, well inside the 40m viewport padding
-    # above) so the caches below refresh as the car drives into new
-    # territory even when `ways`/`buildings` themselves haven't changed.
-    geometry_cache_cell = (math.floor(camx / 20.0), math.floor(camy / 20.0))
+    global _street_light_geometry_region
+    region = _street_light_geometry_region
+    region_covers_viewport = (
+        region is not None
+        and region[0] <= vminx and region[1] <= vminy
+        and region[2] >= vmaxx and region[3] >= vmaxy
+    )
 
     global _street_light_junction_cache, _street_light_junction_grid_cache, _street_light_building_grid_cache
-    building_cache_key = (id(buildings), len(buildings) if buildings else 0, id(buildings[-1]) if buildings else None)
-    if _street_light_building_grid_cache is None or _street_light_building_grid_cache[0] != building_cache_key:
+    # Nearby-buildings source for the fine building_grid below: query the
+    # caller's own building spatial index (main.py already maintains one
+    # for building collision/lookup, rebuilt incrementally as autofetch
+    # streams buildings in) if given, scoped to the region + the distance
+    # _point_is_near_building actually cares about. Falls back to the full
+    # `buildings` list when no index is passed (e.g. existing tests), same
+    # as before. Without this, a plain `for building in buildings` here -
+    # same shape as the `ways` bug this file was already fixed for twice -
+    # cost ~67ms against a real ~21k-building Oulu extract and, like the
+    # ways case, only grows as autofetch streams more buildings in.
+    building_margin = STREET_LIGHT_BUILDING_DISTANCE_M
+    building_cache_key = (
+        id(buildings), len(buildings) if buildings else 0, id(buildings[-1]) if buildings else None,
+    )
+    if building_spatial_grid is not None:
+        nearby_buildings = list(building_spatial_grid.ways_in_rect(
+            region_vminx - building_margin, region_vminy - building_margin,
+            region_vmaxx + building_margin, region_vmaxy + building_margin,
+        ))
+        # Scoped to the region, so it needs the same region-covers-viewport
+        # gate as the ways-side caches below (checked via `or`, not baked
+        # into building_cache_key - region_covers_viewport flips back to
+        # True the moment this rebuild completes, so folding it into an
+        # equality-compared key would just make every *other* call rebuild
+        # too, chasing its own tail). The unscoped fallback below has no
+        # such gate: the whole `buildings` list is already in there
+        # regardless of where the camera is, so a region change alone
+        # never invalidates it.
+        needs_rebuild = not region_covers_viewport
+    else:
+        nearby_buildings = buildings or ()
+        needs_rebuild = False
+    if (
+        _street_light_building_grid_cache is None
+        or _street_light_building_grid_cache[0] != building_cache_key
+        or needs_rebuild
+    ):
         building_grid = {}
-        for building in buildings or ():
+        for building in nearby_buildings:
             bbox = getattr(building, "bbox", None)
             if not bbox or bbox == (0.0, 0.0, 0.0, 0.0):
                 continue
@@ -811,8 +873,8 @@ def draw_street_lights(
     # and was, before this fix, walked here in full on every cache miss
     # (see geometry_cache_key's docstring-comment below for the concrete
     # cost this had in a real Oulu-scale extract).
-    cache_key = (id(ways), len(ways), id(ways[-1]) if ways else None, id(buildings), geometry_cache_cell)
-    if _street_light_junction_cache is None or _street_light_junction_cache[0] != cache_key:
+    cache_key = (id(ways), len(ways), id(ways[-1]) if ways else None, id(buildings))
+    if _street_light_junction_cache is None or _street_light_junction_cache[0] != cache_key or not region_covers_viewport:
         point_ways = {}
         ways_by_object_id = {id(way): way for way in visible_ways}
         for way in visible_ways:
@@ -849,18 +911,19 @@ def draw_street_lights(
     common._street_light_frame_world_positions = []
     global _street_light_geometry_cache_key, _street_light_geometry_cache
     global _street_light_way_lit_cache_key, _street_light_way_lit_cache
-    # geometry_cache_cell (see above) makes this refresh as the car moves
-    # into new territory. Both loops below walk visible_ways, not the full
-    # `ways` - `ways` is the whole session's loaded world (unbounded: it
-    # only grows as autofetch streams tiles in while driving, never
-    # shrinks), and this used to be rebuilt from *all* of it on every
-    # ways/buildings change. Measured against a real ~31k-way, ~1000km-of-
-    # lit-road Oulu extract: ~19 SECONDS for one rebuild (168k lamp
-    # candidates, each doing a spatial occlusion + junction-clearance
-    # check) - and since autofetch appends new ways continuously while
-    # driving, that rebuild kept re-triggering, each time over a bigger
-    # `ways`. Scoped to visible_ways it's bounded by what's actually near
-    # the camera regardless of how much of the city has been explored.
+    # region_covers_viewport (see above) makes this refresh as the car
+    # drives past the edge of the last-scoped region. Both loops below
+    # walk visible_ways, not the full `ways` - `ways` is the whole
+    # session's loaded world (unbounded: it only grows as autofetch
+    # streams tiles in while driving, never shrinks), and this used to be
+    # rebuilt from *all* of it on every ways/buildings change. Measured
+    # against a real ~31k-way, ~1000km-of-lit-road Oulu extract: ~19
+    # SECONDS for one rebuild (168k lamp candidates, each doing a spatial
+    # occlusion + junction-clearance check) - and since autofetch appends
+    # new ways continuously while driving, that rebuild kept re-triggering,
+    # each time over a bigger `ways`. Scoped to visible_ways it's bounded
+    # by what's actually near the camera regardless of how much of the
+    # city has been explored.
     geometry_cache_key = (
         id(ways),
         len(ways),
@@ -868,9 +931,8 @@ def draw_street_lights(
         id(buildings),
         len(buildings) if buildings else 0,
         id(buildings[-1]) if buildings else None,
-        geometry_cache_cell,
     )
-    if geometry_cache_key != _street_light_way_lit_cache_key:
+    if geometry_cache_key != _street_light_way_lit_cache_key or not region_covers_viewport:
         way_lit_cache = {}
         for way in visible_ways:
             if not getattr(way, "is_drivable", True) or len(way.points_m) < 2:
@@ -895,7 +957,7 @@ def draw_street_lights(
             way_lit_cache[id(way)] = segment_lighting
         _street_light_way_lit_cache_key = geometry_cache_key
         _street_light_way_lit_cache = way_lit_cache
-    if geometry_cache_key != _street_light_geometry_cache_key:
+    if geometry_cache_key != _street_light_geometry_cache_key or not region_covers_viewport:
         cached_lamps = []
         lamp_spacing = STREET_LIGHT_SPACING_M
         junction_cell_size = 40.0
@@ -976,6 +1038,7 @@ def draw_street_lights(
                 distance_to_lamp -= segment_length
         _street_light_geometry_cache_key = geometry_cache_key
         _street_light_geometry_cache = cached_lamps
+        _street_light_geometry_region = (region_vminx, region_vminy, region_vmaxx, region_vmaxy)
 
     lamp_centers = []
     lamp_directions = []
