@@ -2399,6 +2399,7 @@ def main() -> None:
                 speed_limiter_enabled=speed_limiter_enabled,
                 red_light_assist_enabled=red_light_assist_enabled,
                 show_compass=show_compass,
+                show_navigation=show_navigation,
                 rage_power=rage_power,
                 language=language,
                 career_total_distance_m=car.odometer_m if career is not None else None,

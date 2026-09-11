@@ -13,28 +13,37 @@ from theroadragetrip.render.hud import (
 )
 
 
-def _render(lane_assist_enabled: bool, lane_assist_active: bool, speed_limiter_enabled: bool) -> bytes:
+def _render(
+    lane_assist_enabled: bool,
+    lane_assist_active: bool,
+    speed_limiter_enabled: bool,
+    show_navigation: bool = False,
+) -> bytes:
     pygame.init()
     screen = pygame.Surface((300, 300))
     screen.fill((0, 0, 0))
     rect = pygame.Rect(10, 10, 190, 170)
-    _draw_speedometer_indicators(screen, rect, lane_assist_enabled, lane_assist_active, speed_limiter_enabled)
+    _draw_speedometer_indicators(
+        screen, rect, lane_assist_enabled, lane_assist_active, speed_limiter_enabled, show_navigation
+    )
     return pygame.image.tostring(screen, "RGB")
 
 
 def test_indicator_chips_render_differently_per_state():
-    """Regression: lane assist/speed limiter state was only ever visible
-    as text in the debug HUD's status line - easy to miss during normal
-    play. Each of the three toggle-relevant states (both off, lane assist
-    on but idle, lane assist actively steering, limiter on) must produce
-    a visibly different frame; the same state must render identically."""
-    all_off = _render(False, False, False)
-    lane_on_idle = _render(True, False, False)
-    lane_active = _render(True, True, False)
-    limiter_on = _render(False, False, True)
-    all_off_again = _render(False, False, False)
+    """Regression: lane assist/speed limiter/navigation state was only
+    ever visible as text in the debug HUD's status line - easy to miss
+    during normal play. Each of the toggle-relevant states (all off,
+    lane assist on but idle, lane assist actively steering, limiter on,
+    navigation on) must produce a visibly different frame; the same
+    state must render identically."""
+    all_off = _render(False, False, False, False)
+    lane_on_idle = _render(True, False, False, False)
+    lane_active = _render(True, True, False, False)
+    limiter_on = _render(False, False, True, False)
+    navigation_on = _render(False, False, False, True)
+    all_off_again = _render(False, False, False, False)
 
-    frames = [all_off, lane_on_idle, lane_active, limiter_on]
+    frames = [all_off, lane_on_idle, lane_active, limiter_on, navigation_on]
     for i, frame_a in enumerate(frames):
         for frame_b in frames[i + 1:]:
             assert frame_a != frame_b, "two different indicator states rendered identically"
@@ -53,7 +62,7 @@ def test_default_hud_layout_leaves_room_for_speedometer_indicators():
     screen = pygame.Surface((screen_w, screen_h))
 
     speedometer_rect = _draw_analog_speedometer(screen, 0.0, layout["speedometer"])
-    _draw_speedometer_indicators(screen, speedometer_rect, True, True, True)
+    _draw_speedometer_indicators(screen, speedometer_rect, True, True, True, True)
 
     chip_h, gap = 22, 6
     indicators_bottom = speedometer_rect.bottom + gap + chip_h

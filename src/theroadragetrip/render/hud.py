@@ -65,8 +65,8 @@ def default_hud_layout(screen_width: int, screen_height: int) -> dict[str, Tuple
         "rage": (screen_width - 190, screen_height - 246),
         # Shifted up from the speedometer box's own 170px height (was
         # screen_height - 180, flush with the bottom edge) to leave room
-        # for the lane-assist/speed-limiter indicator chips drawn just
-        # below it - see _draw_speedometer_indicators.
+        # for the lane-assist/speed-limiter/navigation indicator chips
+        # drawn just below it - see _draw_speedometer_indicators.
         "speedometer": (10, screen_height - 214),
     }
 
@@ -128,10 +128,13 @@ def _draw_speedometer_indicators(
     lane_assist_enabled: bool,
     lane_assist_active: bool,
     speed_limiter_enabled: bool,
+    show_navigation: bool = False,
 ) -> None:
-    """Two compact status chips under the speedometer for the K (lane
-    assist) and V (speed limiter) toggles - previously visible only as
-    text in the debug HUD's status line, easy to miss during normal play.
+    """Compact status chips under the speedometer for the K (lane
+    assist), V (speed limiter) and N (navigation) toggles - previously
+    visible only as text in the debug HUD's status line, easy to miss
+    during normal play. Each chip carries its shortcut key so a player
+    can discover the toggle without opening the debug HUD.
 
     Fixed English abbreviations rather than tr()-localized labels: a
     dashboard telltale reads the same regardless of UI language (real
@@ -146,13 +149,15 @@ def _draw_speedometer_indicators(
         _speedometer_indicator_font = pygame.font.SysFont(None, 15, bold=True)
     font = _speedometer_indicator_font
 
-    chip_w, chip_h, gap = 82, 22, 6
-    total_w = chip_w * 2 + gap
+    chip_h, gap, pad_x = 22, 6, 10
+    labels = ["LANE (K)", "LIMIT (V)", "NAVI (N)"]
+    chip_widths = [font.size(label)[0] + pad_x * 2 for label in labels]
+    total_w = sum(chip_widths) + gap * (len(labels) - 1)
     x = speedometer_rect.x + (speedometer_rect.width - total_w) // 2
     y = speedometer_rect.bottom + gap
 
-    def _chip(offset_x: int, label: str, enabled: bool, engaged: bool) -> None:
-        rect = pygame.Rect(x + offset_x, y, chip_w, chip_h)
+    def _chip(offset_x: int, width: int, label: str, enabled: bool, engaged: bool) -> None:
+        rect = pygame.Rect(x + offset_x, y, width, chip_h)
         if not enabled:
             bg, border, text_color = (28, 32, 36), (70, 78, 86), (120, 128, 135)
         elif engaged:
@@ -164,13 +169,20 @@ def _draw_speedometer_indicators(
         text = font.render(label, True, text_color)
         screen.blit(text, text.get_rect(center=rect.center))
 
-    # Lane assist gets a third visual state speed limiter doesn't need:
-    # "on but not currently steering" (dim amber, matching the "armed but
-    # idle" telltale color real cars use) vs "actively correcting the
-    # car's heading right now" (bright green) - speed limiter has no such
-    # idle/active distinction, it's simply capping speed or not.
-    _chip(0, "LANE", lane_assist_enabled, lane_assist_active)
-    _chip(chip_w + gap, "LIMIT", speed_limiter_enabled, speed_limiter_enabled)
+    # Lane assist gets a third visual state speed limiter/navigation don't
+    # need: "on but not currently steering" (dim amber, matching the
+    # "armed but idle" telltale color real cars use) vs "actively
+    # correcting the car's heading right now" (bright green) - the other
+    # two chips have no such idle/active distinction, just on or off.
+    offset_x = 0
+    for width, label, enabled, engaged in zip(
+        chip_widths,
+        labels,
+        (lane_assist_enabled, speed_limiter_enabled, show_navigation),
+        (lane_assist_active, speed_limiter_enabled, show_navigation),
+    ):
+        _chip(offset_x, width, label, enabled, engaged)
+        offset_x += width + gap
 
 
 def draw_day_night_overlay(
@@ -290,6 +302,7 @@ def draw_hud(
     speed_limiter_enabled: bool = True,
     red_light_assist_enabled: bool = False,
     show_compass: bool = False,
+    show_navigation: bool = False,
     rage_power: float = 0.0,
     language: str = "fi",
     career_total_distance_m: Optional[float] = None,
@@ -532,6 +545,7 @@ def draw_hud(
         getattr(car, "lane_assist_enabled", False),
         getattr(car, "lane_assist_active", False),
         speed_limiter_enabled,
+        show_navigation,
     )
 
 
