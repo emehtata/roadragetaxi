@@ -885,10 +885,12 @@ class TaxiManager:
         way, start, end, px, py = nearest
         heading = math.atan2(end[1] - start[1], end[0] - start[0])
         half_width = max(0.0, getattr(way, "half_width_m", 4.0))
-        offset = min(
-            max(1.2, half_width * 0.45),
-            max(0.0, half_width - 0.9),
-        )
+        # Must clear the road's own half-width (is_point_on_road's exact
+        # threshold) plus a curb/sidewalk margin - this used to cap the
+        # offset *below* half_width, which placed the passenger inside
+        # the roadway itself (a lane or more into a wide road like a
+        # motorway) instead of on the sidewalk beside it.
+        offset = half_width + 1.8
         return (
             px + math.sin(heading) * offset,
             py - math.cos(heading) * offset,
