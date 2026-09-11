@@ -40,6 +40,24 @@ STATIC_CACHE_GRID_PX = 192.0
 # rebuild catches up).
 CACHE_PADDING_PX = 224
 
+# Per-frame wall-clock budget for a layer whose static-cache rebuild is
+# spread across multiple frames instead of finishing synchronously the
+# instant it's due (see roads.py's incremental rebuild - the first, and so
+# far only, layer that needs this: a real drive showed its ordinary,
+# non-degenerate rebuild routinely costing 15-40ms on its own, well past a
+# single frame's whole 16.67ms budget, causing a visible once-per-second
+# hitch every time the camera crossed a cache-grid boundary - not a rare
+# edge case but the normal cost of that layer's normal rebuild). 4ms is
+# small enough that even stacked on top of one *other* layer's own
+# single-shot rebuild turn (still throttled to one per frame via
+# _allow_static_rebuild, untouched by this) plus ordinary per-frame
+# drawing, the combined frame stays comfortably under budget. Tune down if
+# profiling shows the two colliding often; tune up only if profiling shows
+# a rebuild routinely needing so many frames to finish that the camera can
+# out-pan CACHE_PADDING_PX before it does (see that constant's own pan-
+# distance budget).
+INCREMENTAL_REBUILD_BUDGET_S = 0.004
+
 # Distinct per-layer phase (in cache-grid pixels, spread across
 # STATIC_CACHE_GRID_PX) so the many static-cache layers sharing the same
 # rebuild-trigger grid don't all cross their boundary on the same frame.

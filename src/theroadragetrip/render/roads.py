@@ -4,10 +4,12 @@ from .common import (
     SCREEN_H,
     PX_PER_M,
     CACHE_PADDING_PX,
+    INCREMENTAL_REBUILD_BUDGET_S,
     DEFAULT_SUN_LATITUDE,
     DEFAULT_SUN_LONGITUDE,
     _render_logger,
     _rebuild_or_stale,
+    _blit_stale_static_cache,
     _static_cache_zoom,
     _reusable_alpha_surface,
     solar_altitude_and_events,
@@ -72,6 +74,20 @@ _street_light_geometry_region = None
 _street_light_way_lit_cache_key = None
 _street_light_way_lit_cache = {}
 _street_light_last_debug_log_ms = 0
+# In-progress incremental roads-cache rebuild, or None - see draw_ways/
+# _start_road_rebuild/_advance_road_rebuild. A real drive showed a normal
+# (non-degenerate) roads rebuild routinely costing 15-40ms on its own -
+# already past a whole frame's 16.67ms budget - so unlike every other
+# static-cache layer (which finishes its single throttled turn atomically),
+# roads spreads its rebuild across as many frames as it needs, in small
+# time-budgeted chunks, and keeps blitting the last fully-drawn cache in
+# the meantime. Deliberately NOT plugged into the shared
+# _allow_static_rebuild throttle other layers use: that throttle exists to
+# stop an *unbounded* single-shot rebuild from doubling up with another
+# layer's in the same frame, but roads' own per-frame chunk is already
+# capped small (INCREMENTAL_REBUILD_BUDGET_S) - it doesn't need to wait its
+# turn to stay cheap, so it simply advances every frame it has pending work.
+_road_wip = None
 
 
 def draw_ways(
@@ -85,8 +101,20 @@ def draw_ways(
     spatial_grid=None,
     profiler=None,
 ) -> None:
-    """Draw road ways intersecting viewport with highway-type proportional thickness and layer ordering."""
-    import pygame
+    """Draw road ways intersecting viewport with highway-type proportional thickness and layer ordering.
+
+    Unlike every other static-cache layer, a stale roads cache does not
+    rebuild atomically in the one frame its turn comes up - see _road_wip's
+    docstring for why. Instead: a cache hit blits immediately (unchanged);
+    a miss (either just detected, or an already-started rebuild still in
+    progress) advances that rebuild by one time-budgeted chunk and blits
+    whatever's currently committed (the previous cache, until the new one
+    finishes) at the correct camera-relative offset either way. The one
+    exception is the very first build ever (no committed cache at all to
+    fall back to) - that stays a one-time synchronous cost, exactly like
+    every other layer's own "surface is None" exemption, since there is
+    nothing to show in the meantime regardless.
+    """
     cache_zoom = _static_cache_zoom(px_per_m)
 
     road_cache_key = (
@@ -108,33 +136,84 @@ def draw_ways(
             ),
         )
         return
-    if _rebuild_or_stale(screen, "roads", common._road_frame_cache_surface, common._road_frame_cache_camera, camx, camy, cache_zoom):
-        return
+
+    global _road_wip
+    if _road_wip is not None and _road_wip["key"] != road_cache_key:
+        # The world/zoom bucket the WIP was mid-drawing for is no longer
+        # even the one we need now (invalidate_static_caches() fired under
+        # it, or - rare - the grid cell moved on again before the WIP
+        # finished). The WIP's own visible_ways/geometry snapshot no longer
+        # matches what's needed, so restart clean rather than trying to
+        # patch it up.
+        _road_wip = None
+
+    is_first_ever_build = common._road_frame_cache_surface is None
+    if _road_wip is None:
+        _road_wip = _start_road_rebuild(ways, spatial_grid, road_cache_key, camx, camy, cache_zoom, screen_w, screen_h)
+
+    rebuild_started = time.perf_counter() if profiler is not None else None
+    # The very first build has nothing to fall back to while it works, so
+    # it - and only it - still pays its full cost in one call, same as
+    # every other layer's own no-existing-cache exemption.
+    deadline = float("inf") if is_first_ever_build else time.perf_counter() + INCREMENTAL_REBUILD_BUDGET_S
+    finished = _advance_road_rebuild(_road_wip, deadline)
+    if profiler is not None:
+        profiler.record("render:roads_cache_rebuild", (time.perf_counter() - rebuild_started) * 1000.0)
+
+    if finished:
+        common._road_frame_cache_key = _road_wip["key"]
+        common._road_frame_cache_surface = _road_wip["surface"]
+        common._road_frame_cache_camera = _road_wip["camera"]
+        _road_wip = None
+
+    # Whatever's now committed - the just-finished rebuild, or (still
+    # mid-flight) the previous one - is shown via the same offset math
+    # either way. A mid-flight WIP's own surface is never blitted directly:
+    # it may still be missing roads until _advance_road_rebuild reports
+    # finished.
+    if common._road_frame_cache_surface is not None:
+        _blit_stale_static_cache(
+            screen, common._road_frame_cache_surface, common._road_frame_cache_camera, camx, camy, cache_zoom
+        )
+
+
+def _start_road_rebuild(
+    ways: List[Way], spatial_grid, road_cache_key, camx: float, camy: float, cache_zoom: float,
+    screen_w: int, screen_h: int,
+) -> dict:
+    """Begin a new incremental roads-cache rebuild job: the one-shot setup
+    (visible-way selection, sort, endpoint bucketing) that's genuinely
+    cheap - O(visible ways), no nested search - and must finish before
+    anything else can. The endpoint-*join* search itself (nested over each
+    endpoint's local neighbor cells) is NOT done here despite also being
+    one-shot in the previous, non-incremental version of this code: it
+    measured up to ~40ms on its own against a real dense drive (114478
+    math.hypot calls in one slow rebuild) - just as capable of spiking a
+    frame as the per-way drawing loop this whole mechanism exists to
+    spread out, so it gets the same chunked treatment via
+    _advance_endpoint_connections(), run first by _advance_road_rebuild
+    before any drawing starts.
+
+    Snapshots camx/camy/cache_zoom once, here, for the whole job's
+    lifetime: _advance_road_rebuild may run across several frames while
+    the camera keeps moving, and every chunk must draw into the exact same
+    reference frame as every other - never whatever live camx/camy the
+    draw_ways() call that happens to trigger a given chunk received.
+    """
+    import pygame
+
     px_per_m = cache_zoom
-    destination_screen = screen
     cache_width = screen_w + CACHE_PADDING_PX * 2
     cache_height = screen_h + CACHE_PADDING_PX * 2
-    rebuild_started = time.perf_counter() if profiler is not None else 0.0
-    screen = pygame.Surface((cache_width, cache_height), pygame.SRCALPHA)
-    screen_w = cache_width
-    screen_h = cache_height
 
-    # screen_w/screen_h here are already the padded cache surface's own
-    # dimensions (CACHE_PADDING_PX baked in above), so this margin is pure
-    # extra beyond that - and the cache's offset-blit reuse can never take
-    # advantage of more than CACHE_PADDING_PX/px_per_m of it anyway (that's
-    # the whole pan distance a reuse can cover before a real rebuild is
-    # needed regardless). A wide margin here was making every rebuild
-    # select and fully render roads tens of meters past anything the cache
-    # could ever actually show before its next rebuild - real cost in a
-    # busy area (occasional multi-ten-millisecond "culprit: rendering"
-    # spikes) for no visual benefit. A small fixed margin is still kept as
-    # pop-in insurance for wide roads/long endpoint-joins near the edge -
-    # 25m comfortably covers the widest endpoint join_distance possible
-    # (a motorway's 2*7.0+4.0=18m) with headroom to spare.
-    vminx, vminy, vmaxx, vmaxy = get_viewport_bounds(camx, camy, px_per_m, screen_w, screen_h, 25.0)
+    # See draw_ways' historical note (kept from the previous single-shot
+    # version): this margin is pure extra beyond CACHE_PADDING_PX, which
+    # already bounds how much of it a cache reuse could ever take advantage
+    # of - a small fixed margin is enough as pop-in insurance for wide
+    # roads/long endpoint-joins near the edge (25m comfortably covers the
+    # widest possible join_distance, a motorway's 2*7.0+4.0=18m).
+    vminx, vminy, vmaxx, vmaxy = get_viewport_bounds(camx, camy, px_per_m, cache_width, cache_height, 25.0)
 
-    # Filter visible ways first, then sort only visible ways by layer
     if spatial_grid is not None:
         visible_ways = [w for w in spatial_grid.ways_in_rect(vminx, vminy, vmaxx, vmaxy) if len(w.points_m) >= 2]
     else:
@@ -168,7 +247,6 @@ def draw_ways(
                 bool(way.is_drivable),
             ))
 
-    endpoint_connections = {}
     endpoint_cell_size = 32.0
     endpoint_cells = {}
     for endpoint in endpoints:
@@ -176,31 +254,109 @@ def draw_ways(
         cell = (math.floor(point[0] / endpoint_cell_size), math.floor(point[1] / endpoint_cell_size), layer, is_drivable)
         endpoint_cells.setdefault(cell, []).append(endpoint)
 
-    if px_per_m > 1.5:
-        for way, endpoint_index, point, layer, is_drivable in endpoints:
-            nearest = None
-            nearest_distance = float("inf")
-            join_distance = max(8.0, 2.0 * getattr(way, "half_width_m", 4.0) + 4.0)
-            cell_x = math.floor(point[0] / endpoint_cell_size)
-            cell_y = math.floor(point[1] / endpoint_cell_size)
-            search_radius = max(1, math.ceil(join_distance / endpoint_cell_size))
-            for nearby_cell_x in range(cell_x - search_radius, cell_x + search_radius + 1):
-                for nearby_cell_y in range(cell_y - search_radius, cell_y + search_radius + 1):
-                    for other_way, other_index, other_point, other_layer, other_is_drivable in endpoint_cells.get(
-                        (nearby_cell_x, nearby_cell_y, layer, is_drivable), ()
-                    ):
-                        if way is other_way:
-                            continue
-                        distance = math.hypot(point[0] - other_point[0], point[1] - other_point[1])
-                        if distance < nearest_distance:
-                            nearest = (other_way, other_index, other_point)
-                            nearest_distance = distance
-            if nearest is not None and nearest_distance <= join_distance:
-                endpoint_connections[(id(way), endpoint_index)] = nearest[2]
+    return {
+        "key": road_cache_key,
+        "camera": (camx, camy),
+        "px_per_m": px_per_m,
+        "screen_w": cache_width,
+        "screen_h": cache_height,
+        "vminx": vminx, "vminy": vminy, "vmaxx": vmaxx, "vmaxy": vmaxy,
+        "surface": pygame.Surface((cache_width, cache_height), pygame.SRCALPHA),
+        "visible_ways": visible_ways,
+        # Endpoint-join state: "endpoints" stage (see
+        # _advance_endpoint_connections) must fully finish - possibly
+        # across several calls - before the "drawing" stage's per-way loop
+        # can start, since every way's draw needs the complete map, not a
+        # partial one. Skipped entirely (stays empty, stage set directly to
+        # "drawing") when px_per_m <= 1.5, matching the previous
+        # single-shot version's own zoom gate.
+        "endpoints": endpoints if px_per_m > 1.5 else [],
+        "endpoint_cells": endpoint_cells,
+        "endpoint_cell_size": endpoint_cell_size,
+        "endpoint_progress": 0,
+        "endpoint_connections": {},
+        "stage": "endpoints" if px_per_m > 1.5 else "drawing",
+        "index": 0,
+        "asphalt_polygons": [],
+        "center_lines": [],
+        "bridge_edges": [],
+    }
 
-    asphalt_polygons = []
-    center_lines = []
-    bridge_edges = []
+
+def _advance_endpoint_connections(job: dict, deadline: float) -> bool:
+    """Chunk of the endpoint-join precompute (nearest-neighbor search per
+    endpoint, within its local grid cells) - see _start_road_rebuild's
+    docstring for why this needed to be split out of the one-shot setup
+    and given the same chunked treatment as the main per-way drawing loop.
+    Same guaranteed-progress contract as _advance_road_rebuild: at least
+    one endpoint is always processed per call, so this can never stall
+    permanently regardless of how small the budget is."""
+    endpoints = job["endpoints"]
+    endpoint_cells = job["endpoint_cells"]
+    endpoint_cell_size = job["endpoint_cell_size"]
+    endpoint_connections = job["endpoint_connections"]
+
+    made_progress_this_call = False
+    while job["endpoint_progress"] < len(endpoints):
+        if made_progress_this_call and time.perf_counter() >= deadline:
+            return False
+        way, endpoint_index, point, layer, is_drivable = endpoints[job["endpoint_progress"]]
+        job["endpoint_progress"] += 1
+        made_progress_this_call = True
+
+        nearest = None
+        nearest_distance = float("inf")
+        join_distance = max(8.0, 2.0 * getattr(way, "half_width_m", 4.0) + 4.0)
+        cell_x = math.floor(point[0] / endpoint_cell_size)
+        cell_y = math.floor(point[1] / endpoint_cell_size)
+        search_radius = max(1, math.ceil(join_distance / endpoint_cell_size))
+        for nearby_cell_x in range(cell_x - search_radius, cell_x + search_radius + 1):
+            for nearby_cell_y in range(cell_y - search_radius, cell_y + search_radius + 1):
+                for other_way, other_index, other_point, other_layer, other_is_drivable in endpoint_cells.get(
+                    (nearby_cell_x, nearby_cell_y, layer, is_drivable), ()
+                ):
+                    if way is other_way:
+                        continue
+                    distance = math.hypot(point[0] - other_point[0], point[1] - other_point[1])
+                    if distance < nearest_distance:
+                        nearest = (other_way, other_index, other_point)
+                        nearest_distance = distance
+        if nearest is not None and nearest_distance <= join_distance:
+            endpoint_connections[(id(way), endpoint_index)] = nearest[2]
+    return True
+
+
+def _advance_road_rebuild(job: dict, deadline: float) -> bool:
+    """Advance job by one time-budgeted chunk, resuming its "endpoints"
+    stage (see _advance_endpoint_connections) if not yet finished, then
+    its "drawing" stage - job's remaining visible ways, one at a time,
+    checking `deadline` (a time.perf_counter() cutoff) before each and
+    stopping the moment it's passed, so the caller can resume from exactly
+    where this left off on a later frame (a call that spends its whole
+    budget finishing "endpoints" makes zero drawing progress that call,
+    same as any other chunk boundary - still forward progress, just not in
+    the drawing stage yet). Once every way is drawn, the remaining
+    finishing passes (center lines, bridge guardrails - both cheap and, so
+    far, not chunked further; see INCREMENTAL_REBUILD_BUDGET_S) run to
+    completion unconditionally and this returns True: job["surface"] is
+    then fully, correctly drawn and ready to commit as the new cache."""
+    import pygame
+
+    if job["stage"] == "endpoints":
+        if not _advance_endpoint_connections(job, deadline):
+            return False
+        job["stage"] = "drawing"
+
+    screen = job["surface"]
+    camx, camy = job["camera"]
+    px_per_m = job["px_per_m"]
+    screen_w, screen_h = job["screen_w"], job["screen_h"]
+    vminx, vminy, vmaxx, vmaxy = job["vminx"], job["vminy"], job["vmaxx"], job["vmaxy"]
+    endpoint_connections = job["endpoint_connections"]
+    visible_ways = job["visible_ways"]
+    asphalt_polygons = job["asphalt_polygons"]
+    center_lines = job["center_lines"]
+    bridge_edges = job["bridge_edges"]
 
     def draw_joined_line(color, points, width, connections=()):
         if len(points) < 2:
@@ -403,7 +559,20 @@ def draw_ways(
         for start, end in connections:
             pygame.draw.line(screen, color, start, end, 1)
 
-    for w in visible_ways:
+    made_progress_this_call = False
+    while job["index"] < len(visible_ways):
+        # Checked only once at least one way has already been drawn this
+        # call: a deadline computed as "now + a tiny/zero budget" can
+        # already be in the past by the time this runs (function-call
+        # overhead alone), which would otherwise return False having drawn
+        # nothing - real progress every single call is what guarantees
+        # this can never get permanently stuck, not merely "usually" make
+        # progress.
+        if made_progress_this_call and time.perf_counter() >= deadline:
+            return False
+        w = visible_ways[job["index"]]
+        job["index"] += 1
+        made_progress_this_call = True
         if px_per_m <= 1.5 and not w.is_drivable:
             continue
         pts = [world_to_screen(x, y, camx, camy, px_per_m, screen_w, screen_h) for (x, y) in w.points_m]
@@ -585,12 +754,7 @@ def draw_ways(
                     if is_side_edge(edge_start, edge_end):
                         pygame.draw.line(screen, edge_color, edge_start, edge_end, edge_width)
 
-    destination_screen.blit(screen, (-CACHE_PADDING_PX, -CACHE_PADDING_PX))
-    if profiler is not None:
-        profiler.record("render:roads_cache_rebuild", (time.perf_counter() - rebuild_started) * 1000.0)
-    common._road_frame_cache_key = road_cache_key
-    common._road_frame_cache_surface = screen
-    common._road_frame_cache_camera = (camx, camy)
+    return True
 
 
 def _way_has_street_lighting(way: Way) -> bool:

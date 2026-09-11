@@ -47,6 +47,22 @@ DEFAULT_GRID_SIZE_DEG = 1.0
 DEFAULT_STRATEGY = "smart"
 MANIFEST_NAME = "manifest.json"
 
+# Extra margin (degrees) cut into each cell file beyond its own nominal grid
+# bounds, so a query that only slightly crosses a grid line can still be
+# answered from one cell instead of two. Without this, any query bbox
+# straddling a boundary needs an osmium extract from *every* cell it
+# touches (see tiles_for_bbox) - normally rare, but Finland's default city
+# (Oulu, (65.012, 25.468) - see config.py's city catalog) sits only 0.012deg
+# above the lat=65.0 grid line, so essentially every autofetch tile
+# (PBF_TILE_SIZE_M=3300m, ~0.03deg) near the default starting area straddles
+# it, doubling extraction cost for the whole default play area. 0.05deg
+# (~5.5km at Finland's latitudes) comfortably covers a query centered that
+# far from the line without needing the neighbor; a query straddling by
+# more than that (a large initial-load bbox, or a coincidence elsewhere)
+# still correctly falls back to pulling both cells - this only removes the
+# redundant work for the common case, never removes correctness.
+DEFAULT_CELL_PADDING_DEG = 0.05
+
 
 def default_index_dir(pbf_path: Path) -> Path:
     return Path(pbf_path).parent / f"{Path(pbf_path).name}.index"
@@ -92,6 +108,7 @@ def build_index(
     index_dir: Optional[Path] = None,
     grid_size_deg: float = DEFAULT_GRID_SIZE_DEG,
     strategy: str = DEFAULT_STRATEGY,
+    cell_padding_deg: float = DEFAULT_CELL_PADDING_DEG,
     force: bool = False,
     progress_callback: Optional[Callable[[float, str], None]] = None,
 ) -> Path:
@@ -100,16 +117,29 @@ def build_index(
     Cheap to call every run: with a complete, up-to-date index already on
     disk this is just a stat() and a manifest read, no osmium call at all.
     An index left half-built by an earlier interrupted run resumes - only
-    cells not already on disk are (re-)extracted.
+    cells not already on disk are (re-)extracted. An index built with
+    different parameters (grid_size_deg/strategy/cell_padding_deg) than
+    requested is treated the same as `force=True` - the cells on disk are
+    for a different grid and can't be resumed into this one.
     """
     pbf_path = Path(pbf_path)
     index_dir = Path(index_dir) if index_dir else default_index_dir(pbf_path)
 
-    if not force and not index_is_stale(pbf_path, index_dir):
-        manifest = load_manifest(index_dir)
-        if all((index_dir / cell["file"]).is_file() for cell in manifest["cells"]):
+    existing_manifest = load_manifest(index_dir) if not force else None
+    if not force and not index_is_stale(pbf_path, index_dir) and existing_manifest is not None:
+        params_match = (
+            existing_manifest.get("grid_size_deg") == grid_size_deg
+            and existing_manifest.get("strategy") == strategy
+            and existing_manifest.get("cell_padding_deg", 0.0) == cell_padding_deg
+        )
+        if params_match and all((index_dir / cell["file"]).is_file() for cell in existing_manifest["cells"]):
             logger.info("PBF index already up to date: %s", index_dir)
             return index_dir
+        if not params_match:
+            # Cells on disk (if any) were cut for a different grid/padding -
+            # not a partial build of *this* one, so nothing is resumable.
+            force = True
+            logger.info("PBF index parameters changed - rebuilding %s from scratch", index_dir)
 
     if shutil.which("osmium") is None:
         raise RuntimeError("Building a PBF index requires the 'osmium' command-line tool (osmium-tool).")
@@ -137,7 +167,7 @@ def build_index(
         cw, cs, ce, cn = cell["bbox"]
         cmd = [
             "osmium", "extract",
-            "--bbox", f"{cw},{cs},{ce},{cn}",
+            "--bbox", f"{cw - cell_padding_deg},{cs - cell_padding_deg},{ce + cell_padding_deg},{cn + cell_padding_deg}",
             "-s", strategy, "-f", "pbf", "-O",
             "-o", str(out_path),
             str(pbf_path),
@@ -151,6 +181,7 @@ def build_index(
         "source": {"path": str(pbf_path.resolve()), "size": st.st_size, "mtime": st.st_mtime},
         "grid_size_deg": grid_size_deg,
         "strategy": strategy,
+        "cell_padding_deg": cell_padding_deg,
         "cells": cells,
     }
     (index_dir / MANIFEST_NAME).write_text(json.dumps(manifest))
@@ -186,8 +217,25 @@ def index_is_stale(pbf_path: Path, index_dir: Path) -> bool:
 
 
 def tiles_for_bbox(index_dir: Path, bbox: Tuple[float, float, float, float]) -> List[Path]:
-    """Existing regional .pbf files whose grid cell overlaps `bbox`
+    """Regional .pbf file(s) that answer `bbox`
     (south, west, north, east - same convention as osm/pbf_source.py).
+
+    Tries a single cell first: any cell whose *padded* bounds (its file
+    actually contains data cell_padding_deg past its nominal grid bounds -
+    see build_index) fully contain the whole query bbox needs no help from
+    a neighbor, so that one cell alone is returned. This is what lets a
+    query that only slightly crosses a grid line resolve to one file
+    instead of two - naively widening *every* cell's overlap test by the
+    padding would instead make MORE cells match a given query, the opposite
+    of the goal, since expanding a boundary can only add false-positive
+    overlaps, never remove real ones.
+
+    Only when no single cell's padding covers the whole query (a query
+    straddling by more than cell_padding_deg on both sides, or an index
+    with no padding recorded - 0.0 for one built before this field existed)
+    does this fall back to the old behavior: every cell whose *nominal*
+    bounds intersect the query, unioned by the caller. Always correct
+    regardless of padding, since it never depends on it.
 
     Empty list means "no usable index" - the index dir doesn't exist (or
     has no manifest); callers should fall back to extracting from the full
@@ -196,7 +244,15 @@ def tiles_for_bbox(index_dir: Path, bbox: Tuple[float, float, float, float]) -> 
     manifest = load_manifest(Path(index_dir))
     if manifest is None:
         return []
+    pad = manifest.get("cell_padding_deg", 0.0)
     south, west, north, east = bbox
+    if pad > 0.0:
+        for cell in manifest["cells"]:
+            cw, cs, ce, cn = cell["bbox"]
+            if cw - pad <= west and ce + pad >= east and cs - pad <= south and cn + pad >= north:
+                path = Path(index_dir) / cell["file"]
+                if path.is_file():
+                    return [path]
     tiles = []
     for cell in manifest["cells"]:
         cw, cs, ce, cn = cell["bbox"]

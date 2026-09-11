@@ -29,6 +29,45 @@ def _reset_static_render_cache_throttle():
 
 
 @pytest.fixture(autouse=True)
+def _reset_incremental_rebuild_state():
+    """Reset roads' and buildings' cache state (committed cache + any
+    in-progress incremental rebuild) before every test.
+
+    Unlike every other static-cache layer, draw_ways()/draw_buildings()
+    only do their full, unbounded rebuild synchronously in one call when
+    there is no committed cache at all yet (see draw_ways' docstring) -
+    otherwise they advance an incremental rebuild by a small time budget
+    per call, same as real gameplay across frames. Without this reset, a
+    test running after any earlier test that already committed *some*
+    cache (a near-certainty in a full test-process run) would see a
+    non-None cache and take the incremental path from its very first call
+    - fine for the small scenes most tests draw (still finishes within one
+    call's time budget), but a real, load-order-dependent flakiness risk
+    for any test with enough visible ways/buildings that it doesn't. Real
+    gameplay never has this problem: there's always exactly one true
+    "first ever build" per process.
+    """
+    from theroadragetrip.render import common as _render_common
+    from theroadragetrip.render import roads as _render_roads
+    from theroadragetrip.render import buildings as _render_buildings
+    from theroadragetrip.render import scenery as _render_scenery
+
+    _render_common._road_frame_cache_key = None
+    _render_common._road_frame_cache_surface = None
+    _render_common._road_frame_cache_camera = None
+    _render_roads._road_wip = None
+    _render_common._building_frame_cache_key = None
+    _render_common._building_frame_cache_surface = None
+    _render_common._building_frame_cache_camera = None
+    _render_buildings._building_wip = None
+    _render_common._scenery_frame_cache_key = None
+    _render_common._scenery_frame_cache_surface = None
+    _render_common._scenery_frame_cache_camera = None
+    _render_scenery._scenery_wip = None
+    yield
+
+
+@pytest.fixture(autouse=True)
 def _reset_solar_position_cache():
     """Clear the shared sun-position cache before every test.
 

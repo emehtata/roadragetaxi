@@ -3,7 +3,7 @@ import math
 import pytest
 from types import SimpleNamespace
 from theroadragetrip.geo import point_in_polygon
-from theroadragetrip.osm import TrafficLight, Way
+from theroadragetrip.osm import Building, TrafficLight, Way
 from theroadragetrip.osm import TaxiStop
 from theroadragetrip.pedestrian import (
     CyclistManager,
@@ -952,3 +952,65 @@ def test_nearby_ped_ways_falls_back_to_every_way_when_grid_is_empty():
     manager = PedestrianManager(ways, target_count=0, spawn_radius_m=50.0)
     far_away = manager._nearby_ped_ways(1_000_000.0, 1_000_000.0)
     assert far_away == manager._spawn_ways
+
+
+def _dense_buildings(count: int) -> list:
+    """`count` small building footprints packed into one 500x500m area -
+    enough distinct buildings landing in the same _point_near_building
+    cell window to make an uncached per-call rescan show up."""
+    buildings = []
+    per_row = 50
+    for i in range(count):
+        x = (i % per_row) * 10.0
+        y = (i // per_row) * 10.0
+        buildings.append(Building(
+            points_m=[(x, y), (x + 6.0, y), (x + 6.0, y + 6.0), (x, y + 6.0)],
+            bbox=(x, y, x + 6.0, y + 6.0),
+        ))
+    return buildings
+
+
+def test_point_near_building_caches_the_per_window_building_list():
+    """Regression: spawn_pedestrian()'s retry loop calls _point_near_building
+    for every candidate point tried along a segment (up to 8 per segment,
+    for up to 30 candidate ways per spawn attempt) - nearby points along
+    the same short segment overwhelmingly land in the same cell window,
+    but the old code re-scanned and re-deduplicated (via id() + a set)
+    every mapped building in that window from scratch on every single
+    call. Confirmed via profiling a real drive: ~1M id() calls across 2100
+    calls to this method in one slow population-update pass.
+
+    300 calls at slightly different points, all within the same 100m
+    building-grid cell window, against 2000 densely packed buildings:
+    fixed (cached per-window) measures well under the unfixed cost."""
+    import time
+
+    ways = [Way(points_m=[(0.0, 0.0), (500.0, 0.0)], highway="footway", half_width_m=1.5)]
+    manager = PedestrianManager(ways, target_count=0, venue_buildings=_dense_buildings(2000))
+    assert manager._building_grid
+
+    start = time.perf_counter()
+    for i in range(300):
+        manager._point_near_building(10.0 + i * 0.01, 10.0 + i * 0.01)
+    elapsed = time.perf_counter() - start
+    assert elapsed < 0.5, (
+        f"300 _point_near_building calls in the same window took {elapsed:.2f}s - "
+        f"looks like the per-call window cache regressed"
+    )
+    assert len(manager._near_building_window_cache) == 1, (
+        "all 300 calls landed in the same cell window - expected exactly one cached entry"
+    )
+
+
+def test_point_near_building_window_cache_is_cleared_when_buildings_change():
+    """set_venue_buildings() (called whenever the buildings list itself
+    changes, e.g. autofetch loading a new tile) must clear the per-window
+    cache - otherwise a window could keep returning a building list from
+    before new buildings were added to (or removed from) that same area."""
+    ways = [Way(points_m=[(0.0, 0.0), (500.0, 0.0)], highway="footway", half_width_m=1.5)]
+    manager = PedestrianManager(ways, target_count=0, venue_buildings=_dense_buildings(50))
+    manager._point_near_building(10.0, 10.0)
+    assert manager._near_building_window_cache
+
+    manager.set_venue_buildings(_dense_buildings(50))
+    assert manager._near_building_window_cache == {}
