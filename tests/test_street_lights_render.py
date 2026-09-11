@@ -222,6 +222,7 @@ def test_draw_street_lights_geometry_rebuild_is_scoped_to_visible_ways():
     near the camera plus many lit roads far away (outside the viewport +
     padding) and confirm the far ones are never even visited."""
     import theroadragetrip.render.roads as roads_module
+    from theroadragetrip.render import common as common_module
     from theroadragetrip.physics import SpatialWayGrid
 
     pygame.init()
@@ -269,6 +270,12 @@ def test_draw_street_lights_geometry_rebuild_is_scoped_to_visible_ways():
         # Only the near road (and maybe a couple of near-boundary calls)
         # should ever reach this - nowhere close to visiting all 501 ways.
         assert call_count < 20, f"visited {call_count} ways - geometry rebuild is not scoped to visible_ways"
+        # And the near road's lamps must actually still get placed - a
+        # scoped `visible_ways` that's a generator instead of a list would
+        # pass the call-count check above (only visited once) while
+        # silently placing zero lamps, since it gets walked three times
+        # and a generator only yields once.
+        assert common_module._street_light_frame_world_positions, "no lamps were drawn for the near road"
     finally:
         pygame.quit()
 

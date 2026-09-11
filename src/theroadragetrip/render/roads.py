@@ -774,7 +774,12 @@ def draw_street_lights(
     # Build the lighting layer beyond the visible edge so lamps are ready before entering view.
     vminx, vminy, vmaxx, vmaxy = get_viewport_bounds(camx, camy, px_per_m, screen_w, screen_h, 40.0)
     if spatial_grid is not None:
-        visible_ways = spatial_grid.ways_in_rect(vminx, vminy, vmaxx, vmaxy)
+        # ways_in_rect() is a generator - materialize it, since below this
+        # gets walked three separate times (junctions, lit-segment cache,
+        # lamp placement); consuming a generator three times silently
+        # yields nothing on the 2nd and 3rd pass instead of an error,
+        # which is exactly how this shipped with zero lamps ever placed.
+        visible_ways = list(spatial_grid.ways_in_rect(vminx, vminy, vmaxx, vmaxy))
     else:
         visible_ways = ways
     # Coarse camera cell (world meters, well inside the 40m viewport padding
