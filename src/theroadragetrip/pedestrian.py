@@ -277,6 +277,11 @@ class PedestrianManager:
         self.buildings: List = []
         self._building_grid: Dict[Tuple[int, int], List] = {}
         self._building_grid_cell_size = 100.0
+        # _point_near_building's deduplicated per-cell-window building list,
+        # keyed by the (min_cx, max_cx, min_cy, max_cy) window - see that
+        # method's docstring. Cleared whenever _building_grid itself is
+        # rebuilt (set_venue_buildings), never otherwise.
+        self._near_building_window_cache: Dict[Tuple[int, int, int, int], List] = {}
         self.vomit_puddles: List[Tuple[float, float]] = []
 
         self.ped_ways: List[Way] = []
@@ -435,6 +440,7 @@ class PedestrianManager:
         self.amenity_entrance_locations = []
         self._entrance_grid = {}
         self._building_grid = {}
+        self._near_building_window_cache = {}
         for building in buildings or []:
             bbox = getattr(building, "bbox", None)
             if bbox and bbox != (0.0, 0.0, 0.0, 0.0):
@@ -510,20 +516,36 @@ class PedestrianManager:
         return safe_ways
 
     def _point_near_building(self, x: float, y: float, radius_m: float = 250.0) -> bool:
-        """Return whether a point is near a mapped building."""
+        """Return whether a point is near a mapped building.
+
+        The deduplicated candidate-building list for a given cell window is
+        cached (self._near_building_window_cache, keyed by the window
+        itself and cleared whenever _building_grid is rebuilt - see
+        set_venue_buildings). spawn_pedestrian's retry loop calls this for
+        every candidate point tried along a segment - up to 8 per segment,
+        for up to 30 candidate ways per spawn attempt - and nearby points
+        along the same short segment overwhelmingly land in the exact same
+        window. Confirmed via profiling a real drive: ~1M id() calls across
+        2100 calls to this method in one slow population-update pass,
+        almost entirely re-deriving the same handful of distinct windows
+        over and over."""
         cell_size = self._building_grid_cell_size
         min_cell_x = math.floor((x - radius_m) / cell_size)
         max_cell_x = math.floor((x + radius_m) / cell_size)
         min_cell_y = math.floor((y - radius_m) / cell_size)
         max_cell_y = math.floor((y + radius_m) / cell_size)
-        building_data = []
-        seen = set()
-        for cell_x in range(min_cell_x, max_cell_x + 1):
-            for cell_y in range(min_cell_y, max_cell_y + 1):
-                for building in self._building_grid.get((cell_x, cell_y), ()):
-                    if id(building) not in seen:
-                        seen.add(id(building))
-                        building_data.append(building)
+        window_key = (min_cell_x, max_cell_x, min_cell_y, max_cell_y)
+        building_data = self._near_building_window_cache.get(window_key)
+        if building_data is None:
+            building_data = []
+            seen = set()
+            for cell_x in range(min_cell_x, max_cell_x + 1):
+                for cell_y in range(min_cell_y, max_cell_y + 1):
+                    for building in self._building_grid.get((cell_x, cell_y), ()):
+                        if id(building) not in seen:
+                            seen.add(id(building))
+                            building_data.append(building)
+            self._near_building_window_cache[window_key] = building_data
         if not building_data:
             return not self._building_grid
         radius_sq = radius_m * radius_m
