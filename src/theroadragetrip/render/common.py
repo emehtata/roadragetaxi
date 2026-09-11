@@ -421,7 +421,7 @@ def _get_game_version() -> str:
     try:
         return f"v{package_version('theroadragetrip')}"
     except PackageNotFoundError:
-        return "v0.11.1alpha"
+        return "v0.12.0alpha"
 
 
 def _draw_version(screen, font, screen_w: int, screen_h: int) -> None:
