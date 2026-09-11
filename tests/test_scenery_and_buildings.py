@@ -1466,6 +1466,83 @@ def test_stale_static_cache_blit_never_overflows_its_padding_during_driving():
             )
 
 
+def test_bulk_invalidation_pile_up_never_overflows_padding():
+    """Regression: invalidate_static_caches() (called from main/__init__.py
+    whenever autofetch integrates a new tile) clears every layer's
+    frame_cache_key at once, regardless of camera position - unlike an
+    ordinary boundary crossing, the phase offsets in
+    _STATIC_CACHE_LAYER_PHASE_PX do nothing to spread this kind of
+    pile-up out, since it isn't position-triggered at all. With up to
+    all ~10 layers queued behind the 1-rebuild-per-frame throttle at
+    once, and the camera still moving while each waits its turn,
+    CACHE_PADDING_PX (tuned against the *ordinary* few-layers-queued
+    case) can be outrun before a layer near the back of the queue gets
+    served. _rebuild_or_stale's safety valve (see its docstring) must
+    force such a layer's rebuild through immediately instead of letting
+    it show a visible gap.
+
+    Simulates exactly that pile-up - all ~10 layers going stale on the
+    same frame, as invalidate_static_caches() causes - while driving at
+    the game's max speed (physics.MAX_SPEED), and asserts every
+    stale-blit _rebuild_or_stale actually takes (real call, not a
+    reimplementation of its logic) stays within CACHE_PADDING_PX for
+    every layer, all the way to the last one served.
+
+    Each layer's cache was last actually rebuilt at some point *before*
+    the invalidation too - up to a full STATIC_CACHE_GRID_PX step behind,
+    same as the ordinary-crossing test above already allows for - so the
+    worst case stacks both: a layer already at the edge of its own grid
+    step, invalidated, then made to wait out the full queue behind it
+    while the camera keeps moving. Only that combination is enough to
+    exceed CACHE_PADDING_PX; using camx=0 as every layer's last-rebuilt
+    position (no pre-existing drift) passed even without the fix below,
+    so this reproduces the pile-up alone stacked with realistic drift."""
+    import pygame
+    from theroadragetrip.physics import MAX_SPEED
+    from theroadragetrip.render import common as common_module
+
+    layers = [
+        "grass", "scenery", "trees", "scenery_objects", "water", "roads",
+        "buildings", "labels", "railways_ground", "railways_bridge",
+    ]
+    cache_zoom = 9.0
+    screen = pygame.Surface((1280, 720))
+    pad = int(common_module.CACHE_PADDING_PX)
+    fake_surface = pygame.Surface((1280 + 2 * pad, 720 + 2 * pad))
+
+    common_module._pending_static_rebuilds.clear()
+    camx = camy = 0.0
+    grid_step_m = common_module.STATIC_CACHE_GRID_PX / cache_zoom
+    # Every layer's cache was last actually rebuilt a full grid step
+    # behind the instant invalidate_static_caches() would have cleared
+    # their keys - the worst case, not the best case, for how stale each
+    # one already was going into the pile-up.
+    last_rebuilt_at = {layer: (camx - grid_step_m, camy) for layer in layers}
+
+    dt = 1.0 / 60.0
+    for frame in range(20):  # far more than the ~10 frames needed to drain the queue
+        camx += MAX_SPEED * dt
+        common_module.begin_static_cache_frame()
+        for layer in layers:
+            cached_camx, cached_camy = last_rebuilt_at[layer]
+            stale = common_module._rebuild_or_stale(
+                screen, layer, fake_surface, (cached_camx, cached_camy), camx, camy, cache_zoom,
+            )
+            if stale:
+                raw_dx = round((cached_camx - camx) * cache_zoom)
+                raw_dy = round((camy - cached_camy) * cache_zoom)
+                overflow = max(abs(raw_dx), abs(raw_dy)) - pad
+                assert overflow <= 0, (
+                    f"frame {frame} layer {layer!r} stale-blitting a gap "
+                    f"{overflow}px past CACHE_PADDING_PX after a bulk invalidation pile-up"
+                )
+            else:
+                # Rebuilt - via its throttled turn or the safety valve -
+                # so its cache now matches the current camera position,
+                # exactly like the real draw_* callers do after this call.
+                last_rebuilt_at[layer] = (camx, camy)
+
+
 def test_finnish_color_name_maps_to_expected_wall_color():
     assert _building_colors_from_name("Sininen talo")[0] == FINNISH_BUILDING_COLOR_NAMES["sini"]
     assert _building_colors_from_name("Punatalo Oy")[0] == FINNISH_BUILDING_COLOR_NAMES["puna"]

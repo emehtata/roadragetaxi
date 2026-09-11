@@ -257,7 +257,34 @@ def _rebuild_or_stale(screen, layer: str, surface, camera, camx, camy, cache_zoo
     """Throttle-gate a layer's rebuild: if this isn't its turn yet, blit
     its stale cache in place of a fresh redraw and report that. Shared by
     every draw_* that owns a static-cache layer, so each just does
-    ``if _rebuild_or_stale(...): return`` before rebuilding."""
+    ``if _rebuild_or_stale(...): return`` before rebuilding.
+
+    Safety valve first: invalidate_static_caches() (called whenever
+    autofetch integrates a new tile) clears every layer's frame_cache_key
+    at once, regardless of camera position - unlike an ordinary position-
+    based crossing, that's a real, unstaggered pile-up of up to all ~10
+    layers on the same frame, which the phase offsets above (see
+    _STATIC_CACHE_LAYER_PHASE_PX) do nothing for since they only spread
+    out *when* a layer's own position crosses its grid step, not this
+    kind of explicit, simultaneous invalidation. CACHE_PADDING_PX is
+    tuned against the ordinary case (a handful of layers queued at once);
+    a 10-layer pile-up queued behind the throttle, with the camera still
+    moving while each waits its turn, can outrun that buffer. So: if
+    blitting the existing stale cache at the *current* camera offset
+    would already show a real gap (past CACHE_PADDING_PX), force this
+    layer's rebuild through immediately regardless of whose turn it is -
+    correctness (no visible gap, ever) over the throttle's smoothing in
+    that rare pile-up case. Left uncounted against
+    _static_rebuilds_this_frame on purpose: the layer that was actually
+    due its turn this frame still gets it undisturbed.
+    """
+    if surface is not None and camera is not None:
+        cached_camx, cached_camy = camera
+        raw_dx = round((cached_camx - camx) * cache_zoom)
+        raw_dy = round((camy - cached_camy) * cache_zoom)
+        if max(abs(raw_dx), abs(raw_dy)) > CACHE_PADDING_PX:
+            _pending_static_rebuilds.pop(layer, None)
+            return False
     if _allow_static_rebuild(layer, surface):
         return False
     _blit_stale_static_cache(screen, surface, camera, camx, camy, cache_zoom)
