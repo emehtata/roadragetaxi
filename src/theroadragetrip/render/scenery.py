@@ -24,68 +24,71 @@ SCENERY_COLORS = {
     # Natural / green (osm/build.py: leisure=*, landuse=*, or natural in
     # wood/scrub/grass/sand/heath all become a Scenery, kind = that raw
     # OSM value) - counts below are from a real regional extract (Oulu),
-    # ranked so the frequent ones got picked first.
-    "forest": (32, 95, 32),
-    "wood": (32, 95, 32),
-    "scrub": (52, 90, 42),
-    "heath": (98, 110, 68),
-    "park": (42, 120, 42),
-    "garden": (45, 125, 45),
-    "meadow": (38, 110, 38),
-    "grass": (36, 105, 36),
+    # ranked so the frequent ones got picked first. Colors below are
+    # calibrated against real aerial/satellite imagery, not an idealized
+    # "map app" green - actual tree canopy, mown lawn, and dry scrubland
+    # all look meaningfully different from directly overhead.
+    "forest": (40, 78, 42),  # dense canopy - darker and less saturated than clean green; individual crowns and shadow gaps mute it
+    "wood": (40, 78, 42),
+    "scrub": (108, 120, 78),  # low bushes/heath scrub - a dry yellow-olive, not a dark green
+    "heath": (136, 124, 92),  # moorland - muted brown-tan, heather's bloom is seasonal, its base cover isn't green
+    "park": (100, 145, 80),  # mown lawn + scattered trees - brighter and more yellow than forest canopy
+    "garden": (104, 150, 86),
+    "meadow": (152, 160, 92),  # unmown grass/wildflowers - lighter and more yellow-green than a maintained lawn
+    "grass": (112, 150, 86),
     "greenfield": (150, 165, 110),
-    "nature_reserve": (40, 102, 46),
-    "pitch": (48, 115, 55),
-    "playground": (48, 115, 55),
-    "dog_park": (44, 118, 52),
-    "track": (52, 108, 58),
-    "sand": (160, 150, 110),
-    "beach": (170, 160, 115),
+    "nature_reserve": (62, 102, 56),
+    "pitch": (80, 150, 64),  # maintained turf is more saturated than an ordinary lawn
+    "playground": (150, 138, 104),  # rubber/wood-chip soft-fall surfacing, not grass
+    "dog_park": (100, 142, 82),
+    "track": (176, 96, 70),  # a real running track is a rubberized red/terracotta oval, not grass
+    "sand": (196, 180, 130),
+    "beach": (206, 192, 150),
     # Farmed / cultivated - warm, dry tones, not park-green.
-    "farmland": (168, 143, 72),
-    "farmyard": (150, 125, 90),
-    "allotments": (140, 130, 80),
+    "farmland": (172, 148, 88),
+    "farmyard": (146, 130, 100),
+    "allotments": (142, 132, 82),
     "flowerbed": (150, 90, 120),
-    "greenhouse_horticulture": (140, 160, 150),
+    "greenhouse_horticulture": (208, 210, 202),  # glass/plastic-roofed greenhouse clusters read as bright pale grey-white from above, not green
     # Built-up zoning - muted, not green (these are usually mostly covered
     # by buildings/roads drawn on top; the fill only shows through gaps).
     # residential is the exception - a muted grass green, since
     # yards/verges are what actually shows through the gaps there.
     "residential": (108, 138, 92),
-    "commercial": (100, 95, 110),
-    "retail": (110, 95, 92),
-    "industrial": (90, 90, 95),
-    "institutional": (105, 100, 90),
-    "education": (105, 100, 90),
-    "civil": (105, 100, 90),
-    "religious": (95, 90, 82),
-    "military": (95, 100, 80),
-    "railway": (100, 96, 92),
-    "recreation_ground": (60, 115, 62),
+    "commercial": (112, 108, 104),  # neutral grey, not tinted purple - real commercial-zone roofscapes are grey/brown, not colorful
+    "retail": (118, 104, 96),
+    "industrial": (98, 96, 94),
+    "institutional": (108, 104, 96),
+    "education": (108, 104, 96),
+    "civil": (108, 104, 96),
+    "religious": (98, 94, 86),
+    "military": (98, 102, 82),
+    "railway": (108, 100, 92),  # matches the ballast bed color under the tracks themselves (render/roads.py:RAILWAY_BALLAST_COLOR)
+    "recreation_ground": (98, 142, 78),
     # Bare ground / disturbed land.
-    "brownfield": (140, 120, 95),
-    "construction": (168, 140, 95),
-    "quarry": (120, 110, 100),
-    "landfill": (110, 100, 80),
-    "cemetery": (70, 95, 70),
+    "brownfield": (142, 122, 96),
+    "construction": (170, 142, 96),
+    "quarry": (130, 124, 116),  # exposed rock/stone - grey, not tan
+    "landfill": (112, 102, 82),
+    "cemetery": (88, 112, 82),  # mown grass between headstones - green, but muted
     # Water-adjacent leisure (the water body itself is a separate Water,
     # not Scenery - this is the surrounding shore/facility ground).
-    "marina": (95, 130, 140),
-    "slipway": (95, 130, 140),
-    "bathing_place": (150, 165, 125),
-    "swimming_pool": (110, 150, 165),
+    "marina": (132, 130, 122),  # dock/pavement grey - the water itself is already drawn separately, this shouldn't also look blue
+    "slipway": (132, 130, 122),
+    "bathing_place": (152, 168, 128),
+    "swimming_pool": (68, 165, 185),  # a real pool is a saturated turquoise-cyan, not a muted blue-grey
     # Sports/recreation facilities without their own building footprint.
-    "sports_centre": (115, 100, 80),
-    "sports_hall": (115, 100, 80),
-    "fitness_centre": (115, 100, 80),
-    "fitness_station": (60, 118, 62),
-    "stadium": (115, 100, 80),
-    "ice_rink": (170, 190, 200),
-    "horse_riding": (150, 130, 90),
+    "sports_centre": (122, 110, 94),
+    "sports_hall": (122, 110, 94),
+    "fitness_centre": (122, 110, 94),
+    "fitness_station": (98, 142, 78),
+    "stadium": (122, 110, 94),
+    "ice_rink": (204, 216, 222),  # outdoor ice - pale blue-white, brighter than the old grey-blue
+    "horse_riding": (152, 132, 92),
     "firepit": (100, 90, 70),
-    "outdoor_seating": (110, 100, 90),
-    "sauna": (110, 90, 70),
-    "parking": (92, 96, 94),
+    "outdoor_seating": (112, 102, 92),
+    "sauna": (112, 92, 72),
+    "parking": (98, 98, 98),  # plain asphalt grey, no green/blue tint
 }
 TREE_CROWN_COLORS = ((25, 78, 29), (34, 101, 35), (48, 119, 42), (63, 112, 34))
 # Finland's three dominant forest trees (see osm/trees.py:classify_tree_kind
