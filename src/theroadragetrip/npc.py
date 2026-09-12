@@ -49,6 +49,7 @@ CORNER_RADIUS_M = 6.0
 CORNER_SAMPLE_COUNT = 5
 STEER_FULL_ANGLE_DEG = 25.0  # heading error at/beyond which steering saturates at full lock
 ARRIVAL_DECEL_MPS2 = 3.0  # comfortable braking rate approaching the final destination waypoint
+LANE_BIAS_LOOKAHEAD_M = 20.0  # start easing into a turn lane this far before the corner (NPC-002 section 5)
 
 
 @dataclass
@@ -58,21 +59,36 @@ class PathPoint:
     way: Optional[Way] = None
     is_turn: bool = False
     maneuver: Optional[str] = None  # "left" | "right", set on a turn's sampled points
+    lane_bias: Optional[str] = None  # "left" | "right" | None, which lane this point was placed in
 
 
 def _lane_offset_point(
-    way: Optional[Way], x: float, y: float, heading: float, vehicle_width_m: float = 1.8
+    way: Optional[Way], x: float, y: float, heading: float, vehicle_width_m: float = 1.8,
+    maneuver: Optional[str] = None,
 ) -> Tuple[float, float]:
-    """Shift a road-centerline point to the right-hand travel lane.
+    """Shift a road-centerline point to the appropriate travel lane.
 
-    Mirrors physics._place_car_on_right_lane's exact offset formula
-    (same right-hand-traffic convention already used to place the
-    player's car), just returning a point instead of mutating a Car.
+    Base case mirrors physics._place_car_on_right_lane's exact offset
+    formula (same right-hand-traffic convention already used to place the
+    player's car), just returning a point instead of mutating a Car. When
+    a turn is coming up (`maneuver`), bias within that same right-hand
+    half of the road instead: hug the curb for a right turn, hug the
+    centerline for a left turn - NPC-002 section 5's required lane
+    selection, without inventing a discrete per-lane model nothing else
+    in this codebase has (the player's own lane placement is this same
+    continuous half-width offset); real turn:lanes-tagged lane geometry
+    is future work if a road actually needs more than this.
     """
     if way is None:
         return x, y
     half_width = max(0.0, getattr(way, "half_width_m", 4.0))
-    lane_offset = min(max(1.2, half_width * 0.45), max(0.0, half_width - vehicle_width_m * 0.5))
+    max_offset = max(0.0, half_width - vehicle_width_m * 0.5)
+    if maneuver == "right":
+        lane_offset = max_offset
+    elif maneuver == "left":
+        lane_offset = min(1.0, max_offset)
+    else:
+        lane_offset = min(max(1.2, half_width * 0.45), max_offset)
     return x + math.sin(heading) * lane_offset, y - math.cos(heading) * lane_offset
 
 
@@ -200,6 +216,10 @@ def build_driving_path(
         math.atan2(route_points[i + 1][1] - route_points[i][1], route_points[i + 1][0] - route_points[i][0])
         for i in range(n - 1)
     ]
+    segment_length = [
+        math.hypot(route_points[i + 1][0] - route_points[i][0], route_points[i + 1][1] - route_points[i][1])
+        for i in range(n - 1)
+    ]
     segment_way = [
         _way_at_point(
             spatial_grid, ways,
@@ -209,27 +229,49 @@ def build_driving_path(
         for i in range(n - 1)
     ]
 
+    # Which vertices are real turns and which way, computed once up front
+    # so lane offsetting (needs to know a turn is *coming*) and corner
+    # rounding (needs to know a vertex *is* one) share one classification
+    # instead of two copies of the same angle threshold.
+    corner_maneuver: List[Optional[str]] = [None] * n
+    for i in range(1, n - 1):
+        signed_turn = (segment_heading[i] - segment_heading[i - 1] + math.pi) % (2.0 * math.pi) - math.pi
+        if math.degrees(abs(signed_turn)) >= CORNER_ANGLE_THRESHOLD_DEG:
+            corner_maneuver[i] = "left" if signed_turn > 0 else "right"
+
+    def _upcoming_maneuver(start: int) -> Optional[str]:
+        if corner_maneuver[start] is not None:
+            return corner_maneuver[start]
+        remaining = 0.0
+        for j in range(start, n - 1):
+            remaining += segment_length[j]
+            if remaining > LANE_BIAS_LOOKAHEAD_M:
+                return None
+            if corner_maneuver[j + 1] is not None:
+                return corner_maneuver[j + 1]
+        return None
+
     lane_points: List[Tuple[float, float, Optional[Way]]] = []
+    lane_bias: List[Optional[str]] = []
     for i, (x, y) in enumerate(route_points):
         seg = min(i, n - 2)
-        lx, ly = _lane_offset_point(segment_way[seg], x, y, segment_heading[seg], vehicle_width_m)
+        bias = _upcoming_maneuver(i)
+        lx, ly = _lane_offset_point(segment_way[seg], x, y, segment_heading[seg], vehicle_width_m, maneuver=bias)
         lane_points.append((lx, ly, segment_way[seg]))
+        lane_bias.append(bias)
 
-    path: List[PathPoint] = [PathPoint(*lane_points[0])]
+    path: List[PathPoint] = [PathPoint(*lane_points[0], lane_bias=lane_bias[0])]
     for i in range(1, len(lane_points) - 1):
-        heading_in = segment_heading[i - 1]
-        heading_out = segment_heading[i]
-        signed_turn = (heading_out - heading_in + math.pi) % (2.0 * math.pi) - math.pi
-        if math.degrees(abs(signed_turn)) >= CORNER_ANGLE_THRESHOLD_DEG:
-            maneuver = "left" if signed_turn > 0 else "right"
+        maneuver = corner_maneuver[i]
+        if maneuver is not None:
             prev_xy = (path[-1].x, path[-1].y)
             corner_xy = (lane_points[i][0], lane_points[i][1])
             next_xy = (lane_points[i + 1][0], lane_points[i + 1][1])
             for ax, ay in _round_corner(prev_xy, corner_xy, next_xy, corner_radius_m):
-                path.append(PathPoint(ax, ay, lane_points[i][2], is_turn=True, maneuver=maneuver))
+                path.append(PathPoint(ax, ay, lane_points[i][2], is_turn=True, maneuver=maneuver, lane_bias=maneuver))
         else:
-            path.append(PathPoint(*lane_points[i]))
-    path.append(PathPoint(*lane_points[-1]))
+            path.append(PathPoint(*lane_points[i], lane_bias=lane_bias[i]))
+    path.append(PathPoint(*lane_points[-1], lane_bias=lane_bias[-1]))
     return path
 
 
@@ -254,6 +296,24 @@ class Driver:
             if point.maneuver:
                 return point.maneuver
         return "arrive" if self.path_index >= len(self.path) - 1 else "straight"
+
+    @property
+    def next_way(self) -> Optional[Way]:
+        """The road beyond the upcoming turn, or None if still on/past the
+        last one (NPC-002 section 21's debug HUD "next way")."""
+        for point in self.path[self.path_index:]:
+            if point.way is not None and point.way is not self.current_way:
+                return point.way
+        return None
+
+    @property
+    def current_lane_bias(self) -> Optional[str]:
+        """Which lane the vehicle is currently placed in: "left"/"right"
+        while easing into or through a turn, None for the default
+        right-hand cruising lane."""
+        if self.path_index < len(self.path):
+            return self.path[self.path_index].lane_bias
+        return None
 
     @property
     def route_progress(self) -> float:

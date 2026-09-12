@@ -24,6 +24,10 @@ class TrafficDecision:
     target_speed_mps: float
     stop_position: Optional[Tuple[float, float]] = None
     reason: str = ""
+    # The actual TrafficLight object this decision was based on, if any -
+    # NPC-002 section 18/21: lets callers (debug HUD, tests) see exactly
+    # which physical signal was judged relevant, not just a text reason.
+    light: Optional[object] = None
 
 
 def nearest_traffic_light_ahead(
@@ -99,14 +103,14 @@ def decide_traffic_action(
     comfortable_stop_speed = math.sqrt(2.0 * deceleration_mps2 * available_distance)
 
     if state == "green":
-        return TrafficDecision(TrafficAction.PROCEED, cruise_speed, reason="green light ahead")
+        return TrafficDecision(TrafficAction.PROCEED, cruise_speed, reason="green light ahead", light=tl)
 
     if state in ("red", "red+yellow"):
         if comfortable_stop_speed <= 0.3:
-            return TrafficDecision(TrafficAction.STOP, 0.0, stop_position, reason=f"{state} light ahead")
+            return TrafficDecision(TrafficAction.STOP, 0.0, stop_position, reason=f"{state} light ahead", light=tl)
         return TrafficDecision(
             TrafficAction.SLOW, min(cruise_speed, comfortable_stop_speed), stop_position,
-            reason=f"{state} light ahead",
+            reason=f"{state} light ahead", light=tl,
         )
 
     # Yellow: only brake if there's still comfortable room to stop in time;
@@ -115,6 +119,8 @@ def decide_traffic_action(
     if available_distance >= cruise_speed ** 2 / (2.0 * deceleration_mps2):
         return TrafficDecision(
             TrafficAction.SLOW, min(cruise_speed, comfortable_stop_speed), stop_position,
-            reason="yellow light, stopping in time",
+            reason="yellow light, stopping in time", light=tl,
         )
-    return TrafficDecision(TrafficAction.PROCEED, cruise_speed, reason="yellow light, already committed")
+    return TrafficDecision(
+        TrafficAction.PROCEED, cruise_speed, reason="yellow light, already committed", light=tl,
+    )

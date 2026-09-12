@@ -102,6 +102,7 @@ from ..render import (
     draw_navigation_route,
     draw_logical_intersections,
     draw_npc_cars,
+    draw_npc_debug_overlay,
     draw_npc_debug_panel,
     draw_pause_menu,
     draw_parking_spaces,
@@ -172,6 +173,10 @@ logger = logging.getLogger(__name__)
 RAGE_SHOUTS = ("PRKL!", "STNA!", "VTTU!", "HLVT!", "KRPÄ!", "KSPÄ!", "PSKA!")
 RAGE_DISTANCE_TO_FULL_M = 400.0
 RAGE_SHOUT_COST = 0.25
+# No valid NPC route at load (e.g. streamed tiles not fully connected yet)
+# isn't permanent - keep retrying instead of leaving the map without its NPC
+# forever.
+NPC_SPAWN_RETRY_COOLDOWN_S = 1.0
 
 
 def _rage_from_speeding(
@@ -655,7 +660,7 @@ def _load_world(
     else:
         npcs = []
         npc_drivers = {}
-        logger.info("NPC-001: no valid route found for this map, skipping NPC spawn")
+        logger.info("NPC-001: no valid route found yet, will retry every %.0fs", NPC_SPAWN_RETRY_COOLDOWN_S)
     # Initialize autonomous Pedestrian Manager
     on_load_progress(0.92, "Preparing pedestrians...")
     pedestrian_mgr = PedestrianManager(
@@ -950,6 +955,7 @@ def main() -> None:
 
         label_mode = 0
         show_debug_hud = False
+        npc_spawn_retry_cooldown_s = 0.0 if npcs else NPC_SPAWN_RETRY_COOLDOWN_S
         npc_follow = False  # F6: camera follows the NPC-001 vehicle
         show_npc_debug = False  # F7: NPC debug overlay (state/route/decision)
         physics_mode = config.get("game", "physics_realism", fallback="arcade")
@@ -1669,6 +1675,19 @@ def main() -> None:
             with frame_profiler.section("taxi"):
                 taxi_mgr.update(car, dt, game_time_seconds=game_time_seconds)
             with frame_profiler.section("npc"):
+                if not npcs:
+                    npc_spawn_retry_cooldown_s -= dt
+                    if npc_spawn_retry_cooldown_s <= 0.0:
+                        npc_spawn_retry_cooldown_s = NPC_SPAWN_RETRY_COOLDOWN_S
+                        npc_retry = spawn_deterministic_npc(residents, traffic_mgr, ways, spatial_grid=spatial_grid)
+                        if npc_retry is not None:
+                            _, retry_driver, retry_vehicle = npc_retry
+                            npcs.append(retry_vehicle)
+                            npc_drivers[retry_vehicle.vehicle_id] = retry_driver
+                            logger.info(
+                                "NPC-001: route now available, spawned vehicle %d on retry",
+                                retry_vehicle.vehicle_id,
+                            )
                 for one_npc in npcs:
                     npc_driver_for_vehicle = npc_drivers.get(one_npc.vehicle_id)
                     if npc_driver_for_vehicle is not None:
@@ -2506,6 +2525,7 @@ def main() -> None:
                 npc_driver_for_panel = npc_drivers.get(npcs[0].vehicle_id)
                 if npc_driver_for_panel is not None:
                     draw_npc_debug_panel(screen, npcs[0], npc_driver_for_panel, small_font)
+                    draw_npc_debug_overlay(screen, npcs[0], npc_driver_for_panel, camx, camy, px_per_m)
             pygame.display.flip()
             if first_gameplay_frame:
                 logger.info("Gameplay frame: complete")

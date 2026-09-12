@@ -1,10 +1,12 @@
 from .common import (
+    PX_PER_M,
     SCREEN_W,
     SCREEN_H,
     DEFAULT_SUN_LATITUDE,
     DEFAULT_SUN_LONGITUDE,
     _render_logger,
     solar_altitude_and_events,
+    world_to_screen,
 )
 import math
 import os
@@ -638,11 +640,26 @@ def draw_npc_debug_panel(screen, vehicle, driver, font, x: int = 10, y: int = 22
 
     way = vehicle.way
     way_label = (getattr(way, "name", None) or getattr(way, "highway", "?")) if way else "?"
+    next_way = getattr(driver, "next_way", None)
+    next_way_label = (getattr(next_way, "name", None) or getattr(next_way, "highway", "?")) if next_way else "-"
+    lane_bias = getattr(driver, "current_lane_bias", None) or "default"
+    decision = driver.decision
+    stop_dist = (
+        f"{math.hypot(decision.stop_position[0] - vehicle.x, decision.stop_position[1] - vehicle.y):.0f}m"
+        if decision.stop_position is not None else "-"
+    )
+    light = decision.light
+    if light is None:
+        signal_label = "signal=none"
+    else:
+        allowed = ",".join(sorted(getattr(light, "allowed_movements", ()) or ())) or "?"
+        signal_label = f"signal={getattr(light, 'approach_id', None) or getattr(light, 'id', '?')} allows={allowed}"
     lines = [
         f"NPC vehicle={vehicle.vehicle_id} resident={vehicle.owner_id}",
         f"state={vehicle.state} speed={vehicle.speed * 3.6:.0f}km/h target={driver.target_speed_mps * 3.6:.0f}km/h",
-        f"way={way_label} route={driver.path_index}/{len(driver.path) - 1} maneuver={driver.next_maneuver}",
-        f"traffic={driver.decision.action} ({driver.decision.reason})",
+        f"way={way_label} next={next_way_label} route={driver.path_index}/{len(driver.path) - 1} maneuver={driver.next_maneuver}",
+        f"lane={lane_bias} {signal_label}",
+        f"traffic={decision.action} ({decision.reason}) stop_dist={stop_dist}",
         f"dest=({driver.destination[0]:.0f},{driver.destination[1]:.0f}) progress={driver.route_progress * 100.0:.0f}%",
     ]
     panel_w = 360
@@ -651,3 +668,28 @@ def draw_npc_debug_panel(screen, vehicle, driver, font, x: int = 10, y: int = 22
     pygame.draw.rect(screen, (90, 170, 220), (x, y, panel_w, panel_h), width=1, border_radius=5)
     for i, line in enumerate(lines):
         screen.blit(font.render(line, True, (215, 225, 230)), (x + 8, y + 5 + i * 16))
+
+
+def draw_npc_debug_overlay(
+    screen, vehicle, driver, camx: float, camy: float,
+    px_per_m: float = PX_PER_M, screen_w: int = SCREEN_W, screen_h: int = SCREEN_H,
+) -> None:
+    """F7 world-space debug geometry for NPC-002 section 22: the stop
+    position the traffic-rule layer is braking for, and the immediate
+    waypoint the vehicle controller is steering towards.
+
+    The route/turning-trajectory line itself is already drawn by
+    draw_npc_cars' own show_debug branch (render/vehicles.py) from
+    vehicle.travel_route - not duplicated here.
+    """
+    import pygame
+
+    stop_position = driver.decision.stop_position
+    if stop_position is not None:
+        sx, sy = world_to_screen(stop_position[0], stop_position[1], camx, camy, px_per_m, screen_w, screen_h)
+        pygame.draw.circle(screen, (230, 60, 60), (int(sx), int(sy)), 6, 2)
+
+    if driver.path_index < len(driver.path):
+        target = driver.path[driver.path_index]
+        tx, ty = world_to_screen(target.x, target.y, camx, camy, px_per_m, screen_w, screen_h)
+        pygame.draw.circle(screen, (255, 220, 80), (int(tx), int(ty)), 4, 1)

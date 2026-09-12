@@ -206,6 +206,7 @@ from .hud import (
     draw_frame_profiler,
     draw_g_force_meter,
     draw_hud,
+    draw_npc_debug_overlay,
     draw_npc_debug_panel,
     draw_phone_offers,
 )

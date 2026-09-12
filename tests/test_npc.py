@@ -11,6 +11,7 @@ from theroadragetrip.npc import (
     Driver,
     NPCState,
     NPCVehicle,
+    _lane_offset_point,
     build_driving_path,
     has_active_driver,
     spawn_deterministic_npc,
@@ -164,12 +165,38 @@ def test_yellow_is_a_distinct_decision_not_treated_as_green():
     assert close.action == TrafficAction.PROCEED
 
 
+def test_decision_carries_the_actual_light_it_was_based_on():
+    """NPC-002 section 18/21: the decision must expose which physical
+    signal it judged relevant, not just a text reason - so a debug HUD (or
+    a test) can check the movement it actually allows."""
+    tl = TrafficLight(
+        x=100.0, y=0.0, cycle_time=1e9, offset=0.0, direction_angle=0.0,
+        approach_id="junction:0", allowed_movements=frozenset({"straight", "right"}),
+    )
+    decision = decide_traffic_action(96.5, 0.0, 0.0, [tl], sim_time=10.0, speed_limit_mps=13.9)
+    assert decision.light is tl
+
+    no_light = decide_traffic_action(0.0, 0.0, 0.0, [], sim_time=10.0, speed_limit_mps=13.9)
+    assert no_light.light is None
+
+
 def test_opposite_direction_light_is_ignored():
     """A light facing the opposite/crossing approach must never be
     mistaken for the one governing this lane."""
     tl = TrafficLight(x=100.0, y=0.0, cycle_time=1e9, offset=0.0, direction_angle=math.pi)
     decision = decide_traffic_action(70.0, 0.0, 0.0, [tl], sim_time=10.0, speed_limit_mps=13.9)
     assert decision.action == TrafficAction.PROCEED
+
+
+def test_stop_position_remains_stable_while_approaching():
+    """NPC-002 section 8/11: the stop target must not be recomputed to a
+    new arbitrary point every frame - it should stay pinned to the stop
+    line regardless of how far away the vehicle currently is."""
+    tl = TrafficLight(x=100.0, y=0.0, cycle_time=1e9, offset=0.0, direction_angle=0.0)
+    far = decide_traffic_action(60.0, 0.0, 0.0, [tl], sim_time=10.0, speed_limit_mps=13.9)
+    near = decide_traffic_action(90.0, 0.0, 0.0, [tl], sim_time=10.0, speed_limit_mps=13.9)
+    assert math.isclose(far.stop_position[0], near.stop_position[0], abs_tol=0.01)
+    assert math.isclose(far.stop_position[1], near.stop_position[1], abs_tol=0.01)
 
 
 def test_vehicle_stops_before_the_intersection_not_inside_it():
@@ -211,6 +238,15 @@ def test_right_turn_produces_a_smooth_trajectory_aligned_with_outgoing_road():
     assert all(p.maneuver == "right" for p in turn_points)
     outgoing_heading = math.degrees(math.atan2(path[-1].y - path[-2].y, path[-1].x - path[-2].x))
     assert math.isclose(outgoing_heading, -90.0, abs_tol=1.0)
+    # NPC-002 section 14/17: heading must change continuously through the
+    # arc - no single-vertex 90-degree pivot.
+    headings = [
+        math.degrees(math.atan2(b.y - a.y, b.x - a.x)) for a, b in zip(path, path[1:])
+    ]
+    deltas = [abs((h2 - h1 + 180.0) % 360.0 - 180.0) for h1, h2 in zip(headings, headings[1:])]
+    assert all(delta < 45.0 for delta in deltas)
+    # Past the turn, lane placement returns to the default cruising offset.
+    assert path[-1].lane_bias is None
 
 
 def test_left_turn_produces_a_smooth_trajectory_aligned_with_outgoing_road():
@@ -223,6 +259,42 @@ def test_left_turn_produces_a_smooth_trajectory_aligned_with_outgoing_road():
     assert all(p.maneuver == "left" for p in turn_points)
     outgoing_heading = math.degrees(math.atan2(path[-1].y - path[-2].y, path[-1].x - path[-2].x))
     assert math.isclose(outgoing_heading, 90.0, abs_tol=1.0)
+
+
+def test_lane_offset_point_hugs_curb_for_right_turn_centerline_for_left():
+    """NPC-002 section 5/14/15: lane selection must not just drive the
+    geometric center - a turning maneuver should bias within the
+    right-hand half of the road: further right (curb) for a right turn,
+    closer to the centerline for a left turn, than default cruising."""
+    way = Way(points_m=[(0.0, 0.0), (100.0, 0.0)], highway="residential", half_width_m=6.0)
+    _, default_y = _lane_offset_point(way, 0.0, 0.0, 0.0)
+    _, right_y = _lane_offset_point(way, 0.0, 0.0, 0.0, maneuver="right")
+    _, left_y = _lane_offset_point(way, 0.0, 0.0, 0.0, maneuver="left")
+    assert abs(right_y) > abs(default_y) > abs(left_y)
+
+
+def test_right_turn_path_points_are_tagged_with_the_right_lane_bias():
+    way1 = Way(points_m=[(0.0, 0.0), (100.0, 0.0)], highway="residential", half_width_m=4.5)
+    way2 = Way(points_m=[(100.0, 0.0), (100.0, -100.0)], highway="residential", half_width_m=4.5)
+    path = build_driving_path([(0.0, 0.0), (100.0, 0.0), (100.0, -100.0)], [way1, way2])
+    turn_points = [p for p in path if p.is_turn]
+    assert turn_points and all(p.lane_bias == "right" for p in turn_points)
+
+
+def test_left_turn_path_points_are_tagged_with_the_left_lane_bias():
+    way1 = Way(points_m=[(0.0, 0.0), (100.0, 0.0)], highway="residential", half_width_m=4.5)
+    way2 = Way(points_m=[(100.0, 0.0), (100.0, 100.0)], highway="residential", half_width_m=4.5)
+    path = build_driving_path([(0.0, 0.0), (100.0, 0.0), (100.0, 100.0)], [way1, way2])
+    turn_points = [p for p in path if p.is_turn]
+    assert turn_points and all(p.lane_bias == "left" for p in turn_points)
+
+
+def test_driver_next_way_reports_the_road_beyond_the_upcoming_turn():
+    way1 = Way(points_m=[(0.0, 0.0), (100.0, 0.0)], highway="residential", half_width_m=4.5, name="First St")
+    way2 = Way(points_m=[(100.0, 0.0), (100.0, 100.0)], highway="residential", half_width_m=4.5, name="Second St")
+    path = build_driving_path([(0.0, 0.0), (100.0, 0.0), (100.0, 100.0)], [way1, way2])
+    driver = Driver(resident_id=1, vehicle_id=1, path=path, destination=(100.0, 100.0), current_way=way1)
+    assert driver.next_way is way2
 
 
 def test_driver_vehicle_resident_ids_stay_consistent():
@@ -291,6 +363,22 @@ def test_draw_npc_cars_renders_an_npc_vehicle_without_crashing():
     update_npc(vehicle, driver, 1.0 / 60.0, tw, residents)  # leaves SPAWNING, sets vehicle.way
 
     draw_npc_cars(screen, [vehicle], vehicle.x, vehicle.y, ways=ways, show_debug=True, residents=residents)
+
+
+def test_draw_npc_debug_overlay_renders_without_crashing():
+    """NPC-002 section 22: stop-position/target-point debug geometry."""
+    from theroadragetrip.render.hud import draw_npc_debug_overlay
+
+    pygame.init()
+    screen = pygame.display.set_mode((400, 300))
+    ways = _straight_chain()
+    tw = TrafficWorld(ways)
+    residents = ResidentManager()
+    _, driver, vehicle = spawn_npc(1, residents, tw, ways, (0.0, 0.0), (200.0, 0.0))
+    update_npc(vehicle, driver, 1.0 / 60.0, tw, residents)
+    driver.decision.stop_position = (50.0, 0.0)  # exercise the stop-marker branch too
+
+    draw_npc_debug_overlay(screen, vehicle, driver, vehicle.x, vehicle.y)
 
 
 def test_draw_npc_cars_debug_fallback_still_works_without_a_travel_route():
