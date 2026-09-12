@@ -1,6 +1,12 @@
 """Tests for NPC-001: the first autonomous NPC car (theroadragetrip.npc)."""
 import math
+import os
+from types import SimpleNamespace
 
+os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
+import pygame
+
+from theroadragetrip.render.vehicles import draw_npc_cars
 from theroadragetrip.npc import (
     Driver,
     NPCState,
@@ -268,3 +274,35 @@ def test_spawn_deterministic_npc_on_a_city_block_grid():
     assert result is not None
     _, driver, vehicle = result
     assert len(driver.path) >= 3
+
+
+def test_draw_npc_cars_renders_an_npc_vehicle_without_crashing():
+    """Regression: draw_npc_cars' debug overlay (F7) crashed on any NPC
+    without a `segment_idx` attribute - its steering-target-line fallback
+    getattr-guarded the *condition* ("segment_idx", 0) but then indexed
+    with the raw `npc.segment_idx` in the body, which npc.NPCVehicle (it
+    tracks route progress on the Driver, not the vehicle) doesn't have."""
+    pygame.init()
+    screen = pygame.display.set_mode((400, 300))
+    ways = _straight_chain()
+    tw = TrafficWorld(ways)
+    residents = ResidentManager()
+    _, driver, vehicle = spawn_npc(1, residents, tw, ways, (0.0, 0.0), (200.0, 0.0))
+    update_npc(vehicle, driver, 1.0 / 60.0, tw, residents)  # leaves SPAWNING, sets vehicle.way
+
+    draw_npc_cars(screen, [vehicle], vehicle.x, vehicle.y, ways=ways, show_debug=True, residents=residents)
+
+
+def test_draw_npc_cars_debug_fallback_still_works_without_a_travel_route():
+    """The segment_idx/direction fallback this bug lived in must still
+    work for whatever NPC kind actually relies on it (no travel_route,
+    but a `way` + `segment_idx` to walk)."""
+    pygame.init()
+    screen = pygame.display.set_mode((400, 300))
+    way = Way(points_m=[(0.0, 0.0), (50.0, 0.0), (100.0, 0.0)], highway="residential", half_width_m=4.5)
+    parked_like_npc = SimpleNamespace(
+        x=10.0, y=0.0, heading=0.0, speed=0.0, length_m=4.0, width_m=1.8, layer=0,
+        color=(150, 150, 150), way=way, segment_idx=0, direction=1, lod_level=0,
+        travel_route=None,
+    )
+    draw_npc_cars(screen, [parked_like_npc], 10.0, 0.0, ways=[way], show_debug=True)
