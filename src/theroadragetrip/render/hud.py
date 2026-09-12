@@ -627,3 +627,27 @@ def draw_g_force_meter(
         grip_color = (255, 90, 70) if is_sliding else (170, 178, 186)
         grip_readout = font.render(f"grip {grip_usage * 100.0:.0f}%", True, grip_color)
         screen.blit(grip_readout, grip_readout.get_rect(midtop=(center[0], readout_rect.bottom + 2)))
+
+
+def draw_npc_debug_panel(screen, vehicle, driver, font, x: int = 10, y: int = 220) -> None:
+    """F7 debug overlay for NPC-001: driving/traffic/navigation state for
+    the one NPC vehicle, laid out per NPC-001 section 14. Duck-typed on
+    an npc.NPCVehicle/npc.Driver pair - no import of npc.py needed here,
+    same as draw_npc_cars (render/vehicles.py) already does."""
+    import pygame
+
+    way = vehicle.way
+    way_label = (getattr(way, "name", None) or getattr(way, "highway", "?")) if way else "?"
+    lines = [
+        f"NPC vehicle={vehicle.vehicle_id} resident={vehicle.owner_id}",
+        f"state={vehicle.state} speed={vehicle.speed * 3.6:.0f}km/h target={driver.target_speed_mps * 3.6:.0f}km/h",
+        f"way={way_label} route={driver.path_index}/{len(driver.path) - 1} maneuver={driver.next_maneuver}",
+        f"traffic={driver.decision.action} ({driver.decision.reason})",
+        f"dest=({driver.destination[0]:.0f},{driver.destination[1]:.0f}) progress={driver.route_progress * 100.0:.0f}%",
+    ]
+    panel_w = 360
+    panel_h = 10 + len(lines) * 16
+    pygame.draw.rect(screen, (16, 20, 26, 215), (x, y, panel_w, panel_h), border_radius=5)
+    pygame.draw.rect(screen, (90, 170, 220), (x, y, panel_w, panel_h), width=1, border_radius=5)
+    for i, line in enumerate(lines):
+        screen.blit(font.render(line, True, (215, 225, 230)), (x + 8, y + 5 + i * 16))

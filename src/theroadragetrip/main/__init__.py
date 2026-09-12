@@ -101,6 +101,8 @@ from ..render import (
     draw_loading_screen,
     draw_navigation_route,
     draw_logical_intersections,
+    draw_npc_cars,
+    draw_npc_debug_panel,
     draw_pause_menu,
     draw_parking_spaces,
     draw_settings_menu,
@@ -135,6 +137,7 @@ from ..render import (
     minimum_px_per_m_for_viewport_width,
     solar_altitude_and_events,
 )
+from ..npc import spawn_deterministic_npc, update_npc
 from ..pedestrian import PedestrianManager, PlayerPedestrian
 from ..residents import ResidentManager
 from ..police import place_speed_cameras
@@ -636,6 +639,23 @@ def _load_world(
         residents=residents,
         logical_intersections=logical_intersections,
     )
+    # NPC-001: one deterministic autonomous NPC car, spawned only once a
+    # valid preplanned route exists (see spawn_deterministic_npc/spawn_npc)
+    # - never a moving vehicle hunting for a route afterwards.
+    on_load_progress(0.88, "Preparing NPC traffic...")
+    npc_spawn = spawn_deterministic_npc(residents, traffic_mgr, ways, spatial_grid=spatial_grid)
+    if npc_spawn is not None:
+        _, npc_driver, npc_vehicle = npc_spawn
+        npcs = [npc_vehicle]
+        npc_drivers = {npc_vehicle.vehicle_id: npc_driver}
+        logger.info(
+            "Spawned NPC-001 vehicle %d (resident %d), route has %d waypoints",
+            npc_vehicle.vehicle_id, npc_vehicle.owner_id, len(npc_driver.path),
+        )
+    else:
+        npcs = []
+        npc_drivers = {}
+        logger.info("NPC-001: no valid route found for this map, skipping NPC spawn")
     # Initialize autonomous Pedestrian Manager
     on_load_progress(0.92, "Preparing pedestrians...")
     pedestrian_mgr = PedestrianManager(
@@ -718,6 +738,8 @@ def _load_world(
         railings=railings,
         elements_count=elements_count,
         logical_intersections=logical_intersections,
+        npc_drivers=npc_drivers,
+        npcs=npcs,
         parking_spaces=parking_spaces,
         pedestrian_mgr=pedestrian_mgr,
         places=places,
@@ -898,6 +920,8 @@ def main() -> None:
         railings = world.railings
         elements_count = world.elements_count
         logical_intersections = world.logical_intersections
+        npc_drivers = world.npc_drivers
+        npcs = world.npcs
         parking_spaces = world.parking_spaces
         pedestrian_mgr = world.pedestrian_mgr
         places = world.places
@@ -926,6 +950,8 @@ def main() -> None:
 
         label_mode = 0
         show_debug_hud = False
+        npc_follow = False  # F6: camera follows the NPC-001 vehicle
+        show_npc_debug = False  # F7: NPC debug overlay (state/route/decision)
         physics_mode = config.get("game", "physics_realism", fallback="arcade")
         speed_limiter_enabled = True
         red_light_assist_enabled = False
@@ -1343,6 +1369,12 @@ def main() -> None:
                         show_debug_hud = not show_debug_hud
                         frame_profiler.enabled = show_debug_hud
                         logger.info("Debug HUD %s", "enabled" if show_debug_hud else "disabled")
+                    elif event.key == pygame.K_F6:
+                        npc_follow = bool(npcs) and not npc_follow
+                        logger.info("NPC camera follow %s", "enabled" if npc_follow else "disabled")
+                    elif event.key == pygame.K_F7:
+                        show_npc_debug = not show_npc_debug
+                        logger.info("NPC debug overlay %s", "enabled" if show_npc_debug else "disabled")
                     elif event.key == pygame.K_F8:
                         weather.toggle_rain()
                         logger.info("Weather toggled: %s", weather.weather_type.value)
@@ -1606,12 +1638,17 @@ def main() -> None:
             # Look ahead proportionally to car speed and heading, clamped to a percentage of viewport so car remains visible
             max_lead_screen_px = min(SCREEN_W, SCREEN_H) * 0.25
             max_lead_m = max_lead_screen_px / max(0.01, px_per_m)
-            lead_distance_m = min(max_lead_m, max(0.0, abs(car.speed) * 0.8))
 
-            focus_x = player_pedestrian.x if on_foot else car.x
-            focus_y = player_pedestrian.y if on_foot else car.y
-            target_camx = focus_x + math.cos(car.heading) * lead_distance_m
-            target_camy = focus_y + math.sin(car.heading) * lead_distance_m
+            # F6 debug follow (NPC-001 section 13): same lookahead/lerp
+            # camera behavior, just aimed at the NPC instead of the player.
+            following_npc = npc_follow and npcs
+            focus_heading = npcs[0].heading if following_npc else car.heading
+            focus_speed = npcs[0].speed if following_npc else car.speed
+            focus_x = npcs[0].x if following_npc else (player_pedestrian.x if on_foot else car.x)
+            focus_y = npcs[0].y if following_npc else (player_pedestrian.y if on_foot else car.y)
+            lead_distance_m = min(max_lead_m, max(0.0, abs(focus_speed) * 0.8))
+            target_camx = focus_x + math.cos(focus_heading) * lead_distance_m
+            target_camy = focus_y + math.sin(focus_heading) * lead_distance_m
 
             # Smooth camera lerp
             cam_lerp_factor = min(1.0, 4.0 * dt)
@@ -1631,6 +1668,11 @@ def main() -> None:
             )
             with frame_profiler.section("taxi"):
                 taxi_mgr.update(car, dt, game_time_seconds=game_time_seconds)
+            with frame_profiler.section("npc"):
+                for one_npc in npcs:
+                    npc_driver_for_vehicle = npc_drivers.get(one_npc.vehicle_id)
+                    if npc_driver_for_vehicle is not None:
+                        update_npc(one_npc, npc_driver_for_vehicle, dt, traffic_mgr, residents)
             vomited_passenger = taxi_mgr.take_vomited_passenger(car)
             if vomited_passenger is not None:
                 audio.play_passenger_line("Nyt alkaa jo helpottaa.", vomited_passenger.gender, language, vomited_passenger.name)
@@ -2223,6 +2265,10 @@ def main() -> None:
                 spatial_grid=spatial_grid,
                 current_way=current_way,
             )
+            draw_npc_cars(
+                screen, npcs, camx, camy, px_per_m=px_per_m, screen_w=SCREEN_W, screen_h=SCREEN_H,
+                ways=ways, spatial_grid=spatial_grid, show_debug=show_npc_debug, residents=residents,
+            )
             draw_splashes(screen, weather, camx, camy, px_per_m=px_per_m)
             if not on_foot:
                 draw_taxi_smoke(screen, car, camx, camy, px_per_m=px_per_m, timer=taxi_mgr.taxi_smoke_timer)
@@ -2456,6 +2502,10 @@ def main() -> None:
                     screen, small_font, car.forward_g, car.lateral_g, car.is_sliding,
                     grip_usage=car.grip_usage, max_grip_g=car.max_grip_g,
                 )
+            if show_npc_debug and npcs:
+                npc_driver_for_panel = npc_drivers.get(npcs[0].vehicle_id)
+                if npc_driver_for_panel is not None:
+                    draw_npc_debug_panel(screen, npcs[0], npc_driver_for_panel, small_font)
             pygame.display.flip()
             if first_gameplay_frame:
                 logger.info("Gameplay frame: complete")

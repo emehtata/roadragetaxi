@@ -10,6 +10,7 @@ from .physics import Car, SpatialWayGrid, connected_drivable_ways, is_car_road, 
 from .localization import tr
 from .police import SpeedCamera, camera_sees_car
 from .residents import Resident, ResidentManager
+from .traffic_rules import nearest_traffic_light_ahead
 
 logger = logging.getLogger(__name__)
 MAX_PHONE_OFFERS = 3
@@ -724,32 +725,11 @@ class TaxiManager:
         deceleration_mps2: float = 4.0,
     ) -> Optional[float]:
         """Return a comfortable speed target for the nearest red light ahead."""
-        heading_x = math.cos(car.heading)
-        heading_y = math.sin(car.heading)
-        nearest_light = None
-
-        for tl in traffic_lights:
-            dx = tl.x - car.x
-            dy = tl.y - car.y
-            longitudinal = dx * heading_x + dy * heading_y
-            lateral = abs(dx * -heading_y + dy * heading_x)
-            if longitudinal <= 0.0 or longitudinal > detection_distance_m or lateral > 8.0:
-                continue
-
-            direction_angle = getattr(tl, "direction_angle", None)
-            if direction_angle is not None:
-                angle_error = abs(direction_angle - (car.heading % math.pi))
-                angle_error = min(angle_error, math.pi - angle_error)
-                if angle_error > math.radians(45):
-                    continue
-
-            if nearest_light is None or longitudinal < nearest_light[0]:
-                nearest_light = (longitudinal, tl)
-
-        if nearest_light is None or nearest_light[1].get_state(sim_time) not in ("red", "red+yellow"):
+        nearest = nearest_traffic_light_ahead(car.x, car.y, car.heading, traffic_lights, detection_distance_m)
+        if nearest is None or nearest[1].get_state(sim_time) not in ("red", "red+yellow"):
             return None
 
-        available_distance = max(0.0, nearest_light[0] - stop_buffer_m)
+        available_distance = max(0.0, nearest[0] - stop_buffer_m)
         return math.sqrt(2.0 * deceleration_mps2 * available_distance)
 
     def sees_red_light(
@@ -760,23 +740,8 @@ class TaxiManager:
         detection_distance_m: float = 45.0,
     ) -> bool:
         """Return whether the taxi is approaching a visible red traffic light."""
-        heading_x = math.cos(car.heading)
-        heading_y = math.sin(car.heading)
-        for tl in traffic_lights:
-            dx = tl.x - car.x
-            dy = tl.y - car.y
-            longitudinal = dx * heading_x + dy * heading_y
-            lateral = abs(dx * -heading_y + dy * heading_x)
-            if longitudinal <= 0.0 or longitudinal > detection_distance_m or lateral > 8.0:
-                continue
-            direction_angle = getattr(tl, "direction_angle", None)
-            if direction_angle is not None:
-                angle_error = abs((direction_angle - car.heading + math.pi) % (2.0 * math.pi) - math.pi)
-                if angle_error > math.radians(45):
-                    continue
-            if tl.get_state(sim_time) in ("red", "red+yellow"):
-                return True
-        return False
+        nearest = nearest_traffic_light_ahead(car.x, car.y, car.heading, traffic_lights, detection_distance_m)
+        return nearest is not None and nearest[1].get_state(sim_time) in ("red", "red+yellow")
 
     def check_wrong_way_violation(
         self,
