@@ -19,7 +19,7 @@ import math
 from dataclasses import dataclass, field
 from typing import List, Optional, Tuple
 
-from .geo import clamp, segment_distance
+from .geo import clamp, closest_point_and_dist_to_segment, segment_distance
 from .osm import Curb, Way
 from .physics import Car, SpatialWayGrid, update_car_physics
 from .residents import ResidentManager
@@ -652,6 +652,54 @@ def _largest_route_graph_component(nodes: List[Tuple[float, float, int]], edges:
 
 
 NPC_DESTINATION_SEARCH_RADIUS_M = 400.0  # how far from the BFS-reached area to look for a place to actually stop
+# ponytail: a fixed push-away-from-center_m distance is a rough stand-in
+# for "the yard/driveway just outside the door" - real buildings often
+# sit only a few meters off the road, so too large a value can overshoot
+# clear across a narrow street. 3m clears a car's own body without
+# usually punching through a typical building-to-road setback; tune
+# this (or compute a real driveway point from OSM) if that stops holding.
+NPC_BUILDING_YARD_CLEARANCE_M = 3.0  # how far outside the wall an NPC actually stops
+
+
+def _building_yard_point(building, from_x: float, from_y: float) -> Optional[Tuple[float, float]]:
+    """The point where an NPC should actually stop for this building: its
+    nearest entrance to (from_x, from_y), or - lacking one - the nearest
+    point on its own outline, nudged NPC_BUILDING_YARD_CLEARANCE_M outside
+    the wall.
+
+    Entrance nodes are literally ON the building's outline (build.py reads
+    them straight off the polygon's own boundary nodes), and building.
+    center_m sits well inside the footprint - using either bare put the
+    vehicle's own body right on top of the building (reported: "the car
+    ended on a building"). Pushing away from center_m, along the vector
+    from it to the wall point, reliably lands just outside for any
+    reasonably-convex building shape without needing real driveway/yard
+    geometry this game doesn't have.
+    """
+    entrances = getattr(building, "entrances", None) or []
+    points = getattr(building, "points_m", None) or []
+    if entrances:
+        wall_point = min(entrances, key=lambda p: (p[0] - from_x) ** 2 + (p[1] - from_y) ** 2)
+    elif len(points) >= 2:
+        wall_point = min(
+            (
+                closest_point_and_dist_to_segment(from_x, from_y, ax, ay, bx, by)[:2]
+                for (ax, ay), (bx, by) in zip(points, points[1:] + points[:1])
+            ),
+            key=lambda p: (p[0] - from_x) ** 2 + (p[1] - from_y) ** 2,
+        )
+    else:
+        return getattr(building, "center_m", None)
+
+    center = getattr(building, "center_m", None)
+    if center is None:
+        return wall_point
+    dx, dy = wall_point[0] - center[0], wall_point[1] - center[1]
+    length = math.hypot(dx, dy)
+    if length < 1e-6:
+        return wall_point
+    scale = (length + NPC_BUILDING_YARD_CLEARANCE_M) / length
+    return center[0] + dx * scale, center[1] + dy * scale
 
 
 def _pick_npc_destination(
@@ -713,12 +761,12 @@ def _pick_npc_destination(
         return best_point, None
 
     for building in buildings or ():
-        for point in (getattr(building, "entrances", None) or [getattr(building, "center_m", None)]):
-            if point is None:
-                continue
-            dist_sq = (point[0] - x) ** 2 + (point[1] - y) ** 2
-            if dist_sq <= best_dist_sq:
-                best_dist_sq, best_point = dist_sq, point
+        point = _building_yard_point(building, x, y)
+        if point is None:
+            continue
+        dist_sq = (point[0] - x) ** 2 + (point[1] - y) ** 2
+        if dist_sq <= best_dist_sq:
+            best_dist_sq, best_point = dist_sq, point
     if best_point is not None:
         return best_point, None
 

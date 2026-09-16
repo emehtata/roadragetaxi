@@ -1131,6 +1131,8 @@ def main() -> None:
                             speed_bumps=speed_bumps,
                             railways=railways,
                             railings=railings,
+                            npcs=npcs,
+                            npc_drivers=npc_drivers,
                         )
                         logger.info("Screenshot saved to %s", screenshot_path)
                         logger.info("Runtime debug snapshot saved to %s", debug_path)

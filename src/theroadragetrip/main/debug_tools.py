@@ -15,6 +15,49 @@ from ..physics import (
 logger = logging.getLogger(__name__)
 
 
+def _npc_snapshot(vehicle, driver) -> dict:
+    """Structured per-NPC state for debug snapshots - the JSON analogue of
+    the F7 debug overlay (render/hud.py's draw_npc_debug_panel), so an NPC's
+    driving/routing/parking state can be inspected from a screenshot's JSON
+    without needing that overlay enabled at capture time."""
+    way = vehicle.way
+    next_way = getattr(driver, "next_way", None)
+    decision = driver.decision
+    light = decision.light
+    return {
+        "vehicle_id": vehicle.vehicle_id,
+        "resident_id": vehicle.owner_id,
+        "state": vehicle.state,
+        "vehicle_type": vehicle.vehicle_type,
+        "x": vehicle.x,
+        "y": vehicle.y,
+        "heading": vehicle.heading,
+        "speed_kmh": vehicle.speed * 3.6,
+        "target_speed_kmh": driver.target_speed_mps * 3.6,
+        "way": {"name": getattr(way, "name", None), "highway": getattr(way, "highway", None)} if way else None,
+        "next_way": (
+            {"name": getattr(next_way, "name", None), "highway": getattr(next_way, "highway", None)}
+            if next_way else None
+        ),
+        "route_index": driver.path_index,
+        "route_length": len(driver.path) - 1,
+        "route_progress": driver.route_progress,
+        "maneuver": driver.next_maneuver,
+        "lane_bias": getattr(driver, "current_lane_bias", None),
+        "traffic_action": decision.action,
+        "traffic_reason": decision.reason,
+        "stop_position": list(decision.stop_position) if decision.stop_position is not None else None,
+        "signal_id": (getattr(light, "approach_id", None) or getattr(light, "id", None)) if light is not None else None,
+        "destination": list(driver.destination),
+        "destination_parking_space_id": vehicle.destination_parking_space_id,
+        "is_taxi": vehicle.is_taxi,
+        "is_police": vehicle.is_police,
+        "fallen": vehicle.fallen,
+        "crashed_timer": vehicle.crashed_timer,
+        "debug_waiting_for": vehicle.debug_waiting_for,
+    }
+
+
 def _screenshot_directory() -> str:
     if sys.platform.startswith("win"):
         home_dir = os.getenv("USERPROFILE") or os.path.expanduser("~")
@@ -55,6 +98,8 @@ def _write_debug_snapshot(
     speed_bumps=(),
     railways=(),
     railings=(),
+    npcs=(),
+    npc_drivers=None,
 ) -> None:
     minx, miny, maxx, maxy = auto_fetch_manager.get_bounds()
     now = time.time()
@@ -110,6 +155,11 @@ def _write_debug_snapshot(
             "map_sync_stage": map_sync_stage,
             "on_foot": on_foot,
         },
+        "npcs": [
+            _npc_snapshot(vehicle, npc_drivers[vehicle.vehicle_id])
+            for vehicle in npcs
+            if npc_drivers is not None and vehicle.vehicle_id in npc_drivers
+        ],
         "auto_fetch": {
             "configured_enabled": bool(args.auto_fetch),
             "call_enabled": True,

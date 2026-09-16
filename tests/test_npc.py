@@ -5,6 +5,7 @@ from types import SimpleNamespace
 
 os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
 import pygame
+import pytest
 
 from theroadragetrip.render.vehicles import draw_npc_cars
 from theroadragetrip.npc import (
@@ -12,6 +13,8 @@ from theroadragetrip.npc import (
     NPCState,
     NPCVehicle,
     _lane_offset_point,
+    NPC_BUILDING_YARD_CLEARANCE_M,
+    _building_yard_point,
     _pick_npc_destination,
     build_driving_path,
     has_active_driver,
@@ -347,11 +350,29 @@ def test_spawn_deterministic_npc_on_a_city_block_grid():
     # A destination is never a bare road point (see _pick_npc_destination) -
     # one building near the middle of the grid is within NPC_DESTINATION_
     # SEARCH_RADIUS_M of every node the BFS walk could possibly reach here.
-    building = Building(points_m=[(90, 90), (110, 90), (110, 110), (90, 110)], entrances=[(100.0, 90.0)])
+    building = Building(points_m=[(90, 90), (110, 90), (110, 110), (90, 110)], entrances=[(100.0, 90.0)], center_m=(100.0, 100.0))
     result = spawn_deterministic_npc(residents, tw, ways, buildings=[building])
     assert result is not None
     _, driver, vehicle = result
     assert len(driver.path) >= 3
+
+
+def test_building_yard_point_offsets_outward_from_an_entrance_on_the_wall():
+    """Regression: an entrance node sits literally ON the building's own
+    outline (see osm/build.py) - using it bare put the NPC's own body
+    right on top of the building (reported: "the car ended on a
+    building"). The yard point must land NPC_BUILDING_YARD_CLEARANCE_M
+    outside the wall, away from the building's center."""
+    building = Building(points_m=[(0, 0), (10, 0), (10, 10), (0, 10)], entrances=[(10.0, 5.0)], center_m=(5.0, 5.0))
+    point = _building_yard_point(building, from_x=100.0, from_y=5.0)
+    assert point == (5.0 + 5.0 + NPC_BUILDING_YARD_CLEARANCE_M, 5.0)
+
+
+def test_building_yard_point_uses_nearest_outline_point_without_an_entrance():
+    building = Building(points_m=[(0, 0), (10, 0), (10, 10), (0, 10)], center_m=(5.0, 5.0))
+    point = _building_yard_point(building, from_x=5.0, from_y=-100.0)
+    # nearest wall point (5,0), pushed the clearance distance further from center.
+    assert point == (5.0, 0.0 - NPC_BUILDING_YARD_CLEARANCE_M)
 
 
 def test_pick_npc_destination_prefers_the_nearest_free_parking_space():
@@ -372,16 +393,23 @@ def test_pick_npc_destination_prefers_a_parking_lot_over_a_building():
 
 
 def test_pick_npc_destination_falls_back_to_building_entrance_without_parking():
-    building = Building(points_m=[(0, 0), (10, 0), (10, 10), (0, 10)], entrances=[(30.0, 0.0)], center_m=(5.0, 5.0))
+    # Entrance at the midpoint of the right edge, on the wall as real OSM
+    # entrance nodes are - offset outward from center_m by the yard
+    # clearance: (5,5) + (5,0) normalized * (5+clearance).
+    building = Building(points_m=[(0, 0), (10, 0), (10, 10), (0, 10)], entrances=[(10.0, 5.0)], center_m=(5.0, 5.0))
     point, space = _pick_npc_destination(0.0, 0.0, parking_spaces=None, buildings=[building])
-    assert point == (30.0, 0.0)
+    assert point == (5.0 + 5.0 + NPC_BUILDING_YARD_CLEARANCE_M, 5.0)
     assert space is None
 
 
-def test_pick_npc_destination_falls_back_to_building_center_without_entrances():
+def test_pick_npc_destination_falls_back_to_building_boundary_without_entrances():
+    # No entrance - nearest point on the outline to the search origin
+    # (0,0) is the (0,0) corner itself, then pushed outward from center_m
+    # (5,5) away from the building: (0,0) + normalize((0,0)-(5,5)) * clearance.
     building = Building(points_m=[(0, 0), (10, 0), (10, 10), (0, 10)], center_m=(5.0, 5.0))
     point, space = _pick_npc_destination(0.0, 0.0, parking_spaces=None, buildings=[building])
-    assert point == (5.0, 5.0)
+    offset = NPC_BUILDING_YARD_CLEARANCE_M / math.hypot(5.0, 5.0)
+    assert point == pytest.approx((0.0 - 5.0 * offset, 0.0 - 5.0 * offset))
 
 
 def test_pick_npc_destination_refuses_the_raw_point_when_nothing_is_nearby():
@@ -431,18 +459,19 @@ def test_spawn_deterministic_npc_recovers_when_the_farthest_candidates_building_
     residents = ResidentManager()
     # Nearest building to the farthest node (400.0, 0.0) - but a curb
     # sits squarely across its only access from the road.
-    unreachable = Building(points_m=[(398, 4), (402, 4), (402, 8), (398, 8)], entrances=[(400.0, 4.0)])
+    unreachable = Building(points_m=[(398, 4), (402, 4), (402, 8), (398, 8)], entrances=[(400.0, 4.0)], center_m=(400.0, 6.0))
     blocking_curb = Curb(points_m=[(399.0, -2.0), (399.0, 10.0)])
     # Nearest building to the *second*-farthest node (380.0, 0.0) instead,
     # with clear access - the one recovery should actually reach.
-    reachable = Building(points_m=[(378, 4), (382, 4), (382, 8), (378, 8)], entrances=[(380.0, 4.0)])
+    reachable = Building(points_m=[(378, 4), (382, 4), (382, 8), (378, 8)], entrances=[(380.0, 4.0)], center_m=(380.0, 6.0))
 
     result = spawn_deterministic_npc(
         residents, tw, ways, buildings=[unreachable, reachable], curbs=[blocking_curb],
     )
     assert result is not None
     _, _, vehicle = result
-    assert vehicle.destination == (380.0, 4.0)
+    # (380, 4) pushed the yard clearance outward from center (380, 6).
+    assert vehicle.destination == (380.0, 6.0 - 2.0 - NPC_BUILDING_YARD_CLEARANCE_M)
 
 
 def test_spawn_deterministic_npc_gives_up_when_nothing_anywhere_has_a_place_to_stop():
