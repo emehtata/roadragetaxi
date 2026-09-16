@@ -344,7 +344,11 @@ def test_spawn_deterministic_npc_on_a_city_block_grid():
 
     tw = TrafficWorld(ways)
     residents = ResidentManager()
-    result = spawn_deterministic_npc(residents, tw, ways)
+    # A destination is never a bare road point (see _pick_npc_destination) -
+    # one building near the middle of the grid is within NPC_DESTINATION_
+    # SEARCH_RADIUS_M of every node the BFS walk could possibly reach here.
+    building = Building(points_m=[(90, 90), (110, 90), (110, 110), (90, 110)], entrances=[(100.0, 90.0)])
+    result = spawn_deterministic_npc(residents, tw, ways, buildings=[building])
     assert result is not None
     _, driver, vehicle = result
     assert len(driver.path) >= 3
@@ -380,19 +384,12 @@ def test_pick_npc_destination_falls_back_to_building_center_without_entrances():
     assert point == (5.0, 5.0)
 
 
-def test_pick_npc_destination_keeps_the_raw_point_when_nothing_is_nearby():
+def test_pick_npc_destination_refuses_the_raw_point_when_nothing_is_nearby():
+    """NPC-more.md section 2: a road carriageway (the raw BFS point itself)
+    is never a valid place to stop - regression, this used to fall back to
+    it and park/stop the NPC in the middle of a driving lane."""
     far_space = ParkingSpace(points_m=[], bbox=(1000.0, 1000.0, 1002.0, 1002.0))
     point, space = _pick_npc_destination(0.0, 0.0, parking_spaces=[far_space], buildings=None)
-    assert point == (0.0, 0.0)
-    assert space is None
-
-
-def test_pick_npc_destination_refuses_the_raw_point_when_it_is_a_roundabout():
-    """A roundabout is never a legal place to stop (NPC-more.md section 1)
-    - with nothing better nearby, the caller must get told to give up on
-    this destination entirely rather than park an NPC in the middle of
-    one, so allow_raw_fallback=False must return no destination at all."""
-    point, space = _pick_npc_destination(0.0, 0.0, allow_raw_fallback=False)
     assert point is None
     assert space is None
 
@@ -420,29 +417,38 @@ def test_spawn_deterministic_npc_routes_to_a_free_parking_space_when_one_exists(
     assert space.vehicle_id == vehicle.vehicle_id
 
 
-def test_spawn_deterministic_npc_recovers_when_the_farthest_destination_is_a_roundabout():
-    """Regression: an NPC's fixed-hop BFS destination landing inside a
-    roundabout used to make spawn_deterministic_npc retry that exact same
-    rejected node forever (reported: "no valid route found yet" logged
-    every second, no NPC ever spawning). It must instead fall through to
-    the next-closest candidate the same BFS walk reached and spawn there."""
+def test_spawn_deterministic_npc_recovers_when_the_farthest_candidates_building_is_unreachable():
+    """Regression: an NPC's fixed-hop BFS destination landing somewhere
+    with no usable parking/building (a roundabout, a random stretch of
+    road, or - here - a building whose only access crosses a curb) used
+    to either retry that exact same rejected node forever ("no valid
+    route found yet" logged every second, no NPC ever spawning) or fall
+    back to stopping the NPC in the middle of the road (also reported).
+    It must instead fall through to the next-closest candidate the same
+    BFS walk reached, where a real, reachable building exists."""
     ways = _straight_chain(count=20)
-    ways[-1].is_roundabout = True  # the farthest way - where the walk used to land
     tw = TrafficWorld(ways)
     residents = ResidentManager()
+    # Nearest building to the farthest node (400.0, 0.0) - but a curb
+    # sits squarely across its only access from the road.
+    unreachable = Building(points_m=[(398, 4), (402, 4), (402, 8), (398, 8)], entrances=[(400.0, 4.0)])
+    blocking_curb = Curb(points_m=[(399.0, -2.0), (399.0, 10.0)])
+    # Nearest building to the *second*-farthest node (380.0, 0.0) instead,
+    # with clear access - the one recovery should actually reach.
+    reachable = Building(points_m=[(378, 4), (382, 4), (382, 8), (378, 8)], entrances=[(380.0, 4.0)])
 
-    result = spawn_deterministic_npc(residents, tw, ways)
+    result = spawn_deterministic_npc(
+        residents, tw, ways, buildings=[unreachable, reachable], curbs=[blocking_curb],
+    )
     assert result is not None
     _, _, vehicle = result
-    assert vehicle.destination != (400.0, 0.0)  # never the roundabout itself
+    assert vehicle.destination == (380.0, 4.0)
 
 
-def test_spawn_deterministic_npc_gives_up_when_every_candidate_is_a_roundabout():
-    """With truly nothing valid anywhere the BFS walk reached, spawning
-    must fail cleanly rather than ever stop an NPC in a roundabout."""
+def test_spawn_deterministic_npc_gives_up_when_nothing_anywhere_has_a_place_to_stop():
+    """With truly no parking or building anywhere the BFS walk reached,
+    spawning must fail cleanly rather than ever stop an NPC on the road."""
     ways = _straight_chain(count=20)
-    for way in ways:
-        way.is_roundabout = True
     tw = TrafficWorld(ways)
     residents = ResidentManager()
 

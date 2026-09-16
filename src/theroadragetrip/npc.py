@@ -166,11 +166,15 @@ def _way_at_point(
 MAX_ROUTE_OFFROAD_TOLERANCE_M = 15.0
 
 
+NPC_PARKING_ACCESS_TOLERANCE_M = 40.0  # the final hop off-road, into a yard/driveway, gets more slack
+
+
 def route_stays_on_road(
     points: List[Tuple[float, float]],
     ways: List[Way],
     spatial_grid: Optional[SpatialWayGrid] = None,
     tolerance_m: float = MAX_ROUTE_OFFROAD_TOLERANCE_M,
+    final_segment_tolerance_m: Optional[float] = None,
 ) -> bool:
     """Verify every segment of a planned route actually runs along a
     mapped road, rather than a straight-line shortcut across empty land.
@@ -183,11 +187,21 @@ def route_stays_on_road(
     instead of following the road through it. NPC-001 section 5 requires
     verifying the route has real road segments before ever spawning a
     vehicle onto it - this is that check.
+
+    final_segment_tolerance_m, when given, applies only to the very last
+    segment (road -> the actual destination) instead of `tolerance_m` -
+    a real yard/driveway can legitimately sit farther from the road than
+    the 15m that would flag a mid-route shortcut as suspicious (NPC-more.md
+    section 6's "safe driveway or building courtyard").
     """
+    last_index = len(points) - 2
     for i in range(len(points) - 1):
         (ax, ay), (bx, by) = points[i], points[i + 1]
         _, distance = _way_at_point(spatial_grid, ways, (ax + bx) / 2.0, (ay + by) / 2.0)
-        if distance > tolerance_m:
+        segment_tolerance = (
+            tolerance_m if final_segment_tolerance_m is None or i != last_index else final_segment_tolerance_m
+        )
+        if distance > segment_tolerance:
             return False
     return True
 
@@ -465,7 +479,9 @@ def spawn_npc(
     deduped_route = _dedupe_points(raw_route)
     if len(deduped_route) < 3:  # start + >=1 real road node + target
         return None
-    if not route_stays_on_road(deduped_route, ways, spatial_grid=spatial_grid):
+    if not route_stays_on_road(
+        deduped_route, ways, spatial_grid=spatial_grid, final_segment_tolerance_m=NPC_PARKING_ACCESS_TOLERANCE_M,
+    ):
         return None
 
     path = build_driving_path(deduped_route, ways, spatial_grid=spatial_grid)
@@ -644,17 +660,18 @@ def _pick_npc_destination(
     parking_spaces: Optional[List] = None,
     sceneries: Optional[List] = None,
     buildings: Optional[List] = None,
-    allow_raw_fallback: bool = True,
     search_radius_m: float = NPC_DESTINATION_SEARCH_RADIUS_M,
 ) -> Tuple[Optional[Tuple[float, float]], object]:
     """Refine a raw road-graph point into an actual place to stop
     (NPC-more.md section 2's hierarchy): nearest free dedicated parking
     space, then nearest parking lot, then nearest building's own
-    entrance/yard - only falling back to the raw point (the middle of an
-    intersection or any other spot the road graph happened to reach) if
-    none of those exist nearby, and never onto a roundabout even then (a
-    roundabout is never a legal place to stop). Returns (None, None) when
-    nothing acceptable can be found at all.
+    entrance/yard. Returns (None, None) when none of those exist nearby -
+    the raw point itself (the middle of an intersection, a driving lane,
+    a roundabout, or any other spot the road graph happened to reach) is
+    never an acceptable destination (NPC-more.md section 2's explicit
+    "do NOT treat... road carriageways... as valid parking locations").
+    The caller (spawn_deterministic_npc) tries the next BFS-reached point
+    instead of settling for one with nothing real to stop at.
 
     plan_route() already appends the literal target point onto its last
     road node (see its own docstring/return), so handing it a parking
@@ -705,13 +722,7 @@ def _pick_npc_destination(
     if best_point is not None:
         return best_point, None
 
-    # Nothing nearby at all - the raw road-graph point is the only option
-    # left, but the caller refuses it (allow_raw_fallback=False) when it
-    # sits on a roundabout (see Way.is_roundabout) - never an acceptable
-    # place to stop - rather than parking an NPC in one.
-    if not allow_raw_fallback:
-        return None, None
-    return (x, y), None
+    return None, None
 
 
 NPC_ROUTE_MAX_HOPS = 30  # how many real intersections the deterministic NPC's trip crosses
@@ -786,18 +797,19 @@ def spawn_deterministic_npc(
     hard-coded screen coordinates, no randomness.
 
     The BFS walk only ever lands on a road-graph node - the middle of an
-    intersection or any other spot on a road, not actually a place to
-    stop - so _pick_npc_destination refines it into the nearest free
-    parking space, then parking lot, then a building's own entrance/yard,
-    before ever routing there (NPC-more.md section 2), falling back to
-    the raw node itself unless that sits on a roundabout (never an
-    acceptable place to stop). Every one of those can still turn out
-    unroutable (too far off any real road, or the only path there clips a
-    curb) - rather than giving up on the whole spawn because the single
-    farthest BFS node happened to be bad (previously: retried that exact
-    same rejected node forever, logging "no valid route found" every
-    second - reported bug), try every node the walk reached, farthest
-    first, until one actually produces a spawnable NPC.
+    intersection, a driving lane, possibly a roundabout - never actually a
+    place to stop, so _pick_npc_destination refines it into the nearest
+    free parking space, then parking lot, then a building's own
+    entrance/yard before ever routing there (NPC-more.md section 2); it
+    refuses (None) rather than ever handing back that raw point itself.
+    Either that refusal, or the resulting route turning out unroutable
+    (too far off any real road, or the only path there clips a curb),
+    means this candidate is skipped for the next node the BFS walk
+    reached, farthest first, rather than giving up the whole spawn over
+    one bad candidate (previously: retried that exact same rejected node
+    forever, logging "no valid route found" every second - reported bug)
+    or settling for stopping the NPC in the middle of the road (also
+    reported).
     """
     nodes = traffic_world._route_nodes
     edges = traffic_world._route_edges
@@ -812,12 +824,8 @@ def spawn_deterministic_npc(
 
     for destination_index in candidates:
         raw_destination = (nodes[destination_index][0], nodes[destination_index][1])
-        raw_way, _ = _way_at_point(spatial_grid, ways, raw_destination[0], raw_destination[1])
-        raw_destination_is_safe = not (raw_way is not None and getattr(raw_way, "is_roundabout", False))
-
         destination, target_space = _pick_npc_destination(
             raw_destination[0], raw_destination[1], parking_spaces, sceneries, buildings,
-            allow_raw_fallback=raw_destination_is_safe,
         )
         if destination is None:
             continue
@@ -825,11 +833,6 @@ def spawn_deterministic_npc(
             vehicle_id, resident_manager, traffic_world, ways, origin, destination,
             spatial_grid=spatial_grid, curbs=curbs, curb_grid=curb_grid, parking_space=target_space,
         )
-        if spawned is None and destination != raw_destination and raw_destination_is_safe:
-            spawned = spawn_npc(
-                vehicle_id, resident_manager, traffic_world, ways, origin, raw_destination,
-                spatial_grid=spatial_grid, curbs=curbs, curb_grid=curb_grid,
-            )
         if spawned is not None:
             return spawned
     return None
