@@ -14,6 +14,7 @@ from theroadragetrip.npc import (
     NPCVehicle,
     _lane_offset_point,
     NPC_BUILDING_YARD_CLEARANCE_M,
+    NPC_FOOTPRINT_VIOLATION_CRAWL_MPS,
     _align_approach_to_parking_orientation,
     _building_yard_point,
     _parking_space_dimensions,
@@ -769,11 +770,17 @@ def test_npc_reserved_space_becomes_occupied_on_arrival():
     assert space.occupied is True
 
 
-def test_update_npc_live_footprint_check_stops_the_vehicle():
+def test_update_npc_live_footprint_check_slows_the_vehicle_to_a_crawl():
     """NPC-more.md sections 12/13/19: enforced at the movement level too,
     not only route generation - if the vehicle's actual live pose ever
     overlaps a curb/building (physics drift off the pre-validated path),
-    it must brake rather than keep going."""
+    it must slow down rather than keep going at full speed.
+
+    Never a hard 0, though: update_car_physics refuses to turn the
+    vehicle at all below 0.05 m/s ("cars cannot steer in place while
+    stationary"), so a full stop here would deadlock forever - the only
+    way off an overlapping pose is to keep moving (reported bug: NPC
+    stuck oscillating/turning in place forever)."""
     ways = _straight_chain(count=20)
     tw = TrafficWorld(ways)
     residents = ResidentManager()
@@ -789,7 +796,34 @@ def test_update_npc_live_footprint_check_stops_the_vehicle():
 
     assert vehicle.state == NPCState.WAITING
     assert "footprint" in vehicle.debug_waiting_for
-    assert driver.target_speed_mps == 0.0
+    assert 0.0 < driver.target_speed_mps <= NPC_FOOTPRINT_VIOLATION_CRAWL_MPS
+
+
+def test_update_npc_recovers_from_a_stopped_footprint_violation_instead_of_deadlocking():
+    """Regression: a hard 0 target speed on a footprint violation used to
+    deadlock forever once the vehicle was already fully stopped -
+    update_car_physics refuses to turn the vehicle below 0.05 m/s, so a
+    car frozen at exactly 0 could never turn away from the very obstacle
+    keeping it stopped (reported: NPC stuck oscillating/turning in place
+    forever). It must instead crawl forward and actually get clear."""
+    ways = _straight_chain(count=20)
+    tw = TrafficWorld(ways)
+    residents = ResidentManager()
+    result = spawn_npc(1, residents, tw, ways, (0.0, 0.0), (200.0, 0.0))
+    assert result is not None
+    _, driver, vehicle = result
+    vehicle.car.speed = 0.0  # already fully stopped, the deadlock's starting condition
+    start_x = vehicle.car.x
+    blocking_curb = Curb(points_m=[(start_x, -5.0), (start_x, 5.0)])
+
+    cleared = False
+    for _ in range(600):
+        update_npc(vehicle, driver, 1.0 / 60.0, tw, residents, curbs=[blocking_curb])
+        if vehicle.state != NPCState.WAITING:
+            cleared = True
+            break
+    assert cleared, "vehicle never escaped the footprint violation - deadlocked"
+    assert vehicle.car.x > start_x + 1.0  # actually drove clear of the curb, not just relabeled
 
 
 def test_draw_npc_cars_renders_an_npc_vehicle_without_crashing():

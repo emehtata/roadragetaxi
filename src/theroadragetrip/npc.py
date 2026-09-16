@@ -50,6 +50,8 @@ CORNER_RADIUS_M = 6.0
 CORNER_SAMPLE_COUNT = 5
 STEER_FULL_ANGLE_DEG = 25.0  # heading error at/beyond which steering saturates at full lock
 ARRIVAL_DECEL_MPS2 = 3.0  # comfortable braking rate approaching the final destination waypoint
+NPC_FOOTPRINT_VIOLATION_CRAWL_MPS = 2.0  # never a hard 0 - see update_npc's live footprint check
+NPC_LIVE_FOOTPRINT_CLEARANCE_M = 0.05  # a hair's width - only an actual overlap counts live, not lag
 LANE_BIAS_LOOKAHEAD_M = 20.0  # start easing into a turn lane this far before the corner (NPC-002 section 5)
 NPC_VEHICLE_LENGTH_M = 4.3  # the one NPC car's dimensions - shared so footprint checks always match the spawned Car
 NPC_VEHICLE_WIDTH_M = 1.8
@@ -852,13 +854,26 @@ def update_npc(
     # function's own docstring) - spawn_npc already fully validated this
     # exact path once, so this should in practice never actually trip;
     # it exists for physics drift, not as the primary defense.
+    # NPC_LIVE_FOOTPRINT_CLEARANCE_M (a bare few cm, not
+    # CURB/BUILDING_CLEARANCE_MARGIN_M's stricter validate-before-spawning
+    # margin) - the live pose is expected to run right up against that
+    # margin near a legitimately tight final approach (a parking yard
+    # sits just outside a wall on purpose), so requiring the same safety
+    # cushion live would flag ordinary steering lag as a "violation"
+    # every single frame near any such approach.
     footprint_clear = is_vehicle_pose_valid(
         vehicle.car.x, vehicle.car.y, vehicle.car.heading,
         curbs=curbs, buildings=buildings, curb_grid=curb_grid, building_grid=building_grid,
-        length_m=vehicle.length_m, width_m=vehicle.width_m,
+        length_m=vehicle.length_m, width_m=vehicle.width_m, clearance_m=NPC_LIVE_FOOTPRINT_CLEARANCE_M,
     )
     if not footprint_clear:
-        driver.target_speed_mps = 0.0
+        # A slow crawl, never a hard 0 - update_car_physics refuses to
+        # turn the vehicle at all below 0.05 m/s ("cars cannot steer in
+        # place while stationary"), so a full stop here would deadlock:
+        # the only way off an actually-overlapping pose is to keep
+        # moving, and a genuine zero-speed floor can never move again on
+        # its own (reported: NPC stuck oscillating in place forever).
+        driver.target_speed_mps = min(driver.target_speed_mps, NPC_FOOTPRINT_VIOLATION_CRAWL_MPS)
 
     # State machine (section 10) - priority order is what a real driver
     # would report as "what am I doing right now".
