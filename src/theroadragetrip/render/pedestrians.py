@@ -38,12 +38,18 @@ def draw_pedestrians(
     vminx, vminy, vmaxx, vmaxy = get_viewport_bounds(camx, camy, px_per_m, screen_w, screen_h, 15.0)
 
     for ped in pedestrians:
-        if getattr(ped, "state", "walking") in {"entering_building", "in_building"}:
-            continue
         if not (vminx <= ped.x <= vmaxx and vminy <= ped.y <= vmaxy):
             continue
         cx, cy = world_to_screen(ped.x, ped.y, camx, camy, px_per_m, screen_w, screen_h)
         radius_px = max(4.0, getattr(ped, "radius_m", 0.45) * px_per_m)
+
+        if getattr(ped, "state", "walking") in {"entering_building", "in_building"}:
+            # Same "still there, not vanished" outline cue as the bridge-
+            # occlusion case just below - a pedestrian inside a building
+            # used to simply not be drawn at all rather than reading as
+            # "gone inside".
+            pygame.draw.circle(screen, (235, 235, 235), (int(cx), int(cy)), int(radius_px), 1)
+            continue
 
         # Same "hidden behind a bridge above" cue draw_car/draw_npc_cars use
         # (see _covered_by_higher_road/_vehicle_is_on_bridge) - an outline

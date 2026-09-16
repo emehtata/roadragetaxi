@@ -4,7 +4,7 @@ import math
 import random
 from dataclasses import dataclass, field, replace
 from enum import Enum
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 
 from .osm import BusStop, Crossing, LogicalIntersection, Scenery, SceneryObject, TrafficLight, Way
 from .geo import closest_point_and_dist_to_segment, compute_bbox, dist_point_to_segment, point_in_polygon
@@ -120,8 +120,14 @@ class PedestrianNetwork:
                 self.edges[first].append((second, distance))
                 self.edges[second].append((first, distance))
 
-    def nearest_point(self, point: Tuple[float, float]) -> Optional[Tuple[float, float]]:
-        """Return closest point on network, or ``None`` when network is empty."""
+    def nearest_point(
+        self, point: Tuple[float, float], reject: Optional[Callable[[float, float], bool]] = None,
+    ) -> Optional[Tuple[float, float]]:
+        """Return closest point on network, or ``None`` when network is
+        empty (or every candidate is rejected). `reject(x, y)` returning
+        True skips that candidate - e.g. PedestrianManager._footway_route_to
+        uses it to rule out a point that's closer as the crow flies but
+        only reachable by cutting through a building."""
         nearest = None
         nearest_distance = float("inf")
         for way in self.ways:
@@ -129,8 +135,11 @@ class PedestrianNetwork:
                 x, y, _, distance = closest_point_and_dist_to_segment(
                     point[0], point[1], first[0], first[1], second[0], second[1]
                 )
-                if distance < nearest_distance:
-                    nearest, nearest_distance = (x, y), distance
+                if distance >= nearest_distance:
+                    continue
+                if reject is not None and reject(x, y):
+                    continue
+                nearest, nearest_distance = (x, y), distance
         return nearest
 
     def route(self, start: Tuple[float, float], target: Tuple[float, float]) -> List[Tuple[float, float]]:
@@ -729,6 +738,22 @@ class PedestrianManager:
                 return True
         return False
 
+    def _path_crosses_building(self, x1: float, y1: float, x2: float, y2: float) -> bool:
+        """Whether the straight line from (x1,y1) to (x2,y2) passes
+        through a building's interior. Sampled strictly between the
+        endpoints (0.2/0.4/0.6/0.8), never at the endpoints themselves -
+        one end is often a door/entrance/vehicle position sitting exactly
+        on a building's own wall line, where point-in-polygon is a coin
+        flip and irrelevant to whether the path itself cuts through the
+        building. Used wherever a pedestrian's next step is a raw (x, y)
+        point rather than an already-safe mapped-way segment (see
+        spawn_pedestrian_at's nearest-way search and _footway_route_to's
+        final approach hop)."""
+        return any(
+            self._point_inside_building(x1 + (x2 - x1) * t, y1 + (y2 - y1) * t)
+            for t in (0.2, 0.4, 0.6, 0.8)
+        )
+
     def _segment_inside_building(self, start: Tuple[float, float], end: Tuple[float, float]) -> bool:
         """Return whether a walkable segment enters a building footprint."""
         for progress in (0.0, 0.25, 0.5, 0.75, 1.0):
@@ -860,8 +885,20 @@ class PedestrianManager:
         """Build a short mapped-footway approach followed by the final door
         step, from wherever `pedestrian` currently stands to `entry_position`
         (a vehicle's door or a building's entrance - the network routing
-        doesn't care which)."""
-        nearest = self.network.nearest_point(entry_position)
+        doesn't care which).
+
+        The final hop from the nearest mapped footway point to
+        `entry_position` is a straight line, not routed - reject a
+        candidate footway point where that line would cut through a
+        building (closer as the crow flies than the actual door-side
+        footway is a common shape: a service alley right behind the
+        building, an open plaza in front, ...), same as
+        spawn_pedestrian_at's nearest-way search.
+        """
+        nearest = self.network.nearest_point(
+            entry_position,
+            reject=lambda x, y: self._path_crosses_building(entry_position[0], entry_position[1], x, y),
+        )
         start = (pedestrian.x, pedestrian.y)
         route = self._plan_pedestrian_route(start, nearest) if nearest is not None else [start]
         if math.hypot(entry_position[0] - route[-1][0], entry_position[1] - route[-1][1]) > 0.01:
@@ -1507,10 +1544,7 @@ class PedestrianManager:
                 )
                 if nearest is not None and distance >= nearest[0]:
                     continue
-                if allow_building_interior and any(
-                    self._point_inside_building(x + (closest_x - x) * t, y + (closest_y - y) * t)
-                    for t in (0.2, 0.4, 0.6, 0.8)
-                ):
+                if allow_building_interior and self._path_crosses_building(x, y, closest_x, closest_y):
                     # A door's nearest mapped way by raw distance can sit
                     # on the far side of the building it belongs to (e.g.
                     # a footway along the back, closer as the crow flies
@@ -1518,10 +1552,6 @@ class PedestrianManager:
                     # have the spawned pedestrian walk straight through
                     # the building to reach it. Skip it; a farther-but-
                     # actually-reachable way is what should win instead.
-                    # Endpoints aren't sampled: the door itself often sits
-                    # exactly on the building's own wall line, where
-                    # point-in-polygon is a coin flip and irrelevant here
-                    # anyway - only the middle of the path matters.
                     continue
                 nearest = (distance, way, segment_idx, progress)
         if nearest is None:

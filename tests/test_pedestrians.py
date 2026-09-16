@@ -311,6 +311,36 @@ def test_vehicle_approach_uses_connected_pedestrian_waypoints():
     assert (10.0, 0.0) in route
 
 
+def test_footway_route_to_does_not_snap_onto_a_way_reachable_only_through_the_building():
+    """Regression: _footway_route_to's final-approach hop picked the
+    raw-distance-nearest mapped footway point to the target regardless of
+    whether the straight line from it to the target crossed the building
+    the target belongs to - the same bug as spawn_pedestrian_at's
+    nearest-way search, but for the "walking to a building entrance/
+    vehicle door" approach leg every activity plugin and the multi-
+    passenger trip-group flow shares."""
+    front_street = Way(points_m=[(-10.0, -30.0), (30.0, -30.0)], highway="footway", half_width_m=1.5)
+    back_alley = Way(points_m=[(-10.0, 21.0), (30.0, 21.0)], highway="footway", half_width_m=1.5)
+    manager = PedestrianManager([front_street, back_alley], target_count=0)
+    # Standing far off to the side, walking toward a building entrance at
+    # (10, 0) - the building itself spans x:0-20, y:0-20 (not passed to
+    # the manager; _footway_route_to only cares about the footway network
+    # here, so the "is this point inside a building" check is exercised
+    # via a monkeypatched _point_inside_building below instead of a real
+    # Building object, keeping the test focused on the routing logic).
+    pedestrian = Pedestrian(-50.0, -30.0, 0.0, 1.3, 1.3, front_street, 0, 1, (1, 1, 1))
+
+    def fake_point_inside_building(x, y):
+        return 0.0 <= x <= 20.0 and 0.0 <= y <= 20.0
+
+    manager._point_inside_building = fake_point_inside_building
+
+    route = manager._footway_route_to(pedestrian, (10.0, 0.0))
+
+    assert (10.0, -30.0) in route  # routed via the reachable front street
+    assert (10.0, 21.0) not in route  # not the closer-but-blocked back alley
+
+
 def test_pedestrian_in_vehicle_follows_vehicle_position():
     way = Way(points_m=[(0.0, 0.0), (100.0, 0.0)], highway="footway", half_width_m=1.5)
     vehicle = SimpleNamespace(
