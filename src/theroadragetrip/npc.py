@@ -44,6 +44,14 @@ class NPCState:
 
 
 WAYPOINT_REACH_RADIUS_M = 4.0
+# Tighter than WAYPOINT_REACH_RADIUS_M (used for cruising through an
+# ordinary mid-route waypoint, where a few meters of slack doesn't
+# matter): reported bug - considering the NPC "arrived" from up to
+# WAYPOINT_REACH_RADIUS_M away let it settle anywhere within that whole
+# circle, bigger than the yard/building clearance offset itself
+# (NPC_BUILDING_YARD_CLEARANCE_M), so it could stop still partly on the
+# service road/driveway instead of actually reaching the yard point.
+NPC_ARRIVAL_RADIUS_M = 1.5
 INTERSECTION_APPROACH_RADIUS_M = 25.0
 CORNER_ANGLE_THRESHOLD_DEG = 20.0
 CORNER_RADIUS_M = 6.0
@@ -466,6 +474,7 @@ def build_driving_path(
     spatial_grid: Optional[SpatialWayGrid] = None,
     vehicle_width_m: float = NPC_VEHICLE_WIDTH_M,
     corner_radius_m: float = CORNER_RADIUS_M,
+    skip_final_lane_offset: bool = False,
 ) -> List[PathPoint]:
     """Turn a raw centerline route (TrafficWorld.plan_route's output) into
     a lane-correct, corner-smoothed path for an NPC to follow.
@@ -474,6 +483,18 @@ def build_driving_path(
     multi-stage pipeline object yet), but route planning (the caller),
     lane offsetting, and corner rounding remain distinct, independently
     testable steps - see build_driving_path's own helpers.
+
+    skip_final_lane_offset, when set, reaches the very last point exactly
+    as given instead of nudging it sideways by lane-offset math meant for
+    through-traffic staying in its lane - for a destination that's a
+    parking space/lot/building yard point (_pick_npc_destination already
+    chose it deliberately, off any road), lane-offsetting it again by an
+    unrelated amount in an unrelated direction pushed the NPC's actual
+    resting point away from the intended one, in the reported case back
+    toward the service road/driveway it approached from. Left False (the
+    default) for a destination that's still meant to be reached in-lane -
+    a plain point on a road, or the deliberate roadside-parking fallback
+    that relies on exactly this offset to hug the curb.
     """
     route_points = _dedupe_points(route_points)
     n = len(route_points)
@@ -524,7 +545,10 @@ def build_driving_path(
     for i, (x, y) in enumerate(route_points):
         seg = min(i, n - 2)
         bias = _upcoming_maneuver(i)
-        lx, ly = _lane_offset_point(segment_way[seg], x, y, segment_heading[seg], vehicle_width_m, maneuver=bias)
+        if i == n - 1 and skip_final_lane_offset:
+            lx, ly = x, y
+        else:
+            lx, ly = _lane_offset_point(segment_way[seg], x, y, segment_heading[seg], vehicle_width_m, maneuver=bias)
         lane_points.append((lx, ly, segment_way[seg]))
         lane_bias.append(bias)
 
@@ -680,9 +704,17 @@ def spawn_npc(
     buildings: Optional[List] = None,
     building_grid: Optional[SpatialWayGrid] = None,
     parking_space=None,
+    destination_is_off_road: bool = False,
 ) -> Optional[Tuple[int, Driver, NPCVehicle]]:
     """Create the Resident -> Driver -> NPCVehicle chain for one NPC
     (NPC-001 sections 5, 11, 12).
+
+    destination_is_off_road (see build_driving_path's own
+    skip_final_lane_offset) should be set whenever `destination` is a
+    parking space/lot/building yard point _pick_npc_destination chose
+    deliberately, off any road - never for a plain on-road point or the
+    roadside-parking fallback, which relies on the normal lane-offset to
+    hug the curb.
 
     The route is planned and validated BEFORE anything is created; a
     vehicle is never spawned to then go hunting for a route while
@@ -722,7 +754,9 @@ def spawn_npc(
     ):
         return None
 
-    path = build_driving_path(deduped_route, ways, spatial_grid=spatial_grid)
+    path = build_driving_path(
+        deduped_route, ways, spatial_grid=spatial_grid, skip_final_lane_offset=destination_is_off_road,
+    )
     if len(path) < 2:
         return None
     path_points = [(p.x, p.y) for p in path]
@@ -868,7 +902,7 @@ def update_npc(
 
     approaching_final_waypoint = driver.path_index >= len(path) - 1
     distance_to_target = math.hypot(target.x - vehicle.car.x, target.y - vehicle.car.y)
-    at_destination = approaching_final_waypoint and distance_to_target < WAYPOINT_REACH_RADIUS_M
+    at_destination = approaching_final_waypoint and distance_to_target < NPC_ARRIVAL_RADIUS_M
 
     nearby_lights = traffic_world._nearby_traffic_lights(vehicle.car.x, vehicle.car.y)
     speed_limit_mps = (driver.current_way.speed_limit_kmh / 3.6) if driver.current_way else None
@@ -882,7 +916,7 @@ def update_npc(
         # Brake for arrival the same comfortable way the traffic rule
         # engine brakes for a stop line, rather than cruising right up to
         # the destination and only then snapping to a stop.
-        arrival_cap = math.sqrt(2.0 * ARRIVAL_DECEL_MPS2 * max(0.0, distance_to_target - WAYPOINT_REACH_RADIUS_M))
+        arrival_cap = math.sqrt(2.0 * ARRIVAL_DECEL_MPS2 * max(0.0, distance_to_target - NPC_ARRIVAL_RADIUS_M))
         driver.target_speed_mps = min(driver.target_speed_mps, arrival_cap)
 
     # Brake for a sharp corner the same comfortable way, well before
@@ -1345,10 +1379,17 @@ def spawn_deterministic_npc(
             ways=ways, spatial_grid=spatial_grid,
         )
         for destination, target_space in destination_candidates:
+            # The roadside-parking fallback (see _pick_npc_destination_
+            # candidates) returns the raw road point completely unchanged -
+            # every other tier (space/lot/building yard) always offsets it
+            # off the road by construction, so an exact match here can
+            # only be that fallback, still meant to be reached in-lane.
+            destination_is_off_road = destination != raw_destination
             spawned = spawn_npc(
                 vehicle_id, resident_manager, traffic_world, ways, origin, destination,
                 spatial_grid=spatial_grid, curbs=curbs, curb_grid=curb_grid,
                 buildings=buildings, building_grid=building_grid, parking_space=target_space,
+                destination_is_off_road=destination_is_off_road,
             )
             if spawned is not None:
                 return spawned

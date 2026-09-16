@@ -15,6 +15,7 @@ from theroadragetrip.npc import (
     NPCVehicle,
     PathPoint,
     _lane_offset_point,
+    NPC_ARRIVAL_RADIUS_M,
     NPC_BUILDING_YARD_CLEARANCE_M,
     NPC_FOOTPRINT_VIOLATION_CRAWL_MPS,
     _align_approach_to_parking_orientation,
@@ -159,6 +160,49 @@ def test_deterministic_npc_eventually_reaches_its_destination():
         update_npc(vehicle, driver, 1.0 / 60.0, tw, residents)
     assert vehicle.state == NPCState.ARRIVING
     assert abs(vehicle.speed) < 0.5
+    # Regression: settling anywhere within the old, coarser
+    # WAYPOINT_REACH_RADIUS_M (4m) could be most of the way back toward
+    # the road rather than at the actual final path point (a separate,
+    # expected few meters of lane-offset already exists between that
+    # point and the raw driver.destination - not what this checks).
+    final_point = driver.path[-1]
+    assert math.hypot(vehicle.x - final_point.x, vehicle.y - final_point.y) < NPC_ARRIVAL_RADIUS_M
+
+
+def test_npc_arrival_radius_is_tighter_than_the_building_yard_clearance():
+    """Regression: WAYPOINT_REACH_RADIUS_M (4m - fine for cruising through
+    an ordinary mid-route waypoint, where a few meters of slack doesn't
+    matter) used to also gate the final "arrived" check - bigger than the
+    yard offset itself (NPC_BUILDING_YARD_CLEARANCE_M, 3m), so the NPC
+    could settle anywhere in that whole 4m circle around the target,
+    including back toward the service road/driveway side it approached
+    from (reported: "parked partly on road"). The dedicated arrival
+    radius must stay smaller than the yard clearance so "arrived" can
+    never land that far off from the actual intended point."""
+    assert NPC_ARRIVAL_RADIUS_M < NPC_BUILDING_YARD_CLEARANCE_M
+
+
+def test_npc_settles_close_to_its_building_yard_point_not_partway_back_to_the_road():
+    ways = _straight_chain(count=20)
+    tw = TrafficWorld(ways)
+    residents = ResidentManager()
+    building = Building(
+        points_m=[(398.0, 4.0), (402.0, 4.0), (402.0, 8.0), (398.0, 8.0)],
+        entrances=[(400.0, 4.0)],
+        center_m=(400.0, 6.0),
+    )
+    result = spawn_deterministic_npc(residents, tw, ways, buildings=[building])
+    assert result is not None
+    _, driver, vehicle = result
+
+    for _ in range(3600):
+        update_npc(vehicle, driver, 1.0 / 60.0, tw, residents)
+        if vehicle.state == NPCState.ARRIVING:
+            break
+    assert vehicle.state == NPCState.ARRIVING
+    final_point = driver.path[-1]
+    final_distance = math.hypot(vehicle.x - final_point.x, vehicle.y - final_point.y)
+    assert final_distance < NPC_ARRIVAL_RADIUS_M
 
 
 def test_red_light_produces_stop():
