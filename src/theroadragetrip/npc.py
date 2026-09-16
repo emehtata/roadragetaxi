@@ -15,9 +15,11 @@ directly (that renderer already existed, unused, ahead of this feature).
 """
 from __future__ import annotations
 
+import itertools
 import math
+import random
 from dataclasses import dataclass, field
-from typing import List, Optional, Tuple
+from typing import List, Optional, Set, Tuple
 
 from .geo import clamp, closest_point_and_dist_to_segment, segment_distance
 from .osm import Curb, Way
@@ -41,6 +43,7 @@ class NPCState:
     TURNING = "TURNING"
     PARKING = "PARKING"  # final approach into a dedicated parking space (NPC-more.md section 14)
     ARRIVING = "ARRIVING"
+    PARKED = "PARKED"  # stopped and settled at the destination (multi-passenger-car.md section 17)
 
 
 WAYPOINT_REACH_RADIUS_M = 4.0
@@ -66,6 +69,22 @@ NPC_CORNER_LOOKAHEAD_M = 40.0  # how far ahead to start braking for an upcoming 
 LANE_BIAS_LOOKAHEAD_M = 20.0  # start easing into a turn lane this far before the corner (NPC-002 section 5)
 NPC_VEHICLE_LENGTH_M = 4.3  # the one NPC car's dimensions - shared so footprint checks always match the spawned Car
 NPC_VEHICLE_WIDTH_M = 1.8
+
+# multi-passenger-car.md section 2: capacity is a per-vehicle-type lookup,
+# never a hardcoded literal in passenger-management logic - a future
+# vehicle_type just needs an entry here, no other code changes.
+NPC_VEHICLE_CAPACITY_BY_TYPE = {"car": 5}
+DEFAULT_NPC_VEHICLE_CAPACITY = 5
+# How long a trip group spends inside a building (section 13) - randomized
+# per group, using the simulation clock (sim_time), not wall-clock time.
+NPC_BUILDING_VISIT_MIN_S = 20.0
+NPC_BUILDING_VISIT_MAX_S = 90.0
+# Section 20: once parked, how much extra time beyond the group's own
+# activity_duration_s a straggler gets before the vehicle leaves without
+# them - generous enough to cover a slower walk back, not infinite.
+NPC_GROUP_RETURN_GRACE_S = 60.0
+
+_trip_group_id_counter = itertools.count(1)
 
 
 @dataclass
@@ -613,6 +632,35 @@ class Driver:
 
 
 @dataclass
+class TripGroup:
+    """A Resident group travelling together in one NPC vehicle
+    (multi-passenger-car.md sections 3-6). Each member remains an
+    independent Resident/Pedestrian entity - this only holds what the
+    group shares: the vehicle, the destination building entrance, the
+    activity, and who is currently aboard.
+
+    `boarded_resident_ids` starts as a full copy of `member_resident_ids`
+    (a group in transit is trivially "all aboard"); pedestrian.py removes
+    an id when that member disembarks and re-adds it on reboarding, so
+    `boarded_resident_ids == set(member_resident_ids)` is exactly the
+    section 19 "everyone's back" check - no separate group-state enum is
+    needed on top of it, since per-member granularity already lives in
+    pedestrian.PedestrianState.
+    """
+    group_id: int
+    vehicle_id: int
+    member_resident_ids: List[int]
+    destination_entrance: Optional[Tuple[float, float]] = None
+    activity_duration_s: float = 0.0
+    boarded_resident_ids: Set[int] = field(default_factory=set)
+    wait_deadline_sim_time: Optional[float] = None
+
+    @property
+    def all_aboard(self) -> bool:
+        return self.boarded_resident_ids >= set(self.member_resident_ids)
+
+
+@dataclass
 class NPCVehicle:
     """Physical NPC vehicle (NPC-001 section 3).
 
@@ -650,6 +698,8 @@ class NPCVehicle:
     turn_signal_elapsed: float = 0.0
     debug_waiting_for: str = ""
     crashed_timer: float = 0.0
+    capacity: int = DEFAULT_NPC_VEHICLE_CAPACITY
+    trip_group: Optional[TripGroup] = None
 
     @property
     def x(self) -> float:
@@ -679,6 +729,16 @@ class NPCVehicle:
     def layer(self) -> int:
         return self.car.layer
 
+    @property
+    def passenger_ids(self) -> Tuple[int, ...]:
+        """Trip-group members other than the driver (render/pedestrians.py's
+        draw_npc_popup already reads this attribute name, built ahead of
+        multi-passenger-car.md - "who's riding along" alongside the owner
+        it already shows separately)."""
+        if self.trip_group is None:
+            return ()
+        return tuple(rid for rid in self.trip_group.member_resident_ids if rid != self.owner_id)
+
 
 def has_active_driver(vehicle: NPCVehicle, resident_manager: ResidentManager) -> bool:
     """The fundamental NPC-001 invariant: moving NPC vehicle == active
@@ -690,40 +750,36 @@ def has_active_driver(vehicle: NPCVehicle, resident_manager: ResidentManager) ->
     return resident is not None and resident.active_vehicle_id == vehicle.vehicle_id
 
 
-def spawn_npc(
-    vehicle_id: int,
-    resident_manager: ResidentManager,
+def _plan_and_validate_npc_route(
     traffic_world: TrafficWorld,
     ways: List[Way],
     origin: Tuple[float, float],
     destination: Tuple[float, float],
     spatial_grid: Optional[SpatialWayGrid] = None,
-    color: Tuple[int, int, int] = (150, 155, 165),
     curbs: Optional[List[Curb]] = None,
     curb_grid: Optional[SpatialWayGrid] = None,
     buildings: Optional[List] = None,
     building_grid: Optional[SpatialWayGrid] = None,
     parking_space=None,
     destination_is_off_road: bool = False,
-) -> Optional[Tuple[int, Driver, NPCVehicle]]:
-    """Create the Resident -> Driver -> NPCVehicle chain for one NPC
-    (NPC-001 sections 5, 11, 12).
+) -> Optional[List[PathPoint]]:
+    """Plan and fully validate a drivable path from origin to destination -
+    the shared "never move a vehicle onto an unchecked route" core of both
+    spawn_npc (a brand-new vehicle) and continue_npc_trip (an existing one
+    picking its next destination - multi-passenger-car.md section 21).
+    Returns None if no valid route exists.
 
     destination_is_off_road (see build_driving_path's own
     skip_final_lane_offset) should be set whenever `destination` is a
-    parking space/lot/building yard point _pick_npc_destination chose
-    deliberately, off any road - never for a plain on-road point or the
-    roadside-parking fallback, which relies on the normal lane-offset to
-    hug the curb.
-
-    The route is planned and validated BEFORE anything is created; a
-    vehicle is never spawned to then go hunting for a route while
-    already "driving". Returns None if no valid route exists.
+    parking space/lot/building yard point _pick_npc_destination_candidates
+    chose deliberately, off any road - never for a plain on-road point or
+    the roadside-parking fallback, which relies on the normal lane-offset
+    to hug the curb.
 
     `parking_space`, when given, is the ParkingSpace `destination` was
-    chosen for (see _pick_npc_destination) - reserved only once the route
-    to it is fully validated, never optimistically before, so a rejected
-    route never leaves a phantom reservation to clean up.
+    chosen for (see _pick_npc_destination_candidates) - the caller reserves
+    it only once this returns a real path, never optimistically before, so
+    a rejected route never leaves a phantom reservation to clean up.
     """
     raw_route = traffic_world.plan_route(origin, destination)
     if raw_route is None:
@@ -769,28 +825,83 @@ def spawn_npc(
     # NPC-more.md section 13: never drive through a building polygon.
     if route_crosses_buildings(path_points, buildings or [], building_grid=building_grid):
         return None
+    return path
 
-    # 1. create/select the Resident, 2. make it the driver, 3. create the
-    # vehicle, 4. associate vehicle<->Driver<->Resident - in that order,
-    # per section 11 - never a moving vehicle first with a driver attached
-    # after.
-    resident = resident_manager.create(mode="driving")
-    resident.vehicle_ids.add(vehicle_id)
-    resident.active_vehicle_id = vehicle_id
+
+def spawn_npc(
+    vehicle_id: int,
+    resident_manager: ResidentManager,
+    traffic_world: TrafficWorld,
+    ways: List[Way],
+    origin: Tuple[float, float],
+    destination: Tuple[float, float],
+    spatial_grid: Optional[SpatialWayGrid] = None,
+    color: Tuple[int, int, int] = (150, 155, 165),
+    curbs: Optional[List[Curb]] = None,
+    curb_grid: Optional[SpatialWayGrid] = None,
+    buildings: Optional[List] = None,
+    building_grid: Optional[SpatialWayGrid] = None,
+    parking_space=None,
+    destination_is_off_road: bool = False,
+    vehicle_type: str = "car",
+) -> Optional[Tuple[int, Driver, NPCVehicle]]:
+    """Create the Resident -> Driver -> NPCVehicle chain for one NPC
+    (NPC-001 sections 5, 11, 12).
+
+    The route is planned and validated BEFORE anything is created; a
+    vehicle is never spawned to then go hunting for a route while
+    already "driving". Returns None if no valid route exists.
+    """
+    path = _plan_and_validate_npc_route(
+        traffic_world, ways, origin, destination, spatial_grid=spatial_grid,
+        curbs=curbs, curb_grid=curb_grid, buildings=buildings, building_grid=building_grid,
+        parking_space=parking_space, destination_is_off_road=destination_is_off_road,
+    )
+    if path is None:
+        return None
+
+    # 1. create/select the Resident group, 2. designate its first member
+    # as driver, 3. create the vehicle, 4. associate vehicle<->Driver<->
+    # TripGroup - in that order, per section 11 - never a moving vehicle
+    # first with a driver attached after.
+    #
+    # multi-passenger-car.md sections 2, 5: capacity is a per-vehicle-type
+    # lookup, and the group is never auto-filled to capacity - a lone
+    # driver (group size 1) is exactly as valid as a full car.
+    capacity = NPC_VEHICLE_CAPACITY_BY_TYPE.get(vehicle_type, DEFAULT_NPC_VEHICLE_CAPACITY)
+    group_size = random.randint(1, max(1, capacity))
+    members = [resident_manager.create(mode="driving" if i == 0 else "riding") for i in range(group_size)]
+    driver_resident = members[0]
+    for member in members:
+        member.vehicle_ids.add(vehicle_id)
+    driver_resident.active_vehicle_id = vehicle_id
 
     start, aim = path[0], path[1]
     start_heading = math.atan2(aim.y - start.y, aim.x - start.x)
     car = Car(x=start.x, y=start.y, heading=start_heading, speed=0.0, length_m=NPC_VEHICLE_LENGTH_M, width_m=NPC_VEHICLE_WIDTH_M)
+    member_ids = [member.resident_id for member in members]
+    trip_group = TripGroup(
+        group_id=next(_trip_group_id_counter),
+        vehicle_id=vehicle_id,
+        member_resident_ids=member_ids,
+        boarded_resident_ids=set(member_ids),
+        activity_duration_s=random.uniform(NPC_BUILDING_VISIT_MIN_S, NPC_BUILDING_VISIT_MAX_S),
+    )
+    for member in members:
+        member.trip_group_id = trip_group.group_id
     vehicle = NPCVehicle(
         vehicle_id=vehicle_id,
         car=car,
-        owner_id=resident.resident_id,
+        owner_id=driver_resident.resident_id,
         way=start.way,
         destination=destination,
         travel_route=[(p.x, p.y) for p in path],
+        vehicle_type=vehicle_type,
+        capacity=capacity,
+        trip_group=trip_group,
     )
     driver = Driver(
-        resident_id=resident.resident_id,
+        resident_id=driver_resident.resident_id,
         vehicle_id=vehicle_id,
         path=path,
         destination=destination,
@@ -801,7 +912,7 @@ def spawn_npc(
         parking_space.vehicle_id = vehicle_id
         vehicle.destination_parking_space_id = getattr(parking_space, "osm_id", None)
         vehicle.reserved_parking_space = parking_space
-    return resident.resident_id, driver, vehicle
+    return driver_resident.resident_id, driver, vehicle
 
 
 def release_npc_parking_reservation(vehicle: NPCVehicle) -> None:
@@ -889,6 +1000,39 @@ def update_npc(
         release_npc_parking_reservation(vehicle)
         return
 
+    if vehicle.state == NPCState.PARKED:
+        # multi-passenger-car.md sections 17-20: a genuinely stationary
+        # parked vehicle has no driving decision left to make - no traffic
+        # light lookup, no footprint check - just trip-group bookkeeping.
+        # main/__init__.py's per-frame NPC update checks trip_group.all_
+        # aboard immediately after this call and calls continue_npc_trip
+        # (which needs destination/parking/curb/building lookups this
+        # function otherwise has no reason to take as parameters) once
+        # ready; this function only ever decides *when* that becomes true.
+        vehicle.car.speed = 0.0
+        group = vehicle.trip_group
+        if group is not None and not group.all_aboard:
+            if group.wait_deadline_sim_time is None:
+                group.wait_deadline_sim_time = traffic_world.sim_time + group.activity_duration_s + NPC_GROUP_RETURN_GRACE_S
+            elif traffic_world.sim_time >= group.wait_deadline_sim_time:
+                # Section 20: never wait forever - leave stragglers behind
+                # rather than block the vehicle (and every other trip
+                # group's parking turnover) indefinitely. A resident still
+                # out there keeps existing as an ordinary Resident/
+                # Pedestrian, just no longer tied to this vehicle/group -
+                # dropped from member_resident_ids entirely (not marked
+                # boarded) so OCCUPANTS/debug reporting never overcounts
+                # a passenger who was actually left behind.
+                stranded = set(group.member_resident_ids) - group.boarded_resident_ids
+                for resident_id in stranded:
+                    resident = resident_manager.get(resident_id)
+                    if resident is not None:
+                        resident.trip_group_id = None
+                group.member_resident_ids = [
+                    resident_id for resident_id in group.member_resident_ids if resident_id not in stranded
+                ]
+        return
+
     path = driver.path
     while driver.path_index < len(path) - 1 and math.hypot(
         path[driver.path_index].x - vehicle.car.x, path[driver.path_index].y - vehicle.car.y
@@ -970,7 +1114,11 @@ def update_npc(
         vehicle.state = NPCState.WAITING
         vehicle.debug_waiting_for = "footprint blocked (curb/building)"
     elif at_destination:
-        vehicle.state = NPCState.ARRIVING
+        # ARRIVING while still coasting to a stop; PARKED (multi-passenger-
+        # car.md section 17) once genuinely stationary - the same 0.05 m/s
+        # "stopped" threshold physics.py itself uses ("cars cannot steer
+        # in place while stationary" below it).
+        vehicle.state = NPCState.PARKED if abs(vehicle.car.speed) < 0.05 else NPCState.ARRIVING
         vehicle.debug_waiting_for = ""
     elif decision.action == TrafficAction.STOP and abs(vehicle.car.speed) < 0.5:
         vehicle.state = NPCState.WAITING
@@ -1394,3 +1542,74 @@ def spawn_deterministic_npc(
             if spawned is not None:
                 return spawned
     return None
+
+
+def continue_npc_trip(
+    vehicle: NPCVehicle,
+    driver: Driver,
+    traffic_world: TrafficWorld,
+    ways: List[Way],
+    spatial_grid: Optional[SpatialWayGrid] = None,
+    parking_spaces: Optional[List] = None,
+    sceneries: Optional[List] = None,
+    buildings: Optional[List] = None,
+    curbs: Optional[List[Curb]] = None,
+    curb_grid: Optional[SpatialWayGrid] = None,
+    building_grid: Optional[SpatialWayGrid] = None,
+) -> bool:
+    """multi-passenger-car.md section 21: once a trip group's passengers
+    have all reboarded (or update_npc's return-timeout left a straggler
+    behind), release this vehicle's parking spot and send it to a new
+    destination in place - reusing the exact same destination-selection/
+    validation machinery as a brand-new spawn (_pick_npc_destination_
+    candidates, _plan_and_validate_npc_route), never a second, parallel
+    routing implementation.
+
+    Mutates `driver`/`vehicle` in place (same Resident group, same vehicle
+    identity - only the route changes) and returns whether a next
+    destination was actually found. False leaves the vehicle parked to
+    try again on a later call, the same "don't get stuck on one bad
+    candidate forever" fallback spawn_deterministic_npc already uses for
+    a brand-new trip.
+    """
+    origin = (vehicle.car.x, vehicle.car.y)
+    destination_candidates = _pick_npc_destination_candidates(
+        origin[0], origin[1], parking_spaces, sceneries, buildings,
+        ways=ways, spatial_grid=spatial_grid,
+    )
+    for destination, target_space in destination_candidates:
+        destination_is_off_road = destination != origin
+        path = _plan_and_validate_npc_route(
+            traffic_world, ways, origin, destination, spatial_grid=spatial_grid,
+            curbs=curbs, curb_grid=curb_grid, buildings=buildings, building_grid=building_grid,
+            parking_space=target_space, destination_is_off_road=destination_is_off_road,
+        )
+        if path is None:
+            continue
+        release_npc_parking_reservation(vehicle)
+        vehicle.destination = destination
+        vehicle.travel_route = [(p.x, p.y) for p in path]
+        vehicle.destination_parking_space_id = None
+        vehicle.state = NPCState.CRUISING
+        vehicle.debug_waiting_for = ""
+        if target_space is not None:
+            target_space.reserved = True
+            target_space.vehicle_id = vehicle.vehicle_id
+            vehicle.destination_parking_space_id = getattr(target_space, "osm_id", None)
+            vehicle.reserved_parking_space = target_space
+        driver.path = path
+        driver.path_index = 1
+        driver.destination = destination
+        driver.current_way = path[0].way
+        if vehicle.trip_group is not None:
+            # Reset per-stop bookkeeping for the next park-visit-return
+            # cycle (section 21's Destination A -> B -> C loop) - a fresh
+            # activity duration and destination entrance, a fresh wait
+            # deadline once parked again.
+            vehicle.trip_group.activity_duration_s = random.uniform(
+                NPC_BUILDING_VISIT_MIN_S, NPC_BUILDING_VISIT_MAX_S
+            )
+            vehicle.trip_group.destination_entrance = None
+            vehicle.trip_group.wait_deadline_sim_time = None
+        return True
+    return False

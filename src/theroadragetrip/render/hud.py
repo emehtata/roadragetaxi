@@ -654,9 +654,17 @@ def draw_npc_debug_panel(screen, vehicle, driver, font, x: int = 10, y: int = 22
     else:
         allowed = ",".join(sorted(getattr(light, "allowed_movements", ()) or ())) or "?"
         signal_label = f"signal={getattr(light, 'approach_id', None) or getattr(light, 'id', '?')} allows={allowed}"
+    trip_group = getattr(vehicle, "trip_group", None)
+    state_label = vehicle.state
+    if trip_group is not None and vehicle.state == "PARKED" and not trip_group.all_aboard:
+        # multi-passenger-car.md section 26/17's PARKED_WAITING_FOR_
+        # PASSENGERS - a note on top of the real NPCState.PARKED rather
+        # than a separate parallel state value (see TripGroup's docstring
+        # for why one state enum, not two, tracks this).
+        state_label = "PARKED (waiting for passengers)"
     lines = [
         f"NPC vehicle={vehicle.vehicle_id} resident={vehicle.owner_id}",
-        f"state={vehicle.state} speed={vehicle.speed * 3.6:.0f}km/h target={driver.target_speed_mps * 3.6:.0f}km/h",
+        f"state={state_label} speed={vehicle.speed * 3.6:.0f}km/h target={driver.target_speed_mps * 3.6:.0f}km/h",
         f"way={way_label} next={next_way_label} route={driver.path_index}/{len(driver.path) - 1} maneuver={driver.next_maneuver}",
         f"lane={lane_bias} {signal_label}",
         f"traffic={decision.action} ({decision.reason}) stop_dist={stop_dist}",
@@ -667,6 +675,14 @@ def draw_npc_debug_panel(screen, vehicle, driver, font, x: int = 10, y: int = 22
             else "parking=yard/lot (no dedicated space)"
         ),
     ]
+    if trip_group is not None:
+        # multi-passenger-car.md section 26: CAPACITY/OCCUPANTS/TRIP GROUP.
+        entrance = trip_group.destination_entrance
+        entrance_label = f"({entrance[0]:.0f},{entrance[1]:.0f})" if entrance is not None else "-"
+        lines.append(
+            f"capacity={vehicle.capacity} occupants={len(trip_group.boarded_resident_ids)}/"
+            f"{len(trip_group.member_resident_ids)} trip_group={trip_group.group_id} entrance={entrance_label}"
+        )
     if vehicle.debug_waiting_for:
         # Surfaces NPC-more.md section 12/13/19's live footprint safety
         # net tripping (see npc.update_npc) - not just the ordinary

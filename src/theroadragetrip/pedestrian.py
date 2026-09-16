@@ -8,6 +8,7 @@ from typing import Dict, List, Optional, Set, Tuple
 
 from .osm import Crossing, LogicalIntersection, TrafficLight, Way
 from .geo import closest_point_and_dist_to_segment, compute_bbox, dist_point_to_segment, point_in_polygon
+from .npc import NPCState
 from .physics import Car, is_car_road, is_pedestrian_way
 from .residents import ResidentManager
 
@@ -49,6 +50,22 @@ CYCLIST_COLORS = [
 
 PEDESTRIAN_LOD_UPDATE_INTERVALS = (1.0 / 30.0, 1.0 / 12.0, 0.2)
 MAX_VEHICLE_RESERVATION_DISTANCE_M = 100.0
+TRIP_GROUP_SPAWN_FANOUT_RADIUS_M = 1.5
+
+
+def _fanned_out_position(
+    anchor_x: float, anchor_y: float, index: int, total: int, radius_m: float = TRIP_GROUP_SPAWN_FANOUT_RADIUS_M,
+) -> Tuple[float, float]:
+    """A small spread-out point around `anchor` for the index-th of
+    `total` trip-group members disembarking together (multi-passenger-
+    car.md section 9: "sensible position ... not stacked on one pixel").
+    Not a rigid formation - just enough separation that five passengers
+    don't spawn on the exact same point; each walks its own route from
+    here afterwards."""
+    if total <= 1:
+        return anchor_x, anchor_y
+    angle = 2.0 * math.pi * index / total
+    return anchor_x + math.cos(angle) * radius_m, anchor_y + math.sin(angle) * radius_m
 
 
 class PedestrianNetwork:
@@ -330,7 +347,11 @@ class PedestrianManager:
         return True
 
     def _materialize_parked_drivers(self) -> None:
-        """Keep parked cars empty while placing their owners beside the car."""
+        """Keep a parked NPC vehicle empty while placing every trip-group
+        member beside the car (multi-passenger-car.md sections 7-11) - one
+        pedestrian per member, not just a single "owner", each walking to
+        the *same* shared building entrance (picked once per group, cached
+        on TripGroup.destination_entrance)."""
         vehicles = self.traffic_manager.npcs if self.traffic_manager is not None else self.traffic_vehicles
         linked_residents = {
             pedestrian.resident_id
@@ -338,41 +359,60 @@ class PedestrianManager:
             if pedestrian.resident_id is not None
         }
         for vehicle in vehicles:
-            if getattr(vehicle, "state", "driving") != "parked":
+            if getattr(vehicle, "state", "driving") != NPCState.PARKED:
                 continue
-            resident_id = getattr(vehicle, "owner_id", None)
-            if resident_id is None or resident_id in linked_residents:
+            trip_group = getattr(vehicle, "trip_group", None)
+            if trip_group is None or not self.entrance_locations:
                 continue
-            if not self.entrance_locations:
+            pending_members = [
+                resident_id for resident_id in trip_group.member_resident_ids
+                if resident_id not in linked_residents
+            ]
+            if not pending_members:
                 continue
             entry_x, entry_y = self._vehicle_entry_position(vehicle)
-            pedestrian = self.spawn_pedestrian_at(
-                entry_x,
-                entry_y,
-                getattr(vehicle, "heading", 0.0),
-            )
-            if pedestrian is None:
-                continue
-            pedestrian.resident_id = resident_id
-            pedestrian.linked_vehicle_id = id(vehicle)
-            pedestrian.linked_building_entrance = min(
-                self.entrance_locations,
-                key=lambda entrance: math.hypot(entrance[0] - entry_x, entrance[1] - entry_y),
-            )
-            pedestrian.destination = pedestrian.linked_building_entrance
-            pedestrian.state = "walking_to_building"
-            pedestrian.animation_state = "walking"
-            pedestrian.door_grace_timer = 5.0
-            self.add_pedestrian(pedestrian)
-            linked_residents.add(resident_id)
+            if trip_group.destination_entrance is None:
+                trip_group.destination_entrance = min(
+                    self.entrance_locations,
+                    key=lambda entrance: math.hypot(entrance[0] - entry_x, entrance[1] - entry_y),
+                )
+            total_members = len(trip_group.member_resident_ids)
+            for resident_id in pending_members:
+                index = trip_group.member_resident_ids.index(resident_id)
+                spawn_x, spawn_y = _fanned_out_position(entry_x, entry_y, index, total_members)
+                pedestrian = self.spawn_pedestrian_at(spawn_x, spawn_y, getattr(vehicle, "heading", 0.0))
+                if pedestrian is None:
+                    # The fanned-out point landed somewhere with no nearby
+                    # walkable way - fall back to the exact entry point
+                    # (a minor overlap between members is fine; not
+                    # spawning the passenger at all is not).
+                    pedestrian = self.spawn_pedestrian_at(entry_x, entry_y, getattr(vehicle, "heading", 0.0))
+                if pedestrian is None:
+                    continue
+                pedestrian.resident_id = resident_id
+                pedestrian.linked_vehicle_id = id(vehicle)
+                pedestrian.linked_building_entrance = trip_group.destination_entrance
+                pedestrian.destination = trip_group.destination_entrance
+                pedestrian.state = "walking_to_building"
+                pedestrian.animation_state = "walking"
+                pedestrian.door_grace_timer = 5.0
+                trip_group.boarded_resident_ids.discard(resident_id)
+                self.add_pedestrian(pedestrian)
+                linked_residents.add(resident_id)
 
     def _update_linked_driver(self, pedestrian: Pedestrian, update_dt: float) -> bool:
-        """Move a parked vehicle owner between its building and the same car."""
+        """Move one trip-group member between the shared destination
+        building and its own group's vehicle (multi-passenger-car.md
+        sections 9-15, 19). Each Pedestrian is independent, so this same
+        function already serves however many members of the group are
+        currently linked - it only ever reads/writes the one instance
+        passed in."""
         if pedestrian.linked_vehicle_id is None:
             return False
         vehicles = self.traffic_manager.npcs if self.traffic_manager is not None else self.traffic_vehicles
         vehicle = next((candidate for candidate in vehicles if id(candidate) == pedestrian.linked_vehicle_id), None)
-        if vehicle is None:
+        trip_group = getattr(vehicle, "trip_group", None) if vehicle is not None else None
+        if vehicle is None or trip_group is None:
             pedestrian.linked_vehicle_id = None
             return False
         if pedestrian.state == "walking_to_building":
@@ -386,7 +426,7 @@ class PedestrianManager:
                 pedestrian.speed = 0.0
                 pedestrian.state = PedestrianState.ENTERING_BUILDING.value
                 pedestrian.building_entry_timer = 0.35
-                pedestrian.building_visit_timer = 8.0
+                pedestrian.building_visit_timer = trip_group.activity_duration_s
                 pedestrian.animation_state = "idle"
                 return True
             pedestrian.heading = math.atan2(target_y - pedestrian.y, target_x - pedestrian.x)
@@ -414,11 +454,7 @@ class PedestrianManager:
             distance = math.hypot(target_x - pedestrian.x, target_y - pedestrian.y)
             if distance <= 1.0:
                 pedestrian.x, pedestrian.y = target_x, target_y
-                vehicle.reserved_by_pedestrian_id = id(pedestrian)
-                vehicle.state = "reserved"
-                pedestrian.reserved_vehicle_id = id(vehicle)
-                pedestrian.current_route_segment = 1
-                pedestrian.route = [(pedestrian.x, pedestrian.y), (target_x, target_y)]
+                pedestrian.speed = 0.0
                 pedestrian.state = PedestrianState.ENTERING_VEHICLE.value
                 pedestrian.vehicle_entry_timer = 0.4
                 pedestrian.animation_state = "idle"
@@ -429,6 +465,22 @@ class PedestrianManager:
             pedestrian.x += math.cos(pedestrian.heading) * step
             pedestrian.y += math.sin(pedestrian.heading) * step
             pedestrian.animation_state = "walking"
+            return True
+        if pedestrian.state == PedestrianState.ENTERING_VEHICLE.value:
+            # multi-passenger-car.md section 19: a *group* reboard - not
+            # the single-exclusive-claimant reservation dance
+            # reserve_parked_vehicle/enter_reserved_vehicle use, which
+            # would deadlock members 2..N against vehicle.state no longer
+            # being NPCState.PARKED once the first member reboards. Each
+            # member instead just marks itself boarded and despawns -
+            # npc.update_npc/continue_npc_trip is what actually decides
+            # when the vehicle leaves (once trip_group.all_aboard).
+            pedestrian.speed = 0.0
+            pedestrian.vehicle_entry_timer = max(0.0, pedestrian.vehicle_entry_timer - update_dt)
+            if pedestrian.vehicle_entry_timer <= 0.0:
+                trip_group.boarded_resident_ids.add(pedestrian.resident_id)
+                pedestrian.state = PedestrianState.DESPAWNING.value
+                pedestrian.linked_vehicle_id = None
             return True
         return False
 
@@ -580,6 +632,11 @@ class PedestrianManager:
             if getattr(vehicle, "state", "driving") == "parked"
             and getattr(vehicle, "reserved_by_pedestrian_id", None) is None
             and getattr(vehicle, "current_driver_id", None) is None
+            # multi-passenger-car.md section 16: never let this generic
+            # "grab any nearby idle vehicle" mechanic claim a vehicle that
+            # belongs to a trip group - its own members must be the only
+            # ones who ever reboard it (see _update_linked_driver).
+            and getattr(vehicle, "trip_group", None) is None
             and math.hypot(vehicle.x - x, vehicle.y - y) <= radius_m
         ]
         return min(candidates, key=lambda vehicle: math.hypot(vehicle.x - x, vehicle.y - y), default=None)

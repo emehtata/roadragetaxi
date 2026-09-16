@@ -96,6 +96,10 @@ class Resident:
     mode: str = "walking"
     vehicle_ids: Set[int] = field(default_factory=set)
     active_vehicle_id: Optional[int] = None
+    # multi-passenger-car.md sections 3, 16: which NPCVehicle trip group (if
+    # any) this resident is currently travelling with - None once they
+    # leave the group (reboard timeout, or never in one to begin with).
+    trip_group_id: Optional[int] = None
     lod_level: int = 0
     lod_update_due: bool = True
     lod_time_accumulator: float = 0.0

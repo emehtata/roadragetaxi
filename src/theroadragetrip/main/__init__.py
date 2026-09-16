@@ -142,7 +142,7 @@ from ..render import (
     minimum_px_per_m_for_viewport_width,
     solar_altitude_and_events,
 )
-from ..npc import spawn_deterministic_npc, update_npc
+from ..npc import NPCState, continue_npc_trip, spawn_deterministic_npc, update_npc
 from ..pedestrian import PedestrianManager, PlayerPedestrian
 from ..residents import ResidentManager
 from ..police import place_speed_cameras
@@ -669,6 +669,10 @@ def _load_world(
         npcs = []
         npc_drivers = {}
         logger.info("NPC-001: no valid route found yet, will retry every %.0fs", NPC_SPAWN_RETRY_COOLDOWN_S)
+    # Same list object for the life of the session - later npcs.append()
+    # calls (NPC retry-spawn) stay visible through traffic_mgr.npcs without
+    # needing to re-set this after every spawn.
+    traffic_mgr.npcs = npcs
     # Initialize autonomous Pedestrian Manager
     on_load_progress(0.92, "Preparing pedestrians...")
     pedestrian_mgr = PedestrianManager(
@@ -677,8 +681,7 @@ def _load_world(
         traffic_lights=traffic_lights,
         crossings=crossings,
         logical_intersections=logical_intersections,
-        traffic_vehicles=[],
-        traffic_manager=None,
+        traffic_manager=traffic_mgr,
         residents=residents,
         venue_buildings=buildings,
     )
@@ -1731,6 +1734,22 @@ def main() -> None:
                             one_npc, npc_driver_for_vehicle, dt, traffic_mgr, residents,
                             curbs=curbs, buildings=buildings, curb_grid=curb_grid, building_grid=building_grid,
                         )
+                        # multi-passenger-car.md section 21: once every
+                        # trip-group member is back aboard (or update_npc's
+                        # own return-timeout gave up on stragglers), send
+                        # the same vehicle/driver to a new destination
+                        # rather than leaving it parked forever.
+                        if (
+                            one_npc.state == NPCState.PARKED
+                            and one_npc.trip_group is not None
+                            and one_npc.trip_group.all_aboard
+                        ):
+                            continue_npc_trip(
+                                one_npc, npc_driver_for_vehicle, traffic_mgr, ways,
+                                spatial_grid=spatial_grid, parking_spaces=parking_spaces,
+                                sceneries=sceneries, buildings=buildings,
+                                curbs=curbs, curb_grid=curb_grid, building_grid=building_grid,
+                            )
             vomited_passenger = taxi_mgr.take_vomited_passenger(car)
             if vomited_passenger is not None:
                 audio.play_passenger_line("Nyt alkaa jo helpottaa.", vomited_passenger.gender, language, vomited_passenger.name)

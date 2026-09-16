@@ -13,8 +13,10 @@ from theroadragetrip.pedestrian import (
     PedestrianNetwork,
     PedestrianState,
 )
+from theroadragetrip.npc import NPCState, spawn_npc, update_npc
 from theroadragetrip.physics import Car
 from theroadragetrip.residents import ResidentManager
+from theroadragetrip.traffic_world import TrafficWorld
 
 
 def test_pedestrian_network_routes_across_connected_ways():
@@ -1014,3 +1016,147 @@ def test_point_near_building_window_cache_is_cleared_when_buildings_change():
 
     manager.set_venue_buildings(_dense_buildings(50))
     assert manager._near_building_window_cache == {}
+
+
+def _park_a_trip_group_vehicle(capacity_monkeypatch=None):
+    """Drive a real spawn_npc'd vehicle to NPCState.PARKED - shared setup
+    for the multi-passenger-car.md tests below, so each test exercises the
+    real npc.py/pedestrian.py integration rather than a hand-built mock."""
+    ways = [
+        Way(points_m=[(i * 20.0, 0.0), ((i + 1) * 20.0, 0.0)], highway="residential", half_width_m=4.5)
+        for i in range(10)
+    ]
+    building = Building(
+        points_m=[(190.0, 10.0), (210.0, 10.0), (210.0, 30.0), (190.0, 30.0)],
+        bbox=(190.0, 10.0, 210.0, 30.0),
+        entrances=[(195.0, 10.0)],
+    )
+    tw = TrafficWorld(ways)
+    residents = ResidentManager()
+    spawned = spawn_npc(1, residents, tw, ways, (0.0, 0.0), (180.0, 0.0))
+    assert spawned is not None
+    _, driver, vehicle = spawned
+    for _ in range(3000):
+        update_npc(vehicle, driver, 1.0 / 30.0, tw, residents)
+        tw.advance_time(1.0 / 30.0)
+        if vehicle.state == NPCState.PARKED:
+            break
+    assert vehicle.state == NPCState.PARKED
+    return ways, building, tw, residents, driver, vehicle
+
+
+def test_materialize_parked_drivers_spawns_one_pedestrian_per_trip_group_member():
+    ways, building, tw, residents, driver, vehicle = _park_a_trip_group_vehicle()
+    tw.npcs = [vehicle]
+    manager = PedestrianManager(ways, target_count=0, traffic_manager=tw, residents=residents, venue_buildings=[building])
+
+    manager.update(Car(x=5000.0, y=5000.0, heading=0.0, speed=0.0), dt=1.0 / 30.0)
+
+    member_ids = set(vehicle.trip_group.member_resident_ids)
+    spawned_ids = {ped.resident_id for ped in manager.pedestrians}
+    assert spawned_ids == member_ids
+    assert vehicle.trip_group.boarded_resident_ids == set()
+    for ped in manager.pedestrians:
+        assert ped.linked_vehicle_id == id(vehicle)
+        assert ped.state == "walking_to_building"
+
+
+def test_materialize_parked_drivers_shares_one_building_entrance_across_the_group():
+    ways, building, tw, residents, driver, vehicle = _park_a_trip_group_vehicle()
+    tw.npcs = [vehicle]
+    manager = PedestrianManager(ways, target_count=0, traffic_manager=tw, residents=residents, venue_buildings=[building])
+
+    manager.update(Car(x=5000.0, y=5000.0, heading=0.0, speed=0.0), dt=1.0 / 30.0)
+
+    entrances = {ped.linked_building_entrance for ped in manager.pedestrians}
+    assert len(entrances) == 1
+    assert vehicle.trip_group.destination_entrance in entrances
+    # A group of >1 spawns at distinct positions - not stacked on one point.
+    if len(manager.pedestrians) > 1:
+        positions = {(round(p.x, 3), round(p.y, 3)) for p in manager.pedestrians}
+        assert len(positions) == len(manager.pedestrians)
+
+
+def test_full_trip_group_lifecycle_reboards_and_frees_the_vehicle():
+    """The complete section 7-21 loop: disembark, walk to the shared
+    building, wait, walk back, reboard as a group, all_aboard becomes
+    true again - using the real npc.py/pedestrian.py wiring, not mocks.
+
+    Drives _materialize_parked_drivers/_update_linked_driver directly
+    (not through PedestrianManager.update()'s full population-management
+    pass) - that pass's LOD throttling and offscreen/at-door despawn
+    rules are pre-existing, general-purpose pedestrian bookkeeping
+    unrelated to this feature, and calibrated around a real game's
+    frame rate/city scale, not a synthetic 10-way test map. This still
+    exercises the exact same trip-group code this feature adds - just
+    without also depending on those unrelated systems behaving a
+    particular way on a tiny fixture.
+    """
+    ways, building, tw, residents, driver, vehicle = _park_a_trip_group_vehicle()
+    tw.npcs = [vehicle]
+    manager = PedestrianManager(ways, target_count=0, traffic_manager=tw, residents=residents, venue_buildings=[building])
+    member_ids = set(vehicle.trip_group.member_resident_ids)
+
+    manager._materialize_parked_drivers()
+    assert {ped.resident_id for ped in manager.pedestrians} == member_ids
+    assert not vehicle.trip_group.all_aboard
+
+    for _ in range(100_000):
+        for ped in manager.pedestrians:
+            manager._update_linked_driver(ped, 0.2)
+        update_npc(vehicle, driver, 0.2, tw, residents)
+        tw.advance_time(0.2)
+        if vehicle.trip_group.all_aboard:
+            break
+
+    assert vehicle.trip_group.all_aboard
+    assert set(vehicle.trip_group.member_resident_ids) == member_ids  # nobody stranded
+    # Every member ended up DESPAWNING (about to be removed), never stuck
+    # mid-walk or still "in" the building.
+    for ped in manager.pedestrians:
+        if ped.resident_id in member_ids:
+            assert ped.state == PedestrianState.DESPAWNING.value
+
+
+def test_find_available_parked_vehicle_ignores_trip_group_vehicles():
+    """multi-passenger-car.md section 16: the generic 'grab any nearby
+    idle vehicle' mechanic must never claim a vehicle that belongs to a
+    trip group, even though its state string technically matches."""
+    ways, building, tw, residents, driver, vehicle = _park_a_trip_group_vehicle()
+    vehicle.state = "parked"  # what the generic mechanic actually checks for
+    manager = PedestrianManager(ways, target_count=0, traffic_manager=None, residents=residents, traffic_vehicles=[vehicle])
+
+    found = manager.find_available_parked_vehicle(vehicle.x, vehicle.y, radius_m=50.0)
+    assert found is None
+
+    vehicle.trip_group = None
+    found = manager.find_available_parked_vehicle(vehicle.x, vehicle.y, radius_m=50.0)
+    assert found is vehicle
+
+
+def test_two_trip_group_vehicles_materialize_independently():
+    """multi-passenger-car.md Test 10: two parked trip-group vehicles at
+    once must not mix up which pedestrians belong to which vehicle."""
+    ways, building, tw, residents, driver_a, vehicle_a = _park_a_trip_group_vehicle()
+    spawned_b = spawn_npc(2, residents, tw, ways, (20.0, 0.0), (160.0, 0.0))
+    assert spawned_b is not None
+    _, driver_b, vehicle_b = spawned_b
+    for _ in range(3000):
+        update_npc(vehicle_b, driver_b, 1.0 / 30.0, tw, residents)
+        tw.advance_time(1.0 / 30.0)
+        if vehicle_b.state == NPCState.PARKED:
+            break
+    assert vehicle_b.state == NPCState.PARKED
+
+    tw.npcs = [vehicle_a, vehicle_b]
+    manager = PedestrianManager(ways, target_count=0, traffic_manager=tw, residents=residents, venue_buildings=[building])
+    manager.update(Car(x=5000.0, y=5000.0, heading=0.0, speed=0.0), dt=1.0 / 30.0)
+
+    members_a = set(vehicle_a.trip_group.member_resident_ids)
+    members_b = set(vehicle_b.trip_group.member_resident_ids)
+    assert members_a.isdisjoint(members_b)
+    for ped in manager.pedestrians:
+        if ped.resident_id in members_a:
+            assert ped.linked_vehicle_id == id(vehicle_a)
+        elif ped.resident_id in members_b:
+            assert ped.linked_vehicle_id == id(vehicle_b)

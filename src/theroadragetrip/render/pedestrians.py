@@ -234,7 +234,7 @@ def draw_resident_popup(
         ]
         return ", ".join(names) or "-"
 
-    lines = (
+    lines = [
         f"Resident #{resident.resident_id}",
         f"{resident.first_name} {resident.surname}".strip(),
         f"Sukupuoli: {resident.gender or '-'}",
@@ -244,7 +244,20 @@ def draw_resident_popup(
         f"Ajoneuvoja: {vehicle_count}",
         f"Vanhemmat: {names_for(getattr(resident, 'parent_ids', ())) }",
         f"Lapset: {names_for(getattr(resident, 'child_ids', ())) }",
-    )
+    ]
+    trip_group_id = getattr(resident, "trip_group_id", None)
+    if trip_group_id is not None:
+        # multi-passenger-car.md section 26's per-passenger debug info:
+        # GROUP/VEHICLE/STATE/DESTINATION - resident.trip_group_id is the
+        # only durable link (a Pedestrian's own linked_vehicle_id goes
+        # away once it despawns after boarding), so this stays visible
+        # for the whole trip, not just while a Pedestrian entity exists.
+        lines.append(f"Matkaseurue: #{trip_group_id}")
+        if pedestrian is not None:
+            lines.append(f"Matkan tila: {getattr(pedestrian, 'state', '-')}")
+            entrance = getattr(pedestrian, "linked_building_entrance", None)
+            if entrance is not None:
+                lines.append(f"Kohde: ({entrance[0]:.0f},{entrance[1]:.0f})")
     for index, text in enumerate(lines):
         color = (245, 250, 255) if index == 0 else (205, 220, 232)
         text_surface = font.render(text, True, color)

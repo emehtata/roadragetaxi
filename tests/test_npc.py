@@ -10,14 +10,18 @@ import pytest
 from theroadragetrip.render.vehicles import draw_npc_cars
 from theroadragetrip.npc import (
     CORNER_RADIUS_M,
+    DEFAULT_NPC_VEHICLE_CAPACITY,
+    NPC_VEHICLE_CAPACITY_BY_TYPE,
     Driver,
     NPCState,
     NPCVehicle,
     PathPoint,
+    TripGroup,
     _lane_offset_point,
     NPC_ARRIVAL_RADIUS_M,
     NPC_BUILDING_YARD_CLEARANCE_M,
     NPC_FOOTPRINT_VIOLATION_CRAWL_MPS,
+    NPC_GROUP_RETURN_GRACE_S,
     _align_approach_to_parking_orientation,
     _building_yard_point,
     _corner_safe_speed_mps,
@@ -28,6 +32,7 @@ from theroadragetrip.npc import (
     _pick_npc_destination_candidates,
     _roadside_parking_point,
     build_driving_path,
+    continue_npc_trip,
     has_active_driver,
     is_vehicle_pose_valid,
     release_npc_parking_reservation,
@@ -149,16 +154,18 @@ def test_deterministic_npc_eventually_reaches_its_destination():
     for _ in range(1800):
         update_npc(vehicle, driver, 1.0 / 60.0, tw, residents)
         seen_states.add(vehicle.state)
-        if vehicle.state == NPCState.ARRIVING:
+        if vehicle.state in (NPCState.ARRIVING, NPCState.PARKED):
             break
-    assert vehicle.state == NPCState.ARRIVING
+    assert vehicle.state in (NPCState.ARRIVING, NPCState.PARKED)
     assert NPCState.CRUISING in seen_states
     # Confirmed to actually settle, not just touch ARRIVING once and then
     # spin off - a real regression this project already hit once (see
-    # update_npc's "at_destination" steering-freeze comment).
+    # update_npc's "at_destination" steering-freeze comment). Settling
+    # means genuinely stopped: NPCState.PARKED (multi-passenger-car.md
+    # section 17), not just still coasting to a halt.
     for _ in range(120):
         update_npc(vehicle, driver, 1.0 / 60.0, tw, residents)
-    assert vehicle.state == NPCState.ARRIVING
+    assert vehicle.state == NPCState.PARKED
     assert abs(vehicle.speed) < 0.5
     # Regression: settling anywhere within the old, coarser
     # WAYPOINT_REACH_RADIUS_M (4m) could be most of the way back toward
@@ -1039,3 +1046,321 @@ def test_draw_npc_cars_debug_fallback_still_works_without_a_travel_route():
         travel_route=None,
     )
     draw_npc_cars(screen, [parked_like_npc], 10.0, 0.0, ways=[way], show_debug=True)
+
+
+def test_spawn_npc_creates_a_trip_group_not_exceeding_capacity():
+    """multi-passenger-car.md sections 2, 4, 5: capacity is a per-type
+    lookup, group size never exceeds it, and it's never auto-filled."""
+    ways = _straight_chain()
+    tw = TrafficWorld(ways)
+    residents = ResidentManager()
+
+    group_sizes = set()
+    for i in range(30):
+        spawned = spawn_npc(i, residents, tw, ways, (0.0, 0.0), (180.0, 0.0))
+        assert spawned is not None
+        _, driver, vehicle = spawned
+        assert vehicle.capacity == NPC_VEHICLE_CAPACITY_BY_TYPE["car"]
+        assert vehicle.trip_group is not None
+        assert vehicle.trip_group.vehicle_id == vehicle.vehicle_id
+        assert 1 <= len(vehicle.trip_group.member_resident_ids) <= vehicle.capacity
+        assert vehicle.owner_id == vehicle.trip_group.member_resident_ids[0]
+        group_sizes.add(len(vehicle.trip_group.member_resident_ids))
+
+    # Never always full - across enough spawns, some variety shows up.
+    assert len(group_sizes) > 1
+
+
+def test_spawn_npc_defaults_to_five_seats_for_an_unknown_vehicle_type():
+    ways = _straight_chain()
+    tw = TrafficWorld(ways)
+    residents = ResidentManager()
+    spawned = spawn_npc(1, residents, tw, ways, (0.0, 0.0), (180.0, 0.0), vehicle_type="unicycle")
+    assert spawned is not None
+    _, _, vehicle = spawned
+    assert vehicle.capacity == DEFAULT_NPC_VEHICLE_CAPACITY
+
+
+def test_trip_group_all_aboard_reflects_boarded_membership():
+    group = TripGroup(group_id=1, vehicle_id=1, member_resident_ids=[10, 11, 12], boarded_resident_ids={10, 11, 12})
+    assert group.all_aboard
+    group.boarded_resident_ids.discard(11)
+    assert not group.all_aboard
+    group.boarded_resident_ids.add(11)
+    assert group.all_aboard
+
+
+def test_update_npc_transitions_arriving_to_parked_once_stopped():
+    """Regression: an arrived NPC used to sit in ARRIVING forever with no
+    further lifecycle. It must settle into a real terminal PARKED state
+    (multi-passenger-car.md section 17) once genuinely stationary."""
+    ways = _straight_chain()
+    tw = TrafficWorld(ways)
+    residents = ResidentManager()
+    spawned = spawn_npc(1, residents, tw, ways, (0.0, 0.0), (180.0, 0.0))
+    assert spawned is not None
+    _, driver, vehicle = spawned
+
+    for _ in range(3000):
+        update_npc(vehicle, driver, 1.0 / 30.0, tw, residents)
+        if vehicle.state == NPCState.PARKED:
+            break
+    assert vehicle.state == NPCState.PARKED
+    assert abs(vehicle.speed) < 0.05
+
+
+def test_update_npc_parked_short_circuits_without_a_trip_group():
+    """A vehicle with no trip group (e.g. constructed directly, not via
+    spawn_npc) must not crash update_npc's PARKED bookkeeping branch."""
+    ways = _straight_chain()
+    tw = TrafficWorld(ways)
+    residents = ResidentManager()
+    resident = residents.create(mode="driving")
+    resident.active_vehicle_id = 1
+    car = Car(x=0.0, y=0.0, heading=0.0, speed=0.0)
+    vehicle = NPCVehicle(vehicle_id=1, car=car, owner_id=resident.resident_id, state=NPCState.PARKED, trip_group=None)
+    driver = Driver(resident_id=resident.resident_id, vehicle_id=1, path=[PathPoint(0.0, 0.0)], destination=(0.0, 0.0))
+
+    update_npc(vehicle, driver, 1.0 / 30.0, tw, residents)
+    assert vehicle.state == NPCState.PARKED
+    assert vehicle.speed == 0.0
+
+
+def test_update_npc_strands_a_straggler_after_the_return_timeout():
+    """multi-passenger-car.md section 20: never wait forever - once the
+    deadline passes, a still-missing member is dropped from the group
+    (not marked boarded) so all_aboard becomes true and the resident is
+    freed from the group rather than left permanently stuck."""
+    ways = _straight_chain()
+    tw = TrafficWorld(ways)
+    residents = ResidentManager()
+    spawned = spawn_npc(1, residents, tw, ways, (0.0, 0.0), (180.0, 0.0))
+    assert spawned is not None
+    _, driver, vehicle = spawned
+    for _ in range(3000):
+        update_npc(vehicle, driver, 1.0 / 30.0, tw, residents)
+        tw.advance_time(1.0 / 30.0)
+        if vehicle.state == NPCState.PARKED:
+            break
+    assert vehicle.state == NPCState.PARKED
+
+    group = vehicle.trip_group
+    # Simulate everyone having disembarked (as pedestrian.py would).
+    group.boarded_resident_ids.clear()
+    original_members = list(group.member_resident_ids)
+
+    # One tick to set the wait deadline, then fast-forward well past it.
+    update_npc(vehicle, driver, 1.0 / 30.0, tw, residents)
+    assert group.wait_deadline_sim_time is not None
+    tw.advance_time(group.activity_duration_s + NPC_GROUP_RETURN_GRACE_S + 1.0)
+
+    update_npc(vehicle, driver, 1.0 / 30.0, tw, residents)
+    assert group.all_aboard
+    assert group.member_resident_ids == []
+    for resident_id in original_members:
+        resident = residents.get(resident_id)
+        assert resident.trip_group_id is None
+
+
+def test_update_npc_does_not_strand_a_group_that_returns_in_time():
+    ways = _straight_chain()
+    tw = TrafficWorld(ways)
+    residents = ResidentManager()
+    spawned = spawn_npc(1, residents, tw, ways, (0.0, 0.0), (180.0, 0.0))
+    assert spawned is not None
+    _, driver, vehicle = spawned
+    for _ in range(3000):
+        update_npc(vehicle, driver, 1.0 / 30.0, tw, residents)
+        tw.advance_time(1.0 / 30.0)
+        if vehicle.state == NPCState.PARKED:
+            break
+
+    group = vehicle.trip_group
+    original_members = list(group.member_resident_ids)
+    group.boarded_resident_ids.clear()
+    update_npc(vehicle, driver, 1.0 / 30.0, tw, residents)  # sets the deadline
+    tw.advance_time(1.0)
+    group.boarded_resident_ids.update(original_members)  # everyone returns well within the grace window
+
+    update_npc(vehicle, driver, 1.0 / 30.0, tw, residents)
+    assert group.all_aboard
+    assert group.member_resident_ids == original_members  # nobody stranded
+
+
+def test_continue_npc_trip_reroutes_the_same_vehicle_to_a_new_destination():
+    ways = _straight_chain(count=20)
+    tw = TrafficWorld(ways)
+    residents = ResidentManager()
+    spawned = spawn_npc(1, residents, tw, ways, (0.0, 0.0), (100.0, 0.0))
+    assert spawned is not None
+    _, driver, vehicle = spawned
+    for _ in range(3000):
+        update_npc(vehicle, driver, 1.0 / 30.0, tw, residents)
+        tw.advance_time(1.0 / 30.0)
+        if vehicle.state == NPCState.PARKED:
+            break
+    assert vehicle.state == NPCState.PARKED
+    old_destination = vehicle.destination
+
+    ok = continue_npc_trip(vehicle, driver, tw, ways)
+    assert ok is True
+    assert vehicle.state == NPCState.CRUISING
+    assert vehicle.destination != old_destination
+    assert driver.path_index == 1
+
+    for _ in range(3000):
+        update_npc(vehicle, driver, 1.0 / 30.0, tw, residents)
+        tw.advance_time(1.0 / 30.0)
+        if vehicle.state == NPCState.PARKED:
+            break
+    assert vehicle.state == NPCState.PARKED
+    # Genuinely drove somewhere new, not just re-confirmed the old spot.
+    assert len(driver.path) > 1
+
+
+def test_continue_npc_trip_returns_false_with_no_reachable_destination(monkeypatch):
+    """No destination candidates at all - must fail cleanly, never raise,
+    and leave the vehicle exactly as it was."""
+    import theroadragetrip.npc as npc_module
+
+    ways = _straight_chain()
+    tw = TrafficWorld(ways)
+    residents = ResidentManager()
+    spawned = spawn_npc(1, residents, tw, ways, (0.0, 0.0), (180.0, 0.0))
+    assert spawned is not None
+    _, driver, vehicle = spawned
+    for _ in range(3000):
+        update_npc(vehicle, driver, 1.0 / 30.0, tw, residents)
+        if vehicle.state == NPCState.PARKED:
+            break
+    destination_before = vehicle.destination
+    path_before = driver.path
+
+    monkeypatch.setattr(npc_module, "_pick_npc_destination_candidates", lambda *a, **k: [])
+    ok = continue_npc_trip(vehicle, driver, tw, ways)
+    assert ok is False
+    assert vehicle.destination == destination_before
+    assert driver.path is path_before
+
+
+def test_two_independent_trip_groups_do_not_interfere():
+    """multi-passenger-car.md Test 10: multiple simultaneous vehicles with
+    independent trip groups must not cross-contaminate each other's
+    membership/boarding state."""
+    ways = _straight_chain()
+    tw = TrafficWorld(ways)
+    residents = ResidentManager()
+    spawned_a = spawn_npc(1, residents, tw, ways, (0.0, 0.0), (180.0, 0.0))
+    spawned_b = spawn_npc(2, residents, tw, ways, (20.0, 0.0), (160.0, 0.0))
+    assert spawned_a is not None and spawned_b is not None
+    _, driver_a, vehicle_a = spawned_a
+    _, driver_b, vehicle_b = spawned_b
+
+    assert vehicle_a.trip_group.group_id != vehicle_b.trip_group.group_id
+    assert set(vehicle_a.trip_group.member_resident_ids).isdisjoint(vehicle_b.trip_group.member_resident_ids)
+
+    vehicle_a.trip_group.boarded_resident_ids.clear()
+    assert not vehicle_a.trip_group.all_aboard
+    assert vehicle_b.trip_group.all_aboard  # untouched
+
+
+def test_spawn_npc_group_size_never_exceeds_a_small_custom_capacity(monkeypatch):
+    """multi-passenger-car.md Test 11: different vehicle capacities (2, 5,
+    7) all work without changing the underlying passenger logic."""
+    import theroadragetrip.npc as npc_module
+
+    ways = _straight_chain()
+    tw = TrafficWorld(ways)
+    residents = ResidentManager()
+    for capacity in (2, 5, 7):
+        monkeypatch.setitem(npc_module.NPC_VEHICLE_CAPACITY_BY_TYPE, "car", capacity)
+        for i in range(10):
+            spawned = spawn_npc(100 * capacity + i, residents, tw, ways, (0.0, 0.0), (180.0, 0.0))
+            assert spawned is not None
+            _, _, vehicle = spawned
+            assert vehicle.capacity == capacity
+            assert len(vehicle.trip_group.member_resident_ids) <= capacity
+
+
+def test_vehicle_passenger_ids_excludes_the_driver():
+    """render/pedestrians.py's draw_npc_popup already reads this attribute
+    name (built ahead of multi-passenger-car.md) - it must report the
+    trip group's other members, not the driver already shown separately
+    as the vehicle's owner."""
+    ways = _straight_chain()
+    tw = TrafficWorld(ways)
+    residents = ResidentManager()
+    spawned = spawn_npc(1, residents, tw, ways, (0.0, 0.0), (180.0, 0.0))
+    assert spawned is not None
+    _, _, vehicle = spawned
+
+    assert vehicle.owner_id not in vehicle.passenger_ids
+    assert set(vehicle.passenger_ids) | {vehicle.owner_id} == set(vehicle.trip_group.member_resident_ids)
+
+
+def test_vehicle_passenger_ids_empty_without_a_trip_group():
+    car = Car(x=0.0, y=0.0, heading=0.0, speed=0.0)
+    vehicle = NPCVehicle(vehicle_id=1, car=car, owner_id=1, trip_group=None)
+    assert vehicle.passenger_ids == ()
+
+
+def test_draw_npc_debug_panel_shows_capacity_and_occupants():
+    """multi-passenger-car.md section 26: CAPACITY/OCCUPANTS/TRIP GROUP
+    must be visible for a vehicle with a trip group."""
+    from theroadragetrip.render.hud import draw_npc_debug_panel
+
+    pygame.init()
+    pygame.display.set_mode((400, 300))
+    font = pygame.font.SysFont(None, 16)
+    ways = _straight_chain()
+    tw = TrafficWorld(ways)
+    residents = ResidentManager()
+    spawned = spawn_npc(1, residents, tw, ways, (0.0, 0.0), (180.0, 0.0))
+    assert spawned is not None
+    _, driver, vehicle = spawned
+
+    panel_w = 360
+    with_group = pygame.Surface((panel_w, 400))
+    with_group.fill((0, 0, 0))
+    draw_npc_debug_panel(with_group, vehicle, driver, font)
+
+    vehicle.trip_group = None
+    without_group = pygame.Surface((panel_w, 400))
+    without_group.fill((0, 0, 0))
+    draw_npc_debug_panel(without_group, vehicle, driver, font)
+
+    assert pygame.image.tostring(with_group, "RGB") != pygame.image.tostring(without_group, "RGB")
+
+
+def test_draw_resident_popup_shows_trip_group_when_present():
+    """multi-passenger-car.md section 26's per-passenger debug info -
+    GROUP/STATE/DESTINATION - must show up on the resident popup once a
+    resident has a trip_group_id, and stay silent otherwise."""
+    from theroadragetrip.render.pedestrians import draw_resident_popup
+
+    pygame.init()
+    pygame.display.set_mode((400, 300))
+    font = pygame.font.SysFont(None, 16)
+    ways = _straight_chain()
+    tw = TrafficWorld(ways)
+    residents = ResidentManager()
+    spawned = spawn_npc(1, residents, tw, ways, (0.0, 0.0), (180.0, 0.0))
+    assert spawned is not None
+    _, _, vehicle = spawned
+    resident = residents.get(vehicle.owner_id)
+    assert resident.trip_group_id == vehicle.trip_group.group_id
+
+    # draw_resident_popup positions its (hardcoded 420x268) panel at
+    # screen_w - 420 - 24 - a surface exactly that size would place it
+    # partly off-screen to the left, so use a comfortably larger canvas.
+    screen_w, screen_h = 800, 600
+    with_group = pygame.Surface((screen_w, screen_h))
+    with_group.fill((0, 0, 0))
+    draw_resident_popup(with_group, font, resident, residents.residents, screen_w=screen_w, screen_h=screen_h)
+
+    resident.trip_group_id = None
+    without_group = pygame.Surface((screen_w, screen_h))
+    without_group.fill((0, 0, 0))
+    draw_resident_popup(without_group, font, resident, residents.residents, screen_w=screen_w, screen_h=screen_h)
+
+    assert pygame.image.tostring(with_group, "RGB") != pygame.image.tostring(without_group, "RGB")
