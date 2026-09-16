@@ -444,6 +444,22 @@ def world_to_screen(
     return int(sx), int(sy)
 
 
+def screen_to_world(
+    sx: float,
+    sy: float,
+    camx: float,
+    camy: float,
+    px_per_m: float = PX_PER_M,
+    screen_w: int = SCREEN_W,
+    screen_h: int = SCREEN_H,
+) -> tuple[float, float]:
+    """Inverse of world_to_screen - screen pixels (e.g. the mouse cursor)
+    -> world meters. Exact algebraic inverse, not an approximation."""
+    wx = (sx - screen_w / 2) / px_per_m + camx
+    wy = camy - (sy - screen_h / 2) / px_per_m
+    return wx, wy
+
+
 def _segment_viewport_t_range(x0, y0, ux, uy, seg_len, vminx, vminy, vmaxx, vmaxy):
     """Return the (t_lo, t_hi) sub-range of [0, seg_len] along a unit-
     direction (ux, uy) segment starting at (x0, y0) that falls inside the

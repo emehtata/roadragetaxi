@@ -681,6 +681,27 @@ def draw_npc_debug_panel(screen, vehicle, driver, font, x: int = 10, y: int = 22
         screen.blit(font.render(line, True, (215, 225, 230)), (x + 8, y + 5 + i * 16))
 
 
+def draw_feature_inspector_panel(screen, feature: Optional[dict], font, x: int = 10, y: int = 400) -> None:
+    """RENDER-audit.md section 19: shows what main.debug_tools.find_feature_at
+    found at the last click while the feature-inspector toggle is active -
+    "FEATURE / type: ... / rendered: yes/no" - so an OSM rendering gap can
+    be diagnosed by clicking the map instead of reading code. `feature` is
+    None either while nothing has been clicked yet or the last click found
+    nothing mapped within tolerance - both shown the same way, since
+    there's nothing further to distinguish from here."""
+    import pygame
+
+    lines = ["FEATURE"] + (
+        [f"{key}: {value}" for key, value in feature.items()] if feature is not None else ["(click the map to inspect)"]
+    )
+    panel_w = 320
+    panel_h = 10 + len(lines) * 16
+    pygame.draw.rect(screen, (16, 20, 26, 215), (x, y, panel_w, panel_h), border_radius=5)
+    pygame.draw.rect(screen, (220, 170, 90), (x, y, panel_w, panel_h), width=1, border_radius=5)
+    for i, line in enumerate(lines):
+        screen.blit(font.render(line, True, (230, 225, 215)), (x + 8, y + 5 + i * 16))
+
+
 def draw_npc_debug_overlay(
     screen, vehicle, driver, camx: float, camy: float,
     px_per_m: float = PX_PER_M, screen_w: int = SCREEN_W, screen_h: int = SCREEN_H,

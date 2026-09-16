@@ -104,6 +104,8 @@ from ..render import (
     draw_npc_cars,
     draw_npc_debug_overlay,
     draw_npc_debug_panel,
+    draw_feature_inspector_panel,
+    screen_to_world,
     draw_pause_menu,
     draw_parking_spaces,
     draw_settings_menu,
@@ -164,7 +166,7 @@ from .menu_input import (
     _respawn_allowed,
 )
 from .startup_screens import choose_language, confirm_outdated_cache, edit_city_list
-from .debug_tools import _screenshot_directory, _write_debug_snapshot
+from .debug_tools import _screenshot_directory, _write_debug_snapshot, find_feature_at
 
 # Maintain BBOX constant for backward compatibility
 BBOX = DEFAULT_BBOX
@@ -962,6 +964,10 @@ def main() -> None:
         npc_spawn_retry_cooldown_s = 0.0 if npcs else NPC_SPAWN_RETRY_COOLDOWN_S
         npc_follow = False  # F6: camera follows the NPC-001 vehicle
         show_npc_debug = False  # F7: NPC debug overlay (state/route/decision)
+        # F4: RENDER-audit.md section 19's feature inspector - click the
+        # map to see what OSM feature is there and whether it's rendered.
+        show_feature_inspector = False
+        inspected_feature = None
         physics_mode = config.get("game", "physics_realism", fallback="arcade")
         speed_limiter_enabled = True
         red_light_assist_enabled = False
@@ -1087,6 +1093,18 @@ def main() -> None:
                             screen_w=SCREEN_W,
                             screen_h=SCREEN_H,
                         )
+                        if show_feature_inspector:
+                            # RENDER-audit.md section 19.
+                            world_x, world_y = screen_to_world(
+                                event.pos[0], event.pos[1], camx, camy,
+                                px_per_m=px_per_m, screen_w=SCREEN_W, screen_h=SCREEN_H,
+                            )
+                            inspected_feature = find_feature_at(
+                                world_x, world_y,
+                                ways=ways, curbs=curbs, railings=railings, buildings=buildings,
+                                sceneries=sceneries, parking_spaces=parking_spaces,
+                                waters=waters, railways=railways,
+                            )
                 elif event.type == pygame.MOUSEBUTTONUP and event.button == 1:
                     hud_dragging = None
                 elif event.type == pygame.MOUSEMOTION and hud_dragging:
@@ -1381,6 +1399,10 @@ def main() -> None:
                         show_debug_hud = not show_debug_hud
                         frame_profiler.enabled = show_debug_hud
                         logger.info("Debug HUD %s", "enabled" if show_debug_hud else "disabled")
+                    elif event.key == pygame.K_F4:
+                        show_feature_inspector = not show_feature_inspector
+                        inspected_feature = None
+                        logger.info("Feature inspector %s", "enabled" if show_feature_inspector else "disabled")
                     elif event.key == pygame.K_F6:
                         npc_follow = bool(npcs) and not npc_follow
                         logger.info("NPC camera follow %s", "enabled" if npc_follow else "disabled")
@@ -2539,6 +2561,8 @@ def main() -> None:
                 if npc_driver_for_panel is not None:
                     draw_npc_debug_panel(screen, npcs[0], npc_driver_for_panel, small_font)
                     draw_npc_debug_overlay(screen, npcs[0], npc_driver_for_panel, camx, camy, px_per_m)
+            if show_feature_inspector:
+                draw_feature_inspector_panel(screen, inspected_feature, small_font)
             pygame.display.flip()
             if first_gameplay_frame:
                 logger.info("Gameplay frame: complete")

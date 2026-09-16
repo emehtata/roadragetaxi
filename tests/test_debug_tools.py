@@ -2,10 +2,11 @@
 import json
 import types
 
-from theroadragetrip.main.debug_tools import _write_debug_snapshot
+from theroadragetrip.main.debug_tools import _write_debug_snapshot, find_feature_at
 from theroadragetrip.npc import spawn_npc
-from theroadragetrip.osm import Way
+from theroadragetrip.osm import Building, Curb, Way
 from theroadragetrip.physics import Car
+from theroadragetrip.render import screen_to_world, world_to_screen
 from theroadragetrip.residents import ResidentManager
 from theroadragetrip.traffic_world import TrafficWorld
 from theroadragetrip import tile_streaming
@@ -167,3 +168,54 @@ def test_debug_snapshot_npcs_empty_without_npcs(tmp_path):
     common case for most of the game before/without any NPC spawned."""
     data = _write_minimal_snapshot(tmp_path / "snapshot.json")
     assert data["npcs"] == []
+
+
+def test_find_feature_at_returns_nearest_way_within_tolerance():
+    """RENDER-audit.md section 19: clicking near a drivable way should
+    report highway=* and drivable=yes."""
+    way = Way(points_m=[(0.0, 0.0), (20.0, 0.0)], highway="residential", half_width_m=4.5)
+    feature = find_feature_at(10.0, 1.0, ways=[way])
+    assert feature is not None
+    assert feature["type"] == "highway=residential"
+    assert feature["drivable"] == "yes"
+
+
+def test_find_feature_at_prefers_the_closer_of_two_candidates():
+    """When a way and a curb both fall within tolerance, the nearer one wins."""
+    way = Way(points_m=[(0.0, 0.0), (20.0, 0.0)], highway="residential", half_width_m=4.5)
+    curb = Curb(points_m=[(0.0, 2.9), (20.0, 2.9)])
+    feature = find_feature_at(10.0, 2.5, ways=[way], curbs=[curb], tolerance_m=5.0)
+    assert feature["type"] == "barrier=kerb"
+
+
+def test_find_feature_at_detects_point_inside_a_closed_building_polygon():
+    """A click inside a building's outline (not just on its edge) should
+    still resolve to that building via the closed-polygon distance=0 case."""
+    building = Building(points_m=[(0.0, 0.0), (10.0, 0.0), (10.0, 10.0), (0.0, 10.0)])
+    feature = find_feature_at(5.0, 5.0, buildings=[building])
+    assert feature is not None
+    assert feature["type"] == "building"
+
+
+def test_find_feature_at_returns_none_when_nothing_is_within_tolerance():
+    way = Way(points_m=[(0.0, 0.0), (20.0, 0.0)], highway="residential", half_width_m=4.5)
+    assert find_feature_at(500.0, 500.0, ways=[way]) is None
+
+
+def test_screen_to_world_is_the_inverse_of_world_to_screen():
+    """RENDER-audit.md section 19: the feature inspector maps a mouse click
+    back to world coordinates before calling find_feature_at - it must be
+    the algebraic inverse of world_to_screen (within 1px of rounding)."""
+    camx, camy, px_per_m = 1234.5, -678.9, 12.0
+    for wx, wy in [(0.0, 0.0), (100.0, -50.0), (1234.5, -678.9), (-300.0, 900.0)]:
+        sx, sy = world_to_screen(wx, wy, camx, camy, px_per_m=px_per_m)
+        rx, ry = screen_to_world(sx, sy, camx, camy, px_per_m=px_per_m)
+        assert abs(rx - wx) < 1.0 / px_per_m + 1e-6
+        assert abs(ry - wy) < 1.0 / px_per_m + 1e-6
+
+
+def test_screen_to_world_center_of_screen_is_the_camera_position():
+    from theroadragetrip.render import SCREEN_H, SCREEN_W
+    wx, wy = screen_to_world(SCREEN_W / 2, SCREEN_H / 2, 500.0, 250.0)
+    assert abs(wx - 500.0) < 1e-6
+    assert abs(wy - 250.0) < 1e-6

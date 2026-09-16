@@ -49,6 +49,7 @@ from .common import (
     minimum_px_per_m_for_viewport_width,
     road_color_for_way,
     road_render_priority,
+    screen_to_world,
     solar_altitude_and_events,
     world_to_screen,
 )
@@ -207,6 +208,7 @@ from .hud import (
     draw_g_force_meter,
     draw_hud,
     draw_npc_debug_overlay,
+    draw_feature_inspector_panel,
     draw_npc_debug_panel,
     draw_phone_offers,
 )
