@@ -610,3 +610,58 @@ def test_set_target_count_releases_activity_reservation_when_trimming():
     manager.set_target_count(0)
 
     assert location.reservation_key not in manager.activity_manager._reservations
+
+
+def test_explain_candidates_reports_cooldown_and_ok_reasons():
+    manager, pedestrian = _make_manager_and_pedestrian()
+    registry = ActivityRegistry()
+    registry.register(PhoneUsagePlugin())
+    manager.activity_manager = ActivityManager(registry=registry)
+
+    pedestrian.activity_flags["last_activity_id"] = "phone_usage"
+    pedestrian.activity_flags["last_activity_end_time"] = 0.0
+
+    explanations = manager.activity_manager.explain_candidates(_context(manager, pedestrian, sim_time=1.0))
+    assert explanations == [("phone_usage", "cooldown, 44s left")]
+
+    later = manager.activity_manager.explain_candidates(_context(manager, pedestrian, sim_time=1000.0))
+    assert later[0][0] == "phone_usage"
+    assert later[0][1].startswith("OK, weight=")
+
+
+def test_explain_candidates_reports_no_location_and_can_start_false():
+    registry = ActivityRegistry()
+    registry.register(BenchSittingPlugin())  # requires a location
+    registry.register(BallGamePlugin())  # can_start requires a child resident
+    manager, pedestrian = _make_manager_and_pedestrian()
+    manager.activity_manager = ActivityManager(registry=registry)
+
+    explanations = dict(manager.activity_manager.explain_candidates(_context(manager, pedestrian)))
+    assert explanations["bench_sitting"] == "no suitable location nearby"
+    assert explanations["ball_game"] == "can_start() is False"
+
+
+def test_draw_activity_debug_panel_shows_current_activity_and_candidates():
+    import pygame
+
+    from theroadragetrip.activities import ActivityInstance
+    from theroadragetrip.render.hud import draw_activity_debug_panel
+
+    pygame.init()
+    pygame.display.set_mode((400, 300))
+    font = pygame.font.SysFont(None, 16)
+    manager, pedestrian = _make_manager_and_pedestrian()
+
+    without_activity = pygame.Surface((500, 700))
+    without_activity.fill((0, 0, 0))
+    draw_activity_debug_panel(without_activity, pedestrian, [("phone_usage", "OK, weight=1.50")], font)
+
+    pedestrian.activity = ActivityInstance(
+        plugin_id="phone_usage", location=None, started_sim_time=0.0, data={"duration_s": 20.0, "elapsed_s": 5.0}
+    )
+    pedestrian.state = "performing_activity"
+    with_activity = pygame.Surface((500, 700))
+    with_activity.fill((0, 0, 0))
+    draw_activity_debug_panel(with_activity, pedestrian, [("phone_usage", "cooldown, 10s left")], font)
+
+    assert pygame.image.tostring(with_activity, "RGB") != pygame.image.tostring(without_activity, "RGB")

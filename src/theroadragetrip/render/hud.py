@@ -10,7 +10,7 @@ from .common import (
 )
 import math
 import os
-from typing import Optional, Tuple
+from typing import List, Optional, Tuple
 
 
 from ..geo import clamp, meters_to_latlon
@@ -731,6 +731,46 @@ def draw_feature_inspector_panel(screen, feature: Optional[dict], font, x: int =
     pygame.draw.rect(screen, (220, 170, 90), (x, y, panel_w, panel_h), width=1, border_radius=5)
     for i, line in enumerate(lines):
         screen.blit(font.render(line, True, (230, 225, 215)), (x + 8, y + 5 + i * 16))
+
+
+def draw_activity_debug_panel(
+    screen, pedestrian, explanations: List[Tuple[str, str]], font, x: int = 10, y: int = 460,
+) -> None:
+    """F5 debug panel (residents-live.md section 18): the selected
+    resident's current ambient activity, plus - for every registered
+    plugin - why it would or wouldn't be picked right now
+    (ActivityManager.explain_candidates, computed by the caller so this
+    function stays a pure renderer). Duck-typed on pedestrian.py's
+    Pedestrian/ActivityInstance, no import of either needed here, same
+    convention as draw_npc_debug_panel."""
+    import pygame
+
+    activity = getattr(pedestrian, "activity", None)
+    lines = ["ACTIVITY DEBUG"]
+    if activity is None:
+        lines.append("current: none (walking)")
+    else:
+        location = activity.location
+        location_label = f"({location.x:.0f},{location.y:.0f})" if location is not None else "-"
+        lines.append(f"current: {activity.plugin_id} state={pedestrian.state}")
+        lines.append(f"location={location_label}")
+        duration_s = activity.data.get("duration_s")
+        elapsed_s = activity.data.get("elapsed_s")
+        if duration_s is not None and elapsed_s is not None:
+            lines.append(f"remaining={max(0.0, duration_s - elapsed_s):.0f}s")
+        group = activity.group
+        if group is not None:
+            lines.append(f"group=#{group.group_id} participants={group.member_resident_ids}")
+    lines.append("candidates (1-9 forces one):")
+    for index, (plugin_id, reason) in enumerate(explanations):
+        prefix = f"{index + 1}." if index < 9 else " -"
+        lines.append(f"{prefix} {plugin_id}: {reason}")
+    panel_w = 380
+    panel_h = 10 + len(lines) * 16
+    pygame.draw.rect(screen, (16, 20, 26, 215), (x, y, panel_w, panel_h), border_radius=5)
+    pygame.draw.rect(screen, (170, 120, 220), (x, y, panel_w, panel_h), width=1, border_radius=5)
+    for i, line in enumerate(lines):
+        screen.blit(font.render(line, True, (225, 215, 230)), (x + 8, y + 5 + i * 16))
 
 
 def draw_npc_debug_overlay(

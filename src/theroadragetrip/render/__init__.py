@@ -205,6 +205,7 @@ from .hud import (
     _load_rage_face_frames,
     _rage_face_path,
     default_hud_layout,
+    draw_activity_debug_panel,
     draw_day_night_overlay,
     draw_frame_profiler,
     draw_g_force_meter,

@@ -101,6 +101,7 @@ from ..render import (
     draw_loading_screen,
     draw_navigation_route,
     draw_logical_intersections,
+    draw_activity_debug_panel,
     draw_npc_cars,
     draw_npc_debug_overlay,
     draw_npc_debug_panel,
@@ -142,6 +143,7 @@ from ..render import (
     minimum_px_per_m_for_viewport_width,
     solar_altitude_and_events,
 )
+from ..activities import ActivityContext, ActivityInstance
 from ..npc import NPCState, continue_npc_trip, spawn_deterministic_npc, update_npc
 from ..pedestrian import PedestrianManager, PlayerPedestrian
 from ..residents import ResidentManager
@@ -181,6 +183,13 @@ RAGE_SHOUT_COST = 0.25
 # isn't permanent - keep retrying instead of leaving the map without its NPC
 # forever.
 NPC_SPAWN_RETRY_COOLDOWN_S = 1.0
+# F5 activity debug panel's force-an-activity testing keys (residents-
+# live.md section 18) - number key N forces the Nth plugin listed in the
+# panel (registry.all_plugins() order) onto the selected resident.
+ACTIVITY_DEBUG_FORCE_KEYS = (
+    pygame.K_1, pygame.K_2, pygame.K_3, pygame.K_4, pygame.K_5,
+    pygame.K_6, pygame.K_7, pygame.K_8, pygame.K_9,
+)
 
 
 def _rage_from_speeding(
@@ -974,6 +983,11 @@ def main() -> None:
         npc_spawn_retry_cooldown_s = 0.0 if npcs else NPC_SPAWN_RETRY_COOLDOWN_S
         npc_follow = False  # F6: camera follows the NPC-001 vehicle
         show_npc_debug = False  # F7: NPC debug overlay (state/route/decision)
+        # F5: residents-live.md section 18's activity debug panel - shows
+        # the selected resident's current ambient activity plus why every
+        # registered plugin would/wouldn't be picked for them right now;
+        # while showing, number keys 1-9 force one onto them for testing.
+        show_activity_debug = False
         # F4: RENDER-audit.md section 19's feature inspector - click the
         # map to see what OSM feature is there and whether it's rendered.
         show_feature_inspector = False
@@ -1413,6 +1427,9 @@ def main() -> None:
                         show_feature_inspector = not show_feature_inspector
                         inspected_feature = None
                         logger.info("Feature inspector %s", "enabled" if show_feature_inspector else "disabled")
+                    elif event.key == pygame.K_F5:
+                        show_activity_debug = not show_activity_debug
+                        logger.info("Activity debug panel %s", "enabled" if show_activity_debug else "disabled")
                     elif event.key == pygame.K_F6:
                         npc_follow = bool(npcs) and not npc_follow
                         logger.info("NPC camera follow %s", "enabled" if npc_follow else "disabled")
@@ -1422,6 +1439,40 @@ def main() -> None:
                     elif event.key == pygame.K_F8:
                         weather.toggle_rain()
                         logger.info("Weather toggled: %s", weather.weather_type.value)
+                    elif (
+                        show_activity_debug
+                        and selected_resident_id is not None
+                        and event.key in ACTIVITY_DEBUG_FORCE_KEYS
+                    ):
+                        # residents-live.md section 18: "provide a way to
+                        # force an activity for testing" - number keys
+                        # 1-9 force the Nth plugin listed in the F5 panel
+                        # (same registry.all_plugins() order) directly
+                        # onto the selected resident, bypassing scoring/
+                        # cooldown entirely - this is a testing shortcut,
+                        # never called from the real per-tick selection.
+                        forced_pedestrian = next(
+                            (p for p in pedestrian_mgr.pedestrians if p.resident_id == selected_resident_id), None,
+                        )
+                        plugins = pedestrian_mgr.activity_manager.registry.all_plugins()
+                        plugin_index = ACTIVITY_DEBUG_FORCE_KEYS.index(event.key)
+                        if forced_pedestrian is not None and plugin_index < len(plugins):
+                            plugin = plugins[plugin_index]
+                            force_context = ActivityContext(
+                                pedestrian=forced_pedestrian, pedestrian_manager=pedestrian_mgr,
+                                residents=residents, sim_time=pedestrian_mgr.sim_time,
+                            )
+                            location = plugin.find_location(force_context) if plugin.definition.requires_location else None
+                            if not plugin.definition.requires_location or location is not None:
+                                forced_pedestrian.activity = ActivityInstance(
+                                    plugin_id=plugin.definition.id, location=location,
+                                    started_sim_time=pedestrian_mgr.sim_time,
+                                )
+                                forced_pedestrian.state = "walking_to_activity"
+                                forced_pedestrian.route = None
+                                logger.info("Forced activity %s onto resident %s", plugin.definition.id, selected_resident_id)
+                            else:
+                                logger.info("Could not force activity %s: no suitable location nearby", plugin.definition.id)
                     elif event.key == pygame.K_r:
                         if not _respawn_allowed(on_foot):
                             logger.info("Respawn ignored while driver is walking outside taxi")
@@ -2577,6 +2628,13 @@ def main() -> None:
                     pedestrian=selected_pedestrian,
                     trip_group=selected_trip_group,
                 )
+                if show_activity_debug and selected_pedestrian is not None:
+                    activity_context = ActivityContext(
+                        pedestrian=selected_pedestrian, pedestrian_manager=pedestrian_mgr,
+                        residents=residents, sim_time=pedestrian_mgr.sim_time,
+                    )
+                    explanations = pedestrian_mgr.activity_manager.explain_candidates(activity_context)
+                    draw_activity_debug_panel(screen, selected_pedestrian, explanations, small_font)
             if awaiting_start:
                 draw_game_start_overlay(screen, font, chosen_city, SCREEN_W, SCREEN_H)
             elif start_hint_remaining > 0.0 and on_foot:

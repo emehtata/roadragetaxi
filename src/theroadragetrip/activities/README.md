@@ -208,6 +208,24 @@ passenger-lifecycle (`linked_vehicle_id`/`reserved_vehicle_id`/
 considered - that state machinery (`_update_linked_driver`) owns those
 pedestrians exclusively.
 
+## Debugging
+
+Click a resident, then press **F5** to toggle the activity debug panel
+(`render/hud.py`'s `draw_activity_debug_panel`, `main/__init__.py`). It
+shows the resident's current activity (id, state, location, remaining
+time, group participants if any) plus, for every registered plugin,
+`ActivityManager.explain_candidates()`'s one-line reason it would or
+wouldn't be picked right now (cooldown remaining, `can_start()` false, no
+location found, location already reserved, or "OK, weight=..."). While the panel is showing, number keys **1-9** force the correspondingly
+numbered plugin onto the selected resident for testing, bypassing
+scoring/cooldown entirely.
+
+`explain_candidates()` is intentionally never called from the real
+per-tick selection path (`select_activity`) - it's a separate, read-only
+method that mirrors the same eligibility checks purely for on-demand
+introspection, so debugging one pedestrian never adds overhead to the
+other few hundred that aren't being inspected.
+
 ## Group activities
 
 A multi-participant activity (conversation, ball game, ...) needs no
