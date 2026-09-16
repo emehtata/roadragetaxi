@@ -32,13 +32,14 @@ class NPCState:
 
     The architecture must support future states without rework, but
     NPC-001 only implements these: CRASHED, DISABLED, DRIVER_EXITED,
-    ABANDONED, PARKING, DESPAWNING are deliberately not implemented yet.
+    ABANDONED, DESPAWNING are deliberately not implemented yet.
     """
     SPAWNING = "SPAWNING"
     CRUISING = "CRUISING"
     APPROACHING_INTERSECTION = "APPROACHING_INTERSECTION"
     WAITING = "WAITING"
     TURNING = "TURNING"
+    PARKING = "PARKING"  # final approach into a dedicated parking space (NPC-more.md section 14)
     ARRIVING = "ARRIVING"
 
 
@@ -167,6 +168,63 @@ MAX_ROUTE_OFFROAD_TOLERANCE_M = 15.0
 
 
 NPC_PARKING_ACCESS_TOLERANCE_M = 40.0  # the final hop off-road, into a yard/driveway, gets more slack
+NPC_PARKING_APPROACH_DISTANCE_M = 6.0  # how far out the orientation-aligned approach point sits
+
+
+def _parking_space_axis(parking_space) -> Optional[float]:
+    """The direction a car parked in this space should point along: the
+    explicit orientation tag if one resolved to a real angle, otherwise
+    the space polygon's own longest-edge axis - NPC-more.md section 15's
+    own fallback ("choose a sensible heading based on... parking-area
+    geometry") for the common case, since most real OSM parking spaces
+    carry no orientation tag at all (ParkingSpace.orientation then stays
+    None - see its own __post_init__, which only derives this axis when
+    an orientation tag was actually present to resolve)."""
+    orientation = getattr(parking_space, "orientation", None)
+    if isinstance(orientation, (int, float)):
+        return float(orientation)
+    points = getattr(parking_space, "points_m", None) or []
+    if len(points) < 2:
+        return None
+    longest_edge = max(
+        zip(points, points[1:] + points[:1]),
+        key=lambda edge: (edge[1][0] - edge[0][0]) ** 2 + (edge[1][1] - edge[0][1]) ** 2,
+    )
+    return math.atan2(longest_edge[1][1] - longest_edge[0][1], longest_edge[1][0] - longest_edge[0][0])
+
+
+def _align_approach_to_parking_orientation(
+    route_points: List[Tuple[float, float]],
+    parking_space,
+    approach_distance_m: float = NPC_PARKING_APPROACH_DISTANCE_M,
+) -> List[Tuple[float, float]]:
+    """Insert one waypoint just before the destination so the vehicle's
+    final heading approaches along the parking space's own orientation
+    axis (NPC-more.md section 15) instead of whatever direction the
+    route's last real road segment happened to point.
+
+    Picks whichever of the axis's two directions is closer to the
+    route's own natural final approach heading, so this never forces an
+    unnecessary U-turn just to face "the other way" along the same line.
+    A no-op (returns route_points unchanged) when there's no parking
+    space, no usable geometry to derive an axis from, or the route is too
+    short to have a "final approach" at all.
+    """
+    orientation = _parking_space_axis(parking_space) if parking_space is not None else None
+    if orientation is None or len(route_points) < 2:
+        return route_points
+    destination = route_points[-1]
+    prev = route_points[-2]
+    natural_heading = math.atan2(destination[1] - prev[1], destination[0] - prev[0])
+    heading = min(
+        (orientation, orientation + math.pi),
+        key=lambda h: abs((h - natural_heading + math.pi) % (2.0 * math.pi) - math.pi),
+    )
+    approach_point = (
+        destination[0] - math.cos(heading) * approach_distance_m,
+        destination[1] - math.sin(heading) * approach_distance_m,
+    )
+    return route_points[:-1] + [approach_point, destination]
 
 
 def route_stays_on_road(
@@ -175,6 +233,7 @@ def route_stays_on_road(
     spatial_grid: Optional[SpatialWayGrid] = None,
     tolerance_m: float = MAX_ROUTE_OFFROAD_TOLERANCE_M,
     final_segment_tolerance_m: Optional[float] = None,
+    final_segment_count: int = 1,
 ) -> bool:
     """Verify every segment of a planned route actually runs along a
     mapped road, rather than a straight-line shortcut across empty land.
@@ -188,18 +247,23 @@ def route_stays_on_road(
     verifying the route has real road segments before ever spawning a
     vehicle onto it - this is that check.
 
-    final_segment_tolerance_m, when given, applies only to the very last
-    segment (road -> the actual destination) instead of `tolerance_m` -
-    a real yard/driveway can legitimately sit farther from the road than
-    the 15m that would flag a mid-route shortcut as suspicious (NPC-more.md
-    section 6's "safe driveway or building courtyard").
+    final_segment_tolerance_m, when given, applies to the last
+    final_segment_count segments (road -> the actual destination, or
+    road -> an inserted parking-orientation approach point -> the
+    destination - see _align_approach_to_parking_orientation) instead of
+    `tolerance_m` - a real yard/driveway can legitimately sit farther from
+    the road than the 15m that would flag a mid-route shortcut as
+    suspicious (NPC-more.md section 6's "safe driveway or building
+    courtyard").
     """
-    last_index = len(points) - 2
-    for i in range(len(points) - 1):
+    segment_count = len(points) - 1
+    for i in range(segment_count):
         (ax, ay), (bx, by) = points[i], points[i + 1]
         _, distance = _way_at_point(spatial_grid, ways, (ax + bx) / 2.0, (ay + by) / 2.0)
         segment_tolerance = (
-            tolerance_m if final_segment_tolerance_m is None or i != last_index else final_segment_tolerance_m
+            tolerance_m
+            if final_segment_tolerance_m is None or i < segment_count - final_segment_count
+            else final_segment_tolerance_m
         )
         if distance > segment_tolerance:
             return False
@@ -207,6 +271,44 @@ def route_stays_on_road(
 
 
 CURB_CLEARANCE_MARGIN_M = 0.3  # a little slack beyond the bare vehicle half-width
+
+
+def _route_crosses_boundaries(
+    path_points: List[Tuple[float, float]],
+    obstacles,
+    half_width: float,
+    obstacle_grid: Optional[SpatialWayGrid] = None,
+    closed: bool = False,
+) -> bool:
+    """Shared footprint-vs-obstacle check behind route_crosses_curbs and
+    route_crosses_buildings (NPC-more.md section 19: one validation
+    mechanism, not a slightly-different copy per obstacle type).
+
+    Returns whether the given path ever brings a vehicle_width_m-wide
+    body within half_width of any obstacle's boundary line - each
+    obstacle is anything with a `.points_m` polyline (Curb, Building,
+    ...); `closed=True` also checks the edge closing the last point back
+    to the first (a building's own wall loops all the way around, a curb
+    line doesn't).
+    """
+    if not obstacles:
+        return False
+    for a, b in zip(path_points, path_points[1:]):
+        candidates = (
+            obstacle_grid.ways_in_rect(
+                min(a[0], b[0]) - half_width, min(a[1], b[1]) - half_width,
+                max(a[0], b[0]) + half_width, max(a[1], b[1]) + half_width,
+            )
+            if obstacle_grid is not None
+            else obstacles
+        )
+        for obstacle in candidates:
+            points = obstacle.points_m
+            edges = zip(points, points[1:] + points[:1]) if closed else zip(points, points[1:])
+            for c, d in edges:
+                if segment_distance(a, b, c, d) < half_width:
+                    return True
+    return False
 
 
 def route_crosses_curbs(
@@ -228,23 +330,32 @@ def route_crosses_curbs(
     gets several sampled points (see _round_corner), so checking each
     path segment amounts to sampling along the curve, not just its ends.
     """
-    if not curbs:
-        return False
-    half_width = vehicle_width_m * 0.5 + clearance_m
-    for a, b in zip(path_points, path_points[1:]):
-        candidates = (
-            curb_grid.ways_in_rect(
-                min(a[0], b[0]) - half_width, min(a[1], b[1]) - half_width,
-                max(a[0], b[0]) + half_width, max(a[1], b[1]) + half_width,
-            )
-            if curb_grid is not None
-            else curbs
-        )
-        for curb in candidates:
-            for c, d in zip(curb.points_m, curb.points_m[1:]):
-                if segment_distance(a, b, c, d) < half_width:
-                    return True
-    return False
+    return _route_crosses_boundaries(
+        path_points, curbs, vehicle_width_m * 0.5 + clearance_m, obstacle_grid=curb_grid, closed=False,
+    )
+
+
+BUILDING_CLEARANCE_MARGIN_M = 0.3  # a little slack beyond the bare vehicle half-width
+
+
+def route_crosses_buildings(
+    path_points: List[Tuple[float, float]],
+    buildings: List,
+    vehicle_width_m: float = 1.8,
+    building_grid: Optional[SpatialWayGrid] = None,
+    clearance_m: float = BUILDING_CLEARANCE_MARGIN_M,
+) -> bool:
+    """Return whether the driving path ever brings the vehicle's own body
+    within clearance_m of a building's wall - NPC-more.md section 13's
+    hard rule: never drive through building polygons. Same mechanism as
+    route_crosses_curbs (see _route_crosses_boundaries), just against a
+    closed polygon boundary instead of an open curb line - a route that
+    enters or exits a building's footprint has to cross that boundary
+    somewhere, so this catches "drives across the middle of the lot" too,
+    not only "clips the corner"."""
+    return _route_crosses_boundaries(
+        path_points, buildings, vehicle_width_m * 0.5 + clearance_m, obstacle_grid=building_grid, closed=True,
+    )
 
 
 def build_driving_path(
@@ -459,6 +570,8 @@ def spawn_npc(
     color: Tuple[int, int, int] = (150, 155, 165),
     curbs: Optional[List[Curb]] = None,
     curb_grid: Optional[SpatialWayGrid] = None,
+    buildings: Optional[List] = None,
+    building_grid: Optional[SpatialWayGrid] = None,
     parking_space=None,
 ) -> Optional[Tuple[int, Driver, NPCVehicle]]:
     """Create the Resident -> Driver -> NPCVehicle chain for one NPC
@@ -479,19 +592,41 @@ def spawn_npc(
     deduped_route = _dedupe_points(raw_route)
     if len(deduped_route) < 3:  # start + >=1 real road node + target
         return None
+    # NPC-more.md section 15: align the final approach heading with the
+    # parking space's own orientation, when known - a no-op (route
+    # unchanged) without one. Done before validation so the inserted
+    # approach point is itself checked like any other route point.
+    final_segment_count = 1
+    aligned_route = _align_approach_to_parking_orientation(deduped_route, parking_space)
+    if len(aligned_route) > len(deduped_route):
+        deduped_route = _dedupe_points(aligned_route)
+        final_segment_count = 2
+    # Only a drivable way counts as "on a real road" here (NPC-more.md
+    # section 12: never treat a sidewalk/footway as a road) - build_driving_
+    # path below still gets the full `ways` list, since its own mid-route
+    # lookups only ever land on the route graph's already-drivable-only
+    # roads (see TrafficWorld._build_route_graph) and it needs the same
+    # list for the final destination hop's lane-offset way lookup.
+    drivable_ways = [way for way in ways if getattr(way, "is_drivable", True)]
     if not route_stays_on_road(
-        deduped_route, ways, spatial_grid=spatial_grid, final_segment_tolerance_m=NPC_PARKING_ACCESS_TOLERANCE_M,
+        deduped_route, drivable_ways, spatial_grid=spatial_grid,
+        final_segment_tolerance_m=NPC_PARKING_ACCESS_TOLERANCE_M,
+        final_segment_count=final_segment_count,
     ):
         return None
 
     path = build_driving_path(deduped_route, ways, spatial_grid=spatial_grid)
     if len(path) < 2:
         return None
+    path_points = [(p.x, p.y) for p in path]
     # NPC-more.md section 7: never drive on curbs - checked against the
     # actual lane-offset/corner-rounded trajectory, not the raw centerline,
     # since a wide vehicle clips a curb at a corner or roundabout island,
     # not at the road's own centerline.
-    if route_crosses_curbs([(p.x, p.y) for p in path], curbs or [], curb_grid=curb_grid):
+    if route_crosses_curbs(path_points, curbs or [], curb_grid=curb_grid):
+        return None
+    # NPC-more.md section 13: never drive through a building polygon.
+    if route_crosses_buildings(path_points, buildings or [], building_grid=building_grid):
         return None
 
     # 1. create/select the Resident, 2. make it the driver, 3. create the
@@ -592,6 +727,19 @@ def update_npc(
         < INTERSECTION_APPROACH_RADIUS_M
     ):
         vehicle.state = NPCState.APPROACHING_INTERSECTION
+        vehicle.debug_waiting_for = ""
+    elif (
+        vehicle.destination_parking_space_id is not None
+        and math.hypot(driver.destination[0] - vehicle.car.x, driver.destination[1] - vehicle.car.y)
+        <= NPC_PARKING_APPROACH_DISTANCE_M * 2.0
+    ):
+        # Final approach into a dedicated parking space (within the
+        # orientation-aligned leg _align_approach_to_parking_orientation
+        # inserted, corner-rounded arc included) - a more specific label
+        # than TURNING for what's still visually a turn. Distance-based,
+        # not path-index-based, since a corner's own sampled points (see
+        # _round_corner) make "how many path points is this leg" fragile.
+        vehicle.state = NPCState.PARKING
         vehicle.debug_waiting_for = ""
     elif target.is_turn:
         vehicle.state = NPCState.TURNING
@@ -829,6 +977,7 @@ def spawn_deterministic_npc(
     buildings: Optional[List] = None,
     curbs: Optional[List[Curb]] = None,
     curb_grid: Optional[SpatialWayGrid] = None,
+    building_grid: Optional[SpatialWayGrid] = None,
 ) -> Optional[Tuple[int, Driver, NPCVehicle]]:
     """Pick a deterministic origin/destination from the loaded OSM map and
     spawn NPC-001's one NPC there (section 12).
@@ -879,7 +1028,8 @@ def spawn_deterministic_npc(
             continue
         spawned = spawn_npc(
             vehicle_id, resident_manager, traffic_world, ways, origin, destination,
-            spatial_grid=spatial_grid, curbs=curbs, curb_grid=curb_grid, parking_space=target_space,
+            spatial_grid=spatial_grid, curbs=curbs, curb_grid=curb_grid,
+            buildings=buildings, building_grid=building_grid, parking_space=target_space,
         )
         if spawned is not None:
             return spawned

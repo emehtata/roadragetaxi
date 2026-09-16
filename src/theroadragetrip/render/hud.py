@@ -661,6 +661,11 @@ def draw_npc_debug_panel(screen, vehicle, driver, font, x: int = 10, y: int = 22
         f"lane={lane_bias} {signal_label}",
         f"traffic={decision.action} ({decision.reason}) stop_dist={stop_dist}",
         f"dest=({driver.destination[0]:.0f},{driver.destination[1]:.0f}) progress={driver.route_progress * 100.0:.0f}%",
+        (
+            f"parking=space#{vehicle.destination_parking_space_id}"
+            if vehicle.destination_parking_space_id is not None
+            else "parking=yard/lot (no dedicated space)"
+        ),
     ]
     panel_w = 360
     panel_h = 10 + len(lines) * 16

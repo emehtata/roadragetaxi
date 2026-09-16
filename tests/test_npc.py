@@ -14,10 +14,12 @@ from theroadragetrip.npc import (
     NPCVehicle,
     _lane_offset_point,
     NPC_BUILDING_YARD_CLEARANCE_M,
+    _align_approach_to_parking_orientation,
     _building_yard_point,
     _pick_npc_destination,
     build_driving_path,
     has_active_driver,
+    route_crosses_buildings,
     route_crosses_curbs,
     spawn_deterministic_npc,
     spawn_npc,
@@ -311,6 +313,31 @@ def test_driver_vehicle_resident_ids_stay_consistent():
     assert vehicle.owner_id == driver.resident_id == resident_id
 
 
+def test_npc_reports_parking_state_on_final_approach_to_a_dedicated_space():
+    """NPC-more.md section 14: the final approach into a dedicated parking
+    space should read as a distinct PARKING state, not generic TURNING."""
+    ways = _straight_chain(count=20)
+    tw = TrafficWorld(ways)
+    residents = ResidentManager()
+    space = ParkingSpace(
+        points_m=[(400.0, 4.0), (401.0, 4.0), (401.0, 10.0), (400.0, 10.0)],
+        bbox=(400.0, 4.0, 401.0, 10.0),
+        osm_id=101,
+    )
+    result = spawn_npc(1, residents, tw, ways, (0.0, 0.0), (400.0, 5.0), parking_space=space)
+    assert result is not None
+    _, driver, vehicle = result
+    assert vehicle.destination_parking_space_id == space.osm_id
+
+    seen_states = set()
+    for _ in range(1800):
+        update_npc(vehicle, driver, 1.0 / 60.0, tw, residents)
+        seen_states.add(vehicle.state)
+        if vehicle.state == NPCState.ARRIVING:
+            break
+    assert NPCState.PARKING in seen_states
+
+
 def test_state_machine_transitions_are_valid():
     ways = _straight_chain()
     tw = TrafficWorld(ways)
@@ -422,6 +449,48 @@ def test_pick_npc_destination_refuses_the_raw_point_when_nothing_is_nearby():
     assert space is None
 
 
+def test_align_approach_to_parking_orientation_is_a_no_op_without_a_space():
+    route = [(0.0, 0.0), (100.0, 0.0)]
+    assert _align_approach_to_parking_orientation(route, None) == route
+
+
+def test_align_approach_to_parking_orientation_inserts_a_waypoint_along_the_space_axis():
+    """NPC-more.md section 15: approach a parking space along its own
+    orientation, not whatever direction the road happened to point.
+    No orientation tag here - the fallback derives the axis from the
+    space polygon's own longest edge (a 1x6 rectangle -> north-south)."""
+    route = [(0.0, 0.0), (100.0, 0.0)]
+    space = ParkingSpace(
+        points_m=[(100.0, -1.0), (101.0, -1.0), (101.0, 5.0), (100.0, 5.0)],
+        bbox=(100.0, -1.0, 101.0, 5.0),
+    )
+    result = _align_approach_to_parking_orientation(route, space)
+    assert result == [(0.0, 0.0), (100.0, -6.0), (100.0, 0.0)]
+
+
+def test_spawn_npc_final_heading_matches_the_parking_space_orientation():
+    """End to end: the actual driven path's last segment must approach
+    along the space's own axis, not the road's."""
+    ways = _straight_chain(count=20)
+    tw = TrafficWorld(ways)
+    residents = ResidentManager()
+    space = ParkingSpace(
+        points_m=[(400.0, 4.0), (401.0, 4.0), (401.0, 10.0), (400.0, 10.0)],
+        bbox=(400.0, 4.0, 401.0, 10.0),
+    )
+    result = spawn_npc(1, residents, tw, ways, (0.0, 0.0), (400.0, 5.0), parking_space=space)
+    assert result is not None
+    _, driver, _ = result
+    final_heading = math.atan2(
+        driver.path[-1].y - driver.path[-2].y, driver.path[-1].x - driver.path[-2].x,
+    )
+    # Space's long axis is north-south (pi/2) - the corner-rounded arrival
+    # arc (see _round_corner) means the very last segment isn't pixel-
+    # exact, but it must land far closer to north than to the chain's own
+    # east-west (0) heading it would have used without this alignment.
+    assert abs(final_heading - math.pi / 2.0) < abs(final_heading - 0.0)
+
+
 def test_spawn_deterministic_npc_routes_to_a_free_parking_space_when_one_exists():
     """The BFS-hop destination alone can land anywhere on the road graph -
     the middle of an intersection, an arbitrary block. Handing
@@ -506,6 +575,43 @@ def test_spawn_npc_rejects_a_route_that_clips_a_curb():
     assert result is None
 
 
+def test_route_crosses_buildings_rejects_a_path_cutting_through_a_footprint():
+    building = Building(points_m=[(40.0, -5.0), (60.0, -5.0), (60.0, 5.0), (40.0, 5.0)])
+    clean_path = [(0.0, 0.0), (20.0, 0.0)]
+    cutting_path = [(0.0, 0.0), (100.0, 0.0)]  # straight through the building's footprint
+    assert route_crosses_buildings(clean_path, [building]) is False
+    assert route_crosses_buildings(cutting_path, [building]) is True
+
+
+def test_spawn_npc_rejects_a_route_that_drives_through_a_building():
+    """NPC-more.md section 13: never drive through a building polygon, as
+    a hard constraint enforced before a vehicle is ever created."""
+    ways = _straight_chain(count=20)
+    tw = TrafficWorld(ways)
+    residents = ResidentManager()
+    # A building footprint squarely straddling the chain's driving path.
+    blocking_building = Building(points_m=[(190.0, -10.0), (210.0, -10.0), (210.0, 10.0), (190.0, 10.0)])
+
+    result = spawn_npc(1, residents, tw, ways, (0.0, 0.0), (400.0, 0.0), buildings=[blocking_building])
+    assert result is None
+
+
+def test_spawn_npc_rejects_a_destination_only_reachable_via_a_sidewalk():
+    """NPC-more.md section 12: a sidewalk/footway must never satisfy the
+    off-road tolerance check just because it happens to sit near the
+    destination - only a real drivable road counts. A footway planted
+    right at the destination's midpoint, with the nearest real road just
+    past the (widened, final-hop) tolerance, would incorrectly validate
+    the route if sidewalks still counted as "a road" here."""
+    drivable = Way(points_m=[(-10.0, 0.0), (0.0, 0.0)], highway="residential", half_width_m=4.5)
+    footway = Way(points_m=[(40.0, -1.0), (60.0, -1.0)], highway="footway", half_width_m=1.0, is_drivable=False)
+    tw = TrafficWorld([drivable, footway])
+    residents = ResidentManager()
+
+    result = spawn_npc(1, residents, tw, [drivable, footway], (-10.0, 0.0), (100.0, 0.0))
+    assert result is None
+
+
 def test_draw_npc_cars_renders_an_npc_vehicle_without_crashing():
     """Regression: draw_npc_cars' debug overlay (F7) crashed on any NPC
     without a `segment_idx` attribute - its steering-target-line fallback
@@ -537,6 +643,26 @@ def test_draw_npc_debug_overlay_renders_without_crashing():
     driver.decision.stop_position = (50.0, 0.0)  # exercise the stop-marker branch too
 
     draw_npc_debug_overlay(screen, vehicle, driver, vehicle.x, vehicle.y)
+
+
+def test_draw_npc_debug_panel_shows_parking_target():
+    """NPC-more.md section 21: the F7 panel must surface which parking
+    space (if any) the NPC is actually headed for, not just its raw
+    destination coordinates."""
+    from theroadragetrip.render.hud import draw_npc_debug_panel
+
+    pygame.init()
+    screen = pygame.display.set_mode((400, 300))
+    font = pygame.font.SysFont(None, 16)
+    ways = _straight_chain()
+    tw = TrafficWorld(ways)
+    residents = ResidentManager()
+    _, driver, vehicle = spawn_npc(1, residents, tw, ways, (0.0, 0.0), (200.0, 0.0))
+
+    draw_npc_debug_panel(screen, vehicle, driver, font)  # no dedicated space - must not crash
+
+    vehicle.destination_parking_space_id = 42
+    draw_npc_debug_panel(screen, vehicle, driver, font)  # with one - must not crash either
 
 
 def test_draw_npc_cars_debug_fallback_still_works_without_a_travel_route():

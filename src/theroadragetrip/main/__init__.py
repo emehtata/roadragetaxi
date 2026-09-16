@@ -651,7 +651,7 @@ def _load_world(
     npc_spawn = spawn_deterministic_npc(
         residents, traffic_mgr, ways, spatial_grid=spatial_grid,
         parking_spaces=parking_spaces, sceneries=sceneries, buildings=buildings,
-        curbs=curbs, curb_grid=curb_grid,
+        curbs=curbs, curb_grid=curb_grid, building_grid=building_grid,
     )
     if npc_spawn is not None:
         _, npc_driver, npc_vehicle = npc_spawn
@@ -1688,7 +1688,7 @@ def main() -> None:
                         npc_retry = spawn_deterministic_npc(
                             residents, traffic_mgr, ways, spatial_grid=spatial_grid,
                             parking_spaces=parking_spaces, sceneries=sceneries, buildings=buildings,
-                            curbs=curbs, curb_grid=curb_grid,
+                            curbs=curbs, curb_grid=curb_grid, building_grid=building_grid,
                         )
                         if npc_retry is not None:
                             _, retry_driver, retry_vehicle = npc_retry
