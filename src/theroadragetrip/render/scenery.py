@@ -95,6 +95,13 @@ SCENERY_COLORS = {
     "sauna": (112, 92, 72),
     "parking": (98, 98, 98),  # plain asphalt grey, no green/blue tint
     "fuel": (92, 88, 84),  # paved forecourt - close to parking's grey, slightly warmer
+    # A closed kerb loop with no separate area tag (osm/build.py) - a real
+    # raised traffic/pedestrian-refuge island, but with no OSM fill tag
+    # telling us whether it's bare concrete or planted. A neutral raised-
+    # concrete tone (lighter than road asphalt, so it actually reads as a
+    # solid island rather than disappearing into the road under it) is the
+    # safer default than guessing green.
+    "traffic_island": (150, 148, 140),
 }
 # Kinds that read as visibly grainy/textured ground in real aerial imagery -
 # tree canopy, mown/unmown grass, tilled soil, loose sand - as opposed to

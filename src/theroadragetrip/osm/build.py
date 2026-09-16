@@ -57,6 +57,15 @@ from .trees import (
 _STATUE_MEMORIAL_TYPES = {"statue", "bust", "sculpture"}
 _STATUE_ARTWORK_TYPES = {"statue", "sculpture"}
 
+# A real traffic/pedestrian-refuge island's kerb outline is compact (real
+# Oulu examples measured 3-12m across) and has genuine extent in both
+# directions (the same examples' narrower dimension was still 2.3m+) -
+# unlike an ordinary curb line along a street, which is frequently mapped
+# in short segments too but is always a near-straight, thin sliver. See
+# curb_raw's own traffic-island fallback fill below for the full reasoning.
+MAX_TRAFFIC_ISLAND_SPAN_M = 25.0
+MIN_TRAFFIC_ISLAND_WIDTH_M = 1.5
+
 
 def _scenery_object_kind(tags: Dict[str, str]) -> Optional[str]:
     amenity = tags.get("amenity")
@@ -564,6 +573,43 @@ def build_ways(
         if not pts or len(pts) < 2:
             continue
         curbs.append(Curb(points_m=pts, bbox=ibbox))
+        # A kerb shape with no separate natural=*/landuse=*/leisure=* area
+        # tag is still, in practice, virtually always a real traffic or
+        # pedestrian-refuge island - without a fill, it only ever got the
+        # curb outline above: a thin line sitting directly on the road's
+        # own asphalt with nothing distinguishing its interior (reads as
+        # empty road, not a solid island - the reported missing feature).
+        # Real Oulu data confirms this two ways: explicitly, via either
+        # area:highway=traffic_island (the newer, dedicated convention) or
+        # traffic_calming=island alongside the bare kerb; and implicitly,
+        # via plain {barrier=kerb} with neither tag but a small, compact
+        # shape - most such ways are *not even a literally closed ring*
+        # (checked examples had a few-meter gap between first and last
+        # node - each traces one curved side of a small island; filling it
+        # as a polygon regardless still approximates the real shape far
+        # better than an unfilled outline, a minor simplification for a
+        # shape this small). The natural=scrub/landuse=grass case (a real
+        # planted island) already gets its own fill through the ordinary
+        # scenery_raw path elsewhere in this function and must not be
+        # doubled up here.
+        has_area_or_leisure_tag = "natural" in tags or "landuse" in tags or "leisure" in tags
+        is_explicitly_tagged_island = (
+            tags.get("area:highway") == "traffic_island" or tags.get("traffic_calming") == "island"
+        )
+        island_width = ibbox[2] - ibbox[0]
+        island_height = ibbox[3] - ibbox[1]
+        # An ordinary curb line along a street - by far the more common
+        # barrier=kerb case - is frequently mapped in short segments too,
+        # so span alone doesn't tell it apart from a real island; but it's
+        # always a near-straight, thin sliver (one dimension close to
+        # zero), while a real island has real extent in both directions.
+        looks_like_a_compact_island = (
+            len(pts) >= 3
+            and max(island_width, island_height) <= MAX_TRAFFIC_ISLAND_SPAN_M
+            and min(island_width, island_height) >= MIN_TRAFFIC_ISLAND_WIDTH_M
+        )
+        if not has_area_or_leisure_tag and (is_explicitly_tagged_island or looks_like_a_compact_island):
+            sceneries.append(Scenery(points_m=pts, kind="traffic_island", bbox=ibbox))
 
     for tags, node_ids in railway_raw:
         pts, ibbox = process_node_ids(node_ids)
