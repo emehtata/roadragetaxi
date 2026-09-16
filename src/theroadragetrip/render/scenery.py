@@ -94,6 +94,12 @@ SCENERY_COLORS = {
     "outdoor_seating": (112, 102, 92),
     "sauna": (112, 92, 72),
     "parking": (98, 98, 98),  # plain asphalt grey, no green/blue tint
+    # A pedestrian plaza/square mapped as a multipolygon relation
+    # (osm/build.py) rather than a simple way - matches SURFACE_COLORS'
+    # "paving_stones" (render/common.py), the tag this almost always
+    # carries, so a plaza reads the same paved tone as the pedestrian
+    # street leading into it.
+    "pedestrian_area": (125, 120, 112),
     "fuel": (92, 88, 84),  # paved forecourt - close to parking's grey, slightly warmer
     # A closed kerb loop with no separate area tag (osm/build.py) - a real
     # raised traffic/pedestrian-refuge island, but with no OSM fill tag

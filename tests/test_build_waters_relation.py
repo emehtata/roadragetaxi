@@ -52,3 +52,33 @@ def test_relation_multipolygon_bay():
     assert len(waters) == 1
     assert waters[0].kind == "bay"
     assert waters[0].is_polygon is True
+
+
+def test_relation_multipolygon_pedestrian_area():
+    """Regression: a real paved pedestrian plaza is commonly mapped as a
+    type=multipolygon relation tagged highway=pedestrian (+ surface=
+    paving_stones) rather than a simple way. It fell through every
+    relation-handling branch (not a building, not water, not parking, no
+    leisure/landuse/natural tag) and was silently dropped - reported as
+    "the paved square isn't there, only the grass patch under/near it
+    renders"."""
+    elements = [
+        {"type": "node", "id": 1, "lat": 60.0, "lon": 25.0},
+        {"type": "node", "id": 2, "lat": 60.0, "lon": 25.001},
+        {"type": "node", "id": 3, "lat": 60.001, "lon": 25.001},
+        {"type": "node", "id": 4, "lat": 60.001, "lon": 25.0},
+        {"type": "way", "id": 102, "nodes": [1, 2, 3, 4, 1], "tags": {}},
+        {
+            "type": "relation",
+            "id": 202,
+            "members": [{"type": "way", "ref": 102, "role": "outer"}],
+            "tags": {"type": "multipolygon", "highway": "pedestrian", "surface": "paving_stones"},
+        },
+    ]
+
+    ways, waters, buildings, sceneries, places, bounds = build_ways(elements)
+
+    assert len(sceneries) == 1
+    assert sceneries[0].kind == "pedestrian_area"
+    assert sceneries[0].surface == "paving_stones"
+    assert len(sceneries[0].points_m) == 5

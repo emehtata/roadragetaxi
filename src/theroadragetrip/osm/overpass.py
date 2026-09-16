@@ -178,6 +178,7 @@ def fetch_osm_ways(
     relation["natural"="strait"]({south},{west},{north},{east});
       relation["landuse"="reservoir"]({south},{west},{north},{east});
       relation["building"]({south},{west},{north},{east});
+    relation["highway"]({south},{west},{north},{east});
     relation["amenity"="parking"]({south},{west},{north},{east});
     relation["landuse"="parking"]({south},{west},{north},{east});
       relation["leisure"]({south},{west},{north},{east});

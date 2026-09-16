@@ -938,6 +938,19 @@ def build_ways(
                     points_m=pts, kind="parking", name=name, bbox=ibbox,
                     surface=tags.get("surface") or "asphalt",
                 ))
+            elif tags.get("highway") in non_drivable_highways:
+                # A paved pedestrian plaza/square is commonly mapped as a
+                # type=multipolygon relation tagged highway=pedestrian
+                # (+ surface=paving_stones) rather than a simple way -
+                # without this branch it fell through every case above
+                # and was silently dropped, leaving only whatever ground
+                # scenery sat underneath visible (reported: a real paved
+                # square over a small nearby landuse=grass patch rendered
+                # as if the grass itself were the square).
+                sceneries.append(Scenery(
+                    points_m=pts, kind="pedestrian_area", name=name, bbox=ibbox,
+                    surface=tags.get("surface") or "paving_stones",
+                ))
             elif "leisure" in tags or "landuse" in tags or tags.get("natural") in NATURAL_SCENERY_KINDS:
                 kind = tags.get("leisure") or tags.get("landuse") or tags.get("natural") or "park"
                 scenery = Scenery(points_m=pts, kind=kind, name=name, bbox=ibbox)

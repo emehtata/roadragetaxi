@@ -284,6 +284,39 @@ def test_fetch_query_requests_any_landuse_or_leisure_way(monkeypatch):
     assert "forest|grass|park|meadow" not in captured["query"]
 
 
+def test_fetch_query_requests_highway_tagged_relations(monkeypatch):
+    """Regression: a paved pedestrian plaza is commonly mapped as a
+    type=multipolygon relation tagged highway=pedestrian rather than a
+    simple way - the query only ever fetched way["highway"], so this
+    relation (and its geometry) never reached build_ways() at all, not
+    even to be classified wrong; it was invisible from the start."""
+    import theroadragetrip.osm as osm
+
+    captured = {}
+
+    class Response:
+        status_code = 200
+
+        def json(self):
+            return {"elements": []}
+
+        def raise_for_status(self):
+            return None
+
+    def post(endpoint, **kwargs):
+        captured["query"] = kwargs["data"]["data"]
+        return Response()
+
+    monkeypatch.setattr(osm.requests, "post", post)
+    monkeypatch.setattr(osm, "load_osm_cache", lambda bbox: None)
+    monkeypatch.setattr(osm, "save_osm_cache", lambda bbox, elements: None)
+    monkeypatch.delenv("OVERPASS_ENDPOINTS", raising=False)
+
+    osm.fetch_osm_ways((60.0, 25.0, 60.1, 25.1), endpoints=["https://example.test/api"], force_refresh=True)
+
+    assert 'relation["highway"](' in captured["query"]
+
+
 def test_fetch_query_natural_whitelist_is_built_from_the_shared_constant(monkeypatch):
     """natural=* (unlike landuse/leisure) does need a whitelist - see
     NATURAL_SCENERY_KINDS's docstring in osm/constants.py - but it must be
