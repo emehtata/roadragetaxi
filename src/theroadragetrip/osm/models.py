@@ -300,22 +300,30 @@ class TrafficLight:
 
 @dataclass
 class StopSign:
-    """OSM stop sign position used by NPC approach logic."""
+    """OSM stop sign position, snapped onto its nearest road same as
+    Crossing/SpeedBump - see RENDER-audit.md section 19's finding that
+    this data was previously rendered nowhere."""
 
     x: float
     y: float
     layer: int = 0
     id: Optional[int] = None
+    direction_angle: Optional[float] = None
+    road_half_width_m: float = 3.5
 
 
 @dataclass
 class YieldSign:
-    """OSM give-way sign position used by NPC approach logic."""
+    """OSM give-way sign position, snapped onto its nearest road same as
+    Crossing/SpeedBump - see RENDER-audit.md section 19's finding that
+    this data was previously rendered nowhere."""
 
     x: float
     y: float
     layer: int = 0
     id: Optional[int] = None
+    direction_angle: Optional[float] = None
+    road_half_width_m: float = 3.5
 
 
 @dataclass

@@ -127,6 +127,8 @@ from ..render import (
     draw_passenger_nausea_bubble,
     draw_taxi_exhaust,
     draw_speed_cameras,
+    draw_stop_signs,
+    draw_yield_signs,
     draw_taxi_stops,
     draw_taxi_target,
     draw_tire_tracks,
@@ -764,6 +766,7 @@ def _load_world(
         speed_bumps=speed_bumps,
         speed_cameras=speed_cameras,
         stop_signs=stop_signs,
+        yield_signs=yield_signs,
         sun_latitude=sun_latitude,
         sun_longitude=sun_longitude,
         taxi_mgr=taxi_mgr,
@@ -946,6 +949,7 @@ def main() -> None:
         speed_bumps = world.speed_bumps
         speed_cameras = world.speed_cameras
         stop_signs = world.stop_signs
+        yield_signs = world.yield_signs
         sun_latitude = world.sun_latitude
         sun_longitude = world.sun_longitude
         taxi_mgr = world.taxi_mgr
@@ -2237,6 +2241,8 @@ def main() -> None:
                 spatial_grid=traffic_light_grid,
             )
             draw_taxi_stops(screen, taxi_stops, camx, camy, px_per_m=px_per_m)
+            draw_stop_signs(screen, stop_signs, camx, camy, px_per_m=px_per_m)
+            draw_yield_signs(screen, yield_signs, camx, camy, px_per_m=px_per_m)
             draw_speed_cameras(
                 screen,
                 speed_cameras,

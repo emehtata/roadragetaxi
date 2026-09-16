@@ -1025,31 +1025,14 @@ def build_ways(
     else:
         logical_intersections = []
 
-    # 8. Stop signs from OSM nodes
-    for tags, nid in stop_signs_raw:
-        point = nodes_m.get(nid)
-        if point is None:
-            continue
-        layer_value = 0
-        try:
-            layer_value = int(tags.get("layer", 0))
-        except (TypeError, ValueError):
-            pass
-        stop_signs.append(StopSign(point[0], point[1], layer=layer_value, id=nid))
-    for tags, nid in yield_signs_raw:
-        point = nodes_m.get(nid)
-        if point is None:
-            continue
-        try:
-            layer_value = int(tags.get("layer", 0))
-        except (TypeError, ValueError):
-            layer_value = 0
-        yield_signs.append(YieldSign(point[0], point[1], layer=layer_value, id=nid))
-
-    # 9. Pedestrian Crossings (suojatiet) and speed bumps from OSM nodes -
-    # both are "snap this node onto the nearest road, get its direction
-    # and width" problems, so they share one roads_grid/_snap_to_nearest_road.
-    if crossings_raw or speed_bumps_raw:
+    # 9. Pedestrian Crossings (suojatiet), speed bumps, stop signs and
+    # yield signs from OSM nodes - all four are "snap this node onto the
+    # nearest road, get its direction and width" problems, so they share
+    # one roads_grid/_snap_to_nearest_road. Stop/yield signs are physical
+    # roadside objects, not road-surface markings, so the renderer offsets
+    # them out to the road's edge using direction_angle/road_half_width_m -
+    # unlike a Crossing/SpeedBump, which is drawn right on the snapped point.
+    if crossings_raw or speed_bumps_raw or stop_signs_raw or yield_signs_raw:
         r_grid_size = 50.0
         roads_grid = _build_roads_grid(ways, r_grid_size)
 
@@ -1149,6 +1132,52 @@ def build_ways(
                     width_m=max(3.0, road_half_w * 1.8),
                 )
             )
+
+        # Unlike a Crossing/SpeedBump (a road-surface marking, correctly
+        # drawn right on the snapped centerline point), a stop/yield sign
+        # is a physical post beside the road - placed at whichever side of
+        # the centerline the raw OSM node itself already leans towards
+        # (mappers commonly nudge these nodes slightly off-center towards
+        # the sign's real post), pushed out to just past the road edge.
+        def _snap_road_sign(tags: Dict[str, str], nid: int):
+            pt = nodes_m.get(nid)
+            if not pt:
+                return None
+            try:
+                layer_val = int(tags.get("layer", 0))
+            except (TypeError, ValueError):
+                layer_val = 0
+            snap_x, snap_y, road_angle, road_half_w, found_orientation = _snap_to_nearest_road(
+                pt, layer_val, roads_grid, r_grid_size
+            )
+            if not found_orientation:
+                return pt[0], pt[1], layer_val, None, road_half_w
+            normal_x, normal_y = -math.sin(road_angle), math.cos(road_angle)
+            side = 1.0 if (pt[0] - snap_x) * normal_x + (pt[1] - snap_y) * normal_y >= 0.0 else -1.0
+            clearance = road_half_w + 1.0
+            post_x = snap_x + normal_x * side * clearance
+            post_y = snap_y + normal_y * side * clearance
+            return post_x, post_y, layer_val, road_angle, road_half_w
+
+        for tags, nid in stop_signs_raw:
+            snapped = _snap_road_sign(tags, nid)
+            if snapped is None:
+                continue
+            post_x, post_y, layer_val, road_angle, road_half_w = snapped
+            stop_signs.append(StopSign(
+                x=post_x, y=post_y, layer=layer_val, id=nid,
+                direction_angle=road_angle, road_half_width_m=road_half_w,
+            ))
+
+        for tags, nid in yield_signs_raw:
+            snapped = _snap_road_sign(tags, nid)
+            if snapped is None:
+                continue
+            post_x, post_y, layer_val, road_angle, road_half_w = snapped
+            yield_signs.append(YieldSign(
+                x=post_x, y=post_y, layer=layer_val, id=nid,
+                direction_angle=road_angle, road_half_width_m=road_half_w,
+            ))
 
     t_total = time.time() - t_start
     logger.info(

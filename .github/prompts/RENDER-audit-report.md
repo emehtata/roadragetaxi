@@ -17,20 +17,24 @@ areas (all `leisure=*`/`landuse=*`/most `natural=*` land-cover values, ~35
 distinct kinds, most speckle-textured), scenery point objects (bench,
 waste_basket, bicycle_parking, statue, picnic_table, firepit, fountain,
 fuel, gate, bollard), parking spaces, parking lots, traffic lights, stop
-signs' *behavior* (not their sign), crossings, speed bumps, bus stops/
-platforms (as point markers), taxi stops, trees, street lights (synthesized,
-not OSM-tagged), traffic islands (added this session, section 15).
+signs, yield signs (added this session, section 21 below), crossings, speed
+bumps, bus stops/platforms (as point markers), taxi stops, trees, street
+lights (synthesized, not OSM-tagged), traffic islands (added this session,
+section 15).
 
 ## 2. Important OSM features currently missing
 
 Grounded in what the parser reads (or explicitly discards) tag-by-tag:
 
-* **Stop signs and yield signs have no visual representation at all.**
-  `StopSign`/`YieldSign` are parsed (`osm/build.py:1029-1047`) and drive
-  right-of-way *logic* (`traffic_world.py`), but no `render/*.py` module
-  ever draws one — confirmed by grep, zero hits for `StopSign`/`YieldSign`
-  outside `osm/` and traffic logic. This is a genuine parsed-but-invisible
-  gap, not a priority judgment call.
+* ~~Stop signs and yield signs have no visual representation~~ — **fixed
+  this session, see section 21.** Correction to this report's first pass:
+  `StopSign`/`YieldSign` were parsed and even snapped onto their road
+  (`_snap_to_nearest_road`), but a closer check of the actual call graph
+  (not just the dataclass docstring's claim) found `traffic_world.py`
+  never reads either one — `TrafficWorld.sync_map_data` accepts
+  `stop_signs` as a keyword and silently drops it into `**_kwargs`. So
+  this was parsed-but-invisible *and* parsed-but-logically-unused, not
+  "invisible sign, real behavior" as first reported.
 * **`sidewalk=left/right/both` on a road is never read.** A pedestrian path
   only exists in-game if it's mapped as its own `highway=footway`/`path`
   way; a road tagged `sidewalk=both` with no separate footway way renders
@@ -51,8 +55,7 @@ Grounded in what the parser reads (or explicitly discards) tag-by-tag:
 
 ## 3. Features parsed but not rendered
 
-* `StopSign` / `YieldSign` (see above) — the one unambiguous case: the data
-  exists in the internal model, nothing draws it.
+* ~~`StopSign` / `YieldSign`~~ — fixed this session (section 21).
 
 ## 4. Features not currently parsed
 
@@ -101,9 +104,7 @@ traffic island reads as bare pavement/gravel, not turf).
 
 In order, reasoning below:
 
-1. **Stop/yield sign visuals** — the simulation already enforces the
-   right-of-way rule; a driver has no visual cue *why* they must stop,
-   which reads as a bug ("random braking") rather than correct behavior.
+1. ~~Stop/yield sign visuals~~ — implemented this session (section 21).
 2. **Sidewalks via `sidewalk=*`** — in real OSM data, attaching sidewalk
    tags to the road is at least as common as mapping a separate footway
    way, so this gap silently removes real pedestrian infrastructure that
@@ -130,14 +131,29 @@ In order, reasoning below:
   `tests/test_curbs.py` (island-vs-ordinary-curb discrimination), 
   `tests/test_debug_tools.py` (`screen_to_world` inverse property,
   `find_feature_at` nearest-match/inside-polygon/no-match cases).
+* `osm/models.py`/`osm/build.py`: added `direction_angle`/`road_half_width_m`
+  to `StopSign`/`YieldSign`, snapped both onto their nearest road (same
+  `_snap_to_nearest_road` pool as crossings/speed bumps) and offset out to
+  the roadside on whichever side the raw OSM node itself leans towards.
+* `render/roads.py`: `draw_stop_signs()` (red octagon + "STOP"),
+  `draw_yield_signs()` (downward triangle), both a plain pole + pygame
+  primitives, no new spatial grid (see section 10).
+* `main/__init__.py`: `yield_signs` was parsed but dropped before ever
+  reaching the `world` object returned by `_load_world` — added
+  `yield_signs=yield_signs` to that `SimpleNamespace` and pulled it into
+  the render loop's local scope alongside the (already-present)
+  `stop_signs`, then wired both new draw calls in next to `draw_taxi_stops`.
+* Tests: `tests/test_road_signs.py` (parse+snap, opposite-side placement,
+  world-cache round-trip, render pixel checks, viewport culling).
 
 ## 9. Files changed
 
-`src/theroadragetrip/osm/build.py`, `src/theroadragetrip/render/scenery.py`,
+`src/theroadragetrip/osm/build.py`, `src/theroadragetrip/osm/models.py`,
+`src/theroadragetrip/render/scenery.py`, `src/theroadragetrip/render/roads.py`,
 `src/theroadragetrip/render/common.py`, `src/theroadragetrip/render/hud.py`,
 `src/theroadragetrip/render/__init__.py`, `src/theroadragetrip/main/__init__.py`,
 `src/theroadragetrip/main/debug_tools.py`, `tests/test_scenery_and_buildings.py`,
-`tests/test_curbs.py`, `tests/test_debug_tools.py`.
+`tests/test_curbs.py`, `tests/test_debug_tools.py`, `tests/test_road_signs.py`.
 
 ## 10. Performance considerations
 
@@ -153,9 +169,14 @@ treatment that everything in `render/*.py` proper does.
 
 In priority order, matching section 14's categories:
 
-**High** (directly affects driving/pedestrian realism): stop/yield sign
-visuals, `sidewalk=*`-driven sidewalks, on-road cycle lanes
-(`cycleway:*=lane`), platform footprint shape instead of centroid point.
+**High** (directly affects driving/pedestrian realism): ~~stop/yield sign
+visuals~~ (done, section 21), `sidewalk=*`-driven sidewalks, on-road cycle
+lanes (`cycleway:*=lane`), platform footprint shape instead of centroid
+point. Separately, now that the signs are visible: NPC right-of-way logic
+still doesn't read `stop_signs`/`yield_signs` at all (confirmed in section
+21) — the sign now visually exists at an intersection an NPC may still
+drive straight through without slowing, which is a bigger, separate
+behavioral feature, not a rendering one.
 
 **Medium** (environmental detail): `kerb=*`/`tactile_paving` distinction at
 crossings, parking-lot sub-typing (`disabled`, `underground`, `access`) so
@@ -204,5 +225,54 @@ dataclasses into a base class, at the cost of every existing renderer
 needing to be touched to fit the new hierarchy — a large, risky diff to
 buy an abstraction the codebase isn't short on today. The one real
 architectural weakness this audit did surface — `StopSign`/`YieldSign`
-having no renderer at all — isn't a hierarchy problem, it's a missing
-`draw_*` function; the flat model doesn't stand in the way of fixing it.
+having no renderer at all — wasn't a hierarchy problem, it was a missing
+`draw_*` function (see section 21); the flat model didn't stand in the
+way of fixing it, and fixing it needed no new dataclass at all.
+
+---
+
+# Section 21 — Stop/yield sign visuals implemented
+
+Closes the one gap section 7 ranked highest: `StopSign`/`YieldSign` were
+parsed and even correctly positioned since day one, but had no renderer,
+*and* (corrected from this report's first pass, after actually tracing the
+call graph instead of trusting the dataclass docstring) no consumer in
+`traffic_world.py` either — right-of-way at a stop/yield-controlled
+intersection is decided purely by the existing traffic-light/logical-
+intersection rules, never by these signs. This pass fixes the rendering
+gap only; wiring the signs into right-of-way *behavior* is a separate,
+larger NPC-driving feature and out of scope here.
+
+**What changed:**
+
+* `StopSign`/`YieldSign` gained `direction_angle`/`road_half_width_m`
+  fields and are now snapped through the same `_snap_to_nearest_road`
+  pool as `Crossing`/`SpeedBump` — but unlike those (road-surface
+  markings, correctly drawn on the centerline), a sign is a roadside
+  post: the final stored position is pushed out past the road edge, on
+  whichever side of the centerline the raw OSM node already leaned
+  towards (mappers commonly nudge these nodes slightly off-center towards
+  the physical sign).
+* `render/roads.py` gained `draw_stop_signs()` (red octagon, white
+  border, "STOP" label) and `draw_yield_signs()` (white triangle,
+  red border), both upright fixed-size icons on a small pole — same
+  simplicity as the existing `draw_taxi_stops()`, not a to-scale 3D
+  object, no rotation to face traffic (the icon reads clearly either way).
+* `yield_signs` turned out to be parsed but silently dropped before ever
+  reaching the `world` object the gameplay loop reads from — the
+  `SimpleNamespace` `_load_world()` returns had a `stop_signs=stop_signs`
+  entry but no matching one for `yield_signs`. Fixed alongside the
+  renderer, or the new `draw_yield_signs()` call would have had nothing
+  to draw regardless.
+
+**Verified:** `tests/test_road_signs.py` covers parse+snap-to-road,
+opposite raw-node offsets landing on opposite rendered sides, world-cache
+round-trip, and render pixel checks (including viewport culling). Confirmed
+each test fails against the pre-change code (import error / attribute
+error) before the fix and passes after. Full suite and the subprocess-based
+`tests/test_main_loop.py` smoke test both pass with the change in.
+
+**Performance:** signs are drawn with a plain per-frame loop, no spatial
+grid — consistent with `draw_taxi_stops`/`draw_speed_bumps`, which don't
+use one either; stop/yield sign counts in a real extract are far too small
+(tens, not thousands) to need one.

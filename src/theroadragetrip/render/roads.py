@@ -62,6 +62,7 @@ _taxi_sign_text = None
 _bus_stop_geometry_cache = None
 _bus_stop_font_cache = {}
 _bus_stop_label_cache = {}
+_road_sign_font_cache = {}
 _traffic_light_surface_cache = {}
 _street_light_glow_cache = {}
 _street_light_frame_cache_key = None
@@ -1933,6 +1934,90 @@ def draw_speed_bumps(
             (sx - half_len_x + half_wid_x, sy - half_len_y + half_wid_y),
         ]
         pygame.draw.polygon(screen, SPEED_BUMP_COLOR, corners)
+
+
+def _draw_road_sign_post(screen, cx: int, cy: int, scale: float) -> None:
+    """Shared grey pole under a stop/yield sign head."""
+    import pygame
+
+    pole_height = max(8, int(14 * scale))
+    pygame.draw.line(screen, (70, 70, 70), (cx, cy), (cx, cy + pole_height), max(2, int(2 * scale)))
+
+
+def draw_stop_signs(
+    screen,
+    stop_signs: List,
+    camx: float,
+    camy: float,
+    px_per_m: float = PX_PER_M,
+    screen_w: int = SCREEN_W,
+    screen_h: int = SCREEN_H,
+) -> None:
+    """RENDER-audit.md section 21: stop signs were parsed (StopSign) and
+    fed into `_snap_to_nearest_road` since day one but never had a
+    renderer - the octagonal red sign was invisible even though its road
+    position was already computed. Drawn upright (not rotated to face
+    traffic), same simplicity as draw_taxi_stops - a small fixed-size
+    roadside icon, not a to-scale 3D object."""
+    import pygame
+
+    if not stop_signs:
+        return
+
+    vminx, vminy, vmaxx, vmaxy = get_viewport_bounds(camx, camy, px_per_m, screen_w, screen_h, 20.0)
+    scale = max(0.7, min(1.5, px_per_m / PX_PER_M))
+    radius = 9 * scale
+
+    for sign in stop_signs:
+        if not (vminx <= sign.x <= vmaxx and vminy <= sign.y <= vmaxy):
+            continue
+        cx, cy = world_to_screen(sign.x, sign.y, camx, camy, px_per_m, screen_w, screen_h)
+        _draw_road_sign_post(screen, cx, cy, scale)
+        octagon = [
+            (cx + radius * math.cos(math.radians(a)), cy + radius * math.sin(math.radians(a)))
+            for a in range(0, 360, 45)
+        ]
+        pygame.draw.polygon(screen, (220, 30, 30), octagon)
+        pygame.draw.polygon(screen, (245, 245, 240), octagon, width=max(1, int(scale)))
+        if radius >= 7:
+            font_size = max(8, int(radius))
+            stop_font = _road_sign_font_cache.get(font_size)
+            if stop_font is None:
+                stop_font = pygame.font.Font(None, font_size)
+                _road_sign_font_cache[font_size] = stop_font
+            label = stop_font.render("STOP", True, (250, 250, 248))
+            screen.blit(label, label.get_rect(center=(cx, cy)))
+
+
+def draw_yield_signs(
+    screen,
+    yield_signs: List,
+    camx: float,
+    camy: float,
+    px_per_m: float = PX_PER_M,
+    screen_w: int = SCREEN_W,
+    screen_h: int = SCREEN_H,
+) -> None:
+    """RENDER-audit.md section 21: same previously-invisible-data gap as
+    draw_stop_signs, for give-way signs - a downward-pointing red-bordered
+    triangle instead of an octagon."""
+    import pygame
+
+    if not yield_signs:
+        return
+
+    vminx, vminy, vmaxx, vmaxy = get_viewport_bounds(camx, camy, px_per_m, screen_w, screen_h, 20.0)
+    scale = max(0.7, min(1.5, px_per_m / PX_PER_M))
+    half = 9 * scale
+
+    for sign in yield_signs:
+        if not (vminx <= sign.x <= vmaxx and vminy <= sign.y <= vmaxy):
+            continue
+        cx, cy = world_to_screen(sign.x, sign.y, camx, camy, px_per_m, screen_w, screen_h)
+        _draw_road_sign_post(screen, cx, cy, scale)
+        triangle = [(cx, cy + half), (cx - half, cy - half), (cx + half, cy - half)]
+        pygame.draw.polygon(screen, (245, 245, 240), triangle)
+        pygame.draw.polygon(screen, (220, 30, 30), triangle, width=max(2, int(2 * scale)))
 
 
 def draw_traffic_lights(

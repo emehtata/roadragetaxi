@@ -133,12 +133,14 @@ from .roads import (
     draw_roadworks,
     draw_speed_bumps,
     draw_speed_cameras,
+    draw_stop_signs,
     draw_street_lights,
     draw_taxi_stops,
     draw_tire_tracks,
     draw_traffic_lights,
     draw_vomit_puddles,
     draw_ways,
+    draw_yield_signs,
 )
 
 from .vehicles import (
