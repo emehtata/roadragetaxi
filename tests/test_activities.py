@@ -42,7 +42,14 @@ def _make_manager_and_pedestrian(scenery_objects=None, sceneries=None, bus_stops
         scenery_objects=scenery_objects, sceneries=sceneries, bus_stops=bus_stops,
     )
     pedestrian = Pedestrian(10.0, 0.0, 0.0, 1.3, 1.3, way, 0, 1, (1, 1, 1))
-    pedestrian.resident_id = manager.residents.create("walking").resident_id
+    # Fixed adult age, not the ResidentManager.create() default (a random
+    # 0-100 birth date) - several tests assert can_start()/age-gated
+    # behavior against "an ordinary adult resident", which a randomly
+    # child-aged default resident occasionally violated (flaky failures
+    # in ball_game/playground/explain_candidates tests that never touched
+    # age themselves). Tests that specifically want a child create one
+    # explicitly with age=<18.
+    pedestrian.resident_id = manager.residents.create("walking", age=30).resident_id
     manager.pedestrians.append(pedestrian)
     return manager, pedestrian
 
@@ -432,11 +439,10 @@ def test_small_group_conversation_recruits_multiple_partners():
 
 
 def test_ball_game_only_startable_by_children():
-    manager, pedestrian = _make_manager_and_pedestrian()
+    manager, pedestrian = _make_manager_and_pedestrian()  # adult by default
     plugin = BallGamePlugin()
     context = _context(manager, pedestrian)
 
-    pedestrian.resident_id = manager.residents.create("walking", age=30).resident_id
     assert plugin.can_start(context) is False
 
     pedestrian.resident_id = manager.residents.create("walking", age=8).resident_id
@@ -462,11 +468,10 @@ def test_ball_game_requires_a_nearby_park_and_other_children():
 def test_playground_only_startable_by_children():
     from theroadragetrip.activities.plugins.playground import PlaygroundPlugin
 
-    manager, pedestrian = _make_manager_and_pedestrian()
+    manager, pedestrian = _make_manager_and_pedestrian()  # adult by default
     plugin = PlaygroundPlugin()
     context = _context(manager, pedestrian)
 
-    pedestrian.resident_id = manager.residents.create("walking", age=30).resident_id
     assert plugin.can_start(context) is False
 
     pedestrian.resident_id = manager.residents.create("walking", age=6).resident_id

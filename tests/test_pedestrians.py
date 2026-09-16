@@ -69,6 +69,31 @@ def test_pedestrian_routes_and_spawns_stay_outside_buildings():
     assert manager.spawn_pedestrian_at_door(20.0, 0.0) is not None
 
 
+def test_spawn_at_door_does_not_snap_onto_a_way_reachable_only_through_the_building():
+    """Regression: spawn_pedestrian_at_door's nearest-way search picked
+    the geometrically closest ped_way regardless of whether reaching it
+    from the door required cutting through the building itself - a way
+    just behind the building can be closer as the crow flies than the
+    real street out front across an open lot/plaza (reported: pedestrians
+    spawn at the door then walk straight through the building). The
+    nearer-but-blocked way must be skipped in favor of the farther,
+    actually-reachable one."""
+    front_street = Way(points_m=[(-10.0, -30.0), (30.0, -30.0)], highway="footway", half_width_m=1.5)
+    back_alley = Way(points_m=[(-10.0, 21.0), (30.0, 21.0)], highway="footway", half_width_m=1.5)
+    building = SimpleNamespace(
+        points_m=[(0.0, 0.0), (20.0, 0.0), (20.0, 20.0), (0.0, 20.0)],
+        bbox=(0.0, 0.0, 20.0, 20.0),
+        entrances=[(10.0, 0.0)],
+        venue_type=None,
+    )
+    manager = PedestrianManager([front_street, back_alley], target_count=0, venue_buildings=[building])
+
+    pedestrian = manager.spawn_pedestrian_at_door(10.0, 0.0)
+
+    assert pedestrian is not None
+    assert pedestrian.way.points_m == front_street.points_m
+
+
 def test_pedestrian_state_and_appearance_support_interactions():
     assert PedestrianState.APPROACHING_CROSSING.value == "approaching_crossing"
     appearance = PedestrianAppearance(body=(10, 20, 30))

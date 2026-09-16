@@ -1502,11 +1502,28 @@ class PedestrianManager:
         nearest = None
         for way in self._nearby_ped_ways(x, y):
             for segment_idx, (start, end) in enumerate(zip(way.points_m, way.points_m[1:])):
-                _, _, progress, distance = closest_point_and_dist_to_segment(
+                closest_x, closest_y, progress, distance = closest_point_and_dist_to_segment(
                     x, y, start[0], start[1], end[0], end[1]
                 )
-                if nearest is None or distance < nearest[0]:
-                    nearest = (distance, way, segment_idx, progress)
+                if nearest is not None and distance >= nearest[0]:
+                    continue
+                if allow_building_interior and any(
+                    self._point_inside_building(x + (closest_x - x) * t, y + (closest_y - y) * t)
+                    for t in (0.2, 0.4, 0.6, 0.8)
+                ):
+                    # A door's nearest mapped way by raw distance can sit
+                    # on the far side of the building it belongs to (e.g.
+                    # a footway along the back, closer as the crow flies
+                    # than the one out front) - snapping onto it would
+                    # have the spawned pedestrian walk straight through
+                    # the building to reach it. Skip it; a farther-but-
+                    # actually-reachable way is what should win instead.
+                    # Endpoints aren't sampled: the door itself often sits
+                    # exactly on the building's own wall line, where
+                    # point-in-polygon is a coin flip and irrelevant here
+                    # anyway - only the middle of the path matters.
+                    continue
+                nearest = (distance, way, segment_idx, progress)
         if nearest is None:
             return None
 
