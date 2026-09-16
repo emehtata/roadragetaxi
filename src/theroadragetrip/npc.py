@@ -715,11 +715,12 @@ def _pick_npc_destination(
 
 
 NPC_ROUTE_MAX_HOPS = 30  # how many real intersections the deterministic NPC's trip crosses
+NPC_DESTINATION_CANDIDATE_LIMIT = 40  # cap how many BFS nodes a single spawn attempt will try
 
 
-def _bfs_destination(nodes, edges, origin_index: int, max_hops: int = NPC_ROUTE_MAX_HOPS) -> int:
+def _bfs_destination_order(nodes, edges, origin_index: int, max_hops: int = NPC_ROUTE_MAX_HOPS) -> List[int]:
     """Walk the route graph breadth-first from origin_index for up to
-    max_hops steps and return the last node reached.
+    max_hops steps and return every node reached, farthest-hop first.
 
     A destination chosen this way is, by construction, connected to the
     origin by a real, moderate-length chain of road edges. Picking
@@ -732,10 +733,17 @@ def _bfs_destination(nodes, edges, origin_index: int, max_hops: int = NPC_ROUTE_
     stopping short of the real target. A short, ordinary trip through a
     couple dozen intersections doesn't have that gap between straight-
     line and real distance, so it doesn't trigger the same substitution.
+
+    Returns every reached node, not just the last one: a single fixed
+    destination that turns out invalid (inside a roundabout, a route
+    that clips a curb, no parking anywhere nearby) used to make
+    spawn_deterministic_npc retry that exact same rejected point forever
+    (reported: "no valid route found yet" logged every second, forever).
+    The caller tries these candidates in order until one actually spawns.
     """
     visited = {origin_index}
     frontier = [origin_index]
-    last = origin_index
+    order: List[int] = []
     for _ in range(max_hops):
         if not frontier:
             break
@@ -745,9 +753,10 @@ def _bfs_destination(nodes, edges, origin_index: int, max_hops: int = NPC_ROUTE_
                 if neighbor not in visited:
                     visited.add(neighbor)
                     next_frontier.append(neighbor)
-                    last = neighbor
+        order.extend(next_frontier)
         frontier = next_frontier
-    return last
+    order.reverse()
+    return order
 
 
 def spawn_deterministic_npc(
@@ -773,19 +782,22 @@ def spawn_deterministic_npc(
     plan_route can't actually route between at all. Deterministic given
     the same map data: origin is the graph's lowest-indexed node in its
     largest connected component, destination is reached by a fixed-length
-    breadth-first walk from there (see _bfs_destination) - no hard-coded
-    screen coordinates, no randomness.
+    breadth-first walk from there (see _bfs_destination_order) - no
+    hard-coded screen coordinates, no randomness.
 
     The BFS walk only ever lands on a road-graph node - the middle of an
     intersection or any other spot on a road, not actually a place to
     stop - so _pick_npc_destination refines it into the nearest free
     parking space, then parking lot, then a building's own entrance/yard,
-    before ever routing there (NPC-more.md section 2). If that refined
-    point turns out to be too far off any road (or crosses a curb) for
-    spawn_npc's own route validation, retry with the raw node exactly as
-    before, unless that raw node is itself inside a roundabout - never an
-    acceptable place to stop - in which case this attempt fails outright
-    and the caller's own spawn-retry-on-cooldown tries again later.
+    before ever routing there (NPC-more.md section 2), falling back to
+    the raw node itself unless that sits on a roundabout (never an
+    acceptable place to stop). Every one of those can still turn out
+    unroutable (too far off any real road, or the only path there clips a
+    curb) - rather than giving up on the whole spawn because the single
+    farthest BFS node happened to be bad (previously: retried that exact
+    same rejected node forever, logging "no valid route found" every
+    second - reported bug), try every node the walk reached, farthest
+    first, until one actually produces a spawnable NPC.
     """
     nodes = traffic_world._route_nodes
     edges = traffic_world._route_edges
@@ -793,27 +805,31 @@ def spawn_deterministic_npc(
     if len(component) < 2:
         return None
     origin_index = min(component)
-    destination_index = _bfs_destination(nodes, edges, origin_index)
-    if destination_index == origin_index:
+    candidates = _bfs_destination_order(nodes, edges, origin_index)[:NPC_DESTINATION_CANDIDATE_LIMIT]
+    if not candidates:
         return None
     origin = (nodes[origin_index][0], nodes[origin_index][1])
-    raw_destination = (nodes[destination_index][0], nodes[destination_index][1])
-    raw_way, _ = _way_at_point(spatial_grid, ways, raw_destination[0], raw_destination[1])
-    raw_destination_is_safe = not (raw_way is not None and getattr(raw_way, "is_roundabout", False))
 
-    destination, target_space = _pick_npc_destination(
-        raw_destination[0], raw_destination[1], parking_spaces, sceneries, buildings,
-        allow_raw_fallback=raw_destination_is_safe,
-    )
-    if destination is None:
-        return None
-    spawned = spawn_npc(
-        vehicle_id, resident_manager, traffic_world, ways, origin, destination,
-        spatial_grid=spatial_grid, curbs=curbs, curb_grid=curb_grid, parking_space=target_space,
-    )
-    if spawned is None and destination != raw_destination and raw_destination_is_safe:
-        spawned = spawn_npc(
-            vehicle_id, resident_manager, traffic_world, ways, origin, raw_destination,
-            spatial_grid=spatial_grid, curbs=curbs, curb_grid=curb_grid,
+    for destination_index in candidates:
+        raw_destination = (nodes[destination_index][0], nodes[destination_index][1])
+        raw_way, _ = _way_at_point(spatial_grid, ways, raw_destination[0], raw_destination[1])
+        raw_destination_is_safe = not (raw_way is not None and getattr(raw_way, "is_roundabout", False))
+
+        destination, target_space = _pick_npc_destination(
+            raw_destination[0], raw_destination[1], parking_spaces, sceneries, buildings,
+            allow_raw_fallback=raw_destination_is_safe,
         )
-    return spawned
+        if destination is None:
+            continue
+        spawned = spawn_npc(
+            vehicle_id, resident_manager, traffic_world, ways, origin, destination,
+            spatial_grid=spatial_grid, curbs=curbs, curb_grid=curb_grid, parking_space=target_space,
+        )
+        if spawned is None and destination != raw_destination and raw_destination_is_safe:
+            spawned = spawn_npc(
+                vehicle_id, resident_manager, traffic_world, ways, origin, raw_destination,
+                spatial_grid=spatial_grid, curbs=curbs, curb_grid=curb_grid,
+            )
+        if spawned is not None:
+            return spawned
+    return None

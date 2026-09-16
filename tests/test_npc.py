@@ -332,7 +332,7 @@ def test_spawn_deterministic_npc_on_a_city_block_grid():
     city map (this is exactly what happened against real cached Oulu OSM
     data during development). A grid of city blocks - short detours
     everywhere, like a real street grid - is what the BFS-hop destination
-    (see _bfs_destination) is meant to handle reliably."""
+    (see _bfs_destination_order) is meant to handle reliably."""
     ways = []
     block_count, step_m = 6, 40.0
     for row in range(block_count):
@@ -406,7 +406,7 @@ def test_spawn_deterministic_npc_routes_to_a_free_parking_space_when_one_exists(
     tw = TrafficWorld(ways)
     residents = ResidentManager()
     # This chain's fixed-hop BFS walk lands at (400.0, 0.0) - see
-    # _bfs_destination/NPC_ROUTE_MAX_HOPS - so a space placed right next
+    # _bfs_destination_order/NPC_ROUTE_MAX_HOPS - so a space placed right next
     # to it is the nearest one and should become the actual destination.
     space = ParkingSpace(points_m=[(398, 4), (402, 4), (402, 6), (398, 6)], bbox=(398.0, 4.0, 402.0, 6.0))
 
@@ -420,15 +420,29 @@ def test_spawn_deterministic_npc_routes_to_a_free_parking_space_when_one_exists(
     assert space.vehicle_id == vehicle.vehicle_id
 
 
-def test_spawn_deterministic_npc_refuses_to_park_in_a_roundabout():
-    """Regression: reported bug - an NPC's fixed-hop BFS destination
-    landed inside a roundabout with nothing else nearby, and the old
-    always-fall-back-to-the-raw-point behavior parked it there. With no
-    parking/building anywhere near the chain's end and that end itself
-    marked is_roundabout, spawning must fail this attempt rather than
-    stop the NPC in the roundabout."""
+def test_spawn_deterministic_npc_recovers_when_the_farthest_destination_is_a_roundabout():
+    """Regression: an NPC's fixed-hop BFS destination landing inside a
+    roundabout used to make spawn_deterministic_npc retry that exact same
+    rejected node forever (reported: "no valid route found yet" logged
+    every second, no NPC ever spawning). It must instead fall through to
+    the next-closest candidate the same BFS walk reached and spawn there."""
     ways = _straight_chain(count=20)
-    ways[-1].is_roundabout = True
+    ways[-1].is_roundabout = True  # the farthest way - where the walk used to land
+    tw = TrafficWorld(ways)
+    residents = ResidentManager()
+
+    result = spawn_deterministic_npc(residents, tw, ways)
+    assert result is not None
+    _, _, vehicle = result
+    assert vehicle.destination != (400.0, 0.0)  # never the roundabout itself
+
+
+def test_spawn_deterministic_npc_gives_up_when_every_candidate_is_a_roundabout():
+    """With truly nothing valid anywhere the BFS walk reached, spawning
+    must fail cleanly rather than ever stop an NPC in a roundabout."""
+    ways = _straight_chain(count=20)
+    for way in ways:
+        way.is_roundabout = True
     tw = TrafficWorld(ways)
     residents = ResidentManager()
 
