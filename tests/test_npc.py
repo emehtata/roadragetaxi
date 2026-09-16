@@ -15,11 +15,12 @@ from theroadragetrip.npc import (
     _pick_npc_destination,
     build_driving_path,
     has_active_driver,
+    route_crosses_curbs,
     spawn_deterministic_npc,
     spawn_npc,
     update_npc,
 )
-from theroadragetrip.osm import Building, ParkingSpace, TrafficLight, Way
+from theroadragetrip.osm import Building, Curb, ParkingSpace, Scenery, TrafficLight, Way
 from theroadragetrip.physics import Car
 from theroadragetrip.residents import ResidentManager
 from theroadragetrip.traffic_rules import TrafficAction, decide_traffic_action
@@ -353,26 +354,47 @@ def test_pick_npc_destination_prefers_the_nearest_free_parking_space():
     occupied = ParkingSpace(points_m=[(0, -1), (2, -1), (2, 1), (0, 1)], bbox=(0.0, -1.0, 2.0, 1.0), occupied=True)
     reserved = ParkingSpace(points_m=[(10, -1), (12, -1), (12, 1), (10, 1)], bbox=(10.0, -1.0, 12.0, 1.0), reserved=True)
     free = ParkingSpace(points_m=[(20, -1), (22, -1), (22, 1), (20, 1)], bbox=(20.0, -1.0, 22.0, 1.0))
-    point = _pick_npc_destination(0.0, 0.0, parking_spaces=[occupied, reserved, free], buildings=None)
+    point, space = _pick_npc_destination(0.0, 0.0, parking_spaces=[occupied, reserved, free], buildings=None)
     assert point == (21.0, 0.0)
+    assert space is free
+
+
+def test_pick_npc_destination_prefers_a_parking_lot_over_a_building():
+    lot = Scenery(points_m=[], kind="parking", bbox=(10.0, -1.0, 12.0, 1.0))
+    building = Building(points_m=[(0, 0), (10, 0), (10, 10), (0, 10)], entrances=[(30.0, 0.0)])
+    point, space = _pick_npc_destination(0.0, 0.0, sceneries=[lot], buildings=[building])
+    assert point == (11.0, 0.0)
+    assert space is None  # a parking lot isn't an individually reservable space
 
 
 def test_pick_npc_destination_falls_back_to_building_entrance_without_parking():
     building = Building(points_m=[(0, 0), (10, 0), (10, 10), (0, 10)], entrances=[(30.0, 0.0)], center_m=(5.0, 5.0))
-    point = _pick_npc_destination(0.0, 0.0, parking_spaces=None, buildings=[building])
+    point, space = _pick_npc_destination(0.0, 0.0, parking_spaces=None, buildings=[building])
     assert point == (30.0, 0.0)
+    assert space is None
 
 
 def test_pick_npc_destination_falls_back_to_building_center_without_entrances():
     building = Building(points_m=[(0, 0), (10, 0), (10, 10), (0, 10)], center_m=(5.0, 5.0))
-    point = _pick_npc_destination(0.0, 0.0, parking_spaces=None, buildings=[building])
+    point, space = _pick_npc_destination(0.0, 0.0, parking_spaces=None, buildings=[building])
     assert point == (5.0, 5.0)
 
 
 def test_pick_npc_destination_keeps_the_raw_point_when_nothing_is_nearby():
     far_space = ParkingSpace(points_m=[], bbox=(1000.0, 1000.0, 1002.0, 1002.0))
-    point = _pick_npc_destination(0.0, 0.0, parking_spaces=[far_space], buildings=None)
+    point, space = _pick_npc_destination(0.0, 0.0, parking_spaces=[far_space], buildings=None)
     assert point == (0.0, 0.0)
+    assert space is None
+
+
+def test_pick_npc_destination_refuses_the_raw_point_when_it_is_a_roundabout():
+    """A roundabout is never a legal place to stop (NPC-more.md section 1)
+    - with nothing better nearby, the caller must get told to give up on
+    this destination entirely rather than park an NPC in the middle of
+    one, so allow_raw_fallback=False must return no destination at all."""
+    point, space = _pick_npc_destination(0.0, 0.0, allow_raw_fallback=False)
+    assert point is None
+    assert space is None
 
 
 def test_spawn_deterministic_npc_routes_to_a_free_parking_space_when_one_exists():
@@ -392,6 +414,47 @@ def test_spawn_deterministic_npc_routes_to_a_free_parking_space_when_one_exists(
     assert result is not None
     _, driver, vehicle = result
     assert vehicle.destination == (400.0, 5.0)
+    # The chosen space must come out reserved (NPC-more.md section 4), so a
+    # second NPC search doesn't also target it.
+    assert space.reserved is True
+    assert space.vehicle_id == vehicle.vehicle_id
+
+
+def test_spawn_deterministic_npc_refuses_to_park_in_a_roundabout():
+    """Regression: reported bug - an NPC's fixed-hop BFS destination
+    landed inside a roundabout with nothing else nearby, and the old
+    always-fall-back-to-the-raw-point behavior parked it there. With no
+    parking/building anywhere near the chain's end and that end itself
+    marked is_roundabout, spawning must fail this attempt rather than
+    stop the NPC in the roundabout."""
+    ways = _straight_chain(count=20)
+    ways[-1].is_roundabout = True
+    tw = TrafficWorld(ways)
+    residents = ResidentManager()
+
+    result = spawn_deterministic_npc(residents, tw, ways)
+    assert result is None
+
+
+def test_route_crosses_curbs_rejects_a_path_clipping_a_mapped_curb():
+    curb = Curb(points_m=[(50.0, 3.0), (50.0, -3.0)])
+    clean_path = [(0.0, 0.0), (20.0, 0.0), (40.0, 0.0)]
+    crossing_path = [(0.0, 0.0), (40.0, 0.0), (60.0, 0.0)]
+    assert route_crosses_curbs(clean_path, [curb]) is False
+    assert route_crosses_curbs(crossing_path, [curb]) is True
+
+
+def test_spawn_npc_rejects_a_route_that_clips_a_curb():
+    """NPC-more.md section 7: never drive on curbs, as a hard constraint
+    enforced before a vehicle is ever created - not fixed up afterwards."""
+    ways = _straight_chain(count=20)
+    tw = TrafficWorld(ways)
+    residents = ResidentManager()
+    # A curb line planted squarely across the whole chain's driving path.
+    blocking_curb = Curb(points_m=[(200.0, 10.0), (200.0, -10.0)])
+
+    result = spawn_npc(1, residents, tw, ways, (0.0, 0.0), (400.0, 0.0), curbs=[blocking_curb])
+    assert result is None
 
 
 def test_draw_npc_cars_renders_an_npc_vehicle_without_crashing():

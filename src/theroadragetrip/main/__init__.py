@@ -650,7 +650,8 @@ def _load_world(
     on_load_progress(0.88, "Preparing NPC traffic...")
     npc_spawn = spawn_deterministic_npc(
         residents, traffic_mgr, ways, spatial_grid=spatial_grid,
-        parking_spaces=parking_spaces, buildings=buildings,
+        parking_spaces=parking_spaces, sceneries=sceneries, buildings=buildings,
+        curbs=curbs, curb_grid=curb_grid,
     )
     if npc_spawn is not None:
         _, npc_driver, npc_vehicle = npc_spawn
@@ -1684,7 +1685,8 @@ def main() -> None:
                         npc_spawn_retry_cooldown_s = NPC_SPAWN_RETRY_COOLDOWN_S
                         npc_retry = spawn_deterministic_npc(
                             residents, traffic_mgr, ways, spatial_grid=spatial_grid,
-                            parking_spaces=parking_spaces, buildings=buildings,
+                            parking_spaces=parking_spaces, sceneries=sceneries, buildings=buildings,
+                            curbs=curbs, curb_grid=curb_grid,
                         )
                         if npc_retry is not None:
                             _, retry_driver, retry_vehicle = npc_retry

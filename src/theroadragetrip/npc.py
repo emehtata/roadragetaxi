@@ -19,8 +19,8 @@ import math
 from dataclasses import dataclass, field
 from typing import List, Optional, Tuple
 
-from .geo import clamp
-from .osm import Way
+from .geo import clamp, segment_distance
+from .osm import Curb, Way
 from .physics import Car, SpatialWayGrid, update_car_physics
 from .residents import ResidentManager
 from .traffic_rules import TrafficAction, TrafficDecision, decide_traffic_action
@@ -190,6 +190,47 @@ def route_stays_on_road(
         if distance > tolerance_m:
             return False
     return True
+
+
+CURB_CLEARANCE_MARGIN_M = 0.3  # a little slack beyond the bare vehicle half-width
+
+
+def route_crosses_curbs(
+    path_points: List[Tuple[float, float]],
+    curbs: List[Curb],
+    vehicle_width_m: float = 1.8,
+    curb_grid: Optional[SpatialWayGrid] = None,
+    clearance_m: float = CURB_CLEARANCE_MARGIN_M,
+) -> bool:
+    """Return whether the built (lane-offset, corner-rounded) driving path
+    ever brings the vehicle's own body within clearance_m of a mapped
+    curb line - NPC-more.md section 7's hard rule: never drive on curbs.
+
+    Checked against the actual lane-offset/corner-rounded path (the real
+    trajectory build_driving_path produces), not the raw centerline
+    route - a corner's rounded arc is exactly where a wide vehicle most
+    plausibly clips the curb of a tight turn or a roundabout island, and
+    the raw centerline wouldn't show that at all. Every corner already
+    gets several sampled points (see _round_corner), so checking each
+    path segment amounts to sampling along the curve, not just its ends.
+    """
+    if not curbs:
+        return False
+    half_width = vehicle_width_m * 0.5 + clearance_m
+    for a, b in zip(path_points, path_points[1:]):
+        candidates = (
+            curb_grid.ways_in_rect(
+                min(a[0], b[0]) - half_width, min(a[1], b[1]) - half_width,
+                max(a[0], b[0]) + half_width, max(a[1], b[1]) + half_width,
+            )
+            if curb_grid is not None
+            else curbs
+        )
+        for curb in candidates:
+            for c, d in zip(curb.points_m, curb.points_m[1:]):
+                if segment_distance(a, b, c, d) < half_width:
+                    return True
+    return False
 
 
 def build_driving_path(
@@ -402,6 +443,9 @@ def spawn_npc(
     destination: Tuple[float, float],
     spatial_grid: Optional[SpatialWayGrid] = None,
     color: Tuple[int, int, int] = (150, 155, 165),
+    curbs: Optional[List[Curb]] = None,
+    curb_grid: Optional[SpatialWayGrid] = None,
+    parking_space=None,
 ) -> Optional[Tuple[int, Driver, NPCVehicle]]:
     """Create the Resident -> Driver -> NPCVehicle chain for one NPC
     (NPC-001 sections 5, 11, 12).
@@ -409,6 +453,11 @@ def spawn_npc(
     The route is planned and validated BEFORE anything is created; a
     vehicle is never spawned to then go hunting for a route while
     already "driving". Returns None if no valid route exists.
+
+    `parking_space`, when given, is the ParkingSpace `destination` was
+    chosen for (see _pick_npc_destination) - reserved only once the route
+    to it is fully validated, never optimistically before, so a rejected
+    route never leaves a phantom reservation to clean up.
     """
     raw_route = traffic_world.plan_route(origin, destination)
     if raw_route is None:
@@ -421,6 +470,12 @@ def spawn_npc(
 
     path = build_driving_path(deduped_route, ways, spatial_grid=spatial_grid)
     if len(path) < 2:
+        return None
+    # NPC-more.md section 7: never drive on curbs - checked against the
+    # actual lane-offset/corner-rounded trajectory, not the raw centerline,
+    # since a wide vehicle clips a curb at a corner or roundabout island,
+    # not at the road's own centerline.
+    if route_crosses_curbs([(p.x, p.y) for p in path], curbs or [], curb_grid=curb_grid):
         return None
 
     # 1. create/select the Resident, 2. make it the driver, 3. create the
@@ -449,6 +504,10 @@ def spawn_npc(
         destination=destination,
         current_way=start.way,
     )
+    if parking_space is not None:
+        parking_space.reserved = True
+        parking_space.vehicle_id = vehicle_id
+        vehicle.destination_parking_space_id = getattr(parking_space, "osm_id", None)
     return resident.resident_id, driver, vehicle
 
 
@@ -576,30 +635,39 @@ def _largest_route_graph_component(nodes: List[Tuple[float, float, int]], edges:
     return best
 
 
-NPC_DESTINATION_SEARCH_RADIUS_M = 150.0  # how far from the BFS-reached area to look for a place to actually stop
+NPC_DESTINATION_SEARCH_RADIUS_M = 400.0  # how far from the BFS-reached area to look for a place to actually stop
 
 
 def _pick_npc_destination(
     x: float,
     y: float,
     parking_spaces: Optional[List] = None,
+    sceneries: Optional[List] = None,
     buildings: Optional[List] = None,
+    allow_raw_fallback: bool = True,
     search_radius_m: float = NPC_DESTINATION_SEARCH_RADIUS_M,
-) -> Tuple[float, float]:
-    """Refine a raw road-graph point into an actual place to stop: prefer
-    the nearest free parking space, then the nearest building's own
-    entrance/yard, only falling back to the raw point (the middle of an
+) -> Tuple[Optional[Tuple[float, float]], object]:
+    """Refine a raw road-graph point into an actual place to stop
+    (NPC-more.md section 2's hierarchy): nearest free dedicated parking
+    space, then nearest parking lot, then nearest building's own
+    entrance/yard - only falling back to the raw point (the middle of an
     intersection or any other spot the road graph happened to reach) if
-    neither exists nearby.
+    none of those exist nearby, and never onto a roundabout even then (a
+    roundabout is never a legal place to stop). Returns (None, None) when
+    nothing acceptable can be found at all.
 
     plan_route() already appends the literal target point onto its last
     road node (see its own docstring/return), so handing it a parking
     space's or building's real-world point - not necessarily exactly on a
     road - produces the intended short "last mile" off the road, the same
     mechanism pedestrian routes to a building entrance already rely on.
+
+    Returns (point, parking_space) - parking_space is the ParkingSpace
+    `point` came from (for the caller to reserve), or None otherwise.
     """
     radius_sq = search_radius_m * search_radius_m
     best_point: Optional[Tuple[float, float]] = None
+    best_space = None
     best_dist_sq = radius_sq
     for space in parking_spaces or ():
         if getattr(space, "occupied", False) or getattr(space, "reserved", False):
@@ -610,9 +678,22 @@ def _pick_npc_destination(
         cx, cy = (bbox[0] + bbox[2]) / 2.0, (bbox[1] + bbox[3]) / 2.0
         dist_sq = (cx - x) ** 2 + (cy - y) ** 2
         if dist_sq <= best_dist_sq:
+            best_dist_sq, best_point, best_space = dist_sq, (cx, cy), space
+    if best_point is not None:
+        return best_point, best_space
+
+    for scenery in sceneries or ():
+        if getattr(scenery, "kind", None) != "parking":
+            continue
+        bbox = getattr(scenery, "bbox", None)
+        if not bbox or bbox == (0.0, 0.0, 0.0, 0.0):
+            continue
+        cx, cy = (bbox[0] + bbox[2]) / 2.0, (bbox[1] + bbox[3]) / 2.0
+        dist_sq = (cx - x) ** 2 + (cy - y) ** 2
+        if dist_sq <= best_dist_sq:
             best_dist_sq, best_point = dist_sq, (cx, cy)
     if best_point is not None:
-        return best_point
+        return best_point, None
 
     for building in buildings or ():
         for point in (getattr(building, "entrances", None) or [getattr(building, "center_m", None)]):
@@ -622,9 +703,15 @@ def _pick_npc_destination(
             if dist_sq <= best_dist_sq:
                 best_dist_sq, best_point = dist_sq, point
     if best_point is not None:
-        return best_point
+        return best_point, None
 
-    return x, y
+    # Nothing nearby at all - the raw road-graph point is the only option
+    # left, but the caller refuses it (allow_raw_fallback=False) when it
+    # sits on a roundabout (see Way.is_roundabout) - never an acceptable
+    # place to stop - rather than parking an NPC in one.
+    if not allow_raw_fallback:
+        return None, None
+    return (x, y), None
 
 
 NPC_ROUTE_MAX_HOPS = 30  # how many real intersections the deterministic NPC's trip crosses
@@ -670,7 +757,10 @@ def spawn_deterministic_npc(
     spatial_grid: Optional[SpatialWayGrid] = None,
     vehicle_id: int = 1,
     parking_spaces: Optional[List] = None,
+    sceneries: Optional[List] = None,
     buildings: Optional[List] = None,
+    curbs: Optional[List[Curb]] = None,
+    curb_grid: Optional[SpatialWayGrid] = None,
 ) -> Optional[Tuple[int, Driver, NPCVehicle]]:
     """Pick a deterministic origin/destination from the loaded OSM map and
     spawn NPC-001's one NPC there (section 12).
@@ -687,12 +777,15 @@ def spawn_deterministic_npc(
     screen coordinates, no randomness.
 
     The BFS walk only ever lands on a road-graph node - the middle of an
-    intersection or any other spot on a road, not actually a place to stop
-    - so _pick_npc_destination refines it into the nearest free parking
-    space, or failing that a building's own entrance/yard, before ever
-    routing there. If that refined point turns out to be too far off any
-    road for spawn_npc's own route validation, retry with the raw node
-    exactly as before rather than not spawning an NPC at all.
+    intersection or any other spot on a road, not actually a place to
+    stop - so _pick_npc_destination refines it into the nearest free
+    parking space, then parking lot, then a building's own entrance/yard,
+    before ever routing there (NPC-more.md section 2). If that refined
+    point turns out to be too far off any road (or crosses a curb) for
+    spawn_npc's own route validation, retry with the raw node exactly as
+    before, unless that raw node is itself inside a roundabout - never an
+    acceptable place to stop - in which case this attempt fails outright
+    and the caller's own spawn-retry-on-cooldown tries again later.
     """
     nodes = traffic_world._route_nodes
     edges = traffic_world._route_edges
@@ -705,8 +798,22 @@ def spawn_deterministic_npc(
         return None
     origin = (nodes[origin_index][0], nodes[origin_index][1])
     raw_destination = (nodes[destination_index][0], nodes[destination_index][1])
-    destination = _pick_npc_destination(raw_destination[0], raw_destination[1], parking_spaces, buildings)
-    spawned = spawn_npc(vehicle_id, resident_manager, traffic_world, ways, origin, destination, spatial_grid=spatial_grid)
-    if spawned is None and destination != raw_destination:
-        spawned = spawn_npc(vehicle_id, resident_manager, traffic_world, ways, origin, raw_destination, spatial_grid=spatial_grid)
+    raw_way, _ = _way_at_point(spatial_grid, ways, raw_destination[0], raw_destination[1])
+    raw_destination_is_safe = not (raw_way is not None and getattr(raw_way, "is_roundabout", False))
+
+    destination, target_space = _pick_npc_destination(
+        raw_destination[0], raw_destination[1], parking_spaces, sceneries, buildings,
+        allow_raw_fallback=raw_destination_is_safe,
+    )
+    if destination is None:
+        return None
+    spawned = spawn_npc(
+        vehicle_id, resident_manager, traffic_world, ways, origin, destination,
+        spatial_grid=spatial_grid, curbs=curbs, curb_grid=curb_grid, parking_space=target_space,
+    )
+    if spawned is None and destination != raw_destination and raw_destination_is_safe:
+        spawned = spawn_npc(
+            vehicle_id, resident_manager, traffic_world, ways, origin, raw_destination,
+            spatial_grid=spatial_grid, curbs=curbs, curb_grid=curb_grid,
+        )
     return spawned
