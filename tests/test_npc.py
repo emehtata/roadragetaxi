@@ -10,8 +10,7 @@ import pytest
 from theroadragetrip.render.vehicles import draw_npc_cars
 from theroadragetrip.npc import (
     CORNER_RADIUS_M,
-    DEFAULT_NPC_VEHICLE_CAPACITY,
-    NPC_VEHICLE_CAPACITY_BY_TYPE,
+    NPC_CAR_CAPACITY,
     Driver,
     NPCState,
     NPCVehicle,
@@ -1049,8 +1048,8 @@ def test_draw_npc_cars_debug_fallback_still_works_without_a_travel_route():
 
 
 def test_spawn_npc_creates_a_trip_group_not_exceeding_capacity():
-    """multi-passenger-car.md sections 2, 4, 5: capacity is a per-type
-    lookup, group size never exceeds it, and it's never auto-filled."""
+    """multi-passenger-car.md sections 2, 4, 5: group size never exceeds
+    capacity, and it's never auto-filled."""
     ways = _straight_chain()
     tw = TrafficWorld(ways)
     residents = ResidentManager()
@@ -1060,7 +1059,7 @@ def test_spawn_npc_creates_a_trip_group_not_exceeding_capacity():
         spawned = spawn_npc(i, residents, tw, ways, (0.0, 0.0), (180.0, 0.0))
         assert spawned is not None
         _, driver, vehicle = spawned
-        assert vehicle.capacity == NPC_VEHICLE_CAPACITY_BY_TYPE["car"]
+        assert vehicle.capacity == NPC_CAR_CAPACITY
         assert vehicle.trip_group is not None
         assert vehicle.trip_group.vehicle_id == vehicle.vehicle_id
         assert 1 <= len(vehicle.trip_group.member_resident_ids) <= vehicle.capacity
@@ -1069,16 +1068,6 @@ def test_spawn_npc_creates_a_trip_group_not_exceeding_capacity():
 
     # Never always full - across enough spawns, some variety shows up.
     assert len(group_sizes) > 1
-
-
-def test_spawn_npc_defaults_to_five_seats_for_an_unknown_vehicle_type():
-    ways = _straight_chain()
-    tw = TrafficWorld(ways)
-    residents = ResidentManager()
-    spawned = spawn_npc(1, residents, tw, ways, (0.0, 0.0), (180.0, 0.0), vehicle_type="unicycle")
-    assert spawned is not None
-    _, _, vehicle = spawned
-    assert vehicle.capacity == DEFAULT_NPC_VEHICLE_CAPACITY
 
 
 def test_trip_group_all_aboard_reflects_boarded_membership():
@@ -1273,7 +1262,7 @@ def test_spawn_npc_group_size_never_exceeds_a_small_custom_capacity(monkeypatch)
     tw = TrafficWorld(ways)
     residents = ResidentManager()
     for capacity in (2, 5, 7):
-        monkeypatch.setitem(npc_module.NPC_VEHICLE_CAPACITY_BY_TYPE, "car", capacity)
+        monkeypatch.setattr(npc_module, "NPC_CAR_CAPACITY", capacity)
         for i in range(10):
             spawned = spawn_npc(100 * capacity + i, residents, tw, ways, (0.0, 0.0), (180.0, 0.0))
             assert spawned is not None

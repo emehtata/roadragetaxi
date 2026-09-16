@@ -70,11 +70,9 @@ LANE_BIAS_LOOKAHEAD_M = 20.0  # start easing into a turn lane this far before th
 NPC_VEHICLE_LENGTH_M = 4.3  # the one NPC car's dimensions - shared so footprint checks always match the spawned Car
 NPC_VEHICLE_WIDTH_M = 1.8
 
-# multi-passenger-car.md section 2: capacity is a per-vehicle-type lookup,
-# never a hardcoded literal in passenger-management logic - a future
-# vehicle_type just needs an entry here, no other code changes.
-NPC_VEHICLE_CAPACITY_BY_TYPE = {"car": 5}
-DEFAULT_NPC_VEHICLE_CAPACITY = 5
+# multi-passenger-car.md section 2: capacity lives in one constant, never a
+# hardcoded literal in passenger-management logic.
+NPC_CAR_CAPACITY = 5
 # How long a trip group spends inside a building (section 13) - randomized
 # per group, using the simulation clock (sim_time), not wall-clock time.
 NPC_BUILDING_VISIT_MIN_S = 20.0
@@ -703,7 +701,7 @@ class NPCVehicle:
     turn_signal_elapsed: float = 0.0
     debug_waiting_for: str = ""
     crashed_timer: float = 0.0
-    capacity: int = DEFAULT_NPC_VEHICLE_CAPACITY
+    capacity: int = NPC_CAR_CAPACITY
     trip_group: Optional[TripGroup] = None
 
     @property
@@ -879,10 +877,9 @@ def spawn_npc(
     # TripGroup - in that order, per section 11 - never a moving vehicle
     # first with a driver attached after.
     #
-    # multi-passenger-car.md sections 2, 5: capacity is a per-vehicle-type
-    # lookup, and the group is never auto-filled to capacity - a lone
-    # driver (group size 1) is exactly as valid as a full car.
-    capacity = NPC_VEHICLE_CAPACITY_BY_TYPE.get(vehicle_type, DEFAULT_NPC_VEHICLE_CAPACITY)
+    # multi-passenger-car.md section 5: the group is never auto-filled to
+    # capacity - a lone driver (group size 1) is exactly as valid as a full car.
+    capacity = NPC_CAR_CAPACITY
     group_size = random.randint(1, max(1, capacity))
     members = [resident_manager.create(mode="driving" if i == 0 else "riding") for i in range(group_size)]
     driver_resident = members[0]
