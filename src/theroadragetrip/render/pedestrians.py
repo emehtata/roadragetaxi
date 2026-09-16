@@ -6,6 +6,7 @@ from .common import (
     world_to_screen,
     get_viewport_bounds,
     _covered_by_higher_road,
+    _vehicle_is_on_bridge,
 )
 import math
 from typing import List, Optional, Tuple
@@ -41,17 +42,22 @@ def draw_pedestrians(
             continue
         if not (vminx <= ped.x <= vmaxx and vminy <= ped.y <= vmaxy):
             continue
-        if _covered_by_higher_road(
+        cx, cy = world_to_screen(ped.x, ped.y, camx, camy, px_per_m, screen_w, screen_h)
+        radius_px = max(4.0, getattr(ped, "radius_m", 0.45) * px_per_m)
+
+        # Same "hidden behind a bridge above" cue draw_car/draw_npc_cars use
+        # (see _covered_by_higher_road/_vehicle_is_on_bridge) - an outline
+        # rather than vanishing entirely, so a pedestrian under a bridge is
+        # still visible enough to see they're there (occlusion.md #7).
+        if not _vehicle_is_on_bridge(ped) and _covered_by_higher_road(
             ped.x,
             ped.y,
             getattr(ped, "layer", getattr(ped.way, "layer", 0)),
             ways,
             spatial_grid=spatial_grid,
         ):
+            pygame.draw.circle(screen, (235, 235, 235), (int(cx), int(cy)), int(radius_px), 1)
             continue
-
-        cx, cy = world_to_screen(ped.x, ped.y, camx, camy, px_per_m, screen_w, screen_h)
-        radius_px = max(4.0, getattr(ped, "radius_m", 0.45) * px_per_m)
 
         if show_debug:
             route = getattr(ped, "route", None) or ()

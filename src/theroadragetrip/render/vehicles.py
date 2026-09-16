@@ -1120,15 +1120,20 @@ def draw_cyclists(
     for cyclist in cyclists:
         if not (vminx <= cyclist.x <= vmaxx and vminy <= cyclist.y <= vmaxy):
             continue
-        if _covered_by_higher_road(
+        cx, cy = world_to_screen(cyclist.x, cyclist.y, camx, camy, px_per_m, screen_w, screen_h)
+        # Same "hidden behind a bridge above" cue draw_car/draw_npc_cars use
+        # (see _covered_by_higher_road/_vehicle_is_on_bridge) - an outline
+        # rather than vanishing entirely, so a cyclist under a bridge is
+        # still visible enough to see they're there (occlusion.md #7).
+        if not _vehicle_is_on_bridge(cyclist) and _covered_by_higher_road(
             cyclist.x,
             cyclist.y,
             getattr(cyclist.way, "layer", 0),
             ways,
             spatial_grid=spatial_grid,
         ):
+            _draw_vehicle_outline(screen, cx, cy, cyclist.heading, max(6.0, 3.2 * px_per_m), max(3.0, 1.0 * px_per_m))
             continue
-        cx, cy = world_to_screen(cyclist.x, cyclist.y, camx, camy, px_per_m, screen_w, screen_h)
         global _cyclist_sprite
         if _cyclist_sprite is None:
             _cyclist_sprite = pygame.image.load(
