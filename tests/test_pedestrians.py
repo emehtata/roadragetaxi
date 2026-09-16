@@ -1160,3 +1160,58 @@ def test_two_trip_group_vehicles_materialize_independently():
             assert ped.linked_vehicle_id == id(vehicle_a)
         elif ped.resident_id in members_b:
             assert ped.linked_vehicle_id == id(vehicle_b)
+
+
+def test_trip_group_pedestrians_survive_population_culling_far_from_player():
+    """Regression: a trip-group member walking to/from the building used
+    to be culled by the ordinary distance-based population sweep the
+    instant the player was more than despawn_radius_m away (their state
+    - "walking_to_building"/IN_BUILDING/"returning_to_vehicle" - wasn't
+    in the sweep's protected state set, only current_vehicle_id-based
+    states were). _materialize_parked_drivers runs every frame, so the
+    despawned member was immediately re-spawned right back at the car
+    next frame - "walks a bit, thrown back to the car, walks again"
+    forever, and exactly the "passenger spawned twice" case section 6
+    says must never happen."""
+    ways, building, tw, residents, driver, vehicle = _park_a_trip_group_vehicle()
+    tw.npcs = [vehicle]
+    manager = PedestrianManager(ways, target_count=0, traffic_manager=tw, residents=residents, venue_buildings=[building])
+    member_count = len(vehicle.trip_group.member_resident_ids)
+
+    far_away_player = Car(x=5000.0, y=5000.0, heading=0.0, speed=0.0)
+    counts = []
+    for _ in range(60):
+        manager.update(far_away_player, dt=0.2)
+        counts.append(len(manager.pedestrians))
+
+    assert all(count == member_count for count in counts[3:]), (
+        f"pedestrian count fluctuated away from {member_count}: {counts}"
+    )
+
+
+def test_fanned_out_spawn_positions_never_land_inside_the_vehicle():
+    """Regression: fanning members out in a full circle around the
+    already-cleared entry point pushed roughly half of them back across
+    that clearance and into the vehicle's own footprint (reported:
+    "people get out of car and walk thru the car"). Spread must stay
+    beside the car regardless of its heading/length."""
+    from theroadragetrip.pedestrian import _fanned_out_position
+
+    vehicle_width_m = 1.8
+    clearance = vehicle_width_m * 0.5 + 1.0  # _vehicle_entry_position's own offset formula
+    for heading in (0.0, math.pi / 2.0, math.pi / 4.0, 2.3):
+        # _vehicle_entry_position's exact perpendicular-offset formula,
+        # vehicle at the world origin.
+        entry_x = -math.sin(heading) * clearance
+        entry_y = math.cos(heading) * clearance
+        for total in (1, 2, 5):
+            for index in range(total):
+                x, y = _fanned_out_position(entry_x, entry_y, index, total, heading=heading)
+                # Rotate the point into the vehicle's own frame (undo its
+                # heading) - the lateral (local y) coordinate must clear
+                # the car's half-width no matter how far along its length
+                # (local x) a member is spread.
+                local_y = -x * math.sin(heading) + y * math.cos(heading)
+                assert abs(local_y) >= vehicle_width_m * 0.5, (
+                    f"heading={heading} total={total} index={index} landed inside the car's width"
+                )

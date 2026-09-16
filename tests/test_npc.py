@@ -1364,3 +1364,41 @@ def test_draw_resident_popup_shows_trip_group_when_present():
     draw_resident_popup(without_group, font, resident, residents.residents, screen_w=screen_w, screen_h=screen_h)
 
     assert pygame.image.tostring(with_group, "RGB") != pygame.image.tostring(without_group, "RGB")
+
+
+def test_draw_npc_debug_panel_lists_each_passenger_by_id():
+    """Reported: "F7 shows driver only - no passengers" - an aggregate
+    occupants=X/Y count doesn't visibly prove anyone but the driver
+    exists. Every other trip-group member must be individually listed."""
+    from theroadragetrip.render.hud import draw_npc_debug_panel
+
+    pygame.init()
+    pygame.display.set_mode((400, 300))
+    font = pygame.font.SysFont(None, 16)
+    ways = _straight_chain()
+    tw = TrafficWorld(ways)
+    residents = ResidentManager()
+    spawned = None
+    for attempt in range(20):
+        spawned = spawn_npc(attempt, residents, tw, ways, (0.0, 0.0), (180.0, 0.0))
+        assert spawned is not None
+        if len(spawned[2].trip_group.member_resident_ids) > 1:
+            break
+    _, driver, vehicle = spawned
+    assert len(vehicle.trip_group.member_resident_ids) > 1, "expected at least one multi-passenger spawn in 20 tries"
+
+    panel = pygame.Surface((360, 400))
+    panel.fill((0, 0, 0))
+    draw_npc_debug_panel(panel, vehicle, driver, font)
+
+    passenger_ids = [rid for rid in vehicle.trip_group.member_resident_ids if rid != vehicle.owner_id]
+    assert passenger_ids
+    # Rendering each id's own text must actually change the panel - check
+    # against a panel with no other passengers (single-member group).
+    solo_vehicle_group = vehicle.trip_group
+    vehicle.trip_group.member_resident_ids = [vehicle.owner_id]
+    solo_panel = pygame.Surface((360, 400))
+    solo_panel.fill((0, 0, 0))
+    draw_npc_debug_panel(solo_panel, vehicle, driver, font)
+
+    assert pygame.image.tostring(panel, "RGB") != pygame.image.tostring(solo_panel, "RGB")

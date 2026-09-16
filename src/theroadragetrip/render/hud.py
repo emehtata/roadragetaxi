@@ -683,6 +683,19 @@ def draw_npc_debug_panel(screen, vehicle, driver, font, x: int = 10, y: int = 22
             f"capacity={vehicle.capacity} occupants={len(trip_group.boarded_resident_ids)}/"
             f"{len(trip_group.member_resident_ids)} trip_group={trip_group.group_id} entrance={entrance_label}"
         )
+        # Reported: "F7 shows driver only - no passengers" - a bare count
+        # doesn't visibly prove anyone but the driver (resident= above)
+        # exists, so list every other member by id and whether they're
+        # currently aboard, out, or driving.
+        passenger_ids = [rid for rid in trip_group.member_resident_ids if rid != vehicle.owner_id]
+        if passenger_ids:
+            roster = ", ".join(
+                f"{rid}({'aboard' if rid in trip_group.boarded_resident_ids else 'out'})"
+                for rid in passenger_ids
+            )
+            lines.append(f"passengers: {roster}")
+        else:
+            lines.append("passengers: none (solo trip)")
     if vehicle.debug_waiting_for:
         # Surfaces NPC-more.md section 12/13/19's live footprint safety
         # net tripping (see npc.update_npc) - not just the ordinary

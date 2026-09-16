@@ -50,22 +50,33 @@ CYCLIST_COLORS = [
 
 PEDESTRIAN_LOD_UPDATE_INTERVALS = (1.0 / 30.0, 1.0 / 12.0, 0.2)
 MAX_VEHICLE_RESERVATION_DISTANCE_M = 100.0
-TRIP_GROUP_SPAWN_FANOUT_RADIUS_M = 1.5
+TRIP_GROUP_SPAWN_SPACING_M = 1.1
 
 
 def _fanned_out_position(
-    anchor_x: float, anchor_y: float, index: int, total: int, radius_m: float = TRIP_GROUP_SPAWN_FANOUT_RADIUS_M,
+    anchor_x: float, anchor_y: float, index: int, total: int, heading: float = 0.0,
+    spacing_m: float = TRIP_GROUP_SPAWN_SPACING_M,
 ) -> Tuple[float, float]:
-    """A small spread-out point around `anchor` for the index-th of
+    """A small spread-out point beside `anchor` for the index-th of
     `total` trip-group members disembarking together (multi-passenger-
     car.md section 9: "sensible position ... not stacked on one pixel").
     Not a rigid formation - just enough separation that five passengers
     don't spawn on the exact same point; each walks its own route from
-    here afterwards."""
+    here afterwards.
+
+    Spread along the vehicle's own heading (front-to-back), not a full
+    circle around the anchor - `anchor` (_vehicle_entry_position) is
+    only offset far enough to clear the car on the passenger side, so a
+    circle pushes roughly half the members back across that clearance
+    and into the vehicle's own footprint regardless of its orientation
+    (reported: "people get out of car and walk thru the car"). Spreading
+    along heading instead keeps every member at that same lateral
+    clearance, just spaced out door-to-door beside the car.
+    """
     if total <= 1:
         return anchor_x, anchor_y
-    angle = 2.0 * math.pi * index / total
-    return anchor_x + math.cos(angle) * radius_m, anchor_y + math.sin(angle) * radius_m
+    offset = (index - (total - 1) / 2.0) * spacing_m
+    return anchor_x + math.cos(heading) * offset, anchor_y + math.sin(heading) * offset
 
 
 class PedestrianNetwork:
@@ -379,7 +390,9 @@ class PedestrianManager:
             total_members = len(trip_group.member_resident_ids)
             for resident_id in pending_members:
                 index = trip_group.member_resident_ids.index(resident_id)
-                spawn_x, spawn_y = _fanned_out_position(entry_x, entry_y, index, total_members)
+                spawn_x, spawn_y = _fanned_out_position(
+                    entry_x, entry_y, index, total_members, heading=getattr(vehicle, "heading", 0.0),
+                )
                 pedestrian = self.spawn_pedestrian_at(spawn_x, spawn_y, getattr(vehicle, "heading", 0.0))
                 if pedestrian is None:
                     # The fanned-out point landed somewhere with no nearby
@@ -1528,6 +1541,24 @@ class PedestrianManager:
                     ped.state in {"approaching_vehicle", "entering_vehicle", "in_vehicle"}
                     and linked_vehicle_id is not None
                     and any(id(vehicle) == linked_vehicle_id for vehicle in vehicles)
+                ):
+                    kept_peds.append(ped)
+                    continue
+                # multi-passenger-car.md: a trip-group member mid-journey
+                # (walking to the building, inside it, or walking back -
+                # any state _update_linked_driver drives) must never be
+                # culled by ordinary distance/offscreen population
+                # trimming, same as the vehicle it's tied to must stay
+                # reserved throughout (section 17/18). Without this a
+                # pedestrian more than despawn_radius_m from the player
+                # got removed here, then _materialize_parked_drivers
+                # (which runs every frame, not just every 5s) immediately
+                # spawned a brand-new one right back at the car next
+                # frame - "walks a bit, thrown back to the car, walks
+                # again" forever, and section 6's explicit "passenger
+                # spawned twice" case.
+                if ped.linked_vehicle_id is not None and any(
+                    id(vehicle) == ped.linked_vehicle_id for vehicle in vehicles
                 ):
                     kept_peds.append(ped)
                     continue
