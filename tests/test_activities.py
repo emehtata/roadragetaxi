@@ -12,10 +12,16 @@ from theroadragetrip.activities import (
 )
 from theroadragetrip.activities.plugins import discover
 from theroadragetrip.activities.plugins.bench_sitting import BenchSittingPlugin
+from theroadragetrip.activities.plugins.bus_stop_waiting import LOOK_AROUND_INTERVAL_S, BusStopWaitingPlugin
+from theroadragetrip.activities.plugins.eating_drinking import EatingDrinkingPlugin
+from theroadragetrip.activities.plugins.exercise_jogging import ExerciseJoggingPlugin
 from theroadragetrip.activities.plugins.garbage_disposal import CARRYING_DISPOSABLE_PROBABILITY, GarbageDisposalPlugin
 from theroadragetrip.activities.plugins.park_leisure import ParkLeisurePlugin
 from theroadragetrip.activities.plugins.phone_usage import PhoneUsagePlugin
-from theroadragetrip.osm import Scenery, SceneryObject, Way
+from theroadragetrip.activities.plugins.photography import PhotographyPlugin
+from theroadragetrip.activities.plugins.shop_window_watching import ShopWindowWatchingPlugin
+from theroadragetrip.activities.plugins.traffic_watching import TrafficWatchingPlugin
+from theroadragetrip.osm import BusStop, Crossing, Scenery, SceneryObject, Way
 from theroadragetrip.pedestrian import Pedestrian, PedestrianManager
 from theroadragetrip.residents import ResidentManager
 
@@ -26,11 +32,11 @@ def _stub_plugin(plugin_id: str) -> ActivityPlugin:
     return plugin
 
 
-def _make_manager_and_pedestrian(scenery_objects=None, sceneries=None):
+def _make_manager_and_pedestrian(scenery_objects=None, sceneries=None, bus_stops=None):
     way = Way(points_m=[(0.0, 0.0), (100.0, 0.0)], highway="footway", half_width_m=1.5)
     manager = PedestrianManager(
         [way], target_count=0, residents=ResidentManager(),
-        scenery_objects=scenery_objects, sceneries=sceneries,
+        scenery_objects=scenery_objects, sceneries=sceneries, bus_stops=bus_stops,
     )
     pedestrian = Pedestrian(10.0, 0.0, 0.0, 1.3, 1.3, way, 0, 1, (1, 1, 1))
     pedestrian.resident_id = manager.residents.create("walking").resident_id
@@ -49,11 +55,13 @@ def test_registry_rejects_duplicate_ids():
         registry.register(_stub_plugin("dup"))
 
 
-def test_discover_registers_all_four_built_in_plugins():
+def test_discover_registers_all_ten_built_in_plugins():
     registry = ActivityRegistry()
     discover(registry)
     assert {plugin.definition.id for plugin in registry.all_plugins()} == {
         "bench_sitting", "garbage_disposal", "phone_usage", "park_leisure",
+        "eating_drinking", "traffic_watching", "shop_window_watching",
+        "bus_stop_waiting", "photography", "exercise_jogging",
     }
 
 
@@ -163,6 +171,143 @@ def test_park_leisure_ignores_non_park_kinds():
     plugin = ParkLeisurePlugin()
 
     assert plugin.find_location(_context(manager, pedestrian)) is None
+
+
+def test_eating_drinking_prefers_a_picnic_table_over_a_venue():
+    table = SceneryObject(x=15.0, y=0.0, kind="picnic_table")
+    manager, pedestrian = _make_manager_and_pedestrian(scenery_objects=[table])
+    manager.venue_locations = [(12.0, 0.0)]
+    plugin = EatingDrinkingPlugin()
+
+    location = plugin.find_location(_context(manager, pedestrian))
+
+    assert location is not None
+    assert location.reservation_key == ("picnic_table", id(table))
+
+
+def test_eating_drinking_falls_back_to_a_nearby_venue_without_a_picnic_table():
+    manager, pedestrian = _make_manager_and_pedestrian()
+    manager.venue_locations = [(12.0, 0.0)]
+    plugin = EatingDrinkingPlugin()
+
+    location = plugin.find_location(_context(manager, pedestrian))
+
+    assert location is not None
+    assert (location.x, location.y) == (12.0, 0.0)
+    assert location.reservation_key is None
+
+
+def test_traffic_watching_finds_a_nearby_crossing_and_faces_across_the_road():
+    crossing = Crossing(x=20.0, y=0.0, direction_angle=0.0)
+    manager, pedestrian = _make_manager_and_pedestrian()
+    manager.crossings = [crossing]
+    plugin = TrafficWatchingPlugin()
+
+    location = plugin.find_location(_context(manager, pedestrian))
+    assert location is not None and (location.x, location.y) == (20.0, 0.0)
+
+    from theroadragetrip.activities import ActivityInstance
+
+    instance = ActivityInstance(plugin_id="traffic_watching", location=location, started_sim_time=0.0)
+    plugin.start(_context(manager, pedestrian), instance)
+    assert pedestrian.heading == pytest.approx(math.pi / 2.0)
+
+
+def test_shop_window_watching_finds_a_nearby_amenity_entrance():
+    manager, pedestrian = _make_manager_and_pedestrian()
+    manager.amenity_entrance_locations = [(18.0, 0.0)]
+    plugin = ShopWindowWatchingPlugin()
+
+    location = plugin.find_location(_context(manager, pedestrian))
+
+    assert location is not None
+    assert (location.x, location.y) == (18.0, 0.0)
+    assert location.reservation_key is None
+
+
+def test_bus_stop_waiting_finds_a_nearby_stop_and_looks_around_periodically():
+    stop = BusStop(x=25.0, y=0.0, name="Keskustori")
+    manager, pedestrian = _make_manager_and_pedestrian(bus_stops=[stop])
+    plugin = BusStopWaitingPlugin()
+
+    location = plugin.find_location(_context(manager, pedestrian))
+    assert location is not None and (location.x, location.y) == (25.0, 0.0)
+
+    from theroadragetrip.activities import ActivityInstance
+
+    instance = ActivityInstance(plugin_id="bus_stop_waiting", location=location, started_sim_time=0.0)
+    context = _context(manager, pedestrian)
+    plugin.start(context, instance)
+    heading_before = pedestrian.heading
+    plugin.update(context, instance, LOOK_AROUND_INTERVAL_S + 0.1)
+
+    assert pedestrian.heading != heading_before
+
+
+def test_photography_prefers_a_statue_over_a_park():
+    statue = SceneryObject(x=15.0, y=0.0, kind="statue")
+    park = Scenery(points_m=[(0.0, -10.0), (30.0, -10.0), (30.0, 10.0), (0.0, 10.0)], kind="park", bbox=(0.0, -10.0, 30.0, 10.0))
+    manager, pedestrian = _make_manager_and_pedestrian(scenery_objects=[statue], sceneries=[park])
+    plugin = PhotographyPlugin()
+
+    location = plugin.find_location(_context(manager, pedestrian))
+
+    assert location is not None
+    assert location.extra is statue
+
+
+def test_photography_falls_back_to_a_park_interior_point():
+    park = Scenery(points_m=[(0.0, -10.0), (30.0, -10.0), (30.0, 10.0), (0.0, 10.0)], kind="park", bbox=(0.0, -10.0, 30.0, 10.0))
+    manager, pedestrian = _make_manager_and_pedestrian(sceneries=[park])
+    plugin = PhotographyPlugin()
+
+    location = plugin.find_location(_context(manager, pedestrian))
+
+    assert location is not None
+    from theroadragetrip.geo import point_in_polygon
+    assert point_in_polygon(location.x, location.y, park.points_m)
+
+
+def test_exercise_jogging_bumps_and_restores_base_speed():
+    manager, pedestrian = _make_manager_and_pedestrian()
+    plugin = ExerciseJoggingPlugin()
+    context = _context(manager, pedestrian)
+    original_speed = pedestrian.base_speed
+
+    from theroadragetrip.activities import ActivityInstance
+
+    instance = ActivityInstance(plugin_id="exercise_jogging", location=None, started_sim_time=0.0)
+    plugin.start(context, instance)
+    assert pedestrian.base_speed == pytest.approx(original_speed * 1.8)
+
+    plugin.finish(context, instance)
+    assert pedestrian.base_speed == pytest.approx(original_speed)
+
+
+def test_exercise_jogging_moves_the_pedestrian_and_eventually_finishes():
+    ways = [
+        Way(points_m=[(i * 20.0, 0.0), ((i + 1) * 20.0, 0.0)], highway="footway", half_width_m=1.5)
+        for i in range(10)
+    ]
+    manager = PedestrianManager(ways, target_count=0, residents=ResidentManager())
+    pedestrian = Pedestrian(50.0, 0.0, 0.0, 1.3, 1.3, ways[2], 0, 1, (1, 1, 1))
+    manager.pedestrians.append(pedestrian)
+    plugin = ExerciseJoggingPlugin()
+    context = _context(manager, pedestrian)
+
+    from theroadragetrip.activities import ActivityInstance
+
+    instance = ActivityInstance(plugin_id="exercise_jogging", location=None, started_sim_time=0.0)
+    plugin.start(context, instance)
+    start_x, start_y = pedestrian.x, pedestrian.y
+
+    finished = False
+    for _ in range(2000):
+        if plugin.update(context, instance, 0.1):
+            finished = True
+            break
+    assert finished
+    assert (pedestrian.x, pedestrian.y) != (start_x, start_y)
 
 
 def test_full_bench_sitting_lifecycle_walk_sit_standup_resume():

@@ -2,9 +2,32 @@
 
 Ambient pedestrian activity plugin system (see `.github/prompts/residents-live.md`
 for the original spec). Lets an ordinary walking `Pedestrian` spontaneously
-sit on a bench, check their phone, throw away trash, or relax in a park,
-then resume walking - without `pedestrian.py` or this package's core
-knowing which specific activities exist.
+sit on a bench, check their phone, throw away trash, relax in a park, eat
+or drink, watch traffic, window-shop, wait at a bus stop, take a photo, or
+go for a jog, then resume walking - without `pedestrian.py` or this
+package's core knowing which specific activities exist.
+
+## Built-in plugins
+
+| id | location shape | reservation | source |
+|---|---|---|---|
+| `bench_sitting` | point (bench) | exclusive | `SceneryObject` kind=`bench` |
+| `garbage_disposal` | point (waste basket), gated by a "carrying" roll | exclusive | `SceneryObject` kind=`waste_basket` |
+| `phone_usage` | none | - | - |
+| `park_leisure` | area, interior-sampled | shared | `Scenery` kind in `PARK_KINDS` |
+| `eating_drinking` | picnic table, falls back to a venue | exclusive / shared | `SceneryObject` kind=`picnic_table`, or `PedestrianManager.venue_locations` |
+| `traffic_watching` | point (crossing) | shared | `PedestrianManager.crossings` |
+| `shop_window_watching` | point (shop entrance) | shared | `PedestrianManager.amenity_entrance_locations` |
+| `bus_stop_waiting` | point (bus stop), periodic "look around" | shared | `PedestrianManager.bus_stops` |
+| `photography` | point (statue/fountain), falls back to a park interior point | shared | `SceneryObject` kind in `{"statue","fountain"}`, or `Scenery` kind in `PARK_KINDS` |
+| `exercise_jogging` | self-directed, no fixed destination | - | wanders the footway network directly |
+
+`exercise_jogging` is the odd one out: `requires_location=False`, and its
+`update()` drives the pedestrian itself (via `PedestrianManager._walk_route_to`
+and `PedestrianNetwork.nearest_point`, picking a new nearby waypoint each
+time the last one is reached) instead of arriving once and standing still -
+proof that a plugin can own arbitrarily different movement behavior; the
+core never needs to know "jogging" involves continuous motion.
 
 Only [pedestrian.py](../pedestrian.py) consumes this package. It is not
 re-exported from `theroadragetrip/__init__.py`.
@@ -124,6 +147,16 @@ Filter the result by `.kind` yourself - these methods have no notion of
 which kinds exist (see `osm/build.py`'s OSM-tag-to-`kind` mapping for what
 values are possible, e.g. `"bench"`, `"waste_basket"`, or raw
 `leisure=`/`landuse=` values like `"park"`/`"grass"`).
+
+A few other features are already plain lists on `PedestrianManager`
+(`.crossings`, `.venue_locations`, `.amenity_entrance_locations`,
+`.bus_stops`) rather than gridded - city-scale counts of these are small
+enough that a linear `math.hypot(...) <= radius_m` filter is exactly what
+`traffic_watching.py`/`eating_drinking.py`/`shop_window_watching.py`/
+`bus_stop_waiting.py` already do, matching the same filter idiom this
+file's own ambient-spawn logic uses for these same lists. Reach for a
+gridded `nearby_*` query only for something that could grow large (benches,
+waste baskets, parks) - not by default for every new feature type.
 
 A broken plugin module (import error, bad `PLUGIN` attribute) is logged
 and skipped by `discover()` - it can never prevent the game from starting.

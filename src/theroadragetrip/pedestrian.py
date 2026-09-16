@@ -6,7 +6,7 @@ from dataclasses import dataclass, field, replace
 from enum import Enum
 from typing import Any, Dict, List, Optional, Set, Tuple
 
-from .osm import Crossing, LogicalIntersection, Scenery, SceneryObject, TrafficLight, Way
+from .osm import BusStop, Crossing, LogicalIntersection, Scenery, SceneryObject, TrafficLight, Way
 from .geo import closest_point_and_dist_to_segment, compute_bbox, dist_point_to_segment, point_in_polygon
 from .npc import NPCState
 from .physics import Car, is_car_road, is_pedestrian_way
@@ -295,6 +295,7 @@ class PedestrianManager:
         residents: Optional[ResidentManager] = None,
         scenery_objects: Optional[List[SceneryObject]] = None,
         sceneries: Optional[List[Scenery]] = None,
+        bus_stops: Optional[List[BusStop]] = None,
     ):
         self.target_count = target_count
         self.spawn_radius_m = spawn_radius_m
@@ -355,7 +356,7 @@ class PedestrianManager:
         self._source_ways: List[Way] = []
 
         self.set_venue_buildings(venue_buildings)
-        self.set_scenery_features(scenery_objects, sceneries)
+        self.set_scenery_features(scenery_objects, sceneries, bus_stops)
         self.sync_map_data(
             ways,
             traffic_lights=traffic_lights,
@@ -474,12 +475,18 @@ class PedestrianManager:
         self,
         scenery_objects: Optional[List[SceneryObject]] = None,
         sceneries: Optional[List[Scenery]] = None,
+        bus_stops: Optional[List[BusStop]] = None,
     ) -> None:
-        """Index benches/waste-baskets/parks etc. for the activity system's
-        nearby_* queries (residents-live.md) - the same bbox/cell-grid
-        idiom set_venue_buildings already uses for _building_grid."""
+        """Index benches/waste-baskets/parks/bus stops etc. for the
+        activity system's nearby_* queries (residents-live.md) - the same
+        bbox/cell-grid idiom set_venue_buildings already uses for
+        _building_grid. bus_stops stays a plain list, not gridded - city
+        bus-stop counts are small enough that the same linear-filter
+        idiom self.crossings/venue_locations already use elsewhere in
+        this file is plenty."""
         self.scenery_objects = list(scenery_objects or [])
         self.sceneries = list(sceneries or [])
+        self.bus_stops = list(bus_stops or [])
         cell_size = self._activity_grid_cell_size
         self._scenery_object_grid = {}
         for scenery_object in self.scenery_objects:

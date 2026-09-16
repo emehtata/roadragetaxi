@@ -7,6 +7,7 @@ open lawn fits many people at once, unlike a bench or a waste basket.
 from __future__ import annotations
 
 import random
+from typing import Optional, Tuple
 
 from ...geo import point_in_polygon
 from ..base import ActivityContext, ActivityDefinition, ActivityInstance, ActivityLocation, ActivityPlugin
@@ -18,6 +19,19 @@ MAX_INTERIOR_SAMPLE_ATTEMPTS = 20
 # NATURAL_SCENERY_KINDS) - deliberately excludes lookalike kinds sharing
 # the same Scenery class, like "parking"/"forest"/"water".
 PARK_KINDS = {"park", "garden", "grass", "grassland", "recreation_ground", "common"}
+
+
+def sample_interior_point(scenery) -> Optional[Tuple[float, float]]:
+    """Rejection-sample a point actually inside `scenery`'s polygon, not
+    just its bbox (a bbox corner can land outside a non-convex shape).
+    Shared with photography.py, which uses the same PARK_KINDS as a photo
+    subject."""
+    minx, miny, maxx, maxy = scenery.bbox
+    for _ in range(MAX_INTERIOR_SAMPLE_ATTEMPTS):
+        x, y = random.uniform(minx, maxx), random.uniform(miny, maxy)
+        if point_in_polygon(x, y, scenery.points_m):
+            return x, y
+    return None
 
 
 class ParkLeisurePlugin(ActivityPlugin):
@@ -40,12 +54,10 @@ class ParkLeisurePlugin(ActivityPlugin):
         if not parks:
             return None
         park = random.choice(parks)
-        minx, miny, maxx, maxy = park.bbox
-        for _ in range(MAX_INTERIOR_SAMPLE_ATTEMPTS):
-            x, y = random.uniform(minx, maxx), random.uniform(miny, maxy)
-            if point_in_polygon(x, y, park.points_m):
-                return ActivityLocation(x=x, y=y, reservation_key=None, extra=park)
-        return None
+        point = sample_interior_point(park)
+        if point is None:
+            return None
+        return ActivityLocation(x=point[0], y=point[1], reservation_key=None, extra=park)
 
     def start(self, context: ActivityContext, instance: ActivityInstance) -> None:
         instance.data["duration_s"] = random.uniform(self.definition.min_duration_s, self.definition.max_duration_s)
