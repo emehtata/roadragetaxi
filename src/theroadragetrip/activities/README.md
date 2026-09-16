@@ -3,11 +3,14 @@
 Ambient pedestrian activity plugin system (see `.github/prompts/residents-live.md`
 for the original spec). Lets an ordinary walking `Pedestrian` spontaneously
 sit on a bench, check their phone, throw away trash, relax in a park, eat
-or drink, watch traffic, window-shop, wait at a bus stop, take a photo, or
-go for a jog, then resume walking - without `pedestrian.py` or this
+or drink, watch traffic, window-shop, wait at a bus stop, take a photo, go
+for a jog, strike up a conversation, or (if a child) play ball or visit a
+playground, then resume walking - without `pedestrian.py` or this
 package's core knowing which specific activities exist.
 
 ## Built-in plugins
+
+Solo (one participant):
 
 | id | location shape | reservation | source |
 |---|---|---|---|
@@ -21,13 +24,23 @@ package's core knowing which specific activities exist.
 | `bus_stop_waiting` | point (bus stop), periodic "look around" | shared | `PedestrianManager.bus_stops` |
 | `photography` | point (statue/fountain), falls back to a park interior point | shared | `SceneryObject` kind in `{"statue","fountain"}`, or `Scenery` kind in `PARK_KINDS` |
 | `exercise_jogging` | self-directed, no fixed destination | - | wanders the footway network directly |
+| `playground` | area, interior-sampled, children only | shared | `Scenery` kind=`playground` |
 
-`exercise_jogging` is the odd one out: `requires_location=False`, and its
-`update()` drives the pedestrian itself (via `PedestrianManager._walk_route_to`
-and `PedestrianNetwork.nearest_point`, picking a new nearby waypoint each
-time the last one is reached) instead of arriving once and standing still -
-proof that a plugin can own arbitrarily different movement behavior; the
-core never needs to know "jogging" involves continuous motion.
+Group (multiple participants - see "Group activities" below):
+
+| id | participants | who | location |
+|---|---|---|---|
+| `two_person_conversation` | 2 | anyone | midpoint between the two, recruited nearby |
+| `small_group_conversation` | 3-5 | anyone | centroid of the group, recruited nearby |
+| `ball_game` | 2-5 | children only | interior point of a nearby park, recruited nearby |
+
+`exercise_jogging` is the odd solo one out: `requires_location=False`, and
+its `update()` drives the pedestrian itself (via
+`PedestrianManager._walk_route_to` and `PedestrianNetwork.nearest_point`,
+picking a new nearby waypoint each time the last one is reached) instead
+of arriving once and standing still - proof that a plugin can own
+arbitrarily different movement behavior; the core never needs to know
+"jogging" involves continuous motion.
 
 Only [pedestrian.py](../pedestrian.py) consumes this package. It is not
 re-exported from `theroadragetrip/__init__.py`.
@@ -36,9 +49,11 @@ re-exported from `theroadragetrip/__init__.py`.
 
 ```
 base.py       ActivityDefinition, ActivityLocation, ActivityInstance,
-              ActivityContext, ActivityPlugin - the plugin interface
+              ActivityGroup, ActivityContext, ActivityPlugin - the interface
 registry.py   ActivityRegistry (register/get/all_plugins) + default_registry()
 manager.py    ActivityManager - selection, location reservation, cooldowns
+grouping.py   shared multi-participant helpers (see "Group activities") -
+              not a plugin itself, outside plugins/ so discover() skips it
 plugins/      one module per activity, auto-discovered - this is the only
               directory a new activity ever needs to touch
 ```
@@ -86,9 +101,10 @@ class ActivityPlugin:
 `ActivityDefinition` fields actually in use: `id`, `name`,
 `requires_location`, `min_duration_s`/`max_duration_s` (yours to sample
 from in `start`, the core doesn't enforce them), `cooldown_s` (this
-activity's own re-trigger cooldown), `base_weight`. Add more fields when a
-plugin actually needs them (e.g. `min_participants` for a future group
-activity) - don't add speculative ones.
+activity's own re-trigger cooldown), `base_weight`, and
+`min_participants`/`max_participants` (only meaningful to a group plugin -
+see below; a solo plugin just leaves them at the 1/1 default). Add more
+fields when a plugin actually needs them - don't add speculative ones.
 
 ## Adding a new activity
 
@@ -191,6 +207,64 @@ passenger-lifecycle (`linked_vehicle_id`/`reserved_vehicle_id`/
 `current_vehicle_id` set) or already walking to a taxi stop is never
 considered - that state machinery (`_update_linked_driver`) owns those
 pedestrians exclusively.
+
+## Group activities
+
+A multi-participant activity (conversation, ball game, ...) needs no
+group-aware code in the core at all - it's built entirely with
+`grouping.py`'s helpers, called from a plugin's own hooks:
+
+```python
+from ..grouping import nearby_free_pedestrians, next_group_id, other_group_members, recruit
+```
+
+The key rule: **group formation only ever happens in `start()`, never in
+`find_location()`/`score()`**. `find_location()` runs during candidate
+*evaluation* - `ActivityManager.select_activity` calls it on every
+plugin being considered that round, then randomly picks one winner by
+weight. If `find_location()` mutated another pedestrian (claiming them as
+a partner) and this plugin *didn't* win, that pedestrian would be
+corrupted for nothing. So:
+
+1. **`find_location`** - a pure read. Use `nearby_free_pedestrians(context,
+   radius_m, limit=..., children_only=...)` to find compatible, currently
+   idle pedestrians nearby (not already in an activity, not linked to a
+   vehicle, not a cyclist). Stash the candidate(s) in
+   `ActivityLocation.extra` - don't touch them yet.
+2. **`start`** - fires only for the instance that actually won selection,
+   exactly once, at arrival. Re-check the candidates from `find_location`
+   are *still* free (someone else may have grabbed them in the meantime),
+   build an `ActivityGroup` (`next_group_id()`, `member_resident_ids`
+   starting with just yourself), then call `recruit(context, plugin_id,
+   group, partner, location, duration_range)` for each partner - this
+   directly sets `partner.activity`/`partner.state = "walking_to_activity"`
+   with `instance.group` already pointing at the shared group. From here
+   the core's ordinary per-pedestrian dispatch drives the partner's walk
+   exactly like a self-selected activity - nothing group-specific needed
+   in `pedestrian.py`.
+3. **`update`** - use `other_group_members(context, instance.group)` to
+   find the other participants' live `Pedestrian` objects (a departed or
+   culled member just won't be found - nothing to clean up, since no
+   registry outside each participant's own `ActivityInstance.group`
+   reference exists). Typical use: face another member once they've
+   actually arrived (`other.state == "performing_activity"`), or their
+   group's centroid.
+4. **`finish`** - remove yourself from `instance.group.member_resident_ids`.
+   Each participant finishes on their own random duration ("leave
+   independently" per the spec) - nobody else's `finish()` is affected.
+
+`ActivityGroup` (`base.py`) is the shared object every participant's
+`instance.group` points to - `group_id`, `plugin_id`,
+`member_resident_ids`, `formed_sim_time`, and a `data` scratch dict for
+whatever the plugin wants to share (see `ball_game.py`'s shared `park`
+reference, so every recruited child wanders the same polygon). It's the
+same "one shared object, several owners" shape as `npc.py`'s `TripGroup`.
+
+If your group plugin's `start()` fails to recruit enough partners (e.g. a
+`small_group_conversation` where everyone found in `find_location` got
+claimed elsewhere in the interim), leave `instance.group` as `None` and
+have `update()` return `True` immediately - the pedestrian just resumes
+walking, same as any other activity that turned out to be a dead end.
 
 ## Testing a plugin
 

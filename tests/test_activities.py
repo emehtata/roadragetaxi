@@ -11,6 +11,7 @@ from theroadragetrip.activities import (
     ActivityRegistry,
 )
 from theroadragetrip.activities.plugins import discover
+from theroadragetrip.activities.plugins.ball_game import BallGamePlugin
 from theroadragetrip.activities.plugins.bench_sitting import BenchSittingPlugin
 from theroadragetrip.activities.plugins.bus_stop_waiting import LOOK_AROUND_INTERVAL_S, BusStopWaitingPlugin
 from theroadragetrip.activities.plugins.eating_drinking import EatingDrinkingPlugin
@@ -20,7 +21,9 @@ from theroadragetrip.activities.plugins.park_leisure import ParkLeisurePlugin
 from theroadragetrip.activities.plugins.phone_usage import PhoneUsagePlugin
 from theroadragetrip.activities.plugins.photography import PhotographyPlugin
 from theroadragetrip.activities.plugins.shop_window_watching import ShopWindowWatchingPlugin
+from theroadragetrip.activities.plugins.small_group_conversation import SmallGroupConversationPlugin
 from theroadragetrip.activities.plugins.traffic_watching import TrafficWatchingPlugin
+from theroadragetrip.activities.plugins.two_person_conversation import TwoPersonConversationPlugin
 from theroadragetrip.osm import BusStop, Crossing, Scenery, SceneryObject, Way
 from theroadragetrip.pedestrian import Pedestrian, PedestrianManager
 from theroadragetrip.residents import ResidentManager
@@ -55,13 +58,14 @@ def test_registry_rejects_duplicate_ids():
         registry.register(_stub_plugin("dup"))
 
 
-def test_discover_registers_all_ten_built_in_plugins():
+def test_discover_registers_all_built_in_plugins():
     registry = ActivityRegistry()
     discover(registry)
     assert {plugin.definition.id for plugin in registry.all_plugins()} == {
         "bench_sitting", "garbage_disposal", "phone_usage", "park_leisure",
         "eating_drinking", "traffic_watching", "shop_window_watching",
         "bus_stop_waiting", "photography", "exercise_jogging",
+        "two_person_conversation", "small_group_conversation", "ball_game", "playground",
     }
 
 
@@ -308,6 +312,179 @@ def test_exercise_jogging_moves_the_pedestrian_and_eventually_finishes():
             break
     assert finished
     assert (pedestrian.x, pedestrian.y) != (start_x, start_y)
+
+
+def _add_pedestrian(manager, x, y, age=None):
+    way = manager.pedestrians[0].way
+    pedestrian = Pedestrian(x, y, 0.0, 1.3, 1.3, way, 0, 1, (1, 1, 1))
+    pedestrian.resident_id = manager.residents.create("walking", age=age).resident_id
+    manager.pedestrians.append(pedestrian)
+    return pedestrian
+
+
+def test_two_person_conversation_finds_a_nearby_free_partner():
+    manager, pedestrian = _make_manager_and_pedestrian()
+    partner = _add_pedestrian(manager, 12.0, 0.0)
+    plugin = TwoPersonConversationPlugin()
+
+    location = plugin.find_location(_context(manager, pedestrian))
+
+    assert location is not None
+    assert location.extra is partner
+
+
+def test_two_person_conversation_finds_no_partner_when_alone():
+    manager, pedestrian = _make_manager_and_pedestrian()
+    plugin = TwoPersonConversationPlugin()
+
+    assert plugin.find_location(_context(manager, pedestrian)) is None
+
+
+def test_two_person_conversation_recruits_the_partner_at_start():
+    manager, pedestrian = _make_manager_and_pedestrian()
+    partner = _add_pedestrian(manager, 12.0, 0.0)
+    plugin = TwoPersonConversationPlugin()
+    context = _context(manager, pedestrian)
+    location = plugin.find_location(context)
+
+    from theroadragetrip.activities import ActivityInstance
+
+    instance = ActivityInstance(plugin_id="two_person_conversation", location=location, started_sim_time=0.0)
+    plugin.start(context, instance)
+
+    assert instance.group is not None
+    assert set(instance.group.member_resident_ids) == {pedestrian.resident_id, partner.resident_id}
+    assert partner.activity is not None
+    assert partner.state == "walking_to_activity"
+    assert partner.activity.group is instance.group
+
+
+def test_two_person_conversation_aborts_if_partner_became_busy_before_start():
+    from theroadragetrip.activities import ActivityInstance
+
+    manager, pedestrian = _make_manager_and_pedestrian()
+    partner = _add_pedestrian(manager, 12.0, 0.0)
+    plugin = TwoPersonConversationPlugin()
+    context = _context(manager, pedestrian)
+    location = plugin.find_location(context)
+
+    # Partner got claimed by something else in the meantime.
+    partner.activity = ActivityInstance(plugin_id="phone_usage", location=None, started_sim_time=0.0)
+
+    instance = ActivityInstance(plugin_id="two_person_conversation", location=location, started_sim_time=0.0)
+    plugin.start(context, instance)
+
+    assert instance.group is None
+    assert plugin.update(context, instance, 0.1) is True  # gives up immediately
+
+
+def test_two_person_conversation_full_lifecycle_both_leave_independently():
+    manager, pedestrian = _make_manager_and_pedestrian()
+    partner = _add_pedestrian(manager, 5.0, 0.0)
+    plugin = TwoPersonConversationPlugin()
+    context = _context(manager, pedestrian)
+    location = plugin.find_location(context)
+    assert location is not None
+
+    from theroadragetrip.activities import ActivityInstance
+
+    instance = ActivityInstance(plugin_id="two_person_conversation", location=location, started_sim_time=0.0)
+    pedestrian.activity = instance
+    pedestrian.state = "walking_to_activity"
+
+    partner_context = _context(manager, partner)
+    for _ in range(3000):
+        manager._update_activity(pedestrian, 0.1)
+        if partner.activity is not None:
+            manager._update_activity(partner, 0.1)
+        if pedestrian.activity is None and partner.activity is None:
+            break
+
+    assert pedestrian.activity is None and pedestrian.state == "walking"
+    assert partner.activity is None and partner.state == "walking"
+
+
+def test_small_group_conversation_requires_enough_nearby_partners():
+    manager, pedestrian = _make_manager_and_pedestrian()
+    _add_pedestrian(manager, 5.0, 0.0)  # only 1 partner - needs at least 2
+    plugin = SmallGroupConversationPlugin()
+
+    assert plugin.find_location(_context(manager, pedestrian)) is None
+
+
+def test_small_group_conversation_recruits_multiple_partners():
+    manager, pedestrian = _make_manager_and_pedestrian()
+    partners = [_add_pedestrian(manager, 5.0 + i, 0.0) for i in range(3)]
+    plugin = SmallGroupConversationPlugin()
+    context = _context(manager, pedestrian)
+    location = plugin.find_location(context)
+    assert location is not None
+
+    from theroadragetrip.activities import ActivityInstance
+
+    instance = ActivityInstance(plugin_id="small_group_conversation", location=location, started_sim_time=0.0)
+    plugin.start(context, instance)
+
+    assert instance.group is not None
+    assert set(instance.group.member_resident_ids) == {pedestrian.resident_id} | {p.resident_id for p in partners}
+    for partner in partners:
+        assert partner.activity is not None and partner.state == "walking_to_activity"
+
+
+def test_ball_game_only_startable_by_children():
+    manager, pedestrian = _make_manager_and_pedestrian()
+    plugin = BallGamePlugin()
+    context = _context(manager, pedestrian)
+
+    pedestrian.resident_id = manager.residents.create("walking", age=30).resident_id
+    assert plugin.can_start(context) is False
+
+    pedestrian.resident_id = manager.residents.create("walking", age=8).resident_id
+    assert plugin.can_start(context) is True
+
+
+def test_ball_game_requires_a_nearby_park_and_other_children():
+    park = Scenery(points_m=[(0.0, -10.0), (30.0, -10.0), (30.0, 10.0), (0.0, 10.0)], kind="park", bbox=(0.0, -10.0, 30.0, 10.0))
+    manager, pedestrian = _make_manager_and_pedestrian(sceneries=[park])
+    pedestrian.resident_id = manager.residents.create("walking", age=8).resident_id
+    plugin = BallGamePlugin()
+
+    # A park but no other children yet - min_participants=2 needs a partner.
+    assert plugin.find_location(_context(manager, pedestrian)) is None
+
+    _add_pedestrian(manager, 5.0, 0.0, age=9)
+    location = plugin.find_location(_context(manager, pedestrian))
+    assert location is not None
+    from theroadragetrip.geo import point_in_polygon
+    assert point_in_polygon(location.x, location.y, park.points_m)
+
+
+def test_playground_only_startable_by_children():
+    from theroadragetrip.activities.plugins.playground import PlaygroundPlugin
+
+    manager, pedestrian = _make_manager_and_pedestrian()
+    plugin = PlaygroundPlugin()
+    context = _context(manager, pedestrian)
+
+    pedestrian.resident_id = manager.residents.create("walking", age=30).resident_id
+    assert plugin.can_start(context) is False
+
+    pedestrian.resident_id = manager.residents.create("walking", age=6).resident_id
+    assert plugin.can_start(context) is True
+
+
+def test_playground_finds_a_playground_scenery():
+    from theroadragetrip.activities.plugins.playground import PlaygroundPlugin
+
+    playground = Scenery(points_m=[(0.0, -10.0), (20.0, -10.0), (20.0, 10.0), (0.0, 10.0)], kind="playground", bbox=(0.0, -10.0, 20.0, 10.0))
+    manager, pedestrian = _make_manager_and_pedestrian(sceneries=[playground])
+    plugin = PlaygroundPlugin()
+
+    location = plugin.find_location(_context(manager, pedestrian))
+
+    assert location is not None
+    from theroadragetrip.geo import point_in_polygon
+    assert point_in_polygon(location.x, location.y, playground.points_m)
 
 
 def test_full_bench_sitting_lifecycle_walk_sit_standup_resume():
