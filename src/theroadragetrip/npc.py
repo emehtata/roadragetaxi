@@ -21,7 +21,7 @@ from typing import List, Optional, Tuple
 
 from .geo import clamp, closest_point_and_dist_to_segment, segment_distance
 from .osm import Curb, Way
-from .physics import Car, SpatialWayGrid, update_car_physics
+from .physics import GRAVITY_MPS2, Car, SpatialWayGrid, update_car_physics
 from .residents import ResidentManager
 from .traffic_rules import TrafficAction, TrafficDecision, decide_traffic_action
 from .traffic_world import TrafficWorld
@@ -52,6 +52,9 @@ STEER_FULL_ANGLE_DEG = 25.0  # heading error at/beyond which steering saturates 
 ARRIVAL_DECEL_MPS2 = 3.0  # comfortable braking rate approaching the final destination waypoint
 NPC_FOOTPRINT_VIOLATION_CRAWL_MPS = 2.0  # never a hard 0 - see update_npc's live footprint check
 NPC_LIVE_FOOTPRINT_CLEARANCE_M = 0.05  # a hair's width - only an actual overlap counts live, not lag
+NPC_CORNER_COMFORT_LATERAL_G = 0.5  # a comfortable cornering effort, well under GRIP.md's max_grip_g limit
+NPC_CORNER_BRAKING_DECEL_MPS2 = 3.0  # comfortable braking rate approaching a corner
+NPC_CORNER_LOOKAHEAD_M = 40.0  # how far ahead to start braking for an upcoming turn
 LANE_BIAS_LOOKAHEAD_M = 20.0  # start easing into a turn lane this far before the corner (NPC-002 section 5)
 NPC_VEHICLE_LENGTH_M = 4.3  # the one NPC car's dimensions - shared so footprint checks always match the spawned Car
 NPC_VEHICLE_WIDTH_M = 1.8
@@ -781,6 +784,44 @@ def release_npc_parking_reservation(vehicle: NPCVehicle) -> None:
     vehicle.reserved_parking_space = None
 
 
+def _corner_safe_speed_mps(
+    radius_m: float = CORNER_RADIUS_M, lateral_g: float = NPC_CORNER_COMFORT_LATERAL_G,
+) -> float:
+    """A comfortable speed to actually drive a CORNER_RADIUS_M turn at -
+    well under the tires' real grip ceiling (physics.py's max_grip_g /
+    the "understeer, push wide" clamp GRIP.md describes), the same way a
+    real driver slows for a tight corner long before they'd actually lose
+    grip. v = sqrt(lateral_g * g * r), the standard circular-motion
+    relation between cornering speed, lateral acceleration and radius."""
+    return math.sqrt(lateral_g * GRAVITY_MPS2 * radius_m)
+
+
+def _distance_to_next_turn(
+    path: List[PathPoint], path_index: int, x: float, y: float, max_lookahead_m: float = NPC_CORNER_LOOKAHEAD_M,
+) -> Optional[float]:
+    """Distance from (x, y) to the start of the next is_turn stretch of
+    the path, walking forward from path_index (0.0 if already there), or
+    None if no turn starts within max_lookahead_m - so update_npc can
+    brake for a sharp corner in the middle of a route the same
+    comfortable way it already brakes for arrival, instead of taking
+    every turn at full cruising speed regardless of how tight it is
+    (reported: NPC understeering wide into a curb/building at a sharp
+    turn, repeatedly re-triggering the live footprint check)."""
+    if path_index >= len(path):
+        return None
+    total = 0.0
+    prev_x, prev_y = x, y
+    for i in range(path_index, len(path)):
+        point = path[i]
+        total += math.hypot(point.x - prev_x, point.y - prev_y)
+        if total > max_lookahead_m:
+            return None
+        if point.is_turn:
+            return total
+        prev_x, prev_y = point.x, point.y
+    return None
+
+
 def update_npc(
     vehicle: NPCVehicle,
     driver: Driver,
@@ -843,6 +884,20 @@ def update_npc(
         # the destination and only then snapping to a stop.
         arrival_cap = math.sqrt(2.0 * ARRIVAL_DECEL_MPS2 * max(0.0, distance_to_target - WAYPOINT_REACH_RADIUS_M))
         driver.target_speed_mps = min(driver.target_speed_mps, arrival_cap)
+
+    # Brake for a sharp corner the same comfortable way, well before
+    # reaching it - nothing else here ever slows the vehicle down for the
+    # geometry of a turn itself (only traffic rules and final arrival do),
+    # so a corner used to always get taken at full cruising speed, well
+    # past what the tires can actually deliver at that radius
+    # (physics.py's own understeer clamp then pushes the car wide -
+    # reported: NPC repeatedly understeering into a curb/building at a
+    # sharp turn, retriggering the live footprint check every time).
+    corner_distance = _distance_to_next_turn(path, driver.path_index, vehicle.car.x, vehicle.car.y)
+    if corner_distance is not None:
+        corner_speed = _corner_safe_speed_mps()
+        corner_cap = math.sqrt(corner_speed * corner_speed + 2.0 * NPC_CORNER_BRAKING_DECEL_MPS2 * corner_distance)
+        driver.target_speed_mps = min(driver.target_speed_mps, corner_cap)
     if at_destination:
         driver.target_speed_mps = 0.0
         if vehicle.reserved_parking_space is not None:

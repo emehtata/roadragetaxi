@@ -9,14 +9,18 @@ import pytest
 
 from theroadragetrip.render.vehicles import draw_npc_cars
 from theroadragetrip.npc import (
+    CORNER_RADIUS_M,
     Driver,
     NPCState,
     NPCVehicle,
+    PathPoint,
     _lane_offset_point,
     NPC_BUILDING_YARD_CLEARANCE_M,
     NPC_FOOTPRINT_VIOLATION_CRAWL_MPS,
     _align_approach_to_parking_orientation,
     _building_yard_point,
+    _corner_safe_speed_mps,
+    _distance_to_next_turn,
     _parking_space_dimensions,
     _parking_space_fits_vehicle,
     _pick_npc_destination,
@@ -242,6 +246,76 @@ def test_straight_route_keeps_a_single_lane_no_turn_points():
     assert all(point.y < 0.0 for point in path)
 
 
+def test_corner_safe_speed_is_well_under_a_typical_cruising_speed():
+    """A tight CORNER_RADIUS_M turn shouldn't be safely takeable anywhere
+    near a normal 40+ km/h cruising speed - if this ever creeps that
+    high, the corner-braking cap it feeds isn't actually protecting
+    anything."""
+    assert _corner_safe_speed_mps() * 3.6 < 30.0
+
+
+def test_distance_to_next_turn_finds_an_upcoming_corner():
+    path = [
+        PathPoint(0.0, 0.0),
+        PathPoint(10.0, 0.0),
+        PathPoint(20.0, 0.0, is_turn=True),
+        PathPoint(25.0, 5.0, is_turn=True),
+    ]
+    assert _distance_to_next_turn(path, 0, 0.0, 0.0) == pytest.approx(20.0)
+    assert _distance_to_next_turn(path, 1, 10.0, 0.0) == pytest.approx(10.0)
+    assert _distance_to_next_turn(path, 2, 20.0, 0.0) == 0.0  # already at the turn
+
+
+def test_distance_to_next_turn_none_when_nothing_ahead_or_too_far():
+    straight = [PathPoint(0.0, 0.0), PathPoint(10.0, 0.0), PathPoint(20.0, 0.0)]
+    assert _distance_to_next_turn(straight, 0, 0.0, 0.0) is None
+
+    far_turn = [PathPoint(0.0, 0.0), PathPoint(1000.0, 0.0, is_turn=True)]
+    assert _distance_to_next_turn(far_turn, 0, 0.0, 0.0, max_lookahead_m=40.0) is None
+
+
+def test_update_npc_brakes_before_a_sharp_corner_instead_of_taking_it_at_cruise_speed():
+    """Regression: nothing previously slowed the NPC for the geometry of
+    a turn itself (only traffic rules and final arrival did), so a sharp
+    corner was always taken at full cruising speed - well past what the
+    tires can actually deliver at that radius, so physics.py's own
+    understeer clamp pushed the car wide into whatever was just outside
+    the turn (reported: NPC repeatedly understeering into a curb/building
+    at a corner, retriggering the live footprint check every time)."""
+    # Several segments per leg (not a bare 2-way L) - enough real graph
+    # nodes that plan_route's nearest-node search can't mistake a single
+    # long beeline for a cheap stand-in path (see _straight_chain).
+    ways = [
+        Way(points_m=[(i * 20.0, 0.0), ((i + 1) * 20.0, 0.0)], highway="secondary", half_width_m=4.5, speed_limit_kmh=50)
+        for i in range(5)
+    ] + [
+        Way(points_m=[(100.0, -i * 20.0), (100.0, -(i + 1) * 20.0)], highway="secondary", half_width_m=4.5, speed_limit_kmh=50)
+        for i in range(5)
+    ]
+    tw = TrafficWorld(ways)
+    residents = ResidentManager()
+    result = spawn_npc(1, residents, tw, ways, (0.0, 0.0), (100.0, -100.0))
+    assert result is not None
+    _, driver, vehicle = result
+    vehicle.car.speed = 50.0 / 3.6  # already cruising at the road's speed limit
+
+    min_speed_through_corner = math.inf
+    saw_a_turn_point = False
+    for _ in range(600):
+        update_npc(vehicle, driver, 1.0 / 60.0, tw, residents)
+        target = driver.path[driver.path_index]
+        if target.is_turn:
+            saw_a_turn_point = True
+            min_speed_through_corner = min(min_speed_through_corner, vehicle.car.speed)
+        if driver.path_index >= len(driver.path) - 1:
+            break
+
+    assert saw_a_turn_point
+    # Comfortably slower than the 50 km/h it started at - not just a
+    # rounding error off full speed.
+    assert min_speed_through_corner * 3.6 < 30.0
+
+
 def test_right_turn_produces_a_smooth_trajectory_aligned_with_outgoing_road():
     way1 = Way(points_m=[(0.0, 0.0), (100.0, 0.0)], highway="residential", half_width_m=4.5)
     way2 = Way(points_m=[(100.0, 0.0), (100.0, -100.0)], highway="residential", half_width_m=4.5)
@@ -337,7 +411,7 @@ def test_npc_reports_parking_state_on_final_approach_to_a_dedicated_space():
     assert vehicle.destination_parking_space_id == space.osm_id
 
     seen_states = set()
-    for _ in range(1800):
+    for _ in range(3600):  # corner braking (see update_npc) slows the trip down somewhat
         update_npc(vehicle, driver, 1.0 / 60.0, tw, residents)
         seen_states.add(vehicle.state)
         if vehicle.state == NPCState.ARRIVING:
