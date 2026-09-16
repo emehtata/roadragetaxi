@@ -681,8 +681,10 @@ def draw_npc_debug_panel(screen, vehicle, driver, font, x: int = 10, y: int = 22
         entrance_label = f"({entrance[0]:.0f},{entrance[1]:.0f})" if entrance is not None else "-"
         lines.append(
             f"capacity={vehicle.capacity} occupants={len(trip_group.boarded_resident_ids)}/"
-            f"{len(trip_group.member_resident_ids)} trip_group={trip_group.group_id} entrance={entrance_label}"
+            f"{len(trip_group.member_resident_ids)} seats_free={vehicle.available_seats} "
+            f"trip_group={trip_group.group_id}"
         )
+        lines.append(f"activity={trip_group.activity_type or '-'} entrance={entrance_label}")
         # Reported: "F7 shows driver only - no passengers" - a bare count
         # doesn't visibly prove anyone but the driver (resident= above)
         # exists, so list every other member by id and whether they're

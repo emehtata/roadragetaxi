@@ -83,6 +83,10 @@ NPC_BUILDING_VISIT_MAX_S = 90.0
 # activity_duration_s a straggler gets before the vehicle leaves without
 # them - generous enough to cover a slower walk back, not infinite.
 NPC_GROUP_RETURN_GRACE_S = 60.0
+# Section 13/14: what a trip group is doing inside the building - shared
+# by the whole group for now (section 14 explicitly allows this), not
+# yet an individual per-passenger choice.
+NPC_TRIP_ACTIVITY_TYPES = ("shopping", "work", "visit", "service", "errand", "other")
 
 _trip_group_id_counter = itertools.count(1)
 
@@ -651,6 +655,7 @@ class TripGroup:
     vehicle_id: int
     member_resident_ids: List[int]
     destination_entrance: Optional[Tuple[float, float]] = None
+    activity_type: str = ""  # section 13/14/26: "shopping"/"work"/... - shared per group for now
     activity_duration_s: float = 0.0
     boarded_resident_ids: Set[int] = field(default_factory=set)
     wait_deadline_sim_time: Optional[float] = None
@@ -738,6 +743,15 @@ class NPCVehicle:
         if self.trip_group is None:
             return ()
         return tuple(rid for rid in self.trip_group.member_resident_ids if rid != self.owner_id)
+
+    @property
+    def available_seats(self) -> int:
+        """multi-passenger-car.md section 4: capacity minus who's
+        currently actually aboard (not the group's full roster, which
+        may be partly out visiting a building) - "how many more could
+        board this vehicle right now"."""
+        occupied = len(self.trip_group.boarded_resident_ids) if self.trip_group is not None else 0
+        return max(0, self.capacity - occupied)
 
 
 def has_active_driver(vehicle: NPCVehicle, resident_manager: ResidentManager) -> bool:
@@ -885,6 +899,7 @@ def spawn_npc(
         vehicle_id=vehicle_id,
         member_resident_ids=member_ids,
         boarded_resident_ids=set(member_ids),
+        activity_type=random.choice(NPC_TRIP_ACTIVITY_TYPES),
         activity_duration_s=random.uniform(NPC_BUILDING_VISIT_MIN_S, NPC_BUILDING_VISIT_MAX_S),
     )
     for member in members:
@@ -1609,6 +1624,7 @@ def continue_npc_trip(
             vehicle.trip_group.activity_duration_s = random.uniform(
                 NPC_BUILDING_VISIT_MIN_S, NPC_BUILDING_VISIT_MAX_S
             )
+            vehicle.trip_group.activity_type = random.choice(NPC_TRIP_ACTIVITY_TYPES)
             vehicle.trip_group.destination_entrance = None
             vehicle.trip_group.wait_deadline_sim_time = None
         return True

@@ -209,6 +209,7 @@ def draw_resident_popup(
     screen_w: int = SCREEN_W,
     screen_h: int = SCREEN_H,
     pedestrian=None,
+    trip_group=None,
 ) -> None:
     """Draw selected resident details above the gameplay view."""
     import pygame
@@ -258,6 +259,11 @@ def draw_resident_popup(
             entrance = getattr(pedestrian, "linked_building_entrance", None)
             if entrance is not None:
                 lines.append(f"Kohde: ({entrance[0]:.0f},{entrance[1]:.0f})")
+        if trip_group is not None:
+            # multi-passenger-car.md section 26's "ACTIVITY: SHOPPING" -
+            # only available via the vehicle's TripGroup (not the
+            # Resident/Pedestrian, which only durably know the group id).
+            lines.append(f"Toiminto: {getattr(trip_group, 'activity_type', None) or '-'}")
     for index, text in enumerate(lines):
         color = (245, 250, 255) if index == 0 else (205, 220, 232)
         text_surface = font.render(text, True, color)

@@ -2553,14 +2553,25 @@ def main() -> None:
                     ),
                     None,
                 )
+                selected_resident = traffic_mgr.residents.get(selected_resident_id)
+                selected_trip_group_id = getattr(selected_resident, "trip_group_id", None)
+                selected_trip_group = next(
+                    (
+                        one_npc.trip_group
+                        for one_npc in npcs
+                        if one_npc.trip_group is not None and one_npc.trip_group.group_id == selected_trip_group_id
+                    ),
+                    None,
+                ) if selected_trip_group_id is not None else None
                 draw_resident_popup(
                     screen,
                     small_font,
-                    traffic_mgr.residents.get(selected_resident_id),
+                    selected_resident,
                     traffic_mgr.residents,
                     SCREEN_W,
                     SCREEN_H,
                     pedestrian=selected_pedestrian,
+                    trip_group=selected_trip_group,
                 )
             if awaiting_start:
                 draw_game_start_overlay(screen, font, chosen_city, SCREEN_W, SCREEN_H)

@@ -1402,3 +1402,64 @@ def test_draw_npc_debug_panel_lists_each_passenger_by_id():
     draw_npc_debug_panel(solo_panel, vehicle, driver, font)
 
     assert pygame.image.tostring(panel, "RGB") != pygame.image.tostring(solo_panel, "RGB")
+
+
+def test_vehicle_available_seats_reflects_current_occupancy():
+    """multi-passenger-car.md section 4: available_seats = capacity minus
+    who's currently actually aboard (not the full roster, some of whom
+    may be out visiting a building)."""
+    ways = _straight_chain()
+    tw = TrafficWorld(ways)
+    residents = ResidentManager()
+    spawned = spawn_npc(1, residents, tw, ways, (0.0, 0.0), (180.0, 0.0))
+    assert spawned is not None
+    _, _, vehicle = spawned
+    capacity = vehicle.capacity
+    members = vehicle.trip_group.member_resident_ids
+
+    assert vehicle.available_seats == capacity - len(members)  # everyone aboard in transit
+
+    vehicle.trip_group.boarded_resident_ids.discard(members[0])
+    assert vehicle.available_seats == capacity - (len(members) - 1)
+
+
+def test_vehicle_available_seats_is_full_capacity_without_a_trip_group():
+    car = Car(x=0.0, y=0.0, heading=0.0, speed=0.0)
+    vehicle = NPCVehicle(vehicle_id=1, car=car, owner_id=1, capacity=5, trip_group=None)
+    assert vehicle.available_seats == 5
+
+
+def test_trip_group_gets_an_activity_type():
+    """multi-passenger-car.md sections 13/14/26: a trip group's building
+    visit has an activity type (shopping/work/visit/...), not just a
+    bare duration."""
+    from theroadragetrip.npc import NPC_TRIP_ACTIVITY_TYPES
+
+    ways = _straight_chain()
+    tw = TrafficWorld(ways)
+    residents = ResidentManager()
+    spawned = spawn_npc(1, residents, tw, ways, (0.0, 0.0), (180.0, 0.0))
+    assert spawned is not None
+    _, _, vehicle = spawned
+    assert vehicle.trip_group.activity_type in NPC_TRIP_ACTIVITY_TYPES
+
+
+def test_continue_npc_trip_rerolls_the_activity_for_the_next_stop():
+    ways = _straight_chain(count=20)
+    tw = TrafficWorld(ways)
+    residents = ResidentManager()
+    spawned = spawn_npc(1, residents, tw, ways, (0.0, 0.0), (100.0, 0.0))
+    assert spawned is not None
+    _, driver, vehicle = spawned
+    for _ in range(3000):
+        update_npc(vehicle, driver, 1.0 / 30.0, tw, residents)
+        tw.advance_time(1.0 / 30.0)
+        if vehicle.state == NPCState.PARKED:
+            break
+    assert vehicle.state == NPCState.PARKED
+    first_activity = vehicle.trip_group.activity_type
+    assert first_activity
+
+    ok = continue_npc_trip(vehicle, driver, tw, ways)
+    assert ok is True
+    assert vehicle.trip_group.activity_type  # still set, not cleared
