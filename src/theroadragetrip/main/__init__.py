@@ -1701,7 +1701,10 @@ def main() -> None:
                 for one_npc in npcs:
                     npc_driver_for_vehicle = npc_drivers.get(one_npc.vehicle_id)
                     if npc_driver_for_vehicle is not None:
-                        update_npc(one_npc, npc_driver_for_vehicle, dt, traffic_mgr, residents)
+                        update_npc(
+                            one_npc, npc_driver_for_vehicle, dt, traffic_mgr, residents,
+                            curbs=curbs, buildings=buildings, curb_grid=curb_grid, building_grid=building_grid,
+                        )
             vomited_passenger = taxi_mgr.take_vomited_passenger(car)
             if vomited_passenger is not None:
                 audio.play_passenger_line("Nyt alkaa jo helpottaa.", vomited_passenger.gender, language, vomited_passenger.name)

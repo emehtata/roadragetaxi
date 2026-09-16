@@ -667,6 +667,12 @@ def draw_npc_debug_panel(screen, vehicle, driver, font, x: int = 10, y: int = 22
             else "parking=yard/lot (no dedicated space)"
         ),
     ]
+    if vehicle.debug_waiting_for:
+        # Surfaces NPC-more.md section 12/13/19's live footprint safety
+        # net tripping (see npc.update_npc) - not just the ordinary
+        # traffic-rule reason already shown above, which can otherwise
+        # read as stale ("PROCEED") while state=WAITING for this instead.
+        lines.append(f"waiting_for={vehicle.debug_waiting_for}")
     panel_w = 360
     panel_h = 10 + len(lines) * 16
     pygame.draw.rect(screen, (16, 20, 26, 215), (x, y, panel_w, panel_h), border_radius=5)

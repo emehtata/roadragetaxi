@@ -16,9 +16,15 @@ from theroadragetrip.npc import (
     NPC_BUILDING_YARD_CLEARANCE_M,
     _align_approach_to_parking_orientation,
     _building_yard_point,
+    _parking_space_dimensions,
+    _parking_space_fits_vehicle,
     _pick_npc_destination,
+    _pick_npc_destination_candidates,
+    _roadside_parking_point,
     build_driving_path,
     has_active_driver,
+    is_vehicle_pose_valid,
+    release_npc_parking_reservation,
     route_crosses_buildings,
     route_crosses_curbs,
     spawn_deterministic_npc,
@@ -32,7 +38,7 @@ from theroadragetrip.traffic_rules import TrafficAction, decide_traffic_action
 from theroadragetrip.traffic_world import TrafficWorld
 
 
-def _straight_chain(count: int = 10, step_m: float = 20.0):
+def _straight_chain(count: int = 10, step_m: float = 20.0, highway: str = "residential"):
     """A long straight chain of ways - enough real graph nodes that
     TrafficWorld.plan_route's nearest-node search can't mistake the start
     itself for a cheap stand-in target (see npc.spawn_deterministic_npc's
@@ -40,7 +46,7 @@ def _straight_chain(count: int = 10, step_m: float = 20.0):
     return [
         Way(
             points_m=[(i * step_m, 0.0), ((i + 1) * step_m, 0.0)],
-            highway="residential", half_width_m=4.5,
+            highway=highway, half_width_m=4.5,
         )
         for i in range(count)
     ]
@@ -402,10 +408,64 @@ def test_building_yard_point_uses_nearest_outline_point_without_an_entrance():
     assert point == (5.0, 0.0 - NPC_BUILDING_YARD_CLEARANCE_M)
 
 
+def test_parking_space_dimensions_uses_the_oriented_rectangle_not_the_bbox():
+    # A 6x2 rectangle rotated 45 degrees - its axis-aligned bbox would be
+    # roughly 5.66x5.66 (way bigger than the space really is).
+    diag = 6.0 / math.sqrt(2.0)
+    space = ParkingSpace(
+        points_m=[(0, 0), (diag, diag), (diag - 2 / math.sqrt(2.0), diag + 2 / math.sqrt(2.0)), (-2 / math.sqrt(2.0), 2 / math.sqrt(2.0))],
+        bbox=(0, 0, 0, 0),
+    )
+    long_side, short_side = _parking_space_dimensions(space)
+    assert long_side == pytest.approx(6.0)
+    assert short_side == pytest.approx(2.0)
+
+
+def test_parking_space_fits_vehicle_rejects_a_space_too_small_for_the_car():
+    """NPC-more.md sections 3/16: vehicle size and "can it physically
+    enter/leave" as a selection criterion."""
+    too_short = ParkingSpace(points_m=[(0, 0), (2, 0), (2, 2), (0, 2)], bbox=(0, 0, 2, 2))
+    real_size = ParkingSpace(points_m=[(0, 0), (5, 0), (5, 2.5), (0, 2.5)], bbox=(0, 0, 5, 2.5))
+    assert _parking_space_fits_vehicle(too_short) is False
+    assert _parking_space_fits_vehicle(real_size) is True
+
+
+def test_parking_space_fits_vehicle_does_not_block_on_missing_geometry():
+    empty = ParkingSpace(points_m=[], bbox=(0, 0, 0, 0))
+    assert _parking_space_fits_vehicle(empty) is True
+
+
+def test_roadside_parking_point_only_on_a_quiet_drivable_way():
+    quiet = Way(points_m=[(0.0, 0.0), (100.0, 0.0)], highway="residential", half_width_m=4.5)
+    busy = Way(points_m=[(0.0, 0.0), (100.0, 0.0)], highway="trunk", half_width_m=4.5)
+    roundabout = Way(points_m=[(0.0, 0.0), (100.0, 0.0)], highway="residential", half_width_m=4.5, is_roundabout=True)
+    sidewalk = Way(points_m=[(0.0, 0.0), (100.0, 0.0)], highway="footway", half_width_m=1.0, is_drivable=False)
+
+    assert _roadside_parking_point(50.0, 0.0, [quiet], None) == (50.0, 0.0)
+    assert _roadside_parking_point(50.0, 0.0, [busy], None) is None
+    assert _roadside_parking_point(50.0, 0.0, [roundabout], None) is None
+    assert _roadside_parking_point(50.0, 0.0, [sidewalk], None) is None
+    assert _roadside_parking_point(50.0, 0.0, None, None) is None
+    # Too far from any way at all.
+    assert _roadside_parking_point(50.0, 500.0, [quiet], None) is None
+
+
+def test_pick_npc_destination_candidates_tries_the_next_nearest_space_first():
+    """NPC-more.md section 3: "prefer a slightly farther valid parking
+    space over a nearby invalid or dangerous location" - the nearest
+    candidate here doesn't fit the vehicle at all, so the *list* must
+    still surface the next-nearest (valid) one, not just the single
+    best-by-distance guess _pick_npc_destination returns."""
+    too_small = ParkingSpace(points_m=[(10, -1), (12, -1), (12, 1), (10, 1)], bbox=(10.0, -1.0, 12.0, 1.0))
+    real_size = ParkingSpace(points_m=[(20, -1.25), (26, -1.25), (26, 1.25), (20, 1.25)], bbox=(20.0, -1.25, 26.0, 1.25))
+    candidates = _pick_npc_destination_candidates(0.0, 0.0, parking_spaces=[too_small, real_size])
+    assert [space for _, space in candidates] == [real_size]
+
+
 def test_pick_npc_destination_prefers_the_nearest_free_parking_space():
     occupied = ParkingSpace(points_m=[(0, -1), (2, -1), (2, 1), (0, 1)], bbox=(0.0, -1.0, 2.0, 1.0), occupied=True)
     reserved = ParkingSpace(points_m=[(10, -1), (12, -1), (12, 1), (10, 1)], bbox=(10.0, -1.0, 12.0, 1.0), reserved=True)
-    free = ParkingSpace(points_m=[(20, -1), (22, -1), (22, 1), (20, 1)], bbox=(20.0, -1.0, 22.0, 1.0))
+    free = ParkingSpace(points_m=[(18, -1.25), (24, -1.25), (24, 1.25), (18, 1.25)], bbox=(18.0, -1.25, 24.0, 1.25))
     point, space = _pick_npc_destination(0.0, 0.0, parking_spaces=[occupied, reserved, free], buildings=None)
     assert point == (21.0, 0.0)
     assert space is free
@@ -502,7 +562,7 @@ def test_spawn_deterministic_npc_routes_to_a_free_parking_space_when_one_exists(
     # This chain's fixed-hop BFS walk lands at (400.0, 0.0) - see
     # _bfs_destination_order/NPC_ROUTE_MAX_HOPS - so a space placed right next
     # to it is the nearest one and should become the actual destination.
-    space = ParkingSpace(points_m=[(398, 4), (402, 4), (402, 6), (398, 6)], bbox=(398.0, 4.0, 402.0, 6.0))
+    space = ParkingSpace(points_m=[(397, 3.5), (403, 3.5), (403, 6.5), (397, 6.5)], bbox=(397.0, 3.5, 403.0, 6.5))
 
     result = spawn_deterministic_npc(residents, tw, ways, parking_spaces=[space])
     assert result is not None
@@ -543,15 +603,35 @@ def test_spawn_deterministic_npc_recovers_when_the_farthest_candidates_building_
     assert vehicle.destination == (380.0, 6.0 - 2.0 - NPC_BUILDING_YARD_CLEARANCE_M)
 
 
-def test_spawn_deterministic_npc_gives_up_when_nothing_anywhere_has_a_place_to_stop():
-    """With truly no parking or building anywhere the BFS walk reached,
-    spawning must fail cleanly rather than ever stop an NPC on the road."""
-    ways = _straight_chain(count=20)
+def test_spawn_deterministic_npc_gives_up_on_a_busy_road_with_nothing_to_stop_at():
+    """With no parking/lot/building anywhere the BFS walk reached, AND the
+    road itself too busy to legally count as roadside parking (NPC-more.md
+    section 2 tier 5 excludes arterial roads), spawning must fail cleanly
+    rather than ever stop an NPC on the road."""
+    ways = _straight_chain(count=20, highway="trunk")
     tw = TrafficWorld(ways)
     residents = ResidentManager()
 
     result = spawn_deterministic_npc(residents, tw, ways)
     assert result is None
+
+
+def test_spawn_deterministic_npc_falls_back_to_roadside_parking_on_a_quiet_street():
+    """NPC-more.md section 2 tier 5, the explicit last resort: with no
+    parking/lot/building anywhere, a quiet residential street is still a
+    legal place to stop - pulled to the curb side of the lane (existing
+    lane-offset math), not left in the middle of it."""
+    ways = _straight_chain(count=20)  # residential by default
+    tw = TrafficWorld(ways)
+    residents = ResidentManager()
+
+    result = spawn_deterministic_npc(residents, tw, ways)
+    assert result is not None
+    _, driver, vehicle = result
+    assert vehicle.destination == (400.0, 0.0)  # the raw road point itself
+    # But the actual resting path point must be off the lane's centerline
+    # (y=0), hugging the curb side - never dead-center in the lane.
+    assert abs(driver.path[-1].y) > 0.5
 
 
 def test_route_crosses_curbs_rejects_a_path_clipping_a_mapped_curb():
@@ -612,6 +692,106 @@ def test_spawn_npc_rejects_a_destination_only_reachable_via_a_sidewalk():
     assert result is None
 
 
+def test_is_vehicle_pose_valid_true_with_nothing_nearby():
+    assert is_vehicle_pose_valid(0.0, 0.0, 0.0) is True
+
+
+def test_is_vehicle_pose_valid_catches_a_curb_the_footprints_overhang_reaches():
+    """NPC-more.md section 8: the check must use the vehicle's real
+    oriented footprint (length, width, heading), not a bare point or a
+    width-only buffer - a curb sitting off to the side, well clear of the
+    vehicle's *center* line of travel, must still be caught if the car's
+    own body (length_m x width_m, facing `heading`) actually overlaps it."""
+    # Facing east (heading=0): body spans roughly x in [-2.15, 2.15],
+    # y in [-0.9, 0.9] for the default 4.3x1.8 vehicle. A curb at x=2.0
+    # running north-south is well within the front overhang, off to
+    # the side of the bare center point (0, 0) itself.
+    curb = Curb(points_m=[(2.0, -5.0), (2.0, 5.0)])
+    assert is_vehicle_pose_valid(0.0, 0.0, 0.0, curbs=[curb]) is False
+    # Facing north instead: the same curb is now off to the vehicle's
+    # side, well outside its (now narrow, along x) footprint.
+    assert is_vehicle_pose_valid(0.0, 0.0, math.pi / 2.0, curbs=[curb]) is True
+
+
+def test_update_npc_releases_parking_reservation_once_driver_is_inactive():
+    """NPC-more.md section 4: "if the vehicle leaves: release the space"."""
+    ways = _straight_chain(count=20)
+    tw = TrafficWorld(ways)
+    residents = ResidentManager()
+    space = ParkingSpace(
+        points_m=[(400.0, 4.0), (401.0, 4.0), (401.0, 10.0), (400.0, 10.0)],
+        bbox=(400.0, 4.0, 401.0, 10.0),
+        osm_id=101,
+    )
+    result = spawn_npc(1, residents, tw, ways, (0.0, 0.0), (400.0, 5.0), parking_space=space)
+    assert result is not None
+    resident_id, driver, vehicle = result
+    assert space.reserved is True
+
+    residents.get(resident_id).active_vehicle_id = None  # driver "leaves"
+    update_npc(vehicle, driver, 1.0 / 60.0, tw, residents)
+
+    assert space.reserved is False
+    assert space.occupied is False
+    assert space.vehicle_id is None
+    assert vehicle.reserved_parking_space is None
+
+
+def test_release_npc_parking_reservation_is_a_no_op_without_one():
+    car = Car(x=0.0, y=0.0, heading=0.0, speed=0.0)
+    vehicle = NPCVehicle(vehicle_id=1, car=car)
+    release_npc_parking_reservation(vehicle)  # must not raise
+    assert vehicle.reserved_parking_space is None
+
+
+def test_npc_reserved_space_becomes_occupied_on_arrival():
+    """NPC-more.md section 4's AVAILABLE -> RESERVED -> OCCUPIED states:
+    the space is only RESERVED while approaching, OCCUPIED once the NPC
+    has actually arrived."""
+    ways = _straight_chain(count=20)
+    tw = TrafficWorld(ways)
+    residents = ResidentManager()
+    space = ParkingSpace(
+        points_m=[(400.0, 4.0), (401.0, 4.0), (401.0, 10.0), (400.0, 10.0)],
+        bbox=(400.0, 4.0, 401.0, 10.0),
+        osm_id=101,
+    )
+    result = spawn_npc(1, residents, tw, ways, (0.0, 0.0), (400.0, 5.0), parking_space=space)
+    assert result is not None
+    _, driver, vehicle = result
+    assert space.occupied is False
+
+    for _ in range(3600):  # 400m trip - longer than the usual 200m test budget
+        update_npc(vehicle, driver, 1.0 / 60.0, tw, residents)
+        if vehicle.state == NPCState.ARRIVING:
+            break
+    assert vehicle.state == NPCState.ARRIVING
+    assert space.occupied is True
+
+
+def test_update_npc_live_footprint_check_stops_the_vehicle():
+    """NPC-more.md sections 12/13/19: enforced at the movement level too,
+    not only route generation - if the vehicle's actual live pose ever
+    overlaps a curb/building (physics drift off the pre-validated path),
+    it must brake rather than keep going."""
+    ways = _straight_chain(count=20)
+    tw = TrafficWorld(ways)
+    residents = ResidentManager()
+    result = spawn_npc(1, residents, tw, ways, (0.0, 0.0), (200.0, 0.0))
+    assert result is not None
+    _, driver, vehicle = result
+    vehicle.car.speed = 10.0
+    # A curb squarely on top of wherever the vehicle actually is right
+    # now - simulating drift off the (already-validated) planned path.
+    blocking_curb = Curb(points_m=[(vehicle.car.x, -5.0), (vehicle.car.x, 5.0)])
+
+    update_npc(vehicle, driver, 1.0 / 60.0, tw, residents, curbs=[blocking_curb])
+
+    assert vehicle.state == NPCState.WAITING
+    assert "footprint" in vehicle.debug_waiting_for
+    assert driver.target_speed_mps == 0.0
+
+
 def test_draw_npc_cars_renders_an_npc_vehicle_without_crashing():
     """Regression: draw_npc_cars' debug overlay (F7) crashed on any NPC
     without a `segment_idx` attribute - its steering-target-line fallback
@@ -663,6 +843,35 @@ def test_draw_npc_debug_panel_shows_parking_target():
 
     vehicle.destination_parking_space_id = 42
     draw_npc_debug_panel(screen, vehicle, driver, font)  # with one - must not crash either
+
+
+def test_draw_npc_debug_panel_surfaces_footprint_violation_reason():
+    """NPC-more.md section 21: a live footprint block (see npc.update_npc)
+    must be visible on the panel, not silently hidden behind whatever the
+    ordinary traffic-rule reason line already says."""
+    from theroadragetrip.render.hud import draw_npc_debug_panel
+
+    pygame.init()
+    screen = pygame.display.set_mode((400, 300))
+    font = pygame.font.SysFont(None, 16)
+    ways = _straight_chain()
+    tw = TrafficWorld(ways)
+    residents = ResidentManager()
+    _, driver, vehicle = spawn_npc(1, residents, tw, ways, (0.0, 0.0), (200.0, 0.0))
+    vehicle.debug_waiting_for = "footprint blocked (curb/building)"
+
+    panel_w = 360
+    before = pygame.Surface((panel_w, 400))
+    before.fill((0, 0, 0))
+    draw_npc_debug_panel(before, vehicle, driver, font)
+
+    vehicle.debug_waiting_for = ""
+    after = pygame.Surface((panel_w, 400))
+    after.fill((0, 0, 0))
+    draw_npc_debug_panel(after, vehicle, driver, font)
+    # The panel must be visibly different (one extra line) with a reason
+    # set vs. without one.
+    assert pygame.image.tostring(before, "RGB") != pygame.image.tostring(after, "RGB")
 
 
 def test_draw_npc_cars_debug_fallback_still_works_without_a_travel_route():
