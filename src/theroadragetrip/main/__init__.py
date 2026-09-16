@@ -648,7 +648,10 @@ def _load_world(
     # valid preplanned route exists (see spawn_deterministic_npc/spawn_npc)
     # - never a moving vehicle hunting for a route afterwards.
     on_load_progress(0.88, "Preparing NPC traffic...")
-    npc_spawn = spawn_deterministic_npc(residents, traffic_mgr, ways, spatial_grid=spatial_grid)
+    npc_spawn = spawn_deterministic_npc(
+        residents, traffic_mgr, ways, spatial_grid=spatial_grid,
+        parking_spaces=parking_spaces, buildings=buildings,
+    )
     if npc_spawn is not None:
         _, npc_driver, npc_vehicle = npc_spawn
         npcs = [npc_vehicle]
@@ -1679,7 +1682,10 @@ def main() -> None:
                     npc_spawn_retry_cooldown_s -= dt
                     if npc_spawn_retry_cooldown_s <= 0.0:
                         npc_spawn_retry_cooldown_s = NPC_SPAWN_RETRY_COOLDOWN_S
-                        npc_retry = spawn_deterministic_npc(residents, traffic_mgr, ways, spatial_grid=spatial_grid)
+                        npc_retry = spawn_deterministic_npc(
+                            residents, traffic_mgr, ways, spatial_grid=spatial_grid,
+                            parking_spaces=parking_spaces, buildings=buildings,
+                        )
                         if npc_retry is not None:
                             _, retry_driver, retry_vehicle = npc_retry
                             npcs.append(retry_vehicle)

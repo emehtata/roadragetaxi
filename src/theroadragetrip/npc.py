@@ -576,6 +576,57 @@ def _largest_route_graph_component(nodes: List[Tuple[float, float, int]], edges:
     return best
 
 
+NPC_DESTINATION_SEARCH_RADIUS_M = 150.0  # how far from the BFS-reached area to look for a place to actually stop
+
+
+def _pick_npc_destination(
+    x: float,
+    y: float,
+    parking_spaces: Optional[List] = None,
+    buildings: Optional[List] = None,
+    search_radius_m: float = NPC_DESTINATION_SEARCH_RADIUS_M,
+) -> Tuple[float, float]:
+    """Refine a raw road-graph point into an actual place to stop: prefer
+    the nearest free parking space, then the nearest building's own
+    entrance/yard, only falling back to the raw point (the middle of an
+    intersection or any other spot the road graph happened to reach) if
+    neither exists nearby.
+
+    plan_route() already appends the literal target point onto its last
+    road node (see its own docstring/return), so handing it a parking
+    space's or building's real-world point - not necessarily exactly on a
+    road - produces the intended short "last mile" off the road, the same
+    mechanism pedestrian routes to a building entrance already rely on.
+    """
+    radius_sq = search_radius_m * search_radius_m
+    best_point: Optional[Tuple[float, float]] = None
+    best_dist_sq = radius_sq
+    for space in parking_spaces or ():
+        if getattr(space, "occupied", False) or getattr(space, "reserved", False):
+            continue
+        bbox = getattr(space, "bbox", None)
+        if not bbox:
+            continue
+        cx, cy = (bbox[0] + bbox[2]) / 2.0, (bbox[1] + bbox[3]) / 2.0
+        dist_sq = (cx - x) ** 2 + (cy - y) ** 2
+        if dist_sq <= best_dist_sq:
+            best_dist_sq, best_point = dist_sq, (cx, cy)
+    if best_point is not None:
+        return best_point
+
+    for building in buildings or ():
+        for point in (getattr(building, "entrances", None) or [getattr(building, "center_m", None)]):
+            if point is None:
+                continue
+            dist_sq = (point[0] - x) ** 2 + (point[1] - y) ** 2
+            if dist_sq <= best_dist_sq:
+                best_dist_sq, best_point = dist_sq, point
+    if best_point is not None:
+        return best_point
+
+    return x, y
+
+
 NPC_ROUTE_MAX_HOPS = 30  # how many real intersections the deterministic NPC's trip crosses
 
 
@@ -618,6 +669,8 @@ def spawn_deterministic_npc(
     ways: List[Way],
     spatial_grid: Optional[SpatialWayGrid] = None,
     vehicle_id: int = 1,
+    parking_spaces: Optional[List] = None,
+    buildings: Optional[List] = None,
 ) -> Optional[Tuple[int, Driver, NPCVehicle]]:
     """Pick a deterministic origin/destination from the loaded OSM map and
     spawn NPC-001's one NPC there (section 12).
@@ -632,6 +685,14 @@ def spawn_deterministic_npc(
     largest connected component, destination is reached by a fixed-length
     breadth-first walk from there (see _bfs_destination) - no hard-coded
     screen coordinates, no randomness.
+
+    The BFS walk only ever lands on a road-graph node - the middle of an
+    intersection or any other spot on a road, not actually a place to stop
+    - so _pick_npc_destination refines it into the nearest free parking
+    space, or failing that a building's own entrance/yard, before ever
+    routing there. If that refined point turns out to be too far off any
+    road for spawn_npc's own route validation, retry with the raw node
+    exactly as before rather than not spawning an NPC at all.
     """
     nodes = traffic_world._route_nodes
     edges = traffic_world._route_edges
@@ -643,5 +704,9 @@ def spawn_deterministic_npc(
     if destination_index == origin_index:
         return None
     origin = (nodes[origin_index][0], nodes[origin_index][1])
-    destination = (nodes[destination_index][0], nodes[destination_index][1])
-    return spawn_npc(vehicle_id, resident_manager, traffic_world, ways, origin, destination, spatial_grid=spatial_grid)
+    raw_destination = (nodes[destination_index][0], nodes[destination_index][1])
+    destination = _pick_npc_destination(raw_destination[0], raw_destination[1], parking_spaces, buildings)
+    spawned = spawn_npc(vehicle_id, resident_manager, traffic_world, ways, origin, destination, spatial_grid=spatial_grid)
+    if spawned is None and destination != raw_destination:
+        spawned = spawn_npc(vehicle_id, resident_manager, traffic_world, ways, origin, raw_destination, spatial_grid=spatial_grid)
+    return spawned

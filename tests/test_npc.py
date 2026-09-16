@@ -12,13 +12,14 @@ from theroadragetrip.npc import (
     NPCState,
     NPCVehicle,
     _lane_offset_point,
+    _pick_npc_destination,
     build_driving_path,
     has_active_driver,
     spawn_deterministic_npc,
     spawn_npc,
     update_npc,
 )
-from theroadragetrip.osm import TrafficLight, Way
+from theroadragetrip.osm import Building, ParkingSpace, TrafficLight, Way
 from theroadragetrip.physics import Car
 from theroadragetrip.residents import ResidentManager
 from theroadragetrip.traffic_rules import TrafficAction, decide_traffic_action
@@ -346,6 +347,51 @@ def test_spawn_deterministic_npc_on_a_city_block_grid():
     assert result is not None
     _, driver, vehicle = result
     assert len(driver.path) >= 3
+
+
+def test_pick_npc_destination_prefers_the_nearest_free_parking_space():
+    occupied = ParkingSpace(points_m=[(0, -1), (2, -1), (2, 1), (0, 1)], bbox=(0.0, -1.0, 2.0, 1.0), occupied=True)
+    reserved = ParkingSpace(points_m=[(10, -1), (12, -1), (12, 1), (10, 1)], bbox=(10.0, -1.0, 12.0, 1.0), reserved=True)
+    free = ParkingSpace(points_m=[(20, -1), (22, -1), (22, 1), (20, 1)], bbox=(20.0, -1.0, 22.0, 1.0))
+    point = _pick_npc_destination(0.0, 0.0, parking_spaces=[occupied, reserved, free], buildings=None)
+    assert point == (21.0, 0.0)
+
+
+def test_pick_npc_destination_falls_back_to_building_entrance_without_parking():
+    building = Building(points_m=[(0, 0), (10, 0), (10, 10), (0, 10)], entrances=[(30.0, 0.0)], center_m=(5.0, 5.0))
+    point = _pick_npc_destination(0.0, 0.0, parking_spaces=None, buildings=[building])
+    assert point == (30.0, 0.0)
+
+
+def test_pick_npc_destination_falls_back_to_building_center_without_entrances():
+    building = Building(points_m=[(0, 0), (10, 0), (10, 10), (0, 10)], center_m=(5.0, 5.0))
+    point = _pick_npc_destination(0.0, 0.0, parking_spaces=None, buildings=[building])
+    assert point == (5.0, 5.0)
+
+
+def test_pick_npc_destination_keeps_the_raw_point_when_nothing_is_nearby():
+    far_space = ParkingSpace(points_m=[], bbox=(1000.0, 1000.0, 1002.0, 1002.0))
+    point = _pick_npc_destination(0.0, 0.0, parking_spaces=[far_space], buildings=None)
+    assert point == (0.0, 0.0)
+
+
+def test_spawn_deterministic_npc_routes_to_a_free_parking_space_when_one_exists():
+    """The BFS-hop destination alone can land anywhere on the road graph -
+    the middle of an intersection, an arbitrary block. Handing
+    spawn_deterministic_npc the map's parking spaces must make the NPC's
+    actual destination the nearest free one instead."""
+    ways = _straight_chain(count=20)
+    tw = TrafficWorld(ways)
+    residents = ResidentManager()
+    # This chain's fixed-hop BFS walk lands at (400.0, 0.0) - see
+    # _bfs_destination/NPC_ROUTE_MAX_HOPS - so a space placed right next
+    # to it is the nearest one and should become the actual destination.
+    space = ParkingSpace(points_m=[(398, 4), (402, 4), (402, 6), (398, 6)], bbox=(398.0, 4.0, 402.0, 6.0))
+
+    result = spawn_deterministic_npc(residents, tw, ways, parking_spaces=[space])
+    assert result is not None
+    _, driver, vehicle = result
+    assert vehicle.destination == (400.0, 5.0)
 
 
 def test_draw_npc_cars_renders_an_npc_vehicle_without_crashing():
