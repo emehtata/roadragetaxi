@@ -422,6 +422,12 @@ class SceneryObject:
     just a position, a kind to pick a small icon by, and an id for
     dedup/caching. See osm/build.py for the OSM tags -> kind mapping and
     render/scenery.py:draw_scenery_objects() for how each kind is drawn.
+
+    direction_angle is set only for kinds placed beside a path/way (bench,
+    waste_basket) - the position is snapped just past that way's edge, on
+    whichever side the raw OSM node already leaned towards, and the angle
+    is that way's heading (used to rotate an elongated icon like a bench
+    so it sits parallel to the path, not always axis-aligned).
     """
 
     x: float
@@ -429,6 +435,7 @@ class SceneryObject:
     kind: str
     name: Optional[str] = None
     id: Optional[int] = None
+    direction_angle: Optional[float] = None
 
 
 class MapData(tuple):

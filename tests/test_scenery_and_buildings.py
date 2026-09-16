@@ -616,6 +616,100 @@ def test_build_ways_parses_benches_waste_baskets_and_bicycle_parking():
     assert by_kind["bollard"].id == 10
 
 
+def test_build_ways_aligns_a_bench_beside_its_nearby_footway():
+    """Regression: a bench used to always render as the same axis-aligned
+    box regardless of what path it sits beside. It must now snap to the
+    nearest way (a footway here, not a road) and get pushed out past that
+    way's edge on whichever side the raw node already leaned towards."""
+    elements = [
+        {"type": "node", "id": 1, "lat": 60.000, "lon": 25.000},
+        {"type": "node", "id": 2, "lat": 60.000, "lon": 25.010},
+        # Nudged a touch off the (horizontal) footway's line.
+        {"type": "node", "id": 3, "lat": 60.0002, "lon": 25.005, "tags": {"amenity": "bench"}},
+        {"type": "way", "id": 10, "nodes": [1, 2], "tags": {"highway": "footway"}},
+    ]
+
+    result = build_ways(elements)
+
+    benches = [o for o in result.scenery_objects if o.kind == "bench"]
+    assert len(benches) == 1
+    bench = benches[0]
+    assert bench.direction_angle is not None
+    footway_y = result.ways[0].points_m[0][1]
+    # Pushed out past the footway's half-width, not sitting on its
+    # centerline or left floating at its raw (off-center) node position.
+    assert abs(bench.y - footway_y) > 0.0
+
+
+def test_build_ways_leaves_a_bench_unaligned_with_no_nearby_way():
+    """Without any way close enough to snap to, a bench keeps its raw OSM
+    position and an unset direction_angle - the pre-existing behavior for
+    every scenery object, not a crash or a bogus alignment."""
+    elements = [
+        {"type": "node", "id": 1, "lat": 60.000, "lon": 25.000, "tags": {"amenity": "bench"}},
+    ]
+
+    result = build_ways(elements)
+
+    bench = result.scenery_objects[0]
+    assert bench.direction_angle is None
+    assert bench.x == 25.000 * 1000.0
+    assert bench.y == 60.000 * 1000.0
+
+
+def test_draw_scenery_objects_rotates_a_bench_to_match_its_path_angle():
+    """The rendered bench polygon must actually change shape/orientation
+    with direction_angle, not just carry the field unused."""
+    horizontal = SceneryObject(x=0.0, y=0.0, kind="bench", direction_angle=0.0)
+    vertical = SceneryObject(x=0.0, y=0.0, kind="bench", direction_angle=math.pi / 2.0)
+
+    screen = pygame.Surface((100, 100))
+    screen.fill((0, 0, 0))
+    draw_scenery_objects(screen, [horizontal], 0.0, 0.0, px_per_m=10.0, screen_w=100, screen_h=100)
+    horiz_pixels = pygame.surfarray.array3d(screen).copy()
+
+    render_module.common._scenery_object_frame_cache_key = None
+    render_module.common._scenery_object_frame_cache_surface = None
+    screen.fill((0, 0, 0))
+    draw_scenery_objects(screen, [vertical], 0.0, 0.0, px_per_m=10.0, screen_w=100, screen_h=100)
+    vert_pixels = pygame.surfarray.array3d(screen).copy()
+
+    assert horiz_pixels.sum() > 0 and vert_pixels.sum() > 0
+    assert not (horiz_pixels == vert_pixels).all()
+
+
+def test_build_ways_uses_explicit_width_tag_for_a_footway():
+    """Real OSM data commonly tags width=* on footways/cycleways - it must
+    be used as a rendering-width hint instead of the flat per-type
+    default (RENDER-audit.md follow-up)."""
+    elements = [
+        {"type": "node", "id": 1, "lat": 60.000, "lon": 25.000},
+        {"type": "node", "id": 2, "lat": 60.001, "lon": 25.001},
+        {"type": "way", "id": 10, "nodes": [1, 2], "tags": {"highway": "footway", "width": "3.0"}},
+        {"type": "node", "id": 3, "lat": 60.002, "lon": 25.002},
+        {"type": "node", "id": 4, "lat": 60.003, "lon": 25.003},
+        {"type": "way", "id": 11, "nodes": [3, 4], "tags": {"highway": "footway"}},
+    ]
+
+    result = build_ways(elements)
+
+    by_id = {way.osm_id: way for way in result.ways}
+    assert by_id[10].half_width_m == 1.5  # 3.0m width / 2
+    assert by_id[11].half_width_m == 1.2  # untagged: falls back to the footway default
+
+
+def test_build_ways_ignores_a_bogus_width_tag():
+    elements = [
+        {"type": "node", "id": 1, "lat": 60.000, "lon": 25.000},
+        {"type": "node", "id": 2, "lat": 60.001, "lon": 25.001},
+        {"type": "way", "id": 10, "nodes": [1, 2], "tags": {"highway": "footway", "width": "not-a-number"}},
+    ]
+
+    result = build_ways(elements)
+
+    assert result.ways[0].half_width_m == 1.2  # untouched footway default
+
+
 def test_build_ways_parses_statues_but_not_plain_plaques():
     """Only 3D statue-like memorials/artwork become a "statue" scenery
     object - a flat plaque or bare stele isn't worth its own icon."""

@@ -905,9 +905,26 @@ def _draw_scenery_objects_uncached(
             continue
         sx, sy = world_to_screen(obj.x, obj.y, camx, camy, px_per_m, screen_w, screen_h)
         if obj.kind == "bench":
-            width = max(2, int(1.4 * px_per_m))
-            depth = max(1, int(0.4 * px_per_m))
-            pygame.draw.rect(screen, SCENERY_OBJECT_COLORS["bench"], (sx - width // 2, sy - depth // 2, width, depth))
+            # Rotated to sit parallel to whichever path it's beside (see
+            # osm/build.py's scenery_object_nodes_raw loop) rather than
+            # always axis-aligned - same corner-rotation technique as
+            # draw_speed_bumps. Falls back to angle 0 (the original
+            # axis-aligned box) when no nearby way was found to align to.
+            angle = obj.direction_angle if obj.direction_angle is not None else 0.0
+            width_m, depth_m = 1.4, 0.4
+            u_along_x, u_along_y = math.cos(angle), -math.sin(angle)
+            u_across_x, u_across_y = -u_along_y, u_along_x
+            half_len_x = u_along_x * (width_m * px_per_m / 2.0)
+            half_len_y = u_along_y * (width_m * px_per_m / 2.0)
+            half_wid_x = u_across_x * (depth_m * px_per_m / 2.0)
+            half_wid_y = u_across_y * (depth_m * px_per_m / 2.0)
+            corners = [
+                (sx - half_len_x - half_wid_x, sy - half_len_y - half_wid_y),
+                (sx + half_len_x - half_wid_x, sy + half_len_y - half_wid_y),
+                (sx + half_len_x + half_wid_x, sy + half_len_y + half_wid_y),
+                (sx - half_len_x + half_wid_x, sy - half_len_y + half_wid_y),
+            ]
+            pygame.draw.polygon(screen, SCENERY_OBJECT_COLORS["bench"], corners)
         elif obj.kind == "waste_basket":
             size = max(2, int(0.6 * px_per_m))
             pygame.draw.rect(screen, SCENERY_OBJECT_COLORS["waste_basket"], (sx - size // 2, sy - size // 2, size, size))

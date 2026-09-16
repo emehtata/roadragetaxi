@@ -11,9 +11,8 @@ logger = logging.getLogger(__name__)
 
 from .constants import (
     CROSSING_OVERLAP_SEARCH_RADIUS_M,
-    DEFAULT_ROAD_HALF_WIDTH_M,
-    HIGHWAY_HALF_WIDTH,
     NATURAL_SCENERY_KINDS,
+    parse_road_half_width_m,
     parse_speed_limit_kmh,
 )
 
@@ -57,6 +56,10 @@ from .trees import (
 _STATUE_MEMORIAL_TYPES = {"statue", "bust", "sculpture"}
 _STATUE_ARTWORK_TYPES = {"statue", "sculpture"}
 
+# Scenery-object kinds placed beside a path rather than free-standing -
+# see the scenery_object_nodes_raw loop below.
+_ALIGN_TO_PATH_SCENERY_KINDS = {"bench", "waste_basket"}
+
 # A real traffic/pedestrian-refuge island's kerb outline is compact (real
 # Oulu examples measured 3-12m across) and has genuine extent in both
 # directions (the same examples' narrower dimension was still 2.3m+) -
@@ -82,14 +85,17 @@ def _scenery_object_kind(tags: Dict[str, str]) -> Optional[str]:
     return None
 
 
-def _build_roads_grid(ways: List["Way"], r_grid_size: float) -> Dict[Tuple[int, int], List["Way"]]:
-    """Spatial grid of drivable roads, for finding the nearest road's
-    direction/width at a point (crossings, speed bumps: both need to snap
-    an OSM node - often digitized a little off the centerline - onto the
-    road it actually belongs to)."""
+def _build_roads_grid(
+    ways: List["Way"], r_grid_size: float, drivable_only: bool = True,
+) -> Dict[Tuple[int, int], List["Way"]]:
+    """Spatial grid of ways, for finding the nearest way's direction/width
+    at a point (crossings, speed bumps, stop/yield signs snap an OSM node
+    - often digitized a little off the centerline - onto the drivable road
+    it actually belongs to; bench/waste-basket placement needs the nearest
+    way of *any* kind, since those sit beside footways/paths, not roads)."""
     roads_grid: Dict[Tuple[int, int], List["Way"]] = defaultdict(list)
     for w in ways:
-        if not getattr(w, "is_drivable", True):
+        if drivable_only and not getattr(w, "is_drivable", True):
             continue
         bbox = getattr(w, "bbox", None)
         if not bbox or bbox == (0.0, 0.0, 0.0, 0.0):
@@ -692,7 +698,7 @@ def build_ways(
                 miny = py
             if py > maxy:
                 maxy = py
-        halfw = HIGHWAY_HALF_WIDTH.get(highway, DEFAULT_ROAD_HALF_WIDTH_M)
+        halfw = parse_road_half_width_m(tags.get("width"), highway)
         name = tags.get("name") or tags.get("name:fi") or tags.get("name:en") or tags.get("official_name")
         ref_num = tags.get("ref")
         if not name and ref_num:
@@ -970,11 +976,40 @@ def build_ways(
         if pt:
             taxi_stops.append(TaxiStop(x=pt[0], y=pt[1], id=nid))
 
+    # Bench/waste-basket nodes sit beside a path, not floating free like a
+    # statue or fountain - snapped onto the nearest way of *any* kind
+    # (drivable_only=False: these are almost always beside a footway/path,
+    # not a road) the same way stop/yield signs snap onto their road, then
+    # pushed out past that way's edge on whichever side the raw OSM node
+    # already leaned towards. Without this every one of them rendered as
+    # the same axis-aligned box regardless of the path's own direction.
+    path_ways_grid = None
+    path_grid_size = 50.0
+    if scenery_object_nodes_raw:
+        path_ways_grid = _build_roads_grid(ways, path_grid_size, drivable_only=False)
+
     for tags, nid in scenery_object_nodes_raw:
         pt = nodes_m.get(nid)
         kind = _scenery_object_kind(tags)
-        if pt and kind is not None:
-            scenery_objects.append(SceneryObject(x=pt[0], y=pt[1], kind=kind, name=tags.get("name"), id=nid))
+        if not pt or kind is None:
+            continue
+        obj_x, obj_y, angle = pt[0], pt[1], None
+        if kind in _ALIGN_TO_PATH_SCENERY_KINDS:
+            try:
+                layer_val = int(tags.get("layer", 0))
+            except (TypeError, ValueError):
+                layer_val = 0
+            snap_x, snap_y, way_angle, way_half_w, found = _snap_to_nearest_road(
+                pt, layer_val, path_ways_grid, path_grid_size
+            )
+            if found:
+                normal_x, normal_y = -math.sin(way_angle), math.cos(way_angle)
+                side = 1.0 if (pt[0] - snap_x) * normal_x + (pt[1] - snap_y) * normal_y >= 0.0 else -1.0
+                clearance = way_half_w + 0.5
+                obj_x = snap_x + normal_x * side * clearance
+                obj_y = snap_y + normal_y * side * clearance
+                angle = way_angle
+        scenery_objects.append(SceneryObject(x=obj_x, y=obj_y, kind=kind, name=tags.get("name"), id=nid, direction_angle=angle))
 
     for tags, nid in bus_stops_raw:
         pt = nodes_m.get(nid)
