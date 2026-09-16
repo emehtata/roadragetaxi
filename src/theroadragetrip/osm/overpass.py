@@ -92,7 +92,6 @@ def _mark_endpoint_contacted(endpoint: str) -> None:
 
 DEFAULT_OVERPASS_ENDPOINTS = [
     "https://overpass-api.de/api/interpreter",
-    "https://overpass.private.coffee/api/interpreter",
     "https://overpass.openstreetmap.fr/api/interpreter",
 ]
 
@@ -262,9 +261,21 @@ def fetch_osm_ways(
                     )
                     break
                 if r.status_code >= 500:
+                    # A 502/503/504 from a public Overpass mirror almost
+                    # always means that instance is overloaded right now,
+                    # not a one-off blip - retrying the same instance 3x
+                    # with backoff (the old behavior) just wastes the
+                    # whole backoff window on a server that's still
+                    # overloaded on attempt 2. Move to the next endpoint
+                    # immediately instead, same as the 429/406 handling.
                     last_err = Exception(f"{r.status_code} Server Error from {ep}")
-                    time.sleep(2 ** (attempt - 1))
-                    continue
+                    logger.warning(
+                        "Overpass server error (%d) from %s; switching endpoint (attempt %d)",
+                        r.status_code,
+                        ep,
+                        attempt,
+                    )
+                    break
                 r.raise_for_status()
                 if progress_callback:
                     progress_callback(0.5, "Parsing OSM payload...")
