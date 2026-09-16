@@ -27,6 +27,37 @@ def _make_ways(count: int, spacing: float = 8.0) -> list:
     ]
 
 
+def test_ground_road_center_line_does_not_bleed_through_a_bridge_above_it():
+    """Regression: center lines used to draw in one batch after the whole
+    ways loop finished, regardless of layer - so a ground-level road's
+    dashed center line painted on top of a bridge sitting directly above
+    it instead of being hidden underneath by the bridge's own asphalt."""
+    ground = Way(points_m=[(0.0, 100.0), (100.0, 100.0)], highway="living_street", half_width_m=4.0)
+    ground_center_color = (130, 125, 120)  # living_street's own center_color (roads.py)
+    # Narrow enough (thickness < 6px) that the bridge gets no center line of
+    # its own - otherwise, sharing the ground way's exact centerline, the
+    # bridge's own dash would happen to overdraw the ground's dash pixel for
+    # pixel regardless of layer ordering, masking the bug this test targets.
+    bridge = Way(
+        points_m=[(0.0, 100.0), (100.0, 100.0)],
+        highway="primary",
+        half_width_m=0.3,
+        is_bridge=True,
+        layer=1,
+    )
+    screen = pygame.Surface((800, 600), pygame.SRCALPHA)
+
+    draw_ways(screen, [ground, bridge], camx=50.0, camy=100.0, px_per_m=8.0, screen_w=800, screen_h=600)
+
+    leaked = sum(
+        1
+        for x in range(200, 600)
+        for y in range(280, 321)
+        if tuple(screen.get_at((x, y)))[:3] == ground_center_color
+    )
+    assert leaked == 0
+
+
 def test_first_ever_build_stays_synchronous():
     """The very first roads-cache build (nothing committed yet to fall
     back to) must still finish in one call, exactly like every other

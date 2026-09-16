@@ -279,6 +279,7 @@ def _start_road_rebuild(
         "index": 0,
         "asphalt_polygons": [],
         "center_lines": [],
+        "center_line_layer": None,
         "bridge_edges": [],
     }
 
@@ -573,6 +574,19 @@ def _advance_road_rebuild(job: dict, deadline: float) -> bool:
         w = visible_ways[job["index"]]
         job["index"] += 1
         made_progress_this_call = True
+        # visible_ways is sorted by layer ascending, so the first way of a
+        # new layer means every lower-layer way is already fully drawn -
+        # flush that lower layer's center lines now, before this (higher)
+        # layer's own asphalt/deck draws over it. Without this, all center
+        # lines drew in one batch after the whole loop regardless of layer,
+        # so a ground-level road's dashed line painted on top of a bridge
+        # sitting above it instead of being hidden underneath.
+        way_layer = getattr(w, "layer", 0)
+        if center_lines and job["center_line_layer"] != way_layer:
+            for entry_color, entry_points, entry_connections, entry_solid in center_lines:
+                draw_center_line(entry_color, entry_points, entry_connections, entry_solid)
+            center_lines.clear()
+        job["center_line_layer"] = way_layer
         if px_per_m <= 1.5 and not w.is_drivable:
             continue
         pts = [world_to_screen(x, y, camx, camy, px_per_m, screen_w, screen_h) for (x, y) in w.points_m]
