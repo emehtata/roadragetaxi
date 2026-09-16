@@ -2,15 +2,16 @@ import logging
 import heapq
 import math
 import random
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from enum import Enum
-from typing import Dict, List, Optional, Set, Tuple
+from typing import Any, Dict, List, Optional, Set, Tuple
 
-from .osm import Crossing, LogicalIntersection, TrafficLight, Way
+from .osm import Crossing, LogicalIntersection, Scenery, SceneryObject, TrafficLight, Way
 from .geo import closest_point_and_dist_to_segment, compute_bbox, dist_point_to_segment, point_in_polygon
 from .npc import NPCState
 from .physics import Car, is_car_road, is_pedestrian_way
 from .residents import ResidentManager
+from .activities import ActivityContext, ActivityInstance, ActivityManager
 
 logger = logging.getLogger(__name__)
 
@@ -51,6 +52,10 @@ CYCLIST_COLORS = [
 PEDESTRIAN_LOD_UPDATE_INTERVALS = (1.0 / 30.0, 1.0 / 12.0, 0.2)
 MAX_VEHICLE_RESERVATION_DISTANCE_M = 100.0
 TRIP_GROUP_SPAWN_SPACING_M = 1.1
+# Rolled per ordinary walking pedestrian on each 5s population tick, not
+# every frame (residents-live.md section 19's perf requirement) - keeps
+# activity starts spread out rather than everyone starting at once.
+ACTIVITY_CONSIDER_PROBABILITY = 0.15
 
 
 def _fanned_out_position(
@@ -252,6 +257,12 @@ class Pedestrian:
     building_entry_timer: float = 0.0
     animation_time: float = 0.0
     appearance: Optional[PedestrianAppearance] = None
+    # Ambient activity system (residents-live.md) - the one live-instance
+    # object while performing an activity, and a small generic scratch
+    # dict for cross-activity bookkeeping (cooldowns) - not a field per
+    # spec property, see activities/base.py's ActivityInstance.
+    activity: Optional[ActivityInstance] = None
+    activity_flags: Dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
@@ -282,6 +293,8 @@ class PedestrianManager:
         traffic_manager=None,
         venue_buildings: Optional[List] = None,
         residents: Optional[ResidentManager] = None,
+        scenery_objects: Optional[List[SceneryObject]] = None,
+        sceneries: Optional[List[Scenery]] = None,
     ):
         self.target_count = target_count
         self.spawn_radius_m = spawn_radius_m
@@ -312,6 +325,13 @@ class PedestrianManager:
         self._near_building_window_cache: Dict[Tuple[int, int, int, int], List] = {}
         self.vomit_puddles: List[Tuple[float, float]] = []
 
+        self.activity_manager = ActivityManager()
+        self.scenery_objects: List[SceneryObject] = []
+        self.sceneries: List[Scenery] = []
+        self._scenery_object_grid: Dict[Tuple[int, int], List[SceneryObject]] = {}
+        self._scenery_grid: Dict[Tuple[int, int], List[Scenery]] = {}
+        self._activity_grid_cell_size = 100.0
+
         self.ped_ways: List[Way] = []
         self._spawn_ways: List[Way] = []
         # id(way) for way in self.ped_ways, kept up to date wherever
@@ -335,6 +355,7 @@ class PedestrianManager:
         self._source_ways: List[Way] = []
 
         self.set_venue_buildings(venue_buildings)
+        self.set_scenery_features(scenery_objects, sceneries)
         self.sync_map_data(
             ways,
             traffic_lights=traffic_lights,
@@ -406,12 +427,186 @@ class PedestrianManager:
                 pedestrian.linked_vehicle_id = id(vehicle)
                 pedestrian.linked_building_entrance = trip_group.destination_entrance
                 pedestrian.destination = trip_group.destination_entrance
+                # spawn_pedestrian_at above set route/current_route_segment
+                # for its own generic walk-along-the-way purpose - clear them
+                # so _walk_route_to builds a real footway route to the
+                # entrance instead of treating that leftover route's
+                # (unrelated) endpoint as "arrived".
+                pedestrian.route = None
                 pedestrian.state = "walking_to_building"
                 pedestrian.animation_state = "walking"
                 pedestrian.door_grace_timer = 5.0
                 trip_group.boarded_resident_ids.discard(resident_id)
                 self.add_pedestrian(pedestrian)
                 linked_residents.add(resident_id)
+
+    def _walk_route_to(self, pedestrian: Pedestrian, update_dt: float, target: Tuple[float, float]) -> bool:
+        """Step `pedestrian` along a footway route toward `target`, building
+        the route on first call (same mapped-sidewalk network as an
+        ordinary pedestrian's vehicle approach) so a trip-group member
+        walks around buildings/parked cars instead of straight through
+        them. Returns True once `target` is reached."""
+        if pedestrian.route is None or pedestrian.destination != target:
+            pedestrian.destination = target
+            pedestrian.route = self._footway_route_to(pedestrian, target)
+            pedestrian.current_route_segment = 1
+        route = pedestrian.route
+        route_index = min(max(1, pedestrian.current_route_segment), len(route) - 1)
+        target_x, target_y = route[route_index]
+        distance = math.hypot(target_x - pedestrian.x, target_y - pedestrian.y)
+        if distance <= 1.0:
+            pedestrian.x, pedestrian.y = target_x, target_y
+            pedestrian.current_route_segment = route_index + 1
+            if pedestrian.current_route_segment < len(route):
+                return False
+            pedestrian.speed = 0.0
+            pedestrian.route = None
+            return True
+        pedestrian.heading = math.atan2(target_y - pedestrian.y, target_x - pedestrian.x)
+        pedestrian.speed = pedestrian.base_speed
+        step = min(distance, pedestrian.speed * update_dt)
+        pedestrian.x += math.cos(pedestrian.heading) * step
+        pedestrian.y += math.sin(pedestrian.heading) * step
+        pedestrian.animation_state = "walking"
+        return False
+
+    def set_scenery_features(
+        self,
+        scenery_objects: Optional[List[SceneryObject]] = None,
+        sceneries: Optional[List[Scenery]] = None,
+    ) -> None:
+        """Index benches/waste-baskets/parks etc. for the activity system's
+        nearby_* queries (residents-live.md) - the same bbox/cell-grid
+        idiom set_venue_buildings already uses for _building_grid."""
+        self.scenery_objects = list(scenery_objects or [])
+        self.sceneries = list(sceneries or [])
+        cell_size = self._activity_grid_cell_size
+        self._scenery_object_grid = {}
+        for scenery_object in self.scenery_objects:
+            cell = (math.floor(scenery_object.x / cell_size), math.floor(scenery_object.y / cell_size))
+            self._scenery_object_grid.setdefault(cell, []).append(scenery_object)
+        self._scenery_grid = {}
+        for scenery in self.sceneries:
+            bbox = getattr(scenery, "bbox", None)
+            if not bbox or bbox == (0.0, 0.0, 0.0, 0.0):
+                continue
+            for cell_x in range(math.floor(bbox[0] / cell_size), math.floor(bbox[2] / cell_size) + 1):
+                for cell_y in range(math.floor(bbox[1] / cell_size), math.floor(bbox[3] / cell_size) + 1):
+                    self._scenery_grid.setdefault((cell_x, cell_y), []).append(scenery)
+
+    def nearby_scenery_objects(self, x: float, y: float, radius_m: float) -> List[SceneryObject]:
+        """Point-furniture (bench/waste-basket/...) within radius_m -
+        activity plugins filter the result by .kind themselves; this
+        method has no notion of which kinds exist."""
+        cell_size = self._activity_grid_cell_size
+        span = math.ceil(radius_m / cell_size)
+        cell_x, cell_y = math.floor(x / cell_size), math.floor(y / cell_size)
+        radius_sq = radius_m * radius_m
+        found = []
+        for dx in range(-span, span + 1):
+            for dy in range(-span, span + 1):
+                for scenery_object in self._scenery_object_grid.get((cell_x + dx, cell_y + dy), ()):
+                    if (scenery_object.x - x) ** 2 + (scenery_object.y - y) ** 2 <= radius_sq:
+                        found.append(scenery_object)
+        return found
+
+    def nearby_sceneries(self, x: float, y: float, radius_m: float) -> List[Scenery]:
+        """Area features (parks/grass/...) whose bbox is within radius_m -
+        activity plugins filter by .kind themselves."""
+        cell_size = self._activity_grid_cell_size
+        span = math.ceil(radius_m / cell_size)
+        cell_x, cell_y = math.floor(x / cell_size), math.floor(y / cell_size)
+        seen: Set[int] = set()
+        found = []
+        for dx in range(-span, span + 1):
+            for dy in range(-span, span + 1):
+                for scenery in self._scenery_grid.get((cell_x + dx, cell_y + dy), ()):
+                    if id(scenery) not in seen:
+                        seen.add(id(scenery))
+                        found.append(scenery)
+        return found
+
+    def _activity_context(self, pedestrian: Pedestrian) -> ActivityContext:
+        return ActivityContext(
+            pedestrian=pedestrian,
+            pedestrian_manager=self,
+            residents=self.residents,
+            sim_time=self.sim_time,
+        )
+
+    def _consider_activities(self) -> None:
+        """Periodically (called from the existing 5s population-management
+        tick, not every frame) roll ordinary walking pedestrians for a new
+        ambient activity. A pedestrian mid vehicle-passenger-lifecycle
+        (linked_vehicle_id) must never also be mid-activity - that state
+        is exclusively owned by _update_linked_driver."""
+        for pedestrian in self.pedestrians:
+            if (
+                pedestrian.state != "walking"
+                or pedestrian.activity is not None
+                or pedestrian.linked_vehicle_id is not None
+                or pedestrian.reserved_vehicle_id is not None
+                or pedestrian.current_vehicle_id is not None
+                or pedestrian.is_cyclist
+                or pedestrian.is_drunk
+                or pedestrian.wants_taxi
+                or pedestrian.wants_vehicle
+                or pedestrian.is_walking_to_taxi_stop
+                or pedestrian.is_taxi_stop_waiter
+            ):
+                continue
+            if random.random() >= ACTIVITY_CONSIDER_PROBABILITY:
+                continue
+            selected = self.activity_manager.select_activity(self._activity_context(pedestrian))
+            if selected is None:
+                continue
+            plugin, location = selected
+            pedestrian.activity = ActivityInstance(
+                plugin_id=plugin.definition.id, location=location, started_sim_time=self.sim_time
+            )
+            pedestrian.state = "walking_to_activity"
+            pedestrian.route = None
+
+    def _update_activity(self, pedestrian: Pedestrian, update_dt: float) -> bool:
+        """Drive an already-selected activity to completion (mirrors
+        _update_linked_driver's shape: owns the pedestrian for the frame,
+        callers `continue` when this returns True). Never decides to
+        *start* an activity - only _consider_activities does that."""
+        instance = pedestrian.activity
+        if instance is None:
+            return False
+        plugin = self.activity_manager.registry.get(instance.plugin_id)
+        if plugin is None:
+            self._end_activity(pedestrian, instance)
+            return False
+        context = self._activity_context(pedestrian)
+        if pedestrian.state == "walking_to_activity":
+            arrived = (
+                instance.location is None
+                or self._walk_route_to(pedestrian, update_dt, (instance.location.x, instance.location.y))
+            )
+            if arrived:
+                pedestrian.state = "performing_activity"
+                pedestrian.speed = 0.0
+                pedestrian.animation_state = "idle"
+                plugin.start(context, instance)
+            return True
+        if pedestrian.state == "performing_activity":
+            pedestrian.speed = 0.0
+            if plugin.update(context, instance, update_dt):
+                plugin.finish(context, instance)
+                self._end_activity(pedestrian, instance)
+            return True
+        self._end_activity(pedestrian, instance)  # defensive: state drifted unexpectedly
+        return False
+
+    def _end_activity(self, pedestrian: Pedestrian, instance: ActivityInstance) -> None:
+        self.activity_manager.release(instance.location)
+        pedestrian.activity_flags["last_activity_id"] = instance.plugin_id
+        pedestrian.activity_flags["last_activity_end_time"] = self.sim_time
+        pedestrian.activity = None
+        pedestrian.state = "walking"
+        pedestrian.animation_state = "walking"
 
     def _update_linked_driver(self, pedestrian: Pedestrian, update_dt: float) -> bool:
         """Move one trip-group member between the shared destination
@@ -432,22 +627,11 @@ class PedestrianManager:
             target = pedestrian.linked_building_entrance
             if target is None:
                 return False
-            target_x, target_y = target
-            distance = math.hypot(target_x - pedestrian.x, target_y - pedestrian.y)
-            if distance <= 1.0:
-                pedestrian.x, pedestrian.y = target
-                pedestrian.speed = 0.0
+            if self._walk_route_to(pedestrian, update_dt, target):
                 pedestrian.state = PedestrianState.ENTERING_BUILDING.value
                 pedestrian.building_entry_timer = 0.35
                 pedestrian.building_visit_timer = trip_group.activity_duration_s
                 pedestrian.animation_state = "idle"
-                return True
-            pedestrian.heading = math.atan2(target_y - pedestrian.y, target_x - pedestrian.x)
-            pedestrian.speed = pedestrian.base_speed
-            step = min(distance, pedestrian.speed * update_dt)
-            pedestrian.x += math.cos(pedestrian.heading) * step
-            pedestrian.y += math.sin(pedestrian.heading) * step
-            pedestrian.animation_state = "walking"
             return True
         if pedestrian.state == PedestrianState.ENTERING_BUILDING.value:
             pedestrian.speed = 0.0
@@ -460,24 +644,13 @@ class PedestrianManager:
             pedestrian.building_visit_timer = max(0.0, pedestrian.building_visit_timer - update_dt)
             if pedestrian.building_visit_timer <= 0.0:
                 pedestrian.state = "returning_to_vehicle"
-                pedestrian.destination = self._vehicle_entry_position(vehicle)
             return True
         if pedestrian.state == "returning_to_vehicle":
-            target_x, target_y = self._vehicle_entry_position(vehicle)
-            distance = math.hypot(target_x - pedestrian.x, target_y - pedestrian.y)
-            if distance <= 1.0:
-                pedestrian.x, pedestrian.y = target_x, target_y
-                pedestrian.speed = 0.0
+            target = self._vehicle_entry_position(vehicle)
+            if self._walk_route_to(pedestrian, update_dt, target):
                 pedestrian.state = PedestrianState.ENTERING_VEHICLE.value
                 pedestrian.vehicle_entry_timer = 0.4
                 pedestrian.animation_state = "idle"
-                return True
-            pedestrian.heading = math.atan2(target_y - pedestrian.y, target_x - pedestrian.x)
-            pedestrian.speed = pedestrian.base_speed
-            step = min(distance, pedestrian.speed * update_dt)
-            pedestrian.x += math.cos(pedestrian.heading) * step
-            pedestrian.y += math.sin(pedestrian.heading) * step
-            pedestrian.animation_state = "walking"
             return True
         if pedestrian.state == PedestrianState.ENTERING_VEHICLE.value:
             # multi-passenger-car.md section 19: a *group* reboard - not
@@ -666,18 +839,21 @@ class PedestrianManager:
         vehicle.state = "reserved"
         pedestrian.reserved_vehicle_id = id(vehicle)
         pedestrian.destination = self._vehicle_entry_position(vehicle)
-        pedestrian.route = self._vehicle_approach_route(pedestrian, pedestrian.destination)
+        pedestrian.route = self._footway_route_to(pedestrian, pedestrian.destination)
         pedestrian.current_route_segment = 1
         pedestrian.state = "approaching_vehicle"
         pedestrian.animation_state = "walking"
         return True
 
-    def _vehicle_approach_route(
+    def _footway_route_to(
         self,
         pedestrian: Pedestrian,
         entry_position: Tuple[float, float],
     ) -> List[Tuple[float, float]]:
-        """Build a short mapped-footway approach followed by the final door step."""
+        """Build a short mapped-footway approach followed by the final door
+        step, from wherever `pedestrian` currently stands to `entry_position`
+        (a vehicle's door or a building's entrance - the network routing
+        doesn't care which)."""
         nearest = self.network.nearest_point(entry_position)
         start = (pedestrian.x, pedestrian.y)
         route = self._plan_pedestrian_route(start, nearest) if nearest is not None else [start]
@@ -889,6 +1065,9 @@ class PedestrianManager:
         if len(self.pedestrians) > self.target_count:
             if player_car is not None:
                 self.pedestrians.sort(key=lambda ped: math.hypot(ped.x - player_car.x, ped.y - player_car.y))
+            for dropped in self.pedestrians[self.target_count:]:
+                if dropped.activity is not None:
+                    self.activity_manager.release(dropped.activity.location)
             del self.pedestrians[self.target_count:]
 
     def update_lod(self, player_car: Car, dt: float) -> None:
@@ -1562,6 +1741,13 @@ class PedestrianManager:
                 ):
                     kept_peds.append(ped)
                     continue
+                # residents-live.md: same exemption as the trip-group one
+                # above, and for the same reason - a pedestrian mid
+                # activity (walking to a bench, sitting, ...) must not be
+                # culled and immediately re-spawned elsewhere.
+                if ped.activity is not None:
+                    kept_peds.append(ped)
+                    continue
                 ped.door_grace_timer = max(0.0, ped.door_grace_timer - population_check_dt)
                 dist_sq = (ped.x - player_car.x) ** 2 + (ped.y - player_car.y) ** 2
                 outside_viewport = False
@@ -1643,6 +1829,8 @@ class PedestrianManager:
                     new_ped.drunk_vomit_cooldown = random.uniform(8.0, 25.0)
                 self.add_pedestrian(new_ped)
 
+            self._consider_activities()
+
         # Check interaction and dodging with player car
         cyclist_collision = self.check_player_avoidance(player_car, dt)
 
@@ -1652,6 +1840,8 @@ class PedestrianManager:
                 continue
             update_dt = max(dt, ped.lod_update_dt)
             if self._update_linked_driver(ped, update_dt):
+                continue
+            if self._update_activity(ped, update_dt):
                 continue
             if ped.state == "in_vehicle":
                 ped.speed = 0.0

@@ -281,7 +281,7 @@ def test_vehicle_approach_uses_connected_pedestrian_waypoints():
     vehicle = SimpleNamespace(x=10.0, y=10.0, heading=0.0, width_m=1.8)
     pedestrian = Pedestrian(0.0, 0.0, 0.0, 1.0, 1.0, first_way, 0, 1, (1, 1, 1))
 
-    route = manager._vehicle_approach_route(pedestrian, manager._vehicle_entry_position(vehicle))
+    route = manager._footway_route_to(pedestrian, manager._vehicle_entry_position(vehicle))
 
     assert (10.0, 0.0) in route
 
@@ -533,7 +533,11 @@ def test_pedestrian_spawning_and_movement():
         assert isinstance(ped, Pedestrian)
         assert 0.0 <= ped.x <= 200.0
         assert len(ped.color) == 3
-        assert ped.speed > 0.0
+        # A pedestrian can legitimately roll straight into a no-location
+        # ambient activity (e.g. phone_usage) on its very first update and
+        # stand still - only a pedestrian with no activity must be moving.
+        if ped.activity is None:
+            assert ped.speed > 0.0
 
     # Step simulation frames
     initial_positions = [(p.x, p.y) for p in ped_mgr.pedestrians]
@@ -1066,7 +1070,9 @@ def test_materialize_parked_drivers_shares_one_building_entrance_across_the_grou
     tw.npcs = [vehicle]
     manager = PedestrianManager(ways, target_count=0, traffic_manager=tw, residents=residents, venue_buildings=[building])
 
-    manager.update(Car(x=5000.0, y=5000.0, heading=0.0, speed=0.0), dt=1.0 / 30.0)
+    # Check spawn positions directly, before any walking - once en route,
+    # members legitimately funnel through the same shared footway nodes.
+    manager._materialize_parked_drivers()
 
     entrances = {ped.linked_building_entrance for ped in manager.pedestrians}
     assert len(entrances) == 1
@@ -1075,6 +1081,26 @@ def test_materialize_parked_drivers_shares_one_building_entrance_across_the_grou
     if len(manager.pedestrians) > 1:
         positions = {(round(p.x, 3), round(p.y, 3)) for p in manager.pedestrians}
         assert len(positions) == len(manager.pedestrians)
+
+
+def test_walking_to_building_follows_the_footway_network_not_a_straight_line():
+    """Regression: trip-group members used to walk in a straight line from
+    the car to the building entrance, cutting through the car and the
+    building itself ("people get out of car and walk thru the car/
+    building"). The walk must be built through the sidewalk network's
+    shared nodes instead of a direct 2-point hop."""
+    ways, building, tw, residents, driver, vehicle = _park_a_trip_group_vehicle()
+    tw.npcs = [vehicle]
+    manager = PedestrianManager(ways, target_count=0, traffic_manager=tw, residents=residents, venue_buildings=[building])
+    manager._materialize_parked_drivers()
+
+    pedestrian = manager.pedestrians[0]
+    entrance = pedestrian.linked_building_entrance
+    manager._update_linked_driver(pedestrian, 1.0 / 30.0)
+
+    assert pedestrian.route is not None
+    assert len(pedestrian.route) > 2
+    assert entrance in pedestrian.route
 
 
 def test_full_trip_group_lifecycle_reboards_and_frees_the_vehicle():

@@ -216,12 +216,6 @@ def draw_resident_popup(
 
     if resident is None:
         return
-    popup_width, popup_height = 420, 268
-    popup_rect = pygame.Rect(screen_w - popup_width - 24, 24, popup_width, popup_height)
-    shade = pygame.Surface((popup_width, popup_height), pygame.SRCALPHA)
-    shade.fill((12, 20, 30, 242))
-    screen.blit(shade, popup_rect.topleft)
-    pygame.draw.rect(screen, (105, 205, 255), popup_rect, width=2, border_radius=6)
     birth_date = getattr(resident, "birth_date", None)
     birth_text = birth_date.isoformat() if birth_date is not None else "-"
     vehicle_count = len(getattr(resident, "vehicle_ids", ()))
@@ -264,6 +258,28 @@ def draw_resident_popup(
             # only available via the vehicle's TripGroup (not the
             # Resident/Pedestrian, which only durably know the group id).
             lines.append(f"Toiminto: {getattr(trip_group, 'activity_type', None) or '-'}")
+    activity = getattr(pedestrian, "activity", None)
+    if activity is not None:
+        # residents-live.md ambient activities (bench sitting, phone
+        # usage, ...) - duck-typed against ActivityInstance's plugin_id/
+        # data rather than importing the activities package, matching
+        # this module's existing no-cross-manager-import convention.
+        # plugin_id -> display name without a registry lookup: "bench_
+        # sitting" -> "Bench Sitting", good enough for a debug popup.
+        activity_name = activity.plugin_id.replace("_", " ").title()
+        lines.append(f"Puuhailee: {activity_name}")
+        duration_s = activity.data.get("duration_s")
+        elapsed_s = activity.data.get("elapsed_s")
+        if duration_s is not None and elapsed_s is not None:
+            lines.append(f"Jäljellä: {max(0.0, duration_s - elapsed_s):.0f} s")
+    # Sized to the actual line count - trip_group/activity add a variable
+    # number of optional lines on top of the fixed base set above.
+    popup_width, popup_height = 420, 28 + len(lines) * 26
+    popup_rect = pygame.Rect(screen_w - popup_width - 24, 24, popup_width, popup_height)
+    shade = pygame.Surface((popup_width, popup_height), pygame.SRCALPHA)
+    shade.fill((12, 20, 30, 242))
+    screen.blit(shade, popup_rect.topleft)
+    pygame.draw.rect(screen, (105, 205, 255), popup_rect, width=2, border_radius=6)
     for index, text in enumerate(lines):
         color = (245, 250, 255) if index == 0 else (205, 220, 232)
         text_surface = font.render(text, True, color)

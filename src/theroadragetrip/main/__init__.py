@@ -684,6 +684,8 @@ def _load_world(
         traffic_manager=traffic_mgr,
         residents=residents,
         venue_buildings=buildings,
+        scenery_objects=scenery_objects,
+        sceneries=sceneries,
     )
     # Cyclists are disabled until their traffic interactions are complete.
     player_pedestrian = PlayerPedestrian(
@@ -2070,6 +2072,7 @@ def main() -> None:
                             ways, traffic_lights=traffic_lights, logical_intersections=logical_intersections,
                         )
                         pedestrian_mgr.set_venue_buildings(buildings)
+                        pedestrian_mgr.set_scenery_features(scenery_objects, sceneries)
                     map_sync_stage = 14
                 elif map_sync_stage == 14:
                     with frame_profiler.section("map_sync:finalize"):
