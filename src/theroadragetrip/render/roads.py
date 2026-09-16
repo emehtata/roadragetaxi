@@ -593,6 +593,8 @@ def _advance_road_rebuild(job: dict, deadline: float) -> bool:
                 if (id(w), endpoint) in endpoint_connections
             ]
             draw_joined_line(ped_color, pts, ped_thickness, connections)
+            if getattr(w, "is_bridge", False) and px_per_m > 1.5:
+                bridge_edges.append((w, pts, ped_thickness))
             continue
 
         connections = [
