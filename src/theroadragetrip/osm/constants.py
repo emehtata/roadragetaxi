@@ -149,7 +149,16 @@ def parse_road_half_width_m(width_tag: Optional[str], highway_type: str) -> floa
         tag_str = str(width_tag).strip().lower().split(";")[0].replace("m", "").strip()
         try:
             value = float(tag_str)
-            if 0.5 <= value <= 60.0:
+            # A real informal/desire-line trail (highway=path, surface=dirt)
+            # is routinely tagged width=0.2-0.3 in practice - narrower than
+            # this project's own footway/path default (1.2) - so the lower
+            # bound only needs to reject zero/negative/garbage values, not
+            # anything a real trail could plausibly be. Confirmed against
+            # real Oulu extract data: several genuine width=0.2/0.3 dirt
+            # paths were previously rejected here and silently fell back to
+            # the flat 1.2 default, the reported "width attribute not in
+            # use" bug.
+            if 0.1 <= value <= 60.0:
                 return value / 2.0
         except ValueError:
             pass

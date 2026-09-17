@@ -710,6 +710,29 @@ def test_build_ways_ignores_a_bogus_width_tag():
     assert result.ways[0].half_width_m == 1.2  # untouched footway default
 
 
+def test_build_ways_accepts_a_narrow_informal_trail_width():
+    """Regression: an informal desire-line trail (highway=path,
+    surface=dirt) is routinely tagged width=0.2-0.3 in real OSM data -
+    narrower than this project's own 1.2 footway/path default. An
+    earlier version of parse_road_half_width_m rejected anything under
+    0.5m as implausible, silently falling every one of these real,
+    narrower-than-default trails back to the flat default - "the brown
+    (dirt-surface) paths have a width attribute that seems not to be
+    in use"."""
+    elements = [
+        {"type": "node", "id": 1, "lat": 60.000, "lon": 25.000},
+        {"type": "node", "id": 2, "lat": 60.001, "lon": 25.001},
+        {
+            "type": "way", "id": 10, "nodes": [1, 2],
+            "tags": {"highway": "path", "surface": "dirt", "width": "0.2"},
+        },
+    ]
+
+    result = build_ways(elements)
+
+    assert result.ways[0].half_width_m == 0.1  # 0.2m width / 2, not the 1.2 default
+
+
 def test_build_ways_parses_statues_but_not_plain_plaques():
     """Only 3D statue-like memorials/artwork become a "statue" scenery
     object - a flat plaque or bare stele isn't worth its own icon."""
