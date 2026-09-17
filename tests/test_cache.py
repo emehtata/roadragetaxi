@@ -239,6 +239,10 @@ def test_fetch_query_requests_the_newly_rendered_point_and_barrier_kinds(monkeyp
     assert 'node["leisure"~"picnic_table|firepit"]' in query
     assert 'node["barrier"~"gate|bollard"]' in query
     assert 'way["barrier"~"fence|railing|hedge|wall"]' in query
+    # lights.md: explicit OSM lamp-pole positions are the primary source
+    # for street lighting - the same "classified in build_ways() but never
+    # actually fetched" gap this test's docstring already describes.
+    assert 'node["highway"="street_lamp"]' in query
     assert 'way["amenity"="fuel"]' in query
 
 

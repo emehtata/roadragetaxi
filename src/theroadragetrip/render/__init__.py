@@ -103,7 +103,13 @@ from .buildings import (
     _building_window_story_count,
     _draw_buildings_uncached,
     _visible_building_edges,
+    _iter_building_window_slots,
+    _building_is_house,
+    _pseudo_random_unit,
+    _window_is_illuminated,
+    _window_illumination_probability,
     draw_buildings,
+    draw_illuminated_windows,
 )
 
 from .roads import (

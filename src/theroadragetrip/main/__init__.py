@@ -87,6 +87,7 @@ from ..render import (
     draw_railings,
     draw_railways,
     draw_day_night_overlay,
+    draw_illuminated_windows,
     draw_grass_texture,
     draw_headlight_beams,
     draw_hud,
@@ -576,6 +577,11 @@ def _load_world(
     bus_stops = getattr(res, "bus_stops", [])
     parking_spaces = getattr(res, "parking_spaces", [])
     scenery_objects = getattr(res, "scenery_objects", [])
+    # lights.md: explicit OSM lamp-pole positions (highway=street_lamp),
+    # when mapped, are the primary source draw_street_lights uses instead
+    # of its own lit=*-driven fixed-spacing synthesis - see osm/build.py's
+    # _scenery_object_kind.
+    street_lamps = [obj for obj in scenery_objects if obj.kind == "street_lamp"]
     speed_bumps = getattr(res, "speed_bumps", [])
     railways = getattr(res, "railways", [])
     railings = getattr(res, "railings", [])
@@ -596,6 +602,8 @@ def _load_world(
     building_grid.rebuild(buildings)
     scenery_grid = SpatialWayGrid()
     scenery_grid.rebuild(sceneries)
+    street_lamp_grid = SpatialWayGrid()
+    street_lamp_grid.rebuild(street_lamps)
     water_grid = SpatialWayGrid()
     water_grid.rebuild(waters)
     crossing_grid = SpatialWayGrid()
@@ -783,6 +791,8 @@ def _load_world(
         sceneries=sceneries,
         scenery_grid=scenery_grid,
         scenery_objects=scenery_objects,
+        street_lamps=street_lamps,
+        street_lamp_grid=street_lamp_grid,
         spatial_grid=spatial_grid,
         speed_bumps=speed_bumps,
         speed_cameras=speed_cameras,
@@ -967,6 +977,8 @@ def main() -> None:
         sceneries = world.sceneries
         scenery_grid = world.scenery_grid
         scenery_objects = world.scenery_objects
+        street_lamps = world.street_lamps
+        street_lamp_grid = world.street_lamp_grid
         spatial_grid = world.spatial_grid
         speed_bumps = world.speed_bumps
         speed_cameras = world.speed_cameras
@@ -1047,6 +1059,12 @@ def main() -> None:
         car_was_in_puddle = False
         map_sync_stage = 0
         last_map_revision = auto_fetch_manager.get_map_revision()
+        # street_lamps is filtered from scenery_objects, not a list
+        # AutoFetchManager grows directly (unlike buildings/ways) - this
+        # tracks how many scenery_objects it was last filtered from, so
+        # the map-sync stage below only re-filters/rebuilds when autofetch
+        # has actually added new ones.
+        street_lamps_synced_count = len(scenery_objects)
         water_elapsed = 0.0
         bridge_edge_crash_cooldown = 0.0
         visible_road_count_elapsed = 0.0
@@ -2010,6 +2028,7 @@ def main() -> None:
                     len(ways) != spatial_grid.indexed_way_count
                     or len(buildings) != building_grid.indexed_way_count
                     or len(sceneries) != scenery_grid.indexed_way_count
+                    or len(scenery_objects) != street_lamps_synced_count
                     or len(waters) != water_grid.indexed_way_count
                     or len(crossings) != crossing_grid.indexed_way_count
                     or len(curbs) != curb_grid.indexed_way_count
@@ -2046,6 +2065,13 @@ def main() -> None:
                 elif map_sync_stage == 4:
                     with frame_profiler.section("map_sync:scenery_grid"):
                         scenery_grid.rebuild(sceneries)
+                        # street_lamps is filtered from scenery_objects, not
+                        # grown directly by autofetch - re-filter whenever
+                        # scenery_objects itself grew (see
+                        # street_lamps_synced_count's own comment).
+                        street_lamps[:] = [obj for obj in scenery_objects if obj.kind == "street_lamp"]
+                        street_lamp_grid.rebuild(street_lamps)
+                        street_lamps_synced_count = len(scenery_objects)
                     map_sync_stage = 5
                 elif map_sync_stage == 5:
                     with frame_profiler.section("map_sync:water_grid"):
@@ -2414,6 +2440,17 @@ def main() -> None:
                 latitude=sun_latitude,
                 longitude=sun_longitude,
             )
+            draw_illuminated_windows(
+                screen,
+                buildings,
+                camx,
+                camy,
+                game_time_seconds,
+                px_per_m=px_per_m,
+                spatial_grid=building_grid,
+                latitude=sun_latitude,
+                longitude=sun_longitude,
+            )
             draw_vomit_puddles(screen, taxi_mgr.vomit_puddles, camx, camy, px_per_m=px_per_m)
             draw_vomit_puddles(screen, pedestrian_mgr.vomit_puddles, camx, camy, px_per_m=px_per_m)
             street_light_base = screen.copy()
@@ -2459,6 +2496,8 @@ def main() -> None:
                 buildings=buildings,
                 base_surface=street_light_base,
                 building_spatial_grid=building_grid,
+                street_lamps=street_lamps,
+                street_lamp_grid=street_lamp_grid,
             )
             if sun_altitude < -7.5:
                 draw_pedestrian_reflectors(

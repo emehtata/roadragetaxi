@@ -93,6 +93,12 @@ class Building:
     levels: Optional[int] = None
     bbox: Tuple[float, float, float, float] = (0.0, 0.0, 0.0, 0.0)
     venue_type: Optional[str] = None
+    # windows.md: the raw building=* tag value (e.g. "house", "apartments",
+    # "office", "detached", "commercial", ...) - already present in every
+    # building way/relation's own OSM tags, just never propagated before.
+    # Used to tell a detached house apart from an apartment/office block
+    # for window density/size (render/buildings.py's _building_scale_category).
+    building_type: Optional[str] = None
     center_m: Tuple[float, float] = (0.0, 0.0)
     texture_seed: float = 0.0
     entrances: List[Tuple[float, float]] = field(default_factory=list)

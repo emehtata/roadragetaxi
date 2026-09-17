@@ -35,23 +35,30 @@ from theroadragetrip.render import (
     SCENERY_OBJECT_COLORS,
     _building_colors_from_name,
     _building_is_commercial,
+    _building_is_house,
     _building_sign_anchor,
     _building_sign_angle,
     _building_sign_foreshorten,
     _building_sign_theme,
     _building_window_story_count,
+    _iter_building_window_slots,
+    _pseudo_random_unit,
+    _window_is_illuminated,
+    _window_illumination_probability,
     _visible_building_edges,
     _draw_buildings_uncached,
     CONSTRUCTION_FENCE_COLOR,
     SCENERY_COLORS,
     draw_construction_fences,
     draw_grass_texture,
+    draw_illuminated_windows,
     draw_scenery,
     draw_scenery_objects,
     draw_trees,
     world_to_screen,
     _draw_scenery_uncached,
 )
+from theroadragetrip.render import common as render_common
 
 
 def test_seven_floor_building_keeps_floor_rows_separate():
@@ -594,6 +601,7 @@ def test_build_ways_parses_benches_waste_baskets_and_bicycle_parking():
         {"type": "node", "id": 8, "lat": 60.007, "lon": 25.007, "tags": {"leisure": "firepit"}},
         {"type": "node", "id": 9, "lat": 60.008, "lon": 25.008, "tags": {"barrier": "gate"}},
         {"type": "node", "id": 10, "lat": 60.009, "lon": 25.009, "tags": {"barrier": "bollard"}},
+        {"type": "node", "id": 11, "lat": 60.010, "lon": 25.010, "tags": {"highway": "street_lamp"}},
         # Not street furniture - must not show up.
         {"type": "node", "id": 4, "lat": 60.003, "lon": 25.003, "tags": {"amenity": "restaurant"}},
     ]
@@ -603,7 +611,7 @@ def test_build_ways_parses_benches_waste_baskets_and_bicycle_parking():
     by_kind = {obj.kind: obj for obj in result.scenery_objects}
     assert set(by_kind) == {
         "bench", "waste_basket", "bicycle_parking", "fountain", "fuel",
-        "picnic_table", "firepit", "gate", "bollard",
+        "picnic_table", "firepit", "gate", "bollard", "street_lamp",
     }
     assert by_kind["bench"].id == 1
     assert by_kind["waste_basket"].id == 2
@@ -614,6 +622,7 @@ def test_build_ways_parses_benches_waste_baskets_and_bicycle_parking():
     assert by_kind["firepit"].id == 8
     assert by_kind["gate"].id == 9
     assert by_kind["bollard"].id == 10
+    assert by_kind["street_lamp"].id == 11
 
 
 def test_build_ways_aligns_a_bench_beside_its_nearby_footway():
@@ -1201,6 +1210,20 @@ def test_commercial_buildings_are_marked_for_storefront_ground_floor():
 
     assert _building_is_commercial(commercial) is True
     assert _building_is_commercial(residential) is False
+
+
+def test_commercial_detection_covers_full_sign_theme_venue_types():
+    # windows.md: previously only COMMERCIAL_AMENITIES' narrow food/drink
+    # list was recognized - supermarkets, pharmacies, banks, hotels, and
+    # other shop=*/amenity=* venues from SIGN_CATEGORY_BY_VENUE_TYPE must
+    # also render a storefront ground floor.
+    for venue_type in ("supermarket", "pharmacy", "bank", "hotel"):
+        building = Building(
+            [(0.0, 0.0), (10.0, 0.0), (10.0, 12.0), (0.0, 12.0)],
+            levels=3,
+            venue_type=venue_type,
+        )
+        assert _building_is_commercial(building) is True, venue_type
 
 
 def test_visible_facades_work_for_different_building_shapes():
@@ -1830,5 +1853,185 @@ def test_building_named_with_a_color_renders_in_that_color():
         assert not seen_colors & set(BUILDING_WALL_COLORS), (
             "named building still used the default pseudo-random palette"
         )
+    finally:
+        pygame.quit()
+
+
+# --- windows.md: house classification, window density, and night illumination ---
+
+def test_house_building_type_is_classified_as_a_house():
+    house = Building([(0.0, 0.0), (8.0, 0.0), (8.0, 8.0), (0.0, 8.0)], building_type="detached", levels=1)
+    apartment = Building([(0.0, 0.0), (8.0, 0.0), (8.0, 8.0), (0.0, 8.0)], building_type="apartments", levels=5)
+
+    assert _building_is_house(house) is True
+    assert _building_is_house(apartment) is False
+
+
+def test_short_untagged_building_falls_back_to_house_by_height():
+    short_untagged = Building([(0.0, 0.0), (8.0, 0.0), (8.0, 8.0), (0.0, 8.0)], levels=1)
+    tall_untagged = Building([(0.0, 0.0), (8.0, 0.0), (8.0, 8.0), (0.0, 8.0)], levels=6)
+
+    assert _building_is_house(short_untagged) is True
+    assert _building_is_house(tall_untagged) is False
+
+
+def test_house_windows_are_fewer_and_smaller_than_apartment_windows():
+    house = Building([(0.0, 0.0), (40.0, 0.0), (40.0, 20.0), (0.0, 20.0)], building_type="house", levels=4)
+    apartment = Building([(0.0, 0.0), (40.0, 0.0), (40.0, 20.0), (0.0, 20.0)], building_type="apartments", levels=4)
+
+    pts = [world_to_screen(x, y, 0.0, 0.0, 5.0, 400, 400) for (x, y) in house.points_m]
+    depth = 40
+    roof = [(x - depth * 0.7, y - depth) for x, y in pts]
+    visible_edges = _visible_building_edges(pts, roof)
+
+    house_slots = list(_iter_building_window_slots(house, pts, roof, visible_edges, depth))
+    apartment_slots = list(_iter_building_window_slots(apartment, pts, roof, visible_edges, depth))
+
+    assert len(house_slots) < len(apartment_slots)
+    house_half_widths = [abs(w[1][0] - w[0][0]) / 2 + abs(w[1][1] - w[0][1]) / 2 for *_ignored, w in house_slots]
+    apartment_half_widths = [
+        abs(w[1][0] - w[0][0]) / 2 + abs(w[1][1] - w[0][1]) / 2 for *_ignored, w in apartment_slots
+    ]
+    assert max(house_half_widths) < max(apartment_half_widths)
+
+
+def test_window_size_scales_with_zoom():
+    """Windows must grow/shrink with px_per_m like the rest of the facade -
+    a fixed pixel cap on window width/height would make them look glued to
+    a constant size regardless of how far the player zooms in."""
+    building = Building([(0.0, 0.0), (20.0, 0.0), (20.0, 20.0), (0.0, 20.0)], levels=4, height_m=12.0)
+
+    def max_window_width(px_per_m):
+        pts = [world_to_screen(x, y, 10.0, 10.0, px_per_m, 800, 800) for (x, y) in building.points_m]
+        depth = min(MAX_BUILDING_DEPTH_PX, max(3, int(12.0 * 0.35 * px_per_m)))
+        roof = [(x - depth * 0.7, y - depth) for x, y in pts]
+        visible_edges = _visible_building_edges(pts, roof)
+        slots = list(_iter_building_window_slots(building, pts, roof, visible_edges, depth))
+        return max(math.hypot(w[1][0] - w[0][0], w[1][1] - w[0][1]) for *_ignored, w in slots)
+
+    zoomed_out = max_window_width(8.0)
+    zoomed_in = max_window_width(40.0)
+    assert zoomed_in > zoomed_out * 2
+
+
+def test_pseudo_random_unit_is_deterministic_and_spread_out():
+    assert _pseudo_random_unit(42.0) == _pseudo_random_unit(42.0)
+    values = {round(_pseudo_random_unit(seed), 4) for seed in range(50)}
+    assert len(values) > 40  # not degenerately constant/repeating
+
+
+def test_window_illumination_is_deterministic_across_repeated_calls():
+    """windows.md: a window's lit/unlit state must never change as the
+    camera moves or the building cache rebuilds - it's a pure function of
+    building/edge/floor/window identity, not of time or camera state."""
+    results = [_window_is_illuminated(12345, 0, 1, 0, 0.5) for _ in range(20)]
+    assert len(set(results)) == 1
+
+
+def test_different_buildings_produce_different_illumination_patterns():
+    # Held in a list so both stay alive - id() of a garbage-collected
+    # object can be immediately reused by the next one, which would
+    # otherwise make this test flaky rather than a real check.
+    building_a, building_b = object(), object()
+    pattern_a = [_window_is_illuminated(id(building_a), 0, floor, 0, 0.5) for floor in range(20)]
+    pattern_b = [_window_is_illuminated(id(building_b), 0, floor, 0, 0.5) for floor in range(20)]
+    assert pattern_a != pattern_b
+
+
+def test_night_windows_are_mostly_dark():
+    """A real street at night reads as mostly dark with only scattered lit
+    windows - most windows on a block should stay unlit, not the reverse."""
+    buildings = [
+        Building([(x, y), (x + 15.0, y), (x + 15.0, y + 15.0), (x, y + 15.0)], levels=5, height_m=15.0)
+        for x in range(0, 300, 30)
+        for y in range(0, 300, 30)
+    ]
+    total = 0
+    lit = 0
+    for b in buildings:
+        pts = [world_to_screen(x, y, 150.0, 150.0, 5.0, 600, 600) for (x, y) in b.points_m]
+        depth = min(MAX_BUILDING_DEPTH_PX, max(3, int(15.0 * 0.35 * 5.0)))
+        roof = [(x - depth * 0.7, y - depth) for x, y in pts]
+        visible_edges = _visible_building_edges(pts, roof)
+        for edge_index, floor_index, window_index, storefront_row, _window in _iter_building_window_slots(
+            b, pts, roof, visible_edges, depth
+        ):
+            total += 1
+            probability = _window_illumination_probability(b, storefront_row)
+            if _window_is_illuminated(id(b), edge_index, floor_index, window_index, probability):
+                lit += 1
+
+    assert lit / total < 0.2, f"too many windows lit at night: {lit}/{total}"
+    assert lit > 0, "expected at least a few lit windows across a whole block"
+
+
+def test_illuminated_windows_only_render_after_dark():
+    """windows.md: illumination probabilities are deliberately low (a real
+    street reads as mostly dark at night) - use a whole block of buildings,
+    not just one, so at least one lit window is a near-certainty rather
+    than depending on a single building's hash landing below the
+    threshold."""
+    pygame.init()
+    try:
+        render_module._building_sign_font_cache.clear()
+        render_module._building_sign_surface_cache.clear()
+        buildings = [
+            Building(
+                [(x, y), (x + 15.0, y), (x + 15.0, y + 15.0), (x, y + 15.0)],
+                levels=5,
+                height_m=15.0,
+                bbox=(x, y, x + 15.0, y + 15.0),
+            )
+            for x in range(0, 300, 30)
+            for y in range(0, 300, 30)
+        ]
+
+        render_common._solar_position_cache.clear()
+        day_screen = pygame.Surface((600, 600))
+        day_screen.fill((0, 0, 0))
+        draw_illuminated_windows(
+            day_screen, buildings, camx=150.0, camy=150.0, game_time_seconds=12.0 * 3600.0,
+            px_per_m=5.0, screen_w=600, screen_h=600,
+        )
+        day_lit_pixels = {
+            tuple(day_screen.get_at((x, y)))[:3]
+            for x in range(600)
+            for y in range(600)
+        }
+        assert day_lit_pixels == {(0, 0, 0)}, "windows lit during broad daylight"
+
+        render_common._solar_position_cache.clear()
+        night_screen = pygame.Surface((600, 600))
+        night_screen.fill((0, 0, 0))
+        draw_illuminated_windows(
+            night_screen, buildings, camx=150.0, camy=150.0, game_time_seconds=0.0,
+            px_per_m=5.0, screen_w=600, screen_h=600,
+        )
+        night_lit_pixels = {
+            tuple(night_screen.get_at((x, y)))[:3]
+            for x in range(600)
+            for y in range(600)
+        }
+        assert night_lit_pixels != {(0, 0, 0)}, "no window glow rendered at night"
+    finally:
+        pygame.quit()
+
+
+def test_illuminated_windows_do_not_regress_static_building_cache():
+    """draw_illuminated_windows must never touch the static building cache
+    key/surface - lights.md/windows.md both require darkness changes to
+    never trigger an expensive building-layer rebuild."""
+    building = Building(
+        [(-10.0, -10.0), (10.0, -10.0), (10.0, 10.0), (-10.0, 10.0)], levels=5, height_m=15.0,
+    )
+    pygame.init()
+    try:
+        screen = pygame.Surface((200, 200))
+        draw_illuminated_windows(
+            screen, [building], camx=0.0, camy=0.0, game_time_seconds=0.0,
+            px_per_m=5.0, screen_w=200, screen_h=200,
+        )
+        assert render_common._building_frame_cache_key is None
+        assert render_common._building_frame_cache_surface is None
     finally:
         pygame.quit()

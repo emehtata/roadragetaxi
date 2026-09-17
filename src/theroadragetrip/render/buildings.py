@@ -5,9 +5,13 @@ from .common import (
     PX_PER_M,
     CACHE_PADDING_PX,
     INCREMENTAL_REBUILD_BUDGET_S,
+    DEFAULT_SUN_LATITUDE,
+    DEFAULT_SUN_LONGITUDE,
     _rebuild_or_stale,
     _blit_stale_static_cache,
     _static_cache_zoom,
+    _reusable_alpha_surface,
+    solar_altitude_and_events,
     world_to_screen,
     get_viewport_bounds,
 )
@@ -90,6 +94,15 @@ SIGN_CATEGORY_BY_VENUE_TYPE = {
     "kiosk": "retail", "florist": "retail", "jewelry": "retail", "toys": "retail",
     "sports": "retail", "mobile_phone": "retail", "hardware": "retail", "variety_store": "retail",
 }
+
+# windows.md: _building_is_commercial used to only recognize
+# COMMERCIAL_AMENITIES' narrow food/drink list, missing every venue type
+# SIGN_CATEGORY_BY_VENUE_TYPE above already classifies as commercial
+# signage (supermarkets, pharmacies, banks, hotels, most retail shops) -
+# reusing that existing, already-curated mapping's keys instead of a
+# second, narrower one keeps the two in sync and covers the spec's own
+# examples directly.
+COMMERCIAL_VENUE_TYPES = frozenset(SIGN_CATEGORY_BY_VENUE_TYPE) | COMMERCIAL_AMENITIES
 
 
 def _building_sign_theme(venue_type) -> tuple:
@@ -254,15 +267,39 @@ def _building_colors_from_name(name):
 
 
 def _building_is_commercial(building: Building) -> bool:
-    """Return whether the building should render a storefront ground floor."""
+    """Return whether the building should render a storefront ground floor -
+    shops, supermarkets, restaurants, cafes, pharmacies, banks, hotels, and
+    other retail/commercial premises (windows.md section 1), via the
+    existing venue_type/associated_places OSM data - never a bare
+    building=* tag alone (a building=commercial with no actual venue still
+    isn't necessarily a storefront)."""
     venue_type = str(getattr(building, "venue_type", "") or "").lower()
-    if venue_type in COMMERCIAL_AMENITIES or venue_type in COMMERCIAL_BUILDING_TYPES:
+    if venue_type in COMMERCIAL_VENUE_TYPES or venue_type in COMMERCIAL_BUILDING_TYPES:
         return True
     for place in getattr(building, "associated_places", ()):
         place_type = str(getattr(place, "kind", "") or "").lower()
-        if place_type in COMMERCIAL_AMENITIES or place_type in COMMERCIAL_BUILDING_TYPES:
+        if place_type in COMMERCIAL_VENUE_TYPES or place_type in COMMERCIAL_BUILDING_TYPES:
             return True
     return False
+
+
+# windows.md section 3: detached/small-residential building=* values - these
+# get fewer, smaller windows than an apartment block or office of the same
+# height. Not exhaustive of every OSM house-ish tag, just the common ones.
+HOUSE_BUILDING_TYPES = {"house", "detached", "bungalow", "cabin", "semidetached_house", "farm"}
+
+
+def _building_is_house(building: Building) -> bool:
+    """Return whether `building` should get a small-house window treatment."""
+    building_type = str(getattr(building, "building_type", "") or "").lower()
+    if building_type in HOUSE_BUILDING_TYPES:
+        return True
+    if building_type:
+        return False
+    # No building=* tag at all: fall back to the same OSM-levels/height
+    # signal windows already use elsewhere - a short, 1-2 story building
+    # with no commercial venue reads as a detached house.
+    return _building_window_story_count(building) <= 2 and not _building_is_commercial(building)
 
 
 def _visible_building_edges(points, roof) -> set[int]:
@@ -281,6 +318,69 @@ def _visible_building_edges(points, roof) -> set[int]:
         if not point_in_polygon(wall_midpoint[0], wall_midpoint[1], roof):
             visible.add(index)
     return visible
+
+
+def _iter_building_window_slots(b: Building, pts, roof, visible_edges, depth: float):
+    """Yield (edge_index, floor_index, window_index, storefront_row, window_quad)
+    for every window slot on `b`'s visible facades, in the exact screen-space
+    geometry the static day render uses - shared with the night illumination
+    overlay (draw_illuminated_windows) so a lit window's glow lines up
+    pixel-for-pixel with the window baked into the cached building surface."""
+    is_commercial = _building_is_commercial(b)
+    is_house = _building_is_house(b)
+    story_count = min(_building_window_story_count(b), max(1, int(depth / MIN_FLOOR_HEIGHT_PX)))
+    max_windows_per_edge = 2 if is_house else 3
+    min_window_gap_px = 44.0 if is_house else 32.0
+    for edge_index in visible_edges:
+        point = pts[edge_index]
+        next_point = pts[(edge_index + 1) % len(pts)]
+        roof_point = roof[edge_index]
+        edge_x = next_point[0] - point[0]
+        edge_y = next_point[1] - point[1]
+        edge_length = math.hypot(edge_x, edge_y)
+        if edge_length < 12.0:
+            continue
+        edge_x /= edge_length
+        edge_y /= edge_length
+        roof_x = roof_point[0] - point[0]
+        roof_y = roof_point[1] - point[1]
+        window_count = max(1, min(max_windows_per_edge, int(edge_length // min_window_gap_px)))
+        for floor_index in range(story_count):
+            if is_house and story_count > 1 and floor_index % 2 == 1:
+                # windows.md section 3: houses read as sparser than an
+                # apartment block - skip alternating upper floors.
+                continue
+            floor_position = 0.18 + 0.64 * (floor_index + 0.5) / story_count
+            floor_height = abs(roof_y) / story_count
+            storefront_row = is_commercial and floor_index == 0
+            # Proportional to floor_height/edge_length (both already scale
+            # with px_per_m via the screen-space pts/roof passed in), so
+            # windows grow and shrink with zoom instead of pinning to a
+            # fixed pixel size - only a lower floor for visibility at low
+            # zoom, no upper cap.
+            window_height = max(1.0, floor_height * 0.55)
+            if storefront_row:
+                window_height *= 1.45
+            elif is_house:
+                window_height *= 0.75
+            for window_index in range(window_count):
+                center = (window_index + 1) / (window_count + 1)
+                center_x = point[0] + (next_point[0] - point[0]) * center + roof_x * floor_position
+                center_y = point[1] + (next_point[1] - point[1]) * center + roof_y * floor_position
+                half_width = max(0.5, edge_length / (window_count + 2) * 0.45) / 2
+                if storefront_row:
+                    half_width *= 1.35
+                elif is_house:
+                    half_width *= 0.75
+                pane_x = -roof_x * window_height / max(abs(roof_y), 1.0)
+                pane_y = -roof_y * window_height / max(abs(roof_y), 1.0)
+                window = [
+                    (center_x - edge_x * half_width, center_y - edge_y * half_width),
+                    (center_x + edge_x * half_width, center_y + edge_y * half_width),
+                    (center_x + edge_x * half_width + pane_x, center_y + edge_y * half_width + pane_y),
+                    (center_x - edge_x * half_width + pane_x, center_y - edge_y * half_width + pane_y),
+                ]
+                yield edge_index, floor_index, window_index, storefront_row, window
 
 
 def _building_sign_anchor(building: Building, place_x: float, place_y: float, edge_index: int):
@@ -339,6 +439,46 @@ def _building_sign_angle(point, next_point) -> float:
     elif angle < -90.0:
         angle += 180.0
     return angle
+
+
+# windows.md section 5/6: night-time window illumination.
+#
+# Lit/unlit is decided per window slot from a fast deterministic hash of
+# (building identity, edge, floor, window index) - the same GLSL-style
+# fract(sin(x)*C) trick _advance_building_rebuild already uses for its
+# per-building texture_seed - instead of the `random` module, so a given
+# window's state never changes as the camera moves or the building cache
+# gets rebuilt (it depends on none of that), and needs no per-frame
+# regeneration or stored state.
+WINDOW_LIT_COLOR = (232, 189, 108)
+# Deliberately dimmer than STREET_LIGHT_CORE_COLOR (215, 215, 200) in
+# roads.py - windows.md asks that illuminated windows not outshine street
+# lighting.
+WINDOW_ILLUMINATION_ALPHA = 165
+
+
+def _pseudo_random_unit(seed: float) -> float:
+    """Deterministic pseudo-random value in [0, 1) for a float seed."""
+    fractional = math.sin(seed * 12.9898) * 43758.5453
+    return fractional - math.floor(fractional)
+
+
+def _window_illumination_probability(b: Building, storefront_row: bool) -> float:
+    """Fraction of a category's windows lit at night. Real cities read as
+    mostly dark with only a scattering of occupied/awake windows lit -
+    storefronts (already bright in the day render) go dark like any closed
+    shop almost always; houses have fewer occupied rooms lit than an
+    apartment block's many units."""
+    if storefront_row:
+        return 0.03
+    if _building_is_house(b):
+        return 0.08
+    return 0.12
+
+
+def _window_is_illuminated(building_id: int, edge_index: int, floor_index: int, window_index: int, probability: float) -> bool:
+    seed = building_id * 0.0001 + edge_index * 7.13 + floor_index * 3.71 + window_index * 1.37
+    return _pseudo_random_unit(seed) < probability
 
 
 def draw_buildings(
@@ -564,56 +704,20 @@ def _advance_building_rebuild(job: dict, deadline: float) -> bool:
 
         # Add small facade details after the roof so they remain visible at low zoom.
         visible_edges = _visible_building_edges(pts, roof)
-        # `depth` (== abs(roof_y) for every point, since the roof offset is
-        # the same fixed vector everywhere) bounds how many separate floor
-        # rows can actually be drawn without them visually merging together.
+        # `depth` bounds how many floor rows fit without visually merging;
+        # kept here for the door sizing below (one_story_px), even though
+        # the window loop itself now lives in _iter_building_window_slots.
         story_count = min(_building_window_story_count(b), max(1, int(depth / MIN_FLOOR_HEIGHT_PX)))
-        is_commercial = _building_is_commercial(b)
-        for index in visible_edges:
-            point = pts[index]
-            next_point = pts[(index + 1) % len(pts)]
-            roof_point = roof[index]
-            edge_x = next_point[0] - point[0]
-            edge_y = next_point[1] - point[1]
-            edge_length = math.hypot(edge_x, edge_y)
-            if edge_length < 12.0:
-                continue
-            edge_x /= edge_length
-            edge_y /= edge_length
-            roof_x = roof_point[0] - point[0]
-            roof_y = roof_point[1] - point[1]
-            window_count = max(1, min(3, int(edge_length // 32.0)))
-            for floor_index in range(story_count):
-                floor_position = 0.18 + 0.64 * (floor_index + 0.5) / story_count
-                floor_height = abs(roof_y) / story_count
-                storefront_row = is_commercial and floor_index == 0
-                # Keep separate rows visible on tall buildings; a fixed 3 px
-                # minimum makes closely spaced floors merge into one band.
-                window_height = max(1.0, min(7.0, floor_height * 0.55))
-                if storefront_row:
-                    window_height *= 1.45
-                for window_index in range(window_count):
-                    center = (window_index + 1) / (window_count + 1)
-                    center_x = point[0] + (next_point[0] - point[0]) * center + roof_x * floor_position
-                    center_y = point[1] + (next_point[1] - point[1]) * center + roof_y * floor_position
-                    half_width = min(10.0, edge_length / (window_count + 2) * 0.45) / 2
-                    if storefront_row:
-                        half_width *= 1.35
-                    pane_x = -roof_x * window_height / max(abs(roof_y), 1.0)
-                    pane_y = -roof_y * window_height / max(abs(roof_y), 1.0)
-                    window_color = (58, 80, 94) if not storefront_row else (84, 106, 122)
-                    frame_color = (25, 42, 47) if not storefront_row else (29, 42, 48)
-                    window = [
-                        (center_x - edge_x * half_width, center_y - edge_y * half_width),
-                        (center_x + edge_x * half_width, center_y + edge_y * half_width),
-                        (center_x + edge_x * half_width + pane_x, center_y + edge_y * half_width + pane_y),
-                        (center_x - edge_x * half_width + pane_x, center_y - edge_y * half_width + pane_y),
-                    ]
-                    pygame.draw.polygon(screen, window_color, window)
-                    pygame.draw.lines(screen, frame_color, True, window, 1)
-                    pygame.draw.line(screen, (155, 180, 178), window[0], window[2], 1)
-                    if storefront_row:
-                        pygame.draw.line(screen, (118, 120, 122), window[1], window[3], 1)
+        for _edge_index, _floor_index, _window_index, storefront_row, window in _iter_building_window_slots(
+            b, pts, roof, visible_edges, depth
+        ):
+            window_color = (58, 80, 94) if not storefront_row else (84, 106, 122)
+            frame_color = (25, 42, 47) if not storefront_row else (29, 42, 48)
+            pygame.draw.polygon(screen, window_color, window)
+            pygame.draw.lines(screen, frame_color, True, window, 1)
+            pygame.draw.line(screen, (155, 180, 178), window[0], window[2], 1)
+            if storefront_row:
+                pygame.draw.line(screen, (118, 120, 122), window[1], window[3], 1)
         for entrance_x, entrance_y in getattr(b, "entrances", ()):
             edge_distances = [
                 dist_point_to_segment(
@@ -797,3 +901,81 @@ def _advance_building_rebuild(job: dict, deadline: float) -> bool:
                 screen.blit(text_surface, text_surface.get_rect(center=(round(sign_center_x), round(sign_center_y))))
 
     return True
+
+
+def draw_illuminated_windows(
+    screen,
+    buildings: List[Building],
+    camx: float,
+    camy: float,
+    game_time_seconds: float,
+    px_per_m: float = PX_PER_M,
+    screen_w: int = SCREEN_W,
+    screen_h: int = SCREEN_H,
+    spatial_grid=None,
+    latitude: float = DEFAULT_SUN_LATITUDE,
+    longitude: float = DEFAULT_SUN_LONGITUDE,
+) -> None:
+    """Draw a warm glow over the subset of visible buildings' windows that
+    are "lit" at night (windows.md section 5/6).
+
+    Deliberately a separate, lightweight per-frame pass drawn *after*
+    draw_day_night_overlay - not baked into the static building cache -
+    because darkness changes continuously through dusk/dawn and the cache's
+    frame_cache_key must stay time-of-day independent (a full building-
+    layer rebuild is too expensive to trigger every darkness tick; see
+    draw_buildings). This mirrors exactly how draw_street_lights and
+    draw_headlight_beams already layer on top of the darkened scene.
+    Which windows are lit never changes frame to frame (_window_is_illuminated
+    is a pure function of building/edge/floor/window identity), so this
+    only ever spends time on the same small, viewport-culled set of window
+    quads _advance_building_rebuild already knows how to compute - no new
+    geometry design, no per-pixel work, no per-frame randomness.
+    """
+    import pygame
+
+    sun_altitude, _sunrise, _sunset = solar_altitude_and_events(game_time_seconds, latitude, longitude)
+    twilight = max(0.0, min(1.0, (sun_altitude + 12.0) / 18.0))
+    darkness = 1.0 - twilight
+    if darkness <= 0.25:
+        return
+    # Fade in from 0.25->0.5 like street_light_brightness does, then hold -
+    # windows shouldn't suddenly pop to full brightness the instant dusk
+    # crosses the threshold.
+    intensity = min(1.0, (darkness - 0.25) / 0.25)
+    alpha = int(WINDOW_ILLUMINATION_ALPHA * intensity)
+    if alpha <= 0:
+        return
+
+    vminx, vminy, vmaxx, vmaxy = get_viewport_bounds(camx, camy, px_per_m, screen_w, screen_h, 20.0)
+    visible_buildings = (
+        spatial_grid.ways_in_rect(vminx, vminy, vmaxx, vmaxy) if spatial_grid is not None else buildings
+    )
+
+    any_lit = False
+    glow_layer = _reusable_alpha_surface(pygame, "building_window_glow_layer", screen.get_size())
+    for b in visible_buildings:
+        bb = getattr(b, "bbox", None)
+        if bb and bb != (0.0, 0.0, 0.0, 0.0):
+            if bb[2] < vminx or bb[0] > vmaxx or bb[3] < vminy or bb[1] > vmaxy:
+                continue
+        if len(b.points_m) < 3:
+            continue
+        pts = [world_to_screen(x, y, camx, camy, px_per_m, screen_w, screen_h) for (x, y) in b.points_m]
+        height = max(3.0, float(getattr(b, "height_m", 8.0)))
+        depth = min(MAX_BUILDING_DEPTH_PX, max(3, int(height * 0.35 * px_per_m)))
+        roof = [(x - depth * 0.7, y - depth) for x, y in pts]
+        visible_edges = _visible_building_edges(pts, roof)
+        building_id = id(b)
+        for edge_index, floor_index, window_index, storefront_row, window in _iter_building_window_slots(
+            b, pts, roof, visible_edges, depth
+        ):
+            probability = _window_illumination_probability(b, storefront_row)
+            if not _window_is_illuminated(building_id, edge_index, floor_index, window_index, probability):
+                continue
+            pygame.draw.polygon(glow_layer, (*WINDOW_LIT_COLOR, 255), window)
+            any_lit = True
+
+    if any_lit:
+        glow_layer.set_alpha(alpha)
+        screen.blit(glow_layer, (0, 0), special_flags=pygame.BLEND_RGB_ADD)

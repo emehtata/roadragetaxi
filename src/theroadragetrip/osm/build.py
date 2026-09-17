@@ -74,6 +74,12 @@ def _scenery_object_kind(tags: Dict[str, str]) -> Optional[str]:
     amenity = tags.get("amenity")
     if amenity in ("bench", "waste_basket", "bicycle_parking", "fountain", "fuel"):
         return amenity
+    if tags.get("highway") == "street_lamp":
+        # lights.md: explicit physical lamp-pole data, when mapped, is the
+        # primary source for street-light placement - render/roads.py's
+        # draw_street_lights prefers these real positions over its own
+        # lit=*-driven fixed-spacing synthesis wherever they exist.
+        return "street_lamp"
     if tags.get("historic") == "memorial" and tags.get("memorial") in _STATUE_MEMORIAL_TYPES:
         return "statue"
     if tags.get("tourism") == "artwork" and tags.get("artwork_type") in _STATUE_ARTWORK_TYPES:
@@ -666,6 +672,7 @@ def build_ways(
                 if tags.get("building") in {"commercial", "retail", "shop"}
                 else None
             ),
+            building_type=tags.get("building"),
             center_m=(center_x, center_y),
             texture_seed=abs(math.sin(center_x * 0.013 + center_y * 0.017)),
             entrances=entrances,
@@ -923,6 +930,7 @@ def build_ways(
                         if tags.get("building") in {"commercial", "retail", "shop"}
                         else None
                     ),
+                    building_type=tags.get("building"),
                     center_m=(center_x, center_y),
                     texture_seed=abs(math.sin(center_x * 0.013 + center_y * 0.017)),
                 ))
