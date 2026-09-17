@@ -30,7 +30,7 @@ jobs:
         run: >-
           python -m PyInstaller --noconfirm --clean --onedir --windowed
           --name RoadRageTrip --paths src
-          --icon "src/theroadragetrip/assets/roadragetrip_icon.ico"
+          --icon "src/theroadragetrip/assets/road_rage_trip_taxi.ico"
           --add-data "sample_osm.json;."
           --add-data "sample_osm_large.json;."
           --add-data "src/theroadragetrip/img;theroadragetrip/img"
