@@ -94,6 +94,19 @@ NPC_LIVE_FOOTPRINT_CLEARANCE_M = 0.05  # a hair's width - only an actual overlap
 # reduced rate instead of every frame; a stale WAITING/crawl decision for
 # up to this long is invisible in practice.
 NPC_FOOTPRINT_CHECK_INTERVAL_S = 0.2
+# A parking-lot/building-yard/roadside candidate is a single fixed point
+# derived purely from the target building/lot/road geometry (unlike a
+# dedicated ParkingSpace, which is its own distinct polygon and gets
+# marked occupied) - two different vehicles independently routed toward
+# the same lot/yard/road point land on the exact same coordinates and
+# park on top of each other (reported: cars parking on each other after
+# driving a real multi-hop trip, not just during initial population
+# fill - _pick_npc_destination_candidates never checked candidates
+# against currently-parked vehicles, only dedicated spaces' own occupied/
+# reserved flags). Applied to every tier (not just lot/yard) for the same
+# reason NPCVehicleManager._place_one already checks it for initial
+# population placement - roughly a car's length.
+NPC_MIN_VEHICLE_SPACING_M = 4.0
 NPC_CORNER_COMFORT_LATERAL_G = 0.5  # a comfortable cornering effort, well under GRIP.md's max_grip_g limit
 NPC_CORNER_BRAKING_DECEL_MPS2 = 3.0  # comfortable braking rate approaching a corner
 NPC_CORNER_LOOKAHEAD_M = 40.0  # how far ahead to start braking for an upcoming turn
@@ -1277,6 +1290,7 @@ def find_and_start_npc_trip(
     curb_grid: Optional[SpatialWayGrid] = None,
     building_grid: Optional[SpatialWayGrid] = None,
     member_resident_ids: Optional[List[int]] = None,
+    other_vehicle_positions: Optional[List[Tuple[float, float]]] = None,
 ) -> Optional[Driver]:
     """NPC-003: an idle parked vehicle (population tick decided it's time
     for its next errand) picks *some* reachable destination and starts a
@@ -1326,7 +1340,7 @@ def find_and_start_npc_trip(
         raw_destination = (nodes[destination_index][0], nodes[destination_index][1])
         destination_candidates = _pick_npc_destination_candidates(
             raw_destination[0], raw_destination[1], parking_spaces, sceneries, buildings,
-            ways=ways, spatial_grid=spatial_grid,
+            ways=ways, spatial_grid=spatial_grid, other_vehicle_positions=other_vehicle_positions,
         )
         for destination, target_space in destination_candidates:
             if time.perf_counter() > deadline:
@@ -1759,6 +1773,23 @@ def _roadside_parking_point(
 NPC_PARKING_CANDIDATE_LIMIT = 8  # try at most this many destination candidates per road point
 
 
+def _point_is_clear_of_vehicles(
+    point: Tuple[float, float],
+    other_vehicle_positions: Optional[List[Tuple[float, float]]],
+    min_spacing_m: float = NPC_MIN_VEHICLE_SPACING_M,
+) -> bool:
+    """Whether `point` is far enough from every position in
+    other_vehicle_positions to park a new vehicle there without landing on
+    top of one already resting nearby - see NPC_MIN_VEHICLE_SPACING_M."""
+    if not other_vehicle_positions:
+        return True
+    spacing_sq = min_spacing_m * min_spacing_m
+    return all(
+        (point[0] - ox) ** 2 + (point[1] - oy) ** 2 >= spacing_sq
+        for ox, oy in other_vehicle_positions
+    )
+
+
 def _pick_npc_destination_candidates(
     x: float,
     y: float,
@@ -1769,6 +1800,7 @@ def _pick_npc_destination_candidates(
     spatial_grid: Optional[SpatialWayGrid] = None,
     search_radius_m: float = NPC_DESTINATION_SEARCH_RADIUS_M,
     limit: int = NPC_PARKING_CANDIDATE_LIMIT,
+    other_vehicle_positions: Optional[List[Tuple[float, float]]] = None,
 ) -> List[Tuple[Tuple[float, float], object]]:
     """Every acceptable place to stop near (x, y), in NPC-more.md section
     2's tier order (dedicated space > parking lot > building yard >
@@ -1787,6 +1819,17 @@ def _pick_npc_destination_candidates(
     Each entry is (point, parking_space) - parking_space is the
     ParkingSpace `point` came from (for the caller to reserve), or None
     for a lot/building yard/roadside point.
+
+    other_vehicle_positions (positions of currently parked/resting
+    vehicles): a lot/yard/roadside point is a single fixed coordinate
+    derived purely from the target geometry, not its own distinct slot
+    like a dedicated ParkingSpace - reused verbatim by every vehicle that
+    asks for parking near the same spot unless filtered out here (reported:
+    multiple vehicles driving a real trip and parking exactly on top of
+    each other). Not applied to the dedicated-space tier, whose entries
+    are already individually exclusive via occupied/reserved and can
+    legitimately sit closer together than min_spacing_m (adjacent painted
+    bays in the same lot).
     """
     radius_sq = search_radius_m * search_radius_m
 
@@ -1820,7 +1863,7 @@ def _pick_npc_destination_candidates(
                 continue
             cx, cy = (bbox[0] + bbox[2]) / 2.0, (bbox[1] + bbox[3]) / 2.0
             dist_sq = (cx - x) ** 2 + (cy - y) ** 2
-            if dist_sq <= radius_sq:
+            if dist_sq <= radius_sq and _point_is_clear_of_vehicles((cx, cy), other_vehicle_positions):
                 lot_candidates.append((dist_sq, (cx, cy), None))
 
         if lot_candidates:
@@ -1832,14 +1875,14 @@ def _pick_npc_destination_candidates(
                 if point is None:
                     continue
                 dist_sq = (point[0] - x) ** 2 + (point[1] - y) ** 2
-                if dist_sq <= radius_sq:
+                if dist_sq <= radius_sq and _point_is_clear_of_vehicles(point, other_vehicle_positions):
                     building_candidates.append((dist_sq, point, None))
             ordered = building_candidates
 
     ordered.sort(key=lambda c: c[0])
     if not ordered:
         roadside = _roadside_parking_point(x, y, ways, spatial_grid)
-        if roadside is not None:
+        if roadside is not None and _point_is_clear_of_vehicles(roadside, other_vehicle_positions):
             ordered = [(0.0, roadside, None)]
 
     return [(point, space) for _, point, space in ordered[:limit]]
@@ -2091,6 +2134,7 @@ def continue_npc_trip(
     curb_grid: Optional[SpatialWayGrid] = None,
     building_grid: Optional[SpatialWayGrid] = None,
     destination_query_point: Optional[Tuple[float, float]] = None,
+    other_vehicle_positions: Optional[List[Tuple[float, float]]] = None,
 ) -> bool:
     """multi-passenger-car.md section 21: once a trip group's passengers
     have all reboarded (or update_npc's return-timeout left a straggler
@@ -2154,7 +2198,7 @@ def continue_npc_trip(
             break
         destination_candidates = _pick_npc_destination_candidates(
             query_point[0], query_point[1], parking_spaces, sceneries, buildings,
-            ways=ways, spatial_grid=spatial_grid,
+            ways=ways, spatial_grid=spatial_grid, other_vehicle_positions=other_vehicle_positions,
         )
         for destination, target_space in destination_candidates:
             if time.perf_counter() > deadline:
@@ -2345,15 +2389,28 @@ class NPCVehicleManager:
                 return vehicle
         return None
 
-    # A parking-lot/building-yard candidate is a single fixed point
-    # (unlike a dedicated ParkingSpace, which gets marked occupied) - two
-    # vehicles placed in the same lot within one population batch would
-    # otherwise land on the exact same coordinates. Reject anything this
-    # close to an already-placed vehicle (section 20: never spawn
-    # overlapping vehicles) - roughly a car's length, comfortably wider
-    # than the footprint check alone guarantees between two independently
-    # valid poses.
-    _MIN_VEHICLE_SPACING_M = 4.0
+    def _claimed_vehicle_points(self) -> List[Tuple[int, Tuple[float, float]]]:
+        """Every position a vehicle currently occupies, is already headed
+        for, or calls home - see _run_population_tick's own comment (right
+        before its identically-built claimed_points) for the full
+        rationale. Shared with _place_one: population growth placing a
+        brand-new vehicle must not use a vehicle's own *current position*
+        as "is this spot free" - a spot another vehicle just drove away
+        from (mid-trip, .destination pointing back at it, e.g. a plain
+        errand that happens to return where it started, or any household
+        vehicle's home) looks completely vacant by that measure alone, and
+        used to get a brand-new car placed directly into it (reported: a
+        car returning to a yard found another car had, in the meantime,
+        been spawned right into its spot)."""
+        claimed = []
+        for v in self.vehicles:
+            if v.state == NPCState.PARKED:
+                claimed.append((v.vehicle_id, (v.x, v.y)))
+            elif v.destination is not None:
+                claimed.append((v.vehicle_id, v.destination))
+            if v.home_position is not None:
+                claimed.append((v.vehicle_id, v.home_position))
+        return claimed
 
     def _place_one(
         self,
@@ -2370,11 +2427,11 @@ class NPCVehicleManager:
         """Place one new parked vehicle - a thin wrapper around
         place_parked_npc that also rejects a spot too close to a vehicle
         already placed earlier in this same population batch (see
-        _MIN_VEHICLE_SPACING_M)."""
-        spacing_sq = self._MIN_VEHICLE_SPACING_M ** 2
-        for existing in self.vehicles:
-            if (existing.x - point[0]) ** 2 + (existing.y - point[1]) ** 2 < spacing_sq:
-                return None
+        NPC_MIN_VEHICLE_SPACING_M, also used by _pick_npc_destination_
+        candidates for the same reason)."""
+        claimed = [pos for _, pos in self._claimed_vehicle_points()]
+        if not _point_is_clear_of_vehicles(point, claimed):
+            return None
         return place_parked_npc(
             self._next_id(), point, parking_space, ways=ways, spatial_grid=spatial_grid,
             curbs=curbs, curb_grid=curb_grid, buildings=buildings, building_grid=building_grid,
@@ -2588,6 +2645,41 @@ class NPCVehicleManager:
             self.vehicles.append(vehicle)
             spawned_this_tick += 1
 
+        # Every position a vehicle currently occupies, is already headed
+        # for, or calls home, so _pick_npc_destination_candidates can
+        # reject a lot/yard/roadside point someone else has already
+        # claimed (see NPC_MIN_VEHICLE_SPACING_M's own comment):
+        #   - a resting vehicle contributes its own (x, y).
+        #   - a vehicle mid-trip contributes its .destination, not its
+        #     current position, since that's the point about to become
+        #     occupied. Without this half, two vehicles processed in the
+        #     same tick (or one already en route from an earlier tick, not
+        #     yet arrived) both see the target spot as "free" and both
+        #     commit to it - reported: a car seen driving toward the exact
+        #     spot another car had already been sent to and was still
+        #     approaching, not yet parked.
+        #   - a household vehicle's home_position, ALWAYS, even while it's
+        #     off on an errand and physically nowhere near it. A home yard
+        #     point is a fixed spot re-used by that vehicle's every future
+        #     "return home" trip (continue_npc_trip's destination_query_
+        #     point) - unlike a dedicated ParkingSpace, nothing else marks
+        #     it reserved while its owner is temporarily away, so a plain
+        #     currently-occupied/en-route check alone lets a *different*
+        #     vehicle's ordinary errand search land exactly on it in the
+        #     gap between the owner leaving and returning (reported: two
+        #     cars converging on the same yard - one was a car legitimately
+        #     coming home to a spot another car had, in the meantime,
+        #     wandered into).
+        #
+        # A vehicle can contribute more than one entry (its home AND a
+        # separate current destination while away), so this is a flat list
+        # of (vehicle_id, point) pairs, not a dict (see _claimed_vehicle_
+        # points, shared with _place_one) - built once per tick, extended
+        # immediately after each successful commit below (both loops share
+        # it) since a snapshot taken once at the top would still miss a
+        # destination chosen earlier in this same tick.
+        claimed_points: List[Tuple[int, Tuple[float, float]]] = self._claimed_vehicle_points()
+
         # 3. Roll idle parked vehicles for "start a new trip now" (section
         # 9's parked/driving mixture), bounded to
         # NPC_TRIP_START_ATTEMPTS_PER_TICK actual attempts regardless of
@@ -2624,9 +2716,17 @@ class NPCVehicleManager:
                 parking_spaces=parking_spaces, sceneries=sceneries, buildings=buildings,
                 curbs=curbs, curb_grid=curb_grid, building_grid=building_grid,
                 member_resident_ids=member_resident_ids,
+                other_vehicle_positions=[
+                    pos for vid, pos in claimed_points if vid != vehicle.vehicle_id
+                ],
             )
             if driver is not None:
                 self.drivers[vehicle.vehicle_id] = driver
+                # Claim it immediately - a later vehicle in this same
+                # tick's loop must see this commitment, not just ones
+                # already resting when the tick started.
+                if vehicle.destination is not None:
+                    claimed_points.append((vehicle.vehicle_id, vehicle.destination))
 
         # 4. Continue already-driving vehicles that are parked, all
         # aboard, and waiting for their next destination (deferred out of
@@ -2651,21 +2751,31 @@ class NPCVehicleManager:
                 break
             continue_attempts_this_tick += 1
             driver = self.drivers[vehicle.vehicle_id]
+            other_positions = [
+                pos for vid, pos in claimed_points if vid != vehicle.vehicle_id
+            ]
             if vehicle.vehicle_kind == "household":
                 departed = continue_npc_trip(
                     vehicle, driver, traffic_world, ways, spatial_grid=spatial_grid,
                     parking_spaces=parking_spaces, sceneries=sceneries, buildings=buildings,
                     curbs=curbs, curb_grid=curb_grid, building_grid=building_grid,
                     destination_query_point=vehicle.home_position,
+                    other_vehicle_positions=other_positions,
                 )
                 if departed:
                     vehicle.returning_home = True
             else:
-                continue_npc_trip(
+                departed = continue_npc_trip(
                     vehicle, driver, traffic_world, ways, spatial_grid=spatial_grid,
                     parking_spaces=parking_spaces, sceneries=sceneries, buildings=buildings,
                     curbs=curbs, curb_grid=curb_grid, building_grid=building_grid,
+                    other_vehicle_positions=other_positions,
                 )
+            # Same same-tick claim as section 3 above - a later vehicle in
+            # this loop (or section 3, if it runs after this in a future
+            # refactor) must see this new destination immediately.
+            if departed and vehicle.destination is not None:
+                claimed_points.append((vehicle.vehicle_id, vehicle.destination))
 
         self.rebuild_spatial_grid()
 

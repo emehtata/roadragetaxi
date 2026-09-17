@@ -56,6 +56,29 @@ def test_populate_initial_gives_vehicles_a_variety_of_colors():
     assert len({vehicle.color for vehicle in manager.vehicles}) > 1
 
 
+def test_place_one_rejects_a_point_another_vehicle_is_already_driving_toward():
+    """Reported: a car returning to a yard found a brand-new car had, in
+    the meantime, been spawned right into its spot. Population growth
+    (_place_one) used to only check a candidate point against other
+    vehicles' *current* positions - a vehicle mid-trip isn't physically at
+    its destination yet, so that check alone saw the target spot as
+    completely free and happily placed a new vehicle there."""
+    ways = _city_block_grid()
+    manager = NPCVehicleManager(target_count=1, spawn_radius_m=_SPAWN_RADIUS_M, vehicle_distribution={"car": 1.0})
+
+    en_route = place_parked_npc(1, (1000.0, 1000.0), None, vehicle_type="car")
+    en_route.state = NPCState.CRUISING
+    en_route.destination = (0.0, 0.0)
+    manager.vehicles.append(en_route)
+    manager._next_vehicle_id = 2
+
+    claimed_point = manager._place_one((0.0, 0.0), None, ways, None, None, None, None, None)
+    assert claimed_point is None
+
+    free_point = manager._place_one((500.0, 500.0), None, ways, None, None, None, None, None)
+    assert free_point is not None
+
+
 def test_populate_initial_reports_progress_gradually():
     ways = _city_block_grid()
     manager = NPCVehicleManager(target_count=8, spawn_radius_m=_SPAWN_RADIUS_M, vehicle_distribution={"car": 1.0})
@@ -163,6 +186,56 @@ def test_despawn_never_removes_a_vehicle_currently_visible_in_the_viewport():
         viewport_bounds=viewport_bounds,
     )
     assert len(manager.vehicles) == 10
+
+
+def test_population_tick_treats_an_en_route_vehicles_destination_as_claimed(monkeypatch):
+    """Reported: a car seen driving toward the exact spot another car
+    (already sent there in an earlier tick, still en route - not yet
+    parked) was already heading to. _run_population_tick used to only
+    treat currently-PARKED vehicles' own positions as "claimed" when
+    searching for a new destination - a vehicle mid-trip, with a
+    committed .destination it hasn't reached yet, was invisible to that
+    search entirely."""
+    import theroadragetrip.npc as npc_module
+
+    ways = _city_block_grid()
+    # target_count=6, not 2: populate_initial's bounded-attempts search
+    # (see its own docstring, and test_household_vehicle_ownership_
+    # persists_through_a_full_trip_cycle's identical note) can occasionally
+    # place fewer than a very small target on the first try - headroom
+    # keeps this test about the claimed-destination behavior, not that
+    # unrelated budget.
+    manager = NPCVehicleManager(
+        target_count=6, household_fraction=0.0, spawn_radius_m=_SPAWN_RADIUS_M, vehicle_distribution={"car": 1.0},
+    )
+    traffic_world = TrafficWorld(ways)
+    residents = ResidentManager()
+    px, py = _CENTER
+    manager.populate_initial(px, py, residents, ways)
+    assert len(manager.vehicles) >= 2
+
+    en_route, idle = manager.vehicles[0], manager.vehicles[1]
+    en_route.state = NPCState.CRUISING
+    en_route.destination = (999.0, 999.0)
+    manager.drivers[en_route.vehicle_id] = object()
+
+    idle.state = NPCState.PARKED
+    idle.availability = NPCAvailability.AVAILABLE
+    manager.drivers.pop(idle.vehicle_id, None)
+
+    captured = {}
+
+    def fake_find_and_start_npc_trip(vehicle, *args, other_vehicle_positions=None, **kwargs):
+        captured["other_vehicle_positions"] = other_vehicle_positions
+        return None
+
+    monkeypatch.setattr(npc_module, "find_and_start_npc_trip", fake_find_and_start_npc_trip)
+    monkeypatch.setattr(random, "random", lambda: 0.0)  # force the trip-start roll to pass
+
+    manager._run_population_tick(px, py, residents, traffic_world, ways, None, None, None, None, None, None, None)
+
+    assert "other_vehicle_positions" in captured, "the idle vehicle's trip-start search never ran"
+    assert (999.0, 999.0) in captured["other_vehicle_positions"]
 
 
 def test_population_tick_never_spawns_a_vehicle_inside_the_viewport():

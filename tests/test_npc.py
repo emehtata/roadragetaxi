@@ -668,6 +668,34 @@ def test_pick_npc_destination_falls_back_to_building_boundary_without_entrances(
     assert point == pytest.approx((0.0 - 5.0 * offset, 0.0 - 5.0 * offset))
 
 
+def test_pick_npc_destination_candidates_rejects_a_building_yard_point_taken_by_another_vehicle():
+    """Reported: a real driven trip landing a second vehicle exactly on
+    top of a first one already parked in the same building's yard - the
+    yard point is a single fixed coordinate (unlike a dedicated
+    ParkingSpace), so without this filter every vehicle sent toward the
+    same building converges on the identical spot."""
+    building = Building(points_m=[(0, 0), (10, 0), (10, 10), (0, 10)], entrances=[(10.0, 5.0)], center_m=(5.0, 5.0))
+    yard_point = (5.0 + 5.0 + NPC_BUILDING_YARD_CLEARANCE_M, 5.0)
+
+    taken = _pick_npc_destination_candidates(
+        0.0, 0.0, buildings=[building], other_vehicle_positions=[yard_point],
+    )
+    assert taken == []
+
+    free = _pick_npc_destination_candidates(0.0, 0.0, buildings=[building], other_vehicle_positions=None)
+    assert free and free[0][0] == pytest.approx(yard_point)
+
+
+def test_pick_npc_destination_candidates_accepts_a_building_yard_point_far_from_other_vehicles():
+    building = Building(points_m=[(0, 0), (10, 0), (10, 10), (0, 10)], entrances=[(10.0, 5.0)], center_m=(5.0, 5.0))
+    far_away = (10000.0, 10000.0)
+
+    candidates = _pick_npc_destination_candidates(
+        0.0, 0.0, buildings=[building], other_vehicle_positions=[far_away],
+    )
+    assert candidates
+
+
 def test_pick_npc_destination_refuses_the_raw_point_when_nothing_is_nearby():
     """NPC-more.md section 2: a road carriageway (the raw BFS point itself)
     is never a valid place to stop - regression, this used to fall back to
