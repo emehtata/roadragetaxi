@@ -663,7 +663,7 @@ def draw_npc_debug_panel(screen, vehicle, driver, font, x: int = 10, y: int = 22
         # for why one state enum, not two, tracks this).
         state_label = "PARKED (waiting for passengers)"
     lines = [
-        f"NPC vehicle={vehicle.vehicle_id} resident={vehicle.owner_id}",
+        f"NPC vehicle={vehicle.vehicle_id} resident={vehicle.owner_id} plugin={getattr(vehicle, 'vehicle_type', '?')}",
         f"state={state_label} speed={vehicle.speed * 3.6:.0f}km/h target={driver.target_speed_mps * 3.6:.0f}km/h",
         f"way={way_label} next={next_way_label} route={driver.path_index}/{len(driver.path) - 1} maneuver={driver.next_maneuver}",
         f"lane={lane_bias} {signal_label}",
@@ -698,6 +698,15 @@ def draw_npc_debug_panel(screen, vehicle, driver, font, x: int = 10, y: int = 22
             lines.append(f"passengers: {roster}")
         else:
             lines.append("passengers: none (solo trip)")
+    if getattr(vehicle, "vehicle_kind", "traffic") == "household":
+        home = getattr(vehicle, "home_position", None)
+        home_label = f"({home[0]:.0f},{home[1]:.0f})" if home is not None else "-"
+        lines.append(
+            f"kind=household household_id={vehicle.household_id} "
+            f"availability={vehicle.availability} home={home_label}"
+        )
+    else:
+        lines.append(f"kind=traffic availability={getattr(vehicle, 'availability', '-')}")
     if vehicle.debug_waiting_for:
         # Surfaces NPC-more.md section 12/13/19's live footprint safety
         # net tripping (see npc.update_npc) - not just the ordinary
@@ -705,6 +714,31 @@ def draw_npc_debug_panel(screen, vehicle, driver, font, x: int = 10, y: int = 22
         # read as stale ("PROCEED") while state=WAITING for this instead.
         lines.append(f"waiting_for={vehicle.debug_waiting_for}")
     panel_w = 360
+    panel_h = 10 + len(lines) * 16
+    pygame.draw.rect(screen, (16, 20, 26, 215), (x, y, panel_w, panel_h), border_radius=5)
+    pygame.draw.rect(screen, (90, 170, 220), (x, y, panel_w, panel_h), width=1, border_radius=5)
+    for i, line in enumerate(lines):
+        screen.blit(font.render(line, True, (215, 225, 230)), (x + 8, y + 5 + i * 16))
+
+
+def draw_npc_population_panel(screen, counts: dict, font, x: int = 10, y: int = 220, by_type: Optional[dict] = None) -> None:
+    """F7 debug overlay, NPC-003 section 25: population-wide counts
+    (total/parked/driving/reserved/household/autonomous) alongside the
+    single-vehicle panel above. `counts` is NPCVehicleManager.
+    population_counts()'s dict - no import of npc.py needed here, same
+    duck-typing as draw_npc_debug_panel. `by_type`, if given, is
+    NPCVehicleManager.population_counts_by_type()'s {plugin_id: count}
+    dict (NPC-003 v2 section 22's "vehicles by plugin type")."""
+    import pygame
+
+    lines = [
+        "NPC population",
+        f"total={counts['total']} parked={counts['parked']} driving={counts['driving']}",
+        f"reserved={counts['reserved']} household={counts['household']} autonomous={counts['autonomous']}",
+    ]
+    if by_type:
+        lines.append("by type: " + ", ".join(f"{vehicle_id}={count}" for vehicle_id, count in sorted(by_type.items())))
+    panel_w = 300
     panel_h = 10 + len(lines) * 16
     pygame.draw.rect(screen, (16, 20, 26, 215), (x, y, panel_w, panel_h), border_radius=5)
     pygame.draw.rect(screen, (90, 170, 220), (x, y, panel_w, panel_h), width=1, border_radius=5)

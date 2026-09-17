@@ -5,6 +5,7 @@ from theroadragetrip.config import (
     _default_city_names,
     cities_from_config,
     get_overpass_endpoints,
+    get_vehicle_distribution,
     load_config,
     save_config,
 )
@@ -46,6 +47,23 @@ def test_overpass_endpoints_are_trimmed_and_have_defaults(tmp_path):
 
     config.set("map", "overpass_endpoints", "")
     assert get_overpass_endpoints(config) == list(DEFAULT_OVERPASS_ENDPOINTS)
+
+
+def test_vehicle_distribution_empty_by_default(tmp_path):
+    config = load_config(tmp_path / "roadragetrip.ini")
+    assert get_vehicle_distribution(config) is None
+
+
+def test_vehicle_distribution_parses_id_weight_pairs(tmp_path):
+    config = load_config(tmp_path / "roadragetrip.ini")
+    config.set("traffic", "vehicle_distribution", "car:0.8, van:0.1 ,truck:0.1")
+    assert get_vehicle_distribution(config) == {"car": 0.8, "van": 0.1, "truck": 0.1}
+
+
+def test_vehicle_distribution_ignores_malformed_entries(tmp_path):
+    config = load_config(tmp_path / "roadragetrip.ini")
+    config.set("traffic", "vehicle_distribution", "car:0.8, bogus, van:not-a-number")
+    assert get_vehicle_distribution(config) == {"car": 0.8}
 
 
 def test_custom_city_section_replaces_default_city_section(tmp_path):

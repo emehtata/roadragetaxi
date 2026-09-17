@@ -213,6 +213,7 @@ from .hud import (
     draw_npc_debug_overlay,
     draw_feature_inspector_panel,
     draw_npc_debug_panel,
+    draw_npc_population_panel,
     draw_phone_offers,
 )
 

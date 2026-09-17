@@ -103,8 +103,10 @@ from ..render import (
     draw_logical_intersections,
     draw_activity_debug_panel,
     draw_npc_cars,
+    draw_npc_spatial_grid,
     draw_npc_debug_overlay,
     draw_npc_debug_panel,
+    draw_npc_population_panel,
     draw_feature_inspector_panel,
     screen_to_world,
     draw_pause_menu,
@@ -144,7 +146,7 @@ from ..render import (
     solar_altitude_and_events,
 )
 from ..activities import ActivityContext, ActivityInstance
-from ..npc import NPCState, continue_npc_trip, spawn_deterministic_npc, update_npc
+from ..npc import NPCVehicleManager
 from ..pedestrian import PedestrianManager, PlayerPedestrian
 from ..residents import ResidentManager
 from ..police import place_speed_cameras
@@ -179,10 +181,6 @@ logger = logging.getLogger(__name__)
 RAGE_SHOUTS = ("PRKL!", "STNA!", "VTTU!", "HLVT!", "KRPÄ!", "KSPÄ!", "PSKA!")
 RAGE_DISTANCE_TO_FULL_M = 400.0
 RAGE_SHOUT_COST = 0.25
-# No valid NPC route at load (e.g. streamed tiles not fully connected yet)
-# isn't permanent - keep retrying instead of leaving the map without its NPC
-# forever.
-NPC_SPAWN_RETRY_COOLDOWN_S = 1.0
 # F5 activity debug panel's force-an-activity testing keys (residents-
 # live.md section 18) - number key N forces the Nth plugin listed in the
 # panel (registry.all_plugins() order) onto the selected resident.
@@ -657,30 +655,37 @@ def _load_world(
         residents=residents,
         logical_intersections=logical_intersections,
     )
-    # NPC-001: one deterministic autonomous NPC car, spawned only once a
-    # valid preplanned route exists (see spawn_deterministic_npc/spawn_npc)
-    # - never a moving vehicle hunting for a route afterwards.
+    # NPC-003: a real, persistent, gradually-filled NPC vehicle
+    # population (replaces NPC-001's single deterministic demo car).
+    # Filled here, during loading, so an initial population exists the
+    # moment gameplay starts - see NPCVehicleManager.populate_initial's
+    # own docstring for why a plain loop is fine at load time even though
+    # ongoing top-up during play is deliberately staggered.
     on_load_progress(0.88, "Preparing NPC traffic...")
-    npc_spawn = spawn_deterministic_npc(
-        residents, traffic_mgr, ways, spatial_grid=spatial_grid,
+    npc_manager = NPCVehicleManager(
+        target_count=args.npc_vehicle_count,
+        min_count=args.npc_vehicle_min,
+        max_count=args.npc_vehicle_max,
+        vehicle_distribution=args.vehicle_distribution,
+        include_experimental=args.enable_two_wheelers,
+    )
+    npc_manager.populate_initial(
+        car.x, car.y, residents, ways, spatial_grid=spatial_grid,
         parking_spaces=parking_spaces, sceneries=sceneries, buildings=buildings,
         curbs=curbs, curb_grid=curb_grid, building_grid=building_grid,
+        progress_callback=lambda fraction: on_load_progress(0.88 + 0.06 * fraction, "Preparing NPC traffic..."),
     )
-    if npc_spawn is not None:
-        _, npc_driver, npc_vehicle = npc_spawn
-        npcs = [npc_vehicle]
-        npc_drivers = {npc_vehicle.vehicle_id: npc_driver}
-        logger.info(
-            "Spawned NPC-001 vehicle %d (resident %d), route has %d waypoints",
-            npc_vehicle.vehicle_id, npc_vehicle.owner_id, len(npc_driver.path),
-        )
-    else:
-        npcs = []
-        npc_drivers = {}
-        logger.info("NPC-001: no valid route found yet, will retry every %.0fs", NPC_SPAWN_RETRY_COOLDOWN_S)
-    # Same list object for the life of the session - later npcs.append()
-    # calls (NPC retry-spawn) stay visible through traffic_mgr.npcs without
-    # needing to re-set this after every spawn.
+    logger.info(
+        "NPC-003: populated %d/%d NPC vehicles (%d household, %d autonomous), by type: %s",
+        len(npc_manager.vehicles), npc_manager.target_count,
+        npc_manager.population_counts()["household"], npc_manager.population_counts()["autonomous"],
+        npc_manager.population_counts_by_type(),
+    )
+    # Same list/dict objects for the life of the session - npc_manager's
+    # own population-tick spawns/despawns stay visible through
+    # traffic_mgr.npcs without needing to re-set this on every change.
+    npcs = npc_manager.vehicles
+    npc_drivers = npc_manager.drivers
     traffic_mgr.npcs = npcs
     # Initialize autonomous Pedestrian Manager
     on_load_progress(0.92, "Preparing pedestrians...")
@@ -768,6 +773,7 @@ def _load_world(
         logical_intersections=logical_intersections,
         npc_drivers=npc_drivers,
         npcs=npcs,
+        npc_manager=npc_manager,
         parking_spaces=parking_spaces,
         pedestrian_mgr=pedestrian_mgr,
         places=places,
@@ -852,7 +858,7 @@ def main() -> None:
     pygame.init()
     screen = pygame.display.set_mode((SCREEN_W, SCREEN_H))
     try:
-        icon_path = os.path.join(os.path.dirname(__file__), "..", "assets", "roadragetrip_icon.png")
+        icon_path = os.path.join(os.path.dirname(__file__), "..", "assets", "rrt-taxi.png")
         pygame.display.set_icon(pygame.image.load(icon_path).convert_alpha())
     except (OSError, pygame.error):
         logger.warning("Game icon could not be loaded")
@@ -951,6 +957,7 @@ def main() -> None:
         logical_intersections = world.logical_intersections
         npc_drivers = world.npc_drivers
         npcs = world.npcs
+        npc_manager = world.npc_manager
         parking_spaces = world.parking_spaces
         pedestrian_mgr = world.pedestrian_mgr
         places = world.places
@@ -980,7 +987,6 @@ def main() -> None:
 
         label_mode = 0
         show_debug_hud = False
-        npc_spawn_retry_cooldown_s = 0.0 if npcs else NPC_SPAWN_RETRY_COOLDOWN_S
         npc_follow = False  # F6: camera follows the NPC-001 vehicle
         show_npc_debug = False  # F7: NPC debug overlay (state/route/decision)
         # F5: residents-live.md section 18's activity debug panel - shows
@@ -1764,46 +1770,13 @@ def main() -> None:
             with frame_profiler.section("taxi"):
                 taxi_mgr.update(car, dt, game_time_seconds=game_time_seconds)
             with frame_profiler.section("npc"):
-                if not npcs:
-                    npc_spawn_retry_cooldown_s -= dt
-                    if npc_spawn_retry_cooldown_s <= 0.0:
-                        npc_spawn_retry_cooldown_s = NPC_SPAWN_RETRY_COOLDOWN_S
-                        npc_retry = spawn_deterministic_npc(
-                            residents, traffic_mgr, ways, spatial_grid=spatial_grid,
-                            parking_spaces=parking_spaces, sceneries=sceneries, buildings=buildings,
-                            curbs=curbs, curb_grid=curb_grid, building_grid=building_grid,
-                        )
-                        if npc_retry is not None:
-                            _, retry_driver, retry_vehicle = npc_retry
-                            npcs.append(retry_vehicle)
-                            npc_drivers[retry_vehicle.vehicle_id] = retry_driver
-                            logger.info(
-                                "NPC-001: route now available, spawned vehicle %d on retry",
-                                retry_vehicle.vehicle_id,
-                            )
-                for one_npc in npcs:
-                    npc_driver_for_vehicle = npc_drivers.get(one_npc.vehicle_id)
-                    if npc_driver_for_vehicle is not None:
-                        update_npc(
-                            one_npc, npc_driver_for_vehicle, dt, traffic_mgr, residents,
-                            curbs=curbs, buildings=buildings, curb_grid=curb_grid, building_grid=building_grid,
-                        )
-                        # multi-passenger-car.md section 21: once every
-                        # trip-group member is back aboard (or update_npc's
-                        # own return-timeout gave up on stragglers), send
-                        # the same vehicle/driver to a new destination
-                        # rather than leaving it parked forever.
-                        if (
-                            one_npc.state == NPCState.PARKED
-                            and one_npc.trip_group is not None
-                            and one_npc.trip_group.all_aboard
-                        ):
-                            continue_npc_trip(
-                                one_npc, npc_driver_for_vehicle, traffic_mgr, ways,
-                                spatial_grid=spatial_grid, parking_spaces=parking_spaces,
-                                sceneries=sceneries, buildings=buildings,
-                                curbs=curbs, curb_grid=curb_grid, building_grid=building_grid,
-                            )
+                npc_manager.update(
+                    dt, car.x, car.y, residents, traffic_mgr, ways,
+                    spatial_grid=spatial_grid, parking_spaces=parking_spaces,
+                    sceneries=sceneries, buildings=buildings,
+                    curbs=curbs, curb_grid=curb_grid, building_grid=building_grid,
+                    viewport_bounds=viewport_bounds,
+                )
             vomited_passenger = taxi_mgr.take_vomited_passenger(car)
             if vomited_passenger is not None:
                 audio.play_passenger_line("Nyt alkaa jo helpottaa.", vomited_passenger.gender, language, vomited_passenger.name)
@@ -2654,11 +2627,20 @@ def main() -> None:
                     screen, small_font, car.forward_g, car.lateral_g, car.is_sliding,
                     grip_usage=car.grip_usage, max_grip_g=car.max_grip_g,
                 )
-            if show_npc_debug and npcs:
-                npc_driver_for_panel = npc_drivers.get(npcs[0].vehicle_id)
-                if npc_driver_for_panel is not None:
-                    draw_npc_debug_panel(screen, npcs[0], npc_driver_for_panel, small_font)
-                    draw_npc_debug_overlay(screen, npcs[0], npc_driver_for_panel, camx, camy, px_per_m)
+            if show_npc_debug:
+                draw_npc_population_panel(
+                    screen, npc_manager.population_counts(), small_font, x=380, y=220,
+                    by_type=npc_manager.population_counts_by_type(),
+                )
+                draw_npc_spatial_grid(
+                    screen, npc_manager.spatial_grid.grid, npc_manager.spatial_grid.cell_size,
+                    camx, camy, px_per_m=px_per_m, screen_w=SCREEN_W, screen_h=SCREEN_H,
+                )
+                if npcs:
+                    npc_driver_for_panel = npc_drivers.get(npcs[0].vehicle_id)
+                    if npc_driver_for_panel is not None:
+                        draw_npc_debug_panel(screen, npcs[0], npc_driver_for_panel, small_font)
+                        draw_npc_debug_overlay(screen, npcs[0], npc_driver_for_panel, camx, camy, px_per_m)
             if show_feature_inspector:
                 draw_feature_inspector_panel(screen, inspected_feature, small_font)
             pygame.display.flip()

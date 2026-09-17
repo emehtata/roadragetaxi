@@ -6,7 +6,7 @@ import random
 from datetime import date, timedelta
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Dict, Optional, Set
+from typing import Dict, Optional, Set, Tuple
 
 
 def _load_names(filename: str, key: str) -> list[dict]:
@@ -100,6 +100,9 @@ class Resident:
     # any) this resident is currently travelling with - None once they
     # leave the group (reboard timeout, or never in one to begin with).
     trip_group_id: Optional[int] = None
+    # NPC-003 section 6: which Household (if any) this resident belongs to -
+    # most spawned residents have none (not every household owns a car).
+    household_id: Optional[int] = None
     lod_level: int = 0
     lod_update_due: bool = True
     lod_time_accumulator: float = 0.0
@@ -217,3 +220,41 @@ class ResidentManager:
         else:
             resident.lod_update_due = False
         return resident.lod_level
+
+
+@dataclass
+class Household:
+    """NPC-003 section 6: the minimal ownership entity linking a home
+    position to whichever Residents live there and whichever NPCVehicles
+    (0, 1, or more) they own. Deliberately simple - "the exact ownership
+    model can initially be simple" (NPC-003 section 6) - just enough that
+    a future Resident-trip system can ask "does my household own a car,
+    and where does it live" without a special case per caller.
+
+    Not every household owns a vehicle (vehicle_ids empty is normal), and
+    not every NPC vehicle belongs to a household at all (a generic
+    TRAFFIC_VEHICLE, see npc.NPCVehicle.vehicle_kind, has no household_id
+    and is never referenced by one)."""
+
+    household_id: int
+    home_position: Tuple[float, float]
+    member_resident_ids: Set[int] = field(default_factory=set)
+    vehicle_ids: Set[int] = field(default_factory=set)
+
+
+class HouseholdManager:
+    """Registry of Households - same shape as ResidentManager (dict
+    registry, incrementing id, get())."""
+
+    def __init__(self) -> None:
+        self.households: Dict[int, Household] = {}
+        self._next_id = 1
+
+    def create(self, home_position: Tuple[float, float]) -> Household:
+        household = Household(household_id=self._next_id, home_position=home_position)
+        self.households[household.household_id] = household
+        self._next_id += 1
+        return household
+
+    def get(self, household_id: Optional[int]) -> Optional[Household]:
+        return self.households.get(household_id) if household_id is not None else None

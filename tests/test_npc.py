@@ -29,11 +29,13 @@ from theroadragetrip.npc import (
     _parking_space_fits_vehicle,
     _pick_npc_destination,
     _pick_npc_destination_candidates,
+    _resting_heading,
     _roadside_parking_point,
     build_driving_path,
     continue_npc_trip,
     has_active_driver,
     is_vehicle_pose_valid,
+    place_parked_npc,
     release_npc_parking_reservation,
     route_crosses_buildings,
     route_crosses_curbs,
@@ -74,6 +76,25 @@ def test_moving_npc_vehicle_has_a_resident_driver():
     assert resident is not None
     assert resident.active_vehicle_id == vehicle.vehicle_id
     assert has_active_driver(vehicle, residents)
+
+
+def test_spawn_npc_picks_a_varied_color_when_none_is_given():
+    """Reported: every NPC vehicle was the exact same flat gray - spawn_npc
+    (and place_parked_npc) must pick a random one from NPC_VEHICLE_COLORS
+    when the caller doesn't specify a color explicitly."""
+    from theroadragetrip.npc import NPC_VEHICLE_COLORS
+
+    ways = _straight_chain()
+    tw = TrafficWorld(ways)
+    residents = ResidentManager()
+    colors = set()
+    for vehicle_id in range(1, 12):
+        result = spawn_npc(vehicle_id, residents, tw, ways, (0.0, 0.0), (200.0, 0.0))
+        assert result is not None
+        _, _, vehicle = result
+        assert vehicle.color in NPC_VEHICLE_COLORS
+        colors.add(vehicle.color)
+    assert len(colors) > 1
 
 
 def test_vehicle_without_a_driver_never_moves():
@@ -302,6 +323,29 @@ def test_corner_safe_speed_is_well_under_a_typical_cruising_speed():
     high, the corner-braking cap it feeds isn't actually protecting
     anything."""
     assert _corner_safe_speed_mps() * 3.6 < 30.0
+
+
+def test_update_npc_clamps_target_speed_to_the_vehicle_plugins_max_speed():
+    """NPC-003 v2 section 4: a vehicle plugin's own max speed (bus/truck
+    slower than ordinary traffic) caps target_speed_mps on top of the
+    road's own speed limit - not a new physics/acceleration model, just
+    one extra clamp."""
+    ways = [
+        Way(points_m=[(i * 20.0, 0.0), ((i + 1) * 20.0, 0.0)], highway="residential", half_width_m=4.5, speed_limit_kmh=100)
+        for i in range(20)
+    ]
+    tw = TrafficWorld(ways)
+    residents = ResidentManager()
+    _, driver, vehicle = spawn_npc(1, residents, tw, ways, (0.0, 0.0), (200.0, 0.0))
+    vehicle.vehicle_type = "bus"
+
+    update_npc(vehicle, driver, 1.0 / 60.0, tw, residents)
+
+    from theroadragetrip.vehicles.registry import default_registry
+
+    bus_max_speed_mps = default_registry().get("bus").get_max_speed_kmh() / 3.6
+    assert driver.target_speed_mps <= bus_max_speed_mps + 1e-6
+    assert driver.target_speed_mps < 100.0 / 3.6  # meaningfully below the road's own limit
 
 
 def test_distance_to_next_turn_finds_an_upcoming_corner():
@@ -676,6 +720,39 @@ def test_spawn_npc_final_heading_matches_the_parking_space_orientation():
     assert abs(final_heading - math.pi / 2.0) < abs(final_heading - 0.0)
 
 
+def test_resting_heading_follows_the_parking_space_axis_without_an_orientation_tag():
+    """Regression: _resting_heading used to check parking_space.orientation
+    directly, which stays None for the overwhelming majority of real OSM
+    parking spaces (no orientation tag) - it then fell through to the
+    nearest road's tangent instead of the space's own drawn rectangle
+    (reported: "cars not aligning the painted lines on the ground when
+    parked"). A north-south space next to an east-west road must produce
+    a north-south resting heading, not the road's."""
+    ways = [Way(points_m=[(0.0, 0.0), (100.0, 0.0)], highway="residential", half_width_m=4.5)]
+    space = ParkingSpace(
+        points_m=[(50.0, 4.0), (51.0, 4.0), (51.0, 10.0), (50.0, 10.0)],
+        bbox=(50.0, 4.0, 51.0, 10.0),
+    )
+    heading = _resting_heading(50.5, 7.0, space, ways, None)
+    # The space's long axis is north-south (+-pi/2), the road's is
+    # east-west (0) - must land far closer to north/south than east/west.
+    assert min(abs(heading - math.pi / 2.0), abs(heading + math.pi / 2.0)) < abs(heading)
+
+
+def test_place_parked_npc_aligns_with_the_parking_space_not_the_road():
+    """End to end: a vehicle placed by place_parked_npc (the population-
+    fill path, not spawn_npc's route-driven arrival) must also rest along
+    the parking space's own axis."""
+    ways = [Way(points_m=[(0.0, 0.0), (100.0, 0.0)], highway="residential", half_width_m=4.5)]
+    space = ParkingSpace(
+        points_m=[(50.0, 4.0), (51.0, 4.0), (51.0, 10.0), (50.0, 10.0)],
+        bbox=(50.0, 4.0, 51.0, 10.0),
+    )
+    vehicle = place_parked_npc(1, (50.5, 7.0), space, ways=ways)
+    assert vehicle is not None
+    assert min(abs(vehicle.heading - math.pi / 2.0), abs(vehicle.heading + math.pi / 2.0)) < abs(vehicle.heading)
+
+
 def test_spawn_deterministic_npc_routes_to_a_free_parking_space_when_one_exists():
     """The BFS-hop destination alone can land anywhere on the road graph -
     the middle of an intersection, an arbitrary block. Handing
@@ -1003,6 +1080,47 @@ def test_draw_npc_debug_panel_shows_parking_target():
     draw_npc_debug_panel(screen, vehicle, driver, font)  # with one - must not crash either
 
 
+def test_draw_npc_debug_panel_shows_vehicle_plugin_id():
+    """NPC-003 v2 section 22: the F7 panel must surface which vehicle
+    plugin (car/van/truck/...) this NPC is - not just its raw vehicle_id."""
+    from theroadragetrip.render.hud import draw_npc_debug_panel
+
+    pygame.init()
+    screen = pygame.display.set_mode((400, 300))
+    font = pygame.font.SysFont(None, 16)
+    ways = _straight_chain()
+    tw = TrafficWorld(ways)
+    residents = ResidentManager()
+    _, driver, vehicle = spawn_npc(1, residents, tw, ways, (0.0, 0.0), (200.0, 0.0))
+    vehicle.vehicle_type = "motorcycle"
+
+    car_panel = pygame.Surface((360, 400))
+    draw_npc_debug_panel(car_panel, vehicle, driver, font)
+    text_pixels = pygame.image.tostring(car_panel, "RGB")
+    assert text_pixels  # sanity: renders without crashing
+
+    vehicle.vehicle_type = "van"
+    van_panel = pygame.Surface((360, 400))
+    draw_npc_debug_panel(van_panel, vehicle, driver, font)
+    assert pygame.image.tostring(van_panel, "RGB") != text_pixels
+
+
+def test_draw_npc_population_panel_shows_by_type_breakdown():
+    from theroadragetrip.render.hud import draw_npc_population_panel
+
+    pygame.init()
+    counts = {"total": 2, "parked": 2, "driving": 0, "reserved": 0, "household": 1, "autonomous": 1}
+
+    without_breakdown = pygame.Surface((300, 100))
+    draw_npc_population_panel(without_breakdown, counts, pygame.font.SysFont(None, 16), y=0)
+
+    with_breakdown = pygame.Surface((300, 100))
+    draw_npc_population_panel(
+        with_breakdown, counts, pygame.font.SysFont(None, 16), y=0, by_type={"car": 1, "van": 1},
+    )
+    assert pygame.image.tostring(with_breakdown, "RGB") != pygame.image.tostring(without_breakdown, "RGB")
+
+
 def test_draw_npc_debug_panel_surfaces_footprint_violation_reason():
     """NPC-more.md section 21: a live footprint block (see npc.update_npc)
     must be visible on the panel, not silently hidden behind whatever the
@@ -1019,12 +1137,12 @@ def test_draw_npc_debug_panel_surfaces_footprint_violation_reason():
     vehicle.debug_waiting_for = "footprint blocked (curb/building)"
 
     panel_w = 360
-    before = pygame.Surface((panel_w, 400))
+    before = pygame.Surface((panel_w, 450))
     before.fill((0, 0, 0))
     draw_npc_debug_panel(before, vehicle, driver, font)
 
     vehicle.debug_waiting_for = ""
-    after = pygame.Surface((panel_w, 400))
+    after = pygame.Surface((panel_w, 450))
     after.fill((0, 0, 0))
     draw_npc_debug_panel(after, vehicle, driver, font)
     # The panel must be visibly different (one extra line) with a reason
@@ -1230,6 +1348,55 @@ def test_continue_npc_trip_returns_false_with_no_reachable_destination(monkeypat
     assert ok is False
     assert vehicle.destination == destination_before
     assert driver.path is path_before
+
+
+def test_continue_npc_trip_prefers_a_genuinely_separate_destination_over_the_same_lot():
+    """Regression: continue_npc_trip used to search for the *next* errand
+    right around wherever the vehicle just parked - in a real lot with
+    many free spaces, "nearest available parking" trivially found another
+    spot in that same lot (reported: cars driving spot-to-spot within one
+    parking area). A BFS walk out along the real road graph first must
+    prefer a genuinely separate destination when one is reachable, not
+    just whatever's geometrically closest to the vehicle's own position."""
+    block_count, step_m = 6, 40.0
+    ways = []
+    for row in range(block_count):
+        for i in range(block_count - 1):
+            ways.append(Way(points_m=[(i * step_m, row * step_m), ((i + 1) * step_m, row * step_m)], highway="residential", half_width_m=4.5))
+    for col in range(block_count):
+        for i in range(block_count - 1):
+            ways.append(Way(points_m=[(col * step_m, i * step_m), (col * step_m, (i + 1) * step_m)], highway="residential", half_width_m=4.5))
+    tw = TrafficWorld(ways)
+    residents = ResidentManager()
+
+    # A cluster of many free spaces right where the vehicle is parked - a
+    # real "lot", not one isolated space. Origin (20, 0) is a road
+    # midpoint, not an intersection node (spawn_npc/continue_npc_trip
+    # reject stopping exactly at an intersection).
+    origin = (20.0, 0.0)
+    near_cluster = [
+        ParkingSpace(
+            points_m=[(12.0 + i * 3, -1.0), (14.0 + i * 3, -1.0), (14.0 + i * 3, 1.0), (12.0 + i * 3, 1.0)],
+            bbox=(12.0 + i * 3, -1.0, 14.0 + i * 3, 1.0),
+        )
+        for i in range(6)
+    ]
+    # One genuinely separate lot several blocks away.
+    far_space = ParkingSpace(
+        points_m=[(198.0, 198.0), (200.0, 198.0), (200.0, 200.0), (198.0, 200.0)],
+        bbox=(198.0, 198.0, 200.0, 200.0),
+    )
+
+    spawned = spawn_npc(1, residents, tw, ways, origin, (60.0, 0.0))
+    assert spawned is not None
+    _, driver, vehicle = spawned
+    vehicle.state = NPCState.PARKED
+    vehicle.car.x, vehicle.car.y = origin
+
+    ok = continue_npc_trip(vehicle, driver, tw, ways, parking_spaces=near_cluster + [far_space])
+    assert ok is True
+    distance_from_origin = math.hypot(vehicle.destination[0] - origin[0], vehicle.destination[1] - origin[1])
+    assert distance_from_origin > 100.0
 
 
 def test_two_independent_trip_groups_do_not_interfere():
