@@ -22,7 +22,6 @@ doesn't: it's shared, unmodified, by the headless server.
 
 from __future__ import annotations
 
-import copy
 import json
 import math
 from dataclasses import asdict
@@ -200,7 +199,12 @@ def interpolate_state(prev: dict, curr: dict, alpha: float) -> dict:
     feeds back into anything the server treats as authoritative; it only
     changes what gets rendered this frame."""
     alpha = max(0.0, min(1.0, alpha))
-    blended = copy.deepcopy(curr)
+    # A shallow copy is enough: every key this function overwrites below
+    # (player/npcs/pedestrians) is fully replaced, never mutated in
+    # place, and every other key (weather/taxi/...) is only ever read by
+    # the caller, never mutated - a deepcopy here was pure waste, run
+    # once per render frame on a dict containing every NPC/pedestrian.
+    blended = dict(curr)
 
     def blend_entity(prev_entity: Optional[dict], curr_entity: dict) -> dict:
         if prev_entity is None:
