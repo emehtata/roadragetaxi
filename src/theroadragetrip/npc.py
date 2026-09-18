@@ -2729,6 +2729,109 @@ class NPCVehicleManager:
             (player_x, player_y),
         ]
 
+    def _spawn_direct_moving_vehicle(
+        self,
+        player_x: float,
+        player_y: float,
+        resident_manager: ResidentManager,
+        traffic_world: TrafficWorld,
+        ways: List[Way],
+        spatial_grid: Optional[SpatialWayGrid],
+        buildings: Optional[List],
+        curbs: Optional[List[Curb]],
+        curb_grid: Optional[SpatialWayGrid],
+        building_grid: Optional[SpatialWayGrid],
+        viewport_bounds: Optional[Tuple[float, float, float, float]],
+    ) -> Optional[Tuple[Driver, NPCVehicle]]:
+        if len(self.vehicles) >= self.max_count:
+            return None
+        nodes = getattr(traffic_world, "_route_nodes", ())
+        edges = getattr(traffic_world, "_route_edges", ())
+        if len(nodes) < 2:
+            return None
+
+        origin_indices = []
+        for min_factor, max_factor in ((0.45, 1.15), (0.2, 2.5), (0.0, 4.5)):
+            min_origin_distance = self.spawn_radius_m * min_factor
+            max_origin_distance = self.spawn_radius_m * max_factor
+            for index, node in enumerate(nodes):
+                origin_x, origin_y = node[0], node[1]
+                distance = math.hypot(origin_x - player_x, origin_y - player_y)
+                if distance < min_origin_distance or distance > max_origin_distance:
+                    continue
+                if viewport_bounds is not None and _point_in_viewport(
+                    origin_x, origin_y, viewport_bounds, margin_m=NPC_PARKING_ACCESS_TOLERANCE_M * 2.0
+                ):
+                    continue
+                if any(
+                    math.hypot(vehicle.x - origin_x, vehicle.y - origin_y) < NPC_MIN_VEHICLE_SPACING_M
+                    for vehicle in self.nearby_vehicles_at(origin_x, origin_y, NPC_MIN_VEHICLE_SPACING_M * 1.5)
+                ):
+                    continue
+                origin_indices.append((abs(distance - self.spawn_radius_m * 0.75), random.random(), index))
+            if origin_indices:
+                break
+        if not origin_indices:
+            return None
+
+        origin_indices.sort()
+        for _distance_bias, _tie_breaker, origin_index in origin_indices[: NPC_TRIP_START_CANDIDATE_POINTS]:
+            road_points = _bfs_destination_order(nodes, edges, origin_index)
+            if not road_points:
+                continue
+            playerish_destinations = [
+                index
+                for index in road_points
+                if math.hypot(nodes[index][0] - player_x, nodes[index][1] - player_y) <= self.spawn_radius_m * 0.6
+                and math.hypot(nodes[index][0] - nodes[origin_index][0], nodes[index][1] - nodes[origin_index][1]) >= 40.0
+            ]
+            candidate_destinations = playerish_destinations or road_points
+            for destination_index in candidate_destinations[: NPC_DESTINATION_CANDIDATE_LIMIT]:
+                if destination_index == origin_index:
+                    continue
+                origin = (nodes[origin_index][0], nodes[origin_index][1])
+                destination = (nodes[destination_index][0], nodes[destination_index][1])
+                spawned = spawn_npc(
+                    self._next_id(),
+                    resident_manager,
+                    traffic_world,
+                    ways,
+                    origin,
+                    destination,
+                    spatial_grid=spatial_grid,
+                    curbs=curbs,
+                    curb_grid=curb_grid,
+                    buildings=buildings,
+                    building_grid=building_grid,
+                    vehicle_type=self._pick_vehicle_type(),
+                )
+                if spawned is None:
+                    self._next_vehicle_id -= 1
+                    continue
+                _resident_id, driver, vehicle = spawned
+                self.vehicles.append(vehicle)
+                self.drivers[vehicle.vehicle_id] = driver
+                return driver, vehicle
+        spawned = spawn_deterministic_npc(
+            resident_manager,
+            traffic_world,
+            ways,
+            spatial_grid=spatial_grid,
+            vehicle_id=self._next_id(),
+            buildings=buildings,
+            curbs=curbs,
+            curb_grid=curb_grid,
+            building_grid=building_grid,
+        )
+        if spawned is None:
+            self._next_vehicle_id -= 1
+            return None
+        _resident_id, driver, vehicle = spawned
+        self.vehicles.append(vehicle)
+        self.drivers[vehicle.vehicle_id] = driver
+        return driver, vehicle
+        return None
+
     def population_counts(self) -> Dict[str, int]:
         """Section 25/26's population statistics panel."""
         counts = {
@@ -3151,8 +3254,18 @@ class NPCVehicleManager:
                 household = self.household_manager.get(vehicle.household_id)
                 if household is None or not household.member_resident_ids:
                     continue
-                take = random.randint(1, len(household.member_resident_ids))
-                member_resident_ids = random.sample(sorted(household.member_resident_ids), take)
+                available_member_ids = [
+                    resident_id
+                    for resident_id in sorted(household.member_resident_ids)
+                    if (
+                        resident_manager.get(resident_id) is not None
+                        and resident_manager.get(resident_id).active_vehicle_id in (None, vehicle.vehicle_id)
+                    )
+                ]
+                if not available_member_ids:
+                    continue
+                take = random.randint(1, len(available_member_ids))
+                member_resident_ids = random.sample(available_member_ids, take)
             started_at = time.perf_counter()
             driver = find_and_start_npc_trip(
                 vehicle,
@@ -3175,6 +3288,32 @@ class NPCVehicleManager:
             if driver is None:
                 continue
             self.drivers[vehicle.vehicle_id] = driver
+            started += 1
+            if vehicle.destination is not None:
+                claimed_points.append((vehicle.vehicle_id, vehicle.destination))
+        while (
+            started < min(moving_deficit, NPC_MOVING_START_LIMIT_PER_TICK)
+            and len(self.vehicles) < self.max_count
+        ):
+            started_at = time.perf_counter()
+            spawned = self._spawn_direct_moving_vehicle(
+                player_x,
+                player_y,
+                resident_manager,
+                traffic_world,
+                ways,
+                spatial_grid,
+                buildings,
+                curbs,
+                curb_grid,
+                building_grid,
+                viewport_bounds,
+            )
+            route_time_ms += (time.perf_counter() - started_at) * 1000.0
+            self.last_tick_route_count += 1
+            if spawned is None:
+                break
+            _driver, vehicle = spawned
             started += 1
             if vehicle.destination is not None:
                 claimed_points.append((vehicle.vehicle_id, vehicle.destination))

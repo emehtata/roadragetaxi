@@ -45,6 +45,13 @@ def _city_block_grid():
     return ways
 
 
+def _straight_chain(count: int = 16, step: float = 40.0):
+    return [
+        Way(points_m=[(i * step, 0.0), ((i + 1) * step, 0.0)], highway="residential", half_width_m=4.5)
+        for i in range(count)
+    ]
+
+
 def test_populate_initial_reaches_target_count():
     ways = _city_block_grid()
     manager = NPCVehicleManager(target_count=8, spawn_radius_m=_SPAWN_RADIUS_M, vehicle_distribution={"car": 1.0})
@@ -173,6 +180,27 @@ def test_parked_vehicles_do_not_satisfy_moving_target():
     assert counts_after["moving"] > 0
 
 
+def test_population_tick_can_spawn_direct_moving_traffic_when_no_parking_trip_starts_exist():
+    from theroadragetrip.npc import NPC_POPULATION_TICK_S
+
+    ways = _straight_chain()
+    manager = NPCVehicleManager(
+        target_count=2,
+        max_count=4,
+        spawn_radius_m=220.0,
+        vehicle_distribution={"car": 1.0},
+    )
+    traffic_world = TrafficWorld(ways)
+    residents = ResidentManager()
+
+    manager.update(NPC_POPULATION_TICK_S, 240.0, 0.0, residents, traffic_world, ways)
+
+    counts = manager.population_counts()
+    assert counts["moving"] >= 1
+    assert counts["drivers"] >= counts["moving"]
+    assert all(has_active_driver(vehicle, residents) for vehicle in manager.vehicles if vehicle.state != NPCState.PARKED)
+
+
 def test_no_duplicate_vehicle_ids_after_several_population_ticks():
     from theroadragetrip.npc import NPC_POPULATION_TICK_S
 
@@ -219,6 +247,7 @@ def test_despawn_never_removes_a_vehicle_currently_visible_in_the_viewport():
     px, py = _CENTER
     manager.populate_initial(px, py, residents, ways)
     assert len(manager.vehicles) == 10
+    original_ids = {vehicle.vehicle_id for vehicle in manager.vehicles}
     for vehicle in manager.vehicles:
         vehicle.car.x, vehicle.car.y = px + 10_000.0, py + 10_000.0
     # A viewport, however unrealistic relative to despawn_radius_m, that
@@ -228,7 +257,7 @@ def test_despawn_never_removes_a_vehicle_currently_visible_in_the_viewport():
         px, py, residents, traffic_world, ways, None, None, None, None, None, None, None,
         viewport_bounds=viewport_bounds,
     )
-    assert len(manager.vehicles) == 10
+    assert original_ids <= {vehicle.vehicle_id for vehicle in manager.vehicles}
 
 
 def test_population_tick_treats_an_en_route_vehicles_destination_as_claimed(monkeypatch):

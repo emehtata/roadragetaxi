@@ -25,7 +25,8 @@ Koska muut kuskit ovat idiootteja ja ajavat miten sattuu. Vähemmästäkin hermo
 - **Buildings & Scenery**: Renders building footprints, parks, forests, and green spaces with street/place name labels (`L` key).
 - **Street Lighting**: Roadside lamps are placed along urban drivable roads and their warm glow gradually turns on at dusk.
 - **Water & Multipolygon Rendering**: Renders lakes, reservoirs, and waterways under the road network.
-- **Resident-First Traffic World**: The runtime traffic architecture contains residents, pedestrians, crossings, traffic lights, roads, and taxi interactions. Autonomous NPC cars, rival taxis, and NPC parking traffic are disabled while the new traffic simulation is developed around persistent residents and pedestrians.
+- **Resident-First Traffic World**: Moving NPC traffic, parked cars, pedestrians, crossings, traffic lights, roads, and taxi interactions all run through the same resident-first simulation. Active moving NPC vehicles spawn with a real resident driver, may carry real resident passengers, and keep those relationships consistent while driving, yielding, parking, entering, and leaving vehicles.
+- **Living NPC Traffic**: Moving traffic is maintained separately from parked population, spawns off-screen on valid OSM roads with routes prepared before activation, supports both directions of travel, and keeps feeding cars into the player's area without visible mass pops.
 - **Pedestrians**: Pedestrians use dedicated paths, mapped entrances, and crossings; they track destinations, use logical traffic signals, wait before unsafe crossings, enter buildings at doors, and update at distance-based LOD rates. Hospitality venues receive extra activity, including drunk pedestrians with 0.5-3.0 promille, slower unstable walking, and occasional falls; selecting a resident shows their promille value. At night, visible pedestrians show a bright reflector point until a car headlight or street light illuminates them.
 - **Traffic Violations**: Red-light, wrong-way, collision, building, and scenery penalties are tracked in the taxi score.
 - **Tree Crash Effects**: Tree impacts shake the tree and scatter leaves; impacts above 80 km/h knock the tree down, smoke the taxi, and immobilize it for five seconds.
@@ -265,7 +266,7 @@ Game sounds are stored in `src/theroadragetrip/sounds/`. CC0 sounds require no a
 | `B` | Toggle traffic-light assist |
 | `C` | Toggle compass (off by default) |
 | `N` | Toggle yellow route to the active pickup or dropoff target |
-| `Space` | Rattiraivo / Road Rage: trigger the taxi rage effect |
+| `Space` | Rattiraivo / Road Rage: make nearby moving NPC drivers brake, yield, and try to pull aside |
 | `P` | Open taxi phone and view three ride offers |
 | `1` - `3` | Accept a selected ride in the taxi phone |
 | `F1` | Open the full tutorial and control list |
@@ -279,7 +280,7 @@ The F12 JSON includes all car properties, taxi mission state, map counts and bou
 
 To inspect a saved profile, run `python -m pstats screenshots/profile_*.prof` or open it with a compatible profiler such as SnakeViz. Collect 10-20 seconds of normal gameplay between `F9` and `F10`; profiling can lower FPS while active.
 
-With `F3` enabled, the profiler overlay reports frame time, rolling average, FPS, spike count, and the slowest subsystem from the last spike. It also records render stages (roads, buildings, actors, lighting, and labels); spike thresholds are 25, 50, and 100 ms.
+With `F3` enabled, the profiler overlay reports frame time, rolling average, p95, p99, worst frame, FPS, spike counts, and the slowest subsystem from the last spike. It also records render stages (roads, buildings, actors, lighting, and labels), plus NPC moving/parked counts, driver/passenger totals, Road Rage/yielding counts, and population tick timings.
 
 The pause menu's **Settings** screen changes language and master, background, and effects volume. Left/right adjusts values; Escape returns to the pause menu. At a taxi stand, customers appear occasionally when a stand enters view, either already nearby or outside the screen, then walk to the stand before boarding. Existing pedestrians can also become customers. In areas without taxi stands, a nearby interested pedestrian can hail the taxi while stopped or while it passes. Completed passengers leave beside the taxi and continue walking.
 
