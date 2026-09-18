@@ -1,6 +1,7 @@
 """Tests for NPC-001: the first autonomous NPC car (theroadragetrip.npc)."""
 import math
 import os
+import random
 from types import SimpleNamespace
 
 os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
@@ -14,6 +15,7 @@ from theroadragetrip.npc import (
     Driver,
     NPCState,
     NPCVehicle,
+    NPCVehicleManager,
     PathPoint,
     TripGroup,
     _lane_offset_point,
@@ -81,6 +83,34 @@ def test_moving_npc_vehicle_has_a_resident_driver():
     assert resident is not None
     assert resident.active_vehicle_id == vehicle.vehicle_id
     assert has_active_driver(vehicle, residents)
+
+
+def test_spawned_passengers_are_real_residents_with_vehicle_roles(monkeypatch: pytest.MonkeyPatch):
+    ways = _straight_chain()
+    tw = TrafficWorld(ways)
+    residents = ResidentManager()
+    original_randint = random.randint
+    monkeypatch.setattr(
+        "theroadragetrip.npc.random.randint",
+        lambda a, b: 3 if a == 1 and b >= 3 else original_randint(a, b),
+    )
+
+    result = spawn_npc(1, residents, tw, ways, (0.0, 0.0), (200.0, 0.0))
+
+    assert result is not None
+    resident_id, _driver, vehicle = result
+    trip_group = vehicle.trip_group
+    assert trip_group is not None
+    assert len(trip_group.member_resident_ids) == 3
+    onboard = [residents.get(member_id) for member_id in trip_group.member_resident_ids]
+    assert all(member is not None for member in onboard)
+    assert residents.get(resident_id).active_vehicle_role == "driver"
+    passenger_roles = [
+        resident.active_vehicle_role
+        for resident in onboard
+        if resident is not None and resident.resident_id != resident_id
+    ]
+    assert passenger_roles == ["passenger", "passenger"]
 
 
 def test_spawn_npc_picks_a_varied_color_when_none_is_given():
@@ -235,6 +265,88 @@ def test_npc_settles_close_to_its_building_yard_point_not_partway_back_to_the_ro
     final_point = driver.path[-1]
     final_distance = math.hypot(vehicle.x - final_point.x, vehicle.y - final_point.y)
     assert final_distance < NPC_ARRIVAL_RADIUS_M
+
+
+def test_road_rage_keeps_driver_associated_while_vehicle_slows():
+    ways = _straight_chain(count=20)
+    tw = TrafficWorld(ways)
+    residents = ResidentManager()
+    manager = NPCVehicleManager(target_count=1)
+    result = spawn_npc(1, residents, tw, ways, (20.0, 0.0), (280.0, 0.0))
+    assert result is not None
+    resident_id, driver, vehicle = result
+    manager.vehicles.append(vehicle)
+    manager.drivers[vehicle.vehicle_id] = driver
+    player = Car(x=0.0, y=0.0, heading=0.0, speed=0.0)
+
+    assert manager.trigger_road_rage(player) is vehicle
+
+    reaction_top_speed = 0.0
+    seen_yield = False
+    seen_stop = False
+    for _ in range(300):
+        update_npc(vehicle, driver, 1.0 / 30.0, tw, residents, manager=manager)
+        if not seen_stop:
+            reaction_top_speed = max(reaction_top_speed, vehicle.speed)
+        seen_yield = seen_yield or driver.road_rage_state == "YIELDING"
+        seen_stop = seen_stop or driver.road_rage_state == "STOPPED" or vehicle.state == NPCState.WAITING
+    assert has_active_driver(vehicle, residents)
+    assert vehicle.owner_id == resident_id
+    assert seen_yield
+    assert seen_stop
+    assert reaction_top_speed <= 4.5
+
+
+def test_following_vehicle_reacts_to_road_rage_queue():
+    ways = _straight_chain(count=20)
+    tw = TrafficWorld(ways)
+    residents = ResidentManager()
+    lead_result = spawn_npc(1, residents, tw, ways, (20.0, 0.0), (280.0, 0.0))
+    follower_result = spawn_npc(2, residents, tw, ways, (0.0, 0.0), (260.0, 0.0))
+    assert lead_result is not None and follower_result is not None
+    _, lead_driver, lead_vehicle = lead_result
+    _, follower_driver, follower_vehicle = follower_result
+    manager = NPCVehicleManager(target_count=2)
+    manager.vehicles.extend([lead_vehicle, follower_vehicle])
+    manager.drivers[lead_vehicle.vehicle_id] = lead_driver
+    manager.drivers[follower_vehicle.vehicle_id] = follower_driver
+
+    for _ in range(15):
+        update_npc(lead_vehicle, lead_driver, 1.0 / 30.0, tw, residents, manager=manager)
+        update_npc(
+            follower_vehicle,
+            follower_driver,
+            1.0 / 30.0,
+            tw,
+            residents,
+            nearby_obstacles=[lead_vehicle],
+            manager=manager,
+        )
+    assert manager.trigger_road_rage(
+        Car(x=lead_vehicle.x - 8.0, y=lead_vehicle.y, heading=0.0, speed=0.0)
+    ) is lead_vehicle
+    stopped_gap = None
+    follower_slowed = False
+    starting_speed_cap = follower_driver.target_speed_mps
+    for _ in range(240):
+        manager.rebuild_spatial_grid()
+        nearby = list(manager.nearby_vehicles_at(follower_vehicle.x, follower_vehicle.y, 30.0))
+        update_npc(lead_vehicle, lead_driver, 1.0 / 30.0, tw, residents, nearby_obstacles=nearby, manager=manager)
+        update_npc(
+            follower_vehicle,
+            follower_driver,
+            1.0 / 30.0,
+            tw,
+            residents,
+            nearby_obstacles=nearby,
+            manager=manager,
+        )
+        follower_slowed = follower_slowed or follower_driver.target_speed_mps < starting_speed_cap
+        if lead_driver.road_rage_state == "STOPPED":
+            stopped_gap = lead_vehicle.x - follower_vehicle.x
+            break
+    assert follower_slowed
+    assert stopped_gap is not None and stopped_gap > 0.0
 
 
 def test_red_light_produces_stop():

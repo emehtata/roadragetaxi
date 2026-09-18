@@ -97,3 +97,40 @@ def test_weighted_name_cache_is_reused_across_calls():
     assert cached_first is cached_second, (
         "candidates/weights were rebuilt on the second call instead of reused from cache"
     )
+
+
+def test_board_vehicle_sets_role_and_mode():
+    manager = ResidentManager()
+    resident = manager.create()
+
+    manager.board_vehicle(resident.resident_id, 12, "driver")
+
+    assert resident.active_vehicle_id == 12
+    assert resident.active_vehicle_role == "driver"
+    assert resident.mode == "driving"
+    assert 12 in resident.vehicle_ids
+
+
+def test_resident_cannot_occupy_two_vehicles():
+    manager = ResidentManager()
+    resident = manager.create()
+    manager.board_vehicle(resident.resident_id, 12, "passenger")
+
+    try:
+        manager.board_vehicle(resident.resident_id, 13, "driver")
+    except ValueError as exc:
+        assert "another vehicle" in str(exc)
+    else:
+        raise AssertionError("expected resident to be prevented from occupying two vehicles")
+
+
+def test_leave_vehicle_clears_role_and_active_vehicle():
+    manager = ResidentManager()
+    resident = manager.create()
+    manager.board_vehicle(resident.resident_id, 12, "passenger")
+
+    manager.leave_vehicle(resident.resident_id, vehicle_id=12, mode="walking")
+
+    assert resident.active_vehicle_id is None
+    assert resident.active_vehicle_role is None
+    assert resident.mode == "walking"

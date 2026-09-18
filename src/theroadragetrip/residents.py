@@ -96,6 +96,7 @@ class Resident:
     mode: str = "walking"
     vehicle_ids: Set[int] = field(default_factory=set)
     active_vehicle_id: Optional[int] = None
+    active_vehicle_role: Optional[str] = None
     # multi-passenger-car.md sections 3, 16: which NPCVehicle trip group (if
     # any) this resident is currently travelling with - None once they
     # leave the group (reboard timeout, or never in one to begin with).
@@ -204,6 +205,36 @@ class ResidentManager:
 
     def remove(self, resident_id: int) -> None:
         self.residents.pop(resident_id, None)
+
+    def board_vehicle(self, resident_id: int, vehicle_id: int, role: str) -> Resident:
+        resident = self.residents[resident_id]
+        if role not in {"driver", "passenger"}:
+            raise ValueError("role must be driver or passenger")
+        if resident.active_vehicle_id is not None and resident.active_vehicle_id != vehicle_id:
+            raise ValueError("resident already occupies another vehicle")
+        if resident.active_vehicle_role is not None and resident.active_vehicle_role != role:
+            raise ValueError("resident already occupies this vehicle in another role")
+        resident.vehicle_ids.add(vehicle_id)
+        resident.active_vehicle_id = vehicle_id
+        resident.active_vehicle_role = role
+        resident.mode = "driving" if role == "driver" else "riding"
+        return resident
+
+    def leave_vehicle(
+        self,
+        resident_id: int,
+        vehicle_id: Optional[int] = None,
+        mode: str = "walking",
+    ) -> Optional[Resident]:
+        resident = self.get(resident_id)
+        if resident is None:
+            return None
+        if vehicle_id is not None and resident.active_vehicle_id not in (None, vehicle_id):
+            raise ValueError("resident is not in that vehicle")
+        resident.active_vehicle_id = None
+        resident.active_vehicle_role = None
+        resident.mode = mode
+        return resident
 
     def update_lod(self, resident_id: Optional[int], x: float, y: float, player_x: float, player_y: float, dt: float) -> int:
         """Update shared LOD state for a resident represented in the world."""

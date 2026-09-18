@@ -727,9 +727,10 @@ def _load_world(
         progress_callback=lambda fraction: on_load_progress(0.88 + 0.06 * fraction, "Preparing NPC traffic..."),
     )
     logger.info(
-        "NPC-003: populated %d/%d NPC vehicles (%d household, %d autonomous), by type: %s",
+        "NPC traffic populated %d/%d vehicles (%d resident, %d autonomous, moving target %d), by type: %s",
         len(npc_manager.vehicles), npc_manager.target_count,
-        npc_manager.population_counts()["household"], npc_manager.population_counts()["autonomous"],
+        npc_manager.population_counts()["resident_vehicles"], npc_manager.population_counts()["autonomous"],
+        npc_manager.population_counts()["moving_target"],
         npc_manager.population_counts_by_type(),
     )
     # Same list/dict objects for the life of the session - npc_manager's
@@ -1358,6 +1359,7 @@ def main() -> None:
                             rage_power -= RAGE_SHOUT_COST
                             rage_shout_timer = 5.0
                             rage_shout_text = random.choice(RAGE_SHOUTS)
+                            npc_manager.trigger_road_rage(car)
                     elif phone_open:
                         if event.key == pygame.K_ESCAPE:
                             phone_open = False
@@ -1805,6 +1807,20 @@ def main() -> None:
                 and viewport_bounds[1] <= npc.y <= viewport_bounds[3]
                 for npc in npcs
             ))
+            npc_counts = npc_manager.population_counts()
+            frame_profiler.set_metric("moving_npcs", npc_counts["moving"])
+            frame_profiler.set_metric("parked_npcs", npc_counts["parked"])
+            frame_profiler.set_metric("visible_moving_npcs", npc_counts["visible_moving"])
+            frame_profiler.set_metric("npc_drivers", npc_counts["drivers"])
+            frame_profiler.set_metric("npc_passengers", npc_counts["passengers"])
+            frame_profiler.set_metric("road_rage_npcs", npc_counts["road_rage"])
+            frame_profiler.set_metric("yielding_npcs", npc_counts["yielding"])
+            frame_profiler.set_metric("npc_route_planning_ms", npc_manager.perf_metrics["route_planning_ms"])
+            frame_profiler.set_metric("npc_population_tick_ms", npc_manager.perf_metrics["population_tick_ms"])
+            frame_profiler.set_metric("npc_spawn_ms", npc_manager.perf_metrics["spawn_ms"])
+            frame_profiler.set_metric("npc_despawn_ms", npc_manager.perf_metrics["despawn_ms"])
+            frame_profiler.set_metric("npc_spawns", npc_counts["spawned_last_tick"])
+            frame_profiler.set_metric("npc_despawns", npc_counts["despawned_last_tick"])
             frame_profiler.set_metric("visible_pedestrians", sum(
                 viewport_bounds[0] <= ped.x <= viewport_bounds[2]
                 and viewport_bounds[1] <= ped.y <= viewport_bounds[3]

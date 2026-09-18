@@ -452,6 +452,12 @@ class PedestrianManager:
                 pedestrian.animation_state = "walking"
                 pedestrian.door_grace_timer = 5.0
                 trip_group.boarded_resident_ids.discard(resident_id)
+                if self.residents is not None:
+                    self.residents.leave_vehicle(
+                        resident_id,
+                        vehicle_id=self._vehicle_identity(vehicle),
+                        mode="walking",
+                    )
                 self.add_pedestrian(pedestrian)
                 linked_residents.add(resident_id)
 
@@ -686,6 +692,12 @@ class PedestrianManager:
             pedestrian.vehicle_entry_timer = max(0.0, pedestrian.vehicle_entry_timer - update_dt)
             if pedestrian.vehicle_entry_timer <= 0.0:
                 trip_group.boarded_resident_ids.add(pedestrian.resident_id)
+                if self.residents is not None and pedestrian.resident_id is not None:
+                    self.residents.board_vehicle(
+                        pedestrian.resident_id,
+                        self._vehicle_identity(vehicle),
+                        role="driver" if pedestrian.resident_id == getattr(vehicle, "owner_id", None) else "passenger",
+                    )
                 pedestrian.state = PedestrianState.DESPAWNING.value
                 pedestrian.linked_vehicle_id = None
             return True
@@ -874,7 +886,7 @@ class PedestrianManager:
             return False
         vehicle.reserved_by_pedestrian_id = id(pedestrian)
         vehicle.state = "reserved"
-        pedestrian.reserved_vehicle_id = id(vehicle)
+        pedestrian.reserved_vehicle_id = self._vehicle_identity(vehicle)
         pedestrian.destination = self._vehicle_entry_position(vehicle)
         pedestrian.route = self._footway_route_to(pedestrian, pedestrian.destination)
         pedestrian.current_route_segment = 1
@@ -934,6 +946,10 @@ class PedestrianManager:
             vehicle.y + math.cos(heading) * offset,
         )
 
+    @staticmethod
+    def _vehicle_identity(vehicle) -> int:
+        return int(getattr(vehicle, "vehicle_id", id(vehicle)))
+
     def cancel_vehicle_reservation(self, pedestrian: Pedestrian) -> None:
         """Release any vehicle reservation owned by a pedestrian."""
         vehicle_id = pedestrian.reserved_vehicle_id
@@ -941,7 +957,7 @@ class PedestrianManager:
             return
         vehicles = self.traffic_manager.npcs if self.traffic_manager is not None else self.traffic_vehicles
         for vehicle in vehicles:
-            if id(vehicle) == vehicle_id and getattr(vehicle, "reserved_by_pedestrian_id", None) == id(pedestrian):
+            if self._vehicle_identity(vehicle) == vehicle_id and getattr(vehicle, "reserved_by_pedestrian_id", None) == id(pedestrian):
                 vehicle.reserved_by_pedestrian_id = None
                 if vehicle.state == "reserved":
                     vehicle.state = "parked"
@@ -951,7 +967,7 @@ class PedestrianManager:
     def enter_reserved_vehicle(self, pedestrian: Pedestrian, vehicle) -> bool:
         """Complete a reserved pedestrian-to-vehicle entry without creating entities."""
         if (
-            pedestrian.reserved_vehicle_id != id(vehicle)
+            pedestrian.reserved_vehicle_id != self._vehicle_identity(vehicle)
             or vehicle.state != "reserved"
             or math.hypot(vehicle.x - pedestrian.x, vehicle.y - pedestrian.y) > 3.0
         ):
@@ -961,10 +977,11 @@ class PedestrianManager:
         vehicle.state = "occupied"
         if self.residents is not None and pedestrian.resident_id is not None:
             vehicle.owner_id = pedestrian.resident_id
-            resident = self.residents.get(pedestrian.resident_id)
-            if resident is not None:
-                resident.mode = "driving"
-                resident.active_vehicle_id = id(vehicle)
+            self.residents.board_vehicle(
+                pedestrian.resident_id,
+                self._vehicle_identity(vehicle),
+                role="driver",
+            )
         vehicle_way = getattr(vehicle, "way", None)
         vehicle_points = getattr(vehicle_way, "points_m", ())
         if len(vehicle_points) >= 2:
@@ -972,7 +989,7 @@ class PedestrianManager:
                 vehicle_points[-1] if getattr(vehicle, "direction", 1) == 1 else vehicle_points[0]
             )
         pedestrian.reserved_vehicle_id = None
-        pedestrian.current_vehicle_id = id(vehicle)
+        pedestrian.current_vehicle_id = self._vehicle_identity(vehicle)
         if pedestrian.linked_vehicle_id == id(vehicle):
             pedestrian.linked_vehicle_id = None
             pedestrian.linked_building_entrance = None
@@ -987,7 +1004,7 @@ class PedestrianManager:
     def exit_vehicle(self, pedestrian: Pedestrian, vehicle, animate: bool = False) -> bool:
         """Return a pedestrian beside an occupied vehicle and resume normal driving."""
         if (
-            pedestrian.current_vehicle_id != id(vehicle)
+            pedestrian.current_vehicle_id != self._vehicle_identity(vehicle)
             or getattr(vehicle, "current_driver_id", None) != id(pedestrian)
             or getattr(vehicle, "state", "driving") != "occupied"
         ):
@@ -1008,6 +1025,12 @@ class PedestrianManager:
         else:
             vehicle.current_driver_id = None
             vehicle.state = "driving"
+        if self.residents is not None and pedestrian.resident_id is not None:
+            self.residents.leave_vehicle(
+                pedestrian.resident_id,
+                vehicle_id=self._vehicle_identity(vehicle),
+                mode="walking",
+            )
         return True
 
     def _at_building_entrance(self, x: float, y: float, radius_m: float = 1.5) -> bool:
@@ -1778,7 +1801,7 @@ class PedestrianManager:
                 if (
                     ped.state in {"approaching_vehicle", "entering_vehicle", "in_vehicle"}
                     and linked_vehicle_id is not None
-                    and any(id(vehicle) == linked_vehicle_id for vehicle in vehicles)
+                    and any(self._vehicle_identity(vehicle) == linked_vehicle_id for vehicle in vehicles)
                 ):
                     kept_peds.append(ped)
                     continue
@@ -1906,7 +1929,14 @@ class PedestrianManager:
                 ped.speed = 0.0
                 ped.animation_state = "idle"
                 vehicles = self.traffic_manager.npcs if self.traffic_manager is not None else self.traffic_vehicles
-                vehicle = next((candidate for candidate in vehicles if id(candidate) == ped.current_vehicle_id), None)
+                vehicle = next(
+                    (
+                        candidate
+                        for candidate in vehicles
+                        if self._vehicle_identity(candidate) == ped.current_vehicle_id
+                    ),
+                    None,
+                )
                 if vehicle is None or getattr(vehicle, "current_driver_id", None) != id(ped):
                     ped.current_vehicle_id = None
                     ped.state = "walking"
@@ -1937,7 +1967,14 @@ class PedestrianManager:
                     continue
             if ped.reserved_vehicle_id is not None:
                 vehicles = self.traffic_manager.npcs if self.traffic_manager is not None else self.traffic_vehicles
-                vehicle = next((candidate for candidate in vehicles if id(candidate) == ped.reserved_vehicle_id), None)
+                vehicle = next(
+                    (
+                        candidate
+                        for candidate in vehicles
+                        if self._vehicle_identity(candidate) == ped.reserved_vehicle_id
+                    ),
+                    None,
+                )
                 if vehicle is None or getattr(vehicle, "reserved_by_pedestrian_id", None) != id(ped):
                     self.cancel_vehicle_reservation(ped)
                     ped.state = "walking"

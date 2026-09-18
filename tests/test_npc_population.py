@@ -8,12 +8,14 @@ os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
 
 from theroadragetrip.npc import (
     NPCAvailability,
+    NPC_MOVING_START_LIMIT_PER_TICK,
     NPCState,
     NPCVehicleManager,
     TripGroup,
     has_active_driver,
     place_parked_npc,
     spawn_npc,
+    update_npc,
 )
 from theroadragetrip.osm import Way
 from theroadragetrip.pedestrian import PedestrianManager
@@ -131,6 +133,44 @@ def test_population_tick_tops_up_gradually_not_in_one_tick():
     manager.update(NPC_POPULATION_TICK_S, px, py, residents, traffic_world, ways)
     assert 0 < len(manager.vehicles) <= NPC_POPULATION_SPAWN_LIMIT_PER_TICK
     assert len(manager.vehicles) < manager.target_count
+
+
+def test_population_tick_maintains_separate_moving_traffic_target():
+    from theroadragetrip.npc import NPC_POPULATION_TICK_S
+
+    ways = _city_block_grid()
+    manager = NPCVehicleManager(target_count=12, spawn_radius_m=_SPAWN_RADIUS_M, vehicle_distribution={"car": 1.0})
+    traffic_world = TrafficWorld(ways)
+    residents = ResidentManager()
+    px, py = _CENTER
+    manager.populate_initial(px, py, residents, ways)
+
+    for _ in range(3):
+        manager.update(NPC_POPULATION_TICK_S, px, py, residents, traffic_world, ways)
+
+    counts = manager.population_counts()
+    assert counts["parked"] > 0
+    assert counts["moving"] >= 1
+    assert counts["moving"] >= counts["moving_target"] - NPC_MOVING_START_LIMIT_PER_TICK
+
+
+def test_parked_vehicles_do_not_satisfy_moving_target():
+    from theroadragetrip.npc import NPC_POPULATION_TICK_S
+
+    ways = _city_block_grid()
+    manager = NPCVehicleManager(target_count=10, spawn_radius_m=_SPAWN_RADIUS_M, vehicle_distribution={"car": 1.0})
+    traffic_world = TrafficWorld(ways)
+    residents = ResidentManager()
+    px, py = _CENTER
+    manager.populate_initial(px, py, residents, ways)
+
+    counts_before = manager.population_counts()
+    assert counts_before["moving"] == 0
+
+    manager.update(NPC_POPULATION_TICK_S, px, py, residents, traffic_world, ways)
+
+    counts_after = manager.population_counts()
+    assert counts_after["moving"] > 0
 
 
 def test_no_duplicate_vehicle_ids_after_several_population_ticks():

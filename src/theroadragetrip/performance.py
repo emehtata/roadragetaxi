@@ -99,8 +99,17 @@ class FrameProfiler:
     def fps(self) -> float:
         return 1000.0 / self.last_frame_ms if self.last_frame_ms > 0.0 else 0.0
 
+    @staticmethod
+    def _percentile(values: list[float], fraction: float) -> float:
+        if not values:
+            return 0.0
+        ordered = sorted(values)
+        index = max(0, min(len(ordered) - 1, int(round((len(ordered) - 1) * fraction))))
+        return ordered[index]
+
     def snapshot(self) -> dict[str, object]:
-        average_ms = sum(self.history) / len(self.history) if self.history else 0.0
+        history = list(self.history)
+        average_ms = sum(history) / len(history) if history else 0.0
         spike_sections = (
             sorted(self.last_spike["sections"].items(), key=lambda item: -item[1])
             if self.last_spike
@@ -109,6 +118,11 @@ class FrameProfiler:
         return {
             "frame_ms": self.last_frame_ms,
             "average_ms": average_ms,
+            "p95_ms": self._percentile(history, 0.95),
+            "p99_ms": self._percentile(history, 0.99),
+            "worst_ms": max(history) if history else 0.0,
+            "frames_over_16_7_ms": sum(1 for value in history if value > 16.7),
+            "frames_over_33_ms": sum(1 for value in history if value > 33.0),
             "fps": self.fps,
             "sections": dict(self.sections),
             "metrics": dict(self.metrics),

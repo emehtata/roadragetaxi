@@ -558,6 +558,8 @@ def draw_frame_profiler(screen, font, profiler, npc_count: int, pedestrian_count
     snapshot = profiler.snapshot()
     lines = [
         f"FRAME {snapshot['frame_ms']:.1f} ms | AVG {snapshot['average_ms']:.1f} ms | FPS {snapshot['fps']:.1f}",
+        f"P95 {snapshot['p95_ms']:.1f} | P99 {snapshot['p99_ms']:.1f} | WORST {snapshot['worst_ms']:.1f}",
+        f">{16.7:.1f}ms {snapshot['frames_over_16_7_ms']} | >33.0ms {snapshot['frames_over_33_ms']}",
         f"SPIKES {snapshot['spikes']} | culprit {snapshot['spike_subsystem'] or 'none'}",
         f"NPC {npc_count} | pedestrians {pedestrian_count}",
     ]
@@ -719,6 +721,12 @@ def draw_npc_debug_panel(screen, vehicle, driver, font, x: int = 10, y: int = 22
     recovery_stage = getattr(driver, "recovery_stage", "NORMAL")
     if recovery_stage != "NORMAL" or getattr(vehicle, "driver_departed", False):
         lines.append(f"recovery={recovery_stage} driver_departed={getattr(vehicle, 'driver_departed', False)}")
+    road_rage_state = getattr(driver, "road_rage_state", "NONE")
+    if road_rage_state != "NONE":
+        lines.append(
+            f"road_rage={road_rage_state} timer={getattr(driver, 'road_rage_timer_s', 0.0):.1f}s "
+            f"count={getattr(driver, 'road_rage_trigger_count', 0)}"
+        )
     panel_w = 360
     panel_h = 10 + len(lines) * 16
     pygame.draw.rect(screen, (16, 20, 26, 215), (x, y, panel_w, panel_h), border_radius=5)
@@ -744,13 +752,29 @@ def draw_npc_population_panel(
     an arbitrary render limit)."""
     import pygame
 
+    moving = counts.get("moving", counts.get("driving", 0))
+    moving_target = counts.get("moving_target", moving)
+    resident_vehicles = counts.get("resident_vehicles", counts.get("household", 0))
+    passengers = counts.get("passengers", 0)
+    drivers = counts.get("drivers", 0)
+    road_rage = counts.get("road_rage", 0)
+    yielding = counts.get("yielding", 0)
+    routing = counts.get("routing", 0)
+    pending_route_preparations = counts.get("pending_route_preparations", 0)
+    spawned_last_tick = counts.get("spawned_last_tick", 0)
+    despawned_last_tick = counts.get("despawned_last_tick", 0)
+    crashed = counts.get("crashed", 0)
+    visible_moving = counts.get("visible_moving", 0)
+
     lines = [
         "NPC population",
-        f"total={counts['total']} parked={counts['parked']} driving={counts['driving']}",
-        f"reserved={counts['reserved']} household={counts['household']} autonomous={counts['autonomous']}",
+        f"total={counts['total']} moving={moving}/{moving_target} parked={counts['parked']}",
+        f"resident={resident_vehicles} autonomous={counts['autonomous']} drivers={drivers} passengers={passengers}",
+        f"road_rage={road_rage} yielding={yielding} routing={routing} pending={pending_route_preparations}",
+        f"spawns={spawned_last_tick} despawns={despawned_last_tick} crashed={crashed}",
     ]
     if visible_count is not None:
-        lines.append(f"visible={visible_count}")
+        lines.append(f"visible={visible_count} visible_moving={visible_moving}")
     if by_type:
         lines.append("by type: " + ", ".join(f"{vehicle_id}={count}" for vehicle_id, count in sorted(by_type.items())))
     panel_w = 300
