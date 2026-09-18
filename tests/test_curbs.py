@@ -66,6 +66,94 @@ def test_kerb_around_a_real_planting_island_renders_both_curb_and_fill():
     assert len(result.sceneries[0].points_m) == 5
 
 
+def test_bare_kerb_island_with_no_fill_tag_still_gets_a_traffic_island_fill():
+    """Regression: real Oulu traffic islands are mapped as a closed way
+    tagged only {barrier=kerb, kerb=raised, traffic_calming=island} - no
+    natural=*/landuse=*/leisure=* at all. Without an explicit fill, that
+    closed loop only ever rendered as a thin curb outline sitting on the
+    road's own asphalt with nothing distinguishing its interior - reads
+    as empty road, not a solid island."""
+    elements = [
+        {"type": "node", "id": 1, "lat": 60.0, "lon": 25.0},
+        {"type": "node", "id": 2, "lat": 60.0005, "lon": 25.0},
+        {"type": "node", "id": 3, "lat": 60.0005, "lon": 25.0005},
+        {"type": "node", "id": 4, "lat": 60.0, "lon": 25.0005},
+        {
+            "type": "way", "id": 17, "nodes": [1, 2, 3, 4, 1],
+            "tags": {"barrier": "kerb", "kerb": "raised", "traffic_calming": "island"},
+        },
+    ]
+
+    result = build_ways(elements)
+
+    assert len(result.curbs) == 1
+    assert len(result.sceneries) == 1
+    assert result.sceneries[0].kind == "traffic_island"
+    assert len(result.sceneries[0].points_m) == 5
+
+
+def test_open_kerb_line_gets_no_traffic_island_fill():
+    """An ordinary curb line along a road - a thin sliver, near-zero width
+    in its narrow direction - must not get a fill just because it's short:
+    real curb lines are frequently mapped in short segments too, so span
+    alone can't tell them apart from a real (compact, real-width) island."""
+    elements = [
+        {"type": "node", "id": 1, "lat": 60.0, "lon": 25.0},
+        {"type": "node", "id": 2, "lat": 60.0005, "lon": 25.0},
+        {
+            "type": "way", "id": 18, "nodes": [1, 2],
+            "tags": {"barrier": "kerb"},
+        },
+    ]
+
+    result = build_ways(elements)
+
+    assert len(result.curbs) == 1
+    assert len(result.sceneries) == 0
+
+
+def test_explicit_area_highway_traffic_island_tag_always_gets_a_fill():
+    """area:highway=traffic_island (the newer OSM convention, also found
+    in real project data) is an explicit signal - always fill it,
+    regardless of size/shape, unlike the bare-kerb geometric fallback."""
+    elements = [
+        {"type": "node", "id": 1, "lat": 60.0, "lon": 25.0},
+        {"type": "node", "id": 2, "lat": 60.00003, "lon": 25.0},
+        {"type": "node", "id": 3, "lat": 60.00003, "lon": 25.00006},
+        {"type": "node", "id": 4, "lat": 60.0, "lon": 25.00006},
+        {
+            "type": "way", "id": 19, "nodes": [1, 2, 3, 4],
+            "tags": {"barrier": "kerb", "area:highway": "traffic_island"},
+        },
+    ]
+
+    result = build_ways(elements)
+
+    assert len(result.curbs) == 1
+    assert len(result.sceneries) == 1
+    assert result.sceneries[0].kind == "traffic_island"
+
+
+def test_thin_kerb_sliver_gets_no_traffic_island_fill_even_if_short():
+    """A short but thin (near-zero width) kerb shape - e.g. a rounded
+    driveway-entrance curb - must not be mistaken for a compact island
+    just because its span is small."""
+    elements = [
+        {"type": "node", "id": 1, "lat": 60.0, "lon": 25.0},
+        {"type": "node", "id": 2, "lat": 60.00005, "lon": 25.0},
+        {"type": "node", "id": 3, "lat": 60.0001, "lon": 25.0},
+        {
+            "type": "way", "id": 20, "nodes": [1, 2, 3],
+            "tags": {"barrier": "kerb"},
+        },
+    ]
+
+    result = build_ways(elements)
+
+    assert len(result.curbs) == 1
+    assert len(result.sceneries) == 0
+
+
 def test_curbs_round_trip_through_world_cache(tmp_path):
     elements = [
         {"type": "node", "id": 1, "lat": 60.0, "lon": 25.0},

@@ -163,7 +163,7 @@ def draw_city_selection_menu(
     language: str = "fi",
     force_refresh: bool = False,
 ) -> None:
-    """Draw city selection menu with 10 largest cities in Finland."""
+    """Draw city selection menu with cities spread across Finland (largest per latitude band)."""
     import pygame
 
     draw_loading_screen(screen, font, 1.0, tr(language, "ready"), screen_w, screen_h, show_details=False, language=language)

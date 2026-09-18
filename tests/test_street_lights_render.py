@@ -4,7 +4,8 @@ os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
 
 import pygame
 
-from theroadragetrip.osm import Way
+from theroadragetrip.osm import SceneryObject, Way
+from theroadragetrip.physics import SpatialWayGrid
 import theroadragetrip.render as render
 from theroadragetrip.render import draw_day_night_overlay, draw_street_lights, world_to_screen
 
@@ -444,5 +445,132 @@ def test_street_light_pool_does_not_amplify_headlight_brightness():
         )
 
         assert max(screen.get_at((120, 90))[:3]) <= 240
+    finally:
+        pygame.quit()
+
+
+def test_explicit_osm_lamp_positions_take_precedence_over_synthetic_spacing():
+    """lights.md requirement 1-3: an explicit highway=street_lamp node,
+    when mapped, is the primary source for this way's lighting - its
+    exact real position must be used instead of the lit=*-driven fixed
+    12m-spacing synthesis, not blended alongside it."""
+    pygame.init()
+    try:
+        screen = pygame.Surface((400, 300), pygame.SRCALPHA)
+        screen.fill((20, 20, 30, 255))
+        road = Way(
+            points_m=[(0.0, 0.0), (100.0, 0.0)],
+            highway="tertiary",
+            half_width_m=4.0,
+            lit="yes",
+        )
+        # Deliberately not a multiple of STREET_LIGHT_SPACING_M (12.0) -
+        # if synthesis ran instead of using this real position, no
+        # candidate would ever land here.
+        lamp = SceneryObject(x=27.3, y=4.5, kind="street_lamp")
+        lamp_grid = SpatialWayGrid()
+        lamp_grid.rebuild([lamp])
+
+        draw_street_lights(
+            screen,
+            [road],
+            camx=50.0,
+            camy=0.0,
+            game_time_seconds=0.0,
+            px_per_m=2.0,
+            screen_w=400,
+            screen_h=300,
+            daylight_surface=None,
+            buildings=[],
+            street_lamps=[lamp],
+            street_lamp_grid=lamp_grid,
+        )
+
+        positions = render._street_light_frame_world_positions
+        assert positions == [(27.3, 4.5)]
+    finally:
+        pygame.quit()
+
+
+def test_explicit_lamp_tolerance_covers_a_realistic_curbside_setback():
+    """Regression: measured against a real Oulu extract with actual
+    highway=street_lamp nodes, a real lamp is often set back from the
+    road by more than a couple of meters (verge/sidewalk between them) -
+    median distance to the nearest lighting-eligible road was ~7.4m, 84%
+    within 15m. An earlier, tighter 8m tolerance missed real lamps like
+    this one; STREET_LIGHT_EXPLICIT_LAMP_MAX_DISTANCE_M must be generous
+    enough to still treat this as "this way's lamp"."""
+    pygame.init()
+    try:
+        screen = pygame.Surface((400, 300), pygame.SRCALPHA)
+        screen.fill((20, 20, 30, 255))
+        road = Way(
+            points_m=[(0.0, 0.0), (100.0, 0.0)],
+            highway="tertiary",
+            half_width_m=4.0,
+            lit="yes",
+        )
+        # 15m from the centerline - beyond half_width(4) + the old 8m
+        # tolerance (12m), within half_width(4) + the current 15m one (19m).
+        lamp = SceneryObject(x=40.0, y=15.0, kind="street_lamp")
+        lamp_grid = SpatialWayGrid()
+        lamp_grid.rebuild([lamp])
+
+        draw_street_lights(
+            screen,
+            [road],
+            camx=50.0,
+            camy=0.0,
+            game_time_seconds=0.0,
+            px_per_m=2.0,
+            screen_w=400,
+            screen_h=300,
+            daylight_surface=None,
+            buildings=[],
+            street_lamps=[lamp],
+            street_lamp_grid=lamp_grid,
+        )
+
+        assert render._street_light_frame_world_positions == [(40.0, 15.0)]
+    finally:
+        pygame.quit()
+
+
+def test_way_without_a_nearby_explicit_lamp_still_falls_back_to_synthesis():
+    """A real lamp mapped somewhere else entirely must not suppress the
+    lit=* fallback for a way that has no explicit lamp data of its own."""
+    pygame.init()
+    try:
+        screen = pygame.Surface((400, 300), pygame.SRCALPHA)
+        screen.fill((20, 20, 30, 255))
+        road = Way(
+            points_m=[(0.0, 0.0), (100.0, 0.0)],
+            highway="tertiary",
+            half_width_m=4.0,
+            lit="yes",
+        )
+        far_away_lamp = SceneryObject(x=5000.0, y=5000.0, kind="street_lamp")
+        lamp_grid = SpatialWayGrid()
+        lamp_grid.rebuild([far_away_lamp])
+
+        draw_street_lights(
+            screen,
+            [road],
+            camx=50.0,
+            camy=0.0,
+            game_time_seconds=0.0,
+            px_per_m=2.0,
+            screen_w=400,
+            screen_h=300,
+            daylight_surface=None,
+            buildings=[],
+            street_lamps=[far_away_lamp],
+            street_lamp_grid=lamp_grid,
+        )
+
+        positions = render._street_light_frame_world_positions
+        assert positions  # synthesis still ran
+        assert (5000.0, 5000.0) not in positions
+        assert all(abs(y) >= road.half_width_m for _, y in positions)
     finally:
         pygame.quit()

@@ -7,8 +7,8 @@ TRANSLATIONS = {
     "fi": {
         "select_language": "Valitse kieli",
         "language_hint": "Vasen/Oikea tai numeronäppäin, ENTER / SPACE vahvistaa",
-        "select_city": "Valitse aloituskaupunki (4x4 km OSM-kartta)",
-        "city_hint": "UP/DOWN/LEFT/RIGHT tai 1-0, E muokkaa listaa, ENTER / SPACE aloittaa, ESC lopettaa",
+        "select_city": "Valitse aloituskaupunki (3x3 km OSM-kartta)",
+        "city_hint": "UP/DOWN/LEFT/RIGHT tai 1-0/A-Z, E muokkaa listaa, ENTER / SPACE aloittaa, ESC lopettaa",
         "refresh_map": "Hae uusin kartta",
         "edit_city_list": "Muokkaa kaupunkilistaa",
         "settings": "ASETUKSET",
@@ -146,8 +146,8 @@ TRANSLATIONS = {
     "en": {
         "select_language": "Select language",
         "language_hint": "LEFT/RIGHT or number key, ENTER / SPACE confirms",
-        "select_city": "Select starting city (4x4 km OSM map)",
-        "city_hint": "UP/DOWN/LEFT/RIGHT or 1-0, E edits list, ENTER / SPACE starts, ESC quits",
+        "select_city": "Select starting city (3x3 km OSM map)",
+        "city_hint": "UP/DOWN/LEFT/RIGHT or 1-0/A-Z, E edits list, ENTER / SPACE starts, ESC quits",
         "refresh_map": "Fetch latest map",
         "edit_city_list": "Edit city list",
         "settings": "SETTINGS",

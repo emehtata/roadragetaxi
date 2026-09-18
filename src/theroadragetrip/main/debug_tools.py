@@ -1,18 +1,227 @@
 import json
 import logging
+import math
 import os
 import sys
 import time
 from dataclasses import asdict
+from typing import List, Optional
 
 
 from .. import tile_streaming
+from ..geo import dist_point_to_segment, point_in_polygon
 from ..physics import (
     Car,
 )
 
 
 logger = logging.getLogger(__name__)
+
+
+def _nearest_boundary_distance(x: float, y: float, points: List, closed: bool) -> float:
+    """Distance from (x, y) to the nearest edge of a polyline/polygon -
+    0.0 if (x, y) is inside a closed one."""
+    if closed and len(points) >= 3 and point_in_polygon(x, y, points):
+        return 0.0
+    edges = zip(points, points[1:] + points[:1]) if closed else zip(points, points[1:])
+    return min(
+        (dist_point_to_segment(x, y, ax, ay, bx, by) for (ax, ay), (bx, by) in edges),
+        default=math.inf,
+    )
+
+
+def find_feature_at(
+    x: float,
+    y: float,
+    ways: Optional[List] = None,
+    curbs: Optional[List] = None,
+    railings: Optional[List] = None,
+    buildings: Optional[List] = None,
+    sceneries: Optional[List] = None,
+    parking_spaces: Optional[List] = None,
+    waters: Optional[List] = None,
+    railways: Optional[List] = None,
+    tolerance_m: float = 3.0,
+) -> Optional[dict]:
+    """RENDER-audit.md section 19: the nearest mapped OSM feature to
+    (x, y) - world coordinates, e.g. the mouse cursor via
+    render.screen_to_world - across the map's own already-loaded
+    feature lists, or None if nothing is within tolerance_m. A debug
+    tool for diagnosing "is this feature parsed? rendered? drivable?"
+    directly from the game instead of by reading code - only ever
+    called on a deliberate click (see main.py's feature-inspector
+    toggle), never per frame, so a plain linear scan across each
+    category is fine here, unlike anything in the actual render path.
+
+    Every category the game currently has a dedicated renderer for is
+    "rendered: yes" here by construction - if a category existed that
+    the renderer silently dropped, it wouldn't have a draw_* function to
+    even reach this call site with in the first place. That's exactly
+    the class of gap this tool exists to make easy to *find in the
+    first place* (nothing to click on == nothing found, not a
+    false "rendered: yes").
+    """
+    candidates = []  # (distance, info)
+
+    for way in ways or ():
+        points = getattr(way, "points_m", None)
+        if not points or len(points) < 2:
+            continue
+        d = _nearest_boundary_distance(x, y, points, closed=False)
+        if d <= tolerance_m:
+            candidates.append((d, {
+                "type": f"highway={getattr(way, 'highway', '?')}",
+                "source": "OSM way",
+                "id": getattr(way, "osm_id", None) or "unknown (not preserved by parser)",
+                "rendered": "yes",
+                "drivable": "yes" if getattr(way, "is_drivable", True) else "no",
+            }))
+
+    for curb in curbs or ():
+        points = getattr(curb, "points_m", None)
+        if not points or len(points) < 2:
+            continue
+        d = _nearest_boundary_distance(x, y, points, closed=False)
+        if d <= tolerance_m:
+            candidates.append((d, {
+                "type": "barrier=kerb",
+                "source": "OSM way",
+                "id": "unknown (not preserved by parser)",
+                "rendered": "yes (outline)",
+                "drivable": "no",
+            }))
+
+    for railing in railings or ():
+        points = getattr(railing, "points_m", None)
+        if not points or len(points) < 2:
+            continue
+        d = _nearest_boundary_distance(x, y, points, closed=False)
+        if d <= tolerance_m:
+            candidates.append((d, {
+                "type": f"barrier={getattr(railing, 'kind', '?')}",
+                "source": "OSM way",
+                "id": "unknown (not preserved by parser)",
+                "rendered": "yes",
+                "drivable": "no",
+            }))
+
+    for railway in railways or ():
+        points = getattr(railway, "points_m", None)
+        if not points or len(points) < 2:
+            continue
+        d = _nearest_boundary_distance(x, y, points, closed=False)
+        if d <= tolerance_m:
+            candidates.append((d, {
+                "type": f"railway={getattr(railway, 'kind', '?')}",
+                "source": "OSM way",
+                "id": "unknown (not preserved by parser)",
+                "rendered": "yes",
+                "drivable": "no",
+            }))
+
+    for water in waters or ():
+        points = getattr(water, "points_m", None)
+        if not points or len(points) < 2:
+            continue
+        d = _nearest_boundary_distance(x, y, points, closed=bool(getattr(water, "is_polygon", False)))
+        if d <= tolerance_m:
+            candidates.append((d, {
+                "type": f"natural/waterway={getattr(water, 'kind', '?')}",
+                "source": "OSM way",
+                "id": "unknown (not preserved by parser)",
+                "rendered": "yes",
+                "drivable": "no",
+            }))
+
+    for building in buildings or ():
+        points = getattr(building, "points_m", None)
+        if not points or len(points) < 3:
+            continue
+        d = _nearest_boundary_distance(x, y, points, closed=True)
+        if d <= tolerance_m:
+            candidates.append((d, {
+                "type": "building",
+                "source": "OSM way",
+                "id": "unknown (not preserved by parser)",
+                "rendered": "yes",
+                "drivable": "no",
+            }))
+
+    for scenery in sceneries or ():
+        points = getattr(scenery, "points_m", None)
+        if not points or len(points) < 3:
+            continue
+        d = _nearest_boundary_distance(x, y, points, closed=True)
+        if d <= tolerance_m:
+            candidates.append((d, {
+                "type": f"area kind={getattr(scenery, 'kind', '?')}",
+                "source": "OSM way",
+                "id": "unknown (not preserved by parser)",
+                "rendered": "yes",
+                "drivable": "no",
+            }))
+
+    for space in parking_spaces or ():
+        points = getattr(space, "points_m", None)
+        if not points or len(points) < 3:
+            continue
+        d = _nearest_boundary_distance(x, y, points, closed=True)
+        if d <= tolerance_m:
+            candidates.append((d, {
+                "type": "amenity=parking_space",
+                "source": "OSM way/node",
+                "id": getattr(space, "osm_id", None) or "unknown",
+                "rendered": "yes",
+                "drivable": "no (parking target only)",
+            }))
+
+    if not candidates:
+        return None
+    candidates.sort(key=lambda c: c[0])
+    return candidates[0][1]
+
+
+def _npc_snapshot(vehicle, driver) -> dict:
+    """Structured per-NPC state for debug snapshots - the JSON analogue of
+    the F7 debug overlay (render/hud.py's draw_npc_debug_panel), so an NPC's
+    driving/routing/parking state can be inspected from a screenshot's JSON
+    without needing that overlay enabled at capture time."""
+    way = vehicle.way
+    next_way = getattr(driver, "next_way", None)
+    decision = driver.decision
+    light = decision.light
+    return {
+        "vehicle_id": vehicle.vehicle_id,
+        "resident_id": vehicle.owner_id,
+        "state": vehicle.state,
+        "vehicle_type": vehicle.vehicle_type,
+        "x": vehicle.x,
+        "y": vehicle.y,
+        "heading": vehicle.heading,
+        "speed_kmh": vehicle.speed * 3.6,
+        "target_speed_kmh": driver.target_speed_mps * 3.6,
+        "way": {"name": getattr(way, "name", None), "highway": getattr(way, "highway", None)} if way else None,
+        "next_way": (
+            {"name": getattr(next_way, "name", None), "highway": getattr(next_way, "highway", None)}
+            if next_way else None
+        ),
+        "route_index": driver.path_index,
+        "route_length": len(driver.path) - 1,
+        "route_progress": driver.route_progress,
+        "maneuver": driver.next_maneuver,
+        "lane_bias": getattr(driver, "current_lane_bias", None),
+        "traffic_action": decision.action,
+        "traffic_reason": decision.reason,
+        "stop_position": list(decision.stop_position) if decision.stop_position is not None else None,
+        "signal_id": (getattr(light, "approach_id", None) or getattr(light, "id", None)) if light is not None else None,
+        "destination": list(driver.destination),
+        "destination_parking_space_id": vehicle.destination_parking_space_id,
+        "is_taxi": vehicle.is_taxi,
+        "is_police": vehicle.is_police,
+        "fallen": vehicle.fallen,
+        "crashed_timer": vehicle.crashed_timer,
+        "debug_waiting_for": vehicle.debug_waiting_for,
+    }
 
 
 def _screenshot_directory() -> str:
@@ -55,6 +264,8 @@ def _write_debug_snapshot(
     speed_bumps=(),
     railways=(),
     railings=(),
+    npcs=(),
+    npc_drivers=None,
 ) -> None:
     minx, miny, maxx, maxy = auto_fetch_manager.get_bounds()
     now = time.time()
@@ -110,6 +321,11 @@ def _write_debug_snapshot(
             "map_sync_stage": map_sync_stage,
             "on_foot": on_foot,
         },
+        "npcs": [
+            _npc_snapshot(vehicle, npc_drivers[vehicle.vehicle_id])
+            for vehicle in npcs
+            if npc_drivers is not None and vehicle.vehicle_id in npc_drivers
+        ],
         "auto_fetch": {
             "configured_enabled": bool(args.auto_fetch),
             "call_enabled": True,

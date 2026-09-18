@@ -16,7 +16,6 @@ from .osm import bbox_from_center
 USER_AGENT_KEY = "user_agent_id"
 DEFAULT_OVERPASS_ENDPOINTS = (
     "https://overpass-api.de/api/interpreter",
-    "https://overpass.private.coffee/api/interpreter",
     "https://overpass.openstreetmap.fr/api/interpreter",
 )
 
@@ -104,10 +103,21 @@ DEFAULT_CONFIG = {
         "osm_pbf_path": "",
     },
     "traffic": {
-        "traffic_count": "",
+        # NPC-003: target/min/max NPC vehicle population. traffic_count
+        # was previously read nowhere - the game spawned exactly one NPC
+        # vehicle regardless of this setting.
+        "traffic_count": "40",
+        "traffic_count_min": "",
+        "traffic_count_max": "",
         "pedestrian_count": "20",
         "cyclist_count": "8",
         "parking_density": "0.5",
+        # NPC-003 v2: overrides the registered vehicle plugins' own
+        # traffic_weight (vehicles/plugins/*.py) for the general NPC
+        # population mix - comma-separated "id:weight" pairs, e.g.
+        # "car:0.8,van:0.1,truck:0.1". Empty (default) means "use each
+        # plugin's own default weight".
+        "vehicle_distribution": "",
     },
     "audio": {
         "master_volume": "1.0",
@@ -233,6 +243,27 @@ def get_overpass_endpoints(config: configparser.ConfigParser) -> list[str]:
     raw = config.get("map", "overpass_endpoints", fallback="")
     endpoints = [endpoint.strip() for endpoint in raw.split(",") if endpoint.strip()]
     return endpoints or list(DEFAULT_OVERPASS_ENDPOINTS)
+
+
+def get_vehicle_distribution(config: configparser.ConfigParser) -> Optional[dict[str, float]]:
+    """Parse [traffic] vehicle_distribution ("id:weight,id:weight,...")
+    into a {id: weight} dict, or None if unset/empty - None tells
+    NPCVehicleManager to use each registered plugin's own default
+    traffic_weight instead of an override."""
+    raw = config.get("traffic", "vehicle_distribution", fallback="").strip()
+    if not raw:
+        return None
+    distribution: dict[str, float] = {}
+    for entry in raw.split(","):
+        entry = entry.strip()
+        if not entry or ":" not in entry:
+            continue
+        vehicle_id, _, weight = entry.partition(":")
+        try:
+            distribution[vehicle_id.strip()] = float(weight.strip())
+        except ValueError:
+            continue
+    return distribution or None
 
 
 def load_city_catalog(path: Path = CITY_CATALOG_PATH) -> dict[str, tuple[float, float]]:

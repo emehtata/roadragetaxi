@@ -172,6 +172,28 @@ def segments_intersect(
     )
 
 
+def segment_distance(
+    a_start: Tuple[float, float],
+    a_end: Tuple[float, float],
+    b_start: Tuple[float, float],
+    b_end: Tuple[float, float],
+) -> float:
+    """Minimum distance between two line segments (0.0 if they cross).
+
+    Two segments crossing in the middle can have all four endpoints far
+    from each other, so a true intersection has to be checked separately
+    from - not inferred by - the endpoint-to-opposite-segment distances.
+    """
+    if segments_intersect(a_start, a_end, b_start, b_end):
+        return 0.0
+    return min(
+        dist_point_to_segment(a_start[0], a_start[1], b_start[0], b_start[1], b_end[0], b_end[1]),
+        dist_point_to_segment(a_end[0], a_end[1], b_start[0], b_start[1], b_end[0], b_end[1]),
+        dist_point_to_segment(b_start[0], b_start[1], a_start[0], a_start[1], a_end[0], a_end[1]),
+        dist_point_to_segment(b_end[0], b_end[1], a_start[0], a_start[1], a_end[0], a_end[1]),
+    )
+
+
 def clip_polygon_to_rect(
     points: list[Tuple[float, float]],
     rminx: float,

@@ -1,14 +1,16 @@
 from .common import (
+    PX_PER_M,
     SCREEN_W,
     SCREEN_H,
     DEFAULT_SUN_LATITUDE,
     DEFAULT_SUN_LONGITUDE,
     _render_logger,
     solar_altitude_and_events,
+    world_to_screen,
 )
 import math
 import os
-from typing import Optional, Tuple
+from typing import List, Optional, Tuple
 
 
 from ..geo import clamp, meters_to_latlon
@@ -65,8 +67,8 @@ def default_hud_layout(screen_width: int, screen_height: int) -> dict[str, Tuple
         "rage": (screen_width - 190, screen_height - 246),
         # Shifted up from the speedometer box's own 170px height (was
         # screen_height - 180, flush with the bottom edge) to leave room
-        # for the lane-assist/speed-limiter indicator chips drawn just
-        # below it - see _draw_speedometer_indicators.
+        # for the lane-assist/speed-limiter/navigation indicator chips
+        # drawn just below it - see _draw_speedometer_indicators.
         "speedometer": (10, screen_height - 214),
     }
 
@@ -128,10 +130,13 @@ def _draw_speedometer_indicators(
     lane_assist_enabled: bool,
     lane_assist_active: bool,
     speed_limiter_enabled: bool,
+    show_navigation: bool = False,
 ) -> None:
-    """Two compact status chips under the speedometer for the K (lane
-    assist) and V (speed limiter) toggles - previously visible only as
-    text in the debug HUD's status line, easy to miss during normal play.
+    """Compact status chips under the speedometer for the K (lane
+    assist), V (speed limiter) and N (navigation) toggles - previously
+    visible only as text in the debug HUD's status line, easy to miss
+    during normal play. Each chip carries its shortcut key so a player
+    can discover the toggle without opening the debug HUD.
 
     Fixed English abbreviations rather than tr()-localized labels: a
     dashboard telltale reads the same regardless of UI language (real
@@ -146,13 +151,15 @@ def _draw_speedometer_indicators(
         _speedometer_indicator_font = pygame.font.SysFont(None, 15, bold=True)
     font = _speedometer_indicator_font
 
-    chip_w, chip_h, gap = 82, 22, 6
-    total_w = chip_w * 2 + gap
+    chip_h, gap, pad_x = 22, 6, 10
+    labels = ["LANE (K)", "LIMIT (V)", "NAVI (N)"]
+    chip_widths = [font.size(label)[0] + pad_x * 2 for label in labels]
+    total_w = sum(chip_widths) + gap * (len(labels) - 1)
     x = speedometer_rect.x + (speedometer_rect.width - total_w) // 2
     y = speedometer_rect.bottom + gap
 
-    def _chip(offset_x: int, label: str, enabled: bool, engaged: bool) -> None:
-        rect = pygame.Rect(x + offset_x, y, chip_w, chip_h)
+    def _chip(offset_x: int, width: int, label: str, enabled: bool, engaged: bool) -> None:
+        rect = pygame.Rect(x + offset_x, y, width, chip_h)
         if not enabled:
             bg, border, text_color = (28, 32, 36), (70, 78, 86), (120, 128, 135)
         elif engaged:
@@ -164,13 +171,20 @@ def _draw_speedometer_indicators(
         text = font.render(label, True, text_color)
         screen.blit(text, text.get_rect(center=rect.center))
 
-    # Lane assist gets a third visual state speed limiter doesn't need:
-    # "on but not currently steering" (dim amber, matching the "armed but
-    # idle" telltale color real cars use) vs "actively correcting the
-    # car's heading right now" (bright green) - speed limiter has no such
-    # idle/active distinction, it's simply capping speed or not.
-    _chip(0, "LANE", lane_assist_enabled, lane_assist_active)
-    _chip(chip_w + gap, "LIMIT", speed_limiter_enabled, speed_limiter_enabled)
+    # Lane assist gets a third visual state speed limiter/navigation don't
+    # need: "on but not currently steering" (dim amber, matching the
+    # "armed but idle" telltale color real cars use) vs "actively
+    # correcting the car's heading right now" (bright green) - the other
+    # two chips have no such idle/active distinction, just on or off.
+    offset_x = 0
+    for width, label, enabled, engaged in zip(
+        chip_widths,
+        labels,
+        (lane_assist_enabled, speed_limiter_enabled, show_navigation),
+        (lane_assist_active, speed_limiter_enabled, show_navigation),
+    ):
+        _chip(offset_x, width, label, enabled, engaged)
+        offset_x += width + gap
 
 
 def draw_day_night_overlay(
@@ -290,6 +304,7 @@ def draw_hud(
     speed_limiter_enabled: bool = True,
     red_light_assist_enabled: bool = False,
     show_compass: bool = False,
+    show_navigation: bool = False,
     rage_power: float = 0.0,
     language: str = "fi",
     career_total_distance_m: Optional[float] = None,
@@ -532,6 +547,7 @@ def draw_hud(
         getattr(car, "lane_assist_enabled", False),
         getattr(car, "lane_assist_active", False),
         speed_limiter_enabled,
+        show_navigation,
     )
 
 
@@ -613,3 +629,210 @@ def draw_g_force_meter(
         grip_color = (255, 90, 70) if is_sliding else (170, 178, 186)
         grip_readout = font.render(f"grip {grip_usage * 100.0:.0f}%", True, grip_color)
         screen.blit(grip_readout, grip_readout.get_rect(midtop=(center[0], readout_rect.bottom + 2)))
+
+
+def draw_npc_debug_panel(screen, vehicle, driver, font, x: int = 10, y: int = 220) -> None:
+    """F7 debug overlay for NPC-001: driving/traffic/navigation state for
+    the one NPC vehicle, laid out per NPC-001 section 14. Duck-typed on
+    an npc.NPCVehicle/npc.Driver pair - no import of npc.py needed here,
+    same as draw_npc_cars (render/vehicles.py) already does."""
+    import pygame
+
+    way = vehicle.way
+    way_label = (getattr(way, "name", None) or getattr(way, "highway", "?")) if way else "?"
+    next_way = getattr(driver, "next_way", None)
+    next_way_label = (getattr(next_way, "name", None) or getattr(next_way, "highway", "?")) if next_way else "-"
+    lane_bias = getattr(driver, "current_lane_bias", None) or "default"
+    decision = driver.decision
+    stop_dist = (
+        f"{math.hypot(decision.stop_position[0] - vehicle.x, decision.stop_position[1] - vehicle.y):.0f}m"
+        if decision.stop_position is not None else "-"
+    )
+    light = decision.light
+    if light is None:
+        signal_label = "signal=none"
+    else:
+        allowed = ",".join(sorted(getattr(light, "allowed_movements", ()) or ())) or "?"
+        signal_label = f"signal={getattr(light, 'approach_id', None) or getattr(light, 'id', '?')} allows={allowed}"
+    trip_group = getattr(vehicle, "trip_group", None)
+    state_label = vehicle.state
+    if trip_group is not None and vehicle.state == "PARKED" and not trip_group.all_aboard:
+        # multi-passenger-car.md section 26/17's PARKED_WAITING_FOR_
+        # PASSENGERS - a note on top of the real NPCState.PARKED rather
+        # than a separate parallel state value (see TripGroup's docstring
+        # for why one state enum, not two, tracks this).
+        state_label = "PARKED (waiting for passengers)"
+    lines = [
+        f"NPC vehicle={vehicle.vehicle_id} resident={vehicle.owner_id} plugin={getattr(vehicle, 'vehicle_type', '?')}",
+        f"state={state_label} speed={vehicle.speed * 3.6:.0f}km/h target={driver.target_speed_mps * 3.6:.0f}km/h",
+        f"way={way_label} next={next_way_label} route={driver.path_index}/{len(driver.path) - 1} maneuver={driver.next_maneuver}",
+        f"lane={lane_bias} {signal_label}",
+        f"traffic={decision.action} ({decision.reason}) stop_dist={stop_dist}",
+        f"dest=({driver.destination[0]:.0f},{driver.destination[1]:.0f}) progress={driver.route_progress * 100.0:.0f}%",
+        (
+            f"parking=space#{vehicle.destination_parking_space_id}"
+            if vehicle.destination_parking_space_id is not None
+            else "parking=yard/lot (no dedicated space)"
+        ),
+    ]
+    if trip_group is not None:
+        # multi-passenger-car.md section 26: CAPACITY/OCCUPANTS/TRIP GROUP.
+        entrance = trip_group.destination_entrance
+        entrance_label = f"({entrance[0]:.0f},{entrance[1]:.0f})" if entrance is not None else "-"
+        lines.append(
+            f"capacity={vehicle.capacity} occupants={len(trip_group.boarded_resident_ids)}/"
+            f"{len(trip_group.member_resident_ids)} seats_free={vehicle.available_seats} "
+            f"trip_group={trip_group.group_id}"
+        )
+        lines.append(f"activity={trip_group.activity_type or '-'} entrance={entrance_label}")
+        # Reported: "F7 shows driver only - no passengers" - a bare count
+        # doesn't visibly prove anyone but the driver (resident= above)
+        # exists, so list every other member by id and whether they're
+        # currently aboard, out, or driving.
+        passenger_ids = [rid for rid in trip_group.member_resident_ids if rid != vehicle.owner_id]
+        if passenger_ids:
+            roster = ", ".join(
+                f"{rid}({'aboard' if rid in trip_group.boarded_resident_ids else 'out'})"
+                for rid in passenger_ids
+            )
+            lines.append(f"passengers: {roster}")
+        else:
+            lines.append("passengers: none (solo trip)")
+    if getattr(vehicle, "vehicle_kind", "traffic") == "household":
+        home = getattr(vehicle, "home_position", None)
+        home_label = f"({home[0]:.0f},{home[1]:.0f})" if home is not None else "-"
+        lines.append(
+            f"kind=household household_id={vehicle.household_id} "
+            f"availability={vehicle.availability} home={home_label}"
+        )
+    else:
+        lines.append(f"kind=traffic availability={getattr(vehicle, 'availability', '-')}")
+    if vehicle.debug_waiting_for:
+        # Surfaces NPC-more.md section 12/13/19's live footprint safety
+        # net tripping (see npc.update_npc) - not just the ordinary
+        # traffic-rule reason already shown above, which can otherwise
+        # read as stale ("PROCEED") while state=WAITING for this instead.
+        # NPC-004 section 23: also doubles as the avoidance/stuck/reverse/
+        # accident state text (state_label above already shows REVERSING/
+        # CRASHED directly) - no separate debug fields needed for those.
+        lines.append(f"waiting_for={vehicle.debug_waiting_for}")
+    recovery_stage = getattr(driver, "recovery_stage", "NORMAL")
+    if recovery_stage != "NORMAL" or getattr(vehicle, "driver_departed", False):
+        lines.append(f"recovery={recovery_stage} driver_departed={getattr(vehicle, 'driver_departed', False)}")
+    panel_w = 360
+    panel_h = 10 + len(lines) * 16
+    pygame.draw.rect(screen, (16, 20, 26, 215), (x, y, panel_w, panel_h), border_radius=5)
+    pygame.draw.rect(screen, (90, 170, 220), (x, y, panel_w, panel_h), width=1, border_radius=5)
+    for i, line in enumerate(lines):
+        screen.blit(font.render(line, True, (215, 225, 230)), (x + 8, y + 5 + i * 16))
+
+
+def draw_npc_population_panel(screen, counts: dict, font, x: int = 10, y: int = 220, by_type: Optional[dict] = None) -> None:
+    """F7 debug overlay, NPC-003 section 25: population-wide counts
+    (total/parked/driving/reserved/household/autonomous) alongside the
+    single-vehicle panel above. `counts` is NPCVehicleManager.
+    population_counts()'s dict - no import of npc.py needed here, same
+    duck-typing as draw_npc_debug_panel. `by_type`, if given, is
+    NPCVehicleManager.population_counts_by_type()'s {plugin_id: count}
+    dict (NPC-003 v2 section 22's "vehicles by plugin type")."""
+    import pygame
+
+    lines = [
+        "NPC population",
+        f"total={counts['total']} parked={counts['parked']} driving={counts['driving']}",
+        f"reserved={counts['reserved']} household={counts['household']} autonomous={counts['autonomous']}",
+    ]
+    if by_type:
+        lines.append("by type: " + ", ".join(f"{vehicle_id}={count}" for vehicle_id, count in sorted(by_type.items())))
+    panel_w = 300
+    panel_h = 10 + len(lines) * 16
+    pygame.draw.rect(screen, (16, 20, 26, 215), (x, y, panel_w, panel_h), border_radius=5)
+    pygame.draw.rect(screen, (90, 170, 220), (x, y, panel_w, panel_h), width=1, border_radius=5)
+    for i, line in enumerate(lines):
+        screen.blit(font.render(line, True, (215, 225, 230)), (x + 8, y + 5 + i * 16))
+
+
+def draw_feature_inspector_panel(screen, feature: Optional[dict], font, x: int = 10, y: int = 400) -> None:
+    """RENDER-audit.md section 19: shows what main.debug_tools.find_feature_at
+    found at the last click while the feature-inspector toggle is active -
+    "FEATURE / type: ... / rendered: yes/no" - so an OSM rendering gap can
+    be diagnosed by clicking the map instead of reading code. `feature` is
+    None either while nothing has been clicked yet or the last click found
+    nothing mapped within tolerance - both shown the same way, since
+    there's nothing further to distinguish from here."""
+    import pygame
+
+    lines = ["FEATURE"] + (
+        [f"{key}: {value}" for key, value in feature.items()] if feature is not None else ["(click the map to inspect)"]
+    )
+    panel_w = 320
+    panel_h = 10 + len(lines) * 16
+    pygame.draw.rect(screen, (16, 20, 26, 215), (x, y, panel_w, panel_h), border_radius=5)
+    pygame.draw.rect(screen, (220, 170, 90), (x, y, panel_w, panel_h), width=1, border_radius=5)
+    for i, line in enumerate(lines):
+        screen.blit(font.render(line, True, (230, 225, 215)), (x + 8, y + 5 + i * 16))
+
+
+def draw_activity_debug_panel(
+    screen, pedestrian, explanations: List[Tuple[str, str]], font, x: int = 10, y: int = 460,
+) -> None:
+    """F5 debug panel (residents-live.md section 18): the selected
+    resident's current ambient activity, plus - for every registered
+    plugin - why it would or wouldn't be picked right now
+    (ActivityManager.explain_candidates, computed by the caller so this
+    function stays a pure renderer). Duck-typed on pedestrian.py's
+    Pedestrian/ActivityInstance, no import of either needed here, same
+    convention as draw_npc_debug_panel."""
+    import pygame
+
+    activity = getattr(pedestrian, "activity", None)
+    lines = ["ACTIVITY DEBUG"]
+    if activity is None:
+        lines.append("current: none (walking)")
+    else:
+        location = activity.location
+        location_label = f"({location.x:.0f},{location.y:.0f})" if location is not None else "-"
+        lines.append(f"current: {activity.plugin_id} state={pedestrian.state}")
+        lines.append(f"location={location_label}")
+        duration_s = activity.data.get("duration_s")
+        elapsed_s = activity.data.get("elapsed_s")
+        if duration_s is not None and elapsed_s is not None:
+            lines.append(f"remaining={max(0.0, duration_s - elapsed_s):.0f}s")
+        group = activity.group
+        if group is not None:
+            lines.append(f"group=#{group.group_id} participants={group.member_resident_ids}")
+    lines.append("candidates (1-9 forces one):")
+    for index, (plugin_id, reason) in enumerate(explanations):
+        prefix = f"{index + 1}." if index < 9 else " -"
+        lines.append(f"{prefix} {plugin_id}: {reason}")
+    panel_w = 380
+    panel_h = 10 + len(lines) * 16
+    pygame.draw.rect(screen, (16, 20, 26, 215), (x, y, panel_w, panel_h), border_radius=5)
+    pygame.draw.rect(screen, (170, 120, 220), (x, y, panel_w, panel_h), width=1, border_radius=5)
+    for i, line in enumerate(lines):
+        screen.blit(font.render(line, True, (225, 215, 230)), (x + 8, y + 5 + i * 16))
+
+
+def draw_npc_debug_overlay(
+    screen, vehicle, driver, camx: float, camy: float,
+    px_per_m: float = PX_PER_M, screen_w: int = SCREEN_W, screen_h: int = SCREEN_H,
+) -> None:
+    """F7 world-space debug geometry for NPC-002 section 22: the stop
+    position the traffic-rule layer is braking for, and the immediate
+    waypoint the vehicle controller is steering towards.
+
+    The route/turning-trajectory line itself is already drawn by
+    draw_npc_cars' own show_debug branch (render/vehicles.py) from
+    vehicle.travel_route - not duplicated here.
+    """
+    import pygame
+
+    stop_position = driver.decision.stop_position
+    if stop_position is not None:
+        sx, sy = world_to_screen(stop_position[0], stop_position[1], camx, camy, px_per_m, screen_w, screen_h)
+        pygame.draw.circle(screen, (230, 60, 60), (int(sx), int(sy)), 6, 2)
+
+    if driver.path_index < len(driver.path):
+        target = driver.path[driver.path_index]
+        tx, ty = world_to_screen(target.x, target.y, camx, camy, px_per_m, screen_w, screen_h)
+        pygame.draw.circle(screen, (255, 220, 80), (int(tx), int(ty)), 4, 1)

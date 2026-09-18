@@ -6,6 +6,7 @@ from .common import (
     world_to_screen,
     get_viewport_bounds,
     _covered_by_higher_road,
+    _vehicle_is_on_bridge,
 )
 import math
 from typing import List, Optional, Tuple
@@ -37,21 +38,32 @@ def draw_pedestrians(
     vminx, vminy, vmaxx, vmaxy = get_viewport_bounds(camx, camy, px_per_m, screen_w, screen_h, 15.0)
 
     for ped in pedestrians:
-        if getattr(ped, "state", "walking") in {"entering_building", "in_building"}:
-            continue
         if not (vminx <= ped.x <= vmaxx and vminy <= ped.y <= vmaxy):
             continue
-        if _covered_by_higher_road(
+        cx, cy = world_to_screen(ped.x, ped.y, camx, camy, px_per_m, screen_w, screen_h)
+        radius_px = max(4.0, getattr(ped, "radius_m", 0.45) * px_per_m)
+
+        if getattr(ped, "state", "walking") in {"entering_building", "in_building"}:
+            # Same "still there, not vanished" outline cue as the bridge-
+            # occlusion case just below - a pedestrian inside a building
+            # used to simply not be drawn at all rather than reading as
+            # "gone inside".
+            pygame.draw.circle(screen, (235, 235, 235), (int(cx), int(cy)), int(radius_px), 1)
+            continue
+
+        # Same "hidden behind a bridge above" cue draw_car/draw_npc_cars use
+        # (see _covered_by_higher_road/_vehicle_is_on_bridge) - an outline
+        # rather than vanishing entirely, so a pedestrian under a bridge is
+        # still visible enough to see they're there (occlusion.md #7).
+        if not _vehicle_is_on_bridge(ped) and _covered_by_higher_road(
             ped.x,
             ped.y,
             getattr(ped, "layer", getattr(ped.way, "layer", 0)),
             ways,
             spatial_grid=spatial_grid,
         ):
+            pygame.draw.circle(screen, (235, 235, 235), (int(cx), int(cy)), int(radius_px), 1)
             continue
-
-        cx, cy = world_to_screen(ped.x, ped.y, camx, camy, px_per_m, screen_w, screen_h)
-        radius_px = max(4.0, getattr(ped, "radius_m", 0.45) * px_per_m)
 
         if show_debug:
             route = getattr(ped, "route", None) or ()
@@ -164,6 +176,19 @@ def draw_pedestrians(
             bubble_surf.blit(txt_surf, (4, 2))
             screen.blit(bubble_surf, (int(bx), int(by)))
 
+        # NPC-004 section 17: the smallest visual that reads as "annoyed" -
+        # a small persistent orange marker above the head (not a timed
+        # bubble like curse_timer above - an accident driver stays annoyed
+        # for as long as they're standing there, not just for an instant).
+        # No new render subsystem: same head-relative placement idiom as
+        # the cursing bubble just above.
+        if getattr(ped, "mood", "normal") == "annoyed":
+            mark_x = int(cx)
+            mark_y = int(cy - radius_px - 10)
+            pygame.draw.circle(screen, (235, 140, 30), (mark_x, mark_y), max(3, int(radius_px * 0.4)))
+            pygame.draw.line(screen, (40, 25, 10), (mark_x, mark_y - 3), (mark_x, mark_y + 1), 2)
+            pygame.draw.circle(screen, (40, 25, 10), (mark_x, mark_y + 3), 1)
+
 
 def resident_at_screen_position(
     pedestrians: List,
@@ -203,18 +228,13 @@ def draw_resident_popup(
     screen_w: int = SCREEN_W,
     screen_h: int = SCREEN_H,
     pedestrian=None,
+    trip_group=None,
 ) -> None:
     """Draw selected resident details above the gameplay view."""
     import pygame
 
     if resident is None:
         return
-    popup_width, popup_height = 420, 268
-    popup_rect = pygame.Rect(screen_w - popup_width - 24, 24, popup_width, popup_height)
-    shade = pygame.Surface((popup_width, popup_height), pygame.SRCALPHA)
-    shade.fill((12, 20, 30, 242))
-    screen.blit(shade, popup_rect.topleft)
-    pygame.draw.rect(screen, (105, 205, 255), popup_rect, width=2, border_radius=6)
     birth_date = getattr(resident, "birth_date", None)
     birth_text = birth_date.isoformat() if birth_date is not None else "-"
     vehicle_count = len(getattr(resident, "vehicle_ids", ()))
@@ -228,7 +248,7 @@ def draw_resident_popup(
         ]
         return ", ".join(names) or "-"
 
-    lines = (
+    lines = [
         f"Resident #{resident.resident_id}",
         f"{resident.first_name} {resident.surname}".strip(),
         f"Sukupuoli: {resident.gender or '-'}",
@@ -238,7 +258,47 @@ def draw_resident_popup(
         f"Ajoneuvoja: {vehicle_count}",
         f"Vanhemmat: {names_for(getattr(resident, 'parent_ids', ())) }",
         f"Lapset: {names_for(getattr(resident, 'child_ids', ())) }",
-    )
+    ]
+    trip_group_id = getattr(resident, "trip_group_id", None)
+    if trip_group_id is not None:
+        # multi-passenger-car.md section 26's per-passenger debug info:
+        # GROUP/VEHICLE/STATE/DESTINATION - resident.trip_group_id is the
+        # only durable link (a Pedestrian's own linked_vehicle_id goes
+        # away once it despawns after boarding), so this stays visible
+        # for the whole trip, not just while a Pedestrian entity exists.
+        lines.append(f"Matkaseurue: #{trip_group_id}")
+        if pedestrian is not None:
+            lines.append(f"Matkan tila: {getattr(pedestrian, 'state', '-')}")
+            entrance = getattr(pedestrian, "linked_building_entrance", None)
+            if entrance is not None:
+                lines.append(f"Kohde: ({entrance[0]:.0f},{entrance[1]:.0f})")
+        if trip_group is not None:
+            # multi-passenger-car.md section 26's "ACTIVITY: SHOPPING" -
+            # only available via the vehicle's TripGroup (not the
+            # Resident/Pedestrian, which only durably know the group id).
+            lines.append(f"Toiminto: {getattr(trip_group, 'activity_type', None) or '-'}")
+    activity = getattr(pedestrian, "activity", None)
+    if activity is not None:
+        # residents-live.md ambient activities (bench sitting, phone
+        # usage, ...) - duck-typed against ActivityInstance's plugin_id/
+        # data rather than importing the activities package, matching
+        # this module's existing no-cross-manager-import convention.
+        # plugin_id -> display name without a registry lookup: "bench_
+        # sitting" -> "Bench Sitting", good enough for a debug popup.
+        activity_name = activity.plugin_id.replace("_", " ").title()
+        lines.append(f"Puuhailee: {activity_name}")
+        duration_s = activity.data.get("duration_s")
+        elapsed_s = activity.data.get("elapsed_s")
+        if duration_s is not None and elapsed_s is not None:
+            lines.append(f"Jäljellä: {max(0.0, duration_s - elapsed_s):.0f} s")
+    # Sized to the actual line count - trip_group/activity add a variable
+    # number of optional lines on top of the fixed base set above.
+    popup_width, popup_height = 420, 28 + len(lines) * 26
+    popup_rect = pygame.Rect(screen_w - popup_width - 24, 24, popup_width, popup_height)
+    shade = pygame.Surface((popup_width, popup_height), pygame.SRCALPHA)
+    shade.fill((12, 20, 30, 242))
+    screen.blit(shade, popup_rect.topleft)
+    pygame.draw.rect(screen, (105, 205, 255), popup_rect, width=2, border_radius=6)
     for index, text in enumerate(lines):
         color = (245, 250, 255) if index == 0 else (205, 220, 232)
         text_surface = font.render(text, True, color)

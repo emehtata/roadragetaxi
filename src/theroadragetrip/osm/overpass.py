@@ -92,7 +92,6 @@ def _mark_endpoint_contacted(endpoint: str) -> None:
 
 DEFAULT_OVERPASS_ENDPOINTS = [
     "https://overpass-api.de/api/interpreter",
-    "https://overpass.private.coffee/api/interpreter",
     "https://overpass.openstreetmap.fr/api/interpreter",
 ]
 
@@ -150,6 +149,7 @@ def fetch_osm_ways(
       node["place"~"suburb|neighbourhood|quarter|village|town|city|hamlet"]({south},{west},{north},{east});
     node["natural"="tree"]({south},{west},{north},{east});
     node["amenity"~"bench|waste_basket|bicycle_parking|fountain|fuel"]({south},{west},{north},{east});
+    node["highway"="street_lamp"]({south},{west},{north},{east});
     node["leisure"~"picnic_table|firepit"]({south},{west},{north},{east});
     node["barrier"~"gate|bollard"]({south},{west},{north},{east});
     node["historic"="memorial"]({south},{west},{north},{east});
@@ -179,6 +179,7 @@ def fetch_osm_ways(
     relation["natural"="strait"]({south},{west},{north},{east});
       relation["landuse"="reservoir"]({south},{west},{north},{east});
       relation["building"]({south},{west},{north},{east});
+    relation["highway"]({south},{west},{north},{east});
     relation["amenity"="parking"]({south},{west},{north},{east});
     relation["landuse"="parking"]({south},{west},{north},{east});
       relation["leisure"]({south},{west},{north},{east});
@@ -262,9 +263,21 @@ def fetch_osm_ways(
                     )
                     break
                 if r.status_code >= 500:
+                    # A 502/503/504 from a public Overpass mirror almost
+                    # always means that instance is overloaded right now,
+                    # not a one-off blip - retrying the same instance 3x
+                    # with backoff (the old behavior) just wastes the
+                    # whole backoff window on a server that's still
+                    # overloaded on attempt 2. Move to the next endpoint
+                    # immediately instead, same as the 429/406 handling.
                     last_err = Exception(f"{r.status_code} Server Error from {ep}")
-                    time.sleep(2 ** (attempt - 1))
-                    continue
+                    logger.warning(
+                        "Overpass server error (%d) from %s; switching endpoint (attempt %d)",
+                        r.status_code,
+                        ep,
+                        attempt,
+                    )
+                    break
                 r.raise_for_status()
                 if progress_callback:
                     progress_callback(0.5, "Parsing OSM payload...")

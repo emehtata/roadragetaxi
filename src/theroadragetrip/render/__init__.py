@@ -49,6 +49,7 @@ from .common import (
     minimum_px_per_m_for_viewport_width,
     road_color_for_way,
     road_render_priority,
+    screen_to_world,
     solar_altitude_and_events,
     world_to_screen,
 )
@@ -102,7 +103,13 @@ from .buildings import (
     _building_window_story_count,
     _draw_buildings_uncached,
     _visible_building_edges,
+    _iter_building_window_slots,
+    _building_is_house,
+    _pseudo_random_unit,
+    _window_is_illuminated,
+    _window_illumination_probability,
     draw_buildings,
+    draw_illuminated_windows,
 )
 
 from .roads import (
@@ -132,12 +139,14 @@ from .roads import (
     draw_roadworks,
     draw_speed_bumps,
     draw_speed_cameras,
+    draw_stop_signs,
     draw_street_lights,
     draw_taxi_stops,
     draw_tire_tracks,
     draw_traffic_lights,
     draw_vomit_puddles,
     draw_ways,
+    draw_yield_signs,
 )
 
 from .vehicles import (
@@ -202,10 +211,15 @@ from .hud import (
     _load_rage_face_frames,
     _rage_face_path,
     default_hud_layout,
+    draw_activity_debug_panel,
     draw_day_night_overlay,
     draw_frame_profiler,
     draw_g_force_meter,
     draw_hud,
+    draw_npc_debug_overlay,
+    draw_feature_inspector_panel,
+    draw_npc_debug_panel,
+    draw_npc_population_panel,
     draw_phone_offers,
 )
 

@@ -13,8 +13,11 @@ from theroadragetrip.pedestrian import (
     PedestrianNetwork,
     PedestrianState,
 )
+from theroadragetrip.npc import NPCState, spawn_npc, update_npc
 from theroadragetrip.physics import Car
+from theroadragetrip.render import draw_pedestrians
 from theroadragetrip.residents import ResidentManager
+from theroadragetrip.traffic_world import TrafficWorld
 
 
 def test_pedestrian_network_routes_across_connected_ways():
@@ -65,6 +68,31 @@ def test_pedestrian_routes_and_spawns_stay_outside_buildings():
         for point in way.points_m
     )
     assert manager.spawn_pedestrian_at_door(20.0, 0.0) is not None
+
+
+def test_spawn_at_door_does_not_snap_onto_a_way_reachable_only_through_the_building():
+    """Regression: spawn_pedestrian_at_door's nearest-way search picked
+    the geometrically closest ped_way regardless of whether reaching it
+    from the door required cutting through the building itself - a way
+    just behind the building can be closer as the crow flies than the
+    real street out front across an open lot/plaza (reported: pedestrians
+    spawn at the door then walk straight through the building). The
+    nearer-but-blocked way must be skipped in favor of the farther,
+    actually-reachable one."""
+    front_street = Way(points_m=[(-10.0, -30.0), (30.0, -30.0)], highway="footway", half_width_m=1.5)
+    back_alley = Way(points_m=[(-10.0, 21.0), (30.0, 21.0)], highway="footway", half_width_m=1.5)
+    building = SimpleNamespace(
+        points_m=[(0.0, 0.0), (20.0, 0.0), (20.0, 20.0), (0.0, 20.0)],
+        bbox=(0.0, 0.0, 20.0, 20.0),
+        entrances=[(10.0, 0.0)],
+        venue_type=None,
+    )
+    manager = PedestrianManager([front_street, back_alley], target_count=0, venue_buildings=[building])
+
+    pedestrian = manager.spawn_pedestrian_at_door(10.0, 0.0)
+
+    assert pedestrian is not None
+    assert pedestrian.way.points_m == front_street.points_m
 
 
 def test_pedestrian_state_and_appearance_support_interactions():
@@ -279,9 +307,39 @@ def test_vehicle_approach_uses_connected_pedestrian_waypoints():
     vehicle = SimpleNamespace(x=10.0, y=10.0, heading=0.0, width_m=1.8)
     pedestrian = Pedestrian(0.0, 0.0, 0.0, 1.0, 1.0, first_way, 0, 1, (1, 1, 1))
 
-    route = manager._vehicle_approach_route(pedestrian, manager._vehicle_entry_position(vehicle))
+    route = manager._footway_route_to(pedestrian, manager._vehicle_entry_position(vehicle))
 
     assert (10.0, 0.0) in route
+
+
+def test_footway_route_to_does_not_snap_onto_a_way_reachable_only_through_the_building():
+    """Regression: _footway_route_to's final-approach hop picked the
+    raw-distance-nearest mapped footway point to the target regardless of
+    whether the straight line from it to the target crossed the building
+    the target belongs to - the same bug as spawn_pedestrian_at's
+    nearest-way search, but for the "walking to a building entrance/
+    vehicle door" approach leg every activity plugin and the multi-
+    passenger trip-group flow shares."""
+    front_street = Way(points_m=[(-10.0, -30.0), (30.0, -30.0)], highway="footway", half_width_m=1.5)
+    back_alley = Way(points_m=[(-10.0, 21.0), (30.0, 21.0)], highway="footway", half_width_m=1.5)
+    manager = PedestrianManager([front_street, back_alley], target_count=0)
+    # Standing far off to the side, walking toward a building entrance at
+    # (10, 0) - the building itself spans x:0-20, y:0-20 (not passed to
+    # the manager; _footway_route_to only cares about the footway network
+    # here, so the "is this point inside a building" check is exercised
+    # via a monkeypatched _point_inside_building below instead of a real
+    # Building object, keeping the test focused on the routing logic).
+    pedestrian = Pedestrian(-50.0, -30.0, 0.0, 1.3, 1.3, front_street, 0, 1, (1, 1, 1))
+
+    def fake_point_inside_building(x, y):
+        return 0.0 <= x <= 20.0 and 0.0 <= y <= 20.0
+
+    manager._point_inside_building = fake_point_inside_building
+
+    route = manager._footway_route_to(pedestrian, (10.0, 0.0))
+
+    assert (10.0, -30.0) in route  # routed via the reachable front street
+    assert (10.0, 21.0) not in route  # not the closer-but-blocked back alley
 
 
 def test_pedestrian_in_vehicle_follows_vehicle_position():
@@ -531,7 +589,11 @@ def test_pedestrian_spawning_and_movement():
         assert isinstance(ped, Pedestrian)
         assert 0.0 <= ped.x <= 200.0
         assert len(ped.color) == 3
-        assert ped.speed > 0.0
+        # A pedestrian can legitimately roll straight into a no-location
+        # ambient activity (e.g. phone_usage) on its very first update and
+        # stand still - only a pedestrian with no activity must be moving.
+        if ped.activity is None:
+            assert ped.speed > 0.0
 
     # Step simulation frames
     initial_positions = [(p.x, p.y) for p in ped_mgr.pedestrians]
@@ -1014,3 +1076,247 @@ def test_point_near_building_window_cache_is_cleared_when_buildings_change():
 
     manager.set_venue_buildings(_dense_buildings(50))
     assert manager._near_building_window_cache == {}
+
+
+def _park_a_trip_group_vehicle(capacity_monkeypatch=None):
+    """Drive a real spawn_npc'd vehicle to NPCState.PARKED - shared setup
+    for the multi-passenger-car.md tests below, so each test exercises the
+    real npc.py/pedestrian.py integration rather than a hand-built mock."""
+    ways = [
+        Way(points_m=[(i * 20.0, 0.0), ((i + 1) * 20.0, 0.0)], highway="residential", half_width_m=4.5)
+        for i in range(10)
+    ]
+    building = Building(
+        points_m=[(190.0, 10.0), (210.0, 10.0), (210.0, 30.0), (190.0, 30.0)],
+        bbox=(190.0, 10.0, 210.0, 30.0),
+        entrances=[(195.0, 10.0)],
+    )
+    tw = TrafficWorld(ways)
+    residents = ResidentManager()
+    spawned = spawn_npc(1, residents, tw, ways, (0.0, 0.0), (180.0, 0.0))
+    assert spawned is not None
+    _, driver, vehicle = spawned
+    for _ in range(3000):
+        update_npc(vehicle, driver, 1.0 / 30.0, tw, residents)
+        tw.advance_time(1.0 / 30.0)
+        if vehicle.state == NPCState.PARKED:
+            break
+    assert vehicle.state == NPCState.PARKED
+    return ways, building, tw, residents, driver, vehicle
+
+
+def test_materialize_parked_drivers_spawns_one_pedestrian_per_trip_group_member():
+    ways, building, tw, residents, driver, vehicle = _park_a_trip_group_vehicle()
+    tw.npcs = [vehicle]
+    manager = PedestrianManager(ways, target_count=0, traffic_manager=tw, residents=residents, venue_buildings=[building])
+
+    manager.update(Car(x=5000.0, y=5000.0, heading=0.0, speed=0.0), dt=1.0 / 30.0)
+
+    member_ids = set(vehicle.trip_group.member_resident_ids)
+    spawned_ids = {ped.resident_id for ped in manager.pedestrians}
+    assert spawned_ids == member_ids
+    assert vehicle.trip_group.boarded_resident_ids == set()
+    for ped in manager.pedestrians:
+        assert ped.linked_vehicle_id == id(vehicle)
+        assert ped.state == "walking_to_building"
+
+
+def test_materialize_parked_drivers_shares_one_building_entrance_across_the_group():
+    ways, building, tw, residents, driver, vehicle = _park_a_trip_group_vehicle()
+    tw.npcs = [vehicle]
+    manager = PedestrianManager(ways, target_count=0, traffic_manager=tw, residents=residents, venue_buildings=[building])
+
+    # Check spawn positions directly, before any walking - once en route,
+    # members legitimately funnel through the same shared footway nodes.
+    manager._materialize_parked_drivers()
+
+    entrances = {ped.linked_building_entrance for ped in manager.pedestrians}
+    assert len(entrances) == 1
+    assert vehicle.trip_group.destination_entrance in entrances
+    # A group of >1 spawns at distinct positions - not stacked on one point.
+    if len(manager.pedestrians) > 1:
+        positions = {(round(p.x, 3), round(p.y, 3)) for p in manager.pedestrians}
+        assert len(positions) == len(manager.pedestrians)
+
+
+def test_walking_to_building_follows_the_footway_network_not_a_straight_line():
+    """Regression: trip-group members used to walk in a straight line from
+    the car to the building entrance, cutting through the car and the
+    building itself ("people get out of car and walk thru the car/
+    building"). The walk must be built through the sidewalk network's
+    shared nodes instead of a direct 2-point hop."""
+    ways, building, tw, residents, driver, vehicle = _park_a_trip_group_vehicle()
+    tw.npcs = [vehicle]
+    manager = PedestrianManager(ways, target_count=0, traffic_manager=tw, residents=residents, venue_buildings=[building])
+    manager._materialize_parked_drivers()
+
+    pedestrian = manager.pedestrians[0]
+    entrance = pedestrian.linked_building_entrance
+    manager._update_linked_driver(pedestrian, 1.0 / 30.0)
+
+    assert pedestrian.route is not None
+    assert len(pedestrian.route) > 2
+    assert entrance in pedestrian.route
+
+
+def test_full_trip_group_lifecycle_reboards_and_frees_the_vehicle():
+    """The complete section 7-21 loop: disembark, walk to the shared
+    building, wait, walk back, reboard as a group, all_aboard becomes
+    true again - using the real npc.py/pedestrian.py wiring, not mocks.
+
+    Drives _materialize_parked_drivers/_update_linked_driver directly
+    (not through PedestrianManager.update()'s full population-management
+    pass) - that pass's LOD throttling and offscreen/at-door despawn
+    rules are pre-existing, general-purpose pedestrian bookkeeping
+    unrelated to this feature, and calibrated around a real game's
+    frame rate/city scale, not a synthetic 10-way test map. This still
+    exercises the exact same trip-group code this feature adds - just
+    without also depending on those unrelated systems behaving a
+    particular way on a tiny fixture.
+    """
+    ways, building, tw, residents, driver, vehicle = _park_a_trip_group_vehicle()
+    tw.npcs = [vehicle]
+    manager = PedestrianManager(ways, target_count=0, traffic_manager=tw, residents=residents, venue_buildings=[building])
+    member_ids = set(vehicle.trip_group.member_resident_ids)
+
+    manager._materialize_parked_drivers()
+    assert {ped.resident_id for ped in manager.pedestrians} == member_ids
+    assert not vehicle.trip_group.all_aboard
+
+    for _ in range(100_000):
+        for ped in manager.pedestrians:
+            manager._update_linked_driver(ped, 0.2)
+        update_npc(vehicle, driver, 0.2, tw, residents)
+        tw.advance_time(0.2)
+        if vehicle.trip_group.all_aboard:
+            break
+
+    assert vehicle.trip_group.all_aboard
+    assert set(vehicle.trip_group.member_resident_ids) == member_ids  # nobody stranded
+    # Every member ended up DESPAWNING (about to be removed), never stuck
+    # mid-walk or still "in" the building.
+    for ped in manager.pedestrians:
+        if ped.resident_id in member_ids:
+            assert ped.state == PedestrianState.DESPAWNING.value
+
+
+def test_find_available_parked_vehicle_ignores_trip_group_vehicles():
+    """multi-passenger-car.md section 16: the generic 'grab any nearby
+    idle vehicle' mechanic must never claim a vehicle that belongs to a
+    trip group, even though its state string technically matches."""
+    ways, building, tw, residents, driver, vehicle = _park_a_trip_group_vehicle()
+    vehicle.state = "parked"  # what the generic mechanic actually checks for
+    manager = PedestrianManager(ways, target_count=0, traffic_manager=None, residents=residents, traffic_vehicles=[vehicle])
+
+    found = manager.find_available_parked_vehicle(vehicle.x, vehicle.y, radius_m=50.0)
+    assert found is None
+
+    vehicle.trip_group = None
+    found = manager.find_available_parked_vehicle(vehicle.x, vehicle.y, radius_m=50.0)
+    assert found is vehicle
+
+
+def test_two_trip_group_vehicles_materialize_independently():
+    """multi-passenger-car.md Test 10: two parked trip-group vehicles at
+    once must not mix up which pedestrians belong to which vehicle."""
+    ways, building, tw, residents, driver_a, vehicle_a = _park_a_trip_group_vehicle()
+    spawned_b = spawn_npc(2, residents, tw, ways, (20.0, 0.0), (160.0, 0.0))
+    assert spawned_b is not None
+    _, driver_b, vehicle_b = spawned_b
+    for _ in range(3000):
+        update_npc(vehicle_b, driver_b, 1.0 / 30.0, tw, residents)
+        tw.advance_time(1.0 / 30.0)
+        if vehicle_b.state == NPCState.PARKED:
+            break
+    assert vehicle_b.state == NPCState.PARKED
+
+    tw.npcs = [vehicle_a, vehicle_b]
+    manager = PedestrianManager(ways, target_count=0, traffic_manager=tw, residents=residents, venue_buildings=[building])
+    manager.update(Car(x=5000.0, y=5000.0, heading=0.0, speed=0.0), dt=1.0 / 30.0)
+
+    members_a = set(vehicle_a.trip_group.member_resident_ids)
+    members_b = set(vehicle_b.trip_group.member_resident_ids)
+    assert members_a.isdisjoint(members_b)
+    for ped in manager.pedestrians:
+        if ped.resident_id in members_a:
+            assert ped.linked_vehicle_id == id(vehicle_a)
+        elif ped.resident_id in members_b:
+            assert ped.linked_vehicle_id == id(vehicle_b)
+
+
+def test_trip_group_pedestrians_survive_population_culling_far_from_player():
+    """Regression: a trip-group member walking to/from the building used
+    to be culled by the ordinary distance-based population sweep the
+    instant the player was more than despawn_radius_m away (their state
+    - "walking_to_building"/IN_BUILDING/"returning_to_vehicle" - wasn't
+    in the sweep's protected state set, only current_vehicle_id-based
+    states were). _materialize_parked_drivers runs every frame, so the
+    despawned member was immediately re-spawned right back at the car
+    next frame - "walks a bit, thrown back to the car, walks again"
+    forever, and exactly the "passenger spawned twice" case section 6
+    says must never happen."""
+    ways, building, tw, residents, driver, vehicle = _park_a_trip_group_vehicle()
+    tw.npcs = [vehicle]
+    manager = PedestrianManager(ways, target_count=0, traffic_manager=tw, residents=residents, venue_buildings=[building])
+    member_count = len(vehicle.trip_group.member_resident_ids)
+
+    far_away_player = Car(x=5000.0, y=5000.0, heading=0.0, speed=0.0)
+    counts = []
+    for _ in range(60):
+        manager.update(far_away_player, dt=0.2)
+        counts.append(len(manager.pedestrians))
+
+    assert all(count == member_count for count in counts[3:]), (
+        f"pedestrian count fluctuated away from {member_count}: {counts}"
+    )
+
+
+def test_fanned_out_spawn_positions_never_land_inside_the_vehicle():
+    """Regression: fanning members out in a full circle around the
+    already-cleared entry point pushed roughly half of them back across
+    that clearance and into the vehicle's own footprint (reported:
+    "people get out of car and walk thru the car"). Spread must stay
+    beside the car regardless of its heading/length."""
+    from theroadragetrip.pedestrian import _fanned_out_position
+
+    vehicle_width_m = 1.8
+    clearance = vehicle_width_m * 0.5 + 1.0  # _vehicle_entry_position's own offset formula
+    for heading in (0.0, math.pi / 2.0, math.pi / 4.0, 2.3):
+        # _vehicle_entry_position's exact perpendicular-offset formula,
+        # vehicle at the world origin.
+        entry_x = -math.sin(heading) * clearance
+        entry_y = math.cos(heading) * clearance
+        for total in (1, 2, 5):
+            for index in range(total):
+                x, y = _fanned_out_position(entry_x, entry_y, index, total, heading=heading)
+                # Rotate the point into the vehicle's own frame (undo its
+                # heading) - the lateral (local y) coordinate must clear
+                # the car's half-width no matter how far along its length
+                # (local x) a member is spread.
+                local_y = -x * math.sin(heading) + y * math.cos(heading)
+                assert abs(local_y) >= vehicle_width_m * 0.5, (
+                    f"heading={heading} total={total} index={index} landed inside the car's width"
+                )
+
+
+def test_annoyed_mood_renders_a_visible_marker():
+    """NPC-004 section 17: an accident driver's "annoyed" mood must be
+    visually distinguishable from a normal pedestrian - the smallest
+    marker that satisfies this, not a new render subsystem."""
+    import pygame
+
+    pygame.init()
+    ground = Way(points_m=[(0.0, -50.0), (0.0, 50.0)], highway="footway", half_width_m=1.5, is_drivable=False)
+    normal = Pedestrian(0.0, 0.0, 0.0, 0.0, 1.0, ground, 0, 1, (200, 50, 50))
+    annoyed = Pedestrian(0.0, 0.0, 0.0, 0.0, 1.0, ground, 0, 1, (200, 50, 50))
+    annoyed.mood = "annoyed"
+
+    normal_screen = pygame.Surface((400, 400))
+    normal_screen.fill((0, 0, 0))
+    draw_pedestrians(normal_screen, [normal], camx=0.0, camy=0.0, px_per_m=8.0, ways=[ground], screen_w=400, screen_h=400)
+
+    annoyed_screen = pygame.Surface((400, 400))
+    annoyed_screen.fill((0, 0, 0))
+    draw_pedestrians(annoyed_screen, [annoyed], camx=0.0, camy=0.0, px_per_m=8.0, ways=[ground], screen_w=400, screen_h=400)
+
+    assert pygame.image.tostring(normal_screen, "RGB") != pygame.image.tostring(annoyed_screen, "RGB")

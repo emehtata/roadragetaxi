@@ -93,6 +93,12 @@ class Building:
     levels: Optional[int] = None
     bbox: Tuple[float, float, float, float] = (0.0, 0.0, 0.0, 0.0)
     venue_type: Optional[str] = None
+    # windows.md: the raw building=* tag value (e.g. "house", "apartments",
+    # "office", "detached", "commercial", ...) - already present in every
+    # building way/relation's own OSM tags, just never propagated before.
+    # Used to tell a detached house apart from an apartment/office block
+    # for window density/size (render/buildings.py's _building_scale_category).
+    building_type: Optional[str] = None
     center_m: Tuple[float, float] = (0.0, 0.0)
     texture_seed: float = 0.0
     entrances: List[Tuple[float, float]] = field(default_factory=list)
@@ -300,22 +306,30 @@ class TrafficLight:
 
 @dataclass
 class StopSign:
-    """OSM stop sign position used by NPC approach logic."""
+    """OSM stop sign position, snapped onto its nearest road same as
+    Crossing/SpeedBump - see RENDER-audit.md section 19's finding that
+    this data was previously rendered nowhere."""
 
     x: float
     y: float
     layer: int = 0
     id: Optional[int] = None
+    direction_angle: Optional[float] = None
+    road_half_width_m: float = 3.5
 
 
 @dataclass
 class YieldSign:
-    """OSM give-way sign position used by NPC approach logic."""
+    """OSM give-way sign position, snapped onto its nearest road same as
+    Crossing/SpeedBump - see RENDER-audit.md section 19's finding that
+    this data was previously rendered nowhere."""
 
     x: float
     y: float
     layer: int = 0
     id: Optional[int] = None
+    direction_angle: Optional[float] = None
+    road_half_width_m: float = 3.5
 
 
 @dataclass
@@ -414,6 +428,12 @@ class SceneryObject:
     just a position, a kind to pick a small icon by, and an id for
     dedup/caching. See osm/build.py for the OSM tags -> kind mapping and
     render/scenery.py:draw_scenery_objects() for how each kind is drawn.
+
+    direction_angle is set only for kinds placed beside a path/way (bench,
+    waste_basket) - the position is snapped just past that way's edge, on
+    whichever side the raw OSM node already leaned towards, and the angle
+    is that way's heading (used to rotate an elongated icon like a bench
+    so it sits parallel to the path, not always axis-aligned).
     """
 
     x: float
@@ -421,6 +441,7 @@ class SceneryObject:
     kind: str
     name: Optional[str] = None
     id: Optional[int] = None
+    direction_angle: Optional[float] = None
 
 
 class MapData(tuple):

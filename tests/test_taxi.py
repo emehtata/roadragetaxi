@@ -4,7 +4,7 @@ from types import SimpleNamespace
 
 import pytest
 from theroadragetrip.osm import Building, Place, Scenery, TaxiStop, Way
-from theroadragetrip.physics import Car
+from theroadragetrip.physics import Car, is_point_on_road
 from theroadragetrip.taxi import TaxiManager, TaxiOffer, TaxiPassenger, TaxiState, TaxiTarget
 
 
@@ -38,6 +38,28 @@ def test_phone_passenger_waits_at_right_road_edge():
     assert passenger_x == 100.0
     assert passenger_y < 0.0
     assert heading == 0.0
+    # Regression: the offset used to be capped *below* half_width_m,
+    # placing the passenger inside the road's own driving surface
+    # instead of on the sidewalk beside it.
+    assert abs(passenger_y) > way.half_width_m
+
+
+def test_phone_passenger_never_waits_in_a_highway_lane():
+    """Regression: on a wide road (e.g. a motorway) the old offset
+    formula placed the passenger a few meters from the centerline -
+    inside a travel lane - instead of clearing the road entirely."""
+    way = Way(
+        points_m=[(0.0, 0.0), (200.0, 0.0)],
+        highway="motorway",
+        half_width_m=7.0,
+        name="Moottoritie",
+    )
+    taxi_mgr = TaxiManager(ways=[way])
+    pickup = TaxiTarget(100.0, 0.0, "Moottoritie")
+
+    _, passenger_y, _ = taxi_mgr.passenger_waiting_position(pickup)
+
+    assert not is_point_on_road(100.0, passenger_y, ways=[way], car_roads_only=True)
 
 
 def test_offer_generation_adds_one_offer_at_a_time(monkeypatch):

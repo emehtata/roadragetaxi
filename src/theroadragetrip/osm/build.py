@@ -11,9 +11,8 @@ logger = logging.getLogger(__name__)
 
 from .constants import (
     CROSSING_OVERLAP_SEARCH_RADIUS_M,
-    DEFAULT_ROAD_HALF_WIDTH_M,
-    HIGHWAY_HALF_WIDTH,
     NATURAL_SCENERY_KINDS,
+    parse_road_half_width_m,
     parse_speed_limit_kmh,
 )
 
@@ -57,11 +56,30 @@ from .trees import (
 _STATUE_MEMORIAL_TYPES = {"statue", "bust", "sculpture"}
 _STATUE_ARTWORK_TYPES = {"statue", "sculpture"}
 
+# Scenery-object kinds placed beside a path rather than free-standing -
+# see the scenery_object_nodes_raw loop below.
+_ALIGN_TO_PATH_SCENERY_KINDS = {"bench", "waste_basket"}
+
+# A real traffic/pedestrian-refuge island's kerb outline is compact (real
+# Oulu examples measured 3-12m across) and has genuine extent in both
+# directions (the same examples' narrower dimension was still 2.3m+) -
+# unlike an ordinary curb line along a street, which is frequently mapped
+# in short segments too but is always a near-straight, thin sliver. See
+# curb_raw's own traffic-island fallback fill below for the full reasoning.
+MAX_TRAFFIC_ISLAND_SPAN_M = 25.0
+MIN_TRAFFIC_ISLAND_WIDTH_M = 1.5
+
 
 def _scenery_object_kind(tags: Dict[str, str]) -> Optional[str]:
     amenity = tags.get("amenity")
     if amenity in ("bench", "waste_basket", "bicycle_parking", "fountain", "fuel"):
         return amenity
+    if tags.get("highway") == "street_lamp":
+        # lights.md: explicit physical lamp-pole data, when mapped, is the
+        # primary source for street-light placement - render/roads.py's
+        # draw_street_lights prefers these real positions over its own
+        # lit=*-driven fixed-spacing synthesis wherever they exist.
+        return "street_lamp"
     if tags.get("historic") == "memorial" and tags.get("memorial") in _STATUE_MEMORIAL_TYPES:
         return "statue"
     if tags.get("tourism") == "artwork" and tags.get("artwork_type") in _STATUE_ARTWORK_TYPES:
@@ -73,14 +91,17 @@ def _scenery_object_kind(tags: Dict[str, str]) -> Optional[str]:
     return None
 
 
-def _build_roads_grid(ways: List["Way"], r_grid_size: float) -> Dict[Tuple[int, int], List["Way"]]:
-    """Spatial grid of drivable roads, for finding the nearest road's
-    direction/width at a point (crossings, speed bumps: both need to snap
-    an OSM node - often digitized a little off the centerline - onto the
-    road it actually belongs to)."""
+def _build_roads_grid(
+    ways: List["Way"], r_grid_size: float, drivable_only: bool = True,
+) -> Dict[Tuple[int, int], List["Way"]]:
+    """Spatial grid of ways, for finding the nearest way's direction/width
+    at a point (crossings, speed bumps, stop/yield signs snap an OSM node
+    - often digitized a little off the centerline - onto the drivable road
+    it actually belongs to; bench/waste-basket placement needs the nearest
+    way of *any* kind, since those sit beside footways/paths, not roads)."""
     roads_grid: Dict[Tuple[int, int], List["Way"]] = defaultdict(list)
     for w in ways:
-        if not getattr(w, "is_drivable", True):
+        if drivable_only and not getattr(w, "is_drivable", True):
             continue
         bbox = getattr(w, "bbox", None)
         if not bbox or bbox == (0.0, 0.0, 0.0, 0.0):
@@ -564,6 +585,43 @@ def build_ways(
         if not pts or len(pts) < 2:
             continue
         curbs.append(Curb(points_m=pts, bbox=ibbox))
+        # A kerb shape with no separate natural=*/landuse=*/leisure=* area
+        # tag is still, in practice, virtually always a real traffic or
+        # pedestrian-refuge island - without a fill, it only ever got the
+        # curb outline above: a thin line sitting directly on the road's
+        # own asphalt with nothing distinguishing its interior (reads as
+        # empty road, not a solid island - the reported missing feature).
+        # Real Oulu data confirms this two ways: explicitly, via either
+        # area:highway=traffic_island (the newer, dedicated convention) or
+        # traffic_calming=island alongside the bare kerb; and implicitly,
+        # via plain {barrier=kerb} with neither tag but a small, compact
+        # shape - most such ways are *not even a literally closed ring*
+        # (checked examples had a few-meter gap between first and last
+        # node - each traces one curved side of a small island; filling it
+        # as a polygon regardless still approximates the real shape far
+        # better than an unfilled outline, a minor simplification for a
+        # shape this small). The natural=scrub/landuse=grass case (a real
+        # planted island) already gets its own fill through the ordinary
+        # scenery_raw path elsewhere in this function and must not be
+        # doubled up here.
+        has_area_or_leisure_tag = "natural" in tags or "landuse" in tags or "leisure" in tags
+        is_explicitly_tagged_island = (
+            tags.get("area:highway") == "traffic_island" or tags.get("traffic_calming") == "island"
+        )
+        island_width = ibbox[2] - ibbox[0]
+        island_height = ibbox[3] - ibbox[1]
+        # An ordinary curb line along a street - by far the more common
+        # barrier=kerb case - is frequently mapped in short segments too,
+        # so span alone doesn't tell it apart from a real island; but it's
+        # always a near-straight, thin sliver (one dimension close to
+        # zero), while a real island has real extent in both directions.
+        looks_like_a_compact_island = (
+            len(pts) >= 3
+            and max(island_width, island_height) <= MAX_TRAFFIC_ISLAND_SPAN_M
+            and min(island_width, island_height) >= MIN_TRAFFIC_ISLAND_WIDTH_M
+        )
+        if not has_area_or_leisure_tag and (is_explicitly_tagged_island or looks_like_a_compact_island):
+            sceneries.append(Scenery(points_m=pts, kind="traffic_island", bbox=ibbox))
 
     for tags, node_ids in railway_raw:
         pts, ibbox = process_node_ids(node_ids)
@@ -614,6 +672,7 @@ def build_ways(
                 if tags.get("building") in {"commercial", "retail", "shop"}
                 else None
             ),
+            building_type=tags.get("building"),
             center_m=(center_x, center_y),
             texture_seed=abs(math.sin(center_x * 0.013 + center_y * 0.017)),
             entrances=entrances,
@@ -646,7 +705,7 @@ def build_ways(
                 miny = py
             if py > maxy:
                 maxy = py
-        halfw = HIGHWAY_HALF_WIDTH.get(highway, DEFAULT_ROAD_HALF_WIDTH_M)
+        halfw = parse_road_half_width_m(tags.get("width"), highway)
         name = tags.get("name") or tags.get("name:fi") or tags.get("name:en") or tags.get("official_name")
         ref_num = tags.get("ref")
         if not name and ref_num:
@@ -871,6 +930,7 @@ def build_ways(
                         if tags.get("building") in {"commercial", "retail", "shop"}
                         else None
                     ),
+                    building_type=tags.get("building"),
                     center_m=(center_x, center_y),
                     texture_seed=abs(math.sin(center_x * 0.013 + center_y * 0.017)),
                 ))
@@ -885,6 +945,19 @@ def build_ways(
                 sceneries.append(Scenery(
                     points_m=pts, kind="parking", name=name, bbox=ibbox,
                     surface=tags.get("surface") or "asphalt",
+                ))
+            elif tags.get("highway") in non_drivable_highways:
+                # A paved pedestrian plaza/square is commonly mapped as a
+                # type=multipolygon relation tagged highway=pedestrian
+                # (+ surface=paving_stones) rather than a simple way -
+                # without this branch it fell through every case above
+                # and was silently dropped, leaving only whatever ground
+                # scenery sat underneath visible (reported: a real paved
+                # square over a small nearby landuse=grass patch rendered
+                # as if the grass itself were the square).
+                sceneries.append(Scenery(
+                    points_m=pts, kind="pedestrian_area", name=name, bbox=ibbox,
+                    surface=tags.get("surface") or "paving_stones",
                 ))
             elif "leisure" in tags or "landuse" in tags or tags.get("natural") in NATURAL_SCENERY_KINDS:
                 kind = tags.get("leisure") or tags.get("landuse") or tags.get("natural") or "park"
@@ -924,11 +997,40 @@ def build_ways(
         if pt:
             taxi_stops.append(TaxiStop(x=pt[0], y=pt[1], id=nid))
 
+    # Bench/waste-basket nodes sit beside a path, not floating free like a
+    # statue or fountain - snapped onto the nearest way of *any* kind
+    # (drivable_only=False: these are almost always beside a footway/path,
+    # not a road) the same way stop/yield signs snap onto their road, then
+    # pushed out past that way's edge on whichever side the raw OSM node
+    # already leaned towards. Without this every one of them rendered as
+    # the same axis-aligned box regardless of the path's own direction.
+    path_ways_grid = None
+    path_grid_size = 50.0
+    if scenery_object_nodes_raw:
+        path_ways_grid = _build_roads_grid(ways, path_grid_size, drivable_only=False)
+
     for tags, nid in scenery_object_nodes_raw:
         pt = nodes_m.get(nid)
         kind = _scenery_object_kind(tags)
-        if pt and kind is not None:
-            scenery_objects.append(SceneryObject(x=pt[0], y=pt[1], kind=kind, name=tags.get("name"), id=nid))
+        if not pt or kind is None:
+            continue
+        obj_x, obj_y, angle = pt[0], pt[1], None
+        if kind in _ALIGN_TO_PATH_SCENERY_KINDS:
+            try:
+                layer_val = int(tags.get("layer", 0))
+            except (TypeError, ValueError):
+                layer_val = 0
+            snap_x, snap_y, way_angle, way_half_w, found = _snap_to_nearest_road(
+                pt, layer_val, path_ways_grid, path_grid_size
+            )
+            if found:
+                normal_x, normal_y = -math.sin(way_angle), math.cos(way_angle)
+                side = 1.0 if (pt[0] - snap_x) * normal_x + (pt[1] - snap_y) * normal_y >= 0.0 else -1.0
+                clearance = way_half_w + 0.5
+                obj_x = snap_x + normal_x * side * clearance
+                obj_y = snap_y + normal_y * side * clearance
+                angle = way_angle
+        scenery_objects.append(SceneryObject(x=obj_x, y=obj_y, kind=kind, name=tags.get("name"), id=nid, direction_angle=angle))
 
     for tags, nid in bus_stops_raw:
         pt = nodes_m.get(nid)
@@ -979,31 +1081,14 @@ def build_ways(
     else:
         logical_intersections = []
 
-    # 8. Stop signs from OSM nodes
-    for tags, nid in stop_signs_raw:
-        point = nodes_m.get(nid)
-        if point is None:
-            continue
-        layer_value = 0
-        try:
-            layer_value = int(tags.get("layer", 0))
-        except (TypeError, ValueError):
-            pass
-        stop_signs.append(StopSign(point[0], point[1], layer=layer_value, id=nid))
-    for tags, nid in yield_signs_raw:
-        point = nodes_m.get(nid)
-        if point is None:
-            continue
-        try:
-            layer_value = int(tags.get("layer", 0))
-        except (TypeError, ValueError):
-            layer_value = 0
-        yield_signs.append(YieldSign(point[0], point[1], layer=layer_value, id=nid))
-
-    # 9. Pedestrian Crossings (suojatiet) and speed bumps from OSM nodes -
-    # both are "snap this node onto the nearest road, get its direction
-    # and width" problems, so they share one roads_grid/_snap_to_nearest_road.
-    if crossings_raw or speed_bumps_raw:
+    # 9. Pedestrian Crossings (suojatiet), speed bumps, stop signs and
+    # yield signs from OSM nodes - all four are "snap this node onto the
+    # nearest road, get its direction and width" problems, so they share
+    # one roads_grid/_snap_to_nearest_road. Stop/yield signs are physical
+    # roadside objects, not road-surface markings, so the renderer offsets
+    # them out to the road's edge using direction_angle/road_half_width_m -
+    # unlike a Crossing/SpeedBump, which is drawn right on the snapped point.
+    if crossings_raw or speed_bumps_raw or stop_signs_raw or yield_signs_raw:
         r_grid_size = 50.0
         roads_grid = _build_roads_grid(ways, r_grid_size)
 
@@ -1103,6 +1188,52 @@ def build_ways(
                     width_m=max(3.0, road_half_w * 1.8),
                 )
             )
+
+        # Unlike a Crossing/SpeedBump (a road-surface marking, correctly
+        # drawn right on the snapped centerline point), a stop/yield sign
+        # is a physical post beside the road - placed at whichever side of
+        # the centerline the raw OSM node itself already leans towards
+        # (mappers commonly nudge these nodes slightly off-center towards
+        # the sign's real post), pushed out to just past the road edge.
+        def _snap_road_sign(tags: Dict[str, str], nid: int):
+            pt = nodes_m.get(nid)
+            if not pt:
+                return None
+            try:
+                layer_val = int(tags.get("layer", 0))
+            except (TypeError, ValueError):
+                layer_val = 0
+            snap_x, snap_y, road_angle, road_half_w, found_orientation = _snap_to_nearest_road(
+                pt, layer_val, roads_grid, r_grid_size
+            )
+            if not found_orientation:
+                return pt[0], pt[1], layer_val, None, road_half_w
+            normal_x, normal_y = -math.sin(road_angle), math.cos(road_angle)
+            side = 1.0 if (pt[0] - snap_x) * normal_x + (pt[1] - snap_y) * normal_y >= 0.0 else -1.0
+            clearance = road_half_w + 1.0
+            post_x = snap_x + normal_x * side * clearance
+            post_y = snap_y + normal_y * side * clearance
+            return post_x, post_y, layer_val, road_angle, road_half_w
+
+        for tags, nid in stop_signs_raw:
+            snapped = _snap_road_sign(tags, nid)
+            if snapped is None:
+                continue
+            post_x, post_y, layer_val, road_angle, road_half_w = snapped
+            stop_signs.append(StopSign(
+                x=post_x, y=post_y, layer=layer_val, id=nid,
+                direction_angle=road_angle, road_half_width_m=road_half_w,
+            ))
+
+        for tags, nid in yield_signs_raw:
+            snapped = _snap_road_sign(tags, nid)
+            if snapped is None:
+                continue
+            post_x, post_y, layer_val, road_angle, road_half_w = snapped
+            yield_signs.append(YieldSign(
+                x=post_x, y=post_y, layer=layer_val, id=nid,
+                direction_angle=road_angle, road_half_width_m=road_half_w,
+            ))
 
     t_total = time.time() - t_start
     logger.info(

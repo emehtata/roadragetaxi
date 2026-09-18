@@ -421,7 +421,7 @@ def _get_game_version() -> str:
     try:
         return f"v{package_version('theroadragetrip')}"
     except PackageNotFoundError:
-        return "v0.11.1alpha"
+        return "v0.12.0alpha"
 
 
 def _draw_version(screen, font, screen_w: int, screen_h: int) -> None:
@@ -442,6 +442,22 @@ def world_to_screen(
     sx = (wx - camx) * px_per_m + screen_w / 2
     sy = screen_h / 2 - (wy - camy) * px_per_m
     return int(sx), int(sy)
+
+
+def screen_to_world(
+    sx: float,
+    sy: float,
+    camx: float,
+    camy: float,
+    px_per_m: float = PX_PER_M,
+    screen_w: int = SCREEN_W,
+    screen_h: int = SCREEN_H,
+) -> tuple[float, float]:
+    """Inverse of world_to_screen - screen pixels (e.g. the mouse cursor)
+    -> world meters. Exact algebraic inverse, not an approximation."""
+    wx = (sx - screen_w / 2) / px_per_m + camx
+    wy = camy - (sy - screen_h / 2) / px_per_m
+    return wx, wy
 
 
 def _segment_viewport_t_range(x0, y0, ux, uy, seg_len, vminx, vminy, vmaxx, vmaxy):

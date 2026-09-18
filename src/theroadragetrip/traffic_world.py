@@ -34,6 +34,14 @@ class TrafficWorld:
         self._parking_grid_cell_size = 100.0
         self._route_nodes: List[Tuple[float, float, int]] = []
         self._route_edges: dict[int, List[Tuple[int, float]]] = {}
+        # Set by main.py once npc.py's NPC vehicle list exists (a plain
+        # list, kept as the same object reference so later appends to it
+        # stay visible here) - lets PedestrianManager's linked-driver/
+        # trip-group logic (multi-passenger-car.md) and its unrelated
+        # generic "grab any nearby idle vehicle" mechanic both find real
+        # NPCVehicle instances through this one duck-typed traffic_manager
+        # interface, instead of needing their own copy of the list.
+        self.npcs: List = []
         self.sync_map_data(
             ways,
             traffic_lights=traffic_lights,
@@ -44,6 +52,24 @@ class TrafficWorld:
 
     def advance_time(self, dt: float) -> None:
         self.sim_time += dt
+
+    def nearby_npcs_at(self, x: float, y: float, radius_m: float = 150.0) -> List:
+        """NPC vehicles within radius_m of (x, y) - a linear scan is fine
+        here: real NPC vehicle counts are tiny compared to ways/buildings,
+        nowhere near needing a spatial grid of their own."""
+        radius_sq = radius_m * radius_m
+        return [
+            vehicle for vehicle in self.npcs
+            if (vehicle.x - x) ** 2 + (vehicle.y - y) ** 2 <= radius_sq
+        ]
+
+    def activate_occupied_vehicle(self, vehicle) -> None:
+        """A pedestrian just stepped out of `vehicle` (pedestrian.py's
+        generic "opportunistically drive any idle parked vehicle" flow,
+        PedestrianManager.exit_vehicle) - clear its driver so it reads as
+        idle/parked again."""
+        vehicle.current_driver_id = None
+        vehicle.state = "driving"
 
     def _build_route_graph(self) -> None:
         nodes: List[Tuple[float, float, int]] = []

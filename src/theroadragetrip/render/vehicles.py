@@ -874,6 +874,7 @@ def draw_npc_cars(
                 )
             else:
                 travel_route = getattr(npc, "travel_route", None) or ()
+                target_pt = None
                 if len(travel_route) >= 2:
                     route_screen = [
                         world_to_screen(point[0], point[1], camx, camy, px_per_m, screen_w, screen_h)
@@ -888,12 +889,20 @@ def draw_npc_cars(
                         5,
                         1,
                     )
-                pts = getattr(npc.way, "points_m", None)
-                target_pt = None
-                if pts and getattr(npc, "direction", 1) == 1 and getattr(npc, "segment_idx", 0) + 1 < len(pts):
-                    target_pt = pts[npc.segment_idx + 1]
-                elif pts and getattr(npc, "direction", 1) == -1 and getattr(npc, "segment_idx", 0) < len(pts):
-                    target_pt = pts[npc.segment_idx]
+                else:
+                    # Fallback for NPCs with no travel_route (e.g. a
+                    # single-way parking maneuver): show the next point
+                    # along their own way instead. Bugfix: this used to
+                    # read npc.segment_idx directly after only getattr-
+                    # guarding the *condition*, crashing for any NPC (like
+                    # npc.NPCVehicle) that doesn't carry that attribute.
+                    pts = getattr(npc.way, "points_m", None)
+                    direction = getattr(npc, "direction", 1)
+                    segment_idx = getattr(npc, "segment_idx", 0)
+                    if pts and direction == 1 and segment_idx + 1 < len(pts):
+                        target_pt = pts[segment_idx + 1]
+                    elif pts and direction == -1 and segment_idx < len(pts):
+                        target_pt = pts[segment_idx]
                 if target_pt is not None:
                     target_screen = world_to_screen(
                         target_pt[0], target_pt[1], camx, camy, px_per_m, screen_w, screen_h
@@ -1111,15 +1120,20 @@ def draw_cyclists(
     for cyclist in cyclists:
         if not (vminx <= cyclist.x <= vmaxx and vminy <= cyclist.y <= vmaxy):
             continue
-        if _covered_by_higher_road(
+        cx, cy = world_to_screen(cyclist.x, cyclist.y, camx, camy, px_per_m, screen_w, screen_h)
+        # Same "hidden behind a bridge above" cue draw_car/draw_npc_cars use
+        # (see _covered_by_higher_road/_vehicle_is_on_bridge) - an outline
+        # rather than vanishing entirely, so a cyclist under a bridge is
+        # still visible enough to see they're there (occlusion.md #7).
+        if not _vehicle_is_on_bridge(cyclist) and _covered_by_higher_road(
             cyclist.x,
             cyclist.y,
             getattr(cyclist.way, "layer", 0),
             ways,
             spatial_grid=spatial_grid,
         ):
+            _draw_vehicle_outline(screen, cx, cy, cyclist.heading, max(6.0, 3.2 * px_per_m), max(3.0, 1.0 * px_per_m))
             continue
-        cx, cy = world_to_screen(cyclist.x, cyclist.y, camx, camy, px_per_m, screen_w, screen_h)
         global _cyclist_sprite
         if _cyclist_sprite is None:
             _cyclist_sprite = pygame.image.load(

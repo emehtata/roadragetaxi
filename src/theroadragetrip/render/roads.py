@@ -52,6 +52,18 @@ STREET_LIGHT_POOL_ADD_COLOR = (22, 22, 22)
 STREET_LIGHT_POOL_HALF_ANGLE = math.radians(135.0)
 STREET_LIGHT_POOL_STEPS = 16
 STREET_LIGHT_CORE_COLOR = (215, 215, 200, 230)
+# lights.md: how far beyond a way's own half-width an explicit OSM
+# highway=street_lamp node is still considered "this way's lamp" - covers
+# a real curbside/verge/shoulder planting distance (measured against a
+# real Oulu extract with actual street_lamp nodes: median distance from a
+# lamp to its nearest lighting-eligible road was ~7.4m, 84% within 15m -
+# a lamp farther out than this is more likely lighting a footpath/
+# courtyard with no meaningful nearby road at all than genuinely
+# belonging to a distant one, so it correctly falls through to that
+# road's own lit=* synthesis instead of being misattributed).
+# Deliberately not the whole STREET_LIGHT_BUILDING_DISTANCE_M "is this
+# area urban at all" radius - that answers a different question.
+STREET_LIGHT_EXPLICIT_LAMP_MAX_DISTANCE_M = 15.0
 _asphalt_texture_tile = None
 _asphalt_texture_source = None
 _asphalt_texture_tile_size = None
@@ -62,6 +74,7 @@ _taxi_sign_text = None
 _bus_stop_geometry_cache = None
 _bus_stop_font_cache = {}
 _bus_stop_label_cache = {}
+_road_sign_font_cache = {}
 _traffic_light_surface_cache = {}
 _street_light_glow_cache = {}
 _street_light_frame_cache_key = None
@@ -279,6 +292,7 @@ def _start_road_rebuild(
         "index": 0,
         "asphalt_polygons": [],
         "center_lines": [],
+        "center_line_layer": None,
         "bridge_edges": [],
     }
 
@@ -573,6 +587,19 @@ def _advance_road_rebuild(job: dict, deadline: float) -> bool:
         w = visible_ways[job["index"]]
         job["index"] += 1
         made_progress_this_call = True
+        # visible_ways is sorted by layer ascending, so the first way of a
+        # new layer means every lower-layer way is already fully drawn -
+        # flush that lower layer's center lines now, before this (higher)
+        # layer's own asphalt/deck draws over it. Without this, all center
+        # lines drew in one batch after the whole loop regardless of layer,
+        # so a ground-level road's dashed line painted on top of a bridge
+        # sitting above it instead of being hidden underneath.
+        way_layer = getattr(w, "layer", 0)
+        if center_lines and job["center_line_layer"] != way_layer:
+            for entry_color, entry_points, entry_connections, entry_solid in center_lines:
+                draw_center_line(entry_color, entry_points, entry_connections, entry_solid)
+            center_lines.clear()
+        job["center_line_layer"] = way_layer
         if px_per_m <= 1.5 and not w.is_drivable:
             continue
         pts = [world_to_screen(x, y, camx, camy, px_per_m, screen_w, screen_h) for (x, y) in w.points_m]
@@ -593,6 +620,8 @@ def _advance_road_rebuild(job: dict, deadline: float) -> bool:
                 if (id(w), endpoint) in endpoint_connections
             ]
             draw_joined_line(ped_color, pts, ped_thickness, connections)
+            if getattr(w, "is_bridge", False) and px_per_m > 1.5:
+                bridge_edges.append((w, pts, ped_thickness))
             continue
 
         connections = [
@@ -845,8 +874,17 @@ def draw_street_lights(
     buildings: Optional[List[Building]] = None,
     base_surface=None,
     building_spatial_grid=None,
+    street_lamps: Optional[List] = None,
+    street_lamp_grid=None,
 ) -> None:
-    """Draw simple roadside lamps on visible urban roads."""
+    """Draw simple roadside lamps on visible urban roads.
+
+    street_lamps (lights.md: explicit OSM highway=street_lamp positions,
+    when mapped) take precedence over the lit=*/highway-heuristic fixed-
+    spacing synthesis below, way by way - see the geometry-rebuild loop's
+    own real-lamp lookup. lit=* stays the fallback for whichever ways
+    have no explicit lamp mapped nearby, exactly as before.
+    """
     import pygame
     global _street_light_last_debug_log_ms
     cache_zoom = _static_cache_zoom(px_per_m)
@@ -1094,6 +1132,7 @@ def draw_street_lights(
         id(buildings),
         len(buildings) if buildings else 0,
         id(buildings[-1]) if buildings else None,
+        len(street_lamps) if street_lamps else 0,
     )
     if geometry_cache_key != _street_light_way_lit_cache_key or not region_covers_viewport:
         way_lit_cache = {}
@@ -1124,6 +1163,13 @@ def draw_street_lights(
         cached_lamps = []
         lamp_spacing = STREET_LIGHT_SPACING_M
         junction_cell_size = 40.0
+        # lights.md requirement 1-3: explicit OSM lamp-pole positions are
+        # the primary source whenever mapped, not merely a decoration on
+        # top of the lit=*-driven synthesis below - a real lamp claimed
+        # here is never also re-placed by the fixed-spacing fallback.
+        # Tracked across the whole rebuild (not per-way) so a lamp near
+        # two ways at a junction isn't placed twice.
+        seen_explicit_lamp_ids: set = set()
         for way in visible_ways:
             if (
                 not getattr(way, "is_drivable", True)
@@ -1137,6 +1183,40 @@ def draw_street_lights(
                 )
                 or len(way.points_m) < 2
             ):
+                continue
+            half_width = getattr(way, "half_width_m", 4.0)
+            explicit_lamps_for_way = []
+            if street_lamp_grid is not None and street_lamps:
+                margin = half_width + STREET_LIGHT_EXPLICIT_LAMP_MAX_DISTANCE_M
+                bbox = getattr(way, "bbox", None)
+                if not bbox or bbox == (0.0, 0.0, 0.0, 0.0):
+                    xs = [point[0] for point in way.points_m]
+                    ys = [point[1] for point in way.points_m]
+                    bbox = (min(xs), min(ys), max(xs), max(ys))
+                candidates = street_lamp_grid.ways_in_rect(
+                    bbox[0] - margin, bbox[1] - margin, bbox[2] + margin, bbox[3] + margin,
+                )
+                for lamp in candidates:
+                    if id(lamp) in seen_explicit_lamp_ids:
+                        continue
+                    nearest_segment = min(
+                        zip(way.points_m, way.points_m[1:]),
+                        key=lambda segment: dist_point_to_segment(lamp.x, lamp.y, *segment[0], *segment[1]),
+                    )
+                    if dist_point_to_segment(lamp.x, lamp.y, *nearest_segment[0], *nearest_segment[1]) > margin:
+                        continue
+                    explicit_lamps_for_way.append((lamp, nearest_segment))
+            if explicit_lamps_for_way:
+                # Real data found for this way - use it exclusively (not
+                # blended with the synthetic spacing below) and move on.
+                for lamp, (seg_start, seg_end) in explicit_lamps_for_way:
+                    seen_explicit_lamp_ids.add(id(lamp))
+                    seg_dx = seg_end[0] - seg_start[0]
+                    seg_dy = seg_end[1] - seg_start[1]
+                    seg_len = math.hypot(seg_dx, seg_dy) or 1.0
+                    road_direction = math.atan2(seg_dy / seg_len, seg_dx / seg_len)
+                    pool_radius_m = half_width + STREET_LIGHT_EXPLICIT_LAMP_MAX_DISTANCE_M * 0.5
+                    cached_lamps.append((lamp.x, lamp.y, road_direction, pool_radius_m))
                 continue
             distance_to_lamp = 0.0
             segment_lengths = getattr(way, "segment_lengths", ())
@@ -1917,6 +1997,90 @@ def draw_speed_bumps(
             (sx - half_len_x + half_wid_x, sy - half_len_y + half_wid_y),
         ]
         pygame.draw.polygon(screen, SPEED_BUMP_COLOR, corners)
+
+
+def _draw_road_sign_post(screen, cx: int, cy: int, scale: float) -> None:
+    """Shared grey pole under a stop/yield sign head."""
+    import pygame
+
+    pole_height = max(8, int(14 * scale))
+    pygame.draw.line(screen, (70, 70, 70), (cx, cy), (cx, cy + pole_height), max(2, int(2 * scale)))
+
+
+def draw_stop_signs(
+    screen,
+    stop_signs: List,
+    camx: float,
+    camy: float,
+    px_per_m: float = PX_PER_M,
+    screen_w: int = SCREEN_W,
+    screen_h: int = SCREEN_H,
+) -> None:
+    """RENDER-audit.md section 21: stop signs were parsed (StopSign) and
+    fed into `_snap_to_nearest_road` since day one but never had a
+    renderer - the octagonal red sign was invisible even though its road
+    position was already computed. Drawn upright (not rotated to face
+    traffic), same simplicity as draw_taxi_stops - a small fixed-size
+    roadside icon, not a to-scale 3D object."""
+    import pygame
+
+    if not stop_signs:
+        return
+
+    vminx, vminy, vmaxx, vmaxy = get_viewport_bounds(camx, camy, px_per_m, screen_w, screen_h, 20.0)
+    scale = max(0.7, min(1.5, px_per_m / PX_PER_M))
+    radius = 9 * scale
+
+    for sign in stop_signs:
+        if not (vminx <= sign.x <= vmaxx and vminy <= sign.y <= vmaxy):
+            continue
+        cx, cy = world_to_screen(sign.x, sign.y, camx, camy, px_per_m, screen_w, screen_h)
+        _draw_road_sign_post(screen, cx, cy, scale)
+        octagon = [
+            (cx + radius * math.cos(math.radians(a)), cy + radius * math.sin(math.radians(a)))
+            for a in range(0, 360, 45)
+        ]
+        pygame.draw.polygon(screen, (220, 30, 30), octagon)
+        pygame.draw.polygon(screen, (245, 245, 240), octagon, width=max(1, int(scale)))
+        if radius >= 7:
+            font_size = max(8, int(radius))
+            stop_font = _road_sign_font_cache.get(font_size)
+            if stop_font is None:
+                stop_font = pygame.font.Font(None, font_size)
+                _road_sign_font_cache[font_size] = stop_font
+            label = stop_font.render("STOP", True, (250, 250, 248))
+            screen.blit(label, label.get_rect(center=(cx, cy)))
+
+
+def draw_yield_signs(
+    screen,
+    yield_signs: List,
+    camx: float,
+    camy: float,
+    px_per_m: float = PX_PER_M,
+    screen_w: int = SCREEN_W,
+    screen_h: int = SCREEN_H,
+) -> None:
+    """RENDER-audit.md section 21: same previously-invisible-data gap as
+    draw_stop_signs, for give-way signs - a downward-pointing red-bordered
+    triangle instead of an octagon."""
+    import pygame
+
+    if not yield_signs:
+        return
+
+    vminx, vminy, vmaxx, vmaxy = get_viewport_bounds(camx, camy, px_per_m, screen_w, screen_h, 20.0)
+    scale = max(0.7, min(1.5, px_per_m / PX_PER_M))
+    half = 9 * scale
+
+    for sign in yield_signs:
+        if not (vminx <= sign.x <= vmaxx and vminy <= sign.y <= vmaxy):
+            continue
+        cx, cy = world_to_screen(sign.x, sign.y, camx, camy, px_per_m, screen_w, screen_h)
+        _draw_road_sign_post(screen, cx, cy, scale)
+        triangle = [(cx, cy + half), (cx - half, cy - half), (cx + half, cy - half)]
+        pygame.draw.polygon(screen, (245, 245, 240), triangle)
+        pygame.draw.polygon(screen, (220, 30, 30), triangle, width=max(2, int(2 * scale)))
 
 
 def draw_traffic_lights(

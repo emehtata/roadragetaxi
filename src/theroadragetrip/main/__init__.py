@@ -87,6 +87,7 @@ from ..render import (
     draw_railings,
     draw_railways,
     draw_day_night_overlay,
+    draw_illuminated_windows,
     draw_grass_texture,
     draw_headlight_beams,
     draw_hud,
@@ -101,6 +102,14 @@ from ..render import (
     draw_loading_screen,
     draw_navigation_route,
     draw_logical_intersections,
+    draw_activity_debug_panel,
+    draw_npc_cars,
+    draw_npc_spatial_grid,
+    draw_npc_debug_overlay,
+    draw_npc_debug_panel,
+    draw_npc_population_panel,
+    draw_feature_inspector_panel,
+    screen_to_world,
     draw_pause_menu,
     draw_parking_spaces,
     draw_settings_menu,
@@ -122,6 +131,8 @@ from ..render import (
     draw_passenger_nausea_bubble,
     draw_taxi_exhaust,
     draw_speed_cameras,
+    draw_stop_signs,
+    draw_yield_signs,
     draw_taxi_stops,
     draw_taxi_target,
     draw_tire_tracks,
@@ -135,6 +146,8 @@ from ..render import (
     minimum_px_per_m_for_viewport_width,
     solar_altitude_and_events,
 )
+from ..activities import ActivityContext, ActivityInstance
+from ..npc import NPCVehicleManager
 from ..pedestrian import PedestrianManager, PlayerPedestrian
 from ..residents import ResidentManager
 from ..police import place_speed_cameras
@@ -160,7 +173,7 @@ from .menu_input import (
     _respawn_allowed,
 )
 from .startup_screens import choose_language, confirm_outdated_cache, edit_city_list
-from .debug_tools import _screenshot_directory, _write_debug_snapshot
+from .debug_tools import _screenshot_directory, _write_debug_snapshot, find_feature_at
 
 # Maintain BBOX constant for backward compatibility
 BBOX = DEFAULT_BBOX
@@ -169,6 +182,13 @@ logger = logging.getLogger(__name__)
 RAGE_SHOUTS = ("PRKL!", "STNA!", "VTTU!", "HLVT!", "KRPÄ!", "KSPÄ!", "PSKA!")
 RAGE_DISTANCE_TO_FULL_M = 400.0
 RAGE_SHOUT_COST = 0.25
+# F5 activity debug panel's force-an-activity testing keys (residents-
+# live.md section 18) - number key N forces the Nth plugin listed in the
+# panel (registry.all_plugins() order) onto the selected resident.
+ACTIVITY_DEBUG_FORCE_KEYS = (
+    pygame.K_1, pygame.K_2, pygame.K_3, pygame.K_4, pygame.K_5,
+    pygame.K_6, pygame.K_7, pygame.K_8, pygame.K_9,
+)
 
 
 def _rage_from_speeding(
@@ -557,6 +577,11 @@ def _load_world(
     bus_stops = getattr(res, "bus_stops", [])
     parking_spaces = getattr(res, "parking_spaces", [])
     scenery_objects = getattr(res, "scenery_objects", [])
+    # lights.md: explicit OSM lamp-pole positions (highway=street_lamp),
+    # when mapped, are the primary source draw_street_lights uses instead
+    # of its own lit=*-driven fixed-spacing synthesis - see osm/build.py's
+    # _scenery_object_kind.
+    street_lamps = [obj for obj in scenery_objects if obj.kind == "street_lamp"]
     speed_bumps = getattr(res, "speed_bumps", [])
     railways = getattr(res, "railways", [])
     railings = getattr(res, "railings", [])
@@ -577,6 +602,8 @@ def _load_world(
     building_grid.rebuild(buildings)
     scenery_grid = SpatialWayGrid()
     scenery_grid.rebuild(sceneries)
+    street_lamp_grid = SpatialWayGrid()
+    street_lamp_grid.rebuild(street_lamps)
     water_grid = SpatialWayGrid()
     water_grid.rebuild(waters)
     crossing_grid = SpatialWayGrid()
@@ -636,6 +663,38 @@ def _load_world(
         residents=residents,
         logical_intersections=logical_intersections,
     )
+    # NPC-003: a real, persistent, gradually-filled NPC vehicle
+    # population (replaces NPC-001's single deterministic demo car).
+    # Filled here, during loading, so an initial population exists the
+    # moment gameplay starts - see NPCVehicleManager.populate_initial's
+    # own docstring for why a plain loop is fine at load time even though
+    # ongoing top-up during play is deliberately staggered.
+    on_load_progress(0.88, "Preparing NPC traffic...")
+    npc_manager = NPCVehicleManager(
+        target_count=args.npc_vehicle_count,
+        min_count=args.npc_vehicle_min,
+        max_count=args.npc_vehicle_max,
+        vehicle_distribution=args.vehicle_distribution,
+        include_experimental=args.enable_two_wheelers,
+    )
+    npc_manager.populate_initial(
+        car.x, car.y, residents, ways, spatial_grid=spatial_grid,
+        parking_spaces=parking_spaces, sceneries=sceneries, buildings=buildings,
+        curbs=curbs, curb_grid=curb_grid, building_grid=building_grid,
+        progress_callback=lambda fraction: on_load_progress(0.88 + 0.06 * fraction, "Preparing NPC traffic..."),
+    )
+    logger.info(
+        "NPC-003: populated %d/%d NPC vehicles (%d household, %d autonomous), by type: %s",
+        len(npc_manager.vehicles), npc_manager.target_count,
+        npc_manager.population_counts()["household"], npc_manager.population_counts()["autonomous"],
+        npc_manager.population_counts_by_type(),
+    )
+    # Same list/dict objects for the life of the session - npc_manager's
+    # own population-tick spawns/despawns stay visible through
+    # traffic_mgr.npcs without needing to re-set this on every change.
+    npcs = npc_manager.vehicles
+    npc_drivers = npc_manager.drivers
+    traffic_mgr.npcs = npcs
     # Initialize autonomous Pedestrian Manager
     on_load_progress(0.92, "Preparing pedestrians...")
     pedestrian_mgr = PedestrianManager(
@@ -644,10 +703,12 @@ def _load_world(
         traffic_lights=traffic_lights,
         crossings=crossings,
         logical_intersections=logical_intersections,
-        traffic_vehicles=[],
-        traffic_manager=None,
+        traffic_manager=traffic_mgr,
         residents=residents,
         venue_buildings=buildings,
+        scenery_objects=scenery_objects,
+        sceneries=sceneries,
+        bus_stops=bus_stops,
     )
     # Cyclists are disabled until their traffic interactions are complete.
     player_pedestrian = PlayerPedestrian(
@@ -718,6 +779,9 @@ def _load_world(
         railings=railings,
         elements_count=elements_count,
         logical_intersections=logical_intersections,
+        npc_drivers=npc_drivers,
+        npcs=npcs,
+        npc_manager=npc_manager,
         parking_spaces=parking_spaces,
         pedestrian_mgr=pedestrian_mgr,
         places=places,
@@ -727,10 +791,13 @@ def _load_world(
         sceneries=sceneries,
         scenery_grid=scenery_grid,
         scenery_objects=scenery_objects,
+        street_lamps=street_lamps,
+        street_lamp_grid=street_lamp_grid,
         spatial_grid=spatial_grid,
         speed_bumps=speed_bumps,
         speed_cameras=speed_cameras,
         stop_signs=stop_signs,
+        yield_signs=yield_signs,
         sun_latitude=sun_latitude,
         sun_longitude=sun_longitude,
         taxi_mgr=taxi_mgr,
@@ -801,7 +868,7 @@ def main() -> None:
     pygame.init()
     screen = pygame.display.set_mode((SCREEN_W, SCREEN_H))
     try:
-        icon_path = os.path.join(os.path.dirname(__file__), "..", "assets", "roadragetrip_icon.png")
+        icon_path = os.path.join(os.path.dirname(__file__), "..", "assets", "rrt-taxi.png")
         pygame.display.set_icon(pygame.image.load(icon_path).convert_alpha())
     except (OSError, pygame.error):
         logger.warning("Game icon could not be loaded")
@@ -898,6 +965,9 @@ def main() -> None:
         railings = world.railings
         elements_count = world.elements_count
         logical_intersections = world.logical_intersections
+        npc_drivers = world.npc_drivers
+        npcs = world.npcs
+        npc_manager = world.npc_manager
         parking_spaces = world.parking_spaces
         pedestrian_mgr = world.pedestrian_mgr
         places = world.places
@@ -907,10 +977,13 @@ def main() -> None:
         sceneries = world.sceneries
         scenery_grid = world.scenery_grid
         scenery_objects = world.scenery_objects
+        street_lamps = world.street_lamps
+        street_lamp_grid = world.street_lamp_grid
         spatial_grid = world.spatial_grid
         speed_bumps = world.speed_bumps
         speed_cameras = world.speed_cameras
         stop_signs = world.stop_signs
+        yield_signs = world.yield_signs
         sun_latitude = world.sun_latitude
         sun_longitude = world.sun_longitude
         taxi_mgr = world.taxi_mgr
@@ -926,6 +999,17 @@ def main() -> None:
 
         label_mode = 0
         show_debug_hud = False
+        npc_follow = False  # F6: camera follows the NPC-001 vehicle
+        show_npc_debug = False  # F7: NPC debug overlay (state/route/decision)
+        # F5: residents-live.md section 18's activity debug panel - shows
+        # the selected resident's current ambient activity plus why every
+        # registered plugin would/wouldn't be picked for them right now;
+        # while showing, number keys 1-9 force one onto them for testing.
+        show_activity_debug = False
+        # F4: RENDER-audit.md section 19's feature inspector - click the
+        # map to see what OSM feature is there and whether it's rendered.
+        show_feature_inspector = False
+        inspected_feature = None
         physics_mode = config.get("game", "physics_realism", fallback="arcade")
         speed_limiter_enabled = True
         red_light_assist_enabled = False
@@ -975,6 +1059,12 @@ def main() -> None:
         car_was_in_puddle = False
         map_sync_stage = 0
         last_map_revision = auto_fetch_manager.get_map_revision()
+        # street_lamps is filtered from scenery_objects, not a list
+        # AutoFetchManager grows directly (unlike buildings/ways) - this
+        # tracks how many scenery_objects it was last filtered from, so
+        # the map-sync stage below only re-filters/rebuilds when autofetch
+        # has actually added new ones.
+        street_lamps_synced_count = len(scenery_objects)
         water_elapsed = 0.0
         bridge_edge_crash_cooldown = 0.0
         visible_road_count_elapsed = 0.0
@@ -1051,6 +1141,18 @@ def main() -> None:
                             screen_w=SCREEN_W,
                             screen_h=SCREEN_H,
                         )
+                        if show_feature_inspector:
+                            # RENDER-audit.md section 19.
+                            world_x, world_y = screen_to_world(
+                                event.pos[0], event.pos[1], camx, camy,
+                                px_per_m=px_per_m, screen_w=SCREEN_W, screen_h=SCREEN_H,
+                            )
+                            inspected_feature = find_feature_at(
+                                world_x, world_y,
+                                ways=ways, curbs=curbs, railings=railings, buildings=buildings,
+                                sceneries=sceneries, parking_spaces=parking_spaces,
+                                waters=waters, railways=railways,
+                            )
                 elif event.type == pygame.MOUSEBUTTONUP and event.button == 1:
                     hud_dragging = None
                 elif event.type == pygame.MOUSEMOTION and hud_dragging:
@@ -1095,6 +1197,8 @@ def main() -> None:
                             speed_bumps=speed_bumps,
                             railways=railways,
                             railings=railings,
+                            npcs=npcs,
+                            npc_drivers=npc_drivers,
                         )
                         logger.info("Screenshot saved to %s", screenshot_path)
                         logger.info("Runtime debug snapshot saved to %s", debug_path)
@@ -1343,9 +1447,56 @@ def main() -> None:
                         show_debug_hud = not show_debug_hud
                         frame_profiler.enabled = show_debug_hud
                         logger.info("Debug HUD %s", "enabled" if show_debug_hud else "disabled")
+                    elif event.key == pygame.K_F4:
+                        show_feature_inspector = not show_feature_inspector
+                        inspected_feature = None
+                        logger.info("Feature inspector %s", "enabled" if show_feature_inspector else "disabled")
+                    elif event.key == pygame.K_F5:
+                        show_activity_debug = not show_activity_debug
+                        logger.info("Activity debug panel %s", "enabled" if show_activity_debug else "disabled")
+                    elif event.key == pygame.K_F6:
+                        npc_follow = bool(npcs) and not npc_follow
+                        logger.info("NPC camera follow %s", "enabled" if npc_follow else "disabled")
+                    elif event.key == pygame.K_F7:
+                        show_npc_debug = not show_npc_debug
+                        logger.info("NPC debug overlay %s", "enabled" if show_npc_debug else "disabled")
                     elif event.key == pygame.K_F8:
                         weather.toggle_rain()
                         logger.info("Weather toggled: %s", weather.weather_type.value)
+                    elif (
+                        show_activity_debug
+                        and selected_resident_id is not None
+                        and event.key in ACTIVITY_DEBUG_FORCE_KEYS
+                    ):
+                        # residents-live.md section 18: "provide a way to
+                        # force an activity for testing" - number keys
+                        # 1-9 force the Nth plugin listed in the F5 panel
+                        # (same registry.all_plugins() order) directly
+                        # onto the selected resident, bypassing scoring/
+                        # cooldown entirely - this is a testing shortcut,
+                        # never called from the real per-tick selection.
+                        forced_pedestrian = next(
+                            (p for p in pedestrian_mgr.pedestrians if p.resident_id == selected_resident_id), None,
+                        )
+                        plugins = pedestrian_mgr.activity_manager.registry.all_plugins()
+                        plugin_index = ACTIVITY_DEBUG_FORCE_KEYS.index(event.key)
+                        if forced_pedestrian is not None and plugin_index < len(plugins):
+                            plugin = plugins[plugin_index]
+                            force_context = ActivityContext(
+                                pedestrian=forced_pedestrian, pedestrian_manager=pedestrian_mgr,
+                                residents=residents, sim_time=pedestrian_mgr.sim_time,
+                            )
+                            location = plugin.find_location(force_context) if plugin.definition.requires_location else None
+                            if not plugin.definition.requires_location or location is not None:
+                                forced_pedestrian.activity = ActivityInstance(
+                                    plugin_id=plugin.definition.id, location=location,
+                                    started_sim_time=pedestrian_mgr.sim_time,
+                                )
+                                forced_pedestrian.state = "walking_to_activity"
+                                forced_pedestrian.route = None
+                                logger.info("Forced activity %s onto resident %s", plugin.definition.id, selected_resident_id)
+                            else:
+                                logger.info("Could not force activity %s: no suitable location nearby", plugin.definition.id)
                     elif event.key == pygame.K_r:
                         if not _respawn_allowed(on_foot):
                             logger.info("Respawn ignored while driver is walking outside taxi")
@@ -1606,12 +1757,17 @@ def main() -> None:
             # Look ahead proportionally to car speed and heading, clamped to a percentage of viewport so car remains visible
             max_lead_screen_px = min(SCREEN_W, SCREEN_H) * 0.25
             max_lead_m = max_lead_screen_px / max(0.01, px_per_m)
-            lead_distance_m = min(max_lead_m, max(0.0, abs(car.speed) * 0.8))
 
-            focus_x = player_pedestrian.x if on_foot else car.x
-            focus_y = player_pedestrian.y if on_foot else car.y
-            target_camx = focus_x + math.cos(car.heading) * lead_distance_m
-            target_camy = focus_y + math.sin(car.heading) * lead_distance_m
+            # F6 debug follow (NPC-001 section 13): same lookahead/lerp
+            # camera behavior, just aimed at the NPC instead of the player.
+            following_npc = npc_follow and npcs
+            focus_heading = npcs[0].heading if following_npc else car.heading
+            focus_speed = npcs[0].speed if following_npc else car.speed
+            focus_x = npcs[0].x if following_npc else (player_pedestrian.x if on_foot else car.x)
+            focus_y = npcs[0].y if following_npc else (player_pedestrian.y if on_foot else car.y)
+            lead_distance_m = min(max_lead_m, max(0.0, abs(focus_speed) * 0.8))
+            target_camx = focus_x + math.cos(focus_heading) * lead_distance_m
+            target_camy = focus_y + math.sin(focus_heading) * lead_distance_m
 
             # Smooth camera lerp
             cam_lerp_factor = min(1.0, 4.0 * dt)
@@ -1631,6 +1787,15 @@ def main() -> None:
             )
             with frame_profiler.section("taxi"):
                 taxi_mgr.update(car, dt, game_time_seconds=game_time_seconds)
+            with frame_profiler.section("npc"):
+                npc_manager.update(
+                    dt, car.x, car.y, residents, traffic_mgr, ways,
+                    spatial_grid=spatial_grid, parking_spaces=parking_spaces,
+                    sceneries=sceneries, buildings=buildings,
+                    curbs=curbs, curb_grid=curb_grid, building_grid=building_grid,
+                    viewport_bounds=viewport_bounds,
+                    player_car=car, pedestrian_mgr=pedestrian_mgr,
+                )
             vomited_passenger = taxi_mgr.take_vomited_passenger(car)
             if vomited_passenger is not None:
                 audio.play_passenger_line("Nyt alkaa jo helpottaa.", vomited_passenger.gender, language, vomited_passenger.name)
@@ -1864,6 +2029,7 @@ def main() -> None:
                     len(ways) != spatial_grid.indexed_way_count
                     or len(buildings) != building_grid.indexed_way_count
                     or len(sceneries) != scenery_grid.indexed_way_count
+                    or len(scenery_objects) != street_lamps_synced_count
                     or len(waters) != water_grid.indexed_way_count
                     or len(crossings) != crossing_grid.indexed_way_count
                     or len(curbs) != curb_grid.indexed_way_count
@@ -1900,6 +2066,13 @@ def main() -> None:
                 elif map_sync_stage == 4:
                     with frame_profiler.section("map_sync:scenery_grid"):
                         scenery_grid.rebuild(sceneries)
+                        # street_lamps is filtered from scenery_objects, not
+                        # grown directly by autofetch - re-filter whenever
+                        # scenery_objects itself grew (see
+                        # street_lamps_synced_count's own comment).
+                        street_lamps[:] = [obj for obj in scenery_objects if obj.kind == "street_lamp"]
+                        street_lamp_grid.rebuild(street_lamps)
+                        street_lamps_synced_count = len(scenery_objects)
                     map_sync_stage = 5
                 elif map_sync_stage == 5:
                     with frame_profiler.section("map_sync:water_grid"):
@@ -1951,6 +2124,7 @@ def main() -> None:
                             ways, traffic_lights=traffic_lights, logical_intersections=logical_intersections,
                         )
                         pedestrian_mgr.set_venue_buildings(buildings)
+                        pedestrian_mgr.set_scenery_features(scenery_objects, sceneries, bus_stops)
                     map_sync_stage = 14
                 elif map_sync_stage == 14:
                     with frame_profiler.section("map_sync:finalize"):
@@ -2141,6 +2315,8 @@ def main() -> None:
                 spatial_grid=traffic_light_grid,
             )
             draw_taxi_stops(screen, taxi_stops, camx, camy, px_per_m=px_per_m)
+            draw_stop_signs(screen, stop_signs, camx, camy, px_per_m=px_per_m)
+            draw_yield_signs(screen, yield_signs, camx, camy, px_per_m=px_per_m)
             draw_speed_cameras(
                 screen,
                 speed_cameras,
@@ -2223,6 +2399,10 @@ def main() -> None:
                 spatial_grid=spatial_grid,
                 current_way=current_way,
             )
+            draw_npc_cars(
+                screen, npcs, camx, camy, px_per_m=px_per_m, screen_w=SCREEN_W, screen_h=SCREEN_H,
+                ways=ways, spatial_grid=spatial_grid, show_debug=show_npc_debug, residents=residents,
+            )
             draw_splashes(screen, weather, camx, camy, px_per_m=px_per_m)
             if not on_foot:
                 draw_taxi_smoke(screen, car, camx, camy, px_per_m=px_per_m, timer=taxi_mgr.taxi_smoke_timer)
@@ -2258,6 +2438,17 @@ def main() -> None:
                 screen,
                 game_time_seconds,
                 visible_road_count,
+                latitude=sun_latitude,
+                longitude=sun_longitude,
+            )
+            draw_illuminated_windows(
+                screen,
+                buildings,
+                camx,
+                camy,
+                game_time_seconds,
+                px_per_m=px_per_m,
+                spatial_grid=building_grid,
                 latitude=sun_latitude,
                 longitude=sun_longitude,
             )
@@ -2306,6 +2497,8 @@ def main() -> None:
                 buildings=buildings,
                 base_surface=street_light_base,
                 building_spatial_grid=building_grid,
+                street_lamps=street_lamps,
+                street_lamp_grid=street_lamp_grid,
             )
             if sun_altitude < -7.5:
                 draw_pedestrian_reflectors(
@@ -2399,6 +2592,7 @@ def main() -> None:
                 speed_limiter_enabled=speed_limiter_enabled,
                 red_light_assist_enabled=red_light_assist_enabled,
                 show_compass=show_compass,
+                show_navigation=show_navigation,
                 rage_power=rage_power,
                 language=language,
                 career_total_distance_m=car.odometer_m if career is not None else None,
@@ -2427,15 +2621,33 @@ def main() -> None:
                     ),
                     None,
                 )
+                selected_resident = traffic_mgr.residents.get(selected_resident_id)
+                selected_trip_group_id = getattr(selected_resident, "trip_group_id", None)
+                selected_trip_group = next(
+                    (
+                        one_npc.trip_group
+                        for one_npc in npcs
+                        if one_npc.trip_group is not None and one_npc.trip_group.group_id == selected_trip_group_id
+                    ),
+                    None,
+                ) if selected_trip_group_id is not None else None
                 draw_resident_popup(
                     screen,
                     small_font,
-                    traffic_mgr.residents.get(selected_resident_id),
+                    selected_resident,
                     traffic_mgr.residents,
                     SCREEN_W,
                     SCREEN_H,
                     pedestrian=selected_pedestrian,
+                    trip_group=selected_trip_group,
                 )
+                if show_activity_debug and selected_pedestrian is not None:
+                    activity_context = ActivityContext(
+                        pedestrian=selected_pedestrian, pedestrian_manager=pedestrian_mgr,
+                        residents=residents, sim_time=pedestrian_mgr.sim_time,
+                    )
+                    explanations = pedestrian_mgr.activity_manager.explain_candidates(activity_context)
+                    draw_activity_debug_panel(screen, selected_pedestrian, explanations, small_font)
             if awaiting_start:
                 draw_game_start_overlay(screen, font, chosen_city, SCREEN_W, SCREEN_H)
             elif start_hint_remaining > 0.0 and on_foot:
@@ -2455,6 +2667,22 @@ def main() -> None:
                     screen, small_font, car.forward_g, car.lateral_g, car.is_sliding,
                     grip_usage=car.grip_usage, max_grip_g=car.max_grip_g,
                 )
+            if show_npc_debug:
+                draw_npc_population_panel(
+                    screen, npc_manager.population_counts(), small_font, x=380, y=220,
+                    by_type=npc_manager.population_counts_by_type(),
+                )
+                draw_npc_spatial_grid(
+                    screen, npc_manager.spatial_grid.grid, npc_manager.spatial_grid.cell_size,
+                    camx, camy, px_per_m=px_per_m, screen_w=SCREEN_W, screen_h=SCREEN_H,
+                )
+                if npcs:
+                    npc_driver_for_panel = npc_drivers.get(npcs[0].vehicle_id)
+                    if npc_driver_for_panel is not None:
+                        draw_npc_debug_panel(screen, npcs[0], npc_driver_for_panel, small_font)
+                        draw_npc_debug_overlay(screen, npcs[0], npc_driver_for_panel, camx, camy, px_per_m)
+            if show_feature_inspector:
+                draw_feature_inspector_panel(screen, inspected_feature, small_font)
             pygame.display.flip()
             if first_gameplay_frame:
                 logger.info("Gameplay frame: complete")

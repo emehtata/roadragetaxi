@@ -4,6 +4,7 @@ import os
 from typing import Optional
 
 
+from ..config import get_vehicle_distribution
 from ..osm import (
     BBOX_PRESETS,
 )
@@ -17,6 +18,7 @@ def parse_args(config=None, city_names=None) -> argparse.Namespace:
     game = config["game"] if config else {}
     map_config = config["map"] if config else {}
     traffic_config = config["traffic"] if config else {}
+    experimental_config = config["experimental"] if config else {}
     p.add_argument("--bbox", type=str, default=game.get("bbox") or None, help="south,west,north,east (lat/lon)")
     p.add_argument(
         "--preset",
@@ -60,6 +62,36 @@ def parse_args(config=None, city_names=None) -> argparse.Namespace:
         help="Build auto-fetched map data outside the gameplay process",
     )
     p.add_argument("--pedestrian-count", type=int, default=traffic_config.getint("pedestrian_count", fallback=60), help="Target number of pedestrians")
+    p.add_argument(
+        "--npc-vehicle-count", type=int,
+        # Not traffic_config.getint(..., fallback=40): an existing
+        # config.ini saved before this option existed may have persisted
+        # the old placeholder empty string, which getint's fallback does
+        # not cover (fallback only applies to a missing *key*, not an
+        # empty *value*).
+        default=int(traffic_config.get("traffic_count") or 40),
+        help="Target NPC vehicle population (NPC-003)",
+    )
+    p.add_argument(
+        "--npc-vehicle-min", type=int,
+        default=int(traffic_config.get("traffic_count_min") or 0) or None,
+        help="Minimum NPC vehicle population (default: derived from --npc-vehicle-count)",
+    )
+    p.add_argument(
+        "--npc-vehicle-max", type=int,
+        default=int(traffic_config.get("traffic_count_max") or 0) or None,
+        help="Maximum NPC vehicle population (default: derived from --npc-vehicle-count)",
+    )
+    p.add_argument(
+        "--enable-two-wheelers", action="store_true",
+        default=experimental_config.getboolean("enable_two_wheelers", fallback=False),
+        help="Include motorcycles in the NPC vehicle population (NPC-003, experimental)",
+    )
+    # No CLI flag - [traffic] vehicle_distribution is a config-file-only
+    # knob (a comma-separated "id:weight" list has no clean single-flag
+    # CLI shape); attached here so main/__init__.py's NPCVehicleManager
+    # construction doesn't need config threaded through separately.
+    p.set_defaults(vehicle_distribution=get_vehicle_distribution(config) if config else None)
 
     return p.parse_args()
 

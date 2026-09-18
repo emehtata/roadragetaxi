@@ -239,6 +239,10 @@ def test_fetch_query_requests_the_newly_rendered_point_and_barrier_kinds(monkeyp
     assert 'node["leisure"~"picnic_table|firepit"]' in query
     assert 'node["barrier"~"gate|bollard"]' in query
     assert 'way["barrier"~"fence|railing|hedge|wall"]' in query
+    # lights.md: explicit OSM lamp-pole positions are the primary source
+    # for street lighting - the same "classified in build_ways() but never
+    # actually fetched" gap this test's docstring already describes.
+    assert 'node["highway"="street_lamp"]' in query
     assert 'way["amenity"="fuel"]' in query
 
 
@@ -282,6 +286,39 @@ def test_fetch_query_requests_any_landuse_or_leisure_way(monkeypatch):
     # Value-restricted, not tag-presence: a bare whitelist regex like
     # this would silently exclude landuse=quarry, leisure=nature_reserve, etc.
     assert "forest|grass|park|meadow" not in captured["query"]
+
+
+def test_fetch_query_requests_highway_tagged_relations(monkeypatch):
+    """Regression: a paved pedestrian plaza is commonly mapped as a
+    type=multipolygon relation tagged highway=pedestrian rather than a
+    simple way - the query only ever fetched way["highway"], so this
+    relation (and its geometry) never reached build_ways() at all, not
+    even to be classified wrong; it was invisible from the start."""
+    import theroadragetrip.osm as osm
+
+    captured = {}
+
+    class Response:
+        status_code = 200
+
+        def json(self):
+            return {"elements": []}
+
+        def raise_for_status(self):
+            return None
+
+    def post(endpoint, **kwargs):
+        captured["query"] = kwargs["data"]["data"]
+        return Response()
+
+    monkeypatch.setattr(osm.requests, "post", post)
+    monkeypatch.setattr(osm, "load_osm_cache", lambda bbox: None)
+    monkeypatch.setattr(osm, "save_osm_cache", lambda bbox, elements: None)
+    monkeypatch.delenv("OVERPASS_ENDPOINTS", raising=False)
+
+    osm.fetch_osm_ways((60.0, 25.0, 60.1, 25.1), endpoints=["https://example.test/api"], force_refresh=True)
+
+    assert 'relation["highway"](' in captured["query"]
 
 
 def test_fetch_query_natural_whitelist_is_built_from_the_shared_constant(monkeypatch):
@@ -359,6 +396,52 @@ def test_fetch_uses_next_endpoint_after_failure(monkeypatch):
         "https://first.example/api",
         "https://second.example/api",
     ]
+
+
+def test_server_error_endpoint_moves_to_the_next_endpoint_immediately(monkeypatch):
+    """Regression: a 502/503/504 from an overloaded public Overpass mirror
+    used to be retried on that *same* endpoint up to 3 times (with
+    backoff) before ever trying another one - almost always pointless,
+    since an overloaded instance is still overloaded a couple seconds
+    later. It should behave like the 429/406 case and move to the next
+    endpoint right away instead."""
+    import theroadragetrip.osm as osm
+
+    calls = []
+
+    class GatewayTimeout:
+        status_code = 504
+        headers = {}
+
+    class Ok:
+        status_code = 200
+        headers = {}
+
+        def json(self):
+            return {"elements": [{"type": "node", "id": 2}]}
+
+        def raise_for_status(self):
+            return None
+
+    def post(endpoint, **kwargs):
+        calls.append(endpoint)
+        return GatewayTimeout() if endpoint == "https://overloaded.example/api" else Ok()
+
+    monkeypatch.setattr(osm.requests, "post", post)
+    monkeypatch.setattr(osm.time, "sleep", lambda _: None)
+    monkeypatch.setattr(osm, "load_osm_cache", lambda bbox: None)
+    monkeypatch.setattr(osm, "save_osm_cache", lambda bbox, elements: None)
+
+    result = osm.fetch_osm_ways(
+        (60.0, 25.0, 60.1, 25.1),
+        endpoints=["https://overloaded.example/api", "https://healthy.example/api"],
+        force_refresh=True,
+    )
+
+    assert result == [{"type": "node", "id": 2}]
+    assert calls == ["https://overloaded.example/api", "https://healthy.example/api"], (
+        "the overloaded endpoint was retried instead of moving straight to the next one"
+    )
 
 
 def test_rate_limited_endpoint_is_skipped_on_the_next_fetch(monkeypatch):
