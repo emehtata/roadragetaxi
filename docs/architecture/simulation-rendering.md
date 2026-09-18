@@ -106,20 +106,215 @@ under `SDL_VIDEODRIVER=dummy` makes that a no-op in practice). This is a
 proof that the boundary holds end to end, not a production server -
 there is still one process, one world, no networking.
 
-## Known limitations / future work
+## Known limitations / future work (Phase 1)
 
-- The four managers (`taxi_mgr`, `npc_manager`, `traffic_mgr`,
-  `pedestrian_mgr`) still mutate themselves in place rather than through
-  an explicit command/event interface - fine for one authoritative
-  in-process simulation, but a real client/server split would need those
-  mutations to become diff-able/replicable state, not just "call
-  `.update()` and trust it mutated the right things."
 - No fixed timestep - `dt` is still wall-clock-derived and clamped, as
   before. A deterministic server tick (for replay or rollback netcode)
   would need this revisited.
-- Camera-follow is still simulation-side (see above) - a real multi-
-  client future should move it client-side.
 - The package's eager `import theroadragetrip` pulling in pygame (see
   caveat above) should eventually be trimmed if a real headless
   deployment needs to avoid a pygame dependency at import time, not just
   at runtime.
+
+---
+
+# Phase 2: headless simulation server + Pygame client
+
+`.github/prompts/client-server-02.md` takes the next step: the
+`advance_simulation()` tick Phase 1 extracted now runs in an independent
+process (or a background thread of the same process) - `SimulationServer`
+- and the Pygame app is a real network client of it, never calling
+`advance_simulation()` itself.
+
+```
+                 SimulationServer (src/theroadragetrip/server/)
+                 owns: world, car - the one authoritative state
+                 loop: fixed-rate tick -> advance_simulation() +
+                       apply_enter_exit_vehicle()
+                              |
+                    loopback TCP, newline-
+                    delimited JSON, versioned
+                    envelope (protocol.py)
+                              |
+                 Pygame client (main/__init__.py)
+                 input -> PlayerCommand -> sent
+                 received state -> shadow objects -> rendered
+                 (never runs NPC/pedestrian/traffic AI itself)
+```
+
+Two ways to run it, both exercising the identical `SimulationServer` and
+protocol code:
+
+- **Default** (`python -m theroadragetrip`): embeds a `SimulationServer`
+  in a daemon thread, bound to an OS-assigned loopback port, and connects
+  to it like any other client. The client's own interactive city-menu
+  choice is handed straight to the embedded server (`SimulationServer.__init__`'s
+  `city_choice` parameter) so the two processes can never disagree about
+  which city/bbox is being played.
+- **Split process**: `python -m theroadragetrip.server [world args] [--host] [--port] [--tick-rate]`
+  in one terminal, `python -m theroadragetrip --connect HOST:PORT [same world args]`
+  in another. The client forces `--no-menu` in this mode and independently
+  resolves the same world from its own args - see "Known limitations."
+
+## Server responsibilities
+
+`SimulationServer` (`src/theroadragetrip/server/__init__.py`) owns
+`world`/`car` (built via `_load_world(..., headless=True)`), runs the
+tick loop, applies the latest received command (and any queued `interact`
+edge-triggers) each tick, and broadcasts a state snapshot to every
+connected client afterward. It never opens a Pygame display.
+
+## Client responsibilities
+
+`main()` still owns the Pygame window, event dispatch, menus, camera,
+audio, HUD, and the full render sequence, unchanged from Phase 1. Per
+frame it: reads input into a `PlayerCommand`, sends it, applies the
+latest (interpolated) received state onto local shadow objects via
+`protocol.apply_server_state`, and renders. It independently loads the
+same static map geometry `_load_world()` always built, but immediately
+discards the auto-populated starting NPCs/pedestrians - from then on
+those lists are only ever mutated by state reconciliation, never by
+calling a manager's own `.update()`/AI methods.
+
+## Command flow (client -> server)
+
+Raw Pygame input becomes a `simulation.PlayerCommand` (throttle/brake/
+steer/forward/turn/sprint, plus the V/B toggles) exactly as in Phase 1,
+plus one edge-triggered `interact` flag for the 'F' enter/exit action -
+never a raw `pygame.KEYDOWN`/`pygame.key.get_pressed()` result.
+`protocol.build_command_message` wraps it in the versioned envelope;
+`transport.LineJSONConnection.send` writes it as one JSON line. The
+server's per-connection reader thread decodes it and stores it as the
+latest command (continuous input is latest-wins - the same shape
+`pygame.key.get_pressed()` already has - while `interact` is queued so a
+quick tap between ticks is never dropped).
+
+## State flow (server -> client)
+
+After each tick, `protocol.build_state_message` serializes exactly the
+dynamic fields the renderer reads (catalogued via `render/*`'s actual
+attribute access, not guessed): player car, NPCs/pedestrians by stable
+id, `sim_time`, weather type/wetness, taxi/HUD fields, camera position,
+rage/water HUD meters, and career-transition flags. The client blends
+the last two received snapshots via `protocol.interpolate_state` (linear
+position lerp, shortest-path angle lerp for headings) before applying,
+for smoother-than-tick-rate rendering - visual only, never fed back as
+authoritative.
+
+## Static vs dynamic data
+
+Static geometry (ways, buildings, waters, spatial grids, ...) is loaded
+independently by each process via the ordinary `_load_world()` path and
+never crosses the wire. Only dynamic gameplay state crosses it - see the
+state message contents above. `protocol.py`'s `_npc_to_dict`/
+`_pedestrian_to_dict`/etc. functions are the single source of truth for
+exactly what's considered "dynamic" here.
+
+## Protocol structure
+
+`protocol.py`: a versioned envelope (`{"type", "version", ...}`) over
+newline-delimited JSON. `encode`/`decode` are the only functions that
+know it's JSON - a future binary encoding would only touch this module,
+per the spec's explicit "don't make the protocol architecture dependent
+on JSON." No pickle, no raw Python objects on the wire, ever.
+
+## Simulation tick vs. rendering frame rate
+
+The server ticks at a fixed configured rate (`--tick-rate`, default
+30Hz) via `pygame.time.Clock`-paced `time.sleep`, independent of any
+client's render rate. The client renders at whatever FPS Pygame's own
+clock gives it, applying whatever the latest received (and interpolated)
+state happens to be - it never blocks waiting for a tick, and the server
+never waits for a render.
+
+## Connection lifecycle
+
+`transport.connect()` raises a plain `socket.error` if the server is
+unreachable (a controlled failure, not a bare traceback further up the
+stack - callers should catch it, though `main()` doesn't yet wrap this
+in a user-facing error message, see limitations). A malformed or wrong-
+protocol-version message closes just that one connection
+(`LineJSONConnection._read_loop` catches `protocol.ProtocolError`) rather
+than crashing the read thread. A closed/dropped connection is pruned
+from the server's client list on the next tick.
+
+## Current transport, and why
+
+Loopback TCP (`transport.py`, stdlib `socket`+`threading`+`queue`) rather
+than a Unix domain socket, so the exact same code works on Windows (this
+project ships Windows builds) without a platform branch, and is already
+"compatible with future network transport" by construction - promoting
+it to a real remote server later only means changing the host argument
+from `127.0.0.1`.
+
+## Why not MQTT
+
+MQTT is a pub/sub broker protocol meant for many independent subscribers
+and at-least-once delivery guarantees over an unreliable network - this
+is one client on localhost needing the *newest* state, not a guaranteed
+delivery log of every one. It would add a broker dependency and a
+heavier per-message envelope for no benefit here; the spec explicitly
+scopes it out. Nothing here precludes adding it later for something it's
+actually suited to for a specific future need (e.g. cross-machine
+matchmaking metadata), just not as the real-time game-state transport.
+
+## Supporting a future non-Pygame client
+
+`SimulationServer` has no idea what's on the other end of a connection -
+it only ever sees `PlayerCommand`-shaped dicts in and sends dynamic-state
+dicts out. A Godot/Panda3D/whatever client would implement its own
+`protocol.py`-equivalent decoder in its own language and connect the same
+way; nothing server-side would change.
+
+## What a real remote multiplayer server would still need
+
+This phase deliberately doesn't build: per-client authentication/
+identity, more than one player's command stream being merged into one
+authoritative tick (today: one active command slot, "latest wins"),
+per-client visibility/relevance filtering (today: every connected client
+gets the same full dynamic snapshot), reconnection/session resumption,
+and a transport that tolerates real network latency/loss/reordering (TCP
+buys ordering and delivery already; interpolation exists but there's no
+lag compensation or client-side prediction). The versioned envelope and
+the static/dynamic split are the parts meant to survive that future work
+unchanged.
+
+## Known limitations (Phase 2)
+
+- **Auto-fetch/live map expansion is disabled server-side.** The tile-
+  streaming pipeline's `_wait_for_active_tile_fetch` has its own Pygame
+  loading-screen dependency, not yet isolated the way `_load_world`'s
+  was - `SimulationServer` forces `args.auto_fetch = False`. The world
+  stays fixed to whatever bbox was initially loaded.
+- **Audio, dialogue, and subtitles are not wired across the boundary.**
+  `advance_simulation`'s audio cues (crash sounds, driver/passenger
+  lines) are called against the server's `NullAudio` stub, a pure no-op
+  - the client's own `AudioManager` never hears about them. Fixing this
+    would mean recording which cues fired server-side each tick and
+    replaying them client-side, not yet built.
+- **Some `taxi_mgr` visual-only state isn't synced**: vomit puddles,
+  fallen-tree state, and speed-camera flash timing stay at their freshly-
+  constructed client-side defaults, since `protocol.py` only syncs the
+  fields HUD/target rendering actually reads.
+- **Career-mode session-end city transitions aren't fully wired.** The
+  server computes `should_stop`/`city_summary` correctly and sends them,
+  and the client will show the summary and end its session, but it won't
+  automatically reconnect to a freshly reloaded next city the way the
+  single-process game used to loop - the split-process (`--connect`)
+  case in particular has no way to tell a separately-running server
+  process to load a different city at all yet.
+- **F6 NPC camera-follow debug toggle is inert** in client/server mode -
+  `SimulationServer` hardcodes `npc_follow=False`; wiring a debug-only
+  toggle through the command protocol wasn't judged worth the surface
+  area this phase.
+- **`--connect` requires matching world-selection args on both
+  processes** (bbox/preset/use-sample/etc.) - there's no handshake where
+  the server tells a connecting client which world to load; the operator
+  is responsible for starting both with the same flags.
+- Camera-follow lookahead is still computed server-side and sent as
+  `camx`/`camy` (see Phase 1's note above) - a real multi-client future
+  should move this client-side, where per-viewer camera state actually
+  belongs.
+- A `--connect` target that's unreachable (wrong host/port, server not
+  started yet) is caught in `main()` and logged as a clear error before
+  exiting, rather than a raw traceback.

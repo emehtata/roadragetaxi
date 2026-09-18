@@ -1000,7 +1000,11 @@ def main() -> None:
 
         if args.connect:
             connect_host, _, connect_port = args.connect.partition(":")
-            connection = transport.connect(connect_host, int(connect_port))
+            try:
+                connection = transport.connect(connect_host, int(connect_port))
+            except (OSError, ValueError) as exc:
+                logger.error("Could not connect to simulation server at %s: %s", args.connect, exc)
+                sys.exit(1)
             embedded_server = None
             logger.info("Connected to simulation server at %s", args.connect)
         else:
