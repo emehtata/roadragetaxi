@@ -1028,6 +1028,11 @@ def main() -> None:
         # server's authoritative snapshots.
         world.npc_manager.vehicles.clear()
         world.pedestrian_mgr.pedestrians.clear()
+        # Otherwise a client-numbered driver could coincidentally share a
+        # vehicle_id with a same-numbered server vehicle (both number
+        # from 1) and get looked up against the wrong ShadowVehicle by
+        # the F7 single-vehicle debug panel.
+        world.npc_drivers.clear()
         auto_fetch_manager = world.auto_fetch_manager
         base_pedestrian_count = world.base_pedestrian_count
         bounds = world.bounds
