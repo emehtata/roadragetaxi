@@ -32,7 +32,7 @@ from ..career import (
 )
 from ..localization import SUPPORTED_LANGUAGES, normalize_language, tr
 from .. import protocol, transport
-from ..simulation import PlayerCommand, advance_simulation
+from ..simulation import PlayerCommand, advance_simulation, apply_enter_exit_vehicle
 from ..osm import (
     DEFAULT_BBOX,
     AutoFetchManager,
@@ -965,15 +965,12 @@ def main() -> None:
     return_to_main_menu = False
     force_refresh = args.force_refresh
     connection = None
-    embedded_server = None
 
     while app_running:
         city_summary = None
 
         if connection is not None:
             connection.close()
-        if embedded_server is not None:
-            embedded_server._listener.close()
 
         # Show city selection menu if no explicit CLI override or when requested from pause menu
         # (--connect skips it: a separately-started server has already
@@ -999,40 +996,44 @@ def main() -> None:
         selected_city_idx = city_choice.selected_city_idx
 
         if args.connect:
+            # Explicit opt-in to the experimental client/server
+            # architecture (client-server-015.md STEP 4/13) - talks to a
+            # separately-started `python -m theroadragetrip.server`
+            # process over a real socket. Never used by normal
+            # single-player launches.
             connect_host, _, connect_port = args.connect.partition(":")
             try:
                 connection = transport.connect(connect_host, int(connect_port))
             except (OSError, ValueError) as exc:
                 logger.error("Could not connect to simulation server at %s: %s", args.connect, exc)
                 sys.exit(1)
-            embedded_server = None
             logger.info("Connected to simulation server at %s", args.connect)
         else:
-            from ..server import SimulationServer  # deferred: server imports this module
-
-            embedded_server = SimulationServer(args, config, city_choice=city_choice)
-            embedded_server.start("127.0.0.1", 0)
-            threading.Thread(target=embedded_server.run_forever, daemon=True).start()
-            connection = transport.connect("127.0.0.1", embedded_server.port)
-            logger.info("Embedded simulation server started on 127.0.0.1:%d", embedded_server.port)
+            # Normal single-player: no SimulationServer, no thread, no
+            # socket, no JSON - advance_simulation() is called directly,
+            # in-process, every frame below (client-server-015.md Phase
+            # 1.5). `connection` stays None throughout.
+            connection = None
 
         world = _load_world(
             chosen_city, camera_city_name, bbox, city_centers, screen, font, clock,
             args, force_refresh, overpass_endpoints, bus_stops_enabled, roadworks_enabled,
             career, career_file, gig_odometer_file, language,
         )
-        # This client never runs NPC/pedestrian/traffic AI - the locally
-        # auto-populated starting entities _load_world just built are
-        # discarded immediately; from here on they only ever appear via
-        # protocol.apply_server_state's reconciliation against the
-        # server's authoritative snapshots.
-        world.npc_manager.vehicles.clear()
-        world.pedestrian_mgr.pedestrians.clear()
-        # Otherwise a client-numbered driver could coincidentally share a
-        # vehicle_id with a same-numbered server vehicle (both number
-        # from 1) and get looked up against the wrong ShadowVehicle by
-        # the F7 single-vehicle debug panel.
-        world.npc_drivers.clear()
+        if connection is not None:
+            # --connect mode only: this client never runs NPC/pedestrian/
+            # traffic AI itself - the locally auto-populated starting
+            # entities _load_world just built are discarded immediately;
+            # from here on they only ever appear via
+            # protocol.apply_server_state's reconciliation against the
+            # server's authoritative snapshots.
+            world.npc_manager.vehicles.clear()
+            world.pedestrian_mgr.pedestrians.clear()
+            # Otherwise a client-numbered driver could coincidentally
+            # share a vehicle_id with a same-numbered server vehicle
+            # (both number from 1) and get looked up against the wrong
+            # ShadowVehicle by the F7 single-vehicle debug panel.
+            world.npc_drivers.clear()
         auto_fetch_manager = world.auto_fetch_manager
         base_pedestrian_count = world.base_pedestrian_count
         bounds = world.bounds
@@ -1341,13 +1342,14 @@ def main() -> None:
                             navigation_target_key = None
                     elif event.key == pygame.K_f:
                         # The distance check that gates re-entry is
-                        # authoritative gameplay logic, so it's the
-                        # server's call, not this client's - see
-                        # simulation.apply_enter_exit_vehicle. This just
-                        # queues the edge-triggered action; a lingering
-                        # start_hint_remaining is reset client-side below
-                        # once the server confirms on_foot actually
-                        # flipped to False.
+                        # authoritative gameplay logic
+                        # (simulation.apply_enter_exit_vehicle), so this
+                        # just queues the edge-triggered action rather
+                        # than flipping on_foot here directly - applied
+                        # once per frame below (in-process, or via
+                        # --connect's server round-trip); a lingering
+                        # start_hint_remaining is reset once on_foot
+                        # actually flips to False.
                         interact_pending = True
                     elif event.key == pygame.K_SPACE and not phone_open:
                         if rage_power >= RAGE_SHOUT_COST:
@@ -1685,51 +1687,115 @@ def main() -> None:
                 speed_limiter_enabled=speed_limiter_enabled,
                 red_light_assist_enabled=red_light_assist_enabled,
             )
-            connection.send(protocol.build_command_message(command, interact=interact_pending, seq=command_seq))
-            command_seq += 1
-            interact_pending = False
-
             previous_car_position = (car.x, car.y)
-            new_snapshot = connection.try_recv_latest()
-            if new_snapshot is not None:
-                prev_state_snapshot, prev_snapshot_time = curr_state_snapshot, curr_snapshot_time
-                curr_state_snapshot, curr_snapshot_time = new_snapshot["state"], time.monotonic()
 
-            if curr_state_snapshot is not None:
-                # Visual-only interpolation between the last two received
-                # snapshots (client-server-02.md step 10) - alpha stays
-                # in [0, 1], so this never extrapolates past what the
-                # server actually sent.
-                if prev_state_snapshot is not None and curr_snapshot_time > prev_snapshot_time:
-                    alpha = (time.monotonic() - curr_snapshot_time) / (curr_snapshot_time - prev_snapshot_time)
-                else:
-                    alpha = 1.0
-                blended_state = protocol.interpolate_state(
-                    prev_state_snapshot or curr_state_snapshot, curr_state_snapshot, alpha,
+            if connection is not None:
+                # --connect mode only (client-server-015.md STEP 3/4):
+                # round-trip the command/state through the experimental
+                # server protocol. Never exercised by a normal
+                # single-player launch - see the `else` branch below.
+                connection.send(protocol.build_command_message(command, interact=interact_pending, seq=command_seq))
+                command_seq += 1
+                interact_pending = False
+
+                new_snapshot = connection.try_recv_latest()
+                if new_snapshot is not None:
+                    prev_state_snapshot, prev_snapshot_time = curr_state_snapshot, curr_snapshot_time
+                    curr_state_snapshot, curr_snapshot_time = new_snapshot["state"], time.monotonic()
+
+                if curr_state_snapshot is not None:
+                    # Visual-only interpolation between the last two received
+                    # snapshots (client-server-02.md step 10) - alpha stays
+                    # in [0, 1], so this never extrapolates past what the
+                    # server actually sent.
+                    if prev_state_snapshot is not None and curr_snapshot_time > prev_snapshot_time:
+                        alpha = (time.monotonic() - curr_snapshot_time) / (curr_snapshot_time - prev_snapshot_time)
+                    else:
+                        alpha = 1.0
+                    blended_state = protocol.interpolate_state(
+                        prev_state_snapshot or curr_state_snapshot, curr_state_snapshot, alpha,
+                    )
+                    previous_on_foot = on_foot
+                    applied = protocol.apply_server_state(world, car, blended_state, player_pedestrian=player_pedestrian)
+                    on_foot = applied["on_foot"]
+                    game_time_seconds = applied["game_time_seconds"]
+                    camx, camy = applied["camx"], applied["camy"]
+                    rage_power = applied["rage_power"]
+                    water_elapsed = applied["water_elapsed"]
+                    if previous_on_foot and not on_foot:
+                        start_hint_remaining = 0.0
+                    if applied["should_stop"]:
+                        if applied["city_summary"] is not None:
+                            city_summary = tuple(applied["city_summary"])
+                        running = False
+
+                # Rain particles animate from local real-time dt (client-only
+                # cosmetic); weather_type/wetness stay authoritative from the
+                # server, restored right after so update()'s own wetness math
+                # never fights the synced value.
+                authoritative_weather_type = weather.weather_type
+                authoritative_wetness = weather.wetness
+                weather.update(dt * (1.0 if taxi_mgr.current_passenger else 60.0), dt)
+                weather.weather_type = authoritative_weather_type
+                weather.wetness = authoritative_wetness
+            else:
+                # Normal single-player (client-server-015.md Phase 1.5):
+                # advance_simulation() runs directly, in-process - no
+                # socket, no JSON, no shadow-object reconciliation, no
+                # interpolation. This is the same call SimulationServer.
+                # tick() and _run_headless_ticks() already make; it's the
+                # one authoritative simulation entry point either way.
+                if interact_pending:
+                    previous_on_foot = on_foot
+                    on_foot = apply_enter_exit_vehicle(car, player_pedestrian, on_foot, audio)
+                    if previous_on_foot and not on_foot:
+                        start_hint_remaining = 0.0
+                interact_pending = False
+
+                time_scale = 1.0 if taxi_mgr.current_passenger else 60.0
+                game_time_seconds = (game_time_seconds + dt * time_scale) % (24.0 * 60.0 * 60.0)
+                weather.update(dt * time_scale, dt)
+
+                result = advance_simulation(
+                    dt, command, car, world,
+                    on_foot=on_foot,
+                    player_pedestrian=player_pedestrian,
+                    camx=camx, camy=camy, px_per_m=px_per_m,
+                    current_way=current_way,
+                    game_time_seconds=game_time_seconds,
+                    speed_limiter_enabled=speed_limiter_enabled,
+                    red_light_assist_enabled=red_light_assist_enabled,
+                    npc_follow=npc_follow,
+                    screen_w=SCREEN_W, screen_h=SCREEN_H,
+                    physics_mode=physics_mode,
+                    weather=weather,
+                    bridge_edge_crash_cooldown=bridge_edge_crash_cooldown,
+                    rage_power=rage_power,
+                    water_elapsed=water_elapsed,
+                    language=language,
+                    audio=audio,
+                    frame_profiler=frame_profiler,
+                    slow_check_elapsed=slow_check_elapsed,
+                    taxi_waiter_elapsed=taxi_waiter_elapsed,
+                    saved_gig_fares=saved_gig_fares,
+                    career=career,
+                    career_file=career_file,
+                    gig_odometer_file=gig_odometer_file,
+                    chosen_city=chosen_city,
+                    cities_list=cities_list,
                 )
-                previous_on_foot = on_foot
-                applied = protocol.apply_server_state(world, car, blended_state, player_pedestrian=player_pedestrian)
-                on_foot = applied["on_foot"]
-                game_time_seconds = applied["game_time_seconds"]
-                camx, camy = applied["camx"], applied["camy"]
-                rage_power = applied["rage_power"]
-                water_elapsed = applied["water_elapsed"]
-                if previous_on_foot and not on_foot:
-                    start_hint_remaining = 0.0
-                if applied["should_stop"]:
-                    if applied["city_summary"] is not None:
-                        city_summary = tuple(applied["city_summary"])
+                camx, camy = result.camx, result.camy
+                current_way = result.current_way
+                water_elapsed = result.water_elapsed
+                rage_power = result.rage_power
+                bridge_edge_crash_cooldown = result.bridge_edge_crash_cooldown
+                slow_check_elapsed = result.slow_check_elapsed
+                taxi_waiter_elapsed = result.taxi_waiter_elapsed
+                saved_gig_fares = result.saved_gig_fares
+                if result.should_stop:
+                    if result.city_summary is not None:
+                        city_summary = result.city_summary
                     running = False
-
-            # Rain particles animate from local real-time dt (client-only
-            # cosmetic); weather_type/wetness stay authoritative from the
-            # server, restored right after so update()'s own wetness math
-            # never fights the synced value.
-            authoritative_weather_type = weather.weather_type
-            authoritative_wetness = weather.wetness
-            weather.update(dt * (1.0 if taxi_mgr.current_passenger else 60.0), dt)
-            weather.weather_type = authoritative_weather_type
-            weather.wetness = authoritative_wetness
 
             movement_distance = math.hypot(car.x - previous_car_position[0], car.y - previous_car_position[1])
             viewport_bounds = get_viewport_bounds(camx, camy, px_per_m=px_per_m, margin_m=30.0)
@@ -1737,7 +1803,7 @@ def main() -> None:
             frame_profiler.set_metric("visible_npcs", sum(
                 viewport_bounds[0] <= npc.x <= viewport_bounds[2]
                 and viewport_bounds[1] <= npc.y <= viewport_bounds[3]
-                for npc in ()
+                for npc in npcs
             ))
             frame_profiler.set_metric("visible_pedestrians", sum(
                 viewport_bounds[0] <= ped.x <= viewport_bounds[2]
@@ -2158,7 +2224,7 @@ def main() -> None:
             light_vehicles = [
                 car,
                 *(
-                    npc for npc in ()
+                    npc for npc in npcs
                     if viewport_minx - 45.0 <= npc.x <= viewport_maxx + 45.0
                     and viewport_miny - 45.0 <= npc.y <= viewport_maxy + 45.0
                 ),
@@ -2183,7 +2249,7 @@ def main() -> None:
             frame_profiler.record("render:markings", stage_elapsed * 1000.0)
             render_profile_stage_start = time.perf_counter()
             visible_pedestrians = pedestrian_mgr.pedestrians + [
-                npc for npc in () if getattr(npc, "is_on_foot", False)
+                npc for npc in npcs if getattr(npc, "is_on_foot", False)
             ] + ([player_pedestrian] if on_foot else [])
             draw_pedestrians(
                 screen,

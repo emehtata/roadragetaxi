@@ -118,13 +118,86 @@ there is still one process, one world, no networking.
 
 ---
 
+# Phase 1.5: restore direct single-process execution
+
+`.github/prompts/client-server-015.md`. Phase 2 (below) made the
+client/server split the *only* way to play, even for normal single-player
+gameplay - every frame paid for a real loopback TCP round-trip, JSON
+encode/decode, and shadow-object reconciliation, competing with the
+render thread for the GIL. That caused a measurable FPS regression,
+stuttering, and a class of crashes specific to `ShadowVehicle`/
+`ShadowPedestrian` missing fields the real objects have (see git history
+around `3743217`, `da4d61e`, `8ced23b`). Phase 1.5 keeps the Phase 1
+boundary (`simulation.py`/`advance_simulation()`/`PlayerCommand` are
+untouched) but makes the client/server hop opt-in rather than mandatory.
+
+The architecture now has two modes:
+
+## Normal single-player (default: `python -m theroadragetrip`)
+
+```
+Pygame client (main/__init__.py)
+     │
+     ▼
+PlayerCommand
+     │
+     ▼
+advance_simulation()   (direct, in-process call)
+     │
+     ▼
+Renderer
+```
+
+All in one process, one thread. `main()`'s per-frame loop calls
+`simulation.advance_simulation()` directly - the exact same function
+`SimulationServer.tick()` and `_run_headless_ticks()` already call - and
+renders the real `car`/`npcs`/`pedestrian_mgr`/etc. objects it mutated in
+place. No `SimulationServer` is created, no thread is spawned, no socket
+is opened, no JSON is encoded or decoded, and `protocol.py`/
+`ShadowVehicle`/`ShadowPedestrian`/`interpolate_state`/
+`apply_server_state` are never imported or called on this path. `main()`
+no longer imports `theroadragetrip.server` at all in this mode - see
+`tests/test_single_player_architecture.py`.
+
+## Experimental / future client-server (opt-in: `--connect HOST:PORT`)
+
+```
+SimulationServer (python -m theroadragetrip.server)
+      │
+ loopback/remote TCP, protocol.py
+      │
+Pygame client (--connect)
+```
+
+Unchanged from Phase 2 below - still real, still tested
+(`test_client_server_integration.py`, `test_server_headless.py`,
+`test_shadow_entities_render.py`), but now reachable only by explicitly
+passing `--connect`. This mode must never affect normal single-player
+performance, and per the code review that closed out Phase 1.5, it
+doesn't: `main()`'s default branch never references `SimulationServer`,
+`Listener`, `apply_server_state`, or `interpolate_state` at all.
+
+Why the single-player path intentionally avoids IPC/network
+serialization: there is exactly one player, one process, and one
+authoritative world - a socket, a wire format, and a client-side shadow
+copy of every dynamic entity all exist to solve problems (multiple
+independent consumers, an untrusted/remote peer, decoupled update rates)
+that don't exist yet for this case. Paying that cost unconditionally,
+every frame, for zero benefit is exactly what caused the regression this
+phase fixes.
+
+---
+
 # Phase 2: headless simulation server + Pygame client
 
+**Status as of Phase 1.5: experimental / future architecture, opt-in via
+`--connect` only - see the section above. It is no longer what a normal
+single-player launch does.**
+
 `.github/prompts/client-server-02.md` takes the next step: the
-`advance_simulation()` tick Phase 1 extracted now runs in an independent
-process (or a background thread of the same process) - `SimulationServer`
-- and the Pygame app is a real network client of it, never calling
-`advance_simulation()` itself.
+`advance_simulation()` tick Phase 1 extracted can run in an independent
+process - `SimulationServer` - with the Pygame app as a real network
+client of it (`--connect`), never calling `advance_simulation()` itself.
 
 ```
                  SimulationServer (src/theroadragetrip/server/)
@@ -142,19 +215,29 @@ process (or a background thread of the same process) - `SimulationServer`
                  (never runs NPC/pedestrian/traffic AI itself)
 ```
 
-Two ways to run it, both exercising the identical `SimulationServer` and
-protocol code:
+**As of Phase 1.5, this is opt-in only** (`--connect`) and split-process
+is the only supported shape - `main()` no longer embeds a
+`SimulationServer` in a background thread of its own process the way it
+did between Phase 2 and Phase 1.5 (that embedding code, and the
+`threading.Thread(target=server.run_forever)` call it used, were removed
+entirely; `SimulationServer`/`transport`/`protocol` are simply not
+imported by a normal launch at all now):
 
-- **Default** (`python -m theroadragetrip`): embeds a `SimulationServer`
-  in a daemon thread, bound to an OS-assigned loopback port, and connects
-  to it like any other client. The client's own interactive city-menu
-  choice is handed straight to the embedded server (`SimulationServer.__init__`'s
-  `city_choice` parameter) so the two processes can never disagree about
-  which city/bbox is being played.
-- **Split process**: `python -m theroadragetrip.server [world args] [--host] [--port] [--tick-rate]`
-  in one terminal, `python -m theroadragetrip --connect HOST:PORT [same world args]`
-  in another. The client forces `--no-menu` in this mode and independently
-  resolves the same world from its own args - see "Known limitations."
+```
+python -m theroadragetrip.server [world args] [--host] [--port] [--tick-rate]
+```
+
+in one terminal, then
+
+```
+python -m theroadragetrip --connect HOST:PORT [same world args]
+```
+
+in another. The client forces `--no-menu` in this mode and independently
+resolves the same world from its own args - see "Known limitations." The
+server process's own `server/__main__.py` just calls
+`SimulationServer.run_forever()` directly, blocking its one thread - no
+threading involved on the server side either.
 
 ## Server responsibilities
 
