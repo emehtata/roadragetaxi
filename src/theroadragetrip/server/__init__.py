@@ -56,7 +56,14 @@ class NullAudio:
 
 
 class SimulationServer:
-    def __init__(self, args, config):
+    def __init__(self, args, config, city_choice=None):
+        """`city_choice` (a `_choose_city`-shaped SimpleNamespace) lets an
+        embedding client that already ran its own interactive city menu
+        hand the resolved choice straight to the server, instead of the
+        server independently re-resolving one from raw CLI args - the two
+        must never disagree about which city/bbox is being played. The
+        standalone `python -m theroadragetrip.server` process (no client
+        menu involved) resolves it here instead, CLI-driven, no menu."""
         self.args = args
         self.tick_rate = max(1.0, float(getattr(args, "tick_rate", 30.0)))
         self.audio = NullAudio()
@@ -65,17 +72,18 @@ class SimulationServer:
         self.career_file = career_path(CONFIG_PATH)
         self.gig_odometer_file = gig_odometer_path(CONFIG_PATH)
 
-        city_centers, bbox_presets = cities_from_config(config)
         overpass_endpoints = get_overpass_endpoints(config)
         bus_stops_enabled = config.getboolean("game", "bus_stops", fallback=False)
         roadworks_enabled = config.getboolean("game", "roadworks_enabled", fallback=False)
         args.auto_fetch = False  # see module docstring's scope note
 
-        city_choice = _choose_city(
-            None, "gig_driver", city_centers, bbox_presets, self.career_file, None,
-            None, None, pygame.time.Clock(), config, self.language, args,
-            args.force_refresh, False,
-        )
+        if city_choice is None:
+            city_centers, bbox_presets = cities_from_config(config)
+            city_choice = _choose_city(
+                None, "gig_driver", city_centers, bbox_presets, self.career_file, None,
+                None, None, pygame.time.Clock(), config, self.language, args,
+                args.force_refresh, False,
+            )
         self.chosen_city = city_choice.chosen_city
         self.cities_list = city_choice.cities_list
 

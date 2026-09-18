@@ -22,7 +22,9 @@ doesn't: it's shared, unmodified, by the headless server.
 
 from __future__ import annotations
 
+import copy
 import json
+import math
 from dataclasses import asdict
 from typing import Any, Optional
 
@@ -164,6 +166,46 @@ def build_state_message(
         },
     }
     return {"type": "state", "version": PROTOCOL_VERSION, "tick": tick, "state": state}
+
+
+def _lerp(a: float, b: float, alpha: float) -> float:
+    return a + (b - a) * alpha
+
+
+def _lerp_angle(a: float, b: float, alpha: float) -> float:
+    """Shortest-path angle interpolation (radians) - a plain lerp would
+    spin the long way round whenever a heading crosses the +-pi seam."""
+    diff = (b - a + math.pi) % (2.0 * math.pi) - math.pi
+    return a + diff * alpha
+
+
+def interpolate_state(prev: dict, curr: dict, alpha: float) -> dict:
+    """Visual-only blend between two received state snapshots (client-
+    server-02.md step 10). `alpha` is clamped to [0, 1] - this never
+    extrapolates past the newest authoritative snapshot, and it never
+    feeds back into anything the server treats as authoritative; it only
+    changes what gets rendered this frame."""
+    alpha = max(0.0, min(1.0, alpha))
+    blended = copy.deepcopy(curr)
+
+    def blend_entity(prev_entity: Optional[dict], curr_entity: dict) -> dict:
+        if prev_entity is None:
+            return curr_entity
+        merged = dict(curr_entity)
+        merged["x"] = _lerp(prev_entity["x"], curr_entity["x"], alpha)
+        merged["y"] = _lerp(prev_entity["y"], curr_entity["y"], alpha)
+        merged["heading"] = _lerp_angle(prev_entity["heading"], curr_entity["heading"], alpha)
+        return merged
+
+    blended["player"] = blend_entity(prev.get("player"), curr["player"])
+
+    prev_npcs = {n["id"]: n for n in prev.get("npcs", [])}
+    blended["npcs"] = [blend_entity(prev_npcs.get(n["id"]), n) for n in curr["npcs"]]
+
+    prev_peds = {p["id"]: p for p in prev.get("pedestrians", [])}
+    blended["pedestrians"] = [blend_entity(prev_peds.get(p["id"]), p) for p in curr["pedestrians"]]
+
+    return blended
 
 
 def apply_server_state(world, car, state: dict, *, player_pedestrian) -> tuple[bool, float]:
