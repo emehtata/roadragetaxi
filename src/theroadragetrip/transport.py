@@ -10,12 +10,15 @@ changing only the host argument.
 
 from __future__ import annotations
 
+import logging
 import queue
 import socket
 import threading
 from typing import Optional
 
-from .protocol import decode, encode
+from .protocol import ProtocolError, decode, encode
+
+logger = logging.getLogger(__name__)
 
 _RECV_CHUNK = 4096
 
@@ -46,8 +49,18 @@ class LineJSONConnection:
                 self._buffer += chunk
                 while b"\n" in self._buffer:
                     line, self._buffer = self._buffer.split(b"\n", 1)
-                    if line:
+                    if not line:
+                        continue
+                    try:
                         self._queue.put(decode(line))
+                    except ProtocolError as exc:
+                        # A malformed message or a protocol-version
+                        # mismatch is a controlled failure (client-server-
+                        # 02.md step 11), not a crash: drop this one
+                        # connection, not the server/client process.
+                        logger.warning("Dropping connection: %s", exc)
+                        self._error = exc
+                        return
         except OSError as exc:
             self._error = exc
         finally:
