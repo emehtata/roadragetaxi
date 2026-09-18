@@ -25,7 +25,6 @@ from ..taxi import TaxiManager, TaxiState
 from ..localization import tr
 
 
-MAX_VISIBLE_NPC_COUNT = 17
 _cyclist_sprite = None
 _motorcycle_sprite = None
 _moped_sprite = None
@@ -714,13 +713,13 @@ def draw_vehicle_lights(
     Must only redraw lights for a vehicle draw_npc_cars actually drew a
     body for this frame, or the lamps float with no body under them - the
     caller's `vehicles` list (light_vehicles in main/__init__.py) is
-    deliberately wider (bigger margin, no MAX_VISIBLE_NPC_COUNT cap) for
-    the headlight-beam pass, so it can't be trusted here as-is. Mirror
-    draw_npc_cars' own visibility/cap decisions instead of assuming this
-    list already matches them.
+    deliberately wider (bigger margin) for the headlight-beam pass, so it
+    can't be trusted here as-is. Mirror draw_npc_cars' own
+    viewport/lod visibility decisions instead of assuming this list
+    already matches them (no count cap on either side any more -
+    client-server-016.md section 3).
     """
     vminx, vminy, vmaxx, vmaxy = get_viewport_bounds(camx, camy, px_per_m, SCREEN_W, SCREEN_H, 30.0)
-    visible_npc_count = 0
     for vehicle in vehicles:
         is_player_car = vehicle is vehicles[0]
         if getattr(vehicle, "is_police", False) or getattr(vehicle, "is_on_foot", False):
@@ -730,9 +729,6 @@ def draw_vehicle_lights(
                 continue
             if getattr(vehicle, "lod_level", 0) >= 2:
                 continue
-            if visible_npc_count >= MAX_VISIBLE_NPC_COUNT:
-                continue
-            visible_npc_count += 1
         vehicle_layer = getattr(vehicle, "layer", getattr(getattr(vehicle, "way", None), "layer", 0))
         active_way = current_way if is_player_car else None
         if not _vehicle_is_on_bridge(vehicle, active_way) and _covered_by_higher_road(
@@ -768,8 +764,14 @@ def draw_npc_cars(
     spatial_grid=None,
     show_debug: bool = False,
     residents=None,
-) -> None:
-    """Draw autonomous NPC cars scaled in meters with headlights and taillights."""
+) -> int:
+    """Draw autonomous NPC cars scaled in meters with headlights and
+    taillights. No cap on how many get drawn (client-server-016.md
+    section 3 - MAX_VISIBLE_NPC_COUNT was a pure rendering limit with no
+    simulation effect, removed; culling is viewport/lod-based only, same
+    as every other rendered entity in this game). Returns how many were
+    actually drawn this frame, for the F7 population panel's "visible"
+    counter."""
     vminx, vminy, vmaxx, vmaxy = get_viewport_bounds(camx, camy, px_per_m, screen_w, screen_h, 30.0)
     global _motorcycle_sprite, _moped_sprite
     global _npc_debug_font
@@ -813,8 +815,6 @@ def draw_npc_cars(
             ways,
             spatial_grid,
         )
-        if visible_npc_count >= MAX_VISIBLE_NPC_COUNT:
-            continue
         visible_npc_count += 1
 
         cx, cy = world_to_screen(npc.x, npc.y, camx, camy, px_per_m, screen_w, screen_h)
@@ -984,6 +984,8 @@ def draw_npc_cars(
                 alpha = int(max(0, min(160, (1.0 - offset_t / 2.0) * 160)))
                 smoke_surf = _smoke_surface(pygame, radius, alpha)
                 screen.blit(smoke_surf, (int(puff_x - radius - 1), int(puff_y - radius - 1)))
+
+    return visible_npc_count
 
 
 def draw_police_cars(screen, police_cars, camx: float, camy: float, px_per_m: float = PX_PER_M) -> None:

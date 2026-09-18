@@ -6,7 +6,6 @@ from theroadragetrip.osm import Way
 from theroadragetrip.physics import Car, SpatialWayGrid, get_road_layer_at_point, is_on_road
 from theroadragetrip.osm import Building, Scenery, Water
 from theroadragetrip.render import (
-    MAX_VISIBLE_NPC_COUNT,
     SCREEN_H,
     SCREEN_W,
     _covered_by_higher_road,
@@ -244,13 +243,22 @@ def test_vehicle_lights_and_headlight_beams_hidden_under_bridge():
 
 def test_vehicle_lights_never_drawn_for_an_npc_beyond_the_visible_cap():
     """Regression: draw_vehicle_lights is a separate redraw pass (after
-    night tinting) fed the wider, uncapped light_vehicles list, not the
-    same MAX_VISIBLE_NPC_COUNT-capped set draw_npc_cars actually drew
-    bodies for - an npc beyond the cap got its headlight/taillight dots
-    drawn with no body under them (reported: "cars without bodies" in a
-    crowded parking lot)."""
+    night tinting) fed light_vehicles - a wider-margin list built for the
+    headlight-beam pass - not the stricter set draw_npc_cars actually
+    drew bodies for. An npc inside light_vehicles' wider margin but
+    outside draw_npc_cars' own (stricter) viewport got its headlight/
+    taillight dots drawn with no body under them (originally reported as
+    "cars without bodies" in a crowded parking lot, back when a hard
+    MAX_VISIBLE_NPC_COUNT cap - since removed, client-server-016.md
+    section 3 - was the other way this could happen; the viewport-margin
+    mismatch is the same class of bug and remains possible on its own).
+
+    A point outside the (already screen-exceeding) 30m-margin viewport
+    is also off the actual pygame surface, so this checks which vehicles
+    _draw_vehicle_lights was actually invoked for, not screen pixels."""
     import pygame
     from types import SimpleNamespace
+    from theroadragetrip.render import vehicles as vehicles_module
 
     os.environ["SDL_VIDEODRIVER"] = "dummy"
     pygame.init()
@@ -258,38 +266,32 @@ def test_vehicle_lights_never_drawn_for_an_npc_beyond_the_visible_cap():
     camx, camy, px_per_m = 0.0, 0.0, 9.0
     car = Car(x=-500.0, y=-500.0, heading=0.0, speed=0.0)  # far off-screen, never overlaps the npcs below
 
-    # Grid layout, not colinear - 10m cell spacing keeps each npc's own
-    # light-detection scan box (a few meters wide) from overlapping its
-    # neighbors', which a single closely-packed row would risk, while
-    # staying well inside the 1280x720 screen at 9 px/m.
-    npcs = [
-        SimpleNamespace(
-            x=float(i % 5) * 10.0, y=float(i // 5) * 10.0,
-            heading=0.0, color=(200, 60, 60), length_m=4.0, width_m=1.8,
-        )
-        for i in range(MAX_VISIBLE_NPC_COUNT + 1)
-    ]
+    # draw_npc_cars/draw_vehicle_lights both use a strict 30m viewport
+    # margin internally; half-screen-width in meters is (1280/2)/9 =
+    # 71.1m, so 200m is well outside that strict viewport while still
+    # inside the wider margin main.py's light_vehicles list itself uses.
+    in_view_npc = SimpleNamespace(x=0.0, y=0.0, heading=0.0, color=(200, 60, 60), length_m=4.0, width_m=1.8)
+    beyond_viewport_npc = SimpleNamespace(x=200.0, y=0.0, heading=0.0, color=(200, 60, 60), length_m=4.0, width_m=1.8)
 
-    def has_light_pixel(vehicle) -> bool:
-        # Lights sit near the front/rear edge (~half the vehicle length
-        # from center), not at the center itself - scan the whole
-        # vehicle-sized box, not just its middle.
-        cx, cy = world_to_screen(vehicle.x, vehicle.y, camx, camy, px_per_m, SCREEN_W, SCREEN_H)
-        half_length_px = int(vehicle.length_m * px_per_m * 0.6)
-        for dx in range(-half_length_px, half_length_px + 1):
-            for dy in range(-half_length_px, half_length_px + 1):
-                if screen.get_at((int(cx) + dx, int(cy) + dy))[:3] != (0, 0, 0):
-                    return True
-        return False
+    drawn_for = []
+    real_draw_vehicle_lights = vehicles_module._draw_vehicle_lights
 
-    screen.fill((0, 0, 0))
-    draw_vehicle_lights(screen, [car, *npcs], camx=camx, camy=camy, px_per_m=px_per_m)
+    def spy_draw_vehicle_lights(screen, cx, cy, *args, **kwargs):
+        drawn_for.append((cx, cy))
+        return real_draw_vehicle_lights(screen, cx, cy, *args, **kwargs)
 
-    assert all(has_light_pixel(npc) for npc in npcs[:MAX_VISIBLE_NPC_COUNT]), (
-        "an in-cap npc should still get its lights redrawn"
+    vehicles_module._draw_vehicle_lights = spy_draw_vehicle_lights
+    try:
+        draw_vehicle_lights(screen, [car, in_view_npc, beyond_viewport_npc], camx=camx, camy=camy, px_per_m=px_per_m)
+    finally:
+        vehicles_module._draw_vehicle_lights = real_draw_vehicle_lights
+
+    in_view_cx, _ = world_to_screen(in_view_npc.x, in_view_npc.y, camx, camy, px_per_m, SCREEN_W, SCREEN_H)
+    assert any(abs(cx - in_view_cx) < 1.0 for cx, _ in drawn_for), (
+        "an in-viewport npc should still get its lights redrawn"
     )
-    assert not has_light_pixel(npcs[MAX_VISIBLE_NPC_COUNT]), (
-        "an npc beyond MAX_VISIBLE_NPC_COUNT must not get lights with no body"
+    assert len(drawn_for) == 2, (  # player car + in_view_npc only
+        f"an npc outside draw_npc_cars' own viewport must not get lights with no body, got {drawn_for}"
     )
 
     pygame.quit()

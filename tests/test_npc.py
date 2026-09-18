@@ -1483,7 +1483,27 @@ def test_draw_npc_cars_debug_fallback_still_works_without_a_travel_route():
     draw_npc_cars(screen, [parked_like_npc], 10.0, 0.0, ways=[way], show_debug=True)
 
 
-def test_spawn_npc_creates_a_trip_group_not_exceeding_capacity():
+def test_draw_npc_cars_has_no_cap_and_returns_the_drawn_count():
+    """Regression (client-server-016.md section 3): MAX_VISIBLE_NPC_COUNT
+    used to silently stop drawing bodies after the first 17 in-viewport
+    NPCs, with no relation to how many actually fit on screen. Culling is
+    viewport-based only now - every in-viewport npc gets drawn, and the
+    return value (new - used for the F7 population panel's "visible"
+    counter) reports exactly how many that was."""
+    pygame.init()
+    screen = pygame.display.set_mode((400, 300))
+    way = Way(points_m=[(0.0, 0.0), (400.0, 0.0)], highway="residential", half_width_m=4.5)
+    npcs = [
+        SimpleNamespace(
+            x=float(i) * 5.0, y=0.0, heading=0.0, speed=0.0, length_m=4.0, width_m=1.8, layer=0,
+            color=(150, 150, 150), way=way, segment_idx=0, direction=1, lod_level=0, travel_route=None,
+        )
+        for i in range(25)
+    ]
+
+    drawn = draw_npc_cars(screen, npcs, 0.0, 0.0, ways=[way])
+
+    assert drawn == 25
     """multi-passenger-car.md sections 2, 4, 5: group size never exceeds
     capacity, and it's never auto-filled."""
     ways = _straight_chain()

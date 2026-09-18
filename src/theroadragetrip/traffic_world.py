@@ -10,6 +10,12 @@ from .osm import TrafficLight, Way
 from .physics import is_car_road
 from .residents import ResidentManager
 
+# Cell size for _route_node_grid, plan_route's nearest-node lookup index -
+# coarse relative to the ~3m node-merge distance in _build_route_graph,
+# since this only needs to bound "how many cells to scan to find a
+# handful of nearby graph nodes", not represent individual roads.
+_ROUTE_NODE_GRID_CELL_M = 200.0
+
 
 class TrafficWorld:
     """Own shared world traffic services while vehicles remain player-controlled."""
@@ -34,6 +40,7 @@ class TrafficWorld:
         self._parking_grid_cell_size = 100.0
         self._route_nodes: List[Tuple[float, float, int]] = []
         self._route_edges: dict[int, List[Tuple[int, float]]] = {}
+        self._route_node_grid: dict[Tuple[int, int], List[int]] = {}
         # Set by main.py once npc.py's NPC vehicle list exists (a plain
         # list, kept as the same object reference so later appends to it
         # stay visible here) - lets PedestrianManager's linked-driver/
@@ -104,6 +111,59 @@ class TrafficWorld:
                     edges[second].append((first, distance))
         self._route_nodes = nodes
         self._route_edges = edges
+        self._route_node_grid = {}
+        for index, node in enumerate(nodes):
+            cell = (math.floor(node[0] / _ROUTE_NODE_GRID_CELL_M), math.floor(node[1] / _ROUTE_NODE_GRID_CELL_M))
+            self._route_node_grid.setdefault(cell, []).append(index)
+
+    def _nearest_node_indices(self, point: Tuple[float, float], count: int, allowed) -> List[int]:
+        """The `count` nodes in `allowed` closest to `point`, found by
+        expanding outward through `_route_node_grid`'s cells instead of
+        sorting the *entire* route graph (client-server-016.md: plan_route
+        used to do exactly that sort - twice, on every single call,
+        regardless of how close start/target actually were - dominating
+        its cost on a real city-sized graph and showing up as a periodic
+        frame spike each time the population tick started an NPC trip).
+
+        One extra ring past the first that satisfies `count` is a cheap,
+        standard safety margin for a diagonal neighbor slightly closer
+        than something already found (same expanding-radius idiom
+        pedestrian.py's _nearby_ped_ways already uses) - candidate seeding
+        only, not the final path, so an occasional imperfect ordering here
+        can't produce a wrong route, at most a marginally different one.
+        """
+        cell_size = _ROUTE_NODE_GRID_CELL_M
+        cx = math.floor(point[0] / cell_size)
+        cy = math.floor(point[1] / cell_size)
+        found: List[int] = []
+        radius = 0
+        extra_ring = False
+        max_radius = max(1, len(self._route_node_grid))
+        while radius <= max_radius:
+            for dx in range(-radius, radius + 1):
+                for dy in range(-radius, radius + 1):
+                    if max(abs(dx), abs(dy)) != radius:
+                        continue  # only the newly-added outer ring
+                    for index in self._route_node_grid.get((cx + dx, cy + dy), ()):
+                        if index in allowed:
+                            found.append(index)
+            if len(found) >= count:
+                if extra_ring:
+                    break
+                extra_ring = True
+            radius += 1
+        if not found:
+            # point is nowhere near any mapped road (e.g. a genuinely
+            # unreachable/off-map destination) - the grid can't help
+            # here since expanding from point's own cell never reaches
+            # the populated area within a sane radius. Rare; fall back
+            # to the exhaustive sort plan_route always used to do.
+            found = list(allowed)
+        found.sort(
+            key=lambda index: (self._route_nodes[index][0] - point[0]) ** 2
+            + (self._route_nodes[index][1] - point[1]) ** 2
+        )
+        return found[:count]
 
     def plan_route(
         self,
@@ -118,16 +178,13 @@ class TrafficWorld:
         }
         if not allowed:
             return None
-        ranked_starts = sorted(
-            allowed,
-            key=lambda index: (self._route_nodes[index][0] - start[0]) ** 2
-            + (self._route_nodes[index][1] - start[1]) ** 2,
-        )
-        ranked_targets = sorted(
-            allowed,
-            key=lambda index: (self._route_nodes[index][0] - target[0]) ** 2
-            + (self._route_nodes[index][1] - target[1]) ** 2,
-        )
+        # Nearest 64 (the largest candidate_count search() below ever
+        # asks for) via the grid index, not a sort of the whole graph -
+        # search() still slices smaller candidate_counts from these same
+        # two lists exactly as before.
+        max_candidate_count = 64
+        ranked_starts = self._nearest_node_indices(start, max_candidate_count, allowed)
+        ranked_targets = self._nearest_node_indices(target, max_candidate_count, allowed)
 
         def search(candidate_count: int) -> Optional[List[int]]:
             starts = ranked_starts[:candidate_count]

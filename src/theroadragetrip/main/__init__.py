@@ -2291,7 +2291,7 @@ def main() -> None:
                 spatial_grid=spatial_grid,
                 current_way=current_way,
             )
-            draw_npc_cars(
+            visible_npc_count = draw_npc_cars(
                 screen, npcs, camx, camy, px_per_m=px_per_m, screen_w=SCREEN_W, screen_h=SCREEN_H,
                 ways=ways, spatial_grid=spatial_grid, show_debug=show_npc_debug, residents=residents,
             )
@@ -2563,6 +2563,7 @@ def main() -> None:
                 draw_npc_population_panel(
                     screen, npc_manager.population_counts(), small_font, x=380, y=220,
                     by_type=npc_manager.population_counts_by_type(),
+                    visible_count=visible_npc_count,
                 )
                 draw_npc_spatial_grid(
                     screen, npc_manager.spatial_grid.grid, npc_manager.spatial_grid.cell_size,

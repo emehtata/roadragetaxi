@@ -727,14 +727,21 @@ def draw_npc_debug_panel(screen, vehicle, driver, font, x: int = 10, y: int = 22
         screen.blit(font.render(line, True, (215, 225, 230)), (x + 8, y + 5 + i * 16))
 
 
-def draw_npc_population_panel(screen, counts: dict, font, x: int = 10, y: int = 220, by_type: Optional[dict] = None) -> None:
+def draw_npc_population_panel(
+    screen, counts: dict, font, x: int = 10, y: int = 220, by_type: Optional[dict] = None,
+    visible_count: Optional[int] = None,
+) -> None:
     """F7 debug overlay, NPC-003 section 25: population-wide counts
     (total/parked/driving/reserved/household/autonomous) alongside the
     single-vehicle panel above. `counts` is NPCVehicleManager.
     population_counts()'s dict - no import of npc.py needed here, same
     duck-typing as draw_npc_debug_panel. `by_type`, if given, is
     NPCVehicleManager.population_counts_by_type()'s {plugin_id: count}
-    dict (NPC-003 v2 section 22's "vehicles by plugin type")."""
+    dict (NPC-003 v2 section 22's "vehicles by plugin type").
+    `visible_count`, if given, is how many NPCs draw_npc_cars actually
+    drew this frame (client-server-016.md section 17 - now uncapped, so
+    this can be less than `total` for viewport/LOD reasons alone, never
+    an arbitrary render limit)."""
     import pygame
 
     lines = [
@@ -742,6 +749,8 @@ def draw_npc_population_panel(screen, counts: dict, font, x: int = 10, y: int = 
         f"total={counts['total']} parked={counts['parked']} driving={counts['driving']}",
         f"reserved={counts['reserved']} household={counts['household']} autonomous={counts['autonomous']}",
     ]
+    if visible_count is not None:
+        lines.append(f"visible={visible_count}")
     if by_type:
         lines.append("by type: " + ", ".join(f"{vehicle_id}={count}" for vehicle_id, count in sorted(by_type.items())))
     panel_w = 300
