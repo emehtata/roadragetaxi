@@ -510,12 +510,17 @@ def _load_world(
     career_file,
     gig_odometer_file,
     language: str,
+    headless: bool = False,
 ):
     """Load OSM data for `bbox` and build every world/gameplay-manager object
     the gameplay loop needs, showing loading-screen progress as it goes.
 
     Exits the process (matching main()'s prior inline behavior) if the OSM
     data fails to load or the bbox contains no map features.
+
+    `headless=True` (the simulation server's case) skips every Pygame
+    display call in the progress path below - `screen`/`font` may be
+    None - so this can run on a machine with no graphical environment.
     """
     sun_latitude, sun_longitude = city_centers.get(
         chosen_city,
@@ -534,7 +539,7 @@ def _load_world(
         nonlocal last_progress_draw
         loading_state[0] = max(0.0, min(1.0, fraction))
         loading_state[1] = message
-        if threading.current_thread() is not threading.main_thread():
+        if headless or threading.current_thread() is not threading.main_thread():
             return
         now = time.monotonic()
         if fraction < 1.0 and now - last_progress_draw < 0.1:
