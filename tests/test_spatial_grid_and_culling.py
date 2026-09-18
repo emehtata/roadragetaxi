@@ -6,6 +6,7 @@ from theroadragetrip.osm import Way
 from theroadragetrip.physics import Car, SpatialWayGrid, get_road_layer_at_point, is_on_road
 from theroadragetrip.osm import Building, Scenery, Water
 from theroadragetrip.render import (
+    MAX_VISIBLE_NPC_COUNT,
     SCREEN_H,
     SCREEN_W,
     _covered_by_higher_road,
@@ -237,6 +238,59 @@ def test_vehicle_lights_and_headlight_beams_hidden_under_bridge():
         ways=ways,
     )
     assert screen.get_at((SCREEN_W // 2, SCREEN_H // 2 - 40))[:3] == (0, 0, 0)
+
+    pygame.quit()
+
+
+def test_vehicle_lights_never_drawn_for_an_npc_beyond_the_visible_cap():
+    """Regression: draw_vehicle_lights is a separate redraw pass (after
+    night tinting) fed the wider, uncapped light_vehicles list, not the
+    same MAX_VISIBLE_NPC_COUNT-capped set draw_npc_cars actually drew
+    bodies for - an npc beyond the cap got its headlight/taillight dots
+    drawn with no body under them (reported: "cars without bodies" in a
+    crowded parking lot)."""
+    import pygame
+    from types import SimpleNamespace
+
+    os.environ["SDL_VIDEODRIVER"] = "dummy"
+    pygame.init()
+    screen = pygame.display.set_mode((SCREEN_W, SCREEN_H))
+    camx, camy, px_per_m = 0.0, 0.0, 9.0
+    car = Car(x=-500.0, y=-500.0, heading=0.0, speed=0.0)  # far off-screen, never overlaps the npcs below
+
+    # Grid layout, not colinear - 10m cell spacing keeps each npc's own
+    # light-detection scan box (a few meters wide) from overlapping its
+    # neighbors', which a single closely-packed row would risk, while
+    # staying well inside the 1280x720 screen at 9 px/m.
+    npcs = [
+        SimpleNamespace(
+            x=float(i % 5) * 10.0, y=float(i // 5) * 10.0,
+            heading=0.0, color=(200, 60, 60), length_m=4.0, width_m=1.8,
+        )
+        for i in range(MAX_VISIBLE_NPC_COUNT + 1)
+    ]
+
+    def has_light_pixel(vehicle) -> bool:
+        # Lights sit near the front/rear edge (~half the vehicle length
+        # from center), not at the center itself - scan the whole
+        # vehicle-sized box, not just its middle.
+        cx, cy = world_to_screen(vehicle.x, vehicle.y, camx, camy, px_per_m, SCREEN_W, SCREEN_H)
+        half_length_px = int(vehicle.length_m * px_per_m * 0.6)
+        for dx in range(-half_length_px, half_length_px + 1):
+            for dy in range(-half_length_px, half_length_px + 1):
+                if screen.get_at((int(cx) + dx, int(cy) + dy))[:3] != (0, 0, 0):
+                    return True
+        return False
+
+    screen.fill((0, 0, 0))
+    draw_vehicle_lights(screen, [car, *npcs], camx=camx, camy=camy, px_per_m=px_per_m)
+
+    assert all(has_light_pixel(npc) for npc in npcs[:MAX_VISIBLE_NPC_COUNT]), (
+        "an in-cap npc should still get its lights redrawn"
+    )
+    assert not has_light_pixel(npcs[MAX_VISIBLE_NPC_COUNT]), (
+        "an npc beyond MAX_VISIBLE_NPC_COUNT must not get lights with no body"
+    )
 
     pygame.quit()
 

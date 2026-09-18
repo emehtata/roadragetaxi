@@ -708,12 +708,33 @@ def draw_vehicle_lights(
     spatial_grid=None,
     current_way=None,
 ) -> None:
-    """Redraw vehicle lamps after night tinting so they remain visible in darkness."""
+    """Redraw vehicle lamps after night tinting so they remain visible in
+    darkness.
+
+    Must only redraw lights for a vehicle draw_npc_cars actually drew a
+    body for this frame, or the lamps float with no body under them - the
+    caller's `vehicles` list (light_vehicles in main/__init__.py) is
+    deliberately wider (bigger margin, no MAX_VISIBLE_NPC_COUNT cap) for
+    the headlight-beam pass, so it can't be trusted here as-is. Mirror
+    draw_npc_cars' own visibility/cap decisions instead of assuming this
+    list already matches them.
+    """
+    vminx, vminy, vmaxx, vmaxy = get_viewport_bounds(camx, camy, px_per_m, SCREEN_W, SCREEN_H, 30.0)
+    visible_npc_count = 0
     for vehicle in vehicles:
-        if getattr(vehicle, "is_police", False):
+        is_player_car = vehicle is vehicles[0]
+        if getattr(vehicle, "is_police", False) or getattr(vehicle, "is_on_foot", False):
             continue
+        if not is_player_car:
+            if not (vminx <= vehicle.x <= vmaxx and vminy <= vehicle.y <= vmaxy):
+                continue
+            if getattr(vehicle, "lod_level", 0) >= 2:
+                continue
+            if visible_npc_count >= MAX_VISIBLE_NPC_COUNT:
+                continue
+            visible_npc_count += 1
         vehicle_layer = getattr(vehicle, "layer", getattr(getattr(vehicle, "way", None), "layer", 0))
-        active_way = current_way if vehicle is vehicles[0] else None
+        active_way = current_way if is_player_car else None
         if not _vehicle_is_on_bridge(vehicle, active_way) and _covered_by_higher_road(
             vehicle.x, vehicle.y, vehicle_layer, ways, spatial_grid
         ):
