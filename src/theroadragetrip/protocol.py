@@ -306,6 +306,38 @@ class ShadowVehicle:
         self.turn_signal = ""
         self.turn_signal_elapsed = 0.0
         self.way = None
+        # Debug-only fields (F7's population panel etc.) this client has
+        # no real value for - it never runs NPC AI/ownership/parking
+        # logic, so these are fixed, correctly-typed placeholders rather
+        # than left unset (an AttributeError from a debug overlay used
+        # to crash the whole game - see NPC-004/client-server-02 history).
+        self.vehicle_kind = "traffic"
+        self.availability = "AVAILABLE"
+        self.state = "CRUISING"
+        self.owner_id = None
+        self.destination = None
+        self.destination_parking_space_id = None
+        self.trip_group = None
+        self.capacity = 1
+        self.available_seats = 0
+        self.debug_waiting_for = ""
+        self.crashed_timer = 0.0
+        self.parking_route = None
+        self.parking_route_index = 0
+        self.travel_route = None
+        self.segment_idx = 0
+        self.direction = 1
+        self.driver_departed = False
+        self.home_position = None
+        self.household_id = None
+        # draw_car/draw_npc_cars/draw_vehicle_lights/draw_taxi_smoke/
+        # draw_taxi_exhaust all read length_m/width_m off the vehicle
+        # object itself (getattr(npc, "length_m", 4.0)), not off a
+        # nested .car - both need the real synced value, or NPCs always
+        # render at the 4.0m/1.8m fallback size regardless of what the
+        # server actually sent.
+        self.length_m = 4.0
+        self.width_m = 1.8
 
         class _CarShim:
             length_m = 4.0
@@ -325,18 +357,10 @@ class ShadowVehicle:
         self.lod_level = data["lod_level"]
         self.turn_signal = data["turn_signal"]
         self.turn_signal_elapsed = data["turn_signal_elapsed"]
+        self.length_m = data["length_m"]
+        self.width_m = data["width_m"]
         self.car.length_m = data["length_m"]
         self.car.width_m = data["width_m"]
-
-    def __getattr__(self, _name):
-        # Debug-only overlays (F7's population panel, etc.) read a few
-        # NPCVehicle fields core rendering never touches (vehicle_kind,
-        # availability, state, ...) - this client never has real values
-        # for those (it doesn't run NPC AI), so any of them read back as
-        # None rather than crashing the debug view. None compares False
-        # against every state/kind string constant these panels check,
-        # which is a reasonable enough default for a debug-only display.
-        return None
 
 
 class ShadowPedestrian:
@@ -356,6 +380,18 @@ class ShadowPedestrian:
         self.is_cyclist = False
         self.way = None
         self.speed = 0.0
+        self.layer = 0
+        # Debug-only/secondary render fields this client has no real
+        # value for (it never runs pedestrian AI) - correctly-typed
+        # placeholders so debug overlays and the resident popup degrade
+        # gracefully instead of crashing on a missing attribute.
+        self.route = None
+        self.destination = None
+        self.crossing = None
+        self.is_player = False
+        self.blood_alcohol_promille = 0.0
+        self.linked_building_entrance = None
+        self.activity = None
 
     def apply(self, data: dict) -> None:
         self.x, self.y, self.heading = data["x"], data["y"], data["heading"]
@@ -368,11 +404,6 @@ class ShadowPedestrian:
         self.curse_text = data["curse_text"]
         self.mood = data["mood"]
         self.is_cyclist = data["is_cyclist"]
-
-    def __getattr__(self, _name):
-        # See ShadowVehicle.__getattr__ - same reasoning for pedestrian-
-        # only debug overlays (F5's activity panel, etc.).
-        return None
 
 
 def _reconcile_npcs(vehicles: list, npc_states: list[dict]) -> None:

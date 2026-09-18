@@ -31,13 +31,16 @@ def test_server_builds_and_ticks_with_no_client_connected(tmp_path, monkeypatch)
 
 
 def test_server_never_opens_a_graphical_display(tmp_path, monkeypatch):
-    server = _build_server(tmp_path, monkeypatch)
     import pygame
 
-    assert pygame.display.get_surface() is None
+    # Patch set_mode itself (not pygame.display.get_surface(), which is
+    # shared global state another test module's own real display could
+    # leave set) - this is only ever true if the server code path never
+    # calls it, regardless of what else is running in the same process.
+    monkeypatch.setattr(pygame.display, "set_mode", lambda *a, **k: pytest.fail("server opened a display"))
+    server = _build_server(tmp_path, monkeypatch)
     for _ in range(5):
         server.tick(1.0 / 30.0)
-    assert pygame.display.get_surface() is None
 
 
 def test_game_time_advances(tmp_path, monkeypatch):
