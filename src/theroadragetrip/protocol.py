@@ -134,7 +134,8 @@ def _passenger_to_dict(passenger: Optional[TaxiPassenger]) -> Optional[dict]:
 
 def build_state_message(
     *, tick: int, world, car, on_foot: bool, player_pedestrian, game_time_seconds: float,
-    camx: float, camy: float, should_stop: bool = False, city_summary: Optional[tuple] = None,
+    camx: float, camy: float, rage_power: float, water_elapsed: float,
+    should_stop: bool = False, city_summary: Optional[tuple] = None,
 ) -> dict:
     """Everything the Pygame client needs to render one frame, and nothing
     static (see module docstring). Called once per server tick."""
@@ -150,6 +151,8 @@ def build_state_message(
         # real multi-client future should move this client-side instead.
         "camx": camx,
         "camy": camy,
+        "rage_power": rage_power,
+        "water_elapsed": water_elapsed,
         "player": {
             "x": car.x, "y": car.y, "heading": car.heading, "speed": car.speed,
             "braking": car.braking, "trip_m": car.trip_m, "odometer_m": car.odometer_m,
@@ -262,6 +265,8 @@ def apply_server_state(world, car, state: dict, *, player_pedestrian) -> dict:
         "game_time_seconds": state["game_time_seconds"],
         "camx": state["camx"],
         "camy": state["camy"],
+        "rage_power": state["rage_power"],
+        "water_elapsed": state["water_elapsed"],
         "should_stop": state.get("should_stop", False),
         "city_summary": state.get("city_summary"),
     }

@@ -216,6 +216,7 @@ class SimulationServer:
             tick=self._tick, world=self.world, car=self.car, on_foot=self._on_foot,
             player_pedestrian=self.world.player_pedestrian, game_time_seconds=self._game_time_seconds,
             camx=self._camx, camy=self._camy,
+            rage_power=self._rage_power, water_elapsed=self._water_elapsed,
             should_stop=should_stop, city_summary=city_summary,
         )
         with self._clients_lock:
