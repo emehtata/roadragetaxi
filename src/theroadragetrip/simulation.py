@@ -53,6 +53,11 @@ class PlayerCommand:
     forward: float = 0.0  # on-foot forward(+)/back(-), -1..1
     turn: float = 0.0  # on-foot turn left(+)/right(-), -1..1
     sprint: bool = False
+    # Session toggles (V/B keys) - continuously reported rather than
+    # edge-triggered, since the client already tracks their current
+    # on/off state locally exactly like it tracks on_foot today.
+    speed_limiter_enabled: bool = True
+    red_light_assist_enabled: bool = False
 
 
 @dataclass

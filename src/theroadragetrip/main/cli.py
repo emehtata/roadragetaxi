@@ -13,8 +13,12 @@ from ..osm import (
 logger = logging.getLogger(__name__)
 
 
-def parse_args(config=None, city_names=None) -> argparse.Namespace:
-    p = argparse.ArgumentParser(description="The Road Rage Trip (OSM PoC)")
+def parse_args(config=None, city_names=None, parser: Optional[argparse.ArgumentParser] = None) -> argparse.Namespace:
+    """Builds (or extends, if `parser` is given) the shared argparse
+    surface for world-selection flags. `server/cli.py` passes its own
+    parser in, with --host/--port/--tick-rate already added, so both
+    processes accept identical world arguments from one definition."""
+    p = parser if parser is not None else argparse.ArgumentParser(description="The Road Rage Trip (OSM PoC)")
     game = config["game"] if config else {}
     map_config = config["map"] if config else {}
     traffic_config = config["traffic"] if config else {}
@@ -38,6 +42,13 @@ def parse_args(config=None, city_names=None) -> argparse.Namespace:
         default=0,
         metavar="N",
         help="Run N simulation ticks with no rendering/input and exit (proof-of-concept for a future server/headless mode)",
+    )
+    p.add_argument(
+        "--connect",
+        type=str,
+        default=None,
+        metavar="HOST:PORT",
+        help="Connect to an already-running `python -m theroadragetrip.server` instead of embedding one",
     )
     p.add_argument("--no-cache", action="store_true", default=game.getboolean("no_cache", fallback=False), help="Disable cache usage (treated like force-refresh)")
     p.add_argument(
