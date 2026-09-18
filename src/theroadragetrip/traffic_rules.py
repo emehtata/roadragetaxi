@@ -70,6 +70,47 @@ def nearest_traffic_light_ahead(
     return nearest
 
 
+def nearest_vehicle_ahead(
+    x: float,
+    y: float,
+    heading: float,
+    obstacles,
+    self_id=None,
+    detection_distance_m: float = 30.0,
+    lateral_limit_m: float = 2.5,
+) -> Optional[Tuple[float, object]]:
+    """Return (distance_ahead_m, obstacle) for the nearest of `obstacles`
+    actually in this vehicle's own lane ahead of it, or None.
+
+    NPC-004 section 2: the exact same forward-cone projection
+    nearest_traffic_light_ahead already uses (longitudinal/lateral
+    dot-product test) - a lane is a narrow corridor, so an obstacle a couple
+    of lanes over must never be mistaken for one actually blocking this
+    one, the same reasoning that function's docstring gives for lights.
+
+    `obstacles` is any iterable of objects with `.x`/`.y` (an NPCVehicle or
+    a physics.Car both already satisfy this) - not typed to a single class
+    so this works for other NPCs and the player's own car alike.
+    self_id, when given, skips any obstacle whose id(...) matches (a
+    vehicle is never "ahead of itself").
+    """
+    heading_x = math.cos(heading)
+    heading_y = math.sin(heading)
+    nearest = None
+    for obstacle in obstacles:
+        if self_id is not None and id(obstacle) == self_id:
+            continue
+        dx = obstacle.x - x
+        dy = obstacle.y - y
+        longitudinal = dx * heading_x + dy * heading_y
+        lateral = abs(dx * -heading_y + dy * heading_x)
+        if longitudinal <= 0.0 or longitudinal > detection_distance_m or lateral > lateral_limit_m:
+            continue
+        if nearest is None or longitudinal < nearest[0]:
+            nearest = (longitudinal, obstacle)
+    return nearest
+
+
 def decide_traffic_action(
     x: float,
     y: float,

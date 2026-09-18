@@ -21,6 +21,11 @@ from theroadragetrip.npc import (
     NPC_BUILDING_YARD_CLEARANCE_M,
     NPC_FOOTPRINT_VIOLATION_CRAWL_MPS,
     NPC_GROUP_RETURN_GRACE_S,
+    NPC_AVOIDANCE_MIN_GAP_M,
+    NPC_REVERSE_DISTANCE_M,
+    NPC_STUCK_CHECK_INTERVAL_S,
+    NPC_STUCK_TIMEOUT_S,
+    _update_npc_reversing,
     _align_approach_to_parking_orientation,
     _building_yard_point,
     _corner_safe_speed_mps,
@@ -696,6 +701,44 @@ def test_pick_npc_destination_candidates_accepts_a_building_yard_point_far_from_
     assert candidates
 
 
+def test_pick_npc_destination_candidates_excludes_a_space_in_the_same_parking_area():
+    """NPC-004 section 4/5: an ordinary errand search must never propose
+    "drive to a different space in the same lot you're already parked in"
+    as a destination - that's the exact pointless trip the spec forbids."""
+    lot = Scenery(
+        points_m=[(0.0, 0.0), (40.0, 0.0), (40.0, 40.0), (0.0, 40.0)], kind="parking",
+        bbox=(0.0, 0.0, 40.0, 40.0),
+    )
+    same_lot_space = ParkingSpace(
+        points_m=[(10, 10), (16, 10), (16, 14), (10, 14)], bbox=(10.0, 10.0, 16.0, 14.0),
+    )
+    own_position = (5.0, 5.0)  # inside the same lot polygon
+
+    candidates = _pick_npc_destination_candidates(
+        0.0, 0.0, parking_spaces=[same_lot_space], sceneries=[lot], own_position=own_position,
+    )
+
+    assert same_lot_space not in [space for _, space in candidates]
+
+
+def test_pick_npc_destination_candidates_allows_a_space_in_a_different_parking_area():
+    lot_a = Scenery(
+        points_m=[(0.0, 0.0), (40.0, 0.0), (40.0, 40.0), (0.0, 40.0)], kind="parking",
+        bbox=(0.0, 0.0, 40.0, 40.0),
+    )
+    lot_b_space = ParkingSpace(
+        points_m=[(200, 10), (206, 10), (206, 14), (200, 14)], bbox=(200.0, 10.0, 206.0, 14.0),
+    )
+    own_position = (5.0, 5.0)  # inside lot_a, not anywhere near lot_b_space
+
+    candidates = _pick_npc_destination_candidates(
+        0.0, 0.0, parking_spaces=[lot_b_space], sceneries=[lot_a], own_position=own_position,
+        search_radius_m=1000.0,
+    )
+
+    assert lot_b_space in [space for _, space in candidates]
+
+
 def test_pick_npc_destination_refuses_the_raw_point_when_nothing_is_nearby():
     """NPC-more.md section 2: a road carriageway (the raw BFS point itself)
     is never a valid place to stop - regression, this used to fall back to
@@ -1055,6 +1098,225 @@ def test_update_npc_recovers_from_a_stopped_footprint_violation_instead_of_deadl
     assert vehicle.car.x > start_x + 1.0  # actually drove clear of the curb, not just relabeled
 
 
+def test_update_npc_slows_down_for_a_stopped_vehicle_ahead():
+    """NPC-004 section 2: a stationary obstacle directly ahead in this
+    vehicle's own lane must cap its speed - previously nothing at all
+    checked other vehicles, only curbs/buildings and traffic lights."""
+    ways = _straight_chain(count=20)
+    tw = TrafficWorld(ways)
+    residents = ResidentManager()
+    result = spawn_npc(1, residents, tw, ways, (0.0, 0.0), (200.0, 0.0))
+    assert result is not None
+    _, driver, vehicle = result
+    vehicle.car.speed = 10.0
+
+    lead = SimpleNamespace(x=vehicle.car.x + 8.0, y=vehicle.car.y, speed=0.0, length_m=4.3)
+    update_npc(vehicle, driver, 1.0 / 60.0, tw, residents, nearby_obstacles=[lead])
+
+    assert driver.target_speed_mps < 10.0
+
+
+def test_update_npc_stops_close_behind_a_stopped_vehicle_ahead():
+    """The follow-distance cap must actually bottom out at ~0 once the gap
+    closes to nothing, not just slow down a little and keep closing in."""
+    ways = _straight_chain(count=20)
+    tw = TrafficWorld(ways)
+    residents = ResidentManager()
+    result = spawn_npc(1, residents, tw, ways, (0.0, 0.0), (200.0, 0.0))
+    assert result is not None
+    _, driver, vehicle = result
+
+    lead = SimpleNamespace(x=vehicle.car.x + 4.0, y=vehicle.car.y, speed=0.0, length_m=4.3)
+    update_npc(vehicle, driver, 1.0 / 60.0, tw, residents, nearby_obstacles=[lead])
+
+    assert driver.target_speed_mps == pytest.approx(0.0, abs=0.01)
+    assert vehicle.state == NPCState.WAITING
+    assert "vehicle ahead" in vehicle.debug_waiting_for
+
+
+def test_update_npc_ignores_a_vehicle_in_a_different_lane():
+    """An obstacle off to the side (not in this lane at all) must not
+    trigger avoidance - only something actually ahead in the same travel
+    line should ever cap speed."""
+    ways = _straight_chain(count=20)
+    tw = TrafficWorld(ways)
+    residents = ResidentManager()
+    result = spawn_npc(1, residents, tw, ways, (0.0, 0.0), (200.0, 0.0))
+    assert result is not None
+    _, driver, vehicle = result
+    vehicle.car.speed = 10.0
+
+    off_to_the_side = SimpleNamespace(x=vehicle.car.x + 8.0, y=vehicle.car.y + 20.0, speed=0.0, length_m=4.3)
+    update_npc(vehicle, driver, 1.0 / 60.0, tw, residents, nearby_obstacles=[off_to_the_side])
+
+    assert driver.target_speed_mps > 5.0  # essentially unaffected by the far-off obstacle
+
+
+def test_update_npc_avoids_the_player_car():
+    """Section 2 explicitly lists "the player taxi" as an obstacle an NPC
+    must avoid - the same nearby_obstacles path, since physics.Car already
+    satisfies the same x/y duck type as another NPCVehicle."""
+    ways = _straight_chain(count=20)
+    tw = TrafficWorld(ways)
+    residents = ResidentManager()
+    result = spawn_npc(1, residents, tw, ways, (0.0, 0.0), (200.0, 0.0))
+    assert result is not None
+    _, driver, vehicle = result
+    vehicle.car.speed = 10.0
+
+    player_car = Car(x=vehicle.car.x + 6.0, y=vehicle.car.y, heading=0.0, speed=0.0)
+    update_npc(vehicle, driver, 1.0 / 60.0, tw, residents, nearby_obstacles=[player_car])
+
+    assert driver.target_speed_mps < 5.0
+
+
+def test_update_npc_avoidance_uses_the_steering_target_not_the_lagging_current_heading():
+    """Regression: mid-turn, the car's own physical heading lags behind
+    where it's actually steering (physics.py ramps heading toward the
+    target gradually, never snaps it) - anchoring the avoidance cone on
+    that stale heading missed an obstacle sitting in the direction the car
+    was actually about to go, discovering it too late to brake in time
+    (reproduced: a vehicle rear-ended a parked car right after a turn,
+    having never detected it at all mid-turn). The cone must point toward
+    the current steering target instead."""
+    ways = _straight_chain(count=20)
+    tw = TrafficWorld(ways)
+    residents = ResidentManager()
+    result = spawn_npc(1, residents, tw, ways, (0.0, 0.0), (200.0, 0.0))
+    assert result is not None
+    _, driver, vehicle = result
+    vehicle.car.speed = 10.0
+    # Still physically facing "east" (the old pre-turn heading), but the
+    # very next path point sits due north - simulates the mid-turn moment
+    # where the physical heading hasn't caught up to the new direction yet.
+    vehicle.car.heading = 0.0
+    driver.path = [PathPoint(vehicle.car.x, vehicle.car.y), PathPoint(vehicle.car.x, vehicle.car.y + 50.0)]
+    driver.path_index = 1
+
+    blocker = SimpleNamespace(x=vehicle.car.x, y=vehicle.car.y + 8.0, speed=0.0, length_m=4.3)
+    update_npc(vehicle, driver, 1.0 / 60.0, tw, residents, nearby_obstacles=[blocker])
+
+    assert driver.target_speed_mps < 5.0
+
+
+def test_update_npc_stuck_detection_triggers_recovery_after_timeout():
+    """NPC-004 section 3/8: a vehicle that wants to move but makes no real
+    progress for NPC_STUCK_TIMEOUT_S must flag itself for recovery -
+    covers "not moving"/"oscillating"/"spinning" alike since all three
+    fail the same real-displacement test."""
+    ways = _straight_chain(count=20)
+    tw = TrafficWorld(ways)
+    residents = ResidentManager()
+    result = spawn_npc(1, residents, tw, ways, (0.0, 0.0), (200.0, 0.0))
+    assert result is not None
+    _, driver, vehicle = result
+
+    # A stopped obstacle right on top of it, every single frame - wants to
+    # drive, physically cannot make progress, exactly the failure mode
+    # section 3 describes ("stuck against another vehicle or obstacle").
+    blocker = SimpleNamespace(x=vehicle.car.x + 4.0, y=vehicle.car.y, speed=0.0, length_m=4.3)
+
+    elapsed = 0.0
+    dt = NPC_STUCK_CHECK_INTERVAL_S
+    while elapsed <= NPC_STUCK_TIMEOUT_S + NPC_STUCK_CHECK_INTERVAL_S and driver.recovery_stage == "NORMAL":
+        update_npc(vehicle, driver, dt, tw, residents, nearby_obstacles=[blocker])
+        elapsed += dt
+
+    assert driver.recovery_stage == "STUCK"
+    assert vehicle.state == NPCState.WAITING
+
+
+def test_update_npc_stuck_detection_does_not_trigger_for_a_normal_red_light():
+    """A vehicle correctly stopped at a red traffic light is not "stuck" -
+    it's obeying a light that will eventually change - so the stuck timer
+    must not fire just because it's legitimately stationary for a while."""
+    ways = _straight_chain(count=20)
+    tw = TrafficWorld(ways)
+    residents = ResidentManager()
+    result = spawn_npc(1, residents, tw, ways, (0.0, 0.0), (200.0, 0.0))
+    assert result is not None
+    _, driver, vehicle = result
+    light = TrafficLight(x=vehicle.car.x + 10.0, y=vehicle.car.y, direction_angle=0.0)
+    light.get_state = lambda sim_time: "red"
+    tw._nearby_traffic_lights = lambda x, y: [light]
+
+    elapsed = 0.0
+    dt = NPC_STUCK_CHECK_INTERVAL_S
+    while elapsed <= NPC_STUCK_TIMEOUT_S + NPC_STUCK_CHECK_INTERVAL_S:
+        update_npc(vehicle, driver, dt, tw, residents)
+        elapsed += dt
+
+    assert driver.recovery_stage == "NORMAL"
+
+
+def test_reversing_backs_up_and_hands_back_to_stuck_recovery():
+    """NPC-004 section 6/7: REVERSING drives straight backward until
+    NPC_REVERSE_DISTANCE_M is covered, then stops and flags STUCK again so
+    the population tick retries routing from the new position - it must
+    never loop in REVERSING forever."""
+    ways = _straight_chain(count=20)
+    tw = TrafficWorld(ways)
+    residents = ResidentManager()
+    result = spawn_npc(1, residents, tw, ways, (0.0, 0.0), (200.0, 0.0))
+    assert result is not None
+    _, driver, vehicle = result
+    vehicle.state = NPCState.REVERSING
+    start_x = vehicle.car.x
+
+    for _ in range(600):
+        update_npc(vehicle, driver, 1.0 / 30.0, tw, residents)
+        if vehicle.state != NPCState.REVERSING:
+            break
+
+    assert vehicle.car.x < start_x - NPC_REVERSE_DISTANCE_M * 0.5  # actually moved backward
+    assert vehicle.state == NPCState.WAITING
+    assert driver.recovery_stage == "STUCK"
+    assert driver.reverse_start_position is None
+
+
+def test_reversing_refuses_to_back_into_a_vehicle_behind():
+    """Must not reverse blindly into traffic - a vehicle directly behind
+    should stop the maneuver immediately rather than backing into it."""
+    ways = _straight_chain(count=20)
+    tw = TrafficWorld(ways)
+    residents = ResidentManager()
+    result = spawn_npc(1, residents, tw, ways, (0.0, 0.0), (200.0, 0.0))
+    assert result is not None
+    _, driver, vehicle = result
+    vehicle.state = NPCState.REVERSING
+    start_x = vehicle.car.x
+
+    class FakeManager:
+        def nearby_vehicles_at(self, x, y, radius_m):
+            return [SimpleNamespace(x=start_x - 1.0, y=vehicle.car.y)]
+
+    _update_npc_reversing(vehicle, driver, 1.0 / 30.0, FakeManager(), None)
+
+    assert vehicle.car.x == pytest.approx(start_x)  # never moved
+    assert vehicle.state == NPCState.WAITING
+    assert driver.recovery_stage == "STUCK"
+
+
+def test_reversing_refuses_to_back_into_a_pedestrian():
+    ways = _straight_chain(count=20)
+    tw = TrafficWorld(ways)
+    residents = ResidentManager()
+    result = spawn_npc(1, residents, tw, ways, (0.0, 0.0), (200.0, 0.0))
+    assert result is not None
+    _, driver, vehicle = result
+    vehicle.state = NPCState.REVERSING
+    start_x = vehicle.car.x
+
+    fake_pedestrian_mgr = SimpleNamespace(
+        pedestrians=[SimpleNamespace(x=start_x - 1.0, y=vehicle.car.y)]
+    )
+
+    _update_npc_reversing(vehicle, driver, 1.0 / 30.0, None, fake_pedestrian_mgr)
+
+    assert vehicle.car.x == pytest.approx(start_x)
+    assert vehicle.state == NPCState.WAITING
+
+
 def test_draw_npc_cars_renders_an_npc_vehicle_without_crashing():
     """Regression: draw_npc_cars' debug overlay (F7) crashed on any NPC
     without a `segment_idx` attribute - its steering-target-line fallback
@@ -1176,6 +1438,34 @@ def test_draw_npc_debug_panel_surfaces_footprint_violation_reason():
     # The panel must be visibly different (one extra line) with a reason
     # set vs. without one.
     assert pygame.image.tostring(before, "RGB") != pygame.image.tostring(after, "RGB")
+
+
+def test_draw_npc_debug_panel_surfaces_recovery_and_accident_state():
+    """NPC-004 section 23: recovery_stage/driver_departed must show up on
+    the debug panel once either is non-default - no new debug subsystem,
+    just one more line on the existing F7 panel."""
+    from theroadragetrip.render.hud import draw_npc_debug_panel
+
+    pygame.init()
+    screen = pygame.display.set_mode((400, 300))
+    font = pygame.font.SysFont(None, 16)
+    ways = _straight_chain()
+    tw = TrafficWorld(ways)
+    residents = ResidentManager()
+    _, driver, vehicle = spawn_npc(1, residents, tw, ways, (0.0, 0.0), (200.0, 0.0))
+
+    panel_w = 360
+    normal = pygame.Surface((panel_w, 450))
+    normal.fill((0, 0, 0))
+    draw_npc_debug_panel(normal, vehicle, driver, font)
+
+    driver.recovery_stage = "STUCK"
+    vehicle.driver_departed = True
+    accident = pygame.Surface((panel_w, 450))
+    accident.fill((0, 0, 0))
+    draw_npc_debug_panel(accident, vehicle, driver, font)
+
+    assert pygame.image.tostring(normal, "RGB") != pygame.image.tostring(accident, "RGB")
 
 
 def test_draw_npc_cars_debug_fallback_still_works_without_a_travel_route():

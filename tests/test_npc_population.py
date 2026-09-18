@@ -11,9 +11,12 @@ from theroadragetrip.npc import (
     NPCState,
     NPCVehicleManager,
     TripGroup,
+    has_active_driver,
     place_parked_npc,
+    spawn_npc,
 )
 from theroadragetrip.osm import Way
+from theroadragetrip.pedestrian import PedestrianManager
 from theroadragetrip.residents import ResidentManager
 from theroadragetrip.traffic_world import TrafficWorld
 
@@ -682,7 +685,17 @@ def test_household_vehicle_ownership_persists_through_a_full_trip_cycle():
     # a huge dt starves the steering/corner logic of the small, frequent
     # updates it expects and the vehicle oscillates in place forever
     # instead of actually completing turns.
+    #
+    # NPC-004: this synthetic map has no traffic lights/right-of-way logic
+    # at its many unsignalized intersections, so - now that real vehicle-
+    # vehicle collision detection exists - an occasional crash during a
+    # long, continuous, multi-minute drive is a legitimate, intentional
+    # outcome (spec section 25: "robust rather than perfect... NPCs should
+    # make mistakes occasionally"), not a bug. Household ownership must
+    # survive either ending: a normal retirement, or an accident cleanly
+    # severing the driver.
     retired = False
+    crashed = False
     for _ in range(12000):
         manager.update(1.0 / 30.0, px, py, residents, traffic_world, ways)
         # Ownership must survive every leg of the trip - departure,
@@ -692,7 +705,14 @@ def test_household_vehicle_ownership_persists_through_a_full_trip_cycle():
         if manager.drivers.get(vehicle.vehicle_id) is None and vehicle.state == NPCState.PARKED:
             retired = True
             break
-    assert retired, "vehicle never made it all the way back home and retired"
+        if vehicle.state == NPCState.CRASHED:
+            crashed = True
+            break
+    assert retired or crashed, "vehicle neither made it home nor had a well-formed accident"
+    if crashed:
+        assert vehicle.driver_departed is True
+        assert vehicle.car.speed == 0.0
+        return
     distance_from_home = math.hypot(vehicle.x - home_position[0], vehicle.y - home_position[1])
     assert distance_from_home < 100.0
 
@@ -716,3 +736,215 @@ def test_explicit_vehicle_distribution_override_bypasses_experimental_gate():
     plugin - only the *default* distribution is gated."""
     manager = NPCVehicleManager(target_count=1, vehicle_distribution={"motorcycle": 1.0})
     assert manager.vehicle_distribution == {"motorcycle": 1.0}
+
+
+def _driving_vehicle(residents, x, y, heading=0.0, vehicle_id=1):
+    """A parked NPCVehicle wired up with a real active driver (owner_id +
+    resident.active_vehicle_id both matching) - place_parked_npc alone
+    creates an empty, driverless vehicle, so NPC-004's accident response
+    (which reads has_active_driver) needs this extra wiring in tests."""
+    vehicle = place_parked_npc(vehicle_id, (x, y), None, vehicle_type="car")
+    vehicle.car.heading = heading
+    resident = residents.create(mode="driving")
+    vehicle.owner_id = resident.resident_id
+    resident.active_vehicle_id = vehicle.vehicle_id
+    return vehicle, resident
+
+
+def test_trigger_vehicle_accident_stops_the_vehicle_and_ejects_the_driver():
+    """NPC-004 sections 10-17: collision -> stopped CRASHED vehicle,
+    driver permanently severed, and (since someone was actually driving)
+    a new annoyed pedestrian checking their phone nearby."""
+    residents = ResidentManager()
+    manager = NPCVehicleManager(target_count=1)
+    vehicle, resident = _driving_vehicle(residents, 5.0, 0.0)
+    manager.vehicles.append(vehicle)
+    sidewalk = Way(points_m=[(0.0, 3.0), (20.0, 3.0)], highway="footway", half_width_m=2.0)
+    pedestrian_mgr = PedestrianManager([sidewalk], target_count=0)
+
+    manager._trigger_vehicle_accident(vehicle, residents, pedestrian_mgr, sim_time=100.0)
+
+    assert vehicle.state == NPCState.CRASHED
+    assert vehicle.driver_departed is True
+    assert vehicle.car.speed == 0.0
+    assert manager.drivers.get(vehicle.vehicle_id) is None
+    assert resident.active_vehicle_id is None
+    assert not has_active_driver(vehicle, residents)
+
+    matching = [ped for ped in pedestrian_mgr.pedestrians if ped.resident_id == resident.resident_id]
+    assert len(matching) == 1
+    pedestrian = matching[0]
+    assert pedestrian.mood == "annoyed"
+    assert pedestrian.activity is not None
+    assert pedestrian.activity.plugin_id == "phone_usage"
+
+
+def test_trigger_vehicle_accident_never_retriggers():
+    """Section 18: the accident must not repeatedly trigger - a second
+    call on an already-CRASHED vehicle must be a pure no-op, never
+    ejecting a second pedestrian for the same driver."""
+    residents = ResidentManager()
+    manager = NPCVehicleManager(target_count=1)
+    vehicle, resident = _driving_vehicle(residents, 5.0, 0.0)
+    manager.vehicles.append(vehicle)
+    sidewalk = Way(points_m=[(0.0, 3.0), (20.0, 3.0)], highway="footway", half_width_m=2.0)
+    pedestrian_mgr = PedestrianManager([sidewalk], target_count=0)
+
+    manager._trigger_vehicle_accident(vehicle, residents, pedestrian_mgr, sim_time=100.0)
+    manager._trigger_vehicle_accident(vehicle, residents, pedestrian_mgr, sim_time=101.0)
+
+    assert len(pedestrian_mgr.pedestrians) == 1
+
+
+def test_trigger_vehicle_accident_with_no_driver_still_becomes_an_obstacle():
+    """A vehicle that gets hit while genuinely idle (no active driver) has
+    nobody to eject - it must still become a stopped CRASHED obstacle."""
+    residents = ResidentManager()
+    manager = NPCVehicleManager(target_count=1)
+    vehicle = place_parked_npc(1, (5.0, 0.0), None, vehicle_type="car")
+    manager.vehicles.append(vehicle)
+    pedestrian_mgr = PedestrianManager([], target_count=0)
+
+    manager._trigger_vehicle_accident(vehicle, residents, pedestrian_mgr, sim_time=100.0)
+
+    assert vehicle.state == NPCState.CRASHED
+    assert vehicle.driver_departed is True
+    assert pedestrian_mgr.pedestrians == []
+
+
+def test_check_vehicle_collision_crashes_both_overlapping_npc_vehicles():
+    """NPC-004 section 10: an actual NPC-NPC overlap must crash *both*
+    vehicles, each getting its own independent accident."""
+    residents = ResidentManager()
+    manager = NPCVehicleManager(target_count=1)
+    vehicle_a, resident_a = _driving_vehicle(residents, 0.0, 0.0, vehicle_id=1)
+    vehicle_b, resident_b = _driving_vehicle(residents, 1.0, 0.0, vehicle_id=2)  # well within each other's footprint
+    manager.vehicles.extend([vehicle_a, vehicle_b])
+    pedestrian_mgr = PedestrianManager([], target_count=0)
+
+    manager._check_vehicle_collision(vehicle_a, [vehicle_b], residents, pedestrian_mgr, sim_time=50.0)
+
+    assert vehicle_a.state == NPCState.CRASHED
+    assert vehicle_b.state == NPCState.CRASHED
+
+
+def test_check_vehicle_collision_ignores_vehicles_that_do_not_overlap():
+    residents = ResidentManager()
+    manager = NPCVehicleManager(target_count=1)
+    vehicle_a, _ = _driving_vehicle(residents, 0.0, 0.0, vehicle_id=1)
+    vehicle_b, _ = _driving_vehicle(residents, 100.0, 0.0, vehicle_id=2)
+    manager.vehicles.extend([vehicle_a, vehicle_b])
+    pedestrian_mgr = PedestrianManager([], target_count=0)
+
+    manager._check_vehicle_collision(vehicle_a, [vehicle_b], residents, pedestrian_mgr, sim_time=50.0)
+
+    assert vehicle_a.state != NPCState.CRASHED
+    assert vehicle_b.state != NPCState.CRASHED
+
+
+def test_check_vehicle_collision_with_the_player_car_only_crashes_the_npc():
+    """Section 11: an NPC-taxi collision must trigger the NPC's own
+    accident response without touching the player's car at all."""
+    from theroadragetrip.physics import Car
+
+    residents = ResidentManager()
+    manager = NPCVehicleManager(target_count=1)
+    vehicle, _ = _driving_vehicle(residents, 0.0, 0.0)
+    manager.vehicles.append(vehicle)
+    player_car = Car(x=1.0, y=0.0, heading=0.0, speed=15.0)
+    pedestrian_mgr = PedestrianManager([], target_count=0)
+
+    manager._check_vehicle_collision(vehicle, [player_car], residents, pedestrian_mgr, sim_time=50.0)
+
+    assert vehicle.state == NPCState.CRASHED
+    assert player_car.speed == 15.0  # untouched - taxi physics/scoring stays taxi.py's own business
+
+
+def test_population_tick_reroutes_a_stuck_vehicle_when_a_valid_route_exists():
+    """NPC-004 section 3/6/8's recovery step: a vehicle update_npc flagged
+    STUCK gets a fresh route from wherever it currently sits, planned off
+    the throttled population tick (never per-frame - see that function's
+    own comment on why), and resumes normal driving."""
+    from theroadragetrip.npc import spawn_npc
+
+    ways = _city_block_grid()
+    traffic_world = TrafficWorld(ways)
+    residents = ResidentManager()
+    manager = NPCVehicleManager(target_count=1)
+    result = spawn_npc(1, residents, traffic_world, ways, _CENTER, (_CENTER[0] + 80.0, _CENTER[1]))
+    assert result is not None
+    _, driver, vehicle = result
+    manager.vehicles.append(vehicle)
+    manager.drivers[vehicle.vehicle_id] = driver
+    driver.recovery_stage = "STUCK"
+    old_path = driver.path
+
+    manager._run_population_tick(
+        _CENTER[0], _CENTER[1], residents, traffic_world, ways, None, None, None, None, None, None, None,
+    )
+
+    assert driver.recovery_stage == "NORMAL"
+    assert vehicle.state == NPCState.CRUISING
+    assert driver.path is not old_path
+    assert driver.path_index == 1
+
+
+def test_population_tick_falls_back_to_reversing_when_no_route_exists():
+    """When no valid route can be found from the vehicle's current
+    position (e.g. genuinely boxed in), recovery must fall back to a
+    controlled reverse rather than leaving the vehicle marked STUCK
+    forever with nothing ever retrying it differently."""
+    from theroadragetrip.npc import spawn_npc
+
+    ways = _city_block_grid()
+    traffic_world = TrafficWorld(ways)
+    residents = ResidentManager()
+    manager = NPCVehicleManager(target_count=1)
+    result = spawn_npc(1, residents, traffic_world, ways, _CENTER, (_CENTER[0] + 80.0, _CENTER[1]))
+    assert result is not None
+    _, driver, vehicle = result
+    manager.vehicles.append(vehicle)
+    manager.drivers[vehicle.vehicle_id] = driver
+    driver.recovery_stage = "STUCK"
+    # An unreachable destination, far outside any mapped road - no route
+    # can ever validate to it.
+    driver.destination = (1_000_000.0, 1_000_000.0)
+
+    manager._run_population_tick(
+        _CENTER[0], _CENTER[1], residents, traffic_world, ways, None, None, None, None, None, None, None,
+    )
+
+    assert driver.recovery_stage == "REVERSING"
+    assert vehicle.state == NPCState.REVERSING
+
+
+def test_manager_update_avoidance_still_works_without_a_player_car():
+    """Regression: nearby_vehicles_at (its own spatial-grid query) yields,
+    it doesn't return a list. update() used to only materialize it into a
+    real list inside the `if player_car is not None` branch
+    (list(nearby_obstacles) + [player_car]) - without a player_car, that
+    same one-shot generator got consumed twice (once for collision
+    detection, once again for avoidance inside update_npc), so the second
+    consumer silently saw nothing at all and avoidance never engaged.
+    Reproduced as a real rear-end collision in a full drive-cycle stress
+    test purely because player_car was omitted."""
+    ways = [
+        Way(points_m=[(i * 20.0, 0.0), ((i + 1) * 20.0, 0.0)], highway="residential", half_width_m=4.5)
+        for i in range(20)
+    ]
+    traffic_world = TrafficWorld(ways)
+    residents = ResidentManager()
+    manager = NPCVehicleManager(target_count=2)
+    result = spawn_npc(1, residents, traffic_world, ways, (0.0, 0.0), (200.0, 0.0))
+    assert result is not None
+    _, driver, vehicle = result
+    vehicle.car.speed = 10.0
+    manager.vehicles.append(vehicle)
+    manager.drivers[vehicle.vehicle_id] = driver
+    blocker = place_parked_npc(2, (vehicle.car.x + 8.0, vehicle.car.y), None, vehicle_type="car")
+    manager.vehicles.append(blocker)
+
+    for _ in range(30):
+        manager.update(1.0 / 30.0, 0.0, 0.0, residents, traffic_world, ways)
+
+    assert driver.target_speed_mps < 5.0

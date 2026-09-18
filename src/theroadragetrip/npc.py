@@ -22,11 +22,12 @@ import time
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Set, Tuple
 
-from .geo import clamp, closest_point_and_dist_to_segment, segment_distance
+from .activities import ActivityInstance, ActivityLocation
+from .geo import boxes_intersect, clamp, closest_point_and_dist_to_segment, point_in_polygon, segment_distance
 from .osm import Curb, ParkingSpace, Way
 from .physics import GRAVITY_MPS2, Car, SpatialWayGrid, update_car_physics
 from .residents import Household, HouseholdManager, ResidentManager
-from .traffic_rules import TrafficAction, TrafficDecision, decide_traffic_action
+from .traffic_rules import TrafficAction, TrafficDecision, decide_traffic_action, nearest_vehicle_ahead
 from .traffic_world import TrafficWorld
 from .vehicles.registry import default_registry
 
@@ -35,8 +36,14 @@ class NPCState:
     """Vehicle state machine (NPC-001 section 10).
 
     The architecture must support future states without rework, but
-    NPC-001 only implements these: CRASHED, DISABLED, DRIVER_EXITED,
-    ABANDONED, DESPAWNING are deliberately not implemented yet.
+    NPC-001 only implemented a subset originally; NPC-004 adds the two it
+    reserved by name (CRASHED, and REVERSING in place of the more generic
+    DISABLED) - DRIVER_EXITED/ABANDONED/DESPAWNING still aren't needed as
+    separate states: "driver exited" is NPCVehicle.driver_departed (an
+    orthogonal flag, not a motion state - the vehicle can be CRASHED with
+    or without a departed driver for one frame), and DESPAWNING is a
+    one-shot removal with nothing to observe mid-way, same reasoning
+    NPC-003 v2's README already gives for not adding it either.
     """
     SPAWNING = "SPAWNING"
     CRUISING = "CRUISING"
@@ -46,6 +53,8 @@ class NPCState:
     PARKING = "PARKING"  # final approach into a dedicated parking space (NPC-more.md section 14)
     ARRIVING = "ARRIVING"
     PARKED = "PARKED"  # stopped and settled at the destination (multi-passenger-car.md section 17)
+    REVERSING = "REVERSING"  # NPC-004: controlled backing-up during stuck recovery
+    CRASHED = "CRASHED"  # NPC-004: stopped after an actual collision, driver may have departed
 
 
 class NPCAvailability:
@@ -107,6 +116,31 @@ NPC_FOOTPRINT_CHECK_INTERVAL_S = 0.2
 # reason NPCVehicleManager._place_one already checks it for initial
 # population placement - roughly a car's length.
 NPC_MIN_VEHICLE_SPACING_M = 4.0
+
+# NPC-004 section 2: vehicle-following avoidance. Mirrors
+# nearest_traffic_light_ahead's own forward-cone shape (detection distance/
+# lateral limit), just narrower laterally since a vehicle occupies one lane,
+# not a whole intersection approach.
+NPC_AVOIDANCE_DETECTION_DISTANCE_M = 30.0
+NPC_AVOIDANCE_LATERAL_LIMIT_M = 2.5
+NPC_AVOIDANCE_DECEL_MPS2 = 3.0  # comfortable following-distance braking rate, same order as corner/arrival braking
+NPC_AVOIDANCE_MIN_GAP_M = 2.0  # bumper-to-bumper gap kept from a stopped vehicle ahead
+
+# NPC-004 section 3/8: stuck detection. Checked on the same throttled-cache
+# cadence as the footprint check (NPC_FOOTPRINT_CHECK_INTERVAL_S) rather
+# than every frame - this is a recovery safety net, not a per-frame
+# correctness requirement.
+NPC_STUCK_CHECK_INTERVAL_S = 1.0
+NPC_STUCK_MIN_PROGRESS_M = 2.0  # real displacement expected per check interval when actually driving
+NPC_STUCK_TIMEOUT_S = 8.0  # accumulated stuck time before recovery triggers
+
+# NPC-004 section 6/7: reverse recovery. A short, straight, controlled
+# back-up - not a reverse-parking maneuver - just enough to clear whatever
+# was blocking forward progress before re-routing.
+NPC_REVERSE_DISTANCE_M = 6.0
+NPC_REVERSE_SPEED_MPS = 2.5
+NPC_REVERSE_CLEARANCE_CHECK_RADIUS_M = 6.0
+
 NPC_CORNER_COMFORT_LATERAL_G = 0.5  # a comfortable cornering effort, well under GRIP.md's max_grip_g limit
 NPC_CORNER_BRAKING_DECEL_MPS2 = 3.0  # comfortable braking rate approaching a corner
 NPC_CORNER_LOOKAHEAD_M = 40.0  # how far ahead to start braking for an upcoming turn
@@ -194,6 +228,9 @@ NPC_TRIP_START_ATTEMPTS_PER_TICK = 1
 # discipline as NPC_TRIP_START_ATTEMPTS_PER_TICK, so several vehicles
 # reboarding in the same tick can't stack into one multi-second frame.
 NPC_CONTINUE_TRIP_ATTEMPTS_PER_TICK = 1
+# NPC-004: recovery reroute attempts for STUCK vehicles - same one-
+# expensive-plan_route-call-per-tick discipline as the two constants above.
+NPC_RECOVERY_ATTEMPTS_PER_TICK = 1
 # find_and_start_npc_trip's own BFS search width - deliberately much
 # smaller than spawn_deterministic_npc's NPC_DESTINATION_CANDIDATE_LIMIT
 # (40), which is a one-time, loading-screen-time cost for the game's
@@ -764,6 +801,21 @@ class Driver:
     current_way: Optional[Way] = None
     target_speed_mps: float = 0.0
     decision: TrafficDecision = field(default_factory=lambda: TrafficDecision(TrafficAction.PROCEED, 0.0))
+    # NPC-004 stuck detection (section 3/8): sampled every
+    # NPC_STUCK_CHECK_INTERVAL_S: if displacement since the last sample is
+    # under NPC_STUCK_MIN_PROGRESS_M, stuck_timer_s accumulates instead of
+    # resetting - covers "not moving", "oscillating", and "spinning without
+    # progress" alike, since all three fail this same real-displacement
+    # test (see update_npc's own comment for why one check suffices).
+    stuck_check_position: Optional[Tuple[float, float]] = None
+    stuck_check_elapsed_s: float = 0.0
+    stuck_timer_s: float = 0.0
+    # NORMAL -> REVERSING -> REROUTING -> NORMAL (section 8's recovery
+    # sequence) - a plain string, matching every other loosely-typed state
+    # field in this module (NPCState/NPCAvailability are the only "real"
+    # enums here).
+    recovery_stage: str = "NORMAL"
+    reverse_start_position: Optional[Tuple[float, float]] = None
 
     @property
     def next_maneuver(self) -> str:
@@ -862,7 +914,14 @@ class NPCVehicle:
     turn_signal: str = ""
     turn_signal_elapsed: float = 0.0
     debug_waiting_for: str = ""
-    crashed_timer: float = 0.0
+    crashed_timer: float = 0.0  # NPC-004: seconds since state became CRASHED (debug/despawn timing)
+    # NPC-004 section 12/13: once True, this vehicle's driver has
+    # permanently left it (accident response) - every place that would
+    # otherwise resume/reassign driving on this vehicle (start a new trip,
+    # continue a trip, get claimed by reserve_household_vehicle, get
+    # re-entered by a pedestrian) must check this first. Never cleared -
+    # a departed driver never returns to the same vehicle, by design.
+    driver_departed: bool = False
     capacity: int = NPC_CAR_CAPACITY
     trip_group: Optional[TripGroup] = None
     # NPC-003 sections 6, 13: "traffic" (autonomous, no owner, current
@@ -953,8 +1012,14 @@ def reserve_household_vehicle(vehicle: NPCVehicle) -> bool:
     searching for "the nearest NPC car"). Returns False - and reserves
     nothing - if the vehicle isn't a household vehicle, isn't currently
     AVAILABLE (already RESERVED/IN_USE by another trip), or isn't
-    genuinely idle (mid-trip, still has a trip group out and about)."""
+    genuinely idle (mid-trip, still has a trip group out and about).
+
+    NPC-004 section 12: a vehicle whose driver has permanently departed
+    (accident response) must never be reassigned another trip, even if it
+    otherwise looks idle/available."""
     if vehicle.vehicle_kind != "household":
+        return False
+    if vehicle.driver_departed:
         return False
     if vehicle.availability != NPCAvailability.AVAILABLE:
         return False
@@ -1341,6 +1406,7 @@ def find_and_start_npc_trip(
         destination_candidates = _pick_npc_destination_candidates(
             raw_destination[0], raw_destination[1], parking_spaces, sceneries, buildings,
             ways=ways, spatial_grid=spatial_grid, other_vehicle_positions=other_vehicle_positions,
+            own_position=(vehicle.car.x, vehicle.car.y),
         )
         for destination, target_space in destination_candidates:
             if time.perf_counter() > deadline:
@@ -1409,6 +1475,64 @@ def _distance_to_next_turn(
     return None
 
 
+def _update_npc_reversing(
+    vehicle: NPCVehicle,
+    driver: Driver,
+    dt: float,
+    manager: object,
+    pedestrian_mgr: object,
+) -> None:
+    """NPC-004 section 6/7: a short, controlled, straight-line back-up -
+    entered by _run_population_tick's recovery scan once a plain reroute
+    from the current position failed to clear a stuck vehicle. Never plans
+    a route itself (that stays on the throttled population tick, never
+    per-frame - see that function's own comment on why) - this only ever
+    physically moves the vehicle backward a bounded distance, checking
+    clearance every call, and hands back to the population tick (via
+    recovery_stage="STUCK") to try routing again from the new position.
+    """
+    if driver.reverse_start_position is None:
+        driver.reverse_start_position = (vehicle.car.x, vehicle.car.y)
+
+    heading = vehicle.car.heading
+    behind_x = vehicle.car.x - math.cos(heading) * NPC_REVERSE_CLEARANCE_CHECK_RADIUS_M
+    behind_y = vehicle.car.y - math.sin(heading) * NPC_REVERSE_CLEARANCE_CHECK_RADIUS_M
+    clearance_radius_sq = NPC_REVERSE_CLEARANCE_CHECK_RADIUS_M ** 2
+    clear = True
+    if manager is not None:
+        for other in manager.nearby_vehicles_at(behind_x, behind_y, NPC_REVERSE_CLEARANCE_CHECK_RADIUS_M):
+            if other is vehicle:
+                continue
+            if (other.x - behind_x) ** 2 + (other.y - behind_y) ** 2 < clearance_radius_sq:
+                clear = False
+                break
+    if clear and pedestrian_mgr is not None:
+        for ped in getattr(pedestrian_mgr, "pedestrians", ()):
+            if (ped.x - behind_x) ** 2 + (ped.y - behind_y) ** 2 < clearance_radius_sq:
+                clear = False
+                break
+
+    distance_reversed = math.hypot(
+        vehicle.car.x - driver.reverse_start_position[0], vehicle.car.y - driver.reverse_start_position[1]
+    )
+    if not clear or distance_reversed >= NPC_REVERSE_DISTANCE_M:
+        # Done (or blocked) - stop and hand back to the population tick's
+        # recovery scan to try a fresh route from wherever this landed.
+        vehicle.car.speed = 0.0
+        vehicle.state = NPCState.WAITING
+        vehicle.debug_waiting_for = "reversed - awaiting reroute"
+        driver.recovery_stage = "STUCK"
+        driver.reverse_start_position = None
+        driver.stuck_timer_s = 0.0
+        driver.stuck_check_position = None
+        return
+
+    update_car_physics(
+        vehicle.car, throttle=0.0, brake=1.0, steer_left=0.0, steer_right=0.0, dt=dt,
+        block_offroad=False, speed_limit_mps=NPC_REVERSE_SPEED_MPS,
+    )
+
+
 def update_npc(
     vehicle: NPCVehicle,
     driver: Driver,
@@ -1419,6 +1543,9 @@ def update_npc(
     buildings: Optional[List] = None,
     curb_grid: Optional[SpatialWayGrid] = None,
     building_grid: Optional[SpatialWayGrid] = None,
+    nearby_obstacles: Optional[List] = None,
+    manager: object = None,
+    pedestrian_mgr: object = None,
 ) -> None:
     """Advance one NPC's driving decision and physics by one frame
     (NPC-001 sections 5-10). Pure simulation, no Pygame.
@@ -1444,6 +1571,10 @@ def update_npc(
     if not has_active_driver(vehicle, resident_manager):
         vehicle.car.speed = 0.0
         release_npc_parking_reservation(vehicle)
+        return
+
+    if vehicle.state == NPCState.REVERSING:
+        _update_npc_reversing(vehicle, driver, dt, manager, pedestrian_mgr)
         return
 
     if vehicle.state == NPCState.PARKED:
@@ -1529,6 +1660,40 @@ def update_npc(
         corner_speed = _corner_safe_speed_mps()
         corner_cap = math.sqrt(corner_speed * corner_speed + 2.0 * NPC_CORNER_BRAKING_DECEL_MPS2 * corner_distance)
         driver.target_speed_mps = min(driver.target_speed_mps, corner_cap)
+
+    # NPC-004 section 2: slow/stop for whatever's directly ahead in this
+    # lane (another NPC, the player's car, a crashed vehicle - all satisfy
+    # the same x/y duck type) - the exact same safe-follow-distance
+    # braking math already used for corner_cap/arrival_cap above, just with
+    # the lead obstacle's own speed as the target instead of 0.
+    #
+    # The cone points toward the current *steering target* (same point the
+    # controller steers toward at the bottom of this function), not the
+    # car's raw current heading - the physical heading lags behind mid-turn
+    # (the car hasn't finished rotating into the corner yet), so a cone
+    # anchored on it can miss an obstacle sitting just around that corner
+    # until the turn is nearly finished and too little distance is left to
+    # brake for it (reproduced: a vehicle rear-ended a parked car right
+    # after a turn, having never detected it at all mid-turn).
+    avoidance_heading = math.atan2(target.y - vehicle.car.y, target.x - vehicle.car.x)
+    avoidance_blocked = False
+    lead = nearest_vehicle_ahead(
+        vehicle.car.x, vehicle.car.y, avoidance_heading, nearby_obstacles or (),
+        self_id=id(vehicle),
+        detection_distance_m=NPC_AVOIDANCE_DETECTION_DISTANCE_M,
+        lateral_limit_m=NPC_AVOIDANCE_LATERAL_LIMIT_M,
+    )
+    if lead is not None:
+        gap, obstacle = lead
+        lead_length_m = getattr(obstacle, "length_m", NPC_VEHICLE_LENGTH_M)
+        lead_speed_mps = max(0.0, getattr(obstacle, "speed", 0.0))
+        following_gap = max(0.0, gap - lead_length_m * 0.5 - vehicle.length_m * 0.5 - NPC_AVOIDANCE_MIN_GAP_M)
+        avoidance_cap = math.sqrt(
+            lead_speed_mps * lead_speed_mps + 2.0 * NPC_AVOIDANCE_DECEL_MPS2 * following_gap
+        )
+        driver.target_speed_mps = min(driver.target_speed_mps, avoidance_cap)
+        avoidance_blocked = following_gap <= 0.1 and lead_speed_mps < 0.5
+
     if at_destination:
         driver.target_speed_mps = 0.0
         if vehicle.reserved_parking_space is not None:
@@ -1565,11 +1730,55 @@ def update_npc(
         # its own (reported: NPC stuck oscillating in place forever).
         driver.target_speed_mps = min(driver.target_speed_mps, NPC_FOOTPRINT_VIOLATION_CRAWL_MPS)
 
+    # NPC-004 section 3/8: stuck/oscillation/spin detection - a single
+    # "did this vehicle actually displace since the last check" test covers
+    # all three failure modes the spec lists (no progress, oscillating,
+    # spinning in place), since each of them fails this same test. Excludes
+    # a legitimate traffic-light wait (decision.light is set) - that's not
+    # "stuck", it's correctly obeying a light that will eventually change -
+    # excludes genuine arrival, which has nothing left to recover from, and
+    # excludes the final approach/parking maneuver in general: arrival_cap
+    # deliberately ramps target_speed_mps toward 0 well before at_destination
+    # actually flips True (and PARKING's own aligned approach arc is
+    # slower still), so a vehicle correctly crawling the last couple of
+    # meters into a space would otherwise look identical to one genuinely
+    # blocked - both show near-zero real displacement over one check
+    # interval (regression: legitimate final approaches were getting
+    # kicked into REVERSING mid-parking).
+    waiting_for_light = decision.light is not None and decision.action != TrafficAction.PROCEED
+    finishing_approach = approaching_final_waypoint or vehicle.state in (NPCState.PARKING, NPCState.ARRIVING)
+    if at_destination or waiting_for_light or finishing_approach or driver.recovery_stage != "NORMAL":
+        driver.stuck_timer_s = 0.0
+        driver.stuck_check_position = None
+        driver.stuck_check_elapsed_s = 0.0
+    else:
+        driver.stuck_check_elapsed_s += dt
+        if driver.stuck_check_elapsed_s >= NPC_STUCK_CHECK_INTERVAL_S:
+            driver.stuck_check_elapsed_s = 0.0
+            if driver.stuck_check_position is not None:
+                moved = math.hypot(
+                    vehicle.car.x - driver.stuck_check_position[0], vehicle.car.y - driver.stuck_check_position[1]
+                )
+                if moved < NPC_STUCK_MIN_PROGRESS_M:
+                    driver.stuck_timer_s += NPC_STUCK_CHECK_INTERVAL_S
+                else:
+                    driver.stuck_timer_s = 0.0
+            driver.stuck_check_position = (vehicle.car.x, vehicle.car.y)
+        if driver.stuck_timer_s >= NPC_STUCK_TIMEOUT_S:
+            # Handed to _run_population_tick's recovery scan - never
+            # replans a route here (see that function's own comment on why
+            # this must stay off the per-frame hot path).
+            driver.recovery_stage = "STUCK"
+            driver.stuck_timer_s = 0.0
+
     # State machine (section 10) - priority order is what a real driver
     # would report as "what am I doing right now".
     if not footprint_clear:
         vehicle.state = NPCState.WAITING
         vehicle.debug_waiting_for = "footprint blocked (curb/building)"
+    elif driver.recovery_stage == "STUCK":
+        vehicle.state = NPCState.WAITING
+        vehicle.debug_waiting_for = "stuck - awaiting recovery"
     elif at_destination:
         # ARRIVING while still coasting to a stop; PARKED (multi-passenger-
         # car.md section 17) once genuinely stationary - the same 0.05 m/s
@@ -1587,6 +1796,9 @@ def update_npc(
     ):
         vehicle.state = NPCState.APPROACHING_INTERSECTION
         vehicle.debug_waiting_for = ""
+    elif avoidance_blocked:
+        vehicle.state = NPCState.WAITING
+        vehicle.debug_waiting_for = "waiting for vehicle ahead"
     elif (
         vehicle.destination_parking_space_id is not None
         and math.hypot(driver.destination[0] - vehicle.car.x, driver.destination[1] - vehicle.car.y)
@@ -1790,6 +2002,26 @@ def _point_is_clear_of_vehicles(
     )
 
 
+def _parking_area_containing(point: Optional[Tuple[float, float]], sceneries: Optional[List]):
+    """Return the Scenery(kind="parking") polygon containing `point`, or
+    None. NPC-004 section 4/5: identifies which parking area a vehicle is
+    currently sitting in, purely by point-in-polygon against the map's own
+    already-loaded lot outlines - no persistent parking-area id needed on
+    ParkingSpace/Scenery, since this only ever runs at destination-search
+    time (infrequent, never per-frame), not as a per-frame lookup."""
+    if point is None or not sceneries:
+        return None
+    for scenery in sceneries:
+        if getattr(scenery, "kind", None) != "parking":
+            continue
+        points = getattr(scenery, "points_m", None)
+        if not points or len(points) < 3:
+            continue
+        if point_in_polygon(point[0], point[1], points):
+            return scenery
+    return None
+
+
 def _pick_npc_destination_candidates(
     x: float,
     y: float,
@@ -1801,6 +2033,7 @@ def _pick_npc_destination_candidates(
     search_radius_m: float = NPC_DESTINATION_SEARCH_RADIUS_M,
     limit: int = NPC_PARKING_CANDIDATE_LIMIT,
     other_vehicle_positions: Optional[List[Tuple[float, float]]] = None,
+    own_position: Optional[Tuple[float, float]] = None,
 ) -> List[Tuple[Tuple[float, float], object]]:
     """Every acceptable place to stop near (x, y), in NPC-more.md section
     2's tier order (dedicated space > parking lot > building yard >
@@ -1830,8 +2063,20 @@ def _pick_npc_destination_candidates(
     are already individually exclusive via occupied/reserved and can
     legitimately sit closer together than min_spacing_m (adjacent painted
     bays in the same lot).
+
+    own_position (NPC-004 section 4/5): the vehicle's own actual current
+    position, used only to identify which parking area (if any) it's
+    currently sitting in - a dedicated-space candidate inside that *same*
+    area is excluded, so an ordinary errand search never proposes "drive
+    across the same parking lot to a different space" as its destination
+    (the spec's explicit "must not leave a parking area simply to reach
+    another space in the same area" - generating that trip in the first
+    place is the actual bug, stronger than merely tolerating it once
+    routed). Not applied to the lot/yard/roadside tiers, which already have
+    their own vehicle-spacing exclusion above for a different reason.
     """
     radius_sq = search_radius_m * search_radius_m
+    own_parking_area = _parking_area_containing(own_position, sceneries)
 
     # Each tier is only ever scanned if every higher tier came up empty
     # (section 20: no need to walk thousands of buildings when a parking
@@ -1847,6 +2092,8 @@ def _pick_npc_destination_candidates(
         if not bbox:
             continue
         cx, cy = (bbox[0] + bbox[2]) / 2.0, (bbox[1] + bbox[3]) / 2.0
+        if own_parking_area is not None and _parking_area_containing((cx, cy), [own_parking_area]) is not None:
+            continue
         dist_sq = (cx - x) ** 2 + (cy - y) ** 2
         if dist_sq <= radius_sq:
             space_candidates.append((dist_sq, (cx, cy), space))
@@ -2199,6 +2446,7 @@ def continue_npc_trip(
         destination_candidates = _pick_npc_destination_candidates(
             query_point[0], query_point[1], parking_spaces, sceneries, buildings,
             ways=ways, spatial_grid=spatial_grid, other_vehicle_positions=other_vehicle_positions,
+            own_position=origin,
         )
         for destination, target_space in destination_candidates:
             if time.perf_counter() > deadline:
@@ -2533,6 +2781,102 @@ class NPCVehicleManager:
         vehicle.owner_id = None
         vehicle.destination = None
 
+    def _check_vehicle_collision(
+        self,
+        vehicle: NPCVehicle,
+        nearby_obstacles: List,
+        resident_manager: ResidentManager,
+        pedestrian_mgr: object,
+        sim_time: float,
+    ) -> None:
+        """NPC-004 section 9/10/11: pairwise oriented-box overlap test
+        against `nearby_obstacles` (already spatially bounded by the
+        caller - never all-to-all). `nearby_obstacles` may hold other
+        `NPCVehicle`s and/or the player's own `Car` (same x/y/heading/
+        length_m/width_m duck type either way, so one test handles both
+        NPC-NPC and NPC-taxi). A vehicle already CRASHED is skipped both
+        as the subject and as a candidate obstacle - it's already an
+        accident, and the spec is explicit an accident must never
+        re-trigger."""
+        if vehicle.state == NPCState.CRASHED:
+            return
+        for obstacle in nearby_obstacles:
+            if obstacle is vehicle or getattr(obstacle, "state", None) == NPCState.CRASHED:
+                continue
+            if not boxes_intersect(
+                vehicle.x, vehicle.y, vehicle.heading, vehicle.length_m, vehicle.width_m,
+                obstacle.x, obstacle.y, obstacle.heading,
+                getattr(obstacle, "length_m", NPC_VEHICLE_LENGTH_M), getattr(obstacle, "width_m", NPC_VEHICLE_WIDTH_M),
+            ):
+                continue
+            self._trigger_vehicle_accident(vehicle, resident_manager, pedestrian_mgr, sim_time)
+            if isinstance(obstacle, NPCVehicle):
+                self._trigger_vehicle_accident(obstacle, resident_manager, pedestrian_mgr, sim_time)
+            return
+
+    def _trigger_vehicle_accident(
+        self,
+        vehicle: NPCVehicle,
+        resident_manager: ResidentManager,
+        pedestrian_mgr: object,
+        sim_time: float,
+    ) -> None:
+        """NPC-004 sections 10-19: stop the vehicle, sever its driver link
+        permanently (driver_departed - checked by reserve_household_vehicle
+        and the idle/ready-vehicle filters above so nothing ever resumes or
+        reassigns this vehicle), and - if someone was actually driving it
+        at the moment of impact - turn that Resident into an ordinary
+        pedestrian who walks to a nearby safe point and checks their phone.
+        A vehicle with no active driver (e.g. rear-ended while genuinely
+        idle-parked) still becomes a stopped obstacle, just without a
+        pedestrian to eject - nobody was driving it."""
+        if vehicle.state == NPCState.CRASHED:
+            return  # already an accident - never re-triggers (section 18)
+        was_driving = has_active_driver(vehicle, resident_manager)
+        driver_resident_id = vehicle.owner_id
+        vehicle.car.speed = 0.0
+        vehicle.state = NPCState.CRASHED
+        vehicle.driver_departed = True
+        vehicle.debug_waiting_for = "accident"
+        vehicle.crashed_timer = 0.0
+        release_npc_parking_reservation(vehicle)
+        self.drivers.pop(vehicle.vehicle_id, None)
+
+        if not was_driving or pedestrian_mgr is None:
+            return
+        resident = resident_manager.get(driver_resident_id) if driver_resident_id is not None else None
+        if resident is not None:
+            resident.active_vehicle_id = None
+
+        # NPC-004 section 15: the same passenger-side offset
+        # PedestrianManager._vehicle_entry_position already uses for
+        # boarding/alighting - a walkable point beside the car, never
+        # inside it or in the lane it's blocking.
+        exit_offset = vehicle.width_m * 0.5 + 1.0
+        exit_x = vehicle.x - math.sin(vehicle.heading) * exit_offset
+        exit_y = vehicle.y + math.cos(vehicle.heading) * exit_offset
+        pedestrian = pedestrian_mgr.spawn_pedestrian_at(
+            exit_x, exit_y, heading=vehicle.heading, resident_id=driver_resident_id,
+        )
+        if pedestrian is None:
+            return
+        pedestrian_mgr.add_pedestrian(pedestrian)
+        pedestrian.mood = "annoyed"
+        pedestrian.route = None
+        # Section 16/17: walk to the nearby safe point spawn_pedestrian_at
+        # already picked (on the nearest mapped sidewalk, off the vehicle
+        # lane) and, once there, check the phone - reusing the existing
+        # activities/plugins/phone_usage.py plugin directly (bypassing its
+        # normal random-selection weighting) instead of a bespoke "annoyed
+        # driver" activity.
+        destination = pedestrian.destination
+        pedestrian.activity = ActivityInstance(
+            plugin_id="phone_usage",
+            location=ActivityLocation(x=destination[0], y=destination[1]) if destination is not None else None,
+            started_sim_time=sim_time,
+        )
+        pedestrian.state = "walking_to_activity"
+
     def _handle_parked_vehicle(self, vehicle: NPCVehicle) -> None:
         """Per-frame, cheap only: retirement checks that need to happen
         the instant a vehicle parks. Deciding and routing to the *next*
@@ -2585,7 +2929,18 @@ class NPCVehicleManager:
         remaining = len(self.vehicles)
         for vehicle in self.vehicles:
             far = (vehicle.x - player_x) ** 2 + (vehicle.y - player_y) ** 2 > despawn_radius_sq
-            idle_parked = vehicle.state == NPCState.PARKED and self.drivers.get(vehicle.vehicle_id) is None
+            # NPC-004 section 18: a CRASHED vehicle is also despawn-eligible
+            # once far and out of view - its driver (if any) already left
+            # via _trigger_vehicle_accident (self.drivers.pop), so the
+            # "no driver" half of this check is trivially satisfied; the
+            # departed pedestrian despawns independently, gated by its own
+            # equivalent far+offscreen+not-mid-activity check in
+            # pedestrian.py - no cross-system rendezvous needed since both
+            # sit at the same spot and become far/invisible together.
+            idle_parked = (
+                vehicle.state in (NPCState.PARKED, NPCState.CRASHED)
+                and self.drivers.get(vehicle.vehicle_id) is None
+            )
             visible = viewport_bounds is not None and _point_in_viewport(vehicle.x, vehicle.y, viewport_bounds)
             # Never below min_count (section 9's configurable population
             # floor), even if more vehicles than that are simultaneously
@@ -2696,6 +3051,10 @@ class NPCVehicleManager:
             # for a future Resident-initiated trip) must not be grabbed by
             # this unrelated "start a random trip" roll.
             and vehicle.availability == NPCAvailability.AVAILABLE
+            # NPC-004 section 12: state != PARKED already excludes a CRASHED
+            # vehicle, but this makes the "never resumes" invariant explicit
+            # rather than incidental.
+            and not vehicle.driver_departed
         ]
         random.shuffle(idle_candidates)
         for vehicle in idle_candidates:
@@ -2777,6 +3136,48 @@ class NPCVehicleManager:
             if departed and vehicle.destination is not None:
                 claimed_points.append((vehicle.vehicle_id, vehicle.destination))
 
+        # 5. Recovery (NPC-004 section 3/6/8): a vehicle update_npc marked
+        # STUCK either gets a fresh route from wherever it currently sits,
+        # or - if none validates - backs up in a controlled way and tries
+        # again on a later tick (see NPCState.REVERSING/
+        # _update_npc_reversing). plan_route is exactly the "over a second
+        # against real dense OSM data" cost find_and_start_npc_trip's own
+        # docstring already warns about, so this stays off the per-frame
+        # path (update_npc only ever flags "STUCK", never replans) and
+        # bounded the same way every other occasional/expensive step in
+        # this tick already is.
+        recovery_attempts_this_tick = 0
+        stuck_vehicles = [
+            vehicle for vehicle in self.vehicles
+            if getattr(self.drivers.get(vehicle.vehicle_id), "recovery_stage", None) == "STUCK"
+        ]
+        random.shuffle(stuck_vehicles)
+        for vehicle in stuck_vehicles:
+            if recovery_attempts_this_tick >= NPC_RECOVERY_ATTEMPTS_PER_TICK:
+                break
+            recovery_attempts_this_tick += 1
+            driver = self.drivers[vehicle.vehicle_id]
+            origin = (vehicle.car.x, vehicle.car.y)
+            path = _plan_and_validate_npc_route(
+                traffic_world, ways, origin, driver.destination, spatial_grid=spatial_grid,
+                curbs=curbs, curb_grid=curb_grid, buildings=buildings, building_grid=building_grid,
+                parking_space=vehicle.reserved_parking_space, destination_is_off_road=True,
+            )
+            if path is not None:
+                driver.path = path
+                driver.path_index = 1
+                driver.current_way = path[0].way
+                driver.recovery_stage = "NORMAL"
+                vehicle.state = NPCState.CRUISING
+                vehicle.debug_waiting_for = ""
+            else:
+                # No route validates from here - back up a bounded amount
+                # before trying again, rather than retrying the identical
+                # failing plan forever from the identical stuck position.
+                vehicle.state = NPCState.REVERSING
+                driver.recovery_stage = "REVERSING"
+                driver.reverse_start_position = None
+
         self.rebuild_spatial_grid()
 
     def update(
@@ -2795,7 +3196,21 @@ class NPCVehicleManager:
         curb_grid: Optional[SpatialWayGrid] = None,
         building_grid: Optional[SpatialWayGrid] = None,
         viewport_bounds: Optional[Tuple[float, float, float, float]] = None,
+        player_car: object = None,
+        pedestrian_mgr: object = None,
     ) -> None:
+        # NPC-004: nearby_vehicles_at (avoidance/collision) reads
+        # self.spatial_grid, which used to only get rebuilt at population-
+        # tick cadence (every NPC_POPULATION_TICK_S=5s) or on initial
+        # fill - fine when nothing ever queried it, but every vehicle
+        # moves every single frame, so a stale-by-seconds grid could put a
+        # vehicle nowhere near where it actually is (reproduced: a fast
+        # vehicle drove straight through a stopped one that avoidance
+        # should have caught, because the grid still held its position
+        # from several seconds earlier). Cheap - O(population size), a
+        # dict clear + re-insert per vehicle, trivial next to the per-
+        # vehicle decision/physics work below.
+        self.rebuild_spatial_grid()
         for vehicle in self.vehicles:
             driver = self.drivers.get(vehicle.vehicle_id)
             if driver is None:
@@ -2806,9 +3221,34 @@ class NPCVehicleManager:
                 # doesn't tick physics/decisions while this far away - not
                 # "outside camera = nonexistent".
                 continue
+            # NPC-004 section 2: only vehicles actually near this one need
+            # to be considered for avoidance (never all-to-all) - the same
+            # spatial-grid-bounded query pattern every other proximity check
+            # in this module already uses. The player's own car is a cheap
+            # unconditional append (one object, cone-projection in
+            # nearest_vehicle_ahead already discards it if it's too far or
+            # off to the side).
+            # ways_in_rect (nearby_vehicles_at's own query) yields, it
+            # doesn't return a list - materializing it once here (not
+            # inside the `if player_car` branch) matters because this same
+            # object gets consumed twice below (collision check, then
+            # avoidance inside update_npc); a generator can only be
+            # iterated once, so the second consumer would otherwise
+            # silently see nothing at all whenever player_car is None.
+            nearby_obstacles = list(self.nearby_vehicles_at(vehicle.x, vehicle.y, NPC_AVOIDANCE_DETECTION_DISTANCE_M))
+            if player_car is not None:
+                nearby_obstacles.append(player_car)
+            # NPC-004 section 9/10/11: reuses the exact same spatially-
+            # bounded nearby_obstacles list avoidance just computed above -
+            # no second nearby-vehicle query needed to also check for an
+            # actual collision, not just a following distance.
+            self._check_vehicle_collision(vehicle, nearby_obstacles, resident_manager, pedestrian_mgr, traffic_world.sim_time)
+            if vehicle.state == NPCState.CRASHED:
+                continue  # driver just departed (or never existed) - nothing left to drive
             update_npc(
                 vehicle, driver, dt, traffic_world, resident_manager,
                 curbs=curbs, buildings=buildings, curb_grid=curb_grid, building_grid=building_grid,
+                nearby_obstacles=nearby_obstacles, manager=self, pedestrian_mgr=pedestrian_mgr,
             )
             if vehicle.state == NPCState.PARKED:
                 self._handle_parked_vehicle(vehicle)

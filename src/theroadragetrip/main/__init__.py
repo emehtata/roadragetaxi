@@ -1794,6 +1794,7 @@ def main() -> None:
                     sceneries=sceneries, buildings=buildings,
                     curbs=curbs, curb_grid=curb_grid, building_grid=building_grid,
                     viewport_bounds=viewport_bounds,
+                    player_car=car, pedestrian_mgr=pedestrian_mgr,
                 )
             vomited_passenger = taxi_mgr.take_vomited_passenger(car)
             if vomited_passenger is not None:

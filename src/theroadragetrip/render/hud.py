@@ -712,7 +712,13 @@ def draw_npc_debug_panel(screen, vehicle, driver, font, x: int = 10, y: int = 22
         # net tripping (see npc.update_npc) - not just the ordinary
         # traffic-rule reason already shown above, which can otherwise
         # read as stale ("PROCEED") while state=WAITING for this instead.
+        # NPC-004 section 23: also doubles as the avoidance/stuck/reverse/
+        # accident state text (state_label above already shows REVERSING/
+        # CRASHED directly) - no separate debug fields needed for those.
         lines.append(f"waiting_for={vehicle.debug_waiting_for}")
+    recovery_stage = getattr(driver, "recovery_stage", "NORMAL")
+    if recovery_stage != "NORMAL" or getattr(vehicle, "driver_departed", False):
+        lines.append(f"recovery={recovery_stage} driver_departed={getattr(vehicle, 'driver_departed', False)}")
     panel_w = 360
     panel_h = 10 + len(lines) * 16
     pygame.draw.rect(screen, (16, 20, 26, 215), (x, y, panel_w, panel_h), border_radius=5)

@@ -176,6 +176,19 @@ def draw_pedestrians(
             bubble_surf.blit(txt_surf, (4, 2))
             screen.blit(bubble_surf, (int(bx), int(by)))
 
+        # NPC-004 section 17: the smallest visual that reads as "annoyed" -
+        # a small persistent orange marker above the head (not a timed
+        # bubble like curse_timer above - an accident driver stays annoyed
+        # for as long as they're standing there, not just for an instant).
+        # No new render subsystem: same head-relative placement idiom as
+        # the cursing bubble just above.
+        if getattr(ped, "mood", "normal") == "annoyed":
+            mark_x = int(cx)
+            mark_y = int(cy - radius_px - 10)
+            pygame.draw.circle(screen, (235, 140, 30), (mark_x, mark_y), max(3, int(radius_px * 0.4)))
+            pygame.draw.line(screen, (40, 25, 10), (mark_x, mark_y - 3), (mark_x, mark_y + 1), 2)
+            pygame.draw.circle(screen, (40, 25, 10), (mark_x, mark_y + 3), 1)
+
 
 def resident_at_screen_position(
     pedestrians: List,

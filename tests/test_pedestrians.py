@@ -15,6 +15,7 @@ from theroadragetrip.pedestrian import (
 )
 from theroadragetrip.npc import NPCState, spawn_npc, update_npc
 from theroadragetrip.physics import Car
+from theroadragetrip.render import draw_pedestrians
 from theroadragetrip.residents import ResidentManager
 from theroadragetrip.traffic_world import TrafficWorld
 
@@ -1296,3 +1297,26 @@ def test_fanned_out_spawn_positions_never_land_inside_the_vehicle():
                 assert abs(local_y) >= vehicle_width_m * 0.5, (
                     f"heading={heading} total={total} index={index} landed inside the car's width"
                 )
+
+
+def test_annoyed_mood_renders_a_visible_marker():
+    """NPC-004 section 17: an accident driver's "annoyed" mood must be
+    visually distinguishable from a normal pedestrian - the smallest
+    marker that satisfies this, not a new render subsystem."""
+    import pygame
+
+    pygame.init()
+    ground = Way(points_m=[(0.0, -50.0), (0.0, 50.0)], highway="footway", half_width_m=1.5, is_drivable=False)
+    normal = Pedestrian(0.0, 0.0, 0.0, 0.0, 1.0, ground, 0, 1, (200, 50, 50))
+    annoyed = Pedestrian(0.0, 0.0, 0.0, 0.0, 1.0, ground, 0, 1, (200, 50, 50))
+    annoyed.mood = "annoyed"
+
+    normal_screen = pygame.Surface((400, 400))
+    normal_screen.fill((0, 0, 0))
+    draw_pedestrians(normal_screen, [normal], camx=0.0, camy=0.0, px_per_m=8.0, ways=[ground], screen_w=400, screen_h=400)
+
+    annoyed_screen = pygame.Surface((400, 400))
+    annoyed_screen.fill((0, 0, 0))
+    draw_pedestrians(annoyed_screen, [annoyed], camx=0.0, camy=0.0, px_per_m=8.0, ways=[ground], screen_w=400, screen_h=400)
+
+    assert pygame.image.tostring(normal_screen, "RGB") != pygame.image.tostring(annoyed_screen, "RGB")
