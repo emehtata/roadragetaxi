@@ -134,6 +134,7 @@ def _passenger_to_dict(passenger: Optional[TaxiPassenger]) -> Optional[dict]:
 
 def build_state_message(
     *, tick: int, world, car, on_foot: bool, player_pedestrian, game_time_seconds: float,
+    camx: float, camy: float, should_stop: bool = False, city_summary: Optional[tuple] = None,
 ) -> dict:
     """Everything the Pygame client needs to render one frame, and nothing
     static (see module docstring). Called once per server tick."""
@@ -144,6 +145,11 @@ def build_state_message(
         "game_time_seconds": game_time_seconds,
         "sim_time": traffic_mgr.sim_time,
         "on_foot": on_foot,
+        # The camera-follow lookahead depends on car speed/heading, which
+        # only the server computes - see architecture doc's note that a
+        # real multi-client future should move this client-side instead.
+        "camx": camx,
+        "camy": camy,
         "player": {
             "x": car.x, "y": car.y, "heading": car.heading, "speed": car.speed,
             "braking": car.braking, "trip_m": car.trip_m, "odometer_m": car.odometer_m,
@@ -164,6 +170,11 @@ def build_state_message(
             "taxi_smoke_timer": taxi_mgr.taxi_smoke_timer,
             "current_passenger": _passenger_to_dict(taxi_mgr.current_passenger),
         },
+        # Career-mode session end (score threshold reached -> next city or
+        # completed). Not fully wired end-to-end this phase - see
+        # docs/architecture/simulation-rendering.md's known limitations.
+        "should_stop": should_stop,
+        "city_summary": list(city_summary) if city_summary is not None else None,
     }
     return {"type": "state", "version": PROTOCOL_VERSION, "tick": tick, "state": state}
 
@@ -208,13 +219,14 @@ def interpolate_state(prev: dict, curr: dict, alpha: float) -> dict:
     return blended
 
 
-def apply_server_state(world, car, state: dict, *, player_pedestrian) -> tuple[bool, float]:
+def apply_server_state(world, car, state: dict, *, player_pedestrian) -> dict:
     """Apply a received state dict onto local shadow objects. Never calls
     `.update()`/AI methods on any manager - entities only ever change here,
     driven entirely by the server's authoritative snapshot.
 
-    Returns (on_foot, game_time_seconds) since those aren't stored on any
-    object the caller already holds a reference to.
+    Returns the handful of scalars the caller doesn't already hold a
+    reference to: on_foot, game_time_seconds, camx, camy, should_stop,
+    city_summary.
     """
     player = state["player"]
     car.x, car.y, car.heading, car.speed = player["x"], player["y"], player["heading"], player["speed"]
@@ -245,7 +257,14 @@ def apply_server_state(world, car, state: dict, *, player_pedestrian) -> tuple[b
     taxi_mgr.taxi_smoke_timer = taxi["taxi_smoke_timer"]
     taxi_mgr.current_passenger = _passenger_from_dict(taxi["current_passenger"])
 
-    return state["on_foot"], state["game_time_seconds"]
+    return {
+        "on_foot": state["on_foot"],
+        "game_time_seconds": state["game_time_seconds"],
+        "camx": state["camx"],
+        "camy": state["camy"],
+        "should_stop": state.get("should_stop", False),
+        "city_summary": state.get("city_summary"),
+    }
 
 
 def _passenger_from_dict(data: Optional[dict]) -> Optional[TaxiPassenger]:

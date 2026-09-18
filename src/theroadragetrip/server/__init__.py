@@ -86,6 +86,7 @@ class SimulationServer:
             )
         self.chosen_city = city_choice.chosen_city
         self.cities_list = city_choice.cities_list
+        self.career = city_choice.career
 
         self.world = _load_world(
             city_choice.chosen_city, city_choice.camera_city_name, city_choice.bbox,
@@ -192,7 +193,7 @@ class SimulationServer:
             slow_check_elapsed=self._slow_check_elapsed,
             taxi_waiter_elapsed=self._taxi_waiter_elapsed,
             saved_gig_fares=self._saved_gig_fares,
-            career=None,
+            career=self.career,
             career_file=self.career_file,
             gig_odometer_file=self.gig_odometer_file,
             chosen_city=self.chosen_city,
@@ -208,12 +209,14 @@ class SimulationServer:
         self._saved_gig_fares = result.saved_gig_fares
         self._tick += 1
 
-        self._broadcast_state()
+        self._broadcast_state(should_stop=result.should_stop, city_summary=result.city_summary)
 
-    def _broadcast_state(self) -> None:
+    def _broadcast_state(self, *, should_stop: bool = False, city_summary=None) -> None:
         message = protocol.build_state_message(
             tick=self._tick, world=self.world, car=self.car, on_foot=self._on_foot,
             player_pedestrian=self.world.player_pedestrian, game_time_seconds=self._game_time_seconds,
+            camx=self._camx, camy=self._camy,
+            should_stop=should_stop, city_summary=city_summary,
         )
         with self._clients_lock:
             clients = list(self._clients)
