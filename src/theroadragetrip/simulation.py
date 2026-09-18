@@ -78,6 +78,35 @@ class SimulationFrameResult:
     next_active_city_name: Optional[str] = None
 
 
+def apply_enter_exit_vehicle(car, player_pedestrian, on_foot: bool, audio) -> bool:
+    """The 'F' key's get-in/get-out-of-the-car action - authoritative
+    gameplay logic (a distance check gates re-entry), so it belongs on
+    the simulation side of the boundary, not decided by a client. Moved
+    verbatim from main()'s event handler. Returns the new on_foot value."""
+    if not on_foot:
+        length_m = getattr(car, "length_m", 4.0)
+        width_m = getattr(car, "width_m", 1.8)
+        left_x = -math.sin(car.heading)
+        left_y = math.cos(car.heading)
+        player_pedestrian.x = (
+            car.x + math.cos(car.heading) * length_m * 0.2 + left_x * width_m * 0.85
+        )
+        player_pedestrian.y = (
+            car.y + math.sin(car.heading) * length_m * 0.2 + left_y * width_m * 0.85
+        )
+        player_pedestrian.heading = car.heading
+        car.speed = 0.0
+        car.engine_on = False
+        audio.play("car-door-open")
+        return True
+    elif math.hypot(player_pedestrian.x - car.x, player_pedestrian.y - car.y) <= 3.0:
+        car.speed = 0.0
+        car.engine_on = True
+        audio.play("car-door-open")
+        return False
+    return on_foot
+
+
 def _rage_from_speeding(
     rage_power: float, speed_mps: float, road_limit_mps: Optional[float], driven_distance_m: float,
 ) -> float:
