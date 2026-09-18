@@ -8,7 +8,6 @@ import sys
 import threading
 import time
 from types import SimpleNamespace
-from typing import Optional
 
 import pygame
 
@@ -23,7 +22,6 @@ from ..config import (
     save_config,
 )
 from ..career import (
-    CAREER_SCORE_LIMIT,
     career_path,
     gig_odometer_path,
     load_career,
@@ -33,6 +31,7 @@ from ..career import (
     save_gig_odometer,
 )
 from ..localization import SUPPORTED_LANGUAGES, normalize_language, tr
+from ..simulation import PlayerCommand, advance_simulation
 from ..osm import (
     DEFAULT_BBOX,
     AutoFetchManager,
@@ -47,24 +46,15 @@ from ..osm import (
     remove_trees_under_roads,
 )
 from ..physics import (
-    ACCEL,
-    BRAKE,
-    FRICTION,
-    STEER_RATE,
-    STEER_SPEED_FACTOR,
     Car,
     SpatialWayGrid,
     get_current_road_at_car,
-    is_car_colliding_with_bridge_edge,
-    is_car_fully_in_water,
     is_point_in_parking_lot,
     is_point_on_parking_space,
     reset_trip,
     respawn_car,
-    pull_car_inside_bridge_edge,
     skidmark_intensity,
     skidmark_should_mark,
-    update_car_physics,
 )
 from ..render import (
     FPS,
@@ -152,7 +142,7 @@ from ..pedestrian import PedestrianManager, PlayerPedestrian
 from ..residents import ResidentManager
 from ..police import place_speed_cameras
 from ..roadworks import create_roadworks
-from ..taxi import TaxiManager, TaxiState
+from ..taxi import TaxiManager
 from ..tile_streaming import PBF_TILE_SIZE_M, set_tile_size_m
 from ..traffic_world import TrafficWorld
 from ..world_cache import WorldCacheManager, clear_world_cache
@@ -180,7 +170,6 @@ BBOX = DEFAULT_BBOX
 
 logger = logging.getLogger(__name__)
 RAGE_SHOUTS = ("PRKL!", "STNA!", "VTTU!", "HLVT!", "KRPÄ!", "KSPÄ!", "PSKA!")
-RAGE_DISTANCE_TO_FULL_M = 400.0
 RAGE_SHOUT_COST = 0.25
 # F5 activity debug panel's force-an-activity testing keys (residents-
 # live.md section 18) - number key N forces the Nth plugin listed in the
@@ -189,21 +178,6 @@ ACTIVITY_DEBUG_FORCE_KEYS = (
     pygame.K_1, pygame.K_2, pygame.K_3, pygame.K_4, pygame.K_5,
     pygame.K_6, pygame.K_7, pygame.K_8, pygame.K_9,
 )
-
-
-def _rage_from_speeding(
-    rage_power: float, speed_mps: float, road_limit_mps: Optional[float], driven_distance_m: float,
-) -> float:
-    """Speeding builds rage; driving within the limit calms it back down -
-    both at the same rate (RAGE_DISTANCE_TO_FULL_M of speeding fills the
-    meter, the same distance under the limit empties it). No current road
-    (unknown limit) leaves rage unchanged either way."""
-    if road_limit_mps is None or driven_distance_m <= 0.0:
-        return rage_power
-    delta = driven_distance_m / RAGE_DISTANCE_TO_FULL_M
-    if abs(speed_mps) > road_limit_mps + 0.01:
-        return min(1.0, rage_power + delta)
-    return max(0.0, rage_power - delta)
 
 
 def _map_sync_should_start(revision_changed: bool, any_grid_stale: bool, map_sync_stage: int) -> bool:
@@ -221,6 +195,69 @@ def _map_sync_should_start(revision_changed: bool, any_grid_stale: bool, map_syn
     like it's "syncing".
     """
     return map_sync_stage == 0 and (revision_changed or any_grid_stale)
+
+
+def _run_headless_ticks(
+    tick_count, car, world, audio, frame_profiler, weather,
+    camx, camy, px_per_m, current_way, game_time_seconds,
+    speed_limiter_enabled, red_light_assist_enabled, npc_follow,
+    physics_mode, bridge_edge_crash_cooldown, rage_power, water_elapsed,
+    language, slow_check_elapsed, taxi_waiter_elapsed, saved_gig_fares,
+    career, career_file, gig_odometer_file, chosen_city, cities_list,
+) -> None:
+    """Run `tick_count` simulation ticks with no display, no rendering, and
+    no player input - a runnable proof that `advance_simulation` works
+    without Pygame, standing in for the real headless server this game
+    doesn't have yet (client-server-01.md step 9)."""
+    dt = 1.0 / FPS
+    no_input = PlayerCommand()
+    start = time.perf_counter()
+    for _ in range(tick_count):
+        result = advance_simulation(
+            dt, no_input, car, world,
+            on_foot=False,
+            player_pedestrian=world.player_pedestrian,
+            camx=camx, camy=camy, px_per_m=px_per_m,
+            current_way=current_way,
+            game_time_seconds=game_time_seconds,
+            speed_limiter_enabled=speed_limiter_enabled,
+            red_light_assist_enabled=red_light_assist_enabled,
+            npc_follow=npc_follow,
+            screen_w=SCREEN_W, screen_h=SCREEN_H,
+            physics_mode=physics_mode,
+            weather=weather,
+            bridge_edge_crash_cooldown=bridge_edge_crash_cooldown,
+            rage_power=rage_power,
+            water_elapsed=water_elapsed,
+            language=language,
+            audio=audio,
+            frame_profiler=frame_profiler,
+            slow_check_elapsed=slow_check_elapsed,
+            taxi_waiter_elapsed=taxi_waiter_elapsed,
+            saved_gig_fares=saved_gig_fares,
+            career=career,
+            career_file=career_file,
+            gig_odometer_file=gig_odometer_file,
+            chosen_city=chosen_city,
+            cities_list=cities_list,
+        )
+        camx, camy = result.camx, result.camy
+        current_way = result.current_way
+        water_elapsed = result.water_elapsed
+        rage_power = result.rage_power
+        bridge_edge_crash_cooldown = result.bridge_edge_crash_cooldown
+        slow_check_elapsed = result.slow_check_elapsed
+        taxi_waiter_elapsed = result.taxi_waiter_elapsed
+        saved_gig_fares = result.saved_gig_fares
+        game_time_seconds = (game_time_seconds + dt * 60.0) % (24.0 * 60.0 * 60.0)
+        if result.should_stop:
+            break
+    elapsed = time.perf_counter() - start
+    print(
+        f"Headless run: {tick_count} ticks in {elapsed:.3f}s "
+        f"({tick_count / max(elapsed, 1e-9):.0f} ticks/s), car at "
+        f"({car.x:.1f}, {car.y:.1f})"
+    )
 
 
 def _resolve_osm_fetch_func(args, overpass_endpoints, progress_callback=None):
@@ -1079,6 +1116,17 @@ def main() -> None:
         weather = WeatherSystem()
         clock.tick()  # Reset clock timer to avoid large dt on first frame
 
+        if args.headless:
+            _run_headless_ticks(
+                args.headless, car, world, audio, frame_profiler, weather,
+                camx, camy, px_per_m, current_way, game_time_seconds,
+                speed_limiter_enabled, red_light_assist_enabled, npc_follow,
+                physics_mode, bridge_edge_crash_cooldown, rage_power, water_elapsed,
+                language, slow_check_elapsed, taxi_waiter_elapsed, saved_gig_fares,
+                career, career_file, gig_odometer_file, chosen_city, cities_list,
+            )
+            return
+
         while running:
             raw_frame_ms = clock.tick_busy_loop(FPS)  # Precise pacing; real per-frame duration for the debug HUD
             # advance() (not begin_frame() + a later end_frame()) - raw_frame_ms
@@ -1581,329 +1629,70 @@ def main() -> None:
                 last_zoom_scale = zoom_scale
 
             keys = pygame.key.get_pressed()
-            if on_foot:
-                forward_input = float(keys[pygame.K_w] or keys[pygame.K_UP]) - float(
-                    keys[pygame.K_s] or keys[pygame.K_DOWN]
-                )
-                steer_input = float(keys[pygame.K_a] or keys[pygame.K_LEFT]) - float(
-                    keys[pygame.K_d] or keys[pygame.K_RIGHT]
-                )
-                sprinting = keys[pygame.K_LSHIFT] or keys[pygame.K_RSHIFT]
-                walking_speed = 8.0 if sprinting else 4.0
-                if forward_input > 0.0:
-                    player_pedestrian.speed = min(
-                        walking_speed, player_pedestrian.speed + ACCEL * dt
-                    )
-                elif forward_input < 0.0:
-                    player_pedestrian.speed = max(
-                        -walking_speed, player_pedestrian.speed - BRAKE * dt
-                    )
-                elif player_pedestrian.speed > 0.0:
-                    player_pedestrian.speed = max(0.0, player_pedestrian.speed - FRICTION * dt)
-                else:
-                    player_pedestrian.speed = min(0.0, player_pedestrian.speed + FRICTION * dt)
-
-                if abs(player_pedestrian.speed) > 0.05 and abs(steer_input) > 0.01:
-                    steer_effective = STEER_RATE / (
-                        1.0 + abs(player_pedestrian.speed) * STEER_SPEED_FACTOR
-                    )
-                    player_pedestrian.heading += (
-                        steer_input
-                        * steer_effective
-                        * dt
-                        * (1.0 if player_pedestrian.speed >= 0.0 else -1.0)
-                    )
-                player_pedestrian.x += math.cos(player_pedestrian.heading) * player_pedestrian.speed * dt
-                player_pedestrian.y += math.sin(player_pedestrian.heading) * player_pedestrian.speed * dt
-            immobilized = taxi_mgr.tree_wait_timer > 0.0
-            throttle = 0.0 if on_foot or immobilized else (1.0 if keys[pygame.K_w] or keys[pygame.K_UP] else 0.0)
-            brake = 0.0 if on_foot or immobilized else (1.0 if keys[pygame.K_s] or keys[pygame.K_DOWN] else 0.0)
-            steer_left = 0.0 if on_foot else (1.0 if keys[pygame.K_a] or keys[pygame.K_LEFT] else 0.0)
-            steer_right = 0.0 if on_foot else (1.0 if keys[pygame.K_d] or keys[pygame.K_RIGHT] else 0.0)
-
-            current_way = get_current_road_at_car(
-                car, ways=ways, spatial_grid=spatial_grid, car_roads_only=True, current_way=current_way
+            command = PlayerCommand(
+                throttle=1.0 if not on_foot and (keys[pygame.K_w] or keys[pygame.K_UP]) else 0.0,
+                brake=1.0 if not on_foot and (keys[pygame.K_s] or keys[pygame.K_DOWN]) else 0.0,
+                steer_left=1.0 if not on_foot and (keys[pygame.K_a] or keys[pygame.K_LEFT]) else 0.0,
+                steer_right=1.0 if not on_foot and (keys[pygame.K_d] or keys[pygame.K_RIGHT]) else 0.0,
+                forward=(
+                    float(keys[pygame.K_w] or keys[pygame.K_UP]) - float(keys[pygame.K_s] or keys[pygame.K_DOWN])
+                    if on_foot else 0.0
+                ),
+                turn=(
+                    float(keys[pygame.K_a] or keys[pygame.K_LEFT]) - float(keys[pygame.K_d] or keys[pygame.K_RIGHT])
+                    if on_foot else 0.0
+                ),
+                sprint=bool(on_foot and (keys[pygame.K_LSHIFT] or keys[pygame.K_RSHIFT])),
             )
-            speed_limit_mps = None
-            if speed_limiter_enabled and current_way:
-                speed_limit_mps = current_way.speed_limit_kmh / 3.6
-            red_light_limit_mps = None
-            nearby_traffic_lights = traffic_mgr._nearby_traffic_lights(car.x, car.y)
-            if red_light_assist_enabled:
-                red_light_limit_mps = taxi_mgr.get_red_light_assist_speed_limit(
-                    car, nearby_traffic_lights, traffic_mgr.sim_time
-                )
-            if red_light_limit_mps is not None:
-                speed_limit_mps = (
-                    red_light_limit_mps
-                    if speed_limit_mps is None
-                    else min(speed_limit_mps, red_light_limit_mps)
-                )
-
-            previous_position = (car.x, car.y)
-            # Off-road driving is allowed at a reduced speed.
-            if not on_foot:
-                with frame_profiler.section("physics"):
-                    update_car_physics(
-                        car, throttle, brake, steer_left, steer_right, dt,
-                        ways=ways, spatial_grid=spatial_grid,
-                        block_offroad=False, speed_limit_mps=speed_limit_mps,
-                        nearby_vehicles=[], parking_spaces=parking_spaces,
-                        scenery_grid=scenery_grid,
-                        current_way=current_way, physics_mode=physics_mode,
-                        wetness=weather.wetness,
-                    )
-                car.braking = brake > 0.0 and car.speed > 0.05
-                midpoint = (
-                    (previous_position[0] + car.x) * 0.5,
-                    (previous_position[1] + car.y) * 0.5,
-                )
-                entered_roadwork = any(
-                    not work.contains(*previous_position, margin_m=2.0)
-                    and (
-                        work.contains(*midpoint, margin_m=2.0)
-                        or work.contains(car.x, car.y, margin_m=2.0)
-                    )
-                    for work in roadworks
-                )
-                if entered_roadwork:
-                    car.x, car.y = previous_position
-                    car.speed = 0.0
-                    taxi_mgr.notification_msg = tr(language, "roadwork_blocked")
-                    taxi_mgr.notification_timer = 2.5
-                else:
-                    current_way = get_current_road_at_car(
-                        car,
-                        ways=ways,
-                        spatial_grid=spatial_grid,
-                        car_roads_only=True,
-                        current_way=current_way,
-                    )
-                in_water = not entered_roadwork and is_car_fully_in_water(
-                    car, waters, current_way=current_way
-                )
-                if in_water:
-                    water_elapsed = min(10.0, water_elapsed + dt)
-                    taxi_mgr.notification_msg = (
-                        f"{tr(language, 'water_timer')}: {max(0.0, 10.0 - water_elapsed):.1f} s"
-                    )
-                    taxi_mgr.notification_timer = 0.2
-                    if water_elapsed >= 10.0:
-                        respawn_car(car, ways, waters=waters, taxi_stops=taxi_stops)
-                        taxi_mgr.handle_respawn(car.x, car.y)
-                        taxi_mgr.notification_msg = tr(language, "water_driving")
-                        taxi_mgr.notification_timer = 1.5
-                        water_elapsed = 0.0
-                        last_track_position = None
-                        last_track_surface = None
-                else:
-                    water_elapsed = 0.0
-            if immobilized:
-                car.speed = 0.0
-            movement_distance = math.hypot(car.x - previous_position[0], car.y - previous_position[1])
-            audio.update_acceleration(
-                abs(car.speed) > 0.5 and (throttle > 0.0 or brake > 0.0)
+            sim_result = advance_simulation(
+                dt, command, car, world,
+                on_foot=on_foot,
+                player_pedestrian=player_pedestrian,
+                camx=camx, camy=camy, px_per_m=px_per_m,
+                current_way=current_way,
+                game_time_seconds=game_time_seconds,
+                speed_limiter_enabled=speed_limiter_enabled,
+                red_light_assist_enabled=red_light_assist_enabled,
+                npc_follow=npc_follow,
+                screen_w=SCREEN_W, screen_h=SCREEN_H,
+                physics_mode=physics_mode,
+                weather=weather,
+                bridge_edge_crash_cooldown=bridge_edge_crash_cooldown,
+                rage_power=rage_power,
+                water_elapsed=water_elapsed,
+                language=language,
+                audio=audio,
+                frame_profiler=frame_profiler,
+                slow_check_elapsed=slow_check_elapsed,
+                taxi_waiter_elapsed=taxi_waiter_elapsed,
+                saved_gig_fares=saved_gig_fares,
+                career=career,
+                career_file=career_file,
+                gig_odometer_file=gig_odometer_file,
+                chosen_city=chosen_city,
+                cities_list=cities_list,
             )
-            audio.update_comments(dt)
-            driven_distance = math.hypot(car.x - previous_position[0], car.y - previous_position[1])
-            road_limit_mps = current_way.speed_limit_kmh / 3.6 if current_way else None
-            rage_power = _rage_from_speeding(rage_power, car.speed, road_limit_mps, driven_distance)
-            if abs(car.speed) * 3.6 < 10.0 and taxi_mgr.sees_red_light(
-                car, nearby_traffic_lights, traffic_mgr.sim_time
-            ):
-                rage_power = min(1.0, rage_power + 0.05 * dt)
-            if car.is_sliding:
-                # Adrenaline from a hard, tire-losing-grip corner feeds the
-                # rage meter too, same as speeding does.
-                rage_power = min(1.0, rage_power + 0.15 * dt)
-            if first_gameplay_frame:
-                logger.info("Gameplay frame: physics complete")
-
-            with frame_profiler.section("collisions"):
-                building_crash = taxi_mgr.check_building_collision(
-                    car, buildings, traffic_mgr.sim_time, previous_position, ways=ways
-                )
-                tree_crash = taxi_mgr.check_tree_collision(
-                    car, sceneries, traffic_mgr.sim_time, previous_position, ways=ways
-                )
-                fence_crash = taxi_mgr.check_fence_collision(
-                    car, sceneries, traffic_mgr.sim_time, previous_position
-                )
-                taxi_mgr.check_curb_bump(
-                    car, curbs, previous_position, traffic_mgr.sim_time, curb_grid=curb_grid
-                )
-                taxi_mgr.check_speed_bump(
-                    car, speed_bumps, previous_position, traffic_mgr.sim_time
-                )
-                bridge_edge_crash = is_car_colliding_with_bridge_edge(car, current_way, ways=ways)
-                if bridge_edge_crash:
-                    pull_car_inside_bridge_edge(car, current_way)
-                    # Bounce away from the rail so a held throttle cannot keep
-                    # the car pinned against the same bridge edge.
-                    car.speed = -max(2.5, min(abs(car.speed), 6.0))
-                    taxi_mgr.taxi_smoke_timer = max(taxi_mgr.taxi_smoke_timer, 5.0)
-                    if bridge_edge_crash_cooldown <= 0.0:
-                        bridge_edge_crash_cooldown = 3.0
-                        taxi_mgr.total_score -= 200
-                        taxi_mgr.notification_msg = tr(language, "bridge_crash", penalty=200)
-                        taxi_mgr.notification_timer = 3.5
-            if building_crash or tree_crash or fence_crash or bridge_edge_crash:
-                audio.play("car-crash", volume=0.7)
-                audio.play_driver_line("collision", language)
-            if first_gameplay_frame:
-                logger.info("Gameplay frame: collision checks complete")
-
-            # Dynamic lookahead camera offset in vehicle driving direction
-            # Look ahead proportionally to car speed and heading, clamped to a percentage of viewport so car remains visible
-            max_lead_screen_px = min(SCREEN_W, SCREEN_H) * 0.25
-            max_lead_m = max_lead_screen_px / max(0.01, px_per_m)
-
-            # F6 debug follow (NPC-001 section 13): same lookahead/lerp
-            # camera behavior, just aimed at the NPC instead of the player.
-            following_npc = npc_follow and npcs
-            focus_heading = npcs[0].heading if following_npc else car.heading
-            focus_speed = npcs[0].speed if following_npc else car.speed
-            focus_x = npcs[0].x if following_npc else (player_pedestrian.x if on_foot else car.x)
-            focus_y = npcs[0].y if following_npc else (player_pedestrian.y if on_foot else car.y)
-            lead_distance_m = min(max_lead_m, max(0.0, abs(focus_speed) * 0.8))
-            target_camx = focus_x + math.cos(focus_heading) * lead_distance_m
-            target_camy = focus_y + math.sin(focus_heading) * lead_distance_m
-
-            # Smooth camera lerp
-            cam_lerp_factor = min(1.0, 4.0 * dt)
-            camx += (target_camx - camx) * cam_lerp_factor
-            camy += (target_camy - camy) * cam_lerp_factor
-
-            viewport_bounds = get_viewport_bounds(camx, camy, px_per_m=px_per_m, margin_m=30.0)
-
-            # Update taxi missions & pickups
-            previous_taxi_state = taxi_mgr.state
-            previous_passenger = taxi_mgr.current_passenger
-            previous_nausea_warning_timer = (
-                previous_passenger.nausea_warning_timer if previous_passenger is not None else 0.0
-            )
-            previous_nausea_resolved = (
-                previous_passenger.nausea_resolved if previous_passenger is not None else False
-            )
-            with frame_profiler.section("taxi"):
-                taxi_mgr.update(car, dt, game_time_seconds=game_time_seconds)
-            with frame_profiler.section("npc"):
-                npc_manager.update(
-                    dt, car.x, car.y, residents, traffic_mgr, ways,
-                    spatial_grid=spatial_grid, parking_spaces=parking_spaces,
-                    sceneries=sceneries, buildings=buildings,
-                    curbs=curbs, curb_grid=curb_grid, building_grid=building_grid,
-                    viewport_bounds=viewport_bounds,
-                    player_car=car, pedestrian_mgr=pedestrian_mgr,
-                )
-            vomited_passenger = taxi_mgr.take_vomited_passenger(car)
-            if vomited_passenger is not None:
-                audio.play_passenger_line("Nyt alkaa jo helpottaa.", vomited_passenger.gender, language, vomited_passenger.name)
-                passenger_pedestrian = pedestrian_mgr.spawn_pedestrian_at(
-                    vomited_passenger.ped_x,
-                    vomited_passenger.ped_y,
-                    heading=vomited_passenger.ped_heading,
-                )
-                if passenger_pedestrian is not None:
-                    pedestrian_mgr.pedestrians.append(passenger_pedestrian)
-            current_passenger = taxi_mgr.current_passenger
-            if (
-                current_passenger is not None
-                and not previous_nausea_resolved
-                and current_passenger.nausea_resolved
-            ):
-                audio.play_passenger_line("Nyt alkaa jo helpottaa.", current_passenger.gender, language, current_passenger.name)
-            if (
-                current_passenger is not None
-                and previous_nausea_warning_timer <= 0.0
-                and current_passenger.nausea_warning_timer > 0.0
-            ):
-                audio.play_passenger_line_for_situation("nausea", current_passenger.gender, language, current_passenger.name)
-                audio.play_passenger_line(
-                    "Voisitko pysähtyä hetkeksi, tarvitsen raitista ilmaa.",
-                    current_passenger.gender,
-                    language,
-                    current_passenger.name,
-                )
-            audio.update_passenger_speech(
-                taxi_mgr.current_passenger is not None
-                and taxi_mgr.state == TaxiState.DRIVING_TO_DROPOFF,
-                taxi_mgr.current_passenger.gender if taxi_mgr.current_passenger else "woman",
-                language,
-                dt,
-                taxi_mgr.current_passenger.name if taxi_mgr.current_passenger else None,
-            )
-            if (
-                previous_taxi_state == TaxiState.CLIENT_WALKING_TO_CAR
-                and taxi_mgr.state == TaxiState.DRIVING_TO_DROPOFF
-            ):
-                audio.play_passenger_line_for_situation(
-                    "pickup", taxi_mgr.current_passenger.gender if taxi_mgr.current_passenger else "woman", language,
-                    taxi_mgr.current_passenger.name if taxi_mgr.current_passenger else None,
-                )
-                audio.play_driver_line("pickup", language)
-                audio.play("car-door-open")
-            elif (
-                previous_taxi_state == TaxiState.DRIVING_TO_DROPOFF
-                and previous_passenger is not None
-                and taxi_mgr.current_passenger is None
-                and vomited_passenger is None
-            ):
-                audio.play_passenger_line_for_situation("dropoff", previous_passenger.gender, language, previous_passenger.name)
-                audio.play_driver_line("dropoff", language)
-                audio.play("car-door-open")
-                passenger_pedestrian = pedestrian_mgr.spawn_pedestrian_at(
-                    car.x + math.sin(car.heading) * 1.8,
-                    car.y - math.cos(car.heading) * 1.8,
-                    heading=car.heading,
-                )
-                if passenger_pedestrian is not None:
-                    pedestrian_mgr.pedestrians.append(passenger_pedestrian)
-            if career is None and taxi_mgr.completed_fares > saved_gig_fares:
-                save_gig_odometer(gig_odometer_file, car.odometer_m)
-                saved_gig_fares = taxi_mgr.completed_fares
-            if career is not None and taxi_mgr.total_score >= CAREER_SCORE_LIMIT:
-                career_index = int(career["city_index"])
-                career_total_score = int(career["total_score"]) + taxi_mgr.total_score
-                next_city_index = career_index + 1
-                if next_city_index >= len(cities_list):
-                    save_career(
-                        career_file, career_index, career_total_score, completed=True,
-                        total_distance_m=car.odometer_m,
-                    )
-                    city_summary = (chosen_city, taxi_mgr.total_score, taxi_mgr.completed_fares, None, career_total_score)
-                    logger.info("Career completed in Helsinki")
-                    running = False
-                else:
-                    save_career(
-                        career_file, next_city_index, career_total_score,
-                        total_distance_m=car.odometer_m,
-                    )
-                    next_city = list(reversed(cities_list))[next_city_index]
-                    active_city_name = next_city
-                    city_summary = (chosen_city, taxi_mgr.total_score, taxi_mgr.completed_fares, next_city, career_total_score)
+            camx = sim_result.camx
+            camy = sim_result.camy
+            current_way = sim_result.current_way
+            movement_distance = sim_result.movement_distance
+            water_elapsed = sim_result.water_elapsed
+            rage_power = sim_result.rage_power
+            bridge_edge_crash_cooldown = sim_result.bridge_edge_crash_cooldown
+            slow_check_elapsed = sim_result.slow_check_elapsed
+            taxi_waiter_elapsed = sim_result.taxi_waiter_elapsed
+            saved_gig_fares = sim_result.saved_gig_fares
+            viewport_bounds = sim_result.viewport_bounds
+            if sim_result.city_summary is not None:
+                city_summary = sim_result.city_summary
+                if sim_result.next_active_city_name is not None:
+                    active_city_name = sim_result.next_active_city_name
                     logger.info("Career advanced to %s", active_city_name)
-                    running = False
-            was_wrong_way = taxi_mgr.wrong_way_duration > 0.0
-            if slow_check_elapsed >= 0.1:
-                slow_check_dt = slow_check_elapsed
-                slow_check_elapsed = 0.0
-                if taxi_mgr.check_wrong_way_violation(car, slow_check_dt, ways=ways, spatial_grid=spatial_grid):
-                    if not was_wrong_way:
-                        audio.play_driver_line("wrong_way", language)
-                if taxi_mgr.check_speed_cameras(car, speed_cameras):
-                    audio.play_driver_line("speed_camera", language)
-            # Advance signals and taxi-world time; no autonomous vehicle update.
-            with frame_profiler.section("traffic"):
-                traffic_mgr.advance_time(dt)
-            if not taxi_mgr.current_passenger and taxi_waiter_elapsed >= 0.2:
-                taxi_waiter_elapsed = 0.0
-                pedestrian_mgr.ensure_taxi_stop_waiter(taxi_stops, car, viewport_bounds=viewport_bounds)
-            with frame_profiler.section("pedestrians"):
-                pedestrian_mgr.update(
-                    car, dt, viewport_bounds=viewport_bounds,
-                    game_time_seconds=game_time_seconds,
-                )
+                else:
+                    logger.info("Career completed in Helsinki")
+            if sim_result.should_stop:
+                running = False
+
             frame_profiler.set_metric("visible_npcs", sum(
                 viewport_bounds[0] <= npc.x <= viewport_bounds[2]
                 and viewport_bounds[1] <= npc.y <= viewport_bounds[3]
@@ -1928,10 +1717,6 @@ def main() -> None:
             frame_profiler.set_metric("tile_load_ms", tile_metrics["tile_load_ms"])
             frame_profiler.set_metric("tile_integration_ms", tile_metrics["tile_integration_ms"])
             frame_profiler.set_metric("tile_unload_ms", tile_metrics["tile_unload_ms"])
-            traffic_mgr.let_taxi_pick_up_waiter(taxi_stops, pedestrian_mgr.pedestrians, dt)
-            waiting_pedestrian = taxi_mgr.check_waiting_pickup(car, pedestrian_mgr.pedestrians, dt)
-            if waiting_pedestrian is not None:
-                pedestrian_mgr.pedestrians.remove(waiting_pedestrian)
 
             # Keep road logic on car roads, but recognize pedestrian ways as paved surfaces.
             surface_way = get_current_road_at_car(
