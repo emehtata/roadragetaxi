@@ -3063,6 +3063,31 @@ class NPCVehicleManager:
                 and self.drivers.get(vehicle.vehicle_id) is None
             )
             visible = viewport_bounds is not None and _point_in_viewport(vehicle.x, vehicle.y, viewport_bounds)
+            # A driving vehicle the player left behind: update() stops
+            # simulating it beyond simulation_radius_m (> despawn radius), so
+            # it would freeze mid-road as "CRUISING" forever, blocking the
+            # road and counting toward the moving-traffic target. Everyone
+            # aboard a moving vehicle is still inside it (people only walk
+            # out once it parks), so releasing the group is a complete
+            # resolution of its occupants.
+            far_moving = (
+                far
+                and vehicle.state not in (NPCState.PARKED, NPCState.CRASHED)
+                and self.drivers.get(vehicle.vehicle_id) is not None
+            )
+            if far_moving and not visible and remaining > self.min_count:
+                if vehicle.trip_group is not None:
+                    for resident_id in vehicle.trip_group.member_resident_ids:
+                        member = resident_manager.get(resident_id)
+                        if member is not None:
+                            member.trip_group_id = None
+                            if member.active_vehicle_id == vehicle.vehicle_id:
+                                member.active_vehicle_id = None
+                    vehicle.trip_group = None
+                release_npc_parking_reservation(vehicle)
+                self.drivers.pop(vehicle.vehicle_id, None)
+                remaining -= 1
+                continue
             # Never below min_count (section 9's configurable population
             # floor), even if more vehicles than that are simultaneously
             # eligible - despawning is a nice-to-have cleanup, not worth

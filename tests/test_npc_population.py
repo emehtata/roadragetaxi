@@ -249,6 +249,33 @@ def test_trip_start_can_reuse_a_member_whose_earlier_trip_already_retired(monkey
     assert manager.drivers.get(car.vehicle_id) is not None
 
 
+def test_population_tick_despawns_a_far_moving_vehicle_and_releases_its_occupants():
+    """A driving vehicle left beyond simulation_radius_m stops being
+    simulated (NPCVehicleManager.update) and used to freeze mid-road as
+    CRUISING forever - blocking traffic and satisfying the moving-traffic
+    target. It must despawn, freeing its occupants."""
+    from theroadragetrip.npc import NPC_POPULATION_TICK_S
+
+    ways = _city_block_grid()
+    manager = NPCVehicleManager(target_count=1, min_count=0, spawn_radius_m=_SPAWN_RADIUS_M, vehicle_distribution={"car": 1.0})
+    traffic_world = TrafficWorld(ways)
+    residents = ResidentManager()
+    result = spawn_npc(1, residents, traffic_world, ways, (0.0, 0.0), (200.0, 0.0))
+    assert result is not None
+    _, driver, vehicle = result
+    manager.vehicles.append(vehicle)
+    manager.drivers[vehicle.vehicle_id] = driver
+    member_ids = list(vehicle.trip_group.member_resident_ids)
+
+    manager.update(NPC_POPULATION_TICK_S, 5000.0, 5000.0, residents, traffic_world, ways)
+
+    assert vehicle not in manager.vehicles
+    assert vehicle.vehicle_id not in manager.drivers
+    for resident_id in member_ids:
+        assert residents.get(resident_id).trip_group_id is None
+        assert residents.get(resident_id).active_vehicle_id is None
+
+
 def test_no_duplicate_vehicle_ids_after_several_population_ticks():
     from theroadragetrip.npc import NPC_POPULATION_TICK_S
 
