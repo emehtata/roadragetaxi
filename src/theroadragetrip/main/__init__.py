@@ -1358,6 +1358,13 @@ def main() -> None:
                             rage_power -= RAGE_SHOUT_COST
                             rage_shout_timer = 5.0
                             rage_shout_text = random.choice(RAGE_SHOUTS)
+                            # NPC-005: Road Rage reaches exactly one real
+                            # NPC driver - whichever is nearest ahead of
+                            # the player right now - not a whole area; see
+                            # NPCVehicleManager.trigger_road_rage's own
+                            # docstring for why that's enough to produce
+                            # an emergent queue behind it.
+                            npc_manager.trigger_road_rage(car.x, car.y, car.heading, sim_time=traffic_mgr.sim_time)
                     elif phone_open:
                         if event.key == pygame.K_ESCAPE:
                             phone_open = False

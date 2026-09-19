@@ -23,6 +23,8 @@ from theroadragetrip.npc import (
     NPC_GROUP_RETURN_GRACE_S,
     NPC_AVOIDANCE_MIN_GAP_M,
     NPC_REVERSE_DISTANCE_M,
+    NPC_ROAD_RAGE_REACTION_DURATION_S,
+    NPC_ROAD_RAGE_YIELD_SPEED_MPS,
     NPC_STUCK_CHECK_INTERVAL_S,
     NPC_STUCK_TIMEOUT_S,
     _update_npc_reversing,
@@ -1197,6 +1199,77 @@ def test_update_npc_avoidance_uses_the_steering_target_not_the_lagging_current_h
     update_npc(vehicle, driver, 1.0 / 60.0, tw, residents, nearby_obstacles=[blocker])
 
     assert driver.target_speed_mps < 5.0
+
+
+def test_trigger_road_rage_finds_the_nearest_driving_vehicle_ahead():
+    """NPC-005: the player's horn/Road Rage action must reach exactly one
+    real driver - the nearest currently-driving vehicle ahead - not a
+    whole area, and never a parked one."""
+    from theroadragetrip.npc import NPCVehicleManager
+
+    ways = _straight_chain(count=20)
+    tw = TrafficWorld(ways)
+    residents = ResidentManager()
+    manager = NPCVehicleManager(target_count=0)
+
+    near = spawn_npc(1, residents, tw, ways, (20.0, 0.0), (200.0, 0.0))
+    far = spawn_npc(2, residents, tw, ways, (60.0, 0.0), (200.0, 0.0))
+    assert near is not None and far is not None
+    for _, driver, vehicle in (near, far):
+        manager.vehicles.append(vehicle)
+        manager.drivers[vehicle.vehicle_id] = driver
+
+    reacted_id = manager.trigger_road_rage(0.0, 0.0, 0.0, sim_time=100.0)
+
+    assert reacted_id == near[2].vehicle_id
+    assert near[1].road_rage_until_sim_time == 100.0 + NPC_ROAD_RAGE_REACTION_DURATION_S
+    assert far[1].road_rage_until_sim_time is None
+
+
+def test_trigger_road_rage_ignores_parked_vehicles_and_returns_none_if_nothing_ahead():
+    from theroadragetrip.npc import NPCVehicleManager
+
+    ways = _straight_chain(count=20)
+    tw = TrafficWorld(ways)
+    residents = ResidentManager()
+    manager = NPCVehicleManager(target_count=0)
+
+    result = spawn_npc(1, residents, tw, ways, (20.0, 0.0), (200.0, 0.0))
+    assert result is not None
+    _, driver, vehicle = result
+    vehicle.state = NPCState.PARKED
+    manager.vehicles.append(vehicle)
+    manager.drivers[vehicle.vehicle_id] = driver
+
+    assert manager.trigger_road_rage(0.0, 0.0, 0.0, sim_time=100.0) is None
+    assert driver.road_rage_until_sim_time is None
+
+
+def test_update_npc_yields_while_road_raged_then_resumes():
+    """The reacting driver must actually slow down while road_rage_until_
+    sim_time is in the future, and resume normal driving once it elapses
+    - the vehicle never disappears or changes state, only its speed
+    ceiling changes (see update_npc's own comment on why this is a timed
+    clamp, not a new NPCState)."""
+    ways = _straight_chain(count=20)
+    tw = TrafficWorld(ways)
+    residents = ResidentManager()
+    result = spawn_npc(1, residents, tw, ways, (0.0, 0.0), (200.0, 0.0))
+    assert result is not None
+    _, driver, vehicle = result
+    vehicle.car.speed = 10.0
+    driver.road_rage_until_sim_time = tw.sim_time + NPC_ROAD_RAGE_REACTION_DURATION_S
+
+    update_npc(vehicle, driver, 1.0 / 60.0, tw, residents)
+
+    assert driver.target_speed_mps <= NPC_ROAD_RAGE_YIELD_SPEED_MPS
+    assert vehicle.debug_waiting_for == "yielding to road rage"
+    assert vehicle.state != NPCState.CRASHED  # still a normal, simulated, existing vehicle
+
+    tw.advance_time(NPC_ROAD_RAGE_REACTION_DURATION_S + 1.0)
+    update_npc(vehicle, driver, 1.0 / 60.0, tw, residents)
+
+    assert driver.road_rage_until_sim_time is None
 
 
 def test_update_npc_stuck_detection_triggers_recovery_after_timeout():

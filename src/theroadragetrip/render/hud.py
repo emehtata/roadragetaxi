@@ -750,6 +750,8 @@ def draw_npc_population_panel(
         f" (target={counts.get('moving_target', '?')})",
         f"reserved={counts['reserved']} household={counts['household']} autonomous={counts['autonomous']}",
     ]
+    if counts.get("road_rage"):
+        lines.append(f"road_rage={counts['road_rage']}")
     if visible_count is not None:
         lines.append(f"visible={visible_count}")
     if by_type:
