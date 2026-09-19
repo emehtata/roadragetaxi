@@ -2926,16 +2926,27 @@ class NPCVehicleManager:
         """NPC-004 sections 10-19: stop the vehicle, sever its driver link
         permanently (driver_departed - checked by reserve_household_vehicle
         and the idle/ready-vehicle filters above so nothing ever resumes or
-        reassigns this vehicle), and - if someone was actually driving it
-        at the moment of impact - turn that Resident into an ordinary
+        reassigns this vehicle), and turn every Resident actually aboard at
+        the moment of impact (driver and any passengers) into an ordinary
         pedestrian who walks to a nearby safe point and checks their phone.
         A vehicle with no active driver (e.g. rear-ended while genuinely
-        idle-parked) still becomes a stopped obstacle, just without a
-        pedestrian to eject - nobody was driving it."""
+        idle-parked) still becomes a stopped obstacle, just without anyone
+        to eject - nobody was aboard.
+
+        NPC-005: this is also where a live trip_group gets resolved before
+        the vehicle can ever despawn - despawn only requires "no driver in
+        self.drivers", so leaving passengers dangling in vehicle.trip_group
+        here would let a later despawn silently discard them (Definition of
+        Done: "Vehicle removal cannot orphan occupants")."""
         if vehicle.state == NPCState.CRASHED:
             return  # already an accident - never re-triggers (section 18)
         was_driving = has_active_driver(vehicle, resident_manager)
         driver_resident_id = vehicle.owner_id
+        trip_group = vehicle.trip_group
+        occupant_ids = list(trip_group.member_resident_ids) if trip_group is not None else []
+        if was_driving and driver_resident_id is not None and driver_resident_id not in occupant_ids:
+            occupant_ids.append(driver_resident_id)
+
         vehicle.car.speed = 0.0
         vehicle.state = NPCState.CRASHED
         vehicle.driver_departed = True
@@ -2943,41 +2954,49 @@ class NPCVehicleManager:
         vehicle.crashed_timer = 0.0
         release_npc_parking_reservation(vehicle)
         self.drivers.pop(vehicle.vehicle_id, None)
+        vehicle.trip_group = None
 
-        if not was_driving or pedestrian_mgr is None:
-            return
-        resident = resident_manager.get(driver_resident_id) if driver_resident_id is not None else None
-        if resident is not None:
-            resident.active_vehicle_id = None
+        if was_driving and driver_resident_id is not None:
+            resident = resident_manager.get(driver_resident_id)
+            if resident is not None:
+                resident.active_vehicle_id = None
 
-        # NPC-004 section 15: the same passenger-side offset
-        # PedestrianManager._vehicle_entry_position already uses for
-        # boarding/alighting - a walkable point beside the car, never
-        # inside it or in the lane it's blocking.
-        exit_offset = vehicle.width_m * 0.5 + 1.0
-        exit_x = vehicle.x - math.sin(vehicle.heading) * exit_offset
-        exit_y = vehicle.y + math.cos(vehicle.heading) * exit_offset
-        pedestrian = pedestrian_mgr.spawn_pedestrian_at(
-            exit_x, exit_y, heading=vehicle.heading, resident_id=driver_resident_id,
-        )
-        if pedestrian is None:
+        if pedestrian_mgr is None:
             return
-        pedestrian_mgr.add_pedestrian(pedestrian)
-        pedestrian.mood = "annoyed"
-        pedestrian.route = None
-        # Section 16/17: walk to the nearby safe point spawn_pedestrian_at
-        # already picked (on the nearest mapped sidewalk, off the vehicle
-        # lane) and, once there, check the phone - reusing the existing
-        # activities/plugins/phone_usage.py plugin directly (bypassing its
-        # normal random-selection weighting) instead of a bespoke "annoyed
-        # driver" activity.
-        destination = pedestrian.destination
-        pedestrian.activity = ActivityInstance(
-            plugin_id="phone_usage",
-            location=ActivityLocation(x=destination[0], y=destination[1]) if destination is not None else None,
-            started_sim_time=sim_time,
-        )
-        pedestrian.state = "walking_to_activity"
+        for index, resident_id in enumerate(occupant_ids):
+            resident = resident_manager.get(resident_id)
+            if resident is not None:
+                resident.trip_group_id = None
+            # NPC-004 section 15: the same passenger-side offset
+            # PedestrianManager._vehicle_entry_position already uses for
+            # boarding/alighting - a walkable point beside the car, never
+            # inside it or in the lane it's blocking. Staggered per occupant
+            # so a multi-passenger crash doesn't spawn everyone on top of
+            # each other.
+            exit_offset = vehicle.width_m * 0.5 + 1.0 + index * 0.6
+            exit_x = vehicle.x - math.sin(vehicle.heading) * exit_offset
+            exit_y = vehicle.y + math.cos(vehicle.heading) * exit_offset
+            pedestrian = pedestrian_mgr.spawn_pedestrian_at(
+                exit_x, exit_y, heading=vehicle.heading, resident_id=resident_id,
+            )
+            if pedestrian is None:
+                continue
+            pedestrian_mgr.add_pedestrian(pedestrian)
+            pedestrian.mood = "annoyed"
+            pedestrian.route = None
+            # Section 16/17: walk to the nearby safe point spawn_pedestrian_at
+            # already picked (on the nearest mapped sidewalk, off the vehicle
+            # lane) and, once there, check the phone - reusing the existing
+            # activities/plugins/phone_usage.py plugin directly (bypassing its
+            # normal random-selection weighting) instead of a bespoke "annoyed
+            # driver" activity.
+            destination = pedestrian.destination
+            pedestrian.activity = ActivityInstance(
+                plugin_id="phone_usage",
+                location=ActivityLocation(x=destination[0], y=destination[1]) if destination is not None else None,
+                started_sim_time=sim_time,
+            )
+            pedestrian.state = "walking_to_activity"
 
     def _handle_parked_vehicle(self, vehicle: NPCVehicle) -> None:
         """Per-frame, cheap only: retirement checks that need to happen

@@ -928,6 +928,35 @@ def test_trigger_vehicle_accident_with_no_driver_still_becomes_an_obstacle():
     assert pedestrian_mgr.pedestrians == []
 
 
+def test_trigger_vehicle_accident_also_ejects_passengers_not_just_the_driver():
+    """NPC-005 Definition of Done: vehicle removal (crash -> eventual
+    despawn) cannot orphan occupants. The old code only ejected the
+    driver and left vehicle.trip_group live - a passenger riding along
+    would silently vanish (no pedestrian ever spawned for them, and
+    nothing ever cleared their trip_group_id) once this crashed vehicle
+    was later despawned."""
+    residents = ResidentManager()
+    manager = NPCVehicleManager(target_count=1)
+    vehicle, driver_resident = _driving_vehicle(residents, 5.0, 0.0)
+    passenger = residents.create(mode="riding")
+    vehicle.trip_group = TripGroup(
+        group_id=1, vehicle_id=vehicle.vehicle_id,
+        member_resident_ids=[driver_resident.resident_id, passenger.resident_id],
+        boarded_resident_ids={driver_resident.resident_id, passenger.resident_id},
+    )
+    manager.vehicles.append(vehicle)
+    sidewalk = Way(points_m=[(0.0, 3.0), (20.0, 3.0)], highway="footway", half_width_m=2.0)
+    pedestrian_mgr = PedestrianManager([sidewalk], target_count=0)
+
+    manager._trigger_vehicle_accident(vehicle, residents, pedestrian_mgr, sim_time=100.0)
+
+    assert vehicle.trip_group is None
+    ejected_ids = {ped.resident_id for ped in pedestrian_mgr.pedestrians}
+    assert ejected_ids == {driver_resident.resident_id, passenger.resident_id}
+    assert driver_resident.trip_group_id is None
+    assert passenger.trip_group_id is None
+
+
 def test_check_vehicle_collision_crashes_both_overlapping_npc_vehicles():
     """NPC-004 section 10: an actual NPC-NPC overlap must crash *both*
     vehicles, each getting its own independent accident."""
