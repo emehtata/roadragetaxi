@@ -133,6 +133,38 @@ def test_population_tick_tops_up_gradually_not_in_one_tick():
     assert len(manager.vehicles) < manager.target_count
 
 
+def test_trip_start_attempts_boost_when_below_the_moving_traffic_target(monkeypatch):
+    """NPC-005: a flat 1-attempt-per-tick cap meant the steady-state
+    driving count settled far below target_count regardless of
+    population size - "roads full of parked cars" (the reported bug).
+    When the population is under its moving-traffic target, more than
+    one idle vehicle must get a real trip-start attempt in the same
+    tick."""
+    from theroadragetrip.npc import (
+        NPC_POPULATION_TICK_S,
+        NPC_TRIP_START_ATTEMPTS_PER_TICK,
+        NPC_TRIP_START_ATTEMPTS_PER_TICK_WHEN_BELOW_MOVING_TARGET,
+    )
+
+    ways = _city_block_grid()
+    manager = NPCVehicleManager(
+        target_count=10, spawn_radius_m=_SPAWN_RADIUS_M, vehicle_distribution={"car": 1.0},
+    )
+    traffic_world = TrafficWorld(ways)
+    residents = ResidentManager()
+    manager.populate_initial(*_CENTER, residents, ways)
+    assert all(vehicle.state == NPCState.PARKED for vehicle in manager.vehicles)
+    assert 0 < manager.target_moving_count  # currently_moving (0) is below this
+
+    monkeypatch.setattr(random, "random", lambda: 0.0)  # every idle candidate rolls true
+
+    manager.update(NPC_POPULATION_TICK_S, *_CENTER, residents, traffic_world, ways)
+
+    started = sum(1 for vehicle in manager.vehicles if manager.drivers.get(vehicle.vehicle_id) is not None)
+    assert started > NPC_TRIP_START_ATTEMPTS_PER_TICK
+    assert started <= NPC_TRIP_START_ATTEMPTS_PER_TICK_WHEN_BELOW_MOVING_TARGET
+
+
 def test_no_duplicate_vehicle_ids_after_several_population_ticks():
     from theroadragetrip.npc import NPC_POPULATION_TICK_S
 

@@ -746,7 +746,8 @@ def draw_npc_population_panel(
 
     lines = [
         "NPC population",
-        f"total={counts['total']} parked={counts['parked']} driving={counts['driving']}",
+        f"total={counts['total']} parked={counts['parked']} driving={counts['driving']}"
+        f" (target={counts.get('moving_target', '?')})",
         f"reserved={counts['reserved']} household={counts['household']} autonomous={counts['autonomous']}",
     ]
     if visible_count is not None:

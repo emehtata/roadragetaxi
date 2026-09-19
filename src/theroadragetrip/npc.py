@@ -218,6 +218,23 @@ NPC_TRIP_START_PROBABILITY_PER_TICK = 0.08
 # simply tries again next tick, no different from any other "don't get
 # stuck on one candidate" fallback in this module.
 NPC_TRIP_START_ATTEMPTS_PER_TICK = 1
+# NPC-005: the flat probability/attempts-cap pair above has no idea how
+# many vehicles are *currently driving* - with the default 8%-per-idle-
+# vehicle roll and only 1 real attempt per 5s tick, the steady-state
+# driving count settles far below target_count regardless of population
+# size, which is exactly the reported "roads full of parked cars" bug.
+# When the population is under its moving-traffic target, double (not
+# more - see NPC_TRIP_START_ATTEMPTS_PER_TICK's own comment above about
+# a single attempt occasionally costing seconds against real dense OSM
+# data) the attempts allowed this tick, so idle vehicles actually get
+# pulled out onto the road instead of the cap silently discarding
+# everyone but the first one that rolled true.
+NPC_TRIP_START_ATTEMPTS_PER_TICK_WHEN_BELOW_MOVING_TARGET = 2
+# Default fraction of the vehicle population that should be actively
+# driving at any moment, independent of total population size (client-
+# server-016.md/NPC-005: moving traffic is a first-class target, not a
+# side effect of the total-population target).
+NPC_TARGET_MOVING_FRACTION = 0.5
 # NPC-003 v2: continue_npc_trip (an already-driving vehicle picking its
 # *next* destination once its passengers have reboarded) shares
 # find_and_start_npc_trip's exact same plan_route cost profile - measured
@@ -2514,6 +2531,7 @@ class NPCVehicleManager:
         simulation_radius_m: float = NPC_VEHICLE_SIMULATION_RADIUS_M,
         vehicle_distribution: Optional[Dict[str, float]] = None,
         include_experimental: bool = False,
+        target_moving_fraction: float = NPC_TARGET_MOVING_FRACTION,
     ) -> None:
         self.vehicles: List[NPCVehicle] = []
         self.drivers: Dict[int, Driver] = {}
@@ -2522,6 +2540,10 @@ class NPCVehicleManager:
         self.min_count = min_count if min_count is not None else max(1, int(target_count * 0.6))
         self.max_count = max_count if max_count is not None else max(self.min_count, int(target_count * 1.5))
         self.household_fraction = household_fraction
+        # NPC-005: a *stable* target (target_count's own steady-state
+        # size), not derived from the momentarily-fluctuating current
+        # vehicle count - see _run_population_tick's trip-start step.
+        self.target_moving_count = max(1, int(target_count * target_moving_fraction))
         self.spawn_radius_m = spawn_radius_m
         self.despawn_radius_m = despawn_radius_m
         self.simulation_radius_m = simulation_radius_m
@@ -2587,6 +2609,13 @@ class NPCVehicleManager:
             "reserved": 0,
             "household": 0,
             "autonomous": 0,
+            # NPC-005: the *target*, not just the current count - the F7
+            # panel showing both side by side is what makes "roads full
+            # of parked cars" a visible, diagnosable number instead of a
+            # vibe. getattr-guarded: population_counts() must stay safe
+            # against a manager built via __new__ with only .vehicles set
+            # (test_shadow_entities_render.py's shadow-object pattern).
+            "moving_target": getattr(self, "target_moving_count", 0),
         }
         for vehicle in self.vehicles:
             if vehicle.vehicle_kind == "household":
@@ -3043,6 +3072,16 @@ class NPCVehicleManager:
         # capping *attempts*, not just candidates, is what actually bounds
         # this tick's worst case.
         trip_starts_this_tick = 0
+        # NPC-005: moving traffic is a first-class target, independent of
+        # total population - "driving" here matches population_counts()'s
+        # own definition (state != PARKED) for consistency with the debug
+        # panel's numbers.
+        currently_moving = sum(1 for vehicle in self.vehicles if vehicle.state != NPCState.PARKED)
+        trip_start_attempt_cap = (
+            NPC_TRIP_START_ATTEMPTS_PER_TICK_WHEN_BELOW_MOVING_TARGET
+            if currently_moving < self.target_moving_count
+            else NPC_TRIP_START_ATTEMPTS_PER_TICK
+        )
         idle_candidates = [
             vehicle for vehicle in self.vehicles
             if vehicle.state == NPCState.PARKED
@@ -3058,7 +3097,7 @@ class NPCVehicleManager:
         ]
         random.shuffle(idle_candidates)
         for vehicle in idle_candidates:
-            if trip_starts_this_tick >= NPC_TRIP_START_ATTEMPTS_PER_TICK:
+            if trip_starts_this_tick >= trip_start_attempt_cap:
                 break
             if random.random() >= NPC_TRIP_START_PROBABILITY_PER_TICK:
                 continue
