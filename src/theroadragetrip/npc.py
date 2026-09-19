@@ -1242,14 +1242,6 @@ def _begin_trip_on_vehicle(
     if member_resident_ids is not None:
         members = [resident_manager.get(rid) for rid in member_resident_ids]
         members = [member for member in members if member is not None]
-        # NPC-005 occupancy invariant: a resident already mid-trip
-        # elsewhere must never be folded into a second, simultaneous
-        # trip - callers (see _run_population_tick) are responsible for
-        # excluding busy residents before sampling; this is the backstop.
-        assert all(
-            member.active_vehicle_id is None and member.trip_group_id is None
-            for member in members
-        ), "NPC-005: resident already committed to another vehicle/trip"
     else:
         members = []
     if not members:
@@ -3177,6 +3169,22 @@ class NPCVehicleManager:
             and not vehicle.driver_departed
         ]
         random.shuffle(idle_candidates)
+        # NPC-005 occupancy invariant: a household's members are shared
+        # across its (up to NPC_MAX_VEHICLES_PER_HOUSEHOLD) vehicles, so a
+        # member already riding in one must never also be folded into a
+        # trip starting on another. Resident.active_vehicle_id/
+        # trip_group_id are NOT this signal - both are left deliberately
+        # stale after a normal trip retires (see _retire_trip's own
+        # docstring: "Residents themselves are untouched"). The only
+        # reliable "currently mid-trip" signal is membership in some
+        # vehicle's still-live trip_group (None once that vehicle's trip
+        # actually retires) - collected once per tick, not per household.
+        currently_busy_resident_ids = {
+            resident_id
+            for other_vehicle in self.vehicles
+            if other_vehicle.trip_group is not None
+            for resident_id in other_vehicle.trip_group.member_resident_ids
+        }
         for vehicle in idle_candidates:
             if trip_starts_this_tick >= trip_start_attempt_cap:
                 break
@@ -3188,16 +3196,9 @@ class NPCVehicleManager:
                 household = self.household_manager.get(vehicle.household_id)
                 if household is None or not household.member_resident_ids:
                     continue
-                # NPC-005: exclude members already committed to a trip
-                # elsewhere (e.g. this same household's other vehicle) -
-                # _begin_trip_on_vehicle sets active_vehicle_id/
-                # trip_group_id unconditionally, so a busy member must
-                # never be sampled into a second, simultaneous trip.
                 available_ids = [
                     rid for rid in household.member_resident_ids
-                    if (resident := resident_manager.get(rid)) is not None
-                    and resident.active_vehicle_id is None
-                    and resident.trip_group_id is None
+                    if rid not in currently_busy_resident_ids
                 ]
                 if not available_ids:
                     continue

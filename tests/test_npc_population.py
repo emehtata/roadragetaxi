@@ -168,11 +168,13 @@ def test_trip_start_attempts_boost_when_below_the_moving_traffic_target(monkeypa
 def test_trip_start_never_double_books_a_household_member_already_mid_trip(monkeypatch):
     """NPC-005 occupancy invariant: a household can own two vehicles
     (NPC_MAX_VEHICLES_PER_HOUSEHOLD), but its member Residents are shared
-    across them. If its only member is already mid-trip in one vehicle,
-    the population tick must not also fold that same Resident into a
-    second, simultaneous trip in the household's other vehicle -
-    _begin_trip_on_vehicle would otherwise silently overwrite
-    active_vehicle_id/trip_group_id, corrupting both trips."""
+    across them. If its only member is already riding in one (a live,
+    not-yet-retired trip_group), the population tick must not also fold
+    that same Resident into a second, simultaneous trip starting on the
+    household's other, idle vehicle - Resident.active_vehicle_id/
+    trip_group_id are NOT the right signal here (both are left
+    deliberately stale after a normal trip retires, see _retire_trip's
+    own docstring), so this exercises the actual live-trip_group check."""
     from theroadragetrip.npc import NPC_POPULATION_TICK_S
 
     ways = _city_block_grid()
@@ -187,10 +189,9 @@ def test_trip_start_never_double_books_a_household_member_already_mid_trip(monke
     member = residents.create(mode="household")
     member.household_id = household.household_id
     household.member_resident_ids.add(member.resident_id)
-    member.active_vehicle_id = 999  # already mid-trip in some other vehicle
 
-    car1 = place_parked_npc(1, (0.0, 0.0), None, vehicle_type="car")
-    car2 = place_parked_npc(2, (_STEP_M, 0.0), None, vehicle_type="car")
+    car1 = place_parked_npc(1, (0.0, 0.0), None, vehicle_type="car")  # already mid-trip elsewhere
+    car2 = place_parked_npc(2, (_STEP_M, 0.0), None, vehicle_type="car")  # idle, wants a new trip
     manager.vehicles.extend([car1, car2])
     for car in (car1, car2):
         household.vehicle_ids.add(car.vehicle_id)
@@ -198,14 +199,54 @@ def test_trip_start_never_double_books_a_household_member_already_mid_trip(monke
         car.household_id = household.household_id
     manager._next_vehicle_id = 3
 
+    car1.state = NPCState.CRUISING
+    car1.trip_group = TripGroup(
+        group_id=1, vehicle_id=car1.vehicle_id,
+        member_resident_ids=[member.resident_id], boarded_resident_ids={member.resident_id},
+    )
+
     traffic_world = TrafficWorld(ways)
     monkeypatch.setattr(random, "random", lambda: 0.0)  # every idle candidate rolls true
     manager.update(NPC_POPULATION_TICK_S, 0.0, 0.0, residents, traffic_world, ways)
 
-    assert manager.drivers.get(car1.vehicle_id) is None
     assert manager.drivers.get(car2.vehicle_id) is None
-    assert member.active_vehicle_id == 999
-    assert member.trip_group_id is None
+
+
+def test_trip_start_can_reuse_a_member_whose_earlier_trip_already_retired(monkeypatch):
+    """Guards the opposite mistake: once a household member's earlier
+    trip has actually retired (vehicle back to PARKED, popped from
+    self.drivers, trip_group released), they must remain eligible for
+    the household's next trip - the stale, never-reset Resident.
+    active_vehicle_id/trip_group_id from that finished trip must not
+    permanently lock them out."""
+    from theroadragetrip.npc import NPC_POPULATION_TICK_S
+
+    manager = NPCVehicleManager(target_count=1, spawn_radius_m=_SPAWN_RADIUS_M, vehicle_distribution={"car": 1.0})
+    residents = ResidentManager()
+
+    household = manager.household_manager.create(home_position=(0.0, 0.0))
+    member = residents.create(mode="household")
+    member.household_id = household.household_id
+    household.member_resident_ids.add(member.resident_id)
+    # Exactly what a normal (non-crash) trip retirement leaves behind -
+    # see _retire_trip's own docstring: "Residents themselves are
+    # untouched ... still remembering their trip_group_id."
+    member.active_vehicle_id = 1
+    member.trip_group_id = 1
+
+    car = place_parked_npc(1, (0.0, 0.0), None, vehicle_type="car")
+    manager.vehicles.append(car)
+    household.vehicle_ids.add(car.vehicle_id)
+    car.vehicle_kind = "household"
+    car.household_id = household.household_id
+    manager._next_vehicle_id = 2
+
+    ways = _city_block_grid()
+    traffic_world = TrafficWorld(ways)
+    monkeypatch.setattr(random, "random", lambda: 0.0)
+    manager.update(NPC_POPULATION_TICK_S, 0.0, 0.0, residents, traffic_world, ways)
+
+    assert manager.drivers.get(car.vehicle_id) is not None
 
 
 def test_no_duplicate_vehicle_ids_after_several_population_ticks():
