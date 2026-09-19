@@ -121,7 +121,9 @@ def test_population_tick_tops_up_gradually_not_in_one_tick():
     """Section 19/23: a fresh population well below target must not fill
     to target_count in a single population tick - only NPC_POPULATION_
     SPAWN_LIMIT_PER_TICK new vehicles per tick."""
-    from theroadragetrip.npc import NPC_POPULATION_SPAWN_LIMIT_PER_TICK, NPC_POPULATION_TICK_S
+    from theroadragetrip.npc import (
+        NPC_POPULATION_SPAWN_LIMIT_PER_TICK, NPC_POPULATION_TICK_S, NPC_TRANSIT_SPAWNS_PER_TICK,
+    )
 
     ways = _city_block_grid()
     manager = NPCVehicleManager(target_count=20, spawn_radius_m=_SPAWN_RADIUS_M, vehicle_distribution={"car": 1.0})
@@ -129,7 +131,7 @@ def test_population_tick_tops_up_gradually_not_in_one_tick():
     residents = ResidentManager()
     px, py = _CENTER
     manager.update(NPC_POPULATION_TICK_S, px, py, residents, traffic_world, ways)
-    assert 0 < len(manager.vehicles) <= NPC_POPULATION_SPAWN_LIMIT_PER_TICK
+    assert 0 < len(manager.vehicles) <= NPC_POPULATION_SPAWN_LIMIT_PER_TICK + NPC_TRANSIT_SPAWNS_PER_TICK
     assert len(manager.vehicles) < manager.target_count
 
 
@@ -1120,3 +1122,43 @@ def test_manager_update_avoidance_still_works_without_a_player_car():
         manager.update(1.0 / 30.0, 0.0, 0.0, residents, traffic_world, ways)
 
     assert driver.target_speed_mps < 5.0
+
+
+def test_route_stays_on_road_applies_off_road_tolerance_with_a_spatial_grid():
+    """With a SpatialWayGrid, _way_at_point only says "on a road or not", so
+    every off-road first/last hop (a lot or yard exit) used to be rejected no
+    matter the tolerance - parked cars off the road could never leave."""
+    from theroadragetrip.npc import route_stays_on_road
+    from theroadragetrip.physics import SpatialWayGrid
+
+    road = Way(points_m=[(0.0, 0.0), (200.0, 0.0)], highway="residential", half_width_m=4.5)
+    grid = SpatialWayGrid([road])
+    route = [(100.0, 25.0), (100.0, 0.0), (200.0, 0.0)]  # first hop's midpoint is 12.5m off the road
+
+    assert route_stays_on_road(route, [road], spatial_grid=grid, initial_segment_tolerance_m=40.0)
+    assert not route_stays_on_road(route, [road], spatial_grid=grid, initial_segment_tolerance_m=5.0)
+
+
+def test_population_tick_seeds_moving_traffic_near_the_player():
+    """Parked cars near the player aren't a reliable source of moving traffic
+    (their exits often fail route validation), so a tick below the moving
+    target must be able to put a real driven vehicle on a nearby road."""
+    from theroadragetrip.npc import NPC_POPULATION_TICK_S
+    from theroadragetrip.physics import SpatialWayGrid
+
+    random.seed(11)
+    ways = _city_block_grid()
+    grid = SpatialWayGrid(ways)
+    manager = NPCVehicleManager(target_count=20, spawn_radius_m=_SPAWN_RADIUS_M, vehicle_distribution={"car": 1.0})
+    traffic_world = TrafficWorld(ways)
+    residents = ResidentManager()
+    for _ in range(12):
+        manager.update(NPC_POPULATION_TICK_S, *_CENTER, residents, traffic_world, ways, spatial_grid=grid)
+
+    moving = [
+        vehicle for vehicle in manager.vehicles
+        if vehicle.state not in (NPCState.PARKED, NPCState.CRASHED) and manager.drivers.get(vehicle.vehicle_id)
+    ]
+    assert moving
+    for vehicle in moving:
+        assert has_active_driver(vehicle, residents)

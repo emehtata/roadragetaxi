@@ -28,7 +28,7 @@ from .osm import Curb, ParkingSpace, Way
 from .physics import GRAVITY_MPS2, Car, SpatialWayGrid, update_car_physics
 from .residents import Household, HouseholdManager, ResidentManager
 from .traffic_rules import TrafficAction, TrafficDecision, decide_traffic_action, nearest_vehicle_ahead
-from .traffic_world import TrafficWorld
+from .traffic_world import _ROUTE_NODE_GRID_CELL_M, TrafficWorld
 from .vehicles.registry import default_registry
 
 
@@ -115,7 +115,7 @@ NPC_FOOTPRINT_CHECK_INTERVAL_S = 0.2
 # reserved flags). Applied to every tier (not just lot/yard) for the same
 # reason NPCVehicleManager._place_one already checks it for initial
 # population placement - roughly a car's length.
-NPC_MIN_VEHICLE_SPACING_M = 4.0
+NPC_MIN_VEHICLE_SPACING_M = 7.0
 
 # NPC-004 section 2: vehicle-following avoidance. Mirrors
 # nearest_traffic_light_ahead's own forward-cone shape (detection distance/
@@ -205,6 +205,7 @@ NPC_TRIP_ACTIVITY_TYPES = ("shopping", "work", "visit", "service", "errand", "ot
 # relevant to the player from farther away than a pedestrian is).
 NPC_VEHICLE_SPAWN_RADIUS_M = 250.0
 NPC_VEHICLE_DESPAWN_RADIUS_M = 350.0
+NPC_SPAWN_RADIUS_SLACK_M = 50.0
 # LOD cutoff (section 17): only vehicles this close get update_npc called
 # at all each frame. A parked vehicle already needs zero physics until it
 # decides to move, so this mostly matters for a driving vehicle that
@@ -241,7 +242,31 @@ NPC_TRIP_START_ATTEMPTS_PER_TICK = 1
 # data) the attempts allowed this tick, so idle vehicles actually get
 # pulled out onto the road instead of the cap silently discarding
 # everyone but the first one that rolled true.
-NPC_TRIP_START_ATTEMPTS_PER_TICK_WHEN_BELOW_MOVING_TARGET = 2
+NPC_TRIP_START_ATTEMPTS_PER_TICK_WHEN_BELOW_MOVING_TARGET = 3
+# A parked vehicle whose every route out fails validation (e.g. a lot whose
+# only exit clips a curb) fails identically each time - the search is
+# deterministic - so retrying it forever just burns the tick's attempt
+# budget. After this many consecutive failures it is skipped for trips and
+# becomes despawnable (when out of view) so the population re-seeds elsewhere.
+NPC_TRIP_START_MAX_FAILURES = 3
+# Moving traffic ("transit") spawns on a road node in this annulus around
+# the player - inside the simulation radius so it actually runs, outside the
+# spawn/visible area so it drives into view instead of popping into it.
+NPC_TRANSIT_SPAWN_MIN_DISTANCE_M = 150.0
+NPC_TRANSIT_SPAWN_MAX_DISTANCE_M = 280.0
+NPC_TRANSIT_SPAWN_NODE_TRIES = 4
+NPC_TRANSIT_TRIP_MIN_DISTANCE_M = 80.0
+NPC_TRANSIT_TRIP_MAX_DISTANCE_M = 200.0
+NPC_TRANSIT_SPAWNS_PER_TICK = 2
+# Route validation is ~45ms per candidate on dense real data: keep one
+# spawn attempt to a few candidates so it cannot stall a frame for seconds.
+NPC_TRANSIT_SPAWN_TIME_BUDGET_S = 0.1
+# One wall-clock budget for ALL trip-start/transit-spawn route searching in a
+# single population tick (each attempt alone may run several validations).
+NPC_TRIP_START_TICK_BUDGET_S = 0.15
+# Open road required around a spawn point so a new car is never dropped onto
+# (or right behind) existing traffic.
+NPC_TRANSIT_SPAWN_CLEARANCE_M = 30.0
 # Default fraction of the vehicle population that should be actively
 # driving at any moment, independent of total population size (client-
 # server-016.md/NPC-005: moving traffic is a first-class target, not a
@@ -257,6 +282,7 @@ NPC_TARGET_MOVING_FRACTION = 0.5
 # discipline as NPC_TRIP_START_ATTEMPTS_PER_TICK, so several vehicles
 # reboarding in the same tick can't stack into one multi-second frame.
 NPC_CONTINUE_TRIP_ATTEMPTS_PER_TICK = 1
+NPC_CONTINUE_TRIP_TIME_BUDGET_S = 0.1
 # NPC-004: recovery reroute attempts for STUCK vehicles - same one-
 # expensive-plan_route-call-per-tick discipline as the two constants above.
 NPC_RECOVERY_ATTEMPTS_PER_TICK = 1
@@ -465,6 +491,24 @@ def _align_approach_to_parking_orientation(
     return route_points[:-1] + [approach_point, destination]
 
 
+def _distance_to_nearest_road(
+    spatial_grid: SpatialWayGrid, x: float, y: float, radius_m: float,
+) -> float:
+    """Distance from (x, y) to the nearest drivable way centerline within
+    radius_m, or inf if none - the bounded, grid-backed counterpart of
+    _way_at_point's linear-scan distance."""
+    best = float("inf")
+    for way in spatial_grid.ways_in_rect(x - radius_m, y - radius_m, x + radius_m, y + radius_m):
+        if not getattr(way, "is_drivable", True):
+            continue
+        for (ax, ay), (bx, by) in zip(way.points_m, way.points_m[1:]):
+            dx, dy = bx - ax, by - ay
+            length_sq = dx * dx + dy * dy
+            t = 0.0 if length_sq < 1e-9 else clamp(((x - ax) * dx + (y - ay) * dy) / length_sq, 0.0, 1.0)
+            best = min(best, math.hypot(x - (ax + t * dx), y - (ay + t * dy)))
+    return best
+
+
 def route_stays_on_road(
     points: List[Tuple[float, float]],
     ways: List[Way],
@@ -501,13 +545,20 @@ def route_stays_on_road(
     segment_count = len(points) - 1
     for i in range(segment_count):
         (ax, ay), (bx, by) = points[i], points[i + 1]
-        _, distance = _way_at_point(spatial_grid, ways, (ax + bx) / 2.0, (ay + by) / 2.0)
+        mid_x, mid_y = (ax + bx) / 2.0, (ay + by) / 2.0
+        _, distance = _way_at_point(spatial_grid, ways, mid_x, mid_y)
         if initial_segment_tolerance_m is not None and i < initial_segment_count:
             segment_tolerance = initial_segment_tolerance_m
         elif final_segment_tolerance_m is not None and i >= segment_count - final_segment_count:
             segment_tolerance = final_segment_tolerance_m
         else:
             segment_tolerance = tolerance_m
+        if distance == float("inf") and spatial_grid is not None:
+            # _way_at_point's grid path only says "on a road or not"; the
+            # tolerances above (a lot/yard hop legitimately sits well off
+            # any road) need a real distance, or every off-road first/last
+            # hop is rejected no matter how generous the tolerance is.
+            distance = _distance_to_nearest_road(spatial_grid, mid_x, mid_y, segment_tolerance)
         if distance > segment_tolerance:
             return False
     return True
@@ -1393,6 +1444,7 @@ def find_and_start_npc_trip(
     building_grid: Optional[SpatialWayGrid] = None,
     member_resident_ids: Optional[List[int]] = None,
     other_vehicle_positions: Optional[List[Tuple[float, float]]] = None,
+    time_budget_s: float = NPC_TRIP_START_TIME_BUDGET_S,
 ) -> Optional[Driver]:
     """NPC-003: an idle parked vehicle (population tick decided it's time
     for its next errand) picks *some* reachable destination and starts a
@@ -1435,7 +1487,7 @@ def find_and_start_npc_trip(
     # POINTS's own comment for why: this runs recurringly, per idle
     # vehicle, per population tick, not once at load time.
     road_points = _bfs_destination_order(nodes, edges, origin_index)[:NPC_TRIP_START_CANDIDATE_POINTS]
-    deadline = time.perf_counter() + NPC_TRIP_START_TIME_BUDGET_S
+    deadline = time.perf_counter() + time_budget_s
     for destination_index in road_points:
         if time.perf_counter() > deadline:
             break
@@ -2437,6 +2489,7 @@ def continue_npc_trip(
     building_grid: Optional[SpatialWayGrid] = None,
     destination_query_point: Optional[Tuple[float, float]] = None,
     other_vehicle_positions: Optional[List[Tuple[float, float]]] = None,
+    time_budget_s: float = NPC_TRIP_START_TIME_BUDGET_S,
 ) -> bool:
     """multi-passenger-car.md section 21: once a trip group's passengers
     have all reboarded (or update_npc's return-timeout left a straggler
@@ -2494,7 +2547,7 @@ def continue_npc_trip(
     # running plan_route call) - a single unusually expensive call can
     # still occasionally exceed this, a known limitation shared with
     # find_and_start_npc_trip.
-    deadline = time.perf_counter() + NPC_TRIP_START_TIME_BUDGET_S
+    deadline = time.perf_counter() + time_budget_s
     for query_point in query_points:
         if time.perf_counter() > deadline:
             break
@@ -2585,6 +2638,7 @@ class NPCVehicleManager:
         self.spawn_radius_m = spawn_radius_m
         self.despawn_radius_m = despawn_radius_m
         self.simulation_radius_m = simulation_radius_m
+        self._trip_start_failures: Dict[int, int] = {}
         self.include_experimental = include_experimental
         # NPC-003 v2 section 14: vehicle_type is picked from the registered
         # road-vehicle plugins' own traffic_weight, not a hardcoded "always
@@ -2856,6 +2910,11 @@ class NPCVehicleManager:
             if not candidates:
                 continue
             point, parking_space = candidates[0]
+            if (point[0] - player_x) ** 2 + (point[1] - player_y) ** 2 > (self.spawn_radius_m + NPC_SPAWN_RADIUS_SLACK_M) ** 2:
+                # The nearest parking to a random query point can be far
+                # away in a sparse area - a car spawned beyond the
+                # simulation radius is inert and just gets despawned.
+                continue
             vehicle = self._place_one(
                 point, parking_space, ways, spatial_grid, curbs, curb_grid, buildings, building_grid,
             )
@@ -2902,8 +2961,17 @@ class NPCVehicleManager:
         re-trigger."""
         if vehicle.state == NPCState.CRASHED:
             return
+        driver = self.drivers.get(vehicle.vehicle_id)
+        # A car pulling into its own parking spot swings its body within
+        # centimetres of already-parked neighbours by design (contact damage
+        # isn't modelled), so parked obstacles don't count as a collision
+        # during the final approach - otherwise nearly every lot arrival was
+        # a full accident once traffic actually drove.
+        finishing_approach = driver is not None and driver.path_index >= len(driver.path) - 2
         for obstacle in nearby_obstacles:
             if obstacle is vehicle or getattr(obstacle, "state", None) == NPCState.CRASHED:
+                continue
+            if finishing_approach and getattr(obstacle, "state", None) == NPCState.PARKED:
                 continue
             if not boxes_intersect(
                 vehicle.x, vehicle.y, vehicle.heading, vehicle.length_m, vehicle.width_m,
@@ -3022,6 +3090,164 @@ class NPCVehicleManager:
             # don't need to "visit" their own home as a timed activity.
             self._retire_trip(vehicle)
 
+    def _replaceable_parked_vehicle(
+        self, player_x: float, player_y: float, viewport_bounds: Optional[Tuple[float, float, float, float]],
+    ) -> Optional[NPCVehicle]:
+        """The idle, driverless, unseen parked vehicle farthest from the
+        player - safe to drop to make room for moving traffic (no occupants:
+        nothing is aboard a parked vehicle with no driver/trip_group)."""
+        best, best_distance = None, -1.0
+        for vehicle in self.vehicles:
+            if (
+                vehicle.state != NPCState.PARKED
+                or self.drivers.get(vehicle.vehicle_id) is not None
+                or vehicle.trip_group is not None
+                or vehicle.vehicle_kind == "household"
+            ):
+                continue
+            if viewport_bounds is not None and _point_in_viewport(vehicle.x, vehicle.y, viewport_bounds):
+                continue
+            distance = (vehicle.x - player_x) ** 2 + (vehicle.y - player_y) ** 2
+            if distance > best_distance:
+                best, best_distance = vehicle, distance
+        return best
+
+    def _start_short_transit_trip(
+        self,
+        vehicle: NPCVehicle,
+        origin: Tuple[float, float],
+        resident_manager: ResidentManager,
+        traffic_world: TrafficWorld,
+        ways: List[Way],
+        spatial_grid: Optional[SpatialWayGrid],
+        parking_spaces: Optional[List],
+        sceneries: Optional[List],
+        buildings: Optional[List],
+        curbs: Optional[List[Curb]],
+        curb_grid: Optional[SpatialWayGrid],
+        building_grid: Optional[SpatialWayGrid],
+        claimed_points: List[Tuple[int, Tuple[float, float]]],
+        deadline: float,
+    ) -> Optional[Driver]:
+        """Start `vehicle` on a validated trip to a real parking spot 80-200m
+        from `origin`. Route validation cost and failure rate both grow
+        with route length on dense real maps (measured: ~15ms/35% pass at
+        100m vs ~70ms/5% at 800m), so a spawn that must succeed inside a
+        frame budget picks near destinations - find_and_start_npc_trip's
+        BFS walk deliberately picks *far* ones."""
+        nodes = traffic_world._route_nodes
+        grid = traffic_world._route_node_grid
+        cell_size = _ROUTE_NODE_GRID_CELL_M
+        reach = NPC_TRANSIT_TRIP_MAX_DISTANCE_M
+        near = []
+        for cell_x in range(math.floor((origin[0] - reach) / cell_size), math.floor((origin[0] + reach) / cell_size) + 1):
+            for cell_y in range(math.floor((origin[1] - reach) / cell_size), math.floor((origin[1] + reach) / cell_size) + 1):
+                for index in grid.get((cell_x, cell_y), ()):
+                    distance = math.hypot(nodes[index][0] - origin[0], nodes[index][1] - origin[1])
+                    if NPC_TRANSIT_TRIP_MIN_DISTANCE_M <= distance <= reach:
+                        near.append(index)
+        random.shuffle(near)
+        edges = traffic_world._route_edges
+        other_positions = [pos for _, pos in claimed_points]
+        for index in near:
+            if time.perf_counter() >= deadline:
+                return None
+            # Midway along an edge (not the node itself, an intersection
+            # centre) on a quiet street: legal roadside parking, an on-road
+            # destination - the off-road lot/space tiers are what fail
+            # validation almost every time on real maps.
+            neighbors = [n for n, length in edges.get(index, ()) if length >= 20.0]
+            if not neighbors:
+                continue
+            other = nodes[random.choice(neighbors)]
+            destination = ((nodes[index][0] + other[0]) / 2.0, (nodes[index][1] + other[1]) / 2.0)
+            if _roadside_parking_point(destination[0], destination[1], ways, spatial_grid) is None:
+                continue
+            if not _point_is_clear_of_vehicles(destination, other_positions):
+                continue
+            driver = start_npc_trip(
+                vehicle, resident_manager, traffic_world, ways, destination,
+                spatial_grid=spatial_grid, curbs=curbs, curb_grid=curb_grid,
+                buildings=buildings, building_grid=building_grid,
+            )
+            if driver is not None:
+                return driver
+        return None
+
+    def _spawn_transit_vehicle(
+        self,
+        player_x: float,
+        player_y: float,
+        resident_manager: ResidentManager,
+        traffic_world: TrafficWorld,
+        ways: List[Way],
+        spatial_grid: Optional[SpatialWayGrid],
+        parking_spaces: Optional[List],
+        sceneries: Optional[List],
+        buildings: Optional[List],
+        curbs: Optional[List[Curb]],
+        curb_grid: Optional[SpatialWayGrid],
+        building_grid: Optional[SpatialWayGrid],
+        viewport_bounds: Optional[Tuple[float, float, float, float]],
+        claimed_points: List[Tuple[int, Tuple[float, float]]],
+        deadline: float,
+    ) -> Optional[Driver]:
+        """NPC-005: create a moving vehicle on a real road node near (but
+        not in view of) the player and start its validated trip at once -
+        the same place_parked_npc -> find_and_start_npc_trip -> real
+        Resident group/TripGroup/Driver chain every other trip uses, so a
+        transit vehicle is not a special kind of NPC. Parked cars near the
+        player are not a reliable source of moving traffic (a lot whose
+        only exit clips a curb never produces a trip), so this seeds it
+        directly. Returns the Driver, or None (nothing added) on failure."""
+        cell_size = _ROUTE_NODE_GRID_CELL_M
+        nodes = traffic_world._route_nodes
+        grid = traffic_world._route_node_grid
+        low_x = math.floor((player_x - NPC_TRANSIT_SPAWN_MAX_DISTANCE_M) / cell_size)
+        high_x = math.floor((player_x + NPC_TRANSIT_SPAWN_MAX_DISTANCE_M) / cell_size)
+        low_y = math.floor((player_y - NPC_TRANSIT_SPAWN_MAX_DISTANCE_M) / cell_size)
+        high_y = math.floor((player_y + NPC_TRANSIT_SPAWN_MAX_DISTANCE_M) / cell_size)
+        min_sq = NPC_TRANSIT_SPAWN_MIN_DISTANCE_M ** 2
+        max_sq = NPC_TRANSIT_SPAWN_MAX_DISTANCE_M ** 2
+        ring = []
+        for cell_x in range(low_x, high_x + 1):
+            for cell_y in range(low_y, high_y + 1):
+                for index in grid.get((cell_x, cell_y), ()):
+                    distance_sq = (nodes[index][0] - player_x) ** 2 + (nodes[index][1] - player_y) ** 2
+                    if min_sq <= distance_sq <= max_sq:
+                        ring.append(index)
+        random.shuffle(ring)
+        tries = 0
+        for index in ring:
+            if time.perf_counter() >= deadline:
+                break
+            point = (nodes[index][0], nodes[index][1])
+            if viewport_bounds is not None and _point_in_viewport(
+                point[0], point[1], viewport_bounds, margin_m=NPC_PARKING_ACCESS_TOLERANCE_M,
+            ):
+                continue
+            if any(True for _ in self.nearby_vehicles_at(point[0], point[1], NPC_TRANSIT_SPAWN_CLEARANCE_M)):
+                continue
+            vehicle = self._place_one(point, None, ways, spatial_grid, curbs, curb_grid, buildings, building_grid)
+            if vehicle is None:
+                continue
+            tries += 1
+            driver = self._start_short_transit_trip(
+                vehicle, point, resident_manager, traffic_world, ways, spatial_grid,
+                parking_spaces, sceneries, buildings, curbs, curb_grid, building_grid,
+                claimed_points, deadline,
+            )
+            if driver is not None:
+                self.vehicles.append(vehicle)
+                self.drivers[vehicle.vehicle_id] = driver
+                if vehicle.destination is not None:
+                    claimed_points.append((vehicle.vehicle_id, vehicle.destination))
+                return driver
+            release_npc_parking_reservation(vehicle)
+            if tries >= NPC_TRANSIT_SPAWN_NODE_TRIES:
+                break
+        return None
+
     def _run_population_tick(
         self,
         player_x: float,
@@ -3092,9 +3318,11 @@ class NPCVehicleManager:
             # floor), even if more vehicles than that are simultaneously
             # eligible - despawning is a nice-to-have cleanup, not worth
             # briefly starving the population under its configured floor.
-            if far and idle_parked and not visible and remaining > self.min_count:
+            hopeless = self._trip_start_failures.get(vehicle.vehicle_id, 0) >= NPC_TRIP_START_MAX_FAILURES
+            if idle_parked and not visible and ((far and remaining > self.min_count) or hopeless):
                 release_npc_parking_reservation(vehicle)
                 self.drivers.pop(vehicle.vehicle_id, None)
+                self._trip_start_failures.pop(vehicle.vehicle_id, None)
                 remaining -= 1
                 continue
             kept.append(vehicle)
@@ -3125,6 +3353,11 @@ class NPCVehicleManager:
             if not candidates:
                 continue
             point, parking_space = candidates[0]
+            if (point[0] - player_x) ** 2 + (point[1] - player_y) ** 2 > (self.spawn_radius_m + NPC_SPAWN_RADIUS_SLACK_M) ** 2:
+                # The nearest parking to a random query point can be far
+                # away in a sparse area - a car spawned beyond the
+                # simulation radius is inert and just gets despawned.
+                continue
             if viewport_bounds is not None and _point_in_viewport(
                 point[0], point[1], viewport_bounds, margin_m=NPC_PARKING_ACCESS_TOLERANCE_M,
             ):
@@ -3189,14 +3422,28 @@ class NPCVehicleManager:
         # capping *attempts*, not just candidates, is what actually bounds
         # this tick's worst case.
         trip_starts_this_tick = 0
+        trip_start_deadline = time.perf_counter() + NPC_TRIP_START_TICK_BUDGET_S
         # NPC-005: moving traffic is a first-class target, independent of
         # total population - "driving" here matches population_counts()'s
         # own definition (state != PARKED) for consistency with the debug
         # panel's numbers.
-        currently_moving = sum(1 for vehicle in self.vehicles if vehicle.state != NPCState.PARKED)
+        # Only vehicles inside simulation_radius_m count: update() never
+        # ticks anything farther out, so a far "driving" car is not traffic
+        # the player can ever meet (and used to satisfy the target while
+        # nothing near the player moved).
+        simulation_radius_sq = self.simulation_radius_m * self.simulation_radius_m
+
+        def _near_player(vehicle: NPCVehicle) -> bool:
+            return (vehicle.x - player_x) ** 2 + (vehicle.y - player_y) ** 2 <= simulation_radius_sq
+
+        currently_moving = sum(
+            1 for vehicle in self.vehicles
+            if vehicle.state not in (NPCState.PARKED, NPCState.CRASHED) and _near_player(vehicle)
+        )
+        below_moving_target = currently_moving < self.target_moving_count
         trip_start_attempt_cap = (
             NPC_TRIP_START_ATTEMPTS_PER_TICK_WHEN_BELOW_MOVING_TARGET
-            if currently_moving < self.target_moving_count
+            if below_moving_target
             else NPC_TRIP_START_ATTEMPTS_PER_TICK
         )
         idle_candidates = [
@@ -3211,7 +3458,39 @@ class NPCVehicleManager:
             # vehicle, but this makes the "never resumes" invariant explicit
             # rather than incidental.
             and not vehicle.driver_departed
+            # Short on nearby traffic: pulling out a car the player will
+            # never simulate/see is wasted (and expensive) route search.
+            and (not below_moving_target or _near_player(vehicle))
+            and self._trip_start_failures.get(vehicle.vehicle_id, 0) < NPC_TRIP_START_MAX_FAILURES
         ]
+        if below_moving_target:
+            transit_spawns = 0
+            while (
+                trip_starts_this_tick < trip_start_attempt_cap
+                and time.perf_counter() < trip_start_deadline
+                and transit_spawns < NPC_TRANSIT_SPAWNS_PER_TICK
+                and currently_moving + transit_spawns < self.target_moving_count
+            ):
+                trip_starts_this_tick += 1
+                # At the population target, moving traffic replaces an idle
+                # parked car the player can't see rather than growing the
+                # population past target_count.
+                victim = None
+                if len(self.vehicles) >= self.target_count:
+                    victim = self._replaceable_parked_vehicle(player_x, player_y, viewport_bounds)
+                    if victim is None:
+                        break
+                if self._spawn_transit_vehicle(
+                    player_x, player_y, resident_manager, traffic_world, ways, spatial_grid,
+                    parking_spaces, sceneries, buildings, curbs, curb_grid, building_grid,
+                    viewport_bounds, claimed_points, trip_start_deadline,
+                ) is not None:
+                    transit_spawns += 1
+                    if victim is not None:
+                        release_npc_parking_reservation(victim)
+                        self.vehicles.remove(victim)
+                        self._trip_start_failures.pop(victim.vehicle_id, None)
+                        idle_candidates = [v for v in idle_candidates if v is not victim]
         random.shuffle(idle_candidates)
         # NPC-005 occupancy invariant: a household's members are shared
         # across its (up to NPC_MAX_VEHICLES_PER_HOUSEHOLD) vehicles, so a
@@ -3230,9 +3509,12 @@ class NPCVehicleManager:
             for resident_id in other_vehicle.trip_group.member_resident_ids
         }
         for vehicle in idle_candidates:
-            if trip_starts_this_tick >= trip_start_attempt_cap:
+            if trip_starts_this_tick >= trip_start_attempt_cap or time.perf_counter() >= trip_start_deadline:
                 break
-            if random.random() >= NPC_TRIP_START_PROBABILITY_PER_TICK:
+            # Below the moving target the random roll is skipped: it only
+            # exists to pace an already-satisfied population, and at 8% per
+            # candidate it left the player alone on the road.
+            if not below_moving_target and random.random() >= NPC_TRIP_START_PROBABILITY_PER_TICK:
                 continue
             trip_starts_this_tick += 1
             member_resident_ids = None
@@ -3256,8 +3538,12 @@ class NPCVehicleManager:
                 other_vehicle_positions=[
                     pos for vid, pos in claimed_points if vid != vehicle.vehicle_id
                 ],
+                time_budget_s=min(NPC_TRIP_START_TIME_BUDGET_S, max(0.0, trip_start_deadline - time.perf_counter())),
             )
-            if driver is not None:
+            if driver is None:
+                self._trip_start_failures[vehicle.vehicle_id] = self._trip_start_failures.get(vehicle.vehicle_id, 0) + 1
+            else:
+                self._trip_start_failures.pop(vehicle.vehicle_id, None)
                 self.drivers[vehicle.vehicle_id] = driver
                 # Claim it immediately - a later vehicle in this same
                 # tick's loop must see this commitment, not just ones
@@ -3298,6 +3584,7 @@ class NPCVehicleManager:
                     curbs=curbs, curb_grid=curb_grid, building_grid=building_grid,
                     destination_query_point=vehicle.home_position,
                     other_vehicle_positions=other_positions,
+                    time_budget_s=NPC_CONTINUE_TRIP_TIME_BUDGET_S,
                 )
                 if departed:
                     vehicle.returning_home = True
@@ -3307,6 +3594,7 @@ class NPCVehicleManager:
                     parking_spaces=parking_spaces, sceneries=sceneries, buildings=buildings,
                     curbs=curbs, curb_grid=curb_grid, building_grid=building_grid,
                     other_vehicle_positions=other_positions,
+                    time_budget_s=NPC_CONTINUE_TRIP_TIME_BUDGET_S,
                 )
             # Same same-tick claim as section 3 above - a later vehicle in
             # this loop (or section 3, if it runs after this in a future
