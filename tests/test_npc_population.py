@@ -165,6 +165,49 @@ def test_trip_start_attempts_boost_when_below_the_moving_traffic_target(monkeypa
     assert started <= NPC_TRIP_START_ATTEMPTS_PER_TICK_WHEN_BELOW_MOVING_TARGET
 
 
+def test_trip_start_never_double_books_a_household_member_already_mid_trip(monkeypatch):
+    """NPC-005 occupancy invariant: a household can own two vehicles
+    (NPC_MAX_VEHICLES_PER_HOUSEHOLD), but its member Residents are shared
+    across them. If its only member is already mid-trip in one vehicle,
+    the population tick must not also fold that same Resident into a
+    second, simultaneous trip in the household's other vehicle -
+    _begin_trip_on_vehicle would otherwise silently overwrite
+    active_vehicle_id/trip_group_id, corrupting both trips."""
+    from theroadragetrip.npc import NPC_POPULATION_TICK_S
+
+    ways = _city_block_grid()
+    manager = NPCVehicleManager(target_count=2, spawn_radius_m=_SPAWN_RADIUS_M, vehicle_distribution={"car": 1.0})
+    residents = ResidentManager()
+
+    # Built by hand (not _make_household, whose random household size
+    # would need global random.randint patched - which recurses forever
+    # in ResidentManager.create's own parent-generation logic) so the
+    # household has exactly the one member this test needs to control.
+    household = manager.household_manager.create(home_position=(0.0, 0.0))
+    member = residents.create(mode="household")
+    member.household_id = household.household_id
+    household.member_resident_ids.add(member.resident_id)
+    member.active_vehicle_id = 999  # already mid-trip in some other vehicle
+
+    car1 = place_parked_npc(1, (0.0, 0.0), None, vehicle_type="car")
+    car2 = place_parked_npc(2, (_STEP_M, 0.0), None, vehicle_type="car")
+    manager.vehicles.extend([car1, car2])
+    for car in (car1, car2):
+        household.vehicle_ids.add(car.vehicle_id)
+        car.vehicle_kind = "household"
+        car.household_id = household.household_id
+    manager._next_vehicle_id = 3
+
+    traffic_world = TrafficWorld(ways)
+    monkeypatch.setattr(random, "random", lambda: 0.0)  # every idle candidate rolls true
+    manager.update(NPC_POPULATION_TICK_S, 0.0, 0.0, residents, traffic_world, ways)
+
+    assert manager.drivers.get(car1.vehicle_id) is None
+    assert manager.drivers.get(car2.vehicle_id) is None
+    assert member.active_vehicle_id == 999
+    assert member.trip_group_id is None
+
+
 def test_no_duplicate_vehicle_ids_after_several_population_ticks():
     from theroadragetrip.npc import NPC_POPULATION_TICK_S
 
