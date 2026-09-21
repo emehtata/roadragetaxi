@@ -1294,8 +1294,7 @@ class PedestrianManager:
                     p1 = cand_pts[cand_seg_idx + 1]
                     p2 = cand_pts[cand_seg_idx]
                 out_heading = math.atan2(p2[1] - p1[1], p2[0] - p1[0])
-                angle_diff = abs(angle_diff(out_heading, incoming_heading))
-                if angle_diff < math.radians(135):
+                if abs(angle_diff(out_heading, incoming_heading)) < math.radians(135):
                     forward_candidates.append(cand)
             if forward_candidates:
                 candidates = forward_candidates
