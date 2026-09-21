@@ -93,3 +93,30 @@ def test_end_frame_falls_back_to_work_time_without_real_frame_ms():
     profiler.end_frame()
 
     assert profiler.last_frame_ms >= 2.0
+
+
+def test_spike_culprit_prefers_detailed_render_section_over_parent_total():
+    profiler = FrameProfiler(spike_ms=(25.0,))
+    profiler.enabled = True
+    profiler.begin_frame()
+    profiler.record("rendering", 42.0)
+    profiler.record("render:roads_cache_rebuild", 18.0)
+    profiler.record("render:actors", 3.0)
+    profiler.end_frame(real_frame_ms=45.0)
+
+    snapshot = profiler.snapshot()
+    assert snapshot["spike_subsystem"] == "render:roads_cache_rebuild"
+    assert snapshot["spike_sections"][0] == ("render:roads_cache_rebuild", 18.0)
+
+
+def test_incremental_static_rebuild_layers_share_one_frame_budget(monkeypatch):
+    from theroadragetrip.render import common
+
+    common._pending_incremental_rebuilds.clear()
+    common.begin_static_cache_frame()
+    monkeypatch.setattr(common.time, "perf_counter", lambda: 100.0)
+
+    assert common._incremental_rebuild_deadline("scenery", False, 0.004) == 100.004
+    assert common._incremental_rebuild_deadline("roads", False, 0.004) == 100.0
+    assert common._incremental_rebuild_deadline("buildings", False, 0.004) == 100.0
+    assert common._incremental_rebuild_deadline("roads", True, 0.004) == float("inf")

@@ -181,40 +181,52 @@ def find_feature_at(
     return candidates[0][1]
 
 
-def _npc_snapshot(vehicle, driver) -> dict:
+def _npc_snapshot(vehicle, driver=None) -> dict:
     """Structured per-NPC state for debug snapshots - the JSON analogue of
     the F7 debug overlay (render/hud.py's draw_npc_debug_panel), so an NPC's
     driving/routing/parking state can be inspected from a screenshot's JSON
     without needing that overlay enabled at capture time."""
     way = vehicle.way
-    next_way = getattr(driver, "next_way", None)
-    decision = driver.decision
-    light = decision.light
+    next_way = getattr(driver, "next_way", None) if driver is not None else None
+    decision = getattr(driver, "decision", None)
+    light = getattr(decision, "light", None)
     return {
         "vehicle_id": vehicle.vehicle_id,
+        "has_driver": driver is not None,
         "resident_id": vehicle.owner_id,
         "state": vehicle.state,
         "vehicle_type": vehicle.vehicle_type,
+        "capacity": vehicle.capacity,
+        "occupant_count": (
+            len(vehicle.trip_group.boarded_resident_ids) if vehicle.trip_group is not None else 0
+        ),
+        "occupant_ids": (
+            sorted(vehicle.trip_group.boarded_resident_ids) if vehicle.trip_group is not None else []
+        ),
         "x": vehicle.x,
         "y": vehicle.y,
         "heading": vehicle.heading,
         "speed_kmh": vehicle.speed * 3.6,
-        "target_speed_kmh": driver.target_speed_mps * 3.6,
+        "target_speed_kmh": driver.target_speed_mps * 3.6 if driver is not None else 0.0,
         "way": {"name": getattr(way, "name", None), "highway": getattr(way, "highway", None)} if way else None,
         "next_way": (
             {"name": getattr(next_way, "name", None), "highway": getattr(next_way, "highway", None)}
             if next_way else None
         ),
-        "route_index": driver.path_index,
-        "route_length": len(driver.path) - 1,
-        "route_progress": driver.route_progress,
-        "maneuver": driver.next_maneuver,
-        "lane_bias": getattr(driver, "current_lane_bias", None),
-        "traffic_action": decision.action,
-        "traffic_reason": decision.reason,
-        "stop_position": list(decision.stop_position) if decision.stop_position is not None else None,
+        "route_index": driver.path_index if driver is not None else None,
+        "route_length": len(driver.path) - 1 if driver is not None else None,
+        "route_progress": driver.route_progress if driver is not None else None,
+        "lookahead_distance_m": getattr(driver, "lookahead_distance_m", 0.0) if driver is not None else 0.0,
+        "steering_input": getattr(driver, "steering_input", 0.0) if driver is not None else 0.0,
+        "maneuver": driver.next_maneuver if driver is not None else None,
+        "lane_bias": getattr(driver, "current_lane_bias", None) if driver is not None else None,
+        "traffic_action": decision.action if decision is not None else None,
+        "traffic_reason": decision.reason if decision is not None else None,
+        "stop_position": list(decision.stop_position) if decision is not None and decision.stop_position is not None else None,
         "signal_id": (getattr(light, "approach_id", None) or getattr(light, "id", None)) if light is not None else None,
-        "destination": list(driver.destination),
+        "destination": list(driver.destination) if driver is not None else (
+            list(vehicle.destination) if vehicle.destination is not None else None
+        ),
         "destination_parking_space_id": vehicle.destination_parking_space_id,
         "is_taxi": vehicle.is_taxi,
         "is_police": vehicle.is_police,
@@ -266,6 +278,8 @@ def _write_debug_snapshot(
     railings=(),
     npcs=(),
     npc_drivers=None,
+    npc_manager=None,
+    frame_profiler=None,
 ) -> None:
     minx, miny, maxx, maxy = auto_fetch_manager.get_bounds()
     now = time.time()
@@ -322,10 +336,24 @@ def _write_debug_snapshot(
             "on_foot": on_foot,
         },
         "npcs": [
-            _npc_snapshot(vehicle, npc_drivers[vehicle.vehicle_id])
+            _npc_snapshot(vehicle, npc_drivers.get(vehicle.vehicle_id) if npc_drivers is not None else None)
             for vehicle in npcs
-            if npc_drivers is not None and vehicle.vehicle_id in npc_drivers
         ],
+        "npc_population": {
+            "total": len(npcs),
+            "moving": sum(
+                1 for vehicle in npcs
+                if str(vehicle.state) not in ("PARKED", "CRASHED")
+                and npc_drivers is not None and vehicle.vehicle_id in npc_drivers
+            ),
+            "within_150m": sum(
+                1 for vehicle in npcs
+                if (vehicle.x - car.x) ** 2 + (vehicle.y - car.y) ** 2 <= 150.0 ** 2
+            ),
+            "moving_target": getattr(npc_manager, "target_moving_count", None),
+            "diagnostics": dict(getattr(npc_manager, "population_diagnostics", {})),
+        },
+        "performance": frame_profiler.snapshot() if frame_profiler is not None else None,
         "auto_fetch": {
             "configured_enabled": bool(args.auto_fetch),
             "call_enabled": True,

@@ -150,7 +150,6 @@ from .roads import (
 )
 
 from .vehicles import (
-    MAX_VISIBLE_NPC_COUNT,
     _cyclist_tinted_sprites,
     _draw_vehicle,
     _draw_vehicle_lights,

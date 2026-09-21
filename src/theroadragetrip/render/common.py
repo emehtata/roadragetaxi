@@ -147,6 +147,15 @@ _pending_static_rebuilds: dict = {}
 _static_rebuilds_this_frame = 0
 _frame_priority_layer = None
 _frame_priority_layer_computed = False
+# Roads, scenery, and buildings rebuild incrementally. They used to each
+# spend INCREMENTAL_REBUILD_BUDGET_S independently in the same frame, so a
+# camera/cache boundary could stack roughly 12ms of rebuild work even though
+# the ordinary static-cache throttle below allows only one rebuild per frame.
+# Give one incremental layer the real budget per frame, round-robin; the
+# other two still advance by one object (their _advance_* loops guarantee
+# that) so no job can become completely stuck.
+_pending_incremental_rebuilds: dict[str, None] = {}
+_incremental_rebuild_owner = None
 
 
 def invalidate_static_caches() -> None:
@@ -187,6 +196,7 @@ invalidate_static_caches_for_camera_jump = invalidate_static_caches
 
 def begin_static_cache_frame() -> None:
     global _static_rebuilds_this_frame, _frame_priority_layer_computed, _frame_priority_layer
+    global _incremental_rebuild_owner
     if _static_rebuilds_this_frame == 0 and _frame_priority_layer is not None:
         # Last frame's designated priority layer never even got asked -
         # its draw_* call didn't run at all that frame (the only such
@@ -205,6 +215,40 @@ def begin_static_cache_frame() -> None:
     # actually pending at the moment the frame's layers start asking, not
     # a stale read from before this frame's callers have even run.
     _frame_priority_layer_computed = False
+    _incremental_rebuild_owner = None
+    if _pending_incremental_rebuilds:
+        # Rotate the oldest active job to the back immediately, making the
+        # next frame pick the next active layer rather than wasting turns on
+        # layers whose cache is already current.
+        _incremental_rebuild_owner = next(iter(_pending_incremental_rebuilds))
+        _pending_incremental_rebuilds.pop(_incremental_rebuild_owner)
+        _pending_incremental_rebuilds[_incremental_rebuild_owner] = None
+
+
+def _incremental_rebuild_deadline(layer: str, is_first_build: bool, budget_s: float) -> float:
+    """Return this frame's shared incremental-cache deadline.
+
+    A layer's first build remains synchronous because it has no stale surface
+    to display. Thereafter only the round-robin owner receives the full time
+    slice. Non-owners receive an already-expired deadline; their rebuild loop
+    deliberately completes one item before checking it, preserving progress
+    without allowing three independent 4ms slices to stack.
+    """
+    if is_first_build:
+        return float("inf")
+    global _incremental_rebuild_owner
+    _pending_incremental_rebuilds.setdefault(layer, None)
+    if _incremental_rebuild_owner is None:
+        _incremental_rebuild_owner = layer
+        _pending_incremental_rebuilds.pop(layer, None)
+        _pending_incremental_rebuilds[layer] = None
+    now = time.perf_counter()
+    return now + budget_s if layer == _incremental_rebuild_owner else now
+
+
+def _finish_incremental_rebuild(layer: str, finished: bool) -> None:
+    if finished:
+        _pending_incremental_rebuilds.pop(layer, None)
 
 
 def _allow_static_rebuild(layer: str, surface) -> bool:
@@ -421,7 +465,7 @@ def _get_game_version() -> str:
     try:
         return f"v{package_version('theroadragetrip')}"
     except PackageNotFoundError:
-        return "v0.12.0alpha"
+        return "v0.13.0alpha"
 
 
 def _draw_version(screen, font, screen_w: int, screen_h: int) -> None:

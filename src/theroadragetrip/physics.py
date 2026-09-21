@@ -14,8 +14,13 @@ STEER_RATE = 2.6  # rad/s at low speed
 STEER_SPEED_FACTOR = 0.10  # less steering at higher speed
 MAX_SPEED = 210.0 / 3.6  # m/s (210 km/h)
 SPEED_LIMIT_DECEL = 4.0  # m/s^2; smooth automatic braking at a speed limit
-OFFROAD_MAX_SPEED = 2.0  # m/s (~7 km/h)
-LIGHT_TRAFFIC_MAX_SPEED = 6.0  # m/s (~22 km/h) on footways, paths, and cycleways
+# Sand/beach is the only surface with a hard speed cap (the slowest there
+# is); grass/soft ground is uncapped but has poor grip instead (see
+# GROUND_KIND_MAX_GRIP_G), and hard surfaces (pedestrian ways, plazas,
+# forecourts) are uncapped - driving on a pedestrian way costs penalty
+# points instead (TaxiManager.check_pedestrian_way_violation).
+SAND_MAX_SPEED = 2.0  # m/s (~7 km/h)
+OFFROAD_MAX_SPEED = SAND_MAX_SPEED
 OFFROAD_DECEL = 10.0  # m/s^2 when slowing from road speed
 
 GRAVITY_MPS2 = 9.81
@@ -52,7 +57,12 @@ SURFACE_MAX_GRIP_G = {
     "grass": 0.35,
     "snow": 0.20,
     "ice": 0.10,
+    "sand": 0.30,
 }
+# Off-road ground (see off_road_ground_kind) has no Way.surface to read a
+# grip from, so it maps straight to a surface bucket; "road"/"hard" fall
+# through to the normal way-surface/asphalt logic.
+GROUND_KIND_MAX_GRIP_G = {"soft": "grass", "sand": "sand"}
 # OSM Way.surface values that map to a rougher-than-asphalt bucket. There's
 # no in-game weather system to ever pick "wet_asphalt" (no rain state
 # exists), so it's defined for completeness/future use but unreachable today.
@@ -86,6 +96,16 @@ SLIDE_EXIT_THRESHOLD = 0.65
 # rather than a second slip metric. Deliberately below SLIDE_ENTER_THRESHOLD:
 # a tire can be visibly slipping (worth a mark on the road) before the
 # whole car counts as "sliding".
+# When the steering clamp saturates the tires it reports a grip usage that
+# grows with how far past the limit the driver is asking to turn, instead of
+# jumping straight to a full slide: just-at-the-limit cornering (binary
+# full-lock steering hits the clamp on most ordinary turns, and throttle
+# keeps the friction circle pinned at its edge) stays below the mark
+# threshold, a mark needs the demanded turn to exceed the limit by ~100%,
+# and full black needs CLAMP_FULL_SLIDE_OVERSHOOT (reported: tyre tracks came too easily
+# even with basic cornering, because any clamp used to mean full slide).
+CLAMP_SATURATION_USAGE_RATIO = 0.90
+CLAMP_FULL_SLIDE_OVERSHOOT = 2.0
 SKIDMARK_SLIP_THRESHOLD = 0.65
 SKIDMARK_FULL_SLIP_THRESHOLD = 0.90
 # Below this speed the velocity vector direction is numerically unstable
@@ -100,6 +120,26 @@ DRIFT_RECOVERY_RATE = 2.5  # rad/s; how fast a "simulation"-mode drift angle dec
 # bigger rate here made hard oversteer spin out within 1-2 frames.
 DRIFT_BUILD_RATE = math.radians(8.0)
 MAX_DRIFT_ANGLE = math.radians(45.0)
+# Rear-wheel drive (the taxi, like most cars, is driven by its rear axle):
+# the throttle's drive force is carried by the two rear tyres alone, which
+# also carry only about half the car's weight, so it eats into *rear*
+# lateral grip roughly RWD_DRIVE_LOAD_SHARE times faster than the whole-car
+# friction circle would suggest, while the front tyres keep their full
+# lateral grip. A driven corner therefore loses the rear first: it steps
+# out (oversteer) instead of pushing wide, and the driver has to lift or
+# counter-steer to catch it. Unpowered/braking/coasting corners keep the
+# ordinary whole-car circle (understeer).
+FRONT_LOCKUP_MIN_SPEED_MPS = 15.0  # ~54 km/h: below this a braking skid only marks the rears
+FRONT_LOCKUP_GRIP_RATIO = 1.2  # braking g must exceed the surface's grip by this factor
+RWD_DRIVE_LOAD_SHARE = 2.0
+OVERSTEER_DRIFT_PER_OVERSHOOT = math.radians(25.0)  # target slide angle per 100% rear overshoot
+OVERSTEER_MAX_DRIFT_ANGLE = math.radians(35.0)
+OVERSTEER_DRIFT_RATE = 1.0  # rad/s the slide angle moves toward its target
+RWD_MIN_TURN_RADIUS_M = 8.0  # steering-lock limit on the lateral load a driven corner can actually demand of the rear axle
+OVERSTEER_YAW_GAIN = 0.5  # extra nose rotation as the rear steps out, per 100% overshoot (capped at 1.0)
+DRIFT_SPEED_SCRUB = 1.0  # 1/s * sin(drift angle): speed shed by a car travelling sideways
+DRIFT_MARK_MIN_ANGLE = math.radians(5.0)   # slide angle where tyre marks begin
+DRIFT_MARK_FULL_ANGLE = math.radians(20.0)  # ...and reach full black
 
 NON_DRIVABLE_HIGHWAYS = {
     "footway",
@@ -176,6 +216,9 @@ class Car:
     # Tire grip model (GRIP.md) - see _update_g_force/_slip_amount_from_ratio.
     max_grip_g: float = SURFACE_MAX_GRIP_G["dry_asphalt"]  # current surface/mode's combined-g ceiling
     grip_usage: float = 0.0  # raw_total_g / max_grip_g
+    skid_amount: float = 0.0  # graded slip for tyre marks only (see _update_g_force); slip_amount is what is_sliding uses
+    front_lockup: bool = False  # hard braking from speed: the front tyres lock too, so marks come from all four
+    ground_kind: str = "road"  # "road", "hard", "soft" or "sand" - last frame's ground under the car (grip lookup)
     slip_amount: float = 0.0  # 0 = full grip, 1 = fully slid (continuous, see _slip_amount_from_ratio)
     slip_angle: float = 0.0  # radians, heading vs. actual velocity direction; +left, -right
     _prev_vx: float = 0.0  # world-frame velocity, previous frame (g-force calc only)
@@ -283,6 +326,66 @@ def is_point_in_parking_lot(
         if len(points) >= 3 and point_in_polygon(px, py, points):
             return True
     return False
+
+
+# Scenery kinds whose ground is actually soft/earthy - the only off-road
+# surfaces where driving should leave a muddy dirt trail (sand/beach get
+# their own lighter trail, see SAND_SCENERY_KINDS). Any other mapped ground
+# polygon (pedestrian_area, fuel forecourt, commercial/industrial/retail
+# land, tracks, playgrounds, ...) is hard, so skids there stay ordinary
+# tyre marks.
+SOFT_GROUND_SCENERY_KINDS = frozenset({
+    "forest", "wood", "scrub", "heath", "park", "garden", "meadow", "grass",
+    "greenfield", "nature_reserve", "pitch", "dog_park", "grassland", "shrubbery",
+    "wetland", "farmland", "farmyard", "allotments", "flowerbed", "residential",
+    "recreation_ground", "cemetery", "horse_riding", "fitness_station",
+    "brownfield", "construction", "landfill",
+})
+
+
+SAND_SCENERY_KINDS = frozenset({"sand", "beach"})
+
+
+def off_road_ground_kind(
+    px: float,
+    py: float,
+    sceneries: Optional[List] = None,
+    scenery_grid: Optional["SpatialWayGrid"] = None,
+) -> str:
+    """Classify open ground at (px, py) as "soft" (grass/earth - muddy dirt
+    trails), "sand" (lighter sand tracks) or "hard" (a mapped surface that
+    leaves no trail, only ordinary tyre marks when skidding). Precedence:
+    any hard polygon containing the point wins (a plaza inside a park),
+    then sand, then soft; a point in no mapped polygon at all is unmapped
+    open ground, treated as soft."""
+    candidates = (
+        scenery_grid.ways_in_rect(px, py, px, py) if scenery_grid is not None else (sceneries or ())
+    )
+    found_sand = False
+    for scenery in candidates:
+        kind = getattr(scenery, "kind", None)
+        if kind in SOFT_GROUND_SCENERY_KINDS:
+            continue
+        bbox = getattr(scenery, "bbox", None)
+        if bbox and bbox != (0.0, 0.0, 0.0, 0.0) and not (bbox[0] <= px <= bbox[2] and bbox[1] <= py <= bbox[3]):
+            continue
+        points = getattr(scenery, "points_m", ())
+        if len(points) >= 3 and point_in_polygon(px, py, points):
+            if kind not in SAND_SCENERY_KINDS:
+                return "hard"
+            found_sand = True
+    return "sand" if found_sand else "soft"
+
+
+def is_point_on_soft_ground(
+    px: float,
+    py: float,
+    sceneries: Optional[List] = None,
+    scenery_grid: Optional["SpatialWayGrid"] = None,
+) -> bool:
+    """Whether open ground at (px, py) is soft earth/grass specifically
+    (see off_road_ground_kind)."""
+    return off_road_ground_kind(px, py, sceneries, scenery_grid) == "soft"
 
 
 def is_point_in_water(
@@ -1106,7 +1209,7 @@ def get_current_road_at_car(
     return best_way
 
 
-def _surface_max_grip_g(current_way, physics_mode: str, wetness: float = 0.0) -> float:
+def _surface_max_grip_g(current_way, physics_mode: str, wetness: float = 0.0, ground_kind: str = "road") -> float:
     """Return this surface's maximum combined-g tire grip (GRIP.md section
     9), reusing the game's existing Way.surface/is_ice_road fields rather
     than a second surface classification.
@@ -1122,6 +1225,8 @@ def _surface_max_grip_g(current_way, physics_mode: str, wetness: float = 0.0) ->
     """
     if current_way is not None and getattr(current_way, "is_ice_road", False):
         base = SURFACE_MAX_GRIP_G["ice"]
+    elif current_way is None and ground_kind in GROUND_KIND_MAX_GRIP_G:
+        base = SURFACE_MAX_GRIP_G[GROUND_KIND_MAX_GRIP_G[ground_kind]]
     else:
         surface = str(getattr(current_way, "surface", "") or "").lower() if current_way is not None else ""
         if surface == "grass":
@@ -1200,7 +1305,12 @@ def _smoothed_g(previous: float, raw: float, dt: float) -> float:
     return previous + (raw - previous) * alpha
 
 
-def _update_g_force(car: Car, entry_x: float, entry_y: float, entry_heading: float, dt: float) -> None:
+def _update_g_force(
+    car: Car, entry_x: float, entry_y: float, entry_heading: float, dt: float,
+    grip_longitudinal_g: Optional[float] = None,
+    grip_was_limited: bool = False,
+    grip_overshoot: float = 0.0,
+) -> None:
     """Measure g-force from the car's *actual* velocity-vector change this
     frame (GFORCE.md) rather than from steering input or a heading-rate
     formula: entry_x/y is where the car was before any of this frame's
@@ -1244,6 +1354,7 @@ def _update_g_force(car: Car, entry_x: float, entry_y: float, entry_heading: flo
         car.forward_g = car.lateral_g = car.total_g = 0.0
         car.grip_usage = 0.0
         car.slip_amount = 0.0
+        car.skid_amount = 0.0
         car.is_sliding = False
         return
 
@@ -1280,7 +1391,46 @@ def _update_g_force(car: Car, entry_x: float, entry_y: float, entry_heading: flo
     # steering-authority softening in update_car_physics above (section
     # 15: g-force, grip usage, slip angle and sliding are related but not
     # the same signal).
-    car.grip_usage = car.raw_total_g / car.max_grip_g if car.max_grip_g > 1e-6 else 0.0
+    # HUD g-force remains the actual measured acceleration. Tire slip is
+    # different: strong arcade coasting/terrain drag is not a driven or
+    # braked tire force and must not create straight-line skidmarks. Direct
+    # callers and collision/road blocking retain measured longitudinal g.
+    grip_total_g = math.hypot(
+        abs(raw_forward_g) if grip_longitudinal_g is None else grip_longitudinal_g,
+        raw_lateral_g,
+    )
+    # Skidmarks read their own, graded slip (skid_amount) instead of the
+    # is_sliding-facing slip_amount below: saturating the steering clamp
+    # forces slip_amount to a full slide (tests/GRIP.md: an over-limit
+    # corner slides), but binary full-lock steering saturates the clamp on
+    # most ordinary turns, so drawing a full black mark for any saturation
+    # made tyre tracks appear on basic cornering. skid_amount scales the
+    # saturation with how far past the limit the driver is asking to turn.
+    # Only longitudinal force counts directly (brake/wheelspin lockup);
+    # lateral only counts via how far the clamp was exceeded - measured
+    # lateral g sits exactly on the limit whenever the clamp is active.
+    skid_total_g = abs(raw_forward_g) if grip_longitudinal_g is None else grip_longitudinal_g
+    if grip_was_limited:
+        severity = clamp(grip_overshoot / CLAMP_FULL_SLIDE_OVERSHOOT, 0.0, 1.0)
+        forced_ratio = CLAMP_SATURATION_USAGE_RATIO + severity * (FULL_SLIDE_RATIO - CLAMP_SATURATION_USAGE_RATIO)
+        skid_total_g = max(skid_total_g, car.max_grip_g * forced_ratio)
+        # The tire was commanded beyond its available circle and the
+        # heading-rate clamp prevented the measured motion from exceeding
+        # it. Preserve that real saturation/slip signal without borrowing
+        # unrelated passive drag to push the number over the threshold.
+        grip_total_g = max(grip_total_g, car.max_grip_g * FULL_SLIDE_RATIO)
+    car.skid_amount = _slip_amount_from_ratio(skid_total_g / car.max_grip_g) if car.max_grip_g > 1e-6 else 0.0
+    # A car actually travelling sideways (a powerslide) is scrubbing its
+    # tyres whatever the measured g say: marks scale with the slide angle.
+    drift_marks = clamp(
+        (abs(car.drift_angle) - DRIFT_MARK_MIN_ANGLE) / (DRIFT_MARK_FULL_ANGLE - DRIFT_MARK_MIN_ANGLE), 0.0, 1.0,
+    )
+    if drift_marks > 0.0:
+        car.skid_amount = max(
+            car.skid_amount,
+            SKIDMARK_SLIP_THRESHOLD + drift_marks * (SKIDMARK_FULL_SLIP_THRESHOLD - SKIDMARK_SLIP_THRESHOLD),
+        )
+    car.grip_usage = grip_total_g / car.max_grip_g if car.max_grip_g > 1e-6 else 0.0
     car.slip_amount = _slip_amount_from_ratio(car.grip_usage)
     car.is_sliding = (
         car.slip_amount > SLIDE_EXIT_THRESHOLD if car.is_sliding else car.slip_amount >= SLIDE_ENTER_THRESHOLD
@@ -1331,14 +1481,24 @@ def update_car_physics(
     see _update_g_force for how they're actually measured.
     """
     entry_x, entry_y, entry_heading = car.x, car.y, car.heading
+    entry_speed = car.speed
+    using_longitudinal_tire_grip = False
+    throttle_driven = False
+    braking_driven = False
     if speed_limit_mps is not None and car.speed > speed_limit_mps:
+        using_longitudinal_tire_grip = True
         car.speed = max(speed_limit_mps, car.speed - SPEED_LIMIT_DECEL * dt)
     elif speed_limit_mps is not None and car.speed < -speed_limit_mps:
+        using_longitudinal_tire_grip = True
         car.speed = min(-speed_limit_mps, car.speed + SPEED_LIMIT_DECEL * dt)
     elif throttle > 0:
+        using_longitudinal_tire_grip = True
+        throttle_driven = True
         acceleration = forward_acceleration(car.speed)
         car.speed = min(car.speed + acceleration * dt, speed_limit_mps) if speed_limit_mps is not None else car.speed + acceleration * dt
     elif brake > 0:
+        using_longitudinal_tire_grip = True
+        braking_driven = True
         if car.speed > 0.0:
             car.speed = max(0.0, car.speed - BRAKE * dt)
         else:
@@ -1353,6 +1513,19 @@ def update_car_physics(
             car.speed = min(0.0, car.speed + FRICTION * dt)
 
     car.speed = clamp(car.speed, -10.0, MAX_SPEED)
+    longitudinal_tire_g = (
+        abs(car.speed - entry_speed) / (dt * GRAVITY_MPS2)
+        if using_longitudinal_tire_grip and dt > 0.0 else 0.0
+    )
+
+    # Excessive braking from speed overwhelms the fronts as well as the
+    # rears (which are what a powerslide/wheelspin scrubs), so marks then
+    # come from all four tyres.
+    car.front_lockup = (
+        braking_driven
+        and entry_speed >= FRONT_LOCKUP_MIN_SPEED_MPS
+        and longitudinal_tire_g >= car.max_grip_g * FRONT_LOCKUP_GRIP_RATIO
+    )
 
     # Manual steering check
     steer_input = steer_left - steer_right
@@ -1365,10 +1538,13 @@ def update_car_physics(
     # is_sliding is hysteresis on the *measured* slip_amount (set at the
     # end of the frame by _update_g_force, GRIP.md section 12) - not reset
     # here, so that hysteresis can see its own previous value.
-    car.max_grip_g = _surface_max_grip_g(current_way, physics_mode, wetness)
+    car.max_grip_g = _surface_max_grip_g(current_way, physics_mode, wetness, car.ground_kind)
+    steering_grip_limited = False
+    steering_overshoot = 0.0
     # Drift decays by default every frame; the grip-exceeded branch below
     # builds it back up on top of this when the driver is actively
     # oversteering past the surface's limit.
+    drift_before_decay = car.drift_angle
     car.drift_angle = _decay_toward_zero(car.drift_angle, DRIFT_RECOVERY_RATE, dt)
 
     # steer: positive -> turn left (counter-clockwise), negative -> turn right
@@ -1378,16 +1554,37 @@ def update_car_physics(
             steer_effective = STEER_RATE / (1.0 + abs(car.speed) * STEER_SPEED_FACTOR)
             desired_heading_rate = steer_input * steer_effective * (1.0 if car.speed >= 0 else -1.0)
 
-            # Friction circle (GRIP.md section 2): last frame's measured
-            # longitudinal g eats into this frame's lateral budget. Using
-            # last frame's raw_forward_g (this frame's isn't measured yet)
-            # is a one-frame lag, standard for this kind of feedback and
-            # avoids a same-frame circular dependency.
-            lateral_budget_g = _available_lateral_budget_g(car.max_grip_g, abs(car.raw_forward_g))
+            # Friction circle (GRIP.md section 2): driven/braking tire force
+            # eats into lateral grip. Passive coasting drag does not: FRICTION
+            # is deliberately strong arcade engine/rolling resistance, not a
+            # tire-brake command. Treating its measured ~0.61g deceleration as
+            # tire effort exhausted all grip on gravel (0.55g), making a car
+            # unable to turn the instant the throttle was released.
+            lateral_budget_g = _available_lateral_budget_g(
+                car.max_grip_g,
+                # Do not give longitudinal input absolute priority over
+                # steering. BRAKE is an intentionally super-physical arcade
+                # deceleration (28 m/s²); feeding it uncapped into a friction
+                # circle would make every braking car mathematically unable
+                # to turn. Reserve a small lateral share, approximating the
+                # combined-force scaling real tires perform at the limit.
+                min(longitudinal_tire_g, car.max_grip_g * 0.95),
+            )
+            # Rear-wheel drive under throttle: the front axle keeps the whole
+            # surface grip (that's the understeer ceiling), the rear axle's
+            # lateral grip is what the throttle spends (see RWD_DRIVE_LOAD_SHARE).
+            rear_budget_g = None
+            if throttle_driven and longitudinal_tire_g > 0.0 and car.speed > 0.0:
+                rear_budget_g = _available_lateral_budget_g(
+                    car.max_grip_g,
+                    min(longitudinal_tire_g * RWD_DRIVE_LOAD_SHARE, car.max_grip_g * 0.95),
+                )
+                lateral_budget_g = car.max_grip_g
             max_heading_rate = lateral_budget_g * GRAVITY_MPS2 / abs(car.speed)
 
             heading_rate = desired_heading_rate
             if abs(desired_heading_rate) > max_heading_rate:
+                steering_grip_limited = True
                 # Understeer (GRIP.md section 8): the tires physically
                 # cannot deliver more curvature than the surface's grip
                 # budget allows, so the car turns at that rate rather than
@@ -1403,8 +1600,9 @@ def update_car_physics(
                     if max_heading_rate > 1e-9
                     else FULL_SLIDE_RATIO * 4.0  # no lateral budget left at all (e.g. braking at the limit)
                 )
+                steering_overshoot = max(0.0, overshoot_ratio)
                 heading_rate = math.copysign(max_heading_rate, desired_heading_rate)
-                if physics_mode == "simulation":
+                if physics_mode == "simulation" and rear_budget_g is None:
                     # Oversteer: rear grip lost beyond the front's understeer
                     # limit builds a genuine drift angle, proportional to how
                     # far past the limit the driver is asking to turn, that
@@ -1414,6 +1612,33 @@ def update_car_physics(
                         car.drift_angle + math.copysign(max(0.0, overshoot_ratio) * DRIFT_BUILD_RATE * dt, heading_rate),
                         -MAX_DRIFT_ANGLE, MAX_DRIFT_ANGLE,
                     )
+            if rear_budget_g is not None:
+                # The model's binary steering turns far tighter than a real
+                # car's lock allows at low speed, which would read as huge
+                # lateral demand on the rear axle in a parking-lot crawl.
+                achieved_lateral_g = min(
+                    abs(heading_rate) * abs(car.speed), car.speed * car.speed / RWD_MIN_TURN_RADIUS_M,
+                ) / GRAVITY_MPS2
+                rear_overshoot = achieved_lateral_g / max(rear_budget_g, 1e-6) - 1.0
+                # Steering against an existing slide (counter-steer) catches
+                # it instead of feeding it: the slide is left to recover.
+                counter_steering = car.drift_angle != 0.0 and math.copysign(1.0, heading_rate) == math.copysign(
+                    1.0, car.drift_angle
+                )
+                if rear_overshoot > 0.0 and not counter_steering:
+                    overshoot = min(rear_overshoot, 4.0)
+                    steering_grip_limited = True
+                    steering_overshoot = max(steering_overshoot, overshoot)
+                    # The rear steps out: the nose swings further into the
+                    # corner than the car travels (velocity outward of the
+                    # nose), so the slide angle grows against the turn.
+                    heading_rate *= 1.0 + OVERSTEER_YAW_GAIN * min(overshoot, 1.0)
+                    target_drift = clamp(
+                        -math.copysign(overshoot * OVERSTEER_DRIFT_PER_OVERSHOOT, heading_rate),
+                        -OVERSTEER_MAX_DRIFT_ANGLE, OVERSTEER_MAX_DRIFT_ANGLE,
+                    )
+                    step = OVERSTEER_DRIFT_RATE * dt
+                    car.drift_angle = drift_before_decay + clamp(target_drift - drift_before_decay, -step, step)
             car.heading += heading_rate * dt
         elif car.lane_assist_enabled and car.time_since_last_steer >= 0.35 and car.speed > 1.5:
             # Lane assist: when enabled and driver hasn't steered for a moment, gently track lane center
@@ -1512,6 +1737,8 @@ def update_car_physics(
     else:
         car.lane_assist_active = False
 
+    if car.drift_angle:
+        car.speed -= car.speed * abs(math.sin(car.drift_angle)) * DRIFT_SPEED_SCRUB * dt
     movement_heading = car.heading + car.drift_angle
     dx = math.cos(movement_heading) * car.speed * dt
     dy = math.sin(movement_heading) * car.speed * dt
@@ -1521,20 +1748,25 @@ def update_car_physics(
     blocked = False
     has_road_data = (spatial_grid is not None) or (ways is not None and len(ways) > 0)
 
-    # Off-road driving is allowed by the game, with a higher cap on light-traffic ways.
+    # Off-road driving is allowed. Only sand/beach caps speed; grass and other
+    # soft ground is uncapped but sets car.ground_kind so next frame's grip is
+    # poor, and hard ground (pedestrian ways, plazas, lots) is unrestricted.
     if has_road_data and not block_offroad:
         target_on_road = is_point_on_road(
             target_x, target_y, ways=ways, spatial_grid=spatial_grid, car_roads_only=True
         )
-        if (
-            not target_on_road
-            and not is_point_on_parking_space(target_x, target_y, parking_spaces)
-            and not is_point_in_parking_lot(target_x, target_y, scenery_grid=scenery_grid)
+        if target_on_road:
+            car.ground_kind = "road"
+        elif (
+            is_point_on_parking_space(target_x, target_y, parking_spaces)
+            or is_point_in_parking_lot(target_x, target_y, scenery_grid=scenery_grid)
+            or is_point_on_light_traffic_way(target_x, target_y, ways=ways, spatial_grid=spatial_grid)
         ):
-            target_on_light_traffic = is_point_on_light_traffic_way(
-                target_x, target_y, ways=ways, spatial_grid=spatial_grid
-            )
-            speed_cap = LIGHT_TRAFFIC_MAX_SPEED if target_on_light_traffic else OFFROAD_MAX_SPEED
+            car.ground_kind = "hard"
+        else:
+            car.ground_kind = off_road_ground_kind(target_x, target_y, scenery_grid=scenery_grid)
+        if car.ground_kind == "sand":
+            speed_cap = SAND_MAX_SPEED
             if throttle > 0.0:
                 if car.speed < 0.0:
                     car.speed = min(0.0, car.speed + ACCEL * dt)
@@ -1621,5 +1853,10 @@ def update_car_physics(
     # here), so it reflects whatever actually happened above - acceleration,
     # braking, steering, drift, being blocked by a road edge, everything -
     # not just steering input (see _update_g_force).
-    _update_g_force(car, entry_x, entry_y, entry_heading, dt)
+    _update_g_force(
+        car, entry_x, entry_y, entry_heading, dt,
+        grip_longitudinal_g=None if blocked else longitudinal_tire_g,
+        grip_was_limited=steering_grip_limited,
+        grip_overshoot=steering_overshoot,
+    )
     return blocked

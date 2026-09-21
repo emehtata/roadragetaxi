@@ -6,7 +6,10 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from .geo import clamp, closest_point_and_dist_to_segment, compute_bbox, dist_point_to_segment, get_oriented_box_corners, point_in_polygon, segments_intersect
 from .osm import Building, Curb, Place, SpeedBump, TaxiStop, Way
-from .physics import Car, SpatialWayGrid, connected_drivable_ways, is_car_road, is_point_on_road, is_violating_oneway
+from .physics import (
+    Car, SpatialWayGrid, connected_drivable_ways, is_car_road, is_point_on_light_traffic_way, is_point_on_road,
+    is_violating_oneway,
+)
 from .localization import tr
 from .police import SpeedCamera, camera_sees_car
 from .residents import Resident, ResidentManager
@@ -189,6 +192,7 @@ class TaxiManager:
         self.speed_camera_notice_msg: str = ""
         self.wrong_way_duration: float = 0.0
         self.wrong_way_penalty_cooldown: float = 0.0
+        self.pedestrian_way_penalty_cooldown: float = 0.0
 
     def _new_passenger_identity(self, resident: Optional[Resident] = None) -> tuple[str, str, int]:
         resident = resident or self.residents.create("walking")
@@ -270,25 +274,31 @@ class TaxiManager:
             self._tree_collision_grid.clear()
             self._tree_collision_indexed = {}
             self._tree_collision_ref = sceneries
-        shrank = any(
-            len(getattr(scenery, "trees", ())) < self._tree_collision_indexed.get(scenery_index, 0)
-            for scenery_index, scenery in enumerate(sceneries)
-        )
-        if shrank:
-            self._tree_collision_grid.clear()
-            self._tree_collision_indexed = {}
-        for scenery_index, scenery in enumerate(sceneries):
-            trees = getattr(scenery, "trees", ())
-            indexed = self._tree_collision_indexed.get(scenery_index, 0)
-            if len(trees) <= indexed:
-                continue
-            for tree_index in range(indexed, len(trees)):
-                tree_x, tree_y = trees[tree_index]
-                cell = (math.floor(tree_x / 100.0), math.floor(tree_y / 100.0))
-                self._tree_collision_grid.setdefault(cell, []).append(
-                    (scenery_index, tree_index, tree_x, tree_y)
-                )
-            self._tree_collision_indexed[scenery_index] = len(trees)
+        # Single pass per call (this runs every frame, and scales with the
+        # total loaded scenery count): a shrunk tree list found mid-pass
+        # clears the index and restarts the pass, instead of a separate
+        # full shrink-check scan running ahead of every indexing pass.
+        for _attempt in range(2):
+            rebuild = False
+            for scenery_index, scenery in enumerate(sceneries):
+                trees = getattr(scenery, "trees", ())
+                indexed = self._tree_collision_indexed.get(scenery_index, 0)
+                if len(trees) == indexed:
+                    continue
+                if len(trees) < indexed:
+                    self._tree_collision_grid.clear()
+                    self._tree_collision_indexed = {}
+                    rebuild = True
+                    break
+                for tree_index in range(indexed, len(trees)):
+                    tree_x, tree_y = trees[tree_index]
+                    cell = (math.floor(tree_x / 100.0), math.floor(tree_y / 100.0))
+                    self._tree_collision_grid.setdefault(cell, []).append(
+                        (scenery_index, tree_index, tree_x, tree_y)
+                    )
+                self._tree_collision_indexed[scenery_index] = len(trees)
+            if not rebuild:
+                break
         nearby = []
         for cell in self._collision_cells(x - radius, y - radius, x + radius, y + radius):
             nearby.extend(self._tree_collision_grid.get(cell, ()))
@@ -785,6 +795,32 @@ class TaxiManager:
             self.wrong_way_duration = 0.0
             self.wrong_way_penalty_cooldown = 0.0
             return False
+
+    def check_pedestrian_way_violation(
+        self,
+        car: Car,
+        dt: float,
+        ways: Optional[List[Way]] = None,
+        spatial_grid: Optional[SpatialWayGrid] = None,
+        penalty: int = 50,
+        interval_s: float = 5.0,
+    ) -> bool:
+        """Driving along a footway/path/cycleway is never slowed down, but
+        costs penalty points every interval_s, like driving the wrong way
+        on a one-way road."""
+        if abs(car.speed) < 1.5 or is_point_on_road(
+            car.x, car.y, ways=ways, spatial_grid=spatial_grid, car_roads_only=True, layer=car.layer
+        ) or not is_point_on_light_traffic_way(car.x, car.y, ways=ways, spatial_grid=spatial_grid):
+            self.pedestrian_way_penalty_cooldown = 0.0
+            return False
+        self.pedestrian_way_penalty_cooldown += dt
+        if self.pedestrian_way_penalty_cooldown >= interval_s:
+            self.pedestrian_way_penalty_cooldown = 0.0
+            self.total_score -= penalty
+            self.notification_msg = tr(self.language, "pedestrian_way_penalty", penalty=penalty)
+            self.notification_timer = 3.5
+            logger.info("Player driving on a pedestrian way: -%d pts penalty", penalty)
+        return True
 
     def sync_map_data(
         self,

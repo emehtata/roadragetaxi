@@ -8,11 +8,11 @@ from theroadragetrip.main import (
     _city_menu_index,
     _map_sync_should_start,
     _mode_menu_navigate,
-    _rage_from_speeding,
     _resolve_osm_fetch_func,
     _respawn_allowed,
     MODE_MENU_OPTION_COUNT,
 )
+from theroadragetrip.simulation import _rage_from_speeding
 
 
 def test_respawn_is_blocked_while_driver_is_on_foot():

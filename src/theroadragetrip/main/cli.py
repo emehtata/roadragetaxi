@@ -13,8 +13,12 @@ from ..osm import (
 logger = logging.getLogger(__name__)
 
 
-def parse_args(config=None, city_names=None) -> argparse.Namespace:
-    p = argparse.ArgumentParser(description="The Road Rage Trip (OSM PoC)")
+def parse_args(config=None, city_names=None, parser: Optional[argparse.ArgumentParser] = None) -> argparse.Namespace:
+    """Builds (or extends, if `parser` is given) the shared argparse
+    surface for world-selection flags. `server/cli.py` passes its own
+    parser in, with --host/--port/--tick-rate already added, so both
+    processes accept identical world arguments from one definition."""
+    p = parser if parser is not None else argparse.ArgumentParser(description="The Road Rage Trip (OSM PoC)")
     game = config["game"] if config else {}
     map_config = config["map"] if config else {}
     traffic_config = config["traffic"] if config else {}
@@ -32,6 +36,20 @@ def parse_args(config=None, city_names=None) -> argparse.Namespace:
     p.add_argument("--use-sample", action="store_true", default=game.getboolean("use_sample", fallback=False), help="Use bundled sample OSM data and skip Overpass")
     p.add_argument("--px-per-m", type=float, default=game.getfloat("px_per_m", fallback=9.0), help="Initial pixels per meter (zoom)")
     p.add_argument("--log-level", type=str, default=game.get("log_level", "INFO"), help="Logging level (DEBUG/INFO/WARNING)")
+    p.add_argument(
+        "--headless",
+        type=int,
+        default=0,
+        metavar="N",
+        help="Run N simulation ticks with no rendering/input and exit (proof-of-concept for a future server/headless mode)",
+    )
+    p.add_argument(
+        "--connect",
+        type=str,
+        default=None,
+        metavar="HOST:PORT",
+        help="Connect to an already-running `python -m theroadragetrip.server` instead of embedding one",
+    )
     p.add_argument("--no-cache", action="store_true", default=game.getboolean("no_cache", fallback=False), help="Disable cache usage (treated like force-refresh)")
     p.add_argument(
         "--osm-source",

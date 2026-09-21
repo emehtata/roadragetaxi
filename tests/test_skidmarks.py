@@ -120,3 +120,121 @@ def test_trail_bbox_lets_out_of_view_trails_be_skipped_cheaply():
         assert colors - {(255, 255, 255)}, "the in-view trail should still draw normally"
     finally:
         pygame.quit()
+
+
+def test_coasting_corners_do_not_leave_marks_at_ordinary_speed():
+    """Binary full-lock steering saturates the grip clamp on most ordinary
+    turns; an unpowered corner at ordinary speed must not draw marks (the
+    driven case is covered by tests/test_rwd_oversteer.py)."""
+    from theroadragetrip.physics import Car, skidmark_should_mark, update_car_physics
+
+    for mode in ("arcade", "simulation"):
+        for speed in (5.0, 8.0):
+            car = Car(x=0.0, y=0.0, heading=0.0, speed=speed)
+            marks = 0
+            for _ in range(60):
+                update_car_physics(car, 0.0, 0.0, 1.0, 0.0, 1 / 60, ways=[], block_offroad=False, physics_mode=mode)
+                marks += skidmark_should_mark(car.skid_amount)
+            assert marks == 0
+
+
+def test_a_spinning_cars_marks_are_a_ring_not_a_filled_blob():
+    """Reported: donut skidmarks came out as a filled star-shaped blob. A
+    car circling with the rear tyres sliding must leave two thin rings."""
+    import math
+    import os
+    os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
+    import pygame
+    from theroadragetrip.render import TireTrail, draw_tire_tracks
+
+    pygame.init()
+    screen = pygame.Surface((400, 400))
+    screen.fill((0, 0, 0))
+    radius = 5.0  # m, centre path of the car
+    trail = None
+    heading = 0.0
+    for step in range(0, 361, 4):  # one sample per 4 degrees of heading, like main()
+        angle = math.radians(step)
+        x, y = radius * math.sin(angle), radius * (1 - math.cos(angle))
+        heading = angle
+        if trail is None:
+            trail = TireTrail(False, x, y, heading, 1.0)
+        else:
+            trail.add(x, y, heading, 1.0)
+    draw_tire_tracks(screen, [trail], 0.0, radius, grass=False, px_per_m=20.0, screen_w=400, screen_h=400)
+    lit = sum(1 for x in range(400) for y in range(400) if screen.get_at((x, y))[0] > 0)
+    # Two rings of ~2*pi*r*px each, ~5px wide, is a few thousand px; a filled
+    # disc of the same size would be ~30k+.
+    assert 0 < lit < 9000
+
+
+def test_both_tyre_marks_sit_side_by_side_at_any_heading():
+    """The two tyres of a mark must be perpendicular to the car's heading
+    (side by side at the rear axle), not offset diagonally along it."""
+    import math
+    import os
+    os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
+    import pygame
+    from theroadragetrip.render import TireTrail, draw_tire_tracks
+
+    pygame.init()
+    for heading_deg in (0, 30, 45, 90, 135, 200):
+        heading = math.radians(heading_deg)
+        screen = pygame.Surface((400, 400))
+        screen.fill((0, 0, 0))
+        trail = TireTrail(False, 0.0, 0.0, heading, 1.0)
+        # Drive straight ahead along the heading so each tyre draws a line
+        # parallel to it; the two lines' perpendicular separation is the track.
+        for step in range(1, 6):
+            trail.add(math.cos(heading) * step, math.sin(heading) * step, heading, 1.0)
+        draw_tire_tracks(screen, [trail], 2.0 * math.cos(heading), 2.0 * math.sin(heading), grass=False,
+                         px_per_m=20.0, screen_w=400, screen_h=400)
+        pts = [(x, y) for x in range(400) for y in range(400) if screen.get_at((x, y))[0] > 0]
+        assert pts
+        # Project every lit pixel on the car's screen-space lateral axis:
+        # two tyres 1.44 m (28.8 px) apart -> two clusters of about that separation.
+        lat = sorted(x * -math.sin(heading) + y * -math.cos(heading) for x, y in pts)
+        assert 22.0 < lat[-1] - lat[0] < 36.0, (heading_deg, lat[-1] - lat[0])
+
+
+def test_excessive_braking_from_high_speed_locks_the_front_tyres_too():
+    from theroadragetrip.physics import Car, update_car_physics
+
+    def brake(speed, mode="simulation"):
+        car = Car(x=0.0, y=0.0, heading=0.0, speed=speed)
+        locked = False
+        for _ in range(20):
+            update_car_physics(car, 0.0, 1.0, 0.0, 0.0, 1 / 60, ways=[], block_offroad=False, physics_mode=mode)
+            locked = locked or car.front_lockup
+        return locked
+
+    for mode in ("arcade", "simulation"):
+        assert brake(30.0, mode)       # ~108 km/h panic stop
+        assert not brake(8.0, mode)    # low speed: rears only
+
+
+def test_front_lockup_trails_draw_four_marks_and_others_two():
+    import math
+    import os
+    os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
+    import pygame
+    from theroadragetrip.render import TireTrail, draw_tire_tracks
+
+    pygame.init()
+
+    def lit(front):
+        screen = pygame.Surface((400, 400))
+        screen.fill((0, 0, 0))
+        trail = TireTrail(False, 0.0, 0.0, 0.0, 1.0, False, front)
+        for step in range(1, 6):
+            trail.add(float(step), 0.0, 0.0, 1.0, front)
+        draw_tire_tracks(screen, [trail], 2.5, 0.0, grass=False, px_per_m=20.0, screen_w=400, screen_h=400)
+        cols = {y for x in range(400) for y in range(400) if screen.get_at((x, y))[0] > 0}
+        rows = sorted(cols)
+        clusters = 1 + sum(1 for a, b in zip(rows, rows[1:]) if b - a > 3)
+        return sum(1 for x in range(400) for y in range(400) if screen.get_at((x, y))[0] > 0), clusters
+
+    rear_px, rear_clusters = lit(False)
+    all_px, all_clusters = lit(True)
+    assert rear_clusters == 2
+    assert all_px > rear_px * 1.3  # front marks add to the rear ones (same two lanes, 2.4 m ahead)

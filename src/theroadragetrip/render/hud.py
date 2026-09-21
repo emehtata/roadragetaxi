@@ -561,6 +561,10 @@ def draw_frame_profiler(screen, font, profiler, npc_count: int, pedestrian_count
         f"SPIKES {snapshot['spikes']} | culprit {snapshot['spike_subsystem'] or 'none'}",
         f"NPC {npc_count} | pedestrians {pedestrian_count}",
     ]
+    if snapshot.get("spike_sections"):
+        lines.append("LAST " + " | ".join(
+            f"{name} {duration:.1f}ms" for name, duration in snapshot["spike_sections"][:3]
+        ))
     lines.extend(
         f"{name}: {value}"
         for name, value in snapshot["metrics"].items()
@@ -666,7 +670,8 @@ def draw_npc_debug_panel(screen, vehicle, driver, font, x: int = 10, y: int = 22
         f"NPC vehicle={vehicle.vehicle_id} resident={vehicle.owner_id} plugin={getattr(vehicle, 'vehicle_type', '?')}",
         f"state={state_label} speed={vehicle.speed * 3.6:.0f}km/h target={driver.target_speed_mps * 3.6:.0f}km/h",
         f"way={way_label} next={next_way_label} route={driver.path_index}/{len(driver.path) - 1} maneuver={driver.next_maneuver}",
-        f"lane={lane_bias} {signal_label}",
+        f"lane={lane_bias} lookahead={getattr(driver, 'lookahead_distance_m', 0.0):.1f}m "
+        f"steer={getattr(driver, 'steering_input', 0.0):+.2f} {signal_label}",
         f"traffic={decision.action} ({decision.reason}) stop_dist={stop_dist}",
         f"dest=({driver.destination[0]:.0f},{driver.destination[1]:.0f}) progress={driver.route_progress * 100.0:.0f}%",
         (
@@ -727,21 +732,38 @@ def draw_npc_debug_panel(screen, vehicle, driver, font, x: int = 10, y: int = 22
         screen.blit(font.render(line, True, (215, 225, 230)), (x + 8, y + 5 + i * 16))
 
 
-def draw_npc_population_panel(screen, counts: dict, font, x: int = 10, y: int = 220, by_type: Optional[dict] = None) -> None:
+def draw_npc_population_panel(
+    screen, counts: dict, font, x: int = 10, y: int = 220, by_type: Optional[dict] = None,
+    visible_count: Optional[int] = None,
+) -> None:
     """F7 debug overlay, NPC-003 section 25: population-wide counts
     (total/parked/driving/reserved/household/autonomous) alongside the
     single-vehicle panel above. `counts` is NPCVehicleManager.
     population_counts()'s dict - no import of npc.py needed here, same
     duck-typing as draw_npc_debug_panel. `by_type`, if given, is
     NPCVehicleManager.population_counts_by_type()'s {plugin_id: count}
-    dict (NPC-003 v2 section 22's "vehicles by plugin type")."""
+    dict (NPC-003 v2 section 22's "vehicles by plugin type").
+    `visible_count`, if given, is how many NPCs draw_npc_cars actually
+    drew this frame (client-server-016.md section 17 - now uncapped, so
+    this can be less than `total` for viewport/LOD reasons alone, never
+    an arbitrary render limit)."""
     import pygame
 
     lines = [
         "NPC population",
-        f"total={counts['total']} parked={counts['parked']} driving={counts['driving']}",
+        f"total={counts['total']} parked={counts['parked']} driving={counts['driving']}"
+        f" (target={counts.get('moving_target', '?')})",
         f"reserved={counts['reserved']} household={counts['household']} autonomous={counts['autonomous']}",
     ]
+    if counts.get("road_rage"):
+        lines.append(f"road_rage={counts['road_rage']}")
+    if counts.get("trip_start_attempts") or counts.get("waiting_for_trips"):
+        lines.append(
+            f"trip starts={counts.get('successful_trip_starts', 0)}/{counts.get('trip_start_attempts', 0)} "
+            f"fail={counts.get('route_failures', 0)} waiting={counts.get('waiting_for_trips', 0)}"
+        )
+    if visible_count is not None:
+        lines.append(f"visible={visible_count}")
     if by_type:
         lines.append("by type: " + ", ".join(f"{vehicle_id}={count}" for vehicle_id, count in sorted(by_type.items())))
     panel_w = 300

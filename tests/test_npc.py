@@ -23,6 +23,8 @@ from theroadragetrip.npc import (
     NPC_GROUP_RETURN_GRACE_S,
     NPC_AVOIDANCE_MIN_GAP_M,
     NPC_REVERSE_DISTANCE_M,
+    NPC_ROAD_RAGE_REACTION_DURATION_S,
+    NPC_ROAD_RAGE_YIELD_SPEED_MPS,
     NPC_STUCK_CHECK_INTERVAL_S,
     NPC_STUCK_TIMEOUT_S,
     _update_npc_reversing,
@@ -30,6 +32,7 @@ from theroadragetrip.npc import (
     _building_yard_point,
     _corner_safe_speed_mps,
     _distance_to_next_turn,
+    _path_follow_target,
     _parking_space_dimensions,
     _parking_space_fits_vehicle,
     _pick_npc_destination,
@@ -166,6 +169,26 @@ def test_route_progression_advances():
     for _ in range(600):
         update_npc(vehicle, driver, 1.0 / 60.0, tw, residents)
     assert driver.path_index > start_index
+
+
+def test_path_follower_lookahead_grows_with_speed_and_ignores_dense_waypoint_switching():
+    path = [PathPoint(float(x), 0.0) for x in range(0, 31)]
+    slow = Driver(1, 1, path, (30.0, 0.0))
+    fast = Driver(1, 1, path, (30.0, 0.0))
+    slow_target, slow_distance = _path_follow_target(slow, 0.2, 0.4, 1.0)
+    fast_target, fast_distance = _path_follow_target(fast, 0.2, 0.4, 20.0)
+    assert fast_distance > slow_distance
+    assert fast_target.x > slow_target.x
+    assert slow_target.y == fast_target.y == 0.0
+
+
+def test_path_follower_projects_onto_curve_instead_of_chasing_nearest_vertex():
+    path = [PathPoint(0.0, 0.0), PathPoint(10.0, 0.0), PathPoint(20.0, 10.0), PathPoint(20.0, 20.0)]
+    driver = Driver(1, 1, path, (20.0, 20.0))
+    target, _ = _path_follow_target(driver, 8.0, 0.5, 8.0)
+    assert target.x > 10.0
+    assert target.y > 0.0
+    assert driver.route_segment_index <= 1
 
 
 def test_deterministic_npc_eventually_reaches_its_destination():
@@ -1199,6 +1222,77 @@ def test_update_npc_avoidance_uses_the_steering_target_not_the_lagging_current_h
     assert driver.target_speed_mps < 5.0
 
 
+def test_trigger_road_rage_finds_the_nearest_driving_vehicle_ahead():
+    """NPC-005: the player's horn/Road Rage action must reach exactly one
+    real driver - the nearest currently-driving vehicle ahead - not a
+    whole area, and never a parked one."""
+    from theroadragetrip.npc import NPCVehicleManager
+
+    ways = _straight_chain(count=20)
+    tw = TrafficWorld(ways)
+    residents = ResidentManager()
+    manager = NPCVehicleManager(target_count=0)
+
+    near = spawn_npc(1, residents, tw, ways, (20.0, 0.0), (200.0, 0.0))
+    far = spawn_npc(2, residents, tw, ways, (60.0, 0.0), (200.0, 0.0))
+    assert near is not None and far is not None
+    for _, driver, vehicle in (near, far):
+        manager.vehicles.append(vehicle)
+        manager.drivers[vehicle.vehicle_id] = driver
+
+    reacted_id = manager.trigger_road_rage(0.0, 0.0, 0.0, sim_time=100.0)
+
+    assert reacted_id == near[2].vehicle_id
+    assert near[1].road_rage_until_sim_time == 100.0 + NPC_ROAD_RAGE_REACTION_DURATION_S
+    assert far[1].road_rage_until_sim_time is None
+
+
+def test_trigger_road_rage_ignores_parked_vehicles_and_returns_none_if_nothing_ahead():
+    from theroadragetrip.npc import NPCVehicleManager
+
+    ways = _straight_chain(count=20)
+    tw = TrafficWorld(ways)
+    residents = ResidentManager()
+    manager = NPCVehicleManager(target_count=0)
+
+    result = spawn_npc(1, residents, tw, ways, (20.0, 0.0), (200.0, 0.0))
+    assert result is not None
+    _, driver, vehicle = result
+    vehicle.state = NPCState.PARKED
+    manager.vehicles.append(vehicle)
+    manager.drivers[vehicle.vehicle_id] = driver
+
+    assert manager.trigger_road_rage(0.0, 0.0, 0.0, sim_time=100.0) is None
+    assert driver.road_rage_until_sim_time is None
+
+
+def test_update_npc_yields_while_road_raged_then_resumes():
+    """The reacting driver must actually slow down while road_rage_until_
+    sim_time is in the future, and resume normal driving once it elapses
+    - the vehicle never disappears or changes state, only its speed
+    ceiling changes (see update_npc's own comment on why this is a timed
+    clamp, not a new NPCState)."""
+    ways = _straight_chain(count=20)
+    tw = TrafficWorld(ways)
+    residents = ResidentManager()
+    result = spawn_npc(1, residents, tw, ways, (0.0, 0.0), (200.0, 0.0))
+    assert result is not None
+    _, driver, vehicle = result
+    vehicle.car.speed = 10.0
+    driver.road_rage_until_sim_time = tw.sim_time + NPC_ROAD_RAGE_REACTION_DURATION_S
+
+    update_npc(vehicle, driver, 1.0 / 60.0, tw, residents)
+
+    assert driver.target_speed_mps <= NPC_ROAD_RAGE_YIELD_SPEED_MPS
+    assert vehicle.debug_waiting_for == "yielding to road rage"
+    assert vehicle.state != NPCState.CRASHED  # still a normal, simulated, existing vehicle
+
+    tw.advance_time(NPC_ROAD_RAGE_REACTION_DURATION_S + 1.0)
+    update_npc(vehicle, driver, 1.0 / 60.0, tw, residents)
+
+    assert driver.road_rage_until_sim_time is None
+
+
 def test_update_npc_stuck_detection_triggers_recovery_after_timeout():
     """NPC-004 section 3/8: a vehicle that wants to move but makes no real
     progress for NPC_STUCK_TIMEOUT_S must flag itself for recovery -
@@ -1483,7 +1577,27 @@ def test_draw_npc_cars_debug_fallback_still_works_without_a_travel_route():
     draw_npc_cars(screen, [parked_like_npc], 10.0, 0.0, ways=[way], show_debug=True)
 
 
-def test_spawn_npc_creates_a_trip_group_not_exceeding_capacity():
+def test_draw_npc_cars_has_no_cap_and_returns_the_drawn_count():
+    """Regression (client-server-016.md section 3): MAX_VISIBLE_NPC_COUNT
+    used to silently stop drawing bodies after the first 17 in-viewport
+    NPCs, with no relation to how many actually fit on screen. Culling is
+    viewport-based only now - every in-viewport npc gets drawn, and the
+    return value (new - used for the F7 population panel's "visible"
+    counter) reports exactly how many that was."""
+    pygame.init()
+    screen = pygame.display.set_mode((400, 300))
+    way = Way(points_m=[(0.0, 0.0), (400.0, 0.0)], highway="residential", half_width_m=4.5)
+    npcs = [
+        SimpleNamespace(
+            x=float(i) * 5.0, y=0.0, heading=0.0, speed=0.0, length_m=4.0, width_m=1.8, layer=0,
+            color=(150, 150, 150), way=way, segment_idx=0, direction=1, lod_level=0, travel_route=None,
+        )
+        for i in range(25)
+    ]
+
+    drawn = draw_npc_cars(screen, npcs, 0.0, 0.0, ways=[way])
+
+    assert drawn == 25
     """multi-passenger-car.md sections 2, 4, 5: group size never exceeds
     capacity, and it's never auto-filled."""
     ways = _straight_chain()

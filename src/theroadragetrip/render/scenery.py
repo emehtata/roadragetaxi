@@ -229,8 +229,29 @@ def _scenery_speckle_positions(
     always lands on the same candidate point, unlike a per-rebuild random
     draw, which would make the texture visibly reshuffle itself every
     time the camera moves)."""
+    state = [0]
+    points = [pt for pt in _speckle_scan(
+        points_m, seed, vminx, vminy, vmaxx, vmaxy, max_points, max_candidates, state,
+    ) if pt is not None]
+    return points, state[0]
+
+
+_SPECKLE_CHECKPOINT_EVERY = 32  # candidates between resumable-scan yield points
+
+
+def _speckle_scan(
+    points_m, seed: int,
+    vminx: float, vminy: float, vmaxx: float, vmaxy: float,
+    max_points: int, max_candidates: int, state: list,
+):
+    """The scan _scenery_speckle_positions documents, as a generator so a
+    frame-budgeted caller (_advance_scenery_rebuild) can stop and resume
+    it: yields each accepted (x, y, variant), plus a None checkpoint every
+    _SPECKLE_CHECKPOINT_EVERY candidates. state[0] tracks candidates
+    examined. One large polygon's point-in-polygon scan used to be a
+    single ~30ms chunk that blew the 4ms per-frame rebuild budget."""
     if max_points <= 0 or max_candidates <= 0:
-        return [], 0
+        return
     xs = [p[0] for p in points_m]
     ys = [p[1] for p in points_m]
     minx = max(min(xs), vminx)
@@ -238,7 +259,7 @@ def _scenery_speckle_positions(
     miny = max(min(ys), vminy)
     maxy = min(max(ys), vmaxy)
     if minx >= maxx or miny >= maxy:
-        return [], 0
+        return
     spacing = _SPECKLE_SPACING_M
     start_gx = int(minx // spacing)
     end_gx = int(maxx // spacing) + 1
@@ -250,24 +271,24 @@ def _scenery_speckle_positions(
     stride = 1
     if total_cells > max_candidates:
         stride = max(1, math.ceil(math.sqrt(total_cells / max_candidates)))
-    points: List[Tuple[float, float, float]] = []
-    examined = 0
+    accepted = 0
     for gx in range(start_gx, end_gx, stride):
         for gy in range(start_gy, end_gy, stride):
-            examined += 1
+            state[0] += 1
             h = _grid_hash(seed, gx, gy)
             jx = (h & 0xFFF) / 4095.0
             jy = ((h >> 12) & 0xFFF) / 4095.0
             x = gx * spacing + (_SPECKLE_INSET + jx * _SPECKLE_JITTER_SPAN) * spacing
             y = gy * spacing + (_SPECKLE_INSET + jy * _SPECKLE_JITTER_SPAN) * spacing
             if point_in_polygon(x, y, points_m):
-                variant = ((h >> 24) & 0xFF) / 255.0
-                points.append((x, y, variant))
-                if len(points) >= max_points:
-                    return points, examined
-            if examined >= max_candidates:
-                return points, examined
-    return points, examined
+                yield x, y, ((h >> 24) & 0xFF) / 255.0
+                accepted += 1
+                if accepted >= max_points:
+                    return
+            if state[0] >= max_candidates:
+                return
+            if state[0] % _SPECKLE_CHECKPOINT_EVERY == 0:
+                yield None
 
 
 TREE_CROWN_COLORS = ((25, 78, 29), (34, 101, 35), (48, 119, 42), (63, 112, 34))
@@ -375,8 +396,11 @@ def draw_scenery(
         _scenery_wip = _start_scenery_rebuild(sceneries, spatial_grid, frame_cache_key, camx, camy, cache_zoom, screen_w, screen_h)
 
     rebuild_started = time.perf_counter() if profiler is not None else None
-    deadline = float("inf") if is_first_ever_build else time.perf_counter() + INCREMENTAL_REBUILD_BUDGET_S
+    deadline = common._incremental_rebuild_deadline(
+        "scenery", is_first_ever_build, INCREMENTAL_REBUILD_BUDGET_S,
+    )
     finished = _advance_scenery_rebuild(_scenery_wip, deadline)
+    common._finish_incremental_rebuild("scenery", finished)
     if profiler is not None:
         profiler.record("render:scenery_cache_rebuild", (time.perf_counter() - rebuild_started) * 1000.0)
 
@@ -504,7 +528,24 @@ def _advance_scenery_rebuild(job: dict, deadline: float) -> bool:
     dot_radius = max(1, round(px_per_m * 0.1))
 
     made_progress_this_call = False
-    while job["index"] < len(visible_sceneries):
+    while True:
+        pending = job.get("speckle_scan")
+        if pending is not None:
+            gen, state, color = pending
+            for item in gen:
+                if item is None:
+                    if time.perf_counter() >= deadline:
+                        return False
+                    continue
+                wx, wy, variant = item
+                job["speckle_budget"] -= 1
+                sx, sy = world_to_screen(wx, wy, camx, camy, px_per_m, screen_w, screen_h)
+                pygame.draw.circle(screen, _speckle_color(color, variant), (sx, sy), dot_radius)
+            job["speckle_candidate_budget"] -= state[0]
+            job["speckle_scan"] = None
+            made_progress_this_call = True
+        if job["index"] >= len(visible_sceneries):
+            break
         if made_progress_this_call and time.perf_counter() >= deadline:
             return False
         sc = visible_sceneries[job["index"]]
@@ -539,14 +580,15 @@ def _advance_scenery_rebuild(job: dict, deadline: float) -> bool:
             and job["speckle_candidate_budget"] > 0
         ):
             seed = hash(bb) if bb else hash(points_m[0])
-            speckles, examined = _scenery_speckle_positions(
-                points_m, seed, vminx, vminy, vmaxx, vmaxy, job["speckle_budget"], job["speckle_candidate_budget"]
+            state = [0]
+            job["speckle_scan"] = (
+                _speckle_scan(
+                    points_m, seed, vminx, vminy, vmaxx, vmaxy,
+                    job["speckle_budget"], job["speckle_candidate_budget"], state,
+                ),
+                state,
+                color,
             )
-            job["speckle_budget"] -= len(speckles)
-            job["speckle_candidate_budget"] -= examined
-            for wx, wy, variant in speckles:
-                sx, sy = world_to_screen(wx, wy, camx, camy, px_per_m, screen_w, screen_h)
-                pygame.draw.circle(screen, _speckle_color(color, variant), (sx, sy), dot_radius)
     return True
 
 
@@ -749,18 +791,17 @@ def _draw_trees_uncached(
         trees = getattr(sc, "trees", [])
         if not trees:
             continue
-        visible_tree_count = sum(
-            1 for tree_x, tree_y in trees
+        # Road test once per tree (it's the costly part - a spatial-grid
+        # lookup per tree, ~44ms per cache rebuild when run twice).
+        drawable_trees = [
+            (tree_index, tree_x, tree_y)
+            for tree_index, (tree_x, tree_y) in enumerate(trees)
             if vminx <= tree_x <= vmaxx
             and vminy <= tree_y <= vmaxy
             and not tree_is_on_road(tree_x, tree_y)
-        )
-        tree_step = max(1, math.ceil(visible_tree_count / tree_budget))
-        for tree_index, (tree_x, tree_y) in enumerate(trees):
-            if not (vminx <= tree_x <= vmaxx and vminy <= tree_y <= vmaxy):
-                continue
-            if tree_is_on_road(tree_x, tree_y):
-                continue
+        ]
+        tree_step = max(1, math.ceil(len(drawable_trees) / tree_budget))
+        for tree_index, tree_x, tree_y in drawable_trees:
             tree_key = (id(sc), tree_index)
             effect = (tree_effects or {}).get(tree_key, {})
             if tree_step > 1 and tree_index % tree_step and tree_key not in (fallen_trees or set()) and effect.get("shake", 0.0) <= 0.0:

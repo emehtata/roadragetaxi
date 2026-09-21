@@ -7,16 +7,20 @@ import random
 os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
 
 from theroadragetrip.npc import (
+    Driver,
     NPCAvailability,
     NPCState,
     NPCVehicleManager,
+    PathPoint,
     TripGroup,
+    _begin_trip_on_vehicle,
     has_active_driver,
     place_parked_npc,
     spawn_npc,
 )
 from theroadragetrip.osm import Way
 from theroadragetrip.pedestrian import PedestrianManager
+from theroadragetrip.physics import Car
 from theroadragetrip.residents import ResidentManager
 from theroadragetrip.traffic_world import TrafficWorld
 
@@ -82,6 +86,23 @@ def test_place_one_rejects_a_point_another_vehicle_is_already_driving_toward():
     assert free_point is not None
 
 
+def test_rebuild_spatial_grid_tracks_a_vehicle_after_it_moves():
+    """The generic grid caches synthetic point bboxes, but an NPC's index
+    position must follow its live pose on every manager rebuild."""
+    manager = NPCVehicleManager(target_count=1)
+    vehicle = place_parked_npc(1, (0.0, 0.0), None, vehicle_type="car")
+    manager.vehicles.append(vehicle)
+    manager.rebuild_spatial_grid()
+    assert vehicle in list(manager.nearby_vehicles_at(0.0, 0.0, 5.0))
+
+    vehicle.car.x = 250.0
+    vehicle.car.y = 125.0
+    manager.rebuild_spatial_grid()
+
+    assert vehicle in list(manager.nearby_vehicles_at(250.0, 125.0, 5.0))
+    assert vehicle not in list(manager.nearby_vehicles_at(0.0, 0.0, 5.0))
+
+
 def test_populate_initial_reports_progress_gradually():
     ways = _city_block_grid()
     manager = NPCVehicleManager(target_count=8, spawn_radius_m=_SPAWN_RADIUS_M, vehicle_distribution={"car": 1.0})
@@ -121,7 +142,9 @@ def test_population_tick_tops_up_gradually_not_in_one_tick():
     """Section 19/23: a fresh population well below target must not fill
     to target_count in a single population tick - only NPC_POPULATION_
     SPAWN_LIMIT_PER_TICK new vehicles per tick."""
-    from theroadragetrip.npc import NPC_POPULATION_SPAWN_LIMIT_PER_TICK, NPC_POPULATION_TICK_S
+    from theroadragetrip.npc import (
+        NPC_POPULATION_SPAWN_LIMIT_PER_TICK, NPC_POPULATION_TICK_S, NPC_TRANSIT_SPAWNS_PER_TICK,
+    )
 
     ways = _city_block_grid()
     manager = NPCVehicleManager(target_count=20, spawn_radius_m=_SPAWN_RADIUS_M, vehicle_distribution={"car": 1.0})
@@ -129,8 +152,151 @@ def test_population_tick_tops_up_gradually_not_in_one_tick():
     residents = ResidentManager()
     px, py = _CENTER
     manager.update(NPC_POPULATION_TICK_S, px, py, residents, traffic_world, ways)
-    assert 0 < len(manager.vehicles) <= NPC_POPULATION_SPAWN_LIMIT_PER_TICK
+    assert 0 < len(manager.vehicles) <= NPC_POPULATION_SPAWN_LIMIT_PER_TICK + NPC_TRANSIT_SPAWNS_PER_TICK
     assert len(manager.vehicles) < manager.target_count
+
+
+def test_trip_start_attempts_boost_when_below_the_moving_traffic_target(monkeypatch):
+    """NPC-005: a flat 1-attempt-per-tick cap meant the steady-state
+    driving count settled far below target_count regardless of
+    population size - "roads full of parked cars" (the reported bug).
+    When the population is under its moving-traffic target, more than
+    one idle vehicle must get a real trip-start attempt in the same
+    tick."""
+    from theroadragetrip.npc import (
+        NPC_POPULATION_TICK_S,
+        NPC_TRIP_START_ATTEMPTS_PER_TICK,
+        NPC_TRIP_START_ATTEMPTS_PER_TICK_WHEN_BELOW_MOVING_TARGET,
+    )
+
+    ways = _city_block_grid()
+    manager = NPCVehicleManager(
+        target_count=10, spawn_radius_m=_SPAWN_RADIUS_M, vehicle_distribution={"car": 1.0},
+    )
+    traffic_world = TrafficWorld(ways)
+    residents = ResidentManager()
+    manager.populate_initial(*_CENTER, residents, ways)
+    assert all(vehicle.state == NPCState.PARKED for vehicle in manager.vehicles)
+    assert 0 < manager.target_moving_count  # currently_moving (0) is below this
+
+    monkeypatch.setattr(random, "random", lambda: 0.0)  # every idle candidate rolls true
+
+    manager.update(NPC_POPULATION_TICK_S, *_CENTER, residents, traffic_world, ways)
+
+    started = sum(1 for vehicle in manager.vehicles if manager.drivers.get(vehicle.vehicle_id) is not None)
+    assert started > NPC_TRIP_START_ATTEMPTS_PER_TICK
+    assert started <= NPC_TRIP_START_ATTEMPTS_PER_TICK_WHEN_BELOW_MOVING_TARGET
+
+
+def test_trip_start_never_double_books_a_household_member_already_mid_trip(monkeypatch):
+    """NPC-005 occupancy invariant: a household can own two vehicles
+    (NPC_MAX_VEHICLES_PER_HOUSEHOLD), but its member Residents are shared
+    across them. If its only member is already riding in one (a live,
+    not-yet-retired trip_group), the population tick must not also fold
+    that same Resident into a second, simultaneous trip starting on the
+    household's other, idle vehicle - Resident.active_vehicle_id/
+    trip_group_id are NOT the right signal here (both are left
+    deliberately stale after a normal trip retires, see _retire_trip's
+    own docstring), so this exercises the actual live-trip_group check."""
+    from theroadragetrip.npc import NPC_POPULATION_TICK_S
+
+    ways = _city_block_grid()
+    manager = NPCVehicleManager(target_count=2, spawn_radius_m=_SPAWN_RADIUS_M, vehicle_distribution={"car": 1.0})
+    residents = ResidentManager()
+
+    # Built by hand (not _make_household, whose random household size
+    # would need global random.randint patched - which recurses forever
+    # in ResidentManager.create's own parent-generation logic) so the
+    # household has exactly the one member this test needs to control.
+    household = manager.household_manager.create(home_position=(0.0, 0.0))
+    member = residents.create(mode="household")
+    member.household_id = household.household_id
+    household.member_resident_ids.add(member.resident_id)
+
+    car1 = place_parked_npc(1, (0.0, 0.0), None, vehicle_type="car")  # already mid-trip elsewhere
+    car2 = place_parked_npc(2, (_STEP_M, 0.0), None, vehicle_type="car")  # idle, wants a new trip
+    manager.vehicles.extend([car1, car2])
+    for car in (car1, car2):
+        household.vehicle_ids.add(car.vehicle_id)
+        car.vehicle_kind = "household"
+        car.household_id = household.household_id
+    manager._next_vehicle_id = 3
+
+    car1.state = NPCState.CRUISING
+    car1.trip_group = TripGroup(
+        group_id=1, vehicle_id=car1.vehicle_id,
+        member_resident_ids=[member.resident_id], boarded_resident_ids={member.resident_id},
+    )
+
+    traffic_world = TrafficWorld(ways)
+    monkeypatch.setattr(random, "random", lambda: 0.0)  # every idle candidate rolls true
+    manager.update(NPC_POPULATION_TICK_S, 0.0, 0.0, residents, traffic_world, ways)
+
+    assert manager.drivers.get(car2.vehicle_id) is None
+
+
+def test_trip_start_can_reuse_a_member_whose_earlier_trip_already_retired(monkeypatch):
+    """Guards the opposite mistake: once a household member's earlier
+    trip has actually retired (vehicle back to PARKED, popped from
+    self.drivers, trip_group released), they must remain eligible for
+    the household's next trip - the stale, never-reset Resident.
+    active_vehicle_id/trip_group_id from that finished trip must not
+    permanently lock them out."""
+    from theroadragetrip.npc import NPC_POPULATION_TICK_S
+
+    manager = NPCVehicleManager(target_count=1, spawn_radius_m=_SPAWN_RADIUS_M, vehicle_distribution={"car": 1.0})
+    residents = ResidentManager()
+
+    household = manager.household_manager.create(home_position=(0.0, 0.0))
+    member = residents.create(mode="household")
+    member.household_id = household.household_id
+    household.member_resident_ids.add(member.resident_id)
+    # Exactly what a normal (non-crash) trip retirement leaves behind -
+    # see _retire_trip's own docstring: "Residents themselves are
+    # untouched ... still remembering their trip_group_id."
+    member.active_vehicle_id = 1
+    member.trip_group_id = 1
+
+    car = place_parked_npc(1, (0.0, 0.0), None, vehicle_type="car")
+    manager.vehicles.append(car)
+    household.vehicle_ids.add(car.vehicle_id)
+    car.vehicle_kind = "household"
+    car.household_id = household.household_id
+    manager._next_vehicle_id = 2
+
+    ways = _city_block_grid()
+    traffic_world = TrafficWorld(ways)
+    monkeypatch.setattr(random, "random", lambda: 0.0)
+    manager.update(NPC_POPULATION_TICK_S, 0.0, 0.0, residents, traffic_world, ways)
+
+    assert manager.drivers.get(car.vehicle_id) is not None
+
+
+def test_population_tick_despawns_a_far_moving_vehicle_and_releases_its_occupants():
+    """A driving vehicle left beyond simulation_radius_m stops being
+    simulated (NPCVehicleManager.update) and used to freeze mid-road as
+    CRUISING forever - blocking traffic and satisfying the moving-traffic
+    target. It must despawn, freeing its occupants."""
+    from theroadragetrip.npc import NPC_POPULATION_TICK_S
+
+    ways = _city_block_grid()
+    manager = NPCVehicleManager(target_count=1, min_count=0, spawn_radius_m=_SPAWN_RADIUS_M, vehicle_distribution={"car": 1.0})
+    traffic_world = TrafficWorld(ways)
+    residents = ResidentManager()
+    result = spawn_npc(1, residents, traffic_world, ways, (0.0, 0.0), (200.0, 0.0))
+    assert result is not None
+    _, driver, vehicle = result
+    manager.vehicles.append(vehicle)
+    manager.drivers[vehicle.vehicle_id] = driver
+    member_ids = list(vehicle.trip_group.member_resident_ids)
+
+    manager.update(NPC_POPULATION_TICK_S, 5000.0, 5000.0, residents, traffic_world, ways)
+
+    assert vehicle not in manager.vehicles
+    assert vehicle.vehicle_id not in manager.drivers
+    for resident_id in member_ids:
+        assert residents.get(resident_id).trip_group_id is None
+        assert residents.get(resident_id).active_vehicle_id is None
 
 
 def test_no_duplicate_vehicle_ids_after_several_population_ticks():
@@ -812,6 +978,91 @@ def test_trigger_vehicle_accident_with_no_driver_still_becomes_an_obstacle():
     assert pedestrian_mgr.pedestrians == []
 
 
+def test_trigger_vehicle_accident_also_ejects_passengers_not_just_the_driver():
+    """NPC-005 Definition of Done: vehicle removal (crash -> eventual
+    despawn) cannot orphan occupants. The old code only ejected the
+    driver and left vehicle.trip_group live - a passenger riding along
+    would silently vanish (no pedestrian ever spawned for them, and
+    nothing ever cleared their trip_group_id) once this crashed vehicle
+    was later despawned."""
+    residents = ResidentManager()
+    manager = NPCVehicleManager(target_count=1)
+    vehicle, driver_resident = _driving_vehicle(residents, 5.0, 0.0)
+    passenger = residents.create(mode="riding")
+    vehicle.trip_group = TripGroup(
+        group_id=1, vehicle_id=vehicle.vehicle_id,
+        member_resident_ids=[driver_resident.resident_id, passenger.resident_id],
+        boarded_resident_ids={driver_resident.resident_id, passenger.resident_id},
+    )
+    manager.vehicles.append(vehicle)
+    sidewalk = Way(points_m=[(0.0, 3.0), (20.0, 3.0)], highway="footway", half_width_m=2.0)
+    pedestrian_mgr = PedestrianManager([sidewalk], target_count=0)
+
+    manager._trigger_vehicle_accident(vehicle, residents, pedestrian_mgr, sim_time=100.0)
+
+    assert vehicle.trip_group is None
+    ejected_ids = {ped.resident_id for ped in pedestrian_mgr.pedestrians}
+    assert ejected_ids == {driver_resident.resident_id, passenger.resident_id}
+    assert driver_resident.trip_group_id is None
+    assert passenger.trip_group_id is None
+
+
+def test_trigger_vehicle_accident_ejects_only_unique_boarded_people_up_to_capacity():
+    """A crash must not clone people who are already outside, repeat a
+    duplicated roster entry, or materialize more occupants than seats."""
+    residents = ResidentManager()
+    manager = NPCVehicleManager(target_count=1)
+    vehicle, driver_resident = _driving_vehicle(residents, 5.0, 0.0)
+    passengers = [residents.create(mode="riding") for _ in range(vehicle.capacity + 2)]
+    outside_resident = passengers[-1]
+    roster = [driver_resident.resident_id] + [p.resident_id for p in passengers]
+    roster.insert(2, passengers[0].resident_id)  # corrupt duplicate
+    boarded = set(roster)
+    boarded.discard(outside_resident.resident_id)
+    vehicle.trip_group = TripGroup(
+        group_id=1,
+        vehicle_id=vehicle.vehicle_id,
+        member_resident_ids=roster,
+        boarded_resident_ids=boarded,
+    )
+    for resident_id in set(roster):
+        residents.get(resident_id).trip_group_id = 1
+    manager.vehicles.append(vehicle)
+    sidewalk = Way(points_m=[(0.0, 3.0), (20.0, 3.0)], highway="footway", half_width_m=2.0)
+    pedestrian_mgr = PedestrianManager([sidewalk], target_count=0)
+
+    manager._trigger_vehicle_accident(vehicle, residents, pedestrian_mgr, sim_time=100.0)
+
+    ejected_ids = [ped.resident_id for ped in pedestrian_mgr.pedestrians]
+    assert len(ejected_ids) == vehicle.capacity
+    assert len(set(ejected_ids)) == len(ejected_ids)
+    assert driver_resident.resident_id in ejected_ids
+    assert outside_resident.resident_id not in ejected_ids
+    assert all(residents.get(resident_id).trip_group_id is None for resident_id in set(roster))
+
+
+def test_begin_trip_caps_and_deduplicates_supplied_household_members():
+    residents = ResidentManager()
+    vehicle = place_parked_npc(1, (0.0, 0.0), None, vehicle_type="car")
+    supplied = [residents.create(mode="riding") for _ in range(vehicle.capacity + 3)]
+    supplied_ids = [supplied[0].resident_id, supplied[0].resident_id]
+    supplied_ids.extend(resident.resident_id for resident in supplied[1:])
+    path = [PathPoint(0.0, 0.0), PathPoint(20.0, 0.0)]
+
+    driver = _begin_trip_on_vehicle(
+        vehicle,
+        path,
+        residents,
+        destination=(20.0, 0.0),
+        member_resident_ids=supplied_ids,
+    )
+
+    assert driver.resident_id == supplied[0].resident_id
+    assert len(vehicle.trip_group.member_resident_ids) == vehicle.capacity
+    assert len(set(vehicle.trip_group.member_resident_ids)) == vehicle.capacity
+    assert vehicle.trip_group.boarded_resident_ids == set(vehicle.trip_group.member_resident_ids)
+
+
 def test_check_vehicle_collision_crashes_both_overlapping_npc_vehicles():
     """NPC-004 section 10: an actual NPC-NPC overlap must crash *both*
     vehicles, each getting its own independent accident."""
@@ -828,6 +1079,27 @@ def test_check_vehicle_collision_crashes_both_overlapping_npc_vehicles():
     assert vehicle_b.state == NPCState.CRASHED
 
 
+def test_check_vehicle_collision_does_not_ignore_parked_car_on_final_approach():
+    residents = ResidentManager()
+    manager = NPCVehicleManager(target_count=2)
+    moving, resident = _driving_vehicle(residents, 0.0, 0.0, vehicle_id=1)
+    parked = place_parked_npc(2, (1.0, 0.0), None, vehicle_type="car")
+    manager.vehicles.extend([moving, parked])
+    manager.drivers[moving.vehicle_id] = Driver(
+        resident_id=resident.resident_id,
+        vehicle_id=moving.vehicle_id,
+        path=[PathPoint(-10.0, 0.0), PathPoint(0.0, 0.0), PathPoint(1.0, 0.0)],
+        destination=(1.0, 0.0),
+        path_index=2,
+    )
+
+    assert manager._check_vehicle_collision(
+        moving, [parked], residents, PedestrianManager([], target_count=0), sim_time=50.0,
+    )
+    assert moving.state == NPCState.CRASHED
+    assert parked.state == NPCState.CRASHED
+
+
 def test_check_vehicle_collision_ignores_vehicles_that_do_not_overlap():
     residents = ResidentManager()
     manager = NPCVehicleManager(target_count=1)
@@ -842,9 +1114,27 @@ def test_check_vehicle_collision_ignores_vehicles_that_do_not_overlap():
     assert vehicle_b.state != NPCState.CRASHED
 
 
-def test_check_vehicle_collision_with_the_player_car_only_crashes_the_npc():
-    """Section 11: an NPC-taxi collision must trigger the NPC's own
-    accident response without touching the player's car at all."""
+def test_swept_collision_catches_npcs_that_cross_between_frames():
+    residents = ResidentManager()
+    manager = NPCVehicleManager(target_count=2)
+    vehicle_a, _ = _driving_vehicle(residents, 10.0, 0.0, vehicle_id=1)
+    vehicle_b, _ = _driving_vehicle(residents, -10.0, 0.0, vehicle_id=2)
+    manager.vehicles.extend([vehicle_a, vehicle_b])
+    pedestrian_mgr = PedestrianManager([], target_count=0)
+
+    manager._check_vehicle_collision(
+        vehicle_a, [vehicle_b], residents, pedestrian_mgr, sim_time=50.0,
+        previous_vehicle_pose=(-10.0, 0.0, 0.0),
+        previous_obstacle_poses={id(vehicle_b): (10.0, 0.0, math.pi)},
+    )
+
+    assert vehicle_a.state == NPCState.CRASHED
+    assert vehicle_b.state == NPCState.CRASHED
+
+
+def test_check_vehicle_collision_with_player_crashes_npc_and_stops_taxi():
+    """Detection must have a physical response; otherwise the taxi visibly
+    drives through the NPC even though the NPC's crash state was set."""
     from theroadragetrip.physics import Car
 
     residents = ResidentManager()
@@ -857,7 +1147,83 @@ def test_check_vehicle_collision_with_the_player_car_only_crashes_the_npc():
     manager._check_vehicle_collision(vehicle, [player_car], residents, pedestrian_mgr, sim_time=50.0)
 
     assert vehicle.state == NPCState.CRASHED
-    assert player_car.speed == 15.0  # untouched - taxi physics/scoring stays taxi.py's own business
+    assert player_car.speed == 0.0
+
+
+def test_crashed_npc_remains_a_physical_obstacle_for_player():
+    residents = ResidentManager()
+    manager = NPCVehicleManager(target_count=1)
+    vehicle, _ = _driving_vehicle(residents, 0.0, 0.0)
+    manager.vehicles.append(vehicle)
+    player_car = Car(x=1.0, y=0.0, heading=0.0, speed=15.0)
+    pedestrian_mgr = PedestrianManager([], target_count=0)
+    manager._check_vehicle_collision(vehicle, [player_car], residents, pedestrian_mgr, sim_time=50.0)
+
+    player_car.speed = 15.0
+    assert manager._check_vehicle_collision(
+        vehicle, [player_car], residents, pedestrian_mgr, sim_time=51.0,
+    )
+    assert player_car.speed == 0.0
+
+
+def test_crashed_npc_remains_a_physical_obstacle_for_other_npcs():
+    """A wreck is not eligible for another accident, but it must not become
+    a ghost that the next moving NPC can drive through."""
+    residents = ResidentManager()
+    manager = NPCVehicleManager(target_count=2)
+    wreck, _ = _driving_vehicle(residents, 0.0, 0.0, vehicle_id=1)
+    moving, _ = _driving_vehicle(residents, 1.0, 0.0, vehicle_id=2)
+    manager.vehicles.extend([wreck, moving])
+    pedestrian_mgr = PedestrianManager([], target_count=0)
+    manager._trigger_vehicle_accident(wreck, residents, pedestrian_mgr, sim_time=50.0)
+    moving.car.speed = 12.0
+
+    assert manager._check_vehicle_collision(
+        moving, [wreck], residents, pedestrian_mgr, sim_time=51.0,
+    )
+    assert wreck.state == NPCState.CRASHED
+    assert moving.state == NPCState.CRASHED
+    assert wreck.car.speed == 0.0
+    assert moving.car.speed == 0.0
+
+
+def test_crashed_subject_still_stops_a_moving_npc_candidate():
+    """The result must not depend on which member of the pair the spatial
+    collision pass happens to visit first."""
+    residents = ResidentManager()
+    manager = NPCVehicleManager(target_count=2)
+    wreck, _ = _driving_vehicle(residents, 0.0, 0.0, vehicle_id=1)
+    moving, _ = _driving_vehicle(residents, 1.0, 0.0, vehicle_id=2)
+    manager.vehicles.extend([wreck, moving])
+    pedestrian_mgr = PedestrianManager([], target_count=0)
+    manager._trigger_vehicle_accident(wreck, residents, pedestrian_mgr, sim_time=50.0)
+    moving.car.speed = 12.0
+
+    assert manager._check_vehicle_collision(
+        wreck, [moving], residents, pedestrian_mgr, sim_time=51.0,
+    )
+    assert moving.state == NPCState.CRASHED
+    assert moving.car.speed == 0.0
+
+
+def test_swept_player_collision_rolls_taxi_back_before_npc():
+    residents = ResidentManager()
+    manager = NPCVehicleManager(target_count=1)
+    vehicle, _ = _driving_vehicle(residents, 0.0, 0.0)
+    manager.vehicles.append(vehicle)
+    player_car = Car(x=10.0, y=0.0, heading=0.0, speed=30.0)
+    pedestrian_mgr = PedestrianManager([], target_count=0)
+
+    hit = manager._check_vehicle_collision(
+        vehicle, [player_car], residents, pedestrian_mgr, sim_time=50.0,
+        previous_vehicle_pose=(0.0, 0.0, 0.0),
+        previous_obstacle_poses={id(player_car): (-10.0, 0.0, 0.0)},
+    )
+
+    assert hit
+    assert player_car.x == -10.0
+    assert player_car.speed == 0.0
+    assert vehicle.state == NPCState.CRASHED
 
 
 def test_population_tick_reroutes_a_stuck_vehicle_when_a_valid_route_exists():
@@ -948,3 +1314,43 @@ def test_manager_update_avoidance_still_works_without_a_player_car():
         manager.update(1.0 / 30.0, 0.0, 0.0, residents, traffic_world, ways)
 
     assert driver.target_speed_mps < 5.0
+
+
+def test_route_stays_on_road_applies_off_road_tolerance_with_a_spatial_grid():
+    """With a SpatialWayGrid, _way_at_point only says "on a road or not", so
+    every off-road first/last hop (a lot or yard exit) used to be rejected no
+    matter the tolerance - parked cars off the road could never leave."""
+    from theroadragetrip.npc import route_stays_on_road
+    from theroadragetrip.physics import SpatialWayGrid
+
+    road = Way(points_m=[(0.0, 0.0), (200.0, 0.0)], highway="residential", half_width_m=4.5)
+    grid = SpatialWayGrid([road])
+    route = [(100.0, 25.0), (100.0, 0.0), (200.0, 0.0)]  # first hop's midpoint is 12.5m off the road
+
+    assert route_stays_on_road(route, [road], spatial_grid=grid, initial_segment_tolerance_m=40.0)
+    assert not route_stays_on_road(route, [road], spatial_grid=grid, initial_segment_tolerance_m=5.0)
+
+
+def test_population_tick_seeds_moving_traffic_near_the_player():
+    """Parked cars near the player aren't a reliable source of moving traffic
+    (their exits often fail route validation), so a tick below the moving
+    target must be able to put a real driven vehicle on a nearby road."""
+    from theroadragetrip.npc import NPC_POPULATION_TICK_S
+    from theroadragetrip.physics import SpatialWayGrid
+
+    random.seed(11)
+    ways = _city_block_grid()
+    grid = SpatialWayGrid(ways)
+    manager = NPCVehicleManager(target_count=20, spawn_radius_m=_SPAWN_RADIUS_M, vehicle_distribution={"car": 1.0})
+    traffic_world = TrafficWorld(ways)
+    residents = ResidentManager()
+    for _ in range(12):
+        manager.update(NPC_POPULATION_TICK_S, *_CENTER, residents, traffic_world, ways, spatial_grid=grid)
+
+    moving = [
+        vehicle for vehicle in manager.vehicles
+        if vehicle.state not in (NPCState.PARKED, NPCState.CRASHED) and manager.drivers.get(vehicle.vehicle_id)
+    ]
+    assert moving
+    for vehicle in moving:
+        assert has_active_driver(vehicle, residents)
