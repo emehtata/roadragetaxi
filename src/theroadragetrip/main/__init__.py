@@ -7,11 +7,12 @@ import random
 import sys
 import threading
 import time
+from datetime import datetime
 from types import SimpleNamespace
 
 import pygame
 
-from ..geo import dist_point_to_segment, meters_to_latlon
+from ..geo import angle_diff, dist_point_to_segment, meters_to_latlon
 from ..audio import AudioManager
 from ..config import (
     CONFIG_PATH,
@@ -31,6 +32,8 @@ from ..career import (
     save_gig_odometer,
 )
 from ..localization import SUPPORTED_LANGUAGES, normalize_language, tr
+from ..calendar import GameCalendar, Season
+from ..climate import typical_temperature
 from .. import protocol, transport
 from ..simulation import PlayerCommand, advance_simulation, apply_enter_exit_vehicle
 from ..osm import (
@@ -57,6 +60,7 @@ from ..physics import (
     respawn_car,
     skidmark_intensity,
     skidmark_should_mark,
+    tire_tracks_include_front_wheels,
 )
 from ..render import (
     FPS,
@@ -102,6 +106,7 @@ from ..render import (
     draw_npc_population_panel,
     draw_feature_inspector_panel,
     screen_to_world,
+    set_game_date,
     draw_pause_menu,
     draw_parking_spaces,
     draw_settings_menu,
@@ -164,7 +169,7 @@ from .menu_input import (
     _pause_item_at,
     _respawn_allowed,
 )
-from .startup_screens import choose_language, confirm_outdated_cache, edit_city_list
+from .startup_screens import choose_language, choose_start_datetime, confirm_outdated_cache, edit_city_list
 from .debug_tools import _screenshot_directory, _write_debug_snapshot, find_feature_at
 
 # Maintain BBOX constant for backward compatibility
@@ -966,6 +971,10 @@ def main() -> None:
     return_to_main_menu = False
     force_refresh = args.force_refresh
     connection = None
+    # Gig-driver mode starts from the machine's current local calendar by
+    # default. The picker may override any field; seconds are omitted from
+    # the UI, so begin cleanly at the current minute.
+    selected_start_datetime = datetime.now().replace(second=0, microsecond=0)
 
     while app_running:
         city_summary = None
@@ -995,6 +1004,18 @@ def main() -> None:
         force_refresh = city_choice.force_refresh
         cities_list = city_choice.cities_list
         selected_city_idx = city_choice.selected_city_idx
+
+        if (
+            game_mode == "gig_driver"
+            and not args.connect
+            and not args.no_menu
+            and not args.preset
+            and not args.bbox
+            and not args.use_sample
+        ):
+            selected_start_datetime = choose_start_datetime(
+                screen, font, clock, language, selected_start_datetime
+            )
 
         if args.connect:
             # Explicit opt-in to the experimental client/server
@@ -1125,7 +1146,10 @@ def main() -> None:
         px_per_m = max(min_px_per_m, zoom_target * 0.75)
         zoom_elapsed = 0.0
         zoom_duration = 3.0
-        game_time_seconds = 18.0 * 60.0 * 60.0
+        start_datetime = selected_start_datetime if game_mode == "gig_driver" else datetime(2026, 8, 31, 18, 0)
+        game_calendar = GameCalendar(start_datetime)
+        game_time_seconds = game_calendar.time_seconds
+        set_game_date(game_calendar.date)
         solar_time_bucket = None
         camx, camy = car.x, car.y
         # A fresh city session's camera lands far from wherever the
@@ -1170,7 +1194,7 @@ def main() -> None:
         runtime_profiler = cProfile.Profile()
         runtime_profile_active = False
         frame_profiler = FrameProfiler()
-        weather = WeatherSystem()
+        weather = WeatherSystem(season=game_calendar.season)
         world.weather = weather  # protocol.apply_server_state reads world.weather, matching the server's own convention
         clock.tick()  # Reset clock timer to avoid large dt on first frame
 
@@ -1198,7 +1222,12 @@ def main() -> None:
             elif start_hint_remaining > 0.0:
                 start_hint_remaining = max(0.0, start_hint_remaining - dt)
             time_scale = 1.0 if taxi_mgr.current_passenger else 60.0
-            game_time_seconds = (game_time_seconds + dt * time_scale) % (24.0 * 60.0 * 60.0)
+            previous_date = game_calendar.date
+            game_calendar.advance(dt * time_scale)
+            game_time_seconds = game_calendar.time_seconds
+            if game_calendar.date != previous_date:
+                set_game_date(game_calendar.date)
+                weather.season = game_calendar.season
             weather.update(dt * time_scale, dt)
             frame_profiler.set_metric(
                 "weather", f"{weather.weather_type.value} wetness={weather.wetness:.0%}"
@@ -1275,7 +1304,12 @@ def main() -> None:
                         continue
                     if event.key in (pygame.K_PAGEUP, pygame.K_PAGEDOWN):
                         time_delta = 60.0 * 60.0 if event.key == pygame.K_PAGEUP else -60.0 * 60.0
-                        game_time_seconds = (game_time_seconds + time_delta) % (24.0 * 60.0 * 60.0)
+                        previous_date = game_calendar.date
+                        game_calendar.advance(time_delta)
+                        game_time_seconds = game_calendar.time_seconds
+                        if game_calendar.date != previous_date:
+                            set_game_date(game_calendar.date)
+                            weather.season = game_calendar.season
                         logger.debug(
                             "Game time adjusted: delta=%+.1fh time=%02d:%02d",
                             time_delta / 3600.0,
@@ -1763,8 +1797,14 @@ def main() -> None:
                 interact_pending = False
 
                 time_scale = 1.0 if taxi_mgr.current_passenger else 60.0
-                game_time_seconds = (game_time_seconds + dt * time_scale) % (24.0 * 60.0 * 60.0)
+                previous_date = game_calendar.date
+                game_calendar.advance(dt * time_scale)
+                game_time_seconds = game_calendar.time_seconds
+                if game_calendar.date != previous_date:
+                    set_game_date(game_calendar.date)
+                    weather.season = game_calendar.season
                 weather.update(dt * time_scale, dt)
+                taxi_mgr.game_date = game_calendar.date
 
                 result = advance_simulation(
                     dt, command, car, world,
@@ -1857,20 +1897,25 @@ def main() -> None:
             # that just has no road way.
             is_grass = off_road_ground in ("soft", "sand")
             is_sand = off_road_ground == "sand"
+            is_snow = is_grass and game_calendar.season == Season.WINTER
             # Tire slip is the source of truth for a skidmark (SKIDMARK.md) -
             # not brake input, not even is_sliding alone (a tire can be
             # visibly slipping before the whole car counts as sliding; see
             # skidmark_should_mark's lower threshold).
-            is_skidding = skidmark_should_mark(car.skid_amount)
+            is_skidding = skidmark_should_mark(
+                car.skid_amount,
+                wetness=weather.wetness,
+                hard_surface=not is_grass,
+            )
             if movement_distance > 0.0 and (is_skidding or (is_grass and abs(car.speed) > 1.0)):
-                start_new_trail = last_track_position is None or (is_grass, is_sand) != last_track_surface
+                start_new_trail = last_track_position is None or (is_grass, is_sand, is_snow) != last_track_surface
                 # Sample on distance OR heading change: a car spinning in a
                 # donut barely moves but its rear tyres sweep a wide arc, and
                 # joining samples a metre of travel apart (with the heading
                 # having swung far in between) drew long chords across the
                 # circle - a filled, star-shaped blob instead of a ring.
                 last_heading = tire_tracks[-1].points[-1][2] if tire_tracks else car.heading
-                heading_change = abs((car.heading - last_heading + math.pi) % (2.0 * math.pi) - math.pi)
+                heading_change = abs(angle_diff(car.heading, last_heading))
                 if (
                     start_new_trail
                     or math.hypot(car.x - last_track_position[0], car.y - last_track_position[1]) >= 0.5
@@ -1879,14 +1924,22 @@ def main() -> None:
                     # The grass trail isn't a slip mark - it's a constant-
                     # weight dirt track from driving off-road at all.
                     intensity = skidmark_intensity(car.skid_amount) if is_skidding else 1.0
-                    front_marks = is_skidding and car.front_lockup
+                    # Soft ground is displaced by every tyre regardless of
+                    # slip/lockup. Hard surfaces only receive front marks
+                    # when the front tyres actually lock under braking.
+                    front_marks = tire_tracks_include_front_wheels(
+                        is_grass, is_skidding, car.front_lockup,
+                    )
                     if start_new_trail:
-                        tire_tracks.append(TireTrail(is_grass, car.x, car.y, car.heading, intensity, is_sand, front_marks))
+                        tire_tracks.append(TireTrail(
+                            is_grass, car.x, car.y, car.heading, intensity,
+                            is_sand, front_marks, is_snow=is_snow,
+                        ))
                     else:
                         tire_tracks[-1].add(car.x, car.y, car.heading, intensity, front_marks)
                     tire_track_point_count += 1
                     last_track_position = (car.x, car.y)
-                    last_track_surface = (is_grass, is_sand)
+                    last_track_surface = (is_grass, is_sand, is_snow)
                     # Drop the oldest trails (each one a single unbroken
                     # skid/dirt-trail event, see TireTrail) once accumulated
                     # points pass the cap, back down to a lower watermark -
@@ -2104,7 +2157,7 @@ def main() -> None:
             render_profile_frame_start = time.perf_counter()
             render_profile_stage_start = render_profile_frame_start
             map_stage_start = time.perf_counter()
-            draw_grass_texture(screen, camx, camy, px_per_m, profiler=frame_profiler)
+            draw_grass_texture(screen, camx, camy, px_per_m, profiler=frame_profiler, season=game_calendar.season)
             stage_elapsed = time.perf_counter() - map_stage_start
             render_profile_times["map_grass"] = render_profile_times.get("map_grass", 0.0) + stage_elapsed
             frame_profiler.record("render:grass", stage_elapsed * 1000.0)
@@ -2119,6 +2172,7 @@ def main() -> None:
                 px_per_m=px_per_m,
                 spatial_grid=scenery_grid,
                 profiler=frame_profiler,
+                season=game_calendar.season,
             )
             stage_elapsed = time.perf_counter() - map_stage_start
             render_profile_times["map_scenery"] = render_profile_times.get("map_scenery", 0.0) + stage_elapsed
@@ -2128,7 +2182,7 @@ def main() -> None:
             map_stage_start = time.perf_counter()
             draw_waters(
                 screen, waters, camx, camy, px_per_m=px_per_m,
-                spatial_grid=water_grid, profiler=frame_profiler,
+                spatial_grid=water_grid, profiler=frame_profiler, season=game_calendar.season,
             )
             stage_elapsed = time.perf_counter() - map_stage_start
             render_profile_times["map_water"] = render_profile_times.get("map_water", 0.0) + stage_elapsed
@@ -2179,6 +2233,7 @@ def main() -> None:
                 ways=ways,
                 road_spatial_grid=spatial_grid,
                 profiler=frame_profiler,
+                season=game_calendar.season,
             )
             stage_elapsed = time.perf_counter() - map_stage_start
             render_profile_times["map_trees"] = render_profile_times.get("map_trees", 0.0) + stage_elapsed
@@ -2221,6 +2276,10 @@ def main() -> None:
             )
             draw_tire_tracks(
                 screen, tire_tracks, camx, camy, grass=True, sand=True, px_per_m=px_per_m,
+                viewport_bounds=viewport_bounds,
+            )
+            draw_tire_tracks(
+                screen, tire_tracks, camx, camy, grass=True, snow=True, px_per_m=px_per_m,
                 viewport_bounds=viewport_bounds,
             )
             draw_roadworks(screen, roadworks, camx, camy, px_per_m=px_per_m)
@@ -2524,6 +2583,8 @@ def main() -> None:
                 career_total_distance_m=car.odometer_m if career is not None else None,
                 water_time_remaining=(10.0 - water_elapsed) if water_elapsed > 0.0 else None,
                 game_time_seconds=game_time_seconds,
+                game_date=game_calendar.date,
+                temperature_c=typical_temperature(game_calendar.current, sun_latitude),
                 game_time_realtime=taxi_mgr.current_passenger is not None,
                 comment_text=audio.comment_text,
                 comment_speaker=audio.comment_speaker,

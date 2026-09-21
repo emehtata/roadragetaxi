@@ -23,7 +23,7 @@ from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Set, Tuple
 
 from .activities import ActivityInstance, ActivityLocation
-from .geo import boxes_intersect, clamp, closest_point_and_dist_to_segment, point_in_polygon, segment_distance
+from .geo import angle_diff, boxes_intersect, clamp, closest_point_and_dist_to_segment, point_in_polygon, segment_distance
 from .osm import Curb, ParkingSpace, Way
 from .physics import GRAVITY_MPS2, Car, SpatialWayGrid, update_car_physics
 from .residents import Household, HouseholdManager, ResidentManager
@@ -485,7 +485,7 @@ def _align_approach_to_parking_orientation(
     natural_heading = math.atan2(destination[1] - prev[1], destination[0] - prev[0])
     heading = min(
         (orientation, orientation + math.pi),
-        key=lambda h: abs((h - natural_heading + math.pi) % (2.0 * math.pi) - math.pi),
+        key=lambda h: abs(angle_diff(h, natural_heading)),
     )
     approach_point = (
         destination[0] - math.cos(heading) * approach_distance_m,
@@ -827,7 +827,7 @@ def build_driving_path(
     # instead of two copies of the same angle threshold.
     corner_maneuver: List[Optional[str]] = [None] * n
     for i in range(1, n - 1):
-        signed_turn = (segment_heading[i] - segment_heading[i - 1] + math.pi) % (2.0 * math.pi) - math.pi
+        signed_turn = angle_diff(segment_heading[i], segment_heading[i - 1])
         if math.degrees(abs(signed_turn)) >= CORNER_ANGLE_THRESHOLD_DEG:
             corner_maneuver[i] = "left" if signed_turn > 0 else "right"
 
@@ -2014,7 +2014,7 @@ def update_npc(
         steer_left = steer_right = 0.0
     else:
         desired_heading = math.atan2(target.y - vehicle.car.y, target.x - vehicle.car.x)
-        heading_error = (desired_heading - vehicle.car.heading + math.pi) % (2.0 * math.pi) - math.pi
+        heading_error = angle_diff(desired_heading, vehicle.car.heading)
         requested_steer = clamp(heading_error / math.radians(STEER_FULL_ANGLE_DEG), -1.0, 1.0)
         # A first-order steering actuator avoids alternating full-lock input
         # around dense or closely spaced route points.
@@ -3137,10 +3137,10 @@ class NPCVehicleManager:
                     t = step / steps
                     ax = previous_vehicle_pose[0] + (vehicle.x - previous_vehicle_pose[0]) * t
                     ay = previous_vehicle_pose[1] + (vehicle.y - previous_vehicle_pose[1]) * t
-                    ah = previous_vehicle_pose[2] + ((vehicle.heading - previous_vehicle_pose[2] + math.pi) % (2 * math.pi) - math.pi) * t
+                    ah = previous_vehicle_pose[2] + (angle_diff(vehicle.heading, previous_vehicle_pose[2])) * t
                     bx = other_previous[0] + (obstacle.x - other_previous[0]) * t
                     by = other_previous[1] + (obstacle.y - other_previous[1]) * t
-                    bh = other_previous[2] + ((obstacle.heading - other_previous[2] + math.pi) % (2 * math.pi) - math.pi) * t
+                    bh = other_previous[2] + (angle_diff(obstacle.heading, other_previous[2])) * t
                     if boxes_intersect(ax, ay, ah, vehicle.length_m, vehicle.width_m, bx, by, bh,
                                        getattr(obstacle, "length_m", NPC_VEHICLE_LENGTH_M),
                                        getattr(obstacle, "width_m", NPC_VEHICLE_WIDTH_M)):

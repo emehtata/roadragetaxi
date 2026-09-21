@@ -11,11 +11,13 @@ from ..weather import (
     RAIN_SPEED_VARIATION,
     SPLASH_LIFETIME_S,
     WeatherSystem,
+    WeatherType,
 )
 
 RAIN_COLOR = (196, 206, 222)
 RAIN_STREAK_LEN_MIN_PX = 9.0
 RAIN_STREAK_LEN_MAX_PX = 20.0
+SNOW_COLOR = (242, 246, 250)
 
 # Wet-road tint: a translucent dark fill over the road plus a thin, fainter
 # sheen line - subtle by design (WEATHER_RAIN.md #3: "do not make the road
@@ -128,6 +130,16 @@ def draw_rain(screen, weather: WeatherSystem, screen_w: int = SCREEN_W, screen_h
     if not weather.is_precipitating or not weather.rain_particles:
         return
     import pygame
+
+    if weather.weather_type == WeatherType.SNOW:
+        for x_fraction, y_fraction, speed_factor in weather.rain_particles:
+            radius = 1 if speed_factor < 1.0 else 2
+            pygame.draw.circle(
+                screen, SNOW_COLOR,
+                (round(x_fraction * screen_w), round(y_fraction * screen_h)),
+                radius,
+            )
+        return
 
     # Pixel-space fall direction (screen fraction rates scaled by the
     # actual screen size, since width/height differ - a naive fraction

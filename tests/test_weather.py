@@ -6,7 +6,10 @@ from theroadragetrip.weather import (
     SPLASH_POOL_MAX,
     WeatherSystem,
     WeatherType,
+    AUTUMN_WINTER_PERIOD_RANGE,
+    AUTUMN_WINTER_PRECIPITATION_CHANCE,
 )
+from theroadragetrip.calendar import Season
 
 
 def test_starts_clear_and_dry():
@@ -22,6 +25,27 @@ def test_toggle_rain_flips_clear_and_rain():
     assert weather.weather_type == WeatherType.RAIN
     assert weather.is_precipitating is True
     weather.toggle_rain()
+    assert weather.weather_type == WeatherType.CLEAR
+
+
+def test_automatic_autumn_weather_changes_from_clear_to_rain():
+    weather = WeatherSystem(season=Season.AUTUMN)
+    weather._rng = type("RainRoll", (), {"random": lambda self: 0.1, "uniform": lambda self, low, high: 3600.0})()
+    weather._start_autumn_or_winter_period()
+    assert weather.weather_type == WeatherType.RAIN
+    assert weather._weather_timer == 3600.0
+
+
+def test_automatic_winter_weather_has_fifty_percent_snow_periods_up_to_one_day():
+    assert AUTUMN_WINTER_PRECIPITATION_CHANCE == 0.5
+    assert AUTUMN_WINTER_PERIOD_RANGE == (0.0, 24.0 * 60.0 * 60.0)
+    weather = WeatherSystem(season=Season.WINTER)
+    weather._rng = type("SnowRoll", (), {"random": lambda self: 0.1, "uniform": lambda self, low, high: high})()
+    weather._start_autumn_or_winter_period()
+    assert weather.weather_type == WeatherType.SNOW
+    assert weather._weather_timer == 24.0 * 60.0 * 60.0
+    weather._rng = type("ClearRoll", (), {"random": lambda self: 0.9, "uniform": lambda self, low, high: 7200.0})()
+    weather._start_autumn_or_winter_period()
     assert weather.weather_type == WeatherType.CLEAR
 
 

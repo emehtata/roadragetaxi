@@ -18,6 +18,8 @@ limitations".
 
 from __future__ import annotations
 
+from contextlib import nullcontext
+
 import logging
 import threading
 import time
@@ -239,19 +241,10 @@ class SimulationServer:
 
 
 class _NullFrameProfiler:
-    """advance_simulation profiles a few sections with `with
-    frame_profiler.section(...)`; the server has no debug HUD to feed, so
-    this just needs to be a no-op context manager."""
-
-    class _Section:
-        def __enter__(self):
-            return self
-
-        def __exit__(self, *exc_info):
-            return False
+    """No-op stand-in: the server has no debug HUD to feed."""
 
     def section(self, _name):
-        return self._Section()
+        return nullcontext()
 
     def set_metric(self, *_args, **_kwargs):
         pass

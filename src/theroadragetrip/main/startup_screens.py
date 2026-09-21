@@ -1,5 +1,6 @@
 import logging
 import sys
+from datetime import datetime
 
 import pygame
 
@@ -24,6 +25,73 @@ from ..render import (
 
 
 logger = logging.getLogger(__name__)
+
+
+def choose_start_datetime(screen, font, clock, language: str, initial: datetime) -> datetime:
+    """Let a gig-driver choose local year/month/day/hour/minute."""
+    values = [initial.year, initial.month, initial.day, initial.hour, initial.minute]
+    labels = ("Vuosi", "Kuukausi", "Päivä", "Tunti", "Minuutti") if language == "fi" else (
+        "Year", "Month", "Day", "Hour", "Minute",
+    )
+    selected = 0
+
+    def adjusted(index: int, delta: int) -> None:
+        limits = ((1970, 2100), (1, 12), (1, 31), (0, 23), (0, 59))
+        low, high = limits[index]
+        values[index] = low + (values[index] - low + delta) % (high - low + 1)
+        while True:
+            try:
+                datetime(*values)
+                return
+            except ValueError:
+                values[2] -= 1
+
+    while True:
+        clock.tick(30)
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                pygame.quit()
+                sys.exit(0)
+            if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                for index in range(5):
+                    rect = pygame.Rect(SCREEN_W // 2 - 190, 225 + index * 58, 380, 44)
+                    if rect.collidepoint(event.pos):
+                        selected = index
+                        adjusted(index, 1)
+                if pygame.Rect(SCREEN_W // 2 - 100, 540, 200, 48).collidepoint(event.pos):
+                    return datetime(*values)
+            if event.type != pygame.KEYDOWN:
+                continue
+            if event.key == pygame.K_ESCAPE:
+                return initial
+            if event.key in (pygame.K_UP, pygame.K_DOWN, pygame.K_TAB):
+                selected = (selected + (1 if event.key in (pygame.K_DOWN, pygame.K_TAB) else -1)) % 5
+            elif event.key in (pygame.K_LEFT, pygame.K_RIGHT):
+                adjusted(selected, 1 if event.key == pygame.K_RIGHT else -1)
+            elif event.key in (pygame.K_RETURN, pygame.K_KP_ENTER, pygame.K_SPACE):
+                return datetime(*values)
+
+        screen.fill((18, 24, 32))
+        title_text = "Valitse aloituspäivä ja -aika" if language == "fi" else "Choose starting date and time"
+        title = font.render(title_text, True, (245, 245, 245))
+        screen.blit(title, title.get_rect(center=(SCREEN_W // 2, 150)))
+        for index, (label, value) in enumerate(zip(labels, values)):
+            rect = pygame.Rect(SCREEN_W // 2 - 190, 225 + index * 58, 380, 44)
+            pygame.draw.rect(screen, (45, 62, 78), rect, border_radius=5)
+            if index == selected:
+                pygame.draw.rect(screen, (255, 215, 95), rect, width=3, border_radius=5)
+            rendered = font.render(f"{label}: {value:02d}", True, (235, 240, 245))
+            screen.blit(rendered, rendered.get_rect(center=rect.center))
+        ok = pygame.Rect(SCREEN_W // 2 - 100, 540, 200, 48)
+        pygame.draw.rect(screen, (55, 135, 85), ok, border_radius=5)
+        ok_text = font.render("Aloita" if language == "fi" else "Start", True, (255, 255, 255))
+        screen.blit(ok_text, ok_text.get_rect(center=ok.center))
+        hint = pygame.font.SysFont(None, 20).render(
+            "↑/↓ kenttä, ←/→ arvo, Enter aloittaa" if language == "fi" else "↑/↓ field, ←/→ value, Enter starts",
+            True, (150, 175, 195),
+        )
+        screen.blit(hint, hint.get_rect(center=(SCREEN_W // 2, 620)))
+        pygame.display.flip()
 
 
 def edit_city_list(screen, font, clock, config, cities_list: list[str], selected_idx: int, language: str) -> tuple[list[str], int]:

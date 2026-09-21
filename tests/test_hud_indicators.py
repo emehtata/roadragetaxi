@@ -5,12 +5,18 @@ import os
 import pygame
 
 os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
+os.environ.setdefault("SDL_AUDIODRIVER", "dummy")
 
 from theroadragetrip.render.hud import (
     _draw_analog_speedometer,
     _draw_speedometer_indicators,
     default_hud_layout,
 )
+from datetime import date
+from types import SimpleNamespace
+
+from theroadragetrip.physics import Car
+from theroadragetrip.render.hud import draw_hud
 
 
 def _render(
@@ -69,3 +75,33 @@ def test_default_hud_layout_leaves_room_for_speedometer_indicators():
     assert indicators_bottom <= screen_h, (
         f"indicator chips extend to y={indicators_bottom}, past the {screen_h}px screen height"
     )
+
+
+def test_date_clock_and_taxi_score_do_not_overlap():
+    """The full ISO date made the old fixed 140px clock allowance too small."""
+    pygame.init()
+    screen = pygame.Surface((1280, 720))
+    font = pygame.font.Font(None, 24)
+    taxi = SimpleNamespace(
+        total_score=0,
+        completed_fares=0,
+        balance_cents=0,
+        offers=[],
+        current_passenger=None,
+        state="PICKUP",
+        fare_started_at=None,
+        notification_timer=0.0,
+        notification_msg="",
+        get_current_target=lambda: None,
+    )
+    draw_hud(
+        screen, font, Car(0, 0, 0, 0), False, 0, 1.0, None,
+        taxi_mgr=taxi, game_time_seconds=19 * 3600 + 11 * 60,
+        game_date=date(2026, 8, 30), temperature_c=12.3, language="fi",
+    )
+
+    clock = font.render("2026-08-30 Kello 19:11  +12.3 °C", True, (255, 230, 120)).get_rect(topright=(1268, 10))
+    score = font.render("PISTEET: 0 pistettä | Kyydit: 0 | SALDO: 0,00 €", True, (255, 230, 110)).get_rect(
+        topright=(clock.left - 12, 10)
+    )
+    assert score.right < clock.left

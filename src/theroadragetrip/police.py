@@ -6,6 +6,7 @@ import logging
 from dataclasses import dataclass
 from typing import List, Optional, Tuple
 
+from .geo import angle_diff
 from .osm import TaxiStop, Way
 from .physics import connected_drivable_ways
 
@@ -84,5 +85,5 @@ def camera_sees_car(camera: SpeedCamera, car_x: float, car_y: float, heading: fl
     dy = car_y - camera.y
     forward = dx * math.cos(camera.heading) + dy * math.sin(camera.heading)
     lateral = abs(dx * -math.sin(camera.heading) + dy * math.cos(camera.heading))
-    heading_error = abs((heading - camera.heading + math.pi) % (2 * math.pi) - math.pi)
+    heading_error = abs(angle_diff(heading, camera.heading))
     return -50.0 <= forward <= 0.0 and lateral <= 8.0 and heading_error <= math.radians(60.0)

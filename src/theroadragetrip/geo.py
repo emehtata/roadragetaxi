@@ -7,6 +7,11 @@ def clamp(v: float, lo: float, hi: float) -> float:
     return lo if v < lo else hi if v > hi else v
 
 
+def angle_diff(a: float, b: float) -> float:
+    """Signed shortest difference a - b, wrapped to [-pi, pi)."""
+    return (a - b + math.pi) % (2.0 * math.pi) - math.pi
+
+
 def compute_bbox(points_m: list[Tuple[float, float]]) -> Tuple[float, float, float, float]:
     """Compute (minx, miny, maxx, maxy) bounding box for points in meters."""
     if not points_m:

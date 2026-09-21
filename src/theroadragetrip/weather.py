@@ -13,12 +13,26 @@ pixels at draw time using whatever screen size it's actually given.
 """
 import random
 from enum import Enum
+from typing import Optional
+from .calendar import Season
 
 
 class WeatherType(str, Enum):
     CLEAR = "clear"
     RAIN = "rain"
-    SNOW = "snow"  # placeholder - not implemented yet (see WEATHER_RAIN.md #10)
+    SNOW = "snow"
+
+
+# Automatic weather durations in game-seconds. Autumn and winter use
+# separate 50%-precipitation periods lasting up to one game-day.
+SEASON_CLEAR_DURATION_RANGES = {
+    Season.SPRING: (60.0 * 60.0, 3.0 * 60.0 * 60.0),
+    Season.SUMMER: (2.0 * 60.0 * 60.0, 5.0 * 60.0 * 60.0),
+    Season.AUTUMN: (30.0 * 60.0, 90.0 * 60.0),
+}
+RAIN_DURATION_RANGE = (20.0 * 60.0, 50.0 * 60.0)
+AUTUMN_WINTER_PRECIPITATION_CHANCE = 0.5
+AUTUMN_WINTER_PERIOD_RANGE = (0.0, 24.0 * 60.0 * 60.0)
 
 
 # Wetness dynamics, in game-seconds - matches the game clock's own hour/
@@ -57,8 +71,10 @@ class WeatherSystem:
     own state or reacting directly to keyboard input.
     """
 
-    def __init__(self, weather_type: WeatherType = WeatherType.CLEAR) -> None:
-        self.weather_type = weather_type
+    def __init__(self, weather_type: Optional[WeatherType] = None, season: Season = Season.SUMMER) -> None:
+        self._automatic = weather_type is None
+        self._season = season
+        self.weather_type = weather_type or WeatherType.CLEAR
         self.wetness = 0.0  # 0.0 dry .. 1.0 fully wet; independent of weather_type -
         # CLEAR does not imply dry, e.g. right after rain stops (see #9).
         self._rng = random.Random(1729)
@@ -67,10 +83,70 @@ class WeatherSystem:
         # bottom) rather than reallocated - render/weather.py maps these
         # to actual screen pixels.
         self.rain_particles = [self._spawn_rain_particle() for _ in range(RAIN_PARTICLE_COUNT)]
+        if not self._automatic:
+            self._weather_timer = float("inf")
+        elif season in (Season.AUTUMN, Season.WINTER):
+            self._start_autumn_or_winter_period()
+        else:
+            self._weather_timer = self._next_weather_duration()
         # Each entry: [x, y, age_s, strength]. Short-lived (SPLASH_LIFETIME_S)
         # and pruned in update() - never grows large enough to need the
         # rain-particle pool's recycle-in-place treatment.
         self.splashes: list = []
+
+    @property
+    def season(self) -> Season:
+        return self._season
+
+    @season.setter
+    def season(self, value: Season) -> None:
+        if value == self._season:
+            return
+        self._season = value
+        if not self._automatic:
+            return
+        self.weather_type = WeatherType.CLEAR
+        if value in (Season.AUTUMN, Season.WINTER):
+            self._start_autumn_or_winter_period()
+        else:
+            self._weather_timer = self._next_weather_duration()
+
+    def _start_autumn_or_winter_period(self) -> None:
+        """Roll a new 0-24h period with a 50% precipitation chance."""
+        precipitation = WeatherType.SNOW if self._season == Season.WINTER else WeatherType.RAIN
+        self.weather_type = (
+            precipitation
+            if self._rng.random() < AUTUMN_WINTER_PRECIPITATION_CHANCE
+            else WeatherType.CLEAR
+        )
+        # Avoid a zero-duration loop while retaining the requested range.
+        self._weather_timer = max(1.0, self._rng.uniform(*AUTUMN_WINTER_PERIOD_RANGE))
+
+    def _next_weather_duration(self) -> float:
+        duration_range = (
+            RAIN_DURATION_RANGE
+            if self.weather_type == WeatherType.RAIN
+            else SEASON_CLEAR_DURATION_RANGES[self._season]
+        )
+        return self._rng.uniform(*duration_range)
+
+    def _advance_automatic_weather(self, game_dt: float) -> None:
+        if not self._automatic or game_dt <= 0.0:
+            return
+        remaining = game_dt
+        while remaining >= self._weather_timer:
+            remaining -= self._weather_timer
+            if self._season in (Season.AUTUMN, Season.WINTER):
+                self._start_autumn_or_winter_period()
+            else:
+                self.weather_type = WeatherType.CLEAR if self.weather_type == WeatherType.RAIN else WeatherType.RAIN
+                self._weather_timer = self._next_weather_duration()
+        self._weather_timer -= remaining
+
+    @property
+    def road_grip_wetness(self) -> float:
+        """Effective asphalt slipperiness; winter roads stay slick when clear."""
+        return max(self.wetness, 1.0 if self.season == Season.WINTER else 0.0)
 
     def spawn_splash(self, x: float, y: float, strength: float) -> None:
         """Trigger a splash effect (world position, 0..1 strength - see
@@ -91,8 +167,10 @@ class WeatherSystem:
         return self.weather_type in (WeatherType.RAIN, WeatherType.SNOW)
 
     def toggle_rain(self) -> None:
-        """Debug toggle (F8): CLEAR <-> RAIN."""
-        self.weather_type = WeatherType.CLEAR if self.weather_type == WeatherType.RAIN else WeatherType.RAIN
+        """Debug toggle (F8), disabling automatic changes for this session."""
+        self._automatic = False
+        precipitation = WeatherType.SNOW if self.season == Season.WINTER else WeatherType.RAIN
+        self.weather_type = WeatherType.CLEAR if self.is_precipitating else precipitation
 
     def update(self, game_dt: float, real_dt: float) -> None:
         """Advance wetness (game time) and rain particles (real time).
@@ -104,6 +182,7 @@ class WeatherSystem:
         fast game time is currently running (time_scale up to 60x).
         """
         if game_dt > 0.0:
+            self._advance_automatic_weather(game_dt)
             if self.weather_type == WeatherType.RAIN:
                 self.wetness = min(1.0, self.wetness + game_dt / RAIN_WETTING_DURATION_S)
             else:
@@ -112,8 +191,10 @@ class WeatherSystem:
         if self.is_precipitating and real_dt > 0.0:
             for particle in self.rain_particles:
                 x, y, factor = particle
-                y += RAIN_FALL_FRACTION_PER_S * factor * real_dt
-                x += RAIN_DRIFT_FRACTION_PER_S * factor * real_dt
+                fall_rate = RAIN_FALL_FRACTION_PER_S * (0.22 if self.weather_type == WeatherType.SNOW else 1.0)
+                drift_rate = RAIN_DRIFT_FRACTION_PER_S * (1.8 if self.weather_type == WeatherType.SNOW else 1.0)
+                y += fall_rate * factor * real_dt
+                x += drift_rate * factor * real_dt
                 if y > 1.0:
                     y -= 1.0
                     x = self._rng.random()

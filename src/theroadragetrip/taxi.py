@@ -2,6 +2,7 @@ import logging
 import math
 import random
 from dataclasses import dataclass
+from datetime import date, datetime, timedelta
 from typing import Any, Dict, List, Optional, Tuple
 
 from .geo import clamp, closest_point_and_dist_to_segment, compute_bbox, dist_point_to_segment, get_oriented_box_corners, point_in_polygon, segments_intersect
@@ -11,6 +12,7 @@ from .physics import (
     is_violating_oneway,
 )
 from .localization import tr
+from .fare import calculate_fare_cents, format_euros, tip_cents_from_happiness
 from .police import SpeedCamera, camera_sees_car
 from .residents import Resident, ResidentManager
 from .traffic_rules import nearest_traffic_light_ahead
@@ -161,6 +163,14 @@ class TaxiManager:
         self.elapsed_time: float = 0.0
         self.trip_distance_m: float = 0.0
         self.last_fare_points: int = 0
+        self.balance_cents: int = 0
+        self.last_fare_cents: int = 0
+        self.last_tip_cents: int = 0
+        self.passenger_happiness: float = 50.0
+        self.game_date: date = date.today()
+        self.fare_started_at: Optional[datetime] = None
+        self.fare_start_odometer_m: Optional[float] = None
+        self.fare_distance_m: float = 0.0
         self.notification_msg: str = ""
         self.notification_timer: float = 0.0
         self.next_offer_timer: float = random.uniform(PHONE_OFFER_MIN_INTERVAL_S, PHONE_OFFER_MAX_INTERVAL_S)
@@ -201,6 +211,35 @@ class TaxiManager:
 
     def nausea_delay_for_pickup(self, pickup: TaxiTarget) -> float:
         return nausea_delay_for_pickup(pickup, self.game_time_seconds)
+
+    def _current_game_datetime(self) -> datetime:
+        return datetime.combine(self.game_date, datetime.min.time()) + timedelta(seconds=self.game_time_seconds)
+
+    def current_fare_cents(self) -> int:
+        """Return the live meter amount for the onboard passenger."""
+        if self.state != TaxiState.DRIVING_TO_DROPOFF or self.fare_started_at is None:
+            return 0
+        return calculate_fare_cents(self.fare_distance_m, self.elapsed_time, self.fare_started_at)
+
+    def adjust_passenger_happiness(self, amount: float) -> None:
+        if self.current_passenger is not None and self.state == TaxiState.DRIVING_TO_DROPOFF:
+            self.passenger_happiness = max(0.0, min(100.0, self.passenger_happiness + amount))
+
+    def update_passenger_happiness(
+        self, dt: float, speed_mps: float, speed_limit_mps: Optional[float], is_sliding: bool,
+    ) -> None:
+        """Reward brisk legal progress and penalize reckless driving."""
+        if self.current_passenger is None or self.state != TaxiState.DRIVING_TO_DROPOFF:
+            return
+        speed_kmh = abs(speed_mps) * 3.6
+        if speed_kmh >= 30.0:
+            safe_speed_factor = min(1.0, (speed_kmh - 30.0) / 50.0)
+            self.adjust_passenger_happiness(0.08 * safe_speed_factor * dt)
+        if speed_limit_mps is not None and abs(speed_mps) > speed_limit_mps * 1.15:
+            excess_ratio = abs(speed_mps) / max(0.1, speed_limit_mps) - 1.15
+            self.adjust_passenger_happiness(-0.35 * (1.0 + excess_ratio) * dt)
+        if is_sliding:
+            self.adjust_passenger_happiness(-0.6 * dt)
 
     @staticmethod
     def _collision_cells(minx: float, miny: float, maxx: float, maxy: float, cell_size: float = 100.0):
@@ -361,6 +400,7 @@ class TaxiManager:
                 continue
             self._speed_camera_hits.add(camera_index)
             self.total_score -= penalty
+            self.adjust_passenger_happiness(-10.0)
             self.speed_camera_flash_timer = 0.35
             self.speed_camera_flash_index = camera_index
             speeding_kmh = max(0, round(abs(car.speed) * 3.6 - camera.speed_limit_kmh))
@@ -448,6 +488,7 @@ class TaxiManager:
             if building_id not in self._crashed_building_cooldowns:
                 self._crashed_building_cooldowns[building_id] = sim_time
                 self.total_score -= penalty
+                self.adjust_passenger_happiness(-35.0)
                 self.notification_msg = tr(self.language, "building_crash", penalty=penalty)
                 self.notification_timer = 3.5
                 logger.info("Player crashed into building: -%d pts", penalty)
@@ -557,6 +598,7 @@ class TaxiManager:
                 if key not in self._crashed_tree_cooldowns:
                     self._crashed_tree_cooldowns[key] = sim_time
                     self.total_score -= penalty
+                    self.adjust_passenger_happiness(-30.0)
                     self.notification_msg = tr(self.language, "tree_crash", penalty=penalty)
                     self.notification_timer = 3.5
                 return True
@@ -611,6 +653,7 @@ class TaxiManager:
             if fence_id not in self._crashed_fence_cooldowns:
                 self._crashed_fence_cooldowns[fence_id] = sim_time
                 self.total_score -= penalty
+                self.adjust_passenger_happiness(-25.0)
                 self.notification_msg = tr(self.language, "fence_crash", penalty=penalty)
                 self.notification_timer = 3.5
                 logger.info("Player crashed into construction fence: -%d pts", penalty)
@@ -787,6 +830,7 @@ class TaxiManager:
             if self.wrong_way_penalty_cooldown >= interval_s:
                 self.wrong_way_penalty_cooldown = 0.0
                 self.total_score -= penalty
+                self.adjust_passenger_happiness(-10.0)
                 self.notification_msg = tr(self.language, "wrong_way_penalty", penalty=penalty)
                 self.notification_timer = 3.5
                 logger.info("Player driving wrong way on one-way road: -%d pts penalty", penalty)
@@ -817,6 +861,7 @@ class TaxiManager:
         if self.pedestrian_way_penalty_cooldown >= interval_s:
             self.pedestrian_way_penalty_cooldown = 0.0
             self.total_score -= penalty
+            self.adjust_passenger_happiness(-15.0)
             self.notification_msg = tr(self.language, "pedestrian_way_penalty", penalty=penalty)
             self.notification_timer = 3.5
             logger.info("Player driving on a pedestrian way: -%d pts penalty", penalty)
@@ -1440,6 +1485,10 @@ class TaxiManager:
             self.state = TaxiState.CLIENT_WALKING_TO_CAR
         else:
             self.state = TaxiState.DRIVING_TO_DROPOFF
+            self.fare_started_at = self._current_game_datetime()
+            self.fare_start_odometer_m = None
+            self.fare_distance_m = 0.0
+            self.passenger_happiness = 50.0
         self.elapsed_time = 0.0
         self.trip_distance_m = math.hypot(dropoff.x - pickup.x, dropoff.y - pickup.y)
         if walk_to_car and message_key == "hail_boarded":
@@ -1600,6 +1649,7 @@ class TaxiManager:
             if passenger.nausea_warning_timer <= 0.0:
                 passenger.nausea_vomited = True
                 self.total_score -= 500
+                self.adjust_passenger_happiness(-30.0)
                 self.notification_msg = tr(self.language, "passenger_vomited", penalty=500)
                 self.notification_timer = 5.0
                 logger.info("Passenger vomited in taxi: passenger=%s penalty=%d", passenger.name, 500)
@@ -1719,6 +1769,10 @@ class TaxiManager:
                 p.is_walking_to_car = False
                 self.state = TaxiState.DRIVING_TO_DROPOFF
                 self.elapsed_time = 0.0
+                self.fare_started_at = self._current_game_datetime()
+                self.fare_start_odometer_m = car.odometer_m
+                self.fare_distance_m = 0.0
+                self.passenger_happiness = 50.0
                 self.trip_distance_m = math.hypot(p.dropoff.x - p.pickup.x, p.dropoff.y - p.pickup.y)
                 self.notification_msg = tr(
                     self.language, "boarded_destination", name=p.name, address=p.dropoff.address
@@ -1741,6 +1795,9 @@ class TaxiManager:
 
         elif self.state == TaxiState.DRIVING_TO_DROPOFF:
             self.elapsed_time += dt
+            if self.fare_start_odometer_m is None:
+                self.fare_start_odometer_m = car.odometer_m
+            self.fare_distance_m = max(0.0, car.odometer_m - self.fare_start_odometer_m)
             if dist_to_target <= target.radius_m:
                 if is_stopped:
                     # Completed fare!
@@ -1749,15 +1806,34 @@ class TaxiManager:
                     self.total_score += earned
                     self.completed_fares += 1
                     self.last_fare_points = earned
+                    fare_cents = calculate_fare_cents(
+                        self.fare_distance_m,
+                        self.elapsed_time,
+                        self.fare_started_at or self._current_game_datetime(),
+                    )
+                    expected_duration_s = max(60.0, self.trip_distance_m / (40.0 / 3.6))
+                    if self.elapsed_time <= expected_duration_s:
+                        time_saved_ratio = 1.0 - self.elapsed_time / expected_duration_s
+                        self.adjust_passenger_happiness(10.0 + 15.0 * time_saved_ratio)
+                    tip_cents = tip_cents_from_happiness(self.passenger_happiness)
+                    self.balance_cents += fare_cents + tip_cents
+                    self.last_fare_cents = fare_cents
+                    self.last_tip_cents = tip_cents
                     avg_kmh = (self.trip_distance_m / max(1.0, self.elapsed_time)) * 3.6
                     self.notification_msg = tr(
-                        self.language, "fare_complete_points", earned=earned, avg=avg_kmh, seconds=self.elapsed_time
+                        self.language, "fare_complete_points", earned=earned, avg=avg_kmh,
+                        seconds=self.elapsed_time, amount=format_euros(fare_cents, self.language),
+                        tip=format_euros(tip_cents, self.language),
                     )
                     self.notification_timer = 6.0
                     logger.info(
-                        "Taxi fare completed: passenger=%s earned=%d total_score=%d elapsed=%.1fs",
+                        "Taxi fare completed: passenger=%s earned=%d fare_cents=%d tip_cents=%d happiness=%.0f balance_cents=%d total_score=%d elapsed=%.1fs",
                         p.name,
                         earned,
+                        fare_cents,
+                        tip_cents,
+                        self.passenger_happiness,
+                        self.balance_cents,
                         self.total_score,
                         self.elapsed_time,
                     )

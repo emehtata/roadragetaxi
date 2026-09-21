@@ -3,12 +3,14 @@ wet-road tint, and puddles."""
 import os
 
 os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
+os.environ.setdefault("SDL_AUDIODRIVER", "dummy")
 import pygame
 
 from theroadragetrip.osm import Way
 from theroadragetrip.render import draw_puddles, draw_rain, draw_splashes, draw_wet_roads, find_puddle_overlap
 from theroadragetrip.render import weather as weather_render
 from theroadragetrip.weather import SPLASH_LIFETIME_S, WeatherSystem, WeatherType
+from theroadragetrip.calendar import Season
 
 
 def test_draw_rain_draws_nothing_when_clear():
@@ -31,6 +33,19 @@ def test_draw_rain_draws_visible_streaks_when_raining():
         screen.fill((0, 0, 0))
         draw_rain(screen, weather, screen_w=200, screen_h=150)
         # At least some pixels were painted a non-background color.
+        assert pygame.transform.average_color(screen)[:3] != (0, 0, 0)
+    finally:
+        pygame.quit()
+
+
+def test_draw_rain_draws_visible_snowflakes_in_winter():
+    pygame.init()
+    try:
+        weather = WeatherSystem(season=Season.WINTER)
+        screen = pygame.Surface((200, 150))
+        screen.fill((0, 0, 0))
+        draw_rain(screen, weather, screen_w=200, screen_h=150)
+        assert weather.weather_type == WeatherType.SNOW
         assert pygame.transform.average_color(screen)[:3] != (0, 0, 0)
     finally:
         pygame.quit()

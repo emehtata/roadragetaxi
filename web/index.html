@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="The Road Rage Trip is a Finnish top-down taxi driving game with real OpenStreetMap roads, living traffic, missions, and road rage.">
+  <meta name="description" content="The Road Rage Trip is a Finnish top-down taxi driving game with real OpenStreetMap roads, dynamic seasons and weather, metered fares, and road rage.">
   <title>The Road Rage Trip | Real roads, bad decisions</title>
   <link rel="stylesheet" href="styles.css">
   <script defer src="script.js"></script>
@@ -31,7 +31,7 @@
       <div class="hero-content">
         <p class="eyebrow"><span class="signal-dot"></span> Avoimen maailman taksipeli · Suomi</p>
         <h1>Vie asiakkaat perille.<br><em>Haasta tie.</em></h1>
-        <p class="hero-copy">Oikeita suomalaisia katuja. Elävää liikennettä. Yksi taksinkuljettaja, jonka raivo on supervoima.</p>
+        <p class="hero-copy">Oikeita suomalaisia katuja. Neljä vuodenaikaa. Taksamittari käy, ja asiakas arvioi jokaisen mutkan.</p>
         <div class="hero-actions">
           <a class="button button-primary" href="https://github.com/emehtata/roadragetaxi/releases" target="_blank" rel="noreferrer">Lataa uusin julkaisu <span>↗</span></a>
           <a class="button button-ghost" href="#features">Tutustu peliin <span>↓</span></a>
@@ -68,6 +68,9 @@
           <article class="feature-card"><span class="feature-number">09</span><div class="feature-icon">☾</div><h3>Yö syttyy valoihin</h3><p>Katuvalot ovat tarkalleen siellä, missä OpenStreetMap-data sanoo oikeiden lyhtypylväiden olevan, ja rakennusten ikkunat hehkuvat satunnaisesti pimeän tultua. Yöllä kaupunki näyttää siltä, missä joku oikeasti asuu.</p></article>
           <article class="feature-card"><span class="feature-number">10</span><div class="feature-icon">☺</div><h3>Jalankulkijoilla on syke</h3><p>Asukkaat kävelevät omille ovilleen, tarkistavat puhelintaan, istuvat penkillä tai lenkkeilevät - ja horjuvat baarista kotiin promillella 0.5-3.0. Yöllä he hohtavat himmeästi, ennen kuin ajovalo tai katulamppu löytää heidät.</p></article>
           <article class="feature-card"><span class="feature-number">11</span><div class="feature-icon">◉</div><h3>Liikennevalot ovat osa peliä</h3><p>Risteykset ja liikennevalot ohjaavat sekä sinua että jalankulkijoita. Punaisia päin ajaminen näkyy suoraan taksin pistemäärässä.</p></article>
+          <article class="feature-card"><span class="feature-number">12</span><div class="feature-icon">❄</div><h3>Neljä suomalaista vuodenaikaa</h3><p>Valitse keikkakuskina aloituspäivä ja kellonaika. Talvi jäädyttää vedet ja peittää maan lumeen, kevät tuo jäälautat, kesä vihertää ja syksy värjää maiseman ruskaan.</p></article>
+          <article class="feature-card"><span class="feature-number">13</span><div class="feature-icon">€</div><h3>Jokainen kyyti kartuttaa kassaa</h3><p>Taksamittari laskee lähtö-, kilometri- ja aikamaksun kellon mukaan. Seuraa hintaa ajon aikana, saa maksu perillä ja kasvata HUDissa näkyvää saldoa.</p></article>
+          <article class="feature-card"><span class="feature-number">14</span><div class="feature-icon">♥</div><h3>Asiakas muistaa ajotyylisi</h3><p>Törmäykset ja holtiton ajo syövät tyytyväisyyttä. Reipas, ajoissa perille päättyvä kyyti voi tuoda jopa kymmenen euron tipin.</p></article>
         </div>
       </div>
     </section>
@@ -103,17 +106,17 @@
     </section>
 
     <section class="release-notes section-shell" id="release-notes">
-      <div class="section-kicker">05 / JULKAISU 0.13.0alpha</div>
+      <div class="section-kicker">05 / JULKAISU 0.14.0alpha</div>
       <div class="how-grid">
-        <div><h2>Mitä on<br><em>uutta.</em></h2><p class="lead">Suurin päivitys tähän mennessä: kaupunki täyttyy eläväisestä, itsenäisestä liikenteestä.</p></div>
+        <div><h2>Mitä on<br><em>uutta.</em></h2><p class="lead">Aika, sää ja vuodenajat muuttavat nyt sekä maisemaa että ajotuntumaa — ja jokaisesta kyydistä maksetaan.</p></div>
         <ul class="notes-list">
-          <li><strong>Autonomiset ajoneuvot</strong>Autot, pakettiautot, kuorma-autot ja bussit ajavat ja parkkeeraavat itsenäisesti kaduilla.</li>
-          <li><strong>Väistely käytössä</strong>Liikenne väistää ja hidastaa esteen edessä sen sijaan että ajaisi läpi.</li>
-          <li><strong>Ei enää jumeja</strong>Jumiin jäänyt ajoneuvo peruuttaa ja etsii uuden reitin sen sijaan että pyörisi paikallaan.</li>
-          <li><strong>Oikeita onnettomuuksia</strong>Kun kaksi ajoneuvoa törmää, kuljettaja pysähtyy, astuu ulos, kiroilee ja soittaa jollekulle - eikä palaa enää autoon.</li>
-          <li><strong>Yö syttyy valoihin</strong>Katuvalot seisovat oikeiden OpenStreetMap-lyhtypylväiden paikalla, ja rakennusten ikkunat hehkuvat satunnaisesti pimeällä.</li>
-          <li><strong>Asukkailla on arkea</strong>Jalankulkijat tarkistavat puhelintaan, istuvat penkillä, lenkkeilevät ja jutustelevat toistensa kanssa.</li>
-          <li><strong>Tarkempi kartta</strong>Liikenneympyrät, pysäytys- ja väistämismerkit sekä päällystetyt aukiot piirtyvät nyt kartalle.</li>
+          <li><strong>Vapaa aloitusaika</strong>Keikkakuski-tilassa voit valita aloituspäivän ja kellonajan; oletuksena käytetään oikeaa paikallista aikaa.</li>
+          <li><strong>Vuodenajat muuttavat maailman</strong>Lumi, kevään vaaleat sävyt ja jäälautat, kesän vihreys sekä syksyn ruska vaihtuvat kalenterin mukana.</li>
+          <li><strong>Suomalainen sää</strong>Lämpötila seuraa vuodenaikaa ja leveysastetta. Talvella sataa ajoittain lunta ja syksyllä tavallista useammin vettä.</li>
+          <li><strong>Jää, vesi ja ajopinnat</strong>Talven vesistöt jäätyvät valkoisiksi. Märkä tie, lumi ja jää vaikuttavat pitoon, ja pehmeälle pinnalle jää neljän renkaan jäljet.</li>
+          <li><strong>Taksamittari ja saldo</strong>Kyytiin lisätään kellonajasta riippuva lähtömaksu sekä kilometri- ja aikamaksu, pyöristettynä ylöspäin kymmeneen senttiin.</li>
+          <li><strong>Tyytyväisyys ja tipit</strong>Asiakas palkitsee nopean, ajoissa valmistuneen kyydin, mutta kolarit ja holtiton ajo pienentävät enintään 10 euron tippiä.</li>
+          <li><strong>Selkeämpi ajotuntuma</strong>Renkaiden pitoa on lisätty kaikilla pinnoilla, märkä kova pinta ei jätä skidmark-jälkiä ja talven pehmeälle lumelle syntyy lumijäljet mudan sijaan.</li>
         </ul>
       </div>
     </section>

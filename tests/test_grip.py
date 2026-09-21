@@ -55,7 +55,7 @@ def test_5_gentle_corner_at_moderate_speed_stays_under_three_quarters_g():
 def test_coasting_drag_does_not_remove_all_steering_grip_on_gravel():
     """Regression from an in-game screenshot: releasing throttle produces
     strong arcade drag (~0.61g). That is not a brake/tire force and must not
-    consume gravel's entire 0.55g friction circle on the following frame."""
+    consume gravel's entire friction circle on the following frame."""
     gravel = Way(
         points_m=[(0.0, 0.0), (100.0, 0.0)], highway="unclassified",
         half_width_m=5.0, surface="gravel",
@@ -236,6 +236,27 @@ def test_12_surface_changes_grip_ceiling_for_the_same_corner_and_speed():
     assert max_grips["ice"] < max_grips["grass"] < max_grips["gravel"] < max_grips["dry_asphalt"]
 
 
+def test_all_surface_grip_ceiling_values_use_the_less_slippery_tuning():
+    previous_values = {
+        "dry_asphalt": 0.90,
+        "wet_asphalt": 0.75,
+        "gravel": 0.55,
+        "grass": 0.35,
+        "snow": 0.20,
+        "ice": 0.10,
+        "sand": 0.30,
+    }
+    assert all(SURFACE_MAX_GRIP_G[name] > old_value for name, old_value in previous_values.items())
+    assert (
+        SURFACE_MAX_GRIP_G["ice"]
+        < SURFACE_MAX_GRIP_G["snow"]
+        < SURFACE_MAX_GRIP_G["grass"]
+        < SURFACE_MAX_GRIP_G["gravel"]
+        < SURFACE_MAX_GRIP_G["wet_asphalt"]
+        < SURFACE_MAX_GRIP_G["dry_asphalt"]
+    )
+
+
 def test_hysteresis_keeps_is_sliding_from_flickering_at_the_boundary():
     """GRIP.md section 12: separate enter/exit thresholds on slip_amount,
     not one threshold checked every frame."""
@@ -264,6 +285,8 @@ def test_13_wetness_interpolates_asphalt_grip_toward_wet_asphalt():
     "progressive, not instant" approach GRIP.md already uses elsewhere."""
     dry = SURFACE_MAX_GRIP_G["dry_asphalt"]
     wet = SURFACE_MAX_GRIP_G["wet_asphalt"]
+    assert wet == 1.00  # playable rain grip: reduced, but no longer near gravel
+    assert SURFACE_MAX_GRIP_G["gravel"] < wet < dry
 
     assert _surface_max_grip_g(None, "simulation", wetness=0.0) == dry
     assert _surface_max_grip_g(None, "simulation", wetness=1.0) == wet

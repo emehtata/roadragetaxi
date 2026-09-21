@@ -50,6 +50,7 @@ from .common import (
     road_color_for_way,
     road_render_priority,
     screen_to_world,
+    set_game_date,
     solar_altitude_and_events,
     world_to_screen,
 )
