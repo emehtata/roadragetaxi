@@ -129,6 +129,8 @@ MAX_DRIFT_ANGLE = math.radians(45.0)
 # out (oversteer) instead of pushing wide, and the driver has to lift or
 # counter-steer to catch it. Unpowered/braking/coasting corners keep the
 # ordinary whole-car circle (understeer).
+FRONT_LOCKUP_MIN_SPEED_MPS = 15.0  # ~54 km/h: below this a braking skid only marks the rears
+FRONT_LOCKUP_GRIP_RATIO = 1.2  # braking g must exceed the surface's grip by this factor
 RWD_DRIVE_LOAD_SHARE = 2.0
 OVERSTEER_DRIFT_PER_OVERSHOOT = math.radians(25.0)  # target slide angle per 100% rear overshoot
 OVERSTEER_MAX_DRIFT_ANGLE = math.radians(35.0)
@@ -215,6 +217,7 @@ class Car:
     max_grip_g: float = SURFACE_MAX_GRIP_G["dry_asphalt"]  # current surface/mode's combined-g ceiling
     grip_usage: float = 0.0  # raw_total_g / max_grip_g
     skid_amount: float = 0.0  # graded slip for tyre marks only (see _update_g_force); slip_amount is what is_sliding uses
+    front_lockup: bool = False  # hard braking from speed: the front tyres lock too, so marks come from all four
     ground_kind: str = "road"  # "road", "hard", "soft" or "sand" - last frame's ground under the car (grip lookup)
     slip_amount: float = 0.0  # 0 = full grip, 1 = fully slid (continuous, see _slip_amount_from_ratio)
     slip_angle: float = 0.0  # radians, heading vs. actual velocity direction; +left, -right
@@ -1481,6 +1484,7 @@ def update_car_physics(
     entry_speed = car.speed
     using_longitudinal_tire_grip = False
     throttle_driven = False
+    braking_driven = False
     if speed_limit_mps is not None and car.speed > speed_limit_mps:
         using_longitudinal_tire_grip = True
         car.speed = max(speed_limit_mps, car.speed - SPEED_LIMIT_DECEL * dt)
@@ -1494,6 +1498,7 @@ def update_car_physics(
         car.speed = min(car.speed + acceleration * dt, speed_limit_mps) if speed_limit_mps is not None else car.speed + acceleration * dt
     elif brake > 0:
         using_longitudinal_tire_grip = True
+        braking_driven = True
         if car.speed > 0.0:
             car.speed = max(0.0, car.speed - BRAKE * dt)
         else:
@@ -1511,6 +1516,15 @@ def update_car_physics(
     longitudinal_tire_g = (
         abs(car.speed - entry_speed) / (dt * GRAVITY_MPS2)
         if using_longitudinal_tire_grip and dt > 0.0 else 0.0
+    )
+
+    # Excessive braking from speed overwhelms the fronts as well as the
+    # rears (which are what a powerslide/wheelspin scrubs), so marks then
+    # come from all four tyres.
+    car.front_lockup = (
+        braking_driven
+        and entry_speed >= FRONT_LOCKUP_MIN_SPEED_MPS
+        and longitudinal_tire_g >= car.max_grip_g * FRONT_LOCKUP_GRIP_RATIO
     )
 
     # Manual steering check

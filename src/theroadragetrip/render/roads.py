@@ -1378,17 +1378,20 @@ class TireTrail:
 
     def __init__(
         self, is_grass: bool, x: float, y: float, heading: float, intensity: float, is_sand: bool = False,
+        front: bool = False,
     ) -> None:
         # is_grass = an unpaved (dirt/sand) trail rather than a paved skid
         # mark; is_sand picks the lighter sand look over the muddy one.
         self.is_grass = is_grass
         self.is_sand = is_sand
-        self.points: List[Tuple[float, float, float, float]] = [(x, y, heading, intensity)]
+        # (x, y, heading, intensity, front) - front=True means the front
+        # tyres locked too (hard braking), not just the rear axle.
+        self.points: List[Tuple[float, float, float, float, bool]] = [(x, y, heading, intensity, front)]
         self.min_x = self.max_x = x
         self.min_y = self.max_y = y
 
-    def add(self, x: float, y: float, heading: float, intensity: float) -> None:
-        self.points.append((x, y, heading, intensity))
+    def add(self, x: float, y: float, heading: float, intensity: float, front: bool = False) -> None:
+        self.points.append((x, y, heading, intensity, front))
         if x < self.min_x:
             self.min_x = x
         elif x > self.max_x:
@@ -1400,6 +1403,7 @@ class TireTrail:
 
 
 TIRE_MARK_REAR_AXLE_OFFSET_M = 1.2  # rear axle behind the car's centre
+TIRE_MARK_FRONT_AXLE_OFFSET_M = 1.2  # front axle ahead of it
 
 
 def draw_tire_tracks(
@@ -1441,9 +1445,11 @@ def draw_tire_tracks(
         ):
             continue
         previous_tires = None
-        for track_x, track_y, heading, intensity in trail.points:
+        previous_front_tires = None
+        for track_x, track_y, heading, intensity, front in trail.points:
             if viewport_bounds is not None and not (vminx <= track_x <= vmaxx and vminy <= track_y <= vmaxy):
                 previous_tires = None
+                previous_front_tires = None
                 continue
             center_x, center_y = world_to_screen(track_x, track_y, camx, camy, px_per_m, screen_w, screen_h)
             # Perpendicular to the heading in *screen* space (y grows
@@ -1454,27 +1460,36 @@ def draw_tire_tracks(
             # of side by side (one looked front, one rear).
             side_x = -math.sin(heading)
             side_y = -math.cos(heading)
+
+            def axle_tires(offset_m: float):
+                # offset_m > 0 is ahead of the centre. Screen y grows
+                # downward, so world heading (cos, sin) maps to (cos, -sin).
+                axle_x = center_x + math.cos(heading) * offset_m * px_per_m
+                axle_y = center_y - math.sin(heading) * offset_m * px_per_m
+                return [
+                    (
+                        int(axle_x + side_x * side * 0.72 * px_per_m),
+                        int(axle_y + side_y * side * 0.72 * px_per_m),
+                    )
+                    for side in (-1.0, 1.0)
+                ]
+
             # Marks are laid by the rear tyres (the driven axle), which sit
             # behind the car's centre: a spinning car's marks then trace the
             # rear wheels' true circle instead of pivoting about the middle.
-            # Screen y grows downward, so world heading (cos, sin) maps to
-            # (cos, -sin) - the same sign convention world_to_screen uses.
-            axle_x = center_x - math.cos(heading) * TIRE_MARK_REAR_AXLE_OFFSET_M * px_per_m
-            axle_y = center_y + math.sin(heading) * TIRE_MARK_REAR_AXLE_OFFSET_M * px_per_m
-            current_tires = [
-                (
-                    int(axle_x + side_x * side * 0.72 * px_per_m),
-                    int(axle_y + side_y * side * 0.72 * px_per_m),
-                )
-                for side in (-1.0, 1.0)
-            ]
+            current_tires = axle_tires(-TIRE_MARK_REAR_AXLE_OFFSET_M)
+            current_front_tires = axle_tires(TIRE_MARK_FRONT_AXLE_OFFSET_M) if front else None
+            color = tuple(
+                int(faint + (dark - faint) * intensity) for faint, dark in zip(faint_color, dark_color)
+            )
             if previous_tires is not None:
-                color = tuple(
-                    int(faint + (dark - faint) * intensity) for faint, dark in zip(faint_color, dark_color)
-                )
                 for previous_tire, current_tire in zip(previous_tires, current_tires):
                     pygame.draw.line(screen, color, previous_tire, current_tire, width)
+            if previous_front_tires is not None and current_front_tires is not None:
+                for previous_tire, current_tire in zip(previous_front_tires, current_front_tires):
+                    pygame.draw.line(screen, color, previous_tire, current_tire, width)
             previous_tires = current_tires
+            previous_front_tires = current_front_tires
 
 
 def draw_vomit_puddles(screen, puddles, camx: float, camy: float, px_per_m: float = PX_PER_M) -> None:

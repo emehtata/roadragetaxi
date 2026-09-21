@@ -195,3 +195,46 @@ def test_both_tyre_marks_sit_side_by_side_at_any_heading():
         # two tyres 1.44 m (28.8 px) apart -> two clusters of about that separation.
         lat = sorted(x * -math.sin(heading) + y * -math.cos(heading) for x, y in pts)
         assert 22.0 < lat[-1] - lat[0] < 36.0, (heading_deg, lat[-1] - lat[0])
+
+
+def test_excessive_braking_from_high_speed_locks_the_front_tyres_too():
+    from theroadragetrip.physics import Car, update_car_physics
+
+    def brake(speed, mode="simulation"):
+        car = Car(x=0.0, y=0.0, heading=0.0, speed=speed)
+        locked = False
+        for _ in range(20):
+            update_car_physics(car, 0.0, 1.0, 0.0, 0.0, 1 / 60, ways=[], block_offroad=False, physics_mode=mode)
+            locked = locked or car.front_lockup
+        return locked
+
+    for mode in ("arcade", "simulation"):
+        assert brake(30.0, mode)       # ~108 km/h panic stop
+        assert not brake(8.0, mode)    # low speed: rears only
+
+
+def test_front_lockup_trails_draw_four_marks_and_others_two():
+    import math
+    import os
+    os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
+    import pygame
+    from theroadragetrip.render import TireTrail, draw_tire_tracks
+
+    pygame.init()
+
+    def lit(front):
+        screen = pygame.Surface((400, 400))
+        screen.fill((0, 0, 0))
+        trail = TireTrail(False, 0.0, 0.0, 0.0, 1.0, False, front)
+        for step in range(1, 6):
+            trail.add(float(step), 0.0, 0.0, 1.0, front)
+        draw_tire_tracks(screen, [trail], 2.5, 0.0, grass=False, px_per_m=20.0, screen_w=400, screen_h=400)
+        cols = {y for x in range(400) for y in range(400) if screen.get_at((x, y))[0] > 0}
+        rows = sorted(cols)
+        clusters = 1 + sum(1 for a, b in zip(rows, rows[1:]) if b - a > 3)
+        return sum(1 for x in range(400) for y in range(400) if screen.get_at((x, y))[0] > 0), clusters
+
+    rear_px, rear_clusters = lit(False)
+    all_px, all_clusters = lit(True)
+    assert rear_clusters == 2
+    assert all_px > rear_px * 1.3  # front marks add to the rear ones (same two lanes, 2.4 m ahead)

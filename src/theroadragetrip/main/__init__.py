@@ -1879,10 +1879,11 @@ def main() -> None:
                     # The grass trail isn't a slip mark - it's a constant-
                     # weight dirt track from driving off-road at all.
                     intensity = skidmark_intensity(car.skid_amount) if is_skidding else 1.0
+                    front_marks = is_skidding and car.front_lockup
                     if start_new_trail:
-                        tire_tracks.append(TireTrail(is_grass, car.x, car.y, car.heading, intensity, is_sand))
+                        tire_tracks.append(TireTrail(is_grass, car.x, car.y, car.heading, intensity, is_sand, front_marks))
                     else:
-                        tire_tracks[-1].add(car.x, car.y, car.heading, intensity)
+                        tire_tracks[-1].add(car.x, car.y, car.heading, intensity, front_marks)
                     tire_track_point_count += 1
                     last_track_position = (car.x, car.y)
                     last_track_surface = (is_grass, is_sand)
