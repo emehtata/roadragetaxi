@@ -182,3 +182,17 @@ def test_drivable_road_crossing_open_waterway_does_not_trigger_water_respawn():
     car = Car(x=0.0, y=0.0, heading=math.pi / 2, speed=8.0, layer=0)
 
     assert not is_car_fully_in_water(car, [stream], current_way=road)
+
+
+def test_soft_ground_only_for_grass_like_scenery_not_hard_surfaces():
+    from theroadragetrip.osm import Scenery
+
+    square = [(0.0, 0.0), (100.0, 0.0), (100.0, 100.0), (0.0, 100.0)]
+    grass = Scenery(points_m=square, kind="grass", bbox=(0.0, 0.0, 100.0, 100.0))
+    plaza = Scenery(points_m=[(40.0, 40.0), (60.0, 40.0), (60.0, 60.0), (40.0, 60.0)], kind="pedestrian_area", bbox=(40.0, 40.0, 60.0, 60.0))
+    industrial = Scenery(points_m=square, kind="industrial", bbox=(0.0, 0.0, 100.0, 100.0))
+
+    assert physics.is_point_on_soft_ground(500.0, 500.0, sceneries=[])  # unmapped open ground
+    assert physics.is_point_on_soft_ground(10.0, 10.0, sceneries=[grass, plaza])
+    assert not physics.is_point_on_soft_ground(50.0, 50.0, sceneries=[grass, plaza])  # plaza inside a park is hard
+    assert not physics.is_point_on_soft_ground(10.0, 10.0, sceneries=[industrial])

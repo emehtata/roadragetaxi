@@ -51,6 +51,7 @@ from ..physics import (
     SpatialWayGrid,
     get_current_road_at_car,
     is_point_in_parking_lot,
+    is_point_on_soft_ground,
     is_point_on_parking_space,
     reset_trip,
     respawn_car,
@@ -1847,6 +1848,10 @@ def main() -> None:
                 surface_way is None
                 and not is_point_on_parking_space(car.x, car.y, parking_spaces)
                 and not is_point_in_parking_lot(car.x, car.y, scenery_grid=scenery_grid)
+                # Only genuinely soft ground (grass, forest floor, fields...)
+                # gets a muddy dirt trail - not a plaza, forecourt, track,
+                # or commercial/industrial ground that just has no road way.
+                and is_point_on_soft_ground(car.x, car.y, scenery_grid=scenery_grid)
             )
             # Tire slip is the source of truth for a skidmark (SKIDMARK.md) -
             # not brake input, not even is_sliding alone (a tire can be
