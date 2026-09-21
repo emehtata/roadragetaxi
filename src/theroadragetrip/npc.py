@@ -2274,17 +2274,23 @@ def _pick_npc_destination_candidates(
     for space in parking_spaces or ():
         if getattr(space, "occupied", False) or getattr(space, "reserved", False):
             continue
-        if not _parking_space_fits_vehicle(space):
-            continue
         bbox = getattr(space, "bbox", None)
         if not bbox:
             continue
+        # Cheapest filter first: this loop visits every parking space in
+        # the whole loaded map, and the fit/own-area checks below (edge
+        # lengths, point-in-polygon) are far costlier than one distance
+        # test - running them on all ~1.5k spaces per call made each
+        # population tick a ~200ms frame spike (profiled).
         cx, cy = (bbox[0] + bbox[2]) / 2.0, (bbox[1] + bbox[3]) / 2.0
+        dist_sq = (cx - x) ** 2 + (cy - y) ** 2
+        if dist_sq > radius_sq:
+            continue
+        if not _parking_space_fits_vehicle(space):
+            continue
         if own_parking_area is not None and _parking_area_containing((cx, cy), [own_parking_area]) is not None:
             continue
-        dist_sq = (cx - x) ** 2 + (cy - y) ** 2
-        if dist_sq <= radius_sq:
-            space_candidates.append((dist_sq, (cx, cy), space))
+        space_candidates.append((dist_sq, (cx, cy), space))
 
     if space_candidates:
         ordered = space_candidates

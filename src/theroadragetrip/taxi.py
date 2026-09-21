@@ -270,25 +270,31 @@ class TaxiManager:
             self._tree_collision_grid.clear()
             self._tree_collision_indexed = {}
             self._tree_collision_ref = sceneries
-        shrank = any(
-            len(getattr(scenery, "trees", ())) < self._tree_collision_indexed.get(scenery_index, 0)
-            for scenery_index, scenery in enumerate(sceneries)
-        )
-        if shrank:
-            self._tree_collision_grid.clear()
-            self._tree_collision_indexed = {}
-        for scenery_index, scenery in enumerate(sceneries):
-            trees = getattr(scenery, "trees", ())
-            indexed = self._tree_collision_indexed.get(scenery_index, 0)
-            if len(trees) <= indexed:
-                continue
-            for tree_index in range(indexed, len(trees)):
-                tree_x, tree_y = trees[tree_index]
-                cell = (math.floor(tree_x / 100.0), math.floor(tree_y / 100.0))
-                self._tree_collision_grid.setdefault(cell, []).append(
-                    (scenery_index, tree_index, tree_x, tree_y)
-                )
-            self._tree_collision_indexed[scenery_index] = len(trees)
+        # Single pass per call (this runs every frame, and scales with the
+        # total loaded scenery count): a shrunk tree list found mid-pass
+        # clears the index and restarts the pass, instead of a separate
+        # full shrink-check scan running ahead of every indexing pass.
+        for _attempt in range(2):
+            rebuild = False
+            for scenery_index, scenery in enumerate(sceneries):
+                trees = getattr(scenery, "trees", ())
+                indexed = self._tree_collision_indexed.get(scenery_index, 0)
+                if len(trees) == indexed:
+                    continue
+                if len(trees) < indexed:
+                    self._tree_collision_grid.clear()
+                    self._tree_collision_indexed = {}
+                    rebuild = True
+                    break
+                for tree_index in range(indexed, len(trees)):
+                    tree_x, tree_y = trees[tree_index]
+                    cell = (math.floor(tree_x / 100.0), math.floor(tree_y / 100.0))
+                    self._tree_collision_grid.setdefault(cell, []).append(
+                        (scenery_index, tree_index, tree_x, tree_y)
+                    )
+                self._tree_collision_indexed[scenery_index] = len(trees)
+            if not rebuild:
+                break
         nearby = []
         for cell in self._collision_cells(x - radius, y - radius, x + radius, y + radius):
             nearby.extend(self._tree_collision_grid.get(cell, ()))
