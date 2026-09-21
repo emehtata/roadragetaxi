@@ -7,7 +7,7 @@ from enum import Enum
 from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 
 from .osm import BusStop, Crossing, LogicalIntersection, Scenery, SceneryObject, TrafficLight, Way
-from .geo import closest_point_and_dist_to_segment, compute_bbox, dist_point_to_segment, point_in_polygon
+from .geo import angle_diff, closest_point_and_dist_to_segment, compute_bbox, dist_point_to_segment, point_in_polygon
 from .npc import NPCState
 from .physics import Car, is_car_road, is_pedestrian_way
 from .residents import ResidentManager
@@ -1294,7 +1294,7 @@ class PedestrianManager:
                     p1 = cand_pts[cand_seg_idx + 1]
                     p2 = cand_pts[cand_seg_idx]
                 out_heading = math.atan2(p2[1] - p1[1], p2[0] - p1[0])
-                angle_diff = abs((out_heading - incoming_heading + math.pi) % (2 * math.pi) - math.pi)
+                angle_diff = abs(angle_diff(out_heading, incoming_heading))
                 if angle_diff < math.radians(135):
                     forward_candidates.append(cand)
             if forward_candidates:
@@ -2124,7 +2124,7 @@ class PedestrianManager:
                 sway_angle += math.sin(ped.drunk_phase) * math.radians(8.0 + drunk_level * 24.0)
 
             target_heading = math.atan2(dy, dx)
-            heading_delta = (target_heading - ped.heading + math.pi) % (2.0 * math.pi) - math.pi
+            heading_delta = angle_diff(target_heading, ped.heading)
             max_turn = 7.0 * update_dt
             ped.heading += max(-max_turn, min(max_turn, heading_delta))
             ped.heading += sway_angle

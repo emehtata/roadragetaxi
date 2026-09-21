@@ -26,7 +26,7 @@ signal state machine and the physical/logical intersection model.
 import math
 from typing import List, Optional, Tuple
 
-from ..geo import dist_point_to_segment
+from ..geo import angle_diff, dist_point_to_segment
 from .models import IntersectionApproach, LogicalIntersection, SignalGroup, TrafficLight, Way
 
 
@@ -205,7 +205,7 @@ def _intersection_arms(center: Tuple[float, float], layer: int, ways: List[Way])
             existing = next(
                 (
                     entry for entry in arms
-                    if abs((arm_angle - entry["angle"] + math.pi) % (2.0 * math.pi) - math.pi) <= ARM_MERGE_ANGLE
+                    if abs(angle_diff(arm_angle, entry["angle"])) <= ARM_MERGE_ANGLE
                 ),
                 None,
             )
@@ -284,7 +284,7 @@ def _assign_signal_points_to_arms(
             bearing = math.atan2(point[1] - center[1], point[0] - center[0])
             nearest = min(
                 range(len(arm_angles)),
-                key=lambda i: abs((bearing - arm_angles[i] + math.pi) % (2.0 * math.pi) - math.pi),
+                key=lambda i: abs(angle_diff(bearing, arm_angles[i])),
             )
         else:
             nearest = tied[0]
@@ -297,7 +297,7 @@ def _assign_signal_points_to_arms(
 def _arms_may_share_a_phase(angle_a: float, angle_b: float) -> bool:
     """Whether two arms are close enough to exactly opposite (a straight
     through-road) that giving them green at the same time is safe."""
-    diff = abs((angle_a - angle_b + math.pi) % (2.0 * math.pi) - math.pi)
+    diff = abs(angle_diff(angle_a, angle_b))
     return abs(diff - math.pi) <= OPPOSITE_ARM_TOLERANCE
 
 

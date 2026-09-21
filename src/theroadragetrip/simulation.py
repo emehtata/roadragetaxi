@@ -298,6 +298,8 @@ def advance_simulation(
         # meter too, same as speeding does.
         rage_power = min(1.0, rage_power + 0.15 * dt)
 
+    taxi_mgr.update_passenger_happiness(dt, car.speed, road_limit_mps, car.is_sliding)
+
     with frame_profiler.section("collisions"):
         building_crash = taxi_mgr.check_building_collision(
             car, buildings, traffic_mgr.sim_time, previous_position, ways=ways
@@ -316,6 +318,7 @@ def advance_simulation(
             if bridge_edge_crash_cooldown <= 0.0:
                 bridge_edge_crash_cooldown = 3.0
                 taxi_mgr.total_score -= 200
+                taxi_mgr.adjust_passenger_happiness(-30.0)
                 taxi_mgr.notification_msg = tr(language, "bridge_crash", penalty=200)
                 taxi_mgr.notification_timer = 3.5
     if building_crash or tree_crash or fence_crash or bridge_edge_crash:

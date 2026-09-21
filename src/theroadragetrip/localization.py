@@ -134,7 +134,7 @@ TRANSLATIONS = {
         "fare_complete": "Kyyti valmis!",
         "road": "Tie", "off_road": "Maastossa", "limit": "Rajoitus",
         "trip": "Matka", "odometer": "Mittari", "trip_meter": "Trippimittari", "career_meter": "Matkamittari", "score": "PISTEET",
-        "fares": "Kyydit", "speed": "NOPEUS", "rage_meter": "RATTIRAIVO",
+        "fares": "Kyydit", "balance": "SALDO", "taxi_meter": "TAKSAMITTARI", "happiness": "TYYTYVÄISYYS", "speed": "NOPEUS", "rage_meter": "RATTIRAIVO",
         "passenger_nausea_warning": "Asiakkaalla on huono olo! Pysähdy nopeasti!",
         "passenger_nausea_bubble": "Oksettaa!",
         "passenger_nausea_relieved": "Asiakkaalle tuli parempi olo. Kyyti jatkuu.",
@@ -142,7 +142,7 @@ TRANSLATIONS = {
         "passenger_vomited_outside": "Asiakas oksensi ulos.",
         "walking_named": "{name} kävelee taksiin...",
         "boarded_destination": "{name} nousi kyytiin! Määränpää: {address}",
-        "fare_complete_points": "Kyyti valmis! +{earned} pistettä ({avg:.0f} km/h keskiarvo, {seconds:.1f} s)",
+        "fare_complete_points": "Kyyti valmis! Hinta {amount}, tippi {tip}, +{earned} pistettä ({avg:.0f} km/h keskiarvo, {seconds:.1f} s)",
     },
     "en": {
         "select_language": "Select language",
@@ -274,7 +274,7 @@ TRANSLATIONS = {
         "fare_complete": "Fare complete!",
         "road": "Road", "off_road": "Off-road", "limit": "Limit",
         "trip": "Trip", "odometer": "Odo", "trip_meter": "Trip meter", "career_meter": "Odometer", "score": "SCORE",
-        "fares": "Fares", "speed": "SPEED", "rage_meter": "ROAD RAGE",
+        "fares": "Fares", "balance": "BALANCE", "taxi_meter": "FARE METER", "happiness": "HAPPINESS", "speed": "SPEED", "rage_meter": "ROAD RAGE",
         "passenger_nausea_warning": "The passenger feels sick! Stop quickly!",
         "passenger_nausea_bubble": "I feel sick!",
         "passenger_nausea_relieved": "The passenger feels better. Continue the fare.",
@@ -282,7 +282,7 @@ TRANSLATIONS = {
         "passenger_vomited_outside": "The passenger vomited outside.",
         "walking_named": "{name} is walking to the taxi...",
         "boarded_destination": "{name} boarded! Destination: {address}",
-        "fare_complete_points": "Fare complete! +{earned} pts ({avg:.0f} km/h average in {seconds:.1f}s)",
+        "fare_complete_points": "Fare complete! Fare {amount}, tip {tip}, +{earned} pts ({avg:.0f} km/h average in {seconds:.1f}s)",
     },
 }
 

@@ -27,6 +27,7 @@ import math
 from dataclasses import asdict
 from typing import Any, Optional
 
+from .geo import angle_diff
 from .simulation import PlayerCommand
 from .taxi import TaxiPassenger, TaxiTarget
 
@@ -185,14 +186,10 @@ def build_state_message(
     return {"type": "state", "version": PROTOCOL_VERSION, "tick": tick, "state": state}
 
 
-def _lerp(a: float, b: float, alpha: float) -> float:
-    return a + (b - a) * alpha
-
-
 def _lerp_angle(a: float, b: float, alpha: float) -> float:
     """Shortest-path angle interpolation (radians) - a plain lerp would
     spin the long way round whenever a heading crosses the +-pi seam."""
-    diff = (b - a + math.pi) % (2.0 * math.pi) - math.pi
+    diff = angle_diff(b, a)
     return a + diff * alpha
 
 
@@ -214,8 +211,8 @@ def interpolate_state(prev: dict, curr: dict, alpha: float) -> dict:
         if prev_entity is None:
             return curr_entity
         merged = dict(curr_entity)
-        merged["x"] = _lerp(prev_entity["x"], curr_entity["x"], alpha)
-        merged["y"] = _lerp(prev_entity["y"], curr_entity["y"], alpha)
+        merged["x"] = prev_entity["x"] + (curr_entity["x"] - prev_entity["x"]) * alpha
+        merged["y"] = prev_entity["y"] + (curr_entity["y"] - prev_entity["y"]) * alpha
         merged["heading"] = _lerp_angle(prev_entity["heading"], curr_entity["heading"], alpha)
         return merged
 

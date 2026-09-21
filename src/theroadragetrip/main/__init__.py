@@ -12,7 +12,7 @@ from types import SimpleNamespace
 
 import pygame
 
-from ..geo import dist_point_to_segment, meters_to_latlon
+from ..geo import angle_diff, dist_point_to_segment, meters_to_latlon
 from ..audio import AudioManager
 from ..config import (
     CONFIG_PATH,
@@ -1803,6 +1803,7 @@ def main() -> None:
                     set_game_date(game_calendar.date)
                     weather.season = game_calendar.season
                 weather.update(dt * time_scale, dt)
+                taxi_mgr.game_date = game_calendar.date
 
                 result = advance_simulation(
                     dt, command, car, world,
@@ -1908,7 +1909,7 @@ def main() -> None:
                 # having swung far in between) drew long chords across the
                 # circle - a filled, star-shaped blob instead of a ring.
                 last_heading = tire_tracks[-1].points[-1][2] if tire_tracks else car.heading
-                heading_change = abs((car.heading - last_heading + math.pi) % (2.0 * math.pi) - math.pi)
+                heading_change = abs(angle_diff(car.heading, last_heading))
                 if (
                     start_new_trail
                     or math.hypot(car.x - last_track_position[0], car.y - last_track_position[1]) >= 0.5

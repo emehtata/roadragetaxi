@@ -17,6 +17,7 @@ from datetime import date
 from ..geo import clamp, meters_to_latlon
 from ..physics import Car, MAX_SPEED
 from ..taxi import TaxiManager, TaxiState
+from ..fare import format_euros
 from ..localization import tr
 
 
@@ -457,7 +458,11 @@ def draw_hud(
             role_color = (100, 240, 140)
 
         # Draw taxi score and stats on top right
-        score_text = f"{tr(language, 'score')}: {taxi_mgr.total_score} {tr(language, 'points')} | {tr(language, 'fares')}: {taxi_mgr.completed_fares}"
+        score_text = (
+            f"{tr(language, 'score')}: {taxi_mgr.total_score} {tr(language, 'points')} | "
+            f"{tr(language, 'fares')}: {taxi_mgr.completed_fares} | "
+            f"{tr(language, 'balance')}: {format_euros(taxi_mgr.balance_cents, language)}"
+        )
         score_surf = font.render(score_text, True, (255, 230, 110))
         # The date was added after this score box and can be much wider
         # than the old time-only label. Anchor the score to the clock's
@@ -478,6 +483,32 @@ def draw_hud(
         screen.blit(fps_bg, (fps_rect.x - 6, fps_rect.y - 3))
         pygame.draw.rect(screen, (90, 180, 110), (fps_rect.x - 6, fps_rect.y - 3, fps_rect.width + 12, fps_rect.height + 6), 1, border_radius=3)
         screen.blit(fps_surf, fps_rect)
+
+        if taxi_mgr.state == TaxiState.DRIVING_TO_DROPOFF and taxi_mgr.fare_started_at is not None:
+            meter_amount = format_euros(taxi_mgr.current_fare_cents(), language)
+            fare_minutes = int(taxi_mgr.elapsed_time) // 60
+            fare_seconds = int(taxi_mgr.elapsed_time) % 60
+            fare_meter_text = (
+                f"{tr(language, 'taxi_meter')}: {meter_amount}  |  "
+                f"{taxi_mgr.fare_distance_m / 1000.0:.2f} km  |  {fare_minutes}:{fare_seconds:02d}  |  "
+                f"{tr(language, 'happiness')}: {taxi_mgr.passenger_happiness:.0f}%"
+            )
+            fare_meter_surf = font.render(fare_meter_text, True, (120, 255, 150))
+            # Center below the top status rows: the upper-right corner is
+            # occupied by the speed-limit sign as well as FPS/clock data.
+            fare_meter_rect = fare_meter_surf.get_rect(midtop=(screen_width // 2, 88))
+            fare_meter_bg = pygame.Surface(
+                (fare_meter_rect.width + 16, fare_meter_rect.height + 8), pygame.SRCALPHA
+            )
+            fare_meter_bg.fill((10, 35, 20, 225))
+            screen.blit(fare_meter_bg, (fare_meter_rect.x - 8, fare_meter_rect.y - 4))
+            pygame.draw.rect(
+                screen, (80, 205, 110),
+                (fare_meter_rect.x - 8, fare_meter_rect.y - 4,
+                 fare_meter_rect.width + 16, fare_meter_rect.height + 8),
+                1, border_radius=3,
+            )
+            screen.blit(fare_meter_surf, fare_meter_rect)
 
         # Mission header bar
         mission_surf = font.render(role_text, True, role_color)

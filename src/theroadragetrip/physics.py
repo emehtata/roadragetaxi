@@ -3,7 +3,7 @@ import random
 from dataclasses import dataclass
 from typing import Any, List, Optional, Tuple
 
-from .geo import clamp, closest_point_and_dist_to_segment, compute_bbox, dist_point_to_segment, point_in_polygon
+from .geo import angle_diff, clamp, closest_point_and_dist_to_segment, compute_bbox, dist_point_to_segment, point_in_polygon
 
 # Car physics (arcade)
 ACCEL = 4.6  # m/s^2; peak forward acceleration from rest
@@ -51,13 +51,16 @@ MAX_PLAUSIBLE_SPEED_MPS = MAX_SPEED * 3.0
 # budget (see _available_lateral_budget_g), not two independent ceilings.
 # Values are GRIP.md's own suggested starting points, not measured physics.
 SURFACE_MAX_GRIP_G = {
-    "dry_asphalt": 0.90,
-    "wet_asphalt": 0.75,
-    "gravel": 0.55,
-    "grass": 0.35,
-    "snow": 0.20,
-    "ice": 0.10,
-    "sand": 0.30,
+    # Tuned for controllability with the game's binary full-lock steering:
+    # the earlier values made every surface break loose too readily in
+    # simulation mode. Relative surface differences remain pronounced.
+    "dry_asphalt": 1.15,
+    "wet_asphalt": 1.00,
+    "gravel": 0.75,
+    "grass": 0.50,
+    "snow": 0.35,
+    "ice": 0.20,
+    "sand": 0.45,
 }
 # Off-road ground (see off_road_ground_kind) has no Way.surface to read a
 # grip from, so it maps straight to a surface bucket; "road"/"hard" fall
@@ -75,8 +78,11 @@ _GRAVEL_SURFACES = {"gravel", "fine_gravel", "compacted", "unpaved", "dirt", "gr
 # loose on almost any ordinary turn (regression: a flat 0.9g ceiling with
 # a hard cutoff made "skid marks came too easy" and pinned the g-meter on
 # nearly every corner) - "arcade" stays additionally forgiving on top,
-# while "simulation" uses GRIP.md's numbers as written.
-PHYSICS_MODE_GRIP_MULTIPLIER = {"arcade": 2.0, "simulation": 1.0}
+# while "simulation" uses the playability-tuned surface values as written.
+# The raw table was raised for simulation-mode controllability. Reducing
+# arcade's multiplier correspondingly preserves its already-forgiving
+# effective asphalt grip and its extreme full-lock/high-speed slide case.
+PHYSICS_MODE_GRIP_MULTIPLIER = {"arcade": 1.57, "simulation": 1.0}
 # Ratios of max_grip_g (GRIP.md section 1's 0.75/0.90/1.00 for a 0.90 dry
 # max) - scaled per-surface so e.g. gravel starts warning/sliding at the
 # same *proportion* of its own (much lower) grip ceiling. Used to grade
@@ -1342,7 +1348,7 @@ def _update_g_force(
         car.slip_angle = 0.0
     else:
         velocity_heading = math.atan2(velocity_y, velocity_x)
-        car.slip_angle = (velocity_heading - car.heading + math.pi) % (2.0 * math.pi) - math.pi
+        car.slip_angle = angle_diff(velocity_heading, car.heading)
 
     if not car._g_force_initialized:
         # First measurement: nothing to diff against yet - per GFORCE.md
@@ -1671,12 +1677,12 @@ def update_car_physics(
                 # Determine driving direction along road points
                 forward_angle = math.atan2(seg_dy, seg_dx)
                 rev_angle = math.atan2(-seg_dy, -seg_dx)
-                diff_fwd = abs((car.heading - forward_angle + math.pi) % (2 * math.pi) - math.pi)
-                diff_rev = abs((car.heading - rev_angle + math.pi) % (2 * math.pi) - math.pi)
+                diff_fwd = abs(angle_diff(car.heading, forward_angle))
+                diff_rev = abs(angle_diff(car.heading, rev_angle))
 
                 is_forward = diff_fwd <= diff_rev
                 road_heading = forward_angle if is_forward else rev_angle
-                heading_diff = (road_heading - car.heading + math.pi) % (2 * math.pi) - math.pi
+                heading_diff = angle_diff(road_heading, car.heading)
 
                 # Only assist if car is roughly aligned with road (< 60 degrees)
                 if abs(heading_diff) < math.radians(60):
@@ -1722,7 +1728,7 @@ def update_car_physics(
                     # PD-like gentle corrective steering
                     # Steer right when offset_error > 0 (in Cartesian space, right is negative angle delta)
                     desired_angle = road_heading if lane_blocked else road_heading - clamp(offset_error * 0.22, -0.35, 0.35)
-                    corrective_diff = (desired_angle - car.heading + math.pi) % (2 * math.pi) - math.pi
+                    corrective_diff = angle_diff(desired_angle, car.heading)
 
                     assist_rate = 2.0  # rad/s max assist authority
                     max_steer_delta = assist_rate * dt

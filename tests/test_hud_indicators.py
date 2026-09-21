@@ -85,8 +85,11 @@ def test_date_clock_and_taxi_score_do_not_overlap():
     taxi = SimpleNamespace(
         total_score=0,
         completed_fares=0,
+        balance_cents=0,
         offers=[],
         current_passenger=None,
+        state="PICKUP",
+        fare_started_at=None,
         notification_timer=0.0,
         notification_msg="",
         get_current_target=lambda: None,
@@ -98,7 +101,7 @@ def test_date_clock_and_taxi_score_do_not_overlap():
     )
 
     clock = font.render("2026-08-30 Kello 19:11  +12.3 °C", True, (255, 230, 120)).get_rect(topright=(1268, 10))
-    score = font.render("PISTEET: 0 pistettä | Kyydit: 0", True, (255, 230, 110)).get_rect(
+    score = font.render("PISTEET: 0 pistettä | Kyydit: 0 | SALDO: 0,00 €", True, (255, 230, 110)).get_rect(
         topright=(clock.left - 12, 10)
     )
     assert score.right < clock.left

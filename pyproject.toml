@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "theroadragetrip"
-version = "0.13.0alpha"
+version = "0.14.0alpha"
 description = "PoC top-down driving game using OSM data"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -12,7 +12,23 @@ dependencies = [
     "pygame-ce",
     "requests",
     "pyproj",
+    "shapely",
 ]
 
+[project.optional-dependencies]
+windows = ["pyinstaller"]
+
+[project.scripts]
+roadragetrip = "theroadragetrip.main:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
 [tool.setuptools.package-data]
-theroadragetrip = ["assets/*", "sounds/*", "sounds/passenger_chatter/*.wav"]
+theroadragetrip = [
+    "assets/*",
+    "img/*",
+    "sounds/*",
+    "sounds/passenger_chatter/*.wav",
+    "sounds/driver_chatter/*.wav",
+]

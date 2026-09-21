@@ -26,7 +26,7 @@ const translations = {
     ],
     howKicker: '04 / RATTIIN', howTitle: 'Tunne<br><span>säännöt.</span><br>Riko rauha.', howLead: 'Kaupunki on sinun pelikenttäsi. Pisteet voit pilata itse.',
     controls: ['Aja, jarruta, ohjaa', 'Avaa taksin puhelin', 'Raivohuuto: raivaa tie', 'Näytä ehdotettu reitti', 'Kaista-avustin', 'Nopeusrajoitin', 'Liikennevaloavustin', 'Respawn, T nollaa trippimittarin', 'Tauko, asetukset ja kaupungin vaihto'],
-    notesKicker: '05 / JULKAISU 0.13.0alpha', notesTitle: 'Mitä on<br><em>uutta.</em>', notesLead: 'Suurin päivitys tähän mennessä: kaupunki täyttyy eläväisestä, itsenäisestä liikenteestä.',
+    notesKicker: '05 / JULKAISU 0.14.0alpha', notesTitle: 'Mitä on<br><em>uutta.</em>', notesLead: 'Suurin päivitys tähän mennessä: kaupunki täyttyy eläväisestä, itsenäisestä liikenteestä.',
     notes: [
       ['Autonomiset ajoneuvot', 'Autot, pakettiautot, kuorma-autot ja bussit ajavat ja parkkeeraavat itsenäisesti kaduilla.'],
       ['Väistely käytössä', 'Liikenne väistää ja hidastaa esteen edessä sen sijaan että ajaisi läpi.'],
@@ -66,7 +66,7 @@ const translations = {
     ],
     howKicker: '04 / TAKE THE WHEEL', howTitle: 'Know the<br><span>rules.</span><br>Break the calm.', howLead: 'The city is yours to navigate. The score is yours to ruin.',
     controls: ['Drive, brake, steer', 'Open the taxi phone', 'Rage shout: clear the way', 'Show suggested route', 'Lane assist', 'Speed limiter', 'Traffic-light assist', 'Respawn, T resets trip meter', 'Pause, settings, change city'],
-    notesKicker: '05 / RELEASE 0.13.0alpha', notesTitle: "What's<br><em>new.</em>", notesLead: "The biggest update yet: the city fills up with living, independent traffic.",
+    notesKicker: '05 / RELEASE 0.14.0alpha', notesTitle: "What's<br><em>new.</em>", notesLead: "The biggest update yet: the city fills up with living, independent traffic.",
     notes: [
       ['Autonomous vehicles', 'Cars, vans, trucks, and buses drive and park on their own around the streets.'],
       ['Avoidance is live', 'Traffic slows and steers around obstacles instead of driving straight through them.'],

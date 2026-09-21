@@ -304,8 +304,10 @@ def test_taxi_mission_lifecycle():
     assert taxi_mgr.state == TaxiState.DRIVING_TO_DROPOFF
     assert taxi_mgr.current_passenger.boarded is True
     assert taxi_mgr.get_current_target() == dropoff
+    assert taxi_mgr.current_fare_cents() >= 800
 
     # 4. Drive towards dropoff
+    car.odometer_m += 1000.0
     car.x, car.y = dropoff.x, dropoff.y
     car.speed = 0.0
     taxi_mgr.update(car, dt=5.0)  # fast delivery in 5s
@@ -314,8 +316,30 @@ def test_taxi_mission_lifecycle():
     assert taxi_mgr.completed_fares == 1
     assert taxi_mgr.total_score > 0
     assert taxi_mgr.last_fare_points > 0
+    assert taxi_mgr.last_fare_cents > 0
+    assert 0 <= taxi_mgr.last_tip_cents <= 1000
+    assert taxi_mgr.balance_cents == taxi_mgr.last_fare_cents + taxi_mgr.last_tip_cents
+    assert taxi_mgr.fare_distance_m == 1000.0
+    assert "€" in taxi_mgr.notification_msg
     assert taxi_mgr.current_passenger is None
     assert taxi_mgr.offers
+
+
+def test_passenger_happiness_rewards_safe_speed_and_penalizes_reckless_driving():
+    manager = TaxiManager(ways=[])
+    target = TaxiTarget(0.0, 0.0, "Test")
+    manager.current_passenger = TaxiPassenger("Test Client", target, target, boarded=True)
+    manager.state = TaxiState.DRIVING_TO_DROPOFF
+    manager.passenger_happiness = 50.0
+
+    manager.update_passenger_happiness(10.0, 60.0 / 3.6, 80.0 / 3.6, False)
+    after_safe_speed = manager.passenger_happiness
+    assert after_safe_speed > 50.0
+
+    manager.update_passenger_happiness(10.0, 120.0 / 3.6, 80.0 / 3.6, True)
+    assert manager.passenger_happiness < after_safe_speed
+    manager.adjust_passenger_happiness(-1000.0)
+    assert manager.passenger_happiness == 0.0
 
 
 def test_taxi_mission_uses_osm_taxi_stops_for_pickup_only():
@@ -815,4 +839,3 @@ def test_nearby_collision_trees_reflects_removal_from_an_already_indexed_scenery
     scenery.trees = [(1.0, 1.0)]  # (2.0, 2.0) pruned
     found_after = mgr._nearby_collision_trees(sceneries, 0.0, 0.0, 5.0)
     assert {(fx, fy) for _, _, fx, fy in found_after} == {(1.0, 1.0)}
-

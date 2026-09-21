@@ -11,6 +11,8 @@ import math
 from dataclasses import dataclass
 from typing import Optional, Tuple
 
+from .geo import angle_diff
+
 
 class TrafficAction:
     PROCEED = "PROCEED"
@@ -62,7 +64,7 @@ def nearest_traffic_light_ahead(
             continue
         direction_angle = getattr(tl, "direction_angle", None)
         if direction_angle is not None:
-            angle_error = abs((direction_angle - heading + math.pi) % (2.0 * math.pi) - math.pi)
+            angle_error = abs(angle_diff(direction_angle, heading))
             if angle_error > math.radians(angle_limit_deg):
                 continue
         if nearest is None or longitudinal < nearest[0]:
