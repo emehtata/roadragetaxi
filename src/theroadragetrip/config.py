@@ -238,6 +238,15 @@ def save_config(config: configparser.ConfigParser, path: Path = CONFIG_PATH) -> 
         config.write(config_file)
 
 
+def reset_config(config: configparser.ConfigParser) -> None:
+    """Restore built-in settings without changing the installation identity."""
+    user_agent_id = config.get("game", USER_AGENT_KEY, fallback="")
+    config.clear()
+    config.read_dict(DEFAULT_CONFIG)
+    if user_agent_id:
+        config.set("game", USER_AGENT_KEY, user_agent_id)
+
+
 def get_overpass_endpoints(config: configparser.ConfigParser) -> list[str]:
     """Return configured Overpass endpoints, falling back to built-in defaults."""
     raw = config.get("map", "overpass_endpoints", fallback="")

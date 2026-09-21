@@ -41,7 +41,7 @@ def test_draw_rain_draws_visible_streaks_when_raining():
 def test_draw_rain_draws_visible_snowflakes_in_winter():
     pygame.init()
     try:
-        weather = WeatherSystem(season=Season.WINTER)
+        weather = WeatherSystem(WeatherType.SNOW, season=Season.WINTER)
         screen = pygame.Surface((200, 150))
         screen.fill((0, 0, 0))
         draw_rain(screen, weather, screen_w=200, screen_h=150)
@@ -138,6 +138,31 @@ def test_draw_wet_roads_scales_with_visible_ways_only():
         weather.wetness = 1.0
         draw_wet_roads(screen, [near, far_away], weather, camx=0.0, camy=0.0, px_per_m=2.5, screen_w=640, screen_h=360)
         assert screen.get_at((320, 180))[:3] != (100, 100, 100)
+    finally:
+        pygame.quit()
+
+
+def test_wet_roads_and_puddles_share_the_same_viewport_query():
+    class CountingGrid:
+        calls = 0
+
+        def ways_in_rect(self, *_bounds):
+            self.calls += 1
+            return [way]
+
+    pygame.init()
+    try:
+        screen = pygame.Surface((300, 300))
+        way = Way(points_m=[(0.0, 0.0), (100.0, 0.0)], highway="residential", half_width_m=4.0)
+        ways = [way]
+        weather = WeatherSystem(WeatherType.RAIN)
+        weather.wetness = 1.0
+        grid = CountingGrid()
+
+        draw_wet_roads(screen, ways, weather, 50.0, 0.0, 9.0, 300, 300, grid)
+        draw_puddles(screen, ways, weather, 50.0, 0.0, 9.0, 300, 300, grid)
+
+        assert grid.calls == 1
     finally:
         pygame.quit()
 

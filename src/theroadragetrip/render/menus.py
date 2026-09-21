@@ -517,11 +517,14 @@ def draw_settings_menu(
         (tr(language, "subtitles"), tr(language, "on" if subtitles_enabled else "off"), None),
         (tr(language, "overpass_endpoints"), overpass_endpoints[-55:] if len(overpass_endpoints) > 55 else overpass_endpoints, None),
         (tr(language, "physics_mode"), tr(language, physics_mode), None),
+        (tr(language, "reset_configs"), "", None),
     ]
     for idx, (label, value, volume) in enumerate(rows):
-        y = panel.y + 100 + idx * 58
+        y = panel.y + 100 + idx * 50
         selected = idx == selected_idx
         color = (255, 215, 95) if selected else (220, 228, 235)
+        if idx == 8:
+            pygame.draw.rect(screen, (55, 65, 75), (panel.x + 30, y - 7, panel.width - 60, 38), border_radius=4)
         label_surface = font.render(label, True, color)
         screen.blit(label_surface, (panel.x + 38, y))
         if volume is None:

@@ -12,6 +12,29 @@ from theroadragetrip.weather import (
 from theroadragetrip.calendar import Season
 
 
+def test_weather_rng_is_not_reseeded_identically_at_each_start(monkeypatch):
+    import theroadragetrip.weather as weather_module
+
+    calls = []
+    real_random = weather_module.random.Random
+    monkeypatch.setattr(weather_module.random, "Random", lambda *args: (calls.append(args), real_random(1))[1])
+
+    WeatherSystem(season=Season.AUTUMN)
+
+    assert calls == [()]
+
+
+def test_weather_reports_time_left_in_current_period():
+    weather = WeatherSystem(season=Season.AUTUMN)
+    before = weather.seconds_until_weather_change
+
+    weather.update(60.0, 0.0)
+
+    assert weather.seconds_until_weather_change == before - 60.0
+    weather.toggle_rain()
+    assert weather.seconds_until_weather_change is None
+
+
 def test_starts_clear_and_dry():
     weather = WeatherSystem()
     assert weather.weather_type == WeatherType.CLEAR

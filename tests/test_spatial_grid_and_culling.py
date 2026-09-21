@@ -241,6 +241,58 @@ def test_vehicle_lights_and_headlight_beams_hidden_under_bridge():
     pygame.quit()
 
 
+def test_headlight_beams_do_not_brighten_building_roofs():
+    import pygame
+    from theroadragetrip.osm import Building
+    from theroadragetrip.physics import Car
+
+    pygame.init()
+    screen = pygame.Surface((240, 160), pygame.SRCALPHA)
+    screen.fill((10, 10, 10, 255))
+    daylight = pygame.Surface(screen.get_size(), pygame.SRCALPHA)
+    daylight.fill((200, 200, 200, 255))
+    car = Car(x=0.0, y=0.0, heading=0.0, speed=0.0)
+    building = Building(
+        points_m=[(5.0, -2.0), (10.0, -2.0), (10.0, 2.0), (5.0, 2.0)],
+        bbox=(5.0, -2.0, 10.0, 2.0),
+    )
+
+    draw_headlight_beams(
+        screen, [car], 0.0, 0.0, game_time_seconds=0.0,
+        px_per_m=9.0, screen_w=240, screen_h=160,
+        daylight_surface=daylight, buildings=[building],
+    )
+
+    roof_pixel = world_to_screen(7.0, 0.0, 0.0, 0.0, 9.0, 240, 160)
+    assert screen.get_at((int(roof_pixel[0]), int(roof_pixel[1])))[:3] == (10, 10, 10)
+    pygame.quit()
+
+
+def test_parked_npc_does_not_cast_headlight_beams():
+    import pygame
+    from types import SimpleNamespace
+
+    pygame.init()
+    try:
+        screen = pygame.Surface((240, 160))
+        screen.fill((0, 0, 0))
+        parked = SimpleNamespace(
+            x=0.0, y=0.0, heading=0.0, state="PARKED",
+            width_m=1.8, length_m=4.0,
+        )
+        before = pygame.image.tobytes(screen, "RGB")
+
+        draw_headlight_beams(
+            screen, [parked], 0.0, 0.0, game_time_seconds=0.0,
+            px_per_m=9.0, screen_w=240, screen_h=160,
+            daylight_surface=screen.copy(), npc_vehicles=[parked],
+        )
+
+        assert pygame.image.tobytes(screen, "RGB") == before
+    finally:
+        pygame.quit()
+
+
 def test_vehicle_lights_never_drawn_for_an_npc_beyond_the_visible_cap():
     """Regression: draw_vehicle_lights is a separate redraw pass (after
     night tinting) fed light_vehicles - a wider-margin list built for the

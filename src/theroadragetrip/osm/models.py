@@ -73,6 +73,8 @@ class Railway:
     kind: str = "rail"
     bbox: Tuple[float, float, float, float] = (0.0, 0.0, 0.0, 0.0)
     is_bridge: bool = False
+    layer: int = 0
+    half_width_m: float = 1.7
 
 
 @dataclass

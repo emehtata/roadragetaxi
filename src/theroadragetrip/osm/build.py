@@ -637,7 +637,13 @@ def build_ways(
             railway_layer = 0
         railway_is_bridge = tags.get("bridge") in ("yes", "viaduct", "movable") or railway_layer > 0
         railways.append(
-            Railway(points_m=pts, kind=tags.get("railway", "rail"), bbox=ibbox, is_bridge=railway_is_bridge)
+            Railway(
+                points_m=pts,
+                kind=tags.get("railway", "rail"),
+                bbox=ibbox,
+                is_bridge=railway_is_bridge,
+                layer=railway_layer,
+            )
         )
 
     for tags, node_ids in railing_raw:

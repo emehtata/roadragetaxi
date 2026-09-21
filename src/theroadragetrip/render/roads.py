@@ -1644,6 +1644,7 @@ _RAILWAY_GAUGE_M = 1.435  # standard gauge
 _RAILWAY_TIE_SPACING_M = 2.0
 _RAILWAY_TIE_LENGTH_M = 2.6
 _RAILWAY_BRIDGE_DECK_MARGIN_M = 0.4  # deck edge beyond the tie ends
+_RAILWAY_BRIDGE_JOIN_M = 1.5  # close the ordinary gap between parallel bridge tracks
 
 
 def draw_railways(
@@ -1773,6 +1774,35 @@ def _draw_railways_uncached(
     # bridge-only (a ground-level ballast bed has no guardrails).
     show_ballast = px_per_m > 1.5
 
+    # OSM maps each rail centerline separately. Merge nearby bridge decks so
+    # parallel tracks sit on one platform instead of leaving a see-through
+    # slot (which made ground-level cars below look as if they drove on it).
+    bridge_platform = None
+    if show_ballast:
+        decks = [
+            LineString(rw.points_m).buffer(half_deck, cap_style="flat", join_style="mitre")
+            for rw in visible_railways
+            if getattr(rw, "is_bridge", False) and len(rw.points_m) >= 2
+        ]
+        if decks:
+            bridge_platform = unary_union(
+                [deck.buffer(_RAILWAY_BRIDGE_JOIN_M) for deck in decks]
+            ).buffer(-_RAILWAY_BRIDGE_JOIN_M)
+            polygons = bridge_platform.geoms if bridge_platform.geom_type == "MultiPolygon" else [bridge_platform]
+            for polygon in polygons:
+                pygame.draw.polygon(
+                    screen,
+                    RAILWAY_BALLAST_COLOR,
+                    [world_to_screen(x, y, camx, camy, px_per_m, screen_w, screen_h) for x, y in polygon.exterior.coords],
+                )
+                pygame.draw.lines(
+                    screen,
+                    BRIDGE_GUARDRAIL_COLOR,
+                    True,
+                    [world_to_screen(x, y, camx, camy, px_per_m, screen_w, screen_h) for x, y in polygon.exterior.coords],
+                    deck_edge_width,
+                )
+
     for rw in visible_railways:
         bb = getattr(rw, "bbox", None)
         if bb and bb != (0.0, 0.0, 0.0, 0.0):
@@ -1807,7 +1837,7 @@ def _draw_railways_uncached(
             target = dist_along + seg_len
             if t_range is not None:
                 t_lo, t_hi = t_range
-                if show_ballast:
+                if show_ballast and not rw.is_bridge:
                     lo_x, lo_y = x0 + ux * t_lo, y0 + uy * t_lo
                     hi_x, hi_y = x0 + ux * t_hi, y0 + uy * t_hi
                     s0 = world_to_screen(lo_x, lo_y, camx, camy, px_per_m, screen_w, screen_h)
@@ -1817,13 +1847,6 @@ def _draw_railways_uncached(
                     s0 = world_to_screen(x0 + nx * offset, y0 + ny * offset, camx, camy, px_per_m, screen_w, screen_h)
                     s1 = world_to_screen(x1 + nx * offset, y1 + ny * offset, camx, camy, px_per_m, screen_w, screen_h)
                     pygame.draw.line(screen, RAILWAY_RAIL_COLOR, s0, s1, rail_thickness)
-                if rw.is_bridge and show_ballast:
-                    lo_x, lo_y = x0 + ux * t_lo, y0 + uy * t_lo
-                    hi_x, hi_y = x0 + ux * t_hi, y0 + uy * t_hi
-                    for offset in (-half_deck, half_deck):
-                        s0 = world_to_screen(lo_x + nx * offset, lo_y + ny * offset, camx, camy, px_per_m, screen_w, screen_h)
-                        s1 = world_to_screen(hi_x + nx * offset, hi_y + ny * offset, camx, camy, px_per_m, screen_w, screen_h)
-                        pygame.draw.line(screen, BRIDGE_GUARDRAIL_COLOR, s0, s1, deck_edge_width)
                 window_lo = dist_along + t_lo
                 window_hi = dist_along + t_hi
                 if next_tie < window_lo:

@@ -1,5 +1,6 @@
 from . import common
 from .roads import STREET_LIGHT_SHADE_COLOR
+from .buildings import mask_buildings_from_light_surface
 from .common import (
     SCREEN_W,
     SCREEN_H,
@@ -258,6 +259,8 @@ def draw_headlight_beams(
     ways: Optional[List[Way]] = None,
     spatial_grid=None,
     current_way=None,
+    buildings=None,
+    building_spatial_grid=None,
 ) -> None:
     """Draw lightweight forward-facing headlight beams for visible vehicles at night."""
     import pygame
@@ -284,6 +287,7 @@ def draw_headlight_beams(
     )
     npc_ids = {id(vehicle) for vehicle in npc_vehicles or ()}
     bicycle_ids = {id(bicycle) for bicycle in bicycles or ()}
+    beam_bounds = None
 
     def draw_beam(origin, near_edge, far_edge, tip, cap_center, cap_radius):
         pygame.draw.polygon(
@@ -337,6 +341,8 @@ def draw_headlight_beams(
     for vehicle in [*vehicles, *(bicycles or ())]:
         if drawn >= 80:
             break
+        if getattr(vehicle, "state", None) == "PARKED":
+            continue
         x = getattr(vehicle, "x", None)
         y = getattr(vehicle, "y", None)
         heading = getattr(vehicle, "heading", None)
@@ -362,6 +368,15 @@ def draw_headlight_beams(
             and not has_oncoming_vehicle(vehicle, x, y, heading)
         ):
             beam_length_for_vehicle = long_beam_length
+        if building_spatial_grid is not None:
+            distance_m = beam_length_for_vehicle / px_per_m
+            end_x = x + math.cos(heading) * distance_m
+            end_y = y + math.sin(heading) * distance_m
+            bounds = (min(x, end_x), min(y, end_y), max(x, end_x), max(y, end_y))
+            beam_bounds = bounds if beam_bounds is None else (
+                min(beam_bounds[0], bounds[0]), min(beam_bounds[1], bounds[1]),
+                max(beam_bounds[2], bounds[2]), max(beam_bounds[3], bounds[3]),
+            )
         vehicle_width = max(3.0, getattr(vehicle, "width_m", 1.8) * px_per_m)
         if is_bicycle:
             vehicle_width = max(2.0, getattr(vehicle, "radius_m", 0.6) * px_per_m)
@@ -420,6 +435,18 @@ def draw_headlight_beams(
             )
         drawn += 1
     if drawn:
+        beam_buildings = buildings or ()
+        if building_spatial_grid is not None and beam_bounds is not None:
+            margin = 8.0
+            beam_buildings = building_spatial_grid.ways_in_rect(
+                beam_bounds[0] - margin, beam_bounds[1] - margin,
+                beam_bounds[2] + margin, beam_bounds[3] + margin,
+            )
+        mask_buildings_from_light_surface(
+            beam_mask,
+            beam_buildings,
+            camx, camy, px_per_m, screen_w, screen_h,
+        )
         if daylight_surface is not None:
             restored_daylight = _reusable_alpha_surface(pygame, "headlight_restored_daylight", screen.get_size())
             restored_daylight.blit(daylight_surface, (0, 0))
@@ -634,12 +661,17 @@ def draw_car(
     door_open_progress: float = 0.0,
     spatial_grid=None,
     current_way=None,
+    railways=None,
+    railway_grid=None,
 ) -> None:
     """Draw player taxi scaled in meters with headlights and taillights."""
     import pygame
 
     covered_by_higher_road = not _vehicle_is_on_bridge(car, current_way) and _covered_by_higher_road(
         car.x, car.y, getattr(car, "layer", 0), ways, spatial_grid, current_way
+    )
+    covered_by_higher_road |= _covered_by_higher_road(
+        car.x, car.y, getattr(car, "layer", 0), railways, railway_grid
     )
     if covered_by_higher_road:
         cx, cy = world_to_screen(car.x, car.y, camx, camy, px_per_m, screen_w, screen_h)

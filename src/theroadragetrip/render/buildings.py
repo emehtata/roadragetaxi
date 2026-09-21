@@ -157,6 +157,33 @@ MAX_BUILDING_DEPTH_PX = 100
 MIN_FLOOR_HEIGHT_PX = 3.0
 
 
+def mask_buildings_from_light_surface(
+    surface, buildings, camx, camy, px_per_m, screen_w=SCREEN_W, screen_h=SCREEN_H,
+) -> None:
+    """Remove ground-level lighting from building walls and roofs."""
+    import pygame
+
+    for building in buildings or ():
+        if len(getattr(building, "points_m", ())) < 3:
+            continue
+        footprint = [
+            world_to_screen(x, y, camx, camy, px_per_m, screen_w, screen_h)
+            for x, y in building.points_m
+        ]
+        pygame.draw.polygon(surface, (0, 0, 0, 0), footprint)
+        if px_per_m <= 0.45:
+            continue
+        height = max(3.0, float(getattr(building, "height_m", 8.0)))
+        depth = min(MAX_BUILDING_DEPTH_PX, max(3, int(height * 0.35 * px_per_m)))
+        roof = [(x - depth * 0.7, y - depth) for x, y in footprint]
+        pygame.draw.polygon(surface, (0, 0, 0, 0), roof)
+        for index, point in enumerate(footprint):
+            pygame.draw.polygon(
+                surface, (0, 0, 0, 0),
+                [point, footprint[(index + 1) % len(footprint)], roof[(index + 1) % len(roof)], roof[index]],
+            )
+
+
 def _building_visual_plan(building):
     """Cache camera-independent facade measurements for one building."""
     points = tuple(getattr(building, "points_m", ()))

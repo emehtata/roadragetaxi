@@ -190,7 +190,7 @@ class TaxiManager:
         self._building_collision_count = 0
         self._tree_collision_grid: Dict[Tuple[int, int], List[Tuple[int, int, float, float]]] = {}
         self._tree_collision_ref = None
-        self._tree_collision_indexed: Dict[int, int] = {}  # scenery_index -> trees already indexed
+        self._tree_collision_count = 0
         self._fence_collision_grid: Dict[Tuple[int, int], List[Any]] = {}
         self._fence_collision_ref = None
         self._fence_collision_count = 0
@@ -294,54 +294,29 @@ class TaxiManager:
         return nearby
 
     def _nearby_collision_trees(self, sceneries: List[Any], x: float, y: float, radius: float):
-        # Unlike buildings/fences, an individual scenery's own .trees list
-        # can change after that scenery is already indexed - osm/trees.py
-        # both appends to it (trees planted as a tile streams in) and
-        # reassigns it outright (remove_trees_under_roads() pruning), so
-        # the outer sceneries list being append-only isn't enough on its
-        # own here. Track how many of each scenery's trees are already
-        # indexed (by its position in the list, which *is* stable -
-        # autofetch never reorders it) and only walk the ones that
-        # changed, rather than every tree in the whole loaded map on every
-        # call. A per-scenery tree count going down (pruned) can't be
-        # cheaply un-indexed from the cell-bucketed grid, so that still
-        # falls back to a full rebuild - but that only happens once per
-        # map-sync cycle (remove_trees_under_roads runs once, not every
-        # frame), while plain growth from autofetch - the hot path this
-        # is actually for - stays cheap.
         if sceneries is not self._tree_collision_ref:
             self._tree_collision_grid.clear()
-            self._tree_collision_indexed = {}
             self._tree_collision_ref = sceneries
-        # Single pass per call (this runs every frame, and scales with the
-        # total loaded scenery count): a shrunk tree list found mid-pass
-        # clears the index and restarts the pass, instead of a separate
-        # full shrink-check scan running ahead of every indexing pass.
-        for _attempt in range(2):
-            rebuild = False
-            for scenery_index, scenery in enumerate(sceneries):
-                trees = getattr(scenery, "trees", ())
-                indexed = self._tree_collision_indexed.get(scenery_index, 0)
-                if len(trees) == indexed:
-                    continue
-                if len(trees) < indexed:
-                    self._tree_collision_grid.clear()
-                    self._tree_collision_indexed = {}
-                    rebuild = True
-                    break
-                for tree_index in range(indexed, len(trees)):
-                    tree_x, tree_y = trees[tree_index]
-                    cell = (math.floor(tree_x / 100.0), math.floor(tree_y / 100.0))
-                    self._tree_collision_grid.setdefault(cell, []).append(
-                        (scenery_index, tree_index, tree_x, tree_y)
-                    )
-                self._tree_collision_indexed[scenery_index] = len(trees)
-            if not rebuild:
-                break
+            self._tree_collision_count = 0
+        if len(sceneries) < self._tree_collision_count:
+            self.invalidate_tree_collision_index()
+            self._tree_collision_ref = sceneries
+        for scenery_index in range(self._tree_collision_count, len(sceneries)):
+            for tree_index, (tree_x, tree_y) in enumerate(getattr(sceneries[scenery_index], "trees", ())):
+                cell = (math.floor(tree_x / 100.0), math.floor(tree_y / 100.0))
+                self._tree_collision_grid.setdefault(cell, []).append(
+                    (scenery_index, tree_index, tree_x, tree_y)
+                )
+        self._tree_collision_count = len(sceneries)
         nearby = []
         for cell in self._collision_cells(x - radius, y - radius, x + radius, y + radius):
             nearby.extend(self._tree_collision_grid.get(cell, ()))
         return nearby
+
+    def invalidate_tree_collision_index(self) -> None:
+        self._tree_collision_grid.clear()
+        self._tree_collision_ref = None
+        self._tree_collision_count = 0
 
     def _nearby_collision_fences(self, sceneries: List[Any], x: float, y: float, radius: float):
         # Same fix, same reason, as _nearby_collision_buildings above -

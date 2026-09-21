@@ -77,7 +77,7 @@ class WeatherSystem:
         self.weather_type = weather_type or WeatherType.CLEAR
         self.wetness = 0.0  # 0.0 dry .. 1.0 fully wet; independent of weather_type -
         # CLEAR does not imply dry, e.g. right after rain stops (see #9).
-        self._rng = random.Random(1729)
+        self._rng = random.Random()
         # Each entry: [x_fraction, y_fraction, speed_factor]. Recycled in
         # place (wrap to a fresh random x/y when a streak falls off the
         # bottom) rather than reallocated - render/weather.py maps these
@@ -165,6 +165,11 @@ class WeatherSystem:
     @property
     def is_precipitating(self) -> bool:
         return self.weather_type in (WeatherType.RAIN, WeatherType.SNOW)
+
+    @property
+    def seconds_until_weather_change(self) -> Optional[float]:
+        """Game seconds left in the current automatic weather period."""
+        return max(0.0, self._weather_timer) if self._automatic else None
 
     def toggle_rain(self) -> None:
         """Debug toggle (F8), disabling automatic changes for this session."""

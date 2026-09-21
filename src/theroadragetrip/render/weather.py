@@ -71,6 +71,7 @@ RIPPLE_MAX_ALPHA = 70
 # Computed once per way and never recomputed, so puddles stay put rather
 # than jittering to a new random spot every frame (WEATHER_RAIN.md #4).
 _puddle_cache: dict = {}
+_visible_drivable_cache = (None, [])
 
 # Splash rings: expand and fade over SPLASH_LIFETIME_S, doubling as the
 # "disturb the puddle surface with ripples" effect (WEATHER_RAIN.md #5) -
@@ -168,20 +169,26 @@ def _visible_drivable_ways(ways: List[Way], vminx, vminy, vmaxx, vmaxy, spatial_
     duplicated here rather than factored out of that already FPS-tuned
     function (WEATHER_RAIN.md #11: cost must scale with the visible area,
     not the full ways list)."""
+    global _visible_drivable_cache
+    cache_key = (id(ways), len(ways), id(ways[-1]) if ways else None, id(spatial_grid), vminx, vminy, vmaxx, vmaxy)
+    if _visible_drivable_cache[0] == cache_key:
+        return _visible_drivable_cache[1]
     if spatial_grid is not None:
-        return [
+        visible_ways = [
             w for w in spatial_grid.ways_in_rect(vminx, vminy, vmaxx, vmaxy)
             if len(w.points_m) >= 2 and getattr(w, "is_drivable", True)
         ]
-    visible_ways = []
-    for w in ways:
-        if not getattr(w, "is_drivable", True) or len(w.points_m) < 2:
-            continue
-        bbox = getattr(w, "bbox", None)
-        if bbox and bbox != (0.0, 0.0, 0.0, 0.0):
-            if bbox[2] < vminx or bbox[0] > vmaxx or bbox[3] < vminy or bbox[1] > vmaxy:
+    else:
+        visible_ways = []
+        for w in ways:
+            if not getattr(w, "is_drivable", True) or len(w.points_m) < 2:
                 continue
-        visible_ways.append(w)
+            bbox = getattr(w, "bbox", None)
+            if bbox and bbox != (0.0, 0.0, 0.0, 0.0):
+                if bbox[2] < vminx or bbox[0] > vmaxx or bbox[3] < vminy or bbox[1] > vmaxy:
+                    continue
+            visible_ways.append(w)
+    _visible_drivable_cache = (cache_key, visible_ways)
     return visible_ways
 
 

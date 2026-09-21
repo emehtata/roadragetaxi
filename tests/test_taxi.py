@@ -837,5 +837,6 @@ def test_nearby_collision_trees_reflects_removal_from_an_already_indexed_scenery
     assert {(fx, fy) for _, _, fx, fy in found} == {(1.0, 1.0), (2.0, 2.0)}
 
     scenery.trees = [(1.0, 1.0)]  # (2.0, 2.0) pruned
+    mgr.invalidate_tree_collision_index()
     found_after = mgr._nearby_collision_trees(sceneries, 0.0, 0.0, 5.0)
     assert {(fx, fy) for _, _, fx, fy in found_after} == {(1.0, 1.0)}

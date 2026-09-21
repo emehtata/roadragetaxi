@@ -109,6 +109,7 @@ from .buildings import (
     _pseudo_random_unit,
     _window_is_illuminated,
     _window_illumination_probability,
+    mask_buildings_from_light_surface,
     draw_buildings,
     draw_illuminated_windows,
 )

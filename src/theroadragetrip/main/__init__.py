@@ -20,6 +20,7 @@ from ..config import (
     default_city_configuration,
     get_overpass_endpoints,
     load_config,
+    reset_config,
     save_config,
 )
 from ..career import (
@@ -185,6 +186,28 @@ ACTIVITY_DEBUG_FORCE_KEYS = (
     pygame.K_1, pygame.K_2, pygame.K_3, pygame.K_4, pygame.K_5,
     pygame.K_6, pygame.K_7, pygame.K_8, pygame.K_9,
 )
+
+
+def _reset_runtime_settings(config, audio, taxi_mgr):
+    reset_config(config)
+    language = normalize_language(config.get("game", "language", fallback=""))
+    physics_mode = config.get("game", "physics_realism", fallback="arcade")
+    endpoint_text = config.get("map", "overpass_endpoints", fallback="")
+    for key in ("master", "music", "effects"):
+        audio.set_volume(key, config.getfloat("audio", f"{key}_volume"))
+    audio.set_comments_enabled(config.getboolean("audio", "comments_enabled"))
+    taxi_mgr.set_language(language)
+    save_config(config)
+    return language, physics_mode, endpoint_text, get_overpass_endpoints(config)
+
+
+def _weather_status(weather) -> str:
+    remaining = weather.seconds_until_weather_change
+    timing = "manual" if remaining is None else (
+        f"current_period_ends_in={int(remaining // 3600):02d}:"
+        f"{int(remaining % 3600 // 60):02d}:{int(remaining % 60):02d}"
+    )
+    return f"condition={weather.weather_type.value} wetness={weather.wetness:.0%} {timing}"
 
 
 def _map_sync_should_start(revision_changed: bool, any_grid_stale: bool, map_sync_stage: int) -> bool:
@@ -532,12 +555,6 @@ def _load_world(
     sun_latitude, sun_longitude = city_centers.get(
         chosen_city,
         ((bbox[0] + bbox[2]) / 2.0, (bbox[1] + bbox[3]) / 2.0),
-    )
-    logger.info(
-        "Solar model: date=2026-08-31 city=%s latitude=%.6f longitude=%.6f",
-        chosen_city,
-        sun_latitude,
-        sun_longitude,
     )
 
     last_progress_draw = 0.0
@@ -1150,6 +1167,13 @@ def main() -> None:
         game_calendar = GameCalendar(start_datetime)
         game_time_seconds = game_calendar.time_seconds
         set_game_date(game_calendar.date)
+        logger.info(
+            "Solar model: date=%s city=%s latitude=%.6f longitude=%.6f",
+            game_calendar.date,
+            chosen_city,
+            sun_latitude,
+            sun_longitude,
+        )
         solar_time_bucket = None
         camx, camy = car.x, car.y
         # A fresh city session's camera lands far from wherever the
@@ -1195,6 +1219,7 @@ def main() -> None:
         runtime_profile_active = False
         frame_profiler = FrameProfiler()
         weather = WeatherSystem(season=game_calendar.season)
+        logger.info("Weather: %s", _weather_status(weather))
         world.weather = weather  # protocol.apply_server_state reads world.weather, matching the server's own convention
         clock.tick()  # Reset clock timer to avoid large dt on first frame
 
@@ -1481,14 +1506,16 @@ def main() -> None:
                                                         pygame.quit()
                                                         sys.exit(0)
                                                     if s_ev.type == pygame.MOUSEMOTION:
-                                                        hovered = _menu_item_at_y(s_ev.pos[1], 170, 32, 26, 8)
+                                                        hovered = _menu_item_at_y(s_ev.pos[1], 170, 32, 18, 9)
                                                         if hovered is not None:
                                                             settings_selected = hovered
                                                         continue
                                                     if s_ev.type == pygame.MOUSEBUTTONDOWN and s_ev.button == 1:
-                                                        hovered = _menu_item_at_y(s_ev.pos[1], 170, 32, 26, 8)
+                                                        hovered = _menu_item_at_y(s_ev.pos[1], 170, 32, 18, 9)
                                                         if hovered is not None:
                                                             settings_selected = hovered
+                                                            if hovered == 8:
+                                                                language, physics_mode, endpoint_text, overpass_endpoints = _reset_runtime_settings(config, audio, taxi_mgr)
                                                         continue
                                                     if s_ev.type != pygame.KEYDOWN:
                                                         continue
@@ -1506,15 +1533,17 @@ def main() -> None:
                                                         save_config(config)
                                                     elif settings_selected == 6 and s_ev.key == pygame.K_RETURN:
                                                         save_config(config)
+                                                    elif settings_selected == 8 and s_ev.key in (pygame.K_RETURN, pygame.K_SPACE, pygame.K_KP_ENTER):
+                                                        language, physics_mode, endpoint_text, overpass_endpoints = _reset_runtime_settings(config, audio, taxi_mgr)
                                                     elif settings_selected == 6 and s_ev.unicode and s_ev.unicode.isprintable():
                                                         endpoint_text += s_ev.unicode
                                                         config.set("map", "overpass_endpoints", endpoint_text)
                                                         overpass_endpoints = get_overpass_endpoints(config)
                                                         save_config(config)
                                                     elif s_ev.key == pygame.K_UP:
-                                                        settings_selected = (settings_selected - 1) % 8
+                                                        settings_selected = (settings_selected - 1) % 9
                                                     elif s_ev.key == pygame.K_DOWN:
-                                                        settings_selected = (settings_selected + 1) % 8
+                                                        settings_selected = (settings_selected + 1) % 9
                                                     elif s_ev.key in (pygame.K_LEFT, pygame.K_RIGHT):
                                                         delta = 0.05 if s_ev.key == pygame.K_RIGHT else -0.05
                                                         if settings_selected == 0:
@@ -2029,6 +2058,7 @@ def main() -> None:
                 if map_sync_stage == 1:
                     with frame_profiler.section("map_sync:remove_trees"):
                         remove_trees_under_roads(sceneries, ways)
+                        taxi_mgr.invalidate_tree_collision_index()
                     map_sync_stage = 2
                 elif map_sync_stage == 2:
                     with frame_profiler.section("map_sync:spatial_grid"):
@@ -2383,6 +2413,8 @@ def main() -> None:
                 shout_text=rage_shout_text,
                 spatial_grid=spatial_grid,
                 current_way=current_way,
+                railways=railways,
+                railway_grid=railway_grid,
             )
             visible_npc_count = draw_npc_cars(
                 screen, npcs, camx, camy, px_per_m=px_per_m, screen_w=SCREEN_W, screen_h=SCREEN_H,
@@ -2456,6 +2488,8 @@ def main() -> None:
                 ways=ways,
                 spatial_grid=spatial_grid,
                 current_way=current_way,
+                buildings=buildings,
+                building_spatial_grid=building_grid,
             )
             draw_vehicle_lights(
                 screen,
@@ -2553,6 +2587,7 @@ def main() -> None:
                         if stage.startswith("map_")
                     ),
                 )
+                logger.debug("Weather: %s", _weather_status(weather))
                 render_profile_times.clear()
                 render_profile_last_log = time.perf_counter()
             render_profile_times["count"] = render_profile_times.get("count", 0) + 1
