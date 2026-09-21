@@ -160,6 +160,7 @@ def build_index(
     logger.info("Building PBF index at %s: %d cells, one extract at a time", index_dir, len(cells))
     for i, cell in enumerate(cells):
         out_path = index_dir / cell["file"]
+        temp_path = out_path.with_name(f".{out_path.name}.tmp")
         if progress_callback:
             progress_callback(0.1 + 0.85 * i / len(cells), f"Cell {i + 1}/{len(cells)} ({cell['file']})...")
         if not force and out_path.is_file():
@@ -169,12 +170,16 @@ def build_index(
             "osmium", "extract",
             "--bbox", f"{cw - cell_padding_deg},{cs - cell_padding_deg},{ce + cell_padding_deg},{cn + cell_padding_deg}",
             "-s", strategy, "-f", "pbf", "-O",
-            "-o", str(out_path),
+            "-o", str(temp_path),
             str(pbf_path),
         ]
-        result = subprocess.run(cmd, capture_output=True, text=True)
-        if result.returncode != 0:
-            raise RuntimeError(f"osmium extract failed for cell {cell['file']} (exit {result.returncode}): {result.stderr.strip()}")
+        try:
+            result = subprocess.run(cmd, capture_output=True, text=True)
+            if result.returncode != 0:
+                raise RuntimeError(f"osmium extract failed for cell {cell['file']} (exit {result.returncode}): {result.stderr.strip()}")
+            temp_path.replace(out_path)
+        finally:
+            temp_path.unlink(missing_ok=True)
 
     st = pbf_path.stat()
     manifest = {

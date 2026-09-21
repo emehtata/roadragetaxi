@@ -1,8 +1,10 @@
 """Tests for the .osm.pbf grid index (src/theroadragetrip/utils/pbf_index.py)."""
 import shutil
 import subprocess
+from pathlib import Path
 
 import pytest
+import theroadragetrip.utils.pbf_index as pbf_index
 
 from theroadragetrip.utils.pbf_index import (
     _cell,
@@ -240,3 +242,23 @@ def test_build_index_is_resumable(tmp_path):
     assert victim.is_file()
     for p, mtime in survivor_mtimes.items():
         assert p.stat().st_mtime == mtime, f"{p.name} was rebuilt but shouldn't have been"
+
+
+def test_interrupted_build_does_not_leave_a_resumable_partial_cell(tmp_path, monkeypatch):
+    source_pbf = tmp_path / "source.osm.pbf"
+    source_pbf.write_bytes(b"source")
+    index_dir = tmp_path / "index"
+    monkeypatch.setattr(pbf_index, "_source_bbox", lambda _path: (25.1, 64.1, 25.2, 64.2))
+    monkeypatch.setattr(pbf_index.shutil, "which", lambda _name: "/usr/bin/osmium")
+
+    def interrupted_run(cmd, **_kwargs):
+        Path(cmd[cmd.index("-o") + 1]).write_bytes(b"partial")
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(pbf_index.subprocess, "run", interrupted_run)
+
+    with pytest.raises(KeyboardInterrupt):
+        build_index(source_pbf, index_dir=index_dir)
+
+    assert not list(index_dir.glob("*.osm.pbf"))
+    assert not list(index_dir.glob("*.tmp"))
