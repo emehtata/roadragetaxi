@@ -27,7 +27,7 @@ MAGIC = b"RWC\0"
 # the traffic-light phase-grouping fix (safety-critical - it stops
 # conflicting approaches from both showing green) would otherwise sit
 # unused in already-explored areas for up to a day. Bumped again in
-# 0.14.0alpha: traffic-signal arm/clustering fixes (service-road
+# 0.14.1alpha: traffic-signal arm/clustering fixes (service-road
 # exclusion, order-independent signal clustering) and the cache's own
 # SignalGroup-sharing fix all change what a cached tile's traffic-light
 # data should look like. Bumped again to add the curbs section (a

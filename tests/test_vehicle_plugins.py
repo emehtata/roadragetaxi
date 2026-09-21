@@ -44,6 +44,16 @@ def test_discover_registers_all_built_in_plugins():
     }
 
 
+def test_discover_registers_built_ins_when_frozen_package_scan_is_empty(monkeypatch):
+    import theroadragetrip.vehicles.plugins as plugins_pkg
+
+    monkeypatch.setattr(plugins_pkg.pkgutil, "iter_modules", lambda *args, **kwargs: ())
+    registry = VehicleRegistry()
+    discover(registry)
+
+    assert registry.get("car") is not None
+
+
 def test_discover_skips_a_broken_plugin_module_and_keeps_the_rest(monkeypatch):
     import theroadragetrip.vehicles.plugins as plugins_pkg
 
