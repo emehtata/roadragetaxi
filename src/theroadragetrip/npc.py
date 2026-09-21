@@ -2210,6 +2210,53 @@ def _parking_area_containing(point: Optional[Tuple[float, float]], sceneries: Op
     return None
 
 
+_PARKING_INDEX_CELL_M = 100.0
+_PARKING_INDEX_MIN_SPACES = 64  # below this a linear scan is as cheap as the index
+_parking_index = {"ref": None, "count": 0, "grid": {}}
+
+
+def _parking_spaces_near(parking_spaces, x: float, y: float, radius_m: float):
+    """Yield (list_index, space, center_x, center_y) for every parking
+    space whose bbox center lies in a grid cell overlapping the search
+    circle's bounding square, in original list order.
+
+    _pick_npc_destination_candidates used to walk every parking space in
+    the whole loaded map per call (thousands, on a real city) to keep the
+    few within a few hundred meters - a profiled ~6ms per call, 18 calls
+    per population tick. This indexes the list once by center cell and
+    only extends it incrementally when the list grows (autofetch only
+    appends, same guarantee taxi.py's collision grids rely on); a
+    different list object or a shrunk one rebuilds. Callers still apply
+    the exact distance test, so results are identical to a full scan."""
+    spaces = parking_spaces or ()
+    if len(spaces) < _PARKING_INDEX_MIN_SPACES:
+        for idx, space in enumerate(spaces):
+            bbox = getattr(space, "bbox", None)
+            if bbox:
+                yield idx, space, (bbox[0] + bbox[2]) / 2.0, (bbox[1] + bbox[3]) / 2.0
+        return
+    index = _parking_index
+    if index["ref"] is not spaces or len(spaces) < index["count"]:
+        index["ref"], index["count"], index["grid"] = spaces, 0, {}
+    grid = index["grid"]
+    if len(spaces) > index["count"]:
+        for idx in range(index["count"], len(spaces)):
+            space = spaces[idx]
+            bbox = getattr(space, "bbox", None)
+            if not bbox:
+                continue
+            cx, cy = (bbox[0] + bbox[2]) / 2.0, (bbox[1] + bbox[3]) / 2.0
+            cell = (math.floor(cx / _PARKING_INDEX_CELL_M), math.floor(cy / _PARKING_INDEX_CELL_M))
+            grid.setdefault(cell, []).append((idx, space, cx, cy))
+        index["count"] = len(spaces)
+    found = []
+    for cell_x in range(math.floor((x - radius_m) / _PARKING_INDEX_CELL_M), math.floor((x + radius_m) / _PARKING_INDEX_CELL_M) + 1):
+        for cell_y in range(math.floor((y - radius_m) / _PARKING_INDEX_CELL_M), math.floor((y + radius_m) / _PARKING_INDEX_CELL_M) + 1):
+            found.extend(grid.get((cell_x, cell_y), ()))
+    found.sort(key=lambda entry: entry[0])
+    yield from found
+
+
 def _pick_npc_destination_candidates(
     x: float,
     y: float,
@@ -2271,18 +2318,9 @@ def _pick_npc_destination_candidates(
     # space already covers this point) - "retry the next-nearest option"
     # only matters *within* whichever single tier actually has anything.
     space_candidates = []
-    for space in parking_spaces or ():
+    for _idx, space, cx, cy in _parking_spaces_near(parking_spaces, x, y, search_radius_m):
         if getattr(space, "occupied", False) or getattr(space, "reserved", False):
             continue
-        bbox = getattr(space, "bbox", None)
-        if not bbox:
-            continue
-        # Cheapest filter first: this loop visits every parking space in
-        # the whole loaded map, and the fit/own-area checks below (edge
-        # lengths, point-in-polygon) are far costlier than one distance
-        # test - running them on all ~1.5k spaces per call made each
-        # population tick a ~200ms frame spike (profiled).
-        cx, cy = (bbox[0] + bbox[2]) / 2.0, (bbox[1] + bbox[3]) / 2.0
         dist_sq = (cx - x) ** 2 + (cy - y) ** 2
         if dist_sq > radius_sq:
             continue
