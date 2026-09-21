@@ -264,6 +264,8 @@ def test_13_wetness_interpolates_asphalt_grip_toward_wet_asphalt():
     "progressive, not instant" approach GRIP.md already uses elsewhere."""
     dry = SURFACE_MAX_GRIP_G["dry_asphalt"]
     wet = SURFACE_MAX_GRIP_G["wet_asphalt"]
+    assert wet == 0.75  # playable rain grip: reduced, but no longer near gravel
+    assert SURFACE_MAX_GRIP_G["gravel"] < wet < dry
 
     assert _surface_max_grip_g(None, "simulation", wetness=0.0) == dry
     assert _surface_max_grip_g(None, "simulation", wetness=1.0) == wet

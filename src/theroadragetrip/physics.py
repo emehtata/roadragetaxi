@@ -52,7 +52,7 @@ MAX_PLAUSIBLE_SPEED_MPS = MAX_SPEED * 3.0
 # Values are GRIP.md's own suggested starting points, not measured physics.
 SURFACE_MAX_GRIP_G = {
     "dry_asphalt": 0.90,
-    "wet_asphalt": 0.60,
+    "wet_asphalt": 0.75,
     "gravel": 0.55,
     "grass": 0.35,
     "snow": 0.20,

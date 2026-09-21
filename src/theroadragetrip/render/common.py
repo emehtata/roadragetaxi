@@ -89,7 +89,7 @@ def _phased_cache_grid_cell(layer: str, camx: float, camy: float, cache_zoom: fl
 
 
 SOLAR_UPDATE_INTERVAL_SECONDS = 20.0
-GAME_DATE = date(2026, 9, 4) # Friday
+GAME_DATE = date(2026, 9, 4) # Backward-compatible default; sessions replace this through set_game_date().
 FINLAND_SUMMER_TIME_OFFSET = 3.0
 DEFAULT_SUN_LATITUDE = 65.012
 DEFAULT_SUN_LONGITUDE = 25.468
@@ -98,6 +98,14 @@ _solar_position_cache = {}
 _reusable_alpha_surfaces = {}
 _smoke_surface_cache = {}
 _label_frame_cache_key = None
+
+
+def set_game_date(game_date: date) -> None:
+    """Set the date used by the solar model and invalidate its cache."""
+    global GAME_DATE
+    if game_date != GAME_DATE:
+        GAME_DATE = game_date
+        _solar_position_cache.clear()
 _label_frame_cache_surface = None
 _label_frame_cache_camera = None
 _building_frame_cache_key = None
@@ -395,7 +403,7 @@ def solar_altitude_and_events(
     seconds for that to be visible; gating by real time instead keeps the
     cadence predictable regardless of how fast game time is running.
     """
-    cache_key = (round(latitude, 6), round(longitude, 6))
+    cache_key = (GAME_DATE, round(latitude, 6), round(longitude, 6))
     now = time.monotonic()
     cached = _solar_position_cache.get(cache_key)
     if cached is not None:
