@@ -43,6 +43,25 @@ def test_intensity_never_exceeds_one_past_full_slip():
     assert skidmark_intensity(1.0) == 1.0
 
 
+def test_wet_hard_surface_does_not_receive_skidmarks():
+    assert skidmark_should_mark(1.0, wetness=0.01, hard_surface=True) is False
+    assert skidmark_should_mark(1.0, wetness=1.0, hard_surface=True) is False
+    assert skidmark_should_mark(1.0, wetness=0.0, hard_surface=True) is True
+
+
+def test_wet_soft_ground_can_still_receive_displaced_dirt_tracks():
+    assert skidmark_should_mark(1.0, wetness=1.0, hard_surface=False) is True
+
+
+def test_soft_surface_tracks_always_include_all_four_wheels():
+    from theroadragetrip.physics import tire_tracks_include_front_wheels
+
+    assert tire_tracks_include_front_wheels(True, False, False) is True
+    assert tire_tracks_include_front_wheels(True, True, False) is True
+    assert tire_tracks_include_front_wheels(False, True, False) is False
+    assert tire_tracks_include_front_wheels(False, True, True) is True
+
+
 def test_draw_tire_tracks_darkens_with_intensity():
     """Render-side check: a low-intensity segment must be visibly lighter
     than a high-intensity one, not the same solid color regardless of
@@ -73,6 +92,34 @@ def test_draw_tire_tracks_darkens_with_intensity():
         dark = track_color(1.0)
         # Darker (lower RGB sum) at higher intensity.
         assert sum(dark) < sum(faint)
+    finally:
+        pygame.quit()
+
+
+def test_winter_soft_ground_draws_blue_grey_snow_tracks_not_brown_mud():
+    os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
+    os.environ.setdefault("SDL_AUDIODRIVER", "dummy")
+    import pygame
+
+    from theroadragetrip.render import TireTrail, draw_tire_tracks
+
+    pygame.init()
+    try:
+        screen = pygame.Surface((300, 200))
+        screen.fill((245, 245, 245))
+        trail = TireTrail(True, -2.0, 0.0, 0.0, 1.0, is_snow=True)
+        trail.add(2.0, 0.0, 0.0, 1.0)
+        draw_tire_tracks(
+            screen, [trail], 0.0, 0.0, grass=True, snow=True,
+            px_per_m=20.0, screen_w=300, screen_h=200,
+        )
+        drawn = {
+            tuple(screen.get_at((x, y)))[:3]
+            for x in range(300) for y in range(200)
+        } - {(245, 245, 245)}
+        assert drawn
+        assert (105, 68, 38) not in drawn  # normal grass/mud dark color
+        assert any(blue >= red for red, _green, blue in drawn)
     finally:
         pygame.quit()
 

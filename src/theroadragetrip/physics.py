@@ -1279,11 +1279,28 @@ def skidmark_intensity(slip_amount: float) -> float:
     )
 
 
-def skidmark_should_mark(slip_amount: float) -> bool:
+def skidmark_should_mark(
+    slip_amount: float,
+    wetness: float = 0.0,
+    hard_surface: bool = True,
+) -> bool:
     """Whether a tire at this slip_amount should leave a mark at all
     (SKIDMARK.md section 22.2) - a lower bar than is_sliding's hysteresis:
-    a tire can be visibly slipping before the whole car is "sliding"."""
+    a tire can be visibly slipping before the whole car is "sliding".
+
+    Wet hard surfaces do not retain black rubber marks. Soft-ground trails
+    are displaced dirt rather than deposited rubber and remain visible.
+    """
+    if hard_surface and wetness > 0.0:
+        return False
     return slip_amount >= SKIDMARK_SLIP_THRESHOLD
+
+
+def tire_tracks_include_front_wheels(
+    soft_surface: bool, is_skidding: bool, front_lockup: bool,
+) -> bool:
+    """Soft ground records all tyres; hard ground needs front lockup."""
+    return soft_surface or (is_skidding and front_lockup)
 
 
 def _available_lateral_budget_g(max_grip_g: float, longitudinal_g: float) -> float:

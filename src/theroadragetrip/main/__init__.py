@@ -32,7 +32,7 @@ from ..career import (
     save_gig_odometer,
 )
 from ..localization import SUPPORTED_LANGUAGES, normalize_language, tr
-from ..calendar import GameCalendar
+from ..calendar import GameCalendar, Season
 from ..climate import typical_temperature
 from .. import protocol, transport
 from ..simulation import PlayerCommand, advance_simulation, apply_enter_exit_vehicle
@@ -60,6 +60,7 @@ from ..physics import (
     respawn_car,
     skidmark_intensity,
     skidmark_should_mark,
+    tire_tracks_include_front_wheels,
 )
 from ..render import (
     FPS,
@@ -1896,13 +1897,18 @@ def main() -> None:
             # that just has no road way.
             is_grass = off_road_ground in ("soft", "sand")
             is_sand = off_road_ground == "sand"
+            is_snow = is_grass and game_calendar.season == Season.WINTER
             # Tire slip is the source of truth for a skidmark (SKIDMARK.md) -
             # not brake input, not even is_sliding alone (a tire can be
             # visibly slipping before the whole car counts as sliding; see
             # skidmark_should_mark's lower threshold).
-            is_skidding = skidmark_should_mark(car.skid_amount)
+            is_skidding = skidmark_should_mark(
+                car.skid_amount,
+                wetness=weather.wetness,
+                hard_surface=not is_grass,
+            )
             if movement_distance > 0.0 and (is_skidding or (is_grass and abs(car.speed) > 1.0)):
-                start_new_trail = last_track_position is None or (is_grass, is_sand) != last_track_surface
+                start_new_trail = last_track_position is None or (is_grass, is_sand, is_snow) != last_track_surface
                 # Sample on distance OR heading change: a car spinning in a
                 # donut barely moves but its rear tyres sweep a wide arc, and
                 # joining samples a metre of travel apart (with the heading
@@ -1918,14 +1924,22 @@ def main() -> None:
                     # The grass trail isn't a slip mark - it's a constant-
                     # weight dirt track from driving off-road at all.
                     intensity = skidmark_intensity(car.skid_amount) if is_skidding else 1.0
-                    front_marks = is_skidding and car.front_lockup
+                    # Soft ground is displaced by every tyre regardless of
+                    # slip/lockup. Hard surfaces only receive front marks
+                    # when the front tyres actually lock under braking.
+                    front_marks = tire_tracks_include_front_wheels(
+                        is_grass, is_skidding, car.front_lockup,
+                    )
                     if start_new_trail:
-                        tire_tracks.append(TireTrail(is_grass, car.x, car.y, car.heading, intensity, is_sand, front_marks))
+                        tire_tracks.append(TireTrail(
+                            is_grass, car.x, car.y, car.heading, intensity,
+                            is_sand, front_marks, is_snow=is_snow,
+                        ))
                     else:
                         tire_tracks[-1].add(car.x, car.y, car.heading, intensity, front_marks)
                     tire_track_point_count += 1
                     last_track_position = (car.x, car.y)
-                    last_track_surface = (is_grass, is_sand)
+                    last_track_surface = (is_grass, is_sand, is_snow)
                     # Drop the oldest trails (each one a single unbroken
                     # skid/dirt-trail event, see TireTrail) once accumulated
                     # points pass the cap, back down to a lower watermark -
@@ -2262,6 +2276,10 @@ def main() -> None:
             )
             draw_tire_tracks(
                 screen, tire_tracks, camx, camy, grass=True, sand=True, px_per_m=px_per_m,
+                viewport_bounds=viewport_bounds,
+            )
+            draw_tire_tracks(
+                screen, tire_tracks, camx, camy, grass=True, snow=True, px_per_m=px_per_m,
                 viewport_bounds=viewport_bounds,
             )
             draw_roadworks(screen, roadworks, camx, camy, px_per_m=px_per_m)
