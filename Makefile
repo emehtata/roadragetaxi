@@ -36,7 +36,7 @@ run-pbf:
 	PYTHONPATH=src $(PYTHON) road_rage_trip.py --osm-source pbf
 
 index-pbf:
-	PYTHONPATH=src $(PYTHON) -m theroadragetrip.utils.pbf_index src/theroadragetrip/assets/osm/finland-latest.osm.pbf
+	$(PYTHON) src/theroadragetrip/utils/pbf_index.py src/theroadragetrip/assets/osm/finland-latest.osm.pbf
 
 audit-ai:
 	PYTHONPATH=src $(PYTHON) utils/autoplay_audit.py

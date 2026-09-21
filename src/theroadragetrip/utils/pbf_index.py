@@ -265,7 +265,7 @@ def tiles_for_bbox(index_dir: Path, bbox: Tuple[float, float, float, float]) -> 
 
 def _selftest() -> None:
     """Pure-python check of the grid math and lookup, no osmium/network
-    needed. Run with `python -m theroadragetrip.utils.pbf_index --selftest`."""
+    needed. Run with `python src/theroadragetrip/utils/pbf_index.py --selftest`."""
     assert _cell(25.3, 64.1, 0.25) == (101, 256)
     assert _cell_bounds(101, 256, 0.25) == (25.25, 64.0, 25.5, 64.25)
 
