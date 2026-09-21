@@ -136,3 +136,33 @@ def test_coasting_corners_do_not_leave_marks_at_ordinary_speed():
                 update_car_physics(car, 0.0, 0.0, 1.0, 0.0, 1 / 60, ways=[], block_offroad=False, physics_mode=mode)
                 marks += skidmark_should_mark(car.skid_amount)
             assert marks == 0
+
+
+def test_a_spinning_cars_marks_are_a_ring_not_a_filled_blob():
+    """Reported: donut skidmarks came out as a filled star-shaped blob. A
+    car circling with the rear tyres sliding must leave two thin rings."""
+    import math
+    import os
+    os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
+    import pygame
+    from theroadragetrip.render import TireTrail, draw_tire_tracks
+
+    pygame.init()
+    screen = pygame.Surface((400, 400))
+    screen.fill((0, 0, 0))
+    radius = 5.0  # m, centre path of the car
+    trail = None
+    heading = 0.0
+    for step in range(0, 361, 4):  # one sample per 4 degrees of heading, like main()
+        angle = math.radians(step)
+        x, y = radius * math.sin(angle), radius * (1 - math.cos(angle))
+        heading = angle
+        if trail is None:
+            trail = TireTrail(False, x, y, heading, 1.0)
+        else:
+            trail.add(x, y, heading, 1.0)
+    draw_tire_tracks(screen, [trail], 0.0, radius, grass=False, px_per_m=20.0, screen_w=400, screen_h=400)
+    lit = sum(1 for x in range(400) for y in range(400) if screen.get_at((x, y))[0] > 0)
+    # Two rings of ~2*pi*r*px each, ~5px wide, is a few thousand px; a filled
+    # disc of the same size would be ~30k+.
+    assert 0 < lit < 9000

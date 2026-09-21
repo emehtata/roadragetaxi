@@ -1864,7 +1864,18 @@ def main() -> None:
             is_skidding = skidmark_should_mark(car.skid_amount)
             if movement_distance > 0.0 and (is_skidding or (is_grass and abs(car.speed) > 1.0)):
                 start_new_trail = last_track_position is None or (is_grass, is_sand) != last_track_surface
-                if start_new_trail or math.hypot(car.x - last_track_position[0], car.y - last_track_position[1]) >= 1.0:
+                # Sample on distance OR heading change: a car spinning in a
+                # donut barely moves but its rear tyres sweep a wide arc, and
+                # joining samples a metre of travel apart (with the heading
+                # having swung far in between) drew long chords across the
+                # circle - a filled, star-shaped blob instead of a ring.
+                last_heading = tire_tracks[-1].points[-1][2] if tire_tracks else car.heading
+                heading_change = abs((car.heading - last_heading + math.pi) % (2.0 * math.pi) - math.pi)
+                if (
+                    start_new_trail
+                    or math.hypot(car.x - last_track_position[0], car.y - last_track_position[1]) >= 0.5
+                    or heading_change >= math.radians(4.0)
+                ):
                     # The grass trail isn't a slip mark - it's a constant-
                     # weight dirt track from driving off-road at all.
                     intensity = skidmark_intensity(car.skid_amount) if is_skidding else 1.0

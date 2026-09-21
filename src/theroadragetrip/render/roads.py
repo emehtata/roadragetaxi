@@ -1399,6 +1399,9 @@ class TireTrail:
             self.max_y = y
 
 
+TIRE_MARK_REAR_AXLE_OFFSET_M = 1.2  # rear axle behind the car's centre
+
+
 def draw_tire_tracks(
     screen,
     trails: List[TireTrail],
@@ -1445,10 +1448,17 @@ def draw_tire_tracks(
             center_x, center_y = world_to_screen(track_x, track_y, camx, camy, px_per_m, screen_w, screen_h)
             side_x = -math.sin(heading)
             side_y = math.cos(heading)
+            # Marks are laid by the rear tyres (the driven axle), which sit
+            # behind the car's centre: a spinning car's marks then trace the
+            # rear wheels' true circle instead of pivoting about the middle.
+            # Screen y grows downward, so world heading (cos, sin) maps to
+            # (cos, -sin) - the same sign convention world_to_screen uses.
+            axle_x = center_x - math.cos(heading) * TIRE_MARK_REAR_AXLE_OFFSET_M * px_per_m
+            axle_y = center_y + math.sin(heading) * TIRE_MARK_REAR_AXLE_OFFSET_M * px_per_m
             current_tires = [
                 (
-                    int(center_x + side_x * side * 0.72 * px_per_m),
-                    int(center_y + side_y * side * 0.72 * px_per_m),
+                    int(axle_x + side_x * side * 0.72 * px_per_m),
+                    int(axle_y + side_y * side * 0.72 * px_per_m),
                 )
                 for side in (-1.0, 1.0)
             ]
