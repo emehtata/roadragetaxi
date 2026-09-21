@@ -1304,6 +1304,8 @@ def main() -> None:
                             railings=railings,
                             npcs=npcs,
                             npc_drivers=npc_drivers,
+                            npc_manager=npc_manager,
+                            frame_profiler=frame_profiler,
                         )
                         logger.info("Screenshot saved to %s", screenshot_path)
                         logger.info("Runtime debug snapshot saved to %s", debug_path)

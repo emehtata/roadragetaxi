@@ -52,6 +52,94 @@ def test_5_gentle_corner_at_moderate_speed_stays_under_three_quarters_g():
     assert car.is_sliding is False
 
 
+def test_coasting_drag_does_not_remove_all_steering_grip_on_gravel():
+    """Regression from an in-game screenshot: releasing throttle produces
+    strong arcade drag (~0.61g). That is not a brake/tire force and must not
+    consume gravel's entire 0.55g friction circle on the following frame."""
+    gravel = Way(
+        points_m=[(0.0, 0.0), (100.0, 0.0)], highway="unclassified",
+        half_width_m=5.0, surface="gravel",
+    )
+    car = _fast_car(speed=14.5)
+    # Reproduce the previous frame captured in the screenshot.
+    car.raw_forward_g = -6.0 / 9.81
+    heading_before = car.heading
+
+    update_car_physics(
+        car, throttle=0.0, brake=0.0, steer_left=1.0, steer_right=0.0,
+        dt=0.05, current_way=gravel, physics_mode="simulation",
+    )
+
+    assert car.heading > heading_before
+
+
+def test_straight_coasting_drag_does_not_report_tire_slip_or_make_skidmarks():
+    gravel = Way([(0.0, 0.0), (100.0, 0.0)], "unclassified", 5.0, surface="gravel")
+    car = _fast_car(speed=14.5)
+    update_car_physics(
+        car, throttle=0.0, brake=0.0, steer_left=0.0, steer_right=0.0,
+        dt=0.05, current_way=gravel, physics_mode="simulation",
+    )
+    assert car.raw_forward_g < 0.0  # HUD still reports real deceleration
+    assert car.grip_usage == 0.0
+    assert car.slip_amount == 0.0
+    assert car.is_sliding is False
+
+
+def test_releasing_brake_restores_steering_immediately_without_a_stale_g_frame():
+    gravel = Way([(0.0, 0.0), (100.0, 0.0)], "unclassified", 5.0, surface="gravel")
+    car = _fast_car(speed=14.5)
+    car.raw_forward_g = -2.0  # previous frame was hard braking
+    heading_before = car.heading
+    update_car_physics(
+        car, throttle=0.0, brake=0.0, steer_left=1.0, steer_right=0.0,
+        dt=0.05, current_way=gravel, physics_mode="simulation",
+    )
+    assert car.heading > heading_before
+
+
+def test_applying_throttle_after_coasting_uses_current_drive_force_not_stale_drag():
+    gravel = Way([(0.0, 0.0), (100.0, 0.0)], "unclassified", 5.0, surface="gravel")
+    car = _fast_car(speed=14.5)
+    car.raw_forward_g = -6.0 / 9.81
+    heading_before = car.heading
+    update_car_physics(
+        car, throttle=1.0, brake=0.0, steer_left=1.0, steer_right=0.0,
+        dt=0.05, current_way=gravel, physics_mode="simulation",
+    )
+    assert car.heading > heading_before
+
+
+def test_speed_limiter_deceleration_shares_grip_but_does_not_zero_steering():
+    gravel = Way([(0.0, 0.0), (100.0, 0.0)], "unclassified", 5.0, surface="gravel")
+    car = _fast_car(speed=20.0)
+    heading_before = car.heading
+    update_car_physics(
+        car, throttle=0.0, brake=0.0, steer_left=1.0, steer_right=0.0,
+        dt=0.05, speed_limit_mps=10.0, current_way=gravel, physics_mode="simulation",
+    )
+    assert car.heading > heading_before
+    # Limiter braking consumes some grip, so it turns less than a coast at
+    # the same entry speed and surface.
+    coasting = _fast_car(speed=20.0)
+    update_car_physics(
+        coasting, throttle=0.0, brake=0.0, steer_left=1.0, steer_right=0.0,
+        dt=0.05, current_way=gravel, physics_mode="simulation",
+    )
+    assert car.heading < coasting.heading
+
+
+def test_reverse_acceleration_retains_grip_and_reverses_steering_direction():
+    gravel = Way([(0.0, 0.0), (100.0, 0.0)], "unclassified", 5.0, surface="gravel")
+    car = _fast_car(speed=-3.0)
+    heading_before = car.heading
+    update_car_physics(
+        car, throttle=0.0, brake=1.0, steer_left=1.0, steer_right=0.0,
+        dt=0.05, current_way=gravel, physics_mode="simulation",
+    )
+    assert car.heading < heading_before
+
+
 def test_6_lateral_g_grows_with_speed_squared_at_a_fixed_radius():
     """Steering input alone isn't a fixed radius (STEER_SPEED_FACTOR softens
     it with speed) - drive an exact circular arc directly, as

@@ -62,6 +62,12 @@ def test_navigation_route_connects_from_middle_of_long_road_segment():
     assert route[-1] == (200.0, 100.0)
 
 
+def test_plan_route_honors_an_expired_deadline():
+    world = TrafficWorld(_large_city_block_grid(block_count=20, step_m=40.0))
+
+    assert world.plan_route((0.0, 0.0), (760.0, 760.0), deadline=0.0) is None
+
+
 def test_sync_map_data_adds_streamed_road_to_route_graph():
     streamed_road = Way(
         points_m=[(0.0, 0.0), (100.0, 0.0)],

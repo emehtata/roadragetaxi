@@ -7,16 +7,20 @@ import random
 os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
 
 from theroadragetrip.npc import (
+    Driver,
     NPCAvailability,
     NPCState,
     NPCVehicleManager,
+    PathPoint,
     TripGroup,
+    _begin_trip_on_vehicle,
     has_active_driver,
     place_parked_npc,
     spawn_npc,
 )
 from theroadragetrip.osm import Way
 from theroadragetrip.pedestrian import PedestrianManager
+from theroadragetrip.physics import Car
 from theroadragetrip.residents import ResidentManager
 from theroadragetrip.traffic_world import TrafficWorld
 
@@ -80,6 +84,23 @@ def test_place_one_rejects_a_point_another_vehicle_is_already_driving_toward():
 
     free_point = manager._place_one((500.0, 500.0), None, ways, None, None, None, None, None)
     assert free_point is not None
+
+
+def test_rebuild_spatial_grid_tracks_a_vehicle_after_it_moves():
+    """The generic grid caches synthetic point bboxes, but an NPC's index
+    position must follow its live pose on every manager rebuild."""
+    manager = NPCVehicleManager(target_count=1)
+    vehicle = place_parked_npc(1, (0.0, 0.0), None, vehicle_type="car")
+    manager.vehicles.append(vehicle)
+    manager.rebuild_spatial_grid()
+    assert vehicle in list(manager.nearby_vehicles_at(0.0, 0.0, 5.0))
+
+    vehicle.car.x = 250.0
+    vehicle.car.y = 125.0
+    manager.rebuild_spatial_grid()
+
+    assert vehicle in list(manager.nearby_vehicles_at(250.0, 125.0, 5.0))
+    assert vehicle not in list(manager.nearby_vehicles_at(0.0, 0.0, 5.0))
 
 
 def test_populate_initial_reports_progress_gradually():
@@ -986,6 +1007,62 @@ def test_trigger_vehicle_accident_also_ejects_passengers_not_just_the_driver():
     assert passenger.trip_group_id is None
 
 
+def test_trigger_vehicle_accident_ejects_only_unique_boarded_people_up_to_capacity():
+    """A crash must not clone people who are already outside, repeat a
+    duplicated roster entry, or materialize more occupants than seats."""
+    residents = ResidentManager()
+    manager = NPCVehicleManager(target_count=1)
+    vehicle, driver_resident = _driving_vehicle(residents, 5.0, 0.0)
+    passengers = [residents.create(mode="riding") for _ in range(vehicle.capacity + 2)]
+    outside_resident = passengers[-1]
+    roster = [driver_resident.resident_id] + [p.resident_id for p in passengers]
+    roster.insert(2, passengers[0].resident_id)  # corrupt duplicate
+    boarded = set(roster)
+    boarded.discard(outside_resident.resident_id)
+    vehicle.trip_group = TripGroup(
+        group_id=1,
+        vehicle_id=vehicle.vehicle_id,
+        member_resident_ids=roster,
+        boarded_resident_ids=boarded,
+    )
+    for resident_id in set(roster):
+        residents.get(resident_id).trip_group_id = 1
+    manager.vehicles.append(vehicle)
+    sidewalk = Way(points_m=[(0.0, 3.0), (20.0, 3.0)], highway="footway", half_width_m=2.0)
+    pedestrian_mgr = PedestrianManager([sidewalk], target_count=0)
+
+    manager._trigger_vehicle_accident(vehicle, residents, pedestrian_mgr, sim_time=100.0)
+
+    ejected_ids = [ped.resident_id for ped in pedestrian_mgr.pedestrians]
+    assert len(ejected_ids) == vehicle.capacity
+    assert len(set(ejected_ids)) == len(ejected_ids)
+    assert driver_resident.resident_id in ejected_ids
+    assert outside_resident.resident_id not in ejected_ids
+    assert all(residents.get(resident_id).trip_group_id is None for resident_id in set(roster))
+
+
+def test_begin_trip_caps_and_deduplicates_supplied_household_members():
+    residents = ResidentManager()
+    vehicle = place_parked_npc(1, (0.0, 0.0), None, vehicle_type="car")
+    supplied = [residents.create(mode="riding") for _ in range(vehicle.capacity + 3)]
+    supplied_ids = [supplied[0].resident_id, supplied[0].resident_id]
+    supplied_ids.extend(resident.resident_id for resident in supplied[1:])
+    path = [PathPoint(0.0, 0.0), PathPoint(20.0, 0.0)]
+
+    driver = _begin_trip_on_vehicle(
+        vehicle,
+        path,
+        residents,
+        destination=(20.0, 0.0),
+        member_resident_ids=supplied_ids,
+    )
+
+    assert driver.resident_id == supplied[0].resident_id
+    assert len(vehicle.trip_group.member_resident_ids) == vehicle.capacity
+    assert len(set(vehicle.trip_group.member_resident_ids)) == vehicle.capacity
+    assert vehicle.trip_group.boarded_resident_ids == set(vehicle.trip_group.member_resident_ids)
+
+
 def test_check_vehicle_collision_crashes_both_overlapping_npc_vehicles():
     """NPC-004 section 10: an actual NPC-NPC overlap must crash *both*
     vehicles, each getting its own independent accident."""
@@ -1002,6 +1079,27 @@ def test_check_vehicle_collision_crashes_both_overlapping_npc_vehicles():
     assert vehicle_b.state == NPCState.CRASHED
 
 
+def test_check_vehicle_collision_does_not_ignore_parked_car_on_final_approach():
+    residents = ResidentManager()
+    manager = NPCVehicleManager(target_count=2)
+    moving, resident = _driving_vehicle(residents, 0.0, 0.0, vehicle_id=1)
+    parked = place_parked_npc(2, (1.0, 0.0), None, vehicle_type="car")
+    manager.vehicles.extend([moving, parked])
+    manager.drivers[moving.vehicle_id] = Driver(
+        resident_id=resident.resident_id,
+        vehicle_id=moving.vehicle_id,
+        path=[PathPoint(-10.0, 0.0), PathPoint(0.0, 0.0), PathPoint(1.0, 0.0)],
+        destination=(1.0, 0.0),
+        path_index=2,
+    )
+
+    assert manager._check_vehicle_collision(
+        moving, [parked], residents, PedestrianManager([], target_count=0), sim_time=50.0,
+    )
+    assert moving.state == NPCState.CRASHED
+    assert parked.state == NPCState.CRASHED
+
+
 def test_check_vehicle_collision_ignores_vehicles_that_do_not_overlap():
     residents = ResidentManager()
     manager = NPCVehicleManager(target_count=1)
@@ -1016,9 +1114,27 @@ def test_check_vehicle_collision_ignores_vehicles_that_do_not_overlap():
     assert vehicle_b.state != NPCState.CRASHED
 
 
-def test_check_vehicle_collision_with_the_player_car_only_crashes_the_npc():
-    """Section 11: an NPC-taxi collision must trigger the NPC's own
-    accident response without touching the player's car at all."""
+def test_swept_collision_catches_npcs_that_cross_between_frames():
+    residents = ResidentManager()
+    manager = NPCVehicleManager(target_count=2)
+    vehicle_a, _ = _driving_vehicle(residents, 10.0, 0.0, vehicle_id=1)
+    vehicle_b, _ = _driving_vehicle(residents, -10.0, 0.0, vehicle_id=2)
+    manager.vehicles.extend([vehicle_a, vehicle_b])
+    pedestrian_mgr = PedestrianManager([], target_count=0)
+
+    manager._check_vehicle_collision(
+        vehicle_a, [vehicle_b], residents, pedestrian_mgr, sim_time=50.0,
+        previous_vehicle_pose=(-10.0, 0.0, 0.0),
+        previous_obstacle_poses={id(vehicle_b): (10.0, 0.0, math.pi)},
+    )
+
+    assert vehicle_a.state == NPCState.CRASHED
+    assert vehicle_b.state == NPCState.CRASHED
+
+
+def test_check_vehicle_collision_with_player_crashes_npc_and_stops_taxi():
+    """Detection must have a physical response; otherwise the taxi visibly
+    drives through the NPC even though the NPC's crash state was set."""
     from theroadragetrip.physics import Car
 
     residents = ResidentManager()
@@ -1031,7 +1147,83 @@ def test_check_vehicle_collision_with_the_player_car_only_crashes_the_npc():
     manager._check_vehicle_collision(vehicle, [player_car], residents, pedestrian_mgr, sim_time=50.0)
 
     assert vehicle.state == NPCState.CRASHED
-    assert player_car.speed == 15.0  # untouched - taxi physics/scoring stays taxi.py's own business
+    assert player_car.speed == 0.0
+
+
+def test_crashed_npc_remains_a_physical_obstacle_for_player():
+    residents = ResidentManager()
+    manager = NPCVehicleManager(target_count=1)
+    vehicle, _ = _driving_vehicle(residents, 0.0, 0.0)
+    manager.vehicles.append(vehicle)
+    player_car = Car(x=1.0, y=0.0, heading=0.0, speed=15.0)
+    pedestrian_mgr = PedestrianManager([], target_count=0)
+    manager._check_vehicle_collision(vehicle, [player_car], residents, pedestrian_mgr, sim_time=50.0)
+
+    player_car.speed = 15.0
+    assert manager._check_vehicle_collision(
+        vehicle, [player_car], residents, pedestrian_mgr, sim_time=51.0,
+    )
+    assert player_car.speed == 0.0
+
+
+def test_crashed_npc_remains_a_physical_obstacle_for_other_npcs():
+    """A wreck is not eligible for another accident, but it must not become
+    a ghost that the next moving NPC can drive through."""
+    residents = ResidentManager()
+    manager = NPCVehicleManager(target_count=2)
+    wreck, _ = _driving_vehicle(residents, 0.0, 0.0, vehicle_id=1)
+    moving, _ = _driving_vehicle(residents, 1.0, 0.0, vehicle_id=2)
+    manager.vehicles.extend([wreck, moving])
+    pedestrian_mgr = PedestrianManager([], target_count=0)
+    manager._trigger_vehicle_accident(wreck, residents, pedestrian_mgr, sim_time=50.0)
+    moving.car.speed = 12.0
+
+    assert manager._check_vehicle_collision(
+        moving, [wreck], residents, pedestrian_mgr, sim_time=51.0,
+    )
+    assert wreck.state == NPCState.CRASHED
+    assert moving.state == NPCState.CRASHED
+    assert wreck.car.speed == 0.0
+    assert moving.car.speed == 0.0
+
+
+def test_crashed_subject_still_stops_a_moving_npc_candidate():
+    """The result must not depend on which member of the pair the spatial
+    collision pass happens to visit first."""
+    residents = ResidentManager()
+    manager = NPCVehicleManager(target_count=2)
+    wreck, _ = _driving_vehicle(residents, 0.0, 0.0, vehicle_id=1)
+    moving, _ = _driving_vehicle(residents, 1.0, 0.0, vehicle_id=2)
+    manager.vehicles.extend([wreck, moving])
+    pedestrian_mgr = PedestrianManager([], target_count=0)
+    manager._trigger_vehicle_accident(wreck, residents, pedestrian_mgr, sim_time=50.0)
+    moving.car.speed = 12.0
+
+    assert manager._check_vehicle_collision(
+        wreck, [moving], residents, pedestrian_mgr, sim_time=51.0,
+    )
+    assert moving.state == NPCState.CRASHED
+    assert moving.car.speed == 0.0
+
+
+def test_swept_player_collision_rolls_taxi_back_before_npc():
+    residents = ResidentManager()
+    manager = NPCVehicleManager(target_count=1)
+    vehicle, _ = _driving_vehicle(residents, 0.0, 0.0)
+    manager.vehicles.append(vehicle)
+    player_car = Car(x=10.0, y=0.0, heading=0.0, speed=30.0)
+    pedestrian_mgr = PedestrianManager([], target_count=0)
+
+    hit = manager._check_vehicle_collision(
+        vehicle, [player_car], residents, pedestrian_mgr, sim_time=50.0,
+        previous_vehicle_pose=(0.0, 0.0, 0.0),
+        previous_obstacle_poses={id(player_car): (-10.0, 0.0, 0.0)},
+    )
+
+    assert hit
+    assert player_car.x == -10.0
+    assert player_car.speed == 0.0
+    assert vehicle.state == NPCState.CRASHED
 
 
 def test_population_tick_reroutes_a_stuck_vehicle_when_a_valid_route_exists():

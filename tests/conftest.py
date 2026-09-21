@@ -24,6 +24,7 @@ def _reset_static_render_cache_throttle():
     """
     from theroadragetrip.render import common as _render_common
 
+    _render_common._pending_incremental_rebuilds.clear()
     _render_common.begin_static_cache_frame()
     yield
 

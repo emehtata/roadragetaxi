@@ -170,6 +170,32 @@ def test_debug_snapshot_npcs_empty_without_npcs(tmp_path):
     assert data["npcs"] == []
 
 
+def test_debug_snapshot_keeps_driverless_crashed_npc(tmp_path):
+    """Accident handling removes the driver, but the wreck remains in the
+    world and must remain visible in the screenshot's matching JSON."""
+    ways = [
+        Way(points_m=[(i * 20.0, 0.0), ((i + 1) * 20.0, 0.0)], highway="residential", half_width_m=4.5)
+        for i in range(10)
+    ]
+    tw = TrafficWorld(ways)
+    residents = ResidentManager()
+    spawned = spawn_npc(7, residents, tw, ways, (0.0, 0.0), (180.0, 0.0))
+    assert spawned is not None
+    _, _, vehicle = spawned
+    vehicle.state = "CRASHED"
+    vehicle.car.speed = 0.0
+    vehicle.driver_departed = True
+
+    data = _write_minimal_snapshot(
+        tmp_path / "crashed.json", npcs=[vehicle], npc_drivers={},
+    )
+
+    assert len(data["npcs"]) == 1
+    assert data["npcs"][0]["vehicle_id"] == 7
+    assert data["npcs"][0]["state"] == "CRASHED"
+    assert data["npcs"][0]["has_driver"] is False
+
+
 def test_find_feature_at_returns_nearest_way_within_tolerance():
     """RENDER-audit.md section 19: clicking near a drivable way should
     report highway=* and drivable=yes."""

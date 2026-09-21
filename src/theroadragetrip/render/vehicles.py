@@ -963,11 +963,10 @@ def draw_npc_cars(
         crashed_timer = getattr(npc, "crashed_timer", 0.0)
         if crashed_timer > 0.0:
             import pygame
-            t = (
-                5.0 - crashed_timer
-                if math.isfinite(crashed_timer)
-                else pygame.time.get_ticks() / 1000.0
-            )
+            # NPCVehicle.crashed_timer is elapsed time since impact (not a
+            # countdown). Network shadows may use infinity as the persistent
+            # "crashed" marker, in which case local wall time animates it.
+            t = crashed_timer if math.isfinite(crashed_timer) else pygame.time.get_ticks() / 1000.0
             # 3 animated puff particles floating upwards from engine bay
             fx = math.cos(npc.heading)
             fy = -math.sin(npc.heading)

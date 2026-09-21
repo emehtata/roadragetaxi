@@ -375,8 +375,11 @@ def draw_scenery(
         _scenery_wip = _start_scenery_rebuild(sceneries, spatial_grid, frame_cache_key, camx, camy, cache_zoom, screen_w, screen_h)
 
     rebuild_started = time.perf_counter() if profiler is not None else None
-    deadline = float("inf") if is_first_ever_build else time.perf_counter() + INCREMENTAL_REBUILD_BUDGET_S
+    deadline = common._incremental_rebuild_deadline(
+        "scenery", is_first_ever_build, INCREMENTAL_REBUILD_BUDGET_S,
+    )
     finished = _advance_scenery_rebuild(_scenery_wip, deadline)
+    common._finish_incremental_rebuild("scenery", finished)
     if profiler is not None:
         profiler.record("render:scenery_cache_rebuild", (time.perf_counter() - rebuild_started) * 1000.0)
 

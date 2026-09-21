@@ -89,6 +89,10 @@ def _npc_to_dict(npc) -> dict:
         "lod_level": npc.lod_level,
         "turn_signal": npc.turn_signal,
         "turn_signal_elapsed": npc.turn_signal_elapsed,
+        "state": npc.state,
+        "crashed_timer": npc.crashed_timer,
+        "driver_departed": npc.driver_departed,
+        "debug_waiting_for": npc.debug_waiting_for,
         "length_m": npc.car.length_m,
         "width_m": npc.car.width_m,
     }
@@ -357,6 +361,10 @@ class ShadowVehicle:
         self.lod_level = data["lod_level"]
         self.turn_signal = data["turn_signal"]
         self.turn_signal_elapsed = data["turn_signal_elapsed"]
+        self.state = data.get("state", self.state)
+        self.crashed_timer = data.get("crashed_timer", self.crashed_timer)
+        self.driver_departed = data.get("driver_departed", self.driver_departed)
+        self.debug_waiting_for = data.get("debug_waiting_for", self.debug_waiting_for)
         self.length_m = data["length_m"]
         self.width_m = data["width_m"]
         self.car.length_m = data["length_m"]

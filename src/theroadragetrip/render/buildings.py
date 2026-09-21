@@ -537,8 +537,11 @@ def draw_buildings(
         )
 
     rebuild_started = time.perf_counter() if profiler is not None else None
-    deadline = float("inf") if is_first_ever_build else time.perf_counter() + INCREMENTAL_REBUILD_BUDGET_S
+    deadline = common._incremental_rebuild_deadline(
+        "buildings", is_first_ever_build, INCREMENTAL_REBUILD_BUDGET_S,
+    )
     finished = _advance_building_rebuild(_building_wip, deadline)
+    common._finish_incremental_rebuild("buildings", finished)
     if profiler is not None:
         profiler.record("render:buildings_cache_rebuild", (time.perf_counter() - rebuild_started) * 1000.0)
 

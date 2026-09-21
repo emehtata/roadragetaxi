@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import heapq
 import math
+import time
 from typing import List, Optional, Tuple
 
 from .osm import TrafficLight, Way
@@ -170,6 +171,7 @@ class TrafficWorld:
         start: Tuple[float, float],
         target: Tuple[float, float],
         layer: Optional[int] = None,
+        deadline: Optional[float] = None,
     ) -> Optional[List[Tuple[float, float]]]:
         """Return a shortest road route for player navigation."""
         allowed = {
@@ -220,6 +222,8 @@ class TrafficWorld:
             best_target = None
             best_total = math.inf
             while queue:
+                if deadline is not None and time.perf_counter() >= deadline:
+                    return None
                 estimated_total, distance, current = heapq.heappop(queue)
                 if distance != distances.get(current):
                     continue
@@ -247,6 +251,8 @@ class TrafficWorld:
             return path
 
         for candidate_count in (8, 16, 32, 64):
+            if deadline is not None and time.perf_counter() >= deadline:
+                return None
             path = search(min(candidate_count, len(allowed)))
             if path is not None:
                 return [start] + [

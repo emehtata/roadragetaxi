@@ -55,11 +55,15 @@ def test_reconcile_npcs_adds_updates_and_removes_by_id():
         "id": 1, "x": 1.0, "y": 2.0, "heading": 0.0, "speed": 3.0, "color": [1, 2, 3],
         "vehicle_type": "car", "is_taxi": False, "is_police": False, "is_on_foot": False,
         "fallen": False, "layer": 0, "lod_level": 0, "turn_signal": "", "turn_signal_elapsed": 0.0,
-        "length_m": 4.0, "width_m": 1.8,
+        "state": "CRASHED", "crashed_timer": 1.5, "driver_departed": True,
+        "debug_waiting_for": "accident", "length_m": 4.0, "width_m": 1.8,
     }
     protocol._reconcile_npcs(vehicles, [npc_data])
     assert len(vehicles) == 1
     assert vehicles[0].vehicle_id == 1 and vehicles[0].x == 1.0
+    assert vehicles[0].state == "CRASHED"
+    assert vehicles[0].crashed_timer == 1.5
+    assert vehicles[0].driver_departed is True
 
     moved = dict(npc_data, x=5.0)
     protocol._reconcile_npcs(vehicles, [moved])

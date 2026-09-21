@@ -106,6 +106,15 @@ class FrameProfiler:
             if self.last_spike
             else []
         )
+        # "rendering" is the parent timer around every render:* section and
+        # therefore always wins numerically. Reporting it as the culprit hid
+        # the actual cache layer that spiked, which made the F3 diagnosis say
+        # only "rendering". Prefer the most expensive detailed child whenever
+        # one was recorded; retain the parent as fallback for uninstrumented
+        # render work.
+        culprit_sections = spike_sections
+        if any(name.startswith("render:") for name, _ in spike_sections):
+            culprit_sections = [(name, value) for name, value in spike_sections if name != "rendering"]
         return {
             "frame_ms": self.last_frame_ms,
             "average_ms": average_ms,
@@ -114,5 +123,6 @@ class FrameProfiler:
             "metrics": dict(self.metrics),
             "spikes": self.spike_count,
             "last_spike": self.last_spike,
-            "spike_subsystem": spike_sections[0][0] if spike_sections else None,
+            "spike_subsystem": culprit_sections[0][0] if culprit_sections else None,
+            "spike_sections": culprit_sections[:5],
         }

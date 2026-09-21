@@ -1200,7 +1200,11 @@ def _smoothed_g(previous: float, raw: float, dt: float) -> float:
     return previous + (raw - previous) * alpha
 
 
-def _update_g_force(car: Car, entry_x: float, entry_y: float, entry_heading: float, dt: float) -> None:
+def _update_g_force(
+    car: Car, entry_x: float, entry_y: float, entry_heading: float, dt: float,
+    grip_longitudinal_g: Optional[float] = None,
+    grip_was_limited: bool = False,
+) -> None:
     """Measure g-force from the car's *actual* velocity-vector change this
     frame (GFORCE.md) rather than from steering input or a heading-rate
     formula: entry_x/y is where the car was before any of this frame's
@@ -1280,7 +1284,21 @@ def _update_g_force(car: Car, entry_x: float, entry_y: float, entry_heading: flo
     # steering-authority softening in update_car_physics above (section
     # 15: g-force, grip usage, slip angle and sliding are related but not
     # the same signal).
-    car.grip_usage = car.raw_total_g / car.max_grip_g if car.max_grip_g > 1e-6 else 0.0
+    # HUD g-force remains the actual measured acceleration. Tire slip is
+    # different: strong arcade coasting/terrain drag is not a driven or
+    # braked tire force and must not create straight-line skidmarks. Direct
+    # callers and collision/road blocking retain measured longitudinal g.
+    grip_total_g = math.hypot(
+        abs(raw_forward_g) if grip_longitudinal_g is None else grip_longitudinal_g,
+        raw_lateral_g,
+    )
+    if grip_was_limited:
+        # The tire was commanded beyond its available circle and the
+        # heading-rate clamp prevented the measured motion from exceeding
+        # it. Preserve that real saturation/slip signal without borrowing
+        # unrelated passive drag to push the number over the threshold.
+        grip_total_g = max(grip_total_g, car.max_grip_g * FULL_SLIDE_RATIO)
+    car.grip_usage = grip_total_g / car.max_grip_g if car.max_grip_g > 1e-6 else 0.0
     car.slip_amount = _slip_amount_from_ratio(car.grip_usage)
     car.is_sliding = (
         car.slip_amount > SLIDE_EXIT_THRESHOLD if car.is_sliding else car.slip_amount >= SLIDE_ENTER_THRESHOLD
@@ -1331,14 +1349,20 @@ def update_car_physics(
     see _update_g_force for how they're actually measured.
     """
     entry_x, entry_y, entry_heading = car.x, car.y, car.heading
+    entry_speed = car.speed
+    using_longitudinal_tire_grip = False
     if speed_limit_mps is not None and car.speed > speed_limit_mps:
+        using_longitudinal_tire_grip = True
         car.speed = max(speed_limit_mps, car.speed - SPEED_LIMIT_DECEL * dt)
     elif speed_limit_mps is not None and car.speed < -speed_limit_mps:
+        using_longitudinal_tire_grip = True
         car.speed = min(-speed_limit_mps, car.speed + SPEED_LIMIT_DECEL * dt)
     elif throttle > 0:
+        using_longitudinal_tire_grip = True
         acceleration = forward_acceleration(car.speed)
         car.speed = min(car.speed + acceleration * dt, speed_limit_mps) if speed_limit_mps is not None else car.speed + acceleration * dt
     elif brake > 0:
+        using_longitudinal_tire_grip = True
         if car.speed > 0.0:
             car.speed = max(0.0, car.speed - BRAKE * dt)
         else:
@@ -1353,6 +1377,10 @@ def update_car_physics(
             car.speed = min(0.0, car.speed + FRICTION * dt)
 
     car.speed = clamp(car.speed, -10.0, MAX_SPEED)
+    longitudinal_tire_g = (
+        abs(car.speed - entry_speed) / (dt * GRAVITY_MPS2)
+        if using_longitudinal_tire_grip and dt > 0.0 else 0.0
+    )
 
     # Manual steering check
     steer_input = steer_left - steer_right
@@ -1366,6 +1394,7 @@ def update_car_physics(
     # end of the frame by _update_g_force, GRIP.md section 12) - not reset
     # here, so that hysteresis can see its own previous value.
     car.max_grip_g = _surface_max_grip_g(current_way, physics_mode, wetness)
+    steering_grip_limited = False
     # Drift decays by default every frame; the grip-exceeded branch below
     # builds it back up on top of this when the driver is actively
     # oversteering past the surface's limit.
@@ -1378,16 +1407,27 @@ def update_car_physics(
             steer_effective = STEER_RATE / (1.0 + abs(car.speed) * STEER_SPEED_FACTOR)
             desired_heading_rate = steer_input * steer_effective * (1.0 if car.speed >= 0 else -1.0)
 
-            # Friction circle (GRIP.md section 2): last frame's measured
-            # longitudinal g eats into this frame's lateral budget. Using
-            # last frame's raw_forward_g (this frame's isn't measured yet)
-            # is a one-frame lag, standard for this kind of feedback and
-            # avoids a same-frame circular dependency.
-            lateral_budget_g = _available_lateral_budget_g(car.max_grip_g, abs(car.raw_forward_g))
+            # Friction circle (GRIP.md section 2): driven/braking tire force
+            # eats into lateral grip. Passive coasting drag does not: FRICTION
+            # is deliberately strong arcade engine/rolling resistance, not a
+            # tire-brake command. Treating its measured ~0.61g deceleration as
+            # tire effort exhausted all grip on gravel (0.55g), making a car
+            # unable to turn the instant the throttle was released.
+            lateral_budget_g = _available_lateral_budget_g(
+                car.max_grip_g,
+                # Do not give longitudinal input absolute priority over
+                # steering. BRAKE is an intentionally super-physical arcade
+                # deceleration (28 m/s²); feeding it uncapped into a friction
+                # circle would make every braking car mathematically unable
+                # to turn. Reserve a small lateral share, approximating the
+                # combined-force scaling real tires perform at the limit.
+                min(longitudinal_tire_g, car.max_grip_g * 0.95),
+            )
             max_heading_rate = lateral_budget_g * GRAVITY_MPS2 / abs(car.speed)
 
             heading_rate = desired_heading_rate
             if abs(desired_heading_rate) > max_heading_rate:
+                steering_grip_limited = True
                 # Understeer (GRIP.md section 8): the tires physically
                 # cannot deliver more curvature than the surface's grip
                 # budget allows, so the car turns at that rate rather than
@@ -1621,5 +1661,9 @@ def update_car_physics(
     # here), so it reflects whatever actually happened above - acceleration,
     # braking, steering, drift, being blocked by a road edge, everything -
     # not just steering input (see _update_g_force).
-    _update_g_force(car, entry_x, entry_y, entry_heading, dt)
+    _update_g_force(
+        car, entry_x, entry_y, entry_heading, dt,
+        grip_longitudinal_g=None if blocked else longitudinal_tire_g,
+        grip_was_limited=steering_grip_limited,
+    )
     return blocked

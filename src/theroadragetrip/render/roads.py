@@ -168,8 +168,11 @@ def draw_ways(
     # The very first build has nothing to fall back to while it works, so
     # it - and only it - still pays its full cost in one call, same as
     # every other layer's own no-existing-cache exemption.
-    deadline = float("inf") if is_first_ever_build else time.perf_counter() + INCREMENTAL_REBUILD_BUDGET_S
+    deadline = common._incremental_rebuild_deadline(
+        "roads", is_first_ever_build, INCREMENTAL_REBUILD_BUDGET_S,
+    )
     finished = _advance_road_rebuild(_road_wip, deadline)
+    common._finish_incremental_rebuild("roads", finished)
     if profiler is not None:
         profiler.record("render:roads_cache_rebuild", (time.perf_counter() - rebuild_started) * 1000.0)
 

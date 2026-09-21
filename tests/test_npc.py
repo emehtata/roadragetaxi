@@ -32,6 +32,7 @@ from theroadragetrip.npc import (
     _building_yard_point,
     _corner_safe_speed_mps,
     _distance_to_next_turn,
+    _path_follow_target,
     _parking_space_dimensions,
     _parking_space_fits_vehicle,
     _pick_npc_destination,
@@ -168,6 +169,26 @@ def test_route_progression_advances():
     for _ in range(600):
         update_npc(vehicle, driver, 1.0 / 60.0, tw, residents)
     assert driver.path_index > start_index
+
+
+def test_path_follower_lookahead_grows_with_speed_and_ignores_dense_waypoint_switching():
+    path = [PathPoint(float(x), 0.0) for x in range(0, 31)]
+    slow = Driver(1, 1, path, (30.0, 0.0))
+    fast = Driver(1, 1, path, (30.0, 0.0))
+    slow_target, slow_distance = _path_follow_target(slow, 0.2, 0.4, 1.0)
+    fast_target, fast_distance = _path_follow_target(fast, 0.2, 0.4, 20.0)
+    assert fast_distance > slow_distance
+    assert fast_target.x > slow_target.x
+    assert slow_target.y == fast_target.y == 0.0
+
+
+def test_path_follower_projects_onto_curve_instead_of_chasing_nearest_vertex():
+    path = [PathPoint(0.0, 0.0), PathPoint(10.0, 0.0), PathPoint(20.0, 10.0), PathPoint(20.0, 20.0)]
+    driver = Driver(1, 1, path, (20.0, 20.0))
+    target, _ = _path_follow_target(driver, 8.0, 0.5, 8.0)
+    assert target.x > 10.0
+    assert target.y > 0.0
+    assert driver.route_segment_index <= 1
 
 
 def test_deterministic_npc_eventually_reaches_its_destination():
