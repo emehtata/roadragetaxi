@@ -297,10 +297,11 @@ def is_point_in_parking_lot(
 
 
 # Scenery kinds whose ground is actually soft/earthy - the only off-road
-# surfaces where driving should leave a muddy dirt trail. Any other mapped
-# ground polygon (pedestrian_area, fuel forecourt, commercial/industrial/
-# retail land, tracks, playgrounds, sand, ...) is hard or not mud-like, so
-# skids there stay ordinary tyre marks.
+# surfaces where driving should leave a muddy dirt trail (sand/beach get
+# their own lighter trail, see SAND_SCENERY_KINDS). Any other mapped ground
+# polygon (pedestrian_area, fuel forecourt, commercial/industrial/retail
+# land, tracks, playgrounds, ...) is hard, so skids there stay ordinary
+# tyre marks.
 SOFT_GROUND_SCENERY_KINDS = frozenset({
     "forest", "wood", "scrub", "heath", "park", "garden", "meadow", "grass",
     "greenfield", "nature_reserve", "pitch", "dog_park", "grassland", "shrubbery",
@@ -310,30 +311,49 @@ SOFT_GROUND_SCENERY_KINDS = frozenset({
 })
 
 
-def is_point_on_soft_ground(
+SAND_SCENERY_KINDS = frozenset({"sand", "beach"})
+
+
+def off_road_ground_kind(
     px: float,
     py: float,
     sceneries: Optional[List] = None,
     scenery_grid: Optional["SpatialWayGrid"] = None,
-) -> bool:
-    """Whether open ground at (px, py) is soft earth/grass (muddy dirt
-    trails) rather than a mapped hard or non-muddy surface. A point inside
-    any scenery polygon whose kind isn't in SOFT_GROUND_SCENERY_KINDS is
-    hard - even when it's also inside a soft one (a plaza inside a park);
-    a point in no scenery at all is unmapped open ground, treated as soft."""
+) -> str:
+    """Classify open ground at (px, py) as "soft" (grass/earth - muddy dirt
+    trails), "sand" (lighter sand tracks) or "hard" (a mapped surface that
+    leaves no trail, only ordinary tyre marks when skidding). Precedence:
+    any hard polygon containing the point wins (a plaza inside a park),
+    then sand, then soft; a point in no mapped polygon at all is unmapped
+    open ground, treated as soft."""
     candidates = (
         scenery_grid.ways_in_rect(px, py, px, py) if scenery_grid is not None else (sceneries or ())
     )
+    found_sand = False
     for scenery in candidates:
-        if getattr(scenery, "kind", None) in SOFT_GROUND_SCENERY_KINDS:
+        kind = getattr(scenery, "kind", None)
+        if kind in SOFT_GROUND_SCENERY_KINDS:
             continue
         bbox = getattr(scenery, "bbox", None)
         if bbox and bbox != (0.0, 0.0, 0.0, 0.0) and not (bbox[0] <= px <= bbox[2] and bbox[1] <= py <= bbox[3]):
             continue
         points = getattr(scenery, "points_m", ())
         if len(points) >= 3 and point_in_polygon(px, py, points):
-            return False
-    return True
+            if kind not in SAND_SCENERY_KINDS:
+                return "hard"
+            found_sand = True
+    return "sand" if found_sand else "soft"
+
+
+def is_point_on_soft_ground(
+    px: float,
+    py: float,
+    sceneries: Optional[List] = None,
+    scenery_grid: Optional["SpatialWayGrid"] = None,
+) -> bool:
+    """Whether open ground at (px, py) is soft earth/grass specifically
+    (see off_road_ground_kind)."""
+    return off_road_ground_kind(px, py, sceneries, scenery_grid) == "soft"
 
 
 def is_point_in_water(

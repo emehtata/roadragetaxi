@@ -1374,10 +1374,15 @@ class TireTrail:
     tracks can number in the thousands, and most of them are nowhere near
     the current viewport at any given moment."""
 
-    __slots__ = ("is_grass", "points", "min_x", "min_y", "max_x", "max_y")
+    __slots__ = ("is_grass", "is_sand", "points", "min_x", "min_y", "max_x", "max_y")
 
-    def __init__(self, is_grass: bool, x: float, y: float, heading: float, intensity: float) -> None:
+    def __init__(
+        self, is_grass: bool, x: float, y: float, heading: float, intensity: float, is_sand: bool = False,
+    ) -> None:
+        # is_grass = an unpaved (dirt/sand) trail rather than a paved skid
+        # mark; is_sand picks the lighter sand look over the muddy one.
         self.is_grass = is_grass
+        self.is_sand = is_sand
         self.points: List[Tuple[float, float, float, float]] = [(x, y, heading, intensity)]
         self.min_x = self.max_x = x
         self.min_y = self.max_y = y
@@ -1404,8 +1409,10 @@ def draw_tire_tracks(
     screen_w: int = SCREEN_W,
     screen_h: int = SCREEN_H,
     viewport_bounds=None,
+    sand: bool = False,
 ) -> None:
-    """Draw persistent tire marks either on grass or on paved roads.
+    """Draw persistent tire marks either on grass (or, with sand=True, on
+    sand/beach) or on paved roads.
 
     Each mark's `intensity` (0..1, see physics.skidmark_intensity) fades it
     from barely-visible toward full-black rather than an invisible/solid
@@ -1413,15 +1420,18 @@ def draw_tire_tracks(
     gradually as slip worsens, it doesn't snap into existence."""
     import pygame
 
-    faint_color = (150, 138, 118) if grass else (110, 110, 110)
-    dark_color = (105, 68, 38) if grass else (28, 28, 28)
+    if grass and sand:
+        faint_color, dark_color = (222, 208, 170), (178, 158, 114)
+    else:
+        faint_color = (150, 138, 118) if grass else (110, 110, 110)
+        dark_color = (105, 68, 38) if grass else (28, 28, 28)
     width = max(3, int((0.75 if grass else 0.24) * px_per_m))
 
     if viewport_bounds is not None:
         vminx, vminy, vmaxx, vmaxy = viewport_bounds
 
     for trail in trails:
-        if trail.is_grass != grass:
+        if trail.is_grass != grass or (grass and trail.is_sand != sand):
             continue
         if viewport_bounds is not None and (
             trail.max_x < vminx or trail.min_x > vmaxx or trail.max_y < vminy or trail.min_y > vmaxy

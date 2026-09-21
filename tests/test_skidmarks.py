@@ -141,3 +141,23 @@ def test_steering_with_throttle_only_marks_when_far_over_the_limit():
         assert corner(5.0, mode) == 0   # ~18 km/h
         assert corner(8.0, mode) == 0   # ~29 km/h
     assert corner(16.0, "simulation") > 30  # ~58 km/h full lock under power
+
+
+def test_sand_trails_draw_lighter_than_mud_and_only_in_their_own_pass():
+    import os
+    os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
+    import pygame
+    from theroadragetrip.render import TireTrail, draw_tire_tracks
+
+    def render(is_sand, sand_pass):
+        pygame.init()
+        screen = pygame.Surface((400, 400))
+        screen.fill((0, 0, 0))
+        trail = TireTrail(True, 0.0, 0.0, 0.0, 1.0, is_sand)
+        trail.add(5.0, 0.0, 0.0, 1.0)
+        draw_tire_tracks(screen, [trail], 2.5, 0.0, grass=True, sand=sand_pass, px_per_m=20.0, screen_w=400, screen_h=400)
+        return max((sum(screen.get_at((x, y))[:3]) for x in range(400) for y in range(180, 220)), default=0)
+
+    assert render(True, True) > render(False, False) > 0   # sand is lighter than mud
+    assert render(True, False) == 0   # a sand trail isn't drawn by the mud pass
+    assert render(False, True) == 0   # ...nor a mud trail by the sand pass

@@ -51,7 +51,7 @@ from ..physics import (
     SpatialWayGrid,
     get_current_road_at_car,
     is_point_in_parking_lot,
-    is_point_on_soft_ground,
+    off_road_ground_kind,
     is_point_on_parking_space,
     reset_trip,
     respawn_car,
@@ -1844,33 +1844,37 @@ def main() -> None:
             )
             current_way = get_current_road_at_car(car, ways=ways, spatial_grid=spatial_grid, car_roads_only=True, current_way=current_way)
             on_road = current_way is not None
-            is_grass = (
-                surface_way is None
+            off_road_ground = (
+                off_road_ground_kind(car.x, car.y, scenery_grid=scenery_grid)
+                if surface_way is None
                 and not is_point_on_parking_space(car.x, car.y, parking_spaces)
                 and not is_point_in_parking_lot(car.x, car.y, scenery_grid=scenery_grid)
-                # Only genuinely soft ground (grass, forest floor, fields...)
-                # gets a muddy dirt trail - not a plaza, forecourt, track,
-                # or commercial/industrial ground that just has no road way.
-                and is_point_on_soft_ground(car.x, car.y, scenery_grid=scenery_grid)
+                else "hard"
             )
+            # Only soft ground (grass, forest floor, fields...) gets a
+            # muddy dirt trail and sand/beach a lighter sand track - not a
+            # plaza, forecourt, track, or commercial/industrial ground
+            # that just has no road way.
+            is_grass = off_road_ground in ("soft", "sand")
+            is_sand = off_road_ground == "sand"
             # Tire slip is the source of truth for a skidmark (SKIDMARK.md) -
             # not brake input, not even is_sliding alone (a tire can be
             # visibly slipping before the whole car counts as sliding; see
             # skidmark_should_mark's lower threshold).
             is_skidding = skidmark_should_mark(car.skid_amount)
             if movement_distance > 0.0 and (is_skidding or (is_grass and abs(car.speed) > 1.0)):
-                start_new_trail = last_track_position is None or is_grass != last_track_surface
+                start_new_trail = last_track_position is None or (is_grass, is_sand) != last_track_surface
                 if start_new_trail or math.hypot(car.x - last_track_position[0], car.y - last_track_position[1]) >= 1.0:
                     # The grass trail isn't a slip mark - it's a constant-
                     # weight dirt track from driving off-road at all.
                     intensity = skidmark_intensity(car.skid_amount) if is_skidding else 1.0
                     if start_new_trail:
-                        tire_tracks.append(TireTrail(is_grass, car.x, car.y, car.heading, intensity))
+                        tire_tracks.append(TireTrail(is_grass, car.x, car.y, car.heading, intensity, is_sand))
                     else:
                         tire_tracks[-1].add(car.x, car.y, car.heading, intensity)
                     tire_track_point_count += 1
                     last_track_position = (car.x, car.y)
-                    last_track_surface = is_grass
+                    last_track_surface = (is_grass, is_sand)
                     # Drop the oldest trails (each one a single unbroken
                     # skid/dirt-trail event, see TireTrail) once accumulated
                     # points pass the cap, back down to a lower watermark -
@@ -2201,6 +2205,10 @@ def main() -> None:
             )
             draw_tire_tracks(
                 screen, tire_tracks, camx, camy, grass=True, px_per_m=px_per_m,
+                viewport_bounds=viewport_bounds,
+            )
+            draw_tire_tracks(
+                screen, tire_tracks, camx, camy, grass=True, sand=True, px_per_m=px_per_m,
                 viewport_bounds=viewport_bounds,
             )
             draw_roadworks(screen, roadworks, camx, camy, px_per_m=px_per_m)
