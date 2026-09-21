@@ -1852,13 +1852,13 @@ def main() -> None:
             # not brake input, not even is_sliding alone (a tire can be
             # visibly slipping before the whole car counts as sliding; see
             # skidmark_should_mark's lower threshold).
-            is_skidding = skidmark_should_mark(car.slip_amount)
+            is_skidding = skidmark_should_mark(car.skid_amount)
             if movement_distance > 0.0 and (is_skidding or (is_grass and abs(car.speed) > 1.0)):
                 start_new_trail = last_track_position is None or is_grass != last_track_surface
                 if start_new_trail or math.hypot(car.x - last_track_position[0], car.y - last_track_position[1]) >= 1.0:
                     # The grass trail isn't a slip mark - it's a constant-
                     # weight dirt track from driving off-road at all.
-                    intensity = skidmark_intensity(car.slip_amount) if is_skidding else 1.0
+                    intensity = skidmark_intensity(car.skid_amount) if is_skidding else 1.0
                     if start_new_trail:
                         tire_tracks.append(TireTrail(is_grass, car.x, car.y, car.heading, intensity))
                     else:

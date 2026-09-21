@@ -86,6 +86,15 @@ SLIDE_EXIT_THRESHOLD = 0.65
 # rather than a second slip metric. Deliberately below SLIDE_ENTER_THRESHOLD:
 # a tire can be visibly slipping (worth a mark on the road) before the
 # whole car counts as "sliding".
+# When the steering clamp saturates the tires it reports a grip usage that
+# grows with how far past the limit the driver is asking to turn, instead of
+# jumping straight to a full slide: just-at-the-limit cornering (binary
+# full-lock steering hits the clamp on most ordinary turns) stays below
+# the mark threshold, a mark needs ~25% over the limit, and full black
+# needs CLAMP_FULL_SLIDE_OVERSHOOT (reported: tyre tracks came too easily
+# even with basic cornering, because any clamp used to mean full slide).
+CLAMP_SATURATION_USAGE_RATIO = 0.95
+CLAMP_FULL_SLIDE_OVERSHOOT = 0.25
 SKIDMARK_SLIP_THRESHOLD = 0.65
 SKIDMARK_FULL_SLIP_THRESHOLD = 0.90
 # Below this speed the velocity vector direction is numerically unstable
@@ -176,6 +185,7 @@ class Car:
     # Tire grip model (GRIP.md) - see _update_g_force/_slip_amount_from_ratio.
     max_grip_g: float = SURFACE_MAX_GRIP_G["dry_asphalt"]  # current surface/mode's combined-g ceiling
     grip_usage: float = 0.0  # raw_total_g / max_grip_g
+    skid_amount: float = 0.0  # graded slip for tyre marks only (see _update_g_force); slip_amount is what is_sliding uses
     slip_amount: float = 0.0  # 0 = full grip, 1 = fully slid (continuous, see _slip_amount_from_ratio)
     slip_angle: float = 0.0  # radians, heading vs. actual velocity direction; +left, -right
     _prev_vx: float = 0.0  # world-frame velocity, previous frame (g-force calc only)
@@ -1204,6 +1214,7 @@ def _update_g_force(
     car: Car, entry_x: float, entry_y: float, entry_heading: float, dt: float,
     grip_longitudinal_g: Optional[float] = None,
     grip_was_limited: bool = False,
+    grip_overshoot: float = 0.0,
 ) -> None:
     """Measure g-force from the car's *actual* velocity-vector change this
     frame (GFORCE.md) rather than from steering input or a heading-rate
@@ -1248,6 +1259,7 @@ def _update_g_force(
         car.forward_g = car.lateral_g = car.total_g = 0.0
         car.grip_usage = 0.0
         car.slip_amount = 0.0
+        car.skid_amount = 0.0
         car.is_sliding = False
         return
 
@@ -1292,12 +1304,24 @@ def _update_g_force(
         abs(raw_forward_g) if grip_longitudinal_g is None else grip_longitudinal_g,
         raw_lateral_g,
     )
+    # Skidmarks read their own, graded slip (skid_amount) instead of the
+    # is_sliding-facing slip_amount below: saturating the steering clamp
+    # forces slip_amount to a full slide (tests/GRIP.md: an over-limit
+    # corner slides), but binary full-lock steering saturates the clamp on
+    # most ordinary turns, so drawing a full black mark for any saturation
+    # made tyre tracks appear on basic cornering. skid_amount scales the
+    # saturation with how far past the limit the driver is asking to turn.
+    skid_total_g = grip_total_g
     if grip_was_limited:
+        severity = clamp(grip_overshoot / CLAMP_FULL_SLIDE_OVERSHOOT, 0.0, 1.0)
+        forced_ratio = CLAMP_SATURATION_USAGE_RATIO + severity * (FULL_SLIDE_RATIO - CLAMP_SATURATION_USAGE_RATIO)
+        skid_total_g = max(grip_total_g, car.max_grip_g * forced_ratio)
         # The tire was commanded beyond its available circle and the
         # heading-rate clamp prevented the measured motion from exceeding
         # it. Preserve that real saturation/slip signal without borrowing
         # unrelated passive drag to push the number over the threshold.
         grip_total_g = max(grip_total_g, car.max_grip_g * FULL_SLIDE_RATIO)
+    car.skid_amount = _slip_amount_from_ratio(skid_total_g / car.max_grip_g) if car.max_grip_g > 1e-6 else 0.0
     car.grip_usage = grip_total_g / car.max_grip_g if car.max_grip_g > 1e-6 else 0.0
     car.slip_amount = _slip_amount_from_ratio(car.grip_usage)
     car.is_sliding = (
@@ -1395,6 +1419,7 @@ def update_car_physics(
     # here, so that hysteresis can see its own previous value.
     car.max_grip_g = _surface_max_grip_g(current_way, physics_mode, wetness)
     steering_grip_limited = False
+    steering_overshoot = 0.0
     # Drift decays by default every frame; the grip-exceeded branch below
     # builds it back up on top of this when the driver is actively
     # oversteering past the surface's limit.
@@ -1443,6 +1468,7 @@ def update_car_physics(
                     if max_heading_rate > 1e-9
                     else FULL_SLIDE_RATIO * 4.0  # no lateral budget left at all (e.g. braking at the limit)
                 )
+                steering_overshoot = max(0.0, overshoot_ratio)
                 heading_rate = math.copysign(max_heading_rate, desired_heading_rate)
                 if physics_mode == "simulation":
                     # Oversteer: rear grip lost beyond the front's understeer
@@ -1665,5 +1691,6 @@ def update_car_physics(
         car, entry_x, entry_y, entry_heading, dt,
         grip_longitudinal_g=None if blocked else longitudinal_tire_g,
         grip_was_limited=steering_grip_limited,
+        grip_overshoot=steering_overshoot,
     )
     return blocked
