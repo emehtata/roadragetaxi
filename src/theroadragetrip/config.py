@@ -15,8 +15,8 @@ from .osm import bbox_from_center
 
 USER_AGENT_KEY = "user_agent_id"
 DEFAULT_OVERPASS_ENDPOINTS = (
-    "https://overpass-api.de/api/interpreter",
     "https://overpass.openstreetmap.fr/api/interpreter",
+    "https://overpass-api.de/api/interpreter",
 )
 
 

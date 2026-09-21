@@ -91,8 +91,8 @@ def _mark_endpoint_contacted(endpoint: str) -> None:
 
 
 DEFAULT_OVERPASS_ENDPOINTS = [
-    "https://overpass-api.de/api/interpreter",
     "https://overpass.openstreetmap.fr/api/interpreter",
+    "https://overpass-api.de/api/interpreter",
 ]
 
 

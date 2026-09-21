@@ -25,7 +25,7 @@ def test_loading_screen_actually_draws_the_message():
     messages must produce visibly different frames; the same message must
     render identically."""
     frame_a = _render("Fetching scenery from https://overpass-api.de/api/interp...")
-    frame_b = _render("Fetching scenery from https://overpass.private.coffee/...")
+    frame_b = _render("Fetching scenery from https://overpass.openstreetmap.fr/...")
     frame_a_again = _render("Fetching scenery from https://overpass-api.de/api/interp...")
 
     assert frame_a != frame_b, "changing the message did not change the rendered frame"

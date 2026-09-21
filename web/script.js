@@ -29,7 +29,7 @@ const translations = {
     ],
     howKicker: '04 / RATTIIN', howTitle: 'Tunne<br><span>säännöt.</span><br>Riko rauha.', howLead: 'Kaupunki on sinun pelikenttäsi. Pisteet voit pilata itse.',
     controls: ['Aja, jarruta, ohjaa', 'Avaa taksin puhelin', 'Raivohuuto: raivaa tie', 'Näytä ehdotettu reitti', 'Kaista-avustin', 'Nopeusrajoitin', 'Liikennevaloavustin', 'Respawn, T nollaa trippimittarin', 'Tauko, asetukset ja kaupungin vaihto'],
-    notesKicker: '05 / JULKAISU 0.14.1alpha', notesTitle: 'Mitä on<br><em>uutta.</em>', notesLead: 'Aika, sää ja vuodenajat muuttavat nyt sekä maisemaa että ajotuntumaa — ja jokaisesta kyydistä maksetaan.',
+    notesKicker: '05 / JULKAISU 0.14.2alpha', notesTitle: 'Mitä on<br><em>uutta.</em>', notesLead: 'Aika, sää ja vuodenajat muuttavat nyt sekä maisemaa että ajotuntumaa — ja jokaisesta kyydistä maksetaan.',
     notes: [
       ['Vapaa aloitusaika', 'Keikkakuski-tilassa voit valita aloituspäivän ja kellonajan; oletuksena käytetään oikeaa paikallista aikaa.'],
       ['Vuodenajat muuttavat maailman', 'Lumi, kevään vaaleat sävyt ja jäälautat, kesän vihreys sekä syksyn ruska vaihtuvat kalenterin mukana.'],
@@ -72,7 +72,7 @@ const translations = {
     ],
     howKicker: '04 / TAKE THE WHEEL', howTitle: 'Know the<br><span>rules.</span><br>Break the calm.', howLead: 'The city is yours to navigate. The score is yours to ruin.',
     controls: ['Drive, brake, steer', 'Open the taxi phone', 'Rage shout: clear the way', 'Show suggested route', 'Lane assist', 'Speed limiter', 'Traffic-light assist', 'Respawn, T resets trip meter', 'Pause, settings, change city'],
-    notesKicker: '05 / RELEASE 0.14.1alpha', notesTitle: "What's<br><em>new.</em>", notesLead: 'Time, weather, and seasons now transform both the scenery and the drive — and every completed fare pays.',
+    notesKicker: '05 / RELEASE 0.14.2alpha', notesTitle: "What's<br><em>new.</em>", notesLead: 'Time, weather, and seasons now transform both the scenery and the drive — and every completed fare pays.',
     notes: [
       ['Choose your starting time', 'Freelance-driver mode lets you choose the starting date and time, defaulting to your real local time.'],
       ['Seasons transform the world', 'Snow, pale spring colors and floating ice, summer greenery, and autumn foliage follow the calendar.'],

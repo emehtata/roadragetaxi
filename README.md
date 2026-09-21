@@ -175,7 +175,7 @@ file_logging = false
 roadworks_enabled = false
 
 [map]
-overpass_endpoints = https://overpass-api.de/api/interpreter, https://overpass.private.coffee/api/interpreter, https://overpass.openstreetmap.fr/api/interpreter
+overpass_endpoints = https://overpass.openstreetmap.fr/api/interpreter, https://overpass-api.de/api/interpreter
 auto_fetch = true
 fetch_margin = 350.0
 fetch_tile_size = 1000.0
@@ -234,8 +234,8 @@ Other common development commands are `make test`, `make compile`, and `make che
 Push a version tag to build and publish a Windows package containing `RoadRageTrip.exe`:
 
 ```bash
-git tag v0.14.1alpha
-git push origin v0.14.1alpha
+git tag v0.14.2alpha
+git push origin v0.14.2alpha
 ```
 
 GitHub Actions builds the package on Windows with PyInstaller and attaches both `RoadRageTrip-windows-x64.zip` and `RoadRageTrip-Setup.exe` to the GitHub Release. Use the EXE installer for a normal Windows installation, or extract the zip and launch `RoadRageTrip.exe`; no Python installation is required.
