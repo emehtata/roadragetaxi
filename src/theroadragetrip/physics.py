@@ -89,12 +89,13 @@ SLIDE_EXIT_THRESHOLD = 0.65
 # When the steering clamp saturates the tires it reports a grip usage that
 # grows with how far past the limit the driver is asking to turn, instead of
 # jumping straight to a full slide: just-at-the-limit cornering (binary
-# full-lock steering hits the clamp on most ordinary turns) stays below
-# the mark threshold, a mark needs ~25% over the limit, and full black
-# needs CLAMP_FULL_SLIDE_OVERSHOOT (reported: tyre tracks came too easily
+# full-lock steering hits the clamp on most ordinary turns, and throttle
+# keeps the friction circle pinned at its edge) stays below the mark
+# threshold, a mark needs the demanded turn to exceed the limit by ~100%,
+# and full black needs CLAMP_FULL_SLIDE_OVERSHOOT (reported: tyre tracks came too easily
 # even with basic cornering, because any clamp used to mean full slide).
-CLAMP_SATURATION_USAGE_RATIO = 0.95
-CLAMP_FULL_SLIDE_OVERSHOOT = 0.25
+CLAMP_SATURATION_USAGE_RATIO = 0.90
+CLAMP_FULL_SLIDE_OVERSHOOT = 2.0
 SKIDMARK_SLIP_THRESHOLD = 0.65
 SKIDMARK_FULL_SLIP_THRESHOLD = 0.90
 # Below this speed the velocity vector direction is numerically unstable
@@ -1311,11 +1312,14 @@ def _update_g_force(
     # most ordinary turns, so drawing a full black mark for any saturation
     # made tyre tracks appear on basic cornering. skid_amount scales the
     # saturation with how far past the limit the driver is asking to turn.
-    skid_total_g = grip_total_g
+    # Only longitudinal force counts directly (brake/wheelspin lockup);
+    # lateral only counts via how far the clamp was exceeded - measured
+    # lateral g sits exactly on the limit whenever the clamp is active.
+    skid_total_g = abs(raw_forward_g) if grip_longitudinal_g is None else grip_longitudinal_g
     if grip_was_limited:
         severity = clamp(grip_overshoot / CLAMP_FULL_SLIDE_OVERSHOOT, 0.0, 1.0)
         forced_ratio = CLAMP_SATURATION_USAGE_RATIO + severity * (FULL_SLIDE_RATIO - CLAMP_SATURATION_USAGE_RATIO)
-        skid_total_g = max(grip_total_g, car.max_grip_g * forced_ratio)
+        skid_total_g = max(skid_total_g, car.max_grip_g * forced_ratio)
         # The tire was commanded beyond its available circle and the
         # heading-rate clamp prevented the measured motion from exceeding
         # it. Preserve that real saturation/slip signal without borrowing

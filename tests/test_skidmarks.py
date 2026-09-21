@@ -122,21 +122,22 @@ def test_trail_bbox_lets_out_of_view_trails_be_skipped_cheaply():
         pygame.quit()
 
 
-def test_ordinary_full_lock_cornering_does_not_leave_tyre_marks_but_still_slides_when_far_over_limit():
-    """Binary full-lock steering saturates the grip clamp on most ordinary
-    turns; that used to force a full slide (and a black mark). Marks now
-    need the clamp exceeded by a real margin, while is_sliding (slip_amount)
-    still reports any over-limit corner as sliding."""
+def test_steering_with_throttle_only_marks_when_far_over_the_limit():
+    """Binary full-lock steering plus throttle keeps the friction circle
+    pinned at its edge (simulation mode's default-ish grip), so merely
+    steering under power used to draw marks. A mark now needs the demanded
+    turn to exceed the grip limit by ~100%; is_sliding is unaffected."""
     from theroadragetrip.physics import Car, skidmark_should_mark, update_car_physics
 
-    def corner(speed, frames=60):
+    def corner(speed, mode):
         car = Car(x=0.0, y=0.0, heading=0.0, speed=speed)
         marks = 0
-        for _ in range(frames):
-            update_car_physics(car, 1.0, 0.0, 1.0, 0.0, 1 / 60, ways=[], block_offroad=False, physics_mode="arcade")
+        for _ in range(60):
+            update_car_physics(car, 1.0, 0.0, 1.0, 0.0, 1 / 60, ways=[], block_offroad=False, physics_mode=mode)
             marks += skidmark_should_mark(car.skid_amount)
         return marks
 
-    assert corner(16.0) == 0  # ~58 km/h full lock, throttle on
-    assert corner(20.0) == 0  # ~72 km/h
-    assert corner(35.0) > 30  # ~126 km/h: genuinely far past the limit
+    for mode in ("arcade", "simulation"):
+        assert corner(5.0, mode) == 0   # ~18 km/h
+        assert corner(8.0, mode) == 0   # ~29 km/h
+    assert corner(16.0, "simulation") > 30  # ~58 km/h full lock under power
