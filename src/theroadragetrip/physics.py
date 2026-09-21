@@ -120,6 +120,24 @@ DRIFT_RECOVERY_RATE = 2.5  # rad/s; how fast a "simulation"-mode drift angle dec
 # bigger rate here made hard oversteer spin out within 1-2 frames.
 DRIFT_BUILD_RATE = math.radians(8.0)
 MAX_DRIFT_ANGLE = math.radians(45.0)
+# Rear-wheel drive (the taxi, like most cars, is driven by its rear axle):
+# the throttle's drive force is carried by the two rear tyres alone, which
+# also carry only about half the car's weight, so it eats into *rear*
+# lateral grip roughly RWD_DRIVE_LOAD_SHARE times faster than the whole-car
+# friction circle would suggest, while the front tyres keep their full
+# lateral grip. A driven corner therefore loses the rear first: it steps
+# out (oversteer) instead of pushing wide, and the driver has to lift or
+# counter-steer to catch it. Unpowered/braking/coasting corners keep the
+# ordinary whole-car circle (understeer).
+RWD_DRIVE_LOAD_SHARE = 2.0
+OVERSTEER_DRIFT_PER_OVERSHOOT = math.radians(25.0)  # target slide angle per 100% rear overshoot
+OVERSTEER_MAX_DRIFT_ANGLE = math.radians(35.0)
+OVERSTEER_DRIFT_RATE = 1.0  # rad/s the slide angle moves toward its target
+RWD_MIN_TURN_RADIUS_M = 8.0  # steering-lock limit on the lateral load a driven corner can actually demand of the rear axle
+OVERSTEER_YAW_GAIN = 0.5  # extra nose rotation as the rear steps out, per 100% overshoot (capped at 1.0)
+DRIFT_SPEED_SCRUB = 1.0  # 1/s * sin(drift angle): speed shed by a car travelling sideways
+DRIFT_MARK_MIN_ANGLE = math.radians(5.0)   # slide angle where tyre marks begin
+DRIFT_MARK_FULL_ANGLE = math.radians(20.0)  # ...and reach full black
 
 NON_DRIVABLE_HIGHWAYS = {
     "footway",
@@ -1399,6 +1417,16 @@ def _update_g_force(
         # unrelated passive drag to push the number over the threshold.
         grip_total_g = max(grip_total_g, car.max_grip_g * FULL_SLIDE_RATIO)
     car.skid_amount = _slip_amount_from_ratio(skid_total_g / car.max_grip_g) if car.max_grip_g > 1e-6 else 0.0
+    # A car actually travelling sideways (a powerslide) is scrubbing its
+    # tyres whatever the measured g say: marks scale with the slide angle.
+    drift_marks = clamp(
+        (abs(car.drift_angle) - DRIFT_MARK_MIN_ANGLE) / (DRIFT_MARK_FULL_ANGLE - DRIFT_MARK_MIN_ANGLE), 0.0, 1.0,
+    )
+    if drift_marks > 0.0:
+        car.skid_amount = max(
+            car.skid_amount,
+            SKIDMARK_SLIP_THRESHOLD + drift_marks * (SKIDMARK_FULL_SLIP_THRESHOLD - SKIDMARK_SLIP_THRESHOLD),
+        )
     car.grip_usage = grip_total_g / car.max_grip_g if car.max_grip_g > 1e-6 else 0.0
     car.slip_amount = _slip_amount_from_ratio(car.grip_usage)
     car.is_sliding = (
@@ -1452,6 +1480,7 @@ def update_car_physics(
     entry_x, entry_y, entry_heading = car.x, car.y, car.heading
     entry_speed = car.speed
     using_longitudinal_tire_grip = False
+    throttle_driven = False
     if speed_limit_mps is not None and car.speed > speed_limit_mps:
         using_longitudinal_tire_grip = True
         car.speed = max(speed_limit_mps, car.speed - SPEED_LIMIT_DECEL * dt)
@@ -1460,6 +1489,7 @@ def update_car_physics(
         car.speed = min(-speed_limit_mps, car.speed + SPEED_LIMIT_DECEL * dt)
     elif throttle > 0:
         using_longitudinal_tire_grip = True
+        throttle_driven = True
         acceleration = forward_acceleration(car.speed)
         car.speed = min(car.speed + acceleration * dt, speed_limit_mps) if speed_limit_mps is not None else car.speed + acceleration * dt
     elif brake > 0:
@@ -1500,6 +1530,7 @@ def update_car_physics(
     # Drift decays by default every frame; the grip-exceeded branch below
     # builds it back up on top of this when the driver is actively
     # oversteering past the surface's limit.
+    drift_before_decay = car.drift_angle
     car.drift_angle = _decay_toward_zero(car.drift_angle, DRIFT_RECOVERY_RATE, dt)
 
     # steer: positive -> turn left (counter-clockwise), negative -> turn right
@@ -1525,6 +1556,16 @@ def update_car_physics(
                 # combined-force scaling real tires perform at the limit.
                 min(longitudinal_tire_g, car.max_grip_g * 0.95),
             )
+            # Rear-wheel drive under throttle: the front axle keeps the whole
+            # surface grip (that's the understeer ceiling), the rear axle's
+            # lateral grip is what the throttle spends (see RWD_DRIVE_LOAD_SHARE).
+            rear_budget_g = None
+            if throttle_driven and longitudinal_tire_g > 0.0 and car.speed > 0.0:
+                rear_budget_g = _available_lateral_budget_g(
+                    car.max_grip_g,
+                    min(longitudinal_tire_g * RWD_DRIVE_LOAD_SHARE, car.max_grip_g * 0.95),
+                )
+                lateral_budget_g = car.max_grip_g
             max_heading_rate = lateral_budget_g * GRAVITY_MPS2 / abs(car.speed)
 
             heading_rate = desired_heading_rate
@@ -1547,7 +1588,7 @@ def update_car_physics(
                 )
                 steering_overshoot = max(0.0, overshoot_ratio)
                 heading_rate = math.copysign(max_heading_rate, desired_heading_rate)
-                if physics_mode == "simulation":
+                if physics_mode == "simulation" and rear_budget_g is None:
                     # Oversteer: rear grip lost beyond the front's understeer
                     # limit builds a genuine drift angle, proportional to how
                     # far past the limit the driver is asking to turn, that
@@ -1557,6 +1598,33 @@ def update_car_physics(
                         car.drift_angle + math.copysign(max(0.0, overshoot_ratio) * DRIFT_BUILD_RATE * dt, heading_rate),
                         -MAX_DRIFT_ANGLE, MAX_DRIFT_ANGLE,
                     )
+            if rear_budget_g is not None:
+                # The model's binary steering turns far tighter than a real
+                # car's lock allows at low speed, which would read as huge
+                # lateral demand on the rear axle in a parking-lot crawl.
+                achieved_lateral_g = min(
+                    abs(heading_rate) * abs(car.speed), car.speed * car.speed / RWD_MIN_TURN_RADIUS_M,
+                ) / GRAVITY_MPS2
+                rear_overshoot = achieved_lateral_g / max(rear_budget_g, 1e-6) - 1.0
+                # Steering against an existing slide (counter-steer) catches
+                # it instead of feeding it: the slide is left to recover.
+                counter_steering = car.drift_angle != 0.0 and math.copysign(1.0, heading_rate) == math.copysign(
+                    1.0, car.drift_angle
+                )
+                if rear_overshoot > 0.0 and not counter_steering:
+                    overshoot = min(rear_overshoot, 4.0)
+                    steering_grip_limited = True
+                    steering_overshoot = max(steering_overshoot, overshoot)
+                    # The rear steps out: the nose swings further into the
+                    # corner than the car travels (velocity outward of the
+                    # nose), so the slide angle grows against the turn.
+                    heading_rate *= 1.0 + OVERSTEER_YAW_GAIN * min(overshoot, 1.0)
+                    target_drift = clamp(
+                        -math.copysign(overshoot * OVERSTEER_DRIFT_PER_OVERSHOOT, heading_rate),
+                        -OVERSTEER_MAX_DRIFT_ANGLE, OVERSTEER_MAX_DRIFT_ANGLE,
+                    )
+                    step = OVERSTEER_DRIFT_RATE * dt
+                    car.drift_angle = drift_before_decay + clamp(target_drift - drift_before_decay, -step, step)
             car.heading += heading_rate * dt
         elif car.lane_assist_enabled and car.time_since_last_steer >= 0.35 and car.speed > 1.5:
             # Lane assist: when enabled and driver hasn't steered for a moment, gently track lane center
@@ -1655,6 +1723,8 @@ def update_car_physics(
     else:
         car.lane_assist_active = False
 
+    if car.drift_angle:
+        car.speed -= car.speed * abs(math.sin(car.drift_angle)) * DRIFT_SPEED_SCRUB * dt
     movement_heading = car.heading + car.drift_angle
     dx = math.cos(movement_heading) * car.speed * dt
     dy = math.sin(movement_heading) * car.speed * dt

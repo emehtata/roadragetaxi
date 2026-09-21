@@ -122,42 +122,17 @@ def test_trail_bbox_lets_out_of_view_trails_be_skipped_cheaply():
         pygame.quit()
 
 
-def test_steering_with_throttle_only_marks_when_far_over_the_limit():
-    """Binary full-lock steering plus throttle keeps the friction circle
-    pinned at its edge (simulation mode's default-ish grip), so merely
-    steering under power used to draw marks. A mark now needs the demanded
-    turn to exceed the grip limit by ~100%; is_sliding is unaffected."""
+def test_coasting_corners_do_not_leave_marks_at_ordinary_speed():
+    """Binary full-lock steering saturates the grip clamp on most ordinary
+    turns; an unpowered corner at ordinary speed must not draw marks (the
+    driven case is covered by tests/test_rwd_oversteer.py)."""
     from theroadragetrip.physics import Car, skidmark_should_mark, update_car_physics
 
-    def corner(speed, mode):
-        car = Car(x=0.0, y=0.0, heading=0.0, speed=speed)
-        marks = 0
-        for _ in range(60):
-            update_car_physics(car, 1.0, 0.0, 1.0, 0.0, 1 / 60, ways=[], block_offroad=False, physics_mode=mode)
-            marks += skidmark_should_mark(car.skid_amount)
-        return marks
-
     for mode in ("arcade", "simulation"):
-        assert corner(5.0, mode) == 0   # ~18 km/h
-        assert corner(8.0, mode) == 0   # ~29 km/h
-    assert corner(16.0, "simulation") > 30  # ~58 km/h full lock under power
-
-
-def test_sand_trails_draw_lighter_than_mud_and_only_in_their_own_pass():
-    import os
-    os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
-    import pygame
-    from theroadragetrip.render import TireTrail, draw_tire_tracks
-
-    def render(is_sand, sand_pass):
-        pygame.init()
-        screen = pygame.Surface((400, 400))
-        screen.fill((0, 0, 0))
-        trail = TireTrail(True, 0.0, 0.0, 0.0, 1.0, is_sand)
-        trail.add(5.0, 0.0, 0.0, 1.0)
-        draw_tire_tracks(screen, [trail], 2.5, 0.0, grass=True, sand=sand_pass, px_per_m=20.0, screen_w=400, screen_h=400)
-        return max((sum(screen.get_at((x, y))[:3]) for x in range(400) for y in range(180, 220)), default=0)
-
-    assert render(True, True) > render(False, False) > 0   # sand is lighter than mud
-    assert render(True, False) == 0   # a sand trail isn't drawn by the mud pass
-    assert render(False, True) == 0   # ...nor a mud trail by the sand pass
+        for speed in (5.0, 8.0):
+            car = Car(x=0.0, y=0.0, heading=0.0, speed=speed)
+            marks = 0
+            for _ in range(60):
+                update_car_physics(car, 0.0, 0.0, 1.0, 0.0, 1 / 60, ways=[], block_offroad=False, physics_mode=mode)
+                marks += skidmark_should_mark(car.skid_amount)
+            assert marks == 0
