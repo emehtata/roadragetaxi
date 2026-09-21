@@ -14,8 +14,13 @@ STEER_RATE = 2.6  # rad/s at low speed
 STEER_SPEED_FACTOR = 0.10  # less steering at higher speed
 MAX_SPEED = 210.0 / 3.6  # m/s (210 km/h)
 SPEED_LIMIT_DECEL = 4.0  # m/s^2; smooth automatic braking at a speed limit
-OFFROAD_MAX_SPEED = 2.0  # m/s (~7 km/h)
-LIGHT_TRAFFIC_MAX_SPEED = 6.0  # m/s (~22 km/h) on footways, paths, and cycleways
+# Sand/beach is the only surface with a hard speed cap (the slowest there
+# is); grass/soft ground is uncapped but has poor grip instead (see
+# GROUND_KIND_MAX_GRIP_G), and hard surfaces (pedestrian ways, plazas,
+# forecourts) are uncapped - driving on a pedestrian way costs penalty
+# points instead (TaxiManager.check_pedestrian_way_violation).
+SAND_MAX_SPEED = 2.0  # m/s (~7 km/h)
+OFFROAD_MAX_SPEED = SAND_MAX_SPEED
 OFFROAD_DECEL = 10.0  # m/s^2 when slowing from road speed
 
 GRAVITY_MPS2 = 9.81
@@ -52,7 +57,12 @@ SURFACE_MAX_GRIP_G = {
     "grass": 0.35,
     "snow": 0.20,
     "ice": 0.10,
+    "sand": 0.30,
 }
+# Off-road ground (see off_road_ground_kind) has no Way.surface to read a
+# grip from, so it maps straight to a surface bucket; "road"/"hard" fall
+# through to the normal way-surface/asphalt logic.
+GROUND_KIND_MAX_GRIP_G = {"soft": "grass", "sand": "sand"}
 # OSM Way.surface values that map to a rougher-than-asphalt bucket. There's
 # no in-game weather system to ever pick "wet_asphalt" (no rain state
 # exists), so it's defined for completeness/future use but unreachable today.
@@ -187,6 +197,7 @@ class Car:
     max_grip_g: float = SURFACE_MAX_GRIP_G["dry_asphalt"]  # current surface/mode's combined-g ceiling
     grip_usage: float = 0.0  # raw_total_g / max_grip_g
     skid_amount: float = 0.0  # graded slip for tyre marks only (see _update_g_force); slip_amount is what is_sliding uses
+    ground_kind: str = "road"  # "road", "hard", "soft" or "sand" - last frame's ground under the car (grip lookup)
     slip_amount: float = 0.0  # 0 = full grip, 1 = fully slid (continuous, see _slip_amount_from_ratio)
     slip_angle: float = 0.0  # radians, heading vs. actual velocity direction; +left, -right
     _prev_vx: float = 0.0  # world-frame velocity, previous frame (g-force calc only)
@@ -1177,7 +1188,7 @@ def get_current_road_at_car(
     return best_way
 
 
-def _surface_max_grip_g(current_way, physics_mode: str, wetness: float = 0.0) -> float:
+def _surface_max_grip_g(current_way, physics_mode: str, wetness: float = 0.0, ground_kind: str = "road") -> float:
     """Return this surface's maximum combined-g tire grip (GRIP.md section
     9), reusing the game's existing Way.surface/is_ice_road fields rather
     than a second surface classification.
@@ -1193,6 +1204,8 @@ def _surface_max_grip_g(current_way, physics_mode: str, wetness: float = 0.0) ->
     """
     if current_way is not None and getattr(current_way, "is_ice_road", False):
         base = SURFACE_MAX_GRIP_G["ice"]
+    elif current_way is None and ground_kind in GROUND_KIND_MAX_GRIP_G:
+        base = SURFACE_MAX_GRIP_G[GROUND_KIND_MAX_GRIP_G[ground_kind]]
     else:
         surface = str(getattr(current_way, "surface", "") or "").lower() if current_way is not None else ""
         if surface == "grass":
@@ -1481,7 +1494,7 @@ def update_car_physics(
     # is_sliding is hysteresis on the *measured* slip_amount (set at the
     # end of the frame by _update_g_force, GRIP.md section 12) - not reset
     # here, so that hysteresis can see its own previous value.
-    car.max_grip_g = _surface_max_grip_g(current_way, physics_mode, wetness)
+    car.max_grip_g = _surface_max_grip_g(current_way, physics_mode, wetness, car.ground_kind)
     steering_grip_limited = False
     steering_overshoot = 0.0
     # Drift decays by default every frame; the grip-exceeded branch below
@@ -1651,20 +1664,25 @@ def update_car_physics(
     blocked = False
     has_road_data = (spatial_grid is not None) or (ways is not None and len(ways) > 0)
 
-    # Off-road driving is allowed by the game, with a higher cap on light-traffic ways.
+    # Off-road driving is allowed. Only sand/beach caps speed; grass and other
+    # soft ground is uncapped but sets car.ground_kind so next frame's grip is
+    # poor, and hard ground (pedestrian ways, plazas, lots) is unrestricted.
     if has_road_data and not block_offroad:
         target_on_road = is_point_on_road(
             target_x, target_y, ways=ways, spatial_grid=spatial_grid, car_roads_only=True
         )
-        if (
-            not target_on_road
-            and not is_point_on_parking_space(target_x, target_y, parking_spaces)
-            and not is_point_in_parking_lot(target_x, target_y, scenery_grid=scenery_grid)
+        if target_on_road:
+            car.ground_kind = "road"
+        elif (
+            is_point_on_parking_space(target_x, target_y, parking_spaces)
+            or is_point_in_parking_lot(target_x, target_y, scenery_grid=scenery_grid)
+            or is_point_on_light_traffic_way(target_x, target_y, ways=ways, spatial_grid=spatial_grid)
         ):
-            target_on_light_traffic = is_point_on_light_traffic_way(
-                target_x, target_y, ways=ways, spatial_grid=spatial_grid
-            )
-            speed_cap = LIGHT_TRAFFIC_MAX_SPEED if target_on_light_traffic else OFFROAD_MAX_SPEED
+            car.ground_kind = "hard"
+        else:
+            car.ground_kind = off_road_ground_kind(target_x, target_y, scenery_grid=scenery_grid)
+        if car.ground_kind == "sand":
+            speed_cap = SAND_MAX_SPEED
             if throttle > 0.0:
                 if car.speed < 0.0:
                     car.speed = min(0.0, car.speed + ACCEL * dt)

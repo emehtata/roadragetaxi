@@ -454,6 +454,7 @@ def advance_simulation(
         if taxi_mgr.check_wrong_way_violation(car, slow_check_dt, ways=ways, spatial_grid=spatial_grid):
             if not was_wrong_way:
                 audio.play_driver_line("wrong_way", language)
+        taxi_mgr.check_pedestrian_way_violation(car, slow_check_dt, ways=ways, spatial_grid=spatial_grid)
         if taxi_mgr.check_speed_cameras(car, speed_cameras):
             audio.play_driver_line("speed_camera", language)
     # Advance signals and taxi-world time; no autonomous vehicle update.

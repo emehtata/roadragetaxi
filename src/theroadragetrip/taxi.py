@@ -6,7 +6,10 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from .geo import clamp, closest_point_and_dist_to_segment, compute_bbox, dist_point_to_segment, get_oriented_box_corners, point_in_polygon, segments_intersect
 from .osm import Building, Curb, Place, SpeedBump, TaxiStop, Way
-from .physics import Car, SpatialWayGrid, connected_drivable_ways, is_car_road, is_point_on_road, is_violating_oneway
+from .physics import (
+    Car, SpatialWayGrid, connected_drivable_ways, is_car_road, is_point_on_light_traffic_way, is_point_on_road,
+    is_violating_oneway,
+)
 from .localization import tr
 from .police import SpeedCamera, camera_sees_car
 from .residents import Resident, ResidentManager
@@ -189,6 +192,7 @@ class TaxiManager:
         self.speed_camera_notice_msg: str = ""
         self.wrong_way_duration: float = 0.0
         self.wrong_way_penalty_cooldown: float = 0.0
+        self.pedestrian_way_penalty_cooldown: float = 0.0
 
     def _new_passenger_identity(self, resident: Optional[Resident] = None) -> tuple[str, str, int]:
         resident = resident or self.residents.create("walking")
@@ -791,6 +795,32 @@ class TaxiManager:
             self.wrong_way_duration = 0.0
             self.wrong_way_penalty_cooldown = 0.0
             return False
+
+    def check_pedestrian_way_violation(
+        self,
+        car: Car,
+        dt: float,
+        ways: Optional[List[Way]] = None,
+        spatial_grid: Optional[SpatialWayGrid] = None,
+        penalty: int = 50,
+        interval_s: float = 5.0,
+    ) -> bool:
+        """Driving along a footway/path/cycleway is never slowed down, but
+        costs penalty points every interval_s, like driving the wrong way
+        on a one-way road."""
+        if abs(car.speed) < 1.5 or is_point_on_road(
+            car.x, car.y, ways=ways, spatial_grid=spatial_grid, car_roads_only=True, layer=car.layer
+        ) or not is_point_on_light_traffic_way(car.x, car.y, ways=ways, spatial_grid=spatial_grid):
+            self.pedestrian_way_penalty_cooldown = 0.0
+            return False
+        self.pedestrian_way_penalty_cooldown += dt
+        if self.pedestrian_way_penalty_cooldown >= interval_s:
+            self.pedestrian_way_penalty_cooldown = 0.0
+            self.total_score -= penalty
+            self.notification_msg = tr(self.language, "pedestrian_way_penalty", penalty=penalty)
+            self.notification_timer = 3.5
+            logger.info("Player driving on a pedestrian way: -%d pts penalty", penalty)
+        return True
 
     def sync_map_data(
         self,

@@ -123,7 +123,7 @@ def test_block_motion_into_footway_or_pedestrian_path():
     assert car.x <= 54.0  # Blocked from entering the footway corridor!
 
 
-def test_allow_slow_offroad_driving():
+def test_grass_offroad_is_not_speed_capped_but_has_poor_grip():
     road = Way(points_m=[(0.0, 0.0), (100.0, 0.0)], highway="primary", half_width_m=5.0)
     grid = SpatialWayGrid(cell_size=100.0)
     grid.rebuild([road])
@@ -132,10 +132,57 @@ def test_allow_slow_offroad_driving():
     blocked = update_car_physics(
         car, 1.0, 0.0, 0.0, 0.0, 0.2, ways=[road], spatial_grid=grid, block_offroad=False
     )
-
     assert blocked is False
-    assert 2.0 < car.speed < 10.0
-    assert car.y > 4.0
+    assert car.speed > 10.0 - 0.5  # no off-road cap on soft ground
+    assert car.ground_kind == "soft"
+
+    update_car_physics(car, 1.0, 0.0, 0.0, 0.0, 0.2, ways=[road], spatial_grid=grid, block_offroad=False)
+    assert car.max_grip_g < 0.9 * 2.0 * 0.5  # grass grip, well under asphalt's (arcade x2)
+
+
+def test_sand_is_the_slowest_surface_and_hard_ground_is_uncapped():
+    from theroadragetrip.osm import Scenery
+
+    road = Way(points_m=[(0.0, 0.0), (100.0, 0.0)], highway="primary", half_width_m=5.0)
+    beach = Scenery(points_m=[(0.0, 10.0), (100.0, 10.0), (100.0, 60.0), (0.0, 60.0)], kind="beach", bbox=(0.0, 10.0, 100.0, 60.0))
+    plaza = Scenery(points_m=[(0.0, 70.0), (100.0, 70.0), (100.0, 120.0), (0.0, 120.0)], kind="pedestrian_area", bbox=(0.0, 70.0, 100.0, 120.0))
+    grid = SpatialWayGrid(cell_size=100.0)
+    grid.rebuild([road])
+    scenery_grid = SpatialWayGrid([beach, plaza])
+
+    def drive(y):
+        car = Car(x=20.0, y=y, heading=0.0, speed=15.0)
+        for _ in range(30):
+            update_car_physics(car, 1.0, 0.0, 0.0, 0.0, 0.1, ways=[road], spatial_grid=grid, scenery_grid=scenery_grid, block_offroad=False)
+        return car
+
+    sand = drive(30.0)
+    assert sand.ground_kind == "sand" and sand.speed <= 2.5
+    hard = drive(90.0)
+    assert hard.ground_kind == "hard" and hard.speed > 15.0
+
+
+def test_pedestrian_way_is_not_slowed_but_costs_penalty_points():
+    from theroadragetrip.taxi import TaxiManager
+
+    road = Way(points_m=[(0.0, 0.0), (100.0, 0.0)], highway="primary", half_width_m=5.0)
+    footway = Way(points_m=[(0.0, 20.0), (100.0, 20.0)], highway="footway", half_width_m=2.0)
+    grid = SpatialWayGrid(cell_size=100.0)
+    grid.rebuild([road, footway])
+    car = Car(x=10.0, y=20.0, heading=0.0, speed=12.0)
+    update_car_physics(car, 1.0, 0.0, 0.0, 0.0, 0.1, ways=[road, footway], spatial_grid=grid, block_offroad=False)
+    assert car.speed >= 12.0
+
+    taxi = TaxiManager(ways=[road])
+    for _ in range(60):
+        taxi.check_pedestrian_way_violation(car, 0.1, ways=[road, footway], spatial_grid=grid)
+    assert taxi.total_score < 0  # ~6s on a footway -> at least one penalty
+
+    on_road = Car(x=10.0, y=0.0, heading=0.0, speed=12.0)
+    taxi2 = TaxiManager(ways=[road])
+    for _ in range(100):
+        taxi2.check_pedestrian_way_violation(on_road, 0.1, ways=[road, footway], spatial_grid=grid)
+    assert taxi2.total_score == 0
 
 
 def test_can_accelerate_forward_from_rest_offroad():
