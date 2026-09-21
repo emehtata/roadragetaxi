@@ -1446,8 +1446,14 @@ def draw_tire_tracks(
                 previous_tires = None
                 continue
             center_x, center_y = world_to_screen(track_x, track_y, camx, camy, px_per_m, screen_w, screen_h)
+            # Perpendicular to the heading in *screen* space (y grows
+            # downward, so world heading (cos, sin) is (cos, -sin) on
+            # screen): (-sin, cos) - what this used to use - is only
+            # perpendicular at heading 0/180 degrees, so at any other
+            # heading the two "tyres" sat diagonally along the car instead
+            # of side by side (one looked front, one rear).
             side_x = -math.sin(heading)
-            side_y = math.cos(heading)
+            side_y = -math.cos(heading)
             # Marks are laid by the rear tyres (the driven axle), which sit
             # behind the car's centre: a spinning car's marks then trace the
             # rear wheels' true circle instead of pivoting about the middle.

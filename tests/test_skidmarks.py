@@ -166,3 +166,32 @@ def test_a_spinning_cars_marks_are_a_ring_not_a_filled_blob():
     # Two rings of ~2*pi*r*px each, ~5px wide, is a few thousand px; a filled
     # disc of the same size would be ~30k+.
     assert 0 < lit < 9000
+
+
+def test_both_tyre_marks_sit_side_by_side_at_any_heading():
+    """The two tyres of a mark must be perpendicular to the car's heading
+    (side by side at the rear axle), not offset diagonally along it."""
+    import math
+    import os
+    os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
+    import pygame
+    from theroadragetrip.render import TireTrail, draw_tire_tracks
+
+    pygame.init()
+    for heading_deg in (0, 30, 45, 90, 135, 200):
+        heading = math.radians(heading_deg)
+        screen = pygame.Surface((400, 400))
+        screen.fill((0, 0, 0))
+        trail = TireTrail(False, 0.0, 0.0, heading, 1.0)
+        # Drive straight ahead along the heading so each tyre draws a line
+        # parallel to it; the two lines' perpendicular separation is the track.
+        for step in range(1, 6):
+            trail.add(math.cos(heading) * step, math.sin(heading) * step, heading, 1.0)
+        draw_tire_tracks(screen, [trail], 2.0 * math.cos(heading), 2.0 * math.sin(heading), grass=False,
+                         px_per_m=20.0, screen_w=400, screen_h=400)
+        pts = [(x, y) for x in range(400) for y in range(400) if screen.get_at((x, y))[0] > 0]
+        assert pts
+        # Project every lit pixel on the car's screen-space lateral axis:
+        # two tyres 1.44 m (28.8 px) apart -> two clusters of about that separation.
+        lat = sorted(x * -math.sin(heading) + y * -math.cos(heading) for x, y in pts)
+        assert 22.0 < lat[-1] - lat[0] < 36.0, (heading_deg, lat[-1] - lat[0])
