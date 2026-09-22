@@ -2160,6 +2160,20 @@ def draw_yield_signs(
         pygame.draw.polygon(screen, (220, 30, 30), triangle, width=max(2, int(2 * scale)))
 
 
+def _traffic_light_render_position(traffic_light) -> Tuple[float, float]:
+    heading = traffic_light.direction_angle or 0.0
+    offset = getattr(traffic_light, "render_offset_m", 0.0)
+    return (
+        traffic_light.x + math.sin(heading) * offset,
+        traffic_light.y - math.cos(heading) * offset,
+    )
+
+
+def _traffic_light_rotation_degrees(traffic_light) -> float:
+    """Align the housing with traffic flow, red end toward the intersection."""
+    return math.degrees(traffic_light.direction_angle or 0.0) - 90.0
+
+
 def draw_traffic_lights(
     screen,
     traffic_lights: List,
@@ -2189,7 +2203,8 @@ def draw_traffic_lights(
         if not (vminx <= tl.x <= vmaxx and vminy <= tl.y <= vmaxy):
             continue
 
-        cx, cy = world_to_screen(tl.x, tl.y, camx, camy, px_per_m, screen_w, screen_h)
+        render_x, render_y = _traffic_light_render_position(tl)
+        cx, cy = world_to_screen(render_x, render_y, camx, camy, px_per_m, screen_w, screen_h)
         state = tl.get_state(sim_time)
 
         # Colors for 3 lamps (dim when off, bright with glow when on)
@@ -2207,7 +2222,7 @@ def draw_traffic_lights(
         g_col = (40, 240, 60) if is_green else (10, 50, 15)
 
         lamp_r = 2
-        rotation = 90.0 - math.degrees(tl.direction_angle or 0.0)
+        rotation = _traffic_light_rotation_degrees(tl)
         cache_key = (id(tl), state, round(rotation, 3), px_per_m)
         rotated = _traffic_light_surface_cache.get(cache_key)
         if rotated is None:

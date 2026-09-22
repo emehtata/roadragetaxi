@@ -12,7 +12,7 @@ from theroadragetrip.main import (
     _respawn_allowed,
     MODE_MENU_OPTION_COUNT,
 )
-from theroadragetrip.simulation import _rage_from_speeding
+from theroadragetrip.simulation import RAGE_DISTANCE_TO_FULL_M, RAGE_GAIN_SCALE, _rage_from_speeding
 
 
 def test_respawn_is_blocked_while_driver_is_on_foot():
@@ -23,7 +23,7 @@ def test_respawn_is_blocked_while_driver_is_on_foot():
 def test_speeding_builds_rage():
     limit_mps = 50.0 / 3.6  # 50 km/h
     rage = _rage_from_speeding(0.0, speed_mps=70.0 / 3.6, road_limit_mps=limit_mps, driven_distance_m=100.0)
-    assert rage > 0.0
+    assert rage == 100.0 / RAGE_DISTANCE_TO_FULL_M * RAGE_GAIN_SCALE
 
 
 def test_driving_under_the_limit_reduces_rage():

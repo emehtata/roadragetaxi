@@ -78,6 +78,16 @@ def test_default_hud_layout_leaves_room_for_speedometer_indicators():
     )
 
 
+def test_speedometer_has_no_outer_box():
+    pygame.init()
+    screen = pygame.Surface((210, 190))
+    screen.fill((20, 80, 120))
+
+    _draw_analog_speedometer(screen, 0.0, (10, 10))
+
+    assert screen.get_at((10, 10))[:3] == (20, 80, 120)
+
+
 def test_fuel_meter_changes_for_full_low_and_empty_tanks():
     pygame.init()
     font = pygame.font.Font(None, 24)

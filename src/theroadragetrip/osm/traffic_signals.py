@@ -538,6 +538,7 @@ def build_traffic_light_system(
                     layer=layer,
                     id=_stable_light_id(layer, light_x, light_y),
                     direction_angle=(arm_angle + math.pi) % (2.0 * math.pi),
+                    render_offset_m=getattr(way, "half_width_m", 4.0) + 0.75,
                     signal_group=group,
                     approach_id=group.approach_id,
                     allowed_movements=movements,

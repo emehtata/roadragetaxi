@@ -44,6 +44,7 @@ from .physics import (
 from .taxi import TaxiState
 
 RAGE_DISTANCE_TO_FULL_M = 400.0
+RAGE_GAIN_SCALE = 1.0 / 3.0
 
 
 @dataclass
@@ -122,15 +123,14 @@ def apply_enter_exit_vehicle(car, player_pedestrian, on_foot: bool, audio) -> bo
 def _rage_from_speeding(
     rage_power: float, speed_mps: float, road_limit_mps: Optional[float], driven_distance_m: float,
 ) -> float:
-    """Speeding builds rage; driving within the limit calms it back down -
-    both at the same rate (RAGE_DISTANCE_TO_FULL_M of speeding fills the
-    meter, the same distance under the limit empties it). No current road
-    (unknown limit) leaves rage unchanged either way."""
+    """Speeding builds rage; driving within the limit calms it back down.
+    Positive gain is scaled separately so calming remains responsive. No
+    current road (unknown limit) leaves rage unchanged either way."""
     if road_limit_mps is None or driven_distance_m <= 0.0:
         return rage_power
     delta = driven_distance_m / RAGE_DISTANCE_TO_FULL_M
     if abs(speed_mps) > road_limit_mps + 0.01:
-        return min(1.0, rage_power + delta)
+        return min(1.0, rage_power + delta * RAGE_GAIN_SCALE)
     return max(0.0, rage_power - delta)
 
 
@@ -354,11 +354,11 @@ def advance_simulation(
     road_limit_mps = current_way.speed_limit_kmh / 3.6 if current_way else None
     rage_power = _rage_from_speeding(rage_power, car.speed, road_limit_mps, driven_distance)
     if abs(car.speed) * 3.6 < 10.0 and taxi_mgr.sees_red_light(car, nearby_traffic_lights, traffic_mgr.sim_time):
-        rage_power = min(1.0, rage_power + 0.05 * dt)
+        rage_power = min(1.0, rage_power + 0.05 * RAGE_GAIN_SCALE * dt)
     if car.is_sliding:
         # Adrenaline from a hard, tire-losing-grip corner feeds the rage
         # meter too, same as speeding does.
-        rage_power = min(1.0, rage_power + 0.15 * dt)
+        rage_power = min(1.0, rage_power + 0.15 * RAGE_GAIN_SCALE * dt)
 
     taxi_mgr.update_passenger_happiness(dt, car.speed, road_limit_mps, car.is_sliding)
 

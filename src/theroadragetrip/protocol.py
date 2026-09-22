@@ -124,6 +124,8 @@ def _passenger_to_dict(passenger: Optional[TaxiPassenger]) -> Optional[dict]:
         "name": passenger.name,
         "gender": passenger.gender,
         "weight_kg": passenger.weight_kg,
+        "is_drunk": passenger.is_drunk,
+        "motion_sickness": passenger.motion_sickness,
         "nausea_warning_timer": passenger.nausea_warning_timer,
         "nausea_resolved": passenger.nausea_resolved,
         "pickup": {
@@ -300,6 +302,8 @@ def _passenger_from_dict(data: Optional[dict]) -> Optional[TaxiPassenger]:
         name=data["name"],
         gender=data["gender"],
         weight_kg=data.get("weight_kg", 85.0),
+        is_drunk=data.get("is_drunk", False),
+        motion_sickness=data.get("motion_sickness", 0.0),
         nausea_warning_timer=data["nausea_warning_timer"],
         nausea_resolved=data["nausea_resolved"],
         pickup=TaxiTarget(x=data["pickup"]["x"], y=data["pickup"]["y"], address=data["pickup"]["address"], radius_m=data["pickup"]["radius_m"]),

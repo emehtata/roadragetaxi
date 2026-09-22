@@ -435,7 +435,7 @@ def test_stopped_taxi_at_stand_can_board_nearby_pedestrian(monkeypatch: pytest.M
     )
     stops = [TaxiStop(0.0, 0.0), TaxiStop(1000.0, 0.0)]
     taxi_mgr = TaxiManager(ways=[way], taxi_stops=stops, min_distance_m=300.0, max_distance_m=1200.0)
-    pedestrian = SimpleNamespace(x=3.0, y=0.0, heading=0.0, wants_taxi=True)
+    pedestrian = SimpleNamespace(x=3.0, y=0.0, heading=0.0, wants_taxi=True, is_drunk=True)
     car = Car(x=0.0, y=0.0, heading=0.0, speed=0.0)
     monkeypatch.setattr("theroadragetrip.taxi.random.random", lambda: 0.0)
 
@@ -454,6 +454,8 @@ def test_stopped_taxi_at_stand_can_board_nearby_pedestrian(monkeypatch: pytest.M
 
     assert taxi_mgr.current_passenger.boarded is True
     assert taxi_mgr.state == TaxiState.DRIVING_TO_DROPOFF
+    assert taxi_mgr.notification_msg == "Asiakas haisee alkoholilta."
+    assert taxi_mgr.notification_timer == 4.0
 
 
 def test_stopped_taxi_can_pick_up_street_hail_without_taxi_stops(monkeypatch: pytest.MonkeyPatch):
@@ -527,7 +529,7 @@ def test_passenger_nausea_is_relieved_when_taxi_stops():
     pickup = TaxiTarget(0.0, 0.0, "Pickup")
     dropoff = TaxiTarget(1000.0, 0.0, "Dropoff")
     taxi_mgr = TaxiManager(ways=[way])
-    passenger = TaxiPassenger("Test", pickup, dropoff, boarded=True, nausea_warning_timer=3.0)
+    passenger = TaxiPassenger("Test", pickup, dropoff, boarded=True, is_drunk=True, nausea_warning_timer=3.0)
     taxi_mgr.current_passenger = passenger
     taxi_mgr.state = TaxiState.DRIVING_TO_DROPOFF
     car = Car(x=100.0, y=0.0, heading=0.0, speed=0.0)
@@ -545,7 +547,7 @@ def test_vomiting_ends_fare_only_after_taxi_stops():
     pickup = TaxiTarget(0.0, 0.0, "Pickup")
     dropoff = TaxiTarget(1000.0, 0.0, "Dropoff")
     taxi_mgr = TaxiManager(ways=[way])
-    passenger = TaxiPassenger("Test", pickup, dropoff, boarded=True, nausea_warning_timer=0.1)
+    passenger = TaxiPassenger("Test", pickup, dropoff, boarded=True, is_drunk=True, nausea_warning_timer=0.1)
     taxi_mgr.current_passenger = passenger
     taxi_mgr.state = TaxiState.DRIVING_TO_DROPOFF
     car = Car(x=100.0, y=0.0, heading=0.0, speed=10.0)
@@ -559,6 +561,46 @@ def test_vomiting_ends_fare_only_after_taxi_stops():
     released = taxi_mgr.take_vomited_passenger(car)
     assert released is passenger
     assert taxi_mgr.current_passenger is None
+
+
+def test_sober_passenger_cannot_become_nauseous():
+    way = Way(points_m=[(0.0, 0.0), (2000.0, 0.0)], highway="residential", half_width_m=4.5)
+    pickup = TaxiTarget(0.0, 0.0, "Pickup")
+    passenger = TaxiPassenger(
+        "Sober",
+        pickup,
+        TaxiTarget(1000.0, 0.0, "Dropoff"),
+        boarded=True,
+        is_drunk=False,
+        nausea_delay=0.0,
+    )
+    taxi_mgr = TaxiManager(ways=[way])
+    taxi_mgr.current_passenger = passenger
+    taxi_mgr.state = TaxiState.DRIVING_TO_DROPOFF
+
+    taxi_mgr.update(Car(x=100.0, y=0.0, heading=0.0, speed=10.0), dt=1.0)
+
+    assert passenger.nausea_warning_timer == 0.0
+    assert passenger.nausea_vomited is False
+
+
+def test_sustained_hard_cornering_makes_sober_passenger_nauseous():
+    way = Way(points_m=[(0.0, 0.0), (2000.0, 0.0)], highway="residential", half_width_m=4.5)
+    passenger = TaxiPassenger(
+        "Sober",
+        TaxiTarget(0.0, 0.0, "Pickup"),
+        TaxiTarget(1000.0, 0.0, "Dropoff"),
+        boarded=True,
+    )
+    taxi_mgr = TaxiManager(ways=[way])
+    taxi_mgr.current_passenger = passenger
+    taxi_mgr.state = TaxiState.DRIVING_TO_DROPOFF
+    car = Car(x=100.0, y=0.0, heading=0.0, speed=20.0, lateral_g=1.0)
+
+    for _ in range(8):
+        taxi_mgr.update(car, dt=1.0)
+
+    assert passenger.nausea_warning_timer == 4.0
 
 
 def test_discard_pickup_penalty():

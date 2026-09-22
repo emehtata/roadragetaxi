@@ -33,6 +33,7 @@ NIGHTLIFE_VENUE_TYPES = {
     "food_court",
     "biergarten",
 }
+MOTION_SICKNESS_THRESHOLD = 8.0
 
 @dataclass
 class TaxiTarget:
@@ -61,6 +62,8 @@ class TaxiPassenger:
     ped_color: Tuple[int, int, int] = (240, 220, 60)  # Bright gold/yellow
     is_walking_to_car: bool = False
     boarded: bool = False
+    is_drunk: bool = False
+    motion_sickness: float = 0.0
     nausea_delay: float = 0.0
     nausea_warning_timer: float = 0.0
     nausea_resolved: bool = False
@@ -219,6 +222,11 @@ class TaxiManager:
 
     def nausea_delay_for_pickup(self, pickup: TaxiTarget) -> float:
         return nausea_delay_for_pickup(pickup, self.game_time_seconds)
+
+    def _warn_if_passenger_is_drunk(self, passenger: TaxiPassenger) -> None:
+        if passenger.is_drunk:
+            self.notification_msg = tr(self.language, "passenger_smells_intoxicated")
+            self.notification_timer = 4.0
 
     def _current_game_datetime(self) -> datetime:
         return datetime.combine(self.game_date, datetime.min.time()) + timedelta(seconds=self.game_time_seconds)
@@ -1222,6 +1230,7 @@ class TaxiManager:
             dropoff_target = pickup_target
 
         passenger_name, passenger_gender, resident_id, passenger_weight_kg = self._new_passenger_identity()
+        nausea_delay = self.nausea_delay_for_pickup(pickup_target)
         self.current_passenger = TaxiPassenger(
             name=passenger_name,
             pickup=pickup_target,
@@ -1235,7 +1244,8 @@ class TaxiManager:
             ped_speed=2.2,
             is_walking_to_car=False,
             boarded=False,
-            nausea_delay=self.nausea_delay_for_pickup(pickup_target),
+            is_drunk=math.isfinite(nausea_delay),
+            nausea_delay=nausea_delay,
         )
         self.state = TaxiState.WAITING_FOR_PICKUP
         self.elapsed_time = 0.0
@@ -1364,6 +1374,7 @@ class TaxiManager:
             if not dropoff:
                 continue
             passenger_name, passenger_gender, resident_id, passenger_weight_kg = self._new_passenger_identity()
+            nausea_delay = self.nausea_delay_for_pickup(pickup)
             passenger = TaxiPassenger(
                 name=passenger_name,
                 pickup=pickup,
@@ -1375,7 +1386,8 @@ class TaxiManager:
                 ped_y=self.passenger_waiting_position(pickup)[1],
                 ped_heading=self.passenger_waiting_position(pickup)[2],
                 ped_speed=2.2,
-                nausea_delay=self.nausea_delay_for_pickup(pickup),
+                is_drunk=math.isfinite(nausea_delay),
+                nausea_delay=nausea_delay,
             )
             offers.append(TaxiOffer(
                 passenger=passenger,
@@ -1452,6 +1464,7 @@ class TaxiManager:
             return False
         resident = self.residents.get(getattr(pedestrian, "resident_id", None))
         passenger_name, passenger_gender, resident_id, passenger_weight_kg = self._new_passenger_identity(resident)
+        is_drunk = bool(getattr(pedestrian, "is_drunk", False))
         passenger = TaxiPassenger(
             name=passenger_name,
             pickup=pickup,
@@ -1463,7 +1476,8 @@ class TaxiManager:
             ped_y=pedestrian.y,
             ped_heading=pedestrian.heading,
             boarded=True,
-            nausea_delay=self.nausea_delay_for_pickup(pickup),
+            is_drunk=is_drunk,
+            nausea_delay=self.nausea_delay_for_pickup(pickup) if is_drunk else float("inf"),
         )
         self.current_passenger = passenger
         self.offers = []
@@ -1490,6 +1504,8 @@ class TaxiManager:
             address=dropoff.address,
         )
         self.notification_timer = 5.0
+        if passenger.boarded:
+            self._warn_if_passenger_is_drunk(passenger)
         logger.info(
             "Passenger boarded: passenger=%s pickup=%s dropoff=%s walking=%s",
             passenger.name,
@@ -1614,7 +1630,11 @@ class TaxiManager:
 
     def _update_passenger_nausea(self, car: Car, dt: float) -> None:
         passenger = self.current_passenger
-        if passenger is None or not passenger.boarded or self.state != TaxiState.DRIVING_TO_DROPOFF:
+        if (
+            passenger is None
+            or not passenger.boarded
+            or self.state != TaxiState.DRIVING_TO_DROPOFF
+        ):
             return
         if passenger.nausea_resolved or passenger.nausea_vomited:
             return
@@ -1643,6 +1663,24 @@ class TaxiManager:
                 logger.info("Passenger vomited in taxi: passenger=%s penalty=%d", passenger.name, 500)
             return
 
+        roughness = (
+            max(0.0, abs(car.lateral_g) - 0.35) * 2.0
+            + max(0.0, abs(car.forward_g) - 0.35) * 1.5
+            + max(0.0, abs(car.speed) - 120.0 / 3.6) / (80.0 / 3.6) * 0.4
+        )
+        passenger.motion_sickness = max(
+            0.0,
+            passenger.motion_sickness + (roughness - 0.2) * dt,
+        )
+        if passenger.motion_sickness >= MOTION_SICKNESS_THRESHOLD:
+            passenger.nausea_warning_timer = 4.0
+            self.notification_msg = tr(self.language, "passenger_nausea_warning")
+            self.notification_timer = 4.0
+            logger.info("Passenger reported motion sickness: passenger=%s", passenger.name)
+            return
+
+        if not passenger.is_drunk:
+            return
         passenger.nausea_delay -= dt
         if passenger.nausea_delay <= 0.0:
             passenger.nausea_warning_timer = 4.0
@@ -1766,6 +1804,7 @@ class TaxiManager:
                     self.language, "boarded_destination", name=p.name, address=p.dropoff.address
                 )
                 self.notification_timer = 6.0
+                self._warn_if_passenger_is_drunk(p)
                 logger.info(
                     "Passenger boarded after walking: passenger=%s dropoff=%s",
                     p.name,

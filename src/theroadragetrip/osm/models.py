@@ -282,6 +282,7 @@ class TrafficLight:
     layer: int = 0
     id: Optional[int] = None
     direction_angle: Optional[float] = None  # Road alignment heading in radians
+    render_offset_m: float = 0.0  # Rightward visual offset from the OSM lane/control point
     signal_group: Optional[SignalGroup] = None
     approach_id: Optional[str] = None
     allowed_movements: frozenset[str] = frozenset({"straight", "right"})
