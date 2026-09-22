@@ -1892,6 +1892,7 @@ def main() -> None:
                     gig_odometer_file=gig_odometer_file,
                     chosen_city=chosen_city,
                     cities_list=cities_list,
+                    outside_temperature_c=typical_temperature(game_calendar.current, sun_latitude),
                 )
                 camx, camy = result.camx, result.camy
                 current_way = result.current_way

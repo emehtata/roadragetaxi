@@ -10,6 +10,8 @@ INITIAL_FUEL_L = 30.0
 FUEL_STATION_RANGE_M = 8.0
 MIN_FUEL_PRICE_CENTS = 150
 MAX_FUEL_PRICE_CENTS = 300
+MILD_IDLE_CONSUMPTION_L_PER_HOUR = 1.0
+MAX_IDLE_CONSUMPTION_L_PER_HOUR = 3.0
 
 
 @dataclass(frozen=True)
@@ -83,6 +85,25 @@ def consumption_l_per_100km(
     return baseline + 2.0 * aggressive_throttle ** 2 + acceleration_penalty
 
 
+def idle_consumption_l_per_hour(outside_temperature_c: float) -> float:
+    """Return stationary engine consumption including heating or A/C load.
+
+    The engine uses about 1 L/h in the 10–20 °C comfort range. Consumption
+    rises linearly in colder or hotter weather, reaching 3 L/h at -20 °C
+    and +40 °C respectively.
+    """
+    temperature = float(outside_temperature_c)
+    if temperature < 10.0:
+        climate_load = min(1.0, (10.0 - temperature) / 30.0)
+    elif temperature > 20.0:
+        climate_load = min(1.0, (temperature - 20.0) / 20.0)
+    else:
+        climate_load = 0.0
+    return MILD_IDLE_CONSUMPTION_L_PER_HOUR + (
+        MAX_IDLE_CONSUMPTION_L_PER_HOUR - MILD_IDLE_CONSUMPTION_L_PER_HOUR
+    ) * climate_load
+
+
 def fuel_used_liters(
     distance_m: float,
     speed_mps: float,
@@ -106,15 +127,22 @@ def consume_fuel(
     throttle: float,
     brake: float,
     acceleration_mps2: float = 0.0,
+    elapsed_seconds: float = 0.0,
+    outside_temperature_c: float = 15.0,
 ) -> float:
     """Consume and clamp a car's fuel, returning the liters used."""
     available = max(0.0, min(car.fuel_capacity_l, car.fuel_l))
-    used = min(
-        available,
-        fuel_used_liters(
-            distance_m, speed_mps, throttle, brake, acceleration_mps2
-        ),
+    driving_fuel = fuel_used_liters(
+        distance_m, speed_mps, throttle, brake, acceleration_mps2
     )
+    idle_fuel = 0.0
+    if car.engine_on and distance_m <= 1e-6 and elapsed_seconds > 0.0:
+        idle_fuel = (
+            idle_consumption_l_per_hour(outside_temperature_c)
+            * elapsed_seconds
+            / 3600.0
+        )
+    used = min(available, driving_fuel + idle_fuel) if car.engine_on else 0.0
     car.fuel_l = max(0.0, available - used)
     return used
 
@@ -126,6 +154,8 @@ def update_car_fuel(
     throttle: float,
     brake: float,
     acceleration_mps2: float = 0.0,
+    elapsed_seconds: float = 0.0,
+    outside_temperature_c: float = 15.0,
 ) -> bool:
     """Consume fuel and enforce starvation; return whether fuel just ran out."""
     had_fuel = car.fuel_l > 0.0
@@ -137,7 +167,14 @@ def update_car_fuel(
         else 0.0
     )
     consume_fuel(
-        car, distance_m, speed_mps, throttle, brake, acceleration_mps2
+        car,
+        distance_m,
+        speed_mps,
+        throttle,
+        brake,
+        acceleration_mps2,
+        elapsed_seconds,
+        outside_temperature_c,
     )
     if car.fuel_l <= 0.0:
         car.speed = 0.0

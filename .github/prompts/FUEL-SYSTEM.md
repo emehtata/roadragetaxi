@@ -10,6 +10,7 @@ Implement fuel consumption and refueling for The Road Rage Trip in two phases.
 - Aerodynamic demand raises consumption at high speed; at 200 km/h the baseline is approximately 20 L/100 km.
 - Actual forward acceleration from the physics model raises consumption above the speed baseline, so consumption at a given speed is visibly higher while accelerating than while cruising. Aggressive throttle may add a small immediate demand penalty before measured acceleration catches up.
 - While braking, fuel consumption drops near zero. Do not treat distance traveled under braking as normal powered driving.
+- A running engine also consumes fuel while the car is stationary. Idle consumption is approximately 1 L/h in mild 10–20 °C weather and rises linearly toward 3 L/h in severe cold (-20 °C) or heat (+40 °C), representing heater and air-conditioning load. Use real vehicle-running time for this calculation, not accelerated calendar time, and consume nothing when the engine is off.
 - Show live consumption in L/100 km above the remaining liters and tank percentage in a clearly visible HUD fuel gauge. Use warning colors below 20% and a critical color below 8%.
 - Fuel is authoritative simulation state, not a renderer-only counter. Include it in client/server snapshots.
 - Clamp fuel to the range `0..capacity`; never allow negative fuel.
@@ -39,5 +40,5 @@ Phase 2 implementation uses `G` to buy fuel while stopped within 8 meters of a p
 - Keep fuel-consumption math in a small Pygame-independent module with pure functions.
 - Consume fuel in the authoritative simulation tick after actual movement distance is known.
 - Preserve backward compatibility when applying snapshots that predate fuel fields.
-- Unit-test the 90 km/h and 200 km/h reference points, throttle penalty, braking behavior, distance conversion, clamping, starvation, respawn refill, protocol round-trip, and HUD rendering.
+- Unit-test the 90 km/h and 200 km/h reference points, throttle penalty, braking behavior, temperature-dependent idle consumption, engine-off behavior, distance conversion, clamping, starvation, respawn refill, protocol round-trip, and HUD rendering.
 - Run focused simulation, physics, protocol, and HUD tests plus compilation and diff checks.

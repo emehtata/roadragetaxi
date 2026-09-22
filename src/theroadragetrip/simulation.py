@@ -168,6 +168,7 @@ def advance_simulation(
     gig_odometer_file,
     chosen_city,
     cities_list,
+    outside_temperature_c: float = 15.0,
 ) -> SimulationFrameResult:
     """Run one gameplay tick: physics, collisions, camera follow, and the
     taxi/NPC/traffic/pedestrian manager updates. Extracted verbatim from
@@ -344,6 +345,8 @@ def advance_simulation(
         throttle,
         brake,
         acceleration_mps2=max(0.0, car.raw_forward_g * 9.81),
+        elapsed_seconds=dt,
+        outside_temperature_c=outside_temperature_c,
     )
     if fuel_emptied:
         taxi_mgr.notification_msg = tr(language, "fuel_empty")

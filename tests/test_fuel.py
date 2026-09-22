@@ -8,6 +8,7 @@ from theroadragetrip.fuel import (
     fuel_used_liters,
     calculate_fuel_purchase,
     fuel_station_price_cents,
+    idle_consumption_l_per_hour,
     nearest_fuel_station,
     update_car_fuel,
 )
@@ -66,6 +67,34 @@ def test_live_economy_is_zero_when_stopped_and_tracks_consumption_while_moving()
     assert car.fuel_consumption_l_per_100km == 0.0
     update_car_fuel(car, 10.0, car.speed, 0.35, 0.0)
     assert car.fuel_consumption_l_per_100km == pytest.approx(10.0)
+
+
+def test_idling_consumes_one_to_three_liters_per_hour_based_on_temperature():
+    assert idle_consumption_l_per_hour(15.0) == pytest.approx(1.0)
+    assert idle_consumption_l_per_hour(-20.0) == pytest.approx(3.0)
+    assert idle_consumption_l_per_hour(40.0) == pytest.approx(3.0)
+
+    mild_car = Car(0, 0, 0, 0, fuel_l=30.0, engine_on=True)
+    cold_car = Car(0, 0, 0, 0, fuel_l=30.0, engine_on=True)
+    update_car_fuel(
+        mild_car, 0.0, 0.0, 0.0, 0.0,
+        elapsed_seconds=3600.0, outside_temperature_c=15.0,
+    )
+    update_car_fuel(
+        cold_car, 0.0, 0.0, 0.0, 0.0,
+        elapsed_seconds=3600.0, outside_temperature_c=-20.0,
+    )
+    assert mild_car.fuel_l == pytest.approx(29.0)
+    assert cold_car.fuel_l == pytest.approx(27.0)
+
+
+def test_engine_off_does_not_consume_idle_fuel():
+    car = Car(0, 0, 0, 0, fuel_l=30.0, engine_on=False)
+    update_car_fuel(
+        car, 0.0, 0.0, 0.0, 0.0,
+        elapsed_seconds=3600.0, outside_temperature_c=-20.0,
+    )
+    assert car.fuel_l == pytest.approx(30.0)
 
 
 def test_station_price_is_deterministic_and_within_configured_range():
