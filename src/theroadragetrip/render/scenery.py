@@ -20,6 +20,7 @@ from typing import List, Optional, Tuple
 
 from ..osm import Scenery, SceneryObject, Way, classify_tree_kind
 from ..calendar import Season
+from ..fuel import fuel_station_price_cents
 from ..physics import is_point_on_road
 
 
@@ -110,6 +111,8 @@ SCENERY_COLORS = {
     # safer default than guessing green.
     "traffic_island": (150, 148, 140),
 }
+
+_fuel_station_font = None
 # Kinds that read as visibly grainy/textured ground in real aerial imagery -
 # tree canopy, mown/unmown grass, tilled soil, loose sand - as opposed to
 # the flat, mostly-building-covered zoning kinds (commercial, industrial,
@@ -1028,9 +1031,45 @@ def _draw_scenery_objects_uncached(
             pygame.draw.circle(screen, SCENERY_OBJECT_COLORS["fountain"], (sx, sy), radius)
             pygame.draw.circle(screen, _FOUNTAIN_SPRAY_COLOR, (sx, sy), max(1, radius // 3))
         elif obj.kind == "fuel":
-            width = max(2, int(0.6 * px_per_m))
-            height = max(3, int(1.1 * px_per_m))
-            pygame.draw.rect(screen, SCENERY_OBJECT_COLORS["fuel"], (sx - width // 2, sy - height, width, height))
+            # Fuel pumps are gameplay locations, not merely decoration:
+            # keep the pump recognizable and add a fixed-pixel yard sign
+            # that stays legible across gameplay zoom levels.
+            width = max(7, int(0.8 * px_per_m))
+            height = max(12, int(1.3 * px_per_m))
+            pump_rect = pygame.Rect(sx - width // 2, sy - height, width, height)
+            pygame.draw.rect(screen, (205, 62, 48), pump_rect, border_radius=2)
+            pygame.draw.rect(screen, (245, 245, 230), pump_rect, width=1, border_radius=2)
+            display_rect = pygame.Rect(
+                pump_rect.x + max(1, width // 5),
+                pump_rect.y + max(2, height // 6),
+                max(2, width - 2 * max(1, width // 5)),
+                max(2, height // 4),
+            )
+            pygame.draw.rect(screen, (20, 30, 32), display_rect)
+
+            marker_y = pump_rect.y - 18
+            pygame.draw.circle(screen, (255, 205, 35), (sx, marker_y), 10)
+            pygame.draw.circle(screen, (25, 28, 30), (sx, marker_y), 10, 2)
+            pygame.draw.polygon(
+                screen,
+                (255, 205, 35),
+                ((sx - 6, marker_y + 7), (sx + 6, marker_y + 7), (sx, pump_rect.y - 2)),
+            )
+
+            global _fuel_station_font
+            if _fuel_station_font is None:
+                _fuel_station_font = pygame.font.SysFont(None, 18, bold=True)
+            price_cents = fuel_station_price_cents(obj)
+            station_name = obj.name or "FUEL"
+            price_text = _fuel_station_font.render(
+                f"{station_name}  {price_cents / 100.0:.2f} €/L",
+                True,
+                (255, 235, 120),
+            )
+            board_rect = price_text.get_rect(midbottom=(sx, marker_y - 13)).inflate(12, 8)
+            pygame.draw.rect(screen, (15, 22, 25), board_rect, border_radius=4)
+            pygame.draw.rect(screen, (255, 205, 35), board_rect, width=2, border_radius=4)
+            screen.blit(price_text, price_text.get_rect(center=board_rect.center))
         elif obj.kind == "gate":
             half_len = max(2, int(1.0 * px_per_m))
             pygame.draw.line(screen, SCENERY_OBJECT_COLORS["gate"], (sx - half_len, sy), (sx + half_len, sy), max(1, int(px_per_m * 0.15)))

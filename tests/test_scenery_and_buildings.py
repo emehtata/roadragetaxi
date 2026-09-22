@@ -823,6 +823,32 @@ def test_draw_scenery_objects_draws_every_new_point_kind():
         assert non_background > 0, f"{kind} drew nothing"
 
 
+def test_fuel_station_draws_prominent_marker_and_price_board():
+    """A fuel point must advertise itself beyond the tiny pump footprint."""
+    from theroadragetrip.render import common as common_module
+
+    pygame.init()
+    common_module.begin_static_cache_frame()
+    common_module._pending_static_rebuilds.clear()
+    common_module._scenery_object_frame_cache_key = None
+    common_module._scenery_object_frame_cache_surface = None
+    screen = pygame.Surface((300, 240))
+    screen.fill((0, 0, 0))
+    station = SceneryObject(0.0, 0.0, "fuel", name="TEST", id=1234)
+
+    draw_scenery_objects(
+        screen, [station], 0.0, 0.0, px_per_m=10.0,
+        screen_w=300, screen_h=240,
+    )
+
+    colored_above_pump = sum(
+        tuple(screen.get_at((x, y)))[:3] != (0, 0, 0)
+        for x in range(50, 251)
+        for y in range(35, 105)
+    )
+    assert colored_above_pump > 150
+
+
 def test_scenery_colors_differ_by_landuse_value():
     """Different landuse/leisure/natural kinds must render distinct colors
     (regression: everything used to fall back to one generic green)."""
