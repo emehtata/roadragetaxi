@@ -1232,6 +1232,7 @@ def main() -> None:
         on_foot = True
         interact_pending = False
         refuel_pending = False
+        engine_on_pending = None
         command_seq = 0
         prev_state_snapshot = None
         prev_snapshot_time = 0.0
@@ -1442,6 +1443,8 @@ def main() -> None:
                         interact_pending = True
                     elif event.key == pygame.K_g:
                         refuel_pending = True
+                    elif event.key == pygame.K_e and not on_foot:
+                        engine_on_pending = not car.engine_on
                     elif event.key == pygame.K_SPACE and not phone_open:
                         if rage_power >= RAGE_SHOUT_COST:
                             audio.play_driver_line("rage", language)
@@ -1789,8 +1792,10 @@ def main() -> None:
                 speed_limiter_enabled=speed_limiter_enabled,
                 red_light_assist_enabled=red_light_assist_enabled,
                 refuel=refuel_pending,
+                engine_on=engine_on_pending,
             )
             refuel_pending = False
+            engine_on_pending = None
             previous_car_position = (car.x, car.y)
 
             if connection is not None:

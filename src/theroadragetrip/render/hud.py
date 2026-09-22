@@ -18,6 +18,7 @@ from ..geo import clamp, meters_to_latlon
 from ..physics import Car, MAX_SPEED
 from ..taxi import TaxiManager, TaxiState
 from ..fare import format_euros
+from ..fuel import idle_consumption_l_per_hour
 from ..localization import tr
 
 
@@ -83,45 +84,53 @@ def _draw_fuel_meter(
     position: Tuple[int, int],
     language: str,
     station_price_cents: Optional[int] = None,
+    outside_temperature_c: float = 15.0,
 ):
-    """Draw a compact fuel bar with liters and percentage remaining."""
+    """Draw a numberless vertical fuel gauge and the live econometer."""
     import pygame
 
     capacity = max(0.001, car.fuel_capacity_l)
     fraction = clamp(car.fuel_l / capacity, 0.0, 1.0)
-    color = (70, 205, 105) if fraction >= 0.20 else (
-        (245, 180, 45) if fraction >= 0.08 else (230, 55, 45)
-    )
     x, y = position
-    width, height = 230, 92 if station_price_cents is not None else 70
+    width, height = 230, 92 if station_price_cents is not None else 78
     rect = pygame.Rect(x, y, width, height)
-    pygame.draw.rect(screen, (15, 20, 25), rect, border_radius=6)
-    pygame.draw.rect(screen, (110, 120, 126), rect, width=1, border_radius=6)
+    bar = pygame.Rect(x + 8, y + 5, 18, height - 10)
+    pygame.draw.rect(screen, (38, 42, 45), bar)
+    red_height = round(bar.height * min(10.0, capacity) / capacity)
+    pygame.draw.rect(screen, (95, 25, 22), (bar.x, bar.bottom - red_height, bar.width, red_height))
+    fill_height = round(bar.height * fraction)
+    if fill_height > 0:
+        red_fill_height = min(fill_height, red_height)
+        pygame.draw.rect(
+            screen, (230, 55, 45),
+            (bar.x, bar.bottom - red_fill_height, bar.width, red_fill_height),
+        )
+        green_fill_height = fill_height - red_fill_height
+        if green_fill_height > 0:
+            pygame.draw.rect(
+                screen, (70, 205, 105),
+                (bar.x, bar.bottom - fill_height, bar.width, green_fill_height),
+            )
+    pygame.draw.rect(screen, (150, 160, 165), bar, width=1)
+
+    if abs(car.speed) > 0.5:
+        economy_text = f"{car.fuel_consumption_l_per_100km:.1f} L/100 km"
+    else:
+        idle_rate = idle_consumption_l_per_hour(outside_temperature_c) if car.engine_on else 0.0
+        economy_text = f"{idle_rate:.1f} L/h"
     economy = font.render(
-        f"{tr(language, 'fuel_economy')}: {car.fuel_consumption_l_per_100km:.1f} L/100 km",
+        f"{economy_text}",
         True,
         (205, 215, 220),
     )
-    screen.blit(economy, (x + 9, y + 6))
-    label = font.render(
-        f"{tr(language, 'fuel')}: {car.fuel_l:.1f} L ({fraction:.0%})",
-        True,
-        (245, 245, 235),
-    )
-    screen.blit(label, (x + 9, y + 28))
-    bar = pygame.Rect(x + 9, y + 51, width - 18, 10)
-    pygame.draw.rect(screen, (48, 52, 55), bar, border_radius=3)
-    if fraction > 0.0:
-        fill = bar.copy()
-        fill.width = max(1, round(bar.width * fraction))
-        pygame.draw.rect(screen, color, fill, border_radius=3)
+    screen.blit(economy, (x + 36, y + 6))
     if station_price_cents is not None:
         station_text = font.render(
             f"{tr(language, 'fuel_station')}  {format_euros(station_price_cents, language)}/L",
             True,
             (255, 215, 90),
         )
-        screen.blit(station_text, (x + 9, y + 69))
+        screen.blit(station_text, (x + 36, y + 34))
     return rect
 
 
@@ -456,7 +465,7 @@ def draw_hud(
 
     hint = (
         f"{tr(language, 'controls')}: W/S/A/D = {tr(language, 'drive').lower()} | +/- = {tr(language, 'zoom').lower()} | R = {tr(language, 'respawn').lower()} | X = {tr(language, 'cancel_ride').lower()} | T = {tr(language, 'reset_trip').lower()} | "
-        f"L = labels ({labels_status}) | K = lane assist ({lane_assist_status}) | V = limiter ({speed_limiter_status}) | B = red assist ({red_light_assist_status}) | C = {tr(language, 'compass')} ({tr(language, 'on' if show_compass else 'off')}) | Space = {tr(language, 'rage')} | ESC = pause"
+        f"L = labels ({labels_status}) | K = lane assist ({lane_assist_status}) | V = limiter ({speed_limiter_status}) | B = red assist ({red_light_assist_status}) | E = {tr(language, 'engine')} | C = {tr(language, 'compass')} ({tr(language, 'on' if show_compass else 'off')}) | Space = {tr(language, 'rage')} | ESC = pause"
     )
     if show_debug_hud:
         hint_t = font.render(hint, True, (220, 220, 220))
@@ -487,6 +496,7 @@ def draw_hud(
         layout["fuel"],
         language,
         fuel_station_price_cents,
+        temperature_c if temperature_c is not None else 15.0,
     )
     if hud_rects is not None:
         hud_rects["fuel"] = fuel_rect
@@ -512,14 +522,15 @@ def draw_hud(
         else:
             role_text = (
                 tr(language, "fare_dropoff", name=p.name if p else tr(language, "client"), address=target.address if target else "...")
-                + f" ({dist_s}, {tr(language, 'elapsed_time')}: {taxi_mgr.elapsed_time:.1f}s)"
+                + f"\n{tr(language, 'estimated_distance')}: {dist_s}"
+                + f"\n{tr(language, 'elapsed_time')}: {taxi_mgr.elapsed_time:.0f}s"
             )
             if taxi_mgr.fare_started_at is not None:
                 role_text += (
-                    f" | {tr(language, 'taxi_meter')}: "
+                    f"\n{tr(language, 'taxi_meter')}: "
                     f"{format_euros(taxi_mgr.current_fare_cents(), language)}"
-                    f" | {taxi_mgr.fare_distance_m / 1000.0:.2f} km"
-                    f" | {tr(language, 'happiness')}: {taxi_mgr.passenger_happiness:.0f}%"
+                    f"\n{tr(language, 'fare_distance')}: {taxi_mgr.fare_distance_m / 1000.0:.2f} km"
+                    f"\n{tr(language, 'happiness')}: {taxi_mgr.passenger_happiness:.0f}%"
                 )
             role_color = (100, 240, 140)
 

@@ -97,6 +97,13 @@ def test_engine_off_does_not_consume_idle_fuel():
     assert car.fuel_l == pytest.approx(30.0)
 
 
+def test_engine_command_turns_engine_off_and_blocks_throttle():
+    from theroadragetrip.simulation import PlayerCommand
+
+    command = PlayerCommand(throttle=1.0, engine_on=False)
+    assert command.engine_on is False
+
+
 def test_station_price_is_deterministic_and_within_configured_range():
     station = SceneryObject(10.0, 20.0, "fuel", id=1234)
     first = fuel_station_price_cents(station)

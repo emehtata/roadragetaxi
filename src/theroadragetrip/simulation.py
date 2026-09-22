@@ -66,6 +66,7 @@ class PlayerCommand:
     speed_limiter_enabled: bool = True
     red_light_assist_enabled: bool = False
     refuel: bool = False
+    engine_on: Optional[bool] = None
 
 
 @dataclass
@@ -229,6 +230,9 @@ def advance_simulation(
     )
     out_of_fuel = car.fuel_l <= 0.0
 
+    if command.engine_on is not None and not on_foot:
+        car.engine_on = bool(command.engine_on and not out_of_fuel)
+
     if command.refuel:
         station = nearest_fuel_station(scenery_objects, car.x, car.y)
         if station is None:
@@ -260,7 +264,7 @@ def advance_simulation(
                     cost=purchase.cost_cents / 100.0,
                 )
         taxi_mgr.notification_timer = 4.0
-    throttle = 0.0 if on_foot or immobilized or out_of_fuel else command.throttle
+    throttle = 0.0 if on_foot or immobilized or out_of_fuel or not car.engine_on else command.throttle
     brake = 0.0 if on_foot or immobilized else command.brake
     steer_left = 0.0 if on_foot else command.steer_left
     steer_right = 0.0 if on_foot else command.steer_right
