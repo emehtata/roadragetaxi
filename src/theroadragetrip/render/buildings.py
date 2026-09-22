@@ -26,6 +26,9 @@ from ..osm import Building, Place
 
 BUILDING_WALL_COLORS = ((158, 105, 82), (174, 166, 143), (116, 131, 119), (139, 139, 137))
 BUILDING_ROOF_COLORS = ((92, 57, 48), (102, 96, 82), (66, 83, 69), (83, 86, 87))
+OPEN_ROOF_COLOR = (138, 145, 148, 185)
+OPEN_ROOF_EDGE_COLOR = (65, 69, 71, 235)
+OPEN_ROOF_POLE_COLOR = (105, 110, 112, 255)
 # A Finnish building name naming its own color (e.g. "Sininen talo",
 # "Punatalo", "Valkea Kartano") should render in that color rather than the
 # usual per-building pseudo-random wall/roof pick. Keyed by the color's
@@ -59,6 +62,33 @@ COMMERCIAL_AMENITIES = {
     "nightclub", "pub", "restaurant",
 }
 COMMERCIAL_BUILDING_TYPES = {"commercial", "retail", "shop"}
+
+
+def _is_open_roof(building: Building) -> bool:
+    """Return whether an OSM building footprint is a drive-through roof."""
+    return str(getattr(building, "building_type", "") or "").casefold() == "roof"
+
+
+def _draw_open_roof(screen, points, px_per_m: float) -> None:
+    """Draw a translucent canopy and its supports, without solid walls."""
+    import pygame
+
+    shadow_offset = max(1, round(px_per_m * 0.35))
+    pygame.draw.polygon(
+        screen,
+        (30, 32, 33, 75),
+        [(x + shadow_offset, y + shadow_offset) for x, y in points],
+    )
+    pygame.draw.polygon(screen, OPEN_ROOF_COLOR, points)
+    pygame.draw.lines(screen, OPEN_ROOF_EDGE_COLOR, True, points, max(1, round(px_per_m * 0.12)))
+
+    # OSM roof outlines do not normally map each individual support. Corner
+    # posts give the canopy a readable structure while leaving its footprint
+    # open for the taxi and the fuel-pump scenery beneath it.
+    pole_radius = max(1, round(px_per_m * 0.18))
+    for point in points:
+        pygame.draw.circle(screen, OPEN_ROOF_EDGE_COLOR, point, pole_radius + 1)
+        pygame.draw.circle(screen, OPEN_ROOF_POLE_COLOR, point, pole_radius)
 
 # Facade sign colors by venue category, loosely matching real-world signage
 # conventions (warm red for dining, a pharmacy-style green cross, navy and
@@ -703,6 +733,9 @@ def _advance_building_rebuild(job: dict, deadline: float) -> bool:
         if len(b.points_m) < 3:
             continue
         pts = [world_to_screen(x, y, camx, camy, px_per_m, screen_w, screen_h) for (x, y) in b.points_m]
+        if _is_open_roof(b):
+            _draw_open_roof(screen, pts, px_per_m)
+            continue
         if px_per_m <= 0.45:
             pygame.draw.polygon(screen, BUILDING_ROOF_COLORS[0], pts)
             continue
@@ -990,6 +1023,8 @@ def draw_illuminated_windows(
             if bb[2] < vminx or bb[0] > vmaxx or bb[3] < vminy or bb[1] > vmaxy:
                 continue
         if len(b.points_m) < 3:
+            continue
+        if _is_open_roof(b):
             continue
         pts = [world_to_screen(x, y, camx, camy, px_per_m, screen_w, screen_h) for (x, y) in b.points_m]
         height = max(3.0, float(getattr(b, "height_m", 8.0)))

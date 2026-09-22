@@ -280,6 +280,8 @@ class TaxiManager:
             self._building_collision_count = 0
         if len(buildings) > self._building_collision_count:
             for building in buildings[self._building_collision_count:]:
+                if str(getattr(building, "building_type", "") or "").casefold() == "roof":
+                    continue
                 bbox = getattr(building, "bbox", (0.0, 0.0, 0.0, 0.0))
                 if bbox == (0.0, 0.0, 0.0, 0.0):
                     points = getattr(building, "points_m", [])

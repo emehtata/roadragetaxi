@@ -134,6 +134,30 @@ def test_very_tall_building_facade_depth_stays_bounded():
         pygame.quit()
 
 
+def test_open_roof_renders_as_translucent_canopy_without_facade_walls():
+    canopy = Building(
+        [(-5.0, -5.0), (5.0, -5.0), (5.0, 5.0), (-5.0, 5.0)],
+        bbox=(-5.0, -5.0, 5.0, 5.0),
+        building_type="roof",
+    )
+
+    pygame.init()
+    try:
+        screen = pygame.Surface((200, 200), pygame.SRCALPHA)
+        _draw_buildings_uncached(
+            screen, [canopy], 0.0, 0.0, px_per_m=5.0, screen_w=200, screen_h=200
+        )
+
+        assert screen.get_at((100, 100)).a < 255
+        assert not any(
+            tuple(screen.get_at((x, y)))[:3] in BUILDING_WALL_COLORS
+            for x in range(screen.get_width())
+            for y in range(screen.get_height())
+        )
+    finally:
+        pygame.quit()
+
+
 def test_building_sign_foreshorten_is_full_when_wall_faces_the_camera():
     # Edge tangent and wall-normal direction perpendicular: no correction needed.
     assert _building_sign_foreshorten(1.0, 0.0, 0.0, 1.0) == 1.0
