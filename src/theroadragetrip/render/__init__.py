@@ -66,6 +66,7 @@ from .scenery import (
     draw_parking_spaces,
     draw_scenery,
     draw_scenery_objects,
+    draw_fuel_station_signs,
     draw_trees,
 )
 

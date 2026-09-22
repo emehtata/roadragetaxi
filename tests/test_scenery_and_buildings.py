@@ -54,6 +54,7 @@ from theroadragetrip.render import (
     draw_illuminated_windows,
     draw_scenery,
     draw_scenery_objects,
+    draw_fuel_station_signs,
     draw_trees,
     world_to_screen,
     _draw_scenery_uncached,
@@ -840,9 +841,16 @@ def test_fuel_station_draws_prominent_marker_and_price_board():
         screen, [station], 0.0, 0.0, px_per_m=10.0,
         screen_w=300, screen_h=240,
     )
+    # Simulate an opaque building layer covering the pump and anything
+    # drawn with ordinary scenery objects, then render the station overlay.
+    pygame.draw.rect(screen, (70, 70, 70), (40, 25, 220, 100))
+    draw_fuel_station_signs(
+        screen, [station], 0.0, 0.0, px_per_m=10.0,
+        screen_w=300, screen_h=240,
+    )
 
     colored_above_pump = sum(
-        tuple(screen.get_at((x, y)))[:3] != (0, 0, 0)
+        tuple(screen.get_at((x, y)))[:3] not in {(0, 0, 0), (70, 70, 70)}
         for x in range(50, 251)
         for y in range(35, 105)
     )

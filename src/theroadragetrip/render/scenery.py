@@ -1031,9 +1031,6 @@ def _draw_scenery_objects_uncached(
             pygame.draw.circle(screen, SCENERY_OBJECT_COLORS["fountain"], (sx, sy), radius)
             pygame.draw.circle(screen, _FOUNTAIN_SPRAY_COLOR, (sx, sy), max(1, radius // 3))
         elif obj.kind == "fuel":
-            # Fuel pumps are gameplay locations, not merely decoration:
-            # keep the pump recognizable and add a fixed-pixel yard sign
-            # that stays legible across gameplay zoom levels.
             width = max(7, int(0.8 * px_per_m))
             height = max(12, int(1.3 * px_per_m))
             pump_rect = pygame.Rect(sx - width // 2, sy - height, width, height)
@@ -1046,36 +1043,60 @@ def _draw_scenery_objects_uncached(
                 max(2, height // 4),
             )
             pygame.draw.rect(screen, (20, 30, 32), display_rect)
-
-            marker_y = pump_rect.y - 18
-            pygame.draw.circle(screen, (255, 205, 35), (sx, marker_y), 10)
-            pygame.draw.circle(screen, (25, 28, 30), (sx, marker_y), 10, 2)
-            pygame.draw.polygon(
-                screen,
-                (255, 205, 35),
-                ((sx - 6, marker_y + 7), (sx + 6, marker_y + 7), (sx, pump_rect.y - 2)),
-            )
-
-            global _fuel_station_font
-            if _fuel_station_font is None:
-                _fuel_station_font = pygame.font.SysFont(None, 18, bold=True)
-            price_cents = fuel_station_price_cents(obj)
-            station_name = obj.name or "FUEL"
-            price_text = _fuel_station_font.render(
-                f"{station_name}  {price_cents / 100.0:.2f} €/L",
-                True,
-                (255, 235, 120),
-            )
-            board_rect = price_text.get_rect(midbottom=(sx, marker_y - 13)).inflate(12, 8)
-            pygame.draw.rect(screen, (15, 22, 25), board_rect, border_radius=4)
-            pygame.draw.rect(screen, (255, 205, 35), board_rect, width=2, border_radius=4)
-            screen.blit(price_text, price_text.get_rect(center=board_rect.center))
         elif obj.kind == "gate":
             half_len = max(2, int(1.0 * px_per_m))
             pygame.draw.line(screen, SCENERY_OBJECT_COLORS["gate"], (sx - half_len, sy), (sx + half_len, sy), max(1, int(px_per_m * 0.15)))
         elif obj.kind == "bollard":
             radius = max(1, int(0.25 * px_per_m))
             pygame.draw.circle(screen, SCENERY_OBJECT_COLORS["bollard"], (sx, sy), radius)
+
+
+def draw_fuel_station_signs(
+    screen,
+    scenery_objects: List[SceneryObject],
+    camx: float,
+    camy: float,
+    px_per_m: float = PX_PER_M,
+    screen_w: int = SCREEN_W,
+    screen_h: int = SCREEN_H,
+) -> None:
+    """Draw gameplay-critical fuel markers above buildings and scenery."""
+    import pygame
+
+    global _fuel_station_font
+    if _fuel_station_font is None:
+        _fuel_station_font = pygame.font.SysFont(None, 18, bold=True)
+    vminx, vminy, vmaxx, vmaxy = get_viewport_bounds(
+        camx, camy, px_per_m, screen_w, screen_h, 30.0
+    )
+    for station in scenery_objects:
+        if station.kind != "fuel" or not (
+            vminx <= station.x <= vmaxx and vminy <= station.y <= vmaxy
+        ):
+            continue
+        sx, sy = world_to_screen(
+            station.x, station.y, camx, camy, px_per_m, screen_w, screen_h
+        )
+        pump_height = max(12, int(1.3 * px_per_m))
+        marker_y = sy - pump_height - 18
+        pygame.draw.circle(screen, (255, 205, 35), (sx, marker_y), 10)
+        pygame.draw.circle(screen, (25, 28, 30), (sx, marker_y), 10, 2)
+        pygame.draw.polygon(
+            screen,
+            (255, 205, 35),
+            ((sx - 6, marker_y + 7), (sx + 6, marker_y + 7), (sx, sy - pump_height - 2)),
+        )
+        price_cents = fuel_station_price_cents(station)
+        station_name = station.name or "FUEL"
+        price_text = _fuel_station_font.render(
+            f"{station_name}  {price_cents / 100.0:.2f} €/L",
+            True,
+            (255, 235, 120),
+        )
+        board_rect = price_text.get_rect(midbottom=(sx, marker_y - 13)).inflate(12, 8)
+        pygame.draw.rect(screen, (15, 22, 25), board_rect, border_radius=4)
+        pygame.draw.rect(screen, (255, 205, 35), board_rect, width=2, border_radius=4)
+        screen.blit(price_text, price_text.get_rect(center=board_rect.center))
 
 
 def draw_parking_spaces(screen, parking_spaces, camx: float, camy: float, px_per_m: float = PX_PER_M,

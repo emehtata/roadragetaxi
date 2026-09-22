@@ -124,6 +124,7 @@ from ..render import (
     draw_phone_offers,
     draw_scenery,
     draw_scenery_objects,
+    draw_fuel_station_signs,
     draw_trees,
     draw_street_lights,
     draw_taxi_smoke,
@@ -2316,6 +2317,17 @@ def main() -> None:
                 spatial_grid=building_grid,
                 places=places,
                 profiler=frame_profiler,
+            )
+            # Fuel stations are interactive gameplay targets. Their yard
+            # signs must remain visible even when an OSM pump node overlaps
+            # a building footprint, so this overlay intentionally follows
+            # the building layer.
+            draw_fuel_station_signs(
+                screen,
+                scenery_objects,
+                camx,
+                camy,
+                px_per_m=px_per_m,
             )
             stage_elapsed = time.perf_counter() - map_stage_start
             render_profile_times["map_buildings"] = render_profile_times.get("map_buildings", 0.0) + stage_elapsed

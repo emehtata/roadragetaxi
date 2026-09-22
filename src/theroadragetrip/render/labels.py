@@ -259,7 +259,50 @@ def _draw_labels_uncached(
                 if render_label(name, cx, cy, (190, 255, 190), (15, 45, 15, 210)):
                     seen_names.add(name)
 
-    # 4. Road / street names (white, only when sufficiently zoomed in)
+    # 4. Named buildings and their associated venues. These are rendered
+    # before roads so street names cannot exhaust the shared label budget.
+    if label_mode >= 2 and px_per_m >= 0.45:
+        for building in label_buildings:
+            if count >= max_labels:
+                break
+            bb = getattr(building, "bbox", None)
+            if bb and bb != (0.0, 0.0, 0.0, 0.0):
+                if bb[2] < vminx or bb[0] > vmaxx or bb[3] < vminy or bb[1] > vmaxy:
+                    continue
+
+            candidates = [
+                (place.name, place.x, place.y)
+                for place in getattr(building, "associated_places", ())
+                if getattr(place, "name", None)
+            ]
+            building_name = getattr(building, "name", None)
+            if building_name and not any(name == building_name for name, _, _ in candidates):
+                center = getattr(building, "center_m", None)
+                if center is None and getattr(building, "points_m", None):
+                    center = (
+                        sum(point[0] for point in building.points_m) / len(building.points_m),
+                        sum(point[1] for point in building.points_m) / len(building.points_m),
+                    )
+                if center is not None:
+                    candidates.append((building_name, center[0], center[1]))
+
+            for name, label_x, label_y in candidates:
+                if count >= max_labels:
+                    break
+                if name in seen_names:
+                    continue
+                if render_label(
+                    name,
+                    label_x,
+                    label_y,
+                    (255, 225, 135),
+                    (45, 30, 12, 220),
+                    use_font=building_font,
+                    border_color=(205, 150, 55),
+                ):
+                    seen_names.add(name)
+
+    # 5. Road / street names (white, only when sufficiently zoomed in)
     if px_per_m >= 0.35:
         label_ways = (
             spatial_grid.ways_in_rect(vminx, vminy, vmaxx, vmaxy)
@@ -283,16 +326,3 @@ def _draw_labels_uncached(
                 my = (pts[mid_idx - 1][1] + pts[mid_idx][1]) * 0.5
                 if render_label(name, mx, my, (255, 255, 255), (25, 25, 25, 210)):
                     seen_names.add(name)
-
-    # 5. Buildings (warm yellow, only when sufficiently zoomed in and room left)
-    if label_mode >= 2 and px_per_m >= 0.45 and count < max_labels:
-        for b in label_buildings:
-            if count >= max_labels:
-                break
-            name = getattr(b, "name", None)
-            if not name or name in seen_names:
-                continue
-            bb = getattr(b, "bbox", None)
-            if bb and bb != (0.0, 0.0, 0.0, 0.0):
-                if bb[2] < vminx or bb[0] > vmaxx or bb[3] < vminy or bb[1] > vmaxy:
-                    continue
