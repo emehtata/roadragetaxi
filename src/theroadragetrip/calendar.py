@@ -1,4 +1,4 @@
-"""In-game calendar and month-based Finnish seasons."""
+"""In-game calendar and Finnish thermal seasons."""
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -14,6 +14,7 @@ class Season(str, Enum):
 
 
 def season_for_month(month: int) -> Season:
+    """Return the legacy fixed season for callers that only have a month."""
     if not 1 <= month <= 12:
         raise ValueError(f"month must be in 1..12, got {month}")
     if month in (12, 1, 2):
@@ -30,6 +31,7 @@ class GameCalendar:
     """Mutable local game datetime advanced in game seconds."""
 
     current: datetime
+    latitude: float = 60.17
 
     @classmethod
     def from_date_and_seconds(cls, day: date, seconds: float) -> "GameCalendar":
@@ -47,7 +49,10 @@ class GameCalendar:
 
     @property
     def season(self) -> Season:
-        return season_for_month(self.current.month)
+        # Local import avoids a module cycle: climate imports the shared enum.
+        from .climate import thermal_season_for_date
+
+        return thermal_season_for_date(self.date, self.latitude)
 
     def advance(self, game_seconds: float) -> None:
         self.current += timedelta(seconds=game_seconds)

@@ -35,6 +35,7 @@ from ..career import (
 from ..localization import SUPPORTED_LANGUAGES, normalize_language, tr
 from ..calendar import GameCalendar, Season
 from ..climate import typical_temperature
+from ..fuel import fuel_station_price_cents, nearest_fuel_station
 from .. import protocol, transport
 from ..simulation import PlayerCommand, advance_simulation, apply_enter_exit_vehicle
 from ..osm import (
@@ -208,6 +209,20 @@ def _weather_status(weather) -> str:
         f"{int(remaining % 3600 // 60):02d}:{int(remaining % 60):02d}"
     )
     return f"condition={weather.weather_type.value} wetness={weather.wetness:.0%} {timing}"
+
+
+def _sync_thermal_season(game_calendar, weather, logged_season):
+    """Apply the calendar season to weather and log actual transitions."""
+    season = game_calendar.season
+    weather.season = season
+    if season != logged_season:
+        logger.info(
+            "Thermal season: %s (date=%s latitude=%.4f)",
+            season.value,
+            game_calendar.date,
+            game_calendar.latitude,
+        )
+    return season
 
 
 def _map_sync_should_start(revision_changed: bool, any_grid_stale: bool, map_sync_stage: int) -> bool:
@@ -1164,7 +1179,7 @@ def main() -> None:
         zoom_elapsed = 0.0
         zoom_duration = 3.0
         start_datetime = selected_start_datetime if game_mode == "gig_driver" else datetime(2026, 8, 31, 18, 0)
-        game_calendar = GameCalendar(start_datetime)
+        game_calendar = GameCalendar(start_datetime, latitude=sun_latitude)
         game_time_seconds = game_calendar.time_seconds
         set_game_date(game_calendar.date)
         logger.info(
@@ -1173,6 +1188,13 @@ def main() -> None:
             chosen_city,
             sun_latitude,
             sun_longitude,
+        )
+        logged_season = game_calendar.season
+        logger.info(
+            "Thermal season: %s (date=%s latitude=%.4f)",
+            logged_season.value,
+            game_calendar.date,
+            game_calendar.latitude,
         )
         solar_time_bucket = None
         camx, camy = car.x, car.y
@@ -1207,6 +1229,7 @@ def main() -> None:
         visible_road_count = 0
         on_foot = True
         interact_pending = False
+        refuel_pending = False
         command_seq = 0
         prev_state_snapshot = None
         prev_snapshot_time = 0.0
@@ -1252,7 +1275,7 @@ def main() -> None:
             game_time_seconds = game_calendar.time_seconds
             if game_calendar.date != previous_date:
                 set_game_date(game_calendar.date)
-                weather.season = game_calendar.season
+                logged_season = _sync_thermal_season(game_calendar, weather, logged_season)
             weather.update(dt * time_scale, dt)
             frame_profiler.set_metric(
                 "weather", f"{weather.weather_type.value} wetness={weather.wetness:.0%}"
@@ -1262,6 +1285,8 @@ def main() -> None:
                 car_latitude, car_longitude = meters_to_latlon(car.x, car.y, transformer_to_ll)
                 if car_latitude is not None and car_longitude is not None:
                     sun_latitude, sun_longitude = car_latitude, car_longitude
+                    game_calendar.latitude = car_latitude
+                    logged_season = _sync_thermal_season(game_calendar, weather, logged_season)
                 solar_time_bucket = current_solar_bucket
                 logger.debug(
                     "Solar position updated: time=%02d:%02d latitude=%.6f longitude=%.6f",
@@ -1334,7 +1359,7 @@ def main() -> None:
                         game_time_seconds = game_calendar.time_seconds
                         if game_calendar.date != previous_date:
                             set_game_date(game_calendar.date)
-                            weather.season = game_calendar.season
+                            logged_season = _sync_thermal_season(game_calendar, weather, logged_season)
                         logger.debug(
                             "Game time adjusted: delta=%+.1fh time=%02d:%02d",
                             time_delta / 3600.0,
@@ -1413,6 +1438,8 @@ def main() -> None:
                         # start_hint_remaining is reset once on_foot
                         # actually flips to False.
                         interact_pending = True
+                    elif event.key == pygame.K_g:
+                        refuel_pending = True
                     elif event.key == pygame.K_SPACE and not phone_open:
                         if rage_power >= RAGE_SHOUT_COST:
                             audio.play_driver_line("rage", language)
@@ -1759,7 +1786,9 @@ def main() -> None:
                 sprint=bool(on_foot and (keys[pygame.K_LSHIFT] or keys[pygame.K_RSHIFT])),
                 speed_limiter_enabled=speed_limiter_enabled,
                 red_light_assist_enabled=red_light_assist_enabled,
+                refuel=refuel_pending,
             )
+            refuel_pending = False
             previous_car_position = (car.x, car.y)
 
             if connection is not None:
@@ -1831,7 +1860,7 @@ def main() -> None:
                 game_time_seconds = game_calendar.time_seconds
                 if game_calendar.date != previous_date:
                     set_game_date(game_calendar.date)
-                    weather.season = game_calendar.season
+                    logged_season = _sync_thermal_season(game_calendar, weather, logged_season)
                 weather.update(dt * time_scale, dt)
                 taxi_mgr.game_date = game_calendar.date
 
@@ -2596,6 +2625,12 @@ def main() -> None:
             current_target = taxi_mgr.get_current_target()
             target_coords = (current_target.x, current_target.y) if current_target else None
             current_limit_kmh = getattr(current_way, "speed_limit_kmh", None) if current_way else None
+            nearby_fuel_station = nearest_fuel_station(scenery_objects, car.x, car.y)
+            nearby_fuel_price_cents = (
+                fuel_station_price_cents(nearby_fuel_station)
+                if nearby_fuel_station is not None
+                else None
+            )
 
             draw_hud(
                 screen,
@@ -2629,6 +2664,7 @@ def main() -> None:
                 show_debug_hud=show_debug_hud,
                 hud_layout=hud_layout,
                 hud_rects=hud_rects,
+                fuel_station_price_cents=nearby_fuel_price_cents,
             )
             if phone_open:
                 draw_phone_offers(screen, taxi_mgr, font, small_font, SCREEN_W, SCREEN_H, language, car=car)

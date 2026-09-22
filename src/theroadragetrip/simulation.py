@@ -21,6 +21,12 @@ from dataclasses import dataclass
 from typing import Optional
 
 from .career import CAREER_SCORE_LIMIT, save_career, save_gig_odometer
+from .fuel import (
+    calculate_fuel_purchase,
+    fuel_station_price_cents,
+    nearest_fuel_station,
+    update_car_fuel,
+)
 from .localization import tr
 from .physics import (
     ACCEL,
@@ -58,6 +64,7 @@ class PlayerCommand:
     # on/off state locally exactly like it tracks on_foot today.
     speed_limiter_enabled: bool = True
     red_light_assist_enabled: bool = False
+    refuel: bool = False
 
 
 @dataclass
@@ -178,6 +185,7 @@ def advance_simulation(
     speed_bumps = world.speed_bumps
     buildings = world.buildings
     sceneries = world.sceneries
+    scenery_objects = getattr(world, "scenery_objects", ())
     residents = world.residents
     npcs = world.npcs
     npc_manager = world.npc_manager
@@ -211,7 +219,47 @@ def advance_simulation(
         player_pedestrian.y += math.sin(player_pedestrian.heading) * player_pedestrian.speed * dt
 
     immobilized = taxi_mgr.tree_wait_timer > 0.0
-    throttle = 0.0 if on_foot or immobilized else command.throttle
+    car.driver_mass_kg = 0.0 if on_foot else 90.0
+    passenger = taxi_mgr.current_passenger
+    car.passenger_mass_kg = (
+        passenger.weight_kg
+        if passenger is not None and getattr(passenger, "boarded", False)
+        else 0.0
+    )
+    out_of_fuel = car.fuel_l <= 0.0
+
+    if command.refuel:
+        station = nearest_fuel_station(scenery_objects, car.x, car.y)
+        if station is None:
+            taxi_mgr.notification_msg = tr(language, "fuel_no_station")
+        elif on_foot:
+            taxi_mgr.notification_msg = tr(language, "fuel_enter_car")
+        elif abs(car.speed) > 0.5:
+            taxi_mgr.notification_msg = tr(language, "fuel_stop_car")
+        elif car.fuel_l >= car.fuel_capacity_l - 1e-6:
+            taxi_mgr.notification_msg = tr(language, "fuel_tank_full")
+        else:
+            price_cents = fuel_station_price_cents(station)
+            purchase = calculate_fuel_purchase(
+                car.fuel_l,
+                car.fuel_capacity_l,
+                taxi_mgr.balance_cents,
+                price_cents,
+            )
+            if purchase.liters <= 0.0:
+                taxi_mgr.notification_msg = tr(language, "fuel_no_money")
+            else:
+                car.fuel_l = min(car.fuel_capacity_l, car.fuel_l + purchase.liters)
+                taxi_mgr.balance_cents -= purchase.cost_cents
+                car.engine_on = True
+                taxi_mgr.notification_msg = tr(
+                    language,
+                    "fuel_purchased",
+                    liters=purchase.liters,
+                    cost=purchase.cost_cents / 100.0,
+                )
+        taxi_mgr.notification_timer = 4.0
+    throttle = 0.0 if on_foot or immobilized or out_of_fuel else command.throttle
     brake = 0.0 if on_foot or immobilized else command.brake
     steer_left = 0.0 if on_foot else command.steer_left
     steer_right = 0.0 if on_foot else command.steer_right
@@ -289,6 +337,17 @@ def advance_simulation(
     audio.update_acceleration(abs(car.speed) > 0.5 and (throttle > 0.0 or brake > 0.0))
     audio.update_comments(dt)
     driven_distance = math.hypot(car.x - previous_position[0], car.y - previous_position[1])
+    fuel_emptied = update_car_fuel(
+        car,
+        driven_distance,
+        abs(car.speed),
+        throttle,
+        brake,
+        acceleration_mps2=max(0.0, car.raw_forward_g * 9.81),
+    )
+    if fuel_emptied:
+        taxi_mgr.notification_msg = tr(language, "fuel_empty")
+        taxi_mgr.notification_timer = 4.0
     road_limit_mps = current_way.speed_limit_kmh / 3.6 if current_way else None
     rage_power = _rage_from_speeding(rage_power, car.speed, road_limit_mps, driven_distance)
     if abs(car.speed) * 3.6 < 10.0 and taxi_mgr.sees_red_light(car, nearby_traffic_lights, traffic_mgr.sim_time):

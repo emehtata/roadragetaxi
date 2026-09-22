@@ -91,6 +91,7 @@ class Resident:
     surname: str = ""
     gender: Optional[str] = None
     birth_date: date = field(default_factory=date.today)
+    weight_kg: float = field(default_factory=lambda: random.uniform(50.0, 120.0))
     parent_ids: Set[int] = field(default_factory=set)
     child_ids: Set[int] = field(default_factory=set)
     mode: str = "walking"

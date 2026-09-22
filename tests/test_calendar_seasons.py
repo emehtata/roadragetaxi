@@ -2,21 +2,28 @@ from datetime import datetime
 
 import pytest
 
-from theroadragetrip.calendar import GameCalendar, Season, season_for_month
+from theroadragetrip.calendar import GameCalendar, Season
 from theroadragetrip.render.scenery import seasonal_vegetation_color
 from theroadragetrip.weather import WeatherSystem
 
 
 @pytest.mark.parametrize(
-    ("month", "season"),
+    ("moment", "season"),
     [
-        (1, Season.WINTER), (2, Season.WINTER), (3, Season.SPRING),
-        (5, Season.SPRING), (6, Season.SUMMER), (8, Season.SUMMER),
-        (9, Season.AUTUMN), (11, Season.AUTUMN), (12, Season.WINTER),
+        (datetime(2026, 1, 15), Season.WINTER),
+        (datetime(2026, 4, 15), Season.SPRING),
+        (datetime(2026, 7, 15), Season.SUMMER),
+        (datetime(2026, 10, 15), Season.AUTUMN),
     ],
 )
-def test_three_month_seasons(month, season):
-    assert season_for_month(month) == season
+def test_calendar_uses_thermal_seasons(moment, season):
+    assert GameCalendar(moment, latitude=60.17).season == season
+
+
+def test_calendar_season_depends_on_latitude():
+    day = datetime(2026, 5, 18)
+    assert GameCalendar(day, latitude=60.17).season == Season.SUMMER
+    assert GameCalendar(day, latitude=69.9).season == Season.SPRING
 
 
 def test_calendar_crosses_midnight_and_leap_day():

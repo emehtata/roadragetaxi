@@ -62,6 +62,25 @@ def test_respawn_uses_taxi_stop_when_available():
     assert car.speed == 0.0
 
 
+def test_respawn_refills_fuel_and_restarts_engine():
+    road = Way(points_m=[(0.0, 0.0), (100.0, 0.0)], highway="residential", half_width_m=4.0)
+    car = Car(x=0.0, y=0.0, heading=0.0, speed=0.0, engine_on=False, fuel_l=0.0)
+
+    respawn_car(car, [road])
+
+    assert car.fuel_l == car.fuel_capacity_l == 60.0
+    assert car.engine_on is True
+
+
+def test_respawn_preserves_fuel_when_tank_is_not_empty():
+    road = Way(points_m=[(0.0, 0.0), (100.0, 0.0)], highway="residential", half_width_m=4.0)
+    car = Car(x=0.0, y=0.0, heading=0.0, speed=0.0, fuel_l=17.5)
+
+    respawn_car(car, [road])
+
+    assert car.fuel_l == 17.5
+
+
 def test_center_respawn_varies_without_taxi_stops():
     roads = [
         Way(points_m=[(0.0, 0.0), (100.0, 0.0)], highway="residential", half_width_m=4.0),

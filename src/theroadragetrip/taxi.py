@@ -1,7 +1,7 @@
 import logging
 import math
 import random
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -65,6 +65,7 @@ class TaxiPassenger:
     nausea_warning_timer: float = 0.0
     nausea_resolved: bool = False
     nausea_vomited: bool = False
+    weight_kg: float = field(default_factory=lambda: random.uniform(50.0, 120.0))
 
 
 @dataclass
@@ -204,10 +205,17 @@ class TaxiManager:
         self.wrong_way_penalty_cooldown: float = 0.0
         self.pedestrian_way_penalty_cooldown: float = 0.0
 
-    def _new_passenger_identity(self, resident: Optional[Resident] = None) -> tuple[str, str, int]:
+    def _new_passenger_identity(
+        self, resident: Optional[Resident] = None
+    ) -> tuple[str, str, int, float]:
         resident = resident or self.residents.create("walking")
         gender = {"female": "woman", "male": "man"}.get(resident.gender, "woman")
-        return f"{resident.first_name} {resident.surname}", gender, resident.resident_id
+        return (
+            f"{resident.first_name} {resident.surname}",
+            gender,
+            resident.resident_id,
+            resident.weight_kg,
+        )
 
     def nausea_delay_for_pickup(self, pickup: TaxiTarget) -> float:
         return nausea_delay_for_pickup(pickup, self.game_time_seconds)
@@ -1211,13 +1219,14 @@ class TaxiManager:
         if not dropoff_target:
             dropoff_target = pickup_target
 
-        passenger_name, passenger_gender, resident_id = self._new_passenger_identity()
+        passenger_name, passenger_gender, resident_id, passenger_weight_kg = self._new_passenger_identity()
         self.current_passenger = TaxiPassenger(
             name=passenger_name,
             pickup=pickup_target,
             dropoff=dropoff_target,
             gender=passenger_gender,
             resident_id=resident_id,
+            weight_kg=passenger_weight_kg,
             ped_x=self.passenger_waiting_position(pickup_target)[0],
             ped_y=self.passenger_waiting_position(pickup_target)[1],
             ped_heading=self.passenger_waiting_position(pickup_target)[2],
@@ -1352,13 +1361,14 @@ class TaxiManager:
             dropoff = self.pick_phone_dropoff(pickup.x, pickup.y)
             if not dropoff:
                 continue
-            passenger_name, passenger_gender, resident_id = self._new_passenger_identity()
+            passenger_name, passenger_gender, resident_id, passenger_weight_kg = self._new_passenger_identity()
             passenger = TaxiPassenger(
                 name=passenger_name,
                 pickup=pickup,
                 dropoff=dropoff,
                 gender=passenger_gender,
                 resident_id=resident_id,
+                weight_kg=passenger_weight_kg,
                 ped_x=self.passenger_waiting_position(pickup)[0],
                 ped_y=self.passenger_waiting_position(pickup)[1],
                 ped_heading=self.passenger_waiting_position(pickup)[2],
@@ -1439,13 +1449,14 @@ class TaxiManager:
         if not dropoff:
             return False
         resident = self.residents.get(getattr(pedestrian, "resident_id", None))
-        passenger_name, passenger_gender, resident_id = self._new_passenger_identity(resident)
+        passenger_name, passenger_gender, resident_id, passenger_weight_kg = self._new_passenger_identity(resident)
         passenger = TaxiPassenger(
             name=passenger_name,
             pickup=pickup,
             dropoff=dropoff,
             gender=passenger_gender,
             resident_id=resident_id,
+            weight_kg=passenger_weight_kg,
             ped_x=pedestrian.x,
             ped_y=pedestrian.y,
             ped_heading=pedestrian.heading,

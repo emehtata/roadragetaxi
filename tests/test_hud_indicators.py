@@ -9,6 +9,7 @@ os.environ.setdefault("SDL_AUDIODRIVER", "dummy")
 
 from theroadragetrip.render.hud import (
     _draw_analog_speedometer,
+    _draw_fuel_meter,
     _draw_speedometer_indicators,
     default_hud_layout,
 )
@@ -75,6 +76,18 @@ def test_default_hud_layout_leaves_room_for_speedometer_indicators():
     assert indicators_bottom <= screen_h, (
         f"indicator chips extend to y={indicators_bottom}, past the {screen_h}px screen height"
     )
+
+
+def test_fuel_meter_changes_for_full_low_and_empty_tanks():
+    pygame.init()
+    font = pygame.font.Font(None, 24)
+    frames = []
+    for fuel_l in (60.0, 8.0, 0.0):
+        screen = pygame.Surface((240, 80))
+        screen.fill((0, 0, 0))
+        _draw_fuel_meter(screen, font, Car(0, 0, 0, 0, fuel_l=fuel_l), (10, 10), "en")
+        frames.append(pygame.image.tostring(screen, "RGB"))
+    assert len(set(frames)) == 3
 
 
 def test_date_clock_and_taxi_score_do_not_overlap():

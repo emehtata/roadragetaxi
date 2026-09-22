@@ -374,6 +374,7 @@ def draw_tutorial_screen(
         ("R", tr(language, "respawn")),
         ("X", tr(language, "cancel_ride")),
         ("T", tr(language, "reset_trip")),
+        ("G", tr(language, "refuel")),
         ("L", tr(language, "labels")),
         ("K", tr(language, "lane_assist")),
         ("V", tr(language, "speed_limiter")),

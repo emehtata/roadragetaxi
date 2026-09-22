@@ -123,6 +123,7 @@ def _passenger_to_dict(passenger: Optional[TaxiPassenger]) -> Optional[dict]:
     return {
         "name": passenger.name,
         "gender": passenger.gender,
+        "weight_kg": passenger.weight_kg,
         "nausea_warning_timer": passenger.nausea_warning_timer,
         "nausea_resolved": passenger.nausea_resolved,
         "pickup": {
@@ -160,7 +161,12 @@ def build_state_message(
         "player": {
             "x": car.x, "y": car.y, "heading": car.heading, "speed": car.speed,
             "braking": car.braking, "trip_m": car.trip_m, "odometer_m": car.odometer_m,
-            "engine_on": car.engine_on,
+            "engine_on": car.engine_on, "fuel_l": car.fuel_l,
+            "fuel_capacity_l": car.fuel_capacity_l,
+            "fuel_consumption_l_per_100km": car.fuel_consumption_l_per_100km,
+            "curb_mass_kg": car.curb_mass_kg,
+            "driver_mass_kg": car.driver_mass_kg,
+            "passenger_mass_kg": car.passenger_mass_kg,
         },
         "player_pedestrian": {
             "x": player_pedestrian.x, "y": player_pedestrian.y, "heading": player_pedestrian.heading,
@@ -172,6 +178,7 @@ def build_state_message(
             "state": taxi_mgr.state,
             "total_score": taxi_mgr.total_score,
             "completed_fares": taxi_mgr.completed_fares,
+            "balance_cents": taxi_mgr.balance_cents,
             "notification_msg": taxi_mgr.notification_msg,
             "notification_timer": taxi_mgr.notification_timer,
             "taxi_smoke_timer": taxi_mgr.taxi_smoke_timer,
@@ -242,6 +249,14 @@ def apply_server_state(world, car, state: dict, *, player_pedestrian) -> dict:
     car.trip_m = player["trip_m"]
     car.odometer_m = player["odometer_m"]
     car.engine_on = player["engine_on"]
+    car.fuel_capacity_l = player.get("fuel_capacity_l", car.fuel_capacity_l)
+    car.fuel_l = player.get("fuel_l", car.fuel_l)
+    car.fuel_consumption_l_per_100km = player.get(
+        "fuel_consumption_l_per_100km", car.fuel_consumption_l_per_100km
+    )
+    car.curb_mass_kg = player.get("curb_mass_kg", car.curb_mass_kg)
+    car.driver_mass_kg = player.get("driver_mass_kg", car.driver_mass_kg)
+    car.passenger_mass_kg = player.get("passenger_mass_kg", car.passenger_mass_kg)
 
     ped = state["player_pedestrian"]
     player_pedestrian.x, player_pedestrian.y, player_pedestrian.heading = ped["x"], ped["y"], ped["heading"]
@@ -260,6 +275,7 @@ def apply_server_state(world, car, state: dict, *, player_pedestrian) -> dict:
     taxi_mgr.state = taxi["state"]
     taxi_mgr.total_score = taxi["total_score"]
     taxi_mgr.completed_fares = taxi["completed_fares"]
+    taxi_mgr.balance_cents = taxi.get("balance_cents", taxi_mgr.balance_cents)
     taxi_mgr.notification_msg = taxi["notification_msg"]
     taxi_mgr.notification_timer = taxi["notification_timer"]
     taxi_mgr.taxi_smoke_timer = taxi["taxi_smoke_timer"]
@@ -283,6 +299,7 @@ def _passenger_from_dict(data: Optional[dict]) -> Optional[TaxiPassenger]:
     return TaxiPassenger(
         name=data["name"],
         gender=data["gender"],
+        weight_kg=data.get("weight_kg", 85.0),
         nausea_warning_timer=data["nausea_warning_timer"],
         nausea_resolved=data["nausea_resolved"],
         pickup=TaxiTarget(x=data["pickup"]["x"], y=data["pickup"]["y"], address=data["pickup"]["address"], radius_m=data["pickup"]["radius_m"]),

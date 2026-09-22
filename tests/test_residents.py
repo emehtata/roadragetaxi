@@ -24,6 +24,20 @@ def test_city_resident_gets_birth_date_from_age_distribution():
     assert resident.birth_date <= date.today()
 
 
+def test_every_resident_has_a_stable_weight_between_50_and_120_kg():
+    manager = ResidentManager()
+    residents = [manager.create() for _ in range(20)]
+
+    original_weights = {
+        resident.resident_id: resident.weight_kg for resident in residents
+    }
+    assert all(50.0 <= weight <= 120.0 for weight in original_weights.values())
+    assert {
+        resident_id: manager.get(resident_id).weight_kg
+        for resident_id in original_weights
+    } == original_weights
+
+
 def test_city_density_is_higher_near_city_center():
     manager = ResidentManager("Tampere")
     manager.set_city_center_m(0.0, 0.0)

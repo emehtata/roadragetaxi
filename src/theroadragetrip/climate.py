@@ -42,23 +42,29 @@ def typical_temperature(moment: datetime, latitude: float) -> float:
 
 
 def thermal_season_for_date(day: date, latitude: float) -> Season:
-    """Classify the seven-day mean using Finnish thermal-season limits.
+    """Classify a date using Finnish thermal-season limits.
 
-    Below 0 °C is winter and above 10 °C is summer. Between the thresholds,
-    a warming climatology is spring and a cooling climatology is autumn.
-    Seven consecutive modeled daily means are averaged to represent the
-    Finnish Meteorological Institute's permanence criterion.
+    A threshold takes effect only after seven consecutive modeled daily means
+    remain on its new side. Until then the preceding season continues. The
+    direction of the annual temperature curve distinguishes spring from autumn.
     """
-    current_mean = sum(
+    daily_means = [
         typical_daily_mean_temperature(day - timedelta(days=offset), latitude)
         for offset in range(7)
-    ) / 7.0
-    if current_mean < 0.0:
+    ]
+    warming = daily_means[0] >= typical_daily_mean_temperature(
+        day - timedelta(days=7), latitude
+    )
+
+    if warming:
+        if all(value > 10.0 for value in daily_means):
+            return Season.SUMMER
+        if all(value > 0.0 for value in daily_means):
+            return Season.SPRING
         return Season.WINTER
-    if current_mean > 10.0:
-        return Season.SUMMER
-    previous_mean = sum(
-        typical_daily_mean_temperature(day - timedelta(days=7 + offset), latitude)
-        for offset in range(7)
-    ) / 7.0
-    return Season.SPRING if current_mean >= previous_mean else Season.AUTUMN
+
+    if all(value < 0.0 for value in daily_means):
+        return Season.WINTER
+    if all(value < 10.0 for value in daily_means):
+        return Season.AUTUMN
+    return Season.SUMMER

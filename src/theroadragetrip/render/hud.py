@@ -66,6 +66,7 @@ def _load_rage_face_frames(pygame):
 def default_hud_layout(screen_width: int, screen_height: int) -> dict[str, Tuple[int, int]]:
     return {
         "meters": (10, 10),
+        "fuel": (210, screen_height - 100),
         "rage": (screen_width - 190, screen_height - 246),
         # Shifted up from the speedometer box's own 170px height (was
         # screen_height - 180, flush with the bottom edge) to leave room
@@ -73,6 +74,55 @@ def default_hud_layout(screen_width: int, screen_height: int) -> dict[str, Tuple
         # drawn just below it - see _draw_speedometer_indicators.
         "speedometer": (10, screen_height - 214),
     }
+
+
+def _draw_fuel_meter(
+    screen,
+    font,
+    car: Car,
+    position: Tuple[int, int],
+    language: str,
+    station_price_cents: Optional[int] = None,
+):
+    """Draw a compact fuel bar with liters and percentage remaining."""
+    import pygame
+
+    capacity = max(0.001, car.fuel_capacity_l)
+    fraction = clamp(car.fuel_l / capacity, 0.0, 1.0)
+    color = (70, 205, 105) if fraction >= 0.20 else (
+        (245, 180, 45) if fraction >= 0.08 else (230, 55, 45)
+    )
+    x, y = position
+    width, height = 230, 92 if station_price_cents is not None else 70
+    rect = pygame.Rect(x, y, width, height)
+    pygame.draw.rect(screen, (15, 20, 25), rect, border_radius=6)
+    pygame.draw.rect(screen, (110, 120, 126), rect, width=1, border_radius=6)
+    economy = font.render(
+        f"{tr(language, 'fuel_economy')}: {car.fuel_consumption_l_per_100km:.1f} L/100 km",
+        True,
+        (205, 215, 220),
+    )
+    screen.blit(economy, (x + 9, y + 6))
+    label = font.render(
+        f"{tr(language, 'fuel')}: {car.fuel_l:.1f} L ({fraction:.0%})",
+        True,
+        (245, 245, 235),
+    )
+    screen.blit(label, (x + 9, y + 28))
+    bar = pygame.Rect(x + 9, y + 51, width - 18, 10)
+    pygame.draw.rect(screen, (48, 52, 55), bar, border_radius=3)
+    if fraction > 0.0:
+        fill = bar.copy()
+        fill.width = max(1, round(bar.width * fraction))
+        pygame.draw.rect(screen, color, fill, border_radius=3)
+    if station_price_cents is not None:
+        station_text = font.render(
+            f"{tr(language, 'fuel_station')}  {format_euros(station_price_cents, language)}/L",
+            True,
+            (255, 215, 90),
+        )
+        screen.blit(station_text, (x + 9, y + 69))
+    return rect
 
 
 def _draw_analog_speedometer(screen, speed_mps: float, position: Tuple[int, int]):
@@ -323,6 +373,7 @@ def draw_hud(
     show_debug_hud: bool = False,
     hud_layout: Optional[dict[str, Tuple[int, int]]] = None,
     hud_rects: Optional[dict[str, object]] = None,
+    fuel_station_price_cents: Optional[int] = None,
 ) -> None:
     """Draw speed, trip, odometer, on-road status, current road name, lat/lon, taxi mission bar, notifications."""
     import pygame
@@ -430,6 +481,17 @@ def draw_hud(
         hud_rects["meters"] = meter_rect
     screen.blit(meter_background, (meter_x, meter_y))
     screen.blit(meter_surface, (meter_x + 10, meter_y + 5))
+
+    fuel_rect = _draw_fuel_meter(
+        screen,
+        font,
+        car,
+        layout["fuel"],
+        language,
+        fuel_station_price_cents,
+    )
+    if hud_rects is not None:
+        hud_rects["fuel"] = fuel_rect
 
     # Taxi mission banner / status bar
     if taxi_mgr:

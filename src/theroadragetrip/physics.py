@@ -3,6 +3,7 @@ import random
 from dataclasses import dataclass
 from typing import Any, List, Optional, Tuple
 
+from .fuel import FUEL_TANK_CAPACITY_L, INITIAL_FUEL_L
 from .geo import angle_diff, clamp, closest_point_and_dist_to_segment, compute_bbox, dist_point_to_segment, point_in_polygon
 
 # Car physics (arcade)
@@ -230,6 +231,16 @@ class Car:
     _prev_vx: float = 0.0  # world-frame velocity, previous frame (g-force calc only)
     _prev_vy: float = 0.0
     _g_force_initialized: bool = False  # False until a first real dt has primed _prev_vx/vy
+    fuel_capacity_l: float = FUEL_TANK_CAPACITY_L
+    fuel_l: float = INITIAL_FUEL_L
+    fuel_consumption_l_per_100km: float = 0.0
+    curb_mass_kg: float = 1400.0
+    driver_mass_kg: float = 90.0
+    passenger_mass_kg: float = 0.0
+
+    @property
+    def total_mass_kg(self) -> float:
+        return self.curb_mass_kg + self.driver_mass_kg + self.passenger_mass_kg
 
 
 def is_car_road(way) -> bool:
@@ -647,6 +658,10 @@ def respawn_car(
     """Place the car on a main connected drivable land road, avoiding isolated road segments."""
     if not ways:
         return
+    if car.fuel_l <= 0.0:
+        car.fuel_l = car.fuel_capacity_l
+    car.fuel_consumption_l_per_100km = 0.0
+    car.engine_on = True
 
     if near_edge and bounds:
         minx, miny, maxx, maxy = bounds
@@ -1505,6 +1520,11 @@ def update_car_physics(
     """
     entry_x, entry_y, entry_heading = car.x, car.y, car.heading
     entry_speed = car.speed
+    # Existing solo-taxi handling is calibrated at curb mass + the 90 kg
+    # driver. Added passenger mass reduces acceleration from the same fixed
+    # engine/brake force without retuning the unloaded car.
+    reference_mass_kg = car.curb_mass_kg + 90.0
+    mass_force_scale = reference_mass_kg / max(1.0, car.total_mass_kg)
     using_longitudinal_tire_grip = False
     throttle_driven = False
     braking_driven = False
@@ -1517,15 +1537,15 @@ def update_car_physics(
     elif throttle > 0:
         using_longitudinal_tire_grip = True
         throttle_driven = True
-        acceleration = forward_acceleration(car.speed)
+        acceleration = forward_acceleration(car.speed) * mass_force_scale
         car.speed = min(car.speed + acceleration * dt, speed_limit_mps) if speed_limit_mps is not None else car.speed + acceleration * dt
     elif brake > 0:
         using_longitudinal_tire_grip = True
         braking_driven = True
         if car.speed > 0.0:
-            car.speed = max(0.0, car.speed - BRAKE * dt)
+            car.speed = max(0.0, car.speed - BRAKE * mass_force_scale * dt)
         else:
-            car.speed -= REVERSE_ACCEL * dt
+            car.speed -= REVERSE_ACCEL * mass_force_scale * dt
         if speed_limit_mps is not None:
             car.speed = max(-speed_limit_mps, car.speed)
     else:
