@@ -1033,16 +1033,22 @@ def _draw_scenery_objects_uncached(
         elif obj.kind == "fuel":
             width = max(7, int(0.8 * px_per_m))
             height = max(12, int(1.3 * px_per_m))
-            pump_rect = pygame.Rect(sx - width // 2, sy - height, width, height)
-            pygame.draw.rect(screen, (205, 62, 48), pump_rect, border_radius=2)
-            pygame.draw.rect(screen, (245, 245, 230), pump_rect, width=1, border_radius=2)
-            display_rect = pygame.Rect(
-                pump_rect.x + max(1, width // 5),
-                pump_rect.y + max(2, height // 6),
-                max(2, width - 2 * max(1, width // 5)),
-                max(2, height // 4),
-            )
-            pygame.draw.rect(screen, (20, 30, 32), display_rect)
+            angle = obj.direction_angle if obj.direction_angle is not None else 0.0
+            along_x, along_y = math.cos(angle), -math.sin(angle)
+            offsets = (-0.85 * px_per_m, 0.85 * px_per_m) if obj.is_area else (0.0,)
+            for offset in offsets:
+                pump_x = sx + along_x * offset
+                pump_y = sy + along_y * offset
+                pump_rect = pygame.Rect(pump_x - width // 2, pump_y - height, width, height)
+                pygame.draw.rect(screen, (205, 62, 48), pump_rect, border_radius=2)
+                pygame.draw.rect(screen, (245, 245, 230), pump_rect, width=1, border_radius=2)
+                display_rect = pygame.Rect(
+                    pump_rect.x + max(1, width // 5),
+                    pump_rect.y + max(2, height // 6),
+                    max(2, width - 2 * max(1, width // 5)),
+                    max(2, height // 4),
+                )
+                pygame.draw.rect(screen, (20, 30, 32), display_rect)
         elif obj.kind == "gate":
             half_len = max(2, int(1.0 * px_per_m))
             pygame.draw.line(screen, SCENERY_OBJECT_COLORS["gate"], (sx - half_len, sy), (sx + half_len, sy), max(1, int(px_per_m * 0.15)))

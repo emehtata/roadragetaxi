@@ -444,6 +444,7 @@ class SceneryObject:
     name: Optional[str] = None
     id: Optional[int] = None
     direction_angle: Optional[float] = None
+    is_area: bool = False
 
 
 class MapData(tuple):

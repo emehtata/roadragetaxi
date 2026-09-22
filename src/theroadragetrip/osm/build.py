@@ -5,6 +5,7 @@ import math
 import time
 from typing import Callable, Dict, List, Optional, Set, Tuple
 
+from ..geo import point_in_polygon
 
 
 logger = logging.getLogger(__name__)
@@ -326,6 +327,7 @@ def build_ways(
     railway_raw: List[Tuple[dict, List[int]]] = []
     railing_raw: List[Tuple[dict, List[int]]] = []
     building_raw: List[Tuple[dict, List[int]]] = []
+    fuel_area_raw: List[Tuple[dict, List[int], Optional[int]]] = []
     parking_space_raw: List[Tuple[dict, List[int], Optional[int]]] = []
     scenery_raw: List[Tuple[dict, List[int]]] = []
     named_ways_raw: List[Tuple[dict, List[int]]] = []
@@ -376,6 +378,8 @@ def build_ways(
                 ways_by_id[way_id] = el
             if len(node_ids) < 2:
                 continue
+            if tags.get("amenity") == "fuel":
+                fuel_area_raw.append((tags, node_ids, way_id))
             if include_bus_stops and tags.get("public_transport") == "platform":
                 bus_platforms_raw.append((tags, node_ids, way_id))
             if "building" in tags or "building:part" in tags:
@@ -1037,6 +1041,39 @@ def build_ways(
                 obj_y = snap_y + normal_y * side * clearance
                 angle = way_angle
         scenery_objects.append(SceneryObject(x=obj_x, y=obj_y, kind=kind, name=tags.get("name"), id=nid, direction_angle=angle))
+
+    # Fuel stations are frequently mapped only as an amenity=fuel area,
+    # especially when the same way is also the building=roof pump canopy.
+    # Such a way never enters scenery_object_nodes_raw, so without this
+    # fallback it has a name/roof but no pumps, price marker, refueling
+    # target, or deterministic station price. Prefer real mapped fuel nodes
+    # inside the area; otherwise synthesize one stable station at its center.
+    mapped_fuel_objects = [obj for obj in scenery_objects if obj.kind == "fuel"]
+    for tags, node_ids, way_id in fuel_area_raw:
+        pts, _ = process_node_ids(node_ids)
+        if not pts or len(pts) < 3:
+            continue
+        if any(point_in_polygon(obj.x, obj.y, pts) for obj in mapped_fuel_objects):
+            continue
+        center_points = pts[:-1] if len(pts) > 1 and pts[0] == pts[-1] else pts
+        center_x = sum(point[0] for point in center_points) / len(center_points)
+        center_y = sum(point[1] for point in center_points) / len(center_points)
+        longest_start, longest_end = max(
+            zip(pts, pts[1:] + pts[:1]),
+            key=lambda edge: (edge[1][0] - edge[0][0]) ** 2 + (edge[1][1] - edge[0][1]) ** 2,
+        )
+        angle = math.atan2(longest_end[1] - longest_start[1], longest_end[0] - longest_start[0])
+        station = SceneryObject(
+            x=center_x,
+            y=center_y,
+            kind="fuel",
+            name=tags.get("name") or tags.get("brand") or tags.get("operator"),
+            id=way_id,
+            direction_angle=angle,
+            is_area=True,
+        )
+        scenery_objects.append(station)
+        mapped_fuel_objects.append(station)
 
     for tags, nid in bus_stops_raw:
         pt = nodes_m.get(nid)

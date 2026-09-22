@@ -112,6 +112,7 @@ from .buildings import (
     _window_illumination_probability,
     mask_buildings_from_light_surface,
     draw_buildings,
+    draw_open_roof_overlays,
     draw_illuminated_windows,
 )
 

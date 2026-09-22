@@ -70,7 +70,7 @@ def _is_open_roof(building: Building) -> bool:
 
 
 def _draw_open_roof(screen, points, px_per_m: float) -> None:
-    """Draw a translucent canopy and its supports, without solid walls."""
+    """Draw the below-vehicle shadow and supports of an open canopy."""
     import pygame
 
     shadow_offset = max(1, round(px_per_m * 0.35))
@@ -79,9 +79,6 @@ def _draw_open_roof(screen, points, px_per_m: float) -> None:
         (30, 32, 33, 75),
         [(x + shadow_offset, y + shadow_offset) for x, y in points],
     )
-    pygame.draw.polygon(screen, OPEN_ROOF_COLOR, points)
-    pygame.draw.lines(screen, OPEN_ROOF_EDGE_COLOR, True, points, max(1, round(px_per_m * 0.12)))
-
     # OSM roof outlines do not normally map each individual support. Corner
     # posts give the canopy a readable structure while leaving its footprint
     # open for the taxi and the fuel-pump scenery beneath it.
@@ -89,6 +86,48 @@ def _draw_open_roof(screen, points, px_per_m: float) -> None:
     for point in points:
         pygame.draw.circle(screen, OPEN_ROOF_EDGE_COLOR, point, pole_radius + 1)
         pygame.draw.circle(screen, OPEN_ROOF_POLE_COLOR, point, pole_radius)
+
+
+def draw_open_roof_overlays(
+    screen,
+    buildings: List[Building],
+    camx: float,
+    camy: float,
+    px_per_m: float = PX_PER_M,
+    screen_w: int = SCREEN_W,
+    screen_h: int = SCREEN_H,
+    spatial_grid=None,
+) -> None:
+    """Draw translucent canopies above vehicles so they pass underneath."""
+    import pygame
+
+    vminx, vminy, vmaxx, vmaxy = get_viewport_bounds(
+        camx, camy, px_per_m, screen_w, screen_h, 20.0
+    )
+    visible_buildings = (
+        spatial_grid.ways_in_rect(vminx, vminy, vmaxx, vmaxy)
+        if spatial_grid is not None
+        else buildings
+    )
+    for building in visible_buildings:
+        if not _is_open_roof(building) or len(building.points_m) < 3:
+            continue
+        bbox = getattr(building, "bbox", None)
+        if bbox and bbox != (0.0, 0.0, 0.0, 0.0):
+            if bbox[2] < vminx or bbox[0] > vmaxx or bbox[3] < vminy or bbox[1] > vmaxy:
+                continue
+        points = [
+            world_to_screen(x, y, camx, camy, px_per_m, screen_w, screen_h)
+            for x, y in building.points_m
+        ]
+        pygame.draw.polygon(screen, OPEN_ROOF_COLOR, points)
+        pygame.draw.lines(
+            screen,
+            OPEN_ROOF_EDGE_COLOR,
+            True,
+            points,
+            max(1, round(px_per_m * 0.12)),
+        )
 
 # Facade sign colors by venue category, loosely matching real-world signage
 # conventions (warm red for dining, a pharmacy-style green cross, navy and
@@ -195,6 +234,10 @@ def mask_buildings_from_light_surface(
 
     for building in buildings or ():
         if len(getattr(building, "points_m", ())) < 3:
+            continue
+        if _is_open_roof(building):
+            # Headlights and yard lighting remain visible beneath a canopy;
+            # only solid buildings should erase the ground-level light map.
             continue
         footprint = [
             world_to_screen(x, y, camx, camy, px_per_m, screen_w, screen_h)
