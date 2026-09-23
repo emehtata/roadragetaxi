@@ -434,8 +434,9 @@ def _way_at_point(
 MAX_ROUTE_OFFROAD_TOLERANCE_M = 15.0
 
 
-NPC_PARKING_ACCESS_TOLERANCE_M = 40.0  # the final hop off-road, into a yard/driveway, gets more slack
+NPC_PARKING_ACCESS_TOLERANCE_M = MAX_ROUTE_OFFROAD_TOLERANCE_M
 NPC_PARKING_APPROACH_DISTANCE_M = 6.0  # how far out the orientation-aligned approach point sits
+NPC_OFFROAD_APPROACH_SPEED_MPS = 10.0 / 3.6  # walking-area/yard pace, never road speed
 
 
 def _parking_space_axis(parking_space) -> Optional[float]:
@@ -539,9 +540,9 @@ def route_stays_on_road(
     road -> an inserted parking-orientation approach point -> the
     destination - see _align_approach_to_parking_orientation) instead of
     `tolerance_m` - a real yard/driveway can legitimately sit farther from
-    the road than the 15m that would flag a mid-route shortcut as
-    suspicious (NPC-more.md section 6's "safe driveway or building
-    courtyard"). initial_segment_tolerance_m is the same idea mirrored at
+    the road, but must remain tightly bounded so it cannot become a
+    cross-lawn shortcut (NPC-more.md section 6's "safe driveway or
+    building courtyard"). initial_segment_tolerance_m is the same idea mirrored at
     the *start* (NPC-003: a vehicle departing from an off-road parked
     position - see start_npc_trip's origin_is_off_road).
     """
@@ -914,6 +915,7 @@ class Driver:
     route_segment_t: float = 0.0
     lookahead_distance_m: float = 0.0
     steering_input: float = 0.0
+    destination_is_off_road: bool = False
 
     @property
     def next_maneuver(self) -> str:
@@ -1263,7 +1265,14 @@ def spawn_npc(
         vehicle_id=vehicle_id, car=car, vehicle_type=vehicle_type,
         color=color if color is not None else random.choice(NPC_VEHICLE_COLORS), capacity=NPC_CAR_CAPACITY,
     )
-    driver = _begin_trip_on_vehicle(vehicle, path, resident_manager, destination, parking_space)
+    driver = _begin_trip_on_vehicle(
+        vehicle,
+        path,
+        resident_manager,
+        destination,
+        parking_space,
+        destination_is_off_road=destination_is_off_road,
+    )
     return vehicle.owner_id, driver, vehicle
 
 
@@ -1274,6 +1283,7 @@ def _begin_trip_on_vehicle(
     destination: Tuple[float, float],
     parking_space=None,
     member_resident_ids: Optional[List[int]] = None,
+    destination_is_off_road: bool = False,
 ) -> Driver:
     """Create the Resident group -> TripGroup -> Driver for a vehicle
     about to start driving `path` for the first time - shared by
@@ -1362,6 +1372,7 @@ def _begin_trip_on_vehicle(
         vehicle_id=vehicle.vehicle_id,
         path=path,
         destination=destination,
+        destination_is_off_road=destination_is_off_road,
         current_way=start.way,
     )
     if parking_space is not None:
@@ -1419,7 +1430,13 @@ def start_npc_trip(
         return None
     release_npc_parking_reservation(vehicle)
     return _begin_trip_on_vehicle(
-        vehicle, path, resident_manager, destination, parking_space, member_resident_ids=member_resident_ids,
+        vehicle,
+        path,
+        resident_manager,
+        destination,
+        parking_space,
+        member_resident_ids=member_resident_ids,
+        destination_is_off_road=destination_is_off_road,
     )
 
 
@@ -1812,6 +1829,13 @@ def update_npc(
         # the destination and only then snapping to a stop.
         arrival_cap = math.sqrt(2.0 * ARRIVAL_DECEL_MPS2 * max(0.0, distance_to_target - NPC_ARRIVAL_RADIUS_M))
         driver.target_speed_mps = min(driver.target_speed_mps, arrival_cap)
+        if driver.destination_is_off_road:
+            # The last segment into a yard, lot or dedicated parking space
+            # is deliberately allowed to leave the mapped road.  It is not,
+            # however, still a 40/50 km/h road: enter it at a cautious pace.
+            driver.target_speed_mps = min(
+                driver.target_speed_mps, NPC_OFFROAD_APPROACH_SPEED_MPS
+            )
 
     # Brake for a sharp corner the same comfortable way, well before
     # reaching it - nothing else here ever slows the vehicle down for the
@@ -1983,6 +2007,9 @@ def update_npc(
     elif avoidance_blocked:
         vehicle.state = NPCState.WAITING
         vehicle.debug_waiting_for = "waiting for vehicle ahead"
+    elif driver.destination_is_off_road and approaching_final_waypoint:
+        vehicle.state = NPCState.PARKING
+        vehicle.debug_waiting_for = ""
     elif (
         vehicle.destination_parking_space_id is not None
         and math.hypot(driver.destination[0] - vehicle.car.x, driver.destination[1] - vehicle.car.y)

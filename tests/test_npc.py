@@ -541,6 +541,37 @@ def test_npc_reports_parking_state_on_final_approach_to_a_dedicated_space():
     assert NPCState.PARKING in seen_states
 
 
+def test_offroad_destination_uses_yard_speed_on_final_approach():
+    from theroadragetrip.npc import NPC_OFFROAD_APPROACH_SPEED_MPS
+
+    ways = _straight_chain()
+    tw = TrafficWorld(ways)
+    residents = ResidentManager()
+    result = spawn_npc(
+        1,
+        residents,
+        tw,
+        ways,
+        (0.0, 0.0),
+        (200.0, 0.0),
+        destination_is_off_road=True,
+    )
+    assert result is not None
+    _, driver, vehicle = result
+    assert driver.destination_is_off_road
+
+    driver.path_index = len(driver.path) - 1
+    driver.route_segment_index = len(driver.path) - 2
+    vehicle.car.x = driver.destination[0] - 10.0
+    vehicle.car.y = driver.destination[1]
+    vehicle.car.speed = 40.0 / 3.6
+
+    update_npc(vehicle, driver, 1.0 / 60.0, tw, residents)
+
+    assert driver.target_speed_mps == pytest.approx(NPC_OFFROAD_APPROACH_SPEED_MPS)
+    assert vehicle.state == NPCState.PARKING
+
+
 def test_state_machine_transitions_are_valid():
     ways = _straight_chain()
     tw = TrafficWorld(ways)
