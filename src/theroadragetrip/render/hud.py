@@ -112,11 +112,11 @@ def _draw_fuel_meter(
     pygame.draw.rect(screen, (150, 160, 165), bar, width=1)
 
     if abs(car.speed) > 0.5:
-        economy_text = f"{car.fuel_consumption_l_per_100km:.1f} L/100 km"
+        economy_text = f"{car.fuel_consumption_l_per_100km:.1f} l/100 km"
     else:
-        economy_text = f"{car.idle_fuel_consumption_l_per_hour:.1f} L/h"
+        economy_text = f"{car.idle_fuel_consumption_l_per_hour:.1f} l/h"
     economy = font.render(
-        f"{economy_text}",
+        f"{economy_text}\nFUEL",
         True,
         (205, 215, 220),
     )
