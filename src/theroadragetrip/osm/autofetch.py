@@ -27,6 +27,7 @@ from .models import (
     YieldSign,
     Place,
     associate_places_with_buildings,
+    associate_places_with_buildings_steps,
     Crossing,
     BusStop,
     SceneryObject,
@@ -158,7 +159,7 @@ class _TileMergeJob:
     item_index exactly where it left off - never restarts already-merged
     items, never processes the same item twice."""
 
-    __slots__ = ("tile_group", "tiles", "world", "section_index", "item_index")
+    __slots__ = ("tile_group", "tiles", "world", "section_index", "item_index", "associate")
 
     def __init__(self, tile_group, tiles: Set[TileCoord], world) -> None:
         # tile_group: what start_tile_streaming() marked pending for this
@@ -170,6 +171,7 @@ class _TileMergeJob:
         self.world = world
         self.section_index = 0
         self.item_index = 0
+        self.associate = None  # place->building association generator, once sections are done
 
 
 DEFAULT_TILE_MEMORY_BUDGET_MB = 768.0
@@ -754,9 +756,14 @@ class AutoFetchManager:
                 return False
             job.section_index += 1
             job.item_index = 0
-        self._merge_world_bounds(job.world)
-        associate_places_with_buildings(self.buildings, self.places)
-        return True
+        if job.associate is None:
+            self._merge_world_bounds(job.world)
+            job.associate = associate_places_with_buildings_steps(self.buildings, self.places)
+        while time.perf_counter() < deadline:
+            if next(job.associate, StopIteration) is StopIteration:
+                return True
+        # Out of budget - but always make progress, even with a zero budget.
+        return next(job.associate, StopIteration) is StopIteration
 
     def _merge_item_if_owned(self, section: str, target: list, item, tiles: set[TileCoord]) -> None:
         owned_tiles = self._item_tiles(item) & tiles

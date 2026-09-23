@@ -1186,3 +1186,41 @@ def test_tiles_stay_pending_until_their_incremental_merge_commits():
         manager.integrate_completed_tiles(budget_s=0.0)
     assert manager.pending_tiles == set()
     assert TileCoord(0, 0) in manager.loaded_tiles
+
+
+def test_incremental_merge_associates_places_identically_to_synchronous_merge():
+    """The final place->building association step is budgeted too; it must
+    yield the same associated_places as the synchronous merge."""
+    from theroadragetrip.osm import Building
+    from theroadragetrip.osm.models import Place
+
+    def world():
+        buildings = [
+            Building(
+                points_m=[(i * 40.0, 10.0), (i * 40.0 + 20.0, 10.0), (i * 40.0 + 20.0, 30.0), (i * 40.0, 30.0)],
+                bbox=(i * 40.0, 10.0, i * 40.0 + 20.0, 30.0),
+            )
+            for i in range(20)
+        ]
+        places = [Place(i * 40.0 + 10.0, 20.0, f"Cafe {i}", "cafe") for i in range(0, 20, 2)]
+        return MapData([], [], buildings, [], places, (0.0, 0.0, 1000.0, 1000.0))
+
+    sync_world = world()
+    sync_manager = AutoFetchManager([], (0.0, 0.0, 1000.0, 1000.0), transformer=None)
+    sync_manager._merge_tile_world_for_tiles({TileCoord(0, 0)}, sync_world)
+
+    incr_world = world()
+    incr_manager = AutoFetchManager([], (0.0, 0.0, 1000.0, 1000.0), transformer=None)
+    incr_manager.active_tiles = {TileCoord(0, 0)}
+    incr_manager._completed_tile_batches.append(
+        [((TileCoord(0, 0),), (TileCoord(0, 0),), incr_world)]
+    )
+    steps = 0
+    while incr_manager._merge_queue or incr_manager._completed_tile_batches:
+        incr_manager.integrate_completed_tiles(budget_s=0.0)
+        steps += 1
+        assert steps < 10_000
+
+    assert [[p.name for p in b.associated_places] for b in incr_manager.buildings] == \
+        [[p.name for p in b.associated_places] for b in sync_manager.buildings]
+    assert any(b.associated_places for b in incr_manager.buildings)

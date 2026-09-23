@@ -347,24 +347,28 @@ class Place:
     kind: str
 
 
-def associate_places_with_buildings(buildings: List[Building], places: List[Place]) -> None:
-    """Attach named venue places to buildings once, before rendering."""
+def associate_places_with_buildings_steps(buildings: List[Building], places: List[Place]):
+    """Generator form of associate_places_with_buildings (bin-loader-v5.md):
+    yields after each unit of work so a caller can budget it across frames.
+    Nothing on the buildings is touched until the final, cheap apply step,
+    so an interrupted run never leaves buildings half-cleared."""
     cell_size = 128.0
+    buildings = list(buildings)
     building_cells = defaultdict(list)
     for building in buildings:
-        building.associated_places.clear()
         bbox = getattr(building, "bbox", (0.0, 0.0, 0.0, 0.0))
-        if bbox == (0.0, 0.0, 0.0, 0.0):
-            continue
-        for cell_x in range(math.floor(bbox[0] / cell_size), math.floor(bbox[2] / cell_size) + 1):
-            for cell_y in range(math.floor(bbox[1] / cell_size), math.floor(bbox[3] / cell_size) + 1):
-                building_cells[(cell_x, cell_y)].append(building)
+        if bbox != (0.0, 0.0, 0.0, 0.0):
+            for cell_x in range(math.floor(bbox[0] / cell_size), math.floor(bbox[2] / cell_size) + 1):
+                for cell_y in range(math.floor(bbox[1] / cell_size), math.floor(bbox[3] / cell_size) + 1):
+                    building_cells[(cell_x, cell_y)].append(building)
+        yield
     venue_places = [
         place for place in places
         if place.name and place.kind not in {
             "suburb", "neighbourhood", "quarter", "village", "town", "city",
         }
     ]
+    matches = []
     for place in venue_places:
         candidates = building_cells.get(
             (math.floor(place.x / cell_size), math.floor(place.y / cell_size)),
@@ -375,8 +379,19 @@ def associate_places_with_buildings(buildings: List[Building], places: List[Plac
             if not (bbox[0] <= place.x <= bbox[2] and bbox[1] <= place.y <= bbox[3]):
                 continue
             if point_in_polygon(place.x, place.y, building.points_m):
-                building.associated_places.append(place)
+                matches.append((building, place))
                 break
+        yield
+    for building in buildings:
+        building.associated_places.clear()
+    for building, place in matches:
+        building.associated_places.append(place)
+
+
+def associate_places_with_buildings(buildings: List[Building], places: List[Place]) -> None:
+    """Attach named venue places to buildings once, before rendering."""
+    for _ in associate_places_with_buildings_steps(buildings, places):
+        pass
 
 
 @dataclass
