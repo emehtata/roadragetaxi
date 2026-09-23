@@ -369,9 +369,9 @@ def test_update_npc_clamps_target_speed_to_the_vehicle_plugins_max_speed():
 
     update_npc(vehicle, driver, 1.0 / 60.0, tw, residents)
 
-    from theroadragetrip.vehicles.registry import default_registry
+    from theroadragetrip.vehicles import vehicle_definition
 
-    bus_max_speed_mps = default_registry().get("bus").get_max_speed_kmh() / 3.6
+    bus_max_speed_mps = vehicle_definition("bus").max_speed_kmh / 3.6
     assert driver.target_speed_mps <= bus_max_speed_mps + 1e-6
     assert driver.target_speed_mps < 100.0 / 3.6  # meaningfully below the road's own limit
 

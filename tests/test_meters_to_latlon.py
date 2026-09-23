@@ -20,7 +20,7 @@ def test_meters_to_latlon():
     sys.modules["pyproj"] = fake_pyproj
 
     try:
-        from theroadragetrip import meters_to_latlon
+        from theroadragetrip.geo import meters_to_latlon
         lat, lon = meters_to_latlon(25000.0, 60000.0)
         assert abs(lat - 60.0) < 1e-6
         assert abs(lon - 25.0) < 1e-6

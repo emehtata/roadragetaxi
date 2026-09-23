@@ -65,7 +65,6 @@ def test_generated_house_driveway_adds_two_reservable_residential_bays():
 
     assert added == 2
     assert len(parking_spaces) == 2
-    assert {space.parking_role for space in parking_spaces} == {"residential"}
     assert parking_spaces[0].source_building_key == parking_spaces[1].source_building_key
     assert all(space.access_path == [(6.0, 0.0), (6.0, -7.0)] for space in parking_spaces)
     assert all(not space.occupied and not space.reserved for space in parking_spaces)

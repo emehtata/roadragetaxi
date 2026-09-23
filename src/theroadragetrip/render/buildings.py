@@ -588,7 +588,6 @@ def generate_detached_house_parking(buildings, ways, parking_spaces, road_spatia
                 points_m=points,
                 bbox=(min(xs), min(ys), max(xs), max(ys)),
                 orientation=math.atan2(uy, ux),
-                parking_role="residential",
                 source_building_key=key,
                 access_path=[house_edge, road_edge],
             ))

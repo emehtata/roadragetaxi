@@ -1,4 +1,4 @@
-from theroadragetrip import Car
+from theroadragetrip.physics import Car
 
 
 def heading_delta_for_inputs(start_heading: float, left: float, right: float, speed: float, dt: float):

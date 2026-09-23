@@ -29,7 +29,7 @@ from .physics import GRAVITY_MPS2, Car, SpatialWayGrid, update_car_physics
 from .residents import Household, HouseholdManager, ResidentManager
 from .traffic_rules import TrafficAction, TrafficDecision, decide_traffic_action, nearest_vehicle_ahead
 from .traffic_world import _ROUTE_NODE_GRID_CELL_M, TrafficWorld
-from .vehicles.registry import default_registry
+from .vehicles.base import VEHICLE_DEFINITIONS, vehicle_definition
 
 
 class NPCState:
@@ -168,7 +168,7 @@ LANE_BIAS_LOOKAHEAD_M = 20.0  # start easing into a turn lane this far before th
 # working unchanged. vehicles/ never imports npc.py (one-directional, same
 # as activities/ never importing pedestrian.py), so this is a safe,
 # non-circular import.
-_car_plugin_definition = default_registry().get("car").definition
+_car_plugin_definition = VEHICLE_DEFINITIONS["car"]
 NPC_VEHICLE_LENGTH_M = _car_plugin_definition.length_m  # the default NPC car's dimensions - shared so footprint checks always match the spawned Car
 NPC_VEHICLE_WIDTH_M = _car_plugin_definition.width_m
 
@@ -1845,8 +1845,7 @@ def update_npc(
     # NPC-003 v2 section 4: a vehicle plugin's own max speed (e.g. a bus/
     # truck slower than ordinary traffic) - a cheap clamp on top of the
     # road's own speed limit, not a new physics/acceleration model.
-    vehicle_plugin = default_registry().get(vehicle.vehicle_type)
-    max_speed_kmh = vehicle_plugin.get_max_speed_kmh() if vehicle_plugin is not None else None
+    max_speed_kmh = vehicle_definition(vehicle.vehicle_type).max_speed_kmh
     if max_speed_kmh is not None:
         driver.target_speed_mps = min(driver.target_speed_mps, max_speed_kmh / 3.6)
     if approaching_final_waypoint:
@@ -2485,8 +2484,8 @@ def place_parked_npc(
     # capacity are plugin data, not a branch here (falls back to "car" for
     # an unknown/unregistered id, the same defensive default spawn_npc's
     # own Car construction implicitly used before plugins existed).
-    plugin = default_registry().get(vehicle_type) or default_registry().get("car")
-    length_m, width_m = plugin.get_dimensions()
+    definition = vehicle_definition(vehicle_type)
+    length_m, width_m = definition.length_m, definition.width_m
     heading = _resting_heading(point[0], point[1], parking_space, ways, spatial_grid)
     if not is_vehicle_pose_valid(
         point[0], point[1], heading, curbs=curbs, buildings=buildings,
@@ -2501,7 +2500,7 @@ def place_parked_npc(
         state=NPCState.PARKED,
         vehicle_type=vehicle_type,
         color=color if color is not None else random.choice(NPC_VEHICLE_COLORS),
-        capacity=plugin.get_passenger_capacity(),
+        capacity=definition.capacity,
     )
     if parking_space is not None:
         parking_space.occupied = True
@@ -2855,9 +2854,9 @@ class NPCVehicleManager:
 
     def _default_vehicle_distribution(self) -> Dict[str, float]:
         return {
-            plugin.definition.id: plugin.definition.traffic_weight
-            for plugin in default_registry().all_plugins()
-            if plugin.definition.is_road_vehicle and (self.include_experimental or not plugin.definition.experimental)
+            definition.id: definition.traffic_weight
+            for definition in VEHICLE_DEFINITIONS.values()
+            if definition.is_road_vehicle and (self.include_experimental or not definition.experimental)
         }
 
     def _pick_vehicle_type(self) -> str:
@@ -2984,12 +2983,12 @@ class NPCVehicleManager:
             vehicle = next((v for v in self.vehicles if v.vehicle_id == vehicle_id), None)
             if vehicle is None or vehicle.availability != NPCAvailability.AVAILABLE:
                 continue
-            plugin = default_registry().get(vehicle.vehicle_type)
-            if plugin is None or not plugin.can_carry_passengers():
+            definition = vehicle_definition(vehicle.vehicle_type)
+            if not definition.passenger_eligible:
                 continue
-            if plugin.get_passenger_capacity() < passengers:
+            if definition.capacity < passengers:
                 continue
-            if purpose is not None and not plugin.can_be_used_for_errands():
+            if purpose is not None and not definition.errand_eligible:
                 continue
             if reserve_household_vehicle(vehicle):
                 return vehicle
@@ -3048,8 +3047,7 @@ class NPCVehicleManager:
         # NPC-003 v2 section 14: not every vehicle plugin is eligible for
         # household ownership (a truck/bus rolled into the household
         # fraction just stays a plain traffic vehicle instead).
-        plugin = default_registry().get(vehicle.vehicle_type)
-        if plugin is None or not plugin.can_be_household_owned():
+        if not vehicle_definition(vehicle.vehicle_type).household_eligible:
             return
         # Section 9: a household can own two vehicles, not only one - most
         # of the time this vehicle founds a brand new household, but it
