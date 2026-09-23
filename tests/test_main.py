@@ -116,8 +116,11 @@ def test_map_sync_starts_when_idle_and_something_changed():
 def test_city_menu_supports_numeric_and_letter_shortcuts():
     assert _city_menu_index(pygame.K_0, 18) == 9
     assert _city_menu_index(pygame.K_a, 18) == 10
-    assert _city_menu_index(pygame.K_h, 18) == 17
-    assert _city_menu_index(pygame.K_i, 18) is None
+    assert _city_menu_index(pygame.K_d, 18) == 13
+    assert _city_menu_index(pygame.K_e, 18) is None
+    assert _city_menu_index(pygame.K_f, 18) is None
+    assert _city_menu_index(pygame.K_j, 18) == 17
+    assert _city_menu_index(pygame.K_k, 18) is None
 
 
 def test_city_menu_horizontal_navigation_moves_between_columns():

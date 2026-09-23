@@ -8,6 +8,7 @@ from typing import List, Optional
 
 
 from ..localization import tr
+from ..menu_keys import CITY_MENU_KEYS
 
 
 _loading_image = None
@@ -229,7 +230,7 @@ def draw_city_selection_menu(
         pygame.draw.rect(screen, bg_color, (ix, iy, item_w, item_h), border_radius=6)
         pygame.draw.rect(screen, border_color, (ix, iy, item_w, item_h), width=2 if is_sel else 1, border_radius=6)
 
-        num_prefix = f"{('1234567890ABCDEFGHIJKLMNOPQRSTUVWXYZ'[idx])}: "
+        num_prefix = f"{CITY_MENU_KEYS[idx]}: "
         city_label = f"{num_prefix}{city}"
         if is_sel:
             city_label = f"> {city_label}"

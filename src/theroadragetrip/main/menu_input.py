@@ -3,12 +3,10 @@ from typing import Optional, Tuple
 
 import pygame
 
+from ..menu_keys import CITY_MENU_KEYS
 
 
 logger = logging.getLogger(__name__)
-
-
-CITY_MENU_KEYS = "1234567890ABCDEFGHIJKLMNOPQRSTUVWXYZ"
 
 
 def _city_menu_index(key: int, city_count: int) -> Optional[int]:
