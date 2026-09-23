@@ -6,13 +6,13 @@ https://github.com/emehtata/roadragetaxi
 
 Target branch:
 
-release/0.13.0alpha
+release/0.15.0alpha
 
 ## Context
 
 Phase 1 separated the gameplay simulation from the Pygame rendering code.
 
-A subsequent client/server implementation was introduced in 0.13.0alpha.
+A subsequent client/server implementation was introduced in 0.15.0alpha.
 
 The current implementation is NOT performing well enough.
 
@@ -354,7 +354,7 @@ Compare:
 against:
 
 ```
-0.13.0alpha current behaviour
+0.15.0alpha current behaviour
 ```
 
 and:

@@ -4,7 +4,7 @@ Repository:
 https://github.com/emehtata/roadragetaxi
 
 Target branch:
-`release/0.11.0alpha`
+`release/0.15.0alpha`
 
 ## Objective
 
