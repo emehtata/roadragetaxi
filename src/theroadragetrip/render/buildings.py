@@ -1122,5 +1122,5 @@ def draw_illuminated_windows(
     if cache["any_lit"]:
         cache["surface"].set_alpha(alpha)
         offset_x = round((cache["camera"][0] - camx) * px_per_m) - ILLUMINATED_WINDOW_CACHE_PADDING_PX
-        offset_y = round((cache["camera"][1] - camy) * px_per_m) - ILLUMINATED_WINDOW_CACHE_PADDING_PX
+        offset_y = round((camy - cache["camera"][1]) * px_per_m) - ILLUMINATED_WINDOW_CACHE_PADDING_PX
         screen.blit(cache["surface"], (offset_x, offset_y), special_flags=pygame.BLEND_RGB_ADD)

@@ -2168,10 +2168,31 @@ def test_illuminated_windows_reuse_geometry_during_small_camera_moves(monkeypatc
             second, buildings, 5.0, 0.0, 0.0,
             px_per_m=2.0, screen_w=400, screen_h=300,
         )
+        reused_frame = pygame.image.tobytes(second, "RGB")
+        assert calls == calls_after_build
+
+        # A cache hit after moving in both axes must put every glow at the
+        # same position as a fresh render at that camera. This catches the
+        # inverted screen-Y transform that made lit windows float away
+        # from their building facades while driving north/south.
+        fresh = pygame.Surface((400, 300))
+        buildings_render._illuminated_window_cache = None
+        draw_illuminated_windows(
+            fresh, buildings, 5.0, 7.0, 0.0,
+            px_per_m=2.0, screen_w=400, screen_h=300,
+        )
+        fresh_frame = pygame.image.tobytes(fresh, "RGB")
+
+        buildings_render._illuminated_window_cache = first_cache
+        moved = pygame.Surface((400, 300))
+        draw_illuminated_windows(
+            moved, buildings, 5.0, 7.0, 0.0,
+            px_per_m=2.0, screen_w=400, screen_h=300,
+        )
 
         assert calls_after_build > 0
-        assert calls == calls_after_build
-        assert buildings_render._illuminated_window_cache is first_cache
+        assert reused_frame != pygame.image.tobytes(first, "RGB")
+        assert pygame.image.tobytes(moved, "RGB") == fresh_frame
     finally:
         buildings_render._illuminated_window_cache = None
         pygame.quit()

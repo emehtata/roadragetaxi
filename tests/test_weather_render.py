@@ -175,10 +175,16 @@ def test_wet_road_overlay_is_reused_for_small_camera_movements():
 
         draw_wet_roads(screen, ways, weather, 50.0, 0.0, 9.0, 300, 300, grid)
         first_overlay = weather_render._wet_road_overlay_cache
-        draw_wet_roads(screen, ways, weather, 51.0, 0.0, 9.0, 300, 300, grid)
+        cached_frame = pygame.Surface((300, 300))
+        draw_wet_roads(cached_frame, ways, weather, 51.0, 1.0, 9.0, 300, 300, grid)
+        cached_pixels = pygame.image.tobytes(cached_frame, "RGB")
 
-        assert grid.calls == 1
-        assert weather_render._wet_road_overlay_cache is first_overlay
+        weather_render._wet_road_overlay_cache = None
+        fresh_frame = pygame.Surface((300, 300))
+        draw_wet_roads(fresh_frame, ways, weather, 51.0, 1.0, 9.0, 300, 300, grid)
+
+        assert grid.calls == 2
+        assert pygame.image.tobytes(fresh_frame, "RGB") == cached_pixels
     finally:
         weather_render._wet_road_overlay_cache = None
         weather_render._visible_drivable_cache = (None, [])

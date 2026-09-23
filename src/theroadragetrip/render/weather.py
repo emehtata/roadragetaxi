@@ -283,7 +283,7 @@ def draw_wet_roads(
         _wet_road_overlay_cache = cache
 
     offset_x = round((cache["camera"][0] - camx) * px_per_m) - WET_ROAD_CACHE_PADDING_PX
-    offset_y = round((cache["camera"][1] - camy) * px_per_m) - WET_ROAD_CACHE_PADDING_PX
+    offset_y = round((camy - cache["camera"][1]) * px_per_m) - WET_ROAD_CACHE_PADDING_PX
     screen.blit(cache["darken"], (offset_x, offset_y))
     if cache["sheen"] is not None:
         screen.blit(cache["sheen"], (offset_x, offset_y))
