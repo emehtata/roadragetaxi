@@ -31,6 +31,10 @@ High-level architecture / data flow
 Important implementation details for an AI agent
 - BBOX order is (south, west, north, east) lat/lon. Presets stored in `BBOX_PRESETS` and `CITY_CENTERS`.
 - Coordinate systems: OSM and BBOX values use geographic degrees in `(lat, lon)` order; BBOX remains `(south, west, north, east)`. `pyproj` with `always_xy=True` expects `(lon, lat)` and returns EPSG:3067 metric `(x, y)`. Internal geometry, spatial grids, physics, and rendering use `(x, y)` meters; convert back to lat/lon only at OSM/API boundaries. Never pass `(lat, lon)` directly to the transformer or mix degree values with meter geometry.
+- World rendering is north-up. Increasing world `x` moves right/east and increasing world `y` moves up/north, while Pygame screen `y` increases downward. Use `render.common.world_to_screen()` and `screen_to_world()` instead of duplicating these transforms.
+- The exact world-to-screen transform is `sx = (wx - camx) * px_per_m + screen_w / 2` and `sy = screen_h / 2 - (wy - camy) * px_per_m`. Camera movement therefore has opposite signs on the two screen axes: increasing `camx` moves cached pixels left, while increasing `camy` moves cached pixels down.
+- For a padded screen-space cache built at `(cache_camx, cache_camy)` with padding `P`, blit it at `offset_x = round((cache_camx - camx) * px_per_m) - P` and `offset_y = round((camy - cache_camy) * px_per_m) - P`. Do not copy the X expression for Y; screen Y is inverted relative to world Y.
+- Any new camera-relative cache must have a regression test that renders after movement on both axes and compares the cache-hit pixels with a forced fresh render at the same camera. Testing only cache identity or query counts is insufficient because it will not catch floating overlays.
 - Roads filtered by `tags.get("highway", "unclassified")` — adding new OSM types should account for missing tags.
 - Waters parsed from `natural=water`, `waterway`, `landuse=reservoir`, and relation multipolygons.
 - Widths: see `HIGHWAY_HALF_WIDTH` (half-width meters). Rendering thickness = half_width * 2 * PX_PER_M.
