@@ -47,6 +47,37 @@ def test_sync_map_data_adds_streamed_footway():
     assert streamed_way in manager._spawn_ways
 
 
+def test_building_free_ways_skips_far_way_but_still_splits_one_near_a_building():
+    """_building_free_ways' bbox pre-check must skip the expensive
+    per-segment building scan for a way nowhere near any building (fast
+    path, returned unchanged), while a way that genuinely runs through a
+    building still gets split around it exactly as before (slow path)."""
+    building = SimpleNamespace(
+        points_m=[(18.0, -2.0), (22.0, -2.0), (22.0, 2.0), (18.0, 2.0)],
+        bbox=(18.0, -2.0, 22.0, 2.0),
+        entrances=[],
+        venue_type=None,
+    )
+    crossing_way = Way(
+        points_m=[(0.0, 0.0), (10.0, 0.0), (30.0, 0.0), (40.0, 0.0)],
+        highway="footway", half_width_m=1.5,
+        bbox=(0.0, 0.0, 40.0, 0.0),
+    )
+    far_way = Way(
+        points_m=[(5000.0, 5000.0), (5010.0, 5000.0)],
+        highway="footway", half_width_m=1.5,
+        bbox=(5000.0, 5000.0, 5010.0, 5000.0),
+    )
+    manager = PedestrianManager([crossing_way, far_way], target_count=0, venue_buildings=[building])
+
+    assert any(way.points_m == far_way.points_m for way in manager.ped_ways)
+    assert all(
+        not point_in_polygon(point[0], point[1], building.points_m)
+        for way in manager.ped_ways
+        for point in way.points_m
+    )
+
+
 def test_pedestrian_routes_and_spawns_stay_outside_buildings():
     ways = [Way(
         points_m=[(0.0, 0.0), (10.0, 0.0), (30.0, 0.0), (40.0, 0.0)],

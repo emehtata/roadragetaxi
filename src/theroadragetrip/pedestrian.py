@@ -772,8 +772,35 @@ class PedestrianManager:
         """Split mapped ways so pedestrian routes cannot cross building interiors."""
         if not self._building_grid:
             return ways
+        cell_size = self._building_grid_cell_size
         safe_ways: List[Way] = []
         for way in ways:
+            # Most ways (a typical residential/service street run) never
+            # come near a building at all - skip the expensive per-segment,
+            # 5-sample-per-segment _segment_inside_building() scan entirely
+            # when the way's own bbox doesn't even overlap an occupied
+            # building-grid cell (measured against a real dense Oulu load:
+            # this was the single largest cost in a 3s+ pedestrian map
+            # sync). A miss here is exact, not approximate: if no
+            # building's grid cell overlaps the way's bbox, the way cannot
+            # possibly cross a building's interior.
+            # A way whose bbox was never computed (the dataclass default)
+            # must not be treated as sitting at the world origin - same
+            # "bb and bb != (0,0,0,0)" convention render/roads.py's
+            # _start_road_rebuild already uses for the same reason.
+            bbox = way.bbox
+            if bbox and bbox != (0.0, 0.0, 0.0, 0.0):
+                min_x, min_y, max_x, max_y = bbox
+                near_building = any(
+                    (cell_x, cell_y) in self._building_grid
+                    for cell_x in range(math.floor(min_x / cell_size), math.floor(max_x / cell_size) + 1)
+                    for cell_y in range(math.floor(min_y / cell_size), math.floor(max_y / cell_size) + 1)
+                )
+            else:
+                near_building = True
+            if not near_building:
+                safe_ways.append(way)
+                continue
             way_safe_ways: List[Way] = []
             safe_points: List[Tuple[float, float]] = []
             for start, end in zip(way.points_m, way.points_m[1:]):
