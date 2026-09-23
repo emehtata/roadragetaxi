@@ -12,6 +12,9 @@ from ..localization import tr
 
 _loading_image = None
 _loading_image_path = os.path.join(os.path.dirname(__file__), "..", "img", "theroadragetrip_1672_941.png")
+_loading_background_cache = {}
+_loading_overlay_cache = {}
+_loading_font_cache = {}
 
 
 def draw_loading_screen(
@@ -39,12 +42,21 @@ def draw_loading_screen(
         image_w, image_h = _loading_image.get_size()
         scale = max(screen_w / image_w, screen_h / image_h)
         scaled_size = (round(image_w * scale), round(image_h * scale))
-        background = pygame.transform.smoothscale(_loading_image, scaled_size)
+        background_key = (id(_loading_image), scaled_size)
+        background = _loading_background_cache.get(background_key)
+        if background is None:
+            background = pygame.transform.smoothscale(_loading_image, scaled_size)
+            _loading_background_cache.clear()
+            _loading_background_cache[background_key] = background
         image_x = (screen_w - scaled_size[0]) // 2
         image_y = (screen_h - scaled_size[1]) // 2
         screen.blit(background, (image_x, image_y))
-        overlay = pygame.Surface((screen_w, screen_h), pygame.SRCALPHA)
-        overlay.fill((0, 0, 0, 105))
+        overlay = _loading_overlay_cache.get((screen_w, screen_h))
+        if overlay is None:
+            overlay = pygame.Surface((screen_w, screen_h), pygame.SRCALPHA)
+            overlay.fill((0, 0, 0, 105))
+            _loading_overlay_cache.clear()
+            _loading_overlay_cache[(screen_w, screen_h)] = overlay
         screen.blit(overlay, (0, 0))
     else:
         screen.fill((20, 25, 30))
@@ -53,11 +65,16 @@ def draw_loading_screen(
         return
 
     # Title
-    title_font = font
-    try:
-        title_font = pygame.font.SysFont(None, 40, bold=True)
-    except Exception:
-        pass
+    font_key = id(font)
+    cached_fonts = _loading_font_cache.get(font_key)
+    if cached_fonts is None:
+        try:
+            cached_fonts = (pygame.font.SysFont(None, 40, bold=True), pygame.font.SysFont(None, 18))
+        except Exception:
+            cached_fonts = (font, font)
+        _loading_font_cache.clear()
+        _loading_font_cache[font_key] = cached_fonts
+    title_font, detail_font = cached_fonts
     title_surf = title_font.render("THE ROAD RAGE TRIP", True, (240, 240, 240))
     title_rect = title_surf.get_rect(center=(screen_w // 2, screen_h // 2 - 70))
     screen.blit(title_surf, title_rect)
@@ -94,11 +111,6 @@ def draw_loading_screen(
     # progress_callback (see osm/overpass.py, osm/pbf_source.py) - it used
     # to be computed and passed all the way here but never actually drawn.
     if message:
-        detail_font = font
-        try:
-            detail_font = pygame.font.SysFont(None, 18)
-        except Exception:
-            pass
         detail_surf = detail_font.render(message, True, (150, 165, 180))
         detail_rect = detail_surf.get_rect(center=(screen_w // 2, bar_y + bar_h + 44))
         screen.blit(detail_surf, detail_rect)

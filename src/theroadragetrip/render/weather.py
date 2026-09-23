@@ -73,6 +73,9 @@ RIPPLE_MAX_ALPHA = 70
 # than jittering to a new random spot every frame (WEATHER_RAIN.md #4).
 _puddle_cache: dict = {}
 _visible_drivable_cache = (None, [])
+_wet_road_overlay_cache = None
+WET_ROAD_CACHE_PADDING_PX = 224
+WET_ROAD_ALPHA_STEP = 3
 
 # Splash rings: expand and fade over SPLASH_LIFETIME_S, doubling as the
 # "disturb the puddle surface with ripples" effect (WEATHER_RAIN.md #5) -
@@ -216,12 +219,11 @@ def draw_wet_roads(
     """Darken visible road surfaces and add a faint sheen, scaled by
     weather.wetness.
 
-    Drawn live every frame rather than folded into render/roads.py's
-    static road cache: that cache's key is purely camera/zoom/streamed-
-    data dependent (see render/common.py's _allow_static_rebuild), and
-    wetness changes continuously and independently of all of those -
-    adding it to the cache key would force a rebuild every time wetness
-    ticks, defeating the whole point of that cache's rebuild throttle.
+    The tint is cached on a padded camera-space surface. Small camera
+    movements only shift that surface; it is rebuilt after the camera
+    crosses the padding, the map/zoom changes, or wetness enters another
+    small alpha bucket. This avoids walking and redrawing every visible
+    road on every frame while keeping gradual wetness changes visible.
 
     No-ops entirely while the road is dry.
     """
@@ -229,36 +231,62 @@ def draw_wet_roads(
         return
     import pygame
 
-    vminx, vminy, vmaxx, vmaxy = get_viewport_bounds(camx, camy, px_per_m, screen_w, screen_h, 30.0)
-    visible_ways = _visible_drivable_ways(ways, vminx, vminy, vmaxx, vmaxy, spatial_grid)
-    if not visible_ways:
-        return
-
-    darken_alpha = round(WET_ROAD_DARKEN_MAX_ALPHA * weather.wetness)
+    global _wet_road_overlay_cache
+    darken_alpha = (
+        round(WET_ROAD_DARKEN_MAX_ALPHA * weather.wetness / WET_ROAD_ALPHA_STEP)
+        * WET_ROAD_ALPHA_STEP
+    )
     sheen_wetness = max(0.0, weather.wetness - WET_ROAD_SHEEN_MIN_WETNESS) / (1.0 - WET_ROAD_SHEEN_MIN_WETNESS)
-    sheen_alpha = round(WET_ROAD_SHEEN_MAX_ALPHA * sheen_wetness)
+    sheen_alpha = (
+        round(WET_ROAD_SHEEN_MAX_ALPHA * sheen_wetness / WET_ROAD_ALPHA_STEP)
+        * WET_ROAD_ALPHA_STEP
+    )
+    data_key = (id(ways), len(ways), id(ways[-1]) if ways else None, id(spatial_grid))
+    cache = _wet_road_overlay_cache
+    reusable = (
+        cache is not None
+        and cache["key"] == (data_key, px_per_m, screen_w, screen_h, darken_alpha, sheen_alpha)
+        and abs((camx - cache["camera"][0]) * px_per_m) <= WET_ROAD_CACHE_PADDING_PX
+        and abs((camy - cache["camera"][1]) * px_per_m) <= WET_ROAD_CACHE_PADDING_PX
+    )
+    if not reusable:
+        cache_w = screen_w + WET_ROAD_CACHE_PADDING_PX * 2
+        cache_h = screen_h + WET_ROAD_CACHE_PADDING_PX * 2
+        vminx, vminy, vmaxx, vmaxy = get_viewport_bounds(
+            camx, camy, px_per_m, cache_w, cache_h, 30.0
+        )
+        visible_ways = _visible_drivable_ways(
+            ways, vminx, vminy, vmaxx, vmaxy, spatial_grid
+        )
+        darken_overlay = pygame.Surface((cache_w, cache_h), pygame.SRCALPHA)
+        sheen_overlay = pygame.Surface((cache_w, cache_h), pygame.SRCALPHA) if sheen_alpha > 0 else None
+        for way in visible_ways:
+            points = [
+                world_to_screen(x, y, camx, camy, px_per_m, cache_w, cache_h)
+                for x, y in way.points_m
+            ]
+            thickness = max(1, round(way.half_width_m * 2 * px_per_m))
+            if darken_alpha > 0:
+                pygame.draw.lines(
+                    darken_overlay, (*WET_ROAD_DARKEN_COLOR, darken_alpha), False, points, thickness
+                )
+            if sheen_overlay is not None:
+                pygame.draw.lines(
+                    sheen_overlay, (*WET_ROAD_SHEEN_COLOR, sheen_alpha), False, points, thickness
+                )
+        cache = {
+            "key": (data_key, px_per_m, screen_w, screen_h, darken_alpha, sheen_alpha),
+            "camera": (camx, camy),
+            "darken": darken_overlay,
+            "sheen": sheen_overlay,
+        }
+        _wet_road_overlay_cache = cache
 
-    # Two separate overlay surfaces, not one shared one: pygame.draw.lines
-    # onto an SRCALPHA surface *replaces* pixels rather than blending with
-    # whatever was already drawn there, so a second pass on the same
-    # surface silently erases the first everywhere the two overlap. Only
-    # the final screen.blit() (a real alpha-composited blit) actually
-    # blends - hence two overlays, blitted in order.
-    darken_overlay = _reusable_alpha_surface(pygame, "wet_roads_darken", (screen_w, screen_h))
-    sheen_overlay = _reusable_alpha_surface(pygame, "wet_roads_sheen", (screen_w, screen_h)) if sheen_alpha > 0 else None
-    for way in visible_ways:
-        points = [
-            world_to_screen(x, y, camx, camy, px_per_m, screen_w, screen_h)
-            for x, y in way.points_m
-        ]
-        thickness = max(1, round(way.half_width_m * 2 * px_per_m))
-        if darken_alpha > 0:
-            pygame.draw.lines(darken_overlay, (*WET_ROAD_DARKEN_COLOR, darken_alpha), False, points, thickness)
-        if sheen_overlay is not None:
-            pygame.draw.lines(sheen_overlay, (*WET_ROAD_SHEEN_COLOR, sheen_alpha), False, points, thickness)
-    screen.blit(darken_overlay, (0, 0))
-    if sheen_overlay is not None:
-        screen.blit(sheen_overlay, (0, 0))
+    offset_x = round((cache["camera"][0] - camx) * px_per_m) - WET_ROAD_CACHE_PADDING_PX
+    offset_y = round((cache["camera"][1] - camy) * px_per_m) - WET_ROAD_CACHE_PADDING_PX
+    screen.blit(cache["darken"], (offset_x, offset_y))
+    if cache["sheen"] is not None:
+        screen.blit(cache["sheen"], (offset_x, offset_y))
 
 
 def draw_puddles(

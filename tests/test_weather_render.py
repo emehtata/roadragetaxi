@@ -154,7 +154,7 @@ def test_draw_wet_roads_scales_with_visible_ways_only():
         pygame.quit()
 
 
-def test_wet_roads_and_puddles_share_the_same_viewport_query():
+def test_wet_road_overlay_is_reused_for_small_camera_movements():
     class CountingGrid:
         calls = 0
 
@@ -164,6 +164,8 @@ def test_wet_roads_and_puddles_share_the_same_viewport_query():
 
     pygame.init()
     try:
+        weather_render._visible_drivable_cache = (None, [])
+        weather_render._wet_road_overlay_cache = None
         screen = pygame.Surface((300, 300))
         way = Way(points_m=[(0.0, 0.0), (100.0, 0.0)], highway="residential", half_width_m=4.0)
         ways = [way]
@@ -172,10 +174,48 @@ def test_wet_roads_and_puddles_share_the_same_viewport_query():
         grid = CountingGrid()
 
         draw_wet_roads(screen, ways, weather, 50.0, 0.0, 9.0, 300, 300, grid)
-        draw_puddles(screen, ways, weather, 50.0, 0.0, 9.0, 300, 300, grid)
+        first_overlay = weather_render._wet_road_overlay_cache
+        draw_wet_roads(screen, ways, weather, 51.0, 0.0, 9.0, 300, 300, grid)
 
         assert grid.calls == 1
+        assert weather_render._wet_road_overlay_cache is first_overlay
     finally:
+        weather_render._wet_road_overlay_cache = None
+        weather_render._visible_drivable_cache = (None, [])
+        pygame.quit()
+
+
+def test_wet_road_overlay_rebuilds_when_wetness_changes_visibly():
+    class CountingGrid:
+        calls = 0
+
+        def ways_in_rect(self, *_bounds):
+            self.calls += 1
+            return [way]
+
+    pygame.init()
+    try:
+        weather_render._visible_drivable_cache = (None, [])
+        weather_render._wet_road_overlay_cache = None
+        screen = pygame.Surface((300, 300))
+        way = Way(points_m=[(0.0, 0.0), (100.0, 0.0)], highway="residential", half_width_m=4.0)
+        ways = [way]
+        weather = WeatherSystem(WeatherType.RAIN)
+        grid = CountingGrid()
+
+        weather.wetness = 0.4
+        draw_wet_roads(screen, ways, weather, 50.0, 0.0, 9.0, 300, 300, grid)
+        first_overlay = weather_render._wet_road_overlay_cache
+        weather.wetness = 1.0
+        draw_wet_roads(screen, ways, weather, 50.0, 0.0, 9.0, 300, 300, grid)
+
+        # The overlay is rebuilt, but its already cached visible-way query
+        # remains valid because camera, zoom and map data did not change.
+        assert grid.calls == 1
+        assert weather_render._wet_road_overlay_cache is not first_overlay
+    finally:
+        weather_render._wet_road_overlay_cache = None
+        weather_render._visible_drivable_cache = (None, [])
         pygame.quit()
 
 

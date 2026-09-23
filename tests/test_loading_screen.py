@@ -5,6 +5,7 @@ import pygame
 
 os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
 
+from theroadragetrip.render import menus as menus_render
 from theroadragetrip.render.menus import draw_loading_screen
 
 
@@ -40,3 +41,44 @@ def test_loading_screen_with_empty_message_still_renders():
     frame_with_message = _render("Checking cache...")
 
     assert frame_empty != frame_with_message
+
+
+def test_loading_screen_reuses_scaled_background_overlay_and_fonts(monkeypatch):
+    pygame.init()
+    screen = pygame.Surface((640, 480))
+    font = pygame.font.SysFont(None, 22)
+    source = pygame.Surface((320, 180))
+    source.fill((20, 30, 40))
+    scale_calls = 0
+    font_calls = 0
+    real_smoothscale = pygame.transform.smoothscale
+    real_sysfont = pygame.font.SysFont
+
+    def counting_smoothscale(*args, **kwargs):
+        nonlocal scale_calls
+        scale_calls += 1
+        return real_smoothscale(*args, **kwargs)
+
+    def counting_sysfont(*args, **kwargs):
+        nonlocal font_calls
+        font_calls += 1
+        return real_sysfont(*args, **kwargs)
+
+    monkeypatch.setattr(menus_render, "_loading_image", source)
+    monkeypatch.setattr(pygame.transform, "smoothscale", counting_smoothscale)
+    monkeypatch.setattr(pygame.font, "SysFont", counting_sysfont)
+    menus_render._loading_background_cache.clear()
+    menus_render._loading_overlay_cache.clear()
+    menus_render._loading_font_cache.clear()
+
+    draw_loading_screen(screen, font, 0.2, "First", 640, 480)
+    background = next(iter(menus_render._loading_background_cache.values()))
+    overlay = next(iter(menus_render._loading_overlay_cache.values()))
+    fonts = next(iter(menus_render._loading_font_cache.values()))
+    draw_loading_screen(screen, font, 0.3, "Second", 640, 480)
+
+    assert scale_calls == 1
+    assert font_calls == 2
+    assert next(iter(menus_render._loading_background_cache.values())) is background
+    assert next(iter(menus_render._loading_overlay_cache.values())) is overlay
+    assert next(iter(menus_render._loading_font_cache.values())) is fonts
