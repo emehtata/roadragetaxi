@@ -62,6 +62,8 @@ COMMERCIAL_AMENITIES = {
     "nightclub", "pub", "restaurant",
 }
 COMMERCIAL_BUILDING_TYPES = {"commercial", "retail", "shop"}
+ILLUMINATED_WINDOW_CACHE_PADDING_PX = 224
+_illuminated_window_cache = None
 
 
 def _is_open_roof(building: Building) -> bool:
@@ -1053,37 +1055,72 @@ def draw_illuminated_windows(
     if alpha <= 0:
         return
 
-    vminx, vminy, vmaxx, vmaxy = get_viewport_bounds(camx, camy, px_per_m, screen_w, screen_h, 20.0)
-    visible_buildings = (
-        spatial_grid.ways_in_rect(vminx, vminy, vmaxx, vmaxy) if spatial_grid is not None else buildings
+    global _illuminated_window_cache
+    data_key = (
+        id(buildings),
+        len(buildings),
+        id(buildings[-1]) if buildings else None,
+        id(spatial_grid),
+        px_per_m,
+        screen_w,
+        screen_h,
     )
-
-    any_lit = False
-    glow_layer = _reusable_alpha_surface(pygame, "building_window_glow_layer", screen.get_size())
-    for b in visible_buildings:
-        bb = getattr(b, "bbox", None)
-        if bb and bb != (0.0, 0.0, 0.0, 0.0):
-            if bb[2] < vminx or bb[0] > vmaxx or bb[3] < vminy or bb[1] > vmaxy:
+    cache = _illuminated_window_cache
+    reusable = (
+        cache is not None
+        and cache["key"] == data_key
+        and abs((camx - cache["camera"][0]) * px_per_m) <= ILLUMINATED_WINDOW_CACHE_PADDING_PX
+        and abs((camy - cache["camera"][1]) * px_per_m) <= ILLUMINATED_WINDOW_CACHE_PADDING_PX
+    )
+    if not reusable:
+        cache_w = screen_w + ILLUMINATED_WINDOW_CACHE_PADDING_PX * 2
+        cache_h = screen_h + ILLUMINATED_WINDOW_CACHE_PADDING_PX * 2
+        vminx, vminy, vmaxx, vmaxy = get_viewport_bounds(
+            camx, camy, px_per_m, cache_w, cache_h, 20.0
+        )
+        visible_buildings = (
+            spatial_grid.ways_in_rect(vminx, vminy, vmaxx, vmaxy)
+            if spatial_grid is not None
+            else buildings
+        )
+        glow_layer = pygame.Surface((cache_w, cache_h), pygame.SRCALPHA)
+        any_lit = False
+        for b in visible_buildings:
+            bb = getattr(b, "bbox", None)
+            if bb and bb != (0.0, 0.0, 0.0, 0.0):
+                if bb[2] < vminx or bb[0] > vmaxx or bb[3] < vminy or bb[1] > vmaxy:
+                    continue
+            if len(b.points_m) < 3 or _is_open_roof(b):
                 continue
-        if len(b.points_m) < 3:
-            continue
-        if _is_open_roof(b):
-            continue
-        pts = [world_to_screen(x, y, camx, camy, px_per_m, screen_w, screen_h) for (x, y) in b.points_m]
-        height = max(3.0, float(getattr(b, "height_m", 8.0)))
-        depth = min(MAX_BUILDING_DEPTH_PX, max(3, int(height * 0.35 * px_per_m)))
-        roof = [(x - depth * 0.7, y - depth) for x, y in pts]
-        visible_edges = _visible_building_edges(pts, roof)
-        building_id = id(b)
-        for edge_index, floor_index, window_index, storefront_row, window in _iter_building_window_slots(
-            b, pts, roof, visible_edges, depth
-        ):
-            probability = _window_illumination_probability(b, storefront_row)
-            if not _window_is_illuminated(building_id, edge_index, floor_index, window_index, probability):
-                continue
-            pygame.draw.polygon(glow_layer, (*WINDOW_LIT_COLOR, 255), window)
-            any_lit = True
+            pts = [
+                world_to_screen(x, y, camx, camy, px_per_m, cache_w, cache_h)
+                for x, y in b.points_m
+            ]
+            height = max(3.0, float(getattr(b, "height_m", 8.0)))
+            depth = min(MAX_BUILDING_DEPTH_PX, max(3, int(height * 0.35 * px_per_m)))
+            roof = [(x - depth * 0.7, y - depth) for x, y in pts]
+            visible_edges = _visible_building_edges(pts, roof)
+            building_id = id(b)
+            for edge_index, floor_index, window_index, storefront_row, window in _iter_building_window_slots(
+                b, pts, roof, visible_edges, depth
+            ):
+                probability = _window_illumination_probability(b, storefront_row)
+                if not _window_is_illuminated(
+                    building_id, edge_index, floor_index, window_index, probability
+                ):
+                    continue
+                pygame.draw.polygon(glow_layer, (*WINDOW_LIT_COLOR, 255), window)
+                any_lit = True
+        cache = {
+            "key": data_key,
+            "camera": (camx, camy),
+            "surface": glow_layer,
+            "any_lit": any_lit,
+        }
+        _illuminated_window_cache = cache
 
-    if any_lit:
-        glow_layer.set_alpha(alpha)
-        screen.blit(glow_layer, (0, 0), special_flags=pygame.BLEND_RGB_ADD)
+    if cache["any_lit"]:
+        cache["surface"].set_alpha(alpha)
+        offset_x = round((cache["camera"][0] - camx) * px_per_m) - ILLUMINATED_WINDOW_CACHE_PADDING_PX
+        offset_y = round((cache["camera"][1] - camy) * px_per_m) - ILLUMINATED_WINDOW_CACHE_PADDING_PX
+        screen.blit(cache["surface"], (offset_x, offset_y), special_flags=pygame.BLEND_RGB_ADD)

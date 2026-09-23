@@ -281,6 +281,63 @@ def test_draw_street_lights_geometry_rebuild_is_scoped_to_visible_ways():
         pygame.quit()
 
 
+def test_street_light_rebuild_queries_road_grid_once_not_per_lamp():
+    """Lamp overlap checks use the rebuild-local segment index."""
+    from theroadragetrip.render import roads as roads_module
+
+    class CountingGrid:
+        def __init__(self, ways):
+            self.inner = SpatialWayGrid(ways)
+            self.calls = 0
+
+        def ways_in_rect(self, *bounds):
+            self.calls += 1
+            return self.inner.ways_in_rect(*bounds)
+
+    pygame.init()
+    try:
+        roads = [
+            Way(
+                points_m=[(-250.0, float(y)), (250.0, float(y))],
+                highway="tertiary",
+                half_width_m=4.0,
+                lit="yes",
+            )
+            for y in range(-100, 101, 20)
+        ]
+        grid = CountingGrid(roads)
+        screen = pygame.Surface((400, 300), pygame.SRCALPHA)
+        roads_module._street_light_geometry_region = None
+        roads_module._street_light_geometry_cache_key = None
+        roads_module._street_light_way_lit_cache_key = None
+
+        draw_street_lights(
+            screen, roads, 0.0, 0.0, 0.0,
+            px_per_m=2.0, screen_w=400, screen_h=300,
+            spatial_grid=grid, buildings=[],
+        )
+
+        assert grid.calls == 1
+    finally:
+        pygame.quit()
+
+
+def test_street_light_local_road_index_clips_very_long_segments():
+    from theroadragetrip.render import roads as roads_module
+
+    road = Way(
+        points_m=[(-1_000_000.0, 0.0), (1_000_000.0, 0.0)],
+        highway="tertiary",
+        half_width_m=4.0,
+        lit="yes",
+    )
+    segment_grid = roads_module._build_street_light_road_index(
+        [road], (-200.0, -150.0, 200.0, 150.0)
+    )
+
+    assert len(segment_grid) < 100
+
+
 def test_draw_street_lights_geometry_region_survives_small_camera_moves():
     """Regression: an earlier version of the geometry-rebuild scoping fix
     re-triggered a full rebuild every time the camera crossed a *fixed 20m

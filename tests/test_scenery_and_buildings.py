@@ -2129,3 +2129,49 @@ def test_illuminated_windows_do_not_regress_static_building_cache():
         assert render_common._building_frame_cache_surface is None
     finally:
         pygame.quit()
+
+
+def test_illuminated_windows_reuse_geometry_during_small_camera_moves(monkeypatch):
+    from theroadragetrip.render import buildings as buildings_render
+
+    pygame.init()
+    try:
+        buildings = [
+            Building(
+                [(x, 0.0), (x + 18.0, 0.0), (x + 18.0, 18.0), (x, 18.0)],
+                levels=5,
+                height_m=15.0,
+                bbox=(x, 0.0, x + 18.0, 18.0),
+            )
+            for x in range(-100, 101, 25)
+        ]
+        calls = 0
+        real_visible_edges = buildings_render._visible_building_edges
+
+        def counting_visible_edges(*args):
+            nonlocal calls
+            calls += 1
+            return real_visible_edges(*args)
+
+        monkeypatch.setattr(buildings_render, "_visible_building_edges", counting_visible_edges)
+        buildings_render._illuminated_window_cache = None
+        first = pygame.Surface((400, 300))
+        second = pygame.Surface((400, 300))
+
+        draw_illuminated_windows(
+            first, buildings, 0.0, 0.0, 0.0,
+            px_per_m=2.0, screen_w=400, screen_h=300,
+        )
+        first_cache = buildings_render._illuminated_window_cache
+        calls_after_build = calls
+        draw_illuminated_windows(
+            second, buildings, 5.0, 0.0, 0.0,
+            px_per_m=2.0, screen_w=400, screen_h=300,
+        )
+
+        assert calls_after_build > 0
+        assert calls == calls_after_build
+        assert buildings_render._illuminated_window_cache is first_cache
+    finally:
+        buildings_render._illuminated_window_cache = None
+        pygame.quit()
