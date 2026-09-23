@@ -105,6 +105,7 @@ from .build import (
 
 from .autofetch import (
     AutoFetchManager,
+    TILE_MERGE_BUDGET_S,
     _extend_unique,
     _map_object_key,
     _snap_projected_bbox,

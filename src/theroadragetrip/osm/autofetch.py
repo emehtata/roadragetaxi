@@ -7,6 +7,7 @@ import time
 from typing import List, Optional, Set, Tuple
 
 
+from ..performance import advance_chunked
 from ..tile_streaming import TileCoord, active_tiles, tile_bbox, tile_changes, world_to_tile
 
 logger = logging.getLogger(__name__)
@@ -124,6 +125,46 @@ def _map_object_key(obj) -> tuple:
         round(getattr(obj, "x", 0.0), 1),
         round(getattr(obj, "y", 0.0), 1),
     )
+
+
+# Every world-level collection _merge_tile_world_for_tiles()/_unload_tiles()
+# touch, in one place (bin-loader-v5.md) - both previously duplicated this
+# same 17-entry dict literal independently.
+_WORLD_SECTIONS = (
+    "ways", "waters", "buildings", "sceneries", "places",
+    "traffic_lights", "crossings", "bus_stops", "parking_spaces",
+    "logical_intersections", "stop_signs", "yield_signs", "curbs",
+    "scenery_objects", "speed_bumps", "railways", "railings",
+)
+
+# Per-frame wall-clock budget for the incremental tile-world merge
+# (bin-loader-v5.md). A dedicated constant, not MAP_SYNC_BUDGET_S or
+# render/roads.py's INCREMENTAL_REBUILD_BUDGET_S: the tile merge runs at a
+# different point in the frame (in the tile-streaming block, before the
+# map_sync_stage machine even starts), so stacking it on top of one of
+# those existing budgets would let two unrelated 4ms allowances land in the
+# same frame without either budget accounting for the other. Same order of
+# magnitude as both by the same reasoning (small enough that even a worst-
+# case stack of several per-frame budgets stays well under a 60fps frame's
+# 16.67ms), justified empirically in bin-loader-v5.md against the real
+# ~532ms/18k-item merge bin-loader-v4 measured.
+TILE_MERGE_BUDGET_S = 0.004
+
+
+class _TileMergeJob:
+    """Incremental state for merging one queued tile-group's fetched world
+    into the live world (bin-loader-v5.md). Resumable across calls: advancing
+    stops mid-section/mid-item and picks back up from section_index/
+    item_index exactly where it left off - never restarts already-merged
+    items, never processes the same item twice."""
+
+    __slots__ = ("tiles", "world", "section_index", "item_index")
+
+    def __init__(self, tiles: Set[TileCoord], world) -> None:
+        self.tiles = tiles
+        self.world = world
+        self.section_index = 0
+        self.item_index = 0
 
 
 DEFAULT_TILE_MEMORY_BUDGET_MB = 768.0
@@ -256,6 +297,12 @@ class AutoFetchManager:
         self.loaded_tiles: set[TileCoord] = set()
         self.pending_tiles: set[TileCoord] = set()
         self._completed_tile_batches: list[list[tuple[TileCoord, object]]] = []
+        # Tile-groups admitted from _completed_tile_batches but not yet
+        # (fully) merged into the live world - a real queue (bin-loader-
+        # v5.md #10), not just the one job "in progress": a new completed
+        # batch arriving while an older merge is still mid-flight is
+        # appended here rather than restarting or racing it.
+        self._merge_queue: list[_TileMergeJob] = []
         self._tile_retry_after = 0.0
         self.map_revision = 0
         self.last_tile_load_ms = 0.0
@@ -472,25 +519,7 @@ class AutoFetchManager:
         return current_tile
 
     def _register_existing_world(self) -> None:
-        sections = {
-            "ways": self.ways,
-            "waters": self.waters,
-            "buildings": self.buildings,
-            "sceneries": self.sceneries,
-            "places": self.places,
-            "traffic_lights": self.traffic_lights,
-            "crossings": self.crossings,
-            "bus_stops": self.bus_stops,
-            "parking_spaces": self.parking_spaces,
-            "logical_intersections": self.logical_intersections,
-            "stop_signs": self.stop_signs,
-            "yield_signs": self.yield_signs,
-            "curbs": self.curbs,
-            "scenery_objects": self.scenery_objects,
-            "speed_bumps": self.speed_bumps,
-            "railways": self.railways,
-            "railings": self.railings,
-        }
+        sections = {name: getattr(self, name) for name in _WORLD_SECTIONS}
         for section, objects in sections.items():
             for item in objects:
                 key = _map_object_key(item)
@@ -587,23 +616,38 @@ class AutoFetchManager:
                 self.is_fetching = False
                 self.fetch_progress = 0.0
 
-    def integrate_completed_tiles(self, max_tiles: int = 1) -> int:
-        """Integrate a bounded number of background tile results per frame."""
+    def integrate_completed_tiles(self, max_tiles: int = 1, budget_s: Optional[float] = None) -> int:
+        """Admit newly-completed tile fetches into the merge queue and
+        advance it, returning the number of *tiles* fully merged this call.
+
+        budget_s=None (the default) keeps the original fully-synchronous
+        contract every existing caller/test relies on: up to max_tiles
+        queued tile-groups are merged completely, in this one call, before
+        returning - since an unbounded budget never makes
+        _advance_tile_merge_job() yield early, this is the exact same
+        merge logic as the incremental path below, just never interrupted.
+
+        A real budget_s (bin-loader-v5.md; main.py's per-frame gameplay
+        call) makes this incremental instead: as much of the queue as fits
+        in budget_s is merged, and the call returns - possibly with 0 fully
+        merged (a job still mid-flight) or partway through several small
+        jobs. The queue and per-job progress (_TileMergeJob) persist
+        across calls, so pause/resume/repeated calls are all safe, and a
+        new completed batch arriving mid-merge is appended to the queue
+        rather than restarting or racing whatever's already in progress.
+        max_tiles has no effect in this mode - the time budget is what
+        bounds a budgeted call's work, the same way every other bin-loader-
+        v3/v4 incremental stage is bounded by time, not by an item count.
+        """
         with self.lock:
             batches = self._completed_tile_batches
             self._completed_tile_batches = []
             active_tiles_now = set(self.active_tiles)
-        if not batches:
-            return 0
-        started = time.perf_counter()
-        integrated = 0
-        with self.lock:
-            remaining = max(1, max_tiles)
             for batch in batches:
                 for tile_group, request_tiles, world in batch:
                     self.pending_tiles.difference_update(tile_group)
                     active_group = set(tile_group) & active_tiles_now
-                    if not active_group or remaining <= 0:
+                    if not active_group:
                         continue
                     # tile_group is start_tile_streaming()'s full missing
                     # set, but the actual fetch bbox (and so `world`) only
@@ -624,77 +668,126 @@ class AutoFetchManager:
                     # anything else in tile_group stays missing and gets
                     # picked up by a later call.
                     ownership_tiles = set(request_tiles) & active_tiles_now
-                    self._merge_tile_world_for_tiles(ownership_tiles, world)
-                    self.loaded_tiles.update(ownership_tiles)
-                    integrated += len(ownership_tiles)
-                    remaining -= 1
-            if integrated:
+                    self._merge_queue.append(_TileMergeJob(ownership_tiles, world))
+
+        if not self._merge_queue:
+            return 0
+
+        started = time.perf_counter()
+        integrated_tiles = 0
+        with self.lock:
+            if budget_s is None:
+                limit = max(1, max_tiles)
+                committed = 0
+                while self._merge_queue and committed < limit:
+                    job = self._merge_queue[0]
+                    self._advance_tile_merge_job(job, float("inf"))
+                    self._merge_queue.pop(0)
+                    self.loaded_tiles.update(job.tiles)
+                    integrated_tiles += len(job.tiles)
+                    committed += 1
+            else:
+                deadline = time.perf_counter() + budget_s
+                while self._merge_queue:
+                    job = self._merge_queue[0]
+                    if not self._advance_tile_merge_job(job, deadline):
+                        break
+                    self._merge_queue.pop(0)
+                    self.loaded_tiles.update(job.tiles)
+                    integrated_tiles += len(job.tiles)
+                    if time.perf_counter() >= deadline:
+                        break
+            if integrated_tiles:
                 self.map_revision += 1
                 logger.info(
                     "Tile integration complete: integrated_tiles=%d ways=%d map_revision=%d",
-                    integrated,
+                    integrated_tiles,
                     len(self.ways),
                     self.map_revision,
                 )
             self.last_tile_integration_ms = (time.perf_counter() - started) * 1000.0
-        return integrated
+        return integrated_tiles
 
-    def _merge_tile_world_for(self, tile: TileCoord, world) -> None:
-        self._merge_tile_world_for_tiles({tile}, world, force_tile=True)
+    def get_tile_merge_metrics(self) -> dict[str, object]:
+        """Diagnostics for the incremental tile-world merge (bin-loader-v5.md)."""
+        with self.lock:
+            active_job = self._merge_queue[0] if self._merge_queue else None
+            remaining_items = 0
+            if active_job is not None:
+                for index in range(active_job.section_index, len(_WORLD_SECTIONS)):
+                    section = _WORLD_SECTIONS[index]
+                    count = len(getattr(active_job.world, section, ()))
+                    start = active_job.item_index if index == active_job.section_index else 0
+                    remaining_items += max(0, count - start)
+            return {
+                "tile_merge_queue_depth": len(self._merge_queue),
+                "tile_merge_active": active_job is not None,
+                "tile_merge_remaining_items": remaining_items,
+            }
 
-    def _merge_tile_world_for_tiles(
-        self, tiles: set[TileCoord], world, force_tile: bool = False,
-    ) -> None:
-        sections = {
-            "ways": self.ways,
-            "waters": self.waters,
-            "buildings": self.buildings,
-            "sceneries": self.sceneries,
-            "places": self.places,
-            "traffic_lights": self.traffic_lights,
-            "crossings": self.crossings,
-            "bus_stops": self.bus_stops,
-            "parking_spaces": self.parking_spaces,
-            "logical_intersections": self.logical_intersections,
-            "stop_signs": self.stop_signs,
-            "yield_signs": self.yield_signs,
-            "curbs": self.curbs,
-            "scenery_objects": self.scenery_objects,
-            "speed_bumps": self.speed_bumps,
-            "railways": self.railways,
-            "railings": self.railings,
-        }
-        for section, target in sections.items():
-            new_items = getattr(world, section, ())
-            if not new_items:
-                continue
-            # _object_tiles[section] already tracks exactly the set of keys
-            # currently present in `target` (kept in lockstep by this method
-            # and _unload_tiles), so it doubles as an O(1) "is this key
-            # already known" membership test. Previously this rebuilt a
-            # fresh key set from the *entire* existing target list on every
-            # call - for the "ways"/"buildings" sections that cost grows
-            # with how much of the map is already loaded, not with how much
-            # is actually new, so it got slower the longer a play session
-            # ran and turned every tile merge (main.py calls this on the
-            # main thread) into a longer stall the more of the map was
-            # already streamed in.
-            section_owners = self._object_tiles.setdefault(section, {})
-            for item in new_items:
-                key = _map_object_key(item)
-                owned_tiles = tiles if force_tile else self._item_tiles(item) & tiles
-                if not owned_tiles:
-                    continue
-                for tile in owned_tiles:
-                    self._tile_objects.setdefault(tile, {}).setdefault(section, {})[key] = item
-                owners = section_owners.get(key)
-                is_new_key = owners is None
-                if is_new_key:
-                    owners = set()
-                    section_owners[key] = owners
-                owners.update(owned_tiles)
-                if is_new_key:
-                    target.append(item)
+    def _advance_tile_merge_job(self, job: "_TileMergeJob", deadline: float) -> bool:
+        """Advance one queued tile-group's merge by up to `deadline` (an
+        absolute time.perf_counter() value - float("inf") merges the whole
+        job in one call). Resumes from job.section_index/item_index, so
+        calling this repeatedly with the same job never reprocesses an
+        already-merged item and never skips one. Returns True once the job
+        is fully merged (world bounds folded in, places re-associated -
+        the same finishing steps _merge_tile_world_for_tiles does, run
+        once per job rather than once per item)."""
+        while job.section_index < len(_WORLD_SECTIONS):
+            section = _WORLD_SECTIONS[job.section_index]
+            target = getattr(self, section)
+            new_items = getattr(job.world, section, ())
+            remaining_budget = deadline - time.perf_counter()
+            job.item_index = advance_chunked(
+                new_items, job.item_index, remaining_budget,
+                lambda item: self._merge_item_if_owned(section, target, item, job.tiles),
+            )
+            if job.item_index < len(new_items):
+                return False
+            job.section_index += 1
+            job.item_index = 0
+        self._merge_world_bounds(job.world)
+        associate_places_with_buildings(self.buildings, self.places)
+        return True
+
+    def _merge_item_if_owned(self, section: str, target: list, item, tiles: set[TileCoord]) -> None:
+        owned_tiles = self._item_tiles(item) & tiles
+        if owned_tiles:
+            self._merge_item(section, target, item, owned_tiles)
+
+    def _merge_item(self, section: str, target: list, item, owned_tiles: set[TileCoord]) -> None:
+        """Merge exactly one already-owned item into `target`/the tile-
+        ownership bookkeeping for `section`. The one place both the
+        synchronous merge (_merge_tile_world_for_tiles) and the incremental
+        one (_advance_tile_merge_job) do this, so their observable result
+        for the same input is identical by construction, not by keeping two
+        implementations in sync by hand."""
+        key = _map_object_key(item)
+        for tile in owned_tiles:
+            self._tile_objects.setdefault(tile, {}).setdefault(section, {})[key] = item
+        # _object_tiles[section] already tracks exactly the set of keys
+        # currently present in `target` (kept in lockstep by this method
+        # and _unload_tiles), so it doubles as an O(1) "is this key
+        # already known" membership test. Previously this rebuilt a
+        # fresh key set from the *entire* existing target list on every
+        # call - for the "ways"/"buildings" sections that cost grows
+        # with how much of the map is already loaded, not with how much
+        # is actually new, so it got slower the longer a play session
+        # ran and turned every tile merge (main.py calls this on the
+        # main thread) into a longer stall the more of the map was
+        # already streamed in.
+        section_owners = self._object_tiles.setdefault(section, {})
+        owners = section_owners.get(key)
+        is_new_key = owners is None
+        if is_new_key:
+            owners = set()
+            section_owners[key] = owners
+        owners.update(owned_tiles)
+        if is_new_key:
+            target.append(item)
+
+    def _merge_world_bounds(self, world) -> None:
         world_bounds = getattr(world, "bounds", None)
         if world_bounds and world_bounds != (0.0, 0.0, 0.0, 0.0):
             self.bounds = (
@@ -703,30 +796,36 @@ class AutoFetchManager:
                 max(self.bounds[2], world_bounds[2]),
                 max(self.bounds[3], world_bounds[3]),
             )
+
+    def _merge_tile_world_for(self, tile: TileCoord, world) -> None:
+        self._merge_tile_world_for_tiles({tile}, world, force_tile=True)
+
+    def _merge_tile_world_for_tiles(
+        self, tiles: set[TileCoord], world, force_tile: bool = False,
+    ) -> None:
+        """Fully, synchronously merge `world` into the live world - the
+        original one-call contract, kept as-is for direct callers (tests,
+        _merge_tile_world_for) and reused by integrate_completed_tiles()'s
+        own budget_s=None path. See _merge_item for the shared per-item
+        logic; the incremental path (_advance_tile_merge_job) spreads this
+        same loop across multiple calls instead."""
+        sections = {name: getattr(self, name) for name in _WORLD_SECTIONS}
+        for section, target in sections.items():
+            new_items = getattr(world, section, ())
+            if not new_items:
+                continue
+            for item in new_items:
+                owned_tiles = tiles if force_tile else self._item_tiles(item) & tiles
+                if not owned_tiles:
+                    continue
+                self._merge_item(section, target, item, owned_tiles)
+        self._merge_world_bounds(world)
         associate_places_with_buildings(self.buildings, self.places)
 
     def _unload_tiles(self, tiles: set[TileCoord]) -> None:
         if not tiles:
             return
-        sections = {
-            "ways": self.ways,
-            "waters": self.waters,
-            "buildings": self.buildings,
-            "sceneries": self.sceneries,
-            "places": self.places,
-            "traffic_lights": self.traffic_lights,
-            "crossings": self.crossings,
-            "bus_stops": self.bus_stops,
-            "parking_spaces": self.parking_spaces,
-            "logical_intersections": self.logical_intersections,
-            "stop_signs": self.stop_signs,
-            "yield_signs": self.yield_signs,
-            "curbs": self.curbs,
-            "scenery_objects": self.scenery_objects,
-            "speed_bumps": self.speed_bumps,
-            "railways": self.railways,
-            "railings": self.railings,
-        }
+        sections = {name: getattr(self, name) for name in _WORLD_SECTIONS}
         # Collect every key actually losing its last owner across *all*
         # unloading tiles first, then filter each section's list once at the
         # end. Rebuilding a section's list per removed key (as this used to

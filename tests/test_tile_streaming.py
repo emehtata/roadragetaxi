@@ -915,3 +915,251 @@ def test_under_the_tile_count_ceiling_nothing_is_evicted_without_memory_reading(
     manager._evict_inactive_tiles(now=1000.0)
 
     assert TileCoord(0, 0) in manager._inactive_tile_since
+
+
+# --- bin-loader-v5.md: incremental/budgeted tile-world merge ---------------
+
+def _ways_batch(count: int, osm_id_start: int = 0, y: float = 100.0, x_offset: float = 0.0, step: float = 20.0) -> list:
+    """Every way here must land within one 1000x1000 tile (its own default
+    bbox in these tests) for a single-tile-group test to actually own all
+    of them - callers passing a large `count` must shrink `step` so
+    count * step stays under the tile width."""
+    return [
+        Way(
+            [(x_offset + float(i) * step, y), (x_offset + float(i) * step + step * 0.25, y)], "residential", 4.0,
+            osm_id=osm_id_start + i,
+            bbox=(x_offset + float(i) * step, y, x_offset + float(i) * step + step * 0.25, y),
+        )
+        for i in range(count)
+    ]
+
+
+def _queue_batch(manager, tiles: set, ways: list) -> None:
+    """Push one completed tile-group batch directly, matching the shape
+    _background_tile_fetch() itself produces - the same convention the
+    existing direct _completed_tile_batches tests above already use."""
+    tile_tuple = tuple(sorted(tiles))
+    manager._completed_tile_batches.append([
+        (tile_tuple, tile_tuple, MapData(ways, [], [], [], [], (0.0, 0.0, 1000.0, 1000.0))),
+    ])
+
+
+def test_incremental_merge_completes_one_item_at_a_time_across_many_calls():
+    ways = _ways_batch(5)
+    manager = AutoFetchManager([], (0.0, 0.0, 1000.0, 1000.0), transformer=None)
+    manager.active_tiles = {TileCoord(0, 0)}
+    _queue_batch(manager, {TileCoord(0, 0)}, ways)
+
+    calls = 0
+    total_integrated = 0
+    while manager._merge_queue or manager._completed_tile_batches:
+        integrated = manager.integrate_completed_tiles(budget_s=0.0)
+        total_integrated += integrated
+        calls += 1
+        assert calls < 1000, "incremental merge never finished"
+
+    assert calls > 1, "a zero budget must force multiple calls, not finish in one"
+    assert total_integrated == 1  # one tile committed
+    assert manager.ways == ways
+
+
+def test_incremental_merge_handles_multiple_queued_tile_groups():
+    ways_a = _ways_batch(3, osm_id_start=0, y=100.0)
+    ways_b = _ways_batch(3, osm_id_start=1000, y=200.0, x_offset=1000.0)
+    manager = AutoFetchManager([], (0.0, 0.0, 1000.0, 1000.0), transformer=None)
+    manager.active_tiles = {TileCoord(0, 0), TileCoord(1, 0)}
+    _queue_batch(manager, {TileCoord(0, 0)}, ways_a)
+    _queue_batch(manager, {TileCoord(1, 0)}, ways_b)
+
+    integrated = 0
+    for _ in range(1000):
+        integrated += manager.integrate_completed_tiles(budget_s=0.001)
+        if integrated >= 2:
+            break
+
+    assert integrated == 2
+    assert set(w.osm_id for w in manager.ways) == set(w.osm_id for w in ways_a + ways_b)
+
+
+def test_incremental_merge_handles_a_large_batch_without_one_giant_call():
+    """bin-loader-v4.md measured ~18k items in one real batch. A budget
+    small relative to item count must force many calls, and every item
+    must still end up merged - the algorithm must chunk within a tile's
+    own item lists, not just cap how many tiles run per frame."""
+    ways = _ways_batch(2000, step=0.4)
+    manager = AutoFetchManager([], (0.0, 0.0, 1000.0, 1000.0), transformer=None)
+    manager.active_tiles = {TileCoord(0, 0)}
+    _queue_batch(manager, {TileCoord(0, 0)}, ways)
+
+    calls = 0
+    total_integrated = 0
+    while manager._merge_queue or manager._completed_tile_batches:
+        total_integrated += manager.integrate_completed_tiles(budget_s=0.0005)
+        calls += 1
+        assert calls < 100_000, "large-batch incremental merge never finished"
+
+    assert calls > 1
+    assert total_integrated == 1
+    assert len(manager.ways) == len(ways)
+    assert set(w.osm_id for w in manager.ways) == set(w.osm_id for w in ways)
+
+
+def test_incremental_merge_pauses_and_resumes_without_restarting_progress():
+    ways = _ways_batch(50)
+    manager = AutoFetchManager([], (0.0, 0.0, 1000.0, 1000.0), transformer=None)
+    manager.active_tiles = {TileCoord(0, 0)}
+    _queue_batch(manager, {TileCoord(0, 0)}, ways)
+
+    manager.integrate_completed_tiles(budget_s=0.0)  # admits the batch, merges >= 1 item
+    assert manager._merge_queue, "job should still be mid-flight with a zero budget and 50 items"
+    job = manager._merge_queue[0]
+    progress_snapshot = (job.section_index, job.item_index)
+    ways_snapshot = list(manager.ways)
+
+    manager.integrate_completed_tiles(budget_s=0.0)
+
+    # Progress only ever moves forward - never back to the start, never
+    # skipping past where the previous call actually stopped.
+    assert (job.section_index, job.item_index) > progress_snapshot
+    assert manager.ways[:len(ways_snapshot)] == ways_snapshot
+
+
+def test_incremental_merge_of_empty_batch_is_a_safe_no_op():
+    manager = AutoFetchManager([], (0.0, 0.0, 1000.0, 1000.0), transformer=None)
+    assert manager.integrate_completed_tiles(budget_s=0.004) == 0
+    assert manager.ways == []
+    assert manager._merge_queue == []
+
+
+def test_incremental_merge_ignores_a_tile_group_with_no_active_overlap():
+    """A completed batch for tiles the player is no longer near (e.g. a
+    stale/cancelled request) must be drained from pending_tiles but not
+    queued for merging - matching the synchronous path's existing
+    active_group check."""
+    ways = _ways_batch(3)
+    manager = AutoFetchManager([], (0.0, 0.0, 1000.0, 1000.0), transformer=None)
+    manager.active_tiles = {TileCoord(5, 5)}  # player is nowhere near tile (0,0)
+    manager.pending_tiles = {TileCoord(0, 0)}
+    _queue_batch(manager, {TileCoord(0, 0)}, ways)
+
+    assert manager.integrate_completed_tiles(budget_s=0.004) == 0
+    assert manager.ways == []
+    assert manager.pending_tiles == set()
+
+
+def test_incremental_merge_does_not_duplicate_items_from_a_repeated_batch_notification():
+    """The same tile-group world reported complete twice (a duplicate
+    notification, or a tile re-fetched before the first result was
+    consumed) must not double the world's contents - the same per-key
+    dedup guarantee the synchronous merge already gives."""
+    ways = _ways_batch(4)
+    manager = AutoFetchManager([], (0.0, 0.0, 1000.0, 1000.0), transformer=None)
+    manager.active_tiles = {TileCoord(0, 0)}
+    _queue_batch(manager, {TileCoord(0, 0)}, ways)
+    _queue_batch(manager, {TileCoord(0, 0)}, ways)
+
+    while manager._merge_queue or manager._completed_tile_batches:
+        manager.integrate_completed_tiles(budget_s=0.001)
+
+    assert len(manager.ways) == len(ways)
+    assert sorted(w.osm_id for w in manager.ways) == sorted(w.osm_id for w in ways)
+
+
+def test_new_tile_batch_arriving_mid_merge_is_queued_not_dropped_or_restarted():
+    ways_a = _ways_batch(20, osm_id_start=0, y=100.0)
+    ways_b = _ways_batch(5, osm_id_start=1000, y=200.0, x_offset=1000.0)
+    manager = AutoFetchManager([], (0.0, 0.0, 1000.0, 1000.0), transformer=None)
+    manager.active_tiles = {TileCoord(0, 0), TileCoord(1, 0)}
+    _queue_batch(manager, {TileCoord(0, 0)}, ways_a)
+
+    # Start merging job A, but don't let it finish.
+    manager.integrate_completed_tiles(budget_s=0.0)
+    assert manager._merge_queue, "job A should still be in progress"
+    assert manager.ways != ways_a, "job A should not have fully committed yet"
+
+    # A second batch (job B) completes while job A is still mid-flight.
+    _queue_batch(manager, {TileCoord(1, 0)}, ways_b)
+
+    integrated = 0
+    for _ in range(10_000):
+        integrated += manager.integrate_completed_tiles(budget_s=0.001)
+        if integrated >= 2:
+            break
+
+    assert integrated == 2
+    assert set(w.osm_id for w in manager.ways) == set(w.osm_id for w in ways_a + ways_b)
+
+
+def test_incremental_merge_matches_synchronous_merge_exactly():
+    """The most important correctness property (bin-loader-v5.md #15): the
+    incremental merge, forced to yield after nearly every operation, must
+    still produce byte-identical final state to the original one-call
+    synchronous merge for the same input."""
+    ways = _ways_batch(30)
+
+    sync_manager = AutoFetchManager([], (0.0, 0.0, 1000.0, 1000.0), transformer=None)
+    sync_manager.active_tiles = {TileCoord(0, 0)}
+    sync_manager._merge_tile_world_for_tiles(
+        {TileCoord(0, 0)}, MapData(ways, [], [], [], [], (0.0, 0.0, 1000.0, 1000.0)),
+    )
+
+    incr_manager = AutoFetchManager([], (0.0, 0.0, 1000.0, 1000.0), transformer=None)
+    incr_manager.active_tiles = {TileCoord(0, 0)}
+    _queue_batch(incr_manager, {TileCoord(0, 0)}, ways)
+    steps = 0
+    while incr_manager._merge_queue or incr_manager._completed_tile_batches:
+        incr_manager.integrate_completed_tiles(budget_s=0.0)
+        steps += 1
+        assert steps < 1000, "incremental merge never finished"
+    assert steps > 1, "a zero budget must force multiple calls"
+
+    assert [w.osm_id for w in incr_manager.ways] == [w.osm_id for w in sync_manager.ways]
+    assert incr_manager.bounds == sync_manager.bounds
+    assert incr_manager._object_tiles.keys() == sync_manager._object_tiles.keys()
+    assert incr_manager._object_tiles["ways"] == sync_manager._object_tiles["ways"]
+    assert incr_manager._tile_objects == sync_manager._tile_objects
+
+
+def test_incremental_merge_metrics_report_progress_and_completion():
+    ways = _ways_batch(10)
+    manager = AutoFetchManager([], (0.0, 0.0, 1000.0, 1000.0), transformer=None)
+    manager.active_tiles = {TileCoord(0, 0)}
+
+    idle = manager.get_tile_merge_metrics()
+    assert idle == {
+        "tile_merge_queue_depth": 0,
+        "tile_merge_active": False,
+        "tile_merge_remaining_items": 0,
+    }
+
+    _queue_batch(manager, {TileCoord(0, 0)}, ways)
+    manager.integrate_completed_tiles(budget_s=0.0)
+    mid = manager.get_tile_merge_metrics()
+    assert mid["tile_merge_active"] is True
+    assert mid["tile_merge_remaining_items"] > 0
+
+    while manager._merge_queue:
+        manager.integrate_completed_tiles(budget_s=0.0)
+    done = manager.get_tile_merge_metrics()
+    assert done == {
+        "tile_merge_queue_depth": 0,
+        "tile_merge_active": False,
+        "tile_merge_remaining_items": 0,
+    }
+
+
+def test_integrate_completed_tiles_without_budget_stays_fully_synchronous():
+    """Regression guard: every pre-existing caller/test relies on
+    integrate_completed_tiles(max_tiles=N) (no budget_s) fully completing
+    up to N tile-groups in one call - the exact contract from before
+    bin-loader-v5.md. budget_s is strictly opt-in."""
+    ways_a = _ways_batch(5, osm_id_start=0)
+    ways_b = _ways_batch(5, osm_id_start=1000, x_offset=1000.0)
+    manager = AutoFetchManager([], (0.0, 0.0, 1000.0, 1000.0), transformer=None)
+    manager.active_tiles = {TileCoord(0, 0), TileCoord(1, 0)}
+    _queue_batch(manager, {TileCoord(0, 0)}, ways_a)
+    _queue_batch(manager, {TileCoord(1, 0)}, ways_b)
+
+    assert manager.integrate_completed_tiles(max_tiles=2) == 2
+    assert manager._merge_queue == []
+    assert set(w.osm_id for w in manager.ways) == set(w.osm_id for w in ways_a + ways_b)
