@@ -2158,7 +2158,13 @@ def main() -> None:
                     or len(railings) != railing_grid.indexed_way_count
                     or len(traffic_lights) != traffic_light_grid.indexed_way_count
                 )
-                if _map_sync_should_start(
+                # Don't start a sync against a world that's still being
+                # merged in: it would finish stale and immediately restart
+                # (measured: two full passes, re-running the unbudgeted
+                # remove_trees/traffic stages), so wait for the merge queue
+                # to drain and sync once.
+                tile_merge_busy = auto_fetch_manager.get_tile_merge_metrics()["tile_merge_active"]
+                if not tile_merge_busy and _map_sync_should_start(
                     auto_fetch_manager.get_map_revision() != last_map_revision,
                     any_grid_stale,
                     map_sync_stage,
@@ -2177,7 +2183,9 @@ def main() -> None:
                         remove_trees_under_roads(sceneries, ways)
                         taxi_mgr.invalidate_tree_collision_index()
                     map_sync_stage = 2
-                elif map_sync_stage == 2:
+                elif map_sync_stage == 2 and (
+                    not tile_merge_busy or spatial_grid_sub_stage != "grid" or spatial_grid._pending_ways is not None
+                ):
                     # Budgeted, resumable across frames (bin-loader-v3.md):
                     # the road spatial grid rebuild measured up to ~1.7s
                     # and detached-house parking generation up to ~1.9s in
