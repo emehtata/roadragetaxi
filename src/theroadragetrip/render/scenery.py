@@ -149,7 +149,12 @@ _SPECKLE_MIN_PX_PER_M = 2.0  # below this the dots would be sub-pixel noise, not
 # benchmarking a many-small-polygons scene. Sharing one budget across the
 # whole rebuild means many small polygons simply divide up the same
 # fixed total instead of each drawing their own full share on top.
-_SPECKLE_GLOBAL_BUDGET = 2200
+# The repeating grass base already supplies fine texture everywhere. Keep
+# polygon-specific speckles sparse: profiling at motorway speeds showed the
+# old 2200-dot/8800-candidate budget taking longer than one camera cache cell
+# to finish, so the seasonal scenery layer could never commit before its WIP
+# was invalidated by the next cell crossing.
+_SPECKLE_GLOBAL_BUDGET = 700
 # Separate ceiling on point_in_polygon *tests* (accepted + rejected), not
 # just accepted dots. _scenery_speckle_positions sizes its candidate-cell
 # stride to land near _SPECKLE_GLOBAL_BUDGET *accepted* dots, which assumes
@@ -849,14 +854,16 @@ def _draw_trees_uncached(
         trees = getattr(sc, "trees", [])
         if not trees:
             continue
-        # Road test once per tree (it's the costly part - a spatial-grid
-        # lookup per tree, ~44ms per cache rebuild when run twice).
+        # OSM preprocessing normally removes road-overlapping trees once
+        # after each map merge. Only old/unprocessed scenery needs the
+        # expensive per-tree spatial-grid safety check here.
+        roads_already_checked = getattr(sc, "trees_checked_against_roads", False)
         drawable_trees = [
             (tree_index, tree_x, tree_y)
             for tree_index, (tree_x, tree_y) in enumerate(trees)
             if vminx <= tree_x <= vmaxx
             and vminy <= tree_y <= vmaxy
-            and not tree_is_on_road(tree_x, tree_y)
+            and (roads_already_checked or not tree_is_on_road(tree_x, tree_y))
         ]
         tree_step = max(1, math.ceil(len(drawable_trees) / tree_budget))
         for tree_index, tree_x, tree_y in drawable_trees:
