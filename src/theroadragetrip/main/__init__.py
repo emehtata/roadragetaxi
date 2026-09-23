@@ -2717,6 +2717,16 @@ def main() -> None:
                 draw_lightning_flash(screen, weather)
                 draw_rain(screen, weather)
 
+            # bin-loader-v4.md: render_profile_stage_start was last set
+            # after the "actors" stage (above) and never reset before this
+            # point, so "render:labels" below silently measured from the
+            # start of the whole lighting block onward - lighting's own
+            # cost (which uses its own separately-scoped lighting_start)
+            # was being counted a second time, folded into "labels". A
+            # profiler-only fix (no gameplay effect): rescope the timer to
+            # actually start here.
+            render_profile_stage_start = time.perf_counter()
+
             # Labels overlay (toggled with 'L')
             if label_mode:
                 draw_labels(
