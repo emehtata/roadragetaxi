@@ -4,6 +4,12 @@ This folder contains technical deep-dives into rendering performance, bottleneck
 
 ## Contents
 
+### [bin-loader-v5-tile-merge.md](./bin-loader-v5-tile-merge.md)
+
+**Status**: Implemented; caveats documented
+**Date**: 2026-09-23
+**Focus**: Budgeted/incremental `AutoFetchManager` tile-world merge (removes the ~535 ms synchronous merge frame; typical merge frame now ~4 ms)
+
 ### [bin-loader-v4-frame-spike-analysis.md](./bin-loader-v4-frame-spike-analysis.md)
 
 **Status**: Completed Analysis
