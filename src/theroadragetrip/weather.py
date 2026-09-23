@@ -203,6 +203,13 @@ class WeatherSystem:
         """Effective asphalt slipperiness; winter roads stay slick when clear."""
         return max(self.wetness, 1.0 if self.season == Season.WINTER else 0.0)
 
+    @property
+    def road_ice_fraction(self) -> float:
+        """Fraction of wet road frozen into black ice below 0 C."""
+        if self._outside_temperature_c is None or self._outside_temperature_c >= 0.0:
+            return 0.0
+        return self.wetness
+
     def spawn_splash(self, x: float, y: float, strength: float) -> None:
         """Trigger a splash effect (world position, 0..1 strength - see
         WEATHER_RAIN.md #5: stronger/larger at higher vehicle speed)."""
@@ -257,6 +264,9 @@ class WeatherSystem:
             self._apply_precipitation_temperature()
             if self.weather_type in (WeatherType.RAIN, WeatherType.SLUSH):
                 self.wetness = min(1.0, self.wetness + game_dt / RAIN_WETTING_DURATION_S)
+            elif self.road_ice_fraction > 0.0:
+                # Frozen water cannot evaporate/dry until it thaws.
+                pass
             else:
                 self.wetness = max(0.0, self.wetness - game_dt / DRY_DURATION_S)
 

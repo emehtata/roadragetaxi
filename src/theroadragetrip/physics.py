@@ -61,6 +61,7 @@ SURFACE_MAX_GRIP_G = {
     "grass": 0.50,
     "snow": 0.35,
     "ice": 0.20,
+    "black_ice": 0.08,
     "sand": 0.45,
 }
 # Off-road ground (see off_road_ground_kind) has no Way.surface to read a
@@ -1230,7 +1231,13 @@ def get_current_road_at_car(
     return best_way
 
 
-def _surface_max_grip_g(current_way, physics_mode: str, wetness: float = 0.0, ground_kind: str = "road") -> float:
+def _surface_max_grip_g(
+    current_way,
+    physics_mode: str,
+    wetness: float = 0.0,
+    ground_kind: str = "road",
+    black_ice: float = 0.0,
+) -> float:
     """Return this surface's maximum combined-g tire grip (GRIP.md section
     9), reusing the game's existing Way.surface/is_ice_road fields rather
     than a second surface classification.
@@ -1244,6 +1251,7 @@ def _surface_max_grip_g(current_way, physics_mode: str, wetness: float = 0.0, gr
     touch them - this was unreachable before a weather system existed to
     report wetness at all.
     """
+    asphalt = False
     if current_way is not None and getattr(current_way, "is_ice_road", False):
         base = SURFACE_MAX_GRIP_G["ice"]
     elif current_way is None and ground_kind in GROUND_KIND_MAX_GRIP_G:
@@ -1257,9 +1265,13 @@ def _surface_max_grip_g(current_way, physics_mode: str, wetness: float = 0.0, gr
         elif surface in _GRAVEL_SURFACES:
             base = SURFACE_MAX_GRIP_G["gravel"]
         else:
+            asphalt = True
             dry = SURFACE_MAX_GRIP_G["dry_asphalt"]
             wet = SURFACE_MAX_GRIP_G["wet_asphalt"]
             base = dry + (wet - dry) * clamp(wetness, 0.0, 1.0)
+    if asphalt and black_ice > 0.0:
+        ice = SURFACE_MAX_GRIP_G["black_ice"]
+        base = base + (ice - base) * clamp(black_ice, 0.0, 1.0)
     return base * PHYSICS_MODE_GRIP_MULTIPLIER.get(physics_mode, 1.0)
 
 
@@ -1493,6 +1505,7 @@ def update_car_physics(
     current_way=None,
     physics_mode: str = "arcade",
     wetness: float = 0.0,
+    black_ice: float = 0.0,
 ) -> bool:
     """Update car speed, heading, and position.
 
@@ -1581,7 +1594,9 @@ def update_car_physics(
     # is_sliding is hysteresis on the *measured* slip_amount (set at the
     # end of the frame by _update_g_force, GRIP.md section 12) - not reset
     # here, so that hysteresis can see its own previous value.
-    car.max_grip_g = _surface_max_grip_g(current_way, physics_mode, wetness, car.ground_kind)
+    car.max_grip_g = _surface_max_grip_g(
+        current_way, physics_mode, wetness, car.ground_kind, black_ice
+    )
     steering_grip_limited = False
     steering_overshoot = 0.0
     # Drift decays by default every frame; the grip-exceeded branch below

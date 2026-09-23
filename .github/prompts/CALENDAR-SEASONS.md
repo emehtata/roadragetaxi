@@ -16,6 +16,7 @@ Implement a real in-game calendar and four visual/physical seasons for Road Rage
 - Summer: preserve the current appearance and grip.
 - Autumn: yellow, ochre and brown vegetation/tree crowns.
 - Dynamic weather remains independent state but is season-compatible: autumn and winter weather periods have a 50% chance of precipitation and last between zero and 24 game-hours. Falling precipitation follows the current air temperature independently of ground cover: snow at or below +1 °C, slush above +1 °C but below +5 °C, and rain at +5 °C or warmer. A later increment may implement snow accumulation/melting; do not conflate permanent winter ground cover with active snowfall.
+- Wet asphalt freezes into black ice whenever the outside temperature falls below 0 °C. Preserve the frozen wetness until temperatures rise above freezing, then resume normal drying. Black ice grip must be lower than every other modeled surface; apply it only to wet asphalt so snow, gravel and explicit ice-road classifications keep their own surface rules.
 - When a rain period begins, independently choose whether it is a thunderstorm: 50% in summer, 10% in spring and autumn, and 0% in winter. Thunderstorms produce intermittent lightning flashes and audible thunder; snow and slush never thunder.
 
 ## Architecture
@@ -35,6 +36,7 @@ Implement a real in-game calendar and four visual/physical seasons for Road Rage
 - Test gradual visual transitions independently of thermal labels, including autumnal Oulu on 23 September, multi-day spring snow melt, and later snow retention at higher latitude.
 - Test cache keys differ by season.
 - Test winter asphalt grip is lower than dry summer asphalt and does not exceed explicit snow/ice grip.
+- Test that wet asphalt freezes below 0 °C, does not dry while frozen, thaws back into ordinary wetness, and has lower grip than every other surface.
 - Test gig-driver selection is honored while career/default and headless flows remain usable.
 - Run the existing test suite; no regressions in weather wetness, grip, scenery caching, or solar throttling.
 

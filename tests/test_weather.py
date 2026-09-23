@@ -170,6 +170,19 @@ def test_clear_dries_over_one_in_game_hour_and_clamps():
     assert weather.wetness == 0.0
 
 
+def test_wet_road_freezes_below_zero_and_does_not_dry_until_thawed():
+    weather = WeatherSystem(WeatherType.CLEAR, season=Season.AUTUMN)
+    weather.wetness = 0.8
+
+    weather.update(DRY_DURATION_S, 0.0, outside_temperature_c=-0.1)
+    assert weather.road_ice_fraction == 0.8
+    assert weather.wetness == 0.8
+
+    weather.update(DRY_DURATION_S / 2.0, 0.0, outside_temperature_c=1.0)
+    assert weather.road_ice_fraction == 0.0
+    assert 0.29 < weather.wetness < 0.31
+
+
 def test_wetness_persists_independently_of_weather_type():
     """WEATHER_RAIN.md #9: CLEAR does not imply dry."""
     weather = WeatherSystem(WeatherType.RAIN)

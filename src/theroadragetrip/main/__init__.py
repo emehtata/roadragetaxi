@@ -212,7 +212,15 @@ def _weather_status(weather) -> str:
         f"{int(remaining % 3600 // 60):02d}:{int(remaining % 60):02d}"
     )
     thunder = " thunderstorm" if weather.is_thunderstorm else ""
-    return f"condition={weather.weather_type.value}{thunder} wetness={weather.wetness:.0%} {timing}"
+    black_ice = (
+        f" black_ice={weather.road_ice_fraction:.0%}"
+        if weather.road_ice_fraction > 0.0
+        else ""
+    )
+    return (
+        f"condition={weather.weather_type.value}{thunder} "
+        f"wetness={weather.wetness:.0%}{black_ice} {timing}"
+    )
 
 
 def _sync_thermal_season(game_calendar, weather, logged_season):
