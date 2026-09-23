@@ -12,10 +12,11 @@ from .common import (
 import time
 import math
 import random
-from typing import List
+from typing import List, Optional
 
 
 from ..calendar import Season
+from ..climate import SeasonalAppearance
 from ..geo import clip_polygon_to_rect, point_in_polygon
 from ..osm import Water
 
@@ -25,6 +26,11 @@ WATER_EDGE_COLOR = (20, 80, 160)
 WINTER_ICE_COLOR = (232, 240, 244)
 WINTER_ICE_EDGE_COLOR = (185, 207, 218)
 SPRING_ICE_COLORS = ((225, 236, 241), (205, 224, 232), (238, 243, 244))
+
+
+def _blend_color(start, end, amount):
+    amount = max(0.0, min(1.0, amount))
+    return tuple(round(a + (b - a) * amount) for a, b in zip(start, end))
 
 
 def draw_waters(
@@ -38,6 +44,7 @@ def draw_waters(
     spatial_grid=None,
     profiler=None,
     season: Season = Season.SUMMER,
+    seasonal_appearance: Optional[SeasonalAppearance] = None,
 ) -> None:
     """Draw cached water, full winter ice, or spring water with ice floes."""
     import pygame
@@ -46,7 +53,7 @@ def draw_waters(
     frame_cache_key = (
         id(waters), len(waters), id(waters[-1]) if waters else None,
         id(spatial_grid), *common._phased_cache_grid_cell("water", camx, camy, cache_zoom),
-        cache_zoom, screen.get_size(), season,
+        cache_zoom, screen.get_size(), season, seasonal_appearance,
     )
     if frame_cache_key == common._water_frame_cache_key and common._water_frame_cache_surface is not None:
         cached_camx, cached_camy = common._water_frame_cache_camera
@@ -65,7 +72,8 @@ def draw_waters(
     cache_surface = pygame.Surface((cache_width, cache_height), pygame.SRCALPHA)
     rebuild_started = time.perf_counter() if profiler is not None else 0.0
     _draw_waters_uncached(
-        cache_surface, waters, camx, camy, cache_zoom, cache_width, cache_height, spatial_grid, season,
+        cache_surface, waters, camx, camy, cache_zoom, cache_width, cache_height,
+        spatial_grid, season, seasonal_appearance,
     )
     if profiler is not None:
         profiler.record("render:water_cache_rebuild", (time.perf_counter() - rebuild_started) * 1000.0)
@@ -85,6 +93,7 @@ def _draw_waters_uncached(
     screen_h: int = SCREEN_H,
     spatial_grid=None,
     season: Season = Season.SUMMER,
+    seasonal_appearance: Optional[SeasonalAppearance] = None,
 ) -> None:
     """Draw water polygons and waterways intersecting viewport."""
     import pygame
@@ -96,6 +105,18 @@ def _draw_waters_uncached(
         if spatial_grid is not None
         else waters
     )
+    ice_fraction = (
+        seasonal_appearance.winter
+        if seasonal_appearance is not None
+        else (1.0 if season == Season.WINTER else 0.0)
+    )
+    spring_fraction = (
+        seasonal_appearance.spring
+        if seasonal_appearance is not None
+        else (1.0 if season == Season.SPRING else 0.0)
+    )
+    fill_color = _blend_color(WATER_COLOR, WINTER_ICE_COLOR, ice_fraction)
+    edge_color = _blend_color(WATER_EDGE_COLOR, WINTER_ICE_EDGE_COLOR, ice_fraction)
     for w in visible_waters:
         bb = getattr(w, "bbox", None)
         if bb and bb != (0.0, 0.0, 0.0, 0.0):
@@ -112,11 +133,9 @@ def _draw_waters_uncached(
                 pts = [world_to_screen(x, y, camx, camy, px_per_m, screen_w, screen_h) for (x, y) in clipped]
             else:
                 pts = [world_to_screen(x, y, camx, camy, px_per_m, screen_w, screen_h) for (x, y) in w.points_m]
-            fill_color = WINTER_ICE_COLOR if season == Season.WINTER else WATER_COLOR
-            edge_color = WINTER_ICE_EDGE_COLOR if season == Season.WINTER else WATER_EDGE_COLOR
             pygame.draw.polygon(screen, fill_color, pts)
             pygame.draw.lines(screen, edge_color, True, pts, 1)
-            if season == Season.SPRING:
+            if spring_fraction > 0.05:
                 _draw_spring_ice_floes(
                     screen, w.points_m, camx, camy, px_per_m, screen_w, screen_h,
                     vminx, vminy, vmaxx, vmaxy,
@@ -124,9 +143,8 @@ def _draw_waters_uncached(
         else:
             if len(w.points_m) >= 2:
                 pts = [world_to_screen(x, y, camx, camy, px_per_m, screen_w, screen_h) for (x, y) in w.points_m]
-                color = WINTER_ICE_COLOR if season == Season.WINTER else WATER_COLOR
-                pygame.draw.lines(screen, color, False, pts, max(2, int(3 * px_per_m)))
-                if season == Season.SPRING:
+                pygame.draw.lines(screen, fill_color, False, pts, max(2, int(3 * px_per_m)))
+                if spring_fraction > 0.05:
                     _draw_spring_stream_ice(screen, pts, px_per_m)
 
 

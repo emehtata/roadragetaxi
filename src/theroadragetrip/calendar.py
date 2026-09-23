@@ -54,5 +54,11 @@ class GameCalendar:
 
         return thermal_season_for_date(self.date, self.latitude)
 
+    @property
+    def seasonal_appearance(self):
+        from .climate import seasonal_appearance_for_date
+
+        return seasonal_appearance_for_date(self.date, self.latitude)
+
     def advance(self, game_seconds: float) -> None:
         self.current += timedelta(seconds=game_seconds)

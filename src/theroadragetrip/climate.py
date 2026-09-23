@@ -6,6 +6,7 @@ plausible baseline for the selected game date, time and latitude.
 from __future__ import annotations
 
 from datetime import date, datetime, timedelta
+from dataclasses import dataclass
 import math
 
 from .calendar import Season
@@ -17,6 +18,44 @@ MEAN_LATITUDE_LAPSE_C_PER_DEGREE = 0.65
 ANNUAL_AMPLITUDE_AT_REFERENCE_C = 11.5
 AMPLITUDE_INCREASE_PER_DEGREE = 0.22
 WARMEST_DAY_OF_YEAR = 205  # late July; seasonal temperature lags daylight
+
+
+@dataclass(frozen=True)
+class SeasonalAppearance:
+    """Continuous visual weights, separate from the thermal-season label."""
+
+    winter: float = 0.0
+    spring: float = 0.0
+    summer: float = 0.0
+    autumn: float = 0.0
+
+
+def _smoothstep(value: float) -> float:
+    value = max(0.0, min(1.0, value))
+    return value * value * (3.0 - 2.0 * value)
+
+
+def seasonal_appearance_for_date(day: date, latitude: float) -> SeasonalAppearance:
+    """Return gradual, latitude-aware vegetation and snow-cover weights.
+
+    Thermal seasons deliberately remain strict seven-day classifications.
+    Visual nature is not: autumn color begins while mean temperatures are
+    still above +10 C, and spring snow fades across a broad warming range.
+    """
+    mean = typical_daily_mean_temperature(day, latitude)
+    warming = mean >= typical_daily_mean_temperature(day - timedelta(days=7), latitude)
+    if warming:
+        spring_progress = _smoothstep((mean + 3.0) / 8.0)
+        if spring_progress < 1.0:
+            return SeasonalAppearance(winter=1.0 - spring_progress, spring=spring_progress)
+        summer_progress = _smoothstep((mean - 5.0) / 9.0)
+        return SeasonalAppearance(spring=1.0 - summer_progress, summer=summer_progress)
+
+    autumn_progress = _smoothstep((15.0 - mean) / 10.0)
+    if autumn_progress < 1.0:
+        return SeasonalAppearance(summer=1.0 - autumn_progress, autumn=autumn_progress)
+    winter_progress = _smoothstep((3.0 - mean) / 6.0)
+    return SeasonalAppearance(autumn=1.0 - winter_progress, winter=winter_progress)
 
 
 def typical_daily_mean_temperature(day: date, latitude: float) -> float:

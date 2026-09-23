@@ -4,10 +4,30 @@ import pytest
 
 from theroadragetrip.calendar import Season
 from theroadragetrip.climate import (
+    seasonal_appearance_for_date,
     thermal_season_for_date,
     typical_daily_mean_temperature,
     typical_temperature,
 )
+
+
+def test_oulu_is_visibly_turning_autumn_before_thermal_autumn():
+    day = date(2026, 9, 23)
+    appearance = seasonal_appearance_for_date(day, 65.01)
+
+    assert thermal_season_for_date(day, 65.01) == Season.SUMMER
+    assert appearance.autumn > 0.5
+    assert appearance.summer < 0.5
+
+
+def test_spring_snow_cover_fades_gradually_and_later_in_the_north():
+    early = seasonal_appearance_for_date(date(2026, 4, 1), 65.01)
+    later = seasonal_appearance_for_date(date(2026, 5, 1), 65.01)
+    northern = seasonal_appearance_for_date(date(2026, 5, 1), 68.9)
+
+    assert 0.0 < early.spring < 1.0
+    assert later.winter < early.winter
+    assert northern.winter > later.winter
 
 
 def test_typical_temperature_is_lower_at_higher_latitude():

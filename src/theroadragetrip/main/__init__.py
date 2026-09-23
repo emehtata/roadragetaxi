@@ -2232,7 +2232,8 @@ def main() -> None:
             render_profile_frame_start = time.perf_counter()
             render_profile_stage_start = render_profile_frame_start
             map_stage_start = time.perf_counter()
-            draw_grass_texture(screen, camx, camy, px_per_m, profiler=frame_profiler, season=game_calendar.season)
+            seasonal_appearance = game_calendar.seasonal_appearance
+            draw_grass_texture(screen, camx, camy, px_per_m, profiler=frame_profiler, season=game_calendar.season, seasonal_appearance=seasonal_appearance)
             stage_elapsed = time.perf_counter() - map_stage_start
             render_profile_times["map_grass"] = render_profile_times.get("map_grass", 0.0) + stage_elapsed
             frame_profiler.record("render:grass", stage_elapsed * 1000.0)
@@ -2248,6 +2249,7 @@ def main() -> None:
                 spatial_grid=scenery_grid,
                 profiler=frame_profiler,
                 season=game_calendar.season,
+                seasonal_appearance=seasonal_appearance,
             )
             stage_elapsed = time.perf_counter() - map_stage_start
             render_profile_times["map_scenery"] = render_profile_times.get("map_scenery", 0.0) + stage_elapsed
@@ -2258,6 +2260,7 @@ def main() -> None:
             draw_waters(
                 screen, waters, camx, camy, px_per_m=px_per_m,
                 spatial_grid=water_grid, profiler=frame_profiler, season=game_calendar.season,
+                seasonal_appearance=seasonal_appearance,
             )
             stage_elapsed = time.perf_counter() - map_stage_start
             render_profile_times["map_water"] = render_profile_times.get("map_water", 0.0) + stage_elapsed
@@ -2309,6 +2312,7 @@ def main() -> None:
                 road_spatial_grid=spatial_grid,
                 profiler=frame_profiler,
                 season=game_calendar.season,
+                seasonal_appearance=seasonal_appearance,
             )
             stage_elapsed = time.perf_counter() - map_stage_start
             render_profile_times["map_trees"] = render_profile_times.get("map_trees", 0.0) + stage_elapsed

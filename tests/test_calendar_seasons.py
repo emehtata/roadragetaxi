@@ -3,6 +3,7 @@ from datetime import datetime
 import pytest
 
 from theroadragetrip.calendar import GameCalendar, Season
+from theroadragetrip.climate import SeasonalAppearance
 from theroadragetrip.render.scenery import seasonal_vegetation_color
 from theroadragetrip.weather import WeatherSystem
 
@@ -41,6 +42,16 @@ def test_seasonal_palette_keeps_summer_and_changes_other_seasons():
     assert sum(spring) > sum(green)
     autumn = seasonal_vegetation_color(green, Season.AUTUMN)
     assert autumn[0] > autumn[2]
+
+
+def test_seasonal_palette_blends_instead_of_switching_colors():
+    green = (40, 100, 80)
+    halfway = SeasonalAppearance(summer=0.5, autumn=0.5)
+    blended = seasonal_vegetation_color(green, Season.SUMMER, halfway)
+    autumn = seasonal_vegetation_color(green, Season.AUTUMN)
+
+    assert green[0] < blended[0] < autumn[0]
+    assert autumn[2] < blended[2] < green[2]
 
 
 def test_clear_winter_still_uses_slippery_road_grip_value():
