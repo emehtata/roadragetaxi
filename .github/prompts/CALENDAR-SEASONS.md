@@ -4,7 +4,7 @@ Implement a real in-game calendar and four visual/physical seasons for Road Rage
 
 ## Product behaviour
 
-- In **Keikkakuski / Gig driver** mode, show a date-and-time picker after mode selection and before gameplay. The player must be able to choose any valid Gregorian date and minute of day with keyboard and mouse controls. Career mode keeps its curated/default start unless explicitly redesigned later.
+- In **Keikkakuski / Gig driver** mode, show a date-and-time picker after mode selection and before gameplay. The player may choose a valid Gregorian date from today back through the same calendar date one year earlier, plus any minute of day, with keyboard and mouse controls. Draw navigation arrows as geometry rather than relying on font glyph coverage. Career mode keeps its curated/default start unless explicitly redesigned later.
 - The selected local date and time are the single source of truth for the session. Game-time acceleration must advance both time and date across midnight; leap years and month lengths must be correct.
 - Display the date as well as `HH:MM` in the HUD. Keep existing debug clock controls working, including crossing day boundaries.
 - Display a deterministic typical Finnish temperature beside the clock. It must vary with day of year, local time and latitude (northern Finland is colder than southern Finland).
