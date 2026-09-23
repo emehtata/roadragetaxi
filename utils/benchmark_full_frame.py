@@ -168,7 +168,7 @@ def _percentile(values: list[float], pct: float) -> float:
 # frame; "rendering" wraps every render:* stage) - bin-loader-v4.md #10.
 # Excluding these from a frame's "accounted for" sum avoids double-counting
 # a stage as both itself and part of its own parent.
-_PARENT_SECTIONS = {"rendering", "map_sync"}
+_PARENT_SECTIONS = {"rendering", "map_sync", "render:illuminated_windows"}  # last is nested inside render:lighting (bin-loader-v6.md)
 
 
 def _exclusive_sections(sections: dict[str, float]) -> dict[str, float]:
@@ -255,7 +255,12 @@ def run_scenario(name: str, city: str, frames: int, drive: bool, spike_threshold
             f"    {section:<28} {statistics.mean(values):>7.3f} / "
             f"{_percentile(values, 0.95):>7.3f} / {max(values):>7.3f}   ({len(values)}/{len(frames_recorded)})"
         )
-    for threshold in (100.0, 400.0, 500.0):
+    print(f"  frame time p99: {_percentile(frame_ms, 0.99):.2f}")
+    merge_ms = [f["frame_ms"] for f in frames_recorded if f["metrics"].get("tile_merge_queue_depth", 0)]
+    if merge_ms:
+        print(f"  merge window: {len(merge_ms)} frames, avg/p95/worst {statistics.mean(merge_ms):.2f} / "
+              f"{_percentile(merge_ms, 0.95):.2f} / {max(merge_ms):.2f}, >=100ms: {sum(m >= 100 for m in merge_ms)}")
+    for threshold in (100.0, 200.0, 400.0, 500.0):
         count = sum(1 for ms in frame_ms if ms >= threshold)
         print(f"  frames >= {threshold:.0f}ms: {count}")
     print(f"  gc time total: {sum(_gc_time_by_frame.values()):.1f}ms across {len(_gc_time_by_frame)} frames")
