@@ -5,6 +5,7 @@ from typing import Any, List, Optional, Tuple
 
 from .fuel import FUEL_TANK_CAPACITY_L, INITIAL_FUEL_L
 from .geo import angle_diff, clamp, closest_point_and_dist_to_segment, compute_bbox, dist_point_to_segment, point_in_polygon
+from .performance import advance_chunked
 
 # Car physics (arcade)
 ACCEL = 4.6  # m/s^2; peak forward acceleration from rest
@@ -806,6 +807,9 @@ class SpatialWayGrid:
         # which grid cell a query happens to reach an item through first
         # (see ways_in_rect's docstring for why that matters).
         self._insertion_order: dict[int, int] = {}
+        self._pending_ways: Optional[List] = None
+        self._pending_index: int = 0
+        self._pending_grid: Optional[dict] = None
         if isinstance(ways_or_cell_size, (list, tuple)):
             self.cell_size = cell_size
             self.grid: dict[Tuple[int, int], List] = {}
@@ -817,6 +821,9 @@ class SpatialWayGrid:
             self.indexed_way_count = 0
 
     def insert(self, way) -> None:
+        self._insert_into(self.grid, way)
+
+    def _insert_into(self, grid: dict, way) -> None:
         bbox = getattr(way, "bbox", None)
         if not bbox or bbox == (0.0, 0.0, 0.0, 0.0):
             points = getattr(way, "points_m", None)
@@ -839,9 +846,9 @@ class SpatialWayGrid:
         for gx in range(gx0, gx1 + 1):
             for gy in range(gy0, gy1 + 1):
                 cell = (gx, gy)
-                if cell not in self.grid:
-                    self.grid[cell] = []
-                self.grid[cell].append(way)
+                if cell not in grid:
+                    grid[cell] = []
+                grid[cell].append(way)
 
     def rebuild(self, ways: List) -> None:
         self.grid.clear()
@@ -849,6 +856,35 @@ class SpatialWayGrid:
         for w in ways:
             self.insert(w)
         self.indexed_way_count = len(ways)
+
+    def start_rebuild(self, ways: List) -> None:
+        """Begin a budgeted rebuild (bin-loader-v3.md) - queries keep
+        using the OLD grid, unchanged, until advance_rebuild() reports
+        finished. For map_sync's road spatial_grid stage specifically
+        (measured up to ~1.7s in one frame against a dense real city);
+        every other caller keeps using the synchronous rebuild() above."""
+        self._pending_ways = list(ways)
+        self._pending_index = 0
+        self._pending_grid: dict = {}
+
+    def advance_rebuild(self, budget_s: float) -> bool:
+        """Advance an in-progress start_rebuild() job by up to budget_s.
+        Returns True once finished (self.grid is now the new complete
+        result); False if more work remains."""
+        if self._pending_ways is None:
+            return True
+        self._pending_index = advance_chunked(
+            self._pending_ways, self._pending_index, budget_s,
+            lambda way: self._insert_into(self._pending_grid, way),
+        )
+        if self._pending_index < len(self._pending_ways):
+            return False
+        self.grid = self._pending_grid
+        self._insertion_order = {id(w): i for i, w in enumerate(self._pending_ways)}
+        self.indexed_way_count = len(self._pending_ways)
+        self._pending_ways = None
+        self._pending_grid = None
+        return True
 
     def _candidate_ways(
         self, px: float, py: float, car_roads_only: bool = False, layer: Optional[int] = None

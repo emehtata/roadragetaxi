@@ -664,3 +664,52 @@ def test_all_static_layers_recover_visibly_after_a_camera_jump():
         assert seen_water, "water never reappeared after the camera jump"
     finally:
         pygame.quit()
+
+
+def _grid_ways(count: int) -> list:
+    return [
+        Way(
+            points_m=[(float(i * 10), 0.0), (float(i * 10 + 5), 0.0)],
+            highway="residential", half_width_m=2.0,
+            bbox=(float(i * 10), -2.0, float(i * 10 + 5), 2.0),
+        )
+        for i in range(count)
+    ]
+
+
+def test_incremental_rebuild_serves_old_grid_until_finished():
+    """bin-loader-v3.md: start_rebuild()/advance_rebuild() must not touch
+    the live grid until the whole job commits - a query made mid-rebuild
+    must see the OLD complete grid, never a partially-built one."""
+    grid = SpatialWayGrid()
+    old_ways = _grid_ways(5)
+    grid.rebuild(old_ways)
+    old_count = grid.indexed_way_count
+
+    new_ways = _grid_ways(40)
+    grid.start_rebuild(new_ways)
+    assert grid.indexed_way_count == old_count, "old grid must still be live right after start_rebuild"
+    assert not grid.advance_rebuild(0.0), "a job this size must not finish in a single zero-budget call"
+    assert grid.indexed_way_count == old_count, "old grid must still be live mid-rebuild"
+
+
+def test_incremental_rebuild_matches_synchronous_rebuild_exactly():
+    ways = _grid_ways(60)
+    sync_grid = SpatialWayGrid()
+    sync_grid.rebuild(ways)
+
+    inc_grid = SpatialWayGrid()
+    inc_grid.start_rebuild(ways)
+    finished = False
+    steps = 0
+    while not finished:
+        finished = inc_grid.advance_rebuild(0.0)
+        steps += 1
+        assert steps < 1000, "incremental rebuild never finished"
+    assert steps > 1, "a zero budget must force multiple advance_rebuild() calls"
+
+    assert inc_grid.indexed_way_count == sync_grid.indexed_way_count == len(ways)
+    assert inc_grid._pending_ways is None
+    sync_results = sorted(id(w) for w in sync_grid.ways_in_rect(-100, -100, 1000, 100))
+    inc_results = sorted(id(w) for w in inc_grid.ways_in_rect(-100, -100, 1000, 100))
+    assert sync_results == inc_results == sorted(id(w) for w in ways)
