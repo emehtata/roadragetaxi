@@ -66,6 +66,10 @@ COMMERCIAL_AMENITIES = {
 COMMERCIAL_BUILDING_TYPES = {"commercial", "retail", "shop"}
 ILLUMINATED_WINDOW_CACHE_PADDING_PX = 224
 _illuminated_window_cache = None
+_illuminated_window_job = None
+# Per-frame budget for extending the illuminated-window glow cache with
+# newly-indexed buildings (bin-loader-v6.md); dedicated, not TILE_MERGE_BUDGET_S.
+ILLUMINATED_WINDOW_CACHE_BUDGET_S = 0.004
 GENERATED_DRIVEWAY_MAX_LENGTH_M = 35.0
 GENERATED_HOUSE_PARKING_BAYS = 2
 
@@ -1300,6 +1304,8 @@ def draw_illuminated_windows(
     spatial_grid=None,
     latitude: float = DEFAULT_SUN_LATITUDE,
     longitude: float = DEFAULT_SUN_LONGITUDE,
+    profiler=None,
+    budget_s: Optional[float] = None,
 ) -> None:
     """Draw a warm glow over the subset of visible buildings' windows that
     are "lit" at night (windows.md section 5/6).
@@ -1332,24 +1338,49 @@ def draw_illuminated_windows(
     if alpha <= 0:
         return
 
-    global _illuminated_window_cache
-    data_key = (
-        id(buildings),
-        len(buildings),
-        id(buildings[-1]) if buildings else None,
-        id(spatial_grid),
-        px_per_m,
-        screen_w,
-        screen_h,
-    )
+    global _illuminated_window_cache, _illuminated_window_job
+    started = time.perf_counter() if profiler is not None else None
+    # What the glow surface depends on is the set of buildings the spatial
+    # grid can actually return (or the whole list, with no grid) - NOT the
+    # live list's length: buildings appended by the incremental tile merge
+    # (bin-loader-v5.md) don't reach the grid until map sync's building-grid
+    # stage catches up, so keying on len(buildings) rebuilt an identical
+    # cache every frame of the merge (bin-loader-v6.md).
+    count = spatial_grid.indexed_way_count if spatial_grid is not None else len(buildings)
+    static_key = (id(buildings), id(spatial_grid), px_per_m, screen_w, screen_h)
     cache = _illuminated_window_cache
-    reusable = (
+    camera_ok = (
         cache is not None
-        and cache["key"] == data_key
         and abs((camx - cache["camera"][0]) * px_per_m) <= ILLUMINATED_WINDOW_CACHE_PADDING_PX
         and abs((camy - cache["camera"][1]) * px_per_m) <= ILLUMINATED_WINDOW_CACHE_PADDING_PX
     )
-    if not reusable:
+    same_world = cache is not None and cache["key"] == static_key
+    # Buildings are append-only between unloads; an unload filters the list
+    # in place, which moves the last-indexed building to a lower index, so
+    # "still at position count-1" proves nothing before it was removed.
+    prefix_intact = (
+        same_world
+        and count <= len(buildings)
+        and (cache["count"] == 0 or (
+            cache["count"] <= len(buildings) and id(buildings[cache["count"] - 1]) == cache["last_id"]
+        ))
+    )
+    if same_world and camera_ok and prefix_intact and count == cache["count"]:
+        _illuminated_window_job = None
+    elif same_world and camera_ok and prefix_intact and count > cache["count"]:
+        job = _illuminated_window_job
+        if job is None or job["cache"] is not cache:
+            job = _illuminated_window_job = {"cache": cache, "cursor": cache["count"], "end": count}
+        job["end"] = count
+        _extend_illuminated_windows(
+            cache, job, buildings, budget_s if budget_s is not None else ILLUMINATED_WINDOW_CACHE_BUDGET_S,
+        )
+        if job["cursor"] >= job["end"]:
+            cache["count"] = job["end"]
+            cache["last_id"] = id(buildings[job["end"] - 1]) if job["end"] else None
+            _illuminated_window_job = None
+    else:
+        _illuminated_window_job = None
         cache_w = screen_w + ILLUMINATED_WINDOW_CACHE_PADDING_PX * 2
         cache_h = screen_h + ILLUMINATED_WINDOW_CACHE_PADDING_PX * 2
         vminx, vminy, vmaxx, vmaxy = get_viewport_bounds(
@@ -1363,41 +1394,83 @@ def draw_illuminated_windows(
         glow_layer = pygame.Surface((cache_w, cache_h), pygame.SRCALPHA)
         any_lit = False
         for b in visible_buildings:
-            bb = getattr(b, "bbox", None)
-            if bb and bb != (0.0, 0.0, 0.0, 0.0):
-                if bb[2] < vminx or bb[0] > vmaxx or bb[3] < vminy or bb[1] > vmaxy:
-                    continue
-            if len(b.points_m) < 3 or _is_open_roof(b):
-                continue
-            pts = [
-                world_to_screen(x, y, camx, camy, px_per_m, cache_w, cache_h)
-                for x, y in b.points_m
-            ]
-            height = _building_render_height(b)
-            depth = min(MAX_BUILDING_DEPTH_PX, max(3, int(height * 0.35 * px_per_m)))
-            roof = [(x - depth * 0.7, y - depth) for x, y in pts]
-            visible_edges = _visible_building_edges(pts, roof)
-            building_id = id(b)
-            for edge_index, floor_index, window_index, storefront_row, window in _iter_building_window_slots(
-                b, pts, roof, visible_edges, depth
+            if _draw_illuminated_building(
+                glow_layer, b, (vminx, vminy, vmaxx, vmaxy), camx, camy, px_per_m, cache_w, cache_h,
             ):
-                probability = _window_illumination_probability(b, storefront_row)
-                if not _window_is_illuminated(
-                    building_id, edge_index, floor_index, window_index, probability
-                ):
-                    continue
-                pygame.draw.polygon(glow_layer, (*WINDOW_LIT_COLOR, 255), window)
                 any_lit = True
-        cache = {
-            "key": data_key,
+        cache = _illuminated_window_cache = {
+            "key": static_key,
             "camera": (camx, camy),
             "surface": glow_layer,
             "any_lit": any_lit,
+            "count": count,
+            "last_id": id(buildings[count - 1]) if 0 < count <= len(buildings) else None,
         }
-        _illuminated_window_cache = cache
 
     if cache["any_lit"]:
         cache["surface"].set_alpha(alpha)
         offset_x = round((cache["camera"][0] - camx) * px_per_m) - ILLUMINATED_WINDOW_CACHE_PADDING_PX
         offset_y = round((camy - cache["camera"][1]) * px_per_m) - ILLUMINATED_WINDOW_CACHE_PADDING_PX
         screen.blit(cache["surface"], (offset_x, offset_y), special_flags=pygame.BLEND_RGB_ADD)
+    if profiler is not None:
+        profiler.record("render:illuminated_windows", (time.perf_counter() - started) * 1000.0)
+        pending = 0 if _illuminated_window_job is None else _illuminated_window_job["end"] - _illuminated_window_job["cursor"]
+        profiler.set_metric("window_cache_pending_buildings", pending)
+
+
+def _draw_illuminated_building(glow_layer, b, viewport, camx, camy, px_per_m, cache_w, cache_h) -> bool:
+    """Draw one building's lit-window quads onto the glow layer, returning
+    whether any window was lit. The one per-building implementation shared
+    by the full rebuild and the incremental extension, so both draw the
+    identical polygons (opaque, same colour: drawing order is irrelevant)."""
+    import pygame
+
+    vminx, vminy, vmaxx, vmaxy = viewport
+    bb = getattr(b, "bbox", None)
+    if bb and bb != (0.0, 0.0, 0.0, 0.0):
+        if bb[2] < vminx or bb[0] > vmaxx or bb[3] < vminy or bb[1] > vmaxy:
+            return False
+    if len(b.points_m) < 3 or _is_open_roof(b):
+        return False
+    pts = [
+        world_to_screen(x, y, camx, camy, px_per_m, cache_w, cache_h)
+        for x, y in b.points_m
+    ]
+    height = _building_render_height(b)
+    depth = min(MAX_BUILDING_DEPTH_PX, max(3, int(height * 0.35 * px_per_m)))
+    roof = [(x - depth * 0.7, y - depth) for x, y in pts]
+    visible_edges = _visible_building_edges(pts, roof)
+    building_id = id(b)
+    any_lit = False
+    for edge_index, floor_index, window_index, storefront_row, window in _iter_building_window_slots(
+        b, pts, roof, visible_edges, depth
+    ):
+        probability = _window_illumination_probability(b, storefront_row)
+        if not _window_is_illuminated(
+            building_id, edge_index, floor_index, window_index, probability
+        ):
+            continue
+        pygame.draw.polygon(glow_layer, (*WINDOW_LIT_COLOR, 255), window)
+        any_lit = True
+    return any_lit
+
+
+def _extend_illuminated_windows(cache: dict, job: dict, buildings, budget_s: float) -> None:
+    """Advance an incremental extension: draw only buildings[cursor:end] -
+    the ones appended since the cache was built - onto the existing glow
+    surface at its own snapshot camera, exactly where a full rebuild at
+    that camera would have drawn them. The committed surface stays
+    displayed meanwhile (partially extended, never blank)."""
+    cache_w = cache["surface"].get_width()
+    cache_h = cache["surface"].get_height()
+    camx, camy = cache["camera"]
+    px_per_m = cache["key"][2]
+    viewport = get_viewport_bounds(camx, camy, px_per_m, cache_w, cache_h, 20.0)
+
+    def draw(index: int) -> None:
+        if _draw_illuminated_building(
+            cache["surface"], buildings[index], viewport, camx, camy, px_per_m, cache_w, cache_h,
+        ):
+            cache["any_lit"] = True
+
+    job["cursor"] = advance_chunked(range(job["end"]), job["cursor"], budget_s, draw)

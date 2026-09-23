@@ -2663,6 +2663,7 @@ def main() -> None:
                 spatial_grid=building_grid,
                 latitude=sun_latitude,
                 longitude=sun_longitude,
+                profiler=frame_profiler,
             )
             draw_vomit_puddles(screen, taxi_mgr.vomit_puddles, camx, camy, px_per_m=px_per_m)
             draw_vomit_puddles(screen, pedestrian_mgr.vomit_puddles, camx, camy, px_per_m=px_per_m)

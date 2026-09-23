@@ -2196,3 +2196,170 @@ def test_illuminated_windows_reuse_geometry_during_small_camera_moves(monkeypatc
     finally:
         buildings_render._illuminated_window_cache = None
         pygame.quit()
+
+
+# --- bin-loader-v6.md: incremental illuminated-window cache -----------------
+
+def _window_block(count: int, x0: float = 0.0):
+    return [
+        Building(
+            [(x0 + i * 22.0, 0.0), (x0 + i * 22.0 + 18.0, 0.0), (x0 + i * 22.0 + 18.0, 18.0), (x0 + i * 22.0, 18.0)],
+            levels=5, height_m=15.0, bbox=(x0 + i * 22.0, 0.0, x0 + i * 22.0 + 18.0, 18.0),
+        )
+        for i in range(count)
+    ]
+
+
+def _render_windows(buildings, grid, camx=100.0, camy=0.0, px=2.0, budget_s=None):
+    screen = pygame.Surface((400, 300))
+    draw_illuminated_windows(
+        screen, buildings, camx, camy, 0.0, px_per_m=px, screen_w=400, screen_h=300,
+        spatial_grid=grid, budget_s=budget_s,
+    )
+    return pygame.image.tobytes(screen, "RGB")
+
+
+def _fresh_cache_bytes(buildings, camx=100.0, camy=0.0, px=2.0):
+    from theroadragetrip.physics import SpatialWayGrid
+    from theroadragetrip.render import buildings as buildings_render
+
+    saved = buildings_render._illuminated_window_cache, buildings_render._illuminated_window_job
+    buildings_render._illuminated_window_cache = buildings_render._illuminated_window_job = None
+    try:
+        grid = SpatialWayGrid()
+        grid.rebuild(buildings)
+        return _render_windows(buildings, grid, camx, camy, px, budget_s=1e9)
+    finally:
+        buildings_render._illuminated_window_cache, buildings_render._illuminated_window_job = saved
+
+
+def _reset_window_cache():
+    from theroadragetrip.render import buildings as buildings_render
+
+    buildings_render._illuminated_window_cache = buildings_render._illuminated_window_job = None
+
+
+def test_incremental_window_cache_matches_a_full_rebuild_exactly():
+    from theroadragetrip.physics import SpatialWayGrid
+
+    pygame.init()
+    try:
+        _reset_window_cache()
+        buildings = _window_block(30)
+        grid = SpatialWayGrid()
+        grid.rebuild(buildings)
+        _render_windows(buildings, grid)                     # cold build
+        buildings.extend(_window_block(30, x0=30 * 22.0))
+        grid.rebuild(buildings)                              # grid catches up
+        frames = 0
+        while True:
+            incremental = _render_windows(buildings, grid, budget_s=0.0)  # one building per frame
+            frames += 1
+            from theroadragetrip.render import buildings as br
+            if br._illuminated_window_job is None:
+                break
+            assert frames < 1000
+        assert frames > 1, "a zero budget must spread the extension over several frames"
+        assert incremental == _fresh_cache_bytes(buildings)
+    finally:
+        _reset_window_cache()
+        pygame.quit()
+
+
+def test_window_cache_does_not_regenerate_processed_buildings_or_repeat_on_duplicate_notice(monkeypatch):
+    from theroadragetrip.physics import SpatialWayGrid
+    from theroadragetrip.render import buildings as br
+
+    pygame.init()
+    try:
+        _reset_window_cache()
+        buildings = _window_block(10)
+        grid = SpatialWayGrid()
+        grid.rebuild(buildings)
+        _render_windows(buildings, grid)
+        calls = []
+        real = br._draw_illuminated_building
+        monkeypatch.setattr(br, "_draw_illuminated_building", lambda glow, b, *a: calls.append(id(b)) or real(glow, b, *a))
+        buildings.extend(_window_block(5, x0=10 * 22.0))
+        grid.rebuild(buildings)
+        for _ in range(50):
+            _render_windows(buildings, grid, budget_s=0.0)
+        assert len(calls) == 5 and len(set(calls)) == 5   # only the new ones, each once
+        _render_windows(buildings, grid, budget_s=0.0)     # same count again: nothing to do
+        assert len(calls) == 5
+    finally:
+        _reset_window_cache()
+        pygame.quit()
+
+
+def test_window_cache_ignores_list_growth_the_grid_has_not_indexed(monkeypatch):
+    """The V5 scenario: the tile merge appends to `buildings` every frame but
+    the grid only catches up later - the rendered set doesn't change, so no
+    rebuild may happen."""
+    from theroadragetrip.physics import SpatialWayGrid
+    from theroadragetrip.render import buildings as br
+
+    pygame.init()
+    try:
+        _reset_window_cache()
+        buildings = _window_block(10)
+        grid = SpatialWayGrid()
+        grid.rebuild(buildings)
+        _render_windows(buildings, grid)
+        calls = []
+        real = br._draw_illuminated_building
+        monkeypatch.setattr(br, "_draw_illuminated_building", lambda glow, b, *a: calls.append(1) or real(glow, b, *a))
+        for i in range(20):                                 # a building appended per frame
+            buildings.extend(_window_block(1, x0=(10 + i) * 22.0))
+            _render_windows(buildings, grid)
+        assert calls == []
+    finally:
+        _reset_window_cache()
+        pygame.quit()
+
+
+def test_window_cache_extension_survives_camera_move_and_rebuilds_on_zoom_change():
+    from theroadragetrip.physics import SpatialWayGrid
+
+    pygame.init()
+    try:
+        _reset_window_cache()
+        buildings = _window_block(20)
+        grid = SpatialWayGrid()
+        grid.rebuild(buildings)
+        _render_windows(buildings, grid)
+        buildings.extend(_window_block(20, x0=20 * 22.0))
+        grid.rebuild(buildings)
+        _render_windows(buildings, grid, camx=100.0, budget_s=0.0)      # extension begins
+        moved = _render_windows(buildings, grid, camx=110.0, budget_s=1e9)  # camera moves mid-rebuild
+        # Reference: a full cache built at the original camera, then blitted at
+        # the moved one - what the extension must be pixel-identical to.
+        _reset_window_cache()
+        ref_grid = SpatialWayGrid()
+        ref_grid.rebuild(buildings)
+        _render_windows(buildings, ref_grid, camx=100.0, budget_s=1e9)
+        assert moved == _render_windows(buildings, ref_grid, camx=110.0, budget_s=1e9)
+        zoomed = _render_windows(buildings, grid, camx=110.0, px=3.0, budget_s=0.0)
+        assert zoomed == _fresh_cache_bytes(buildings, camx=110.0, px=3.0)
+    finally:
+        _reset_window_cache()
+        pygame.quit()
+
+
+def test_window_cache_rebuilds_when_buildings_are_unloaded():
+    from theroadragetrip.physics import SpatialWayGrid
+
+    pygame.init()
+    try:
+        _reset_window_cache()
+        buildings = _window_block(20)
+        grid = SpatialWayGrid()
+        grid.rebuild(buildings)
+        _render_windows(buildings, grid)
+        del buildings[:5]                                   # unload filters the list in place
+        buildings.extend(_window_block(3, x0=20 * 22.0))
+        grid.rebuild(buildings)
+        assert _render_windows(buildings, grid, budget_s=1e9) == _fresh_cache_bytes(buildings)
+    finally:
+        _reset_window_cache()
+        pygame.quit()
