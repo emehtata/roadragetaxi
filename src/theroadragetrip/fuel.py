@@ -166,6 +166,11 @@ def update_car_fuel(
         if distance_m > 0.0 and car.engine_on
         else 0.0
     )
+    car.idle_fuel_consumption_l_per_hour = (
+        idle_consumption_l_per_hour(outside_temperature_c)
+        if car.engine_on and distance_m <= 1e-6
+        else 0.0
+    )
     consume_fuel(
         car,
         distance_m,
@@ -180,4 +185,5 @@ def update_car_fuel(
         car.speed = 0.0
         car.engine_on = False
         car.fuel_consumption_l_per_100km = 0.0
+        car.idle_fuel_consumption_l_per_hour = 0.0
     return had_fuel and car.fuel_l <= 0.0

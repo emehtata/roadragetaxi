@@ -166,6 +166,7 @@ def build_state_message(
             "engine_on": car.engine_on, "fuel_l": car.fuel_l,
             "fuel_capacity_l": car.fuel_capacity_l,
             "fuel_consumption_l_per_100km": car.fuel_consumption_l_per_100km,
+            "idle_fuel_consumption_l_per_hour": car.idle_fuel_consumption_l_per_hour,
             "curb_mass_kg": car.curb_mass_kg,
             "driver_mass_kg": car.driver_mass_kg,
             "passenger_mass_kg": car.passenger_mass_kg,
@@ -255,6 +256,9 @@ def apply_server_state(world, car, state: dict, *, player_pedestrian) -> dict:
     car.fuel_l = player.get("fuel_l", car.fuel_l)
     car.fuel_consumption_l_per_100km = player.get(
         "fuel_consumption_l_per_100km", car.fuel_consumption_l_per_100km
+    )
+    car.idle_fuel_consumption_l_per_hour = player.get(
+        "idle_fuel_consumption_l_per_hour", car.idle_fuel_consumption_l_per_hour
     )
     car.curb_mass_kg = player.get("curb_mass_kg", car.curb_mass_kg)
     car.driver_mass_kg = player.get("driver_mass_kg", car.driver_mass_kg)

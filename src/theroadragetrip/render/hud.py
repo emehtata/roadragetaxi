@@ -18,7 +18,6 @@ from ..geo import clamp, meters_to_latlon
 from ..physics import Car, MAX_SPEED
 from ..taxi import TaxiManager, TaxiState
 from ..fare import format_euros
-from ..fuel import idle_consumption_l_per_hour
 from ..localization import tr
 
 
@@ -84,7 +83,6 @@ def _draw_fuel_meter(
     position: Tuple[int, int],
     language: str,
     station_price_cents: Optional[int] = None,
-    outside_temperature_c: float = 15.0,
 ):
     """Draw a numberless vertical fuel gauge and the live econometer."""
     import pygame
@@ -116,8 +114,7 @@ def _draw_fuel_meter(
     if abs(car.speed) > 0.5:
         economy_text = f"{car.fuel_consumption_l_per_100km:.1f} L/100 km"
     else:
-        idle_rate = idle_consumption_l_per_hour(outside_temperature_c) if car.engine_on else 0.0
-        economy_text = f"{idle_rate:.1f} L/h"
+        economy_text = f"{car.idle_fuel_consumption_l_per_hour:.1f} L/h"
     economy = font.render(
         f"{economy_text}",
         True,
@@ -496,7 +493,6 @@ def draw_hud(
         layout["fuel"],
         language,
         fuel_station_price_cents,
-        temperature_c if temperature_c is not None else 15.0,
     )
     if hud_rects is not None:
         hud_rects["fuel"] = fuel_rect
@@ -528,7 +524,7 @@ def draw_hud(
             if taxi_mgr.fare_started_at is not None:
                 role_text += (
                     f"\n{tr(language, 'taxi_meter')}: "
-                    f"{format_euros(taxi_mgr.current_fare_cents(), language)}"
+                    f"{format_euros(taxi_mgr.live_fare_cents, language)}"
                     f"\n{tr(language, 'fare_distance')}: {taxi_mgr.fare_distance_m / 1000.0:.2f} km"
                     f"\n{tr(language, 'happiness')}: {taxi_mgr.passenger_happiness:.0f}%"
                 )

@@ -235,6 +235,7 @@ class Car:
     fuel_capacity_l: float = FUEL_TANK_CAPACITY_L
     fuel_l: float = INITIAL_FUEL_L
     fuel_consumption_l_per_100km: float = 0.0
+    idle_fuel_consumption_l_per_hour: float = 0.0
     curb_mass_kg: float = 1400.0
     driver_mass_kg: float = 90.0
     passenger_mass_kg: float = 0.0
@@ -662,6 +663,7 @@ def respawn_car(
     if car.fuel_l <= 0.0:
         car.fuel_l = car.fuel_capacity_l
     car.fuel_consumption_l_per_100km = 0.0
+    car.idle_fuel_consumption_l_per_hour = 0.0
     car.engine_on = True
 
     if near_edge and bounds:

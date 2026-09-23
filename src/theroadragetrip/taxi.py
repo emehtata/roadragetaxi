@@ -175,6 +175,7 @@ class TaxiManager:
         self.fare_started_at: Optional[datetime] = None
         self.fare_start_odometer_m: Optional[float] = None
         self.fare_distance_m: float = 0.0
+        self.live_fare_cents: int = 0
         self.notification_msg: str = ""
         self.notification_timer: float = 0.0
         self.next_offer_timer: float = random.uniform(PHONE_OFFER_MIN_INTERVAL_S, PHONE_OFFER_MAX_INTERVAL_S)
@@ -233,9 +234,7 @@ class TaxiManager:
 
     def current_fare_cents(self) -> int:
         """Return the live meter amount for the onboard passenger."""
-        if self.state != TaxiState.DRIVING_TO_DROPOFF or self.fare_started_at is None:
-            return 0
-        return calculate_fare_cents(self.fare_distance_m, self.elapsed_time, self.fare_started_at)
+        return self.live_fare_cents
 
     def adjust_passenger_happiness(self, amount: float) -> None:
         if self.current_passenger is not None and self.state == TaxiState.DRIVING_TO_DROPOFF:
@@ -1490,6 +1489,7 @@ class TaxiManager:
             self.fare_started_at = self._current_game_datetime()
             self.fare_start_odometer_m = None
             self.fare_distance_m = 0.0
+            self.live_fare_cents = calculate_fare_cents(0.0, 0.0, self.fare_started_at)
             self.passenger_happiness = 50.0
         self.elapsed_time = 0.0
         self.trip_distance_m = math.hypot(dropoff.x - pickup.x, dropoff.y - pickup.y)
@@ -1619,6 +1619,7 @@ class TaxiManager:
         self.notification_timer = 5.0
         logger.info("Taxi mission discarded: passenger=%s reason=%s penalty=%d", p_name, reason, penalty)
         self.current_passenger = None
+        self.live_fare_cents = 0
         self.state = TaxiState.WAITING_FOR_PICKUP
         self.generate_offers(car_x, car_y, count=1)
         return penalty
@@ -1798,6 +1799,7 @@ class TaxiManager:
                 self.fare_started_at = self._current_game_datetime()
                 self.fare_start_odometer_m = car.odometer_m
                 self.fare_distance_m = 0.0
+                self.live_fare_cents = calculate_fare_cents(0.0, 0.0, self.fare_started_at)
                 self.passenger_happiness = 50.0
                 self.trip_distance_m = math.hypot(p.dropoff.x - p.pickup.x, p.dropoff.y - p.pickup.y)
                 self.notification_msg = tr(
@@ -1825,6 +1827,11 @@ class TaxiManager:
             if self.fare_start_odometer_m is None:
                 self.fare_start_odometer_m = car.odometer_m
             self.fare_distance_m = max(0.0, car.odometer_m - self.fare_start_odometer_m)
+            self.live_fare_cents = calculate_fare_cents(
+                self.fare_distance_m,
+                self.elapsed_time,
+                self.fare_started_at or self._current_game_datetime(),
+            )
             if dist_to_target <= target.radius_m:
                 if is_stopped:
                     # Completed fare!
@@ -1833,11 +1840,7 @@ class TaxiManager:
                     self.total_score += earned
                     self.completed_fares += 1
                     self.last_fare_points = earned
-                    fare_cents = calculate_fare_cents(
-                        self.fare_distance_m,
-                        self.elapsed_time,
-                        self.fare_started_at or self._current_game_datetime(),
-                    )
+                    fare_cents = self.live_fare_cents
                     expected_duration_s = max(60.0, self.trip_distance_m / (40.0 / 3.6))
                     if self.elapsed_time <= expected_duration_s:
                         time_saved_ratio = 1.0 - self.elapsed_time / expected_duration_s

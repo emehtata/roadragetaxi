@@ -86,6 +86,8 @@ def test_idling_consumes_one_to_three_liters_per_hour_based_on_temperature():
     )
     assert mild_car.fuel_l == pytest.approx(29.0)
     assert cold_car.fuel_l == pytest.approx(27.0)
+    assert mild_car.idle_fuel_consumption_l_per_hour == pytest.approx(1.0)
+    assert cold_car.idle_fuel_consumption_l_per_hour == pytest.approx(3.0)
 
 
 def test_engine_off_does_not_consume_idle_fuel():
@@ -95,6 +97,7 @@ def test_engine_off_does_not_consume_idle_fuel():
         elapsed_seconds=3600.0, outside_temperature_c=-20.0,
     )
     assert car.fuel_l == pytest.approx(30.0)
+    assert car.idle_fuel_consumption_l_per_hour == 0.0
 
 
 def test_engine_command_turns_engine_off_and_blocks_throttle():
