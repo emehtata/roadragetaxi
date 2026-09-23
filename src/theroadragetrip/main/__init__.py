@@ -41,6 +41,7 @@ from ..simulation import PlayerCommand, advance_simulation, apply_enter_exit_veh
 from ..osm import (
     DEFAULT_BBOX,
     AutoFetchManager,
+    TILE_MERGE_BUDGET_S,
     build_ways,
     city_bin_available,
     city_bin_path,
@@ -2014,6 +2015,9 @@ def main() -> None:
             frame_profiler.set_metric("tile_load_ms", tile_metrics["tile_load_ms"])
             frame_profiler.set_metric("tile_integration_ms", tile_metrics["tile_integration_ms"])
             frame_profiler.set_metric("tile_unload_ms", tile_metrics["tile_unload_ms"])
+            tile_merge_metrics = auto_fetch_manager.get_tile_merge_metrics()
+            frame_profiler.set_metric("tile_merge_queue_depth", tile_merge_metrics["tile_merge_queue_depth"])
+            frame_profiler.set_metric("tile_merge_remaining_items", tile_merge_metrics["tile_merge_remaining_items"])
 
             # Keep road logic on car roads, but recognize pedestrian ways as paved surfaces.
             surface_way = get_current_road_at_car(
@@ -2113,30 +2117,24 @@ def main() -> None:
             # Stream the active 3x3 tile region only after a tile transition.
             if args.auto_fetch:
                 revision_before_stream = auto_fetch_manager.get_map_revision()
-                # Drain every tile that has already finished background-fetching
-                # in one pass (bounded by the 3x3 active region, 9 tiles) rather
-                # than one per frame. The grid rebuilds below are O(total ways/
-                # buildings) regardless of how many tiles were just integrated,
-                # so draining several tiles across several frames used to pay
-                # that same full-rebuild cost once per frame instead of once
-                # per burst - a multi-frame stall right when several tiles
-                # complete around the same time (e.g. a fast or diagonal move).
-                # bin-loader-v4.md: this call was previously entirely
-                # unmeasured by frame_profiler - its own self-timed
-                # last_tile_integration_ms metric is read one frame *before*
-                # this call runs (see the tile_metrics block above), so it
-                # always describes the *previous* frame's integration, never
-                # this one. Wrapping it directly is the only way to see its
-                # real per-frame cost.
+                # Merge newly-completed tile fetches incrementally, budgeted
+                # per frame (bin-loader-v5.md) - the merge itself measured up
+                # to ~532ms/70% of a whole spike frame as one synchronous
+                # call (bin-loader-v4.md), entirely unmeasured before that.
+                # No "immediate" spatial_grid/building_grid rebuild follows
+                # anymore (see the removed spatial_grid_immediate/
+                # building_grid_immediate block this replaces): ways/
+                # buildings now grow a little at a time across many frames,
+                # so a full rebuild after every partial step would cost far
+                # more in aggregate than the stall it used to prevent.
+                # any_grid_stale (below) already detects the resulting
+                # length mismatch and hands off to the existing V3
+                # map_sync_stage pipeline once the merge settles - the same
+                # "keep serving the old complete grid until the incremental
+                # rebuild finishes" guarantee that pipeline already gives
+                # every other stale-until-ready structure.
                 with frame_profiler.section("map_sync:tile_integration"):
-                    integrated_tiles = auto_fetch_manager.integrate_completed_tiles(max_tiles=9)
-                if integrated_tiles:
-                    # Static render/collision indexes must match the live lists
-                    # immediately; service graphs can continue in later stages.
-                    with frame_profiler.section("map_sync:spatial_grid_immediate"):
-                        spatial_grid.rebuild(ways)
-                    with frame_profiler.section("map_sync:building_grid_immediate"):
-                        building_grid.rebuild(buildings)
+                    auto_fetch_manager.integrate_completed_tiles(budget_s=TILE_MERGE_BUDGET_S)
                 started = auto_fetch_manager.start_tile_streaming(car.x, car.y)
                 if auto_fetch_manager.get_map_revision() != revision_before_stream:
                     invalidate_static_caches()
