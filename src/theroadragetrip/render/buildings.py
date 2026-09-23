@@ -17,7 +17,9 @@ from .common import (
 )
 import math
 import time
-from typing import List, Optional
+from typing import List, Optional, Tuple
+
+from ..performance import advance_chunked
 
 
 from ..geo import dist_point_to_segment, point_in_polygon
@@ -548,52 +550,87 @@ def _house_parking_key(building):
     return tuple(round(float(value), 2) for value in bbox)
 
 
-def generate_detached_house_parking(buildings, ways, parking_spaces, road_spatial_grid=None) -> int:
-    """Add two reservable residential bays to each generated house access."""
-    existing_keys = {
+def _add_house_parking_for_building(building, ways, road_spatial_grid, parking_spaces, existing_keys) -> int:
+    """Add two reservable residential bays for one building's driveway
+    access, if it has one and doesn't already. Returns bays added (0 or
+    GENERATED_HOUSE_PARKING_BAYS). Shared by the synchronous
+    generate_detached_house_parking() and its chunked counterpart below."""
+    key = _house_parking_key(building)
+    if key in existing_keys:
+        return 0
+    access = _nearest_house_driveway(building, ways, road_spatial_grid)
+    if access is None:
+        return 0
+    house_edge, road_edge = access
+    dx, dy = road_edge[0] - house_edge[0], road_edge[1] - house_edge[1]
+    access_length = math.hypot(dx, dy)
+    if access_length < 5.5:
+        return 0
+    ux, uy = dx / access_length, dy / access_length
+    lateral_x, lateral_y = -uy, ux
+    bay_length, bay_width = 5.0, 2.5
+    center_distance = bay_length * 0.5 + 0.5
+    added = 0
+    for bay_index in range(GENERATED_HOUSE_PARKING_BAYS):
+        lateral_offset = (bay_index - (GENERATED_HOUSE_PARKING_BAYS - 1) * 0.5) * (bay_width + 0.3)
+        center_x = house_edge[0] + ux * center_distance + lateral_x * lateral_offset
+        center_y = house_edge[1] + uy * center_distance + lateral_y * lateral_offset
+        half_length, half_width = bay_length * 0.5, bay_width * 0.5
+        points = [
+            (center_x + ux * half_length + lateral_x * half_width, center_y + uy * half_length + lateral_y * half_width),
+            (center_x + ux * half_length - lateral_x * half_width, center_y + uy * half_length - lateral_y * half_width),
+            (center_x - ux * half_length - lateral_x * half_width, center_y - uy * half_length - lateral_y * half_width),
+            (center_x - ux * half_length + lateral_x * half_width, center_y - uy * half_length + lateral_y * half_width),
+        ]
+        xs, ys = [point[0] for point in points], [point[1] for point in points]
+        parking_spaces.append(ParkingSpace(
+            points_m=points,
+            bbox=(min(xs), min(ys), max(xs), max(ys)),
+            orientation=math.atan2(uy, ux),
+            source_building_key=key,
+            access_path=[house_edge, road_edge],
+        ))
+        added += 1
+    existing_keys.add(key)
+    return added
+
+
+def _existing_house_parking_keys(parking_spaces) -> set:
+    return {
         getattr(space, "source_building_key", None)
         for space in parking_spaces
         if getattr(space, "source_building_key", None) is not None
     }
+
+
+def generate_detached_house_parking(buildings, ways, parking_spaces, road_spatial_grid=None) -> int:
+    """Add two reservable residential bays to each generated house access."""
+    existing_keys = _existing_house_parking_keys(parking_spaces)
     added = 0
     for building in buildings:
-        key = _house_parking_key(building)
-        if key in existing_keys:
-            continue
-        access = _nearest_house_driveway(building, ways, road_spatial_grid)
-        if access is None:
-            continue
-        house_edge, road_edge = access
-        dx, dy = road_edge[0] - house_edge[0], road_edge[1] - house_edge[1]
-        access_length = math.hypot(dx, dy)
-        if access_length < 5.5:
-            continue
-        ux, uy = dx / access_length, dy / access_length
-        lateral_x, lateral_y = -uy, ux
-        bay_length, bay_width = 5.0, 2.5
-        center_distance = bay_length * 0.5 + 0.5
-        for bay_index in range(GENERATED_HOUSE_PARKING_BAYS):
-            lateral_offset = (bay_index - (GENERATED_HOUSE_PARKING_BAYS - 1) * 0.5) * (bay_width + 0.3)
-            center_x = house_edge[0] + ux * center_distance + lateral_x * lateral_offset
-            center_y = house_edge[1] + uy * center_distance + lateral_y * lateral_offset
-            half_length, half_width = bay_length * 0.5, bay_width * 0.5
-            points = [
-                (center_x + ux * half_length + lateral_x * half_width, center_y + uy * half_length + lateral_y * half_width),
-                (center_x + ux * half_length - lateral_x * half_width, center_y + uy * half_length - lateral_y * half_width),
-                (center_x - ux * half_length - lateral_x * half_width, center_y - uy * half_length - lateral_y * half_width),
-                (center_x - ux * half_length + lateral_x * half_width, center_y - uy * half_length + lateral_y * half_width),
-            ]
-            xs, ys = [point[0] for point in points], [point[1] for point in points]
-            parking_spaces.append(ParkingSpace(
-                points_m=points,
-                bbox=(min(xs), min(ys), max(xs), max(ys)),
-                orientation=math.atan2(uy, ux),
-                source_building_key=key,
-                access_path=[house_edge, road_edge],
-            ))
-            added += 1
-        existing_keys.add(key)
+        added += _add_house_parking_for_building(building, ways, road_spatial_grid, parking_spaces, existing_keys)
     return added
+
+
+def generate_detached_house_parking_chunk(
+    buildings, ways, parking_spaces, road_spatial_grid, index: int, budget_s: float,
+) -> Tuple[int, int]:
+    """Budgeted version of generate_detached_house_parking (bin-loader-
+    v3.md: measured up to ~1.9s in one frame against a dense real city
+    load, 2376 bays over 20k buildings). Processes buildings[index:] until
+    budget_s elapses. Returns (new_index, bays_added_this_call) -
+    new_index == len(buildings) once finished. The caller owns `index`
+    across calls; parking_spaces is mutated in place exactly like the
+    synchronous version, so a partially-processed building list is always
+    valid to query (just fewer bays exist yet, never wrong ones)."""
+    existing_keys = _existing_house_parking_keys(parking_spaces)
+    added = [0]
+
+    def _process(building) -> None:
+        added[0] += _add_house_parking_for_building(building, ways, road_spatial_grid, parking_spaces, existing_keys)
+
+    new_index = advance_chunked(buildings, index, budget_s, _process)
+    return new_index, added[0]
 
 
 def _draw_generated_driveways(screen, buildings, ways, road_spatial_grid, camx, camy, px_per_m, screen_w, screen_h):

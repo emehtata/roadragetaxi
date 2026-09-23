@@ -115,6 +115,7 @@ from .buildings import (
     draw_open_roof_overlays,
     draw_illuminated_windows,
     generate_detached_house_parking,
+    generate_detached_house_parking_chunk,
 )
 
 from .roads import (

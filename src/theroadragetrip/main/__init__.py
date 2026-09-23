@@ -90,6 +90,7 @@ from ..render import (
     draw_day_night_overlay,
     draw_illuminated_windows,
     generate_detached_house_parking,
+    generate_detached_house_parking_chunk,
     draw_grass_texture,
     draw_headlight_beams,
     draw_hud,
@@ -162,7 +163,7 @@ from ..taxi import TaxiManager
 from ..tile_streaming import PBF_TILE_SIZE_M, set_tile_size_m
 from ..traffic_world import TrafficWorld
 from ..world_cache import WorldCacheManager, clear_world_cache
-from ..performance import FrameProfiler
+from ..performance import MAP_SYNC_BUDGET_S, FrameProfiler
 from ..weather import SPLASH_MIN_SPEED_MPS, WeatherSystem
 
 from .cli import configure_logging, parse_args
@@ -1267,6 +1268,13 @@ def main() -> None:
         last_track_surface = None
         car_was_in_puddle = False
         map_sync_stage = 0
+        # map_sync_stage 2's own sub-stage (bin-loader-v3.md): the road
+        # spatial grid rebuild and detached-house parking generation are
+        # each budgeted separately - "grid" then "parking" then "done" -
+        # since parking generation alone measured up to ~1.9s in one frame
+        # against a dense real city load (2376 bays over 20k buildings).
+        spatial_grid_sub_stage = "grid"
+        house_parking_index = 0
         last_map_revision = auto_fetch_manager.get_map_revision()
         # street_lamps is filtered from scenery_objects, not a list
         # AutoFetchManager grows directly (unlike buildings/ways) - this
@@ -2162,12 +2170,34 @@ def main() -> None:
                         taxi_mgr.invalidate_tree_collision_index()
                     map_sync_stage = 2
                 elif map_sync_stage == 2:
+                    # Budgeted, resumable across frames (bin-loader-v3.md):
+                    # the road spatial grid rebuild measured up to ~1.7s
+                    # and detached-house parking generation up to ~1.9s in
+                    # one frame against a dense real city load - each gets
+                    # its own sub-stage so neither pays its whole cost in
+                    # one frame. spatial_grid keeps serving the OLD
+                    # complete grid, unchanged, until its own rebuild
+                    # finishes - collision/nearest-road queries are never
+                    # served a half-built grid; parking_spaces grows
+                    # in place exactly like the synchronous version, so a
+                    # partially-generated pass is always valid to query.
                     with frame_profiler.section("map_sync:spatial_grid"):
-                        spatial_grid.rebuild(ways)
-                        generate_detached_house_parking(
-                            buildings, ways, parking_spaces, spatial_grid
-                        )
-                    map_sync_stage = 3
+                        if spatial_grid_sub_stage == "grid":
+                            if spatial_grid._pending_ways is None:
+                                spatial_grid.start_rebuild(ways)
+                            if spatial_grid.advance_rebuild(MAP_SYNC_BUDGET_S):
+                                spatial_grid_sub_stage = "parking"
+                                house_parking_index = 0
+                        if spatial_grid_sub_stage == "parking":
+                            house_parking_index, _ = generate_detached_house_parking_chunk(
+                                buildings, ways, parking_spaces, spatial_grid,
+                                house_parking_index, MAP_SYNC_BUDGET_S,
+                            )
+                            if house_parking_index >= len(buildings):
+                                spatial_grid_sub_stage = "done"
+                    if spatial_grid_sub_stage == "done":
+                        spatial_grid_sub_stage = "grid"
+                        map_sync_stage = 3
                 elif map_sync_stage == 3:
                     with frame_profiler.section("map_sync:building_grid"):
                         building_grid.rebuild(buildings)
@@ -2228,13 +2258,32 @@ def main() -> None:
                         )
                     map_sync_stage = 13
                 elif map_sync_stage == 13:
+                    # Budgeted, resumable across frames (bin-loader-v3.md):
+                    # measured up to ~3.2s in one frame against a dense
+                    # real city load - the single largest map-sync stage.
+                    # set_venue_buildings/set_scenery_features now run
+                    # FIRST (not after, as originally written): the
+                    # original order synced ways once against the *stale*
+                    # building grid, then set_venue_buildings rebuilt the
+                    # grid and re-ran the entire synchronous sync a SECOND
+                    # time against the fresh one - that first pass's
+                    # result was always immediately discarded, so this
+                    # reordering (resync=False skips that internal
+                    # re-sync) does the identical final computation once
+                    # instead of twice, not just spreads it out.
+                    # pedestrian_mgr.ped_ways/route graph/junction grid
+                    # keep serving the OLD complete result, unchanged,
+                    # until the incremental job below fully commits.
                     with frame_profiler.section("map_sync:pedestrians"):
-                        pedestrian_mgr.sync_map_data(
-                            ways, traffic_lights=traffic_lights, logical_intersections=logical_intersections,
-                        )
-                        pedestrian_mgr.set_venue_buildings(buildings)
-                        pedestrian_mgr.set_scenery_features(scenery_objects, sceneries, bus_stops)
-                    map_sync_stage = 14
+                        if pedestrian_mgr._sync_stage in (None, "done"):
+                            pedestrian_mgr.set_venue_buildings(buildings, resync=False)
+                            pedestrian_mgr.set_scenery_features(scenery_objects, sceneries, bus_stops)
+                            pedestrian_mgr.start_incremental_sync(
+                                ways, traffic_lights=traffic_lights, logical_intersections=logical_intersections,
+                            )
+                        pedestrian_sync_finished = pedestrian_mgr.advance_incremental_sync(MAP_SYNC_BUDGET_S)
+                    if pedestrian_sync_finished:
+                        map_sync_stage = 14
                 elif map_sync_stage == 14:
                     with frame_profiler.section("map_sync:finalize"):
                         navigation_route_dirty = True

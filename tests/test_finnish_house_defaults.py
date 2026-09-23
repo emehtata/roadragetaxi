@@ -5,6 +5,7 @@ from theroadragetrip.render.buildings import (
     _nearest_house_driveway,
     _uses_gabled_roof,
     generate_detached_house_parking,
+    generate_detached_house_parking_chunk,
 )
 
 
@@ -77,6 +78,59 @@ def test_generated_house_parking_is_idempotent_across_map_syncs():
 
     assert generate_detached_house_parking([house], [road], parking_spaces) == 2
     assert generate_detached_house_parking([house], [road], parking_spaces) == 0
+    assert len(parking_spaces) == 2
+
+
+def test_chunked_house_parking_matches_synchronous_result_exactly():
+    """bin-loader-v3.md: generate_detached_house_parking_chunk() must
+    produce the same parking spaces as generate_detached_house_parking(),
+    just spread across multiple calls instead of paid in one."""
+    road = Way(points_m=[(-20.0, -10.0), (500.0, -10.0)], highway="residential", half_width_m=3.0)
+    houses = [
+        Building(
+            points_m=[(i * 20.0, 0.0), (i * 20.0 + 12.0, 0.0), (i * 20.0 + 12.0, 8.0), (i * 20.0, 8.0)],
+            bbox=(i * 20.0, 0.0, i * 20.0 + 12.0, 8.0),
+            building_type="detached",
+        )
+        for i in range(15)
+    ]
+
+    sync_spaces = []
+    added_sync = generate_detached_house_parking(houses, [road], sync_spaces)
+
+    chunk_spaces = []
+    index = 0
+    total_added = 0
+    steps = 0
+    finished = False
+    while not finished:
+        index, added = generate_detached_house_parking_chunk(houses, [road], chunk_spaces, None, index, 0.0)
+        total_added += added
+        steps += 1
+        finished = index >= len(houses)
+        assert steps < 1000, "chunked parking generation never finished"
+
+    assert steps > 1, "a zero budget must force multiple calls"
+    assert added_sync == total_added
+    assert len(sync_spaces) == len(chunk_spaces)
+    assert sorted(s.source_building_key for s in sync_spaces) == sorted(s.source_building_key for s in chunk_spaces)
+
+
+def test_chunked_house_parking_is_idempotent_across_repeated_batches():
+    """A second chunked pass over the same buildings (a later map-sync
+    cycle re-processing the same buildings list) must not add duplicate
+    bays - existing_keys is recomputed fresh from parking_spaces each
+    start, matching generate_detached_house_parking()'s own idempotency."""
+    road = Way(points_m=[(-20.0, -10.0), (30.0, -10.0)], highway="residential", half_width_m=3.0)
+    house = _detached_house()
+    parking_spaces = []
+
+    index, added_first = generate_detached_house_parking_chunk([house], [road], parking_spaces, None, 0, 10.0)
+    assert added_first == 2
+    assert index == 1
+
+    index, added_second = generate_detached_house_parking_chunk([house], [road], parking_spaces, None, 0, 10.0)
+    assert added_second == 0
     assert len(parking_spaces) == 2
 
 

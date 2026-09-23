@@ -47,6 +47,98 @@ def test_sync_map_data_adds_streamed_footway():
     assert streamed_way in manager._spawn_ways
 
 
+def _grid_pedestrian_ways(count: int) -> list:
+    return [
+        Way(
+            points_m=[(float(i * 20), 0.0), (float(i * 20 + 15), 0.0)],
+            highway="footway", half_width_m=1.5,
+            bbox=(float(i * 20), -1.5, float(i * 20 + 15), 1.5),
+        )
+        for i in range(count)
+    ]
+
+
+def test_incremental_sync_serves_old_result_until_finished():
+    """bin-loader-v3.md: start_incremental_sync()/advance_incremental_sync()
+    must not touch ped_ways/route graph/junction grid until the whole job
+    commits - live queries mid-rebuild must see the OLD complete result."""
+    old_ways = _grid_pedestrian_ways(3)
+    manager = PedestrianManager(old_ways, target_count=0)
+    old_ped_ways_count = len(manager.ped_ways)
+
+    new_ways = _grid_pedestrian_ways(60)
+    manager.start_incremental_sync(new_ways)
+    assert len(manager.ped_ways) == old_ped_ways_count, "old result must still be live right after start"
+    assert not manager.advance_incremental_sync(0.0), "a job this size must not finish in one zero-budget call"
+    assert len(manager.ped_ways) == old_ped_ways_count, "old result must still be live mid-rebuild"
+    assert manager._sync_stage not in (None, "done")
+
+
+def test_incremental_sync_can_pause_and_resume_across_many_calls():
+    ways = _grid_pedestrian_ways(60)
+    manager = PedestrianManager([], target_count=0)
+    manager.start_incremental_sync(ways)
+    finished = False
+    steps = 0
+    while not finished:
+        finished = manager.advance_incremental_sync(0.0)
+        steps += 1
+        assert steps < 5000, "incremental sync never finished"
+    assert steps > 1, "a zero budget must force multiple advance_incremental_sync() calls"
+    assert manager._sync_stage == "done"
+    assert len(manager.ped_ways) == len(ways)
+
+
+def test_incremental_sync_matches_synchronous_sync_map_data_exactly():
+    ways = _grid_pedestrian_ways(60)
+    building = SimpleNamespace(
+        points_m=[(100.0, -5.0), (110.0, -5.0), (110.0, 5.0), (100.0, 5.0)],
+        bbox=(100.0, -5.0, 110.0, 5.0),
+        entrances=[],
+        venue_type=None,
+    )
+
+    sync_mgr = PedestrianManager([], target_count=0, venue_buildings=[building])
+    sync_mgr.sync_map_data(ways)
+
+    inc_mgr = PedestrianManager([], target_count=0, venue_buildings=[building])
+    inc_mgr.start_incremental_sync(ways)
+    finished = False
+    while not finished:
+        finished = inc_mgr.advance_incremental_sync(0.0)
+
+    sync_points = sorted(tuple(w.points_m) for w in sync_mgr.ped_ways)
+    inc_points = sorted(tuple(w.points_m) for w in inc_mgr.ped_ways)
+    assert sync_points == inc_points
+    assert sync_mgr.network.nodes == inc_mgr.network.nodes
+    assert sync_mgr.network.edges == inc_mgr.network.edges
+    assert sync_mgr._junction_grid.keys() == inc_mgr._junction_grid.keys()
+    assert len(sync_mgr._spawn_ways) == len(inc_mgr._spawn_ways)
+    assert sync_mgr._way_grid.keys() == inc_mgr._way_grid.keys()
+
+
+def test_incremental_sync_handles_repeated_batches_without_duplicates():
+    """Multiple tile-streaming batches arriving one after another (start_
+    incremental_sync called again once a previous job finished) must not
+    accumulate stale or duplicate ways - each sync fully replaces the
+    previous result, matching sync_map_data()'s own behavior."""
+    first_batch = _grid_pedestrian_ways(10)
+    manager = PedestrianManager([], target_count=0)
+    manager.start_incremental_sync(first_batch)
+    finished = False
+    while not finished:
+        finished = manager.advance_incremental_sync(0.0)
+    assert len(manager.ped_ways) == 10
+
+    second_batch = _grid_pedestrian_ways(25)  # a larger, overlapping-range batch
+    manager.start_incremental_sync(second_batch)
+    finished = False
+    while not finished:
+        finished = manager.advance_incremental_sync(0.0)
+    assert len(manager.ped_ways) == 25
+    assert len(set(id(w) for w in manager.ped_ways)) == 25
+
+
 def test_building_free_ways_skips_far_way_but_still_splits_one_near_a_building():
     """_building_free_ways' bbox pre-check must skip the expensive
     per-segment building scan for a way nowhere near any building (fast

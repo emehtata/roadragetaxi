@@ -2,6 +2,7 @@ import logging
 import heapq
 import math
 import random
+import time
 from dataclasses import dataclass, field, replace
 from enum import Enum
 from typing import Any, Callable, Dict, List, Optional, Set, Tuple
@@ -9,6 +10,7 @@ from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 from .osm import BusStop, Crossing, LogicalIntersection, Scenery, SceneryObject, TrafficLight, Way
 from .geo import angle_diff, closest_point_and_dist_to_segment, compute_bbox, dist_point_to_segment, point_in_polygon
 from .npc import NPCState
+from .performance import advance_chunked
 from .physics import Car, is_car_road, is_pedestrian_way
 from .residents import ResidentManager
 from .activities import ActivityContext, ActivityInstance, ActivityManager
@@ -91,6 +93,11 @@ class PedestrianNetwork:
         self.ways: List[Way] = []
         self.nodes: List[Tuple[float, float]] = []
         self.edges: Dict[int, List[Tuple[int, float]]] = {}
+        self._pending_ways: Optional[List[Way]] = None
+        self._pending_index: int = 0
+        self._pending_nodes: Optional[List[Tuple[float, float]]] = None
+        self._pending_edges: Optional[Dict[int, List[Tuple[int, float]]]] = None
+        self._pending_buckets: Optional[Dict[Tuple[int, int], List[int]]] = None
         self.set_ways(ways or [])
 
     def set_ways(self, ways: List[Way]) -> None:
@@ -119,6 +126,60 @@ class PedestrianNetwork:
                 )
                 self.edges[first].append((second, distance))
                 self.edges[second].append((first, distance))
+
+    def start_rebuild(self, ways: List[Way]) -> None:
+        """Begin a budgeted rebuild (bin-loader-v3.md) - route()/
+        nearest_point() keep using the OLD self.nodes/self.edges,
+        unchanged, until advance_rebuild() reports finished."""
+        self._pending_ways = [way for way in ways if len(way.points_m) >= 2]
+        self._pending_index = 0
+        self._pending_nodes = []
+        self._pending_edges = {}
+        self._pending_buckets = {}
+
+    def _pending_node_id(self, point: Tuple[float, float]) -> int:
+        bucket = (round(point[0] / 3.0), round(point[1] / 3.0))
+        for candidate in self._pending_buckets.get(bucket, []):
+            if math.hypot(
+                self._pending_nodes[candidate][0] - point[0],
+                self._pending_nodes[candidate][1] - point[1],
+            ) <= 3.0:
+                return candidate
+        candidate = len(self._pending_nodes)
+        self._pending_nodes.append(point)
+        self._pending_edges[candidate] = []
+        self._pending_buckets.setdefault(bucket, []).append(candidate)
+        return candidate
+
+    def _add_pending_way(self, way: Way) -> None:
+        point_ids = [self._pending_node_id(point) for point in way.points_m]
+        for first, second in zip(point_ids, point_ids[1:]):
+            distance = math.hypot(
+                self._pending_nodes[second][0] - self._pending_nodes[first][0],
+                self._pending_nodes[second][1] - self._pending_nodes[first][1],
+            )
+            self._pending_edges[first].append((second, distance))
+            self._pending_edges[second].append((first, distance))
+
+    def advance_rebuild(self, budget_s: float) -> bool:
+        """Advance an in-progress start_rebuild() job by up to budget_s.
+        Returns True once finished (self.ways/nodes/edges are now the new
+        complete result); False if more work remains."""
+        if self._pending_ways is None:
+            return True
+        self._pending_index = advance_chunked(
+            self._pending_ways, self._pending_index, budget_s, self._add_pending_way,
+        )
+        if self._pending_index < len(self._pending_ways):
+            return False
+        self.ways = self._pending_ways
+        self.nodes = self._pending_nodes
+        self.edges = self._pending_edges
+        self._pending_ways = None
+        self._pending_nodes = None
+        self._pending_edges = None
+        self._pending_buckets = None
+        return True
 
     def nearest_point(
         self, point: Tuple[float, float], reject: Optional[Callable[[float, float], bool]] = None,
@@ -368,6 +429,16 @@ class PedestrianManager:
         self._traffic_light_grid_cell_size: float = 60.0
         self._crossing_grid: Dict[Tuple[int, int], List[Crossing]] = {}
         self._source_ways: List[Way] = []
+        # Incremental sync job state (start_incremental_sync/
+        # advance_incremental_sync, bin-loader-v3.md) - None/"done" when
+        # no rebuild is in progress.
+        self._sync_stage: Optional[str] = None
+        self._sync_source_ways: Optional[List[Way]] = None
+        self._sync_candidate_ways: Optional[List[Way]] = None
+        self._sync_bf_index: int = 0
+        self._sync_safe_ways: Optional[List[Way]] = None
+        self._sync_jg_index: int = 0
+        self._sync_junction_grid: Optional[Dict[Tuple[int, int], List]] = None
 
         self.set_venue_buildings(venue_buildings)
         self.set_scenery_features(scenery_objects, sceneries, bus_stops)
@@ -691,8 +762,15 @@ class PedestrianManager:
             return True
         return False
 
-    def set_venue_buildings(self, buildings: Optional[List] = None) -> None:
-        """Index hospitality venues as preferred pedestrian spawn locations."""
+    def set_venue_buildings(self, buildings: Optional[List] = None, resync: bool = True) -> None:
+        """Index hospitality venues as preferred pedestrian spawn locations.
+
+        `resync=False` skips the synchronous self.sync_map_data() re-run
+        below even when self._source_ways is set - for a caller (main.py's
+        map_sync stage 13, bin-loader-v3.md) that is about to run its own
+        (incremental) ways sync immediately after anyway; re-running the
+        synchronous full pass first would just be wasted work blocking a
+        frame for no benefit, since its result is about to be superseded."""
         self.buildings = list(buildings or [])
         self.venue_locations = []
         self.entrance_locations = []
@@ -725,7 +803,7 @@ class PedestrianManager:
                 int(math.floor(entrance_y / self._way_grid_cell_size)),
             )
             self._entrance_grid.setdefault(cell, []).append((entrance_x, entrance_y))
-        if self._source_ways:
+        if resync and self._source_ways:
             self.sync_map_data(
                 self._source_ways,
                 traffic_lights=self.traffic_lights,
@@ -772,50 +850,57 @@ class PedestrianManager:
         """Split mapped ways so pedestrian routes cannot cross building interiors."""
         if not self._building_grid:
             return ways
-        cell_size = self._building_grid_cell_size
         safe_ways: List[Way] = []
         for way in ways:
-            # Most ways (a typical residential/service street run) never
-            # come near a building at all - skip the expensive per-segment,
-            # 5-sample-per-segment _segment_inside_building() scan entirely
-            # when the way's own bbox doesn't even overlap an occupied
-            # building-grid cell (measured against a real dense Oulu load:
-            # this was the single largest cost in a 3s+ pedestrian map
-            # sync). A miss here is exact, not approximate: if no
-            # building's grid cell overlaps the way's bbox, the way cannot
-            # possibly cross a building's interior.
-            # A way whose bbox was never computed (the dataclass default)
-            # must not be treated as sitting at the world origin - same
-            # "bb and bb != (0,0,0,0)" convention render/roads.py's
-            # _start_road_rebuild already uses for the same reason.
-            bbox = way.bbox
-            if bbox and bbox != (0.0, 0.0, 0.0, 0.0):
-                min_x, min_y, max_x, max_y = bbox
-                near_building = any(
-                    (cell_x, cell_y) in self._building_grid
-                    for cell_x in range(math.floor(min_x / cell_size), math.floor(max_x / cell_size) + 1)
-                    for cell_y in range(math.floor(min_y / cell_size), math.floor(max_y / cell_size) + 1)
-                )
-            else:
-                near_building = True
-            if not near_building:
-                safe_ways.append(way)
-                continue
-            way_safe_ways: List[Way] = []
-            safe_points: List[Tuple[float, float]] = []
-            for start, end in zip(way.points_m, way.points_m[1:]):
-                if self._segment_inside_building(start, end):
-                    if len(safe_points) >= 2:
-                        way_safe_ways.append(replace(way, points_m=safe_points, bbox=compute_bbox(safe_points)))
-                    safe_points = []
-                    continue
-                if not safe_points:
-                    safe_points = [start]
-                safe_points.append(end)
-            if len(safe_points) >= 2:
-                way_safe_ways.append(replace(way, points_m=safe_points, bbox=compute_bbox(safe_points)))
-            safe_ways.extend(way_safe_ways or [way])
+            safe_ways.extend(self._split_way_around_buildings(way))
         return safe_ways
+
+    def _split_way_around_buildings(self, way: Way) -> List[Way]:
+        """Return `way` split into building-free pieces (or [way]
+        unchanged, same object, if it doesn't cross a building). Shared by
+        the synchronous _building_free_ways() and the incremental sync
+        path (start_incremental_sync/advance_incremental_sync) so both
+        apply identical per-way logic."""
+        # Most ways (a typical residential/service street run) never come
+        # near a building at all - skip the expensive per-segment,
+        # 5-sample-per-segment _segment_inside_building() scan entirely
+        # when the way's own bbox doesn't even overlap an occupied
+        # building-grid cell (measured against a real dense Oulu load:
+        # this was the single largest cost in a 3s+ pedestrian map sync).
+        # A miss here is exact, not approximate: if no building's grid
+        # cell overlaps the way's bbox, the way cannot possibly cross a
+        # building's interior.
+        # A way whose bbox was never computed (the dataclass default)
+        # must not be treated as sitting at the world origin - same "bb
+        # and bb != (0,0,0,0)" convention render/roads.py's
+        # _start_road_rebuild already uses for the same reason.
+        cell_size = self._building_grid_cell_size
+        bbox = way.bbox
+        if bbox and bbox != (0.0, 0.0, 0.0, 0.0):
+            min_x, min_y, max_x, max_y = bbox
+            near_building = any(
+                (cell_x, cell_y) in self._building_grid
+                for cell_x in range(math.floor(min_x / cell_size), math.floor(max_x / cell_size) + 1)
+                for cell_y in range(math.floor(min_y / cell_size), math.floor(max_y / cell_size) + 1)
+            )
+        else:
+            near_building = True
+        if not near_building:
+            return [way]
+        way_safe_ways: List[Way] = []
+        safe_points: List[Tuple[float, float]] = []
+        for start, end in zip(way.points_m, way.points_m[1:]):
+            if self._segment_inside_building(start, end):
+                if len(safe_points) >= 2:
+                    way_safe_ways.append(replace(way, points_m=safe_points, bbox=compute_bbox(safe_points)))
+                safe_points = []
+                continue
+            if not safe_points:
+                safe_points = [start]
+            safe_points.append(end)
+        if len(safe_points) >= 2:
+            way_safe_ways.append(replace(way, points_m=safe_points, bbox=compute_bbox(safe_points)))
+        return way_safe_ways or [way]
 
     def _point_near_building(self, x: float, y: float, radius_m: float = 250.0) -> bool:
         """Return whether a point is near a mapped building.
@@ -1071,7 +1156,24 @@ class PedestrianManager:
         crossings: Optional[List[Crossing]] = None,
         logical_intersections: Optional[List[LogicalIntersection]] = None,
     ) -> None:
-        """Update road/path network and rebuild spatial grids for pedestrian routing."""
+        """Update road/path network and rebuild spatial grids for pedestrian routing.
+
+        Synchronous, unchanged - still used by __init__ and every caller
+        that doesn't need incremental behavior (tests, etc.). See
+        start_incremental_sync()/advance_incremental_sync() for the
+        budgeted version main.py's map_sync state machine uses to avoid
+        paying this whole cost in one frame (bin-loader-v3.md)."""
+        self._apply_signal_lists(traffic_lights, crossings, logical_intersections)
+        self._rebuild_signal_grids()
+
+        candidate_ways = self._pedestrian_candidate_ways(ways)
+        self._source_ways = list(ways)
+        self.ped_ways = self._building_free_ways(candidate_ways)
+        self._build_route_graph()
+        self._commit_spawn_and_way_grids()
+        self._build_junction_grid()
+
+    def _apply_signal_lists(self, traffic_lights, crossings, logical_intersections) -> None:
         if traffic_lights is not None:
             self.traffic_lights = traffic_lights
         if crossings is not None:
@@ -1079,6 +1181,10 @@ class PedestrianManager:
         if logical_intersections is not None:
             self.logical_intersections = logical_intersections
 
+    def _rebuild_signal_grids(self) -> None:
+        """Proportional to traffic-light/crossing counts, not way count -
+        not part of the map_sync stall this file otherwise addresses, so
+        it stays a plain synchronous rebuild."""
         self._traffic_light_grid.clear()
         signal_cell_size = self._traffic_light_grid_cell_size
         for traffic_light in self.traffic_lights:
@@ -1095,16 +1201,26 @@ class PedestrianManager:
             )
             self._crossing_grid.setdefault(cell, []).append(crossing)
 
-        # Prefer dedicated pedestrian paths (footway, path, pedestrian, cycleway, steps, track, crossing)
-        self._source_ways = list(ways)
+    @staticmethod
+    def _pedestrian_candidate_ways(ways: List[Way]) -> List[Way]:
+        """Prefer dedicated pedestrian paths (footway, path, pedestrian,
+        cycleway, steps, track, crossing); fall back to plain streets."""
         dedicated = [w for w in ways if is_pedestrian_way(w) and len(w.points_m) >= 2]
-        fallback = [
+        if dedicated:
+            return dedicated
+        return [
             w for w in ways
             if getattr(w, "highway", "") in ("residential", "living_street", "unclassified", "service")
             and len(w.points_m) >= 2
         ]
-        self.ped_ways = self._building_free_ways(dedicated or fallback)
-        self._build_route_graph()
+
+    def _commit_spawn_and_way_grids(self) -> None:
+        """Rebuild _spawn_ways/_ped_way_ids/_way_grid from the current
+        self.ped_ways. Cheap relative to building-free-ways/route-graph/
+        junction-grid (proportional to way count but no per-segment
+        building sampling or graph search), so it stays a single
+        synchronous pass even in the incremental path - done once, at
+        commit time, after ped_ways itself is final."""
         self._spawn_ways = []
         seen_way_ids: Set[int] = set()
         for way in self.ped_ways:
@@ -1130,7 +1246,95 @@ class PedestrianManager:
                 for cy in range(min_cy, max_cy + 1):
                     self._way_grid.setdefault((cx, cy), []).append(w)
 
-        self._build_junction_grid()
+    def start_incremental_sync(
+        self,
+        ways: List[Way],
+        traffic_lights: Optional[List[TrafficLight]] = None,
+        crossings: Optional[List[Crossing]] = None,
+        logical_intersections: Optional[List[LogicalIntersection]] = None,
+    ) -> None:
+        """Begin a budgeted rebuild of everything sync_map_data() would
+        recompute from `ways` - building-free-way filtering, the
+        pedestrian route graph, and the junction grid - spread across
+        advance_incremental_sync() calls instead of paying it all in one
+        frame (bin-loader-v3.md: measured up to ~3s in one frame against
+        a dense real Oulu load). Traffic lights/crossings are cheap
+        (proportional to their own small counts, not way count) and are
+        applied immediately, matching sync_map_data(); only the
+        ways-proportional work is deferred. self.ped_ways/route graph/
+        junction grid keep serving the OLD complete result, unchanged,
+        until advance_incremental_sync() reports finished."""
+        self._apply_signal_lists(traffic_lights, crossings, logical_intersections)
+        self._rebuild_signal_grids()
+
+        self._sync_source_ways = list(ways)
+        self._sync_candidate_ways = self._pedestrian_candidate_ways(ways)
+        self._sync_bf_index = 0
+        self._sync_safe_ways: List[Way] = []
+        self._sync_jg_index = 0
+        self._sync_junction_grid: Dict[Tuple[int, int], List] = {}
+        self._sync_stage = "building_free"
+
+    def advance_incremental_sync(self, budget_s: float) -> bool:
+        """Advance an in-progress start_incremental_sync() job by up to
+        budget_s of work. Returns True once finished (self.ped_ways/
+        network/junction grid are now the new complete result); False if
+        more work remains.
+
+        The stage this call *starts* in always gets attempted at least
+        once, regardless of budget_s (matching advance_chunked's own
+        "always make forward progress" guarantee) - only CASCADING within
+        the same call into a stage just reached is gated on remaining
+        time. Without that distinction, a budget_s of exactly 0 (or a
+        clock tick landing exactly on the deadline) could starve a later
+        stage forever: the deadline is computed once at the top, and real
+        time only moves forward, so "time.perf_counter() < deadline" can
+        be false from the very first check even on a fresh call."""
+        if self._sync_stage in (None, "done"):
+            return True
+        deadline = time.perf_counter() + budget_s
+        started_stage = self._sync_stage
+
+        if self._sync_stage == "building_free":
+            self._sync_bf_index = advance_chunked(
+                self._sync_candidate_ways, self._sync_bf_index, deadline - time.perf_counter(),
+                lambda way: self._sync_safe_ways.extend(self._split_way_around_buildings(way)),
+            )
+            if self._sync_bf_index >= len(self._sync_candidate_ways):
+                self.network.start_rebuild(self._sync_safe_ways)
+                self._sync_stage = "route_graph"
+
+        if self._sync_stage == "route_graph" and (
+            self._sync_stage == started_stage or time.perf_counter() < deadline
+        ):
+            if self.network.advance_rebuild(deadline - time.perf_counter()):
+                self._sync_stage = "junction_grid"
+
+        if self._sync_stage == "junction_grid" and (
+            self._sync_stage == started_stage or time.perf_counter() < deadline
+        ):
+            self._sync_jg_index = advance_chunked(
+                self._sync_safe_ways, self._sync_jg_index, deadline - time.perf_counter(),
+                lambda way: self._insert_way_into_junction_grid(self._sync_junction_grid, way),
+            )
+            if self._sync_jg_index >= len(self._sync_safe_ways):
+                self._commit_incremental_sync()
+                return True
+
+        return False
+
+    def _commit_incremental_sync(self) -> None:
+        self._source_ways = self._sync_source_ways
+        self.ped_ways = self._sync_safe_ways
+        self._route_nodes = self.network.nodes
+        self._route_edges = self.network.edges
+        self._junction_grid = self._sync_junction_grid
+        self._commit_spawn_and_way_grids()
+        self._sync_stage = "done"
+        self._sync_candidate_ways = None
+        self._sync_safe_ways = None
+        self._sync_junction_grid = None
+        self._sync_source_ways = None
 
     def set_target_count(self, target_count: int, player_car: Optional[Car] = None) -> None:
         """Adjust active pedestrian count and discard farthest characters when needed."""
@@ -1260,16 +1464,19 @@ class PedestrianManager:
     def _build_junction_grid(self) -> None:
         """Build spatial grid indexing way endpoints and vertices for seamless path transitions."""
         self._junction_grid.clear()
-        j_cs = self._junction_grid_cell_size
         for w in self.ped_ways:
-            n_pts = len(w.points_m)
-            if n_pts < 2:
-                continue
-            layer = getattr(w, "layer", 0)
-            for i, pt in enumerate(w.points_m):
-                cx = int(math.floor(pt[0] / j_cs))
-                cy = int(math.floor(pt[1] / j_cs))
-                self._junction_grid.setdefault((cx, cy), []).append((w, i, pt, layer, n_pts))
+            self._insert_way_into_junction_grid(self._junction_grid, w)
+
+    def _insert_way_into_junction_grid(self, grid: Dict[Tuple[int, int], List], w: Way) -> None:
+        n_pts = len(w.points_m)
+        if n_pts < 2:
+            return
+        layer = getattr(w, "layer", 0)
+        j_cs = self._junction_grid_cell_size
+        for i, pt in enumerate(w.points_m):
+            cx = int(math.floor(pt[0] / j_cs))
+            cy = int(math.floor(pt[1] / j_cs))
+            grid.setdefault((cx, cy), []).append((w, i, pt, layer, n_pts))
 
     def _find_next_way_and_segment(
         self,
