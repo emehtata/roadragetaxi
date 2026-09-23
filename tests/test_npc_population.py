@@ -978,7 +978,7 @@ def test_trigger_vehicle_accident_with_no_driver_still_becomes_an_obstacle():
     assert pedestrian_mgr.pedestrians == []
 
 
-def test_trigger_vehicle_accident_also_ejects_passengers_not_just_the_driver():
+def test_trigger_vehicle_accident_also_ejects_passengers_not_just_the_driver(monkeypatch):
     """NPC-005 Definition of Done: vehicle removal (crash -> eventual
     despawn) cannot orphan occupants. The old code only ejected the
     driver and left vehicle.trip_group live - a passenger riding along
@@ -997,14 +997,41 @@ def test_trigger_vehicle_accident_also_ejects_passengers_not_just_the_driver():
     manager.vehicles.append(vehicle)
     sidewalk = Way(points_m=[(0.0, 3.0), (20.0, 3.0)], highway="footway", half_width_m=2.0)
     pedestrian_mgr = PedestrianManager([sidewalk], target_count=0)
+    monkeypatch.setattr(random, "uniform", lambda *_: math.pi)
 
     manager._trigger_vehicle_accident(vehicle, residents, pedestrian_mgr, sim_time=100.0)
 
     assert vehicle.trip_group is None
-    ejected_ids = {ped.resident_id for ped in pedestrian_mgr.pedestrians}
-    assert ejected_ids == {driver_resident.resident_id, passenger.resident_id}
+    ejected = {ped.resident_id: ped for ped in pedestrian_mgr.pedestrians}
+    assert set(ejected) == {driver_resident.resident_id, passenger.resident_id}
+    assert ejected[driver_resident.resident_id].activity.plugin_id == "phone_usage"
+    assert ejected[passenger.resident_id].activity is None
+    assert ejected[driver_resident.resident_id].destination != ejected[passenger.resident_id].destination
     assert driver_resident.trip_group_id is None
     assert passenger.trip_group_id is None
+
+
+def test_crashed_family_members_walk_together(monkeypatch):
+    residents = ResidentManager()
+    manager = NPCVehicleManager(target_count=1)
+    vehicle, driver = _driving_vehicle(residents, 5.0, 0.0)
+    passenger = residents.create(mode="riding")
+    driver.household_id = passenger.household_id = 7
+    vehicle.trip_group = TripGroup(
+        group_id=1, vehicle_id=vehicle.vehicle_id,
+        member_resident_ids=[driver.resident_id, passenger.resident_id],
+        boarded_resident_ids={driver.resident_id, passenger.resident_id},
+    )
+    sidewalk = Way(points_m=[(0.0, 3.0), (20.0, 3.0)], highway="footway", half_width_m=2.0)
+    pedestrian_mgr = PedestrianManager([sidewalk], target_count=0)
+    monkeypatch.setattr(random, "uniform", lambda *_: math.pi)
+
+    manager._trigger_vehicle_accident(vehicle, residents, pedestrian_mgr, sim_time=100.0)
+
+    ejected = {ped.resident_id: ped for ped in pedestrian_mgr.pedestrians}
+    assert ejected[driver.resident_id].destination == ejected[passenger.resident_id].destination
+    assert ejected[driver.resident_id].direction == ejected[passenger.resident_id].direction
+    assert ejected[passenger.resident_id].activity is None
 
 
 def test_trigger_vehicle_accident_ejects_only_unique_boarded_people_up_to_capacity():
