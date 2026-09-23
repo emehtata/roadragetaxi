@@ -4,6 +4,12 @@ This folder contains technical deep-dives into rendering performance, bottleneck
 
 ## Contents
 
+### [bin-loader-v6-illuminated-windows.md](./bin-loader-v6-illuminated-windows.md)
+
+**Status**: Implemented; corrects V4 attribution
+**Date**: 2026-09-23
+**Focus**: Incremental illuminated-window cache; finds `draw_street_lights` (roads.py) is the real remaining merge-window cost
+
 ### [bin-loader-v5-tile-merge.md](./bin-loader-v5-tile-merge.md)
 
 **Status**: Implemented; caveats documented
