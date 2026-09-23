@@ -8,6 +8,8 @@ from theroadragetrip.weather import (
     WeatherType,
     AUTUMN_WINTER_PERIOD_RANGE,
     AUTUMN_WINTER_PRECIPITATION_CHANCE,
+    SLUSH_MAX_TEMPERATURE_C,
+    SNOW_MAX_TEMPERATURE_C,
 )
 from theroadragetrip.calendar import Season
 
@@ -70,6 +72,33 @@ def test_automatic_winter_weather_has_fifty_percent_snow_periods_up_to_one_day()
     weather._rng = type("ClearRoll", (), {"random": lambda self: 0.9, "uniform": lambda self, low, high: 7200.0})()
     weather._start_autumn_or_winter_period()
     assert weather.weather_type == WeatherType.CLEAR
+
+
+def test_cold_rain_becomes_snow_or_slush_without_winter_ground_cover():
+    assert SNOW_MAX_TEMPERATURE_C == 1.0
+    assert SLUSH_MAX_TEMPERATURE_C == 5.0
+    weather = WeatherSystem(WeatherType.RAIN, season=Season.SPRING)
+
+    weather.update(1.0, 0.0, outside_temperature_c=0.0)
+    assert weather.weather_type == WeatherType.SNOW
+    assert weather.season == Season.SPRING
+
+    weather.update(1.0, 0.0, outside_temperature_c=3.0)
+    assert weather.weather_type == WeatherType.SLUSH
+
+    weather.update(1.0, 0.0, outside_temperature_c=5.0)
+    assert weather.weather_type == WeatherType.RAIN
+
+
+def test_slush_wets_the_road_like_rain():
+    weather = WeatherSystem(WeatherType.RAIN, season=Season.AUTUMN)
+    weather.update(
+        RAIN_WETTING_DURATION_S / 2.0,
+        0.0,
+        outside_temperature_c=3.0,
+    )
+    assert weather.weather_type == WeatherType.SLUSH
+    assert 0.49 < weather.wetness < 0.51
 
 
 def test_rain_wets_over_its_full_duration_and_clamps():

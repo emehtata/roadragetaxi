@@ -18,6 +18,7 @@ RAIN_COLOR = (196, 206, 222)
 RAIN_STREAK_LEN_MIN_PX = 9.0
 RAIN_STREAK_LEN_MAX_PX = 20.0
 SNOW_COLOR = (242, 246, 250)
+SLUSH_COLOR = (218, 226, 232)
 
 # Wet-road tint: a translucent dark fill over the road plus a thin, fainter
 # sheen line - subtle by design (WEATHER_RAIN.md #3: "do not make the road
@@ -140,6 +141,15 @@ def draw_rain(screen, weather: WeatherSystem, screen_w: int = SCREEN_W, screen_h
                 (round(x_fraction * screen_w), round(y_fraction * screen_h)),
                 radius,
             )
+        return
+
+    if weather.weather_type == WeatherType.SLUSH:
+        for x_fraction, y_fraction, speed_factor in weather.rain_particles:
+            x = round(x_fraction * screen_w)
+            y = round(y_fraction * screen_h)
+            radius = 1 if speed_factor < 1.1 else 2
+            pygame.draw.circle(screen, SLUSH_COLOR, (x, y), radius)
+            pygame.draw.line(screen, RAIN_COLOR, (x, y - radius - 2), (x, y + radius + 1), 1)
         return
 
     # Pixel-space fall direction (screen fraction rates scaled by the

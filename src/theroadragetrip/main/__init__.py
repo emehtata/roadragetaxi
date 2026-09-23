@@ -1279,7 +1279,11 @@ def main() -> None:
             if game_calendar.date != previous_date:
                 set_game_date(game_calendar.date)
                 logged_season = _sync_thermal_season(game_calendar, weather, logged_season)
-            weather.update(dt * time_scale, dt)
+            weather.update(
+                dt * time_scale,
+                dt,
+                outside_temperature_c=typical_temperature(game_calendar.current, sun_latitude),
+            )
             frame_profiler.set_metric(
                 "weather", f"{weather.weather_type.value} wetness={weather.wetness:.0%}"
             )
@@ -1868,7 +1872,11 @@ def main() -> None:
                 if game_calendar.date != previous_date:
                     set_game_date(game_calendar.date)
                     logged_season = _sync_thermal_season(game_calendar, weather, logged_season)
-                weather.update(dt * time_scale, dt)
+                weather.update(
+                    dt * time_scale,
+                    dt,
+                    outside_temperature_c=typical_temperature(game_calendar.current, sun_latitude),
+                )
                 taxi_mgr.game_date = game_calendar.date
 
                 result = advance_simulation(

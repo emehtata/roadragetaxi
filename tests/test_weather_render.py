@@ -51,6 +51,18 @@ def test_draw_rain_draws_visible_snowflakes_in_winter():
         pygame.quit()
 
 
+def test_draw_rain_draws_visible_slush_particles_without_snowy_ground():
+    pygame.init()
+    try:
+        weather = WeatherSystem(WeatherType.SLUSH, season=Season.SPRING)
+        screen = pygame.Surface((200, 150))
+        screen.fill((0, 0, 0))
+        draw_rain(screen, weather, screen_w=200, screen_h=150)
+        assert pygame.transform.average_color(screen)[:3] != (0, 0, 0)
+    finally:
+        pygame.quit()
+
+
 def test_draw_rain_scales_to_any_screen_size_without_scanning_the_map():
     """draw_rain must cost the same regardless of how much map is loaded -
     it only ever touches RAIN_PARTICLE_COUNT screen-space points, never

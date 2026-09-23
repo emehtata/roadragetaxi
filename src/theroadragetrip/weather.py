@@ -20,7 +20,12 @@ from .calendar import Season
 class WeatherType(str, Enum):
     CLEAR = "clear"
     RAIN = "rain"
+    SLUSH = "slush"
     SNOW = "snow"
+
+
+SNOW_MAX_TEMPERATURE_C = 1.0
+SLUSH_MAX_TEMPERATURE_C = 5.0
 
 
 # Automatic weather durations in game-seconds. Autumn and winter use
@@ -74,6 +79,7 @@ class WeatherSystem:
     def __init__(self, weather_type: Optional[WeatherType] = None, season: Season = Season.SUMMER) -> None:
         self._automatic = weather_type is None
         self._season = season
+        self._outside_temperature_c: Optional[float] = None
         self.weather_type = weather_type or WeatherType.CLEAR
         self.wetness = 0.0  # 0.0 dry .. 1.0 fully wet; independent of weather_type -
         # CLEAR does not imply dry, e.g. right after rain stops (see #9).
@@ -113,7 +119,7 @@ class WeatherSystem:
 
     def _start_autumn_or_winter_period(self) -> None:
         """Roll a new 0-24h period with a 50% precipitation chance."""
-        precipitation = WeatherType.SNOW if self._season == Season.WINTER else WeatherType.RAIN
+        precipitation = self._precipitation_type_for_conditions()
         self.weather_type = (
             precipitation
             if self._rng.random() < AUTUMN_WINTER_PRECIPITATION_CHANCE
@@ -125,10 +131,24 @@ class WeatherSystem:
     def _next_weather_duration(self) -> float:
         duration_range = (
             RAIN_DURATION_RANGE
-            if self.weather_type == WeatherType.RAIN
+            if self.is_precipitating
             else SEASON_CLEAR_DURATION_RANGES[self._season]
         )
         return self._rng.uniform(*duration_range)
+
+    def _precipitation_type_for_conditions(self) -> WeatherType:
+        """Choose falling precipitation from air temperature, not ground cover."""
+        if self._outside_temperature_c is None:
+            return WeatherType.SNOW if self._season == Season.WINTER else WeatherType.RAIN
+        if self._outside_temperature_c <= SNOW_MAX_TEMPERATURE_C:
+            return WeatherType.SNOW
+        if self._outside_temperature_c < SLUSH_MAX_TEMPERATURE_C:
+            return WeatherType.SLUSH
+        return WeatherType.RAIN
+
+    def _apply_precipitation_temperature(self) -> None:
+        if self.is_precipitating:
+            self.weather_type = self._precipitation_type_for_conditions()
 
     def _advance_automatic_weather(self, game_dt: float) -> None:
         if not self._automatic or game_dt <= 0.0:
@@ -139,7 +159,11 @@ class WeatherSystem:
             if self._season in (Season.AUTUMN, Season.WINTER):
                 self._start_autumn_or_winter_period()
             else:
-                self.weather_type = WeatherType.CLEAR if self.weather_type == WeatherType.RAIN else WeatherType.RAIN
+                self.weather_type = (
+                    WeatherType.CLEAR
+                    if self.is_precipitating
+                    else self._precipitation_type_for_conditions()
+                )
                 self._weather_timer = self._next_weather_duration()
         self._weather_timer -= remaining
 
@@ -164,7 +188,7 @@ class WeatherSystem:
 
     @property
     def is_precipitating(self) -> bool:
-        return self.weather_type in (WeatherType.RAIN, WeatherType.SNOW)
+        return self.weather_type in (WeatherType.RAIN, WeatherType.SLUSH, WeatherType.SNOW)
 
     @property
     def seconds_until_weather_change(self) -> Optional[float]:
@@ -174,10 +198,15 @@ class WeatherSystem:
     def toggle_rain(self) -> None:
         """Debug toggle (F8), disabling automatic changes for this session."""
         self._automatic = False
-        precipitation = WeatherType.SNOW if self.season == Season.WINTER else WeatherType.RAIN
+        precipitation = self._precipitation_type_for_conditions()
         self.weather_type = WeatherType.CLEAR if self.is_precipitating else precipitation
 
-    def update(self, game_dt: float, real_dt: float) -> None:
+    def update(
+        self,
+        game_dt: float,
+        real_dt: float,
+        outside_temperature_c: Optional[float] = None,
+    ) -> None:
         """Advance wetness (game time) and rain particles (real time).
 
         `game_dt` is dt * time_scale - the same delta main() uses to
@@ -186,9 +215,12 @@ class WeatherSystem:
         rain must fall at a consistent visual speed regardless of how
         fast game time is currently running (time_scale up to 60x).
         """
+        if outside_temperature_c is not None:
+            self._outside_temperature_c = float(outside_temperature_c)
         if game_dt > 0.0:
             self._advance_automatic_weather(game_dt)
-            if self.weather_type == WeatherType.RAIN:
+            self._apply_precipitation_temperature()
+            if self.weather_type in (WeatherType.RAIN, WeatherType.SLUSH):
                 self.wetness = min(1.0, self.wetness + game_dt / RAIN_WETTING_DURATION_S)
             else:
                 self.wetness = max(0.0, self.wetness - game_dt / DRY_DURATION_S)
@@ -196,8 +228,14 @@ class WeatherSystem:
         if self.is_precipitating and real_dt > 0.0:
             for particle in self.rain_particles:
                 x, y, factor = particle
-                fall_rate = RAIN_FALL_FRACTION_PER_S * (0.22 if self.weather_type == WeatherType.SNOW else 1.0)
-                drift_rate = RAIN_DRIFT_FRACTION_PER_S * (1.8 if self.weather_type == WeatherType.SNOW else 1.0)
+                if self.weather_type == WeatherType.SNOW:
+                    fall_factor, drift_factor = 0.22, 1.8
+                elif self.weather_type == WeatherType.SLUSH:
+                    fall_factor, drift_factor = 0.55, 1.35
+                else:
+                    fall_factor, drift_factor = 1.0, 1.0
+                fall_rate = RAIN_FALL_FRACTION_PER_S * fall_factor
+                drift_rate = RAIN_DRIFT_FRACTION_PER_S * drift_factor
                 y += fall_rate * factor * real_dt
                 x += drift_rate * factor * real_dt
                 if y > 1.0:
