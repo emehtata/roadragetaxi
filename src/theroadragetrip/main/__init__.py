@@ -1999,6 +1999,8 @@ def main() -> None:
                 for ped in pedestrian_mgr.pedestrians
             ))
             frame_profiler.set_metric("active_residents", len(traffic_mgr.residents.residents))
+            frame_profiler.set_metric("car_x", round(car.x, 1))
+            frame_profiler.set_metric("car_y", round(car.y, 1))
             frame_profiler.set_metric(
                 "world_cache_operations",
                 sum(not future.done() for future in getattr(world_cache, "_futures", {}).values()),
@@ -2119,7 +2121,15 @@ def main() -> None:
                 # that same full-rebuild cost once per frame instead of once
                 # per burst - a multi-frame stall right when several tiles
                 # complete around the same time (e.g. a fast or diagonal move).
-                integrated_tiles = auto_fetch_manager.integrate_completed_tiles(max_tiles=9)
+                # bin-loader-v4.md: this call was previously entirely
+                # unmeasured by frame_profiler - its own self-timed
+                # last_tile_integration_ms metric is read one frame *before*
+                # this call runs (see the tile_metrics block above), so it
+                # always describes the *previous* frame's integration, never
+                # this one. Wrapping it directly is the only way to see its
+                # real per-frame cost.
+                with frame_profiler.section("map_sync:tile_integration"):
+                    integrated_tiles = auto_fetch_manager.integrate_completed_tiles(max_tiles=9)
                 if integrated_tiles:
                     # Static render/collision indexes must match the live lists
                     # immediately; service graphs can continue in later stages.
@@ -2793,40 +2803,41 @@ def main() -> None:
                 else None
             )
 
-            draw_hud(
-                screen,
-                font,
-                car,
-                on_road,
-                len(ways),
-                px_per_m,
-                transformer_to_ll,
-                show_labels=bool(label_mode),
-                taxi_mgr=taxi_mgr,
-                current_road_name=current_road_name,
-                speed_limit_kmh=current_limit_kmh,
-                speed_limiter_enabled=speed_limiter_enabled,
-                red_light_assist_enabled=red_light_assist_enabled,
-                show_compass=show_compass,
-                show_navigation=show_navigation,
-                rage_power=rage_power,
-                language=language,
-                career_total_distance_m=car.odometer_m if career is not None else None,
-                water_time_remaining=(10.0 - water_elapsed) if water_elapsed > 0.0 else None,
-                game_time_seconds=game_time_seconds,
-                game_date=game_calendar.date,
-                temperature_c=typical_temperature(game_calendar.current, sun_latitude),
-                game_time_realtime=taxi_mgr.current_passenger is not None,
-                comment_text=audio.comment_text,
-                comment_speaker=audio.comment_speaker,
-                comment_speaker_name=audio.comment_speaker_name,
-                subtitles_enabled=config.getboolean("audio", "subtitles_enabled", fallback=True),
-                fps=clock.get_fps(),
-                show_debug_hud=show_debug_hud,
-                hud_layout=hud_layout,
-                hud_rects=hud_rects,
-                fuel_station_price_cents=nearby_fuel_price_cents,
-            )
+            with frame_profiler.section("render:hud"):
+                draw_hud(
+                    screen,
+                    font,
+                    car,
+                    on_road,
+                    len(ways),
+                    px_per_m,
+                    transformer_to_ll,
+                    show_labels=bool(label_mode),
+                    taxi_mgr=taxi_mgr,
+                    current_road_name=current_road_name,
+                    speed_limit_kmh=current_limit_kmh,
+                    speed_limiter_enabled=speed_limiter_enabled,
+                    red_light_assist_enabled=red_light_assist_enabled,
+                    show_compass=show_compass,
+                    show_navigation=show_navigation,
+                    rage_power=rage_power,
+                    language=language,
+                    career_total_distance_m=car.odometer_m if career is not None else None,
+                    water_time_remaining=(10.0 - water_elapsed) if water_elapsed > 0.0 else None,
+                    game_time_seconds=game_time_seconds,
+                    game_date=game_calendar.date,
+                    temperature_c=typical_temperature(game_calendar.current, sun_latitude),
+                    game_time_realtime=taxi_mgr.current_passenger is not None,
+                    comment_text=audio.comment_text,
+                    comment_speaker=audio.comment_speaker,
+                    comment_speaker_name=audio.comment_speaker_name,
+                    subtitles_enabled=config.getboolean("audio", "subtitles_enabled", fallback=True),
+                    fps=clock.get_fps(),
+                    show_debug_hud=show_debug_hud,
+                    hud_layout=hud_layout,
+                    hud_rects=hud_rects,
+                    fuel_station_price_cents=nearby_fuel_price_cents,
+                )
             if phone_open:
                 draw_phone_offers(screen, taxi_mgr, font, small_font, SCREEN_W, SCREEN_H, language, car=car)
             if show_compass:
