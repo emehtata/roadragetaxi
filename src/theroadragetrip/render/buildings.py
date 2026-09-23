@@ -21,7 +21,7 @@ from typing import List, Optional
 
 
 from ..geo import dist_point_to_segment, point_in_polygon
-from ..osm import Building, Place
+from ..osm import Building, ParkingSpace, Place
 
 
 BUILDING_WALL_COLORS = ((158, 105, 82), (174, 166, 143), (116, 131, 119), (139, 139, 137))
@@ -65,6 +65,7 @@ COMMERCIAL_BUILDING_TYPES = {"commercial", "retail", "shop"}
 ILLUMINATED_WINDOW_CACHE_PADDING_PX = 224
 _illuminated_window_cache = None
 GENERATED_DRIVEWAY_MAX_LENGTH_M = 35.0
+GENERATED_HOUSE_PARKING_BAYS = 2
 
 
 def _is_open_roof(building: Building) -> bool:
@@ -542,11 +543,65 @@ def _nearest_house_driveway(building, ways, road_spatial_grid=None):
     return None if best is None else (best[1], best[2])
 
 
+def _house_parking_key(building):
+    bbox = getattr(building, "bbox", (0.0, 0.0, 0.0, 0.0))
+    return tuple(round(float(value), 2) for value in bbox)
+
+
+def generate_detached_house_parking(buildings, ways, parking_spaces, road_spatial_grid=None) -> int:
+    """Add two reservable residential bays to each generated house access."""
+    existing_keys = {
+        getattr(space, "source_building_key", None)
+        for space in parking_spaces
+        if getattr(space, "source_building_key", None) is not None
+    }
+    added = 0
+    for building in buildings:
+        key = _house_parking_key(building)
+        if key in existing_keys:
+            continue
+        access = _nearest_house_driveway(building, ways, road_spatial_grid)
+        if access is None:
+            continue
+        house_edge, road_edge = access
+        dx, dy = road_edge[0] - house_edge[0], road_edge[1] - house_edge[1]
+        access_length = math.hypot(dx, dy)
+        if access_length < 5.5:
+            continue
+        ux, uy = dx / access_length, dy / access_length
+        lateral_x, lateral_y = -uy, ux
+        bay_length, bay_width = 5.0, 2.5
+        center_distance = bay_length * 0.5 + 0.5
+        for bay_index in range(GENERATED_HOUSE_PARKING_BAYS):
+            lateral_offset = (bay_index - (GENERATED_HOUSE_PARKING_BAYS - 1) * 0.5) * (bay_width + 0.3)
+            center_x = house_edge[0] + ux * center_distance + lateral_x * lateral_offset
+            center_y = house_edge[1] + uy * center_distance + lateral_y * lateral_offset
+            half_length, half_width = bay_length * 0.5, bay_width * 0.5
+            points = [
+                (center_x + ux * half_length + lateral_x * half_width, center_y + uy * half_length + lateral_y * half_width),
+                (center_x + ux * half_length - lateral_x * half_width, center_y + uy * half_length - lateral_y * half_width),
+                (center_x - ux * half_length - lateral_x * half_width, center_y - uy * half_length - lateral_y * half_width),
+                (center_x - ux * half_length + lateral_x * half_width, center_y - uy * half_length + lateral_y * half_width),
+            ]
+            xs, ys = [point[0] for point in points], [point[1] for point in points]
+            parking_spaces.append(ParkingSpace(
+                points_m=points,
+                bbox=(min(xs), min(ys), max(xs), max(ys)),
+                orientation=math.atan2(uy, ux),
+                parking_role="residential",
+                source_building_key=key,
+                access_path=[house_edge, road_edge],
+            ))
+            added += 1
+        existing_keys.add(key)
+    return added
+
+
 def _draw_generated_driveways(screen, buildings, ways, road_spatial_grid, camx, camy, px_per_m, screen_w, screen_h):
     import pygame
 
-    border_width = max(2, round(3.2 * px_per_m))
-    fill_width = max(1, round(2.6 * px_per_m))
+    border_width = max(2, round(6.2 * px_per_m))
+    fill_width = max(1, round(5.6 * px_per_m))
     for building in buildings:
         driveway = _nearest_house_driveway(building, ways, road_spatial_grid)
         if driveway is None:

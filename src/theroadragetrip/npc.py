@@ -689,6 +689,7 @@ def _route_crosses_obstacles(
     curb_grid: Optional[SpatialWayGrid] = None,
     building_grid: Optional[SpatialWayGrid] = None,
     skip_leading_m: float = 0.0,
+    skip_trailing_m: float = 0.0,
 ) -> bool:
     """Sample is_vehicle_pose_valid densely along a whole path (see
     _densify_path/_path_headings) - the shared engine behind
@@ -702,17 +703,26 @@ def _route_crosses_obstacles(
     can legitimately sit close to/cross a curb cut that a normal mid-route
     straight line never would), mirrored at the origin: a vehicle that
     starts parked in a yard/lot has to cross its own curb cut to leave.
+    skip_trailing_m is the matching arrival allowance: generated house
+    parking records its driveway mouth, so only that final access leg may
+    cross the roadside curb into the yard.
     """
     if len(path_points) < 2 or (not curbs and not buildings):
         return False
     dense = _densify_path(path_points)
     headings = _path_headings(dense)
+    total_length = sum(
+        math.hypot(bx - ax, by - ay)
+        for (ax, ay), (bx, by) in zip(dense, dense[1:])
+    )
     traveled = 0.0
     prev_x, prev_y = dense[0]
     for (x, y), heading in zip(dense, headings):
         traveled += math.hypot(x - prev_x, y - prev_y)
         prev_x, prev_y = x, y
         if traveled < skip_leading_m:
+            continue
+        if total_length - traveled < skip_trailing_m:
             continue
         if not is_vehicle_pose_valid(
             x, y, heading, curbs=curbs, buildings=buildings, curb_grid=curb_grid, building_grid=building_grid,
@@ -730,6 +740,7 @@ def route_crosses_curbs(
     curb_grid: Optional[SpatialWayGrid] = None,
     clearance_m: float = CURB_CLEARANCE_MARGIN_M,
     skip_leading_m: float = 0.0,
+    skip_trailing_m: float = 0.0,
 ) -> bool:
     """Return whether the built (lane-offset, corner-rounded) driving path
     ever brings the vehicle's own oriented footprint within clearance_m
@@ -745,6 +756,7 @@ def route_crosses_curbs(
     return _route_crosses_obstacles(
         path_points, vehicle_length_m, vehicle_width_m, clearance_m, curbs=curbs, curb_grid=curb_grid,
         skip_leading_m=skip_leading_m,
+        skip_trailing_m=skip_trailing_m,
     )
 
 
@@ -756,6 +768,7 @@ def route_crosses_buildings(
     building_grid: Optional[SpatialWayGrid] = None,
     clearance_m: float = BUILDING_CLEARANCE_MARGIN_M,
     skip_leading_m: float = 0.0,
+    skip_trailing_m: float = 0.0,
 ) -> bool:
     """Return whether the driving path ever brings the vehicle's own
     oriented footprint within clearance_m of a building's wall -
@@ -769,6 +782,7 @@ def route_crosses_buildings(
     return _route_crosses_obstacles(
         path_points, vehicle_length_m, vehicle_width_m, clearance_m, buildings=buildings, building_grid=building_grid,
         skip_leading_m=skip_leading_m,
+        skip_trailing_m=skip_trailing_m,
     )
 
 
@@ -1181,6 +1195,11 @@ def _plan_and_validate_npc_route(
     raw_route = traffic_world.plan_route(origin, destination, deadline=deadline)
     if raw_route is None:
         return None
+    access_path = getattr(parking_space, "access_path", ()) if parking_space is not None else ()
+    if len(access_path) >= 2:
+        # Route through the generated driveway's road-edge mouth rather
+        # than letting A* draw an arbitrary last-hop line across the yard.
+        raw_route = [*raw_route[:-1], access_path[-1], destination]
     deduped_route = _dedupe_points(raw_route)
     if len(deduped_route) < 3:  # start + >=1 real road node + target
         return None
@@ -1215,11 +1234,18 @@ def _plan_and_validate_npc_route(
         return None
     path_points = [(p.x, p.y) for p in path]
     skip_leading_m = NPC_PARKING_ACCESS_TOLERANCE_M if origin_is_off_road else 0.0
+    driveway_skip_m = (
+        math.hypot(access_path[-1][0] - destination[0], access_path[-1][1] - destination[1]) + 1.0
+        if len(access_path) >= 2 else 0.0
+    )
     # NPC-more.md section 7: never drive on curbs - checked against the
     # actual lane-offset/corner-rounded trajectory, not the raw centerline,
     # since a wide vehicle clips a curb at a corner or roundabout island,
     # not at the road's own centerline.
-    if route_crosses_curbs(path_points, curbs or [], curb_grid=curb_grid, skip_leading_m=skip_leading_m):
+    if route_crosses_curbs(
+        path_points, curbs or [], curb_grid=curb_grid,
+        skip_leading_m=skip_leading_m, skip_trailing_m=driveway_skip_m,
+    ):
         return None
     # NPC-more.md section 13: never drive through a building polygon.
     if route_crosses_buildings(path_points, buildings or [], building_grid=building_grid, skip_leading_m=skip_leading_m):

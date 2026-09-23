@@ -86,6 +86,7 @@ from ..render import (
     draw_railways,
     draw_day_night_overlay,
     draw_illuminated_windows,
+    generate_detached_house_parking,
     draw_grass_texture,
     draw_headlight_beams,
     draw_hud,
@@ -691,6 +692,11 @@ def _load_world(
     # Spatial index for fast O(1) road collision detection
     spatial_grid = SpatialWayGrid()
     spatial_grid.rebuild(ways)
+    generated_house_bays = generate_detached_house_parking(
+        buildings, ways, parking_spaces, spatial_grid
+    )
+    if generated_house_bays:
+        logger.info("Generated %d detached-house residential parking bays", generated_house_bays)
     building_grid = SpatialWayGrid()
     building_grid.rebuild(buildings)
     scenery_grid = SpatialWayGrid()
@@ -2125,6 +2131,9 @@ def main() -> None:
                 elif map_sync_stage == 2:
                     with frame_profiler.section("map_sync:spatial_grid"):
                         spatial_grid.rebuild(ways)
+                        generate_detached_house_parking(
+                            buildings, ways, parking_spaces, spatial_grid
+                        )
                     map_sync_stage = 3
                 elif map_sync_stage == 3:
                     with frame_profiler.section("map_sync:building_grid"):

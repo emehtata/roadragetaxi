@@ -119,6 +119,9 @@ class ParkingSpace:
     reserved: bool = False
     vehicle_id: Optional[int] = None
     reserved_by_pedestrian_id: Optional[int] = None
+    parking_role: Optional[str] = None
+    source_building_key: object = None
+    access_path: List[Tuple[float, float]] = field(default_factory=list)
 
     def __post_init__(self) -> None:
         orientation = self.orientation
