@@ -168,7 +168,7 @@ def _percentile(values: list[float], pct: float) -> float:
 # frame; "rendering" wraps every render:* stage) - bin-loader-v4.md #10.
 # Excluding these from a frame's "accounted for" sum avoids double-counting
 # a stage as both itself and part of its own parent.
-_PARENT_SECTIONS = {"rendering", "map_sync", "render:illuminated_windows"}  # last is nested inside render:lighting (bin-loader-v6.md)
+_PARENT_SECTIONS = {"rendering", "map_sync", "render:illuminated_windows", "render:lighting:street_lights"}  # last is nested inside render:lighting (bin-loader-v6.md)
 
 
 def _exclusive_sections(sections: dict[str, float]) -> dict[str, float]:
@@ -221,6 +221,9 @@ def _print_tile_transitions(entries: list[dict]) -> None:
 
 def run_scenario(name: str, city: str, frames: int, drive: bool, spike_threshold_ms: float | None = None) -> None:
     import theroadragetrip.main as main_module
+    from theroadragetrip.render import roads as roads_module
+
+    cache_stats_before = dict(roads_module._street_light_cache_stats)
 
     _captured.clear()
     _gc_time_by_frame.clear()
@@ -264,6 +267,10 @@ def run_scenario(name: str, city: str, frames: int, drive: bool, spike_threshold
         count = sum(1 for ms in frame_ms if ms >= threshold)
         print(f"  frames >= {threshold:.0f}ms: {count}")
     print(f"  gc time total: {sum(_gc_time_by_frame.values()):.1f}ms across {len(_gc_time_by_frame)} frames")
+    print("  street-light cache: " + ", ".join(
+        f"{name}={value - cache_stats_before[name]}"
+        for name, value in roads_module._street_light_cache_stats.items()
+    ))
     print()
     _print_tile_transitions(frames_recorded)
     if spike_threshold_ms is not None:

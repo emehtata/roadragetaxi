@@ -814,11 +814,13 @@ class SpatialWayGrid:
             self.cell_size = cell_size
             self.grid: dict[Tuple[int, int], List] = {}
             self.indexed_way_count = 0
+            self.revision = 0
             self.rebuild(list(ways_or_cell_size))
         else:
             self.cell_size = float(ways_or_cell_size)
             self.grid: dict[Tuple[int, int], List] = {}
             self.indexed_way_count = 0
+            self.revision = 0
 
     def insert(self, way) -> None:
         self._insert_into(self.grid, way)
@@ -856,6 +858,7 @@ class SpatialWayGrid:
         for w in ways:
             self.insert(w)
         self.indexed_way_count = len(ways)
+        self.revision += 1
 
     def start_rebuild(self, ways: List) -> None:
         """Begin a budgeted rebuild (bin-loader-v3.md) - queries keep
@@ -882,6 +885,7 @@ class SpatialWayGrid:
         self.grid = self._pending_grid
         self._insertion_order = {id(w): i for i, w in enumerate(self._pending_ways)}
         self.indexed_way_count = len(self._pending_ways)
+        self.revision += 1
         self._pending_ways = None
         self._pending_grid = None
         return True

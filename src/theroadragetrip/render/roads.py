@@ -65,6 +65,7 @@ STREET_LIGHT_CORE_COLOR = (215, 215, 200, 230)
 # area urban at all" radius - that answers a different question.
 STREET_LIGHT_EXPLICIT_LAMP_MAX_DISTANCE_M = 15.0
 STREET_LIGHT_ROAD_INDEX_CELL_M = 24.0
+STREET_LIGHT_CACHE_BUDGET_S = 0.004
 _asphalt_texture_tile = None
 _asphalt_texture_source = None
 _asphalt_texture_tile_size = None
@@ -85,6 +86,10 @@ _street_light_frame_cache_camera = None
 _street_light_geometry_cache_key = None
 _street_light_geometry_cache = []
 _street_light_geometry_region = None
+_street_light_geometry_generation = 0
+_street_light_geometry_wip = None
+_street_light_geometry_pending = None
+_street_light_cache_stats = {"rebuilds": 0, "update_frames": 0, "extensions": 0}
 _street_light_way_lit_cache_key = None
 _street_light_way_lit_cache = {}
 _street_light_last_debug_log_ms = 0
@@ -934,6 +939,7 @@ def draw_street_lights(
     building_spatial_grid=None,
     street_lamps: Optional[List] = None,
     street_lamp_grid=None,
+    profiler=None,
 ) -> None:
     """Draw simple roadside lamps on visible urban roads.
 
@@ -944,7 +950,8 @@ def draw_street_lights(
     have no explicit lamp mapped nearby, exactly as before.
     """
     import pygame
-    global _street_light_last_debug_log_ms
+    global _street_light_last_debug_log_ms, _street_light_geometry_wip
+    global _street_light_geometry_generation, _street_light_geometry_pending
     cache_zoom = _static_cache_zoom(px_per_m)
 
     hour = (game_time_seconds / 3600.0) % 24.0
@@ -971,27 +978,29 @@ def draw_street_lights(
                 )
                 _street_light_last_debug_log_ms = now_ms
         return
-    # Identity + length + last-element-identity is the same cheap staleness
-    # signal `geometry_cache_key` below uses for `buildings` - sufficient
-    # because nothing in this codebase mutates a Way's fields after
-    # construction (autofetch.py only ever grows the list via .extend(),
-    # which already changes len() and the last element's identity). A
-    # per-way tuple signature used to be rebuilt from scratch here on
-    # *every* frame regardless of cache hit/miss - cheap for a test map,
-    # but a real city's full way list (not just the visible subset) is
-    # tens of thousands of Ways, and this ran unconditionally the moment
-    # street lighting turned on at dusk: measured ~38ms per rebuild against
-    # a real ~31k-way Oulu extract, ~76ms doubled with the identical
-    # signature rebuilt again below for geometry_cache_key - most of a
-    # frame budget, and the reason night driving in a dense real area
-    # dropped to single-digit fps while daytime (lighting code short-
-    # circuits before any of this) was unaffected.
+    # Completed spatial-grid revisions are authoritative: raw world lists can grow
+    # for many merge frames before those additions become renderable. Grid-less
+    # callers use exact object identities as the correctness fallback.
     cache_pixel_size = 16
+    road_revision = (
+        spatial_grid.revision if spatial_grid is not None and hasattr(spatial_grid, "revision")
+        else tuple(id(way) for way in ways)
+    )
+    building_revision = (
+        building_spatial_grid.revision
+        if building_spatial_grid is not None and hasattr(building_spatial_grid, "revision")
+        else tuple(id(building) for building in (buildings or ()))
+    )
+    lamp_revision = (
+        street_lamp_grid.revision
+        if street_lamp_grid is not None and hasattr(street_lamp_grid, "revision")
+        else tuple(id(lamp) for lamp in (street_lamps or ()))
+    )
     frame_cache_key = (
-        id(ways),
-        len(ways),
-        id(ways[-1]) if ways else None,
-        id(buildings),
+        road_revision,
+        building_revision,
+        lamp_revision,
+        _street_light_geometry_generation,
         round(camx * cache_zoom / cache_pixel_size),
         round(camy * cache_zoom / cache_pixel_size),
         cache_zoom,
@@ -1001,7 +1010,8 @@ def draw_street_lights(
     global _street_light_frame_cache_key, _street_light_frame_cache_surface
     global _street_light_frame_pool_surface, _street_light_frame_cache_camera
     if (
-        frame_cache_key == _street_light_frame_cache_key
+        _street_light_geometry_wip is None
+        and frame_cache_key == _street_light_frame_cache_key
         and _street_light_frame_cache_surface is not None
     ):
         cached_camx, cached_camy = _street_light_frame_cache_camera
@@ -1039,6 +1049,7 @@ def draw_street_lights(
                 )
                 _street_light_last_debug_log_ms = now_ms
         return
+    cache_work_started = time.perf_counter()
     px_per_m = cache_zoom
     # Build the lighting layer beyond the visible edge so lamps are ready before entering view.
     vminx, vminy, vmaxx, vmaxy = get_viewport_bounds(camx, camy, px_per_m, screen_w, screen_h, 40.0)
@@ -1056,15 +1067,6 @@ def draw_street_lights(
     region_vminx, region_vminy, region_vmaxx, region_vmaxy = get_viewport_bounds(
         camx, camy, px_per_m, screen_w, screen_h, STREET_LIGHT_GEOMETRY_REGION_PADDING_M
     )
-    if spatial_grid is not None:
-        # ways_in_rect() is a generator - materialize it, since below this
-        # gets walked three separate times (junctions, lit-segment cache,
-        # lamp placement); consuming a generator three times silently
-        # yields nothing on the 2nd and 3rd pass instead of an error,
-        # which is exactly how this shipped with zero lamps ever placed.
-        visible_ways = list(spatial_grid.ways_in_rect(region_vminx, region_vminy, region_vmaxx, region_vmaxy))
-    else:
-        visible_ways = ways
     global _street_light_geometry_region
     region = _street_light_geometry_region
     region_covers_viewport = (
@@ -1072,6 +1074,14 @@ def draw_street_lights(
         and region[0] <= vminx and region[1] <= vminy
         and region[2] >= vmaxx and region[3] >= vmaxy
     )
+    if region_covers_viewport:
+        region_vminx, region_vminy, region_vmaxx, region_vmaxy = region
+    if spatial_grid is not None:
+        visible_ways = list(spatial_grid.ways_in_rect(
+            region_vminx, region_vminy, region_vmaxx, region_vmaxy
+        ))
+    else:
+        visible_ways = ways
 
     global _street_light_junction_cache, _street_light_junction_grid_cache, _street_light_building_grid_cache
     # Nearby-buildings source for the fine building_grid below: query the
@@ -1085,9 +1095,6 @@ def draw_street_lights(
     # cost ~67ms against a real ~21k-building Oulu extract and, like the
     # ways case, only grows as autofetch streams more buildings in.
     building_margin = STREET_LIGHT_BUILDING_DISTANCE_M
-    building_cache_key = (
-        id(buildings), len(buildings) if buildings else 0, id(buildings[-1]) if buildings else None,
-    )
     if building_spatial_grid is not None:
         nearby_buildings = list(building_spatial_grid.ways_in_rect(
             region_vminx - building_margin, region_vminy - building_margin,
@@ -1106,10 +1113,11 @@ def draw_street_lights(
     else:
         nearby_buildings = buildings or ()
         needs_rebuild = False
+    building_cache_key = (building_revision, tuple(id(building) for building in nearby_buildings))
     if (
         _street_light_building_grid_cache is None
         or _street_light_building_grid_cache[0] != building_cache_key
-        or needs_rebuild
+        or (needs_rebuild and _street_light_geometry_wip is None)
     ):
         building_grid = {}
         for building in nearby_buildings:
@@ -1132,8 +1140,9 @@ def draw_street_lights(
     # and was, before this fix, walked here in full on every cache miss
     # (see geometry_cache_key's docstring-comment below for the concrete
     # cost this had in a real Oulu-scale extract).
-    cache_key = (id(ways), len(ways), id(ways[-1]) if ways else None, id(buildings))
-    if _street_light_junction_cache is None or _street_light_junction_cache[0] != cache_key or not region_covers_viewport:
+    visible_way_ids = tuple(id(way) for way in visible_ways)
+    cache_key = (road_revision, building_revision, visible_way_ids)
+    if _street_light_junction_cache is None or _street_light_junction_cache[0] != cache_key or (not region_covers_viewport and _street_light_geometry_wip is None):
         point_ways = {}
         ways_by_object_id = {id(way): way for way in visible_ways}
         for way in visible_ways:
@@ -1184,15 +1193,11 @@ def draw_street_lights(
     # by what's actually near the camera regardless of how much of the
     # city has been explored.
     geometry_cache_key = (
-        id(ways),
-        len(ways),
-        id(ways[-1]) if ways else None,
-        id(buildings),
-        len(buildings) if buildings else 0,
-        id(buildings[-1]) if buildings else None,
-        len(street_lamps) if street_lamps else 0,
+        road_revision, building_revision, lamp_revision, visible_way_ids,
+        tuple(id(lamp) for lamp in (street_lamps or ())
+              if region_vminx <= lamp.x <= region_vmaxx and region_vminy <= lamp.y <= region_vmaxy),
     )
-    if geometry_cache_key != _street_light_way_lit_cache_key or not region_covers_viewport:
+    if geometry_cache_key != _street_light_way_lit_cache_key or (not region_covers_viewport and _street_light_geometry_wip is None):
         way_lit_cache = {}
         for way in visible_ways:
             if not getattr(way, "is_drivable", True) or len(way.points_m) < 2:
@@ -1217,12 +1222,40 @@ def draw_street_lights(
             way_lit_cache[id(way)] = segment_lighting
         _street_light_way_lit_cache_key = geometry_cache_key
         _street_light_way_lit_cache = way_lit_cache
-    if geometry_cache_key != _street_light_geometry_cache_key or not region_covers_viewport:
-        cached_lamps = []
-        road_segment_grid = _build_street_light_road_index(
-            visible_ways,
-            (region_vminx, region_vminy, region_vmaxx, region_vmaxy),
-        )
+    if (_street_light_geometry_wip is not None
+            or geometry_cache_key != _street_light_geometry_cache_key
+            or not region_covers_viewport):
+        if (_street_light_geometry_wip is not None
+                and geometry_cache_key != _street_light_geometry_wip["key"]
+                and geometry_cache_key != _street_light_geometry_pending):
+            _street_light_geometry_pending = geometry_cache_key
+            _street_light_cache_stats["extensions"] += 1
+        if _street_light_geometry_wip is None:
+            _street_light_geometry_pending = None
+            _street_light_cache_stats["rebuilds"] += 1
+            _street_light_geometry_wip = {
+                "key": geometry_cache_key,
+                "region": (region_vminx, region_vminy, region_vmaxx, region_vmaxy),
+                "ways": list(visible_ways),
+                "cursor": 0,
+                "lamps": [],
+                "seen": set(),
+                "road_grid": _build_street_light_road_index(
+                    visible_ways, (region_vminx, region_vminy, region_vmaxx, region_vmaxy)
+                ),
+                "junction_grid": junction_grid,
+                "way_lit_cache": _street_light_way_lit_cache,
+                "street_lamps": street_lamps,
+                "street_lamp_grid": street_lamp_grid,
+            }
+        work = _street_light_geometry_wip
+        _street_light_cache_stats["update_frames"] += 1
+        cached_lamps = work["lamps"]
+        road_segment_grid = work["road_grid"]
+        junction_grid = work["junction_grid"]
+        street_lamps = work["street_lamps"]
+        street_lamp_grid = work["street_lamp_grid"]
+        region_vminx, region_vminy, region_vmaxx, region_vmaxy = work["region"]
         lamp_spacing = STREET_LIGHT_SPACING_M
         junction_cell_size = 40.0
         # lights.md requirement 1-3: explicit OSM lamp-pole positions are
@@ -1231,8 +1264,11 @@ def draw_street_lights(
         # here is never also re-placed by the fixed-spacing fallback.
         # Tracked across the whole rebuild (not per-way) so a lamp near
         # two ways at a junction isn't placed twice.
-        seen_explicit_lamp_ids: set = set()
-        for way in visible_ways:
+        seen_explicit_lamp_ids = work["seen"]
+        deadline = time.perf_counter() + STREET_LIGHT_CACHE_BUDGET_S
+        while work["cursor"] < len(work["ways"]):
+            way = work["ways"][work["cursor"]]
+            work["cursor"] += 1
             if (
                 not getattr(way, "is_drivable", True)
                 or (
@@ -1245,6 +1281,8 @@ def draw_street_lights(
                 )
                 or len(way.points_m) < 2
             ):
+                if time.perf_counter() >= deadline:
+                    break
                 continue
             half_width = getattr(way, "half_width_m", 4.0)
             explicit_lamps_for_way = []
@@ -1279,6 +1317,8 @@ def draw_street_lights(
                     road_direction = math.atan2(seg_dy / seg_len, seg_dx / seg_len)
                     pool_radius_m = half_width + STREET_LIGHT_EXPLICIT_LAMP_MAX_DISTANCE_M * 0.5
                     cached_lamps.append((lamp.x, lamp.y, road_direction, pool_radius_m))
+                if time.perf_counter() >= deadline:
+                    break
                 continue
             distance_to_lamp = 0.0
             segment_lengths = getattr(way, "segment_lengths", ())
@@ -1316,7 +1356,7 @@ def draw_street_lights(
                     lamp_y = start[1] + dy * fraction
                     normal_x = -dy / segment_length
                     normal_y = dx / segment_length
-                    segment_lighting = _street_light_way_lit_cache.get(id(way), ())
+                    segment_lighting = work["way_lit_cache"].get(id(way), ())
                     if segment_index < len(segment_lighting) and segment_lighting[segment_index]:
                         for side in (-1.0, 1.0):
                             world_x = lamp_x + normal_x * edge_distance * side
@@ -1342,9 +1382,38 @@ def draw_street_lights(
                 distance_to_lamp = (segment_phase - segment_length) % lamp_spacing
                 if distance_to_lamp < 1e-9:
                     distance_to_lamp = lamp_spacing
-        _street_light_geometry_cache_key = geometry_cache_key
-        _street_light_geometry_cache = cached_lamps
-        _street_light_geometry_region = (region_vminx, region_vminy, region_vmaxx, region_vmaxy)
+            if time.perf_counter() >= deadline:
+                break
+        if work["cursor"] >= len(work["ways"]):
+            _street_light_geometry_cache_key = work["key"]
+            _street_light_geometry_cache = cached_lamps
+            _street_light_geometry_region = work["region"]
+            _street_light_geometry_generation += 1
+            _street_light_geometry_wip = None
+
+    if profiler is not None:
+        profiler.record(
+            "render:lighting:street_light_cache",
+            (time.perf_counter() - cache_work_started) * 1000.0,
+        )
+
+    if (
+        _street_light_geometry_wip is not None
+        and _street_light_frame_cache_surface is not None
+        and _street_light_frame_cache_key is not None
+        and _street_light_frame_cache_key[4:] == frame_cache_key[4:]
+    ):
+        cached_camx, cached_camy = _street_light_frame_cache_camera
+        offset = (round((cached_camx - camx) * cache_zoom), round((camy - cached_camy) * cache_zoom))
+        if base_surface is not None:
+            cached_surface = base_surface.copy()
+            cached_surface.blit(_street_light_frame_pool_surface, offset, special_flags=pygame.BLEND_RGB_ADD)
+            cached_surface.blit(_street_light_frame_cache_surface, offset)
+            screen.blit(cached_surface, (0, 0), special_flags=pygame.BLEND_RGB_MAX)
+        else:
+            screen.blit(_street_light_frame_pool_surface, offset, special_flags=pygame.BLEND_RGB_ADD)
+            screen.blit(_street_light_frame_cache_surface, offset)
+        return
 
     lamp_centers = []
     lamp_directions = []

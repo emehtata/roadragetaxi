@@ -2697,24 +2697,26 @@ def main() -> None:
                 spatial_grid=spatial_grid,
                 current_way=current_way,
             )
-            draw_street_lights(
-                screen,
-                ways,
-                camx,
-                camy,
-                game_time_seconds,
-                px_per_m=px_per_m,
-                spatial_grid=spatial_grid,
-                visible_road_count=visible_road_count,
-                daylight_surface=daylight_scene,
-                latitude=sun_latitude,
-                longitude=sun_longitude,
-                buildings=buildings,
-                base_surface=street_light_base,
-                building_spatial_grid=building_grid,
-                street_lamps=street_lamps,
-                street_lamp_grid=street_lamp_grid,
-            )
+            with frame_profiler.section("render:lighting:street_lights"):
+                draw_street_lights(
+                    screen,
+                    ways,
+                    camx,
+                    camy,
+                    game_time_seconds,
+                    px_per_m=px_per_m,
+                    spatial_grid=spatial_grid,
+                    visible_road_count=visible_road_count,
+                    daylight_surface=daylight_scene,
+                    latitude=sun_latitude,
+                    longitude=sun_longitude,
+                    buildings=buildings,
+                    base_surface=street_light_base,
+                    building_spatial_grid=building_grid,
+                    street_lamps=street_lamps,
+                    street_lamp_grid=street_lamp_grid,
+                    profiler=frame_profiler,
+                )
             if sun_altitude < -7.5:
                 draw_pedestrian_reflectors(
                     screen,

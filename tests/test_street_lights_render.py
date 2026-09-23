@@ -631,3 +631,60 @@ def test_way_without_a_nearby_explicit_lamp_still_falls_back_to_synthesis():
         assert all(abs(y) >= road.half_width_m for _, y in positions)
     finally:
         pygame.quit()
+
+def test_v7_budgeted_grid_updates_ignore_raw_growth_and_match_full_result():
+    """Raw list growth is a no-op; revisions queue bounded, exact rebuilds."""
+    from theroadragetrip.render import roads as roads_module
+
+    def reset():
+        roads_module._street_light_frame_cache_key = None
+        roads_module._street_light_frame_cache_surface = None
+        roads_module._street_light_geometry_cache_key = None
+        roads_module._street_light_geometry_cache = []
+        roads_module._street_light_geometry_region = None
+        roads_module._street_light_geometry_generation = 0
+        roads_module._street_light_geometry_wip = None
+        roads_module._street_light_junction_cache = None
+        roads_module._street_light_junction_grid_cache = None
+        roads_module._street_light_building_grid_cache = None
+        roads_module._street_light_way_lit_cache_key = None
+
+    def finish(ways, grid):
+        for _ in range(100):
+            draw_street_lights(screen, ways, 50.0, 0.0, 0.0, px_per_m=2.0,
+                               screen_w=400, screen_h=300, spatial_grid=grid, buildings=[])
+            if roads_module._street_light_geometry_wip is None:
+                return list(roads_module._street_light_geometry_cache)
+        raise AssertionError("street-light update did not finish")
+
+    pygame.init()
+    old_budget = roads_module.STREET_LIGHT_CACHE_BUDGET_S
+    try:
+        ways = [Way(points_m=[(0.0, float(y)), (100.0, float(y))],
+                    highway="tertiary", half_width_m=4.0, lit="yes") for y in range(-80, 81, 10)]
+        screen = pygame.Surface((400, 300), pygame.SRCALPHA)
+        grid = SpatialWayGrid(ways[:4])
+        reset()
+        roads_module.STREET_LIGHT_CACHE_BUDGET_S = 10.0
+        initial = finish(ways, grid)
+        generation = roads_module._street_light_geometry_generation
+        ways.append(Way(points_m=[(0.0, 90.0), (100.0, 90.0)], highway="tertiary", half_width_m=4.0, lit="yes"))
+        assert finish(ways, grid) == initial
+        assert roads_module._street_light_geometry_generation == generation
+
+        roads_module.STREET_LIGHT_CACHE_BUDGET_S = 0.0
+        grid.rebuild(ways[:10])
+        draw_street_lights(screen, ways, 50.0, 0.0, 0.0, px_per_m=2.0,
+                           screen_w=400, screen_h=300, spatial_grid=grid, buildings=[])
+        assert roads_module._street_light_geometry_wip is not None
+        grid.rebuild(ways)
+        incremental = finish(ways, grid)
+        if roads_module._street_light_geometry_cache_key[0] != grid.revision:
+            incremental = finish(ways, grid)
+
+        reset()
+        roads_module.STREET_LIGHT_CACHE_BUDGET_S = 10.0
+        assert incremental == finish(ways, grid)
+    finally:
+        roads_module.STREET_LIGHT_CACHE_BUDGET_S = old_budget
+        pygame.quit()
