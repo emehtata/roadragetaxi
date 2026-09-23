@@ -1,3 +1,5 @@
+import pytest
+
 from theroadragetrip.weather import (
     DRY_DURATION_S,
     RAIN_PARTICLE_COUNT,
@@ -10,6 +12,7 @@ from theroadragetrip.weather import (
     AUTUMN_WINTER_PRECIPITATION_CHANCE,
     SLUSH_MAX_TEMPERATURE_C,
     SNOW_MAX_TEMPERATURE_C,
+    THUNDER_CHANCE_BY_SEASON,
 )
 from theroadragetrip.calendar import Season
 
@@ -42,6 +45,53 @@ def test_starts_clear_and_dry():
     assert weather.weather_type == WeatherType.CLEAR
     assert weather.wetness == 0.0
     assert weather.is_precipitating is False
+
+
+def test_thunderstorm_chances_are_seasonal():
+    assert THUNDER_CHANCE_BY_SEASON == {
+        Season.WINTER: 0.0,
+        Season.SPRING: 0.1,
+        Season.SUMMER: 0.5,
+        Season.AUTUMN: 0.1,
+    }
+
+
+@pytest.mark.parametrize(
+    ("season", "roll", "expected"),
+    [
+        (Season.SUMMER, 0.49, True),
+        (Season.SUMMER, 0.51, False),
+        (Season.SPRING, 0.09, True),
+        (Season.AUTUMN, 0.09, True),
+        (Season.WINTER, 0.0, False),
+    ],
+)
+def test_thunder_is_chosen_once_for_rain_period(season, roll, expected):
+    weather = WeatherSystem(WeatherType.CLEAR, season=season)
+    weather.weather_type = WeatherType.RAIN
+    weather._rng = type(
+        "ThunderRoll",
+        (),
+        {"random": lambda self: roll, "uniform": lambda self, low, high: high},
+    )()
+
+    weather._roll_thunderstorm()
+
+    assert weather.is_thunderstorm is expected
+
+
+def test_thunderstorm_emits_and_fades_lightning_flash():
+    weather = WeatherSystem(WeatherType.RAIN, season=Season.SUMMER)
+    weather.is_thunderstorm = True
+    weather._lightning_timer = 0.01
+
+    weather.update(0.0, 0.02)
+    event_id = weather.lightning_event_id
+    assert event_id == 1
+    assert weather.lightning_intensity == 1.0
+
+    weather.update(0.0, 0.3)
+    assert weather.lightning_intensity == 0.0
 
 
 def test_toggle_rain_flips_clear_and_rain():

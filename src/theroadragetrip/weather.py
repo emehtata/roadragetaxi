@@ -38,6 +38,14 @@ SEASON_CLEAR_DURATION_RANGES = {
 RAIN_DURATION_RANGE = (20.0 * 60.0, 50.0 * 60.0)
 AUTUMN_WINTER_PRECIPITATION_CHANCE = 0.5
 AUTUMN_WINTER_PERIOD_RANGE = (0.0, 24.0 * 60.0 * 60.0)
+THUNDER_CHANCE_BY_SEASON = {
+    Season.WINTER: 0.0,
+    Season.SPRING: 0.1,
+    Season.SUMMER: 0.5,
+    Season.AUTUMN: 0.1,
+}
+LIGHTNING_INTERVAL_RANGE_S = (4.0, 18.0)
+LIGHTNING_FLASH_DURATION_S = 0.22
 
 
 # Wetness dynamics, in game-seconds - matches the game clock's own hour/
@@ -84,6 +92,10 @@ class WeatherSystem:
         self.wetness = 0.0  # 0.0 dry .. 1.0 fully wet; independent of weather_type -
         # CLEAR does not imply dry, e.g. right after rain stops (see #9).
         self._rng = random.Random()
+        self.is_thunderstorm = False
+        self.lightning_intensity = 0.0
+        self.lightning_event_id = 0
+        self._lightning_timer = self._rng.uniform(*LIGHTNING_INTERVAL_RANGE_S)
         # Each entry: [x_fraction, y_fraction, speed_factor]. Recycled in
         # place (wrap to a fresh random x/y when a streak falls off the
         # bottom) rather than reallocated - render/weather.py maps these
@@ -99,6 +111,8 @@ class WeatherSystem:
         # and pruned in update() - never grows large enough to need the
         # rain-particle pool's recycle-in-place treatment.
         self.splashes: list = []
+        if not self._automatic and self.weather_type == WeatherType.RAIN:
+            self._roll_thunderstorm()
 
     @property
     def season(self) -> Season:
@@ -112,6 +126,7 @@ class WeatherSystem:
         if not self._automatic:
             return
         self.weather_type = WeatherType.CLEAR
+        self.is_thunderstorm = False
         if value in (Season.AUTUMN, Season.WINTER):
             self._start_autumn_or_winter_period()
         else:
@@ -125,6 +140,7 @@ class WeatherSystem:
             if self._rng.random() < AUTUMN_WINTER_PRECIPITATION_CHANCE
             else WeatherType.CLEAR
         )
+        self._roll_thunderstorm()
         # Avoid a zero-duration loop while retaining the requested range.
         self._weather_timer = max(1.0, self._rng.uniform(*AUTUMN_WINTER_PERIOD_RANGE))
 
@@ -149,6 +165,17 @@ class WeatherSystem:
     def _apply_precipitation_temperature(self) -> None:
         if self.is_precipitating:
             self.weather_type = self._precipitation_type_for_conditions()
+            if self.weather_type != WeatherType.RAIN:
+                self.is_thunderstorm = False
+
+    def _roll_thunderstorm(self) -> None:
+        """Choose thunder once for the current rain period."""
+        self.is_thunderstorm = (
+            self.weather_type == WeatherType.RAIN
+            and self._rng.random() < THUNDER_CHANCE_BY_SEASON[self._season]
+        )
+        self.lightning_intensity = 0.0
+        self._lightning_timer = self._rng.uniform(*LIGHTNING_INTERVAL_RANGE_S)
 
     def _advance_automatic_weather(self, game_dt: float) -> None:
         if not self._automatic or game_dt <= 0.0:
@@ -164,6 +191,10 @@ class WeatherSystem:
                     if self.is_precipitating
                     else self._precipitation_type_for_conditions()
                 )
+                if self.is_precipitating:
+                    self._roll_thunderstorm()
+                else:
+                    self.is_thunderstorm = False
                 self._weather_timer = self._next_weather_duration()
         self._weather_timer -= remaining
 
@@ -200,6 +231,10 @@ class WeatherSystem:
         self._automatic = False
         precipitation = self._precipitation_type_for_conditions()
         self.weather_type = WeatherType.CLEAR if self.is_precipitating else precipitation
+        if self.weather_type == WeatherType.RAIN:
+            self._roll_thunderstorm()
+        else:
+            self.is_thunderstorm = False
 
     def update(
         self,
@@ -245,6 +280,20 @@ class WeatherSystem:
                     x -= 1.0
                 particle[0] = x
                 particle[1] = y
+
+        if self.is_thunderstorm and self.weather_type == WeatherType.RAIN and real_dt > 0.0:
+            self._lightning_timer -= real_dt
+            if self._lightning_timer <= 0.0:
+                self.lightning_intensity = 1.0
+                self.lightning_event_id += 1
+                self._lightning_timer = self._rng.uniform(*LIGHTNING_INTERVAL_RANGE_S)
+            elif self.lightning_intensity > 0.0:
+                self.lightning_intensity = max(
+                    0.0,
+                    self.lightning_intensity - real_dt / LIGHTNING_FLASH_DURATION_S,
+                )
+        else:
+            self.lightning_intensity = 0.0
 
         if self.splashes and real_dt > 0.0:
             for splash in self.splashes:

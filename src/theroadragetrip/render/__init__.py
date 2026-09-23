@@ -195,6 +195,7 @@ from .labels import (
 
 from .weather import (
     RAIN_COLOR,
+    draw_lightning_flash,
     draw_puddles,
     draw_rain,
     draw_splashes,

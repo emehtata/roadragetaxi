@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import logging
 import json
+import math
 import random
 import time
+from array import array
 from pathlib import Path
 from typing import Optional
 
@@ -73,6 +75,9 @@ class AudioManager:
                         self.sounds[name] = mixer.Sound(str(path))
                     except pygame.error as exc:
                         logger.warning("Could not load sound %s: %s", path.name, exc)
+            thunder = self._create_thunder_sound(mixer)
+            if thunder is not None:
+                self.sounds["thunder"] = thunder
             chatter_dir = sounds_dir / "passenger_chatter"
             for path in chatter_dir.glob("*.wav"):
                 parts = path.stem.split("_", 2)
@@ -97,6 +102,34 @@ class AudioManager:
             self.enabled = bool(self.sounds or self.passenger_sounds or self.driver_sounds)
         except (pygame.error, OSError) as exc:
             logger.info("Audio unavailable: %s", exc)
+
+    @staticmethod
+    def _create_thunder_sound(mixer):
+        """Generate a short low rumble without requiring an external asset."""
+        initialized = mixer.get_init()
+        if not initialized:
+            return None
+        frequency, sample_format, channels = initialized
+        if sample_format != -16 or channels not in (1, 2):
+            return None
+        rng = random.Random(0x5448554E444552)
+        samples = array("h")
+        duration = 2.2
+        sample_count = round(frequency * duration)
+        smoothed_noise = 0.0
+        for index in range(sample_count):
+            elapsed = index / frequency
+            envelope = max(0.0, 1.0 - elapsed / duration) ** 1.7
+            smoothed_noise = smoothed_noise * 0.985 + rng.uniform(-1.0, 1.0) * 0.015
+            rumble = math.sin(2.0 * math.pi * 43.0 * elapsed)
+            rumble += 0.55 * math.sin(2.0 * math.pi * 67.0 * elapsed)
+            value = int(max(-1.0, min(1.0, (rumble * 0.32 + smoothed_noise * 2.2) * envelope)) * 19000)
+            for _channel in range(channels):
+                samples.append(value)
+        try:
+            return mixer.Sound(buffer=samples.tobytes())
+        except pygame.error:
+            return None
 
     @staticmethod
     def _load_speech_lines() -> list[dict[str, object]]:

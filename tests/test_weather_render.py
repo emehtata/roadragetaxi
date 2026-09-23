@@ -7,7 +7,7 @@ os.environ.setdefault("SDL_AUDIODRIVER", "dummy")
 import pygame
 
 from theroadragetrip.osm import Way
-from theroadragetrip.render import draw_puddles, draw_rain, draw_splashes, draw_wet_roads, find_puddle_overlap
+from theroadragetrip.render import draw_lightning_flash, draw_puddles, draw_rain, draw_splashes, draw_wet_roads, find_puddle_overlap
 from theroadragetrip.render import weather as weather_render
 from theroadragetrip.weather import SPLASH_LIFETIME_S, WeatherSystem, WeatherType
 from theroadragetrip.calendar import Season
@@ -34,6 +34,21 @@ def test_draw_rain_draws_visible_streaks_when_raining():
         draw_rain(screen, weather, screen_w=200, screen_h=150)
         # At least some pixels were painted a non-background color.
         assert pygame.transform.average_color(screen)[:3] != (0, 0, 0)
+    finally:
+        pygame.quit()
+
+
+def test_lightning_flash_brightens_the_whole_scene():
+    pygame.init()
+    try:
+        weather = WeatherSystem(WeatherType.RAIN, season=Season.SUMMER)
+        weather.lightning_intensity = 1.0
+        screen = pygame.Surface((200, 150))
+        screen.fill((10, 15, 20))
+
+        draw_lightning_flash(screen, weather)
+
+        assert sum(screen.get_at((100, 75))[:3]) > 45
     finally:
         pygame.quit()
 

@@ -16,6 +16,7 @@ Implement a real in-game calendar and four visual/physical seasons for Road Rage
 - Summer: preserve the current appearance and grip.
 - Autumn: yellow, ochre and brown vegetation/tree crowns.
 - Dynamic weather remains independent state but is season-compatible: autumn and winter weather periods have a 50% chance of precipitation and last between zero and 24 game-hours. Falling precipitation follows the current air temperature independently of ground cover: snow at or below +1 °C, slush above +1 °C but below +5 °C, and rain at +5 °C or warmer. A later increment may implement snow accumulation/melting; do not conflate permanent winter ground cover with active snowfall.
+- When a rain period begins, independently choose whether it is a thunderstorm: 50% in summer, 10% in spring and autumn, and 0% in winter. Thunderstorms produce intermittent lightning flashes and audible thunder; snow and slush never thunder.
 
 ## Architecture
 

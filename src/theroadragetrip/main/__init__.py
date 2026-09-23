@@ -115,6 +115,7 @@ from ..render import (
     draw_pedestrians,
     draw_pedestrian_reflectors,
     draw_puddles,
+    draw_lightning_flash,
     draw_rain,
     draw_splashes,
     draw_wet_roads,
@@ -210,7 +211,8 @@ def _weather_status(weather) -> str:
         f"current_period_ends_in={int(remaining // 3600):02d}:"
         f"{int(remaining % 3600 // 60):02d}:{int(remaining % 60):02d}"
     )
-    return f"condition={weather.weather_type.value} wetness={weather.wetness:.0%} {timing}"
+    thunder = " thunderstorm" if weather.is_thunderstorm else ""
+    return f"condition={weather.weather_type.value}{thunder} wetness={weather.wetness:.0%} {timing}"
 
 
 def _sync_thermal_season(game_calendar, weather, logged_season):
@@ -1245,6 +1247,7 @@ def main() -> None:
         runtime_profile_active = False
         frame_profiler = FrameProfiler()
         weather = WeatherSystem(season=game_calendar.season)
+        last_lightning_event_id = weather.lightning_event_id
         logger.info("Weather: %s", _weather_status(weather))
         world.weather = weather  # protocol.apply_server_state reads world.weather, matching the server's own convention
         clock.tick()  # Reset clock timer to avoid large dt on first frame
@@ -1284,6 +1287,9 @@ def main() -> None:
                 dt,
                 outside_temperature_c=typical_temperature(game_calendar.current, sun_latitude),
             )
+            if weather.lightning_event_id != last_lightning_event_id:
+                audio.play("thunder", volume=0.8)
+                last_lightning_event_id = weather.lightning_event_id
             frame_profiler.set_metric(
                 "weather", f"{weather.weather_type.value} wetness={weather.wetness:.0%}"
             )
@@ -1877,6 +1883,9 @@ def main() -> None:
                     dt,
                     outside_temperature_c=typical_temperature(game_calendar.current, sun_latitude),
                 )
+                if weather.lightning_event_id != last_lightning_event_id:
+                    audio.play("thunder", volume=0.8)
+                    last_lightning_event_id = weather.lightning_event_id
                 taxi_mgr.game_date = game_calendar.date
 
                 result = advance_simulation(
@@ -2604,6 +2613,7 @@ def main() -> None:
             frame_profiler.record("render:lighting", stage_elapsed * 1000.0)
 
             with frame_profiler.section("render:weather"):
+                draw_lightning_flash(screen, weather)
                 draw_rain(screen, weather)
 
             # Labels overlay (toggled with 'L')
