@@ -158,9 +158,14 @@ class _TileMergeJob:
     item_index exactly where it left off - never restarts already-merged
     items, never processes the same item twice."""
 
-    __slots__ = ("tiles", "world", "section_index", "item_index")
+    __slots__ = ("tile_group", "tiles", "world", "section_index", "item_index")
 
-    def __init__(self, tiles: Set[TileCoord], world) -> None:
+    def __init__(self, tile_group, tiles: Set[TileCoord], world) -> None:
+        # tile_group: what start_tile_streaming() marked pending for this
+        # fetch - released only once the merge commits, so the tiles are
+        # never simultaneously "not pending" and "not loaded" (which made
+        # start_tile_streaming re-fetch them every few seconds).
+        self.tile_group = tile_group
         self.tiles = tiles
         self.world = world
         self.section_index = 0
@@ -645,9 +650,9 @@ class AutoFetchManager:
             active_tiles_now = set(self.active_tiles)
             for batch in batches:
                 for tile_group, request_tiles, world in batch:
-                    self.pending_tiles.difference_update(tile_group)
                     active_group = set(tile_group) & active_tiles_now
                     if not active_group:
+                        self.pending_tiles.difference_update(tile_group)
                         continue
                     # tile_group is start_tile_streaming()'s full missing
                     # set, but the actual fetch bbox (and so `world`) only
@@ -668,7 +673,7 @@ class AutoFetchManager:
                     # anything else in tile_group stays missing and gets
                     # picked up by a later call.
                     ownership_tiles = set(request_tiles) & active_tiles_now
-                    self._merge_queue.append(_TileMergeJob(ownership_tiles, world))
+                    self._merge_queue.append(_TileMergeJob(tile_group, ownership_tiles, world))
 
         if not self._merge_queue:
             return 0
@@ -683,6 +688,7 @@ class AutoFetchManager:
                     job = self._merge_queue[0]
                     self._advance_tile_merge_job(job, float("inf"))
                     self._merge_queue.pop(0)
+                    self.pending_tiles.difference_update(job.tile_group)
                     self.loaded_tiles.update(job.tiles)
                     integrated_tiles += len(job.tiles)
                     committed += 1
@@ -693,6 +699,7 @@ class AutoFetchManager:
                     if not self._advance_tile_merge_job(job, deadline):
                         break
                     self._merge_queue.pop(0)
+                    self.pending_tiles.difference_update(job.tile_group)
                     self.loaded_tiles.update(job.tiles)
                     integrated_tiles += len(job.tiles)
                     if time.perf_counter() >= deadline:

@@ -1163,3 +1163,26 @@ def test_integrate_completed_tiles_without_budget_stays_fully_synchronous():
     assert manager.integrate_completed_tiles(max_tiles=2) == 2
     assert manager._merge_queue == []
     assert set(w.osm_id for w in manager.ways) == set(w.osm_id for w in ways_a + ways_b)
+
+
+def test_tiles_stay_pending_until_their_incremental_merge_commits():
+    """Regression: tiles were released from pending_tiles at admission but
+    only added to loaded_tiles once the (multi-frame) merge finished, so
+    start_tile_streaming() saw them as missing and re-fetched them
+    repeatedly - measured as a fetch + loading screen every ~5s."""
+    ways = _ways_batch(20)
+    manager = AutoFetchManager([], (0.0, 0.0, 1000.0, 1000.0), transformer=None)
+    manager.active_tiles = {TileCoord(0, 0)}
+    manager.pending_tiles = {TileCoord(0, 0)}
+    _queue_batch(manager, {TileCoord(0, 0)}, ways)
+
+    manager.integrate_completed_tiles(budget_s=0.0)
+    assert manager._merge_queue, "merge should still be in flight"
+    assert TileCoord(0, 0) in manager.pending_tiles
+    assert TileCoord(0, 0) not in manager.loaded_tiles
+    assert not (manager.active_tiles - manager.loaded_tiles - manager.pending_tiles)
+
+    while manager._merge_queue:
+        manager.integrate_completed_tiles(budget_s=0.0)
+    assert manager.pending_tiles == set()
+    assert TileCoord(0, 0) in manager.loaded_tiles
