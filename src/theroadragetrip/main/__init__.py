@@ -42,11 +42,14 @@ from ..osm import (
     DEFAULT_BBOX,
     AutoFetchManager,
     build_ways,
+    city_bin_available,
+    city_bin_path,
     clear_osm_cache,
     configure_user_agent,
     fetch_osm_ways,
     fetch_osm_ways_from_pbf,
     has_outdated_osm_cache,
+    load_city_ways,
     local_pbf_available,
     load_local_sample,
     remove_trees_under_roads,
@@ -661,6 +664,36 @@ def _load_world(
     except Exception as e:
         logger.error("Failed to load OSM data: %s", e)
         sys.exit(1)
+
+    # Predefined cities may ship a prebuilt V2 road binary (tools/osm/
+    # build_finland_roads.py, benchmark_oulu.py, benchmark_cities.py):
+    # fast, deterministic road ways in place of the ones just parsed out
+    # of the OSM/PBF/Overpass fetch above. Buildings/water/scenery/etc.
+    # from that fetch are kept unchanged - only `ways` is replaced, and
+    # only on success. A missing or broken binary is not an error: it
+    # just means this city keeps using the road ways already fetched.
+    if city_bin_available(chosen_city):
+        try:
+            bin_ways, bin_nodes, bin_geometry_points, bin_load_seconds = load_city_ways(chosen_city)
+        except Exception as exc:  # noqa: BLE001 - a broken BIN must never block city loading, see osm/bin_source.py
+            logger.warning(
+                "Failed to load prebuilt road network for %s; "
+                "falling back to existing OSM/PBF road loading: %s",
+                chosen_city, exc,
+            )
+        else:
+            ways = bin_ways
+            logger.info(
+                "Road network source: prebuilt binary | City: %s | File: %s | "
+                "Load time: %.1f ms | Ways: %d | Nodes: %d | Geometry points: %d",
+                chosen_city, city_bin_path(chosen_city), bin_load_seconds * 1000.0,
+                len(bin_ways), bin_nodes, bin_geometry_points,
+            )
+    else:
+        logger.info(
+            "Road network source: existing OSM/PBF fallback | City: %s | "
+            "Reason: no prebuilt binary", chosen_city,
+        )
 
     if not ways and not waters and not buildings and not sceneries and not places:
         logger.error("No map features found in bbox. Try a different bbox.")
