@@ -64,6 +64,7 @@ COMMERCIAL_AMENITIES = {
 COMMERCIAL_BUILDING_TYPES = {"commercial", "retail", "shop"}
 ILLUMINATED_WINDOW_CACHE_PADDING_PX = 224
 _illuminated_window_cache = None
+GENERATED_DRIVEWAY_MAX_LENGTH_M = 35.0
 
 
 def _is_open_roof(building: Building) -> bool:
@@ -248,7 +249,7 @@ def mask_buildings_from_light_surface(
         pygame.draw.polygon(surface, (0, 0, 0, 0), footprint)
         if px_per_m <= 0.45:
             continue
-        height = max(3.0, float(getattr(building, "height_m", 8.0)))
+        height = _building_render_height(building)
         depth = min(MAX_BUILDING_DEPTH_PX, max(3, int(height * 0.35 * px_per_m)))
         roof = [(x - depth * 0.7, y - depth) for x, y in footprint]
         pygame.draw.polygon(surface, (0, 0, 0, 0), roof)
@@ -350,7 +351,7 @@ def _building_window_story_count(building: Building) -> int:
             return max(1, min(40, int(levels)))
         except (TypeError, ValueError):
             pass
-    height = max(3.0, float(getattr(building, "height_m", 8.0)))
+    height = _building_render_height(building)
     return max(1, min(40, int(round(height / 3.0))))
 
 
@@ -402,6 +403,160 @@ def _building_is_house(building: Building) -> bool:
     # signal windows already use elsewhere - a short, 1-2 story building
     # with no commercial venue reads as a detached house.
     return _building_window_story_count(building) <= 2 and not _building_is_commercial(building)
+
+
+def _building_render_height(building: Building) -> float:
+    """Use a Finnish 1.5-storey fallback for untagged detached houses."""
+    if (
+        _building_is_house_by_tag(building)
+        and getattr(building, "levels", None) is None
+        and not getattr(building, "height_is_explicit", False)
+    ):
+        return 4.5
+    return max(3.0, float(getattr(building, "height_m", 8.0)))
+
+
+def _building_is_house_by_tag(building: Building) -> bool:
+    return str(getattr(building, "building_type", "") or "").lower() in HOUSE_BUILDING_TYPES
+
+
+def _uses_gabled_roof(building: Building) -> bool:
+    roof_shape = str(getattr(building, "roof_shape", "") or "").casefold()
+    if roof_shape:
+        return roof_shape in {"gabled", "gable", "pitched"}
+    return _building_is_house_by_tag(building)
+
+
+def _clip_polygon_to_roof_half(points, center, axis, keep_positive):
+    """Clip a convex roof footprint to one side of its longitudinal ridge."""
+    if not points:
+        return []
+    normal = (-axis[1], axis[0])
+
+    def signed(point):
+        value = (point[0] - center[0]) * normal[0] + (point[1] - center[1]) * normal[1]
+        return value if keep_positive else -value
+
+    output = []
+    previous = points[-1]
+    previous_value = signed(previous)
+    for current in points:
+        current_value = signed(current)
+        if current_value >= 0.0:
+            if previous_value < 0.0:
+                ratio = previous_value / (previous_value - current_value)
+                output.append((
+                    previous[0] + (current[0] - previous[0]) * ratio,
+                    previous[1] + (current[1] - previous[1]) * ratio,
+                ))
+            output.append(current)
+        elif previous_value >= 0.0:
+            ratio = previous_value / (previous_value - current_value)
+            output.append((
+                previous[0] + (current[0] - previous[0]) * ratio,
+                previous[1] + (current[1] - previous[1]) * ratio,
+            ))
+        previous, previous_value = current, current_value
+    return output
+
+
+def _draw_gabled_roof(screen, roof, roof_color):
+    """Draw two pitched facets and a ridge along the footprint's long axis."""
+    import pygame
+
+    if len(roof) < 3:
+        return
+    longest = max(
+        zip(roof, roof[1:] + roof[:1]),
+        key=lambda edge: (edge[1][0] - edge[0][0]) ** 2 + (edge[1][1] - edge[0][1]) ** 2,
+    )
+    dx, dy = longest[1][0] - longest[0][0], longest[1][1] - longest[0][1]
+    length = max(1e-6, math.hypot(dx, dy))
+    axis = (dx / length, dy / length)
+    center = (
+        sum(point[0] for point in roof) / len(roof),
+        sum(point[1] for point in roof) / len(roof),
+    )
+    light = tuple(min(255, channel + 14) for channel in roof_color)
+    dark = tuple(max(0, channel - 12) for channel in roof_color)
+    for keep_positive, color in ((True, light), (False, dark)):
+        facet = _clip_polygon_to_roof_half(roof, center, axis, keep_positive)
+        if len(facet) >= 3:
+            pygame.draw.polygon(screen, color, facet)
+    projections = [(point[0] - center[0]) * axis[0] + (point[1] - center[1]) * axis[1] for point in roof]
+    ridge_start = (center[0] + axis[0] * min(projections), center[1] + axis[1] * min(projections))
+    ridge_end = (center[0] + axis[0] * max(projections), center[1] + axis[1] * max(projections))
+    pygame.draw.line(screen, (58, 55, 52), ridge_start, ridge_end, 2)
+
+
+def _nearest_house_driveway(building, ways, road_spatial_grid=None):
+    """Return a synthetic (house edge, road edge) driveway when OSM has none."""
+    if not _building_is_house_by_tag(building) or len(building.points_m) < 3:
+        return None
+    minx, miny, maxx, maxy = building.bbox
+    margin = GENERATED_DRIVEWAY_MAX_LENGTH_M
+    candidates = (
+        road_spatial_grid.ways_in_rect(minx - margin, miny - margin, maxx + margin, maxy + margin)
+        if road_spatial_grid is not None
+        else ways
+    )
+    candidates = [way for way in candidates if getattr(way, "is_drivable", True)]
+    # A mapped driveway wins; never paint a duplicate procedural one.
+    for way in candidates:
+        if getattr(way, "service", None) != "driveway":
+            continue
+        for point in way.points_m:
+            if minx - 4.0 <= point[0] <= maxx + 4.0 and miny - 4.0 <= point[1] <= maxy + 4.0:
+                return None
+
+    facade_points = list(getattr(building, "entrances", ()) or ())
+    facade_points.extend(
+        ((a[0] + b[0]) * 0.5, (a[1] + b[1]) * 0.5)
+        for a, b in zip(building.points_m, building.points_m[1:] + building.points_m[:1])
+    )
+    best = None
+    for way in candidates:
+        if getattr(way, "highway", "") in {"motorway", "motorway_link", "trunk", "trunk_link"}:
+            continue
+        for ax, ay in facade_points:
+            for (x1, y1), (x2, y2) in zip(way.points_m, way.points_m[1:]):
+                dx, dy = x2 - x1, y2 - y1
+                length_sq = dx * dx + dy * dy
+                if length_sq <= 1e-9:
+                    continue
+                t = max(0.0, min(1.0, ((ax - x1) * dx + (ay - y1) * dy) / length_sq))
+                centerline_point = (x1 + dx * t, y1 + dy * t)
+                to_house_x, to_house_y = ax - centerline_point[0], ay - centerline_point[1]
+                centerline_distance = math.hypot(to_house_x, to_house_y)
+                edge_offset = min(centerline_distance, max(0.0, getattr(way, "half_width_m", 0.0)))
+                if centerline_distance > 1e-9:
+                    road_point = (
+                        centerline_point[0] + to_house_x / centerline_distance * edge_offset,
+                        centerline_point[1] + to_house_y / centerline_distance * edge_offset,
+                    )
+                else:
+                    road_point = centerline_point
+                distance = math.hypot(road_point[0] - ax, road_point[1] - ay)
+                if distance <= GENERATED_DRIVEWAY_MAX_LENGTH_M and (best is None or distance < best[0]):
+                    best = (distance, (ax, ay), road_point)
+    return None if best is None else (best[1], best[2])
+
+
+def _draw_generated_driveways(screen, buildings, ways, road_spatial_grid, camx, camy, px_per_m, screen_w, screen_h):
+    import pygame
+
+    border_width = max(2, round(3.2 * px_per_m))
+    fill_width = max(1, round(2.6 * px_per_m))
+    for building in buildings:
+        driveway = _nearest_house_driveway(building, ways, road_spatial_grid)
+        if driveway is None:
+            continue
+        points = [
+            world_to_screen(point[0], point[1], camx, camy, px_per_m, screen_w, screen_h)
+            for point in driveway
+        ]
+        pygame.draw.line(screen, (72, 70, 66), points[0], points[1], border_width)
+        pygame.draw.line(screen, (126, 121, 111), points[0], points[1], fill_width)
 
 
 def _visible_building_edges(points, roof) -> set[int]:
@@ -592,6 +747,8 @@ def draw_buildings(
     screen_w: int = SCREEN_W,
     screen_h: int = SCREEN_H,
     spatial_grid=None,
+    road_ways=None,
+    road_spatial_grid=None,
     places: Optional[List[Place]] = None,
     profiler=None,
 ) -> None:
@@ -613,6 +770,8 @@ def draw_buildings(
         id(places),
         len(places) if places else 0,
         id(spatial_grid),
+        id(road_ways),
+        id(road_spatial_grid),
         *common._phased_cache_grid_cell("buildings", camx, camy, cache_zoom),
         cache_zoom,
         screen.get_size(),
@@ -635,7 +794,8 @@ def draw_buildings(
     is_first_ever_build = common._building_frame_cache_surface is None
     if _building_wip is None:
         _building_wip = _start_building_rebuild(
-            buildings, spatial_grid, places, frame_cache_key, camx, camy, cache_zoom, screen_w, screen_h
+            buildings, spatial_grid, places, frame_cache_key, camx, camy, cache_zoom, screen_w, screen_h,
+            road_ways=road_ways, road_spatial_grid=road_spatial_grid,
         )
 
     rebuild_started = time.perf_counter() if profiler is not None else None
@@ -669,6 +829,8 @@ def _draw_buildings_uncached(
     screen_h: int = SCREEN_H,
     spatial_grid=None,
     places: Optional[List[Place]] = None,
+    road_ways=None,
+    road_spatial_grid=None,
 ) -> None:
     """Draw building footprints intersecting viewport, unconditionally and
     in one call, directly onto `screen` at the given screen_w/screen_h (no
@@ -696,6 +858,9 @@ def _draw_buildings_uncached(
         "places": places,
         "index": 0,
         "placed_sign_rects": [],
+        "driveways_drawn": False,
+        "road_ways": road_ways or (),
+        "road_spatial_grid": road_spatial_grid,
     }
     _advance_building_rebuild(job, deadline=float("inf"))
 
@@ -703,6 +868,7 @@ def _draw_buildings_uncached(
 def _start_building_rebuild(
     buildings: List[Building], spatial_grid, places: Optional[List[Place]], frame_cache_key,
     camx: float, camy: float, cache_zoom: float, screen_w: int, screen_h: int,
+    road_ways=None, road_spatial_grid=None,
 ) -> dict:
     """Begin a new incremental buildings-cache rebuild job: select the
     visible buildings (cheap, O(visible buildings), no nested search - see
@@ -743,6 +909,9 @@ def _start_building_rebuild(
         "places": places,
         "index": 0,
         "placed_sign_rects": [],
+        "driveways_drawn": False,
+        "road_ways": road_ways or (),
+        "road_spatial_grid": road_spatial_grid,
     }
 
 
@@ -764,6 +933,20 @@ def _advance_building_rebuild(job: dict, deadline: float) -> bool:
     visible_buildings = job["visible_buildings"]
     placed_sign_rects = job["placed_sign_rects"]
 
+    if not job.get("driveways_drawn", False):
+        _draw_generated_driveways(
+            screen,
+            visible_buildings,
+            job.get("road_ways", ()),
+            job.get("road_spatial_grid"),
+            camx,
+            camy,
+            px_per_m,
+            screen_w,
+            screen_h,
+        )
+        job["driveways_drawn"] = True
+
     made_progress_this_call = False
     while job["index"] < len(visible_buildings):
         if made_progress_this_call and time.perf_counter() >= deadline:
@@ -784,7 +967,7 @@ def _advance_building_rebuild(job: dict, deadline: float) -> bool:
         if px_per_m <= 0.45:
             pygame.draw.polygon(screen, BUILDING_ROOF_COLORS[0], pts)
             continue
-        height = max(3.0, float(getattr(b, "height_m", 8.0)))
+        height = _building_render_height(b)
         depth = min(MAX_BUILDING_DEPTH_PX, max(3, int(height * 0.35 * px_per_m)))
         roof = [(x - depth * 0.7, y - depth) for x, y in pts]
 
@@ -807,7 +990,10 @@ def _advance_building_rebuild(job: dict, deadline: float) -> bool:
             next_point = pts[(index + 1) % len(pts)]
             next_roof = roof[(index + 1) % len(roof)]
             pygame.draw.polygon(screen, wall_color, [point, next_point, next_roof, roof[index]])
-        pygame.draw.polygon(screen, roof_color, roof)
+        if _uses_gabled_roof(b):
+            _draw_gabled_roof(screen, roof, roof_color)
+        else:
+            pygame.draw.polygon(screen, roof_color, roof)
         pygame.draw.lines(screen, (70, 66, 61), True, roof, 1)
 
         # Add small facade details after the roof so they remain visible at low zoom.
@@ -1096,7 +1282,7 @@ def draw_illuminated_windows(
                 world_to_screen(x, y, camx, camy, px_per_m, cache_w, cache_h)
                 for x, y in b.points_m
             ]
-            height = max(3.0, float(getattr(b, "height_m", 8.0)))
+            height = _building_render_height(b)
             depth = min(MAX_BUILDING_DEPTH_PX, max(3, int(height * 0.35 * px_per_m)))
             roof = [(x - depth * 0.7, y - depth) for x, y in pts]
             visible_edges = _visible_building_edges(pts, roof)

@@ -683,6 +683,8 @@ def build_ways(
                 else None
             ),
             building_type=tags.get("building"),
+            roof_shape=tags.get("roof:shape"),
+            height_is_explicit=bool(tags.get("height") or tags.get("building:levels") or tags.get("levels")),
             center_m=(center_x, center_y),
             texture_seed=abs(math.sin(center_x * 0.013 + center_y * 0.017)),
             entrances=entrances,
@@ -941,6 +943,8 @@ def build_ways(
                         else None
                     ),
                     building_type=tags.get("building"),
+                    roof_shape=tags.get("roof:shape"),
+                    height_is_explicit=bool(tags.get("height") or tags.get("building:levels") or tags.get("levels")),
                     center_m=(center_x, center_y),
                     texture_seed=abs(math.sin(center_x * 0.013 + center_y * 0.017)),
                 ))

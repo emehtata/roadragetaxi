@@ -101,6 +101,8 @@ class Building:
     # Used to tell a detached house apart from an apartment/office block
     # for window density/size (render/buildings.py's _building_scale_category).
     building_type: Optional[str] = None
+    roof_shape: Optional[str] = None
+    height_is_explicit: bool = False
     center_m: Tuple[float, float] = (0.0, 0.0)
     texture_seed: float = 0.0
     entrances: List[Tuple[float, float]] = field(default_factory=list)

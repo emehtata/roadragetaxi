@@ -2351,6 +2351,8 @@ def main() -> None:
                 camy,
                 px_per_m=px_per_m,
                 spatial_grid=building_grid,
+                road_ways=ways,
+                road_spatial_grid=spatial_grid,
                 places=places,
                 profiler=frame_profiler,
             )
