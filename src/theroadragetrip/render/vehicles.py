@@ -627,6 +627,134 @@ def _draw_vehicle(
     _draw_vehicle_lights(screen, cx, cy, heading, length_px, width_px, turn_signal, turn_signal_elapsed)
 
 
+def _vehicle_point(cx, cy, fx, fy, rx, ry, longitudinal, lateral):
+    """Convert vehicle-local coordinates to screen coordinates."""
+    return (
+        cx + fx * longitudinal + rx * lateral,
+        cy + fy * longitudinal + ry * lateral,
+    )
+
+
+def _draw_bus(
+    screen,
+    cx: float,
+    cy: float,
+    heading: float,
+    length_px: float,
+    width_px: float,
+    body_color,
+    turn_signal: str = "",
+    turn_signal_elapsed: float = 0.0,
+) -> None:
+    """Draw a top-down city/coach bus instead of a stretched car body."""
+    import pygame
+
+    fx, fy = math.cos(heading), -math.sin(heading)
+    rx, ry = math.sin(heading), math.cos(heading)
+    hl, hw = length_px * 0.5, width_px * 0.5
+
+    # Slightly chamfered front corners make the direction and bus silhouette clear.
+    body = [
+        _vehicle_point(cx, cy, fx, fy, rx, ry, hl, hw * 0.72),
+        _vehicle_point(cx, cy, fx, fy, rx, ry, hl, -hw * 0.72),
+        _vehicle_point(cx, cy, fx, fy, rx, ry, hl * 0.90, -hw),
+        _vehicle_point(cx, cy, fx, fy, rx, ry, -hl, -hw),
+        _vehicle_point(cx, cy, fx, fy, rx, ry, -hl, hw),
+        _vehicle_point(cx, cy, fx, fy, rx, ry, hl * 0.90, hw),
+    ]
+    pygame.draw.polygon(screen, body_color, body)
+    pygame.draw.polygon(screen, (20, 20, 20), body, 1)
+
+    glass = (35, 48, 58)
+    windshield = [
+        _vehicle_point(cx, cy, fx, fy, rx, ry, hl * 0.80, hw * 0.72),
+        _vehicle_point(cx, cy, fx, fy, rx, ry, hl * 0.80, -hw * 0.72),
+        _vehicle_point(cx, cy, fx, fy, rx, ry, hl * 0.62, -hw * 0.76),
+        _vehicle_point(cx, cy, fx, fy, rx, ry, hl * 0.62, hw * 0.76),
+    ]
+    pygame.draw.polygon(screen, glass, windshield)
+
+    # Long dark window bands along both sides are the strongest top-view bus cue.
+    for side in (-1.0, 1.0):
+        window_outer = hw * 0.88 * side
+        window_inner = hw * 0.64 * side
+        band = [
+            _vehicle_point(cx, cy, fx, fy, rx, ry, hl * 0.52, window_outer),
+            _vehicle_point(cx, cy, fx, fy, rx, ry, -hl * 0.72, window_outer),
+            _vehicle_point(cx, cy, fx, fy, rx, ry, -hl * 0.72, window_inner),
+            _vehicle_point(cx, cy, fx, fy, rx, ry, hl * 0.52, window_inner),
+        ]
+        pygame.draw.polygon(screen, glass, band)
+        for divider in (-0.45, -0.15, 0.15, 0.45):
+            start = _vehicle_point(cx, cy, fx, fy, rx, ry, hl * divider, window_inner)
+            end = _vehicle_point(cx, cy, fx, fy, rx, ry, hl * divider, window_outer)
+            pygame.draw.line(screen, (125, 135, 138), start, end, 1)
+
+    # Roof equipment keeps the broad center from reading as an empty rectangle.
+    equipment = [
+        _vehicle_point(cx, cy, fx, fy, rx, ry, hl * 0.05, hw * 0.28),
+        _vehicle_point(cx, cy, fx, fy, rx, ry, hl * 0.05, -hw * 0.28),
+        _vehicle_point(cx, cy, fx, fy, rx, ry, -hl * 0.26, -hw * 0.28),
+        _vehicle_point(cx, cy, fx, fy, rx, ry, -hl * 0.26, hw * 0.28),
+    ]
+    pygame.draw.polygon(screen, tuple(max(0, channel - 28) for channel in body_color), equipment)
+    pygame.draw.polygon(screen, (30, 30, 30), equipment, 1)
+    _draw_vehicle_lights(
+        screen, cx, cy, heading, length_px, width_px, turn_signal, turn_signal_elapsed
+    )
+
+
+def _draw_truck(
+    screen,
+    cx: float,
+    cy: float,
+    heading: float,
+    length_px: float,
+    width_px: float,
+    body_color,
+    turn_signal: str = "",
+    turn_signal_elapsed: float = 0.0,
+) -> None:
+    """Draw a rigid cargo truck with distinct cargo box and cab."""
+    import pygame
+
+    fx, fy = math.cos(heading), -math.sin(heading)
+    rx, ry = math.sin(heading), math.cos(heading)
+    hl, hw = length_px * 0.5, width_px * 0.5
+
+    def rectangle(front, rear, half_width):
+        return [
+            _vehicle_point(cx, cy, fx, fy, rx, ry, front, half_width),
+            _vehicle_point(cx, cy, fx, fy, rx, ry, front, -half_width),
+            _vehicle_point(cx, cy, fx, fy, rx, ry, rear, -half_width),
+            _vehicle_point(cx, cy, fx, fy, rx, ry, rear, half_width),
+        ]
+
+    cargo = rectangle(hl * 0.18, -hl, hw)
+    pygame.draw.polygon(screen, body_color, cargo)
+    pygame.draw.polygon(screen, (20, 20, 20), cargo, 1)
+    # Pale roof inset gives the box visible structure without changing its livery.
+    roof = rectangle(hl * 0.08, -hl * 0.86, hw * 0.78)
+    roof_color = tuple(min(255, channel + 28) for channel in body_color)
+    pygame.draw.polygon(screen, roof_color, roof)
+
+    cab = rectangle(hl, hl * 0.24, hw * 0.92)
+    pygame.draw.polygon(screen, body_color, cab)
+    pygame.draw.polygon(screen, (20, 20, 20), cab, 1)
+    windshield = rectangle(hl * 0.72, hl * 0.52, hw * 0.72)
+    pygame.draw.polygon(screen, (35, 48, 58), windshield)
+    pygame.draw.line(
+        screen,
+        (35, 35, 35),
+        _vehicle_point(cx, cy, fx, fy, rx, ry, hl * 0.20, -hw),
+        _vehicle_point(cx, cy, fx, fy, rx, ry, hl * 0.20, hw),
+        2,
+    )
+    _draw_vehicle_lights(
+        screen, cx, cy, heading, length_px, width_px, turn_signal, turn_signal_elapsed
+    )
+
+
 def _draw_vehicle_outline(screen, cx, cy, heading, length_px, width_px, color=(235, 235, 235)) -> None:
     import pygame
 
@@ -880,6 +1008,18 @@ def draw_npc_cars(
                 rotated_sprite = pygame.transform.rotate(scaled_sprite, render_angle)
                 _two_wheeler_render_cache[render_key] = rotated_sprite
             screen.blit(rotated_sprite, rotated_sprite.get_rect(center=(int(cx), int(cy))))
+        elif vehicle_type == "bus":
+            _draw_bus(
+                screen, cx, cy, npc.heading, length_px, width_px, npc.color,
+                getattr(npc, "turn_signal", ""),
+                getattr(npc, "turn_signal_elapsed", 0.0),
+            )
+        elif vehicle_type == "truck":
+            _draw_truck(
+                screen, cx, cy, npc.heading, length_px, width_px, npc.color,
+                getattr(npc, "turn_signal", ""),
+                getattr(npc, "turn_signal_elapsed", 0.0),
+            )
         elif getattr(npc, "lod_level", 0) > 0:
             sprite = _npc_vehicle_sprite(
                 pygame,
