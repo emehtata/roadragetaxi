@@ -7,6 +7,38 @@ from contextlib import contextmanager
 from typing import Iterator
 
 
+# Per-frame wall-clock budget for one map-sync stage's chunked rebuild
+# (bin-loader-v3.md) - independently chosen for map sync, not copied from
+# render/common.py's own INCREMENTAL_REBUILD_BUDGET_S (roads' rendering
+# cache): same order of magnitude because the same reasoning applies
+# (small enough that even a stacked worst case stays well under a 60fps
+# frame's 16.67ms budget), but map sync's stages differ enough in shape
+# (building-interior sampling, graph construction, grid inserts) that
+# tying them to the render module's constant would be coincidental, not
+# principled.
+MAP_SYNC_BUDGET_S = 0.004
+
+
+def advance_chunked(items, index: int, budget_s: float, process_item) -> int:
+    """Call process_item(item) for items[index:], stopping once budget_s
+    has elapsed. Returns the new index - equal to len(items) once every
+    item has been processed. Always processes at least one item (even
+    with budget_s <= 0) so a chunked rebuild always makes forward
+    progress, the same principle render/roads.py's incremental road-cache
+    rebuild already uses, generalized for any "clear and rebuild from a
+    fixed item list" pass (bin-loader-v3.md) - the caller owns whatever
+    process_item accumulates into, and decides when/whether to commit it
+    as the new live result once index reaches len(items)."""
+    deadline = time.perf_counter() + budget_s
+    n = len(items)
+    while index < n:
+        process_item(items[index])
+        index += 1
+        if time.perf_counter() >= deadline:
+            break
+    return index
+
+
 class FrameProfiler:
     def __init__(self, history_size: int = 120, spike_ms: tuple[float, ...] = (25.0, 50.0, 100.0)):
         self.enabled = False
