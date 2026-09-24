@@ -204,6 +204,7 @@ def test_draw_curbs_runs_without_error():
     surf = pygame.Surface((800, 600))
     curb = Curb(points_m=[(90.0, 100.0), (110.0, 100.0)], bbox=(90.0, 100.0, 110.0, 100.0))
     draw_curbs(surf, [curb], camx=100.0, camy=100.0, px_per_m=5.0, screen_w=800, screen_h=600)
+    assert surf.get_at((400, 300))[:3] == (145, 145, 140)
     pygame.quit()
 
 

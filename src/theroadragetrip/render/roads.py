@@ -1728,7 +1728,7 @@ def draw_curbs(
     screen_h: int = SCREEN_H,
     spatial_grid=None,
 ) -> None:
-    """Draw raised kerbstone lines (OSM barrier=kerb) as a thin dark-grey edge."""
+    """Draw raised kerbstone lines (OSM barrier=kerb) as a thin concrete-grey edge."""
     import pygame
 
     if not curbs:
@@ -1763,7 +1763,7 @@ def draw_curbs(
                 continue
             s0 = world_to_screen(x0, y0, camx, camy, px_per_m, screen_w, screen_h)
             s1 = world_to_screen(x1, y1, camx, camy, px_per_m, screen_w, screen_h)
-            pygame.draw.line(screen, (55, 55, 52), s0, s1, thickness)
+            pygame.draw.line(screen, (145, 145, 140), s0, s1, thickness)
 
 
 RAILWAY_RAIL_COLOR = (150, 145, 135)  # steel rail
