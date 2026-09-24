@@ -94,6 +94,18 @@ def test_thunderstorm_emits_and_fades_lightning_flash():
     assert weather.lightning_intensity == 0.0
 
 
+def test_forecast_samples_temperature_without_advancing_live_weather():
+    weather = WeatherSystem(WeatherType.RAIN, season=Season.SPRING)
+
+    forecast = weather.forecast([0.0, 3.0, 8.0], interval_s=6.0 * 60.0 * 60.0)
+
+    assert [condition for condition, _ in forecast] == [
+        WeatherType.SNOW, WeatherType.SLUSH, WeatherType.RAIN,
+    ]
+    assert weather.weather_type == WeatherType.RAIN
+    assert weather._outside_temperature_c is None
+
+
 def test_toggle_rain_flips_clear_and_rain():
     weather = WeatherSystem()
     weather.toggle_rain()

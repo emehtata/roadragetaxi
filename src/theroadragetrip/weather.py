@@ -11,6 +11,7 @@ SCREEN_W/SCREEN_H from render/ (render/ imports from game-state modules
 like this one, not the other way around) - render/weather.py converts to
 pixels at draw time using whatever screen size it's actually given.
 """
+import copy
 import random
 from enum import Enum
 from typing import Optional
@@ -197,6 +198,19 @@ class WeatherSystem:
                     self.is_thunderstorm = False
                 self._weather_timer = self._next_weather_duration()
         self._weather_timer -= remaining
+
+    def forecast(self, temperatures_c: list[float], interval_s: float) -> list[tuple[WeatherType, bool]]:
+        """Predict sampled conditions without advancing the live weather."""
+        predicted = copy.deepcopy(self)
+        result = []
+        for index, temperature_c in enumerate(temperatures_c):
+            if index:
+                predicted.update(interval_s, 0.0, outside_temperature_c=temperature_c)
+            else:
+                predicted._outside_temperature_c = temperature_c
+                predicted._apply_precipitation_temperature()
+            result.append((predicted.weather_type, predicted.is_thunderstorm))
+        return result
 
     @property
     def road_grip_wetness(self) -> float:

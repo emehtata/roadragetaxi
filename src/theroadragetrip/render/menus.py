@@ -123,25 +123,41 @@ def draw_game_start_overlay(
     city: str,
     screen_w: int = SCREEN_W,
     screen_h: int = SCREEN_H,
+    forecast_lines: Optional[List[str]] = None,
+    language: str = "fi",
 ) -> None:
-    """Draw the city sign and prompt shown before gameplay starts."""
+    """Draw the city sign, 24-hour forecast, and start prompt."""
     import pygame
 
     overlay = pygame.Surface((screen_w, screen_h), pygame.SRCALPHA)
     overlay.fill((0, 0, 0, 105))
     screen.blit(overlay, (0, 0))
 
+    forecast_lines = forecast_lines or []
     sign_font = pygame.font.SysFont(None, max(34, min(68, screen_w // 12)), bold=True)
     prompt_font = pygame.font.SysFont(None, max(22, min(34, screen_w // 24)))
+    forecast_font = pygame.font.SysFont(None, max(20, min(28, screen_w // 32)))
     city_surface = sign_font.render(city.upper(), True, (255, 255, 255))
-    prompt_surface = prompt_font.render("Paina mitä tahansa aloittaaksesi", True, (255, 255, 255))
-    sign_width = max(city_surface.get_width(), prompt_surface.get_width()) + 80
-    sign_height = city_surface.get_height() + prompt_surface.get_height() + 54
+    title_surface = forecast_font.render(tr(language, "weather_forecast_24h"), True, (180, 220, 255))
+    forecast_surfaces = [forecast_font.render(line, True, (255, 255, 255)) for line in forecast_lines]
+    prompt_surface = prompt_font.render(tr(language, "press_any_key_start"), True, (255, 255, 255))
+    contents = [city_surface, title_surface, *forecast_surfaces, prompt_surface]
+    sign_width = max(surface.get_width() for surface in contents) + 80
+    forecast_height = title_surface.get_height() + sum(surface.get_height() + 5 for surface in forecast_surfaces)
+    sign_height = city_surface.get_height() + forecast_height + prompt_surface.get_height() + 76
     sign = pygame.Rect(0, 0, sign_width, sign_height)
     sign.center = (screen_w // 2, screen_h // 2)
     pygame.draw.rect(screen, (28, 84, 155), sign, border_radius=8)
     pygame.draw.rect(screen, (220, 235, 255), sign, width=3, border_radius=8)
-    screen.blit(city_surface, city_surface.get_rect(center=(sign.centerx, sign.top + city_surface.get_height() // 2 + 14)))
+
+    y = sign.top + 14
+    screen.blit(city_surface, city_surface.get_rect(center=(sign.centerx, y + city_surface.get_height() // 2)))
+    y += city_surface.get_height() + 12
+    screen.blit(title_surface, title_surface.get_rect(center=(sign.centerx, y + title_surface.get_height() // 2)))
+    y += title_surface.get_height() + 6
+    for surface in forecast_surfaces:
+        screen.blit(surface, surface.get_rect(center=(sign.centerx, y + surface.get_height() // 2)))
+        y += surface.get_height() + 5
     screen.blit(
         prompt_surface,
         prompt_surface.get_rect(center=(sign.centerx, sign.bottom - prompt_surface.get_height() // 2 - 14)),

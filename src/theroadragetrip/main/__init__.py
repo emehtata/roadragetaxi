@@ -7,7 +7,7 @@ import random
 import sys
 import threading
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 from types import SimpleNamespace
 
 import pygame
@@ -1304,6 +1304,16 @@ def main() -> None:
         runtime_profile_active = False
         frame_profiler = FrameProfiler()
         weather = WeatherSystem(season=game_calendar.season)
+        forecast_moments = [game_calendar.current + timedelta(hours=offset) for offset in range(0, 25, 6)]
+        forecast_temperatures = [typical_temperature(moment, sun_latitude) for moment in forecast_moments]
+        forecast_conditions = weather.forecast(forecast_temperatures, 6.0 * 60.0 * 60.0)
+        weather_forecast_lines = [
+            f"{moment:%d.%m. %H:%M}   {temperature:+.0f} °C   "
+            f"{tr(language, 'weather_thunderstorm' if thunder else 'weather_' + condition.value)}"
+            for moment, temperature, (condition, thunder) in zip(
+                forecast_moments, forecast_temperatures, forecast_conditions
+            )
+        ]
         last_lightning_event_id = weather.lightning_event_id
         logger.info("Weather: %s", _weather_status(weather))
         world.weather = weather  # protocol.apply_server_state reads world.weather, matching the server's own convention
@@ -2894,7 +2904,10 @@ def main() -> None:
                     explanations = pedestrian_mgr.activity_manager.explain_candidates(activity_context)
                     draw_activity_debug_panel(screen, selected_pedestrian, explanations, small_font)
             if awaiting_start:
-                draw_game_start_overlay(screen, font, chosen_city, SCREEN_W, SCREEN_H)
+                draw_game_start_overlay(
+                    screen, font, chosen_city, SCREEN_W, SCREEN_H,
+                    forecast_lines=weather_forecast_lines, language=language,
+                )
             elif start_hint_remaining > 0.0 and on_foot:
                 draw_game_start_hint(screen, font, SCREEN_W)
 
