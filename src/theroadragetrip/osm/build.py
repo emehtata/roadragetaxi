@@ -914,6 +914,10 @@ def build_ways(
             for m in members
             if m.get("type") == "way" and (m.get("role") == "outer" or m.get("role") == "")
         ]
+        relation_is_kerbed = tags.get("barrier") == "kerb" or any(
+            (ways_by_id.get(way_id, {}).get("tags", {}).get("barrier") == "kerb")
+            for way_id in outer_way_ids
+        )
         rings = _stitch_member_ways_into_rings(
             outer_way_ids, ways_by_id, lambda nids: process_node_ids(nids)[0]
         )
@@ -978,7 +982,7 @@ def build_ways(
                 ))
             elif "leisure" in tags or "landuse" in tags or tags.get("natural") in NATURAL_SCENERY_KINDS:
                 kind = tags.get("leisure") or tags.get("landuse") or tags.get("natural") or "park"
-                scenery = Scenery(points_m=pts, kind=kind, name=name, bbox=ibbox)
+                scenery = Scenery(points_m=pts, kind=kind, name=name, bbox=ibbox, kerbed=relation_is_kerbed)
                 plant_trees([scenery], ways, real_trees=real_trees_m, real_tree_tags=real_tree_tags)
                 sceneries.append(scenery)
             elif "place" in tags and name and pts:

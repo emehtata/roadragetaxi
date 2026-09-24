@@ -67,6 +67,34 @@ def test_kerb_around_a_real_planting_island_renders_both_curb_and_fill():
     assert len(result.sceneries[0].points_m) == 5
 
 
+def test_multipolygon_grass_inherits_kerb_from_outer_member():
+    elements = [
+        {"type": "node", "id": 1, "lat": 60.0, "lon": 25.0},
+        {"type": "node", "id": 2, "lat": 60.001, "lon": 25.0},
+        {"type": "node", "id": 3, "lat": 60.001, "lon": 25.001},
+        {"type": "node", "id": 4, "lat": 60.0, "lon": 25.001},
+        {
+            "type": "way", "id": 20, "nodes": [1, 2, 3],
+            "tags": {"barrier": "kerb"},
+        },
+        {"type": "way", "id": 21, "nodes": [3, 4, 1], "tags": {}},
+        {
+            "type": "relation", "id": 22,
+            "members": [
+                {"type": "way", "ref": 20, "role": "outer"},
+                {"type": "way", "ref": 21, "role": "outer"},
+            ],
+            "tags": {"type": "multipolygon", "landuse": "grass"},
+        },
+    ]
+
+    result = build_ways(elements)
+
+    assert len(result.sceneries) == 1
+    assert result.sceneries[0].kind == "grass"
+    assert result.sceneries[0].kerbed is True
+
+
 def test_bare_kerb_island_with_no_fill_tag_still_gets_a_traffic_island_fill():
     """Regression: real Oulu traffic islands are mapped as a closed way
     tagged only {barrier=kerb, kerb=raised, traffic_calming=island} - no
