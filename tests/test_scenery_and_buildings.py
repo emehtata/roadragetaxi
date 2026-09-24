@@ -926,11 +926,8 @@ def test_draw_scenery_adds_a_speckle_texture_for_natural_ground_kinds():
     assert commercial_colors == {SCENERY_COLORS["commercial"]}, "commercial must stay a flat fill, not textured"
 
 
-def test_draw_scenery_renders_a_traffic_island_as_a_flat_fill_not_speckled():
-    """A bare kerb-outlined island (osm/build.py, no natural/landuse/
-    leisure tag) should render as a solid, visually distinct fill - like
-    parking/fuel, not textured like natural ground, since there's no OSM
-    data saying whether it's planted or paved."""
+def test_draw_scenery_renders_a_traffic_island_as_grass():
+    """Bare kerb islands use the same grassy, seasonal rendering as local planted islands."""
     island = Scenery(
         [(0.0, 0.0), (100.0, 0.0), (100.0, 100.0), (0.0, 100.0)], "traffic_island",
         bbox=(0.0, 0.0, 100.0, 100.0),
@@ -938,7 +935,9 @@ def test_draw_scenery_renders_a_traffic_island_as_a_flat_fill_not_speckled():
     screen = pygame.Surface((300, 300), pygame.SRCALPHA)
     _draw_scenery_uncached(screen, [island], 50.0, 50.0, 4.0, 300, 300)
     colors = {tuple(screen.get_at((x, y)))[:3] for x in range(300) for y in range(300)}
-    assert colors == {SCENERY_COLORS["traffic_island"]}
+    assert SCENERY_COLORS["traffic_island"] == SCENERY_COLORS["grass"]
+    assert SCENERY_COLORS["traffic_island"] in colors
+    assert len(colors) > 1, "grassy traffic island rendered without vegetation texture"
 
 
 def test_draw_scenery_speckle_texture_is_still_visible_off_center():

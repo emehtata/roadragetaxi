@@ -104,13 +104,9 @@ SCENERY_COLORS = {
     # street leading into it.
     "pedestrian_area": (125, 120, 112),
     "fuel": (92, 88, 84),  # paved forecourt - close to parking's grey, slightly warmer
-    # A closed kerb loop with no separate area tag (osm/build.py) - a real
-    # raised traffic/pedestrian-refuge island, but with no OSM fill tag
-    # telling us whether it's bare concrete or planted. A neutral raised-
-    # concrete tone (lighter than road asphalt, so it actually reads as a
-    # solid island rather than disappearing into the road under it) is the
-    # safer default than guessing green.
-    "traffic_island": (150, 148, 140),
+    # Bare kerb islands in the local Oulu data are planted even when OSM omits
+    # the inner surface tag. Use the ordinary grass base so seasons affect them.
+    "traffic_island": (112, 150, 86),
 }
 
 _fuel_station_font = None
@@ -134,7 +130,7 @@ _SPECKLE_SCENERY_KINDS = frozenset({
     "forest", "wood", "scrub", "heath", "park", "garden", "meadow", "grass",
     "greenfield", "nature_reserve", "recreation_ground", "dog_park",
     "fitness_station", "cemetery", "farmland", "farmyard", "allotments",
-    "sand", "beach", "grassland", "shrubbery", "wetland",
+    "sand", "beach", "grassland", "shrubbery", "wetland", "traffic_island",
 })
 _SPECKLE_SPACING_M = 1.3  # world-space grid spacing between candidate dots
 _SPECKLE_INSET = 0.15  # keep jitter off the exact cell edge, avoids a visible grid line
