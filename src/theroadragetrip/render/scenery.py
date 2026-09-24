@@ -467,6 +467,8 @@ def _draw_scenery_uncached(
     screen_w: int = SCREEN_W,
     screen_h: int = SCREEN_H,
     spatial_grid=None,
+    season: Season = Season.SUMMER,
+    seasonal_appearance: Optional[SeasonalAppearance] = None,
 ) -> None:
     """Draw parks, forests, and green spaces intersecting viewport,
     unconditionally and in one call, directly onto `screen` at the given
@@ -492,10 +494,32 @@ def _draw_scenery_uncached(
         "vminx": vminx, "vminy": vminy, "vmaxx": vmaxx, "vmaxy": vmaxy,
         "visible_sceneries": list(visible_sceneries),
         "index": 0,
+        "season": season,
+        "seasonal_appearance": seasonal_appearance,
         "speckle_budget": _SPECKLE_GLOBAL_BUDGET,
         "speckle_candidate_budget": _SPECKLE_CANDIDATE_BUDGET,
     }
     _advance_scenery_rebuild(job, deadline=float("inf"))
+
+
+def draw_traffic_islands(
+    screen, sceneries: List[Scenery], camx: float, camy: float,
+    px_per_m: float = PX_PER_M, screen_w: int = SCREEN_W, screen_h: int = SCREEN_H,
+    spatial_grid=None, season: Season = Season.SUMMER,
+    seasonal_appearance: Optional[SeasonalAppearance] = None,
+) -> None:
+    """Redraw grassy kerb islands above road asphalt."""
+    vminx, vminy, vmaxx, vmaxy = get_viewport_bounds(camx, camy, px_per_m, screen_w, screen_h, 20.0)
+    visible = (
+        spatial_grid.ways_in_rect(vminx, vminy, vmaxx, vmaxy)
+        if spatial_grid is not None else sceneries
+    )
+    islands = [scenery for scenery in visible if scenery.kind.lower() == "traffic_island"]
+    if islands:
+        _draw_scenery_uncached(
+            screen, islands, camx, camy, px_per_m, screen_w, screen_h,
+            season=season, seasonal_appearance=seasonal_appearance,
+        )
 
 
 def _start_scenery_rebuild(

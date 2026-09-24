@@ -131,6 +131,7 @@ from ..render import (
     draw_phone_offers,
     draw_scenery,
     draw_scenery_objects,
+    draw_traffic_islands,
     draw_fuel_station_signs,
     draw_open_roof_overlays,
     draw_trees,
@@ -2414,6 +2415,11 @@ def main() -> None:
             # really driving under.
             draw_railways(
                 screen, railways, camx, camy, px_per_m=px_per_m, spatial_grid=railway_grid, only_bridges=False,
+            )
+            draw_traffic_islands(
+                screen, sceneries, camx, camy, px_per_m=px_per_m,
+                spatial_grid=scenery_grid, season=game_calendar.season,
+                seasonal_appearance=seasonal_appearance,
             )
             stage_elapsed = time.perf_counter() - map_stage_start
             render_profile_times["map_roads"] = render_profile_times.get("map_roads", 0.0) + stage_elapsed

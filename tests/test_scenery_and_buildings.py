@@ -54,6 +54,7 @@ from theroadragetrip.render import (
     draw_illuminated_windows,
     draw_scenery,
     draw_scenery_objects,
+    draw_traffic_islands,
     draw_fuel_station_signs,
     draw_trees,
     world_to_screen,
@@ -938,6 +939,21 @@ def test_draw_scenery_renders_a_traffic_island_as_grass():
     assert SCENERY_COLORS["traffic_island"] == SCENERY_COLORS["grass"]
     assert SCENERY_COLORS["traffic_island"] in colors
     assert len(colors) > 1, "grassy traffic island rendered without vegetation texture"
+
+
+def test_traffic_island_overlay_paints_over_wide_road_asphalt():
+    """Roads render after base scenery, so islands need the small foreground pass."""
+    island = Scenery(
+        [(0.0, 0.0), (20.0, 0.0), (20.0, 20.0), (0.0, 20.0)], "traffic_island",
+        bbox=(0.0, 0.0, 20.0, 20.0),
+    )
+    screen = pygame.Surface((200, 200))
+    road_color = (70, 70, 70)
+    screen.fill(road_color)
+
+    draw_traffic_islands(screen, [island], 10.0, 10.0, px_per_m=4.0, screen_w=200, screen_h=200)
+
+    assert tuple(screen.get_at((100, 100)))[:3] != road_color
 
 
 def test_draw_scenery_speckle_texture_is_still_visible_off_center():
