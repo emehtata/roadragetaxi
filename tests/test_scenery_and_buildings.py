@@ -944,8 +944,8 @@ def test_draw_scenery_renders_a_traffic_island_as_grass():
 def test_traffic_island_overlay_paints_over_wide_road_asphalt():
     """Roads render after base scenery, so islands need the small foreground pass."""
     island = Scenery(
-        [(0.0, 0.0), (20.0, 0.0), (20.0, 20.0), (0.0, 20.0)], "traffic_island",
-        bbox=(0.0, 0.0, 20.0, 20.0),
+        [(0.0, 0.0), (20.0, 0.0), (20.0, 20.0), (0.0, 20.0)], "grass",
+        bbox=(0.0, 0.0, 20.0, 20.0), kerbed=True,
     )
     screen = pygame.Surface((200, 200))
     road_color = (70, 70, 70)

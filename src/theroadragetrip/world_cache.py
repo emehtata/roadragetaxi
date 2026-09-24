@@ -47,7 +47,7 @@ MAGIC = b"RWC\0"
 # rebuild_even_within_the_ttl in test_world_cache.py) - a new persisted
 # field needs a bump precisely because missing-field construction fails
 # silent, not loud.
-FORMAT_VERSION = 10
+FORMAT_VERSION = 11
 COORDINATE_SYSTEM = "EPSG:3067"
 _HEADER = struct.Struct("<4sHHQQ32s12s")
 _DIRECTORY = struct.Struct("<8sQQI")

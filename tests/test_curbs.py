@@ -63,6 +63,7 @@ def test_kerb_around_a_real_planting_island_renders_both_curb_and_fill():
     assert len(result.curbs) == 1
     assert len(result.sceneries) == 1
     assert result.sceneries[0].kind == "scrub"
+    assert result.sceneries[0].kerbed is True
     assert len(result.sceneries[0].points_m) == 5
 
 

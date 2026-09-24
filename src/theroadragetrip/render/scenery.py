@@ -514,7 +514,7 @@ def draw_traffic_islands(
         spatial_grid.ways_in_rect(vminx, vminy, vmaxx, vmaxy)
         if spatial_grid is not None else sceneries
     )
-    islands = [scenery for scenery in visible if scenery.kind.lower() == "traffic_island"]
+    islands = [scenery for scenery in visible if scenery.kind.lower() == "traffic_island" or getattr(scenery, "kerbed", False)]
     if islands:
         _draw_scenery_uncached(
             screen, islands, camx, camy, px_per_m, screen_w, screen_h,

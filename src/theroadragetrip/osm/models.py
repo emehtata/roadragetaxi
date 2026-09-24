@@ -162,6 +162,9 @@ class Scenery:
     # other kind: their color is already keyed by `kind` itself (forest,
     # grass, ...), which already says what the ground is.
     surface: Optional[str] = None
+    # True when this vegetation polygon is bounded by barrier=kerb and must
+    # remain visible above overlapping road asphalt.
+    kerbed: bool = False
     trees: List[Tuple[float, float]] = field(default_factory=list)
     tree_variations: List[float] = field(default_factory=list)
     # Rendered species, one per entry in `trees` - "spruce"/"pine"/"birch"

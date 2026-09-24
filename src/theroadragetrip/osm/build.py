@@ -521,7 +521,10 @@ def build_ways(
         # scenery kind (forest, grass, ...) leaves this None, since kind
         # itself already says what that ground is.
         surface = (tags.get("surface") or "asphalt") if (is_parking or is_fuel) else None
-        sceneries.append(Scenery(points_m=pts, kind=kind, name=name, bbox=ibbox, surface=surface))
+        sceneries.append(Scenery(
+            points_m=pts, kind=kind, name=name, bbox=ibbox, surface=surface,
+            kerbed=tags.get("barrier") == "kerb",
+        ))
 
     for tags, node_ids, parking_id in parking_space_raw:
         pts, ibbox = process_node_ids(node_ids)
