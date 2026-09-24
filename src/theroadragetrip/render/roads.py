@@ -2225,9 +2225,8 @@ def draw_stop_signs(
     """RENDER-audit.md section 21: stop signs were parsed (StopSign) and
     fed into `_snap_to_nearest_road` since day one but never had a
     renderer - the octagonal red sign was invisible even though its road
-    position was already computed. Drawn upright (not rotated to face
-    traffic), same simplicity as draw_taxi_stops - a small fixed-size
-    roadside icon, not a to-scale 3D object."""
+    position was already computed. The face follows the traffic heading;
+    world +Y is screen-up, so its screen-space forward vector inverts Y."""
     import pygame
 
     if not stop_signs:
@@ -2255,6 +2254,8 @@ def draw_stop_signs(
                 stop_font = pygame.font.Font(None, font_size)
                 _road_sign_font_cache[font_size] = stop_font
             label = stop_font.render("STOP", True, (250, 250, 248))
+            if sign.direction_angle is not None:
+                label = pygame.transform.rotate(label, math.degrees(sign.direction_angle))
             screen.blit(label, label.get_rect(center=(cx, cy)))
 
 
@@ -2269,7 +2270,8 @@ def draw_yield_signs(
 ) -> None:
     """RENDER-audit.md section 21: same previously-invisible-data gap as
     draw_stop_signs, for give-way signs - a downward-pointing red-bordered
-    triangle instead of an octagon."""
+    triangle instead of an octagon, with its point following the traffic
+    heading in north-up screen coordinates."""
     import pygame
 
     if not yield_signs:
@@ -2284,7 +2286,14 @@ def draw_yield_signs(
             continue
         cx, cy = world_to_screen(sign.x, sign.y, camx, camy, px_per_m, screen_w, screen_h)
         _draw_road_sign_post(screen, cx, cy, scale)
-        triangle = [(cx, cy + half), (cx - half, cy - half), (cx + half, cy - half)]
+        heading = sign.direction_angle or 0.0
+        forward_x, forward_y = math.cos(heading), -math.sin(heading)
+        side_x, side_y = -forward_y, forward_x
+        triangle = [
+            (cx + forward_x * half, cy + forward_y * half),
+            (cx - forward_x * half - side_x * half, cy - forward_y * half - side_y * half),
+            (cx - forward_x * half + side_x * half, cy - forward_y * half + side_y * half),
+        ]
         pygame.draw.polygon(screen, (245, 245, 240), triangle)
         pygame.draw.polygon(screen, (220, 30, 30), triangle, width=max(2, int(2 * scale)))
 

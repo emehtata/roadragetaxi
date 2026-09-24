@@ -125,6 +125,7 @@ def _snap_to_nearest_road(
     r_grid_size: float,
     max_dist: float = 8.0,
     junction_tie_m: float = 1.5,
+    directed: bool = False,
 ) -> Tuple[float, float, float, float, bool]:
     """Snap `pt` onto the nearest same-layer drivable road within
     `max_dist`. Returns (x, y, direction_angle_rad, road_half_width_m,
@@ -183,7 +184,7 @@ def _snap_to_nearest_road(
             if d > max_dist:
                 continue
             if best_for_way is None or d < best_for_way[0]:
-                angle = math.atan2(dy, dx) % math.pi
+                angle = math.atan2(dy, dx) % (2.0 * math.pi if directed else math.pi)
                 best_for_way = (d, px, py, angle, getattr(w, "half_width_m", 3.5), getattr(w, "name", None))
         if best_for_way is not None:
             matches.append(best_for_way)
@@ -1258,12 +1259,15 @@ def build_ways(
             except (TypeError, ValueError):
                 layer_val = 0
             snap_x, snap_y, road_angle, road_half_w, found_orientation = _snap_to_nearest_road(
-                pt, layer_val, roads_grid, r_grid_size
+                pt, layer_val, roads_grid, r_grid_size, directed=True
             )
             if not found_orientation:
                 return pt[0], pt[1], layer_val, None, road_half_w
             normal_x, normal_y = -math.sin(road_angle), math.cos(road_angle)
             side = 1.0 if (pt[0] - snap_x) * normal_x + (pt[1] - snap_y) * normal_y >= 0.0 else -1.0
+            osm_direction = tags.get("direction")
+            if osm_direction == "backward" or (osm_direction != "forward" and side > 0.0):
+                road_angle = (road_angle + math.pi) % (2.0 * math.pi)
             clearance = road_half_w + 1.0
             post_x = snap_x + normal_x * side * clearance
             post_y = snap_y + normal_y * side * clearance
