@@ -103,11 +103,11 @@ def _draw_fuel_meter(
             screen, (230, 55, 45),
             (bar.x, bar.bottom - red_fill_height, bar.width, red_fill_height),
         )
-        green_fill_height = fill_height - red_fill_height
-        if green_fill_height > 0:
+        white_fill_height = fill_height - red_fill_height
+        if white_fill_height > 0:
             pygame.draw.rect(
-                screen, (70, 205, 105),
-                (bar.x, bar.bottom - fill_height, bar.width, green_fill_height),
+                screen, (255, 255, 255),
+                (bar.x, bar.bottom - fill_height, bar.width, white_fill_height),
             )
     pygame.draw.rect(screen, (150, 160, 165), bar, width=1)
 
