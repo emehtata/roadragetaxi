@@ -30,8 +30,8 @@ def _build_args(monkeypatch, argv):
     return parse_args(config=config, city_names=["oulu"])
 
 
-def _load_sample_world(monkeypatch, tmp_path, city_name):
-    args = _build_args(monkeypatch, ["--use-sample", "--no-cache"])
+def _load_sample_world(monkeypatch, tmp_path, city_name, extra_args=("--use-prebuilt-roads",)):
+    args = _build_args(monkeypatch, ["--use-sample", "--no-cache", *extra_args])
     return _load_world(
         city_name, city_name, DEFAULT_BBOX, {city_name: (65.0121, 25.4651)},
         screen=None, font=None, clock=_FakeClock(), args=args,
@@ -64,7 +64,11 @@ def test_predefined_city_with_bin_loads_from_binary(monkeypatch, tmp_path, caplo
     assert "City: oulu" in bin_logs[0]
     assert "Ways: 2" in bin_logs[0]
     assert world.traffic_mgr is not None
-    assert {way.osm_id for way in world.traffic_mgr.ways} == {1, 2}
+    ways = world.traffic_mgr.ways
+    # Drivable roads come only from the binary; the fetch's own
+    # footways/paths (which the binary doesn't contain) are kept.
+    assert {way.osm_id for way in ways if way.is_drivable} == {1, 2}
+    assert any(not way.is_drivable for way in ways)
 
 
 def test_broken_bin_falls_back_to_existing_osm_path(monkeypatch, tmp_path, caplog):
@@ -91,3 +95,15 @@ def test_custom_city_without_bin_uses_existing_osm_path(monkeypatch, tmp_path, c
     assert "City: MyCustomCity" in fallback_logs[0]
     assert not any("Road network source: prebuilt binary" in r.message for r in caplog.records)
     assert world.traffic_mgr is not None
+
+
+def test_prebuilt_roads_are_off_by_default(monkeypatch, tmp_path, caplog):
+    """map.use_prebuilt_roads defaults to false: the binary is not even read."""
+    monkeypatch.setattr(
+        main_module, "load_city_ways",
+        lambda *_a, **_k: pytest.fail("prebuilt road binary loaded although disabled"),
+    )
+    with caplog.at_level(logging.INFO, logger="theroadragetrip.main"):
+        world = _load_sample_world(monkeypatch, tmp_path, "oulu", extra_args=())
+    assert any("prebuilt binary disabled" in r.message for r in caplog.records)
+    assert any(way.is_drivable for way in world.traffic_mgr.ways)

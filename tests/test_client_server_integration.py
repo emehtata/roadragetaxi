@@ -47,7 +47,7 @@ def test_client_connects_receives_state_and_commands_reach_the_simulation(monkey
     connection.send(protocol.build_command_message(PlayerCommand(), interact=True, seq=1))
     time.sleep(0.05)
     server.tick(1.0 / 30.0)
-    connection.send(protocol.build_command_message(PlayerCommand(throttle=1.0), interact=False, seq=2))
+    connection.send(protocol.build_command_message(PlayerCommand(throttle=1.0, engine_on=True), interact=False, seq=2))
     time.sleep(0.05)
     for _ in range(20):
         server.tick(1.0 / 30.0)

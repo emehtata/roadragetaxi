@@ -181,6 +181,35 @@ FORWARD_ACCELERATION_CURVE = (
 )
 
 
+# Wind (weather.WeatherSystem.wind_vector_mps): only what wind *adds* to
+# calm-air drag, 0.5*rho*CdA*|v_air|*v_air, so calm-weather handling stays
+# as tuned. Frontal and side CdA of a saloon; the side area is ~3x the
+# front, so a crosswind pushes far harder than a headwind brakes. Its
+# centre of pressure sits ahead of the CG, so the push yaws the car
+# downwind - the driver has to hold a correction.
+AIR_DENSITY_KG_M3 = 1.225
+FRONTAL_CDA_M2 = 0.7
+SIDE_CDA_M2 = 2.4
+WIND_EFFECT_GAIN = 2.0  # calibration knob: arcade FRICTION/BRAKE are super-physical, so is this
+WIND_MIN_SPEED_MPS = 1.0  # a parked/crawling car is held by its tyres
+
+
+def wind_acceleration(car: "Car", wind: Tuple[float, float]) -> Tuple[float, float]:
+    """(forward, left) m/s^2 that the wind adds over still air."""
+    hx, hy = math.cos(car.heading), math.sin(car.heading)
+    forward_speed = car.speed
+    # Air velocity relative to the car, in the car's frame.
+    air_forward = wind[0] * hx + wind[1] * hy - forward_speed
+    air_left = -wind[0] * hy + wind[1] * hx
+    air_speed = math.hypot(air_forward, air_left)
+    scale = 0.5 * AIR_DENSITY_KG_M3 * WIND_EFFECT_GAIN / max(1.0, car.total_mass_kg)
+    calm_forward = -abs(forward_speed) * forward_speed
+    return (
+        scale * FRONTAL_CDA_M2 * (air_speed * air_forward - calm_forward),
+        scale * SIDE_CDA_M2 * air_speed * air_left,
+    )
+
+
 def forward_acceleration(speed_mps: float) -> float:
     """Return available forward acceleration for the current speed."""
     speed_mps = max(0.0, speed_mps)
@@ -1548,8 +1577,11 @@ def update_car_physics(
     physics_mode: str = "arcade",
     wetness: float = 0.0,
     black_ice: float = 0.0,
+    wind: Tuple[float, float] = (0.0, 0.0),
 ) -> bool:
     """Update car speed, heading, and position.
+
+    `wind` is the air velocity (east, north) in m/s - see wind_acceleration.
 
     When block_offroad is True and road data is provided, restricts motion to drivable
     car roads only, blocking movement if the vehicle attempts to leave the road.
@@ -1609,6 +1641,15 @@ def update_car_physics(
             car.speed = max(0.0, car.speed - FRICTION * dt)
         else:
             car.speed = min(0.0, car.speed + FRICTION * dt)
+
+    if (wind[0] or wind[1]) and abs(entry_speed) >= WIND_MIN_SPEED_MPS and dt > 0.0:
+        wind_forward, wind_left = wind_acceleration(car, wind)
+        before_wind = car.speed
+        car.speed += wind_forward * dt
+        if car.speed * before_wind < 0.0:
+            car.speed = 0.0  # wind can stop a coasting car, never reverse it
+        # Sideways push bends the path: heading rate = a_lateral / v.
+        car.heading += wind_left / car.speed * dt if abs(car.speed) >= WIND_MIN_SPEED_MPS else 0.0
 
     car.speed = clamp(car.speed, -10.0, MAX_SPEED)
     longitudinal_tire_g = (

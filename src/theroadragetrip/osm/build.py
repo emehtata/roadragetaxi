@@ -1,3 +1,4 @@
+import bisect
 import collections
 from collections import defaultdict
 import logging
@@ -5,7 +6,7 @@ import math
 import time
 from typing import Callable, Dict, List, Optional, Set, Tuple
 
-from ..geo import point_in_polygon
+from ..geo import compute_bbox, point_in_polygon
 
 
 logger = logging.getLogger(__name__)
@@ -69,6 +70,104 @@ _ALIGN_TO_PATH_SCENERY_KINDS = {"bench", "waste_basket"}
 # curb_raw's own traffic-island fallback fill below for the full reasoning.
 MAX_TRAFFIC_ISLAND_SPAN_M = 25.0
 MIN_TRAFFIC_ISLAND_WIDTH_M = 1.5
+
+
+
+# A real kerb runs *along* a road edge; where a mapped barrier=kerb line
+# crosses a drivable road's centerline it is a lowered kerb at an entrance
+# or a kerb drawn straight across a side street's mouth - cars drive over
+# it. Measured on Oulu: 189 of 818 kerbs crossed a drivable centerline at
+# ~2700 points, which made NPC route validation reject 98% of trips.
+KERB_ROAD_CROSSING_MARGIN_M = 1.0  # extra gap beyond the road's half width
+_KERB_CROSSING_GRID_CELL_M = 50.0
+
+
+def _segment_intersection_t(a, b, p, q) -> Optional[float]:
+    """Parameter t along a->b where it crosses p->q, or None."""
+    denom = (b[0] - a[0]) * (q[1] - p[1]) - (b[1] - a[1]) * (q[0] - p[0])
+    if abs(denom) < 1e-12:
+        return None
+    t = ((p[0] - a[0]) * (q[1] - p[1]) - (p[1] - a[1]) * (q[0] - p[0])) / denom
+    u = ((p[0] - a[0]) * (b[1] - a[1]) - (p[1] - a[1]) * (b[0] - a[0])) / denom
+    return t if 0.0 <= t <= 1.0 and 0.0 <= u <= 1.0 else None
+
+
+def open_kerbs_at_road_crossings(curbs: List[Curb], ways: List[Way]) -> List[Curb]:
+    """Cut a gap into every kerb around each ground-level drivable road
+    centerline it crosses (road half width + margin each side, widened for
+    a slanted crossing); the remaining pieces stay curbs, unchanged."""
+    cell = _KERB_CROSSING_GRID_CELL_M
+    road_grid: Dict[Tuple[int, int], List] = defaultdict(list)
+    for way in ways:
+        if not getattr(way, "is_drivable", True) or getattr(way, "is_bridge", False) or getattr(way, "layer", 0) != 0:
+            continue
+        for p, q in zip(way.points_m, way.points_m[1:]):
+            for cx in range(math.floor(min(p[0], q[0]) / cell), math.floor(max(p[0], q[0]) / cell) + 1):
+                for cy in range(math.floor(min(p[1], q[1]) / cell), math.floor(max(p[1], q[1]) / cell) + 1):
+                    road_grid[(cx, cy)].append((p, q, getattr(way, "half_width_m", 3.0)))
+    result: List[Curb] = []
+    for curb in curbs:
+        pts = curb.points_m
+        lengths = [math.hypot(b[0] - a[0], b[1] - a[1]) for a, b in zip(pts, pts[1:])]
+        gaps = []
+        start_s = 0.0
+        for (a, b), length in zip(zip(pts, pts[1:]), lengths):
+            seen = set()
+            for cx in range(math.floor(min(a[0], b[0]) / cell), math.floor(max(a[0], b[0]) / cell) + 1):
+                for cy in range(math.floor(min(a[1], b[1]) / cell), math.floor(max(a[1], b[1]) / cell) + 1):
+                    for p, q, half_width in road_grid.get((cx, cy), ()):
+                        if (p, q) in seen:
+                            continue
+                        seen.add((p, q))
+                        t = _segment_intersection_t(a, b, p, q)
+                        if t is None or length < 1e-9:
+                            continue
+                        road_length = math.hypot(q[0] - p[0], q[1] - p[1]) or 1.0
+                        sin_angle = abs(
+                            ((b[0] - a[0]) * (q[1] - p[1]) - (b[1] - a[1]) * (q[0] - p[0])) / (length * road_length)
+                        )
+                        half_gap = (half_width + KERB_ROAD_CROSSING_MARGIN_M) / max(0.3, sin_angle)
+                        crossing_s = start_s + t * length
+                        gaps.append((crossing_s - half_gap, crossing_s + half_gap))
+            start_s += length
+        if not gaps:
+            result.append(curb)
+            continue
+        result.extend(
+            Curb(points_m=piece, bbox=compute_bbox(piece))
+            for piece in _polyline_without_ranges(pts, lengths, sorted(gaps))
+        )
+    return result
+
+
+def _polyline_without_ranges(pts, lengths, gaps) -> List[List[Tuple[float, float]]]:
+    """Pieces (each >= 0.5 m) of a polyline left after removing sorted
+    arclength ranges."""
+    cumulative = [0.0]
+    for length in lengths:
+        cumulative.append(cumulative[-1] + length)
+    total = cumulative[-1]
+    keep = []
+    cursor = 0.0
+    for low, high in gaps:
+        if low > cursor:
+            keep.append((cursor, min(low, total)))
+        cursor = max(cursor, high)
+    if cursor < total:
+        keep.append((cursor, total))
+
+    def point_at(s):
+        i = min(max(0, bisect.bisect_right(cumulative, s) - 1), len(lengths) - 1)
+        a, b = pts[i], pts[i + 1]
+        f = 0.0 if lengths[i] < 1e-9 else (s - cumulative[i]) / lengths[i]
+        return (a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f)
+
+    pieces = []
+    for low, high in keep:
+        if high - low < 0.5:
+            continue
+        pieces.append([point_at(low)] + [pt for pt, s in zip(pts, cumulative) if low < s < high] + [point_at(high)])
+    return pieces
 
 
 def _scenery_object_kind(tags: Dict[str, str]) -> Optional[str]:
@@ -1330,6 +1429,7 @@ def build_ways(
             minx = miny = 0.0
             maxx = maxy = 1000.0
 
+    curbs = open_kerbs_at_road_crossings(curbs, ways)
     return MapData(
         ways, waters, buildings, sceneries, places, (minx, miny, maxx, maxy),
         traffic_lights, crossings, taxi_stops, bus_stops, parking_spaces, logical_intersections, stop_signs, yield_signs,

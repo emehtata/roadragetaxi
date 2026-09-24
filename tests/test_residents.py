@@ -111,3 +111,14 @@ def test_weighted_name_cache_is_reused_across_calls():
     assert cached_first is cached_second, (
         "candidates/weights were rebuilt on the second call instead of reused from cache"
     )
+
+
+def test_solo_walkers_and_taxi_customers_are_never_young_children():
+    """Under-7s only appear with their family (car trip groups), never alone."""
+    from theroadragetrip.residents import MIN_UNACCOMPANIED_AGE, ResidentManager
+
+    manager = ResidentManager()
+    ages = [manager.age_of(manager.create("walking", min_age=MIN_UNACCOMPANIED_AGE)) for _ in range(2000)]
+    assert min(ages) >= MIN_UNACCOMPANIED_AGE
+    # Exact ages: the birth-date generator no longer drifts across leap days.
+    assert all(manager.age_of(manager.create(age=age)) == age for age in range(0, 101) for _ in range(5))

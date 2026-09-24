@@ -109,13 +109,11 @@ def apply_enter_exit_vehicle(car, player_pedestrian, on_foot: bool, audio) -> bo
             car.y + math.sin(car.heading) * length_m * 0.2 + left_y * width_m * 0.85
         )
         player_pedestrian.heading = car.heading
-        car.speed = 0.0
-        car.engine_on = False
+        car.speed = 0.0  # the engine keeps running (idling) until E turns it off
         audio.play("car-door-open")
         return True
     elif math.hypot(player_pedestrian.x - car.x, player_pedestrian.y - car.y) <= 3.0:
         car.speed = 0.0
-        car.engine_on = True
         audio.play("car-door-open")
         return False
     return on_foot
@@ -256,7 +254,6 @@ def advance_simulation(
             else:
                 car.fuel_l = min(car.fuel_capacity_l, car.fuel_l + purchase.liters)
                 taxi_mgr.balance_cents -= purchase.cost_cents
-                car.engine_on = True
                 taxi_mgr.notification_msg = tr(
                     language,
                     "fuel_purchased",
@@ -299,6 +296,7 @@ def advance_simulation(
                 current_way=current_way, physics_mode=physics_mode,
                 wetness=weather.road_grip_wetness,
                 black_ice=weather.road_ice_fraction,
+                wind=weather.wind_vector_mps,
             )
         car.braking = brake > 0.0 and car.speed > 0.05
         midpoint = (
@@ -498,7 +496,7 @@ def advance_simulation(
     city_summary = None
     next_active_city_name = None
     if career is None and taxi_mgr.completed_fares > saved_gig_fares:
-        save_gig_odometer(gig_odometer_file, car.odometer_m)
+        save_gig_odometer(gig_odometer_file, car.odometer_m, car.fuel_l)
         saved_gig_fares = taxi_mgr.completed_fares
     if career is not None and taxi_mgr.total_score >= CAREER_SCORE_LIMIT:
         career_index = int(career["city_index"])

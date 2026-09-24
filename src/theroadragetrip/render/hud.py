@@ -84,7 +84,7 @@ def _draw_fuel_meter(
     language: str,
     station_price_cents: Optional[int] = None,
 ):
-    """Draw a numberless vertical fuel gauge and the live econometer."""
+    """Draw a needle fuel gauge (E..F, red reserve zone) and the live econometer."""
     import pygame
 
     capacity = max(0.001, car.fuel_capacity_l)
@@ -92,24 +92,36 @@ def _draw_fuel_meter(
     x, y = position
     width, height = 230, 92 if station_price_cents is not None else 78
     rect = pygame.Rect(x, y, width, height)
-    bar = pygame.Rect(x + 8, y + 5, 18, height - 10)
-    pygame.draw.rect(screen, (38, 42, 45), bar)
-    red_height = round(bar.height * min(10.0, capacity) / capacity)
-    pygame.draw.rect(screen, (95, 25, 22), (bar.x, bar.bottom - red_height, bar.width, red_height))
-    fill_height = round(bar.height * fraction)
-    if fill_height > 0:
-        red_fill_height = min(fill_height, red_height)
-        pygame.draw.rect(
-            screen, (230, 55, 45),
-            (bar.x, bar.bottom - red_fill_height, bar.width, red_fill_height),
+
+    # Upper half-dial face; the needle sweeps 120 deg from E (upper left)
+    # to F (upper right) so it never lies flat along the dial's base.
+    center = (x + 36, y + 50)
+    radius = 30
+
+    def dial_point(dial_fraction, distance, sweep=math.radians(120.0)):
+        angle = math.pi * 0.5 + sweep * (0.5 - dial_fraction)
+        return (center[0] + math.cos(angle) * distance, center[1] - math.sin(angle) * distance)
+
+    face = [center] + [dial_point(step / 24.0, radius, math.pi) for step in range(25)]
+    pygame.draw.polygon(screen, (12, 16, 20), face)
+    reserve_fraction = min(10.0, capacity) / capacity
+    reserve_steps = max(1, round(reserve_fraction * 24))
+    pygame.draw.lines(
+        screen, (230, 55, 45), False,
+        [dial_point(reserve_fraction * step / reserve_steps, radius - 3) for step in range(reserve_steps + 1)], 4,
+    )
+    for tick in range(5):
+        pygame.draw.line(
+            screen, (235, 220, 170), dial_point(tick / 4.0, radius - 9), dial_point(tick / 4.0, radius - 2),
+            3 if tick in (0, 4) else 2,
         )
-        white_fill_height = fill_height - red_fill_height
-        if white_fill_height > 0:
-            pygame.draw.rect(
-                screen, (255, 255, 255),
-                (bar.x, bar.bottom - fill_height, bar.width, white_fill_height),
-            )
-    pygame.draw.rect(screen, (150, 160, 165), bar, width=1)
+    pygame.draw.lines(screen, (130, 140, 150), True, face, 2)
+    for label_text, label_fraction in (("E", 0.0), ("F", 1.0)):
+        label = font.render(label_text, True, (220, 225, 215))
+        label_x, _ = dial_point(label_fraction, radius - 13)
+        screen.blit(label, label.get_rect(center=(label_x, center[1] - 8)))
+    pygame.draw.line(screen, (230, 65, 45), center, dial_point(fraction, radius - 6), 3)
+    pygame.draw.circle(screen, (240, 220, 170), center, 4)
 
     if abs(car.speed) > 0.5:
         economy_text = f"{car.fuel_consumption_l_per_100km:.1f} l/100 km"
@@ -120,14 +132,14 @@ def _draw_fuel_meter(
         True,
         (205, 215, 220),
     )
-    screen.blit(economy, (x + 36, y + 6))
+    screen.blit(economy, (x + 74, y + 6))
     if station_price_cents is not None:
         station_text = font.render(
             f"{tr(language, 'fuel_station')}  {format_euros(station_price_cents, language)}/L",
             True,
             (255, 215, 90),
         )
-        screen.blit(station_text, (x + 36, y + 34))
+        screen.blit(station_text, (x + 74, y + 34))
     return rect
 
 
@@ -401,10 +413,10 @@ def draw_hud(
     red_light_assist_status = tr(language, "on" if red_light_assist_enabled else "off")
     road_name_s = current_road_name if current_road_name else tr(language, "off_road")
     limit_s = f" [{tr(language, 'limit')}: {speed_limit_kmh} km/h]" if speed_limit_kmh is not None else ""
-    assist_s = f" | [{tr(language, 'lane_assist_active')}]" if getattr(car, "lane_assist_active", False) else ""
+    assist_s = f" | [{tr(language, 'lane_assist')}]" if getattr(car, "lane_assist_active", False) else ""
     hud = (
         f"{tr(language, 'road')}: {road_name_s}{limit_s}{assist_s} | {tr(language, 'trip')}: {trip_s} | {tr(language, 'odometer')}: {odo_s} | "
-        f"{tr(language, 'ways')}: {ways_count} | {tr(language, 'zoom_level')}: {px_per_m:.2f} px/m | "
+        f"{tr(language, 'ways')}: {ways_count} | {tr(language, 'zoom')}: {px_per_m:.2f} px/m | "
         f"{tr(language, 'latitude')}: {lat_s} {tr(language, 'longitude')}: {lon_s}"
     )
     if show_debug_hud:

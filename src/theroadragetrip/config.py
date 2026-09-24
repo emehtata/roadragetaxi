@@ -87,6 +87,9 @@ DEFAULT_CONFIG = {
         "roadworks_enabled": "false",
         "bus_stops": "false",
         "physics_realism": "arcade",
+        # Real FMI weather observations for the game's city and date
+        # (Settings -> historical weather); generated weather otherwise.
+        "historical_weather": "false",
     },
     "map": {
         "overpass_endpoints": ", ".join(DEFAULT_OVERPASS_ENDPOINTS),
@@ -101,12 +104,17 @@ DEFAULT_CONFIG = {
         # with a warning otherwise.
         "osm_source": "overpass",
         "osm_pbf_path": "",
+        # Use a predefined city's prebuilt road binary (assets/roads/<city>.bin,
+        # drivable roads for the whole city) instead of the fetched roads.
+        # Off: it is loaded on top of the normal fetch (no time saved) and
+        # only enlarges the road/route graphs for now - kept for future use.
+        "use_prebuilt_roads": "false",
     },
     "traffic": {
         # NPC-003: target/min/max NPC vehicle population. traffic_count
         # was previously read nowhere - the game spawned exactly one NPC
         # vehicle regardless of this setting.
-        "traffic_count": "40",
+        "traffic_count": "",  # empty: scaled from the city's population
         "traffic_count_min": "",
         "traffic_count_max": "",
         "pedestrian_count": "20",

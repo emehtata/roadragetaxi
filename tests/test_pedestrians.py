@@ -1443,3 +1443,217 @@ def test_annoyed_mood_renders_a_visible_marker():
     draw_pedestrians(annoyed_screen, [annoyed], camx=0.0, camy=0.0, px_per_m=8.0, ways=[ground], screen_w=400, screen_h=400)
 
     assert pygame.image.tostring(normal_screen, "RGB") != pygame.image.tostring(annoyed_screen, "RGB")
+
+
+def _v9_world(dedicated=True):
+    from theroadragetrip.osm import SceneryObject
+    from theroadragetrip.pedestrian import VENUE_TYPES
+
+    highway = "footway" if dedicated else "residential"
+    ways = [Way(points_m=[(float(x), -40.0), (float(x), 0.0), (float(x), 40.0)], highway=highway,
+                half_width_m=1.5, bbox=(float(x), -40.0, float(x), 40.0)) for x in range(0, 200, 20)]
+    ways.append(Way(points_m=[(0.0, 0.0), (200.0, 0.0)], highway=highway, half_width_m=1.5,
+                    bbox=(0.0, 0.0, 200.0, 0.0)))
+    ways.append(Way(points_m=[(0.0, 10.0), (50.0, 10.0)], highway="primary", half_width_m=4.0,
+                    bbox=(0.0, 10.0, 50.0, 10.0)))
+    buildings = [SimpleNamespace(points_m=[(x, 3.0), (x + 12.0, 3.0), (x + 12.0, 15.0), (x, 15.0)],
+                                 bbox=(x, 3.0, x + 12.0, 15.0), entrances=[(x + 6.0, 3.0)],
+                                 venue_type=next(iter(VENUE_TYPES)) if x < 60 else None)
+                 for x in (15.0, 55.0, 95.0, 135.0)]
+    features = ([SceneryObject(x=float(x), y=5.0, kind="bench") for x in range(5, 200, 30)],
+                [SimpleNamespace(bbox=(10.0, 20.0, 90.0, 60.0))], [])
+    return ways, buildings, features
+
+
+def _v9_state(manager):
+    def way_key(w):
+        return tuple(w.points_m)
+    return {
+        "ped_ways": [way_key(w) for w in manager.ped_ways],
+        "spawn_ways": [way_key(w) for w in manager._spawn_ways],
+        "way_grid": {k: [way_key(w) for w in v] for k, v in manager._way_grid.items()},
+        "junction_grid": {k: [(way_key(e[0]),) + e[1:] for e in v] for k, v in manager._junction_grid.items()},
+        "nodes": manager.network.nodes, "edges": manager.network.edges,
+        "route_nodes": manager._route_nodes, "route_edges": manager._route_edges,
+        "building_grid": {k: [id(b) for b in v] for k, v in manager._building_grid.items()},
+        "venues": manager.venue_locations, "entrances": manager.entrance_locations,
+        "amenity_entrances": manager.amenity_entrance_locations, "entrance_grid": manager._entrance_grid,
+        "scenery_object_grid": {k: [id(o) for o in v] for k, v in manager._scenery_object_grid.items()},
+        "scenery_grid": {k: [id(o) for o in v] for k, v in manager._scenery_grid.items()},
+    }
+
+
+@pytest.mark.parametrize("dedicated", [True, False])
+def test_v9_budgeted_sync_matches_full_sync_and_snapshots_inputs(dedicated):
+    ways, buildings, features = _v9_world(dedicated)
+
+    full = PedestrianManager([], target_count=0)
+    full.set_venue_buildings(buildings, resync=False)
+    full.set_scenery_features(*features)
+    full.sync_map_data(ways)
+    expected = _v9_state(full)
+    assert expected["ped_ways"] and expected["junction_grid"] and expected["venues"]
+
+    manager = PedestrianManager([], target_count=0)
+    old = _v9_state(manager)
+    raw_ways, raw_buildings = list(ways), list(buildings)
+    manager.start_incremental_sync(raw_ways, venue_buildings=raw_buildings, scenery_features=features)
+    # Raw list growth after the snapshot never leaks into this job.
+    raw_ways.append(Way(points_m=[(500.0, 0.0), (520.0, 0.0)], highway="footway", half_width_m=1.5))
+    raw_buildings.clear()
+    frames = 0
+    while not manager.advance_incremental_sync(0.0):
+        frames += 1
+        assert frames < 10_000
+        if manager._sync_stage in ("venue", "building_free", "junction_grid", "spawn_grid"):
+            # The old walkable result stays live until the atomic commit.
+            assert [tuple(w.points_m) for w in manager.ped_ways] == old["ped_ways"]
+    assert frames > 10, "zero budget must spread the job over many frames"
+    assert _v9_state(manager) == expected
+    assert manager.sync_stats["jobs"] == manager.sync_stats["completed"] == 1
+
+    # Unchanged inputs a second time: identical, no duplicates.
+    manager.start_incremental_sync(ways, venue_buildings=buildings, scenery_features=features)
+    while not manager.advance_incremental_sync(0.0):
+        pass
+    assert _v9_state(manager) == expected
+
+
+def test_v9_budgeted_sync_handles_an_empty_world():
+    manager = PedestrianManager([], target_count=0)
+    manager.start_incremental_sync([], venue_buildings=[], scenery_features=([], [], []))
+    while not manager.advance_incremental_sync(0.0):
+        pass
+    assert manager.ped_ways == [] and manager._way_grid == {} and manager._building_grid == {}
+
+
+def test_v9_indexed_network_lookups_match_brute_force():
+    """nearest_point()/route() endpoint lookups use grids now; answers
+    (including ties, rejects and far-away queries) match the old scans."""
+    import heapq
+    import random
+    from theroadragetrip.geo import closest_point_and_dist_to_segment
+
+    def brute_nearest(network, point, reject=None):
+        best, best_distance = None, float("inf")
+        for way in network.ways:
+            for first, second in zip(way.points_m, way.points_m[1:]):
+                x, y, _, distance = closest_point_and_dist_to_segment(point[0], point[1], *first, *second)
+                if distance < best_distance and not (reject and reject(x, y)):
+                    best, best_distance = (x, y), distance
+        return best
+
+    def brute_route(network, start, target):
+        nodes, edges = network.nodes, network.edges
+        start_id = min(edges, key=lambda i: (nodes[i][0] - start[0]) ** 2 + (nodes[i][1] - start[1]) ** 2)
+        target_id = min(edges, key=lambda i: (nodes[i][0] - target[0]) ** 2 + (nodes[i][1] - target[1]) ** 2)
+        distances, previous, queue = {start_id: 0.0}, {}, [(0.0, start_id)]
+        while queue:
+            distance, current = heapq.heappop(queue)
+            if distance != distances.get(current):
+                continue
+            if current == target_id:
+                break
+            for neighbor, edge_distance in edges[current]:
+                if distance + edge_distance < distances.get(neighbor, math.inf):
+                    distances[neighbor], previous[neighbor] = distance + edge_distance, current
+                    heapq.heappush(queue, (distance + edge_distance, neighbor))
+        if target_id not in distances:
+            return [start, target]
+        path = [target_id]
+        while path[-1] != start_id:
+            path.append(previous[path[-1]])
+        return [start] + [nodes[i] for i in reversed(path)] + [target]
+
+    rnd = random.Random(9)
+    ways = [Way(points_m=[(round(rnd.uniform(-400, 400) / 10) * 10.0, round(rnd.uniform(-400, 400) / 10) * 10.0)
+                          for _ in range(rnd.randint(2, 4))], highway="footway", half_width_m=1.5)
+            for _ in range(120)]
+    incremental = PedestrianNetwork()
+    incremental.start_rebuild(ways)
+    while not incremental.advance_rebuild(0.0):
+        pass
+    for network in (PedestrianNetwork(ways), incremental):
+        for _ in range(150):
+            point = (rnd.uniform(-2000, 2000), rnd.uniform(-2000, 2000))
+            assert network.nearest_point(point) == brute_nearest(network, point)
+            reject = lambda x, y: x < point[0]  # noqa: E731 - rejects roughly half the candidates
+            assert network.nearest_point(point, reject) == brute_nearest(network, point, reject)
+            target = (rnd.uniform(-500, 500), rnd.uniform(-500, 500))
+            assert network.route(point, target) == brute_route(network, point, target)
+        # Exact ties on shared nodes resolve to the first scanned segment/node.
+        for way in ways[:20]:
+            assert network.nearest_point(way.points_m[0]) == brute_nearest(network, way.points_m[0])
+    assert PedestrianNetwork().nearest_point((0.0, 0.0)) is None
+    assert PedestrianNetwork([ways[0]]).nearest_point((0.0, 0.0), lambda x, y: True) is None
+
+
+def test_v11_route_rejects_other_component_without_searching():
+    """bin-loader-v11: A-B-C routes; a separate C-D island is rejected
+    before Dijkstra expands anything (same straight fallback as before)."""
+    abc = [Way(points_m=[(0.0, 0.0), (50.0, 0.0)], highway="footway", half_width_m=1.0),
+           Way(points_m=[(50.0, 0.0), (100.0, 0.0)], highway="footway", half_width_m=1.0)]
+    island = [Way(points_m=[(0.0, 500.0), (50.0, 500.0)], highway="footway", half_width_m=1.0)]
+    network = PedestrianNetwork(abc + island)
+
+    route = network.route((0.0, 0.0), (100.0, 0.0))
+    assert route[1:-1] == [(0.0, 0.0), (50.0, 0.0), (100.0, 0.0)]
+    assert network.last_route_expanded > 0
+
+    assert network.route((0.0, 0.0), (50.0, 500.0)) == [(0.0, 0.0), (50.0, 500.0)]
+    assert network.last_route_expanded == 0
+
+
+def test_v11_components_match_brute_force_and_follow_graph_rebuilds():
+    import random
+    from theroadragetrip.pedestrian import _component_root
+
+    rnd = random.Random(11)
+    ways = [Way(points_m=[(round(rnd.uniform(0, 600) / 20) * 20.0, round(rnd.uniform(0, 600) / 20) * 20.0)
+                          for _ in range(rnd.randint(2, 3))], highway="footway", half_width_m=1.0)
+            for _ in range(80)]
+
+    def brute_components(network):
+        seen, label = {}, 0
+        for node in range(len(network.nodes)):
+            if node in seen:
+                continue
+            stack = [node]
+            seen[node] = label
+            while stack:
+                for neighbor, _ in network.edges[stack.pop()]:
+                    if neighbor not in seen:
+                        seen[neighbor] = label
+                        stack.append(neighbor)
+            label += 1
+        return seen
+
+    def same(network, a, b):
+        return _component_root(network._component_parent, a) == _component_root(network._component_parent, b)
+
+    incremental = PedestrianNetwork()
+    incremental.start_rebuild(ways[:40])
+    while not incremental.advance_rebuild(0.0):
+        pass
+    for network in (PedestrianNetwork(ways[:40]), incremental):
+        labels = brute_components(network)
+        for a in range(len(network.nodes)):
+            for b in range(0, len(network.nodes), 7):
+                assert same(network, a, b) == (labels[a] == labels[b])
+
+    # Generation N+1: joining two former islands. Until the rebuild commits,
+    # the live graph (nodes, edges and components together) is still N.
+    old_nodes, old_parent = incremental.nodes, incremental._component_parent
+    incremental.start_rebuild(ways)
+    assert incremental.nodes is old_nodes and incremental._component_parent is old_parent
+    while not incremental.advance_rebuild(0.0):
+        pass
+    assert incremental._component_parent is not old_parent
+    labels = brute_components(incremental)
+    for a in range(len(incremental.nodes)):
+        for b in range(0, len(incremental.nodes), 5):
+            assert same(incremental, a, b) == (labels[a] == labels[b])
+    # Ways dropped by a later sync (e.g. an unloaded tile) leave no stale
+    # nodes or component entries behind: the next build starts from scratch.
+    incremental.set_ways(ways[:10])
+    assert len(incremental._component_parent) == len(incremental.nodes)

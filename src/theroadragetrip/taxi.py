@@ -14,7 +14,7 @@ from .physics import (
 from .localization import tr
 from .fare import calculate_fare_cents, format_euros, tip_cents_from_happiness
 from .police import SpeedCamera, camera_sees_car
-from .residents import Resident, ResidentManager
+from .residents import MIN_UNACCOMPANIED_AGE, Resident, ResidentManager
 from .traffic_rules import nearest_traffic_light_ahead
 
 logger = logging.getLogger(__name__)
@@ -212,7 +212,7 @@ class TaxiManager:
     def _new_passenger_identity(
         self, resident: Optional[Resident] = None
     ) -> tuple[str, str, int, float]:
-        resident = resident or self.residents.create("walking")
+        resident = resident or self.residents.create("walking", min_age=MIN_UNACCOMPANIED_AGE)
         gender = {"female": "woman", "male": "man"}.get(resident.gender, "woman")
         return (
             f"{resident.first_name} {resident.surname}",
@@ -1557,19 +1557,25 @@ class TaxiManager:
             return None
         pickup = None
         message_key = "stand_boarded"
+        stand_stop = None
         if self.taxi_stops:
             nearby_stops = [stop for stop in self.taxi_stops if math.hypot(car.x - stop.x, car.y - stop.y) <= 22.0]
             if nearby_stops:
-                pickup = self.make_target(nearby_stops[0].x, nearby_stops[0].y)
+                stand_stop = nearby_stops[0]
         candidates = [
             ped for ped in pedestrians
             if getattr(ped, "wants_taxi", True)
             and math.hypot(car.x - ped.x, car.y - ped.y) <= 15.0
         ]
-        is_hail = pickup is None and not self.taxi_stops and candidates
+        is_hail = stand_stop is None and not self.taxi_stops and candidates
         if is_hail and random.random() < min(1.0, dt * 0.35):
             pickup = self.make_target(candidates[0].x, candidates[0].y)
             message_key = "hail_boarded"
+        elif stand_stop is not None and candidates:
+            # Only now: make_target's street/house-number lookup scans the
+            # whole loaded city, and used to run every frame while the taxi
+            # idled at a stand with nobody there to board.
+            pickup = self.make_target(stand_stop.x, stand_stop.y)
         if pickup is None or not candidates:
             return None
         if message_key == "stand_boarded" and random.random() >= min(1.0, dt * 0.35):

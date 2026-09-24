@@ -59,6 +59,20 @@ _gameplay_frame = [0]
 # silently folding it into "unaccounted" time.
 _gc_time_by_frame: dict[int, float] = defaultdict(float)
 _gc_start = [None]
+# bin-loader-v10.md: per-generation counts/pauses, and for each (rare)
+# generation-2 collection its pause, objects collected and RSS. Cheap: no
+# object enumeration unless V10_GC_OBJECTS=1 (diagnostic runs only).
+_gc_by_gen = {gen: {"count": 0, "ms": 0.0, "max_ms": 0.0, "collected": 0, "uncollectable": 0} for gen in range(3)}
+_gc_full_events: list[dict] = []
+_GC_COUNT_OBJECTS = os.environ.get("V10_GC_OBJECTS") == "1"
+
+
+def _rss_mb() -> float:
+    try:
+        with open("/proc/self/statm") as statm:
+            return int(statm.read().split()[1]) * os.sysconf("SC_PAGE_SIZE") / 1e6
+    except OSError:
+        return float("nan")
 
 
 def _gc_callback(phase, info):
@@ -69,8 +83,21 @@ def _gc_callback(phase, info):
         if phase == "start":
             _gc_start[0] = time.perf_counter()
         elif phase == "stop" and _gc_start[0] is not None:
-            _gc_time_by_frame[_gameplay_frame[0]] += (time.perf_counter() - _gc_start[0]) * 1000.0
+            ms = (time.perf_counter() - _gc_start[0]) * 1000.0
+            _gc_time_by_frame[_gameplay_frame[0]] += ms
             _gc_start[0] = None
+            stats = _gc_by_gen[info["generation"]]
+            stats["count"] += 1
+            stats["ms"] += ms
+            stats["max_ms"] = max(stats["max_ms"], ms)
+            stats["collected"] += info["collected"]
+            stats["uncollectable"] += info["uncollectable"]
+            if info["generation"] == 2:
+                _gc_full_events.append({
+                    "frame": _gameplay_frame[0], "ms": ms, "collected": info["collected"],
+                    "rss_mb": _rss_mb(),
+                    "tracked": len(gc.get_objects()) if _GC_COUNT_OBJECTS else None,
+                })
     except Exception:
         pass
 
@@ -78,12 +105,48 @@ def _gc_callback(phase, info):
 gc.callbacks.append(_gc_callback)
 
 
+# bin-loader-v10.md experiment switch (benchmark only, game defaults
+# untouched): V10_GC=base | thresh:A,B,C | collect_sync | freeze_start |
+# freeze_sync | freeze_nc (freeze without collecting, at start and after
+# each sync). "sync" hooks run right after the pedestrian map-sync commit,
+# the last heavy map-sync stage.
+_GC_STRATEGY = os.environ.get("V10_GC", "base")
+# main() sets the game's own GC_THRESHOLDS; a thresh:A,B,C experiment
+# overrides them from the first gameplay frame on.
+_GC_THRESHOLD_OVERRIDE = next(
+    (tuple(int(v) for v in part.split(":", 1)[1].split(",")) for part in _GC_STRATEGY.split("+")
+     if part.startswith("thresh:")),
+    None,
+)
+_GC_FREEZE_NC = "freeze_nc" in _GC_STRATEGY.split("+")
+
+
+def _after_map_sync_commit():
+    if _GC_STRATEGY == "collect_sync":
+        gc.collect()
+    elif _GC_STRATEGY == "freeze_sync":
+        gc.collect()
+        gc.freeze()
+    elif _GC_FREEZE_NC:
+        gc.freeze()
+
+
 def _capturing_advance(self, real_frame_ms=None):
+    if _GC_THRESHOLD_OVERRIDE is not None and _gameplay_frame[0] == 0:
+        gc.set_threshold(*_GC_THRESHOLD_OVERRIDE)
+    if _GC_STRATEGY == "freeze_start" and _gameplay_frame[0] == 0:
+        gc.collect()
+        gc.freeze()
+    elif _GC_FREEZE_NC and _gameplay_frame[0] == 0:
+        gc.freeze()
+    # GC time for this frame was keyed under the index current while it ran
+    # (before this increment) - label the entry with that same index.
+    frame_index = _gameplay_frame[0]
     _gameplay_frame[0] += 1
     if self.enabled and self.sections:
         _captured.append({
             "frame_ms": real_frame_ms,
-            "frame_index": _gameplay_frame[0],
+            "frame_index": frame_index,
             "sections": dict(self.sections),
             "metrics": dict(self.metrics),
         })
@@ -107,6 +170,32 @@ def _auto_enabled_init(self, *args, **kwargs):
 
 
 performance_module.FrameProfiler.__init__ = _auto_enabled_init
+
+# Keep the gameplay PedestrianManager (not the CyclistManager subclass) so
+# its sync/route counters can be reported (bin-loader-v9.md).
+from theroadragetrip import pedestrian as pedestrian_module  # noqa: E402
+
+_pedestrian_managers = []
+_real_pedestrian_init = pedestrian_module.PedestrianManager.__init__
+
+
+def _tracking_pedestrian_init(self, *args, **kwargs):
+    _real_pedestrian_init(self, *args, **kwargs)
+    if type(self) is pedestrian_module.PedestrianManager:
+        _pedestrian_managers.append(self)
+
+
+pedestrian_module.PedestrianManager.__init__ = _tracking_pedestrian_init
+_real_commit_incremental_sync = pedestrian_module.PedestrianManager._commit_incremental_sync
+
+
+def _hooked_commit_incremental_sync(self):
+    _real_commit_incremental_sync(self)
+    if _pedestrian_managers and self is _pedestrian_managers[-1]:
+        _after_map_sync_commit()
+
+
+pedestrian_module.PedestrianManager._commit_incremental_sync = _hooked_commit_incremental_sync
 
 # The game reads continuous key state (pygame.key.get_pressed()) for
 # driving, not discrete events - a plain defaultdict stands in for the
@@ -168,7 +257,7 @@ def _percentile(values: list[float], pct: float) -> float:
 # frame; "rendering" wraps every render:* stage) - bin-loader-v4.md #10.
 # Excluding these from a frame's "accounted for" sum avoids double-counting
 # a stage as both itself and part of its own parent.
-_PARENT_SECTIONS = {"rendering", "map_sync", "render:illuminated_windows", "render:lighting:street_lights"}  # last is nested inside render:lighting (bin-loader-v6.md)
+_PARENT_SECTIONS = {"rendering", "map_sync", "render:illuminated_windows", "render:lighting:street_lights", "render:lighting:street_light_cache", "render:lighting:street_lights:prepare", "pedestrians", "map_sync:pedestrians", "pedestrians:wait", "map_sync:pedestrians:wait", "pedestrians:route_nearest", "pedestrians:route_search"}  # last is nested inside render:lighting (bin-loader-v6.md)
 
 
 def _exclusive_sections(sections: dict[str, float]) -> dict[str, float]:
@@ -226,7 +315,11 @@ def run_scenario(name: str, city: str, frames: int, drive: bool, spike_threshold
     cache_stats_before = dict(roads_module._street_light_cache_stats)
 
     _captured.clear()
+    _pedestrian_managers.clear()
     _gc_time_by_frame.clear()
+    _gc_full_events.clear()
+    for stats in _gc_by_gen.values():
+        stats.update(count=0, ms=0.0, max_ms=0.0, collected=0, uncollectable=0)
     _held_keys.clear()
     _gameplay_frame[0] = 0
     _entry_stage[0] = 0
@@ -267,6 +360,24 @@ def run_scenario(name: str, city: str, frames: int, drive: bool, spike_threshold
         count = sum(1 for ms in frame_ms if ms >= threshold)
         print(f"  frames >= {threshold:.0f}ms: {count}")
     print(f"  gc time total: {sum(_gc_time_by_frame.values()):.1f}ms across {len(_gc_time_by_frame)} frames")
+    for gen, stats in _gc_by_gen.items():
+        print(f"  gc gen{gen}: count={stats['count']} total={stats['ms']:.1f}ms max={stats['max_ms']:.1f}ms "
+              f"collected={stats['collected']} uncollectable={stats['uncollectable']}")
+    for event in _gc_full_events:
+        print(f"    gen2 frame#{event['frame']:<5} {event['ms']:>7.1f}ms collected={event['collected']:<7} "
+              f"rss={event['rss_mb']:.0f}MB" + (f" tracked={event['tracked']}" if event["tracked"] is not None else ""))
+    if _GC_COUNT_OBJECTS:
+        from collections import Counter
+        census = Counter(type(obj).__name__ for obj in gc.get_objects())
+        print("  tracked-object census (top 15): " + ", ".join(f"{name}={count}" for name, count in census.most_common(15)))
+        before = len(gc.get_objects())
+        found = gc.collect()
+        print(f"  forced full collect at end: tracked {before} -> {len(gc.get_objects())}, unreachable found={found}")
+    print(f"  gc strategy={_GC_STRATEGY} threshold={gc.get_threshold()} frozen={gc.get_freeze_count()} "
+          f"rss_end={_rss_mb():.0f}MB tracked_end={len(gc.get_objects())}")
+    print("  pedestrian sync: " + ", ".join(
+        f"{name}={value}" for name, value in (_pedestrian_managers[-1].sync_stats.items() if _pedestrian_managers else ())
+    ))
     print("  street-light cache: " + ", ".join(
         f"{name}={value - cache_stats_before[name]}"
         for name, value in roads_module._street_light_cache_stats.items()

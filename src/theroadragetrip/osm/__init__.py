@@ -96,6 +96,7 @@ from .trees import (
     classify_tree_kind,
     plant_trees,
     remove_trees_under_roads,
+    remove_trees_under_roads_steps,
 )
 
 from .build import (

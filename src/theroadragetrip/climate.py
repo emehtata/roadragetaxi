@@ -58,6 +58,25 @@ def seasonal_appearance_for_date(day: date, latitude: float) -> SeasonalAppearan
     return SeasonalAppearance(autumn=1.0 - winter_progress, winter=winter_progress)
 
 
+FULL_SNOW_COVER_DEPTH_CM = 10.0  # observed snow depth at which the ground reads fully white
+
+
+def appearance_with_snow_depth(appearance: SeasonalAppearance, snow_depth_cm: float) -> SeasonalAppearance:
+    """Replace the date-based snow weight with an observed snow depth.
+
+    Snow cover (the `winter` weight) follows the real depth; the vegetation
+    weights keep their date-based proportions in the remainder. A snowless
+    winter date reads as late autumn (bare ground). Snow is rounded to 0.1
+    steps so hourly depth changes don't rebuild every static render cache.
+    """
+    snow = round(_smoothstep(snow_depth_cm / FULL_SNOW_COVER_DEPTH_CM) * 10.0) / 10.0
+    others = (appearance.spring, appearance.summer, appearance.autumn)
+    total = sum(others)
+    spring, summer, autumn = (value / total for value in others) if total > 1e-9 else (0.0, 0.0, 1.0)
+    rest = 1.0 - snow
+    return SeasonalAppearance(winter=snow, spring=spring * rest, summer=summer * rest, autumn=autumn * rest)
+
+
 def typical_daily_mean_temperature(day: date, latitude: float) -> float:
     """Return a smooth climatological daily mean for Finland in °C."""
     latitude_delta = max(0.0, min(12.0, latitude - REFERENCE_LATITUDE))

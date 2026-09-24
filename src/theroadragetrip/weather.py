@@ -12,10 +12,12 @@ like this one, not the other way around) - render/weather.py converts to
 pixels at draw time using whatever screen size it's actually given.
 """
 import copy
+import math
 import random
 from enum import Enum
 from typing import Optional
 from .calendar import Season
+from .weather_history import precipitation_from_observation
 
 
 class WeatherType(str, Enum):
@@ -76,6 +78,31 @@ SPLASH_LIFETIME_S = 0.5
 SPLASH_MIN_SPEED_MPS = 1.0  # below this, "driving through" doesn't splash
 SPLASH_POOL_MAX = 40  # defensive cap; splashes expire well before this matters
 
+# Wind: mean speed/direction follow an observation (historical weather) or
+# a generated random walk in game time; gusts ride on top in real time so
+# they look the same at any time_scale. Direction is meteorological: the
+# compass bearing the wind blows FROM (0 = north, 90 = east).
+WIND_WEIBULL_SCALE_MPS = 5.0  # generated mean speeds: typical ~4 m/s, storms rare
+WIND_WEIBULL_SHAPE = 2.0
+WIND_CHANGE_INTERVAL_S = (60.0 * 60.0, 3.0 * 60.0 * 60.0)  # new generated target every 1-3 game hours
+WIND_DIRECTION_WANDER_DEG = 40.0
+WIND_SETTLE_S = 20.0 * 60.0  # game-time constant towards a new mean
+WIND_GUST_AMPLITUDE = 0.35  # +-35% of the mean speed
+TREE_LEAN_PER_WIND_SQ = 0.004  # crown shift m per (m/s)^2: 10 m/s -> 0.4 m, 20 m/s -> 1.6 m
+TREE_MAX_LEAN_M = 2.0
+
+
+def weather_type_for_observation(kind: str, temperature_c: Optional[float]) -> WeatherType:
+    """Map precipitation_from_observation()'s kind to a WeatherType; an
+    untyped "precipitation" falls as snow/slush/rain by temperature."""
+    if kind == "":
+        return WeatherType.CLEAR
+    if kind != "precipitation":
+        return WeatherType(kind)
+    if temperature_c is None or temperature_c <= SNOW_MAX_TEMPERATURE_C:
+        return WeatherType.SNOW
+    return WeatherType.SLUSH if temperature_c < SLUSH_MAX_TEMPERATURE_C else WeatherType.RAIN
+
 
 class WeatherSystem:
     """Owns the current weather type and road wetness.
@@ -90,6 +117,7 @@ class WeatherSystem:
         self._season = season
         self._outside_temperature_c: Optional[float] = None
         self.weather_type = weather_type or WeatherType.CLEAR
+        self._following_observation = False
         self.wetness = 0.0  # 0.0 dry .. 1.0 fully wet; independent of weather_type -
         # CLEAR does not imply dry, e.g. right after rain stops (see #9).
         self._rng = random.Random()
@@ -112,6 +140,11 @@ class WeatherSystem:
         # and pruned in update() - never grows large enough to need the
         # rain-particle pool's recycle-in-place treatment.
         self.splashes: list = []
+        self.wind_speed_mps = self._rng.weibullvariate(WIND_WEIBULL_SCALE_MPS, WIND_WEIBULL_SHAPE)
+        self.wind_from_deg = self._rng.uniform(0.0, 360.0)
+        self._wind_target = (self.wind_speed_mps, self.wind_from_deg)
+        self._wind_timer = self._rng.uniform(*WIND_CHANGE_INTERVAL_S)
+        self._gust_time = self._rng.uniform(0.0, 100.0)
         if not self._automatic and self.weather_type == WeatherType.RAIN:
             self._roll_thunderstorm()
 
@@ -247,6 +280,61 @@ class WeatherSystem:
         """Game seconds left in the current automatic weather period."""
         return max(0.0, self._weather_timer) if self._automatic else None
 
+    @property
+    def gust_factor(self) -> float:
+        """Real-time gust multiplier on wind_speed_mps (two incommensurate
+        sines: irregular, smooth, no per-frame randomness)."""
+        t = self._gust_time
+        return 1.0 + WIND_GUST_AMPLITUDE * (0.6 * math.sin(t * 0.9) + 0.4 * math.sin(t * 2.3 + 1.7))
+
+    @property
+    def wind_vector_mps(self) -> tuple:
+        """Gusty wind velocity in world metres (east, north): where the air
+        moves TO, i.e. opposite wind_from_deg."""
+        speed = self.wind_speed_mps * self.gust_factor
+        bearing = math.radians(self.wind_from_deg)
+        return (-math.sin(bearing) * speed, -math.cos(bearing) * speed)
+
+    @property
+    def tree_lean_m(self) -> tuple:
+        """Downwind crown displacement (east, north) seen from above; grows
+        with wind pressure (speed squared) and sways with the gusts."""
+        east, north = self.wind_vector_mps
+        speed = math.hypot(east, north)
+        if speed < 1e-6:
+            return (0.0, 0.0)
+        lean = min(TREE_MAX_LEAN_M, TREE_LEAN_PER_WIND_SQ * speed * speed)
+        return (east / speed * lean, north / speed * lean)
+
+    def _advance_wind(self, game_dt: float, observed) -> None:
+        observed_speed = getattr(observed, "wind_speed_mps", None)
+        if observed_speed is not None:
+            observed_from = getattr(observed, "wind_from_deg", None)
+            self._wind_target = (observed_speed, self._wind_target[1] if observed_from is None else observed_from)
+        else:
+            self._wind_timer -= game_dt
+            if self._wind_timer <= 0.0:
+                self._wind_timer = self._rng.uniform(*WIND_CHANGE_INTERVAL_S)
+                self._wind_target = (
+                    self._rng.weibullvariate(WIND_WEIBULL_SCALE_MPS, WIND_WEIBULL_SHAPE),
+                    (self._wind_target[1] + self._rng.gauss(0.0, WIND_DIRECTION_WANDER_DEG)) % 360.0,
+                )
+        blend = 1.0 - math.exp(-game_dt / WIND_SETTLE_S)
+        target_speed, target_from = self._wind_target
+        self.wind_speed_mps += (target_speed - self.wind_speed_mps) * blend
+        turn = (target_from - self.wind_from_deg + 180.0) % 360.0 - 180.0  # shortest way round
+        self.wind_from_deg = (self.wind_from_deg + turn * blend) % 360.0
+
+    def _follow_observation(self, kind: str, thunder: bool) -> None:
+        self._following_observation = True
+        weather_type = weather_type_for_observation(kind, self._outside_temperature_c)
+        thunder = thunder and weather_type == WeatherType.RAIN
+        if weather_type != self.weather_type or thunder != self.is_thunderstorm:
+            self.weather_type = weather_type
+            self.is_thunderstorm = thunder
+            self.lightning_intensity = 0.0
+            self._lightning_timer = self._rng.uniform(*LIGHTNING_INTERVAL_RANGE_S)
+
     def toggle_rain(self) -> None:
         """Debug toggle (F8), disabling automatic changes for this session."""
         self._automatic = False
@@ -262,8 +350,14 @@ class WeatherSystem:
         game_dt: float,
         real_dt: float,
         outside_temperature_c: Optional[float] = None,
+        observed=None,
     ) -> None:
         """Advance wetness (game time) and rain particles (real time).
+
+        `observed` (weather_history.HourlyWeather, historical-weather mode):
+        when it tells whether it is precipitating, that replaces the
+        generated weather for this hour; otherwise the generator runs,
+        continuing from whatever was last observed.
 
         `game_dt` is dt * time_scale - the same delta main() uses to
         advance game_time_seconds - so drying/wetting tracks the game
@@ -273,9 +367,23 @@ class WeatherSystem:
         """
         if outside_temperature_c is not None:
             self._outside_temperature_c = float(outside_temperature_c)
+        if real_dt > 0.0:
+            self._gust_time += real_dt
         if game_dt > 0.0:
-            self._advance_automatic_weather(game_dt)
-            self._apply_precipitation_temperature()
+            self._advance_wind(game_dt, observed)
+            observed_kind, observed_thunder = (
+                precipitation_from_observation(observed) if observed is not None else (None, False)
+            )
+            if self._automatic and observed_kind is not None:
+                self._follow_observation(observed_kind, observed_thunder)
+            else:
+                if self._following_observation:
+                    # Observations ended (e.g. game time passed "now"): the
+                    # generator takes over from the last observed state.
+                    self._following_observation = False
+                    self._weather_timer = self._next_weather_duration()
+                self._advance_automatic_weather(game_dt)
+                self._apply_precipitation_temperature()
             if self.weather_type in (WeatherType.RAIN, WeatherType.SLUSH):
                 self.wetness = min(1.0, self.wetness + game_dt / RAIN_WETTING_DURATION_S)
             elif self.road_ice_fraction > 0.0:

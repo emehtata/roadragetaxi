@@ -13,6 +13,7 @@ from typing import List, Optional, Tuple
 
 
 from ..osm import Way
+from ..residents import ResidentManager
 
 
 STREET_LIGHT_REFLECTOR_RADIUS_M = 10.0
@@ -236,7 +237,9 @@ def draw_resident_popup(
     if resident is None:
         return
     birth_date = getattr(resident, "birth_date", None)
-    birth_text = birth_date.isoformat() if birth_date is not None else "-"
+    birth_text = (
+        f"{birth_date.isoformat()} ({ResidentManager.age_of(resident)} v)" if birth_date is not None else "-"
+    )
     vehicle_count = len(getattr(resident, "vehicle_ids", ()))
     residents = residents or {}
 

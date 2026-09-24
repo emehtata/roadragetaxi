@@ -144,19 +144,27 @@ def test_spawn_fails_cleanly_when_no_route_exists():
     assert len(residents.residents) == 0
 
 
-def test_spawn_rejects_a_route_that_shortcuts_across_empty_land():
-    """Regression: plan_route's nearest-node search can, on a small/
+def test_spawn_follows_the_road_instead_of_shortcutting_across_empty_land():
+    """Regression: plan_route's nearest-node search could, on a small/
     lopsided graph, pick a node close to the START as a cheaper stand-in
-    "last mile" target than the real road path - producing a route that
-    quietly cuts across a corner instead of following the road through
-    it. spawn_npc must reject that route rather than spawn onto it."""
+    "last mile" target than the real road path - a route that quietly cut
+    across the corner. Off-road connectors now cost ROUTE_CONNECTOR_COST_
+    FACTOR x their length, so the planner drives the corner; and a route
+    that still cuts across is rejected by validation, never spawned onto."""
+    from theroadragetrip.npc import route_stays_on_road
+
     way1 = Way(points_m=[(0.0, 0.0), (100.0, 0.0)], highway="residential", half_width_m=4.5)
     way2 = Way(points_m=[(100.0, 0.0), (100.0, 100.0)], highway="residential", half_width_m=4.5)
     tw = TrafficWorld([way1, way2])
+    assert (100.0, 0.0) in tw.plan_route((0.0, 0.0), (100.0, 100.0))  # through the corner
+
     residents = ResidentManager()
     result = spawn_npc(1, residents, tw, [way1, way2], (0.0, 0.0), (100.0, 100.0))
-    assert result is None
-    assert len(residents.residents) == 0
+    assert result is not None
+    _, driver, _ = result
+    assert all(min(abs(p.y), abs(p.x - 100.0)) < 10.0 for p in driver.path)  # never off the two roads
+
+    assert not route_stays_on_road([(0.0, 0.0), (100.0, 100.0)], [way1, way2])  # the shortcut itself
 
 
 def test_route_progression_advances():
@@ -2082,3 +2090,38 @@ def test_continue_npc_trip_rerolls_the_activity_for_the_next_stop():
     ok = continue_npc_trip(vehicle, driver, tw, ways)
     assert ok is True
     assert vehicle.trip_group.activity_type  # still set, not cleared
+
+
+def test_npc_turn_signal_blinks_before_and_through_a_junction_turn_only():
+    from theroadragetrip.npc import PathPoint, _next_turn_signal
+
+    road_a = Way(points_m=[(0.0, 0.0), (100.0, 0.0)], highway="residential", half_width_m=4.0)
+    road_b = Way(points_m=[(100.0, 0.0), (100.0, 100.0)], highway="residential", half_width_m=4.0)
+    path = [PathPoint(float(x), 0.0, road_a) for x in range(0, 100, 10)]
+    path += [PathPoint(100.0 + dx, dy, road_b, is_turn=True, maneuver="left") for dx, dy in ((1.0, 1.0), (2.0, 3.0))]
+    path += [PathPoint(102.0, float(y), road_b) for y in range(10, 60, 10)]
+
+    assert _next_turn_signal(path, 1, 10.0, 0.0, 30.0) == ""        # turn is 90 m away
+    assert _next_turn_signal(path, 8, 75.0, 0.0, 30.0) == "left"    # within the lead distance
+    assert _next_turn_signal(path, 11, 101.0, 1.0, 30.0) == "left"  # still mid-turn
+    assert _next_turn_signal(path, 13, 102.0, 10.0, 30.0) == ""     # turn completed
+
+    # A bend that stays on the same road never blinks.
+    bend = [PathPoint(float(x), 0.0, road_a) for x in range(0, 50, 10)]
+    bend += [PathPoint(52.0, 2.0, road_a, is_turn=True, maneuver="right")]
+    assert _next_turn_signal(bend, 1, 10.0, 0.0, 60.0) == ""
+
+
+def test_right_turn_lane_bias_keeps_clear_of_the_road_edge():
+    """The right-turn bias used to put the body exactly on the road edge,
+    so a kerb mapped there rejected nearly every route with a right turn."""
+    from theroadragetrip.npc import (
+        CURB_CLEARANCE_MARGIN_M, NPC_VEHICLE_WIDTH_M, _lane_offset_point,
+    )
+
+    for half_width in (3.0, 4.0, 6.0):
+        road = Way(points_m=[(0.0, 0.0), (100.0, 0.0)], highway="residential", half_width_m=half_width)
+        cruise = -_lane_offset_point(road, 50.0, 0.0, 0.0)[1]
+        right = -_lane_offset_point(road, 50.0, 0.0, 0.0, maneuver="right")[1]
+        assert cruise <= right
+        assert half_width - (right + NPC_VEHICLE_WIDTH_M / 2) > CURB_CLEARANCE_MARGIN_M or right == cruise

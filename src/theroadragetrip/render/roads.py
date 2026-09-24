@@ -32,6 +32,7 @@ from shapely.ops import unary_union
 
 from ..geo import dist_point_to_segment, point_in_polygon
 from ..osm import Building, BusStop, TaxiStop, Way
+from ..performance import advance_chunked
 
 
 BRIDGE_GUARDRAIL_COLOR = (196, 200, 204)  # light guardrail, contrasts against dark asphalt - shared by road and rail bridges so both read as the same "elevated structure" cue
@@ -66,12 +67,12 @@ STREET_LIGHT_CORE_COLOR = (215, 215, 200, 230)
 STREET_LIGHT_EXPLICIT_LAMP_MAX_DISTANCE_M = 15.0
 STREET_LIGHT_ROAD_INDEX_CELL_M = 24.0
 STREET_LIGHT_CACHE_BUDGET_S = 0.004
+# Separate from placement's budget above so preparation (building/junction/
+# classification/segment indexing) and placement are measured independently.
+STREET_LIGHT_PREP_BUDGET_S = 0.004
 _asphalt_texture_tile = None
 _asphalt_texture_source = None
 _asphalt_texture_tile_size = None
-_street_light_junction_cache = None
-_street_light_junction_grid_cache = None
-_street_light_building_grid_cache = None
 _taxi_sign_text = None
 _bus_stop_geometry_cache = None
 _bus_stop_font_cache = {}
@@ -89,9 +90,10 @@ _street_light_geometry_region = None
 _street_light_geometry_generation = 0
 _street_light_geometry_wip = None
 _street_light_geometry_pending = None
-_street_light_cache_stats = {"rebuilds": 0, "update_frames": 0, "extensions": 0}
-_street_light_way_lit_cache_key = None
-_street_light_way_lit_cache = {}
+_street_light_cache_stats = {
+    "rebuilds": 0, "update_frames": 0, "extensions": 0, "revision_changes": 0,
+    "prepare_frames": 0, "prepare_completed": 0, "placement_frames": 0, "snapshot_items": 0,
+}
 _street_light_last_debug_log_ms = 0
 # In-progress incremental roads-cache rebuild, or None - see draw_ways/
 # _start_road_rebuild/_advance_road_rebuild. A real drive showed a normal
@@ -108,6 +110,20 @@ _street_light_last_debug_log_ms = 0
 # turn to stay cheap, so it simply advances every frame it has pending work.
 _road_wip = None
 
+# Street-verge paving: in a city centre the strip between a road's edge and
+# a separately mapped sidewalk is paved, but only the sidewalk line is
+# mapped - the unmapped verge showed the grass base layer as a green stripe
+# down both sides of e.g. Oulu's Rantakatu. A footway segment running
+# parallel to a road is filled back to the road edge, only where a building
+# stands close by: suburban cycle paths often sit behind real grass verges,
+# and measured Oulu verge widths are alike in both, so width can't tell.
+VERGE_PAVED_PATH_TYPES = {"footway", "cycleway", "path", "pedestrian"}
+VERGE_MAX_WIDTH_M = 6.0
+VERGE_MAX_ANGLE_RAD = math.radians(20.0)
+VERGE_BUILDING_DISTANCE_M = 8.0
+VERGE_OUTER_PAVING_M = 3.0  # also pave this far beyond the sidewalk's outer edge (building frontage)
+VERGE_ROAD_CELL_M = 20.0
+
 
 def draw_ways(
     screen,
@@ -119,6 +135,7 @@ def draw_ways(
     screen_h: int = SCREEN_H,
     spatial_grid=None,
     profiler=None,
+    building_grid=None,
 ) -> None:
     """Draw road ways intersecting viewport with highway-type proportional thickness and layer ordering.
 
@@ -168,7 +185,9 @@ def draw_ways(
 
     is_first_ever_build = common._road_frame_cache_surface is None
     if _road_wip is None:
-        _road_wip = _start_road_rebuild(ways, spatial_grid, road_cache_key, camx, camy, cache_zoom, screen_w, screen_h)
+        _road_wip = _start_road_rebuild(
+            ways, spatial_grid, road_cache_key, camx, camy, cache_zoom, screen_w, screen_h, building_grid,
+        )
 
     rebuild_started = time.perf_counter() if profiler is not None else None
     # The very first build has nothing to fall back to while it works, so
@@ -199,9 +218,64 @@ def draw_ways(
         )
 
 
+def _paved_verge_quad(a, b, path_half_width, road_segment_grid, building_grid):
+    """World-space quad paving the verge between footway segment a-b and
+    the road edge it runs alongside, or None (not a street sidewalk)."""
+    mid_x, mid_y = (a[0] + b[0]) * 0.5, (a[1] + b[1]) * 0.5
+    seg_dx, seg_dy = b[0] - a[0], b[1] - a[1]
+    seg_len = math.hypot(seg_dx, seg_dy)
+    if seg_len < 0.5:
+        return None
+    best = None
+    cell = (math.floor(mid_x / VERGE_ROAD_CELL_M), math.floor(mid_y / VERGE_ROAD_CELL_M))
+    for p, q, road_half_width in road_segment_grid.get(cell, ()):
+        road_dx, road_dy = q[0] - p[0], q[1] - p[1]
+        road_len_sq = road_dx * road_dx + road_dy * road_dy
+        if road_len_sq < 1e-6:
+            continue
+        cross = abs(seg_dx * road_dy - seg_dy * road_dx) / (seg_len * math.sqrt(road_len_sq))
+        if cross > math.sin(VERGE_MAX_ANGLE_RAD):
+            continue
+        t = max(0.0, min(1.0, ((mid_x - p[0]) * road_dx + (mid_y - p[1]) * road_dy) / road_len_sq))
+        distance = math.hypot(mid_x - (p[0] + road_dx * t), mid_y - (p[1] + road_dy * t))
+        gap = distance - road_half_width - path_half_width
+        if 0.2 < gap <= VERGE_MAX_WIDTH_M and (best is None or distance < best[0]):
+            best = (distance, p, q, road_half_width)
+    if best is None:
+        return None
+    reach = VERGE_BUILDING_DISTANCE_M
+    if not any(
+        getattr(building, "bbox", None)
+        and building.bbox[0] - reach <= mid_x <= building.bbox[2] + reach
+        and building.bbox[1] - reach <= mid_y <= building.bbox[3] + reach
+        for building in building_grid.ways_in_rect(mid_x - reach, mid_y - reach, mid_x + reach, mid_y + reach)
+    ):
+        return None
+    _distance, p, q, road_half_width = best
+    road_dx, road_dy = q[0] - p[0], q[1] - p[1]
+    road_len_sq = road_dx * road_dx + road_dy * road_dy
+
+    def across(point, offset_from_centre):
+        """Point on the line through `point` perpendicular to the road, at
+        offset_from_centre from the road centreline (footway side)."""
+        t = ((point[0] - p[0]) * road_dx + (point[1] - p[1]) * road_dy) / road_len_sq
+        foot = (p[0] + road_dx * t, p[1] + road_dy * t)
+        away_x, away_y = point[0] - foot[0], point[1] - foot[1]
+        away = math.hypot(away_x, away_y) or 1.0
+        return (foot[0] + away_x / away * offset_from_centre(away), foot[1] + away_y / away * offset_from_centre(away))
+
+    def outer(distance):
+        return distance + path_half_width + VERGE_OUTER_PAVING_M
+
+    def edge(_distance):
+        return road_half_width
+
+    return [across(a, outer), across(b, outer), across(b, edge), across(a, edge)]
+
+
 def _start_road_rebuild(
     ways: List[Way], spatial_grid, road_cache_key, camx: float, camy: float, cache_zoom: float,
-    screen_w: int, screen_h: int,
+    screen_w: int, screen_h: int, building_grid=None,
 ) -> dict:
     """Begin a new incremental roads-cache rebuild job: the one-shot setup
     (visible-way selection, sort, endpoint bucketing) that's genuinely
@@ -276,8 +350,22 @@ def _start_road_rebuild(
         cell = (math.floor(point[0] / endpoint_cell_size), math.floor(point[1] / endpoint_cell_size), layer, is_drivable)
         endpoint_cells.setdefault(cell, []).append(endpoint)
 
+    # Street-verge paving (see _paved_verge_quad): ground-level drivable
+    # segments indexed once per rebuild, only when buildings are known.
+    road_segment_grid = {}
+    if building_grid is not None and px_per_m > 1.5:
+        for way in visible_ways:
+            if not way.is_drivable or getattr(way, "layer", 0) != 0 or getattr(way, "is_bridge", False):
+                continue
+            for a, b in zip(way.points_m, way.points_m[1:]):
+                for cell_x in range(math.floor(min(a[0], b[0]) / VERGE_ROAD_CELL_M), math.floor(max(a[0], b[0]) / VERGE_ROAD_CELL_M) + 1):
+                    for cell_y in range(math.floor(min(a[1], b[1]) / VERGE_ROAD_CELL_M), math.floor(max(a[1], b[1]) / VERGE_ROAD_CELL_M) + 1):
+                        road_segment_grid.setdefault((cell_x, cell_y), []).append((a, b, way.half_width_m))
+
     return {
         "key": road_cache_key,
+        "building_grid": building_grid,
+        "road_segment_grid": road_segment_grid,
         "camera": (camx, camy),
         "px_per_m": px_per_m,
         "screen_w": cache_width,
@@ -619,6 +707,15 @@ def _advance_road_rebuild(job: dict, deadline: float) -> bool:
             # Pedestrian paths, footways, cycleways, sidewalks.
             ped_thickness = max(1, int(getattr(w, "half_width_m", 1.2) * 2 * px_per_m))
             ped_color = road_color_for_way(w)
+            if job["road_segment_grid"] and w.highway in VERGE_PAVED_PATH_TYPES and getattr(w, "layer", 0) == 0 \
+                    and not getattr(w, "is_bridge", False) and not getattr(w, "is_tunnel", False):
+                for a, b in zip(w.points_m, w.points_m[1:]):
+                    quad = _paved_verge_quad(a, b, w.half_width_m, job["road_segment_grid"], job["building_grid"])
+                    if quad is not None:
+                        pygame.draw.polygon(
+                            screen, ped_color,
+                            [world_to_screen(x, y, camx, camy, px_per_m, screen_w, screen_h) for x, y in quad],
+                        )
             connections = [
                 (pts[0], world_to_screen(*endpoint_connections[(id(w), 0)], camx, camy, px_per_m, screen_w, screen_h))
                 for endpoint in (0,)
@@ -866,46 +963,367 @@ def _way_should_have_street_lighting(
     )
 
 
+STREET_LIGHT_URBAN_HIGHWAYS = frozenset({
+    "primary", "primary_link", "secondary", "secondary_link",
+    "tertiary", "tertiary_link", "unclassified", "residential",
+    "living_street", "service",
+})
+STREET_LIGHT_LAMP_INDEX_CELL_M = 200.0
+_STREET_LIGHT_PREP_PHASES = (
+    "buildings", "junction_points", "junctions", "classification", "segments", "explicit_lamps",
+)
+
+
+def _record_street_light_stage(profiler, name, started):
+    if profiler is not None:
+        profiler.record(
+            "render:lighting:street_lights:" + name, (time.perf_counter() - started) * 1000.0
+        )
+
+
+def _street_light_way_bbox(way):
+    bbox = getattr(way, "bbox", None)
+    if not bbox or bbox == (0.0, 0.0, 0.0, 0.0):
+        xs = [point[0] for point in way.points_m]
+        ys = [point[1] for point in way.points_m]
+        bbox = (min(xs), min(ys), max(xs), max(ys))
+    return bbox
+
+
+def _way_is_street_light_candidate(way) -> bool:
+    return (
+        getattr(way, "is_drivable", True)
+        and (_way_has_street_lighting(way) or getattr(way, "highway", "") in STREET_LIGHT_URBAN_HIGHWAYS)
+        and len(way.points_m) >= 2
+    )
+
+
+def _snapshot_street_light_job(
+    key, region, ways, spatial_grid, buildings, building_spatial_grid, street_lamps, street_lamp_grid,
+):
+    """Capture every contributor a job will read, once, from the completed
+    grids - later frames never query the live (possibly newer) grids."""
+    minx, miny, maxx, maxy = region
+    visible_ways = (
+        list(spatial_grid.ways_in_rect(minx, miny, maxx, maxy))
+        if spatial_grid is not None else list(ways)
+    )
+    margin = STREET_LIGHT_BUILDING_DISTANCE_M
+    nearby_buildings = (
+        list(building_spatial_grid.ways_in_rect(minx - margin, miny - margin, maxx + margin, maxy + margin))
+        if building_spatial_grid is not None else list(buildings or ())
+    )
+    # Explicit lamps are matched against each way's whole bbox (ways run
+    # past the region), so snapshot the union of those query rectangles.
+    explicit_lamps = []
+    if street_lamp_grid is not None and street_lamps:
+        bounds = None
+        for way in visible_ways:
+            if not _way_is_street_light_candidate(way):
+                continue
+            lamp_margin = getattr(way, "half_width_m", 4.0) + STREET_LIGHT_EXPLICIT_LAMP_MAX_DISTANCE_M
+            bbox = _street_light_way_bbox(way)
+            rect = (bbox[0] - lamp_margin, bbox[1] - lamp_margin, bbox[2] + lamp_margin, bbox[3] + lamp_margin)
+            bounds = rect if bounds is None else (
+                min(bounds[0], rect[0]), min(bounds[1], rect[1]),
+                max(bounds[2], rect[2]), max(bounds[3], rect[3]),
+            )
+        if bounds is not None:
+            explicit_lamps = list(street_lamp_grid.ways_in_rect(*bounds))
+    return {
+        "key": key,
+        "region": region,
+        "ways": visible_ways,
+        "buildings": nearby_buildings,
+        "explicit_lamps": explicit_lamps,
+        "phase": _STREET_LIGHT_PREP_PHASES[0],
+        "cursor": 0,
+        "building_grid": {},
+        "point_ways": {},
+        "junction_items": None,
+        "junction_grid": {},
+        "way_lit_cache": {},
+        "road_grid": {},
+        "lamp_grid": {},
+        "lamp_order": {},
+        "placement_cursor": 0,
+        "lamps": [],
+        "seen": set(),
+    }
+
+
+def _street_light_prep_step(work, phase):
+    """Return (items, process_item) for one resumable preparation phase."""
+    if phase == "buildings":
+        building_grid = work["building_grid"]
+        cell_size = STREET_LIGHT_BUILDING_DISTANCE_M
+
+        def add_building(building):
+            bbox = getattr(building, "bbox", None)
+            if not bbox or bbox == (0.0, 0.0, 0.0, 0.0):
+                return
+            for cell_x in range(math.floor((bbox[0] - cell_size) / cell_size), math.floor((bbox[2] + cell_size) / cell_size) + 1):
+                for cell_y in range(math.floor((bbox[1] - cell_size) / cell_size), math.floor((bbox[3] + cell_size) / cell_size) + 1):
+                    building_grid.setdefault((cell_x, cell_y), []).append(building)
+        return work["buildings"], add_building
+    if phase == "junction_points":
+        point_ways = work["point_ways"]
+
+        def add_points(way):
+            if getattr(way, "is_drivable", True):
+                for point in way.points_m:
+                    point_ways.setdefault((round(point[0] / 5.0), round(point[1] / 5.0)), set()).add(id(way))
+        return work["ways"], add_points
+    if phase == "junctions":
+        if work["junction_items"] is None:
+            work["junction_items"] = list(work["point_ways"].items())
+            work["ways_by_id"] = {id(way): way for way in work["ways"]}
+        ways_by_id = work["ways_by_id"]
+        junction_grid = work["junction_grid"]
+
+        def add_junction(item):
+            key, junction_way_ids = item
+            point = (key[0] * 5.0, key[1] * 5.0)
+            if len(junction_way_ids) >= 2 and any(
+                _way_should_have_street_lighting(ways_by_id[way_id], work["buildings"], point, work["building_grid"])
+                for way_id in junction_way_ids
+            ):
+                cell = (math.floor(point[0] / 40.0), math.floor(point[1] / 40.0))
+                junction_grid.setdefault(cell, []).append(point)
+        return work["junction_items"], add_junction
+    if phase == "classification":
+        way_lit_cache = work["way_lit_cache"]
+
+        def classify(way):
+            if not getattr(way, "is_drivable", True) or len(way.points_m) < 2:
+                way_lit_cache[id(way)] = []
+            elif _way_has_street_lighting(way):
+                way_lit_cache[id(way)] = [True] * (len(way.points_m) - 1)
+            elif getattr(way, "lit", None) == "no" or getattr(way, "highway", "") not in STREET_LIGHT_URBAN_HIGHWAYS:
+                way_lit_cache[id(way)] = [False] * (len(way.points_m) - 1)
+            else:
+                way_lit_cache[id(way)] = [
+                    any(
+                        _point_is_near_building(sample, work["buildings"], work["building_grid"])
+                        for sample in (start, end, ((start[0] + end[0]) * 0.5, (start[1] + end[1]) * 0.5))
+                    )
+                    for start, end in zip(way.points_m, way.points_m[1:])
+                ]
+        return work["ways"], classify
+    if phase == "segments":
+        return work["ways"], lambda way: _index_street_light_road(work["road_grid"], way, work["region"])
+    lamp_grid, lamp_order = work["lamp_grid"], work["lamp_order"]
+    cell_size = STREET_LIGHT_LAMP_INDEX_CELL_M
+
+    def add_lamp(lamp):
+        lamp_order[id(lamp)] = len(lamp_order)
+        lamp_grid.setdefault((math.floor(lamp.x / cell_size), math.floor(lamp.y / cell_size)), []).append(lamp)
+    return work["explicit_lamps"], add_lamp
+
+
+def _advance_street_light_prep(work, profiler=None) -> bool:
+    """Advance preparation phases for up to STREET_LIGHT_PREP_BUDGET_S.
+    Returns True once every phase is done and placement can start."""
+    deadline = time.perf_counter() + STREET_LIGHT_PREP_BUDGET_S
+    while True:
+        phase = work["phase"]
+        started = time.perf_counter()
+        items, process_item = _street_light_prep_step(work, phase)
+        work["cursor"] = advance_chunked(items, work["cursor"], deadline - started, process_item)
+        _record_street_light_stage(profiler, phase, started)
+        if work["cursor"] < len(items):
+            return False
+        phase_index = _STREET_LIGHT_PREP_PHASES.index(phase) + 1
+        work["cursor"] = 0
+        if phase_index == len(_STREET_LIGHT_PREP_PHASES):
+            work["phase"] = "placement"
+            return True
+        work["phase"] = _STREET_LIGHT_PREP_PHASES[phase_index]
+        if time.perf_counter() >= deadline:
+            return False
+
+
+def _street_light_explicit_lamp_candidates(work, minx, miny, maxx, maxy):
+    """Snapshot lamps inside a rect, in the grid query's original order."""
+    cell_size = STREET_LIGHT_LAMP_INDEX_CELL_M
+    found = {}
+    for cell_x in range(math.floor(minx / cell_size), math.floor(maxx / cell_size) + 1):
+        for cell_y in range(math.floor(miny / cell_size), math.floor(maxy / cell_size) + 1):
+            for lamp in work["lamp_grid"].get((cell_x, cell_y), ()):
+                if minx <= lamp.x <= maxx and miny <= lamp.y <= maxy:
+                    found[id(lamp)] = lamp
+    return sorted(found.values(), key=lambda lamp: work["lamp_order"][id(lamp)])
+
+
 def _build_street_light_road_index(ways, bounds=None):
     """Index nearby road segments once for lamp-position overlap checks."""
     segment_grid = {}
-    cell_size = STREET_LIGHT_ROAD_INDEX_CELL_M
     for way in ways:
-        if not getattr(way, "is_drivable", True) or len(way.points_m) < 2:
-            continue
-        half_width = getattr(way, "half_width_m", 3.0)
-        for first, second in zip(way.points_m, way.points_m[1:]):
-            if bounds is not None:
-                dx = second[0] - first[0]
-                dy = second[1] - first[1]
-                segment_length = math.hypot(dx, dy)
-                if segment_length < 1e-6:
-                    continue
-                clipped = _segment_viewport_t_range(
-                    first[0], first[1], dx / segment_length, dy / segment_length,
-                    segment_length,
-                    bounds[0] - half_width, bounds[1] - half_width,
-                    bounds[2] + half_width, bounds[3] + half_width,
-                )
-                if clipped is None:
-                    continue
-                first = (
-                    first[0] + dx / segment_length * clipped[0],
-                    first[1] + dy / segment_length * clipped[0],
-                )
-                second = (
-                    first[0] + dx / segment_length * (clipped[1] - clipped[0]),
-                    first[1] + dy / segment_length * (clipped[1] - clipped[0]),
-                )
-            min_cell_x = math.floor((min(first[0], second[0]) - half_width) / cell_size)
-            max_cell_x = math.floor((max(first[0], second[0]) + half_width) / cell_size)
-            min_cell_y = math.floor((min(first[1], second[1]) - half_width) / cell_size)
-            max_cell_y = math.floor((max(first[1], second[1]) + half_width) / cell_size)
-            segment = (first, second, half_width)
-            for cell_x in range(min_cell_x, max_cell_x + 1):
-                for cell_y in range(min_cell_y, max_cell_y + 1):
-                    segment_grid.setdefault((cell_x, cell_y), []).append(segment)
+        _index_street_light_road(segment_grid, way, bounds)
     return segment_grid
+
+
+def _index_street_light_road(segment_grid, way, bounds=None):
+    cell_size = STREET_LIGHT_ROAD_INDEX_CELL_M
+    if not getattr(way, "is_drivable", True) or len(way.points_m) < 2:
+        return
+    half_width = getattr(way, "half_width_m", 3.0)
+    for first, second in zip(way.points_m, way.points_m[1:]):
+        if bounds is not None:
+            dx = second[0] - first[0]
+            dy = second[1] - first[1]
+            segment_length = math.hypot(dx, dy)
+            if segment_length < 1e-6:
+                continue
+            clipped = _segment_viewport_t_range(
+                first[0], first[1], dx / segment_length, dy / segment_length,
+                segment_length,
+                bounds[0] - half_width, bounds[1] - half_width,
+                bounds[2] + half_width, bounds[3] + half_width,
+            )
+            if clipped is None:
+                continue
+            first = (
+                first[0] + dx / segment_length * clipped[0],
+                first[1] + dy / segment_length * clipped[0],
+            )
+            second = (
+                first[0] + dx / segment_length * (clipped[1] - clipped[0]),
+                first[1] + dy / segment_length * (clipped[1] - clipped[0]),
+            )
+        min_cell_x = math.floor((min(first[0], second[0]) - half_width) / cell_size)
+        max_cell_x = math.floor((max(first[0], second[0]) + half_width) / cell_size)
+        min_cell_y = math.floor((min(first[1], second[1]) - half_width) / cell_size)
+        max_cell_y = math.floor((max(first[1], second[1]) + half_width) / cell_size)
+        segment = (first, second, half_width)
+        for cell_x in range(min_cell_x, max_cell_x + 1):
+            for cell_y in range(min_cell_y, max_cell_y + 1):
+                segment_grid.setdefault((cell_x, cell_y), []).append(segment)
+
+
+def _advance_street_light_placement(work) -> bool:
+    """Place lamps way by way for up to STREET_LIGHT_CACHE_BUDGET_S, always
+    finishing the current way. Returns True once every way is placed."""
+    cached_lamps = work["lamps"]
+    road_segment_grid = work["road_grid"]
+    junction_grid = work["junction_grid"]
+    way_lit_cache = work["way_lit_cache"]
+    region_vminx, region_vminy, region_vmaxx, region_vmaxy = work["region"]
+    lamp_spacing = STREET_LIGHT_SPACING_M
+    junction_cell_size = 40.0
+    # lights.md requirement 1-3: explicit OSM lamp-pole positions are
+    # the primary source whenever mapped, not merely a decoration on
+    # top of the lit=*-driven synthesis below - a real lamp claimed
+    # here is never also re-placed by the fixed-spacing fallback.
+    # Tracked across the whole rebuild (not per-way) so a lamp near
+    # two ways at a junction isn't placed twice.
+    seen_explicit_lamp_ids = work["seen"]
+    ways = work["ways"]
+    deadline = time.perf_counter() + STREET_LIGHT_CACHE_BUDGET_S
+    while work["placement_cursor"] < len(ways):
+        way = ways[work["placement_cursor"]]
+        work["placement_cursor"] += 1
+        if not _way_is_street_light_candidate(way):
+            if time.perf_counter() >= deadline:
+                break
+            continue
+        half_width = getattr(way, "half_width_m", 4.0)
+        explicit_lamps_for_way = []
+        if work["explicit_lamps"]:
+            margin = half_width + STREET_LIGHT_EXPLICIT_LAMP_MAX_DISTANCE_M
+            bbox = _street_light_way_bbox(way)
+            candidates = _street_light_explicit_lamp_candidates(
+                work, bbox[0] - margin, bbox[1] - margin, bbox[2] + margin, bbox[3] + margin,
+            )
+            for lamp in candidates:
+                if id(lamp) in seen_explicit_lamp_ids:
+                    continue
+                nearest_segment = min(
+                    zip(way.points_m, way.points_m[1:]),
+                    key=lambda segment: dist_point_to_segment(lamp.x, lamp.y, *segment[0], *segment[1]),
+                )
+                if dist_point_to_segment(lamp.x, lamp.y, *nearest_segment[0], *nearest_segment[1]) > margin:
+                    continue
+                explicit_lamps_for_way.append((lamp, nearest_segment))
+        if explicit_lamps_for_way:
+            # Real data found for this way - use it exclusively (not
+            # blended with the synthetic spacing below) and move on.
+            for lamp, (seg_start, seg_end) in explicit_lamps_for_way:
+                seen_explicit_lamp_ids.add(id(lamp))
+                seg_dx = seg_end[0] - seg_start[0]
+                seg_dy = seg_end[1] - seg_start[1]
+                seg_len = math.hypot(seg_dx, seg_dy) or 1.0
+                road_direction = math.atan2(seg_dy / seg_len, seg_dx / seg_len)
+                pool_radius_m = half_width + STREET_LIGHT_EXPLICIT_LAMP_MAX_DISTANCE_M * 0.5
+                cached_lamps.append((lamp.x, lamp.y, road_direction, pool_radius_m))
+            if time.perf_counter() >= deadline:
+                break
+            continue
+        distance_to_lamp = 0.0
+        segment_lengths = getattr(way, "segment_lengths", ())
+        segment_lighting = way_lit_cache.get(id(way), ())
+        for segment_index, (start, end) in enumerate(zip(way.points_m, way.points_m[1:])):
+            dx = end[0] - start[0]
+            dy = end[1] - start[1]
+            segment_length = (
+                segment_lengths[segment_index]
+                if segment_index < len(segment_lengths)
+                else math.hypot(dx, dy)
+            )
+            if segment_length < 1.0:
+                continue
+            segment_phase = distance_to_lamp
+            edge_distance = half_width + 1.0
+            clipped = _segment_viewport_t_range(
+                start[0], start[1], dx / segment_length, dy / segment_length,
+                segment_length,
+                region_vminx - edge_distance, region_vminy - edge_distance,
+                region_vmaxx + edge_distance, region_vmaxy + edge_distance,
+            )
+            if clipped is None:
+                distance_to_lamp = (segment_phase - segment_length) % lamp_spacing
+                if distance_to_lamp < 1e-9:
+                    distance_to_lamp = lamp_spacing
+                continue
+            placement_limit = clipped[1]
+            if distance_to_lamp < clipped[0]:
+                distance_to_lamp += math.ceil(
+                    (clipped[0] - distance_to_lamp) / lamp_spacing
+                ) * lamp_spacing
+            while distance_to_lamp <= placement_limit:
+                fraction = distance_to_lamp / segment_length
+                lamp_x = start[0] + dx * fraction
+                lamp_y = start[1] + dy * fraction
+                normal_x = -dy / segment_length
+                normal_y = dx / segment_length
+                if segment_index < len(segment_lighting) and segment_lighting[segment_index]:
+                    for side in (-1.0, 1.0):
+                        world_x = lamp_x + normal_x * edge_distance * side
+                        world_y = lamp_y + normal_y * edge_distance * side
+                        if _point_overlaps_indexed_road(
+                            world_x, world_y, road_segment_grid
+                        ):
+                            continue
+                        junction_cell_x = math.floor(world_x / junction_cell_size)
+                        junction_cell_y = math.floor(world_y / junction_cell_size)
+                        if any(
+                            (world_x - junction_x) ** 2 + (world_y - junction_y) ** 2
+                            < STREET_LIGHT_JUNCTION_CLEARANCE_M * STREET_LIGHT_JUNCTION_CLEARANCE_M
+                            for cell_x in (junction_cell_x - 1, junction_cell_x, junction_cell_x + 1)
+                            for cell_y in (junction_cell_y - 1, junction_cell_y, junction_cell_y + 1)
+                            for junction_x, junction_y in junction_grid.get((cell_x, cell_y), ())
+                        ):
+                            continue
+                        road_direction = math.atan2(-normal_y * side, -normal_x * side)
+                        pool_radius_m = edge_distance + half_width + 1.0
+                        cached_lamps.append((world_x, world_y, road_direction, pool_radius_m))
+                distance_to_lamp += lamp_spacing
+            distance_to_lamp = (segment_phase - segment_length) % lamp_spacing
+            if distance_to_lamp < 1e-9:
+                distance_to_lamp = lamp_spacing
+        if time.perf_counter() >= deadline:
+            break
+    return work["placement_cursor"] >= len(ways)
 
 
 def _point_overlaps_indexed_road(point_x, point_y, segment_grid) -> bool:
@@ -978,6 +1396,7 @@ def draw_street_lights(
                 )
                 _street_light_last_debug_log_ms = now_ms
         return
+    surface_started = time.perf_counter()
     # Completed spatial-grid revisions are authoritative: raw world lists can grow
     # for many merge frames before those additions become renderable. Grid-less
     # callers use exact object identities as the correctness fallback.
@@ -1027,6 +1446,7 @@ def draw_street_lights(
             )
             street_light_surface.blit(_street_light_frame_cache_surface, (offset_x, offset_y))
             screen.blit(street_light_surface, (0, 0), special_flags=pygame.BLEND_RGB_MAX)
+            _record_street_light_stage(profiler, "surface", surface_started)
             return
         if _street_light_frame_pool_surface is not None:
             screen.blit(
@@ -1048,6 +1468,7 @@ def draw_street_lights(
                     camy,
                 )
                 _street_light_last_debug_log_ms = now_ms
+        _record_street_light_stage(profiler, "surface", surface_started)
         return
     cache_work_started = time.perf_counter()
     px_per_m = cache_zoom
@@ -1076,101 +1497,7 @@ def draw_street_lights(
     )
     if region_covers_viewport:
         region_vminx, region_vminy, region_vmaxx, region_vmaxy = region
-    if spatial_grid is not None:
-        visible_ways = list(spatial_grid.ways_in_rect(
-            region_vminx, region_vminy, region_vmaxx, region_vmaxy
-        ))
-    else:
-        visible_ways = ways
-
-    global _street_light_junction_cache, _street_light_junction_grid_cache, _street_light_building_grid_cache
-    # Nearby-buildings source for the fine building_grid below: query the
-    # caller's own building spatial index (main.py already maintains one
-    # for building collision/lookup, rebuilt incrementally as autofetch
-    # streams buildings in) if given, scoped to the region + the distance
-    # _point_is_near_building actually cares about. Falls back to the full
-    # `buildings` list when no index is passed (e.g. existing tests), same
-    # as before. Without this, a plain `for building in buildings` here -
-    # same shape as the `ways` bug this file was already fixed for twice -
-    # cost ~67ms against a real ~21k-building Oulu extract and, like the
-    # ways case, only grows as autofetch streams more buildings in.
-    building_margin = STREET_LIGHT_BUILDING_DISTANCE_M
-    if building_spatial_grid is not None:
-        nearby_buildings = list(building_spatial_grid.ways_in_rect(
-            region_vminx - building_margin, region_vminy - building_margin,
-            region_vmaxx + building_margin, region_vmaxy + building_margin,
-        ))
-        # Scoped to the region, so it needs the same region-covers-viewport
-        # gate as the ways-side caches below (checked via `or`, not baked
-        # into building_cache_key - region_covers_viewport flips back to
-        # True the moment this rebuild completes, so folding it into an
-        # equality-compared key would just make every *other* call rebuild
-        # too, chasing its own tail). The unscoped fallback below has no
-        # such gate: the whole `buildings` list is already in there
-        # regardless of where the camera is, so a region change alone
-        # never invalidates it.
-        needs_rebuild = not region_covers_viewport
-    else:
-        nearby_buildings = buildings or ()
-        needs_rebuild = False
-    building_cache_key = (building_revision, tuple(id(building) for building in nearby_buildings))
-    if (
-        _street_light_building_grid_cache is None
-        or _street_light_building_grid_cache[0] != building_cache_key
-        or (needs_rebuild and _street_light_geometry_wip is None)
-    ):
-        building_grid = {}
-        for building in nearby_buildings:
-            bbox = getattr(building, "bbox", None)
-            if not bbox or bbox == (0.0, 0.0, 0.0, 0.0):
-                continue
-            cell_size = STREET_LIGHT_BUILDING_DISTANCE_M
-            min_cell_x = math.floor((bbox[0] - cell_size) / cell_size)
-            max_cell_x = math.floor((bbox[2] + cell_size) / cell_size)
-            min_cell_y = math.floor((bbox[1] - cell_size) / cell_size)
-            max_cell_y = math.floor((bbox[3] + cell_size) / cell_size)
-            for cell_x in range(min_cell_x, max_cell_x + 1):
-                for cell_y in range(min_cell_y, max_cell_y + 1):
-                    building_grid.setdefault((cell_x, cell_y), []).append(building)
-        _street_light_building_grid_cache = (building_cache_key, building_grid)
-    building_grid = _street_light_building_grid_cache[1]
-    # Scoped to visible_ways (viewport + padding), not the full `ways` list -
-    # `ways` is every way loaded for the whole session, which for a real
-    # city keeps growing as autofetch streams in new tiles while driving
-    # and was, before this fix, walked here in full on every cache miss
-    # (see geometry_cache_key's docstring-comment below for the concrete
-    # cost this had in a real Oulu-scale extract).
-    visible_way_ids = tuple(id(way) for way in visible_ways)
-    cache_key = (road_revision, building_revision, visible_way_ids)
-    if _street_light_junction_cache is None or _street_light_junction_cache[0] != cache_key or (not region_covers_viewport and _street_light_geometry_wip is None):
-        point_ways = {}
-        ways_by_object_id = {id(way): way for way in visible_ways}
-        for way in visible_ways:
-            if getattr(way, "is_drivable", True):
-                for point in way.points_m:
-                    key = (round(point[0] / 5.0), round(point[1] / 5.0))
-                    point_ways.setdefault(key, set()).add(id(way))
-        junction_points = [
-            (key[0] * 5.0, key[1] * 5.0)
-            for key, junction_way_ids in point_ways.items()
-            if len(junction_way_ids) >= 2
-            and any(
-                _way_should_have_street_lighting(
-                    ways_by_object_id[way_id], buildings, (key[0] * 5.0, key[1] * 5.0), building_grid
-                )
-                for way_id in junction_way_ids
-            )
-        ]
-        _street_light_junction_cache = (cache_key, junction_points)
-        junction_grid = {}
-        junction_cell_size = 40.0
-        for junction_x, junction_y in junction_points:
-            cell = (math.floor(junction_x / junction_cell_size), math.floor(junction_y / junction_cell_size))
-            junction_grid.setdefault(cell, []).append((junction_x, junction_y))
-        _street_light_junction_grid_cache = (cache_key, junction_grid)
-    else:
-        junction_points = _street_light_junction_cache[1]
-    junction_grid = _street_light_junction_grid_cache[1]
+    geometry_cache_key = (road_revision, building_revision, lamp_revision)
     light_layer = (
         _reusable_alpha_surface(pygame, "street_light_layer", screen.get_size())
         if street_lighting_enabled
@@ -1178,224 +1505,63 @@ def draw_street_lights(
     )
     common._street_light_frame_world_positions = []
     global _street_light_geometry_cache_key, _street_light_geometry_cache
-    global _street_light_way_lit_cache_key, _street_light_way_lit_cache
-    # region_covers_viewport (see above) makes this refresh as the car
-    # drives past the edge of the last-scoped region. Both loops below
-    # walk visible_ways, not the full `ways` - `ways` is the whole
-    # session's loaded world (unbounded: it only grows as autofetch
-    # streams tiles in while driving, never shrinks), and this used to be
-    # rebuilt from *all* of it on every ways/buildings change. Measured
-    # against a real ~31k-way, ~1000km-of-lit-road Oulu extract: ~19
-    # SECONDS for one rebuild (168k lamp candidates, each doing a spatial
-    # occlusion + junction-clearance check) - and since autofetch appends
-    # new ways continuously while driving, that rebuild kept re-triggering,
-    # each time over a bigger `ways`. Scoped to visible_ways it's bounded
-    # by what's actually near the camera regardless of how much of the
-    # city has been explored.
-    geometry_cache_key = (
-        road_revision, building_revision, lamp_revision, visible_way_ids,
-        tuple(id(lamp) for lamp in (street_lamps or ())
-              if region_vminx <= lamp.x <= region_vmaxx and region_vminy <= lamp.y <= region_vmaxy),
-    )
-    if geometry_cache_key != _street_light_way_lit_cache_key or (not region_covers_viewport and _street_light_geometry_wip is None):
-        way_lit_cache = {}
-        for way in visible_ways:
-            if not getattr(way, "is_drivable", True) or len(way.points_m) < 2:
-                way_lit_cache[id(way)] = []
-                continue
-            if _way_has_street_lighting(way):
-                way_lit_cache[id(way)] = [True] * (len(way.points_m) - 1)
-                continue
-            if getattr(way, "lit", None) == "no" or getattr(way, "highway", "") not in {
-                "primary", "primary_link", "secondary", "secondary_link",
-                "tertiary", "tertiary_link", "unclassified", "residential",
-                "living_street", "service",
-            }:
-                way_lit_cache[id(way)] = [False] * (len(way.points_m) - 1)
-                continue
-            segment_lighting = []
-            for start, end in zip(way.points_m, way.points_m[1:]):
-                samples = (start, end, ((start[0] + end[0]) * 0.5, (start[1] + end[1]) * 0.5))
-                segment_lighting.append(
-                    any(_point_is_near_building(sample, buildings, building_grid) for sample in samples)
-                )
-            way_lit_cache[id(way)] = segment_lighting
-        _street_light_way_lit_cache_key = geometry_cache_key
-        _street_light_way_lit_cache = way_lit_cache
-    if (_street_light_geometry_wip is not None
+    # Geometry is keyed by completed grid revisions plus the committed
+    # region, never by raw list growth or a per-frame region query. A job
+    # snapshots its contributors once, then prepares (bin-loader-v8.md) and
+    # places lamps across frames under separate budgets; the committed
+    # geometry and frame surfaces stay visible until it atomically commits.
+    # A newer revision arriving mid-job is only recorded - it becomes the
+    # next job's snapshot and is never mixed into this one's indexes.
+    work = _street_light_geometry_wip
+    if (work is not None
             or geometry_cache_key != _street_light_geometry_cache_key
             or not region_covers_viewport):
-        if (_street_light_geometry_wip is not None
-                and geometry_cache_key != _street_light_geometry_wip["key"]
+        stats = _street_light_cache_stats
+        if (work is not None
+                and geometry_cache_key != work["key"]
                 and geometry_cache_key != _street_light_geometry_pending):
             _street_light_geometry_pending = geometry_cache_key
-            _street_light_cache_stats["extensions"] += 1
-        if _street_light_geometry_wip is None:
+            stats["extensions"] += 1
+        if work is None:
             _street_light_geometry_pending = None
-            _street_light_cache_stats["rebuilds"] += 1
-            _street_light_geometry_wip = {
-                "key": geometry_cache_key,
-                "region": (region_vminx, region_vminy, region_vmaxx, region_vmaxy),
-                "ways": list(visible_ways),
-                "cursor": 0,
-                "lamps": [],
-                "seen": set(),
-                "road_grid": _build_street_light_road_index(
-                    visible_ways, (region_vminx, region_vminy, region_vmaxx, region_vmaxy)
-                ),
-                "junction_grid": junction_grid,
-                "way_lit_cache": _street_light_way_lit_cache,
-                "street_lamps": street_lamps,
-                "street_lamp_grid": street_lamp_grid,
-            }
-        work = _street_light_geometry_wip
-        _street_light_cache_stats["update_frames"] += 1
-        cached_lamps = work["lamps"]
-        road_segment_grid = work["road_grid"]
-        junction_grid = work["junction_grid"]
-        street_lamps = work["street_lamps"]
-        street_lamp_grid = work["street_lamp_grid"]
-        region_vminx, region_vminy, region_vmaxx, region_vmaxy = work["region"]
-        lamp_spacing = STREET_LIGHT_SPACING_M
-        junction_cell_size = 40.0
-        # lights.md requirement 1-3: explicit OSM lamp-pole positions are
-        # the primary source whenever mapped, not merely a decoration on
-        # top of the lit=*-driven synthesis below - a real lamp claimed
-        # here is never also re-placed by the fixed-spacing fallback.
-        # Tracked across the whole rebuild (not per-way) so a lamp near
-        # two ways at a junction isn't placed twice.
-        seen_explicit_lamp_ids = work["seen"]
-        deadline = time.perf_counter() + STREET_LIGHT_CACHE_BUDGET_S
-        while work["cursor"] < len(work["ways"]):
-            way = work["ways"][work["cursor"]]
-            work["cursor"] += 1
-            if (
-                not getattr(way, "is_drivable", True)
-                or (
-                    not _way_has_street_lighting(way)
-                    and getattr(way, "highway", "") not in {
-                        "primary", "primary_link", "secondary", "secondary_link",
-                        "tertiary", "tertiary_link", "unclassified", "residential",
-                        "living_street", "service",
-                    }
-                )
-                or len(way.points_m) < 2
-            ):
-                if time.perf_counter() >= deadline:
-                    break
-                continue
-            half_width = getattr(way, "half_width_m", 4.0)
-            explicit_lamps_for_way = []
-            if street_lamp_grid is not None and street_lamps:
-                margin = half_width + STREET_LIGHT_EXPLICIT_LAMP_MAX_DISTANCE_M
-                bbox = getattr(way, "bbox", None)
-                if not bbox or bbox == (0.0, 0.0, 0.0, 0.0):
-                    xs = [point[0] for point in way.points_m]
-                    ys = [point[1] for point in way.points_m]
-                    bbox = (min(xs), min(ys), max(xs), max(ys))
-                candidates = street_lamp_grid.ways_in_rect(
-                    bbox[0] - margin, bbox[1] - margin, bbox[2] + margin, bbox[3] + margin,
-                )
-                for lamp in candidates:
-                    if id(lamp) in seen_explicit_lamp_ids:
-                        continue
-                    nearest_segment = min(
-                        zip(way.points_m, way.points_m[1:]),
-                        key=lambda segment: dist_point_to_segment(lamp.x, lamp.y, *segment[0], *segment[1]),
-                    )
-                    if dist_point_to_segment(lamp.x, lamp.y, *nearest_segment[0], *nearest_segment[1]) > margin:
-                        continue
-                    explicit_lamps_for_way.append((lamp, nearest_segment))
-            if explicit_lamps_for_way:
-                # Real data found for this way - use it exclusively (not
-                # blended with the synthetic spacing below) and move on.
-                for lamp, (seg_start, seg_end) in explicit_lamps_for_way:
-                    seen_explicit_lamp_ids.add(id(lamp))
-                    seg_dx = seg_end[0] - seg_start[0]
-                    seg_dy = seg_end[1] - seg_start[1]
-                    seg_len = math.hypot(seg_dx, seg_dy) or 1.0
-                    road_direction = math.atan2(seg_dy / seg_len, seg_dx / seg_len)
-                    pool_radius_m = half_width + STREET_LIGHT_EXPLICIT_LAMP_MAX_DISTANCE_M * 0.5
-                    cached_lamps.append((lamp.x, lamp.y, road_direction, pool_radius_m))
-                if time.perf_counter() >= deadline:
-                    break
-                continue
-            distance_to_lamp = 0.0
-            segment_lengths = getattr(way, "segment_lengths", ())
-            for segment_index, (start, end) in enumerate(zip(way.points_m, way.points_m[1:])):
-                dx = end[0] - start[0]
-                dy = end[1] - start[1]
-                segment_length = (
-                    segment_lengths[segment_index]
-                    if segment_index < len(segment_lengths)
-                    else math.hypot(dx, dy)
-                )
-                if segment_length < 1.0:
-                    continue
-                segment_phase = distance_to_lamp
-                edge_distance = getattr(way, "half_width_m", 4.0) + 1.0
-                clipped = _segment_viewport_t_range(
-                    start[0], start[1], dx / segment_length, dy / segment_length,
-                    segment_length,
-                    region_vminx - edge_distance, region_vminy - edge_distance,
-                    region_vmaxx + edge_distance, region_vmaxy + edge_distance,
-                )
-                if clipped is None:
-                    distance_to_lamp = (segment_phase - segment_length) % lamp_spacing
-                    if distance_to_lamp < 1e-9:
-                        distance_to_lamp = lamp_spacing
-                    continue
-                placement_limit = clipped[1]
-                if distance_to_lamp < clipped[0]:
-                    distance_to_lamp += math.ceil(
-                        (clipped[0] - distance_to_lamp) / lamp_spacing
-                    ) * lamp_spacing
-                while distance_to_lamp <= placement_limit:
-                    fraction = distance_to_lamp / segment_length
-                    lamp_x = start[0] + dx * fraction
-                    lamp_y = start[1] + dy * fraction
-                    normal_x = -dy / segment_length
-                    normal_y = dx / segment_length
-                    segment_lighting = work["way_lit_cache"].get(id(way), ())
-                    if segment_index < len(segment_lighting) and segment_lighting[segment_index]:
-                        for side in (-1.0, 1.0):
-                            world_x = lamp_x + normal_x * edge_distance * side
-                            world_y = lamp_y + normal_y * edge_distance * side
-                            if _point_overlaps_indexed_road(
-                                world_x, world_y, road_segment_grid
-                            ):
-                                continue
-                            junction_cell_x = math.floor(world_x / junction_cell_size)
-                            junction_cell_y = math.floor(world_y / junction_cell_size)
-                            if any(
-                                (world_x - junction_x) ** 2 + (world_y - junction_y) ** 2
-                                < STREET_LIGHT_JUNCTION_CLEARANCE_M * STREET_LIGHT_JUNCTION_CLEARANCE_M
-                                for cell_x in (junction_cell_x - 1, junction_cell_x, junction_cell_x + 1)
-                                for cell_y in (junction_cell_y - 1, junction_cell_y, junction_cell_y + 1)
-                                for junction_x, junction_y in junction_grid.get((cell_x, cell_y), ())
-                            ):
-                                continue
-                            road_direction = math.atan2(-normal_y * side, -normal_x * side)
-                            pool_radius_m = edge_distance + getattr(way, "half_width_m", 4.0) + 1.0
-                            cached_lamps.append((world_x, world_y, road_direction, pool_radius_m))
-                    distance_to_lamp += lamp_spacing
-                distance_to_lamp = (segment_phase - segment_length) % lamp_spacing
-                if distance_to_lamp < 1e-9:
-                    distance_to_lamp = lamp_spacing
-            if time.perf_counter() >= deadline:
-                break
-        if work["cursor"] >= len(work["ways"]):
-            _street_light_geometry_cache_key = work["key"]
-            _street_light_geometry_cache = cached_lamps
-            _street_light_geometry_region = work["region"]
-            _street_light_geometry_generation += 1
-            _street_light_geometry_wip = None
+            stats["rebuilds"] += 1
+            if geometry_cache_key != _street_light_geometry_cache_key:
+                stats["revision_changes"] += 1
+            snapshot_started = time.perf_counter()
+            work = _street_light_geometry_wip = _snapshot_street_light_job(
+                geometry_cache_key,
+                (region_vminx, region_vminy, region_vmaxx, region_vmaxy),
+                ways, spatial_grid, buildings, building_spatial_grid,
+                street_lamps, street_lamp_grid,
+            )
+            stats["snapshot_items"] += (
+                len(work["ways"]) + len(work["buildings"]) + len(work["explicit_lamps"])
+            )
+            _record_street_light_stage(profiler, "snapshot", snapshot_started)
+        stats["update_frames"] += 1
+        if work["phase"] != "placement":
+            stats["prepare_frames"] += 1
+            prepare_started = time.perf_counter()
+            if _advance_street_light_prep(work, profiler):
+                stats["prepare_completed"] += 1
+            _record_street_light_stage(profiler, "prepare", prepare_started)
+        if work["phase"] == "placement":
+            stats["placement_frames"] += 1
+            placement_started = time.perf_counter()
+            if _advance_street_light_placement(work):
+                _street_light_geometry_cache_key = work["key"]
+                _street_light_geometry_cache = work["lamps"]
+                _street_light_geometry_region = work["region"]
+                _street_light_geometry_generation += 1
+                _street_light_geometry_wip = None
+            _record_street_light_stage(profiler, "placement", placement_started)
 
     if profiler is not None:
         profiler.record(
             "render:lighting:street_light_cache",
             (time.perf_counter() - cache_work_started) * 1000.0,
         )
+    surface_started = time.perf_counter()
 
     if (
         _street_light_geometry_wip is not None
@@ -1413,6 +1579,7 @@ def draw_street_lights(
         else:
             screen.blit(_street_light_frame_pool_surface, offset, special_flags=pygame.BLEND_RGB_ADD)
             screen.blit(_street_light_frame_cache_surface, offset)
+        _record_street_light_stage(profiler, "surface", surface_started)
         return
 
     lamp_centers = []
@@ -1476,6 +1643,7 @@ def draw_street_lights(
         else:
             screen.blit(pool_add_layer, (0, 0), special_flags=pygame.BLEND_RGB_ADD)
             screen.blit(light_layer, (0, 0))
+        _record_street_light_stage(profiler, "surface", surface_started)
         if _render_logger.isEnabledFor(logging.DEBUG):
             now_ms = pygame.time.get_ticks()
             if now_ms - _street_light_last_debug_log_ms >= 1000:

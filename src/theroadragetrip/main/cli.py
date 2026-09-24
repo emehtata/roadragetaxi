@@ -74,6 +74,12 @@ def parse_args(config=None, city_names=None, parser: Optional[argparse.ArgumentP
     )
     p.add_argument("--fetch-tile-size", type=float, default=map_config.getfloat("fetch_tile_size", fallback=500.0), help="Base auto-fetch bbox size in meters")
     p.add_argument(
+        "--use-prebuilt-roads",
+        action="store_true",
+        default=map_config.getboolean("use_prebuilt_roads", fallback=False),
+        help="Use a predefined city's prebuilt road binary (assets/roads/<city>.bin) for drivable roads",
+    )
+    p.add_argument(
         "--build-in-process",
         action="store_true",
         default=map_config.getboolean("build_in_process", fallback=True),
@@ -87,8 +93,8 @@ def parse_args(config=None, city_names=None, parser: Optional[argparse.ArgumentP
         # the old placeholder empty string, which getint's fallback does
         # not cover (fallback only applies to a missing *key*, not an
         # empty *value*).
-        default=int(traffic_config.get("traffic_count") or 40),
-        help="Target NPC vehicle population (NPC-003)",
+        default=int(traffic_config.get("traffic_count") or 0) or None,
+        help="Target NPC vehicle population (NPC-003; default: scaled from the city's population)",
     )
     p.add_argument(
         "--npc-vehicle-min", type=int,

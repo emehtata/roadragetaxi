@@ -23,6 +23,7 @@ from theroadragetrip.pedestrian import PedestrianManager
 from theroadragetrip.physics import Car
 from theroadragetrip.residents import ResidentManager
 from theroadragetrip.traffic_world import TrafficWorld
+import theroadragetrip.npc as npc_module
 
 # A city block grid (mirrors test_npc.py's test_spawn_deterministic_npc_
 # on_a_city_block_grid fixture) gives many independent roadside spots, so
@@ -46,6 +47,16 @@ def _city_block_grid():
             ways.append(Way(points_m=[(col * _STEP_M, i * _STEP_M), (col * _STEP_M, (i + 1) * _STEP_M)], highway="residential", half_width_m=4.5))
     return ways
 
+
+
+def _finish_route_jobs(manager, player_x, player_y, residents, traffic_world):
+    """bin-loader-v12: a population tick only queues trip-start/transit
+    route jobs; gameplay frames advance them. Run them to completion."""
+    for _ in range(10_000):
+        if not manager._route_jobs:
+            return
+        manager._advance_route_jobs(player_x, player_y, residents, traffic_world, None, budget_s=10.0)
+    raise AssertionError("route jobs never finished")
 
 def test_populate_initial_reaches_target_count():
     ways = _city_block_grid()
@@ -182,6 +193,7 @@ def test_trip_start_attempts_boost_when_below_the_moving_traffic_target(monkeypa
     monkeypatch.setattr(random, "random", lambda: 0.0)  # every idle candidate rolls true
 
     manager.update(NPC_POPULATION_TICK_S, *_CENTER, residents, traffic_world, ways)
+    _finish_route_jobs(manager, *_CENTER, residents, traffic_world)
 
     started = sum(1 for vehicle in manager.vehicles if manager.drivers.get(vehicle.vehicle_id) is not None)
     assert started > NPC_TRIP_START_ATTEMPTS_PER_TICK
@@ -231,6 +243,7 @@ def test_trip_start_never_double_books_a_household_member_already_mid_trip(monke
     traffic_world = TrafficWorld(ways)
     monkeypatch.setattr(random, "random", lambda: 0.0)  # every idle candidate rolls true
     manager.update(NPC_POPULATION_TICK_S, 0.0, 0.0, residents, traffic_world, ways)
+    _finish_route_jobs(manager, 0.0, 0.0, residents, traffic_world)
 
     assert manager.drivers.get(car2.vehicle_id) is None
 
@@ -268,6 +281,7 @@ def test_trip_start_can_reuse_a_member_whose_earlier_trip_already_retired(monkey
     traffic_world = TrafficWorld(ways)
     monkeypatch.setattr(random, "random", lambda: 0.0)
     manager.update(NPC_POPULATION_TICK_S, 0.0, 0.0, residents, traffic_world, ways)
+    _finish_route_jobs(manager, 0.0, 0.0, residents, traffic_world)
 
     assert manager.drivers.get(car.vehicle_id) is not None
 
@@ -394,14 +408,16 @@ def test_population_tick_treats_an_en_route_vehicles_destination_as_claimed(monk
 
     captured = {}
 
-    def fake_find_and_start_npc_trip(vehicle, *args, other_vehicle_positions=None, **kwargs):
+    def fake_find_npc_trip_steps(vehicle, *args, other_vehicle_positions=None, **kwargs):
         captured["other_vehicle_positions"] = other_vehicle_positions
         return None
+        yield  # a (trivial) route job
 
-    monkeypatch.setattr(npc_module, "find_and_start_npc_trip", fake_find_and_start_npc_trip)
+    monkeypatch.setattr(npc_module, "_find_npc_trip_steps", fake_find_npc_trip_steps)
     monkeypatch.setattr(random, "random", lambda: 0.0)  # force the trip-start roll to pass
 
     manager._run_population_tick(px, py, residents, traffic_world, ways, None, None, None, None, None, None, None)
+    _finish_route_jobs(manager, px, py, residents, traffic_world)
 
     assert "other_vehicle_positions" in captured, "the idle vehicle's trip-start search never ran"
     assert (999.0, 999.0) in captured["other_vehicle_positions"]
@@ -1381,3 +1397,118 @@ def test_population_tick_seeds_moving_traffic_near_the_player():
     assert moving
     for vehicle in moving:
         assert has_active_driver(vehicle, residents)
+
+
+def test_npc_target_count_scales_with_city_population():
+    from theroadragetrip.npc import npc_target_count_for_population
+
+    assert npc_target_count_for_population(None) == 40
+    assert npc_target_count_for_population(3000) == 15
+    assert npc_target_count_for_population(65000) == 42
+    assert npc_target_count_for_population(217350) == 78
+    assert npc_target_count_for_population(680000) == 100
+
+
+def test_nearest_route_node_index_matches_brute_force():
+    import random
+    from types import SimpleNamespace
+    from theroadragetrip.npc import _nearest_route_node_index
+
+    rnd = random.Random(5)
+    world = TrafficWorld([])
+    world._route_nodes = [(round(rnd.uniform(0, 900)), round(rnd.uniform(0, 900)), 0) for _ in range(400)]
+    world._route_nodes += world._route_nodes[:20]  # exact duplicate positions: lowest index must win
+    world._route_edges = {}
+    world._finish_route_graph()  # the real node grid the lookup searches
+    for _ in range(300):
+        x, y = rnd.uniform(-600, 1500), rnd.uniform(-600, 1500)
+        nodes = world._route_nodes
+        expected = min(range(len(nodes)), key=lambda i: (nodes[i][0] - x) ** 2 + (nodes[i][1] - y) ** 2)
+        assert _nearest_route_node_index(world, x, y) == expected
+
+
+def test_v12_route_search_is_resumable_and_unreachable_fails_cheaply():
+    from theroadragetrip.traffic_world import run_route_steps
+
+    ways = _city_block_grid()
+    island = [Way(points_m=[(5000.0, 5000.0), (5100.0, 5000.0)], highway="residential", half_width_m=4.5)]
+    world = TrafficWorld(ways + island)
+    start, target = (0.0, 0.0), ((_BLOCK_COUNT - 1) * _STEP_M, (_BLOCK_COUNT - 1) * _STEP_M)
+
+    steps = world.plan_route_steps(start, target)
+    yields = 0
+    try:
+        while True:
+            next(steps)
+            yields += 1
+    except StopIteration as done:
+        route = done.value
+    assert yields > 10  # RUNNING across many steps, never one blocking call
+    assert route == world.plan_route(start, target) and route is not None
+
+    # Different (weak) component: every search stage is skipped outright.
+    unreachable = world.plan_route_steps(start, (5050.0, 5000.0))
+    assert run_route_steps(unreachable) is None
+    assert sum(1 for _ in world.plan_route_steps(start, (5050.0, 5000.0))) <= 4
+
+
+def _v12_manager_with_idle_car():
+    random.seed(12)  # placement is random; keep these scenarios fixed
+    ways = _city_block_grid()
+    manager = NPCVehicleManager(target_count=6, household_fraction=0.0, spawn_radius_m=_SPAWN_RADIUS_M,
+                                vehicle_distribution={"car": 1.0})
+    residents = ResidentManager()
+    manager.populate_initial(*_CENTER, residents, ways)
+    assert manager.vehicles
+    return manager, residents, TrafficWorld(ways), ways
+
+
+def test_v12_route_jobs_are_fair_and_start_trips_over_several_frames(monkeypatch):
+    manager, residents, traffic_world, ways = _v12_manager_with_idle_car()
+    vehicle = manager.vehicles[0]
+
+    def endless():
+        while True:
+            yield
+
+    # An endless (e.g. hopeless, huge) search queued first must not starve
+    # a real one queued behind it.
+    manager._enqueue_route_job("trip", manager.vehicles[-1], endless(), traffic_world)
+    manager._enqueue_route_job("trip", vehicle, npc_module._find_npc_trip_steps(vehicle, traffic_world, ways), traffic_world)
+    frames = 0
+    while len(manager._route_jobs) > 1:  # until the real job finishes
+        manager._advance_route_jobs(*_CENTER, residents, traffic_world, None, budget_s=0.0)
+        frames += 1
+        assert frames < 5000, "the real job starved behind the endless one"
+    assert manager.drivers.get(vehicle.vehicle_id) is not None, manager.route_job_stats
+    assert frames > 1  # spread over frames, one slice per job per frame at zero budget
+    assert vehicle.state != NPCState.PARKED  # PARKED -> driving
+    assert len(manager._route_jobs) == 1 and manager.route_job_stats["ready"] == 1
+
+
+def test_v12_stale_or_orphaned_route_results_are_never_applied():
+    manager, residents, traffic_world, ways = _v12_manager_with_idle_car()
+    first, second = manager.vehicles[0], manager.vehicles[1]
+    manager._enqueue_route_job("trip", first, npc_module._find_npc_trip_steps(first, traffic_world, ways), traffic_world)
+    manager._enqueue_route_job("trip", second, npc_module._find_npc_trip_steps(second, traffic_world, ways), traffic_world)
+    manager.vehicles.remove(second)              # despawned while planning
+    traffic_world._finish_route_graph()          # graph rebuilt: generation N+1
+    _finish_route_jobs(manager, *_CENTER, residents, traffic_world)
+    assert manager.drivers.get(first.vehicle_id) is None and first.state == NPCState.PARKED
+    assert manager.drivers.get(second.vehicle_id) is None
+    assert manager.route_job_stats["ready"] == 0
+    assert manager.route_job_stats["stale"] + manager.route_job_stats["discarded"] == 2
+
+
+def test_v12_failed_trip_start_backs_off_instead_of_retrying_every_tick():
+    manager, residents, traffic_world, ways = _v12_manager_with_idle_car()
+    vehicle = manager.vehicles[0]
+
+    def hopeless():
+        return None
+        yield
+
+    manager._enqueue_route_job("trip", vehicle, hopeless(), traffic_world)
+    _finish_route_jobs(manager, *_CENTER, residents, traffic_world)
+    assert manager.route_job_stats["failed"] == 1
+    assert manager._trip_retry_after_tick[vehicle.vehicle_id] > manager._population_tick_number

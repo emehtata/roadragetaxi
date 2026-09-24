@@ -1,4 +1,4 @@
-from theroadragetrip.osm import Scenery, Way, remove_trees_under_roads
+from theroadragetrip.osm import Scenery, Way, remove_trees_under_roads, remove_trees_under_roads_steps
 
 
 def test_remove_trees_under_drivable_roads_keeps_variations_aligned():
@@ -71,3 +71,30 @@ def test_already_checked_sceneries_are_not_rescanned():
     assert scenery.trees == [(50.0, 0.0)], "already-checked scenery was rescanned"
     assert other.trees == [(50.0, 50.0)]
     assert other.trees_checked_against_roads is True
+
+def test_stepped_sweep_snapshots_ways_and_flags_each_scenery_when_swept():
+    def park(y):
+        return Scenery(
+            points_m=[(-10.0, y - 10.0), (110.0, y - 10.0), (110.0, y + 30.0), (-10.0, y + 30.0)],
+            kind="park",
+            bbox=(-10.0, y - 10.0, 110.0, y + 30.0),
+            trees=[(50.0, y), (50.0, y + 20.0), (99.0, y + 3.9)],
+        )
+
+    sceneries = [park(0.0), park(200.0)]
+    ways = [
+        Way(points_m=[(0.0, 0.0), (100.0, 0.0)], highway="residential", half_width_m=4.0),
+        Way(points_m=[(0.0, 200.0), (60.0, 200.0), (100.0, 200.0)], highway="primary", half_width_m=4.0),
+    ]
+    steps = remove_trees_under_roads_steps(sceneries, ways)
+    next(steps)
+    ways.clear()  # later unloads must not reach a running sweep
+    for _ in steps:
+        if sceneries[0].trees_checked_against_roads:
+            assert not sceneries[1].trees_checked_against_roads
+            break
+    list(steps)
+
+    for scenery, y in zip(sceneries, (0.0, 200.0)):
+        assert scenery.trees == [(50.0, y + 20.0)]
+        assert scenery.trees_checked_against_roads

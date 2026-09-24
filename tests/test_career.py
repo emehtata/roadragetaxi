@@ -66,3 +66,16 @@ def test_save_gig_odometer_clamps_negative_distance(tmp_path):
     save_gig_odometer(path, -10.0)
 
     assert json.loads(path.read_text(encoding="utf-8")) == {"odometer_m": 0.0}
+
+def test_gig_fuel_persists_with_the_odometer(tmp_path):
+    from theroadragetrip.career import load_gig_fuel
+
+    path = tmp_path / "gig_odometer.json"
+    assert load_gig_fuel(path) is None  # first session: keep the default tank
+    save_gig_odometer(path, 1234.0)
+    assert load_gig_fuel(path) is None  # older saves without fuel stay valid
+    save_gig_odometer(path, 1234.0, fuel_l=17.5)
+    assert load_gig_odometer(path) == 1234.0
+    assert load_gig_fuel(path) == 17.5
+    save_gig_odometer(path, 1234.0, fuel_l=-3.0)
+    assert load_gig_fuel(path) == 0.0

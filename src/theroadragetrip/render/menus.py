@@ -1,3 +1,4 @@
+import functools
 from .common import (
     SCREEN_W,
     SCREEN_H,
@@ -164,16 +165,25 @@ def draw_game_start_overlay(
     )
 
 
+@functools.lru_cache(maxsize=16)
+def _hint_surface(text: str, size: int):
+    """Rendered hint text - SysFont lookup plus render cost ~0.85 ms, and
+    the hint is drawn every frame while shown."""
+    import pygame
+
+    return pygame.font.SysFont(None, size, bold=True).render(text, True, (255, 255, 255))
+
+
 def draw_game_start_hint(
     screen,
     font,
     screen_w: int = SCREEN_W,
+    text: str = "Painamalla F pääset sisään taksiisi",
 ) -> None:
-    """Draw the first gameplay control hint."""
+    """Draw a gameplay control hint box near the top of the screen."""
     import pygame
 
-    hint_font = pygame.font.SysFont(None, max(20, min(30, screen_w // 28)), bold=True)
-    hint = hint_font.render("Painamalla F pääset sisään taksiisi", True, (255, 255, 255))
+    hint = _hint_surface(text, max(20, min(30, screen_w // 28)))
     padding_x = 18
     padding_y = 10
     box = hint.get_rect(center=(screen_w // 2, 76)).inflate(padding_x * 2, padding_y * 2)
@@ -526,8 +536,9 @@ def draw_settings_menu(
     screen_w: int = SCREEN_W,
     screen_h: int = SCREEN_H,
     physics_mode: str = "arcade",
+    historical_weather: bool = False,
 ) -> None:
-    """Draw language, audio, Overpass endpoint, and driving-physics settings."""
+    """Draw language, audio, Overpass endpoint, driving-physics and weather settings."""
     import pygame
 
     screen.fill((18, 24, 32))
@@ -547,13 +558,14 @@ def draw_settings_menu(
         (tr(language, "subtitles"), tr(language, "on" if subtitles_enabled else "off"), None),
         (tr(language, "overpass_endpoints"), overpass_endpoints[-55:] if len(overpass_endpoints) > 55 else overpass_endpoints, None),
         (tr(language, "physics_mode"), tr(language, physics_mode), None),
+        (tr(language, "historical_weather"), tr(language, "on" if historical_weather else "off"), None),
         (tr(language, "reset_configs"), "", None),
     ]
     for idx, (label, value, volume) in enumerate(rows):
         y = panel.y + 100 + idx * 50
         selected = idx == selected_idx
         color = (255, 215, 95) if selected else (220, 228, 235)
-        if idx == 8:
+        if idx == 9:
             pygame.draw.rect(screen, (55, 65, 75), (panel.x + 30, y - 7, panel.width - 60, 38), border_radius=4)
         label_surface = font.render(label, True, color)
         screen.blit(label_surface, (panel.x + 38, y))
@@ -587,7 +599,7 @@ def draw_city_editor(
     import pygame
 
     screen.fill((18, 24, 32))
-    title = pygame.font.SysFont(None, 32, bold=True).render(tr(language, "city_editor"), True, (245, 245, 245))
+    title = pygame.font.SysFont(None, 32, bold=True).render(tr(language, "edit_city_list"), True, (245, 245, 245))
     screen.blit(title, title.get_rect(center=(screen_w // 2, 38)))
     rows = (len(cities) + 1) // 2
     item_w, item_h, gap_x, gap_y = 300, 38, 20, 8

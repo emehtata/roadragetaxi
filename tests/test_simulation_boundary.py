@@ -31,7 +31,14 @@ def test_player_command_defaults_are_inert():
 
 
 def test_headless_mode_runs_simulation_ticks_with_no_display():
-    env = dict(os.environ, SDL_VIDEODRIVER="dummy")
+    # pytest.ini's `pythonpath = src` only applies to this process; the
+    # child needs the package's own src/ directory on its path too.
+    src_dir = os.path.dirname(os.path.dirname(os.path.abspath(simulation.__file__)))
+    env = dict(
+        os.environ,
+        SDL_VIDEODRIVER="dummy",
+        PYTHONPATH=os.pathsep.join(filter(None, [src_dir, os.environ.get("PYTHONPATH")])),
+    )
     result = subprocess.run(
         [sys.executable, "-m", "theroadragetrip", "--use-sample", "--no-menu", "--headless", "30"],
         env=env,

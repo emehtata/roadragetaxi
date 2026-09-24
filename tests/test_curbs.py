@@ -314,3 +314,22 @@ def test_check_curb_bump_has_a_cooldown_per_curb():
     car.x = 15.0
     assert taxi_mgr.check_curb_bump(car, [curb], previous_position=(5.0, 0.0), sim_time=1.0) is True
     assert car.speed < speed_after_first_hit
+
+
+def test_kerb_crossing_a_drivable_road_gets_a_gap_but_roadside_kerb_stays():
+    """A kerb drawn across a side street / lowered at an entrance is driven
+    over; one running along the road edge is untouched."""
+    from theroadragetrip.osm import Curb, Way
+    from theroadragetrip.osm.build import open_kerbs_at_road_crossings
+
+    side_street = Way(points_m=[(50.0, -30.0), (50.0, 30.0)], highway="residential", half_width_m=3.0)
+    footway = Way(points_m=[(20.0, -30.0), (20.0, 30.0)], highway="footway", half_width_m=1.0, is_drivable=False)
+    across = Curb(points_m=[(0.0, 0.0), (100.0, 0.0)], bbox=(0.0, 0.0, 100.0, 0.0))
+    along = Curb(points_m=[(53.5, -20.0), (53.5, 20.0)], bbox=(53.5, -20.0, 53.5, 20.0))
+
+    result = open_kerbs_at_road_crossings([across, along], [side_street, footway])
+
+    assert along in result
+    pieces = sorted((c for c in result if c is not along), key=lambda c: c.points_m[0][0])
+    assert [round(p.points_m[0][0], 3) for p in pieces] == [0.0, 54.0]
+    assert [round(p.points_m[-1][0], 3) for p in pieces] == [46.0, 100.0]

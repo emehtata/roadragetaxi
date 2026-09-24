@@ -3,11 +3,18 @@ import os
 os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
 
 import pygame
+import pytest
 
 from theroadragetrip.osm import SceneryObject, Way
 from theroadragetrip.physics import SpatialWayGrid
 import theroadragetrip.render as render
 from theroadragetrip.render import draw_day_night_overlay, draw_street_lights, world_to_screen
+
+
+@pytest.fixture(autouse=True)
+def _one_frame_street_light_preparation(monkeypatch):
+    """Single-call tests expect a finished job; budgeted tests override this."""
+    monkeypatch.setattr(render.roads, "STREET_LIGHT_PREP_BUDGET_S", 10.0)
 
 
 def test_lit_road_renders_neutral_light_without_yellow_pool():
@@ -687,4 +694,105 @@ def test_v7_budgeted_grid_updates_ignore_raw_growth_and_match_full_result():
         assert incremental == finish(ways, grid)
     finally:
         roads_module.STREET_LIGHT_CACHE_BUDGET_S = old_budget
+        pygame.quit()
+
+
+def _v8_scene():
+    """Crossing lit/unlit urban roads, buildings and explicit lamps."""
+    from theroadragetrip.osm import Building
+
+    ways = [Way(points_m=[(-150.0, float(y)), (0.0, float(y)), (150.0, float(y))],
+                highway="residential" if y % 20 else "tertiary", half_width_m=4.0,
+                lit=None if y % 20 else "yes") for y in range(-100, 101, 25)]
+    ways += [Way(points_m=[(float(x), -120.0), (float(x), 120.0)], highway="service", half_width_m=3.0)
+             for x in range(-120, 121, 40)]
+    buildings = [Building(points_m=[(x, y), (x + 8.0, y), (x + 8.0, y + 8.0), (x, y + 8.0)],
+                          bbox=(x, y, x + 8.0, y + 8.0))
+                 for x in (-90.0, 30.0) for y in (-60.0, 45.0)]
+    lamps = [SceneryObject(x=x, y=7.0, kind="street_lamp") for x in (-33.3, 61.7)]
+    return ways, buildings, lamps
+
+
+def _v8_reset(roads_module):
+    roads_module._street_light_frame_cache_key = None
+    roads_module._street_light_frame_cache_surface = None
+    roads_module._street_light_geometry_cache_key = None
+    roads_module._street_light_geometry_cache = []
+    roads_module._street_light_geometry_region = None
+    roads_module._street_light_geometry_wip = None
+    roads_module._street_light_geometry_pending = None
+
+
+def test_v8_budgeted_preparation_resumes_keeps_old_cache_and_snapshots_revisions():
+    from theroadragetrip.render import common as common_module, roads as roads_module
+
+    ways, buildings, lamps = _v8_scene()
+    grid, building_grid, lamp_grid = SpatialWayGrid(ways[:6]), SpatialWayGrid(buildings), SpatialWayGrid(lamps)
+    screen = pygame.Surface((400, 300), pygame.SRCALPHA)
+
+    def frame(camx=0.0, time_s=0.0, px_per_m=2.0):
+        draw_street_lights(screen, ways, camx, 0.0, time_s, px_per_m=px_per_m, screen_w=400, screen_h=300,
+                           spatial_grid=grid, buildings=buildings, building_spatial_grid=building_grid,
+                           street_lamps=lamps, street_lamp_grid=lamp_grid)
+        return roads_module._street_light_geometry_wip
+
+    def finish():
+        for _ in range(10_000):
+            if frame() is None and roads_module._street_light_geometry_cache_key == (
+                    grid.revision, building_grid.revision, lamp_grid.revision):
+                return list(roads_module._street_light_geometry_cache)
+        raise AssertionError("street-light job did not finish")
+
+    def full():
+        _v8_reset(roads_module)
+        roads_module.STREET_LIGHT_PREP_BUDGET_S = roads_module.STREET_LIGHT_CACHE_BUDGET_S = 10.0
+        result = finish()
+        roads_module.STREET_LIGHT_PREP_BUDGET_S = roads_module.STREET_LIGHT_CACHE_BUDGET_S = 0.0
+        return result
+
+    pygame.init()
+    old_budgets = roads_module.STREET_LIGHT_PREP_BUDGET_S, roads_module.STREET_LIGHT_CACHE_BUDGET_S
+    try:
+        committed = full()
+        assert committed
+        generation = roads_module._street_light_geometry_generation
+        # Raw list growth and small camera/zoom changes reuse the geometry.
+        ways.append(Way(points_m=[(0.0, 110.0), (90.0, 110.0)], highway="tertiary", half_width_m=4.0, lit="yes"))
+        for camx, px_per_m in ((5.0, 2.0), (20.0, 2.0), (0.0, 2.2)):
+            assert frame(camx, px_per_m=px_per_m) is None
+        assert roads_module._street_light_geometry_generation == generation
+
+        # Revision N: zero budgets, so preparation needs many frames.
+        grid.rebuild(ways[:10])
+        stats_before = dict(roads_module._street_light_cache_stats)
+        job = frame()
+        assert job is not None and job["phase"] != "placement"
+        snapshot = list(job["ways"])
+        assert roads_module._street_light_geometry_cache == committed  # old result stays visible
+        # Revision N+1 arrives mid-preparation: recorded, never mixed in.
+        grid.rebuild(ways)
+        while frame() is job:
+            assert job["ways"] == snapshot and job["key"][0] == grid.revision - 1
+            assert roads_module._street_light_geometry_cache == committed
+        stats = {k: v - stats_before[k] for k, v in roads_module._street_light_cache_stats.items()}
+        assert stats["prepare_frames"] > 1 and stats["extensions"] == 1 and stats["prepare_completed"] == 1
+        incremental = finish()
+        assert incremental == full()  # exact, including order
+
+        # Same-count replacement still invalidates via the grid revision.
+        ways[0] = Way(points_m=[(-150.0, -100.0), (150.0, -95.0)], highway="tertiary", half_width_m=4.0, lit="yes")
+        grid.rebuild(ways)
+        assert frame() is not None
+        assert finish() == full() != incremental
+
+        # Crossing the committed region starts a new job.
+        assert frame(camx=600.0) is not None
+
+        # Daylight never starts a job (the solar model caches by wall clock).
+        _v8_reset(roads_module)
+        common_module._solar_position_cache.clear()
+        assert frame(time_s=12 * 3600.0) is None and roads_module._street_light_geometry_cache_key is None
+    finally:
+        common_module._solar_position_cache.clear()
+        roads_module.STREET_LIGHT_PREP_BUDGET_S, roads_module.STREET_LIGHT_CACHE_BUDGET_S = old_budgets
         pygame.quit()

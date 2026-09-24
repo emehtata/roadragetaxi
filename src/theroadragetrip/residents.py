@@ -80,7 +80,18 @@ def _birth_date_for_city(
     weighted = [entry for entry in available if entry[3] > 0.0] or [(*entry[:3], 1.0) for entry in available]
     _, age_start, age_end, _ = random.choices(weighted, weights=[entry[3] for entry in weighted], k=1)[0]
     age = random.randint(age_start, age_end)
-    return date.today() - timedelta(days=age * 365 + random.randrange(365))
+    # Any day in (age+1 years ago, age years ago] makes age_of() exactly `age`
+    # (a flat 365 days/year drifted past leap days and could yield age - 1).
+    latest = _years_before(date.today(), age)
+    earliest_exclusive = _years_before(date.today(), age + 1)
+    return latest - timedelta(days=random.randrange((latest - earliest_exclusive).days))
+
+
+def _years_before(day: date, years: int) -> date:
+    try:
+        return day.replace(year=day.year - years)
+    except ValueError:  # Feb 29 in a non-leap year
+        return day.replace(year=day.year - years, day=28)
 
 
 @dataclass
@@ -107,6 +118,10 @@ class Resident:
     lod_level: int = 0
     lod_update_due: bool = True
     lod_time_accumulator: float = 0.0
+
+
+# Children younger than this never walk around (or take a taxi) alone.
+MIN_UNACCOMPANIED_AGE = 7
 
 
 class ResidentManager:
@@ -147,12 +162,13 @@ class ResidentManager:
         vehicle_id: Optional[int] = None,
         group: Optional[str] = None,
         age: Optional[int] = None,
+        min_age: int = 0,
     ) -> Resident:
         if age is not None and not 0 <= age <= 100:
             raise ValueError("age must be between 0 and 100")
         birth_date = _birth_date_for_city(
             self.city_data,
-            min_age=age if age is not None else 0,
+            min_age=age if age is not None else min_age,
             max_age=age if age is not None else 100,
         )
         first_name, gender = _weighted_name(FIRST_NAMES, group)

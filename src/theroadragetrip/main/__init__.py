@@ -1,5 +1,6 @@
 import cProfile
 import concurrent.futures
+import gc
 import logging
 import math
 import os
@@ -8,6 +9,7 @@ import sys
 import threading
 import time
 from datetime import datetime, timedelta
+from pathlib import Path
 from types import SimpleNamespace
 
 import pygame
@@ -28,17 +30,19 @@ from ..career import (
     gig_odometer_path,
     load_career,
     load_career_distance,
+    load_gig_fuel,
     load_gig_odometer,
     save_career,
     save_gig_odometer,
 )
 from ..localization import SUPPORTED_LANGUAGES, normalize_language, tr
 from ..calendar import GameCalendar, Season
-from ..climate import typical_temperature
+from ..climate import appearance_with_snow_depth, typical_temperature
 from ..fuel import fuel_station_price_cents, nearest_fuel_station
 from .. import protocol, transport
 from ..simulation import PlayerCommand, advance_simulation, apply_enter_exit_vehicle
 from ..osm import (
+    CACHE_DIR,
     DEFAULT_BBOX,
     AutoFetchManager,
     TILE_MERGE_BUDGET_S,
@@ -54,6 +58,7 @@ from ..osm import (
     local_pbf_available,
     load_local_sample,
     remove_trees_under_roads,
+    remove_trees_under_roads_steps,
 )
 from ..physics import (
     Car,
@@ -156,7 +161,7 @@ from ..render import (
     solar_altitude_and_events,
 )
 from ..activities import ActivityContext, ActivityInstance
-from ..npc import NPCVehicleManager
+from ..npc import NPCVehicleManager, npc_target_count_for_population
 from ..pedestrian import PedestrianManager, PlayerPedestrian
 from ..residents import ResidentManager
 from ..police import place_speed_cameras
@@ -166,7 +171,8 @@ from ..tile_streaming import PBF_TILE_SIZE_M, set_tile_size_m
 from ..traffic_world import TrafficWorld
 from ..world_cache import WorldCacheManager, clear_world_cache
 from ..performance import MAP_SYNC_BUDGET_S, FrameProfiler
-from ..weather import SPLASH_MIN_SPEED_MPS, WeatherSystem
+from ..weather import SPLASH_MIN_SPEED_MPS, WeatherSystem, weather_type_for_observation
+from ..weather_history import WeatherHistory, precipitation_from_observation
 
 from .cli import configure_logging, parse_args
 from .menu_input import (
@@ -675,7 +681,7 @@ def _load_world(
     # from that fetch are kept unchanged - only `ways` is replaced, and
     # only on success. A missing or broken binary is not an error: it
     # just means this city keeps using the road ways already fetched.
-    if city_bin_available(chosen_city):
+    if args.use_prebuilt_roads and city_bin_available(chosen_city):
         try:
             bin_ways, bin_nodes, bin_geometry_points, bin_load_seconds = load_city_ways(chosen_city)
         except Exception as exc:  # noqa: BLE001 - a broken BIN must never block city loading, see osm/bin_source.py
@@ -685,7 +691,11 @@ def _load_world(
                 chosen_city, exc,
             )
         else:
-            ways = bin_ways
+            # The binary holds drivable roads only: keep the fetch's own
+            # footways/cycleways/paths/pedestrian streets (sidewalks,
+            # pedestrian routing, street-verge paving) instead of losing
+            # every one of them.
+            ways = bin_ways + [way for way in ways if not way.is_drivable]
             logger.info(
                 "Road network source: prebuilt binary | City: %s | File: %s | "
                 "Load time: %.1f ms | Ways: %d | Nodes: %d | Geometry points: %d",
@@ -695,7 +705,9 @@ def _load_world(
     else:
         logger.info(
             "Road network source: existing OSM/PBF fallback | City: %s | "
-            "Reason: no prebuilt binary", chosen_city,
+            "Reason: %s", chosen_city,
+            "no prebuilt binary" if not city_bin_available(chosen_city)
+            else "prebuilt binary disabled (map.use_prebuilt_roads)",
         )
 
     if not ways and not waters and not buildings and not sceneries and not places:
@@ -756,15 +768,20 @@ def _load_world(
     car = Car(x=(minx + maxx) / 2, y=(miny + maxy) / 2, heading=0.0, speed=0.0)
     if ways:
         respawn_car(car, ways, near_center=True, bounds=bounds, waters=waters, taxi_stops=taxi_stops)
+        car.engine_on = False  # the driver starts on foot; E starts it after getting in
     career_total_distance_m = None
     if career is not None:
         career_total_distance_m = load_career_distance(career_file)
         car.odometer_m = career_total_distance_m
     else:
         car.odometer_m = load_gig_odometer(gig_odometer_file)
+        saved_fuel_l = load_gig_fuel(gig_odometer_file)
+        if saved_fuel_l is not None:
+            # The gig car keeps whatever was left in the tank last session.
+            car.fuel_l = min(car.fuel_capacity_l, saved_fuel_l)
         if car.odometer_m == 0.0:
             car.odometer_m = float(random.randint(100000, 600000))
-            save_gig_odometer(gig_odometer_file, car.odometer_m)
+            save_gig_odometer(gig_odometer_file, car.odometer_m, car.fuel_l)
 
     # Initialize Taxi Manager for game mode
     on_load_progress(0.80, "Preparing taxi missions...")
@@ -806,7 +823,9 @@ def _load_world(
     # ongoing top-up during play is deliberately staggered.
     on_load_progress(0.88, "Preparing NPC traffic...")
     npc_manager = NPCVehicleManager(
-        target_count=args.npc_vehicle_count,
+        target_count=args.npc_vehicle_count or npc_target_count_for_population(
+            (residents.city_data or {}).get("väkiluku")
+        ),
         min_count=args.npc_vehicle_min,
         max_count=args.npc_vehicle_max,
         vehicle_distribution=args.vehicle_distribution,
@@ -983,7 +1002,16 @@ def _wait_for_active_tile_fetch(
     clock.tick()  # Don't let dt jump on the frame after waiting.
 
 
+# bin-loader-v10.md: the world is ~0.8-1.3M long-lived, acyclic tracked
+# objects, so every default-threshold generation-2 pass (39 per benchmark
+# run, up to ~500 ms each) found nothing to free. These thresholds keep
+# young-generation passes small (max ~30 ms measured) and push full passes
+# out to ~100M allocations; reference counting still frees unloaded tiles.
+GC_THRESHOLDS = (10000, 10, 1000)
+
+
 def main() -> None:
+    gc.set_threshold(*GC_THRESHOLDS)
     config = load_config()
     overpass_endpoints = get_overpass_endpoints(config)
     configure_user_agent(config.get("game", "user_agent_id"))
@@ -1028,7 +1056,8 @@ def main() -> None:
             clock.tick(60)
 
     language = normalize_language(config.get("game", "language", fallback=""))
-    if not config.get("game", "language", fallback="").strip():
+    # Headless runs have nobody to answer the picker: keep the default.
+    if not config.get("game", "language", fallback="").strip() and not args.headless:
         language = choose_language(screen, font, clock)
         config.set("game", "language", language)
         save_config(config)
@@ -1270,6 +1299,7 @@ def main() -> None:
         last_track_surface = None
         car_was_in_puddle = False
         map_sync_stage = 0
+        tree_sweep = None
         # map_sync_stage 2's own sub-stage (bin-loader-v3.md): the road
         # spatial grid rebuild and detached-house parking generation are
         # each budgeted separately - "grid" then "parking" then "done" -
@@ -1303,19 +1333,57 @@ def main() -> None:
         runtime_profiler = cProfile.Profile()
         runtime_profile_active = False
         frame_profiler = FrameProfiler()
+        pedestrian_mgr.profiler = frame_profiler
         weather = WeatherSystem(season=game_calendar.season)
+        # Historical weather (Settings, opt-in): FMI observations for this
+        # city and game time where known, generated weather otherwise.
+        historical_weather = config.getboolean("game", "historical_weather", fallback=False)
+        weather_history = WeatherHistory(
+            sun_latitude, sun_longitude, cache_path=Path(CACHE_DIR) / "weather_history.db",
+        )
+
+        def observed_weather(moment):
+            return weather_history.get(moment) if historical_weather else None
+
+        def outside_temperature(moment):
+            observed = observed_weather(moment)
+            if observed is not None and observed.temperature_c is not None:
+                return observed.temperature_c
+            return typical_temperature(moment, sun_latitude)
+
+        if historical_weather:
+            weather_history.request(game_calendar.current - timedelta(hours=6), game_calendar.current + timedelta(hours=48))
+            weather_history.wait_idle(3.0)  # brief: the start forecast can show real weather
         forecast_moments = [game_calendar.current + timedelta(hours=offset) for offset in range(0, 25, 6)]
-        forecast_temperatures = [typical_temperature(moment, sun_latitude) for moment in forecast_moments]
+        forecast_temperatures = [outside_temperature(moment) for moment in forecast_moments]
         forecast_conditions = weather.forecast(forecast_temperatures, 6.0 * 60.0 * 60.0)
+        for index, (moment, temperature) in enumerate(zip(forecast_moments, forecast_temperatures)):
+            observed = observed_weather(moment)
+            kind, thunder = precipitation_from_observation(observed) if observed is not None else (None, False)
+            if kind is not None:
+                observed_type = weather_type_for_observation(kind, temperature)
+                forecast_conditions[index] = (observed_type, thunder and observed_type.value == "rain")
+        forecast_sources = [
+            weather_history.source_at(moment) if historical_weather else "generated" for moment in forecast_moments
+        ]
         weather_forecast_lines = [
             f"{moment:%d.%m. %H:%M}   {temperature:+.0f} °C   "
             f"{tr(language, 'weather_thunderstorm' if thunder else 'weather_' + condition.value)}"
-            for moment, temperature, (condition, thunder) in zip(
-                forecast_moments, forecast_temperatures, forecast_conditions
+            + (f"   ({tr(language, 'weather_source_' + source)})" if historical_weather else "")
+            for moment, temperature, (condition, thunder), source in zip(
+                forecast_moments, forecast_temperatures, forecast_conditions, forecast_sources
             )
         ]
+        for moment, temperature, (condition, thunder), source in zip(
+            forecast_moments, forecast_temperatures, forecast_conditions, forecast_sources
+        ):
+            logger.info(
+                "Weather forecast %s: %+.1f C %s%s [%s]", f"{moment:%d.%m. %H:%M}", temperature,
+                condition.value, " thunderstorm" if thunder else "", source,
+            )
         last_lightning_event_id = weather.lightning_event_id
         logger.info("Weather: %s", _weather_status(weather))
+        last_logged_weather = None  # (type, thunder, source): log each change once
         world.weather = weather  # protocol.apply_server_state reads world.weather, matching the server's own convention
         clock.tick()  # Reset clock timer to avoid large dt on first frame
 
@@ -1352,7 +1420,8 @@ def main() -> None:
             weather.update(
                 dt * time_scale,
                 dt,
-                outside_temperature_c=typical_temperature(game_calendar.current, sun_latitude),
+                outside_temperature_c=outside_temperature(game_calendar.current),
+                observed=observed_weather(game_calendar.current),
             )
             if weather.lightning_event_id != last_lightning_event_id:
                 audio.play("thunder", volume=0.8)
@@ -1360,6 +1429,27 @@ def main() -> None:
             frame_profiler.set_metric(
                 "weather", f"{weather.weather_type.value} wetness={weather.wetness:.0%}"
             )
+            if historical_weather:
+                # Cheap when already loaded; queues the next observation chunk
+                # or a stale forecast refresh in the background otherwise.
+                weather_history.request(game_calendar.current, game_calendar.current + timedelta(hours=48))
+            current_weather_key = (
+                weather.weather_type.value, weather.is_thunderstorm,
+                weather_history.source_at(game_calendar.current) if historical_weather else "generated",
+            )
+            if current_weather_key != last_logged_weather:
+                last_logged_weather = current_weather_key
+                observed_now = observed_weather(game_calendar.current)
+                logger.info(
+                    "Weather now %s: %s%s %+.1f C, wind %.0f m/s from %03.0f%s [%s]",
+                    f"{game_calendar.current:%d.%m. %H:%M}",
+                    current_weather_key[0], " thunderstorm" if current_weather_key[1] else "",
+                    outside_temperature(game_calendar.current),
+                    weather.wind_speed_mps, weather.wind_from_deg,
+                    f" snow {observed_now.snow_depth_cm:.0f} cm"
+                    if observed_now is not None and observed_now.snow_depth_cm is not None else "",
+                    current_weather_key[2],
+                )
             current_solar_bucket = int(game_time_seconds // (15.0 * 60.0))
             if current_solar_bucket != solar_time_bucket:
                 car_latitude, car_longitude = meters_to_latlon(car.x, car.y, transformer_to_ll)
@@ -1430,7 +1520,8 @@ def main() -> None:
                         if start_warmup_remaining > 0.0:
                             continue
                         awaiting_start = False
-                        start_hint_remaining = 8.0
+                        # Shown until the driver first gets in (reset on entry).
+                        start_hint_remaining = math.inf
                         continue
                     if event.key in (pygame.K_PAGEUP, pygame.K_PAGEDOWN):
                         time_delta = 60.0 * 60.0 if event.key == pygame.K_PAGEUP else -60.0 * 60.0
@@ -1615,16 +1706,16 @@ def main() -> None:
                                                         pygame.quit()
                                                         sys.exit(0)
                                                     if s_ev.type == pygame.MOUSEMOTION:
-                                                        hovered = _menu_item_at_y(s_ev.pos[1], 170, 32, 18, 9)
+                                                        hovered = _menu_item_at_y(s_ev.pos[1], 170, 32, 18, 10)
                                                         if hovered is not None:
                                                             settings_selected = hovered
                                                         continue
                                                     if s_ev.type == pygame.MOUSEBUTTONDOWN and s_ev.button == 1:
-                                                        hovered = _menu_item_at_y(s_ev.pos[1], 170, 32, 18, 9)
+                                                        hovered = _menu_item_at_y(s_ev.pos[1], 170, 32, 18, 10)
                                                         if hovered is not None:
                                                             settings_selected = hovered
-                                                            if hovered == 8:
-                                                                language, physics_mode, endpoint_text, overpass_endpoints = _reset_runtime_settings(config, audio, taxi_mgr)
+                                                            if hovered == 9:
+                                                                language, physics_mode, endpoint_text, overpass_endpoints = _reset_runtime_settings(config, audio, taxi_mgr); historical_weather = config.getboolean("game", "historical_weather", fallback=False)
                                                         continue
                                                     if s_ev.type != pygame.KEYDOWN:
                                                         continue
@@ -1642,17 +1733,17 @@ def main() -> None:
                                                         save_config(config)
                                                     elif settings_selected == 6 and s_ev.key == pygame.K_RETURN:
                                                         save_config(config)
-                                                    elif settings_selected == 8 and s_ev.key in (pygame.K_RETURN, pygame.K_SPACE, pygame.K_KP_ENTER):
-                                                        language, physics_mode, endpoint_text, overpass_endpoints = _reset_runtime_settings(config, audio, taxi_mgr)
+                                                    elif settings_selected == 9 and s_ev.key in (pygame.K_RETURN, pygame.K_SPACE, pygame.K_KP_ENTER):
+                                                        language, physics_mode, endpoint_text, overpass_endpoints = _reset_runtime_settings(config, audio, taxi_mgr); historical_weather = config.getboolean("game", "historical_weather", fallback=False)
                                                     elif settings_selected == 6 and s_ev.unicode and s_ev.unicode.isprintable():
                                                         endpoint_text += s_ev.unicode
                                                         config.set("map", "overpass_endpoints", endpoint_text)
                                                         overpass_endpoints = get_overpass_endpoints(config)
                                                         save_config(config)
                                                     elif s_ev.key == pygame.K_UP:
-                                                        settings_selected = (settings_selected - 1) % 9
+                                                        settings_selected = (settings_selected - 1) % 10
                                                     elif s_ev.key == pygame.K_DOWN:
-                                                        settings_selected = (settings_selected + 1) % 9
+                                                        settings_selected = (settings_selected + 1) % 10
                                                     elif s_ev.key in (pygame.K_LEFT, pygame.K_RIGHT):
                                                         delta = 0.05 if s_ev.key == pygame.K_RIGHT else -0.05
                                                         if settings_selected == 0:
@@ -1672,10 +1763,18 @@ def main() -> None:
                                                         elif settings_selected == 7:
                                                             physics_mode = "simulation" if physics_mode == "arcade" else "arcade"
                                                             config.set("game", "physics_realism", physics_mode)
+                                                        elif settings_selected == 8:
+                                                            historical_weather = not historical_weather
+                                                            config.set("game", "historical_weather", str(historical_weather).lower())
+                                                            if historical_weather:
+                                                                weather_history.request(
+                                                                    game_calendar.current - timedelta(hours=6),
+                                                                    game_calendar.current + timedelta(hours=48),
+                                                                )
                                                         config.set("game", "language", language)
                                                         taxi_mgr.set_language(language)
                                                         save_config(config)
-                                                draw_settings_menu(screen, font, language, config.getfloat("audio", "master_volume"), config.getfloat("audio", "music_volume"), config.getfloat("audio", "effects_volume"), config.getboolean("audio", "comments_enabled", fallback=True), config.getboolean("audio", "subtitles_enabled", fallback=True), endpoint_text, settings_selected, SCREEN_W, SCREEN_H, physics_mode=physics_mode)
+                                                draw_settings_menu(screen, font, language, config.getfloat("audio", "master_volume"), config.getfloat("audio", "music_volume"), config.getfloat("audio", "effects_volume"), config.getboolean("audio", "comments_enabled", fallback=True), config.getboolean("audio", "subtitles_enabled", fallback=True), endpoint_text, settings_selected, SCREEN_W, SCREEN_H, physics_mode=physics_mode, historical_weather=historical_weather)
                                                 pygame.display.flip()
                                         elif pause_selected == 3:
                                             # Change City
@@ -1948,7 +2047,8 @@ def main() -> None:
                 weather.update(
                     dt * time_scale,
                     dt,
-                    outside_temperature_c=typical_temperature(game_calendar.current, sun_latitude),
+                    outside_temperature_c=outside_temperature(game_calendar.current),
+                    observed=observed_weather(game_calendar.current),
                 )
                 if weather.lightning_event_id != last_lightning_event_id:
                     audio.play("thunder", volume=0.8)
@@ -1982,7 +2082,7 @@ def main() -> None:
                     gig_odometer_file=gig_odometer_file,
                     chosen_city=chosen_city,
                     cities_list=cities_list,
-                    outside_temperature_c=typical_temperature(game_calendar.current, sun_latitude),
+                    outside_temperature_c=outside_temperature(game_calendar.current),
                 )
                 camx, camy = result.camx, result.camy
                 current_way = result.current_way
@@ -2190,10 +2290,19 @@ def main() -> None:
 
                 map_sync_started = time.perf_counter() if map_sync_stage else None
                 if map_sync_stage == 1:
+                    # Budgeted, resumable across frames: measured ~1.3 s in
+                    # one frame on Oulu once footways loaded.
                     with frame_profiler.section("map_sync:remove_trees"):
-                        remove_trees_under_roads(sceneries, ways)
-                        taxi_mgr.invalidate_tree_collision_index()
-                    map_sync_stage = 2
+                        if tree_sweep is None:
+                            tree_sweep = remove_trees_under_roads_steps(sceneries, ways)
+                        deadline = time.perf_counter() + MAP_SYNC_BUDGET_S
+                        for _ in tree_sweep:
+                            if time.perf_counter() >= deadline:
+                                break
+                        else:
+                            tree_sweep = None
+                            taxi_mgr.invalidate_tree_collision_index()
+                            map_sync_stage = 2
                 elif map_sync_stage == 2 and (
                     not tile_merge_busy or spatial_grid_sub_stage != "grid" or spatial_grid._pending_ways is not None
                 ):
@@ -2272,18 +2381,25 @@ def main() -> None:
                         taxi_mgr.sync_map_data(ways, places=places, buildings=buildings)
                     map_sync_stage = 12
                 elif map_sync_stage == 12:
+                    # Budgeted, resumable across frames (bin-loader-v13.md):
+                    # the route graph rebuild measured ~190-270 ms in one
+                    # frame on Oulu. The previous graph stays authoritative
+                    # (queries, NPC route jobs) until the new one commits.
                     with frame_profiler.section("map_sync:traffic"):
-                        traffic_mgr.sync_map_data(
-                            ways,
-                            traffic_lights=traffic_lights,
-                            stop_signs=stop_signs,
-                            crossings=crossings,
-                            buildings=buildings,
-                            sceneries=sceneries,
-                            parking_spaces=parking_spaces,
-                            logical_intersections=logical_intersections,
-                        )
-                    map_sync_stage = 13
+                        if getattr(traffic_mgr, "_pending_route_graph", None) is None:
+                            traffic_mgr.start_map_sync(
+                                ways,
+                                traffic_lights=traffic_lights,
+                                stop_signs=stop_signs,
+                                crossings=crossings,
+                                buildings=buildings,
+                                sceneries=sceneries,
+                                parking_spaces=parking_spaces,
+                                logical_intersections=logical_intersections,
+                            )
+                        traffic_sync_finished = traffic_mgr.advance_map_sync(MAP_SYNC_BUDGET_S)
+                    if traffic_sync_finished:
+                        map_sync_stage = 13
                 elif map_sync_stage == 13:
                     # Budgeted, resumable across frames (bin-loader-v3.md):
                     # measured up to ~3.2s in one frame against a dense
@@ -2303,11 +2419,15 @@ def main() -> None:
                     # until the incremental job below fully commits.
                     with frame_profiler.section("map_sync:pedestrians"):
                         if pedestrian_mgr._sync_stage in (None, "done"):
-                            pedestrian_mgr.set_venue_buildings(buildings, resync=False)
-                            pedestrian_mgr.set_scenery_features(scenery_objects, sceneries, bus_stops)
-                            pedestrian_mgr.start_incremental_sync(
-                                ways, traffic_lights=traffic_lights, logical_intersections=logical_intersections,
-                            )
+                            # bin-loader-v9.md: venue/scenery indexing are
+                            # stages of the budgeted job, not synchronous
+                            # set_venue_buildings/set_scenery_features calls.
+                            with frame_profiler.section("map_sync:pedestrians:start"):
+                                pedestrian_mgr.start_incremental_sync(
+                                    ways, traffic_lights=traffic_lights, logical_intersections=logical_intersections,
+                                    venue_buildings=buildings,
+                                    scenery_features=(scenery_objects, sceneries, bus_stops),
+                                )
                         pedestrian_sync_finished = pedestrian_mgr.advance_incremental_sync(MAP_SYNC_BUDGET_S)
                     if pedestrian_sync_finished:
                         map_sync_stage = 14
@@ -2368,6 +2488,9 @@ def main() -> None:
             render_profile_stage_start = render_profile_frame_start
             map_stage_start = time.perf_counter()
             seasonal_appearance = game_calendar.seasonal_appearance
+            observed_now = observed_weather(game_calendar.current)
+            if observed_now is not None and observed_now.snow_depth_cm is not None:
+                seasonal_appearance = appearance_with_snow_depth(seasonal_appearance, observed_now.snow_depth_cm)
             draw_grass_texture(screen, camx, camy, px_per_m, profiler=frame_profiler, season=game_calendar.season, seasonal_appearance=seasonal_appearance)
             stage_elapsed = time.perf_counter() - map_stage_start
             render_profile_times["map_grass"] = render_profile_times.get("map_grass", 0.0) + stage_elapsed
@@ -2406,6 +2529,7 @@ def main() -> None:
             draw_ways(
                 screen, ways, camx, camy, px_per_m=px_per_m,
                 spatial_grid=spatial_grid, profiler=frame_profiler,
+                building_grid=building_grid,
             )
             draw_wet_roads(screen, ways, weather, camx, camy, px_per_m=px_per_m, spatial_grid=spatial_grid)
             draw_puddles(screen, ways, weather, camx, camy, px_per_m=px_per_m, spatial_grid=spatial_grid)
@@ -2439,11 +2563,15 @@ def main() -> None:
             # just painted) can never end up covering a real tree (see
             # render/scenery.py:draw_trees docstring).
             map_stage_start = time.perf_counter()
+            # Wind bends crowns downwind: the whole (cached) tree layer is
+            # drawn from a camera shifted upwind - a camera move's cost,
+            # not a per-tree redraw.
+            tree_lean_x, tree_lean_y = weather.tree_lean_m
             draw_trees(
                 screen,
                 sceneries,
-                camx,
-                camy,
+                camx - tree_lean_x,
+                camy - tree_lean_y,
                 px_per_m=px_per_m,
                 tree_effects=taxi_mgr.tree_effects,
                 fallen_trees=taxi_mgr.fallen_trees,
@@ -2590,7 +2718,7 @@ def main() -> None:
             if show_navigation:
                 draw_navigation_route(screen, navigation_route, camx, camy, px_per_m=px_per_m)
             draw_taxi_target(screen, taxi_mgr, camx, camy, font, px_per_m=px_per_m, language=language)
-            if car.engine_on and not on_foot:
+            if car.engine_on:
                 draw_taxi_exhaust(screen, car, camx, camy, px_per_m=px_per_m)
             draw_car(
                 screen,
@@ -2851,7 +2979,7 @@ def main() -> None:
                     water_time_remaining=(10.0 - water_elapsed) if water_elapsed > 0.0 else None,
                     game_time_seconds=game_time_seconds,
                     game_date=game_calendar.date,
-                    temperature_c=typical_temperature(game_calendar.current, sun_latitude),
+                    temperature_c=outside_temperature(game_calendar.current),
                     game_time_realtime=taxi_mgr.current_passenger is not None,
                     comment_text=audio.comment_text,
                     comment_speaker=audio.comment_speaker,
@@ -2909,7 +3037,9 @@ def main() -> None:
                     forecast_lines=weather_forecast_lines, language=language,
                 )
             elif start_hint_remaining > 0.0 and on_foot:
-                draw_game_start_hint(screen, font, SCREEN_W)
+                draw_game_start_hint(screen, font, SCREEN_W, tr(language, "hint_enter_taxi"))
+            elif not on_foot and not car.engine_on and car.fuel_l > 0.0:
+                draw_game_start_hint(screen, font, SCREEN_W, tr(language, "hint_start_engine"))
 
             if first_gameplay_frame:
                 logger.info("Gameplay frame: flipping display")
@@ -2956,7 +3086,7 @@ def main() -> None:
                 total_distance_m=car.odometer_m,
             )
         elif career is None:
-            save_gig_odometer(gig_odometer_file, car.odometer_m)
+            save_gig_odometer(gig_odometer_file, car.odometer_m, car.fuel_l)
 
         if city_summary is not None:
             summary_city, summary_score, summary_fares, summary_next_city, summary_career_total = city_summary

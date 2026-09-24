@@ -91,10 +91,29 @@ def test_player_commands_reach_the_simulation(tmp_path, monkeypatch):
     server.tick(1.0 / 30.0)
     assert server._on_foot is False  # the interact command got the player into the car
 
-    connection.send(protocol.build_command_message(PlayerCommand(throttle=1.0), interact=False, seq=2))
+    connection.send(protocol.build_command_message(PlayerCommand(throttle=1.0, engine_on=True), interact=False, seq=2))
     time.sleep(0.05)
     start_x = server.car.x
     for _ in range(20):
         server.tick(1.0 / 30.0)
     assert server.car.x != start_x
     connection.close()
+
+
+def test_engine_stays_off_after_entering_until_started():
+    """Getting in doesn't start the engine and getting out doesn't stop it;
+    only E (the engine_on command) does."""
+    import types
+    from theroadragetrip.physics import Car
+    from theroadragetrip.simulation import apply_enter_exit_vehicle
+
+    car = Car(x=0.0, y=0.0, heading=0.0, speed=0.0, engine_on=False)
+    pedestrian = types.SimpleNamespace(x=1.0, y=0.0, heading=0.0)
+    audio = types.SimpleNamespace(play=lambda *_args, **_kwargs: None)
+    assert apply_enter_exit_vehicle(car, pedestrian, True, audio) is False
+    assert car.engine_on is False
+
+    # Jumping out with F (no E first) leaves a running engine idling.
+    car.engine_on = True
+    assert apply_enter_exit_vehicle(car, pedestrian, False, audio) is True
+    assert car.engine_on is True

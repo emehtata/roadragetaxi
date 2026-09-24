@@ -2,7 +2,7 @@ from collections import defaultdict
 import logging
 import math
 import random
-from typing import Callable, List, Optional, Tuple
+from typing import Callable, Iterator, List, Optional, Tuple
 
 
 from ..geo import dist_point_to_segment, point_in_polygon
@@ -160,7 +160,16 @@ def plant_trees(
 
 
 def remove_trees_under_roads(sceneries: List[Scenery], ways: List[Way]) -> None:
-    """Remove tree centers covered by drivable road geometry.
+    """Synchronous form of remove_trees_under_roads_steps."""
+    for _ in remove_trees_under_roads_steps(sceneries, ways):
+        pass
+
+
+def remove_trees_under_roads_steps(sceneries: List[Scenery], ways: List[Way]) -> Iterator[None]:
+    """Remove tree centers covered by drivable road geometry, yielding after
+    each road way and each scenery so map sync can spread it over frames
+    (a single pass measured ~1.3 s on Oulu). The lists are snapshotted at
+    start; each scenery is final (and flagged) as soon as it is swept.
 
     Each scenery is only swept once (tracked via
     trees_checked_against_roads): called after every tile-streaming merge
@@ -180,54 +189,52 @@ def remove_trees_under_roads(sceneries: List[Scenery], ways: List[Way]) -> None:
     if not pending:
         return
     road_ways = [way for way in ways if getattr(way, "is_drivable", True)]
+    yield
     if not road_ways:
         for scenery in pending:
             scenery.trees_checked_against_roads = True
+        yield
         return
 
+    # Index road *segments* (not whole ways), only for cells that hold a
+    # pending tree: a long way used to be tested by every tree in every
+    # cell its bbox touched, which cost >1 s per merge in Oulu.
     cell_size = 64.0
+    tree_cells = {
+        (math.floor(tree_x / cell_size), math.floor(tree_y / cell_size))
+        for scenery in pending
+        for tree_x, tree_y in scenery.trees
+    }
     road_grid = defaultdict(list)
     for way in road_ways:
         points = way.points_m
-        if len(points) < 2:
-            continue
         half_width = way.half_width_m
-        minx = min(point[0] for point in points) - half_width
-        miny = min(point[1] for point in points) - half_width
-        maxx = max(point[0] for point in points) + half_width
-        maxy = max(point[1] for point in points) + half_width
-        for grid_x in range(math.floor(minx / cell_size), math.floor(maxx / cell_size) + 1):
-            for grid_y in range(math.floor(miny / cell_size), math.floor(maxy / cell_size) + 1):
-                road_grid[(grid_x, grid_y)].append(way)
+        for p1, p2 in zip(points, points[1:]):
+            segment = (p1[0], p1[1], p2[0], p2[1], half_width)
+            for grid_x in range(
+                math.floor((min(p1[0], p2[0]) - half_width) / cell_size),
+                math.floor((max(p1[0], p2[0]) + half_width) / cell_size) + 1,
+            ):
+                for grid_y in range(
+                    math.floor((min(p1[1], p2[1]) - half_width) / cell_size),
+                    math.floor((max(p1[1], p2[1]) + half_width) / cell_size) + 1,
+                ):
+                    if (grid_x, grid_y) in tree_cells:
+                        road_grid[(grid_x, grid_y)].append(segment)
+        yield
 
     for scenery in pending:
         kept_trees = []
         kept_variations = []
         kept_kinds = []
         for index, (tree_x, tree_y) in enumerate(scenery.trees):
-            covered = False
-            candidate_ways = road_grid.get(
-                (math.floor(tree_x / cell_size), math.floor(tree_y / cell_size)),
-                (),
+            covered = any(
+                dist_point_to_segment(tree_x, tree_y, x1, y1, x2, y2) <= half_width
+                for x1, y1, x2, y2, half_width in road_grid.get(
+                    (math.floor(tree_x / cell_size), math.floor(tree_y / cell_size)),
+                    (),
+                )
             )
-            for way in candidate_ways:
-                half_width = way.half_width_m
-                points = way.points_m
-                minx = min(point[0] for point in points)
-                miny = min(point[1] for point in points)
-                maxx = max(point[0] for point in points)
-                maxy = max(point[1] for point in points)
-                if not (
-                    minx - half_width <= tree_x <= maxx + half_width
-                    and miny - half_width <= tree_y <= maxy + half_width
-                ):
-                    continue
-                if any(
-                    dist_point_to_segment(tree_x, tree_y, p1[0], p1[1], p2[0], p2[1]) <= half_width
-                    for p1, p2 in zip(points, points[1:])
-                ):
-                    covered = True
-                    break
             if covered:
                 continue
             kept_trees.append((tree_x, tree_y))
@@ -239,3 +246,4 @@ def remove_trees_under_roads(sceneries: List[Scenery], ways: List[Way]) -> None:
         scenery.tree_variations = kept_variations
         scenery.tree_kinds = kept_kinds
         scenery.trees_checked_against_roads = True
+        yield
