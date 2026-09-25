@@ -76,17 +76,19 @@ def test_every_generated_catalog_group_loads_from_its_files():
 
 
 def test_engine_layers_crossfade_with_speed_and_stop_standing_still():
-    audio, log = manager({"vehicle.engine_accelerate": 3})
+    audio, log = manager({"vehicle.engine_accelerate": 4})
 
     def playing():
         return {key: round(ch.volume, 2) for key, ch in audio.loop_channels.items()}
 
-    audio.update_engine(True, 20.0 / 3.6, throttle=1.0)
-    assert set(playing()) == {"engine_0"}  # city speed: low revs only
+    audio.update_engine(True, 5.0 / 3.6, throttle=0.0)
+    assert playing() == {"engine_0": 0.45}  # pulling away: the lowest revs, like the idle
     audio.update_engine(True, 55.0 / 3.6, throttle=0.0)
-    assert playing()["engine_1"] > playing()["engine_0"]  # coasting quieter, mid revs lead
-    audio.update_engine(True, 100.0 / 3.6, throttle=1.0)
-    assert set(playing()) == {"engine_2"} and playing()["engine_2"] == 0.7  # motorway: high revs, full throttle
+    assert set(playing()) == {"engine_1", "engine_2"}  # between two rev levels: a blend
+    audio.update_engine(True, 55.0 / 3.6, throttle=1.0)
+    assert playing()["engine_2"] > playing().get("engine_1", 0.0)  # throttle: higher revs, louder
+    audio.update_engine(True, 120.0 / 3.6, throttle=1.0)
+    assert playing() == {"engine_3": 0.75}  # motorway: top revs
     audio.update_engine(True, 0.0, throttle=1.0)
     assert playing() == {}  # standing still: the idle loop's job
 

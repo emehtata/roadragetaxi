@@ -36,6 +36,9 @@ SPATIAL_RANGES_M = {
 PLAYER_SOUND_CATEGORIES = ("vehicle.", "collision.", "taxi.", "passenger.", "gameplay.")
 PLAYER_SOUND_RANGE_M = (20.0, 300.0)
 PAN_WIDTH_M = 60.0  # this far to the side is fully in one speaker
+# Speeds (km/h, plus throttle revs) where each engine rev layer is loudest.
+ENGINE_LAYER_KMH = (10.0, 40.0, 70.0, 100.0)
+ENGINE_LAYER_SPACING_KMH = 30.0
 
 
 def spatial_levels(listener, source, full_m: float, silent_m: float) -> tuple[float, float]:
@@ -406,16 +409,19 @@ class AudioManager:
         # Loops pick up the new volumes on their next update (every frame).
 
     def update_engine(self, running: bool, speed_mps: float, throttle: float) -> None:
-        """The engine under way: low/mid/high-rev loops crossfaded by
-        speed (a loop can't be pitch-shifted live), louder on the throttle."""
-        kmh = abs(speed_mps) * 3.6 if running else 0.0
-        level = 0.0 if kmh < 2.0 else 0.35 + 0.35 * max(0.0, min(1.0, throttle))
-        layers = (
-            max(0.0, min(1.0, (60.0 - kmh) / 30.0)),  # low revs: full to 30 km/h, gone by 60
-            max(0.0, 1.0 - abs(kmh - 55.0) / 35.0),   # mid revs: around 55 km/h
-            max(0.0, min(1.0, (kmh - 60.0) / 30.0)),  # high revs: from 60, full at 90 km/h
-        )
-        for index, weight in enumerate(layers):
+        """The engine under way, taking over from the idle loop once the
+        taxi moves: the idle sped up to four rev levels (x1.25 .. x2.5),
+        crossfaded by speed; the throttle adds revs (about a gear's worth)
+        and loudness."""
+        throttle = max(0.0, min(1.0, throttle))
+        moving = running and abs(speed_mps) > 0.5
+        revs_kmh = abs(speed_mps) * 3.6 + 20.0 * throttle
+        level = 0.45 + 0.3 * throttle if moving else 0.0
+        for index, centre in enumerate(ENGINE_LAYER_KMH):
+            if index == 0 and revs_kmh <= centre or index == len(ENGINE_LAYER_KMH) - 1 and revs_kmh >= centre:
+                weight = 1.0
+            else:
+                weight = max(0.0, 1.0 - abs(revs_kmh - centre) / ENGINE_LAYER_SPACING_KMH)
             self.set_loop(f"engine_{index}", "vehicle.engine_accelerate", level * weight, variation=index)
 
     def update_police_siren(self, active: bool) -> None:

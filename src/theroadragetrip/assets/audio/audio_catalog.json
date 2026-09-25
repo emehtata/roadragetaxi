@@ -391,7 +391,7 @@
     "vehicle.engine_accelerate": {
       "category": "vehicle",
       "event": "throttle",
-      "description": "Taxi engine running under way, in three rev ranges crossfaded by speed.",
+      "description": "Taxi engine under way: the idle loop sped up to four rev levels, crossfaded by speed.",
       "trigger": "Engine on and the taxi moving: layers follow speed, louder under throttle.",
       "source": [
         "src/theroadragetrip/simulation.py:357"
@@ -399,74 +399,93 @@
       "priority": "required",
       "loop": true,
       "duration_s": [
-        8.0
+        3.4,
+        6.8
       ],
-      "variations": 3,
+      "variations": 4,
       "selection": "layer",
       "randomize": false,
       "spatial": false,
       "intensity_levels": true,
       "contextual_variants": [],
       "existing_asset": null,
-      "notes": "Replaces sounds/accelerate.wav (removed). Layer 01 low revs, 02 mid, 03 high.",
-      "generation": {
-        "prompt": "Modern four-cylinder sedan car engine heard from inside the car, steady continuous engine drone at constant revs, no gear changes, no tire noise, seamless loop, isolated sound effect",
-        "negative_prompt": "music, melody, speech, voice, singing, low quality, distortion, clipping, horn, crash"
-      },
+      "notes": "Derived from vehicle.engine_idle.01 (the generated Stable Audio driving loops sounded wrong): each layer is the idle loop resampled faster, so pitch rises like revs and the loop stays seamless. Replaces sounds/accelerate.wav.",
       "files": [
         {
           "id": "vehicle.engine_accelerate.01",
           "file": "vehicle/vehicle_engine_accelerate_01.ogg",
           "variation": 1,
-          "variant": "low revs, calm city driving at about 1500 rpm",
+          "variant": "low revs, city driving",
           "status": "generated",
+          "derive": {
+            "from": "vehicle/vehicle_engine_idle_01.ogg",
+            "rate": 1.25
+          },
           "review": "pending",
-          "prompt": "low revs, calm city driving at about 1500 rpm. Modern four-cylinder sedan car engine heard from inside the car, steady continuous engine drone at constant revs, no gear changes, no tire noise, seamless loop, isolated sound effect",
-          "seed": 544195849,
-          "steps": 100,
+          "generated": "2026-09-26",
           "sample_rate": 44100,
           "channels": 2,
-          "generated": "2026-09-25",
-          "duration_s": 8.5,
+          "duration_s": 6.8,
           "raw_clipped_samples": 0,
-          "raw_silent_fraction": 0.0,
-          "rms_dbfs": -14.5
+          "raw_silent_fraction": 0.001,
+          "rms_dbfs": -15.4
         },
         {
           "id": "vehicle.engine_accelerate.02",
           "file": "vehicle/vehicle_engine_accelerate_02.ogg",
           "variation": 2,
-          "variant": "mid revs, accelerating at about 3000 rpm",
+          "variant": "mid revs",
           "status": "generated",
+          "derive": {
+            "from": "vehicle/vehicle_engine_idle_01.ogg",
+            "rate": 1.6
+          },
           "review": "pending",
-          "prompt": "mid revs, accelerating at about 3000 rpm. Modern four-cylinder sedan car engine heard from inside the car, steady continuous engine drone at constant revs, no gear changes, no tire noise, seamless loop, isolated sound effect",
-          "seed": 3110507699,
-          "steps": 100,
+          "generated": "2026-09-26",
           "sample_rate": 44100,
           "channels": 2,
-          "generated": "2026-09-25",
-          "duration_s": 8.5,
+          "duration_s": 5.313,
           "raw_clipped_samples": 0,
-          "raw_silent_fraction": 0.0,
-          "rms_dbfs": -13.0
+          "raw_silent_fraction": 0.001,
+          "rms_dbfs": -15.4
         },
         {
           "id": "vehicle.engine_accelerate.03",
           "file": "vehicle/vehicle_engine_accelerate_03.ogg",
           "variation": 3,
-          "variant": "high revs, hard acceleration near 5000 rpm",
+          "variant": "high revs",
           "status": "generated",
+          "derive": {
+            "from": "vehicle/vehicle_engine_idle_01.ogg",
+            "rate": 2.0
+          },
           "review": "pending",
-          "prompt": "high revs, hard acceleration near 5000 rpm. Modern four-cylinder sedan car engine heard from inside the car, steady continuous engine drone at constant revs, no gear changes, no tire noise, seamless loop, isolated sound effect",
-          "seed": 3462505509,
-          "steps": 100,
+          "generated": "2026-09-26",
           "sample_rate": 44100,
           "channels": 2,
-          "generated": "2026-09-25",
-          "duration_s": 8.5,
+          "duration_s": 4.25,
           "raw_clipped_samples": 0,
-          "raw_silent_fraction": 0.017,
-          "rms_dbfs": -12.7
+          "raw_silent_fraction": 0.001,
+          "rms_dbfs": -15.5
+        },
+        {
+          "id": "vehicle.engine_accelerate.04",
+          "file": "vehicle/vehicle_engine_accelerate_04.ogg",
+          "variation": 4,
+          "variant": "very high revs, hard acceleration",
+          "status": "generated",
+          "derive": {
+            "from": "vehicle/vehicle_engine_idle_01.ogg",
+            "rate": 2.5
+          },
+          "review": "pending",
+          "generated": "2026-09-26",
+          "sample_rate": 44100,
+          "channels": 2,
+          "duration_s": 3.4,
+          "raw_clipped_samples": 0,
+          "raw_silent_fraction": 0.001,
+          "rms_dbfs": -15.3
         }
       ]
     },
