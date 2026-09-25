@@ -70,6 +70,7 @@ def test_loading_screen_reuses_scaled_background_overlay_and_fonts(monkeypatch):
     menus_render._loading_background_cache.clear()
     menus_render._loading_overlay_cache.clear()
     menus_render._loading_font_cache.clear()
+    menus_render._data_credit_surfaces.cache_clear()  # else warm from earlier tests: counts vary by order
 
     draw_loading_screen(screen, font, 0.2, "First", 640, 480)
     background = next(iter(menus_render._loading_background_cache.values()))
@@ -78,7 +79,7 @@ def test_loading_screen_reuses_scaled_background_overlay_and_fonts(monkeypatch):
     draw_loading_screen(screen, font, 0.3, "Second", 640, 480)
 
     assert scale_calls == 1
-    assert font_calls == 2
+    assert font_calls == 3  # title, detail and the data-credits line - each once
     assert next(iter(menus_render._loading_background_cache.values())) is background
     assert next(iter(menus_render._loading_overlay_cache.values())) is overlay
     assert next(iter(menus_render._loading_font_cache.values())) is fonts
