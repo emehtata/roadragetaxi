@@ -75,6 +75,9 @@ class Railway:
     is_bridge: bool = False
     layer: int = 0
     half_width_m: float = 1.7
+    # OSM railway:track_ref without leading zeros ("011" -> "11"): the
+    # station track number, which timetable platform codes refer to.
+    track_ref: str = ""
 
 
 @dataclass

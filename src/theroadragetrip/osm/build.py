@@ -750,6 +750,7 @@ def build_ways(
                 bbox=ibbox,
                 is_bridge=railway_is_bridge,
                 layer=railway_layer,
+                track_ref=tags.get("railway:track_ref", "").strip().lstrip("0"),
             )
         )
 

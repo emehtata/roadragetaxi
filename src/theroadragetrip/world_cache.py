@@ -46,8 +46,9 @@ MAGIC = b"RWC\0"
 # what FORMAT_VERSION is for (see test_stale_format_version_forces_a_
 # rebuild_even_within_the_ttl in test_world_cache.py) - a new persisted
 # field needs a bump precisely because missing-field construction fails
-# silent, not loud.
-FORMAT_VERSION = 14
+# silent, not loud. Bumped to 15 for Railway.track_ref (station track
+# numbers the train timetable's platforms refer to).
+FORMAT_VERSION = 15
 COORDINATE_SYSTEM = "EPSG:3067"
 _HEADER = struct.Struct("<4sHHQQ32s12s")
 _DIRECTORY = struct.Struct("<8sQQI")
