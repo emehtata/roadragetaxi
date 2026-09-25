@@ -33,6 +33,12 @@ TRAIN_CARS = 6  # locomotive + 5 carriages
 TRAIN_CAR_LENGTH_M = 24.0
 TRAIN_CAR_GAP_M = 1.5
 TRAIN_WIDTH_M = 3.2
+TRAIN_LENGTH_M = TRAIN_CARS * (TRAIN_CAR_LENGTH_M + TRAIN_CAR_GAP_M) - TRAIN_CAR_GAP_M
+TRAIN_ACCELERATION_MPS2 = 0.6  # brake into / pull out of a station: ~40 s from 80 km/h
+# Railway simulation time runs 1:1 with real time - trains move at real
+# speed while the game clock runs up to 60x - so a timetable dwell of 2 min
+# is a 2 min (real) stop, not 2 s. Tune here, never via the game clock.
+DWELL_REAL_S_PER_TIMETABLE_S = 1.0
 _MERGE_M = 0.5  # track points closer than this are one node (tile seams share OSM nodes)
 
 
@@ -70,11 +76,59 @@ class Train:
     route: TrainRoute
     distance_m: float  # of the locomotive along the route
     direction: int  # +1 towards the route's end, -1 towards its start
-    speed_mps: float = TRAIN_SPEED_MPS
+    speed_mps: float = TRAIN_SPEED_MPS  # line speed
     service: Optional[ScheduledPass] = None  # timetable identity; None = phase-1 shuttle
+    # Timetable stop state: RUNNING between stations, DWELLING at one.
+    state: str = "RUNNING"
+    stop_index: int = 0  # next entry of service.stops
+    dwell_remaining_s: float = 0.0
+    current_speed_mps: Optional[float] = None  # enters the map at line speed
+
+    def __post_init__(self) -> None:
+        if self.current_speed_mps is None:
+            self.current_speed_mps = self.speed_mps
+
+    @property
+    def debug_label(self) -> str:
+        """Timetable identity + state, for the debug overlay."""
+        if self.service is None:
+            return "shuttle"
+        stop = self.next_stop
+        if self.state == "DWELLING" and stop is not None:
+            return f"{self.service.label} DWELLING {stop[2]} {self.dwell_remaining_s:.0f}s"
+        return f"{self.service.label} RUNNING" + (f" -> {stop[2]}" if stop is not None else " -> leaving")
+
+    @property
+    def next_stop(self):
+        stops = self.service.stops if self.service is not None else ()
+        return stops[self.stop_index] if self.stop_index < len(stops) else None
+
+    def _stop_position(self, stop) -> float:
+        """Locomotive position that centres the train on the station."""
+        return min(max(stop[0] + self.direction * TRAIN_LENGTH_M / 2, 0.0), self.route.length)
 
     def update(self, dt: float) -> None:
-        self.distance_m += self.direction * self.speed_mps * dt
+        """dt in real seconds (railway simulation time, see
+        DWELL_REAL_S_PER_TIMETABLE_S) - never the accelerated game time."""
+        if self.state == "DWELLING":
+            self.dwell_remaining_s -= dt
+            if self.dwell_remaining_s > 0.0:
+                return
+            self.state, self.stop_index = "RUNNING", self.stop_index + 1
+        stop = self.next_stop
+        speed = min(self.speed_mps, self.current_speed_mps + TRAIN_ACCELERATION_MPS2 * dt)
+        if stop is not None:
+            to_stop = (self._stop_position(stop) - self.distance_m) * self.direction
+            # Brake so the train comes to rest exactly at the platform.
+            speed = min(speed, math.sqrt(2.0 * TRAIN_ACCELERATION_MPS2 * max(to_stop, 0.0)))
+            if to_stop <= max(speed * dt, 0.05):
+                self.distance_m = self._stop_position(stop)
+                self.current_speed_mps = 0.0
+                self.state = "DWELLING"
+                self.dwell_remaining_s = stop[1] * DWELL_REAL_S_PER_TIMETABLE_S
+                return
+        self.current_speed_mps = speed
+        self.distance_m += self.direction * speed * dt
         if self.distance_m >= self.route.length:
             self.distance_m, self.direction = self.route.length, -1
         elif self.distance_m <= 0.0:

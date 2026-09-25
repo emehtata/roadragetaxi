@@ -1389,7 +1389,7 @@ def draw_trains(
                 x, y, _ = train.cars()[0]
                 if vminx <= x <= vmaxx and vminy <= y <= vmaxy:
                     sx, sy = world_to_screen(x, y, camx, camy, px_per_m, screen_w, screen_h)
-                    screen.blit(font.render(train.service.label, True, (255, 255, 255), (20, 20, 20)), (sx + 8, sy - 8))
+                    screen.blit(font.render(train.debug_label, True, (255, 255, 255), (20, 20, 20)), (sx + 8, sy - 8))
         for route in railway_mgr.routes:
             pygame.draw.lines(
                 screen, (255, 0, 255), False,

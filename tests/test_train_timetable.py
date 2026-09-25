@@ -24,16 +24,22 @@ def metres(lat, lon):
 
 def timetable(*trains, stations=None):
     return {
-        "version": 2,
+        "version": 3,
         "stations": stations or {"S": [0.0, 0.0, "South"], "N": [0.2, 0.0, "North"], "W": [0.1, -0.1, "West"], "E": [0.1, 0.1, "East"]},
         "trains": list(trains),
     }
 
 
 def train(stops, number="1", days=0b1111111, kind="IC", category="long_distance"):
+    """stops: (code, time) = a stop, or (code, arrival, departure[, stops_here])."""
+    calls = []
+    for stop in stops:
+        code, arrival = stop[0], stop[1]
+        departure = stop[2] if len(stop) > 2 else arrival
+        calls.append([code, arrival, departure, stop[3] if len(stop) > 3 else 1])
     return {
         "type": kind, "number": number, "category": category, "origin": stops[0][0], "destination": stops[-1][0],
-        "days": days, "stops": [list(s) for s in stops],
+        "days": days, "stops": calls,
     }
 
 
@@ -183,12 +189,17 @@ def _gtfs_zip() -> bytes:
 def test_importer_builds_weekly_masks_identities_and_merges_duplicate_runs():
     document = importer.convert(_gtfs_zip(), today=date(2026, 9, 25), downloaded_at="2026-09-25T00:00:00Z")
     assert document["reference_week"] == MONDAY.isoformat()
-    assert document["stations"] == {"HKI": [60.17, 24.94, "Helsinki"], "OL": [65.01, 25.48, "Oulu"]}  # platforms -> station
+    # Platforms -> station; each matched by station code to the OSM station
+    # in the committed places.json (its coordinates appended).
+    assert document["stations"] == {
+        "HKI": [60.17, 24.94, "Helsinki", 60.172097, 24.941249],
+        "OL": [65.01, 25.48, "Oulu", 65.011332, 25.484336],
+    }
     by_number = {t["number"]: t for t in document["trains"]}
     assert by_number["21"]["days"] == 0b1111011  # weekdays+weekend merged, Wednesday cancelled
     assert by_number["21"]["type"] == "IC" and by_number["21"]["origin"] == "Helsinki"
     assert (by_number["21"]["category"], by_number["8193"]["category"]) == ("long_distance", "commuter")
-    assert by_number["8193"]["type"] == "A" and by_number["8193"]["stops"][1] == ["OL", 24 * 3600 + 600]
+    assert by_number["8193"]["type"] == "A" and by_number["8193"]["stops"][1] == ["OL", 24 * 3600 + 600, 24 * 3600 + 600, 1]
 
 
 def test_offline_game_uses_the_stored_file_and_a_failed_import_keeps_it(tmp_path, capsys):
@@ -247,3 +258,87 @@ def test_next_arrival_is_for_the_station_nearest_the_driver():
     assert manager.next_arrival(0.0, 13_000.0, datetime(2026, 9, 28, 10, 31))[1].number == "N1"  # next day's run; S1 starts at Beta
     when, call = manager.next_arrival(0.0, 7_000.0, datetime(2026, 9, 28, 10, 20))  # near Alpha
     assert (call.station, call.number, when) == ("Alpha", "S1", datetime(2026, 9, 28, 11, 6, 40))
+
+
+def test_gtfs_stations_match_osm_by_code_then_proximity_but_not_far_away():
+    osm = [
+        {"type": "railway_station", "name": "Oulu", "lat": 65.0113, "lon": 25.4843, "station_code": "Ol"},
+        {"type": "railway_station", "name": "Kempele", "lat": 64.9120, "lon": 25.5080},
+    ]
+    assert importer._match_osm("OL", 65.0120, 25.4850, osm) == (65.0113, 25.4843)  # code, ~80 m off
+    assert importer._match_osm("KML", 64.9150, 25.5090, osm) == (64.9120, 25.5080)  # no code: nearest, ~340 m
+    assert importer._match_osm("HVN", 64.60, 25.40, osm) is None  # a timing point far from any station
+
+
+# -- station stops and dwell ------------------------------------------------------
+
+STOP_STATIONS = {"S": [0.0, 0.0, "South"], "M": [0.1, 0.0, "Middle"], "N": [0.2, 0.0, "North"]}
+
+
+def _stopping_train(dwell_s=120, stops_at_middle=1):
+    # Northbound S -> M -> N; M (y = 10 km) is the middle of the track.
+    return train([("S", 30000), ("M", 36000, 36000 + dwell_s, stops_at_middle), ("N", 42000)], number="7")
+
+
+def _run_until_dwelling(manager, now, game_dt=0.0, limit_s=2000):
+    for step in range(limit_s * 10):
+        manager.update(0.1, game_dt, now)
+        (train_,) = manager.trains
+        if train_.state == "DWELLING":
+            return train_, step / 10
+    raise AssertionError("train never stopped")
+
+
+def _spawned(manager):
+    manager.update(0.0, 0.0, datetime(2026, 9, 28, 9, 0))
+    manager.update(0.0, 0.0, datetime(2026, 9, 28, 10, 5))  # midpoint time 10:00 passed
+    assert len(manager.trains) == 1
+    return datetime(2026, 9, 28, 10, 5)
+
+
+def test_train_stops_centred_at_its_station_dwells_and_pulls_away_smoothly():
+    manager = RailwayManager(NORTH_SOUTH_TRACK, timetable(_stopping_train(), stations=STOP_STATIONS), metres)
+    now = _spawned(manager)
+    train_, _ = _run_until_dwelling(manager, now)
+    cars = train_.cars()
+    assert abs((cars[0][1] + cars[-1][1]) / 2 - 10_000) < 15  # train centred on the station
+    assert train_.next_stop[2] == "Middle" and train_.current_speed_mps == 0.0
+    stopped_at = train_.distance_m
+    for _ in range(1190):  # 119 s: still at the platform
+        manager.update(0.1, 0.0, now)
+    assert train_.state == "DWELLING" and train_.distance_m == stopped_at
+    positions = []
+    for _ in range(200):  # dwell over: accelerate away without a jump
+        manager.update(0.1, 0.0, now)
+        positions.append(train_.distance_m)
+    assert train_.state == "RUNNING" and train_.next_stop is None  # North is beyond the track: leaving
+    steps = [b - a for a, b in zip([stopped_at] + positions, positions)]
+    assert all(0.0 <= step <= 22 * 0.1 + 1e-9 for step in steps)  # never backwards, never a jump
+    assert steps[1] < 0.1 and steps[-1] > 10 * steps[1]  # starts slowly, speeds up
+
+
+def test_game_clock_speed_does_not_shorten_the_dwell():
+    """Regression: a 2 min timetable dwell stays 120 real seconds whether
+    the game clock runs at 1x or 60x (railway time is real time)."""
+    for game_seconds_per_real_second in (1.0, 60.0, 600.0):
+        manager = RailwayManager(NORTH_SOUTH_TRACK, timetable(_stopping_train(), stations=STOP_STATIONS), metres)
+        now = _spawned(manager)
+        train_, _ = _run_until_dwelling(manager, now, game_dt=0.1 * game_seconds_per_real_second)
+        dwelt = 0.0
+        while train_.state == "DWELLING":
+            now += timedelta(seconds=0.1 * game_seconds_per_real_second)
+            manager.update(0.1, 0.1 * game_seconds_per_real_second, now)
+            dwelt += 0.1
+        assert abs(dwelt - 120.0) < 0.2, (game_seconds_per_real_second, dwelt)
+
+
+def test_passing_timing_points_and_zero_dwell_do_not_stop_but_termini_do():
+    passing = RailwayManager(NORTH_SOUTH_TRACK, timetable(_stopping_train(stops_at_middle=0), stations=STOP_STATIONS), metres)
+    _spawned(passing)
+    assert [stop[2] for stop in passing.trains[0].service.stops] == []  # S/N termini are off the track
+
+    stations = {"S": [0.05, 0.0, "South"], "M": [0.1, 0.0, "Middle"], "N": [0.15, 0.0, "North"]}  # all on the track
+    through = RailwayManager(NORTH_SOUTH_TRACK, timetable(_stopping_train(dwell_s=0), stations=stations), metres)
+    _spawned(through)
+    stops = through.trains[0].service.stops
+    assert [(stop[2], stop[1]) for stop in stops] == [("South", 120), ("North", 120)]  # termini dwell, 0 s M not

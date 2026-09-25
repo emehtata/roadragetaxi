@@ -28,7 +28,7 @@ except Exception:  # pragma: no cover - tzdata missing: DST handling degrades to
 logger = logging.getLogger(__name__)
 
 DEFAULT_TIMETABLE_PATH = Path(__file__).with_name("assets") / "railway_timetable.json.gz"
-SUPPORTED_VERSION = 2
+SUPPORTED_VERSION = 3
 # How close a train's station-to-station path must pass a route's midpoint.
 # Straight lines between stations cut corners, so this is generous; lines
 # closer together than this would share trains (Finnish lines rarely are).
@@ -38,6 +38,9 @@ MATCH_RADIUS_M = 2000.0
 FOLLOWED_CATEGORIES = {"long_distance"}
 # A timetable station counts as on this map within this distance of a route.
 STATION_ON_ROUTE_M = 1500.0
+# Dwell at a journey's first/last station, where GTFS gives no stop length
+# (arrival == departure): long enough to read as "terminates/starts here".
+TERMINAL_DWELL_S = 120
 COMPASS = ("N", "NE", "E", "SE", "S", "SW", "W", "NW")
 
 
@@ -54,6 +57,10 @@ class ScheduledPass:
     route_index: int
     direction: int  # +1 enters at the route start, -1 at its end
     heading: str  # compass direction of travel, for debugging
+    # Stops on this route in travel order: (distance of the station along
+    # the route, dwell in timetable seconds, station name, GTFS arrival,
+    # GTFS departure). Stations without a stop (timing points) are absent.
+    stops: Tuple[Tuple[float, int, str, int, int], ...] = ()
 
     @property
     def label(self) -> str:
@@ -128,15 +135,19 @@ def prepare_timetable(timetable: dict, to_metres: Callable[[float, float], Tuple
     """Each train's station path in world metres (with cumulative lengths
     and bbox) - route-independent, so done once per world load, not on
     every route rebuild. to_metres(lat, lon) -> (x east, y north)."""
-    stations = {code: to_metres(lat, lon) for code, (lat, lon, _) in timetable["stations"].items()}
+    # The matched OSM station position (entries 3-4) when the importer found
+    # one - that is where the platform is on this map - else GTFS's own.
+    stations = {code: to_metres(*(entry[3:5] if len(entry) >= 5 else entry[:2])) for code, entry in timetable["stations"].items()}
     prepared = []
     for train in timetable["trains"]:
         if train.get("category") not in FOLLOWED_CATEGORIES:
             continue
-        stops = [(stations[code], seconds, code) for code, seconds in train["stops"] if code in stations]
+        # (position, arrival, code, departure, stops here)
+        stops = [(stations[code], arrival, code, departure, stops_here)
+                 for code, arrival, departure, stops_here in train["stops"] if code in stations]
         if len(stops) < 2:
             continue
-        path = [point for point, _, _ in stops]
+        path = [stop[0] for stop in stops]
         cumulative = [0.0]
         for a, b in zip(path, path[1:]):
             cumulative.append(cumulative[-1] + math.dist(a, b))
@@ -161,6 +172,15 @@ def match_timetable(
         mx, my, _ = route.point_at(route.length / 2)
         ends.append((route.points[0], (mx, my), route.points[-1]))
     passes = []
+    on_route: List[Dict[str, Optional[float]]] = [{} for _ in routes]  # code -> distance along route
+
+    def station_along(index: int, code: str, point) -> Optional[float]:
+        if code not in on_route[index]:
+            route = routes[index]
+            distance, along, _, _ = _project(point, route.points, route.cumulative)
+            on_route[index][code] = along if distance <= STATION_ON_ROUTE_M else None
+        return on_route[index][code]
+
     for train, stops, path, cumulative, (minx, miny, maxx, maxy) in prepared:
         for index, (start, middle, end) in enumerate(ends):
             if not (minx - radius_m <= middle[0] <= maxx + radius_m and miny - radius_m <= middle[1] <= maxy + radius_m):
@@ -176,12 +196,23 @@ def match_timetable(
             entry, exit_ = (start, end) if direction > 0 else (end, start)
             bearing = math.degrees(math.atan2(exit_[0] - entry[0], exit_[1] - entry[1])) % 360
             seconds_a, seconds_b = stops[segment][1], stops[segment + 1][1]
+            route_stops = []
+            for call_index, (point, arrival, code, departure, stops_here) in enumerate(stops):
+                along = station_along(index, code, point) if stops_here else None
+                if along is None:
+                    continue
+                terminal = call_index in (0, len(stops) - 1)
+                dwell = TERMINAL_DWELL_S if terminal else departure - arrival
+                if dwell > 0:
+                    route_stops.append((along, dwell, timetable["stations"][code][2], arrival, departure))
+            route_stops.sort(key=lambda stop: stop[0] * direction)
             passes.append(ScheduledPass(
                 train_type=train["type"], number=train["number"],
                 origin=train["origin"], destination=train["destination"], days=train["days"],
                 seconds=round(seconds_a + (seconds_b - seconds_a) * t),
                 route_index=index, direction=direction,
                 heading=COMPASS[round(bearing / 45) % 8],
+                stops=tuple(route_stops),
             ))
     return passes
 
@@ -200,7 +231,9 @@ def station_calls(timetable: dict, prepared: list, routes: Sequence) -> List[Tup
     maxy = max(p[1] for p in route_points) + STATION_ON_ROUTE_M
     near: Dict[str, Optional[Tuple[Tuple[float, float], List[StationCall]]]] = {}
     for train, stops, _, _, _ in prepared:
-        for point, seconds, code in stops[1:]:
+        for point, seconds, code, _, stops_here in stops[1:]:
+            if not stops_here:
+                continue
             if code not in near:
                 if not (minx <= point[0] <= maxx and miny <= point[1] <= maxy) or not any(
                     math.dist(point, p) <= STATION_ON_ROUTE_M for p in route_points
