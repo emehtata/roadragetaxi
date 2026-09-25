@@ -37,7 +37,7 @@ MAX_TRAIN_LENGTH_M = 400.0  # longest consists (night trains) are ~360 m
 
 # Visual profiles, green throughout: (base colour, pattern colour or None).
 PROFILES = {
-    "locomotive": ((24, 78, 38), (230, 230, 225)),  # dark green, white front band
+    "locomotive": ((12, 48, 24), (240, 240, 235)),  # very dark green, broad white cab front
     "standard": ((46, 125, 60), None),
     "restaurant": ((46, 125, 60), (245, 245, 240)),  # green with a white stripe
     "family": ((96, 170, 92), None),  # lighter green (playground car)
@@ -67,6 +67,7 @@ class TrainComposition:
     source: str = "generic"  # exact / history / type / generic
     observed: str = ""  # departure date of the observation used
     max_speed_kmh: Optional[int] = None
+    types: Tuple[str, ...] = ()  # Digitraffic vehicle type per vehicle (Sr3, Ed, ...), when known
     offsets: Tuple[float, ...] = field(default=(), compare=False)  # vehicle centre behind the front
     length_m: float = field(default=0.0, compare=False)
 
@@ -84,14 +85,15 @@ GENERIC = TrainComposition(((DEFAULT_WAGON_LENGTH_M, "locomotive"),) + ((DEFAULT
 
 
 def _from_record(record: dict, source: str) -> TrainComposition:
-    vehicles = []
+    vehicles, types = [], []
     for kind, vehicle_type, length, services in record.get("vehicles", []):
         if kind == "locomotive":
             length = length or LOCOMOTIVE_LENGTH_M.get(vehicle_type, DEFAULT_LOCOMOTIVE_LENGTH_M)
         vehicles.append((float(length or DEFAULT_WAGON_LENGTH_M), vehicle_profile(kind, services)))
+        types.append(vehicle_type)
     if not vehicles:
         return GENERIC
-    return TrainComposition(tuple(vehicles), source, record.get("departure_date", ""), record.get("max_speed_kmh"))
+    return TrainComposition(tuple(vehicles), source, record.get("departure_date", ""), record.get("max_speed_kmh"), tuple(types))
 
 
 def load_compositions(path: Optional[Path] = None) -> Optional[dict]:

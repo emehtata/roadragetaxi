@@ -53,20 +53,23 @@ def compact(section: dict) -> dict:
     vehicles: [kind, type, length_m or None, [service flags]] in train
     order. Multiple units (Sm*/Dm*) are fully described by their
     wagons; a hauled train's locomotives come first."""
-    wagons = sorted(section.get("wagons", []), key=lambda w: w.get("location", 0))
-    locomotives = sorted(section.get("locomotives", []), key=lambda l: l.get("location", 0))
+    wagons = section.get("wagons", [])
     wagon_types = {w.get("wagonType") for w in wagons}
-    vehicles = [
-        ["locomotive", loco.get("locomotiveType", ""), None, []]
-        for loco in locomotives if loco.get("locomotiveType") not in wagon_types  # not a multiple unit's own car
+    ordered = [
+        (loco.get("location", 0), ["locomotive", loco.get("locomotiveType", ""), None, []])
+        for loco in section.get("locomotives", [])
+        if loco.get("locomotiveType") not in wagon_types  # not a multiple unit's own car
     ]
     for wagon in wagons:
         length_cm = wagon.get("length")
-        vehicles.append([
+        ordered.append((wagon.get("location", 0), [
             "wagon", wagon.get("wagonType", ""),
             round(length_cm / 100.0, 2) if isinstance(length_cm, (int, float)) else None,
             [flag for flag in SERVICE_FLAGS if wagon.get(flag) is True],
-        ])
+        ]))
+    # Digitraffic's location order, locomotives included (a push-pull
+    # set can have its locomotive at the far end).
+    vehicles = [vehicle for _, vehicle in sorted(ordered, key=lambda item: item[0])]
     return {"max_speed_kmh": section.get("maximumSpeed"), "total_length_m": section.get("totalLength"), "vehicles": vehicles}
 
 

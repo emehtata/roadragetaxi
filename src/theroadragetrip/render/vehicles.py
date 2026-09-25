@@ -1387,7 +1387,8 @@ def draw_trains(
             body = quad(x, y, cos_h, sin_h, half_l, -half_l, half_w, -half_w)
             pygame.draw.polygon(screen, base, body)
             if pattern is not None and profile == "locomotive":
-                pygame.draw.polygon(screen, pattern, quad(x, y, cos_h, sin_h, half_l, half_l - 1.2, half_w, -half_w))
+                # The cab: a broad white front so the locomotive reads as one.
+                pygame.draw.polygon(screen, pattern, quad(x, y, cos_h, sin_h, half_l, half_l - 3.0, half_w, -half_w))
             elif pattern is not None:  # restaurant car: a white stripe along it
                 pygame.draw.polygon(screen, pattern, quad(x, y, cos_h, sin_h, half_l - 1.0, -half_l + 1.0, 0.5, -0.5))
             pygame.draw.polygon(screen, TRAIN_ROOF_LINE_COLOR, body, 1)
@@ -1423,10 +1424,12 @@ def draw_train_car_popup(screen, font, train, index: int, passengers, language: 
 
     vehicles = train.composition.vehicles
     profile = vehicles[min(index, len(vehicles) - 1)][1]
+    types = train.composition.types
+    vehicle_type = f" {types[index]}" if index < len(types) and types[index] else ""
     lines = [
         f"{train.service.train_type} {train.service.number}  " if train.service else "",
-        f"{tr(language, 'train_car')} {index + 1}/{len(vehicles)}: {tr(language, 'car_profile_' + profile)}",
-        f"{len(passengers)} {tr(language, 'passengers_in_car')}",
+        f"{tr(language, 'train_car')} {index + 1}/{len(vehicles)}: {tr(language, 'car_profile_' + profile)}{vehicle_type}",
+        tr(language, "no_passengers") if profile == "locomotive" else f"{len(passengers)} {tr(language, 'passengers_in_car')}",
     ]
     if train.service is not None and getattr(train.service, "origin", ""):
         lines[0] += f"{train.service.origin} - {train.service.destination}"
