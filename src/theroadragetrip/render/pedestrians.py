@@ -13,7 +13,6 @@ from typing import List, Optional, Tuple
 
 
 from ..osm import Way
-from ..rail_bookings import waiting_booking
 from ..residents import ResidentManager
 
 
@@ -179,14 +178,15 @@ def draw_pedestrians(
             pygame.draw.circle(screen, (20, 20, 20), (int(hand[0]), int(hand[1])), hand_r + 1)
             pygame.draw.circle(screen, TAXI_HAIL_COLOR, (int(hand[0]), int(hand[1])), hand_r)
 
-        # The player's pre-booked rail customer (by booking, not looks): a
-        # ring and the name on the booking.
-        booking = waiting_booking(ped)
-        if booking is not None:
-            pygame.draw.circle(screen, BOOKED_CUSTOMER_COLOR, (int(cx), int(cy)), int(radius_px * 2.2), 2)
-            if font and booking.passenger.name:
-                label = font.render(booking.passenger.name, True, BOOKED_CUSTOMER_COLOR)
-                screen.blit(label, label.get_rect(midbottom=(int(cx), int(cy - radius_px * 2.4))))
+        # The driver on foot meeting a pre-booked rail customer holds up a
+        # small white name card in front of them (no text needed).
+        if getattr(ped, "name_card", False):
+            card_x = cx + heading_x * radius_px * 1.3
+            card_y = cy + heading_y * radius_px * 1.3
+            card = pygame.Rect(0, 0, max(6, int(radius_px * 1.4)), max(4, int(radius_px * 0.9)))
+            card.center = (int(card_x), int(card_y))
+            pygame.draw.rect(screen, (20, 20, 20), card.inflate(2, 2))
+            pygame.draw.rect(screen, (255, 255, 255), card)
 
         # Comic cursing bubble when startled/dodging
         curse_timer = getattr(ped, "curse_timer", 0.0)
@@ -435,3 +435,18 @@ def draw_pedestrian_reflectors(
             continue
         cx, cy = world_to_screen(ped.x, ped.y, camx, camy, px_per_m, screen_w, screen_h)
         pygame.draw.circle(screen, (255, 255, 245), (int(cx), int(cy)), max(1, int(px_per_m * 0.35)))
+
+
+def draw_booked_passenger_arrow(screen, pedestrian, camx: float, camy: float, px_per_m: float = PX_PER_M,
+                                screen_w: int = SCREEN_W, screen_h: int = SCREEN_H) -> None:
+    """A downward arrow over the pre-booked rail customer the driver is
+    meeting - drawn at wherever that pedestrian is now."""
+    import pygame
+
+    cx, cy = world_to_screen(pedestrian.x, pedestrian.y, camx, camy, px_per_m, screen_w, screen_h)
+    radius_px = max(4.0, getattr(pedestrian, "radius_m", 0.45) * px_per_m)
+    tip_y = cy - radius_px * 1.8
+    size = max(8.0, radius_px * 1.4)
+    points = [(cx, tip_y), (cx - size, tip_y - size * 1.3), (cx + size, tip_y - size * 1.3)]
+    pygame.draw.polygon(screen, BOOKED_CUSTOMER_COLOR, points)
+    pygame.draw.polygon(screen, (20, 20, 20), points, 2)

@@ -167,7 +167,10 @@ class SimulationServer:
                 self._pending_interacts -= 1
 
         if interact:
-            self._on_foot = apply_enter_exit_vehicle(self.car, self.world.player_pedestrian, self._on_foot, self.audio)
+            self._on_foot = apply_enter_exit_vehicle(
+                self.car, self.world.player_pedestrian, self._on_foot, self.audio,
+                self.world.taxi_mgr, self.world.pedestrian_mgr,
+            )
 
         time_scale = 1.0 if self.world.taxi_mgr.current_passenger else 60.0
         self._game_time_seconds = (self._game_time_seconds + dt * time_scale) % (24.0 * 60.0 * 60.0)

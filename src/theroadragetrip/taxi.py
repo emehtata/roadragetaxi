@@ -35,6 +35,7 @@ NIGHTLIFE_VENUE_TYPES = {
     "biergarten",
 }
 MOTION_SICKNESS_THRESHOLD = 8.0
+GREET_RADIUS_M = 2.0  # how close the driver on foot must be to greet a booked rail customer
 
 @dataclass
 class TaxiTarget:
@@ -163,6 +164,7 @@ class TaxiManager:
 
         self.current_passenger: Optional[TaxiPassenger] = None
         self.rail_bookings = None
+        self.driver_on_foot = False  # set every tick by simulation.advance_simulation
         self.offers: List[TaxiOffer] = []
         self._initial_offer_pending = True
         self.state: str = TaxiState.WAITING_FOR_PICKUP
@@ -249,6 +251,40 @@ class TaxiManager:
 
     def visible_rail_bookings(self):
         return self.rail_bookings.visible() if self.rail_bookings is not None else []
+
+    def meet_booking(self):
+        """The booking the driver is meeting now: the earliest-arriving
+        passenger still waiting, while no other fare is under way."""
+        if self.current_passenger is not None or self.rail_bookings is None:
+            return None
+        return min(self.rail_bookings.waiting(), key=lambda booking: booking.arrival_at, default=None)
+
+    def greetable(self, player: Any):
+        """(booking, pedestrian) when the driver on foot stands by the
+        meet booking's own pedestrian (booking -> passenger -> pedestrian)."""
+        booking = self.meet_booking()
+        pedestrian = booking.passenger.pedestrian if booking is not None else None
+        if pedestrian is None or math.hypot(player.x - pedestrian.x, player.y - pedestrian.y) > GREET_RADIUS_M:
+            return None
+        return booking, pedestrian
+
+    def greet_booked_passenger(self, player: Any, car: Car) -> Optional[Any]:
+        """The driver's explicit greeting: the only way to PASSENGER_MET. The
+        passenger then walks to the taxi; returns their pedestrian (now the
+        fare's) or None."""
+        found = self.greetable(player)
+        if found is None:
+            return None
+        booking, pedestrian = found
+        if not self._board_waiting_pedestrian(
+            pedestrian, self.make_target(car.x, car.y), "stand_boarded", walk_to_car=True, booking=booking,
+        ):
+            return None
+        self.notification_msg = tr(
+            self.language, "rail_booking_met", name=self.current_passenger.name,
+            train=booking.train_number, address=booking.destination.address,
+        )
+        return pedestrian
 
     def notify_rail_booking(self, booking) -> None:
         self.notification_msg = tr(
@@ -1604,24 +1640,6 @@ class TaxiManager:
         self.stand_wait_timer += dt
         if self.stand_wait_timer < 2.0:
             return None
-        # A pre-booked rail customer: only the exact passenger of an accepted
-        # booking, and only once the taxi has stopped right by them.
-        booked = next((
-            ped for ped in pedestrians
-            if math.hypot(car.x - ped.x, car.y - ped.y) <= 15.0 and waiting_booking(ped) is not None
-        ), None)
-        if booked is not None:
-            booking = waiting_booking(booked)
-            if self._board_waiting_pedestrian(
-                booked, self.make_target(booked.x, booked.y), "stand_boarded", walk_to_car=True, booking=booking,
-            ):
-                self.notification_msg = tr(
-                    self.language, "rail_booking_met", name=self.current_passenger.name,
-                    train=booking.train_number, address=booking.destination.address,
-                )
-                self.stand_wait_timer = 0.0
-                return booked
-            return None
         pickup = None
         message_key = "stand_boarded"
         stand_stop = None
@@ -1867,6 +1885,8 @@ class TaxiManager:
             if dist_to_door <= 0.8:
                 if not is_stopped:
                     return
+                if p.rail_booking is not None and self.driver_on_foot:
+                    return  # a booked customer waits at the door for the driver
                 # Client reached taxi door and boarded!
                 p.boarded = True
                 if p.rail_booking is not None:

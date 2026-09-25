@@ -92,11 +92,18 @@ class SimulationFrameResult:
     next_active_city_name: Optional[str] = None
 
 
-def apply_enter_exit_vehicle(car, player_pedestrian, on_foot: bool, audio) -> bool:
+def apply_enter_exit_vehicle(car, player_pedestrian, on_foot: bool, audio, taxi_mgr=None, pedestrian_mgr=None) -> bool:
     """The 'F' key's get-in/get-out-of-the-car action - authoritative
     gameplay logic (a distance check gates re-entry), so it belongs on
     the simulation side of the boundary, not decided by a client. Moved
-    verbatim from main()'s event handler. Returns the new on_foot value."""
+    verbatim from main()'s event handler. On foot by a pre-booked rail
+    customer, F greets them instead. Returns the new on_foot value."""
+    if on_foot and taxi_mgr is not None:
+        greeted = taxi_mgr.greet_booked_passenger(player_pedestrian, car)
+        if greeted is not None:
+            if pedestrian_mgr is not None and greeted in pedestrian_mgr.pedestrians:
+                pedestrian_mgr.pedestrians.remove(greeted)  # the fare's walker now, like a stand pickup
+            return on_foot
     if not on_foot:
         length_m = getattr(car, "length_m", 4.0)
         width_m = getattr(car, "width_m", 1.8)
@@ -220,6 +227,8 @@ def advance_simulation(
 
     immobilized = taxi_mgr.tree_wait_timer > 0.0
     car.driver_mass_kg = 0.0 if on_foot else 90.0
+    taxi_mgr.driver_on_foot = on_foot
+    player_pedestrian.name_card = on_foot and taxi_mgr.meet_booking() is not None
     passenger = taxi_mgr.current_passenger
     car.passenger_mass_kg = (
         passenger.weight_kg
