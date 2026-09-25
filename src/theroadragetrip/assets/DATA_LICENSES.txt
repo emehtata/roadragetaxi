@@ -14,6 +14,13 @@ railway_timetable.json.gz
   one-week timetable by tools/import_railway_timetable.py. Provided as is,
   without warranty.
 
+train_compositions.json.gz
+  Source: Fintraffic / digitraffic.fi, license CC 4.0 BY
+  https://www.digitraffic.fi/  -  https://creativecommons.org/licenses/by/4.0/
+  Modified: long-distance train compositions condensed to vehicle type,
+  length and service flags by tools/import_train_compositions.py. Provided
+  as is, without warranty.
+
 finnish_first_names.json.gz, finnish_surnames.json.gz
   Finnish first names and surnames from the population information system
   name data (Väestötietojärjestelmän suomalaisten nimiaineistot), Digital and
