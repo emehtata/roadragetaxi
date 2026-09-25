@@ -24,6 +24,31 @@ Developer guide: [places.md](places.md).
 - **Geometry:** `shapely` is already a declared dependency (used by
   `render/roads.py`).
 
+### Phase 1 inspection questions
+
+| # | question | answer |
+|---|---|---|
+| 1 | PBF loading/parsing code | `osm/pbf_source.py`: runs `osmium extract` per bbox, then `_parse_osm_xml` stream-parses the XML. Reused as is. |
+| 2 | OSM extraction utilities | `utils/pbf_index.py` (grid cells for bbox streaming) and `osm/build.py` (Overpass-shaped elements → game objects). The places tool needs only the parser. |
+| 3 | Dependencies that parse `.osm.pbf` | Only the external `osmium-tool` CLI; there is no Python PBF library. No new dependency was added. |
+| 4 | Map/coordinate abstractions | Game objects use local metres (`points_m`, EPSG:3067 through pyproj). Places are stored as WGS84 `lat`/`lon`, so any city can project them with its own transformer. |
+| 5 | JSON data-loading conventions | Static data lives in `assets/` and is read with `Path(__file__).with_name("assets")` (as in `residents.py`), shipped as `assets/*` package data. `places.json` follows this. |
+| 6 | Tests for map/PBF | `test_pbf_source.py`, `test_pbf_index.py` and `test_tile_streaming.py` build small PBFs with osmium, or skip without it. The new tests use the same pattern. |
+| 7 | Tools directory | `tools/osm/` (standalone scripts that add `src` to `sys.path`). The new tool lives there. |
+| 8 | Runtime data directories | `src/theroadragetrip/assets/`; there is no `data/` directory in the game package. |
+| 9 | Existing location/POI concepts | `osm.models.Place` (per-city `place=*` nodes in metres, used for taxi addresses), taxi stops, and venue buildings. There was no airport or railway-station concept. |
+| 10 | Risk of depending on BIN | `tools/osm/build_finland_roads.py`, `osm/bin_source.py` and the `use_prebuilt_roads` flag. The new code imports none of them; it only uses `pbf_source._parse_osm_xml`. |
+
+### Deviations from the prompt
+
+- **Tool location:** `tools/osm/extract_places.py` instead of
+  `tools/extract_places.py`, next to the repo's other OSM tools.
+- **Output location:** `src/theroadragetrip/assets/places.json` instead of
+  `data/places.json`, because that is where the game's runtime data is
+  loaded from and packaged.
+- **Report location:** `docs/bin-loader-v15-places.md` as suggested; the
+  developer guide is `docs/places.md`.
+
 ## 2. Implementation
 
 | file | purpose |
@@ -196,3 +221,23 @@ The BIN architecture was intentionally not used, re-enabled or modified,
 and no BIN format was added. The game does not need a PBF, makes no network
 calls for places, and has no hard-coded coordinates. There is no routing to
 places, no threading and no new dependency.
+
+## Success criteria
+
+- [x] Existing PBF handling inspected and reused (osmium CLI, `_parse_osm_xml`).
+- [x] Generic place extraction tool (`tools/osm/extract_places.py`, `places_config.py`).
+- [x] Airports extracted from the Finland PBF (31).
+- [x] Railway stations extracted from the Finland PBF (213).
+- [x] Node, way and relation geometries handled (section 5; real airports: 5 node, 22 way, 4 relation).
+- [x] Every place has a usable `lat`/`lon` (244/244, within Finland's bbox).
+- [x] OSM source identity preserved (244/244 `osm`, plus `osm_duplicates` when merged).
+- [x] Duplicates handled deterministically (section 6; tested; 0 in real data).
+- [x] Output ordering deterministic (byte-identical rerun).
+- [x] `places.json` generated from the real Finland PBF (timestamp 2026-09-09T20:21:20Z).
+- [x] Important Finnish airports and stations present (section 7; none missing).
+- [x] Runtime loading independent of the PBF (`world_places.load_places`).
+- [x] BIN architecture untouched and disabled.
+- [x] Focused tests pass (14).
+- [x] Existing tests pass (full suite: 1195).
+- [x] `git diff --check` passes.
+- [x] Documentation and report complete (`docs/places.md`, this file).
