@@ -3042,8 +3042,9 @@ def main() -> None:
                     when, call = next_train
                     draw_next_train(
                         screen, font,
-                        f"{tr(language, 'next_train')} {call.station}: {when:%H:%M} {call.train_type} {call.number} "
-                        f"{call.origin} – {call.destination}",
+                        f"{tr(language, 'next_train')} {call.station}"
+                        + (f" {tr(language, 'track')} {call.track}" if call.track else "")
+                        + f": {when:%H:%M} {call.train_type} {call.number} {call.origin} – {call.destination}",
                         SCREEN_W,
                     )
             if phone_open:

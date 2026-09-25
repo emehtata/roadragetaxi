@@ -12,7 +12,7 @@ import bisect
 import heapq
 import logging
 import math
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime, timedelta
 from typing import Callable, Dict, List, Optional, Sequence, Tuple
 
@@ -250,6 +250,13 @@ def build_rail_graph(railways: Sequence) -> RailGraph:
     return graph
 
 
+def _segment_distance(point, a, b) -> float:
+    dx, dy = b[0] - a[0], b[1] - a[1]
+    length_sq = dx * dx + dy * dy
+    t = 0.0 if length_sq == 0 else min(1.0, max(0.0, ((point[0] - a[0]) * dx + (point[1] - a[1]) * dy) / length_sq))
+    return math.hypot(a[0] + dx * t - point[0], a[1] + dy * t - point[1])
+
+
 def build_train_routes(
     railways: Sequence, min_length_m: float = MIN_TRAIN_ROUTE_LENGTH_M, graph: Optional[RailGraph] = None,
 ) -> List[TrainRoute]:
@@ -308,12 +315,14 @@ ENTRY_CANDIDATES = 3  # track dead ends tried per side when planning a train's p
 # time) at most for a departure from the same track, and gives up this
 # long after that departure's time.
 TURNAROUND_MAX_WAIT = timedelta(hours=12)
+PLATFORM_CLEARANCE_M = 2.0  # a stopping point this close to a used track is on it
+OCCUPANCY_REPLANS = 4  # tracks tried per spawn before accepting a shared one
 TURNAROUND_GRACE = timedelta(minutes=30)
 
 
 def plan_train_path(
     graph: RailGraph, entry, exit_, stations: Sequence[Tuple[float, float]], tracks: Sequence[str] = (),
-    starts_at_first: bool = False, ends_at_last: bool = False,
+    starts_at_first: bool = False, ends_at_last: bool = False, avoid: frozenset = frozenset(),
 ) -> Optional[Tuple[TrainRoute, List[Optional[float]]]]:
     """Track-level path entry -> each station (in order) -> exit, as a
     TrainRoute in travel order plus each station's stopping point along it
@@ -325,7 +334,8 @@ def plan_train_path(
     start, goal = graph.node_at(entry), graph.node_at(exit_)
     if (start is None and not starts_at_first) or (goal is None and not ends_at_last):
         return None
-    candidates = [set(graph.nodes_near(point, STATION_TRACK_RADIUS_M)) for point in stations]
+    # avoid: station track nodes other trains occupy - never a stopping place.
+    candidates = [set(graph.nodes_near(point, STATION_TRACK_RADIUS_M)) - avoid for point in stations]
     # The timetable platform names the track: stop only on nodes of that
     # OSM track (railway:track_ref) when the map has it; the right-hand
     # rule is then moot.
@@ -466,7 +476,7 @@ class RailwayManager:
         ends = sorted(self._track_ends, key=lambda n: math.dist(self.graph.points[n], point))
         return [self.graph.points[n] for n in ends[:ENTRY_CANDIDATES]] or [fallback]
 
-    def train_path(self, service: ScheduledPass) -> Optional[Tuple[TrainRoute, list]]:
+    def train_path(self, service: ScheduledPass, avoid: frozenset = frozenset()) -> Optional[Tuple[TrainRoute, list]]:
         """This service's own track through the map (plan_train_path),
         cached per (where it comes from / goes to, stations, tracks) -
         trains with the same pattern share it. Entry and exit come from
@@ -474,7 +484,7 @@ class RailwayManager:
         double back through a big station yard)."""
         network = self.routes[service.route_index]
         start, end = (network.points[0], network.points[-1]) if service.direction > 0 else (network.points[-1], network.points[0])
-        key = (service.came_from, service.going_to, tuple(stop[5:8] for stop in service.stops))
+        key = (service.came_from, service.going_to, tuple(stop[5:8] for stop in service.stops), avoid)
         if key not in self._paths:
             planned = None
             stations, tracks = [stop[5] for stop in service.stops], [stop[6] for stop in service.stops]
@@ -484,6 +494,7 @@ class RailwayManager:
                 for exit_ in self._track_ends_towards(None if ends_here else service.going_to, end):
                     planned = plan_train_path(
                         self.graph, entry, exit_, stations, tracks, starts_at_first=starts_here, ends_at_last=ends_here,
+                        avoid=avoid,
                     )
                     if planned is not None:
                         break
@@ -498,8 +509,76 @@ class RailwayManager:
             )
         return self._paths[key]
 
+    def _platform_taken(self, station: str, track: str) -> bool:
+        """Some active train still has (or is at) this station track ahead."""
+        return any(
+            (stop[2], stop[6]) == (station, track)
+            for train in self.trains for stop in train.stops[train.stop_index:] if len(stop) > 6
+        )
+
+    def _free_tracks(self, service: ScheduledPass) -> ScheduledPass:
+        """The service with each occupied timetable track swapped for the
+        nearest free numbered track at that station (by track number) that
+        its route can actually reach, so trains don't stand on top of each
+        other. Unchanged where the timetable track isn't a numbered track
+        on this map (then the stop is chosen by position anyway)."""
+        number = lambda ref: int(ref) if ref.isdigit() else 10 ** 6  # noqa: E731
+        for index, stop in enumerate(service.stops):
+            station, track = stop[2], stop[6]
+            if not track or not self._platform_taken(station, track):
+                continue
+            here = {ref for node in self.graph.nodes_near(stop[5], STATION_TRACK_RADIUS_M) for ref in self.graph.tracks.get(node, ())}
+            if track not in here:
+                continue
+            free = sorted(
+                (ref for ref in here if ref != track and not self._platform_taken(station, ref)),
+                key=lambda ref: (abs(number(ref) - number(track)), number(ref), ref),
+            )
+            for ref in free:
+                stops = service.stops[:index] + (stop[:6] + (ref,) + stop[7:],) + service.stops[index + 1:]
+                candidate = replace(service, stops=stops)
+                if self.train_path(candidate) is not None:
+                    logger.info("%s: %s track %s occupied, using track %s", service.label, station, track, ref)
+                    service = candidate
+                    break
+        return service
+
+    def _occupied_nodes(self, route: TrainRoute, alongs: list, service: ScheduledPass) -> frozenset:
+        """Track nodes at this train's stations where another train stands
+        or will stop within PLATFORM_CLEARANCE_M of this train's stopping
+        point - physical occupancy, for stations whose platform numbers
+        are not OSM track numbers (e.g. Pasila)."""
+        occupied = set()
+        for stop, along in zip(service.stops, alongs):
+            if along is None:
+                continue
+            mine = route.point_at(along)[:2]
+            for other in self.trains:
+                if not any(other_stop[2] == stop[2] for other_stop in other.stops[other.stop_index:]):
+                    continue
+                # Their track through this station: if I would stop on it,
+                # it is taken.
+                theirs = [p for p in other.route.points if math.dist(p, stop[5]) <= STATION_TRACK_RADIUS_M]
+                if any(_segment_distance(mine, a, b) <= PLATFORM_CLEARANCE_M for a, b in zip(theirs, theirs[1:])):
+                    occupied.update(self.graph.node_at(p) for p in theirs)
+        occupied.discard(None)
+        return frozenset(occupied)
+
     def _spawn(self, service: ScheduledPass) -> Train:
+        service = self._free_tracks(service)
         planned = self.train_path(service)
+        avoid = frozenset()
+        for _ in range(OCCUPANCY_REPLANS):
+            # Stops on a track another train uses at that station: plan
+            # again without those tracks, until the stop is free.
+            occupied = self._occupied_nodes(*planned, service) - avoid if planned is not None else frozenset()
+            if not occupied:
+                break
+            avoid |= occupied
+            alternative = self.train_path(service, avoid)
+            if alternative is None:
+                break
+            planned = alternative
         if planned is not None:
             route, alongs = planned
             stops = tuple((along,) + stop[1:] for stop, along in zip(service.stops, alongs) if along is not None)

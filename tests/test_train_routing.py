@@ -242,3 +242,25 @@ def test_arrived_train_with_no_next_departure_from_its_track_drives_out():
     for _ in range(4000):
         manager.update(0.5, 0.0, now)
     assert manager.trains == []
+
+
+def test_occupied_platform_sends_the_arriving_train_to_the_next_free_track():
+    railways = double_track_station()
+    railways[1].track_ref, railways[2].track_ref = "8", "7"  # west 8, east 7
+    first = service("1", [("S", 30000, 30000, 1), ("M", 36000, 37800, 1, "7"), ("N", 42000, 42000, 1)])
+    second = service("3", [("S", 30600, 30600, 1), ("M", 36600, 37900, 1, "7"), ("N", 42600, 42600, 1)])
+    manager = RailwayManager(railways, timetable(first, second), metres)
+    manager.update(1 / 30, 2.0, datetime(2026, 9, 28, 10, 11))  # game start: both due at M
+    tracks = {train.service.number: train.stops[0][6] for train in manager.trains}
+    assert tracks == {"1": "7", "3": "8"}
+    xs = sorted(round(train.cars()[0][0]) for train in manager.trains)
+    assert xs == [0, 10]  # side by side, not on top of each other
+
+
+def test_next_arrival_names_the_platform_track():
+    railways = double_track_station()
+    railways[2].track_ref = "7"
+    arriving = service("1", [("S", 30000, 30000, 1), ("M", 36000, 36120, 1, "7"), ("N", 42000, 42000, 1)])
+    manager = RailwayManager(railways, timetable(arriving), metres)
+    when, call = manager.next_arrival(*STATION, datetime(2026, 9, 28, 9, 0))
+    assert (call.station, call.track, when) == ("Middle", "7", datetime(2026, 9, 28, 10, 0))

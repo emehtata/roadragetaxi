@@ -85,6 +85,7 @@ class StationCall:
     days: int
     seconds: int  # GTFS arrival time at the station
     station: str
+    track: str = ""  # timetable platform (track) number
 
     @property
     def label(self) -> str:
@@ -261,7 +262,7 @@ def station_calls(timetable: dict, prepared: list, routes: Sequence) -> List[Tup
     maxy = max(p[1] for p in route_points) + STATION_ON_ROUTE_M
     near: Dict[str, Optional[Tuple[Tuple[float, float], List[StationCall]]]] = {}
     for train, stops, _, _, _ in prepared:
-        for point, seconds, code, _, stops_here, _, _ in stops[1:]:
+        for point, seconds, code, _, stops_here, track, _ in stops[1:]:
             if not stops_here:
                 continue
             if code not in near:
@@ -274,7 +275,7 @@ def station_calls(timetable: dict, prepared: list, routes: Sequence) -> List[Tup
             if near[code] is not None:
                 near[code][1].append(StationCall(
                     train["type"], train["number"], train["origin"], train["destination"],
-                    train["days"], seconds, timetable["stations"][code][2],
+                    train["days"], seconds, timetable["stations"][code][2], track,
                 ))
     return [(timetable["stations"][code][2], point, calls) for code, entry in sorted(near.items()) if entry for point, calls in [entry]]
 
