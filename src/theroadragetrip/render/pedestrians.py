@@ -19,6 +19,9 @@ from ..residents import ResidentManager
 STREET_LIGHT_REFLECTOR_RADIUS_M = 10.0
 
 
+TAXI_HAIL_COLOR = (255, 205, 0)  # taxi yellow
+
+
 def draw_pedestrians(
     screen,
     pedestrians: List,
@@ -154,6 +157,25 @@ def draw_pedestrians(
         head_y = cy + heading_y * radius_px * 0.6
         pygame.draw.circle(screen, getattr(appearance, "hair", (20, 20, 20)), (int(head_x), int(head_y)), max(2, int(radius_px * 0.48)))
         pygame.draw.circle(screen, getattr(appearance, "head", (238, 185, 145)), (int(head_x), int(head_y)), max(1, int(radius_px * 0.35)))
+
+        # Wants a taxi (street hail, or walking to / waiting at a taxi
+        # stand): an arm raised out to the side with a taxi-yellow hand,
+        # attached to the body so it can't be mistaken for a held object.
+        if (
+            getattr(ped, "wants_taxi", False)
+            or getattr(ped, "is_walking_to_taxi_stop", False)
+            or getattr(ped, "is_taxi_stop_waiter", False)
+        ):
+            shoulder = (cx + side_x * radius_px * 0.5, cy + side_y * radius_px * 0.5)
+            hand = (
+                cx + side_x * radius_px * 1.5 + heading_x * radius_px * 0.9,
+                cy + side_y * radius_px * 1.5 + heading_y * radius_px * 0.9,
+            )
+            pygame.draw.line(screen, getattr(appearance, "clothing", None) or ped.color,
+                             (int(shoulder[0]), int(shoulder[1])), (int(hand[0]), int(hand[1])), max(2, int(radius_px * 0.3)))
+            hand_r = max(3, int(radius_px * 0.45))
+            pygame.draw.circle(screen, (20, 20, 20), (int(hand[0]), int(hand[1])), hand_r + 1)
+            pygame.draw.circle(screen, TAXI_HAIL_COLOR, (int(hand[0]), int(hand[1])), hand_r)
 
         # Comic cursing bubble when startled/dodging
         curse_timer = getattr(ped, "curse_timer", 0.0)

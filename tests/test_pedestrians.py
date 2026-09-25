@@ -1660,3 +1660,24 @@ def test_only_a_phone_user_draws_a_phone_next_to_the_head():
     assert lit and not any(passenger.get_at(p)[:3] == (120, 200, 255) for p in lit)
     # Held at the head (screen centre 200,200), not floating off to one side.
     assert all(abs(x - 200) <= 8 and abs(y - 200) <= 8 for x, y in lit)
+
+
+def test_residents_wanting_a_taxi_raise_a_yellow_hand():
+    import pygame
+    from theroadragetrip.render.pedestrians import TAXI_HAIL_COLOR
+
+    pygame.init()
+    ground = Way(points_m=[(-50.0, 0.0), (50.0, 0.0)], highway="footway", half_width_m=5.0)
+
+    def yellow_pixels(**flags):
+        pedestrian = Pedestrian(0.0, 0.0, 0.0, 0.0, 1.0, ground, 0, 1, (200, 50, 50))
+        for name, value in flags.items():
+            setattr(pedestrian, name, value)
+        screen = pygame.Surface((200, 200))
+        draw_pedestrians(screen, [pedestrian], camx=0.0, camy=0.0, px_per_m=8.0, ways=[ground], screen_w=200, screen_h=200)
+        return [(x, y) for x in range(200) for y in range(200) if screen.get_at((x, y))[:3] == TAXI_HAIL_COLOR]
+
+    assert yellow_pixels() == []
+    for flag in ("wants_taxi", "is_walking_to_taxi_stop", "is_taxi_stop_waiter"):
+        hand = yellow_pixels(**{flag: True})
+        assert hand and all(abs(x - 100) <= 20 and abs(y - 100) <= 20 for x, y in hand), flag  # at the body
