@@ -2814,7 +2814,8 @@ def main() -> None:
             )
             # After bridge track, so a train crossing a rail bridge stays
             # visible. Same time scale the game clock uses for the spawn timer.
-            railway_mgr.update(dt, dt * (1.0 if taxi_mgr.current_passenger else 60.0), game_calendar.current)
+            with frame_profiler.section("trains"):
+                railway_mgr.update(dt, dt * (1.0 if taxi_mgr.current_passenger else 60.0), game_calendar.current)
             draw_trains(screen, railway_mgr, camx, camy, px_per_m=px_per_m, show_debug=show_debug_hud, font=font)
             # Price boards are gameplay-critical and must stay above both
             # ordinary buildings and the canopy overlay.

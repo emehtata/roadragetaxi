@@ -88,13 +88,13 @@ def metres(lat, lon):
 def timetable(*trains):
     # S and N are beyond the track ends (not stops here); M is on the line.
     stations = {"S": [-0.2, 0.00005, "South"], "M": [0.1, 0.00005, "Middle"], "N": [0.4, 0.00005, "North"]}
-    return {"version": 3, "stations": stations, "trains": list(trains)}
+    return {"version": 4, "stations": stations, "trains": list(trains)}
 
 
 def service(number, calls):
     return {
         "type": "IC", "number": number, "category": "long_distance", "origin": calls[0][0],
-        "destination": calls[-1][0], "days": 0b1111111, "stops": [list(c) for c in calls],
+        "destination": calls[-1][0], "days": 0b1111111, "stops": [list(c) + [""] * (5 - len(c)) for c in calls],
     }
 
 
@@ -152,3 +152,61 @@ def test_track_streaming_in_does_not_place_trains_again():
     manager.rebuild(railways + [rail((50.0, 0.0), (50.0, 3000.0))])
     manager.update(1 / 30, 2.0, datetime(2026, 9, 28, 11, 0, 2))
     assert len(manager.trains) == 1
+
+
+def test_timetable_platform_picks_its_numbered_track_over_the_right_hand_rule():
+    # OSM railway:track_ref on the two station tracks: east = 7, west = 8.
+    railways = double_track_station()
+    railways[1].track_ref, railways[2].track_ref = "8", "7"
+    graph = build_rail_graph(railways)
+    route, (along,) = plan_train_path(graph, SOUTH, NORTH, [STATION], ["8"])
+    assert round(route.point_at(along)[0]) == 0  # northbound, but platform 8 is the west track
+    route, (along,) = plan_train_path(graph, SOUTH, NORTH, [STATION], ["99"])  # unknown track
+    assert round(route.point_at(along)[0]) == 10  # falls back to the right-hand track
+
+
+def test_trains_on_different_platforms_stand_on_different_tracks():
+    railways = double_track_station()
+    railways[1].track_ref, railways[2].track_ref = "8", "7"
+    on_7 = service("1", [("S", 30000, 30000, 1), ("M", 36000, 36600, 1, "7"), ("N", 42000, 42000, 1)])
+    on_8 = service("3", [("S", 30060, 30060, 1), ("M", 36060, 36660, 1, "8"), ("N", 42060, 42060, 1)])
+    manager = RailwayManager(railways, timetable(on_7, on_8), metres)
+    manager.update(1 / 30, 2.0, datetime(2026, 9, 28, 10, 2))  # game start: both standing at M
+    assert sorted(round(train.cars()[0][0]) for train in manager.trains) == [0, 10]
+
+
+# -- journeys ending / starting at a terminus (e.g. Helsinki) ----------------------
+
+TERMINUS_LINE = [rail((5.0, -5000.0), (5.0, 10_050.0))]  # dead end just past the station at y=10 km
+
+
+def test_train_terminating_at_a_dead_end_arrives_dwells_and_leaves_backwards():
+    ending = service("5", [("S", 30000, 30000, 1), ("M", 36000, 36000, 1)])  # M is its terminus
+    manager = RailwayManager(TERMINUS_LINE, timetable(ending), metres)
+    manager.update(0.0, 0.0, datetime(2026, 9, 28, 6, 0))
+    manager.update(0.0, 0.0, datetime(2026, 9, 28, 10, 1))
+    (train,) = manager.trains
+    assert train.stops and train.stops[-1][7] == "terminus"
+    states = []
+    for _ in range(4000):
+        manager.update(0.5, 0.0, datetime(2026, 9, 28, 10, 1))
+        if not manager.trains:
+            break
+        states.append((train.state, train.direction))
+        head_y = max(car[1] for car in train.cars())
+        assert head_y <= 10_050.5  # never runs off the dead end
+    assert ("DWELLING", 1) in states and states[-1] == ("RUNNING", -1)  # reversed after the dwell
+    assert manager.trains == []  # left the map at the far (south) end
+
+
+def test_train_starting_at_a_terminus_departs_from_its_platform():
+    starting = service("6", [("M", 36000, 36000, 1), ("S", 42000, 42000, 1)])  # M is its origin
+    manager = RailwayManager(TERMINUS_LINE, timetable(starting), metres)
+    manager.update(0.0, 0.0, datetime(2026, 9, 28, 6, 0))
+    manager.update(0.0, 0.0, datetime(2026, 9, 28, 10, 1))
+    (train,) = manager.trains
+    ys = [car[1] for car in train.cars()]
+    assert all(9_700 < y <= 10_050.5 for y in ys)  # appears on its platform, whole train on track
+    for _ in range(400):
+        manager.update(0.5, 0.0, datetime(2026, 9, 28, 10, 1))
+    assert train.state == "RUNNING" and train.cars()[0][1] < 9_700  # departed southwards

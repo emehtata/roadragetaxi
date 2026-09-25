@@ -24,7 +24,7 @@ def metres(lat, lon):
 
 def timetable(*trains, stations=None):
     return {
-        "version": 3,
+        "version": 4,
         "stations": stations or {"S": [0.0, 0.0, "South"], "N": [0.2, 0.0, "North"], "W": [0.1, -0.1, "West"], "E": [0.1, 0.1, "East"]},
         "trains": list(trains),
     }
@@ -36,7 +36,7 @@ def train(stops, number="1", days=0b1111111, kind="IC", category="long_distance"
     for stop in stops:
         code, arrival = stop[0], stop[1]
         departure = stop[2] if len(stop) > 2 else arrival
-        calls.append([code, arrival, departure, stop[3] if len(stop) > 3 else 1])
+        calls.append([code, arrival, departure, stop[3] if len(stop) > 3 else 1, stop[4] if len(stop) > 4 else ""])
     return {
         "type": kind, "number": number, "category": category, "origin": stops[0][0], "destination": stops[-1][0],
         "days": days, "stops": calls,
@@ -169,9 +169,9 @@ def _gtfs_zip() -> bytes:
         "trips.txt": [["route_id", "service_id", "trip_id", "trip_headsign", "trip_short_name"],
                       ["R1", "weekdays", "t1", "Oulu", "IC 21"], ["R1", "weekend", "t2", "Oulu", "IC 21"],
                       ["R2", "weekdays", "t3", "Leppävaara", "A (HL 8193)"]],
-        "stops.txt": [["stop_id", "stop_name", "stop_lat", "stop_lon", "location_type", "parent_station"],
-                      ["HKI", "Helsinki", "60.17", "24.94", "1", ""], ["HKI_1", "Helsinki", "60.17", "24.94", "0", "HKI"],
-                      ["OL", "Oulu", "65.01", "25.48", "1", ""], ["OL_2", "Oulu", "65.01", "25.48", "0", "OL"]],
+        "stops.txt": [["stop_id", "stop_name", "stop_lat", "stop_lon", "location_type", "parent_station", "platform_code"],
+                      ["HKI", "Helsinki", "60.17", "24.94", "1", "", ""], ["HKI_1", "Helsinki", "60.1702", "24.9401", "0", "HKI", "1"],
+                      ["OL", "Oulu", "65.01", "25.48", "1", "", ""], ["OL_2", "Oulu", "65.0101", "25.4802", "0", "OL", "2"]],
         "stop_times.txt": [["trip_id", "arrival_time", "departure_time", "stop_id", "stop_sequence"],
                            ["t1", "07:00:00", "07:00:00", "HKI_1", "0"], ["t1", "13:00:00", "13:00:00", "OL_2", "1"],
                            ["t2", "07:00:00", "07:00:00", "HKI_1", "0"], ["t2", "13:00:00", "13:00:00", "OL_2", "1"],
@@ -199,7 +199,10 @@ def test_importer_builds_weekly_masks_identities_and_merges_duplicate_runs():
     assert by_number["21"]["days"] == 0b1111011  # weekdays+weekend merged, Wednesday cancelled
     assert by_number["21"]["type"] == "IC" and by_number["21"]["origin"] == "Helsinki"
     assert (by_number["21"]["category"], by_number["8193"]["category"]) == ("long_distance", "commuter")
-    assert by_number["8193"]["type"] == "A" and by_number["8193"]["stops"][1] == ["OL", 24 * 3600 + 600, 24 * 3600 + 600, 1]
+    # Platform (track) codes per call and their positions per station.
+    assert by_number["21"]["stops"][0][4] == "1"
+    assert document["platforms"] == {"HKI": {"1": [60.1702, 24.9401]}, "OL": {"2": [65.0101, 25.4802]}}
+    assert by_number["8193"]["type"] == "A" and by_number["8193"]["stops"][1] == ["OL", 24 * 3600 + 600, 24 * 3600 + 600, 1, "2"]
 
 
 def test_offline_game_uses_the_stored_file_and_a_failed_import_keeps_it(tmp_path, capsys):

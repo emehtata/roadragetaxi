@@ -37,7 +37,7 @@ from typing import Dict, Iterable, List, Optional, Tuple
 
 GTFS_URL = "https://rata.digitraffic.fi/api/v1/trains/gtfs-passenger.zip"
 DEFAULT_OUTPUT = Path(__file__).resolve().parents[1] / "src" / "theroadragetrip" / "assets" / "railway_timetable.json.gz"
-FORMAT_VERSION = 3  # 3: arrival + departure + stop flag per call, OSM station positions
+FORMAT_VERSION = 4  # 4: platform (track) code per call + platform positions
 PLACES_PATH = Path(__file__).resolve().parents[1] / "src" / "theroadragetrip" / "assets" / "places.json"
 # GTFS -> OSM station match: same station code within CODE_MATCH_M, else the
 # nearest OSM railway station within NEAR_MATCH_M (coordinates differ by
@@ -171,8 +171,9 @@ def convert(zip_bytes: bytes, today: Optional[date] = None, downloaded_at: Optio
             # pickup_type = drop_off_type = 1: a timing point the train
             # passes without stopping (most rows) - kept for the path only.
             stops_here = not (row.get("pickup_type") == "1" and row.get("drop_off_type") == "1")
+            platform = stops.get(row["stop_id"], {}).get("platform_code", "") or ""
             stop_times.setdefault(row["trip_id"], []).append(
-                (int(row["stop_sequence"]), station(row["stop_id"]), arrival, departure, int(stops_here))
+                (int(row["stop_sequence"]), station(row["stop_id"]), arrival, departure, int(stops_here), platform)
             )
 
     merged: Dict[tuple, dict] = {}
@@ -192,7 +193,8 @@ def convert(zip_bytes: bytes, today: Optional[date] = None, downloaded_at: Optio
             "origin": stops.get(sequence[0][0], {}).get("stop_name", sequence[0][0]),
             "destination": stops.get(sequence[-1][0], {}).get("stop_name", sequence[-1][0]),
             "days": days,
-            # [station code, arrival, departure, 1 = stops / 0 = passes]
+            # [station code, arrival, departure, 1 = stops / 0 = passes,
+            #  platform = station track number ("" if unknown)]
             "stops": [list(call) for call in sequence],
         }
 
@@ -204,6 +206,13 @@ def convert(zip_bytes: bytes, today: Optional[date] = None, downloaded_at: Optio
             continue
         lat, lon = round(float(stops[code]["stop_lat"]), 6), round(float(stops[code]["stop_lon"]), 6)
         stations[code] = [lat, lon, stops[code]["stop_name"]] + list(_match_osm(code, lat, lon, osm) or [])
+    # Platform (= track) positions per station: GTFS platform stops are
+    # placed on their own track, which the game stops the train on.
+    platforms: Dict[str, Dict[str, list]] = {}
+    for stop in stops.values():
+        parent, code = stop.get("parent_station"), stop.get("platform_code")
+        if parent in stations and code:
+            platforms.setdefault(parent, {})[code] = [round(float(stop["stop_lat"]), 6), round(float(stop["stop_lon"]), 6)]
     trains = sorted(merged.values(), key=lambda e: (e["stops"][0][1], e["type"], e["number"], e["stops"][0][0]))
     matched = sum(1 for entry in stations.values() if len(entry) == 5)
     print(f"OSM station match: {matched} of {len(stations)} timetable stations")
@@ -224,6 +233,7 @@ def convert(zip_bytes: bytes, today: Optional[date] = None, downloaded_at: Optio
         "reference_week": monday.isoformat(),
         "timezone": "Europe/Helsinki",
         "stations": stations,
+        "platforms": {code: dict(sorted(platforms[code].items())) for code in sorted(platforms)},
         "trains": trains,
     }
 

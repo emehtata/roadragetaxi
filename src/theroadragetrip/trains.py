@@ -95,6 +95,7 @@ class Train:
     # Stops along *this train's* route: (distance along route, dwell, name,
     # ...). Defaults to the service's stops on the shared network route.
     stops: Optional[tuple] = None
+    reached_end: bool = False  # ran off an end of its route this update
 
     def __post_init__(self) -> None:
         if self.current_speed_mps is None:
@@ -109,7 +110,8 @@ class Train:
             return "shuttle"
         stop = self.next_stop
         if self.state == "DWELLING" and stop is not None:
-            return f"{self.service.label} DWELLING {stop[2]} {self.dwell_remaining_s:.0f}s"
+            track = f" track {stop[6]}" if len(stop) > 6 and stop[6] else ""
+            return f"{self.service.label} DWELLING {stop[2]}{track} {self.dwell_remaining_s:.0f}s"
         return f"{self.service.label} RUNNING" + (f" -> {stop[2]}" if stop is not None else " -> leaving")
 
     @property
@@ -117,8 +119,13 @@ class Train:
         return self.stops[self.stop_index] if self.stop_index < len(self.stops) else None
 
     def _stop_position(self, stop) -> float:
-        """Locomotive position that centres the train on the station."""
-        return min(max(stop[0] + self.direction * TRAIN_LENGTH_M / 2, 0.0), self.route.length)
+        """Locomotive position that centres the train on the station - kept
+        so the whole train stays on its route (a terminus/origin at the
+        route's end or start)."""
+        nose = stop[0] + self.direction * TRAIN_LENGTH_M / 2
+        if self.direction > 0:
+            return min(max(nose, min(TRAIN_LENGTH_M, self.route.length)), self.route.length)
+        return max(min(nose, max(self.route.length - TRAIN_LENGTH_M, 0.0)), 0.0)
 
     def update(self, dt: float) -> None:
         """dt in real seconds (railway simulation time, see
@@ -127,7 +134,14 @@ class Train:
             self.dwell_remaining_s -= dt
             if self.dwell_remaining_s > 0.0:
                 return
+            finished = self.next_stop
             self.state, self.stop_index = "RUNNING", self.stop_index + 1
+            if finished is not None and finished[7:8] == ("terminus",):
+                # Journey over: drive back out the way it came (a cab at
+                # each end); the old tail becomes the front.
+                self.distance_m -= self.direction * TRAIN_LENGTH_M
+                self.direction = -self.direction
+                self.stops, self.stop_index = (), 0
         stop = self.next_stop
         speed = min(self.speed_mps, self.current_speed_mps + TRAIN_ACCELERATION_MPS2 * dt)
         if stop is not None:
@@ -142,10 +156,12 @@ class Train:
                 return
         self.current_speed_mps = speed
         self.distance_m += self.direction * speed * dt
-        if self.distance_m >= self.route.length:
-            self.distance_m, self.direction = self.route.length, -1
-        elif self.distance_m <= 0.0:
-            self.distance_m, self.direction = 0.0, 1
+        # Only the end it is heading for counts (a train spawned at an end
+        # has not "reached" it).
+        if self.distance_m >= self.route.length and self.direction > 0:
+            self.distance_m, self.direction, self.reached_end = self.route.length, -1, True
+        elif self.distance_m <= 0.0 and self.direction < 0:
+            self.distance_m, self.direction, self.reached_end = 0.0, 1, True
 
     def cars(self) -> List[Tuple[float, float, float]]:
         """(x, y, heading) of each car's centre, locomotive first; the rest
@@ -169,6 +185,7 @@ class RailGraph:
     edges: Dict[int, Dict[int, float]] = field(default_factory=dict)
     key_of: Dict[Tuple[int, int], int] = field(default_factory=dict)
     grid: Dict[Tuple[int, int], List[int]] = field(default_factory=dict)
+    tracks: Dict[int, set] = field(default_factory=dict)  # node -> OSM track numbers through it
 
     GRID_M = 100.0
 
@@ -208,6 +225,10 @@ def build_rail_graph(railways: Sequence) -> RailGraph:
             pieces = max(1, math.ceil(math.dist(p, q) / NODE_SPACING_M))
             dense.extend((p[0] + (q[0] - p[0]) * i / pieces, p[1] + (q[1] - p[1]) * i / pieces) for i in range(1, pieces + 1))
         ids = [node(p) for p in dense]
+        track_ref = getattr(railway, "track_ref", "")
+        if track_ref:
+            for node_id in ids:
+                graph.tracks.setdefault(node_id, set()).add(track_ref)
         for a, b in zip(ids, ids[1:]):
             if a != b:
                 d = math.dist(graph.points[a], graph.points[b])
@@ -269,10 +290,12 @@ STATION_TRACK_RADIUS_M = 150.0
 # the direction of travel costs this much extra route length, so opposing
 # trains keep to their own tracks unless only one track exists.
 WRONG_SIDE_PENALTY_M = 400.0
+ENTRY_CANDIDATES = 3  # track dead ends tried per side when planning a train's path
 
 
 def plan_train_path(
-    graph: RailGraph, entry, exit_, stations: Sequence[Tuple[float, float]],
+    graph: RailGraph, entry, exit_, stations: Sequence[Tuple[float, float]], tracks: Sequence[str] = (),
+    starts_at_first: bool = False, ends_at_last: bool = False,
 ) -> Optional[Tuple[TrainRoute, List[Optional[float]]]]:
     """Track-level path entry -> each station (in order) -> exit, as a
     TrainRoute in travel order plus each station's stopping point along it
@@ -282,23 +305,39 @@ def plan_train_path(
     be part of it). Only real track connections are used. Called when a
     train is spawned (cached per pattern), never per frame."""
     start, goal = graph.node_at(entry), graph.node_at(exit_)
-    if start is None or goal is None:
+    if (start is None and not starts_at_first) or (goal is None and not ends_at_last):
         return None
     candidates = [set(graph.nodes_near(point, STATION_TRACK_RADIUS_M)) for point in stations]
+    # The timetable platform names the track: stop only on nodes of that
+    # OSM track (railway:track_ref) when the map has it; the right-hand
+    # rule is then moot.
+    assigned = [False] * len(stations)
+    for index, track in enumerate(tracks):
+        on_track = {n for n in candidates[index] if track and track in graph.tracks.get(n, ())}
+        if on_track:
+            candidates[index], assigned[index] = on_track, True
     reachable = [i for i, c in enumerate(candidates) if c]
     points, edges = graph.points, graph.edges
     n_stages = len(reachable)
-    begin = (start, -1, 0)
-    best = {begin: 0.0}
+    if (starts_at_first or ends_at_last) and not reachable:
+        return None
+    # A journey starting here begins standing on its first station's track
+    # (any direction); one ending here stops at its last station - a
+    # terminus is usually a dead end, so no through route is required.
+    if starts_at_first:
+        begins = [(node, -1, 1) for node in candidates[reachable[0]]]
+    else:
+        begins = [(start, -1, 0)]
+    best = {begin: 0.0 for begin in begins}
     parent: Dict[tuple, tuple] = {}
-    heap = [(0.0, begin)]
+    heap = [(0.0, begin) for begin in begins]
     final = None
     while heap:
         cost, state = heapq.heappop(heap)
         if cost > best.get(state, math.inf):
             continue
         node, previous, stage = state
-        if node == goal and stage == n_stages:
+        if stage == n_stages and (node == goal or (ends_at_last and state in parent and parent[state][2] < stage)):
             final = state
             break
         for nxt, length in edges.get(node, {}).items():
@@ -314,7 +353,8 @@ def plan_train_path(
             if stage < n_stages and nxt in candidates[reachable[stage]]:
                 sx, sy = stations[reachable[stage]]
                 right_side = tx * (points[nxt][1] - sy) - ty * (points[nxt][0] - sx) < 0
-                penalty = (0.0 if right_side else WRONG_SIDE_PENALTY_M) + math.dist(points[nxt], (sx, sy))
+                side = 0.0 if right_side or assigned[reachable[stage]] else WRONG_SIDE_PENALTY_M
+                penalty = side + math.dist(points[nxt], (sx, sy))
                 moves.append(((nxt, node, stage + 1), cost + length + penalty))
             for new_state, new_cost in moves:
                 if new_cost < best.get(new_state, math.inf):
@@ -328,6 +368,8 @@ def plan_train_path(
     states.reverse()
     route = TrainRoute([points[state[0]] for state in states])
     stops: List[Optional[float]] = [None] * len(stations)
+    if starts_at_first:
+        stops[reachable[0]] = 0.0
     for index in range(1, len(states)):
         if states[index][2] > states[index - 1][2]:
             stops[reachable[states[index][2] - 1]] = route.cumulative[index]
@@ -350,6 +392,7 @@ class RailwayManager:
         self.routes: List[TrainRoute] = []
         self.graph = RailGraph()
         self._paths: Dict[tuple, Optional[Tuple[TrainRoute, list]]] = {}  # per train pattern
+        self._track_ends: List[int] = []
         self.trains: List[Train] = []
         self.timetable = timetable
         self.to_metres = to_metres
@@ -366,9 +409,13 @@ class RailwayManager:
         self.graph = build_rail_graph(railways)
         self.routes = build_train_routes(railways, graph=self.graph)
         self._paths = {}
+        self._track_ends = [node for node, links in self.graph.edges.items() if len(links) == 1]
         if self.timetable is not None and self.to_metres is not None:
             previous_clock = self.clock
-            self.clock = TimetableClock(match_timetable(self.timetable, self.routes, prepared=self._prepared))
+            self.clock = TimetableClock(match_timetable(
+                self.timetable, self.routes, prepared=self._prepared,
+                has_track=lambda point: bool(self.graph.nodes_near(point, STATION_TRACK_RADIUS_M)),
+            ))
             if previous_clock is not None:
                 # More track streamed in: carry on from the old clock (no
                 # second game-start placement, no re-spawned trains).
@@ -392,19 +439,42 @@ class RailwayManager:
             len(self.routes), ", ".join(f"{r.length / 1000:.1f}" for r in self.routes) or "-", len(self.trains),
         )
 
+    def _track_ends_towards(self, point, fallback) -> List[Tuple[float, float]]:
+        """Where a train enters from / leaves towards `point` (a station
+        beyond this map): the track dead ends - the map's edge or a line's
+        end - nearest to it, best first. `fallback` without a point."""
+        if point is None:
+            return [fallback]
+        ends = sorted(self._track_ends, key=lambda n: math.dist(self.graph.points[n], point))
+        return [self.graph.points[n] for n in ends[:ENTRY_CANDIDATES]] or [fallback]
+
     def train_path(self, service: ScheduledPass) -> Optional[Tuple[TrainRoute, list]]:
         """This service's own track through the map (plan_train_path),
-        cached per (network, direction, stations) - trains with the same
-        stopping pattern share it."""
+        cached per (where it comes from / goes to, stations, tracks) -
+        trains with the same pattern share it. Entry and exit come from
+        the journey itself, not the network's longest line (which can
+        double back through a big station yard)."""
         network = self.routes[service.route_index]
-        entry, exit_ = (network.points[0], network.points[-1]) if service.direction > 0 else (network.points[-1], network.points[0])
-        key = (service.route_index, service.direction, tuple(stop[5] for stop in service.stops))
+        start, end = (network.points[0], network.points[-1]) if service.direction > 0 else (network.points[-1], network.points[0])
+        key = (service.came_from, service.going_to, tuple(stop[5:8] for stop in service.stops))
         if key not in self._paths:
-            self._paths[key] = plan_train_path(self.graph, entry, exit_, [stop[5] for stop in service.stops])
-            planned = self._paths[key]
+            planned = None
+            stations, tracks = [stop[5] for stop in service.stops], [stop[6] for stop in service.stops]
+            starts_here = bool(service.stops) and service.stops[0][7] == "origin"
+            ends_here = bool(service.stops) and service.stops[-1][7] == "terminus"
+            for entry in self._track_ends_towards(None if starts_here else service.came_from, start):
+                for exit_ in self._track_ends_towards(None if ends_here else service.going_to, end):
+                    planned = plan_train_path(
+                        self.graph, entry, exit_, stations, tracks, starts_at_first=starts_here, ends_at_last=ends_here,
+                    )
+                    if planned is not None:
+                        break
+                if planned is not None:
+                    break
+            self._paths[key] = planned
             logger.info(
                 "Train path %s %s: %s", service.label,
-                " -> ".join(stop[2] for stop in service.stops) or "(no stops)",
+                " -> ".join(f"{stop[2]} track {stop[6] or '?'}" for stop in service.stops) or "(no stops)",
                 f"{planned[0].length / 1000:.1f} km, stops at {[None if a is None else round(a) for a in planned[1]]} m"
                 if planned else "no track path, using the network line",
             )
@@ -472,12 +542,12 @@ class RailwayManager:
         current = {id(route) for route in self.routes}
         kept = []
         for train in self.trains:
-            direction = train.direction
+            train.reached_end = False
             train.update(dt)
-            # A timetable train leaves the map at the far end; a train on a
-            # replaced route (more track streamed in) retires at its next
-            # turnaround - at a track end, never mid-view.
-            if train.direction == direction or (train.service is None and id(train.route) in current):
+            # A timetable train leaves the map at the end of its route; a
+            # shuttle on a replaced route (more track streamed in) retires
+            # at its next turnaround - at a track end, never mid-view.
+            if not train.reached_end or (train.service is None and id(train.route) in current):
                 kept.append(train)
         self.trains = kept
         if self.clock is not None and now is not None:
