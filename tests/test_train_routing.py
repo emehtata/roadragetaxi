@@ -308,3 +308,16 @@ def test_departure_from_a_dead_end_swaps_the_train_ends_in_place():
     assert train.service.number == "6"
     # Same car positions, locomotive now at the other end (no squashing).
     assert [round(y) for _, y, _ in after] == [round(y) for _, y, _ in reversed(before)]
+
+
+def test_next_arrivals_lists_up_to_five_upcoming_trains_in_order():
+    railways = double_track_station()
+    trains = [
+        service(str(n), [("S", 30000 + n * 600, 30000 + n * 600, 1), ("M", 36000 + n * 600, 36060 + n * 600, 1), ("N", 42000, 42000, 1)])
+        for n in range(7)
+    ]
+    manager = RailwayManager(railways, timetable(*trains), metres)
+    arrivals = manager.next_arrivals(*STATION, datetime(2026, 9, 28, 9, 0), 5)
+    assert [call.number for _, call in arrivals] == ["0", "1", "2", "3", "4"]
+    assert [when for when, _ in arrivals] == sorted(when for when, _ in arrivals)
+    assert manager.next_arrival(*STATION, datetime(2026, 9, 28, 9, 0))[1].number == "0"

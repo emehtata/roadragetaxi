@@ -206,7 +206,8 @@ BBOX = DEFAULT_BBOX
 logger = logging.getLogger(__name__)
 RAGE_SHOUTS = ("PRKL!", "STNA!", "VTTU!", "HLVT!", "KRPÄ!", "KSPÄ!", "PSKA!")
 RAGE_SHOUT_COST = 0.25
-NEARBY_PLACES_RADIUS_M = 50_000.0  # airports/stations logged at city start
+NEARBY_PLACES_RADIUS_M = 50_000.0
+NEXT_TRAINS_SHOWN = 5  # arrivals listed in the J box  # airports/stations logged at city start
 # F5 activity debug panel's force-an-activity testing keys (residents-
 # live.md section 18) - number key N forces the Nth plugin listed in the
 # panel (registry.all_plugins() order) onto the selected resident.
@@ -1275,7 +1276,8 @@ def main() -> None:
         red_light_assist_enabled = False
         show_compass = False
         show_navigation = False
-        show_next_train = False  # J: next arrival at the nearest station
+        show_next_train = False  # J: next arrivals at the nearest station
+        timetable_hint_shown = False
         navigation_route = None
         navigation_target_key = None
         navigation_route_dirty = False
@@ -3089,14 +3091,21 @@ def main() -> None:
                     hud_rects=hud_rects,
                     fuel_station_price_cents=nearby_fuel_price_cents,
                 )
-                next_train = railway_mgr.next_arrival(car.x, car.y, game_calendar.current) if show_next_train else None
-                if next_train is not None:
-                    when, call = next_train
+                if railway_mgr.stations and not timetable_hint_shown:
+                    # First time this map has timetabled trains: tell the driver about J.
+                    timetable_hint_shown = True
+                    taxi_mgr.notification_msg = tr(language, "timetable_available")
+                    taxi_mgr.notification_timer = 6.0
+                arrivals = railway_mgr.next_arrivals(car.x, car.y, game_calendar.current, NEXT_TRAINS_SHOWN) if show_next_train else []
+                if arrivals:
                     draw_next_train(
                         screen, font,
-                        f"{tr(language, 'next_train')} {call.station}"
-                        + (f" {tr(language, 'track')} {call.track}" if call.track else "")
-                        + f": {when:%H:%M} {call.train_type} {call.number} {call.origin} – {call.destination}",
+                        f"{tr(language, 'next_trains')} {arrivals[0][1].station}:\n" + "\n".join(
+                            f"{when:%H:%M}"
+                            + (f" {tr(language, 'track')} {call.track}" if call.track else "")
+                            + f"  {call.train_type} {call.number} {call.origin} – {call.destination}"
+                            for when, call in arrivals
+                        ),
                         SCREEN_W,
                     )
             camera_back_rect = (

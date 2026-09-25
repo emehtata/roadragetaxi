@@ -801,10 +801,15 @@ class RailwayManager:
 
     def next_arrival(self, x: float, y: float, now: datetime) -> Optional[Tuple[datetime, StationCall]]:
         """Next timetable train arriving at the station nearest (x, y)."""
+        upcoming = self.next_arrivals(x, y, now, 1)
+        return upcoming[0] if upcoming else None
+
+    def next_arrivals(self, x: float, y: float, now: datetime, count: int = 5) -> List[Tuple[datetime, StationCall]]:
+        """The next `count` timetable arrivals at the station nearest (x, y)."""
         if not self.stations:
-            return None
+            return []
         _, _, clock = min(self.stations, key=lambda station: math.dist(station[1], (x, y)))
-        return clock.next_after(now)
+        return clock.upcoming(now, count)
 
     def update(self, dt: float, game_dt: float, now: Optional[datetime] = None) -> None:
         """dt moves trains (real seconds, like every vehicle); now (the

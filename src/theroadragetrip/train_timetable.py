@@ -316,10 +316,15 @@ class TimetableClock:
 
     def next_after(self, now: datetime) -> Optional[Tuple[datetime, ScheduledPass]]:
         """The next scheduled pass after now (within the built window)."""
+        upcoming = self.upcoming(now, 1)
+        return upcoming[0] if upcoming else None
+
+    def upcoming(self, now: datetime, count: int) -> List[Tuple[datetime, ScheduledPass]]:
+        """The next `count` scheduled passes after now (within the built window)."""
         if self._day != now.date():
             self._build(now.date())
         index = bisect.bisect_right(self._times, now)
-        return (self._times[index], self._events[index]) if index < len(self._times) else None
+        return list(zip(self._times[index:index + count], self._events[index:index + count]))
 
     def continue_from(self, other: "TimetableClock") -> None:
         self._last, self._until = other._last, other._until
