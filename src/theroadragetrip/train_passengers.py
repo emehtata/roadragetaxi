@@ -25,7 +25,7 @@ from typing import Deque, Dict, List, Optional, Tuple
 WAITING, ON_TRAIN, ARRIVED = "WAITING_AT_STATION", "ON_TRAIN", "ARRIVED"
 # How a passenger continues from their destination station.
 WALK, TAXI = "WALK", "TAXI"
-TAXI_DEMAND_SHARE = 0.25  # share of rail passengers wanting a taxi on arrival
+TAXI_DEMAND_SHARE = 0.05  # share of rail passengers wanting a taxi on arrival
 
 # Passengers aboard a train when it is full-ish, by train type (GTFS route
 # short name prefix); others use DEFAULT_LOAD. Tunable, not ticket data.
