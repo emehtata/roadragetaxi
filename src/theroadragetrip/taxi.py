@@ -252,12 +252,41 @@ class TaxiManager:
     def visible_rail_bookings(self):
         return self.rail_bookings.visible() if self.rail_bookings is not None else []
 
+    def has_active_job(self) -> bool:
+        """A fare under way, or a booked rail passenger waiting to be met:
+        either way the game clock runs in real time, not 60x (a waiting
+        booking's pickup window is game time)."""
+        return self.current_passenger is not None or bool(self.rail_bookings is not None and self.rail_bookings.waiting())
+
     def meet_booking(self):
         """The booking the driver is meeting now: the earliest-arriving
         passenger still waiting, while no other fare is under way."""
         if self.current_passenger is not None or self.rail_bookings is None:
             return None
         return min(self.rail_bookings.waiting(), key=lambda booking: booking.arrival_at, default=None)
+
+    def meet_context(self):
+        """The booking of the meet & greet in progress, from waiting at the
+        stand until the passenger is in the taxi: the one being met, or the
+        greeted one walking to the taxi."""
+        booking = getattr(self.current_passenger, "rail_booking", None)
+        if booking is not None and booking.status == PASSENGER_MET:
+            return booking
+        return self.meet_booking()
+
+    def meet_prompt(self, player: Any) -> Optional[Tuple[Any, str]]:
+        """(booking, localization key of what the driver should do now) for
+        the meet & greet in progress, or None."""
+        booking = self.meet_context()
+        if booking is None:
+            return None
+        if booking.status == PASSENGER_MET:
+            return booking, "meet_back_to_taxi" if self.driver_on_foot else "meet_passenger_to_taxi"
+        if booking.passenger.pedestrian is None:
+            return booking, "meet_go_to_stand"
+        if not self.driver_on_foot:
+            return booking, "meet_get_out"
+        return booking, "hint_greet_passenger" if self.greetable(player) is not None else "meet_walk_to_passenger"
 
     def greetable(self, player: Any):
         """(booking, pedestrian) when the driver on foot stands by the
@@ -280,11 +309,29 @@ class TaxiManager:
             pedestrian, self.make_target(car.x, car.y), "stand_boarded", walk_to_car=True, booking=booking,
         ):
             return None
+        # The same pedestrian walks to the taxi door along the footways (the
+        # pedestrian system's own stand walk, now routed), no longer a stand
+        # customer anyone else could pick up.
+        pedestrian.wants_taxi = pedestrian.is_taxi_stop_waiter = False
+        pedestrian.taxi_stop_target = self._door_position(car)
+        pedestrian.is_walking_to_taxi_stop = True
+        pedestrian.base_speed = self.current_passenger.ped_speed
+        pedestrian.route = None
         self.notification_msg = tr(
             self.language, "rail_booking_met", name=self.current_passenger.name,
             train=booking.train_number, address=booking.destination.address,
         )
         return pedestrian
+
+    @staticmethod
+    def _door_position(car: Car) -> Tuple[float, float]:
+        """The taxi's passenger-side door (side offset relative to heading)."""
+        door_offset_side = 1.2
+        door_offset_long = -0.5
+        return (
+            car.x + math.cos(car.heading) * door_offset_long + math.sin(car.heading) * door_offset_side,
+            car.y - math.sin(car.heading) * door_offset_long - math.cos(car.heading) * door_offset_side,
+        )
 
     def notify_rail_booking(self, booking) -> None:
         self.notification_msg = tr(
@@ -1867,11 +1914,12 @@ class TaxiManager:
         elif self.state == TaxiState.CLIENT_WALKING_TO_CAR:
             # Passenger walks towards the passenger side door of the taxi
             p = self.current_passenger
-            # Passenger door position (side offset relative to car heading)
-            door_offset_side = 1.2
-            door_offset_long = -0.5
-            door_x = car.x + math.cos(car.heading) * door_offset_long + math.sin(car.heading) * door_offset_side
-            door_y = car.y - math.sin(car.heading) * door_offset_long - math.cos(car.heading) * door_offset_side
+            door_x, door_y = self._door_position(car)
+            # A greeted rail customer is still their own pedestrian, walked
+            # by the pedestrian system; the fare just follows it.
+            walker = p.rail_booking.passenger.pedestrian if p.rail_booking is not None else None
+            if walker is not None:
+                p.ped_x, p.ped_y, p.ped_heading = walker.x, walker.y, walker.heading
 
             dx = door_x - p.ped_x
             dy = door_y - p.ped_y
@@ -1882,7 +1930,7 @@ class TaxiManager:
                 self.discard_mission(car.x, car.y, penalty=100, reason="Drove away during pickup")
                 return
 
-            if dist_to_door <= 0.8:
+            if dist_to_door <= 0.8 or (walker is not None and not walker.is_walking_to_taxi_stop):
                 if not is_stopped:
                     return
                 if p.rail_booking is not None and self.driver_on_foot:
@@ -1910,7 +1958,7 @@ class TaxiManager:
                     p.name,
                     p.dropoff.address,
                 )
-            else:
+            elif walker is None:
                 p.ped_heading = math.atan2(dy, dx)
                 step = p.ped_speed * dt
                 if step < dist_to_door:

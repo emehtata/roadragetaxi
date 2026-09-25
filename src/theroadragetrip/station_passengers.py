@@ -11,6 +11,7 @@ pedestrian system does all per-frame work.
 """
 from __future__ import annotations
 
+import logging
 import math
 import random
 import time
@@ -18,8 +19,10 @@ from collections import deque
 from typing import Callable, Deque, Iterable, List, Optional, Tuple
 
 from .pedestrian import closest_point_and_dist_to_segment
-from .rail_bookings import PASSENGER_WAITING
+from .rail_bookings import PASSENGER_MET, PASSENGER_WAITING
 from .train_passengers import ARRIVED, DRUNK_FROM_PROMILLE, TAXI, WAITING
+
+logger = logging.getLogger(__name__)
 
 VISIBLE_RADIUS_M = 250.0  # stations this close to the view show their passengers
 SYNC_INTERVAL_S = 1.0  # real seconds between visibility syncs
@@ -27,7 +30,7 @@ SHOW_BUDGET_S = 0.002  # per frame for creating queued passenger pedestrians
 SPREAD_M = 25.0  # passengers scatter this far around their platform point
 MAX_WALKWAY_DISTANCE_M = 60.0  # no walkway this close: stay data-only
 TRACK_CLEARANCE_M = 2.0  # never stand on a track
-STAND_WALK_CHECK_M = 5.0  # sampling of the walk to a taxi stand for track crossings
+STAND_WALK_CHECK_M = 5.0  # sampling of a route's unmapped hops to a taxi stand for track crossings
 
 
 def track_checker(railway_grid, clearance_m: float = TRACK_CLEARANCE_M) -> Callable[[Tuple[float, float]], bool]:
@@ -121,8 +124,10 @@ class StationPassengerView:
 
     @staticmethod
     def _is_booked(passenger) -> bool:
+        """Waiting to be met, or greeted and walking to the taxi: their
+        pedestrian stays linked and held until they board."""
         booking = getattr(passenger, "booking", None)
-        return booking is not None and booking.status == PASSENGER_WAITING
+        return booking is not None and booking.status in (PASSENGER_WAITING, PASSENGER_MET)
 
     def _hold_booked(self, passenger, pedestrian) -> None:
         pedestrian.held_by = self
@@ -164,15 +169,29 @@ class StationPassengerView:
         return self._stand_spots[key]
 
     def _send_to_stand(self, pedestrian, stand) -> None:
-        """The pedestrian system's own taxi-stand walk (a straight line to
-        the stand's waiting spot, then waiting there as a customer) - only
-        if that line crosses no track; else they just walk off."""
+        """The pedestrian system's own taxi-stand walk (a footway route to
+        the stand's waiting spot, then waiting there as a customer), planned
+        once here. The route's mapped footway edges are trusted; its
+        unmapped straight hops (onto the network at the start, off it at
+        the end, or the whole way when there is no network route) must
+        cross no track or building - else they just walk off."""
         target = self._stand_spot(stand)
-        steps = max(1, int(math.dist((pedestrian.x, pedestrian.y), target) // STAND_WALK_CHECK_M))
-        for i in range(steps + 1):
-            t = i / steps
-            if self.on_track((pedestrian.x + (target[0] - pedestrian.x) * t, pedestrian.y + (target[1] - pedestrian.y) * t)):
+        route = self.pedestrians._footway_route_to(pedestrian, target)
+        hops = {index for index in (0, len(route) - 3, len(route) - 2) if 0 <= index < len(route) - 1}
+        for index in sorted(hops):
+            a, b = route[index], route[index + 1]
+            steps = max(1, int(math.dist(a, b) // STAND_WALK_CHECK_M))
+            blocked = "track" if any(
+                self.on_track((a[0] + (b[0] - a[0]) * i / steps, a[1] + (b[1] - a[1]) * i / steps))
+                for i in range(steps + 1)
+            ) else "building" if self.pedestrians._path_crosses_building(a[0], a[1], b[0], b[1]) else None
+            if blocked is not None:
+                logger.info(
+                    "Rail passenger walks off, no safe route to taxi stand (%.0f, %.0f): %s on hop %d of %d-point route",
+                    stand.x, stand.y, blocked, index, len(route),
+                )
                 return
+        pedestrian.route, pedestrian.destination, pedestrian.current_route_segment = route, target, 1
         pedestrian.taxi_stop_target = target
         pedestrian.is_walking_to_taxi_stop = True
         pedestrian.wants_taxi = True

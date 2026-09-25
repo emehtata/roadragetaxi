@@ -217,6 +217,25 @@ def draw_game_start_hint(
     screen.blit(hint, hint.get_rect(center=box.center))
 
 
+def draw_meet_panel(screen, lines: List[str], screen_w: int = SCREEN_W) -> None:
+    """The pre-booked rail pickup in progress, in the hint box's style:
+    who to meet, off which train where, and what to do now (last line)."""
+    import pygame
+
+    size = max(18, min(26, screen_w // 32))
+    surfaces = [_hint_surface(line, size) for line in lines]
+    width = max(surface.get_width() for surface in surfaces)
+    height = sum(surface.get_height() for surface in surfaces) + 4 * (len(surfaces) - 1)
+    box = pygame.Rect(0, 0, width + 36, height + 20)
+    box.midtop = (screen_w // 2, 50)
+    pygame.draw.rect(screen, (16, 35, 55), box, border_radius=5)
+    pygame.draw.rect(screen, (90, 200, 255), box, width=2, border_radius=5)
+    y = box.y + 10
+    for surface in surfaces:
+        screen.blit(surface, surface.get_rect(midtop=(box.centerx, y)))
+        y += surface.get_height() + 4
+
+
 def draw_city_selection_menu(
     screen,
     font,

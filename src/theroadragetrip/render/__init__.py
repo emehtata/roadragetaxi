@@ -241,6 +241,7 @@ from .menus import (
     draw_city_selection_menu,
     draw_city_summary,
     draw_game_start_hint,
+    draw_meet_panel,
     draw_game_start_overlay,
     draw_help_screen,
     draw_loading_screen,

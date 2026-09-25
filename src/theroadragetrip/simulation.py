@@ -92,18 +92,15 @@ class SimulationFrameResult:
     next_active_city_name: Optional[str] = None
 
 
-def apply_enter_exit_vehicle(car, player_pedestrian, on_foot: bool, audio, taxi_mgr=None, pedestrian_mgr=None) -> bool:
+def apply_enter_exit_vehicle(car, player_pedestrian, on_foot: bool, audio, taxi_mgr=None) -> bool:
     """The 'F' key's get-in/get-out-of-the-car action - authoritative
     gameplay logic (a distance check gates re-entry), so it belongs on
     the simulation side of the boundary, not decided by a client. Moved
     verbatim from main()'s event handler. On foot by a pre-booked rail
-    customer, F greets them instead. Returns the new on_foot value."""
-    if on_foot and taxi_mgr is not None:
-        greeted = taxi_mgr.greet_booked_passenger(player_pedestrian, car)
-        if greeted is not None:
-            if pedestrian_mgr is not None and greeted in pedestrian_mgr.pedestrians:
-                pedestrian_mgr.pedestrians.remove(greeted)  # the fare's walker now, like a stand pickup
-            return on_foot
+    customer, F greets them instead (they stay a pedestrian and walk to
+    the taxi). Returns the new on_foot value."""
+    if on_foot and taxi_mgr is not None and taxi_mgr.greet_booked_passenger(player_pedestrian, car) is not None:
+        return on_foot
     if not on_foot:
         length_m = getattr(car, "length_m", 4.0)
         width_m = getattr(car, "width_m", 1.8)
@@ -124,6 +121,16 @@ def apply_enter_exit_vehicle(car, player_pedestrian, on_foot: bool, audio, taxi_
         audio.play("car-door-open")
         return False
     return on_foot
+
+
+def remove_boarded_rail_walker(taxi_mgr, pedestrian_mgr) -> None:
+    """A greeted rail customer walked to the taxi as their own pedestrian;
+    once they have boarded, that pedestrian leaves the world."""
+    booking = getattr(taxi_mgr.current_passenger, "rail_booking", None)
+    if booking is not None and booking.passenger.pedestrian is not None:
+        walker, booking.passenger.pedestrian = booking.passenger.pedestrian, None
+        if walker in pedestrian_mgr.pedestrians:
+            pedestrian_mgr.pedestrians.remove(walker)
 
 
 def _rage_from_speeding(
@@ -484,6 +491,7 @@ def advance_simulation(
         )
         audio.play_driver_line("pickup", language)
         audio.play("car-door-open")
+        remove_boarded_rail_walker(taxi_mgr, pedestrian_mgr)
     elif (
         previous_taxi_state == TaxiState.DRIVING_TO_DROPOFF
         and previous_passenger is not None

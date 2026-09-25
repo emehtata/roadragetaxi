@@ -85,6 +85,7 @@ from ..render import (
     draw_car,
     draw_city_selection_menu,
     draw_game_start_hint,
+    draw_meet_panel,
     draw_game_start_overlay,
     draw_city_summary,
     draw_mode_selection_menu,
@@ -1474,7 +1475,7 @@ def main() -> None:
                 start_warmup_remaining = max(0.0, start_warmup_remaining - dt)
             elif start_hint_remaining > 0.0:
                 start_hint_remaining = max(0.0, start_hint_remaining - dt)
-            time_scale = 1.0 if taxi_mgr.current_passenger else 60.0
+            time_scale = 1.0 if taxi_mgr.has_active_job() else 60.0
             previous_date = game_calendar.date
             game_calendar.advance(dt * time_scale)
             game_time_seconds = game_calendar.time_seconds
@@ -2120,7 +2121,7 @@ def main() -> None:
                 # never fights the synced value.
                 authoritative_weather_type = weather.weather_type
                 authoritative_wetness = weather.wetness
-                weather.update(dt * (1.0 if taxi_mgr.current_passenger else 60.0), dt)
+                weather.update(dt * (1.0 if taxi_mgr.has_active_job() else 60.0), dt)
                 weather.weather_type = authoritative_weather_type
                 weather.wetness = authoritative_wetness
             else:
@@ -2132,7 +2133,7 @@ def main() -> None:
                 # one authoritative simulation entry point either way.
                 if interact_pending:
                     previous_on_foot = on_foot
-                    on_foot = apply_enter_exit_vehicle(car, player_pedestrian, on_foot, audio, taxi_mgr, pedestrian_mgr)
+                    on_foot = apply_enter_exit_vehicle(car, player_pedestrian, on_foot, audio, taxi_mgr)
                     if previous_on_foot and not on_foot:
                         start_hint_remaining = 0.0
                 interact_pending = False
@@ -2811,7 +2812,7 @@ def main() -> None:
                 residents=traffic_mgr.residents,
                 spatial_grid=spatial_grid,
             )
-            meet_booking = taxi_mgr.meet_booking()
+            meet_booking = taxi_mgr.meet_context()
             if meet_booking is not None and meet_booking.passenger.pedestrian is not None:
                 draw_booked_passenger_arrow(screen, meet_booking.passenger.pedestrian, camx, camy, px_per_m)
             if show_debug_hud:
@@ -2889,7 +2890,7 @@ def main() -> None:
                         pedestrian_mgr, on_track=track_checker(railway_grid),
                     )
                 railway_mgr.view_point = (camx, camy)
-                railway_mgr.update(dt, dt * (1.0 if taxi_mgr.current_passenger else 60.0), game_calendar.current)
+                railway_mgr.update(dt, dt * (1.0 if taxi_mgr.has_active_job() else 60.0), game_calendar.current)
             with frame_profiler.section("render:trains"):
                 draw_trains(screen, railway_mgr, camx, camy, px_per_m=px_per_m, show_debug=show_debug_hud, font=font)
             # Price boards are gameplay-critical and must stay above both
@@ -3183,8 +3184,13 @@ def main() -> None:
                     screen, font, chosen_city, SCREEN_W, SCREEN_H,
                     forecast_lines=weather_forecast_lines, language=language,
                 )
-            elif on_foot and taxi_mgr.greetable(player_pedestrian) is not None:
-                draw_game_start_hint(screen, font, SCREEN_W, tr(language, "hint_greet_passenger"))
+            elif (meet := taxi_mgr.meet_prompt(player_pedestrian)) is not None:
+                booking, action = meet
+                draw_meet_panel(screen, [
+                    tr(language, "meet_title", name=booking.passenger.name or "?"),
+                    f"{booking.train_number} | {booking.station}",
+                    tr(language, action, station=booking.station),
+                ], SCREEN_W)
             elif start_hint_remaining > 0.0 and on_foot:
                 draw_game_start_hint(screen, font, SCREEN_W, tr(language, "hint_enter_taxi"))
             elif not on_foot and not car.engine_on and car.fuel_l > 0.0:

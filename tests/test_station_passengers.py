@@ -21,6 +21,18 @@ class FakePedestrians:
     def _nearby_ped_ways(self, x, y):
         return self.ways
 
+    # The routing PedestrianManager provides: a route through the given
+    # waypoints (none: the no-network fallback, a straight line).
+    via = ()
+    routes_planned = 0
+
+    def _footway_route_to(self, pedestrian, target):
+        self.routes_planned += 1
+        return [(pedestrian.x, pedestrian.y), *self.via, target]
+
+    def _path_crosses_building(self, x1, y1, x2, y2):
+        return False
+
     def spawn_pedestrian_at(self, x, y, heading=0.0, resident_id=None):
         if resident_id is None:
             self.next_resident += 1

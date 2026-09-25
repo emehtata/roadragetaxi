@@ -663,6 +663,37 @@ def test_taxi_stop_waiter_spawns_when_stop_enters_view(monkeypatch: pytest.Monke
     assert existing_pedestrian.is_taxi_stop_waiter is True
 
 
+def test_walk_to_taxi_stop_follows_the_footway_around_a_building(monkeypatch: pytest.MonkeyPatch):
+    """Regression: the walk to a taxi stand was a straight line, right
+    through any building in between. It follows the footway network,
+    planned once."""
+    footway = Way(points_m=[(0.0, 0.0), (40.0, 0.0), (40.0, 40.0)], highway="footway", half_width_m=1.5)
+    building = SimpleNamespace(
+        points_m=[(10.0, 5.0), (30.0, 5.0), (30.0, 35.0), (10.0, 35.0)], bbox=(10.0, 5.0, 30.0, 35.0),
+        entrances=[], venue_type=None,
+    )
+    manager = PedestrianManager([footway], target_count=0, venue_buildings=[building])
+    walker = Pedestrian(0.0, 0.0, 0.0, 1.4, 1.4, footway, 0, 1, (1, 1, 1))
+    walker.taxi_stop_target = (40.0, 40.0)
+    walker.is_walking_to_taxi_stop = walker.wants_taxi = True
+    manager.pedestrians.append(walker)
+    planned = []
+    original = manager._footway_route_to
+    monkeypatch.setattr(manager, "_footway_route_to", lambda ped, target: planned.append(target) or original(ped, target))
+
+    positions = []
+    for _ in range(1000):
+        manager.update(Car(0.0, -50.0, 0.0, 0.0), dt=0.1)
+        positions.append((walker.x, walker.y))
+        if walker.is_taxi_stop_waiter:
+            break
+
+    assert walker.is_taxi_stop_waiter and (walker.x, walker.y) == (40.0, 40.0)
+    assert not any(point_in_polygon(x, y, building.points_m) for x, y in positions)
+    assert max(x for x, _ in positions) == pytest.approx(40.0)  # went round the corner at (40, 0)
+    assert planned == [(40.0, 40.0)]  # one route, not one per frame
+
+
 def test_customer_walks_to_taxi_stop_edge(monkeypatch: pytest.MonkeyPatch):
     way = Way(points_m=[(0.0, -3.0), (100.0, -3.0)], highway="footway", half_width_m=1.5)
     manager = PedestrianManager([way], target_count=0, spawn_radius_m=120.0)
@@ -677,7 +708,9 @@ def test_customer_walks_to_taxi_stop_edge(monkeypatch: pytest.MonkeyPatch):
     assert customer.is_walking_to_taxi_stop is True
     assert customer.taxi_stop_target == (20.0, -3.0)
 
-    for _ in range(150):
+    # Routed along the footway network, which joins it at the nearest
+    # vertex ((0, -3) here), so a little longer than the straight 10 m.
+    for _ in range(400):
         manager.update(Car(10.0, 0.0, 0.0, 0.0), dt=0.1)
         if customer.is_taxi_stop_waiter:
             break

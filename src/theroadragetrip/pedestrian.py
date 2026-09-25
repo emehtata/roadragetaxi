@@ -2438,11 +2438,10 @@ class PedestrianManager:
                     continue
             taxi_stop_target = getattr(ped, "taxi_stop_target", None)
             if getattr(ped, "is_walking_to_taxi_stop", False) and taxi_stop_target is not None:
-                target_x, target_y = taxi_stop_target
-                dx = target_x - ped.x
-                dy = target_y - ped.y
-                distance = math.hypot(dx, dy)
-                if distance <= 1.0:
+                # Along the footway network, routed once (see _walk_route_to),
+                # not a straight line through buildings.
+                if self._walk_route_to(ped, update_dt, taxi_stop_target):
+                    target_x, target_y = taxi_stop_target
                     ped.x = target_x
                     ped.y = target_y
                     ped.speed = 0.0
@@ -2452,12 +2451,6 @@ class PedestrianManager:
                     ped.state = "waiting"
                     ped.animation_state = "idle"
                     logger.info("Pedestrian arrived at taxi stop: x=%.1f y=%.1f", target_x, target_y)
-                    continue
-                ped.heading = math.atan2(dy, dx)
-                ped.speed = ped.base_speed
-                step = min(distance, ped.speed * update_dt)
-                ped.x += math.cos(ped.heading) * step
-                ped.y += math.sin(ped.heading) * step
                 continue
             if getattr(ped, "is_taxi_stop_waiter", False):
                 ped.speed = 0.0
