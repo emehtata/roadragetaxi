@@ -1384,6 +1384,12 @@ def draw_trains(
             pygame.draw.polygon(screen, TRAIN_LOCOMOTIVE_COLOR if index == 0 else TRAIN_CARRIAGE_COLOR, corners)
             pygame.draw.polygon(screen, TRAIN_ROOF_LINE_COLOR, corners, 1)
     if show_debug:
+        for route in {id(t.route): t.route for t in railway_mgr.trains if t.service is not None}.values():
+            # Each timetable train's own selected track (plan_train_path).
+            pygame.draw.lines(
+                screen, (0, 220, 255), False,
+                [world_to_screen(px, py, camx, camy, px_per_m, screen_w, screen_h) for px, py in route.points], 3,
+            )
         for train in railway_mgr.trains:  # timetable identity + travel direction at the locomotive
             if font is not None and train.service is not None:
                 x, y, _ = train.cars()[0]

@@ -59,8 +59,8 @@ class ScheduledPass:
     heading: str  # compass direction of travel, for debugging
     # Stops on this route in travel order: (distance of the station along
     # the route, dwell in timetable seconds, station name, GTFS arrival,
-    # GTFS departure). Stations without a stop (timing points) are absent.
-    stops: Tuple[Tuple[float, int, str, int, int], ...] = ()
+    # GTFS departure, station position). Timing points are absent.
+    stops: Tuple[tuple, ...] = ()
 
     @property
     def label(self) -> str:
@@ -204,7 +204,7 @@ def match_timetable(
                 terminal = call_index in (0, len(stops) - 1)
                 dwell = TERMINAL_DWELL_S if terminal else departure - arrival
                 if dwell > 0:
-                    route_stops.append((along, dwell, timetable["stations"][code][2], arrival, departure))
+                    route_stops.append((along, dwell, timetable["stations"][code][2], arrival, departure, point))
             route_stops.sort(key=lambda stop: stop[0] * direction)
             passes.append(ScheduledPass(
                 train_type=train["type"], number=train["number"],
@@ -287,6 +287,22 @@ class TimetableClock:
             self._build(now.date())
         index = bisect.bisect_right(self._times, now)
         return (self._times[index], self._events[index]) if index < len(self._times) else None
+
+    def continue_from(self, other: "TimetableClock") -> None:
+        self._last, self._until = other._last, other._until
+
+    @property
+    def started(self) -> bool:
+        """False until the first due() call - the game-start moment."""
+        return self._last is not None
+
+    def events_between(self, start: datetime, end: datetime) -> List[Tuple[datetime, ScheduledPass]]:
+        """(time, pass) for passes scheduled in [start, end] - a window of
+        at most a day ending near now."""
+        if self._day != end.date():
+            self._build(end.date())
+        lo, hi = bisect.bisect_left(self._times, start), bisect.bisect_right(self._times, end)
+        return list(zip(self._times[lo:hi], self._events[lo:hi]))
 
     def due(self, now: datetime, lookahead: timedelta = timedelta(0)) -> List[ScheduledPass]:
         """Passes scheduled in (end of the previous window, now + lookahead]

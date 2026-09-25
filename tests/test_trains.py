@@ -32,7 +32,8 @@ def test_route_follows_track_geometry_across_joined_ways_and_skips_fragments():
     ])
     assert len(routes) == 1
     route = routes[0]
-    assert {tuple(map(round, p)) for p in route.points} == {tuple(map(round, p)) for p in curve}
+    # Every OSM point is on the route (plus densified points between them).
+    assert {tuple(map(round, p)) for p in curve} <= {tuple(map(round, p)) for p in route.points}
     x, y, _ = route.point_at(route.length / 2)
     assert math.hypot(x, y) > 1990  # on the arc, not a straight A->B chord
 
