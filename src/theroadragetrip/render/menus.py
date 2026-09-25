@@ -449,7 +449,7 @@ def draw_tutorial_screen(
         ("J", "Seuraava juna" if language == "fi" else "Toggle next train"),
         ("Ctrl+veto" if language == "fi" else "Ctrl+drag", "Panoroi näkymää" if language == "fi" else "Pan the view"),
         ("Klikkaa" if language == "fi" else "Click", "Seuraa (ESC: taksi)" if language == "fi" else "Follow (ESC: taxi)"),
-        ("+ / -", tr(language, "zoom")),
+        ("+ / - / " + ("rulla" if language == "fi" else "wheel"), tr(language, "zoom")),
         ("Esc", tr(language, "pause")),
         ("F1", tr(language, "help_short")),
         ("F3", "Näytä/piilota debug-HUD" if language == "fi" else "Toggle diagnostic HUD"),

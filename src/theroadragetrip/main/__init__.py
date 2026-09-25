@@ -1541,6 +1541,9 @@ def main() -> None:
                     pan_drag_pos = event.pos
                 elif event.type == pygame.MOUSEBUTTONUP and event.button == 1 and pan_drag_pos is not None:
                     pan_drag_pos = None
+                elif event.type == pygame.MOUSEWHEEL:
+                    # Wheel zooms like +/-: each notch one 10 % step.
+                    px_per_m = max(min_px_per_m, px_per_m * (1.1 if event.y > 0 else 0.9) ** abs(event.y))
                 elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                     clicked_hud = False
                     for element_name in ("rage", "speedometer", "meters"):
