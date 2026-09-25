@@ -420,7 +420,13 @@ def plan_train_path(
     # A terminus / origin: carry the route on along the platform track (to
     # the buffer stop) so the train can stand centred on the platform
     # rather than wholly before it.
-    before = _continue_track(graph, nodes[1], nodes[0]) if starts_at_first and len(nodes) > 1 else []
+    before = []
+    if starts_at_first and len(nodes) > 1:
+        # Departing from a dead end: the route reaches back to the buffer
+        # stop, under the whole train standing there (it just swaps ends).
+        before = _continue_track(graph, nodes[1], nodes[0], TERMINUS_SEARCH_M)
+        if len(graph.edges.get((before or nodes)[-1], {})) != 1:
+            before = _continue_track(graph, nodes[1], nodes[0])
     after, at_buffer = [], False
     if ends_at_last and len(nodes) > 1:
         # A terminus: follow the platform track on; if it ends at a buffer

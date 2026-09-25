@@ -283,3 +283,24 @@ def test_terminating_train_runs_up_to_the_buffer_stop_else_stands_centred():
             assert abs(ys[0] + 12.0 - 10_300) < 1  # locomotive's nose at the buffer stop
         else:
             assert abs((ys[0] + ys[-1]) / 2 - 10_000) < 15, journey["number"]
+
+
+def test_departure_from_a_dead_end_swaps_the_train_ends_in_place():
+    line = [rail((5.0, -5000.0), (5.0, 10_300.0))]  # buffer stop 300 m past the platform point
+    arriving = service("5", [("S", 30000, 30000, 1), ("M", 36000, 36000, 1, "3")])
+    departing = service("6", [("M", 38000, 38000, 1, "3"), ("S", 44000, 44000, 1)])
+    manager = RailwayManager(line, timetable(arriving, departing), metres)
+    now = datetime(2026, 9, 28, 10, 1)
+    manager.update(0.0, 0.0, datetime(2026, 9, 28, 6, 0))
+    manager.update(0.0, 0.0, now)
+    (train,) = manager.trains
+    for _ in range(2000):
+        manager.update(0.5, 0.5, now)
+    assert train.state == "WAITING"
+    before = train.cars()
+    for minute in range(1, 60):
+        manager.update(0.0, 0.0, now + timedelta(minutes=minute))
+    after = train.cars()
+    assert train.service.number == "6"
+    # Same car positions, locomotive now at the other end (no squashing).
+    assert [round(y) for _, y, _ in after] == [round(y) for _, y, _ in reversed(before)]
