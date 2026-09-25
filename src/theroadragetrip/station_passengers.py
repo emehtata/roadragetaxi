@@ -13,16 +13,20 @@ from __future__ import annotations
 
 import math
 import random
-from typing import Callable, Iterable, List, Optional, Tuple
+import time
+from collections import deque
+from typing import Callable, Deque, Iterable, List, Optional, Tuple
 
 from .pedestrian import closest_point_and_dist_to_segment
-from .train_passengers import DRUNK_FROM_PROMILLE
+from .train_passengers import ARRIVED, DRUNK_FROM_PROMILLE, TAXI, WAITING
 
 VISIBLE_RADIUS_M = 250.0  # stations this close to the view show their passengers
 SYNC_INTERVAL_S = 1.0  # real seconds between visibility syncs
+SHOW_BUDGET_S = 0.002  # per frame for creating queued passenger pedestrians
 SPREAD_M = 25.0  # passengers scatter this far around their platform point
 MAX_WALKWAY_DISTANCE_M = 60.0  # no walkway this close: stay data-only
 TRACK_CLEARANCE_M = 2.0  # never stand on a track
+STAND_WALK_CHECK_M = 5.0  # sampling of the walk to a taxi stand for track crossings
 
 
 def track_checker(railway_grid, clearance_m: float = TRACK_CLEARANCE_M) -> Callable[[Tuple[float, float]], bool]:
@@ -49,6 +53,9 @@ class StationPassengerView:
         self.on_track = on_track or (lambda point: False)
         self.rng = random.Random(seed)
         self._since_sync = SYNC_INTERVAL_S
+        self._stand_spots = {}  # id(stand) -> its waiting spot on a walkway (computed once)
+        self._pending: Deque = deque()  # (passenger, standing) waiting to get a pedestrian
+        self._queued = set()
 
     # -- placing and removing a passenger's pedestrian ------------------
 
@@ -98,9 +105,37 @@ class StationPassengerView:
             pedestrian.blood_alcohol_promille = passenger.promille
             pedestrian.drunk_phase = self.rng.uniform(0.0, 2.0 * math.pi)
             pedestrian.drunk_vomit_cooldown = self.rng.uniform(8.0, 25.0)
+        if not standing and getattr(passenger, "intent", None) == TAXI and passenger.taxi_stand is not None:
+            self._send_to_stand(pedestrian, passenger.taxi_stand)
         self.pedestrians.pedestrians.append(pedestrian)
         passenger.pedestrian = pedestrian if standing else None  # walkers are the pedestrian system's now
         return True
+
+    def _send_to_stand(self, pedestrian, stand) -> None:
+        """The pedestrian system's own taxi-stand walk (a straight line to
+        the stand's waiting spot, then waiting there as a customer) - only
+        if that line crosses no track; else they just walk off."""
+        key = id(stand)
+        if key not in self._stand_spots:
+            # Where waiting customers stand: the nearest walkway point to the
+            # stand (nearby walkways only - the pedestrian system's own
+            # version scans every walkway on the map).
+            best = None
+            for way in self.pedestrians._nearby_ped_ways(stand.x, stand.y):
+                for a, b in zip(way.points_m, way.points_m[1:]):
+                    px, py, _, distance = closest_point_and_dist_to_segment(stand.x, stand.y, a[0], a[1], b[0], b[1])
+                    if best is None or distance < best[0]:
+                        best = (distance, (px, py))
+            self._stand_spots[key] = best[1] if best is not None else (stand.x, stand.y)
+        target = self._stand_spots[key]
+        steps = max(1, int(math.dist((pedestrian.x, pedestrian.y), target) // STAND_WALK_CHECK_M))
+        for i in range(steps + 1):
+            t = i / steps
+            if self.on_track((pedestrian.x + (target[0] - pedestrian.x) * t, pedestrian.y + (target[1] - pedestrian.y) * t)):
+                return
+        pedestrian.taxi_stop_target = target
+        pedestrian.is_walking_to_taxi_stop = True
+        pedestrian.wants_taxi = True
 
     def hide(self, passenger) -> None:
         pedestrian, passenger.pedestrian = passenger.pedestrian, None
@@ -121,16 +156,37 @@ class StationPassengerView:
             return
         for passenger in leaving:
             passenger.platform = passenger.platform or station_point
-            self.show(passenger, standing=False)
+            self._queue(passenger, standing=False)
 
     def dropped(self, passengers: Iterable) -> None:
         for passenger in passengers:
             self.hide(passenger)
 
+    def _queue(self, passenger, standing: bool) -> None:
+        if passenger.pedestrian is None and id(passenger) not in self._queued:
+            self._queued.add(id(passenger))
+            self._pending.append((passenger, standing))
+
+    def _show_pending(self) -> None:
+        """Create queued pedestrians for up to SHOW_BUDGET_S per frame (at
+        least one): a full train stepping off at once is ~100 pedestrians,
+        ~150 ms if made in one frame."""
+        deadline = time.perf_counter() + SHOW_BUDGET_S
+        while self._pending:
+            passenger, standing = self._pending.popleft()
+            self._queued.discard(id(passenger))
+            still_there = passenger.state == (WAITING if standing else ARRIVED)
+            if still_there:
+                self.show(passenger, standing=standing)
+                if time.perf_counter() >= deadline:
+                    break
+
     def update(self, dt: float, flow, stations: List[Tuple[str, Tuple[float, float]]], view_point) -> None:
-        """About once a second: waiting passengers at stations near the
-        view become standing pedestrians, those at stations out of view
-        go back to data (their journey is untouched)."""
+        """Every frame: make some queued pedestrians. About once a second:
+        waiting passengers at stations near the view are queued to become
+        standing pedestrians, those at stations out of view go back to data
+        (their journey is untouched)."""
+        self._show_pending()
         self._since_sync += dt
         if self._since_sync < SYNC_INTERVAL_S or view_point is None:
             return
@@ -140,6 +196,6 @@ class StationPassengerView:
             for group in flow.waiting.get(name, {}).values():
                 for passenger in group:
                     if near:
-                        self.show(passenger, standing=True)
+                        self._queue(passenger, standing=True)
                     else:
                         self.hide(passenger)

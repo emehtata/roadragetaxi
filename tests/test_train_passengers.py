@@ -166,7 +166,9 @@ def test_restaurant_car_guests_drink_on_the_way_and_step_off_drunk():
     drunk = next(p for p in diners if p.promille >= DRUNK_FROM_PROMILLE)
     peds = FakePedestrians([SimpleNamespace(points_m=[(0.0, -100.0), (0.0, 100.0)])])
     drunk.platform = (0.0, 0.0)
-    StationPassengerView(peds).on_arrival([drunk], [], (0.0, 0.0), view_point=(0.0, 0.0))
+    view = StationPassengerView(peds)
+    view.on_arrival([drunk], [], (0.0, 0.0), view_point=(0.0, 0.0))
+    view.update(0.0, flow, [], None)
     (walker,) = peds.pedestrians
     assert walker.is_drunk and walker.blood_alcohol_promille == drunk.promille
 

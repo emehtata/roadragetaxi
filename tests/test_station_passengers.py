@@ -72,6 +72,7 @@ def test_boarding_removes_the_npc_and_arrivals_step_off_and_walk():
     view.show(boarder, standing=True)
     boarder.state = ON_TRAIN
     view.on_arrival([arriving], [boarder], station_point=(0.0, 0.0), view_point=(10.0, 0.0))
+    view.update(0.0, PassengerFlow(), [], None)  # queued pedestrians are made on the next update
     assert boarder.pedestrian is None and all(p.rail_passenger is not boarder for p in peds.pedestrians)
     (walker,) = peds.pedestrians
     assert walker.rail_passenger is arriving and walker.speed > 0 and not hasattr(walker, "held_by")
@@ -91,7 +92,8 @@ def test_stations_come_into_and_out_of_view():
     flow = PassengerFlow()
     group = [waiting() for _ in range(5)]
     flow.waiting["A"] = {("IC", "1"): group}
-    view.update(1.0, flow, [("A", (0.0, 0.0))], view_point=(0.0, 0.0))
+    view.update(1.0, flow, [("A", (0.0, 0.0))], view_point=(0.0, 0.0))  # queues them
+    view.update(0.0, flow, [("A", (0.0, 0.0))], view_point=(0.0, 0.0))  # makes them
     assert len(peds.pedestrians) == 5 and all(p.pedestrian is not None for p in group)
     assert len({(n.x, n.y) for n in peds.pedestrians}) > 1  # not all on one spot
     view.update(1.0, flow, [("A", (0.0, 0.0))], view_point=(VISIBLE_RADIUS_M * 3, 0.0))
@@ -128,3 +130,21 @@ def test_visible_passengers_never_change_train_timing():
     assert plain == shown  # same states at the same moments
     assert manager.passengers.boarded_total > 0
     assert all(p.pedestrian is None for group in manager.passengers.waiting.values() for g in group.values() for p in g)
+
+
+def test_a_whole_train_stepping_off_is_spread_over_frames():
+    import time
+    from theroadragetrip import station_passengers
+
+    peds = FakePedestrians()
+    view = StationPassengerView(peds)
+    arrivals = [RailPassenger("X", "A", ("IC", "1"), ARRIVED, platform=(0.0, 0.0)) for _ in range(100)]
+    view.on_arrival(arrivals, [], (0.0, 0.0), view_point=(0.0, 0.0))
+    assert peds.pedestrians == []  # nothing made inside the arrival event
+    frames = 0
+    while len(peds.pedestrians) < 100 and frames < 1000:
+        started = time.perf_counter()
+        view.update(1 / 60, PassengerFlow(), [], None)
+        frames += 1
+        assert time.perf_counter() - started < station_passengers.SHOW_BUDGET_S + 0.01
+    assert len(peds.pedestrians) == 100
