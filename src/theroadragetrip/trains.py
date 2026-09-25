@@ -25,7 +25,7 @@ TRAIN_SPAWN_INTERVAL_S = 30.0 * 60.0  # game seconds between spawns, per route a
 TRAIN_SPEED_MPS = 22.0  # ~80 km/h, constant
 # Trains move in real time while the game clock runs up to 60x, so a busy
 # line can have many timetable trains crossing the map at once.
-MAX_ACTIVE_TRAINS = 16
+MAX_ACTIVE_TRAINS = 48  # Helsinki at 60x dropped departures at 16 and 32
 # Oulu's rail pieces run from a few metres (yard stubs) to kilometres; a
 # train of TRAIN_CARS cars is ~150 m, so shorter lines would look silly.
 MIN_TRAIN_ROUTE_LENGTH_M = 1000.0

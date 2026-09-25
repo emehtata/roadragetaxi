@@ -138,7 +138,7 @@ def test_timetable_train_leaves_at_the_far_end_instead_of_reversing():
 
 
 def test_many_scheduled_trains_stay_capped():
-    many = [train([("S", 36000 + i * 60), ("N", 37000 + i * 60)], number=str(i)) for i in range(40)]
+    many = [train([("S", 36000 + i * 60), ("N", 37000 + i * 60)], number=str(i)) for i in range(MAX_ACTIVE_TRAINS + 10)]
     manager = RailwayManager(NORTH_SOUTH_TRACK, timetable(*many), metres)
     run(manager, datetime(2026, 9, 28, 10, 0), 60)
     assert len(manager.trains) == MAX_ACTIVE_TRAINS
