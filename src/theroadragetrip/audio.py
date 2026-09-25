@@ -2,10 +2,8 @@ from __future__ import annotations
 
 import logging
 import json
-import math
 import random
 import time
-from array import array
 from pathlib import Path
 from typing import Optional
 
@@ -17,6 +15,9 @@ except (ImportError, AttributeError):
     pygame_mixer = None
 
 logger = logging.getLogger(__name__)
+
+CATALOG = Path(__file__).with_name("assets") / "audio" / "audio_catalog.json"
+MIXER_CHANNELS = 48  # one-shots plus about a dozen simultaneous ambience loops
 
 
 class AudioManager:
@@ -47,6 +48,13 @@ class AudioManager:
         self.comment_channel: Optional[pygame.mixer.Channel] = None
         self.acceleration_channel: Optional[pygame.mixer.Channel] = None
         self.police_siren_channel: Optional[pygame.mixer.Channel] = None
+        # Sound groups from assets/audio/audio_catalog.json: group id ->
+        # its generated variations (a loop group's variations are layers).
+        self.groups: dict[str, list[pygame.mixer.Sound]] = {}
+        self._last_variation: dict[str, int] = {}
+        self._edges: dict[str, bool] = {}
+        self.loop_channels: dict[str, pygame.mixer.Channel] = {}
+        self._step_timer = 0.0
         self.speech_interval = random.uniform(speech_min_interval, speech_max_interval)
         self.speech_min_interval = speech_min_interval
         self.speech_max_interval = speech_max_interval
@@ -60,8 +68,9 @@ class AudioManager:
         try:
             if not mixer.get_init():
                 mixer.init()
+            mixer.set_num_channels(MIXER_CHANNELS)
             sounds_dir = Path(__file__).with_name("sounds")
-            for name in ("accelerate", "car-crash", "carhorn_takes", "car-door-open", "city-traffic-outdoor", "police_car_siren-esp"):
+            for name in ("accelerate", "car-door-open", "censored-cursing", "city-traffic-outdoor", "police_car_siren-esp"):
                 path = next(
                     (
                         sounds_dir / f"{name}{extension}"
@@ -75,9 +84,7 @@ class AudioManager:
                         self.sounds[name] = mixer.Sound(str(path))
                     except pygame.error as exc:
                         logger.warning("Could not load sound %s: %s", path.name, exc)
-            thunder = self._create_thunder_sound(mixer)
-            if thunder is not None:
-                self.sounds["thunder"] = thunder
+            self._load_groups(mixer)
             chatter_dir = sounds_dir / "passenger_chatter"
             for path in chatter_dir.glob("*.wav"):
                 parts = path.stem.split("_", 2)
@@ -96,40 +103,28 @@ class AudioManager:
                     self.driver_sounds[(parts[0], parts[1], parts[2])] = mixer.Sound(str(path))
                 except pygame.error as exc:
                     logger.warning("Could not load driver chatter %s: %s", path.name, exc)
-            if "city-traffic-outdoor" in self.sounds:
-                self.sounds["city-traffic-outdoor"].set_volume(self.master_volume * self.music_volume)
-                self.sounds["city-traffic-outdoor"].play(loops=-1)
-            self.enabled = bool(self.sounds or self.passenger_sounds or self.driver_sounds)
+            self.enabled = bool(self.sounds or self.groups or self.passenger_sounds or self.driver_sounds)
+            self.update_ambience()
         except (pygame.error, OSError) as exc:
             logger.info("Audio unavailable: %s", exc)
 
-    @staticmethod
-    def _create_thunder_sound(mixer):
-        """Generate a short low rumble without requiring an external asset."""
-        initialized = mixer.get_init()
-        if not initialized:
-            return None
-        frequency, sample_format, channels = initialized
-        if sample_format != -16 or channels not in (1, 2):
-            return None
-        rng = random.Random(0x5448554E444552)
-        samples = array("h")
-        duration = 2.2
-        sample_count = round(frequency * duration)
-        smoothed_noise = 0.0
-        for index in range(sample_count):
-            elapsed = index / frequency
-            envelope = max(0.0, 1.0 - elapsed / duration) ** 1.7
-            smoothed_noise = smoothed_noise * 0.985 + rng.uniform(-1.0, 1.0) * 0.015
-            rumble = math.sin(2.0 * math.pi * 43.0 * elapsed)
-            rumble += 0.55 * math.sin(2.0 * math.pi * 67.0 * elapsed)
-            value = int(max(-1.0, min(1.0, (rumble * 0.32 + smoothed_noise * 2.2) * envelope)) * 19000)
-            for _channel in range(channels):
-                samples.append(value)
+    def _load_groups(self, mixer) -> None:
         try:
-            return mixer.Sound(buffer=samples.tobytes())
-        except pygame.error:
-            return None
+            catalog = json.loads(CATALOG.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            logger.warning("Could not load the audio catalog: %s", exc)
+            return
+        for group_id, group in catalog.get("groups", {}).items():
+            sounds = []
+            for entry in group.get("files", ()):
+                if entry.get("status") != "generated":
+                    continue
+                try:
+                    sounds.append(mixer.Sound(str(CATALOG.parent / entry["file"])))
+                except (pygame.error, FileNotFoundError) as exc:
+                    logger.warning("Could not load sound %s: %s", entry["file"], exc)
+            if sounds:
+                self.groups[group_id] = sounds
 
     @staticmethod
     def _load_speech_lines() -> list[dict[str, object]]:
@@ -266,6 +261,78 @@ class AudioManager:
     def set_comments_enabled(self, enabled: bool) -> None:
         self.comments_enabled = enabled
 
+    def play_group(self, group_id: str, volume: float = 1.0, variation: Optional[int] = None) -> None:
+        """One variation of a catalog group: the given one (0-based) or a
+        random one, never the same twice in a row."""
+        sounds = self.groups.get(group_id)
+        if not sounds or not self.enabled or volume <= 0.0:
+            return
+        if variation is None:
+            choices = [i for i in range(len(sounds)) if i != self._last_variation.get(group_id)] or [0]
+            variation = random.choice(choices)
+        self._last_variation[group_id] = variation
+        channel = sounds[min(variation, len(sounds) - 1)].play()
+        if channel is not None:
+            channel.set_volume(min(1.0, self.master_volume * self.effects_volume * volume))
+
+    def on_rise(self, key: str, active: bool, group_id: str, volume: float = 1.0) -> bool:
+        """Play group_id when `active` turns true (not every frame it stays true)."""
+        rose = active and not self._edges.get(key, False)
+        self._edges[key] = active
+        if rose:
+            self.play_group(group_id, volume)
+        return rose
+
+    def set_loop(self, key: str, group_id: str, volume: float, variation: int = 0, music: bool = False) -> None:
+        """Keep a looping layer of group_id running at `volume` (0 stops it).
+        Music-volume loops are the background beds; the rest are effects."""
+        channel = self.loop_channels.get(key)
+        sounds = self.groups.get(group_id)
+        if volume <= 0.01 or not sounds or not self.enabled:
+            if channel is not None:
+                channel.stop()
+                del self.loop_channels[key]
+            return
+        if channel is None or not channel.get_busy():
+            channel = sounds[min(variation, len(sounds) - 1)].play(loops=-1)
+            if channel is None:
+                return
+            self.loop_channels[key] = channel
+        channel.set_volume(min(1.0, self.master_volume * (self.music_volume if music else self.effects_volume) * volume))
+
+    def update_ambience(
+        self, night: float = 0.0, rain: float = 0.0, heavy_rain: float = 0.0, wind: float = 0.0,
+        strong_wind: float = 0.0, wet_tires: float = 0.0, slush: bool = False,
+    ) -> None:
+        """Background loops, each 0..1: the day city bed (existing asset)
+        crossfades into the night one; rain, wind and wet tyres layer on."""
+        day_bed = self.sounds.get("city-traffic-outdoor")
+        if day_bed is not None and self.enabled:
+            channel = self.loop_channels.get("city_day")
+            if channel is None or not channel.get_busy():
+                channel = day_bed.play(loops=-1)
+                if channel is not None:
+                    self.loop_channels["city_day"] = channel
+            if channel is not None:
+                channel.set_volume(self.master_volume * self.music_volume * (1.0 - night))
+        self.set_loop("city_night", "ambient.city_night", night, music=True)
+        self.set_loop("rain", "weather.rain", rain, variation=0)
+        self.set_loop("rain_heavy", "weather.rain", heavy_rain, variation=1)
+        self.set_loop("wind", "weather.wind", wind, variation=0)
+        self.set_loop("wind_strong", "weather.wind", strong_wind, variation=1)
+        self.set_loop("wet_tires", "weather.wet_road", wet_tires, variation=1 if slush else 0)
+
+    def update_footsteps(self, speed_mps: float, dt: float, running: bool) -> None:
+        """The driver's steps on foot: walking steps (variations 1-3) about
+        twice a second, running steps (4) faster."""
+        if abs(speed_mps) < 0.5:
+            self._step_timer = 0.0
+            return
+        self._step_timer -= dt
+        if self._step_timer <= 0.0:
+            self.play_group("pedestrian.footsteps", 0.5, 3 if running else random.randrange(3))
+            self._step_timer = 0.3 if running else 0.5
+
     def play(self, name: str, volume: float = 1.0) -> None:
         sound = self.sounds.get(name)
         if sound is not None and self.enabled:
@@ -280,8 +347,7 @@ class AudioManager:
             self.music_volume = value
         elif kind == "effects":
             self.effects_volume = value
-        if "city-traffic-outdoor" in self.sounds:
-            self.sounds["city-traffic-outdoor"].set_volume(self.master_volume * self.music_volume)
+        # Loops pick up the new volumes on their next update (every frame).
 
     def update_acceleration(self, active: bool) -> None:
         sound = self.sounds.get("accelerate")
@@ -311,6 +377,9 @@ class AudioManager:
             self.comment_channel = None
         self.update_acceleration(False)
         self.update_police_siren(False)
+        for channel in self.loop_channels.values():
+            channel.stop()
+        self.loop_channels.clear()
         mixer = pygame_mixer
         if self.enabled and mixer is not None:
             mixer.stop()

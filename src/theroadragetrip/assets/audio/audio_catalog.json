@@ -834,8 +834,8 @@
       "spatial": false,
       "intensity_levels": false,
       "contextual_variants": [],
-      "existing_asset": "src/theroadragetrip/sounds/carhorn_takes.wav",
-      "notes": "Existing single horn kept as variant 00; rage shouts are repeated, so add variation.",
+      "existing_asset": null,
+      "notes": "Replaced the old sounds/carhorn_takes.wav (removed); rage shouts pick a random variation.",
       "generation": {
         "prompt": "Car horn honk, sedan two-tone horn, close exterior, isolated sound effect",
         "negative_prompt": "music, melody, speech, voice, singing, low quality, distortion, clipping"
@@ -1509,8 +1509,8 @@
       "spatial": true,
       "intensity_levels": true,
       "contextual_variants": [],
-      "existing_asset": "src/theroadragetrip/sounds/car-crash.wav",
-      "notes": "Traffic crashes are silent today; car-crash.wav is used only for player-vs-scenery.",
+      "existing_asset": null,
+      "notes": "Player-vs-scenery crashes use the collision.* groups; the old sounds/car-crash.wav was removed.",
       "generation": {
         "prompt": "Two cars colliding, crunching metal and breaking plastic, isolated sound effect",
         "negative_prompt": "music, melody, speech, voice, singing, low quality, distortion, clipping"
@@ -3149,7 +3149,7 @@
       "intensity_levels": true,
       "contextual_variants": [],
       "existing_asset": null,
-      "notes": "Replaces the synthesized placeholder in AudioManager._create_thunder_sound.",
+      "notes": "Replaced the synthesized thunder AudioManager used to build in code.",
       "generation": {
         "prompt": "Realistic thunder during a heavy storm, natural atmospheric decay, no rain in foreground, isolated sound effect",
         "negative_prompt": "music, melody, speech, voice, singing, low quality, distortion, clipping"

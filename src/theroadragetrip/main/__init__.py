@@ -180,7 +180,7 @@ from ..tile_streaming import PBF_TILE_SIZE_M, set_tile_size_m
 from ..traffic_world import TrafficWorld
 from ..world_cache import WorldCacheManager, clear_world_cache
 from ..performance import MAP_SYNC_BUDGET_S, FrameProfiler
-from ..weather import SPLASH_MIN_SPEED_MPS, WeatherSystem, weather_type_for_observation
+from ..weather import SPLASH_MIN_SPEED_MPS, WeatherSystem, WeatherType, weather_type_for_observation
 from .. import camera_focus as camera_focus_module
 from ..train_compositions import load_compositions
 from ..train_timetable import load_timetable
@@ -209,6 +209,42 @@ from .debug_tools import _screenshot_directory, _write_debug_snapshot, find_feat
 BBOX = DEFAULT_BBOX
 
 logger = logging.getLogger(__name__)
+TRAIN_HEARING_M = 300.0  # train sounds fade out over this distance from the camera
+STATION_HEARING_M = 250.0  # = station_passengers.VISIBLE_RADIUS_M: where its passengers are shown
+
+
+def _play_rail_sounds(audio, railway_mgr, camx: float, camy: float) -> None:
+    """Train arrivals/departures (one-shots) and the running-train and
+    station-crowd loops, by distance from the camera."""
+    for kind, x, y in railway_mgr.sound_events:
+        volume = max(0.0, 1.0 - math.hypot(x - camx, y - camy) / TRAIN_HEARING_M)
+        if kind == "arrived":
+            audio.play_group("railway.train_brakes", volume)
+            audio.play_group("railway.train_doors", volume * 0.7, variation=1)  # doors open
+        else:
+            audio.play_group("railway.train_doors", volume * 0.7, variation=0)  # warning beeps, doors close
+            audio.play_group("railway.train_horn", volume * 0.8)
+    railway_mgr.sound_events.clear()
+    running = [0.0, 0.0]  # intercity layer, commuter layer
+    for train in railway_mgr.trains:
+        if train.state != "RUNNING" or train.current_speed_mps < 2.0:
+            continue
+        x, y = train.route.point_at(train.distance_m)[:2]
+        volume = max(0.0, 1.0 - math.hypot(x - camx, y - camy) / TRAIN_HEARING_M) * min(1.0, train.current_speed_mps / 20.0)
+        layer = 0 if train.service is not None and train.service.train_type == "IC" else 1
+        running[layer] = max(running[layer], volume)
+    audio.set_loop("train_intercity", "railway.train_running", running[0], variation=0)
+    audio.set_loop("train_commuter", "railway.train_running", running[1], variation=1)
+    crowd = 0.0
+    for name, point, _, _ in railway_mgr.stations:
+        waiting = railway_mgr.passengers.waiting_count(name)
+        if waiting:
+            distance = math.hypot(point[0] - camx, point[1] - camy)
+            crowd = max(crowd, max(0.0, 1.0 - distance / STATION_HEARING_M) * min(1.0, waiting / 30.0))
+    audio.set_loop("station_crowd", "station.ambience", crowd * 0.6, variation=0)
+    audio.set_loop("station_luggage", "station.ambience", crowd * 0.4, variation=1)
+
+
 RAGE_SHOUTS = ("PRKL!", "STNA!", "VTTU!", "HLVT!", "KRPÄ!", "KSPÄ!", "PSKA!")
 RAGE_SHOUT_COST = 0.25
 NEARBY_PLACES_RADIUS_M = 50_000.0
@@ -1256,7 +1292,17 @@ def main() -> None:
         taxi_stops = world.taxi_stops
         railway_mgr.associate_taxi_stands(taxi_mgr.taxi_stops)
         railway_mgr.bookings.destination_for = lambda stand: taxi_mgr.pick_phone_dropoff(stand.x, stand.y)
-        railway_mgr.bookings.on_created = taxi_mgr.notify_rail_booking
+        def _booking_created(booking) -> None:
+            taxi_mgr.notify_rail_booking(booking)
+            audio.play_group("ui.booking_new")
+
+        def _booking_missed(booking) -> None:
+            taxi_mgr.notification_msg = tr(language, "rail_booking_missed", train=booking.train_number, station=booking.station)
+            taxi_mgr.notification_timer = 5.0
+            audio.play_group("ui.booking_missed")
+
+        railway_mgr.bookings.on_created = _booking_created
+        railway_mgr.bookings.on_missed = _booking_missed
         taxi_mgr.rail_bookings = railway_mgr.bookings
         traffic_light_grid = world.traffic_light_grid
         traffic_lights = world.traffic_lights
@@ -1490,8 +1536,20 @@ def main() -> None:
                 observed=observed_weather(game_calendar.current),
             )
             if weather.lightning_event_id != last_lightning_event_id:
-                audio.play("thunder", volume=0.8)
+                audio.play_group("weather.thunder", 0.8)
                 last_lightning_event_id = weather.lightning_event_id
+            sun_altitude, _, _ = solar_altitude_and_events(game_time_seconds, sun_latitude, sun_longitude)
+            wind_mps = weather.wind_speed_mps * weather.gust_factor
+            raining = weather.weather_type in (WeatherType.RAIN, WeatherType.SLUSH)
+            audio.update_ambience(
+                night=1.0 - max(0.0, min(1.0, (sun_altitude + 12.0) / 18.0)),  # the street lights' darkness
+                rain=0.6 if raining else 0.0,
+                heavy_rain=0.7 if raining and weather.is_thunderstorm else 0.0,
+                wind=max(0.0, min(1.0, wind_mps / 12.0)) * 0.5,
+                strong_wind=max(0.0, min(1.0, (wind_mps - 10.0) / 10.0)) * 0.6,
+                wet_tires=0.0 if on_foot else min(1.0, weather.wetness * abs(car.speed) / 15.0) * 0.6,
+                slush=weather.weather_type == WeatherType.SLUSH,
+            )
             frame_profiler.set_metric(
                 "weather", f"{weather.weather_type.value} wetness={weather.wetness:.0%}"
             )
@@ -1684,6 +1742,7 @@ def main() -> None:
                         logger.info("Runtime profile saved to %s", profile_path)
                     elif event.key == pygame.K_p:
                         phone_open = not phone_open
+                        audio.play_group("ui.phone_open", 0.6, variation=0 if phone_open else 1)
                     elif event.key == pygame.K_c:
                         show_compass = not show_compass
                     elif event.key == pygame.K_j:
@@ -1717,7 +1776,7 @@ def main() -> None:
                     elif event.key == pygame.K_SPACE and not phone_open:
                         if rage_power >= RAGE_SHOUT_COST:
                             audio.play_driver_line("rage", language)
-                            audio.play("carhorn_takes", volume=0.45)
+                            audio.play_group("vehicle.horn", 0.45)
                             rage_power -= RAGE_SHOUT_COST
                             rage_shout_timer = 5.0
                             rage_shout_text = random.choice(RAGE_SHOUTS)
@@ -1732,7 +1791,8 @@ def main() -> None:
                         if event.key == pygame.K_ESCAPE:
                             phone_open = False
                         elif event.key == pygame.K_x:
-                            taxi_mgr.reject_offer()
+                            if taxi_mgr.reject_offer():
+                                audio.play_group("ui.reject", 0.6)
                         elif event.key in (pygame.K_1, pygame.K_KP1, pygame.K_2, pygame.K_KP2, pygame.K_3, pygame.K_KP3):
                             offer_index = {
                                 pygame.K_1: 0, pygame.K_KP1: 0,
@@ -1740,6 +1800,7 @@ def main() -> None:
                                 pygame.K_3: 2, pygame.K_KP3: 2,
                             }[event.key]
                             if taxi_mgr.accept_offer(offer_index, car.x, car.y):
+                                audio.play_group("ui.accept", 0.6)
                                 phone_open = False
                     elif event.key == pygame.K_ESCAPE:
                         if camera_focus is not None or selected_resident_id is not None:
@@ -1779,9 +1840,12 @@ def main() -> None:
                                         is_paused = False
                                     elif p_ev.key == pygame.K_UP:
                                         pause_selected = (pause_selected - 1) % len(pause_options)
+                                        audio.play_group("ui.menu", 0.5, variation=0)
                                     elif p_ev.key == pygame.K_DOWN:
                                         pause_selected = (pause_selected + 1) % len(pause_options)
+                                        audio.play_group("ui.menu", 0.5, variation=0)
                                     elif p_ev.key in (pygame.K_RETURN, pygame.K_SPACE, pygame.K_KP_ENTER):
+                                        audio.play_group("ui.menu", 0.5, variation=1)
                                         if pause_selected == 0:
                                             # Continue Game
                                             is_paused = False
@@ -1844,8 +1908,10 @@ def main() -> None:
                                                         save_config(config)
                                                     elif s_ev.key == pygame.K_UP:
                                                         settings_selected = (settings_selected - 1) % 10
+                                                        audio.play_group("ui.menu", 0.5, variation=0)
                                                     elif s_ev.key == pygame.K_DOWN:
                                                         settings_selected = (settings_selected + 1) % 10
+                                                        audio.play_group("ui.menu", 0.5, variation=0)
                                                     elif s_ev.key in (pygame.K_LEFT, pygame.K_RIGHT):
                                                         delta = 0.05 if s_ev.key == pygame.K_RIGHT else -0.05
                                                         if settings_selected == 0:
@@ -2893,6 +2959,7 @@ def main() -> None:
                     )
                 railway_mgr.view_point = (camx, camy)
                 railway_mgr.update(dt, dt * (1.0 if taxi_mgr.has_active_job() else 60.0), game_calendar.current)
+                _play_rail_sounds(audio, railway_mgr, camx, camy)
             with frame_profiler.section("render:trains"):
                 draw_trains(screen, railway_mgr, camx, camy, px_per_m=px_per_m, show_debug=show_debug_hud, font=font)
             # Price boards are gameplay-critical and must stay above both

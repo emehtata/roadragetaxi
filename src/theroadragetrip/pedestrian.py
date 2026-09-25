@@ -458,6 +458,7 @@ class PedestrianManager:
         self.spawn_radius_m = spawn_radius_m
         self.despawn_radius_m = despawn_radius_m
         self.pedestrians: List[Pedestrian] = []
+        self.curses: List[Tuple[float, float]] = []  # where a startled pedestrian cursed; drained by the simulation
         self.traffic_lights: List[TrafficLight] = traffic_lights or []
         self.crossings: List[Crossing] = crossings or []
         self.logical_intersections = logical_intersections or []
@@ -2190,6 +2191,7 @@ class PedestrianManager:
                     cyclist_collision = True
 
                 if ped.curse_timer <= 0.0:
+                    self.curses.append((ped.x, ped.y))  # for the sound, drained by the simulation
                     ped.curse_timer = 2.0
                     ped.curse_text = random.choice(CURSE_SYMBOLS)
 

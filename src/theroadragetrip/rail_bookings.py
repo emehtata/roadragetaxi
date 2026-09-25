@@ -38,6 +38,7 @@ class TaxiBooking:
     surcharge_cents: int = PREBOOKING_SURCHARGE_CENTS
     status: str = PENDING
     train_is_approaching: bool = False
+    was_accepted: bool = False  # a missed booking only matters to the player if they took it
     id: int = 0
 
     def __post_init__(self) -> None:
@@ -55,6 +56,7 @@ class RailBookingManager:
     def __init__(self, destination_for: Optional[Callable] = None, on_created: Optional[Callable] = None) -> None:
         self.destination_for = destination_for
         self.on_created = on_created
+        self.on_missed: Optional[Callable] = None  # called once for each accepted booking that is missed
         self.bookings: List[TaxiBooking] = []
 
     def consider(self, passenger, train, occurrence: datetime, rng) -> Optional[TaxiBooking]:
@@ -93,6 +95,7 @@ class RailBookingManager:
         if booking.status != PENDING:
             return False
         booking.status = ACCEPTED
+        booking.was_accepted = True
         return True
 
     def update(self, now: Optional[datetime] = None) -> None:
@@ -107,6 +110,12 @@ class RailBookingManager:
                 and now - booking.passenger.arrived_at > PICKUP_WINDOW
             ):
                 booking.status = MISSED
+        # Missed anywhere (here, at arrival, or by driving away mid-pickup):
+        # reported once, just before the booking is forgotten below.
+        if self.on_missed is not None:
+            for booking in self.bookings:
+                if booking.status == MISSED and booking.was_accepted:
+                    self.on_missed(booking)
         if any(booking.status in FINISHED for booking in self.bookings):
             self.bookings = [booking for booking in self.bookings if booking.status not in FINISHED]
 

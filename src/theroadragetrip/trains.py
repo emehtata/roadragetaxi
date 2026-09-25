@@ -513,6 +513,9 @@ class RailwayManager:
         )
         self.compositions = compositions  # learned train compositions (train_compositions.load_compositions)
         self.passenger_view = None  # station_passengers.StationPassengerView, set by main (needs pedestrians)
+        # (kind, x, y) of train sounds this frame - "arrived"/"departed" -
+        # drained by main.
+        self.sound_events: List[Tuple[str, float, float]] = []
         self.view_point: Optional[Tuple[float, float]] = None  # where the camera looks (visible passengers)
         self.trains: List[Train] = []
         self.timetable = timetable
@@ -888,7 +891,11 @@ class RailwayManager:
         for train in self.trains:
             train.reached_end = False
             was_running = train.state == "RUNNING"
+            was_dwelling = train.state == "DWELLING"
             train.update(dt, game_dt)
+            if was_running != (train.state == "RUNNING") and (was_dwelling or train.state == "DWELLING"):
+                x, y = train.route.point_at(train.distance_m)[:2]
+                self.sound_events.append(("arrived" if was_running else "departed", x, y))
             if was_running and train.state == "DWELLING" and now is not None and train.service is not None:
                 self._arrived(train, now)
             # A timetable train leaves the map at the end of its route; a

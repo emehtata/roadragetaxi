@@ -109,7 +109,9 @@ def test_engine_stays_off_after_entering_until_started():
 
     car = Car(x=0.0, y=0.0, heading=0.0, speed=0.0, engine_on=False)
     pedestrian = types.SimpleNamespace(x=1.0, y=0.0, heading=0.0)
-    audio = types.SimpleNamespace(play=lambda *_args, **_kwargs: None)
+    from theroadragetrip.server import NullAudio
+
+    audio = NullAudio()
     assert apply_enter_exit_vehicle(car, pedestrian, True, audio) is False
     assert car.engine_on is False
 

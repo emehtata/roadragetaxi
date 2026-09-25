@@ -32,7 +32,7 @@ STATION = (0.0, 0.0)
 STAND = SimpleNamespace(x=20.0, y=40.0)  # the stand's waiting spot is on the walkway at (20, 40)
 DESTINATION = SimpleNamespace(x=900.0, y=900.0, address="Kirkkokatu 1", radius_m=25.0)
 ELSEWHERE = SimpleNamespace(x=-900.0, y=0.0, address="Random street 2", radius_m=25.0)
-SILENT = SimpleNamespace(play=lambda *args, **kwargs: None)
+SILENT = SimpleNamespace(play=lambda *args, **kwargs: None, play_group=lambda *args, **kwargs: None)
 
 
 class Always:

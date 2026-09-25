@@ -3036,6 +3036,7 @@ class NPCVehicleManager:
     ) -> bool:
         self.vehicles: List[NPCVehicle] = []
         self.drivers: Dict[int, Driver] = {}
+        self.accidents: List[Tuple[float, float]] = []  # crash positions for the sound, drained by the simulation
         self.household_manager = HouseholdManager()
         self.target_count = target_count
         self.min_count = min_count if min_count is not None else max(1, int(target_count * 0.6))
@@ -3453,6 +3454,7 @@ class NPCVehicleManager:
             elif hasattr(obstacle, "speed"):
                 obstacle.speed = 0.0
 
+            self.accidents.append((vehicle.car.x, vehicle.car.y))
             if not vehicle_already_crashed:
                 self._trigger_vehicle_accident(vehicle, resident_manager, pedestrian_mgr, sim_time)
             if obstacle_is_npc and obstacle.state != NPCState.CRASHED:
