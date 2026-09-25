@@ -252,11 +252,12 @@ def match_timetable(
     return passes
 
 
-def station_calls(timetable: dict, prepared: list, routes: Sequence) -> List[Tuple[str, Tuple[float, float], List[StationCall]]]:
-    """(name, position, arrivals) for each timetable station within
-    STATION_ON_ROUTE_M of a train route - where passengers will get off.
-    Trains starting at a station bring nobody, so their first stop is
-    skipped. Built once per route rebuild."""
+def station_calls(timetable: dict, prepared: list, routes: Sequence) -> List[Tuple[str, Tuple[float, float], List[StationCall], List[StationCall]]]:
+    """(name, position, arrivals, departures) for each timetable station
+    within STATION_ON_ROUTE_M of a train route. A journey's first station
+    is only a departure and its last only an arrival; stations in between
+    are both (a through train arrives and departs). Built once per route
+    rebuild."""
     route_points = [point for route in routes for point in route.points]
     if not route_points:
         return []
@@ -264,9 +265,9 @@ def station_calls(timetable: dict, prepared: list, routes: Sequence) -> List[Tup
     maxx = max(p[0] for p in route_points) + STATION_ON_ROUTE_M
     miny = min(p[1] for p in route_points) - STATION_ON_ROUTE_M
     maxy = max(p[1] for p in route_points) + STATION_ON_ROUTE_M
-    near: Dict[str, Optional[Tuple[Tuple[float, float], List[StationCall]]]] = {}
+    near: Dict[str, Optional[Tuple[Tuple[float, float], List[StationCall], List[StationCall]]]] = {}
     for train, stops, _, _, _ in prepared:
-        for point, seconds, code, _, stops_here, track, _ in stops[1:]:
+        for index, (point, arrival, code, departure, stops_here, track, _) in enumerate(stops):
             if not stops_here:
                 continue
             if code not in near:
@@ -275,13 +276,22 @@ def station_calls(timetable: dict, prepared: list, routes: Sequence) -> List[Tup
                 ):
                     near[code] = None
                     continue
-                near[code] = (point, [])
-            if near[code] is not None:
+                near[code] = (point, [], [])
+            if near[code] is None:
+                continue
+            name = timetable["stations"][code][2]
+            if index > 0:
                 near[code][1].append(StationCall(
-                    train["type"], train["number"], train["origin"], train["destination"],
-                    train["days"], seconds, timetable["stations"][code][2], track,
+                    train["type"], train["number"], train["origin"], train["destination"], train["days"], arrival, name, track,
                 ))
-    return [(timetable["stations"][code][2], point, calls) for code, entry in sorted(near.items()) if entry for point, calls in [entry]]
+            if index < len(stops) - 1:
+                near[code][2].append(StationCall(
+                    train["type"], train["number"], train["origin"], train["destination"], train["days"], departure, name, track,
+                ))
+    return [
+        (timetable["stations"][code][2], entry[0], entry[1], entry[2])
+        for code, entry in sorted(near.items()) if entry
+    ]
 
 
 class TimetableClock:

@@ -321,3 +321,16 @@ def test_next_arrivals_lists_up_to_five_upcoming_trains_in_order():
     assert [call.number for _, call in arrivals] == ["0", "1", "2", "3", "4"]
     assert [when for when, _ in arrivals] == sorted(when for when, _ in arrivals)
     assert manager.next_arrival(*STATION, datetime(2026, 9, 28, 9, 0))[1].number == "0"
+
+
+def test_arrivals_and_departures_are_separate_boards():
+    railways = double_track_station()
+    through = service("1", [("S", 30000, 30000, 1), ("M", 36000, 36600, 1), ("N", 42000, 42000, 1)])  # arrives 10:00, leaves 10:10
+    ending = service("2", [("S", 31000, 31000, 1), ("M", 37000, 37000, 1)])  # ends at M: arrival only
+    starting = service("3", [("M", 38000, 38000, 1), ("N", 44000, 44000, 1)])  # starts at M: departure only
+    manager = RailwayManager(railways, timetable(through, ending, starting), metres)
+    now = datetime(2026, 9, 28, 9, 0)
+    arrivals = [(when.strftime("%H:%M"), call.number) for when, call in manager.next_arrivals(*STATION, now, 2)]
+    departures = [(when.strftime("%H:%M"), call.number) for when, call in manager.next_departures(*STATION, now, 2)]
+    assert arrivals == [("10:00", "1"), ("10:16", "2")]
+    assert departures == [("10:10", "1"), ("10:33", "3")]

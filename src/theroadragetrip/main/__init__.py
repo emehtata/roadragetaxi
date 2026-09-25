@@ -3097,17 +3097,21 @@ def main() -> None:
                     taxi_mgr.notification_msg = tr(language, "timetable_available")
                     taxi_mgr.notification_timer = 6.0
                 arrivals = railway_mgr.next_arrivals(car.x, car.y, game_calendar.current, NEXT_TRAINS_SHOWN) if show_next_train else []
-                if arrivals:
-                    draw_next_train(
-                        screen, font,
-                        f"{tr(language, 'next_trains')} {arrivals[0][1].station}:\n" + "\n".join(
-                            f"{when:%H:%M}"
-                            + (f" {tr(language, 'track')} {call.track}" if call.track else "")
-                            + f"  {call.train_type} {call.number} {call.origin} – {call.destination}"
-                            for when, call in arrivals
-                        ),
-                        SCREEN_W,
-                    )
+                departures = railway_mgr.next_departures(car.x, car.y, game_calendar.current, NEXT_TRAINS_SHOWN) if show_next_train else []
+                if arrivals or departures:
+
+                    def board(title, calls, other_end):
+                        # other_end: where an arriving train comes from / a departing one goes.
+                        return [f"{title}:"] + [
+                            f"{when:%H:%M}" + (f" {tr(language, 'track')} {call.track}" if call.track else "")
+                            + f"  {call.train_type} {call.number} {other_end(call)}"
+                            for when, call in calls
+                        ]
+
+                    station = (arrivals or departures)[0][1].station
+                    lines = [station] + board(tr(language, "next_trains"), arrivals, lambda call: call.origin)
+                    lines += board(tr(language, "departing_trains"), departures, lambda call: call.destination)
+                    draw_next_train(screen, font, "\n".join(lines), SCREEN_W)
             camera_back_rect = (
                 draw_camera_back_button(screen, font, tr(language, "back_to_taxi"), SCREEN_W) if camera_focus is not None else None
             )

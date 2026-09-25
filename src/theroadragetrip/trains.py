@@ -503,7 +503,8 @@ class RailwayManager:
         self.to_metres = to_metres
         self.clock: Optional[TimetableClock] = None
         # (station name, position, arrivals clock) for timetable stations on this map.
-        self.stations: List[Tuple[str, Tuple[float, float], TimetableClock]] = []
+        # (name, position, arrivals clock, departures clock) of timetable stations on this map
+        self.stations: List[Tuple[str, Tuple[float, float], TimetableClock, TimetableClock]] = []
         self._prepared = prepare_timetable(timetable, to_metres) if timetable is not None and to_metres is not None else None
         self._spawn_timers: Dict[Tuple[int, int], float] = {}
         self.rebuild(railways)
@@ -526,8 +527,8 @@ class RailwayManager:
                 # second game-start placement, no re-spawned trains).
                 self.clock.continue_from(previous_clock)
             self.stations = [
-                (name, point, TimetableClock(calls))
-                for name, point, calls in station_calls(self.timetable, self._prepared, self.routes)
+                (name, point, TimetableClock(arrivals), TimetableClock(departures))
+                for name, point, arrivals, departures in station_calls(self.timetable, self._prepared, self.routes)
             ]
             self._spawn_timers = {}
             logger.info(
@@ -808,7 +809,14 @@ class RailwayManager:
         """The next `count` timetable arrivals at the station nearest (x, y)."""
         if not self.stations:
             return []
-        _, _, clock = min(self.stations, key=lambda station: math.dist(station[1], (x, y)))
+        _, _, clock, _ = min(self.stations, key=lambda station: math.dist(station[1], (x, y)))
+        return clock.upcoming(now, count)
+
+    def next_departures(self, x: float, y: float, now: datetime, count: int = 5) -> List[Tuple[datetime, StationCall]]:
+        """The next `count` timetable departures from the station nearest (x, y)."""
+        if not self.stations:
+            return []
+        _, _, _, clock = min(self.stations, key=lambda station: math.dist(station[1], (x, y)))
         return clock.upcoming(now, count)
 
     def update(self, dt: float, game_dt: float, now: Optional[datetime] = None) -> None:
@@ -836,7 +844,7 @@ class RailwayManager:
                     self.passenger_view.dropped(dropped)
         self.trains = kept
         if self.passenger_view is not None:
-            self.passenger_view.update(dt, self.passengers, [(name, point) for name, point, _ in self.stations], self.view_point)
+            self.passenger_view.update(dt, self.passengers, [(name, point) for name, point, _, _ in self.stations], self.view_point)
         if self.clock is not None and now is not None:
             self._turn_around(now)
             game_speed = game_dt / dt if dt > 0.0 else 0.0

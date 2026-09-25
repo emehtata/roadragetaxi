@@ -253,7 +253,7 @@ def test_next_arrival_is_for_the_station_nearest_the_driver():
     north = train([("S", 36000), ("M1", 36600), ("M2", 37800), ("N", 38400)], number="N1")
     south = train([("M2", 39000), ("M1", 40000), ("S", 41000)], number="S1")
     manager = RailwayManager(NORTH_SOUTH_TRACK, timetable(north, south, stations=stations), metres)
-    assert sorted(name for name, _, _ in manager.stations) == ["Alpha", "Beta"]
+    assert sorted(station[0] for station in manager.stations) == ["Alpha", "Beta"]
 
     when, call = manager.next_arrival(0.0, 13_000.0, datetime(2026, 9, 28, 9, 0))  # driver near Beta
     assert (call.station, call.number, when) == ("Beta", "N1", datetime(2026, 9, 28, 10, 30))
