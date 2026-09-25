@@ -13,6 +13,7 @@ from typing import List, Optional, Tuple
 
 
 from ..osm import Way
+from ..rail_bookings import waiting_booking
 from ..residents import ResidentManager
 
 
@@ -20,6 +21,7 @@ STREET_LIGHT_REFLECTOR_RADIUS_M = 10.0
 
 
 TAXI_HAIL_COLOR = (255, 205, 0)  # taxi yellow
+BOOKED_CUSTOMER_COLOR = (90, 200, 255)  # the player's pre-booked rail customer
 
 
 def draw_pedestrians(
@@ -176,6 +178,15 @@ def draw_pedestrians(
             hand_r = max(3, int(radius_px * 0.45))
             pygame.draw.circle(screen, (20, 20, 20), (int(hand[0]), int(hand[1])), hand_r + 1)
             pygame.draw.circle(screen, TAXI_HAIL_COLOR, (int(hand[0]), int(hand[1])), hand_r)
+
+        # The player's pre-booked rail customer (by booking, not looks): a
+        # ring and the name on the booking.
+        booking = waiting_booking(ped)
+        if booking is not None:
+            pygame.draw.circle(screen, BOOKED_CUSTOMER_COLOR, (int(cx), int(cy)), int(radius_px * 2.2), 2)
+            if font and booking.passenger.name:
+                label = font.render(booking.passenger.name, True, BOOKED_CUSTOMER_COLOR)
+                screen.blit(label, label.get_rect(midbottom=(int(cx), int(cy - radius_px * 2.4))))
 
         # Comic cursing bubble when startled/dodging
         curse_timer = getattr(ped, "curse_timer", 0.0)

@@ -14,6 +14,7 @@ from .physics import (
 from .localization import tr
 from .fare import calculate_fare_cents, format_euros, tip_cents_from_happiness
 from .police import SpeedCamera, camera_sees_car
+from .rail_bookings import IN_TAXI, MISSED, PASSENGER_MET, waiting_booking
 from .residents import MIN_UNACCOMPANIED_AGE, Resident, ResidentManager
 from .traffic_rules import nearest_traffic_light_ahead
 
@@ -69,6 +70,9 @@ class TaxiPassenger:
     nausea_resolved: bool = False
     nausea_vomited: bool = False
     weight_kg: float = field(default_factory=lambda: random.uniform(50.0, 120.0))
+    # rail_bookings.TaxiBooking when this is a pre-booked rail customer: its
+    # destination and pre-booking fee (on top of the normal fare) ride along.
+    rail_booking: Any = None
 
 
 @dataclass
@@ -1490,9 +1494,11 @@ class TaxiManager:
         pickup: TaxiTarget,
         message_key: str,
         walk_to_car: bool = False,
+        booking: Any = None,
     ) -> bool:
-        """Turn a nearby waiting pedestrian into a fare, optionally walking to the car first."""
-        dropoff = self.pick_random_building_point(
+        """Turn a nearby waiting pedestrian into a fare, optionally walking to
+        the car first. A booked rail customer keeps the booking's destination."""
+        dropoff = booking.destination if booking is not None else self.pick_random_building_point(
             pickup.x, pickup.y, self.min_distance_m, float("inf"), venue_types={None}
         )
         if not dropoff:
@@ -1501,6 +1507,8 @@ class TaxiManager:
             return False
         resident = self.residents.get(getattr(pedestrian, "resident_id", None))
         passenger_name, passenger_gender, resident_id, passenger_weight_kg = self._new_passenger_identity(resident)
+        if booking is not None and booking.passenger.name:
+            passenger_name = booking.passenger.name  # the name on the booking
         is_drunk = bool(getattr(pedestrian, "is_drunk", False))
         passenger = TaxiPassenger(
             name=passenger_name,
@@ -1515,7 +1523,10 @@ class TaxiManager:
             boarded=True,
             is_drunk=is_drunk,
             nausea_delay=self.nausea_delay_for_pickup(pickup) if is_drunk else float("inf"),
+            rail_booking=booking,
         )
+        if booking is not None:
+            booking.status = PASSENGER_MET
         self.current_passenger = passenger
         self.offers = []
         if walk_to_car:
@@ -1567,7 +1578,7 @@ class TaxiManager:
             car_side_y = car_dir_x
             passing_candidates = [
                 ped for ped in pedestrians
-                if getattr(ped, "wants_taxi", False)
+                if getattr(ped, "wants_taxi", False) and waiting_booking(ped) is None
                 if abs((ped.x - car.x) * car_dir_x + (ped.y - car.y) * car_dir_y) <= 6.0
                 and abs((ped.x - car.x) * car_side_x + (ped.y - car.y) * car_side_y) <= 4.0
             ]
@@ -1593,6 +1604,24 @@ class TaxiManager:
         self.stand_wait_timer += dt
         if self.stand_wait_timer < 2.0:
             return None
+        # A pre-booked rail customer: only the exact passenger of an accepted
+        # booking, and only once the taxi has stopped right by them.
+        booked = next((
+            ped for ped in pedestrians
+            if math.hypot(car.x - ped.x, car.y - ped.y) <= 15.0 and waiting_booking(ped) is not None
+        ), None)
+        if booked is not None:
+            booking = waiting_booking(booked)
+            if self._board_waiting_pedestrian(
+                booked, self.make_target(booked.x, booked.y), "stand_boarded", walk_to_car=True, booking=booking,
+            ):
+                self.notification_msg = tr(
+                    self.language, "rail_booking_met", name=self.current_passenger.name,
+                    train=booking.train_number, address=booking.destination.address,
+                )
+                self.stand_wait_timer = 0.0
+                return booked
+            return None
         pickup = None
         message_key = "stand_boarded"
         stand_stop = None
@@ -1604,6 +1633,7 @@ class TaxiManager:
             ped for ped in pedestrians
             if getattr(ped, "wants_taxi", True)
             and math.hypot(car.x - ped.x, car.y - ped.y) <= 15.0
+            and waiting_booking(ped) is None
         ]
         is_hail = stand_stop is None and not self.taxi_stops and candidates
         if is_hail and random.random() < min(1.0, dt * 0.35):
@@ -1654,6 +1684,8 @@ class TaxiManager:
         if not self.current_passenger:
             return 0
         p_name = self.current_passenger.name
+        if self.current_passenger.rail_booking is not None and self.current_passenger.rail_booking.status == PASSENGER_MET:
+            self.current_passenger.rail_booking.status = MISSED
         self.total_score -= penalty
         if self.state in (TaxiState.DRIVING_TO_DROPOFF, TaxiState.CLIENT_WALKING_TO_CAR):
             msg = f"{reason}! Client {p_name} abandoned (-{penalty} pts)"
@@ -1837,6 +1869,8 @@ class TaxiManager:
                     return
                 # Client reached taxi door and boarded!
                 p.boarded = True
+                if p.rail_booking is not None:
+                    p.rail_booking.status = IN_TAXI
                 p.is_walking_to_car = False
                 self.state = TaxiState.DRIVING_TO_DROPOFF
                 self.elapsed_time = 0.0

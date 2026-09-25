@@ -107,5 +107,5 @@ def test_accepting_an_already_approaching_train_advances_on_next_update():
     bookings.train_approaching(approaching)
     assert booking.status == PENDING
     assert bookings.accept(booking) and booking.status == ACCEPTED
-    bookings.advance_accepted()
+    bookings.update()
     assert booking.status == TRAIN_ARRIVING

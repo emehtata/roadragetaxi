@@ -882,7 +882,7 @@ class RailwayManager:
         the fallback interval - both follow the game's time scale."""
         if not TRAIN_ENABLED:
             return
-        self.bookings.advance_accepted()
+        self.bookings.update(now)
         current = {id(route) for route in self.routes}
         kept = []
         for train in self.trains:
@@ -902,7 +902,10 @@ class RailwayManager:
                     self.passenger_view.dropped(dropped)
         self.trains = kept
         if self.passenger_view is not None:
-            self.passenger_view.update(dt, self.passengers, [(name, point) for name, point, _, _ in self.stations], self.view_point)
+            self.passenger_view.update(
+                dt, self.passengers, [(name, point) for name, point, _, _ in self.stations], self.view_point,
+                self.bookings.waiting(),
+            )
         if self.clock is not None and now is not None:
             self._turn_around(now)
             game_speed = game_dt / dt if dt > 0.0 else 0.0

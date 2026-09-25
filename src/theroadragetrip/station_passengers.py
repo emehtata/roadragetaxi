@@ -18,6 +18,7 @@ from collections import deque
 from typing import Callable, Deque, Iterable, List, Optional, Tuple
 
 from .pedestrian import closest_point_and_dist_to_segment
+from .rail_bookings import PASSENGER_WAITING
 from .train_passengers import ARRIVED, DRUNK_FROM_PROMILLE, TAXI, WAITING
 
 VISIBLE_RADIUS_M = 250.0  # stations this close to the view show their passengers
@@ -56,6 +57,10 @@ class StationPassengerView:
         self._stand_spots = {}  # id(stand) -> its waiting spot on a walkway (computed once)
         self._pending: Deque = deque()  # (passenger, standing) waiting to get a pedestrian
         self._queued = set()
+        # Passengers of accepted bookings shown at their destination: their
+        # pedestrian stays linked (passenger.pedestrian) and held here until
+        # the booking is no longer waiting.
+        self._booked: List = []
 
     # -- placing and removing a passenger's pedestrian ------------------
 
@@ -108,18 +113,47 @@ class StationPassengerView:
         if not standing and getattr(passenger, "intent", None) == TAXI and passenger.taxi_stand is not None:
             self._send_to_stand(pedestrian, passenger.taxi_stand)
         self.pedestrians.pedestrians.append(pedestrian)
-        passenger.pedestrian = pedestrian if standing else None  # walkers are the pedestrian system's now
+        if not standing and self._is_booked(passenger):
+            self._hold_booked(passenger, pedestrian)
+        else:
+            passenger.pedestrian = pedestrian if standing else None  # walkers are the pedestrian system's now
         return True
 
-    def _send_to_stand(self, pedestrian, stand) -> None:
-        """The pedestrian system's own taxi-stand walk (a straight line to
-        the stand's waiting spot, then waiting there as a customer) - only
-        if that line crosses no track; else they just walk off."""
+    @staticmethod
+    def _is_booked(passenger) -> bool:
+        booking = getattr(passenger, "booking", None)
+        return booking is not None and booking.status == PASSENGER_WAITING
+
+    def _hold_booked(self, passenger, pedestrian) -> None:
+        pedestrian.held_by = self
+        passenger.pedestrian = pedestrian
+        self._booked.append(passenger)
+
+    def show_at_stand(self, passenger) -> bool:
+        """A booked passenger whose train came in out of view: by now they
+        wait at their stand - the same person, not a replacement."""
+        stand = passenger.taxi_stand
+        if passenger.pedestrian is not None or stand is None:
+            return passenger.pedestrian is not None
+        x, y = self._stand_spot(stand)
+        pedestrian = self.pedestrians.spawn_pedestrian_at(x, y, resident_id=passenger.resident_id)
+        if pedestrian is None:
+            return False
+        passenger.resident_id = pedestrian.resident_id
+        pedestrian.x, pedestrian.y = x, y
+        pedestrian.rail_passenger = passenger
+        pedestrian.speed = pedestrian.base_speed = 0.0
+        pedestrian.wants_taxi = pedestrian.is_taxi_stop_waiter = True
+        self.pedestrians.pedestrians.append(pedestrian)
+        self._hold_booked(passenger, pedestrian)
+        return True
+
+    def _stand_spot(self, stand) -> Tuple[float, float]:
+        """Where waiting customers stand: the nearest walkway point to the
+        stand (nearby walkways only - the pedestrian system's own version
+        scans every walkway on the map). Computed once per stand."""
         key = id(stand)
         if key not in self._stand_spots:
-            # Where waiting customers stand: the nearest walkway point to the
-            # stand (nearby walkways only - the pedestrian system's own
-            # version scans every walkway on the map).
             best = None
             for way in self.pedestrians._nearby_ped_ways(stand.x, stand.y):
                 for a, b in zip(way.points_m, way.points_m[1:]):
@@ -127,7 +161,13 @@ class StationPassengerView:
                     if best is None or distance < best[0]:
                         best = (distance, (px, py))
             self._stand_spots[key] = best[1] if best is not None else (stand.x, stand.y)
-        target = self._stand_spots[key]
+        return self._stand_spots[key]
+
+    def _send_to_stand(self, pedestrian, stand) -> None:
+        """The pedestrian system's own taxi-stand walk (a straight line to
+        the stand's waiting spot, then waiting there as a customer) - only
+        if that line crosses no track; else they just walk off."""
+        target = self._stand_spot(stand)
         steps = max(1, int(math.dist((pedestrian.x, pedestrian.y), target) // STAND_WALK_CHECK_M))
         for i in range(steps + 1):
             t = i / steps
@@ -181,16 +221,18 @@ class StationPassengerView:
                 if time.perf_counter() >= deadline:
                     break
 
-    def update(self, dt: float, flow, stations: List[Tuple[str, Tuple[float, float]]], view_point) -> None:
+    def update(self, dt: float, flow, stations: List[Tuple[str, Tuple[float, float]]], view_point, bookings=()) -> None:
         """Every frame: make some queued pedestrians. About once a second:
         waiting passengers at stations near the view are queued to become
         standing pedestrians, those at stations out of view go back to data
-        (their journey is untouched)."""
+        (their journey is untouched); the same for booked passengers
+        (bookings: those PASSENGER_WAITING) at their stands."""
         self._show_pending()
         self._since_sync += dt
         if self._since_sync < SYNC_INTERVAL_S or view_point is None:
             return
         self._since_sync = 0.0
+        self._sync_booked(dict(stations), view_point, bookings)
         for name, point in stations:
             near = math.dist(point, view_point) <= VISIBLE_RADIUS_M
             for group in flow.waiting.get(name, {}).values():
@@ -199,3 +241,21 @@ class StationPassengerView:
                         self._queue(passenger, standing=True)
                     else:
                         self.hide(passenger)
+
+    def _sync_booked(self, stations, view_point, bookings) -> None:
+        # Met, boarded or missed: the pedestrian (if still around) is an
+        # ordinary one again.
+        for passenger in [p for p in self._booked if not self._is_booked(p)]:
+            self._booked.remove(passenger)
+            if passenger.pedestrian is not None:
+                passenger.pedestrian.held_by = None
+                passenger.pedestrian = None
+        for booking in bookings:
+            passenger = booking.passenger
+            point = stations.get(booking.station)
+            if point is not None and math.dist(point, view_point) <= VISIBLE_RADIUS_M:
+                if passenger.pedestrian is None and id(passenger) not in self._queued:
+                    self.show_at_stand(passenger)
+            elif passenger.pedestrian is not None:
+                self.hide(passenger)
+                self._booked.remove(passenger)

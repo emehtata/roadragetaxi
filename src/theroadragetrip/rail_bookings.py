@@ -1,4 +1,4 @@
-"""Runtime-only pre-booked taxi jobs for railway passengers (phase 8)."""
+"""Runtime-only pre-booked taxi jobs for railway passengers (phases 8-9)."""
 from __future__ import annotations
 
 import itertools
@@ -12,11 +12,15 @@ PENDING = "PENDING"
 ACCEPTED = "ACCEPTED"
 TRAIN_ARRIVING = "TRAIN_ARRIVING"
 PASSENGER_WAITING = "PASSENGER_WAITING"
+PASSENGER_MET = "PASSENGER_MET"
+IN_TAXI = "IN_TAXI"
 DECLINED = "DECLINED"
 MISSED = "MISSED"
 
 PREBOOKING_SHARE = 0.20
 PREBOOKING_SURCHARGE_CENTS = 800
+PICKUP_WINDOW = timedelta(minutes=20)  # game time a booked passenger waits after the train arrived
+FINISHED = (DECLINED, MISSED, IN_TAXI)
 
 _booking_ids = itertools.count(1)
 
@@ -91,11 +95,20 @@ class RailBookingManager:
         booking.status = ACCEPTED
         return True
 
-    def advance_accepted(self) -> None:
-        """Consume accepted jobs already linked to an approaching train."""
+    def update(self, now: Optional[datetime] = None) -> None:
+        """Advance accepted jobs whose train is already approaching, miss
+        passengers left waiting past PICKUP_WINDOW, forget finished jobs."""
         for booking in self.bookings:
             if booking.status == ACCEPTED and booking.train_is_approaching:
                 booking.status = TRAIN_ARRIVING
+            elif (
+                booking.status == PASSENGER_WAITING and now is not None
+                and booking.passenger.arrived_at is not None
+                and now - booking.passenger.arrived_at > PICKUP_WINDOW
+            ):
+                booking.status = MISSED
+        if any(booking.status in FINISHED for booking in self.bookings):
+            self.bookings = [booking for booking in self.bookings if booking.status not in FINISHED]
 
     def decline(self, booking: TaxiBooking) -> bool:
         if booking.status != PENDING:
@@ -118,9 +131,22 @@ class RailBookingManager:
             booking = getattr(passenger, "booking", None)
             if booking is not None and booking.status in (ACCEPTED, TRAIN_ARRIVING):
                 booking.status = PASSENGER_WAITING
+            elif booking is not None and booking.status == PENDING:
+                booking.status = MISSED  # never answered before the train came in
 
     def visible(self) -> List[TaxiBooking]:
-        return [b for b in self.bookings if b.status not in (DECLINED, MISSED)]
+        return [b for b in self.bookings if b.status not in FINISHED]
+
+    def waiting(self) -> List[TaxiBooking]:
+        return [b for b in self.bookings if b.status == PASSENGER_WAITING]
 
     def pending(self) -> List[TaxiBooking]:
         return [b for b in self.bookings if b.status == PENDING]
+
+
+def waiting_booking(pedestrian) -> Optional[TaxiBooking]:
+    """The accepted booking this pedestrian is the waiting customer of: the
+    link is pedestrian.rail_passenger (set when the passenger was shown),
+    never position or looks."""
+    booking = getattr(getattr(pedestrian, "rail_passenger", None), "booking", None)
+    return booking if booking is not None and booking.status == PASSENGER_WAITING else None
