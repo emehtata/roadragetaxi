@@ -96,6 +96,7 @@ class Train:
     # ...). Defaults to the service's stops on the shared network route.
     stops: Optional[tuple] = None
     reached_end: bool = False  # ran off an end of its route this update
+    waiting_for: Optional[tuple] = None  # (departure time, ScheduledPass) it will become
 
     def __post_init__(self) -> None:
         if self.current_speed_mps is None:
@@ -108,6 +109,9 @@ class Train:
         """Timetable identity + state, for the debug overlay."""
         if self.service is None:
             return "shuttle"
+        if self.state == "WAITING" and self.waiting_for is not None:
+            when, next_service = self.waiting_for
+            return f"{self.service.label} WAITING -> {next_service.train_type} {next_service.number} {when:%H:%M}"
         stop = self.next_stop
         if self.state == "DWELLING" and stop is not None:
             track = f" track {stop[6]}" if len(stop) > 6 and stop[6] else ""
@@ -127,21 +131,30 @@ class Train:
             return min(max(nose, min(TRAIN_LENGTH_M, self.route.length)), self.route.length)
         return max(min(nose, max(self.route.length - TRAIN_LENGTH_M, 0.0)), 0.0)
 
+    def reverse_out(self) -> None:
+        """Drive back out the way it came (a cab at each end): the old
+        tail becomes the front, no stops left."""
+        self.distance_m -= self.direction * TRAIN_LENGTH_M
+        self.direction = -self.direction
+        self.stops, self.stop_index = (), 0
+        self.state, self.current_speed_mps = "RUNNING", 0.0
+
     def update(self, dt: float) -> None:
         """dt in real seconds (railway simulation time, see
-        DWELL_REAL_S_PER_TIMETABLE_S) - never the accelerated game time."""
+        DWELL_REAL_S_PER_TIMETABLE_S) - never the accelerated game time.
+        TERMINATED (journey over, the manager decides what next) and
+        WAITING (for its next departure) trains stand still."""
+        if self.state in ("TERMINATED", "WAITING"):
+            return
         if self.state == "DWELLING":
             self.dwell_remaining_s -= dt
             if self.dwell_remaining_s > 0.0:
                 return
             finished = self.next_stop
-            self.state, self.stop_index = "RUNNING", self.stop_index + 1
             if finished is not None and finished[7:8] == ("terminus",):
-                # Journey over: drive back out the way it came (a cab at
-                # each end); the old tail becomes the front.
-                self.distance_m -= self.direction * TRAIN_LENGTH_M
-                self.direction = -self.direction
-                self.stops, self.stop_index = (), 0
+                self.state = "TERMINATED"  # RailwayManager: wait for a next departure, or leave
+                return
+            self.state, self.stop_index = "RUNNING", self.stop_index + 1
         stop = self.next_stop
         speed = min(self.speed_mps, self.current_speed_mps + TRAIN_ACCELERATION_MPS2 * dt)
         if stop is not None:
@@ -291,6 +304,11 @@ STATION_TRACK_RADIUS_M = 150.0
 # trains keep to their own tracks unless only one track exists.
 WRONG_SIDE_PENALTY_M = 400.0
 ENTRY_CANDIDATES = 3  # track dead ends tried per side when planning a train's path
+# A train whose journey ends here waits on its platform this long (game
+# time) at most for a departure from the same track, and gives up this
+# long after that departure's time.
+TURNAROUND_MAX_WAIT = timedelta(hours=12)
+TURNAROUND_GRACE = timedelta(minutes=30)
 
 
 def plan_train_path(
@@ -498,6 +516,67 @@ class RailwayManager:
             train.distance_m = min(max(start, 0.0), route.length)
         return train
 
+    def _turn_around(self, now: datetime) -> None:
+        """A train that ended its journey here waits on its platform for
+        the next departure that starts from the same station and track
+        (the timetable has no vehicle links, so the platform is the link)
+        - else, or if that departure is missed, it drives back out."""
+        claimed = {id(t.waiting_for[1]) for t in self.trains if t.waiting_for is not None}
+        for train in self.trains:
+            if train.state == "WAITING" and now > train.waiting_for[0] + TURNAROUND_GRACE:
+                train.waiting_for = None
+                train.reverse_out()
+            if train.state != "TERMINATED":
+                continue
+            _, _, station, _, _, _, track, _ = train.stops[train.stop_index][:8]
+            train.waiting_for = next(
+                (
+                    (when, service) for when, service in self.clock.events_between(now, now + TURNAROUND_MAX_WAIT)
+                    if id(service) not in claimed and service.stops and service.stops[0][7] == "origin"
+                    and service.stops[0][2] == station and service.stops[0][6] == track
+                ),
+                None,
+            )
+            if train.waiting_for is None:
+                train.reverse_out()
+            else:
+                train.state = "WAITING"
+                claimed.add(id(train.waiting_for[1]))
+
+    def _take_over(self, service: ScheduledPass) -> bool:
+        """The train waiting for this departure becomes it: new identity,
+        route and stops, standing at its platform - no new train appears."""
+        if not service.stops or service.stops[0][7] != "origin":
+            return False
+        platform = (service.stops[0][2], service.stops[0][6])
+
+        def at_platform(train) -> bool:
+            # Journey over on this very platform: dwelling at its terminus,
+            # or already standing there waiting.
+            stop = train.stops[train.stop_index] if train.stop_index < len(train.stops) else None
+            return (
+                stop is not None and stop[7:8] == ("terminus",) and (stop[2], stop[6]) == platform
+                and train.state in ("DWELLING", "TERMINATED", "WAITING")
+            )
+
+        standing = [t for t in self.trains if at_platform(t)]
+        waiting = next((t for t in standing if t.waiting_for is not None and t.waiting_for[1] is service), None)
+        waiting = waiting or next((t for t in standing if t.waiting_for is None), None)
+        planned = self.train_path(service) if waiting is not None else None
+        if planned is None:
+            return False
+        route, alongs = planned
+        stops = tuple((along,) + stop[1:] for stop, along in zip(service.stops, alongs) if along is not None)
+        if not stops:
+            return False
+        waiting.route, waiting.direction, waiting.service, waiting.stops = route, 1, service, stops
+        waiting.reached_end = False
+        waiting.stop_index, waiting.waiting_for = 0, None
+        waiting.distance_m = waiting._stop_position(stops[0])
+        waiting.state, waiting.current_speed_mps = "DWELLING", 0.0
+        waiting.dwell_remaining_s = stops[0][1] * DWELL_REAL_S_PER_TIMETABLE_S
+        return True
+
     def _place_running_trains(self, now: datetime, game_speed: float) -> None:
         """Game start: trains that by the timetable should already be on
         the approach to, or standing at, their first stop here are placed
@@ -551,10 +630,13 @@ class RailwayManager:
                 kept.append(train)
         self.trains = kept
         if self.clock is not None and now is not None:
+            self._turn_around(now)
             game_speed = game_dt / dt if dt > 0.0 else 0.0
             if not self.clock.started and game_speed > 0.0:
                 self._place_running_trains(now, game_speed)  # game start only
             for service in self.clock.due(now, timedelta(seconds=APPROACH_REAL_S * game_speed)):
+                if self._take_over(service):
+                    continue
                 if len(self.trains) >= MAX_ACTIVE_TRAINS or service.route_index >= len(self.routes):
                     continue
                 self.trains.append(self._spawn(service))

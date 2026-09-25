@@ -210,3 +210,35 @@ def test_train_starting_at_a_terminus_departs_from_its_platform():
     for _ in range(400):
         manager.update(0.5, 0.0, datetime(2026, 9, 28, 10, 1))
     assert train.state == "RUNNING" and train.cars()[0][1] < 9_700  # departed southwards
+
+
+def test_arrived_train_waits_on_its_platform_and_becomes_the_next_departure_from_that_track():
+    arriving = service("5", [("S", 30000, 30000, 1), ("M", 36000, 36000, 1, "3")])  # ends at M track 3
+    other_track = service("7", [("M", 37000, 37000, 1, "4"), ("S", 43000, 43000, 1)])
+    same_track = service("6", [("M", 38000, 38000, 1, "3"), ("S", 44000, 44000, 1)])  # 10:33 from track 3
+    manager = RailwayManager(TERMINUS_LINE, timetable(arriving, other_track, same_track), metres)
+    now = datetime(2026, 9, 28, 10, 1)
+    manager.update(0.0, 0.0, datetime(2026, 9, 28, 6, 0))
+    manager.update(0.0, 0.0, now)
+    (train,) = manager.trains
+    for _ in range(2000):  # arrive and dwell (clock stands still: game time frozen)
+        manager.update(0.5, 0.0, now)
+    assert train.state == "WAITING" and train.waiting_for[1].number == "6"  # not 7: other track
+    parked = train.cars()
+    for minute in range(1, 60):  # game clock runs on to 11:00; train 7 appears on its own
+        manager.update(0.0, 0.0, now + timedelta(minutes=minute))
+    assert train in manager.trains and train.service.number == "6"  # same train, new identity
+    assert train.state == "DWELLING" and train.stops[0][7] == "origin"
+    assert {round(y) for _, y, _ in train.cars()} == {round(y) for _, y, _ in parked}  # did not move
+    assert sorted(t.service.number for t in manager.trains) == ["6", "7"]  # 6 was not spawned anew
+
+
+def test_arrived_train_with_no_next_departure_from_its_track_drives_out():
+    arriving = service("5", [("S", 30000, 30000, 1), ("M", 36000, 36000, 1, "3")])
+    manager = RailwayManager(TERMINUS_LINE, timetable(arriving), metres)
+    now = datetime(2026, 9, 28, 10, 1)
+    manager.update(0.0, 0.0, datetime(2026, 9, 28, 6, 0))
+    manager.update(0.0, 0.0, now)
+    for _ in range(4000):
+        manager.update(0.5, 0.0, now)
+    assert manager.trains == []
