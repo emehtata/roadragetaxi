@@ -69,6 +69,18 @@ class TrainRoute:
     def length(self) -> float:
         return self.cumulative[-1]
 
+    def locate(self, point) -> float:
+        """Distance along the route of the point on it nearest `point`."""
+        best, best_distance = 0.0, math.inf
+        for i, (a, b) in enumerate(zip(self.points, self.points[1:])):
+            dx, dy = b[0] - a[0], b[1] - a[1]
+            length_sq = dx * dx + dy * dy
+            t = 0.0 if length_sq == 0 else min(1.0, max(0.0, ((point[0] - a[0]) * dx + (point[1] - a[1]) * dy) / length_sq))
+            distance = math.hypot(a[0] + dx * t - point[0], a[1] + dy * t - point[1])
+            if distance < best_distance:
+                best, best_distance = self.cumulative[i] + t * (self.cumulative[i + 1] - self.cumulative[i]), distance
+        return best
+
     def point_at(self, s: float) -> Tuple[float, float, float]:
         """(x, y, heading) at distance s along the route, clamped to it."""
         s = min(max(s, 0.0), self.length)
@@ -309,6 +321,10 @@ STATION_TRACK_RADIUS_M = 150.0
 # the direction of travel costs this much extra route length, so opposing
 # trains keep to their own tracks unless only one track exists.
 WRONG_SIDE_PENALTY_M = 400.0
+# How strongly a stop prefers the track node nearest the platform point
+# over a slightly shorter route (1 = a node 100 m early costs the same as
+# 100 m extra travel, which let trains stop well short of the platform).
+STOP_DISTANCE_WEIGHT = 4.0
 ENTRY_CANDIDATES = 3  # track dead ends tried per side when planning a train's path
 # A train whose journey ends here waits on its platform this long (game
 # time) at most for a departure from the same track, and gives up this
@@ -352,12 +368,15 @@ def plan_train_path(
     # (any direction); one ending here stops at its last station - a
     # terminus is usually a dead end, so no through route is required.
     if starts_at_first:
-        begins = [(node, -1, 1) for node in candidates[reachable[0]]]
+        # Start at the platform node nearest the platform point (same
+        # weighting as stopping), not wherever the way out is shortest.
+        first = stations[reachable[0]]
+        begins = {(node, -1, 1): STOP_DISTANCE_WEIGHT * math.dist(points[node], first) for node in candidates[reachable[0]]}
     else:
-        begins = [(start, -1, 0)]
-    best = {begin: 0.0 for begin in begins}
+        begins = {(start, -1, 0): 0.0}
+    best = dict(begins)
     parent: Dict[tuple, tuple] = {}
-    heap = [(0.0, begin) for begin in begins]
+    heap = [(cost, begin) for begin, cost in begins.items()]
     final = None
     while heap:
         cost, state = heapq.heappop(heap)
@@ -381,7 +400,7 @@ def plan_train_path(
                 sx, sy = stations[reachable[stage]]
                 right_side = tx * (points[nxt][1] - sy) - ty * (points[nxt][0] - sx) < 0
                 side = 0.0 if right_side or assigned[reachable[stage]] else WRONG_SIDE_PENALTY_M
-                penalty = side + math.dist(points[nxt], (sx, sy))
+                penalty = side + STOP_DISTANCE_WEIGHT * math.dist(points[nxt], (sx, sy))
                 moves.append(((nxt, node, stage + 1), cost + length + penalty))
             for new_state, new_cost in moves:
                 if new_cost < best.get(new_state, math.inf):
@@ -393,14 +412,43 @@ def plan_train_path(
     while states[-1] in parent:
         states.append(parent[states[-1]])
     states.reverse()
-    route = TrainRoute([points[state[0]] for state in states])
+    nodes = [state[0] for state in states]
+    # A terminus / origin: carry the route on along the platform track (to
+    # the buffer stop) so the train can stand centred on the platform
+    # rather than wholly before it.
+    before = _continue_track(graph, nodes[1], nodes[0]) if starts_at_first and len(nodes) > 1 else []
+    after = _continue_track(graph, nodes[-2], nodes[-1]) if ends_at_last and len(nodes) > 1 else []
+    route = TrainRoute([points[n] for n in list(reversed(before)) + nodes + after])
     stops: List[Optional[float]] = [None] * len(stations)
     if starts_at_first:
-        stops[reachable[0]] = 0.0
+        stops[reachable[0]] = route.cumulative[len(before)]
     for index in range(1, len(states)):
         if states[index][2] > states[index - 1][2]:
-            stops[reachable[states[index][2] - 1]] = route.cumulative[index]
+            stops[reachable[states[index][2] - 1]] = route.cumulative[len(before) + index]
     return route, stops
+
+
+def _continue_track(graph: RailGraph, previous: int, node: int, limit_m: float = TRAIN_LENGTH_M) -> List[int]:
+    """Nodes straight on from previous -> node (never turning more than
+    MAX_TURN_COS allows) until a dead end or limit_m."""
+    points, result, travelled = graph.points, [], 0.0
+    while travelled < limit_m:
+        px, py = points[node][0] - points[previous][0], points[node][1] - points[previous][1]
+        best, best_cos = None, MAX_TURN_COS
+        for nxt in graph.edges.get(node, {}):
+            if nxt == previous:
+                continue
+            tx, ty = points[nxt][0] - points[node][0], points[nxt][1] - points[node][1]
+            norm = math.hypot(tx, ty) * math.hypot(px, py)
+            cos = (tx * px + ty * py) / norm if norm else -1.0
+            if cos >= best_cos:
+                best, best_cos = nxt, cos
+        if best is None:
+            break
+        travelled += graph.edges[node][best]
+        previous, node = node, best
+        result.append(node)
+    return result
 
 
 class RailwayManager:
@@ -647,10 +695,13 @@ class RailwayManager:
         stops = tuple((along,) + stop[1:] for stop, along in zip(service.stops, alongs) if along is not None)
         if not stops:
             return False
+        # Keep the train exactly where it stands: its old tail is the new
+        # front (a cab at each end), located on the new route.
+        tail = waiting.route.point_at(waiting.distance_m - waiting.direction * TRAIN_LENGTH_M)[:2]
         waiting.route, waiting.direction, waiting.service, waiting.stops = route, 1, service, stops
         waiting.reached_end = False
         waiting.stop_index, waiting.waiting_for = 0, None
-        waiting.distance_m = waiting._stop_position(stops[0])
+        waiting.distance_m = route.locate(tail)
         waiting.state, waiting.current_speed_mps = "DWELLING", 0.0
         waiting.dwell_remaining_s = stops[0][1]
         return True
