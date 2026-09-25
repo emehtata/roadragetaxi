@@ -1345,8 +1345,6 @@ def draw_cyclists(
         screen.blit(sprite, sprite.get_rect(center=(int(cx), int(cy))))
 
 
-TRAIN_LOCOMOTIVE_COLOR = (200, 40, 40)
-TRAIN_CARRIAGE_COLOR = (60, 110, 60)
 TRAIN_ROOF_LINE_COLOR = (30, 30, 30)
 
 
@@ -1361,28 +1359,38 @@ def draw_trains(
     show_debug: bool = False,
     font=None,
 ) -> None:
-    """Trains (trains.py) as a locomotive + carriages, each a rotated
-    rectangle following the track. Off-screen cars are skipped with one
-    bounds check each."""
+    """Trains (trains.py) vehicle by vehicle from their composition
+    (train_compositions.py): each a rotated rectangle of its own length
+    following the track, coloured by its visual profile - greens, a white
+    front band on a locomotive, a white stripe along a restaurant car.
+    Off-screen vehicles are skipped with one bounds check each."""
     import pygame
-    from ..trains import TRAIN_CAR_LENGTH_M, TRAIN_WIDTH_M
+    from ..train_compositions import PROFILES
+    from ..trains import TRAIN_WIDTH_M
 
-    vminx, vminy, vmaxx, vmaxy = get_viewport_bounds(camx, camy, px_per_m, screen_w, screen_h, TRAIN_CAR_LENGTH_M)
-    half_l, half_w = TRAIN_CAR_LENGTH_M / 2, TRAIN_WIDTH_M / 2
+    vminx, vminy, vmaxx, vmaxy = get_viewport_bounds(camx, camy, px_per_m, screen_w, screen_h, 30.0)
+    half_w = TRAIN_WIDTH_M / 2
+
+    def quad(x, y, cos_h, sin_h, front, back, left, right):
+        return [
+            world_to_screen(x + cos_h * lx - sin_h * ly, y + sin_h * lx + cos_h * ly, camx, camy, px_per_m, screen_w, screen_h)
+            for lx, ly in ((front, left), (front, right), (back, right), (back, left))
+        ]
+
     for train in railway_mgr.trains:
-        for index, (x, y, heading) in enumerate(train.cars()):
+        for x, y, heading, length, profile in train.vehicles():
             if not (vminx <= x <= vmaxx and vminy <= y <= vmaxy):
                 continue
+            base, pattern = PROFILES.get(profile, PROFILES["standard"])
             cos_h, sin_h = math.cos(heading), math.sin(heading)
-            corners = [
-                world_to_screen(
-                    x + cos_h * lx - sin_h * ly, y + sin_h * lx + cos_h * ly,
-                    camx, camy, px_per_m, screen_w, screen_h,
-                )
-                for lx, ly in ((half_l, half_w), (half_l, -half_w), (-half_l, -half_w), (-half_l, half_w))
-            ]
-            pygame.draw.polygon(screen, TRAIN_LOCOMOTIVE_COLOR if index == 0 else TRAIN_CARRIAGE_COLOR, corners)
-            pygame.draw.polygon(screen, TRAIN_ROOF_LINE_COLOR, corners, 1)
+            half_l = length / 2
+            body = quad(x, y, cos_h, sin_h, half_l, -half_l, half_w, -half_w)
+            pygame.draw.polygon(screen, base, body)
+            if pattern is not None and profile == "locomotive":
+                pygame.draw.polygon(screen, pattern, quad(x, y, cos_h, sin_h, half_l, half_l - 1.2, half_w, -half_w))
+            elif pattern is not None:  # restaurant car: a white stripe along it
+                pygame.draw.polygon(screen, pattern, quad(x, y, cos_h, sin_h, half_l - 1.0, -half_l + 1.0, 0.5, -0.5))
+            pygame.draw.polygon(screen, TRAIN_ROOF_LINE_COLOR, body, 1)
     if show_debug:
         for route in {id(t.route): t.route for t in railway_mgr.trains if t.service is not None}.values():
             # Each timetable train's own selected track (plan_train_path).

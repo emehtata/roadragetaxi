@@ -3,7 +3,10 @@ import math
 import pygame
 
 from theroadragetrip.osm.models import Railway
-from theroadragetrip.render.vehicles import TRAIN_LOCOMOTIVE_COLOR, draw_trains
+from theroadragetrip.render.vehicles import draw_trains
+from theroadragetrip.train_compositions import PROFILES
+
+TRAIN_LOCOMOTIVE_COLOR = PROFILES["locomotive"][0]
 from theroadragetrip.trains import (
     MAX_ACTIVE_TRAINS,
     TRAIN_SPAWN_INTERVAL_S,

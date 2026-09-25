@@ -178,6 +178,7 @@ from ..world_cache import WorldCacheManager, clear_world_cache
 from ..performance import MAP_SYNC_BUDGET_S, FrameProfiler
 from ..weather import SPLASH_MIN_SPEED_MPS, WeatherSystem, weather_type_for_observation
 from .. import camera_focus as camera_focus_module
+from ..train_compositions import load_compositions
 from ..train_timetable import load_timetable
 from ..trains import RailwayManager
 from ..station_passengers import StationPassengerView, track_checker
@@ -1220,7 +1221,7 @@ def main() -> None:
         curbs = world.curbs
         railway_grid = world.railway_grid
         railways = world.railways
-        railway_mgr = RailwayManager(railways, load_timetable(), _latlon_to_world_metres())
+        railway_mgr = RailwayManager(railways, load_timetable(), _latlon_to_world_metres(), load_compositions())
         railway_mgr_source_count = len(railways)
         railing_grid = world.railing_grid
         railings = world.railings

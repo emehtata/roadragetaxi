@@ -16,6 +16,7 @@ from dataclasses import dataclass, field, replace
 from datetime import datetime, timedelta
 from typing import Callable, Dict, List, Optional, Sequence, Tuple
 
+from .train_compositions import GENERIC, MAX_TRAIN_LENGTH_M, TrainComposition, resolve
 from .train_passengers import PassengerFlow
 from .train_timetable import ScheduledPass, StationCall, TimetableClock, match_timetable, prepare_timetable, station_calls
 
@@ -28,13 +29,10 @@ TRAIN_SPEED_MPS = 22.0  # ~80 km/h, constant
 # line can have many timetable trains crossing the map at once.
 MAX_ACTIVE_TRAINS = 48  # Helsinki at 60x dropped departures at 16 and 32
 # Oulu's rail pieces run from a few metres (yard stubs) to kilometres; a
-# train of TRAIN_CARS cars is ~150 m, so shorter lines would look silly.
+# typical train is 120-200 m (train_compositions.py), so shorter lines
+# would look silly.
 MIN_TRAIN_ROUTE_LENGTH_M = 1000.0
-TRAIN_CARS = 6  # locomotive + 5 carriages
-TRAIN_CAR_LENGTH_M = 24.0
-TRAIN_CAR_GAP_M = 1.5
 TRAIN_WIDTH_M = 3.2
-TRAIN_LENGTH_M = TRAIN_CARS * (TRAIN_CAR_LENGTH_M + TRAIN_CAR_GAP_M) - TRAIN_CAR_GAP_M
 TRAIN_ACCELERATION_MPS2 = 0.6  # brake into / pull out of a station: ~40 s from 80 km/h
 # Station stops follow the game clock: a 2 min timetable dwell is 2 game
 # minutes - a couple of real seconds at 60x, the full 2 minutes at 1x (a
@@ -112,6 +110,7 @@ class Train:
     reached_end: bool = False  # ran off an end of its route this update
     waiting_for: Optional[tuple] = None  # (departure time, ScheduledPass) it will become
     manifest: Dict[str, list] = field(default_factory=dict)  # destination -> passengers aboard (train_passengers.py)
+    composition: TrainComposition = GENERIC  # its vehicles (train_compositions.py)
 
     def __post_init__(self) -> None:
         if self.current_speed_mps is None:
@@ -145,16 +144,17 @@ class Train:
         if stop[7:8] == ("terminus",) and self.route.ends_at_buffer and self.direction > 0:
             return self.route.length  # all the way to the buffer stop
         if stop[7:8] == ("origin",) and self.route.starts_at_buffer and self.direction > 0:
-            return min(TRAIN_LENGTH_M, self.route.length)  # last car at the buffer stop
-        nose = stop[0] + self.direction * TRAIN_LENGTH_M / 2
+            return min(self.composition.length_m, self.route.length)  # last car at the buffer stop
+        length = self.composition.length_m
+        nose = stop[0] + self.direction * length / 2
         if self.direction > 0:
-            return min(max(nose, min(TRAIN_LENGTH_M, self.route.length)), self.route.length)
-        return max(min(nose, max(self.route.length - TRAIN_LENGTH_M, 0.0)), 0.0)
+            return min(max(nose, min(length, self.route.length)), self.route.length)
+        return max(min(nose, max(self.route.length - length, 0.0)), 0.0)
 
     def reverse_out(self) -> None:
         """Drive back out the way it came (a cab at each end): the old
         tail becomes the front, no stops left."""
-        self.distance_m -= self.direction * TRAIN_LENGTH_M
+        self.distance_m -= self.direction * self.composition.length_m
         self.direction = -self.direction
         self.stops, self.stop_index = (), 0
         self.state, self.current_speed_mps = "RUNNING", 0.0
@@ -196,15 +196,19 @@ class Train:
         elif self.distance_m <= 0.0 and self.direction < 0:
             self.distance_m, self.direction, self.reached_end = 0.0, 1, True
 
-    def cars(self) -> List[Tuple[float, float, float]]:
-        """(x, y, heading) of each car's centre, locomotive first; the rest
-        trail behind it along the track (so they bend through curves)."""
-        pitch = TRAIN_CAR_LENGTH_M + TRAIN_CAR_GAP_M
+    def vehicles(self) -> List[Tuple[float, float, float, float, str]]:
+        """(x, y, heading, length, profile) of each vehicle's centre, front
+        first; the rest trail behind along the track (bending through
+        curves) at the composition's precomputed offsets."""
         result = []
-        for index in range(TRAIN_CARS):
-            x, y, heading = self.route.point_at(self.distance_m - self.direction * (index * pitch + TRAIN_CAR_LENGTH_M / 2))
-            result.append((x, y, heading if self.direction > 0 else heading + math.pi))
+        for offset, (length, profile) in zip(self.composition.offsets, self.composition.vehicles):
+            x, y, heading = self.route.point_at(self.distance_m - self.direction * offset)
+            result.append((x, y, heading if self.direction > 0 else heading + math.pi, length, profile))
         return result
+
+    def cars(self) -> List[Tuple[float, float, float]]:
+        """(x, y, heading) of each vehicle's centre, front first."""
+        return [vehicle[:3] for vehicle in self.vehicles()]
 
 
 @dataclass
@@ -455,7 +459,7 @@ def plan_train_path(
     return route, stops
 
 
-def _continue_track(graph: RailGraph, previous: int, node: int, limit_m: float = TRAIN_LENGTH_M) -> List[int]:
+def _continue_track(graph: RailGraph, previous: int, node: int, limit_m: float = MAX_TRAIN_LENGTH_M) -> List[int]:
     """Nodes straight on from previous -> node (never turning more than
     MAX_TURN_COS allows) until a dead end or limit_m."""
     points, result, travelled = graph.points, [], 0.0
@@ -487,6 +491,7 @@ class RailwayManager:
         railways: Sequence = (),
         timetable: Optional[dict] = None,
         to_metres: Optional[Callable[[float, float], Tuple[float, float]]] = None,
+        compositions: Optional[dict] = None,
     ) -> None:
         """With a timetable (train_timetable.load_timetable) and a
         lat/lon -> world metres function, trains run to it; without, the
@@ -496,6 +501,7 @@ class RailwayManager:
         self._paths: Dict[tuple, Optional[Tuple[TrainRoute, list]]] = {}  # per train pattern
         self._track_ends: List[int] = []
         self.passengers = PassengerFlow()
+        self.compositions = compositions  # learned train compositions (train_compositions.load_compositions)
         self.passenger_view = None  # station_passengers.StationPassengerView, set by main (needs pedestrians)
         self.view_point: Optional[Tuple[float, float]] = None  # where the camera looks (visible passengers)
         self.trains: List[Train] = []
@@ -642,7 +648,10 @@ class RailwayManager:
         occupied.discard(None)
         return frozenset(occupied)
 
-    def _spawn(self, service: ScheduledPass) -> Train:
+    def _composition(self, service: ScheduledPass, when: Optional[datetime]) -> TrainComposition:
+        return resolve(self.compositions, service.train_type, service.number, when.date() if when is not None else None)
+
+    def _spawn(self, service: ScheduledPass, when: Optional[datetime] = None) -> Train:
         service = self._free_tracks(service)
         planned = self.train_path(service)
         avoid = frozenset()
@@ -660,12 +669,12 @@ class RailwayManager:
         if planned is not None:
             route, alongs = planned
             stops = tuple((along,) + stop[1:] for stop, along in zip(service.stops, alongs) if along is not None)
-            train = Train(route, 0.0, 1, service=service, stops=stops)
+            train = Train(route, 0.0, 1, service=service, stops=stops, composition=self._composition(service, when))
             entry = 0.0
         else:
             route = self.routes[service.route_index]
             entry = 0.0 if service.direction > 0 else route.length
-            train = Train(route, entry, service.direction, service=service)
+            train = Train(route, entry, service.direction, service=service, composition=self._composition(service, when))
         if train.stops:
             # APPROACH_DISTANCE_M before the first stop, never beyond the
             # entry end (then it simply arrives a little early).
@@ -732,8 +741,9 @@ class RailwayManager:
         stops = tuple((along,) + stop[1:] for stop, along in zip(service.stops, alongs) if along is not None)
         if not stops:
             return False
-        tail = train.route.point_at(train.distance_m - train.direction * TRAIN_LENGTH_M)[:2]
+        tail = train.route.point_at(train.distance_m - train.direction * train.composition.length_m)[:2]
         train.route, train.direction, train.service, train.stops = route, 1, service, stops
+        train.composition = self._composition(service, when)
         train.reached_end = False
         train.stop_index, train.waiting_for = 0, None
         train.distance_m = route.locate(tail)
@@ -755,7 +765,7 @@ class RailwayManager:
         for when, service in self.clock.events_between(now - longest_dwell, now + approach):
             if len(self.trains) >= MAX_ACTIVE_TRAINS or service.route_index >= len(self.routes):
                 break
-            train = self._spawn(service)
+            train = self._spawn(service, when)
             if not train.stops:
                 continue
             stop_at = train._stop_position(train.stops[0])
@@ -855,7 +865,7 @@ class RailwayManager:
                     continue
                 if len(self.trains) >= MAX_ACTIVE_TRAINS or service.route_index >= len(self.routes):
                     continue
-                train = self._spawn(service)
+                train = self._spawn(service, when)
                 if train.stops and train.stops[0][7:8] == ("origin",):
                     # A journey starting here with no train on its platform:
                     # the train stands there - last car at a terminus's
