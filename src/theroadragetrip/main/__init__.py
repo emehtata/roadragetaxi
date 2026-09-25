@@ -117,6 +117,7 @@ from ..render import (
     draw_npc_cars,
     draw_trains,
     draw_next_train,
+    draw_camera_back_button,
     draw_npc_spatial_grid,
     draw_npc_debug_overlay,
     draw_npc_debug_panel,
@@ -176,6 +177,7 @@ from ..traffic_world import TrafficWorld
 from ..world_cache import WorldCacheManager, clear_world_cache
 from ..performance import MAP_SYNC_BUDGET_S, FrameProfiler
 from ..weather import SPLASH_MIN_SPEED_MPS, WeatherSystem, weather_type_for_observation
+from .. import camera_focus as camera_focus_module
 from ..train_timetable import load_timetable
 from ..trains import RailwayManager
 from ..world_places import load_places
@@ -1285,6 +1287,10 @@ def main() -> None:
         hud_dragging = None
         hud_drag_offset = (0, 0)
         selected_resident_id = None
+        camera_focus = None  # camera_focus.py: None = taxi, else pan point / resident / NPC car
+        pan_drag_pos = None  # last mouse position while Ctrl+dragging
+        camera_back_rect = None  # the "back to taxi" button, while shown
+        camera_view = None  # the focus camera's own position while not on the taxi
         running = True
         current_way = get_current_road_at_car(car, ways=ways, spatial_grid=spatial_grid, car_roads_only=True)
         min_px_per_m = minimum_px_per_m_for_viewport_width(screen_w=SCREEN_W, margin_m=30.0)
@@ -1521,6 +1527,20 @@ def main() -> None:
                 if event.type == pygame.QUIT:
                     running = False
                     app_running = False
+                elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1 and (
+                    camera_back_rect is not None and camera_back_rect.collidepoint(event.pos)
+                ):
+                    camera_focus, selected_resident_id = None, None
+                elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1 and pygame.key.get_mods() & pygame.KMOD_CTRL:
+                    pan_drag_pos = event.pos  # Ctrl+drag: pan the view anywhere
+                    camera_focus = camera_focus_module.pan(camera_focus, camx, camy, 0, 0, px_per_m)
+                elif event.type == pygame.MOUSEMOTION and pan_drag_pos is not None:
+                    camera_focus = camera_focus_module.pan(
+                        camera_focus, camx, camy, event.pos[0] - pan_drag_pos[0], event.pos[1] - pan_drag_pos[1], px_per_m,
+                    )
+                    pan_drag_pos = event.pos
+                elif event.type == pygame.MOUSEBUTTONUP and event.button == 1 and pan_drag_pos is not None:
+                    pan_drag_pos = None
                 elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                     clicked_hud = False
                     for element_name in ("rage", "speedometer", "meters"):
@@ -1543,6 +1563,14 @@ def main() -> None:
                             screen_w=SCREEN_W,
                             screen_h=SCREEN_H,
                         )
+                        # Clicking a resident or an NPC car follows it.
+                        clicked_npc = None if selected_resident_id is not None else camera_focus_module.npc_at_screen_position(
+                            npcs, event.pos, camx, camy, px_per_m, SCREEN_W, SCREEN_H,
+                        )
+                        if selected_resident_id is not None:
+                            camera_focus = ("resident", selected_resident_id)
+                        elif clicked_npc is not None:
+                            camera_focus = ("npc", clicked_npc)
                         if show_feature_inspector:
                             # RENDER-audit.md section 19.
                             world_x, world_y = screen_to_world(
@@ -1690,8 +1718,8 @@ def main() -> None:
                             if taxi_mgr.accept_offer(offer_index, car.x, car.y):
                                 phone_open = False
                     elif event.key == pygame.K_ESCAPE:
-                        if selected_resident_id is not None:
-                            selected_resident_id = None
+                        if camera_focus is not None or selected_resident_id is not None:
+                            camera_focus, selected_resident_id = None, None  # back to the taxi view
                             continue
                         # Pause menu with options: Continue Game, Change City, Exit Game
                         pause_options = [
@@ -2133,6 +2161,20 @@ def main() -> None:
                         city_summary = result.city_summary
                     running = False
 
+            if camera_focus is not None:
+                focus_point = camera_focus_module.focus_target(camera_focus, pedestrian_mgr.pedestrians, npcs)
+                if focus_point is None:
+                    camera_focus = None  # followed car/resident is gone: back to the taxi
+                elif camera_focus[0] == "pan":
+                    camera_view = focus_point  # dragging: exactly under the pointer
+                else:
+                    # Eased from our own last view - the simulation's camera
+                    # keeps pulling towards the taxi and would drag it off.
+                    camera_view = camera_focus_module.ease_camera(*(camera_view or (camx, camy)), focus_point, dt)
+                if camera_focus is not None:
+                    camx, camy = camera_view
+            if camera_focus is None:
+                camera_view = None  # the simulation eases back to the taxi from here
             movement_distance = math.hypot(car.x - previous_car_position[0], car.y - previous_car_position[1])
             viewport_bounds = get_viewport_bounds(camx, camy, px_per_m=px_per_m, margin_m=30.0)
 
@@ -3048,6 +3090,9 @@ def main() -> None:
                         + f": {when:%H:%M} {call.train_type} {call.number} {call.origin} – {call.destination}",
                         SCREEN_W,
                     )
+            camera_back_rect = (
+                draw_camera_back_button(screen, font, tr(language, "back_to_taxi"), SCREEN_W) if camera_focus is not None else None
+            )
             if phone_open:
                 draw_phone_offers(screen, taxi_mgr, font, small_font, SCREEN_W, SCREEN_H, language, car=car)
             if show_compass:

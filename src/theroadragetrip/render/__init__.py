@@ -215,6 +215,7 @@ from .navigation import (
 
 from .hud import (
     draw_next_train,
+    draw_camera_back_button,
     _day_night_overlay_cache,
     _draw_analog_speedometer,
     _load_rage_face_frames,

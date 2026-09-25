@@ -1009,3 +1009,16 @@ def draw_next_train(screen, font, text: str, screen_width: int, top: int = 116) 
     screen.blit(background, (rect.x - 6, rect.y - 3))
     pygame.draw.rect(screen, (120, 160, 220), (rect.x - 6, rect.y - 3, rect.width + 12, rect.height + 6), 1, border_radius=3)
     screen.blit(surface, rect)
+
+
+def draw_camera_back_button(screen, font, label: str, screen_width: int, top: int = 58):
+    """While the camera follows something other than the taxi: a button
+    (also Esc) back to the taxi view. Returns its rect for click tests."""
+    import pygame
+
+    surface = font.render(label, True, (20, 20, 20))
+    rect = surface.get_rect(midtop=(screen_width // 2, top)).inflate(20, 10)
+    pygame.draw.rect(screen, (255, 205, 0), rect, border_radius=6)
+    pygame.draw.rect(screen, (20, 20, 20), rect, width=2, border_radius=6)
+    screen.blit(surface, surface.get_rect(center=rect.center))
+    return rect
