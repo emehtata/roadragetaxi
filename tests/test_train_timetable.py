@@ -308,11 +308,11 @@ def test_train_stops_centred_at_its_station_dwells_and_pulls_away_smoothly():
     assert train_.next_stop[2] == "Middle" and train_.current_speed_mps == 0.0
     stopped_at = train_.distance_m
     for _ in range(1190):  # 119 s: still at the platform
-        manager.update(0.1, 0.0, now)
+        manager.update(0.1, 0.1, now)
     assert train_.state == "DWELLING" and train_.distance_m == stopped_at
     positions = []
     for _ in range(200):  # dwell over: accelerate away without a jump
-        manager.update(0.1, 0.0, now)
+        manager.update(0.1, 0.1, now)
         positions.append(train_.distance_m)
     assert train_.state == "RUNNING" and train_.next_stop is None  # North is beyond the track: leaving
     steps = [b - a for a, b in zip([stopped_at] + positions, positions)]
@@ -320,10 +320,10 @@ def test_train_stops_centred_at_its_station_dwells_and_pulls_away_smoothly():
     assert steps[1] < 0.1 and steps[-1] > 10 * steps[1]  # starts slowly, speeds up
 
 
-def test_game_clock_speed_does_not_shorten_the_dwell():
-    """Regression: a 2 min timetable dwell stays 120 real seconds whether
-    the game clock runs at 1x or 60x (railway time is real time)."""
-    for game_seconds_per_real_second in (1.0, 60.0, 600.0):
+def test_dwell_follows_the_game_clock():
+    """A 2 min timetable dwell is 2 game minutes: 2 real seconds at 60x,
+    the full 120 s at 1x (a fare aboard)."""
+    for game_seconds_per_real_second, real_seconds in ((60.0, 2.0), (1.0, 120.0)):
         manager = RailwayManager(NORTH_SOUTH_TRACK, timetable(_stopping_train(), stations=STOP_STATIONS), metres)
         now = _spawned(manager)
         train_, _ = _run_until_dwelling(manager, now, game_dt=0.1 * game_seconds_per_real_second)
@@ -332,8 +332,7 @@ def test_game_clock_speed_does_not_shorten_the_dwell():
             now += timedelta(seconds=0.1 * game_seconds_per_real_second)
             manager.update(0.1, 0.1 * game_seconds_per_real_second, now)
             dwelt += 0.1
-        assert abs(dwelt - 120.0) < 0.2, (game_seconds_per_real_second, dwelt)
-
+        assert abs(dwelt - real_seconds) < 0.2, (game_seconds_per_real_second, dwelt)
 
 def test_passing_timing_points_and_zero_dwell_do_not_stop_but_termini_do():
     passing = RailwayManager(NORTH_SOUTH_TRACK, timetable(_stopping_train(stops_at_middle=0), stations=STOP_STATIONS), metres)

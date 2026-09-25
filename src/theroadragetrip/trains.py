@@ -35,10 +35,9 @@ TRAIN_CAR_GAP_M = 1.5
 TRAIN_WIDTH_M = 3.2
 TRAIN_LENGTH_M = TRAIN_CARS * (TRAIN_CAR_LENGTH_M + TRAIN_CAR_GAP_M) - TRAIN_CAR_GAP_M
 TRAIN_ACCELERATION_MPS2 = 0.6  # brake into / pull out of a station: ~40 s from 80 km/h
-# Railway simulation time runs 1:1 with real time - trains move at real
-# speed while the game clock runs up to 60x - so a timetable dwell of 2 min
-# is a 2 min (real) stop, not 2 s. Tune here, never via the game clock.
-DWELL_REAL_S_PER_TIMETABLE_S = 1.0
+# Station stops follow the game clock: a 2 min timetable dwell is 2 game
+# minutes - a couple of real seconds at 60x, the full 2 minutes at 1x (a
+# fare aboard). Trains still *move* in real time.
 # Trains run in real time while the game clock runs up to 60x, so a train
 # is spawned this far before its first stop and early enough (game time =
 # its real approach time x the current game speed) to come to rest there
@@ -139,15 +138,15 @@ class Train:
         self.stops, self.stop_index = (), 0
         self.state, self.current_speed_mps = "RUNNING", 0.0
 
-    def update(self, dt: float) -> None:
-        """dt in real seconds (railway simulation time, see
-        DWELL_REAL_S_PER_TIMETABLE_S) - never the accelerated game time.
-        TERMINATED (journey over, the manager decides what next) and
-        WAITING (for its next departure) trains stand still."""
+    def update(self, dt: float, game_dt: Optional[float] = None) -> None:
+        """dt: real seconds, for movement; game_dt: game seconds, for the
+        station dwell (defaults to dt, i.e. a 1x clock). TERMINATED
+        (journey over, the manager decides what next) and WAITING (for its
+        next departure) trains stand still."""
         if self.state in ("TERMINATED", "WAITING"):
             return
         if self.state == "DWELLING":
-            self.dwell_remaining_s -= dt
+            self.dwell_remaining_s -= dt if game_dt is None else game_dt
             if self.dwell_remaining_s > 0.0:
                 return
             finished = self.next_stop
@@ -165,7 +164,7 @@ class Train:
                 self.distance_m = self._stop_position(stop)
                 self.current_speed_mps = 0.0
                 self.state = "DWELLING"
-                self.dwell_remaining_s = stop[1] * DWELL_REAL_S_PER_TIMETABLE_S
+                self.dwell_remaining_s = stop[1]
                 return
         self.current_speed_mps = speed
         self.distance_m += self.direction * speed * dt
@@ -653,7 +652,7 @@ class RailwayManager:
         waiting.stop_index, waiting.waiting_for = 0, None
         waiting.distance_m = waiting._stop_position(stops[0])
         waiting.state, waiting.current_speed_mps = "DWELLING", 0.0
-        waiting.dwell_remaining_s = stops[0][1] * DWELL_REAL_S_PER_TIMETABLE_S
+        waiting.dwell_remaining_s = stops[0][1]
         return True
 
     def _place_running_trains(self, now: datetime, game_speed: float) -> None:
@@ -661,9 +660,9 @@ class RailwayManager:
         the approach to, or standing at, their first stop here are placed
         there directly - even in view - instead of arriving hours late."""
         approach = timedelta(seconds=APPROACH_REAL_S * game_speed)
-        # Look back far enough for a long dwell at this game speed (each
-        # train's own dwell is checked below), but at most half a day.
-        longest_dwell = min(timedelta(seconds=1800 * game_speed), timedelta(hours=12))
+        # Dwells are in game time: look back over the longest plausible stop
+        # (each train's own dwell is checked below).
+        longest_dwell = timedelta(hours=1)
         for when, service in self.clock.events_between(now - longest_dwell, now + approach):
             if len(self.trains) >= MAX_ACTIVE_TRAINS or service.route_index >= len(self.routes):
                 break
@@ -675,7 +674,7 @@ class RailwayManager:
                 share = (when - now) / approach
                 train.distance_m = min(max(stop_at - train.direction * APPROACH_DISTANCE_M * share, 0.0), train.route.length)
             else:
-                dwell_left = train.stops[0][1] * DWELL_REAL_S_PER_TIMETABLE_S - (now - when).total_seconds() / game_speed
+                dwell_left = train.stops[0][1] - (now - when).total_seconds()
                 if dwell_left <= 0.0:
                     continue  # already left its stop here: gone before we look
                 train.distance_m, train.current_speed_mps = stop_at, 0.0
@@ -701,7 +700,7 @@ class RailwayManager:
         kept = []
         for train in self.trains:
             train.reached_end = False
-            train.update(dt)
+            train.update(dt, game_dt)
             # A timetable train leaves the map at the end of its route; a
             # shuttle on a replaced route (more track streamed in) retires
             # at its next turnaround - at a track end, never mid-view.

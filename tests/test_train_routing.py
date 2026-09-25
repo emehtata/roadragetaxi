@@ -109,11 +109,11 @@ def test_train_stops_and_departs_on_its_selected_track():
     (train,) = manager.trains
     xs = set()
     while train.state != "DWELLING":
-        manager.update(0.5, 0.0, datetime(2026, 9, 28, 10, 1))
+        manager.update(0.5, 0.5, datetime(2026, 9, 28, 10, 1))
         xs.add(round(train.cars()[0][0]))
     assert train.next_stop[2] == "Middle"
     for _ in range(300):  # dwell and pull out
-        manager.update(0.5, 0.0, datetime(2026, 9, 28, 10, 1))
+        manager.update(0.5, 0.5, datetime(2026, 9, 28, 10, 1))
         xs.add(round(train.cars()[0][0]))
     assert xs == {10} and train.state == "RUNNING"
 
@@ -132,7 +132,7 @@ def test_startup_places_a_train_already_approaching_on_its_track_in_view():
 
 def test_startup_places_a_train_at_its_platform_mid_dwell():
     manager = RailwayManager(double_track_station(), timetable(NORTHBOUND), metres)
-    manager.update(1 / 30, 2.0, datetime(2026, 9, 28, 10, 0) + timedelta(minutes=60))  # 60 game min = 60 real s into its 120 s dwell
+    manager.update(1 / 30, 2.0, datetime(2026, 9, 28, 10, 1))  # 1 game minute into its 2 min dwell
     (train,) = manager.trains
     assert train.state == "DWELLING" and 55 < train.dwell_remaining_s < 65
     assert round(train.cars()[0][0]) == 10
@@ -147,10 +147,10 @@ def test_startup_skips_trains_that_already_left():
 def test_track_streaming_in_does_not_place_trains_again():
     railways = double_track_station()
     manager = RailwayManager(railways, timetable(NORTHBOUND), metres)
-    manager.update(1 / 30, 2.0, datetime(2026, 9, 28, 11, 0))  # placed mid-dwell at start
+    manager.update(1 / 30, 2.0, datetime(2026, 9, 28, 10, 1))  # placed mid-dwell at start
     assert len(manager.trains) == 1
     manager.rebuild(railways + [rail((50.0, 0.0), (50.0, 3000.0))])
-    manager.update(1 / 30, 2.0, datetime(2026, 9, 28, 11, 0, 2))
+    manager.update(1 / 30, 2.0, datetime(2026, 9, 28, 10, 1, 2))
     assert len(manager.trains) == 1
 
 
@@ -189,7 +189,7 @@ def test_train_terminating_at_a_dead_end_arrives_dwells_and_leaves_backwards():
     assert train.stops and train.stops[-1][7] == "terminus"
     states = []
     for _ in range(4000):
-        manager.update(0.5, 0.0, datetime(2026, 9, 28, 10, 1))
+        manager.update(0.5, 0.5, datetime(2026, 9, 28, 10, 1))
         if not manager.trains:
             break
         states.append((train.state, train.direction))
@@ -208,7 +208,7 @@ def test_train_starting_at_a_terminus_departs_from_its_platform():
     ys = [car[1] for car in train.cars()]
     assert all(9_700 < y <= 10_050.5 for y in ys)  # appears on its platform, whole train on track
     for _ in range(400):
-        manager.update(0.5, 0.0, datetime(2026, 9, 28, 10, 1))
+        manager.update(0.5, 0.5, datetime(2026, 9, 28, 10, 1))
     assert train.state == "RUNNING" and train.cars()[0][1] < 9_700  # departed southwards
 
 
@@ -222,7 +222,7 @@ def test_arrived_train_waits_on_its_platform_and_becomes_the_next_departure_from
     manager.update(0.0, 0.0, now)
     (train,) = manager.trains
     for _ in range(2000):  # arrive and dwell (clock stands still: game time frozen)
-        manager.update(0.5, 0.0, now)
+        manager.update(0.5, 0.5, now)
     assert train.state == "WAITING" and train.waiting_for[1].number == "6"  # not 7: other track
     parked = train.cars()
     for minute in range(1, 60):  # game clock runs on to 11:00; train 7 appears on its own
@@ -240,7 +240,7 @@ def test_arrived_train_with_no_next_departure_from_its_track_drives_out():
     manager.update(0.0, 0.0, datetime(2026, 9, 28, 6, 0))
     manager.update(0.0, 0.0, now)
     for _ in range(4000):
-        manager.update(0.5, 0.0, now)
+        manager.update(0.5, 0.5, now)
     assert manager.trains == []
 
 
