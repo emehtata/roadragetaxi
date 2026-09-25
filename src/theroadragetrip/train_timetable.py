@@ -53,7 +53,7 @@ class ScheduledPass:
     origin: str
     destination: str
     days: int  # bit 0 = Monday ... bit 6 = Sunday, of the service day
-    seconds: int  # GTFS time at the route midpoint (may exceed 24 h)
+    seconds: int  # GTFS arrival at the first stop on the route, else time at its midpoint (may exceed 24 h)
     route_index: int
     direction: int  # +1 enters at the route start, -1 at its end
     heading: str  # compass direction of travel, for debugging
@@ -209,7 +209,9 @@ def match_timetable(
             passes.append(ScheduledPass(
                 train_type=train["type"], number=train["number"],
                 origin=train["origin"], destination=train["destination"], days=train["days"],
-                seconds=round(seconds_a + (seconds_b - seconds_a) * t),
+                # When the train should be at its first stop here (so it
+                # can be spawned to arrive on time), else mid-route.
+                seconds=route_stops[0][3] if route_stops else round(seconds_a + (seconds_b - seconds_a) * t),
                 route_index=index, direction=direction,
                 heading=COMPASS[round(bearing / 45) % 8],
                 stops=tuple(route_stops),
@@ -260,6 +262,7 @@ class TimetableClock:
         self._times: List[datetime] = []
         self._events: List[ScheduledPass] = []
         self._last: Optional[datetime] = None
+        self._until: Optional[datetime] = None
 
     def _build(self, day: date) -> None:
         events = []
@@ -285,12 +288,20 @@ class TimetableClock:
         index = bisect.bisect_right(self._times, now)
         return (self._times[index], self._events[index]) if index < len(self._times) else None
 
-    def due(self, now: datetime) -> List[ScheduledPass]:
-        """Passes scheduled in (previous now, now]. The first call only
-        starts the clock (no backlog burst on load or a clock jump back)."""
+    def due(self, now: datetime, lookahead: timedelta = timedelta(0)) -> List[ScheduledPass]:
+        """Passes scheduled in (end of the previous window, now + lookahead]
+        - each handed out once, even as the lookahead changes with the game
+        speed. The first call only starts the clock (no backlog burst on
+        load or after a clock jump)."""
         last, self._last = self._last, now
-        if last is None or now <= last or now - last > timedelta(hours=6):
+        until = now + min(lookahead, timedelta(hours=6))
+        if last is None or now < last or now - last > timedelta(hours=6):
+            self._until = until
             return []
+        start = self._until
+        if until <= start:
+            return []
+        self._until = until
         if self._day != now.date():
             self._build(now.date())
-        return self._events[bisect.bisect_right(self._times, last):bisect.bisect_right(self._times, now)]
+        return self._events[bisect.bisect_right(self._times, start):bisect.bisect_right(self._times, until)]

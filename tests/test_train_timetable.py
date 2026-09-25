@@ -290,8 +290,8 @@ def _run_until_dwelling(manager, now, game_dt=0.0, limit_s=2000):
 
 
 def _spawned(manager):
-    manager.update(0.0, 0.0, datetime(2026, 9, 28, 9, 0))
-    manager.update(0.0, 0.0, datetime(2026, 9, 28, 10, 5))  # midpoint time 10:00 passed
+    manager.update(0.0, 0.0, datetime(2026, 9, 28, 6, 0))
+    manager.update(0.0, 0.0, datetime(2026, 9, 28, 10, 5))  # first stop's arrival passed
     assert len(manager.trains) == 1
     return datetime(2026, 9, 28, 10, 5)
 
@@ -342,3 +342,21 @@ def test_passing_timing_points_and_zero_dwell_do_not_stop_but_termini_do():
     _spawned(through)
     stops = through.trains[0].service.stops
     assert [(stop[2], stop[1]) for stop in stops] == [("South", 120), ("North", 120)]  # termini dwell, 0 s M not
+
+
+def test_train_reaches_its_station_at_the_scheduled_game_time_at_60x():
+    """Trains move in real time, the clock at 60x: the train must be
+    spawned early enough to stand at the platform when the game clock
+    shows its arrival (10:00), not hours later."""
+    manager = RailwayManager(NORTH_SOUTH_TRACK, timetable(_stopping_train(), stations=STOP_STATIONS), metres)
+    now = datetime(2026, 9, 28, 8, 0)
+    arrived_at = None
+    for _ in range(40_000):  # 1/30 s frames, 60 game seconds per real second
+        now += timedelta(seconds=2)
+        manager.update(1 / 30, 2.0, now)
+        if manager.trains and manager.trains[0].state == "DWELLING":
+            arrived_at = now
+            break
+    assert arrived_at is not None
+    assert abs((arrived_at - datetime(2026, 9, 28, 10, 0)).total_seconds()) < 3 * 60
+    assert manager.trains[0].distance_m > 0.0  # it came from the south end's side, not mid-platform

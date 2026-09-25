@@ -13,7 +13,7 @@ import heapq
 import logging
 import math
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Callable, Dict, List, Optional, Sequence, Tuple
 
 from .train_timetable import ScheduledPass, StationCall, TimetableClock, match_timetable, prepare_timetable, station_calls
@@ -39,6 +39,15 @@ TRAIN_ACCELERATION_MPS2 = 0.6  # brake into / pull out of a station: ~40 s from 
 # speed while the game clock runs up to 60x - so a timetable dwell of 2 min
 # is a 2 min (real) stop, not 2 s. Tune here, never via the game clock.
 DWELL_REAL_S_PER_TIMETABLE_S = 1.0
+# Trains run in real time while the game clock runs up to 60x, so a train
+# is spawned this far before its first stop and early enough (game time =
+# its real approach time x the current game speed) to come to rest there
+# at the scheduled arrival - usually off-screen, from the correct side.
+APPROACH_DISTANCE_M = 1500.0
+APPROACH_REAL_S = (
+    (APPROACH_DISTANCE_M - TRAIN_SPEED_MPS ** 2 / (2 * TRAIN_ACCELERATION_MPS2)) / TRAIN_SPEED_MPS
+    + TRAIN_SPEED_MPS / TRAIN_ACCELERATION_MPS2
+)
 _MERGE_M = 0.5  # track points closer than this are one node (tile seams share OSM nodes)
 
 
@@ -253,6 +262,17 @@ class RailwayManager:
             len(self.routes), ", ".join(f"{r.length / 1000:.1f}" for r in self.routes) or "-", len(self.trains),
         )
 
+    def _spawn(self, service: ScheduledPass) -> Train:
+        route = self.routes[service.route_index]
+        entry = 0.0 if service.direction > 0 else route.length
+        train = Train(route, entry, service.direction, service=service)
+        if service.stops:
+            # APPROACH_DISTANCE_M before the first stop, never beyond the
+            # entry end (then it simply arrives a little early).
+            start = train._stop_position(service.stops[0]) - service.direction * APPROACH_DISTANCE_M
+            train.distance_m = min(max(start, 0.0), route.length)
+        return train
+
     def next_arrival(self, x: float, y: float, now: datetime) -> Optional[Tuple[datetime, StationCall]]:
         """Next timetable train arriving at the station nearest (x, y)."""
         if not self.stations:
@@ -278,13 +298,11 @@ class RailwayManager:
                 kept.append(train)
         self.trains = kept
         if self.clock is not None and now is not None:
-            for service in self.clock.due(now):
+            game_speed = game_dt / dt if dt > 0.0 else 0.0
+            for service in self.clock.due(now, timedelta(seconds=APPROACH_REAL_S * game_speed)):
                 if len(self.trains) >= MAX_ACTIVE_TRAINS or service.route_index >= len(self.routes):
                     continue
-                route = self.routes[service.route_index]
-                self.trains.append(Train(
-                    route, 0.0 if service.direction > 0 else route.length, service.direction, service=service,
-                ))
+                self.trains.append(self._spawn(service))
         for key in self._spawn_timers:
             self._spawn_timers[key] -= game_dt
             if self._spawn_timers[key] > 0.0 or len(self.trains) >= MAX_ACTIVE_TRAINS:
