@@ -363,7 +363,7 @@ def advance_simulation(
     if immobilized:
         car.speed = 0.0
     movement_distance = math.hypot(car.x - previous_position[0], car.y - previous_position[1])
-    audio.update_acceleration(abs(car.speed) > 0.5 and (throttle > 0.0 or brake > 0.0))
+    audio.update_engine(car.engine_on and not on_foot, car.speed, throttle)
     audio.set_loop("engine_idle", "vehicle.engine_idle", 0.45 if car.engine_on and abs(car.speed) <= 0.5 else 0.0)
     audio.on_rise("tires", car.is_sliding, "vehicle.tire_squeal", min(1.0, 0.4 + abs(car.speed) / 25.0))
     audio.on_rise("brake", brake > 0.0 and abs(car.speed) > 8.0, "vehicle.brake_hard", 0.7)

@@ -46,7 +46,6 @@ class AudioManager:
         self.driver_sounds: dict[tuple[str, str, str], pygame.mixer.Sound] = {}
         self._driver_speech_times: dict[str, float] = {}
         self.comment_channel: Optional[pygame.mixer.Channel] = None
-        self.acceleration_channel: Optional[pygame.mixer.Channel] = None
         self.police_siren_channel: Optional[pygame.mixer.Channel] = None
         # Sound groups from assets/audio/audio_catalog.json: group id ->
         # its generated variations (a loop group's variations are layers).
@@ -70,7 +69,7 @@ class AudioManager:
                 mixer.init()
             mixer.set_num_channels(MIXER_CHANNELS)
             sounds_dir = Path(__file__).with_name("sounds")
-            for name in ("accelerate", "car-door-open", "censored-cursing", "city-traffic-outdoor", "police_car_siren-esp"):
+            for name in ("car-door-open", "censored-cursing", "city-traffic-outdoor", "police_car_siren-esp"):
                 path = next(
                     (
                         sounds_dir / f"{name}{extension}"
@@ -349,16 +348,18 @@ class AudioManager:
             self.effects_volume = value
         # Loops pick up the new volumes on their next update (every frame).
 
-    def update_acceleration(self, active: bool) -> None:
-        sound = self.sounds.get("accelerate")
-        if sound is None or not self.enabled:
-            return
-        if active:
-            if self.acceleration_channel is None or not self.acceleration_channel.get_busy():
-                self.acceleration_channel = sound.play(loops=-1)
-        elif self.acceleration_channel is not None:
-            self.acceleration_channel.stop()
-            self.acceleration_channel = None
+    def update_engine(self, running: bool, speed_mps: float, throttle: float) -> None:
+        """The engine under way: low/mid/high-rev loops crossfaded by
+        speed (a loop can't be pitch-shifted live), louder on the throttle."""
+        kmh = abs(speed_mps) * 3.6 if running else 0.0
+        level = 0.0 if kmh < 2.0 else 0.35 + 0.35 * max(0.0, min(1.0, throttle))
+        layers = (
+            max(0.0, min(1.0, (60.0 - kmh) / 30.0)),  # low revs: full to 30 km/h, gone by 60
+            max(0.0, 1.0 - abs(kmh - 55.0) / 35.0),   # mid revs: around 55 km/h
+            max(0.0, min(1.0, (kmh - 60.0) / 30.0)),  # high revs: from 60, full at 90 km/h
+        )
+        for index, weight in enumerate(layers):
+            self.set_loop(f"engine_{index}", "vehicle.engine_accelerate", level * weight, variation=index)
 
     def update_police_siren(self, active: bool) -> None:
         sound = self.sounds.get("police_car_siren-esp")
@@ -375,7 +376,6 @@ class AudioManager:
         if self.comment_channel is not None:
             self.comment_channel.stop()
             self.comment_channel = None
-        self.update_acceleration(False)
         self.update_police_siren(False)
         for channel in self.loop_channels.values():
             channel.stop()
