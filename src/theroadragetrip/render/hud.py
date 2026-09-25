@@ -567,7 +567,7 @@ def draw_hud(
 
         p = taxi_mgr.current_passenger
         if p is None:
-            if taxi_mgr.offers:
+            if taxi_mgr.has_new_requests():
                 role_text = f"[TAXI] {tr(language, 'phone_available')}"
                 role_color = (255, 95, 60)
             else:

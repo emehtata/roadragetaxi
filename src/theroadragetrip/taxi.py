@@ -249,6 +249,11 @@ class TaxiManager:
         bookings.sort(key=lambda booking: booking.status != "PENDING")
         return ([("booking", item) for item in bookings] + [("offer", item) for item in self.offers])[:MAX_PHONE_OFFERS]
 
+    def has_new_requests(self) -> bool:
+        """Something in the phone to answer: a ride offer or a rail
+        pre-booking still pending (accepted ones are no longer requests)."""
+        return bool(self.offers or (self.rail_bookings is not None and self.rail_bookings.pending()))
+
     def visible_rail_bookings(self):
         return self.rail_bookings.visible() if self.rail_bookings is not None else []
 

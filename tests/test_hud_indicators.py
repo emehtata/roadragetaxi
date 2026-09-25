@@ -110,6 +110,7 @@ def test_date_clock_and_taxi_score_do_not_overlap():
         completed_fares=0,
         balance_cents=0,
         offers=[],
+        has_new_requests=lambda: False,
         current_passenger=None,
         state="PICKUP",
         fare_started_at=None,

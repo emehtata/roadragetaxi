@@ -109,3 +109,18 @@ def test_accepting_an_already_approaching_train_advances_on_next_update():
     assert bookings.accept(booking) and booking.status == ACCEPTED
     bookings.update()
     assert booking.status == TRAIN_ARRIVING
+
+
+def test_pending_pre_bookings_count_as_new_requests_in_the_hud():
+    """Regression: the HUD said "no requests" with only pre-bookings in the
+    phone - it looked at ordinary ride offers alone."""
+    from theroadragetrip.taxi import TaxiManager
+
+    taxi = TaxiManager(ways=[])
+    taxi.offers = []
+    taxi.rail_bookings = manager()
+    assert not taxi.has_new_requests()
+    booking = taxi.rail_bookings.consider(passenger(), train(), OCCURRENCE, Always())
+    assert taxi.has_new_requests()
+    taxi.rail_bookings.accept(booking)
+    assert not taxi.has_new_requests()  # accepted: a job now, not a request
