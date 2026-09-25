@@ -2086,22 +2086,9 @@ def main() -> None:
                         start_hint_remaining = 0.0
                 interact_pending = False
 
-                time_scale = 1.0 if taxi_mgr.current_passenger else 60.0
-                previous_date = game_calendar.date
-                game_calendar.advance(dt * time_scale)
-                game_time_seconds = game_calendar.time_seconds
-                if game_calendar.date != previous_date:
-                    set_game_date(game_calendar.date)
-                    logged_season = _sync_thermal_season(game_calendar, weather, logged_season)
-                weather.update(
-                    dt * time_scale,
-                    dt,
-                    outside_temperature_c=outside_temperature(game_calendar.current),
-                    observed=observed_weather(game_calendar.current),
-                )
-                if weather.lightning_event_id != last_lightning_event_id:
-                    audio.play("thunder", volume=0.8)
-                    last_lightning_event_id = weather.lightning_event_id
+                # The game clock and weather already advanced once this
+                # frame at the top of the loop (doing it here too ran the
+                # clock at 120x and the rain twice as fast).
                 taxi_mgr.game_date = game_calendar.date
 
                 result = advance_simulation(
