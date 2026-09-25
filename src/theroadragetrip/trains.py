@@ -344,6 +344,7 @@ ENTRY_CANDIDATES = 3  # track dead ends tried per side when planning a train's p
 # time) at most for a departure from the same track, and gives up this
 # long after that departure's time.
 TURNAROUND_MAX_WAIT = timedelta(hours=12)
+STATION_TAXI_STAND_MAX_M = 1000.0  # a stand farther than this is not the station's
 PLATFORM_CLEARANCE_M = 2.0  # a stopping point this close to a used track is on it
 OCCUPANCY_REPLANS = 4  # tracks tried per spawn before accepting a shared one
 TURNAROUND_GRACE = timedelta(minutes=30)
@@ -500,7 +501,11 @@ class RailwayManager:
         self.graph = RailGraph()
         self._paths: Dict[tuple, Optional[Tuple[TrainRoute, list]]] = {}  # per train pattern
         self._track_ends: List[int] = []
-        self.passengers = PassengerFlow()
+        # Existing taxi stands (TaxiManager.taxi_stops), set by main; each
+        # station's nearest is cached in station_stands on rebuild.
+        self.taxi_stands: Sequence = ()
+        self.station_stands: Dict[str, object] = {}
+        self.passengers = PassengerFlow(stand_for=lambda station: self.station_stands.get(station))
         self.compositions = compositions  # learned train compositions (train_compositions.load_compositions)
         self.passenger_view = None  # station_passengers.StationPassengerView, set by main (needs pedestrians)
         self.view_point: Optional[Tuple[float, float]] = None  # where the camera looks (visible passengers)
@@ -536,6 +541,7 @@ class RailwayManager:
                 (name, point, TimetableClock(arrivals), TimetableClock(departures))
                 for name, point, arrivals, departures in station_calls(self.timetable, self._prepared, self.routes)
             ]
+            self.associate_taxi_stands()
             self._spawn_timers = {}
             logger.info(
                 "Railway timetable: %d of %d trains pass this map's routes",
@@ -809,6 +815,21 @@ class RailwayManager:
             len(leaving), len(boarding), sum(len(group) for group in train.manifest.values()),
             self.passengers.waiting_count(stop[2]),
         )
+
+    def associate_taxi_stands(self, stands: Optional[Sequence] = None) -> None:
+        """Each station's nearest existing taxi stand (within
+        STATION_TAXI_STAND_MAX_M), cached; never creates stands. Runs on
+        route rebuild / when the stands are handed over, not per frame."""
+        if stands is not None:
+            self.taxi_stands = stands  # the live list: stands streamed in later count too
+        self.station_stands = {}
+        for name, point, _, _ in self.stations:
+            nearest = min(self.taxi_stands, key=lambda stand: math.dist((stand.x, stand.y), point), default=None)
+            if nearest is not None and math.dist((nearest.x, nearest.y), point) <= STATION_TAXI_STAND_MAX_M:
+                self.station_stands[name] = nearest
+        missing = [name for name, *_ in self.stations if name not in self.station_stands]
+        if missing:
+            logger.info("Railway stations without a taxi stand within %.0f m: %s", STATION_TAXI_STAND_MAX_M, ", ".join(missing))
 
     def vehicle_at(self, x: float, y: float) -> Optional[Tuple[Train, int]]:
         """The train vehicle under a world point (a click), as (train,

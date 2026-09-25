@@ -23,6 +23,9 @@ from datetime import datetime
 from typing import Deque, Dict, List, Optional, Tuple
 
 WAITING, ON_TRAIN, ARRIVED = "WAITING_AT_STATION", "ON_TRAIN", "ARRIVED"
+# How a passenger continues from their destination station.
+WALK, TAXI = "WALK", "TAXI"
+TAXI_DEMAND_SHARE = 0.25  # share of rail passengers wanting a taxi on arrival
 
 # Passengers aboard a train when it is full-ish, by train type (GTFS route
 # short name prefix); others use DEFAULT_LOAD. Tunable, not ticket data.
@@ -71,6 +74,8 @@ class RailPassenger:
     name: str = ""
     car: Optional[int] = None  # index into the train's composition vehicles while aboard
     promille: float = 0.0  # blood alcohol - the restaurant car
+    intent: str = WALK  # WALK or TAXI, decided when the journey is created
+    taxi_stand: object = None  # the existing TaxiStop nearest their destination station (TAXI only)
     id: int = field(default_factory=lambda: next(_passenger_ids))
 
 
@@ -102,8 +107,11 @@ def _seat(passenger: "RailPassenger", train, rng: random.Random) -> None:
 
 
 class PassengerFlow:
-    def __init__(self, seed: int = 0) -> None:
+    def __init__(self, seed: int = 0, stand_for=None) -> None:
+        """stand_for(station name) -> the existing taxi stand cached for
+        that station (or None) - see RailwayManager.station_stands."""
         self.seed = seed
+        self.stand_for = stand_for or (lambda station: None)
         # station -> train key -> passengers waiting for that train there
         self.waiting: Dict[str, Dict[Tuple[str, str], List[RailPassenger]]] = {}
         self.arrived: Dict[str, Deque[RailPassenger]] = {}
@@ -114,6 +122,14 @@ class PassengerFlow:
         # Same train on the same day -> the same passengers (debuggable).
         key = f"{self.seed}|{service.train_type}|{service.number}|{when:%Y-%m-%d}"
         return random.Random(zlib.crc32(key.encode()))
+
+    def _plan_onward(self, passenger: "RailPassenger", rng: random.Random) -> "RailPassenger":
+        """Walk or taxi from their destination; a taxi passenger keeps the
+        destination station's cached stand for the rest of the journey."""
+        if rng.random() < TAXI_DEMAND_SHARE:
+            passenger.intent = TAXI
+            passenger.taxi_stand = self.stand_for(passenger.destination)
+        return passenger
 
     @staticmethod
     def _count(service, when: datetime, share: float, rng: random.Random) -> int:
@@ -143,7 +159,9 @@ class PassengerFlow:
                 if destination_index < first_here:
                     continue  # already got off before the map
                 destination = calls[destination_index]
-                passenger = RailPassenger(calls[origin_index], destination, train_key(service), ON_TRAIN, name=_name(rng))
+                passenger = self._plan_onward(
+                    RailPassenger(calls[origin_index], destination, train_key(service), ON_TRAIN, name=_name(rng)), rng,
+                )
                 _seat(passenger, train, rng)
                 if passenger.car in _cars(train, "restaurant"):
                     # Been in the restaurant car for part of the journey already.
@@ -159,10 +177,10 @@ class PassengerFlow:
             waiting = self.waiting.setdefault(station, {}).setdefault(train_key(service), [])
             for _ in range(self._count(service, now, share, rng)):
                 destination = calls[rng.randrange(index + 1, len(calls))]
-                waiting.append(RailPassenger(
+                waiting.append(self._plan_onward(RailPassenger(
                     station, destination, train_key(service), WAITING, waiting_since=now, platform=platforms.get(station),
                     name=_name(rng),
-                ))
+                ), rng))
 
     def on_arrival(self, train, station: str, now: datetime) -> Tuple[List[RailPassenger], List[RailPassenger]]:
         """The train stopped at `station`: those going here get off first,

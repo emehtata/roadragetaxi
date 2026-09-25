@@ -2876,6 +2876,7 @@ def main() -> None:
             # visible. Same time scale the game clock uses for the spawn timer.
             with frame_profiler.section("trains"):
                 if railway_mgr.passenger_view is None:
+                    railway_mgr.associate_taxi_stands(taxi_mgr.taxi_stops)  # existing stands only
                     railway_mgr.passenger_view = StationPassengerView(
                         pedestrian_mgr, on_track=track_checker(railway_grid),
                     )
