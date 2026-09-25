@@ -446,6 +446,7 @@ def draw_tutorial_screen(
         ("V", tr(language, "speed_limiter")),
         ("B", tr(language, "red_assist")),
         ("N", "Navigointi" if language == "fi" else "Toggle navigation route"),
+        ("J", "Seuraava juna" if language == "fi" else "Toggle next train"),
         ("+ / -", tr(language, "zoom")),
         ("Esc", tr(language, "pause")),
         ("F1", tr(language, "help_short")),

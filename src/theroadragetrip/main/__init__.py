@@ -1272,6 +1272,7 @@ def main() -> None:
         red_light_assist_enabled = False
         show_compass = False
         show_navigation = False
+        show_next_train = False  # J: next arrival at the nearest station
         navigation_route = None
         navigation_target_key = None
         navigation_route_dirty = False
@@ -1633,6 +1634,8 @@ def main() -> None:
                         phone_open = not phone_open
                     elif event.key == pygame.K_c:
                         show_compass = not show_compass
+                    elif event.key == pygame.K_j:
+                        show_next_train = not show_next_train
                     elif event.key == pygame.K_n:
                         show_navigation = not show_navigation
                         logger.info(
@@ -3046,7 +3049,7 @@ def main() -> None:
                     hud_rects=hud_rects,
                     fuel_station_price_cents=nearby_fuel_price_cents,
                 )
-                next_train = railway_mgr.next_arrival(car.x, car.y, game_calendar.current)
+                next_train = railway_mgr.next_arrival(car.x, car.y, game_calendar.current) if show_next_train else None
                 if next_train is not None:
                     when, call = next_train
                     draw_next_train(
