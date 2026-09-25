@@ -266,13 +266,20 @@ def test_next_arrival_names_the_platform_track():
     assert (call.station, call.track, when) == ("Middle", "7", datetime(2026, 9, 28, 10, 0))
 
 
-def test_trains_stand_centred_on_the_platform_point_even_at_a_terminus():
-    line = [rail((5.0, -5000.0), (5.0, 10_300.0))]  # buffer stop 300 m past the platform point
+def test_terminating_train_runs_up_to_the_buffer_stop_else_stands_centred():
     ending = service("5", [("S", 30000, 30000, 1), ("M", 36000, 36000, 1)])
     through = service("8", [("S", 30000, 30000, 1), ("M", 36000, 36120, 1), ("N", 42000, 42000, 1)])
-    for journey, track in ((ending, line), (through, double_track_station())):
+    cases = (
+        (ending, [rail((5.0, -5000.0), (5.0, 10_300.0))], "buffer"),  # dead end 300 m past the platform point
+        (ending, [rail((5.0, -5000.0), (5.0, 25_000.0))], "centred"),  # terminates at a through station
+        (through, double_track_station(), "centred"),
+    )
+    for journey, track, expected in cases:
         manager = RailwayManager(track, timetable(journey), metres)
         manager.update(1 / 30, 2.0, datetime(2026, 9, 28, 10, 0, 30))  # game start: standing at M
         (train,) = manager.trains
         ys = [car[1] for car in train.cars()]
-        assert abs((ys[0] + ys[-1]) / 2 - 10_000) < 15, journey["number"]
+        if expected == "buffer":
+            assert abs(ys[0] + 12.0 - 10_300) < 1  # locomotive's nose at the buffer stop
+        else:
+            assert abs((ys[0] + ys[-1]) / 2 - 10_000) < 15, journey["number"]

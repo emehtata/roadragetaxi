@@ -56,6 +56,7 @@ class TrainRoute:
 
     points: List[Tuple[float, float]]
     cumulative: List[float] = field(default_factory=list)
+    ends_at_buffer: bool = False  # route ends at a terminus buffer stop
 
     def __post_init__(self) -> None:
         if not self.cumulative:
@@ -137,6 +138,8 @@ class Train:
         """Locomotive position that centres the train on the station - kept
         so the whole train stays on its route (a terminus/origin at the
         route's end or start)."""
+        if stop[7:8] == ("terminus",) and self.route.ends_at_buffer and self.direction > 0:
+            return self.route.length  # all the way to the buffer stop
         nose = stop[0] + self.direction * TRAIN_LENGTH_M / 2
         if self.direction > 0:
             return min(max(nose, min(TRAIN_LENGTH_M, self.route.length)), self.route.length)
@@ -325,6 +328,7 @@ WRONG_SIDE_PENALTY_M = 400.0
 # over a slightly shorter route (1 = a node 100 m early costs the same as
 # 100 m extra travel, which let trains stop well short of the platform).
 STOP_DISTANCE_WEIGHT = 4.0
+TERMINUS_SEARCH_M = 600.0  # how far past a terminus platform point to look for its buffer stop
 ENTRY_CANDIDATES = 3  # track dead ends tried per side when planning a train's path
 # A train whose journey ends here waits on its platform this long (game
 # time) at most for a departure from the same track, and gives up this
@@ -417,8 +421,17 @@ def plan_train_path(
     # the buffer stop) so the train can stand centred on the platform
     # rather than wholly before it.
     before = _continue_track(graph, nodes[1], nodes[0]) if starts_at_first and len(nodes) > 1 else []
-    after = _continue_track(graph, nodes[-2], nodes[-1]) if ends_at_last and len(nodes) > 1 else []
+    after, at_buffer = [], False
+    if ends_at_last and len(nodes) > 1:
+        # A terminus: follow the platform track on; if it ends at a buffer
+        # stop within TERMINUS_SEARCH_M the locomotive drives right up to
+        # it, else (a through station) just leave room to stand centred.
+        after = _continue_track(graph, nodes[-2], nodes[-1], TERMINUS_SEARCH_M)
+        at_buffer = len(graph.edges.get((after or nodes)[-1], {})) == 1
+        if not at_buffer:
+            after = _continue_track(graph, nodes[-2], nodes[-1])
     route = TrainRoute([points[n] for n in list(reversed(before)) + nodes + after])
+    route.ends_at_buffer = at_buffer
     stops: List[Optional[float]] = [None] * len(stations)
     if starts_at_first:
         stops[reachable[0]] = route.cumulative[len(before)]
