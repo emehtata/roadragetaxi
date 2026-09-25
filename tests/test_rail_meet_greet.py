@@ -14,6 +14,7 @@ from theroadragetrip.rail_bookings import (
     PASSENGER_MET,
     PASSENGER_WAITING,
     PICKUP_WINDOW,
+    TRAIN_ARRIVING,
     PREBOOKING_SURCHARGE_CENTS,
     RailBookingManager,
     waiting_booking,
@@ -375,3 +376,30 @@ def test_arrow_and_white_card_are_drawn_without_any_name_text():
     carded = _drawn(lambda screen: draw_pedestrians(screen, [player], 0.0, 0.0, font=NoText(), px_per_m=10.0,
                                                     screen_w=200, screen_h=200))
     assert _count(carded, (255, 255, 255)) > _count(plain, (255, 255, 255))
+
+
+def test_from_accepting_the_panel_says_who_off_which_train_and_where():
+    """Regression: after accepting a pre-booking nothing stayed on screen
+    until the passenger was already waiting at the stand."""
+    bookings = RailBookingManager(destination_for=lambda stand: DESTINATION)
+    service = SimpleNamespace(train_type="IC", number="57", seconds=66000)
+    train = SimpleNamespace(service=service, stops=((0.0, 60, "Oulu", 67320, 67380),), manifest={})
+    later, sooner = (
+        bookings.consider(RailPassenger("Helsinki", "Oulu", ("IC", "57"), ON_TRAIN, name=name, intent=TAXI,
+                                        taxi_stand=STAND), train, NOW - timedelta(minutes=22), Always())
+        for name in ("Eero Laine", "Aino Virtanen")
+    )
+    later.arrival_at += timedelta(minutes=30)
+    manager = taxi(bookings)
+    player = PlayerPedestrian(x=0.0, y=0.0)
+    assert manager.meet_prompt(player) is None  # pending: an offer in the phone, not a job yet
+
+    bookings.accept(later)
+    assert manager.meet_prompt(player) == (later, "meet_train_due")
+    bookings.accept(sooner)
+    assert manager.meet_prompt(player) == (sooner, "meet_train_due")  # the next train first
+    assert (sooner.passenger.name, sooner.train_number, sooner.station) == ("Aino Virtanen", "IC57", "Oulu")
+
+    sooner.status = TRAIN_ARRIVING
+    assert manager.meet_prompt(player) == (sooner, "meet_train_due")
+    assert manager.meet_booking() is None  # no card or greeting before they are off the train

@@ -174,6 +174,7 @@ from ..pedestrian import PedestrianManager, PlayerPedestrian
 from ..residents import ResidentManager
 from ..police import place_speed_cameras
 from ..roadworks import create_roadworks
+from ..rail_bookings import PASSENGER_MET, PASSENGER_WAITING
 from ..taxi import TaxiManager
 from ..tile_streaming import PBF_TILE_SIZE_M, set_tile_size_m
 from ..traffic_world import TrafficWorld
@@ -2813,7 +2814,8 @@ def main() -> None:
                 spatial_grid=spatial_grid,
             )
             meet_booking = taxi_mgr.meet_context()
-            if meet_booking is not None and meet_booking.passenger.pedestrian is not None:
+            if (meet_booking is not None and meet_booking.passenger.pedestrian is not None
+                    and meet_booking.status in (PASSENGER_WAITING, PASSENGER_MET)):  # not while still at their origin
                 draw_booked_passenger_arrow(screen, meet_booking.passenger.pedestrian, camx, camy, px_per_m)
             if show_debug_hud:
                 draw_logical_intersections(
@@ -3189,7 +3191,7 @@ def main() -> None:
                 draw_meet_panel(screen, [
                     tr(language, "meet_title", name=booking.passenger.name or "?"),
                     f"{booking.train_number} | {booking.station}",
-                    tr(language, action, station=booking.station),
+                    tr(language, action, station=booking.station, arrival=f"{booking.arrival_at:%H:%M}"),
                 ], SCREEN_W)
             elif start_hint_remaining > 0.0 and on_foot:
                 draw_game_start_hint(screen, font, SCREEN_W, tr(language, "hint_enter_taxi"))

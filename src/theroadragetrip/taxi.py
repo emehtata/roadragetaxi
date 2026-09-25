@@ -14,7 +14,7 @@ from .physics import (
 from .localization import tr
 from .fare import calculate_fare_cents, format_euros, tip_cents_from_happiness
 from .police import SpeedCamera, camera_sees_car
-from .rail_bookings import IN_TAXI, MISSED, PASSENGER_MET, waiting_booking
+from .rail_bookings import ACCEPTED, IN_TAXI, MISSED, PASSENGER_MET, TRAIN_ARRIVING, waiting_booking
 from .residents import MIN_UNACCOMPANIED_AGE, Resident, ResidentManager
 from .traffic_rules import nearest_traffic_light_ahead
 
@@ -271,13 +271,19 @@ class TaxiManager:
         return min(self.rail_bookings.waiting(), key=lambda booking: booking.arrival_at, default=None)
 
     def meet_context(self):
-        """The booking of the meet & greet in progress, from waiting at the
-        stand until the passenger is in the taxi: the one being met, or the
-        greeted one walking to the taxi."""
+        """The pre-booked pickup in progress, from accepting it until the
+        passenger is in the taxi: the greeted one walking to the taxi, the
+        one being met, else the next accepted one whose train is due."""
         booking = getattr(self.current_passenger, "rail_booking", None)
         if booking is not None and booking.status == PASSENGER_MET:
             return booking
-        return self.meet_booking()
+        booking = self.meet_booking()
+        if booking is not None or self.current_passenger is not None or self.rail_bookings is None:
+            return booking
+        return min(
+            (b for b in self.rail_bookings.bookings if b.status in (ACCEPTED, TRAIN_ARRIVING)),
+            key=lambda b: b.arrival_at, default=None,
+        )
 
     def meet_prompt(self, player: Any) -> Optional[Tuple[Any, str]]:
         """(booking, localization key of what the driver should do now) for
@@ -287,6 +293,8 @@ class TaxiManager:
             return None
         if booking.status == PASSENGER_MET:
             return booking, "meet_back_to_taxi" if self.driver_on_foot else "meet_passenger_to_taxi"
+        if booking.status in (ACCEPTED, TRAIN_ARRIVING):
+            return booking, "meet_train_due"
         if booking.passenger.pedestrian is None:
             return booking, "meet_go_to_stand"
         if not self.driver_on_foot:
