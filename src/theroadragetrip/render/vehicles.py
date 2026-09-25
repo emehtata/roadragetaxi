@@ -1411,3 +1411,36 @@ def draw_trains(
             )
             for end in (route.points[0], route.points[-1]):  # spawn / turnaround points
                 pygame.draw.circle(screen, (255, 0, 255), world_to_screen(*end, camx, camy, px_per_m, screen_w, screen_h), 6, 2)
+
+
+TRAIN_CAR_POPUP_ROWS = 14
+
+
+def draw_train_car_popup(screen, font, train, index: int, passengers, language: str, screen_w: int = SCREEN_W) -> None:
+    """Who is inside a clicked train car (train_passengers.in_car)."""
+    import pygame
+    from ..localization import tr
+
+    vehicles = train.composition.vehicles
+    profile = vehicles[min(index, len(vehicles) - 1)][1]
+    lines = [
+        f"{train.service.train_type} {train.service.number}  " if train.service else "",
+        f"{tr(language, 'train_car')} {index + 1}/{len(vehicles)}: {tr(language, 'car_profile_' + profile)}",
+        f"{len(passengers)} {tr(language, 'passengers_in_car')}",
+    ]
+    if train.service is not None and getattr(train.service, "origin", ""):
+        lines[0] += f"{train.service.origin} - {train.service.destination}"
+    for passenger in passengers[:TRAIN_CAR_POPUP_ROWS]:
+        drunk = f"  {tr(language, 'drunk')} {passenger.promille:.1f} ‰" if passenger.promille >= 0.5 else ""
+        lines.append(f"{passenger.name or '#' + str(passenger.id)}  -> {passenger.destination}{drunk}")
+    if len(passengers) > TRAIN_CAR_POPUP_ROWS:
+        lines.append(f"... +{len(passengers) - TRAIN_CAR_POPUP_ROWS}")
+    width = max(font.size(line)[0] for line in lines) + 32
+    height = 20 + len(lines) * 24
+    rect = pygame.Rect(screen_w - width - 24, 150, width, height)
+    shade = pygame.Surface(rect.size, pygame.SRCALPHA)
+    shade.fill((12, 30, 18, 235))
+    screen.blit(shade, rect.topleft)
+    pygame.draw.rect(screen, (90, 190, 110), rect, width=2, border_radius=6)
+    for row, line in enumerate(lines):
+        screen.blit(font.render(line, True, (235, 245, 235) if row else (255, 230, 120)), (rect.x + 16, rect.y + 10 + row * 24))

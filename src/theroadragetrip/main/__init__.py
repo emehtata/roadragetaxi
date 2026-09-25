@@ -118,6 +118,7 @@ from ..render import (
     draw_trains,
     draw_next_train,
     draw_camera_back_button,
+    draw_train_car_popup,
     draw_npc_spatial_grid,
     draw_npc_debug_overlay,
     draw_npc_debug_panel,
@@ -1295,6 +1296,7 @@ def main() -> None:
         pan_drag_pos = None  # last mouse position while Ctrl+dragging
         camera_back_rect = None  # the "back to taxi" button, while shown
         camera_view = None  # the focus camera's own position while not on the taxi
+        selected_train_car = None  # (train, vehicle index) whose passengers are listed
         running = True
         current_way = get_current_road_at_car(car, ways=ways, spatial_grid=spatial_grid, car_roads_only=True)
         min_px_per_m = minimum_px_per_m_for_viewport_width(screen_w=SCREEN_W, margin_m=30.0)
@@ -1574,10 +1576,18 @@ def main() -> None:
                         clicked_npc = None if selected_resident_id is not None else camera_focus_module.npc_at_screen_position(
                             npcs, event.pos, camx, camy, px_per_m, SCREEN_W, SCREEN_H,
                         )
+                        selected_train_car = None
                         if selected_resident_id is not None:
                             camera_focus = ("resident", selected_resident_id)
                         elif clicked_npc is not None:
                             camera_focus = ("npc", clicked_npc)
+                        else:
+                            # A train car: follow it and list who is inside.
+                            selected_train_car = railway_mgr.vehicle_at(*screen_to_world(
+                                event.pos[0], event.pos[1], camx, camy, px_per_m=px_per_m, screen_w=SCREEN_W, screen_h=SCREEN_H,
+                            ))
+                            if selected_train_car is not None:
+                                camera_focus = ("train", *selected_train_car)
                         if show_feature_inspector:
                             # RENDER-audit.md section 19.
                             world_x, world_y = screen_to_world(
@@ -1727,6 +1737,7 @@ def main() -> None:
                     elif event.key == pygame.K_ESCAPE:
                         if camera_focus is not None or selected_resident_id is not None:
                             camera_focus, selected_resident_id = None, None  # back to the taxi view
+                            selected_train_car = None
                             continue
                         # Pause menu with options: Continue Game, Change City, Exit Game
                         pause_options = [
@@ -2169,7 +2180,7 @@ def main() -> None:
                     running = False
 
             if camera_focus is not None:
-                focus_point = camera_focus_module.focus_target(camera_focus, pedestrian_mgr.pedestrians, npcs)
+                focus_point = camera_focus_module.focus_target(camera_focus, pedestrian_mgr.pedestrians, npcs, railway_mgr.trains)
                 if focus_point is None:
                     camera_focus = None  # followed car/resident is gone: back to the taxi
                 elif camera_focus[0] == "pan":
@@ -3113,6 +3124,8 @@ def main() -> None:
                     lines = [station] + board(tr(language, "next_trains"), arrivals, lambda call: call.origin)
                     lines += board(tr(language, "departing_trains"), departures, lambda call: call.destination)
                     draw_next_train(screen, font, "\n".join(lines), SCREEN_W)
+            if selected_train_car is not None and camera_focus is not None and camera_focus[0] == "train":
+                draw_train_car_popup(screen, font, *selected_train_car, railway_mgr.passengers.in_car(*selected_train_car), language, SCREEN_W)
             camera_back_rect = (
                 draw_camera_back_button(screen, font, tr(language, "back_to_taxi"), SCREEN_W) if camera_focus is not None else None
             )

@@ -120,3 +120,77 @@ def test_real_trains_carry_passengers_between_stations_on_the_map():
     arrived_b = list(flow.arrived.get("B", []))
     assert arrived_b and all(p.destination == "B" for p in arrived_b)
     assert flow.waiting_count("A") == flow.waiting_count("B") == flow.waiting_count("C") == 0
+
+
+# -- seats, the restaurant car and the car popup ---------------------------
+
+from theroadragetrip.train_compositions import TrainComposition  # noqa: E402
+
+
+def seated_train(number="1", calls=("X", "A", "B", "C", "D"), local=("A", "B", "C", "D")):
+    train = fake_train(number, calls, local)
+    train.composition = TrainComposition(((19.6, "locomotive"), (26.4, "standard"), (26.4, "restaurant"), (26.4, "standard")))
+    return train
+
+
+def test_every_passenger_has_a_name_and_a_seat_in_a_passenger_car():
+    flow = PassengerFlow()
+    train = seated_train()
+    flow.populate(train, NOON)
+    flow.on_arrival(train, "A", NOON)
+    assert aboard(train)
+    for passenger in aboard(train):
+        assert passenger.name and passenger.car in (1, 2, 3)  # never the locomotive (0)
+    assert sum(len(flow.in_car(train, car)) for car in (0, 1, 2, 3)) == len(aboard(train))
+    assert flow.in_car(train, 0) == []
+
+
+def test_restaurant_car_guests_drink_on_the_way_and_step_off_drunk():
+    from theroadragetrip.station_passengers import StationPassengerView
+    from theroadragetrip.train_passengers import DRUNK_FROM_PROMILLE
+    from tests.test_station_passengers import FakePedestrians
+
+    flow = PassengerFlow()
+    train = seated_train(calls=("A", "B", "C", "D", "E", "F", "G"), local=("A", "B", "C", "D", "E", "F", "G"))
+    flow.populate(train, NOON)
+    flow.on_arrival(train, "A", NOON)
+    diners = flow.in_car(train, 2)
+    others = [p for p in aboard(train) if p.car != 2]
+    for station in "BCDEF":
+        train.stop_index += 1
+        flow.on_arrival(train, station, NOON)
+    assert any(p.promille > 0 for p in diners)
+    assert all(p.promille == 0 for p in others)  # only the restaurant car serves
+    assert all(p.promille <= 3.0 for p in diners)
+
+    drunk = next(p for p in diners if p.promille >= DRUNK_FROM_PROMILLE)
+    peds = FakePedestrians([SimpleNamespace(points_m=[(0.0, -100.0), (0.0, 100.0)])])
+    drunk.platform = (0.0, 0.0)
+    StationPassengerView(peds).on_arrival([drunk], [], (0.0, 0.0), view_point=(0.0, 0.0))
+    (walker,) = peds.pedestrians
+    assert walker.is_drunk and walker.blood_alcohol_promille == drunk.promille
+
+
+def test_clicking_a_train_car_finds_that_car():
+    from theroadragetrip.trains import Train, TrainRoute
+
+    manager = RailwayManager([], None, None)
+    train = Train(TrainRoute([(0.0, 0.0), (1000.0, 0.0)]), 500.0, 1)
+    manager.trains.append(train)
+    cars = train.cars()
+    assert manager.vehicle_at(cars[2][0], cars[2][1] + 1.0) == (train, 2)
+    assert manager.vehicle_at(cars[2][0], 30.0) is None  # beside the track
+
+
+def test_car_popup_lists_its_passengers():
+    import pygame
+    from theroadragetrip.render.vehicles import draw_train_car_popup
+
+    pygame.init()
+    flow = PassengerFlow()
+    train = seated_train()
+    flow.populate(train, NOON)
+    diners = flow.in_car(train, 2)
+    screen = pygame.Surface((1280, 720))
+    draw_train_car_popup(screen, pygame.font.SysFont(None, 22), train, 2, diners, "fi", 1280)
+    assert pygame.transform.average_color(screen.subsurface((900, 150, 300, 60)))[:3] != (0, 0, 0)

@@ -21,12 +21,18 @@ def _vehicle_carrying(resident_id, npcs: Iterable):
     return None
 
 
-def focus_target(focus, pedestrians: Iterable, npcs) -> Optional[Tuple[float, float]]:
+def focus_target(focus, pedestrians: Iterable, npcs, trains=()) -> Optional[Tuple[float, float]]:
     """World point the focus is on now, or None when it is gone (the
     followed car left the world, the resident can't be found anywhere)."""
     kind = focus[0]
     if kind == "pan":
         return focus[1], focus[2]
+    if kind == "train":  # ("train", train, vehicle index): that car
+        train, index = focus[1], focus[2]
+        if any(candidate is train for candidate in trains):
+            cars = train.cars()
+            return cars[min(index, len(cars) - 1)][:2]
+        return None
     if kind == "npc":
         vehicle = focus[1]
         return (vehicle.x, vehicle.y) if any(npc is vehicle for npc in npcs) else None

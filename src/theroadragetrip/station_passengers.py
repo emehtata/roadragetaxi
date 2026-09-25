@@ -16,6 +16,7 @@ import random
 from typing import Callable, Iterable, List, Optional, Tuple
 
 from .pedestrian import closest_point_and_dist_to_segment
+from .train_passengers import DRUNK_FROM_PROMILLE
 
 VISIBLE_RADIUS_M = 250.0  # stations this close to the view show their passengers
 SYNC_INTERVAL_S = 1.0  # real seconds between visibility syncs
@@ -91,6 +92,12 @@ class StationPassengerView:
         if standing:
             pedestrian.speed = pedestrian.base_speed = 0.0
             pedestrian.held_by = self
+        elif getattr(passenger, "promille", 0.0) >= DRUNK_FROM_PROMILLE:
+            # Straight from the restaurant car: the pedestrian system's own drunk walk.
+            pedestrian.is_drunk = True
+            pedestrian.blood_alcohol_promille = passenger.promille
+            pedestrian.drunk_phase = self.rng.uniform(0.0, 2.0 * math.pi)
+            pedestrian.drunk_vomit_cooldown = self.rng.uniform(8.0, 25.0)
         self.pedestrians.pedestrians.append(pedestrian)
         passenger.pedestrian = pedestrian if standing else None  # walkers are the pedestrian system's now
         return True

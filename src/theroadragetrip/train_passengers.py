@@ -33,6 +33,13 @@ DEFAULT_LOAD = 60
 ORIGIN_BOARDING_SHARE = 0.8
 STOP_BOARDING_SHARE = 0.25
 ARRIVED_KEPT_PER_STATION = 200  # recent arrivals kept for the next phase / debug
+# Restaurant car: between stations a guest there has a drink with this
+# chance, adding this much blood alcohol (promille); stepping off at
+# DRUNK_FROM_PROMILLE or more they are a drunk pedestrian.
+DRINK_CHANCE_PER_LEG = 0.6
+DRINK_PROMILLE = (0.2, 0.7)
+MAX_PROMILLE = 3.0
+DRUNK_FROM_PROMILLE = 0.5
 
 
 def time_of_day_factor(when: datetime) -> float:
@@ -61,11 +68,37 @@ class RailPassenger:
     # always None on a train - data or NPC, never both.
     pedestrian: object = None
     resident_id: Optional[int] = None  # the resident they are shown as (kept across shows)
+    name: str = ""
+    car: Optional[int] = None  # index into the train's composition vehicles while aboard
+    promille: float = 0.0  # blood alcohol - the restaurant car
     id: int = field(default_factory=lambda: next(_passenger_ids))
 
 
 def train_key(service) -> Tuple[str, str]:
     return service.train_type, service.number
+
+
+def _name(rng: random.Random) -> str:
+    from .residents import FIRST_NAMES, SURNAMES
+
+    if not FIRST_NAMES or not SURNAMES:
+        return ""
+    return f"{rng.choice(FIRST_NAMES)['name']} {rng.choice(SURNAMES)['name']}"
+
+
+def _cars(train, profile: Optional[str] = None) -> List[int]:
+    """Indices of the train's passenger cars (all but locomotives), or of
+    those with a given visual profile."""
+    vehicles = getattr(getattr(train, "composition", None), "vehicles", ())
+    return [
+        index for index, (_, kind) in enumerate(vehicles)
+        if kind != "locomotive" and (profile is None or kind == profile)
+    ]
+
+
+def _seat(passenger: "RailPassenger", train, rng: random.Random) -> None:
+    cars = _cars(train)
+    passenger.car = rng.choice(cars) if cars else None
 
 
 class PassengerFlow:
@@ -110,7 +143,11 @@ class PassengerFlow:
                 if destination_index < first_here:
                     continue  # already got off before the map
                 destination = calls[destination_index]
-                passenger = RailPassenger(calls[origin_index], destination, train_key(service), ON_TRAIN)
+                passenger = RailPassenger(calls[origin_index], destination, train_key(service), ON_TRAIN, name=_name(rng))
+                _seat(passenger, train, rng)
+                if passenger.car in _cars(train, "restaurant"):
+                    # Been in the restaurant car for part of the journey already.
+                    passenger.promille = round(rng.uniform(0.0, 2.0), 2) if rng.random() < DRINK_CHANCE_PER_LEG else 0.0
                 train.manifest.setdefault(destination, []).append(passenger)
         # Waiting at this train's stops on the map (not its final one).
         platforms = {stop[2]: stop[5] for stop in train.stops[train.stop_index:] if len(stop) > 5}
@@ -124,12 +161,15 @@ class PassengerFlow:
                 destination = calls[rng.randrange(index + 1, len(calls))]
                 waiting.append(RailPassenger(
                     station, destination, train_key(service), WAITING, waiting_since=now, platform=platforms.get(station),
+                    name=_name(rng),
                 ))
 
     def on_arrival(self, train, station: str, now: datetime) -> Tuple[List[RailPassenger], List[RailPassenger]]:
         """The train stopped at `station`: those going here get off first,
         then those waiting here for *this* train get on. Returns (who got
         off, who got on) so their visible representation can follow."""
+        rng = random.Random(zlib.crc32(f"{self.seed}|{id(train)}|{station}|{now:%Y%m%d%H%M}".encode()))
+        self._drinks(train, rng)  # the leg that just ended
         leaving = train.manifest.pop(station, [])
         for passenger in leaving:
             passenger.state, passenger.arrived_at = ARRIVED, now
@@ -138,10 +178,31 @@ class PassengerFlow:
         boarding = self.waiting.get(station, {}).pop(train_key(train.service), []) if train.service else []
         for passenger in boarding:
             passenger.state = ON_TRAIN
+            _seat(passenger, train, rng)
             train.manifest.setdefault(passenger.destination, []).append(passenger)
+        for passenger in leaving:
+            passenger.car = None
         self.alighted_total += len(leaving)
         self.boarded_total += len(boarding)
         return leaving, boarding
+
+    @staticmethod
+    def _drinks(train, rng: random.Random) -> None:
+        restaurant = set(_cars(train, "restaurant"))
+        if not restaurant:
+            return
+        for group in train.manifest.values():
+            for passenger in group:
+                if passenger.car in restaurant and rng.random() < DRINK_CHANCE_PER_LEG:
+                    passenger.promille = min(MAX_PROMILLE, round(passenger.promille + rng.uniform(*DRINK_PROMILLE), 2))
+
+    @staticmethod
+    def in_car(train, car: int) -> List["RailPassenger"]:
+        """Who sits in one car of the train (for the car's popup)."""
+        return sorted(
+            (p for group in train.manifest.values() for p in group if p.car == car),
+            key=lambda p: (p.destination, p.name),
+        )
 
     def forget(self, train) -> List[RailPassenger]:
         """The train left the map: nobody can board it here any more.
