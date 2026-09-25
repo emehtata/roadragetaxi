@@ -51,22 +51,37 @@ def load_gig_odometer(path: Path, default: float = 0.0) -> float:
     return float(distance) if isinstance(distance, (int, float)) and distance >= 0 else default
 
 
-def load_gig_fuel(path: Path) -> Optional[float]:
-    """Fuel left in the tank at the end of the previous gig session, or
-    None (no save yet, or an older file without it) - keep the default."""
+def _load_gig_number(path: Path, key: str) -> Optional[float]:
+    """A saved non-negative number from the previous gig session, or None
+    (no save yet, or an older file without it) - keep the default."""
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
     except (FileNotFoundError, OSError, json.JSONDecodeError):
         return None
-    fuel = data.get("fuel_l") if isinstance(data, dict) else None
-    return float(fuel) if isinstance(fuel, (int, float)) and fuel >= 0 else None
+    value = data.get(key) if isinstance(data, dict) else None
+    return float(value) if isinstance(value, (int, float)) and value >= 0 else None
 
 
-def save_gig_odometer(path: Path, distance_m: float, fuel_l: Optional[float] = None) -> None:
-    """Persist the gig car between sessions: odometer, and fuel if given."""
+def load_gig_fuel(path: Path) -> Optional[float]:
+    """Fuel left in the tank at the end of the previous gig session."""
+    return _load_gig_number(path, "fuel_l")
+
+
+def load_gig_balance(path: Path) -> Optional[int]:
+    """Money (cents) left at the end of the previous gig session."""
+    balance = _load_gig_number(path, "balance_cents")
+    return None if balance is None else int(balance)
+
+
+def save_gig_odometer(
+    path: Path, distance_m: float, fuel_l: Optional[float] = None, balance_cents: Optional[int] = None,
+) -> None:
+    """Persist the gig car between sessions: odometer, and fuel/money if given."""
     data = {"odometer_m": max(0.0, distance_m)}
     if fuel_l is not None:
         data["fuel_l"] = max(0.0, fuel_l)
+    if balance_cents is not None:
+        data["balance_cents"] = max(0, int(balance_cents))
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary_path = path.with_suffix(".tmp")
     temporary_path.write_text(json.dumps(data, indent=2), encoding="utf-8")

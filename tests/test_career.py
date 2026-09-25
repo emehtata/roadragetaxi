@@ -79,3 +79,15 @@ def test_gig_fuel_persists_with_the_odometer(tmp_path):
     assert load_gig_fuel(path) == 17.5
     save_gig_odometer(path, 1234.0, fuel_l=-3.0)
     assert load_gig_fuel(path) == 0.0
+
+
+def test_gig_balance_persists_with_fuel_and_odometer(tmp_path):
+    from theroadragetrip.career import load_gig_balance, load_gig_fuel
+
+    path = tmp_path / "gig_odometer.json"
+    assert load_gig_balance(path) is None  # first session: start at 0 EUR
+    save_gig_odometer(path, 1234.0, fuel_l=17.5)
+    assert load_gig_balance(path) is None  # older saves without money stay valid
+    save_gig_odometer(path, 1234.0, 17.5, 4260)
+    assert load_gig_balance(path) == 4260
+    assert load_gig_fuel(path) == 17.5 and load_gig_odometer(path) == 1234.0

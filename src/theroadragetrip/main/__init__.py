@@ -30,6 +30,7 @@ from ..career import (
     gig_odometer_path,
     load_career,
     load_career_distance,
+    load_gig_balance,
     load_gig_fuel,
     load_gig_odometer,
     save_career,
@@ -798,6 +799,10 @@ def _load_world(
         language=language,
         resident_manager=residents,
     )
+    if career is None:
+        saved_balance_cents = load_gig_balance(gig_odometer_file)
+        if saved_balance_cents is not None:
+            taxi_mgr.balance_cents = saved_balance_cents
     speed_cameras = place_speed_cameras(
         ways,
         bounds,
@@ -3086,7 +3091,7 @@ def main() -> None:
                 total_distance_m=car.odometer_m,
             )
         elif career is None:
-            save_gig_odometer(gig_odometer_file, car.odometer_m, car.fuel_l)
+            save_gig_odometer(gig_odometer_file, car.odometer_m, car.fuel_l, taxi_mgr.balance_cents)
 
         if city_summary is not None:
             summary_city, summary_score, summary_fares, summary_next_city, summary_career_total = city_summary
