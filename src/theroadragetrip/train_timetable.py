@@ -28,11 +28,16 @@ except Exception:  # pragma: no cover - tzdata missing: DST handling degrades to
 logger = logging.getLogger(__name__)
 
 DEFAULT_TIMETABLE_PATH = Path(__file__).with_name("assets") / "railway_timetable.json.gz"
-SUPPORTED_VERSION = 1
+SUPPORTED_VERSION = 2
 # How close a train's station-to-station path must pass a route's midpoint.
 # Straight lines between stations cut corners, so this is generous; lines
 # closer together than this would share trains (Finnish lines rarely are).
 MATCH_RADIUS_M = 2000.0
+# Commuter lines run every few minutes around Helsinki; following only
+# long-distance trains keeps traffic (and the next-train box) meaningful.
+FOLLOWED_CATEGORIES = {"long_distance"}
+# A timetable station counts as on this map within this distance of a route.
+STATION_ON_ROUTE_M = 1500.0
 COMPASS = ("N", "NE", "E", "SE", "S", "SW", "W", "NW")
 
 
@@ -54,6 +59,23 @@ class ScheduledPass:
     def label(self) -> str:
         hours, rest = divmod(self.seconds, 3600)
         return f"{self.train_type} {self.number} {self.heading} {hours % 24:02d}:{rest // 60:02d}"
+
+
+@dataclass(frozen=True)
+class StationCall:
+    """One timetable train arriving at one station on this map."""
+
+    train_type: str
+    number: str
+    origin: str
+    destination: str
+    days: int
+    seconds: int  # GTFS arrival time at the station
+    station: str
+
+    @property
+    def label(self) -> str:
+        return f"{self.train_type} {self.number} {self.station}"
 
 
 def load_timetable(path: Optional[Path] = None) -> Optional[dict]:
@@ -106,13 +128,15 @@ def prepare_timetable(timetable: dict, to_metres: Callable[[float, float], Tuple
     """Each train's station path in world metres (with cumulative lengths
     and bbox) - route-independent, so done once per world load, not on
     every route rebuild. to_metres(lat, lon) -> (x east, y north)."""
-    stations = {code: to_metres(lat, lon) for code, (lat, lon) in timetable["stations"].items()}
+    stations = {code: to_metres(lat, lon) for code, (lat, lon, _) in timetable["stations"].items()}
     prepared = []
     for train in timetable["trains"]:
-        stops = [(stations[code], seconds) for code, seconds in train["stops"] if code in stations]
+        if train.get("category") not in FOLLOWED_CATEGORIES:
+            continue
+        stops = [(stations[code], seconds, code) for code, seconds in train["stops"] if code in stations]
         if len(stops) < 2:
             continue
-        path = [point for point, _ in stops]
+        path = [point for point, _, _ in stops]
         cumulative = [0.0]
         for a, b in zip(path, path[1:]):
             cumulative.append(cumulative[-1] + math.dist(a, b))
@@ -162,8 +186,38 @@ def match_timetable(
     return passes
 
 
+def station_calls(timetable: dict, prepared: list, routes: Sequence) -> List[Tuple[str, Tuple[float, float], List[StationCall]]]:
+    """(name, position, arrivals) for each timetable station within
+    STATION_ON_ROUTE_M of a train route - where passengers will get off.
+    Trains starting at a station bring nobody, so their first stop is
+    skipped. Built once per route rebuild."""
+    route_points = [point for route in routes for point in route.points]
+    if not route_points:
+        return []
+    minx = min(p[0] for p in route_points) - STATION_ON_ROUTE_M
+    maxx = max(p[0] for p in route_points) + STATION_ON_ROUTE_M
+    miny = min(p[1] for p in route_points) - STATION_ON_ROUTE_M
+    maxy = max(p[1] for p in route_points) + STATION_ON_ROUTE_M
+    near: Dict[str, Optional[Tuple[Tuple[float, float], List[StationCall]]]] = {}
+    for train, stops, _, _, _ in prepared:
+        for point, seconds, code in stops[1:]:
+            if code not in near:
+                if not (minx <= point[0] <= maxx and miny <= point[1] <= maxy) or not any(
+                    math.dist(point, p) <= STATION_ON_ROUTE_M for p in route_points
+                ):
+                    near[code] = None
+                    continue
+                near[code] = (point, [])
+            if near[code] is not None:
+                near[code][1].append(StationCall(
+                    train["type"], train["number"], train["origin"], train["destination"],
+                    train["days"], seconds, timetable["stations"][code][2],
+                ))
+    return [(timetable["stations"][code][2], point, calls) for code, entry in sorted(near.items()) if entry for point, calls in [entry]]
+
+
 class TimetableClock:
-    """Turns ScheduledPasses into concrete local times around the game
+    """Turns ScheduledPasses (or StationCalls) into concrete local times around the game
     date and hands out those crossed since the previous call - a bisect
     per frame, the day's list rebuilt only when the date changes."""
 

@@ -11,9 +11,11 @@ download fails, the existing file is left untouched and the error printed.
 
 Weekly model: one reference Monday-Sunday week inside the feed is taken,
 and every trip running on some day of it becomes one entry with a 7-day
-mask from GTFS calendar.txt + calendar_dates.txt (never guessed). Times
-are kept exactly as GTFS gives them: seconds after the service day's local
-"noon minus 12 h", which may exceed 24 h for trips past midnight.
+mask from GTFS calendar.txt + calendar_dates.txt (never guessed). Stop
+times (arrival; departure at the origin) are kept exactly as GTFS gives
+them: seconds after the service day's local "noon minus 12 h", which may
+exceed 24 h for trips past midnight. Each train keeps its GTFS category
+(long_distance / commuter) so the game can choose which to follow.
 """
 from __future__ import annotations
 
@@ -30,7 +32,9 @@ from typing import Dict, Iterable, List, Optional, Tuple
 
 GTFS_URL = "https://rata.digitraffic.fi/api/v1/trains/gtfs-passenger.zip"
 DEFAULT_OUTPUT = Path(__file__).resolve().parents[1] / "src" / "theroadragetrip" / "assets" / "railway_timetable.json.gz"
-FORMAT_VERSION = 1
+FORMAT_VERSION = 2  # 2: station names, arrival times, train category
+# GTFS extended route types used by Digitraffic.
+CATEGORIES = {"102": "long_distance", "109": "commuter"}
 WEEKDAYS = ("monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday")
 REQUEST_TIMEOUT_S = 120.0
 
@@ -126,7 +130,7 @@ def convert(zip_bytes: bytes, today: Optional[date] = None, downloaded_at: Optio
     for row in _rows(archive, "stop_times.txt"):
         if row["trip_id"] in trips:
             stop_times.setdefault(row["trip_id"], []).append(
-                (int(row["stop_sequence"]), station(row["stop_id"]), _seconds(row["departure_time"] or row["arrival_time"]))
+                (int(row["stop_sequence"]), station(row["stop_id"]), _seconds(row["arrival_time"] or row["departure_time"]))
             )
 
     merged: Dict[tuple, dict] = {}
@@ -141,6 +145,7 @@ def convert(zip_bytes: bytes, today: Optional[date] = None, downloaded_at: Optio
             continue
         merged[key] = {
             "type": train_type,
+            "category": CATEGORIES.get(routes[trip["route_id"]]["route_type"], "other"),
             "number": number,
             "origin": stops.get(sequence[0][0], {}).get("stop_name", sequence[0][0]),
             "destination": stops.get(sequence[-1][0], {}).get("stop_name", sequence[-1][0]),
@@ -150,7 +155,7 @@ def convert(zip_bytes: bytes, today: Optional[date] = None, downloaded_at: Optio
 
     used = {code for entry in merged.values() for code, _ in entry["stops"]}
     stations = {
-        code: [round(float(stops[code]["stop_lat"]), 6), round(float(stops[code]["stop_lon"]), 6)]
+        code: [round(float(stops[code]["stop_lat"]), 6), round(float(stops[code]["stop_lon"]), 6), stops[code]["stop_name"]]
         for code in sorted(used) if code in stops
     }
     trains = sorted(merged.values(), key=lambda e: (e["stops"][0][1], e["type"], e["number"], e["stops"][0][0]))

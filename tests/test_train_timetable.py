@@ -24,14 +24,17 @@ def metres(lat, lon):
 
 def timetable(*trains, stations=None):
     return {
-        "version": 1,
-        "stations": stations or {"S": [0.0, 0.0], "N": [0.2, 0.0], "W": [0.1, -0.1], "E": [0.1, 0.1]},
+        "version": 2,
+        "stations": stations or {"S": [0.0, 0.0, "South"], "N": [0.2, 0.0, "North"], "W": [0.1, -0.1, "West"], "E": [0.1, 0.1, "East"]},
         "trains": list(trains),
     }
 
 
-def train(stops, number="1", days=0b1111111, kind="IC"):
-    return {"type": kind, "number": number, "origin": stops[0][0], "destination": stops[-1][0], "days": days, "stops": [list(s) for s in stops]}
+def train(stops, number="1", days=0b1111111, kind="IC", category="long_distance"):
+    return {
+        "type": kind, "number": number, "category": category, "origin": stops[0][0], "destination": stops[-1][0],
+        "days": days, "stops": [list(s) for s in stops],
+    }
 
 
 NORTH_SOUTH_TRACK = [Railway(points_m=[(0.0, 5_000.0), (0.0, 15_000.0)])]  # route start = south end
@@ -55,7 +58,7 @@ def test_no_railway_means_no_trains_even_with_a_timetable():
 
 
 def test_timetable_trains_elsewhere_never_spawn():
-    far = timetable(train([("A", 36000), ("B", 37000)]), stations={"A": [5.0, 5.0], "B": [5.2, 5.0]})
+    far = timetable(train([("A", 36000), ("B", 37000)]), stations={"A": [5.0, 5.0, "A"], "B": [5.2, 5.0, "B"]})
     manager = RailwayManager(NORTH_SOUTH_TRACK, far, metres)
     run(manager, datetime(2026, 9, 28, 9, 0), 180)
     assert manager.trains == []
@@ -180,10 +183,11 @@ def _gtfs_zip() -> bytes:
 def test_importer_builds_weekly_masks_identities_and_merges_duplicate_runs():
     document = importer.convert(_gtfs_zip(), today=date(2026, 9, 25), downloaded_at="2026-09-25T00:00:00Z")
     assert document["reference_week"] == MONDAY.isoformat()
-    assert document["stations"] == {"HKI": [60.17, 24.94], "OL": [65.01, 25.48]}  # platforms -> station
+    assert document["stations"] == {"HKI": [60.17, 24.94, "Helsinki"], "OL": [65.01, 25.48, "Oulu"]}  # platforms -> station
     by_number = {t["number"]: t for t in document["trains"]}
     assert by_number["21"]["days"] == 0b1111011  # weekdays+weekend merged, Wednesday cancelled
     assert by_number["21"]["type"] == "IC" and by_number["21"]["origin"] == "Helsinki"
+    assert (by_number["21"]["category"], by_number["8193"]["category"]) == ("long_distance", "commuter")
     assert by_number["8193"]["type"] == "A" and by_number["8193"]["stops"][1] == ["OL", 24 * 3600 + 600]
 
 
@@ -219,3 +223,27 @@ def test_next_train_is_the_next_scheduled_pass_even_after_midnight():
     assert (when, service.number) == (datetime(2026, 9, 28, 10, 8, 20), "10")
     when, service = clock.next_after(datetime(2026, 9, 28, 23, 0))
     assert (when, service.number) == (datetime(2026, 9, 29, 1, 8, 20), "99")
+
+
+def test_commuter_trains_are_not_followed():
+    commuter = train([("S", 36000), ("N", 37000)], number="8193", kind="A", category="commuter")
+    manager = RailwayManager(NORTH_SOUTH_TRACK, timetable(commuter), metres)
+    run(manager, datetime(2026, 9, 28, 9, 0), 180)
+    assert manager.trains == [] and manager.stations == []
+
+
+def test_next_arrival_is_for_the_station_nearest_the_driver():
+    # Stations "M1" (y=6 km) and "M2" (y=14 km) lie on the track; the
+    # northbound train stops at both, the southbound one starts at M2.
+    stations = {"S": [0.0, 0.0, "South"], "M1": [0.06, 0.0, "Alpha"], "M2": [0.14, 0.0, "Beta"], "N": [0.2, 0.0, "North"]}
+    north = train([("S", 36000), ("M1", 36600), ("M2", 37800), ("N", 38400)], number="N1")
+    south = train([("M2", 39000), ("M1", 40000), ("S", 41000)], number="S1")
+    manager = RailwayManager(NORTH_SOUTH_TRACK, timetable(north, south, stations=stations), metres)
+    assert sorted(name for name, _, _ in manager.stations) == ["Alpha", "Beta"]
+
+    when, call = manager.next_arrival(0.0, 13_000.0, datetime(2026, 9, 28, 9, 0))  # driver near Beta
+    assert (call.station, call.number, when) == ("Beta", "N1", datetime(2026, 9, 28, 10, 30))
+    assert manager.next_arrival(0.0, 13_000.0, datetime(2026, 9, 28, 10, 31)) is not None
+    assert manager.next_arrival(0.0, 13_000.0, datetime(2026, 9, 28, 10, 31))[1].number == "N1"  # next day's run; S1 starts at Beta
+    when, call = manager.next_arrival(0.0, 7_000.0, datetime(2026, 9, 28, 10, 20))  # near Alpha
+    assert (call.station, call.number, when) == ("Alpha", "S1", datetime(2026, 9, 28, 11, 6, 40))

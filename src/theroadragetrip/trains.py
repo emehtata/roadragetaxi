@@ -16,7 +16,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Callable, Dict, List, Optional, Sequence, Tuple
 
-from .train_timetable import ScheduledPass, TimetableClock, match_timetable, prepare_timetable
+from .train_timetable import ScheduledPass, StationCall, TimetableClock, match_timetable, prepare_timetable, station_calls
 
 logger = logging.getLogger(__name__)
 
@@ -168,6 +168,8 @@ class RailwayManager:
         self.timetable = timetable
         self.to_metres = to_metres
         self.clock: Optional[TimetableClock] = None
+        # (station name, position, arrivals clock) for timetable stations on this map.
+        self.stations: List[Tuple[str, Tuple[float, float], TimetableClock]] = []
         self._prepared = prepare_timetable(timetable, to_metres) if timetable is not None and to_metres is not None else None
         self._spawn_timers: Dict[Tuple[int, int], float] = {}
         self.rebuild(railways)
@@ -178,6 +180,10 @@ class RailwayManager:
         self.routes = build_train_routes(railways)
         if self.timetable is not None and self.to_metres is not None:
             self.clock = TimetableClock(match_timetable(self.timetable, self.routes, prepared=self._prepared))
+            self.stations = [
+                (name, point, TimetableClock(calls))
+                for name, point, calls in station_calls(self.timetable, self._prepared, self.routes)
+            ]
             self._spawn_timers = {}
             logger.info(
                 "Railway timetable: %d of %d trains pass this map's routes",
@@ -192,6 +198,13 @@ class RailwayManager:
             "Railways: %d train routes (%s km), %d active trains",
             len(self.routes), ", ".join(f"{r.length / 1000:.1f}" for r in self.routes) or "-", len(self.trains),
         )
+
+    def next_arrival(self, x: float, y: float, now: datetime) -> Optional[Tuple[datetime, StationCall]]:
+        """Next timetable train arriving at the station nearest (x, y)."""
+        if not self.stations:
+            return None
+        _, _, clock = min(self.stations, key=lambda station: math.dist(station[1], (x, y)))
+        return clock.next_after(now)
 
     def update(self, dt: float, game_dt: float, now: Optional[datetime] = None) -> None:
         """dt moves trains (real seconds, like every vehicle); now (the

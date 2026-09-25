@@ -3046,13 +3046,13 @@ def main() -> None:
                     hud_rects=hud_rects,
                     fuel_station_price_cents=nearby_fuel_price_cents,
                 )
-                next_train = railway_mgr.clock.next_after(game_calendar.current) if railway_mgr.clock else None
+                next_train = railway_mgr.next_arrival(car.x, car.y, game_calendar.current)
                 if next_train is not None:
-                    when, service = next_train
+                    when, call = next_train
                     draw_next_train(
                         screen, font,
-                        f"{tr(language, 'next_train')}: {when:%H:%M} {service.train_type} {service.number} "
-                        f"{service.origin} – {service.destination}",
+                        f"{tr(language, 'next_train')} {call.station}: {when:%H:%M} {call.train_type} {call.number} "
+                        f"{call.origin} – {call.destination}",
                         SCREEN_W,
                     )
             if phone_open:
