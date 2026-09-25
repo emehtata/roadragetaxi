@@ -366,7 +366,7 @@ def advance_simulation(
     movement_distance = math.hypot(car.x - previous_position[0], car.y - previous_position[1])
     audio.update_engine(car.engine_on and not on_foot, car.speed, throttle)
     audio.set_loop("engine_idle", "vehicle.engine_idle", 0.45 if car.engine_on and abs(car.speed) <= 0.5 else 0.0)
-    audio.on_rise("tires", car.is_sliding, "vehicle.tire_squeal", min(1.0, 0.4 + abs(car.speed) / 25.0))
+    # Tyre squeal (vehicle.tire_squeal on car.is_sliding) is off for now: too annoying in play.
     audio.on_rise("brake", brake > 0.0 and abs(car.speed) > 8.0, "vehicle.brake_hard", 0.7)
     audio.update_comments(dt)
     driven_distance = math.hypot(car.x - previous_position[0], car.y - previous_position[1])
