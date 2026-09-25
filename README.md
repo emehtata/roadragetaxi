@@ -242,6 +242,11 @@ GitHub Actions builds the package on Windows with PyInstaller and attaches both 
 
 Game sounds are stored in `src/theroadragetrip/sounds/`. CC0 sounds require no attribution; the included `accelerate.aiff` is CC BY 3.0 and `city-traffic-outdoor.wav` is CC BY 4.0. Attribution details are recorded in the sounds directory license file.
 
+Bundled map and timetable data:
+
+- `src/theroadragetrip/assets/places.json` (airports and railway stations) is derived from OpenStreetMap data, © OpenStreetMap contributors, available under the [Open Database License (ODbL)](https://opendatacommons.org/licenses/odbl/); the file itself is likewise under the ODbL.
+- `src/theroadragetrip/assets/railway_timetable.json.gz` (passenger-train timetable): Source: Fintraffic / [digitraffic.fi](https://www.digitraffic.fi/), license [CC 4.0 BY](https://creativecommons.org/licenses/by/4.0/). Modified: converted from GTFS to a compact one-week timetable by `tools/import_railway_timetable.py`. The data is provided as is, without warranty.
+
 ---
 
 ## Controls

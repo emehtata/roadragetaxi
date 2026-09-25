@@ -157,6 +157,12 @@ def convert(zip_bytes: bytes, today: Optional[date] = None, downloaded_at: Optio
     return {
         "version": FORMAT_VERSION,
         "source": GTFS_URL,
+        # CC BY 4.0 (https://www.digitraffic.fi/en/terms-of-service/): keep
+        # attribution, licence link and a note of the changes with the data.
+        "attribution": "Source: Fintraffic / digitraffic.fi, license CC 4.0 BY",
+        "license": "https://creativecommons.org/licenses/by/4.0/",
+        "modifications": "Converted by Road Rage Trip from GTFS to a compact one-week timetable "
+                         "(station coordinates, per-train stop times and weekday masks); other fields dropped.",
         "feed_version": feed.get("feed_version", ""),
         "downloaded_at": downloaded_at or datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "valid_from": feed_start.isoformat(),
