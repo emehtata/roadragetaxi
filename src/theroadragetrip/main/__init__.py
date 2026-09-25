@@ -180,6 +180,7 @@ from ..weather import SPLASH_MIN_SPEED_MPS, WeatherSystem, weather_type_for_obse
 from .. import camera_focus as camera_focus_module
 from ..train_timetable import load_timetable
 from ..trains import RailwayManager
+from ..station_passengers import StationPassengerView, track_checker
 from ..world_places import load_places
 from ..weather_history import WeatherHistory, precipitation_from_observation
 
@@ -2860,6 +2861,11 @@ def main() -> None:
             # After bridge track, so a train crossing a rail bridge stays
             # visible. Same time scale the game clock uses for the spawn timer.
             with frame_profiler.section("trains"):
+                if railway_mgr.passenger_view is None:
+                    railway_mgr.passenger_view = StationPassengerView(
+                        pedestrian_mgr, on_track=track_checker(railway_grid),
+                    )
+                railway_mgr.view_point = (camx, camy)
                 railway_mgr.update(dt, dt * (1.0 if taxi_mgr.current_passenger else 60.0), game_calendar.current)
             with frame_profiler.section("render:trains"):
                 draw_trains(screen, railway_mgr, camx, camy, px_per_m=px_per_m, show_debug=show_debug_hud, font=font)

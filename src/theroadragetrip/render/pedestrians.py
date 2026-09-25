@@ -302,6 +302,11 @@ def draw_resident_popup(
             # only available via the vehicle's TripGroup (not the
             # Resident/Pedestrian, which only durably know the group id).
             lines.append(f"Toiminto: {getattr(trip_group, 'activity_type', None) or '-'}")
+    passenger = getattr(pedestrian, "rail_passenger", None)
+    if passenger is not None:
+        # Rail passenger (station_passengers.py): the journey behind the NPC.
+        lines.append(f"Junamatkustaja #{passenger.id}: {passenger.origin} -> {passenger.destination}")
+        lines.append(f"Juna {passenger.train[0]} {passenger.train[1]} - {passenger.state}")
     activity = getattr(pedestrian, "activity", None)
     if activity is not None:
         # residents-live.md ambient activities (bench sitting, phone

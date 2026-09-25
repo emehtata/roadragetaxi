@@ -496,6 +496,8 @@ class RailwayManager:
         self._paths: Dict[tuple, Optional[Tuple[TrainRoute, list]]] = {}  # per train pattern
         self._track_ends: List[int] = []
         self.passengers = PassengerFlow()
+        self.passenger_view = None  # station_passengers.StationPassengerView, set by main (needs pedestrians)
+        self.view_point: Optional[Tuple[float, float]] = None  # where the camera looks (visible passengers)
         self.trains: List[Train] = []
         self.timetable = timetable
         self.to_metres = to_metres
@@ -788,10 +790,13 @@ class RailwayManager:
         stop = train.next_stop
         if stop is None:
             return
-        off, on = self.passengers.on_arrival(train, stop[2], now)
+        leaving, boarding = self.passengers.on_arrival(train, stop[2], now)
+        if self.passenger_view is not None:
+            self.passenger_view.on_arrival(leaving, boarding, stop[5], self.view_point)
         logger.debug(
             "%s at %s: %d off, %d on, %d aboard, %d still waiting there", train.service.label, stop[2],
-            off, on, sum(len(group) for group in train.manifest.values()), self.passengers.waiting_count(stop[2]),
+            len(leaving), len(boarding), sum(len(group) for group in train.manifest.values()),
+            self.passengers.waiting_count(stop[2]),
         )
 
     def next_arrival(self, x: float, y: float, now: datetime) -> Optional[Tuple[datetime, StationCall]]:
@@ -821,8 +826,12 @@ class RailwayManager:
             if not train.reached_end or (train.service is None and id(train.route) in current):
                 kept.append(train)
             else:
-                self.passengers.forget(train)
+                dropped = self.passengers.forget(train)
+                if self.passenger_view is not None:
+                    self.passenger_view.dropped(dropped)
         self.trains = kept
+        if self.passenger_view is not None:
+            self.passenger_view.update(dt, self.passengers, [(name, point) for name, point, _ in self.stations], self.view_point)
         if self.clock is not None and now is not None:
             self._turn_around(now)
             game_speed = game_dt / dt if dt > 0.0 else 0.0

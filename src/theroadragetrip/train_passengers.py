@@ -14,10 +14,11 @@ phase.
 """
 from __future__ import annotations
 
+import itertools
 import random
 import zlib
 from collections import deque
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Deque, Dict, List, Optional, Tuple
 
@@ -43,7 +44,10 @@ def time_of_day_factor(when: datetime) -> float:
     return 1.0
 
 
-@dataclass
+_passenger_ids = itertools.count(1)
+
+
+@dataclass(eq=False)
 class RailPassenger:
     origin: str
     destination: str
@@ -51,6 +55,13 @@ class RailPassenger:
     state: str = WAITING
     waiting_since: Optional[datetime] = None
     arrived_at: Optional[datetime] = None
+    # Where at the station they wait / step off (the train's platform point).
+    platform: Optional[Tuple[float, float]] = None
+    # Their visible pedestrian while at a station (station_passengers.py);
+    # always None on a train - data or NPC, never both.
+    pedestrian: object = None
+    resident_id: Optional[int] = None  # the resident they are shown as (kept across shows)
+    id: int = field(default_factory=lambda: next(_passenger_ids))
 
 
 def train_key(service) -> Tuple[str, str]:
@@ -102,6 +113,7 @@ class PassengerFlow:
                 passenger = RailPassenger(calls[origin_index], destination, train_key(service), ON_TRAIN)
                 train.manifest.setdefault(destination, []).append(passenger)
         # Waiting at this train's stops on the map (not its final one).
+        platforms = {stop[2]: stop[5] for stop in train.stops[train.stop_index:] if len(stop) > 5}
         for station in local:
             index = calls.index(station) if station in calls else len(calls)
             if index >= len(calls) - 1:
@@ -110,11 +122,14 @@ class PassengerFlow:
             waiting = self.waiting.setdefault(station, {}).setdefault(train_key(service), [])
             for _ in range(self._count(service, now, share, rng)):
                 destination = calls[rng.randrange(index + 1, len(calls))]
-                waiting.append(RailPassenger(station, destination, train_key(service), WAITING, waiting_since=now))
+                waiting.append(RailPassenger(
+                    station, destination, train_key(service), WAITING, waiting_since=now, platform=platforms.get(station),
+                ))
 
-    def on_arrival(self, train, station: str, now: datetime) -> Tuple[int, int]:
+    def on_arrival(self, train, station: str, now: datetime) -> Tuple[List[RailPassenger], List[RailPassenger]]:
         """The train stopped at `station`: those going here get off first,
-        then those waiting here for *this* train get on. Returns (off, on)."""
+        then those waiting here for *this* train get on. Returns (who got
+        off, who got on) so their visible representation can follow."""
         leaving = train.manifest.pop(station, [])
         for passenger in leaving:
             passenger.state, passenger.arrived_at = ARRIVED, now
@@ -126,14 +141,17 @@ class PassengerFlow:
             train.manifest.setdefault(passenger.destination, []).append(passenger)
         self.alighted_total += len(leaving)
         self.boarded_total += len(boarding)
-        return len(leaving), len(boarding)
+        return leaving, boarding
 
-    def forget(self, train) -> None:
-        """The train left the map: nobody can board it here any more."""
+    def forget(self, train) -> List[RailPassenger]:
+        """The train left the map: nobody can board it here any more.
+        Returns those dropped (their pedestrians must go too)."""
         if train.service is None:
-            return
+            return []
+        dropped = []
         for station in {stop[2] for stop in train.stops}:
-            self.waiting.get(station, {}).pop(train_key(train.service), None)
+            dropped.extend(self.waiting.get(station, {}).pop(train_key(train.service), None) or ())
+        return dropped
 
     def waiting_count(self, station: str) -> int:
         return sum(len(group) for group in self.waiting.get(station, {}).values())

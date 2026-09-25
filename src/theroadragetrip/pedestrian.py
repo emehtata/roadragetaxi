@@ -2256,6 +2256,11 @@ class PedestrianManager:
                 if ped.activity is not None:
                     kept_peds.append(ped)
                     continue
+                # Owned by another system (e.g. a rail passenger waiting at
+                # a station): its owner decides when it goes.
+                if getattr(ped, "held_by", None) is not None:
+                    kept_peds.append(ped)
+                    continue
                 ped.door_grace_timer = max(0.0, ped.door_grace_timer - population_check_dt)
                 dist_sq = (ped.x - player_car.x) ** 2 + (ped.y - player_car.y) ** 2
                 outside_viewport = False

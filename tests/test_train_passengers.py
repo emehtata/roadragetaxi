@@ -45,7 +45,7 @@ def test_each_stop_lets_passengers_off_before_boarding_and_never_early():
     for index, station in enumerate(["A", "B", "C", "D"]):
         waiting_here = list(flow.waiting.get(station, {}).get(("IC", "1"), []))
         before = aboard(train)
-        off, on = flow.on_arrival(train, station, NOON)
+        off, on = (len(group) for group in flow.on_arrival(train, station, NOON))
         leaving = [p for p in before if p.destination == station]
         assert off == len(leaving) and all(p.state == ARRIVED for p in leaving)
         assert on == len(waiting_here) and all(p.state == ON_TRAIN for p in waiting_here)
