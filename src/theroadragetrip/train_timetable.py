@@ -67,6 +67,9 @@ class ScheduledPass:
     # (None where it starts / ends here): where it enters and leaves.
     came_from: Optional[Tuple[float, float]] = None
     going_to: Optional[Tuple[float, float]] = None
+    # Every station the whole journey stops at, in order (on this map or
+    # not): passenger origins/destinations come only from these.
+    calls: Tuple[str, ...] = ()
 
     @property
     def label(self) -> str:
@@ -244,6 +247,7 @@ def match_timetable(
                 heading=COMPASS[round(bearing / 45) % 8],
                 stops=tuple(route_stops),
                 came_from=came_from, going_to=going_to,
+                calls=tuple(timetable["stations"][stop[2]][2] for stop in stops if stop[4]),
             ))
     return passes
 

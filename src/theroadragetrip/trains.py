@@ -16,6 +16,7 @@ from dataclasses import dataclass, field, replace
 from datetime import datetime, timedelta
 from typing import Callable, Dict, List, Optional, Sequence, Tuple
 
+from .train_passengers import PassengerFlow
 from .train_timetable import ScheduledPass, StationCall, TimetableClock, match_timetable, prepare_timetable, station_calls
 
 logger = logging.getLogger(__name__)
@@ -110,6 +111,7 @@ class Train:
     stops: Optional[tuple] = None
     reached_end: bool = False  # ran off an end of its route this update
     waiting_for: Optional[tuple] = None  # (departure time, ScheduledPass) it will become
+    manifest: Dict[str, list] = field(default_factory=dict)  # destination -> passengers aboard (train_passengers.py)
 
     def __post_init__(self) -> None:
         if self.current_speed_mps is None:
@@ -122,14 +124,15 @@ class Train:
         """Timetable identity + state, for the debug overlay."""
         if self.service is None:
             return "shuttle"
+        aboard = f" P{sum(len(group) for group in self.manifest.values())}"
         if self.state == "WAITING" and self.waiting_for is not None:
             when, next_service = self.waiting_for
-            return f"{self.service.label} WAITING -> {next_service.train_type} {next_service.number} {when:%H:%M}"
+            return f"{self.service.label}{aboard} WAITING -> {next_service.train_type} {next_service.number} {when:%H:%M}"
         stop = self.next_stop
         if self.state == "DWELLING" and stop is not None:
             track = f" track {stop[6]}" if len(stop) > 6 and stop[6] else ""
-            return f"{self.service.label} DWELLING {stop[2]}{track} {self.dwell_remaining_s:.0f}s"
-        return f"{self.service.label} RUNNING" + (f" -> {stop[2]}" if stop is not None else " -> leaving")
+            return f"{self.service.label}{aboard} DWELLING {stop[2]}{track} {self.dwell_remaining_s:.0f}s"
+        return f"{self.service.label}{aboard} RUNNING" + (f" -> {stop[2]}" if stop is not None else " -> leaving")
 
     @property
     def next_stop(self):
@@ -492,6 +495,7 @@ class RailwayManager:
         self.graph = RailGraph()
         self._paths: Dict[tuple, Optional[Tuple[TrainRoute, list]]] = {}  # per train pattern
         self._track_ends: List[int] = []
+        self.passengers = PassengerFlow()
         self.trains: List[Train] = []
         self.timetable = timetable
         self.to_metres = to_metres
@@ -733,6 +737,8 @@ class RailwayManager:
         train.state, train.current_speed_mps = "DWELLING", 0.0
         until_departure = (when - now).total_seconds() if when is not None and now is not None else 0.0
         train.dwell_remaining_s = max(stops[0][1], until_departure)  # game seconds
+        if now is not None:
+            self._board_new(train, now)
         return True
 
     def _place_running_trains(self, now: datetime, game_speed: float) -> None:
@@ -766,8 +772,27 @@ class RailwayManager:
                 train.distance_m, train.current_speed_mps = stop_at, 0.0
                 train.state, train.dwell_remaining_s = "DWELLING", dwell_left
             self.trains.append(train)
+            self._board_new(train, now)
         if self.trains:
             logger.info("Railway start: %d trains placed on the map by the timetable", len(self.trains))
+
+    def _board_new(self, train: Train, now: datetime) -> None:
+        """A timetable train just came into being here: passengers already
+        aboard and waiting ahead; standing at a station, it has arrived."""
+        self.passengers.populate(train, now)
+        if train.state == "DWELLING":
+            self._arrived(train, now)
+
+    def _arrived(self, train: Train, now: datetime) -> None:
+        """TRAIN_ARRIVED_AT_STATION: alight, then board (train_passengers)."""
+        stop = train.next_stop
+        if stop is None:
+            return
+        off, on = self.passengers.on_arrival(train, stop[2], now)
+        logger.debug(
+            "%s at %s: %d off, %d on, %d aboard, %d still waiting there", train.service.label, stop[2],
+            off, on, sum(len(group) for group in train.manifest.values()), self.passengers.waiting_count(stop[2]),
+        )
 
     def next_arrival(self, x: float, y: float, now: datetime) -> Optional[Tuple[datetime, StationCall]]:
         """Next timetable train arriving at the station nearest (x, y)."""
@@ -786,12 +811,17 @@ class RailwayManager:
         kept = []
         for train in self.trains:
             train.reached_end = False
+            was_running = train.state == "RUNNING"
             train.update(dt, game_dt)
+            if was_running and train.state == "DWELLING" and now is not None and train.service is not None:
+                self._arrived(train, now)
             # A timetable train leaves the map at the end of its route; a
             # shuttle on a replaced route (more track streamed in) retires
             # at its next turnaround - at a track end, never mid-view.
             if not train.reached_end or (train.service is None and id(train.route) in current):
                 kept.append(train)
+            else:
+                self.passengers.forget(train)
         self.trains = kept
         if self.clock is not None and now is not None:
             self._turn_around(now)
@@ -812,6 +842,7 @@ class RailwayManager:
                     train.state = "DWELLING"
                     train.dwell_remaining_s = max(train.stops[0][1], (when - now).total_seconds())
                 self.trains.append(train)
+                self._board_new(train, now)
         for key in self._spawn_timers:
             self._spawn_timers[key] -= game_dt
             if self._spawn_timers[key] > 0.0 or len(self.trains) >= MAX_ACTIVE_TRAINS:
