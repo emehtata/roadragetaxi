@@ -246,6 +246,7 @@ Map, timetable and weather data:
 
 - `src/theroadragetrip/assets/places.json` (airports and railway stations) is derived from OpenStreetMap data, © OpenStreetMap contributors, available under the [Open Database License (ODbL)](https://opendatacommons.org/licenses/odbl/); the file itself is likewise under the ODbL.
 - `src/theroadragetrip/assets/railway_timetable.json.gz` (passenger-train timetable): Source: Fintraffic / [digitraffic.fi](https://www.digitraffic.fi/), license [CC 4.0 BY](https://creativecommons.org/licenses/by/4.0/). Modified: converted from GTFS to a compact one-week timetable by `tools/import_railway_timetable.py`. The data is provided as is, without warranty.
+- `src/theroadragetrip/assets/finnish_first_names.json.gz` and `finnish_surnames.json.gz` (resident names): Digital and Population Data Services Agency (DVV) name data, [nimipalvelu.dvv.fi](https://nimipalvelu.dvv.fi/), license [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/). Modified: converted to the game's JSON format.
 - Historical weather, forecasts and snow depth (opt-in, fetched from FMI at runtime and cached locally in `~/.cache/RoadRageTrip/weather_history.db`, not bundled): Finnish Meteorological Institute (FMI) open data, license [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/). Hourly values are resampled and combined from the nearest stations.
 
 These credits are also shown in the game on the loading, menu and pause screens.
