@@ -115,6 +115,7 @@ from ..render import (
     draw_logical_intersections,
     draw_activity_debug_panel,
     draw_npc_cars,
+    draw_trains,
     draw_npc_spatial_grid,
     draw_npc_debug_overlay,
     draw_npc_debug_panel,
@@ -174,6 +175,7 @@ from ..traffic_world import TrafficWorld
 from ..world_cache import WorldCacheManager, clear_world_cache
 from ..performance import MAP_SYNC_BUDGET_S, FrameProfiler
 from ..weather import SPLASH_MIN_SPEED_MPS, WeatherSystem, weather_type_for_observation
+from ..trains import RailwayManager
 from ..world_places import load_places
 from ..weather_history import WeatherHistory, precipitation_from_observation
 
@@ -1201,6 +1203,8 @@ def main() -> None:
         curbs = world.curbs
         railway_grid = world.railway_grid
         railways = world.railways
+        railway_mgr = RailwayManager(railways)
+        railway_mgr_source_count = len(railways)
         railing_grid = world.railing_grid
         railings = world.railings
         elements_count = world.elements_count
@@ -2393,6 +2397,11 @@ def main() -> None:
                 elif map_sync_stage == 8:
                     with frame_profiler.section("map_sync:railway_grid"):
                         railway_grid.rebuild(railways)
+                    if len(railways) != railway_mgr_source_count:
+                        # ~8 ms on Oulu's 95 km of track; only when track streamed in.
+                        with frame_profiler.section("map_sync:train_routes"):
+                            railway_mgr.rebuild(railways)
+                        railway_mgr_source_count = len(railways)
                     map_sync_stage = 9
                 elif map_sync_stage == 9:
                     with frame_profiler.section("map_sync:railing_grid"):
@@ -2800,6 +2809,10 @@ def main() -> None:
             draw_railways(
                 screen, railways, camx, camy, px_per_m=px_per_m, spatial_grid=railway_grid, only_bridges=True,
             )
+            # After bridge track, so a train crossing a rail bridge stays
+            # visible. Same time scale the game clock uses for the spawn timer.
+            railway_mgr.update(dt, dt * (1.0 if taxi_mgr.current_passenger else 60.0))
+            draw_trains(screen, railway_mgr, camx, camy, px_per_m=px_per_m, show_debug=show_debug_hud)
             # Price boards are gameplay-critical and must stay above both
             # ordinary buildings and the canopy overlay.
             draw_fuel_station_signs(

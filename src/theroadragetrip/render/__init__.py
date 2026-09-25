@@ -172,6 +172,7 @@ from .vehicles import (
     draw_headlight_beams,
     draw_logical_intersections,
     draw_npc_cars,
+    draw_trains,
     draw_npc_spatial_grid,
     draw_passenger_nausea_bubble,
     draw_police_cars,
