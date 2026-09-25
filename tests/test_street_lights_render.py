@@ -15,6 +15,14 @@ from theroadragetrip.render import draw_day_night_overlay, draw_street_lights, w
 def _one_frame_street_light_preparation(monkeypatch):
     """Single-call tests expect a finished job; budgeted tests override this."""
     monkeypatch.setattr(render.roads, "STREET_LIGHT_PREP_BUDGET_S", 10.0)
+    # Placement is time-budgeted too: on a slow run a single call could
+    # leave the job mid-way and read the previous test's lamps.
+    monkeypatch.setattr(render.roads, "STREET_LIGHT_CACHE_BUDGET_S", 10.0)
+    # Start from nothing: without a spatial grid the cache key is built from
+    # object ids, which Python reuses, so a previous test's cached frame
+    # (and lamps) could otherwise match this test's scene.
+    for name in ("_street_light_frame_cache_key", "_street_light_geometry_cache_key", "_street_light_geometry_wip"):
+        monkeypatch.setattr(render.roads, name, None)
 
 
 def test_lit_road_renders_neutral_light_without_yellow_pool():
