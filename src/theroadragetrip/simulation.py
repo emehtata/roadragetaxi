@@ -496,7 +496,7 @@ def advance_simulation(
     city_summary = None
     next_active_city_name = None
     if career is None and taxi_mgr.completed_fares > saved_gig_fares:
-        save_gig_odometer(gig_odometer_file, car.odometer_m, car.fuel_l)
+        save_gig_odometer(gig_odometer_file, car.odometer_m, car.fuel_l, taxi_mgr.balance_cents)
         saved_gig_fares = taxi_mgr.completed_fares
     if career is not None and taxi_mgr.total_score >= CAREER_SCORE_LIMIT:
         career_index = int(career["city_index"])
