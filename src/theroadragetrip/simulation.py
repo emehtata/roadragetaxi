@@ -233,6 +233,7 @@ def advance_simulation(
         player_pedestrian.x += math.cos(player_pedestrian.heading) * player_pedestrian.speed * dt
         player_pedestrian.y += math.sin(player_pedestrian.heading) * player_pedestrian.speed * dt
 
+    audio.player_position = (car.x, car.y)  # where the taxi's own sounds come from
     immobilized = taxi_mgr.tree_wait_timer > 0.0
     score_at_start = taxi_mgr.total_score
     loud_event = False  # a crash/camera/vomit sound already tells of this tick's lost points
@@ -487,11 +488,11 @@ def advance_simulation(
             player_car=car, pedestrian_mgr=pedestrian_mgr,
         )
     for x, y in npc_manager.accidents:
-        audio.play_group("collision.vehicle", max(0.15, 1.0 - math.hypot(x - car.x, y - car.y) / 200.0))
+        audio.play_group("collision.vehicle", at=(x, y))
     npc_manager.accidents.clear()
     if pedestrian_mgr.curses:
         x, y = pedestrian_mgr.curses[-1]  # one curse per tick is plenty
-        audio.play("censored-cursing", max(0.1, 0.8 - math.hypot(x - car.x, y - car.y) / 60.0))
+        audio.play("censored-cursing", 0.8, at=(x, y))
         pedestrian_mgr.curses.clear()
     vomited_passenger = taxi_mgr.take_vomited_passenger(car)
     if vomited_passenger is not None:

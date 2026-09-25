@@ -209,40 +209,42 @@ from .debug_tools import _screenshot_directory, _write_debug_snapshot, find_feat
 BBOX = DEFAULT_BBOX
 
 logger = logging.getLogger(__name__)
-TRAIN_HEARING_M = 300.0  # train sounds fade out over this distance from the camera
-STATION_HEARING_M = 250.0  # = station_passengers.VISIBLE_RADIUS_M: where its passengers are shown
-
-
-def _play_rail_sounds(audio, railway_mgr, camx: float, camy: float) -> None:
+def _play_rail_sounds(audio, railway_mgr) -> None:
     """Train arrivals/departures (one-shots) and the running-train and
-    station-crowd loops, by distance from the camera."""
+    station-crowd loops, each placed where it happens (audio fades them
+    with distance from the camera)."""
     for kind, x, y in railway_mgr.sound_events:
-        volume = max(0.0, 1.0 - math.hypot(x - camx, y - camy) / TRAIN_HEARING_M)
         if kind == "arrived":
-            audio.play_group("railway.train_brakes", volume)
-            audio.play_group("railway.train_doors", volume * 0.7, variation=1)  # doors open
+            audio.play_group("railway.train_brakes", at=(x, y))
+            audio.play_group("railway.train_doors", 0.7, variation=1, at=(x, y))  # doors open
         else:
-            audio.play_group("railway.train_doors", volume * 0.7, variation=0)  # warning beeps, doors close
-            audio.play_group("railway.train_horn", volume * 0.8)
+            audio.play_group("railway.train_doors", 0.7, variation=0, at=(x, y))  # warning beeps, doors close
+            audio.play_group("railway.train_horn", 0.8, at=(x, y))
     railway_mgr.sound_events.clear()
-    running = [0.0, 0.0]  # intercity layer, commuter layer
+    # Per layer (intercity, commuter), the train that sounds loudest here.
+    loudest = [(0.0, 0.0, None), (0.0, 0.0, None)]  # (heard level, volume, position)
     for train in railway_mgr.trains:
         if train.state != "RUNNING" or train.current_speed_mps < 2.0:
             continue
-        x, y = train.route.point_at(train.distance_m)[:2]
-        volume = max(0.0, 1.0 - math.hypot(x - camx, y - camy) / TRAIN_HEARING_M) * min(1.0, train.current_speed_mps / 20.0)
+        position = train.route.point_at(train.distance_m)[:2]
+        volume = min(1.0, train.current_speed_mps / 20.0)
+        heard = max(audio.levels("railway.train_running", volume, position))
         layer = 0 if train.service is not None and train.service.train_type == "IC" else 1
-        running[layer] = max(running[layer], volume)
-    audio.set_loop("train_intercity", "railway.train_running", running[0], variation=0)
-    audio.set_loop("train_commuter", "railway.train_running", running[1], variation=1)
-    crowd = 0.0
+        if heard > loudest[layer][0]:
+            loudest[layer] = (heard, volume, position)
+    for layer, key in enumerate(("train_intercity", "train_commuter")):
+        _, volume, position = loudest[layer]
+        audio.set_loop(key, "railway.train_running", volume, variation=layer, at=position)
+    crowd = (0.0, 0.0, None)
     for name, point, _, _ in railway_mgr.stations:
         waiting = railway_mgr.passengers.waiting_count(name)
         if waiting:
-            distance = math.hypot(point[0] - camx, point[1] - camy)
-            crowd = max(crowd, max(0.0, 1.0 - distance / STATION_HEARING_M) * min(1.0, waiting / 30.0))
-    audio.set_loop("station_crowd", "station.ambience", crowd * 0.6, variation=0)
-    audio.set_loop("station_luggage", "station.ambience", crowd * 0.4, variation=1)
+            volume = min(1.0, waiting / 30.0)
+            heard = max(audio.levels("station.ambience", volume, point))
+            if heard > crowd[0]:
+                crowd = (heard, volume, point)
+    audio.set_loop("station_crowd", "station.ambience", crowd[1] * 0.6, variation=0, at=crowd[2])
+    audio.set_loop("station_luggage", "station.ambience", crowd[1] * 0.4, variation=1, at=crowd[2])
 
 
 RAGE_SHOUTS = ("PRKL!", "STNA!", "VTTU!", "HLVT!", "KRPÄ!", "KSPÄ!", "PSKA!")
@@ -2210,6 +2212,7 @@ def main() -> None:
                 # clock at 120x and the rain twice as fast).
                 taxi_mgr.game_date = game_calendar.date
 
+                audio.listener = (camx, camy)  # spatial sounds fade with distance from the view
                 result = advance_simulation(
                     dt, command, car, world,
                     on_foot=on_foot,
@@ -2959,7 +2962,7 @@ def main() -> None:
                     )
                 railway_mgr.view_point = (camx, camy)
                 railway_mgr.update(dt, dt * (1.0 if taxi_mgr.has_active_job() else 60.0), game_calendar.current)
-                _play_rail_sounds(audio, railway_mgr, camx, camy)
+                _play_rail_sounds(audio, railway_mgr)
             with frame_profiler.section("render:trains"):
                 draw_trains(screen, railway_mgr, camx, camy, px_per_m=px_per_m, show_debug=show_debug_hud, font=font)
             # Price boards are gameplay-critical and must stay above both

@@ -2,15 +2,15 @@
 triggers and loops (no real mixer needed)."""
 from types import SimpleNamespace
 
-from theroadragetrip.audio import AudioManager
+from theroadragetrip.audio import SPATIAL_RANGES_M, AudioManager, spatial_levels
 
 
 class FakeChannel:
     def __init__(self):
         self.volume, self.busy = None, True
 
-    def set_volume(self, volume):
-        self.volume = volume
+    def set_volume(self, left, right=None):
+        self.volume = left if right is None or right == left else (left, right)
 
     def get_busy(self):
         return self.busy
@@ -34,6 +34,7 @@ def manager(groups):
     audio.enabled, audio.master_volume, audio.effects_volume, audio.music_volume = True, 1.0, 1.0, 1.0
     audio.groups = {gid: [FakeSound(log, f"{gid}#{i}") for i in range(n)] for gid, n in groups.items()}
     audio._last_variation, audio._edges, audio.loop_channels, audio.sounds = {}, {}, {}, {}
+    audio.listener = audio.player_position = None
     return audio, log
 
 
@@ -88,3 +89,28 @@ def test_engine_layers_crossfade_with_speed_and_stop_standing_still():
     assert set(playing()) == {"engine_2"} and playing()["engine_2"] == 0.7  # motorway: high revs, full throttle
     audio.update_engine(True, 0.0, throttle=1.0)
     assert playing() == {}  # standing still: the idle loop's job
+
+
+def test_distant_sounds_fade_gradually_to_silence_and_pan_to_their_side():
+    full_m, silent_m = SPATIAL_RANGES_M["railway.train_running"]
+    heard = [max(spatial_levels((0.0, 0.0), (0.0, d), full_m, silent_m)) for d in range(0, 260, 10)]
+    assert heard[0] == heard[1] == 1.0  # full volume up close
+    assert all(a >= b for a, b in zip(heard, heard[1:]))  # never louder further away
+    assert 0.1 < heard[5] < 0.5  # 50 m: clearly quieter, still there
+    assert heard[20] == 0.0 and heard[25] == 0.0  # 200 m and beyond: silent
+    left, right = spatial_levels((0.0, 0.0), (-40.0, 0.0), full_m, silent_m)
+    assert left > right > 0.0  # on the left, mostly from the left speaker
+
+
+def test_train_across_town_is_not_heard_but_the_taxi_is():
+    audio, log = manager({"railway.train_running": 2, "vehicle.engine_idle": 1})
+    audio.listener = audio.player_position = (0.0, 0.0)
+    audio.set_loop("train", "railway.train_running", 1.0, at=(2000.0, 0.0))
+    assert "train" not in audio.loop_channels
+    audio.set_loop("train", "railway.train_running", 1.0, at=(10.0, 0.0))
+    assert "train" in audio.loop_channels
+    audio.set_loop("idle", "vehicle.engine_idle", 0.5)  # at the taxi, under the camera
+    assert audio.loop_channels["idle"].volume == 0.5
+    audio.listener = (1000.0, 0.0)  # camera panned far away from the taxi
+    audio.set_loop("idle", "vehicle.engine_idle", 0.5)
+    assert "idle" not in audio.loop_channels

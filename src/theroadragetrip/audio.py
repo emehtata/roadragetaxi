@@ -19,6 +19,36 @@ logger = logging.getLogger(__name__)
 CATALOG = Path(__file__).with_name("assets") / "audio" / "audio_catalog.json"
 MIXER_CHANNELS = 48  # one-shots plus about a dozen simultaneous ambience loops
 
+# Sounds with a place in the world: (full volume within, silent beyond)
+# metres from the listener (the camera). Between the two the volume falls
+# like real sound (inverse distance), softly faded out over the last quarter.
+SPATIAL_RANGES_M = {
+    "railway.train_horn": (25.0, 400.0),
+    "railway.train_running": (15.0, 200.0),
+    "railway.train_brakes": (10.0, 150.0),
+    "railway.train_doors": (2.5, 30.0),
+    "collision.vehicle": (15.0, 250.0),
+    "station.ambience": (15.0, 150.0),
+    "censored-cursing": (3.0, 40.0),
+}
+# The taxi's own sounds come from the taxi: heard fully unless the camera
+# looks somewhere else (panning the view, following another car).
+PLAYER_SOUND_CATEGORIES = ("vehicle.", "collision.", "taxi.", "passenger.", "gameplay.")
+PLAYER_SOUND_RANGE_M = (20.0, 300.0)
+PAN_WIDTH_M = 60.0  # this far to the side is fully in one speaker
+
+
+def spatial_levels(listener, source, full_m: float, silent_m: float) -> tuple[float, float]:
+    """(left, right) gains 0..1 for a source seen from the listener."""
+    dx, dy = source[0] - listener[0], source[1] - listener[1]
+    distance = (dx * dx + dy * dy) ** 0.5
+    if distance >= silent_m:
+        return 0.0, 0.0
+    gain = full_m / max(full_m, distance)
+    gain *= min(1.0, (silent_m - distance) / (0.25 * silent_m))
+    pan = max(-1.0, min(1.0, dx / PAN_WIDTH_M)) * 0.8  # never fully out of one ear
+    return gain * min(1.0, 1.0 - pan), gain * min(1.0, 1.0 + pan)
+
 
 class AudioManager:
     """Load and play optional game sounds without making audio a runtime requirement."""
@@ -54,6 +84,8 @@ class AudioManager:
         self._edges: dict[str, bool] = {}
         self.loop_channels: dict[str, pygame.mixer.Channel] = {}
         self._step_timer = 0.0
+        self.listener: Optional[tuple[float, float]] = None  # camera centre, set by the game every frame
+        self.player_position: Optional[tuple[float, float]] = None  # the taxi, set every simulation tick
         self.speech_interval = random.uniform(speech_min_interval, speech_max_interval)
         self.speech_min_interval = speech_min_interval
         self.speech_max_interval = speech_max_interval
@@ -260,11 +292,31 @@ class AudioManager:
     def set_comments_enabled(self, enabled: bool) -> None:
         self.comments_enabled = enabled
 
-    def play_group(self, group_id: str, volume: float = 1.0, variation: Optional[int] = None) -> None:
+    def levels(self, sound_id: str, volume: float, at=None, music: bool = False) -> tuple[float, float]:
+        """(left, right) channel volume of a sound: the mixer volumes, and
+        for a sound with a place (`at`, or the taxi for its own sounds)
+        its distance and side from the listener."""
+        base = min(1.0, self.master_volume * (self.music_volume if music else self.effects_volume) * volume)
+        if sound_id in SPATIAL_RANGES_M:
+            full_m, silent_m = SPATIAL_RANGES_M[sound_id]
+        elif sound_id.startswith(PLAYER_SOUND_CATEGORIES):
+            full_m, silent_m = PLAYER_SOUND_RANGE_M
+            at = at or self.player_position
+        else:
+            return base, base
+        if at is None or self.listener is None:
+            return base, base
+        left, right = spatial_levels(self.listener, at, full_m, silent_m)
+        return base * left, base * right
+
+    def play_group(self, group_id: str, volume: float = 1.0, variation: Optional[int] = None, at=None) -> None:
         """One variation of a catalog group: the given one (0-based) or a
-        random one, never the same twice in a row."""
+        random one, never the same twice in a row; `at` = where it happens."""
         sounds = self.groups.get(group_id)
-        if not sounds or not self.enabled or volume <= 0.0:
+        if not sounds or not self.enabled:
+            return
+        left, right = self.levels(group_id, volume, at)
+        if max(left, right) <= 0.0:
             return
         if variation is None:
             choices = [i for i in range(len(sounds)) if i != self._last_variation.get(group_id)] or [0]
@@ -272,7 +324,7 @@ class AudioManager:
         self._last_variation[group_id] = variation
         channel = sounds[min(variation, len(sounds) - 1)].play()
         if channel is not None:
-            channel.set_volume(min(1.0, self.master_volume * self.effects_volume * volume))
+            channel.set_volume(left, right)
 
     def on_rise(self, key: str, active: bool, group_id: str, volume: float = 1.0) -> bool:
         """Play group_id when `active` turns true (not every frame it stays true)."""
@@ -282,12 +334,14 @@ class AudioManager:
             self.play_group(group_id, volume)
         return rose
 
-    def set_loop(self, key: str, group_id: str, volume: float, variation: int = 0, music: bool = False) -> None:
-        """Keep a looping layer of group_id running at `volume` (0 stops it).
-        Music-volume loops are the background beds; the rest are effects."""
+    def set_loop(self, key: str, group_id: str, volume: float, variation: int = 0, music: bool = False, at=None) -> None:
+        """Keep a looping layer of group_id running at `volume` (0 stops it),
+        placed at `at` when it has a place. Music-volume loops are the
+        background beds; the rest are effects."""
         channel = self.loop_channels.get(key)
         sounds = self.groups.get(group_id)
-        if volume <= 0.01 or not sounds or not self.enabled:
+        left, right = self.levels(group_id, volume, at, music)
+        if max(left, right) <= 0.01 or not sounds or not self.enabled:
             if channel is not None:
                 channel.stop()
                 del self.loop_channels[key]
@@ -297,7 +351,7 @@ class AudioManager:
             if channel is None:
                 return
             self.loop_channels[key] = channel
-        channel.set_volume(min(1.0, self.master_volume * (self.music_volume if music else self.effects_volume) * volume))
+        channel.set_volume(left, right)
 
     def update_ambience(
         self, night: float = 0.0, rain: float = 0.0, heavy_rain: float = 0.0, wind: float = 0.0,
@@ -332,11 +386,14 @@ class AudioManager:
             self.play_group("pedestrian.footsteps", 0.5, 3 if running else random.randrange(3))
             self._step_timer = 0.3 if running else 0.5
 
-    def play(self, name: str, volume: float = 1.0) -> None:
+    def play(self, name: str, volume: float = 1.0, at=None) -> None:
         sound = self.sounds.get(name)
-        if sound is not None and self.enabled:
-            sound.set_volume(self.master_volume * self.effects_volume * volume)
-            sound.play()
+        if sound is None or not self.enabled:
+            return
+        left, right = self.levels(name, volume, at)
+        channel = sound.play() if max(left, right) > 0.0 else None
+        if channel is not None:
+            channel.set_volume(left, right)
 
     def set_volume(self, kind: str, value: float) -> None:
         value = max(0.0, min(1.0, value))
