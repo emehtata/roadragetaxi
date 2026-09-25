@@ -29,6 +29,7 @@ from ..career import (
     career_path,
     gig_odometer_path,
     load_career,
+    load_career_balance,
     load_career_distance,
     load_gig_balance,
     load_gig_fuel,
@@ -811,6 +812,8 @@ def _load_world(
         saved_balance_cents = load_gig_balance(gig_odometer_file)
         if saved_balance_cents is not None:
             taxi_mgr.balance_cents = saved_balance_cents
+    else:
+        taxi_mgr.balance_cents = load_career_balance(career_file)
     speed_cameras = place_speed_cameras(
         ways,
         bounds,
@@ -1414,11 +1417,18 @@ def main() -> None:
         last_saved_balance_cents = taxi_mgr.balance_cents
         while running:
             raw_frame_ms = clock.tick_busy_loop(FPS)  # Precise pacing; real per-frame duration for the debug HUD
-            if career is None and taxi_mgr.balance_cents != last_saved_balance_cents:
+            if taxi_mgr.balance_cents != last_saved_balance_cents:
                 # Money must survive any exit, including the sys.exit()
                 # quit paths that skip the end-of-session save below.
                 last_saved_balance_cents = taxi_mgr.balance_cents
-                save_gig_odometer(gig_odometer_file, car.odometer_m, car.fuel_l, taxi_mgr.balance_cents)
+                if career is None:
+                    save_gig_odometer(gig_odometer_file, car.odometer_m, car.fuel_l, taxi_mgr.balance_cents)
+                elif city_summary is None:
+                    save_career(
+                        career_file, int(career["city_index"]), int(career["total_score"]),
+                        bool(career["completed"]), total_distance_m=car.odometer_m,
+                        balance_cents=taxi_mgr.balance_cents,
+                    )
             # advance() (not begin_frame() + a later end_frame()) - raw_frame_ms
             # describes the iteration that just finished, so it must be paired
             # with that iteration's sections before begin_frame() clears them
@@ -3103,6 +3113,7 @@ def main() -> None:
                 int(career["total_score"]),
                 bool(career["completed"]),
                 total_distance_m=car.odometer_m,
+                balance_cents=taxi_mgr.balance_cents,
             )
         elif career is None:
             save_gig_odometer(gig_odometer_file, car.odometer_m, car.fuel_l, taxi_mgr.balance_cents)

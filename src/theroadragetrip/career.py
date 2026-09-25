@@ -42,6 +42,13 @@ def load_career_distance(path: Path) -> float:
     return float(distance) if isinstance(distance, (int, float)) and distance >= 0 else 0.0
 
 
+def load_career_balance(path: Path) -> int:
+    """Career money (cents) carried from city to city; 0 for a new career
+    or an older save without it."""
+    balance = _load_gig_number(path, "balance_cents")
+    return 0 if balance is None else int(balance)
+
+
 def load_gig_odometer(path: Path, default: float = 0.0) -> float:
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
@@ -94,6 +101,7 @@ def save_career(
     total_score: int = 0,
     completed: bool = False,
     total_distance_m: float = 0.0,
+    balance_cents: int = 0,
 ) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary_path = path.with_suffix(".tmp")
@@ -104,6 +112,7 @@ def save_career(
                 "completed": completed,
                 "total_score": total_score,
                 "total_distance_m": max(0.0, total_distance_m),
+                "balance_cents": max(0, int(balance_cents)),
             },
             indent=2,
         ),

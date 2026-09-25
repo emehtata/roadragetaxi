@@ -91,3 +91,15 @@ def test_gig_balance_persists_with_fuel_and_odometer(tmp_path):
     save_gig_odometer(path, 1234.0, 17.5, 4260)
     assert load_gig_balance(path) == 4260
     assert load_gig_fuel(path) == 17.5 and load_gig_odometer(path) == 1234.0
+
+
+def test_career_balance_carries_over_and_new_career_starts_at_zero(tmp_path):
+    from theroadragetrip.career import load_career_balance
+
+    path = tmp_path / "career.json"
+    assert load_career_balance(path) == 0
+    save_career(path, 2, 9000, total_distance_m=1234.0, balance_cents=12345)
+    assert load_career_balance(path) == 12345
+    assert load_career(path, 5)["city_index"] == 2  # progress shape unchanged
+    save_career(path, 0)  # starting a new career
+    assert load_career_balance(path) == 0

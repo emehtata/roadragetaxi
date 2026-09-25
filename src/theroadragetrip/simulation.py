@@ -503,11 +503,17 @@ def advance_simulation(
         career_total_score = int(career["total_score"]) + taxi_mgr.total_score
         next_city_index = career_index + 1
         if next_city_index >= len(cities_list):
-            save_career(career_file, career_index, career_total_score, completed=True, total_distance_m=car.odometer_m)
+            save_career(
+                career_file, career_index, career_total_score, completed=True,
+                total_distance_m=car.odometer_m, balance_cents=taxi_mgr.balance_cents,
+            )
             city_summary = (chosen_city, taxi_mgr.total_score, taxi_mgr.completed_fares, None, career_total_score)
             should_stop = True
         else:
-            save_career(career_file, next_city_index, career_total_score, total_distance_m=car.odometer_m)
+            save_career(
+                career_file, next_city_index, career_total_score,
+                total_distance_m=car.odometer_m, balance_cents=taxi_mgr.balance_cents,
+            )
             next_city = list(reversed(cities_list))[next_city_index]
             next_active_city_name = next_city
             city_summary = (
