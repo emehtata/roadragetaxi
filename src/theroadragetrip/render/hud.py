@@ -8,6 +8,7 @@ from .common import (
     solar_altitude_and_events,
     world_to_screen,
 )
+import functools
 import math
 import os
 from typing import List, Optional, Tuple
@@ -19,6 +20,40 @@ from ..physics import Car, MAX_SPEED
 from ..taxi import TaxiManager, TaxiState
 from ..fare import format_euros
 from ..localization import tr
+
+
+@functools.lru_cache(maxsize=256)
+def render_tabular(font, text: str, color) -> "pygame.Surface":
+    """font.render() with every digit in a cell as wide as the widest
+    digit, so a box sized from it keeps its width while numbers tick
+    (the HUD font's digits are proportional). Handles newlines. Cached:
+    most HUD strings repeat frame to frame."""
+    import pygame
+
+    cell = max(font.size(digit)[0] for digit in "0123456789")
+    lines = []
+    for line in text.split("\n"):
+        pieces, x = [], 0
+        run = ""
+        for char in line + "\0":
+            if char.isdigit() or char == "\0":
+                if run:
+                    pieces.append((x, font.render(run, True, color)))
+                    x += font.size(run)[0]
+                    run = ""
+                if char != "\0":
+                    digit = font.render(char, True, color)
+                    pieces.append((x + (cell - digit.get_width()) // 2, digit))
+                    x += cell
+            else:
+                run += char
+        lines.append((max(1, x), pieces))
+    line_height = font.get_linesize()
+    surface = pygame.Surface((max(w for w, _ in lines), line_height * len(lines)), pygame.SRCALPHA)
+    for row, (_, pieces) in enumerate(lines):
+        for x, piece in pieces:
+            surface.blit(piece, (x, row * line_height))
+    return surface
 
 
 _day_night_overlay_cache = {}
@@ -431,7 +466,7 @@ def draw_hud(
         if temperature_c is not None:
             clock_text += f"  {temperature_c:+.1f} °C"
         clock_text += " *" if game_time_realtime else ""
-        clock_surface = font.render(clock_text, True, (255, 230, 120))
+        clock_surface = render_tabular(font, clock_text, (255, 230, 120))
         clock_rect = clock_surface.get_rect(topright=(screen_width - 12, 10))
         screen.blit(clock_surface, clock_rect)
 
@@ -488,7 +523,7 @@ def draw_hud(
         else f"{tr(language, 'career_meter')}: {career_total_distance_m / 1000.0:.1f} km   |   "
         f"{tr(language, 'trip_meter')}: {trip_s}"
     )
-    meter_surface = font.render(meter_s, True, (255, 245, 190))
+    meter_surface = render_tabular(font, meter_s, (255, 245, 190))
     meter_background = pygame.Surface((meter_surface.get_width() + 20, meter_surface.get_height() + 10), pygame.SRCALPHA)
     meter_background.fill((15, 20, 25, 210))
     meter_x, meter_y = layout["meters"]
@@ -548,7 +583,7 @@ def draw_hud(
             f"{tr(language, 'fares')}: {taxi_mgr.completed_fares} | "
             f"{tr(language, 'balance')}: {format_euros(taxi_mgr.balance_cents, language)}"
         )
-        score_surf = font.render(score_text, True, (255, 230, 110))
+        score_surf = render_tabular(font, score_text, (255, 230, 110))
         # The date was added after this score box and can be much wider
         # than the old time-only label. Anchor the score to the clock's
         # measured left edge instead of reserving a guessed 140 pixels;
@@ -561,7 +596,7 @@ def draw_hud(
         pygame.draw.rect(screen, (220, 180, 50), (score_rect.x - 6, score_rect.y - 3, score_rect.width + 12, score_rect.height + 6), 1, border_radius=3)
         screen.blit(score_surf, score_rect)
 
-        fps_surf = font.render(f"FPS: {fps:.1f}", True, (170, 245, 180))
+        fps_surf = render_tabular(font, f"FPS: {fps:.1f}", (170, 245, 180))
         fps_rect = fps_surf.get_rect(topright=(screen_width - 10, score_rect.bottom + 8))
         fps_bg = pygame.Surface((fps_rect.width + 12, fps_rect.height + 6), pygame.SRCALPHA)
         fps_bg.fill((20, 30, 25, 220))
@@ -570,7 +605,7 @@ def draw_hud(
         screen.blit(fps_surf, fps_rect)
 
         # Mission header bar
-        mission_surf = font.render(role_text, True, role_color)
+        mission_surf = render_tabular(font, role_text, role_color)
         m_rect = mission_surf.get_rect(topleft=(10, taxi_y))
         m_bg = pygame.Surface((m_rect.width + 12, m_rect.height + 6), pygame.SRCALPHA)
         m_bg.fill((25, 30, 35, 220))
@@ -600,7 +635,7 @@ def draw_hud(
             screen.blit(notif_surf, notif_rect)
 
     # Keep the rage face and meter together in the lower-right corner.
-    rage_text = font.render(f"{tr(language, 'rage_meter')}: {rage_power * 100:.0f}%", True, (255, 120, 100))
+    rage_text = render_tabular(font, f"{tr(language, 'rage_meter')}: {rage_power * 100:.0f}%", (255, 120, 100))
     rage_faces = _load_rage_face_frames(pygame)
     rage_face = None
     if rage_faces:
