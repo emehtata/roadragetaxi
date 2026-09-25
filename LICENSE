@@ -24,3 +24,8 @@ Sound files under `src/theroadragetrip/sounds/` are excluded from this MIT
 license. They are third-party assets provided under their respective licenses;
 see `src/theroadragetrip/sounds/LICENSE` for source, attribution, and license
 details.
+
+Data files listed in `src/theroadragetrip/assets/DATA_LICENSES.txt`
+(OpenStreetMap-derived `places.json`, Digitraffic-derived
+`railway_timetable.json.gz`) are likewise excluded from this MIT license and
+are provided under the licenses stated there (ODbL 1.0, CC BY 4.0).

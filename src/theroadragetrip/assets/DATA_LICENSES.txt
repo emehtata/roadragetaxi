@@ -1,0 +1,19 @@
+Third-party data in this directory (excluded from the project's MIT license)
+
+places.json
+  Airports and railway stations extracted from OpenStreetMap by
+  tools/osm/extract_places.py.
+  © OpenStreetMap contributors. Available under the Open Database License
+  (ODbL) 1.0: https://opendatacommons.org/licenses/odbl/
+  This derived database is likewise licensed under the ODbL.
+
+railway_timetable.json.gz
+  Source: Fintraffic / digitraffic.fi, license CC 4.0 BY
+  https://www.digitraffic.fi/  -  https://creativecommons.org/licenses/by/4.0/
+  Modified: converted from the passenger-train GTFS feed to a compact
+  one-week timetable by tools/import_railway_timetable.py. Provided as is,
+  without warranty.
+
+Weather shown in the game (not stored here) is Finnish Meteorological
+Institute (FMI) open data, CC BY 4.0, fetched at runtime when historical
+weather is enabled.
