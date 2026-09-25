@@ -20,7 +20,7 @@ finnish_first_names.json.gz, finnish_surnames.json.gz
   Population Data Services Agency (DVV), https://nimipalvelu.dvv.fi/ and
   https://avoindata.suomi.fi/. License CC BY 4.0:
   https://creativecommons.org/licenses/by/4.0/
-  Modified: converted to the game's JSON format.
+  Modified: the most common names selected and converted to the game's JSON format.
 
 Weather shown in the game (not stored here) is Finnish Meteorological
 Institute (FMI) open data, CC BY 4.0, fetched at runtime when historical
