@@ -18,6 +18,30 @@ _loading_background_cache = {}
 _loading_overlay_cache = {}
 _loading_font_cache = {}
 
+# Licence-required credits for the data the game shows (README "Bundled
+# map and timetable data"). Kept verbatim, not translated.
+DATA_CREDITS = (
+    "Map data © OpenStreetMap contributors, ODbL",
+    "Train timetables: Fintraffic / digitraffic.fi, CC BY 4.0 · Weather: Finnish Meteorological Institute (FMI), CC BY 4.0",
+)
+
+
+@functools.lru_cache(maxsize=4)
+def _data_credit_surfaces(size: int):
+    import pygame
+
+    credit_font = pygame.font.SysFont(None, size)
+    return tuple(credit_font.render(line, True, (185, 195, 205)) for line in DATA_CREDITS)
+
+
+def _draw_data_credits(screen, screen_h: int) -> None:
+    """Bottom-left, clear of the version label at bottom-right."""
+    lines = _data_credit_surfaces(18)
+    y = screen_h - 12 - sum(line.get_height() + 2 for line in lines)
+    for line in lines:
+        screen.blit(line, (12, y))
+        y += line.get_height() + 2
+
 
 def draw_loading_screen(
     screen,
@@ -62,6 +86,7 @@ def draw_loading_screen(
         screen.blit(overlay, (0, 0))
     else:
         screen.fill((20, 25, 30))
+    _draw_data_credits(screen, screen_h)
 
     if not show_details:
         return
@@ -289,6 +314,7 @@ def draw_city_selection_menu(
     hint_rect = hint_surf.get_rect(center=(screen_w // 2, screen_h - 35))
     screen.blit(hint_surf, hint_rect)
     _draw_version(screen, sub_font, screen_w, screen_h)
+    _draw_data_credits(screen, screen_h)  # above the menu dimming
 
 
 def draw_mode_selection_menu(screen, font, selected_idx: int, screen_w: int = SCREEN_W, screen_h: int = SCREEN_H, language: str = "fi") -> None:
@@ -314,6 +340,7 @@ def draw_mode_selection_menu(screen, font, selected_idx: int, screen_w: int = SC
     hint = pygame.font.SysFont(None, 18).render(tr(language, "language_hint"), True, (150, 175, 195))
     screen.blit(hint, hint.get_rect(center=(screen_w // 2, screen_h - 80)))
     _draw_version(screen, font, screen_w, screen_h)
+    _draw_data_credits(screen, screen_h)  # above the menu dimming
 
 
 def draw_city_summary(
@@ -520,6 +547,7 @@ def draw_pause_menu(
     h_rect = h_surf.get_rect(center=(screen_w // 2, panel_y + panel_h - 20))
     screen.blit(h_surf, h_rect)
     _draw_version(screen, font, screen_w, screen_h)
+    _draw_data_credits(screen, screen_h)  # above the menu dimming
 
 
 def draw_settings_menu(
