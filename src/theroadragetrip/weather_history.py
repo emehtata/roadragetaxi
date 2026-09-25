@@ -37,10 +37,13 @@ logger = logging.getLogger(__name__)
 FMI_WFS_URL = "https://opendata.fmi.fi/wfs"
 FMI_STORED_QUERY = "fmi::observations::weather::timevaluepair"
 FMI_PARAMETERS = ("t2m", "r_1h", "wawa", "snow_aws", "ws_10min", "wd_10min")
-# Around the city centre: ~55 km north-south, ~50 km east-west at 65 N -
-# wide enough that snow depth (few stations) is usually found.
-SEARCH_HALF_LAT_DEG = 0.25
-SEARCH_HALF_LON_DEG = 0.5
+# Around the city centre: ~65 km each way at 61-65 N. Many stations report
+# only temperature/wind (Sysmä's nearest, Luhanka 25 km, has no rain gauge
+# or present-weather sensor; the nearest with rain were 39-61 km away), and
+# snow depth is measured at few stations - each parameter still comes from
+# the nearest station that reported it.
+SEARCH_HALF_LAT_DEG = 0.6
+SEARCH_HALF_LON_DEG = 1.2
 FETCH_CHUNK_HOURS = 72  # one request per 3 days of hourly data
 REQUEST_TIMEOUT_S = 30.0
 FETCH_RETRY_DELAY_S = 60.0  # after a failed fetch (offline), wait before asking FMI again
@@ -255,11 +258,11 @@ class WeatherHistory:
                 cache_path.parent.mkdir(parents=True, exist_ok=True)
                 self._db = sqlite3.connect(str(cache_path), check_same_thread=False)
                 self._db.executescript(
-                    # _v2: wind added; chunks cached before it are fetched again.
-                    "CREATE TABLE IF NOT EXISTS weather_hours_v2 (location TEXT, hour INTEGER, temperature REAL,"
+                    # _v3: wind added, wider station search; older chunks are fetched again.
+                    "CREATE TABLE IF NOT EXISTS weather_hours_v3 (location TEXT, hour INTEGER, temperature REAL,"
                     " precipitation REAL, wawa INTEGER, snow_depth REAL, wind_speed REAL, wind_from REAL,"
                     " PRIMARY KEY (location, hour));"
-                    "CREATE TABLE IF NOT EXISTS fetched_chunks_v2 (location TEXT, chunk INTEGER,"
+                    "CREATE TABLE IF NOT EXISTS fetched_chunks_v3 (location TEXT, chunk INTEGER,"
                     " PRIMARY KEY (location, chunk));"
                 )
             except sqlite3.Error as exc:
@@ -338,11 +341,11 @@ class WeatherHistory:
             return False
         try:
             if self._db.execute(
-                "SELECT 1 FROM fetched_chunks_v2 WHERE location=? AND chunk=?", (self.location, chunk),
+                "SELECT 1 FROM fetched_chunks_v3 WHERE location=? AND chunk=?", (self.location, chunk),
             ).fetchone() is None:
                 return False
             rows = self._db.execute(
-                "SELECT hour, temperature, precipitation, wawa, snow_depth, wind_speed, wind_from FROM weather_hours_v2"
+                "SELECT hour, temperature, precipitation, wawa, snow_depth, wind_speed, wind_from FROM weather_hours_v3"
                 " WHERE location=? AND hour>=? AND hour<?",
                 (self.location, chunk * FETCH_CHUNK_HOURS, (chunk + 1) * FETCH_CHUNK_HOURS),
             ).fetchall()
@@ -386,13 +389,13 @@ class WeatherHistory:
                 if self._db is not None and complete:
                     try:
                         self._db.executemany(
-                            "INSERT OR REPLACE INTO weather_hours_v2 VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                            "INSERT OR REPLACE INTO weather_hours_v3 VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
                             [(self.location, hour, w.temperature_c, w.precipitation_mm, w.wawa, w.snow_depth_cm,
                               w.wind_speed_mps, w.wind_from_deg)
                              for hour, w in hours.items()],
                         )
                         self._db.execute(
-                            "INSERT OR REPLACE INTO fetched_chunks_v2 VALUES (?, ?)", (self.location, chunk),
+                            "INSERT OR REPLACE INTO fetched_chunks_v3 VALUES (?, ?)", (self.location, chunk),
                         )
                         self._db.commit()
                     except sqlite3.Error as exc:
