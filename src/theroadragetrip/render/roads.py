@@ -1503,7 +1503,10 @@ def draw_street_lights(
         if street_lighting_enabled
         else None
     )
-    common._street_light_frame_world_positions = []
+    # Not cleared here: a frame that only re-blits the cached surface (the
+    # rebuild-in-progress return below) keeps the last drawn lamps, which
+    # headlights (short vs long beams) and reflectors read. Cleared and
+    # refilled only where lamps are actually redrawn.
     global _street_light_geometry_cache_key, _street_light_geometry_cache
     # Geometry is keyed by completed grid revisions plus the committed
     # region, never by raw list growth or a per-frame region query. A job

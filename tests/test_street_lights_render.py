@@ -697,6 +697,46 @@ def test_v7_budgeted_grid_updates_ignore_raw_growth_and_match_full_result():
         pygame.quit()
 
 
+def test_lamp_positions_survive_frames_of_a_budgeted_rebuild():
+    """Regression: every frame of a multi-frame geometry rebuild (driving
+    into a new region) returned with the shared lamp-position list emptied,
+    so NPC headlights flipped between short (near a lamp) and long beams
+    and the lamp heads/reflectors drawn from that list blinked out."""
+    from theroadragetrip.render import roads as roads_module
+
+    pygame.init()
+    old_budget = roads_module.STREET_LIGHT_CACHE_BUDGET_S
+    try:
+        ways = [Way(points_m=[(0.0, float(y)), (100.0, float(y))],
+                    highway="tertiary", half_width_m=4.0, lit="yes") for y in range(-80, 81, 10)]
+        screen = pygame.Surface((400, 300), pygame.SRCALPHA)
+        grid = SpatialWayGrid(ways[:4])
+        roads_module._street_light_frame_cache_key = None
+        roads_module._street_light_geometry_cache_key = None
+        roads_module._street_light_geometry_wip = None
+        roads_module.STREET_LIGHT_CACHE_BUDGET_S = 10.0
+        for _ in range(100):
+            draw_street_lights(screen, ways, 50.0, 0.0, 0.0, px_per_m=2.0,
+                               screen_w=400, screen_h=300, spatial_grid=grid, buildings=[])
+            if roads_module._street_light_geometry_wip is None:
+                break
+        draw_street_lights(screen, ways, 50.0, 0.0, 0.0, px_per_m=2.0,
+                           screen_w=400, screen_h=300, spatial_grid=grid, buildings=[])
+        lamps = list(render._street_light_frame_world_positions)
+        assert lamps
+
+        roads_module.STREET_LIGHT_CACHE_BUDGET_S = 0.0  # the rebuild now takes many frames
+        grid.rebuild(ways)
+        for _ in range(3):
+            draw_street_lights(screen, ways, 50.0, 0.0, 0.0, px_per_m=2.0,
+                               screen_w=400, screen_h=300, spatial_grid=grid, buildings=[])
+            assert roads_module._street_light_geometry_wip is not None
+            assert render._street_light_frame_world_positions == lamps
+    finally:
+        roads_module.STREET_LIGHT_CACHE_BUDGET_S = old_budget
+        pygame.quit()
+
+
 def _v8_scene():
     """Crossing lit/unlit urban roads, buildings and explicit lamps."""
     from theroadragetrip.osm import Building
