@@ -87,8 +87,6 @@ Koska muut kuskit ovat idiootteja ja ajavat miten sattuu. Vähemmästäkin hermo
 │       │   ├── hud.py         # HUD, speedometer, rage face, day/night overlay, phone offers, frame profiler
 │       │   └── menus.py       # Loading, city/mode selection, pause, settings, tutorial, and city-editor screens
 │       ├── assets/         # Image sprites and chatter data
-│       │   ├── paikkadesi.json       # Country and city coordinates for future customization
-│       │   ├── paikkadesi.txt         # Source list for the city coordinate asset
 │       │   ├── passenger_chatter.json # 50 Finnish/English passenger lines
 │       │   └── driver_chatter.json    # Situation-specific driver lines
 │       ├── audio.py        # Optional music, effects, and situation chatter playback
@@ -215,7 +213,7 @@ sysmä = 61.502271, 25.680613
 
 The `[cities]` section accepts any city name followed by `latitude, longitude`. Invalid coordinate entries are ignored. Command-line flags override matching INI values for the current launch.
 
-The pause-menu **Settings** screen includes **City list**. Select a configured city, type a replacement, then choose a matching catalog suggestion with the mouse or Enter. The selected INI entry is replaced in place and saved immediately. Catalog names and coordinates are loaded from `src/theroadragetrip/assets/paikkadesi.json`.
+The pause-menu **Settings** screen includes **City list**. Select a configured city, type a replacement, then choose a matching catalog suggestion with the mouse or Enter. The selected INI entry is replaced in place and saved immediately. Catalog names and coordinates are loaded from `src/theroadragetrip/assets/kunnat.json.gz`.
 
 The `[map] overpass_endpoints` setting contains a comma-separated list of Overpass API URLs. The in-game **Asetukset / Settings** menu lets you edit this list; changes are saved immediately. The `OVERPASS_ENDPOINTS` environment variable still takes precedence for one launch.
 

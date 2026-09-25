@@ -290,17 +290,12 @@ def load_city_catalog(path: Path = CITY_CATALOG_PATH) -> dict[str, tuple[float, 
             data = json.load(source)
     else:
         data = json.loads(path.read_text(encoding="utf-8"))
-    if "places" in data:
-        return {
-            place["taajama"]: (
-                float(place["koordinaatit"]["latitude"]),
-                float(place["koordinaatit"]["longitude"]),
-            )
-            for place in data["places"]
-        }
     return {
-        city["name"]: (float(city["latitude"]), float(city["longitude"]))
-        for city in data.get("countries", {}).get("SUOMI", [])
+        place["taajama"]: (
+            float(place["koordinaatit"]["latitude"]),
+            float(place["koordinaatit"]["longitude"]),
+        )
+        for place in data.get("places", [])
     }
 
 
