@@ -57,6 +57,7 @@ class TrainRoute:
     points: List[Tuple[float, float]]
     cumulative: List[float] = field(default_factory=list)
     ends_at_buffer: bool = False  # route ends at a terminus buffer stop
+    starts_at_buffer: bool = False  # route starts at a (departure platform's) buffer stop
 
     def __post_init__(self) -> None:
         if not self.cumulative:
@@ -138,8 +139,10 @@ class Train:
         """Locomotive position that centres the train on the station - kept
         so the whole train stays on its route (a terminus/origin at the
         route's end or start)."""
-        if stop[7:8] in (("terminus",), ("positioning",)) and self.route.ends_at_buffer and self.direction > 0:
+        if stop[7:8] == ("terminus",) and self.route.ends_at_buffer and self.direction > 0:
             return self.route.length  # all the way to the buffer stop
+        if stop[7:8] == ("origin",) and self.route.starts_at_buffer and self.direction > 0:
+            return min(TRAIN_LENGTH_M, self.route.length)  # last car at the buffer stop
         nose = stop[0] + self.direction * TRAIN_LENGTH_M / 2
         if self.direction > 0:
             return min(max(nose, min(TRAIN_LENGTH_M, self.route.length)), self.route.length)
@@ -165,7 +168,7 @@ class Train:
             if self.dwell_remaining_s > 0.0:
                 return
             finished = self.next_stop
-            if finished is not None and finished[7:8] in (("terminus",), ("positioning",)):
+            if finished is not None and finished[7:8] == ("terminus",):
                 self.state = "TERMINATED"  # RailwayManager: wait for a next departure, or leave
                 return
             self.state, self.stop_index = "RUNNING", self.stop_index + 1
@@ -420,12 +423,13 @@ def plan_train_path(
     # A terminus / origin: carry the route on along the platform track (to
     # the buffer stop) so the train can stand centred on the platform
     # rather than wholly before it.
-    before = []
+    before, starts_at_buffer = [], False
     if starts_at_first and len(nodes) > 1:
         # Departing from a dead end: the route reaches back to the buffer
         # stop, under the whole train standing there (it just swaps ends).
         before = _continue_track(graph, nodes[1], nodes[0], TERMINUS_SEARCH_M)
-        if len(graph.edges.get((before or nodes)[-1], {})) != 1:
+        starts_at_buffer = len(graph.edges.get((before or nodes)[-1], {})) == 1
+        if not starts_at_buffer:
             before = _continue_track(graph, nodes[1], nodes[0])
     after, at_buffer = [], False
     if ends_at_last and len(nodes) > 1:
@@ -438,6 +442,7 @@ def plan_train_path(
             after = _continue_track(graph, nodes[-2], nodes[-1])
     route = TrainRoute([points[n] for n in list(reversed(before)) + nodes + after])
     route.ends_at_buffer = at_buffer
+    route.starts_at_buffer = starts_at_buffer
     stops: List[Optional[float]] = [None] * len(stations)
     if starts_at_first:
         stops[reachable[0]] = route.cumulative[len(before)]
@@ -673,12 +678,6 @@ class RailwayManager:
                 train.reverse_out()
             if train.state != "TERMINATED":
                 continue
-            if train.stops[train.stop_index][7:8] == ("positioning",):
-                when, service = train.waiting_for
-                if not self._become(train, service, when, now):
-                    train.waiting_for = None
-                    train.reverse_out()
-                continue
             _, _, station, _, _, _, track, _ = train.stops[train.stop_index][:8]
             train.waiting_for = next(
                 (
@@ -735,29 +734,6 @@ class RailwayManager:
         until_departure = (when - now).total_seconds() if when is not None and now is not None else 0.0
         train.dwell_remaining_s = max(stops[0][1], until_departure)  # game seconds
         return True
-
-    def _spawn_positioning(self, service: ScheduledPass, when: datetime) -> Optional[Train]:
-        """An empty train for a journey starting here: comes in from the
-        track end on its departure side (the yard, usually off-screen),
-        runs into its platform - to the buffer stop at a terminus - and
-        then becomes the departure (_turn_around). None if there is no
-        such way in (the train then just appears at its platform)."""
-        first = service.stops[0] if service.stops else None
-        if first is None or first[7] != "origin":
-            return None
-        for entry in self._track_ends_towards(service.going_to, None):
-            if entry is None:
-                break
-            planned = plan_train_path(self.graph, entry, entry, [first[5]], [first[6]], ends_at_last=True)
-            if planned is None or planned[1][0] is None:
-                continue
-            route, (along,) = planned
-            stop = (along, 0) + first[2:7] + ("positioning",)
-            train = Train(route, 0.0, 1, service=service, stops=(stop,))
-            train.waiting_for = (when, service)
-            train.distance_m = min(max(train._stop_position(stop) - APPROACH_DISTANCE_M, 0.0), route.length)
-            return train
-        return None
 
     def _place_running_trains(self, now: datetime, game_speed: float) -> None:
         """Game start: trains that by the timetable should already be on
@@ -827,10 +803,15 @@ class RailwayManager:
                     continue
                 if len(self.trains) >= MAX_ACTIVE_TRAINS or service.route_index >= len(self.routes):
                     continue
-                # A journey starting here with no train on its platform:
-                # the empty train drives in from the yard side first.
-                positioning = self._spawn_positioning(service, when)
-                self.trains.append(positioning or self._spawn(service))
+                train = self._spawn(service)
+                if train.stops and train.stops[0][7:8] == ("origin",):
+                    # A journey starting here with no train on its platform:
+                    # the train stands there - last car at a terminus's
+                    # buffer stop - until its departure.
+                    train.distance_m, train.current_speed_mps = train._stop_position(train.stops[0]), 0.0
+                    train.state = "DWELLING"
+                    train.dwell_remaining_s = max(train.stops[0][1], (when - now).total_seconds())
+                self.trains.append(train)
         for key in self._spawn_timers:
             self._spawn_timers[key] -= game_dt
             if self._spawn_timers[key] > 0.0 or len(self.trains) >= MAX_ACTIVE_TRAINS:

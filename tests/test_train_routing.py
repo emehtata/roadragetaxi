@@ -199,25 +199,21 @@ def test_train_terminating_at_a_dead_end_arrives_dwells_and_leaves_backwards():
     assert manager.trains == []  # left the map at the far (south) end
 
 
-def test_train_starting_at_a_terminus_drives_in_empty_then_departs_on_time():
-    starting = service("6", [("M", 36000, 36000, 1), ("S", 42000, 42000, 1)])  # departs M at 10:00
+def test_train_starting_at_a_terminus_stands_against_the_buffer_and_departs_on_time():
+    starting = service("6", [("M", 36000, 36000, 1), ("S", 42000, 42000, 1)])  # departs M at 10:00, southwards
     manager = RailwayManager(TERMINUS_LINE, timetable(starting), metres)
     now = datetime(2026, 9, 28, 8, 0)
     manager.update(1 / 30, 2.0, now)  # 60x clock
-    first_seen, dwelling_at, departed_at = None, None, None
+    first_seen, departed_at = None, None
     while now < datetime(2026, 9, 28, 11, 0) and departed_at is None:
         now += timedelta(seconds=2)
         manager.update(1 / 30, 2.0, now)
         if manager.trains and first_seen is None:
             first_seen = [car[1] for car in manager.trains[0].cars()]
-        if manager.trains:
-            train = manager.trains[0]
-            if train.state == "DWELLING" and train.service.stops[0][7] == "origin" and dwelling_at is None:
-                dwelling_at = now
-            if dwelling_at is not None and train.state == "RUNNING":
-                departed_at = now
-    assert first_seen is not None and max(first_seen) < 9_000  # appeared well away from the platform (not under the roof)
-    assert dwelling_at is not None and dwelling_at < datetime(2026, 9, 28, 10, 0)
+        if manager.trains and first_seen is not None and manager.trains[0].state == "RUNNING":
+            departed_at = now
+    # Last car against the buffer stop (y = 10 050), locomotive at the far end.
+    assert abs(first_seen[-1] + 12.0 - 10_050) < 1 and first_seen[0] < first_seen[-1]
     assert departed_at is not None and abs((departed_at - datetime(2026, 9, 28, 10, 0)).total_seconds()) < 5 * 60
 
 def test_arrived_train_waits_on_its_platform_and_becomes_the_next_departure_from_that_track():
