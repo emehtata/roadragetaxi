@@ -177,18 +177,18 @@ def draw_pedestrians(
             bubble_surf.blit(txt_surf, (4, 2))
             screen.blit(bubble_surf, (int(bx), int(by)))
 
-        # NPC-004 section 17: the smallest visual that reads as "annoyed" -
-        # a small persistent orange marker above the head (not a timed
-        # bubble like curse_timer above - an accident driver stays annoyed
-        # for as long as they're standing there, not just for an instant).
-        # No new render subsystem: same head-relative placement idiom as
-        # the cursing bubble just above.
-        if getattr(ped, "mood", "normal") == "annoyed":
-            mark_x = int(cx)
-            mark_y = int(cy - radius_px - 10)
-            pygame.draw.circle(screen, (235, 140, 30), (mark_x, mark_y), max(3, int(radius_px * 0.4)))
-            pygame.draw.line(screen, (40, 25, 10), (mark_x, mark_y - 3), (mark_x, mark_y + 1), 2)
-            pygame.draw.circle(screen, (40, 25, 10), (mark_x, mark_y + 3), 1)
+        # Only someone actually on the phone (after a crash: the driver
+        # calling for help) holds one - at the ear, beside the head.
+        activity = getattr(ped, "activity", None)
+        if getattr(activity, "plugin_id", None) == "phone_usage":
+            phone_x = head_x + side_x * radius_px * 0.55
+            phone_y = head_y + side_y * radius_px * 0.55
+            phone_w = max(2, int(radius_px * 0.3))
+            phone_h = max(3, int(radius_px * 0.5))
+            phone = pygame.Rect(0, 0, phone_w, phone_h)
+            phone.center = (int(phone_x), int(phone_y))
+            pygame.draw.rect(screen, (25, 25, 30), phone)
+            pygame.draw.rect(screen, (120, 200, 255), phone.inflate(-2, -2) if phone_w > 3 else phone.inflate(0, -2))
 
 
 def resident_at_screen_position(

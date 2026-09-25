@@ -1422,29 +1422,6 @@ def test_fanned_out_spawn_positions_never_land_inside_the_vehicle():
                 )
 
 
-def test_annoyed_mood_renders_a_visible_marker():
-    """NPC-004 section 17: an accident driver's "annoyed" mood must be
-    visually distinguishable from a normal pedestrian - the smallest
-    marker that satisfies this, not a new render subsystem."""
-    import pygame
-
-    pygame.init()
-    ground = Way(points_m=[(0.0, -50.0), (0.0, 50.0)], highway="footway", half_width_m=1.5, is_drivable=False)
-    normal = Pedestrian(0.0, 0.0, 0.0, 0.0, 1.0, ground, 0, 1, (200, 50, 50))
-    annoyed = Pedestrian(0.0, 0.0, 0.0, 0.0, 1.0, ground, 0, 1, (200, 50, 50))
-    annoyed.mood = "annoyed"
-
-    normal_screen = pygame.Surface((400, 400))
-    normal_screen.fill((0, 0, 0))
-    draw_pedestrians(normal_screen, [normal], camx=0.0, camy=0.0, px_per_m=8.0, ways=[ground], screen_w=400, screen_h=400)
-
-    annoyed_screen = pygame.Surface((400, 400))
-    annoyed_screen.fill((0, 0, 0))
-    draw_pedestrians(annoyed_screen, [annoyed], camx=0.0, camy=0.0, px_per_m=8.0, ways=[ground], screen_w=400, screen_h=400)
-
-    assert pygame.image.tostring(normal_screen, "RGB") != pygame.image.tostring(annoyed_screen, "RGB")
-
-
 def _v9_world(dedicated=True):
     from theroadragetrip.osm import SceneryObject
     from theroadragetrip.pedestrian import VENUE_TYPES
@@ -1657,3 +1634,29 @@ def test_v11_components_match_brute_force_and_follow_graph_rebuilds():
     # nodes or component entries behind: the next build starts from scratch.
     incremental.set_ways(ways[:10])
     assert len(incremental._component_parent) == len(incremental.nodes)
+
+
+def test_only_a_phone_user_draws_a_phone_next_to_the_head():
+    import pygame
+    from types import SimpleNamespace
+
+    pygame.init()
+    ground = Way(points_m=[(-50.0, 0.0), (50.0, 0.0)], highway="footway", half_width_m=5.0)
+
+    def draw(activity):
+        pedestrian = Pedestrian(0.0, 0.0, 0.0, 0.0, 1.0, ground, 0, 1, (200, 50, 50))
+        pedestrian.mood = "annoyed"
+        pedestrian.activity = activity
+        screen = pygame.Surface((400, 400))
+        draw_pedestrians(screen, [pedestrian], camx=0.0, camy=0.0, px_per_m=8.0, ways=[ground], screen_w=400, screen_h=400)
+        return screen
+
+    passenger = draw(None)
+    caller = draw(SimpleNamespace(plugin_id="phone_usage", data={}))
+    lit = [
+        (x, y) for x in range(400) for y in range(400)
+        if caller.get_at((x, y))[:3] == (120, 200, 255)
+    ]
+    assert lit and not any(passenger.get_at(p)[:3] == (120, 200, 255) for p in lit)
+    # Held at the head (screen centre 200,200), not floating off to one side.
+    assert all(abs(x - 200) <= 8 and abs(y - 200) <= 8 for x, y in lit)
