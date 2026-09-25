@@ -428,7 +428,7 @@ def draw_tutorial_screen(
             y += 21
         y += 10
 
-    control_font = pygame.font.SysFont("monospace", 18)
+    control_font = pygame.font.SysFont("monospace", 14)
     controls = [
         ("W / Up", tr(language, "drive")),
         ("S / Down", tr(language, "brake")),
@@ -447,6 +447,8 @@ def draw_tutorial_screen(
         ("B", tr(language, "red_assist")),
         ("N", "Navigointi" if language == "fi" else "Toggle navigation route"),
         ("J", "Seuraava juna" if language == "fi" else "Toggle next train"),
+        ("Ctrl+veto" if language == "fi" else "Ctrl+drag", "Panoroi näkymää" if language == "fi" else "Pan the view"),
+        ("Klikkaa" if language == "fi" else "Click", "Seuraa (ESC: taksi)" if language == "fi" else "Follow (ESC: taxi)"),
         ("+ / -", tr(language, "zoom")),
         ("Esc", tr(language, "pause")),
         ("F1", tr(language, "help_short")),
@@ -457,9 +459,12 @@ def draw_tutorial_screen(
     heading_surface = section_font.render(tr(language, "controls"), True, (255, 215, 95))
     screen.blit(heading_surface, (panel.x + 28, y))
     y += 30
-    column_count = 3
+    column_count = 4
     column_width = panel.width // column_count
     rows_per_column = (len(controls) + column_count - 1) // column_count
+    key_column_px = max(control_font.size(key)[0] for key, _ in controls) + 8
+    action_font = pygame.font.SysFont(None, 18)
+    row_step = max(control_font.get_linesize(), action_font.get_linesize())
     for row in range(rows_per_column):
         for column in range(column_count):
             index = row + column * rows_per_column
@@ -468,13 +473,13 @@ def draw_tutorial_screen(
             key, action = controls[index]
             column_x = panel.x + 28 + column * column_width
             key_surface = control_font.render(key, True, (255, 215, 95))
-            action_surface = pygame.font.SysFont(None, 18).render(action, True, (220, 228, 235))
+            action_surface = action_font.render(action, True, (220, 228, 235))
             screen.blit(key_surface, (column_x, y))
-            screen.blit(action_surface, (column_x + 82, y))
-        y += 18
+            screen.blit(action_surface, (column_x + key_column_px, y))
+        y += row_step
 
     hint = font.render(tr(language, "help_close"), True, (160, 190, 215))
-    screen.blit(hint, hint.get_rect(center=(screen_w // 2, panel.bottom - 25)))
+    screen.blit(hint, hint.get_rect(center=(screen_w // 2, panel.bottom - 14)))
 
 
 def draw_pause_menu(
