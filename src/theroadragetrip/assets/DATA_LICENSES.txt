@@ -22,6 +22,15 @@ finnish_first_names.json.gz, finnish_surnames.json.gz
   https://creativecommons.org/licenses/by/4.0/
   Modified: the most common names selected and converted to the game's JSON format.
 
+kunnat.json.gz
+  Finnish municipalities and urban areas (population, age structure, land
+  area, coordinates) compiled from Wikipedia, © Wikipedia contributors,
+  https://fi.wikipedia.org/. License CC BY-SA 4.0:
+  https://creativecommons.org/licenses/by-sa/4.0/
+  Modified: tables combined (matched by municipality name, population
+  density computed) and converted to the game's JSON format. This file is
+  likewise licensed under CC BY-SA 4.0.
+
 Weather shown in the game (not stored here) is Finnish Meteorological
 Institute (FMI) open data, CC BY 4.0, fetched at runtime when historical
 weather is enabled.

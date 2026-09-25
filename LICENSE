@@ -28,5 +28,6 @@ details.
 Data files listed in `src/theroadragetrip/assets/DATA_LICENSES.txt`
 (OpenStreetMap-derived `places.json`, Digitraffic-derived
 `railway_timetable.json.gz`, DVV name lists `finnish_first_names.json.gz` and
-`finnish_surnames.json.gz`) are likewise excluded from this MIT license and
-are provided under the licenses stated there (ODbL 1.0, CC BY 4.0).
+`finnish_surnames.json.gz`, Wikipedia-derived `kunnat.json.gz`) are likewise
+excluded from this MIT license and are provided under the licenses stated
+there (ODbL 1.0, CC BY 4.0, CC BY-SA 4.0).
