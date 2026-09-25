@@ -1411,8 +1411,14 @@ def main() -> None:
             )
             return
 
+        last_saved_balance_cents = taxi_mgr.balance_cents
         while running:
             raw_frame_ms = clock.tick_busy_loop(FPS)  # Precise pacing; real per-frame duration for the debug HUD
+            if career is None and taxi_mgr.balance_cents != last_saved_balance_cents:
+                # Money must survive any exit, including the sys.exit()
+                # quit paths that skip the end-of-session save below.
+                last_saved_balance_cents = taxi_mgr.balance_cents
+                save_gig_odometer(gig_odometer_file, car.odometer_m, car.fuel_l, taxi_mgr.balance_cents)
             # advance() (not begin_frame() + a later end_frame()) - raw_frame_ms
             # describes the iteration that just finished, so it must be paired
             # with that iteration's sections before begin_frame() clears them
