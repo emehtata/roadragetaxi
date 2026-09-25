@@ -173,6 +173,7 @@ from ..traffic_world import TrafficWorld
 from ..world_cache import WorldCacheManager, clear_world_cache
 from ..performance import MAP_SYNC_BUDGET_S, FrameProfiler
 from ..weather import SPLASH_MIN_SPEED_MPS, WeatherSystem, weather_type_for_observation
+from ..world_places import load_places
 from ..weather_history import WeatherHistory, precipitation_from_observation
 
 from .cli import configure_logging, parse_args
@@ -197,6 +198,7 @@ BBOX = DEFAULT_BBOX
 logger = logging.getLogger(__name__)
 RAGE_SHOUTS = ("PRKL!", "STNA!", "VTTU!", "HLVT!", "KRPÄ!", "KSPÄ!", "PSKA!")
 RAGE_SHOUT_COST = 0.25
+NEARBY_PLACES_RADIUS_M = 50_000.0  # airports/stations logged at city start
 # F5 activity debug panel's force-an-activity testing keys (residents-
 # live.md section 18) - number key N forces the Nth plugin listed in the
 # panel (registry.all_plugins() order) onto the selected resident.
@@ -791,6 +793,12 @@ def _load_world(
     city_center = city_centers.get(chosen_city)
     if city_center is not None:
         residents.set_city_center_latlon(*city_center)
+    # Build-time dataset (tools/osm/extract_places.py), not the PBF.
+    nearby_places = load_places().within(sun_latitude, sun_longitude, NEARBY_PLACES_RADIUS_M)
+    logger.info(
+        "World places within %.0f km: %s", NEARBY_PLACES_RADIUS_M / 1000.0,
+        ", ".join(f"{place.name} ({place.type})" for place in nearby_places) or "none",
+    )
     taxi_mgr = TaxiManager(
         ways,
         places=places,
