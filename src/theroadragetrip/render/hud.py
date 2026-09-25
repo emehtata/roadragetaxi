@@ -995,3 +995,17 @@ def draw_npc_debug_overlay(
         target = driver.path[driver.path_index]
         tx, ty = world_to_screen(target.x, target.y, camx, camy, px_per_m, screen_w, screen_h)
         pygame.draw.circle(screen, (255, 220, 80), (int(tx), int(ty)), 4, 1)
+
+
+def draw_next_train(screen, font, text: str, screen_width: int, top: int = 116) -> None:
+    """Next timetable train through the map (trains.py), under the speed
+    sign, so the driver can head for the station in time."""
+    import pygame
+
+    surface = render_tabular(font, text, (200, 225, 255))
+    rect = surface.get_rect(topright=(screen_width - 10, top))
+    background = pygame.Surface((rect.width + 12, rect.height + 6), pygame.SRCALPHA)
+    background.fill((20, 25, 35, 210))
+    screen.blit(background, (rect.x - 6, rect.y - 3))
+    pygame.draw.rect(screen, (120, 160, 220), (rect.x - 6, rect.y - 3, rect.width + 12, rect.height + 6), 1, border_radius=3)
+    screen.blit(surface, rect)

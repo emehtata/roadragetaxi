@@ -206,3 +206,16 @@ def test_committed_timetable_loads():
     document = load_timetable()
     assert document is not None and len(document["trains"]) > 500
     json.dumps(document["trains"][0])
+
+
+def test_next_train_is_the_next_scheduled_pass_even_after_midnight():
+    route = RailwayManager(NORTH_SOUTH_TRACK).routes[0]
+    passes = match_timetable(timetable(
+        train([("S", 36000), ("N", 37000)], number="10"),  # 10:08:20 daily
+        train([("N", 25 * 3600), ("S", 25 * 3600 + 1000)], number="99"),  # 01:08:20 next day
+    ), [route], metres)
+    clock = TimetableClock(passes)
+    when, service = clock.next_after(datetime(2026, 9, 28, 9, 0))
+    assert (when, service.number) == (datetime(2026, 9, 28, 10, 8, 20), "10")
+    when, service = clock.next_after(datetime(2026, 9, 28, 23, 0))
+    assert (when, service.number) == (datetime(2026, 9, 29, 1, 8, 20), "99")

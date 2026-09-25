@@ -116,6 +116,7 @@ from ..render import (
     draw_activity_debug_panel,
     draw_npc_cars,
     draw_trains,
+    draw_next_train,
     draw_npc_spatial_grid,
     draw_npc_debug_overlay,
     draw_npc_debug_panel,
@@ -3045,6 +3046,15 @@ def main() -> None:
                     hud_rects=hud_rects,
                     fuel_station_price_cents=nearby_fuel_price_cents,
                 )
+                next_train = railway_mgr.clock.next_after(game_calendar.current) if railway_mgr.clock else None
+                if next_train is not None:
+                    when, service = next_train
+                    draw_next_train(
+                        screen, font,
+                        f"{tr(language, 'next_train')}: {when:%H:%M} {service.train_type} {service.number} "
+                        f"{service.origin} – {service.destination}",
+                        SCREEN_W,
+                    )
             if phone_open:
                 draw_phone_offers(screen, taxi_mgr, font, small_font, SCREEN_W, SCREEN_H, language, car=car)
             if show_compass:

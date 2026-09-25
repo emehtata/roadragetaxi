@@ -191,6 +191,13 @@ class TimetableClock:
         start = datetime.combine(now.date(), time())
         return bisect.bisect_left(self._times, start + timedelta(days=1)) - bisect.bisect_left(self._times, start)
 
+    def next_after(self, now: datetime) -> Optional[Tuple[datetime, ScheduledPass]]:
+        """The next scheduled pass after now (within the built window)."""
+        if self._day != now.date():
+            self._build(now.date())
+        index = bisect.bisect_right(self._times, now)
+        return (self._times[index], self._events[index]) if index < len(self._times) else None
+
     def due(self, now: datetime) -> List[ScheduledPass]:
         """Passes scheduled in (previous now, now]. The first call only
         starts the clock (no backlog burst on load or a clock jump back)."""
