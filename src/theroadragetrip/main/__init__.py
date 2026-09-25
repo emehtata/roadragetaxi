@@ -175,6 +175,7 @@ from ..traffic_world import TrafficWorld
 from ..world_cache import WorldCacheManager, clear_world_cache
 from ..performance import MAP_SYNC_BUDGET_S, FrameProfiler
 from ..weather import SPLASH_MIN_SPEED_MPS, WeatherSystem, weather_type_for_observation
+from ..train_timetable import load_timetable
 from ..trains import RailwayManager
 from ..world_places import load_places
 from ..weather_history import WeatherHistory, precipitation_from_observation
@@ -567,6 +568,17 @@ def _choose_city(
         cities_list=cities_list,
         selected_city_idx=selected_city_idx,
     )
+
+
+def _latlon_to_world_metres():
+    """(lat, lon) -> world metres (EPSG:3067, x east / y north), or None
+    without pyproj (trains then fall back to the fixed interval)."""
+    try:
+        from pyproj import Transformer
+    except ImportError:
+        return None
+    transformer = Transformer.from_crs("EPSG:4326", "EPSG:3067", always_xy=True)
+    return lambda lat, lon: transformer.transform(lon, lat)
 
 
 def _load_world(
@@ -1203,7 +1215,7 @@ def main() -> None:
         curbs = world.curbs
         railway_grid = world.railway_grid
         railways = world.railways
-        railway_mgr = RailwayManager(railways)
+        railway_mgr = RailwayManager(railways, load_timetable(), _latlon_to_world_metres())
         railway_mgr_source_count = len(railways)
         railing_grid = world.railing_grid
         railings = world.railings
@@ -2398,7 +2410,7 @@ def main() -> None:
                     with frame_profiler.section("map_sync:railway_grid"):
                         railway_grid.rebuild(railways)
                     if len(railways) != railway_mgr_source_count:
-                        # ~8 ms on Oulu's 95 km of track; only when track streamed in.
+                        # ~20 ms on Oulu (routes + timetable match); only when track streamed in.
                         with frame_profiler.section("map_sync:train_routes"):
                             railway_mgr.rebuild(railways)
                         railway_mgr_source_count = len(railways)
@@ -2811,8 +2823,8 @@ def main() -> None:
             )
             # After bridge track, so a train crossing a rail bridge stays
             # visible. Same time scale the game clock uses for the spawn timer.
-            railway_mgr.update(dt, dt * (1.0 if taxi_mgr.current_passenger else 60.0))
-            draw_trains(screen, railway_mgr, camx, camy, px_per_m=px_per_m, show_debug=show_debug_hud)
+            railway_mgr.update(dt, dt * (1.0 if taxi_mgr.current_passenger else 60.0), game_calendar.current)
+            draw_trains(screen, railway_mgr, camx, camy, px_per_m=px_per_m, show_debug=show_debug_hud, font=font)
             # Price boards are gameplay-critical and must stay above both
             # ordinary buildings and the canopy overlay.
             draw_fuel_station_signs(

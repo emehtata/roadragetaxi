@@ -13,14 +13,19 @@ import heapq
 import logging
 import math
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Sequence, Tuple
+from datetime import datetime
+from typing import Callable, Dict, List, Optional, Sequence, Tuple
+
+from .train_timetable import ScheduledPass, TimetableClock, match_timetable, prepare_timetable
 
 logger = logging.getLogger(__name__)
 
 TRAIN_ENABLED = True
 TRAIN_SPAWN_INTERVAL_S = 30.0 * 60.0  # game seconds between spawns, per route and direction
 TRAIN_SPEED_MPS = 22.0  # ~80 km/h, constant
-MAX_ACTIVE_TRAINS = 6
+# Trains move in real time while the game clock runs up to 60x, so a busy
+# line can have many timetable trains crossing the map at once.
+MAX_ACTIVE_TRAINS = 16
 # Oulu's rail pieces run from a few metres (yard stubs) to kilometres; a
 # train of TRAIN_CARS cars is ~150 m, so shorter lines would look silly.
 MIN_TRAIN_ROUTE_LENGTH_M = 1000.0
@@ -66,6 +71,7 @@ class Train:
     distance_m: float  # of the locomotive along the route
     direction: int  # +1 towards the route's end, -1 towards its start
     speed_mps: float = TRAIN_SPEED_MPS
+    service: Optional[ScheduledPass] = None  # timetable identity; None = phase-1 shuttle
 
     def update(self, dt: float) -> None:
         self.distance_m += self.direction * self.speed_mps * dt
@@ -148,9 +154,21 @@ class RailwayManager:
     """Owns the train routes and trains; main() calls rebuild() when the
     railways list changes and update() once per frame."""
 
-    def __init__(self, railways: Sequence = ()) -> None:
+    def __init__(
+        self,
+        railways: Sequence = (),
+        timetable: Optional[dict] = None,
+        to_metres: Optional[Callable[[float, float], Tuple[float, float]]] = None,
+    ) -> None:
+        """With a timetable (train_timetable.load_timetable) and a
+        lat/lon -> world metres function, trains run to it; without, the
+        phase-1 fixed interval keeps the track alive."""
         self.routes: List[TrainRoute] = []
         self.trains: List[Train] = []
+        self.timetable = timetable
+        self.to_metres = to_metres
+        self.clock: Optional[TimetableClock] = None
+        self._prepared = prepare_timetable(timetable, to_metres) if timetable is not None and to_metres is not None else None
         self._spawn_timers: Dict[Tuple[int, int], float] = {}
         self.rebuild(railways)
 
@@ -158,8 +176,16 @@ class RailwayManager:
         if not TRAIN_ENABLED:
             return
         self.routes = build_train_routes(railways)
-        # Due immediately, so a new map shows traffic without a 30 min wait.
-        self._spawn_timers = {(i, d): 0.0 for i in range(len(self.routes)) for d in (1, -1)}
+        if self.timetable is not None and self.to_metres is not None:
+            self.clock = TimetableClock(match_timetable(self.timetable, self.routes, prepared=self._prepared))
+            self._spawn_timers = {}
+            logger.info(
+                "Railway timetable: %d of %d trains pass this map's routes",
+                len({(p.train_type, p.number) for p in self.clock.passes}), len(self.timetable["trains"]),
+            )
+        else:
+            # Due immediately, so a new map shows traffic without a 30 min wait.
+            self._spawn_timers = {(i, d): 0.0 for i in range(len(self.routes)) for d in (1, -1)}
         # Trains on replaced routes keep running on their old geometry (the
         # track is still there) until their next turnaround (update()).
         logger.info(
@@ -167,9 +193,10 @@ class RailwayManager:
             len(self.routes), ", ".join(f"{r.length / 1000:.1f}" for r in self.routes) or "-", len(self.trains),
         )
 
-    def update(self, dt: float, game_dt: float) -> None:
-        """dt moves trains (real seconds, like every vehicle); game_dt runs
-        the spawn clock, so intervals follow the game's time scale."""
+    def update(self, dt: float, game_dt: float, now: Optional[datetime] = None) -> None:
+        """dt moves trains (real seconds, like every vehicle); now (the
+        game clock, naive Finnish time) drives timetable spawns, game_dt
+        the fallback interval - both follow the game's time scale."""
         if not TRAIN_ENABLED:
             return
         current = {id(route) for route in self.routes}
@@ -177,11 +204,20 @@ class RailwayManager:
         for train in self.trains:
             direction = train.direction
             train.update(dt)
-            # A train on a replaced route (the map streamed in more track)
-            # retires at its next turnaround - at a track end, not mid-view.
-            if train.direction == direction or id(train.route) in current:
+            # A timetable train leaves the map at the far end; a train on a
+            # replaced route (more track streamed in) retires at its next
+            # turnaround - at a track end, never mid-view.
+            if train.direction == direction or (train.service is None and id(train.route) in current):
                 kept.append(train)
         self.trains = kept
+        if self.clock is not None and now is not None:
+            for service in self.clock.due(now):
+                if len(self.trains) >= MAX_ACTIVE_TRAINS or service.route_index >= len(self.routes):
+                    continue
+                route = self.routes[service.route_index]
+                self.trains.append(Train(
+                    route, 0.0 if service.direction > 0 else route.length, service.direction, service=service,
+                ))
         for key in self._spawn_timers:
             self._spawn_timers[key] -= game_dt
             if self._spawn_timers[key] > 0.0 or len(self.trains) >= MAX_ACTIVE_TRAINS:

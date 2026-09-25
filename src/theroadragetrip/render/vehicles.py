@@ -1359,6 +1359,7 @@ def draw_trains(
     screen_w: int = SCREEN_W,
     screen_h: int = SCREEN_H,
     show_debug: bool = False,
+    font=None,
 ) -> None:
     """Trains (trains.py) as a locomotive + carriages, each a rotated
     rectangle following the track. Off-screen cars are skipped with one
@@ -1383,6 +1384,12 @@ def draw_trains(
             pygame.draw.polygon(screen, TRAIN_LOCOMOTIVE_COLOR if index == 0 else TRAIN_CARRIAGE_COLOR, corners)
             pygame.draw.polygon(screen, TRAIN_ROOF_LINE_COLOR, corners, 1)
     if show_debug:
+        for train in railway_mgr.trains:  # timetable identity + travel direction at the locomotive
+            if font is not None and train.service is not None:
+                x, y, _ = train.cars()[0]
+                if vminx <= x <= vmaxx and vminy <= y <= vmaxy:
+                    sx, sy = world_to_screen(x, y, camx, camy, px_per_m, screen_w, screen_h)
+                    screen.blit(font.render(train.service.label, True, (255, 255, 255), (20, 20, 20)), (sx + 8, sy - 8))
         for route in railway_mgr.routes:
             pygame.draw.lines(
                 screen, (255, 0, 255), False,
