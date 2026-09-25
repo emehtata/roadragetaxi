@@ -18,6 +18,7 @@ from typing import Callable, Dict, List, Optional, Sequence, Tuple
 
 from .train_compositions import GENERIC, MAX_TRAIN_LENGTH_M, TrainComposition, resolve
 from .train_passengers import PassengerFlow
+from .rail_bookings import RailBookingManager
 from .train_timetable import ScheduledPass, StationCall, TimetableClock, match_timetable, prepare_timetable, station_calls
 
 logger = logging.getLogger(__name__)
@@ -111,6 +112,7 @@ class Train:
     waiting_for: Optional[tuple] = None  # (departure time, ScheduledPass) it will become
     manifest: Dict[str, list] = field(default_factory=dict)  # destination -> passengers aboard (train_passengers.py)
     composition: TrainComposition = GENERIC  # its vehicles (train_compositions.py)
+    occurrence_at: Optional[datetime] = None  # dated timetable occurrence; distinguishes repeated train numbers
 
     def __post_init__(self) -> None:
         if self.current_speed_mps is None:
@@ -505,7 +507,10 @@ class RailwayManager:
         # station's nearest is cached in station_stands on rebuild.
         self.taxi_stands: Sequence = ()
         self.station_stands: Dict[str, object] = {}
-        self.passengers = PassengerFlow(stand_for=lambda station: self.station_stands.get(station))
+        self.bookings = RailBookingManager()
+        self.passengers = PassengerFlow(
+            stand_for=lambda station: self.station_stands.get(station), booking_manager=self.bookings,
+        )
         self.compositions = compositions  # learned train compositions (train_compositions.load_compositions)
         self.passenger_view = None  # station_passengers.StationPassengerView, set by main (needs pedestrians)
         self.view_point: Optional[Tuple[float, float]] = None  # where the camera looks (visible passengers)
@@ -675,12 +680,18 @@ class RailwayManager:
         if planned is not None:
             route, alongs = planned
             stops = tuple((along,) + stop[1:] for stop, along in zip(service.stops, alongs) if along is not None)
-            train = Train(route, 0.0, 1, service=service, stops=stops, composition=self._composition(service, when))
+            train = Train(
+                route, 0.0, 1, service=service, stops=stops,
+                composition=self._composition(service, when), occurrence_at=when,
+            )
             entry = 0.0
         else:
             route = self.routes[service.route_index]
             entry = 0.0 if service.direction > 0 else route.length
-            train = Train(route, entry, service.direction, service=service, composition=self._composition(service, when))
+            train = Train(
+                route, entry, service.direction, service=service,
+                composition=self._composition(service, when), occurrence_at=when,
+            )
         if train.stops:
             # APPROACH_DISTANCE_M before the first stop, never beyond the
             # entry end (then it simply arrives a little early).
@@ -750,6 +761,7 @@ class RailwayManager:
         tail = train.route.point_at(train.distance_m - train.direction * train.composition.length_m)[:2]
         train.route, train.direction, train.service, train.stops = route, 1, service, stops
         train.composition = self._composition(service, when)
+        train.occurrence_at = when
         train.reached_end = False
         train.stop_index, train.waiting_for = 0, None
         train.distance_m = route.locate(tail)
@@ -798,7 +810,8 @@ class RailwayManager:
     def _board_new(self, train: Train, now: datetime) -> None:
         """A timetable train just came into being here: passengers already
         aboard and waiting ahead; standing at a station, it has arrived."""
-        self.passengers.populate(train, now)
+        self.passengers.populate(train, train.occurrence_at or now)
+        self.bookings.train_approaching(train)
         if train.state == "DWELLING":
             self._arrived(train, now)
 
@@ -808,6 +821,7 @@ class RailwayManager:
         if stop is None:
             return
         leaving, boarding = self.passengers.on_arrival(train, stop[2], now)
+        self.bookings.passengers_arrived(leaving)
         if self.passenger_view is not None:
             self.passenger_view.on_arrival(leaving, boarding, stop[5], self.view_point)
         logger.debug(
@@ -868,6 +882,7 @@ class RailwayManager:
         the fallback interval - both follow the game's time scale."""
         if not TRAIN_ENABLED:
             return
+        self.bookings.advance_accepted()
         current = {id(route) for route in self.routes}
         kept = []
         for train in self.trains:

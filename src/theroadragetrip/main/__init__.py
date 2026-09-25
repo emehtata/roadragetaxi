@@ -1251,6 +1251,10 @@ def main() -> None:
         sun_longitude = world.sun_longitude
         taxi_mgr = world.taxi_mgr
         taxi_stops = world.taxi_stops
+        railway_mgr.associate_taxi_stands(taxi_mgr.taxi_stops)
+        railway_mgr.bookings.destination_for = lambda stand: taxi_mgr.pick_phone_dropoff(stand.x, stand.y)
+        railway_mgr.bookings.on_created = taxi_mgr.notify_rail_booking
+        taxi_mgr.rail_bookings = railway_mgr.bookings
         traffic_light_grid = world.traffic_light_grid
         traffic_lights = world.traffic_lights
         traffic_mgr = world.traffic_mgr

@@ -158,6 +158,7 @@ class TaxiManager:
         self.game_time_seconds = 18.0 * 60.0 * 60.0
 
         self.current_passenger: Optional[TaxiPassenger] = None
+        self.rail_bookings = None
         self.offers: List[TaxiOffer] = []
         self._initial_offer_pending = True
         self.state: str = TaxiState.WAITING_FOR_PICKUP
@@ -235,6 +236,22 @@ class TaxiManager:
     def current_fare_cents(self) -> int:
         """Return the live meter amount for the onboard passenger."""
         return self.live_fare_cents
+
+    def phone_items(self):
+        """The three numbered phone rows: rail bookings first, then ordinary offers."""
+        bookings = self.rail_bookings.visible() if self.rail_bookings is not None else []
+        bookings.sort(key=lambda booking: booking.status != "PENDING")
+        return ([("booking", item) for item in bookings] + [("offer", item) for item in self.offers])[:MAX_PHONE_OFFERS]
+
+    def visible_rail_bookings(self):
+        return self.rail_bookings.visible() if self.rail_bookings is not None else []
+
+    def notify_rail_booking(self, booking) -> None:
+        self.notification_msg = tr(
+            self.language, "rail_booking_notice", train=booking.train_number,
+            station=booking.station, arrival=f"{booking.arrival_at:%H:%M}",
+        )
+        self.notification_timer = 5.0
 
     def adjust_passenger_happiness(self, amount: float) -> None:
         if self.current_passenger is not None and self.state == TaxiState.DRIVING_TO_DROPOFF:
@@ -1414,9 +1431,20 @@ class TaxiManager:
 
     def accept_offer(self, index: int, car_x: float, car_y: float) -> bool:
         """Activate one phone offer and remove the offer list."""
-        if index < 0 or index >= len(self.offers):
+        items = self.phone_items()
+        if index < 0 or index >= len(items):
             return False
-        self.current_passenger = self.offers[index].passenger
+        kind, item = items[index]
+        if kind == "booking":
+            accepted = self.rail_bookings.accept(item)
+            if accepted:
+                self.notification_msg = tr(
+                    self.language, "rail_booking_accepted", train=item.train_number,
+                    station=item.station, arrival=f"{item.arrival_at:%H:%M}",
+                )
+                self.notification_timer = 5.0
+            return accepted
+        self.current_passenger = item.passenger
         self.offers = []
         self.state = TaxiState.WAITING_FOR_PICKUP
         self.elapsed_time = 0.0
@@ -1437,9 +1465,19 @@ class TaxiManager:
 
     def reject_offer(self, index: int = 0, car_x: float = 0.0, car_y: float = 0.0) -> bool:
         """Reject one pending phone request without starting its fare."""
-        if index < 0 or index >= len(self.offers):
+        items = self.phone_items()
+        if index == 0 and items and items[0][0] == "booking" and items[0][1].status != "PENDING":
+            pending = next((entry for entry in items if entry[0] == "booking" and entry[1].status == "PENDING"), None)
+            if pending is None:
+                return False
+            kind, item = pending
+            return self.rail_bookings.decline(item)
+        if index < 0 or index >= len(items):
             return False
-        self.offers.pop(index)
+        kind, item = items[index]
+        if kind == "booking":
+            return self.rail_bookings.decline(item)
+        self.offers.remove(item)
         self.next_offer_timer = random.uniform(PHONE_OFFER_MIN_INTERVAL_S, PHONE_OFFER_MAX_INTERVAL_S)
         self.notification_msg = tr(self.language, "no_requests")
         self.notification_timer = 2.0

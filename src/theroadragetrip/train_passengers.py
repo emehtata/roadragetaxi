@@ -76,6 +76,7 @@ class RailPassenger:
     promille: float = 0.0  # blood alcohol - the restaurant car
     intent: str = WALK  # WALK or TAXI, decided when the journey is created
     taxi_stand: object = None  # the existing TaxiStop nearest their destination station (TAXI only)
+    booking: object = None  # optional rail_bookings.TaxiBooking; logical, not tied to a pedestrian
     id: int = field(default_factory=lambda: next(_passenger_ids))
 
 
@@ -107,11 +108,12 @@ def _seat(passenger: "RailPassenger", train, rng: random.Random) -> None:
 
 
 class PassengerFlow:
-    def __init__(self, seed: int = 0, stand_for=None) -> None:
+    def __init__(self, seed: int = 0, stand_for=None, booking_manager=None) -> None:
         """stand_for(station name) -> the existing taxi stand cached for
         that station (or None) - see RailwayManager.station_stands."""
         self.seed = seed
         self.stand_for = stand_for or (lambda station: None)
+        self.booking_manager = booking_manager
         # station -> train key -> passengers waiting for that train there
         self.waiting: Dict[str, Dict[Tuple[str, str], List[RailPassenger]]] = {}
         self.arrived: Dict[str, Deque[RailPassenger]] = {}
@@ -162,6 +164,8 @@ class PassengerFlow:
                 passenger = self._plan_onward(
                     RailPassenger(calls[origin_index], destination, train_key(service), ON_TRAIN, name=_name(rng)), rng,
                 )
+                if self.booking_manager is not None:
+                    self.booking_manager.consider(passenger, train, now, rng)
                 _seat(passenger, train, rng)
                 if passenger.car in _cars(train, "restaurant"):
                     # Been in the restaurant car for part of the journey already.
@@ -177,10 +181,13 @@ class PassengerFlow:
             waiting = self.waiting.setdefault(station, {}).setdefault(train_key(service), [])
             for _ in range(self._count(service, now, share, rng)):
                 destination = calls[rng.randrange(index + 1, len(calls))]
-                waiting.append(self._plan_onward(RailPassenger(
+                passenger = self._plan_onward(RailPassenger(
                     station, destination, train_key(service), WAITING, waiting_since=now, platform=platforms.get(station),
                     name=_name(rng),
-                ), rng))
+                ), rng)
+                if self.booking_manager is not None:
+                    self.booking_manager.consider(passenger, train, now, rng)
+                waiting.append(passenger)
 
     def on_arrival(self, train, station: str, now: datetime) -> Tuple[List[RailPassenger], List[RailPassenger]]:
         """The train stopped at `station`: those going here get off first,

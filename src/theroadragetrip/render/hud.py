@@ -346,15 +346,29 @@ def draw_phone_offers(
     if taxi_mgr.current_passenger:
         message = small_font.render(tr(language, "finish_or_cancel"), True, (245, 150, 120))
         screen.blit(message, message.get_rect(center=phone.center))
-    elif not taxi_mgr.offers:
+    elif not taxi_mgr.phone_items() and not taxi_mgr.visible_rail_bookings():
         message = small_font.render(tr(language, "no_requests"), True, (220, 220, 220))
         screen.blit(message, message.get_rect(center=phone.center))
     else:
-        for index, offer in enumerate(taxi_mgr.offers[:3]):
+        for index, (kind, item) in enumerate(taxi_mgr.phone_items()[:3]):
             y = phone.y + 112 + index * 105
             row = pygame.Rect(phone.x + 28, y, phone.width - 56, 88)
             pygame.draw.rect(screen, (30, 39, 47), row, border_radius=6)
             pygame.draw.rect(screen, (75, 88, 97), row, width=1, border_radius=6)
+            if kind == "booking":
+                booking = item
+                number = f"[{index + 1}]  " if booking.status == "PENDING" else ""
+                lines = (
+                    f"{number}{tr(language, 'prebooked_taxi')} | {booking.train_number}",
+                    f"{tr(language, 'pickup')}: {booking.station} | {booking.arrival_at:%H:%M}",
+                    f"{tr(language, 'to')}: {booking.destination.address}",
+                    f"+{format_euros(booking.surcharge_cents, language)} | "
+                    f"{tr(language, 'booking_' + booking.status.lower())}",
+                )
+                for line, offset, color in zip(lines, (8, 29, 48, 67), ((245, 245, 240), (190, 205, 212), (170, 190, 175), (255, 215, 95))):
+                    screen.blit(small_font.render(line, True, color), (row.x + 12, row.y + offset))
+                continue
+            offer = item
             passenger = offer.passenger
             distance = (
                 math.hypot(car.x - passenger.pickup.x, car.y - passenger.pickup.y)
@@ -386,7 +400,7 @@ def draw_phone_offers(
             screen.blit(dist, (row.x + 12, row.y + 67))
 
     hint_text = tr(language, "close_phone")
-    if taxi_mgr.offers:
+    if taxi_mgr.phone_items():
         hint_text += f"  |  {tr(language, 'reject_phone')}"
     hint = small_font.render(hint_text, True, (180, 185, 190))
     screen.blit(hint, hint.get_rect(center=(phone.centerx, phone.bottom - 20)))
