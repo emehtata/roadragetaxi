@@ -334,6 +334,9 @@ class TimetableClock:
         return list(zip(self._times[lo:hi], self._events[lo:hi]))
 
     def due(self, now: datetime, lookahead: timedelta = timedelta(0)) -> List[ScheduledPass]:
+        return [service for _, service in self.due_times(now, lookahead)]
+
+    def due_times(self, now: datetime, lookahead: timedelta = timedelta(0)) -> List[Tuple[datetime, ScheduledPass]]:
         """Passes scheduled in (end of the previous window, now + lookahead]
         - each handed out once, even as the lookahead changes with the game
         speed. The first call only starts the clock (no backlog burst on
@@ -349,4 +352,5 @@ class TimetableClock:
         self._until = until
         if self._day != now.date():
             self._build(now.date())
-        return self._events[bisect.bisect_right(self._times, start):bisect.bisect_right(self._times, until)]
+        lo, hi = bisect.bisect_right(self._times, start), bisect.bisect_right(self._times, until)
+        return list(zip(self._times[lo:hi], self._events[lo:hi]))
