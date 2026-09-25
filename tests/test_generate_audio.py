@@ -1,7 +1,7 @@
 """tools/generate_audio.py post-processing and job selection (no GPU needed)."""
 import numpy as np
 
-from tools.generate_audio import CATALOG, generation_seconds, jobs, make_loop, process, seed_for, trim_silence
+from tools.generate_audio import CATALOG, generation_seconds, jobs, make_loop, process, seed_for, speed_up_loop, trim_silence
 
 SR = 1000
 
@@ -33,9 +33,18 @@ def test_every_planned_file_is_a_job_with_a_stable_seed():
     import json
 
     catalog = json.loads(CATALOG.read_text(encoding="utf-8"))
-    planned = [e for g in catalog["groups"].values() if "generation" in g for e in g["files"]]
+    planned = [e for g in catalog["groups"].values() for e in g["files"] if "generation" in g or "derive" in e]
     todo = jobs(catalog, force=True)
     assert len(todo) == len(planned) and planned
     assert len({seed_for(e["id"]) for _, _, e in todo}) == len(todo)
     assert jobs(catalog, groups={"weather.thunder"}, force=True)[0][0] == "weather.thunder"
     assert generation_seconds([3.0, 8.0], loop=False) == 8.5
+
+
+def test_a_sped_up_loop_is_shorter_and_still_seamless():
+    t = np.arange(1000) / 1000
+    loop = np.stack([np.sin(2 * np.pi * 5 * t)], axis=1)  # exactly 5 cycles: seamless
+    fast = speed_up_loop(loop, 2.0)
+    assert len(fast) == 500
+    step = np.abs(np.diff(fast[:, 0])).max()
+    assert abs(fast[-1, 0] - fast[0, 0]) <= step * 1.01  # end runs into the start

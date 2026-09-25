@@ -104,6 +104,16 @@ def metrics(raw: np.ndarray, audio: np.ndarray, sample_rate: int) -> dict:
     }
 
 
+def speed_up_loop(audio: np.ndarray, rate: float) -> np.ndarray:
+    """A seamless loop played `rate` times faster (higher pitch, shorter),
+    still seamless: resampled around the loop, wrapping at its end - the
+    classic way to get an engine's higher revs from its idle."""
+    length = len(audio)
+    positions = np.arange(0.0, length, rate)
+    return np.stack([np.interp(positions, np.arange(length), audio[:, c], period=length)
+                     for c in range(audio.shape[1])], axis=1)
+
+
 def seed_for(file_id: str) -> int:
     """Stable per file, so a regeneration of one file is reproducible."""
     return zlib.crc32(file_id.encode())
@@ -124,7 +134,7 @@ def jobs(catalog: dict, groups=None, priorities=None, force: bool = False) -> li
             continue
         if priorities and group["priority"] not in priorities:
             continue
-        if "generation" not in group:
+        if "generation" not in group and not any("derive" in entry for entry in group["files"]):
             continue  # existing asset only
         for entry in group["files"]:
             if force or entry["status"] != "generated":
@@ -165,6 +175,23 @@ def main() -> int:
         return 0
 
     import soundfile as sf
+
+    audio_root = CATALOG.parent
+    # Derived files (another file, sped up) need no model.
+    derived = [job for job in todo if "derive" in job[2]]
+    todo = [job for job in todo if "derive" not in job[2]]
+    for group_id, group, entry in derived:
+        source, source_rate = sf.read(audio_root / entry["derive"]["from"], always_2d=True)
+        audio = normalize(speed_up_loop(source, entry["derive"]["rate"]))
+        sf.write(audio_root / entry["file"], audio, source_rate, format="OGG", subtype="VORBIS")
+        entry.update({"status": "generated", "review": "pending", "generated": date.today().isoformat(),
+                      "sample_rate": source_rate, "channels": audio.shape[1],
+                      **metrics(audio, audio, source_rate)})
+        save_catalog(catalog)
+        print(f"  derived {entry['file']} from {entry['derive']['from']} x{entry['derive']['rate']}", flush=True)
+    if not todo:
+        return 0
+
     import torch
     from diffusers import StableAudioPipeline
 
@@ -175,7 +202,6 @@ def main() -> int:
     pipe = StableAudioPipeline.from_pretrained(MODEL_ID, torch_dtype=torch.float16).to("cuda")
     pipe.enable_attention_slicing()
     sample_rate = pipe.vae.sampling_rate
-    audio_root = CATALOG.parent
 
     started = time.monotonic()
     failed = []
