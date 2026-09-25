@@ -108,7 +108,8 @@ def draw_open_roof_overlays(
     screen_h: int = SCREEN_H,
     spatial_grid=None,
 ) -> None:
-    """Draw translucent canopies above vehicles so they pass underneath."""
+    """Draw canopies above vehicles so they pass underneath. Returns the
+    roofs drawn, as RoofCover, so whatever is underneath can be outlined."""
     import pygame
 
     vminx, vminy, vmaxx, vmaxy = get_viewport_bounds(
@@ -119,6 +120,7 @@ def draw_open_roof_overlays(
         if spatial_grid is not None
         else buildings
     )
+    drawn = []
     for building in visible_buildings:
         if not _is_open_roof(building) or len(building.points_m) < 3:
             continue
@@ -126,6 +128,7 @@ def draw_open_roof_overlays(
         if bbox and bbox != (0.0, 0.0, 0.0, 0.0):
             if bbox[2] < vminx or bbox[0] > vmaxx or bbox[3] < vminy or bbox[1] > vmaxy:
                 continue
+        drawn.append(building)
         points = [
             world_to_screen(x, y, camx, camy, px_per_m, screen_w, screen_h)
             for x, y in building.points_m
@@ -137,6 +140,27 @@ def draw_open_roof_overlays(
             True,
             points,
             max(1, round(px_per_m * 0.12)),
+        )
+    return RoofCover(drawn)
+
+
+class RoofCover:
+    """The open roofs drawn this frame: is a world point underneath one?
+    (bounding box first, then the footprint)."""
+
+    def __init__(self, roofs) -> None:
+        self.roofs = []
+        for roof in roofs:
+            xs, ys = zip(*roof.points_m)
+            self.roofs.append(((min(xs), min(ys), max(xs), max(ys)), roof.points_m))
+
+    def __bool__(self) -> bool:
+        return bool(self.roofs)
+
+    def covers(self, x: float, y: float) -> bool:
+        return any(
+            bbox[0] <= x <= bbox[2] and bbox[1] <= y <= bbox[3] and point_in_polygon(x, y, points)
+            for bbox, points in self.roofs
         )
 
 # Facade sign colors by venue category, loosely matching real-world signage

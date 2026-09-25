@@ -185,6 +185,7 @@ from .vehicles import (
 from .pedestrians import (
     STREET_LIGHT_REFLECTOR_RADIUS_M,
     draw_booked_passenger_arrow,
+    draw_pedestrians_under_roofs,
     draw_npc_popup,
     draw_pedestrian_reflectors,
     draw_pedestrians,

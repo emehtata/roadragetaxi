@@ -132,6 +132,7 @@ from ..render import (
     draw_settings_menu,
     draw_pedestrians,
     draw_booked_passenger_arrow,
+    draw_pedestrians_under_roofs,
     draw_pedestrian_reflectors,
     draw_puddles,
     draw_lightning_flash,
@@ -2882,10 +2883,6 @@ def main() -> None:
                 residents=traffic_mgr.residents,
                 spatial_grid=spatial_grid,
             )
-            meet_booking = taxi_mgr.meet_context()
-            if (meet_booking is not None and meet_booking.passenger.pedestrian is not None
-                    and meet_booking.status in (PASSENGER_WAITING, PASSENGER_MET)):  # not while still at their origin
-                draw_booked_passenger_arrow(screen, meet_booking.passenger.pedestrian, camx, camy, px_per_m)
             if show_debug_hud:
                 draw_logical_intersections(
                     screen,
@@ -2936,7 +2933,7 @@ def main() -> None:
             # Open OSM roof structures are canopies rather than solid
             # buildings. Their translucent roof belongs above vehicles and
             # pumps so driving through reads as passing underneath it.
-            draw_open_roof_overlays(
+            roof_cover = draw_open_roof_overlays(
                 screen,
                 buildings,
                 camx,
@@ -2944,6 +2941,13 @@ def main() -> None:
                 px_per_m=px_per_m,
                 spatial_grid=building_grid,
             )
+            # Whoever walks under a roof (a station platform canopy) shows
+            # as an outline on top of it; the booked passenger's arrow too.
+            draw_pedestrians_under_roofs(screen, visible_pedestrians, roof_cover, camx, camy, px_per_m)
+            meet_booking = taxi_mgr.meet_context()
+            if (meet_booking is not None and meet_booking.passenger.pedestrian is not None
+                    and meet_booking.status in (PASSENGER_WAITING, PASSENGER_MET)):  # not while still at their origin
+                draw_booked_passenger_arrow(screen, meet_booking.passenger.pedestrian, camx, camy, px_per_m)
             # Bridge track only here, redrawn after the car/pedestrians
             # above (see the only_bridges=False call near draw_ways) so an
             # elevated railway actually covers whatever's underneath it -
@@ -2964,7 +2968,10 @@ def main() -> None:
                 railway_mgr.update(dt, dt * (1.0 if taxi_mgr.has_active_job() else 60.0), game_calendar.current)
                 _play_rail_sounds(audio, railway_mgr)
             with frame_profiler.section("render:trains"):
-                draw_trains(screen, railway_mgr, camx, camy, px_per_m=px_per_m, show_debug=show_debug_hud, font=font)
+                draw_trains(
+                    screen, railway_mgr, camx, camy, px_per_m=px_per_m, show_debug=show_debug_hud, font=font,
+                    roof_cover=roof_cover,
+                )
             # Price boards are gameplay-critical and must stay above both
             # ordinary buildings and the canopy overlay.
             draw_fuel_station_signs(

@@ -1346,6 +1346,7 @@ def draw_cyclists(
 
 
 TRAIN_ROOF_LINE_COLOR = (30, 30, 30)
+UNDER_ROOF_TRAIN_OUTLINE_COLOR = (225, 235, 225)  # a train under a station roof
 
 
 def draw_trains(
@@ -1358,11 +1359,14 @@ def draw_trains(
     screen_h: int = SCREEN_H,
     show_debug: bool = False,
     font=None,
+    roof_cover=None,
 ) -> None:
     """Trains (trains.py) vehicle by vehicle from their composition
     (train_compositions.py): each a rotated rectangle of its own length
     following the track, coloured by its visual profile - greens, a white
     front band on a locomotive, a white stripe along a restaurant car.
+    A vehicle under an open roof (roof_cover, e.g. a station's platform
+    canopy) is only outlined, so the roof stays on top but the train shows.
     Off-screen vehicles are skipped with one bounds check each."""
     import pygame
     from ..train_compositions import PROFILES
@@ -1385,6 +1389,9 @@ def draw_trains(
             cos_h, sin_h = math.cos(heading), math.sin(heading)
             half_l = length / 2
             body = quad(x, y, cos_h, sin_h, half_l, -half_l, half_w, -half_w)
+            if roof_cover and roof_cover.covers(x, y):
+                pygame.draw.polygon(screen, UNDER_ROOF_TRAIN_OUTLINE_COLOR, body, 2)
+                continue
             pygame.draw.polygon(screen, base, body)
             if pattern is not None and profile == "locomotive":
                 # The cab: a broad white front so the locomotive reads as one.

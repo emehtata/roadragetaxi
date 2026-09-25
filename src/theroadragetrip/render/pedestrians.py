@@ -450,3 +450,28 @@ def draw_booked_passenger_arrow(screen, pedestrian, camx: float, camy: float, px
     points = [(cx, tip_y), (cx - size, tip_y - size * 1.3), (cx + size, tip_y - size * 1.3)]
     pygame.draw.polygon(screen, BOOKED_CUSTOMER_COLOR, points)
     pygame.draw.polygon(screen, (20, 20, 20), points, 2)
+
+
+UNDER_ROOF_OUTLINE_COLOR = (235, 235, 235)  # as under a bridge (draw_pedestrians)
+PLAYER_OUTLINE_COLOR = (255, 215, 60)  # the driver stays findable
+
+
+def draw_pedestrians_under_roofs(
+    screen, pedestrians, roof_cover, camx: float, camy: float, px_per_m: float = PX_PER_M,
+    screen_w: int = SCREEN_W, screen_h: int = SCREEN_H,
+) -> None:
+    """Outline, on top of the roofs, everyone standing underneath one -
+    rail passengers on a covered platform, the driver walking there."""
+    import pygame
+
+    if not roof_cover:
+        return
+    vminx, vminy, vmaxx, vmaxy = get_viewport_bounds(camx, camy, px_per_m, screen_w, screen_h, 5.0)
+    for ped in pedestrians:
+        if not (vminx <= ped.x <= vmaxx and vminy <= ped.y <= vmaxy) or not roof_cover.covers(ped.x, ped.y):
+            continue
+        cx, cy = world_to_screen(ped.x, ped.y, camx, camy, px_per_m, screen_w, screen_h)
+        radius = max(4, int(getattr(ped, "radius_m", 0.45) * px_per_m))
+        is_player = getattr(ped, "is_player", False)
+        pygame.draw.circle(screen, PLAYER_OUTLINE_COLOR if is_player else UNDER_ROOF_OUTLINE_COLOR,
+                           (int(cx), int(cy)), radius, 2 if is_player else 1)
