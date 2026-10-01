@@ -230,6 +230,8 @@ def _play_rail_sounds(audio, railway_mgr, announcer=None) -> None:
             audio.play_group("railway.train_doors", 0.7, variation=0, at=(x, y))  # warning beeps, doors close
             audio.play_group("railway.train_horn", 0.8, at=(x, y))
     railway_mgr.sound_events.clear()
+    if announcer is not None:
+        announcer.update(audio)  # the next queued announcement, once the last one ends
     # Per layer (intercity, commuter), the train that sounds loudest here.
     loudest = [(0.0, 0.0, None), (0.0, 0.0, None)]  # (heard level, volume, position)
     for train in railway_mgr.trains:

@@ -68,3 +68,53 @@ def test_no_announcement_out_of_earshot_or_without_clips(tmp_path):
     assert not announcer.announce(audio, "arrived", train, (0, 60, "Tampere", 0, 0, (0, 0), "3"), (0.0, 0.0))
     announcer.script = AnnouncementScript(MANIFEST)
     assert not announcer.announce(audio, "arrived", train, (0, 60, "Tampere", 0, 0, (0, 0), "3"), (0.0, 0.0))
+
+
+def test_numbers_are_never_split_by_a_pause():
+    """Regression: a pause after every clip made "kaksikymmentä kaksi" (22)
+    sound like "20 ... 2"."""
+    phrases = AnnouncementScript(MANIFEST).phrases("arrived", "IC", "22", "Oulu", "Helsinki", "Rovaniemi", "13")
+    assert ["train_types/intercity.ogg", "numbers/tens/20.ogg", "numbers/units/2.ogg"] in phrases
+    assert ["platforms/raiteelle.ogg", "numbers/teens/13.ogg"] in phrases
+
+
+def test_a_departure_soon_after_the_arrival_waits_its_turn(monkeypatch):
+    """Regression: an announcement still playing used to drop the next one."""
+    import theroadragetrip.station_announcer as sa
+
+    played = []
+
+    class Channel:
+        busy = True
+
+        def get_busy(self):
+            return self.busy
+
+        def set_volume(self, *volume):
+            pass
+
+    class Sound:
+        def __init__(self, name):
+            self.name = name
+
+        def play(self):
+            played.append(self.name)
+            return Channel()
+
+    announcer = StationAnnouncer.__new__(StationAnnouncer)
+    announcer._channel, announcer._queue = None, sa.deque()
+    audio = SimpleNamespace(enabled=True, levels=lambda *a, **k: (1.0, 1.0))
+    now = [100.0]
+    monkeypatch.setattr(sa.time, "monotonic", lambda: now[0])
+    announcer._queue.extend([(now[0], Sound("arrival"), (0, 0), ""), (now[0], Sound("departure"), (0, 0), "")])
+    announcer.update(audio)
+    announcer.update(audio)  # still talking
+    assert played == ["arrival"]
+    announcer._channel.busy = False
+    announcer.update(audio)
+    assert played == ["arrival", "departure"]
+    announcer._queue.append((now[0], Sound("stale"), (0, 0), ""))
+    announcer._channel.busy = False
+    now[0] += sa.MAX_WAIT_S + 1
+    announcer.update(audio)
+    assert played == ["arrival", "departure"]

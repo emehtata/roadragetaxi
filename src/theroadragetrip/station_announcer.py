@@ -9,6 +9,8 @@ from __future__ import annotations
 
 import json
 import logging
+import time
+from collections import deque
 from pathlib import Path
 from typing import List, Optional
 
@@ -16,6 +18,7 @@ logger = logging.getLogger(__name__)
 
 ASSET_DIR = Path(__file__).with_name("assets") / "railway_announcements"
 MAX_SPOKEN_NUMBER = 999  # the clip set covers 0-999 (manifest numbers)
+MAX_WAIT_S = 20.0  # a queued announcement older than this (real seconds) is dropped as stale
 
 
 def number_components(value: int) -> List[int]:
@@ -76,42 +79,47 @@ class AnnouncementScript:
         file = self._file(form, place_id) if place_id else None
         return [file] if file else []
 
-    def files(self, kind: str, train_type: str, number, station: str, origin: str, destination: str,
-              track: str) -> List[str]:
-        """kind "arrived": [attention] type number [from origin] saapuu
-        [raiteelle track]; "departed": type number [to destination] lähtee
-        [raiteelta track]. [] when the train type has no clip (commuter
-        trains) - no announcement then."""
+    def phrases(self, kind: str, train_type: str, number, station: str, origin: str, destination: str,
+                track: str) -> List[List[str]]:
+        """The announcement as phrases (clip files said together, a short
+        pause between phrases - never inside a number, which would turn
+        "kaksikymmentä kaksi" into "20 ... 2"). kind "arrived": [attention]
+        [type number] [from origin] [saapuu] [raiteelle track]; "departed":
+        [type number] [to destination] [lähtee] [raiteelta track]. [] when
+        the train type has no clip (commuter trains) - no announcement."""
         train_file = self.train_types.get(train_type)
         if train_file is None:
             return []
-        files = [train_file] + self._number(number)
         if kind == "arrived":
-            if origin and origin != station:
-                files += self._place(origin, "places_from")
+            place = self._place(origin, "places_from") if origin and origin != station else []
             verb, platform = "arriving", "raiteelle"
         else:
-            if destination and destination != station:
-                files += self._place(destination, "places_to")
+            place = self._place(destination, "places_to") if destination and destination != station else []
             verb, platform = "departing", "raiteelta"
-        files += [f for f in (self._file("phrases", verb),) if f]
+        phrases = [[train_file] + self._number(number), place, [f for f in (self._file("phrases", verb),) if f]]
         track_files = self._number(track)
         if track_files and self._file("platforms", platform):
-            files += [self._file("platforms", platform)] + track_files
+            phrases.append([self._file("platforms", platform)] + track_files)
         if kind == "arrived" and self._file("phrases", "attention"):
-            files = [self._file("phrases", "attention")] + files
-        return files
+            phrases.insert(0, [self._file("phrases", "attention")])
+        return [phrase for phrase in phrases if phrase]
+
+    def files(self, *args) -> List[str]:
+        """The phrases' clip files in order."""
+        return [file for phrase in self.phrases(*args) for file in phrase]
 
 
 class StationAnnouncer:
-    """Plays one announcement at a time (a new one waits its turn by being
-    skipped while the loudspeakers talk - trains rarely overlap)."""
+    """Plays one announcement at a time; others wait their turn in a short
+    queue (a train's departure soon after its arrival, two trains at once)
+    and are dropped once stale. update() every frame starts the next."""
 
     def __init__(self, asset_dir: Path = ASSET_DIR) -> None:
         self.asset_dir = asset_dir
         self.script: Optional[AnnouncementScript] = None
         self._clips = {}
         self._channel = None
+        self._queue = deque()  # (queued at, sound, position, log text)
         try:
             manifest = json.loads((asset_dir / "manifest.json").read_text(encoding="utf-8"))
             self.script = AnnouncementScript(manifest)
@@ -127,34 +135,46 @@ class StationAnnouncer:
         return self._clips[file]
 
     def announce(self, audio, kind: str, train, stop, position) -> bool:
-        """A train event at a station (stop: the train's stop tuple) - play
-        its announcement from the platform if anyone could hear it."""
+        """A train event at a station (stop: the train's stop tuple) - queue
+        its announcement, from the platform, if anyone could hear it."""
         if self.script is None or not getattr(audio, "enabled", False) or train.service is None or stop is None:
             return False
-        if self._channel is not None and self._channel.get_busy():
-            return False
-        left, right = audio.levels("railway.announcement", 1.0, at=position)
-        if max(left, right) <= 0.0:
+        if max(audio.levels("railway.announcement", 1.0, at=position)) <= 0.0:
             return False  # too far from the station to hear
         service = train.service
-        files = self.script.files(kind, service.train_type, service.number, stop[2], service.origin,
-                                  service.destination, stop[6] if len(stop) > 6 else "")
-        if not files:
+        phrases = self.script.phrases(kind, service.train_type, service.number, stop[2], service.origin,
+                                      service.destination, stop[6] if len(stop) > 6 else "")
+        if not phrases:
             return False
         import pygame
 
         try:
+            pause = [self._clip(self._pause).get_raw()] if self._pause else []
             parts = []
-            for file in files:
-                parts.append(self._clip(file).get_raw())
-                if self._pause:
-                    parts.append(self._clip(self._pause).get_raw())
+            for index, phrase in enumerate(phrases):
+                if index:
+                    parts += pause
+                parts += [self._clip(file).get_raw() for file in phrase]
             sound = pygame.mixer.Sound(buffer=b"".join(parts))
         except (pygame.error, OSError) as exc:
             logger.warning("Could not assemble a station announcement: %s", exc)
             return False
-        self._channel = sound.play()
-        if self._channel is not None:
-            self._channel.set_volume(left, right)
-        logger.info("Station announcement at %s: %s %s (%s)", stop[2], service.train_type, service.number, kind)
-        return self._channel is not None
+        self._queue.append((time.monotonic(), sound, position,
+                            f"{stop[2]}: {service.train_type} {service.number} ({kind})"))
+        self.update(audio)
+        return True
+
+    def update(self, audio) -> None:
+        """Start the next queued announcement once the loudspeakers are free."""
+        if self._channel is not None and self._channel.get_busy():
+            return
+        while self._queue:
+            queued_at, sound, position, text = self._queue.popleft()
+            if time.monotonic() - queued_at > MAX_WAIT_S:
+                continue  # stale: the train is long gone
+            left, right = audio.levels("railway.announcement", 1.0, at=position)
+            self._channel = sound.play()
+            if self._channel is not None:
+                self._channel.set_volume(left, right)
+                logger.info("Station announcement at %s", text)
+            return
