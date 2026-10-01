@@ -457,6 +457,10 @@ def advance_simulation(
         if len(taxi_mgr.fallen_trees) > fallen_before:
             audio.play_group("collision.tree_fall")
         fence_crash = on_surface and taxi_mgr.check_fence_collision(car, sceneries, traffic_mgr.sim_time, previous_position)
+        # Bollards and lamp posts are OSM nodes without a level: surface only.
+        post_crash = on_surface and taxi_mgr.check_post_collision(
+            car, scenery_objects, traffic_mgr.sim_time, previous_position
+        )
         if on_surface and taxi_mgr.check_curb_bump(car, curbs, previous_position, traffic_mgr.sim_time, curb_grid=curb_grid):
             audio.play_group("vehicle.curb_bump", min(1.0, 0.3 + abs(car.speed) / 10.0))
         if on_surface and taxi_mgr.check_speed_bump(car, speed_bumps, previous_position, traffic_mgr.sim_time):
@@ -479,6 +483,7 @@ def advance_simulation(
         audio.on_rise("crash_building", building_crash, "collision.building", 0.8),
         audio.on_rise("crash_tree", tree_crash, "collision.tree", 0.8),
         audio.on_rise("crash_fence", fence_crash, "collision.fence", 0.8),
+        audio.on_rise("crash_post", post_crash, "collision.guardrail", 0.8),  # a metal pole
         audio.on_rise("crash_guardrail", bridge_edge_crash, "collision.guardrail", 0.8),
     ])
     if crashed:

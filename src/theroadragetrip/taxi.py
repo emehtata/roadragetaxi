@@ -36,6 +36,8 @@ NIGHTLIFE_VENUE_TYPES = {
     "biergarten",
 }
 MOTION_SICKNESS_THRESHOLD = 8.0
+POST_KINDS = ("bollard", "street_lamp")  # solid poles the taxi can hit
+POST_RADIUS_M = 0.15
 GREET_RADIUS_M = 2.0  # how close the driver on foot must be to greet a booked rail customer
 
 @dataclass
@@ -192,6 +194,10 @@ class TaxiManager:
         self._crashed_building_cooldowns: Dict[int, float] = {}  # building id -> timestamp cooldown
         self._crashed_tree_cooldowns: Dict[Tuple[int, int], float] = {}
         self._crashed_fence_cooldowns: Dict[int, float] = {}  # scenery id -> timestamp cooldown
+        self._crashed_post_cooldowns: Dict[int, float] = {}  # bollard/lamp id -> timestamp cooldown
+        self._post_grid: Dict[Tuple[int, int], List[Any]] = {}
+        self._post_ref = None
+        self._post_count = 0
         self._curb_bump_cooldowns: Dict[int, float] = {}  # curb id -> timestamp cooldown
         self._speed_bump_cooldowns: Dict[int, float] = {}  # speed bump id -> timestamp cooldown
         self._speed_camera_hits: set[int] = set()
@@ -772,6 +778,50 @@ class TaxiManager:
                 logger.info("Player crashed into construction fence: -%d pts", penalty)
             return True
 
+        return False
+
+    def _nearby_posts(self, objects: List[Any], x: float, y: float):
+        """Bollards and lamp posts near (x, y) from a 20 m grid, indexing
+        only newly appended objects (the scenery list only grows, like the
+        building list in _nearby_collision_buildings)."""
+        if objects is not self._post_ref or len(objects) < self._post_count:
+            self._post_grid, self._post_ref, self._post_count = {}, objects, 0
+        for obj in objects[self._post_count:]:
+            if getattr(obj, "kind", None) in POST_KINDS:
+                self._post_grid.setdefault((math.floor(obj.x / 20.0), math.floor(obj.y / 20.0)), []).append(obj)
+        self._post_count = len(objects)
+        cell_x, cell_y = math.floor(x / 20.0), math.floor(y / 20.0)
+        return [obj for dx in (-1, 0, 1) for dy in (-1, 0, 1) for obj in self._post_grid.get((cell_x + dx, cell_y + dy), ())]
+
+    def check_post_collision(
+        self,
+        player_car: Car,
+        scenery_objects: List[Any],
+        sim_time: float,
+        previous_position: Optional[Tuple[float, float]] = None,
+        penalty: int = 50,
+    ) -> bool:
+        """Stop the car at a bollard or lamp post (OSM barrier=bollard,
+        highway=street_lamp) and apply one penalty per impact."""
+        for key in [k for k, t in self._crashed_post_cooldowns.items() if sim_time - t > 3.0]:
+            del self._crashed_post_cooldowns[key]
+        cos_h, sin_h = math.cos(player_car.heading), math.sin(player_car.heading)
+        half_l = player_car.length_m / 2 + POST_RADIUS_M
+        half_w = player_car.width_m / 2 + POST_RADIUS_M
+        for post in self._nearby_posts(scenery_objects, player_car.x, player_car.y):
+            dx, dy = post.x - player_car.x, post.y - player_car.y
+            if abs(dx * cos_h + dy * sin_h) > half_l or abs(-dx * sin_h + dy * cos_h) > half_w:
+                continue
+            if previous_position is not None:
+                player_car.x, player_car.y = previous_position
+            player_car.speed = 0.0
+            if id(post) not in self._crashed_post_cooldowns:
+                self._crashed_post_cooldowns[id(post)] = sim_time
+                self.total_score -= penalty
+                self.adjust_passenger_happiness(-20.0)
+                self.notification_msg = tr(self.language, "post_crash", penalty=penalty)
+                self.notification_timer = 3.5
+            return True
         return False
 
     def check_curb_bump(
