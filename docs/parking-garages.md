@@ -495,6 +495,21 @@ World cache format 23.
   (25.7 ms average then), a one-time cost.
 
 **Limits:**
-- **Unresolvable entrances:** these 7, and any like them, stay unusable
-  until OSM tags their tunnel roads with `level=*`.
+- **Currently unresolved entrances:** the 7 audited Oulu entrances stay
+  unresolved. Their tunnel stubs carry no explicit `level=*`, and the
+  surrounding OSM topology gives no unambiguous level evidence today.
+- **Not blocked by design:** they could resolve in a later phase if OSM
+  gains an explicit level on the road itself, or if another unambiguous,
+  semantically valid level-bearing topology becomes available.
+- **No level from physical structure:** `tunnel`, `covered`, `layer`,
+  building type, garage membership, building floor counts and closeness
+  to a road with a level never set `map_level` on their own.
+- **Future topology work is possible:** a later phase could check whether
+  some unresolved entrance paths can resolve from explicit level-bearing
+  OSM topology without giving the tunnel road itself an inferred level.
+  That needs a precise rule and its own tests, not a generic "take the
+  nearest level" mechanism.
+- **Current behaviour is intentional:** until such evidence exists, the 7
+  roads stay out of the road networks rather than being wrongly treated
+  as surface roads.
 
