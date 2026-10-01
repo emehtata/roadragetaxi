@@ -282,7 +282,7 @@ bumps or slows the car any more just because it shares the car's x/y.
   underground one.
 - **Garage outlines:** never collide, as before.
 
-## Phase 8: level connectors (garage-07.md, 2026-10-01)
+## Phase 8: level connectors (garage-07.md, commit `d27b6e7`, 2026-10-01)
 
 Added `LevelConnector` (`osm/models.py`) and `world.level_connectors`:
 places where OSM says levels may connect. This is data only. Nothing
