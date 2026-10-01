@@ -61,6 +61,11 @@ DEFAULT_BBOX = BBOX_PRESETS["oulu"]
 # landuse/leisure did (see git history: overpass.py once hand-maintained
 # its own separate landuse/leisure whitelist that fell out of sync with
 # what build_ways() actually classified).
+# building=* values that are a raised roof with open sides (fuel-pump
+# roofs, station platform canopies): drawn as an overlay you can see
+# under, never a solid walled block, and nothing collides with them.
+OPEN_ROOF_BUILDING_TYPES = frozenset({"roof", "canopy"})
+
 NATURAL_SCENERY_KINDS: Tuple[str, ...] = (
     "wood", "scrub", "grass", "sand", "heath",
     "beach", "wetland", "grassland", "shrubbery",

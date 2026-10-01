@@ -23,7 +23,7 @@ from ..performance import advance_chunked
 
 
 from ..geo import dist_point_to_segment, point_in_polygon
-from ..osm import Building, ParkingSpace, Place
+from ..osm import OPEN_ROOF_BUILDING_TYPES, Building, ParkingSpace, Place
 
 
 BUILDING_WALL_COLORS = ((158, 105, 82), (174, 166, 143), (116, 131, 119), (139, 139, 137))
@@ -76,7 +76,7 @@ GENERATED_HOUSE_PARKING_BAYS = 2
 
 def _is_open_roof(building: Building) -> bool:
     """Return whether an OSM building footprint is a drive-through roof."""
-    return str(getattr(building, "building_type", "") or "").casefold() == "roof"
+    return str(getattr(building, "building_type", "") or "").casefold() in OPEN_ROOF_BUILDING_TYPES
 
 
 def _draw_open_roof(screen, points, px_per_m: float) -> None:

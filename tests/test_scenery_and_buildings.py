@@ -1,3 +1,4 @@
+import pytest
 import math
 import sys
 import time
@@ -135,11 +136,12 @@ def test_very_tall_building_facade_depth_stays_bounded():
         pygame.quit()
 
 
-def test_open_roof_renders_as_translucent_canopy_without_facade_walls():
+@pytest.mark.parametrize("building_type", ["roof", "canopy"])  # canopy: e.g. Oulu station's platform roof
+def test_open_roof_renders_as_translucent_canopy_without_facade_walls(building_type):
     canopy = Building(
         [(-5.0, -5.0), (5.0, -5.0), (5.0, 5.0), (-5.0, 5.0)],
         bbox=(-5.0, -5.0, 5.0, 5.0),
-        building_type="roof",
+        building_type=building_type,
     )
 
     pygame.init()

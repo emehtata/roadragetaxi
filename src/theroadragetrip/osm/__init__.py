@@ -20,6 +20,7 @@ from .constants import (
     DEFAULT_ROAD_HALF_WIDTH_M,
     DEFAULT_SPEED_LIMITS_KMH,
     HIGHWAY_HALF_WIDTH,
+    OPEN_ROOF_BUILDING_TYPES,
     bbox_from_center,
     parse_speed_limit_kmh,
 )
