@@ -1,14 +1,52 @@
-# Parking garages (data layer)
+# Parking garages and map levels
 
-The game reads underground and multi-storey parking garages from OSM and
-keeps them as `ParkingGarage` records in `world.parking_garages`. This is
-data only: nothing draws them, drives into them or routes through them yet.
+The game reads underground and multi-storey parking garages from OSM, and
+it has a logical map-level model: 0 is the surface, -1 and -2 are below it
+and 1 and up are above it. The current level is the only one drawn. Nothing
+moves the player between levels yet, and nothing can drive underground.
 
-## Which OSM objects count
+The work happens in phases, one `.github/prompts/garage-NN.md` prompt each.
+"Current state" below is always up to date. The phase sections record what
+each phase added, in order; a later phase can change what an earlier one
+describes, and when it does it says so.
+
+## Current state
+
+| Area | State | Since |
+|---|---|---|
+| `ParkingGarage` records in `world.parking_garages` | imported, cached, streamed; never drawn | phase 1 |
+| One level model: `ParkingGarage.levels`, `map_level`, `Car.map_level` | in place; `Car.map_level` is 0 during play | phase 2 |
+| OSM `level=*` → `Way` / `Building` `map_level`; raw `level`, `indoor` kept | imported, cached, streamed | phase 3 |
+| Underground service/track roads with `level=*` → `world.level_ways` | kept instead of dropped | phase 4 |
+| Render gate: only `Car.map_level`'s world is drawn | active; F11 (debug HUD on) steps the level | phase 5 |
+| Driving, collisions, routing, NPCs and pedestrians on levels | not done | – |
+| `parking=entrance`, ramps, automatic level changes | not done | – |
+| Garage debug overlay, spatial index for garages | not done | – |
+
+Rules that hold throughout:
+
+- **Level sources:** a level only ever comes from explicit OSM `level=*` or
+  game data. It is never inferred from geometry (lying inside a garage
+  outline), from `tunnel=*` / `covered=*`, or from `layer=*`.
+- **`layer` is not a level:** `layer=*` (`Way.layer`, `Car.layer`) orders
+  bridges and tunnels within the surface world. A `layer=-1` tunnel is a
+  surface road.
+- **No level means surface:** `map_level=None` is surface world, visible
+  on level 0 only.
+- **`building:levels` is not a level:** it is a building's floor count,
+  never its `map_level`.
+
+---
+
+## Phase 1: garage data (garage-00.md, commit `048b994`, 2026-10-01)
+
+Added the `ParkingGarage` model (`osm/models.py`) and `osm/parking.py`.
+
+### Which OSM objects count
 
 An element is a parking facility when it has `amenity=parking` or
 `building=parking`. Its class comes from `parking=*`
-(`theroadragetrip.osm.parking.parking_facility_type`):
+(`parking_facility_type`):
 
 | Tags | Class | Stored as a garage? |
 |---|---|---|
@@ -19,167 +57,128 @@ An element is a parking facility when it has `amenity=parking` or
 | `surface`, `street_side`, `lane`, `layby`, `on_kerb`, `half_on_kerb`, `rooftop`, `carports`, `garage_boxes`, `sheds` | surface | no |
 | any other `parking=*` value | unknown | no |
 
-Nodes, closed ways and `type=multipolygon` relations are all read. The
-Overpass query fetches garage nodes (`amenity=parking` + underground or
-multi-storey); parking ways and relations were already fetched. The local
-PBF path reads everything.
+Nodes, closed ways and `type=multipolygon` relations are read. The
+Overpass query gained garage nodes (`amenity=parking` + underground or
+multi-storey). Surface parking is still drawn as a parking lot
+(`Scenery(kind="parking")`), and so is an underground garage mapped as an
+area.
 
-Surface parking is unchanged: it is still drawn as a parking lot
-(`Scenery(kind="parking")`). An underground garage mapped as an area is
-also still drawn that way, because this phase doesn't change rendering.
-
-## What a record holds
+### What a record holds
 
 - **Identity:** `osm_type` (`node`, `way`, `relation`) and `osm_id`.
 - **Geometry:** `points_m`, the outer ring in EPSG:3067 metres, or a
-  single point for a node. `bbox`, and `center_m`, the mean of the ring's
-  vertices.
-- **Metadata,** as tagged and `None` when missing: `name`, `operator`,
-  `access`, `fee`, `capacity` (int), `maxheight` and `maxweight` (raw
-  strings, because OSM units vary), `opening_hours`, `covered`.
-- **Raw level counts,** never merged into one number: `parking_levels`
-  (`parking:levels`), `building_levels` (`building:levels`),
-  `underground_levels` (`building:levels:underground`). Values that aren't
-  a non-negative whole number are dropped.
+  single point for a node. Also `bbox`, and `center_m`, the mean of the
+  ring's vertices.
+- **Metadata,** `None` when missing: `name`, `operator`, `access`, `fee`,
+  `capacity` (int), `maxheight` and `maxweight` (raw strings), and
+  `opening_hours`, `covered`.
+- **Raw level counts,** never merged into one: `parking_levels`,
+  `building_levels`, `underground_levels`.
+- **`levels`:** the garage's logical levels, with `levels_source` naming
+  the tag they came from.
+  - **Underground:** `parking:levels=n` gives `-n … -1`. Without it,
+    `building:levels:underground=n` gives the same.
+  - **Multi-storey:** `parking:levels=n` gives `0 … n-1`. Without it,
+    `building:levels` and `building:levels:underground` give
+    `-under … above-1`, which is justified because the whole building is a
+    parking structure.
+  - **Nothing usable tagged:** `()`. Levels are never guessed.
 
-## Levels
+### Storage
 
-`levels` is a tuple of logical map levels: 0 is ground, -1 and -2 are
-below it, 1 and up are above it. Later phases can use it to tell a surface
-road apart from garage level -1 at the same x/y. `levels_source` names the
-tag the levels came from.
+- **World cache:** a `.rwc` section `garages` (format 18).
+- **Tile streaming:** `parking_garages` is an `AutoFetchManager` world
+  section, merged within the per-frame budget and unloaded with its tile.
+- **Prebuilt city `.bin`:** not involved; it only holds roads and is off by
+  default.
+- **Per-frame cost:** none.
+- **Oulu:** 57 garages, 48 multi-storey and 9 underground.
 
-- **Underground:** `parking:levels=n` gives `-n … -1`. Without it,
-  `building:levels:underground=n` gives the same.
-- **Multi-storey:** `parking:levels=n` gives `0 … n-1`. Without it,
-  `building:levels` and `building:levels:underground` give
-  `-under … above-1`. `building:levels` only counts as parking levels here
-  because the garage class already says the whole building is a parking
-  structure.
-- **Nothing usable tagged:** `levels` is `()`. A level is never guessed,
-  not even -1 for an underground garage.
+**Limits:**
+- **Relations:** a garage relation with several outer rings keeps only its
+  largest ring.
+- **Node garages:** keep no footprint.
+- **Spatial index:** none.
 
-## Storage and runtime
+## Phase 2: map-level model (garage-01.md, commit `150a30b`, 2026-10-01)
 
-- **Built in:** `build_ways` (`osm/build.py`), in the same single pass over
-  OSM elements as everything else, so nothing extra runs at game time.
-- **World cache:** the `.rwc` world cache stores garages in their own
-  `garages` section. Format 18 added it; an older file fails the version
-  check and is rebuilt. A cached area therefore loads its garages without
-  any network access.
-- **Prebuilt city `.bin`:** not involved. It only supplies road `Way`s
-  (`osm/bin_source.py`) and is disabled by default.
-- **Tile streaming:** `parking_garages` is one of `AutoFetchManager`'s world
-  sections. Streamed garages are merged within the existing per-frame merge
-  budget, de-duplicated, and removed when their tile is unloaded.
-- **Per-frame cost:** none. No code touches garages while the game runs.
+Added `theroadragetrip.map_level` and `Car.map_level` (0), and a
+`map_level` line in the debug HUD.
 
-## Not supported yet
+- **`visible_on_level(obj, level)`:** an object with a `map_level` is
+  visible only when it equals `level`. Without one, the object is surface
+  world.
+- **`surface_visible(level)`:** true on level 0.
 
-- **Spatial index:** none. Queries such as "garages near the player" can
-  scan the list for now (Oulu has 57 garages), or reuse a `SpatialWayGrid`
-  once a later phase needs them.
-- **Multi-part relations:** a relation with several outer rings keeps only
-  its largest ring.
-- **Entrances, debug overlay, rendering:** `parking=entrance` nodes,
-  `level=*` / `indoor=*` mapping inside garages, and any debug overlay are
-  not read or drawn.
-- **Garage polygons for nodes:** none are inferred. Underground garages are
-  often mapped only as a node, and their footprint stays unknown.
+Rendering was unchanged in this phase. The gate followed in phase 5.
 
-## Map levels
+## Phase 3: OSM `level=*` and `indoor=*` (garage-02.md, commit `17d4a35`, 2026-10-01)
 
-There is one level model: integers, with 0 for ground, negative numbers
-below it and positive numbers above it. `ParkingGarage.levels` lists the
-levels a garage has. `map_level` is the single level an individual object
-is on.
+`Way` and `Building` gained `map_level`, plus the raw `level` and `indoor`
+strings (world cache format 19, carried through streaming).
 
-### Where levels come from
+- **`parse_map_level`** (`osm/build.py`): `level=*` becomes `map_level`
+  only when it is one clean integer (`-1`, `0`, `2`, `+1`). Values such as
+  `0;1`, `0-2`, `1.5` or junk leave `map_level=None` and keep the raw
+  string.
+- **`indoor=*`:** stored raw, with no meaning attached yet.
+- **Oulu:** 122 of the 170 ways with `level=*` parse; the rest are
+  multi-level values like `0;1`. 193 ways have `indoor=yes`, and 8
+  buildings have a single-number level.
 
-- **OSM `level=*`:** `Way` and `Building` carry `map_level`, plus the raw
-  `level` and `indoor` tag values. `parse_map_level` (`osm/build.py`) turns
-  `level=*` into a map level only when it is one clean integer (`-1`, `0`,
-  `2`, `+1`). Values such as multi-level `0;1`, ranges `0-2`, fractions
-  `1.5` or junk leave `map_level` as `None` and keep the raw string in
-  `level`. In Oulu, 122 of the 170 ways with `level=*` parse, and the rest
-  are multi-level values like `0;1`.
-- **OSM `indoor=*`:** kept as its raw value (`yes`, `room`, `corridor`,
-  `parking`, ...), or `None` when untagged. No meaning is attached to it
-  yet.
-- **OSM `layer=*`:** stays separate. `Way.layer` / `Car.layer` order bridges
-  and tunnels within the surface world. A `layer=-1` tunnel keeps
-  `map_level=None`, and `layer` never feeds into `map_level`.
-- **`building:levels`:** counts a building's floors (`Building.levels`). It
-  is not where the building sits, so it never sets `map_level`.
-- **Nothing else:** no level is ever inferred from geometry, such as a road
-  lying inside a garage outline.
-- **Pipeline:** the values are parsed once in `build_ways`. They are stored
-  in the world cache (format 19) and carried through tile streaming
-  unchanged.
+Back then, underground service/track roads were still dropped at import
+whatever their `level`. Phase 4 changed that.
 
-### Visibility rule (`theroadragetrip.map_level`)
+## Phase 4: keep levelled underground roads (garage-03.md, commit `cec6a37`, 2026-10-01)
 
-- **The player's level:** `Car.map_level`. It is always 0 for now, and the
-  debug HUD shows it as `map_level`.
-- **`map_level` set:** the object is visible only when that equals the
-  player's level.
-- **`map_level` is `None`:** surface world, visible on level 0 only. That
-  covers every existing object, and any whose `level=*` didn't parse.
-- **Render gate** (`main()`): the level-less surface world draws only while
-  `Car.map_level == 0`. That covers the static layers from grass to speed
-  cameras, NPC cars, pedestrians other than the on-foot player, open roofs,
-  bridge track, trains, fuel signs, lit windows, street lights, rain and
-  labels. Off the surface, a plain backdrop replaces them. The player's
-  car, headlights, the HUD, the debug overlays and the day/night overlay
-  always draw. The checks cost one comparison per pass per frame, nothing
-  per object.
-- **Roads by level:** `draw_ways` (the cached surface road layer) skips ways
-  whose `map_level` is set to something other than 0. That check runs only
-  when its cache rebuilds. `draw_level_ways` draws the current level's
-  roads from `level_grid`, a `SpatialWayGrid` over `level_view_ways`: all
-  of `level_ways` plus the `ways` tagged off the surface. That grid is
-  rebuilt when a map sync finishes, never per frame. On the surface it
-  draws the covered `level=0` roads, and underground the level's own
-  roads.
-- **Debug:** with the debug HUD on, F11 steps `Car.map_level` through
-  0 → -1 → -2 → 0. Only what is drawn changes; nothing reloads or
-  rebuilds.
-- **Not covered by the gate:** physics, NPC traffic, pedestrians and
-  routing still use the whole surface network. A `level=-1` parking aisle
-  is hidden on the surface but is still drivable there. Street-light,
-  label and wet-road passes don't check road levels. Garage outlines
-  themselves are never drawn.
-
-### Garage internal roads
-
-A road only gets a level when OSM gives it `level=*`.
-
-| OSM | Result |
-|---|---|
-| `level=-1` | survives as `map_level=-1` |
-| `layer=-1` | draw order only, `map_level` stays `None` |
-| underground-looking (`tunnel=yes`, `covered=yes`, ...) without `level=*` | no level is inferred |
-
-The import keeps underground `service` and `track` roads out of the
-surface road network (`ways`), which drawing, traffic, routing and
-pedestrians read. A road counts as underground when it has `level<0`,
+The import has long kept underground-looking `service` and `track` roads
+out of the surface road network (`ways`), so they don't draw or route as
+surface roads. A road counts as underground when it has `level<0`,
 `location=underground`, `parking=underground|multi-storey|sheds|carports`,
-`covered=yes|arcade` or `tunnel=yes|building_passage`. Such a road:
+`covered=yes|arcade` or `tunnel=yes|building_passage`.
 
-- **With a clean `level=*`:** kept in `world.level_ways`, carrying its
-  `map_level`. That collection is stored in the world cache (format 20)
-  and carried through tile streaming, but no surface system reads it. The
-  level render gate will draw it. In Oulu, 21 roads are kept this way,
-  mostly garage driveways at levels -4 to 0.
-- **Without one** (no tag, or a multi-level or fractional value): still
-  dropped, as before.
+- **Before:** all such roads were dropped.
+- **Now:** one with a clean `level=*` is kept in `world.level_ways` with
+  its `map_level` (world cache format 20, carried through streaming).
+  Without one, it is still dropped.
+- **Parking aisles:** `service=parking_aisle` was already exempt and stays
+  in `ways`, even with `level=-1`.
+- **Oulu:** 21 roads are kept this way, mostly garage driveways at levels
+  -4 to 0.
 
-`service=parking_aisle` was already exempt from that rule. Such aisles
-stay in `ways` and draw on the surface even with `level=-1`. They stay
-there, but the render gate draws them only on their own level.
-Footways and other roads with a negative `level` are in `ways` as well.
+## Phase 5: render gate (garage-04.md, commit `43c7053`, 2026-10-01)
 
-`level_ways` entries now draw on their own level (see the render gate
-above), but nothing can drive on them yet. A covered road with `level=0`
-also sits there, although level 0 is the surface; the gate phase decides
-whether it joins `ways`.
+`Car.map_level` now decides what is drawn (`main()`).
+
+- **Surface layers:** the level-less layers draw only on level 0. That
+  covers the static layers from grass to speed cameras, NPC cars,
+  pedestrians other than the on-foot player, open roofs, bridge track,
+  trains, fuel signs, lit windows, street lights, rain and labels. Off the
+  surface, a plain backdrop replaces them.
+- **Always drawn:** the player's car and headlights, the HUD, the debug
+  overlays and the day/night overlay. The railway simulation keeps
+  running underground; only its drawing is skipped.
+- **Surface road cache:** `draw_ways` skips ways explicitly on another
+  level, such as a `level=-1` parking aisle. The check runs only when its
+  cache rebuilds.
+- **Level roads:** `draw_level_ways` draws the current level's roads from
+  `level_grid`, a `SpatialWayGrid` over `level_view_ways`: all of
+  `level_ways` plus the `ways` tagged off the surface. The grid is rebuilt
+  when a map sync finishes. On level 0 it draws the covered `level=0`
+  roads from `level_ways`.
+- **Debug:** with the debug HUD on, F11 steps the level 0 → -1 → -2 → 0.
+  Nothing reloads or rebuilds.
+- **Performance** (Oulu driving benchmark): surface frame times are
+  unchanged within run-to-run noise. Levels -1 and -2 average about 17 ms
+  against about 24 ms on the surface, and switching levels causes no spike.
+
+**Limits:**
+- **Drawing only:** physics, NPC traffic, pedestrians and routing still
+  use the whole surface network, so a hidden `level=-1` aisle is drivable
+  on the surface. Nothing drives on `level_ways` yet.
+- **Partial road check:** the street-light, label and wet-road passes
+  don't check road levels.
+- **Entities:** NPCs and pedestrians have no level; they are simply hidden
+  below ground.
+- **Garage outlines:** never drawn. A garage with no tagged internal roads
+  is an empty backdrop underground.
