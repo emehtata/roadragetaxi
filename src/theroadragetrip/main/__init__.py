@@ -2314,7 +2314,8 @@ def main() -> None:
             on_road = current_way is not None
             off_road_ground = (
                 off_road_ground_kind(car.x, car.y, scenery_grid=scenery_grid)
-                if surface_way is None
+                if car.map_level == SURFACE_LEVEL  # off the surface: a hard garage floor, not surface grass
+                and surface_way is None
                 and not is_point_on_parking_space(car.x, car.y, parking_spaces)
                 and not is_point_in_parking_lot(car.x, car.y, scenery_grid=scenery_grid)
                 else "hard"
@@ -2386,8 +2387,8 @@ def main() -> None:
             # car_was_in_puddle, same one-event-per-pass-through shape as
             # a real splash.
             puddle_hit = find_puddle_overlap(
-                ways, weather, car.x, car.y, max(car.length_m, car.width_m) * 0.5,
-                spatial_grid=spatial_grid,
+                drive_ways, weather, car.x, car.y, max(car.length_m, car.width_m) * 0.5,
+                spatial_grid=drive_grid,
             )
             car_in_puddle_now = puddle_hit is not None and abs(car.speed) >= SPLASH_MIN_SPEED_MPS
             if car_in_puddle_now and not car_was_in_puddle:

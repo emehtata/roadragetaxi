@@ -6,6 +6,7 @@ from datetime import date, datetime, timedelta
 from typing import Any, Dict, List, Optional, Tuple
 
 from .geo import clamp, closest_point_and_dist_to_segment, compute_bbox, dist_point_to_segment, get_oriented_box_corners, point_in_polygon, segments_intersect
+from .map_level import SURFACE_LEVEL, on_map_level
 from .osm import OPEN_ROOF_BUILDING_TYPES, Building, Curb, Place, SpeedBump, TaxiStop, Way
 from .physics import (
     Car, SpatialWayGrid, connected_drivable_ways, is_car_road, is_point_on_light_traffic_way, is_point_on_road,
@@ -546,7 +547,10 @@ class TaxiManager:
             player_car.x, player_car.y, player_car.heading, player_car.length_m, player_car.width_m
         )
 
+        car_level = getattr(player_car, "map_level", SURFACE_LEVEL)
         for building in self._nearby_collision_buildings(buildings, player_car.x, player_car.y, car_radius):
+            if not on_map_level(building, car_level):  # only the car's own map level collides
+                continue
             points = getattr(building, "points_m", [])
             if len(points) < 3:
                 continue

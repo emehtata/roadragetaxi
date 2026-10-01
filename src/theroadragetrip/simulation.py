@@ -309,7 +309,8 @@ def advance_simulation(
     # The player drives on its own map level's road network (garage-05.md):
     # the surface one, or the level's - never the surface as a fallback.
     # NPCs below keep the surface network.
-    if car.map_level == SURFACE_LEVEL:
+    on_surface = car.map_level == SURFACE_LEVEL
+    if on_surface:
         drive_ways, drive_grid = ways, spatial_grid
     else:
         drive_ways, drive_grid = world.level_roads.network(car.map_level)
@@ -348,8 +349,9 @@ def advance_simulation(
                 car, throttle, brake, steer_left, steer_right, dt,
                 ways=drive_ways, spatial_grid=drive_grid,
                 block_offroad=False, speed_limit_mps=speed_limit_mps,
-                nearby_vehicles=[], parking_spaces=parking_spaces,
-                scenery_grid=scenery_grid,
+                # Ground types and parking bays carry no level: surface only.
+                nearby_vehicles=[], parking_spaces=parking_spaces if on_surface else [],
+                scenery_grid=scenery_grid if on_surface else None,
                 current_way=current_way, physics_mode=physics_mode,
                 wetness=weather.road_grip_wetness,
                 black_ice=weather.road_ice_fraction,
@@ -360,7 +362,7 @@ def advance_simulation(
             (previous_position[0] + car.x) * 0.5,
             (previous_position[1] + car.y) * 0.5,
         )
-        entered_roadwork = any(
+        entered_roadwork = on_surface and any(  # roadworks sit on surface roads
             not work.contains(*previous_position, margin_m=2.0)
             and (
                 work.contains(*midpoint, margin_m=2.0)
@@ -378,7 +380,7 @@ def advance_simulation(
             current_way = get_current_road_at_car(
                 car, ways=drive_ways, spatial_grid=drive_grid, car_roads_only=True, current_way=current_way,
             )
-        in_water = not entered_roadwork and is_car_fully_in_water(car, waters, current_way=current_way)
+        in_water = on_surface and not entered_roadwork and is_car_fully_in_water(car, waters, current_way=current_way)
         audio.on_rise("water", in_water, "vehicle.water_splash")
         if in_water:
             water_elapsed = min(10.0, water_elapsed + dt)
@@ -429,19 +431,26 @@ def advance_simulation(
     taxi_mgr.update_passenger_happiness(dt, car.speed, road_limit_mps, car.is_sliding)
 
     with frame_profiler.section("collisions"):
+        # Level-aware (garage-06.md): buildings carry map_level and are
+        # filtered per candidate in check_building_collision; trees, fences,
+        # curbs and speed bumps have no level data, so they're surface-only
+        # and not checked off the surface (their indexes stay untouched).
+        # Road-overlap exemptions use the player's own level's roads.
         building_crash = taxi_mgr.check_building_collision(
-            car, buildings, traffic_mgr.sim_time, previous_position, ways=ways
+            car, buildings, traffic_mgr.sim_time, previous_position, ways=drive_ways
         )
         fallen_before = len(taxi_mgr.fallen_trees)
-        tree_crash = taxi_mgr.check_tree_collision(car, sceneries, traffic_mgr.sim_time, previous_position, ways=ways)
+        tree_crash = on_surface and taxi_mgr.check_tree_collision(
+            car, sceneries, traffic_mgr.sim_time, previous_position, ways=drive_ways
+        )
         if len(taxi_mgr.fallen_trees) > fallen_before:
             audio.play_group("collision.tree_fall")
-        fence_crash = taxi_mgr.check_fence_collision(car, sceneries, traffic_mgr.sim_time, previous_position)
-        if taxi_mgr.check_curb_bump(car, curbs, previous_position, traffic_mgr.sim_time, curb_grid=curb_grid):
+        fence_crash = on_surface and taxi_mgr.check_fence_collision(car, sceneries, traffic_mgr.sim_time, previous_position)
+        if on_surface and taxi_mgr.check_curb_bump(car, curbs, previous_position, traffic_mgr.sim_time, curb_grid=curb_grid):
             audio.play_group("vehicle.curb_bump", min(1.0, 0.3 + abs(car.speed) / 10.0))
-        if taxi_mgr.check_speed_bump(car, speed_bumps, previous_position, traffic_mgr.sim_time):
+        if on_surface and taxi_mgr.check_speed_bump(car, speed_bumps, previous_position, traffic_mgr.sim_time):
             audio.play_group("vehicle.speed_bump", min(1.0, 0.3 + abs(car.speed) / 12.0))
-        bridge_edge_crash = is_car_colliding_with_bridge_edge(car, current_way, ways=ways)
+        bridge_edge_crash = is_car_colliding_with_bridge_edge(car, current_way, ways=drive_ways)
         if bridge_edge_crash:
             pull_car_inside_bridge_edge(car, current_way)
             # Bounce away from the rail so a held throttle cannot keep the
@@ -625,7 +634,7 @@ def advance_simulation(
             if not was_wrong_way:
                 audio.play_driver_line("wrong_way", language)
         taxi_mgr.check_pedestrian_way_violation(car, slow_check_dt, ways=drive_ways, spatial_grid=drive_grid)
-        if taxi_mgr.check_speed_cameras(car, speed_cameras):
+        if on_surface and taxi_mgr.check_speed_cameras(car, speed_cameras):
             audio.play_group("gameplay.speed_camera")
             audio.play_driver_line("speed_camera", language)
             loud_event = True

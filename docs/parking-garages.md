@@ -21,7 +21,8 @@ describes, and when it does it says so.
 | Underground service/track roads with `level=*` → `world.level_ways` | kept instead of dropped | phase 4 |
 | Render gate: only `Car.map_level`'s world is drawn | active; F11 (debug HUD on) steps the level | phase 5 |
 | Driving network per level: surface grid + route graph surface-only; player drives the current level's network | active | phase 6 |
-| Route planning off the surface, building/tree collisions per level | not done | – |
+| Collisions and environment per level: buildings by `map_level`; level-less trees, fences, curbs, bumps, water, cameras, roadworks, ground surface-only | active | phase 7 |
+| Route planning off the surface | not done | – |
 | NPCs and pedestrians on levels | not done (surface-only) | – |
 | `parking=entrance`, ramps, automatic level changes | not done | – |
 | Garage debug overlay, spatial index for garages | not done | – |
@@ -240,4 +241,43 @@ Levels share no roads, so nothing connects across levels.
 - **Pedestrians:** the pedestrian network still includes off-surface
   footways, such as Oulu's 52 `level=1` walkways, as surface paths.
 - **NPCs:** traffic stays surface-only.
+
+## Phase 7: level-aware collision and environment (garage-06.md, 2026-10-01)
+
+The player's collision and environment checks now use the player's own
+map level. Off the surface, nothing level-less on the surface stops,
+bumps or slows the car any more just because it shares the car's x/y.
+
+- **Buildings:** `Building.map_level` exists, so `check_building_collision`
+  (`taxi.py`) checks `on_map_level` on each candidate its existing grid
+  returns. The grid is unchanged and reused across level switches. A
+  building collides only on its own level, so a surface building doesn't
+  collide underground. No building gets a level from a road beneath it,
+  from `building:levels` or from garage membership.
+- **Road-overlap exemption:** the building check lets the car through
+  where a road crosses a building. Like the tree and bridge-edge checks,
+  it now gets the player's current-level roads (`drive_ways`) instead of
+  all of `world.ways`.
+- **Level-less objects:** trees, construction fences, curbs, speed bumps,
+  water, speed cameras, roadworks, parking bays and ground types (grass,
+  sand, mud) carry no level, so they're surface world. Off the surface
+  their checks don't run, which leaves their indexes alone, and the
+  ground under the car counts as "hard".
+- **Puddles:** the splash check uses the current level's roads. Wet-road
+  drawing is a surface layer: off the surface the render gate already
+  skips it, and on the surface it uses the level-0 road grid.
+- **Map sync:** unchanged. The building collision index already grows
+  with streamed tiles, and the road networks rebuild as in phase 6.
+- **Still surface-only:** NPC traffic and pedestrians.
+- **Performance** (Oulu, 2 alternating pairs of phase 6 and phase 7):
+  surface averages of 27.7 and 25.6 ms before, 25.3 and 26.0 ms after.
+  The `collisions` section averages about 0.17 ms per frame in all four
+  runs. With level switching, levels -1 and -2 averaged 16.6 and 16.2 ms
+  (worst 41 ms) against 24.4 ms on the surface.
+
+**Limits:**
+- **Level-less scenery:** trees, fences, curbs and bumps have no level, so
+  nothing underground can collide with them, even when OSM maps an
+  underground one.
+- **Garage outlines:** never collide, as before.
 
