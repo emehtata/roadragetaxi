@@ -2,8 +2,9 @@
 
 The game reads underground and multi-storey parking garages from OSM, and
 it has a logical map-level model: 0 is the surface, -1 and -2 are below it
-and 1 and up are above it. The current level is the only one drawn. Nothing
-moves the player between levels yet, and nothing can drive underground.
+and 1 and up are above it. The player's level is the only one drawn and
+driven on. Nothing moves the player between levels yet; F11 (debug HUD on)
+switches it for testing.
 
 The work happens in phases, one `.github/prompts/garage-NN.md` prompt each.
 "Current state" below is always up to date. The phase sections record what
@@ -19,7 +20,9 @@ describes, and when it does it says so.
 | OSM `level=*` → `Way` / `Building` `map_level`; raw `level`, `indoor` kept | imported, cached, streamed | phase 3 |
 | Underground service/track roads with `level=*` → `world.level_ways` | kept instead of dropped | phase 4 |
 | Render gate: only `Car.map_level`'s world is drawn | active; F11 (debug HUD on) steps the level | phase 5 |
-| Driving, collisions, routing, NPCs and pedestrians on levels | not done | – |
+| Driving network per level: surface grid + route graph surface-only; player drives the current level's network | active | phase 6 |
+| Route planning off the surface, building/tree collisions per level | not done | – |
+| NPCs and pedestrians on levels | not done (surface-only) | – |
 | `parking=entrance`, ramps, automatic level changes | not done | – |
 | Garage debug overlay, spatial index for garages | not done | – |
 
@@ -182,3 +185,59 @@ surface roads. A road counts as underground when it has `level<0`,
   below ground.
 - **Garage outlines:** never drawn. A garage with no tagged internal roads
   is an empty backdrop underground.
+
+## Phase 6: level-aware driving network (garage-05.md, 2026-10-01)
+
+Each road is drivable only on its own logical level, via `on_map_level`
+in `map_level.py`: its `map_level`, or level 0 when that is `None`.
+Levels share no roads, so nothing connects across levels.
+
+- **Surface network:** the road `spatial_grid` is now built with
+  `SpatialWayGrid(map_level=SURFACE_LEVEL)`, so it indexes only level-0
+  roads. Every surface query uses it: the player, NPC traffic, the
+  wrong-way and footpath checks. The filter runs at insert time, so
+  queries cost nothing extra. `indexed_way_count` still counts the whole
+  list, which keeps map sync's staleness check consistent. The route
+  graph's default filter (`RouteGraphBuild`, used for player navigation
+  and NPC routes) now also takes surface car roads only.
+- **What left the surface network:** off-surface roads that the import
+  keeps in `world.ways`. In Oulu that is 22 car roads: parking aisles at
+  levels -3, -1 and +1, and a few driveways. Before this phase they were
+  drivable and routable on the surface. `layer` doesn't matter here: a
+  `layer=-1` tunnel without `level` is still a surface road.
+- **Covered `level=0` roads:** these now go to `world.ways` and the
+  surface network, because level 0 is the surface (world cache format
+  21). This changes phase 4, which put them in `level_ways`; in Oulu
+  that's 3 roads.
+- **Off-surface networks:** `LevelRoadNetworks` (`map_level.py`) holds,
+  for each explicit off-surface level, its roads and a `SpatialWayGrid`
+  built from `level_view_ways`. It is rebuilt at startup and when a map
+  sync finishes, never per frame. It replaces phase 5's mixed
+  `level_grid`, and `draw_level_ways` now draws from the current level's
+  grid. In Oulu the levels run from -4 to +2, with 1 to 52 roads each.
+- **Player:** `advance_simulation` and `main()`'s road lookups use the
+  surface network on level 0, and otherwise
+  `world.level_roads.network(car.map_level)`. A level with no roads gives
+  an empty network, never the surface as a fallback. Switching level is a
+  lookup: nothing is fetched, reloaded or rebuilt.
+- **Navigation:** no route is planned off the surface, and a surface
+  route is dropped when the player leaves level 0. There is no route graph
+  per level yet.
+
+- **Performance** (Oulu driving benchmark, 4 runs each of phase 5 and
+  phase 6, alternating): the machine was noisy, with run averages of
+  27.6–66.6 ms for phase 5 and 32.0–59.1 ms for phase 6. Phase 6 came out
+  better in three of the four pairs, so there is no measurable surface
+  regression. Surface cost is a build-time filter only, plus one tuple
+  pick per frame. Level switching (0/-1/-2 every 150 frames): levels -1
+  and -2 averaged 17.1 and 18.2 ms against 23.5 ms on the surface. Their
+  one spike over 100 ms is the `taxi` section after a 7.8 s tile load,
+  a spike the phase 5 runs also have (up to 80 ms there).
+
+**Limits:**
+- **Still surface-only:** building and tree collisions, puddles, and the
+  taxi's road-overlap checks still use the surface world on any level.
+- **Pedestrians:** the pedestrian network still includes off-surface
+  footways, such as Oulu's 52 `level=1` walkways, as surface paths.
+- **NPCs:** traffic stays surface-only.
+

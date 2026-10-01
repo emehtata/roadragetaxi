@@ -981,9 +981,12 @@ def build_ways(
         # inferred from tunnel/covered/layer hints.
         level_only = False
         if is_underground and (highway in ("service", "track") or "parking" in tags) and tags.get("service") != "parking_aisle":
-            if parse_map_level(level_tag) is None:
+            explicit_level = parse_map_level(level_tag)
+            if explicit_level is None:
                 continue
-            level_only = True
+            # level=0 is the surface: a covered surface road joins the
+            # surface network (garage-05.md); other levels go to level_ways.
+            level_only = explicit_level != 0
 
         is_bridge = tags.get("bridge") in ("yes", "viaduct", "movable") or layer_val > 0
         is_tunnel = tunnel_tag in ("yes", "building_passage") or layer_val < 0

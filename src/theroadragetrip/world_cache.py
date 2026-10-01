@@ -54,7 +54,8 @@ MAGIC = b"RWC\0"
 # (underground/multi-storey ParkingGarage records, garage-00.md).
 # 19: Way/Building map_level, level and indoor (garage-02.md). 20:
 # level_ways section (filtered underground roads with level=*, garage-03.md).
-FORMAT_VERSION = 20
+# 21: a covered level=0 road goes to ways, not level_ways (garage-05.md).
+FORMAT_VERSION = 21
 COORDINATE_SYSTEM = "EPSG:3067"
 _HEADER = struct.Struct("<4sHHQQ32s12s")
 _DIRECTORY = struct.Struct("<8sQQI")

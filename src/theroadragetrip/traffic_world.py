@@ -9,7 +9,12 @@ from typing import Any, Generator, List, Optional, Tuple
 
 from .osm import TrafficLight, Way
 from .performance import advance_chunked
+from .map_level import SURFACE_LEVEL, on_map_level
 from .physics import is_car_road
+
+
+def _surface_car_road(way) -> bool:
+    return is_car_road(way) and on_map_level(way, SURFACE_LEVEL)
 from .residents import ResidentManager
 
 # Cell size for _route_node_grid, plan_route's nearest-node lookup index -
@@ -64,7 +69,10 @@ class RouteGraphBuild:
 
     def __init__(self, ways, parking_spaces=None, parking_cell_size: float = 100.0, include=None) -> None:
         self.ways = list(ways)  # snapshot: later merges into the live list never leak in
-        self.include = include or is_car_road
+        # Default: the surface car network only - a road on another map
+        # level (e.g. a level=-1 parking aisle kept in world.ways) never
+        # joins it (garage-05.md).
+        self.include = include or _surface_car_road
         self.parking_spaces = list(parking_spaces) if parking_spaces is not None else None
         self.parking_cell_size = parking_cell_size
         self.parking_grid = {} if parking_spaces is not None else None

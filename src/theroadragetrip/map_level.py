@@ -44,3 +44,35 @@ def level_view_ways(ways, level_ways) -> list:
     level_ways plus surface-network ways tagged off the surface (e.g. a
     level=-1 parking aisle). Built when map data changes, never per frame."""
     return list(level_ways) + [way for way in ways if way.map_level not in SURFACE_MAP_LEVELS]
+
+
+def on_map_level(way, level: int) -> bool:
+    """Whether a road belongs to logical map level `level`: its explicit
+    map_level, or level 0 when it has none. The one membership rule for
+    drawing, driving and routing (garage-05.md)."""
+    way_level = getattr(way, "map_level", None)
+    return way_level == level or (way_level is None and level == SURFACE_LEVEL)
+
+
+class LevelRoadNetworks:
+    """Driving networks for the off-surface levels: per explicit level, its
+    roads and a SpatialWayGrid over them. Level 0 is not here - it is the
+    existing surface spatial_grid (built with map_level=SURFACE_LEVEL).
+    Built from world data when it changes (startup, map sync), never per
+    frame; levels share no roads, so nothing connects across levels."""
+
+    def __init__(self, ways=(), level_ways=()) -> None:
+        from .physics import SpatialWayGrid
+
+        by_level: dict = {}
+        for way in level_view_ways(ways, level_ways):
+            by_level.setdefault(way.map_level, []).append(way)
+        self._networks = {level: (roads, SpatialWayGrid(roads)) for level, roads in by_level.items()}
+        self._empty = ([], SpatialWayGrid())
+
+    def network(self, level: int):
+        """(roads, grid) on an off-surface level; empty when it has none."""
+        return self._networks.get(level, self._empty)
+
+    def levels(self) -> list:
+        return sorted(self._networks)

@@ -56,16 +56,15 @@ def test_level_ways_draw_only_on_their_own_level():
         assert _level_pixel([], others, current) == (0, 0, 0)
 
 
-def test_level_zero_entry_in_level_ways_draws_on_the_surface():
-    """A covered level=0 road lives in level_ways; it must not be lost."""
+def test_covered_level_zero_road_joins_the_surface_network():
+    """level=0 is the surface (garage-05.md): a covered level=0 road is a
+    surface road, drawn by draw_ways, not kept in level_ways."""
     world = build_ways([
         {"type": "node", "id": 1, "lat": 65.0, "lon": 25.0},
         {"type": "node", "id": 2, "lat": 65.001, "lon": 25.0},
         {"type": "way", "id": 9, "nodes": [1, 2], "tags": {"highway": "service", "covered": "yes", "level": "0"}},
     ])
-    assert world.ways == [] and [w.map_level for w in world.level_ways] == [0]
-    grid = SpatialWayGrid(level_view_ways(world.ways, world.level_ways))
-    assert [w.map_level for w in grid.ways_in_rect(*world.level_ways[0].bbox)] == [0]
+    assert world.level_ways == [] and [w.map_level for w in world.ways] == [0]
 
 
 def test_parking_aisle_on_level_minus_one_leaves_the_surface_cache_for_its_level():

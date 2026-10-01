@@ -5,6 +5,7 @@ from typing import Any, List, Optional, Tuple
 
 from .fuel import FUEL_TANK_CAPACITY_L, INITIAL_FUEL_L
 from .geo import angle_diff, clamp, closest_point_and_dist_to_segment, compute_bbox, dist_point_to_segment, point_in_polygon
+from .map_level import on_map_level
 from .performance import advance_chunked
 
 # Car physics (arcade)
@@ -831,7 +832,14 @@ def reset_trip(car: Car) -> None:
 class SpatialWayGrid:
     """Spatial hash grid indexing road ways for fast O(1) road collision checks."""
 
-    def __init__(self, ways_or_cell_size=200.0, cell_size: float = 200.0):
+    def __init__(self, ways_or_cell_size=200.0, cell_size: float = 200.0, map_level=None):
+        # map_level: index only ways on that logical level (map_level.
+        # on_map_level), e.g. SURFACE_LEVEL for the surface road grid so a
+        # level=-1 parking aisle stays out of surface driving. Filtered at
+        # insert, so queries cost nothing extra; indexed_way_count still
+        # counts the whole source list (map sync's staleness check).
+        # None = index everything (every other grid).
+        self.map_level = map_level
         # id(way) -> its index in the last rebuild()'s list - lets
         # ways_in_rect() return results in that stable order regardless of
         # which grid cell a query happens to reach an item through first
@@ -856,6 +864,8 @@ class SpatialWayGrid:
         self._insert_into(self.grid, way)
 
     def _insert_into(self, grid: dict, way) -> None:
+        if self.map_level is not None and not on_map_level(way, self.map_level):
+            return
         bbox = getattr(way, "bbox", None)
         if not bbox or bbox == (0.0, 0.0, 0.0, 0.0):
             points = getattr(way, "points_m", None)

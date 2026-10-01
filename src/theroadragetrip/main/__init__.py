@@ -62,7 +62,7 @@ from ..osm import (
     remove_trees_under_roads,
     remove_trees_under_roads_steps,
 )
-from ..map_level import SURFACE_LEVEL, level_view_ways
+from ..map_level import SURFACE_LEVEL, LevelRoadNetworks
 from ..physics import (
     Car,
     SpatialWayGrid,
@@ -809,7 +809,7 @@ def _load_world(
     on_load_progress(0.70, "Preparing road index...")
     remove_trees_under_roads(sceneries, ways)
     # Spatial index for fast O(1) road collision detection
-    spatial_grid = SpatialWayGrid()
+    spatial_grid = SpatialWayGrid(map_level=SURFACE_LEVEL)  # surface driving network (map_level.py)
     spatial_grid.rebuild(ways)
     generated_house_bays = generate_detached_house_parking(
         buildings, ways, parking_spaces, spatial_grid
@@ -1299,7 +1299,9 @@ def main() -> None:
         ways = world.ways
         world_cache = world.world_cache
         level_ways = world.level_ways
-        level_grid = SpatialWayGrid(level_view_ways(ways, level_ways))  # rebuilt when map sync finishes
+        # Off-surface driving networks, rebuilt when map sync finishes; the
+        # simulation drives the player on world.level_roads (garage-05.md).
+        level_roads = world.level_roads = LevelRoadNetworks(ways, level_ways)
 
         label_mode = 0
         show_debug_hud = False
@@ -2296,14 +2298,19 @@ def main() -> None:
             frame_profiler.set_metric("tile_merge_queue_depth", tile_merge_metrics["tile_merge_queue_depth"])
             frame_profiler.set_metric("tile_merge_remaining_items", tile_merge_metrics["tile_merge_remaining_items"])
 
+            # The player's road network: the surface one, or the current
+            # level's (no fallback to the surface off it, garage-05.md).
+            drive_ways, drive_grid = (
+                (ways, spatial_grid) if car.map_level == SURFACE_LEVEL else level_roads.network(car.map_level)
+            )
             # Keep road logic on car roads, but recognize pedestrian ways as paved surfaces.
             surface_way = get_current_road_at_car(
                 car,
-                ways=ways,
-                spatial_grid=spatial_grid,
+                ways=drive_ways,
+                spatial_grid=drive_grid,
                 car_roads_only=False,
             )
-            current_way = get_current_road_at_car(car, ways=ways, spatial_grid=spatial_grid, car_roads_only=True, current_way=current_way)
+            current_way = get_current_road_at_car(car, ways=drive_ways, spatial_grid=drive_grid, car_roads_only=True, current_way=current_way)
             on_road = current_way is not None
             off_road_ground = (
                 off_road_ground_kind(car.x, car.y, scenery_grid=scenery_grid)
@@ -2606,7 +2613,7 @@ def main() -> None:
                         map_sync_stage = 14
                 elif map_sync_stage == 14:
                     with frame_profiler.section("map_sync:finalize"):
-                        level_grid = SpatialWayGrid(level_view_ways(ways, level_ways))
+                        level_roads = world.level_roads = LevelRoadNetworks(ways, level_ways)
                         navigation_route_dirty = True
                         last_map_revision = auto_fetch_manager.get_map_revision()
                         logger.info(
@@ -2621,7 +2628,7 @@ def main() -> None:
                         (time.perf_counter() - map_sync_started) * 1000.0,
                     )
             current_target = taxi_mgr.get_current_target()
-            if show_navigation and current_target:
+            if show_navigation and current_target and car.map_level == SURFACE_LEVEL:
                 target_key = (id(current_target), current_target.x, current_target.y)
                 route_deviation = False
                 if navigation_route and len(navigation_route) >= 2:
@@ -2652,6 +2659,11 @@ def main() -> None:
                 navigation_route = None
                 navigation_target_key = None
                 show_navigation = False
+            elif car.map_level != SURFACE_LEVEL and navigation_route is not None:
+                # No route planning off the surface yet (no level route graph,
+                # garage-05.md): drop the surface route rather than show it.
+                navigation_route = None
+                navigation_target_key = None
             if first_gameplay_frame:
                 logger.info("Gameplay frame: map update complete")
 
@@ -2841,7 +2853,7 @@ def main() -> None:
                 )
             else:
                 screen.fill(UNDERGROUND_BACKGROUND)
-            draw_level_ways(screen, level_grid, car.map_level, camx, camy, px_per_m=px_per_m)
+            draw_level_ways(screen, drive_grid, car.map_level, camx, camy, px_per_m=px_per_m)
             viewport_minx, viewport_miny, viewport_maxx, viewport_maxy = get_viewport_bounds(
                 camx, camy, px_per_m=px_per_m, margin_m=40.0
             )

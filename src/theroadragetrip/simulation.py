@@ -28,6 +28,7 @@ from .fuel import (
     update_car_fuel,
 )
 from .localization import tr
+from .map_level import SURFACE_LEVEL
 from .physics import (
     ACCEL,
     BRAKE,
@@ -305,8 +306,15 @@ def advance_simulation(
     steer_left = 0.0 if on_foot else command.steer_left
     steer_right = 0.0 if on_foot else command.steer_right
 
+    # The player drives on its own map level's road network (garage-05.md):
+    # the surface one, or the level's - never the surface as a fallback.
+    # NPCs below keep the surface network.
+    if car.map_level == SURFACE_LEVEL:
+        drive_ways, drive_grid = ways, spatial_grid
+    else:
+        drive_ways, drive_grid = world.level_roads.network(car.map_level)
     current_way = get_current_road_at_car(
-        car, ways=ways, spatial_grid=spatial_grid, car_roads_only=True, current_way=current_way
+        car, ways=drive_ways, spatial_grid=drive_grid, car_roads_only=True, current_way=current_way
     )
     speed_limit_mps = None
     if speed_limiter_enabled and current_way:
@@ -338,7 +346,7 @@ def advance_simulation(
         with frame_profiler.section("physics"):
             update_car_physics(
                 car, throttle, brake, steer_left, steer_right, dt,
-                ways=ways, spatial_grid=spatial_grid,
+                ways=drive_ways, spatial_grid=drive_grid,
                 block_offroad=False, speed_limit_mps=speed_limit_mps,
                 nearby_vehicles=[], parking_spaces=parking_spaces,
                 scenery_grid=scenery_grid,
@@ -368,7 +376,7 @@ def advance_simulation(
             taxi_mgr.notification_timer = 2.5
         else:
             current_way = get_current_road_at_car(
-                car, ways=ways, spatial_grid=spatial_grid, car_roads_only=True, current_way=current_way,
+                car, ways=drive_ways, spatial_grid=drive_grid, car_roads_only=True, current_way=current_way,
             )
         in_water = not entered_roadwork and is_car_fully_in_water(car, waters, current_way=current_way)
         audio.on_rise("water", in_water, "vehicle.water_splash")
@@ -613,10 +621,10 @@ def advance_simulation(
     if slow_check_elapsed >= 0.1:
         slow_check_dt = slow_check_elapsed
         slow_check_elapsed = 0.0
-        if taxi_mgr.check_wrong_way_violation(car, slow_check_dt, ways=ways, spatial_grid=spatial_grid):
+        if taxi_mgr.check_wrong_way_violation(car, slow_check_dt, ways=drive_ways, spatial_grid=drive_grid):
             if not was_wrong_way:
                 audio.play_driver_line("wrong_way", language)
-        taxi_mgr.check_pedestrian_way_violation(car, slow_check_dt, ways=ways, spatial_grid=spatial_grid)
+        taxi_mgr.check_pedestrian_way_violation(car, slow_check_dt, ways=drive_ways, spatial_grid=drive_grid)
         if taxi_mgr.check_speed_cameras(car, speed_cameras):
             audio.play_group("gameplay.speed_camera")
             audio.play_driver_line("speed_camera", language)
