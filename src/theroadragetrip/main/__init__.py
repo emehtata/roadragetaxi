@@ -62,6 +62,7 @@ from ..osm import (
     remove_trees_under_roads,
     remove_trees_under_roads_steps,
 )
+from ..map_level import SURFACE_LEVEL, level_view_ways
 from ..physics import (
     Car,
     SpatialWayGrid,
@@ -163,6 +164,7 @@ from ..render import (
     draw_vomit_puddles,
     draw_traffic_lights,
     draw_waters,
+    draw_level_ways,
     draw_ways,
     draw_roadworks,
     get_viewport_bounds,
@@ -1060,6 +1062,9 @@ def _load_world(
 # out to ~100M allocations; reference counting still frees unloaded tiles.
 GC_THRESHOLDS = (10000, 10, 1000)
 
+# Backdrop on an underground map level, where the surface layers aren't drawn.
+UNDERGROUND_BACKGROUND = (34, 34, 38)
+
 
 def main() -> None:
     gc.set_threshold(*GC_THRESHOLDS)
@@ -1293,6 +1298,8 @@ def main() -> None:
         waters = world.waters
         ways = world.ways
         world_cache = world.world_cache
+        level_ways = world.level_ways
+        level_grid = SpatialWayGrid(level_view_ways(ways, level_ways))  # rebuilt when map sync finishes
 
         label_mode = 0
         show_debug_hud = False
@@ -1675,6 +1682,11 @@ def main() -> None:
                             int(game_time_seconds // 3600.0),
                             int((game_time_seconds % 3600.0) // 60.0),
                         )
+                    elif event.key == pygame.K_F11 and show_debug_hud:
+                        # Debug only (garage-04.md): step the drawn map level
+                        # 0 -> -1 -> -2 -> 0. Visibility only - nothing reloads.
+                        car.map_level = {0: -1, -1: -2}.get(car.map_level, 0)
+                        logger.info("Debug map level %d", car.map_level)
                     elif event.key == pygame.K_F12:
                         screenshot_dir = _screenshot_directory()
                         os.makedirs(screenshot_dir, exist_ok=True)
@@ -2594,6 +2606,7 @@ def main() -> None:
                         map_sync_stage = 14
                 elif map_sync_stage == 14:
                     with frame_profiler.section("map_sync:finalize"):
+                        level_grid = SpatialWayGrid(level_view_ways(ways, level_ways))
                         navigation_route_dirty = True
                         last_map_revision = auto_fetch_manager.get_map_revision()
                         logger.info(
@@ -2652,182 +2665,190 @@ def main() -> None:
             observed_now = observed_weather(game_calendar.current)
             if observed_now is not None and observed_now.snow_depth_cm is not None:
                 seasonal_appearance = appearance_with_snow_depth(seasonal_appearance, observed_now.snow_depth_cm)
-            draw_grass_texture(screen, camx, camy, px_per_m, profiler=frame_profiler, season=game_calendar.season, seasonal_appearance=seasonal_appearance)
-            stage_elapsed = time.perf_counter() - map_stage_start
-            render_profile_times["map_grass"] = render_profile_times.get("map_grass", 0.0) + stage_elapsed
-            frame_profiler.record("render:grass", stage_elapsed * 1000.0)
-            if first_gameplay_frame:
-                logger.info("Gameplay frame: rendering scenery")
-            map_stage_start = time.perf_counter()
-            draw_scenery(
-                screen,
-                sceneries,
-                camx,
-                camy,
-                px_per_m=px_per_m,
-                spatial_grid=scenery_grid,
-                profiler=frame_profiler,
-                season=game_calendar.season,
-                seasonal_appearance=seasonal_appearance,
-            )
-            stage_elapsed = time.perf_counter() - map_stage_start
-            render_profile_times["map_scenery"] = render_profile_times.get("map_scenery", 0.0) + stage_elapsed
-            frame_profiler.record("render:scenery", stage_elapsed * 1000.0)
-            if first_gameplay_frame:
-                logger.info("Gameplay frame: rendering water")
-            map_stage_start = time.perf_counter()
-            draw_waters(
-                screen, waters, camx, camy, px_per_m=px_per_m,
-                spatial_grid=water_grid, profiler=frame_profiler, season=game_calendar.season,
-                seasonal_appearance=seasonal_appearance,
-            )
-            stage_elapsed = time.perf_counter() - map_stage_start
-            render_profile_times["map_water"] = render_profile_times.get("map_water", 0.0) + stage_elapsed
-            frame_profiler.record("render:water", stage_elapsed * 1000.0)
-            if first_gameplay_frame:
-                logger.info("Gameplay frame: rendering roads")
-            map_stage_start = time.perf_counter()
-            draw_ways(
-                screen, ways, camx, camy, px_per_m=px_per_m,
-                spatial_grid=spatial_grid, profiler=frame_profiler,
-                building_grid=building_grid,
-            )
-            draw_wet_roads(screen, ways, weather, camx, camy, px_per_m=px_per_m, spatial_grid=spatial_grid)
-            draw_puddles(screen, ways, weather, camx, camy, px_per_m=px_per_m, spatial_grid=spatial_grid)
-            draw_parking_spaces(
-                screen,
-                parking_spaces,
-                camx,
-                camy,
-                px_per_m=px_per_m,
-                spatial_grid=traffic_mgr._parking_grid,
-                grid_cell_size=traffic_mgr._parking_grid_cell_size,
-            )
-            # Ground-level track only here - a bridge track is drawn again,
-            # after the car/pedestrians (see the only_bridges=True call
-            # below), so it actually covers whatever's underneath it
-            # instead of the car rendering on top of the bridge deck it's
-            # really driving under.
-            draw_railways(
-                screen, railways, camx, camy, px_per_m=px_per_m, spatial_grid=railway_grid, only_bridges=False,
-            )
-            draw_traffic_islands(
-                screen, sceneries, camx, camy, px_per_m=px_per_m,
-                spatial_grid=scenery_grid, season=game_calendar.season,
-                seasonal_appearance=seasonal_appearance,
-            )
-            stage_elapsed = time.perf_counter() - map_stage_start
-            render_profile_times["map_roads"] = render_profile_times.get("map_roads", 0.0) + stage_elapsed
-            frame_profiler.record("render:roads", stage_elapsed * 1000.0)
-            # Trees are drawn here, after roads/parking - not inside
-            # draw_scenery() above - so a road or parking surface (both
-            # just painted) can never end up covering a real tree (see
-            # render/scenery.py:draw_trees docstring).
-            map_stage_start = time.perf_counter()
-            # Wind bends crowns downwind: the whole (cached) tree layer is
-            # drawn from a camera shifted upwind - a camera move's cost,
-            # not a per-tree redraw.
-            tree_lean_x, tree_lean_y = weather.tree_lean_m
-            draw_trees(
-                screen,
-                sceneries,
-                camx - tree_lean_x,
-                camy - tree_lean_y,
-                px_per_m=px_per_m,
-                tree_effects=taxi_mgr.tree_effects,
-                fallen_trees=taxi_mgr.fallen_trees,
-                spatial_grid=scenery_grid,
-                ways=ways,
-                road_spatial_grid=spatial_grid,
-                profiler=frame_profiler,
-                season=game_calendar.season,
-                seasonal_appearance=seasonal_appearance,
-            )
-            stage_elapsed = time.perf_counter() - map_stage_start
-            render_profile_times["map_trees"] = render_profile_times.get("map_trees", 0.0) + stage_elapsed
-            frame_profiler.record("render:trees", stage_elapsed * 1000.0)
-            draw_scenery_objects(screen, scenery_objects, camx, camy, px_per_m=px_per_m, profiler=frame_profiler)
-            if bus_stops_enabled:
-                map_stage_start = time.perf_counter()
-                draw_bus_stops(screen, bus_stops, ways, camx, camy, px_per_m=px_per_m, spatial_grid=spatial_grid)
+            # Map-level render gate (map_level.py, garage-04.md): the level-less
+            # surface layers draw only on level 0; underground only the
+            # current level's roads. One check per frame, nothing per object.
+            surface_world = car.map_level == SURFACE_LEVEL
+            if surface_world:
+                draw_grass_texture(screen, camx, camy, px_per_m, profiler=frame_profiler, season=game_calendar.season, seasonal_appearance=seasonal_appearance)
                 stage_elapsed = time.perf_counter() - map_stage_start
-                render_profile_times["map_bus_stops"] = render_profile_times.get("map_bus_stops", 0.0) + stage_elapsed
-                frame_profiler.record("render:bus_stops", stage_elapsed * 1000.0)
-            if first_gameplay_frame:
-                logger.info("Gameplay frame: rendering buildings")
-            map_stage_start = time.perf_counter()
-            draw_buildings(
-                screen,
-                buildings,
-                camx,
-                camy,
-                px_per_m=px_per_m,
-                spatial_grid=building_grid,
-                road_ways=ways,
-                road_spatial_grid=spatial_grid,
-                places=places,
-                profiler=frame_profiler,
-            )
-            stage_elapsed = time.perf_counter() - map_stage_start
-            render_profile_times["map_buildings"] = render_profile_times.get("map_buildings", 0.0) + stage_elapsed
-            frame_profiler.record("render:buildings", stage_elapsed * 1000.0)
-            render_profile_times["map"] = render_profile_times.get("map", 0.0) + (
-                time.perf_counter() - render_profile_stage_start
-            )
-            render_profile_stage_start = time.perf_counter()
-            map_stage_start = time.perf_counter()
-            draw_tire_tracks(
-                screen, tire_tracks, camx, camy, grass=False, px_per_m=px_per_m,
-                viewport_bounds=viewport_bounds,
-            )
-            draw_tire_tracks(
-                screen, tire_tracks, camx, camy, grass=True, px_per_m=px_per_m,
-                viewport_bounds=viewport_bounds,
-            )
-            draw_tire_tracks(
-                screen, tire_tracks, camx, camy, grass=True, sand=True, px_per_m=px_per_m,
-                viewport_bounds=viewport_bounds,
-            )
-            draw_tire_tracks(
-                screen, tire_tracks, camx, camy, grass=True, snow=True, px_per_m=px_per_m,
-                viewport_bounds=viewport_bounds,
-            )
-            draw_roadworks(screen, roadworks, camx, camy, px_per_m=px_per_m)
-            if first_gameplay_frame:
-                logger.info("Gameplay frame: rendering overlays")
-            draw_curbs(screen, curbs, camx, camy, px_per_m=px_per_m, spatial_grid=curb_grid)
-            draw_railings(screen, railings, camx, camy, px_per_m=px_per_m, spatial_grid=railing_grid)
-            draw_construction_fences(screen, sceneries, camx, camy, px_per_m=px_per_m, spatial_grid=scenery_grid)
-            draw_crossings(screen, crossings, camx, camy, px_per_m=px_per_m, spatial_grid=crossing_grid)
-            draw_speed_bumps(screen, speed_bumps, camx, camy, px_per_m=px_per_m)
-            draw_traffic_lights(
-                screen,
-                traffic_lights,
-                traffic_mgr.sim_time,
-                camx,
-                camy,
-                px_per_m=px_per_m,
-                spatial_grid=traffic_light_grid,
-            )
-            draw_taxi_stops(screen, taxi_stops, camx, camy, px_per_m=px_per_m)
-            draw_stop_signs(screen, stop_signs, camx, camy, px_per_m=px_per_m)
-            draw_yield_signs(screen, yield_signs, camx, camy, px_per_m=px_per_m)
-            draw_speed_cameras(
-                screen,
-                speed_cameras,
-                camx,
-                camy,
-                px_per_m=px_per_m,
-                flash_index=taxi_mgr.speed_camera_flash_index,
-                flash_active=taxi_mgr.speed_camera_flash_timer > 0.0,
-            )
+                render_profile_times["map_grass"] = render_profile_times.get("map_grass", 0.0) + stage_elapsed
+                frame_profiler.record("render:grass", stage_elapsed * 1000.0)
+                if first_gameplay_frame:
+                    logger.info("Gameplay frame: rendering scenery")
+                map_stage_start = time.perf_counter()
+                draw_scenery(
+                    screen,
+                    sceneries,
+                    camx,
+                    camy,
+                    px_per_m=px_per_m,
+                    spatial_grid=scenery_grid,
+                    profiler=frame_profiler,
+                    season=game_calendar.season,
+                    seasonal_appearance=seasonal_appearance,
+                )
+                stage_elapsed = time.perf_counter() - map_stage_start
+                render_profile_times["map_scenery"] = render_profile_times.get("map_scenery", 0.0) + stage_elapsed
+                frame_profiler.record("render:scenery", stage_elapsed * 1000.0)
+                if first_gameplay_frame:
+                    logger.info("Gameplay frame: rendering water")
+                map_stage_start = time.perf_counter()
+                draw_waters(
+                    screen, waters, camx, camy, px_per_m=px_per_m,
+                    spatial_grid=water_grid, profiler=frame_profiler, season=game_calendar.season,
+                    seasonal_appearance=seasonal_appearance,
+                )
+                stage_elapsed = time.perf_counter() - map_stage_start
+                render_profile_times["map_water"] = render_profile_times.get("map_water", 0.0) + stage_elapsed
+                frame_profiler.record("render:water", stage_elapsed * 1000.0)
+                if first_gameplay_frame:
+                    logger.info("Gameplay frame: rendering roads")
+                map_stage_start = time.perf_counter()
+                draw_ways(
+                    screen, ways, camx, camy, px_per_m=px_per_m,
+                    spatial_grid=spatial_grid, profiler=frame_profiler,
+                    building_grid=building_grid,
+                )
+                draw_wet_roads(screen, ways, weather, camx, camy, px_per_m=px_per_m, spatial_grid=spatial_grid)
+                draw_puddles(screen, ways, weather, camx, camy, px_per_m=px_per_m, spatial_grid=spatial_grid)
+                draw_parking_spaces(
+                    screen,
+                    parking_spaces,
+                    camx,
+                    camy,
+                    px_per_m=px_per_m,
+                    spatial_grid=traffic_mgr._parking_grid,
+                    grid_cell_size=traffic_mgr._parking_grid_cell_size,
+                )
+                # Ground-level track only here - a bridge track is drawn again,
+                # after the car/pedestrians (see the only_bridges=True call
+                # below), so it actually covers whatever's underneath it
+                # instead of the car rendering on top of the bridge deck it's
+                # really driving under.
+                draw_railways(
+                    screen, railways, camx, camy, px_per_m=px_per_m, spatial_grid=railway_grid, only_bridges=False,
+                )
+                draw_traffic_islands(
+                    screen, sceneries, camx, camy, px_per_m=px_per_m,
+                    spatial_grid=scenery_grid, season=game_calendar.season,
+                    seasonal_appearance=seasonal_appearance,
+                )
+                stage_elapsed = time.perf_counter() - map_stage_start
+                render_profile_times["map_roads"] = render_profile_times.get("map_roads", 0.0) + stage_elapsed
+                frame_profiler.record("render:roads", stage_elapsed * 1000.0)
+                # Trees are drawn here, after roads/parking - not inside
+                # draw_scenery() above - so a road or parking surface (both
+                # just painted) can never end up covering a real tree (see
+                # render/scenery.py:draw_trees docstring).
+                map_stage_start = time.perf_counter()
+                # Wind bends crowns downwind: the whole (cached) tree layer is
+                # drawn from a camera shifted upwind - a camera move's cost,
+                # not a per-tree redraw.
+                tree_lean_x, tree_lean_y = weather.tree_lean_m
+                draw_trees(
+                    screen,
+                    sceneries,
+                    camx - tree_lean_x,
+                    camy - tree_lean_y,
+                    px_per_m=px_per_m,
+                    tree_effects=taxi_mgr.tree_effects,
+                    fallen_trees=taxi_mgr.fallen_trees,
+                    spatial_grid=scenery_grid,
+                    ways=ways,
+                    road_spatial_grid=spatial_grid,
+                    profiler=frame_profiler,
+                    season=game_calendar.season,
+                    seasonal_appearance=seasonal_appearance,
+                )
+                stage_elapsed = time.perf_counter() - map_stage_start
+                render_profile_times["map_trees"] = render_profile_times.get("map_trees", 0.0) + stage_elapsed
+                frame_profiler.record("render:trees", stage_elapsed * 1000.0)
+                draw_scenery_objects(screen, scenery_objects, camx, camy, px_per_m=px_per_m, profiler=frame_profiler)
+                if bus_stops_enabled:
+                    map_stage_start = time.perf_counter()
+                    draw_bus_stops(screen, bus_stops, ways, camx, camy, px_per_m=px_per_m, spatial_grid=spatial_grid)
+                    stage_elapsed = time.perf_counter() - map_stage_start
+                    render_profile_times["map_bus_stops"] = render_profile_times.get("map_bus_stops", 0.0) + stage_elapsed
+                    frame_profiler.record("render:bus_stops", stage_elapsed * 1000.0)
+                if first_gameplay_frame:
+                    logger.info("Gameplay frame: rendering buildings")
+                map_stage_start = time.perf_counter()
+                draw_buildings(
+                    screen,
+                    buildings,
+                    camx,
+                    camy,
+                    px_per_m=px_per_m,
+                    spatial_grid=building_grid,
+                    road_ways=ways,
+                    road_spatial_grid=spatial_grid,
+                    places=places,
+                    profiler=frame_profiler,
+                )
+                stage_elapsed = time.perf_counter() - map_stage_start
+                render_profile_times["map_buildings"] = render_profile_times.get("map_buildings", 0.0) + stage_elapsed
+                frame_profiler.record("render:buildings", stage_elapsed * 1000.0)
+                render_profile_times["map"] = render_profile_times.get("map", 0.0) + (
+                    time.perf_counter() - render_profile_stage_start
+                )
+                render_profile_stage_start = time.perf_counter()
+                map_stage_start = time.perf_counter()
+                draw_tire_tracks(
+                    screen, tire_tracks, camx, camy, grass=False, px_per_m=px_per_m,
+                    viewport_bounds=viewport_bounds,
+                )
+                draw_tire_tracks(
+                    screen, tire_tracks, camx, camy, grass=True, px_per_m=px_per_m,
+                    viewport_bounds=viewport_bounds,
+                )
+                draw_tire_tracks(
+                    screen, tire_tracks, camx, camy, grass=True, sand=True, px_per_m=px_per_m,
+                    viewport_bounds=viewport_bounds,
+                )
+                draw_tire_tracks(
+                    screen, tire_tracks, camx, camy, grass=True, snow=True, px_per_m=px_per_m,
+                    viewport_bounds=viewport_bounds,
+                )
+                draw_roadworks(screen, roadworks, camx, camy, px_per_m=px_per_m)
+                if first_gameplay_frame:
+                    logger.info("Gameplay frame: rendering overlays")
+                draw_curbs(screen, curbs, camx, camy, px_per_m=px_per_m, spatial_grid=curb_grid)
+                draw_railings(screen, railings, camx, camy, px_per_m=px_per_m, spatial_grid=railing_grid)
+                draw_construction_fences(screen, sceneries, camx, camy, px_per_m=px_per_m, spatial_grid=scenery_grid)
+                draw_crossings(screen, crossings, camx, camy, px_per_m=px_per_m, spatial_grid=crossing_grid)
+                draw_speed_bumps(screen, speed_bumps, camx, camy, px_per_m=px_per_m)
+                draw_traffic_lights(
+                    screen,
+                    traffic_lights,
+                    traffic_mgr.sim_time,
+                    camx,
+                    camy,
+                    px_per_m=px_per_m,
+                    spatial_grid=traffic_light_grid,
+                )
+                draw_taxi_stops(screen, taxi_stops, camx, camy, px_per_m=px_per_m)
+                draw_stop_signs(screen, stop_signs, camx, camy, px_per_m=px_per_m)
+                draw_yield_signs(screen, yield_signs, camx, camy, px_per_m=px_per_m)
+                draw_speed_cameras(
+                    screen,
+                    speed_cameras,
+                    camx,
+                    camy,
+                    px_per_m=px_per_m,
+                    flash_index=taxi_mgr.speed_camera_flash_index,
+                    flash_active=taxi_mgr.speed_camera_flash_timer > 0.0,
+                )
+            else:
+                screen.fill(UNDERGROUND_BACKGROUND)
+            draw_level_ways(screen, level_grid, car.map_level, camx, camy, px_per_m=px_per_m)
             viewport_minx, viewport_miny, viewport_maxx, viewport_maxy = get_viewport_bounds(
                 camx, camy, px_per_m=px_per_m, margin_m=40.0
             )
             light_vehicles = [
                 car,
                 *(
-                    npc for npc in npcs
+                    npc for npc in (npcs if surface_world else ())
                     if viewport_minx - 45.0 <= npc.x <= viewport_maxx + 45.0
                     and viewport_miny - 45.0 <= npc.y <= viewport_maxy + 45.0
                 ),
@@ -2851,9 +2872,9 @@ def main() -> None:
             render_profile_times["map_markings"] = render_profile_times.get("map_markings", 0.0) + stage_elapsed
             frame_profiler.record("render:markings", stage_elapsed * 1000.0)
             render_profile_stage_start = time.perf_counter()
-            visible_pedestrians = pedestrian_mgr.pedestrians + [
+            visible_pedestrians = (pedestrian_mgr.pedestrians + [
                 npc for npc in npcs if getattr(npc, "is_on_foot", False)
-            ] + ([player_pedestrian] if on_foot else [])
+            ] if surface_world else []) + ([player_pedestrian] if on_foot else [])
             draw_pedestrians(
                 screen,
                 visible_pedestrians,
@@ -2899,7 +2920,7 @@ def main() -> None:
             visible_npc_count = draw_npc_cars(
                 screen, npcs, camx, camy, px_per_m=px_per_m, screen_w=SCREEN_W, screen_h=SCREEN_H,
                 ways=ways, spatial_grid=spatial_grid, show_debug=show_npc_debug, residents=residents,
-            )
+            ) if surface_world else 0
             draw_splashes(screen, weather, camx, camy, px_per_m=px_per_m)
             if not on_foot:
                 draw_taxi_smoke(screen, car, camx, camy, px_per_m=px_per_m, timer=taxi_mgr.taxi_smoke_timer)
@@ -2923,7 +2944,7 @@ def main() -> None:
                 camy,
                 px_per_m=px_per_m,
                 spatial_grid=building_grid,
-            )
+            ) if surface_world else None
             # Whoever walks under a roof (a station platform canopy) shows
             # as an outline on top of it; the booked passenger's arrow too.
             draw_pedestrians_under_roofs(screen, visible_pedestrians, roof_cover, camx, camy, px_per_m)
@@ -2936,9 +2957,10 @@ def main() -> None:
             # elevated railway actually covers whatever's underneath it -
             # matches the bridge the screenshot flagged, where the taxi
             # rendered on top of a rail bridge it was really driving under.
-            draw_railways(
-                screen, railways, camx, camy, px_per_m=px_per_m, spatial_grid=railway_grid, only_bridges=True,
-            )
+            if surface_world:
+                draw_railways(
+                    screen, railways, camx, camy, px_per_m=px_per_m, spatial_grid=railway_grid, only_bridges=True,
+                )
             # After bridge track, so a train crossing a rail bridge stays
             # visible. Same time scale the game clock uses for the spawn timer.
             with frame_profiler.section("trains"):
@@ -2951,19 +2973,21 @@ def main() -> None:
                 railway_mgr.update(dt, dt * (1.0 if taxi_mgr.has_active_job() else 60.0), game_calendar.current)
                 _play_rail_sounds(audio, railway_mgr)
             with frame_profiler.section("render:trains"):
-                draw_trains(
-                    screen, railway_mgr, camx, camy, px_per_m=px_per_m, show_debug=show_debug_hud, font=font,
-                    roof_cover=roof_cover,
-                )
+                if surface_world:
+                    draw_trains(
+                        screen, railway_mgr, camx, camy, px_per_m=px_per_m, show_debug=show_debug_hud, font=font,
+                        roof_cover=roof_cover,
+                    )
             # Price boards are gameplay-critical and must stay above both
             # ordinary buildings and the canopy overlay.
-            draw_fuel_station_signs(
-                screen,
-                scenery_objects,
-                camx,
-                camy,
-                px_per_m=px_per_m,
-            )
+            if surface_world:
+                draw_fuel_station_signs(
+                    screen,
+                    scenery_objects,
+                    camx,
+                    camy,
+                    px_per_m=px_per_m,
+                )
             stage_elapsed = time.perf_counter() - render_profile_stage_start
             render_profile_times["actors"] = render_profile_times.get("actors", 0.0) + stage_elapsed
             frame_profiler.record("render:actors", stage_elapsed * 1000.0)
@@ -2981,18 +3005,19 @@ def main() -> None:
                 latitude=sun_latitude,
                 longitude=sun_longitude,
             )
-            draw_illuminated_windows(
-                screen,
-                buildings,
-                camx,
-                camy,
-                game_time_seconds,
-                px_per_m=px_per_m,
-                spatial_grid=building_grid,
-                latitude=sun_latitude,
-                longitude=sun_longitude,
-                profiler=frame_profiler,
-            )
+            if surface_world:
+                draw_illuminated_windows(
+                    screen,
+                    buildings,
+                    camx,
+                    camy,
+                    game_time_seconds,
+                    px_per_m=px_per_m,
+                    spatial_grid=building_grid,
+                    latitude=sun_latitude,
+                    longitude=sun_longitude,
+                    profiler=frame_profiler,
+                )
             draw_vomit_puddles(screen, taxi_mgr.vomit_puddles, camx, camy, px_per_m=px_per_m)
             draw_vomit_puddles(screen, pedestrian_mgr.vomit_puddles, camx, camy, px_per_m=px_per_m)
             street_light_base = screen.copy()
@@ -3026,25 +3051,26 @@ def main() -> None:
                 current_way=current_way,
             )
             with frame_profiler.section("render:lighting:street_lights"):
-                draw_street_lights(
-                    screen,
-                    ways,
-                    camx,
-                    camy,
-                    game_time_seconds,
-                    px_per_m=px_per_m,
-                    spatial_grid=spatial_grid,
-                    visible_road_count=visible_road_count,
-                    daylight_surface=daylight_scene,
-                    latitude=sun_latitude,
-                    longitude=sun_longitude,
-                    buildings=buildings,
-                    base_surface=street_light_base,
-                    building_spatial_grid=building_grid,
-                    street_lamps=street_lamps,
-                    street_lamp_grid=street_lamp_grid,
-                    profiler=frame_profiler,
-                )
+                if surface_world:
+                    draw_street_lights(
+                        screen,
+                        ways,
+                        camx,
+                        camy,
+                        game_time_seconds,
+                        px_per_m=px_per_m,
+                        spatial_grid=spatial_grid,
+                        visible_road_count=visible_road_count,
+                        daylight_surface=daylight_scene,
+                        latitude=sun_latitude,
+                        longitude=sun_longitude,
+                        buildings=buildings,
+                        base_surface=street_light_base,
+                        building_spatial_grid=building_grid,
+                        street_lamps=street_lamps,
+                        street_lamp_grid=street_lamp_grid,
+                        profiler=frame_profiler,
+                    )
             if sun_altitude < -7.5:
                 draw_pedestrian_reflectors(
                     screen,
@@ -3061,8 +3087,9 @@ def main() -> None:
             frame_profiler.record("render:lighting", stage_elapsed * 1000.0)
 
             with frame_profiler.section("render:weather"):
-                draw_lightning_flash(screen, weather)
-                draw_rain(screen, weather)
+                if surface_world:  # no rain or sky underground
+                    draw_lightning_flash(screen, weather)
+                    draw_rain(screen, weather)
 
             # bin-loader-v4.md: render_profile_stage_start was last set
             # after the "actors" stage (above) and never reset before this
@@ -3075,7 +3102,7 @@ def main() -> None:
             render_profile_stage_start = time.perf_counter()
 
             # Labels overlay (toggled with 'L')
-            if label_mode:
+            if label_mode and surface_world:
                 draw_labels(
                     screen,
                     font,

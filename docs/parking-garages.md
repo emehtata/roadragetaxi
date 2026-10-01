@@ -125,11 +125,30 @@ is on.
   player's level.
 - **`map_level` is `None`:** surface world, visible on level 0 only. That
   covers every existing object, and any whose `level=*` didn't parse.
-- **Not active yet:** no render pass applies the rule, so a footway tagged
-  `level=-1` still draws on the surface exactly as before. Turning the
-  rule on means moving the world-layer stretch of `main()`'s render code
-  into its own function, skipping it when `surface_visible()` is false,
-  and drawing that level's objects using `visible_on_level()`.
+- **Render gate** (`main()`): the level-less surface world draws only while
+  `Car.map_level == 0`. That covers the static layers from grass to speed
+  cameras, NPC cars, pedestrians other than the on-foot player, open roofs,
+  bridge track, trains, fuel signs, lit windows, street lights, rain and
+  labels. Off the surface, a plain backdrop replaces them. The player's
+  car, headlights, the HUD, the debug overlays and the day/night overlay
+  always draw. The checks cost one comparison per pass per frame, nothing
+  per object.
+- **Roads by level:** `draw_ways` (the cached surface road layer) skips ways
+  whose `map_level` is set to something other than 0. That check runs only
+  when its cache rebuilds. `draw_level_ways` draws the current level's
+  roads from `level_grid`, a `SpatialWayGrid` over `level_view_ways`: all
+  of `level_ways` plus the `ways` tagged off the surface. That grid is
+  rebuilt when a map sync finishes, never per frame. On the surface it
+  draws the covered `level=0` roads, and underground the level's own
+  roads.
+- **Debug:** with the debug HUD on, F11 steps `Car.map_level` through
+  0 → -1 → -2 → 0. Only what is drawn changes; nothing reloads or
+  rebuilds.
+- **Not covered by the gate:** physics, NPC traffic, pedestrians and
+  routing still use the whole surface network. A `level=-1` parking aisle
+  is hidden on the surface but is still drivable there. Street-light,
+  label and wet-road passes don't check road levels. Garage outlines
+  themselves are never drawn.
 
 ### Garage internal roads
 
@@ -156,11 +175,11 @@ pedestrians read. A road counts as underground when it has `level<0`,
   dropped, as before.
 
 `service=parking_aisle` was already exempt from that rule. Such aisles
-stay in `ways` and draw on the surface even with `level=-1`. That is
-unchanged, and they should move to `level_ways` once the gate exists.
+stay in `ways` and draw on the surface even with `level=-1`. They stay
+there, but the render gate draws them only on their own level.
 Footways and other roads with a negative `level` are in `ways` as well.
 
-Transitional limit: `level_ways` entries are invisible and nothing can
-drive on them until the render gate exists. A covered road with `level=0`
+`level_ways` entries now draw on their own level (see the render gate
+above), but nothing can drive on them yet. A covered road with `level=0`
 also sits there, although level 0 is the surface; the gate phase decides
 whether it joins `ways`.

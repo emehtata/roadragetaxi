@@ -31,6 +31,7 @@ from shapely.geometry import LineString
 from shapely.ops import unary_union
 
 from ..geo import dist_point_to_segment, point_in_polygon
+from ..map_level import SURFACE_MAP_LEVELS
 from ..osm import Building, BusStop, TaxiStop, Way
 from ..performance import advance_chunked
 
@@ -123,6 +124,30 @@ VERGE_MAX_ANGLE_RAD = math.radians(20.0)
 VERGE_BUILDING_DISTANCE_M = 8.0
 VERGE_OUTER_PAVING_M = 3.0  # also pave this far beyond the sidewalk's outer edge (building frontage)
 VERGE_ROAD_CELL_M = 20.0
+
+
+def draw_level_ways(
+    screen,
+    level_grid,
+    map_level: int,
+    camx: float,
+    camy: float,
+    px_per_m: float = PX_PER_M,
+    screen_w: int = SCREEN_W,
+    screen_h: int = SCREEN_H,
+) -> None:
+    """Roads with an explicit map level equal to map_level, from level_grid
+    (map_level.level_view_ways): the current level's roads underground,
+    covered level=0 roads on the surface. A few roads at most, so drawn
+    directly every frame, outside draw_ways' cache."""
+    import pygame
+
+    vminx, vminy, vmaxx, vmaxy = get_viewport_bounds(camx, camy, px_per_m, screen_w, screen_h, 25.0)
+    for w in level_grid.ways_in_rect(vminx, vminy, vmaxx, vmaxy):
+        if w.map_level != map_level or len(w.points_m) < 2:
+            continue
+        pts = [world_to_screen(x, y, camx, camy, px_per_m, screen_w, screen_h) for x, y in w.points_m]
+        pygame.draw.lines(screen, road_color_for_way(w), False, pts, max(1, int(w.half_width_m * 2 * px_per_m)))
 
 
 def draw_ways(
@@ -311,7 +336,10 @@ def _start_road_rebuild(
     vminx, vminy, vmaxx, vmaxy = get_viewport_bounds(camx, camy, px_per_m, cache_width, cache_height, 25.0)
 
     if spatial_grid is not None:
-        visible_ways = [w for w in spatial_grid.ways_in_rect(vminx, vminy, vmaxx, vmaxy) if len(w.points_m) >= 2]
+        visible_ways = [
+            w for w in spatial_grid.ways_in_rect(vminx, vminy, vmaxx, vmaxy)
+            if len(w.points_m) >= 2 and w.map_level in SURFACE_MAP_LEVELS
+        ]
     else:
         visible_ways = []
         for w in ways:
@@ -319,7 +347,7 @@ def _start_road_rebuild(
             if bb and bb != (0.0, 0.0, 0.0, 0.0):
                 if bb[2] < vminx or bb[0] > vmaxx or bb[3] < vminy or bb[1] > vmaxy:
                     continue
-            if len(w.points_m) >= 2:
+            if len(w.points_m) >= 2 and getattr(w, "map_level", None) in SURFACE_MAP_LEVELS:
                 visible_ways.append(w)
 
     visible_ways.sort(
