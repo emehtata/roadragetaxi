@@ -148,6 +148,167 @@ class RouteGraphBuild:
             self._union(first, second)
 
 
+def nearest_node_indices(nodes, node_grid, point: Tuple[float, float], count: int, allowed) -> List[int]:
+    """The `count` nodes in `allowed` closest to `point`, found by
+    expanding outward through `_route_node_grid`'s cells instead of
+    sorting the *entire* route graph (client-server-016.md: plan_route
+    used to do exactly that sort - twice, on every single call,
+    regardless of how close start/target actually were - dominating
+    its cost on a real city-sized graph and showing up as a periodic
+    frame spike each time the population tick started an NPC trip).
+
+    One extra ring past the first that satisfies `count` is a cheap,
+    standard safety margin for a diagonal neighbor slightly closer
+    than something already found (same expanding-radius idiom
+    pedestrian.py's _nearby_ped_ways already uses) - candidate seeding
+    only, not the final path, so an occasional imperfect ordering here
+    can't produce a wrong route, at most a marginally different one.
+    """
+    cell_size = _ROUTE_NODE_GRID_CELL_M
+    cx = math.floor(point[0] / cell_size)
+    cy = math.floor(point[1] / cell_size)
+    found: List[int] = []
+    radius = 0
+    extra_ring = False
+    max_radius = max(1, len(node_grid))
+    while radius <= max_radius:
+        for dx in range(-radius, radius + 1):
+            for dy in range(-radius, radius + 1):
+                if max(abs(dx), abs(dy)) != radius:
+                    continue  # only the newly-added outer ring
+                for index in node_grid.get((cx + dx, cy + dy), ()):
+                    if allowed is None or index in allowed:
+                        found.append(index)
+        if len(found) >= count:
+            if extra_ring:
+                break
+            extra_ring = True
+        radius += 1
+    if not found:
+        # point is nowhere near any mapped road (e.g. a genuinely
+        # unreachable/off-map destination) - the grid can't help
+        # here since expanding from point's own cell never reaches
+        # the populated area within a sane radius. Rare; fall back
+        # to the exhaustive sort plan_route always used to do.
+        found = list(range(len(nodes))) if allowed is None else list(allowed)
+    found.sort(
+        key=lambda index: (nodes[index][0] - point[0]) ** 2
+        + (nodes[index][1] - point[1]) ** 2
+    )
+    return found[:count]
+
+
+def graph_route_steps(
+    graph,
+    start: Tuple[float, float],
+    target: Tuple[float, float],
+    layer: Optional[int] = None,
+) -> RouteSteps:
+    """A shortest route on one route graph (anything with nodes, edges,
+    node_grid and component_parent: a RouteGraphBuild, or TrafficWorld's
+    committed surface graph) as a resumable job: yields after every search
+    node expansion, returns the route points (or None) - see
+    run_route_steps. Shared by surface and level routing (garage-10_11.md)."""
+    # None = every node allowed (layer is None): no whole-graph set per call.
+    allowed = None if layer is None else {
+        index for index, node in enumerate(graph.nodes) if node[2] == layer
+    }
+    if not graph.nodes or allowed is not None and not allowed:
+        return None
+    # Nearest 64 (the largest candidate_count search() below ever
+    # asks for) via the grid index, not a sort of the whole graph -
+    # search() still slices smaller candidate_counts from these same
+    # two lists exactly as before.
+    node_count = len(graph.nodes) if allowed is None else len(allowed)
+    max_candidate_count = 64
+    ranked_starts = nearest_node_indices(graph.nodes, graph.node_grid, start, max_candidate_count, allowed)
+    ranked_targets = nearest_node_indices(graph.nodes, graph.node_grid, target, max_candidate_count, allowed)
+    nodes = graph.nodes
+    parent = graph.component_parent
+
+    def search(candidate_count: int):
+        starts = ranked_starts[:candidate_count]
+        targets = ranked_targets[:candidate_count]
+        # No start shares a weak component with any target: no route
+        # can exist, so skip the search that would explore it all.
+        if not {_component_root(parent, index) for index in starts} & {
+            _component_root(parent, index) for index in targets
+        }:
+            return None
+        target_distance = {
+            index: ROUTE_CONNECTOR_COST_FACTOR * math.hypot(nodes[index][0] - target[0], nodes[index][1] - target[1])
+            for index in targets
+        }
+        heuristic_cache: dict = {}
+
+        def heuristic(index: int) -> float:
+            value = heuristic_cache.get(index)
+            if value is None:
+                value = heuristic_cache[index] = min(
+                    math.hypot(nodes[index][0] - nodes[target_id][0], nodes[index][1] - nodes[target_id][1])
+                    + target_distance[target_id]
+                    for target_id in targets
+                )
+            return value
+
+        distances = {}
+        previous = {}
+        queue = []
+        for index in starts:
+            distance = ROUTE_CONNECTOR_COST_FACTOR * math.hypot(nodes[index][0] - start[0], nodes[index][1] - start[1])
+            distances[index] = distance
+            heapq.heappush(queue, (distance + heuristic(index), distance, index))
+        best_target = None
+        best_total = math.inf
+        while queue:
+            yield
+            estimated_total, distance, current = heapq.heappop(queue)
+            if distance != distances.get(current):
+                continue
+            if estimated_total > best_total:
+                break
+            if current in target_distance:
+                total = distance + target_distance[current]
+                if total < best_total:
+                    best_total = total
+                    best_target = current
+            for neighbor, edge_distance in graph.edges.get(current, ()):
+                if allowed is not None and neighbor not in allowed:
+                    continue
+                candidate = distance + edge_distance
+                if candidate < distances.get(neighbor, math.inf):
+                    distances[neighbor] = candidate
+                    previous[neighbor] = current
+                    heapq.heappush(queue, (candidate + heuristic(neighbor), candidate, neighbor))
+        if best_target is None:
+            return None
+        path = [best_target]
+        while path[-1] in previous:
+            path.append(previous[path[-1]])
+        path.reverse()
+        return path
+
+    for candidate_count in (8, 16, 32, 64):
+        yield
+        path = yield from search(min(candidate_count, node_count))
+        if path is not None:
+            return [start] + [(nodes[index][0], nodes[index][1]) for index in path] + [target]
+    return None
+
+
+class _SurfaceGraphView:
+    """TrafficWorld's committed surface route graph in RouteGraphBuild's
+    attribute shape, for graph_route_steps."""
+
+    __slots__ = ("nodes", "edges", "node_grid", "component_parent")
+
+    def __init__(self, world: "TrafficWorld") -> None:
+        self.nodes = world._route_nodes
+        self.edges = world._route_edges
+        self.node_grid = world._route_node_grid
+        self.component_parent = world._route_component_parent
+
+
 class TrafficWorld:
     """Own shared world traffic services while vehicles remain player-controlled."""
 
@@ -273,53 +434,7 @@ class TrafficWorld:
         return True
 
     def _nearest_node_indices(self, point: Tuple[float, float], count: int, allowed) -> List[int]:
-        """The `count` nodes in `allowed` closest to `point`, found by
-        expanding outward through `_route_node_grid`'s cells instead of
-        sorting the *entire* route graph (client-server-016.md: plan_route
-        used to do exactly that sort - twice, on every single call,
-        regardless of how close start/target actually were - dominating
-        its cost on a real city-sized graph and showing up as a periodic
-        frame spike each time the population tick started an NPC trip).
-
-        One extra ring past the first that satisfies `count` is a cheap,
-        standard safety margin for a diagonal neighbor slightly closer
-        than something already found (same expanding-radius idiom
-        pedestrian.py's _nearby_ped_ways already uses) - candidate seeding
-        only, not the final path, so an occasional imperfect ordering here
-        can't produce a wrong route, at most a marginally different one.
-        """
-        cell_size = _ROUTE_NODE_GRID_CELL_M
-        cx = math.floor(point[0] / cell_size)
-        cy = math.floor(point[1] / cell_size)
-        found: List[int] = []
-        radius = 0
-        extra_ring = False
-        max_radius = max(1, len(self._route_node_grid))
-        while radius <= max_radius:
-            for dx in range(-radius, radius + 1):
-                for dy in range(-radius, radius + 1):
-                    if max(abs(dx), abs(dy)) != radius:
-                        continue  # only the newly-added outer ring
-                    for index in self._route_node_grid.get((cx + dx, cy + dy), ()):
-                        if allowed is None or index in allowed:
-                            found.append(index)
-            if len(found) >= count:
-                if extra_ring:
-                    break
-                extra_ring = True
-            radius += 1
-        if not found:
-            # point is nowhere near any mapped road (e.g. a genuinely
-            # unreachable/off-map destination) - the grid can't help
-            # here since expanding from point's own cell never reaches
-            # the populated area within a sane radius. Rare; fall back
-            # to the exhaustive sort plan_route always used to do.
-            found = list(range(len(self._route_nodes))) if allowed is None else list(allowed)
-        found.sort(
-            key=lambda index: (self._route_nodes[index][0] - point[0]) ** 2
-            + (self._route_nodes[index][1] - point[1]) ** 2
-        )
-        return found[:count]
+        return nearest_node_indices(self._route_nodes, self._route_node_grid, point, count, allowed)
 
     def plan_route(
         self,
@@ -338,93 +453,9 @@ class TrafficWorld:
         target: Tuple[float, float],
         layer: Optional[int] = None,
     ) -> RouteSteps:
-        """plan_route as a resumable job: yields after every search node
-        expansion, returns the route (or None) - see run_route_steps."""
-        # None = every node allowed (layer is None): no whole-graph set per call.
-        allowed = None if layer is None else {
-            index for index, node in enumerate(self._route_nodes) if node[2] == layer
-        }
-        if not self._route_nodes or allowed is not None and not allowed:
-            return None
-        # Nearest 64 (the largest candidate_count search() below ever
-        # asks for) via the grid index, not a sort of the whole graph -
-        # search() still slices smaller candidate_counts from these same
-        # two lists exactly as before.
-        node_count = len(self._route_nodes) if allowed is None else len(allowed)
-        max_candidate_count = 64
-        ranked_starts = self._nearest_node_indices(start, max_candidate_count, allowed)
-        ranked_targets = self._nearest_node_indices(target, max_candidate_count, allowed)
-        nodes = self._route_nodes
-        parent = self._route_component_parent
-
-        def search(candidate_count: int):
-            starts = ranked_starts[:candidate_count]
-            targets = ranked_targets[:candidate_count]
-            # No start shares a weak component with any target: no route
-            # can exist, so skip the search that would explore it all.
-            if not {_component_root(parent, index) for index in starts} & {
-                _component_root(parent, index) for index in targets
-            }:
-                return None
-            target_distance = {
-                index: ROUTE_CONNECTOR_COST_FACTOR * math.hypot(nodes[index][0] - target[0], nodes[index][1] - target[1])
-                for index in targets
-            }
-            heuristic_cache: dict = {}
-
-            def heuristic(index: int) -> float:
-                value = heuristic_cache.get(index)
-                if value is None:
-                    value = heuristic_cache[index] = min(
-                        math.hypot(nodes[index][0] - nodes[target_id][0], nodes[index][1] - nodes[target_id][1])
-                        + target_distance[target_id]
-                        for target_id in targets
-                    )
-                return value
-
-            distances = {}
-            previous = {}
-            queue = []
-            for index in starts:
-                distance = ROUTE_CONNECTOR_COST_FACTOR * math.hypot(nodes[index][0] - start[0], nodes[index][1] - start[1])
-                distances[index] = distance
-                heapq.heappush(queue, (distance + heuristic(index), distance, index))
-            best_target = None
-            best_total = math.inf
-            while queue:
-                yield
-                estimated_total, distance, current = heapq.heappop(queue)
-                if distance != distances.get(current):
-                    continue
-                if estimated_total > best_total:
-                    break
-                if current in target_distance:
-                    total = distance + target_distance[current]
-                    if total < best_total:
-                        best_total = total
-                        best_target = current
-                for neighbor, edge_distance in self._route_edges.get(current, ()):
-                    if allowed is not None and neighbor not in allowed:
-                        continue
-                    candidate = distance + edge_distance
-                    if candidate < distances.get(neighbor, math.inf):
-                        distances[neighbor] = candidate
-                        previous[neighbor] = current
-                        heapq.heappush(queue, (candidate + heuristic(neighbor), candidate, neighbor))
-            if best_target is None:
-                return None
-            path = [best_target]
-            while path[-1] in previous:
-                path.append(previous[path[-1]])
-            path.reverse()
-            return path
-
-        for candidate_count in (8, 16, 32, 64):
-            yield
-            path = yield from search(min(candidate_count, node_count))
-            if path is not None:
-                return [start] + [(nodes[index][0], nodes[index][1]) for index in path] + [target]
-        return None
+        """plan_route as a resumable job on the surface graph - see
+        graph_route_steps."""
+        return graph_route_steps(_SurfaceGraphView(self), start, target, layer)
 
     def _nearby_traffic_lights(self, x: float, y: float, radius_m: float = 60.0) -> List[TrafficLight]:
         radius_sq = radius_m * radius_m
