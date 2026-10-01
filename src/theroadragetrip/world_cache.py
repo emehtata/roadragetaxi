@@ -56,7 +56,9 @@ MAGIC = b"RWC\0"
 # level_ways section (filtered underground roads with level=*, garage-03.md).
 # 21: a covered level=0 road goes to ways, not level_ways (garage-05.md).
 # 22: level_connectors section (amenity=parking_entrance, garage-07.md).
-FORMAT_VERSION = 22
+# 23: underground roads with an explicit multi-level level=* are kept
+# (garage-09.md).
+FORMAT_VERSION = 23
 COORDINATE_SYSTEM = "EPSG:3067"
 _HEADER = struct.Struct("<4sHHQQ32s12s")
 _DIRECTORY = struct.Struct("<8sQQI")

@@ -27,6 +27,7 @@ describes, and when it does it says so.
 | NPCs and pedestrians on levels | not done (surface-only) | – |
 | Level connectors (`amenity=parking_entrance` nodes) in `world.level_connectors` | imported, cached, streamed; data only | phase 8 |
 | Driving through a parking entrance changes `Car.map_level` (road-level evidence only); multi-level ramps drive on each of their levels | active | phase 9 |
+| Underground roads with an explicit multi-level `level=*` (e.g. tunnel `0;-1`) kept at import | active | phase 10 |
 | Cross-level routes, NPC and pedestrian level changes | not done | – |
 | Garage debug overlay, spatial index for garages | not done | – |
 
@@ -427,4 +428,73 @@ Everything level-aware (drawing, driving, collisions) follows
 - **Simulation test:** the level change is tested through
   `LevelTransitions` and the level-aware systems it drives, not through a
   full `advance_simulation` run.
+
+## Phase 10: level-relevant underground roads (garage-09.md, 2026-10-01)
+
+Phase 9 left 7 Oulu parking entrances unresolved because a referenced road
+had been dropped at import. This phase audited each of them.
+
+**The 7 dropped roads:** every one is the same 2-node stub,
+`highway=service` + `service=driveway` + `tunnel=yes`, often with
+`maxheight`. None has `level`, `layer`, `covered`, `location` or `indoor`.
+One end joins the outside driveway, which also has no level. The other
+joins a building outline, or an untagged multipolygon member. Nothing
+within two hops carries a road level; the only nearby `level` is an
+indoor shopping corridor (`level=1`).
+
+| Entrance | Dropped road | Building at the other end | Level evidence | Result |
+|---|---|---|---|---|
+| 610923431 | 1040047770 | `building=yes` | none | still unresolved |
+| 610923442 | 48052870 | `building=parking` | none | still unresolved |
+| 2242755062 | 1188512815 | `building=garage` | none | still unresolved |
+| 5538973244 | 946022115 | `building=retail` (S-market) | none | still unresolved |
+| 9581169915 | 1040595425 | untagged member way | none | still unresolved |
+| 9581169916 | 1040623885 | untagged member way | none | still unresolved |
+| 11138414092 | 1201361712 | `building=yes` (OYS Kuuraparkki) | none | still unresolved |
+
+These roads are physically underground or covered but have no logical
+level: the spec's category 2. They stay dropped. Keeping them with
+`map_level=None` would make them surface roads, and no tag gives them a
+level. A building's or garage's levels are not road levels.
+
+**What the audit did find:** the phase 4 import filter also dropped
+underground-looking service and track roads whose `level=*` is an
+explicit multi-level value, such as a `tunnel=yes` ramp tagged `0;-1`.
+Phase 9's working Oulu ramp only survived because it is a
+`parking_aisle`, which is exempt from that filter.
+
+**Rule implemented** (`osm/build.py`, using the new `parse_level_list` in
+`map_level.py`, which `explicit_levels` now also uses): an
+underground-looking road is kept when its `level=*` is one clean integer
+(as before) or a clean multi-level list.
+- **The list names level 0** (`0;-1`): the road goes to `ways`, where it
+  is drivable on the surface and, through `explicit_levels`, on each other
+  level it names. These are the same semantics as phase 9's ramps.
+- **The list doesn't name level 0** (`-1;-2`): the road goes to
+  `level_ways`. Its `map_level` is `None`, but it never enters the surface
+  network, which reads only `ways`.
+- **No clean level:** still dropped. `tunnel`, `covered`, `layer`,
+  `location`, garage levels and building floors are never evidence, and
+  `parse_map_level` is unchanged.
+
+World cache format 23.
+
+**Oulu, before → after:**
+- **Roads:** `ways` 30244 → 30245. The one added road is `848810277`, a
+  `service` tunnel tagged `level=-1;0`, which also joins the level -1
+  network (25 → 26 roads). The other multi-level tunnels were already
+  kept as parking aisles.
+- **Connectors:** unchanged at 2 of 22 resolved; the same 7 still miss
+  their dropped stub.
+- **Phase 9 regression:** a drive through `636848833` (0 ↔ -1) and
+  `4116535367` (0 ↔ -2) still changes level once in and once out.
+- **Build time:** 17.7 / 19.1 s before, 17.4 / 18.6 s after, the same.
+- **Frame time** (Oulu driving benchmark, warm cache): 19.7 ms average
+  (p95 34) before, 20.6 ms (p95 36) after, within noise. The first run
+  after the format bump also rebuilds the world cache in the background
+  (25.7 ms average then), a one-time cost.
+
+**Limits:**
+- **Unresolvable entrances:** these 7, and any like them, stay unusable
+  until OSM tags their tunnel roads with `level=*`.
 

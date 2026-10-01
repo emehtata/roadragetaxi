@@ -122,3 +122,36 @@ def test_level_change_flows_into_driving_rendering_and_collision():
     surface_building = Building([(1.0, -2.0), (4.0, -2.0), (4.0, 2.0), (1.0, 2.0)])
     assert not visible_on_level(surface_building, car.map_level)
     assert TaxiManager(ways=[]).check_building_collision(car, [surface_building], sim_time=1.0) is False
+
+
+def _oulu_stub_world(stub_tags):
+    """The 7 unresolved Oulu entrances (garage-09.md): outside driveway ->
+    entrance node -> 2-node tunnel=yes driveway stub ending on the outline
+    of a parking building; nothing in reach carries a level."""
+    from theroadragetrip.osm import build_ways
+    nodes = [(1, 65.0, 25.0), (2, 65.0, 25.0002), (3, 65.0, 25.0004),  # driveway, entrance, stub end
+             (4, 65.0001, 25.0004), (5, 65.0001, 25.0008), (6, 64.9999, 25.0008), (7, 64.9999, 25.0004)]
+    elements = [{"type": "node", "id": i, "lat": lat, "lon": lon} for i, lat, lon in nodes]
+    elements[1]["tags"] = {"amenity": "parking_entrance", "parking": "underground"}
+    elements += [
+        {"type": "way", "id": 100, "nodes": [1, 2], "tags": {"highway": "service", "service": "driveway"}},
+        {"type": "way", "id": 101, "nodes": [2, 3],
+         "tags": {"highway": "service", "service": "driveway", "tunnel": "yes", "maxheight": "2.3", **stub_tags}},
+        {"type": "way", "id": 102, "nodes": [3, 4, 5, 6, 7, 3],
+         "tags": {"building": "parking", "parking": "underground", "parking:levels": "2"}},
+    ]
+    return build_ways(elements)
+
+
+def test_oulu_tunnel_stub_without_level_stays_dropped_and_its_entrance_unresolved():
+    world = _oulu_stub_world({})
+    assert 101 not in {w.osm_id for w in (*world.ways, *world.level_ways)}  # never a surface road
+    assert world.parking_garages[0].levels == (-2, -1)  # known garage levels decide nothing
+    topologies, stats = resolve_connectors(world.level_connectors, world.ways, world.level_ways)
+    assert topologies == [] and stats["missing_roads"] == 1
+
+
+def test_the_same_stub_with_an_explicit_level_resolves():
+    world = _oulu_stub_world({"level": "0;-1"})
+    topologies, _ = resolve_connectors(world.level_connectors, world.ways, world.level_ways)
+    assert [(t.connector.osm_id, t.destination(0), t.destination(-1)) for t in topologies] == [(2, -1, 0)]

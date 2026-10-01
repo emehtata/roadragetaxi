@@ -70,11 +70,22 @@ def test_underground_road_with_explicit_level_survives_off_the_surface_network(t
 
 @pytest.mark.parametrize("tags", [
     {"covered": "yes"}, {"tunnel": "yes"}, {"layer": "-1", "location": "underground"},
-    {"parking": "underground"}, {"level": "-1;-2", "covered": "yes"}, {"level": "-0.5"},
+    {"parking": "underground"}, {"level": "-1;x", "covered": "yes"}, {"level": "-0.5"},
 ])
 def test_underground_road_without_a_clean_level_is_still_dropped(tags):
     world = _build(tags)
     assert world.ways == [] and world.level_ways == []
+
+
+@pytest.mark.parametrize("level, in_ways, in_level_ways", [
+    ("0;-1", True, False),   # names the surface: surface network + level -1 (garage-09.md)
+    ("-1;-2", False, True),  # names no surface level: never a surface road
+])
+def test_underground_road_with_an_explicit_multi_level_is_kept(level, in_ways, in_level_ways):
+    world = _build({"level": level, "tunnel": "yes"})
+    assert (bool(world.ways), bool(world.level_ways)) == (in_ways, in_level_ways)
+    (way,) = world.ways or world.level_ways
+    assert way.map_level is None and way.level == level
 
 
 def test_surface_roads_and_parking_aisles_are_unchanged():

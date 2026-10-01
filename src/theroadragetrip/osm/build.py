@@ -19,7 +19,7 @@ from .constants import (
     parse_speed_limit_kmh,
 )
 
-from ..map_level import parse_map_level
+from ..map_level import parse_level_list, parse_map_level
 from .parking import GARAGE_TYPES, make_parking_garage, parking_facility_type
 from .models import (
     Way,
@@ -985,11 +985,15 @@ def build_ways(
         level_only = False
         if is_underground and (highway in ("service", "track") or "parking" in tags) and tags.get("service") != "parking_aisle":
             explicit_level = parse_map_level(level_tag)
-            if explicit_level is None:
+            listed_levels = parse_level_list(level_tag)
+            if explicit_level is None and not listed_levels:
                 continue
             # level=0 is the surface: a covered surface road joins the
             # surface network (garage-05.md); other levels go to level_ways.
-            level_only = explicit_level != 0
+            # A multi-level one (level=0;-1, a tunnel ramp - garage-09.md)
+            # joins the surface network only when it names level 0; a
+            # "-1;-2" one stays in level_ways, never a surface road.
+            level_only = explicit_level != 0 if explicit_level is not None else 0 not in listed_levels
 
         is_bridge = tags.get("bridge") in ("yes", "viaduct", "movable") or layer_val > 0
         is_tunnel = tunnel_tag in ("yes", "building_passage") or layer_val < 0

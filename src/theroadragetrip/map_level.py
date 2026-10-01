@@ -35,7 +35,12 @@ def explicit_levels(way) -> frozenset:
     never from layer, tunnel, covered or geometry. Map-sync time only."""
     if getattr(way, "map_level", None) is not None:
         return frozenset((way.map_level,))
-    raw = getattr(way, "level", None)
+    return parse_level_list(getattr(way, "level", None))
+
+
+def parse_level_list(raw) -> frozenset:
+    """Each integer of a clean multi-level level=* ("0;-1" -> {0, -1});
+    empty for a single value (parse_map_level's job) or anything unclear."""
     if not raw or ";" not in raw:
         return frozenset()
     levels = [parse_map_level(part) for part in raw.split(";")]
