@@ -259,8 +259,11 @@ def choose_language(screen, font, clock, current_language: str = "fi") -> str:
         pygame.display.flip()
 
 
-def confirm_outdated_cache(screen, font, clock, language: str) -> bool:
-    """Ask before removing cache data created by an older release."""
+def confirm(
+    screen, font, clock, language: str, title_key: str, message_key: str,
+    ok_key: str = "ok", cancel_key: str = "cancel",
+) -> bool:
+    """A yes/no dialog: True for OK, False for the other button or Esc."""
     button_font = pygame.font.SysFont(None, 22)
     message_font = pygame.font.SysFont(None, 24)
     button_width, button_height = 130, 42
@@ -270,13 +273,6 @@ def confirm_outdated_cache(screen, font, clock, language: str) -> bool:
         screen_w, screen_h = screen.get_size()
         ok_rect = pygame.Rect(screen_w // 2 - button_width - 10, screen_h // 2 + 55, button_width, button_height)
         cancel_rect = pygame.Rect(screen_w // 2 + 10, screen_h // 2 + 55, button_width, button_height)
-
-        def activate(index: int) -> bool:
-            if index == 0:
-                return True
-            pygame.quit()
-            sys.exit(0)
-
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 pygame.quit()
@@ -291,24 +287,23 @@ def confirm_outdated_cache(screen, font, clock, language: str) -> bool:
                 if event.key in (pygame.K_LEFT, pygame.K_RIGHT, pygame.K_UP, pygame.K_DOWN, pygame.K_TAB):
                     selected = 1 - selected
                 elif event.key in (pygame.K_RETURN, pygame.K_SPACE, pygame.K_KP_ENTER):
-                    return activate(selected)
+                    return selected == 0
                 elif event.key == pygame.K_ESCAPE:
-                    pygame.quit()
-                    sys.exit(0)
+                    return False
             if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                 if ok_rect.collidepoint(event.pos):
-                    return activate(0)
+                    return True
                 if cancel_rect.collidepoint(event.pos):
-                    return activate(1)
+                    return False
 
         screen.fill((18, 24, 32))
-        title = font.render(tr(language, "outdated_cache_title"), True, (245, 245, 245))
+        title = font.render(tr(language, title_key), True, (245, 245, 245))
         screen.blit(title, title.get_rect(center=(screen_w // 2, screen_h // 2 - 80)))
-        message = message_font.render(tr(language, "outdated_cache_message"), True, (210, 220, 230))
+        message = message_font.render(tr(language, message_key), True, (210, 220, 230))
         screen.blit(message, message.get_rect(center=(screen_w // 2, screen_h // 2 - 25)))
         for index, (rect, key, color) in enumerate((
-            (ok_rect, "ok", (55, 135, 85)),
-            (cancel_rect, "cancel", (125, 65, 65)),
+            (ok_rect, ok_key, (55, 135, 85)),
+            (cancel_rect, cancel_key, (125, 65, 65)),
         )):
             pygame.draw.rect(screen, color, rect, border_radius=4)
             if index == selected:
@@ -317,3 +312,12 @@ def confirm_outdated_cache(screen, font, clock, language: str) -> bool:
             label = button_font.render(tr(language, key), True, (255, 255, 255))
             screen.blit(label, label.get_rect(center=rect.center))
         pygame.display.flip()
+
+
+def confirm_outdated_cache(screen, font, clock, language: str) -> bool:
+    """Ask before removing cache data created by an older release; an old
+    cache can't be used, so the alternative is quitting (and says so)."""
+    if confirm(screen, font, clock, language, "outdated_cache_title", "outdated_cache_message", cancel_key="exit"):
+        return True
+    pygame.quit()
+    sys.exit(0)
