@@ -1,5 +1,6 @@
 import bisect
 import collections
+import itertools
 from collections import defaultdict
 import logging
 import math
@@ -383,6 +384,11 @@ def _stitch_member_ways_into_rings(
     return rings
 
 
+# Walkways that can lead onto a station platform (see build_ways' platform branch).
+PLATFORM_ACCESS_HIGHWAYS = frozenset({"footway", "steps", "path", "pedestrian", "platform", "corridor", "cycleway"})
+PLATFORM_NODE_SPACING_M = 8.0
+
+
 def _platform_centreline(pts: List[Tuple[float, float]]) -> Tuple[Tuple[float, float], Tuple[float, float]]:
     """Ends of a platform polygon's long (principal) axis through its
     vertex centroid, pulled 2 m in from each end."""
@@ -629,6 +635,8 @@ def build_ways(
         return pts, (iminx, iminy, imaxx, imaxy)
 
     # 1. Scenery polygons (parks, forests, grass)
+    synthetic_node_ids = itertools.count(-1, -1)  # platform centreline nodes (OSM ids are positive)
+    platform_ways_start = len(ways_raw)  # only real OSM ways can join a platform
     if progress_callback:
         progress_callback(0.78, f"Building scenery ({len(scenery_raw)} areas)...")
     for tags, node_ids in scenery_raw:
@@ -654,13 +662,35 @@ def build_ways(
             # pedestrian ways, off-track) can wait and alight on the
             # platform. Built as an ordinary highway=platform way below.
             end_a, end_b = _platform_centreline(pts)
-            synthetic_node_id = -len(nodes_m) - 1
-            nodes_m[synthetic_node_id] = end_a
-            nodes_m[synthetic_node_id - 1] = end_b
+            dx, dy = end_b[0] - end_a[0], end_b[1] - end_a[1]
+            length_sq = dx * dx + dy * dy
+            # Footways/steps ending on the platform (e.g. an underpass's
+            # stairs) join it with a short connector to the centreline,
+            # or the platform is an island no route can reach.
+            joins = []
+            for _, way_highway, way_node_ids, _ in ways_raw[:platform_ways_start]:
+                if way_highway not in PLATFORM_ACCESS_HIGHWAYS:
+                    continue
+                for end_id in (way_node_ids[0], way_node_ids[-1]):
+                    end = nodes_m.get(end_id)
+                    if end is not None and point_in_polygon(end[0], end[1], pts):
+                        t = ((end[0] - end_a[0]) * dx + (end[1] - end_a[1]) * dy) / length_sq if length_sq else 0.0
+                        joins.append((min(max(t, 0.0), 1.0), end_id))
+            # A node at least every PLATFORM_NODE_SPACING_M: routing starts
+            # from the nearest *node*, which must be on this platform, not
+            # a footway across the track.
+            steps = max(1, math.ceil(math.sqrt(length_sq) / PLATFORM_NODE_SPACING_M))
+            stations = sorted({i / steps for i in range(steps + 1)} | {t for t, _ in joins})
+            centreline_ids = {}
+            for t in stations:
+                centreline_ids[t] = next(synthetic_node_ids)
+                nodes_m[centreline_ids[t]] = (end_a[0] + dx * t, end_a[1] + dy * t)
             ways_raw.append((
                 {"highway": "platform", "surface": surface},
-                "platform", [synthetic_node_id, synthetic_node_id - 1], None,
+                "platform", [centreline_ids[t] for t in stations], None,
             ))
+            for t, end_id in joins:
+                ways_raw.append(({"highway": "footway"}, "footway", [end_id, centreline_ids[t]], None))
         sceneries.append(Scenery(
             points_m=pts, kind=kind, name=name, bbox=ibbox, surface=surface,
             kerbed=tags.get("barrier") == "kerb",

@@ -49,8 +49,9 @@ MAGIC = b"RWC\0"
 # silent, not loud. Bumped to 15 for Railway.track_ref (station track
 # numbers the train timetable's platforms refer to).
 # 16: railway=platform areas (paved scenery) and non-drivable
-# highway=platform ways.
-FORMAT_VERSION = 16
+# highway=platform ways. 17: platform centrelines densified and joined
+# to the footways/steps that end on them.
+FORMAT_VERSION = 17
 COORDINATE_SYSTEM = "EPSG:3067"
 _HEADER = struct.Struct("<4sHHQQ32s12s")
 _DIRECTORY = struct.Struct("<8sQQI")
