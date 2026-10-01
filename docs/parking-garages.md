@@ -87,21 +87,56 @@ tag the levels came from.
 - **Garage polygons for nodes:** none are inferred. Underground garages are
   often mapped only as a node, and their footprint stays unknown.
 
-## Map levels (rendering)
+## Map levels
 
-`theroadragetrip.map_level` holds the visibility rule that later phases
-will draw by. Levels are the same integers as `ParkingGarage.levels`.
+There is one level model: integers, with 0 for ground, negative numbers
+below it and positive numbers above it. `ParkingGarage.levels` lists the
+levels a garage has. `map_level` is the single level an individual object
+is on.
+
+### Where levels come from
+
+- **OSM `level=*`:** `Way` and `Building` carry `map_level`, plus the raw
+  `level` and `indoor` tag values. `parse_map_level` (`osm/build.py`) turns
+  `level=*` into a map level only when it is one clean integer (`-1`, `0`,
+  `2`, `+1`). Values such as multi-level `0;1`, ranges `0-2`, fractions
+  `1.5` or junk leave `map_level` as `None` and keep the raw string in
+  `level`. In Oulu, 122 of the 170 ways with `level=*` parse, and the rest
+  are multi-level values like `0;1`.
+- **OSM `indoor=*`:** kept as its raw value (`yes`, `room`, `corridor`,
+  `parking`, ...), or `None` when untagged. No meaning is attached to it
+  yet.
+- **OSM `layer=*`:** stays separate. `Way.layer` / `Car.layer` order bridges
+  and tunnels within the surface world. A `layer=-1` tunnel keeps
+  `map_level=None`, and `layer` never feeds into `map_level`.
+- **`building:levels`:** counts a building's floors (`Building.levels`). It
+  is not where the building sits, so it never sets `map_level`.
+- **Nothing else:** no level is ever inferred from geometry, such as a road
+  lying inside a garage outline.
+- **Pipeline:** the values are parsed once in `build_ways`. They are stored
+  in the world cache (format 19) and carried through tile streaming
+  unchanged.
+
+### Visibility rule (`theroadragetrip.map_level`)
 
 - **The player's level:** `Car.map_level`. It is always 0 for now, and the
   debug HUD shows it as `map_level`.
-- **Explicit level:** an object with a `map_level` attribute is visible
-  only when that equals the player's level.
-- **No level:** every current world object counts as surface world and is
-  visible on level 0 only. No level is inferred from garage polygons.
-- **OSM `layer=*`:** `Way.layer` / `Car.layer` order bridges and tunnels
-  within the surface world. They are not map levels.
-- **Not wired in yet:** no render pass applies the rule, because nothing
-  carries an explicit level. The phase that imports `level=*` objects
-  skips the surface layers when `surface_visible()` is false and draws its
-  level's objects using `visible_on_level()`. That needs the world-layer
-  stretch of `main()`'s render code moved into its own function first.
+- **`map_level` set:** the object is visible only when that equals the
+  player's level.
+- **`map_level` is `None`:** surface world, visible on level 0 only. That
+  covers every existing object, and any whose `level=*` didn't parse.
+- **Not active yet:** no render pass applies the rule, so a footway tagged
+  `level=-1` still draws on the surface exactly as before. Turning the
+  rule on means moving the world-layer stretch of `main()`'s render code
+  into its own function, skipping it when `surface_visible()` is false,
+  and drawing that level's objects using `visible_on_level()`.
+
+### Garage internal roads
+
+A garage road only gets a level when OSM gives it `level=*`; nothing is
+derived from garage geometry. One existing import rule still applies: a
+`service` or `track` road that looks underground (`level<0`,
+`tunnel=yes`, `parking=underground`, `covered=yes`, ...) is dropped, so
+garage aisles don't draw over the surface map. They will be kept, with
+their `map_level`, once the render gate exists. Footways and other roads
+with a negative `level` are imported with it today.

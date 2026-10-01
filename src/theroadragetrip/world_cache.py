@@ -52,7 +52,8 @@ MAGIC = b"RWC\0"
 # highway=platform ways. 17: platform centrelines densified and joined
 # to the footways/steps that end on them. 18: parking_garages section
 # (underground/multi-storey ParkingGarage records, garage-00.md).
-FORMAT_VERSION = 18
+# 19: Way/Building map_level, level and indoor (garage-02.md).
+FORMAT_VERSION = 19
 COORDINATE_SYSTEM = "EPSG:3067"
 _HEADER = struct.Struct("<4sHHQQ32s12s")
 _DIRECTORY = struct.Struct("<8sQQI")

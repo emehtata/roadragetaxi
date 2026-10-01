@@ -35,6 +35,12 @@ class Way:
     is_roundabout: bool = False
     priority_road: bool = False
     service: Optional[str] = None
+    # Explicit OSM level metadata (garage-02.md), never derived from layer=*
+    # or geometry: map_level is level=* when it is one clean integer (see
+    # parse_map_level), else None = surface world; level is the raw tag.
+    map_level: Optional[int] = None
+    level: Optional[str] = None
+    indoor: Optional[str] = None  # raw indoor=* value, None when untagged
     segment_lengths: List[float] = field(default_factory=list, init=False, repr=False)
     segment_headings: List[float] = field(default_factory=list, init=False, repr=False)
     total_length_m: float = field(default=0.0, init=False, repr=False)
@@ -109,6 +115,12 @@ class Building:
     center_m: Tuple[float, float] = (0.0, 0.0)
     texture_seed: float = 0.0
     entrances: List[Tuple[float, float]] = field(default_factory=list)
+    # Explicit OSM level metadata (garage-02.md), never derived from layer=*
+    # or geometry: map_level is level=* when it is one clean integer (see
+    # parse_map_level), else None = surface world; level is the raw tag.
+    map_level: Optional[int] = None
+    level: Optional[str] = None
+    indoor: Optional[str] = None  # raw indoor=* value, None when untagged
     associated_places: List["Place"] = field(default_factory=list, repr=False)
 
 

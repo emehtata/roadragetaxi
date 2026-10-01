@@ -385,6 +385,21 @@ def _stitch_member_ways_into_rings(
     return rings
 
 
+def parse_map_level(value) -> Optional[int]:
+    """OSM level=* as a map level (map_level.py) when it is one clean
+    integer ("-1", " 2 ", "+1"), else None: multi-level ("-2;-1"), ranges
+    ("0-2"), fractions ("1.5") and junk stay unset rather than guessed."""
+    text = str(value).strip() if value is not None else ""
+    digits = text[1:] if text[:1] in "+-" else text
+    return int(text) if digits.isascii() and digits.isdigit() else None
+
+
+def _level_metadata(tags: dict) -> dict:
+    """Way/Building level fields from explicit tags only; layer=* never feeds in."""
+    level = tags.get("level")
+    return {"map_level": parse_map_level(level), "level": level, "indoor": tags.get("indoor")}
+
+
 # Walkways that can lead onto a station platform (see build_ways' platform branch).
 PLATFORM_ACCESS_HIGHWAYS = frozenset({"footway", "steps", "path", "pedestrian", "platform", "corridor", "cycleway"})
 PLATFORM_NODE_SPACING_M = 8.0
@@ -870,6 +885,7 @@ def build_ways(
             center_m=(center_x, center_y),
             texture_seed=abs(math.sin(center_x * 0.013 + center_y * 0.017)),
             entrances=entrances,
+            **_level_metadata(tags),
         ))
 
     # 4. Roads (ways)
@@ -1068,6 +1084,7 @@ def build_ways(
                 turn_lanes=tags.get("turn:lanes") or tags.get("turn:lanes:forward"),
                 priority_road=is_priority_road,
                 service=tags.get("service"),
+                **_level_metadata(tags),
             )
         )
 
@@ -1138,6 +1155,7 @@ def build_ways(
                     height_is_explicit=bool(tags.get("height") or tags.get("building:levels") or tags.get("levels")),
                     center_m=(center_x, center_y),
                     texture_seed=abs(math.sin(center_x * 0.013 + center_y * 0.017)),
+                    **_level_metadata(tags),
                 ))
             elif tags.get("natural") in ("water", "bay", "strait") or tags.get("landuse") == "reservoir":
                 kind = tags.get("natural") or tags.get("landuse") or "water"
