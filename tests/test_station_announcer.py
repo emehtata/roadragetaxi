@@ -106,6 +106,7 @@ def announcer_with_fake_audio(monkeypatch, levels=lambda *a, **k: (1.0, 1.0)):
     announcer.script = AnnouncementScript(MANIFEST)
     announcer._pause, announcer._clips, announcer._playing = "connectors/pause_short.ogg", {}, None
     announcer._queue, announcer._channel = sa.deque(), FakeChannel()
+    announcer.platforms = []
     announcer._clip = lambda file: file  # a clip "sound" is its file name here
     now = [100.0]
     monkeypatch.setattr(sa.time, "monotonic", lambda: now[0])
@@ -257,3 +258,30 @@ def test_train_numbers_stay_composed_after_the_train_type():
 def test_the_log_line_says_the_announcement_in_finnish():
     phrases = REAL_SCRIPT.phrases("arrived", "IC", "22", "Oulu", "Rovaniemi", "Helsinki", "1", "long_distance")
     assert REAL_SCRIPT.sentence(phrases) == "Hyvät matkustajat. InterCity kaksikymmentä kaksi Rovaniemeltä saapuu raiteelle yksi"
+
+
+def test_announcements_come_from_the_station_platforms_not_the_train(monkeypatch):
+    """The loudspeaker heard is the platform point nearest the player."""
+    heard_at = []
+    announcer, audio, _ = announcer_with_fake_audio(
+        monkeypatch, levels=lambda name, volume, at=None: heard_at.append(at) or (1.0, 1.0))
+    platform = SimpleNamespace(points_m=[(0.0, 10.0), (100.0, 10.0)])   # along the track, 10 m off it
+    far_platform = SimpleNamespace(points_m=[(0.0, 900.0), (100.0, 900.0)])  # another station
+    announcer.platforms = [platform, far_platform]
+    audio.listener = (80.0, 40.0)
+    train_stop = (50.0, 0.0)  # where the train stops
+    assert announcer.announce(audio, "arrived", train(), STOP, train_stop)
+    assert heard_at[-1] == (80.0, 10.0)  # straight across from the player, on the platform
+    audio.listener = (5.0, 40.0)  # the player walks along: so does the nearest loudspeaker
+    announcer._channel.finish()
+    announcer.update(audio)
+    assert heard_at[-1] == (5.0, 10.0)
+
+
+def test_a_station_without_mapped_platforms_announces_from_the_stop(monkeypatch):
+    heard_at = []
+    announcer, audio, _ = announcer_with_fake_audio(
+        monkeypatch, levels=lambda name, volume, at=None: heard_at.append(at) or (1.0, 1.0))
+    audio.listener = (80.0, 40.0)
+    announcer.announce(audio, "arrived", train(), STOP, (50.0, 0.0))
+    assert heard_at[-1] == (50.0, 0.0)

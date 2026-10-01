@@ -1370,6 +1370,8 @@ def main() -> None:
         railway_grid = world.railway_grid
         railways = world.railways
         railway_mgr = RailwayManager(railways, load_timetable(), _latlon_to_world_metres(), load_compositions())
+        # ponytail: the platforms of the map as loaded; streamed-in tiles' platforms aren't added
+        station_announcer.platforms = [way for way in world.ways if way.highway == "platform" and not way.is_busway]
         railway_mgr_source_count = len(railways)
         railing_grid = world.railing_grid
         railings = world.railings

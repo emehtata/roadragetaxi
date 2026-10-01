@@ -1,24 +1,29 @@
 """Railway station announcements, assembled from the clip library in
 assets/railway_announcements (manifest.json, see its README.md): when a
-long-distance train arrives at or leaves a station, the station's
-loudspeakers say e.g. "Hyvät matkustajat. InterCity viisikymmentäseitsemän
-Helsingistä saapuu raiteelle kolme." Heard from the platform, fading with
-distance like the other located sounds (audio.SPATIAL_RANGES_M).
+train arrives at or leaves a station, the station's loudspeakers say e.g.
+"Hyvät matkustajat. InterCity viisikymmentäseitsemän Helsingistä saapuu
+raiteelle kolme." Heard from the station's platforms - the platform point
+nearest the listener, like loudspeakers along them - fading with distance
+like the other located sounds (audio.SPATIAL_RANGES_M).
 """
 from __future__ import annotations
 
 import json
 import logging
+import math
 import time
 from collections import deque
 from pathlib import Path
 from typing import List, Optional
+
+from .geo import closest_point_and_dist_to_segment
 
 logger = logging.getLogger(__name__)
 
 ASSET_DIR = Path(__file__).with_name("assets") / "railway_announcements"
 MAX_SPOKEN_NUMBER = 999  # the clip set covers 0-999 (manifest numbers)
 MAX_WAIT_S = 20.0  # a queued announcement older than this (real seconds) is dropped as stale
+STATION_PLATFORM_RADIUS_M = 150.0  # platforms this close to the train's stop belong to the station
 
 
 def number_components(value: int) -> List[int]:
@@ -150,14 +155,17 @@ class StationAnnouncer:
     at once); one still waiting after MAX_WAIT_S is dropped as stale.
     update() runs every frame and never blocks."""
 
-    def __init__(self, asset_dir: Path = ASSET_DIR) -> None:
+    def __init__(self, asset_dir: Path = ASSET_DIR, platforms=()) -> None:
         self.asset_dir = asset_dir
+        # Railway platform ways (OSM highway=platform, not bus): where the
+        # loudspeakers are. Set by the game once the map is loaded.
+        self.platforms = list(platforms)
         self.script: Optional[AnnouncementScript] = None
         self._pause = None
         self._clips = {}  # asset file -> pygame.mixer.Sound, loaded once
         self._channel = None
-        self._queue = deque()  # waiting announcements: (queued at, clip files, position, log text)
-        self._playing = None  # the announcement on air: [remaining clip files, position]
+        self._queue = deque()  # waiting announcements: (queued at, clip files, source, log text)
+        self._playing = None  # the announcement on air: [remaining clip files, source]
         try:
             manifest = json.loads((asset_dir / "manifest.json").read_text(encoding="utf-8"))
             self.script = AnnouncementScript(manifest)
@@ -192,12 +200,36 @@ class StationAnnouncer:
             clips.extend(phrase)
         return clips
 
+    def station_source(self, position):
+        """Where the station's announcements come from: the segments of the
+        platforms near the train's stop, else the stop itself."""
+        segments = [
+            (a, b) for way in self.platforms
+            if any(math.dist(point, position) <= STATION_PLATFORM_RADIUS_M for point in way.points_m)
+            for a, b in zip(way.points_m, way.points_m[1:])
+        ]
+        return segments or position
+
+    @staticmethod
+    def heard_from(source, listener):
+        """The loudspeaker point heard: the platform point nearest the listener."""
+        if isinstance(source, tuple) or listener is None:
+            return source if isinstance(source, tuple) else source[0][0]
+        best = min(
+            (closest_point_and_dist_to_segment(listener[0], listener[1], a[0], a[1], b[0], b[1]) for a, b in source),
+            key=lambda found: found[3],
+        )
+        return best[0], best[1]
+
     def announce(self, audio, kind: str, train, stop, position) -> bool:
-        """A train event at a station (stop: the train's stop tuple) - queue
-        its announcement, from the platform, if anyone could hear it."""
+        """A train event at a station (stop: the train's stop tuple,
+        position: where the train stops) - queue its announcement, from the
+        station's platforms, if anyone could hear it."""
         if self.script is None or not getattr(audio, "enabled", False) or train.service is None or stop is None:
             return False
-        if max(audio.levels("railway.announcement", 1.0, at=position)) <= 0.0:
+        source = self.station_source(position)
+        at = self.heard_from(source, getattr(audio, "listener", None))
+        if max(audio.levels("railway.announcement", 1.0, at=at)) <= 0.0:
             return False  # too far from the station to hear
         service = train.service
         phrases = self.script.phrases(kind, service.train_type, service.number, stop[2], service.origin,
@@ -205,7 +237,7 @@ class StationAnnouncer:
                                       getattr(service, "category", ""))
         if not phrases:
             return False
-        self._queue.append((time.monotonic(), self.clips(phrases), position,
+        self._queue.append((time.monotonic(), self.clips(phrases), source,
                             f"{stop[2]}: {service.train_type} {service.number} ({kind}): "
                             f"\"{self.script.sentence(phrases)}\""))
         self.update(audio)
@@ -228,12 +260,13 @@ class StationAnnouncer:
                     break  # older ones: stale, the train is long gone
             if self._playing is None:
                 return
-        files, position = self._playing
+        files, source = self._playing
         try:
             sound = self._clip(files.popleft())
         except Exception as exc:  # pygame.error/OSError: a missing or broken clip is skipped, the rest still plays
             logger.warning("Station announcement clip unavailable: %s", exc)
             return
         channel.play(sound)
-        # Volume of where the station is now, seen from where the player is now.
-        channel.set_volume(*audio.levels("railway.announcement", 1.0, at=position))
+        # The platform point nearest the player now, at its distance and side now.
+        at = self.heard_from(source, getattr(audio, "listener", None))
+        channel.set_volume(*audio.levels("railway.announcement", 1.0, at=at))
