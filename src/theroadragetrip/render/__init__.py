@@ -151,6 +151,7 @@ from .roads import (
     draw_taxi_stops,
     draw_tire_tracks,
     draw_traffic_lights,
+    draw_vomit_footprints,
     draw_vomit_puddles,
     draw_level_ways,
     draw_ways,

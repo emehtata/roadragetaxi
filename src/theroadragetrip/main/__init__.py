@@ -164,6 +164,7 @@ from ..render import (
     draw_taxi_target,
     draw_tire_tracks,
     draw_vehicle_lights,
+    draw_vomit_footprints,
     draw_vomit_puddles,
     draw_traffic_lights,
     draw_waters,
@@ -2966,6 +2967,10 @@ def main() -> None:
             render_profile_times["map_markings"] = render_profile_times.get("map_markings", 0.0) + stage_elapsed
             frame_profiler.record("render:markings", stage_elapsed * 1000.0)
             render_profile_stage_start = time.perf_counter()
+            # Ground-level mess first, so people are drawn over it.
+            draw_vomit_puddles(screen, taxi_mgr.vomit_puddles, camx, camy, px_per_m=px_per_m)
+            draw_vomit_puddles(screen, pedestrian_mgr.vomit_puddles, camx, camy, px_per_m=px_per_m)
+            draw_vomit_footprints(screen, pedestrian_mgr.vomit_footprints, camx, camy, px_per_m=px_per_m)
             visible_pedestrians = (pedestrian_mgr.pedestrians + [
                 npc for npc in npcs if getattr(npc, "is_on_foot", False)
             ] if surface_world else []) + ([player_pedestrian] if on_foot else [])
@@ -3112,8 +3117,6 @@ def main() -> None:
                     longitude=sun_longitude,
                     profiler=frame_profiler,
                 )
-            draw_vomit_puddles(screen, taxi_mgr.vomit_puddles, camx, camy, px_per_m=px_per_m)
-            draw_vomit_puddles(screen, pedestrian_mgr.vomit_puddles, camx, camy, px_per_m=px_per_m)
             street_light_base = screen.copy()
             draw_headlight_beams(
                 screen,

@@ -5,7 +5,8 @@ import random
 import time
 from dataclasses import dataclass, field, replace
 from enum import Enum
-from typing import Any, Callable, Dict, List, Optional, Set, Tuple
+from collections import deque
+from typing import Any, Callable, Deque, Dict, List, Optional, Set, Tuple
 
 from .osm import OPEN_ROOF_BUILDING_TYPES, BusStop, Crossing, LogicalIntersection, Scenery, SceneryObject, TrafficLight, Way
 from .geo import angle_diff, closest_point_and_dist_to_segment, compute_bbox, dist_point_to_segment, point_in_polygon
@@ -18,6 +19,10 @@ from .activities import ActivityContext, ActivityInstance, ActivityManager
 logger = logging.getLogger(__name__)
 
 CURSE_SYMBOLS = ["@#*!%", "#$@&!", "!%#&*", "%$!#@", "@!*#$"]
+VOMIT_STEP_RADIUS_M = 0.9  # a pedestrian this close to a vomit puddle has stepped in it
+DIRTY_FOOTPRINTS = 6  # footprints left by shoes that went through vomit
+FOOTPRINT_SPACING_M = 0.7
+MAX_FOOTPRINTS = 300
 
 PEDESTRIAN_COLORS = [
     (230, 80, 80),    # Red
@@ -483,6 +488,7 @@ class PedestrianManager:
         # rebuilt (set_venue_buildings), never otherwise.
         self._near_building_window_cache: Dict[Tuple[int, int, int, int], List] = {}
         self.vomit_puddles: List[Tuple[float, float]] = []
+        self.vomit_footprints: Deque[Tuple[float, float, float]] = deque(maxlen=MAX_FOOTPRINTS)  # (x, y, heading)
 
         self.activity_manager = ActivityManager()
         self.scenery_objects: List[SceneryObject] = []
@@ -610,6 +616,35 @@ class PedestrianManager:
                 trip_group.boarded_resident_ids.discard(resident_id)
                 self.add_pedestrian(pedestrian)
                 linked_residents.add(resident_id)
+
+    def track_vomit(self, puddles) -> None:
+        """A pedestrian walking into a vomit puddle curses (the bubble and
+        the sound, via self.curses) and leaves DIRTY_FOOTPRINTS footprints,
+        alternating left/right every FOOTPRINT_SPACING_M, as the shoes dry.
+        ponytail: every pedestrian against every puddle each frame - puddles
+        are capped at 50 per list; index them if that ever grows."""
+        for ped in self.pedestrians:
+            steps = getattr(ped, "dirty_steps", 0)
+            if steps:
+                last_x, last_y = ped.track_from
+                if math.hypot(ped.x - last_x, ped.y - last_y) >= FOOTPRINT_SPACING_M:
+                    heading = math.atan2(ped.y - last_y, ped.x - last_x)
+                    side = 0.12 if steps % 2 else -0.12
+                    self.vomit_footprints.append(
+                        (ped.x - math.sin(heading) * side, ped.y + math.cos(heading) * side, heading)
+                    )
+                    ped.track_from, ped.dirty_steps = (ped.x, ped.y), steps - 1
+            in_vomit = any(
+                abs(ped.x - x) < VOMIT_STEP_RADIUS_M and abs(ped.y - y) < VOMIT_STEP_RADIUS_M
+                and math.hypot(ped.x - x, ped.y - y) < VOMIT_STEP_RADIUS_M
+                for x, y in puddles
+            )
+            if in_vomit and not getattr(ped, "in_vomit", False):
+                ped.dirty_steps, ped.track_from = DIRTY_FOOTPRINTS, (ped.x, ped.y)
+                ped.curse_timer = 2.0
+                ped.curse_text = random.choice(CURSE_SYMBOLS)
+                self.curses.append((ped.x, ped.y))
+            ped.in_vomit = in_vomit
 
     def _walk_route_to(self, pedestrian: Pedestrian, update_dt: float, target: Tuple[float, float]) -> bool:
         """Step `pedestrian` along a footway route toward `target`, building

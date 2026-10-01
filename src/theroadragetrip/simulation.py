@@ -662,6 +662,7 @@ def advance_simulation(
         pedestrian_mgr.ensure_taxi_stop_waiter(taxi_stops, car, viewport_bounds=viewport_bounds)
     with frame_profiler.section("pedestrians"):
         pedestrian_mgr.update(car, dt, viewport_bounds=viewport_bounds, game_time_seconds=game_time_seconds)
+        pedestrian_mgr.track_vomit(taxi_mgr.vomit_puddles + pedestrian_mgr.vomit_puddles)
     if on_foot:
         audio.update_footsteps(player_pedestrian.speed, dt, running=command.sprint)
     traffic_mgr.let_taxi_pick_up_waiter(taxi_stops, pedestrian_mgr.pedestrians, dt)

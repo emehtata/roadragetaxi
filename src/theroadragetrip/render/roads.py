@@ -1850,6 +1850,20 @@ def draw_vomit_puddles(screen, puddles, camx: float, camy: float, px_per_m: floa
         )
 
 
+def draw_vomit_footprints(screen, footprints, camx: float, camy: float, px_per_m: float = PX_PER_M) -> None:
+    """Shoe prints of pedestrians who walked through vomit (pedestrian.track_vomit)."""
+    import pygame
+
+    length, width = max(3, int(0.28 * px_per_m)), max(2, int(0.12 * px_per_m))
+    for foot_x, foot_y, heading in footprints:
+        x, y = world_to_screen(foot_x, foot_y, camx, camy, px_per_m, SCREEN_W, SCREEN_H)
+        if -length <= x <= SCREEN_W + length and -length <= y <= SCREEN_H + length:
+            print_surface = pygame.Surface((length, width), pygame.SRCALPHA)
+            pygame.draw.ellipse(print_surface, (95, 104, 55, 210), print_surface.get_rect())
+            rotated = pygame.transform.rotate(print_surface, math.degrees(heading))
+            screen.blit(rotated, rotated.get_rect(center=(x, y)))
+
+
 def draw_roadworks(
     screen,
     roadworks,
