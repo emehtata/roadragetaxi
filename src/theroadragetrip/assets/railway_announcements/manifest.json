@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "language": "fi",
+  "voice": {
+    "id": "eeva",
+    "reference": "female/eeva.wav"
+  },
+  "numbers": {
+    "units": {},
+    "teens": {},
+    "tens": {},
+    "hundreds": {},
+    "thousands": {}
+  },
+  "places": {},
+  "train_types": {},
+  "platforms": {},
+  "phrases": {},
+  "connectors": {}
+}
