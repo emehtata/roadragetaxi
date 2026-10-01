@@ -1586,18 +1586,27 @@ class PedestrianManager:
             self.profiler.record(name.split(":")[0] + (":pedestrians" if name.startswith("map_sync") else "") + ":wait", max(0.0, wall_ms - cpu_ms))
 
     def set_target_count(self, target_count: int, player_car: Optional[Car] = None) -> None:
-        """Adjust active pedestrian count and discard farthest characters when needed."""
+        """Adjust the pedestrian target; when it is lowered, discard the
+        farthest pedestrians over it. Only on a lower target: the game calls
+        this on every zoom change with the same count, and the population
+        often runs above it (station passengers, stand customers, trip
+        groups) - trimming then deleted people in plain view. Pedestrians
+        another system holds (held_by) are never discarded here."""
         new_target_count = max(0, target_count)
+        lowered = new_target_count < self.target_count
         if new_target_count != self.target_count:
             self.target_count = new_target_count
             self._population_update_elapsed = 0.5
-        if len(self.pedestrians) > self.target_count:
+        if lowered and len(self.pedestrians) > self.target_count:
+            held = [ped for ped in self.pedestrians if getattr(ped, "held_by", None) is not None]
+            free = [ped for ped in self.pedestrians if getattr(ped, "held_by", None) is None]
             if player_car is not None:
-                self.pedestrians.sort(key=lambda ped: math.hypot(ped.x - player_car.x, ped.y - player_car.y))
-            for dropped in self.pedestrians[self.target_count:]:
+                free.sort(key=lambda ped: math.hypot(ped.x - player_car.x, ped.y - player_car.y))
+            keep = max(0, self.target_count - len(held))
+            for dropped in free[keep:]:
                 if dropped.activity is not None:
                     self.activity_manager.release(dropped.activity.location)
-            del self.pedestrians[self.target_count:]
+            self.pedestrians = held + free[:keep]
 
     def update_lod(self, player_car: Car, dt: float) -> None:
         """Schedule pedestrian simulation using distance bands."""

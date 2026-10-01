@@ -287,6 +287,31 @@ def test_pedestrian_target_count_keeps_nearest_characters():
     assert [ped.x for ped in manager.pedestrians] == [1.0, 10.0]
 
 
+def test_zooming_never_deletes_visible_pedestrians_above_the_target():
+    """Regression: every zoom change re-set the same target count and
+    trimmed the population to it, deleting the pedestrians farthest from
+    the taxi - often the ones on screen - whenever station passengers or
+    stand customers had put it over the target."""
+    way = Way(points_m=[(0.0, 0.0), (100.0, 0.0)], highway="footway", half_width_m=1.5)
+    manager = PedestrianManager([way], target_count=2)
+    manager.pedestrians = [Pedestrian(float(x), 0.0, 0.0, 1.0, 1.0, way, 0, 1, (1, 1, 1)) for x in (1, 10, 30, 60)]
+    player = Car(x=0.0, y=0.0, heading=0.0, speed=0.0)
+    for _ in range(5):
+        manager.set_target_count(2, player)  # zoom in, zoom out ...
+    assert len(manager.pedestrians) == 4
+
+
+def test_lowering_the_target_keeps_pedestrians_another_system_holds():
+    way = Way(points_m=[(0.0, 0.0), (100.0, 0.0)], highway="footway", half_width_m=1.5)
+    manager = PedestrianManager([way], target_count=4)
+    peds = [Pedestrian(float(x), 0.0, 0.0, 1.0, 1.0, way, 0, 1, (1, 1, 1)) for x in (1, 10, 30, 60)]
+    peds[3].held_by = object()  # e.g. a rail passenger waiting at the far station
+    manager.pedestrians = list(peds)
+    manager.set_target_count(2, Car(x=0.0, y=0.0, heading=0.0, speed=0.0))
+    assert peds[3] in manager.pedestrians and len(manager.pedestrians) == 2
+    assert peds[0] in manager.pedestrians  # the nearest free one stays
+
+
 def test_repeated_target_count_updates_do_not_delay_population_check():
     way = Way(points_m=[(0.0, 0.0), (100.0, 0.0)], highway="footway", half_width_m=1.5)
     manager = PedestrianManager([way], target_count=1)
