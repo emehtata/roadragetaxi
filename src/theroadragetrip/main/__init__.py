@@ -1917,10 +1917,11 @@ def main() -> None:
                             selected_train_car = None
                             continue
                         # Pause menu with options: Continue Game, Change City, Exit Game
-                        pause_options = [
-                            tr(language, "continue"), tr(language, "help"), tr(language, "settings_menu"),
-                            tr(language, "change_city"), tr(language, "main_menu"), tr(language, "exit"),
-                        ]
+                        # Career mode decides the city itself: no "Change city" there.
+                        pause_keys = ["continue", "help", "settings_menu"] + (
+                            [] if game_mode == "career" else ["change_city"]
+                        ) + ["main_menu", "exit"]
+                        pause_options = [tr(language, key) for key in pause_keys]
                         pause_selected = 0
                         is_paused = True
 
@@ -1955,10 +1956,10 @@ def main() -> None:
                                         audio.play_group("ui.menu", 0.5, variation=0)
                                     elif p_ev.key in (pygame.K_RETURN, pygame.K_SPACE, pygame.K_KP_ENTER):
                                         audio.play_group("ui.menu", 0.5, variation=1)
-                                        if pause_selected == 0:
+                                        if pause_keys[pause_selected] == "continue":
                                             # Continue Game
                                             is_paused = False
-                                        elif pause_selected == 1:
+                                        elif pause_keys[pause_selected] == "help":
                                             show_help = True
                                             while show_help:
                                                 clock.tick(30)
@@ -1970,7 +1971,7 @@ def main() -> None:
                                                         show_help = False
                                                 draw_tutorial_screen(screen, font, SCREEN_W, SCREEN_H, language)
                                                 pygame.display.flip()
-                                        elif pause_selected == 2:
+                                        elif pause_keys[pause_selected] == "settings_menu":
                                             was_historical = historical_weather
                                             language = _run_settings_menu(screen, font, clock, config, audio, language)
                                             # Apply what the settings screen saved in the config.
@@ -1983,21 +1984,21 @@ def main() -> None:
                                                     game_calendar.current - timedelta(hours=6),
                                                     game_calendar.current + timedelta(hours=48),
                                                 )
-                                        elif pause_selected == 3:
+                                        elif pause_keys[pause_selected] == "change_city":
                                             # Change City
                                             is_paused = False
                                             running = False
                                             active_city_name = cities_list[selected_city_idx]
-                                        elif pause_selected == 4:
+                                        elif pause_keys[pause_selected] == "main_menu":
                                             # Return to main menu
                                             is_paused = False
                                             running = False
                                             active_city_name = None
                                             return_to_main_menu = True
-                                        elif pause_selected == 5:
-                                            # Exit Game
-                                            pygame.quit()
-                                            sys.exit(0)
+                                        elif pause_keys[pause_selected] == "exit":
+                                            if confirm(screen, font, clock, language, "exit", "confirm_quit"):
+                                                pygame.quit()
+                                                sys.exit(0)
 
                             # Redraw current frame beneath pause overlay
                             draw_pause_menu(screen, font, pause_options, pause_selected, SCREEN_W, SCREEN_H, language)
