@@ -82,21 +82,30 @@ class FakeChannel:
     """The reserved announcement channel: busy until the test finishes the clip."""
 
     def __init__(self):
-        self.playing, self.volume, self.started = None, None, []
+        self.playing, self.queued, self.volume, self.started = None, None, None, []
 
     def get_busy(self):
         return self.playing is not None
+
+    def get_queue(self):
+        return self.queued
 
     def play(self, sound):
         assert self.playing is None, "a clip was started over another one"
         self.playing = sound
         self.started.append(sound)
 
+    def queue(self, sound):
+        assert self.playing is not None and self.queued is None, "one clip lined up behind the playing one"
+        self.queued = sound
+        self.started.append(sound)
+
     def set_volume(self, left, right):
         self.volume = (left, right)
 
     def finish(self):
-        self.playing = None
+        """The playing clip ends; a queued one takes over at once, gaplessly."""
+        self.playing, self.queued = self.queued, None
 
 
 def announcer_with_fake_audio(monkeypatch, levels=lambda *a, **k: (1.0, 1.0)):
@@ -144,12 +153,20 @@ def test_clips_play_one_by_one_with_pauses_only_between_phrases(monkeypatch):
     ]
 
 
-def test_the_next_clip_waits_until_the_channel_is_free(monkeypatch):
+def test_the_next_clip_is_lined_up_behind_the_playing_one_gaplessly(monkeypatch):
     announcer, audio, _ = announcer_with_fake_audio(monkeypatch)
-    announcer.announce(audio, "arrived", train(), STOP, (0, 0))
+    announcer.announce(audio, "arrived", train("22"), STOP, (0, 0))
     for _ in range(10):
-        announcer.update(audio)  # the first clip is still playing
-    assert announcer._channel.started == ["phrases/attention.ogg"]
+        announcer.update(audio)  # the first clip still playing: exactly one more lined up
+    assert announcer._channel.started == ["phrases/attention.ogg", "connectors/pause_short.ogg"]
+    announcer._channel.finish()  # the pause starts the instant the attention clip ends
+    assert announcer._channel.playing == "connectors/pause_short.ogg"
+    announcer.update(audio)
+    announcer._channel.finish()
+    announcer.update(audio)
+    # train + number, back to back: "InterCity kaksikymmentä kaksi"
+    assert announcer._channel.playing == "train_types/intercity.ogg"
+    assert announcer._channel.queued == "numbers/tens/20.ogg"
 
 
 def test_a_departure_soon_after_the_arrival_waits_its_turn(monkeypatch):

@@ -244,11 +244,14 @@ class StationAnnouncer:
         return True
 
     def update(self, audio) -> None:
-        """Every frame: while a clip plays, nothing; when it has finished,
-        start the next clip of the announcement on air, else the next
-        announcement still worth playing."""
+        """Every frame: while a clip plays, line up the announcement's next
+        clip behind it (Channel.queue - it starts the instant the current
+        one ends, so "kaksisataa kaksikymmentä yksi" runs together); when the
+        channel is idle, start the next announcement still worth playing."""
         channel = self._announcement_channel()
         if channel.get_busy():
+            if channel.get_queue() is None and self._playing and self._playing[0]:
+                self._start_next(channel, audio, queue=True)
             return
         if not (self._playing and self._playing[0]):
             self._playing = None
@@ -260,13 +263,19 @@ class StationAnnouncer:
                     break  # older ones: stale, the train is long gone
             if self._playing is None:
                 return
+        self._start_next(channel, audio, queue=False)
+
+    def _start_next(self, channel, audio, queue: bool) -> None:
         files, source = self._playing
         try:
             sound = self._clip(files.popleft())
         except Exception as exc:  # pygame.error/OSError: a missing or broken clip is skipped, the rest still plays
             logger.warning("Station announcement clip unavailable: %s", exc)
             return
-        channel.play(sound)
+        if queue:
+            channel.queue(sound)
+        else:
+            channel.play(sound)
         # The platform point nearest the player now, at its distance and side now.
         at = self.heard_from(source, getattr(audio, "listener", None))
         channel.set_volume(*audio.levels("railway.announcement", 1.0, at=at))
