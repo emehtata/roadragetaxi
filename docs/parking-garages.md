@@ -358,7 +358,7 @@ invented.
 - **Garage relations:** an entrance on a member way of a garage relation
   gets no `garage_osm_id`.
 
-## Phase 9: driving through level connectors (garage-08.md, 2026-10-01)
+## Phase 9: driving through level connectors (garage-08.md, commit `b727e37`, 2026-10-01)
 
 The player now changes level by driving through a parking entrance.
 Everything level-aware (drawing, driving, collisions) follows
