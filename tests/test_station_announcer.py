@@ -114,6 +114,7 @@ def announcer_with_fake_audio(monkeypatch, levels=lambda *a, **k: (1.0, 1.0)):
     announcer = StationAnnouncer.__new__(StationAnnouncer)
     announcer.script = AnnouncementScript(MANIFEST)
     announcer._pause, announcer._clips, announcer._playing = "connectors/pause_short.ogg", {}, None
+    announcer._sentence_pause = "connectors/pause_medium.ogg"
     announcer._queue, announcer._channel = sa.deque(), FakeChannel()
     announcer.platforms = []
     announcer._clip = lambda file: file  # a clip "sound" is its file name here
@@ -141,7 +142,7 @@ def test_clips_play_one_by_one_with_pauses_only_between_phrases(monkeypatch):
     announcer, audio, _ = announcer_with_fake_audio(monkeypatch)
     assert announcer.announce(audio, "arrived", train("22"), STOP, (0, 0))
     assert play_all(announcer, audio) == [
-        "phrases/attention.ogg", "connectors/pause_short.ogg",
+        "phrases/attention.ogg", "connectors/pause_medium.ogg",  # "Hyvät matkustajat." ends a sentence
         "train_types/intercity.ogg", "numbers/tens/20.ogg", "numbers/units/2.ogg",  # 22: no pause inside
         "connectors/pause_short.ogg", "places/from/helsinki.ogg",
         "connectors/pause_short.ogg", "phrases/arriving.ogg",
@@ -158,9 +159,9 @@ def test_the_next_clip_is_lined_up_behind_the_playing_one_gaplessly(monkeypatch)
     announcer.announce(audio, "arrived", train("22"), STOP, (0, 0))
     for _ in range(10):
         announcer.update(audio)  # the first clip still playing: exactly one more lined up
-    assert announcer._channel.started == ["phrases/attention.ogg", "connectors/pause_short.ogg"]
+    assert announcer._channel.started == ["phrases/attention.ogg", "connectors/pause_medium.ogg"]
     announcer._channel.finish()  # the pause starts the instant the attention clip ends
-    assert announcer._channel.playing == "connectors/pause_short.ogg"
+    assert announcer._channel.playing == "connectors/pause_medium.ogg"
     announcer.update(audio)
     announcer._channel.finish()
     announcer.update(audio)

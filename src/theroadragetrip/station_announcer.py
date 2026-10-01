@@ -162,6 +162,7 @@ class StationAnnouncer:
         self.platforms = list(platforms)
         self.script: Optional[AnnouncementScript] = None
         self._pause = None
+        self._sentence_pause = None  # after "Hyvät matkustajat." - a sentence, not a phrase
         self._clips = {}  # asset file -> pygame.mixer.Sound, loaded once
         self._channel = None
         self._queue = deque()  # waiting announcements: (queued at, clip files, source, log text)
@@ -170,6 +171,7 @@ class StationAnnouncer:
             manifest = json.loads((asset_dir / "manifest.json").read_text(encoding="utf-8"))
             self.script = AnnouncementScript(manifest)
             self._pause = self.script._file("connectors", "pause_short")
+            self._sentence_pause = self.script._file("connectors", "pause_medium") or self._pause
         except (OSError, ValueError) as exc:
             logger.info("Station announcements unavailable: %s", exc)
 
@@ -195,8 +197,13 @@ class StationAnnouncer:
         kaksi")."""
         clips = []
         for index, phrase in enumerate(phrases):
-            if index and self._pause:
-                clips.append(self._pause)
+            if index:
+                # "Hyvät matkustajat." ends a sentence: a longer breath, so
+                # the train's name doesn't run into it.
+                ends_sentence = self.script.texts.get(phrases[index - 1][-1], "").endswith(".")
+                pause = self._sentence_pause if ends_sentence else self._pause
+                if pause:
+                    clips.append(pause)
             clips.extend(phrase)
         return clips
 
