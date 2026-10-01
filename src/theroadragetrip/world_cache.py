@@ -52,8 +52,9 @@ MAGIC = b"RWC\0"
 # highway=platform ways. 17: platform centrelines densified and joined
 # to the footways/steps that end on them. 18: parking_garages section
 # (underground/multi-storey ParkingGarage records, garage-00.md).
-# 19: Way/Building map_level, level and indoor (garage-02.md).
-FORMAT_VERSION = 19
+# 19: Way/Building map_level, level and indoor (garage-02.md). 20:
+# level_ways section (filtered underground roads with level=*, garage-03.md).
+FORMAT_VERSION = 20
 COORDINATE_SYSTEM = "EPSG:3067"
 _HEADER = struct.Struct("<4sHHQQ32s12s")
 _DIRECTORY = struct.Struct("<8sQQI")
@@ -63,14 +64,14 @@ _TYPE_NAMES = {value: key for key, value in _TYPES.items()}
 _SECTIONS = ("ways", "waters", "buildings", "sceneries", "places", "traffic_lights",
              "crossings", "taxi_stops", "bus_stops", "parking_spaces", "logical_intersections",
              "stop_signs", "yield_signs", "curbs", "scenery_objects", "speed_bumps",
-             "railways", "railings", "parking_garages", "metadata")
+             "railways", "railings", "parking_garages", "level_ways", "metadata")
 _SECTION_CODES = {
     "buildings": "bldgs", "sceneries": "scenery",
     "traffic_lights": "signals", "crossings": "crossing",
     "logical_intersections": "intersct",
     "parking_spaces": "parking", "taxi_stops": "taxistop", "bus_stops": "busstop",
     "stop_signs": "stops", "yield_signs": "yields", "scenery_objects": "furnitur",
-    "speed_bumps": "bumps", "parking_garages": "garages",
+    "speed_bumps": "bumps", "parking_garages": "garages", "level_ways": "lvlways",
 }
 _SECTION_NAMES = {code: name for name, code in _SECTION_CODES.items()}
 
@@ -271,6 +272,7 @@ class BinaryWorldCacheLoader:
             "stop_signs": "StopSign", "yield_signs": "YieldSign", "curbs": "Curb",
             "scenery_objects": "SceneryObject", "speed_bumps": "SpeedBump",
             "railways": "Railway", "railings": "Railing", "parking_garages": "ParkingGarage",
+            "level_ways": "Way",
         }
         import theroadragetrip.osm as osm
         # Every physical TrafficLight/IntersectionApproach on the same

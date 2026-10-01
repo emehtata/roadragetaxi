@@ -133,10 +133,34 @@ is on.
 
 ### Garage internal roads
 
-A garage road only gets a level when OSM gives it `level=*`; nothing is
-derived from garage geometry. One existing import rule still applies: a
-`service` or `track` road that looks underground (`level<0`,
-`tunnel=yes`, `parking=underground`, `covered=yes`, ...) is dropped, so
-garage aisles don't draw over the surface map. They will be kept, with
-their `map_level`, once the render gate exists. Footways and other roads
-with a negative `level` are imported with it today.
+A road only gets a level when OSM gives it `level=*`.
+
+| OSM | Result |
+|---|---|
+| `level=-1` | survives as `map_level=-1` |
+| `layer=-1` | draw order only, `map_level` stays `None` |
+| underground-looking (`tunnel=yes`, `covered=yes`, ...) without `level=*` | no level is inferred |
+
+The import keeps underground `service` and `track` roads out of the
+surface road network (`ways`), which drawing, traffic, routing and
+pedestrians read. A road counts as underground when it has `level<0`,
+`location=underground`, `parking=underground|multi-storey|sheds|carports`,
+`covered=yes|arcade` or `tunnel=yes|building_passage`. Such a road:
+
+- **With a clean `level=*`:** kept in `world.level_ways`, carrying its
+  `map_level`. That collection is stored in the world cache (format 20)
+  and carried through tile streaming, but no surface system reads it. The
+  level render gate will draw it. In Oulu, 21 roads are kept this way,
+  mostly garage driveways at levels -4 to 0.
+- **Without one** (no tag, or a multi-level or fractional value): still
+  dropped, as before.
+
+`service=parking_aisle` was already exempt from that rule. Such aisles
+stay in `ways` and draw on the surface even with `level=-1`. That is
+unchanged, and they should move to `level_ways` once the gate exists.
+Footways and other roads with a negative `level` are in `ways` as well.
+
+Transitional limit: `level_ways` entries are invisible and nothing can
+drive on them until the render gate exists. A covered road with `level=0`
+also sits there, although level 0 is the surface; the gate phase decides
+whether it joins `ways`.

@@ -795,6 +795,7 @@ def _load_world(
     railways = getattr(res, "railways", [])
     railings = getattr(res, "railings", [])
     parking_garages = getattr(res, "parking_garages", [])  # data only for now (garage-00.md)
+    level_ways = getattr(res, "level_ways", [])  # underground roads for the level render gate (garage-03.md)
     roadworks, roadwork_lights = create_roadworks(ways) if roadworks_enabled else ([], [])
     traffic_lights.extend(roadwork_lights)
     logger.info(
@@ -986,6 +987,7 @@ def _load_world(
         railways=railways,
         railings=railings,
         parking_garages=parking_garages,
+        level_ways=level_ways,
         fetch_func=_resolve_osm_fetch_func(args, overpass_endpoints),
         build_func=build_ways,
         build_in_process=args.build_in_process,
@@ -1019,6 +1021,7 @@ def _load_world(
         npcs=npcs,
         npc_manager=npc_manager,
         parking_garages=parking_garages,
+        level_ways=level_ways,
         parking_spaces=parking_spaces,
         pedestrian_mgr=pedestrian_mgr,
         places=places,

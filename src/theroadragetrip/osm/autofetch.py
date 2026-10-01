@@ -135,7 +135,7 @@ _WORLD_SECTIONS = (
     "ways", "waters", "buildings", "sceneries", "places",
     "traffic_lights", "crossings", "bus_stops", "parking_spaces",
     "logical_intersections", "stop_signs", "yield_signs", "curbs",
-    "scenery_objects", "speed_bumps", "railways", "railings", "parking_garages",
+    "scenery_objects", "speed_bumps", "railways", "railings", "parking_garages", "level_ways",
 )
 
 # Per-frame wall-clock budget for the incremental tile-world merge
@@ -264,6 +264,7 @@ class AutoFetchManager:
         railways: Optional[List[Railway]] = None,
         railings: Optional[List[Railing]] = None,
         parking_garages: Optional[list] = None,
+        level_ways: Optional[List[Way]] = None,
         fetch_func=fetch_osm_ways,
         build_func=build_ways,
         cooldown_s: float = 5.0,
@@ -289,6 +290,7 @@ class AutoFetchManager:
         self.railways = railways if railways is not None else []
         self.railings = railings if railings is not None else []
         self.parking_garages = parking_garages if parking_garages is not None else []
+        self.level_ways = level_ways if level_ways is not None else []
         self.bounds = bounds
         self.transformer = transformer
         self.fetch_func = fetch_func
@@ -1283,6 +1285,7 @@ class AutoFetchManager:
             new_railways = getattr(res, "railways", [])
             new_railings = getattr(res, "railings", [])
             new_parking_garages = getattr(res, "parking_garages", [])
+            new_level_ways = getattr(res, "level_ways", [])
             if len(res) == 8:
                 new_ways, new_waters, new_buildings, new_sceneries, new_places, new_bounds, new_traffic_lights, new_crossings = res
             elif len(res) == 7:
@@ -1347,6 +1350,7 @@ class AutoFetchManager:
                 _extend_unique(self.railways, new_railways)
                 _extend_unique(self.railings, new_railings)
                 _extend_unique(self.parking_garages, new_parking_garages)
+                _extend_unique(self.level_ways, new_level_ways)
                 minx = min(self.bounds[0], new_bounds[0])
                 miny = min(self.bounds[1], new_bounds[1])
                 maxx = max(self.bounds[2], new_bounds[2])

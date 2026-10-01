@@ -520,10 +520,10 @@ class SceneryObject:
 class MapData(tuple):
     """Container tuple for build_ways results returning 6 elements for backward compatibility while providing traffic_lights and crossings via attributes and slicing."""
 
-    def __new__(cls, ways, waters, buildings, sceneries, places, bounds, traffic_lights=None, crossings=None, taxi_stops=None, bus_stops=None, parking_spaces=None, logical_intersections=None, stop_signs=None, yield_signs=None, curbs=None, scenery_objects=None, speed_bumps=None, railways=None, railings=None, parking_garages=None):
+    def __new__(cls, ways, waters, buildings, sceneries, places, bounds, traffic_lights=None, crossings=None, taxi_stops=None, bus_stops=None, parking_spaces=None, logical_intersections=None, stop_signs=None, yield_signs=None, curbs=None, scenery_objects=None, speed_bumps=None, railways=None, railings=None, parking_garages=None, level_ways=None):
         return super().__new__(cls, (ways, waters, buildings, sceneries, places, bounds))
 
-    def __init__(self, ways, waters, buildings, sceneries, places, bounds, traffic_lights=None, crossings=None, taxi_stops=None, bus_stops=None, parking_spaces=None, logical_intersections=None, stop_signs=None, yield_signs=None, curbs=None, scenery_objects=None, speed_bumps=None, railways=None, railings=None, parking_garages=None):
+    def __init__(self, ways, waters, buildings, sceneries, places, bounds, traffic_lights=None, crossings=None, taxi_stops=None, bus_stops=None, parking_spaces=None, logical_intersections=None, stop_signs=None, yield_signs=None, curbs=None, scenery_objects=None, speed_bumps=None, railways=None, railings=None, parking_garages=None, level_ways=None):
         self.ways = ways
         self.waters = waters
         self.buildings = buildings
@@ -544,6 +544,9 @@ class MapData(tuple):
         self.railways = railways if railways is not None else []
         self.railings = railings if railings is not None else []
         self.parking_garages = parking_garages if parking_garages is not None else []
+        # Roads with an explicit level=* that the surface road network
+        # filters out (underground service/track roads, garage-03.md).
+        self.level_ways = level_ways if level_ways is not None else []
 
     @property
     def traffic_signals(self):

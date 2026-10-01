@@ -43,12 +43,62 @@ def test_road_level_and_layer_stay_separate(tags, map_level, layer):
     assert way.level == tags.get("level")
 
 
-def test_underground_service_roads_are_still_filtered_until_the_render_gate_exists():
-    """Pre-existing: garage aisles (service + negative level) are dropped so
-    they don't draw over the surface map. Admitting them with their
-    map_level waits for the level render gate (garage-01.md)."""
-    assert _road({"level": "-1"}, highway="service") is None
-    assert _road({"level": "1"}, highway="service").map_level == 1
+def _build(tags, highway="service"):
+    return build_ways([
+        {"type": "node", "id": 1, "lat": 65.0, "lon": 25.0},
+        {"type": "node", "id": 2, "lat": 65.0, "lon": 25.001},
+        {"type": "way", "id": 10, "nodes": [1, 2], "tags": {"highway": highway, **tags}},
+    ])
+
+
+@pytest.mark.parametrize("tags, map_level, layer", [
+    ({"level": "-1"}, -1, 0),
+    ({"level": "-2", "covered": "yes"}, -2, 0),
+    ({"level": "-1", "tunnel": "yes"}, -1, -1),
+    ({"level": "-1", "parking": "underground"}, -1, 0),
+    ({"level": "-2", "layer": "-1", "location": "underground"}, -2, -1),
+])
+def test_underground_road_with_explicit_level_survives_off_the_surface_network(tags, map_level, layer):
+    """garage-03.md: kept as level-aware data in level_ways, never in the
+    surface road network (ways) that drawing, traffic and routing read."""
+    for highway in ("service", "track"):
+        world = _build(tags, highway)
+        assert world.ways == []
+        (way,) = world.level_ways
+        assert (way.map_level, way.layer, way.osm_id) == (map_level, layer, 10)
+
+
+@pytest.mark.parametrize("tags", [
+    {"covered": "yes"}, {"tunnel": "yes"}, {"layer": "-1", "location": "underground"},
+    {"parking": "underground"}, {"level": "-1;-2", "covered": "yes"}, {"level": "-0.5"},
+])
+def test_underground_road_without_a_clean_level_is_still_dropped(tags):
+    world = _build(tags)
+    assert world.ways == [] and world.level_ways == []
+
+
+def test_surface_roads_and_parking_aisles_are_unchanged():
+    assert _build({"level": "1"}).ways[0].map_level == 1  # not underground: a normal road, as before
+    assert _build({}).level_ways == []
+    aisle = _build({"service": "parking_aisle", "level": "-1", "location": "underground"})
+    assert aisle.level_ways == [] and aisle.ways[0].map_level == -1  # pre-existing exemption
+
+
+def test_level_ways_survive_cache_and_streaming(tmp_path):
+    world = _build({"level": "-1", "covered": "yes"})
+    path = tmp_path / "area.rwc"
+    BinaryWorldCacheWriter().write(path, world, area_id="area")
+    loaded = BinaryWorldCacheLoader().load(path)
+    assert loaded.ways == [] and [w.map_level for w in loaded.level_ways] == [-1]
+
+    ways, level_ways = [], []
+    manager = AutoFetchManager(ways, (0.0, 0.0, 1.0, 1.0), transformer=None, level_ways=level_ways)
+    tiles = set(manager._item_tiles(loaded.level_ways[0]))
+    manager.active_tiles = set(tiles)
+    manager._completed_tile_batches.append([(tuple(tiles), tuple(tiles), loaded)])
+    while manager._completed_tile_batches or manager._merge_queue:
+        manager.integrate_completed_tiles(budget_s=0.004)
+    assert ways == [] and [w.map_level for w in level_ways] == [-1]
 
 
 def test_multi_level_keeps_the_raw_tag_and_stays_surface():

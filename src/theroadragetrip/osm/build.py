@@ -889,6 +889,7 @@ def build_ways(
         ))
 
     # 4. Roads (ways)
+    level_ways: List[Way] = []
     if progress_callback:
         progress_callback(0.94, f"Building road network ({len(ways_raw)} ways)...")
     non_drivable_highways = {
@@ -972,8 +973,17 @@ def build_ways(
         if layer_val < 0:
             is_underground = True
 
+        # Underground-looking service/track roads stay off the surface road
+        # network (they'd draw and route as surface roads). One with an
+        # explicit level=* is kept instead, in level_ways - level-aware
+        # world data no surface system reads, for the level render gate
+        # (garage-03.md). Without level=* it is still dropped: no level is
+        # inferred from tunnel/covered/layer hints.
+        level_only = False
         if is_underground and (highway in ("service", "track") or "parking" in tags) and tags.get("service") != "parking_aisle":
-            continue
+            if parse_map_level(level_tag) is None:
+                continue
+            level_only = True
 
         is_bridge = tags.get("bridge") in ("yes", "viaduct", "movable") or layer_val > 0
         is_tunnel = tunnel_tag in ("yes", "building_passage") or layer_val < 0
@@ -1059,7 +1069,7 @@ def build_ways(
         priority_tag = str(tags.get("priority_road", "")).strip().lower()
         is_priority_road = priority_tag in {"yes", "designated", "true", "1"} or junction_tag == "priority"
 
-        ways.append(
+        (level_ways if level_only else ways).append(
             Way(
                 points_m=pts,
                 highway=highway,
@@ -1565,4 +1575,5 @@ def build_ways(
         traffic_lights, crossings, taxi_stops, bus_stops, parking_spaces, logical_intersections, stop_signs, yield_signs,
         curbs=curbs, scenery_objects=scenery_objects, speed_bumps=speed_bumps,
         railways=railways, railings=railings, parking_garages=parking_garages,
+        level_ways=level_ways,
     )
