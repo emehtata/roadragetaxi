@@ -160,6 +160,8 @@ def fetch_osm_ways(
       way["barrier"="kerb"]({south},{west},{north},{east});
       way["barrier"~"fence|railing|hedge|wall"]({south},{west},{north},{east});
       way["railway"~"rail|light_rail|tram|narrow_gauge|funicular"]({south},{west},{north},{east});
+      way["railway"="platform"]({south},{west},{north},{east});
+      relation["railway"="platform"]({south},{west},{north},{east});
       way["natural"="water"]({south},{west},{north},{east});
     way["natural"="bay"]({south},{west},{north},{east});
     way["natural"="strait"]({south},{west},{north},{east});

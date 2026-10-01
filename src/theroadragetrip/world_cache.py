@@ -48,7 +48,9 @@ MAGIC = b"RWC\0"
 # field needs a bump precisely because missing-field construction fails
 # silent, not loud. Bumped to 15 for Railway.track_ref (station track
 # numbers the train timetable's platforms refer to).
-FORMAT_VERSION = 15
+# 16: railway=platform areas (paved scenery) and non-drivable
+# highway=platform ways.
+FORMAT_VERSION = 16
 COORDINATE_SYSTEM = "EPSG:3067"
 _HEADER = struct.Struct("<4sHHQQ32s12s")
 _DIRECTORY = struct.Struct("<8sQQI")

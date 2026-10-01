@@ -383,6 +383,26 @@ def _stitch_member_ways_into_rings(
     return rings
 
 
+def _platform_centreline(pts: List[Tuple[float, float]]) -> Tuple[Tuple[float, float], Tuple[float, float]]:
+    """Ends of a platform polygon's long (principal) axis through its
+    vertex centroid, pulled 2 m in from each end."""
+    # ponytail: straight line - a strongly curved platform's centreline can
+    # leave the polygon; follow the medial axis if that shows up.
+    n = len(pts)
+    cx = sum(x for x, _ in pts) / n
+    cy = sum(y for _, y in pts) / n
+    sxx = sum((x - cx) ** 2 for x, _ in pts)
+    syy = sum((y - cy) ** 2 for _, y in pts)
+    sxy = sum((x - cx) * (y - cy) for x, y in pts)
+    angle = 0.5 * math.atan2(2.0 * sxy, sxx - syy)
+    ux, uy = math.cos(angle), math.sin(angle)
+    along = [(x - cx) * ux + (y - cy) * uy for x, y in pts]
+    lo, hi = min(along) + 2.0, max(along) - 2.0
+    if hi < lo:
+        lo = hi = 0.0
+    return (cx + ux * lo, cy + uy * lo), (cx + ux * hi, cy + uy * hi)
+
+
 def build_ways(
     elements: List[dict],
     progress_callback: Optional[Callable[[float, str], None]] = None,
@@ -495,6 +515,9 @@ def build_ways(
             elif tags.get("amenity") in ("parking", "fuel") or tags.get("landuse") == "parking":
                 scenery_raw.append((tags, node_ids))
             elif "leisure" in tags or "landuse" in tags or tags.get("natural") in NATURAL_SCENERY_KINDS:
+                scenery_raw.append((tags, node_ids))
+            elif tags.get("railway") == "platform" and node_ids[0] == node_ids[-1]:
+                # Station platform area: paved ground, not the grass under it.
                 scenery_raw.append((tags, node_ids))
             elif "highway" in tags:
                 highway = tags.get("highway", "unclassified")
@@ -614,13 +637,30 @@ def build_ways(
             continue
         is_parking = tags.get("amenity") == "parking" or tags.get("landuse") == "parking"
         is_fuel = tags.get("amenity") == "fuel"
-        kind = "parking" if is_parking else "fuel" if is_fuel else tags.get("leisure") or tags.get("landuse") or tags.get("natural") or "park"
+        is_platform = tags.get("railway") == "platform"
+        kind = (
+            "parking" if is_parking else "fuel" if is_fuel else "pedestrian_area" if is_platform
+            else tags.get("leisure") or tags.get("landuse") or tags.get("natural") or "park"
+        )
         name = tags.get("name")
         # A mapped parking lot (or fuel station forecourt) is paved ground
         # even when nobody bothered tagging surface=* - only every other
         # scenery kind (forest, grass, ...) leaves this None, since kind
         # itself already says what that ground is.
         surface = (tags.get("surface") or "asphalt") if (is_parking or is_fuel) else None
+        if is_platform:
+            surface = tags.get("surface") or "paving_stones"
+            # Walkable centreline, so station passengers (who stand on
+            # pedestrian ways, off-track) can wait and alight on the
+            # platform. Built as an ordinary highway=platform way below.
+            end_a, end_b = _platform_centreline(pts)
+            synthetic_node_id = -len(nodes_m) - 1
+            nodes_m[synthetic_node_id] = end_a
+            nodes_m[synthetic_node_id - 1] = end_b
+            ways_raw.append((
+                {"highway": "platform", "surface": surface},
+                "platform", [synthetic_node_id, synthetic_node_id - 1], None,
+            ))
         sceneries.append(Scenery(
             points_m=pts, kind=kind, name=name, bbox=ibbox, surface=surface,
             kerbed=tags.get("barrier") == "kerb",
@@ -806,6 +846,7 @@ def build_ways(
         "bridleway",
         "corridor",
         "track",
+        "platform",
     }
     for tags, highway, node_ids, way_id in ways_raw:
         pts, ibbox = process_node_ids(node_ids)
@@ -902,7 +943,11 @@ def build_ways(
         access = tags.get("access")
 
         # In Finland, living streets (pihatiet), service drives, and bus lanes are fully allowed for taxis
-        if highway == "living_street":
+        if highway == "platform":
+            # Before the bus checks: a bus platform is often tagged bus=yes,
+            # which made it a drivable busway.
+            is_drivable = False
+        elif highway == "living_street":
             is_drivable = True
         elif is_bus_route:
             is_drivable = True
@@ -1068,7 +1113,7 @@ def build_ways(
                     points_m=pts, kind="parking", name=name, bbox=ibbox,
                     surface=tags.get("surface") or "asphalt",
                 ))
-            elif tags.get("highway") in non_drivable_highways:
+            elif tags.get("highway") in non_drivable_highways or tags.get("railway") == "platform":
                 # A paved pedestrian plaza/square is commonly mapped as a
                 # type=multipolygon relation tagged highway=pedestrian
                 # (+ surface=paving_stones) rather than a simple way -
