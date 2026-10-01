@@ -242,7 +242,7 @@ Levels share no roads, so nothing connects across levels.
   footways, such as Oulu's 52 `level=1` walkways, as surface paths.
 - **NPCs:** traffic stays surface-only.
 
-## Phase 7: level-aware collision and environment (garage-06.md, 2026-10-01)
+## Phase 7: level-aware collision and environment (garage-06.md, commit `1524167`, 2026-10-01)
 
 The player's collision and environment checks now use the player's own
 map level. Off the surface, nothing level-less on the surface stops,
