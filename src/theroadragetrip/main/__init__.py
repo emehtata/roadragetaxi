@@ -1057,6 +1057,12 @@ GC_THRESHOLDS = (10000, 10, 1000)
 
 def main() -> None:
     gc.set_threshold(*GC_THRESHOLDS)
+    # osm-stream-00.md: tile loads now run on a thread *during* gameplay.
+    # Every pygame blit releases the GIL, and at the default 5 ms switch
+    # interval the pure-Python cache decode then held it for up to 5 ms per
+    # blit (Oulu drive: 36 frames >= 100 ms -> 7). The background load
+    # just takes longer (6.7 s -> 10 s). No cost while no thread contends.
+    sys.setswitchinterval(0.0005)
     config = load_config()
     overpass_endpoints = get_overpass_endpoints(config)
     configure_user_agent(config.get("game", "user_agent_id"))
