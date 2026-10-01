@@ -447,6 +447,11 @@ class TrafficWorld:
         none, or if `deadline` passes first)."""
         return run_route_steps(self.plan_route_steps(start, target, layer), deadline)
 
+    def route_graph(self) -> "_SurfaceGraphView":
+        """The committed surface route graph, for graph_route_steps and
+        level_routing (level 0)."""
+        return _SurfaceGraphView(self)
+
     def plan_route_steps(
         self,
         start: Tuple[float, float],

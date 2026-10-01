@@ -23,12 +23,12 @@ describes, and when it does it says so.
 | Render gate: only `Car.map_level`'s world is drawn | active; F11 (debug HUD on) steps the level | phase 5 |
 | Driving network per level: surface grid + route graph surface-only; player drives the current level's network | active | phase 6 |
 | Collisions and environment per level: buildings by `map_level`; level-less trees, fences, curbs, bumps, water, cameras, roadworks, ground surface-only | active | phase 7 |
-| Route planning off the surface | not done | – |
 | NPCs and pedestrians on levels | not done (surface-only) | – |
 | Level connectors (`amenity=parking_entrance` nodes) in `world.level_connectors` | imported, cached, streamed; data only | phase 8 |
 | Driving through a parking entrance changes `Car.map_level` (road-level evidence only); multi-level ramps drive on each of their levels | active | phase 9 |
 | Underground roads with an explicit multi-level `level=*` (e.g. tunnel `0;-1`) kept at import | active | phase 10 |
-| Cross-level routes, NPC and pedestrian level changes | not done | – |
+| Route graph per level, joined only by resolved connectors; player navigation plans across levels | active | phase 11/12 |
+| NPC and pedestrian level changes, level-aware NPC routing | not done (surface-only) | – |
 | Garage debug overlay, spatial index for garages | not done | – |
 
 Rules that hold throughout:
@@ -512,4 +512,85 @@ World cache format 23.
 - **Current behaviour is intentional:** until such evidence exists, the 7
   roads stay out of the road networks rather than being wrongly treated
   as surface roads.
+
+## Phase 11/12: level route graphs and connector routing (garage-10_11.md, 2026-10-01)
+
+Each logical level now has its own route graph. Resolved level connectors
+are the only links between those graphs, and player navigation plans
+across them.
+
+- **Shared route search** (separate commit `b9950f8`): the A* search and
+  nearest-node lookup moved out of `TrafficWorld` into
+  `graph_route_steps` / `nearest_node_indices` in `traffic_world.py`.
+  They work on any graph shaped like `RouteGraphBuild`. `TrafficWorld`
+  keeps its methods as wrappers, so its API and NPC routing are
+  unchanged.
+- **Graph per level** (`level_routing.LevelRouteGraphs`):
+  - **Level 0:** the existing surface graph (`TrafficWorld.route_graph()`,
+    surface car roads only).
+  - **Other levels:** a `RouteGraphBuild` over exactly the roads
+    `LevelRoadNetworks` drives on there: explicit level roads plus
+    multi-level ramps (`0;-1` on 0 and -1, `-1;-2` on -1 and -2). Phase
+    10's `level=-1;0` road is in both graphs.
+  - **Never in a level graph:** `tunnel`, `layer` or covered roads
+    without a level.
+
+  Driving and routing therefore agree on what each level holds. A graph
+  never contains another level's road, so shared coordinates or nodes
+  never connect two levels.
+- **Connector edges:** only from phase 9's resolved topologies (same
+  resolver), and only where the entrance node is a node of both level
+  graphs. An edge keeps the connector OSM id, from/to level and position.
+  OSM gives entrances no direction, so an edge works both ways; oneway
+  roads still apply on each side. Unresolved and ambiguous connectors
+  give no edge.
+- **Connector cost:** none of its own. An entrance is a point, and the
+  real distance through it is the road geometry on either side, which
+  each leg already counts.
+- **Planning** (`LevelRouteGraphs.plan`): a Dijkstra over
+  (level, position) states. Each step is an ordinary single-level route
+  to a connector or to the target. The result, `LevelRoute`, keeps each
+  leg's level and the `LevelTransitionEdge` between legs. Levels chain
+  only through real connectors: 0 → -2 needs a real 0 ↔ -2 entrance, and
+  no level order is assumed.
+- **Player navigation** (`main()`):
+  - **On the surface:** `traffic_mgr.plan_route`, unchanged.
+  - **Off the surface:** `world.level_routes.plan` from the car's level
+    to the target, which is always on the surface. The current level's
+    leg is drawn, and a change of `car.map_level` re-plans.
+  - **Debug HUD:** `level_route_graphs`, `level_route_connectors` and
+    `route_next_connector`.
+- **Updates:** built with the other level structures by
+  `_level_structures` in `main()`, at `_load_world` and at every map
+  sync's finalize stage, never per frame. A connector whose road leaves
+  with a tile loses its edge at the next sync. Nothing is cached on disk;
+  the graphs are derived from world data.
+
+**Oulu:**
+- **Level graphs:** -3 (94 nodes, 127 edges), -2 (18, 27), -1 (43, 71)
+  and +1 (37, 58). Levels -4, +2 and +3 have only footways, so no car
+  graph.
+- **Build cost:** 1 ms and about 123 KB for all level graphs, against
+  0.2 s for the surface graph (45,510 nodes).
+- **Connector edges:** 4, which are 636848833 0 ↔ -1 and 4116535367
+  0 ↔ -2.
+- **Routes planned:** each takes 3–5 ms.
+  - level -1 → surface through 636848833: 123 m.
+  - surface → -1: 521 m (oneway aisles).
+  - surface → -2 and -2 → surface through 4116535367: 173 m each.
+- **Unchanged:** the 7 unresolved phase 10 entrances.
+- **Frame time** (3 alternating pairs of phase 10 and phase 11/12): 20.9,
+  23.6 and 24.5 ms before, 28.1, 24.0 and 24.5 ms after. The only clear
+  gap is one noisy pair, and the third pair is identical. The new
+  per-frame work is a level comparison and two debug metrics.
+
+**Limits:**
+- **NPCs and pedestrians:** NPC routing stays on the surface graph, and
+  pedestrians are unchanged.
+- **Targets:** player targets are on the surface, so a route off the
+  surface always heads up to level 0.
+- **Planning cost:** synchronous, as surface navigation already was. It
+  runs only when the route changes.
+- **Snapping:** a route to a point mid-segment overshoots to the nearest
+  node and comes back, as surface routes already do.
 

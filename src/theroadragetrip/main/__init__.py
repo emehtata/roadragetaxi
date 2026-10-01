@@ -62,6 +62,7 @@ from ..osm import (
     remove_trees_under_roads,
     remove_trees_under_roads_steps,
 )
+from ..level_routing import LevelRouteGraphs
 from ..level_transitions import LevelTransitions, resolve_connectors
 from ..map_level import SURFACE_LEVEL, LevelRoadNetworks
 from ..physics import (
@@ -1030,8 +1031,7 @@ def _load_world(
         level_connectors=level_connectors,
         # Off-surface driving networks (garage-05.md) and parking-entrance
         # level changes (garage-08.md); both rebuilt when map sync finishes.
-        level_roads=LevelRoadNetworks(ways, level_ways),
-        level_transitions=LevelTransitions(resolve_connectors(level_connectors, ways, level_ways)[0]),
+        **_level_structures(ways, level_ways, level_connectors),
         parking_spaces=parking_spaces,
         pedestrian_mgr=pedestrian_mgr,
         places=places,
@@ -1061,6 +1061,20 @@ def _load_world(
         ways=ways,
         world_cache=world_cache,
     )
+
+
+def _level_structures(ways, level_ways, level_connectors) -> dict:
+    """Everything derived from map levels, built at startup and on every
+    map sync (never per frame): off-surface driving networks (garage-05),
+    connector topology for level changes (garage-08) and per-level route
+    graphs joined by those connectors (garage-10_11)."""
+    level_roads = LevelRoadNetworks(ways, level_ways)
+    topologies = resolve_connectors(level_connectors, ways, level_ways)[0]
+    return {
+        "level_roads": level_roads,
+        "level_transitions": LevelTransitions(topologies),
+        "level_routes": LevelRouteGraphs(level_roads, topologies),
+    }
 
 
 # bin-loader-v10.md: the world is ~0.8-1.3M long-lived, acyclic tracked
@@ -1332,6 +1346,7 @@ def main() -> None:
         navigation_route = None
         navigation_target_key = None
         navigation_route_dirty = False
+        navigation_level = 0  # car.map_level the current navigation route was planned on
         phone_open = False
         rage_shout_timer = 0.0
         rage_shout_text = RAGE_SHOUTS[0]
@@ -2296,6 +2311,8 @@ def main() -> None:
             frame_profiler.set_metric("tiles_pending", tile_metrics["tiles_pending"])
             frame_profiler.set_metric("tiles_active", tile_metrics["tiles_active"])
             frame_profiler.set_metric("map_level", car.map_level)
+            frame_profiler.set_metric("level_route_graphs", len(world.level_routes.graphs))
+            frame_profiler.set_metric("level_route_connectors", sum(map(len, world.level_routes.edges.values())))
             if world.level_transitions.last_transition is not None:
                 frame_profiler.set_metric("level_transition", "%d: %d -> %d" % world.level_transitions.last_transition)
             frame_profiler.set_metric("tiles_fetching", int(tile_metrics["tiles_fetching"]))
@@ -2622,10 +2639,10 @@ def main() -> None:
                         map_sync_stage = 14
                 elif map_sync_stage == 14:
                     with frame_profiler.section("map_sync:finalize"):
-                        level_roads = world.level_roads = LevelRoadNetworks(ways, level_ways)
-                        world.level_transitions.topologies = resolve_connectors(
-                            world.level_connectors, ways, level_ways,
-                        )[0]
+                        rebuilt = _level_structures(ways, level_ways, world.level_connectors)
+                        level_roads = world.level_roads = rebuilt["level_roads"]
+                        world.level_transitions.topologies = rebuilt["level_transitions"].topologies
+                        world.level_routes = rebuilt["level_routes"]
                         navigation_route_dirty = True
                         last_map_revision = auto_fetch_manager.get_map_revision()
                         logger.info(
@@ -2640,7 +2657,10 @@ def main() -> None:
                         (time.perf_counter() - map_sync_started) * 1000.0,
                     )
             current_target = taxi_mgr.get_current_target()
-            if show_navigation and current_target and car.map_level == SURFACE_LEVEL:
+            if car.map_level != navigation_level:
+                navigation_route_dirty = True  # a new level: re-plan from its graph
+                navigation_level = car.map_level
+            if show_navigation and current_target:
                 target_key = (id(current_target), current_target.x, current_target.y)
                 route_deviation = False
                 if navigation_route and len(navigation_route) >= 2:
@@ -2650,11 +2670,30 @@ def main() -> None:
                     ) > 35.0
                 if target_key != navigation_target_key or navigation_route_dirty or route_deviation:
                     route_layer = getattr(current_way, "layer", None) if current_way else None
-                    navigation_route = traffic_mgr.plan_route(
-                        (car.x, car.y),
-                        (current_target.x, current_target.y),
-                        layer=route_layer,
-                    )
+                    if car.map_level == SURFACE_LEVEL:
+                        navigation_route = traffic_mgr.plan_route(
+                            (car.x, car.y),
+                            (current_target.x, current_target.y),
+                            layer=route_layer,
+                        )
+                    else:
+                        # Off the surface: this level's graph, out through
+                        # resolved connectors to the (surface) target. Show
+                        # the leg on the current level; it re-plans on the
+                        # next level (garage-10_11.md).
+                        level_route = world.level_routes.plan(
+                            traffic_mgr.route_graph(), (car.x, car.y), car.map_level,
+                            (current_target.x, current_target.y),
+                        )
+                        navigation_route = level_route.legs[0][1] if level_route else None
+                        if level_route and level_route.transitions:
+                            frame_profiler.set_metric(
+                                "route_next_connector", "%d: %d -> %d" % (
+                                    level_route.transitions[0].connector_osm_id,
+                                    level_route.transitions[0].from_level,
+                                    level_route.transitions[0].to_level,
+                                ),
+                            )
                     logger.info(
                         "Navigation route planned: start=(%.1f, %.1f) target=(%.1f, %.1f) "
                         "layer=%s points=%s",
@@ -2671,11 +2710,6 @@ def main() -> None:
                 navigation_route = None
                 navigation_target_key = None
                 show_navigation = False
-            elif car.map_level != SURFACE_LEVEL and navigation_route is not None:
-                # No route planning off the surface yet (no level route graph,
-                # garage-05.md): drop the surface route rather than show it.
-                navigation_route = None
-                navigation_target_key = None
             if first_gameplay_frame:
                 logger.info("Gameplay frame: map update complete")
 
