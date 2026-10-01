@@ -30,6 +30,7 @@ SPATIAL_RANGES_M = {
     "collision.vehicle": (15.0, 250.0),
     "station.ambience": (15.0, 150.0),
     "censored-cursing": (3.0, 40.0),
+    "railway.announcement": (60.0, 300.0),  # station loudspeakers carry
 }
 # The taxi's own sounds come from the taxi: heard fully unless the camera
 # looks somewhere else (panning the view, following another car).

@@ -16,6 +16,7 @@ import pygame
 
 from ..geo import angle_diff, dist_point_to_segment, meters_to_latlon
 from ..audio import AudioManager
+from ..station_announcer import StationAnnouncer
 from ..config import (
     CONFIG_PATH,
     cities_from_config,
@@ -214,11 +215,14 @@ from .debug_tools import _screenshot_directory, _write_debug_snapshot, find_feat
 BBOX = DEFAULT_BBOX
 
 logger = logging.getLogger(__name__)
-def _play_rail_sounds(audio, railway_mgr) -> None:
-    """Train arrivals/departures (one-shots) and the running-train and
-    station-crowd loops, each placed where it happens (audio fades them
-    with distance from the camera)."""
-    for kind, x, y in railway_mgr.sound_events:
+def _play_rail_sounds(audio, railway_mgr, announcer=None) -> None:
+    """Train arrivals/departures (one-shots, plus the station's
+    announcement) and the running-train and station-crowd loops, each
+    placed where it happens (audio fades them with distance from the camera)."""
+    for kind, x, y, train, stop in railway_mgr.sound_events:
+        if announcer is not None and stop is not None:
+            platform = stop[5] if len(stop) > 5 and stop[5] is not None else (x, y)
+            announcer.announce(audio, kind, train, stop, platform)
         if kind == "arrived":
             audio.play_group("railway.train_brakes", at=(x, y))
             audio.play_group("railway.train_doors", 0.7, variation=1, at=(x, y))  # doors open
@@ -1246,6 +1250,7 @@ def main() -> None:
         speech_min_interval=config.getfloat("speech", "min_interval", fallback=5.0),
         speech_max_interval=config.getfloat("speech", "max_interval", fallback=20.0),
     )
+    station_announcer = StationAnnouncer()
 
     # Outer game loop to support picking new starting city without restarting process
     app_running = True
@@ -3056,7 +3061,7 @@ def main() -> None:
                     )
                 railway_mgr.view_point = (camx, camy)
                 railway_mgr.update(dt, dt * (1.0 if taxi_mgr.has_active_job() else 60.0), game_calendar.current)
-                _play_rail_sounds(audio, railway_mgr)
+                _play_rail_sounds(audio, railway_mgr, station_announcer)
             with frame_profiler.section("render:trains"):
                 if surface_world:
                     draw_trains(
