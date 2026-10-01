@@ -13,6 +13,8 @@
     "thousands": {}
   },
   "places": {},
+  "places_to": {},
+  "places_from": {},
   "train_types": {},
   "platforms": {},
   "phrases": {},

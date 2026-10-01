@@ -17,7 +17,10 @@ railway_announcements/
 │   ├── tens/10.ogg … 90.ogg       kymmenen, kaksikymmentä, …
 │   ├── hundreds/100.ogg … 900.ogg sata, kaksisataa, …
 │   └── thousands/1000.ogg …       only if the number range needs them
-├── places/<id>.ogg          oulu.ogg, tornio_itainen.ogg, …
+├── place_forms.json         hand-written "to"/"from" forms of each place
+├── places/<id>.ogg          Oulu, Tornio-Itäinen, …   (oulu.ogg, tornio_itainen.ogg)
+├── places/to/<id>.ogg       Ouluun, Helsinkiin, Tampereelle, …
+├── places/from/<id>.ogg     Oulusta, Helsingistä, Tampereelta, …
 ├── train_types/<id>.ogg     intercity.ogg, pendolino.ogg, …
 ├── platforms/<id>.ogg       raide.ogg, raiteelle.ogg, raiteelta.ogg
 ├── phrases/<id>.ogg         attention.ogg, arriving.ogg, …
@@ -51,14 +54,30 @@ Numbers are said with components, never one file per number:
 0–999 the set needs 37 components: 0–19, 20–90 by tens, 100–900 by
 hundreds. The page computes the list for any range up to 9999.
 
+## Place forms
+
+Announcements say where a train goes and where it comes from, so each
+place has three clips: the name ("Oulu"), the "to" form ("Ouluun") and the
+"from" form ("Oulusta"). Finnish picks the ending per place - inner
+-Vn/-sta ("Helsinkiin", "Helsingistä", with a stem change) or outer
+-lle/-lta ("Tampereelle", "Seinäjoelta") - so the forms are written by hand
+in `place_forms.json`, keyed by place id:
+
+```json
+"helsinki": {"name": "Helsinki", "to": "Helsinkiin", "from": "Helsingistä"}
+```
+
 ## Announcement templates
 
-Place names are only ever said in their basic form; the inflected words
-are separate phrase/platform files:
-
 ```text
-[attention] [train type] [number] [arriving] [raiteelle] [number] … [destination] [place]
-"Hyvät matkustajat. InterCity viisikymmentäseitsemän saapuu raiteelle kolme. … määränpää Oulu."
+[attention] [train type] [number] [place to] [arriving] [raiteelle] [number]
+"Hyvät matkustajat. InterCity viisikymmentäseitsemän Ouluun saapuu raiteelle kolme."
+
+[train type] [number] [place from] [arriving] [raiteelle] [number]
+"Pendolino neljäsataa yksitoista Helsingistä saapuu raiteelle kaksi."
+
+[destination] [place]
+"määränpää Oulu"
 
 [next_train] [departing] [raiteelta] [number]
 "Seuraava juna lähtee raiteelta kaksi."
@@ -93,7 +112,9 @@ manifest keeps your text as `text` and the original as `default_text`.
 - **A place**: places come from the game's timetable (every station where a
   long-distance train stops). For another one, add it to the timetable data
   or to `long_distance_places()` in `announcements.py`. Its id is the name in
-  ASCII (`slug("Tornio-Itäinen")` → `tornio_itainen`).
+  ASCII (`slug("Tornio-Itäinen")` → `tornio_itainen`). Add its "to" and
+  "from" forms to `place_forms.json`; until then its rows in "Places: to" and
+  "Places: from" have empty text (type the form there to generate it).
 - **A train type**: add `id: (timetable type code, Finnish name)` to
   `TRAIN_TYPES` in `announcements.py`.
 - **A phrase**: add `id: "Finnish text"` to `PHRASES` (or `PLATFORMS`).
@@ -128,6 +149,8 @@ channel counts, and whether every number in the range can be said.
     "teens": {}, "tens": {}, "hundreds": {}, "thousands": {}
   },
   "places": {"oulu": {"file": "places/oulu.ogg", "text": "Oulu", "…": "…"}},
+  "places_to": {"oulu": {"file": "places/to/oulu.ogg", "text": "Ouluun", "…": "…"}},
+  "places_from": {"oulu": {"file": "places/from/oulu.ogg", "text": "Oulusta", "…": "…"}},
   "train_types": {"intercity": {"file": "train_types/intercity.ogg", "text": "InterCity", "train_type": "IC"}},
   "platforms": {}, "phrases": {}, "connectors": {}
 }
