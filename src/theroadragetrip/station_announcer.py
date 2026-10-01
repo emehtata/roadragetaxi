@@ -110,16 +110,22 @@ class AnnouncementScript:
 
 
 class StationAnnouncer:
-    """Plays one announcement at a time; others wait their turn in a short
-    queue (a train's departure soon after its arrival, two trains at once)
-    and are dropped once stale. update() every frame starts the next."""
+    """Plays announcements clip by clip on the mixer's reserved
+    announcement channel (audio.ANNOUNCEMENT_CHANNEL): each asset is its own
+    cached Sound, the next one starts only when the channel has finished the
+    previous one, with a short connector pause between phrases. Whole
+    announcements queue (an arrival and its train's departure, two trains
+    at once); one still waiting after MAX_WAIT_S is dropped as stale.
+    update() runs every frame and never blocks."""
 
     def __init__(self, asset_dir: Path = ASSET_DIR) -> None:
         self.asset_dir = asset_dir
         self.script: Optional[AnnouncementScript] = None
-        self._clips = {}
+        self._pause = None
+        self._clips = {}  # asset file -> pygame.mixer.Sound, loaded once
         self._channel = None
-        self._queue = deque()  # (queued at, sound, position, log text)
+        self._queue = deque()  # waiting announcements: (queued at, clip files, position, log text)
+        self._playing = None  # the announcement on air: [remaining clip files, position]
         try:
             manifest = json.loads((asset_dir / "manifest.json").read_text(encoding="utf-8"))
             self.script = AnnouncementScript(manifest)
@@ -134,6 +140,26 @@ class StationAnnouncer:
             self._clips[file] = pygame.mixer.Sound(str(self.asset_dir / file))
         return self._clips[file]
 
+    def _announcement_channel(self):
+        if self._channel is None:
+            import pygame
+
+            from .audio import ANNOUNCEMENT_CHANNEL
+
+            self._channel = pygame.mixer.Channel(ANNOUNCEMENT_CHANNEL)
+        return self._channel
+
+    def clips(self, phrases: List[List[str]]) -> List[str]:
+        """The clip files in playing order: a connector pause between
+        phrases, none inside one (a number stays one word: "kaksikymmentä
+        kaksi")."""
+        clips = []
+        for index, phrase in enumerate(phrases):
+            if index and self._pause:
+                clips.append(self._pause)
+            clips.extend(phrase)
+        return clips
+
     def announce(self, audio, kind: str, train, stop, position) -> bool:
         """A train event at a station (stop: the train's stop tuple) - queue
         its announcement, from the platform, if anyone could hear it."""
@@ -146,35 +172,34 @@ class StationAnnouncer:
                                       service.destination, stop[6] if len(stop) > 6 else "")
         if not phrases:
             return False
-        import pygame
-
-        try:
-            pause = [self._clip(self._pause).get_raw()] if self._pause else []
-            parts = []
-            for index, phrase in enumerate(phrases):
-                if index:
-                    parts += pause
-                parts += [self._clip(file).get_raw() for file in phrase]
-            sound = pygame.mixer.Sound(buffer=b"".join(parts))
-        except (pygame.error, OSError) as exc:
-            logger.warning("Could not assemble a station announcement: %s", exc)
-            return False
-        self._queue.append((time.monotonic(), sound, position,
+        self._queue.append((time.monotonic(), self.clips(phrases), position,
                             f"{stop[2]}: {service.train_type} {service.number} ({kind})"))
         self.update(audio)
         return True
 
     def update(self, audio) -> None:
-        """Start the next queued announcement once the loudspeakers are free."""
-        if self._channel is not None and self._channel.get_busy():
+        """Every frame: while a clip plays, nothing; when it has finished,
+        start the next clip of the announcement on air, else the next
+        announcement still worth playing."""
+        channel = self._announcement_channel()
+        if channel.get_busy():
             return
-        while self._queue:
-            queued_at, sound, position, text = self._queue.popleft()
-            if time.monotonic() - queued_at > MAX_WAIT_S:
-                continue  # stale: the train is long gone
-            left, right = audio.levels("railway.announcement", 1.0, at=position)
-            self._channel = sound.play()
-            if self._channel is not None:
-                self._channel.set_volume(left, right)
-                logger.info("Station announcement at %s", text)
+        if not (self._playing and self._playing[0]):
+            self._playing = None
+            while self._queue:
+                queued_at, files, position, text = self._queue.popleft()
+                if time.monotonic() - queued_at <= MAX_WAIT_S:
+                    self._playing = [deque(files), position]
+                    logger.info("Station announcement at %s", text)
+                    break  # older ones: stale, the train is long gone
+            if self._playing is None:
+                return
+        files, position = self._playing
+        try:
+            sound = self._clip(files.popleft())
+        except Exception as exc:  # pygame.error/OSError: a missing or broken clip is skipped, the rest still plays
+            logger.warning("Station announcement clip unavailable: %s", exc)
             return
+        channel.play(sound)
+        # Volume of where the station is now, seen from where the player is now.
+        channel.set_volume(*audio.levels("railway.announcement", 1.0, at=position))

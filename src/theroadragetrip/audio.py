@@ -18,6 +18,7 @@ logger = logging.getLogger(__name__)
 
 CATALOG = Path(__file__).with_name("assets") / "audio" / "audio_catalog.json"
 MIXER_CHANNELS = 48  # one-shots plus about a dozen simultaneous ambience loops
+ANNOUNCEMENT_CHANNEL = 0  # reserved: railway station announcements (station_announcer.py) only
 
 # Sounds with a place in the world: (full volume within, silent beyond)
 # metres from the listener (the camera). Between the two the volume falls
@@ -104,6 +105,8 @@ class AudioManager:
             if not mixer.get_init():
                 mixer.init()
             mixer.set_num_channels(MIXER_CHANNELS)
+            # Before any sound plays: Sound.play() never picks a reserved channel.
+            mixer.set_reserved(ANNOUNCEMENT_CHANNEL + 1)
             sounds_dir = Path(__file__).with_name("sounds")
             for name in ("car-door-open", "censored-cursing", "city-traffic-outdoor", "police_car_siren-esp"):
                 path = next(
