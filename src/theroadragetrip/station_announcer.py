@@ -62,10 +62,25 @@ class AnnouncementScript:
             for entry in manifest.get("train_types", {}).values()
         }
         self.lines = {entry["line"]: entry["file"] for entry in manifest.get("lines", {}).values() if "line" in entry}
+        # Clip file -> its Finnish text (the normal spelling, not the voice's).
+        self.texts = {}
+
+        def collect(node):
+            if isinstance(node, dict):
+                if "file" in node and "text" in node:
+                    self.texts[node["file"]] = node.get("default_text", node["text"])
+                for value in node.values():
+                    collect(value)
+        collect(manifest)
         # Places by their written name (default_text when the spoken text was corrected).
         self.place_ids = {
             entry.get("default_text", entry["text"]): place_id for place_id, entry in manifest.get("places", {}).items()
         }
+
+    def sentence(self, phrases: List[List[str]]) -> str:
+        """What the phrases say, for the log: "Hyvät matkustajat. InterCity
+        kaksikymmentä kaksi Rovaniemeltä saapuu raiteelle yksi"."""
+        return " ".join(" ".join(self.texts.get(file, file) for file in phrase) for phrase in phrases)
 
     def _file(self, category: str, key: str) -> Optional[str]:
         entry = self.manifest.get(category, {}).get(key)
@@ -191,7 +206,8 @@ class StationAnnouncer:
         if not phrases:
             return False
         self._queue.append((time.monotonic(), self.clips(phrases), position,
-                            f"{stop[2]}: {service.train_type} {service.number} ({kind})"))
+                            f"{stop[2]}: {service.train_type} {service.number} ({kind}): "
+                            f"\"{self.script.sentence(phrases)}\""))
         self.update(audio)
         return True
 

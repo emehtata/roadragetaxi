@@ -252,3 +252,8 @@ def test_train_numbers_stay_composed_after_the_train_type():
     assert spoken(pyo) == ["yöjuna", "kaksisataa", "seitsemänkymmentä", "kolme"]
     r = REAL_SCRIPT.phrases("departed", "R", "123", "Tikkurila", "Helsinki", "Riihimäki", "4", "commuter")[0]
     assert spoken(r) == ["lähijuna", "är", "sata", "kaksikymmentä", "kolme"]
+
+
+def test_the_log_line_says_the_announcement_in_finnish():
+    phrases = REAL_SCRIPT.phrases("arrived", "IC", "22", "Oulu", "Rovaniemi", "Helsinki", "1", "long_distance")
+    assert REAL_SCRIPT.sentence(phrases) == "Hyvät matkustajat. InterCity kaksikymmentä kaksi Rovaniemeltä saapuu raiteelle yksi"
