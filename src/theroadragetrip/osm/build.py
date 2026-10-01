@@ -42,6 +42,7 @@ from .models import (
     SceneryObject,
     SpeedBump,
     MapData,
+    LevelConnector,
 )
 
 from .traffic_signals import (
@@ -476,6 +477,8 @@ def build_ways(
     parking_space_nodes_raw: List[Tuple[dict, int]] = []
     relations_raw: List[Tuple[dict, List[dict]]] = []
     garage_raw: List[Tuple[dict, str, int, object]] = []  # (tags, osm type, osm id, node ids / members)
+    connector_nodes: Dict[int, dict] = {}  # amenity=parking_entrance node id -> tags
+    connector_ways: Dict[int, List[Tuple[int, dict]]] = defaultdict(list)  # node id -> ways through it
 
     for el in elements:
         el_type = el.get("type")
@@ -515,6 +518,8 @@ def build_ways(
                 scenery_object_nodes_raw.append((tags, nid))
             if parking_facility_type(tags) in GARAGE_TYPES:
                 garage_raw.append((tags, "node", nid, None))
+            if tags.get("amenity") == "parking_entrance":
+                connector_nodes[nid] = tags
         elif el_type == "way":
             tags = el.get("tags", {})
             node_ids = el.get("nodes", [])
@@ -527,6 +532,12 @@ def build_ways(
                 fuel_area_raw.append((tags, node_ids, way_id))
             if parking_facility_type(tags) in GARAGE_TYPES:
                 garage_raw.append((tags, "way", way_id, node_ids))
+            # Ways sharing a parking entrance node: its explicit garage /
+            # road topology (garage-07.md). isdisjoint keeps the common no-
+            # entrance way at one C-level set check.
+            if connector_nodes and not connector_nodes.keys().isdisjoint(node_ids):
+                for nid in set(node_ids).intersection(connector_nodes):
+                    connector_ways[nid].append((way_id, tags))
             if include_bus_stops and tags.get("public_transport") == "platform":
                 bus_platforms_raw.append((tags, node_ids, way_id))
             if "building" in tags or "building:part" in tags:
@@ -1572,11 +1583,25 @@ def build_ways(
         if garage is not None:
             parking_garages.append(garage)
 
+    level_connectors = []
+    for nid, tags in connector_nodes.items():
+        point = nodes_m.get(nid)
+        if point is None:
+            continue
+        sharing = connector_ways.get(nid, ())
+        garage_ids = [way_id for way_id, way_tags in sharing if parking_facility_type(way_tags) in GARAGE_TYPES]
+        level_connectors.append(LevelConnector(
+            osm_type="node", osm_id=nid, connector_type="parking_entrance", x=point[0], y=point[1],
+            map_level=parse_map_level(tags.get("level")), level=tags.get("level"), parking=tags.get("parking"),
+            garage_osm_id=garage_ids[0] if garage_ids else None,
+            road_osm_ids=tuple(way_id for way_id, way_tags in sharing if "highway" in way_tags),
+        ))
+
     curbs = open_kerbs_at_road_crossings(curbs, ways)
     return MapData(
         ways, waters, buildings, sceneries, places, (minx, miny, maxx, maxy),
         traffic_lights, crossings, taxi_stops, bus_stops, parking_spaces, logical_intersections, stop_signs, yield_signs,
         curbs=curbs, scenery_objects=scenery_objects, speed_bumps=speed_bumps,
         railways=railways, railings=railings, parking_garages=parking_garages,
-        level_ways=level_ways,
+        level_ways=level_ways, level_connectors=level_connectors,
     )

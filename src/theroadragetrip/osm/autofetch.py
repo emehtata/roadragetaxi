@@ -135,7 +135,7 @@ _WORLD_SECTIONS = (
     "ways", "waters", "buildings", "sceneries", "places",
     "traffic_lights", "crossings", "bus_stops", "parking_spaces",
     "logical_intersections", "stop_signs", "yield_signs", "curbs",
-    "scenery_objects", "speed_bumps", "railways", "railings", "parking_garages", "level_ways",
+    "scenery_objects", "speed_bumps", "railways", "railings", "parking_garages", "level_ways", "level_connectors",
 )
 
 # Per-frame wall-clock budget for the incremental tile-world merge
@@ -265,6 +265,7 @@ class AutoFetchManager:
         railings: Optional[List[Railing]] = None,
         parking_garages: Optional[list] = None,
         level_ways: Optional[List[Way]] = None,
+        level_connectors: Optional[list] = None,
         fetch_func=fetch_osm_ways,
         build_func=build_ways,
         cooldown_s: float = 5.0,
@@ -291,6 +292,7 @@ class AutoFetchManager:
         self.railings = railings if railings is not None else []
         self.parking_garages = parking_garages if parking_garages is not None else []
         self.level_ways = level_ways if level_ways is not None else []
+        self.level_connectors = level_connectors if level_connectors is not None else []
         self.bounds = bounds
         self.transformer = transformer
         self.fetch_func = fetch_func
@@ -1286,6 +1288,7 @@ class AutoFetchManager:
             new_railings = getattr(res, "railings", [])
             new_parking_garages = getattr(res, "parking_garages", [])
             new_level_ways = getattr(res, "level_ways", [])
+            new_level_connectors = getattr(res, "level_connectors", [])
             if len(res) == 8:
                 new_ways, new_waters, new_buildings, new_sceneries, new_places, new_bounds, new_traffic_lights, new_crossings = res
             elif len(res) == 7:
@@ -1351,6 +1354,7 @@ class AutoFetchManager:
                 _extend_unique(self.railings, new_railings)
                 _extend_unique(self.parking_garages, new_parking_garages)
                 _extend_unique(self.level_ways, new_level_ways)
+                _extend_unique(self.level_connectors, new_level_connectors)
                 minx = min(self.bounds[0], new_bounds[0])
                 miny = min(self.bounds[1], new_bounds[1])
                 maxx = max(self.bounds[2], new_bounds[2])

@@ -24,7 +24,8 @@ describes, and when it does it says so.
 | Collisions and environment per level: buildings by `map_level`; level-less trees, fences, curbs, bumps, water, cameras, roadworks, ground surface-only | active | phase 7 |
 | Route planning off the surface | not done | – |
 | NPCs and pedestrians on levels | not done (surface-only) | – |
-| `parking=entrance`, ramps, automatic level changes | not done | – |
+| Level connectors (`amenity=parking_entrance` nodes) in `world.level_connectors` | imported, cached, streamed; data only | phase 8 |
+| Using connectors: level transitions, ramps, cross-level routes | not done | – |
 | Garage debug overlay, spatial index for garages | not done | – |
 
 Rules that hold throughout:
@@ -280,4 +281,78 @@ bumps or slows the car any more just because it shares the car's x/y.
   nothing underground can collide with them, even when OSM maps an
   underground one.
 - **Garage outlines:** never collide, as before.
+
+## Phase 8: level connectors (garage-07.md, 2026-10-01)
+
+Added `LevelConnector` (`osm/models.py`) and `world.level_connectors`:
+places where OSM says levels may connect. This is data only. Nothing
+draws, drives, routes or collides with connectors, and nothing changes
+`Car.map_level`, so gameplay is unchanged.
+
+**What Oulu's OSM data contains:**
+- **Parking entrances:** 23 `amenity=parking_entrance` nodes, 22 of them
+  inside the benchmark area. Their `parking=*` is empty on 12, then
+  `underground`, `multi-storey` or `surface`.
+- **Levels:** only 2 entrances carry `level` (`0` and `-1`).
+- **Topology:** most entrance nodes join an outside driveway to a covered
+  or tunnel road, the inside. Some inside roads carry multi-level values
+  such as `level=0;-1`.
+- **Not connectors:** there are no `parking=entrance` objects. The
+  `ramp=*` tags are all on stairs (wheelchair or bicycle ramps), and
+  `level:ref` only appears on indoor shops. So the model covers
+  `amenity=parking_entrance` nodes only.
+
+**Record fields:**
+- **Identity:** `osm_type` (`"node"`), `osm_id` and
+  `connector_type="parking_entrance"`.
+- **Position:** `x`, `y`.
+- **Level:** `map_level`, which is `level=*` only when it is one clean
+  integer (`parse_map_level`, unchanged). Otherwise it is `None`, meaning
+  unknown, never assumed to be the surface. `level` keeps the raw string,
+  for example `0;1`.
+- **`parking`:** the raw `parking=*` value.
+- **`garage_osm_id`:** set only when the entrance node is a vertex of a
+  garage outline (a shared OSM node). It is never set from distance or
+  containment, and a garage never gives a connector a level.
+- **`road_osm_ids`:** the roads through the entrance node, in OSM order.
+
+There are no from/to levels: an entrance's `level=*` says where the
+entrance is, not what it connects to, and the other side is never
+invented.
+
+**Storage:**
+- **World cache:** section `connects` (format 22).
+- **Overpass:** the query now fetches `amenity=parking_entrance` nodes
+  (Overpass cache version `v0.15.0alpha.2`).
+- **Tile streaming:** an `AutoFetchManager` world section, de-duplicated
+  by OSM id and unloaded with its tile.
+- **Not anywhere else:** connectors are never added to `ways`,
+  `level_ways` or `LevelRoadNetworks`, and there is no cross-level route.
+- **Build cost:** one C-level set check per way. Oulu still builds in
+  about 25.5 s, and connectors have no per-frame cost.
+
+**Oulu, through `build_ways`:**
+- **Connectors:** 22 `parking_entrance` connectors.
+- **Garage links:** 9 linked to a garage, all of them imported
+  `ParkingGarage` records.
+- **Levels:** 2 with a known level (`0`, `-1`); the other 20 are unknown.
+- **Roads:** 21 have roads through them: 13 have two, 7 have one and 1 has
+  three.
+
+**Where phase 9 hooks in:**
+- **Finding connectors:** `world.level_connectors`. With about 20 per
+  city, a list scan near the car is fine.
+- **Connector to road:** `road_osm_ids`, matched to `Way.osm_id` in `ways`
+  and `level_ways`.
+- **Resolving levels:** from the connector's own `map_level`, and the
+  `map_level` or raw `level` of the roads in `road_osm_ids`; an inside
+  road with `level=0;-1` is the typical evidence.
+- **Changing level:** set `car.map_level`. Rendering, driving and
+  collisions already follow it (phases 5–7).
+
+**Limits:**
+- **Nodes only:** ramps or entrance ways are not modelled, because none
+  occur in the data.
+- **Garage relations:** an entrance on a member way of a garage relation
+  gets no `garage_osm_id`.
 

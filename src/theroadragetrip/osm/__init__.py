@@ -68,6 +68,7 @@ from .models import (
     Crossing,
     Curb,
     IntersectionApproach,
+    LevelConnector,
     LogicalIntersection,
     MapData,
     ParkingGarage,

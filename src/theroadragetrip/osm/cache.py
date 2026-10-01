@@ -12,7 +12,7 @@ from typing import List, Optional, Tuple
 logger = logging.getLogger(__name__)
 
 
-CACHE_VERSION = "v0.15.0alpha.1"
+CACHE_VERSION = "v0.15.0alpha.2"
 
 
 def _default_cache_dir() -> str:

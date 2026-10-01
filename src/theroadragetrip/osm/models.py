@@ -157,6 +157,32 @@ class ParkingGarage:
 
 
 @dataclass
+class LevelConnector:
+    """A possible connection between map levels, recorded exactly as OSM
+    states it (garage-07.md) - data only: never drawn, driven, routed or
+    collided with. In Oulu's data the only such objects are
+    amenity=parking_entrance nodes.
+
+    No from/to levels: an entrance's level=* says where the entrance is,
+    not what it connects to, so the other side stays unknown. map_level is
+    that level=* when it is one clean integer (parse_map_level), else None
+    = unknown (never assumed to be the surface); level keeps the raw tag.
+    garage_osm_id / road_osm_ids come only from OSM topology - ways that
+    share the entrance node - never from distance or containment."""
+
+    osm_type: str  # "node"
+    osm_id: int
+    connector_type: str  # "parking_entrance"
+    x: float
+    y: float
+    map_level: Optional[int] = None
+    level: Optional[str] = None
+    parking: Optional[str] = None  # raw parking=* ("underground", "multi-storey", ...)
+    garage_osm_id: Optional[int] = None  # a garage way with this node on its outline
+    road_osm_ids: Tuple[int, ...] = ()  # highway ways through this node, in OSM order
+
+
+@dataclass
 class ParkingSpace:
     points_m: List[Tuple[float, float]]
     bbox: Tuple[float, float, float, float]
@@ -520,10 +546,10 @@ class SceneryObject:
 class MapData(tuple):
     """Container tuple for build_ways results returning 6 elements for backward compatibility while providing traffic_lights and crossings via attributes and slicing."""
 
-    def __new__(cls, ways, waters, buildings, sceneries, places, bounds, traffic_lights=None, crossings=None, taxi_stops=None, bus_stops=None, parking_spaces=None, logical_intersections=None, stop_signs=None, yield_signs=None, curbs=None, scenery_objects=None, speed_bumps=None, railways=None, railings=None, parking_garages=None, level_ways=None):
+    def __new__(cls, ways, waters, buildings, sceneries, places, bounds, traffic_lights=None, crossings=None, taxi_stops=None, bus_stops=None, parking_spaces=None, logical_intersections=None, stop_signs=None, yield_signs=None, curbs=None, scenery_objects=None, speed_bumps=None, railways=None, railings=None, parking_garages=None, level_ways=None, level_connectors=None):
         return super().__new__(cls, (ways, waters, buildings, sceneries, places, bounds))
 
-    def __init__(self, ways, waters, buildings, sceneries, places, bounds, traffic_lights=None, crossings=None, taxi_stops=None, bus_stops=None, parking_spaces=None, logical_intersections=None, stop_signs=None, yield_signs=None, curbs=None, scenery_objects=None, speed_bumps=None, railways=None, railings=None, parking_garages=None, level_ways=None):
+    def __init__(self, ways, waters, buildings, sceneries, places, bounds, traffic_lights=None, crossings=None, taxi_stops=None, bus_stops=None, parking_spaces=None, logical_intersections=None, stop_signs=None, yield_signs=None, curbs=None, scenery_objects=None, speed_bumps=None, railways=None, railings=None, parking_garages=None, level_ways=None, level_connectors=None):
         self.ways = ways
         self.waters = waters
         self.buildings = buildings
@@ -547,6 +573,7 @@ class MapData(tuple):
         # Roads with an explicit level=* that the surface road network
         # filters out (underground service/track roads, garage-03.md).
         self.level_ways = level_ways if level_ways is not None else []
+        self.level_connectors = level_connectors if level_connectors is not None else []
 
     @property
     def traffic_signals(self):

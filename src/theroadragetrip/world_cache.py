@@ -55,7 +55,8 @@ MAGIC = b"RWC\0"
 # 19: Way/Building map_level, level and indoor (garage-02.md). 20:
 # level_ways section (filtered underground roads with level=*, garage-03.md).
 # 21: a covered level=0 road goes to ways, not level_ways (garage-05.md).
-FORMAT_VERSION = 21
+# 22: level_connectors section (amenity=parking_entrance, garage-07.md).
+FORMAT_VERSION = 22
 COORDINATE_SYSTEM = "EPSG:3067"
 _HEADER = struct.Struct("<4sHHQQ32s12s")
 _DIRECTORY = struct.Struct("<8sQQI")
@@ -65,14 +66,14 @@ _TYPE_NAMES = {value: key for key, value in _TYPES.items()}
 _SECTIONS = ("ways", "waters", "buildings", "sceneries", "places", "traffic_lights",
              "crossings", "taxi_stops", "bus_stops", "parking_spaces", "logical_intersections",
              "stop_signs", "yield_signs", "curbs", "scenery_objects", "speed_bumps",
-             "railways", "railings", "parking_garages", "level_ways", "metadata")
+             "railways", "railings", "parking_garages", "level_ways", "level_connectors", "metadata")
 _SECTION_CODES = {
     "buildings": "bldgs", "sceneries": "scenery",
     "traffic_lights": "signals", "crossings": "crossing",
     "logical_intersections": "intersct",
     "parking_spaces": "parking", "taxi_stops": "taxistop", "bus_stops": "busstop",
     "stop_signs": "stops", "yield_signs": "yields", "scenery_objects": "furnitur",
-    "speed_bumps": "bumps", "parking_garages": "garages", "level_ways": "lvlways",
+    "speed_bumps": "bumps", "parking_garages": "garages", "level_ways": "lvlways", "level_connectors": "connects",
 }
 _SECTION_NAMES = {code: name for name, code in _SECTION_CODES.items()}
 
@@ -273,7 +274,7 @@ class BinaryWorldCacheLoader:
             "stop_signs": "StopSign", "yield_signs": "YieldSign", "curbs": "Curb",
             "scenery_objects": "SceneryObject", "speed_bumps": "SpeedBump",
             "railways": "Railway", "railings": "Railing", "parking_garages": "ParkingGarage",
-            "level_ways": "Way",
+            "level_ways": "Way", "level_connectors": "LevelConnector",
         }
         import theroadragetrip.osm as osm
         # Every physical TrafficLight/IntersectionApproach on the same
