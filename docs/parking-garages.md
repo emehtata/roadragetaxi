@@ -186,7 +186,7 @@ surface roads. A road counts as underground when it has `level<0`,
 - **Garage outlines:** never drawn. A garage with no tagged internal roads
   is an empty backdrop underground.
 
-## Phase 6: level-aware driving network (garage-05.md, 2026-10-01)
+## Phase 6: level-aware driving network (garage-05.md, commit `17e0b32`, 2026-10-01)
 
 Each road is drivable only on its own logical level, via `on_map_level`
 in `map_level.py`: its `map_level`, or level 0 when that is `None`.
