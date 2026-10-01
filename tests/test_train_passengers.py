@@ -196,3 +196,23 @@ def test_car_popup_lists_its_passengers():
     screen = pygame.Surface((1280, 720))
     draw_train_car_popup(screen, pygame.font.SysFont(None, 22), train, 2, diners, "fi", 1280)
     assert pygame.transform.average_color(screen.subsurface((900, 150, 300, 60)))[:3] != (0, 0, 0)
+
+
+def test_waiting_passengers_stand_where_their_own_train_stops_not_at_the_station_point():
+    """Two trains at one station on different tracks: each train's waiting
+    passengers are anchored at its own stopping point (route at stop[0]),
+    not the shared station point stop[5]."""
+    flow = PassengerFlow()
+    station_point = (0.0, 0.0)
+    trains = []
+    for number, track_x in (("1", 10.0), ("2", 30.0)):
+        route = SimpleNamespace(point_at=lambda s, x=track_x: (x, s, 0.0))
+        stop = (50.0, 60, "A", None, None, station_point, number, "")
+        service = SimpleNamespace(train_type="IC", number=number, calls=("A", "B"))
+        train = SimpleNamespace(service=service, route=route, stops=(stop,), stop_index=0, manifest={})
+        flow.populate(train, NOON)
+        trains.append((number, (track_x, 50.0)))
+    for number, stopping_point in trains:
+        waiting = flow.waiting["A"][("IC", number)]
+        assert waiting
+        assert all(passenger.platform == stopping_point for passenger in waiting)

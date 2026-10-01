@@ -172,7 +172,10 @@ class PassengerFlow:
                     passenger.promille = round(rng.uniform(0.0, 2.0), 2) if rng.random() < DRINK_CHANCE_PER_LEG else 0.0
                 train.manifest.setdefault(destination, []).append(passenger)
         # Waiting at this train's stops on the map (not its final one).
-        platforms = {stop[2]: stop[5] for stop in train.stops[train.stop_index:] if len(stop) > 5}
+        # The spot this train itself stops at (stop[0]: its distance along
+        # its own route, on the timetable's track) - not the station point
+        # every train shares, which put everyone by the wrong track.
+        platforms = {stop[2]: train.route.point_at(stop[0])[:2] for stop in train.stops[train.stop_index:] if len(stop) > 5}
         for station in local:
             index = calls.index(station) if station in calls else len(calls)
             if index >= len(calls) - 1:

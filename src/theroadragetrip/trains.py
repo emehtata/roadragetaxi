@@ -826,7 +826,8 @@ class RailwayManager:
         leaving, boarding = self.passengers.on_arrival(train, stop[2], now)
         self.bookings.passengers_arrived(leaving)
         if self.passenger_view is not None:
-            self.passenger_view.on_arrival(leaving, boarding, stop[5], self.view_point)
+            # Where this train actually stands, on its assigned track.
+            self.passenger_view.on_arrival(leaving, boarding, train.route.point_at(stop[0])[:2], self.view_point)
         logger.debug(
             "%s at %s: %d off, %d on, %d aboard, %d still waiting there", train.service.label, stop[2],
             len(leaving), len(boarding), sum(len(group) for group in train.manifest.values()),
