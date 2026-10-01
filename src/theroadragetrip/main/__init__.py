@@ -2272,6 +2272,7 @@ def main() -> None:
             frame_profiler.set_metric("tiles_in_memory", tile_metrics["tiles_in_memory"])
             frame_profiler.set_metric("tiles_pending", tile_metrics["tiles_pending"])
             frame_profiler.set_metric("tiles_active", tile_metrics["tiles_active"])
+            frame_profiler.set_metric("map_level", car.map_level)
             frame_profiler.set_metric("tiles_fetching", int(tile_metrics["tiles_fetching"]))
             frame_profiler.set_metric("tile_load_ms", tile_metrics["tile_load_ms"])
             frame_profiler.set_metric("tile_integration_ms", tile_metrics["tile_integration_ms"])

@@ -86,3 +86,22 @@ tag the levels came from.
   not read or drawn.
 - **Garage polygons for nodes:** none are inferred. Underground garages are
   often mapped only as a node, and their footprint stays unknown.
+
+## Map levels (rendering)
+
+`theroadragetrip.map_level` holds the visibility rule that later phases
+will draw by. Levels are the same integers as `ParkingGarage.levels`.
+
+- **The player's level:** `Car.map_level`. It is always 0 for now, and the
+  debug HUD shows it as `map_level`.
+- **Explicit level:** an object with a `map_level` attribute is visible
+  only when that equals the player's level.
+- **No level:** every current world object counts as surface world and is
+  visible on level 0 only. No level is inferred from garage polygons.
+- **OSM `layer=*`:** `Way.layer` / `Car.layer` order bridges and tunnels
+  within the surface world. They are not map levels.
+- **Not wired in yet:** no render pass applies the rule, because nothing
+  carries an explicit level. The phase that imports `level=*` objects
+  skips the surface layers when `surface_visible()` is false and draws its
+  level's objects using `visible_on_level()`. That needs the world-layer
+  stretch of `main()`'s render code moved into its own function first.

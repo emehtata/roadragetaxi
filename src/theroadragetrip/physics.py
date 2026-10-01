@@ -229,6 +229,7 @@ class Car:
     heading: float  # radians, 0 = east
     speed: float  # m/s
     layer: int = 0  # current vertical layer / bridge level (default 0 = ground)
+    map_level: int = 0  # logical map level the player is on (map_level.py): 0 surface, -1/-2 garage levels
     trip_m: float = 0.0  # trip distance in meters
     odometer_m: float = 0.0  # total odometer distance in meters
     length_m: float = 4.0  # length in meters
