@@ -62,6 +62,7 @@ from ..osm import (
     remove_trees_under_roads,
     remove_trees_under_roads_steps,
 )
+from ..level_transitions import LevelTransitions, resolve_connectors
 from ..map_level import SURFACE_LEVEL, LevelRoadNetworks
 from ..physics import (
     Car,
@@ -1027,6 +1028,10 @@ def _load_world(
         parking_garages=parking_garages,
         level_ways=level_ways,
         level_connectors=level_connectors,
+        # Off-surface driving networks (garage-05.md) and parking-entrance
+        # level changes (garage-08.md); both rebuilt when map sync finishes.
+        level_roads=LevelRoadNetworks(ways, level_ways),
+        level_transitions=LevelTransitions(resolve_connectors(level_connectors, ways, level_ways)[0]),
         parking_spaces=parking_spaces,
         pedestrian_mgr=pedestrian_mgr,
         places=places,
@@ -1302,9 +1307,7 @@ def main() -> None:
         ways = world.ways
         world_cache = world.world_cache
         level_ways = world.level_ways
-        # Off-surface driving networks, rebuilt when map sync finishes; the
-        # simulation drives the player on world.level_roads (garage-05.md).
-        level_roads = world.level_roads = LevelRoadNetworks(ways, level_ways)
+        level_roads = world.level_roads  # replaced on map sync (see map_sync:finalize)
 
         label_mode = 0
         show_debug_hud = False
@@ -2293,6 +2296,8 @@ def main() -> None:
             frame_profiler.set_metric("tiles_pending", tile_metrics["tiles_pending"])
             frame_profiler.set_metric("tiles_active", tile_metrics["tiles_active"])
             frame_profiler.set_metric("map_level", car.map_level)
+            if world.level_transitions.last_transition is not None:
+                frame_profiler.set_metric("level_transition", "%d: %d -> %d" % world.level_transitions.last_transition)
             frame_profiler.set_metric("tiles_fetching", int(tile_metrics["tiles_fetching"]))
             frame_profiler.set_metric("tile_load_ms", tile_metrics["tile_load_ms"])
             frame_profiler.set_metric("tile_integration_ms", tile_metrics["tile_integration_ms"])
@@ -2618,6 +2623,9 @@ def main() -> None:
                 elif map_sync_stage == 14:
                     with frame_profiler.section("map_sync:finalize"):
                         level_roads = world.level_roads = LevelRoadNetworks(ways, level_ways)
+                        world.level_transitions.topologies = resolve_connectors(
+                            world.level_connectors, ways, level_ways,
+                        )[0]
                         navigation_route_dirty = True
                         last_map_revision = auto_fetch_manager.get_map_revision()
                         logger.info(

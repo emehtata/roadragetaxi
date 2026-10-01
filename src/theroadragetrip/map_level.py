@@ -19,6 +19,29 @@ from typing import Optional
 SURFACE_LEVEL = 0
 
 
+def parse_map_level(value) -> Optional[int]:
+    """OSM level=* as a map level when it is one clean integer ("-1",
+    " 2 ", "+1"), else None: multi-level ("-2;-1"), ranges ("0-2"),
+    fractions ("1.5") and junk stay unset rather than guessed."""
+    text = str(value).strip() if value is not None else ""
+    digits = text[1:] if text[:1] in "+-" else text
+    return int(text) if digits.isascii() and digits.isdigit() else None
+
+
+def explicit_levels(way) -> frozenset:
+    """Every level a road explicitly states: its map_level, or each integer
+    of a multi-level raw level=* such as "0;-1" (a ramp between levels,
+    garage-08.md). Empty when untagged or unclear ("0-1", "1.5", "0;x") -
+    never from layer, tunnel, covered or geometry. Map-sync time only."""
+    if getattr(way, "map_level", None) is not None:
+        return frozenset((way.map_level,))
+    raw = getattr(way, "level", None)
+    if not raw or ";" not in raw:
+        return frozenset()
+    levels = [parse_map_level(part) for part in raw.split(";")]
+    return frozenset(levels) if None not in levels else frozenset()
+
+
 def object_map_level(obj) -> Optional[int]:
     """The object's explicit map level, or None when it has none."""
     return getattr(obj, "map_level", None)
@@ -40,10 +63,15 @@ SURFACE_MAP_LEVELS = (None, SURFACE_LEVEL)
 
 
 def level_view_ways(ways, level_ways) -> list:
-    """Roads drawn by explicit level (render/roads.draw_level_ways): all of
-    level_ways plus surface-network ways tagged off the surface (e.g. a
-    level=-1 parking aisle). Built when map data changes, never per frame."""
-    return list(level_ways) + [way for way in ways if way.map_level not in SURFACE_MAP_LEVELS]
+    """Roads on some off-surface level (render/roads.draw_level_ways,
+    LevelRoadNetworks): all of level_ways plus surface-network ways that
+    explicitly state an off-surface level - a level=-1 parking aisle, or a
+    level=0;-1 ramp, which also stays on the surface. Built when map data
+    changes, never per frame."""
+    return list(level_ways) + [
+        way for way in ways
+        if way.map_level not in SURFACE_MAP_LEVELS or explicit_levels(way) - {SURFACE_LEVEL}
+    ]
 
 
 def on_map_level(way, level: int) -> bool:
@@ -66,7 +94,10 @@ class LevelRoadNetworks:
 
         by_level: dict = {}
         for way in level_view_ways(ways, level_ways):
-            by_level.setdefault(way.map_level, []).append(way)
+            # A multi-level ramp (level=0;-1) is drivable on each level it
+            # names; level 0 is the surface grid's job.
+            for level in explicit_levels(way) - {SURFACE_LEVEL}:
+                by_level.setdefault(level, []).append(way)
         self._networks = {level: (roads, SpatialWayGrid(roads)) for level, roads in by_level.items()}
         self._empty = ([], SpatialWayGrid())
 

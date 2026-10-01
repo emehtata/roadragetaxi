@@ -31,7 +31,7 @@ from shapely.geometry import LineString
 from shapely.ops import unary_union
 
 from ..geo import dist_point_to_segment, point_in_polygon
-from ..map_level import SURFACE_MAP_LEVELS
+from ..map_level import SURFACE_MAP_LEVELS, explicit_levels
 from ..osm import Building, BusStop, TaxiStop, Way
 from ..performance import advance_chunked
 
@@ -144,7 +144,7 @@ def draw_level_ways(
 
     vminx, vminy, vmaxx, vmaxy = get_viewport_bounds(camx, camy, px_per_m, screen_w, screen_h, 25.0)
     for w in level_grid.ways_in_rect(vminx, vminy, vmaxx, vmaxy):
-        if w.map_level != map_level or len(w.points_m) < 2:
+        if len(w.points_m) < 2 or (w.map_level != map_level and map_level not in explicit_levels(w)):
             continue
         pts = [world_to_screen(x, y, camx, camy, px_per_m, screen_w, screen_h) for x, y in w.points_m]
         pygame.draw.lines(screen, road_color_for_way(w), False, pts, max(1, int(w.half_width_m * 2 * px_per_m)))

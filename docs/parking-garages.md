@@ -3,8 +3,9 @@
 The game reads underground and multi-storey parking garages from OSM, and
 it has a logical map-level model: 0 is the surface, -1 and -2 are below it
 and 1 and up are above it. The player's level is the only one drawn and
-driven on. Nothing moves the player between levels yet; F11 (debug HUD on)
-switches it for testing.
+driven on. Driving through a parking entrance whose roads state both levels
+moves the player between them; F11 (debug HUD on) also switches the level
+for testing.
 
 The work happens in phases, one `.github/prompts/garage-NN.md` prompt each.
 "Current state" below is always up to date. The phase sections record what
@@ -25,7 +26,8 @@ describes, and when it does it says so.
 | Route planning off the surface | not done | – |
 | NPCs and pedestrians on levels | not done (surface-only) | – |
 | Level connectors (`amenity=parking_entrance` nodes) in `world.level_connectors` | imported, cached, streamed; data only | phase 8 |
-| Using connectors: level transitions, ramps, cross-level routes | not done | – |
+| Driving through a parking entrance changes `Car.map_level` (road-level evidence only); multi-level ramps drive on each of their levels | active | phase 9 |
+| Cross-level routes, NPC and pedestrian level changes | not done | – |
 | Garage debug overlay, spatial index for garages | not done | – |
 
 Rules that hold throughout:
@@ -355,4 +357,74 @@ invented.
   occur in the data.
 - **Garage relations:** an entrance on a member way of a garage relation
   gets no `garage_osm_id`.
+
+## Phase 9: driving through level connectors (garage-08.md, 2026-10-01)
+
+The player now changes level by driving through a parking entrance.
+Everything level-aware (drawing, driving, collisions) follows
+`Car.map_level`, so nothing else needed changing for it.
+
+- **`explicit_levels(way)`** (`map_level.py`): the levels a road
+  explicitly states. That is its `map_level`, or each integer of a clean
+  multi-level raw `level=*` such as `0;-1`. Values such as `0-1`, `1.5`
+  or `0;x` give nothing. `parse_map_level` moved to `map_level.py`,
+  unchanged, so there is one definition; `Way.map_level` is unchanged.
+- **Multi-level ramps:** a road like `level=0;-1` is now also in the
+  `LevelRoadNetworks` network of each off-surface level it names, so the
+  car can drive it from either end. It stays in the surface network
+  because its `map_level` is `None`. This changes phase 6, where each road
+  belonged to exactly one level. `draw_level_ways` draws such a ramp on
+  those levels too.
+- **Topology** (`level_transitions.resolve_connectors`): for each
+  connector, the levels of the roads in `road_osm_ids` are combined.
+  - **Rejected:** a connector with no roads, with a referenced road that
+    isn't loaded (it waits for the tile), with fewer than two levels, or
+    whose own `map_level` contradicts its roads.
+  - **Never counted:** garage levels, `layer`, `tunnel` and `covered`.
+  - **Destination:** for the car's level L, it is the single other level.
+    If L isn't among the levels, or two or more others remain (say
+    `{0, -1, -2}`), there is no transition.
+  - **When:** resolved at startup (`_load_world`) and at every map sync,
+    never per frame.
+- **Transition** (`LevelTransitions.update`, called from
+  `advance_simulation` after the car moves): it fires only when all of
+  these hold.
+  - The car was driving on one of the connector's roads.
+  - This frame's movement passes the entrance node: the node lies between
+    the last and the current position, within 4 m of the path.
+  - The destination is unambiguous.
+
+  It then sets `car.map_level` and disarms the connector until the car is
+  10 m away. Being near an entrance, standing on it, wobbling over it, or
+  passing on another road never fires it. Driving back through reverses
+  the change. The debug HUD shows `map_level` and the last
+  `level_transition`.
+- **Oulu:** of 22 connectors, 2 resolve.
+  - **`636848833`:** an outside aisle and a `level=0;-1` tunnel ramp, so
+    0 ↔ -1.
+  - **`4116535367`:** a `level=0;-2` ramp, so 0 ↔ -2.
+
+  A simulated drive through each, with the game's own road lookup and
+  layer update, changes level once on the way in and once on the way
+  out. The other 20 can't resolve: 12 have roads with no level at all, 7
+  reference a tunnel road the import dropped because it has no clean
+  `level=*` (phase 4), and 1 has no roads.
+
+- **Performance** (Oulu, 2 alternating pairs of phase 8 and phase 9):
+  surface averages of 25.9 and 21.8 ms before, 26.8 and 20.4 ms after,
+  which is within noise. The per-frame cost is a scan over the resolved
+  connectors, 2 in Oulu.
+
+**Limits:**
+- **Few usable entrances:** most entrances lack road-level evidence in
+  OSM, so they can't be driven through.
+- **Dropped tunnels:** underground-looking service roads without a clean
+  level are still dropped at import, which leaves 7 entrances with a
+  missing road.
+- **Abrupt change:** the level changes at once at the node, with no fade.
+- **Surface-only actors:** no cross-level routing, and no NPC or
+  pedestrian level changes.
+- **Simulation test:** the level change is tested through
+  `LevelTransitions` and the level-aware systems it drives, not through a
+  full `advance_simulation` run.
 

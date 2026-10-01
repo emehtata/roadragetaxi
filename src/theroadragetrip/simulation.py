@@ -342,6 +342,7 @@ def advance_simulation(
             speed_limit_mps = streaming_cap_mps if speed_limit_mps is None else min(speed_limit_mps, streaming_cap_mps)
 
     previous_position = (car.x, car.y)
+    approach_way = current_way  # the road the car drove along into this frame's movement
     # Off-road driving is allowed at a reduced speed.
     if not on_foot:
         with frame_profiler.section("physics"):
@@ -379,6 +380,16 @@ def advance_simulation(
         else:
             current_way = get_current_road_at_car(
                 car, ways=drive_ways, spatial_grid=drive_grid, car_roads_only=True, current_way=current_way,
+            )
+        # Driving through a parking entrance may change the player's map
+        # level (garage-08.md); everything level-aware follows car.map_level.
+        if world.level_transitions.update(car, previous_position, approach_way) is not None:
+            on_surface = car.map_level == SURFACE_LEVEL
+            drive_ways, drive_grid = (
+                (ways, spatial_grid) if on_surface else world.level_roads.network(car.map_level)
+            )
+            current_way = get_current_road_at_car(
+                car, ways=drive_ways, spatial_grid=drive_grid, car_roads_only=True,
             )
         in_water = on_surface and not entered_roadwork and is_car_fully_in_water(car, waters, current_way=current_way)
         audio.on_rise("water", in_water, "vehicle.water_splash")

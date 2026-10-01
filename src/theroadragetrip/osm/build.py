@@ -19,6 +19,7 @@ from .constants import (
     parse_speed_limit_kmh,
 )
 
+from ..map_level import parse_map_level
 from .parking import GARAGE_TYPES, make_parking_garage, parking_facility_type
 from .models import (
     Way,
@@ -384,15 +385,6 @@ def _stitch_member_ways_into_rings(
             rings.append((pts, is_closed))
 
     return rings
-
-
-def parse_map_level(value) -> Optional[int]:
-    """OSM level=* as a map level (map_level.py) when it is one clean
-    integer ("-1", " 2 ", "+1"), else None: multi-level ("-2;-1"), ranges
-    ("0-2"), fractions ("1.5") and junk stay unset rather than guessed."""
-    text = str(value).strip() if value is not None else ""
-    digits = text[1:] if text[:1] in "+-" else text
-    return int(text) if digits.isascii() and digits.isdigit() else None
 
 
 def _level_metadata(tags: dict) -> dict:
