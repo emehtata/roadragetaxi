@@ -11,6 +11,7 @@ from theroadragetrip.main.startup_screens import (
     _clamp_start_datetime,
     _date_field_arrow_rects,
     _one_calendar_year_ago,
+    choose_start_datetime,
     confirm,
     confirm_outdated_cache,
 )
@@ -119,5 +120,17 @@ def test_confirm_dialog_esc_means_no_and_enter_yes():
         assert confirm(screen, font, clock, "en", "exit", "confirm_quit") is False
         pygame.event.post(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_RETURN))
         assert confirm(screen, font, clock, "en", "exit", "confirm_quit") is True
+    finally:
+        pygame.quit()
+
+
+def test_esc_in_the_start_date_picker_goes_back_instead_of_starting():
+    from datetime import datetime
+
+    screen, font, clock = _screen_font_clock()
+    try:
+        pygame.event.post(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_ESCAPE))
+        assert choose_start_datetime(screen, font, clock, "en", datetime(2026, 9, 1, 12, 0),
+                                     now=datetime(2026, 9, 2)) is None
     finally:
         pygame.quit()

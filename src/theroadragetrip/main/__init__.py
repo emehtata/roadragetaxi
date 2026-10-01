@@ -639,9 +639,11 @@ def _choose_city(
                         selected_city_idx = hovered
                         in_menu = False
                 elif ev.type == pygame.KEYDOWN:
-                    if ev.key == pygame.K_ESCAPE:
-                        pygame.quit()
-                        sys.exit(0)
+                    if ev.key == pygame.K_ESCAPE:  # back to the mode menu
+                        return _choose_city(
+                            None, game_mode, city_centers, bbox_presets, career_file, career, screen, font,
+                            clock, config, language, args, force_refresh, return_to_main_menu, audio,
+                        )
                     elif ev.key in (pygame.K_RETURN, pygame.K_SPACE, pygame.K_KP_ENTER):
                         in_menu = False
                     elif ev.key == pygame.K_UP:
@@ -1273,35 +1275,39 @@ def main() -> None:
         # limitations on matching world-selection args between processes).
         if args.connect:
             args.no_menu = True
-        city_choice = _choose_city(
-            active_city_name, game_mode, city_centers, bbox_presets, career_file, career,
-            screen, font, clock, config, language, args, force_refresh, return_to_main_menu, audio,
-        )
-        return_to_main_menu = False
-        language = city_choice.language
-        overpass_endpoints = get_overpass_endpoints(config)  # settings may have changed it
-        chosen_city = city_choice.chosen_city
-        camera_city_name = city_choice.camera_city_name
-        bbox = city_choice.bbox
-        city_centers = city_choice.city_centers
-        bbox_presets = city_choice.bbox_presets
-        game_mode = city_choice.game_mode
-        career = city_choice.career
-        force_refresh = city_choice.force_refresh
-        cities_list = city_choice.cities_list
-        selected_city_idx = city_choice.selected_city_idx
-
-        if (
-            game_mode == "gig_driver"
-            and not args.connect
-            and not args.no_menu
-            and not args.preset
-            and not args.bbox
-            and not args.use_sample
-        ):
-            selected_start_datetime = choose_start_datetime(
-                screen, font, clock, language, selected_start_datetime
+        while True:  # city choice, then (gig) start time; Esc in the latter goes back
+            city_choice = _choose_city(
+                active_city_name, game_mode, city_centers, bbox_presets, career_file, career,
+                screen, font, clock, config, language, args, force_refresh, return_to_main_menu, audio,
             )
+            return_to_main_menu = False
+            language = city_choice.language
+            overpass_endpoints = get_overpass_endpoints(config)  # settings may have changed it
+            chosen_city = city_choice.chosen_city
+            camera_city_name = city_choice.camera_city_name
+            bbox = city_choice.bbox
+            city_centers = city_choice.city_centers
+            bbox_presets = city_choice.bbox_presets
+            game_mode = city_choice.game_mode
+            career = city_choice.career
+            force_refresh = city_choice.force_refresh
+            cities_list = city_choice.cities_list
+            selected_city_idx = city_choice.selected_city_idx
+
+            if (
+                game_mode == "gig_driver"
+                and not args.connect
+                and not args.no_menu
+                and not args.preset
+                and not args.bbox
+                and not args.use_sample
+            ):
+                picked = choose_start_datetime(screen, font, clock, language, selected_start_datetime)
+                if picked is None:  # Esc: back to the city list, this city still selected
+                    active_city_name = chosen_city
+                    continue
+                selected_start_datetime = picked
+            break
 
         if args.connect:
             # Explicit opt-in to the experimental client/server
@@ -1772,8 +1778,8 @@ def main() -> None:
                     )
                 elif event.type == pygame.KEYDOWN:
                     if awaiting_start:
-                        if start_warmup_remaining > 0.0:
-                            continue
+                        if start_warmup_remaining > 0.0 or event.key == pygame.K_ESCAPE:
+                            continue  # Esc never starts the game
                         awaiting_start = False
                         # Shown until the driver first gets in (reset on entry).
                         start_hint_remaining = math.inf

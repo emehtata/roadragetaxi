@@ -58,8 +58,9 @@ def choose_start_datetime(
     language: str,
     initial: datetime,
     now: datetime | None = None,
-) -> datetime:
-    """Let a gig-driver choose local year/month/day/hour/minute."""
+) -> datetime | None:
+    """Let a gig-driver choose local year/month/day/hour/minute; None when
+    Esc goes back instead."""
     today = (now or datetime.now()).date()
     initial = _clamp_start_datetime(initial, today)
     values = [initial.year, initial.month, initial.day, initial.hour, initial.minute]
@@ -102,7 +103,7 @@ def choose_start_datetime(
             if event.type != pygame.KEYDOWN:
                 continue
             if event.key == pygame.K_ESCAPE:
-                return initial
+                return None
             if event.key in (pygame.K_UP, pygame.K_DOWN, pygame.K_TAB):
                 selected = (selected + (1 if event.key in (pygame.K_DOWN, pygame.K_TAB) else -1)) % 5
             elif event.key in (pygame.K_LEFT, pygame.K_RIGHT):
