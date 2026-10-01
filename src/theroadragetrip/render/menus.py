@@ -336,8 +336,11 @@ def draw_city_selection_menu(
     _draw_data_credits(screen, screen_h)  # above the menu dimming
 
 
-def draw_mode_selection_menu(screen, font, selected_idx: int, screen_w: int = SCREEN_W, screen_h: int = SCREEN_H, language: str = "fi") -> None:
-    """Draw the initial game-mode selection menu."""
+def draw_mode_selection_menu(
+    screen, font, selected_idx: int, screen_w: int = SCREEN_W, screen_h: int = SCREEN_H, language: str = "fi",
+    notice: Optional[str] = None,
+) -> None:
+    """Draw the initial game-mode selection menu (notice: e.g. "Career reset")."""
     import pygame
 
     draw_loading_screen(screen, font, 1.0, tr(language, "ready"), screen_w, screen_h, show_details=False, language=language)
@@ -351,11 +354,16 @@ def draw_mode_selection_menu(screen, font, selected_idx: int, screen_w: int = SC
         tr(language, "gig_driver"),
         tr(language, "reset_career"),
         tr(language, "clear_cache"),
+        tr(language, "settings_menu"),
+        tr(language, "exit"),
     ]
     for index, option in enumerate(options):
         color = (255, 215, 95) if index == selected_idx else (210, 220, 230)
         label = font.render(f"{index + 1}. {option}", True, color)
         screen.blit(label, label.get_rect(center=(screen_w // 2, 270 + index * 60)))
+    if notice:
+        message = font.render(notice, True, (130, 220, 150))
+        screen.blit(message, message.get_rect(center=(screen_w // 2, 250 + len(options) * 60)))
     hint = pygame.font.SysFont(None, 18).render(tr(language, "language_hint"), True, (150, 175, 195))
     screen.blit(hint, hint.get_rect(center=(screen_w // 2, screen_h - 80)))
     _draw_version(screen, font, screen_w, screen_h)

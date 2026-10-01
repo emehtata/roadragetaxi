@@ -28,8 +28,8 @@ def _respawn_allowed(on_foot: bool) -> bool:
 
 
 # Keep in sync with draw_mode_selection_menu()'s options list
-# (career, gig_driver, reset_career, clear_cache).
-MODE_MENU_OPTION_COUNT = 4
+# (career, gig_driver, reset_career, clear_cache, settings, quit).
+MODE_MENU_OPTION_COUNT = 6
 
 
 def _mode_menu_navigate(current: int, direction: int) -> int:

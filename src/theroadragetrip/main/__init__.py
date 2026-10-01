@@ -207,7 +207,7 @@ from .menu_input import (
     _pause_item_at,
     _respawn_allowed,
 )
-from .startup_screens import choose_language, choose_start_datetime, confirm_outdated_cache, edit_city_list
+from .startup_screens import choose_language, choose_start_datetime, confirm, confirm_outdated_cache, edit_city_list
 from .debug_tools import _screenshot_directory, _write_debug_snapshot, find_feature_at
 
 # Maintain BBOX constant for backward compatibility
@@ -522,6 +522,7 @@ def _choose_city(
     args,
     force_refresh: bool,
     return_to_main_menu: bool,
+    audio=None,
 ):
     """Run the mode/city selection menus (or resolve --preset/--bbox) for one
     outer app_running iteration of main(), and return the chosen starting
@@ -542,6 +543,28 @@ def _choose_city(
         if active_city_name is None:
             mode_selected = 0 if game_mode == "career" else 1
             choosing_mode = True
+            notice = None  # confirmation shown under the menu after reset / clear
+
+            def activate(index: int):
+                """Run a mode menu item; returns (still choosing, notice)."""
+                nonlocal language
+                if index in (0, 1):
+                    return False, None
+                if index == 2 and confirm(screen, font, clock, language, "reset_career", "confirm_reset_career"):
+                    completed = bool(load_career(career_file, len(cities_list))["completed"])
+                    save_career(career_file, 0, completed=completed)
+                    return True, tr(language, "career_reset_done")
+                if index == 3 and confirm(screen, font, clock, language, "clear_cache", "confirm_clear_cache"):
+                    clear_osm_cache()
+                    clear_world_cache()
+                    return True, tr(language, "cache_cleared_done")
+                if index == 4:
+                    language = _run_settings_menu(screen, font, clock, config, audio, language)
+                if index == 5 and confirm(screen, font, clock, language, "exit", "confirm_quit"):
+                    pygame.quit()
+                    sys.exit(0)
+                return True, None
+
             while choosing_mode:
                 clock.tick(30)
                 for ev in pygame.event.get():
@@ -557,52 +580,25 @@ def _choose_city(
                         hovered = _menu_item_at_y(ev.pos[1], 270, 30, 30, MODE_MENU_OPTION_COUNT)
                         if hovered is not None:
                             mode_selected = hovered
-                            if mode_selected == 2:
-                                completed = bool(load_career(career_file, len(cities_list))["completed"])
-                                save_career(career_file, 0, completed=completed)
-                                mode_selected = 0
-                            elif mode_selected == 3:
-                                clear_osm_cache()
-                                clear_world_cache()
-                                mode_selected = 0
-                            else:
-                                choosing_mode = False
+                            choosing_mode, notice = activate(hovered)
                         continue
                     if ev.type != pygame.KEYDOWN:
                         continue
                     if ev.key == pygame.K_ESCAPE:
-                        pygame.quit()
-                        sys.exit(0)
-                    if ev.key in (pygame.K_UP, pygame.K_LEFT):
+                        choosing_mode, notice = activate(5)  # quit, after asking
+                    elif ev.key in (pygame.K_UP, pygame.K_LEFT):
                         mode_selected = _mode_menu_navigate(mode_selected, -1)
                     elif ev.key in (pygame.K_DOWN, pygame.K_RIGHT):
                         mode_selected = _mode_menu_navigate(mode_selected, 1)
                     elif ev.key in (pygame.K_RETURN, pygame.K_SPACE, pygame.K_KP_ENTER):
-                        if mode_selected == 2:
-                            completed = bool(load_career(career_file, len(cities_list))["completed"])
-                            save_career(career_file, 0, completed=completed)
-                            mode_selected = 0
-                        elif mode_selected == 3:
-                            clear_osm_cache()
-                            clear_world_cache()
-                            mode_selected = 0
-                        else:
-                            choosing_mode = False
-                    elif ev.key in (pygame.K_1, pygame.K_KP1):
-                        mode_selected = 0
-                        choosing_mode = False
-                    elif ev.key in (pygame.K_2, pygame.K_KP2):
-                        mode_selected = 1
-                        choosing_mode = False
-                    elif ev.key in (pygame.K_3, pygame.K_KP3):
-                        completed = bool(load_career(career_file, len(cities_list))["completed"])
-                        save_career(career_file, 0, completed=completed)
-                        mode_selected = 0
-                    elif ev.key in (pygame.K_4, pygame.K_KP4):
-                        clear_osm_cache()
-                        clear_world_cache()
-                        mode_selected = 0
-                draw_mode_selection_menu(screen, font, mode_selected, SCREEN_W, SCREEN_H, language)
+                        choosing_mode, notice = activate(mode_selected)
+                    elif pygame.K_1 <= ev.key < pygame.K_1 + MODE_MENU_OPTION_COUNT:
+                        mode_selected = ev.key - pygame.K_1
+                        choosing_mode, notice = activate(mode_selected)
+                    elif pygame.K_KP1 <= ev.key < pygame.K_KP1 + MODE_MENU_OPTION_COUNT:
+                        mode_selected = ev.key - pygame.K_KP1
+                        choosing_mode, notice = activate(mode_selected)
+                draw_mode_selection_menu(screen, font, mode_selected, SCREEN_W, SCREEN_H, language, notice=notice)
                 pygame.display.flip()
             game_mode = "career" if mode_selected == 0 else "gig_driver"
 
@@ -708,6 +704,7 @@ def _choose_city(
         force_refresh=force_refresh,
         cities_list=cities_list,
         selected_city_idx=selected_city_idx,
+        language=language,  # the settings screen may have changed it
     )
 
 
@@ -1278,9 +1275,11 @@ def main() -> None:
             args.no_menu = True
         city_choice = _choose_city(
             active_city_name, game_mode, city_centers, bbox_presets, career_file, career,
-            screen, font, clock, config, language, args, force_refresh, return_to_main_menu,
+            screen, font, clock, config, language, args, force_refresh, return_to_main_menu, audio,
         )
         return_to_main_menu = False
+        language = city_choice.language
+        overpass_endpoints = get_overpass_endpoints(config)  # settings may have changed it
         chosen_city = city_choice.chosen_city
         camera_city_name = city_choice.camera_city_name
         bbox = city_choice.bbox

@@ -11,6 +11,7 @@ from theroadragetrip.main.startup_screens import (
     _clamp_start_datetime,
     _date_field_arrow_rects,
     _one_calendar_year_ago,
+    confirm,
     confirm_outdated_cache,
 )
 
@@ -107,5 +108,16 @@ def test_selected_button_is_visibly_highlighted():
         gold = (255, 215, 95)
         assert screen.get_at((ok_rect.left + 1, ok_rect.centery))[:3] == gold
         assert screen.get_at((cancel_rect.left + 1, cancel_rect.centery))[:3] != gold
+    finally:
+        pygame.quit()
+
+
+def test_confirm_dialog_esc_means_no_and_enter_yes():
+    screen, font, clock = _screen_font_clock()
+    try:
+        pygame.event.post(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_ESCAPE))
+        assert confirm(screen, font, clock, "en", "exit", "confirm_quit") is False
+        pygame.event.post(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_RETURN))
+        assert confirm(screen, font, clock, "en", "exit", "confirm_quit") is True
     finally:
         pygame.quit()
