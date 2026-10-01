@@ -1386,8 +1386,10 @@ def draw_street_lights(
     street_lamps: Optional[List] = None,
     street_lamp_grid=None,
     profiler=None,
+    broken_lamps=frozenset(),
 ) -> None:
-    """Draw simple roadside lamps on visible urban roads.
+    """Draw simple roadside lamps on visible urban roads; lamps at
+    `broken_lamps` positions (knocked down) stay dark.
 
     street_lamps (lights.md: explicit OSM highway=street_lamp positions,
     when mapped) take precedence over the lit=*/highway-heuristic fixed-
@@ -1452,6 +1454,7 @@ def draw_street_lights(
         round(camy * cache_zoom / cache_pixel_size),
         cache_zoom,
         round(darkness * 32.0),
+        len(broken_lamps),
         screen.get_size(),
     )
     global _street_light_frame_cache_key, _street_light_frame_cache_surface
@@ -1619,6 +1622,8 @@ def draw_street_lights(
     visible_way_count = visible_road_count if visible_road_count is not None else len(ways)
     common._street_light_frame_world_positions = []
     for world_x, world_y, road_direction, pool_radius_m in _street_light_geometry_cache:
+        if (world_x, world_y) in broken_lamps:
+            continue
         if len(lamp_centers) >= MAX_VISIBLE_STREET_LIGHTS:
             break
         if not (vminx <= world_x <= vmaxx and vminy <= world_y <= vmaxy):

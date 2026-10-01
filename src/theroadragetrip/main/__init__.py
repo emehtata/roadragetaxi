@@ -2822,7 +2822,10 @@ def main() -> None:
                 stage_elapsed = time.perf_counter() - map_stage_start
                 render_profile_times["map_trees"] = render_profile_times.get("map_trees", 0.0) + stage_elapsed
                 frame_profiler.record("render:trees", stage_elapsed * 1000.0)
-                draw_scenery_objects(screen, scenery_objects, camx, camy, px_per_m=px_per_m, profiler=frame_profiler)
+                draw_scenery_objects(
+                    screen, scenery_objects, camx, camy, px_per_m=px_per_m, profiler=frame_profiler,
+                    revision=taxi_mgr.knocked_posts,
+                )
                 if bus_stops_enabled:
                     map_stage_start = time.perf_counter()
                     draw_bus_stops(screen, bus_stops, ways, camx, camy, px_per_m=px_per_m, spatial_grid=spatial_grid)
@@ -3128,6 +3131,7 @@ def main() -> None:
                         street_lamps=street_lamps,
                         street_lamp_grid=street_lamp_grid,
                         profiler=frame_profiler,
+                        broken_lamps=taxi_mgr.broken_lamps,
                     )
             if sun_altitude < -7.5:
                 draw_pedestrian_reflectors(

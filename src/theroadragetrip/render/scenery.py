@@ -959,6 +959,9 @@ _FIREPIT_FLAME_COLOR = (216, 120, 40)
 _FOUNTAIN_SPRAY_COLOR = (220, 240, 245)
 
 
+KNOCKED_POST_COLOR = (88, 90, 92)
+
+
 def draw_scenery_objects(
     screen,
     scenery_objects: List[SceneryObject],
@@ -968,6 +971,7 @@ def draw_scenery_objects(
     screen_w: int = SCREEN_W,
     screen_h: int = SCREEN_H,
     profiler=None,
+    revision: int = 0,
 ) -> None:
     """Draw cached small decorative OSM point objects - benches, waste
     baskets, bicycle parking, statues/memorials, picnic tables, firepits,
@@ -988,7 +992,7 @@ def draw_scenery_objects(
     frame_cache_key = (
         id(scenery_objects), len(scenery_objects), id(scenery_objects[-1]) if scenery_objects else None,
         *common._phased_cache_grid_cell("scenery_objects", camx, camy, cache_zoom),
-        cache_zoom, screen.get_size(),
+        cache_zoom, screen.get_size(), revision,  # revision: posts knocked over since
     )
     if frame_cache_key == common._scenery_object_frame_cache_key and common._scenery_object_frame_cache_surface is not None:
         cached_camx, cached_camy = common._scenery_object_frame_cache_camera
@@ -1037,6 +1041,13 @@ def _draw_scenery_objects_uncached(
         if not (vminx <= obj.x <= vmaxx and vminy <= obj.y <= vmaxy):
             continue
         sx, sy = world_to_screen(obj.x, obj.y, camx, camy, px_per_m, screen_w, screen_h)
+        knocked_angle = getattr(obj, "knocked_angle", None)
+        if knocked_angle is not None:
+            # A bollard/lamp post hit hard: bent over, lying the way the taxi went.
+            length = (4.0 if obj.kind == "street_lamp" else 0.9) * px_per_m
+            tip = (sx + math.cos(knocked_angle) * length, sy - math.sin(knocked_angle) * length)
+            pygame.draw.line(screen, KNOCKED_POST_COLOR, (sx, sy), tip, max(2, int(0.25 * px_per_m)))
+            continue
         if obj.kind == "bench":
             # Rotated to sit parallel to whichever path it's beside (see
             # osm/build.py's scenery_object_nodes_raw loop) rather than

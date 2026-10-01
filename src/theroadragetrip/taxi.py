@@ -38,6 +38,7 @@ NIGHTLIFE_VENUE_TYPES = {
 MOTION_SICKNESS_THRESHOLD = 8.0
 POST_KINDS = ("bollard", "street_lamp")  # solid poles the taxi can hit
 POST_RADIUS_M = 0.15
+POST_KNOCK_DOWN_KMH = 50.0  # faster than this a post bends over instead of stopping the taxi
 GREET_RADIUS_M = 2.0  # how close the driver on foot must be to greet a booked rail customer
 
 @dataclass
@@ -198,6 +199,8 @@ class TaxiManager:
         self._post_grid: Dict[Tuple[int, int], List[Any]] = {}
         self._post_ref = None
         self._post_count = 0
+        self.knocked_posts = 0  # how many bollards/lamps lie flat (render cache revision)
+        self.broken_lamps: set = set()  # (x, y) of knocked-down street lamps: their light is off
         self._curb_bump_cooldowns: Dict[int, float] = {}  # curb id -> timestamp cooldown
         self._speed_bump_cooldowns: Dict[int, float] = {}  # speed bump id -> timestamp cooldown
         self._speed_camera_hits: set[int] = set()
@@ -802,19 +805,31 @@ class TaxiManager:
         penalty: int = 50,
     ) -> bool:
         """Stop the car at a bollard or lamp post (OSM barrier=bollard,
-        highway=street_lamp) and apply one penalty per impact."""
+        highway=street_lamp) and apply one penalty per impact. Hit at
+        POST_KNOCK_DOWN_KMH or more, the post bends over in the driving
+        direction (post.knocked_angle) and no longer blocks, a lamp breaks
+        and goes dark, and the taxi carries on slowed."""
         for key in [k for k, t in self._crashed_post_cooldowns.items() if sim_time - t > 3.0]:
             del self._crashed_post_cooldowns[key]
         cos_h, sin_h = math.cos(player_car.heading), math.sin(player_car.heading)
         half_l = player_car.length_m / 2 + POST_RADIUS_M
         half_w = player_car.width_m / 2 + POST_RADIUS_M
         for post in self._nearby_posts(scenery_objects, player_car.x, player_car.y):
+            if getattr(post, "knocked_angle", None) is not None:
+                continue  # already lying flat
             dx, dy = post.x - player_car.x, post.y - player_car.y
             if abs(dx * cos_h + dy * sin_h) > half_l or abs(-dx * sin_h + dy * cos_h) > half_w:
                 continue
-            if previous_position is not None:
-                player_car.x, player_car.y = previous_position
-            player_car.speed = 0.0
+            if abs(player_car.speed) * 3.6 >= POST_KNOCK_DOWN_KMH:
+                post.knocked_angle = player_car.heading if player_car.speed >= 0.0 else player_car.heading + math.pi
+                self.knocked_posts += 1
+                if post.kind == "street_lamp":
+                    self.broken_lamps.add((post.x, post.y))
+                player_car.speed *= 0.6
+            else:
+                if previous_position is not None:
+                    player_car.x, player_car.y = previous_position
+                player_car.speed = 0.0
             if id(post) not in self._crashed_post_cooldowns:
                 self._crashed_post_cooldowns[id(post)] = sim_time
                 self.total_score -= penalty
