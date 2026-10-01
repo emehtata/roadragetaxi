@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
-from typing import Optional
+from typing import Optional, Tuple
 
 from .career import CAREER_SCORE_LIMIT, save_career, save_gig_odometer
 from .fuel import (
@@ -90,6 +90,18 @@ class SimulationFrameResult:
     should_stop: bool = False
     city_summary: Optional[tuple] = None
     next_active_city_name: Optional[str] = None
+
+
+def walk_blocked_by_walls(x: float, y: float, step_x: float, step_y: float, blocked) -> Tuple[float, float]:
+    """The on-foot player's next position: walls block, the player slides
+    along them; someone already inside (e.g. spawned in) walks out freely."""
+    if not blocked(x + step_x, y + step_y) or blocked(x, y):
+        return x + step_x, y + step_y
+    if not blocked(x + step_x, y):
+        return x + step_x, y
+    if not blocked(x, y + step_y):
+        return x, y + step_y
+    return x, y
 
 
 def apply_enter_exit_vehicle(car, player_pedestrian, on_foot: bool, audio, taxi_mgr=None) -> bool:
@@ -230,8 +242,11 @@ def advance_simulation(
             player_pedestrian.heading += (
                 steer_input * steer_effective * dt * (1.0 if player_pedestrian.speed >= 0.0 else -1.0)
             )
-        player_pedestrian.x += math.cos(player_pedestrian.heading) * player_pedestrian.speed * dt
-        player_pedestrian.y += math.sin(player_pedestrian.heading) * player_pedestrian.speed * dt
+        step_x = math.cos(player_pedestrian.heading) * player_pedestrian.speed * dt
+        step_y = math.sin(player_pedestrian.heading) * player_pedestrian.speed * dt
+        player_pedestrian.x, player_pedestrian.y = walk_blocked_by_walls(
+            player_pedestrian.x, player_pedestrian.y, step_x, step_y, pedestrian_mgr._point_inside_building,
+        )
 
     audio.player_position = (car.x, car.y)  # where the taxi's own sounds come from
     immobilized = taxi_mgr.tree_wait_timer > 0.0

@@ -7,7 +7,7 @@ from dataclasses import dataclass, field, replace
 from enum import Enum
 from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 
-from .osm import BusStop, Crossing, LogicalIntersection, Scenery, SceneryObject, TrafficLight, Way
+from .osm import OPEN_ROOF_BUILDING_TYPES, BusStop, Crossing, LogicalIntersection, Scenery, SceneryObject, TrafficLight, Way
 from .geo import angle_diff, closest_point_and_dist_to_segment, compute_bbox, dist_point_to_segment, point_in_polygon
 from .npc import NPCState
 from .performance import advance_chunked
@@ -902,7 +902,9 @@ class PedestrianManager:
 
     def _index_venue_building(self, venue: Dict[str, Any], building) -> None:
         bbox = getattr(building, "bbox", None)
-        if bbox and bbox != (0.0, 0.0, 0.0, 0.0):
+        # An open roof (station canopy, fuel-pump roof) has no walls: people walk under it.
+        is_open_roof = str(getattr(building, "building_type", "") or "").casefold() in OPEN_ROOF_BUILDING_TYPES
+        if bbox and bbox != (0.0, 0.0, 0.0, 0.0) and not is_open_roof:
             cell_size = self._building_grid_cell_size
             for cell_x in range(math.floor(bbox[0] / cell_size), math.floor(bbox[2] / cell_size) + 1):
                 for cell_y in range(math.floor(bbox[1] / cell_size), math.floor(bbox[3] / cell_size) + 1):
