@@ -513,7 +513,7 @@ World cache format 23.
   roads stay out of the road networks rather than being wrongly treated
   as surface roads.
 
-## Phase 11/12: level route graphs and connector routing (garage-10_11.md, 2026-10-01)
+## Phase 11/12: level route graphs and connector routing (garage-10_11.md, commit `792fb1c`, 2026-10-01)
 
 Each logical level now has its own route graph. Resolved level connectors
 are the only links between those graphs, and player navigation plans
