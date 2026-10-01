@@ -326,9 +326,9 @@
         "text": "sata",
         "category": "numbers",
         "language": "fi",
-        "duration_s": 1.106,
+        "duration_s": 0.554,
         "voice": "female/eeva.wav",
-        "accepted_at": "2026-10-01T21:05:20",
+        "accepted_at": "2026-10-01T22:12:10",
         "value": 100,
         "review": "pending"
       },
