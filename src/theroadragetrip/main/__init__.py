@@ -265,17 +265,105 @@ ACTIVITY_DEBUG_FORCE_KEYS = (
 )
 
 
-def _reset_runtime_settings(config, audio, taxi_mgr):
+def _reset_runtime_settings(config, audio) -> str:
+    """Settings back to defaults (saved, audio applied); returns the language."""
     reset_config(config)
-    language = normalize_language(config.get("game", "language", fallback=""))
-    physics_mode = config.get("game", "physics_realism", fallback="arcade")
-    endpoint_text = config.get("map", "overpass_endpoints", fallback="")
     for key in ("master", "music", "effects"):
         audio.set_volume(key, config.getfloat("audio", f"{key}_volume"))
     audio.set_comments_enabled(config.getboolean("audio", "comments_enabled"))
-    taxi_mgr.set_language(language)
     save_config(config)
-    return language, physics_mode, endpoint_text, get_overpass_endpoints(config)
+    return normalize_language(config.get("game", "language", fallback=""))
+
+
+SETTINGS_ITEM_COUNT = 10
+
+
+def _run_settings_menu(screen, font, clock, config, audio, language: str) -> str:
+    """The settings screen, from the mode menu or the pause menu: every
+    change is saved to config (and audio applied) at once; returns the
+    language. The caller re-reads the rest (physics, weather, endpoints)."""
+    selected = 0
+    endpoint_text = config.get("map", "overpass_endpoints", fallback="")
+    physics_mode = config.get("game", "physics_realism", fallback="arcade")
+    historical_weather = config.getboolean("game", "historical_weather", fallback=False)
+
+    def set_endpoints(text: str) -> str:
+        config.set("map", "overpass_endpoints", text)
+        save_config(config)
+        return text
+
+    while True:
+        clock.tick(30)
+        for ev in pygame.event.get():
+            if ev.type == pygame.QUIT:
+                pygame.quit()
+                sys.exit(0)
+            if ev.type == pygame.MOUSEMOTION:
+                hovered = _menu_item_at_y(ev.pos[1], 170, 32, 18, SETTINGS_ITEM_COUNT)
+                if hovered is not None:
+                    selected = hovered
+                continue
+            reset = False
+            if ev.type == pygame.MOUSEBUTTONDOWN and ev.button == 1:
+                hovered = _menu_item_at_y(ev.pos[1], 170, 32, 18, SETTINGS_ITEM_COUNT)
+                if hovered is not None:
+                    selected = hovered
+                    reset = hovered == 9
+                if not reset:
+                    continue
+            elif ev.type != pygame.KEYDOWN:
+                continue
+            elif ev.key == pygame.K_ESCAPE:
+                return language
+            elif selected == 6 and ev.key == pygame.K_BACKSPACE:
+                endpoint_text = set_endpoints(endpoint_text[:-1])
+            elif selected == 6 and ev.key == pygame.K_DELETE:
+                endpoint_text = set_endpoints("")
+            elif selected == 6 and ev.key == pygame.K_RETURN:
+                save_config(config)
+            elif selected == 9 and ev.key in (pygame.K_RETURN, pygame.K_SPACE, pygame.K_KP_ENTER):
+                reset = True
+            elif selected == 6 and ev.unicode and ev.unicode.isprintable():
+                endpoint_text = set_endpoints(endpoint_text + ev.unicode)
+            elif ev.key in (pygame.K_UP, pygame.K_DOWN):
+                selected = (selected + (1 if ev.key == pygame.K_DOWN else -1)) % SETTINGS_ITEM_COUNT
+                audio.play_group("ui.menu", 0.5, variation=0)
+            elif ev.key in (pygame.K_LEFT, pygame.K_RIGHT):
+                delta = 0.05 if ev.key == pygame.K_RIGHT else -0.05
+                if selected == 0:
+                    language = SUPPORTED_LANGUAGES[(SUPPORTED_LANGUAGES.index(language) + (1 if delta > 0 else -1)) % 2]
+                elif selected in (1, 2, 3):
+                    key = ("master_volume", "music_volume", "effects_volume")[selected - 1]
+                    value = max(0.0, min(1.0, config.getfloat("audio", key) + delta))
+                    config.set("audio", key, f"{value:.2f}")
+                    audio.set_volume(key.removesuffix("_volume"), value)
+                elif selected == 4:
+                    enabled = not config.getboolean("audio", "comments_enabled", fallback=True)
+                    config.set("audio", "comments_enabled", str(enabled).lower())
+                    audio.set_comments_enabled(enabled)
+                elif selected == 5:
+                    enabled = not config.getboolean("audio", "subtitles_enabled", fallback=True)
+                    config.set("audio", "subtitles_enabled", str(enabled).lower())
+                elif selected == 7:
+                    physics_mode = "simulation" if physics_mode == "arcade" else "arcade"
+                    config.set("game", "physics_realism", physics_mode)
+                elif selected == 8:
+                    historical_weather = not historical_weather
+                    config.set("game", "historical_weather", str(historical_weather).lower())
+                config.set("game", "language", language)
+                save_config(config)
+            if reset:
+                language = _reset_runtime_settings(config, audio)
+                endpoint_text = config.get("map", "overpass_endpoints", fallback="")
+                physics_mode = config.get("game", "physics_realism", fallback="arcade")
+                historical_weather = config.getboolean("game", "historical_weather", fallback=False)
+        draw_settings_menu(
+            screen, font, language, config.getfloat("audio", "master_volume"), config.getfloat("audio", "music_volume"),
+            config.getfloat("audio", "effects_volume"), config.getboolean("audio", "comments_enabled", fallback=True),
+            config.getboolean("audio", "subtitles_enabled", fallback=True), endpoint_text, selected, SCREEN_W, SCREEN_H,
+            physics_mode=physics_mode, historical_weather=historical_weather,
+        )
+        pygame.display.flip()
 
 
 def _weather_status(weather) -> str:
@@ -1878,88 +1966,18 @@ def main() -> None:
                                                 draw_tutorial_screen(screen, font, SCREEN_W, SCREEN_H, language)
                                                 pygame.display.flip()
                                         elif pause_selected == 2:
-                                            settings_selected = 0
-                                            endpoint_text = config.get("map", "overpass_endpoints", fallback="")
-                                            in_settings = True
-                                            while in_settings:
-                                                clock.tick(30)
-                                                for s_ev in pygame.event.get():
-                                                    if s_ev.type == pygame.QUIT:
-                                                        pygame.quit()
-                                                        sys.exit(0)
-                                                    if s_ev.type == pygame.MOUSEMOTION:
-                                                        hovered = _menu_item_at_y(s_ev.pos[1], 170, 32, 18, 10)
-                                                        if hovered is not None:
-                                                            settings_selected = hovered
-                                                        continue
-                                                    if s_ev.type == pygame.MOUSEBUTTONDOWN and s_ev.button == 1:
-                                                        hovered = _menu_item_at_y(s_ev.pos[1], 170, 32, 18, 10)
-                                                        if hovered is not None:
-                                                            settings_selected = hovered
-                                                            if hovered == 9:
-                                                                language, physics_mode, endpoint_text, overpass_endpoints = _reset_runtime_settings(config, audio, taxi_mgr); historical_weather = config.getboolean("game", "historical_weather", fallback=False)
-                                                        continue
-                                                    if s_ev.type != pygame.KEYDOWN:
-                                                        continue
-                                                    if s_ev.key == pygame.K_ESCAPE:
-                                                        in_settings = False
-                                                    elif settings_selected == 6 and s_ev.key == pygame.K_BACKSPACE:
-                                                        endpoint_text = endpoint_text[:-1]
-                                                        config.set("map", "overpass_endpoints", endpoint_text)
-                                                        overpass_endpoints = get_overpass_endpoints(config)
-                                                        save_config(config)
-                                                    elif settings_selected == 6 and s_ev.key == pygame.K_DELETE:
-                                                        endpoint_text = ""
-                                                        config.set("map", "overpass_endpoints", endpoint_text)
-                                                        overpass_endpoints = get_overpass_endpoints(config)
-                                                        save_config(config)
-                                                    elif settings_selected == 6 and s_ev.key == pygame.K_RETURN:
-                                                        save_config(config)
-                                                    elif settings_selected == 9 and s_ev.key in (pygame.K_RETURN, pygame.K_SPACE, pygame.K_KP_ENTER):
-                                                        language, physics_mode, endpoint_text, overpass_endpoints = _reset_runtime_settings(config, audio, taxi_mgr); historical_weather = config.getboolean("game", "historical_weather", fallback=False)
-                                                    elif settings_selected == 6 and s_ev.unicode and s_ev.unicode.isprintable():
-                                                        endpoint_text += s_ev.unicode
-                                                        config.set("map", "overpass_endpoints", endpoint_text)
-                                                        overpass_endpoints = get_overpass_endpoints(config)
-                                                        save_config(config)
-                                                    elif s_ev.key == pygame.K_UP:
-                                                        settings_selected = (settings_selected - 1) % 10
-                                                        audio.play_group("ui.menu", 0.5, variation=0)
-                                                    elif s_ev.key == pygame.K_DOWN:
-                                                        settings_selected = (settings_selected + 1) % 10
-                                                        audio.play_group("ui.menu", 0.5, variation=0)
-                                                    elif s_ev.key in (pygame.K_LEFT, pygame.K_RIGHT):
-                                                        delta = 0.05 if s_ev.key == pygame.K_RIGHT else -0.05
-                                                        if settings_selected == 0:
-                                                            language = SUPPORTED_LANGUAGES[(SUPPORTED_LANGUAGES.index(language) + (1 if delta > 0 else -1)) % 2]
-                                                        elif settings_selected in (1, 2, 3):
-                                                            key = ("master_volume", "music_volume", "effects_volume")[settings_selected - 1]
-                                                            value = max(0.0, min(1.0, config.getfloat("audio", key) + delta))
-                                                            config.set("audio", key, f"{value:.2f}")
-                                                            audio.set_volume(key.removesuffix("_volume"), value)
-                                                        elif settings_selected == 4:
-                                                            enabled = not config.getboolean("audio", "comments_enabled", fallback=True)
-                                                            config.set("audio", "comments_enabled", str(enabled).lower())
-                                                            audio.set_comments_enabled(enabled)
-                                                        elif settings_selected == 5:
-                                                            enabled = not config.getboolean("audio", "subtitles_enabled", fallback=True)
-                                                            config.set("audio", "subtitles_enabled", str(enabled).lower())
-                                                        elif settings_selected == 7:
-                                                            physics_mode = "simulation" if physics_mode == "arcade" else "arcade"
-                                                            config.set("game", "physics_realism", physics_mode)
-                                                        elif settings_selected == 8:
-                                                            historical_weather = not historical_weather
-                                                            config.set("game", "historical_weather", str(historical_weather).lower())
-                                                            if historical_weather:
-                                                                weather_history.request(
-                                                                    game_calendar.current - timedelta(hours=6),
-                                                                    game_calendar.current + timedelta(hours=48),
-                                                                )
-                                                        config.set("game", "language", language)
-                                                        taxi_mgr.set_language(language)
-                                                        save_config(config)
-                                                draw_settings_menu(screen, font, language, config.getfloat("audio", "master_volume"), config.getfloat("audio", "music_volume"), config.getfloat("audio", "effects_volume"), config.getboolean("audio", "comments_enabled", fallback=True), config.getboolean("audio", "subtitles_enabled", fallback=True), endpoint_text, settings_selected, SCREEN_W, SCREEN_H, physics_mode=physics_mode, historical_weather=historical_weather)
-                                                pygame.display.flip()
+                                            was_historical = historical_weather
+                                            language = _run_settings_menu(screen, font, clock, config, audio, language)
+                                            # Apply what the settings screen saved in the config.
+                                            taxi_mgr.set_language(language)
+                                            physics_mode = config.get("game", "physics_realism", fallback="arcade")
+                                            overpass_endpoints = get_overpass_endpoints(config)
+                                            historical_weather = config.getboolean("game", "historical_weather", fallback=False)
+                                            if historical_weather and not was_historical:
+                                                weather_history.request(
+                                                    game_calendar.current - timedelta(hours=6),
+                                                    game_calendar.current + timedelta(hours=48),
+                                                )
                                         elif pause_selected == 3:
                                             # Change City
                                             is_paused = False
