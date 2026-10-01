@@ -70,6 +70,7 @@ from .models import (
     IntersectionApproach,
     LogicalIntersection,
     MapData,
+    ParkingGarage,
     ParkingSpace,
     Place,
     Railing,

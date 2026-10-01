@@ -19,6 +19,7 @@ from .constants import (
     parse_speed_limit_kmh,
 )
 
+from .parking import GARAGE_TYPES, make_parking_garage, parking_facility_type
 from .models import (
     Way,
     Water,
@@ -459,6 +460,7 @@ def build_ways(
     named_ways_raw: List[Tuple[dict, List[int]]] = []
     parking_space_nodes_raw: List[Tuple[dict, int]] = []
     relations_raw: List[Tuple[dict, List[dict]]] = []
+    garage_raw: List[Tuple[dict, str, int, object]] = []  # (tags, osm type, osm id, node ids / members)
 
     for el in elements:
         el_type = el.get("type")
@@ -496,6 +498,8 @@ def build_ways(
                     tree_node_tags[nid] = tags
             if _scenery_object_kind(tags) is not None:
                 scenery_object_nodes_raw.append((tags, nid))
+            if parking_facility_type(tags) in GARAGE_TYPES:
+                garage_raw.append((tags, "node", nid, None))
         elif el_type == "way":
             tags = el.get("tags", {})
             node_ids = el.get("nodes", [])
@@ -506,6 +510,8 @@ def build_ways(
                 continue
             if tags.get("amenity") == "fuel":
                 fuel_area_raw.append((tags, node_ids, way_id))
+            if parking_facility_type(tags) in GARAGE_TYPES:
+                garage_raw.append((tags, "way", way_id, node_ids))
             if include_bus_stops and tags.get("public_transport") == "platform":
                 bus_platforms_raw.append((tags, node_ids, way_id))
             if "building" in tags or "building:part" in tags:
@@ -547,6 +553,8 @@ def build_ways(
             if tags.get("type") == "multipolygon":
                 members = el.get("members", [])
                 relations_raw.append((tags, members))
+                if parking_facility_type(tags) in GARAGE_TYPES:
+                    garage_raw.append((tags, "relation", el.get("id"), members))
 
     logger.info(
         "Parsed %d OSM elements: %d nodes, %d ways, %d relations",
@@ -1505,10 +1513,38 @@ def build_ways(
             minx = miny = 0.0
             maxx = maxy = 1000.0
 
+    parking_garages = []
+    for tags, osm_type, osm_id, geometry in garage_raw:
+        if osm_type == "node":
+            point = nodes_m.get(osm_id)
+            points = [point] if point is not None else None
+        elif osm_type == "way":
+            points = process_node_ids(geometry)[0]
+            if points and len(points) < 3:
+                points = None  # a garage way must be an area
+        else:
+            outer_way_ids = [
+                m["ref"] for m in geometry
+                if m.get("type") == "way" and m.get("role") in ("outer", "")
+            ]
+            rings = [
+                pts for pts, is_closed in _stitch_member_ways_into_rings(
+                    outer_way_ids, ways_by_id, lambda nids: process_node_ids(nids)[0],
+                ) if is_closed and len(pts) >= 3
+            ]
+            # ponytail: one garage per relation, its largest outer ring;
+            # split per ring if multi-part garages show up in real data.
+            points = max(rings, key=lambda pts: abs(sum(
+                ax * by - bx * ay for (ax, ay), (bx, by) in zip(pts, pts[1:] + pts[:1])
+            )), default=None)
+        garage = make_parking_garage(tags, osm_type, osm_id, points) if points else None
+        if garage is not None:
+            parking_garages.append(garage)
+
     curbs = open_kerbs_at_road_crossings(curbs, ways)
     return MapData(
         ways, waters, buildings, sceneries, places, (minx, miny, maxx, maxy),
         traffic_lights, crossings, taxi_stops, bus_stops, parking_spaces, logical_intersections, stop_signs, yield_signs,
         curbs=curbs, scenery_objects=scenery_objects, speed_bumps=speed_bumps,
-        railways=railways, railings=railings,
+        railways=railways, railings=railings, parking_garages=parking_garages,
     )

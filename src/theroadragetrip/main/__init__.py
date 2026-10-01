@@ -794,6 +794,7 @@ def _load_world(
     speed_bumps = getattr(res, "speed_bumps", [])
     railways = getattr(res, "railways", [])
     railings = getattr(res, "railings", [])
+    parking_garages = getattr(res, "parking_garages", [])  # data only for now (garage-00.md)
     roadworks, roadwork_lights = create_roadworks(ways) if roadworks_enabled else ([], [])
     traffic_lights.extend(roadwork_lights)
     logger.info(
@@ -984,6 +985,7 @@ def _load_world(
         speed_bumps=speed_bumps,
         railways=railways,
         railings=railings,
+        parking_garages=parking_garages,
         fetch_func=_resolve_osm_fetch_func(args, overpass_endpoints),
         build_func=build_ways,
         build_in_process=args.build_in_process,
@@ -1016,6 +1018,7 @@ def _load_world(
         npc_drivers=npc_drivers,
         npcs=npcs,
         npc_manager=npc_manager,
+        parking_garages=parking_garages,
         parking_spaces=parking_spaces,
         pedestrian_mgr=pedestrian_mgr,
         places=places,

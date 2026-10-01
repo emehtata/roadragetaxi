@@ -113,6 +113,38 @@ class Building:
 
 
 @dataclass
+class ParkingGarage:
+    """An underground or multi-storey parking facility from OSM (garage-00.md).
+    Data only for now: nothing draws, drives into or routes through it.
+
+    levels are logical map levels (-2, -1 below ground, 0, 1, ... above),
+    so later phases can tell a surface road from garage level -1 at the
+    same x/y; levels_source names the tag they came from ("" = unknown).
+    The raw *_levels counts are kept as tagged, never merged into one."""
+
+    osm_type: str  # "node" | "way" | "relation"
+    osm_id: int
+    garage_type: str  # PARKING_UNDERGROUND | PARKING_MULTI_STOREY (osm/parking.py)
+    points_m: List[Tuple[float, float]]  # outer ring; a single point for a node
+    bbox: Tuple[float, float, float, float]
+    center_m: Tuple[float, float]
+    levels: Tuple[int, ...] = ()
+    levels_source: str = ""
+    parking_levels: Optional[int] = None
+    building_levels: Optional[int] = None
+    underground_levels: Optional[int] = None
+    capacity: Optional[int] = None
+    name: Optional[str] = None
+    operator: Optional[str] = None
+    access: Optional[str] = None
+    fee: Optional[str] = None
+    maxheight: Optional[str] = None  # raw OSM strings: "2.1", "6'6\"", "default"
+    maxweight: Optional[str] = None
+    opening_hours: Optional[str] = None
+    covered: Optional[str] = None
+
+
+@dataclass
 class ParkingSpace:
     points_m: List[Tuple[float, float]]
     bbox: Tuple[float, float, float, float]
@@ -476,10 +508,10 @@ class SceneryObject:
 class MapData(tuple):
     """Container tuple for build_ways results returning 6 elements for backward compatibility while providing traffic_lights and crossings via attributes and slicing."""
 
-    def __new__(cls, ways, waters, buildings, sceneries, places, bounds, traffic_lights=None, crossings=None, taxi_stops=None, bus_stops=None, parking_spaces=None, logical_intersections=None, stop_signs=None, yield_signs=None, curbs=None, scenery_objects=None, speed_bumps=None, railways=None, railings=None):
+    def __new__(cls, ways, waters, buildings, sceneries, places, bounds, traffic_lights=None, crossings=None, taxi_stops=None, bus_stops=None, parking_spaces=None, logical_intersections=None, stop_signs=None, yield_signs=None, curbs=None, scenery_objects=None, speed_bumps=None, railways=None, railings=None, parking_garages=None):
         return super().__new__(cls, (ways, waters, buildings, sceneries, places, bounds))
 
-    def __init__(self, ways, waters, buildings, sceneries, places, bounds, traffic_lights=None, crossings=None, taxi_stops=None, bus_stops=None, parking_spaces=None, logical_intersections=None, stop_signs=None, yield_signs=None, curbs=None, scenery_objects=None, speed_bumps=None, railways=None, railings=None):
+    def __init__(self, ways, waters, buildings, sceneries, places, bounds, traffic_lights=None, crossings=None, taxi_stops=None, bus_stops=None, parking_spaces=None, logical_intersections=None, stop_signs=None, yield_signs=None, curbs=None, scenery_objects=None, speed_bumps=None, railways=None, railings=None, parking_garages=None):
         self.ways = ways
         self.waters = waters
         self.buildings = buildings
@@ -499,6 +531,7 @@ class MapData(tuple):
         self.speed_bumps = speed_bumps if speed_bumps is not None else []
         self.railways = railways if railways is not None else []
         self.railings = railings if railings is not None else []
+        self.parking_garages = parking_garages if parking_garages is not None else []
 
     @property
     def traffic_signals(self):

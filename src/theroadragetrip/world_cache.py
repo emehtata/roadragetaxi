@@ -50,8 +50,9 @@ MAGIC = b"RWC\0"
 # numbers the train timetable's platforms refer to).
 # 16: railway=platform areas (paved scenery) and non-drivable
 # highway=platform ways. 17: platform centrelines densified and joined
-# to the footways/steps that end on them.
-FORMAT_VERSION = 17
+# to the footways/steps that end on them. 18: parking_garages section
+# (underground/multi-storey ParkingGarage records, garage-00.md).
+FORMAT_VERSION = 18
 COORDINATE_SYSTEM = "EPSG:3067"
 _HEADER = struct.Struct("<4sHHQQ32s12s")
 _DIRECTORY = struct.Struct("<8sQQI")
@@ -61,14 +62,14 @@ _TYPE_NAMES = {value: key for key, value in _TYPES.items()}
 _SECTIONS = ("ways", "waters", "buildings", "sceneries", "places", "traffic_lights",
              "crossings", "taxi_stops", "bus_stops", "parking_spaces", "logical_intersections",
              "stop_signs", "yield_signs", "curbs", "scenery_objects", "speed_bumps",
-             "railways", "railings", "metadata")
+             "railways", "railings", "parking_garages", "metadata")
 _SECTION_CODES = {
     "buildings": "bldgs", "sceneries": "scenery",
     "traffic_lights": "signals", "crossings": "crossing",
     "logical_intersections": "intersct",
     "parking_spaces": "parking", "taxi_stops": "taxistop", "bus_stops": "busstop",
     "stop_signs": "stops", "yield_signs": "yields", "scenery_objects": "furnitur",
-    "speed_bumps": "bumps",
+    "speed_bumps": "bumps", "parking_garages": "garages",
 }
 _SECTION_NAMES = {code: name for name, code in _SECTION_CODES.items()}
 
@@ -268,7 +269,7 @@ class BinaryWorldCacheLoader:
             "taxi_stops": "TaxiStop", "bus_stops": "BusStop", "parking_spaces": "ParkingSpace",
             "stop_signs": "StopSign", "yield_signs": "YieldSign", "curbs": "Curb",
             "scenery_objects": "SceneryObject", "speed_bumps": "SpeedBump",
-            "railways": "Railway", "railings": "Railing",
+            "railways": "Railway", "railings": "Railing", "parking_garages": "ParkingGarage",
         }
         import theroadragetrip.osm as osm
         # Every physical TrafficLight/IntersectionApproach on the same
