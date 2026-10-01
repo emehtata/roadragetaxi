@@ -12,7 +12,7 @@
         "text": "nolla",
         "category": "numbers",
         "language": "fi",
-        "duration_s": 1.245,
+        "duration_s": 0.76,
         "voice": "female/eeva.wav",
         "accepted_at": "2026-10-01T20:15:50",
         "value": 0,
@@ -23,7 +23,7 @@
         "text": "yksi",
         "category": "numbers",
         "language": "fi",
-        "duration_s": 1.027,
+        "duration_s": 0.46,
         "voice": "female/eeva.wav",
         "accepted_at": "2026-10-01T20:15:53",
         "value": 1,
@@ -34,7 +34,7 @@
         "text": "kaksi",
         "category": "numbers",
         "language": "fi",
-        "duration_s": 1.226,
+        "duration_s": 0.55,
         "voice": "female/eeva.wav",
         "accepted_at": "2026-10-01T20:15:55",
         "value": 2,
@@ -45,7 +45,7 @@
         "text": "kolme",
         "category": "numbers",
         "language": "fi",
-        "duration_s": 0.79,
+        "duration_s": 0.57,
         "voice": "female/eeva.wav",
         "accepted_at": "2026-10-01T20:15:57",
         "value": 3,
@@ -56,7 +56,7 @@
         "text": "neljä",
         "category": "numbers",
         "language": "fi",
-        "duration_s": 0.829,
+        "duration_s": 0.54,
         "voice": "female/eeva.wav",
         "accepted_at": "2026-10-01T20:15:59",
         "value": 4,
@@ -67,7 +67,7 @@
         "text": "viisi",
         "category": "numbers",
         "language": "fi",
-        "duration_s": 1.138,
+        "duration_s": 0.5,
         "voice": "female/eeva.wav",
         "accepted_at": "2026-10-01T20:16:01",
         "value": 5,
@@ -78,7 +78,7 @@
         "text": "kuusi",
         "category": "numbers",
         "language": "fi",
-        "duration_s": 0.671,
+        "duration_s": 0.44,
         "voice": "female/eeva.wav",
         "accepted_at": "2026-10-01T21:04:22",
         "value": 6,
@@ -89,7 +89,7 @@
         "text": "seitsemän",
         "category": "numbers",
         "language": "fi",
-        "duration_s": 0.949,
+        "duration_s": 0.75,
         "voice": "female/eeva.wav",
         "accepted_at": "2026-10-01T20:16:08",
         "value": 7,
@@ -100,7 +100,7 @@
         "text": "kahdeksan",
         "category": "numbers",
         "language": "fi",
-        "duration_s": 1.297,
+        "duration_s": 0.72,
         "voice": "female/eeva.wav",
         "accepted_at": "2026-10-01T20:16:14",
         "value": 8,
@@ -111,7 +111,7 @@
         "text": "yhdeksän",
         "category": "numbers",
         "language": "fi",
-        "duration_s": 0.942,
+        "duration_s": 0.75,
         "voice": "female/eeva.wav",
         "accepted_at": "2026-10-01T20:16:16",
         "value": 9,
@@ -124,7 +124,7 @@
         "text": "yksitoista",
         "category": "numbers",
         "language": "fi",
-        "duration_s": 1.029,
+        "duration_s": 0.78,
         "voice": "female/eeva.wav",
         "accepted_at": "2026-10-01T20:16:20",
         "value": 11,
@@ -135,7 +135,7 @@
         "text": "kaksitoista",
         "category": "numbers",
         "language": "fi",
-        "duration_s": 1.024,
+        "duration_s": 0.75,
         "voice": "female/eeva.wav",
         "accepted_at": "2026-10-01T20:16:23",
         "value": 12,
@@ -146,7 +146,7 @@
         "text": "kolmetoista",
         "category": "numbers",
         "language": "fi",
-        "duration_s": 1.101,
+        "duration_s": 0.78,
         "voice": "female/eeva.wav",
         "accepted_at": "2026-10-01T20:16:25",
         "value": 13,
@@ -157,7 +157,7 @@
         "text": "neljätoista",
         "category": "numbers",
         "language": "fi",
-        "duration_s": 0.987,
+        "duration_s": 0.79,
         "voice": "female/eeva.wav",
         "accepted_at": "2026-10-01T21:04:24",
         "value": 14,
@@ -168,7 +168,7 @@
         "text": "viisitoista",
         "category": "numbers",
         "language": "fi",
-        "duration_s": 0.938,
+        "duration_s": 0.72,
         "voice": "female/eeva.wav",
         "accepted_at": "2026-10-01T20:16:36",
         "value": 15,
@@ -179,7 +179,7 @@
         "text": "kuusitoista",
         "category": "numbers",
         "language": "fi",
-        "duration_s": 1.131,
+        "duration_s": 1.02,
         "voice": "female/eeva.wav",
         "accepted_at": "2026-10-01T20:16:38",
         "value": 16,
@@ -190,7 +190,7 @@
         "text": "seitsemäntoista",
         "category": "numbers",
         "language": "fi",
-        "duration_s": 1.212,
+        "duration_s": 0.98,
         "voice": "female/eeva.wav",
         "accepted_at": "2026-10-01T21:04:34",
         "value": 17,
@@ -201,7 +201,7 @@
         "text": "kahdeksantoista",
         "category": "numbers",
         "language": "fi",
-        "duration_s": 2.236,
+        "duration_s": 1.02,
         "voice": "female/eeva.wav",
         "accepted_at": "2026-10-01T20:16:55",
         "value": 18,
@@ -212,7 +212,7 @@
         "text": "yhdeksäntoista",
         "category": "numbers",
         "language": "fi",
-        "duration_s": 1.292,
+        "duration_s": 1.06,
         "voice": "female/eeva.wav",
         "accepted_at": "2026-10-01T20:16:58",
         "value": 19,
@@ -225,7 +225,7 @@
         "text": "kymmenen",
         "category": "numbers",
         "language": "fi",
-        "duration_s": 0.895,
+        "duration_s": 0.84,
         "voice": "female/eeva.wav",
         "accepted_at": "2026-10-01T20:16:18",
         "value": 10,
@@ -236,7 +236,7 @@
         "text": "kaksikymmentä",
         "category": "numbers",
         "language": "fi",
-        "duration_s": 1.759,
+        "duration_s": 0.76,
         "voice": "female/eeva.wav",
         "accepted_at": "2026-10-01T20:17:01",
         "value": 20,
@@ -247,7 +247,7 @@
         "text": "kolmekymmentä",
         "category": "numbers",
         "language": "fi",
-        "duration_s": 0.985,
+        "duration_s": 0.72,
         "voice": "female/eeva.wav",
         "accepted_at": "2026-10-01T20:17:04",
         "value": 30,
@@ -258,7 +258,7 @@
         "text": "neljäkymmentä",
         "category": "numbers",
         "language": "fi",
-        "duration_s": 0.986,
+        "duration_s": 0.92,
         "voice": "female/eeva.wav",
         "accepted_at": "2026-10-01T21:04:36",
         "value": 40,
@@ -269,7 +269,7 @@
         "text": "viisikymmentä",
         "category": "numbers",
         "language": "fi",
-        "duration_s": 1.079,
+        "duration_s": 0.96,
         "voice": "female/eeva.wav",
         "accepted_at": "2026-10-01T21:04:39",
         "value": 50,
@@ -280,7 +280,7 @@
         "text": "kuusikymmentä",
         "category": "numbers",
         "language": "fi",
-        "duration_s": 1.8,
+        "duration_s": 0.36,
         "voice": "female/eeva.wav",
         "accepted_at": "2026-10-01T20:17:18",
         "value": 60,
@@ -291,7 +291,7 @@
         "text": "seitsemänkymmentä",
         "category": "numbers",
         "language": "fi",
-        "duration_s": 2.09,
+        "duration_s": 2.06,
         "voice": "female/eeva.wav",
         "accepted_at": "2026-10-01T21:53:12",
         "value": 70,
@@ -302,7 +302,7 @@
         "text": "kahdeksankymmentä",
         "category": "numbers",
         "language": "fi",
-        "duration_s": 1.976,
+        "duration_s": 1.24,
         "voice": "female/eeva.wav",
         "accepted_at": "2026-10-01T20:17:34",
         "value": 80,
@@ -313,7 +313,7 @@
         "text": "yhdeksänkymmentä",
         "category": "numbers",
         "language": "fi",
-        "duration_s": 1.798,
+        "duration_s": 1.1,
         "voice": "female/eeva.wav",
         "accepted_at": "2026-10-01T21:05:09",
         "value": 90,
@@ -326,7 +326,7 @@
         "text": "sata",
         "category": "numbers",
         "language": "fi",
-        "duration_s": 0.554,
+        "duration_s": 0.37,
         "voice": "female/eeva.wav",
         "accepted_at": "2026-10-01T22:12:10",
         "value": 100,
@@ -337,7 +337,7 @@
         "text": "kaksisataa",
         "category": "numbers",
         "language": "fi",
-        "duration_s": 0.9,
+        "duration_s": 0.81,
         "voice": "female/eeva.wav",
         "accepted_at": "2026-10-01T20:17:52",
         "value": 200,
@@ -348,7 +348,7 @@
         "text": "kolmesataa",
         "category": "numbers",
         "language": "fi",
-        "duration_s": 0.987,
+        "duration_s": 0.81,
         "voice": "female/eeva.wav",
         "accepted_at": "2026-10-01T20:17:54",
         "value": 300,
@@ -359,7 +359,7 @@
         "text": "neljäsataa",
         "category": "numbers",
         "language": "fi",
-        "duration_s": 1.019,
+        "duration_s": 0.82,
         "voice": "female/eeva.wav",
         "accepted_at": "2026-10-01T20:17:59",
         "value": 400,
@@ -370,7 +370,7 @@
         "text": "viisisataa",
         "category": "numbers",
         "language": "fi",
-        "duration_s": 1.113,
+        "duration_s": 0.73,
         "voice": "female/eeva.wav",
         "accepted_at": "2026-10-01T20:18:02",
         "value": 500,
@@ -381,7 +381,7 @@
         "text": "kuusisataa",
         "category": "numbers",
         "language": "fi",
-        "duration_s": 1.104,
+        "duration_s": 0.83,
         "voice": "female/eeva.wav",
         "accepted_at": "2026-10-01T21:05:28",
         "value": 600,
@@ -392,7 +392,7 @@
         "text": "seitsemänsataa",
         "category": "numbers",
         "language": "fi",
-        "duration_s": 2.491,
+        "duration_s": 1.4,
         "voice": "female/eeva.wav",
         "accepted_at": "2026-10-01T20:18:14",
         "value": 700,
@@ -403,7 +403,7 @@
         "text": "kahdeksansataa",
         "category": "numbers",
         "language": "fi",
-        "duration_s": 1.327,
+        "duration_s": 1.08,
         "voice": "female/eeva.wav",
         "accepted_at": "2026-10-01T21:05:38",
         "value": 800,
@@ -414,7 +414,7 @@
         "text": "yhdeksänsataa",
         "category": "numbers",
         "language": "fi",
-        "duration_s": 1.579,
+        "duration_s": 1.42,
         "voice": "female/eeva.wav",
         "accepted_at": "2026-10-01T20:18:22",
         "value": 900,
@@ -429,7 +429,7 @@
       "text": "Alavus",
       "category": "places",
       "language": "fi",
-      "duration_s": 1.098,
+      "duration_s": 0.45,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T21:05:42",
       "review": "pending"
@@ -439,7 +439,7 @@
       "text": "Eläinpuisto-Zoo",
       "category": "places",
       "language": "fi",
-      "duration_s": 1.712,
+      "duration_s": 1.27,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:18:40",
       "review": "pending"
@@ -449,7 +449,7 @@
       "text": "Eno",
       "category": "places",
       "language": "fi",
-      "duration_s": 0.829,
+      "duration_s": 0.36,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:18:53",
       "review": "pending"
@@ -459,7 +459,7 @@
       "text": "Haapajärvi",
       "category": "places",
       "language": "fi",
-      "duration_s": 1.364,
+      "duration_s": 1.01,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T21:05:44",
       "review": "pending"
@@ -469,7 +469,7 @@
       "text": "Haapamäki",
       "category": "places",
       "language": "fi",
-      "duration_s": 0.899,
+      "duration_s": 0.66,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:19:22",
       "review": "pending"
@@ -479,7 +479,7 @@
       "text": "Haaparanta pohjoinen",
       "category": "places",
       "language": "fi",
-      "duration_s": 2.189,
+      "duration_s": 1.4,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:19:32",
       "review": "pending"
@@ -489,7 +489,7 @@
       "text": "Hankasalmi",
       "category": "places",
       "language": "fi",
-      "duration_s": 0.997,
+      "duration_s": 0.7,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:19:47",
       "review": "pending"
@@ -499,7 +499,7 @@
       "text": "Harjavalta",
       "category": "places",
       "language": "fi",
-      "duration_s": 0.972,
+      "duration_s": 0.74,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:20:02",
       "review": "pending"
@@ -509,7 +509,7 @@
       "text": "Haukivuori",
       "category": "places",
       "language": "fi",
-      "duration_s": 1.005,
+      "duration_s": 0.77,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T21:05:47",
       "review": "pending"
@@ -519,7 +519,7 @@
       "text": "Heinävesi",
       "category": "places",
       "language": "fi",
-      "duration_s": 0.926,
+      "duration_s": 0.75,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T21:05:50",
       "review": "pending"
@@ -529,7 +529,7 @@
       "text": "Helsinki",
       "category": "places",
       "language": "fi",
-      "duration_s": 1.63,
+      "duration_s": 0.61,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T21:06:06",
       "review": "pending"
@@ -539,7 +539,7 @@
       "text": "Hiirola",
       "category": "places",
       "language": "fi",
-      "duration_s": 0.911,
+      "duration_s": 0.63,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:21:08",
       "review": "pending"
@@ -549,7 +549,7 @@
       "text": "Hillosensalmi",
       "category": "places",
       "language": "fi",
-      "duration_s": 2.526,
+      "duration_s": 0.88,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:21:17",
       "review": "pending"
@@ -559,7 +559,7 @@
       "text": "Humppila",
       "category": "places",
       "language": "fi",
-      "duration_s": 1.675,
+      "duration_s": 0.64,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:21:35",
       "review": "pending"
@@ -569,7 +569,7 @@
       "text": "Hyvinkää tavara",
       "category": "places",
       "language": "fi",
-      "duration_s": 1.164,
+      "duration_s": 0.95,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:21:49",
       "review": "pending"
@@ -579,7 +579,7 @@
       "text": "Hämeenlinna",
       "category": "places",
       "language": "fi",
-      "duration_s": 1.199,
+      "duration_s": 0.69,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:22:01",
       "review": "pending"
@@ -589,7 +589,7 @@
       "text": "Höljäkkä",
       "category": "places",
       "language": "fi",
-      "duration_s": 1.035,
+      "duration_s": 0.71,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T21:06:08",
       "review": "pending"
@@ -599,7 +599,7 @@
       "text": "Iisalmi",
       "category": "places",
       "language": "fi",
-      "duration_s": 0.83,
+      "duration_s": 0.59,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:22:31",
       "review": "pending"
@@ -609,7 +609,7 @@
       "text": "Imatra",
       "category": "places",
       "language": "fi",
-      "duration_s": 0.737,
+      "duration_s": 0.67,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T21:06:11",
       "review": "pending"
@@ -619,7 +619,7 @@
       "text": "Joensuu",
       "category": "places",
       "language": "fi",
-      "duration_s": 0.901,
+      "duration_s": 0.85,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T21:06:17",
       "review": "pending"
@@ -629,7 +629,7 @@
       "text": "Joutseno",
       "category": "places",
       "language": "fi",
-      "duration_s": 1.481,
+      "duration_s": 0.75,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:23:16",
       "review": "pending"
@@ -639,7 +639,7 @@
       "text": "Juupajoki",
       "category": "places",
       "language": "fi",
-      "duration_s": 0.995,
+      "duration_s": 0.74,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T21:06:20",
       "review": "pending"
@@ -649,7 +649,7 @@
       "text": "Jyväskylä",
       "category": "places",
       "language": "fi",
-      "duration_s": 1.459,
+      "duration_s": 0.65,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:23:55",
       "review": "pending"
@@ -659,7 +659,7 @@
       "text": "Jämsä",
       "category": "places",
       "language": "fi",
-      "duration_s": 0.705,
+      "duration_s": 0.49,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:24:09",
       "review": "pending"
@@ -669,7 +669,7 @@
       "text": "Kajaani",
       "category": "places",
       "language": "fi",
-      "duration_s": 0.87,
+      "duration_s": 0.65,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:24:18",
       "review": "pending"
@@ -679,7 +679,7 @@
       "text": "Kalvitsa",
       "category": "places",
       "language": "fi",
-      "duration_s": 1.262,
+      "duration_s": 1.16,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:24:37",
       "review": "pending"
@@ -689,7 +689,7 @@
       "text": "Kannus",
       "category": "places",
       "language": "fi",
-      "duration_s": 0.725,
+      "duration_s": 0.56,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:24:45",
       "review": "pending"
@@ -699,7 +699,7 @@
       "text": "Karjaa",
       "category": "places",
       "language": "fi",
-      "duration_s": 0.661,
+      "duration_s": 0.46,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T21:06:29",
       "review": "pending"
@@ -709,7 +709,7 @@
       "text": "Karkku",
       "category": "places",
       "language": "fi",
-      "duration_s": 0.722,
+      "duration_s": 0.56,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T21:06:42",
       "review": "pending"
@@ -719,7 +719,7 @@
       "text": "Kauhava",
       "category": "places",
       "language": "fi",
-      "duration_s": 0.74,
+      "duration_s": 0.49,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:25:19",
       "review": "pending"
@@ -729,7 +729,7 @@
       "text": "Kemi",
       "category": "places",
       "language": "fi",
-      "duration_s": 0.709,
+      "duration_s": 0.47,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T21:06:44",
       "review": "pending"
@@ -739,7 +739,7 @@
       "text": "Kemijärvi",
       "category": "places",
       "language": "fi",
-      "duration_s": 0.953,
+      "duration_s": 0.71,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:25:49",
       "review": "pending"
@@ -749,7 +749,7 @@
       "text": "Kempele",
       "category": "places",
       "language": "fi",
-      "duration_s": 0.785,
+      "duration_s": 0.71,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:26:00",
       "review": "pending"
@@ -759,7 +759,7 @@
       "text": "Kerimäki",
       "category": "places",
       "language": "fi",
-      "duration_s": 1.036,
+      "duration_s": 0.76,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T21:06:46",
       "review": "pending"
@@ -769,7 +769,7 @@
       "text": "Kesälahti",
       "category": "places",
       "language": "fi",
-      "duration_s": 0.9,
+      "duration_s": 0.72,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T21:06:48",
       "review": "pending"
@@ -779,7 +779,7 @@
       "text": "Keuruu",
       "category": "places",
       "language": "fi",
-      "duration_s": 1.322,
+      "duration_s": 0.68,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:26:40",
       "review": "pending"
@@ -789,7 +789,7 @@
       "text": "Kirkkonummi",
       "category": "places",
       "language": "fi",
-      "duration_s": 2.239,
+      "duration_s": 0.89,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T21:53:32",
       "review": "pending"
@@ -799,7 +799,7 @@
       "text": "Kitee",
       "category": "places",
       "language": "fi",
-      "duration_s": 0.695,
+      "duration_s": 0.47,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:27:14",
       "review": "pending"
@@ -809,7 +809,7 @@
       "text": "Kiuruvesi",
       "category": "places",
       "language": "fi",
-      "duration_s": 1.268,
+      "duration_s": 0.73,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:27:26",
       "review": "pending"
@@ -819,7 +819,7 @@
       "text": "Kohtavaara",
       "category": "places",
       "language": "fi",
-      "duration_s": 0.832,
+      "duration_s": 0.72,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:27:40",
       "review": "pending"
@@ -829,7 +829,7 @@
       "text": "Kokemäki",
       "category": "places",
       "language": "fi",
-      "duration_s": 2.169,
+      "duration_s": 0.86,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T21:54:10",
       "review": "pending"
@@ -839,7 +839,7 @@
       "text": "Kokkola",
       "category": "places",
       "language": "fi",
-      "duration_s": 0.839,
+      "duration_s": 0.78,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:28:16",
       "review": "pending"
@@ -849,7 +849,7 @@
       "text": "Kolari",
       "category": "places",
       "language": "fi",
-      "duration_s": 0.823,
+      "duration_s": 0.56,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:28:35",
       "review": "pending"
@@ -859,7 +859,7 @@
       "text": "Kolho",
       "category": "places",
       "language": "fi",
-      "duration_s": 0.858,
+      "duration_s": 0.42,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:28:47",
       "review": "pending"
@@ -869,7 +869,7 @@
       "text": "Kontiomäki",
       "category": "places",
       "language": "fi",
-      "duration_s": 1.36,
+      "duration_s": 0.72,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T21:07:48",
       "review": "pending"
@@ -879,7 +879,7 @@
       "text": "Kouvola",
       "category": "places",
       "language": "fi",
-      "duration_s": 1.349,
+      "duration_s": 0.54,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T21:07:51",
       "review": "pending"
@@ -889,7 +889,7 @@
       "text": "Kuopio",
       "category": "places",
       "language": "fi",
-      "duration_s": 0.77,
+      "duration_s": 0.58,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:29:42",
       "review": "pending"
@@ -899,7 +899,7 @@
       "text": "Kupittaa",
       "category": "places",
       "language": "fi",
-      "duration_s": 0.98,
+      "duration_s": 0.84,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T21:07:53",
       "review": "pending"
@@ -909,7 +909,7 @@
       "text": "Kylänlahti",
       "category": "places",
       "language": "fi",
-      "duration_s": 0.886,
+      "duration_s": 0.76,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:30:16",
       "review": "pending"
@@ -919,7 +919,7 @@
       "text": "Lahti",
       "category": "places",
       "language": "fi",
-      "duration_s": 0.693,
+      "duration_s": 0.46,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:30:26",
       "review": "pending"
@@ -929,7 +929,7 @@
       "text": "Lapinlahti",
       "category": "places",
       "language": "fi",
-      "duration_s": 1.194,
+      "duration_s": 0.82,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:30:42",
       "review": "pending"
@@ -939,7 +939,7 @@
       "text": "Lappeenranta",
       "category": "places",
       "language": "fi",
-      "duration_s": 1.211,
+      "duration_s": 1.11,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T21:07:56",
       "review": "pending"
@@ -949,7 +949,7 @@
       "text": "Lapua",
       "category": "places",
       "language": "fi",
-      "duration_s": 0.903,
+      "duration_s": 0.51,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:31:13",
       "review": "pending"
@@ -959,7 +959,7 @@
       "text": "Lempäälä",
       "category": "places",
       "language": "fi",
-      "duration_s": 0.805,
+      "duration_s": 0.61,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T21:07:59",
       "review": "pending"
@@ -969,7 +969,7 @@
       "text": "Leppävaara",
       "category": "places",
       "language": "fi",
-      "duration_s": 0.868,
+      "duration_s": 0.81,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T21:08:02",
       "review": "pending"
@@ -979,7 +979,7 @@
       "text": "Lieksa",
       "category": "places",
       "language": "fi",
-      "duration_s": 0.838,
+      "duration_s": 0.59,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:32:27",
       "review": "pending"
@@ -989,7 +989,7 @@
       "text": "Lievestuore",
       "category": "places",
       "language": "fi",
-      "duration_s": 1.03,
+      "duration_s": 0.85,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:32:39",
       "review": "pending"
@@ -999,7 +999,7 @@
       "text": "Lohja",
       "category": "places",
       "language": "fi",
-      "duration_s": 0.652,
+      "duration_s": 0.46,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:32:53",
       "review": "pending"
@@ -1009,7 +1009,7 @@
       "text": "Loimaa",
       "category": "places",
       "language": "fi",
-      "duration_s": 1.16,
+      "duration_s": 0.55,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:33:14",
       "review": "pending"
@@ -1019,7 +1019,7 @@
       "text": "Lusto",
       "category": "places",
       "language": "fi",
-      "duration_s": 0.833,
+      "duration_s": 0.78,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:33:34",
       "review": "pending"
@@ -1029,7 +1029,7 @@
       "text": "Mikkeli",
       "category": "places",
       "language": "fi",
-      "duration_s": 0.658,
+      "duration_s": 0.54,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T21:08:04",
       "review": "pending"
@@ -1039,7 +1039,7 @@
       "text": "Misi",
       "category": "places",
       "language": "fi",
-      "duration_s": 1.28,
+      "duration_s": 1.01,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T21:54:19",
       "review": "pending"
@@ -1049,7 +1049,7 @@
       "text": "Muhos",
       "category": "places",
       "language": "fi",
-      "duration_s": 0.741,
+      "duration_s": 0.55,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:34:34",
       "review": "pending"
@@ -1059,7 +1059,7 @@
       "text": "Mustio",
       "category": "places",
       "language": "fi",
-      "duration_s": 0.854,
+      "duration_s": 0.66,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:34:46",
       "review": "pending"
@@ -1069,7 +1069,7 @@
       "text": "Muurola",
       "category": "places",
       "language": "fi",
-      "duration_s": 1.072,
+      "duration_s": 0.58,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:34:59",
       "review": "pending"
@@ -1079,7 +1079,7 @@
       "text": "Myllymäki",
       "category": "places",
       "language": "fi",
-      "duration_s": 1.07,
+      "duration_s": 0.89,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:35:13",
       "review": "pending"
@@ -1089,7 +1089,7 @@
       "text": "Mäntyharju",
       "category": "places",
       "language": "fi",
-      "duration_s": 1.067,
+      "duration_s": 0.88,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T21:08:20",
       "review": "pending"
@@ -1099,7 +1099,7 @@
       "text": "Nivala",
       "category": "places",
       "language": "fi",
-      "duration_s": 0.695,
+      "duration_s": 0.5,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T21:08:22",
       "review": "pending"
@@ -1109,7 +1109,7 @@
       "text": "Nokia",
       "category": "places",
       "language": "fi",
-      "duration_s": 1.13,
+      "duration_s": 0.53,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:36:22",
       "review": "pending"
@@ -1119,7 +1119,7 @@
       "text": "Nummela",
       "category": "places",
       "language": "fi",
-      "duration_s": 1.282,
+      "duration_s": 0.63,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:36:50",
       "review": "pending"
@@ -1129,7 +1129,7 @@
       "text": "Nurmes",
       "category": "places",
       "language": "fi",
-      "duration_s": 0.868,
+      "duration_s": 0.66,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T21:54:22",
       "review": "pending"
@@ -1139,7 +1139,7 @@
       "text": "Orivesi",
       "category": "places",
       "language": "fi",
-      "duration_s": 0.876,
+      "duration_s": 0.62,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:37:33",
       "review": "pending"
@@ -1149,7 +1149,7 @@
       "text": "Orivesi keskusta",
       "category": "places",
       "language": "fi",
-      "duration_s": 1.248,
+      "duration_s": 1.03,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:37:53",
       "review": "pending"
@@ -1159,7 +1159,7 @@
       "text": "Otava",
       "category": "places",
       "language": "fi",
-      "duration_s": 1.089,
+      "duration_s": 0.54,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:38:08",
       "review": "pending"
@@ -1169,7 +1169,7 @@
       "text": "Oulainen",
       "category": "places",
       "language": "fi",
-      "duration_s": 1.163,
+      "duration_s": 0.64,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:38:21",
       "review": "pending"
@@ -1179,7 +1179,7 @@
       "text": "Oulu",
       "category": "places",
       "language": "fi",
-      "duration_s": 0.574,
+      "duration_s": 0.51,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T21:08:38",
       "review": "pending"
@@ -1189,7 +1189,7 @@
       "text": "Paltamo",
       "category": "places",
       "language": "fi",
-      "duration_s": 0.905,
+      "duration_s": 0.54,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:38:52",
       "review": "pending"
@@ -1199,7 +1199,7 @@
       "text": "Parikkala",
       "category": "places",
       "language": "fi",
-      "duration_s": 0.885,
+      "duration_s": 0.65,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:39:15",
       "review": "pending"
@@ -1209,7 +1209,7 @@
       "text": "Parkano",
       "category": "places",
       "language": "fi",
-      "duration_s": 0.83,
+      "duration_s": 0.63,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:39:33",
       "review": "pending"
@@ -1219,7 +1219,7 @@
       "text": "Pasila",
       "category": "places",
       "language": "fi",
-      "duration_s": 0.69,
+      "duration_s": 0.46,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:39:49",
       "review": "pending"
@@ -1229,7 +1229,7 @@
       "text": "Pello",
       "category": "places",
       "language": "fi",
-      "duration_s": 1.029,
+      "duration_s": 0.38,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T21:08:48",
       "review": "pending"
@@ -1239,7 +1239,7 @@
       "text": "Petäjävesi",
       "category": "places",
       "language": "fi",
-      "duration_s": 0.943,
+      "duration_s": 0.74,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T21:08:55",
       "review": "pending"
@@ -1249,7 +1249,7 @@
       "text": "Pieksämäki",
       "category": "places",
       "language": "fi",
-      "duration_s": 1.051,
+      "duration_s": 0.66,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:41:18",
       "review": "pending"
@@ -1259,7 +1259,7 @@
       "text": "Pihlajavesi",
       "category": "places",
       "language": "fi",
-      "duration_s": 0.976,
+      "duration_s": 0.71,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:41:39",
       "review": "pending"
@@ -1269,7 +1269,7 @@
       "text": "Pori",
       "category": "places",
       "language": "fi",
-      "duration_s": 0.969,
+      "duration_s": 0.32,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T21:08:58",
       "review": "pending"
@@ -1279,7 +1279,7 @@
       "text": "Punkaharju",
       "category": "places",
       "language": "fi",
-      "duration_s": 1.268,
+      "duration_s": 0.79,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:42:22",
       "review": "pending"
@@ -1289,7 +1289,7 @@
       "text": "Pyhäsalmi",
       "category": "places",
       "language": "fi",
-      "duration_s": 0.919,
+      "duration_s": 0.73,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T21:09:07",
       "review": "pending"
@@ -1299,7 +1299,7 @@
       "text": "Pännäinen",
       "category": "places",
       "language": "fi",
-      "duration_s": 0.813,
+      "duration_s": 0.73,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:43:01",
       "review": "pending"
@@ -1309,7 +1309,7 @@
       "text": "Pääskylahti",
       "category": "places",
       "language": "fi",
-      "duration_s": 1.145,
+      "duration_s": 0.96,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:43:22",
       "review": "pending"
@@ -1319,7 +1319,7 @@
       "text": "Rajamäki",
       "category": "places",
       "language": "fi",
-      "duration_s": 0.919,
+      "duration_s": 0.56,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T21:09:10",
       "review": "pending"
@@ -1329,7 +1329,7 @@
       "text": "Retretti",
       "category": "places",
       "language": "fi",
-      "duration_s": 1.663,
+      "duration_s": 0.89,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:44:14",
       "review": "pending"
@@ -1339,7 +1339,7 @@
       "text": "Riihimäki",
       "category": "places",
       "language": "fi",
-      "duration_s": 1.648,
+      "duration_s": 0.73,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:44:34",
       "review": "pending"
@@ -1349,7 +1349,7 @@
       "text": "Rovaniemi",
       "category": "places",
       "language": "fi",
-      "duration_s": 1.522,
+      "duration_s": 0.9,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:44:52",
       "review": "pending"
@@ -1359,7 +1359,7 @@
       "text": "Runni",
       "category": "places",
       "language": "fi",
-      "duration_s": 1.31,
+      "duration_s": 0.81,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T21:09:26",
       "review": "pending"
@@ -1369,7 +1369,7 @@
       "text": "Ruukki",
       "category": "places",
       "language": "fi",
-      "duration_s": 0.749,
+      "duration_s": 0.53,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:45:37",
       "review": "pending"
@@ -1379,7 +1379,7 @@
       "text": "Salo",
       "category": "places",
       "language": "fi",
-      "duration_s": 1.069,
+      "duration_s": 0.54,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T21:09:32",
       "review": "pending"
@@ -1389,7 +1389,7 @@
       "text": "Savonlinna",
       "category": "places",
       "language": "fi",
-      "duration_s": 1.027,
+      "duration_s": 0.78,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:46:43",
       "review": "pending"
@@ -1399,7 +1399,7 @@
       "text": "Seinäjoki",
       "category": "places",
       "language": "fi",
-      "duration_s": 0.824,
+      "duration_s": 0.75,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:47:08",
       "review": "pending"
@@ -1409,7 +1409,7 @@
       "text": "Siilinjärvi",
       "category": "places",
       "language": "fi",
-      "duration_s": 1.1,
+      "duration_s": 0.89,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T21:09:50",
       "review": "pending"
@@ -1419,7 +1419,7 @@
       "text": "Simpele",
       "category": "places",
       "language": "fi",
-      "duration_s": 1.618,
+      "duration_s": 0.66,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:48:41",
       "review": "pending"
@@ -1429,7 +1429,7 @@
       "text": "Sukeva",
       "category": "places",
       "language": "fi",
-      "duration_s": 0.671,
+      "duration_s": 0.49,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:48:54",
       "review": "pending"
@@ -1439,7 +1439,7 @@
       "text": "Suolahti",
       "category": "places",
       "language": "fi",
-      "duration_s": 1.763,
+      "duration_s": 0.73,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:49:11",
       "review": "pending"
@@ -1449,7 +1449,7 @@
       "text": "Suonenjoki",
       "category": "places",
       "language": "fi",
-      "duration_s": 1.624,
+      "duration_s": 0.89,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:49:39",
       "review": "pending"
@@ -1459,7 +1459,7 @@
       "text": "Tampere",
       "category": "places",
       "language": "fi",
-      "duration_s": 0.665,
+      "duration_s": 0.46,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:50:16",
       "review": "pending"
@@ -1469,7 +1469,7 @@
       "text": "Tervajoki",
       "category": "places",
       "language": "fi",
-      "duration_s": 0.977,
+      "duration_s": 0.73,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:50:31",
       "review": "pending"
@@ -1479,7 +1479,7 @@
       "text": "Tervola",
       "category": "places",
       "language": "fi",
-      "duration_s": 0.827,
+      "duration_s": 0.6,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:50:51",
       "review": "pending"
@@ -1489,7 +1489,7 @@
       "text": "Tesoma",
       "category": "places",
       "language": "fi",
-      "duration_s": 1.437,
+      "duration_s": 0.49,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:51:26",
       "review": "pending"
@@ -1499,7 +1499,7 @@
       "text": "Tikkurila",
       "category": "places",
       "language": "fi",
-      "duration_s": 0.71,
+      "duration_s": 0.65,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:51:51",
       "review": "pending"
@@ -1509,7 +1509,7 @@
       "text": "Toijala",
       "category": "places",
       "language": "fi",
-      "duration_s": 0.798,
+      "duration_s": 0.57,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:52:13",
       "review": "pending"
@@ -1519,7 +1519,7 @@
       "text": "Tornio",
       "category": "places",
       "language": "fi",
-      "duration_s": 1.427,
+      "duration_s": 0.51,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:52:34",
       "review": "pending"
@@ -1529,7 +1529,7 @@
       "text": "Tornio-Itäinen",
       "category": "places",
       "language": "fi",
-      "duration_s": 1.211,
+      "duration_s": 1.15,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T21:10:15",
       "review": "pending"
@@ -1539,7 +1539,7 @@
       "text": "Turku",
       "category": "places",
       "language": "fi",
-      "duration_s": 1.093,
+      "duration_s": 0.56,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T21:10:19",
       "review": "pending"
@@ -1549,7 +1549,7 @@
       "text": "Turku satama",
       "category": "places",
       "language": "fi",
-      "duration_s": 0.932,
+      "duration_s": 0.75,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T21:10:22",
       "review": "pending"
@@ -1559,7 +1559,7 @@
       "text": "Tuuri",
       "category": "places",
       "language": "fi",
-      "duration_s": 0.759,
+      "duration_s": 0.44,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:54:56",
       "review": "pending"
@@ -1569,7 +1569,7 @@
       "text": "Uimaharju",
       "category": "places",
       "language": "fi",
-      "duration_s": 0.839,
+      "duration_s": 0.59,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:55:18",
       "review": "pending"
@@ -1579,7 +1579,7 @@
       "text": "Utajärvi",
       "category": "places",
       "language": "fi",
-      "duration_s": 0.723,
+      "duration_s": 0.66,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T21:10:25",
       "review": "pending"
@@ -1589,7 +1589,7 @@
       "text": "Vaala",
       "category": "places",
       "language": "fi",
-      "duration_s": 0.668,
+      "duration_s": 0.39,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:56:19",
       "review": "pending"
@@ -1599,7 +1599,7 @@
       "text": "Vaasa",
       "category": "places",
       "language": "fi",
-      "duration_s": 0.881,
+      "duration_s": 0.63,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:56:34",
       "review": "pending"
@@ -1609,7 +1609,7 @@
       "text": "Vammala",
       "category": "places",
       "language": "fi",
-      "duration_s": 1.386,
+      "duration_s": 0.54,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T21:10:28",
       "review": "pending"
@@ -1619,7 +1619,7 @@
       "text": "Varkaus",
       "category": "places",
       "language": "fi",
-      "duration_s": 1.55,
+      "duration_s": 0.65,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:57:34",
       "review": "pending"
@@ -1629,7 +1629,7 @@
       "text": "Vihanti",
       "category": "places",
       "language": "fi",
-      "duration_s": 1.593,
+      "duration_s": 0.48,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:57:56",
       "review": "pending"
@@ -1639,7 +1639,7 @@
       "text": "Vihtari",
       "category": "places",
       "language": "fi",
-      "duration_s": 1.233,
+      "duration_s": 0.45,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T21:10:31",
       "review": "pending"
@@ -1649,7 +1649,7 @@
       "text": "Viinijärvi",
       "category": "places",
       "language": "fi",
-      "duration_s": 0.99,
+      "duration_s": 0.92,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:58:41",
       "review": "pending"
@@ -1659,7 +1659,7 @@
       "text": "Vilppula",
       "category": "places",
       "language": "fi",
-      "duration_s": 0.764,
+      "duration_s": 0.55,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:59:03",
       "review": "pending"
@@ -1669,7 +1669,7 @@
       "text": "Vuonislahti",
       "category": "places",
       "language": "fi",
-      "duration_s": 0.931,
+      "duration_s": 0.73,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:59:19",
       "review": "pending"
@@ -1679,7 +1679,7 @@
       "text": "Ylitornio",
       "category": "places",
       "language": "fi",
-      "duration_s": 1.087,
+      "duration_s": 0.62,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T21:10:35",
       "review": "pending"
@@ -1689,7 +1689,7 @@
       "text": "Ylivieska",
       "category": "places",
       "language": "fi",
-      "duration_s": 0.968,
+      "duration_s": 0.81,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T21:10:56",
       "review": "pending"
@@ -1699,7 +1699,7 @@
       "text": "Ähtäri",
       "category": "places",
       "language": "fi",
-      "duration_s": 1.499,
+      "duration_s": 0.57,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T21:00:55",
       "review": "pending"
@@ -1711,7 +1711,7 @@
       "text": "Alavudelle",
       "category": "places_to",
       "language": "fi",
-      "duration_s": 0.835,
+      "duration_s": 0.6,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:18:29",
       "review": "pending"
@@ -1721,7 +1721,7 @@
       "text": "Eläinpuisto-Zoohon",
       "category": "places_to",
       "language": "fi",
-      "duration_s": 1.066,
+      "duration_s": 1.01,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T21:10:59",
       "review": "pending"
@@ -1731,7 +1731,7 @@
       "text": "Enoon",
       "category": "places_to",
       "language": "fi",
-      "duration_s": 1.269,
+      "duration_s": 0.5,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:18:56",
       "review": "pending"
@@ -1741,7 +1741,7 @@
       "text": "Haapajärvelle",
       "category": "places_to",
       "language": "fi",
-      "duration_s": 1.069,
+      "duration_s": 0.89,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T21:11:02",
       "review": "pending"
@@ -1751,7 +1751,7 @@
       "text": "Haapamäelle",
       "category": "places_to",
       "language": "fi",
-      "duration_s": 1.148,
+      "duration_s": 0.82,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:19:25",
       "review": "pending"
@@ -1761,7 +1761,7 @@
       "text": "Haaparannan pohjoiselle asemalle",
       "category": "places_to",
       "language": "fi",
-      "duration_s": 2.588,
+      "duration_s": 2.52,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:19:37",
       "review": "pending"
@@ -1771,7 +1771,7 @@
       "text": "Hankasalmelle",
       "category": "places_to",
       "language": "fi",
-      "duration_s": 1.15,
+      "duration_s": 0.98,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T21:11:06",
       "review": "pending"
@@ -1781,7 +1781,7 @@
       "text": "Harjavaltaan",
       "category": "places_to",
       "language": "fi",
-      "duration_s": 1.061,
+      "duration_s": 0.82,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:20:05",
       "review": "pending"
@@ -1791,7 +1791,7 @@
       "text": "Haukivuorelle",
       "category": "places_to",
       "language": "fi",
-      "duration_s": 1.05,
+      "duration_s": 0.85,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T21:11:09",
       "review": "pending"
@@ -1801,7 +1801,7 @@
       "text": "Heinävedelle",
       "category": "places_to",
       "language": "fi",
-      "duration_s": 1.122,
+      "duration_s": 0.92,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:20:38",
       "review": "pending"
@@ -1811,7 +1811,7 @@
       "text": "Helsinkiin",
       "category": "places_to",
       "language": "fi",
-      "duration_s": 0.989,
+      "duration_s": 0.78,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T21:11:12",
       "review": "pending"
@@ -1821,7 +1821,7 @@
       "text": "Hiirolaan",
       "category": "places_to",
       "language": "fi",
-      "duration_s": 0.991,
+      "duration_s": 0.74,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:21:10",
       "review": "pending"
@@ -1831,7 +1831,7 @@
       "text": "Hillosensalmelle",
       "category": "places_to",
       "language": "fi",
-      "duration_s": 1.603,
+      "duration_s": 1.4,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T21:11:29",
       "review": "pending"
@@ -1841,7 +1841,7 @@
       "text": "Humppilaan",
       "category": "places_to",
       "language": "fi",
-      "duration_s": 1.106,
+      "duration_s": 0.76,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T21:11:32",
       "review": "pending"
@@ -1851,7 +1851,7 @@
       "text": "Hyvinkään tavara-asemalle",
       "category": "places_to",
       "language": "fi",
-      "duration_s": 2.841,
+      "duration_s": 1.76,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:21:54",
       "review": "pending"
@@ -1861,7 +1861,7 @@
       "text": "Hämeenlinnaan",
       "category": "places_to",
       "language": "fi",
-      "duration_s": 1.311,
+      "duration_s": 1.04,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:22:06",
       "review": "pending"
@@ -1871,7 +1871,7 @@
       "text": "Höljäkkään",
       "category": "places_to",
       "language": "fi",
-      "duration_s": 1.169,
+      "duration_s": 1.09,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T21:54:25",
       "review": "pending"
@@ -1881,7 +1881,7 @@
       "text": "Iisalmeen",
       "category": "places_to",
       "language": "fi",
-      "duration_s": 0.82,
+      "duration_s": 0.63,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:22:33",
       "review": "pending"
@@ -1891,7 +1891,7 @@
       "text": "Imatralle",
       "category": "places_to",
       "language": "fi",
-      "duration_s": 0.838,
+      "duration_s": 0.71,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:22:50",
       "review": "pending"
@@ -1901,7 +1901,7 @@
       "text": "Joensuuhun",
       "category": "places_to",
       "language": "fi",
-      "duration_s": 1.02,
+      "duration_s": 0.81,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:23:07",
       "review": "pending"
@@ -1911,7 +1911,7 @@
       "text": "Joutsenoon",
       "category": "places_to",
       "language": "fi",
-      "duration_s": 0.932,
+      "duration_s": 0.7,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T21:12:07",
       "review": "pending"
@@ -1921,7 +1921,7 @@
       "text": "Juupajoelle",
       "category": "places_to",
       "language": "fi",
-      "duration_s": 1.043,
+      "duration_s": 0.81,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T21:12:10",
       "review": "pending"
@@ -1931,7 +1931,7 @@
       "text": "Jyväskylään",
       "category": "places_to",
       "language": "fi",
-      "duration_s": 1.996,
+      "duration_s": 0.9,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T21:12:27",
       "review": "pending"
@@ -1941,7 +1941,7 @@
       "text": "Jämsään",
       "category": "places_to",
       "language": "fi",
-      "duration_s": 0.822,
+      "duration_s": 0.59,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T21:12:30",
       "review": "pending"
@@ -1951,7 +1951,7 @@
       "text": "Kajaaniin",
       "category": "places_to",
       "language": "fi",
-      "duration_s": 0.915,
+      "duration_s": 0.68,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T21:12:55",
       "review": "pending"
@@ -1961,7 +1961,7 @@
       "text": "Kalvitsaan",
       "category": "places_to",
       "language": "fi",
-      "duration_s": 1.336,
+      "duration_s": 0.66,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:24:40",
       "review": "pending"
@@ -1971,7 +1971,7 @@
       "text": "Kannukseen",
       "category": "places_to",
       "language": "fi",
-      "duration_s": 1.561,
+      "duration_s": 0.86,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:24:49",
       "review": "pending"
@@ -1981,7 +1981,7 @@
       "text": "Karjaalle",
       "category": "places_to",
       "language": "fi",
-      "duration_s": 0.959,
+      "duration_s": 0.81,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:25:03",
       "review": "pending"
@@ -1991,7 +1991,7 @@
       "text": "Karkkuun",
       "category": "places_to",
       "language": "fi",
-      "duration_s": 1.759,
+      "duration_s": 0.73,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:25:14",
       "review": "pending"
@@ -2001,7 +2001,7 @@
       "text": "Kauhavalle",
       "category": "places_to",
       "language": "fi",
-      "duration_s": 0.92,
+      "duration_s": 0.71,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:25:21",
       "review": "pending"
@@ -2011,7 +2011,7 @@
       "text": "Kemiin",
       "category": "places_to",
       "language": "fi",
-      "duration_s": 0.739,
+      "duration_s": 0.42,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:25:31",
       "review": "pending"
@@ -2021,7 +2021,7 @@
       "text": "Kemijärvelle",
       "category": "places_to",
       "language": "fi",
-      "duration_s": 1.11,
+      "duration_s": 0.7,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:25:53",
       "review": "pending"
@@ -2031,7 +2031,7 @@
       "text": "Kempeleeseen",
       "category": "places_to",
       "language": "fi",
-      "duration_s": 1.269,
+      "duration_s": 1.06,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T21:12:59",
       "review": "pending"
@@ -2041,7 +2041,7 @@
       "text": "Kerimäelle",
       "category": "places_to",
       "language": "fi",
-      "duration_s": 0.913,
+      "duration_s": 0.69,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:26:20",
       "review": "pending"
@@ -2051,7 +2051,7 @@
       "text": "Kesälahdelle",
       "category": "places_to",
       "language": "fi",
-      "duration_s": 1.543,
+      "duration_s": 1.04,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:26:32",
       "review": "pending"
@@ -2061,7 +2061,7 @@
       "text": "Keuruulle",
       "category": "places_to",
       "language": "fi",
-      "duration_s": 1.864,
+      "duration_s": 1.14,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:26:46",
       "review": "pending"
@@ -2071,7 +2071,7 @@
       "text": "Kirkkonummelle",
       "category": "places_to",
       "language": "fi",
-      "duration_s": 1.071,
+      "duration_s": 0.87,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:27:03",
       "review": "pending"
@@ -2081,7 +2081,7 @@
       "text": "Kiteelle",
       "category": "places_to",
       "language": "fi",
-      "duration_s": 0.789,
+      "duration_s": 0.51,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:27:19",
       "review": "pending"
@@ -2091,7 +2091,7 @@
       "text": "Kiuruvedelle",
       "category": "places_to",
       "language": "fi",
-      "duration_s": 2.059,
+      "duration_s": 1.1,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:27:31",
       "review": "pending"
@@ -2101,7 +2101,7 @@
       "text": "Kohtavaaralle",
       "category": "places_to",
       "language": "fi",
-      "duration_s": 1.051,
+      "duration_s": 0.88,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:27:43",
       "review": "pending"
@@ -2111,7 +2111,7 @@
       "text": "Kokemäelle",
       "category": "places_to",
       "language": "fi",
-      "duration_s": 0.913,
+      "duration_s": 0.8,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:28:05",
       "review": "pending"
@@ -2121,7 +2121,7 @@
       "text": "Kokkolaan",
       "category": "places_to",
       "language": "fi",
-      "duration_s": 1.269,
+      "duration_s": 0.74,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T21:13:15",
       "review": "pending"
@@ -2131,7 +2131,7 @@
       "text": "Kolariin",
       "category": "places_to",
       "language": "fi",
-      "duration_s": 0.94,
+      "duration_s": 0.7,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T21:13:18",
       "review": "pending"
@@ -2141,7 +2141,7 @@
       "text": "Kolhoon",
       "category": "places_to",
       "language": "fi",
-      "duration_s": 0.768,
+      "duration_s": 0.49,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:28:50",
       "review": "pending"
@@ -2151,7 +2151,7 @@
       "text": "Kontiomäelle",
       "category": "places_to",
       "language": "fi",
-      "duration_s": 0.944,
+      "duration_s": 0.82,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:29:05",
       "review": "pending"
@@ -2161,7 +2161,7 @@
       "text": "Kouvolaan",
       "category": "places_to",
       "language": "fi",
-      "duration_s": 1.076,
+      "duration_s": 0.86,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:29:31",
       "review": "pending"
@@ -2171,7 +2171,7 @@
       "text": "Kuopioon",
       "category": "places_to",
       "language": "fi",
-      "duration_s": 1.057,
+      "duration_s": 0.59,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:29:45",
       "review": "pending"
@@ -2181,7 +2181,7 @@
       "text": "Kupittaalle",
       "category": "places_to",
       "language": "fi",
-      "duration_s": 1.834,
+      "duration_s": 0.73,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:30:08",
       "review": "pending"
@@ -2191,7 +2191,7 @@
       "text": "Kylänlahdelle",
       "category": "places_to",
       "language": "fi",
-      "duration_s": 1.015,
+      "duration_s": 0.96,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:30:20",
       "review": "pending"
@@ -2201,7 +2201,7 @@
       "text": "Lahteen",
       "category": "places_to",
       "language": "fi",
-      "duration_s": 0.773,
+      "duration_s": 0.58,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:30:29",
       "review": "pending"
@@ -2211,7 +2211,7 @@
       "text": "Lapinlahdelle",
       "category": "places_to",
       "language": "fi",
-      "duration_s": 1.071,
+      "duration_s": 0.89,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:30:48",
       "review": "pending"
@@ -2221,7 +2221,7 @@
       "text": "Lappeenrantaan",
       "category": "places_to",
       "language": "fi",
-      "duration_s": 1.733,
+      "duration_s": 0.96,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:31:06",
       "review": "pending"
@@ -2231,7 +2231,7 @@
       "text": "Lapualle",
       "category": "places_to",
       "language": "fi",
-      "duration_s": 1.306,
+      "duration_s": 0.69,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:31:17",
       "review": "pending"
@@ -2241,7 +2241,7 @@
       "text": "Lempäälään",
       "category": "places_to",
       "language": "fi",
-      "duration_s": 1.117,
+      "duration_s": 0.87,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:31:32",
       "review": "pending"
@@ -2251,7 +2251,7 @@
       "text": "Leppävaaraan",
       "category": "places_to",
       "language": "fi",
-      "duration_s": 1.019,
+      "duration_s": 0.92,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T21:13:27",
       "review": "pending"
@@ -2261,7 +2261,7 @@
       "text": "Lieksaan",
       "category": "places_to",
       "language": "fi",
-      "duration_s": 0.768,
+      "duration_s": 0.58,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:32:33",
       "review": "pending"
@@ -2271,7 +2271,7 @@
       "text": "Lievestuoreelle",
       "category": "places_to",
       "language": "fi",
-      "duration_s": 1.778,
+      "duration_s": 0.86,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:32:45",
       "review": "pending"
@@ -2281,7 +2281,7 @@
       "text": "Lohjalle",
       "category": "places_to",
       "language": "fi",
-      "duration_s": 0.818,
+      "duration_s": 0.62,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T21:13:30",
       "review": "pending"
@@ -2291,7 +2291,7 @@
       "text": "Loimaalle",
       "category": "places_to",
       "language": "fi",
-      "duration_s": 1.191,
+      "duration_s": 0.68,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T21:13:33",
       "review": "pending"
@@ -2301,7 +2301,7 @@
       "text": "Lustoon",
       "category": "places_to",
       "language": "fi",
-      "duration_s": 0.714,
+      "duration_s": 0.55,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T21:13:40",
       "review": "pending"
@@ -2311,7 +2311,7 @@
       "text": "Mikkeliin",
       "category": "places_to",
       "language": "fi",
-      "duration_s": 0.872,
+      "duration_s": 0.8,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:34:08",
       "review": "pending"
@@ -2321,7 +2321,7 @@
       "text": "Misiin",
       "category": "places_to",
       "language": "fi",
-      "duration_s": 1.229,
+      "duration_s": 0.52,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:34:27",
       "review": "pending"
@@ -2331,7 +2331,7 @@
       "text": "Muhokselle",
       "category": "places_to",
       "language": "fi",
-      "duration_s": 1.255,
+      "duration_s": 0.82,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:34:38",
       "review": "pending"
@@ -2341,7 +2341,7 @@
       "text": "Mustioon",
       "category": "places_to",
       "language": "fi",
-      "duration_s": 0.909,
+      "duration_s": 0.85,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:34:49",
       "review": "pending"
@@ -2351,7 +2351,7 @@
       "text": "Muurolaan",
       "category": "places_to",
       "language": "fi",
-      "duration_s": 1.229,
+      "duration_s": 0.66,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:35:04",
       "review": "pending"
@@ -2361,7 +2361,7 @@
       "text": "Myllymäelle",
       "category": "places_to",
       "language": "fi",
-      "duration_s": 1.202,
+      "duration_s": 0.96,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:35:18",
       "review": "pending"
@@ -2371,7 +2371,7 @@
       "text": "Mäntyharjulle",
       "category": "places_to",
       "language": "fi",
-      "duration_s": 1.66,
+      "duration_s": 0.83,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:35:44",
       "review": "pending"
@@ -2381,7 +2381,7 @@
       "text": "Nivalaan",
       "category": "places_to",
       "language": "fi",
-      "duration_s": 1.247,
+      "duration_s": 0.91,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T21:13:44",
       "review": "pending"
@@ -2391,7 +2391,7 @@
       "text": "Nokialle",
       "category": "places_to",
       "language": "fi",
-      "duration_s": 1.376,
+      "duration_s": 0.88,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T21:13:48",
       "review": "pending"
@@ -2401,7 +2401,7 @@
       "text": "Nummelaan",
       "category": "places_to",
       "language": "fi",
-      "duration_s": 1.086,
+      "duration_s": 0.93,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:36:55",
       "review": "pending"
@@ -2411,7 +2411,7 @@
       "text": "Nurmekseen",
       "category": "places_to",
       "language": "fi",
-      "duration_s": 2.041,
+      "duration_s": 1.0,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:37:25",
       "review": "pending"
@@ -2421,7 +2421,7 @@
       "text": "Orivedelle",
       "category": "places_to",
       "language": "fi",
-      "duration_s": 0.884,
+      "duration_s": 0.64,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:37:36",
       "review": "pending"
@@ -2431,7 +2431,7 @@
       "text": "Oriveden keskustaan",
       "category": "places_to",
       "language": "fi",
-      "duration_s": 1.181,
+      "duration_s": 1.12,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:37:58",
       "review": "pending"
@@ -2441,7 +2441,7 @@
       "text": "Otavaan",
       "category": "places_to",
       "language": "fi",
-      "duration_s": 1.327,
+      "duration_s": 0.25,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:38:12",
       "review": "pending"
@@ -2451,7 +2451,7 @@
       "text": "Oulaisiin",
       "category": "places_to",
       "language": "fi",
-      "duration_s": 0.978,
+      "duration_s": 0.76,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:38:28",
       "review": "pending"
@@ -2461,7 +2461,7 @@
       "text": "Ouluun",
       "category": "places_to",
       "language": "fi",
-      "duration_s": 0.873,
+      "duration_s": 0.68,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:38:42",
       "review": "pending"
@@ -2471,7 +2471,7 @@
       "text": "Paltamoon",
       "category": "places_to",
       "language": "fi",
-      "duration_s": 1.169,
+      "duration_s": 0.65,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:38:56",
       "review": "pending"
@@ -2481,7 +2481,7 @@
       "text": "Parikkalaan",
       "category": "places_to",
       "language": "fi",
-      "duration_s": 2.012,
+      "duration_s": 0.82,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:39:22",
       "review": "pending"
@@ -2491,7 +2491,7 @@
       "text": "Parkanoon",
       "category": "places_to",
       "language": "fi",
-      "duration_s": 0.896,
+      "duration_s": 0.65,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:39:40",
       "review": "pending"
@@ -2501,7 +2501,7 @@
       "text": "Pasilaan",
       "category": "places_to",
       "language": "fi",
-      "duration_s": 1.146,
+      "duration_s": 0.9,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T21:14:01",
       "review": "pending"
@@ -2511,7 +2511,7 @@
       "text": "Pelloon",
       "category": "places_to",
       "language": "fi",
-      "duration_s": 1.138,
+      "duration_s": 0.56,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T21:14:13",
       "review": "pending"
@@ -2521,7 +2521,7 @@
       "text": "Petäjävedelle",
       "category": "places_to",
       "language": "fi",
-      "duration_s": 2.161,
+      "duration_s": 0.78,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:41:05",
       "review": "pending"
@@ -2531,7 +2531,7 @@
       "text": "Pieksämäelle",
       "category": "places_to",
       "language": "fi",
-      "duration_s": 1.407,
+      "duration_s": 0.85,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:41:26",
       "review": "pending"
@@ -2541,7 +2541,7 @@
       "text": "Pihlajavedelle",
       "category": "places_to",
       "language": "fi",
-      "duration_s": 1.138,
+      "duration_s": 0.9,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:41:44",
       "review": "pending"
@@ -2551,7 +2551,7 @@
       "text": "Poriin",
       "category": "places_to",
       "language": "fi",
-      "duration_s": 0.98,
+      "duration_s": 0.5,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T21:14:17",
       "review": "pending"
@@ -2561,7 +2561,7 @@
       "text": "Punkaharjulle",
       "category": "places_to",
       "language": "fi",
-      "duration_s": 1.845,
+      "duration_s": 0.86,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:42:29",
       "review": "pending"
@@ -2571,7 +2571,7 @@
       "text": "Pyhäsalmelle",
       "category": "places_to",
       "language": "fi",
-      "duration_s": 1.242,
+      "duration_s": 1.01,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:42:50",
       "review": "pending"
@@ -2581,7 +2581,7 @@
       "text": "Pännäisiin",
       "category": "places_to",
       "language": "fi",
-      "duration_s": 0.907,
+      "duration_s": 0.62,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:43:05",
       "review": "pending"
@@ -2591,7 +2591,7 @@
       "text": "Pääskylahdelle",
       "category": "places_to",
       "language": "fi",
-      "duration_s": 1.097,
+      "duration_s": 0.98,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:43:27",
       "review": "pending"
@@ -2601,7 +2601,7 @@
       "text": "Rajamäelle",
       "category": "places_to",
       "language": "fi",
-      "duration_s": 1.0,
+      "duration_s": 0.72,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:43:55",
       "review": "pending"
@@ -2611,7 +2611,7 @@
       "text": "Retrettiin",
       "category": "places_to",
       "language": "fi",
-      "duration_s": 1.111,
+      "duration_s": 0.92,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:44:21",
       "review": "pending"
@@ -2621,7 +2621,7 @@
       "text": "Riihimäelle",
       "category": "places_to",
       "language": "fi",
-      "duration_s": 0.835,
+      "duration_s": 0.66,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:44:38",
       "review": "pending"
@@ -2631,7 +2631,7 @@
       "text": "Rovaniemelle",
       "category": "places_to",
       "language": "fi",
-      "duration_s": 1.055,
+      "duration_s": 0.87,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:45:00",
       "review": "pending"
@@ -2641,7 +2641,7 @@
       "text": "Runnille",
       "category": "places_to",
       "language": "fi",
-      "duration_s": 1.406,
+      "duration_s": 0.61,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T21:14:21",
       "review": "pending"
@@ -2651,7 +2651,7 @@
       "text": "Ruukkiin",
       "category": "places_to",
       "language": "fi",
-      "duration_s": 1.073,
+      "duration_s": 0.64,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T21:14:24",
       "review": "pending"
@@ -2661,7 +2661,7 @@
       "text": "Saloon",
       "category": "places_to",
       "language": "fi",
-      "duration_s": 0.726,
+      "duration_s": 0.46,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:46:21",
       "review": "pending"
@@ -2671,7 +2671,7 @@
       "text": "Savonlinnaan",
       "category": "places_to",
       "language": "fi",
-      "duration_s": 1.024,
+      "duration_s": 0.96,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T21:14:27",
       "review": "pending"
@@ -2681,7 +2681,7 @@
       "text": "Seinäjoelle",
       "category": "places_to",
       "language": "fi",
-      "duration_s": 1.538,
+      "duration_s": 0.8,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T21:14:32",
       "review": "pending"
@@ -2691,7 +2691,7 @@
       "text": "Siilinjärvelle",
       "category": "places_to",
       "language": "fi",
-      "duration_s": 2.538,
+      "duration_s": 0.91,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T21:14:53",
       "review": "pending"
@@ -2701,7 +2701,7 @@
       "text": "Simpeleelle",
       "category": "places_to",
       "language": "fi",
-      "duration_s": 1.06,
+      "duration_s": 0.88,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:48:45",
       "review": "pending"
@@ -2711,7 +2711,7 @@
       "text": "Sukevalle",
       "category": "places_to",
       "language": "fi",
-      "duration_s": 0.886,
+      "duration_s": 0.64,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:49:00",
       "review": "pending"
@@ -2721,7 +2721,7 @@
       "text": "Suolahteen",
       "category": "places_to",
       "language": "fi",
-      "duration_s": 0.942,
+      "duration_s": 0.69,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:49:15",
       "review": "pending"
@@ -2731,7 +2731,7 @@
       "text": "Suonenjoelle",
       "category": "places_to",
       "language": "fi",
-      "duration_s": 0.947,
+      "duration_s": 0.71,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T21:15:02",
       "review": "pending"
@@ -2741,7 +2741,7 @@
       "text": "Tampereelle",
       "category": "places_to",
       "language": "fi",
-      "duration_s": 1.065,
+      "duration_s": 0.88,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:50:21",
       "review": "pending"
@@ -2751,7 +2751,7 @@
       "text": "Tervajoelle",
       "category": "places_to",
       "language": "fi",
-      "duration_s": 0.977,
+      "duration_s": 0.78,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:50:36",
       "review": "pending"
@@ -2761,7 +2761,7 @@
       "text": "Tervolaan",
       "category": "places_to",
       "language": "fi",
-      "duration_s": 0.989,
+      "duration_s": 0.73,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T21:15:05",
       "review": "pending"
@@ -2771,7 +2771,7 @@
       "text": "Tesomalle",
       "category": "places_to",
       "language": "fi",
-      "duration_s": 1.472,
+      "duration_s": 0.77,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T21:15:09",
       "review": "pending"
@@ -2781,7 +2781,7 @@
       "text": "Tikkurilaan",
       "category": "places_to",
       "language": "fi",
-      "duration_s": 1.834,
+      "duration_s": 1.16,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:52:01",
       "review": "pending"
@@ -2791,7 +2791,7 @@
       "text": "Toijalaan",
       "category": "places_to",
       "language": "fi",
-      "duration_s": 0.83,
+      "duration_s": 0.58,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:52:17",
       "review": "pending"
@@ -2801,7 +2801,7 @@
       "text": "Tornioon",
       "category": "places_to",
       "language": "fi",
-      "duration_s": 0.888,
+      "duration_s": 0.8,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:52:39",
       "review": "pending"
@@ -2811,7 +2811,7 @@
       "text": "Tornio-Itäiseen",
       "category": "places_to",
       "language": "fi",
-      "duration_s": 2.32,
+      "duration_s": 1.19,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:53:20",
       "review": "pending"
@@ -2821,7 +2821,7 @@
       "text": "Turkuun",
       "category": "places_to",
       "language": "fi",
-      "duration_s": 1.308,
+      "duration_s": 0.68,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T21:15:13",
       "review": "pending"
@@ -2831,7 +2831,7 @@
       "text": "Turun satamaan",
       "category": "places_to",
       "language": "fi",
-      "duration_s": 1.088,
+      "duration_s": 0.84,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:54:34",
       "review": "pending"
@@ -2841,7 +2841,7 @@
       "text": "Tuuriin",
       "category": "places_to",
       "language": "fi",
-      "duration_s": 0.811,
+      "duration_s": 0.73,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:55:00",
       "review": "pending"
@@ -2851,7 +2851,7 @@
       "text": "Uimaharjuun",
       "category": "places_to",
       "language": "fi",
-      "duration_s": 0.926,
+      "duration_s": 0.73,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T21:15:16",
       "review": "pending"
@@ -2861,7 +2861,7 @@
       "text": "Utajärvelle",
       "category": "places_to",
       "language": "fi",
-      "duration_s": 1.15,
+      "duration_s": 0.94,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:56:08",
       "review": "pending"
@@ -2871,7 +2871,7 @@
       "text": "Vaalaan",
       "category": "places_to",
       "language": "fi",
-      "duration_s": 0.781,
+      "duration_s": 0.6,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:56:23",
       "review": "pending"
@@ -2881,7 +2881,7 @@
       "text": "Vaasaan",
       "category": "places_to",
       "language": "fi",
-      "duration_s": 0.973,
+      "duration_s": 0.72,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:56:42",
       "review": "pending"
@@ -2891,7 +2891,7 @@
       "text": "Vammalaan",
       "category": "places_to",
       "language": "fi",
-      "duration_s": 0.858,
+      "duration_s": 0.65,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T21:15:19",
       "review": "pending"
@@ -2901,7 +2901,7 @@
       "text": "Varkauteen",
       "category": "places_to",
       "language": "fi",
-      "duration_s": 1.342,
+      "duration_s": 1.22,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:57:41",
       "review": "pending"
@@ -2911,7 +2911,7 @@
       "text": "Vihantiin",
       "category": "places_to",
       "language": "fi",
-      "duration_s": 0.858,
+      "duration_s": 0.65,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:58:01",
       "review": "pending"
@@ -2921,7 +2921,7 @@
       "text": "Vihtariin",
       "category": "places_to",
       "language": "fi",
-      "duration_s": 1.007,
+      "duration_s": 0.7,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:58:30",
       "review": "pending"
@@ -2931,7 +2931,7 @@
       "text": "Viinijärvelle",
       "category": "places_to",
       "language": "fi",
-      "duration_s": 0.972,
+      "duration_s": 0.84,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:58:47",
       "review": "pending"
@@ -2941,7 +2941,7 @@
       "text": "Vilppulaan",
       "category": "places_to",
       "language": "fi",
-      "duration_s": 1.023,
+      "duration_s": 0.76,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:59:09",
       "review": "pending"
@@ -2951,7 +2951,7 @@
       "text": "Vuonislahteen",
       "category": "places_to",
       "language": "fi",
-      "duration_s": 1.308,
+      "duration_s": 1.1,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:59:24",
       "review": "pending"
@@ -2961,7 +2961,7 @@
       "text": "Ylitornioon",
       "category": "places_to",
       "language": "fi",
-      "duration_s": 0.926,
+      "duration_s": 0.73,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:59:55",
       "review": "pending"
@@ -2971,7 +2971,7 @@
       "text": "Ylivieskaan",
       "category": "places_to",
       "language": "fi",
-      "duration_s": 0.91,
+      "duration_s": 0.82,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T21:00:40",
       "review": "pending"
@@ -2981,7 +2981,7 @@
       "text": "Ähtäriin",
       "category": "places_to",
       "language": "fi",
-      "duration_s": 0.856,
+      "duration_s": 0.75,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T21:01:00",
       "review": "pending"
@@ -2993,7 +2993,7 @@
       "text": "Alavudelta",
       "category": "places_from",
       "language": "fi",
-      "duration_s": 1.259,
+      "duration_s": 0.72,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T21:15:26",
       "review": "pending"
@@ -3003,7 +3003,7 @@
       "text": "Eläinpuisto-Zoosta",
       "category": "places_from",
       "language": "fi",
-      "duration_s": 1.359,
+      "duration_s": 1.24,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:18:51",
       "review": "pending"
@@ -3013,7 +3013,7 @@
       "text": "Enosta",
       "category": "places_from",
       "language": "fi",
-      "duration_s": 1.069,
+      "duration_s": 0.46,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T21:15:34",
       "review": "pending"
@@ -3023,7 +3023,7 @@
       "text": "Haapajärveltä",
       "category": "places_from",
       "language": "fi",
-      "duration_s": 2.016,
+      "duration_s": 1.26,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T21:15:50",
       "review": "pending"
@@ -3033,7 +3033,7 @@
       "text": "Haapamäeltä",
       "category": "places_from",
       "language": "fi",
-      "duration_s": 2.143,
+      "duration_s": 0.83,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:19:28",
       "review": "pending"
@@ -3043,7 +3043,7 @@
       "text": "Haaparannan pohjoiselta asemalta",
       "category": "places_from",
       "language": "fi",
-      "duration_s": 2.353,
+      "duration_s": 2.16,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:19:44",
       "review": "pending"
@@ -3053,7 +3053,7 @@
       "text": "Hankasalmelta",
       "category": "places_from",
       "language": "fi",
-      "duration_s": 1.214,
+      "duration_s": 1.05,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T21:15:54",
       "review": "pending"
@@ -3063,7 +3063,7 @@
       "text": "Harjavallasta",
       "category": "places_from",
       "language": "fi",
-      "duration_s": 0.949,
+      "duration_s": 0.81,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:20:08",
       "review": "pending"
@@ -3073,7 +3073,7 @@
       "text": "Haukivuorelta",
       "category": "places_from",
       "language": "fi",
-      "duration_s": 1.236,
+      "duration_s": 0.98,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:20:31",
       "review": "pending"
@@ -3083,7 +3083,7 @@
       "text": "Heinävedeltä",
       "category": "places_from",
       "language": "fi",
-      "duration_s": 1.35,
+      "duration_s": 0.26,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:20:43",
       "review": "pending"
@@ -3093,7 +3093,7 @@
       "text": "Helsingistä",
       "category": "places_from",
       "language": "fi",
-      "duration_s": 0.878,
+      "duration_s": 0.81,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T21:16:09",
       "review": "pending"
@@ -3103,7 +3103,7 @@
       "text": "Hiirolasta",
       "category": "places_from",
       "language": "fi",
-      "duration_s": 1.008,
+      "duration_s": 0.75,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:21:13",
       "review": "pending"
@@ -3113,7 +3113,7 @@
       "text": "Hillosensalmelta",
       "category": "places_from",
       "language": "fi",
-      "duration_s": 1.243,
+      "duration_s": 1.05,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:21:32",
       "review": "pending"
@@ -3123,7 +3123,7 @@
       "text": "Humppilasta",
       "category": "places_from",
       "language": "fi",
-      "duration_s": 0.917,
+      "duration_s": 0.83,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T21:16:13",
       "review": "pending"
@@ -3133,7 +3133,7 @@
       "text": "Hyvinkään tavara-asemalta",
       "category": "places_from",
       "language": "fi",
-      "duration_s": 1.835,
+      "duration_s": 1.5,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:21:58",
       "review": "pending"
@@ -3143,7 +3143,7 @@
       "text": "Hämeenlinnasta",
       "category": "places_from",
       "language": "fi",
-      "duration_s": 2.508,
+      "duration_s": 2.25,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:22:11",
       "review": "pending"
@@ -3153,7 +3153,7 @@
       "text": "Höljäkästä",
       "category": "places_from",
       "language": "fi",
-      "duration_s": 1.341,
+      "duration_s": 0.66,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:22:28",
       "review": "pending"
@@ -3163,7 +3163,7 @@
       "text": "Iisalmesta",
       "category": "places_from",
       "language": "fi",
-      "duration_s": 0.883,
+      "duration_s": 0.72,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T21:16:23",
       "review": "pending"
@@ -3173,7 +3173,7 @@
       "text": "Imatralta",
       "category": "places_from",
       "language": "fi",
-      "duration_s": 1.023,
+      "duration_s": 0.8,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T21:16:26",
       "review": "pending"
@@ -3183,7 +3183,7 @@
       "text": "Joensuusta",
       "category": "places_from",
       "language": "fi",
-      "duration_s": 1.035,
+      "duration_s": 0.78,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:23:10",
       "review": "pending"
@@ -3193,7 +3193,7 @@
       "text": "Joutsenosta",
       "category": "places_from",
       "language": "fi",
-      "duration_s": 1.02,
+      "duration_s": 0.84,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:23:28",
       "review": "pending"
@@ -3203,7 +3203,7 @@
       "text": "Juupajoelta",
       "category": "places_from",
       "language": "fi",
-      "duration_s": 0.976,
+      "duration_s": 0.75,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T21:16:30",
       "review": "pending"
@@ -3213,7 +3213,7 @@
       "text": "Jyväskylästä",
       "category": "places_from",
       "language": "fi",
-      "duration_s": 1.154,
+      "duration_s": 1.08,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:24:06",
       "review": "pending"
@@ -3223,7 +3223,7 @@
       "text": "Jämsästä",
       "category": "places_from",
       "language": "fi",
-      "duration_s": 0.959,
+      "duration_s": 0.77,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:24:16",
       "review": "pending"
@@ -3233,7 +3233,7 @@
       "text": "Kajaanista",
       "category": "places_from",
       "language": "fi",
-      "duration_s": 2.094,
+      "duration_s": 0.68,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T21:16:52",
       "review": "pending"
@@ -3243,7 +3243,7 @@
       "text": "Kalvitsasta",
       "category": "places_from",
       "language": "fi",
-      "duration_s": 0.937,
+      "duration_s": 0.63,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:24:43",
       "review": "pending"
@@ -3253,7 +3253,7 @@
       "text": "Kannuksesta",
       "category": "places_from",
       "language": "fi",
-      "duration_s": 1.485,
+      "duration_s": 0.74,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:24:53",
       "review": "pending"
@@ -3263,7 +3263,7 @@
       "text": "Karjaalta",
       "category": "places_from",
       "language": "fi",
-      "duration_s": 1.18,
+      "duration_s": 0.86,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:25:06",
       "review": "pending"
@@ -3273,7 +3273,7 @@
       "text": "Karkusta",
       "category": "places_from",
       "language": "fi",
-      "duration_s": 0.86,
+      "duration_s": 0.67,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:25:16",
       "review": "pending"
@@ -3283,7 +3283,7 @@
       "text": "Kauhavalta",
       "category": "places_from",
       "language": "fi",
-      "duration_s": 0.907,
+      "duration_s": 0.69,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:25:24",
       "review": "pending"
@@ -3293,7 +3293,7 @@
       "text": "Kemistä",
       "category": "places_from",
       "language": "fi",
-      "duration_s": 0.763,
+      "duration_s": 0.66,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T21:17:10",
       "review": "pending"
@@ -3303,7 +3303,7 @@
       "text": "Kemijärveltä",
       "category": "places_from",
       "language": "fi",
-      "duration_s": 1.414,
+      "duration_s": 0.86,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:25:57",
       "review": "pending"
@@ -3313,7 +3313,7 @@
       "text": "Kempeleestä",
       "category": "places_from",
       "language": "fi",
-      "duration_s": 1.387,
+      "duration_s": 0.95,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:26:10",
       "review": "pending"
@@ -3323,7 +3323,7 @@
       "text": "Kerimäeltä",
       "category": "places_from",
       "language": "fi",
-      "duration_s": 0.765,
+      "duration_s": 0.71,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:26:23",
       "review": "pending"
@@ -3333,7 +3333,7 @@
       "text": "Kesälahdelta",
       "category": "places_from",
       "language": "fi",
-      "duration_s": 1.669,
+      "duration_s": 0.9,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:26:37",
       "review": "pending"
@@ -3343,7 +3343,7 @@
       "text": "Keuruulta",
       "category": "places_from",
       "language": "fi",
-      "duration_s": 1.879,
+      "duration_s": 1.12,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:26:50",
       "review": "pending"
@@ -3353,7 +3353,7 @@
       "text": "Kirkkonummelta",
       "category": "places_from",
       "language": "fi",
-      "duration_s": 1.269,
+      "duration_s": 0.97,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T21:17:14",
       "review": "pending"
@@ -3363,7 +3363,7 @@
       "text": "Kiteeltä",
       "category": "places_from",
       "language": "fi",
-      "duration_s": 1.028,
+      "duration_s": 0.6,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:27:23",
       "review": "pending"
@@ -3373,7 +3373,7 @@
       "text": "Kiuruvedeltä",
       "category": "places_from",
       "language": "fi",
-      "duration_s": 2.279,
+      "duration_s": 1.01,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:27:37",
       "review": "pending"
@@ -3383,7 +3383,7 @@
       "text": "Kohtavaaralta",
       "category": "places_from",
       "language": "fi",
-      "duration_s": 1.19,
+      "duration_s": 1.05,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T21:17:19",
       "review": "pending"
@@ -3393,7 +3393,7 @@
       "text": "Kokemäeltä",
       "category": "places_from",
       "language": "fi",
-      "duration_s": 1.462,
+      "duration_s": 0.68,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T21:17:23",
       "review": "pending"
@@ -3403,7 +3403,7 @@
       "text": "Kokkolasta",
       "category": "places_from",
       "language": "fi",
-      "duration_s": 1.212,
+      "duration_s": 1.06,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:28:32",
       "review": "pending"
@@ -3413,7 +3413,7 @@
       "text": "Kolarista",
       "category": "places_from",
       "language": "fi",
-      "duration_s": 1.124,
+      "duration_s": 0.84,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:28:44",
       "review": "pending"
@@ -3423,7 +3423,7 @@
       "text": "Kolhosta",
       "category": "places_from",
       "language": "fi",
-      "duration_s": 0.855,
+      "duration_s": 0.64,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:28:53",
       "review": "pending"
@@ -3433,7 +3433,7 @@
       "text": "Kontiomäeltä",
       "category": "places_from",
       "language": "fi",
-      "duration_s": 1.629,
+      "duration_s": 0.96,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T21:17:39",
       "review": "pending"
@@ -3443,7 +3443,7 @@
       "text": "Kouvolasta",
       "category": "places_from",
       "language": "fi",
-      "duration_s": 1.86,
+      "duration_s": 0.79,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:29:39",
       "review": "pending"
@@ -3453,7 +3453,7 @@
       "text": "Kuopiosta",
       "category": "places_from",
       "language": "fi",
-      "duration_s": 0.957,
+      "duration_s": 0.89,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T21:18:03",
       "review": "pending"
@@ -3463,7 +3463,7 @@
       "text": "Kupittaalta",
       "category": "places_from",
       "language": "fi",
-      "duration_s": 1.032,
+      "duration_s": 0.76,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:30:13",
       "review": "pending"
@@ -3473,7 +3473,7 @@
       "text": "Kylänlahdelta",
       "category": "places_from",
       "language": "fi",
-      "duration_s": 1.549,
+      "duration_s": 0.84,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:30:24",
       "review": "pending"
@@ -3483,7 +3483,7 @@
       "text": "Lahdesta",
       "category": "places_from",
       "language": "fi",
-      "duration_s": 0.937,
+      "duration_s": 0.6,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T21:18:06",
       "review": "pending"
@@ -3493,7 +3493,7 @@
       "text": "Lapinlahdelta",
       "category": "places_from",
       "language": "fi",
-      "duration_s": 1.002,
+      "duration_s": 0.93,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:30:52",
       "review": "pending"
@@ -3503,7 +3503,7 @@
       "text": "Lappeenrannasta",
       "category": "places_from",
       "language": "fi",
-      "duration_s": 1.238,
+      "duration_s": 1.12,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:31:10",
       "review": "pending"
@@ -3513,7 +3513,7 @@
       "text": "Lapualta",
       "category": "places_from",
       "language": "fi",
-      "duration_s": 0.82,
+      "duration_s": 0.62,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:31:23",
       "review": "pending"
@@ -3523,7 +3523,7 @@
       "text": "Lempäälästä",
       "category": "places_from",
       "language": "fi",
-      "duration_s": 1.731,
+      "duration_s": 0.7,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T21:18:11",
       "review": "pending"
@@ -3533,7 +3533,7 @@
       "text": "Leppävaarasta",
       "category": "places_from",
       "language": "fi",
-      "duration_s": 1.096,
+      "duration_s": 0.89,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T21:18:14",
       "review": "pending"
@@ -3543,7 +3543,7 @@
       "text": "Lieksasta",
       "category": "places_from",
       "language": "fi",
-      "duration_s": 0.901,
+      "duration_s": 0.66,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:32:36",
       "review": "pending"
@@ -3553,7 +3553,7 @@
       "text": "Lievestuoreelta",
       "category": "places_from",
       "language": "fi",
-      "duration_s": 1.136,
+      "duration_s": 0.92,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:32:50",
       "review": "pending"
@@ -3563,7 +3563,7 @@
       "text": "Lohjalta",
       "category": "places_from",
       "language": "fi",
-      "duration_s": 1.228,
+      "duration_s": 0.69,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:33:11",
       "review": "pending"
@@ -3573,7 +3573,7 @@
       "text": "Loimaalta",
       "category": "places_from",
       "language": "fi",
-      "duration_s": 0.756,
+      "duration_s": 0.54,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T21:18:29",
       "review": "pending"
@@ -3583,7 +3583,7 @@
       "text": "Lustosta",
       "category": "places_from",
       "language": "fi",
-      "duration_s": 1.349,
+      "duration_s": 0.89,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T21:18:33",
       "review": "pending"
@@ -3593,7 +3593,7 @@
       "text": "Mikkelistä",
       "category": "places_from",
       "language": "fi",
-      "duration_s": 0.869,
+      "duration_s": 0.78,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T21:18:37",
       "review": "pending"
@@ -3603,7 +3603,7 @@
       "text": "Misistä",
       "category": "places_from",
       "language": "fi",
-      "duration_s": 0.878,
+      "duration_s": 0.58,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:34:30",
       "review": "pending"
@@ -3613,7 +3613,7 @@
       "text": "Muhokselta",
       "category": "places_from",
       "language": "fi",
-      "duration_s": 0.986,
+      "duration_s": 0.77,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:34:42",
       "review": "pending"
@@ -3623,7 +3623,7 @@
       "text": "Mustiosta",
       "category": "places_from",
       "language": "fi",
-      "duration_s": 0.962,
+      "duration_s": 0.9,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:34:55",
       "review": "pending"
@@ -3633,7 +3633,7 @@
       "text": "Muurolasta",
       "category": "places_from",
       "language": "fi",
-      "duration_s": 1.137,
+      "duration_s": 0.82,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:35:09",
       "review": "pending"
@@ -3643,7 +3643,7 @@
       "text": "Myllymäeltä",
       "category": "places_from",
       "language": "fi",
-      "duration_s": 1.863,
+      "duration_s": 0.97,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:35:23",
       "review": "pending"
@@ -3653,7 +3653,7 @@
       "text": "Mäntyharjulta",
       "category": "places_from",
       "language": "fi",
-      "duration_s": 1.119,
+      "duration_s": 0.95,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T21:18:40",
       "review": "pending"
@@ -3663,7 +3663,7 @@
       "text": "Nivalasta",
       "category": "places_from",
       "language": "fi",
-      "duration_s": 0.89,
+      "duration_s": 0.71,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:36:18",
       "review": "pending"
@@ -3673,7 +3673,7 @@
       "text": "Nokialta",
       "category": "places_from",
       "language": "fi",
-      "duration_s": 0.981,
+      "duration_s": 0.8,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T21:18:43",
       "review": "pending"
@@ -3683,7 +3683,7 @@
       "text": "Nummelasta",
       "category": "places_from",
       "language": "fi",
-      "duration_s": 1.606,
+      "duration_s": 0.9,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T21:18:48",
       "review": "pending"
@@ -3693,7 +3693,7 @@
       "text": "Nurmeksesta",
       "category": "places_from",
       "language": "fi",
-      "duration_s": 1.203,
+      "duration_s": 0.99,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:37:29",
       "review": "pending"
@@ -3703,7 +3703,7 @@
       "text": "Orivedeltä",
       "category": "places_from",
       "language": "fi",
-      "duration_s": 0.924,
+      "duration_s": 0.69,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T21:18:55",
       "review": "pending"
@@ -3713,7 +3713,7 @@
       "text": "Oriveden keskustasta",
       "category": "places_from",
       "language": "fi",
-      "duration_s": 1.411,
+      "duration_s": 1.28,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:38:04",
       "review": "pending"
@@ -3723,7 +3723,7 @@
       "text": "Otavasta",
       "category": "places_from",
       "language": "fi",
-      "duration_s": 0.957,
+      "duration_s": 0.74,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:38:17",
       "review": "pending"
@@ -3733,7 +3733,7 @@
       "text": "Oulaisista",
       "category": "places_from",
       "language": "fi",
-      "duration_s": 2.039,
+      "duration_s": 0.79,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:38:34",
       "review": "pending"
@@ -3743,7 +3743,7 @@
       "text": "Oulusta",
       "category": "places_from",
       "language": "fi",
-      "duration_s": 1.123,
+      "duration_s": 0.63,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T21:19:12",
       "review": "pending"
@@ -3753,7 +3753,7 @@
       "text": "Paltamosta",
       "category": "places_from",
       "language": "fi",
-      "duration_s": 1.476,
+      "duration_s": 0.66,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T21:19:37",
       "review": "pending"
@@ -3763,7 +3763,7 @@
       "text": "Parikkalasta",
       "category": "places_from",
       "language": "fi",
-      "duration_s": 1.719,
+      "duration_s": 0.8,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T21:19:43",
       "review": "pending"
@@ -3773,7 +3773,7 @@
       "text": "Parkanosta",
       "category": "places_from",
       "language": "fi",
-      "duration_s": 1.619,
+      "duration_s": 0.8,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:39:46",
       "review": "pending"
@@ -3783,7 +3783,7 @@
       "text": "Pasilasta",
       "category": "places_from",
       "language": "fi",
-      "duration_s": 1.204,
+      "duration_s": 0.65,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:40:06",
       "review": "pending"
@@ -3793,7 +3793,7 @@
       "text": "Pellosta",
       "category": "places_from",
       "language": "fi",
-      "duration_s": 1.01,
+      "duration_s": 0.53,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:40:29",
       "review": "pending"
@@ -3803,7 +3803,7 @@
       "text": "Petäjävedeltä",
       "category": "places_from",
       "language": "fi",
-      "duration_s": 0.888,
+      "duration_s": 0.8,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T21:19:47",
       "review": "pending"
@@ -3813,7 +3813,7 @@
       "text": "Pieksämäeltä",
       "category": "places_from",
       "language": "fi",
-      "duration_s": 1.933,
+      "duration_s": 0.99,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:41:34",
       "review": "pending"
@@ -3823,7 +3823,7 @@
       "text": "Pihlajavedeltä",
       "category": "places_from",
       "language": "fi",
-      "duration_s": 1.228,
+      "duration_s": 1.03,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:41:48",
       "review": "pending"
@@ -3833,7 +3833,7 @@
       "text": "Porista",
       "category": "places_from",
       "language": "fi",
-      "duration_s": 1.007,
+      "duration_s": 0.56,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:42:17",
       "review": "pending"
@@ -3843,7 +3843,7 @@
       "text": "Punkaharjulta",
       "category": "places_from",
       "language": "fi",
-      "duration_s": 1.559,
+      "duration_s": 0.89,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:42:37",
       "review": "pending"
@@ -3853,7 +3853,7 @@
       "text": "Pyhäsalmelta",
       "category": "places_from",
       "language": "fi",
-      "duration_s": 1.227,
+      "duration_s": 0.97,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T21:19:51",
       "review": "pending"
@@ -3863,7 +3863,7 @@
       "text": "Pännäisistä",
       "category": "places_from",
       "language": "fi",
-      "duration_s": 0.899,
+      "duration_s": 0.74,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T21:19:54",
       "review": "pending"
@@ -3873,7 +3873,7 @@
       "text": "Pääskylahdelta",
       "category": "places_from",
       "language": "fi",
-      "duration_s": 1.893,
+      "duration_s": 0.84,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:43:35",
       "review": "pending"
@@ -3883,7 +3883,7 @@
       "text": "Rajamäeltä",
       "category": "places_from",
       "language": "fi",
-      "duration_s": 0.835,
+      "duration_s": 0.69,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T21:19:57",
       "review": "pending"
@@ -3893,7 +3893,7 @@
       "text": "Retretistä",
       "category": "places_from",
       "language": "fi",
-      "duration_s": 1.311,
+      "duration_s": 1.03,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:44:27",
       "review": "pending"
@@ -3903,7 +3903,7 @@
       "text": "Riihimäeltä",
       "category": "places_from",
       "language": "fi",
-      "duration_s": 1.172,
+      "duration_s": 0.93,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T21:20:12",
       "review": "pending"
@@ -3913,7 +3913,7 @@
       "text": "Rovaniemeltä",
       "category": "places_from",
       "language": "fi",
-      "duration_s": 2.174,
+      "duration_s": 0.79,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T21:20:19",
       "review": "pending"
@@ -3923,7 +3923,7 @@
       "text": "Runnilta",
       "category": "places_from",
       "language": "fi",
-      "duration_s": 0.86,
+      "duration_s": 0.59,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:45:34",
       "review": "pending"
@@ -3933,7 +3933,7 @@
       "text": "Ruukista",
       "category": "places_from",
       "language": "fi",
-      "duration_s": 0.999,
+      "duration_s": 0.67,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T21:20:22",
       "review": "pending"
@@ -3943,7 +3943,7 @@
       "text": "Salosta",
       "category": "places_from",
       "language": "fi",
-      "duration_s": 0.77,
+      "duration_s": 0.59,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T21:20:30",
       "review": "pending"
@@ -3953,7 +3953,7 @@
       "text": "Savonlinnasta",
       "category": "places_from",
       "language": "fi",
-      "duration_s": 2.056,
+      "duration_s": 1.04,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:47:03",
       "review": "pending"
@@ -3963,7 +3963,7 @@
       "text": "Seinäjoelta",
       "category": "places_from",
       "language": "fi",
-      "duration_s": 1.138,
+      "duration_s": 0.89,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T21:20:34",
       "review": "pending"
@@ -3973,7 +3973,7 @@
       "text": "Siilinjärveltä",
       "category": "places_from",
       "language": "fi",
-      "duration_s": 1.409,
+      "duration_s": 1.12,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T21:20:42",
       "review": "pending"
@@ -3983,7 +3983,7 @@
       "text": "Simpeleeltä",
       "category": "places_from",
       "language": "fi",
-      "duration_s": 1.045,
+      "duration_s": 0.79,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:48:50",
       "review": "pending"
@@ -3993,7 +3993,7 @@
       "text": "Sukevalta",
       "category": "places_from",
       "language": "fi",
-      "duration_s": 1.069,
+      "duration_s": 0.61,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:49:05",
       "review": "pending"
@@ -4003,7 +4003,7 @@
       "text": "Suolahdesta",
       "category": "places_from",
       "language": "fi",
-      "duration_s": 1.019,
+      "duration_s": 0.8,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T21:20:46",
       "review": "pending"
@@ -4013,7 +4013,7 @@
       "text": "Suonenjoelta",
       "category": "places_from",
       "language": "fi",
-      "duration_s": 2.037,
+      "duration_s": 0.81,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T21:21:18",
       "review": "pending"
@@ -4023,7 +4023,7 @@
       "text": "Tampereelta",
       "category": "places_from",
       "language": "fi",
-      "duration_s": 1.065,
+      "duration_s": 0.86,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:50:27",
       "review": "pending"
@@ -4033,7 +4033,7 @@
       "text": "Tervajoelta",
       "category": "places_from",
       "language": "fi",
-      "duration_s": 1.745,
+      "duration_s": 0.88,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:50:46",
       "review": "pending"
@@ -4043,7 +4043,7 @@
       "text": "Tervolasta",
       "category": "places_from",
       "language": "fi",
-      "duration_s": 1.98,
+      "duration_s": 0.69,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:51:15",
       "review": "pending"
@@ -4053,7 +4053,7 @@
       "text": "Tesomalta",
       "category": "places_from",
       "language": "fi",
-      "duration_s": 1.062,
+      "duration_s": 0.81,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T21:21:42",
       "review": "pending"
@@ -4063,7 +4063,7 @@
       "text": "Tikkurilasta",
       "category": "places_from",
       "language": "fi",
-      "duration_s": 1.588,
+      "duration_s": 0.87,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:52:09",
       "review": "pending"
@@ -4073,7 +4073,7 @@
       "text": "Toijalasta",
       "category": "places_from",
       "language": "fi",
-      "duration_s": 1.298,
+      "duration_s": 0.69,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T21:21:55",
       "review": "pending"
@@ -4083,7 +4083,7 @@
       "text": "Torniosta",
       "category": "places_from",
       "language": "fi",
-      "duration_s": 1.23,
+      "duration_s": 0.98,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T21:21:59",
       "review": "pending"
@@ -4093,7 +4093,7 @@
       "text": "Tornio-Itäisestä",
       "category": "places_from",
       "language": "fi",
-      "duration_s": 1.472,
+      "duration_s": 1.26,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T21:22:03",
       "review": "pending"
@@ -4103,7 +4103,7 @@
       "text": "Turusta",
       "category": "places_from",
       "language": "fi",
-      "duration_s": 1.345,
+      "duration_s": 0.74,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T21:22:14",
       "review": "pending"
@@ -4113,7 +4113,7 @@
       "text": "Turun satamasta",
       "category": "places_from",
       "language": "fi",
-      "duration_s": 1.429,
+      "duration_s": 1.12,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T21:22:31",
       "review": "pending"
@@ -4123,7 +4123,7 @@
       "text": "Tuurista",
       "category": "places_from",
       "language": "fi",
-      "duration_s": 1.588,
+      "duration_s": 0.53,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T21:22:51",
       "review": "pending"
@@ -4133,7 +4133,7 @@
       "text": "Uimaharjusta",
       "category": "places_from",
       "language": "fi",
-      "duration_s": 1.121,
+      "duration_s": 0.95,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:55:42",
       "review": "pending"
@@ -4143,7 +4143,7 @@
       "text": "Utajärveltä",
       "category": "places_from",
       "language": "fi",
-      "duration_s": 1.107,
+      "duration_s": 0.86,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:56:15",
       "review": "pending"
@@ -4153,7 +4153,7 @@
       "text": "Vaalasta",
       "category": "places_from",
       "language": "fi",
-      "duration_s": 1.087,
+      "duration_s": 0.87,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:56:29",
       "review": "pending"
@@ -4163,7 +4163,7 @@
       "text": "Vaasasta",
       "category": "places_from",
       "language": "fi",
-      "duration_s": 1.267,
+      "duration_s": 0.68,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:56:48",
       "review": "pending"
@@ -4173,7 +4173,7 @@
       "text": "Vammalasta",
       "category": "places_from",
       "language": "fi",
-      "duration_s": 0.795,
+      "duration_s": 0.56,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:57:26",
       "review": "pending"
@@ -4183,7 +4183,7 @@
       "text": "Varkaudesta",
       "category": "places_from",
       "language": "fi",
-      "duration_s": 1.014,
+      "duration_s": 0.86,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:57:49",
       "review": "pending"
@@ -4193,7 +4193,7 @@
       "text": "Vihannista",
       "category": "places_from",
       "language": "fi",
-      "duration_s": 0.913,
+      "duration_s": 0.75,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:58:06",
       "review": "pending"
@@ -4203,7 +4203,7 @@
       "text": "Vihtarista",
       "category": "places_from",
       "language": "fi",
-      "duration_s": 1.324,
+      "duration_s": 1.09,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:58:36",
       "review": "pending"
@@ -4213,7 +4213,7 @@
       "text": "Viinijärveltä",
       "category": "places_from",
       "language": "fi",
-      "duration_s": 2.281,
+      "duration_s": 0.98,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:58:59",
       "review": "pending"
@@ -4223,7 +4223,7 @@
       "text": "Vilppulasta",
       "category": "places_from",
       "language": "fi",
-      "duration_s": 1.022,
+      "duration_s": 0.77,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T20:59:14",
       "review": "pending"
@@ -4233,7 +4233,7 @@
       "text": "Vuonislahdesta",
       "category": "places_from",
       "language": "fi",
-      "duration_s": 1.103,
+      "duration_s": 0.97,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T21:23:07",
       "review": "pending"
@@ -4243,7 +4243,7 @@
       "text": "Ylitorniosta",
       "category": "places_from",
       "language": "fi",
-      "duration_s": 1.228,
+      "duration_s": 0.95,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T21:23:11",
       "review": "pending"
@@ -4253,7 +4253,7 @@
       "text": "Ylivieskasta",
       "category": "places_from",
       "language": "fi",
-      "duration_s": 1.098,
+      "duration_s": 0.95,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T21:00:48",
       "review": "pending"
@@ -4263,7 +4263,7 @@
       "text": "Ähtäristä",
       "category": "places_from",
       "language": "fi",
-      "duration_s": 0.937,
+      "duration_s": 0.81,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T21:01:05",
       "review": "pending"
@@ -4275,7 +4275,7 @@
       "text": "InterCity",
       "category": "train_types",
       "language": "fi",
-      "duration_s": 0.922,
+      "duration_s": 0.73,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T21:01:10",
       "train_type": "IC",
@@ -4286,7 +4286,7 @@
       "text": "Pen-do-li-no",
       "category": "train_types",
       "language": "fi",
-      "duration_s": 1.0,
+      "duration_s": 0.78,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T22:06:14",
       "train_type": "S",
@@ -4298,7 +4298,7 @@
       "text": "yöjuna",
       "category": "train_types",
       "language": "fi",
-      "duration_s": 0.802,
+      "duration_s": 0.5,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T21:01:23",
       "train_type": "PYO",
@@ -4309,7 +4309,7 @@
       "text": "taajamajuna",
       "category": "train_types",
       "language": "fi",
-      "duration_s": 1.369,
+      "duration_s": 0.83,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T21:01:30",
       "train_type": "H",
@@ -4321,7 +4321,7 @@
       "text": "museojuna",
       "category": "train_types",
       "language": "fi",
-      "duration_s": 0.913,
+      "duration_s": 0.69,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T22:06:14",
       "train_type": "MUS",
@@ -4332,7 +4332,7 @@
       "text": "Pendolino Plus",
       "category": "train_types",
       "language": "fi",
-      "duration_s": 1.277,
+      "duration_s": 1.08,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T21:54:28",
       "train_type": "SP",
@@ -4343,7 +4343,7 @@
       "text": "kiskobussi",
       "category": "train_types",
       "language": "fi",
-      "duration_s": 0.923,
+      "duration_s": 0.78,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T21:51:38",
       "train_type": "HDM",
@@ -4354,7 +4354,7 @@
       "text": "lähi-juna",
       "category": "train_types",
       "language": "fi",
-      "duration_s": 0.849,
+      "duration_s": 0.61,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T22:06:14",
       "train_type": "",
@@ -4369,7 +4369,7 @@
       "text": "raide",
       "category": "platforms",
       "language": "fi",
-      "duration_s": 0.91,
+      "duration_s": 0.54,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T21:23:40",
       "review": "pending"
@@ -4379,7 +4379,7 @@
       "text": "raiteelle",
       "category": "platforms",
       "language": "fi",
-      "duration_s": 1.361,
+      "duration_s": 0.6,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T21:02:12",
       "review": "pending"
@@ -4389,7 +4389,7 @@
       "text": "raiteelta",
       "category": "platforms",
       "language": "fi",
-      "duration_s": 1.903,
+      "duration_s": 0.79,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T21:02:20",
       "review": "pending"
@@ -4401,7 +4401,7 @@
       "text": "Hyvät matkustajat.",
       "category": "phrases",
       "language": "fi",
-      "duration_s": 1.42,
+      "duration_s": 1.03,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T21:02:30",
       "review": "pending"
@@ -4411,7 +4411,7 @@
       "text": "saapuu",
       "category": "phrases",
       "language": "fi",
-      "duration_s": 1.335,
+      "duration_s": 1.16,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T21:02:36",
       "review": "pending"
@@ -4421,7 +4421,7 @@
       "text": "lähtee",
       "category": "phrases",
       "language": "fi",
-      "duration_s": 0.591,
+      "duration_s": 0.52,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T21:02:40",
       "review": "pending"
@@ -4431,7 +4431,7 @@
       "text": "Seuraava juna",
       "category": "phrases",
       "language": "fi",
-      "duration_s": 2.14,
+      "duration_s": 0.93,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T21:23:59",
       "review": "pending"
@@ -4441,7 +4441,7 @@
       "text": "määränpää",
       "category": "phrases",
       "language": "fi",
-      "duration_s": 1.943,
+      "duration_s": 1.04,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T21:03:00",
       "review": "pending"
@@ -4451,7 +4451,7 @@
       "text": "lähtöasema",
       "category": "phrases",
       "language": "fi",
-      "duration_s": 2.019,
+      "duration_s": 0.78,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T21:03:11",
       "review": "pending"
@@ -4461,7 +4461,7 @@
       "text": "on myöhässä noin",
       "category": "phrases",
       "language": "fi",
-      "duration_s": 1.4,
+      "duration_s": 1.14,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T21:03:17",
       "review": "pending"
@@ -4471,7 +4471,7 @@
       "text": "minuuttia",
       "category": "phrases",
       "language": "fi",
-      "duration_s": 1.67,
+      "duration_s": 0.68,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T21:03:24",
       "review": "pending"
@@ -4481,7 +4481,7 @@
       "text": "Kiitos.",
       "category": "phrases",
       "language": "fi",
-      "duration_s": 0.791,
+      "duration_s": 0.55,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T21:24:07",
       "review": "pending"
@@ -4493,22 +4493,20 @@
       "text": "",
       "category": "connectors",
       "language": "fi",
-      "duration_s": 0.25,
+      "duration_s": 0.12,
       "voice": "female/eeva.wav",
-      "accepted_at": "2026-10-01T21:03:40",
-      "seconds": 0.25,
-      "review": "pending"
+      "accepted_at": "2026-10-01T22:28:41",
+      "seconds": 0.12
     },
     "pause_medium": {
       "file": "connectors/pause_medium.ogg",
       "text": "",
       "category": "connectors",
       "language": "fi",
-      "duration_s": 0.5,
+      "duration_s": 0.4,
       "voice": "female/eeva.wav",
-      "accepted_at": "2026-10-01T21:03:40",
-      "seconds": 0.5,
-      "review": "pending"
+      "accepted_at": "2026-10-01T22:28:41",
+      "seconds": 0.4
     },
     "pause_long": {
       "file": "connectors/pause_long.ogg",
@@ -4517,9 +4515,8 @@
       "language": "fi",
       "duration_s": 1.0,
       "voice": "female/eeva.wav",
-      "accepted_at": "2026-10-01T21:03:40",
-      "seconds": 1.0,
-      "review": "pending"
+      "accepted_at": "2026-10-01T22:28:41",
+      "seconds": 1.0
     }
   },
   "sample_rate": 24000,
@@ -4529,7 +4526,7 @@
       "text": "dee",
       "category": "lines",
       "language": "fi",
-      "duration_s": 0.612,
+      "duration_s": 0.36,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T22:06:14",
       "line": "D",
@@ -4540,7 +4537,7 @@
       "text": "gee",
       "category": "lines",
       "language": "fi",
-      "duration_s": 1.48,
+      "duration_s": 0.51,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T22:06:15",
       "line": "G",
@@ -4551,7 +4548,7 @@
       "text": "hoo.",
       "category": "lines",
       "language": "fi",
-      "duration_s": 0.583,
+      "duration_s": 0.34,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T22:06:32",
       "line": "H",
@@ -4563,7 +4560,7 @@
       "text": "äm",
       "category": "lines",
       "language": "fi",
-      "duration_s": 0.634,
+      "duration_s": 0.47,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T21:55:02",
       "line": "M",
@@ -4574,7 +4571,7 @@
       "text": "oo",
       "category": "lines",
       "language": "fi",
-      "duration_s": 0.824,
+      "duration_s": 0.45,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T22:06:15",
       "line": "O",
@@ -4585,7 +4582,7 @@
       "text": "är",
       "category": "lines",
       "language": "fi",
-      "duration_s": 1.543,
+      "duration_s": 0.41,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T22:06:15",
       "line": "R",
@@ -4596,7 +4593,7 @@
       "text": "tee",
       "category": "lines",
       "language": "fi",
-      "duration_s": 0.619,
+      "duration_s": 0.41,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T22:06:15",
       "line": "T",
@@ -4607,7 +4604,7 @@
       "text": "tseta",
       "category": "lines",
       "language": "fi",
-      "duration_s": 0.777,
+      "duration_s": 0.45,
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T22:06:15",
       "line": "Z",
