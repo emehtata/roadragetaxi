@@ -429,7 +429,7 @@ Everything level-aware (drawing, driving, collisions) follows
   `LevelTransitions` and the level-aware systems it drives, not through a
   full `advance_simulation` run.
 
-## Phase 10: level-relevant underground roads (garage-09.md, 2026-10-01)
+## Phase 10: level-relevant underground roads (garage-09.md, commit `d4cc242`, 2026-10-01)
 
 Phase 9 left 7 Oulu parking entrances unresolved because a referenced road
 had been dropped at import. This phase audited each of them.
