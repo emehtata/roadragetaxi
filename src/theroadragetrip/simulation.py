@@ -307,6 +307,16 @@ def advance_simulation(
             red_light_limit_mps if speed_limit_mps is None else min(speed_limit_mps, red_light_limit_mps)
         )
 
+    # Soft streaming boundary: ease off near tiles still being fetched
+    # instead of blocking the game behind a loading screen.
+    auto_fetch_manager = getattr(world, "auto_fetch_manager", None)
+    if auto_fetch_manager is not None and not on_foot:
+        streaming_cap_mps = auto_fetch_manager.streaming_speed_cap_mps(
+            car.x, car.y, math.cos(car.heading) * car.speed, math.sin(car.heading) * car.speed,
+        )
+        if streaming_cap_mps is not None:
+            speed_limit_mps = streaming_cap_mps if speed_limit_mps is None else min(speed_limit_mps, streaming_cap_mps)
+
     previous_position = (car.x, car.y)
     # Off-road driving is allowed at a reduced speed.
     if not on_foot:

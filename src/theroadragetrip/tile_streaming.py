@@ -56,5 +56,20 @@ def active_tiles(center: TileCoord) -> frozenset[TileCoord]:
     )
 
 
+def lookahead_tiles(
+    x: float, y: float, vx: float, vy: float, horizon_s: float, max_tiles: int,
+) -> frozenset[TileCoord]:
+    """Tiles along the direction of travel beyond the 3x3 active window -
+    none when slow/stationary, up to max_tiles when fast. Starts at two
+    tiles out: anything one tile out is already inside the 3x3."""
+    speed = math.hypot(vx, vy)
+    count = min(max_tiles, int(speed * horizon_s / TILE_SIZE_M))
+    if count < 1:
+        return frozenset()
+    step_x = vx / speed * TILE_SIZE_M
+    step_y = vy / speed * TILE_SIZE_M
+    return frozenset(world_to_tile(x + step_x * k, y + step_y * k) for k in range(2, count + 2))
+
+
 def tile_changes(previous: set[TileCoord], current: set[TileCoord]) -> tuple[set[TileCoord], set[TileCoord]]:
     return current - previous, previous - current

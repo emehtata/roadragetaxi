@@ -8,7 +8,7 @@ from typing import List, Optional, Set, Tuple
 
 
 from ..performance import advance_chunked
-from ..tile_streaming import TileCoord, active_tiles, tile_bbox, tile_changes, world_to_tile
+from ..tile_streaming import TileCoord, active_tiles, lookahead_tiles, tile_bbox, tile_changes, world_to_tile
 
 logger = logging.getLogger(__name__)
 
@@ -175,6 +175,19 @@ class _TileMergeJob:
 
 
 DEFAULT_TILE_MEMORY_BUDGET_MB = 768.0
+# Predictive streaming (osm-stream-00.md): how far ahead, in seconds of
+# travel at the current speed, to request tiles beyond the 3x3 window.
+# ~90s covers a slow Overpass round trip plus the budgeted merge; capped so
+# a fast car never asks for more than a few extra tiles.
+LOOKAHEAD_HORIZON_S = 90.0
+MAX_LOOKAHEAD_TILES = 3
+# Soft boundary: probe this far ahead along the velocity for the first
+# unloaded tile and cap speed in proportion to its distance, never below
+# the floor - the player slows near missing data, never hits a wall.
+SOFT_BOUNDARY_PROBE_STEP_M = 100.0
+SOFT_BOUNDARY_PROBE_STEPS = 6
+SOFT_BOUNDARY_MPS_PER_M = 0.08
+SOFT_BOUNDARY_MIN_SPEED_MPS = 8.0
 # Without /proc (no live memory reading available), fall back to a hard
 # ceiling on how many inactive tiles can stay resident, so behavior is still
 # bounded rather than growing without limit.
@@ -327,6 +340,9 @@ class AutoFetchManager:
         self._inactive_tile_since: dict[TileCoord, float] = {}
         self.tile_memory_budget_mb = tile_memory_budget_mb
         self.last_process_memory_mb: Optional[float] = None
+        # Off unless runtime streaming is on (main sets it from
+        # --auto-fetch): without streaming the startup bounds are the map.
+        self.soft_boundary_enabled = False
         # Load known dead-end boundaries from disk cache
         self.dead_ends: List[dict] = []
 
@@ -372,29 +388,53 @@ class AutoFetchManager:
                 "tile_load_ms": self.last_tile_load_ms,
                 "tile_integration_ms": self.last_tile_integration_ms,
                 "tile_unload_ms": self.last_tile_unload_ms,
+                "tiles_active": len(self.active_tiles),
+                "tiles_fetching": self.is_fetching,
             }
 
+    def streaming_speed_cap_mps(self, x: float, y: float, vx: float, vy: float) -> Optional[float]:
+        """Speed cap while driving toward a tile that isn't loaded yet, or
+        None when the probed path ahead is all loaded. A handful of set
+        lookups per frame; loaded_tiles is only mutated on the main thread."""
+        speed = math.hypot(vx, vy)
+        if not self.soft_boundary_enabled or speed < 1.0:
+            return None
+        ux, uy = vx / speed, vy / speed
+        for step in range(SOFT_BOUNDARY_PROBE_STEPS + 1):
+            distance = step * SOFT_BOUNDARY_PROBE_STEP_M
+            if world_to_tile(x + ux * distance, y + uy * distance) not in self.loaded_tiles:
+                return max(SOFT_BOUNDARY_MIN_SPEED_MPS, distance * SOFT_BOUNDARY_MPS_PER_M)
+        return None
+
     def update_player_tile(
-        self, x: float, y: float,
+        self, x: float, y: float, vx: float = 0.0, vy: float = 0.0,
     ) -> Optional[tuple[TileCoord, set[TileCoord], set[TileCoord]]]:
-        """Return tile additions/removals only when the player changes tile."""
+        """Return tile additions/removals when the player changes tile, or
+        additions when the velocity lookahead reaches a new tile. Within one
+        tile lookahead tiles only accumulate, so steering jitter never drops
+        a lookahead tile whose fetch is already in flight."""
         current_tile = world_to_tile(x, y)
+        ahead = lookahead_tiles(x, y, vx, vy, LOOKAHEAD_HORIZON_S, MAX_LOOKAHEAD_TILES)
         with self.lock:
             if self.start_tile is None:
                 self.start_tile = current_tile
             if current_tile == self.player_tile:
-                return None
+                added = ahead - self.active_tiles
+                if not added:
+                    return None
+                self.active_tiles = self.active_tiles | added
+                return current_tile, set(added), set()
             previous_tiles = self.active_tiles
-            current_tiles = set(active_tiles(current_tile))
+            current_tiles = set(active_tiles(current_tile)) | ahead
             added, removed = tile_changes(previous_tiles, current_tiles)
             self.player_tile = current_tile
             self.active_tiles = current_tiles
             return current_tile, added, removed
 
-    def start_tile_streaming(self, x: float, y: float) -> bool:
+    def start_tile_streaming(self, x: float, y: float, vx: float = 0.0, vy: float = 0.0) -> bool:
         """Load newly required tiles in a background thread."""
         previous_player_tile = self.player_tile
-        transition = self.update_player_tile(x, y)
+        transition = self.update_player_tile(x, y, vx, vy)
         with self.lock:
             if transition is not None:
                 _, _, removed = transition
@@ -422,14 +462,19 @@ class AutoFetchManager:
                 or wall_time - self.last_fetch_time < self.cooldown_s
             ):
                 return False
+            current_tile = self.player_tile
+            core_tiles = active_tiles(current_tile)
+            # Priority: the 3x3 around the player first; lookahead tiles
+            # only once it's complete, as their own narrow request.
+            missing_core = missing & core_tiles
+            missing = missing_core or missing
             self.pending_tiles.update(missing)
             self.is_fetching = True
             self.fetch_progress = 0.0
             self.fetch_message = ""
             self.last_fetch_time = wall_time
-            request_tiles = set(self.active_tiles)
-            current_tile = self.player_tile
-            if previous_player_tile is not None and current_tile is not None:
+            request_tiles = set(core_tiles) if missing_core else set(missing)
+            if missing_core and previous_player_tile is not None and current_tile is not None:
                 delta_x = current_tile.x - previous_player_tile.x
                 delta_y = current_tile.y - previous_player_tile.y
                 if delta_x and not delta_y:

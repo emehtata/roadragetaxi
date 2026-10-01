@@ -990,6 +990,7 @@ def _load_world(
         world_cache_manager=world_cache,
     )
     auto_fetch_manager.initialize_player_tile(car.x, car.y)
+    auto_fetch_manager.soft_boundary_enabled = args.auto_fetch
     on_load_progress(1.0, "Ready")
     logger.info("Entering gameplay loop")
 
@@ -1044,41 +1045,6 @@ def _load_world(
         ways=ways,
         world_cache=world_cache,
     )
-
-
-def _wait_for_active_tile_fetch(
-    auto_fetch_manager,
-    clock,
-    screen,
-    font,
-    language: str,
-) -> None:
-    """Block behind a full loading screen for as long as a tile fetch is in
-    flight - no small in-HUD progress bar, no gameplay resuming mid-fetch.
-
-    Called right after triggering a background tile fetch, instead of
-    letting the player keep driving and potentially cross into yet another
-    tile before this one even lands - stacking up simultaneous Overpass
-    requests is exactly what draws rate limits. Waits for as long as it
-    takes: the underlying HTTP request already carries its own 60s-per-
-    attempt timeout (osm/overpass.py), so this can't hang forever even
-    without its own deadline - and cutting it off early here would be
-    exactly the "resume with an incomplete fetch, show a small bar
-    instead" behavior this replaces.
-    """
-    while auto_fetch_manager.get_fetching():
-        clock.tick(30)
-        for wait_event in pygame.event.get():
-            if wait_event.type == pygame.QUIT:
-                pygame.quit()
-                sys.exit(0)
-        draw_loading_screen(
-            screen, font, auto_fetch_manager.get_progress(),
-            auto_fetch_manager.get_progress_message() or tr(language, "loading_osm"),
-            language=language,
-        )
-        pygame.display.flip()
-    clock.tick()  # Don't let dt jump on the frame after waiting.
 
 
 # bin-loader-v10.md: the world is ~0.8-1.3M long-lived, acyclic tracked
@@ -2296,6 +2262,8 @@ def main() -> None:
             frame_profiler.set_metric("current_tile_y", current_tile.y if current_tile else 0)
             frame_profiler.set_metric("tiles_in_memory", tile_metrics["tiles_in_memory"])
             frame_profiler.set_metric("tiles_pending", tile_metrics["tiles_pending"])
+            frame_profiler.set_metric("tiles_active", tile_metrics["tiles_active"])
+            frame_profiler.set_metric("tiles_fetching", int(tile_metrics["tiles_fetching"]))
             frame_profiler.set_metric("tile_load_ms", tile_metrics["tile_load_ms"])
             frame_profiler.set_metric("tile_integration_ms", tile_metrics["tile_integration_ms"])
             frame_profiler.set_metric("tile_unload_ms", tile_metrics["tile_unload_ms"])
@@ -2419,7 +2387,10 @@ def main() -> None:
                 # every other stale-until-ready structure.
                 with frame_profiler.section("map_sync:tile_integration"):
                     auto_fetch_manager.integrate_completed_tiles(budget_s=TILE_MERGE_BUDGET_S)
-                started = auto_fetch_manager.start_tile_streaming(car.x, car.y)
+                started = auto_fetch_manager.start_tile_streaming(
+                    car.x, car.y,
+                    math.cos(car.heading) * car.speed, math.sin(car.heading) * car.speed,
+                )
                 if auto_fetch_manager.get_map_revision() != revision_before_stream:
                     invalidate_static_caches()
                 if started:
@@ -2429,7 +2400,6 @@ def main() -> None:
                         car.y,
                         auto_fetch_manager.player_tile,
                     )
-                    _wait_for_active_tile_fetch(auto_fetch_manager, clock, screen, font, language)
                 any_grid_stale = (
                     len(ways) != spatial_grid.indexed_way_count
                     or len(buildings) != building_grid.indexed_way_count
