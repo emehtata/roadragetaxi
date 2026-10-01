@@ -191,3 +191,64 @@ def test_each_clip_file_is_loaded_once(monkeypatch, tmp_path):
     announcer = StationAnnouncer(asset_dir=tmp_path)
     first = announcer._clip("numbers/units/3.ogg")
     assert announcer._clip("numbers/units/3.ogg") is first and len(loads) == 1
+
+
+# -- every train type of the timetable, against the real clip set ---------
+
+import json as _json
+
+from theroadragetrip.station_announcer import ASSET_DIR
+
+REAL = _json.loads((ASSET_DIR / "manifest.json").read_text(encoding="utf-8"))
+REAL_SCRIPT = AnnouncementScript(REAL)
+
+
+def spoken(files):
+    """The (default) Finnish text of each clip, as the manifest records it."""
+    texts = {}
+
+    def walk(node):
+        if isinstance(node, dict):
+            if "file" in node and "text" in node:
+                texts[node["file"]] = node.get("default_text", node["text"])
+            for value in node.values():
+                walk(value)
+    walk(REAL)
+    return [texts[file] for file in files]
+
+
+def test_long_distance_types_say_their_finnish_name_and_the_clips_exist():
+    expected = {"SP": "Pendolino Plus", "S": "Pendolino", "IC": "InterCity", "PYO": "yöjuna",
+                "HDM": "kiskobussi", "H": "taajamajuna", "MUS": "museojuna"}
+    for code, name in expected.items():
+        files = REAL_SCRIPT.train_phrase(code, "long_distance")
+        assert spoken(files) == [name], code
+        assert all((ASSET_DIR / file).is_file() for file in files), code
+
+
+def test_commuter_lines_say_lahijuna_and_the_letter():
+    letters = {"D": "dee", "G": "gee", "H": "hoo", "M": "äm", "O": "oo", "R": "är", "T": "tee", "Z": "tset"}
+    for line, name in letters.items():
+        files = REAL_SCRIPT.train_phrase(line, "commuter")
+        assert spoken(files) == ["lähijuna", name], line
+        assert all((ASSET_DIR / file).is_file() for file in files), line
+
+
+def test_the_two_meanings_of_h_come_from_the_timetable_category():
+    assert spoken(REAL_SCRIPT.train_phrase("H", "long_distance")) == ["taajamajuna"]  # Iisalmi-Ylivieska
+    assert spoken(REAL_SCRIPT.train_phrase("H", "commuter")) == ["lähijuna", "hoo"]  # the Hanko line
+
+
+def test_unsupported_types_are_not_announced_as_something_else():
+    assert REAL_SCRIPT.train_phrase("K", "commuter") == []  # no clip for line K yet
+    assert REAL_SCRIPT.train_phrase("XYZ", "long_distance") == []
+    assert REAL_SCRIPT.phrases("arrived", "K", "8247", "Tikkurila", "Helsinki", "Kerava", "4", "commuter") == []
+
+
+def test_train_numbers_stay_composed_after_the_train_type():
+    ic = REAL_SCRIPT.phrases("departed", "IC", "519", "Oulu", "Helsinki", "Rovaniemi", "", "long_distance")[0]
+    assert spoken(ic) == ["InterCity", "viisisataa", "yhdeksäntoista"]
+    pyo = REAL_SCRIPT.phrases("arrived", "PYO", "273", "Oulu", "Helsinki", "Rovaniemi", "", "long_distance")[1]
+    assert spoken(pyo) == ["yöjuna", "kaksisataa", "seitsemänkymmentä", "kolme"]
+    r = REAL_SCRIPT.phrases("departed", "R", "123", "Tikkurila", "Helsinki", "Riihimäki", "4", "commuter")[0]
+    assert spoken(r) == ["lähijuna", "är", "sata", "kaksikymmentä", "kolme"]

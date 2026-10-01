@@ -54,7 +54,14 @@ class AnnouncementScript:
             int(value): entry["file"]
             for group in manifest.get("numbers", {}).values() for value, entry in group.items()
         }
-        self.train_types = {entry.get("train_type"): entry["file"] for entry in manifest.get("train_types", {}).values()}
+        # (timetable type code, timetable category or None for any) -> clip.
+        # Two H: long-distance H (Iisalmi-Ylivieska) is a "taajamajuna",
+        # commuter H the Hanko line, said as "lähijuna" + its letter.
+        self.train_types = {
+            (entry.get("train_type"), entry.get("train_category")): entry["file"]
+            for entry in manifest.get("train_types", {}).values()
+        }
+        self.lines = {entry["line"]: entry["file"] for entry in manifest.get("lines", {}).values() if "line" in entry}
         # Places by their written name (default_text when the spoken text was corrected).
         self.place_ids = {
             entry.get("default_text", entry["text"]): place_id for place_id, entry in manifest.get("places", {}).items()
@@ -79,16 +86,26 @@ class AnnouncementScript:
         file = self._file(form, place_id) if place_id else None
         return [file] if file else []
 
+    def train_phrase(self, train_type: str, category: str = "") -> List[str]:
+        """The clips naming the train: "InterCity", "taajamajuna" (H,
+        long-distance), "lähijuna" + line letter (commuter). [] for a type
+        with no clip - never some other type."""
+        if category == "commuter":
+            commuter, line = self.train_types.get(("", "commuter")), self.lines.get(train_type)
+            return [commuter, line] if commuter and line else []
+        file = self.train_types.get((train_type, category)) or self.train_types.get((train_type, None))
+        return [file] if file else []
+
     def phrases(self, kind: str, train_type: str, number, station: str, origin: str, destination: str,
-                track: str) -> List[List[str]]:
+                track: str, category: str = "") -> List[List[str]]:
         """The announcement as phrases (clip files said together, a short
         pause between phrases - never inside a number, which would turn
         "kaksikymmentä kaksi" into "20 ... 2"). kind "arrived": [attention]
         [type number] [from origin] [saapuu] [raiteelle track]; "departed":
         [type number] [to destination] [lähtee] [raiteelta track]. [] when
         the train type has no clip (commuter trains) - no announcement."""
-        train_file = self.train_types.get(train_type)
-        if train_file is None:
+        train = self.train_phrase(train_type, category)
+        if not train:
             return []
         if kind == "arrived":
             place = self._place(origin, "places_from") if origin and origin != station else []
@@ -96,7 +113,7 @@ class AnnouncementScript:
         else:
             place = self._place(destination, "places_to") if destination and destination != station else []
             verb, platform = "departing", "raiteelta"
-        phrases = [[train_file] + self._number(number), place, [f for f in (self._file("phrases", verb),) if f]]
+        phrases = [train + self._number(number), place, [f for f in (self._file("phrases", verb),) if f]]
         track_files = self._number(track)
         if track_files and self._file("platforms", platform):
             phrases.append([self._file("platforms", platform)] + track_files)
@@ -169,7 +186,8 @@ class StationAnnouncer:
             return False  # too far from the station to hear
         service = train.service
         phrases = self.script.phrases(kind, service.train_type, service.number, stop[2], service.origin,
-                                      service.destination, stop[6] if len(stop) > 6 else "")
+                                      service.destination, stop[6] if len(stop) > 6 else "",
+                                      getattr(service, "category", ""))
         if not phrases:
             return False
         self._queue.append((time.monotonic(), self.clips(phrases), position,

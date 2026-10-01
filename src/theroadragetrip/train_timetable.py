@@ -70,6 +70,9 @@ class ScheduledPass:
     # Every station the whole journey stops at, in order (on this map or
     # not): passenger origins/destinations come only from these.
     calls: Tuple[str, ...] = ()
+    # Timetable category: "long_distance" or "commuter" (a commuter train's
+    # train_type is its line letter; long-distance H and commuter H differ).
+    category: str = ""
 
     @property
     def label(self) -> str:
@@ -248,6 +251,7 @@ def match_timetable(
                 stops=tuple(route_stops),
                 came_from=came_from, going_to=going_to,
                 calls=tuple(timetable["stations"][stop[2]][2] for stop in stops if stop[4]),
+                category=train.get("category", ""),
             ))
     return passes
 
