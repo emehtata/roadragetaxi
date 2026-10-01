@@ -22,6 +22,7 @@ railway_announcements/
 ├── places/to/<id>.ogg       Ouluun, Helsinkiin, Tampereelle, …
 ├── places/from/<id>.ogg     Oulusta, Helsingistä, Tampereelta, …
 ├── train_types/<id>.ogg     intercity.ogg, pendolino.ogg, …
+├── lines/<letter>.ogg       commuter line letters: d.ogg, r.ogg, …
 ├── platforms/<id>.ogg       raide.ogg, raiteelle.ogg, raiteelta.ogg
 ├── phrases/<id>.ogg         attention.ogg, arriving.ogg, …
 └── connectors/<id>.ogg      pause_short/medium/long.ogg (silence)
@@ -85,6 +86,50 @@ in `place_forms.json`, keyed by place id:
 [train type] [number] [delayed] [number] [minutes]
 "Pendolino neljäsataa yksitoista on myöhässä noin kymmenen minuuttia."
 ```
+
+## Train types and commuter lines
+
+The timetable gives each train a type code and a category
+(`long_distance` / `commuter`). Long-distance trains are named by type:
+
+| Code | Category | Said | Clip |
+|---|---|---|---|
+| `SP` | long-distance | Pendolino Plus | `train_types/pendolino_plus.ogg` |
+| `S` | long-distance | Pendolino | `train_types/pendolino.ogg` |
+| `IC` | long-distance | InterCity | `train_types/intercity.ogg` |
+| `PYO` | long-distance | yöjuna | `train_types/night_train.ogg` |
+| `HDM` | long-distance | kiskobussi | `train_types/railbus.ogg` |
+| `H` | long-distance | taajamajuna (Iisalmi–Ylivieska) | `train_types/regional.ogg` |
+| `MUS` | long-distance | museojuna | `train_types/museum_train.ogg` |
+
+For a commuter train the type code is its line letter, and it is said as
+"lähijuna" (`train_types/commuter_train.ogg`) + the letter:
+
+| Line | Said | Clip |
+|---|---|---|
+| `D` | dee | `lines/d.ogg` |
+| `G` | gee | `lines/g.ogg` |
+| `H` | hoo | `lines/h.ogg` |
+| `M` | äm | `lines/m.ogg` |
+| `O` | oo | `lines/o.ogg` |
+| `R` | är | `lines/r.ogg` |
+| `T` | tee | `lines/t.ogg` |
+| `Z` | tset | `lines/z.ogg` |
+
+**The two H**: the manifest's `train_types` entries carry the timetable
+code (`train_type`) and, where it matters, the category
+(`train_category`); `lines` entries carry the letter (`line`). So `H` in a
+long-distance train resolves to `regional` (taajamajuna), `H` in a
+commuter train to "lähijuna" + `lines/h`. In the timetable the
+long-distance H trains are exactly Iisalmi–Ylivieska, the commuter ones the
+Hanko line.
+
+A code with no clip (other commuter letters such as A, K, P) is not
+announced at all, rather than said as some other type.
+
+Some texts are written for the voice (`text`) rather than spelled
+normally (`default_text`): "Pen-do-li-no", "lähi-juna", "tseta" (Z),
+"hoo." (H) were the spellings Chatterbox said right.
 
 ## Generating
 

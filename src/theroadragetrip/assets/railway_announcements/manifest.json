@@ -291,9 +291,9 @@
         "text": "seitsemänkymmentä",
         "category": "numbers",
         "language": "fi",
-        "duration_s": 4.215,
+        "duration_s": 2.09,
         "voice": "female/eeva.wav",
-        "accepted_at": "2026-10-01T21:05:05",
+        "accepted_at": "2026-10-01T21:53:12",
         "value": 70,
         "review": "pending"
       },
@@ -789,9 +789,9 @@
       "text": "Kirkkonummi",
       "category": "places",
       "language": "fi",
-      "duration_s": 2.616,
+      "duration_s": 2.239,
       "voice": "female/eeva.wav",
-      "accepted_at": "2026-10-01T21:07:08",
+      "accepted_at": "2026-10-01T21:53:32",
       "review": "pending"
     },
     "kitee": {
@@ -829,9 +829,9 @@
       "text": "Kokemäki",
       "category": "places",
       "language": "fi",
-      "duration_s": 4.136,
+      "duration_s": 2.169,
       "voice": "female/eeva.wav",
-      "accepted_at": "2026-10-01T21:07:33",
+      "accepted_at": "2026-10-01T21:54:10",
       "review": "pending"
     },
     "kokkola": {
@@ -1039,9 +1039,9 @@
       "text": "Misi",
       "category": "places",
       "language": "fi",
-      "duration_s": 1.205,
+      "duration_s": 1.28,
       "voice": "female/eeva.wav",
-      "accepted_at": "2026-10-01T21:08:14",
+      "accepted_at": "2026-10-01T21:54:19",
       "review": "pending"
     },
     "muhos": {
@@ -1129,9 +1129,9 @@
       "text": "Nurmes",
       "category": "places",
       "language": "fi",
-      "duration_s": 2.001,
+      "duration_s": 0.868,
       "voice": "female/eeva.wav",
-      "accepted_at": "2026-10-01T21:08:36",
+      "accepted_at": "2026-10-01T21:54:22",
       "review": "pending"
     },
     "orivesi": {
@@ -1871,9 +1871,9 @@
       "text": "Höljäkkään",
       "category": "places_to",
       "language": "fi",
-      "duration_s": 3.578,
+      "duration_s": 1.169,
       "voice": "female/eeva.wav",
-      "accepted_at": "2026-10-01T21:12:03",
+      "accepted_at": "2026-10-01T21:54:25",
       "review": "pending"
     },
     "iisalmi": {
@@ -4283,13 +4283,14 @@
     },
     "pendolino": {
       "file": "train_types/pendolino.ogg",
-      "text": "Pendolino",
+      "text": "Pen-do-li-no",
       "category": "train_types",
       "language": "fi",
-      "duration_s": 1.287,
+      "duration_s": 1.0,
       "voice": "female/eeva.wav",
-      "accepted_at": "2026-10-01T21:01:19",
+      "accepted_at": "2026-10-01T22:06:14",
       "train_type": "S",
+      "default_text": "Pendolino",
       "review": "pending"
     },
     "night_train": {
@@ -4312,28 +4313,53 @@
       "voice": "female/eeva.wav",
       "accepted_at": "2026-10-01T21:01:30",
       "train_type": "H",
-      "review": "pending"
-    },
-    "regional_diesel": {
-      "file": "train_types/regional_diesel.ogg",
-      "text": "taajamajuna",
-      "category": "train_types",
-      "language": "fi",
-      "duration_s": 1.048,
-      "voice": "female/eeva.wav",
-      "accepted_at": "2026-10-01T21:23:28",
-      "train_type": "HDM",
-      "review": "pending"
+      "review": "pending",
+      "train_category": "long_distance"
     },
     "museum_train": {
       "file": "train_types/museum_train.ogg",
       "text": "museojuna",
       "category": "train_types",
       "language": "fi",
-      "duration_s": 0.959,
+      "duration_s": 0.913,
       "voice": "female/eeva.wav",
-      "accepted_at": "2026-10-01T21:01:51",
+      "accepted_at": "2026-10-01T22:06:14",
       "train_type": "MUS",
+      "review": "pending"
+    },
+    "pendolino_plus": {
+      "file": "train_types/pendolino_plus.ogg",
+      "text": "Pendolino Plus",
+      "category": "train_types",
+      "language": "fi",
+      "duration_s": 1.277,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T21:54:28",
+      "train_type": "SP",
+      "review": "pending"
+    },
+    "railbus": {
+      "file": "train_types/railbus.ogg",
+      "text": "kiskobussi",
+      "category": "train_types",
+      "language": "fi",
+      "duration_s": 0.923,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T21:51:38",
+      "train_type": "HDM",
+      "review": "pending"
+    },
+    "commuter_train": {
+      "file": "train_types/commuter_train.ogg",
+      "text": "lähi-juna",
+      "category": "train_types",
+      "language": "fi",
+      "duration_s": 0.849,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T22:06:14",
+      "train_type": "",
+      "train_category": "commuter",
+      "default_text": "lähijuna",
       "review": "pending"
     }
   },
@@ -4496,5 +4522,97 @@
       "review": "pending"
     }
   },
-  "sample_rate": 24000
+  "sample_rate": 24000,
+  "lines": {
+    "d": {
+      "file": "lines/d.ogg",
+      "text": "dee",
+      "category": "lines",
+      "language": "fi",
+      "duration_s": 0.612,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T22:06:14",
+      "line": "D",
+      "review": "pending"
+    },
+    "g": {
+      "file": "lines/g.ogg",
+      "text": "gee",
+      "category": "lines",
+      "language": "fi",
+      "duration_s": 1.48,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T22:06:15",
+      "line": "G",
+      "review": "pending"
+    },
+    "h": {
+      "file": "lines/h.ogg",
+      "text": "hoo.",
+      "category": "lines",
+      "language": "fi",
+      "duration_s": 0.583,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T22:06:32",
+      "line": "H",
+      "default_text": "hoo",
+      "review": "pending"
+    },
+    "m": {
+      "file": "lines/m.ogg",
+      "text": "äm",
+      "category": "lines",
+      "language": "fi",
+      "duration_s": 0.634,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T21:55:02",
+      "line": "M",
+      "review": "pending"
+    },
+    "o": {
+      "file": "lines/o.ogg",
+      "text": "oo",
+      "category": "lines",
+      "language": "fi",
+      "duration_s": 0.824,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T22:06:15",
+      "line": "O",
+      "review": "pending"
+    },
+    "r": {
+      "file": "lines/r.ogg",
+      "text": "är",
+      "category": "lines",
+      "language": "fi",
+      "duration_s": 1.543,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T22:06:15",
+      "line": "R",
+      "review": "pending"
+    },
+    "t": {
+      "file": "lines/t.ogg",
+      "text": "tee",
+      "category": "lines",
+      "language": "fi",
+      "duration_s": 0.619,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T22:06:15",
+      "line": "T",
+      "review": "pending"
+    },
+    "z": {
+      "file": "lines/z.ogg",
+      "text": "tseta",
+      "category": "lines",
+      "language": "fi",
+      "duration_s": 0.777,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T22:06:15",
+      "line": "Z",
+      "default_text": "tset",
+      "review": "pending"
+    }
+  }
 }
