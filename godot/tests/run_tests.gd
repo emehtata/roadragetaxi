@@ -84,9 +84,27 @@ func test_audio() -> void:
 	check(arrived.size() == 2 and arrived[0]["group"] == "railway.train_brakes" and arrived[0]["at"] == Vector2(100, 200), "train_arrived maps to brakes + doors, placed")
 	check(arrived[0]["range"][1] == 150.0, "with the game's hearing range")
 	check(audio.bus_for("ui.accept") == "UI" and audio.bus_for("weather.rain") == "Environment", "categories map to buses")
-	check(audio.bus_for("city-traffic-outdoor") == "Environment", "a legacy sound's bus comes from its category, not its name")
+	check(audio.bus_for("ambient.city_day") == "Environment", "the day bed is environment")
+	var opened := audio.resolve({"type": "sound", "group": "vehicle.door_open"})
+	check(opened.size() == 1 and opened[0]["file"].ends_with(".ogg") and FileAccess.file_exists(opened[0]["file"]), "getting in: the door-open sound exists as OGG")
 	check(audio.resolve({"type": "something_new"}).is_empty() and audio.unhandled.get("something_new") == 1, "an unknown event is noted, not played")
 	audio.handle_event({"type": "something_new"})  # no crash
+	var unloadable: Array = []
+	for path in audio.all_files():
+		var stream := audio.load_file(path)
+		if stream == null or stream.get_length() <= 0.0:
+			unloadable.append(path)
+	check(audio.all_files().size() >= 120 and unloadable.is_empty(), "Godot loads every catalog sound (%d files; failed: %s)" % [audio.all_files().size(), unloadable])
+	var picks: Array = []
+	for i in 30:
+		picks.append(audio.resolve({"type": "sound", "group": "vehicle.door_open"})[0]["file"])
+	var repeats := 0
+	for i in range(1, picks.size()):
+		repeats += int(picks[i] == picks[i - 1])
+	var distinct := {}
+	for pick in picks:
+		distinct[pick] = true
+	check(repeats == 0 and distinct.size() == 3, "door-open variations: all used, never the same twice in a row")
 	var before := audio.played
 	audio.handle_event({"type": "sound", "group": "vehicle.door_close"})
 	check(audio.played == before + 1, "one event plays one sound")

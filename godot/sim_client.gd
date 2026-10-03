@@ -77,6 +77,12 @@ func _drain_lines() -> void:
 		_buffer = _buffer.slice(start)
 
 
+## Hang up (tests): the client notices on the next frame, like a lost
+## server, and reconnects a second later.
+func drop_connection() -> void:
+	_peer.disconnect_from_host()
+
+
 ## A player command: the simulation validates and applies it.
 func send_command(command: Dictionary) -> void:
 	if not connected:

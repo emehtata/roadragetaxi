@@ -40,6 +40,7 @@ var events_presented := 0
 var _audiotest := false
 var override_night := -1.0  # >= 0: presentation override for the audio test (never sent to Python)
 var override_rain := -1.0
+var override_train_at := Vector2.INF  # audio test: a moving train here (presentation only)
 
 
 func _ready() -> void:
@@ -176,6 +177,9 @@ func _present(state: Dictionary) -> void:
 ## The nearest moving train rumbles from where it is (Pygame mixes the
 ## loudest intercity and commuter train as two layers; one is enough here).
 func _train_loop(state: Dictionary) -> void:
+	if override_train_at != Vector2.INF:
+		audio.set_loop("train_running", 0.8, 1.0, override_train_at)
+		return
 	var nearest = null
 	var best := INF
 	var speed := 0.0

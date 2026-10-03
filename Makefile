@@ -4,7 +4,7 @@ GODOT ?= $(HOME)/tools/godot/Godot_v4.7.2-stable_linux.x86_64
 PORT ?= 8765
 PRESET ?= Oulu
 
-.PHONY: help venv install run run-debug run-sample run-pbf index-pbf run-server run-godot run-godot-all godot-selftest godot-test audit-ai test compile check clean
+.PHONY: help venv install run run-debug run-sample run-pbf index-pbf run-server run-godot run-godot-all godot-selftest godot-test audio-check audit-ai test compile check clean
 
 help:
 	@printf '%s\n' \
@@ -19,6 +19,7 @@ help:
 		'run-godot-all          Start the server in the background, then the Godot client' \
 		'godot-selftest         Server + headless Godot selftest, prints a JSON report' \
 		'godot-test             Run the Godot client unit tests (no server needed)' \
+		'audio-check            Validate the sound catalog, files and every reference to them' \
 		'audit-ai               Run headless autonomous traffic audit' \
 		'test                   Run the test suite' \
 		'compile                Compile-check Python sources' \
@@ -65,6 +66,9 @@ godot-selftest:
 godot-test:
 	$(GODOT) --headless --path godot --import
 	$(GODOT) --headless --path godot --script res://tests/run_tests.gd
+
+audio-check:
+	SDL_AUDIODRIVER=dummy PYTHONPATH=src $(PYTHON) tools/validate_audio_assets.py
 
 audit-ai:
 	PYTHONPATH=src $(PYTHON) utils/autoplay_audit.py
