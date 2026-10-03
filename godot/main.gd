@@ -35,6 +35,7 @@ var _selftest_start := Vector2.INF
 var _last_interact := -10.0
 var _screenshot_path := ""
 var _screenshot_wait := 6.0
+var _screenshot_drive := 0.0
 var _report := {}
 var _fps_samples: Array = []
 var _phone_check := {}  # selftest: what the phone saw and how an accept went
@@ -64,6 +65,8 @@ func _ready() -> void:
 				_audiotest = true
 			"--screenshot":
 				_screenshot_path = args[i + 1]
+			"--screenshot-drive":  # with --screenshot: get in and drive this many seconds first
+				_screenshot_drive = float(args[i + 1])
 	sim.world_received.connect(_on_world)
 	sim.state_received.connect(_on_state)
 	sim.chunk_received.connect(func(message: Dictionary): map_layer.add_chunk(message))
@@ -129,16 +132,26 @@ func _process(delta: float) -> void:
 	_interp_usec = lerpf(_interp_usec, float(entities.interp_usec), 0.1)
 	if _selftest:
 		_run_selftest(delta, state)
-	if _screenshot_path != "" and not state.is_empty():
+	var screenshot_driving := _screenshot_path != "" and _screenshot_drive > 0.0
+	if screenshot_driving and not state.is_empty():
+		if state.get("on_foot", true):
+			if Engine.get_process_frames() % 90 == 0:
+				send({"interact": true})
+		else:
+			_screenshot_drive -= delta
+			send({"throttle": 1.0 if _screenshot_drive > 1.0 else 0.0, "brake": 0.0 if _screenshot_drive > 1.0 else 1.0,
+				"steer_left": 0.0, "steer_right": 0.0, "forward": 0.0, "turn": 0.0, "sprint": false})
+	elif _screenshot_path != "" and not state.is_empty():
 		_screenshot_wait -= delta
 		if _screenshot_wait <= 0.0:
 			get_viewport().get_texture().get_image().save_png(_screenshot_path)
 			print("screenshot saved: ", _screenshot_path)
 			get_tree().quit()
 	camera.position = entities.player_position()
+	entities.px_per_m = camera.zoom.x
 	_present(state)
 	_command_timer -= delta
-	if _command_timer <= 0.0 and not _selftest and not _audiotest:  # the tests drive instead
+	if _command_timer <= 0.0 and not _selftest and not _audiotest and not screenshot_driving:  # the tests drive instead
 		_command_timer = COMMAND_INTERVAL_S
 		var up := _key(KEY_W, KEY_UP)
 		var down := _key(KEY_S, KEY_DOWN)

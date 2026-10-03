@@ -1,15 +1,35 @@
 ## Moving things from "state" messages, redrawn every frame from the
 ## interpolation buffer (StateBuffer): positions and headings are blended
 ## between the two states around the render time; everything discrete (an
-## entity appearing, its colour, a train's cars) comes from the earlier one.
+## entity appearing, its colour, a train's cars, lamps) comes from the
+## earlier one.
+##
+## What is drawn, and how, follows Pygame's renderers (named per function)
+## at the same scale in metres. Draw order matches Pygame's: pedestrians,
+## the job target, the taxi, NPC vehicles, smoke, then trains on top.
+## Entities outside the visible area (plus a margin) are skipped. Text and
+## a few minimum sizes are in screen pixels, as in Pygame.
 extends Node2D
+
+const RS := preload("res://render_style.gd")
+const CULL_MARGIN_M := 30.0
+const TWO_WHEELERS := ["motorcycle", "moped", "bicycle"]
+const INDOORS := ["entering_building", "in_building"]
 
 var origin := Vector2.ZERO
 var buffer := StateBuffer.new()
+var px_per_m := 9.0  # the camera's zoom (main.gd): screen pixels per metre
 var drawn_entities := 0  # last frame (performance readout)
 var interp_usec := 0  # time spent sampling and blending last frame
+var view_rect := Rect2()  # visible area in this layer's coordinates, with margin
 
 var _frame: Dictionary = {}  # this frame's sample: {"a", "b", "t"}
+var _clock := 0.0  # local seconds, for purely presentational loops (exhaust puffs)
+var _font: Font
+
+
+func _ready() -> void:
+	_font = ThemeDB.fallback_font
 
 
 func now() -> float:
@@ -30,8 +50,25 @@ func player_position() -> Vector2:
 	return MapMath.point(origin, p.x, p.y)
 
 
-func _process(_delta: float) -> void:
+## The job's target this frame (pickup or drop-off, as TaxiManager.get_current_target),
+## or {} - shared with the screen-space arrow and compass (nav_overlay.gd).
+static func current_target(state: Dictionary) -> Dictionary:
+	var taxi: Dictionary = state.get("taxi", {})
+	var passenger = taxi.get("current_passenger")
+	if typeof(passenger) != TYPE_DICTIONARY:
+		return {}
+	match taxi.get("state", ""):
+		"PICKUP", "WALKING":
+			return passenger.get("pickup", {}).merged({"is_pickup": true})
+		"DROPOFF":
+			return passenger.get("dropoff", {}).merged({"is_pickup": false})
+	return {}
+
+
+func _process(delta: float) -> void:
+	_clock += delta
 	_frame = buffer.sample(now())
+	view_rect = (get_canvas_transform().affine_inverse() * get_viewport_rect()).grow(CULL_MARGIN_M)
 	queue_redraw()
 
 
@@ -42,14 +79,206 @@ func _by_id(items: Array) -> Dictionary:
 	return found
 
 
-func _draw_box(x: float, y: float, heading: float, length: float, width: float, color: Color) -> void:
-	draw_set_transform(MapMath.point(origin, x, y), -heading)
-	draw_rect(Rect2(-length / 2, -width / 2, length, width), color)
+## Screen pixels -> metres at the current zoom.
+func _px(pixels: float) -> float:
+	return pixels / px_per_m
+
+
+static func _forward(heading: float) -> Vector2:
+	return Vector2(cos(heading), -sin(heading))
+
+
+static func _right(heading: float) -> Vector2:
+	return Vector2(sin(heading), cos(heading))
+
+
+## Vehicle-local rectangle (Pygame's _vehicle_point convention: +long is
+## forward, +lat is the vehicle's right side), as a polygon.
+static func _rect(c: Vector2, f: Vector2, r: Vector2, front: float, rear: float, half_width: float) -> PackedVector2Array:
+	return PackedVector2Array([c + f * front + r * half_width, c + f * front - r * half_width,
+		c + f * rear - r * half_width, c + f * rear + r * half_width])
+
+
+func _poly(points: PackedVector2Array, fill: Color, outline = null, width := -1.0) -> void:
+	draw_colored_polygon(points, fill)
+	if outline != null:
+		var closed := points.duplicate()
+		closed.append(points[0])
+		draw_polyline(closed, outline, width)
+
+
+## A vehicle body by type (render/vehicles.py _draw_vehicle, _draw_bus,
+## _draw_truck; two-wheelers are sprites in Pygame, a body and rider here),
+## then its lamps (_draw_vehicle_lights).
+func _vehicle(c: Vector2, heading: float, length: float, width: float, color: Color, kind: String,
+		is_taxi: bool, engine_on: bool, braking: bool, turn_signal: String, signal_elapsed: float, fallen := false) -> void:
+	length = maxf(length, _px(5.0))
+	width = maxf(width, _px(2.5))
+	var f := _forward(heading)
+	var r := _right(heading)
+	var hl := length * 0.5
+	var hw := width * 0.5
+	if kind in TWO_WHEELERS:
+		if fallen:  # lying on its side
+			f = _forward(heading - PI / 2.0)
+			r = _right(heading - PI / 2.0)
+		_poly(_rect(c, f, r, hl, -hl, hw), color, RS.OUTLINE)
+		draw_circle(c - f * hl * 0.1, hw * 0.9, RS.CABIN)  # rider
+		return
+	match kind:
+		"bus":
+			var body := PackedVector2Array([c + f * hl + r * hw * 0.72, c + f * hl - r * hw * 0.72, c + f * hl * 0.9 - r * hw,
+				c - f * hl - r * hw, c - f * hl + r * hw, c + f * hl * 0.9 + r * hw])
+			_poly(body, color, RS.OUTLINE)
+			var detail := color.darkened(28.0 / 255.0)
+			for hatch: float in [hl * 0.55, -hl * 0.62]:
+				_poly(_rect(c, f, r, hatch + hl * 0.07, hatch - hl * 0.07, hw * 0.30), detail, Color8(30, 30, 30))
+			_poly(_rect(c, f, r, hl * 0.05, -hl * 0.26, hw * 0.28), detail, Color8(30, 30, 30))
+		"truck":
+			_poly(_rect(c, f, r, hl * 0.18, -hl, hw), color, RS.OUTLINE)
+			_poly(_rect(c, f, r, hl * 0.08, -hl * 0.86, hw * 0.78), color.lightened(28.0 / 255.0))
+			_poly(_rect(c, f, r, hl, hl * 0.24, hw * 0.92), color, RS.OUTLINE)
+			_poly(_rect(c, f, r, hl * 0.72, hl * 0.52, hw * 0.72), RS.TRUCK_WINDSHIELD)
+			draw_line(c + f * hl * 0.20 - r * hw, c + f * hl * 0.20 + r * hw, Color8(35, 35, 35), _px(2.0))
+		_:
+			_poly(_rect(c, f, r, hl, -hl, hw), color, RS.OUTLINE)
+			var cabin_hl := hl * 0.45
+			_poly(_rect(c, f, r, cabin_hl * 0.4, -cabin_hl * 0.8, hw * 0.75), RS.CABIN)
+			if is_taxi:
+				_poly(_rect(c, f, r, hl * 0.2, -hl * 0.2, hw * 0.4), RS.TAXI_SIGN, Color8(30, 30, 30))
+	# Lamps (inset, sizes and colours as _draw_vehicle_lights, in metres).
+	var light_r := maxf(_px(1.2), width * 0.18)
+	var light_len := minf(width * 0.25, maxf(_px(1.0), light_r * 2.4))
+	var light_w := minf(length * 0.08, maxf(_px(1.0), light_r * 0.75))
+	var inset := hw * 0.7
+	var tip := hl - _px(0.5)
+	for side: float in [1.0, -1.0]:
+		var front: Vector2 = c + f * tip + r * inset * side
+		_poly(_rect(front, f, r, light_w * 0.5, -light_w * 0.5, light_len * 0.5), RS.HEADLIGHT if engine_on else RS.HEADLIGHT_OFF)
+		var rear: Vector2 = c - f * tip + r * inset * side
+		var scale := 1.2 if braking else 1.0
+		var tail := RS.BRAKE_LIGHT if braking else (RS.TAILLIGHT if engine_on else RS.TAILLIGHT_OFF)
+		_poly(_rect(rear, f, r, light_w * 0.5 * scale, -light_w * 0.5 * scale, light_len * 0.5 * scale), tail)
+	if turn_signal != "" and RS.signal_lit(signal_elapsed):
+		var signal_side := 1.0 if turn_signal == "right" else -1.0
+		for end: float in [1.0, -1.0]:
+			var lamp: Vector2 = c + f * tip * end + r * hw * 0.88 * signal_side
+			_poly(_rect(lamp, f, r, light_w * 0.6, -light_w * 0.6, maxf(_px(1.0), light_len * 0.45) * 0.5), RS.TURN_SIGNAL)
+
+
+## Four rising, fading puffs (render/vehicles.py crash smoke and exhaust;
+## sizes in Pygame's screen pixels). `behind` trails them out of the back.
+func _smoke(c: Vector2, heading: float, length: float, t: float, behind := false) -> void:
+	var f := _forward(heading)
+	var r := _right(heading)
+	var base := c + f * (length * 0.4) * (-1.0 if behind else 1.0)
+	for i in 4:
+		var offset_t := fmod(t * 2.5 + i * 0.7, 2.0)
+		var puff := base
+		if behind:
+			puff += -f * _px(offset_t * 14.0) + Vector2(0, -_px(offset_t * 3.0)) + r * _px(sin(t * 3.0 + i) * 2.0 * offset_t)
+		else:
+			puff += r * _px(sin(t * 3.0 + i) * 4.0 * offset_t) + Vector2(0, -_px(offset_t * 14.0))
+		var smoke := RS.SMOKE
+		smoke.a = clampf((1.0 - offset_t / 2.0) * RS.SMOKE_MAX_ALPHA, 0.0, RS.SMOKE_MAX_ALPHA)
+		draw_circle(puff, _px(3.0 + offset_t * 5.0), smoke)
+
+
+func _ellipse(c: Vector2, rx: float, ry: float, color: Color) -> void:
+	draw_set_transform(c, 0.0, Vector2(rx, ry))
+	draw_circle(Vector2.ZERO, 1.0, color)
+	draw_set_transform(Vector2.ZERO)
+
+
+## A pedestrian as render/pedestrians.py draw_pedestrians: shadow, legs
+## stepping with animation_time, body, head facing the heading; fallen ones
+## lie down, people going indoors are an outline; then any cursing bubble.
+func _pedestrian(c: Vector2, heading: float, ped: Dictionary, animation_time: float) -> void:
+	var radius := maxf(_px(4.0), ped.get("radius_m", 0.45))
+	var clothing: Color = _rgb(ped.get("color", [200, 200, 200]))
+	if ped.get("state", "") in INDOORS:
+		draw_arc(c, radius, 0.0, TAU, 16, RS.PED_INDOORS, _px(1.0))
+		return
+	var h := Vector2(cos(heading), -sin(heading))
+	var side := Vector2(-h.y, h.x)
+	var down := Vector2(0, radius)
+	_ellipse(c + down * 0.675, radius * 0.8, radius * 0.325, RS.PED_SHADOW)
+	if ped.get("animation_state", "walking") == "fallen":
+		_ellipse(c, radius * 1.15, radius * 0.35, clothing)
+		draw_circle(c + Vector2(radius, -radius * 0.1), radius * 0.35, RS.PED_HEAD)
+	else:
+		var gait := sin(animation_time * 10.0) if ped.get("animation_state", "walking") == "walking" else 0.0
+		var leg_start := c - h * radius * 0.15 + down * 0.45
+		for leg_side: float in [-1.0, 1.0]:
+			var leg_end: Vector2 = leg_start + side * radius * (0.42 * leg_side + gait * 0.10 * leg_side) + h * radius * 0.12 + down * 0.45
+			draw_line(leg_start, leg_end, RS.PED_LEGS, maxf(_px(1.0), radius * 0.28))
+		_ellipse(c + down * 0.425, radius * 0.72, radius * 0.775, RS.PED_SHADOW)
+		_ellipse(c + down * 0.405, radius * 0.58, radius * 0.625, clothing)
+		var head := c + h * radius * 0.6
+		draw_circle(head, maxf(_px(2.0), radius * 0.48), RS.PED_HAIR)
+		draw_circle(head, maxf(_px(1.0), radius * 0.35), RS.PED_HEAD)
+	if ped.get("curse_timer", 0.0) > 0.0:
+		var timer: float = ped["curse_timer"]
+		_bubble(c - Vector2(0, radius + _px(6.0)), str(ped.get("curse_text", "@#*!%")), RS.CURSE_TEXT, RS.CURSE_BORDER,
+			1.0 if timer >= 0.5 else timer / 0.5)
+
+
+## A text bubble whose bottom centre is at `anchor`, drawn in screen
+## pixels (constant size whatever the zoom), like Pygame's bubbles.
+func _bubble(anchor: Vector2, text: String, text_color: Color, border: Color, alpha := 1.0, font_size := 14, tail := false) -> void:
+	var size := _font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size)
+	var box := Rect2(Vector2(-size.x / 2.0 - 4.0, -size.y - 4.0 - (8.0 if tail else 0.0)), size + Vector2(8.0, 4.0))
+	draw_set_transform(anchor, 0.0, Vector2.ONE / px_per_m)
+	draw_rect(box, Color(1, 1, 1, minf(240.0 / 255.0, alpha)))
+	draw_rect(box, Color(border, alpha), false, 1.0)
+	if tail:
+		draw_colored_polygon(PackedVector2Array([Vector2(-7, -8), Vector2(7, -8), Vector2(0, 0)]), Color(1, 1, 1, alpha))
+	draw_string(_font, box.position + Vector2(4.0, size.y - 2.0), text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, Color(text_color, alpha))
+	draw_set_transform(Vector2.ZERO)
+
+
+## A label with a dark background (Pygame's target and customer tags).
+func _tag(anchor: Vector2, text: String, text_color: Color, border = null, font_size := 14) -> void:
+	var size := _font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size)
+	var box := Rect2(Vector2(-size.x / 2.0 - 4.0, -size.y / 2.0 - 2.0), size + Vector2(8.0, 4.0))
+	draw_set_transform(anchor, 0.0, Vector2.ONE / px_per_m)
+	draw_rect(box, Color8(20, 20, 20, 220))
+	if border != null:
+		draw_rect(box, border, false, 1.0)
+	draw_string(_font, box.position + Vector2(4.0, size.y - 1.0), text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, text_color)
 	draw_set_transform(Vector2.ZERO)
 
 
 func _rgb(values: Array) -> Color:
-	return Color(values[0] / 255.0, values[1] / 255.0, values[2] / 255.0)
+	return Color8(int(values[0]), int(values[1]), int(values[2]))
+
+
+## The job target and the waiting customer (render/navigation.py
+## draw_taxi_target); the off-screen arrow is screen UI (nav_overlay.gd).
+func _target(state: Dictionary) -> void:
+	var target := current_target(state)
+	if target.is_empty():
+		return
+	var main_color := RS.PICKUP if target["is_pickup"] else RS.DROPOFF
+	var at := MapMath.point(origin, target["x"], target["y"])
+	if view_rect.grow(-CULL_MARGIN_M).has_point(at):
+		var radius := maxf(_px(8.0), target.get("radius_m", 10.0))
+		draw_circle(at, radius, Color(main_color, 70.0 / 255.0))
+		draw_arc(at, radius, 0.0, TAU, 48, main_color, _px(2.0))
+		draw_circle(at, _px(7.0), main_color)
+		draw_arc(at, _px(7.0), 0.0, TAU, 24, RS.OUTLINE, _px(2.0))
+		_tag(at - Vector2(0, radius + _px(14.0)), "[%s] %s" % ["Pickup" if target["is_pickup"] else "Destination", target.get("address", "")],
+			Color.WHITE, main_color)
+	var passenger: Dictionary = state["taxi"]["current_passenger"]
+	if target["is_pickup"] and not passenger.get("boarded", false) and not passenger.get("rail_booking", false) and passenger.has("ped"):
+		var ped: Array = passenger["ped"]
+		var c := MapMath.point(origin, ped[0], ped[1])
+		var radius := maxf(_px(4.0), 0.5)
+		draw_circle(c, radius + _px(2.0), RS.OUTLINE)
+		draw_circle(c, radius, RS.CUSTOMER_COLOR)
+		draw_circle(c + _forward(ped[2]) * radius * 0.9, maxf(_px(1.0), radius * 0.45), Color.WHITE)
+		_tag(c - Vector2(0, radius + _px(12.0)), ("[TO TAXI] %s" if passenger.get("is_walking_to_car", false) else "[P] %s") % passenger.get("name", ""),
+			Color8(255, 230, 80))
 
 
 func _draw() -> void:
@@ -60,6 +289,60 @@ func _draw() -> void:
 	var b: Dictionary = _frame["b"]
 	var t: float = _frame["t"]
 	var count := 0
+
+	var later_peds := _by_id(b.get("pedestrians", []))
+	for ped in a.get("pedestrians", []):
+		var next: Dictionary = later_peds.get(ped["id"], ped)
+		var p := StateBuffer.blend(ped, next, t)
+		var c := MapMath.point(origin, p.x, p.y)
+		if not view_rect.has_point(c):
+			continue
+		_pedestrian(c, p.z, ped, lerpf(ped.get("animation_time", 0.0), next.get("animation_time", 0.0), t))
+		count += 1
+	if a.get("on_foot", false):
+		var walker := StateBuffer.blend(a["player_pedestrian"], b.get("player_pedestrian", a["player_pedestrian"]), t)
+		_pedestrian(MapMath.point(origin, walker.x, walker.y), walker.z, {"color": [255, 217, 64], "animation_state": "standing"}, 0.0)
+		count += 1
+
+	_target(a)
+
+	var player: Dictionary = a["player"]
+	var taxi := StateBuffer.blend(player, b.get("player", player), t)
+	var taxi_at := MapMath.point(origin, taxi.x, taxi.y)
+	var taxi_length: float = player.get("length_m", 4.4)
+	if player.get("engine_on", false):
+		_smoke(taxi_at, taxi.z, taxi_length, _clock, true)  # exhaust
+	_vehicle(taxi_at, taxi.z, taxi_length, player.get("width_m", 1.8), RS.TAXI_BODY, "car", true,
+		player.get("engine_on", false), player.get("braking", false), "", 0.0)
+	var smoke_timer: float = a.get("taxi", {}).get("taxi_smoke_timer", 0.0)
+	if smoke_timer > 0.0:
+		_smoke(taxi_at, taxi.z, taxi_length, 5.0 - smoke_timer)
+	count += 1
+
+	var later_npcs := _by_id(b.get("npcs", []))
+	for npc in a.get("npcs", []):
+		# Pygame draws neither police (own renderer) nor drivers on foot here,
+		# nor the far level-of-detail band.
+		if npc.get("is_police", false) or npc.get("is_on_foot", false) or npc.get("lod_level", 0) >= 2:
+			continue
+		var p := StateBuffer.blend(npc, later_npcs.get(npc["id"], npc), t)
+		var c := MapMath.point(origin, p.x, p.y)
+		if not view_rect.has_point(c):
+			continue
+		_vehicle(c, p.z, npc["length_m"], npc["width_m"], _rgb(npc["color"]), npc.get("vehicle_type", "car"),
+			npc.get("is_taxi", false), npc.get("state", "") != "PARKED", false,
+			npc.get("turn_signal", ""), npc.get("turn_signal_elapsed", 0.0), npc.get("fallen", false))
+		var crashed: float = npc.get("crashed_timer", 0.0)
+		if crashed > 0.0:
+			_smoke(c, p.z, npc["length_m"], crashed if is_finite(crashed) else _clock)
+		count += 1
+
+	if a.get("taxi", {}).get("current_passenger") is Dictionary:
+		var passenger: Dictionary = a["taxi"]["current_passenger"]
+		if a["taxi"].get("state") == "DROPOFF" and passenger.get("nausea_warning_timer", 0.0) > 0.0:
+			_bubble(taxi_at - Vector2(0, maxf(_px(34.0), 2.5)), "I feel sick!", RS.NAUSEA_TEXT, RS.NAUSEA_TEXT, 1.0, 16, true)
+
+	# Trains last: above the vehicles, as Pygame draws them after the bridge rails.
 	var later_trains := _by_id(b.get("trains", []))
 	for train in a.get("trains", []):
 		var next: Dictionary = later_trains.get(train["id"], train)
@@ -67,24 +350,30 @@ func _draw() -> void:
 		for i in train["cars"].size():
 			var car: Array = train["cars"][i]
 			var to: Array = next["cars"][i] if same_cars else car
-			_draw_box(lerpf(car[0], to[0], t), lerpf(car[1], to[1], t), lerp_angle(car[2], to[2], t), car[3] - 0.6, 3.2,
-				Color(0.05, 0.19, 0.09) if car[4] == "locomotive" else Color(0.15, 0.5, 0.25))
-		count += 1
-	var later_npcs := _by_id(b.get("npcs", []))
-	for npc in a.get("npcs", []):
-		var p := StateBuffer.blend(npc, later_npcs.get(npc["id"], npc), t)
-		_draw_box(p.x, p.y, p.z, npc["length_m"], npc["width_m"], _rgb(npc["color"]))
-		count += 1
-	var later_peds := _by_id(b.get("pedestrians", []))
-	for ped in a.get("pedestrians", []):
-		var p := StateBuffer.blend(ped, later_peds.get(ped["id"], ped), t)
-		draw_circle(MapMath.point(origin, p.x, p.y), ped["radius_m"], _rgb(ped["color"]))
-		count += 1
-	var taxi := StateBuffer.blend(a["player"], b.get("player", a["player"]), t)
-	_draw_box(taxi.x, taxi.y, taxi.z, 4.4, 1.8, Color(1.0, 0.8, 0.1))
-	count += 1
-	if a.get("on_foot", false):
-		draw_circle(player_position(), 0.55, Color(1.0, 0.85, 0.25))
+			var c := MapMath.point(origin, lerpf(car[0], to[0], t), lerpf(car[1], to[1], t))
+			if not view_rect.has_point(c):
+				continue
+			_train_car(c, lerp_angle(car[2], to[2], t), car[3], str(car[4]))
 		count += 1
 	drawn_entities = count
 	interp_usec = Time.get_ticks_usec() - started
+
+
+## One train vehicle (render/vehicles.py draw_trains): body in its profile
+## colour, a white cab front on a locomotive, a white stripe along a
+## restaurant car, a dark roof line.
+func _train_car(c: Vector2, heading: float, length: float, profile: String) -> void:
+	var style: Array = RS.TRAIN_PROFILES.get(profile, RS.TRAIN_PROFILES["standard"])
+	var f := _forward(heading)
+	var r := _right(heading)
+	var hl := length / 2.0
+	var hw := RS.TRAIN_WIDTH_M / 2.0
+	var body := _rect(c, f, r, hl, -hl, hw)
+	draw_colored_polygon(body, style[0])
+	if style[1] != null and profile == "locomotive":
+		draw_colored_polygon(_rect(c, f, r, hl, hl - 3.0, hw), style[1])
+	elif style[1] != null:
+		draw_colored_polygon(_rect(c, f, r, hl - 1.0, -hl + 1.0, 0.5), style[1])
+	var closed := body.duplicate()
+	closed.append(body[0])
+	draw_polyline(closed, RS.TRAIN_ROOF_LINE, _px(1.0))
