@@ -1,3 +1,4 @@
+import itertools
 import logging
 import math
 import random
@@ -80,12 +81,18 @@ class TaxiPassenger:
     rail_booking: Any = None
 
 
+_offer_ids = itertools.count(1)
+
+
 @dataclass
 class TaxiOffer:
     """A ride request shown in the driver's phone."""
     passenger: TaxiPassenger
     pickup_distance_m: float
     time_remaining_s: float = PHONE_OFFER_MIN_LIFETIME_S
+    # Stable while the offer lives: clients answer an offer by id, not by its
+    # row (rows shift as offers expire and arrive).
+    offer_id: int = field(default_factory=lambda: next(_offer_ids))
 
 
 class TaxiState:
@@ -252,6 +259,14 @@ class TaxiManager:
     def current_fare_cents(self) -> int:
         """Return the live meter amount for the onboard passenger."""
         return self.live_fare_cents
+
+    def phone_item_index(self, item_id: str) -> Optional[int]:
+        """The phone row of a client-side id ("offer-N" / "booking-N"), or None
+        once it is gone (expired, taken, declined)."""
+        for index, (kind, item) in enumerate(self.phone_items()):
+            if f"{kind}-{item.offer_id if kind == 'offer' else item.id}" == item_id:
+                return index
+        return None
 
     def phone_items(self):
         """The three numbered phone rows: rail bookings first, then ordinary offers."""

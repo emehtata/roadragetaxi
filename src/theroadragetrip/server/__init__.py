@@ -152,6 +152,7 @@ class SimulationServer:
         self._command_lock = threading.Lock()
         self._latest_command = PlayerCommand()
         self._pending_interacts = 0
+        self._phone_requests: list = []  # edge-triggered like interacts: each one is applied once
 
         self._clients_lock = threading.Lock()
         self._clients: list = []
@@ -190,10 +191,13 @@ class SimulationServer:
                     logger.warning("Ignoring a command for unknown player %r", message.get("player_id"))
                     continue
                 command, interact = protocol.command_from_message(message)
+                phone = protocol.phone_request_from_message(message)
                 with self._command_lock:
                     self._latest_command = command
                     if interact:
                         self._pending_interacts += 1
+                    if phone is not None:
+                        self._phone_requests.append(phone)
         with self._clients_lock:
             before = len(self._clients)
             self._clients = [c for c in self._clients if not c.is_closed]
@@ -218,6 +222,10 @@ class SimulationServer:
             interact = self._pending_interacts > 0
             if interact:
                 self._pending_interacts -= 1
+
+        with self._command_lock:
+            phone_requests, self._phone_requests = self._phone_requests, []
+        phone_results = [self._apply_phone_request(request) for request in phone_requests]
 
         if interact:
             self._on_foot = apply_enter_exit_vehicle(
@@ -268,7 +276,7 @@ class SimulationServer:
         self._tick += 1
         self._server_time += dt
 
-        events = self.audio.take_events()
+        events = phone_results + self.audio.take_events()
         railway_mgr = getattr(self.world, "railway_mgr", None)
         if railway_mgr is not None:
             for kind, x, y, train, stop in railway_mgr.sound_events:
@@ -279,6 +287,25 @@ class SimulationServer:
             railway_mgr.sound_events.clear()
         self._stream_map_chunks()
         self._broadcast_state(should_stop=result.should_stop, city_summary=result.city_summary, events=events)
+
+    def _apply_phone_request(self, request: dict) -> dict:
+        """Accept or reject a phone row by id through the taxi manager - the
+        same calls (and sounds) as the Pygame phone - and say how it went."""
+        taxi_mgr = self.world.taxi_mgr
+        index = taxi_mgr.phone_item_index(request["item_id"])
+        ok, reason = False, "gone"  # expired, taken or declined meanwhile
+        if index is not None and getattr(taxi_mgr.phone_items()[index][1], "status", "PENDING") != "PENDING":
+            index, reason = None, "refused"  # an accepted booking can't be answered again (reject_offer(0) would pick another)
+        if index is not None:
+            if request["action"] == "accept":
+                ok = taxi_mgr.accept_offer(index, self.car.x, self.car.y)
+            else:
+                ok = taxi_mgr.reject_offer(index, self.car.x, self.car.y)
+            reason = "" if ok else "refused"
+        if ok:
+            self.audio.play_group("ui.accept" if request["action"] == "accept" else "ui.reject", 0.6)
+        return {"type": "phone_result", "action": request["action"], "item_id": request["item_id"],
+                "request_id": request["request_id"], "ok": ok, "reason": reason}
 
     def _stream_map_chunks(self) -> None:
         """Each client gets the map chunks around the player it doesn't have

@@ -73,10 +73,26 @@ def decode(line: bytes | str) -> dict:
 
 
 def build_command_message(command: PlayerCommand, *, interact: bool, seq: int,
-                          player_id: str = LOCAL_PLAYER_ID) -> dict:
+                          player_id: str = LOCAL_PLAYER_ID, phone: Optional[dict] = None) -> dict:
     payload = asdict(command)
     payload["interact"] = interact
-    return {"type": "command", "version": PROTOCOL_VERSION, "seq": seq, "player_id": player_id, "command": payload}
+    message = {"type": "command", "version": PROTOCOL_VERSION, "seq": seq, "player_id": player_id, "command": payload}
+    if phone is not None:
+        message["phone"] = phone
+    return message
+
+
+PHONE_ACTIONS = ("accept", "reject")
+
+
+def phone_request_from_message(message: dict) -> Optional[dict]:
+    """A command's phone request, {"action": "accept"|"reject", "item_id":
+    "offer-N"|"booking-N", "request_id": n}, or None (none, or malformed:
+    ignored like any bad input, never trusted)."""
+    phone = message.get("phone")
+    if not isinstance(phone, dict) or phone.get("action") not in PHONE_ACTIONS or not isinstance(phone.get("item_id"), str):
+        return None
+    return {"action": phone["action"], "item_id": phone["item_id"], "request_id": phone.get("request_id")}
 
 
 def command_player_id(message: dict) -> str:
@@ -171,6 +187,33 @@ def _train_to_dict(train) -> dict:
     }
 
 
+def _phone_to_dict(taxi_mgr, car) -> dict:
+    """The phone's rows, as the Pygame phone shows them (render/hud.py
+    draw_phone_offers): rail bookings first, then ride offers. Only values
+    the simulation has - an ordinary offer has no fare until the ride ends."""
+    items = []
+    for kind, item in taxi_mgr.phone_items():
+        if kind == "booking":
+            items.append({
+                "id": f"booking-{item.id}", "kind": "booking", "status": item.status,
+                "name": getattr(item.passenger, "name", "") or "",
+                "train": item.train_number, "pickup": item.station, "arrival": f"{item.arrival_at:%H:%M}",
+                "dropoff": item.destination.address if item.destination is not None else "",
+                "surcharge_cents": item.surcharge_cents,
+            })
+        else:
+            passenger = item.passenger
+            items.append({
+                "id": f"offer-{item.offer_id}", "kind": "offer", "status": "AVAILABLE",
+                "name": passenger.name, "pickup": passenger.pickup.address, "dropoff": passenger.dropoff.address,
+                "pickup_distance_m": round(math.hypot(car.x - passenger.pickup.x, car.y - passenger.pickup.y)),
+                "trip_distance_m": round(math.hypot(passenger.dropoff.x - passenger.pickup.x, passenger.dropoff.y - passenger.pickup.y)),
+                "time_remaining_s": round(item.time_remaining_s, 1),
+            })
+    # busy: a fare is under way - new offers wait until it ends ("finish or cancel").
+    return {"busy": taxi_mgr.current_passenger is not None, "items": items}
+
+
 def _line(points) -> list:
     return [[round(x, 1), round(y, 1)] for x, y in points]
 
@@ -236,6 +279,7 @@ def build_state_message(
             "taxi_smoke_timer": taxi_mgr.taxi_smoke_timer,
             "current_passenger": _passenger_to_dict(taxi_mgr.current_passenger),
         },
+        "phone": _phone_to_dict(taxi_mgr, car),
         # Career-mode session end (score threshold reached -> next city or
         # completed). Not fully wired end-to-end this phase - see
         # docs/architecture/simulation-rendering.md's known limitations.

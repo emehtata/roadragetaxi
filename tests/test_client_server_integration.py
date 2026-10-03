@@ -239,3 +239,52 @@ def test_commands_carry_the_player_id_and_others_are_ignored(monkeypatch):
     assert state["state"]["player_id"] == protocol.LOCAL_PLAYER_ID
     assert state["server_time"] > 0
     connection.close()
+
+
+def _phone_round(server, connection, **phone):
+    from theroadragetrip import protocol
+    from theroadragetrip.simulation import PlayerCommand
+
+    connection.send(protocol.build_command_message(PlayerCommand(), interact=False, seq=1, phone=phone))
+    time.sleep(0.05)
+    server.tick(1.0 / 30.0)
+    state = [m for m in _all_messages(connection) if m["type"] == "state"][-1]["state"]
+    return state, [e for e in state["events"] if e["type"] == "phone_result"]
+
+
+def test_the_phone_shows_offers_and_answers_by_id(monkeypatch):
+    """godot-05: phone rows come from the simulation; a client accepts or
+    rejects one by id, once, and hears the outcome as a phone_result."""
+    from theroadragetrip import transport
+
+    server = _start_server(monkeypatch)
+    taxi_mgr = server.world.taxi_mgr
+    taxi_mgr.offers = []
+    offers = taxi_mgr.generate_offers(server.car.x, server.car.y, count=3)
+    assert len(offers) >= 2, "the sample map should offer rides"
+    connection = transport.connect(server.host, server.port)
+    time.sleep(0.05)
+    server.tick(1.0 / 30.0)
+    phone = [m for m in _all_messages(connection) if m["type"] == "state"][-1]["state"]["phone"]
+    ids = [item["id"] for item in phone["items"]]
+    assert phone["busy"] is False and len(set(ids)) == len(ids) == len(offers)
+    first = phone["items"][0]
+    assert first["kind"] == "offer" and first["name"] == offers[0].passenger.name
+    assert first["pickup"] == offers[0].passenger.pickup.address and first["dropoff"] == offers[0].passenger.dropoff.address
+    assert first["pickup_distance_m"] >= 0 and first["trip_distance_m"] > 0 and "fare" not in first  # no fare before the ride
+
+    state, results = _phone_round(server, connection, action="reject", item_id=ids[1], request_id=1)
+    assert results == [{"type": "phone_result", "action": "reject", "item_id": ids[1], "request_id": 1, "ok": True, "reason": ""}]
+    assert ids[1] not in [item["id"] for item in state["phone"]["items"]]
+    assert {"type": "sound", "group": "ui.reject"} in state["events"]
+
+    state, results = _phone_round(server, connection, action="accept", item_id=ids[0], request_id=2)
+    assert results[0]["ok"] is True and taxi_mgr.current_passenger is offers[0].passenger
+    assert state["phone"] == {"busy": True, "items": []}
+    state, results = _phone_round(server, connection, action="accept", item_id=ids[0], request_id=3)
+    assert results[0]["ok"] is False and results[0]["reason"] == "gone"  # a repeat changes nothing
+    assert taxi_mgr.current_passenger is offers[0].passenger
+
+    state, results = _phone_round(server, connection, action="steal", item_id=ids[0])
+    assert results == []  # malformed phone requests are ignored
+    connection.close()
