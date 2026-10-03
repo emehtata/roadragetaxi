@@ -1,8 +1,23 @@
+import gc
 import math
 import time
 from types import SimpleNamespace
 
 import pytest
+
+
+@pytest.fixture
+def gc_paused():
+    """For the wall-clock budget tests: a cyclic-GC pass over whatever
+    earlier tests left alive (the full suite keeps several sample-world
+    servers) can land inside the timed loop and cost ~200 ms on its own.
+    Collect first, then keep the collector out of the measurement."""
+    gc.collect()
+    gc.disable()
+    try:
+        yield
+    finally:
+        gc.enable()
 from theroadragetrip.osm import Building, Place, Scenery, TaxiStop, Way
 from theroadragetrip.physics import Car, is_point_on_road
 from theroadragetrip.taxi import TaxiManager, TaxiOffer, TaxiPassenger, TaxiState, TaxiTarget
@@ -712,7 +727,7 @@ def _grid_buildings(count, spacing=30.0, size=10.0, cols=200):
     return buildings
 
 
-def test_nearby_collision_buildings_indexes_incrementally_not_the_whole_list():
+def test_nearby_collision_buildings_indexes_incrementally_not_the_whole_list(gc_paused):
     """Regression: _nearby_collision_buildings() rebuilt its whole spatial
     grid - every building ever loaded, not just the newly-added ones -
     every time the buildings list changed length, which fired on nearly
@@ -774,7 +789,7 @@ def _grid_fences(count, spacing=30.0, size=10.0, cols=200):
     return fences
 
 
-def test_nearby_collision_fences_indexes_incrementally_not_the_whole_list():
+def test_nearby_collision_fences_indexes_incrementally_not_the_whole_list(gc_paused):
     """Same fix, same reason, as the buildings test above -
     _nearby_collision_fences() had the identical whole-list-rebuild bug."""
     mgr = TaxiManager(ways=[], language="en")
@@ -821,7 +836,7 @@ def _grid_sceneries_with_trees(count, trees_per=8, spacing=50.0, cols=100):
     return out
 
 
-def test_nearby_collision_trees_indexes_incrementally_not_the_whole_map():
+def test_nearby_collision_trees_indexes_incrementally_not_the_whole_map(gc_paused):
     """Regression: same bug family as buildings/fences, but trickier -
     an individual scenery's own .trees list can change after that
     scenery is already indexed (osm/trees.py both appends to it as
