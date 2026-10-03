@@ -84,6 +84,7 @@ func test_audio() -> void:
 	check(arrived.size() == 2 and arrived[0]["group"] == "railway.train_brakes" and arrived[0]["at"] == Vector2(100, 200), "train_arrived maps to brakes + doors, placed")
 	check(arrived[0]["range"][1] == 150.0, "with the game's hearing range")
 	check(audio.bus_for("ui.accept") == "UI" and audio.bus_for("weather.rain") == "Environment", "categories map to buses")
+	check(audio.bus_for("city-traffic-outdoor") == "Environment", "a legacy sound's bus comes from its category, not its name")
 	check(audio.resolve({"type": "something_new"}).is_empty() and audio.unhandled.get("something_new") == 1, "an unknown event is noted, not played")
 	audio.handle_event({"type": "something_new"})  # no crash
 	var before := audio.played

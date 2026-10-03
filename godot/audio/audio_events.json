@@ -1,35 +1,119 @@
 {
-  "_doc": "Semantic simulation events -> sounds, for audio_manager.gd. Sounds are groups of the game's catalog (src/theroadragetrip/assets/audio/audio_catalog.json); a 'sound' event names its group directly. Ranges mirror audio.py's SPATIAL_RANGES_M: [full volume within, silent beyond] metres.",
+  "_doc": "Semantic simulation events -> sounds, for audio_manager.gd. Sounds are groups of the game's catalog (src/theroadragetrip/assets/audio/audio_catalog.json); a 'sound' event names its group directly. Ranges mirror audio.py's SPATIAL_RANGES_M: [full volume within, silent beyond] metres. 'legacy_groups' are older single sounds Pygame loads by name from src/theroadragetrip/sounds/ (audio.py), outside the catalog. Pygame's car-door-open is a .flac, which Godot can't load at runtime, and the catalog has no other door-open file: in Godot that event has no sound (counted in 'unhandled').",
   "catalog": "../src/theroadragetrip/assets/audio/audio_catalog.json",
   "buses": {
-    "Game": ["vehicle", "collision", "taxi", "passenger", "gameplay", "pedestrian", "railway", "station"],
-    "Environment": ["ambient", "weather"],
-    "UI": ["ui"]
+    "Game": [
+      "vehicle",
+      "collision",
+      "taxi",
+      "passenger",
+      "gameplay",
+      "pedestrian",
+      "railway",
+      "station"
+    ],
+    "Environment": [
+      "ambient",
+      "weather"
+    ],
+    "UI": [
+      "ui"
+    ]
   },
   "events": {
     "train_arrived": [
-      {"group": "railway.train_brakes"},
-      {"group": "railway.train_doors", "variation": 1, "volume": 0.7}
+      {
+        "group": "railway.train_brakes"
+      },
+      {
+        "group": "railway.train_doors",
+        "variation": 1,
+        "volume": 0.7
+      }
     ],
     "train_departed": [
-      {"group": "railway.train_doors", "variation": 0, "volume": 0.7},
-      {"group": "railway.train_horn", "volume": 0.8}
+      {
+        "group": "railway.train_doors",
+        "variation": 0,
+        "volume": 0.7
+      },
+      {
+        "group": "railway.train_horn",
+        "volume": 0.8
+      }
     ]
   },
   "ranges_m": {
-    "railway.train_horn": [25.0, 400.0],
-    "railway.train_running": [15.0, 200.0],
-    "railway.train_brakes": [10.0, 150.0],
-    "railway.train_doors": [2.5, 30.0],
-    "collision.vehicle": [15.0, 250.0],
-    "station.ambience": [15.0, 150.0]
+    "railway.train_horn": [
+      25.0,
+      400.0
+    ],
+    "railway.train_running": [
+      15.0,
+      200.0
+    ],
+    "railway.train_brakes": [
+      10.0,
+      150.0
+    ],
+    "railway.train_doors": [
+      2.5,
+      30.0
+    ],
+    "collision.vehicle": [
+      15.0,
+      250.0
+    ],
+    "station.ambience": [
+      15.0,
+      150.0
+    ],
+    "censored-cursing": [
+      3.0,
+      40.0
+    ]
   },
-  "player_categories": ["vehicle", "collision", "taxi", "passenger", "gameplay"],
-  "player_range_m": [20.0, 300.0],
+  "player_categories": [
+    "vehicle",
+    "collision",
+    "taxi",
+    "passenger",
+    "gameplay"
+  ],
+  "player_range_m": [
+    20.0,
+    300.0
+  ],
   "loops": {
-    "engine": {"group": "vehicle.engine_idle"},
-    "city_day": {"group": "ambient.city_day"},
-    "city_night": {"group": "ambient.city_night"},
-    "rain": {"group": "weather.rain"}
+    "engine": {
+      "group": "vehicle.engine_idle"
+    },
+    "train_running": {
+      "group": "railway.train_running",
+      "positional": true
+    },
+    "city_day": {
+      "group": "city-traffic-outdoor"
+    },
+    "city_night": {
+      "group": "ambient.city_night"
+    },
+    "rain": {
+      "group": "weather.rain"
+    }
+  },
+  "legacy_groups": {
+    "censored-cursing": {
+      "category": "pedestrian",
+      "files": [
+        "../src/theroadragetrip/sounds/censored-cursing.wav"
+      ]
+    },
+    "city-traffic-outdoor": {
+      "category": "ambient",
+      "files": [
+        "../src/theroadragetrip/sounds/city-traffic-outdoor.wav"
+      ]
+    }
   }
 }

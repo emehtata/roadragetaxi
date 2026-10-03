@@ -16,6 +16,8 @@ const BUSES := ["Game", "Environment", "UI"]
 var origin := Vector2.ZERO  # map origin (MapMath)
 var player_at := Vector2.ZERO  # the taxi / walking player, world metres: where its own sounds come from
 var played := 0  # one-shots started (performance / test readout)
+var played_groups: Dictionary = {}  # group -> one-shots started
+var loop_starts: Dictionary = {}  # loop key -> times it (re)started: once per sounding stretch, not per state
 var unhandled: Dictionary = {}  # event key -> times seen with no sound
 
 var _config: Dictionary = {}
@@ -40,7 +42,12 @@ func load_config(path: String) -> void:
 	for bus in _config.get("buses", {}):
 		for category in _config["buses"][bus]:
 			_bus_of_category[category] = bus
-	var catalog_path := ProjectSettings.globalize_path("res://").path_join(_config["catalog"]).simplify_path()
+	var project := ProjectSettings.globalize_path("res://")
+	for group_id in _config.get("legacy_groups", {}):
+		var legacy: Dictionary = _config["legacy_groups"][group_id]
+		var files: Array = legacy["files"].map(func(f): return project.path_join(f).simplify_path())
+		_groups[group_id] = {"files": files, "category": legacy.get("category", "")}
+	var catalog_path := project.path_join(_config["catalog"]).simplify_path()
 	var catalog = JSON.parse_string(FileAccess.get_file_as_string(catalog_path))
 	if typeof(catalog) != TYPE_DICTIONARY:
 		push_warning("AudioManager: no sound catalog at %s - running silent" % catalog_path)
@@ -63,7 +70,8 @@ func set_bus_volume(bus: String, linear: float) -> void:
 
 
 func bus_for(group_id: String) -> String:
-	return _bus_of_category.get(group_id.get_slice(".", 0), "Game")
+	var category: String = _groups.get(group_id, {}).get("category", group_id.get_slice(".", 0))
+	return _bus_of_category.get(category, "Game")
 
 
 ## What an event sounds like: [{"group", "file", "volume", "bus", "at"?,
@@ -120,35 +128,62 @@ func handle_event(event: Dictionary) -> void:
 		player.finished.connect(player.queue_free)
 		player.play()
 		played += 1
+		played_groups[action["group"]] = played_groups.get(action["group"], 0) + 1
 
 
 ## A continuous sound named in the config's "loops": on at `volume` (0
-## stops it), optionally pitched (engine revs).
-func set_loop(key: String, volume: float, pitch: float = 1.0) -> void:
-	var player: AudioStreamPlayer = _loops.get(key)
+## stops it), optionally pitched (engine revs). A loop marked "positional"
+## sounds from `at` (world metres), moved there on every call. Started once
+## and then only adjusted - never restarted per state.
+func set_loop(key: String, volume: float, pitch: float = 1.0, at = null) -> void:
+	var player: Node = _loops.get(key)
 	if volume <= 0.001:
 		if player != null and player.playing:
 			player.stop()
 		return
 	if player == null:
-		var group_id: String = _config.get("loops", {}).get(key, {}).get("group", "")
-		var group: Dictionary = _groups.get(group_id, {})
+		var spec: Dictionary = _config.get("loops", {}).get(key, {})
+		var group: Dictionary = _groups.get(spec.get("group", ""), {})
 		if group.is_empty():
 			return
-		var stream := _stream(group["files"][0])
+		var stream := _stream(group["files"][clampi(int(spec.get("variation", 0)), 0, group["files"].size() - 1)])
 		if stream == null:
 			return
 		if stream is AudioStreamOggVorbis:
 			stream.loop = true
-		player = AudioStreamPlayer.new()
+		elif stream is AudioStreamWAV:
+			stream.loop_mode = AudioStreamWAV.LOOP_FORWARD
+			stream.loop_begin = 0
+			stream.loop_end = int(stream.get_length() * stream.mix_rate)
+		if spec.get("positional", false):
+			var placed := AudioStreamPlayer2D.new()
+			placed.max_distance = _config.get("ranges_m", {}).get(spec["group"], [0.0, 200.0])[1]
+			placed.attenuation = 1.0
+			player = placed
+		else:
+			player = AudioStreamPlayer.new()
 		player.stream = stream
-		player.bus = bus_for(group_id)
+		player.bus = bus_for(spec["group"])
 		add_child(player)
 		_loops[key] = player
 	player.volume_db = linear_to_db(volume)
 	player.pitch_scale = pitch
+	if at != null and player is AudioStreamPlayer2D:
+		player.position = MapMath.point(origin, at.x, at.y)
 	if not player.playing:
 		player.play()
+		loop_starts[key] = loop_starts.get(key, 0) + 1
+
+
+## Silence every loop (the simulation went away: nothing is running any more).
+func stop_loops() -> void:
+	for player in _loops.values():
+		player.stop()
+
+
+## One-shot players still alive (they free themselves when finished).
+func one_shots_alive() -> int:
+	return get_child_count() - _loops.size()
 
 
 func loop_playing(key: String) -> bool:

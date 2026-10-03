@@ -5,7 +5,8 @@
 ##
 ## Command line (after `--`): --host H --port P, --interp-delay-ms N (see
 ## state_buffer.gd), --selftest to drive the taxi for a few seconds and
-## print a JSON report (CI / dev check), --screenshot PATH.
+## print a JSON report (CI / dev check), --audiotest for a scripted run to
+## record the sound output (audio_test.gd), --screenshot PATH.
 extends Node2D
 
 const COMMAND_INTERVAL_S := 0.05  # input -> simulation at 20 Hz, independent of the frame rate
@@ -35,6 +36,10 @@ var _screenshot_path := ""
 var _screenshot_wait := 6.0
 var _report := {}
 var _fps_samples: Array = []
+var events_presented := 0
+var _audiotest := false
+var override_night := -1.0  # >= 0: presentation override for the audio test (never sent to Python)
+var override_rain := -1.0
 
 
 func _ready() -> void:
@@ -49,6 +54,8 @@ func _ready() -> void:
 				entities.buffer.delay = float(args[i + 1]) / 1000.0
 			"--selftest":
 				_selftest = true
+			"--audiotest":
+				_audiotest = true
 			"--screenshot":
 				_screenshot_path = args[i + 1]
 	sim.world_received.connect(_on_world)
@@ -56,6 +63,13 @@ func _ready() -> void:
 	sim.chunk_received.connect(func(message: Dictionary): map_layer.add_chunk(message))
 	sim.chunk_unloaded.connect(func(chunk_id: String): map_layer.remove_chunk(chunk_id))
 	sim.connection_changed.connect(_on_connection)
+	if _audiotest:
+		var tester: Node = preload("res://audio_test.gd").new()
+		tester.main = self
+		var at := args.find("--audiotest")
+		if at + 1 < args.size() and not args[at + 1].begins_with("--"):
+			tester.out_path = args[at + 1]
+		add_child(tester)
 
 
 func _on_connection(up: bool) -> void:
@@ -63,6 +77,7 @@ func _on_connection(up: bool) -> void:
 	if not up:  # a new connection starts over: header, chunks, states
 		entities.buffer.clear()
 		map_layer.clear()
+		audio.stop_loops()
 
 
 func _on_world(world: Dictionary) -> void:
@@ -114,7 +129,7 @@ func _process(delta: float) -> void:
 	camera.position = entities.player_position()
 	_present(state)
 	_command_timer -= delta
-	if _command_timer <= 0.0 and not _selftest:  # the self-test drives instead
+	if _command_timer <= 0.0 and not _selftest and not _audiotest:  # the tests drive instead
 		_command_timer = COMMAND_INTERVAL_S
 		var up := _key(KEY_W, KEY_UP)
 		var down := _key(KEY_S, KEY_DOWN)
@@ -141,18 +156,38 @@ func _present(state: Dictionary) -> void:
 	audio.player_at = Vector2(player["x"], player["y"])
 	for event in entities.buffer.take_due_events(entities.now()):
 		audio.handle_event(event)
+		events_presented += 1
 		_recent_events.push_front(event.get("group", event.get("type", "?")))
 	_recent_events.resize(min(_recent_events.size(), 6))
 	var driving: bool = not state.get("on_foot", true) and state["player"].get("engine_on", false)
 	var speed: float = absf(state["player"].get("speed", 0.0))
 	audio.set_loop("engine", 0.6 if driving else 0.0, minf(1.0 + speed / 25.0, 2.2))
-	var night := _night(state.get("game_time_seconds", 12.0 * 3600.0))
+	var night := _night(state.get("game_time_seconds", 12.0 * 3600.0)) if override_night < 0.0 else override_night
 	audio.set_loop("city_day", 0.5 * (1.0 - night))
 	audio.set_loop("city_night", 0.5 * night)
-	audio.set_loop("rain", 0.6 if state.get("weather", {}).get("weather_type", "") == "rain" else 0.0)
+	var raining: bool = state.get("weather", {}).get("weather_type", "") == "rain"
+	audio.set_loop("rain", (0.6 if raining else 0.0) if override_rain < 0.0 else override_rain)
+	_train_loop(state)
 	hud.show_state(state)
 	if debug_label.visible:
 		_update_debug(state)
+
+
+## The nearest moving train rumbles from where it is (Pygame mixes the
+## loudest intercity and commuter train as two layers; one is enough here).
+func _train_loop(state: Dictionary) -> void:
+	var nearest = null
+	var best := INF
+	var speed := 0.0
+	for train in state.get("trains", []):
+		if train["state"] != "RUNNING" or train["speed"] < 2.0 or train["cars"].is_empty():
+			continue
+		var at := Vector2(train["cars"][0][0], train["cars"][0][1])
+		if at.distance_to(audio.player_at) < best:
+			best = at.distance_to(audio.player_at)
+			nearest = at
+			speed = train["speed"]
+	audio.set_loop("train_running", minf(1.0, speed / 20.0) if nearest != null else 0.0, 1.0, nearest)
 
 
 ## 0 by day, 1 at night, fading over an hour at dusk (21-22) and dawn (5-6).
