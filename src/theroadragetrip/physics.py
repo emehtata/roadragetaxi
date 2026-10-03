@@ -1626,12 +1626,26 @@ def update_car_physics(
     using_longitudinal_tire_grip = False
     throttle_driven = False
     braking_driven = False
-    if speed_limit_mps is not None and car.speed > speed_limit_mps:
+    # The limiter: over the limit it slows the car at SPEED_LIMIT_DECEL. While
+    # the driver keeps asking for more (throttle forward, brake in reverse)
+    # it holds the car AT the limit; with no input it doesn't clamp there,
+    # so the car slows on through the limit and coasts; braking always
+    # brakes. Clamping at the limit without input held the car there after
+    # the throttle was released - wind lifts it a hair over every tick, the
+    # clamp set it back, and coasting or braking never ran (godot-08).
+    over_limit = speed_limit_mps is not None and abs(car.speed) > speed_limit_mps
+    if over_limit and car.speed > 0 and throttle > 0:
         using_longitudinal_tire_grip = True
         car.speed = max(speed_limit_mps, car.speed - SPEED_LIMIT_DECEL * dt)
-    elif speed_limit_mps is not None and car.speed < -speed_limit_mps:
+    elif over_limit and car.speed < 0 and brake > 0:
         using_longitudinal_tire_grip = True
         car.speed = min(-speed_limit_mps, car.speed + SPEED_LIMIT_DECEL * dt)
+    elif over_limit and throttle <= 0 and brake <= 0:
+        using_longitudinal_tire_grip = True
+        if car.speed > 0:
+            car.speed = max(0.0, car.speed - SPEED_LIMIT_DECEL * dt)
+        else:
+            car.speed = min(0.0, car.speed + SPEED_LIMIT_DECEL * dt)
     elif throttle > 0:
         using_longitudinal_tire_grip = True
         throttle_driven = True

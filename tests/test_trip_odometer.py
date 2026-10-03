@@ -99,3 +99,34 @@ def test_speed_limiter_caps_reverse_speed():
         )
 
     assert car.speed == -10.0
+
+
+def _at_the_limit_with_a_tailwind():
+    """A car driven up to the limiter's speed with a strong wind from behind
+    (faster than the car, so it pushes): wind acceleration lifts it a hair
+    over the limit every tick - the case that held the car at the limit."""
+    car = Car(x=0.0, y=0.0, heading=0.0, speed=0.0)
+    for _ in range(80):
+        update_car_physics(car, throttle=1.0, brake=0.0, steer_left=0.0, steer_right=0.0, dt=1 / 30,
+                           speed_limit_mps=30 / 3.6, wind=(18.0, 0.0))
+    assert car.speed >= 30 / 3.6 - 0.01
+    return car
+
+
+def test_releasing_the_throttle_at_the_limiter_coasts_even_with_a_tailwind():
+    """godot-08 'the car keeps driving after the accelerator is released':
+    the limiter branch ran whenever speed > limit, set it back to the limit,
+    and the tailwind lifted it over again - coasting never happened."""
+    car = _at_the_limit_with_a_tailwind()
+    for _ in range(30):  # 1 s with no input
+        update_car_physics(car, throttle=0.0, brake=0.0, steer_left=0.0, steer_right=0.0, dt=1 / 30,
+                           speed_limit_mps=30 / 3.6, wind=(18.0, 0.0))
+    assert car.speed < 30 / 3.6 - 3.0
+
+
+def test_braking_at_the_limiter_brakes_even_with_a_tailwind():
+    car = _at_the_limit_with_a_tailwind()
+    for _ in range(15):  # 0.5 s of brake
+        update_car_physics(car, throttle=0.0, brake=1.0, steer_left=0.0, steer_right=0.0, dt=1 / 30,
+                           speed_limit_mps=30 / 3.6, wind=(18.0, 0.0))
+    assert car.speed < 30 / 3.6 - 3.0
