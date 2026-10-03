@@ -305,6 +305,15 @@ func _draw() -> void:
 			continue
 		_pedestrian(c, p.z, ped, lerpf(ped.get("animation_time", 0.0), next.get("animation_time", 0.0), t))
 		count += 1
+	var later_npc_rows := _by_id(b.get("npcs", []))
+	for npc in a.get("npcs", []):  # NPC drivers out of their car: Pygame adds them to the pedestrians
+		if not npc.get("is_on_foot", false):
+			continue
+		var p := StateBuffer.blend(npc, later_npc_rows.get(npc["id"], npc), t)
+		var c := MapMath.point(origin, p.x, p.y)
+		if view_rect.has_point(c):
+			_pedestrian(c, p.z, {"color": npc.get("color", [200, 200, 200])}, 0.0)
+			count += 1
 	if a.get("on_foot", false):
 		var walker := StateBuffer.blend(a["player_pedestrian"], b.get("player_pedestrian", a["player_pedestrian"]), t)
 		_pedestrian(MapMath.point(origin, walker.x, walker.y), walker.z, {"color": [255, 217, 64], "animation_state": "standing"}, 0.0)
