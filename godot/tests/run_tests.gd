@@ -33,6 +33,7 @@ func _process(_delta: float) -> bool:  # first frame: the tree is live, so nodes
 	test_hud()
 	test_map_chunks()
 	test_commands_carry_the_player_id()
+	test_phone()
 	print("%d checks, %d failed" % [_checks, _failures])
 	quit(1 if _failures > 0 else 0)
 	return false
@@ -176,7 +177,109 @@ func test_map_chunks() -> void:
 	map.free()
 
 
+func _key(code: Key) -> InputEventKey:
+	var event := InputEventKey.new()
+	event.physical_keycode = code
+	event.pressed = true
+	return event
+
+
+func _offer(id: String, name: String, metres: int = 800, seconds: float = 40.0) -> Dictionary:
+	return {"id": id, "kind": "offer", "status": "AVAILABLE", "name": name, "pickup": "Kirkkokatu 4",
+		"dropoff": "Rautatientori", "pickup_distance_m": metres, "trip_distance_m": 2300, "time_remaining_s": seconds}
+
+
+func test_phone() -> void:
+	var phone: Phone = preload("res://phone.gd").new()
+	root.add_child(phone)
+	var sounds: Array = []
+	var requests: Array = []
+	phone.sound.connect(func(group, variation): sounds.append([group, variation]))
+	phone.request.connect(func(action, item_id, request_id): requests.append([action, item_id, request_id]))
+
+	check(not phone.is_open and not phone.visible, "the phone starts closed")
+	phone._unhandled_input(_key(KEY_ENTER))
+	phone._unhandled_input(_key(KEY_X))
+	check(requests.is_empty(), "closed, its keys do nothing")
+	phone._unhandled_input(_key(KEY_P))
+	check(phone.is_open and phone.visible, "P opens it")
+	check(sounds == [["ui.phone_open", 0]], "opening plays ui.phone_open exactly once (%s)" % [sounds])
+	phone.open()
+	check(sounds.size() == 1, "opening an open phone plays nothing")
+	phone._unhandled_input(_key(KEY_P))
+	check(not phone.is_open and sounds == [["ui.phone_open", 0], ["ui.phone_open", 1]], "P closes it (Pygame's close variation)")
+	phone.open()
+	phone._unhandled_input(_key(KEY_ESCAPE))
+	check(not phone.is_open, "Esc closes it")
+	sounds.clear()
+
+	# No phone key is a driving / taxi / camera key (main.gd, hud hints), so
+	# opening, closing or answering can't move or brake the taxi.
+	var driving := [KEY_W, KEY_A, KEY_S, KEY_D, KEY_UP, KEY_DOWN, KEY_LEFT, KEY_RIGHT, KEY_SHIFT, KEY_F, KEY_E, KEY_F3, KEY_EQUAL, KEY_MINUS, KEY_KP_ADD, KEY_KP_SUBTRACT]
+	var clash := false
+	for action in Phone.ACTIONS:
+		for code in Phone.ACTIONS[action]:
+			clash = clash or code in driving
+	check(not clash, "phone keys don't overlap driving controls")
+
+	phone.set_connected(true)
+	phone.open()
+	phone.show_phone({"busy": false, "items": []})
+	check(phone._status.text == "No ride requests right now." and phone._accept.disabled, "no offers: said so, nothing to accept")
+	phone.show_phone({"busy": false, "items": [_offer("offer-1", "Aino"), _offer("offer-2", "Eero", 1500)]})
+	check(phone._rows.get_child_count() == 2 and phone._rows.get_child(0).text == "[1] Aino", "offers are listed")
+	check(phone.selected_id == "offer-1" and phone._details.text.contains("Pickup: Kirkkokatu 4") and phone._details.text.contains("Trip: 2.30 km"), "the first offer's details")
+	check(phone._details.text.contains("Fare: unavailable"), "no invented fare")
+	phone._unhandled_input(_key(KEY_2))
+	check(phone.selected_id == "offer-2" and phone._details.text.contains("To the customer: 1.50 km"), "2 selects the second offer")
+	var row_before := phone._rows.get_child(0)
+	phone.show_phone({"busy": false, "items": [_offer("offer-1", "Aino", 790, 39.0), _offer("offer-2", "Eero", 1490, 39.0)]})
+	check(phone._rows.get_child(0) == row_before and phone._details.text.contains("1.49 km"), "a value update refreshes text without rebuilding rows")
+
+	phone._unhandled_input(_key(KEY_ENTER))
+	check(requests == [["accept", "offer-2", 1]], "Enter sends exactly one accept request")
+	phone._unhandled_input(_key(KEY_ENTER))
+	phone.accept_selected()
+	phone.reject_selected()
+	check(requests.size() == 1 and phone._accept.disabled, "no second request while waiting for the answer")
+	check(phone._rows.get_child(1).text.ends_with("waiting for answer..."), "the pending request shows")
+	phone.handle_result({"type": "phone_result", "action": "accept", "item_id": "offer-2", "request_id": 1.0, "ok": false, "reason": "gone"})
+	check(phone._status.text == "That request is no longer available." and not phone._accept.disabled, "a refused accept is told, and the row can be answered again")
+	phone.accept_selected()
+	phone.handle_result({"type": "phone_result", "action": "accept", "item_id": "offer-2", "request_id": 2.0, "ok": true, "reason": ""})
+	check(not phone.is_open and phone.pending.is_empty(), "an accepted fare closes the phone")
+	phone.show_phone({"busy": true, "items": []})
+	phone.open()
+	check(phone._status.text == "Finish the current fare first." and phone._rows.get_child_count() == 0, "the simulation's state replaces the rows: busy")
+
+	phone.show_phone({"busy": false, "items": [_offer("offer-3", "Liisa")]})
+	phone.accept_selected()
+	phone.show_phone({"busy": false, "items": [_offer("offer-4", "Matti")]})  # offer-3 expired meanwhile
+	check(phone.pending.is_empty() and phone.selected_id == "offer-4" and phone._rows.get_child_count() == 1, "an expired offer disappears with its pending request")
+	phone.show_phone({"busy": false, "items": [{"id": "booking-7", "kind": "booking", "status": "ACCEPTED", "name": "Kaisa", "train": "IC 27",
+		"pickup": "Oulu", "arrival": "18:42", "dropoff": "Torikatu 1", "surcharge_cents": 800}]})
+	check(phone._rows.get_child(0).text.contains("accepted") and phone._accept.disabled and phone._details.text.contains("+8.00 €"), "a booking's state change shows; an accepted one can't be answered")
+
+	phone.show_phone({"busy": false, "items": [_offer("offer-5", "Olli")]})
+	phone.accept_selected()
+	requests.clear()
+	phone.set_connected(false)
+	check(phone.items.is_empty() and phone.pending.is_empty() and phone._accept.disabled and phone._status.text.begins_with("No connection"), "connection loss: stale rows and pending answers cleared, actions off")
+	check(not phone.accept_selected() and requests.is_empty(), "no requests without a connection")
+	phone.set_connected(true)
+	check(phone._status.text == "No ride requests right now.", "reconnected: a fresh, empty phone until the simulation says otherwise")
+	check(phone.get_children().size() == 1 and _orphan_timers(phone) == 0, "no leftover timers or nodes")
+	phone.free()
+
+
+
+func _orphan_timers(node: Node) -> int:
+	return node.find_children("*", "Timer", true, false).size()
+
+
 func test_commands_carry_the_player_id() -> void:
 	var line := SimClient.command_line({"throttle": 1.0}, 7, "local_player")
 	var message: Dictionary = JSON.parse_string(line)
 	check(line.ends_with("\n") and message["type"] == "command" and message["player_id"] == "local_player" and message["seq"] == 7, "commands carry the player id")
+	var answer: Dictionary = JSON.parse_string(SimClient.command_line({"throttle": 0.0}, 8, "local_player", {"action": "accept", "item_id": "offer-2", "request_id": 1}))
+	check(answer["phone"] == {"action": "accept", "item_id": "offer-2", "request_id": 1.0} and answer["command"]["throttle"] == 0.0, "a phone answer rides on a command with the current controls")
