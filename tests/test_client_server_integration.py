@@ -90,3 +90,78 @@ def test_client_disconnect_is_handled_cleanly(monkeypatch):
     time.sleep(0.05)
     server.tick(1.0 / 30.0)  # this tick's _apply_incoming_messages prunes closed connections
     assert len(server._clients) == 0
+
+
+def _all_messages(connection):
+    time.sleep(0.05)
+    return connection.try_recv_all()
+
+
+def test_a_new_client_first_gets_the_map_then_states_with_trains_and_events(monkeypatch):
+    """What the Godot client relies on: a one-off world message with plain
+    geometry, then per-tick states carrying trains and semantic events."""
+    from theroadragetrip import protocol, transport
+    from theroadragetrip.simulation import PlayerCommand
+
+    server = _start_server(monkeypatch)
+    connection = transport.connect(server.host, server.port)
+    messages = _all_messages(connection)
+    assert [m["type"] for m in messages] == ["world"]
+    world = messages[0]
+    assert world["roads"] and all(len(point) == 2 for point in world["roads"][0]["points"])
+    assert {"half_width_m", "kind", "drivable"} <= set(world["roads"][0])
+    assert isinstance(world["railways"], list) and isinstance(world["buildings"], list)
+
+    connection.send(protocol.build_command_message(PlayerCommand(), interact=True, seq=1))  # get in
+    time.sleep(0.05)
+    server.tick(1.0 / 30.0)
+    state = _all_messages(connection)[-1]
+    assert state["type"] == "state" and isinstance(state["state"]["trains"], list)
+    assert {"type": "sound", "group": "vehicle.door_close"} in state["state"]["events"]
+    server.tick(1.0 / 30.0)
+    assert _all_messages(connection)[-1]["state"]["events"] == []  # each event is sent once
+    connection.close()
+
+
+def test_a_client_can_reconnect_and_gets_the_map_again(monkeypatch):
+    from theroadragetrip import transport
+
+    server = _start_server(monkeypatch)
+    first = transport.connect(server.host, server.port)
+    time.sleep(0.05)
+    first.close()
+    time.sleep(0.05)
+    server.tick(1.0 / 30.0)
+    second = transport.connect(server.host, server.port)
+    time.sleep(0.05)
+    server.tick(1.0 / 30.0)
+    types = [m["type"] for m in _all_messages(second)]
+    assert types[0] == "world" and "state" in types
+    second.close()
+
+
+def test_a_departed_clients_input_stops_driving(monkeypatch):
+    """Regression: the last command (held throttle) kept driving the taxi
+    after its client disconnected."""
+    from theroadragetrip import protocol, transport
+    from theroadragetrip.simulation import PlayerCommand
+
+    server = _start_server(monkeypatch)
+    connection = transport.connect(server.host, server.port)
+    time.sleep(0.05)
+    connection.send(protocol.build_command_message(PlayerCommand(throttle=1.0, engine_on=True), interact=False, seq=1))
+    time.sleep(0.05)
+    server.tick(1.0 / 30.0)
+    assert server._latest_command.throttle == 1.0
+    connection.close()
+    time.sleep(0.05)
+    server.tick(1.0 / 30.0)
+    assert server._latest_command == PlayerCommand()
+
+
+def test_the_simulation_runs_without_any_client(monkeypatch):
+    server = _start_server(monkeypatch)
+    start = server.world.traffic_mgr.sim_time
+    for _ in range(30):
+        server.tick(1.0 / 30.0)
+    assert server._tick == 30 and server.world.traffic_mgr.sim_time > start
