@@ -155,6 +155,17 @@ only ever holds up its own sender.
   After the fix: 0 in 10 of 10.
 - The selftest reports underrun episodes, the longest one, and the largest
   gap between arriving states.
+- **Render clock (godot-08):** the render clock is monotonic. It follows
+  its target by running at most 25 % fast or slow, and snaps only on jumps
+  of more than 0.25 s. Jumping straight to the target had made it step
+  back 2–4 ms a few times per run, so everything moved back and then
+  forward.
+- **One sample per frame (godot-08):** `main.gd` calls
+  `EntityLayer.update_frame()` first, so the camera and every drawn entity
+  use the same sample. Before, the camera used the previous frame's
+  sample, and the taxi wobbled up to 4.6 px around the screen centre at
+  30 km/h. The selftest reports `render_backsteps` and
+  `taxi_off_centre_px`; both are 0.
 - Events are released when the render time reaches their state, so sounds
   match the picture. Each one is released once.
 - Aircraft: the simulation has none, so there is nothing to interpolate.
@@ -272,6 +283,15 @@ controls.
   as a sound event, as Pygame does.
 - Malformed requests are ignored. Requests go through the existing
   non-blocking queues, so they can't stall the tick.
+
+**Driving input (godot-08).** `DriveInput` (`drive_input.gd`) owns the
+held driving keys. Press and release events update it in `main._input`,
+before any UI can consume them. It is cleared, and an idle command sent at
+once, when the window or the application loses focus, because the key-ups
+of keys held at that moment never arrive. Commands are built from it; the
+engine's key state is no longer polled. `--inputtest` drives with real key
+events and reports the throttle sent and the taxi's speed after each
+release.
 
 **UI.** `phone.gd` is a `PanelContainer` on the right. The road stays
 visible, and the simulation does not pause; Pygame does pause, see below.
