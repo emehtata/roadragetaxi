@@ -518,5 +518,11 @@ class WorldCacheManager:
                 self._futures[area_id] = future
             return future
 
+    def pending_count(self) -> int:
+        """Background loads still running - under the lock, as preload()
+        adds to _futures from other threads."""
+        with self._lock:
+            return sum(not future.done() for future in self._futures.values())
+
     def close(self) -> None:
         self._executor.shutdown(wait=False, cancel_futures=True)

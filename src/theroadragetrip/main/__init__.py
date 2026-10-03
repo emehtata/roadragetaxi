@@ -2336,7 +2336,7 @@ def main() -> None:
             frame_profiler.set_metric("car_y", round(car.y, 1))
             frame_profiler.set_metric(
                 "world_cache_operations",
-                sum(not future.done() for future in getattr(world_cache, "_futures", {}).values()),
+                world_cache.pending_count() if hasattr(world_cache, "pending_count") else 0,
             )
             tile_metrics = auto_fetch_manager.get_tile_metrics()
             current_tile = tile_metrics["relative_tile"]
