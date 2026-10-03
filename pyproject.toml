@@ -27,7 +27,7 @@ where = ["src"]
 
 [tool.setuptools.package-data]
 theroadragetrip = [
-    "assets/*",
+    "assets/**/*",  # recursive: audio/, railway_announcements/... (assets/* missed every subfolder)
     "img/*",
     "sounds/*",
     "sounds/passenger_chatter/*.wav",
