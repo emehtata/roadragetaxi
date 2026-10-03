@@ -65,12 +65,13 @@ serialized as-is.
 | `chunk` | server→client | when the player's chunk changes | `chunk_id` (`"ix_iy"`, ix = floor(x/500)), `bounds`, `roads` (`points`, `half_width_m`, `kind`, `drivable`, `layer`), `railways`, `waters`, `buildings` |
 | `chunk_unload` | server→client | same | `chunk_id` |
 | `state` | server→client | every tick (30 Hz) | `tick`, `server_time` (simulation seconds), `state`: `player_id`, game time, `player`, `player_pedestrian`, `on_foot`, `npcs`, `pedestrians`, `trains` (`id`, `label`, `state`, `speed`, `cars` as `[x, y, heading, length, look]`), `weather`, `taxi`, `events` |
-| `command` | client→server | client-paced (Godot: 20 Hz) | `seq`, `player_id`, `command` (`throttle`, `brake`, `steer_*`, `forward`, `turn`, `engine_on`, ..., `interact`) |
+| `command` | client→server | client-paced (Godot: 20 Hz) | `seq`, `player_id`, `command` (`throttle`, `brake`, `steer_*`, `forward`, `turn`, `engine_on`, ..., `interact`), optional `phone` request |
 
 `events` are each sent once:
 - `{"type":"sound","group":"vehicle.door_close","at"?:[x,y]}`, recorded by
   `EventAudio` in place of real audio
 - `train_arrived` and `train_departed`, each with `at`, `station` and `train`
+- `phone_result`, the answer to a phone request
 
 Coordinates are world metres (x east, y north). Godot subtracts the world
 `center` and flips y to stay precise in float32 (`MapMath.point`).
@@ -144,8 +145,16 @@ only ever holds up its own sender.
   There is no extrapolation or prediction.
 - **Delay:** 100 ms by default, set with `--interp-delay-ms`. States come
   every 33 ms. One interval is needed to have the next state; two more
-  absorb late or bunched states. Measured: 0 underruns in 6 s windowed,
-  2 in 6 s headless (about 870 frames).
+  absorb late or bunched states.
+- **Clock offset:** smoothed asymmetrically. A state arriving later than
+  expected pulls the offset in at 50%; an early one only at 5%.
+  `server_time` is simulated time, and a late server tick is never caught
+  up, so the server clock slips behind for good. With 5% both ways the
+  render time briefly overtook the newest state: 1–5 underrun frames of up
+  to 7 ms in 6 of 10 selftests, although state gaps were only 41–62 ms.
+  After the fix: 0 in 10 of 10.
+- The selftest reports underrun episodes, the longest one, and the largest
+  gap between arriving states.
 - Events are released when the render time reaches their state, so sounds
   match the picture. Each one is released once.
 - Aircraft: the simulation has none, so there is nothing to interpolate.
@@ -233,6 +242,69 @@ Godot `Control`, `Label` and container nodes.
 - It shows the same state the picture shows.
 - F3 toggles the developer readout: tick, fps, buffer and underruns,
   timings, chunks, sounds, recent events.
+
+## Phone and offers (`phone.gd`, `Ui/Phone` in `main.tscn`)
+
+The simulation owns the phone's content. `TaxiManager.phone_items()` lists
+rail bookings first, then ride offers, at most 3. Offers appear on the
+simulation's own timer (10–60 s) and expire after 30–90 s. Bookings follow
+`rail_bookings.py`: PENDING, then ACCEPTED, then the train's progress, or
+DECLINED or MISSED.
+
+**State.** Each state carries `phone: {busy, items}`, built like Pygame's
+`draw_phone_offers` shows them:
+- offers: `id` "offer-N" (a stable `TaxiOffer.offer_id`), name, pickup,
+  dropoff, `pickup_distance_m`, `trip_distance_m`, `time_remaining_s`
+- bookings: `id` "booking-N", train, station, arrival, dropoff,
+  `surcharge_cents`, status
+
+An ordinary offer has no fare until the taximeter runs, so the UI says
+"unavailable". `busy` means a fare is under way; no new offers come then.
+
+**Requests.** A command may carry `phone: {action: accept|reject, item_id,
+request_id}`; `SimClient.send_phone` sends it on top of the current
+controls.
+- The server queues these like enter/exit actions and applies each one
+  once in the tick, using the same `accept_offer`/`reject_offer` as Pygame.
+  A gone or non-pending item is refused.
+- It answers with a `{"type": "phone_result", action, item_id, request_id,
+  ok, reason}` event. On success it also plays `ui.accept` or `ui.reject`
+  as a sound event, as Pygame does.
+- Malformed requests are ignored. Requests go through the existing
+  non-blocking queues, so they can't stall the tick.
+
+**UI.** `phone.gd` is a `PanelContainer` on the right. The road stays
+visible, and the simulation does not pause; Pygame does pause, see below.
+- Keys are InputMap actions added by the phone: P toggles, Esc closes, 1–3
+  pick a row, Enter accepts, X rejects. Buttons do the same.
+- No phone key is a driving, taxi or camera key, so driving keeps working
+  with the phone open.
+- Opening plays `ui.phone_open` variation 0 and closing plays variation 1,
+  as in Pygame.
+
+**Updates.**
+- Rows are rebuilt only when the set of rows or their statuses change.
+  Values (distances, time left) and the selection update in place.
+- A request disables answering that row until its `phone_result` arrives,
+  or until the row disappears (expired or taken), which resolves it.
+- An accepted fare closes the phone, as in Pygame.
+- On disconnect the rows and pending requests are cleared and actions are
+  disabled. After reconnecting, the phone shows only what new states say.
+
+**Difference from Pygame:** Pygame stops the clock (`dt = 0`) while its
+phone is open. The Godot client doesn't, because a shared server shouldn't
+pause for one client's UI. Expiring offers therefore keep counting down.
+
+**Tests:**
+- `godot/tests/run_tests.gd` `test_phone`: open/close and the sound, no
+  overlap with driving keys, rows and details, a single request, no
+  duplicates, refusal, expiry, booking status, connection loss, no leftover
+  nodes
+- `tests/test_client_server_integration.py`: the phone in the state,
+  reject and accept by id, a repeated accept answered "gone", malformed
+  requests
+- `--selftest --phone-wait 70` accepts a real Oulu offer or booking end to
+  end
 
 ## Map streaming (`map_chunks.py`, `map_layer.gd`, `map_chunk.gd`)
 
@@ -398,7 +470,7 @@ Nobody has listened to it; these are measurements of the output.
 - **Map extent:** there is no map beyond the loaded OSM area, and
   `--auto-fetch` is off in server mode.
 - **Single player only**, though identified by `player_id`.
-- **HUD:** basics only; no phone, offers, bookings or menus.
+- **HUD:** basics plus the phone; no menus or settings yet.
 - **Missing sounds:** no station announcements or passenger speech in
   Godot. The pedestrian curse is generated and validated but wasn't
   triggered in the scripted test.
