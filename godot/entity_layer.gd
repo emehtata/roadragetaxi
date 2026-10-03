@@ -1,39 +1,37 @@
-## Moving things from "state" messages, redrawn every frame. The simulation
-## sends ~30 states/s; between two of them positions are blended
-## (interpolation only - no prediction, Python stays authoritative).
+## Moving things from "state" messages, redrawn every frame from the
+## interpolation buffer (StateBuffer): positions and headings are blended
+## between the two states around the render time; everything discrete (an
+## entity appearing, its colour, a train's cars) comes from the earlier one.
 extends Node2D
 
 var origin := Vector2.ZERO
-var _prev: Dictionary = {}
-var _curr: Dictionary = {}
-var _curr_at := 0.0
-var _interval := 1.0 / 30.0
+var buffer := StateBuffer.new()
+var drawn_entities := 0  # last frame (performance readout)
+var interp_usec := 0  # time spent sampling and blending last frame
+
+var _frame: Dictionary = {}  # this frame's sample: {"a", "b", "t"}
 
 
-func push_state(state: Dictionary) -> void:
-	var now := Time.get_ticks_msec() / 1000.0
-	if not _curr.is_empty():
-		_interval = clamp(now - _curr_at, 0.005, 0.5)
-	_prev = _curr
-	_curr = state
-	_curr_at = now
+func now() -> float:
+	return Time.get_ticks_usec() / 1000000.0
 
 
-func alpha() -> float:
-	return clamp((Time.get_ticks_msec() / 1000.0 - _curr_at) / _interval, 0.0, 1.0)
+## The state the picture currently shows (discrete values: HUD, sound).
+func shown_state() -> Dictionary:
+	return _frame.get("a", {})
 
 
 ## The player's interpolated position (the camera follows it).
 func player_position() -> Vector2:
-	if _curr.is_empty():
+	if _frame.is_empty():
 		return Vector2.ZERO
-	var key := "player_pedestrian" if _curr.get("on_foot", false) else "player"
-	var a: Dictionary = _curr[key]
-	var b: Dictionary = _prev.get(key, a) if not _prev.is_empty() else a
-	return MapMath.point(origin, lerp(b["x"], a["x"], alpha()), lerp(b["y"], a["y"], alpha()))
+	var key := "player_pedestrian" if _frame["a"].get("on_foot", false) else "player"
+	var p := StateBuffer.blend(_frame["a"][key], _frame["b"].get(key, _frame["a"][key]), _frame["t"])
+	return MapMath.point(origin, p.x, p.y)
 
 
 func _process(_delta: float) -> void:
+	_frame = buffer.sample(now())
 	queue_redraw()
 
 
@@ -50,27 +48,43 @@ func _draw_box(x: float, y: float, heading: float, length: float, width: float, 
 	draw_set_transform(Vector2.ZERO)
 
 
+func _rgb(values: Array) -> Color:
+	return Color(values[0] / 255.0, values[1] / 255.0, values[2] / 255.0)
+
+
 func _draw() -> void:
-	if _curr.is_empty():
+	if _frame.is_empty():
 		return
-	var t := alpha()
-	for train in _curr.get("trains", []):
-		for car in train["cars"]:
-			var look: String = car[4]
-			_draw_box(car[0], car[1], car[2], car[3] - 0.6, 3.2, Color(0.05, 0.19, 0.09) if look == "locomotive" else Color(0.15, 0.5, 0.25))
-	var previous := _by_id(_prev.get("npcs", []))
-	for npc in _curr.get("npcs", []):
-		var old: Dictionary = previous.get(npc["id"], npc)
-		var color := Color(npc["color"][0] / 255.0, npc["color"][1] / 255.0, npc["color"][2] / 255.0)
-		_draw_box(lerp(old["x"], npc["x"], t), lerp(old["y"], npc["y"], t), lerp_angle(old["heading"], npc["heading"], t),
-			npc["length_m"], npc["width_m"], color)
-	var previous_peds := _by_id(_prev.get("pedestrians", []))
-	for ped in _curr.get("pedestrians", []):
-		var old: Dictionary = previous_peds.get(ped["id"], ped)
-		draw_circle(MapMath.point(origin, lerp(old["x"], ped["x"], t), lerp(old["y"], ped["y"], t)), ped["radius_m"],
-			Color(ped["color"][0] / 255.0, ped["color"][1] / 255.0, ped["color"][2] / 255.0))
-	var p: Dictionary = _curr["player"]
-	var q: Dictionary = _prev.get("player", p) if not _prev.is_empty() else p
-	_draw_box(lerp(q["x"], p["x"], t), lerp(q["y"], p["y"], t), lerp_angle(q["heading"], p["heading"], t), 4.4, 1.8, Color(1.0, 0.8, 0.1))
-	if _curr.get("on_foot", false):
+	var started := Time.get_ticks_usec()
+	var a: Dictionary = _frame["a"]
+	var b: Dictionary = _frame["b"]
+	var t: float = _frame["t"]
+	var count := 0
+	var later_trains := _by_id(b.get("trains", []))
+	for train in a.get("trains", []):
+		var next: Dictionary = later_trains.get(train["id"], train)
+		var same_cars: bool = next["cars"].size() == train["cars"].size()
+		for i in train["cars"].size():
+			var car: Array = train["cars"][i]
+			var to: Array = next["cars"][i] if same_cars else car
+			_draw_box(lerpf(car[0], to[0], t), lerpf(car[1], to[1], t), lerp_angle(car[2], to[2], t), car[3] - 0.6, 3.2,
+				Color(0.05, 0.19, 0.09) if car[4] == "locomotive" else Color(0.15, 0.5, 0.25))
+		count += 1
+	var later_npcs := _by_id(b.get("npcs", []))
+	for npc in a.get("npcs", []):
+		var p := StateBuffer.blend(npc, later_npcs.get(npc["id"], npc), t)
+		_draw_box(p.x, p.y, p.z, npc["length_m"], npc["width_m"], _rgb(npc["color"]))
+		count += 1
+	var later_peds := _by_id(b.get("pedestrians", []))
+	for ped in a.get("pedestrians", []):
+		var p := StateBuffer.blend(ped, later_peds.get(ped["id"], ped), t)
+		draw_circle(MapMath.point(origin, p.x, p.y), ped["radius_m"], _rgb(ped["color"]))
+		count += 1
+	var taxi := StateBuffer.blend(a["player"], b.get("player", a["player"]), t)
+	_draw_box(taxi.x, taxi.y, taxi.z, 4.4, 1.8, Color(1.0, 0.8, 0.1))
+	count += 1
+	if a.get("on_foot", false):
 		draw_circle(player_position(), 0.55, Color(1.0, 0.85, 0.25))
+		count += 1
+	drawn_entities = count
+	interp_usec = Time.get_ticks_usec() - started

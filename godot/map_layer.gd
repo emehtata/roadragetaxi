@@ -1,45 +1,56 @@
-## The static map from the "world" message, drawn once into this canvas
-## item (one draw list, not a node per road - the map has thousands).
-## Coordinates are metres relative to `origin` (world y north -> Godot y down),
-## so large map coordinates don't lose float precision.
+## The static map, streamed in chunks ("chunk" / "chunk_unload" messages;
+## Python decides which). Each chunk is one child canvas item drawn once
+## when it arrives, so loading or dropping one never redraws the others.
+## Coordinates are metres relative to `origin` (world y north -> Godot y
+## down), so large map coordinates don't lose float precision.
 extends Node2D
 
+const MapChunk := preload("res://map_chunk.gd")
+
 var origin := Vector2.ZERO
-var _roads: Array = []
-var _railways: Array = []
-var _waters: Array = []
-var _buildings: Array = []
+var _chunks: Dictionary = {}  # chunk_id -> MapChunk
 
 
-func set_world(world: Dictionary, world_origin: Vector2) -> void:
+func set_origin(world_origin: Vector2) -> void:
 	origin = world_origin
-	_roads = world.get("roads", [])
-	_railways = world.get("railways", [])
-	_waters = world.get("waters", [])
-	_buildings = world.get("buildings", [])
+	clear()
 	queue_redraw()
 
 
-func _points(line: Array) -> PackedVector2Array:
-	var points := PackedVector2Array()
-	for point in line:
-		points.append(MapMath.point(origin, point[0], point[1]))
-	return points
+func clear() -> void:
+	for chunk in _chunks.values():
+		chunk.queue_free()
+	_chunks.clear()
+
+
+func chunk_count() -> int:
+	return _chunks.size()
+
+
+func has_chunk(chunk_id: String) -> bool:
+	return _chunks.has(chunk_id)
+
+
+## Returns false for a chunk already loaded (it isn't rebuilt).
+func add_chunk(message: Dictionary) -> bool:
+	var chunk_id: String = message["chunk_id"]
+	if _chunks.has(chunk_id):
+		return false
+	var chunk := MapChunk.new()
+	chunk.name = "Chunk_" + chunk_id
+	chunk.setup(message, origin)
+	add_child(chunk)
+	_chunks[chunk_id] = chunk
+	return true
+
+
+func remove_chunk(chunk_id: String) -> bool:
+	if not _chunks.has(chunk_id):
+		return false
+	_chunks[chunk_id].queue_free()
+	_chunks.erase(chunk_id)
+	return true
 
 
 func _draw() -> void:
-	draw_rect(Rect2(-100000, -100000, 200000, 200000), Color(0.27, 0.33, 0.25))  # ground
-	for water in _waters:
-		var polygon := _points(water)
-		if polygon.size() >= 3 and not Geometry2D.triangulate_polygon(polygon).is_empty():
-			draw_colored_polygon(polygon, Color(0.25, 0.45, 0.65))
-	for road in _roads:
-		var width: float = max(0.6, 2.0 * float(road.get("half_width_m", 1.5)))
-		var color := Color(0.33, 0.33, 0.35) if road.get("drivable", false) else Color(0.55, 0.52, 0.45)
-		draw_polyline(_points(road["points"]), color, width)
-	for rail in _railways:
-		draw_polyline(_points(rail), Color(0.2, 0.17, 0.15), 1.4)
-	for building in _buildings:
-		var outline := _points(building)
-		if outline.size() >= 3 and not Geometry2D.triangulate_polygon(outline).is_empty():
-			draw_colored_polygon(outline, Color(0.6, 0.58, 0.55))
+	draw_rect(Rect2(-100000, -100000, 200000, 200000), Color(0.27, 0.33, 0.25))  # ground, under the chunks

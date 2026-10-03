@@ -1,18 +1,22 @@
 ## Connection to the Python simulation server: loopback TCP, one JSON
 ## message per line (src/theroadragetrip/protocol.py). Receives the one-off
-## "world" message and every tick's "state"; sends "command" messages.
+## "world" header, map "chunk"/"chunk_unload" messages and every tick's
+## "state"; sends "command" messages on behalf of `player_id`.
 ## Reconnects every second while the server is not there.
 class_name SimClient
 extends Node
 
 signal world_received(message: Dictionary)
 signal state_received(message: Dictionary)
+signal chunk_received(message: Dictionary)
+signal chunk_unloaded(chunk_id: String)
 signal connection_changed(connected: bool)
 
 const PROTOCOL_VERSION := 1
 
 var host := "127.0.0.1"
 var port := 8765
+var player_id := "local_player"  # the world message says which player this client is
 var connected := false
 var parse_usec := 0  # time spent decoding the last message (performance readout)
 
@@ -65,6 +69,10 @@ func _drain_lines() -> void:
 				world_received.emit(message)
 			"state":
 				state_received.emit(message)
+			"chunk":
+				chunk_received.emit(message)
+			"chunk_unload":
+				chunk_unloaded.emit(message["chunk_id"])
 	if start > 0:
 		_buffer = _buffer.slice(start)
 
@@ -74,5 +82,8 @@ func send_command(command: Dictionary) -> void:
 	if not connected:
 		return
 	_seq += 1
-	var line := JSON.stringify({"type": "command", "version": PROTOCOL_VERSION, "seq": _seq, "command": command}) + "\n"
-	_peer.put_data(line.to_utf8_buffer())
+	_peer.put_data(command_line(command, _seq, player_id).to_utf8_buffer())
+
+
+static func command_line(command: Dictionary, seq: int, player: String) -> String:
+	return JSON.stringify({"type": "command", "version": PROTOCOL_VERSION, "seq": seq, "player_id": player, "command": command}) + "\n"
