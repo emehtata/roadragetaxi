@@ -193,7 +193,6 @@ from .. import camera_focus as camera_focus_module
 from ..train_compositions import load_compositions
 from ..train_timetable import load_timetable
 from ..trains import RailwayManager
-from ..station_passengers import StationPassengerView, track_checker
 from ..world_places import load_places
 from ..weather_history import WeatherHistory, precipitation_from_observation
 
@@ -1099,7 +1098,15 @@ def _load_world(
     on_load_progress(1.0, "Ready")
     logger.info("Entering gameplay loop")
 
+    # Trains are simulation (advance_simulation updates them): built with the
+    # world so a headless server has them too.
+    railway_mgr = RailwayManager(railways, load_timetable(), _latlon_to_world_metres(), load_compositions())
+    railway_mgr.associate_taxi_stands(taxi_mgr.taxi_stops)
+    railway_mgr.bookings.destination_for = lambda stand: taxi_mgr.pick_phone_dropoff(stand.x, stand.y)
+    taxi_mgr.rail_bookings = railway_mgr.bookings
+
     return SimpleNamespace(
+        railway_mgr=railway_mgr,
         auto_fetch_manager=auto_fetch_manager,
         base_pedestrian_count=base_pedestrian_count,
         bounds=bounds,
@@ -1371,7 +1378,7 @@ def main() -> None:
         curbs = world.curbs
         railway_grid = world.railway_grid
         railways = world.railways
-        railway_mgr = RailwayManager(railways, load_timetable(), _latlon_to_world_metres(), load_compositions())
+        railway_mgr = world.railway_mgr
         # ponytail: the platforms of the map as loaded; streamed-in tiles' platforms aren't added
         station_announcer.platforms = [way for way in world.ways if way.highway == "platform" and not way.is_busway]
         railway_mgr_source_count = len(railways)
@@ -1402,8 +1409,6 @@ def main() -> None:
         sun_longitude = world.sun_longitude
         taxi_mgr = world.taxi_mgr
         taxi_stops = world.taxi_stops
-        railway_mgr.associate_taxi_stands(taxi_mgr.taxi_stops)
-        railway_mgr.bookings.destination_for = lambda stand: taxi_mgr.pick_phone_dropoff(stand.x, stand.y)
         def _booking_created(booking) -> None:
             taxi_mgr.notify_rail_booking(booking)
             audio.play_group("ui.booking_new")
@@ -1415,7 +1420,6 @@ def main() -> None:
 
         railway_mgr.bookings.on_created = _booking_created
         railway_mgr.bookings.on_missed = _booking_missed
-        taxi_mgr.rail_bookings = railway_mgr.bookings
         traffic_light_grid = world.traffic_light_grid
         traffic_lights = world.traffic_lights
         traffic_mgr = world.traffic_mgr
@@ -2290,6 +2294,7 @@ def main() -> None:
                     chosen_city=chosen_city,
                     cities_list=cities_list,
                     outside_temperature_c=outside_temperature(game_calendar.current),
+                    now=game_calendar.current,
                 )
                 camx, camy = result.camx, result.camy
                 current_way = result.current_way
@@ -3063,15 +3068,8 @@ def main() -> None:
                 )
             # After bridge track, so a train crossing a rail bridge stays
             # visible. Same time scale the game clock uses for the spawn timer.
-            with frame_profiler.section("trains"):
-                if railway_mgr.passenger_view is None:
-                    railway_mgr.associate_taxi_stands(taxi_mgr.taxi_stops)  # existing stands only
-                    railway_mgr.passenger_view = StationPassengerView(
-                        pedestrian_mgr, on_track=track_checker(railway_grid),
-                    )
-                railway_mgr.view_point = (camx, camy)
-                railway_mgr.update(dt, dt * (1.0 if taxi_mgr.has_active_job() else 60.0), game_calendar.current)
-                _play_rail_sounds(audio, railway_mgr, station_announcer)
+            # (The trains themselves advance in advance_simulation.)
+            _play_rail_sounds(audio, railway_mgr, station_announcer)
             with frame_profiler.section("render:trains"):
                 if surface_world:
                     draw_trains(

@@ -42,6 +42,7 @@ from .physics import (
     respawn_car,
     update_car_physics,
 )
+from .station_passengers import StationPassengerView, track_checker
 from .taxi import TaxiState
 
 RAGE_DISTANCE_TO_FULL_M = 400.0
@@ -196,6 +197,7 @@ def advance_simulation(
     chosen_city,
     cities_list,
     outside_temperature_c: float = 15.0,
+    now=None,
 ) -> SimulationFrameResult:
     """Run one gameplay tick: physics, collisions, camera follow, and the
     taxi/NPC/traffic/pedestrian manager updates. Extracted verbatim from
@@ -514,6 +516,20 @@ def advance_simulation(
     camy += (target_camy - camy) * cam_lerp_factor
 
     viewport_bounds = _viewport_bounds(camx, camy, px_per_m, screen_w, screen_h, margin_m=30.0)
+
+    # Trains: timetable trains, their passengers and pre-bookings follow the
+    # game clock (`now`, a datetime); presentation (drawing, train sounds,
+    # station announcements) stays with the client.
+    railway_mgr = getattr(world, "railway_mgr", None)
+    if railway_mgr is not None and now is not None:
+        with frame_profiler.section("trains"):
+            if railway_mgr.passenger_view is None:
+                railway_mgr.associate_taxi_stands(taxi_mgr.taxi_stops)  # existing stands only
+                railway_mgr.passenger_view = StationPassengerView(
+                    pedestrian_mgr, on_track=track_checker(world.railway_grid),
+                )
+            railway_mgr.view_point = (camx, camy)
+            railway_mgr.update(dt, dt * (1.0 if taxi_mgr.has_active_job() else 60.0), now)
 
     # Update taxi missions & pickups
     previous_taxi_state = taxi_mgr.state
