@@ -1,4 +1,4 @@
-[gd_scene load_steps=8 format=3]
+[gd_scene load_steps=10 format=3]
 
 [ext_resource type="Script" path="res://main.gd" id="1"]
 [ext_resource type="Script" path="res://sim_client.gd" id="2"]
@@ -7,6 +7,8 @@
 [ext_resource type="Script" path="res://audio_manager.gd" id="5"]
 [ext_resource type="Script" path="res://hud.gd" id="6"]
 [ext_resource type="Script" path="res://phone.gd" id="7"]
+[ext_resource type="Script" path="res://instruments.gd" id="8"]
+[ext_resource type="Script" path="res://nav_overlay.gd" id="9"]
 
 [node name="Main" type="Node2D"]
 script = ExtResource("1")
@@ -28,6 +30,22 @@ zoom = Vector2(9, 9)
 script = ExtResource("5")
 
 [node name="Ui" type="CanvasLayer" parent="."]
+
+[node name="Instruments" type="Control" parent="Ui"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+mouse_filter = 2
+script = ExtResource("8")
+
+[node name="NavOverlay" type="Control" parent="Ui"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+mouse_filter = 2
+script = ExtResource("9")
 
 [node name="Hud" type="Control" parent="Ui"]
 layout_mode = 3

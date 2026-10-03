@@ -64,5 +64,5 @@ static func values(state: Dictionary) -> Dictionary:
 	elif not player.get("engine_on", true):
 		text["hint"] = "E start the engine · F get out · P phone"
 	else:
-		text["hint"] = "WASD drive · F get out · E engine · P phone · +/- zoom"
+		text["hint"] = "WASD drive · F get out · E engine · P phone · C compass · +/- zoom"
 	return text

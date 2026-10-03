@@ -19,6 +19,8 @@ const COMMAND_INTERVAL_S := 0.05  # input -> simulation at 20 Hz, independent of
 @onready var hud: Control = $Ui/Hud
 @onready var debug_label: Label = $Ui/Debug
 @onready var phone: Phone = $Ui/Phone
+@onready var instruments: Control = $Ui/Instruments
+@onready var nav_overlay: Control = $Ui/NavOverlay
 
 var _tick := 0
 var _states_received := 0
@@ -65,6 +67,8 @@ func _ready() -> void:
 				_audiotest = true
 			"--screenshot":
 				_screenshot_path = args[i + 1]
+			"--compass":
+				$Ui/NavOverlay.show_compass = true
 			"--screenshot-drive":  # with --screenshot: get in and drive this many seconds first
 				_screenshot_drive = float(args[i + 1])
 	sim.world_received.connect(_on_world)
@@ -194,7 +198,14 @@ func _present(state: Dictionary) -> void:
 	audio.set_loop("rain", (0.6 if raining else 0.0) if override_rain < 0.0 else override_rain)
 	_train_loop(state)
 	hud.show_state(state)
+	instruments.show_state(state)
 	phone.show_phone(state.get("phone", {}))
+	var target: Dictionary = entities.current_target(state)
+	var target_screen := Vector2.ZERO
+	if not target.is_empty():
+		target_screen = get_viewport().get_canvas_transform() * MapMath.point(entities.origin, target["x"], target["y"])
+	var camera_world := Vector2(camera.position.x + entities.origin.x, entities.origin.y - camera.position.y)
+	nav_overlay.update_view(target, target_screen, camera_world, state["player"].get("heading", 0.0))
 	if debug_label.visible:
 		_update_debug(state)
 
