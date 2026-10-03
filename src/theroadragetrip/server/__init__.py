@@ -29,6 +29,8 @@ from typing import Optional
 import pygame
 
 from .. import protocol
+from ..map_chunks import CHUNK_SIZE_M, ChunkIndex, cell_of, plan
+from ..protocol import LOCAL_PLAYER_ID
 from ..career import career_path, gig_odometer_path
 from ..config import CONFIG_PATH, cities_from_config, get_overpass_endpoints
 from ..main import _choose_city, _load_world
@@ -153,6 +155,10 @@ class SimulationServer:
 
         self._clients_lock = threading.Lock()
         self._clients: list = []
+        # Per connection: the map chunks it has, and the player cell they were planned for.
+        self._chunks_index: Optional[ChunkIndex] = None
+        self._client_chunks: dict = {}
+        self._server_time = 0.0
 
         self._listener: Optional[Listener] = None
         self._running = False
@@ -165,10 +171,11 @@ class SimulationServer:
 
     def _on_client_connect(self, connection) -> None:
         logger.info("Client connected")
-        # The static map first (clients without map data draw from it), then
-        # every tick's state.
-        connection.send(protocol.build_world_message(self.world, (self.car.x, self.car.y)))
+        # Who it is and the map origin first; the map chunks around the
+        # player and every tick's state follow from the tick loop.
+        connection.send(protocol.build_world_message((self.car.x, self.car.y), CHUNK_SIZE_M, LOCAL_PLAYER_ID))
         with self._clients_lock:
+            self._client_chunks[connection] = (set(), None)
             self._clients.append(connection)
 
     def _apply_incoming_messages(self) -> None:
@@ -178,6 +185,9 @@ class SimulationServer:
             for message in connection.try_recv_all():
                 if message.get("type") != "command":
                     continue
+                if protocol.command_player_id(message) != LOCAL_PLAYER_ID:
+                    logger.warning("Ignoring a command for unknown player %r", message.get("player_id"))
+                    continue
                 command, interact = protocol.command_from_message(message)
                 with self._command_lock:
                     self._latest_command = command
@@ -186,6 +196,8 @@ class SimulationServer:
         with self._clients_lock:
             before = len(self._clients)
             self._clients = [c for c in self._clients if not c.is_closed]
+            for connection in [c for c in self._client_chunks if c.is_closed]:
+                del self._client_chunks[connection]
             gone = len(self._clients) != before
             if gone:
                 logger.info("Client disconnected (%d remaining)", len(self._clients))
@@ -251,6 +263,7 @@ class SimulationServer:
         self._taxi_waiter_elapsed = result.taxi_waiter_elapsed
         self._saved_gig_fares = result.saved_gig_fares
         self._tick += 1
+        self._server_time += dt
 
         events = self.audio.take_events()
         railway_mgr = getattr(self.world, "railway_mgr", None)
@@ -261,7 +274,33 @@ class SimulationServer:
                     "train": f"{train.service.train_type} {train.service.number}" if train.service else None,
                 })
             railway_mgr.sound_events.clear()
+        self._stream_map_chunks()
         self._broadcast_state(should_stop=result.should_stop, city_summary=result.city_summary, events=events)
+
+    def _stream_map_chunks(self) -> None:
+        """Each client gets the map chunks around the player it doesn't have
+        yet and is told to drop far ones - replanned only when the player
+        enters another chunk."""
+        with self._clients_lock:
+            clients = list(self._clients)
+        if not clients:
+            return
+        if self._chunks_index is None:
+            self._chunks_index = ChunkIndex(self.world)  # built once, on first need
+        player = self.world.player_pedestrian if self._on_foot else self.car
+        cell = cell_of(player.x, player.y)
+        for connection in clients:
+            loaded, planned_for = self._client_chunks.get(connection, (set(), None))
+            if planned_for == cell:
+                continue
+            to_load, to_drop = plan(loaded, cell)
+            for cid in to_drop:
+                connection.send({"type": "chunk_unload", "version": protocol.PROTOCOL_VERSION, "chunk_id": cid})
+                loaded.discard(cid)
+            for cid in to_load:
+                connection.send(self._chunks_index.message(cid))
+                loaded.add(cid)
+            self._client_chunks[connection] = (loaded, cell)
 
     def _broadcast_state(self, *, should_stop: bool = False, city_summary=None, events=None) -> None:
         message = protocol.build_state_message(
@@ -270,6 +309,7 @@ class SimulationServer:
             camx=self._camx, camy=self._camy,
             rage_power=self._rage_power, water_elapsed=self._water_elapsed,
             should_stop=should_stop, city_summary=city_summary, events=events,
+            server_time=self._server_time, player_id=LOCAL_PLAYER_ID,
         )
         with self._clients_lock:
             clients = list(self._clients)

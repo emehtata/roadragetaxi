@@ -5,21 +5,26 @@ tied to JSON at the call-site level: `encode`/`decode` are the only
 places that know the wire format, so swapping to a binary encoding later
 only touches this module. No pickle, no raw Python objects on the wire.
 
-Three message shapes cross the boundary:
+Message shapes crossing the boundary:
 
-- client -> server: `{"type": "command", "version": 1, "seq": N, "command": {...}}`
+- client -> server: `{"type": "command", "version": 1, "seq": N, "player_id": ..., "command": {...}}`
   built by `build_command_message`. `command` mirrors
   `simulation.PlayerCommand`'s fields plus one edge-triggered
   `interact` flag for the discrete "enter/exit vehicle" action.
+  `player_id` says whose input it is; there is one player today,
+  `LOCAL_PLAYER_ID`, and a command without one means that player.
 - server -> client, once on connect: `{"type": "world", "version": 1, ...}`
-  built by `build_world_message`: the static geometry a client that has
-  no map of its own (the Godot client) needs to draw - roads, railways,
-  waters, buildings around the player. The Pygame client ignores it (it
-  loads the map itself).
-- server -> client: `{"type": "state", "version": 1, "tick": N, "state": {...}}`
+  built by `build_world_message`: the map origin, chunk size and the
+  client's `player_id`. The Pygame client ignores it (it loads the map
+  itself).
+- server -> client: `{"type": "chunk", ...}` / `{"type": "chunk_unload", ...}`
+  (map_chunks.py): the static map around the player, streamed as it moves.
+- server -> client: `{"type": "state", "version": 1, "tick": N, "server_time": s, "state": {...}}`
   built by `build_state_message` every tick, applied on the Pygame client
   by `apply_server_state`. Dynamic gameplay state, plus the tick's
   semantic `events` (sounds, train arrivals) for the client to present.
+  `server_time` is simulation seconds since the server started - the
+  timeline clients interpolate on.
 
 See docs/architecture/godot-client.md.
 
@@ -39,6 +44,7 @@ from .simulation import PlayerCommand
 from .taxi import TaxiPassenger, TaxiTarget
 
 PROTOCOL_VERSION = 1
+LOCAL_PLAYER_ID = "local_player"  # the only player until there is multiplayer
 
 
 class ProtocolError(Exception):
@@ -66,10 +72,16 @@ def decode(line: bytes | str) -> dict:
     return message
 
 
-def build_command_message(command: PlayerCommand, *, interact: bool, seq: int) -> dict:
+def build_command_message(command: PlayerCommand, *, interact: bool, seq: int,
+                          player_id: str = LOCAL_PLAYER_ID) -> dict:
     payload = asdict(command)
     payload["interact"] = interact
-    return {"type": "command", "version": PROTOCOL_VERSION, "seq": seq, "command": payload}
+    return {"type": "command", "version": PROTOCOL_VERSION, "seq": seq, "player_id": player_id, "command": payload}
+
+
+def command_player_id(message: dict) -> str:
+    """Whose input a command is (older clients send none: the local player)."""
+    return str(message.get("player_id") or LOCAL_PLAYER_ID)
 
 
 def command_from_message(message: dict) -> tuple[PlayerCommand, bool]:
@@ -163,29 +175,13 @@ def _line(points) -> list:
     return [[round(x, 1), round(y, 1)] for x, y in points]
 
 
-def build_world_message(world, center: tuple, radius_m: float = 2500.0) -> dict:
-    """The static map around `center` a client without its own map data
-    needs to draw it: road/path centrelines with half-widths, railways,
-    water and building outlines. Plain lists of metres (x east, y north) -
-    no Python objects. Map semantics (routing, rules) stay in Python."""
-    cx, cy = center
-
-    def near(points) -> bool:
-        return any(abs(x - cx) <= radius_m and abs(y - cy) <= radius_m for x, y in points)
-
+def build_world_message(center: tuple, chunk_size_m: float, player_id: str = LOCAL_PLAYER_ID) -> dict:
+    """What a client learns once on connect: the map origin (it draws
+    relative to it, for float32 precision), the chunk grid size, and which
+    player it controls. The map itself follows as "chunk" messages."""
     return {
         "type": "world", "version": PROTOCOL_VERSION,
-        "center": [cx, cy], "radius_m": radius_m,
-        "roads": [
-            {"points": _line(way.points_m), "half_width_m": way.half_width_m, "kind": way.highway or "",
-             "drivable": bool(way.is_drivable), "layer": way.layer}
-            for way in world.ways if len(way.points_m) >= 2 and near(way.points_m)
-        ],
-        "railways": [_line(rail.points_m) for rail in world.railways if len(rail.points_m) >= 2 and near(rail.points_m)],
-        "waters": [_line(water.points_m) for water in world.waters
-                   if len(getattr(water, "points_m", ())) >= 3 and near(water.points_m)],
-        "buildings": [_line(building.points_m) for building in world.buildings
-                      if len(building.points_m) >= 3 and near(building.points_m)],
+        "center": [center[0], center[1]], "chunk_size_m": chunk_size_m, "player_id": player_id,
     }
 
 
@@ -193,6 +189,7 @@ def build_state_message(
     *, tick: int, world, car, on_foot: bool, player_pedestrian, game_time_seconds: float,
     camx: float, camy: float, rage_power: float, water_elapsed: float,
     should_stop: bool = False, city_summary: Optional[tuple] = None, events: Optional[list] = None,
+    server_time: float = 0.0, player_id: str = LOCAL_PLAYER_ID,
 ) -> dict:
     """Everything the Pygame client needs to render one frame, and nothing
     static (see module docstring). Called once per server tick."""
@@ -200,6 +197,7 @@ def build_state_message(
     taxi_mgr = world.taxi_mgr
     traffic_mgr = world.traffic_mgr
     state = {
+        "player_id": player_id,  # whose `player` / `taxi` this is
         "game_time_seconds": game_time_seconds,
         "sim_time": traffic_mgr.sim_time,
         "on_foot": on_foot,
@@ -247,7 +245,8 @@ def build_state_message(
         # {"type": "sound", "group": ...}, {"type": "train_arrived", ...}.
         "events": list(events or ()),
     }
-    return {"type": "state", "version": PROTOCOL_VERSION, "tick": tick, "state": state}
+    return {"type": "state", "version": PROTOCOL_VERSION, "tick": tick,
+            "server_time": server_time, "state": state}
 
 
 def _lerp_angle(a: float, b: float, alpha: float) -> float:

@@ -77,6 +77,17 @@ def test_malformed_client_message_does_not_crash_the_server(monkeypatch):
     raw.close()
 
 
+def _tick_until(server, condition, timeout=2.0):
+    """Tick until `condition()` - the server notices a closed client on its
+    reader thread, which shares the GIL with the test client's (busy
+    parsing map chunks), so a fixed sleep is flaky."""
+    deadline = time.monotonic() + timeout
+    while not condition() and time.monotonic() < deadline:
+        time.sleep(0.02)
+        server.tick(1.0 / 30.0)
+    return condition()
+
+
 def test_client_disconnect_is_handled_cleanly(monkeypatch):
     from theroadragetrip import transport
 
@@ -87,9 +98,8 @@ def test_client_disconnect_is_handled_cleanly(monkeypatch):
     assert len(server._clients) == 1
 
     connection.close()
-    time.sleep(0.05)
-    server.tick(1.0 / 30.0)  # this tick's _apply_incoming_messages prunes closed connections
-    assert len(server._clients) == 0
+    # a tick's _apply_incoming_messages prunes closed connections
+    assert _tick_until(server, lambda: len(server._clients) == 0)
 
 
 def _all_messages(connection):
@@ -98,19 +108,27 @@ def _all_messages(connection):
 
 
 def test_a_new_client_first_gets_the_map_then_states_with_trains_and_events(monkeypatch):
-    """What the Godot client relies on: a one-off world message with plain
-    geometry, then per-tick states carrying trains and semantic events."""
-    from theroadragetrip import protocol, transport
+    """What the Godot client relies on: a world header (origin, its
+    player_id), the map chunks around the player, then per-tick states
+    carrying trains and semantic events."""
+    from theroadragetrip import map_chunks, protocol, transport
     from theroadragetrip.simulation import PlayerCommand
 
     server = _start_server(monkeypatch)
     connection = transport.connect(server.host, server.port)
     messages = _all_messages(connection)
     assert [m["type"] for m in messages] == ["world"]
-    world = messages[0]
-    assert world["roads"] and all(len(point) == 2 for point in world["roads"][0]["points"])
-    assert {"half_width_m", "kind", "drivable"} <= set(world["roads"][0])
-    assert isinstance(world["railways"], list) and isinstance(world["buildings"], list)
+    assert messages[0]["player_id"] == protocol.LOCAL_PLAYER_ID
+    assert messages[0]["chunk_size_m"] == map_chunks.CHUNK_SIZE_M
+
+    server.tick(1.0 / 30.0)
+    messages = _all_messages(connection)
+    chunks = [m for m in messages if m["type"] == "chunk"]
+    assert len(chunks) == (2 * map_chunks.LOAD_RADIUS + 1) ** 2
+    assert messages[-1]["type"] == "state"  # the map arrives before the state that needs it
+    roads = [road for chunk in chunks for road in chunk["roads"]]
+    assert roads and all(len(point) == 2 for point in roads[0]["points"])
+    assert {"half_width_m", "kind", "drivable"} <= set(roads[0])
 
     connection.send(protocol.build_command_message(PlayerCommand(), interact=True, seq=1))  # get in
     time.sleep(0.05)
@@ -130,8 +148,7 @@ def test_a_client_can_reconnect_and_gets_the_map_again(monkeypatch):
     first = transport.connect(server.host, server.port)
     time.sleep(0.05)
     first.close()
-    time.sleep(0.05)
-    server.tick(1.0 / 30.0)
+    assert _tick_until(server, lambda: not server._clients)
     second = transport.connect(server.host, server.port)
     time.sleep(0.05)
     server.tick(1.0 / 30.0)
@@ -154,9 +171,7 @@ def test_a_departed_clients_input_stops_driving(monkeypatch):
     server.tick(1.0 / 30.0)
     assert server._latest_command.throttle == 1.0
     connection.close()
-    time.sleep(0.05)
-    server.tick(1.0 / 30.0)
-    assert server._latest_command == PlayerCommand()
+    assert _tick_until(server, lambda: server._latest_command == PlayerCommand())
 
 
 def test_the_simulation_runs_without_any_client(monkeypatch):
@@ -165,3 +180,60 @@ def test_the_simulation_runs_without_any_client(monkeypatch):
     for _ in range(30):
         server.tick(1.0 / 30.0)
     assert server._tick == 30 and server.world.traffic_mgr.sim_time > start
+
+
+def _chunk_messages(connection):
+    messages = _all_messages(connection)
+    return ([m["chunk_id"] for m in messages if m["type"] == "chunk"],
+            [m["chunk_id"] for m in messages if m["type"] == "chunk_unload"])
+
+
+def test_map_chunks_follow_the_player_without_resending(monkeypatch):
+    from theroadragetrip import map_chunks, transport
+
+    server = _start_server(monkeypatch)
+    connection = transport.connect(server.host, server.port)
+    time.sleep(0.05)
+    server.tick(1.0 / 30.0)
+    first, _ = _chunk_messages(connection)
+    assert len(first) == len(set(first)) == 49
+
+    server.tick(1.0 / 30.0)  # same place: nothing new
+    assert _chunk_messages(connection) == ([], [])
+
+    player = server.world.player_pedestrian  # on foot at start
+    player.x += map_chunks.CHUNK_SIZE_M  # one chunk east (a teleport: tests the plan, not walking)
+    server.tick(1.0 / 30.0)
+    loaded, dropped = _chunk_messages(connection)
+    assert len(loaded) == 7 and not set(loaded) & set(first)  # just the new column
+    assert dropped == []  # the far west column is still within the unload radius
+    player.x += map_chunks.CHUNK_SIZE_M
+    server.tick(1.0 / 30.0)
+    loaded, dropped = _chunk_messages(connection)
+    assert len(loaded) == 7 and len(dropped) == 7 and set(dropped) <= set(first)
+    connection.close()
+
+
+def test_commands_carry_the_player_id_and_others_are_ignored(monkeypatch):
+    from theroadragetrip import protocol, transport
+    from theroadragetrip.simulation import PlayerCommand
+
+    message = protocol.build_command_message(PlayerCommand(), interact=False, seq=1)
+    assert message["player_id"] == protocol.LOCAL_PLAYER_ID
+    assert protocol.command_player_id({"type": "command"}) == protocol.LOCAL_PLAYER_ID  # older clients
+
+    server = _start_server(monkeypatch)
+    connection = transport.connect(server.host, server.port)
+    time.sleep(0.05)
+    connection.send(protocol.build_command_message(PlayerCommand(throttle=1.0), interact=False, seq=1, player_id="someone_else"))
+    time.sleep(0.05)
+    server.tick(1.0 / 30.0)
+    assert server._latest_command == PlayerCommand()
+    connection.send(protocol.build_command_message(PlayerCommand(throttle=1.0), interact=False, seq=2))
+    time.sleep(0.05)
+    server.tick(1.0 / 30.0)
+    assert server._latest_command.throttle == 1.0
+    state = [m for m in _all_messages(connection) if m["type"] == "state"][-1]
+    assert state["state"]["player_id"] == protocol.LOCAL_PLAYER_ID
+    assert state["server_time"] > 0
+    connection.close()
