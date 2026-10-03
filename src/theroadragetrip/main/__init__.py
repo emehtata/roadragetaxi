@@ -2207,7 +2207,7 @@ def main() -> None:
                 interact_pending = False
 
                 new_snapshot = connection.try_recv_latest()
-                if new_snapshot is not None:
+                if new_snapshot is not None and new_snapshot.get("type") == "state":  # not the one-off "world"
                     prev_state_snapshot, prev_snapshot_time = curr_state_snapshot, curr_snapshot_time
                     curr_state_snapshot, curr_snapshot_time = new_snapshot["state"], time.monotonic()
 

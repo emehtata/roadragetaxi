@@ -23,6 +23,7 @@ from contextlib import nullcontext
 import logging
 import threading
 import time
+from datetime import date, datetime, timedelta
 from typing import Optional
 
 import pygame
@@ -57,6 +58,34 @@ class NullAudio:
         return _noop
 
 
+class EventAudio(NullAudio):
+    """NullAudio that remembers each sound cue as a semantic event for the
+    clients ({"type": "sound", "group": "collision.building", "at": [x, y]}),
+    which decide how to present it. Loops and per-frame audio state stay
+    no-ops - a client derives those from the state itself."""
+
+    def __init__(self) -> None:
+        self.events: list = []
+        self._edges: dict = {}
+
+    def play_group(self, group_id, volume=1.0, variation=None, at=None):
+        self.events.append({"type": "sound", "group": group_id, **({"at": list(at)} if at else {})})
+
+    def play(self, name, volume=1.0, at=None):
+        self.events.append({"type": "sound", "group": name, **({"at": list(at)} if at else {})})
+
+    def on_rise(self, key, active, group_id, volume=1.0):
+        rose = active and not self._edges.get(key, False)
+        self._edges[key] = active
+        if rose:
+            self.play_group(group_id)
+        return rose
+
+    def take_events(self) -> list:
+        events, self.events = self.events, []
+        return events
+
+
 class SimulationServer:
     def __init__(self, args, config, city_choice=None):
         """`city_choice` (a `_choose_city`-shaped SimpleNamespace) lets an
@@ -68,7 +97,7 @@ class SimulationServer:
         menu involved) resolves it here instead, CLI-driven, no menu."""
         self.args = args
         self.tick_rate = max(1.0, float(getattr(args, "tick_rate", 30.0)))
-        self.audio = NullAudio()
+        self.audio = EventAudio()
         self.language = config.get("game", "language", fallback="") or "en"
         self.physics_mode = config.get("game", "physics_realism", fallback="arcade")
         self.career_file = career_path(CONFIG_PATH)
@@ -136,6 +165,9 @@ class SimulationServer:
 
     def _on_client_connect(self, connection) -> None:
         logger.info("Client connected")
+        # The static map first (clients without map data draw from it), then
+        # every tick's state.
+        connection.send(protocol.build_world_message(self.world, (self.car.x, self.car.y)))
         with self._clients_lock:
             self._clients.append(connection)
 
@@ -202,6 +234,7 @@ class SimulationServer:
             gig_odometer_file=self.gig_odometer_file,
             chosen_city=self.chosen_city,
             cities_list=self.cities_list,
+            now=datetime.combine(date.today(), datetime.min.time()) + timedelta(seconds=self._game_time_seconds),
         )
         self._camx, self._camy = result.camx, result.camy
         self._current_way = result.current_way
@@ -213,15 +246,24 @@ class SimulationServer:
         self._saved_gig_fares = result.saved_gig_fares
         self._tick += 1
 
-        self._broadcast_state(should_stop=result.should_stop, city_summary=result.city_summary)
+        events = self.audio.take_events()
+        railway_mgr = getattr(self.world, "railway_mgr", None)
+        if railway_mgr is not None:
+            for kind, x, y, train, stop in railway_mgr.sound_events:
+                events.append({
+                    "type": f"train_{kind}", "at": [x, y], "station": stop[2] if stop else None,
+                    "train": f"{train.service.train_type} {train.service.number}" if train.service else None,
+                })
+            railway_mgr.sound_events.clear()
+        self._broadcast_state(should_stop=result.should_stop, city_summary=result.city_summary, events=events)
 
-    def _broadcast_state(self, *, should_stop: bool = False, city_summary=None) -> None:
+    def _broadcast_state(self, *, should_stop: bool = False, city_summary=None, events=None) -> None:
         message = protocol.build_state_message(
             tick=self._tick, world=self.world, car=self.car, on_foot=self._on_foot,
             player_pedestrian=self.world.player_pedestrian, game_time_seconds=self._game_time_seconds,
             camx=self._camx, camy=self._camy,
             rage_power=self._rage_power, water_elapsed=self._water_elapsed,
-            should_stop=should_stop, city_summary=city_summary,
+            should_stop=should_stop, city_summary=city_summary, events=events,
         )
         with self._clients_lock:
             clients = list(self._clients)

@@ -5,16 +5,23 @@ tied to JSON at the call-site level: `encode`/`decode` are the only
 places that know the wire format, so swapping to a binary encoding later
 only touches this module. No pickle, no raw Python objects on the wire.
 
-Two message shapes cross the boundary:
+Three message shapes cross the boundary:
 
 - client -> server: `{"type": "command", "version": 1, "seq": N, "command": {...}}`
   built by `build_command_message`. `command` mirrors
   `simulation.PlayerCommand`'s fields plus one edge-triggered
   `interact` flag for the discrete "enter/exit vehicle" action.
+- server -> client, once on connect: `{"type": "world", "version": 1, ...}`
+  built by `build_world_message`: the static geometry a client that has
+  no map of its own (the Godot client) needs to draw - roads, railways,
+  waters, buildings around the player. The Pygame client ignores it (it
+  loads the map itself).
 - server -> client: `{"type": "state", "version": 1, "tick": N, "state": {...}}`
-  built by `build_state_message`, applied on the client by
-  `apply_server_state`. Only dynamic gameplay state - static map geometry
-  never crosses this boundary (see docs/architecture/simulation-rendering.md).
+  built by `build_state_message` every tick, applied on the Pygame client
+  by `apply_server_state`. Dynamic gameplay state, plus the tick's
+  semantic `events` (sounds, train arrivals) for the client to present.
+
+See docs/architecture/godot-client.md.
 
 This module must never import pygame, for the same reason simulation.py
 doesn't: it's shared, unmodified, by the headless server.
@@ -139,10 +146,53 @@ def _passenger_to_dict(passenger: Optional[TaxiPassenger]) -> Optional[dict]:
     }
 
 
+def _train_to_dict(train) -> dict:
+    service = train.service
+    return {
+        "id": id(train),
+        "label": f"{service.train_type} {service.number}" if service is not None else "",
+        "state": train.state,
+        "speed": train.current_speed_mps,
+        # Each vehicle, front first: x, y, heading, length, look (locomotive, restaurant, ...).
+        "cars": [[round(x, 2), round(y, 2), round(heading, 4), length, profile]
+                 for x, y, heading, length, profile in train.vehicles()],
+    }
+
+
+def _line(points) -> list:
+    return [[round(x, 1), round(y, 1)] for x, y in points]
+
+
+def build_world_message(world, center: tuple, radius_m: float = 2500.0) -> dict:
+    """The static map around `center` a client without its own map data
+    needs to draw it: road/path centrelines with half-widths, railways,
+    water and building outlines. Plain lists of metres (x east, y north) -
+    no Python objects. Map semantics (routing, rules) stay in Python."""
+    cx, cy = center
+
+    def near(points) -> bool:
+        return any(abs(x - cx) <= radius_m and abs(y - cy) <= radius_m for x, y in points)
+
+    return {
+        "type": "world", "version": PROTOCOL_VERSION,
+        "center": [cx, cy], "radius_m": radius_m,
+        "roads": [
+            {"points": _line(way.points_m), "half_width_m": way.half_width_m, "kind": way.highway or "",
+             "drivable": bool(way.is_drivable), "layer": way.layer}
+            for way in world.ways if len(way.points_m) >= 2 and near(way.points_m)
+        ],
+        "railways": [_line(rail.points_m) for rail in world.railways if len(rail.points_m) >= 2 and near(rail.points_m)],
+        "waters": [_line(water.points_m) for water in world.waters
+                   if len(getattr(water, "points_m", ())) >= 3 and near(water.points_m)],
+        "buildings": [_line(building.points_m) for building in world.buildings
+                      if len(building.points_m) >= 3 and near(building.points_m)],
+    }
+
+
 def build_state_message(
     *, tick: int, world, car, on_foot: bool, player_pedestrian, game_time_seconds: float,
     camx: float, camy: float, rage_power: float, water_elapsed: float,
-    should_stop: bool = False, city_summary: Optional[tuple] = None,
+    should_stop: bool = False, city_summary: Optional[tuple] = None, events: Optional[list] = None,
 ) -> dict:
     """Everything the Pygame client needs to render one frame, and nothing
     static (see module docstring). Called once per server tick."""
@@ -176,6 +226,7 @@ def build_state_message(
         },
         "npcs": [_npc_to_dict(npc) for npc in world.npc_manager.vehicles],
         "pedestrians": [_pedestrian_to_dict(p) for p in world.pedestrian_mgr.pedestrians if p.resident_id is not None],
+        "trains": [_train_to_dict(t) for t in getattr(getattr(world, "railway_mgr", None), "trains", ())],
         "weather": {"weather_type": weather.weather_type.value, "wetness": weather.wetness},
         "taxi": {
             "state": taxi_mgr.state,
@@ -192,6 +243,9 @@ def build_state_message(
         # docs/architecture/simulation-rendering.md's known limitations.
         "should_stop": should_stop,
         "city_summary": list(city_summary) if city_summary is not None else None,
+        # What happened this tick, for the client to present (sound, UI):
+        # {"type": "sound", "group": ...}, {"type": "train_arrived", ...}.
+        "events": list(events or ()),
     }
     return {"type": "state", "version": PROTOCOL_VERSION, "tick": tick, "state": state}
 
