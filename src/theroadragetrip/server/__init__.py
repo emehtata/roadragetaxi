@@ -186,8 +186,14 @@ class SimulationServer:
         with self._clients_lock:
             before = len(self._clients)
             self._clients = [c for c in self._clients if not c.is_closed]
-            if len(self._clients) != before:
+            gone = len(self._clients) != before
+            if gone:
                 logger.info("Client disconnected (%d remaining)", len(self._clients))
+        if gone:
+            # A departed client's last input must not keep driving the taxi
+            # (held throttle into a wall): back to no input.
+            with self._command_lock:
+                self._latest_command = PlayerCommand()
 
     def tick(self, dt: float) -> None:
         self._apply_incoming_messages()
