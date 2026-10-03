@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import math
 
-from .protocol import PROTOCOL_VERSION, _line
+from .protocol import PROTOCOL_VERSION, _line, encode
 
 CHUNK_SIZE_M = 500.0
 LOAD_RADIUS = 3    # chunks around the player's chunk that must be loaded (7 x 7, >= 1.5 km each way)
@@ -54,6 +54,7 @@ class ChunkIndex:
     def __init__(self, world, size: float = CHUNK_SIZE_M):
         self.size = size
         self._chunks: dict[str, dict] = {}
+        self._encoded: dict[str, bytes] = {}
         for way in world.ways:
             if len(way.points_m) >= 2:
                 self._add("roads", way.points_m, {
@@ -85,3 +86,16 @@ class ChunkIndex:
             "bounds": [ix * self.size, iy * self.size, (ix + 1) * self.size, (iy + 1) * self.size],
             **content,
         }
+
+    def encoded(self, cid: str) -> bytes:
+        """The chunk message as wire bytes, encoded once: the map doesn't
+        change, and re-encoding ~2 MB of JSON for every client would hold
+        the GIL against the tick."""
+        data = self._encoded.get(cid)
+        if data is None:
+            data = self._encoded[cid] = encode(self.message(cid))
+        return data
+
+    def encode_all(self) -> None:
+        for cid in self._chunks:
+            self.encoded(cid)

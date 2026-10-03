@@ -156,7 +156,8 @@ class SimulationServer:
         self._clients_lock = threading.Lock()
         self._clients: list = []
         # Per connection: the map chunks it has, and the player cell they were planned for.
-        self._chunks_index = ChunkIndex(self.world)  # built once, before any client (~0.2 s for Oulu)
+        self._chunks_index = ChunkIndex(self.world)  # built and encoded once, before any client (~0.3 s for Oulu)
+        self._chunks_index.encode_all()
         self._client_chunks: dict = {}
         self._server_time = 0.0
 
@@ -298,7 +299,7 @@ class SimulationServer:
                 connection.send({"type": "chunk_unload", "version": protocol.PROTOCOL_VERSION, "chunk_id": cid})
                 loaded.discard(cid)
             for cid in to_load:
-                connection.send(self._chunks_index.message(cid))
+                connection.send(self._chunks_index.encoded(cid))
                 loaded.add(cid)
             self._client_chunks[connection] = (loaded, cell)
 

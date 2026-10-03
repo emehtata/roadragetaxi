@@ -113,8 +113,9 @@ class LineJSONConnection:
             self._error = exc
         self._closed = True
 
-    def send(self, message: dict) -> bool:
-        """Queue a reliable message; never blocks. False once the connection
+    def send(self, message: "dict | bytes") -> bool:
+        """Queue a reliable message (a dict, or an already encoded line);
+        never blocks. False once the connection
         is closed - including by this call, if the queue is full."""
         with self._out_lock:
             if self._closed:
@@ -149,7 +150,7 @@ class LineJSONConnection:
         with self._out_lock:
             return len(self._outgoing) + (self._pending_state is not None) + self._writing
 
-    def _next_outgoing(self) -> Optional[dict]:
+    def _next_outgoing(self) -> "Optional[dict | bytes]":
         with self._out_lock:
             self._writing = False
             while not self._closed and not self._outgoing and self._pending_state is None:
@@ -167,7 +168,7 @@ class LineJSONConnection:
             message = self._next_outgoing()
             if message is None:
                 return
-            data = memoryview(encode(message))
+            data = memoryview(message if isinstance(message, bytes) else encode(message))
             stalled_since = time.monotonic()
             try:
                 while data:  # partial writes: keep going from where the socket stopped
