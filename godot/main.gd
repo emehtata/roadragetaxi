@@ -46,7 +46,8 @@ var events_presented := 0
 var _audiotest := false
 var override_night := -1.0  # >= 0: presentation override for the audio test (never sent to Python)
 var override_rain := -1.0
-var override_train_at := Vector2.INF  # audio test: a moving train here (presentation only)
+var override_train_at := Vector2.INF
+var override_wetness := -1.0  # audio test: a moving train here (presentation only)
 
 
 func _ready() -> void:
@@ -67,6 +68,8 @@ func _ready() -> void:
 				_audiotest = true
 			"--screenshot":
 				_screenshot_path = args[i + 1]
+			"--wetness":  # presentation override for visual checks (never sent to Python)
+				override_wetness = float(args[i + 1])
 			"--compass":
 				$Ui/NavOverlay.show_compass = true
 			"--screenshot-drive":  # with --screenshot: get in and drive this many seconds first
@@ -199,6 +202,7 @@ func _present(state: Dictionary) -> void:
 	_train_loop(state)
 	hud.show_state(state)
 	instruments.show_state(state)
+	map_layer.set_wetness(state.get("weather", {}).get("wetness", 0.0) if override_wetness < 0.0 else override_wetness)
 	phone.show_phone(state.get("phone", {}))
 	var target: Dictionary = entities.current_target(state)
 	var target_screen := Vector2.ZERO

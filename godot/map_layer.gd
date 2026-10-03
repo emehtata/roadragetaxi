@@ -8,6 +8,7 @@ extends Node2D
 const MapChunk := preload("res://map_chunk.gd")
 
 var origin := Vector2.ZERO
+var wetness := 0.0  # road wetness as last applied (bucketed, see set_wetness)
 var _chunks: Dictionary = {}  # chunk_id -> MapChunk
 
 
@@ -39,8 +40,22 @@ func add_chunk(message: Dictionary) -> bool:
 	var chunk := MapChunk.new()
 	chunk.name = "Chunk_" + chunk_id
 	chunk.setup(message, origin)
+	chunk.set_wetness(wetness)
 	add_child(chunk)
 	_chunks[chunk_id] = chunk
+	return true
+
+
+## The weather's road wetness 0..1 (state "weather.wetness"). Applied in
+## steps of 3/255 overlay alpha, as Pygame's wet-road cache does, so a slowly
+## drying road doesn't touch every chunk every tick.
+func set_wetness(value: float) -> bool:
+	var stepped := roundf(clampf(value, 0.0, 1.0) * 30.0) / 30.0
+	if is_equal_approx(stepped, wetness):
+		return false
+	wetness = stepped
+	for chunk in _chunks.values():
+		chunk.set_wetness(wetness)
 	return true
 
 
