@@ -1,7 +1,10 @@
 PYTHON := .venv/bin/python
 PIP := .venv/bin/pip
+GODOT ?= $(HOME)/tools/godot/Godot_v4.7.2-stable_linux.x86_64
+PORT ?= 8765
+PRESET ?= Oulu
 
-.PHONY: help venv install run run-debug run-sample run-pbf index-pbf audit-ai test compile check clean
+.PHONY: help venv install run run-debug run-sample run-pbf index-pbf run-server run-godot run-godot-all godot-selftest audit-ai test compile check clean
 
 help:
 	@printf '%s\n' \
@@ -11,6 +14,10 @@ help:
 		'run-sample             Start offline with bundled sample data' \
 		'run-pbf                Start using the local .osm.pbf extract instead of Overpass' \
 		'index-pbf              Build the grid index for the local .osm.pbf extract (faster run-pbf)' \
+		'run-server             Start the headless simulation server (PRESET=Oulu PORT=8765)' \
+		'run-godot              Start the Godot client against a running server (GODOT=path)' \
+		'run-godot-all          Start the server in the background, then the Godot client' \
+		'godot-selftest         Server + headless Godot selftest, prints a JSON report' \
 		'audit-ai               Run headless autonomous traffic audit' \
 		'test                   Run the test suite' \
 		'compile                Compile-check Python sources' \
@@ -37,6 +44,22 @@ run-pbf:
 
 index-pbf:
 	$(PYTHON) src/theroadragetrip/utils/pbf_index.py src/theroadragetrip/assets/osm/finland-latest.osm.pbf
+
+run-server:
+	PYTHONPATH=src $(PYTHON) -m theroadragetrip.server --preset $(PRESET) --port $(PORT) --tick-rate 30
+
+run-godot:
+	$(GODOT) --path godot -- --port $(PORT)
+
+run-godot-all:
+	PYTHONPATH=src $(PYTHON) -m theroadragetrip.server --preset $(PRESET) --port $(PORT) --tick-rate 30 & \
+	server=$$!; trap 'kill $$server' EXIT INT TERM; \
+	sleep 5; $(GODOT) --path godot -- --port $(PORT)
+
+godot-selftest:
+	PYTHONPATH=src $(PYTHON) -m theroadragetrip.server --preset $(PRESET) --port $(PORT) --tick-rate 30 & \
+	server=$$!; trap 'kill $$server' EXIT INT TERM; \
+	sleep 5; $(GODOT) --headless --path godot -- --port $(PORT) --selftest
 
 audit-ai:
 	PYTHONPATH=src $(PYTHON) utils/autoplay_audit.py
