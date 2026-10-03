@@ -156,7 +156,7 @@ class SimulationServer:
         self._clients_lock = threading.Lock()
         self._clients: list = []
         # Per connection: the map chunks it has, and the player cell they were planned for.
-        self._chunks_index: Optional[ChunkIndex] = None
+        self._chunks_index = ChunkIndex(self.world)  # built once, before any client (~0.2 s for Oulu)
         self._client_chunks: dict = {}
         self._server_time = 0.0
 
@@ -197,6 +197,8 @@ class SimulationServer:
             before = len(self._clients)
             self._clients = [c for c in self._clients if not c.is_closed]
             for connection in [c for c in self._client_chunks if c.is_closed]:
+                if connection.error is not None:
+                    logger.info("Client dropped: %s", connection.error)
                 del self._client_chunks[connection]
             gone = len(self._clients) != before
             if gone:
@@ -285,8 +287,6 @@ class SimulationServer:
             clients = list(self._clients)
         if not clients:
             return
-        if self._chunks_index is None:
-            self._chunks_index = ChunkIndex(self.world)  # built once, on first need
         player = self.world.player_pedestrian if self._on_foot else self.car
         cell = cell_of(player.x, player.y)
         for connection in clients:
@@ -314,7 +314,7 @@ class SimulationServer:
         with self._clients_lock:
             clients = list(self._clients)
         for connection in clients:
-            connection.send(message)
+            connection.send_state(message)  # never waits: a behind client gets the newest state
 
     def run_forever(self) -> None:
         """Blocking tick loop - the body of `python -m theroadragetrip.server`."""
