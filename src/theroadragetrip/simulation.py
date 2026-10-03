@@ -129,11 +129,11 @@ def apply_enter_exit_vehicle(car, player_pedestrian, on_foot: bool, audio, taxi_
         )
         player_pedestrian.heading = car.heading
         car.speed = 0.0  # the engine keeps running (idling) until E turns it off
-        audio.play("car-door-open")
+        audio.play_group("vehicle.door_open")
         return True
     elif math.hypot(player_pedestrian.x - car.x, player_pedestrian.y - car.y) <= 3.0:
         car.speed = 0.0
-        audio.play_group("vehicle.door_close")
+        audio.play_group("vehicle.door_open")  # getting in: the door opens (passengers boarding get door_close)
         return False
     return on_foot
 
@@ -566,7 +566,7 @@ def advance_simulation(
     npc_manager.accidents.clear()
     if pedestrian_mgr.curses:
         x, y = pedestrian_mgr.curses[-1]  # one curse per tick is plenty
-        audio.play("censored-cursing", 0.8, at=(x, y))
+        audio.play_group("pedestrian.curse", 0.8, at=(x, y))
         pedestrian_mgr.curses.clear()
     vomited_passenger = taxi_mgr.take_vomited_passenger(car)
     if vomited_passenger is not None:
@@ -620,7 +620,7 @@ def advance_simulation(
     ):
         audio.play_passenger_line_for_situation("dropoff", previous_passenger.gender, language, previous_passenger.name)
         audio.play_driver_line("dropoff", language)
-        audio.play("car-door-open")
+        audio.play_group("vehicle.door_open")
         passenger_pedestrian = pedestrian_mgr.spawn_pedestrian_at(
             car.x + math.sin(car.heading) * 1.8,
             car.y - math.cos(car.heading) * 1.8,

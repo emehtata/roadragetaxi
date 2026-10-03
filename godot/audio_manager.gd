@@ -25,6 +25,7 @@ var _groups: Dictionary = {}  # catalog group id -> {"files": [absolute paths], 
 var _streams: Dictionary = {}  # path -> AudioStream (loaded once)
 var _loops: Dictionary = {}  # key -> AudioStreamPlayer
 var _bus_of_category: Dictionary = {}
+var _last_variation: Dictionary = {}  # group -> index last picked, so a random pick never repeats it back to back (as audio.py)
 
 
 func _ready() -> void:
@@ -42,12 +43,7 @@ func load_config(path: String) -> void:
 	for bus in _config.get("buses", {}):
 		for category in _config["buses"][bus]:
 			_bus_of_category[category] = bus
-	var project := ProjectSettings.globalize_path("res://")
-	for group_id in _config.get("legacy_groups", {}):
-		var legacy: Dictionary = _config["legacy_groups"][group_id]
-		var files: Array = legacy["files"].map(func(f): return project.path_join(f).simplify_path())
-		_groups[group_id] = {"files": files, "category": legacy.get("category", "")}
-	var catalog_path := project.path_join(_config["catalog"]).simplify_path()
+	var catalog_path := ProjectSettings.globalize_path("res://").path_join(_config["catalog"]).simplify_path()
 	var catalog = JSON.parse_string(FileAccess.get_file_as_string(catalog_path))
 	if typeof(catalog) != TYPE_DICTIONARY:
 		push_warning("AudioManager: no sound catalog at %s - running silent" % catalog_path)
@@ -85,7 +81,7 @@ func resolve(event: Dictionary) -> Array:
 		if group.is_empty():
 			continue
 		var files: Array = group["files"]
-		var variation: int = step.get("variation", randi() % files.size())
+		var variation: int = step.get("variation", _pick_variation(step["group"], files.size()))
 		var action := {"group": step["group"], "file": files[clampi(variation, 0, files.size() - 1)],
 			"volume": float(step.get("volume", 1.0)), "bus": bus_for(step["group"])}
 		var at = event.get("at")
@@ -100,6 +96,28 @@ func resolve(event: Dictionary) -> Array:
 			print("audio: no sound for event '%s'" % key)
 		unhandled[key] = unhandled.get(key, 0) + 1
 	return actions
+
+
+func _pick_variation(group_id: String, count: int) -> int:
+	if count <= 1:
+		return 0
+	var pick := randi() % (count - 1)
+	if pick >= _last_variation.get(group_id, -1) and _last_variation.has(group_id):
+		pick += 1  # skip the last one: uniform over the others
+	_last_variation[group_id] = pick
+	return pick
+
+
+## Every catalog file this client can play (validation and tests).
+func all_files() -> Array:
+	var files: Array = []
+	for group in _groups.values():
+		files.append_array(group["files"])
+	return files
+
+
+func load_file(path: String) -> AudioStream:
+	return _stream(path)
 
 
 ## Present one simulation event (each arrives once - see StateBuffer).
@@ -146,15 +164,10 @@ func set_loop(key: String, volume: float, pitch: float = 1.0, at = null) -> void
 		var group: Dictionary = _groups.get(spec.get("group", ""), {})
 		if group.is_empty():
 			return
-		var stream := _stream(group["files"][clampi(int(spec.get("variation", 0)), 0, group["files"].size() - 1)])
+		var stream := _stream(group["files"][clampi(int(spec.get("variation", 0)), 0, group["files"].size() - 1)]) as AudioStreamOggVorbis
 		if stream == null:
 			return
-		if stream is AudioStreamOggVorbis:
-			stream.loop = true
-		elif stream is AudioStreamWAV:
-			stream.loop_mode = AudioStreamWAV.LOOP_FORWARD
-			stream.loop_begin = 0
-			stream.loop_end = int(stream.get_length() * stream.mix_rate)
+		stream.loop = true
 		if spec.get("positional", false):
 			var placed := AudioStreamPlayer2D.new()
 			placed.max_distance = _config.get("ranges_m", {}).get(spec["group"], [0.0, 200.0])[1]
@@ -186,17 +199,17 @@ func one_shots_alive() -> int:
 	return get_child_count() - _loops.size()
 
 
+func loops_playing() -> int:
+	return _loops.values().filter(func(p): return p.playing).size()
+
+
 func loop_playing(key: String) -> bool:
 	return _loops.has(key) and _loops[key].playing
 
 
 func _stream(path: String) -> AudioStream:
 	if not _streams.has(path):
-		var stream: AudioStream = null
-		if path.ends_with(".ogg"):
-			stream = AudioStreamOggVorbis.load_from_file(path)
-		elif path.ends_with(".wav"):
-			stream = AudioStreamWAV.load_from_file(path)
+		var stream: AudioStream = AudioStreamOggVorbis.load_from_file(path) if path.ends_with(".ogg") else null
 		if stream == null:
 			push_warning("AudioManager: could not load %s" % path)
 		_streams[path] = stream

@@ -135,7 +135,9 @@ def test_a_new_client_first_gets_the_map_then_states_with_trains_and_events(monk
     server.tick(1.0 / 30.0)
     state = _all_messages(connection)[-1]
     assert state["type"] == "state" and isinstance(state["state"]["trains"], list)
-    assert {"type": "sound", "group": "vehicle.door_close"} in state["state"]["events"]
+    # getting in opens the door, once (godot-03.md: the Stable Audio door-open sound)
+    assert [e for e in state["state"]["events"] if e.get("group", "").startswith("vehicle.door")] == [
+        {"type": "sound", "group": "vehicle.door_open"}]
     server.tick(1.0 / 30.0)
     assert _all_messages(connection)[-1]["state"]["events"] == []  # each event is sent once
     connection.close()

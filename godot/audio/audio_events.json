@@ -1,5 +1,5 @@
 {
-  "_doc": "Semantic simulation events -> sounds, for audio_manager.gd. Sounds are groups of the game's catalog (src/theroadragetrip/assets/audio/audio_catalog.json); a 'sound' event names its group directly. Ranges mirror audio.py's SPATIAL_RANGES_M: [full volume within, silent beyond] metres. 'legacy_groups' are older single sounds Pygame loads by name from src/theroadragetrip/sounds/ (audio.py), outside the catalog. Pygame's car-door-open is a .flac, which Godot can't load at runtime, and the catalog has no other door-open file: in Godot that event has no sound (counted in 'unhandled').",
+  "_doc": "Semantic simulation events -> sounds, for audio_manager.gd. Sounds are groups of the game's catalog (src/theroadragetrip/assets/audio/audio_catalog.json, all Stable Audio Open generated OGG); a 'sound' event names its group directly and plays one of its variations at random. Loops play a fixed variation (default the first). Ranges mirror audio.py's SPATIAL_RANGES_M: [full volume within, silent beyond] metres.",
   "catalog": "../src/theroadragetrip/assets/audio/audio_catalog.json",
   "buses": {
     "Game": [
@@ -68,7 +68,7 @@
       15.0,
       150.0
     ],
-    "censored-cursing": [
+    "pedestrian.curse": [
       3.0,
       40.0
     ]
@@ -93,27 +93,13 @@
       "positional": true
     },
     "city_day": {
-      "group": "city-traffic-outdoor"
+      "group": "ambient.city_day"
     },
     "city_night": {
       "group": "ambient.city_night"
     },
     "rain": {
       "group": "weather.rain"
-    }
-  },
-  "legacy_groups": {
-    "censored-cursing": {
-      "category": "pedestrian",
-      "files": [
-        "../src/theroadragetrip/sounds/censored-cursing.wav"
-      ]
-    },
-    "city-traffic-outdoor": {
-      "category": "ambient",
-      "files": [
-        "../src/theroadragetrip/sounds/city-traffic-outdoor.wav"
-      ]
     }
   }
 }

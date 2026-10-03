@@ -30,7 +30,7 @@ SPATIAL_RANGES_M = {
     "railway.train_doors": (2.5, 30.0),
     "collision.vehicle": (15.0, 250.0),
     "station.ambience": (15.0, 150.0),
-    "censored-cursing": (3.0, 40.0),
+    "pedestrian.curse": (3.0, 40.0),
     "railway.announcement": (60.0, 300.0),  # station loudspeakers carry
 }
 # The taxi's own sounds come from the taxi: heard fully unless the camera
@@ -108,7 +108,7 @@ class AudioManager:
             # Before any sound plays: Sound.play() never picks a reserved channel.
             mixer.set_reserved(ANNOUNCEMENT_CHANNEL + 1)
             sounds_dir = Path(__file__).with_name("sounds")
-            for name in ("car-door-open", "censored-cursing", "city-traffic-outdoor", "police_car_siren-esp"):
+            for name in ("police_car_siren-esp",):  # the rest are catalog groups now (godot-03.md)
                 path = next(
                     (
                         sounds_dir / f"{name}{extension}"
@@ -364,17 +364,9 @@ class AudioManager:
         self, night: float = 0.0, rain: float = 0.0, heavy_rain: float = 0.0, wind: float = 0.0,
         strong_wind: float = 0.0, wet_tires: float = 0.0, slush: bool = False,
     ) -> None:
-        """Background loops, each 0..1: the day city bed (existing asset)
-        crossfades into the night one; rain, wind and wet tyres layer on."""
-        day_bed = self.sounds.get("city-traffic-outdoor")
-        if day_bed is not None and self.enabled:
-            channel = self.loop_channels.get("city_day")
-            if channel is None or not channel.get_busy():
-                channel = day_bed.play(loops=-1)
-                if channel is not None:
-                    self.loop_channels["city_day"] = channel
-            if channel is not None:
-                channel.set_volume(self.master_volume * self.music_volume * (1.0 - night))
+        """Background loops, each 0..1: the day city bed crossfades into the
+        night one; rain, wind and wet tyres layer on."""
+        self.set_loop("city_day", "ambient.city_day", 1.0 - night, music=True)
         self.set_loop("city_night", "ambient.city_night", night, music=True)
         self.set_loop("rain", "weather.rain", rain, variation=0)
         self.set_loop("rain_heavy", "weather.rain", heavy_rain, variation=1)

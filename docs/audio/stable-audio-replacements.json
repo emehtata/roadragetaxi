@@ -1,0 +1,175 @@
+{
+  "_doc": "godot-03.md: which legacy (non-Stable-Audio) game sounds are replaced, and how they are generated. The generation itself runs through the game's audio catalog (src/theroadragetrip/assets/audio/audio_catalog.json, tools/generate_audio.py); this file is the plan and its outcome. Formats: OGG Vorbis, mono one-shots, stereo loops, 44.1 kHz (catalog 'format').",
+  "model": "stabilityai/stable-audio-open-1.0 (diffusers StableAudioPipeline, ai-audio-studio .venv)",
+  "replacements": [
+    {
+      "asset": "vehicle.door_open",
+      "legacy_files": [
+        "src/theroadragetrip/sounds/car-door-open.flac"
+      ],
+      "legacy_origin": "Freesound 637193 by kyles, CC0 (src/theroadragetrip/sounds/LICENSE)",
+      "reason": "FLAC: Godot can't load it at runtime, so getting into the taxi was silent in the Godot client; the only legacy one-shot heard on every door event.",
+      "intended_use": "Player gets into / out of the taxi (simulation.apply_enter_exit_vehicle), passenger boarding.",
+      "type": "vehicle",
+      "loop": false,
+      "duration_seconds": [
+        0.8,
+        1.8
+      ],
+      "variations": 3,
+      "stable_audio_prompt": "Compact sedan car door being opened: a sharp mechanical latch click, then the door swinging open with a soft hinge creak and rubber seal release, close exterior perspective, dry recording, isolated sound effect",
+      "variants": [
+        "quick firm pull, crisp latch click",
+        "slower opening, audible hinge",
+        "door opened from inside, handle clack then seal release"
+      ],
+      "negative_prompt": "music, melody, speech, voice, singing, low quality, distortion, clipping",
+      "format": "ogg",
+      "godot_bus": "Game",
+      "spatial": "from the taxi (player sound)",
+      "status": "generated, installed, playback verified (listening review pending)",
+      "comparison": {
+        "old": "src/theroadragetrip/sounds/car-door-open.flac",
+        "old_format": "flac",
+        "new": [
+          "src/theroadragetrip/assets/audio/vehicle/vehicle_door_open_01.ogg",
+          "src/theroadragetrip/assets/audio/vehicle/vehicle_door_open_02.ogg",
+          "src/theroadragetrip/assets/audio/vehicle/vehicle_door_open_03.ogg"
+        ],
+        "new_format": "ogg vorbis",
+        "new_duration_s": [
+          0.86,
+          1.27,
+          1.23
+        ],
+        "loop": false,
+        "spatial": "from the taxi (player sound)",
+        "old_kept_at": "src/theroadragetrip/sounds/legacy/",
+        "gameplay_code_changed": "simulation.py: getting in now plays vehicle.door_open (was vehicle.door_close); getting out and passenger drop-off play the vehicle.door_open group instead of the legacy file by name",
+        "test_result": "door_open_on_entry 1, isolated in the Godot mix (-37 dBFS, peak 0.46) and audible in the WSLg system recording (-27 dBFS); repeated events: 3 events -> 3 plays, 0 players left; measured in the Godot real-window audio test (godot/audio_test.gd), see docs/architecture/godot-client.md; listening review pending"
+      }
+    },
+    {
+      "asset": "ambient.city_day",
+      "legacy_files": [
+        "src/theroadragetrip/sounds/city-traffic-outdoor.wav"
+      ],
+      "legacy_origin": "Freesound 345313 by liferecorded_archive, CC BY 4.0 (src/theroadragetrip/sounds/LICENSE)",
+      "reason": "The only legacy loop and the daytime background heard most of the game; uncompressed 7 MB WAV, mono, quiet (measured about -45 dBFS in Godot), unlike the generated night bed it crossfades with; catalog group was empty so Godot needed a special legacy entry.",
+      "intended_use": "Daytime city ambience bed, crossfaded with ambient.city_night by darkness.",
+      "type": "ambient",
+      "loop": true,
+      "duration_seconds": [
+        30.0
+      ],
+      "variations": 2,
+      "stable_audio_prompt": "Daytime city street ambience in a small Nordic city: steady moderate car traffic passing at a distance, tyre noise on asphalt, a distant bus pulling away, faint footsteps and wind, no horns, continuous seamless loop, field recording, isolated ambience",
+      "variants": [
+        "busy midday traffic",
+        "calmer residential street, sparser cars"
+      ],
+      "negative_prompt": "music, melody, speech, voice, singing, low quality, distortion, clipping",
+      "format": "ogg",
+      "godot_bus": "Environment",
+      "spatial": false,
+      "status": "generated, installed, playback verified (listening review pending)",
+      "comparison": {
+        "old": "src/theroadragetrip/sounds/city-traffic-outdoor.wav",
+        "old_format": "wav",
+        "new": [
+          "src/theroadragetrip/assets/audio/ambient/ambient_city_day_01.ogg",
+          "src/theroadragetrip/assets/audio/ambient/ambient_city_day_02.ogg"
+        ],
+        "new_format": "ogg vorbis",
+        "new_duration_s": [
+          30.5,
+          30.5
+        ],
+        "loop": true,
+        "spatial": false,
+        "old_kept_at": "src/theroadragetrip/sounds/legacy/",
+        "gameplay_code_changed": "audio.py update_ambience: the day bed is now set_loop('city_day', 'ambient.city_day', ...) like the night bed (no special-case channel)",
+        "test_result": "day phase -31 dBFS (legacy -45); day/night crossfade and Environment mute unchanged; measured in the Godot real-window audio test (godot/audio_test.gd), see docs/architecture/godot-client.md; listening review pending"
+      }
+    },
+    {
+      "asset": "pedestrian.curse",
+      "legacy_files": [
+        "src/theroadragetrip/sounds/censored-cursing.wav"
+      ],
+      "legacy_origin": "Freesound 343911 by Reitanna, CC0 (src/theroadragetrip/sounds/LICENSE)",
+      "reason": "Legacy WAV played (spatially) whenever a pedestrian is startled by the taxi; the catalog had no generated version, so Godot needed a special legacy entry.",
+      "intended_use": "A startled pedestrian curses where they stand (simulation: pedestrian.curses).",
+      "type": "pedestrian",
+      "loop": false,
+      "duration_seconds": [
+        0.8,
+        2.0
+      ],
+      "variations": 3,
+      "stable_audio_prompt": "A startled angry person shouting a short indistinct exclamation that is covered by a loud television censor bleep tone, comedic, close perspective, isolated sound effect",
+      "variants": [
+        "male shout, single long bleep",
+        "female shout, two quick bleeps",
+        "gruff grumble then bleep"
+      ],
+      "negative_prompt": "music, melody, singing, low quality, distortion, clipping",
+      "format": "ogg",
+      "godot_bus": "Game",
+      "spatial": "at the pedestrian, silent beyond 40 m",
+      "status": "generated, installed, playback verified (listening review pending)",
+      "comparison": {
+        "old": "src/theroadragetrip/sounds/censored-cursing.wav",
+        "old_format": "wav",
+        "new": [
+          "src/theroadragetrip/assets/audio/pedestrian/pedestrian_curse_01.ogg",
+          "src/theroadragetrip/assets/audio/pedestrian/pedestrian_curse_02.ogg",
+          "src/theroadragetrip/assets/audio/pedestrian/pedestrian_curse_03.ogg"
+        ],
+        "new_format": "ogg vorbis",
+        "new_duration_s": [
+          1.61,
+          0.73,
+          1.21
+        ],
+        "loop": false,
+        "spatial": "at the pedestrian, silent beyond 40 m",
+        "old_kept_at": "src/theroadragetrip/sounds/legacy/",
+        "gameplay_code_changed": "simulation.py: play_group('pedestrian.curse', 0.8, at=...) instead of play('censored-cursing', ...); audio.py SPATIAL_RANGES_M key renamed (same 3-40 m)",
+        "test_result": "loads in Godot and Pygame, validator OK; not triggered in the scripted audio test (needs a startled pedestrian); listening review pending - pedestrian_curse_03 had 31120 clipped samples in the raw generation"
+      }
+    }
+  ],
+  "retained": [
+    {
+      "asset": "police_car_siren-esp.wav",
+      "legacy_files": [
+        "src/theroadragetrip/sounds/police_car_siren-esp.wav"
+      ],
+      "reason": "Not heard in gameplay: loaded by audio.py, but nothing triggers a siren (the catalog's excluded 'police.siren'). Not replaced; kept untouched for Pygame."
+    },
+    {
+      "asset": "passenger.chatter / driver.chatter",
+      "legacy_files": [
+        "src/theroadragetrip/sounds/passenger_chatter/*.wav (200)",
+        "src/theroadragetrip/sounds/driver_chatter/*.wav (60)"
+      ],
+      "reason": "Speech made with Chatterbox TTS (ai-audio-studio); Stable Audio Open does not produce intelligible speech. Out of scope; Godot doesn't play speech yet."
+    },
+    {
+      "asset": "railway announcements",
+      "legacy_files": [
+        "src/theroadragetrip/assets/railway_announcements/**/*.wav (455)"
+      ],
+      "reason": "Finnish speech made with Chatterbox TTS; not a sound effect. Out of scope."
+    },
+    {
+      "asset": "radio",
+      "legacy_files": [
+        "src/theroadragetrip/sounds/radio/ (empty folders)"
+      ],
+      "reason": "No files; music/radio excluded by the task."
+    }
+  ],
+  "regenerated": []
+}
