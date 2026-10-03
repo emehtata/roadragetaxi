@@ -72,6 +72,12 @@ func _process(delta: float) -> void:
 	queue_redraw()
 
 
+## Pygame's draw_npc_cars draws neither police (their own renderer) nor
+## drivers on foot, nor the far level-of-detail band.
+static func drawn_as_vehicle(npc: Dictionary) -> bool:
+	return not npc.get("is_police", false) and not npc.get("is_on_foot", false) and npc.get("lod_level", 0) < 2
+
+
 func _by_id(items: Array) -> Dictionary:
 	var found := {}
 	for item in items:
@@ -321,9 +327,7 @@ func _draw() -> void:
 
 	var later_npcs := _by_id(b.get("npcs", []))
 	for npc in a.get("npcs", []):
-		# Pygame draws neither police (own renderer) nor drivers on foot here,
-		# nor the far level-of-detail band.
-		if npc.get("is_police", false) or npc.get("is_on_foot", false) or npc.get("lod_level", 0) >= 2:
+		if not drawn_as_vehicle(npc):
 			continue
 		var p := StateBuffer.blend(npc, later_npcs.get(npc["id"], npc), t)
 		var c := MapMath.point(origin, p.x, p.y)

@@ -34,6 +34,7 @@ func _process(_delta: float) -> bool:  # first frame: the tree is live, so nodes
 	test_map_chunks()
 	test_commands_carry_the_player_id()
 	test_phone()
+	test_rendering()
 	print("%d checks, %d failed" % [_checks, _failures])
 	quit(1 if _failures > 0 else 0)
 	return false
@@ -175,6 +176,64 @@ func test_map_chunks() -> void:
 	check(map.remove_chunk("1_2") and not map.has_chunk("1_2") and map.chunk_count() == 1, "a distant chunk is removed")
 	check(not map.remove_chunk("9_9"), "removing an unknown chunk is harmless")
 	map.free()
+
+
+func test_rendering() -> void:
+	const RS := preload("res://render_style.gd")
+	const Entities := preload("res://entity_layer.gd")
+	const Nav := preload("res://nav_overlay.gd")
+	const Instruments := preload("res://instruments.gd")
+	const Chunk := preload("res://map_chunk.gd")
+
+	# The job target, as TaxiManager.get_current_target.
+	var passenger := {"pickup": {"x": 10.0, "y": 20.0, "address": "A", "radius_m": 12.0}, "dropoff": {"x": 500.0, "y": 0.0, "address": "B", "radius_m": 15.0}}
+	check(Entities.current_target({"taxi": {"state": "PICKUP", "current_passenger": passenger}})["address"] == "A", "pickup target while waiting")
+	check(Entities.current_target({"taxi": {"state": "WALKING", "current_passenger": passenger}})["is_pickup"], "pickup target while the customer walks over")
+	check(Entities.current_target({"taxi": {"state": "DROPOFF", "current_passenger": passenger}})["address"] == "B", "drop-off target with the customer aboard")
+	check(Entities.current_target({"taxi": {"state": "PICKUP", "current_passenger": null}}).is_empty(), "no passenger, no target")
+
+	# Turn signals blink as Pygame's elapsed % 0.9 < 0.45.
+	check(RS.signal_lit(0.1) and not RS.signal_lit(0.5) and RS.signal_lit(0.95), "turn signal blink phase")
+
+	# Wet roads: darken 90/255 at full wetness, no sheen below 0.15.
+	var dry := RS.wet_alphas(0.0)
+	var damp := RS.wet_alphas(0.1)
+	var soaked := RS.wet_alphas(1.0)
+	check(dry[0] == 0.0 and damp[1] == 0.0 and is_equal_approx(soaked[0], 90.0 / 255.0) and is_equal_approx(soaked[1], 12.0 / 255.0), "wet-road overlay strengths")
+	check(RS.puddle_strength(0.2, 0.5) == 0.0 and is_equal_approx(RS.puddle_strength(0.75, 0.5), 0.5) and RS.puddle_strength(1.0, 0.5) == 1.0, "puddles appear above their reveal wetness")
+
+	# Puddles: deterministic, inside their chunk only, on drivable roads.
+	var roads: Array = []
+	for i in 40:
+		roads.append({"points": [[i * 12.0, 0.0], [i * 12.0 + 5.0, 400.0]], "half_width_m": 3.0, "drivable": true})
+	roads.append({"points": [[0.0, 0.0], [300.0, 300.0]], "half_width_m": 1.0, "drivable": false})
+	var bounds := Rect2(0, -500, 500, 500)  # world 0..500 x 0..500, y flipped
+	var first: Array = Chunk.puddle_spots(roads, bounds, Vector2.ZERO)
+	var again: Array = Chunk.puddle_spots(roads, bounds, Vector2.ZERO)
+	check(first.size() > 5 and first.size() < 40 and str(first) == str(again), "puddle spots are deterministic (%d of 40 roads)" % first.size())
+	check(first.all(func(spot): return bounds.has_point(spot["at"])), "puddles only inside their chunk")
+	check(Chunk.puddle_spots(roads, Rect2(1000, 1000, 10, 10), Vector2.ZERO).is_empty(), "a road's puddle is drawn by one chunk only")
+
+	# Off-screen arrow on the screen edge, with Pygame's 130 px margin.
+	var screen := Vector2(1280, 720)
+	check(Nav.edge_point(0.0, screen) == Vector2(1280 - 130, 360), "target to the east: right edge")
+	check(Nav.edge_point(PI / 2.0, screen) == Vector2(640, 130), "target to the north: top edge")
+	check(not Nav.on_screen(Vector2(10, 300), screen) and Nav.on_screen(Vector2(640, 360), screen), "on-screen test with 30 px border")
+	check(Nav.distance_text(350.0) == "350m" and Nav.distance_text(2340.0) == "2.3km", "arrow distance text")
+
+	# Instruments.
+	check(Instruments.trip_text(950.0, 12345.0) == "Trip: 950 m · Odometer: 12.3 km" and Instruments.trip_text(1500.0, 0.0).begins_with("Trip: 1.50 km"), "trip and odometer text")
+	var center := Vector2(100, 100)
+	check(Instruments.dial_point(center, 0.0, 10.0).x < 100.0 and Instruments.dial_point(center, 1.0, 10.0).x > 100.0
+		and is_equal_approx(Instruments.dial_point(center, 0.5, 10.0).y, 90.0), "fuel needle: E left, F right, half up")
+	var faces: Array = Instruments.load_rage_faces(ProjectSettings.globalize_path("res://").path_join(Instruments.RAGE_ATLAS).simplify_path())
+	check(faces.size() == 11 and faces[0].get_size().x <= 170.0, "11 rage faces cut from Pygame's atlas")
+
+	# Pygame skips police, drivers on foot and the far LOD band in draw_npc_cars.
+	var npc := {"id": 1, "vehicle_type": "car"}
+	check(Entities.drawn_as_vehicle(npc) and Entities.drawn_as_vehicle(npc.merged({"lod_level": 1})), "ordinary NPC vehicles are drawn")
+	check(not Entities.drawn_as_vehicle(npc.merged({"is_police": true})) and not Entities.drawn_as_vehicle(npc.merged({"is_on_foot": true}))
+		and not Entities.drawn_as_vehicle(npc.merged({"lod_level": 2})), "police, drivers on foot and the far LOD band are not")
 
 
 func _key(code: Key) -> InputEventKey:
