@@ -27,7 +27,7 @@
       "format": "ogg",
       "godot_bus": "Game",
       "spatial": "from the taxi (player sound)",
-      "status": "generated, installed, playback verified (listening review pending)",
+      "status": "generated, installed, playback verified, listening review passed",
       "comparison": {
         "old": "src/theroadragetrip/sounds/car-door-open.flac",
         "old_format": "flac",
@@ -44,9 +44,9 @@
         ],
         "loop": false,
         "spatial": "from the taxi (player sound)",
-        "old_kept_at": "src/theroadragetrip/sounds/legacy/",
+        "old_kept_at": "deleted after the listening review passed (2026-10-03); in git history",
         "gameplay_code_changed": "simulation.py: getting in now plays vehicle.door_open (was vehicle.door_close); getting out and passenger drop-off play the vehicle.door_open group instead of the legacy file by name",
-        "test_result": "door_open_on_entry 1, isolated in the Godot mix (-37 dBFS, peak 0.46) and audible in the WSLg system recording (-27 dBFS); repeated events: 3 events -> 3 plays, 0 players left; measured in the Godot real-window audio test (godot/audio_test.gd), see docs/architecture/godot-client.md; listening review pending"
+        "test_result": "door_open_on_entry 1, isolated in the Godot mix (-37 dBFS, peak 0.46) and audible in the WSLg system recording (-27 dBFS); repeated events: 3 events -> 3 plays, 0 players left; measured in the Godot real-window audio test (godot/audio_test.gd), see docs/architecture/godot-client.md; listening review passed 2026-10-03"
       }
     },
     {
@@ -72,7 +72,7 @@
       "format": "ogg",
       "godot_bus": "Environment",
       "spatial": false,
-      "status": "generated, installed, playback verified (listening review pending)",
+      "status": "generated, installed, playback verified, listening review passed",
       "comparison": {
         "old": "src/theroadragetrip/sounds/city-traffic-outdoor.wav",
         "old_format": "wav",
@@ -87,9 +87,9 @@
         ],
         "loop": true,
         "spatial": false,
-        "old_kept_at": "src/theroadragetrip/sounds/legacy/",
+        "old_kept_at": "deleted after the listening review passed (2026-10-03); in git history",
         "gameplay_code_changed": "audio.py update_ambience: the day bed is now set_loop('city_day', 'ambient.city_day', ...) like the night bed (no special-case channel)",
-        "test_result": "day phase -31 dBFS (legacy -45); day/night crossfade and Environment mute unchanged; measured in the Godot real-window audio test (godot/audio_test.gd), see docs/architecture/godot-client.md; listening review pending"
+        "test_result": "day phase -31 dBFS (legacy -45); day/night crossfade and Environment mute unchanged; measured in the Godot real-window audio test (godot/audio_test.gd), see docs/architecture/godot-client.md; listening review passed 2026-10-03"
       }
     },
     {
@@ -117,7 +117,7 @@
       "format": "ogg",
       "godot_bus": "Game",
       "spatial": "at the pedestrian, silent beyond 40 m",
-      "status": "generated, installed, playback verified (listening review pending)",
+      "status": "generated, installed, playback verified, listening review passed",
       "comparison": {
         "old": "src/theroadragetrip/sounds/censored-cursing.wav",
         "old_format": "wav",
@@ -134,9 +134,9 @@
         ],
         "loop": false,
         "spatial": "at the pedestrian, silent beyond 40 m",
-        "old_kept_at": "src/theroadragetrip/sounds/legacy/",
+        "old_kept_at": "deleted after the listening review passed (2026-10-03); in git history",
         "gameplay_code_changed": "simulation.py: play_group('pedestrian.curse', 0.8, at=...) instead of play('censored-cursing', ...); audio.py SPATIAL_RANGES_M key renamed (same 3-40 m)",
-        "test_result": "loads in Godot and Pygame, validator OK; not triggered in the scripted audio test (needs a startled pedestrian); listening review pending - pedestrian_curse_03 had 31120 clipped samples in the raw generation"
+        "test_result": "loads in Godot and Pygame, validator OK; not triggered in the scripted audio test (needs a startled pedestrian); listening review passed 2026-10-03 - pedestrian_curse_03 had 31120 clipped samples in the raw generation"
       }
     }
   ],

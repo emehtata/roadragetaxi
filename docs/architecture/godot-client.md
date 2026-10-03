@@ -186,8 +186,7 @@ In godot-03 the last three legacy Freesound effects were replaced:
 
 See `docs/audio/stable-audio-replacements.json` (plan, reasons,
 comparison) and `docs/audio/stable-audio-assets.json` (how each file was
-made). The old files are kept in `src/theroadragetrip/sounds/legacy/` until
-a listening review.
+made). The old files were deleted after the listening review passed.
 
 How sounds are chosen:
 - A sound's bus comes from its group's category.
@@ -371,9 +370,8 @@ Nobody has listened to it; these are measurements of the output.
   both clients; it was `door_close` before godot-03. Passengers boarding
   still get `door_close`.
 - Measurements are not listening. Every check above is about levels,
-  panning, timing and counts. Whether the new sounds sound good is a
-  manual review, still pending, especially for `pedestrian_curse_03`,
-  whose raw generation clipped heavily.
+  panning, timing and counts. The new sounds also passed a manual
+  listening review (2026-10-03).
 - No station announcements or passenger speech yet; that is a later phase.
 
 ## Known limitations

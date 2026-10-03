@@ -829,7 +829,7 @@
       "intensity_levels": false,
       "contextual_variants": [],
       "existing_asset": null,
-      "notes": "godot-03.md: replaces legacy src/theroadragetrip/sounds/car-door-open.flac (kept in src/theroadragetrip/sounds/legacy/). FLAC: Godot can't load it at runtime, so getting into the taxi was silent in the Godot client; the only legacy one-shot heard on every door event.",
+      "notes": "godot-03.md: replaces legacy src/theroadragetrip/sounds/car-door-open.flac (deleted after the listening review; in git history). FLAC: Godot can't load it at runtime, so getting into the taxi was silent in the Godot client; the only legacy one-shot heard on every door event.",
       "files": [
         {
           "id": "vehicle.door_open.01",
@@ -2159,7 +2159,7 @@
       "intensity_levels": false,
       "contextual_variants": [],
       "existing_asset": null,
-      "notes": "godot-03.md: replaces legacy src/theroadragetrip/sounds/censored-cursing.wav (kept in src/theroadragetrip/sounds/legacy/). Legacy WAV played (spatially) whenever a pedestrian is startled by the taxi; the catalog had no generated version, so Godot needed a special legacy entry.",
+      "notes": "godot-03.md: replaces legacy src/theroadragetrip/sounds/censored-cursing.wav (deleted after the listening review; in git history). Legacy WAV played (spatially) whenever a pedestrian is startled by the taxi; the catalog had no generated version, so Godot needed a special legacy entry.",
       "files": [
         {
           "id": "pedestrian.curse.01",
@@ -3797,7 +3797,7 @@
       "intensity_levels": false,
       "contextual_variants": [],
       "existing_asset": null,
-      "notes": "godot-03.md: replaces legacy src/theroadragetrip/sounds/city-traffic-outdoor.wav (kept in src/theroadragetrip/sounds/legacy/). The only legacy loop and the daytime background heard most of the game; uncompressed 7 MB WAV, mono, quiet (measured about -45 dBFS in Godot), unlike the generated night bed it crossfades with; catalog group was empty so Godot needed a special legacy entry.",
+      "notes": "godot-03.md: replaces legacy src/theroadragetrip/sounds/city-traffic-outdoor.wav (deleted after the listening review; in git history). The only legacy loop and the daytime background heard most of the game; uncompressed 7 MB WAV, mono, quiet (measured about -45 dBFS in Godot), unlike the generated night bed it crossfades with; catalog group was empty so Godot needed a special legacy entry.",
       "files": [
         {
           "id": "ambient.city_day.01",

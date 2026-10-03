@@ -238,7 +238,7 @@ git push origin v0.15.0alpha
 
 GitHub Actions builds the package on Windows with PyInstaller and attaches both `RoadRageTrip-windows-x64.zip` and `RoadRageTrip-Setup.exe` to the GitHub Release. Use the EXE installer for a normal Windows installation, or extract the zip and launch `RoadRageTrip.exe`; no Python installation is required.
 
-Recorded game sounds are stored in `src/theroadragetrip/sounds/`. CC0 sounds require no attribution; the included `city-traffic-outdoor.wav` is CC BY 4.0. Attribution details are recorded in the sounds directory license file. Generated sound effects (Stable Audio Open) live in `src/theroadragetrip/assets/audio/`, catalogued in `audio_catalog.json`.
+Recorded sounds (the CC0 police siren, and the TTS chatter voices) are stored in `src/theroadragetrip/sounds/`; attribution is in that directory's license file. Generated sound effects (Stable Audio Open) live in `src/theroadragetrip/assets/audio/`, catalogued in `audio_catalog.json`.
 
 Map, timetable and weather data:
 

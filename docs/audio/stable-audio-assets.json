@@ -1,5 +1,5 @@
 {
-  "_doc": "Stable Audio Open assets generated for godot-03.md, with what is known about how each was made (copied from the audio catalog's per-file records). Listening review is a manual step and still pending.",
+  "_doc": "Stable Audio Open assets generated for godot-03.md, with what is known about how each was made (copied from the audio catalog's per-file records). Listening review passed 2026-10-03.",
   "assets": [
     {
       "file": "src/theroadragetrip/assets/audio/vehicle/vehicle_speed_bump_01.ogg",
@@ -20,7 +20,7 @@
       "raw_clipped_samples": 0,
       "post_processing": "tools/generate_audio.py process(): trim silence, fades, peak -1 dBFS, loop crossfade 1 s (loops), mono (one-shots)",
       "reason": "replaces a first take trimmed to under 0.1 s (regenerated)",
-      "listening_review": "pending"
+      "listening_review": "passed 2026-10-03"
     },
     {
       "file": "src/theroadragetrip/assets/audio/vehicle/vehicle_door_open_01.ogg",
@@ -41,7 +41,7 @@
       "raw_clipped_samples": 114,
       "post_processing": "tools/generate_audio.py process(): trim silence, fades, peak -1 dBFS, loop crossfade 1 s (loops), mono (one-shots)",
       "reason": "replaces src/theroadragetrip/sounds/car-door-open.flac",
-      "listening_review": "pending"
+      "listening_review": "passed 2026-10-03"
     },
     {
       "file": "src/theroadragetrip/assets/audio/vehicle/vehicle_door_open_02.ogg",
@@ -62,7 +62,7 @@
       "raw_clipped_samples": 41,
       "post_processing": "tools/generate_audio.py process(): trim silence, fades, peak -1 dBFS, loop crossfade 1 s (loops), mono (one-shots)",
       "reason": "replaces src/theroadragetrip/sounds/car-door-open.flac",
-      "listening_review": "pending"
+      "listening_review": "passed 2026-10-03"
     },
     {
       "file": "src/theroadragetrip/assets/audio/vehicle/vehicle_door_open_03.ogg",
@@ -83,7 +83,7 @@
       "raw_clipped_samples": 973,
       "post_processing": "tools/generate_audio.py process(): trim silence, fades, peak -1 dBFS, loop crossfade 1 s (loops), mono (one-shots)",
       "reason": "replaces src/theroadragetrip/sounds/car-door-open.flac",
-      "listening_review": "pending"
+      "listening_review": "passed 2026-10-03"
     },
     {
       "file": "src/theroadragetrip/assets/audio/taxi/taxi_meter_start_02.ogg",
@@ -104,7 +104,7 @@
       "raw_clipped_samples": 2,
       "post_processing": "tools/generate_audio.py process(): trim silence, fades, peak -1 dBFS, loop crossfade 1 s (loops), mono (one-shots)",
       "reason": "replaces a first take trimmed to under 0.1 s (regenerated)",
-      "listening_review": "pending"
+      "listening_review": "passed 2026-10-03"
     },
     {
       "file": "src/theroadragetrip/assets/audio/pedestrian/pedestrian_curse_01.ogg",
@@ -125,7 +125,7 @@
       "raw_clipped_samples": 823,
       "post_processing": "tools/generate_audio.py process(): trim silence, fades, peak -1 dBFS, loop crossfade 1 s (loops), mono (one-shots)",
       "reason": "replaces src/theroadragetrip/sounds/censored-cursing.wav",
-      "listening_review": "pending"
+      "listening_review": "passed 2026-10-03"
     },
     {
       "file": "src/theroadragetrip/assets/audio/pedestrian/pedestrian_curse_02.ogg",
@@ -146,7 +146,7 @@
       "raw_clipped_samples": 66,
       "post_processing": "tools/generate_audio.py process(): trim silence, fades, peak -1 dBFS, loop crossfade 1 s (loops), mono (one-shots)",
       "reason": "replaces src/theroadragetrip/sounds/censored-cursing.wav",
-      "listening_review": "pending"
+      "listening_review": "passed 2026-10-03"
     },
     {
       "file": "src/theroadragetrip/assets/audio/pedestrian/pedestrian_curse_03.ogg",
@@ -167,7 +167,7 @@
       "raw_clipped_samples": 31120,
       "post_processing": "tools/generate_audio.py process(): trim silence, fades, peak -1 dBFS, loop crossfade 1 s (loops), mono (one-shots)",
       "reason": "replaces src/theroadragetrip/sounds/censored-cursing.wav",
-      "listening_review": "pending"
+      "listening_review": "passed 2026-10-03"
     },
     {
       "file": "src/theroadragetrip/assets/audio/ui/ui_phone_open_01.ogg",
@@ -188,7 +188,7 @@
       "raw_clipped_samples": 10,
       "post_processing": "tools/generate_audio.py process(): trim silence, fades, peak -1 dBFS, loop crossfade 1 s (loops), mono (one-shots)",
       "reason": "replaces a first take trimmed to under 0.1 s (regenerated)",
-      "listening_review": "pending"
+      "listening_review": "passed 2026-10-03"
     },
     {
       "file": "src/theroadragetrip/assets/audio/ambient/ambient_city_day_01.ogg",
@@ -209,7 +209,7 @@
       "raw_clipped_samples": 0,
       "post_processing": "tools/generate_audio.py process(): trim silence, fades, peak -1 dBFS, loop crossfade 1 s (loops), mono (one-shots)",
       "reason": "replaces src/theroadragetrip/sounds/city-traffic-outdoor.wav",
-      "listening_review": "pending"
+      "listening_review": "passed 2026-10-03"
     },
     {
       "file": "src/theroadragetrip/assets/audio/ambient/ambient_city_day_02.ogg",
@@ -230,7 +230,7 @@
       "raw_clipped_samples": 0,
       "post_processing": "tools/generate_audio.py process(): trim silence, fades, peak -1 dBFS, loop crossfade 1 s (loops), mono (one-shots)",
       "reason": "replaces src/theroadragetrip/sounds/city-traffic-outdoor.wav",
-      "listening_review": "pending"
+      "listening_review": "passed 2026-10-03"
     }
   ]
 }
