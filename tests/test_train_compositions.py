@@ -140,7 +140,7 @@ def test_trains_of_any_length_are_drawn_vehicle_by_vehicle():
         assert screen.get_at((to_px(centres[0]), 40))[:3] == PROFILES["locomotive"][0]
 
 
-def test_locomotive_is_placed_where_digitraffic_says_even_at_the_far_end():
+def test_a_far_end_locomotive_is_recorded_as_is_but_drawn_at_the_front():
     push_pull = section(
         [{"location": 4, "locomotiveType": "Sr2"}],
         [{"length": 2640, "location": 1, "wagonType": "Ed"}, {"length": 2640, "location": 2, "wagonType": "Ed"},
@@ -148,4 +148,8 @@ def test_locomotive_is_placed_where_digitraffic_says_even_at_the_far_end():
     )
     assert [v[0] for v in importer.compact(push_pull)["vehicles"]] == ["wagon", "wagon", "wagon", "locomotive"]
     composition = resolve({"latest": {"1": {**importer.compact(push_pull), "departure_date": "2026-09-25"}}}, "IC", "1", None)
-    assert composition.types == ("Ed", "Ed", "CEd", "Sr2")
+    assert composition.types == ("Sr2", "CEd", "Ed", "Ed")  # the game always runs locomotive first
+    assert composition.vehicles[0][1] == "locomotive"
+    pulled = {"vehicles": [["locomotive", "Sr3", None, []], ["wagon", "Ein", 27.0, []]]}
+    assert resolve({"latest": {"2": pulled}}, "IC", "2", None).types == ("Sr3", "Ein")  # already in front
+

@@ -93,6 +93,12 @@ def _from_record(record: dict, source: str) -> TrainComposition:
         types.append(vehicle_type)
     if not vehicles:
         return GENERIC
+    if vehicles[-1][1] == "locomotive" and vehicles[0][1] != "locomotive":
+        # A push-pull set recorded with its locomotive at the far end: the
+        # game always draws the locomotive at the front, in whichever
+        # direction the train runs (each departure resolves this anew).
+        vehicles.reverse()
+        types.reverse()
     return TrainComposition(tuple(vehicles), source, record.get("departure_date", ""), record.get("max_speed_kmh"), tuple(types))
 
 
