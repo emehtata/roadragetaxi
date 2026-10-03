@@ -83,10 +83,17 @@ def load_places(path: Optional[Path] = None) -> WorldPlaces:
     path = Path(path) if path is not None else DEFAULT_PLACES_PATH
     try:
         document = json.loads(path.read_text(encoding="utf-8"))
+        if not isinstance(document, dict):
+            raise ValueError("places document must be an object")
         if document.get("version") != SUPPORTED_VERSION:
             raise ValueError(f"unsupported version {document.get('version')!r}")
+        records = document["places"]
+        if not isinstance(records, list):
+            raise ValueError("places must be a list")
         places = []
-        for record in document["places"]:
+        for record in records:
+            if not isinstance(record, dict):
+                raise ValueError("place record must be an object")
             osm = record.get("osm")
             places.append(WorldPlace(
                 id=record["id"],

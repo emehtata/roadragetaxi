@@ -32,6 +32,15 @@ def test_lookahead_grows_with_speed_and_follows_direction():
     assert lookahead_tiles(500, 500, 0, -40, 90, 3) == {TileCoord(0, -2), TileCoord(0, -3), TileCoord(0, -4)}
 
 
+def test_lookahead_traverses_shallow_angle_and_diagonal_tiles():
+    assert lookahead_tiles(500, 500, 40, 10, 90, 3) == {
+        TileCoord(2, 0), TileCoord(2, 1), TileCoord(3, 1),
+    }
+    assert lookahead_tiles(500, 500, 40, 40, 90, 3) == {
+        TileCoord(2, 2), TileCoord(3, 3),
+    }
+
+
 def test_core_tiles_are_requested_before_lookahead(monkeypatch):
     requests = []
     _no_thread(monkeypatch, requests)

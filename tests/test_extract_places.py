@@ -224,6 +224,19 @@ def test_loader_tolerates_missing_or_wrong_files(tmp_path):
     assert len(load_places(bad)) == 0
 
 
+@pytest.mark.parametrize("content", [
+    "null",
+    "[]",
+    '{"version": 1, "places": null}',
+    '{"version": 1, "places": [null]}',
+    '{"version": 1, "places": [[]]}',
+])
+def test_loader_tolerates_wrong_document_and_record_types(tmp_path, content):
+    invalid = tmp_path / "invalid.json"
+    invalid.write_text(content)
+    assert len(load_places(invalid)) == 0
+
+
 def test_committed_places_json_loads_with_the_key_finnish_places():
     places = load_places()
     icaos = {p.metadata.get("icao") for p in places.by_type("airport")}

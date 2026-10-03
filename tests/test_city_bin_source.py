@@ -4,6 +4,7 @@ from pathlib import Path
 
 import pytest
 
+from theroadragetrip.osm import bin_source
 from theroadragetrip.osm.bin_source import (
     CityBinUnavailableError,
     city_bin_available,
@@ -43,6 +44,10 @@ def _write_fixture_bin(tmp_path) -> Path:
     return fixture_bin
 
 
+@pytest.mark.skipif(
+    not (bin_source.CITY_BIN_DIR / "oulu.bin").is_file(),
+    reason="requires bundled Oulu road binary",
+)
 def test_predefined_city_with_bin_is_available_and_loads_real_binary():
     # One check against the real bundled Oulu binary, to prove genuine
     # end-to-end V2 decoding + projection against real data. Every other
@@ -62,7 +67,9 @@ def test_predefined_city_with_bin_is_available_and_loads_real_binary():
     assert way.bbox != (0.0, 0.0, 0.0, 0.0)
 
 
-def test_city_name_matching_is_case_and_whitespace_insensitive():
+def test_city_name_matching_is_case_and_whitespace_insensitive(monkeypatch, tmp_path):
+    monkeypatch.setattr(bin_source, "CITY_BIN_DIR", tmp_path)
+    (tmp_path / "oulu.bin").touch()
     assert city_bin_path("Oulu") == city_bin_path("  OULU  ") == city_bin_path("oulu")
     assert city_bin_available("Oulu")
     assert city_bin_available("  oUlU  ")
@@ -97,6 +104,10 @@ def test_missing_bin_path_falls_back(tmp_path):
 
 
 @pytest.mark.skipif(shutil.which("osmium") is None, reason="requires osmium-tool")
+@pytest.mark.skipif(
+    not (bin_source.CITY_BIN_DIR / "oulu.bin").is_file(),
+    reason="requires bundled Oulu road binary",
+)
 def test_city_switching_gives_independent_uncached_results(tmp_path):
     # bin_source.py keeps no module-level cache, so loading a city, then
     # a different one, then the first one again must each return that

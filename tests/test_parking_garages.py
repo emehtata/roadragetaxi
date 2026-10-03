@@ -9,6 +9,7 @@ from theroadragetrip.osm.parking import (
     PARKING_UNDERGROUND,
     PARKING_UNKNOWN,
     garage_levels,
+    make_parking_garage,
     parking_facility_type,
 )
 from theroadragetrip.world_cache import BinaryWorldCacheLoader, BinaryWorldCacheWriter, WorldCacheManager
@@ -54,6 +55,15 @@ def test_classification(tags, expected):
 ])
 def test_levels(tags, garage_type, expected):
     assert garage_levels(tags, garage_type) == expected
+
+
+@pytest.mark.parametrize("value", ["inf", "Infinity", "1e309"])
+def test_non_finite_counts_are_ignored(value):
+    assert garage_levels({"parking:levels": value}, PARKING_MULTI_STOREY) == ((), "")
+    garage = make_parking_garage(
+        {"building": "parking", "capacity": value}, "way", 1, [(0.0, 0.0)],
+    )
+    assert garage is not None and garage.capacity is None
 
 
 def test_garage_way_keeps_metadata_identity_and_geometry():

@@ -3,6 +3,7 @@ tags (garage-00.md). See docs/parking-garages.md for the tag rules."""
 
 from __future__ import annotations
 
+import math
 from typing import List, Optional, Tuple
 
 from .models import ParkingGarage
@@ -49,7 +50,7 @@ def _count(value) -> Optional[int]:
         number = float(str(value).split(";")[0].strip())
     except (TypeError, ValueError):
         return None
-    return int(number) if number >= 0 and number == int(number) else None
+    return int(number) if math.isfinite(number) and number >= 0 and number == int(number) else None
 
 
 def garage_levels(tags: dict, garage_type: str) -> Tuple[Tuple[int, ...], str]:
