@@ -1,12 +1,13 @@
 import logging
 import math
 import random
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
 from typing import Any, Dict, List, Optional, Tuple
 
 from .geo import clamp, closest_point_and_dist_to_segment, compute_bbox, dist_point_to_segment, get_oriented_box_corners, point_in_polygon, segments_intersect
-from .osm import Building, Curb, Place, SpeedBump, TaxiStop, Way
+from .map_level import SURFACE_LEVEL, on_map_level
+from .osm import OPEN_ROOF_BUILDING_TYPES, Building, Curb, Place, SpeedBump, TaxiStop, Way
 from .physics import (
     Car, SpatialWayGrid, connected_drivable_ways, is_car_road, is_point_on_light_traffic_way, is_point_on_road,
     is_violating_oneway,
@@ -14,7 +15,8 @@ from .physics import (
 from .localization import tr
 from .fare import calculate_fare_cents, format_euros, tip_cents_from_happiness
 from .police import SpeedCamera, camera_sees_car
-from .residents import Resident, ResidentManager
+from .rail_bookings import ACCEPTED, IN_TAXI, MISSED, PASSENGER_MET, TRAIN_ARRIVING, waiting_booking
+from .residents import MIN_UNACCOMPANIED_AGE, Resident, ResidentManager
 from .traffic_rules import nearest_traffic_light_ahead
 
 logger = logging.getLogger(__name__)
@@ -33,6 +35,11 @@ NIGHTLIFE_VENUE_TYPES = {
     "food_court",
     "biergarten",
 }
+MOTION_SICKNESS_THRESHOLD = 8.0
+POST_KINDS = ("bollard", "street_lamp")  # solid poles the taxi can hit
+POST_RADIUS_M = 0.15
+POST_KNOCK_DOWN_KMH = 50.0  # faster than this a post bends over instead of stopping the taxi
+GREET_RADIUS_M = 2.0  # how close the driver on foot must be to greet a booked rail customer
 
 @dataclass
 class TaxiTarget:
@@ -61,10 +68,16 @@ class TaxiPassenger:
     ped_color: Tuple[int, int, int] = (240, 220, 60)  # Bright gold/yellow
     is_walking_to_car: bool = False
     boarded: bool = False
+    is_drunk: bool = False
+    motion_sickness: float = 0.0
     nausea_delay: float = 0.0
     nausea_warning_timer: float = 0.0
     nausea_resolved: bool = False
     nausea_vomited: bool = False
+    weight_kg: float = field(default_factory=lambda: random.uniform(50.0, 120.0))
+    # rail_bookings.TaxiBooking when this is a pre-booked rail customer: its
+    # destination and pre-booking fee (on top of the normal fare) ride along.
+    rail_booking: Any = None
 
 
 @dataclass
@@ -154,6 +167,8 @@ class TaxiManager:
         self.game_time_seconds = 18.0 * 60.0 * 60.0
 
         self.current_passenger: Optional[TaxiPassenger] = None
+        self.rail_bookings = None
+        self.driver_on_foot = False  # set every tick by simulation.advance_simulation
         self.offers: List[TaxiOffer] = []
         self._initial_offer_pending = True
         self.state: str = TaxiState.WAITING_FOR_PICKUP
@@ -171,6 +186,7 @@ class TaxiManager:
         self.fare_started_at: Optional[datetime] = None
         self.fare_start_odometer_m: Optional[float] = None
         self.fare_distance_m: float = 0.0
+        self.live_fare_cents: int = 0
         self.notification_msg: str = ""
         self.notification_timer: float = 0.0
         self.next_offer_timer: float = random.uniform(PHONE_OFFER_MIN_INTERVAL_S, PHONE_OFFER_MAX_INTERVAL_S)
@@ -179,6 +195,12 @@ class TaxiManager:
         self._crashed_building_cooldowns: Dict[int, float] = {}  # building id -> timestamp cooldown
         self._crashed_tree_cooldowns: Dict[Tuple[int, int], float] = {}
         self._crashed_fence_cooldowns: Dict[int, float] = {}  # scenery id -> timestamp cooldown
+        self._crashed_post_cooldowns: Dict[int, float] = {}  # bollard/lamp id -> timestamp cooldown
+        self._post_grid: Dict[Tuple[int, int], List[Any]] = {}
+        self._post_ref = None
+        self._post_count = 0
+        self.knocked_posts = 0  # how many bollards/lamps lie flat (render cache revision)
+        self.broken_lamps: set = set()  # (x, y) of knocked-down street lamps: their light is off
         self._curb_bump_cooldowns: Dict[int, float] = {}  # curb id -> timestamp cooldown
         self._speed_bump_cooldowns: Dict[int, float] = {}  # speed bump id -> timestamp cooldown
         self._speed_camera_hits: set[int] = set()
@@ -190,7 +212,7 @@ class TaxiManager:
         self._building_collision_count = 0
         self._tree_collision_grid: Dict[Tuple[int, int], List[Tuple[int, int, float, float]]] = {}
         self._tree_collision_ref = None
-        self._tree_collision_indexed: Dict[int, int] = {}  # scenery_index -> trees already indexed
+        self._tree_collision_count = 0
         self._fence_collision_grid: Dict[Tuple[int, int], List[Any]] = {}
         self._fence_collision_ref = None
         self._fence_collision_count = 0
@@ -204,22 +226,142 @@ class TaxiManager:
         self.wrong_way_penalty_cooldown: float = 0.0
         self.pedestrian_way_penalty_cooldown: float = 0.0
 
-    def _new_passenger_identity(self, resident: Optional[Resident] = None) -> tuple[str, str, int]:
-        resident = resident or self.residents.create("walking")
+    def _new_passenger_identity(
+        self, resident: Optional[Resident] = None
+    ) -> tuple[str, str, int, float]:
+        resident = resident or self.residents.create("walking", min_age=MIN_UNACCOMPANIED_AGE)
         gender = {"female": "woman", "male": "man"}.get(resident.gender, "woman")
-        return f"{resident.first_name} {resident.surname}", gender, resident.resident_id
+        return (
+            f"{resident.first_name} {resident.surname}",
+            gender,
+            resident.resident_id,
+            resident.weight_kg,
+        )
 
     def nausea_delay_for_pickup(self, pickup: TaxiTarget) -> float:
         return nausea_delay_for_pickup(pickup, self.game_time_seconds)
+
+    def _warn_if_passenger_is_drunk(self, passenger: TaxiPassenger) -> None:
+        if passenger.is_drunk:
+            self.notification_msg = tr(self.language, "passenger_smells_intoxicated")
+            self.notification_timer = 4.0
 
     def _current_game_datetime(self) -> datetime:
         return datetime.combine(self.game_date, datetime.min.time()) + timedelta(seconds=self.game_time_seconds)
 
     def current_fare_cents(self) -> int:
         """Return the live meter amount for the onboard passenger."""
-        if self.state != TaxiState.DRIVING_TO_DROPOFF or self.fare_started_at is None:
-            return 0
-        return calculate_fare_cents(self.fare_distance_m, self.elapsed_time, self.fare_started_at)
+        return self.live_fare_cents
+
+    def phone_items(self):
+        """The three numbered phone rows: rail bookings first, then ordinary offers."""
+        bookings = self.rail_bookings.visible() if self.rail_bookings is not None else []
+        bookings.sort(key=lambda booking: booking.status != "PENDING")
+        return ([("booking", item) for item in bookings] + [("offer", item) for item in self.offers])[:MAX_PHONE_OFFERS]
+
+    def has_new_requests(self) -> bool:
+        """Something in the phone to answer: a ride offer or a rail
+        pre-booking still pending (accepted ones are no longer requests)."""
+        return bool(self.offers or (self.rail_bookings is not None and self.rail_bookings.pending()))
+
+    def visible_rail_bookings(self):
+        return self.rail_bookings.visible() if self.rail_bookings is not None else []
+
+    def has_active_job(self) -> bool:
+        """A fare under way, or a booked rail passenger waiting to be met:
+        either way the game clock runs in real time, not 60x (a waiting
+        booking's pickup window is game time)."""
+        return self.current_passenger is not None or bool(self.rail_bookings is not None and self.rail_bookings.waiting())
+
+    def meet_booking(self):
+        """The booking the driver is meeting now: the earliest-arriving
+        passenger still waiting, while no other fare is under way."""
+        if self.current_passenger is not None or self.rail_bookings is None:
+            return None
+        return min(self.rail_bookings.waiting(), key=lambda booking: booking.arrival_at, default=None)
+
+    def meet_context(self):
+        """The pre-booked pickup in progress, from accepting it until the
+        passenger is in the taxi: the greeted one walking to the taxi, the
+        one being met, else the next accepted one whose train is due."""
+        booking = getattr(self.current_passenger, "rail_booking", None)
+        if booking is not None and booking.status == PASSENGER_MET:
+            return booking
+        booking = self.meet_booking()
+        if booking is not None or self.current_passenger is not None or self.rail_bookings is None:
+            return booking
+        return min(
+            (b for b in self.rail_bookings.bookings if b.status in (ACCEPTED, TRAIN_ARRIVING)),
+            key=lambda b: b.arrival_at, default=None,
+        )
+
+    def meet_prompt(self, player: Any) -> Optional[Tuple[Any, str]]:
+        """(booking, localization key of what the driver should do now) for
+        the meet & greet in progress, or None."""
+        booking = self.meet_context()
+        if booking is None:
+            return None
+        if booking.status == PASSENGER_MET:
+            return booking, "meet_back_to_taxi" if self.driver_on_foot else "meet_passenger_to_taxi"
+        if booking.status in (ACCEPTED, TRAIN_ARRIVING):
+            return booking, "meet_train_due"
+        if booking.passenger.pedestrian is None:
+            return booking, "meet_go_to_stand"
+        if not self.driver_on_foot:
+            return booking, "meet_get_out"
+        return booking, "hint_greet_passenger" if self.greetable(player) is not None else "meet_walk_to_passenger"
+
+    def greetable(self, player: Any):
+        """(booking, pedestrian) when the driver on foot stands by the
+        meet booking's own pedestrian (booking -> passenger -> pedestrian)."""
+        booking = self.meet_booking()
+        pedestrian = booking.passenger.pedestrian if booking is not None else None
+        if pedestrian is None or math.hypot(player.x - pedestrian.x, player.y - pedestrian.y) > GREET_RADIUS_M:
+            return None
+        return booking, pedestrian
+
+    def greet_booked_passenger(self, player: Any, car: Car) -> Optional[Any]:
+        """The driver's explicit greeting: the only way to PASSENGER_MET. The
+        passenger then walks to the taxi; returns their pedestrian (now the
+        fare's) or None."""
+        found = self.greetable(player)
+        if found is None:
+            return None
+        booking, pedestrian = found
+        if not self._board_waiting_pedestrian(
+            pedestrian, self.make_target(car.x, car.y), "stand_boarded", walk_to_car=True, booking=booking,
+        ):
+            return None
+        # The same pedestrian walks to the taxi door along the footways (the
+        # pedestrian system's own stand walk, now routed), no longer a stand
+        # customer anyone else could pick up.
+        pedestrian.wants_taxi = pedestrian.is_taxi_stop_waiter = False
+        pedestrian.taxi_stop_target = self._door_position(car)
+        pedestrian.is_walking_to_taxi_stop = True
+        pedestrian.base_speed = self.current_passenger.ped_speed
+        pedestrian.route = None
+        self.notification_msg = tr(
+            self.language, "rail_booking_met", name=self.current_passenger.name,
+            train=booking.train_number, address=booking.destination.address,
+        )
+        return pedestrian
+
+    @staticmethod
+    def _door_position(car: Car) -> Tuple[float, float]:
+        """The taxi's passenger-side door (side offset relative to heading)."""
+        door_offset_side = 1.2
+        door_offset_long = -0.5
+        return (
+            car.x + math.cos(car.heading) * door_offset_long + math.sin(car.heading) * door_offset_side,
+            car.y - math.sin(car.heading) * door_offset_long - math.cos(car.heading) * door_offset_side,
+        )
+
+    def notify_rail_booking(self, booking) -> None:
+        self.notification_msg = tr(
+            self.language, "rail_booking_notice", train=booking.train_number,
+            station=booking.station, arrival=f"{booking.arrival_at:%H:%M}",
+        )
+        self.notification_timer = 5.0
 
     def adjust_passenger_happiness(self, amount: float) -> None:
         if self.current_passenger is not None and self.state == TaxiState.DRIVING_TO_DROPOFF:
@@ -272,6 +414,8 @@ class TaxiManager:
             self._building_collision_count = 0
         if len(buildings) > self._building_collision_count:
             for building in buildings[self._building_collision_count:]:
+                if str(getattr(building, "building_type", "") or "").casefold() in OPEN_ROOF_BUILDING_TYPES:
+                    continue
                 bbox = getattr(building, "bbox", (0.0, 0.0, 0.0, 0.0))
                 if bbox == (0.0, 0.0, 0.0, 0.0):
                     points = getattr(building, "points_m", [])
@@ -294,54 +438,29 @@ class TaxiManager:
         return nearby
 
     def _nearby_collision_trees(self, sceneries: List[Any], x: float, y: float, radius: float):
-        # Unlike buildings/fences, an individual scenery's own .trees list
-        # can change after that scenery is already indexed - osm/trees.py
-        # both appends to it (trees planted as a tile streams in) and
-        # reassigns it outright (remove_trees_under_roads() pruning), so
-        # the outer sceneries list being append-only isn't enough on its
-        # own here. Track how many of each scenery's trees are already
-        # indexed (by its position in the list, which *is* stable -
-        # autofetch never reorders it) and only walk the ones that
-        # changed, rather than every tree in the whole loaded map on every
-        # call. A per-scenery tree count going down (pruned) can't be
-        # cheaply un-indexed from the cell-bucketed grid, so that still
-        # falls back to a full rebuild - but that only happens once per
-        # map-sync cycle (remove_trees_under_roads runs once, not every
-        # frame), while plain growth from autofetch - the hot path this
-        # is actually for - stays cheap.
         if sceneries is not self._tree_collision_ref:
             self._tree_collision_grid.clear()
-            self._tree_collision_indexed = {}
             self._tree_collision_ref = sceneries
-        # Single pass per call (this runs every frame, and scales with the
-        # total loaded scenery count): a shrunk tree list found mid-pass
-        # clears the index and restarts the pass, instead of a separate
-        # full shrink-check scan running ahead of every indexing pass.
-        for _attempt in range(2):
-            rebuild = False
-            for scenery_index, scenery in enumerate(sceneries):
-                trees = getattr(scenery, "trees", ())
-                indexed = self._tree_collision_indexed.get(scenery_index, 0)
-                if len(trees) == indexed:
-                    continue
-                if len(trees) < indexed:
-                    self._tree_collision_grid.clear()
-                    self._tree_collision_indexed = {}
-                    rebuild = True
-                    break
-                for tree_index in range(indexed, len(trees)):
-                    tree_x, tree_y = trees[tree_index]
-                    cell = (math.floor(tree_x / 100.0), math.floor(tree_y / 100.0))
-                    self._tree_collision_grid.setdefault(cell, []).append(
-                        (scenery_index, tree_index, tree_x, tree_y)
-                    )
-                self._tree_collision_indexed[scenery_index] = len(trees)
-            if not rebuild:
-                break
+            self._tree_collision_count = 0
+        if len(sceneries) < self._tree_collision_count:
+            self.invalidate_tree_collision_index()
+            self._tree_collision_ref = sceneries
+        for scenery_index in range(self._tree_collision_count, len(sceneries)):
+            for tree_index, (tree_x, tree_y) in enumerate(getattr(sceneries[scenery_index], "trees", ())):
+                cell = (math.floor(tree_x / 100.0), math.floor(tree_y / 100.0))
+                self._tree_collision_grid.setdefault(cell, []).append(
+                    (scenery_index, tree_index, tree_x, tree_y)
+                )
+        self._tree_collision_count = len(sceneries)
         nearby = []
         for cell in self._collision_cells(x - radius, y - radius, x + radius, y + radius):
             nearby.extend(self._tree_collision_grid.get(cell, ()))
         return nearby
+
+    def invalidate_tree_collision_index(self) -> None:
+        self._tree_collision_grid.clear()
+        self._tree_collision_ref = None
+        self._tree_collision_count = 0
 
     def _nearby_collision_fences(self, sceneries: List[Any], x: float, y: float, radius: float):
         # Same fix, same reason, as _nearby_collision_buildings above -
@@ -437,7 +556,10 @@ class TaxiManager:
             player_car.x, player_car.y, player_car.heading, player_car.length_m, player_car.width_m
         )
 
+        car_level = getattr(player_car, "map_level", SURFACE_LEVEL)
         for building in self._nearby_collision_buildings(buildings, player_car.x, player_car.y, car_radius):
+            if not on_map_level(building, car_level):  # only the car's own map level collides
+                continue
             points = getattr(building, "points_m", [])
             if len(points) < 3:
                 continue
@@ -659,6 +781,62 @@ class TaxiManager:
                 logger.info("Player crashed into construction fence: -%d pts", penalty)
             return True
 
+        return False
+
+    def _nearby_posts(self, objects: List[Any], x: float, y: float):
+        """Bollards and lamp posts near (x, y) from a 20 m grid, indexing
+        only newly appended objects (the scenery list only grows, like the
+        building list in _nearby_collision_buildings)."""
+        if objects is not self._post_ref or len(objects) < self._post_count:
+            self._post_grid, self._post_ref, self._post_count = {}, objects, 0
+        for obj in objects[self._post_count:]:
+            if getattr(obj, "kind", None) in POST_KINDS:
+                self._post_grid.setdefault((math.floor(obj.x / 20.0), math.floor(obj.y / 20.0)), []).append(obj)
+        self._post_count = len(objects)
+        cell_x, cell_y = math.floor(x / 20.0), math.floor(y / 20.0)
+        return [obj for dx in (-1, 0, 1) for dy in (-1, 0, 1) for obj in self._post_grid.get((cell_x + dx, cell_y + dy), ())]
+
+    def check_post_collision(
+        self,
+        player_car: Car,
+        scenery_objects: List[Any],
+        sim_time: float,
+        previous_position: Optional[Tuple[float, float]] = None,
+        penalty: int = 50,
+    ) -> bool:
+        """Stop the car at a bollard or lamp post (OSM barrier=bollard,
+        highway=street_lamp) and apply one penalty per impact. Hit at
+        POST_KNOCK_DOWN_KMH or more, the post bends over in the driving
+        direction (post.knocked_angle) and no longer blocks, a lamp breaks
+        and goes dark, and the taxi carries on slowed."""
+        for key in [k for k, t in self._crashed_post_cooldowns.items() if sim_time - t > 3.0]:
+            del self._crashed_post_cooldowns[key]
+        cos_h, sin_h = math.cos(player_car.heading), math.sin(player_car.heading)
+        half_l = player_car.length_m / 2 + POST_RADIUS_M
+        half_w = player_car.width_m / 2 + POST_RADIUS_M
+        for post in self._nearby_posts(scenery_objects, player_car.x, player_car.y):
+            if getattr(post, "knocked_angle", None) is not None:
+                continue  # already lying flat
+            dx, dy = post.x - player_car.x, post.y - player_car.y
+            if abs(dx * cos_h + dy * sin_h) > half_l or abs(-dx * sin_h + dy * cos_h) > half_w:
+                continue
+            if abs(player_car.speed) * 3.6 >= POST_KNOCK_DOWN_KMH:
+                post.knocked_angle = player_car.heading if player_car.speed >= 0.0 else player_car.heading + math.pi
+                self.knocked_posts += 1
+                if post.kind == "street_lamp":
+                    self.broken_lamps.add((post.x, post.y))
+                player_car.speed *= 0.6
+            else:
+                if previous_position is not None:
+                    player_car.x, player_car.y = previous_position
+                player_car.speed = 0.0
+            if id(post) not in self._crashed_post_cooldowns:
+                self._crashed_post_cooldowns[id(post)] = sim_time
+                self.total_score -= penalty
+                self.adjust_passenger_happiness(-20.0)
+                self.notification_msg = tr(self.language, "post_crash", penalty=penalty)
+                self.notification_timer = 3.5
+            return True
         return False
 
     def check_curb_bump(
@@ -1236,20 +1414,23 @@ class TaxiManager:
         if not dropoff_target:
             dropoff_target = pickup_target
 
-        passenger_name, passenger_gender, resident_id = self._new_passenger_identity()
+        passenger_name, passenger_gender, resident_id, passenger_weight_kg = self._new_passenger_identity()
+        nausea_delay = self.nausea_delay_for_pickup(pickup_target)
         self.current_passenger = TaxiPassenger(
             name=passenger_name,
             pickup=pickup_target,
             dropoff=dropoff_target,
             gender=passenger_gender,
             resident_id=resident_id,
+            weight_kg=passenger_weight_kg,
             ped_x=self.passenger_waiting_position(pickup_target)[0],
             ped_y=self.passenger_waiting_position(pickup_target)[1],
             ped_heading=self.passenger_waiting_position(pickup_target)[2],
             ped_speed=2.2,
             is_walking_to_car=False,
             boarded=False,
-            nausea_delay=self.nausea_delay_for_pickup(pickup_target),
+            is_drunk=math.isfinite(nausea_delay),
+            nausea_delay=nausea_delay,
         )
         self.state = TaxiState.WAITING_FOR_PICKUP
         self.elapsed_time = 0.0
@@ -1377,18 +1558,21 @@ class TaxiManager:
             dropoff = self.pick_phone_dropoff(pickup.x, pickup.y)
             if not dropoff:
                 continue
-            passenger_name, passenger_gender, resident_id = self._new_passenger_identity()
+            passenger_name, passenger_gender, resident_id, passenger_weight_kg = self._new_passenger_identity()
+            nausea_delay = self.nausea_delay_for_pickup(pickup)
             passenger = TaxiPassenger(
                 name=passenger_name,
                 pickup=pickup,
                 dropoff=dropoff,
                 gender=passenger_gender,
                 resident_id=resident_id,
+                weight_kg=passenger_weight_kg,
                 ped_x=self.passenger_waiting_position(pickup)[0],
                 ped_y=self.passenger_waiting_position(pickup)[1],
                 ped_heading=self.passenger_waiting_position(pickup)[2],
                 ped_speed=2.2,
-                nausea_delay=self.nausea_delay_for_pickup(pickup),
+                is_drunk=math.isfinite(nausea_delay),
+                nausea_delay=nausea_delay,
             )
             offers.append(TaxiOffer(
                 passenger=passenger,
@@ -1416,9 +1600,20 @@ class TaxiManager:
 
     def accept_offer(self, index: int, car_x: float, car_y: float) -> bool:
         """Activate one phone offer and remove the offer list."""
-        if index < 0 or index >= len(self.offers):
+        items = self.phone_items()
+        if index < 0 or index >= len(items):
             return False
-        self.current_passenger = self.offers[index].passenger
+        kind, item = items[index]
+        if kind == "booking":
+            accepted = self.rail_bookings.accept(item)
+            if accepted:
+                self.notification_msg = tr(
+                    self.language, "rail_booking_accepted", train=item.train_number,
+                    station=item.station, arrival=f"{item.arrival_at:%H:%M}",
+                )
+                self.notification_timer = 5.0
+            return accepted
+        self.current_passenger = item.passenger
         self.offers = []
         self.state = TaxiState.WAITING_FOR_PICKUP
         self.elapsed_time = 0.0
@@ -1439,9 +1634,19 @@ class TaxiManager:
 
     def reject_offer(self, index: int = 0, car_x: float = 0.0, car_y: float = 0.0) -> bool:
         """Reject one pending phone request without starting its fare."""
-        if index < 0 or index >= len(self.offers):
+        items = self.phone_items()
+        if index == 0 and items and items[0][0] == "booking" and items[0][1].status != "PENDING":
+            pending = next((entry for entry in items if entry[0] == "booking" and entry[1].status == "PENDING"), None)
+            if pending is None:
+                return False
+            kind, item = pending
+            return self.rail_bookings.decline(item)
+        if index < 0 or index >= len(items):
             return False
-        self.offers.pop(index)
+        kind, item = items[index]
+        if kind == "booking":
+            return self.rail_bookings.decline(item)
+        self.offers.remove(item)
         self.next_offer_timer = random.uniform(PHONE_OFFER_MIN_INTERVAL_S, PHONE_OFFER_MAX_INTERVAL_S)
         self.notification_msg = tr(self.language, "no_requests")
         self.notification_timer = 2.0
@@ -1454,9 +1659,11 @@ class TaxiManager:
         pickup: TaxiTarget,
         message_key: str,
         walk_to_car: bool = False,
+        booking: Any = None,
     ) -> bool:
-        """Turn a nearby waiting pedestrian into a fare, optionally walking to the car first."""
-        dropoff = self.pick_random_building_point(
+        """Turn a nearby waiting pedestrian into a fare, optionally walking to
+        the car first. A booked rail customer keeps the booking's destination."""
+        dropoff = booking.destination if booking is not None else self.pick_random_building_point(
             pickup.x, pickup.y, self.min_distance_m, float("inf"), venue_types={None}
         )
         if not dropoff:
@@ -1464,19 +1671,27 @@ class TaxiManager:
         if not dropoff:
             return False
         resident = self.residents.get(getattr(pedestrian, "resident_id", None))
-        passenger_name, passenger_gender, resident_id = self._new_passenger_identity(resident)
+        passenger_name, passenger_gender, resident_id, passenger_weight_kg = self._new_passenger_identity(resident)
+        if booking is not None and booking.passenger.name:
+            passenger_name = booking.passenger.name  # the name on the booking
+        is_drunk = bool(getattr(pedestrian, "is_drunk", False))
         passenger = TaxiPassenger(
             name=passenger_name,
             pickup=pickup,
             dropoff=dropoff,
             gender=passenger_gender,
             resident_id=resident_id,
+            weight_kg=passenger_weight_kg,
             ped_x=pedestrian.x,
             ped_y=pedestrian.y,
             ped_heading=pedestrian.heading,
             boarded=True,
-            nausea_delay=self.nausea_delay_for_pickup(pickup),
+            is_drunk=is_drunk,
+            nausea_delay=self.nausea_delay_for_pickup(pickup) if is_drunk else float("inf"),
+            rail_booking=booking,
         )
+        if booking is not None:
+            booking.status = PASSENGER_MET
         self.current_passenger = passenger
         self.offers = []
         if walk_to_car:
@@ -1488,6 +1703,7 @@ class TaxiManager:
             self.fare_started_at = self._current_game_datetime()
             self.fare_start_odometer_m = None
             self.fare_distance_m = 0.0
+            self.live_fare_cents = calculate_fare_cents(0.0, 0.0, self.fare_started_at)
             self.passenger_happiness = 50.0
         self.elapsed_time = 0.0
         self.trip_distance_m = math.hypot(dropoff.x - pickup.x, dropoff.y - pickup.y)
@@ -1502,6 +1718,8 @@ class TaxiManager:
             address=dropoff.address,
         )
         self.notification_timer = 5.0
+        if passenger.boarded:
+            self._warn_if_passenger_is_drunk(passenger)
         logger.info(
             "Passenger boarded: passenger=%s pickup=%s dropoff=%s walking=%s",
             passenger.name,
@@ -1525,7 +1743,7 @@ class TaxiManager:
             car_side_y = car_dir_x
             passing_candidates = [
                 ped for ped in pedestrians
-                if getattr(ped, "wants_taxi", False)
+                if getattr(ped, "wants_taxi", False) and waiting_booking(ped) is None
                 if abs((ped.x - car.x) * car_dir_x + (ped.y - car.y) * car_dir_y) <= 6.0
                 and abs((ped.x - car.x) * car_side_x + (ped.y - car.y) * car_side_y) <= 4.0
             ]
@@ -1553,19 +1771,26 @@ class TaxiManager:
             return None
         pickup = None
         message_key = "stand_boarded"
+        stand_stop = None
         if self.taxi_stops:
             nearby_stops = [stop for stop in self.taxi_stops if math.hypot(car.x - stop.x, car.y - stop.y) <= 22.0]
             if nearby_stops:
-                pickup = self.make_target(nearby_stops[0].x, nearby_stops[0].y)
+                stand_stop = nearby_stops[0]
         candidates = [
             ped for ped in pedestrians
             if getattr(ped, "wants_taxi", True)
             and math.hypot(car.x - ped.x, car.y - ped.y) <= 15.0
+            and waiting_booking(ped) is None
         ]
-        is_hail = pickup is None and not self.taxi_stops and candidates
+        is_hail = stand_stop is None and not self.taxi_stops and candidates
         if is_hail and random.random() < min(1.0, dt * 0.35):
             pickup = self.make_target(candidates[0].x, candidates[0].y)
             message_key = "hail_boarded"
+        elif stand_stop is not None and candidates:
+            # Only now: make_target's street/house-number lookup scans the
+            # whole loaded city, and used to run every frame while the taxi
+            # idled at a stand with nobody there to board.
+            pickup = self.make_target(stand_stop.x, stand_stop.y)
         if pickup is None or not candidates:
             return None
         if message_key == "stand_boarded" and random.random() >= min(1.0, dt * 0.35):
@@ -1606,6 +1831,8 @@ class TaxiManager:
         if not self.current_passenger:
             return 0
         p_name = self.current_passenger.name
+        if self.current_passenger.rail_booking is not None and self.current_passenger.rail_booking.status == PASSENGER_MET:
+            self.current_passenger.rail_booking.status = MISSED
         self.total_score -= penalty
         if self.state in (TaxiState.DRIVING_TO_DROPOFF, TaxiState.CLIENT_WALKING_TO_CAR):
             msg = f"{reason}! Client {p_name} abandoned (-{penalty} pts)"
@@ -1615,6 +1842,7 @@ class TaxiManager:
         self.notification_timer = 5.0
         logger.info("Taxi mission discarded: passenger=%s reason=%s penalty=%d", p_name, reason, penalty)
         self.current_passenger = None
+        self.live_fare_cents = 0
         self.state = TaxiState.WAITING_FOR_PICKUP
         self.generate_offers(car_x, car_y, count=1)
         return penalty
@@ -1626,7 +1854,11 @@ class TaxiManager:
 
     def _update_passenger_nausea(self, car: Car, dt: float) -> None:
         passenger = self.current_passenger
-        if passenger is None or not passenger.boarded or self.state != TaxiState.DRIVING_TO_DROPOFF:
+        if (
+            passenger is None
+            or not passenger.boarded
+            or self.state != TaxiState.DRIVING_TO_DROPOFF
+        ):
             return
         if passenger.nausea_resolved or passenger.nausea_vomited:
             return
@@ -1655,6 +1887,24 @@ class TaxiManager:
                 logger.info("Passenger vomited in taxi: passenger=%s penalty=%d", passenger.name, 500)
             return
 
+        roughness = (
+            max(0.0, abs(car.lateral_g) - 0.35) * 2.0
+            + max(0.0, abs(car.forward_g) - 0.35) * 1.5
+            + max(0.0, abs(car.speed) - 120.0 / 3.6) / (80.0 / 3.6) * 0.4
+        )
+        passenger.motion_sickness = max(
+            0.0,
+            passenger.motion_sickness + (roughness - 0.2) * dt,
+        )
+        if passenger.motion_sickness >= MOTION_SICKNESS_THRESHOLD:
+            passenger.nausea_warning_timer = 4.0
+            self.notification_msg = tr(self.language, "passenger_nausea_warning")
+            self.notification_timer = 4.0
+            logger.info("Passenger reported motion sickness: passenger=%s", passenger.name)
+            return
+
+        if not passenger.is_drunk:
+            return
         passenger.nausea_delay -= dt
         if passenger.nausea_delay <= 0.0:
             passenger.nausea_warning_timer = 4.0
@@ -1746,11 +1996,12 @@ class TaxiManager:
         elif self.state == TaxiState.CLIENT_WALKING_TO_CAR:
             # Passenger walks towards the passenger side door of the taxi
             p = self.current_passenger
-            # Passenger door position (side offset relative to car heading)
-            door_offset_side = 1.2
-            door_offset_long = -0.5
-            door_x = car.x + math.cos(car.heading) * door_offset_long + math.sin(car.heading) * door_offset_side
-            door_y = car.y - math.sin(car.heading) * door_offset_long - math.cos(car.heading) * door_offset_side
+            door_x, door_y = self._door_position(car)
+            # A greeted rail customer is still their own pedestrian, walked
+            # by the pedestrian system; the fare just follows it.
+            walker = p.rail_booking.passenger.pedestrian if p.rail_booking is not None else None
+            if walker is not None:
+                p.ped_x, p.ped_y, p.ped_heading = walker.x, walker.y, walker.heading
 
             dx = door_x - p.ped_x
             dy = door_y - p.ped_y
@@ -1761,29 +2012,35 @@ class TaxiManager:
                 self.discard_mission(car.x, car.y, penalty=100, reason="Drove away during pickup")
                 return
 
-            if dist_to_door <= 0.8:
+            if dist_to_door <= 0.8 or (walker is not None and not walker.is_walking_to_taxi_stop):
                 if not is_stopped:
                     return
+                if p.rail_booking is not None and self.driver_on_foot:
+                    return  # a booked customer waits at the door for the driver
                 # Client reached taxi door and boarded!
                 p.boarded = True
+                if p.rail_booking is not None:
+                    p.rail_booking.status = IN_TAXI
                 p.is_walking_to_car = False
                 self.state = TaxiState.DRIVING_TO_DROPOFF
                 self.elapsed_time = 0.0
                 self.fare_started_at = self._current_game_datetime()
                 self.fare_start_odometer_m = car.odometer_m
                 self.fare_distance_m = 0.0
+                self.live_fare_cents = calculate_fare_cents(0.0, 0.0, self.fare_started_at)
                 self.passenger_happiness = 50.0
                 self.trip_distance_m = math.hypot(p.dropoff.x - p.pickup.x, p.dropoff.y - p.pickup.y)
                 self.notification_msg = tr(
                     self.language, "boarded_destination", name=p.name, address=p.dropoff.address
                 )
                 self.notification_timer = 6.0
+                self._warn_if_passenger_is_drunk(p)
                 logger.info(
                     "Passenger boarded after walking: passenger=%s dropoff=%s",
                     p.name,
                     p.dropoff.address,
                 )
-            else:
+            elif walker is None:
                 p.ped_heading = math.atan2(dy, dx)
                 step = p.ped_speed * dt
                 if step < dist_to_door:
@@ -1798,6 +2055,11 @@ class TaxiManager:
             if self.fare_start_odometer_m is None:
                 self.fare_start_odometer_m = car.odometer_m
             self.fare_distance_m = max(0.0, car.odometer_m - self.fare_start_odometer_m)
+            self.live_fare_cents = calculate_fare_cents(
+                self.fare_distance_m,
+                self.elapsed_time,
+                self.fare_started_at or self._current_game_datetime(),
+            )
             if dist_to_target <= target.radius_m:
                 if is_stopped:
                     # Completed fare!
@@ -1806,11 +2068,7 @@ class TaxiManager:
                     self.total_score += earned
                     self.completed_fares += 1
                     self.last_fare_points = earned
-                    fare_cents = calculate_fare_cents(
-                        self.fare_distance_m,
-                        self.elapsed_time,
-                        self.fare_started_at or self._current_game_datetime(),
-                    )
+                    fare_cents = self.live_fare_cents
                     expected_duration_s = max(60.0, self.trip_distance_m / (40.0 / 3.6))
                     if self.elapsed_time <= expected_duration_s:
                         time_saved_ratio = 1.0 - self.elapsed_time / expected_duration_s

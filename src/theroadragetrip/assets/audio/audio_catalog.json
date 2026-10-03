@@ -1,0 +1,3757 @@
+{
+  "catalog_version": 1,
+  "generated": "2026-09-25",
+  "status": "generated and reviewed",
+  "generator": {
+    "model": "stabilityai/stable-audio-open-1.0",
+    "tool": "diffusers StableAudioPipeline (ai-audio-studio .venv)"
+  },
+  "format": {
+    "container": "ogg",
+    "codec": "vorbis",
+    "sample_rate": 44100,
+    "channels": {
+      "one_shot": 1,
+      "loop": 2
+    },
+    "reason": "pygame.mixer (the game's audio stack) loads OGG; ~10x smaller than WAV in git."
+  },
+  "root": "src/theroadragetrip/assets/audio",
+  "priorities": [
+    "required",
+    "strong_candidate",
+    "optional",
+    "not_needed"
+  ],
+  "categories": [
+    "ambient",
+    "collision",
+    "gameplay",
+    "passenger",
+    "pedestrian",
+    "railway",
+    "station",
+    "taxi",
+    "ui",
+    "vehicle",
+    "voice",
+    "weather"
+  ],
+  "groups": {
+    "vehicle.tire_squeal": {
+      "category": "vehicle",
+      "event": "tires_sliding",
+      "description": "Tires losing grip in a hard corner or skid.",
+      "trigger": "car.is_sliding becomes true (hysteresis on slip_amount).",
+      "source": [
+        "src/theroadragetrip/physics.py:1556",
+        "src/theroadragetrip/simulation.py:377"
+      ],
+      "priority": "required",
+      "loop": false,
+      "duration_s": [
+        0.8,
+        2.5
+      ],
+      "variations": 6,
+      "selection": "random",
+      "randomize": true,
+      "spatial": false,
+      "intensity_levels": true,
+      "contextual_variants": [
+        "dry",
+        "wet (quieter, hissier)"
+      ],
+      "existing_asset": null,
+      "notes": "Very frequent in play: 6 variations. Consider scaling volume by car.slip_amount.",
+      "generation": {
+        "prompt": "Realistic close-up car tire squeal on dry asphalt during an aggressive turn, rubber texture, isolated sound effect, no engine music",
+        "negative_prompt": "music, melody, speech, voice, singing, low quality, distortion, clipping"
+      },
+      "files": [
+        {
+          "id": "vehicle.tire_squeal.01",
+          "file": "vehicle/vehicle_tire_squeal_01.ogg",
+          "variation": 1,
+          "variant": "short sharp chirp, high pitch",
+          "status": "generated",
+          "review": "ok",
+          "prompt": "short sharp chirp, high pitch. Realistic close-up car tire squeal on dry asphalt during an aggressive turn, rubber texture, isolated sound effect, no engine music",
+          "seed": 3907441234,
+          "steps": 100,
+          "sample_rate": 44100,
+          "channels": 1,
+          "generated": "2026-09-25",
+          "duration_s": 2.404,
+          "raw_clipped_samples": 1303,
+          "raw_silent_fraction": 0.229,
+          "rms_dbfs": -14.7,
+          "reviewed": "2026-09-25"
+        },
+        {
+          "id": "vehicle.tire_squeal.02",
+          "file": "vehicle/vehicle_tire_squeal_02.ogg",
+          "variation": 2,
+          "variant": "medium squeal, rising pitch",
+          "status": "generated",
+          "review": "ok",
+          "prompt": "medium squeal, rising pitch. Realistic close-up car tire squeal on dry asphalt during an aggressive turn, rubber texture, isolated sound effect, no engine music",
+          "seed": 1911522280,
+          "steps": 100,
+          "sample_rate": 44100,
+          "channels": 1,
+          "generated": "2026-09-25",
+          "duration_s": 2.673,
+          "raw_clipped_samples": 51,
+          "raw_silent_fraction": 0.149,
+          "rms_dbfs": -19.1,
+          "reviewed": "2026-09-25"
+        },
+        {
+          "id": "vehicle.tire_squeal.03",
+          "file": "vehicle/vehicle_tire_squeal_03.ogg",
+          "variation": 3,
+          "variant": "long sustained squeal, gritty",
+          "status": "generated",
+          "review": "ok",
+          "prompt": "long sustained squeal, gritty. Realistic close-up car tire squeal on dry asphalt during an aggressive turn, rubber texture, isolated sound effect, no engine music",
+          "seed": 115913598,
+          "steps": 100,
+          "sample_rate": 44100,
+          "channels": 1,
+          "generated": "2026-09-25",
+          "duration_s": 2.438,
+          "raw_clipped_samples": 0,
+          "raw_silent_fraction": 0.211,
+          "rms_dbfs": -16.1,
+          "reviewed": "2026-09-25"
+        },
+        {
+          "id": "vehicle.tire_squeal.04",
+          "file": "vehicle/vehicle_tire_squeal_04.ogg",
+          "variation": 4,
+          "variant": "low-pitched heavy squeal with judder",
+          "status": "generated",
+          "review": "ok",
+          "prompt": "low-pitched heavy squeal with judder. Realistic close-up car tire squeal on dry asphalt during an aggressive turn, rubber texture, isolated sound effect, no engine music",
+          "seed": 2559321821,
+          "steps": 100,
+          "sample_rate": 44100,
+          "channels": 1,
+          "generated": "2026-09-25",
+          "duration_s": 2.912,
+          "raw_clipped_samples": 349,
+          "raw_silent_fraction": 0.092,
+          "rms_dbfs": -19.7,
+          "reviewed": "2026-09-25"
+        },
+        {
+          "id": "vehicle.tire_squeal.05",
+          "file": "vehicle/vehicle_tire_squeal_05.ogg",
+          "variation": 5,
+          "variant": "wavering squeal during a drift",
+          "status": "generated",
+          "review": "ok",
+          "prompt": "wavering squeal during a drift. Realistic close-up car tire squeal on dry asphalt during an aggressive turn, rubber texture, isolated sound effect, no engine music",
+          "seed": 4018869835,
+          "steps": 100,
+          "sample_rate": 44100,
+          "channels": 1,
+          "generated": "2026-09-25",
+          "duration_s": 2.889,
+          "raw_clipped_samples": 516,
+          "raw_silent_fraction": 0.14,
+          "rms_dbfs": -18.8,
+          "reviewed": "2026-09-25"
+        },
+        {
+          "id": "vehicle.tire_squeal.06",
+          "file": "vehicle/vehicle_tire_squeal_06.ogg",
+          "variation": 6,
+          "variant": "brief double chirp",
+          "status": "generated",
+          "review": "ok",
+          "prompt": "brief double chirp. Realistic close-up car tire squeal on dry asphalt during an aggressive turn, rubber texture, isolated sound effect, no engine music",
+          "seed": 1988249585,
+          "steps": 100,
+          "sample_rate": 44100,
+          "channels": 1,
+          "generated": "2026-09-25",
+          "duration_s": 2.43,
+          "raw_clipped_samples": 18,
+          "raw_silent_fraction": 0.201,
+          "rms_dbfs": -19.6,
+          "reviewed": "2026-09-25"
+        }
+      ]
+    },
+    "vehicle.engine_start": {
+      "category": "vehicle",
+      "event": "engine_on",
+      "description": "Taxi engine cranking and starting.",
+      "trigger": "E key turns engine on (command.engine_on).",
+      "source": [
+        "src/theroadragetrip/main/__init__.py:1712",
+        "src/theroadragetrip/simulation.py:248"
+      ],
+      "priority": "required",
+      "loop": false,
+      "duration_s": [
+        1.0,
+        2.5
+      ],
+      "variations": 3,
+      "selection": "random",
+      "randomize": true,
+      "spatial": false,
+      "intensity_levels": false,
+      "contextual_variants": [],
+      "existing_asset": null,
+      "notes": "Player starts the engine at every game start and after stopping it.",
+      "generation": {
+        "prompt": "Modern sedan car engine starter crank and ignition, engine catches and settles to idle, close exterior recording, isolated sound effect",
+        "negative_prompt": "music, melody, speech, voice, singing, low quality, distortion, clipping"
+      },
+      "files": [
+        {
+          "id": "vehicle.engine_start.01",
+          "file": "vehicle/vehicle_engine_start_01.ogg",
+          "variation": 1,
+          "variant": "quick clean start",
+          "status": "generated",
+          "review": "ok",
+          "prompt": "quick clean start. Modern sedan car engine starter crank and ignition, engine catches and settles to idle, close exterior recording, isolated sound effect",
+          "seed": 3359986739,
+          "steps": 100,
+          "sample_rate": 44100,
+          "channels": 1,
+          "generated": "2026-09-25",
+          "duration_s": 1.95,
+          "raw_clipped_samples": 129,
+          "raw_silent_fraction": 0.812,
+          "rms_dbfs": -29.9,
+          "reviewed": "2026-09-25"
+        },
+        {
+          "id": "vehicle.engine_start.02",
+          "file": "vehicle/vehicle_engine_start_02.ogg",
+          "variation": 2,
+          "variant": "slightly longer crank then start",
+          "status": "generated",
+          "review": "ok",
+          "prompt": "slightly longer crank then start. Modern sedan car engine starter crank and ignition, engine catches and settles to idle, close exterior recording, isolated sound effect",
+          "seed": 1363936649,
+          "steps": 100,
+          "sample_rate": 44100,
+          "channels": 1,
+          "generated": "2026-09-25",
+          "duration_s": 2.643,
+          "raw_clipped_samples": 13,
+          "raw_silent_fraction": 0.708,
+          "rms_dbfs": -30.4,
+          "reviewed": "2026-09-25"
+        },
+        {
+          "id": "vehicle.engine_start.03",
+          "file": "vehicle/vehicle_engine_start_03.ogg",
+          "variation": 3,
+          "variant": "cold start with a rougher catch",
+          "status": "generated",
+          "review": "ok",
+          "prompt": "cold start with a rougher catch. Modern sedan car engine starter crank and ignition, engine catches and settles to idle, close exterior recording, isolated sound effect",
+          "seed": 642463007,
+          "steps": 100,
+          "sample_rate": 44100,
+          "channels": 1,
+          "generated": "2026-09-25",
+          "duration_s": 1.653,
+          "raw_clipped_samples": 8,
+          "raw_silent_fraction": 0.834,
+          "rms_dbfs": -31.4,
+          "reviewed": "2026-09-25"
+        }
+      ]
+    },
+    "vehicle.engine_stop": {
+      "category": "vehicle",
+      "event": "engine_off",
+      "description": "Taxi engine switching off.",
+      "trigger": "E key turns engine off.",
+      "source": [
+        "src/theroadragetrip/main/__init__.py:1712"
+      ],
+      "priority": "strong_candidate",
+      "loop": false,
+      "duration_s": [
+        0.8,
+        1.5
+      ],
+      "variations": 2,
+      "selection": "random",
+      "randomize": true,
+      "spatial": false,
+      "intensity_levels": false,
+      "contextual_variants": [],
+      "existing_asset": null,
+      "notes": "",
+      "generation": {
+        "prompt": "Car engine switched off, idle dies down and stops, small mechanical settle, isolated sound effect",
+        "negative_prompt": "music, melody, speech, voice, singing, low quality, distortion, clipping"
+      },
+      "files": [
+        {
+          "id": "vehicle.engine_stop.01",
+          "file": "vehicle/vehicle_engine_stop_01.ogg",
+          "variation": 1,
+          "variant": "clean shutdown",
+          "status": "generated",
+          "review": "ok",
+          "prompt": "clean shutdown. Car engine switched off, idle dies down and stops, small mechanical settle, isolated sound effect",
+          "seed": 1245385184,
+          "steps": 100,
+          "sample_rate": 44100,
+          "channels": 1,
+          "generated": "2026-09-25",
+          "duration_s": 1.819,
+          "raw_clipped_samples": 3,
+          "raw_silent_fraction": 0.252,
+          "rms_dbfs": -30.8,
+          "reviewed": "2026-09-25"
+        },
+        {
+          "id": "vehicle.engine_stop.02",
+          "file": "vehicle/vehicle_engine_stop_02.ogg",
+          "variation": 2,
+          "variant": "shutdown with a small shudder",
+          "status": "generated",
+          "review": "ok",
+          "prompt": "shutdown with a small shudder. Car engine switched off, idle dies down and stops, small mechanical settle, isolated sound effect",
+          "seed": 3543285850,
+          "steps": 100,
+          "sample_rate": 44100,
+          "channels": 1,
+          "generated": "2026-09-25",
+          "duration_s": 1.694,
+          "raw_clipped_samples": 0,
+          "raw_silent_fraction": 0.31,
+          "rms_dbfs": -26.6,
+          "reviewed": "2026-09-25"
+        }
+      ]
+    },
+    "vehicle.engine_idle": {
+      "category": "vehicle",
+      "event": "engine_idling",
+      "description": "Idling engine loop while the engine runs and the taxi stands still.",
+      "trigger": "car.engine_on and |speed| < 0.5 m/s (no loop plays today: accelerate.wav only plays under throttle/brake).",
+      "source": [
+        "src/theroadragetrip/simulation.py:357",
+        "src/theroadragetrip/audio.py:286"
+      ],
+      "priority": "strong_candidate",
+      "loop": true,
+      "duration_s": [
+        6.0,
+        8.0
+      ],
+      "variations": 1,
+      "selection": "single",
+      "randomize": false,
+      "spatial": false,
+      "intensity_levels": false,
+      "contextual_variants": [],
+      "existing_asset": null,
+      "notes": "Single seamless loop; crossfade the loop point in post-processing.",
+      "generation": {
+        "prompt": "Steady idling four-cylinder car engine, constant low rumble, exterior close recording, seamless loop, isolated sound effect",
+        "negative_prompt": "music, melody, speech, voice, singing, low quality, distortion, clipping"
+      },
+      "files": [
+        {
+          "id": "vehicle.engine_idle.01",
+          "file": "vehicle/vehicle_engine_idle_01.ogg",
+          "variation": 1,
+          "variant": "steady four-cylinder idle",
+          "status": "generated",
+          "review": "ok",
+          "prompt": "steady four-cylinder idle. Steady idling four-cylinder car engine, constant low rumble, exterior close recording, seamless loop, isolated sound effect",
+          "seed": 2854489478,
+          "steps": 100,
+          "sample_rate": 44100,
+          "channels": 2,
+          "generated": "2026-09-25",
+          "duration_s": 8.5,
+          "raw_clipped_samples": 0,
+          "raw_silent_fraction": 0.001,
+          "rms_dbfs": -15.7,
+          "reviewed": "2026-09-25"
+        }
+      ]
+    },
+    "vehicle.engine_accelerate": {
+      "category": "vehicle",
+      "event": "throttle",
+      "description": "Taxi engine under way: the idle loop sped up to four rev levels, crossfaded by speed.",
+      "trigger": "Engine on and the taxi moving: layers follow speed, louder under throttle.",
+      "source": [
+        "src/theroadragetrip/simulation.py:357"
+      ],
+      "priority": "required",
+      "loop": true,
+      "duration_s": [
+        3.4,
+        6.8
+      ],
+      "variations": 4,
+      "selection": "layer",
+      "randomize": false,
+      "spatial": false,
+      "intensity_levels": true,
+      "contextual_variants": [],
+      "existing_asset": null,
+      "notes": "Derived from vehicle.engine_idle.01 (the generated Stable Audio driving loops sounded wrong): each layer is the idle loop resampled faster, so pitch rises like revs and the loop stays seamless. Replaces sounds/accelerate.wav.",
+      "files": [
+        {
+          "id": "vehicle.engine_accelerate.01",
+          "file": "vehicle/vehicle_engine_accelerate_01.ogg",
+          "variation": 1,
+          "variant": "low revs, city driving",
+          "status": "generated",
+          "derive": {
+            "from": "vehicle/vehicle_engine_idle_01.ogg",
+            "rate": 1.25
+          },
+          "review": "pending",
+          "generated": "2026-09-26",
+          "sample_rate": 44100,
+          "channels": 2,
+          "duration_s": 6.8,
+          "raw_clipped_samples": 0,
+          "raw_silent_fraction": 0.001,
+          "rms_dbfs": -15.4
+        },
+        {
+          "id": "vehicle.engine_accelerate.02",
+          "file": "vehicle/vehicle_engine_accelerate_02.ogg",
+          "variation": 2,
+          "variant": "mid revs",
+          "status": "generated",
+          "derive": {
+            "from": "vehicle/vehicle_engine_idle_01.ogg",
+            "rate": 1.6
+          },
+          "review": "pending",
+          "generated": "2026-09-26",
+          "sample_rate": 44100,
+          "channels": 2,
+          "duration_s": 5.313,
+          "raw_clipped_samples": 0,
+          "raw_silent_fraction": 0.001,
+          "rms_dbfs": -15.4
+        },
+        {
+          "id": "vehicle.engine_accelerate.03",
+          "file": "vehicle/vehicle_engine_accelerate_03.ogg",
+          "variation": 3,
+          "variant": "high revs",
+          "status": "generated",
+          "derive": {
+            "from": "vehicle/vehicle_engine_idle_01.ogg",
+            "rate": 2.0
+          },
+          "review": "pending",
+          "generated": "2026-09-26",
+          "sample_rate": 44100,
+          "channels": 2,
+          "duration_s": 4.25,
+          "raw_clipped_samples": 0,
+          "raw_silent_fraction": 0.001,
+          "rms_dbfs": -15.5
+        },
+        {
+          "id": "vehicle.engine_accelerate.04",
+          "file": "vehicle/vehicle_engine_accelerate_04.ogg",
+          "variation": 4,
+          "variant": "very high revs, hard acceleration",
+          "status": "generated",
+          "derive": {
+            "from": "vehicle/vehicle_engine_idle_01.ogg",
+            "rate": 2.5
+          },
+          "review": "pending",
+          "generated": "2026-09-26",
+          "sample_rate": 44100,
+          "channels": 2,
+          "duration_s": 3.4,
+          "raw_clipped_samples": 0,
+          "raw_silent_fraction": 0.001,
+          "rms_dbfs": -15.3
+        }
+      ]
+    },
+    "vehicle.brake_hard": {
+      "category": "vehicle",
+      "event": "hard_braking",
+      "description": "Hard braking from speed.",
+      "trigger": "Brake input while |speed| is high (no dedicated event yet).",
+      "source": [
+        "src/theroadragetrip/simulation.py:264",
+        "src/theroadragetrip/physics.py"
+      ],
+      "priority": "strong_candidate",
+      "loop": false,
+      "duration_s": [
+        0.8,
+        2.0
+      ],
+      "variations": 4,
+      "selection": "random",
+      "randomize": true,
+      "spatial": false,
+      "intensity_levels": true,
+      "contextual_variants": [],
+      "existing_asset": null,
+      "notes": "",
+      "generation": {
+        "prompt": "Car braking hard on asphalt, brake squeal and tire scrub coming to a stop, isolated sound effect",
+        "negative_prompt": "music, melody, speech, voice, singing, low quality, distortion, clipping"
+      },
+      "files": [
+        {
+          "id": "vehicle.brake_hard.01",
+          "file": "vehicle/vehicle_brake_hard_01.ogg",
+          "variation": 1,
+          "variant": "short brake squeal",
+          "status": "generated",
+          "review": "ok",
+          "prompt": "short brake squeal. Car braking hard on asphalt, brake squeal and tire scrub coming to a stop, isolated sound effect",
+          "seed": 1532557918,
+          "steps": 100,
+          "sample_rate": 44100,
+          "channels": 1,
+          "generated": "2026-09-25",
+          "duration_s": 2.5,
+          "raw_clipped_samples": 96,
+          "raw_silent_fraction": 0.004,
+          "rms_dbfs": -19.5,
+          "reviewed": "2026-09-25"
+        },
+        {
+          "id": "vehicle.brake_hard.02",
+          "file": "vehicle/vehicle_brake_hard_02.ogg",
+          "variation": 2,
+          "variant": "long brake squeal to a stop",
+          "status": "generated",
+          "review": "ok",
+          "prompt": "long brake squeal to a stop. Car braking hard on asphalt, brake squeal and tire scrub coming to a stop, isolated sound effect",
+          "seed": 3260132324,
+          "steps": 100,
+          "sample_rate": 44100,
+          "channels": 1,
+          "generated": "2026-09-25",
+          "duration_s": 2.5,
+          "raw_clipped_samples": 2,
+          "raw_silent_fraction": 0.005,
+          "rms_dbfs": -17.0,
+          "reviewed": "2026-09-25"
+        },
+        {
+          "id": "vehicle.brake_hard.03",
+          "file": "vehicle/vehicle_brake_hard_03.ogg",
+          "variation": 3,
+          "variant": "ABS judder stop",
+          "status": "generated",
+          "review": "ok",
+          "prompt": "ABS judder stop. Car braking hard on asphalt, brake squeal and tire scrub coming to a stop, isolated sound effect",
+          "seed": 3042351986,
+          "steps": 100,
+          "sample_rate": 44100,
+          "channels": 1,
+          "generated": "2026-09-25",
+          "duration_s": 2.273,
+          "raw_clipped_samples": 0,
+          "raw_silent_fraction": 0.11,
+          "rms_dbfs": -13.6,
+          "reviewed": "2026-09-25"
+        },
+        {
+          "id": "vehicle.brake_hard.04",
+          "file": "vehicle/vehicle_brake_hard_04.ogg",
+          "variation": 4,
+          "variant": "light brake hiss",
+          "status": "generated",
+          "review": "ok",
+          "prompt": "light brake hiss. Car braking hard on asphalt, brake squeal and tire scrub coming to a stop, isolated sound effect",
+          "seed": 724700881,
+          "steps": 100,
+          "sample_rate": 44100,
+          "channels": 1,
+          "generated": "2026-09-25",
+          "duration_s": 1.762,
+          "raw_clipped_samples": 4,
+          "raw_silent_fraction": 0.315,
+          "rms_dbfs": -18.8,
+          "reviewed": "2026-09-25"
+        }
+      ]
+    },
+    "vehicle.curb_bump": {
+      "category": "vehicle",
+      "event": "curb_hit",
+      "description": "Wheel hitting a kerb: a hard knock at low speed, a jolt when faster.",
+      "trigger": "TaxiManager.check_curb_bump returns True.",
+      "source": [
+        "src/theroadragetrip/taxi.py:check_curb_bump",
+        "src/theroadragetrip/simulation.py:390"
+      ],
+      "priority": "required",
+      "loop": false,
+      "duration_s": [
+        0.3,
+        0.8
+      ],
+      "variations": 4,
+      "selection": "random",
+      "randomize": true,
+      "spatial": false,
+      "intensity_levels": true,
+      "contextual_variants": [],
+      "existing_asset": null,
+      "notes": "Frequent in cities: 4 variations.",
+      "generation": {
+        "prompt": "Car tire hitting a concrete curb, dull rubber thump and suspension knock, isolated sound effect",
+        "negative_prompt": "music, melody, speech, voice, singing, low quality, distortion, clipping"
+      },
+      "files": [
+        {
+          "id": "vehicle.curb_bump.01",
+          "file": "vehicle/vehicle_curb_bump_01.ogg",
+          "variation": 1,
+          "variant": "soft tire knock",
+          "status": "generated",
+          "review": "ok",
+          "prompt": "soft tire knock. Car tire hitting a concrete curb, dull rubber thump and suspension knock, isolated sound effect",
+          "seed": 2295946819,
+          "steps": 100,
+          "sample_rate": 44100,
+          "channels": 1,
+          "generated": "2026-09-25",
+          "duration_s": 0.128,
+          "raw_clipped_samples": 118,
+          "raw_silent_fraction": 0.934,
+          "rms_dbfs": -17.3,
+          "reviewed": "2026-09-25"
+        },
+        {
+          "id": "vehicle.curb_bump.02",
+          "file": "vehicle/vehicle_curb_bump_02.ogg",
+          "variation": 2,
+          "variant": "hard rim knock",
+          "status": "generated",
+          "review": "ok",
+          "prompt": "hard rim knock. Car tire hitting a concrete curb, dull rubber thump and suspension knock, isolated sound effect",
+          "seed": 298848249,
+          "steps": 100,
+          "sample_rate": 44100,
+          "channels": 1,
+          "generated": "2026-09-25",
+          "duration_s": 0.156,
+          "raw_clipped_samples": 10,
+          "raw_silent_fraction": 0.935,
+          "rms_dbfs": -17.5,
+          "reviewed": "2026-09-25"
+        },
+        {
+          "id": "vehicle.curb_bump.03",
+          "file": "vehicle/vehicle_curb_bump_03.ogg",
+          "variation": 3,
+          "variant": "suspension thump at speed",
+          "status": "generated",
+          "review": "ok",
+          "prompt": "suspension thump at speed. Car tire hitting a concrete curb, dull rubber thump and suspension knock, isolated sound effect",
+          "seed": 1725382511,
+          "steps": 100,
+          "sample_rate": 44100,
+          "channels": 1,
+          "generated": "2026-09-25",
+          "duration_s": 0.143,
+          "raw_clipped_samples": 0,
+          "raw_silent_fraction": 0.935,
+          "rms_dbfs": -19.2,
+          "reviewed": "2026-09-25"
+        },
+        {
+          "id": "vehicle.curb_bump.04",
+          "file": "vehicle/vehicle_curb_bump_04.ogg",
+          "variation": 4,
+          "variant": "scrape and thump",
+          "status": "generated",
+          "review": "ok",
+          "prompt": "scrape and thump. Car tire hitting a concrete curb, dull rubber thump and suspension knock, isolated sound effect",
+          "seed": 4172524236,
+          "steps": 100,
+          "sample_rate": 44100,
+          "channels": 1,
+          "generated": "2026-09-25",
+          "duration_s": 0.249,
+          "raw_clipped_samples": 157,
+          "raw_silent_fraction": 0.864,
+          "rms_dbfs": -17.0,
+          "reviewed": "2026-09-25"
+        }
+      ]
+    },
+    "vehicle.speed_bump": {
+      "category": "vehicle",
+      "event": "speed_bump",
+      "description": "Driving over a speed bump; harder the faster.",
+      "trigger": "TaxiManager.check_speed_bump returns True.",
+      "source": [
+        "src/theroadragetrip/taxi.py:check_speed_bump",
+        "src/theroadragetrip/simulation.py:391"
+      ],
+      "priority": "required",
+      "loop": false,
+      "duration_s": [
+        0.4,
+        1.0
+      ],
+      "variations": 4,
+      "selection": "random",
+      "randomize": true,
+      "spatial": false,
+      "intensity_levels": true,
+      "contextual_variants": [],
+      "existing_asset": null,
+      "notes": "",
+      "generation": {
+        "prompt": "Car driving over a speed bump, front then rear wheel suspension thump, isolated sound effect",
+        "negative_prompt": "music, melody, speech, voice, singing, low quality, distortion, clipping"
+      },
+      "files": [
+        {
+          "id": "vehicle.speed_bump.01",
+          "file": "vehicle/vehicle_speed_bump_01.ogg",
+          "variation": 1,
+          "variant": "gentle double thump",
+          "status": "generated",
+          "review": "ok",
+          "prompt": "gentle double thump. Car driving over a speed bump, front then rear wheel suspension thump, isolated sound effect",
+          "seed": 1717932980,
+          "steps": 100,
+          "sample_rate": 44100,
+          "channels": 1,
+          "generated": "2026-09-25",
+          "duration_s": 0.067,
+          "raw_clipped_samples": 88,
+          "raw_silent_fraction": 0.97,
+          "rms_dbfs": -15.6,
+          "reviewed": "2026-09-25"
+        },
+        {
+          "id": "vehicle.speed_bump.02",
+          "file": "vehicle/vehicle_speed_bump_02.ogg",
+          "variation": 2,
+          "variant": "firm double thump",
+          "status": "generated",
+          "review": "ok",
+          "prompt": "firm double thump. Car driving over a speed bump, front then rear wheel suspension thump, isolated sound effect",
+          "seed": 4285317646,
+          "steps": 100,
+          "sample_rate": 44100,
+          "channels": 1,
+          "generated": "2026-09-25",
+          "duration_s": 0.484,
+          "raw_clipped_samples": 0,
+          "raw_silent_fraction": 0.816,
+          "rms_dbfs": -25.1,
+          "reviewed": "2026-09-25"
+        },
+        {
+          "id": "vehicle.speed_bump.03",
+          "file": "vehicle/vehicle_speed_bump_03.ogg",
+          "variation": 3,
+          "variant": "hard bottoming-out bang",
+          "status": "generated",
+          "review": "ok",
+          "prompt": "hard bottoming-out bang. Car driving over a speed bump, front then rear wheel suspension thump, isolated sound effect",
+          "seed": 2288775832,
+          "steps": 100,
+          "sample_rate": 44100,
+          "channels": 1,
+          "generated": "2026-09-25",
+          "duration_s": 0.987,
+          "raw_clipped_samples": 0,
+          "raw_silent_fraction": 0.355,
+          "rms_dbfs": -8.4,
+          "reviewed": "2026-09-25"
+        },
+        {
+          "id": "vehicle.speed_bump.04",
+          "file": "vehicle/vehicle_speed_bump_04.ogg",
+          "variation": 4,
+          "variant": "rattling double bump",
+          "status": "generated",
+          "review": "ok",
+          "prompt": "rattling double bump. Car driving over a speed bump, front then rear wheel suspension thump, isolated sound effect",
+          "seed": 370108219,
+          "steps": 100,
+          "sample_rate": 44100,
+          "channels": 1,
+          "generated": "2026-09-25",
+          "duration_s": 0.339,
+          "raw_clipped_samples": 51,
+          "raw_silent_fraction": 0.88,
+          "rms_dbfs": -21.7,
+          "reviewed": "2026-09-25"
+        }
+      ]
+    },
+    "vehicle.door_open": {
+      "category": "vehicle",
+      "event": "door_open",
+      "description": "Car door opening.",
+      "trigger": "Exit/enter taxi (F), passenger boarding and drop-off.",
+      "source": [
+        "src/theroadragetrip/simulation.py:117",
+        "src/theroadragetrip/simulation.py:493"
+      ],
+      "priority": "required",
+      "loop": false,
+      "duration_s": [
+        0.8
+      ],
+      "variations": 0,
+      "selection": "single",
+      "randomize": false,
+      "spatial": false,
+      "intensity_levels": false,
+      "contextual_variants": [],
+      "existing_asset": "src/theroadragetrip/sounds/car-door-open.flac",
+      "notes": "Existing asset kept; used for every door event today.",
+      "files": []
+    },
+    "vehicle.door_close": {
+      "category": "vehicle",
+      "event": "door_close",
+      "description": "Car door closing.",
+      "trigger": "After exit/enter and after a passenger boards or leaves.",
+      "source": [
+        "src/theroadragetrip/simulation.py:117",
+        "src/theroadragetrip/simulation.py:493",
+        "src/theroadragetrip/simulation.py:503"
+      ],
+      "priority": "strong_candidate",
+      "loop": false,
+      "duration_s": [
+        0.5,
+        1.0
+      ],
+      "variations": 3,
+      "selection": "random",
+      "randomize": true,
+      "spatial": false,
+      "intensity_levels": false,
+      "contextual_variants": [],
+      "existing_asset": null,
+      "notes": "Pairs with door_open, which is the only door sound today.",
+      "generation": {
+        "prompt": "Car door closing with a solid thud and latch click, exterior, isolated sound effect",
+        "negative_prompt": "music, melody, speech, voice, singing, low quality, distortion, clipping"
+      },
+      "files": [
+        {
+          "id": "vehicle.door_close.01",
+          "file": "vehicle/vehicle_door_close_01.ogg",
+          "variation": 1,
+          "variant": "solid slam",
+          "status": "generated",
+          "review": "ok",
+          "prompt": "solid slam. Car door closing with a solid thud and latch click, exterior, isolated sound effect",
+          "seed": 3257094013,
+          "steps": 100,
+          "sample_rate": 44100,
+          "channels": 1,
+          "generated": "2026-09-25",
+          "duration_s": 0.431,
+          "raw_clipped_samples": 951,
+          "raw_silent_fraction": 0.79,
+          "rms_dbfs": -14.9,
+          "reviewed": "2026-09-25"
+        },
+        {
+          "id": "vehicle.door_close.02",
+          "file": "vehicle/vehicle_door_close_02.ogg",
+          "variation": 2,
+          "variant": "gentle close",
+          "status": "generated",
+          "review": "ok",
+          "prompt": "gentle close. Car door closing with a solid thud and latch click, exterior, isolated sound effect",
+          "seed": 1529487047,
+          "steps": 100,
+          "sample_rate": 44100,
+          "channels": 1,
+          "generated": "2026-09-25",
+          "duration_s": 0.487,
+          "raw_clipped_samples": 115,
+          "raw_silent_fraction": 0.712,
+          "rms_dbfs": -16.7,
+          "reviewed": "2026-09-25"
+        },
+        {
+          "id": "vehicle.door_close.03",
+          "file": "vehicle/vehicle_door_close_03.ogg",
+          "variation": 3,
+          "variant": "rear door close",
+          "status": "generated",
+          "review": "ok",
+          "prompt": "rear door close. Car door closing with a solid thud and latch click, exterior, isolated sound effect",
+          "seed": 741158481,
+          "steps": 100,
+          "sample_rate": 44100,
+          "channels": 1,
+          "generated": "2026-09-25",
+          "duration_s": 0.717,
+          "raw_clipped_samples": 292,
+          "raw_silent_fraction": 0.64,
+          "rms_dbfs": -18.1,
+          "reviewed": "2026-09-25"
+        }
+      ]
+    },
+    "vehicle.horn": {
+      "category": "vehicle",
+      "event": "horn",
+      "description": "Taxi horn.",
+      "trigger": "Space: rage shout plays carhorn_takes.",
+      "source": [
+        "src/theroadragetrip/main/__init__.py:1718"
+      ],
+      "priority": "strong_candidate",
+      "loop": false,
+      "duration_s": [
+        0.3,
+        1.5
+      ],
+      "variations": 3,
+      "selection": "random",
+      "randomize": true,
+      "spatial": false,
+      "intensity_levels": false,
+      "contextual_variants": [],
+      "existing_asset": null,
+      "notes": "Replaced the old sounds/carhorn_takes.wav (removed); rage shouts pick a random variation.",
+      "generation": {
+        "prompt": "Car horn honk, sedan two-tone horn, close exterior, isolated sound effect",
+        "negative_prompt": "music, melody, speech, voice, singing, low quality, distortion, clipping"
+      },
+      "files": [
+        {
+          "id": "vehicle.horn.01",
+          "file": "vehicle/vehicle_horn_01.ogg",
+          "variation": 1,
+          "variant": "short tap",
+          "status": "generated",
+          "review": "ok",
+          "prompt": "short tap. Car horn honk, sedan two-tone horn, close exterior, isolated sound effect",
+          "seed": 1203684014,
+          "steps": 100,
+          "sample_rate": 44100,
+          "channels": 1,
+          "generated": "2026-09-25",
+          "duration_s": 0.536,
+          "raw_clipped_samples": 22,
+          "raw_silent_fraction": 0.801,
+          "rms_dbfs": -14.9,
+          "reviewed": "2026-09-25"
+        },
+        {
+          "id": "vehicle.horn.02",
+          "file": "vehicle/vehicle_horn_02.ogg",
+          "variation": 2,
+          "variant": "long angry blast",
+          "status": "generated",
+          "review": "ok",
+          "prompt": "long angry blast. Car horn honk, sedan two-tone horn, close exterior, isolated sound effect",
+          "seed": 3736572692,
+          "steps": 100,
+          "sample_rate": 44100,
+          "channels": 1,
+          "generated": "2026-09-25",
+          "duration_s": 1.316,
+          "raw_clipped_samples": 0,
+          "raw_silent_fraction": 0.401,
+          "rms_dbfs": -10.9,
+          "reviewed": "2026-09-25"
+        },
+        {
+          "id": "vehicle.horn.03",
+          "file": "vehicle/vehicle_horn_03.ogg",
+          "variation": 3,
+          "variant": "double honk",
+          "status": "generated",
+          "review": "ok",
+          "prompt": "double honk. Car horn honk, sedan two-tone horn, close exterior, isolated sound effect",
+          "seed": 2846925698,
+          "steps": 100,
+          "sample_rate": 44100,
+          "channels": 1,
+          "generated": "2026-09-25",
+          "duration_s": 0.661,
+          "raw_clipped_samples": 0,
+          "raw_silent_fraction": 0.722,
+          "rms_dbfs": -12.7,
+          "reviewed": "2026-09-25"
+        }
+      ]
+    },
+    "vehicle.fuel_empty": {
+      "category": "vehicle",
+      "event": "out_of_fuel",
+      "description": "Engine sputtering and dying as the tank runs dry.",
+      "trigger": "update_car_fuel reports fuel_emptied.",
+      "source": [
+        "src/theroadragetrip/simulation.py:370"
+      ],
+      "priority": "strong_candidate",
+      "loop": false,
+      "duration_s": [
+        1.5,
+        3.0
+      ],
+      "variations": 2,
+      "selection": "random",
+      "randomize": true,
+      "spatial": false,
+      "intensity_levels": false,
+      "contextual_variants": [],
+      "existing_asset": null,
+      "notes": "",
+      "generation": {
+        "prompt": "Car engine sputtering and stalling as it runs out of fuel, coughing then silence, isolated sound effect",
+        "negative_prompt": "music, melody, speech, voice, singing, low quality, distortion, clipping"
+      },
+      "files": [
+        {
+          "id": "vehicle.fuel_empty.01",
+          "file": "vehicle/vehicle_fuel_empty_01.ogg",
+          "variation": 1,
+          "variant": "sputter and die",
+          "status": "generated",
+          "review": "ok",
+          "prompt": "sputter and die. Car engine sputtering and stalling as it runs out of fuel, coughing then silence, isolated sound effect",
+          "seed": 2783940670,
+          "steps": 100,
+          "sample_rate": 44100,
+          "channels": 1,
+          "generated": "2026-09-25",
+          "duration_s": 3.5,
+          "raw_clipped_samples": 0,
+          "raw_silent_fraction": 0.036,
+          "rms_dbfs": -16.0,
+          "reviewed": "2026-09-25"
+        },
+        {
+          "id": "vehicle.fuel_empty.02",
+          "file": "vehicle/vehicle_fuel_empty_02.ogg",
+          "variation": 2,
+          "variant": "long cough then stall",
+          "status": "generated",
+          "review": "ok",
+          "prompt": "long cough then stall. Car engine sputtering and stalling as it runs out of fuel, coughing then silence, isolated sound effect",
+          "seed": 1021755780,
+          "steps": 100,
+          "sample_rate": 44100,
+          "channels": 1,
+          "generated": "2026-09-25",
+          "duration_s": 3.5,
+          "raw_clipped_samples": 0,
+          "raw_silent_fraction": 0.0,
+          "rms_dbfs": -8.6,
+          "reviewed": "2026-09-25"
+        }
+      ]
+    },
+    "vehicle.water_splash": {
+      "category": "vehicle",
+      "event": "enter_water",
+      "description": "Car plunging into water.",
+      "trigger": "is_car_fully_in_water becomes true (then respawn after 10 s).",
+      "source": [
+        "src/theroadragetrip/simulation.py:339"
+      ],
+      "priority": "strong_candidate",
+      "loop": false,
+      "duration_s": [
+        1.5,
+        3.0
+      ],
+      "variations": 2,
+      "selection": "random",
+      "randomize": true,
+      "spatial": false,
+      "intensity_levels": false,
+      "contextual_variants": [],
+      "existing_asset": null,
+      "notes": "",
+      "generation": {
+        "prompt": "Car plunging into a lake with a heavy water splash and bubbling, isolated sound effect",
+        "negative_prompt": "music, melody, speech, voice, singing, low quality, distortion, clipping"
+      },
+      "files": [
+        {
+          "id": "vehicle.water_splash.01",
+          "file": "vehicle/vehicle_water_splash_01.ogg",
+          "variation": 1,
+          "variant": "big splash",
+          "status": "generated",
+          "review": "ok",
+          "prompt": "big splash. Car plunging into a lake with a heavy water splash and bubbling, isolated sound effect",
+          "seed": 1008429081,
+          "steps": 100,
+          "sample_rate": 44100,
+          "channels": 1,
+          "generated": "2026-09-25",
+          "duration_s": 3.429,
+          "raw_clipped_samples": 2478,
+          "raw_silent_fraction": 0.202,
+          "rms_dbfs": -19.3,
+          "reviewed": "2026-09-25"
+        },
+        {
+          "id": "vehicle.water_splash.02",
+          "file": "vehicle/vehicle_water_splash_02.ogg",
+          "variation": 2,
+          "variant": "splash with bubbling",
+          "status": "generated",
+          "review": "ok",
+          "prompt": "splash with bubbling. Car plunging into a lake with a heavy water splash and bubbling, isolated sound effect",
+          "seed": 2769435043,
+          "steps": 100,
+          "sample_rate": 44100,
+          "channels": 1,
+          "generated": "2026-09-25",
+          "duration_s": 3.476,
+          "raw_clipped_samples": 21,
+          "raw_silent_fraction": 0.199,
+          "rms_dbfs": -23.3,
+          "reviewed": "2026-09-25"
+        }
+      ]
+    },
+    "vehicle.damaged_steam": {
+      "category": "vehicle",
+      "event": "engine_smoke",
+      "description": "Hissing damaged engine while smoke pours out after a crash.",
+      "trigger": "taxi_mgr.taxi_smoke_timer > 0 after a crash.",
+      "source": [
+        "src/theroadragetrip/taxi.py:taxi_smoke_timer"
+      ],
+      "priority": "optional",
+      "loop": true,
+      "duration_s": [
+        4.0
+      ],
+      "variations": 1,
+      "selection": "single",
+      "randomize": false,
+      "spatial": false,
+      "intensity_levels": false,
+      "contextual_variants": [],
+      "existing_asset": null,
+      "notes": "",
+      "generation": {
+        "prompt": "Damaged car radiator hissing steam, continuous hiss, isolated sound effect, seamless loop",
+        "negative_prompt": "music, melody, speech, voice, singing, low quality, distortion, clipping"
+      },
+      "files": [
+        {
+          "id": "vehicle.damaged_steam.01",
+          "file": "vehicle/vehicle_damaged_steam_01.ogg",
+          "variation": 1,
+          "variant": "radiator steam hiss",
+          "status": "generated",
+          "review": "ok",
+          "prompt": "radiator steam hiss. Damaged car radiator hissing steam, continuous hiss, isolated sound effect, seamless loop",
+          "seed": 681409199,
+          "steps": 100,
+          "sample_rate": 44100,
+          "channels": 2,
+          "generated": "2026-09-25",
+          "duration_s": 4.5,
+          "raw_clipped_samples": 0,
+          "raw_silent_fraction": 0.003,
+          "rms_dbfs": -16.6,
+          "reviewed": "2026-09-25"
+        }
+      ]
+    },
+    "collision.building": {
+      "category": "collision",
+      "event": "building_crash",
+      "description": "Taxi smashing into a building wall.",
+      "trigger": "TaxiManager.check_building_collision returns True (new impact).",
+      "source": [
+        "src/theroadragetrip/taxi.py:check_building_collision",
+        "src/theroadragetrip/simulation.py:385"
+      ],
+      "priority": "required",
+      "loop": false,
+      "duration_s": [
+        0.8,
+        2.0
+      ],
+      "variations": 4,
+      "selection": "random",
+      "randomize": true,
+      "spatial": false,
+      "intensity_levels": true,
+      "contextual_variants": [],
+      "existing_asset": null,
+      "notes": "Only on a new impact (cooldown); car-crash.wav today also replays every frame in contact.",
+      "generation": {
+        "prompt": "Car crashing into a concrete building wall, metal crunch and impact, isolated sound effect",
+        "negative_prompt": "music, melody, speech, voice, singing, low quality, distortion, clipping"
+      },
+      "files": [
+        {
+          "id": "collision.building.01",
+          "file": "collision/collision_building_01.ogg",
+          "variation": 1,
+          "variant": "heavy front impact with glass",
+          "status": "generated",
+          "review": "ok",
+          "prompt": "heavy front impact with glass. Car crashing into a concrete building wall, metal crunch and impact, isolated sound effect",
+          "seed": 1993636320,
+          "steps": 100,
+          "sample_rate": 44100,
+          "channels": 1,
+          "generated": "2026-09-25",
+          "duration_s": 1.158,
+          "raw_clipped_samples": 367,
+          "raw_silent_fraction": 0.671,
+          "rms_dbfs": -19.2,
+          "reviewed": "2026-09-25"
+        },
+        {
+          "id": "collision.building.02",
+          "file": "collision/collision_building_02.ogg",
+          "variation": 2,
+          "variant": "medium body crunch",
+          "status": "generated",
+          "review": "ok",
+          "prompt": "medium body crunch. Car crashing into a concrete building wall, metal crunch and impact, isolated sound effect",
+          "seed": 4024248410,
+          "steps": 100,
+          "sample_rate": 44100,
+          "channels": 1,
+          "generated": "2026-09-25",
+          "duration_s": 1.757,
+          "raw_clipped_samples": 244,
+          "raw_silent_fraction": 0.726,
+          "rms_dbfs": -26.9,
+          "reviewed": "2026-09-25"
+        },
+        {
+          "id": "collision.building.03",
+          "file": "collision/collision_building_03.ogg",
+          "variation": 3,
+          "variant": "glancing scrape against a wall",
+          "status": "generated",
+          "review": "ok",
+          "prompt": "glancing scrape against a wall. Car crashing into a concrete building wall, metal crunch and impact, isolated sound effect",
+          "seed": 2564430028,
+          "steps": 100,
+          "sample_rate": 44100,
+          "channels": 1,
+          "generated": "2026-09-25",
+          "duration_s": 1.034,
+          "raw_clipped_samples": 659,
+          "raw_silent_fraction": 0.762,
+          "rms_dbfs": -22.3,
+          "reviewed": "2026-09-25"
+        },
+        {
+          "id": "collision.building.04",
+          "file": "collision/collision_building_04.ogg",
+          "variation": 4,
+          "variant": "brutal crash with debris",
+          "status": "generated",
+          "review": "ok",
+          "prompt": "brutal crash with debris. Car crashing into a concrete building wall, metal crunch and impact, isolated sound effect",
+          "seed": 113151343,
+          "steps": 100,
+          "sample_rate": 44100,
+          "channels": 1,
+          "generated": "2026-09-25",
+          "duration_s": 0.876,
+          "raw_clipped_samples": 496,
+          "raw_silent_fraction": 0.667,
+          "rms_dbfs": -21.6,
+          "reviewed": "2026-09-25"
+        }
+      ]
+    },
+    "collision.tree": {
+      "category": "collision",
+      "event": "tree_crash",
+      "description": "Car hitting a tree: dull wooden impact and leaves.",
+      "trigger": "TaxiManager.check_tree_collision returns True.",
+      "source": [
+        "src/theroadragetrip/taxi.py:check_tree_collision"
+      ],
+      "priority": "required",
+      "loop": false,
+      "duration_s": [
+        0.8,
+        1.8
+      ],
+      "variations": 3,
+      "selection": "random",
+      "randomize": true,
+      "spatial": false,
+      "intensity_levels": false,
+      "contextual_variants": [],
+      "existing_asset": null,
+      "notes": "",
+      "generation": {
+        "prompt": "Car hitting a tree trunk, dull wooden thud, crunched bumper and rustling leaves, isolated sound effect",
+        "negative_prompt": "music, melody, speech, voice, singing, low quality, distortion, clipping"
+      },
+      "files": [
+        {
+          "id": "collision.tree.01",
+          "file": "collision/collision_tree_01.ogg",
+          "variation": 1,
+          "variant": "dull trunk thud with rustling leaves",
+          "status": "generated",
+          "review": "ok",
+          "prompt": "dull trunk thud with rustling leaves. Car hitting a tree trunk, dull wooden thud, crunched bumper and rustling leaves, isolated sound effect",
+          "seed": 3924705780,
+          "steps": 100,
+          "sample_rate": 44100,
+          "channels": 1,
+          "generated": "2026-09-25",
+          "duration_s": 1.494,
+          "raw_clipped_samples": 37,
+          "raw_silent_fraction": 0.889,
+          "rms_dbfs": -25.9,
+          "reviewed": "2026-09-25"
+        },
+        {
+          "id": "collision.tree.02",
+          "file": "collision/collision_tree_02.ogg",
+          "variation": 2,
+          "variant": "hard impact with cracking bark",
+          "status": "generated",
+          "review": "ok",
+          "prompt": "hard impact with cracking bark. Car hitting a tree trunk, dull wooden thud, crunched bumper and rustling leaves, isolated sound effect",
+          "seed": 1894191182,
+          "steps": 100,
+          "sample_rate": 44100,
+          "channels": 1,
+          "generated": "2026-09-25",
+          "duration_s": 0.734,
+          "raw_clipped_samples": 86,
+          "raw_silent_fraction": 0.877,
+          "rms_dbfs": -21.9,
+          "reviewed": "2026-09-25"
+        },
+        {
+          "id": "collision.tree.03",
+          "file": "collision/collision_tree_03.ogg",
+          "variation": 3,
+          "variant": "glancing hit and branch swish",
+          "status": "generated",
+          "review": "ok",
+          "prompt": "glancing hit and branch swish. Car hitting a tree trunk, dull wooden thud, crunched bumper and rustling leaves, isolated sound effect",
+          "seed": 132128984,
+          "steps": 100,
+          "sample_rate": 44100,
+          "channels": 1,
+          "generated": "2026-09-25",
+          "duration_s": 0.722,
+          "raw_clipped_samples": 11,
+          "raw_silent_fraction": 0.901,
+          "rms_dbfs": -27.7,
+          "reviewed": "2026-09-25"
+        }
+      ]
+    },
+    "collision.tree_fall": {
+      "category": "collision",
+      "event": "tree_falls",
+      "description": "Tree cracking and falling after a hit above 80 km/h.",
+      "trigger": "Impact > 80 km/h adds the tree to fallen_trees.",
+      "source": [
+        "src/theroadragetrip/taxi.py:704"
+      ],
+      "priority": "strong_candidate",
+      "loop": false,
+      "duration_s": [
+        2.0,
+        4.0
+      ],
+      "variations": 2,
+      "selection": "random",
+      "randomize": true,
+      "spatial": false,
+      "intensity_levels": false,
+      "contextual_variants": [],
+      "existing_asset": null,
+      "notes": "",
+      "generation": {
+        "prompt": "A tree trunk cracking, splintering and crashing to the ground with branches, isolated sound effect",
+        "negative_prompt": "music, melody, speech, voice, singing, low quality, distortion, clipping"
+      },
+      "files": [
+        {
+          "id": "collision.tree_fall.01",
+          "file": "collision/collision_tree_fall_01.ogg",
+          "variation": 1,
+          "variant": "long cracking and crashing fall",
+          "status": "generated",
+          "review": "ok",
+          "prompt": "long cracking and crashing fall. A tree trunk cracking, splintering and crashing to the ground with branches, isolated sound effect",
+          "seed": 3388359031,
+          "steps": 100,
+          "sample_rate": 44100,
+          "channels": 1,
+          "generated": "2026-09-25",
+          "duration_s": 3.018,
+          "raw_clipped_samples": 852,
+          "raw_silent_fraction": 0.858,
+          "rms_dbfs": -26.2,
+          "reviewed": "2026-09-25"
+        },
+        {
+          "id": "collision.tree_fall.02",
+          "file": "collision/collision_tree_fall_02.ogg",
+          "variation": 2,
+          "variant": "splintering snap and thud",
+          "status": "generated",
+          "review": "ok",
+          "prompt": "splintering snap and thud. A tree trunk cracking, splintering and crashing to the ground with branches, isolated sound effect",
+          "seed": 1358893261,
+          "steps": 100,
+          "sample_rate": 44100,
+          "channels": 1,
+          "generated": "2026-09-25",
+          "duration_s": 1.436,
+          "raw_clipped_samples": 561,
+          "raw_silent_fraction": 0.919,
+          "rms_dbfs": -28.6,
+          "reviewed": "2026-09-25"
+        }
+      ]
+    },
+    "collision.fence": {
+      "category": "collision",
+      "event": "fence_crash",
+      "description": "Construction-site fence rattling on impact.",
+      "trigger": "TaxiManager.check_fence_collision returns True.",
+      "source": [
+        "src/theroadragetrip/taxi.py:check_fence_collision"
+      ],
+      "priority": "required",
+      "loop": false,
+      "duration_s": [
+        0.8,
+        1.5
+      ],
+      "variations": 3,
+      "selection": "random",
+      "randomize": true,
+      "spatial": false,
+      "intensity_levels": false,
+      "contextual_variants": [],
+      "existing_asset": null,
+      "notes": "",
+      "generation": {
+        "prompt": "Car bumping into a temporary metal construction fence, rattling wire mesh and clanging poles, isolated sound effect",
+        "negative_prompt": "music, melody, speech, voice, singing, low quality, distortion, clipping"
+      },
+      "files": [
+        {
+          "id": "collision.fence.01",
+          "file": "collision/collision_fence_01.ogg",
+          "variation": 1,
+          "variant": "metal mesh fence rattle",
+          "status": "generated",
+          "review": "ok",
+          "prompt": "metal mesh fence rattle. Car bumping into a temporary metal construction fence, rattling wire mesh and clanging poles, isolated sound effect",
+          "seed": 53724801,
+          "steps": 100,
+          "sample_rate": 44100,
+          "channels": 1,
+          "generated": "2026-09-25",
+          "duration_s": 1.834,
+          "raw_clipped_samples": 4,
+          "raw_silent_fraction": 0.548,
+          "rms_dbfs": -24.8,
+          "reviewed": "2026-09-25"
+        },
+        {
+          "id": "collision.fence.02",
+          "file": "collision/collision_fence_02.ogg",
+          "variation": 2,
+          "variant": "fence panel knocked over",
+          "status": "generated",
+          "review": "ok",
+          "prompt": "fence panel knocked over. Car bumping into a temporary metal construction fence, rattling wire mesh and clanging poles, isolated sound effect",
+          "seed": 2587531067,
+          "steps": 100,
+          "sample_rate": 44100,
+          "channels": 1,
+          "generated": "2026-09-25",
+          "duration_s": 1.611,
+          "raw_clipped_samples": 232,
+          "raw_silent_fraction": 0.314,
+          "rms_dbfs": -22.9,
+          "reviewed": "2026-09-25"
+        },
+        {
+          "id": "collision.fence.03",
+          "file": "collision/collision_fence_03.ogg",
+          "variation": 3,
+          "variant": "clanging fence and barrier",
+          "status": "generated",
+          "review": "ok",
+          "prompt": "clanging fence and barrier. Car bumping into a temporary metal construction fence, rattling wire mesh and clanging poles, isolated sound effect",
+          "seed": 3980240813,
+          "steps": 100,
+          "sample_rate": 44100,
+          "channels": 1,
+          "generated": "2026-09-25",
+          "duration_s": 1.988,
+          "raw_clipped_samples": 791,
+          "raw_silent_fraction": 0.027,
+          "rms_dbfs": -15.0,
+          "reviewed": "2026-09-25"
+        }
+      ]
+    },
+    "collision.guardrail": {
+      "category": "collision",
+      "event": "bridge_guardrail",
+      "description": "Scraping and bouncing off a bridge guardrail.",
+      "trigger": "is_car_colliding_with_bridge_edge (3 s cooldown).",
+      "source": [
+        "src/theroadragetrip/simulation.py:392"
+      ],
+      "priority": "required",
+      "loop": false,
+      "duration_s": [
+        0.8,
+        2.0
+      ],
+      "variations": 3,
+      "selection": "random",
+      "randomize": true,
+      "spatial": false,
+      "intensity_levels": false,
+      "contextual_variants": [],
+      "existing_asset": null,
+      "notes": "",
+      "generation": {
+        "prompt": "Car scraping along a steel highway guardrail, grinding metal and sparks, isolated sound effect",
+        "negative_prompt": "music, melody, speech, voice, singing, low quality, distortion, clipping"
+      },
+      "files": [
+        {
+          "id": "collision.guardrail.01",
+          "file": "collision/collision_guardrail_01.ogg",
+          "variation": 1,
+          "variant": "long metal scrape",
+          "status": "generated",
+          "review": "ok",
+          "prompt": "long metal scrape. Car scraping along a steel highway guardrail, grinding metal and sparks, isolated sound effect",
+          "seed": 3654786236,
+          "steps": 100,
+          "sample_rate": 44100,
+          "channels": 1,
+          "generated": "2026-09-25",
+          "duration_s": 1.917,
+          "raw_clipped_samples": 314,
+          "raw_silent_fraction": 0.471,
+          "rms_dbfs": -21.9,
+          "reviewed": "2026-09-25"
+        },
+        {
+          "id": "collision.guardrail.02",
+          "file": "collision/collision_guardrail_02.ogg",
+          "variation": 2,
+          "variant": "hard metal bang and scrape",
+          "status": "generated",
+          "review": "ok",
+          "prompt": "hard metal bang and scrape. Car scraping along a steel highway guardrail, grinding metal and sparks, isolated sound effect",
+          "seed": 1088343302,
+          "steps": 100,
+          "sample_rate": 44100,
+          "channels": 1,
+          "generated": "2026-09-25",
+          "duration_s": 1.682,
+          "raw_clipped_samples": 0,
+          "raw_silent_fraction": 0.342,
+          "rms_dbfs": -16.6,
+          "reviewed": "2026-09-25"
+        },
+        {
+          "id": "collision.guardrail.03",
+          "file": "collision/collision_guardrail_03.ogg",
+          "variation": 3,
+          "variant": "short grinding scrape",
+          "status": "generated",
+          "review": "ok",
+          "prompt": "short grinding scrape. Car scraping along a steel highway guardrail, grinding metal and sparks, isolated sound effect",
+          "seed": 937033104,
+          "steps": 100,
+          "sample_rate": 44100,
+          "channels": 1,
+          "generated": "2026-09-25",
+          "duration_s": 0.959,
+          "raw_clipped_samples": 2,
+          "raw_silent_fraction": 0.684,
+          "rms_dbfs": -25.8,
+          "reviewed": "2026-09-25"
+        }
+      ]
+    },
+    "collision.vehicle": {
+      "category": "collision",
+      "event": "vehicle_crash",
+      "description": "Two cars colliding (NPC with taxi or NPC with NPC).",
+      "trigger": "NPCManager._check_vehicle_collision sets NPCState.CRASHED.",
+      "source": [
+        "src/theroadragetrip/npc.py:3381"
+      ],
+      "priority": "required",
+      "loop": false,
+      "duration_s": [
+        0.8,
+        2.0
+      ],
+      "variations": 4,
+      "selection": "random",
+      "randomize": true,
+      "spatial": true,
+      "intensity_levels": true,
+      "contextual_variants": [],
+      "existing_asset": null,
+      "notes": "Player-vs-scenery crashes use the collision.* groups; the old sounds/car-crash.wav was removed.",
+      "generation": {
+        "prompt": "Two cars colliding, crunching metal and breaking plastic, isolated sound effect",
+        "negative_prompt": "music, melody, speech, voice, singing, low quality, distortion, clipping"
+      },
+      "files": [
+        {
+          "id": "collision.vehicle.01",
+          "file": "collision/collision_vehicle_01.ogg",
+          "variation": 1,
+          "variant": "light fender bender",
+          "status": "generated",
+          "review": "ok",
+          "prompt": "light fender bender. Two cars colliding, crunching metal and breaking plastic, isolated sound effect",
+          "seed": 3316436290,
+          "steps": 100,
+          "sample_rate": 44100,
+          "channels": 1,
+          "generated": "2026-09-25",
+          "duration_s": 0.803,
+          "raw_clipped_samples": 95,
+          "raw_silent_fraction": 0.926,
+          "rms_dbfs": -25.5,
+          "reviewed": "2026-09-25"
+        },
+        {
+          "id": "collision.vehicle.02",
+          "file": "collision/collision_vehicle_02.ogg",
+          "variation": 2,
+          "variant": "medium side impact",
+          "status": "generated",
+          "review": "ok",
+          "prompt": "medium side impact. Two cars colliding, crunching metal and breaking plastic, isolated sound effect",
+          "seed": 1554357496,
+          "steps": 100,
+          "sample_rate": 44100,
+          "channels": 1,
+          "generated": "2026-09-25",
+          "duration_s": 1.119,
+          "raw_clipped_samples": 110,
+          "raw_silent_fraction": 0.852,
+          "rms_dbfs": -26.6,
+          "reviewed": "2026-09-25"
+        },
+        {
+          "id": "collision.vehicle.03",
+          "file": "collision/collision_vehicle_03.ogg",
+          "variation": 3,
+          "variant": "heavy head-on crash",
+          "status": "generated",
+          "review": "ok",
+          "prompt": "heavy head-on crash. Two cars colliding, crunching metal and breaking plastic, isolated sound effect",
+          "seed": 732081262,
+          "steps": 100,
+          "sample_rate": 44100,
+          "channels": 1,
+          "generated": "2026-09-25",
+          "duration_s": 0.974,
+          "raw_clipped_samples": 379,
+          "raw_silent_fraction": 0.755,
+          "rms_dbfs": -19.6,
+          "reviewed": "2026-09-25"
+        },
+        {
+          "id": "collision.vehicle.04",
+          "file": "collision/collision_vehicle_04.ogg",
+          "variation": 4,
+          "variant": "rear-end crunch with glass",
+          "status": "generated",
+          "review": "ok",
+          "prompt": "rear-end crunch with glass. Two cars colliding, crunching metal and breaking plastic, isolated sound effect",
+          "seed": 3049667021,
+          "steps": 100,
+          "sample_rate": 44100,
+          "channels": 1,
+          "generated": "2026-09-25",
+          "duration_s": 0.838,
+          "raw_clipped_samples": 229,
+          "raw_silent_fraction": 0.802,
+          "rms_dbfs": -25.0,
+          "reviewed": "2026-09-25"
+        }
+      ]
+    },
+    "taxi.meter_start": {
+      "category": "taxi",
+      "event": "fare_start",
+      "description": "Taxi meter switching on as the passenger boards.",
+      "trigger": "Passenger boards; fare_started_at is set.",
+      "source": [
+        "src/theroadragetrip/taxi.py (CLIENT_WALKING_TO_CAR boarding)"
+      ],
+      "priority": "strong_candidate",
+      "loop": false,
+      "duration_s": [
+        0.3,
+        0.8
+      ],
+      "variations": 2,
+      "selection": "random",
+      "randomize": true,
+      "spatial": false,
+      "intensity_levels": false,
+      "contextual_variants": [],
+      "existing_asset": null,
+      "notes": "",
+      "generation": {
+        "prompt": "Taxi meter switching on, short electronic beep and button click, isolated sound effect",
+        "negative_prompt": "music, melody, speech, voice, singing, low quality, distortion, clipping"
+      },
+      "files": [
+        {
+          "id": "taxi.meter_start.01",
+          "file": "taxi/taxi_meter_start_01.ogg",
+          "variation": 1,
+          "variant": "electronic meter beep",
+          "status": "generated",
+          "review": "ok",
+          "prompt": "electronic meter beep. Taxi meter switching on, short electronic beep and button click, isolated sound effect",
+          "seed": 321426794,
+          "steps": 100,
+          "sample_rate": 44100,
+          "channels": 1,
+          "generated": "2026-09-25",
+          "duration_s": 0.281,
+          "raw_clipped_samples": 0,
+          "raw_silent_fraction": 0.884,
+          "rms_dbfs": -14.3,
+          "reviewed": "2026-09-25"
+        },
+        {
+          "id": "taxi.meter_start.02",
+          "file": "taxi/taxi_meter_start_02.ogg",
+          "variation": 2,
+          "variant": "mechanical meter click",
+          "status": "generated",
+          "review": "ok",
+          "prompt": "mechanical meter click. Taxi meter switching on, short electronic beep and button click, isolated sound effect",
+          "seed": 2317468880,
+          "steps": 100,
+          "sample_rate": 44100,
+          "channels": 1,
+          "generated": "2026-09-25",
+          "duration_s": 0.039,
+          "raw_clipped_samples": 0,
+          "raw_silent_fraction": 0.986,
+          "rms_dbfs": -15.0,
+          "reviewed": "2026-09-25"
+        }
+      ]
+    },
+    "taxi.payment": {
+      "category": "taxi",
+      "event": "fare_complete",
+      "description": "Getting paid at drop-off: card terminal or coins.",
+      "trigger": "Fare complete (fare_complete_points).",
+      "source": [
+        "src/theroadragetrip/taxi.py (DRIVING_TO_DROPOFF completion)",
+        "src/theroadragetrip/simulation.py:501"
+      ],
+      "priority": "required",
+      "loop": false,
+      "duration_s": [
+        0.6,
+        1.5
+      ],
+      "variations": 3,
+      "selection": "random",
+      "randomize": true,
+      "spatial": false,
+      "intensity_levels": false,
+      "contextual_variants": [],
+      "existing_asset": null,
+      "notes": "Every fare ends here: 3 variations.",
+      "generation": {
+        "prompt": "Payment terminal accepting a card, two short approval beeps, isolated sound effect",
+        "negative_prompt": "music, melody, speech, voice, singing, low quality, distortion, clipping"
+      },
+      "files": [
+        {
+          "id": "taxi.payment.01",
+          "file": "taxi/taxi_payment_01.ogg",
+          "variation": 1,
+          "variant": "card terminal approval beeps",
+          "status": "generated",
+          "review": "ok",
+          "prompt": "card terminal approval beeps. Payment terminal accepting a card, two short approval beeps, isolated sound effect",
+          "seed": 163906842,
+          "steps": 100,
+          "sample_rate": 44100,
+          "channels": 1,
+          "generated": "2026-09-25",
+          "duration_s": 0.272,
+          "raw_clipped_samples": 0,
+          "raw_silent_fraction": 0.848,
+          "rms_dbfs": -12.5,
+          "reviewed": "2026-09-25"
+        },
+        {
+          "id": "taxi.payment.02",
+          "file": "taxi/taxi_payment_02.ogg",
+          "variation": 2,
+          "variant": "coins dropped in a tray",
+          "status": "generated",
+          "review": "ok",
+          "prompt": "coins dropped in a tray. Payment terminal accepting a card, two short approval beeps, isolated sound effect",
+          "seed": 2429310112,
+          "steps": 100,
+          "sample_rate": 44100,
+          "channels": 1,
+          "generated": "2026-09-25",
+          "duration_s": 1.482,
+          "raw_clipped_samples": 60,
+          "raw_silent_fraction": 0.756,
+          "rms_dbfs": -25.0,
+          "reviewed": "2026-09-25"
+        },
+        {
+          "id": "taxi.payment.03",
+          "file": "taxi/taxi_payment_03.ogg",
+          "variation": 3,
+          "variant": "cash register ding",
+          "status": "generated",
+          "review": "ok",
+          "prompt": "cash register ding. Payment terminal accepting a card, two short approval beeps, isolated sound effect",
+          "seed": 3888866358,
+          "steps": 100,
+          "sample_rate": 44100,
+          "channels": 1,
+          "generated": "2026-09-25",
+          "duration_s": 0.907,
+          "raw_clipped_samples": 0,
+          "raw_silent_fraction": 0.629,
+          "rms_dbfs": -18.9,
+          "reviewed": "2026-09-25"
+        }
+      ]
+    },
+    "taxi.refuel": {
+      "category": "taxi",
+      "event": "refuel",
+      "description": "Fuel pump running and nozzle clicking off.",
+      "trigger": "G key refuel succeeds (fuel_purchased).",
+      "source": [
+        "src/theroadragetrip/simulation.py:234"
+      ],
+      "priority": "required",
+      "loop": false,
+      "duration_s": [
+        2.0,
+        4.0
+      ],
+      "variations": 2,
+      "selection": "random",
+      "randomize": true,
+      "spatial": false,
+      "intensity_levels": false,
+      "contextual_variants": [],
+      "existing_asset": null,
+      "notes": "",
+      "generation": {
+        "prompt": "Gas station fuel pump filling a car tank, nozzle flow then automatic shutoff click, isolated sound effect",
+        "negative_prompt": "music, melody, speech, voice, singing, low quality, distortion, clipping"
+      },
+      "files": [
+        {
+          "id": "taxi.refuel.01",
+          "file": "taxi/taxi_refuel_01.ogg",
+          "variation": 1,
+          "variant": "pump running then nozzle click",
+          "status": "generated",
+          "review": "ok",
+          "prompt": "pump running then nozzle click. Gas station fuel pump filling a car tank, nozzle flow then automatic shutoff click, isolated sound effect",
+          "seed": 3236456210,
+          "steps": 100,
+          "sample_rate": 44100,
+          "channels": 1,
+          "generated": "2026-09-25",
+          "duration_s": 3.482,
+          "raw_clipped_samples": 53,
+          "raw_silent_fraction": 0.337,
+          "rms_dbfs": -26.2,
+          "reviewed": "2026-09-25"
+        },
+        {
+          "id": "taxi.refuel.02",
+          "file": "taxi/taxi_refuel_02.ogg",
+          "variation": 2,
+          "variant": "short top-up and click",
+          "status": "generated",
+          "review": "ok",
+          "prompt": "short top-up and click. Gas station fuel pump filling a car tank, nozzle flow then automatic shutoff click, isolated sound effect",
+          "seed": 1507931816,
+          "steps": 100,
+          "sample_rate": 44100,
+          "channels": 1,
+          "generated": "2026-09-25",
+          "duration_s": 3.527,
+          "raw_clipped_samples": 12,
+          "raw_silent_fraction": 0.884,
+          "rms_dbfs": -32.2,
+          "reviewed": "2026-09-25"
+        }
+      ]
+    },
+    "passenger.vomit": {
+      "category": "passenger",
+      "event": "vomit",
+      "description": "Nauseous passenger throwing up.",
+      "trigger": "take_vomited_passenger / passenger_vomited (inside or outside).",
+      "source": [
+        "src/theroadragetrip/taxi.py:take_vomited_passenger",
+        "src/theroadragetrip/simulation.py:455"
+      ],
+      "priority": "required",
+      "loop": false,
+      "duration_s": [
+        1.0,
+        2.5
+      ],
+      "variations": 3,
+      "selection": "random",
+      "randomize": true,
+      "spatial": false,
+      "intensity_levels": false,
+      "contextual_variants": [],
+      "existing_asset": null,
+      "notes": "Non-verbal only; the relief line after it is existing voice chatter.",
+      "generation": {
+        "prompt": "A person retching and vomiting, non-verbal gagging and splatter, isolated sound effect",
+        "negative_prompt": "music, melody, speech, voice, singing, low quality, distortion, clipping"
+      },
+      "files": [
+        {
+          "id": "passenger.vomit.01",
+          "file": "passenger/passenger_vomit_01.ogg",
+          "variation": 1,
+          "variant": "short retch",
+          "status": "generated",
+          "review": "ok",
+          "prompt": "short retch. A person retching and vomiting, non-verbal gagging and splatter, isolated sound effect",
+          "seed": 3985454078,
+          "steps": 100,
+          "sample_rate": 44100,
+          "channels": 1,
+          "generated": "2026-09-25",
+          "duration_s": 1.215,
+          "raw_clipped_samples": 0,
+          "raw_silent_fraction": 0.854,
+          "rms_dbfs": -21.7,
+          "reviewed": "2026-09-25"
+        },
+        {
+          "id": "passenger.vomit.02",
+          "file": "passenger/passenger_vomit_02.ogg",
+          "variation": 2,
+          "variant": "retch and splatter",
+          "status": "generated",
+          "review": "ok",
+          "prompt": "retch and splatter. A person retching and vomiting, non-verbal gagging and splatter, isolated sound effect",
+          "seed": 1954832964,
+          "steps": 100,
+          "sample_rate": 44100,
+          "channels": 1,
+          "generated": "2026-09-25",
+          "duration_s": 1.984,
+          "raw_clipped_samples": 0,
+          "raw_silent_fraction": 0.467,
+          "rms_dbfs": -27.7,
+          "reviewed": "2026-09-25"
+        },
+        {
+          "id": "passenger.vomit.03",
+          "file": "passenger/passenger_vomit_03.ogg",
+          "variation": 3,
+          "variant": "heave and cough",
+          "status": "generated",
+          "review": "ok",
+          "prompt": "heave and cough. A person retching and vomiting, non-verbal gagging and splatter, isolated sound effect",
+          "seed": 58938066,
+          "steps": 100,
+          "sample_rate": 44100,
+          "channels": 1,
+          "generated": "2026-09-25",
+          "duration_s": 1.047,
+          "raw_clipped_samples": 93,
+          "raw_silent_fraction": 0.752,
+          "rms_dbfs": -20.3,
+          "reviewed": "2026-09-25"
+        }
+      ]
+    },
+    "passenger.chatter": {
+      "category": "voice",
+      "event": "passenger_speech",
+      "description": "Passenger voice lines.",
+      "trigger": "audio.update_passenger_speech / play_passenger_line*.",
+      "source": [
+        "src/theroadragetrip/audio.py:183"
+      ],
+      "priority": "required",
+      "loop": false,
+      "duration_s": [
+        1.0,
+        6.0
+      ],
+      "variations": 0,
+      "selection": "single",
+      "randomize": false,
+      "spatial": false,
+      "intensity_levels": false,
+      "contextual_variants": [],
+      "existing_asset": "src/theroadragetrip/sounds/passenger_chatter/ (200 TTS lines)",
+      "notes": "Existing TTS voice library (ai-audio-studio Chatterbox); not part of this SFX generation.",
+      "files": []
+    },
+    "driver.chatter": {
+      "category": "voice",
+      "event": "driver_speech",
+      "description": "Driver voice lines by situation.",
+      "trigger": "audio.play_driver_line(situation).",
+      "source": [
+        "src/theroadragetrip/audio.py:156"
+      ],
+      "priority": "required",
+      "loop": false,
+      "duration_s": [
+        1.0,
+        6.0
+      ],
+      "variations": 0,
+      "selection": "single",
+      "randomize": false,
+      "spatial": false,
+      "intensity_levels": false,
+      "contextual_variants": [],
+      "existing_asset": "src/theroadragetrip/sounds/driver_chatter/ (60 TTS lines)",
+      "notes": "Existing TTS voice library; not regenerated.",
+      "files": []
+    },
+    "pedestrian.curse": {
+      "category": "pedestrian",
+      "event": "startled_curse",
+      "description": "Startled pedestrian cursing (bleeped).",
+      "trigger": "Pedestrian dodge sets curse_timer / curse bubble.",
+      "source": [
+        "src/theroadragetrip/pedestrian.py:2150"
+      ],
+      "priority": "strong_candidate",
+      "loop": false,
+      "duration_s": [
+        1.5
+      ],
+      "variations": 0,
+      "selection": "single",
+      "randomize": false,
+      "spatial": true,
+      "intensity_levels": false,
+      "contextual_variants": [],
+      "existing_asset": "src/theroadragetrip/sounds/censored-cursing.wav",
+      "notes": "Existing asset is on disk but never loaded; speech, so not generated here.",
+      "files": []
+    },
+    "pedestrian.footsteps": {
+      "category": "pedestrian",
+      "event": "player_walking",
+      "description": "The driver's footsteps while on foot.",
+      "trigger": "on_foot and player_pedestrian.speed != 0.",
+      "source": [
+        "src/theroadragetrip/simulation.py:199"
+      ],
+      "priority": "optional",
+      "loop": false,
+      "duration_s": [
+        0.3,
+        0.5
+      ],
+      "variations": 4,
+      "selection": "random",
+      "randomize": true,
+      "spatial": false,
+      "intensity_levels": false,
+      "contextual_variants": [
+        "walk",
+        "run (Shift)"
+      ],
+      "existing_asset": null,
+      "notes": "Meet & greet makes walking a regular part of play; per-step one-shots.",
+      "generation": {
+        "prompt": "Single footstep of a shoe on asphalt pavement, close, isolated sound effect",
+        "negative_prompt": "music, melody, speech, voice, singing, low quality, distortion, clipping"
+      },
+      "files": [
+        {
+          "id": "pedestrian.footsteps.01",
+          "file": "pedestrian/pedestrian_footsteps_01.ogg",
+          "variation": 1,
+          "variant": "step on asphalt",
+          "status": "generated",
+          "review": "ok",
+          "prompt": "step on asphalt. Single footstep of a shoe on asphalt pavement, close, isolated sound effect",
+          "seed": 1731735329,
+          "steps": 100,
+          "sample_rate": 44100,
+          "channels": 1,
+          "generated": "2026-09-25",
+          "duration_s": 0.245,
+          "raw_clipped_samples": 0,
+          "raw_silent_fraction": 0.796,
+          "rms_dbfs": -25.4,
+          "reviewed": "2026-09-25"
+        },
+        {
+          "id": "pedestrian.footsteps.02",
+          "file": "pedestrian/pedestrian_footsteps_02.ogg",
+          "variation": 2,
+          "variant": "step on asphalt, lighter",
+          "status": "generated",
+          "review": "ok",
+          "prompt": "step on asphalt, lighter. Single footstep of a shoe on asphalt pavement, close, isolated sound effect",
+          "seed": 4264656539,
+          "steps": 100,
+          "sample_rate": 44100,
+          "channels": 1,
+          "generated": "2026-09-25",
+          "duration_s": 0.483,
+          "raw_clipped_samples": 0,
+          "raw_silent_fraction": 0.597,
+          "rms_dbfs": -18.6,
+          "reviewed": "2026-09-25"
+        },
+        {
+          "id": "pedestrian.footsteps.03",
+          "file": "pedestrian/pedestrian_footsteps_03.ogg",
+          "variation": 3,
+          "variant": "step on paving stone",
+          "status": "generated",
+          "review": "ok",
+          "prompt": "step on paving stone. Single footstep of a shoe on asphalt pavement, close, isolated sound effect",
+          "seed": 2302037517,
+          "steps": 100,
+          "sample_rate": 44100,
+          "channels": 1,
+          "generated": "2026-09-25",
+          "duration_s": 0.206,
+          "raw_clipped_samples": 0,
+          "raw_silent_fraction": 0.979,
+          "rms_dbfs": -23.3,
+          "reviewed": "2026-09-25"
+        },
+        {
+          "id": "pedestrian.footsteps.04",
+          "file": "pedestrian/pedestrian_footsteps_04.ogg",
+          "variation": 4,
+          "variant": "running step",
+          "status": "generated",
+          "review": "ok",
+          "prompt": "running step. Single footstep of a shoe on asphalt pavement, close, isolated sound effect",
+          "seed": 391306158,
+          "steps": 100,
+          "sample_rate": 44100,
+          "channels": 1,
+          "generated": "2026-09-25",
+          "duration_s": 0.317,
+          "raw_clipped_samples": 0,
+          "raw_silent_fraction": 0.866,
+          "rms_dbfs": -28.1,
+          "reviewed": "2026-09-25"
+        }
+      ]
+    },
+    "gameplay.speed_camera": {
+      "category": "gameplay",
+      "event": "speed_camera_flash",
+      "description": "Speed camera flash and shutter.",
+      "trigger": "TaxiManager.check_speed_cameras fines the car.",
+      "source": [
+        "src/theroadragetrip/taxi.py:check_speed_cameras",
+        "src/theroadragetrip/simulation.py:550"
+      ],
+      "priority": "required",
+      "loop": false,
+      "duration_s": [
+        0.4,
+        0.8
+      ],
+      "variations": 2,
+      "selection": "random",
+      "randomize": true,
+      "spatial": false,
+      "intensity_levels": false,
+      "contextual_variants": [],
+      "existing_asset": null,
+      "notes": "",
+      "generation": {
+        "prompt": "Traffic speed camera taking a photo, flash pop and mechanical shutter click, isolated sound effect",
+        "negative_prompt": "music, melody, speech, voice, singing, low quality, distortion, clipping"
+      },
+      "files": [
+        {
+          "id": "gameplay.speed_camera.01",
+          "file": "gameplay/gameplay_speed_camera_01.ogg",
+          "variation": 1,
+          "variant": "camera flash pop and shutter",
+          "status": "generated",
+          "review": "ok",
+          "prompt": "camera flash pop and shutter. Traffic speed camera taking a photo, flash pop and mechanical shutter click, isolated sound effect",
+          "seed": 2004514910,
+          "steps": 100,
+          "sample_rate": 44100,
+          "channels": 1,
+          "generated": "2026-09-25",
+          "duration_s": 0.276,
+          "raw_clipped_samples": 11,
+          "raw_silent_fraction": 0.89,
+          "rms_dbfs": -24.2,
+          "reviewed": "2026-09-25"
+        },
+        {
+          "id": "gameplay.speed_camera.02",
+          "file": "gameplay/gameplay_speed_camera_02.ogg",
+          "variation": 2,
+          "variant": "electronic flash charge and snap",
+          "status": "generated",
+          "review": "ok",
+          "prompt": "electronic flash charge and snap. Traffic speed camera taking a photo, flash pop and mechanical shutter click, isolated sound effect",
+          "seed": 4000524772,
+          "steps": 100,
+          "sample_rate": 44100,
+          "channels": 1,
+          "generated": "2026-09-25",
+          "duration_s": 0.355,
+          "raw_clipped_samples": 105,
+          "raw_silent_fraction": 0.919,
+          "rms_dbfs": -24.9,
+          "reviewed": "2026-09-25"
+        }
+      ]
+    },
+    "gameplay.meet_greet": {
+      "category": "gameplay",
+      "event": "passenger_greeted",
+      "description": "Friendly confirmation when the driver greets the pre-booked passenger.",
+      "trigger": "F near the booked passenger: TaxiManager.greet_booked_passenger succeeds (PASSENGER_MET).",
+      "source": [
+        "src/theroadragetrip/taxi.py:greet_booked_passenger",
+        "src/theroadragetrip/simulation.py:95"
+      ],
+      "priority": "strong_candidate",
+      "loop": false,
+      "duration_s": [
+        0.5,
+        1.0
+      ],
+      "variations": 2,
+      "selection": "random",
+      "randomize": true,
+      "spatial": false,
+      "intensity_levels": false,
+      "contextual_variants": [],
+      "existing_asset": null,
+      "notes": "Non-verbal; greeting speech would need new voice lines.",
+      "generation": {
+        "prompt": "Short warm friendly two-note confirmation chime, soft bell tone, game UI sound effect",
+        "negative_prompt": "music, melody, speech, voice, singing, low quality, distortion, clipping"
+      },
+      "files": [
+        {
+          "id": "gameplay.meet_greet.01",
+          "file": "gameplay/gameplay_meet_greet_01.ogg",
+          "variation": 1,
+          "variant": "warm two-note chime",
+          "status": "generated",
+          "review": "ok",
+          "prompt": "warm two-note chime. Short warm friendly two-note confirmation chime, soft bell tone, game UI sound effect",
+          "seed": 187447076,
+          "steps": 100,
+          "sample_rate": 44100,
+          "channels": 1,
+          "generated": "2026-09-25",
+          "duration_s": 0.614,
+          "raw_clipped_samples": 0,
+          "raw_silent_fraction": 0.693,
+          "rms_dbfs": -16.4,
+          "reviewed": "2026-09-25"
+        },
+        {
+          "id": "gameplay.meet_greet.02",
+          "file": "gameplay/gameplay_meet_greet_02.ogg",
+          "variation": 2,
+          "variant": "soft bright confirmation chime",
+          "status": "generated",
+          "review": "ok",
+          "prompt": "soft bright confirmation chime. Short warm friendly two-note confirmation chime, soft bell tone, game UI sound effect",
+          "seed": 2451924638,
+          "steps": 100,
+          "sample_rate": 44100,
+          "channels": 1,
+          "generated": "2026-09-25",
+          "duration_s": 0.514,
+          "raw_clipped_samples": 0,
+          "raw_silent_fraction": 0.697,
+          "rms_dbfs": -20.9,
+          "reviewed": "2026-09-25"
+        }
+      ]
+    },
+    "gameplay.roadwork_blocked": {
+      "category": "gameplay",
+      "event": "roadwork_blocked",
+      "description": "Taxi stopped by a roadworks barrier.",
+      "trigger": "Entering a roadwork area (roadwork_blocked).",
+      "source": [
+        "src/theroadragetrip/simulation.py:330"
+      ],
+      "priority": "optional",
+      "loop": false,
+      "duration_s": [
+        0.6
+      ],
+      "variations": 1,
+      "selection": "single",
+      "randomize": false,
+      "spatial": false,
+      "intensity_levels": false,
+      "contextual_variants": [],
+      "existing_asset": null,
+      "notes": "",
+      "generation": {
+        "prompt": "Car bumping into a plastic road barrier, hollow plastic knock, isolated sound effect",
+        "negative_prompt": "music, melody, speech, voice, singing, low quality, distortion, clipping"
+      },
+      "files": [
+        {
+          "id": "gameplay.roadwork_blocked.01",
+          "file": "gameplay/gameplay_roadwork_blocked_01.ogg",
+          "variation": 1,
+          "variant": "plastic barrier knock",
+          "status": "generated",
+          "review": "ok",
+          "prompt": "plastic barrier knock. Car bumping into a plastic road barrier, hollow plastic knock, isolated sound effect",
+          "seed": 2175785416,
+          "steps": 100,
+          "sample_rate": 44100,
+          "channels": 1,
+          "generated": "2026-09-25",
+          "duration_s": 0.279,
+          "raw_clipped_samples": 0,
+          "raw_silent_fraction": 0.837,
+          "rms_dbfs": -18.7,
+          "reviewed": "2026-09-25"
+        }
+      ]
+    },
+    "ui.phone_open": {
+      "category": "ui",
+      "event": "phone_toggle",
+      "description": "Phone raised / put away.",
+      "trigger": "P key toggles phone_open.",
+      "source": [
+        "src/theroadragetrip/main/__init__.py:1685"
+      ],
+      "priority": "strong_candidate",
+      "loop": false,
+      "duration_s": [
+        0.2,
+        0.4
+      ],
+      "variations": 2,
+      "selection": "random",
+      "randomize": true,
+      "spatial": false,
+      "intensity_levels": false,
+      "contextual_variants": [],
+      "existing_asset": null,
+      "notes": "Variant 01 open, 02 close.",
+      "generation": {
+        "prompt": "Smartphone screen unlock tap, soft short click, clean UI sound effect",
+        "negative_prompt": "music, melody, speech, voice, singing, low quality, distortion, clipping"
+      },
+      "files": [
+        {
+          "id": "ui.phone_open.01",
+          "file": "ui/ui_phone_open_01.ogg",
+          "variation": 1,
+          "variant": "soft phone unlock tap",
+          "status": "generated",
+          "review": "ok",
+          "prompt": "soft phone unlock tap. Smartphone screen unlock tap, soft short click, clean UI sound effect",
+          "seed": 970021795,
+          "steps": 100,
+          "sample_rate": 44100,
+          "channels": 1,
+          "generated": "2026-09-25",
+          "duration_s": 0.029,
+          "raw_clipped_samples": 8,
+          "raw_silent_fraction": 0.993,
+          "rms_dbfs": -25.2,
+          "reviewed": "2026-09-25"
+        },
+        {
+          "id": "ui.phone_open.02",
+          "file": "ui/ui_phone_open_02.ogg",
+          "variation": 2,
+          "variant": "soft phone lock click",
+          "status": "generated",
+          "review": "ok",
+          "prompt": "soft phone lock click. Smartphone screen unlock tap, soft short click, clean UI sound effect",
+          "seed": 2698512921,
+          "steps": 100,
+          "sample_rate": 44100,
+          "channels": 1,
+          "generated": "2026-09-25",
+          "duration_s": 0.101,
+          "raw_clipped_samples": 0,
+          "raw_silent_fraction": 0.954,
+          "rms_dbfs": -24.8,
+          "reviewed": "2026-09-25"
+        }
+      ]
+    },
+    "ui.new_offer": {
+      "category": "ui",
+      "event": "ride_offer",
+      "description": "A new ride offer arrives in the phone.",
+      "trigger": "Phone offer generated (new_request notification).",
+      "source": [
+        "src/theroadragetrip/taxi.py:1884"
+      ],
+      "priority": "required",
+      "loop": false,
+      "duration_s": [
+        0.4,
+        0.8
+      ],
+      "variations": 2,
+      "selection": "random",
+      "randomize": true,
+      "spatial": false,
+      "intensity_levels": false,
+      "contextual_variants": [],
+      "existing_asset": null,
+      "notes": "",
+      "generation": {
+        "prompt": "Short smartphone message notification ping, clean bright tone, UI sound effect",
+        "negative_prompt": "music, melody, speech, voice, singing, low quality, distortion, clipping"
+      },
+      "files": [
+        {
+          "id": "ui.new_offer.01",
+          "file": "ui/ui_new_offer_01.ogg",
+          "variation": 1,
+          "variant": "short message ping",
+          "status": "generated",
+          "review": "ok",
+          "prompt": "short message ping. Short smartphone message notification ping, clean bright tone, UI sound effect",
+          "seed": 3274321728,
+          "steps": 100,
+          "sample_rate": 44100,
+          "channels": 1,
+          "generated": "2026-09-25",
+          "duration_s": 0.594,
+          "raw_clipped_samples": 0,
+          "raw_silent_fraction": 0.617,
+          "rms_dbfs": -14.1,
+          "reviewed": "2026-09-25"
+        },
+        {
+          "id": "ui.new_offer.02",
+          "file": "ui/ui_new_offer_02.ogg",
+          "variation": 2,
+          "variant": "double ping",
+          "status": "generated",
+          "review": "ok",
+          "prompt": "double ping. Short smartphone message notification ping, clean bright tone, UI sound effect",
+          "seed": 1512275706,
+          "steps": 100,
+          "sample_rate": 44100,
+          "channels": 1,
+          "generated": "2026-09-25",
+          "duration_s": 0.54,
+          "raw_clipped_samples": 0,
+          "raw_silent_fraction": 0.638,
+          "rms_dbfs": -15.3,
+          "reviewed": "2026-09-25"
+        }
+      ]
+    },
+    "ui.booking_new": {
+      "category": "ui",
+      "event": "rail_prebooking",
+      "description": "A railway pre-booking arrives, distinct from ordinary offers.",
+      "trigger": "RailBookingManager.on_created -> TaxiManager.notify_rail_booking.",
+      "source": [
+        "src/theroadragetrip/rail_bookings.py:consider",
+        "src/theroadragetrip/taxi.py:notify_rail_booking"
+      ],
+      "priority": "required",
+      "loop": false,
+      "duration_s": [
+        0.6,
+        1.2
+      ],
+      "variations": 2,
+      "selection": "random",
+      "randomize": true,
+      "spatial": false,
+      "intensity_levels": false,
+      "contextual_variants": [],
+      "existing_asset": null,
+      "notes": "",
+      "generation": {
+        "prompt": "Pleasant three-note ascending notification chime, soft marimba-like tone, UI sound effect",
+        "negative_prompt": "music, melody, speech, voice, singing, low quality, distortion, clipping"
+      },
+      "files": [
+        {
+          "id": "ui.booking_new.01",
+          "file": "ui/ui_booking_new_01.ogg",
+          "variation": 1,
+          "variant": "three-note ascending chime",
+          "status": "generated",
+          "review": "ok",
+          "prompt": "three-note ascending chime. Pleasant three-note ascending notification chime, soft marimba-like tone, UI sound effect",
+          "seed": 706070139,
+          "steps": 100,
+          "sample_rate": 44100,
+          "channels": 1,
+          "generated": "2026-09-25",
+          "duration_s": 1.169,
+          "raw_clipped_samples": 0,
+          "raw_silent_fraction": 0.482,
+          "rms_dbfs": -18.9,
+          "reviewed": "2026-09-25"
+        },
+        {
+          "id": "ui.booking_new.02",
+          "file": "ui/ui_booking_new_02.ogg",
+          "variation": 2,
+          "variant": "railway-style ding-dong",
+          "status": "generated",
+          "review": "ok",
+          "prompt": "railway-style ding-dong. Pleasant three-note ascending notification chime, soft marimba-like tone, UI sound effect",
+          "seed": 3004995521,
+          "steps": 100,
+          "sample_rate": 44100,
+          "channels": 1,
+          "generated": "2026-09-25",
+          "duration_s": 0.855,
+          "raw_clipped_samples": 0,
+          "raw_silent_fraction": 0.576,
+          "rms_dbfs": -18.5,
+          "reviewed": "2026-09-25"
+        }
+      ]
+    },
+    "ui.accept": {
+      "category": "ui",
+      "event": "offer_accepted",
+      "description": "Accepting a ride or pre-booking.",
+      "trigger": "TaxiManager.accept_offer succeeds.",
+      "source": [
+        "src/theroadragetrip/taxi.py:accept_offer"
+      ],
+      "priority": "strong_candidate",
+      "loop": false,
+      "duration_s": [
+        0.2,
+        0.5
+      ],
+      "variations": 2,
+      "selection": "random",
+      "randomize": true,
+      "spatial": false,
+      "intensity_levels": false,
+      "contextual_variants": [],
+      "existing_asset": null,
+      "notes": "",
+      "generation": {
+        "prompt": "Short positive UI confirmation blip, clean digital tone, sound effect",
+        "negative_prompt": "music, melody, speech, voice, singing, low quality, distortion, clipping"
+      },
+      "files": [
+        {
+          "id": "ui.accept.01",
+          "file": "ui/ui_accept_01.ogg",
+          "variation": 1,
+          "variant": "positive confirm blip",
+          "status": "generated",
+          "review": "ok",
+          "prompt": "positive confirm blip. Short positive UI confirmation blip, clean digital tone, sound effect",
+          "seed": 3958299484,
+          "steps": 100,
+          "sample_rate": 44100,
+          "channels": 1,
+          "generated": "2026-09-25",
+          "duration_s": 0.631,
+          "raw_clipped_samples": 0,
+          "raw_silent_fraction": 0.41,
+          "rms_dbfs": -18.3,
+          "reviewed": "2026-09-25"
+        },
+        {
+          "id": "ui.accept.02",
+          "file": "ui/ui_accept_02.ogg",
+          "variation": 2,
+          "variant": "soft double confirm blip",
+          "status": "generated",
+          "review": "ok",
+          "prompt": "soft double confirm blip. Short positive UI confirmation blip, clean digital tone, sound effect",
+          "seed": 1927776998,
+          "steps": 100,
+          "sample_rate": 44100,
+          "channels": 1,
+          "generated": "2026-09-25",
+          "duration_s": 0.285,
+          "raw_clipped_samples": 0,
+          "raw_silent_fraction": 0.718,
+          "rms_dbfs": -21.2,
+          "reviewed": "2026-09-25"
+        }
+      ]
+    },
+    "ui.reject": {
+      "category": "ui",
+      "event": "offer_rejected",
+      "description": "Rejecting a ride or declining a pre-booking.",
+      "trigger": "TaxiManager.reject_offer succeeds.",
+      "source": [
+        "src/theroadragetrip/taxi.py:reject_offer"
+      ],
+      "priority": "strong_candidate",
+      "loop": false,
+      "duration_s": [
+        0.2,
+        0.5
+      ],
+      "variations": 2,
+      "selection": "random",
+      "randomize": true,
+      "spatial": false,
+      "intensity_levels": false,
+      "contextual_variants": [],
+      "existing_asset": null,
+      "notes": "",
+      "generation": {
+        "prompt": "Short soft negative UI dismiss tone, low blip, sound effect",
+        "negative_prompt": "music, melody, speech, voice, singing, low quality, distortion, clipping"
+      },
+      "files": [
+        {
+          "id": "ui.reject.01",
+          "file": "ui/ui_reject_01.ogg",
+          "variation": 1,
+          "variant": "soft negative blip",
+          "status": "generated",
+          "review": "ok",
+          "prompt": "soft negative blip. Short soft negative UI dismiss tone, low blip, sound effect",
+          "seed": 169084142,
+          "steps": 100,
+          "sample_rate": 44100,
+          "channels": 1,
+          "generated": "2026-09-25",
+          "duration_s": 0.118,
+          "raw_clipped_samples": 76,
+          "raw_silent_fraction": 0.896,
+          "rms_dbfs": -11.7,
+          "reviewed": "2026-09-25"
+        },
+        {
+          "id": "ui.reject.02",
+          "file": "ui/ui_reject_02.ogg",
+          "variation": 2,
+          "variant": "short swipe dismiss",
+          "status": "generated",
+          "review": "ok",
+          "prompt": "short swipe dismiss. Short soft negative UI dismiss tone, low blip, sound effect",
+          "seed": 2468173140,
+          "steps": 100,
+          "sample_rate": 44100,
+          "channels": 1,
+          "generated": "2026-09-25",
+          "duration_s": 0.085,
+          "raw_clipped_samples": 0,
+          "raw_silent_fraction": 0.945,
+          "rms_dbfs": -15.0,
+          "reviewed": "2026-09-25"
+        }
+      ]
+    },
+    "ui.penalty": {
+      "category": "ui",
+      "event": "score_penalty",
+      "description": "Points lost: wrong way, pedestrian way, crash penalty.",
+      "trigger": "check_wrong_way_violation / check_pedestrian_way_violation deduct points.",
+      "source": [
+        "src/theroadragetrip/taxi.py:check_wrong_way_violation",
+        "src/theroadragetrip/taxi.py:check_pedestrian_way_violation"
+      ],
+      "priority": "strong_candidate",
+      "loop": false,
+      "duration_s": [
+        0.3,
+        0.6
+      ],
+      "variations": 3,
+      "selection": "random",
+      "randomize": true,
+      "spatial": false,
+      "intensity_levels": false,
+      "contextual_variants": [],
+      "existing_asset": null,
+      "notes": "",
+      "generation": {
+        "prompt": "Short game penalty error buzz, descending tone, UI sound effect",
+        "negative_prompt": "music, melody, speech, voice, singing, low quality, distortion, clipping"
+      },
+      "files": [
+        {
+          "id": "ui.penalty.01",
+          "file": "ui/ui_penalty_01.ogg",
+          "variation": 1,
+          "variant": "short error buzz",
+          "status": "generated",
+          "review": "ok",
+          "prompt": "short error buzz. Short game penalty error buzz, descending tone, UI sound effect",
+          "seed": 414971117,
+          "steps": 100,
+          "sample_rate": 44100,
+          "channels": 1,
+          "generated": "2026-09-25",
+          "duration_s": 0.44,
+          "raw_clipped_samples": 0,
+          "raw_silent_fraction": 0.812,
+          "rms_dbfs": -20.4,
+          "reviewed": "2026-09-25"
+        },
+        {
+          "id": "ui.penalty.02",
+          "file": "ui/ui_penalty_02.ogg",
+          "variation": 2,
+          "variant": "descending two-tone",
+          "status": "generated",
+          "review": "ok",
+          "prompt": "descending two-tone. Short game penalty error buzz, descending tone, UI sound effect",
+          "seed": 2175968599,
+          "steps": 100,
+          "sample_rate": 44100,
+          "channels": 1,
+          "generated": "2026-09-25",
+          "duration_s": 0.332,
+          "raw_clipped_samples": 0,
+          "raw_silent_fraction": 0.732,
+          "rms_dbfs": -14.8,
+          "reviewed": "2026-09-25"
+        },
+        {
+          "id": "ui.penalty.03",
+          "file": "ui/ui_penalty_03.ogg",
+          "variation": 3,
+          "variant": "low thud buzz",
+          "status": "generated",
+          "review": "ok",
+          "prompt": "low thud buzz. Short game penalty error buzz, descending tone, UI sound effect",
+          "seed": 4139095489,
+          "steps": 100,
+          "sample_rate": 44100,
+          "channels": 1,
+          "generated": "2026-09-25",
+          "duration_s": 0.274,
+          "raw_clipped_samples": 0,
+          "raw_silent_fraction": 0.82,
+          "rms_dbfs": -17.8,
+          "reviewed": "2026-09-25"
+        }
+      ]
+    },
+    "ui.booking_missed": {
+      "category": "ui",
+      "event": "rail_booking_missed",
+      "description": "A pre-booked passenger was missed.",
+      "trigger": "RailBookingManager sets MISSED (pickup window lapsed or drove away).",
+      "source": [
+        "src/theroadragetrip/rail_bookings.py:update",
+        "src/theroadragetrip/taxi.py:discard_mission"
+      ],
+      "priority": "strong_candidate",
+      "loop": false,
+      "duration_s": [
+        0.6,
+        1.0
+      ],
+      "variations": 1,
+      "selection": "single",
+      "randomize": false,
+      "spatial": false,
+      "intensity_levels": false,
+      "contextual_variants": [],
+      "existing_asset": null,
+      "notes": "There is no notification for a missed booking yet; integration point.",
+      "generation": {
+        "prompt": "Short sad descending three-note chime, soft tone, UI sound effect",
+        "negative_prompt": "music, melody, speech, voice, singing, low quality, distortion, clipping"
+      },
+      "files": [
+        {
+          "id": "ui.booking_missed.01",
+          "file": "ui/ui_booking_missed_01.ogg",
+          "variation": 1,
+          "variant": "sad descending chime",
+          "status": "generated",
+          "review": "ok",
+          "prompt": "sad descending chime. Short sad descending three-note chime, soft tone, UI sound effect",
+          "seed": 3448651282,
+          "steps": 100,
+          "sample_rate": 44100,
+          "channels": 1,
+          "generated": "2026-09-25",
+          "duration_s": 0.712,
+          "raw_clipped_samples": 0,
+          "raw_silent_fraction": 0.456,
+          "rms_dbfs": -21.4,
+          "reviewed": "2026-09-25"
+        }
+      ]
+    },
+    "ui.menu": {
+      "category": "ui",
+      "event": "menu_navigation",
+      "description": "Menu cursor move and select.",
+      "trigger": "Menu key handling (city, settings, pause menus).",
+      "source": [
+        "src/theroadragetrip/main/menu_input.py",
+        "src/theroadragetrip/render/menus.py"
+      ],
+      "priority": "optional",
+      "loop": false,
+      "duration_s": [
+        0.1,
+        0.3
+      ],
+      "variations": 2,
+      "selection": "random",
+      "randomize": true,
+      "spatial": false,
+      "intensity_levels": false,
+      "contextual_variants": [],
+      "existing_asset": null,
+      "notes": "Variant 01 move, 02 select.",
+      "generation": {
+        "prompt": "Soft short UI menu tick, clean click, sound effect",
+        "negative_prompt": "music, melody, speech, voice, singing, low quality, distortion, clipping"
+      },
+      "files": [
+        {
+          "id": "ui.menu.01",
+          "file": "ui/ui_menu_01.ogg",
+          "variation": 1,
+          "variant": "soft tick (move)",
+          "status": "generated",
+          "review": "ok",
+          "prompt": "soft tick (move). Soft short UI menu tick, clean click, sound effect",
+          "seed": 2602964572,
+          "steps": 100,
+          "sample_rate": 44100,
+          "channels": 1,
+          "generated": "2026-09-25",
+          "duration_s": 0.062,
+          "raw_clipped_samples": 0,
+          "raw_silent_fraction": 0.963,
+          "rms_dbfs": -19.2,
+          "reviewed": "2026-09-25"
+        },
+        {
+          "id": "ui.menu.02",
+          "file": "ui/ui_menu_02.ogg",
+          "variation": 2,
+          "variant": "confirm click (select)",
+          "status": "generated",
+          "review": "ok",
+          "prompt": "confirm click (select). Soft short UI menu tick, clean click, sound effect",
+          "seed": 36653030,
+          "steps": 100,
+          "sample_rate": 44100,
+          "channels": 1,
+          "generated": "2026-09-25",
+          "duration_s": 0.063,
+          "raw_clipped_samples": 0,
+          "raw_silent_fraction": 0.954,
+          "rms_dbfs": -14.4,
+          "reviewed": "2026-09-25"
+        }
+      ]
+    },
+    "railway.train_running": {
+      "category": "railway",
+      "event": "train_moving",
+      "description": "Electric passenger train running past: rumble and rail clatter.",
+      "trigger": "Train objects moving in view (RailwayManager.update, Train.current_speed_mps).",
+      "source": [
+        "src/theroadragetrip/trains.py:update"
+      ],
+      "priority": "strong_candidate",
+      "loop": true,
+      "duration_s": [
+        8.0,
+        10.0
+      ],
+      "variations": 2,
+      "selection": "layer",
+      "randomize": false,
+      "spatial": true,
+      "intensity_levels": true,
+      "contextual_variants": [],
+      "existing_asset": null,
+      "notes": "Loops; volume by distance and train speed.",
+      "generation": {
+        "prompt": "Electric passenger train rolling on rails, steady rumble and rhythmic clatter over rail joints, exterior, seamless loop, isolated sound effect",
+        "negative_prompt": "music, melody, speech, voice, singing, low quality, distortion, clipping"
+      },
+      "files": [
+        {
+          "id": "railway.train_running.01",
+          "file": "railway/railway_train_running_01.ogg",
+          "variation": 1,
+          "variant": "electric intercity train rolling, rhythmic rail joints",
+          "status": "generated",
+          "review": "ok",
+          "prompt": "electric intercity train rolling, rhythmic rail joints. Electric passenger train rolling on rails, steady rumble and rhythmic clatter over rail joints, exterior, seamless loop, isolated sound effect",
+          "seed": 1734629904,
+          "steps": 100,
+          "sample_rate": 44100,
+          "channels": 2,
+          "generated": "2026-09-25",
+          "duration_s": 10.5,
+          "raw_clipped_samples": 0,
+          "raw_silent_fraction": 0.001,
+          "rms_dbfs": -14.8,
+          "reviewed": "2026-09-25"
+        },
+        {
+          "id": "railway.train_running.02",
+          "file": "railway/railway_train_running_02.ogg",
+          "variation": 2,
+          "variant": "commuter train slower rumble",
+          "status": "generated",
+          "review": "ok",
+          "prompt": "commuter train slower rumble. Electric passenger train rolling on rails, steady rumble and rhythmic clatter over rail joints, exterior, seamless loop, isolated sound effect",
+          "seed": 4268559274,
+          "steps": 100,
+          "sample_rate": 44100,
+          "channels": 2,
+          "generated": "2026-09-25",
+          "duration_s": 10.5,
+          "raw_clipped_samples": 0,
+          "raw_silent_fraction": 0.025,
+          "rms_dbfs": -19.2,
+          "reviewed": "2026-09-25"
+        }
+      ]
+    },
+    "railway.train_brakes": {
+      "category": "railway",
+      "event": "train_arriving",
+      "description": "Train braking into the station.",
+      "trigger": "Train stops at a station: RailwayManager._arrived.",
+      "source": [
+        "src/theroadragetrip/trains.py:818"
+      ],
+      "priority": "strong_candidate",
+      "loop": false,
+      "duration_s": [
+        2.0,
+        4.0
+      ],
+      "variations": 3,
+      "selection": "random",
+      "randomize": true,
+      "spatial": true,
+      "intensity_levels": false,
+      "contextual_variants": [],
+      "existing_asset": null,
+      "notes": "",
+      "generation": {
+        "prompt": "Electric train braking into a station, metallic brake squeal and air hiss, isolated sound effect",
+        "negative_prompt": "music, melody, speech, voice, singing, low quality, distortion, clipping"
+      },
+      "files": [
+        {
+          "id": "railway.train_brakes.01",
+          "file": "railway/railway_train_brakes_01.ogg",
+          "variation": 1,
+          "variant": "long high brake squeal",
+          "status": "generated",
+          "review": "ok",
+          "prompt": "long high brake squeal. Electric train braking into a station, metallic brake squeal and air hiss, isolated sound effect",
+          "seed": 225762811,
+          "steps": 100,
+          "sample_rate": 44100,
+          "channels": 1,
+          "generated": "2026-09-25",
+          "duration_s": 4.5,
+          "raw_clipped_samples": 0,
+          "raw_silent_fraction": 0.002,
+          "rms_dbfs": -15.6,
+          "reviewed": "2026-09-25"
+        },
+        {
+          "id": "railway.train_brakes.02",
+          "file": "railway/railway_train_brakes_02.ogg",
+          "variation": 2,
+          "variant": "brake hiss and low squeal",
+          "status": "generated",
+          "review": "ok",
+          "prompt": "brake hiss and low squeal. Electric train braking into a station, metallic brake squeal and air hiss, isolated sound effect",
+          "seed": 2491255873,
+          "steps": 100,
+          "sample_rate": 44100,
+          "channels": 1,
+          "generated": "2026-09-25",
+          "duration_s": 3.58,
+          "raw_clipped_samples": 12,
+          "raw_silent_fraction": 0.253,
+          "rms_dbfs": -18.9,
+          "reviewed": "2026-09-25"
+        },
+        {
+          "id": "railway.train_brakes.03",
+          "file": "railway/railway_train_brakes_03.ogg",
+          "variation": 3,
+          "variant": "short squeal with air release",
+          "status": "generated",
+          "review": "ok",
+          "prompt": "short squeal with air release. Electric train braking into a station, metallic brake squeal and air hiss, isolated sound effect",
+          "seed": 3816471767,
+          "steps": 100,
+          "sample_rate": 44100,
+          "channels": 1,
+          "generated": "2026-09-25",
+          "duration_s": 3.889,
+          "raw_clipped_samples": 36,
+          "raw_silent_fraction": 0.272,
+          "rms_dbfs": -19.6,
+          "reviewed": "2026-09-25"
+        }
+      ]
+    },
+    "railway.train_doors": {
+      "category": "railway",
+      "event": "doors_open_close",
+      "description": "Train doors opening/closing with warning beeps.",
+      "trigger": "Dwell start/end at a station (passengers alight/board).",
+      "source": [
+        "src/theroadragetrip/trains.py:_arrived",
+        "src/theroadragetrip/train_passengers.py:on_arrival"
+      ],
+      "priority": "strong_candidate",
+      "loop": false,
+      "duration_s": [
+        1.5,
+        3.0
+      ],
+      "variations": 2,
+      "selection": "random",
+      "randomize": true,
+      "spatial": true,
+      "intensity_levels": false,
+      "contextual_variants": [],
+      "existing_asset": null,
+      "notes": "",
+      "generation": {
+        "prompt": "Commuter train doors closing, warning beeps then pneumatic hiss and thud, isolated sound effect",
+        "negative_prompt": "music, melody, speech, voice, singing, low quality, distortion, clipping"
+      },
+      "files": [
+        {
+          "id": "railway.train_doors.01",
+          "file": "railway/railway_train_doors_01.ogg",
+          "variation": 1,
+          "variant": "door warning beeps then pneumatic close",
+          "status": "generated",
+          "review": "ok",
+          "prompt": "door warning beeps then pneumatic close. Commuter train doors closing, warning beeps then pneumatic hiss and thud, isolated sound effect",
+          "seed": 856780670,
+          "steps": 100,
+          "sample_rate": 44100,
+          "channels": 1,
+          "generated": "2026-09-25",
+          "duration_s": 3.498,
+          "raw_clipped_samples": 10,
+          "raw_silent_fraction": 0.042,
+          "rms_dbfs": -23.3,
+          "reviewed": "2026-09-25"
+        },
+        {
+          "id": "railway.train_doors.02",
+          "file": "railway/railway_train_doors_02.ogg",
+          "variation": 2,
+          "variant": "pneumatic door open",
+          "status": "generated",
+          "review": "ok",
+          "prompt": "pneumatic door open. Commuter train doors closing, warning beeps then pneumatic hiss and thud, isolated sound effect",
+          "seed": 2853715652,
+          "steps": 100,
+          "sample_rate": 44100,
+          "channels": 1,
+          "generated": "2026-09-25",
+          "duration_s": 3.321,
+          "raw_clipped_samples": 6,
+          "raw_silent_fraction": 0.101,
+          "rms_dbfs": -19.6,
+          "reviewed": "2026-09-25"
+        }
+      ]
+    },
+    "railway.train_horn": {
+      "category": "railway",
+      "event": "train_horn",
+      "description": "Electric locomotive horn.",
+      "trigger": "Train departing a station (DWELLING -> RUNNING) or approaching.",
+      "source": [
+        "src/theroadragetrip/trains.py:update"
+      ],
+      "priority": "optional",
+      "loop": false,
+      "duration_s": [
+        1.0,
+        2.5
+      ],
+      "variations": 3,
+      "selection": "random",
+      "randomize": true,
+      "spatial": true,
+      "intensity_levels": false,
+      "contextual_variants": [],
+      "existing_asset": null,
+      "notes": "No horn event exists in code today; departure is the natural hook.",
+      "generation": {
+        "prompt": "Electric locomotive horn, two-tone blast, exterior, isolated sound effect",
+        "negative_prompt": "music, melody, speech, voice, singing, low quality, distortion, clipping"
+      },
+      "files": [
+        {
+          "id": "railway.train_horn.01",
+          "file": "railway/railway_train_horn_01.ogg",
+          "variation": 1,
+          "variant": "short two-tone horn",
+          "status": "generated",
+          "review": "ok",
+          "prompt": "short two-tone horn. Electric locomotive horn, two-tone blast, exterior, isolated sound effect",
+          "seed": 2670037168,
+          "steps": 100,
+          "sample_rate": 44100,
+          "channels": 1,
+          "generated": "2026-09-25",
+          "duration_s": 1.98,
+          "raw_clipped_samples": 1172,
+          "raw_silent_fraction": 0.386,
+          "rms_dbfs": -11.7,
+          "reviewed": "2026-09-25"
+        },
+        {
+          "id": "railway.train_horn.02",
+          "file": "railway/railway_train_horn_02.ogg",
+          "variation": 2,
+          "variant": "long horn blast",
+          "status": "generated",
+          "review": "ok",
+          "prompt": "long horn blast. Electric locomotive horn, two-tone blast, exterior, isolated sound effect",
+          "seed": 103602442,
+          "steps": 100,
+          "sample_rate": 44100,
+          "channels": 1,
+          "generated": "2026-09-25",
+          "duration_s": 1.718,
+          "raw_clipped_samples": 30,
+          "raw_silent_fraction": 0.459,
+          "rms_dbfs": -12.4,
+          "reviewed": "2026-09-25"
+        },
+        {
+          "id": "railway.train_horn.03",
+          "file": "railway/railway_train_horn_03.ogg",
+          "variation": 3,
+          "variant": "distant horn",
+          "status": "generated",
+          "review": "ok",
+          "prompt": "distant horn. Electric locomotive horn, two-tone blast, exterior, isolated sound effect",
+          "seed": 1898703260,
+          "steps": 100,
+          "sample_rate": 44100,
+          "channels": 1,
+          "generated": "2026-09-25",
+          "duration_s": 1.645,
+          "raw_clipped_samples": 794,
+          "raw_silent_fraction": 0.541,
+          "rms_dbfs": -12.0,
+          "reviewed": "2026-09-25"
+        }
+      ]
+    },
+    "station.ambience": {
+      "category": "station",
+      "event": "station_crowd",
+      "description": "Railway station platform ambience: murmur, footsteps, luggage wheels.",
+      "trigger": "Camera within VISIBLE_RADIUS_M of a station with waiting passengers.",
+      "source": [
+        "src/theroadragetrip/station_passengers.py:update"
+      ],
+      "priority": "strong_candidate",
+      "loop": true,
+      "duration_s": [
+        15.0,
+        20.0
+      ],
+      "variations": 2,
+      "selection": "layer",
+      "randomize": false,
+      "spatial": true,
+      "intensity_levels": false,
+      "contextual_variants": [],
+      "existing_asset": null,
+      "notes": "Two complementary layers, faded by distance and waiting_count.",
+      "generation": {
+        "prompt": "Outdoor railway station platform ambience, indistinct crowd murmur, footsteps and rolling suitcases, no announcements, seamless loop",
+        "negative_prompt": "music, melody, speech, voice, singing, low quality, distortion, clipping"
+      },
+      "files": [
+        {
+          "id": "station.ambience.01",
+          "file": "station/station_ambience_01.ogg",
+          "variation": 1,
+          "variant": "platform crowd murmur and footsteps",
+          "status": "generated",
+          "review": "ok",
+          "prompt": "platform crowd murmur and footsteps. Outdoor railway station platform ambience, indistinct crowd murmur, footsteps and rolling suitcases, no announcements, seamless loop",
+          "seed": 1517811547,
+          "steps": 100,
+          "sample_rate": 44100,
+          "channels": 2,
+          "generated": "2026-09-25",
+          "duration_s": 20.5,
+          "raw_clipped_samples": 3,
+          "raw_silent_fraction": 0.007,
+          "rms_dbfs": -19.0,
+          "reviewed": "2026-09-25"
+        },
+        {
+          "id": "station.ambience.02",
+          "file": "station/station_ambience_02.ogg",
+          "variation": 2,
+          "variant": "rolling suitcases and distant activity",
+          "status": "generated",
+          "review": "ok",
+          "prompt": "rolling suitcases and distant activity. Outdoor railway station platform ambience, indistinct crowd murmur, footsteps and rolling suitcases, no announcements, seamless loop",
+          "seed": 3279857377,
+          "steps": 100,
+          "sample_rate": 44100,
+          "channels": 2,
+          "generated": "2026-09-25",
+          "duration_s": 20.5,
+          "raw_clipped_samples": 0,
+          "raw_silent_fraction": 0.037,
+          "rms_dbfs": -19.8,
+          "reviewed": "2026-09-25"
+        }
+      ]
+    },
+    "weather.thunder": {
+      "category": "weather",
+      "event": "lightning",
+      "description": "Thunder following a lightning flash.",
+      "trigger": "weather.lightning_event_id changes (thunderstorm).",
+      "source": [
+        "src/theroadragetrip/main/__init__.py:1491",
+        "src/theroadragetrip/weather.py:126"
+      ],
+      "priority": "required",
+      "loop": false,
+      "duration_s": [
+        3.0,
+        8.0
+      ],
+      "variations": 6,
+      "selection": "random",
+      "randomize": true,
+      "spatial": false,
+      "intensity_levels": true,
+      "contextual_variants": [],
+      "existing_asset": null,
+      "notes": "Replaced the synthesized thunder AudioManager used to build in code.",
+      "generation": {
+        "prompt": "Realistic thunder during a heavy storm, natural atmospheric decay, no rain in foreground, isolated sound effect",
+        "negative_prompt": "music, melody, speech, voice, singing, low quality, distortion, clipping"
+      },
+      "files": [
+        {
+          "id": "weather.thunder.01",
+          "file": "weather/weather_thunder_01.ogg",
+          "variation": 1,
+          "variant": "distant low rumble",
+          "status": "generated",
+          "review": "ok",
+          "prompt": "distant low rumble. Realistic thunder during a heavy storm, natural atmospheric decay, no rain in foreground, isolated sound effect",
+          "seed": 4214629509,
+          "steps": 100,
+          "sample_rate": 44100,
+          "channels": 1,
+          "generated": "2026-09-25",
+          "duration_s": 8.396,
+          "raw_clipped_samples": 0,
+          "raw_silent_fraction": 0.106,
+          "rms_dbfs": -24.7,
+          "reviewed": "2026-09-25"
+        },
+        {
+          "id": "weather.thunder.02",
+          "file": "weather/weather_thunder_02.ogg",
+          "variation": 2,
+          "variant": "sharp nearby crack then rumble",
+          "status": "generated",
+          "review": "ok",
+          "prompt": "sharp nearby crack then rumble. Realistic thunder during a heavy storm, natural atmospheric decay, no rain in foreground, isolated sound effect",
+          "seed": 1648325951,
+          "steps": 100,
+          "sample_rate": 44100,
+          "channels": 1,
+          "generated": "2026-09-25",
+          "duration_s": 7.725,
+          "raw_clipped_samples": 259,
+          "raw_silent_fraction": 0.234,
+          "rms_dbfs": -20.9,
+          "reviewed": "2026-09-25"
+        },
+        {
+          "id": "weather.thunder.03",
+          "file": "weather/weather_thunder_03.ogg",
+          "variation": 3,
+          "variant": "long rolling thunder",
+          "status": "generated",
+          "review": "ok",
+          "prompt": "long rolling thunder. Realistic thunder during a heavy storm, natural atmospheric decay, no rain in foreground, isolated sound effect",
+          "seed": 356009385,
+          "steps": 100,
+          "sample_rate": 44100,
+          "channels": 1,
+          "generated": "2026-09-25",
+          "duration_s": 7.929,
+          "raw_clipped_samples": 577,
+          "raw_silent_fraction": 0.24,
+          "rms_dbfs": -20.0,
+          "reviewed": "2026-09-25"
+        },
+        {
+          "id": "weather.thunder.04",
+          "file": "weather/weather_thunder_04.ogg",
+          "variation": 4,
+          "variant": "heavy low-frequency boom",
+          "status": "generated",
+          "review": "ok",
+          "prompt": "heavy low-frequency boom. Realistic thunder during a heavy storm, natural atmospheric decay, no rain in foreground, isolated sound effect",
+          "seed": 2338115594,
+          "steps": 100,
+          "sample_rate": 44100,
+          "channels": 1,
+          "generated": "2026-09-25",
+          "duration_s": 7.311,
+          "raw_clipped_samples": 18370,
+          "raw_silent_fraction": 0.239,
+          "rms_dbfs": -15.5,
+          "reviewed": "2026-09-25"
+        },
+        {
+          "id": "weather.thunder.05",
+          "file": "weather/weather_thunder_05.ogg",
+          "variation": 5,
+          "variant": "irregular multi-stage thunder",
+          "status": "generated",
+          "review": "ok",
+          "prompt": "irregular multi-stage thunder. Realistic thunder during a heavy storm, natural atmospheric decay, no rain in foreground, isolated sound effect",
+          "seed": 4233879708,
+          "steps": 100,
+          "sample_rate": 44100,
+          "channels": 1,
+          "generated": "2026-09-25",
+          "duration_s": 6.977,
+          "raw_clipped_samples": 4622,
+          "raw_silent_fraction": 0.352,
+          "rms_dbfs": -17.2,
+          "reviewed": "2026-09-25"
+        },
+        {
+          "id": "weather.thunder.06",
+          "file": "weather/weather_thunder_06.ogg",
+          "variation": 6,
+          "variant": "far faint grumble",
+          "status": "generated",
+          "review": "ok",
+          "prompt": "far faint grumble. Realistic thunder during a heavy storm, natural atmospheric decay, no rain in foreground, isolated sound effect",
+          "seed": 1699918118,
+          "steps": 100,
+          "sample_rate": 44100,
+          "channels": 1,
+          "generated": "2026-09-25",
+          "duration_s": 7.44,
+          "raw_clipped_samples": 56,
+          "raw_silent_fraction": 0.276,
+          "rms_dbfs": -19.5,
+          "reviewed": "2026-09-25"
+        }
+      ]
+    },
+    "weather.rain": {
+      "category": "weather",
+      "event": "raining",
+      "description": "Rain ambience.",
+      "trigger": "WeatherType.RAIN (and slush) with intensity from wetness.",
+      "source": [
+        "src/theroadragetrip/weather.py:23"
+      ],
+      "priority": "required",
+      "loop": true,
+      "duration_s": [
+        15.0,
+        20.0
+      ],
+      "variations": 2,
+      "selection": "layer",
+      "randomize": false,
+      "spatial": false,
+      "intensity_levels": true,
+      "contextual_variants": [
+        "light",
+        "heavy"
+      ],
+      "existing_asset": null,
+      "notes": "Crossfade the two layers by rain intensity.",
+      "generation": {
+        "prompt": "Steady rain falling on a city street, even texture, seamless loop, isolated ambience",
+        "negative_prompt": "music, melody, speech, voice, singing, low quality, distortion, clipping"
+      },
+      "files": [
+        {
+          "id": "weather.rain.01",
+          "file": "weather/weather_rain_01.ogg",
+          "variation": 1,
+          "variant": "light steady rain",
+          "status": "generated",
+          "review": "ok",
+          "prompt": "light steady rain. Steady rain falling on a city street, even texture, seamless loop, isolated ambience",
+          "seed": 308705513,
+          "steps": 100,
+          "sample_rate": 44100,
+          "channels": 2,
+          "generated": "2026-09-25",
+          "duration_s": 20.5,
+          "raw_clipped_samples": 0,
+          "raw_silent_fraction": 0.303,
+          "rms_dbfs": -39.6,
+          "reviewed": "2026-09-25"
+        },
+        {
+          "id": "weather.rain.02",
+          "file": "weather/weather_rain_02.ogg",
+          "variation": 2,
+          "variant": "heavy downpour",
+          "status": "generated",
+          "review": "ok",
+          "prompt": "heavy downpour. Steady rain falling on a city street, even texture, seamless loop, isolated ambience",
+          "seed": 2339318099,
+          "steps": 100,
+          "sample_rate": 44100,
+          "channels": 2,
+          "generated": "2026-09-25",
+          "duration_s": 20.5,
+          "raw_clipped_samples": 0,
+          "raw_silent_fraction": 0.062,
+          "rms_dbfs": -22.1,
+          "reviewed": "2026-09-25"
+        }
+      ]
+    },
+    "weather.wind": {
+      "category": "weather",
+      "event": "wind",
+      "description": "Wind ambience with gusts.",
+      "trigger": "weather.wind_speed_mps and gust multiplier.",
+      "source": [
+        "src/theroadragetrip/weather.py:143",
+        "src/theroadragetrip/weather.py:285"
+      ],
+      "priority": "strong_candidate",
+      "loop": true,
+      "duration_s": [
+        15.0,
+        20.0
+      ],
+      "variations": 2,
+      "selection": "layer",
+      "randomize": false,
+      "spatial": false,
+      "intensity_levels": true,
+      "contextual_variants": [],
+      "existing_asset": null,
+      "notes": "",
+      "generation": {
+        "prompt": "Outdoor wind blowing through a city, whooshing gusts, seamless loop, isolated ambience",
+        "negative_prompt": "music, melody, speech, voice, singing, low quality, distortion, clipping"
+      },
+      "files": [
+        {
+          "id": "weather.wind.01",
+          "file": "weather/weather_wind_01.ogg",
+          "variation": 1,
+          "variant": "moderate steady wind",
+          "status": "generated",
+          "review": "ok",
+          "prompt": "moderate steady wind. Outdoor wind blowing through a city, whooshing gusts, seamless loop, isolated ambience",
+          "seed": 1905322327,
+          "steps": 100,
+          "sample_rate": 44100,
+          "channels": 2,
+          "generated": "2026-09-25",
+          "duration_s": 20.5,
+          "raw_clipped_samples": 0,
+          "raw_silent_fraction": 0.001,
+          "rms_dbfs": -18.0,
+          "reviewed": "2026-09-25"
+        },
+        {
+          "id": "weather.wind.02",
+          "file": "weather/weather_wind_02.ogg",
+          "variation": 2,
+          "variant": "strong gusty wind",
+          "status": "generated",
+          "review": "ok",
+          "prompt": "strong gusty wind. Outdoor wind blowing through a city, whooshing gusts, seamless loop, isolated ambience",
+          "seed": 3902388461,
+          "steps": 100,
+          "sample_rate": 44100,
+          "channels": 2,
+          "generated": "2026-09-25",
+          "duration_s": 20.5,
+          "raw_clipped_samples": 0,
+          "raw_silent_fraction": 0.007,
+          "rms_dbfs": -20.3,
+          "reviewed": "2026-09-25"
+        }
+      ]
+    },
+    "weather.wet_road": {
+      "category": "weather",
+      "event": "wet_tires",
+      "description": "Tires hissing on a wet or slushy road while driving.",
+      "trigger": "weather.road_grip_wetness > 0 and car moving.",
+      "source": [
+        "src/theroadragetrip/simulation.py:physics wetness"
+      ],
+      "priority": "strong_candidate",
+      "loop": true,
+      "duration_s": [
+        8.0
+      ],
+      "variations": 2,
+      "selection": "layer",
+      "randomize": false,
+      "spatial": false,
+      "intensity_levels": false,
+      "contextual_variants": [
+        "rain",
+        "slush"
+      ],
+      "existing_asset": null,
+      "notes": "",
+      "generation": {
+        "prompt": "Car tires hissing on a wet asphalt road, water spray, seamless loop, isolated sound effect",
+        "negative_prompt": "music, melody, speech, voice, singing, low quality, distortion, clipping"
+      },
+      "files": [
+        {
+          "id": "weather.wet_road.01",
+          "file": "weather/weather_wet_road_01.ogg",
+          "variation": 1,
+          "variant": "tire hiss on wet asphalt",
+          "status": "generated",
+          "review": "ok",
+          "prompt": "tire hiss on wet asphalt. Car tires hissing on a wet asphalt road, water spray, seamless loop, isolated sound effect",
+          "seed": 1428841615,
+          "steps": 100,
+          "sample_rate": 44100,
+          "channels": 2,
+          "generated": "2026-09-25",
+          "duration_s": 8.5,
+          "raw_clipped_samples": 0,
+          "raw_silent_fraction": 0.002,
+          "rms_dbfs": -18.0,
+          "reviewed": "2026-09-25"
+        },
+        {
+          "id": "weather.wet_road.02",
+          "file": "weather/weather_wet_road_02.ogg",
+          "variation": 2,
+          "variant": "slush spray under tires",
+          "status": "generated",
+          "review": "ok",
+          "prompt": "slush spray under tires. Car tires hissing on a wet asphalt road, water spray, seamless loop, isolated sound effect",
+          "seed": 3424859445,
+          "steps": 100,
+          "sample_rate": 44100,
+          "channels": 2,
+          "generated": "2026-09-25",
+          "duration_s": 8.5,
+          "raw_clipped_samples": 159,
+          "raw_silent_fraction": 0.012,
+          "rms_dbfs": -23.5,
+          "reviewed": "2026-09-25"
+        }
+      ]
+    },
+    "ambient.city_day": {
+      "category": "ambient",
+      "event": "city_traffic",
+      "description": "Daytime city traffic bed.",
+      "trigger": "Played on start as a loop (music volume).",
+      "source": [
+        "src/theroadragetrip/audio.py:99"
+      ],
+      "priority": "required",
+      "loop": true,
+      "duration_s": [
+        40.7
+      ],
+      "variations": 0,
+      "selection": "single",
+      "randomize": false,
+      "spatial": false,
+      "intensity_levels": false,
+      "contextual_variants": [],
+      "existing_asset": "src/theroadragetrip/sounds/city-traffic-outdoor.wav",
+      "notes": "Existing asset kept.",
+      "files": []
+    },
+    "ambient.city_night": {
+      "category": "ambient",
+      "event": "city_night",
+      "description": "Quiet night city ambience.",
+      "trigger": "Darkness from solar altitude (as street lights use) replaces the day bed.",
+      "source": [
+        "src/theroadragetrip/render/roads.py:draw_street_lights (darkness)"
+      ],
+      "priority": "optional",
+      "loop": true,
+      "duration_s": [
+        20.0
+      ],
+      "variations": 1,
+      "selection": "single",
+      "randomize": false,
+      "spatial": false,
+      "intensity_levels": false,
+      "contextual_variants": [],
+      "existing_asset": null,
+      "notes": "",
+      "generation": {
+        "prompt": "Quiet city at night, sparse distant traffic, faint hum, seamless loop, isolated ambience",
+        "negative_prompt": "music, melody, speech, voice, singing, low quality, distortion, clipping"
+      },
+      "files": [
+        {
+          "id": "ambient.city_night.01",
+          "file": "ambient/ambient_city_night_01.ogg",
+          "variation": 1,
+          "variant": "quiet night city, distant traffic",
+          "status": "generated",
+          "review": "ok",
+          "prompt": "quiet night city, distant traffic. Quiet city at night, sparse distant traffic, faint hum, seamless loop, isolated ambience",
+          "seed": 3764516209,
+          "steps": 100,
+          "sample_rate": 44100,
+          "channels": 2,
+          "generated": "2026-09-25",
+          "duration_s": 20.5,
+          "raw_clipped_samples": 0,
+          "raw_silent_fraction": 0.03,
+          "rms_dbfs": -19.5,
+          "reviewed": "2026-09-25"
+        }
+      ]
+    }
+  },
+  "excluded": [
+    {
+      "id": "police.siren",
+      "reason": "police_car_siren-esp.wav is loaded (AudioManager.update_police_siren) but nothing triggers it: the game has no police vehicles or pursuits, only speed cameras."
+    },
+    {
+      "id": "gameplay.police_stop / gameplay.red_light_violation",
+      "reason": "Only localization strings exist; no code triggers these events."
+    },
+    {
+      "id": "radio",
+      "reason": "sounds/radio/ (ads, music, news, speech) exists but no code plays it; music was not requested."
+    },
+    {
+      "id": "music",
+      "reason": "No music system or music events in the code."
+    },
+    {
+      "id": "railway.level_crossing",
+      "reason": "No level crossings are modelled."
+    },
+    {
+      "id": "ui.screenshot / debug keys",
+      "reason": "Developer tools (F-keys, screenshots); no player-facing audio needed."
+    }
+  ]
+}

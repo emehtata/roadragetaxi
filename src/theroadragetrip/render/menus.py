@@ -1,3 +1,4 @@
+import functools
 from .common import (
     SCREEN_W,
     SCREEN_H,
@@ -8,10 +9,38 @@ from typing import List, Optional
 
 
 from ..localization import tr
+from ..menu_keys import CITY_MENU_KEYS
 
 
 _loading_image = None
 _loading_image_path = os.path.join(os.path.dirname(__file__), "..", "img", "theroadragetrip_1672_941.png")
+_loading_background_cache = {}
+_loading_overlay_cache = {}
+_loading_font_cache = {}
+
+# Licence-required credits for the data the game shows (README "Bundled
+# map and timetable data"). Kept verbatim, not translated.
+DATA_CREDITS = (
+    "Map data © OpenStreetMap contributors, ODbL",
+    "Train timetables: Fintraffic / digitraffic.fi, CC BY 4.0 · Weather: Finnish Meteorological Institute (FMI), CC BY 4.0",
+)
+
+
+@functools.lru_cache(maxsize=4)
+def _data_credit_surfaces(size: int):
+    import pygame
+
+    credit_font = pygame.font.SysFont(None, size)
+    return tuple(credit_font.render(line, True, (185, 195, 205)) for line in DATA_CREDITS)
+
+
+def _draw_data_credits(screen, screen_h: int) -> None:
+    """Bottom-left, clear of the version label at bottom-right."""
+    lines = _data_credit_surfaces(18)
+    y = screen_h - 12 - sum(line.get_height() + 2 for line in lines)
+    for line in lines:
+        screen.blit(line, (12, y))
+        y += line.get_height() + 2
 
 
 def draw_loading_screen(
@@ -39,25 +68,40 @@ def draw_loading_screen(
         image_w, image_h = _loading_image.get_size()
         scale = max(screen_w / image_w, screen_h / image_h)
         scaled_size = (round(image_w * scale), round(image_h * scale))
-        background = pygame.transform.smoothscale(_loading_image, scaled_size)
+        background_key = (id(_loading_image), scaled_size)
+        background = _loading_background_cache.get(background_key)
+        if background is None:
+            background = pygame.transform.smoothscale(_loading_image, scaled_size)
+            _loading_background_cache.clear()
+            _loading_background_cache[background_key] = background
         image_x = (screen_w - scaled_size[0]) // 2
         image_y = (screen_h - scaled_size[1]) // 2
         screen.blit(background, (image_x, image_y))
-        overlay = pygame.Surface((screen_w, screen_h), pygame.SRCALPHA)
-        overlay.fill((0, 0, 0, 105))
+        overlay = _loading_overlay_cache.get((screen_w, screen_h))
+        if overlay is None:
+            overlay = pygame.Surface((screen_w, screen_h), pygame.SRCALPHA)
+            overlay.fill((0, 0, 0, 105))
+            _loading_overlay_cache.clear()
+            _loading_overlay_cache[(screen_w, screen_h)] = overlay
         screen.blit(overlay, (0, 0))
     else:
         screen.fill((20, 25, 30))
+    _draw_data_credits(screen, screen_h)
 
     if not show_details:
         return
 
     # Title
-    title_font = font
-    try:
-        title_font = pygame.font.SysFont(None, 40, bold=True)
-    except Exception:
-        pass
+    font_key = id(font)
+    cached_fonts = _loading_font_cache.get(font_key)
+    if cached_fonts is None:
+        try:
+            cached_fonts = (pygame.font.SysFont(None, 40, bold=True), pygame.font.SysFont(None, 18))
+        except Exception:
+            cached_fonts = (font, font)
+        _loading_font_cache.clear()
+        _loading_font_cache[font_key] = cached_fonts
+    title_font, detail_font = cached_fonts
     title_surf = title_font.render("THE ROAD RAGE TRIP", True, (240, 240, 240))
     title_rect = title_surf.get_rect(center=(screen_w // 2, screen_h // 2 - 70))
     screen.blit(title_surf, title_rect)
@@ -94,11 +138,6 @@ def draw_loading_screen(
     # progress_callback (see osm/overpass.py, osm/pbf_source.py) - it used
     # to be computed and passed all the way here but never actually drawn.
     if message:
-        detail_font = font
-        try:
-            detail_font = pygame.font.SysFont(None, 18)
-        except Exception:
-            pass
         detail_surf = detail_font.render(message, True, (150, 165, 180))
         detail_rect = detail_surf.get_rect(center=(screen_w // 2, bar_y + bar_h + 44))
         screen.blit(detail_surf, detail_rect)
@@ -110,47 +149,91 @@ def draw_game_start_overlay(
     city: str,
     screen_w: int = SCREEN_W,
     screen_h: int = SCREEN_H,
+    forecast_lines: Optional[List[str]] = None,
+    language: str = "fi",
 ) -> None:
-    """Draw the city sign and prompt shown before gameplay starts."""
+    """Draw the city sign, 24-hour forecast, and start prompt."""
     import pygame
 
     overlay = pygame.Surface((screen_w, screen_h), pygame.SRCALPHA)
     overlay.fill((0, 0, 0, 105))
     screen.blit(overlay, (0, 0))
 
+    forecast_lines = forecast_lines or []
     sign_font = pygame.font.SysFont(None, max(34, min(68, screen_w // 12)), bold=True)
     prompt_font = pygame.font.SysFont(None, max(22, min(34, screen_w // 24)))
+    forecast_font = pygame.font.SysFont(None, max(20, min(28, screen_w // 32)))
     city_surface = sign_font.render(city.upper(), True, (255, 255, 255))
-    prompt_surface = prompt_font.render("Paina mitä tahansa aloittaaksesi", True, (255, 255, 255))
-    sign_width = max(city_surface.get_width(), prompt_surface.get_width()) + 80
-    sign_height = city_surface.get_height() + prompt_surface.get_height() + 54
+    title_surface = forecast_font.render(tr(language, "weather_forecast_24h"), True, (180, 220, 255))
+    forecast_surfaces = [forecast_font.render(line, True, (255, 255, 255)) for line in forecast_lines]
+    prompt_surface = prompt_font.render(tr(language, "press_any_key_start"), True, (255, 255, 255))
+    contents = [city_surface, title_surface, *forecast_surfaces, prompt_surface]
+    sign_width = max(surface.get_width() for surface in contents) + 80
+    forecast_height = title_surface.get_height() + sum(surface.get_height() + 5 for surface in forecast_surfaces)
+    sign_height = city_surface.get_height() + forecast_height + prompt_surface.get_height() + 76
     sign = pygame.Rect(0, 0, sign_width, sign_height)
     sign.center = (screen_w // 2, screen_h // 2)
     pygame.draw.rect(screen, (28, 84, 155), sign, border_radius=8)
     pygame.draw.rect(screen, (220, 235, 255), sign, width=3, border_radius=8)
-    screen.blit(city_surface, city_surface.get_rect(center=(sign.centerx, sign.top + city_surface.get_height() // 2 + 14)))
+
+    y = sign.top + 14
+    screen.blit(city_surface, city_surface.get_rect(center=(sign.centerx, y + city_surface.get_height() // 2)))
+    y += city_surface.get_height() + 12
+    screen.blit(title_surface, title_surface.get_rect(center=(sign.centerx, y + title_surface.get_height() // 2)))
+    y += title_surface.get_height() + 6
+    for surface in forecast_surfaces:
+        screen.blit(surface, surface.get_rect(center=(sign.centerx, y + surface.get_height() // 2)))
+        y += surface.get_height() + 5
     screen.blit(
         prompt_surface,
         prompt_surface.get_rect(center=(sign.centerx, sign.bottom - prompt_surface.get_height() // 2 - 14)),
     )
 
 
+@functools.lru_cache(maxsize=16)
+def _hint_surface(text: str, size: int):
+    """Rendered hint text - SysFont lookup plus render cost ~0.85 ms, and
+    the hint is drawn every frame while shown."""
+    import pygame
+
+    return pygame.font.SysFont(None, size, bold=True).render(text, True, (255, 255, 255))
+
+
 def draw_game_start_hint(
     screen,
     font,
     screen_w: int = SCREEN_W,
+    text: str = "Painamalla F pääset sisään taksiisi",
 ) -> None:
-    """Draw the first gameplay control hint."""
+    """Draw a gameplay control hint box near the top of the screen."""
     import pygame
 
-    hint_font = pygame.font.SysFont(None, max(20, min(30, screen_w // 28)), bold=True)
-    hint = hint_font.render("Painamalla F pääset sisään taksiisi", True, (255, 255, 255))
+    hint = _hint_surface(text, max(20, min(30, screen_w // 28)))
     padding_x = 18
     padding_y = 10
     box = hint.get_rect(center=(screen_w // 2, 76)).inflate(padding_x * 2, padding_y * 2)
     pygame.draw.rect(screen, (16, 35, 55), box, border_radius=5)
     pygame.draw.rect(screen, (100, 190, 240), box, width=2, border_radius=5)
     screen.blit(hint, hint.get_rect(center=box.center))
+
+
+def draw_meet_panel(screen, lines: List[str], screen_w: int = SCREEN_W) -> None:
+    """The pre-booked rail pickup in progress, in the hint box's style:
+    who to meet, off which train where, and what to do now (last line)."""
+    import pygame
+
+    size = max(18, min(26, screen_w // 32))
+    surfaces = [_hint_surface(line, size) for line in lines]
+    width = max(surface.get_width() for surface in surfaces)
+    height = sum(surface.get_height() for surface in surfaces) + 4 * (len(surfaces) - 1)
+    box = pygame.Rect(0, 0, width + 36, height + 20)
+    box.midtop = (screen_w // 2, 50)
+    pygame.draw.rect(screen, (16, 35, 55), box, border_radius=5)
+    pygame.draw.rect(screen, (90, 200, 255), box, width=2, border_radius=5)
+    y = box.y + 10
+    for surface in surfaces:
+        screen.blit(surface, surface.get_rect(midtop=(box.centerx, y)))
+        y += surface.get_height() + 4
 
 
 def draw_city_selection_menu(
@@ -217,7 +300,7 @@ def draw_city_selection_menu(
         pygame.draw.rect(screen, bg_color, (ix, iy, item_w, item_h), border_radius=6)
         pygame.draw.rect(screen, border_color, (ix, iy, item_w, item_h), width=2 if is_sel else 1, border_radius=6)
 
-        num_prefix = f"{('1234567890ABCDEFGHIJKLMNOPQRSTUVWXYZ'[idx])}: "
+        num_prefix = f"{CITY_MENU_KEYS[idx]}: "
         city_label = f"{num_prefix}{city}"
         if is_sel:
             city_label = f"> {city_label}"
@@ -250,10 +333,14 @@ def draw_city_selection_menu(
     hint_rect = hint_surf.get_rect(center=(screen_w // 2, screen_h - 35))
     screen.blit(hint_surf, hint_rect)
     _draw_version(screen, sub_font, screen_w, screen_h)
+    _draw_data_credits(screen, screen_h)  # above the menu dimming
 
 
-def draw_mode_selection_menu(screen, font, selected_idx: int, screen_w: int = SCREEN_W, screen_h: int = SCREEN_H, language: str = "fi") -> None:
-    """Draw the initial game-mode selection menu."""
+def draw_mode_selection_menu(
+    screen, font, selected_idx: int, screen_w: int = SCREEN_W, screen_h: int = SCREEN_H, language: str = "fi",
+    notice: Optional[str] = None,
+) -> None:
+    """Draw the initial game-mode selection menu (notice: e.g. "Career reset")."""
     import pygame
 
     draw_loading_screen(screen, font, 1.0, tr(language, "ready"), screen_w, screen_h, show_details=False, language=language)
@@ -267,14 +354,20 @@ def draw_mode_selection_menu(screen, font, selected_idx: int, screen_w: int = SC
         tr(language, "gig_driver"),
         tr(language, "reset_career"),
         tr(language, "clear_cache"),
+        tr(language, "settings_menu"),
+        tr(language, "exit"),
     ]
     for index, option in enumerate(options):
         color = (255, 215, 95) if index == selected_idx else (210, 220, 230)
         label = font.render(f"{index + 1}. {option}", True, color)
         screen.blit(label, label.get_rect(center=(screen_w // 2, 270 + index * 60)))
+    if notice:
+        message = font.render(notice, True, (130, 220, 150))
+        screen.blit(message, message.get_rect(center=(screen_w // 2, 250 + len(options) * 60)))
     hint = pygame.font.SysFont(None, 18).render(tr(language, "language_hint"), True, (150, 175, 195))
     screen.blit(hint, hint.get_rect(center=(screen_w // 2, screen_h - 80)))
     _draw_version(screen, font, screen_w, screen_h)
+    _draw_data_credits(screen, screen_h)  # above the menu dimming
 
 
 def draw_city_summary(
@@ -362,7 +455,7 @@ def draw_tutorial_screen(
             y += 21
         y += 10
 
-    control_font = pygame.font.SysFont("monospace", 18)
+    control_font = pygame.font.SysFont("monospace", 14)
     controls = [
         ("W / Up", tr(language, "drive")),
         ("S / Down", tr(language, "brake")),
@@ -374,12 +467,16 @@ def draw_tutorial_screen(
         ("R", tr(language, "respawn")),
         ("X", tr(language, "cancel_ride")),
         ("T", tr(language, "reset_trip")),
+        ("G", tr(language, "refuel")),
         ("L", tr(language, "labels")),
         ("K", tr(language, "lane_assist")),
         ("V", tr(language, "speed_limiter")),
         ("B", tr(language, "red_assist")),
         ("N", "Navigointi" if language == "fi" else "Toggle navigation route"),
-        ("+ / -", tr(language, "zoom")),
+        ("J", "Seuraava juna" if language == "fi" else "Toggle next train"),
+        ("Ctrl+veto" if language == "fi" else "Ctrl+drag", "Panoroi näkymää" if language == "fi" else "Pan the view"),
+        ("Klikkaa" if language == "fi" else "Click", "Seuraa (ESC: taksi)" if language == "fi" else "Follow (ESC: taxi)"),
+        ("+ / - / " + ("rulla" if language == "fi" else "wheel"), tr(language, "zoom")),
         ("Esc", tr(language, "pause")),
         ("F1", tr(language, "help_short")),
         ("F3", "Näytä/piilota debug-HUD" if language == "fi" else "Toggle diagnostic HUD"),
@@ -389,9 +486,12 @@ def draw_tutorial_screen(
     heading_surface = section_font.render(tr(language, "controls"), True, (255, 215, 95))
     screen.blit(heading_surface, (panel.x + 28, y))
     y += 30
-    column_count = 3
+    column_count = 4
     column_width = panel.width // column_count
     rows_per_column = (len(controls) + column_count - 1) // column_count
+    key_column_px = max(control_font.size(key)[0] for key, _ in controls) + 8
+    action_font = pygame.font.SysFont(None, 18)
+    row_step = max(control_font.get_linesize(), action_font.get_linesize())
     for row in range(rows_per_column):
         for column in range(column_count):
             index = row + column * rows_per_column
@@ -400,13 +500,13 @@ def draw_tutorial_screen(
             key, action = controls[index]
             column_x = panel.x + 28 + column * column_width
             key_surface = control_font.render(key, True, (255, 215, 95))
-            action_surface = pygame.font.SysFont(None, 18).render(action, True, (220, 228, 235))
+            action_surface = action_font.render(action, True, (220, 228, 235))
             screen.blit(key_surface, (column_x, y))
-            screen.blit(action_surface, (column_x + 82, y))
-        y += 18
+            screen.blit(action_surface, (column_x + key_column_px, y))
+        y += row_step
 
     hint = font.render(tr(language, "help_close"), True, (160, 190, 215))
-    screen.blit(hint, hint.get_rect(center=(screen_w // 2, panel.bottom - 25)))
+    screen.blit(hint, hint.get_rect(center=(screen_w // 2, panel.bottom - 14)))
 
 
 def draw_pause_menu(
@@ -480,6 +580,7 @@ def draw_pause_menu(
     h_rect = h_surf.get_rect(center=(screen_w // 2, panel_y + panel_h - 20))
     screen.blit(h_surf, h_rect)
     _draw_version(screen, font, screen_w, screen_h)
+    _draw_data_credits(screen, screen_h)  # above the menu dimming
 
 
 def draw_settings_menu(
@@ -496,8 +597,9 @@ def draw_settings_menu(
     screen_w: int = SCREEN_W,
     screen_h: int = SCREEN_H,
     physics_mode: str = "arcade",
+    historical_weather: bool = False,
 ) -> None:
-    """Draw language, audio, Overpass endpoint, and driving-physics settings."""
+    """Draw language, audio, Overpass endpoint, driving-physics and weather settings."""
     import pygame
 
     screen.fill((18, 24, 32))
@@ -517,11 +619,15 @@ def draw_settings_menu(
         (tr(language, "subtitles"), tr(language, "on" if subtitles_enabled else "off"), None),
         (tr(language, "overpass_endpoints"), overpass_endpoints[-55:] if len(overpass_endpoints) > 55 else overpass_endpoints, None),
         (tr(language, "physics_mode"), tr(language, physics_mode), None),
+        (tr(language, "historical_weather"), tr(language, "on" if historical_weather else "off"), None),
+        (tr(language, "reset_configs"), "", None),
     ]
     for idx, (label, value, volume) in enumerate(rows):
-        y = panel.y + 100 + idx * 58
+        y = panel.y + 100 + idx * 50
         selected = idx == selected_idx
         color = (255, 215, 95) if selected else (220, 228, 235)
+        if idx == 9:
+            pygame.draw.rect(screen, (55, 65, 75), (panel.x + 30, y - 7, panel.width - 60, 38), border_radius=4)
         label_surface = font.render(label, True, color)
         screen.blit(label_surface, (panel.x + 38, y))
         if volume is None:
@@ -554,7 +660,7 @@ def draw_city_editor(
     import pygame
 
     screen.fill((18, 24, 32))
-    title = pygame.font.SysFont(None, 32, bold=True).render(tr(language, "city_editor"), True, (245, 245, 245))
+    title = pygame.font.SysFont(None, 32, bold=True).render(tr(language, "edit_city_list"), True, (245, 245, 245))
     screen.blit(title, title.get_rect(center=(screen_w // 2, 38)))
     rows = (len(cities) + 1) // 2
     item_w, item_h, gap_x, gap_y = 300, 38, 20, 8

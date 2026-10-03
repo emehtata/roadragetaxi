@@ -20,6 +20,8 @@ from typing import List, Optional, Tuple
 
 from ..osm import Scenery, SceneryObject, Way, classify_tree_kind
 from ..calendar import Season
+from ..climate import SeasonalAppearance
+from ..fuel import fuel_station_price_cents
 from ..physics import is_point_on_road
 
 
@@ -102,14 +104,12 @@ SCENERY_COLORS = {
     # street leading into it.
     "pedestrian_area": (125, 120, 112),
     "fuel": (92, 88, 84),  # paved forecourt - close to parking's grey, slightly warmer
-    # A closed kerb loop with no separate area tag (osm/build.py) - a real
-    # raised traffic/pedestrian-refuge island, but with no OSM fill tag
-    # telling us whether it's bare concrete or planted. A neutral raised-
-    # concrete tone (lighter than road asphalt, so it actually reads as a
-    # solid island rather than disappearing into the road under it) is the
-    # safer default than guessing green.
-    "traffic_island": (150, 148, 140),
+    # Bare kerb islands in the local Oulu data are planted even when OSM omits
+    # the inner surface tag. Use the ordinary grass base so seasons affect them.
+    "traffic_island": (112, 150, 86),
 }
+
+_fuel_station_font = None
 # Kinds that read as visibly grainy/textured ground in real aerial imagery -
 # tree canopy, mown/unmown grass, tilled soil, loose sand - as opposed to
 # the flat, mostly-building-covered zoning kinds (commercial, industrial,
@@ -130,7 +130,7 @@ _SPECKLE_SCENERY_KINDS = frozenset({
     "forest", "wood", "scrub", "heath", "park", "garden", "meadow", "grass",
     "greenfield", "nature_reserve", "recreation_ground", "dog_park",
     "fitness_station", "cemetery", "farmland", "farmyard", "allotments",
-    "sand", "beach", "grassland", "shrubbery", "wetland",
+    "sand", "beach", "grassland", "shrubbery", "wetland", "traffic_island",
 })
 _SPECKLE_SPACING_M = 1.3  # world-space grid spacing between candidate dots
 _SPECKLE_INSET = 0.15  # keep jitter off the exact cell edge, avoids a visible grid line
@@ -145,7 +145,12 @@ _SPECKLE_MIN_PX_PER_M = 2.0  # below this the dots would be sub-pixel noise, not
 # benchmarking a many-small-polygons scene. Sharing one budget across the
 # whole rebuild means many small polygons simply divide up the same
 # fixed total instead of each drawing their own full share on top.
-_SPECKLE_GLOBAL_BUDGET = 2200
+# The repeating grass base already supplies fine texture everywhere. Keep
+# polygon-specific speckles sparse: profiling at motorway speeds showed the
+# old 2200-dot/8800-candidate budget taking longer than one camera cache cell
+# to finish, so the seasonal scenery layer could never commit before its WIP
+# was invalidated by the next cell crossing.
+_SPECKLE_GLOBAL_BUDGET = 700
 # Separate ceiling on point_in_polygon *tests* (accepted + rejected), not
 # just accepted dots. _scenery_speckle_positions sizes its candidate-cell
 # stride to land near _SPECKLE_GLOBAL_BUDGET *accepted* dots, which assumes
@@ -170,8 +175,7 @@ _SPECKLE_CANDIDATE_BUDGET = _SPECKLE_GLOBAL_BUDGET * 4
 _scenery_wip = None
 
 
-def seasonal_vegetation_color(color: Tuple[int, int, int], season: Season) -> Tuple[int, int, int]:
-    """Map a summer vegetation color to the current seasonal palette."""
+def _season_palette_color(color: Tuple[int, int, int], season: Season) -> Tuple[int, int, int]:
     if season == Season.SUMMER:
         return color
     if season == Season.WINTER:
@@ -181,6 +185,26 @@ def seasonal_vegetation_color(color: Tuple[int, int, int], season: Season) -> Tu
     # Autumn suppresses green and moves foliage toward yellow/ochre.
     r, g, b = color
     return (min(210, int(r * 1.35 + 38)), min(170, int(g * 0.92 + 24)), min(105, int(b * 0.55 + 18)))
+
+
+def seasonal_vegetation_color(
+    color: Tuple[int, int, int],
+    season: Season,
+    appearance: Optional[SeasonalAppearance] = None,
+) -> Tuple[int, int, int]:
+    """Blend a summer vegetation color through continuous seasonal palettes."""
+    if appearance is None:
+        return _season_palette_color(color, season)
+    palettes = (
+        (_season_palette_color(color, Season.WINTER), appearance.winter),
+        (_season_palette_color(color, Season.SPRING), appearance.spring),
+        (color, appearance.summer),
+        (_season_palette_color(color, Season.AUTUMN), appearance.autumn),
+    )
+    return tuple(
+        max(0, min(255, round(sum(palette[channel] * weight for palette, weight in palettes))))
+        for channel in range(3)
+    )
 
 
 def _speckle_color(base: Tuple[int, int, int], variant: float) -> Tuple[int, int, int]:
@@ -365,6 +389,7 @@ def draw_scenery(
     spatial_grid=None,
     profiler=None,
     season: Season = Season.SUMMER,
+    seasonal_appearance: Optional[SeasonalAppearance] = None,
 ) -> None:
     """Draw cached scenery fills (parks, forests, grass, parking, ...).
 
@@ -387,7 +412,7 @@ def draw_scenery(
         id(spatial_grid),
         *common._phased_cache_grid_cell("scenery", camx, camy, cache_zoom),
         cache_zoom, screen.get_size(),
-        season,
+        season, seasonal_appearance,
     )
     if frame_cache_key == common._scenery_frame_cache_key and common._scenery_frame_cache_surface is not None:
         cached_camx, cached_camy = common._scenery_frame_cache_camera
@@ -410,7 +435,7 @@ def draw_scenery(
 
     is_first_ever_build = common._scenery_frame_cache_surface is None
     if _scenery_wip is None:
-        _scenery_wip = _start_scenery_rebuild(sceneries, spatial_grid, frame_cache_key, camx, camy, cache_zoom, screen_w, screen_h, season)
+        _scenery_wip = _start_scenery_rebuild(sceneries, spatial_grid, frame_cache_key, camx, camy, cache_zoom, screen_w, screen_h, season, seasonal_appearance)
 
     rebuild_started = time.perf_counter() if profiler is not None else None
     deadline = common._incremental_rebuild_deadline(
@@ -442,6 +467,8 @@ def _draw_scenery_uncached(
     screen_w: int = SCREEN_W,
     screen_h: int = SCREEN_H,
     spatial_grid=None,
+    season: Season = Season.SUMMER,
+    seasonal_appearance: Optional[SeasonalAppearance] = None,
 ) -> None:
     """Draw parks, forests, and green spaces intersecting viewport,
     unconditionally and in one call, directly onto `screen` at the given
@@ -467,16 +494,39 @@ def _draw_scenery_uncached(
         "vminx": vminx, "vminy": vminy, "vmaxx": vmaxx, "vmaxy": vmaxy,
         "visible_sceneries": list(visible_sceneries),
         "index": 0,
+        "season": season,
+        "seasonal_appearance": seasonal_appearance,
         "speckle_budget": _SPECKLE_GLOBAL_BUDGET,
         "speckle_candidate_budget": _SPECKLE_CANDIDATE_BUDGET,
     }
     _advance_scenery_rebuild(job, deadline=float("inf"))
 
 
+def draw_traffic_islands(
+    screen, sceneries: List[Scenery], camx: float, camy: float,
+    px_per_m: float = PX_PER_M, screen_w: int = SCREEN_W, screen_h: int = SCREEN_H,
+    spatial_grid=None, season: Season = Season.SUMMER,
+    seasonal_appearance: Optional[SeasonalAppearance] = None,
+) -> None:
+    """Redraw grassy kerb islands above road asphalt."""
+    vminx, vminy, vmaxx, vmaxy = get_viewport_bounds(camx, camy, px_per_m, screen_w, screen_h, 20.0)
+    visible = (
+        spatial_grid.ways_in_rect(vminx, vminy, vmaxx, vmaxy)
+        if spatial_grid is not None else sceneries
+    )
+    islands = [scenery for scenery in visible if scenery.kind.lower() == "traffic_island" or getattr(scenery, "kerbed", False)]
+    if islands:
+        _draw_scenery_uncached(
+            screen, islands, camx, camy, px_per_m, screen_w, screen_h,
+            season=season, seasonal_appearance=seasonal_appearance,
+        )
+
+
 def _start_scenery_rebuild(
     sceneries: List[Scenery], spatial_grid, frame_cache_key,
     camx: float, camy: float, cache_zoom: float, screen_w: int, screen_h: int,
     season: Season = Season.SUMMER,
+    seasonal_appearance: Optional[SeasonalAppearance] = None,
 ) -> dict:
     """Begin a new incremental scenery-cache rebuild job: select the
     visible sceneries (cheap, O(visible sceneries), no nested search) and
@@ -518,6 +568,7 @@ def _start_scenery_rebuild(
         "visible_sceneries": list(visible_sceneries),
         "index": 0,
         "season": season,
+        "seasonal_appearance": seasonal_appearance,
         # Speckle budgets are per-*rebuild*, shared across every textured
         # polygon in it - see _SPECKLE_GLOBAL_BUDGET/_SPECKLE_CANDIDATE_BUDGET -
         # so they live in job state and carry over between chunks exactly
@@ -592,7 +643,11 @@ def _advance_scenery_rebuild(job: dict, deadline: float) -> bool:
         kind = sc.kind.lower()
         color = SCENERY_COLORS.get(kind, (38, 105, 38))
         if kind in _SPECKLE_SCENERY_KINDS or kind in {"residential", "recreation_ground"}:
-            color = seasonal_vegetation_color(color, job.get("season", Season.SUMMER))
+            color = seasonal_vegetation_color(
+                color,
+                job.get("season", Season.SUMMER),
+                job.get("seasonal_appearance"),
+            )
         pygame.draw.polygon(screen, color, pts)
         if (
             show_speckles
@@ -675,6 +730,7 @@ def draw_trees(
     road_spatial_grid=None,
     profiler=None,
     season: Season = Season.SUMMER,
+    seasonal_appearance: Optional[SeasonalAppearance] = None,
 ) -> None:
     """Draw cached trees, on top of everything ground-level drawn earlier
     in the frame - scenery fills, water, roads, parking spaces.
@@ -732,7 +788,7 @@ def draw_trees(
             _draw_trees_uncached(
                 screen, sceneries, camx, camy, px_per_m, screen_w, screen_h,
                 tree_effects, fallen_trees, spatial_grid, ways, road_spatial_grid,
-                season,
+                season, seasonal_appearance,
             )
             return
 
@@ -741,7 +797,7 @@ def draw_trees(
         id(ways), id(spatial_grid), id(road_spatial_grid),
         *common._phased_cache_grid_cell("trees", camx, camy, cache_zoom),
         cache_zoom, screen.get_size(),
-        season,
+        season, seasonal_appearance,
     )
     if frame_cache_key == common._tree_frame_cache_key and common._tree_frame_cache_surface is not None:
         cached_camx, cached_camy = common._tree_frame_cache_camera
@@ -762,7 +818,7 @@ def draw_trees(
     _draw_trees_uncached(
         cache_surface, sceneries, camx, camy, cache_zoom, cache_width, cache_height,
         None, None, spatial_grid, ways, road_spatial_grid,
-        season,
+        season, seasonal_appearance,
     )
     if profiler is not None:
         profiler.record("render:trees_cache_rebuild", (time.perf_counter() - rebuild_started) * 1000.0)
@@ -786,6 +842,7 @@ def _draw_trees_uncached(
     ways: Optional[List[Way]] = None,
     road_spatial_grid=None,
     season: Season = Season.SUMMER,
+    seasonal_appearance: Optional[SeasonalAppearance] = None,
 ) -> None:
     """Draw every tree. Bounded the same way regardless of cache/uncached
     path: tree_budget-limited and viewport-culled, so cost stays
@@ -817,14 +874,16 @@ def _draw_trees_uncached(
         trees = getattr(sc, "trees", [])
         if not trees:
             continue
-        # Road test once per tree (it's the costly part - a spatial-grid
-        # lookup per tree, ~44ms per cache rebuild when run twice).
+        # OSM preprocessing normally removes road-overlapping trees once
+        # after each map merge. Only old/unprocessed scenery needs the
+        # expensive per-tree spatial-grid safety check here.
+        roads_already_checked = getattr(sc, "trees_checked_against_roads", False)
         drawable_trees = [
             (tree_index, tree_x, tree_y)
             for tree_index, (tree_x, tree_y) in enumerate(trees)
             if vminx <= tree_x <= vmaxx
             and vminy <= tree_y <= vmaxy
-            and not tree_is_on_road(tree_x, tree_y)
+            and (roads_already_checked or not tree_is_on_road(tree_x, tree_y))
         ]
         tree_step = max(1, math.ceil(len(drawable_trees) / tree_budget))
         for tree_index, tree_x, tree_y in drawable_trees:
@@ -862,7 +921,7 @@ def _draw_trees_uncached(
                 trunk_color = (78 + int(22 * variation), 52 + int(18 * variation), 27)
             palette = TREE_CROWN_PALETTES.get(kind, TREE_CROWN_COLORS)
             crown_color = palette[min(len(palette) - 1, int(variation * len(palette)))]
-            crown_color = seasonal_vegetation_color(crown_color, season)
+            crown_color = seasonal_vegetation_color(crown_color, season, seasonal_appearance)
             if tree_key in (fallen_trees or set()):
                 fall_heading = effect.get("angle", 0.0)
                 fall_x = sx + math.cos(fall_heading) * 3.2 * px_per_m
@@ -900,6 +959,9 @@ _FIREPIT_FLAME_COLOR = (216, 120, 40)
 _FOUNTAIN_SPRAY_COLOR = (220, 240, 245)
 
 
+KNOCKED_POST_COLOR = (88, 90, 92)
+
+
 def draw_scenery_objects(
     screen,
     scenery_objects: List[SceneryObject],
@@ -909,6 +971,7 @@ def draw_scenery_objects(
     screen_w: int = SCREEN_W,
     screen_h: int = SCREEN_H,
     profiler=None,
+    revision: int = 0,
 ) -> None:
     """Draw cached small decorative OSM point objects - benches, waste
     baskets, bicycle parking, statues/memorials, picnic tables, firepits,
@@ -929,7 +992,7 @@ def draw_scenery_objects(
     frame_cache_key = (
         id(scenery_objects), len(scenery_objects), id(scenery_objects[-1]) if scenery_objects else None,
         *common._phased_cache_grid_cell("scenery_objects", camx, camy, cache_zoom),
-        cache_zoom, screen.get_size(),
+        cache_zoom, screen.get_size(), revision,  # revision: posts knocked over since
     )
     if frame_cache_key == common._scenery_object_frame_cache_key and common._scenery_object_frame_cache_surface is not None:
         cached_camx, cached_camy = common._scenery_object_frame_cache_camera
@@ -978,6 +1041,13 @@ def _draw_scenery_objects_uncached(
         if not (vminx <= obj.x <= vmaxx and vminy <= obj.y <= vmaxy):
             continue
         sx, sy = world_to_screen(obj.x, obj.y, camx, camy, px_per_m, screen_w, screen_h)
+        knocked_angle = getattr(obj, "knocked_angle", None)
+        if knocked_angle is not None:
+            # A bollard/lamp post hit hard: bent over, lying the way the taxi went.
+            length = (4.0 if obj.kind == "street_lamp" else 0.9) * px_per_m
+            tip = (sx + math.cos(knocked_angle) * length, sy - math.sin(knocked_angle) * length)
+            pygame.draw.line(screen, KNOCKED_POST_COLOR, (sx, sy), tip, max(2, int(0.25 * px_per_m)))
+            continue
         if obj.kind == "bench":
             # Rotated to sit parallel to whichever path it's beside (see
             # osm/build.py's scenery_object_nodes_raw loop) rather than
@@ -1028,15 +1098,78 @@ def _draw_scenery_objects_uncached(
             pygame.draw.circle(screen, SCENERY_OBJECT_COLORS["fountain"], (sx, sy), radius)
             pygame.draw.circle(screen, _FOUNTAIN_SPRAY_COLOR, (sx, sy), max(1, radius // 3))
         elif obj.kind == "fuel":
-            width = max(2, int(0.6 * px_per_m))
-            height = max(3, int(1.1 * px_per_m))
-            pygame.draw.rect(screen, SCENERY_OBJECT_COLORS["fuel"], (sx - width // 2, sy - height, width, height))
+            width = max(7, int(0.8 * px_per_m))
+            height = max(12, int(1.3 * px_per_m))
+            angle = obj.direction_angle if obj.direction_angle is not None else 0.0
+            along_x, along_y = math.cos(angle), -math.sin(angle)
+            offsets = (-0.85 * px_per_m, 0.85 * px_per_m) if obj.is_area else (0.0,)
+            for offset in offsets:
+                pump_x = sx + along_x * offset
+                pump_y = sy + along_y * offset
+                pump_rect = pygame.Rect(pump_x - width // 2, pump_y - height, width, height)
+                pygame.draw.rect(screen, (205, 62, 48), pump_rect, border_radius=2)
+                pygame.draw.rect(screen, (245, 245, 230), pump_rect, width=1, border_radius=2)
+                display_rect = pygame.Rect(
+                    pump_rect.x + max(1, width // 5),
+                    pump_rect.y + max(2, height // 6),
+                    max(2, width - 2 * max(1, width // 5)),
+                    max(2, height // 4),
+                )
+                pygame.draw.rect(screen, (20, 30, 32), display_rect)
         elif obj.kind == "gate":
             half_len = max(2, int(1.0 * px_per_m))
             pygame.draw.line(screen, SCENERY_OBJECT_COLORS["gate"], (sx - half_len, sy), (sx + half_len, sy), max(1, int(px_per_m * 0.15)))
         elif obj.kind == "bollard":
             radius = max(1, int(0.25 * px_per_m))
             pygame.draw.circle(screen, SCENERY_OBJECT_COLORS["bollard"], (sx, sy), radius)
+
+
+def draw_fuel_station_signs(
+    screen,
+    scenery_objects: List[SceneryObject],
+    camx: float,
+    camy: float,
+    px_per_m: float = PX_PER_M,
+    screen_w: int = SCREEN_W,
+    screen_h: int = SCREEN_H,
+) -> None:
+    """Draw gameplay-critical fuel markers above buildings and scenery."""
+    import pygame
+
+    global _fuel_station_font
+    if _fuel_station_font is None:
+        _fuel_station_font = pygame.font.SysFont(None, 18, bold=True)
+    vminx, vminy, vmaxx, vmaxy = get_viewport_bounds(
+        camx, camy, px_per_m, screen_w, screen_h, 30.0
+    )
+    for station in scenery_objects:
+        if station.kind != "fuel" or not (
+            vminx <= station.x <= vmaxx and vminy <= station.y <= vmaxy
+        ):
+            continue
+        sx, sy = world_to_screen(
+            station.x, station.y, camx, camy, px_per_m, screen_w, screen_h
+        )
+        pump_height = max(12, int(1.3 * px_per_m))
+        marker_y = sy - pump_height - 18
+        pygame.draw.circle(screen, (255, 205, 35), (sx, marker_y), 10)
+        pygame.draw.circle(screen, (25, 28, 30), (sx, marker_y), 10, 2)
+        pygame.draw.polygon(
+            screen,
+            (255, 205, 35),
+            ((sx - 6, marker_y + 7), (sx + 6, marker_y + 7), (sx, sy - pump_height - 2)),
+        )
+        price_cents = fuel_station_price_cents(station)
+        station_name = station.name or "FUEL"
+        price_text = _fuel_station_font.render(
+            f"{station_name}  {price_cents / 100.0:.2f} €/L",
+            True,
+            (255, 235, 120),
+        )
+        board_rect = price_text.get_rect(midbottom=(sx, marker_y - 13)).inflate(12, 8)
+        pygame.draw.rect(screen, (15, 22, 25), board_rect, border_radius=4)
+        pygame.draw.rect(screen, (255, 205, 35), board_rect, width=2, border_radius=4)
+        screen.blit(price_text, price_text.get_rect(center=board_rect.center))
 
 
 def draw_parking_spaces(screen, parking_spaces, camx: float, camy: float, px_per_m: float = PX_PER_M,
@@ -1073,7 +1206,7 @@ def draw_parking_spaces(screen, parking_spaces, camx: float, camy: float, px_per
         pygame.draw.lines(screen, (125, 128, 124), True, points, max(1, int(px_per_m * 0.12)))
 
 
-def _draw_grass_texture_uncached(screen, camx: float, camy: float, px_per_m: float, screen_w: int, screen_h: int, season: Season = Season.SUMMER) -> None:
+def _draw_grass_texture_uncached(screen, camx: float, camy: float, px_per_m: float, screen_w: int, screen_h: int, season: Season = Season.SUMMER, seasonal_appearance: Optional[SeasonalAppearance] = None) -> None:
     import pygame
 
     global _grass_texture_tile
@@ -1089,19 +1222,23 @@ def _draw_grass_texture_uncached(screen, camx: float, camy: float, px_per_m: flo
             pygame.draw.line(_grass_texture_tile, color, (x, y), (x + rng.choice((-1, 0, 1)), y - rng.randrange(1, 4)), 1)
 
     tile = _grass_texture_tile
-    if season != Season.SUMMER:
-        tile = _seasonal_grass_texture_tiles.get(season)
+    palette_key = seasonal_appearance or season
+    is_full_summer = season == Season.SUMMER and (
+        seasonal_appearance is None or seasonal_appearance.summer >= 0.999
+    )
+    if not is_full_summer:
+        tile = _seasonal_grass_texture_tiles.get(palette_key)
         if tile is None:
             tile_size = 96
             tile = pygame.Surface((tile_size, tile_size))
-            base = seasonal_vegetation_color((25, 80, 25), season)
+            base = seasonal_vegetation_color((25, 80, 25), season, seasonal_appearance)
             tile.fill(base)
             rng = random.Random(17)
             for _ in range(150):
                 x, y = rng.randrange(tile_size), rng.randrange(tile_size)
-                variant = seasonal_vegetation_color(rng.choice(((35, 96, 31), (42, 105, 35), (20, 70, 24), (58, 112, 39))), season)
+                variant = seasonal_vegetation_color(rng.choice(((35, 96, 31), (42, 105, 35), (20, 70, 24), (58, 112, 39))), season, seasonal_appearance)
                 pygame.draw.line(tile, variant, (x, y), (x + rng.choice((-1, 0, 1)), y - rng.randrange(1, 4)), 1)
-            _seasonal_grass_texture_tiles[season] = tile
+            _seasonal_grass_texture_tiles[palette_key] = tile
     tile_width, tile_height = tile.get_size()
     origin_x = screen_w // 2 - int(camx * px_per_m)
     origin_y = screen_h // 2 + int(camy * px_per_m)
@@ -1121,6 +1258,7 @@ def draw_grass_texture(
     screen_h: Optional[int] = None,
     profiler=None,
     season: Season = Season.SUMMER,
+    seasonal_appearance: Optional[SeasonalAppearance] = None,
 ) -> None:
     """Fill screen with a subtle repeating grass texture.
 
@@ -1141,7 +1279,7 @@ def draw_grass_texture(
 
     frame_cache_key = (
         *common._phased_cache_grid_cell("grass", camx, camy, cache_zoom),
-        cache_zoom, (screen_w, screen_h), season,
+        cache_zoom, (screen_w, screen_h), season, seasonal_appearance,
     )
     if frame_cache_key == common._grass_frame_cache_key and common._grass_frame_cache_surface is not None:
         cached_camx, cached_camy = common._grass_frame_cache_camera
@@ -1164,7 +1302,7 @@ def draw_grass_texture(
     cache_height = screen_h + CACHE_PADDING_PX * 2
     cache_surface = pygame.Surface((cache_width, cache_height))
     rebuild_started = time.perf_counter() if profiler is not None else 0.0
-    _draw_grass_texture_uncached(cache_surface, camx, camy, cache_zoom, cache_width, cache_height, season)
+    _draw_grass_texture_uncached(cache_surface, camx, camy, cache_zoom, cache_width, cache_height, season, seasonal_appearance)
     if profiler is not None:
         profiler.record("render:grass_cache_rebuild", (time.perf_counter() - rebuild_started) * 1000.0)
     common._grass_frame_cache_key = frame_cache_key

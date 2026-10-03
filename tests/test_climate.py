@@ -1,11 +1,33 @@
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
+
+import pytest
 
 from theroadragetrip.calendar import Season
 from theroadragetrip.climate import (
+    seasonal_appearance_for_date,
     thermal_season_for_date,
     typical_daily_mean_temperature,
     typical_temperature,
 )
+
+
+def test_oulu_is_visibly_turning_autumn_before_thermal_autumn():
+    day = date(2026, 9, 23)
+    appearance = seasonal_appearance_for_date(day, 65.01)
+
+    assert thermal_season_for_date(day, 65.01) == Season.SUMMER
+    assert appearance.autumn > 0.5
+    assert appearance.summer < 0.5
+
+
+def test_spring_snow_cover_fades_gradually_and_later_in_the_north():
+    early = seasonal_appearance_for_date(date(2026, 4, 1), 65.01)
+    later = seasonal_appearance_for_date(date(2026, 5, 1), 65.01)
+    northern = seasonal_appearance_for_date(date(2026, 5, 1), 68.9)
+
+    assert 0.0 < early.spring < 1.0
+    assert later.winter < early.winter
+    assert northern.winter > later.winter
 
 
 def test_typical_temperature_is_lower_at_higher_latitude():
@@ -34,3 +56,32 @@ def test_thermal_seasons_follow_seven_day_zero_and_ten_degree_limits():
     assert thermal_season_for_date(date(2026, 4, 15), latitude) == Season.SPRING
     assert thermal_season_for_date(date(2026, 7, 15), latitude) == Season.SUMMER
     assert thermal_season_for_date(date(2026, 10, 15), latitude) == Season.AUTUMN
+
+
+@pytest.mark.parametrize(
+    ("warming", "means", "expected"),
+    [
+        (True, [-0.1, 1, 1, 1, 1, 1, 1], Season.WINTER),
+        (True, [0.1, 1, 1, 1, 1, 1, 1], Season.SPRING),
+        (True, [9.9, 11, 11, 11, 11, 11, 11], Season.SPRING),
+        (True, [10.1, 11, 11, 11, 11, 11, 11], Season.SUMMER),
+        (False, [10.1, 9, 9, 9, 9, 9, 9], Season.SUMMER),
+        (False, [9.9, 9, 9, 9, 9, 9, 9], Season.AUTUMN),
+        (False, [0.1, -1, -1, -1, -1, -1, -1], Season.AUTUMN),
+        (False, [-0.1, -1, -1, -1, -1, -1, -1], Season.WINTER),
+    ],
+)
+def test_thermal_transition_requires_seven_consecutive_days(
+    monkeypatch, warming, means, expected
+):
+    anchor = date(2026, 6, 1)
+    by_day = {
+        anchor - timedelta(days=offset): value
+        for offset, value in enumerate(means)
+    }
+    by_day[anchor - timedelta(days=7)] = means[0] - (1 if warming else -1)
+    monkeypatch.setattr(
+        "theroadragetrip.climate.typical_daily_mean_temperature",
+        lambda day, latitude: by_day[day],
+    )
+    assert thermal_season_for_date(anchor, 60.17) == expected

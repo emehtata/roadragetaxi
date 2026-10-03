@@ -37,6 +37,26 @@ def test_single_signal_node_generates_a_full_four_way_intersection():
     assert len(intersection.approaches) == 4
 
 
+def test_signal_is_drawn_on_the_right_roadside_without_moving_its_control_point():
+    from theroadragetrip.render.roads import (
+        _traffic_light_render_position,
+        _traffic_light_rotation_degrees,
+    )
+
+    lights, _ = build_traffic_light_system([(0.0, 0.0, 0)], list(_four_way_ways().values()))
+    southbound = next(light for light in lights if math.isclose(light.direction_angle, 1.5 * math.pi))
+
+    assert math.isclose(southbound.x, 0.0, abs_tol=1e-9)
+    assert math.isclose(southbound.y, 14.0)
+    render_x, render_y = _traffic_light_render_position(southbound)
+    assert math.isclose(render_x, -4.75)
+    assert math.isclose(render_y, 14.0)
+    assert math.isclose(_traffic_light_rotation_degrees(southbound), 180.0)
+
+    eastbound = next(light for light in lights if math.isclose(light.direction_angle, 0.0))
+    assert math.isclose(_traffic_light_rotation_degrees(eastbound), -90.0)
+
+
 def test_north_south_and_east_west_are_on_separate_phases():
     arms = _four_way_ways()
     lights, _ = build_traffic_light_system([(0.0, 0.0, 0)], list(arms.values()))

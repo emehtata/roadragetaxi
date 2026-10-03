@@ -66,6 +66,8 @@ from .scenery import (
     draw_parking_spaces,
     draw_scenery,
     draw_scenery_objects,
+    draw_traffic_islands,
+    draw_fuel_station_signs,
     draw_trees,
 )
 
@@ -109,8 +111,12 @@ from .buildings import (
     _pseudo_random_unit,
     _window_is_illuminated,
     _window_illumination_probability,
+    mask_buildings_from_light_surface,
     draw_buildings,
+    draw_open_roof_overlays,
     draw_illuminated_windows,
+    generate_detached_house_parking,
+    generate_detached_house_parking_chunk,
 )
 
 from .roads import (
@@ -145,7 +151,9 @@ from .roads import (
     draw_taxi_stops,
     draw_tire_tracks,
     draw_traffic_lights,
+    draw_vomit_footprints,
     draw_vomit_puddles,
+    draw_level_ways,
     draw_ways,
     draw_yield_signs,
 )
@@ -166,6 +174,8 @@ from .vehicles import (
     draw_headlight_beams,
     draw_logical_intersections,
     draw_npc_cars,
+    draw_trains,
+    draw_train_car_popup,
     draw_npc_spatial_grid,
     draw_passenger_nausea_bubble,
     draw_police_cars,
@@ -176,6 +186,8 @@ from .vehicles import (
 
 from .pedestrians import (
     STREET_LIGHT_REFLECTOR_RADIUS_M,
+    draw_booked_passenger_arrow,
+    draw_pedestrians_under_roofs,
     draw_npc_popup,
     draw_pedestrian_reflectors,
     draw_pedestrians,
@@ -192,6 +204,7 @@ from .labels import (
 
 from .weather import (
     RAIN_COLOR,
+    draw_lightning_flash,
     draw_puddles,
     draw_rain,
     draw_splashes,
@@ -206,6 +219,8 @@ from .navigation import (
 )
 
 from .hud import (
+    draw_next_train,
+    draw_camera_back_button,
     _day_night_overlay_cache,
     _draw_analog_speedometer,
     _load_rage_face_frames,
@@ -229,6 +244,7 @@ from .menus import (
     draw_city_selection_menu,
     draw_city_summary,
     draw_game_start_hint,
+    draw_meet_panel,
     draw_game_start_overlay,
     draw_help_screen,
     draw_loading_screen,

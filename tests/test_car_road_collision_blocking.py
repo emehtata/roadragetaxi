@@ -234,6 +234,26 @@ def test_building_collision_bounces_and_penalizes_once():
     assert taxi_manager.total_score == score_after_crash
 
 
+def test_open_roof_building_is_drive_through():
+    from theroadragetrip.osm import Building
+
+    canopy = Building(
+        points_m=[(4.0, -3.0), (8.0, -3.0), (8.0, 3.0), (4.0, 3.0)],
+        building_type="roof",
+    )
+    car = Car(x=5.0, y=0.0, heading=0.0, speed=4.0)
+    taxi_manager = TaxiManager(ways=[])
+
+    crashed = taxi_manager.check_building_collision(
+        car, [canopy], sim_time=1.0, previous_position=(3.0, 0.0)
+    )
+
+    assert crashed is False
+    assert (car.x, car.y) == (5.0, 0.0)
+    assert car.speed == 4.0
+    assert taxi_manager.total_score == 0
+
+
 def test_building_overlapping_road_does_not_cause_crash():
     from theroadragetrip.osm import Building
 

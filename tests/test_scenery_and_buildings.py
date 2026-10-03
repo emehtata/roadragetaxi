@@ -1,3 +1,4 @@
+import pytest
 import math
 import sys
 import time
@@ -54,6 +55,8 @@ from theroadragetrip.render import (
     draw_illuminated_windows,
     draw_scenery,
     draw_scenery_objects,
+    draw_traffic_islands,
+    draw_fuel_station_signs,
     draw_trees,
     world_to_screen,
     _draw_scenery_uncached,
@@ -129,6 +132,31 @@ def test_very_tall_building_facade_depth_stays_bounded():
 
         footprint_span_px = 4.0 * 9.0
         assert _facade_wall_pixel_span(screen) <= footprint_span_px + MAX_BUILDING_DEPTH_PX + 4
+    finally:
+        pygame.quit()
+
+
+@pytest.mark.parametrize("building_type", ["roof", "canopy"])  # canopy: e.g. Oulu station's platform roof
+def test_open_roof_renders_as_translucent_canopy_without_facade_walls(building_type):
+    canopy = Building(
+        [(-5.0, -5.0), (5.0, -5.0), (5.0, 5.0), (-5.0, 5.0)],
+        bbox=(-5.0, -5.0, 5.0, 5.0),
+        building_type=building_type,
+    )
+
+    pygame.init()
+    try:
+        screen = pygame.Surface((200, 200), pygame.SRCALPHA)
+        _draw_buildings_uncached(
+            screen, [canopy], 0.0, 0.0, px_per_m=5.0, screen_w=200, screen_h=200
+        )
+
+        assert screen.get_at((100, 100)).a < 255
+        assert not any(
+            tuple(screen.get_at((x, y)))[:3] in BUILDING_WALL_COLORS
+            for x in range(screen.get_width())
+            for y in range(screen.get_height())
+        )
     finally:
         pygame.quit()
 
@@ -823,6 +851,39 @@ def test_draw_scenery_objects_draws_every_new_point_kind():
         assert non_background > 0, f"{kind} drew nothing"
 
 
+def test_fuel_station_draws_prominent_marker_and_price_board():
+    """A fuel point must advertise itself beyond the tiny pump footprint."""
+    from theroadragetrip.render import common as common_module
+
+    pygame.init()
+    common_module.begin_static_cache_frame()
+    common_module._pending_static_rebuilds.clear()
+    common_module._scenery_object_frame_cache_key = None
+    common_module._scenery_object_frame_cache_surface = None
+    screen = pygame.Surface((300, 240))
+    screen.fill((0, 0, 0))
+    station = SceneryObject(0.0, 0.0, "fuel", name="TEST", id=1234)
+
+    draw_scenery_objects(
+        screen, [station], 0.0, 0.0, px_per_m=10.0,
+        screen_w=300, screen_h=240,
+    )
+    # Simulate an opaque building layer covering the pump and anything
+    # drawn with ordinary scenery objects, then render the station overlay.
+    pygame.draw.rect(screen, (70, 70, 70), (40, 25, 220, 100))
+    draw_fuel_station_signs(
+        screen, [station], 0.0, 0.0, px_per_m=10.0,
+        screen_w=300, screen_h=240,
+    )
+
+    colored_above_pump = sum(
+        tuple(screen.get_at((x, y)))[:3] not in {(0, 0, 0), (70, 70, 70)}
+        for x in range(50, 251)
+        for y in range(35, 105)
+    )
+    assert colored_above_pump > 150
+
+
 def test_scenery_colors_differ_by_landuse_value():
     """Different landuse/leisure/natural kinds must render distinct colors
     (regression: everything used to fall back to one generic green)."""
@@ -868,11 +929,8 @@ def test_draw_scenery_adds_a_speckle_texture_for_natural_ground_kinds():
     assert commercial_colors == {SCENERY_COLORS["commercial"]}, "commercial must stay a flat fill, not textured"
 
 
-def test_draw_scenery_renders_a_traffic_island_as_a_flat_fill_not_speckled():
-    """A bare kerb-outlined island (osm/build.py, no natural/landuse/
-    leisure tag) should render as a solid, visually distinct fill - like
-    parking/fuel, not textured like natural ground, since there's no OSM
-    data saying whether it's planted or paved."""
+def test_draw_scenery_renders_a_traffic_island_as_grass():
+    """Bare kerb islands use the same grassy, seasonal rendering as local planted islands."""
     island = Scenery(
         [(0.0, 0.0), (100.0, 0.0), (100.0, 100.0), (0.0, 100.0)], "traffic_island",
         bbox=(0.0, 0.0, 100.0, 100.0),
@@ -880,7 +938,24 @@ def test_draw_scenery_renders_a_traffic_island_as_a_flat_fill_not_speckled():
     screen = pygame.Surface((300, 300), pygame.SRCALPHA)
     _draw_scenery_uncached(screen, [island], 50.0, 50.0, 4.0, 300, 300)
     colors = {tuple(screen.get_at((x, y)))[:3] for x in range(300) for y in range(300)}
-    assert colors == {SCENERY_COLORS["traffic_island"]}
+    assert SCENERY_COLORS["traffic_island"] == SCENERY_COLORS["grass"]
+    assert SCENERY_COLORS["traffic_island"] in colors
+    assert len(colors) > 1, "grassy traffic island rendered without vegetation texture"
+
+
+def test_traffic_island_overlay_paints_over_wide_road_asphalt():
+    """Roads render after base scenery, so islands need the small foreground pass."""
+    island = Scenery(
+        [(0.0, 0.0), (20.0, 0.0), (20.0, 20.0), (0.0, 20.0)], "grass",
+        bbox=(0.0, 0.0, 20.0, 20.0), kerbed=True,
+    )
+    screen = pygame.Surface((200, 200))
+    road_color = (70, 70, 70)
+    screen.fill(road_color)
+
+    draw_traffic_islands(screen, [island], 10.0, 10.0, px_per_m=4.0, screen_w=200, screen_h=200)
+
+    assert tuple(screen.get_at((100, 100)))[:3] != road_color
 
 
 def test_draw_scenery_speckle_texture_is_still_visible_off_center():
@@ -1140,6 +1215,42 @@ def test_build_ways_parses_fuel_forecourt_as_paved_scenery():
     assert len(result.sceneries) == 1
     assert result.sceneries[0].kind == "fuel"
     assert result.sceneries[0].surface == "asphalt"
+    assert len(result.scenery_objects) == 1
+    assert result.scenery_objects[0].kind == "fuel"
+    assert result.scenery_objects[0].name == "Neste"
+    assert result.scenery_objects[0].id == 10
+    assert result.scenery_objects[0].is_area is True
+
+
+def test_build_ways_creates_fuel_pumps_for_named_roof_station_area():
+    elements = [
+        {"type": "node", "id": 1, "lat": 60.0, "lon": 25.0},
+        {"type": "node", "id": 2, "lat": 60.001, "lon": 25.0},
+        {"type": "node", "id": 3, "lat": 60.001, "lon": 25.001},
+        {"type": "node", "id": 4, "lat": 60.0, "lon": 25.001},
+        {
+            "type": "way",
+            "id": 159917622,
+            "nodes": [1, 2, 3, 4, 1],
+            "tags": {
+                "amenity": "fuel",
+                "building": "roof",
+                "brand": "Neste",
+                "name": "Neste Express Oulu Lävistäjä",
+            },
+        },
+    ]
+
+    result = build_ways(elements)
+
+    assert len(result.buildings) == 1
+    assert result.buildings[0].building_type == "roof"
+    assert len(result.scenery_objects) == 1
+    station = result.scenery_objects[0]
+    assert station.kind == "fuel"
+    assert station.name == "Neste Express Oulu Lävistäjä"
+    assert station.id == 159917622
+    assert station.is_area is True
 
 
 def test_hard_tree_impact_knocks_tree_down_and_smokes_taxi():
@@ -2034,4 +2145,238 @@ def test_illuminated_windows_do_not_regress_static_building_cache():
         assert render_common._building_frame_cache_key is None
         assert render_common._building_frame_cache_surface is None
     finally:
+        pygame.quit()
+
+
+def test_illuminated_windows_reuse_geometry_during_small_camera_moves(monkeypatch):
+    from theroadragetrip.render import buildings as buildings_render
+
+    pygame.init()
+    try:
+        buildings = [
+            Building(
+                [(x, 0.0), (x + 18.0, 0.0), (x + 18.0, 18.0), (x, 18.0)],
+                levels=5,
+                height_m=15.0,
+                bbox=(x, 0.0, x + 18.0, 18.0),
+            )
+            for x in range(-100, 101, 25)
+        ]
+        calls = 0
+        real_visible_edges = buildings_render._visible_building_edges
+
+        def counting_visible_edges(*args):
+            nonlocal calls
+            calls += 1
+            return real_visible_edges(*args)
+
+        monkeypatch.setattr(buildings_render, "_visible_building_edges", counting_visible_edges)
+        buildings_render._illuminated_window_cache = None
+        first = pygame.Surface((400, 300))
+        second = pygame.Surface((400, 300))
+
+        draw_illuminated_windows(
+            first, buildings, 0.0, 0.0, 0.0,
+            px_per_m=2.0, screen_w=400, screen_h=300,
+        )
+        first_cache = buildings_render._illuminated_window_cache
+        calls_after_build = calls
+        draw_illuminated_windows(
+            second, buildings, 5.0, 0.0, 0.0,
+            px_per_m=2.0, screen_w=400, screen_h=300,
+        )
+        reused_frame = pygame.image.tobytes(second, "RGB")
+        assert calls == calls_after_build
+
+        # A cache hit after moving in both axes must put every glow at the
+        # same position as a fresh render at that camera. This catches the
+        # inverted screen-Y transform that made lit windows float away
+        # from their building facades while driving north/south.
+        fresh = pygame.Surface((400, 300))
+        buildings_render._illuminated_window_cache = None
+        draw_illuminated_windows(
+            fresh, buildings, 5.0, 7.0, 0.0,
+            px_per_m=2.0, screen_w=400, screen_h=300,
+        )
+        fresh_frame = pygame.image.tobytes(fresh, "RGB")
+
+        buildings_render._illuminated_window_cache = first_cache
+        moved = pygame.Surface((400, 300))
+        draw_illuminated_windows(
+            moved, buildings, 5.0, 7.0, 0.0,
+            px_per_m=2.0, screen_w=400, screen_h=300,
+        )
+
+        assert calls_after_build > 0
+        assert reused_frame != pygame.image.tobytes(first, "RGB")
+        assert pygame.image.tobytes(moved, "RGB") == fresh_frame
+    finally:
+        buildings_render._illuminated_window_cache = None
+        pygame.quit()
+
+
+# --- bin-loader-v6.md: incremental illuminated-window cache -----------------
+
+def _window_block(count: int, x0: float = 0.0):
+    return [
+        Building(
+            [(x0 + i * 22.0, 0.0), (x0 + i * 22.0 + 18.0, 0.0), (x0 + i * 22.0 + 18.0, 18.0), (x0 + i * 22.0, 18.0)],
+            levels=5, height_m=15.0, bbox=(x0 + i * 22.0, 0.0, x0 + i * 22.0 + 18.0, 18.0),
+        )
+        for i in range(count)
+    ]
+
+
+def _render_windows(buildings, grid, camx=100.0, camy=0.0, px=2.0, budget_s=None):
+    screen = pygame.Surface((400, 300))
+    draw_illuminated_windows(
+        screen, buildings, camx, camy, 0.0, px_per_m=px, screen_w=400, screen_h=300,
+        spatial_grid=grid, budget_s=budget_s,
+    )
+    return pygame.image.tobytes(screen, "RGB")
+
+
+def _fresh_cache_bytes(buildings, camx=100.0, camy=0.0, px=2.0):
+    from theroadragetrip.physics import SpatialWayGrid
+    from theroadragetrip.render import buildings as buildings_render
+
+    saved = buildings_render._illuminated_window_cache, buildings_render._illuminated_window_job
+    buildings_render._illuminated_window_cache = buildings_render._illuminated_window_job = None
+    try:
+        grid = SpatialWayGrid()
+        grid.rebuild(buildings)
+        return _render_windows(buildings, grid, camx, camy, px, budget_s=1e9)
+    finally:
+        buildings_render._illuminated_window_cache, buildings_render._illuminated_window_job = saved
+
+
+def _reset_window_cache():
+    from theroadragetrip.render import buildings as buildings_render
+
+    buildings_render._illuminated_window_cache = buildings_render._illuminated_window_job = None
+
+
+def test_incremental_window_cache_matches_a_full_rebuild_exactly():
+    from theroadragetrip.physics import SpatialWayGrid
+
+    pygame.init()
+    try:
+        _reset_window_cache()
+        buildings = _window_block(30)
+        grid = SpatialWayGrid()
+        grid.rebuild(buildings)
+        _render_windows(buildings, grid)                     # cold build
+        buildings.extend(_window_block(30, x0=30 * 22.0))
+        grid.rebuild(buildings)                              # grid catches up
+        frames = 0
+        while True:
+            incremental = _render_windows(buildings, grid, budget_s=0.0)  # one building per frame
+            frames += 1
+            from theroadragetrip.render import buildings as br
+            if br._illuminated_window_job is None:
+                break
+            assert frames < 1000
+        assert frames > 1, "a zero budget must spread the extension over several frames"
+        assert incremental == _fresh_cache_bytes(buildings)
+    finally:
+        _reset_window_cache()
+        pygame.quit()
+
+
+def test_window_cache_does_not_regenerate_processed_buildings_or_repeat_on_duplicate_notice(monkeypatch):
+    from theroadragetrip.physics import SpatialWayGrid
+    from theroadragetrip.render import buildings as br
+
+    pygame.init()
+    try:
+        _reset_window_cache()
+        buildings = _window_block(10)
+        grid = SpatialWayGrid()
+        grid.rebuild(buildings)
+        _render_windows(buildings, grid)
+        calls = []
+        real = br._draw_illuminated_building
+        monkeypatch.setattr(br, "_draw_illuminated_building", lambda glow, b, *a: calls.append(id(b)) or real(glow, b, *a))
+        buildings.extend(_window_block(5, x0=10 * 22.0))
+        grid.rebuild(buildings)
+        for _ in range(50):
+            _render_windows(buildings, grid, budget_s=0.0)
+        assert len(calls) == 5 and len(set(calls)) == 5   # only the new ones, each once
+        _render_windows(buildings, grid, budget_s=0.0)     # same count again: nothing to do
+        assert len(calls) == 5
+    finally:
+        _reset_window_cache()
+        pygame.quit()
+
+
+def test_window_cache_ignores_list_growth_the_grid_has_not_indexed(monkeypatch):
+    """The V5 scenario: the tile merge appends to `buildings` every frame but
+    the grid only catches up later - the rendered set doesn't change, so no
+    rebuild may happen."""
+    from theroadragetrip.physics import SpatialWayGrid
+    from theroadragetrip.render import buildings as br
+
+    pygame.init()
+    try:
+        _reset_window_cache()
+        buildings = _window_block(10)
+        grid = SpatialWayGrid()
+        grid.rebuild(buildings)
+        _render_windows(buildings, grid)
+        calls = []
+        real = br._draw_illuminated_building
+        monkeypatch.setattr(br, "_draw_illuminated_building", lambda glow, b, *a: calls.append(1) or real(glow, b, *a))
+        for i in range(20):                                 # a building appended per frame
+            buildings.extend(_window_block(1, x0=(10 + i) * 22.0))
+            _render_windows(buildings, grid)
+        assert calls == []
+    finally:
+        _reset_window_cache()
+        pygame.quit()
+
+
+def test_window_cache_extension_survives_camera_move_and_rebuilds_on_zoom_change():
+    from theroadragetrip.physics import SpatialWayGrid
+
+    pygame.init()
+    try:
+        _reset_window_cache()
+        buildings = _window_block(20)
+        grid = SpatialWayGrid()
+        grid.rebuild(buildings)
+        _render_windows(buildings, grid)
+        buildings.extend(_window_block(20, x0=20 * 22.0))
+        grid.rebuild(buildings)
+        _render_windows(buildings, grid, camx=100.0, budget_s=0.0)      # extension begins
+        moved = _render_windows(buildings, grid, camx=110.0, budget_s=1e9)  # camera moves mid-rebuild
+        # Reference: a full cache built at the original camera, then blitted at
+        # the moved one - what the extension must be pixel-identical to.
+        _reset_window_cache()
+        ref_grid = SpatialWayGrid()
+        ref_grid.rebuild(buildings)
+        _render_windows(buildings, ref_grid, camx=100.0, budget_s=1e9)
+        assert moved == _render_windows(buildings, ref_grid, camx=110.0, budget_s=1e9)
+        zoomed = _render_windows(buildings, grid, camx=110.0, px=3.0, budget_s=0.0)
+        assert zoomed == _fresh_cache_bytes(buildings, camx=110.0, px=3.0)
+    finally:
+        _reset_window_cache()
+        pygame.quit()
+
+
+def test_window_cache_rebuilds_when_buildings_are_unloaded():
+    from theroadragetrip.physics import SpatialWayGrid
+
+    pygame.init()
+    try:
+        _reset_window_cache()
+        buildings = _window_block(20)
+        grid = SpatialWayGrid()
+        grid.rebuild(buildings)
+        _render_windows(buildings, grid)
+        del buildings[:5]                                   # unload filters the list in place
+        buildings.extend(_window_block(3, x0=20 * 22.0))
+        grid.rebuild(buildings)
+        assert _render_windows(buildings, grid, budget_s=1e9) == _fresh_cache_bytes(buildings)
+    finally:
+        _reset_window_cache()
         pygame.quit()

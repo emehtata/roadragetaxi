@@ -67,7 +67,8 @@ def draw_taxi_target(
 
         # Draw client pedestrian waiting or walking into the taxi
         p = taxi_mgr.current_passenger
-        if is_pickup and p and not p.boarded:
+        # (A greeted rail customer is drawn as their own pedestrian.)
+        if is_pickup and p and not p.boarded and p.rail_booking is None:
             ped_sx, ped_sy = world_to_screen(p.ped_x, p.ped_y, camx, camy, px_per_m, screen_w, screen_h)
             ped_r = max(4.0, 0.5 * px_per_m)
             # Outline

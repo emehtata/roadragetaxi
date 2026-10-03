@@ -1,6 +1,7 @@
 import time
 
-from theroadragetrip import Car, Scenery, Way, AutoFetchManager
+from theroadragetrip.physics import Car
+from theroadragetrip.osm import AutoFetchManager, Scenery, Way
 
 
 def test_background_auto_fetch_updates_ways_and_bounds():

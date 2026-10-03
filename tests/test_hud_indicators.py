@@ -9,6 +9,7 @@ os.environ.setdefault("SDL_AUDIODRIVER", "dummy")
 
 from theroadragetrip.render.hud import (
     _draw_analog_speedometer,
+    _draw_fuel_meter,
     _draw_speedometer_indicators,
     default_hud_layout,
 )
@@ -77,6 +78,28 @@ def test_default_hud_layout_leaves_room_for_speedometer_indicators():
     )
 
 
+def test_speedometer_has_no_outer_box():
+    pygame.init()
+    screen = pygame.Surface((210, 190))
+    screen.fill((20, 80, 120))
+
+    _draw_analog_speedometer(screen, 0.0, (10, 10))
+
+    assert screen.get_at((10, 10))[:3] == (20, 80, 120)
+
+
+def test_fuel_meter_changes_for_full_low_and_empty_tanks():
+    pygame.init()
+    font = pygame.font.Font(None, 24)
+    frames = []
+    for fuel_l in (60.0, 8.0, 0.0):
+        screen = pygame.Surface((240, 80))
+        screen.fill((0, 0, 0))
+        _draw_fuel_meter(screen, font, Car(0, 0, 0, 0, fuel_l=fuel_l), (10, 10), "en")
+        frames.append(pygame.image.tostring(screen, "RGB"))
+    assert len(set(frames)) == 3
+
+
 def test_date_clock_and_taxi_score_do_not_overlap():
     """The full ISO date made the old fixed 140px clock allowance too small."""
     pygame.init()
@@ -87,6 +110,7 @@ def test_date_clock_and_taxi_score_do_not_overlap():
         completed_fares=0,
         balance_cents=0,
         offers=[],
+        has_new_requests=lambda: False,
         current_passenger=None,
         state="PICKUP",
         fare_started_at=None,

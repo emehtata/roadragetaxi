@@ -46,8 +46,19 @@ MAGIC = b"RWC\0"
 # what FORMAT_VERSION is for (see test_stale_format_version_forces_a_
 # rebuild_even_within_the_ttl in test_world_cache.py) - a new persisted
 # field needs a bump precisely because missing-field construction fails
-# silent, not loud.
-FORMAT_VERSION = 9
+# silent, not loud. Bumped to 15 for Railway.track_ref (station track
+# numbers the train timetable's platforms refer to).
+# 16: railway=platform areas (paved scenery) and non-drivable
+# highway=platform ways. 17: platform centrelines densified and joined
+# to the footways/steps that end on them. 18: parking_garages section
+# (underground/multi-storey ParkingGarage records, garage-00.md).
+# 19: Way/Building map_level, level and indoor (garage-02.md). 20:
+# level_ways section (filtered underground roads with level=*, garage-03.md).
+# 21: a covered level=0 road goes to ways, not level_ways (garage-05.md).
+# 22: level_connectors section (amenity=parking_entrance, garage-07.md).
+# 23: underground roads with an explicit multi-level level=* are kept
+# (garage-09.md).
+FORMAT_VERSION = 23
 COORDINATE_SYSTEM = "EPSG:3067"
 _HEADER = struct.Struct("<4sHHQQ32s12s")
 _DIRECTORY = struct.Struct("<8sQQI")
@@ -57,14 +68,14 @@ _TYPE_NAMES = {value: key for key, value in _TYPES.items()}
 _SECTIONS = ("ways", "waters", "buildings", "sceneries", "places", "traffic_lights",
              "crossings", "taxi_stops", "bus_stops", "parking_spaces", "logical_intersections",
              "stop_signs", "yield_signs", "curbs", "scenery_objects", "speed_bumps",
-             "railways", "railings", "metadata")
+             "railways", "railings", "parking_garages", "level_ways", "level_connectors", "metadata")
 _SECTION_CODES = {
     "buildings": "bldgs", "sceneries": "scenery",
     "traffic_lights": "signals", "crossings": "crossing",
     "logical_intersections": "intersct",
     "parking_spaces": "parking", "taxi_stops": "taxistop", "bus_stops": "busstop",
     "stop_signs": "stops", "yield_signs": "yields", "scenery_objects": "furnitur",
-    "speed_bumps": "bumps",
+    "speed_bumps": "bumps", "parking_garages": "garages", "level_ways": "lvlways", "level_connectors": "connects",
 }
 _SECTION_NAMES = {code: name for name, code in _SECTION_CODES.items()}
 
@@ -264,7 +275,8 @@ class BinaryWorldCacheLoader:
             "taxi_stops": "TaxiStop", "bus_stops": "BusStop", "parking_spaces": "ParkingSpace",
             "stop_signs": "StopSign", "yield_signs": "YieldSign", "curbs": "Curb",
             "scenery_objects": "SceneryObject", "speed_bumps": "SpeedBump",
-            "railways": "Railway", "railings": "Railing",
+            "railways": "Railway", "railings": "Railing", "parking_garages": "ParkingGarage",
+            "level_ways": "Way", "level_connectors": "LevelConnector",
         }
         import theroadragetrip.osm as osm
         # Every physical TrafficLight/IntersectionApproach on the same
@@ -505,6 +517,12 @@ class WorldCacheManager:
                 future = self._executor.submit(self.load_area, area_id, bbox, **kwargs)
                 self._futures[area_id] = future
             return future
+
+    def pending_count(self) -> int:
+        """Background loads still running - under the lock, as preload()
+        adds to _futures from other threads."""
+        with self._lock:
+            return sum(not future.done() for future in self._futures.values())
 
     def close(self) -> None:
         self._executor.shutdown(wait=False, cancel_futures=True)

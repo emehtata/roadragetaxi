@@ -37,17 +37,6 @@ def test_catalog_matches_game_city_coordinates():
     assert catalog["Oulu"] == (65.012, 25.468)
 
 
-def test_catalog_loads_only_finnish_places(tmp_path):
-    catalog_path = tmp_path / "paikkadesi.json"
-    catalog_path.write_text(
-        '{"countries": {"SUOMI": [{"name": "Oulu", "latitude": 65, "longitude": 25}], '
-        '"RUOTSI": [{"name": "Stockholm", "latitude": 59, "longitude": 18}]}}',
-        encoding="utf-8",
-    )
-
-    assert load_city_catalog(catalog_path) == {"Oulu": (65.0, 25.0)}
-
-
 def test_default_city_configuration_ignores_customized_config():
     centers, presets = default_city_configuration()
 

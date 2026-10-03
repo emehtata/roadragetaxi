@@ -12,7 +12,7 @@ from theroadragetrip.main import (
     _respawn_allowed,
     MODE_MENU_OPTION_COUNT,
 )
-from theroadragetrip.simulation import _rage_from_speeding
+from theroadragetrip.simulation import RAGE_DISTANCE_TO_FULL_M, RAGE_GAIN_SCALE, _rage_from_speeding
 
 
 def test_respawn_is_blocked_while_driver_is_on_foot():
@@ -23,7 +23,7 @@ def test_respawn_is_blocked_while_driver_is_on_foot():
 def test_speeding_builds_rage():
     limit_mps = 50.0 / 3.6  # 50 km/h
     rage = _rage_from_speeding(0.0, speed_mps=70.0 / 3.6, road_limit_mps=limit_mps, driven_distance_m=100.0)
-    assert rage > 0.0
+    assert rage == 100.0 / RAGE_DISTANCE_TO_FULL_M * RAGE_GAIN_SCALE
 
 
 def test_driving_under_the_limit_reduces_rage():
@@ -116,8 +116,11 @@ def test_map_sync_starts_when_idle_and_something_changed():
 def test_city_menu_supports_numeric_and_letter_shortcuts():
     assert _city_menu_index(pygame.K_0, 18) == 9
     assert _city_menu_index(pygame.K_a, 18) == 10
-    assert _city_menu_index(pygame.K_h, 18) == 17
-    assert _city_menu_index(pygame.K_i, 18) is None
+    assert _city_menu_index(pygame.K_d, 18) == 13
+    assert _city_menu_index(pygame.K_e, 18) is None
+    assert _city_menu_index(pygame.K_f, 18) is None
+    assert _city_menu_index(pygame.K_j, 18) == 17
+    assert _city_menu_index(pygame.K_k, 18) is None
 
 
 def test_city_menu_horizontal_navigation_moves_between_columns():

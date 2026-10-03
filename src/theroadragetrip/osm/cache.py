@@ -12,7 +12,9 @@ from typing import List, Optional, Tuple
 logger = logging.getLogger(__name__)
 
 
-CACHE_VERSION = "v0.14.2alpha"
+CACHE_VERSION = "v0.15.0alpha.2"
+# How long downloaded map data is reused before refetching; OSM_CACHE_TTL (seconds) overrides.
+OSM_CACHE_TTL_S = 14 * 24 * 3600
 
 
 def _default_cache_dir() -> str:
@@ -156,7 +158,7 @@ def load_osm_cache(
             except OSError as e:
                 logger.warning("Failed to remove outdated cache %s: %s", path, e)
             continue
-        ttl = int(os.getenv("OSM_CACHE_TTL", str(24 * 3600)))
+        ttl = int(os.getenv("OSM_CACHE_TTL", str(OSM_CACHE_TTL_S)))
         age = time.time() - ts
         if age <= ttl:
             if path.endswith("pjson"):

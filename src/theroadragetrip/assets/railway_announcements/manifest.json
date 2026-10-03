@@ -1,0 +1,4615 @@
+{
+  "version": 1,
+  "language": "fi",
+  "voice": {
+    "id": "eeva",
+    "reference": "female/eeva.wav"
+  },
+  "numbers": {
+    "units": {
+      "0": {
+        "file": "numbers/units/0.ogg",
+        "text": "nolla",
+        "category": "numbers",
+        "language": "fi",
+        "duration_s": 0.76,
+        "voice": "female/eeva.wav",
+        "accepted_at": "2026-10-01T20:15:50",
+        "value": 0,
+        "review": "pending"
+      },
+      "1": {
+        "file": "numbers/units/1.ogg",
+        "text": "yksi",
+        "category": "numbers",
+        "language": "fi",
+        "duration_s": 0.46,
+        "voice": "female/eeva.wav",
+        "accepted_at": "2026-10-01T20:15:53",
+        "value": 1,
+        "review": "pending"
+      },
+      "2": {
+        "file": "numbers/units/2.ogg",
+        "text": "kaksi",
+        "category": "numbers",
+        "language": "fi",
+        "duration_s": 0.55,
+        "voice": "female/eeva.wav",
+        "accepted_at": "2026-10-01T20:15:55",
+        "value": 2,
+        "review": "pending"
+      },
+      "3": {
+        "file": "numbers/units/3.ogg",
+        "text": "kolme",
+        "category": "numbers",
+        "language": "fi",
+        "duration_s": 0.57,
+        "voice": "female/eeva.wav",
+        "accepted_at": "2026-10-01T20:15:57",
+        "value": 3,
+        "review": "pending"
+      },
+      "4": {
+        "file": "numbers/units/4.ogg",
+        "text": "neljä",
+        "category": "numbers",
+        "language": "fi",
+        "duration_s": 0.54,
+        "voice": "female/eeva.wav",
+        "accepted_at": "2026-10-01T20:15:59",
+        "value": 4,
+        "review": "pending"
+      },
+      "5": {
+        "file": "numbers/units/5.ogg",
+        "text": "viisi",
+        "category": "numbers",
+        "language": "fi",
+        "duration_s": 0.5,
+        "voice": "female/eeva.wav",
+        "accepted_at": "2026-10-01T20:16:01",
+        "value": 5,
+        "review": "pending"
+      },
+      "6": {
+        "file": "numbers/units/6.ogg",
+        "text": "kuusi",
+        "category": "numbers",
+        "language": "fi",
+        "duration_s": 0.44,
+        "voice": "female/eeva.wav",
+        "accepted_at": "2026-10-01T21:04:22",
+        "value": 6,
+        "review": "pending"
+      },
+      "7": {
+        "file": "numbers/units/7.ogg",
+        "text": "seitsemän",
+        "category": "numbers",
+        "language": "fi",
+        "duration_s": 0.75,
+        "voice": "female/eeva.wav",
+        "accepted_at": "2026-10-01T20:16:08",
+        "value": 7,
+        "review": "pending"
+      },
+      "8": {
+        "file": "numbers/units/8.ogg",
+        "text": "kahdeksan",
+        "category": "numbers",
+        "language": "fi",
+        "duration_s": 0.72,
+        "voice": "female/eeva.wav",
+        "accepted_at": "2026-10-01T20:16:14",
+        "value": 8,
+        "review": "pending"
+      },
+      "9": {
+        "file": "numbers/units/9.ogg",
+        "text": "yhdeksän",
+        "category": "numbers",
+        "language": "fi",
+        "duration_s": 0.75,
+        "voice": "female/eeva.wav",
+        "accepted_at": "2026-10-01T20:16:16",
+        "value": 9,
+        "review": "pending"
+      }
+    },
+    "teens": {
+      "11": {
+        "file": "numbers/teens/11.ogg",
+        "text": "yksitoista",
+        "category": "numbers",
+        "language": "fi",
+        "duration_s": 0.78,
+        "voice": "female/eeva.wav",
+        "accepted_at": "2026-10-01T20:16:20",
+        "value": 11,
+        "review": "pending"
+      },
+      "12": {
+        "file": "numbers/teens/12.ogg",
+        "text": "kaksitoista",
+        "category": "numbers",
+        "language": "fi",
+        "duration_s": 0.75,
+        "voice": "female/eeva.wav",
+        "accepted_at": "2026-10-01T20:16:23",
+        "value": 12,
+        "review": "pending"
+      },
+      "13": {
+        "file": "numbers/teens/13.ogg",
+        "text": "kolmetoista",
+        "category": "numbers",
+        "language": "fi",
+        "duration_s": 0.78,
+        "voice": "female/eeva.wav",
+        "accepted_at": "2026-10-01T20:16:25",
+        "value": 13,
+        "review": "pending"
+      },
+      "14": {
+        "file": "numbers/teens/14.ogg",
+        "text": "neljätoista",
+        "category": "numbers",
+        "language": "fi",
+        "duration_s": 0.79,
+        "voice": "female/eeva.wav",
+        "accepted_at": "2026-10-01T21:04:24",
+        "value": 14,
+        "review": "pending"
+      },
+      "15": {
+        "file": "numbers/teens/15.ogg",
+        "text": "viisitoista",
+        "category": "numbers",
+        "language": "fi",
+        "duration_s": 0.72,
+        "voice": "female/eeva.wav",
+        "accepted_at": "2026-10-01T20:16:36",
+        "value": 15,
+        "review": "pending"
+      },
+      "16": {
+        "file": "numbers/teens/16.ogg",
+        "text": "kuusitoista",
+        "category": "numbers",
+        "language": "fi",
+        "duration_s": 1.02,
+        "voice": "female/eeva.wav",
+        "accepted_at": "2026-10-01T20:16:38",
+        "value": 16,
+        "review": "pending"
+      },
+      "17": {
+        "file": "numbers/teens/17.ogg",
+        "text": "seitsemäntoista",
+        "category": "numbers",
+        "language": "fi",
+        "duration_s": 0.98,
+        "voice": "female/eeva.wav",
+        "accepted_at": "2026-10-01T21:04:34",
+        "value": 17,
+        "review": "pending"
+      },
+      "18": {
+        "file": "numbers/teens/18.ogg",
+        "text": "kahdeksantoista",
+        "category": "numbers",
+        "language": "fi",
+        "duration_s": 1.02,
+        "voice": "female/eeva.wav",
+        "accepted_at": "2026-10-01T20:16:55",
+        "value": 18,
+        "review": "pending"
+      },
+      "19": {
+        "file": "numbers/teens/19.ogg",
+        "text": "yhdeksäntoista",
+        "category": "numbers",
+        "language": "fi",
+        "duration_s": 1.06,
+        "voice": "female/eeva.wav",
+        "accepted_at": "2026-10-01T20:16:58",
+        "value": 19,
+        "review": "pending"
+      }
+    },
+    "tens": {
+      "10": {
+        "file": "numbers/tens/10.ogg",
+        "text": "kymmenen",
+        "category": "numbers",
+        "language": "fi",
+        "duration_s": 0.84,
+        "voice": "female/eeva.wav",
+        "accepted_at": "2026-10-01T20:16:18",
+        "value": 10,
+        "review": "pending"
+      },
+      "20": {
+        "file": "numbers/tens/20.ogg",
+        "text": "kaksikymmentä",
+        "category": "numbers",
+        "language": "fi",
+        "duration_s": 0.76,
+        "voice": "female/eeva.wav",
+        "accepted_at": "2026-10-01T20:17:01",
+        "value": 20,
+        "review": "pending"
+      },
+      "30": {
+        "file": "numbers/tens/30.ogg",
+        "text": "kolmekymmentä",
+        "category": "numbers",
+        "language": "fi",
+        "duration_s": 0.72,
+        "voice": "female/eeva.wav",
+        "accepted_at": "2026-10-01T20:17:04",
+        "value": 30,
+        "review": "pending"
+      },
+      "40": {
+        "file": "numbers/tens/40.ogg",
+        "text": "neljäkymmentä",
+        "category": "numbers",
+        "language": "fi",
+        "duration_s": 0.92,
+        "voice": "female/eeva.wav",
+        "accepted_at": "2026-10-01T21:04:36",
+        "value": 40,
+        "review": "pending"
+      },
+      "50": {
+        "file": "numbers/tens/50.ogg",
+        "text": "viisikymmentä",
+        "category": "numbers",
+        "language": "fi",
+        "duration_s": 0.96,
+        "voice": "female/eeva.wav",
+        "accepted_at": "2026-10-01T21:04:39",
+        "value": 50,
+        "review": "pending"
+      },
+      "60": {
+        "file": "numbers/tens/60.ogg",
+        "text": "kuusikymmentä",
+        "category": "numbers",
+        "language": "fi",
+        "duration_s": 0.36,
+        "voice": "female/eeva.wav",
+        "accepted_at": "2026-10-01T20:17:18",
+        "value": 60,
+        "review": "pending"
+      },
+      "70": {
+        "file": "numbers/tens/70.ogg",
+        "text": "seitsemänkymmentä",
+        "category": "numbers",
+        "language": "fi",
+        "duration_s": 2.06,
+        "voice": "female/eeva.wav",
+        "accepted_at": "2026-10-01T21:53:12",
+        "value": 70,
+        "review": "pending"
+      },
+      "80": {
+        "file": "numbers/tens/80.ogg",
+        "text": "kahdeksankymmentä",
+        "category": "numbers",
+        "language": "fi",
+        "duration_s": 1.24,
+        "voice": "female/eeva.wav",
+        "accepted_at": "2026-10-01T20:17:34",
+        "value": 80,
+        "review": "pending"
+      },
+      "90": {
+        "file": "numbers/tens/90.ogg",
+        "text": "yhdeksänkymmentä",
+        "category": "numbers",
+        "language": "fi",
+        "duration_s": 1.1,
+        "voice": "female/eeva.wav",
+        "accepted_at": "2026-10-01T21:05:09",
+        "value": 90,
+        "review": "pending"
+      }
+    },
+    "hundreds": {
+      "100": {
+        "file": "numbers/hundreds/100.ogg",
+        "text": "sata",
+        "category": "numbers",
+        "language": "fi",
+        "duration_s": 0.37,
+        "voice": "female/eeva.wav",
+        "accepted_at": "2026-10-01T22:12:10",
+        "value": 100,
+        "review": "pending"
+      },
+      "200": {
+        "file": "numbers/hundreds/200.ogg",
+        "text": "kaksisataa",
+        "category": "numbers",
+        "language": "fi",
+        "duration_s": 0.81,
+        "voice": "female/eeva.wav",
+        "accepted_at": "2026-10-01T20:17:52",
+        "value": 200,
+        "review": "pending"
+      },
+      "300": {
+        "file": "numbers/hundreds/300.ogg",
+        "text": "kolmesataa",
+        "category": "numbers",
+        "language": "fi",
+        "duration_s": 0.81,
+        "voice": "female/eeva.wav",
+        "accepted_at": "2026-10-01T20:17:54",
+        "value": 300,
+        "review": "pending"
+      },
+      "400": {
+        "file": "numbers/hundreds/400.ogg",
+        "text": "neljäsataa",
+        "category": "numbers",
+        "language": "fi",
+        "duration_s": 0.82,
+        "voice": "female/eeva.wav",
+        "accepted_at": "2026-10-01T20:17:59",
+        "value": 400,
+        "review": "pending"
+      },
+      "500": {
+        "file": "numbers/hundreds/500.ogg",
+        "text": "viisisataa",
+        "category": "numbers",
+        "language": "fi",
+        "duration_s": 0.73,
+        "voice": "female/eeva.wav",
+        "accepted_at": "2026-10-01T20:18:02",
+        "value": 500,
+        "review": "pending"
+      },
+      "600": {
+        "file": "numbers/hundreds/600.ogg",
+        "text": "kuusisataa",
+        "category": "numbers",
+        "language": "fi",
+        "duration_s": 0.83,
+        "voice": "female/eeva.wav",
+        "accepted_at": "2026-10-01T21:05:28",
+        "value": 600,
+        "review": "pending"
+      },
+      "700": {
+        "file": "numbers/hundreds/700.ogg",
+        "text": "seitsemänsataa",
+        "category": "numbers",
+        "language": "fi",
+        "duration_s": 1.4,
+        "voice": "female/eeva.wav",
+        "accepted_at": "2026-10-01T20:18:14",
+        "value": 700,
+        "review": "pending"
+      },
+      "800": {
+        "file": "numbers/hundreds/800.ogg",
+        "text": "kahdeksansataa",
+        "category": "numbers",
+        "language": "fi",
+        "duration_s": 1.08,
+        "voice": "female/eeva.wav",
+        "accepted_at": "2026-10-01T21:05:38",
+        "value": 800,
+        "review": "pending"
+      },
+      "900": {
+        "file": "numbers/hundreds/900.ogg",
+        "text": "yhdeksänsataa",
+        "category": "numbers",
+        "language": "fi",
+        "duration_s": 1.42,
+        "voice": "female/eeva.wav",
+        "accepted_at": "2026-10-01T20:18:22",
+        "value": 900,
+        "review": "pending"
+      }
+    },
+    "thousands": {}
+  },
+  "places": {
+    "alavus": {
+      "file": "places/alavus.ogg",
+      "text": "Alavus",
+      "category": "places",
+      "language": "fi",
+      "duration_s": 0.45,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T21:05:42",
+      "review": "pending"
+    },
+    "elainpuisto_zoo": {
+      "file": "places/elainpuisto_zoo.ogg",
+      "text": "Eläinpuisto-Zoo",
+      "category": "places",
+      "language": "fi",
+      "duration_s": 1.27,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:18:40",
+      "review": "pending"
+    },
+    "eno": {
+      "file": "places/eno.ogg",
+      "text": "Eno",
+      "category": "places",
+      "language": "fi",
+      "duration_s": 0.36,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:18:53",
+      "review": "pending"
+    },
+    "haapajarvi": {
+      "file": "places/haapajarvi.ogg",
+      "text": "Haapajärvi",
+      "category": "places",
+      "language": "fi",
+      "duration_s": 1.01,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T21:05:44",
+      "review": "pending"
+    },
+    "haapamaki": {
+      "file": "places/haapamaki.ogg",
+      "text": "Haapamäki",
+      "category": "places",
+      "language": "fi",
+      "duration_s": 0.66,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:19:22",
+      "review": "pending"
+    },
+    "haaparanta_pohjoinen": {
+      "file": "places/haaparanta_pohjoinen.ogg",
+      "text": "Haaparanta pohjoinen",
+      "category": "places",
+      "language": "fi",
+      "duration_s": 1.4,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:19:32",
+      "review": "pending"
+    },
+    "hankasalmi": {
+      "file": "places/hankasalmi.ogg",
+      "text": "Hankasalmi",
+      "category": "places",
+      "language": "fi",
+      "duration_s": 0.7,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:19:47",
+      "review": "pending"
+    },
+    "harjavalta": {
+      "file": "places/harjavalta.ogg",
+      "text": "Harjavalta",
+      "category": "places",
+      "language": "fi",
+      "duration_s": 0.74,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:20:02",
+      "review": "pending"
+    },
+    "haukivuori": {
+      "file": "places/haukivuori.ogg",
+      "text": "Haukivuori",
+      "category": "places",
+      "language": "fi",
+      "duration_s": 0.77,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T21:05:47",
+      "review": "pending"
+    },
+    "heinavesi": {
+      "file": "places/heinavesi.ogg",
+      "text": "Heinävesi",
+      "category": "places",
+      "language": "fi",
+      "duration_s": 0.75,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T21:05:50",
+      "review": "pending"
+    },
+    "helsinki": {
+      "file": "places/helsinki.ogg",
+      "text": "Helsinki",
+      "category": "places",
+      "language": "fi",
+      "duration_s": 0.61,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T21:06:06",
+      "review": "pending"
+    },
+    "hiirola": {
+      "file": "places/hiirola.ogg",
+      "text": "Hiirola",
+      "category": "places",
+      "language": "fi",
+      "duration_s": 0.63,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:21:08",
+      "review": "pending"
+    },
+    "hillosensalmi": {
+      "file": "places/hillosensalmi.ogg",
+      "text": "Hillosensalmi",
+      "category": "places",
+      "language": "fi",
+      "duration_s": 0.88,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:21:17",
+      "review": "pending"
+    },
+    "humppila": {
+      "file": "places/humppila.ogg",
+      "text": "Humppila",
+      "category": "places",
+      "language": "fi",
+      "duration_s": 0.64,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:21:35",
+      "review": "pending"
+    },
+    "hyvinkaa_tavara": {
+      "file": "places/hyvinkaa_tavara.ogg",
+      "text": "Hyvinkää tavara",
+      "category": "places",
+      "language": "fi",
+      "duration_s": 0.95,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:21:49",
+      "review": "pending"
+    },
+    "hameenlinna": {
+      "file": "places/hameenlinna.ogg",
+      "text": "Hämeenlinna",
+      "category": "places",
+      "language": "fi",
+      "duration_s": 0.69,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:22:01",
+      "review": "pending"
+    },
+    "holjakka": {
+      "file": "places/holjakka.ogg",
+      "text": "Höljäkkä",
+      "category": "places",
+      "language": "fi",
+      "duration_s": 0.71,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T21:06:08",
+      "review": "pending"
+    },
+    "iisalmi": {
+      "file": "places/iisalmi.ogg",
+      "text": "Iisalmi",
+      "category": "places",
+      "language": "fi",
+      "duration_s": 0.59,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:22:31",
+      "review": "pending"
+    },
+    "imatra": {
+      "file": "places/imatra.ogg",
+      "text": "Imatra",
+      "category": "places",
+      "language": "fi",
+      "duration_s": 0.67,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T21:06:11",
+      "review": "pending"
+    },
+    "joensuu": {
+      "file": "places/joensuu.ogg",
+      "text": "Joensuu",
+      "category": "places",
+      "language": "fi",
+      "duration_s": 0.85,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T21:06:17",
+      "review": "pending"
+    },
+    "joutseno": {
+      "file": "places/joutseno.ogg",
+      "text": "Joutseno",
+      "category": "places",
+      "language": "fi",
+      "duration_s": 0.75,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:23:16",
+      "review": "pending"
+    },
+    "juupajoki": {
+      "file": "places/juupajoki.ogg",
+      "text": "Juupajoki",
+      "category": "places",
+      "language": "fi",
+      "duration_s": 0.74,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T21:06:20",
+      "review": "pending"
+    },
+    "jyvaskyla": {
+      "file": "places/jyvaskyla.ogg",
+      "text": "Jyväskylä",
+      "category": "places",
+      "language": "fi",
+      "duration_s": 0.65,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:23:55",
+      "review": "pending"
+    },
+    "jamsa": {
+      "file": "places/jamsa.ogg",
+      "text": "Jämsä",
+      "category": "places",
+      "language": "fi",
+      "duration_s": 0.49,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:24:09",
+      "review": "pending"
+    },
+    "kajaani": {
+      "file": "places/kajaani.ogg",
+      "text": "Kajaani",
+      "category": "places",
+      "language": "fi",
+      "duration_s": 0.65,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:24:18",
+      "review": "pending"
+    },
+    "kalvitsa": {
+      "file": "places/kalvitsa.ogg",
+      "text": "Kalvitsa",
+      "category": "places",
+      "language": "fi",
+      "duration_s": 1.16,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:24:37",
+      "review": "pending"
+    },
+    "kannus": {
+      "file": "places/kannus.ogg",
+      "text": "Kannus",
+      "category": "places",
+      "language": "fi",
+      "duration_s": 0.56,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:24:45",
+      "review": "pending"
+    },
+    "karjaa": {
+      "file": "places/karjaa.ogg",
+      "text": "Karjaa",
+      "category": "places",
+      "language": "fi",
+      "duration_s": 0.46,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T21:06:29",
+      "review": "pending"
+    },
+    "karkku": {
+      "file": "places/karkku.ogg",
+      "text": "Karkku",
+      "category": "places",
+      "language": "fi",
+      "duration_s": 0.56,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T21:06:42",
+      "review": "pending"
+    },
+    "kauhava": {
+      "file": "places/kauhava.ogg",
+      "text": "Kauhava",
+      "category": "places",
+      "language": "fi",
+      "duration_s": 0.49,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:25:19",
+      "review": "pending"
+    },
+    "kemi": {
+      "file": "places/kemi.ogg",
+      "text": "Kemi",
+      "category": "places",
+      "language": "fi",
+      "duration_s": 0.47,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T21:06:44",
+      "review": "pending"
+    },
+    "kemijarvi": {
+      "file": "places/kemijarvi.ogg",
+      "text": "Kemijärvi",
+      "category": "places",
+      "language": "fi",
+      "duration_s": 0.71,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:25:49",
+      "review": "pending"
+    },
+    "kempele": {
+      "file": "places/kempele.ogg",
+      "text": "Kempele",
+      "category": "places",
+      "language": "fi",
+      "duration_s": 0.71,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:26:00",
+      "review": "pending"
+    },
+    "kerimaki": {
+      "file": "places/kerimaki.ogg",
+      "text": "Kerimäki",
+      "category": "places",
+      "language": "fi",
+      "duration_s": 0.76,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T21:06:46",
+      "review": "pending"
+    },
+    "kesalahti": {
+      "file": "places/kesalahti.ogg",
+      "text": "Kesälahti",
+      "category": "places",
+      "language": "fi",
+      "duration_s": 0.72,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T21:06:48",
+      "review": "pending"
+    },
+    "keuruu": {
+      "file": "places/keuruu.ogg",
+      "text": "Keuruu",
+      "category": "places",
+      "language": "fi",
+      "duration_s": 0.68,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:26:40",
+      "review": "pending"
+    },
+    "kirkkonummi": {
+      "file": "places/kirkkonummi.ogg",
+      "text": "Kirkkonummi",
+      "category": "places",
+      "language": "fi",
+      "duration_s": 0.89,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T21:53:32",
+      "review": "pending"
+    },
+    "kitee": {
+      "file": "places/kitee.ogg",
+      "text": "Kitee",
+      "category": "places",
+      "language": "fi",
+      "duration_s": 0.47,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:27:14",
+      "review": "pending"
+    },
+    "kiuruvesi": {
+      "file": "places/kiuruvesi.ogg",
+      "text": "Kiuruvesi",
+      "category": "places",
+      "language": "fi",
+      "duration_s": 0.73,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:27:26",
+      "review": "pending"
+    },
+    "kohtavaara": {
+      "file": "places/kohtavaara.ogg",
+      "text": "Kohtavaara",
+      "category": "places",
+      "language": "fi",
+      "duration_s": 0.72,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:27:40",
+      "review": "pending"
+    },
+    "kokemaki": {
+      "file": "places/kokemaki.ogg",
+      "text": "Kokemäki",
+      "category": "places",
+      "language": "fi",
+      "duration_s": 0.86,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T21:54:10",
+      "review": "pending"
+    },
+    "kokkola": {
+      "file": "places/kokkola.ogg",
+      "text": "Kokkola",
+      "category": "places",
+      "language": "fi",
+      "duration_s": 0.78,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:28:16",
+      "review": "pending"
+    },
+    "kolari": {
+      "file": "places/kolari.ogg",
+      "text": "Kolari",
+      "category": "places",
+      "language": "fi",
+      "duration_s": 0.56,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:28:35",
+      "review": "pending"
+    },
+    "kolho": {
+      "file": "places/kolho.ogg",
+      "text": "Kolho",
+      "category": "places",
+      "language": "fi",
+      "duration_s": 0.42,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:28:47",
+      "review": "pending"
+    },
+    "kontiomaki": {
+      "file": "places/kontiomaki.ogg",
+      "text": "Kontiomäki",
+      "category": "places",
+      "language": "fi",
+      "duration_s": 0.72,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T21:07:48",
+      "review": "pending"
+    },
+    "kouvola": {
+      "file": "places/kouvola.ogg",
+      "text": "Kouvola",
+      "category": "places",
+      "language": "fi",
+      "duration_s": 0.54,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T21:07:51",
+      "review": "pending"
+    },
+    "kuopio": {
+      "file": "places/kuopio.ogg",
+      "text": "Kuopio",
+      "category": "places",
+      "language": "fi",
+      "duration_s": 0.58,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:29:42",
+      "review": "pending"
+    },
+    "kupittaa": {
+      "file": "places/kupittaa.ogg",
+      "text": "Kupittaa",
+      "category": "places",
+      "language": "fi",
+      "duration_s": 0.84,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T21:07:53",
+      "review": "pending"
+    },
+    "kylanlahti": {
+      "file": "places/kylanlahti.ogg",
+      "text": "Kylänlahti",
+      "category": "places",
+      "language": "fi",
+      "duration_s": 0.76,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:30:16",
+      "review": "pending"
+    },
+    "lahti": {
+      "file": "places/lahti.ogg",
+      "text": "Lahti",
+      "category": "places",
+      "language": "fi",
+      "duration_s": 0.46,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:30:26",
+      "review": "pending"
+    },
+    "lapinlahti": {
+      "file": "places/lapinlahti.ogg",
+      "text": "Lapinlahti",
+      "category": "places",
+      "language": "fi",
+      "duration_s": 0.82,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:30:42",
+      "review": "pending"
+    },
+    "lappeenranta": {
+      "file": "places/lappeenranta.ogg",
+      "text": "Lappeenranta",
+      "category": "places",
+      "language": "fi",
+      "duration_s": 1.11,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T21:07:56",
+      "review": "pending"
+    },
+    "lapua": {
+      "file": "places/lapua.ogg",
+      "text": "Lapua",
+      "category": "places",
+      "language": "fi",
+      "duration_s": 0.51,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:31:13",
+      "review": "pending"
+    },
+    "lempaala": {
+      "file": "places/lempaala.ogg",
+      "text": "Lempäälä",
+      "category": "places",
+      "language": "fi",
+      "duration_s": 0.61,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T21:07:59",
+      "review": "pending"
+    },
+    "leppavaara": {
+      "file": "places/leppavaara.ogg",
+      "text": "Leppävaara",
+      "category": "places",
+      "language": "fi",
+      "duration_s": 0.81,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T21:08:02",
+      "review": "pending"
+    },
+    "lieksa": {
+      "file": "places/lieksa.ogg",
+      "text": "Lieksa",
+      "category": "places",
+      "language": "fi",
+      "duration_s": 0.59,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:32:27",
+      "review": "pending"
+    },
+    "lievestuore": {
+      "file": "places/lievestuore.ogg",
+      "text": "Lievestuore",
+      "category": "places",
+      "language": "fi",
+      "duration_s": 0.85,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:32:39",
+      "review": "pending"
+    },
+    "lohja": {
+      "file": "places/lohja.ogg",
+      "text": "Lohja",
+      "category": "places",
+      "language": "fi",
+      "duration_s": 0.46,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:32:53",
+      "review": "pending"
+    },
+    "loimaa": {
+      "file": "places/loimaa.ogg",
+      "text": "Loimaa",
+      "category": "places",
+      "language": "fi",
+      "duration_s": 0.55,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:33:14",
+      "review": "pending"
+    },
+    "lusto": {
+      "file": "places/lusto.ogg",
+      "text": "Lusto",
+      "category": "places",
+      "language": "fi",
+      "duration_s": 0.78,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:33:34",
+      "review": "pending"
+    },
+    "mikkeli": {
+      "file": "places/mikkeli.ogg",
+      "text": "Mikkeli",
+      "category": "places",
+      "language": "fi",
+      "duration_s": 0.54,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T21:08:04",
+      "review": "pending"
+    },
+    "misi": {
+      "file": "places/misi.ogg",
+      "text": "Misi",
+      "category": "places",
+      "language": "fi",
+      "duration_s": 1.01,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T21:54:19",
+      "review": "pending"
+    },
+    "muhos": {
+      "file": "places/muhos.ogg",
+      "text": "Muhos",
+      "category": "places",
+      "language": "fi",
+      "duration_s": 0.55,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:34:34",
+      "review": "pending"
+    },
+    "mustio": {
+      "file": "places/mustio.ogg",
+      "text": "Mustio",
+      "category": "places",
+      "language": "fi",
+      "duration_s": 0.66,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:34:46",
+      "review": "pending"
+    },
+    "muurola": {
+      "file": "places/muurola.ogg",
+      "text": "Muurola",
+      "category": "places",
+      "language": "fi",
+      "duration_s": 0.58,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:34:59",
+      "review": "pending"
+    },
+    "myllymaki": {
+      "file": "places/myllymaki.ogg",
+      "text": "Myllymäki",
+      "category": "places",
+      "language": "fi",
+      "duration_s": 0.89,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:35:13",
+      "review": "pending"
+    },
+    "mantyharju": {
+      "file": "places/mantyharju.ogg",
+      "text": "Mäntyharju",
+      "category": "places",
+      "language": "fi",
+      "duration_s": 0.88,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T21:08:20",
+      "review": "pending"
+    },
+    "nivala": {
+      "file": "places/nivala.ogg",
+      "text": "Nivala",
+      "category": "places",
+      "language": "fi",
+      "duration_s": 0.5,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T21:08:22",
+      "review": "pending"
+    },
+    "nokia": {
+      "file": "places/nokia.ogg",
+      "text": "Nokia",
+      "category": "places",
+      "language": "fi",
+      "duration_s": 0.53,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:36:22",
+      "review": "pending"
+    },
+    "nummela": {
+      "file": "places/nummela.ogg",
+      "text": "Nummela",
+      "category": "places",
+      "language": "fi",
+      "duration_s": 0.63,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:36:50",
+      "review": "pending"
+    },
+    "nurmes": {
+      "file": "places/nurmes.ogg",
+      "text": "Nurmes",
+      "category": "places",
+      "language": "fi",
+      "duration_s": 0.66,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T21:54:22",
+      "review": "pending"
+    },
+    "orivesi": {
+      "file": "places/orivesi.ogg",
+      "text": "Orivesi",
+      "category": "places",
+      "language": "fi",
+      "duration_s": 0.62,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:37:33",
+      "review": "pending"
+    },
+    "orivesi_keskusta": {
+      "file": "places/orivesi_keskusta.ogg",
+      "text": "Orivesi keskusta",
+      "category": "places",
+      "language": "fi",
+      "duration_s": 1.03,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:37:53",
+      "review": "pending"
+    },
+    "otava": {
+      "file": "places/otava.ogg",
+      "text": "Otava",
+      "category": "places",
+      "language": "fi",
+      "duration_s": 0.54,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:38:08",
+      "review": "pending"
+    },
+    "oulainen": {
+      "file": "places/oulainen.ogg",
+      "text": "Oulainen",
+      "category": "places",
+      "language": "fi",
+      "duration_s": 0.64,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:38:21",
+      "review": "pending"
+    },
+    "oulu": {
+      "file": "places/oulu.ogg",
+      "text": "Oulu",
+      "category": "places",
+      "language": "fi",
+      "duration_s": 0.51,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T21:08:38",
+      "review": "pending"
+    },
+    "paltamo": {
+      "file": "places/paltamo.ogg",
+      "text": "Paltamo",
+      "category": "places",
+      "language": "fi",
+      "duration_s": 0.54,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:38:52",
+      "review": "pending"
+    },
+    "parikkala": {
+      "file": "places/parikkala.ogg",
+      "text": "Parikkala",
+      "category": "places",
+      "language": "fi",
+      "duration_s": 0.65,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:39:15",
+      "review": "pending"
+    },
+    "parkano": {
+      "file": "places/parkano.ogg",
+      "text": "Parkano",
+      "category": "places",
+      "language": "fi",
+      "duration_s": 0.63,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:39:33",
+      "review": "pending"
+    },
+    "pasila": {
+      "file": "places/pasila.ogg",
+      "text": "Pasila",
+      "category": "places",
+      "language": "fi",
+      "duration_s": 0.46,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:39:49",
+      "review": "pending"
+    },
+    "pello": {
+      "file": "places/pello.ogg",
+      "text": "Pello",
+      "category": "places",
+      "language": "fi",
+      "duration_s": 0.38,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T21:08:48",
+      "review": "pending"
+    },
+    "petajavesi": {
+      "file": "places/petajavesi.ogg",
+      "text": "Petäjävesi",
+      "category": "places",
+      "language": "fi",
+      "duration_s": 0.74,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T21:08:55",
+      "review": "pending"
+    },
+    "pieksamaki": {
+      "file": "places/pieksamaki.ogg",
+      "text": "Pieksämäki",
+      "category": "places",
+      "language": "fi",
+      "duration_s": 0.66,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:41:18",
+      "review": "pending"
+    },
+    "pihlajavesi": {
+      "file": "places/pihlajavesi.ogg",
+      "text": "Pihlajavesi",
+      "category": "places",
+      "language": "fi",
+      "duration_s": 0.71,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:41:39",
+      "review": "pending"
+    },
+    "pori": {
+      "file": "places/pori.ogg",
+      "text": "Pori",
+      "category": "places",
+      "language": "fi",
+      "duration_s": 0.32,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T21:08:58",
+      "review": "pending"
+    },
+    "punkaharju": {
+      "file": "places/punkaharju.ogg",
+      "text": "Punkaharju",
+      "category": "places",
+      "language": "fi",
+      "duration_s": 0.79,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:42:22",
+      "review": "pending"
+    },
+    "pyhasalmi": {
+      "file": "places/pyhasalmi.ogg",
+      "text": "Pyhäsalmi",
+      "category": "places",
+      "language": "fi",
+      "duration_s": 0.73,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T21:09:07",
+      "review": "pending"
+    },
+    "pannainen": {
+      "file": "places/pannainen.ogg",
+      "text": "Pännäinen",
+      "category": "places",
+      "language": "fi",
+      "duration_s": 0.73,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:43:01",
+      "review": "pending"
+    },
+    "paaskylahti": {
+      "file": "places/paaskylahti.ogg",
+      "text": "Pääskylahti",
+      "category": "places",
+      "language": "fi",
+      "duration_s": 0.96,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:43:22",
+      "review": "pending"
+    },
+    "rajamaki": {
+      "file": "places/rajamaki.ogg",
+      "text": "Rajamäki",
+      "category": "places",
+      "language": "fi",
+      "duration_s": 0.56,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T21:09:10",
+      "review": "pending"
+    },
+    "retretti": {
+      "file": "places/retretti.ogg",
+      "text": "Retretti",
+      "category": "places",
+      "language": "fi",
+      "duration_s": 0.89,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:44:14",
+      "review": "pending"
+    },
+    "riihimaki": {
+      "file": "places/riihimaki.ogg",
+      "text": "Riihimäki",
+      "category": "places",
+      "language": "fi",
+      "duration_s": 0.73,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:44:34",
+      "review": "pending"
+    },
+    "rovaniemi": {
+      "file": "places/rovaniemi.ogg",
+      "text": "Rovaniemi",
+      "category": "places",
+      "language": "fi",
+      "duration_s": 0.9,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:44:52",
+      "review": "pending"
+    },
+    "runni": {
+      "file": "places/runni.ogg",
+      "text": "Runni",
+      "category": "places",
+      "language": "fi",
+      "duration_s": 0.81,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T21:09:26",
+      "review": "pending"
+    },
+    "ruukki": {
+      "file": "places/ruukki.ogg",
+      "text": "Ruukki",
+      "category": "places",
+      "language": "fi",
+      "duration_s": 0.53,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:45:37",
+      "review": "pending"
+    },
+    "salo": {
+      "file": "places/salo.ogg",
+      "text": "Salo",
+      "category": "places",
+      "language": "fi",
+      "duration_s": 0.54,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T21:09:32",
+      "review": "pending"
+    },
+    "savonlinna": {
+      "file": "places/savonlinna.ogg",
+      "text": "Savonlinna",
+      "category": "places",
+      "language": "fi",
+      "duration_s": 0.78,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:46:43",
+      "review": "pending"
+    },
+    "seinajoki": {
+      "file": "places/seinajoki.ogg",
+      "text": "Seinäjoki",
+      "category": "places",
+      "language": "fi",
+      "duration_s": 0.75,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:47:08",
+      "review": "pending"
+    },
+    "siilinjarvi": {
+      "file": "places/siilinjarvi.ogg",
+      "text": "Siilinjärvi",
+      "category": "places",
+      "language": "fi",
+      "duration_s": 0.89,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T21:09:50",
+      "review": "pending"
+    },
+    "simpele": {
+      "file": "places/simpele.ogg",
+      "text": "Simpele",
+      "category": "places",
+      "language": "fi",
+      "duration_s": 0.66,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:48:41",
+      "review": "pending"
+    },
+    "sukeva": {
+      "file": "places/sukeva.ogg",
+      "text": "Sukeva",
+      "category": "places",
+      "language": "fi",
+      "duration_s": 0.49,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:48:54",
+      "review": "pending"
+    },
+    "suolahti": {
+      "file": "places/suolahti.ogg",
+      "text": "Suolahti",
+      "category": "places",
+      "language": "fi",
+      "duration_s": 0.73,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:49:11",
+      "review": "pending"
+    },
+    "suonenjoki": {
+      "file": "places/suonenjoki.ogg",
+      "text": "Suonenjoki",
+      "category": "places",
+      "language": "fi",
+      "duration_s": 0.89,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:49:39",
+      "review": "pending"
+    },
+    "tampere": {
+      "file": "places/tampere.ogg",
+      "text": "Tampere",
+      "category": "places",
+      "language": "fi",
+      "duration_s": 0.46,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:50:16",
+      "review": "pending"
+    },
+    "tervajoki": {
+      "file": "places/tervajoki.ogg",
+      "text": "Tervajoki",
+      "category": "places",
+      "language": "fi",
+      "duration_s": 0.73,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:50:31",
+      "review": "pending"
+    },
+    "tervola": {
+      "file": "places/tervola.ogg",
+      "text": "Tervola",
+      "category": "places",
+      "language": "fi",
+      "duration_s": 0.6,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:50:51",
+      "review": "pending"
+    },
+    "tesoma": {
+      "file": "places/tesoma.ogg",
+      "text": "Tesoma",
+      "category": "places",
+      "language": "fi",
+      "duration_s": 0.49,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:51:26",
+      "review": "pending"
+    },
+    "tikkurila": {
+      "file": "places/tikkurila.ogg",
+      "text": "Tikkurila",
+      "category": "places",
+      "language": "fi",
+      "duration_s": 0.65,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:51:51",
+      "review": "pending"
+    },
+    "toijala": {
+      "file": "places/toijala.ogg",
+      "text": "Toijala",
+      "category": "places",
+      "language": "fi",
+      "duration_s": 0.57,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:52:13",
+      "review": "pending"
+    },
+    "tornio": {
+      "file": "places/tornio.ogg",
+      "text": "Tornio",
+      "category": "places",
+      "language": "fi",
+      "duration_s": 0.51,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:52:34",
+      "review": "pending"
+    },
+    "tornio_itainen": {
+      "file": "places/tornio_itainen.ogg",
+      "text": "Tornio-Itäinen",
+      "category": "places",
+      "language": "fi",
+      "duration_s": 1.15,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T21:10:15",
+      "review": "pending"
+    },
+    "turku": {
+      "file": "places/turku.ogg",
+      "text": "Turku",
+      "category": "places",
+      "language": "fi",
+      "duration_s": 0.56,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T21:10:19",
+      "review": "pending"
+    },
+    "turku_satama": {
+      "file": "places/turku_satama.ogg",
+      "text": "Turku satama",
+      "category": "places",
+      "language": "fi",
+      "duration_s": 0.75,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T21:10:22",
+      "review": "pending"
+    },
+    "tuuri": {
+      "file": "places/tuuri.ogg",
+      "text": "Tuuri",
+      "category": "places",
+      "language": "fi",
+      "duration_s": 0.44,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:54:56",
+      "review": "pending"
+    },
+    "uimaharju": {
+      "file": "places/uimaharju.ogg",
+      "text": "Uimaharju",
+      "category": "places",
+      "language": "fi",
+      "duration_s": 0.59,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:55:18",
+      "review": "pending"
+    },
+    "utajarvi": {
+      "file": "places/utajarvi.ogg",
+      "text": "Utajärvi",
+      "category": "places",
+      "language": "fi",
+      "duration_s": 0.66,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T21:10:25",
+      "review": "pending"
+    },
+    "vaala": {
+      "file": "places/vaala.ogg",
+      "text": "Vaala",
+      "category": "places",
+      "language": "fi",
+      "duration_s": 0.39,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:56:19",
+      "review": "pending"
+    },
+    "vaasa": {
+      "file": "places/vaasa.ogg",
+      "text": "Vaasa",
+      "category": "places",
+      "language": "fi",
+      "duration_s": 0.63,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:56:34",
+      "review": "pending"
+    },
+    "vammala": {
+      "file": "places/vammala.ogg",
+      "text": "Vammala",
+      "category": "places",
+      "language": "fi",
+      "duration_s": 0.54,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T21:10:28",
+      "review": "pending"
+    },
+    "varkaus": {
+      "file": "places/varkaus.ogg",
+      "text": "Varkaus",
+      "category": "places",
+      "language": "fi",
+      "duration_s": 0.65,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:57:34",
+      "review": "pending"
+    },
+    "vihanti": {
+      "file": "places/vihanti.ogg",
+      "text": "Vihanti",
+      "category": "places",
+      "language": "fi",
+      "duration_s": 0.48,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:57:56",
+      "review": "pending"
+    },
+    "vihtari": {
+      "file": "places/vihtari.ogg",
+      "text": "Vihtari",
+      "category": "places",
+      "language": "fi",
+      "duration_s": 0.45,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T21:10:31",
+      "review": "pending"
+    },
+    "viinijarvi": {
+      "file": "places/viinijarvi.ogg",
+      "text": "Viinijärvi",
+      "category": "places",
+      "language": "fi",
+      "duration_s": 0.92,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:58:41",
+      "review": "pending"
+    },
+    "vilppula": {
+      "file": "places/vilppula.ogg",
+      "text": "Vilppula",
+      "category": "places",
+      "language": "fi",
+      "duration_s": 0.55,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:59:03",
+      "review": "pending"
+    },
+    "vuonislahti": {
+      "file": "places/vuonislahti.ogg",
+      "text": "Vuonislahti",
+      "category": "places",
+      "language": "fi",
+      "duration_s": 0.73,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:59:19",
+      "review": "pending"
+    },
+    "ylitornio": {
+      "file": "places/ylitornio.ogg",
+      "text": "Ylitornio",
+      "category": "places",
+      "language": "fi",
+      "duration_s": 0.62,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T21:10:35",
+      "review": "pending"
+    },
+    "ylivieska": {
+      "file": "places/ylivieska.ogg",
+      "text": "Ylivieska",
+      "category": "places",
+      "language": "fi",
+      "duration_s": 0.81,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T21:10:56",
+      "review": "pending"
+    },
+    "ahtari": {
+      "file": "places/ahtari.ogg",
+      "text": "Ähtäri",
+      "category": "places",
+      "language": "fi",
+      "duration_s": 0.57,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T21:00:55",
+      "review": "pending"
+    }
+  },
+  "places_to": {
+    "alavus": {
+      "file": "places/to/alavus.ogg",
+      "text": "Alavudelle",
+      "category": "places_to",
+      "language": "fi",
+      "duration_s": 0.6,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:18:29",
+      "review": "pending"
+    },
+    "elainpuisto_zoo": {
+      "file": "places/to/elainpuisto_zoo.ogg",
+      "text": "Eläinpuisto-Zoohon",
+      "category": "places_to",
+      "language": "fi",
+      "duration_s": 1.01,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T21:10:59",
+      "review": "pending"
+    },
+    "eno": {
+      "file": "places/to/eno.ogg",
+      "text": "Enoon",
+      "category": "places_to",
+      "language": "fi",
+      "duration_s": 0.5,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:18:56",
+      "review": "pending"
+    },
+    "haapajarvi": {
+      "file": "places/to/haapajarvi.ogg",
+      "text": "Haapajärvelle",
+      "category": "places_to",
+      "language": "fi",
+      "duration_s": 0.89,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T21:11:02",
+      "review": "pending"
+    },
+    "haapamaki": {
+      "file": "places/to/haapamaki.ogg",
+      "text": "Haapamäelle",
+      "category": "places_to",
+      "language": "fi",
+      "duration_s": 0.82,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:19:25",
+      "review": "pending"
+    },
+    "haaparanta_pohjoinen": {
+      "file": "places/to/haaparanta_pohjoinen.ogg",
+      "text": "Haaparannan pohjoiselle asemalle",
+      "category": "places_to",
+      "language": "fi",
+      "duration_s": 2.52,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:19:37",
+      "review": "pending"
+    },
+    "hankasalmi": {
+      "file": "places/to/hankasalmi.ogg",
+      "text": "Hankasalmelle",
+      "category": "places_to",
+      "language": "fi",
+      "duration_s": 0.98,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T21:11:06",
+      "review": "pending"
+    },
+    "harjavalta": {
+      "file": "places/to/harjavalta.ogg",
+      "text": "Harjavaltaan",
+      "category": "places_to",
+      "language": "fi",
+      "duration_s": 0.82,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:20:05",
+      "review": "pending"
+    },
+    "haukivuori": {
+      "file": "places/to/haukivuori.ogg",
+      "text": "Haukivuorelle",
+      "category": "places_to",
+      "language": "fi",
+      "duration_s": 0.85,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T21:11:09",
+      "review": "pending"
+    },
+    "heinavesi": {
+      "file": "places/to/heinavesi.ogg",
+      "text": "Heinävedelle",
+      "category": "places_to",
+      "language": "fi",
+      "duration_s": 0.92,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:20:38",
+      "review": "pending"
+    },
+    "helsinki": {
+      "file": "places/to/helsinki.ogg",
+      "text": "Helsinkiin",
+      "category": "places_to",
+      "language": "fi",
+      "duration_s": 0.78,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T21:11:12",
+      "review": "pending"
+    },
+    "hiirola": {
+      "file": "places/to/hiirola.ogg",
+      "text": "Hiirolaan",
+      "category": "places_to",
+      "language": "fi",
+      "duration_s": 0.74,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:21:10",
+      "review": "pending"
+    },
+    "hillosensalmi": {
+      "file": "places/to/hillosensalmi.ogg",
+      "text": "Hillosensalmelle",
+      "category": "places_to",
+      "language": "fi",
+      "duration_s": 1.4,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T21:11:29",
+      "review": "pending"
+    },
+    "humppila": {
+      "file": "places/to/humppila.ogg",
+      "text": "Humppilaan",
+      "category": "places_to",
+      "language": "fi",
+      "duration_s": 0.76,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T21:11:32",
+      "review": "pending"
+    },
+    "hyvinkaa_tavara": {
+      "file": "places/to/hyvinkaa_tavara.ogg",
+      "text": "Hyvinkään tavara-asemalle",
+      "category": "places_to",
+      "language": "fi",
+      "duration_s": 1.76,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:21:54",
+      "review": "pending"
+    },
+    "hameenlinna": {
+      "file": "places/to/hameenlinna.ogg",
+      "text": "Hämeenlinnaan",
+      "category": "places_to",
+      "language": "fi",
+      "duration_s": 1.04,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:22:06",
+      "review": "pending"
+    },
+    "holjakka": {
+      "file": "places/to/holjakka.ogg",
+      "text": "Höljäkkään",
+      "category": "places_to",
+      "language": "fi",
+      "duration_s": 1.09,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T21:54:25",
+      "review": "pending"
+    },
+    "iisalmi": {
+      "file": "places/to/iisalmi.ogg",
+      "text": "Iisalmeen",
+      "category": "places_to",
+      "language": "fi",
+      "duration_s": 0.63,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:22:33",
+      "review": "pending"
+    },
+    "imatra": {
+      "file": "places/to/imatra.ogg",
+      "text": "Imatralle",
+      "category": "places_to",
+      "language": "fi",
+      "duration_s": 0.71,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:22:50",
+      "review": "pending"
+    },
+    "joensuu": {
+      "file": "places/to/joensuu.ogg",
+      "text": "Joensuuhun",
+      "category": "places_to",
+      "language": "fi",
+      "duration_s": 0.81,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:23:07",
+      "review": "pending"
+    },
+    "joutseno": {
+      "file": "places/to/joutseno.ogg",
+      "text": "Joutsenoon",
+      "category": "places_to",
+      "language": "fi",
+      "duration_s": 0.7,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T21:12:07",
+      "review": "pending"
+    },
+    "juupajoki": {
+      "file": "places/to/juupajoki.ogg",
+      "text": "Juupajoelle",
+      "category": "places_to",
+      "language": "fi",
+      "duration_s": 0.81,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T21:12:10",
+      "review": "pending"
+    },
+    "jyvaskyla": {
+      "file": "places/to/jyvaskyla.ogg",
+      "text": "Jyväskylään",
+      "category": "places_to",
+      "language": "fi",
+      "duration_s": 0.9,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T21:12:27",
+      "review": "pending"
+    },
+    "jamsa": {
+      "file": "places/to/jamsa.ogg",
+      "text": "Jämsään",
+      "category": "places_to",
+      "language": "fi",
+      "duration_s": 0.59,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T21:12:30",
+      "review": "pending"
+    },
+    "kajaani": {
+      "file": "places/to/kajaani.ogg",
+      "text": "Kajaaniin",
+      "category": "places_to",
+      "language": "fi",
+      "duration_s": 0.68,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T21:12:55",
+      "review": "pending"
+    },
+    "kalvitsa": {
+      "file": "places/to/kalvitsa.ogg",
+      "text": "Kalvitsaan",
+      "category": "places_to",
+      "language": "fi",
+      "duration_s": 0.66,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:24:40",
+      "review": "pending"
+    },
+    "kannus": {
+      "file": "places/to/kannus.ogg",
+      "text": "Kannukseen",
+      "category": "places_to",
+      "language": "fi",
+      "duration_s": 0.86,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:24:49",
+      "review": "pending"
+    },
+    "karjaa": {
+      "file": "places/to/karjaa.ogg",
+      "text": "Karjaalle",
+      "category": "places_to",
+      "language": "fi",
+      "duration_s": 0.81,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:25:03",
+      "review": "pending"
+    },
+    "karkku": {
+      "file": "places/to/karkku.ogg",
+      "text": "Karkkuun",
+      "category": "places_to",
+      "language": "fi",
+      "duration_s": 0.73,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:25:14",
+      "review": "pending"
+    },
+    "kauhava": {
+      "file": "places/to/kauhava.ogg",
+      "text": "Kauhavalle",
+      "category": "places_to",
+      "language": "fi",
+      "duration_s": 0.71,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:25:21",
+      "review": "pending"
+    },
+    "kemi": {
+      "file": "places/to/kemi.ogg",
+      "text": "Kemiin",
+      "category": "places_to",
+      "language": "fi",
+      "duration_s": 0.42,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:25:31",
+      "review": "pending"
+    },
+    "kemijarvi": {
+      "file": "places/to/kemijarvi.ogg",
+      "text": "Kemijärvelle",
+      "category": "places_to",
+      "language": "fi",
+      "duration_s": 0.7,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:25:53",
+      "review": "pending"
+    },
+    "kempele": {
+      "file": "places/to/kempele.ogg",
+      "text": "Kempeleeseen",
+      "category": "places_to",
+      "language": "fi",
+      "duration_s": 1.06,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T21:12:59",
+      "review": "pending"
+    },
+    "kerimaki": {
+      "file": "places/to/kerimaki.ogg",
+      "text": "Kerimäelle",
+      "category": "places_to",
+      "language": "fi",
+      "duration_s": 0.69,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:26:20",
+      "review": "pending"
+    },
+    "kesalahti": {
+      "file": "places/to/kesalahti.ogg",
+      "text": "Kesälahdelle",
+      "category": "places_to",
+      "language": "fi",
+      "duration_s": 1.04,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:26:32",
+      "review": "pending"
+    },
+    "keuruu": {
+      "file": "places/to/keuruu.ogg",
+      "text": "Keuruulle",
+      "category": "places_to",
+      "language": "fi",
+      "duration_s": 1.14,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:26:46",
+      "review": "pending"
+    },
+    "kirkkonummi": {
+      "file": "places/to/kirkkonummi.ogg",
+      "text": "Kirkkonummelle",
+      "category": "places_to",
+      "language": "fi",
+      "duration_s": 0.87,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:27:03",
+      "review": "pending"
+    },
+    "kitee": {
+      "file": "places/to/kitee.ogg",
+      "text": "Kiteelle",
+      "category": "places_to",
+      "language": "fi",
+      "duration_s": 0.51,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:27:19",
+      "review": "pending"
+    },
+    "kiuruvesi": {
+      "file": "places/to/kiuruvesi.ogg",
+      "text": "Kiuruvedelle",
+      "category": "places_to",
+      "language": "fi",
+      "duration_s": 1.1,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:27:31",
+      "review": "pending"
+    },
+    "kohtavaara": {
+      "file": "places/to/kohtavaara.ogg",
+      "text": "Kohtavaaralle",
+      "category": "places_to",
+      "language": "fi",
+      "duration_s": 0.88,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:27:43",
+      "review": "pending"
+    },
+    "kokemaki": {
+      "file": "places/to/kokemaki.ogg",
+      "text": "Kokemäelle",
+      "category": "places_to",
+      "language": "fi",
+      "duration_s": 0.8,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:28:05",
+      "review": "pending"
+    },
+    "kokkola": {
+      "file": "places/to/kokkola.ogg",
+      "text": "Kokkolaan",
+      "category": "places_to",
+      "language": "fi",
+      "duration_s": 0.74,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T21:13:15",
+      "review": "pending"
+    },
+    "kolari": {
+      "file": "places/to/kolari.ogg",
+      "text": "Kolariin",
+      "category": "places_to",
+      "language": "fi",
+      "duration_s": 0.7,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T21:13:18",
+      "review": "pending"
+    },
+    "kolho": {
+      "file": "places/to/kolho.ogg",
+      "text": "Kolhoon",
+      "category": "places_to",
+      "language": "fi",
+      "duration_s": 0.49,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:28:50",
+      "review": "pending"
+    },
+    "kontiomaki": {
+      "file": "places/to/kontiomaki.ogg",
+      "text": "Kontiomäelle",
+      "category": "places_to",
+      "language": "fi",
+      "duration_s": 0.82,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:29:05",
+      "review": "pending"
+    },
+    "kouvola": {
+      "file": "places/to/kouvola.ogg",
+      "text": "Kouvolaan",
+      "category": "places_to",
+      "language": "fi",
+      "duration_s": 0.86,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:29:31",
+      "review": "pending"
+    },
+    "kuopio": {
+      "file": "places/to/kuopio.ogg",
+      "text": "Kuopioon",
+      "category": "places_to",
+      "language": "fi",
+      "duration_s": 0.59,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:29:45",
+      "review": "pending"
+    },
+    "kupittaa": {
+      "file": "places/to/kupittaa.ogg",
+      "text": "Kupittaalle",
+      "category": "places_to",
+      "language": "fi",
+      "duration_s": 0.73,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:30:08",
+      "review": "pending"
+    },
+    "kylanlahti": {
+      "file": "places/to/kylanlahti.ogg",
+      "text": "Kylänlahdelle",
+      "category": "places_to",
+      "language": "fi",
+      "duration_s": 0.96,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:30:20",
+      "review": "pending"
+    },
+    "lahti": {
+      "file": "places/to/lahti.ogg",
+      "text": "Lahteen",
+      "category": "places_to",
+      "language": "fi",
+      "duration_s": 0.58,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:30:29",
+      "review": "pending"
+    },
+    "lapinlahti": {
+      "file": "places/to/lapinlahti.ogg",
+      "text": "Lapinlahdelle",
+      "category": "places_to",
+      "language": "fi",
+      "duration_s": 0.89,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:30:48",
+      "review": "pending"
+    },
+    "lappeenranta": {
+      "file": "places/to/lappeenranta.ogg",
+      "text": "Lappeenrantaan",
+      "category": "places_to",
+      "language": "fi",
+      "duration_s": 0.96,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:31:06",
+      "review": "pending"
+    },
+    "lapua": {
+      "file": "places/to/lapua.ogg",
+      "text": "Lapualle",
+      "category": "places_to",
+      "language": "fi",
+      "duration_s": 0.69,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:31:17",
+      "review": "pending"
+    },
+    "lempaala": {
+      "file": "places/to/lempaala.ogg",
+      "text": "Lempäälään",
+      "category": "places_to",
+      "language": "fi",
+      "duration_s": 0.87,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:31:32",
+      "review": "pending"
+    },
+    "leppavaara": {
+      "file": "places/to/leppavaara.ogg",
+      "text": "Leppävaaraan",
+      "category": "places_to",
+      "language": "fi",
+      "duration_s": 0.92,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T21:13:27",
+      "review": "pending"
+    },
+    "lieksa": {
+      "file": "places/to/lieksa.ogg",
+      "text": "Lieksaan",
+      "category": "places_to",
+      "language": "fi",
+      "duration_s": 0.58,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:32:33",
+      "review": "pending"
+    },
+    "lievestuore": {
+      "file": "places/to/lievestuore.ogg",
+      "text": "Lievestuoreelle",
+      "category": "places_to",
+      "language": "fi",
+      "duration_s": 0.86,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:32:45",
+      "review": "pending"
+    },
+    "lohja": {
+      "file": "places/to/lohja.ogg",
+      "text": "Lohjalle",
+      "category": "places_to",
+      "language": "fi",
+      "duration_s": 0.62,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T21:13:30",
+      "review": "pending"
+    },
+    "loimaa": {
+      "file": "places/to/loimaa.ogg",
+      "text": "Loimaalle",
+      "category": "places_to",
+      "language": "fi",
+      "duration_s": 0.68,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T21:13:33",
+      "review": "pending"
+    },
+    "lusto": {
+      "file": "places/to/lusto.ogg",
+      "text": "Lustoon",
+      "category": "places_to",
+      "language": "fi",
+      "duration_s": 0.55,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T21:13:40",
+      "review": "pending"
+    },
+    "mikkeli": {
+      "file": "places/to/mikkeli.ogg",
+      "text": "Mikkeliin",
+      "category": "places_to",
+      "language": "fi",
+      "duration_s": 0.8,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:34:08",
+      "review": "pending"
+    },
+    "misi": {
+      "file": "places/to/misi.ogg",
+      "text": "Misiin",
+      "category": "places_to",
+      "language": "fi",
+      "duration_s": 0.52,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:34:27",
+      "review": "pending"
+    },
+    "muhos": {
+      "file": "places/to/muhos.ogg",
+      "text": "Muhokselle",
+      "category": "places_to",
+      "language": "fi",
+      "duration_s": 0.82,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:34:38",
+      "review": "pending"
+    },
+    "mustio": {
+      "file": "places/to/mustio.ogg",
+      "text": "Mustioon",
+      "category": "places_to",
+      "language": "fi",
+      "duration_s": 0.85,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:34:49",
+      "review": "pending"
+    },
+    "muurola": {
+      "file": "places/to/muurola.ogg",
+      "text": "Muurolaan",
+      "category": "places_to",
+      "language": "fi",
+      "duration_s": 0.66,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:35:04",
+      "review": "pending"
+    },
+    "myllymaki": {
+      "file": "places/to/myllymaki.ogg",
+      "text": "Myllymäelle",
+      "category": "places_to",
+      "language": "fi",
+      "duration_s": 0.96,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:35:18",
+      "review": "pending"
+    },
+    "mantyharju": {
+      "file": "places/to/mantyharju.ogg",
+      "text": "Mäntyharjulle",
+      "category": "places_to",
+      "language": "fi",
+      "duration_s": 0.83,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:35:44",
+      "review": "pending"
+    },
+    "nivala": {
+      "file": "places/to/nivala.ogg",
+      "text": "Nivalaan",
+      "category": "places_to",
+      "language": "fi",
+      "duration_s": 0.91,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T21:13:44",
+      "review": "pending"
+    },
+    "nokia": {
+      "file": "places/to/nokia.ogg",
+      "text": "Nokialle",
+      "category": "places_to",
+      "language": "fi",
+      "duration_s": 0.88,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T21:13:48",
+      "review": "pending"
+    },
+    "nummela": {
+      "file": "places/to/nummela.ogg",
+      "text": "Nummelaan",
+      "category": "places_to",
+      "language": "fi",
+      "duration_s": 0.93,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:36:55",
+      "review": "pending"
+    },
+    "nurmes": {
+      "file": "places/to/nurmes.ogg",
+      "text": "Nurmekseen",
+      "category": "places_to",
+      "language": "fi",
+      "duration_s": 1.0,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:37:25",
+      "review": "pending"
+    },
+    "orivesi": {
+      "file": "places/to/orivesi.ogg",
+      "text": "Orivedelle",
+      "category": "places_to",
+      "language": "fi",
+      "duration_s": 0.64,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:37:36",
+      "review": "pending"
+    },
+    "orivesi_keskusta": {
+      "file": "places/to/orivesi_keskusta.ogg",
+      "text": "Oriveden keskustaan",
+      "category": "places_to",
+      "language": "fi",
+      "duration_s": 1.12,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:37:58",
+      "review": "pending"
+    },
+    "otava": {
+      "file": "places/to/otava.ogg",
+      "text": "Otavaan",
+      "category": "places_to",
+      "language": "fi",
+      "duration_s": 0.25,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:38:12",
+      "review": "pending"
+    },
+    "oulainen": {
+      "file": "places/to/oulainen.ogg",
+      "text": "Oulaisiin",
+      "category": "places_to",
+      "language": "fi",
+      "duration_s": 0.76,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:38:28",
+      "review": "pending"
+    },
+    "oulu": {
+      "file": "places/to/oulu.ogg",
+      "text": "Ouluun",
+      "category": "places_to",
+      "language": "fi",
+      "duration_s": 0.68,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:38:42",
+      "review": "pending"
+    },
+    "paltamo": {
+      "file": "places/to/paltamo.ogg",
+      "text": "Paltamoon",
+      "category": "places_to",
+      "language": "fi",
+      "duration_s": 0.65,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:38:56",
+      "review": "pending"
+    },
+    "parikkala": {
+      "file": "places/to/parikkala.ogg",
+      "text": "Parikkalaan",
+      "category": "places_to",
+      "language": "fi",
+      "duration_s": 0.82,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:39:22",
+      "review": "pending"
+    },
+    "parkano": {
+      "file": "places/to/parkano.ogg",
+      "text": "Parkanoon",
+      "category": "places_to",
+      "language": "fi",
+      "duration_s": 0.65,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:39:40",
+      "review": "pending"
+    },
+    "pasila": {
+      "file": "places/to/pasila.ogg",
+      "text": "Pasilaan",
+      "category": "places_to",
+      "language": "fi",
+      "duration_s": 0.9,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T21:14:01",
+      "review": "pending"
+    },
+    "pello": {
+      "file": "places/to/pello.ogg",
+      "text": "Pelloon",
+      "category": "places_to",
+      "language": "fi",
+      "duration_s": 0.56,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T21:14:13",
+      "review": "pending"
+    },
+    "petajavesi": {
+      "file": "places/to/petajavesi.ogg",
+      "text": "Petäjävedelle",
+      "category": "places_to",
+      "language": "fi",
+      "duration_s": 0.78,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:41:05",
+      "review": "pending"
+    },
+    "pieksamaki": {
+      "file": "places/to/pieksamaki.ogg",
+      "text": "Pieksämäelle",
+      "category": "places_to",
+      "language": "fi",
+      "duration_s": 0.85,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:41:26",
+      "review": "pending"
+    },
+    "pihlajavesi": {
+      "file": "places/to/pihlajavesi.ogg",
+      "text": "Pihlajavedelle",
+      "category": "places_to",
+      "language": "fi",
+      "duration_s": 0.9,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:41:44",
+      "review": "pending"
+    },
+    "pori": {
+      "file": "places/to/pori.ogg",
+      "text": "Poriin",
+      "category": "places_to",
+      "language": "fi",
+      "duration_s": 0.5,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T21:14:17",
+      "review": "pending"
+    },
+    "punkaharju": {
+      "file": "places/to/punkaharju.ogg",
+      "text": "Punkaharjulle",
+      "category": "places_to",
+      "language": "fi",
+      "duration_s": 0.86,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:42:29",
+      "review": "pending"
+    },
+    "pyhasalmi": {
+      "file": "places/to/pyhasalmi.ogg",
+      "text": "Pyhäsalmelle",
+      "category": "places_to",
+      "language": "fi",
+      "duration_s": 1.01,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:42:50",
+      "review": "pending"
+    },
+    "pannainen": {
+      "file": "places/to/pannainen.ogg",
+      "text": "Pännäisiin",
+      "category": "places_to",
+      "language": "fi",
+      "duration_s": 0.62,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:43:05",
+      "review": "pending"
+    },
+    "paaskylahti": {
+      "file": "places/to/paaskylahti.ogg",
+      "text": "Pääskylahdelle",
+      "category": "places_to",
+      "language": "fi",
+      "duration_s": 0.98,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:43:27",
+      "review": "pending"
+    },
+    "rajamaki": {
+      "file": "places/to/rajamaki.ogg",
+      "text": "Rajamäelle",
+      "category": "places_to",
+      "language": "fi",
+      "duration_s": 0.72,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:43:55",
+      "review": "pending"
+    },
+    "retretti": {
+      "file": "places/to/retretti.ogg",
+      "text": "Retrettiin",
+      "category": "places_to",
+      "language": "fi",
+      "duration_s": 0.92,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:44:21",
+      "review": "pending"
+    },
+    "riihimaki": {
+      "file": "places/to/riihimaki.ogg",
+      "text": "Riihimäelle",
+      "category": "places_to",
+      "language": "fi",
+      "duration_s": 0.66,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:44:38",
+      "review": "pending"
+    },
+    "rovaniemi": {
+      "file": "places/to/rovaniemi.ogg",
+      "text": "Rovaniemelle",
+      "category": "places_to",
+      "language": "fi",
+      "duration_s": 0.87,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:45:00",
+      "review": "pending"
+    },
+    "runni": {
+      "file": "places/to/runni.ogg",
+      "text": "Runnille",
+      "category": "places_to",
+      "language": "fi",
+      "duration_s": 0.61,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T21:14:21",
+      "review": "pending"
+    },
+    "ruukki": {
+      "file": "places/to/ruukki.ogg",
+      "text": "Ruukkiin",
+      "category": "places_to",
+      "language": "fi",
+      "duration_s": 0.64,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T21:14:24",
+      "review": "pending"
+    },
+    "salo": {
+      "file": "places/to/salo.ogg",
+      "text": "Saloon",
+      "category": "places_to",
+      "language": "fi",
+      "duration_s": 0.46,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:46:21",
+      "review": "pending"
+    },
+    "savonlinna": {
+      "file": "places/to/savonlinna.ogg",
+      "text": "Savonlinnaan",
+      "category": "places_to",
+      "language": "fi",
+      "duration_s": 0.96,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T21:14:27",
+      "review": "pending"
+    },
+    "seinajoki": {
+      "file": "places/to/seinajoki.ogg",
+      "text": "Seinäjoelle",
+      "category": "places_to",
+      "language": "fi",
+      "duration_s": 0.8,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T21:14:32",
+      "review": "pending"
+    },
+    "siilinjarvi": {
+      "file": "places/to/siilinjarvi.ogg",
+      "text": "Siilinjärvelle",
+      "category": "places_to",
+      "language": "fi",
+      "duration_s": 0.91,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T21:14:53",
+      "review": "pending"
+    },
+    "simpele": {
+      "file": "places/to/simpele.ogg",
+      "text": "Simpeleelle",
+      "category": "places_to",
+      "language": "fi",
+      "duration_s": 0.88,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:48:45",
+      "review": "pending"
+    },
+    "sukeva": {
+      "file": "places/to/sukeva.ogg",
+      "text": "Sukevalle",
+      "category": "places_to",
+      "language": "fi",
+      "duration_s": 0.64,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:49:00",
+      "review": "pending"
+    },
+    "suolahti": {
+      "file": "places/to/suolahti.ogg",
+      "text": "Suolahteen",
+      "category": "places_to",
+      "language": "fi",
+      "duration_s": 0.69,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:49:15",
+      "review": "pending"
+    },
+    "suonenjoki": {
+      "file": "places/to/suonenjoki.ogg",
+      "text": "Suonenjoelle",
+      "category": "places_to",
+      "language": "fi",
+      "duration_s": 0.71,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T21:15:02",
+      "review": "pending"
+    },
+    "tampere": {
+      "file": "places/to/tampere.ogg",
+      "text": "Tampereelle",
+      "category": "places_to",
+      "language": "fi",
+      "duration_s": 0.88,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:50:21",
+      "review": "pending"
+    },
+    "tervajoki": {
+      "file": "places/to/tervajoki.ogg",
+      "text": "Tervajoelle",
+      "category": "places_to",
+      "language": "fi",
+      "duration_s": 0.78,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:50:36",
+      "review": "pending"
+    },
+    "tervola": {
+      "file": "places/to/tervola.ogg",
+      "text": "Tervolaan",
+      "category": "places_to",
+      "language": "fi",
+      "duration_s": 0.73,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T21:15:05",
+      "review": "pending"
+    },
+    "tesoma": {
+      "file": "places/to/tesoma.ogg",
+      "text": "Tesomalle",
+      "category": "places_to",
+      "language": "fi",
+      "duration_s": 0.77,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T21:15:09",
+      "review": "pending"
+    },
+    "tikkurila": {
+      "file": "places/to/tikkurila.ogg",
+      "text": "Tikkurilaan",
+      "category": "places_to",
+      "language": "fi",
+      "duration_s": 1.16,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:52:01",
+      "review": "pending"
+    },
+    "toijala": {
+      "file": "places/to/toijala.ogg",
+      "text": "Toijalaan",
+      "category": "places_to",
+      "language": "fi",
+      "duration_s": 0.58,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:52:17",
+      "review": "pending"
+    },
+    "tornio": {
+      "file": "places/to/tornio.ogg",
+      "text": "Tornioon",
+      "category": "places_to",
+      "language": "fi",
+      "duration_s": 0.8,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:52:39",
+      "review": "pending"
+    },
+    "tornio_itainen": {
+      "file": "places/to/tornio_itainen.ogg",
+      "text": "Tornio-Itäiseen",
+      "category": "places_to",
+      "language": "fi",
+      "duration_s": 1.19,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:53:20",
+      "review": "pending"
+    },
+    "turku": {
+      "file": "places/to/turku.ogg",
+      "text": "Turkuun",
+      "category": "places_to",
+      "language": "fi",
+      "duration_s": 0.68,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T21:15:13",
+      "review": "pending"
+    },
+    "turku_satama": {
+      "file": "places/to/turku_satama.ogg",
+      "text": "Turun satamaan",
+      "category": "places_to",
+      "language": "fi",
+      "duration_s": 0.84,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:54:34",
+      "review": "pending"
+    },
+    "tuuri": {
+      "file": "places/to/tuuri.ogg",
+      "text": "Tuuriin",
+      "category": "places_to",
+      "language": "fi",
+      "duration_s": 0.73,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:55:00",
+      "review": "pending"
+    },
+    "uimaharju": {
+      "file": "places/to/uimaharju.ogg",
+      "text": "Uimaharjuun",
+      "category": "places_to",
+      "language": "fi",
+      "duration_s": 0.73,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T21:15:16",
+      "review": "pending"
+    },
+    "utajarvi": {
+      "file": "places/to/utajarvi.ogg",
+      "text": "Utajärvelle",
+      "category": "places_to",
+      "language": "fi",
+      "duration_s": 0.94,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:56:08",
+      "review": "pending"
+    },
+    "vaala": {
+      "file": "places/to/vaala.ogg",
+      "text": "Vaalaan",
+      "category": "places_to",
+      "language": "fi",
+      "duration_s": 0.6,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:56:23",
+      "review": "pending"
+    },
+    "vaasa": {
+      "file": "places/to/vaasa.ogg",
+      "text": "Vaasaan",
+      "category": "places_to",
+      "language": "fi",
+      "duration_s": 0.72,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:56:42",
+      "review": "pending"
+    },
+    "vammala": {
+      "file": "places/to/vammala.ogg",
+      "text": "Vammalaan",
+      "category": "places_to",
+      "language": "fi",
+      "duration_s": 0.65,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T21:15:19",
+      "review": "pending"
+    },
+    "varkaus": {
+      "file": "places/to/varkaus.ogg",
+      "text": "Varkauteen",
+      "category": "places_to",
+      "language": "fi",
+      "duration_s": 1.22,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:57:41",
+      "review": "pending"
+    },
+    "vihanti": {
+      "file": "places/to/vihanti.ogg",
+      "text": "Vihantiin",
+      "category": "places_to",
+      "language": "fi",
+      "duration_s": 0.65,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:58:01",
+      "review": "pending"
+    },
+    "vihtari": {
+      "file": "places/to/vihtari.ogg",
+      "text": "Vihtariin",
+      "category": "places_to",
+      "language": "fi",
+      "duration_s": 0.7,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:58:30",
+      "review": "pending"
+    },
+    "viinijarvi": {
+      "file": "places/to/viinijarvi.ogg",
+      "text": "Viinijärvelle",
+      "category": "places_to",
+      "language": "fi",
+      "duration_s": 0.84,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:58:47",
+      "review": "pending"
+    },
+    "vilppula": {
+      "file": "places/to/vilppula.ogg",
+      "text": "Vilppulaan",
+      "category": "places_to",
+      "language": "fi",
+      "duration_s": 0.76,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:59:09",
+      "review": "pending"
+    },
+    "vuonislahti": {
+      "file": "places/to/vuonislahti.ogg",
+      "text": "Vuonislahteen",
+      "category": "places_to",
+      "language": "fi",
+      "duration_s": 1.1,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:59:24",
+      "review": "pending"
+    },
+    "ylitornio": {
+      "file": "places/to/ylitornio.ogg",
+      "text": "Ylitornioon",
+      "category": "places_to",
+      "language": "fi",
+      "duration_s": 0.73,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:59:55",
+      "review": "pending"
+    },
+    "ylivieska": {
+      "file": "places/to/ylivieska.ogg",
+      "text": "Ylivieskaan",
+      "category": "places_to",
+      "language": "fi",
+      "duration_s": 0.82,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T21:00:40",
+      "review": "pending"
+    },
+    "ahtari": {
+      "file": "places/to/ahtari.ogg",
+      "text": "Ähtäriin",
+      "category": "places_to",
+      "language": "fi",
+      "duration_s": 0.75,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T21:01:00",
+      "review": "pending"
+    }
+  },
+  "places_from": {
+    "alavus": {
+      "file": "places/from/alavus.ogg",
+      "text": "Alavudelta",
+      "category": "places_from",
+      "language": "fi",
+      "duration_s": 0.72,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T21:15:26",
+      "review": "pending"
+    },
+    "elainpuisto_zoo": {
+      "file": "places/from/elainpuisto_zoo.ogg",
+      "text": "Eläinpuisto-Zoosta",
+      "category": "places_from",
+      "language": "fi",
+      "duration_s": 1.24,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:18:51",
+      "review": "pending"
+    },
+    "eno": {
+      "file": "places/from/eno.ogg",
+      "text": "Enosta",
+      "category": "places_from",
+      "language": "fi",
+      "duration_s": 0.46,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T21:15:34",
+      "review": "pending"
+    },
+    "haapajarvi": {
+      "file": "places/from/haapajarvi.ogg",
+      "text": "Haapajärveltä",
+      "category": "places_from",
+      "language": "fi",
+      "duration_s": 1.26,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T21:15:50",
+      "review": "pending"
+    },
+    "haapamaki": {
+      "file": "places/from/haapamaki.ogg",
+      "text": "Haapamäeltä",
+      "category": "places_from",
+      "language": "fi",
+      "duration_s": 0.83,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:19:28",
+      "review": "pending"
+    },
+    "haaparanta_pohjoinen": {
+      "file": "places/from/haaparanta_pohjoinen.ogg",
+      "text": "Haaparannan pohjoiselta asemalta",
+      "category": "places_from",
+      "language": "fi",
+      "duration_s": 2.16,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:19:44",
+      "review": "pending"
+    },
+    "hankasalmi": {
+      "file": "places/from/hankasalmi.ogg",
+      "text": "Hankasalmelta",
+      "category": "places_from",
+      "language": "fi",
+      "duration_s": 1.05,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T21:15:54",
+      "review": "pending"
+    },
+    "harjavalta": {
+      "file": "places/from/harjavalta.ogg",
+      "text": "Harjavallasta",
+      "category": "places_from",
+      "language": "fi",
+      "duration_s": 0.81,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:20:08",
+      "review": "pending"
+    },
+    "haukivuori": {
+      "file": "places/from/haukivuori.ogg",
+      "text": "Haukivuorelta",
+      "category": "places_from",
+      "language": "fi",
+      "duration_s": 0.98,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:20:31",
+      "review": "pending"
+    },
+    "heinavesi": {
+      "file": "places/from/heinavesi.ogg",
+      "text": "Heinävedeltä",
+      "category": "places_from",
+      "language": "fi",
+      "duration_s": 0.26,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:20:43",
+      "review": "pending"
+    },
+    "helsinki": {
+      "file": "places/from/helsinki.ogg",
+      "text": "Helsingistä",
+      "category": "places_from",
+      "language": "fi",
+      "duration_s": 0.81,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T21:16:09",
+      "review": "pending"
+    },
+    "hiirola": {
+      "file": "places/from/hiirola.ogg",
+      "text": "Hiirolasta",
+      "category": "places_from",
+      "language": "fi",
+      "duration_s": 0.75,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:21:13",
+      "review": "pending"
+    },
+    "hillosensalmi": {
+      "file": "places/from/hillosensalmi.ogg",
+      "text": "Hillosensalmelta",
+      "category": "places_from",
+      "language": "fi",
+      "duration_s": 1.05,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:21:32",
+      "review": "pending"
+    },
+    "humppila": {
+      "file": "places/from/humppila.ogg",
+      "text": "Humppilasta",
+      "category": "places_from",
+      "language": "fi",
+      "duration_s": 0.83,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T21:16:13",
+      "review": "pending"
+    },
+    "hyvinkaa_tavara": {
+      "file": "places/from/hyvinkaa_tavara.ogg",
+      "text": "Hyvinkään tavara-asemalta",
+      "category": "places_from",
+      "language": "fi",
+      "duration_s": 1.5,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:21:58",
+      "review": "pending"
+    },
+    "hameenlinna": {
+      "file": "places/from/hameenlinna.ogg",
+      "text": "Hämeenlinnasta",
+      "category": "places_from",
+      "language": "fi",
+      "duration_s": 2.25,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:22:11",
+      "review": "pending"
+    },
+    "holjakka": {
+      "file": "places/from/holjakka.ogg",
+      "text": "Höljäkästä",
+      "category": "places_from",
+      "language": "fi",
+      "duration_s": 0.66,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:22:28",
+      "review": "pending"
+    },
+    "iisalmi": {
+      "file": "places/from/iisalmi.ogg",
+      "text": "Iisalmesta",
+      "category": "places_from",
+      "language": "fi",
+      "duration_s": 0.72,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T21:16:23",
+      "review": "pending"
+    },
+    "imatra": {
+      "file": "places/from/imatra.ogg",
+      "text": "Imatralta",
+      "category": "places_from",
+      "language": "fi",
+      "duration_s": 0.8,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T21:16:26",
+      "review": "pending"
+    },
+    "joensuu": {
+      "file": "places/from/joensuu.ogg",
+      "text": "Joensuusta",
+      "category": "places_from",
+      "language": "fi",
+      "duration_s": 0.78,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:23:10",
+      "review": "pending"
+    },
+    "joutseno": {
+      "file": "places/from/joutseno.ogg",
+      "text": "Joutsenosta",
+      "category": "places_from",
+      "language": "fi",
+      "duration_s": 0.84,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:23:28",
+      "review": "pending"
+    },
+    "juupajoki": {
+      "file": "places/from/juupajoki.ogg",
+      "text": "Juupajoelta",
+      "category": "places_from",
+      "language": "fi",
+      "duration_s": 0.75,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T21:16:30",
+      "review": "pending"
+    },
+    "jyvaskyla": {
+      "file": "places/from/jyvaskyla.ogg",
+      "text": "Jyväskylästä",
+      "category": "places_from",
+      "language": "fi",
+      "duration_s": 1.08,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:24:06",
+      "review": "pending"
+    },
+    "jamsa": {
+      "file": "places/from/jamsa.ogg",
+      "text": "Jämsästä",
+      "category": "places_from",
+      "language": "fi",
+      "duration_s": 0.77,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:24:16",
+      "review": "pending"
+    },
+    "kajaani": {
+      "file": "places/from/kajaani.ogg",
+      "text": "Kajaanista",
+      "category": "places_from",
+      "language": "fi",
+      "duration_s": 0.68,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T21:16:52",
+      "review": "pending"
+    },
+    "kalvitsa": {
+      "file": "places/from/kalvitsa.ogg",
+      "text": "Kalvitsasta",
+      "category": "places_from",
+      "language": "fi",
+      "duration_s": 0.63,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:24:43",
+      "review": "pending"
+    },
+    "kannus": {
+      "file": "places/from/kannus.ogg",
+      "text": "Kannuksesta",
+      "category": "places_from",
+      "language": "fi",
+      "duration_s": 0.74,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:24:53",
+      "review": "pending"
+    },
+    "karjaa": {
+      "file": "places/from/karjaa.ogg",
+      "text": "Karjaalta",
+      "category": "places_from",
+      "language": "fi",
+      "duration_s": 0.86,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:25:06",
+      "review": "pending"
+    },
+    "karkku": {
+      "file": "places/from/karkku.ogg",
+      "text": "Karkusta",
+      "category": "places_from",
+      "language": "fi",
+      "duration_s": 0.67,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:25:16",
+      "review": "pending"
+    },
+    "kauhava": {
+      "file": "places/from/kauhava.ogg",
+      "text": "Kauhavalta",
+      "category": "places_from",
+      "language": "fi",
+      "duration_s": 0.69,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:25:24",
+      "review": "pending"
+    },
+    "kemi": {
+      "file": "places/from/kemi.ogg",
+      "text": "Kemistä",
+      "category": "places_from",
+      "language": "fi",
+      "duration_s": 0.66,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T21:17:10",
+      "review": "pending"
+    },
+    "kemijarvi": {
+      "file": "places/from/kemijarvi.ogg",
+      "text": "Kemijärveltä",
+      "category": "places_from",
+      "language": "fi",
+      "duration_s": 0.86,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:25:57",
+      "review": "pending"
+    },
+    "kempele": {
+      "file": "places/from/kempele.ogg",
+      "text": "Kempeleestä",
+      "category": "places_from",
+      "language": "fi",
+      "duration_s": 0.95,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:26:10",
+      "review": "pending"
+    },
+    "kerimaki": {
+      "file": "places/from/kerimaki.ogg",
+      "text": "Kerimäeltä",
+      "category": "places_from",
+      "language": "fi",
+      "duration_s": 0.71,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:26:23",
+      "review": "pending"
+    },
+    "kesalahti": {
+      "file": "places/from/kesalahti.ogg",
+      "text": "Kesälahdelta",
+      "category": "places_from",
+      "language": "fi",
+      "duration_s": 0.9,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:26:37",
+      "review": "pending"
+    },
+    "keuruu": {
+      "file": "places/from/keuruu.ogg",
+      "text": "Keuruulta",
+      "category": "places_from",
+      "language": "fi",
+      "duration_s": 1.12,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:26:50",
+      "review": "pending"
+    },
+    "kirkkonummi": {
+      "file": "places/from/kirkkonummi.ogg",
+      "text": "Kirkkonummelta",
+      "category": "places_from",
+      "language": "fi",
+      "duration_s": 0.97,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T21:17:14",
+      "review": "pending"
+    },
+    "kitee": {
+      "file": "places/from/kitee.ogg",
+      "text": "Kiteeltä",
+      "category": "places_from",
+      "language": "fi",
+      "duration_s": 0.6,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:27:23",
+      "review": "pending"
+    },
+    "kiuruvesi": {
+      "file": "places/from/kiuruvesi.ogg",
+      "text": "Kiuruvedeltä",
+      "category": "places_from",
+      "language": "fi",
+      "duration_s": 1.01,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:27:37",
+      "review": "pending"
+    },
+    "kohtavaara": {
+      "file": "places/from/kohtavaara.ogg",
+      "text": "Kohtavaaralta",
+      "category": "places_from",
+      "language": "fi",
+      "duration_s": 1.05,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T21:17:19",
+      "review": "pending"
+    },
+    "kokemaki": {
+      "file": "places/from/kokemaki.ogg",
+      "text": "Kokemäeltä",
+      "category": "places_from",
+      "language": "fi",
+      "duration_s": 0.68,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T21:17:23",
+      "review": "pending"
+    },
+    "kokkola": {
+      "file": "places/from/kokkola.ogg",
+      "text": "Kokkolasta",
+      "category": "places_from",
+      "language": "fi",
+      "duration_s": 1.06,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:28:32",
+      "review": "pending"
+    },
+    "kolari": {
+      "file": "places/from/kolari.ogg",
+      "text": "Kolarista",
+      "category": "places_from",
+      "language": "fi",
+      "duration_s": 0.84,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:28:44",
+      "review": "pending"
+    },
+    "kolho": {
+      "file": "places/from/kolho.ogg",
+      "text": "Kolhosta",
+      "category": "places_from",
+      "language": "fi",
+      "duration_s": 0.64,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:28:53",
+      "review": "pending"
+    },
+    "kontiomaki": {
+      "file": "places/from/kontiomaki.ogg",
+      "text": "Kontiomäeltä",
+      "category": "places_from",
+      "language": "fi",
+      "duration_s": 0.96,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T21:17:39",
+      "review": "pending"
+    },
+    "kouvola": {
+      "file": "places/from/kouvola.ogg",
+      "text": "Kouvolasta",
+      "category": "places_from",
+      "language": "fi",
+      "duration_s": 0.79,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:29:39",
+      "review": "pending"
+    },
+    "kuopio": {
+      "file": "places/from/kuopio.ogg",
+      "text": "Kuopiosta",
+      "category": "places_from",
+      "language": "fi",
+      "duration_s": 0.89,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T21:18:03",
+      "review": "pending"
+    },
+    "kupittaa": {
+      "file": "places/from/kupittaa.ogg",
+      "text": "Kupittaalta",
+      "category": "places_from",
+      "language": "fi",
+      "duration_s": 0.76,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:30:13",
+      "review": "pending"
+    },
+    "kylanlahti": {
+      "file": "places/from/kylanlahti.ogg",
+      "text": "Kylänlahdelta",
+      "category": "places_from",
+      "language": "fi",
+      "duration_s": 0.84,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:30:24",
+      "review": "pending"
+    },
+    "lahti": {
+      "file": "places/from/lahti.ogg",
+      "text": "Lahdesta",
+      "category": "places_from",
+      "language": "fi",
+      "duration_s": 0.6,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T21:18:06",
+      "review": "pending"
+    },
+    "lapinlahti": {
+      "file": "places/from/lapinlahti.ogg",
+      "text": "Lapinlahdelta",
+      "category": "places_from",
+      "language": "fi",
+      "duration_s": 0.93,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:30:52",
+      "review": "pending"
+    },
+    "lappeenranta": {
+      "file": "places/from/lappeenranta.ogg",
+      "text": "Lappeenrannasta",
+      "category": "places_from",
+      "language": "fi",
+      "duration_s": 1.12,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:31:10",
+      "review": "pending"
+    },
+    "lapua": {
+      "file": "places/from/lapua.ogg",
+      "text": "Lapualta",
+      "category": "places_from",
+      "language": "fi",
+      "duration_s": 0.62,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:31:23",
+      "review": "pending"
+    },
+    "lempaala": {
+      "file": "places/from/lempaala.ogg",
+      "text": "Lempäälästä",
+      "category": "places_from",
+      "language": "fi",
+      "duration_s": 0.7,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T21:18:11",
+      "review": "pending"
+    },
+    "leppavaara": {
+      "file": "places/from/leppavaara.ogg",
+      "text": "Leppävaarasta",
+      "category": "places_from",
+      "language": "fi",
+      "duration_s": 0.89,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T21:18:14",
+      "review": "pending"
+    },
+    "lieksa": {
+      "file": "places/from/lieksa.ogg",
+      "text": "Lieksasta",
+      "category": "places_from",
+      "language": "fi",
+      "duration_s": 0.66,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:32:36",
+      "review": "pending"
+    },
+    "lievestuore": {
+      "file": "places/from/lievestuore.ogg",
+      "text": "Lievestuoreelta",
+      "category": "places_from",
+      "language": "fi",
+      "duration_s": 0.92,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:32:50",
+      "review": "pending"
+    },
+    "lohja": {
+      "file": "places/from/lohja.ogg",
+      "text": "Lohjalta",
+      "category": "places_from",
+      "language": "fi",
+      "duration_s": 0.69,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:33:11",
+      "review": "pending"
+    },
+    "loimaa": {
+      "file": "places/from/loimaa.ogg",
+      "text": "Loimaalta",
+      "category": "places_from",
+      "language": "fi",
+      "duration_s": 0.54,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T21:18:29",
+      "review": "pending"
+    },
+    "lusto": {
+      "file": "places/from/lusto.ogg",
+      "text": "Lustosta",
+      "category": "places_from",
+      "language": "fi",
+      "duration_s": 0.89,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T21:18:33",
+      "review": "pending"
+    },
+    "mikkeli": {
+      "file": "places/from/mikkeli.ogg",
+      "text": "Mikkelistä",
+      "category": "places_from",
+      "language": "fi",
+      "duration_s": 0.78,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T21:18:37",
+      "review": "pending"
+    },
+    "misi": {
+      "file": "places/from/misi.ogg",
+      "text": "Misistä",
+      "category": "places_from",
+      "language": "fi",
+      "duration_s": 0.58,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:34:30",
+      "review": "pending"
+    },
+    "muhos": {
+      "file": "places/from/muhos.ogg",
+      "text": "Muhokselta",
+      "category": "places_from",
+      "language": "fi",
+      "duration_s": 0.77,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:34:42",
+      "review": "pending"
+    },
+    "mustio": {
+      "file": "places/from/mustio.ogg",
+      "text": "Mustiosta",
+      "category": "places_from",
+      "language": "fi",
+      "duration_s": 0.9,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:34:55",
+      "review": "pending"
+    },
+    "muurola": {
+      "file": "places/from/muurola.ogg",
+      "text": "Muurolasta",
+      "category": "places_from",
+      "language": "fi",
+      "duration_s": 0.82,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:35:09",
+      "review": "pending"
+    },
+    "myllymaki": {
+      "file": "places/from/myllymaki.ogg",
+      "text": "Myllymäeltä",
+      "category": "places_from",
+      "language": "fi",
+      "duration_s": 0.97,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:35:23",
+      "review": "pending"
+    },
+    "mantyharju": {
+      "file": "places/from/mantyharju.ogg",
+      "text": "Mäntyharjulta",
+      "category": "places_from",
+      "language": "fi",
+      "duration_s": 0.95,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T21:18:40",
+      "review": "pending"
+    },
+    "nivala": {
+      "file": "places/from/nivala.ogg",
+      "text": "Nivalasta",
+      "category": "places_from",
+      "language": "fi",
+      "duration_s": 0.71,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:36:18",
+      "review": "pending"
+    },
+    "nokia": {
+      "file": "places/from/nokia.ogg",
+      "text": "Nokialta",
+      "category": "places_from",
+      "language": "fi",
+      "duration_s": 0.8,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T21:18:43",
+      "review": "pending"
+    },
+    "nummela": {
+      "file": "places/from/nummela.ogg",
+      "text": "Nummelasta",
+      "category": "places_from",
+      "language": "fi",
+      "duration_s": 0.9,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T21:18:48",
+      "review": "pending"
+    },
+    "nurmes": {
+      "file": "places/from/nurmes.ogg",
+      "text": "Nurmeksesta",
+      "category": "places_from",
+      "language": "fi",
+      "duration_s": 0.99,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:37:29",
+      "review": "pending"
+    },
+    "orivesi": {
+      "file": "places/from/orivesi.ogg",
+      "text": "Orivedeltä",
+      "category": "places_from",
+      "language": "fi",
+      "duration_s": 0.69,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T21:18:55",
+      "review": "pending"
+    },
+    "orivesi_keskusta": {
+      "file": "places/from/orivesi_keskusta.ogg",
+      "text": "Oriveden keskustasta",
+      "category": "places_from",
+      "language": "fi",
+      "duration_s": 1.28,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:38:04",
+      "review": "pending"
+    },
+    "otava": {
+      "file": "places/from/otava.ogg",
+      "text": "Otavasta",
+      "category": "places_from",
+      "language": "fi",
+      "duration_s": 0.74,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:38:17",
+      "review": "pending"
+    },
+    "oulainen": {
+      "file": "places/from/oulainen.ogg",
+      "text": "Oulaisista",
+      "category": "places_from",
+      "language": "fi",
+      "duration_s": 0.79,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:38:34",
+      "review": "pending"
+    },
+    "oulu": {
+      "file": "places/from/oulu.ogg",
+      "text": "Oulusta",
+      "category": "places_from",
+      "language": "fi",
+      "duration_s": 0.63,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T21:19:12",
+      "review": "pending"
+    },
+    "paltamo": {
+      "file": "places/from/paltamo.ogg",
+      "text": "Paltamosta",
+      "category": "places_from",
+      "language": "fi",
+      "duration_s": 0.66,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T21:19:37",
+      "review": "pending"
+    },
+    "parikkala": {
+      "file": "places/from/parikkala.ogg",
+      "text": "Parikkalasta",
+      "category": "places_from",
+      "language": "fi",
+      "duration_s": 0.8,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T21:19:43",
+      "review": "pending"
+    },
+    "parkano": {
+      "file": "places/from/parkano.ogg",
+      "text": "Parkanosta",
+      "category": "places_from",
+      "language": "fi",
+      "duration_s": 0.8,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:39:46",
+      "review": "pending"
+    },
+    "pasila": {
+      "file": "places/from/pasila.ogg",
+      "text": "Pasilasta",
+      "category": "places_from",
+      "language": "fi",
+      "duration_s": 0.65,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:40:06",
+      "review": "pending"
+    },
+    "pello": {
+      "file": "places/from/pello.ogg",
+      "text": "Pellosta",
+      "category": "places_from",
+      "language": "fi",
+      "duration_s": 0.53,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:40:29",
+      "review": "pending"
+    },
+    "petajavesi": {
+      "file": "places/from/petajavesi.ogg",
+      "text": "Petäjävedeltä",
+      "category": "places_from",
+      "language": "fi",
+      "duration_s": 0.8,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T21:19:47",
+      "review": "pending"
+    },
+    "pieksamaki": {
+      "file": "places/from/pieksamaki.ogg",
+      "text": "Pieksämäeltä",
+      "category": "places_from",
+      "language": "fi",
+      "duration_s": 0.99,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:41:34",
+      "review": "pending"
+    },
+    "pihlajavesi": {
+      "file": "places/from/pihlajavesi.ogg",
+      "text": "Pihlajavedeltä",
+      "category": "places_from",
+      "language": "fi",
+      "duration_s": 1.03,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:41:48",
+      "review": "pending"
+    },
+    "pori": {
+      "file": "places/from/pori.ogg",
+      "text": "Porista",
+      "category": "places_from",
+      "language": "fi",
+      "duration_s": 0.56,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:42:17",
+      "review": "pending"
+    },
+    "punkaharju": {
+      "file": "places/from/punkaharju.ogg",
+      "text": "Punkaharjulta",
+      "category": "places_from",
+      "language": "fi",
+      "duration_s": 0.89,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:42:37",
+      "review": "pending"
+    },
+    "pyhasalmi": {
+      "file": "places/from/pyhasalmi.ogg",
+      "text": "Pyhäsalmelta",
+      "category": "places_from",
+      "language": "fi",
+      "duration_s": 0.97,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T21:19:51",
+      "review": "pending"
+    },
+    "pannainen": {
+      "file": "places/from/pannainen.ogg",
+      "text": "Pännäisistä",
+      "category": "places_from",
+      "language": "fi",
+      "duration_s": 0.74,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T21:19:54",
+      "review": "pending"
+    },
+    "paaskylahti": {
+      "file": "places/from/paaskylahti.ogg",
+      "text": "Pääskylahdelta",
+      "category": "places_from",
+      "language": "fi",
+      "duration_s": 0.84,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:43:35",
+      "review": "pending"
+    },
+    "rajamaki": {
+      "file": "places/from/rajamaki.ogg",
+      "text": "Rajamäeltä",
+      "category": "places_from",
+      "language": "fi",
+      "duration_s": 0.69,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T21:19:57",
+      "review": "pending"
+    },
+    "retretti": {
+      "file": "places/from/retretti.ogg",
+      "text": "Retretistä",
+      "category": "places_from",
+      "language": "fi",
+      "duration_s": 1.03,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:44:27",
+      "review": "pending"
+    },
+    "riihimaki": {
+      "file": "places/from/riihimaki.ogg",
+      "text": "Riihimäeltä",
+      "category": "places_from",
+      "language": "fi",
+      "duration_s": 0.93,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T21:20:12",
+      "review": "pending"
+    },
+    "rovaniemi": {
+      "file": "places/from/rovaniemi.ogg",
+      "text": "Rovaniemeltä",
+      "category": "places_from",
+      "language": "fi",
+      "duration_s": 0.79,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T21:20:19",
+      "review": "pending"
+    },
+    "runni": {
+      "file": "places/from/runni.ogg",
+      "text": "Runnilta",
+      "category": "places_from",
+      "language": "fi",
+      "duration_s": 0.59,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:45:34",
+      "review": "pending"
+    },
+    "ruukki": {
+      "file": "places/from/ruukki.ogg",
+      "text": "Ruukista",
+      "category": "places_from",
+      "language": "fi",
+      "duration_s": 0.67,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T21:20:22",
+      "review": "pending"
+    },
+    "salo": {
+      "file": "places/from/salo.ogg",
+      "text": "Salosta",
+      "category": "places_from",
+      "language": "fi",
+      "duration_s": 0.59,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T21:20:30",
+      "review": "pending"
+    },
+    "savonlinna": {
+      "file": "places/from/savonlinna.ogg",
+      "text": "Savonlinnasta",
+      "category": "places_from",
+      "language": "fi",
+      "duration_s": 1.04,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:47:03",
+      "review": "pending"
+    },
+    "seinajoki": {
+      "file": "places/from/seinajoki.ogg",
+      "text": "Seinäjoelta",
+      "category": "places_from",
+      "language": "fi",
+      "duration_s": 0.89,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T21:20:34",
+      "review": "pending"
+    },
+    "siilinjarvi": {
+      "file": "places/from/siilinjarvi.ogg",
+      "text": "Siilinjärveltä",
+      "category": "places_from",
+      "language": "fi",
+      "duration_s": 1.12,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T21:20:42",
+      "review": "pending"
+    },
+    "simpele": {
+      "file": "places/from/simpele.ogg",
+      "text": "Simpeleeltä",
+      "category": "places_from",
+      "language": "fi",
+      "duration_s": 0.79,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:48:50",
+      "review": "pending"
+    },
+    "sukeva": {
+      "file": "places/from/sukeva.ogg",
+      "text": "Sukevalta",
+      "category": "places_from",
+      "language": "fi",
+      "duration_s": 0.61,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:49:05",
+      "review": "pending"
+    },
+    "suolahti": {
+      "file": "places/from/suolahti.ogg",
+      "text": "Suolahdesta",
+      "category": "places_from",
+      "language": "fi",
+      "duration_s": 0.8,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T21:20:46",
+      "review": "pending"
+    },
+    "suonenjoki": {
+      "file": "places/from/suonenjoki.ogg",
+      "text": "Suonenjoelta",
+      "category": "places_from",
+      "language": "fi",
+      "duration_s": 0.81,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T21:21:18",
+      "review": "pending"
+    },
+    "tampere": {
+      "file": "places/from/tampere.ogg",
+      "text": "Tampereelta",
+      "category": "places_from",
+      "language": "fi",
+      "duration_s": 0.86,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:50:27",
+      "review": "pending"
+    },
+    "tervajoki": {
+      "file": "places/from/tervajoki.ogg",
+      "text": "Tervajoelta",
+      "category": "places_from",
+      "language": "fi",
+      "duration_s": 0.88,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:50:46",
+      "review": "pending"
+    },
+    "tervola": {
+      "file": "places/from/tervola.ogg",
+      "text": "Tervolasta",
+      "category": "places_from",
+      "language": "fi",
+      "duration_s": 0.69,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:51:15",
+      "review": "pending"
+    },
+    "tesoma": {
+      "file": "places/from/tesoma.ogg",
+      "text": "Tesomalta",
+      "category": "places_from",
+      "language": "fi",
+      "duration_s": 0.81,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T21:21:42",
+      "review": "pending"
+    },
+    "tikkurila": {
+      "file": "places/from/tikkurila.ogg",
+      "text": "Tikkurilasta",
+      "category": "places_from",
+      "language": "fi",
+      "duration_s": 0.87,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:52:09",
+      "review": "pending"
+    },
+    "toijala": {
+      "file": "places/from/toijala.ogg",
+      "text": "Toijalasta",
+      "category": "places_from",
+      "language": "fi",
+      "duration_s": 0.69,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T21:21:55",
+      "review": "pending"
+    },
+    "tornio": {
+      "file": "places/from/tornio.ogg",
+      "text": "Torniosta",
+      "category": "places_from",
+      "language": "fi",
+      "duration_s": 0.98,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T21:21:59",
+      "review": "pending"
+    },
+    "tornio_itainen": {
+      "file": "places/from/tornio_itainen.ogg",
+      "text": "Tornio-Itäisestä",
+      "category": "places_from",
+      "language": "fi",
+      "duration_s": 1.26,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T21:22:03",
+      "review": "pending"
+    },
+    "turku": {
+      "file": "places/from/turku.ogg",
+      "text": "Turusta",
+      "category": "places_from",
+      "language": "fi",
+      "duration_s": 0.74,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T21:22:14",
+      "review": "pending"
+    },
+    "turku_satama": {
+      "file": "places/from/turku_satama.ogg",
+      "text": "Turun satamasta",
+      "category": "places_from",
+      "language": "fi",
+      "duration_s": 1.12,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T21:22:31",
+      "review": "pending"
+    },
+    "tuuri": {
+      "file": "places/from/tuuri.ogg",
+      "text": "Tuurista",
+      "category": "places_from",
+      "language": "fi",
+      "duration_s": 0.53,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T21:22:51",
+      "review": "pending"
+    },
+    "uimaharju": {
+      "file": "places/from/uimaharju.ogg",
+      "text": "Uimaharjusta",
+      "category": "places_from",
+      "language": "fi",
+      "duration_s": 0.95,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:55:42",
+      "review": "pending"
+    },
+    "utajarvi": {
+      "file": "places/from/utajarvi.ogg",
+      "text": "Utajärveltä",
+      "category": "places_from",
+      "language": "fi",
+      "duration_s": 0.86,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:56:15",
+      "review": "pending"
+    },
+    "vaala": {
+      "file": "places/from/vaala.ogg",
+      "text": "Vaalasta",
+      "category": "places_from",
+      "language": "fi",
+      "duration_s": 0.87,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:56:29",
+      "review": "pending"
+    },
+    "vaasa": {
+      "file": "places/from/vaasa.ogg",
+      "text": "Vaasasta",
+      "category": "places_from",
+      "language": "fi",
+      "duration_s": 0.68,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:56:48",
+      "review": "pending"
+    },
+    "vammala": {
+      "file": "places/from/vammala.ogg",
+      "text": "Vammalasta",
+      "category": "places_from",
+      "language": "fi",
+      "duration_s": 0.56,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:57:26",
+      "review": "pending"
+    },
+    "varkaus": {
+      "file": "places/from/varkaus.ogg",
+      "text": "Varkaudesta",
+      "category": "places_from",
+      "language": "fi",
+      "duration_s": 0.86,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:57:49",
+      "review": "pending"
+    },
+    "vihanti": {
+      "file": "places/from/vihanti.ogg",
+      "text": "Vihannista",
+      "category": "places_from",
+      "language": "fi",
+      "duration_s": 0.75,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:58:06",
+      "review": "pending"
+    },
+    "vihtari": {
+      "file": "places/from/vihtari.ogg",
+      "text": "Vihtarista",
+      "category": "places_from",
+      "language": "fi",
+      "duration_s": 1.09,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:58:36",
+      "review": "pending"
+    },
+    "viinijarvi": {
+      "file": "places/from/viinijarvi.ogg",
+      "text": "Viinijärveltä",
+      "category": "places_from",
+      "language": "fi",
+      "duration_s": 0.98,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:58:59",
+      "review": "pending"
+    },
+    "vilppula": {
+      "file": "places/from/vilppula.ogg",
+      "text": "Vilppulasta",
+      "category": "places_from",
+      "language": "fi",
+      "duration_s": 0.77,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T20:59:14",
+      "review": "pending"
+    },
+    "vuonislahti": {
+      "file": "places/from/vuonislahti.ogg",
+      "text": "Vuonislahdesta",
+      "category": "places_from",
+      "language": "fi",
+      "duration_s": 0.97,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T21:23:07",
+      "review": "pending"
+    },
+    "ylitornio": {
+      "file": "places/from/ylitornio.ogg",
+      "text": "Ylitorniosta",
+      "category": "places_from",
+      "language": "fi",
+      "duration_s": 0.95,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T21:23:11",
+      "review": "pending"
+    },
+    "ylivieska": {
+      "file": "places/from/ylivieska.ogg",
+      "text": "Ylivieskasta",
+      "category": "places_from",
+      "language": "fi",
+      "duration_s": 0.95,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T21:00:48",
+      "review": "pending"
+    },
+    "ahtari": {
+      "file": "places/from/ahtari.ogg",
+      "text": "Ähtäristä",
+      "category": "places_from",
+      "language": "fi",
+      "duration_s": 0.81,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T21:01:05",
+      "review": "pending"
+    }
+  },
+  "train_types": {
+    "intercity": {
+      "file": "train_types/intercity.ogg",
+      "text": "InterCity",
+      "category": "train_types",
+      "language": "fi",
+      "duration_s": 0.73,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T21:01:10",
+      "train_type": "IC",
+      "review": "pending"
+    },
+    "pendolino": {
+      "file": "train_types/pendolino.ogg",
+      "text": "Pen-do-li-no",
+      "category": "train_types",
+      "language": "fi",
+      "duration_s": 0.78,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T22:06:14",
+      "train_type": "S",
+      "default_text": "Pendolino",
+      "review": "pending"
+    },
+    "night_train": {
+      "file": "train_types/night_train.ogg",
+      "text": "yöjuna",
+      "category": "train_types",
+      "language": "fi",
+      "duration_s": 0.5,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T21:01:23",
+      "train_type": "PYO",
+      "review": "pending"
+    },
+    "regional": {
+      "file": "train_types/regional.ogg",
+      "text": "taajamajuna",
+      "category": "train_types",
+      "language": "fi",
+      "duration_s": 0.83,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T21:01:30",
+      "train_type": "H",
+      "review": "pending",
+      "train_category": "long_distance"
+    },
+    "museum_train": {
+      "file": "train_types/museum_train.ogg",
+      "text": "museojuna",
+      "category": "train_types",
+      "language": "fi",
+      "duration_s": 0.69,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T22:06:14",
+      "train_type": "MUS",
+      "review": "pending"
+    },
+    "pendolino_plus": {
+      "file": "train_types/pendolino_plus.ogg",
+      "text": "Pendolino Plus",
+      "category": "train_types",
+      "language": "fi",
+      "duration_s": 1.08,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T21:54:28",
+      "train_type": "SP",
+      "review": "pending"
+    },
+    "railbus": {
+      "file": "train_types/railbus.ogg",
+      "text": "kiskobussi",
+      "category": "train_types",
+      "language": "fi",
+      "duration_s": 0.78,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T21:51:38",
+      "train_type": "HDM",
+      "review": "pending"
+    },
+    "commuter_train": {
+      "file": "train_types/commuter_train.ogg",
+      "text": "lähi-juna",
+      "category": "train_types",
+      "language": "fi",
+      "duration_s": 0.61,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T22:06:14",
+      "train_type": "",
+      "train_category": "commuter",
+      "default_text": "lähijuna",
+      "review": "pending"
+    }
+  },
+  "platforms": {
+    "raide": {
+      "file": "platforms/raide.ogg",
+      "text": "raide",
+      "category": "platforms",
+      "language": "fi",
+      "duration_s": 0.54,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T21:23:40",
+      "review": "pending"
+    },
+    "raiteelle": {
+      "file": "platforms/raiteelle.ogg",
+      "text": "raiteelle",
+      "category": "platforms",
+      "language": "fi",
+      "duration_s": 0.6,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T21:02:12",
+      "review": "pending"
+    },
+    "raiteelta": {
+      "file": "platforms/raiteelta.ogg",
+      "text": "raiteelta",
+      "category": "platforms",
+      "language": "fi",
+      "duration_s": 0.79,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T21:02:20",
+      "review": "pending"
+    }
+  },
+  "phrases": {
+    "attention": {
+      "file": "phrases/attention.ogg",
+      "text": "Hyvät matkustajat.",
+      "category": "phrases",
+      "language": "fi",
+      "duration_s": 1.03,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T21:02:30",
+      "review": "pending"
+    },
+    "arriving": {
+      "file": "phrases/arriving.ogg",
+      "text": "saapuu",
+      "category": "phrases",
+      "language": "fi",
+      "duration_s": 1.16,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T21:02:36",
+      "review": "pending"
+    },
+    "departing": {
+      "file": "phrases/departing.ogg",
+      "text": "lähtee",
+      "category": "phrases",
+      "language": "fi",
+      "duration_s": 0.52,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T21:02:40",
+      "review": "pending"
+    },
+    "next_train": {
+      "file": "phrases/next_train.ogg",
+      "text": "Seuraava juna",
+      "category": "phrases",
+      "language": "fi",
+      "duration_s": 0.93,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T21:23:59",
+      "review": "pending"
+    },
+    "destination": {
+      "file": "phrases/destination.ogg",
+      "text": "määränpää",
+      "category": "phrases",
+      "language": "fi",
+      "duration_s": 1.04,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T21:03:00",
+      "review": "pending"
+    },
+    "origin": {
+      "file": "phrases/origin.ogg",
+      "text": "lähtöasema",
+      "category": "phrases",
+      "language": "fi",
+      "duration_s": 0.78,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T21:03:11",
+      "review": "pending"
+    },
+    "delayed": {
+      "file": "phrases/delayed.ogg",
+      "text": "on myöhässä noin",
+      "category": "phrases",
+      "language": "fi",
+      "duration_s": 1.14,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T21:03:17",
+      "review": "pending"
+    },
+    "minutes": {
+      "file": "phrases/minutes.ogg",
+      "text": "minuuttia",
+      "category": "phrases",
+      "language": "fi",
+      "duration_s": 0.68,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T21:03:24",
+      "review": "pending"
+    },
+    "thanks": {
+      "file": "phrases/thanks.ogg",
+      "text": "Kiitos.",
+      "category": "phrases",
+      "language": "fi",
+      "duration_s": 0.55,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T21:24:07",
+      "review": "pending"
+    }
+  },
+  "connectors": {
+    "pause_short": {
+      "file": "connectors/pause_short.ogg",
+      "text": "",
+      "category": "connectors",
+      "language": "fi",
+      "duration_s": 0.12,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T22:28:41",
+      "seconds": 0.12
+    },
+    "pause_medium": {
+      "file": "connectors/pause_medium.ogg",
+      "text": "",
+      "category": "connectors",
+      "language": "fi",
+      "duration_s": 0.4,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T22:28:41",
+      "seconds": 0.4
+    },
+    "pause_long": {
+      "file": "connectors/pause_long.ogg",
+      "text": "",
+      "category": "connectors",
+      "language": "fi",
+      "duration_s": 1.0,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T22:28:41",
+      "seconds": 1.0
+    }
+  },
+  "sample_rate": 24000,
+  "lines": {
+    "d": {
+      "file": "lines/d.ogg",
+      "text": "dee",
+      "category": "lines",
+      "language": "fi",
+      "duration_s": 0.36,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T22:06:14",
+      "line": "D",
+      "review": "pending"
+    },
+    "g": {
+      "file": "lines/g.ogg",
+      "text": "gee",
+      "category": "lines",
+      "language": "fi",
+      "duration_s": 0.51,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T22:06:15",
+      "line": "G",
+      "review": "pending"
+    },
+    "h": {
+      "file": "lines/h.ogg",
+      "text": "hoo.",
+      "category": "lines",
+      "language": "fi",
+      "duration_s": 0.34,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T22:06:32",
+      "line": "H",
+      "default_text": "hoo",
+      "review": "pending"
+    },
+    "m": {
+      "file": "lines/m.ogg",
+      "text": "äm",
+      "category": "lines",
+      "language": "fi",
+      "duration_s": 0.47,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T21:55:02",
+      "line": "M",
+      "review": "pending"
+    },
+    "o": {
+      "file": "lines/o.ogg",
+      "text": "oo",
+      "category": "lines",
+      "language": "fi",
+      "duration_s": 0.45,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T22:06:15",
+      "line": "O",
+      "review": "pending"
+    },
+    "r": {
+      "file": "lines/r.ogg",
+      "text": "är",
+      "category": "lines",
+      "language": "fi",
+      "duration_s": 0.41,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T22:06:15",
+      "line": "R",
+      "review": "pending"
+    },
+    "t": {
+      "file": "lines/t.ogg",
+      "text": "tee",
+      "category": "lines",
+      "language": "fi",
+      "duration_s": 0.41,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T22:06:15",
+      "line": "T",
+      "review": "pending"
+    },
+    "z": {
+      "file": "lines/z.ogg",
+      "text": "tseta",
+      "category": "lines",
+      "language": "fi",
+      "duration_s": 0.45,
+      "voice": "female/eeva.wav",
+      "accepted_at": "2026-10-01T22:06:15",
+      "line": "Z",
+      "default_text": "tset",
+      "review": "pending"
+    }
+  }
+}

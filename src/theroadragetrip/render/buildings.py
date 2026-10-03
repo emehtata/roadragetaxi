@@ -17,15 +17,20 @@ from .common import (
 )
 import math
 import time
-from typing import List, Optional
+from typing import List, Optional, Tuple
+
+from ..performance import advance_chunked
 
 
 from ..geo import dist_point_to_segment, point_in_polygon
-from ..osm import Building, Place
+from ..osm import OPEN_ROOF_BUILDING_TYPES, Building, ParkingSpace, Place
 
 
 BUILDING_WALL_COLORS = ((158, 105, 82), (174, 166, 143), (116, 131, 119), (139, 139, 137))
 BUILDING_ROOF_COLORS = ((92, 57, 48), (102, 96, 82), (66, 83, 69), (83, 86, 87))
+OPEN_ROOF_COLOR = (138, 145, 148, 185)
+OPEN_ROOF_EDGE_COLOR = (65, 69, 71, 235)
+OPEN_ROOF_POLE_COLOR = (105, 110, 112, 255)
 # A Finnish building name naming its own color (e.g. "Sininen talo",
 # "Punatalo", "Valkea Kartano") should render in that color rather than the
 # usual per-building pseudo-random wall/roof pick. Keyed by the color's
@@ -59,6 +64,104 @@ COMMERCIAL_AMENITIES = {
     "nightclub", "pub", "restaurant",
 }
 COMMERCIAL_BUILDING_TYPES = {"commercial", "retail", "shop"}
+ILLUMINATED_WINDOW_CACHE_PADDING_PX = 224
+_illuminated_window_cache = None
+_illuminated_window_job = None
+# Per-frame budget for extending the illuminated-window glow cache with
+# newly-indexed buildings (bin-loader-v6.md); dedicated, not TILE_MERGE_BUDGET_S.
+ILLUMINATED_WINDOW_CACHE_BUDGET_S = 0.004
+GENERATED_DRIVEWAY_MAX_LENGTH_M = 35.0
+GENERATED_HOUSE_PARKING_BAYS = 2
+
+
+def _is_open_roof(building: Building) -> bool:
+    """Return whether an OSM building footprint is a drive-through roof."""
+    return str(getattr(building, "building_type", "") or "").casefold() in OPEN_ROOF_BUILDING_TYPES
+
+
+def _draw_open_roof(screen, points, px_per_m: float) -> None:
+    """Draw the below-vehicle shadow and supports of an open canopy."""
+    import pygame
+
+    shadow_offset = max(1, round(px_per_m * 0.35))
+    pygame.draw.polygon(
+        screen,
+        (30, 32, 33, 75),
+        [(x + shadow_offset, y + shadow_offset) for x, y in points],
+    )
+    # OSM roof outlines do not normally map each individual support. Corner
+    # posts give the canopy a readable structure while leaving its footprint
+    # open for the taxi and the fuel-pump scenery beneath it.
+    pole_radius = max(1, round(px_per_m * 0.18))
+    for point in points:
+        pygame.draw.circle(screen, OPEN_ROOF_EDGE_COLOR, point, pole_radius + 1)
+        pygame.draw.circle(screen, OPEN_ROOF_POLE_COLOR, point, pole_radius)
+
+
+def draw_open_roof_overlays(
+    screen,
+    buildings: List[Building],
+    camx: float,
+    camy: float,
+    px_per_m: float = PX_PER_M,
+    screen_w: int = SCREEN_W,
+    screen_h: int = SCREEN_H,
+    spatial_grid=None,
+) -> None:
+    """Draw canopies above vehicles so they pass underneath. Returns the
+    roofs drawn, as RoofCover, so whatever is underneath can be outlined."""
+    import pygame
+
+    vminx, vminy, vmaxx, vmaxy = get_viewport_bounds(
+        camx, camy, px_per_m, screen_w, screen_h, 20.0
+    )
+    visible_buildings = (
+        spatial_grid.ways_in_rect(vminx, vminy, vmaxx, vmaxy)
+        if spatial_grid is not None
+        else buildings
+    )
+    drawn = []
+    for building in visible_buildings:
+        if not _is_open_roof(building) or len(building.points_m) < 3:
+            continue
+        bbox = getattr(building, "bbox", None)
+        if bbox and bbox != (0.0, 0.0, 0.0, 0.0):
+            if bbox[2] < vminx or bbox[0] > vmaxx or bbox[3] < vminy or bbox[1] > vmaxy:
+                continue
+        drawn.append(building)
+        points = [
+            world_to_screen(x, y, camx, camy, px_per_m, screen_w, screen_h)
+            for x, y in building.points_m
+        ]
+        pygame.draw.polygon(screen, OPEN_ROOF_COLOR, points)
+        pygame.draw.lines(
+            screen,
+            OPEN_ROOF_EDGE_COLOR,
+            True,
+            points,
+            max(1, round(px_per_m * 0.12)),
+        )
+    return RoofCover(drawn)
+
+
+class RoofCover:
+    """The open roofs drawn this frame: is a world point underneath one?
+    (bounding box first, then the footprint)."""
+
+    def __init__(self, roofs) -> None:
+        self.roofs = []
+        for roof in roofs:
+            xs, ys = zip(*roof.points_m)
+            self.roofs.append(((min(xs), min(ys), max(xs), max(ys)), roof.points_m))
+
+    def __bool__(self) -> bool:
+        return bool(self.roofs)
+
+    def covers(self, x: float, y: float) -> bool:
+        return any(
+            bbox[0] <= x <= bbox[2] and bbox[1] <= y <= bbox[3] and point_in_polygon(x, y, points)
+            for bbox, points in self.roofs
+        )
 
 # Facade sign colors by venue category, loosely matching real-world signage
 # conventions (warm red for dining, a pharmacy-style green cross, navy and
@@ -157,6 +260,37 @@ MAX_BUILDING_DEPTH_PX = 100
 MIN_FLOOR_HEIGHT_PX = 3.0
 
 
+def mask_buildings_from_light_surface(
+    surface, buildings, camx, camy, px_per_m, screen_w=SCREEN_W, screen_h=SCREEN_H,
+) -> None:
+    """Remove ground-level lighting from building walls and roofs."""
+    import pygame
+
+    for building in buildings or ():
+        if len(getattr(building, "points_m", ())) < 3:
+            continue
+        if _is_open_roof(building):
+            # Headlights and yard lighting remain visible beneath a canopy;
+            # only solid buildings should erase the ground-level light map.
+            continue
+        footprint = [
+            world_to_screen(x, y, camx, camy, px_per_m, screen_w, screen_h)
+            for x, y in building.points_m
+        ]
+        pygame.draw.polygon(surface, (0, 0, 0, 0), footprint)
+        if px_per_m <= 0.45:
+            continue
+        height = _building_render_height(building)
+        depth = min(MAX_BUILDING_DEPTH_PX, max(3, int(height * 0.35 * px_per_m)))
+        roof = [(x - depth * 0.7, y - depth) for x, y in footprint]
+        pygame.draw.polygon(surface, (0, 0, 0, 0), roof)
+        for index, point in enumerate(footprint):
+            pygame.draw.polygon(
+                surface, (0, 0, 0, 0),
+                [point, footprint[(index + 1) % len(footprint)], roof[(index + 1) % len(roof)], roof[index]],
+            )
+
+
 def _building_visual_plan(building):
     """Cache camera-independent facade measurements for one building."""
     points = tuple(getattr(building, "points_m", ()))
@@ -248,7 +382,7 @@ def _building_window_story_count(building: Building) -> int:
             return max(1, min(40, int(levels)))
         except (TypeError, ValueError):
             pass
-    height = max(3.0, float(getattr(building, "height_m", 8.0)))
+    height = _building_render_height(building)
     return max(1, min(40, int(round(height / 3.0))))
 
 
@@ -300,6 +434,248 @@ def _building_is_house(building: Building) -> bool:
     # signal windows already use elsewhere - a short, 1-2 story building
     # with no commercial venue reads as a detached house.
     return _building_window_story_count(building) <= 2 and not _building_is_commercial(building)
+
+
+def _building_render_height(building: Building) -> float:
+    """Use a Finnish 1.5-storey fallback for untagged detached houses."""
+    if (
+        _building_is_house_by_tag(building)
+        and getattr(building, "levels", None) is None
+        and not getattr(building, "height_is_explicit", False)
+    ):
+        return 4.5
+    return max(3.0, float(getattr(building, "height_m", 8.0)))
+
+
+def _building_is_house_by_tag(building: Building) -> bool:
+    return str(getattr(building, "building_type", "") or "").lower() in HOUSE_BUILDING_TYPES
+
+
+def _uses_gabled_roof(building: Building) -> bool:
+    roof_shape = str(getattr(building, "roof_shape", "") or "").casefold()
+    if roof_shape:
+        return roof_shape in {"gabled", "gable", "pitched"}
+    return _building_is_house_by_tag(building)
+
+
+def _clip_polygon_to_roof_half(points, center, axis, keep_positive):
+    """Clip a convex roof footprint to one side of its longitudinal ridge."""
+    if not points:
+        return []
+    normal = (-axis[1], axis[0])
+
+    def signed(point):
+        value = (point[0] - center[0]) * normal[0] + (point[1] - center[1]) * normal[1]
+        return value if keep_positive else -value
+
+    output = []
+    previous = points[-1]
+    previous_value = signed(previous)
+    for current in points:
+        current_value = signed(current)
+        if current_value >= 0.0:
+            if previous_value < 0.0:
+                ratio = previous_value / (previous_value - current_value)
+                output.append((
+                    previous[0] + (current[0] - previous[0]) * ratio,
+                    previous[1] + (current[1] - previous[1]) * ratio,
+                ))
+            output.append(current)
+        elif previous_value >= 0.0:
+            ratio = previous_value / (previous_value - current_value)
+            output.append((
+                previous[0] + (current[0] - previous[0]) * ratio,
+                previous[1] + (current[1] - previous[1]) * ratio,
+            ))
+        previous, previous_value = current, current_value
+    return output
+
+
+def _draw_gabled_roof(screen, roof, roof_color):
+    """Draw two pitched facets and a ridge along the footprint's long axis."""
+    import pygame
+
+    if len(roof) < 3:
+        return
+    longest = max(
+        zip(roof, roof[1:] + roof[:1]),
+        key=lambda edge: (edge[1][0] - edge[0][0]) ** 2 + (edge[1][1] - edge[0][1]) ** 2,
+    )
+    dx, dy = longest[1][0] - longest[0][0], longest[1][1] - longest[0][1]
+    length = max(1e-6, math.hypot(dx, dy))
+    axis = (dx / length, dy / length)
+    center = (
+        sum(point[0] for point in roof) / len(roof),
+        sum(point[1] for point in roof) / len(roof),
+    )
+    light = tuple(min(255, channel + 14) for channel in roof_color)
+    dark = tuple(max(0, channel - 12) for channel in roof_color)
+    for keep_positive, color in ((True, light), (False, dark)):
+        facet = _clip_polygon_to_roof_half(roof, center, axis, keep_positive)
+        if len(facet) >= 3:
+            pygame.draw.polygon(screen, color, facet)
+    projections = [(point[0] - center[0]) * axis[0] + (point[1] - center[1]) * axis[1] for point in roof]
+    ridge_start = (center[0] + axis[0] * min(projections), center[1] + axis[1] * min(projections))
+    ridge_end = (center[0] + axis[0] * max(projections), center[1] + axis[1] * max(projections))
+    pygame.draw.line(screen, (58, 55, 52), ridge_start, ridge_end, 2)
+
+
+def _nearest_house_driveway(building, ways, road_spatial_grid=None):
+    """Return a synthetic (house edge, road edge) driveway when OSM has none."""
+    if not _building_is_house_by_tag(building) or len(building.points_m) < 3:
+        return None
+    minx, miny, maxx, maxy = building.bbox
+    margin = GENERATED_DRIVEWAY_MAX_LENGTH_M
+    candidates = (
+        road_spatial_grid.ways_in_rect(minx - margin, miny - margin, maxx + margin, maxy + margin)
+        if road_spatial_grid is not None
+        else ways
+    )
+    candidates = [way for way in candidates if getattr(way, "is_drivable", True)]
+    # A mapped driveway wins; never paint a duplicate procedural one.
+    for way in candidates:
+        if getattr(way, "service", None) != "driveway":
+            continue
+        for point in way.points_m:
+            if minx - 4.0 <= point[0] <= maxx + 4.0 and miny - 4.0 <= point[1] <= maxy + 4.0:
+                return None
+
+    facade_points = list(getattr(building, "entrances", ()) or ())
+    facade_points.extend(
+        ((a[0] + b[0]) * 0.5, (a[1] + b[1]) * 0.5)
+        for a, b in zip(building.points_m, building.points_m[1:] + building.points_m[:1])
+    )
+    best = None
+    for way in candidates:
+        if getattr(way, "highway", "") in {"motorway", "motorway_link", "trunk", "trunk_link"}:
+            continue
+        for ax, ay in facade_points:
+            for (x1, y1), (x2, y2) in zip(way.points_m, way.points_m[1:]):
+                dx, dy = x2 - x1, y2 - y1
+                length_sq = dx * dx + dy * dy
+                if length_sq <= 1e-9:
+                    continue
+                t = max(0.0, min(1.0, ((ax - x1) * dx + (ay - y1) * dy) / length_sq))
+                centerline_point = (x1 + dx * t, y1 + dy * t)
+                to_house_x, to_house_y = ax - centerline_point[0], ay - centerline_point[1]
+                centerline_distance = math.hypot(to_house_x, to_house_y)
+                edge_offset = min(centerline_distance, max(0.0, getattr(way, "half_width_m", 0.0)))
+                if centerline_distance > 1e-9:
+                    road_point = (
+                        centerline_point[0] + to_house_x / centerline_distance * edge_offset,
+                        centerline_point[1] + to_house_y / centerline_distance * edge_offset,
+                    )
+                else:
+                    road_point = centerline_point
+                distance = math.hypot(road_point[0] - ax, road_point[1] - ay)
+                if distance <= GENERATED_DRIVEWAY_MAX_LENGTH_M and (best is None or distance < best[0]):
+                    best = (distance, (ax, ay), road_point)
+    return None if best is None else (best[1], best[2])
+
+
+def _house_parking_key(building):
+    bbox = getattr(building, "bbox", (0.0, 0.0, 0.0, 0.0))
+    return tuple(round(float(value), 2) for value in bbox)
+
+
+def _add_house_parking_for_building(building, ways, road_spatial_grid, parking_spaces, existing_keys) -> int:
+    """Add two reservable residential bays for one building's driveway
+    access, if it has one and doesn't already. Returns bays added (0 or
+    GENERATED_HOUSE_PARKING_BAYS). Shared by the synchronous
+    generate_detached_house_parking() and its chunked counterpart below."""
+    key = _house_parking_key(building)
+    if key in existing_keys:
+        return 0
+    access = _nearest_house_driveway(building, ways, road_spatial_grid)
+    if access is None:
+        return 0
+    house_edge, road_edge = access
+    dx, dy = road_edge[0] - house_edge[0], road_edge[1] - house_edge[1]
+    access_length = math.hypot(dx, dy)
+    if access_length < 5.5:
+        return 0
+    ux, uy = dx / access_length, dy / access_length
+    lateral_x, lateral_y = -uy, ux
+    bay_length, bay_width = 5.0, 2.5
+    center_distance = bay_length * 0.5 + 0.5
+    added = 0
+    for bay_index in range(GENERATED_HOUSE_PARKING_BAYS):
+        lateral_offset = (bay_index - (GENERATED_HOUSE_PARKING_BAYS - 1) * 0.5) * (bay_width + 0.3)
+        center_x = house_edge[0] + ux * center_distance + lateral_x * lateral_offset
+        center_y = house_edge[1] + uy * center_distance + lateral_y * lateral_offset
+        half_length, half_width = bay_length * 0.5, bay_width * 0.5
+        points = [
+            (center_x + ux * half_length + lateral_x * half_width, center_y + uy * half_length + lateral_y * half_width),
+            (center_x + ux * half_length - lateral_x * half_width, center_y + uy * half_length - lateral_y * half_width),
+            (center_x - ux * half_length - lateral_x * half_width, center_y - uy * half_length - lateral_y * half_width),
+            (center_x - ux * half_length + lateral_x * half_width, center_y - uy * half_length + lateral_y * half_width),
+        ]
+        xs, ys = [point[0] for point in points], [point[1] for point in points]
+        parking_spaces.append(ParkingSpace(
+            points_m=points,
+            bbox=(min(xs), min(ys), max(xs), max(ys)),
+            orientation=math.atan2(uy, ux),
+            source_building_key=key,
+            access_path=[house_edge, road_edge],
+        ))
+        added += 1
+    existing_keys.add(key)
+    return added
+
+
+def _existing_house_parking_keys(parking_spaces) -> set:
+    return {
+        getattr(space, "source_building_key", None)
+        for space in parking_spaces
+        if getattr(space, "source_building_key", None) is not None
+    }
+
+
+def generate_detached_house_parking(buildings, ways, parking_spaces, road_spatial_grid=None) -> int:
+    """Add two reservable residential bays to each generated house access."""
+    existing_keys = _existing_house_parking_keys(parking_spaces)
+    added = 0
+    for building in buildings:
+        added += _add_house_parking_for_building(building, ways, road_spatial_grid, parking_spaces, existing_keys)
+    return added
+
+
+def generate_detached_house_parking_chunk(
+    buildings, ways, parking_spaces, road_spatial_grid, index: int, budget_s: float,
+) -> Tuple[int, int]:
+    """Budgeted version of generate_detached_house_parking (bin-loader-
+    v3.md: measured up to ~1.9s in one frame against a dense real city
+    load, 2376 bays over 20k buildings). Processes buildings[index:] until
+    budget_s elapses. Returns (new_index, bays_added_this_call) -
+    new_index == len(buildings) once finished. The caller owns `index`
+    across calls; parking_spaces is mutated in place exactly like the
+    synchronous version, so a partially-processed building list is always
+    valid to query (just fewer bays exist yet, never wrong ones)."""
+    existing_keys = _existing_house_parking_keys(parking_spaces)
+    added = [0]
+
+    def _process(building) -> None:
+        added[0] += _add_house_parking_for_building(building, ways, road_spatial_grid, parking_spaces, existing_keys)
+
+    new_index = advance_chunked(buildings, index, budget_s, _process)
+    return new_index, added[0]
+
+
+def _draw_generated_driveways(screen, buildings, ways, road_spatial_grid, camx, camy, px_per_m, screen_w, screen_h):
+    import pygame
+
+    border_width = max(2, round(6.2 * px_per_m))
+    fill_width = max(1, round(5.6 * px_per_m))
+    for building in buildings:
+        driveway = _nearest_house_driveway(building, ways, road_spatial_grid)
+        if driveway is None:
+            continue
+        points = [
+            world_to_screen(point[0], point[1], camx, camy, px_per_m, screen_w, screen_h)
+            for point in driveway
+        ]
+        pygame.draw.line(screen, (72, 70, 66), points[0], points[1], border_width)
+        pygame.draw.line(screen, (126, 121, 111), points[0], points[1], fill_width)
 
 
 def _visible_building_edges(points, roof) -> set[int]:
@@ -490,6 +866,8 @@ def draw_buildings(
     screen_w: int = SCREEN_W,
     screen_h: int = SCREEN_H,
     spatial_grid=None,
+    road_ways=None,
+    road_spatial_grid=None,
     places: Optional[List[Place]] = None,
     profiler=None,
 ) -> None:
@@ -511,6 +889,8 @@ def draw_buildings(
         id(places),
         len(places) if places else 0,
         id(spatial_grid),
+        id(road_ways),
+        id(road_spatial_grid),
         *common._phased_cache_grid_cell("buildings", camx, camy, cache_zoom),
         cache_zoom,
         screen.get_size(),
@@ -533,7 +913,8 @@ def draw_buildings(
     is_first_ever_build = common._building_frame_cache_surface is None
     if _building_wip is None:
         _building_wip = _start_building_rebuild(
-            buildings, spatial_grid, places, frame_cache_key, camx, camy, cache_zoom, screen_w, screen_h
+            buildings, spatial_grid, places, frame_cache_key, camx, camy, cache_zoom, screen_w, screen_h,
+            road_ways=road_ways, road_spatial_grid=road_spatial_grid,
         )
 
     rebuild_started = time.perf_counter() if profiler is not None else None
@@ -567,6 +948,8 @@ def _draw_buildings_uncached(
     screen_h: int = SCREEN_H,
     spatial_grid=None,
     places: Optional[List[Place]] = None,
+    road_ways=None,
+    road_spatial_grid=None,
 ) -> None:
     """Draw building footprints intersecting viewport, unconditionally and
     in one call, directly onto `screen` at the given screen_w/screen_h (no
@@ -594,6 +977,9 @@ def _draw_buildings_uncached(
         "places": places,
         "index": 0,
         "placed_sign_rects": [],
+        "driveways_drawn": False,
+        "road_ways": road_ways or (),
+        "road_spatial_grid": road_spatial_grid,
     }
     _advance_building_rebuild(job, deadline=float("inf"))
 
@@ -601,6 +987,7 @@ def _draw_buildings_uncached(
 def _start_building_rebuild(
     buildings: List[Building], spatial_grid, places: Optional[List[Place]], frame_cache_key,
     camx: float, camy: float, cache_zoom: float, screen_w: int, screen_h: int,
+    road_ways=None, road_spatial_grid=None,
 ) -> dict:
     """Begin a new incremental buildings-cache rebuild job: select the
     visible buildings (cheap, O(visible buildings), no nested search - see
@@ -641,6 +1028,9 @@ def _start_building_rebuild(
         "places": places,
         "index": 0,
         "placed_sign_rects": [],
+        "driveways_drawn": False,
+        "road_ways": road_ways or (),
+        "road_spatial_grid": road_spatial_grid,
     }
 
 
@@ -662,6 +1052,20 @@ def _advance_building_rebuild(job: dict, deadline: float) -> bool:
     visible_buildings = job["visible_buildings"]
     placed_sign_rects = job["placed_sign_rects"]
 
+    if not job.get("driveways_drawn", False):
+        _draw_generated_driveways(
+            screen,
+            visible_buildings,
+            job.get("road_ways", ()),
+            job.get("road_spatial_grid"),
+            camx,
+            camy,
+            px_per_m,
+            screen_w,
+            screen_h,
+        )
+        job["driveways_drawn"] = True
+
     made_progress_this_call = False
     while job["index"] < len(visible_buildings):
         if made_progress_this_call and time.perf_counter() >= deadline:
@@ -676,10 +1080,13 @@ def _advance_building_rebuild(job: dict, deadline: float) -> bool:
         if len(b.points_m) < 3:
             continue
         pts = [world_to_screen(x, y, camx, camy, px_per_m, screen_w, screen_h) for (x, y) in b.points_m]
+        if _is_open_roof(b):
+            _draw_open_roof(screen, pts, px_per_m)
+            continue
         if px_per_m <= 0.45:
             pygame.draw.polygon(screen, BUILDING_ROOF_COLORS[0], pts)
             continue
-        height = max(3.0, float(getattr(b, "height_m", 8.0)))
+        height = _building_render_height(b)
         depth = min(MAX_BUILDING_DEPTH_PX, max(3, int(height * 0.35 * px_per_m)))
         roof = [(x - depth * 0.7, y - depth) for x, y in pts]
 
@@ -702,7 +1109,10 @@ def _advance_building_rebuild(job: dict, deadline: float) -> bool:
             next_point = pts[(index + 1) % len(pts)]
             next_roof = roof[(index + 1) % len(roof)]
             pygame.draw.polygon(screen, wall_color, [point, next_point, next_roof, roof[index]])
-        pygame.draw.polygon(screen, roof_color, roof)
+        if _uses_gabled_roof(b):
+            _draw_gabled_roof(screen, roof, roof_color)
+        else:
+            pygame.draw.polygon(screen, roof_color, roof)
         pygame.draw.lines(screen, (70, 66, 61), True, roof, 1)
 
         # Add small facade details after the roof so they remain visible at low zoom.
@@ -918,6 +1328,8 @@ def draw_illuminated_windows(
     spatial_grid=None,
     latitude: float = DEFAULT_SUN_LATITUDE,
     longitude: float = DEFAULT_SUN_LONGITUDE,
+    profiler=None,
+    budget_s: Optional[float] = None,
 ) -> None:
     """Draw a warm glow over the subset of visible buildings' windows that
     are "lit" at night (windows.md section 5/6).
@@ -950,35 +1362,139 @@ def draw_illuminated_windows(
     if alpha <= 0:
         return
 
-    vminx, vminy, vmaxx, vmaxy = get_viewport_bounds(camx, camy, px_per_m, screen_w, screen_h, 20.0)
-    visible_buildings = (
-        spatial_grid.ways_in_rect(vminx, vminy, vmaxx, vmaxy) if spatial_grid is not None else buildings
+    global _illuminated_window_cache, _illuminated_window_job
+    started = time.perf_counter() if profiler is not None else None
+    # What the glow surface depends on is the set of buildings the spatial
+    # grid can actually return (or the whole list, with no grid) - NOT the
+    # live list's length: buildings appended by the incremental tile merge
+    # (bin-loader-v5.md) don't reach the grid until map sync's building-grid
+    # stage catches up, so keying on len(buildings) rebuilt an identical
+    # cache every frame of the merge (bin-loader-v6.md).
+    count = spatial_grid.indexed_way_count if spatial_grid is not None else len(buildings)
+    static_key = (id(buildings), id(spatial_grid), px_per_m, screen_w, screen_h)
+    cache = _illuminated_window_cache
+    camera_ok = (
+        cache is not None
+        and abs((camx - cache["camera"][0]) * px_per_m) <= ILLUMINATED_WINDOW_CACHE_PADDING_PX
+        and abs((camy - cache["camera"][1]) * px_per_m) <= ILLUMINATED_WINDOW_CACHE_PADDING_PX
     )
+    same_world = cache is not None and cache["key"] == static_key
+    # Buildings are append-only between unloads; an unload filters the list
+    # in place, which moves the last-indexed building to a lower index, so
+    # "still at position count-1" proves nothing before it was removed.
+    prefix_intact = (
+        same_world
+        and count <= len(buildings)
+        and (cache["count"] == 0 or (
+            cache["count"] <= len(buildings) and id(buildings[cache["count"] - 1]) == cache["last_id"]
+        ))
+    )
+    if same_world and camera_ok and prefix_intact and count == cache["count"]:
+        _illuminated_window_job = None
+    elif same_world and camera_ok and prefix_intact and count > cache["count"]:
+        job = _illuminated_window_job
+        if job is None or job["cache"] is not cache:
+            job = _illuminated_window_job = {"cache": cache, "cursor": cache["count"], "end": count}
+        job["end"] = count
+        _extend_illuminated_windows(
+            cache, job, buildings, budget_s if budget_s is not None else ILLUMINATED_WINDOW_CACHE_BUDGET_S,
+        )
+        if job["cursor"] >= job["end"]:
+            cache["count"] = job["end"]
+            cache["last_id"] = id(buildings[job["end"] - 1]) if job["end"] else None
+            _illuminated_window_job = None
+    else:
+        _illuminated_window_job = None
+        cache_w = screen_w + ILLUMINATED_WINDOW_CACHE_PADDING_PX * 2
+        cache_h = screen_h + ILLUMINATED_WINDOW_CACHE_PADDING_PX * 2
+        vminx, vminy, vmaxx, vmaxy = get_viewport_bounds(
+            camx, camy, px_per_m, cache_w, cache_h, 20.0
+        )
+        visible_buildings = (
+            spatial_grid.ways_in_rect(vminx, vminy, vmaxx, vmaxy)
+            if spatial_grid is not None
+            else buildings
+        )
+        glow_layer = pygame.Surface((cache_w, cache_h), pygame.SRCALPHA)
+        any_lit = False
+        for b in visible_buildings:
+            if _draw_illuminated_building(
+                glow_layer, b, (vminx, vminy, vmaxx, vmaxy), camx, camy, px_per_m, cache_w, cache_h,
+            ):
+                any_lit = True
+        cache = _illuminated_window_cache = {
+            "key": static_key,
+            "camera": (camx, camy),
+            "surface": glow_layer,
+            "any_lit": any_lit,
+            "count": count,
+            "last_id": id(buildings[count - 1]) if 0 < count <= len(buildings) else None,
+        }
 
+    if cache["any_lit"]:
+        cache["surface"].set_alpha(alpha)
+        offset_x = round((cache["camera"][0] - camx) * px_per_m) - ILLUMINATED_WINDOW_CACHE_PADDING_PX
+        offset_y = round((camy - cache["camera"][1]) * px_per_m) - ILLUMINATED_WINDOW_CACHE_PADDING_PX
+        screen.blit(cache["surface"], (offset_x, offset_y), special_flags=pygame.BLEND_RGB_ADD)
+    if profiler is not None:
+        profiler.record("render:illuminated_windows", (time.perf_counter() - started) * 1000.0)
+        pending = 0 if _illuminated_window_job is None else _illuminated_window_job["end"] - _illuminated_window_job["cursor"]
+        profiler.set_metric("window_cache_pending_buildings", pending)
+
+
+def _draw_illuminated_building(glow_layer, b, viewport, camx, camy, px_per_m, cache_w, cache_h) -> bool:
+    """Draw one building's lit-window quads onto the glow layer, returning
+    whether any window was lit. The one per-building implementation shared
+    by the full rebuild and the incremental extension, so both draw the
+    identical polygons (opaque, same colour: drawing order is irrelevant)."""
+    import pygame
+
+    vminx, vminy, vmaxx, vmaxy = viewport
+    bb = getattr(b, "bbox", None)
+    if bb and bb != (0.0, 0.0, 0.0, 0.0):
+        if bb[2] < vminx or bb[0] > vmaxx or bb[3] < vminy or bb[1] > vmaxy:
+            return False
+    if len(b.points_m) < 3 or _is_open_roof(b):
+        return False
+    pts = [
+        world_to_screen(x, y, camx, camy, px_per_m, cache_w, cache_h)
+        for x, y in b.points_m
+    ]
+    height = _building_render_height(b)
+    depth = min(MAX_BUILDING_DEPTH_PX, max(3, int(height * 0.35 * px_per_m)))
+    roof = [(x - depth * 0.7, y - depth) for x, y in pts]
+    visible_edges = _visible_building_edges(pts, roof)
+    building_id = id(b)
     any_lit = False
-    glow_layer = _reusable_alpha_surface(pygame, "building_window_glow_layer", screen.get_size())
-    for b in visible_buildings:
-        bb = getattr(b, "bbox", None)
-        if bb and bb != (0.0, 0.0, 0.0, 0.0):
-            if bb[2] < vminx or bb[0] > vmaxx or bb[3] < vminy or bb[1] > vmaxy:
-                continue
-        if len(b.points_m) < 3:
-            continue
-        pts = [world_to_screen(x, y, camx, camy, px_per_m, screen_w, screen_h) for (x, y) in b.points_m]
-        height = max(3.0, float(getattr(b, "height_m", 8.0)))
-        depth = min(MAX_BUILDING_DEPTH_PX, max(3, int(height * 0.35 * px_per_m)))
-        roof = [(x - depth * 0.7, y - depth) for x, y in pts]
-        visible_edges = _visible_building_edges(pts, roof)
-        building_id = id(b)
-        for edge_index, floor_index, window_index, storefront_row, window in _iter_building_window_slots(
-            b, pts, roof, visible_edges, depth
+    for edge_index, floor_index, window_index, storefront_row, window in _iter_building_window_slots(
+        b, pts, roof, visible_edges, depth
+    ):
+        probability = _window_illumination_probability(b, storefront_row)
+        if not _window_is_illuminated(
+            building_id, edge_index, floor_index, window_index, probability
         ):
-            probability = _window_illumination_probability(b, storefront_row)
-            if not _window_is_illuminated(building_id, edge_index, floor_index, window_index, probability):
-                continue
-            pygame.draw.polygon(glow_layer, (*WINDOW_LIT_COLOR, 255), window)
-            any_lit = True
+            continue
+        pygame.draw.polygon(glow_layer, (*WINDOW_LIT_COLOR, 255), window)
+        any_lit = True
+    return any_lit
 
-    if any_lit:
-        glow_layer.set_alpha(alpha)
-        screen.blit(glow_layer, (0, 0), special_flags=pygame.BLEND_RGB_ADD)
+
+def _extend_illuminated_windows(cache: dict, job: dict, buildings, budget_s: float) -> None:
+    """Advance an incremental extension: draw only buildings[cursor:end] -
+    the ones appended since the cache was built - onto the existing glow
+    surface at its own snapshot camera, exactly where a full rebuild at
+    that camera would have drawn them. The committed surface stays
+    displayed meanwhile (partially extended, never blank)."""
+    cache_w = cache["surface"].get_width()
+    cache_h = cache["surface"].get_height()
+    camx, camy = cache["camera"]
+    px_per_m = cache["key"][2]
+    viewport = get_viewport_bounds(camx, camy, px_per_m, cache_w, cache_h, 20.0)
+
+    def draw(index: int) -> None:
+        if _draw_illuminated_building(
+            cache["surface"], buildings[index], viewport, camx, camy, px_per_m, cache_w, cache_h,
+        ):
+            cache["any_lit"] = True
+
+    job["cursor"] = advance_chunked(range(job["end"]), job["cursor"], budget_s, draw)

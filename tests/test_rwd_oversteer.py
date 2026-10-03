@@ -6,6 +6,13 @@ import math
 from theroadragetrip.physics import Car, skidmark_should_mark, update_car_physics
 
 
+# Minimum drift that counts as power oversteer. The 0.14.0 grip retune (dry
+# asphalt 0.90 -> 1.15 g, for controllability) cut this corner's drift from
+# ~34 deg to ~9.5 deg; coasting through it stays at ~0.06 deg, so 5 deg still
+# separates a stepped-out rear from a planted one by two orders of magnitude.
+POWER_OVERSTEER_MIN_DEG = 5.0
+
+
 def corner(speed, throttle, mode="simulation", frames=60, steer_left=1.0, steer_right=0.0, car=None):
     car = car or Car(x=0.0, y=0.0, heading=0.0, speed=speed)
     max_drift = 0.0
@@ -20,7 +27,7 @@ def corner(speed, throttle, mode="simulation", frames=60, steer_left=1.0, steer_
 def test_heavy_throttle_in_a_corner_oversteers_but_coasting_does_not():
     _, powered_drift, powered_marks = corner(16.0, 1.0)
     _, coasting_drift, coasting_marks = corner(16.0, 0.0)
-    assert math.degrees(powered_drift) > 10.0
+    assert math.degrees(powered_drift) > POWER_OVERSTEER_MIN_DEG
     assert powered_marks > 0
     assert math.degrees(coasting_drift) < 1.0
     assert coasting_marks == 0
@@ -36,7 +43,7 @@ def test_oversteer_points_the_nose_into_the_corner_of_the_travel_direction():
 
 def test_lifting_off_or_steering_straight_recovers_the_slide():
     car, drift, _ = corner(16.0, 1.0, frames=40)
-    assert drift > math.radians(10.0)
+    assert drift > math.radians(POWER_OVERSTEER_MIN_DEG)
     corner(0.0, 0.0, frames=30, steer_left=0.0, steer_right=0.0, car=car)
     assert abs(car.drift_angle) < math.radians(2.0)
 

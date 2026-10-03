@@ -146,6 +146,8 @@ def fetch_osm_ways(
       node["crossing"]({south},{west},{north},{east});
     node["entrance"]({south},{west},{north},{east});
     node["amenity"="parking_space"]({south},{west},{north},{east});
+    node["amenity"="parking"]["parking"~"underground|multi-storey"]({south},{west},{north},{east});
+    node["amenity"="parking_entrance"]({south},{west},{north},{east});
       node["place"~"suburb|neighbourhood|quarter|village|town|city|hamlet"]({south},{west},{north},{east});
     node["natural"="tree"]({south},{west},{north},{east});
     node["amenity"~"bench|waste_basket|bicycle_parking|fountain|fuel"]({south},{west},{north},{east});
@@ -160,6 +162,8 @@ def fetch_osm_ways(
       way["barrier"="kerb"]({south},{west},{north},{east});
       way["barrier"~"fence|railing|hedge|wall"]({south},{west},{north},{east});
       way["railway"~"rail|light_rail|tram|narrow_gauge|funicular"]({south},{west},{north},{east});
+      way["railway"="platform"]({south},{west},{north},{east});
+      relation["railway"="platform"]({south},{west},{north},{east});
       way["natural"="water"]({south},{west},{north},{east});
     way["natural"="bay"]({south},{west},{north},{east});
     way["natural"="strait"]({south},{west},{north},{east});

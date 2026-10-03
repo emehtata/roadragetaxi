@@ -20,6 +20,7 @@ from .constants import (
     DEFAULT_ROAD_HALF_WIDTH_M,
     DEFAULT_SPEED_LIMITS_KMH,
     HIGHWAY_HALF_WIDTH,
+    OPEN_ROOF_BUILDING_TYPES,
     bbox_from_center,
     parse_speed_limit_kmh,
 )
@@ -38,6 +39,13 @@ from .pbf_source import (
     DEFAULT_FINLAND_PBF_PATH,
     fetch_osm_ways_from_pbf,
     local_pbf_available,
+)
+
+from .bin_source import (
+    CityBinUnavailableError,
+    city_bin_available,
+    city_bin_path,
+    load_city_ways,
 )
 
 from .cache import (
@@ -60,8 +68,10 @@ from .models import (
     Crossing,
     Curb,
     IntersectionApproach,
+    LevelConnector,
     LogicalIntersection,
     MapData,
+    ParkingGarage,
     ParkingSpace,
     Place,
     Railing,
@@ -89,6 +99,7 @@ from .trees import (
     classify_tree_kind,
     plant_trees,
     remove_trees_under_roads,
+    remove_trees_under_roads_steps,
 )
 
 from .build import (
@@ -98,6 +109,7 @@ from .build import (
 
 from .autofetch import (
     AutoFetchManager,
+    TILE_MERGE_BUDGET_S,
     _extend_unique,
     _map_object_key,
     _snap_projected_bbox,

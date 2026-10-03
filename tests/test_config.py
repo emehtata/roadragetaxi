@@ -7,6 +7,7 @@ from theroadragetrip.config import (
     get_overpass_endpoints,
     get_vehicle_distribution,
     load_config,
+    reset_config,
     save_config,
 )
 from theroadragetrip.osm import OVERPASS_HEADERS, configure_user_agent
@@ -37,6 +38,19 @@ def test_save_config_creates_user_config_directory(tmp_path):
     save_config(config, config_path)
 
     assert config_path.is_file()
+
+
+def test_reset_config_restores_defaults_but_preserves_identity(tmp_path):
+    config = load_config(tmp_path / "roadragetrip.ini")
+    identity = config.get("game", "user_agent_id")
+    config.set("audio", "master_volume", "0.1")
+    config.set("map", "overpass_endpoints", "https://broken.test")
+
+    reset_config(config)
+
+    assert config.getfloat("audio", "master_volume") == 1.0
+    assert get_overpass_endpoints(config) == list(DEFAULT_OVERPASS_ENDPOINTS)
+    assert config.get("game", "user_agent_id") == identity
 
 
 def test_overpass_endpoints_are_trimmed_and_have_defaults(tmp_path):

@@ -114,4 +114,5 @@ def _reset_puddle_cache():
     from theroadragetrip.render import weather as _render_weather
 
     _render_weather._puddle_cache.clear()
+    _render_weather._visible_drivable_cache = (None, [])
     yield

@@ -3,12 +3,10 @@ from typing import Optional, Tuple
 
 import pygame
 
+from ..menu_keys import CITY_MENU_KEYS
 
 
 logger = logging.getLogger(__name__)
-
-
-CITY_MENU_KEYS = "1234567890ABCDEFGHIJKLMNOPQRSTUVWXYZ"
 
 
 def _city_menu_index(key: int, city_count: int) -> Optional[int]:
@@ -30,8 +28,8 @@ def _respawn_allowed(on_foot: bool) -> bool:
 
 
 # Keep in sync with draw_mode_selection_menu()'s options list
-# (career, gig_driver, reset_career, clear_cache).
-MODE_MENU_OPTION_COUNT = 4
+# (career, gig_driver, reset_career, clear_cache, settings, quit).
+MODE_MENU_OPTION_COUNT = 6
 
 
 def _mode_menu_navigate(current: int, direction: int) -> int:

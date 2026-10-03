@@ -16,6 +16,44 @@ except (ImportError, AttributeError):
 
 logger = logging.getLogger(__name__)
 
+CATALOG = Path(__file__).with_name("assets") / "audio" / "audio_catalog.json"
+MIXER_CHANNELS = 48  # one-shots plus about a dozen simultaneous ambience loops
+ANNOUNCEMENT_CHANNEL = 0  # reserved: railway station announcements (station_announcer.py) only
+
+# Sounds with a place in the world: (full volume within, silent beyond)
+# metres from the listener (the camera). Between the two the volume falls
+# like real sound (inverse distance), softly faded out over the last quarter.
+SPATIAL_RANGES_M = {
+    "railway.train_horn": (25.0, 400.0),
+    "railway.train_running": (15.0, 200.0),
+    "railway.train_brakes": (10.0, 150.0),
+    "railway.train_doors": (2.5, 30.0),
+    "collision.vehicle": (15.0, 250.0),
+    "station.ambience": (15.0, 150.0),
+    "censored-cursing": (3.0, 40.0),
+    "railway.announcement": (60.0, 300.0),  # station loudspeakers carry
+}
+# The taxi's own sounds come from the taxi: heard fully unless the camera
+# looks somewhere else (panning the view, following another car).
+PLAYER_SOUND_CATEGORIES = ("vehicle.", "collision.", "taxi.", "passenger.", "gameplay.")
+PLAYER_SOUND_RANGE_M = (20.0, 300.0)
+PAN_WIDTH_M = 60.0  # this far to the side is fully in one speaker
+# Speeds (km/h, plus throttle revs) where each engine rev layer is loudest.
+ENGINE_LAYER_KMH = (10.0, 40.0, 70.0, 100.0)
+ENGINE_LAYER_SPACING_KMH = 30.0
+
+
+def spatial_levels(listener, source, full_m: float, silent_m: float) -> tuple[float, float]:
+    """(left, right) gains 0..1 for a source seen from the listener."""
+    dx, dy = source[0] - listener[0], source[1] - listener[1]
+    distance = (dx * dx + dy * dy) ** 0.5
+    if distance >= silent_m:
+        return 0.0, 0.0
+    gain = full_m / max(full_m, distance)
+    gain *= min(1.0, (silent_m - distance) / (0.25 * silent_m))
+    pan = max(-1.0, min(1.0, dx / PAN_WIDTH_M)) * 0.8  # never fully out of one ear
+    return gain * min(1.0, 1.0 - pan), gain * min(1.0, 1.0 + pan)
+
 
 class AudioManager:
     """Load and play optional game sounds without making audio a runtime requirement."""
@@ -43,8 +81,16 @@ class AudioManager:
         self.driver_sounds: dict[tuple[str, str, str], pygame.mixer.Sound] = {}
         self._driver_speech_times: dict[str, float] = {}
         self.comment_channel: Optional[pygame.mixer.Channel] = None
-        self.acceleration_channel: Optional[pygame.mixer.Channel] = None
         self.police_siren_channel: Optional[pygame.mixer.Channel] = None
+        # Sound groups from assets/audio/audio_catalog.json: group id ->
+        # its generated variations (a loop group's variations are layers).
+        self.groups: dict[str, list[pygame.mixer.Sound]] = {}
+        self._last_variation: dict[str, int] = {}
+        self._edges: dict[str, bool] = {}
+        self.loop_channels: dict[str, pygame.mixer.Channel] = {}
+        self._step_timer = 0.0
+        self.listener: Optional[tuple[float, float]] = None  # camera centre, set by the game every frame
+        self.player_position: Optional[tuple[float, float]] = None  # the taxi, set every simulation tick
         self.speech_interval = random.uniform(speech_min_interval, speech_max_interval)
         self.speech_min_interval = speech_min_interval
         self.speech_max_interval = speech_max_interval
@@ -58,8 +104,11 @@ class AudioManager:
         try:
             if not mixer.get_init():
                 mixer.init()
+            mixer.set_num_channels(MIXER_CHANNELS)
+            # Before any sound plays: Sound.play() never picks a reserved channel.
+            mixer.set_reserved(ANNOUNCEMENT_CHANNEL + 1)
             sounds_dir = Path(__file__).with_name("sounds")
-            for name in ("accelerate", "car-crash", "carhorn_takes", "car-door-open", "city-traffic-outdoor", "police_car_siren-esp"):
+            for name in ("car-door-open", "censored-cursing", "city-traffic-outdoor", "police_car_siren-esp"):
                 path = next(
                     (
                         sounds_dir / f"{name}{extension}"
@@ -73,6 +122,7 @@ class AudioManager:
                         self.sounds[name] = mixer.Sound(str(path))
                     except pygame.error as exc:
                         logger.warning("Could not load sound %s: %s", path.name, exc)
+            self._load_groups(mixer)
             chatter_dir = sounds_dir / "passenger_chatter"
             for path in chatter_dir.glob("*.wav"):
                 parts = path.stem.split("_", 2)
@@ -91,12 +141,28 @@ class AudioManager:
                     self.driver_sounds[(parts[0], parts[1], parts[2])] = mixer.Sound(str(path))
                 except pygame.error as exc:
                     logger.warning("Could not load driver chatter %s: %s", path.name, exc)
-            if "city-traffic-outdoor" in self.sounds:
-                self.sounds["city-traffic-outdoor"].set_volume(self.master_volume * self.music_volume)
-                self.sounds["city-traffic-outdoor"].play(loops=-1)
-            self.enabled = bool(self.sounds or self.passenger_sounds or self.driver_sounds)
+            self.enabled = bool(self.sounds or self.groups or self.passenger_sounds or self.driver_sounds)
+            self.update_ambience()
         except (pygame.error, OSError) as exc:
             logger.info("Audio unavailable: %s", exc)
+
+    def _load_groups(self, mixer) -> None:
+        try:
+            catalog = json.loads(CATALOG.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            logger.warning("Could not load the audio catalog: %s", exc)
+            return
+        for group_id, group in catalog.get("groups", {}).items():
+            sounds = []
+            for entry in group.get("files", ()):
+                if entry.get("status") != "generated":
+                    continue
+                try:
+                    sounds.append(mixer.Sound(str(CATALOG.parent / entry["file"])))
+                except (pygame.error, FileNotFoundError) as exc:
+                    logger.warning("Could not load sound %s: %s", entry["file"], exc)
+            if sounds:
+                self.groups[group_id] = sounds
 
     @staticmethod
     def _load_speech_lines() -> list[dict[str, object]]:
@@ -233,11 +299,108 @@ class AudioManager:
     def set_comments_enabled(self, enabled: bool) -> None:
         self.comments_enabled = enabled
 
-    def play(self, name: str, volume: float = 1.0) -> None:
+    def levels(self, sound_id: str, volume: float, at=None, music: bool = False) -> tuple[float, float]:
+        """(left, right) channel volume of a sound: the mixer volumes, and
+        for a sound with a place (`at`, or the taxi for its own sounds)
+        its distance and side from the listener."""
+        base = min(1.0, self.master_volume * (self.music_volume if music else self.effects_volume) * volume)
+        if sound_id in SPATIAL_RANGES_M:
+            full_m, silent_m = SPATIAL_RANGES_M[sound_id]
+        elif sound_id.startswith(PLAYER_SOUND_CATEGORIES):
+            full_m, silent_m = PLAYER_SOUND_RANGE_M
+            at = at or self.player_position
+        else:
+            return base, base
+        if at is None or self.listener is None:
+            return base, base
+        left, right = spatial_levels(self.listener, at, full_m, silent_m)
+        return base * left, base * right
+
+    def play_group(self, group_id: str, volume: float = 1.0, variation: Optional[int] = None, at=None) -> None:
+        """One variation of a catalog group: the given one (0-based) or a
+        random one, never the same twice in a row; `at` = where it happens."""
+        sounds = self.groups.get(group_id)
+        if not sounds or not self.enabled:
+            return
+        left, right = self.levels(group_id, volume, at)
+        if max(left, right) <= 0.0:
+            return
+        if variation is None:
+            choices = [i for i in range(len(sounds)) if i != self._last_variation.get(group_id)] or [0]
+            variation = random.choice(choices)
+        self._last_variation[group_id] = variation
+        channel = sounds[min(variation, len(sounds) - 1)].play()
+        if channel is not None:
+            channel.set_volume(left, right)
+
+    def on_rise(self, key: str, active: bool, group_id: str, volume: float = 1.0) -> bool:
+        """Play group_id when `active` turns true (not every frame it stays true)."""
+        rose = active and not self._edges.get(key, False)
+        self._edges[key] = active
+        if rose:
+            self.play_group(group_id, volume)
+        return rose
+
+    def set_loop(self, key: str, group_id: str, volume: float, variation: int = 0, music: bool = False, at=None) -> None:
+        """Keep a looping layer of group_id running at `volume` (0 stops it),
+        placed at `at` when it has a place. Music-volume loops are the
+        background beds; the rest are effects."""
+        channel = self.loop_channels.get(key)
+        sounds = self.groups.get(group_id)
+        left, right = self.levels(group_id, volume, at, music)
+        if max(left, right) <= 0.01 or not sounds or not self.enabled:
+            if channel is not None:
+                channel.stop()
+                del self.loop_channels[key]
+            return
+        if channel is None or not channel.get_busy():
+            channel = sounds[min(variation, len(sounds) - 1)].play(loops=-1)
+            if channel is None:
+                return
+            self.loop_channels[key] = channel
+        channel.set_volume(left, right)
+
+    def update_ambience(
+        self, night: float = 0.0, rain: float = 0.0, heavy_rain: float = 0.0, wind: float = 0.0,
+        strong_wind: float = 0.0, wet_tires: float = 0.0, slush: bool = False,
+    ) -> None:
+        """Background loops, each 0..1: the day city bed (existing asset)
+        crossfades into the night one; rain, wind and wet tyres layer on."""
+        day_bed = self.sounds.get("city-traffic-outdoor")
+        if day_bed is not None and self.enabled:
+            channel = self.loop_channels.get("city_day")
+            if channel is None or not channel.get_busy():
+                channel = day_bed.play(loops=-1)
+                if channel is not None:
+                    self.loop_channels["city_day"] = channel
+            if channel is not None:
+                channel.set_volume(self.master_volume * self.music_volume * (1.0 - night))
+        self.set_loop("city_night", "ambient.city_night", night, music=True)
+        self.set_loop("rain", "weather.rain", rain, variation=0)
+        self.set_loop("rain_heavy", "weather.rain", heavy_rain, variation=1)
+        self.set_loop("wind", "weather.wind", wind, variation=0)
+        self.set_loop("wind_strong", "weather.wind", strong_wind, variation=1)
+        self.set_loop("wet_tires", "weather.wet_road", wet_tires, variation=1 if slush else 0)
+
+    def update_footsteps(self, speed_mps: float, dt: float, running: bool) -> None:
+        """The driver's steps on foot: walking steps (variations 1-3) about
+        twice a second, running steps (4) faster."""
+        if abs(speed_mps) < 0.5:
+            self._step_timer = 0.0
+            return
+        self._step_timer -= dt
+        if self._step_timer <= 0.0:
+            self.play_group("pedestrian.footsteps", 0.5, 3 if running else random.randrange(3))
+            self._step_timer = 0.3 if running else 0.5
+
+    def play(self, name: str, volume: float = 1.0, at=None) -> None:
         sound = self.sounds.get(name)
-        if sound is not None and self.enabled:
-            sound.set_volume(self.master_volume * self.effects_volume * volume)
-            sound.play()
+        if sound is None or not self.enabled:
+            return
+        left, right = self.levels(name, volume, at)
+        channel = sound.play() if max(left, right) > 0.0 else None
+        if channel is not None:
+            channel.set_volume(left, right)
 
     def set_volume(self, kind: str, value: float) -> None:
         value = max(0.0, min(1.0, value))
@@ -247,19 +410,23 @@ class AudioManager:
             self.music_volume = value
         elif kind == "effects":
             self.effects_volume = value
-        if "city-traffic-outdoor" in self.sounds:
-            self.sounds["city-traffic-outdoor"].set_volume(self.master_volume * self.music_volume)
+        # Loops pick up the new volumes on their next update (every frame).
 
-    def update_acceleration(self, active: bool) -> None:
-        sound = self.sounds.get("accelerate")
-        if sound is None or not self.enabled:
-            return
-        if active:
-            if self.acceleration_channel is None or not self.acceleration_channel.get_busy():
-                self.acceleration_channel = sound.play(loops=-1)
-        elif self.acceleration_channel is not None:
-            self.acceleration_channel.stop()
-            self.acceleration_channel = None
+    def update_engine(self, running: bool, speed_mps: float, throttle: float) -> None:
+        """The engine under way, taking over from the idle loop once the
+        taxi moves: the idle sped up to four rev levels (x1.25 .. x2.5),
+        crossfaded by speed; the throttle adds revs (about a gear's worth)
+        and loudness."""
+        throttle = max(0.0, min(1.0, throttle))
+        moving = running and abs(speed_mps) > 0.5
+        revs_kmh = abs(speed_mps) * 3.6 + 20.0 * throttle
+        level = 0.45 + 0.3 * throttle if moving else 0.0
+        for index, centre in enumerate(ENGINE_LAYER_KMH):
+            if index == 0 and revs_kmh <= centre or index == len(ENGINE_LAYER_KMH) - 1 and revs_kmh >= centre:
+                weight = 1.0
+            else:
+                weight = max(0.0, 1.0 - abs(revs_kmh - centre) / ENGINE_LAYER_SPACING_KMH)
+            self.set_loop(f"engine_{index}", "vehicle.engine_accelerate", level * weight, variation=index)
 
     def update_police_siren(self, active: bool) -> None:
         sound = self.sounds.get("police_car_siren-esp")
@@ -276,8 +443,10 @@ class AudioManager:
         if self.comment_channel is not None:
             self.comment_channel.stop()
             self.comment_channel = None
-        self.update_acceleration(False)
         self.update_police_siren(False)
+        for channel in self.loop_channels.values():
+            channel.stop()
+        self.loop_channels.clear()
         mixer = pygame_mixer
         if self.enabled and mixer is not None:
             mixer.stop()

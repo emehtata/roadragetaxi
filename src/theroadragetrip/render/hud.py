@@ -8,6 +8,7 @@ from .common import (
     solar_altitude_and_events,
     world_to_screen,
 )
+import functools
 import math
 import os
 from typing import List, Optional, Tuple
@@ -19,6 +20,40 @@ from ..physics import Car, MAX_SPEED
 from ..taxi import TaxiManager, TaxiState
 from ..fare import format_euros
 from ..localization import tr
+
+
+@functools.lru_cache(maxsize=256)
+def render_tabular(font, text: str, color) -> "pygame.Surface":
+    """font.render() with every digit in a cell as wide as the widest
+    digit, so a box sized from it keeps its width while numbers tick
+    (the HUD font's digits are proportional). Handles newlines. Cached:
+    most HUD strings repeat frame to frame."""
+    import pygame
+
+    cell = max(font.size(digit)[0] for digit in "0123456789")
+    lines = []
+    for line in text.split("\n"):
+        pieces, x = [], 0
+        run = ""
+        for char in line + "\0":
+            if char.isdigit() or char == "\0":
+                if run:
+                    pieces.append((x, font.render(run, True, color)))
+                    x += font.size(run)[0]
+                    run = ""
+                if char != "\0":
+                    digit = font.render(char, True, color)
+                    pieces.append((x + (cell - digit.get_width()) // 2, digit))
+                    x += cell
+            else:
+                run += char
+        lines.append((max(1, x), pieces))
+    line_height = font.get_linesize()
+    surface = pygame.Surface((max(w for w, _ in lines), line_height * len(lines)), pygame.SRCALPHA)
+    for row, (_, pieces) in enumerate(lines):
+        for x, piece in pieces:
+            surface.blit(piece, (x, row * line_height))
+    return surface
 
 
 _day_night_overlay_cache = {}
@@ -66,6 +101,7 @@ def _load_rage_face_frames(pygame):
 def default_hud_layout(screen_width: int, screen_height: int) -> dict[str, Tuple[int, int]]:
     return {
         "meters": (10, 10),
+        "fuel": (210, screen_height - 100),
         "rage": (screen_width - 190, screen_height - 246),
         # Shifted up from the speedometer box's own 170px height (was
         # screen_height - 180, flush with the bottom edge) to leave room
@@ -73,6 +109,73 @@ def default_hud_layout(screen_width: int, screen_height: int) -> dict[str, Tuple
         # drawn just below it - see _draw_speedometer_indicators.
         "speedometer": (10, screen_height - 214),
     }
+
+
+def _draw_fuel_meter(
+    screen,
+    font,
+    car: Car,
+    position: Tuple[int, int],
+    language: str,
+    station_price_cents: Optional[int] = None,
+):
+    """Draw a needle fuel gauge (E..F, red reserve zone) and the live econometer."""
+    import pygame
+
+    capacity = max(0.001, car.fuel_capacity_l)
+    fraction = clamp(car.fuel_l / capacity, 0.0, 1.0)
+    x, y = position
+    width, height = 230, 92 if station_price_cents is not None else 78
+    rect = pygame.Rect(x, y, width, height)
+
+    # Upper half-dial face; the needle sweeps 120 deg from E (upper left)
+    # to F (upper right) so it never lies flat along the dial's base.
+    center = (x + 36, y + 50)
+    radius = 30
+
+    def dial_point(dial_fraction, distance, sweep=math.radians(120.0)):
+        angle = math.pi * 0.5 + sweep * (0.5 - dial_fraction)
+        return (center[0] + math.cos(angle) * distance, center[1] - math.sin(angle) * distance)
+
+    face = [center] + [dial_point(step / 24.0, radius, math.pi) for step in range(25)]
+    pygame.draw.polygon(screen, (12, 16, 20), face)
+    reserve_fraction = min(10.0, capacity) / capacity
+    reserve_steps = max(1, round(reserve_fraction * 24))
+    pygame.draw.lines(
+        screen, (230, 55, 45), False,
+        [dial_point(reserve_fraction * step / reserve_steps, radius - 3) for step in range(reserve_steps + 1)], 4,
+    )
+    for tick in range(5):
+        pygame.draw.line(
+            screen, (235, 220, 170), dial_point(tick / 4.0, radius - 9), dial_point(tick / 4.0, radius - 2),
+            3 if tick in (0, 4) else 2,
+        )
+    pygame.draw.lines(screen, (130, 140, 150), True, face, 2)
+    for label_text, label_fraction in (("E", 0.0), ("F", 1.0)):
+        label = font.render(label_text, True, (220, 225, 215))
+        label_x, _ = dial_point(label_fraction, radius - 13)
+        screen.blit(label, label.get_rect(center=(label_x, center[1] - 8)))
+    pygame.draw.line(screen, (230, 65, 45), center, dial_point(fraction, radius - 6), 3)
+    pygame.draw.circle(screen, (240, 220, 170), center, 4)
+
+    if abs(car.speed) > 0.5:
+        economy_text = f"{car.fuel_consumption_l_per_100km:.1f} l/100 km"
+    else:
+        economy_text = f"{car.idle_fuel_consumption_l_per_hour:.1f} l/h"
+    economy = font.render(
+        f"{economy_text}\nFUEL",
+        True,
+        (205, 215, 220),
+    )
+    screen.blit(economy, (x + 74, y + 6))
+    if station_price_cents is not None:
+        station_text = font.render(
+            f"{tr(language, 'fuel_station')}  {format_euros(station_price_cents, language)}/L",
+            True,
+            (255, 215, 90),
+        )
+        screen.blit(station_text, (x + 74, y + 34))
+    return rect
 
 
 def _draw_analog_speedometer(screen, speed_mps: float, position: Tuple[int, int]):
@@ -90,8 +193,6 @@ def _draw_analog_speedometer(screen, speed_mps: float, position: Tuple[int, int]
     x, y = position
     center = (x + width // 2, y + 88)
     radius = 68
-    pygame.draw.rect(screen, (20, 25, 30, 220), (x, y, width, height), border_radius=4)
-    pygame.draw.rect(screen, (130, 140, 150), (x, y, width, height), width=1, border_radius=4)
     pygame.draw.circle(screen, (12, 16, 20), center, radius)
     pygame.draw.circle(screen, (130, 140, 150), center, radius, 2)
 
@@ -245,15 +346,29 @@ def draw_phone_offers(
     if taxi_mgr.current_passenger:
         message = small_font.render(tr(language, "finish_or_cancel"), True, (245, 150, 120))
         screen.blit(message, message.get_rect(center=phone.center))
-    elif not taxi_mgr.offers:
+    elif not taxi_mgr.phone_items() and not taxi_mgr.visible_rail_bookings():
         message = small_font.render(tr(language, "no_requests"), True, (220, 220, 220))
         screen.blit(message, message.get_rect(center=phone.center))
     else:
-        for index, offer in enumerate(taxi_mgr.offers[:3]):
+        for index, (kind, item) in enumerate(taxi_mgr.phone_items()[:3]):
             y = phone.y + 112 + index * 105
             row = pygame.Rect(phone.x + 28, y, phone.width - 56, 88)
             pygame.draw.rect(screen, (30, 39, 47), row, border_radius=6)
             pygame.draw.rect(screen, (75, 88, 97), row, width=1, border_radius=6)
+            if kind == "booking":
+                booking = item
+                number = f"[{index + 1}]  " if booking.status == "PENDING" else ""
+                lines = (
+                    f"{number}{tr(language, 'prebooked_taxi')} | {booking.train_number}",
+                    f"{tr(language, 'pickup')}: {booking.station} | {booking.arrival_at:%H:%M}",
+                    f"{tr(language, 'to')}: {booking.destination.address}",
+                    f"+{format_euros(booking.surcharge_cents, language)} | "
+                    f"{tr(language, 'booking_' + booking.status.lower())}",
+                )
+                for line, offset, color in zip(lines, (8, 29, 48, 67), ((245, 245, 240), (190, 205, 212), (170, 190, 175), (255, 215, 95))):
+                    screen.blit(small_font.render(line, True, color), (row.x + 12, row.y + offset))
+                continue
+            offer = item
             passenger = offer.passenger
             distance = (
                 math.hypot(car.x - passenger.pickup.x, car.y - passenger.pickup.y)
@@ -285,7 +400,7 @@ def draw_phone_offers(
             screen.blit(dist, (row.x + 12, row.y + 67))
 
     hint_text = tr(language, "close_phone")
-    if taxi_mgr.offers:
+    if taxi_mgr.phone_items():
         hint_text += f"  |  {tr(language, 'reject_phone')}"
     hint = small_font.render(hint_text, True, (180, 185, 190))
     screen.blit(hint, hint.get_rect(center=(phone.centerx, phone.bottom - 20)))
@@ -323,6 +438,7 @@ def draw_hud(
     show_debug_hud: bool = False,
     hud_layout: Optional[dict[str, Tuple[int, int]]] = None,
     hud_rects: Optional[dict[str, object]] = None,
+    fuel_station_price_cents: Optional[int] = None,
 ) -> None:
     """Draw speed, trip, odometer, on-road status, current road name, lat/lon, taxi mission bar, notifications."""
     import pygame
@@ -346,10 +462,10 @@ def draw_hud(
     red_light_assist_status = tr(language, "on" if red_light_assist_enabled else "off")
     road_name_s = current_road_name if current_road_name else tr(language, "off_road")
     limit_s = f" [{tr(language, 'limit')}: {speed_limit_kmh} km/h]" if speed_limit_kmh is not None else ""
-    assist_s = f" | [{tr(language, 'lane_assist_active')}]" if getattr(car, "lane_assist_active", False) else ""
+    assist_s = f" | [{tr(language, 'lane_assist')}]" if getattr(car, "lane_assist_active", False) else ""
     hud = (
         f"{tr(language, 'road')}: {road_name_s}{limit_s}{assist_s} | {tr(language, 'trip')}: {trip_s} | {tr(language, 'odometer')}: {odo_s} | "
-        f"{tr(language, 'ways')}: {ways_count} | {tr(language, 'zoom_level')}: {px_per_m:.2f} px/m | "
+        f"{tr(language, 'ways')}: {ways_count} | {tr(language, 'zoom')}: {px_per_m:.2f} px/m | "
         f"{tr(language, 'latitude')}: {lat_s} {tr(language, 'longitude')}: {lon_s}"
     )
     if show_debug_hud:
@@ -364,7 +480,7 @@ def draw_hud(
         if temperature_c is not None:
             clock_text += f"  {temperature_c:+.1f} °C"
         clock_text += " *" if game_time_realtime else ""
-        clock_surface = font.render(clock_text, True, (255, 230, 120))
+        clock_surface = render_tabular(font, clock_text, (255, 230, 120))
         clock_rect = clock_surface.get_rect(topright=(screen_width - 12, 10))
         screen.blit(clock_surface, clock_rect)
 
@@ -407,7 +523,7 @@ def draw_hud(
 
     hint = (
         f"{tr(language, 'controls')}: W/S/A/D = {tr(language, 'drive').lower()} | +/- = {tr(language, 'zoom').lower()} | R = {tr(language, 'respawn').lower()} | X = {tr(language, 'cancel_ride').lower()} | T = {tr(language, 'reset_trip').lower()} | "
-        f"L = labels ({labels_status}) | K = lane assist ({lane_assist_status}) | V = limiter ({speed_limiter_status}) | B = red assist ({red_light_assist_status}) | C = {tr(language, 'compass')} ({tr(language, 'on' if show_compass else 'off')}) | Space = {tr(language, 'rage')} | ESC = pause"
+        f"L = labels ({labels_status}) | K = lane assist ({lane_assist_status}) | V = limiter ({speed_limiter_status}) | B = red assist ({red_light_assist_status}) | E = {tr(language, 'engine')} | C = {tr(language, 'compass')} ({tr(language, 'on' if show_compass else 'off')}) | Space = {tr(language, 'rage')} | ESC = pause"
     )
     if show_debug_hud:
         hint_t = font.render(hint, True, (220, 220, 220))
@@ -421,7 +537,7 @@ def draw_hud(
         else f"{tr(language, 'career_meter')}: {career_total_distance_m / 1000.0:.1f} km   |   "
         f"{tr(language, 'trip_meter')}: {trip_s}"
     )
-    meter_surface = font.render(meter_s, True, (255, 245, 190))
+    meter_surface = render_tabular(font, meter_s, (255, 245, 190))
     meter_background = pygame.Surface((meter_surface.get_width() + 20, meter_surface.get_height() + 10), pygame.SRCALPHA)
     meter_background.fill((15, 20, 25, 210))
     meter_x, meter_y = layout["meters"]
@@ -430,6 +546,17 @@ def draw_hud(
         hud_rects["meters"] = meter_rect
     screen.blit(meter_background, (meter_x, meter_y))
     screen.blit(meter_surface, (meter_x + 10, meter_y + 5))
+
+    fuel_rect = _draw_fuel_meter(
+        screen,
+        font,
+        car,
+        layout["fuel"],
+        language,
+        fuel_station_price_cents,
+    )
+    if hud_rects is not None:
+        hud_rects["fuel"] = fuel_rect
 
     # Taxi mission banner / status bar
     if taxi_mgr:
@@ -440,7 +567,7 @@ def draw_hud(
 
         p = taxi_mgr.current_passenger
         if p is None:
-            if taxi_mgr.offers:
+            if taxi_mgr.has_new_requests():
                 role_text = f"[TAXI] {tr(language, 'phone_available')}"
                 role_color = (255, 95, 60)
             else:
@@ -450,11 +577,18 @@ def draw_hud(
             role_text = tr(language, "fare_pickup", name=p.name if p else tr(language, "client"), address=target.address if target else "...") + f" ({dist_s})"
             role_color = (255, 215, 60)
         else:
-            cur_speed_kmh = (dist_m / max(1.0, taxi_mgr.elapsed_time)) * 3.6 if taxi_mgr.elapsed_time > 0 else 0.0
             role_text = (
                 tr(language, "fare_dropoff", name=p.name if p else tr(language, "client"), address=target.address if target else "...")
-                + f" ({dist_s}, {tr(language, 'elapsed_time')}: {taxi_mgr.elapsed_time:.1f}s)"
+                + f"\n{tr(language, 'estimated_distance')}: {dist_s}"
+                + f"\n{tr(language, 'elapsed_time')}: {taxi_mgr.elapsed_time:.0f}s"
             )
+            if taxi_mgr.fare_started_at is not None:
+                role_text += (
+                    f"\n{tr(language, 'taxi_meter')}: "
+                    f"{format_euros(taxi_mgr.live_fare_cents, language)}"
+                    f"\n{tr(language, 'fare_distance')}: {taxi_mgr.fare_distance_m / 1000.0:.2f} km"
+                    f"\n{tr(language, 'happiness')}: {taxi_mgr.passenger_happiness:.0f}%"
+                )
             role_color = (100, 240, 140)
 
         # Draw taxi score and stats on top right
@@ -463,7 +597,7 @@ def draw_hud(
             f"{tr(language, 'fares')}: {taxi_mgr.completed_fares} | "
             f"{tr(language, 'balance')}: {format_euros(taxi_mgr.balance_cents, language)}"
         )
-        score_surf = font.render(score_text, True, (255, 230, 110))
+        score_surf = render_tabular(font, score_text, (255, 230, 110))
         # The date was added after this score box and can be much wider
         # than the old time-only label. Anchor the score to the clock's
         # measured left edge instead of reserving a guessed 140 pixels;
@@ -476,7 +610,7 @@ def draw_hud(
         pygame.draw.rect(screen, (220, 180, 50), (score_rect.x - 6, score_rect.y - 3, score_rect.width + 12, score_rect.height + 6), 1, border_radius=3)
         screen.blit(score_surf, score_rect)
 
-        fps_surf = font.render(f"FPS: {fps:.1f}", True, (170, 245, 180))
+        fps_surf = render_tabular(font, f"FPS: {fps:.1f}", (170, 245, 180))
         fps_rect = fps_surf.get_rect(topright=(screen_width - 10, score_rect.bottom + 8))
         fps_bg = pygame.Surface((fps_rect.width + 12, fps_rect.height + 6), pygame.SRCALPHA)
         fps_bg.fill((20, 30, 25, 220))
@@ -484,34 +618,8 @@ def draw_hud(
         pygame.draw.rect(screen, (90, 180, 110), (fps_rect.x - 6, fps_rect.y - 3, fps_rect.width + 12, fps_rect.height + 6), 1, border_radius=3)
         screen.blit(fps_surf, fps_rect)
 
-        if taxi_mgr.state == TaxiState.DRIVING_TO_DROPOFF and taxi_mgr.fare_started_at is not None:
-            meter_amount = format_euros(taxi_mgr.current_fare_cents(), language)
-            fare_minutes = int(taxi_mgr.elapsed_time) // 60
-            fare_seconds = int(taxi_mgr.elapsed_time) % 60
-            fare_meter_text = (
-                f"{tr(language, 'taxi_meter')}: {meter_amount}  |  "
-                f"{taxi_mgr.fare_distance_m / 1000.0:.2f} km  |  {fare_minutes}:{fare_seconds:02d}  |  "
-                f"{tr(language, 'happiness')}: {taxi_mgr.passenger_happiness:.0f}%"
-            )
-            fare_meter_surf = font.render(fare_meter_text, True, (120, 255, 150))
-            # Center below the top status rows: the upper-right corner is
-            # occupied by the speed-limit sign as well as FPS/clock data.
-            fare_meter_rect = fare_meter_surf.get_rect(midtop=(screen_width // 2, 88))
-            fare_meter_bg = pygame.Surface(
-                (fare_meter_rect.width + 16, fare_meter_rect.height + 8), pygame.SRCALPHA
-            )
-            fare_meter_bg.fill((10, 35, 20, 225))
-            screen.blit(fare_meter_bg, (fare_meter_rect.x - 8, fare_meter_rect.y - 4))
-            pygame.draw.rect(
-                screen, (80, 205, 110),
-                (fare_meter_rect.x - 8, fare_meter_rect.y - 4,
-                 fare_meter_rect.width + 16, fare_meter_rect.height + 8),
-                1, border_radius=3,
-            )
-            screen.blit(fare_meter_surf, fare_meter_rect)
-
         # Mission header bar
-        mission_surf = font.render(role_text, True, role_color)
+        mission_surf = render_tabular(font, role_text, role_color)
         m_rect = mission_surf.get_rect(topleft=(10, taxi_y))
         m_bg = pygame.Surface((m_rect.width + 12, m_rect.height + 6), pygame.SRCALPHA)
         m_bg.fill((25, 30, 35, 220))
@@ -541,7 +649,7 @@ def draw_hud(
             screen.blit(notif_surf, notif_rect)
 
     # Keep the rage face and meter together in the lower-right corner.
-    rage_text = font.render(f"{tr(language, 'rage_meter')}: {rage_power * 100:.0f}%", True, (255, 120, 100))
+    rage_text = render_tabular(font, f"{tr(language, 'rage_meter')}: {rage_power * 100:.0f}%", (255, 120, 100))
     rage_faces = _load_rage_face_frames(pygame)
     rage_face = None
     if rage_faces:
@@ -901,3 +1009,30 @@ def draw_npc_debug_overlay(
         target = driver.path[driver.path_index]
         tx, ty = world_to_screen(target.x, target.y, camx, camy, px_per_m, screen_w, screen_h)
         pygame.draw.circle(screen, (255, 220, 80), (int(tx), int(ty)), 4, 1)
+
+
+def draw_next_train(screen, font, text: str, screen_width: int, top: int = 116) -> None:
+    """Next timetable train through the map (trains.py), under the speed
+    sign, so the driver can head for the station in time."""
+    import pygame
+
+    surface = render_tabular(font, text, (200, 225, 255))
+    rect = surface.get_rect(topright=(screen_width - 10, top))
+    background = pygame.Surface((rect.width + 12, rect.height + 6), pygame.SRCALPHA)
+    background.fill((20, 25, 35, 210))
+    screen.blit(background, (rect.x - 6, rect.y - 3))
+    pygame.draw.rect(screen, (120, 160, 220), (rect.x - 6, rect.y - 3, rect.width + 12, rect.height + 6), 1, border_radius=3)
+    screen.blit(surface, rect)
+
+
+def draw_camera_back_button(screen, font, label: str, screen_width: int, top: int = 58):
+    """While the camera follows something other than the taxi: a button
+    (also Esc) back to the taxi view. Returns its rect for click tests."""
+    import pygame
+
+    surface = font.render(label, True, (20, 20, 20))
+    rect = surface.get_rect(midtop=(screen_width // 2, top)).inflate(20, 10)
+    pygame.draw.rect(screen, (255, 205, 0), rect, border_radius=6)
+    pygame.draw.rect(screen, (20, 20, 20), rect, width=2, border_radius=6)
+    screen.blit(surface, surface.get_rect(center=rect.center))
+    return rect

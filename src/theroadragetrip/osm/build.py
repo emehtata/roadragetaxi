@@ -1,10 +1,13 @@
+import bisect
 import collections
+import itertools
 from collections import defaultdict
 import logging
 import math
 import time
 from typing import Callable, Dict, List, Optional, Set, Tuple
 
+from ..geo import compute_bbox, point_in_polygon
 
 
 logger = logging.getLogger(__name__)
@@ -16,6 +19,8 @@ from .constants import (
     parse_speed_limit_kmh,
 )
 
+from ..map_level import parse_level_list, parse_map_level
+from .parking import GARAGE_TYPES, make_parking_garage, parking_facility_type
 from .models import (
     Way,
     Water,
@@ -38,6 +43,7 @@ from .models import (
     SceneryObject,
     SpeedBump,
     MapData,
+    LevelConnector,
 )
 
 from .traffic_signals import (
@@ -68,6 +74,104 @@ _ALIGN_TO_PATH_SCENERY_KINDS = {"bench", "waste_basket"}
 # curb_raw's own traffic-island fallback fill below for the full reasoning.
 MAX_TRAFFIC_ISLAND_SPAN_M = 25.0
 MIN_TRAFFIC_ISLAND_WIDTH_M = 1.5
+
+
+
+# A real kerb runs *along* a road edge; where a mapped barrier=kerb line
+# crosses a drivable road's centerline it is a lowered kerb at an entrance
+# or a kerb drawn straight across a side street's mouth - cars drive over
+# it. Measured on Oulu: 189 of 818 kerbs crossed a drivable centerline at
+# ~2700 points, which made NPC route validation reject 98% of trips.
+KERB_ROAD_CROSSING_MARGIN_M = 1.0  # extra gap beyond the road's half width
+_KERB_CROSSING_GRID_CELL_M = 50.0
+
+
+def _segment_intersection_t(a, b, p, q) -> Optional[float]:
+    """Parameter t along a->b where it crosses p->q, or None."""
+    denom = (b[0] - a[0]) * (q[1] - p[1]) - (b[1] - a[1]) * (q[0] - p[0])
+    if abs(denom) < 1e-12:
+        return None
+    t = ((p[0] - a[0]) * (q[1] - p[1]) - (p[1] - a[1]) * (q[0] - p[0])) / denom
+    u = ((p[0] - a[0]) * (b[1] - a[1]) - (p[1] - a[1]) * (b[0] - a[0])) / denom
+    return t if 0.0 <= t <= 1.0 and 0.0 <= u <= 1.0 else None
+
+
+def open_kerbs_at_road_crossings(curbs: List[Curb], ways: List[Way]) -> List[Curb]:
+    """Cut a gap into every kerb around each ground-level drivable road
+    centerline it crosses (road half width + margin each side, widened for
+    a slanted crossing); the remaining pieces stay curbs, unchanged."""
+    cell = _KERB_CROSSING_GRID_CELL_M
+    road_grid: Dict[Tuple[int, int], List] = defaultdict(list)
+    for way in ways:
+        if not getattr(way, "is_drivable", True) or getattr(way, "is_bridge", False) or getattr(way, "layer", 0) != 0:
+            continue
+        for p, q in zip(way.points_m, way.points_m[1:]):
+            for cx in range(math.floor(min(p[0], q[0]) / cell), math.floor(max(p[0], q[0]) / cell) + 1):
+                for cy in range(math.floor(min(p[1], q[1]) / cell), math.floor(max(p[1], q[1]) / cell) + 1):
+                    road_grid[(cx, cy)].append((p, q, getattr(way, "half_width_m", 3.0)))
+    result: List[Curb] = []
+    for curb in curbs:
+        pts = curb.points_m
+        lengths = [math.hypot(b[0] - a[0], b[1] - a[1]) for a, b in zip(pts, pts[1:])]
+        gaps = []
+        start_s = 0.0
+        for (a, b), length in zip(zip(pts, pts[1:]), lengths):
+            seen = set()
+            for cx in range(math.floor(min(a[0], b[0]) / cell), math.floor(max(a[0], b[0]) / cell) + 1):
+                for cy in range(math.floor(min(a[1], b[1]) / cell), math.floor(max(a[1], b[1]) / cell) + 1):
+                    for p, q, half_width in road_grid.get((cx, cy), ()):
+                        if (p, q) in seen:
+                            continue
+                        seen.add((p, q))
+                        t = _segment_intersection_t(a, b, p, q)
+                        if t is None or length < 1e-9:
+                            continue
+                        road_length = math.hypot(q[0] - p[0], q[1] - p[1]) or 1.0
+                        sin_angle = abs(
+                            ((b[0] - a[0]) * (q[1] - p[1]) - (b[1] - a[1]) * (q[0] - p[0])) / (length * road_length)
+                        )
+                        half_gap = (half_width + KERB_ROAD_CROSSING_MARGIN_M) / max(0.3, sin_angle)
+                        crossing_s = start_s + t * length
+                        gaps.append((crossing_s - half_gap, crossing_s + half_gap))
+            start_s += length
+        if not gaps:
+            result.append(curb)
+            continue
+        result.extend(
+            Curb(points_m=piece, bbox=compute_bbox(piece))
+            for piece in _polyline_without_ranges(pts, lengths, sorted(gaps))
+        )
+    return result
+
+
+def _polyline_without_ranges(pts, lengths, gaps) -> List[List[Tuple[float, float]]]:
+    """Pieces (each >= 0.5 m) of a polyline left after removing sorted
+    arclength ranges."""
+    cumulative = [0.0]
+    for length in lengths:
+        cumulative.append(cumulative[-1] + length)
+    total = cumulative[-1]
+    keep = []
+    cursor = 0.0
+    for low, high in gaps:
+        if low > cursor:
+            keep.append((cursor, min(low, total)))
+        cursor = max(cursor, high)
+    if cursor < total:
+        keep.append((cursor, total))
+
+    def point_at(s):
+        i = min(max(0, bisect.bisect_right(cumulative, s) - 1), len(lengths) - 1)
+        a, b = pts[i], pts[i + 1]
+        f = 0.0 if lengths[i] < 1e-9 else (s - cumulative[i]) / lengths[i]
+        return (a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f)
+
+    pieces = []
+    for low, high in keep:
+        if high - low < 0.5:
+            continue
+        pieces.append([point_at(low)] + [pt for pt, s in zip(pts, cumulative) if low < s < high] + [point_at(high)])
+    return pieces
 
 
 def _scenery_object_kind(tags: Dict[str, str]) -> Optional[str]:
@@ -124,6 +228,7 @@ def _snap_to_nearest_road(
     r_grid_size: float,
     max_dist: float = 8.0,
     junction_tie_m: float = 1.5,
+    directed: bool = False,
 ) -> Tuple[float, float, float, float, bool]:
     """Snap `pt` onto the nearest same-layer drivable road within
     `max_dist`. Returns (x, y, direction_angle_rad, road_half_width_m,
@@ -182,7 +287,7 @@ def _snap_to_nearest_road(
             if d > max_dist:
                 continue
             if best_for_way is None or d < best_for_way[0]:
-                angle = math.atan2(dy, dx) % math.pi
+                angle = math.atan2(dy, dx) % (2.0 * math.pi if directed else math.pi)
                 best_for_way = (d, px, py, angle, getattr(w, "half_width_m", 3.5), getattr(w, "name", None))
         if best_for_way is not None:
             matches.append(best_for_way)
@@ -282,6 +387,37 @@ def _stitch_member_ways_into_rings(
     return rings
 
 
+def _level_metadata(tags: dict) -> dict:
+    """Way/Building level fields from explicit tags only; layer=* never feeds in."""
+    level = tags.get("level")
+    return {"map_level": parse_map_level(level), "level": level, "indoor": tags.get("indoor")}
+
+
+# Walkways that can lead onto a station platform (see build_ways' platform branch).
+PLATFORM_ACCESS_HIGHWAYS = frozenset({"footway", "steps", "path", "pedestrian", "platform", "corridor", "cycleway"})
+PLATFORM_NODE_SPACING_M = 8.0
+
+
+def _platform_centreline(pts: List[Tuple[float, float]]) -> Tuple[Tuple[float, float], Tuple[float, float]]:
+    """Ends of a platform polygon's long (principal) axis through its
+    vertex centroid, pulled 2 m in from each end."""
+    # ponytail: straight line - a strongly curved platform's centreline can
+    # leave the polygon; follow the medial axis if that shows up.
+    n = len(pts)
+    cx = sum(x for x, _ in pts) / n
+    cy = sum(y for _, y in pts) / n
+    sxx = sum((x - cx) ** 2 for x, _ in pts)
+    syy = sum((y - cy) ** 2 for _, y in pts)
+    sxy = sum((x - cx) * (y - cy) for x, y in pts)
+    angle = 0.5 * math.atan2(2.0 * sxy, sxx - syy)
+    ux, uy = math.cos(angle), math.sin(angle)
+    along = [(x - cx) * ux + (y - cy) * uy for x, y in pts]
+    lo, hi = min(along) + 2.0, max(along) - 2.0
+    if hi < lo:
+        lo = hi = 0.0
+    return (cx + ux * lo, cy + uy * lo), (cx + ux * hi, cy + uy * hi)
+
+
 def build_ways(
     elements: List[dict],
     progress_callback: Optional[Callable[[float, str], None]] = None,
@@ -326,11 +462,15 @@ def build_ways(
     railway_raw: List[Tuple[dict, List[int]]] = []
     railing_raw: List[Tuple[dict, List[int]]] = []
     building_raw: List[Tuple[dict, List[int]]] = []
+    fuel_area_raw: List[Tuple[dict, List[int], Optional[int]]] = []
     parking_space_raw: List[Tuple[dict, List[int], Optional[int]]] = []
     scenery_raw: List[Tuple[dict, List[int]]] = []
     named_ways_raw: List[Tuple[dict, List[int]]] = []
     parking_space_nodes_raw: List[Tuple[dict, int]] = []
     relations_raw: List[Tuple[dict, List[dict]]] = []
+    garage_raw: List[Tuple[dict, str, int, object]] = []  # (tags, osm type, osm id, node ids / members)
+    connector_nodes: Dict[int, dict] = {}  # amenity=parking_entrance node id -> tags
+    connector_ways: Dict[int, List[Tuple[int, dict]]] = defaultdict(list)  # node id -> ways through it
 
     for el in elements:
         el_type = el.get("type")
@@ -368,6 +508,10 @@ def build_ways(
                     tree_node_tags[nid] = tags
             if _scenery_object_kind(tags) is not None:
                 scenery_object_nodes_raw.append((tags, nid))
+            if parking_facility_type(tags) in GARAGE_TYPES:
+                garage_raw.append((tags, "node", nid, None))
+            if tags.get("amenity") == "parking_entrance":
+                connector_nodes[nid] = tags
         elif el_type == "way":
             tags = el.get("tags", {})
             node_ids = el.get("nodes", [])
@@ -376,6 +520,16 @@ def build_ways(
                 ways_by_id[way_id] = el
             if len(node_ids) < 2:
                 continue
+            if tags.get("amenity") == "fuel":
+                fuel_area_raw.append((tags, node_ids, way_id))
+            if parking_facility_type(tags) in GARAGE_TYPES:
+                garage_raw.append((tags, "way", way_id, node_ids))
+            # Ways sharing a parking entrance node: its explicit garage /
+            # road topology (garage-07.md). isdisjoint keeps the common no-
+            # entrance way at one C-level set check.
+            if connector_nodes and not connector_nodes.keys().isdisjoint(node_ids):
+                for nid in set(node_ids).intersection(connector_nodes):
+                    connector_ways[nid].append((way_id, tags))
             if include_bus_stops and tags.get("public_transport") == "platform":
                 bus_platforms_raw.append((tags, node_ids, way_id))
             if "building" in tags or "building:part" in tags:
@@ -391,6 +545,9 @@ def build_ways(
             elif tags.get("amenity") in ("parking", "fuel") or tags.get("landuse") == "parking":
                 scenery_raw.append((tags, node_ids))
             elif "leisure" in tags or "landuse" in tags or tags.get("natural") in NATURAL_SCENERY_KINDS:
+                scenery_raw.append((tags, node_ids))
+            elif tags.get("railway") == "platform" and node_ids[0] == node_ids[-1]:
+                # Station platform area: paved ground, not the grass under it.
                 scenery_raw.append((tags, node_ids))
             elif "highway" in tags:
                 highway = tags.get("highway", "unclassified")
@@ -414,6 +571,8 @@ def build_ways(
             if tags.get("type") == "multipolygon":
                 members = el.get("members", [])
                 relations_raw.append((tags, members))
+                if parking_facility_type(tags) in GARAGE_TYPES:
+                    garage_raw.append((tags, "relation", el.get("id"), members))
 
     logger.info(
         "Parsed %d OSM elements: %d nodes, %d ways, %d relations",
@@ -502,6 +661,8 @@ def build_ways(
         return pts, (iminx, iminy, imaxx, imaxy)
 
     # 1. Scenery polygons (parks, forests, grass)
+    synthetic_node_ids = itertools.count(-1, -1)  # platform centreline nodes (OSM ids are positive)
+    platform_ways_start = len(ways_raw)  # only real OSM ways can join a platform
     if progress_callback:
         progress_callback(0.78, f"Building scenery ({len(scenery_raw)} areas)...")
     for tags, node_ids in scenery_raw:
@@ -510,14 +671,56 @@ def build_ways(
             continue
         is_parking = tags.get("amenity") == "parking" or tags.get("landuse") == "parking"
         is_fuel = tags.get("amenity") == "fuel"
-        kind = "parking" if is_parking else "fuel" if is_fuel else tags.get("leisure") or tags.get("landuse") or tags.get("natural") or "park"
+        is_platform = tags.get("railway") == "platform"
+        kind = (
+            "parking" if is_parking else "fuel" if is_fuel else "pedestrian_area" if is_platform
+            else tags.get("leisure") or tags.get("landuse") or tags.get("natural") or "park"
+        )
         name = tags.get("name")
         # A mapped parking lot (or fuel station forecourt) is paved ground
         # even when nobody bothered tagging surface=* - only every other
         # scenery kind (forest, grass, ...) leaves this None, since kind
         # itself already says what that ground is.
         surface = (tags.get("surface") or "asphalt") if (is_parking or is_fuel) else None
-        sceneries.append(Scenery(points_m=pts, kind=kind, name=name, bbox=ibbox, surface=surface))
+        if is_platform:
+            surface = tags.get("surface") or "paving_stones"
+            # Walkable centreline, so station passengers (who stand on
+            # pedestrian ways, off-track) can wait and alight on the
+            # platform. Built as an ordinary highway=platform way below.
+            end_a, end_b = _platform_centreline(pts)
+            dx, dy = end_b[0] - end_a[0], end_b[1] - end_a[1]
+            length_sq = dx * dx + dy * dy
+            # Footways/steps ending on the platform (e.g. an underpass's
+            # stairs) join it with a short connector to the centreline,
+            # or the platform is an island no route can reach.
+            joins = []
+            for _, way_highway, way_node_ids, _ in ways_raw[:platform_ways_start]:
+                if way_highway not in PLATFORM_ACCESS_HIGHWAYS:
+                    continue
+                for end_id in (way_node_ids[0], way_node_ids[-1]):
+                    end = nodes_m.get(end_id)
+                    if end is not None and point_in_polygon(end[0], end[1], pts):
+                        t = ((end[0] - end_a[0]) * dx + (end[1] - end_a[1]) * dy) / length_sq if length_sq else 0.0
+                        joins.append((min(max(t, 0.0), 1.0), end_id))
+            # A node at least every PLATFORM_NODE_SPACING_M: routing starts
+            # from the nearest *node*, which must be on this platform, not
+            # a footway across the track.
+            steps = max(1, math.ceil(math.sqrt(length_sq) / PLATFORM_NODE_SPACING_M))
+            stations = sorted({i / steps for i in range(steps + 1)} | {t for t, _ in joins})
+            centreline_ids = {}
+            for t in stations:
+                centreline_ids[t] = next(synthetic_node_ids)
+                nodes_m[centreline_ids[t]] = (end_a[0] + dx * t, end_a[1] + dy * t)
+            ways_raw.append((
+                {"highway": "platform", "surface": surface},
+                "platform", [centreline_ids[t] for t in stations], None,
+            ))
+            for t, end_id in joins:
+                ways_raw.append(({"highway": "footway"}, "footway", [end_id, centreline_ids[t]], None))
+        sceneries.append(Scenery(
+            points_m=pts, kind=kind, name=name, bbox=ibbox, surface=surface,
+            kerbed=tags.get("barrier") == "kerb",
+        ))
 
     for tags, node_ids, parking_id in parking_space_raw:
         pts, ibbox = process_node_ids(node_ids)
@@ -637,7 +840,14 @@ def build_ways(
             railway_layer = 0
         railway_is_bridge = tags.get("bridge") in ("yes", "viaduct", "movable") or railway_layer > 0
         railways.append(
-            Railway(points_m=pts, kind=tags.get("railway", "rail"), bbox=ibbox, is_bridge=railway_is_bridge)
+            Railway(
+                points_m=pts,
+                kind=tags.get("railway", "rail"),
+                bbox=ibbox,
+                is_bridge=railway_is_bridge,
+                layer=railway_layer,
+                track_ref=tags.get("railway:track_ref", "").strip().lstrip("0"),
+            )
         )
 
     for tags, node_ids in railing_raw:
@@ -673,12 +883,16 @@ def build_ways(
                 else None
             ),
             building_type=tags.get("building"),
+            roof_shape=tags.get("roof:shape"),
+            height_is_explicit=bool(tags.get("height") or tags.get("building:levels") or tags.get("levels")),
             center_m=(center_x, center_y),
             texture_seed=abs(math.sin(center_x * 0.013 + center_y * 0.017)),
             entrances=entrances,
+            **_level_metadata(tags),
         ))
 
     # 4. Roads (ways)
+    level_ways: List[Way] = []
     if progress_callback:
         progress_callback(0.94, f"Building road network ({len(ways_raw)} ways)...")
     non_drivable_highways = {
@@ -690,6 +904,7 @@ def build_ways(
         "bridleway",
         "corridor",
         "track",
+        "platform",
     }
     for tags, highway, node_ids, way_id in ways_raw:
         pts, ibbox = process_node_ids(node_ids)
@@ -761,8 +976,24 @@ def build_ways(
         if layer_val < 0:
             is_underground = True
 
+        # Underground-looking service/track roads stay off the surface road
+        # network (they'd draw and route as surface roads). One with an
+        # explicit level=* is kept instead, in level_ways - level-aware
+        # world data no surface system reads, for the level render gate
+        # (garage-03.md). Without level=* it is still dropped: no level is
+        # inferred from tunnel/covered/layer hints.
+        level_only = False
         if is_underground and (highway in ("service", "track") or "parking" in tags) and tags.get("service") != "parking_aisle":
-            continue
+            explicit_level = parse_map_level(level_tag)
+            listed_levels = parse_level_list(level_tag)
+            if explicit_level is None and not listed_levels:
+                continue
+            # level=0 is the surface: a covered surface road joins the
+            # surface network (garage-05.md); other levels go to level_ways.
+            # A multi-level one (level=0;-1, a tunnel ramp - garage-09.md)
+            # joins the surface network only when it names level 0; a
+            # "-1;-2" one stays in level_ways, never a surface road.
+            level_only = explicit_level != 0 if explicit_level is not None else 0 not in listed_levels
 
         is_bridge = tags.get("bridge") in ("yes", "viaduct", "movable") or layer_val > 0
         is_tunnel = tunnel_tag in ("yes", "building_passage") or layer_val < 0
@@ -786,7 +1017,11 @@ def build_ways(
         access = tags.get("access")
 
         # In Finland, living streets (pihatiet), service drives, and bus lanes are fully allowed for taxis
-        if highway == "living_street":
+        if highway == "platform":
+            # Before the bus checks: a bus platform is often tagged bus=yes,
+            # which made it a drivable busway.
+            is_drivable = False
+        elif highway == "living_street":
             is_drivable = True
         elif is_bus_route:
             is_drivable = True
@@ -844,7 +1079,7 @@ def build_ways(
         priority_tag = str(tags.get("priority_road", "")).strip().lower()
         is_priority_road = priority_tag in {"yes", "designated", "true", "1"} or junction_tag == "priority"
 
-        ways.append(
+        (level_ways if level_only else ways).append(
             Way(
                 points_m=pts,
                 highway=highway,
@@ -869,6 +1104,7 @@ def build_ways(
                 turn_lanes=tags.get("turn:lanes") or tags.get("turn:lanes:forward"),
                 priority_road=is_priority_road,
                 service=tags.get("service"),
+                **_level_metadata(tags),
             )
         )
 
@@ -899,6 +1135,10 @@ def build_ways(
             for m in members
             if m.get("type") == "way" and (m.get("role") == "outer" or m.get("role") == "")
         ]
+        relation_is_kerbed = tags.get("barrier") == "kerb" or any(
+            (ways_by_id.get(way_id, {}).get("tags", {}).get("barrier") == "kerb")
+            for way_id in outer_way_ids
+        )
         rings = _stitch_member_ways_into_rings(
             outer_way_ids, ways_by_id, lambda nids: process_node_ids(nids)[0]
         )
@@ -931,8 +1171,11 @@ def build_ways(
                         else None
                     ),
                     building_type=tags.get("building"),
+                    roof_shape=tags.get("roof:shape"),
+                    height_is_explicit=bool(tags.get("height") or tags.get("building:levels") or tags.get("levels")),
                     center_m=(center_x, center_y),
                     texture_seed=abs(math.sin(center_x * 0.013 + center_y * 0.017)),
+                    **_level_metadata(tags),
                 ))
             elif tags.get("natural") in ("water", "bay", "strait") or tags.get("landuse") == "reservoir":
                 kind = tags.get("natural") or tags.get("landuse") or "water"
@@ -946,7 +1189,7 @@ def build_ways(
                     points_m=pts, kind="parking", name=name, bbox=ibbox,
                     surface=tags.get("surface") or "asphalt",
                 ))
-            elif tags.get("highway") in non_drivable_highways:
+            elif tags.get("highway") in non_drivable_highways or tags.get("railway") == "platform":
                 # A paved pedestrian plaza/square is commonly mapped as a
                 # type=multipolygon relation tagged highway=pedestrian
                 # (+ surface=paving_stones) rather than a simple way -
@@ -961,7 +1204,7 @@ def build_ways(
                 ))
             elif "leisure" in tags or "landuse" in tags or tags.get("natural") in NATURAL_SCENERY_KINDS:
                 kind = tags.get("leisure") or tags.get("landuse") or tags.get("natural") or "park"
-                scenery = Scenery(points_m=pts, kind=kind, name=name, bbox=ibbox)
+                scenery = Scenery(points_m=pts, kind=kind, name=name, bbox=ibbox, kerbed=relation_is_kerbed)
                 plant_trees([scenery], ways, real_trees=real_trees_m, real_tree_tags=real_tree_tags)
                 sceneries.append(scenery)
             elif "place" in tags and name and pts:
@@ -1031,6 +1274,39 @@ def build_ways(
                 obj_y = snap_y + normal_y * side * clearance
                 angle = way_angle
         scenery_objects.append(SceneryObject(x=obj_x, y=obj_y, kind=kind, name=tags.get("name"), id=nid, direction_angle=angle))
+
+    # Fuel stations are frequently mapped only as an amenity=fuel area,
+    # especially when the same way is also the building=roof pump canopy.
+    # Such a way never enters scenery_object_nodes_raw, so without this
+    # fallback it has a name/roof but no pumps, price marker, refueling
+    # target, or deterministic station price. Prefer real mapped fuel nodes
+    # inside the area; otherwise synthesize one stable station at its center.
+    mapped_fuel_objects = [obj for obj in scenery_objects if obj.kind == "fuel"]
+    for tags, node_ids, way_id in fuel_area_raw:
+        pts, _ = process_node_ids(node_ids)
+        if not pts or len(pts) < 3:
+            continue
+        if any(point_in_polygon(obj.x, obj.y, pts) for obj in mapped_fuel_objects):
+            continue
+        center_points = pts[:-1] if len(pts) > 1 and pts[0] == pts[-1] else pts
+        center_x = sum(point[0] for point in center_points) / len(center_points)
+        center_y = sum(point[1] for point in center_points) / len(center_points)
+        longest_start, longest_end = max(
+            zip(pts, pts[1:] + pts[:1]),
+            key=lambda edge: (edge[1][0] - edge[0][0]) ** 2 + (edge[1][1] - edge[0][1]) ** 2,
+        )
+        angle = math.atan2(longest_end[1] - longest_start[1], longest_end[0] - longest_start[0])
+        station = SceneryObject(
+            x=center_x,
+            y=center_y,
+            kind="fuel",
+            name=tags.get("name") or tags.get("brand") or tags.get("operator"),
+            id=way_id,
+            direction_angle=angle,
+            is_area=True,
+        )
+        scenery_objects.append(station)
+        mapped_fuel_objects.append(station)
 
     for tags, nid in bus_stops_raw:
         pt = nodes_m.get(nid)
@@ -1204,12 +1480,15 @@ def build_ways(
             except (TypeError, ValueError):
                 layer_val = 0
             snap_x, snap_y, road_angle, road_half_w, found_orientation = _snap_to_nearest_road(
-                pt, layer_val, roads_grid, r_grid_size
+                pt, layer_val, roads_grid, r_grid_size, directed=True
             )
             if not found_orientation:
                 return pt[0], pt[1], layer_val, None, road_half_w
             normal_x, normal_y = -math.sin(road_angle), math.cos(road_angle)
             side = 1.0 if (pt[0] - snap_x) * normal_x + (pt[1] - snap_y) * normal_y >= 0.0 else -1.0
+            osm_direction = tags.get("direction")
+            if osm_direction == "backward" or (osm_direction != "forward" and side > 0.0):
+                road_angle = (road_angle + math.pi) % (2.0 * math.pi)
             clearance = road_half_w + 1.0
             post_x = snap_x + normal_x * side * clearance
             post_y = snap_y + normal_y * side * clearance
@@ -1272,9 +1551,53 @@ def build_ways(
             minx = miny = 0.0
             maxx = maxy = 1000.0
 
+    parking_garages = []
+    for tags, osm_type, osm_id, geometry in garage_raw:
+        if osm_type == "node":
+            point = nodes_m.get(osm_id)
+            points = [point] if point is not None else None
+        elif osm_type == "way":
+            points = process_node_ids(geometry)[0]
+            if points and len(points) < 3:
+                points = None  # a garage way must be an area
+        else:
+            outer_way_ids = [
+                m["ref"] for m in geometry
+                if m.get("type") == "way" and m.get("role") in ("outer", "")
+            ]
+            rings = [
+                pts for pts, is_closed in _stitch_member_ways_into_rings(
+                    outer_way_ids, ways_by_id, lambda nids: process_node_ids(nids)[0],
+                ) if is_closed and len(pts) >= 3
+            ]
+            # ponytail: one garage per relation, its largest outer ring;
+            # split per ring if multi-part garages show up in real data.
+            points = max(rings, key=lambda pts: abs(sum(
+                ax * by - bx * ay for (ax, ay), (bx, by) in zip(pts, pts[1:] + pts[:1])
+            )), default=None)
+        garage = make_parking_garage(tags, osm_type, osm_id, points) if points else None
+        if garage is not None:
+            parking_garages.append(garage)
+
+    level_connectors = []
+    for nid, tags in connector_nodes.items():
+        point = nodes_m.get(nid)
+        if point is None:
+            continue
+        sharing = connector_ways.get(nid, ())
+        garage_ids = [way_id for way_id, way_tags in sharing if parking_facility_type(way_tags) in GARAGE_TYPES]
+        level_connectors.append(LevelConnector(
+            osm_type="node", osm_id=nid, connector_type="parking_entrance", x=point[0], y=point[1],
+            map_level=parse_map_level(tags.get("level")), level=tags.get("level"), parking=tags.get("parking"),
+            garage_osm_id=garage_ids[0] if garage_ids else None,
+            road_osm_ids=tuple(way_id for way_id, way_tags in sharing if "highway" in way_tags),
+        ))
+
+    curbs = open_kerbs_at_road_crossings(curbs, ways)
     return MapData(
         ways, waters, buildings, sceneries, places, (minx, miny, maxx, maxy),
         traffic_lights, crossings, taxi_stops, bus_stops, parking_spaces, logical_intersections, stop_signs, yield_signs,
         curbs=curbs, scenery_objects=scenery_objects, speed_bumps=speed_bumps,
-        railways=railways, railings=railings,
+        railways=railways, railings=railings, parking_garages=parking_garages,
+        level_ways=level_ways, level_connectors=level_connectors,
     )

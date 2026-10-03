@@ -3,7 +3,8 @@ import sys
 import time
 from concurrent.futures import Future
 
-from theroadragetrip import Car, Way, AutoFetchManager
+from theroadragetrip.physics import Car
+from theroadragetrip.osm import AutoFetchManager, Way
 from theroadragetrip.osm import MapData, _snap_projected_bbox
 
 

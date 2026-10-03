@@ -12,7 +12,7 @@ class FakeTransformer:
 fake_pyproj.Transformer = FakeTransformer
 sys.modules["pyproj"] = fake_pyproj
 
-from theroadragetrip import build_ways
+from theroadragetrip.osm import build_ways
 
 
 def test_relation_multipolygon_water():

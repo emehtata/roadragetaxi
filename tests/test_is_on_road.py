@@ -1,10 +1,9 @@
 import math
 
-from theroadragetrip import (
+from theroadragetrip.osm import Water, Way
+from theroadragetrip.physics import (
     Car,
     SpatialWayGrid,
-    Water,
-    Way,
     get_current_road_at_car,
     is_car_fully_in_water,
     is_on_road,

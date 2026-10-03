@@ -63,7 +63,36 @@ def test_kerb_around_a_real_planting_island_renders_both_curb_and_fill():
     assert len(result.curbs) == 1
     assert len(result.sceneries) == 1
     assert result.sceneries[0].kind == "scrub"
+    assert result.sceneries[0].kerbed is True
     assert len(result.sceneries[0].points_m) == 5
+
+
+def test_multipolygon_grass_inherits_kerb_from_outer_member():
+    elements = [
+        {"type": "node", "id": 1, "lat": 60.0, "lon": 25.0},
+        {"type": "node", "id": 2, "lat": 60.001, "lon": 25.0},
+        {"type": "node", "id": 3, "lat": 60.001, "lon": 25.001},
+        {"type": "node", "id": 4, "lat": 60.0, "lon": 25.001},
+        {
+            "type": "way", "id": 20, "nodes": [1, 2, 3],
+            "tags": {"barrier": "kerb"},
+        },
+        {"type": "way", "id": 21, "nodes": [3, 4, 1], "tags": {}},
+        {
+            "type": "relation", "id": 22,
+            "members": [
+                {"type": "way", "ref": 20, "role": "outer"},
+                {"type": "way", "ref": 21, "role": "outer"},
+            ],
+            "tags": {"type": "multipolygon", "landuse": "grass"},
+        },
+    ]
+
+    result = build_ways(elements)
+
+    assert len(result.sceneries) == 1
+    assert result.sceneries[0].kind == "grass"
+    assert result.sceneries[0].kerbed is True
 
 
 def test_bare_kerb_island_with_no_fill_tag_still_gets_a_traffic_island_fill():
@@ -175,6 +204,7 @@ def test_draw_curbs_runs_without_error():
     surf = pygame.Surface((800, 600))
     curb = Curb(points_m=[(90.0, 100.0), (110.0, 100.0)], bbox=(90.0, 100.0, 110.0, 100.0))
     draw_curbs(surf, [curb], camx=100.0, camy=100.0, px_per_m=5.0, screen_w=800, screen_h=600)
+    assert surf.get_at((400, 300))[:3] == (145, 145, 140)
     pygame.quit()
 
 
@@ -284,3 +314,22 @@ def test_check_curb_bump_has_a_cooldown_per_curb():
     car.x = 15.0
     assert taxi_mgr.check_curb_bump(car, [curb], previous_position=(5.0, 0.0), sim_time=1.0) is True
     assert car.speed < speed_after_first_hit
+
+
+def test_kerb_crossing_a_drivable_road_gets_a_gap_but_roadside_kerb_stays():
+    """A kerb drawn across a side street / lowered at an entrance is driven
+    over; one running along the road edge is untouched."""
+    from theroadragetrip.osm import Curb, Way
+    from theroadragetrip.osm.build import open_kerbs_at_road_crossings
+
+    side_street = Way(points_m=[(50.0, -30.0), (50.0, 30.0)], highway="residential", half_width_m=3.0)
+    footway = Way(points_m=[(20.0, -30.0), (20.0, 30.0)], highway="footway", half_width_m=1.0, is_drivable=False)
+    across = Curb(points_m=[(0.0, 0.0), (100.0, 0.0)], bbox=(0.0, 0.0, 100.0, 0.0))
+    along = Curb(points_m=[(53.5, -20.0), (53.5, 20.0)], bbox=(53.5, -20.0, 53.5, 20.0))
+
+    result = open_kerbs_at_road_crossings([across, along], [side_street, footway])
+
+    assert along in result
+    pieces = sorted((c for c in result if c is not along), key=lambda c: c.points_m[0][0])
+    assert [round(p.points_m[0][0], 3) for p in pieces] == [0.0, 54.0]
+    assert [round(p.points_m[-1][0], 3) for p in pieces] == [46.0, 100.0]

@@ -1,3 +1,5 @@
+import pytest
+
 from theroadragetrip.weather import (
     DRY_DURATION_S,
     RAIN_PARTICLE_COUNT,
@@ -8,8 +10,34 @@ from theroadragetrip.weather import (
     WeatherType,
     AUTUMN_WINTER_PERIOD_RANGE,
     AUTUMN_WINTER_PRECIPITATION_CHANCE,
+    SLUSH_MAX_TEMPERATURE_C,
+    SNOW_MAX_TEMPERATURE_C,
+    THUNDER_CHANCE_BY_SEASON,
 )
 from theroadragetrip.calendar import Season
+
+
+def test_weather_rng_is_not_reseeded_identically_at_each_start(monkeypatch):
+    import theroadragetrip.weather as weather_module
+
+    calls = []
+    real_random = weather_module.random.Random
+    monkeypatch.setattr(weather_module.random, "Random", lambda *args: (calls.append(args), real_random(1))[1])
+
+    WeatherSystem(season=Season.AUTUMN)
+
+    assert calls == [()]
+
+
+def test_weather_reports_time_left_in_current_period():
+    weather = WeatherSystem(season=Season.AUTUMN)
+    before = weather.seconds_until_weather_change
+
+    weather.update(60.0, 0.0)
+
+    assert weather.seconds_until_weather_change == before - 60.0
+    weather.toggle_rain()
+    assert weather.seconds_until_weather_change is None
 
 
 def test_starts_clear_and_dry():
@@ -17,6 +45,65 @@ def test_starts_clear_and_dry():
     assert weather.weather_type == WeatherType.CLEAR
     assert weather.wetness == 0.0
     assert weather.is_precipitating is False
+
+
+def test_thunderstorm_chances_are_seasonal():
+    assert THUNDER_CHANCE_BY_SEASON == {
+        Season.WINTER: 0.0,
+        Season.SPRING: 0.1,
+        Season.SUMMER: 0.5,
+        Season.AUTUMN: 0.1,
+    }
+
+
+@pytest.mark.parametrize(
+    ("season", "roll", "expected"),
+    [
+        (Season.SUMMER, 0.49, True),
+        (Season.SUMMER, 0.51, False),
+        (Season.SPRING, 0.09, True),
+        (Season.AUTUMN, 0.09, True),
+        (Season.WINTER, 0.0, False),
+    ],
+)
+def test_thunder_is_chosen_once_for_rain_period(season, roll, expected):
+    weather = WeatherSystem(WeatherType.CLEAR, season=season)
+    weather.weather_type = WeatherType.RAIN
+    weather._rng = type(
+        "ThunderRoll",
+        (),
+        {"random": lambda self: roll, "uniform": lambda self, low, high: high},
+    )()
+
+    weather._roll_thunderstorm()
+
+    assert weather.is_thunderstorm is expected
+
+
+def test_thunderstorm_emits_and_fades_lightning_flash():
+    weather = WeatherSystem(WeatherType.RAIN, season=Season.SUMMER)
+    weather.is_thunderstorm = True
+    weather._lightning_timer = 0.01
+
+    weather.update(0.0, 0.02)
+    event_id = weather.lightning_event_id
+    assert event_id == 1
+    assert weather.lightning_intensity == 1.0
+
+    weather.update(0.0, 0.3)
+    assert weather.lightning_intensity == 0.0
+
+
+def test_forecast_samples_temperature_without_advancing_live_weather():
+    weather = WeatherSystem(WeatherType.RAIN, season=Season.SPRING)
+
+    forecast = weather.forecast([0.0, 3.0, 8.0], interval_s=6.0 * 60.0 * 60.0)
+
+    assert [condition for condition, _ in forecast] == [
+        WeatherType.SNOW, WeatherType.SLUSH, WeatherType.RAIN,
+    ]
+    assert weather.weather_type == WeatherType.RAIN
+    assert weather._outside_temperature_c is None
 
 
 def test_toggle_rain_flips_clear_and_rain():
@@ -49,6 +136,33 @@ def test_automatic_winter_weather_has_fifty_percent_snow_periods_up_to_one_day()
     assert weather.weather_type == WeatherType.CLEAR
 
 
+def test_cold_rain_becomes_snow_or_slush_without_winter_ground_cover():
+    assert SNOW_MAX_TEMPERATURE_C == 1.0
+    assert SLUSH_MAX_TEMPERATURE_C == 5.0
+    weather = WeatherSystem(WeatherType.RAIN, season=Season.SPRING)
+
+    weather.update(1.0, 0.0, outside_temperature_c=0.0)
+    assert weather.weather_type == WeatherType.SNOW
+    assert weather.season == Season.SPRING
+
+    weather.update(1.0, 0.0, outside_temperature_c=3.0)
+    assert weather.weather_type == WeatherType.SLUSH
+
+    weather.update(1.0, 0.0, outside_temperature_c=5.0)
+    assert weather.weather_type == WeatherType.RAIN
+
+
+def test_slush_wets_the_road_like_rain():
+    weather = WeatherSystem(WeatherType.RAIN, season=Season.AUTUMN)
+    weather.update(
+        RAIN_WETTING_DURATION_S / 2.0,
+        0.0,
+        outside_temperature_c=3.0,
+    )
+    assert weather.weather_type == WeatherType.SLUSH
+    assert 0.49 < weather.wetness < 0.51
+
+
 def test_rain_wets_over_its_full_duration_and_clamps():
     weather = WeatherSystem(WeatherType.RAIN)
     weather.update(RAIN_WETTING_DURATION_S / 2.0, 0.0)
@@ -66,6 +180,19 @@ def test_clear_dries_over_one_in_game_hour_and_clamps():
     assert 0.49 < weather.wetness < 0.51
     weather.update(DRY_DURATION_S, 0.0)  # well past fully dry
     assert weather.wetness == 0.0
+
+
+def test_wet_road_freezes_below_zero_and_does_not_dry_until_thawed():
+    weather = WeatherSystem(WeatherType.CLEAR, season=Season.AUTUMN)
+    weather.wetness = 0.8
+
+    weather.update(DRY_DURATION_S, 0.0, outside_temperature_c=-0.1)
+    assert weather.road_ice_fraction == 0.8
+    assert weather.wetness == 0.8
+
+    weather.update(DRY_DURATION_S / 2.0, 0.0, outside_temperature_c=1.0)
+    assert weather.road_ice_fraction == 0.0
+    assert 0.29 < weather.wetness < 0.31
 
 
 def test_wetness_persists_independently_of_weather_type():

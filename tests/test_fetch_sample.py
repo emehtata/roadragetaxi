@@ -1,4 +1,4 @@
-from theroadragetrip import build_ways, load_local_sample
+from theroadragetrip.osm import build_ways, load_local_sample
 
 
 def test_sample_exists_and_is_list():

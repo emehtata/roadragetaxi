@@ -1,6 +1,6 @@
 import logging
 import sys
-from datetime import datetime
+from datetime import date, datetime
 
 import pygame
 
@@ -27,8 +27,42 @@ from ..render import (
 logger = logging.getLogger(__name__)
 
 
-def choose_start_datetime(screen, font, clock, language: str, initial: datetime) -> datetime:
-    """Let a gig-driver choose local year/month/day/hour/minute."""
+def _one_calendar_year_ago(day: date) -> date:
+    """Return the same date last year, clamping leap day to February 28."""
+    try:
+        return day.replace(year=day.year - 1)
+    except ValueError:
+        return day.replace(year=day.year - 1, day=28)
+
+
+def _clamp_start_datetime(value: datetime, today: date) -> datetime:
+    earliest = _one_calendar_year_ago(today)
+    if value.date() < earliest:
+        return value.replace(year=earliest.year, month=earliest.month, day=earliest.day)
+    if value.date() > today:
+        return value.replace(year=today.year, month=today.month, day=today.day)
+    return value
+
+
+def _date_field_arrow_rects(field_rect: pygame.Rect) -> tuple[pygame.Rect, pygame.Rect]:
+    return (
+        pygame.Rect(field_rect.left + 8, field_rect.top + 6, 34, field_rect.height - 12),
+        pygame.Rect(field_rect.right - 42, field_rect.top + 6, 34, field_rect.height - 12),
+    )
+
+
+def choose_start_datetime(
+    screen,
+    font,
+    clock,
+    language: str,
+    initial: datetime,
+    now: datetime | None = None,
+) -> datetime | None:
+    """Let a gig-driver choose local year/month/day/hour/minute; None when
+    Esc goes back instead."""
+    today = (now or datetime.now()).date()
+    initial = _clamp_start_datetime(initial, today)
     values = [initial.year, initial.month, initial.day, initial.hour, initial.minute]
     labels = ("Vuosi", "Kuukausi", "Päivä", "Tunti", "Minuutti") if language == "fi" else (
         "Year", "Month", "Day", "Hour", "Minute",
@@ -36,13 +70,15 @@ def choose_start_datetime(screen, font, clock, language: str, initial: datetime)
     selected = 0
 
     def adjusted(index: int, delta: int) -> None:
-        limits = ((1970, 2100), (1, 12), (1, 31), (0, 23), (0, 59))
+        earliest = _one_calendar_year_ago(today)
+        limits = ((earliest.year, today.year), (1, 12), (1, 31), (0, 23), (0, 59))
         low, high = limits[index]
         values[index] = low + (values[index] - low + delta) % (high - low + 1)
         while True:
             try:
-                datetime(*values)
-                return
+                clamped = _clamp_start_datetime(datetime(*values), today)
+                values[:] = [clamped.year, clamped.month, clamped.day, clamped.hour, clamped.minute]
+                break
             except ValueError:
                 values[2] -= 1
 
@@ -57,13 +93,17 @@ def choose_start_datetime(screen, font, clock, language: str, initial: datetime)
                     rect = pygame.Rect(SCREEN_W // 2 - 190, 225 + index * 58, 380, 44)
                     if rect.collidepoint(event.pos):
                         selected = index
-                        adjusted(index, 1)
+                        left_arrow, right_arrow = _date_field_arrow_rects(rect)
+                        if left_arrow.collidepoint(event.pos):
+                            adjusted(index, -1)
+                        elif right_arrow.collidepoint(event.pos):
+                            adjusted(index, 1)
                 if pygame.Rect(SCREEN_W // 2 - 100, 540, 200, 48).collidepoint(event.pos):
                     return datetime(*values)
             if event.type != pygame.KEYDOWN:
                 continue
             if event.key == pygame.K_ESCAPE:
-                return initial
+                return None
             if event.key in (pygame.K_UP, pygame.K_DOWN, pygame.K_TAB):
                 selected = (selected + (1 if event.key in (pygame.K_DOWN, pygame.K_TAB) else -1)) % 5
             elif event.key in (pygame.K_LEFT, pygame.K_RIGHT):
@@ -80,6 +120,22 @@ def choose_start_datetime(screen, font, clock, language: str, initial: datetime)
             pygame.draw.rect(screen, (45, 62, 78), rect, border_radius=5)
             if index == selected:
                 pygame.draw.rect(screen, (255, 215, 95), rect, width=3, border_radius=5)
+            left_arrow, right_arrow = _date_field_arrow_rects(rect)
+            arrow_color = (255, 215, 95) if index == selected else (180, 198, 212)
+            pygame.draw.polygon(
+                screen,
+                arrow_color,
+                ((left_arrow.right - 9, left_arrow.top + 6),
+                 (left_arrow.left + 9, left_arrow.centery),
+                 (left_arrow.right - 9, left_arrow.bottom - 6)),
+            )
+            pygame.draw.polygon(
+                screen,
+                arrow_color,
+                ((right_arrow.left + 9, right_arrow.top + 6),
+                 (right_arrow.right - 9, right_arrow.centery),
+                 (right_arrow.left + 9, right_arrow.bottom - 6)),
+            )
             rendered = font.render(f"{label}: {value:02d}", True, (235, 240, 245))
             screen.blit(rendered, rendered.get_rect(center=rect.center))
         ok = pygame.Rect(SCREEN_W // 2 - 100, 540, 200, 48)
@@ -87,7 +143,9 @@ def choose_start_datetime(screen, font, clock, language: str, initial: datetime)
         ok_text = font.render("Aloita" if language == "fi" else "Start", True, (255, 255, 255))
         screen.blit(ok_text, ok_text.get_rect(center=ok.center))
         hint = pygame.font.SysFont(None, 20).render(
-            "↑/↓ kenttä, ←/→ arvo, Enter aloittaa" if language == "fi" else "↑/↓ field, ←/→ value, Enter starts",
+            "UP/DOWN: kenttä, LEFT/RIGHT: arvo, Enter: aloita"
+            if language == "fi"
+            else "UP/DOWN: field, LEFT/RIGHT: value, Enter: start",
             True, (150, 175, 195),
         )
         screen.blit(hint, hint.get_rect(center=(SCREEN_W // 2, 620)))
@@ -202,8 +260,11 @@ def choose_language(screen, font, clock, current_language: str = "fi") -> str:
         pygame.display.flip()
 
 
-def confirm_outdated_cache(screen, font, clock, language: str) -> bool:
-    """Ask before removing cache data created by an older release."""
+def confirm(
+    screen, font, clock, language: str, title_key: str, message_key: str,
+    ok_key: str = "ok", cancel_key: str = "cancel",
+) -> bool:
+    """A yes/no dialog: True for OK, False for the other button or Esc."""
     button_font = pygame.font.SysFont(None, 22)
     message_font = pygame.font.SysFont(None, 24)
     button_width, button_height = 130, 42
@@ -213,13 +274,6 @@ def confirm_outdated_cache(screen, font, clock, language: str) -> bool:
         screen_w, screen_h = screen.get_size()
         ok_rect = pygame.Rect(screen_w // 2 - button_width - 10, screen_h // 2 + 55, button_width, button_height)
         cancel_rect = pygame.Rect(screen_w // 2 + 10, screen_h // 2 + 55, button_width, button_height)
-
-        def activate(index: int) -> bool:
-            if index == 0:
-                return True
-            pygame.quit()
-            sys.exit(0)
-
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 pygame.quit()
@@ -234,24 +288,23 @@ def confirm_outdated_cache(screen, font, clock, language: str) -> bool:
                 if event.key in (pygame.K_LEFT, pygame.K_RIGHT, pygame.K_UP, pygame.K_DOWN, pygame.K_TAB):
                     selected = 1 - selected
                 elif event.key in (pygame.K_RETURN, pygame.K_SPACE, pygame.K_KP_ENTER):
-                    return activate(selected)
+                    return selected == 0
                 elif event.key == pygame.K_ESCAPE:
-                    pygame.quit()
-                    sys.exit(0)
+                    return False
             if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                 if ok_rect.collidepoint(event.pos):
-                    return activate(0)
+                    return True
                 if cancel_rect.collidepoint(event.pos):
-                    return activate(1)
+                    return False
 
         screen.fill((18, 24, 32))
-        title = font.render(tr(language, "outdated_cache_title"), True, (245, 245, 245))
+        title = font.render(tr(language, title_key), True, (245, 245, 245))
         screen.blit(title, title.get_rect(center=(screen_w // 2, screen_h // 2 - 80)))
-        message = message_font.render(tr(language, "outdated_cache_message"), True, (210, 220, 230))
+        message = message_font.render(tr(language, message_key), True, (210, 220, 230))
         screen.blit(message, message.get_rect(center=(screen_w // 2, screen_h // 2 - 25)))
         for index, (rect, key, color) in enumerate((
-            (ok_rect, "ok", (55, 135, 85)),
-            (cancel_rect, "cancel", (125, 65, 65)),
+            (ok_rect, ok_key, (55, 135, 85)),
+            (cancel_rect, cancel_key, (125, 65, 65)),
         )):
             pygame.draw.rect(screen, color, rect, border_radius=4)
             if index == selected:
@@ -260,3 +313,12 @@ def confirm_outdated_cache(screen, font, clock, language: str) -> bool:
             label = button_font.render(tr(language, key), True, (255, 255, 255))
             screen.blit(label, label.get_rect(center=rect.center))
         pygame.display.flip()
+
+
+def confirm_outdated_cache(screen, font, clock, language: str) -> bool:
+    """Ask before removing cache data created by an older release; an old
+    cache can't be used, so the alternative is quitting (and says so)."""
+    if confirm(screen, font, clock, language, "outdated_cache_title", "outdated_cache_message", cancel_key="exit"):
+        return True
+    pygame.quit()
+    sys.exit(0)

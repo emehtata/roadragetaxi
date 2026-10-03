@@ -87,8 +87,6 @@ Koska muut kuskit ovat idiootteja ja ajavat miten sattuu. Vähemmästäkin hermo
 │       │   ├── hud.py         # HUD, speedometer, rage face, day/night overlay, phone offers, frame profiler
 │       │   └── menus.py       # Loading, city/mode selection, pause, settings, tutorial, and city-editor screens
 │       ├── assets/         # Image sprites and chatter data
-│       │   ├── paikkadesi.json       # Country and city coordinates for future customization
-│       │   ├── paikkadesi.txt         # Source list for the city coordinate asset
 │       │   ├── passenger_chatter.json # 50 Finnish/English passenger lines
 │       │   └── driver_chatter.json    # Situation-specific driver lines
 │       ├── audio.py        # Optional music, effects, and situation chatter playback
@@ -215,7 +213,7 @@ sysmä = 61.502271, 25.680613
 
 The `[cities]` section accepts any city name followed by `latitude, longitude`. Invalid coordinate entries are ignored. Command-line flags override matching INI values for the current launch.
 
-The pause-menu **Settings** screen includes **City list**. Select a configured city, type a replacement, then choose a matching catalog suggestion with the mouse or Enter. The selected INI entry is replaced in place and saved immediately. Catalog names and coordinates are loaded from `src/theroadragetrip/assets/paikkadesi.json`.
+The pause-menu **Settings** screen includes **City list**. Select a configured city, type a replacement, then choose a matching catalog suggestion with the mouse or Enter. The selected INI entry is replaced in place and saved immediately. Catalog names and coordinates are loaded from `src/theroadragetrip/assets/kunnat.json.gz`.
 
 The `[map] overpass_endpoints` setting contains a comma-separated list of Overpass API URLs. The in-game **Asetukset / Settings** menu lets you edit this list; changes are saved immediately. The `OVERPASS_ENDPOINTS` environment variable still takes precedence for one launch.
 
@@ -234,13 +232,24 @@ Other common development commands are `make test`, `make compile`, and `make che
 Push a version tag to build and publish a Windows package containing `RoadRageTrip.exe`:
 
 ```bash
-git tag v0.14.2alpha
-git push origin v0.14.2alpha
+git tag v0.15.0alpha
+git push origin v0.15.0alpha
 ```
 
 GitHub Actions builds the package on Windows with PyInstaller and attaches both `RoadRageTrip-windows-x64.zip` and `RoadRageTrip-Setup.exe` to the GitHub Release. Use the EXE installer for a normal Windows installation, or extract the zip and launch `RoadRageTrip.exe`; no Python installation is required.
 
-Game sounds are stored in `src/theroadragetrip/sounds/`. CC0 sounds require no attribution; the included `accelerate.aiff` is CC BY 3.0 and `city-traffic-outdoor.wav` is CC BY 4.0. Attribution details are recorded in the sounds directory license file.
+Recorded game sounds are stored in `src/theroadragetrip/sounds/`. CC0 sounds require no attribution; the included `city-traffic-outdoor.wav` is CC BY 4.0. Attribution details are recorded in the sounds directory license file. Generated sound effects (Stable Audio Open) live in `src/theroadragetrip/assets/audio/`, catalogued in `audio_catalog.json`.
+
+Map, timetable and weather data:
+
+- `src/theroadragetrip/assets/places.json` (airports and railway stations) is derived from OpenStreetMap data, © OpenStreetMap contributors, available under the [Open Database License (ODbL)](https://opendatacommons.org/licenses/odbl/); the file itself is likewise under the ODbL.
+- `src/theroadragetrip/assets/railway_timetable.json.gz` (passenger-train timetable): Source: Fintraffic / [digitraffic.fi](https://www.digitraffic.fi/), license [CC 4.0 BY](https://creativecommons.org/licenses/by/4.0/). Modified: converted from GTFS to a compact one-week timetable by `tools/import_railway_timetable.py`. The data is provided as is, without warranty.
+- `src/theroadragetrip/assets/train_compositions.json.gz` (learned train compositions): Source: Fintraffic / [digitraffic.fi](https://www.digitraffic.fi/), license [CC 4.0 BY](https://creativecommons.org/licenses/by/4.0/). Modified: condensed to vehicle type, length and service flags by `tools/import_train_compositions.py`.
+- `src/theroadragetrip/assets/finnish_first_names.json.gz` and `finnish_surnames.json.gz` (resident names): Digital and Population Data Services Agency (DVV) name data, [nimipalvelu.dvv.fi](https://nimipalvelu.dvv.fi/), license [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/). Modified: the most common names selected and converted to the game's JSON format.
+- `src/theroadragetrip/assets/kunnat.json.gz` (municipality population, age structure and area): compiled from Wikipedia, © Wikipedia contributors, license [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/). Modified: tables combined and converted to the game's JSON format; the file is likewise CC BY-SA 4.0.
+- Historical weather, forecasts and snow depth (opt-in, fetched from FMI at runtime and cached locally in `~/.cache/RoadRageTrip/weather_history.db`, not bundled): Finnish Meteorological Institute (FMI) open data, license [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/). Hourly values are resampled and combined from the nearest stations.
+
+These credits are also shown in the game on the loading, menu and pause screens.
 
 ---
 

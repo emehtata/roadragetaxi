@@ -25,6 +25,10 @@ Functional requirements:
 - Render background (solid grass color).
 - Render roads as thick polylines (pygame.draw.lines) with thickness = width_m * pixels_per_meter.
 - Camera is centered on the car; world coordinates are meters, screen coordinates are pixels.
+- The view is north-up: world +X is screen-right, world +Y is screen-up, and Pygame screen +Y is down.
+- Use the shared `world_to_screen()` and `screen_to_world()` helpers. The forward transform is `sx = (wx - camx) * pixels_per_meter + screen_width / 2` and `sy = screen_height / 2 - (wy - camy) * pixels_per_meter`.
+- A padded cache created at a previous camera must be blitted with `offset_x = round((cache_camx - camx) * pixels_per_meter) - padding` and `offset_y = round((camy - cache_camy) * pixels_per_meter) - padding`. The Y camera delta is intentionally reversed because screen Y is inverted.
+- Test cached overlays by moving the camera in both X and Y and comparing the cache-hit frame pixel-for-pixel with a fresh render at the same camera position.
 
 4) Vehicle
 - Simple arcade physics:

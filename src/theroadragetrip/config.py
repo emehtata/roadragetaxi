@@ -87,6 +87,9 @@ DEFAULT_CONFIG = {
         "roadworks_enabled": "false",
         "bus_stops": "false",
         "physics_realism": "arcade",
+        # Real FMI weather observations for the game's city and date
+        # (Settings -> historical weather); generated weather otherwise.
+        "historical_weather": "false",
     },
     "map": {
         "overpass_endpoints": ", ".join(DEFAULT_OVERPASS_ENDPOINTS),
@@ -101,12 +104,17 @@ DEFAULT_CONFIG = {
         # with a warning otherwise.
         "osm_source": "overpass",
         "osm_pbf_path": "",
+        # Use a predefined city's prebuilt road binary (assets/roads/<city>.bin,
+        # drivable roads for the whole city) instead of the fetched roads.
+        # Off: it is loaded on top of the normal fetch (no time saved) and
+        # only enlarges the road/route graphs for now - kept for future use.
+        "use_prebuilt_roads": "false",
     },
     "traffic": {
         # NPC-003: target/min/max NPC vehicle population. traffic_count
         # was previously read nowhere - the game spawned exactly one NPC
         # vehicle regardless of this setting.
-        "traffic_count": "40",
+        "traffic_count": "",  # empty: scaled from the city's population
         "traffic_count_min": "",
         "traffic_count_max": "",
         "pedestrian_count": "20",
@@ -238,6 +246,15 @@ def save_config(config: configparser.ConfigParser, path: Path = CONFIG_PATH) -> 
         config.write(config_file)
 
 
+def reset_config(config: configparser.ConfigParser) -> None:
+    """Restore built-in settings without changing the installation identity."""
+    user_agent_id = config.get("game", USER_AGENT_KEY, fallback="")
+    config.clear()
+    config.read_dict(DEFAULT_CONFIG)
+    if user_agent_id:
+        config.set("game", USER_AGENT_KEY, user_agent_id)
+
+
 def get_overpass_endpoints(config: configparser.ConfigParser) -> list[str]:
     """Return configured Overpass endpoints, falling back to built-in defaults."""
     raw = config.get("map", "overpass_endpoints", fallback="")
@@ -273,17 +290,12 @@ def load_city_catalog(path: Path = CITY_CATALOG_PATH) -> dict[str, tuple[float, 
             data = json.load(source)
     else:
         data = json.loads(path.read_text(encoding="utf-8"))
-    if "places" in data:
-        return {
-            place["taajama"]: (
-                float(place["koordinaatit"]["latitude"]),
-                float(place["koordinaatit"]["longitude"]),
-            )
-            for place in data["places"]
-        }
     return {
-        city["name"]: (float(city["latitude"]), float(city["longitude"]))
-        for city in data.get("countries", {}).get("SUOMI", [])
+        place["taajama"]: (
+            float(place["koordinaatit"]["latitude"]),
+            float(place["koordinaatit"]["longitude"]),
+        )
+        for place in data.get("places", [])
     }
 
 

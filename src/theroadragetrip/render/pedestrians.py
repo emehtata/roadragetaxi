@@ -13,9 +13,14 @@ from typing import List, Optional, Tuple
 
 
 from ..osm import Way
+from ..residents import ResidentManager
 
 
 STREET_LIGHT_REFLECTOR_RADIUS_M = 10.0
+
+
+TAXI_HAIL_COLOR = (255, 205, 0)  # taxi yellow
+BOOKED_CUSTOMER_COLOR = (90, 200, 255)  # the player's pre-booked rail customer
 
 
 def draw_pedestrians(
@@ -154,6 +159,35 @@ def draw_pedestrians(
         pygame.draw.circle(screen, getattr(appearance, "hair", (20, 20, 20)), (int(head_x), int(head_y)), max(2, int(radius_px * 0.48)))
         pygame.draw.circle(screen, getattr(appearance, "head", (238, 185, 145)), (int(head_x), int(head_y)), max(1, int(radius_px * 0.35)))
 
+        # Wants a taxi (street hail, or walking to / waiting at a taxi
+        # stand): an arm raised out to the side with a taxi-yellow hand,
+        # attached to the body so it can't be mistaken for a held object.
+        if (
+            getattr(ped, "wants_taxi", False)
+            or getattr(ped, "is_walking_to_taxi_stop", False)
+            or getattr(ped, "is_taxi_stop_waiter", False)
+        ):
+            shoulder = (cx + side_x * radius_px * 0.5, cy + side_y * radius_px * 0.5)
+            hand = (
+                cx + side_x * radius_px * 1.5 + heading_x * radius_px * 0.9,
+                cy + side_y * radius_px * 1.5 + heading_y * radius_px * 0.9,
+            )
+            pygame.draw.line(screen, getattr(appearance, "clothing", None) or ped.color,
+                             (int(shoulder[0]), int(shoulder[1])), (int(hand[0]), int(hand[1])), max(2, int(radius_px * 0.3)))
+            hand_r = max(3, int(radius_px * 0.45))
+            pygame.draw.circle(screen, (20, 20, 20), (int(hand[0]), int(hand[1])), hand_r + 1)
+            pygame.draw.circle(screen, TAXI_HAIL_COLOR, (int(hand[0]), int(hand[1])), hand_r)
+
+        # The driver on foot meeting a pre-booked rail customer holds up a
+        # small white name card in front of them (no text needed).
+        if getattr(ped, "name_card", False):
+            card_x = cx + heading_x * radius_px * 1.3
+            card_y = cy + heading_y * radius_px * 1.3
+            card = pygame.Rect(0, 0, max(6, int(radius_px * 1.4)), max(4, int(radius_px * 0.9)))
+            card.center = (int(card_x), int(card_y))
+            pygame.draw.rect(screen, (20, 20, 20), card.inflate(2, 2))
+            pygame.draw.rect(screen, (255, 255, 255), card)
+
         # Comic cursing bubble when startled/dodging
         curse_timer = getattr(ped, "curse_timer", 0.0)
         if curse_timer > 0.0 and font:
@@ -176,18 +210,18 @@ def draw_pedestrians(
             bubble_surf.blit(txt_surf, (4, 2))
             screen.blit(bubble_surf, (int(bx), int(by)))
 
-        # NPC-004 section 17: the smallest visual that reads as "annoyed" -
-        # a small persistent orange marker above the head (not a timed
-        # bubble like curse_timer above - an accident driver stays annoyed
-        # for as long as they're standing there, not just for an instant).
-        # No new render subsystem: same head-relative placement idiom as
-        # the cursing bubble just above.
-        if getattr(ped, "mood", "normal") == "annoyed":
-            mark_x = int(cx)
-            mark_y = int(cy - radius_px - 10)
-            pygame.draw.circle(screen, (235, 140, 30), (mark_x, mark_y), max(3, int(radius_px * 0.4)))
-            pygame.draw.line(screen, (40, 25, 10), (mark_x, mark_y - 3), (mark_x, mark_y + 1), 2)
-            pygame.draw.circle(screen, (40, 25, 10), (mark_x, mark_y + 3), 1)
+        # Only someone actually on the phone (after a crash: the driver
+        # calling for help) holds one - at the ear, beside the head.
+        activity = getattr(ped, "activity", None)
+        if getattr(activity, "plugin_id", None) == "phone_usage":
+            phone_x = head_x + side_x * radius_px * 0.55
+            phone_y = head_y + side_y * radius_px * 0.55
+            phone_w = max(2, int(radius_px * 0.3))
+            phone_h = max(3, int(radius_px * 0.5))
+            phone = pygame.Rect(0, 0, phone_w, phone_h)
+            phone.center = (int(phone_x), int(phone_y))
+            pygame.draw.rect(screen, (25, 25, 30), phone)
+            pygame.draw.rect(screen, (120, 200, 255), phone.inflate(-2, -2) if phone_w > 3 else phone.inflate(0, -2))
 
 
 def resident_at_screen_position(
@@ -236,7 +270,9 @@ def draw_resident_popup(
     if resident is None:
         return
     birth_date = getattr(resident, "birth_date", None)
-    birth_text = birth_date.isoformat() if birth_date is not None else "-"
+    birth_text = (
+        f"{birth_date.isoformat()} ({ResidentManager.age_of(resident)} v)" if birth_date is not None else "-"
+    )
     vehicle_count = len(getattr(resident, "vehicle_ids", ()))
     residents = residents or {}
 
@@ -277,6 +313,11 @@ def draw_resident_popup(
             # only available via the vehicle's TripGroup (not the
             # Resident/Pedestrian, which only durably know the group id).
             lines.append(f"Toiminto: {getattr(trip_group, 'activity_type', None) or '-'}")
+    passenger = getattr(pedestrian, "rail_passenger", None)
+    if passenger is not None:
+        # Rail passenger (station_passengers.py): the journey behind the NPC.
+        lines.append(f"Junamatkustaja #{passenger.id}: {passenger.origin} -> {passenger.destination}")
+        lines.append(f"Juna {passenger.train[0]} {passenger.train[1]} - {passenger.state}")
     activity = getattr(pedestrian, "activity", None)
     if activity is not None:
         # residents-live.md ambient activities (bench sitting, phone
@@ -394,3 +435,43 @@ def draw_pedestrian_reflectors(
             continue
         cx, cy = world_to_screen(ped.x, ped.y, camx, camy, px_per_m, screen_w, screen_h)
         pygame.draw.circle(screen, (255, 255, 245), (int(cx), int(cy)), max(1, int(px_per_m * 0.35)))
+
+
+def draw_booked_passenger_arrow(screen, pedestrian, camx: float, camy: float, px_per_m: float = PX_PER_M,
+                                screen_w: int = SCREEN_W, screen_h: int = SCREEN_H) -> None:
+    """A downward arrow over the pre-booked rail customer the driver is
+    meeting - drawn at wherever that pedestrian is now."""
+    import pygame
+
+    cx, cy = world_to_screen(pedestrian.x, pedestrian.y, camx, camy, px_per_m, screen_w, screen_h)
+    radius_px = max(4.0, getattr(pedestrian, "radius_m", 0.45) * px_per_m)
+    tip_y = cy - radius_px * 1.8
+    size = max(8.0, radius_px * 1.4)
+    points = [(cx, tip_y), (cx - size, tip_y - size * 1.3), (cx + size, tip_y - size * 1.3)]
+    pygame.draw.polygon(screen, BOOKED_CUSTOMER_COLOR, points)
+    pygame.draw.polygon(screen, (20, 20, 20), points, 2)
+
+
+UNDER_ROOF_OUTLINE_COLOR = (235, 235, 235)  # as under a bridge (draw_pedestrians)
+PLAYER_OUTLINE_COLOR = (255, 215, 60)  # the driver stays findable
+
+
+def draw_pedestrians_under_roofs(
+    screen, pedestrians, roof_cover, camx: float, camy: float, px_per_m: float = PX_PER_M,
+    screen_w: int = SCREEN_W, screen_h: int = SCREEN_H,
+) -> None:
+    """Outline, on top of the roofs, everyone standing underneath one -
+    rail passengers on a covered platform, the driver walking there."""
+    import pygame
+
+    if not roof_cover:
+        return
+    vminx, vminy, vmaxx, vmaxy = get_viewport_bounds(camx, camy, px_per_m, screen_w, screen_h, 5.0)
+    for ped in pedestrians:
+        if not (vminx <= ped.x <= vmaxx and vminy <= ped.y <= vmaxy) or not roof_cover.covers(ped.x, ped.y):
+            continue
+        cx, cy = world_to_screen(ped.x, ped.y, camx, camy, px_per_m, screen_w, screen_h)
+        radius = max(4, int(getattr(ped, "radius_m", 0.45) * px_per_m))
+        is_player = getattr(ped, "is_player", False)
+        pygame.draw.circle(screen, PLAYER_OUTLINE_COLOR if is_player else UNDER_ROOF_OUTLINE_COLOR,
+                           (int(cx), int(cy)), radius, 2 if is_player else 1)

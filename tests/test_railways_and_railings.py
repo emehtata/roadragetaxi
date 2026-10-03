@@ -1,6 +1,7 @@
 """Tests for railway (railway=rail/tram/...) and railing (barrier=fence/railing) extraction and rendering."""
 from theroadragetrip.osm import Railing, Railway, Way, build_ways
 from theroadragetrip.render import draw_railings, draw_railways
+from theroadragetrip.render.common import _covered_by_higher_road
 from theroadragetrip.world_cache import BinaryWorldCacheLoader, BinaryWorldCacheWriter
 
 
@@ -36,6 +37,13 @@ def test_build_ways_marks_railway_bridge_yes_as_is_bridge():
     assert len(result.railways) == 2
     assert result.railways[0].is_bridge is True
     assert result.railways[1].is_bridge is False
+
+
+def test_ground_railway_covers_vehicle_on_tunnel_layer():
+    railway = Railway(points_m=[(-10.0, 0.0), (10.0, 0.0)], layer=0)
+
+    assert _covered_by_higher_road(0.0, 0.0, -1, [railway])
+    assert not _covered_by_higher_road(0.0, 0.0, 0, [railway])
 
 
 def test_build_ways_ignores_subway_railway():
@@ -235,6 +243,28 @@ def test_draw_railways_bridge_deck_is_a_solid_fill_not_just_thin_lines():
         if tuple(surf.get_at((x, y)))[:3] == sentinel
     )
     assert remaining_sentinel == 0
+    pygame.quit()
+
+
+def test_parallel_railway_bridges_share_one_solid_platform():
+    import pygame
+    from theroadragetrip.render.roads import BRIDGE_GUARDRAIL_COLOR
+
+    pygame.init()
+    surf = pygame.Surface((800, 600))
+    sentinel = (1, 2, 3)
+    surf.fill(sentinel)
+    railways = [
+        Railway(points_m=[(50.0, y), (150.0, y)], bbox=(50.0, y, 150.0, y), is_bridge=True)
+        for y in (98.0, 102.0)
+    ]
+
+    draw_railways(surf, railways, camx=100.0, camy=100.0, px_per_m=8.0, screen_w=800, screen_h=600)
+
+    # The space halfway between the tracks is deck, with no inner guardrail.
+    center = tuple(surf.get_at((400, 300)))[:3]
+    assert center != sentinel
+    assert center != BRIDGE_GUARDRAIL_COLOR
     pygame.quit()
 
 

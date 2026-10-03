@@ -1,4 +1,4 @@
-Analyze and fix the intermittent frame stutter in the `release/0.11.0alpha` branch of the Road Rage Taxi / The Road Rage Trip Pygame project.
+Analyze and fix the intermittent frame stutter in the `release/0.15.0alpha` branch of the Road Rage Taxi / The Road Rage Trip Pygame project.
 
 ## Problem
 
@@ -40,7 +40,7 @@ Find the code responsible for:
 * zoom handling
 * camera-related static-cache invalidation
 
-Do not assume where the implementation is located. Trace the actual call path in `release/0.11.0alpha`.
+Do not assume where the implementation is located. Trace the actual call path in `release/0.15.0alpha`.
 
 Do NOT simply remove camera smoothing or speed-based look-ahead as a shortcut.
 

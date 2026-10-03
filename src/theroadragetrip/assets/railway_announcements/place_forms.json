@@ -1,0 +1,645 @@
+{
+  "_note": "Where a train goes (to: illative/allative) and comes from (from: elative/ablative), per station id. Written by hand: Finnish picks -Vn/-sta or -lle/-lta per place, with stem changes (Helsingistä).",
+  "places": {
+    "alavus": {
+      "name": "Alavus",
+      "to": "Alavudelle",
+      "from": "Alavudelta"
+    },
+    "elainpuisto_zoo": {
+      "name": "Eläinpuisto-Zoo",
+      "to": "Eläinpuisto-Zoohon",
+      "from": "Eläinpuisto-Zoosta"
+    },
+    "eno": {
+      "name": "Eno",
+      "to": "Enoon",
+      "from": "Enosta"
+    },
+    "haapajarvi": {
+      "name": "Haapajärvi",
+      "to": "Haapajärvelle",
+      "from": "Haapajärveltä"
+    },
+    "haapamaki": {
+      "name": "Haapamäki",
+      "to": "Haapamäelle",
+      "from": "Haapamäeltä"
+    },
+    "haaparanta_pohjoinen": {
+      "name": "Haaparanta pohjoinen",
+      "to": "Haaparannan pohjoiselle asemalle",
+      "from": "Haaparannan pohjoiselta asemalta"
+    },
+    "hankasalmi": {
+      "name": "Hankasalmi",
+      "to": "Hankasalmelle",
+      "from": "Hankasalmelta"
+    },
+    "harjavalta": {
+      "name": "Harjavalta",
+      "to": "Harjavaltaan",
+      "from": "Harjavallasta"
+    },
+    "haukivuori": {
+      "name": "Haukivuori",
+      "to": "Haukivuorelle",
+      "from": "Haukivuorelta"
+    },
+    "heinavesi": {
+      "name": "Heinävesi",
+      "to": "Heinävedelle",
+      "from": "Heinävedeltä"
+    },
+    "helsinki": {
+      "name": "Helsinki",
+      "to": "Helsinkiin",
+      "from": "Helsingistä"
+    },
+    "hiirola": {
+      "name": "Hiirola",
+      "to": "Hiirolaan",
+      "from": "Hiirolasta"
+    },
+    "hillosensalmi": {
+      "name": "Hillosensalmi",
+      "to": "Hillosensalmelle",
+      "from": "Hillosensalmelta"
+    },
+    "humppila": {
+      "name": "Humppila",
+      "to": "Humppilaan",
+      "from": "Humppilasta"
+    },
+    "hyvinkaa_tavara": {
+      "name": "Hyvinkää tavara",
+      "to": "Hyvinkään tavara-asemalle",
+      "from": "Hyvinkään tavara-asemalta"
+    },
+    "hameenlinna": {
+      "name": "Hämeenlinna",
+      "to": "Hämeenlinnaan",
+      "from": "Hämeenlinnasta"
+    },
+    "holjakka": {
+      "name": "Höljäkkä",
+      "to": "Höljäkkään",
+      "from": "Höljäkästä"
+    },
+    "iisalmi": {
+      "name": "Iisalmi",
+      "to": "Iisalmeen",
+      "from": "Iisalmesta"
+    },
+    "imatra": {
+      "name": "Imatra",
+      "to": "Imatralle",
+      "from": "Imatralta"
+    },
+    "joensuu": {
+      "name": "Joensuu",
+      "to": "Joensuuhun",
+      "from": "Joensuusta"
+    },
+    "joutseno": {
+      "name": "Joutseno",
+      "to": "Joutsenoon",
+      "from": "Joutsenosta"
+    },
+    "juupajoki": {
+      "name": "Juupajoki",
+      "to": "Juupajoelle",
+      "from": "Juupajoelta"
+    },
+    "jyvaskyla": {
+      "name": "Jyväskylä",
+      "to": "Jyväskylään",
+      "from": "Jyväskylästä"
+    },
+    "jamsa": {
+      "name": "Jämsä",
+      "to": "Jämsään",
+      "from": "Jämsästä"
+    },
+    "kajaani": {
+      "name": "Kajaani",
+      "to": "Kajaaniin",
+      "from": "Kajaanista"
+    },
+    "kalvitsa": {
+      "name": "Kalvitsa",
+      "to": "Kalvitsaan",
+      "from": "Kalvitsasta"
+    },
+    "kannus": {
+      "name": "Kannus",
+      "to": "Kannukseen",
+      "from": "Kannuksesta"
+    },
+    "karjaa": {
+      "name": "Karjaa",
+      "to": "Karjaalle",
+      "from": "Karjaalta"
+    },
+    "karkku": {
+      "name": "Karkku",
+      "to": "Karkkuun",
+      "from": "Karkusta"
+    },
+    "kauhava": {
+      "name": "Kauhava",
+      "to": "Kauhavalle",
+      "from": "Kauhavalta"
+    },
+    "kemi": {
+      "name": "Kemi",
+      "to": "Kemiin",
+      "from": "Kemistä"
+    },
+    "kemijarvi": {
+      "name": "Kemijärvi",
+      "to": "Kemijärvelle",
+      "from": "Kemijärveltä"
+    },
+    "kempele": {
+      "name": "Kempele",
+      "to": "Kempeleeseen",
+      "from": "Kempeleestä"
+    },
+    "kerimaki": {
+      "name": "Kerimäki",
+      "to": "Kerimäelle",
+      "from": "Kerimäeltä"
+    },
+    "kesalahti": {
+      "name": "Kesälahti",
+      "to": "Kesälahdelle",
+      "from": "Kesälahdelta"
+    },
+    "keuruu": {
+      "name": "Keuruu",
+      "to": "Keuruulle",
+      "from": "Keuruulta"
+    },
+    "kirkkonummi": {
+      "name": "Kirkkonummi",
+      "to": "Kirkkonummelle",
+      "from": "Kirkkonummelta"
+    },
+    "kitee": {
+      "name": "Kitee",
+      "to": "Kiteelle",
+      "from": "Kiteeltä"
+    },
+    "kiuruvesi": {
+      "name": "Kiuruvesi",
+      "to": "Kiuruvedelle",
+      "from": "Kiuruvedeltä"
+    },
+    "kohtavaara": {
+      "name": "Kohtavaara",
+      "to": "Kohtavaaralle",
+      "from": "Kohtavaaralta"
+    },
+    "kokemaki": {
+      "name": "Kokemäki",
+      "to": "Kokemäelle",
+      "from": "Kokemäeltä"
+    },
+    "kokkola": {
+      "name": "Kokkola",
+      "to": "Kokkolaan",
+      "from": "Kokkolasta"
+    },
+    "kolari": {
+      "name": "Kolari",
+      "to": "Kolariin",
+      "from": "Kolarista"
+    },
+    "kolho": {
+      "name": "Kolho",
+      "to": "Kolhoon",
+      "from": "Kolhosta"
+    },
+    "kontiomaki": {
+      "name": "Kontiomäki",
+      "to": "Kontiomäelle",
+      "from": "Kontiomäeltä"
+    },
+    "kouvola": {
+      "name": "Kouvola",
+      "to": "Kouvolaan",
+      "from": "Kouvolasta"
+    },
+    "kuopio": {
+      "name": "Kuopio",
+      "to": "Kuopioon",
+      "from": "Kuopiosta"
+    },
+    "kupittaa": {
+      "name": "Kupittaa",
+      "to": "Kupittaalle",
+      "from": "Kupittaalta"
+    },
+    "kylanlahti": {
+      "name": "Kylänlahti",
+      "to": "Kylänlahdelle",
+      "from": "Kylänlahdelta"
+    },
+    "lahti": {
+      "name": "Lahti",
+      "to": "Lahteen",
+      "from": "Lahdesta"
+    },
+    "lapinlahti": {
+      "name": "Lapinlahti",
+      "to": "Lapinlahdelle",
+      "from": "Lapinlahdelta"
+    },
+    "lappeenranta": {
+      "name": "Lappeenranta",
+      "to": "Lappeenrantaan",
+      "from": "Lappeenrannasta"
+    },
+    "lapua": {
+      "name": "Lapua",
+      "to": "Lapualle",
+      "from": "Lapualta"
+    },
+    "lempaala": {
+      "name": "Lempäälä",
+      "to": "Lempäälään",
+      "from": "Lempäälästä"
+    },
+    "leppavaara": {
+      "name": "Leppävaara",
+      "to": "Leppävaaraan",
+      "from": "Leppävaarasta"
+    },
+    "lieksa": {
+      "name": "Lieksa",
+      "to": "Lieksaan",
+      "from": "Lieksasta"
+    },
+    "lievestuore": {
+      "name": "Lievestuore",
+      "to": "Lievestuoreelle",
+      "from": "Lievestuoreelta"
+    },
+    "lohja": {
+      "name": "Lohja",
+      "to": "Lohjalle",
+      "from": "Lohjalta"
+    },
+    "loimaa": {
+      "name": "Loimaa",
+      "to": "Loimaalle",
+      "from": "Loimaalta"
+    },
+    "lusto": {
+      "name": "Lusto",
+      "to": "Lustoon",
+      "from": "Lustosta"
+    },
+    "mikkeli": {
+      "name": "Mikkeli",
+      "to": "Mikkeliin",
+      "from": "Mikkelistä"
+    },
+    "misi": {
+      "name": "Misi",
+      "to": "Misiin",
+      "from": "Misistä"
+    },
+    "muhos": {
+      "name": "Muhos",
+      "to": "Muhokselle",
+      "from": "Muhokselta"
+    },
+    "mustio": {
+      "name": "Mustio",
+      "to": "Mustioon",
+      "from": "Mustiosta"
+    },
+    "muurola": {
+      "name": "Muurola",
+      "to": "Muurolaan",
+      "from": "Muurolasta"
+    },
+    "myllymaki": {
+      "name": "Myllymäki",
+      "to": "Myllymäelle",
+      "from": "Myllymäeltä"
+    },
+    "mantyharju": {
+      "name": "Mäntyharju",
+      "to": "Mäntyharjulle",
+      "from": "Mäntyharjulta"
+    },
+    "nivala": {
+      "name": "Nivala",
+      "to": "Nivalaan",
+      "from": "Nivalasta"
+    },
+    "nokia": {
+      "name": "Nokia",
+      "to": "Nokialle",
+      "from": "Nokialta"
+    },
+    "nummela": {
+      "name": "Nummela",
+      "to": "Nummelaan",
+      "from": "Nummelasta"
+    },
+    "nurmes": {
+      "name": "Nurmes",
+      "to": "Nurmekseen",
+      "from": "Nurmeksesta"
+    },
+    "orivesi": {
+      "name": "Orivesi",
+      "to": "Orivedelle",
+      "from": "Orivedeltä"
+    },
+    "orivesi_keskusta": {
+      "name": "Orivesi keskusta",
+      "to": "Oriveden keskustaan",
+      "from": "Oriveden keskustasta"
+    },
+    "otava": {
+      "name": "Otava",
+      "to": "Otavaan",
+      "from": "Otavasta"
+    },
+    "oulainen": {
+      "name": "Oulainen",
+      "to": "Oulaisiin",
+      "from": "Oulaisista"
+    },
+    "oulu": {
+      "name": "Oulu",
+      "to": "Ouluun",
+      "from": "Oulusta"
+    },
+    "paltamo": {
+      "name": "Paltamo",
+      "to": "Paltamoon",
+      "from": "Paltamosta"
+    },
+    "parikkala": {
+      "name": "Parikkala",
+      "to": "Parikkalaan",
+      "from": "Parikkalasta"
+    },
+    "parkano": {
+      "name": "Parkano",
+      "to": "Parkanoon",
+      "from": "Parkanosta"
+    },
+    "pasila": {
+      "name": "Pasila",
+      "to": "Pasilaan",
+      "from": "Pasilasta"
+    },
+    "pello": {
+      "name": "Pello",
+      "to": "Pelloon",
+      "from": "Pellosta"
+    },
+    "petajavesi": {
+      "name": "Petäjävesi",
+      "to": "Petäjävedelle",
+      "from": "Petäjävedeltä"
+    },
+    "pieksamaki": {
+      "name": "Pieksämäki",
+      "to": "Pieksämäelle",
+      "from": "Pieksämäeltä"
+    },
+    "pihlajavesi": {
+      "name": "Pihlajavesi",
+      "to": "Pihlajavedelle",
+      "from": "Pihlajavedeltä"
+    },
+    "pori": {
+      "name": "Pori",
+      "to": "Poriin",
+      "from": "Porista"
+    },
+    "punkaharju": {
+      "name": "Punkaharju",
+      "to": "Punkaharjulle",
+      "from": "Punkaharjulta"
+    },
+    "pyhasalmi": {
+      "name": "Pyhäsalmi",
+      "to": "Pyhäsalmelle",
+      "from": "Pyhäsalmelta"
+    },
+    "pannainen": {
+      "name": "Pännäinen",
+      "to": "Pännäisiin",
+      "from": "Pännäisistä"
+    },
+    "paaskylahti": {
+      "name": "Pääskylahti",
+      "to": "Pääskylahdelle",
+      "from": "Pääskylahdelta"
+    },
+    "rajamaki": {
+      "name": "Rajamäki",
+      "to": "Rajamäelle",
+      "from": "Rajamäeltä"
+    },
+    "retretti": {
+      "name": "Retretti",
+      "to": "Retrettiin",
+      "from": "Retretistä"
+    },
+    "riihimaki": {
+      "name": "Riihimäki",
+      "to": "Riihimäelle",
+      "from": "Riihimäeltä"
+    },
+    "rovaniemi": {
+      "name": "Rovaniemi",
+      "to": "Rovaniemelle",
+      "from": "Rovaniemeltä"
+    },
+    "runni": {
+      "name": "Runni",
+      "to": "Runnille",
+      "from": "Runnilta"
+    },
+    "ruukki": {
+      "name": "Ruukki",
+      "to": "Ruukkiin",
+      "from": "Ruukista"
+    },
+    "salo": {
+      "name": "Salo",
+      "to": "Saloon",
+      "from": "Salosta"
+    },
+    "savonlinna": {
+      "name": "Savonlinna",
+      "to": "Savonlinnaan",
+      "from": "Savonlinnasta"
+    },
+    "seinajoki": {
+      "name": "Seinäjoki",
+      "to": "Seinäjoelle",
+      "from": "Seinäjoelta"
+    },
+    "siilinjarvi": {
+      "name": "Siilinjärvi",
+      "to": "Siilinjärvelle",
+      "from": "Siilinjärveltä"
+    },
+    "simpele": {
+      "name": "Simpele",
+      "to": "Simpeleelle",
+      "from": "Simpeleeltä"
+    },
+    "sukeva": {
+      "name": "Sukeva",
+      "to": "Sukevalle",
+      "from": "Sukevalta"
+    },
+    "suolahti": {
+      "name": "Suolahti",
+      "to": "Suolahteen",
+      "from": "Suolahdesta"
+    },
+    "suonenjoki": {
+      "name": "Suonenjoki",
+      "to": "Suonenjoelle",
+      "from": "Suonenjoelta"
+    },
+    "tampere": {
+      "name": "Tampere",
+      "to": "Tampereelle",
+      "from": "Tampereelta"
+    },
+    "tervajoki": {
+      "name": "Tervajoki",
+      "to": "Tervajoelle",
+      "from": "Tervajoelta"
+    },
+    "tervola": {
+      "name": "Tervola",
+      "to": "Tervolaan",
+      "from": "Tervolasta"
+    },
+    "tesoma": {
+      "name": "Tesoma",
+      "to": "Tesomalle",
+      "from": "Tesomalta"
+    },
+    "tikkurila": {
+      "name": "Tikkurila",
+      "to": "Tikkurilaan",
+      "from": "Tikkurilasta"
+    },
+    "toijala": {
+      "name": "Toijala",
+      "to": "Toijalaan",
+      "from": "Toijalasta"
+    },
+    "tornio": {
+      "name": "Tornio",
+      "to": "Tornioon",
+      "from": "Torniosta"
+    },
+    "tornio_itainen": {
+      "name": "Tornio-Itäinen",
+      "to": "Tornio-Itäiseen",
+      "from": "Tornio-Itäisestä"
+    },
+    "turku": {
+      "name": "Turku",
+      "to": "Turkuun",
+      "from": "Turusta"
+    },
+    "turku_satama": {
+      "name": "Turku satama",
+      "to": "Turun satamaan",
+      "from": "Turun satamasta"
+    },
+    "tuuri": {
+      "name": "Tuuri",
+      "to": "Tuuriin",
+      "from": "Tuurista"
+    },
+    "uimaharju": {
+      "name": "Uimaharju",
+      "to": "Uimaharjuun",
+      "from": "Uimaharjusta"
+    },
+    "utajarvi": {
+      "name": "Utajärvi",
+      "to": "Utajärvelle",
+      "from": "Utajärveltä"
+    },
+    "vaala": {
+      "name": "Vaala",
+      "to": "Vaalaan",
+      "from": "Vaalasta"
+    },
+    "vaasa": {
+      "name": "Vaasa",
+      "to": "Vaasaan",
+      "from": "Vaasasta"
+    },
+    "vammala": {
+      "name": "Vammala",
+      "to": "Vammalaan",
+      "from": "Vammalasta"
+    },
+    "varkaus": {
+      "name": "Varkaus",
+      "to": "Varkauteen",
+      "from": "Varkaudesta"
+    },
+    "vihanti": {
+      "name": "Vihanti",
+      "to": "Vihantiin",
+      "from": "Vihannista"
+    },
+    "vihtari": {
+      "name": "Vihtari",
+      "to": "Vihtariin",
+      "from": "Vihtarista"
+    },
+    "viinijarvi": {
+      "name": "Viinijärvi",
+      "to": "Viinijärvelle",
+      "from": "Viinijärveltä"
+    },
+    "vilppula": {
+      "name": "Vilppula",
+      "to": "Vilppulaan",
+      "from": "Vilppulasta"
+    },
+    "vuonislahti": {
+      "name": "Vuonislahti",
+      "to": "Vuonislahteen",
+      "from": "Vuonislahdesta"
+    },
+    "ylitornio": {
+      "name": "Ylitornio",
+      "to": "Ylitornioon",
+      "from": "Ylitorniosta"
+    },
+    "ylivieska": {
+      "name": "Ylivieska",
+      "to": "Ylivieskaan",
+      "from": "Ylivieskasta"
+    },
+    "ahtari": {
+      "name": "Ähtäri",
+      "to": "Ähtäriin",
+      "from": "Ähtäristä"
+    }
+  }
+}

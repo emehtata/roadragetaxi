@@ -24,6 +24,20 @@ def test_city_resident_gets_birth_date_from_age_distribution():
     assert resident.birth_date <= date.today()
 
 
+def test_every_resident_has_a_stable_weight_between_50_and_120_kg():
+    manager = ResidentManager()
+    residents = [manager.create() for _ in range(20)]
+
+    original_weights = {
+        resident.resident_id: resident.weight_kg for resident in residents
+    }
+    assert all(50.0 <= weight <= 120.0 for weight in original_weights.values())
+    assert {
+        resident_id: manager.get(resident_id).weight_kg
+        for resident_id in original_weights
+    } == original_weights
+
+
 def test_city_density_is_higher_near_city_center():
     manager = ResidentManager("Tampere")
     manager.set_city_center_m(0.0, 0.0)
@@ -97,3 +111,14 @@ def test_weighted_name_cache_is_reused_across_calls():
     assert cached_first is cached_second, (
         "candidates/weights were rebuilt on the second call instead of reused from cache"
     )
+
+
+def test_solo_walkers_and_taxi_customers_are_never_young_children():
+    """Under-7s only appear with their family (car trip groups), never alone."""
+    from theroadragetrip.residents import MIN_UNACCOMPANIED_AGE, ResidentManager
+
+    manager = ResidentManager()
+    ages = [manager.age_of(manager.create("walking", min_age=MIN_UNACCOMPANIED_AGE)) for _ in range(2000)]
+    assert min(ages) >= MIN_UNACCOMPANIED_AGE
+    # Exact ages: the birth-date generator no longer drifts across leap days.
+    assert all(manager.age_of(manager.create(age=age)) == age for age in range(0, 101) for _ in range(5))

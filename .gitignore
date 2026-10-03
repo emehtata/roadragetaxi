@@ -55,3 +55,4 @@ output/
 game-mechanics-optimizations
 *.pbf
 *.pbf.index/
+src/theroadragetrip/assets/roads/*.bin

@@ -241,6 +241,58 @@ def test_vehicle_lights_and_headlight_beams_hidden_under_bridge():
     pygame.quit()
 
 
+def test_headlight_beams_do_not_brighten_building_roofs():
+    import pygame
+    from theroadragetrip.osm import Building
+    from theroadragetrip.physics import Car
+
+    pygame.init()
+    screen = pygame.Surface((240, 160), pygame.SRCALPHA)
+    screen.fill((10, 10, 10, 255))
+    daylight = pygame.Surface(screen.get_size(), pygame.SRCALPHA)
+    daylight.fill((200, 200, 200, 255))
+    car = Car(x=0.0, y=0.0, heading=0.0, speed=0.0)
+    building = Building(
+        points_m=[(5.0, -2.0), (10.0, -2.0), (10.0, 2.0), (5.0, 2.0)],
+        bbox=(5.0, -2.0, 10.0, 2.0),
+    )
+
+    draw_headlight_beams(
+        screen, [car], 0.0, 0.0, game_time_seconds=0.0,
+        px_per_m=9.0, screen_w=240, screen_h=160,
+        daylight_surface=daylight, buildings=[building],
+    )
+
+    roof_pixel = world_to_screen(7.0, 0.0, 0.0, 0.0, 9.0, 240, 160)
+    assert screen.get_at((int(roof_pixel[0]), int(roof_pixel[1])))[:3] == (10, 10, 10)
+    pygame.quit()
+
+
+def test_parked_npc_does_not_cast_headlight_beams():
+    import pygame
+    from types import SimpleNamespace
+
+    pygame.init()
+    try:
+        screen = pygame.Surface((240, 160))
+        screen.fill((0, 0, 0))
+        parked = SimpleNamespace(
+            x=0.0, y=0.0, heading=0.0, state="PARKED",
+            width_m=1.8, length_m=4.0,
+        )
+        before = pygame.image.tobytes(screen, "RGB")
+
+        draw_headlight_beams(
+            screen, [parked], 0.0, 0.0, game_time_seconds=0.0,
+            px_per_m=9.0, screen_w=240, screen_h=160,
+            daylight_surface=screen.copy(), npc_vehicles=[parked],
+        )
+
+        assert pygame.image.tobytes(screen, "RGB") == before
+    finally:
+        pygame.quit()
+
+
 def test_vehicle_lights_never_drawn_for_an_npc_beyond_the_visible_cap():
     """Regression: draw_vehicle_lights is a separate redraw pass (after
     night tinting) fed light_vehicles - a wider-margin list built for the
@@ -612,3 +664,52 @@ def test_all_static_layers_recover_visibly_after_a_camera_jump():
         assert seen_water, "water never reappeared after the camera jump"
     finally:
         pygame.quit()
+
+
+def _grid_ways(count: int) -> list:
+    return [
+        Way(
+            points_m=[(float(i * 10), 0.0), (float(i * 10 + 5), 0.0)],
+            highway="residential", half_width_m=2.0,
+            bbox=(float(i * 10), -2.0, float(i * 10 + 5), 2.0),
+        )
+        for i in range(count)
+    ]
+
+
+def test_incremental_rebuild_serves_old_grid_until_finished():
+    """bin-loader-v3.md: start_rebuild()/advance_rebuild() must not touch
+    the live grid until the whole job commits - a query made mid-rebuild
+    must see the OLD complete grid, never a partially-built one."""
+    grid = SpatialWayGrid()
+    old_ways = _grid_ways(5)
+    grid.rebuild(old_ways)
+    old_count = grid.indexed_way_count
+
+    new_ways = _grid_ways(40)
+    grid.start_rebuild(new_ways)
+    assert grid.indexed_way_count == old_count, "old grid must still be live right after start_rebuild"
+    assert not grid.advance_rebuild(0.0), "a job this size must not finish in a single zero-budget call"
+    assert grid.indexed_way_count == old_count, "old grid must still be live mid-rebuild"
+
+
+def test_incremental_rebuild_matches_synchronous_rebuild_exactly():
+    ways = _grid_ways(60)
+    sync_grid = SpatialWayGrid()
+    sync_grid.rebuild(ways)
+
+    inc_grid = SpatialWayGrid()
+    inc_grid.start_rebuild(ways)
+    finished = False
+    steps = 0
+    while not finished:
+        finished = inc_grid.advance_rebuild(0.0)
+        steps += 1
+        assert steps < 1000, "incremental rebuild never finished"
+    assert steps > 1, "a zero budget must force multiple advance_rebuild() calls"
+
+    assert inc_grid.indexed_way_count == sync_grid.indexed_way_count == len(ways)
+    assert inc_grid._pending_ways is None
+    sync_results = sorted(id(w) for w in sync_grid.ways_in_rect(-100, -100, 1000, 100))
+    inc_results = sorted(id(w) for w in inc_grid.ways_in_rect(-100, -100, 1000, 100))
+    assert sync_results == inc_results == sorted(id(w) for w in ways)

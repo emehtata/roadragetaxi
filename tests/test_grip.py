@@ -3,6 +3,8 @@ section 20), on top of the g-force measurement it builds on
 (GFORCE.md, tests/test_g_force.py, tests/test_cornering_grip.py)."""
 import math
 
+import pytest
+
 from theroadragetrip.osm import Way
 from theroadragetrip.physics import (
     Car,
@@ -310,6 +312,25 @@ def test_14_wetness_does_not_affect_non_asphalt_surfaces():
         dry_wetness = _surface_max_grip_g(way, "simulation", wetness=0.0)
         full_wetness = _surface_max_grip_g(way, "simulation", wetness=1.0)
         assert dry_wetness == full_wetness == SURFACE_MAX_GRIP_G[key]
+
+
+def test_black_ice_is_slipperier_than_every_other_surface():
+    frozen_wet_asphalt = _surface_max_grip_g(
+        None, "simulation", wetness=1.0, black_ice=1.0
+    )
+
+    assert frozen_wet_asphalt == pytest.approx(SURFACE_MAX_GRIP_G["black_ice"])
+    assert frozen_wet_asphalt < min(
+        grip for surface, grip in SURFACE_MAX_GRIP_G.items() if surface != "black_ice"
+    )
+
+
+def test_partial_black_ice_continuously_reduces_asphalt_grip():
+    wet = _surface_max_grip_g(None, "simulation", wetness=0.5, black_ice=0.0)
+    patchy = _surface_max_grip_g(None, "simulation", wetness=0.5, black_ice=0.5)
+    frozen = _surface_max_grip_g(None, "simulation", wetness=0.5, black_ice=1.0)
+
+    assert frozen < patchy < wet
 
 
 def test_15_rain_lowers_the_cornering_grip_ceiling_for_the_same_corner_and_speed():

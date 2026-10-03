@@ -612,6 +612,7 @@ def test_set_target_count_releases_activity_reservation_when_trimming():
     manager.activity_manager._reservations[location.reservation_key] = id(pedestrian)
     pedestrian.activity = ActivityInstance(plugin_id="bench_sitting", location=location, started_sim_time=0.0)
 
+    manager.target_count = 1  # trimming happens when the target is lowered
     manager.set_target_count(0)
 
     assert location.reservation_key not in manager.activity_manager._reservations

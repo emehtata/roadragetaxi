@@ -7,7 +7,7 @@ os.environ.setdefault("SDL_AUDIODRIVER", "dummy")
 import pygame
 
 from theroadragetrip.osm import Way
-from theroadragetrip.render import draw_puddles, draw_rain, draw_splashes, draw_wet_roads, find_puddle_overlap
+from theroadragetrip.render import draw_lightning_flash, draw_puddles, draw_rain, draw_splashes, draw_wet_roads, find_puddle_overlap
 from theroadragetrip.render import weather as weather_render
 from theroadragetrip.weather import SPLASH_LIFETIME_S, WeatherSystem, WeatherType
 from theroadragetrip.calendar import Season
@@ -38,14 +38,41 @@ def test_draw_rain_draws_visible_streaks_when_raining():
         pygame.quit()
 
 
+def test_lightning_flash_brightens_the_whole_scene():
+    pygame.init()
+    try:
+        weather = WeatherSystem(WeatherType.RAIN, season=Season.SUMMER)
+        weather.lightning_intensity = 1.0
+        screen = pygame.Surface((200, 150))
+        screen.fill((10, 15, 20))
+
+        draw_lightning_flash(screen, weather)
+
+        assert sum(screen.get_at((100, 75))[:3]) > 45
+    finally:
+        pygame.quit()
+
+
 def test_draw_rain_draws_visible_snowflakes_in_winter():
     pygame.init()
     try:
-        weather = WeatherSystem(season=Season.WINTER)
+        weather = WeatherSystem(WeatherType.SNOW, season=Season.WINTER)
         screen = pygame.Surface((200, 150))
         screen.fill((0, 0, 0))
         draw_rain(screen, weather, screen_w=200, screen_h=150)
         assert weather.weather_type == WeatherType.SNOW
+        assert pygame.transform.average_color(screen)[:3] != (0, 0, 0)
+    finally:
+        pygame.quit()
+
+
+def test_draw_rain_draws_visible_slush_particles_without_snowy_ground():
+    pygame.init()
+    try:
+        weather = WeatherSystem(WeatherType.SLUSH, season=Season.SPRING)
+        screen = pygame.Surface((200, 150))
+        screen.fill((0, 0, 0))
+        draw_rain(screen, weather, screen_w=200, screen_h=150)
         assert pygame.transform.average_color(screen)[:3] != (0, 0, 0)
     finally:
         pygame.quit()
@@ -139,6 +166,77 @@ def test_draw_wet_roads_scales_with_visible_ways_only():
         draw_wet_roads(screen, [near, far_away], weather, camx=0.0, camy=0.0, px_per_m=2.5, screen_w=640, screen_h=360)
         assert screen.get_at((320, 180))[:3] != (100, 100, 100)
     finally:
+        pygame.quit()
+
+
+def test_wet_road_overlay_is_reused_for_small_camera_movements():
+    class CountingGrid:
+        calls = 0
+
+        def ways_in_rect(self, *_bounds):
+            self.calls += 1
+            return [way]
+
+    pygame.init()
+    try:
+        weather_render._visible_drivable_cache = (None, [])
+        weather_render._wet_road_overlay_cache = None
+        screen = pygame.Surface((300, 300))
+        way = Way(points_m=[(0.0, 0.0), (100.0, 0.0)], highway="residential", half_width_m=4.0)
+        ways = [way]
+        weather = WeatherSystem(WeatherType.RAIN)
+        weather.wetness = 1.0
+        grid = CountingGrid()
+
+        draw_wet_roads(screen, ways, weather, 50.0, 0.0, 9.0, 300, 300, grid)
+        first_overlay = weather_render._wet_road_overlay_cache
+        cached_frame = pygame.Surface((300, 300))
+        draw_wet_roads(cached_frame, ways, weather, 51.0, 1.0, 9.0, 300, 300, grid)
+        cached_pixels = pygame.image.tobytes(cached_frame, "RGB")
+
+        weather_render._wet_road_overlay_cache = None
+        fresh_frame = pygame.Surface((300, 300))
+        draw_wet_roads(fresh_frame, ways, weather, 51.0, 1.0, 9.0, 300, 300, grid)
+
+        assert grid.calls == 2
+        assert pygame.image.tobytes(fresh_frame, "RGB") == cached_pixels
+    finally:
+        weather_render._wet_road_overlay_cache = None
+        weather_render._visible_drivable_cache = (None, [])
+        pygame.quit()
+
+
+def test_wet_road_overlay_rebuilds_when_wetness_changes_visibly():
+    class CountingGrid:
+        calls = 0
+
+        def ways_in_rect(self, *_bounds):
+            self.calls += 1
+            return [way]
+
+    pygame.init()
+    try:
+        weather_render._visible_drivable_cache = (None, [])
+        weather_render._wet_road_overlay_cache = None
+        screen = pygame.Surface((300, 300))
+        way = Way(points_m=[(0.0, 0.0), (100.0, 0.0)], highway="residential", half_width_m=4.0)
+        ways = [way]
+        weather = WeatherSystem(WeatherType.RAIN)
+        grid = CountingGrid()
+
+        weather.wetness = 0.4
+        draw_wet_roads(screen, ways, weather, 50.0, 0.0, 9.0, 300, 300, grid)
+        first_overlay = weather_render._wet_road_overlay_cache
+        weather.wetness = 1.0
+        draw_wet_roads(screen, ways, weather, 50.0, 0.0, 9.0, 300, 300, grid)
+
+        # The overlay is rebuilt, but its already cached visible-way query
+        # remains valid because camera, zoom and map data did not change.
+        assert grid.calls == 1
+        assert weather_render._wet_road_overlay_cache is not first_overlay
+    finally:
+        weather_render._wet_road_overlay_cache = None
+        weather_render._visible_drivable_cache = (None, [])
         pygame.quit()
 
 

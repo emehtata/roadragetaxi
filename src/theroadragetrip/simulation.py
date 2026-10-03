@@ -18,10 +18,17 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
-from typing import Optional
+from typing import Optional, Tuple
 
 from .career import CAREER_SCORE_LIMIT, save_career, save_gig_odometer
+from .fuel import (
+    calculate_fuel_purchase,
+    fuel_station_price_cents,
+    nearest_fuel_station,
+    update_car_fuel,
+)
 from .localization import tr
+from .map_level import SURFACE_LEVEL
 from .physics import (
     ACCEL,
     BRAKE,
@@ -38,6 +45,7 @@ from .physics import (
 from .taxi import TaxiState
 
 RAGE_DISTANCE_TO_FULL_M = 400.0
+RAGE_GAIN_SCALE = 1.0 / 3.0
 
 
 @dataclass
@@ -58,6 +66,8 @@ class PlayerCommand:
     # on/off state locally exactly like it tracks on_foot today.
     speed_limiter_enabled: bool = True
     red_light_assist_enabled: bool = False
+    refuel: bool = False
+    engine_on: Optional[bool] = None
 
 
 @dataclass
@@ -83,11 +93,28 @@ class SimulationFrameResult:
     next_active_city_name: Optional[str] = None
 
 
-def apply_enter_exit_vehicle(car, player_pedestrian, on_foot: bool, audio) -> bool:
+def walk_blocked_by_walls(x: float, y: float, step_x: float, step_y: float, blocked) -> Tuple[float, float]:
+    """The on-foot player's next position: walls block, the player slides
+    along them; someone already inside (e.g. spawned in) walks out freely."""
+    if not blocked(x + step_x, y + step_y) or blocked(x, y):
+        return x + step_x, y + step_y
+    if not blocked(x + step_x, y):
+        return x + step_x, y
+    if not blocked(x, y + step_y):
+        return x, y + step_y
+    return x, y
+
+
+def apply_enter_exit_vehicle(car, player_pedestrian, on_foot: bool, audio, taxi_mgr=None) -> bool:
     """The 'F' key's get-in/get-out-of-the-car action - authoritative
     gameplay logic (a distance check gates re-entry), so it belongs on
     the simulation side of the boundary, not decided by a client. Moved
-    verbatim from main()'s event handler. Returns the new on_foot value."""
+    verbatim from main()'s event handler. On foot by a pre-booked rail
+    customer, F greets them instead (they stay a pedestrian and walk to
+    the taxi). Returns the new on_foot value."""
+    if on_foot and taxi_mgr is not None and taxi_mgr.greet_booked_passenger(player_pedestrian, car) is not None:
+        audio.play_group("gameplay.meet_greet")
+        return on_foot
     if not on_foot:
         length_m = getattr(car, "length_m", 4.0)
         width_m = getattr(car, "width_m", 1.8)
@@ -100,30 +127,37 @@ def apply_enter_exit_vehicle(car, player_pedestrian, on_foot: bool, audio) -> bo
             car.y + math.sin(car.heading) * length_m * 0.2 + left_y * width_m * 0.85
         )
         player_pedestrian.heading = car.heading
-        car.speed = 0.0
-        car.engine_on = False
+        car.speed = 0.0  # the engine keeps running (idling) until E turns it off
         audio.play("car-door-open")
         return True
     elif math.hypot(player_pedestrian.x - car.x, player_pedestrian.y - car.y) <= 3.0:
         car.speed = 0.0
-        car.engine_on = True
-        audio.play("car-door-open")
+        audio.play_group("vehicle.door_close")
         return False
     return on_foot
+
+
+def remove_boarded_rail_walker(taxi_mgr, pedestrian_mgr) -> None:
+    """A greeted rail customer walked to the taxi as their own pedestrian;
+    once they have boarded, that pedestrian leaves the world."""
+    booking = getattr(taxi_mgr.current_passenger, "rail_booking", None)
+    if booking is not None and booking.passenger.pedestrian is not None:
+        walker, booking.passenger.pedestrian = booking.passenger.pedestrian, None
+        if walker in pedestrian_mgr.pedestrians:
+            pedestrian_mgr.pedestrians.remove(walker)
 
 
 def _rage_from_speeding(
     rage_power: float, speed_mps: float, road_limit_mps: Optional[float], driven_distance_m: float,
 ) -> float:
-    """Speeding builds rage; driving within the limit calms it back down -
-    both at the same rate (RAGE_DISTANCE_TO_FULL_M of speeding fills the
-    meter, the same distance under the limit empties it). No current road
-    (unknown limit) leaves rage unchanged either way."""
+    """Speeding builds rage; driving within the limit calms it back down.
+    Positive gain is scaled separately so calming remains responsive. No
+    current road (unknown limit) leaves rage unchanged either way."""
     if road_limit_mps is None or driven_distance_m <= 0.0:
         return rage_power
     delta = driven_distance_m / RAGE_DISTANCE_TO_FULL_M
     if abs(speed_mps) > road_limit_mps + 0.01:
-        return min(1.0, rage_power + delta)
+        return min(1.0, rage_power + delta * RAGE_GAIN_SCALE)
     return max(0.0, rage_power - delta)
 
 
@@ -161,6 +195,7 @@ def advance_simulation(
     gig_odometer_file,
     chosen_city,
     cities_list,
+    outside_temperature_c: float = 15.0,
 ) -> SimulationFrameResult:
     """Run one gameplay tick: physics, collisions, camera follow, and the
     taxi/NPC/traffic/pedestrian manager updates. Extracted verbatim from
@@ -178,6 +213,7 @@ def advance_simulation(
     speed_bumps = world.speed_bumps
     buildings = world.buildings
     sceneries = world.sceneries
+    scenery_objects = getattr(world, "scenery_objects", ())
     residents = world.residents
     npcs = world.npcs
     npc_manager = world.npc_manager
@@ -207,17 +243,79 @@ def advance_simulation(
             player_pedestrian.heading += (
                 steer_input * steer_effective * dt * (1.0 if player_pedestrian.speed >= 0.0 else -1.0)
             )
-        player_pedestrian.x += math.cos(player_pedestrian.heading) * player_pedestrian.speed * dt
-        player_pedestrian.y += math.sin(player_pedestrian.heading) * player_pedestrian.speed * dt
+        step_x = math.cos(player_pedestrian.heading) * player_pedestrian.speed * dt
+        step_y = math.sin(player_pedestrian.heading) * player_pedestrian.speed * dt
+        player_pedestrian.x, player_pedestrian.y = walk_blocked_by_walls(
+            player_pedestrian.x, player_pedestrian.y, step_x, step_y, pedestrian_mgr._point_inside_building,
+        )
 
+    audio.player_position = (car.x, car.y)  # where the taxi's own sounds come from
     immobilized = taxi_mgr.tree_wait_timer > 0.0
-    throttle = 0.0 if on_foot or immobilized else command.throttle
+    score_at_start = taxi_mgr.total_score
+    loud_event = False  # a crash/camera/vomit sound already tells of this tick's lost points
+    car.driver_mass_kg = 0.0 if on_foot else 90.0
+    taxi_mgr.driver_on_foot = on_foot
+    player_pedestrian.name_card = on_foot and taxi_mgr.meet_booking() is not None
+    passenger = taxi_mgr.current_passenger
+    car.passenger_mass_kg = (
+        passenger.weight_kg
+        if passenger is not None and getattr(passenger, "boarded", False)
+        else 0.0
+    )
+    out_of_fuel = car.fuel_l <= 0.0
+
+    if command.engine_on is not None and not on_foot:
+        engine_was_on = car.engine_on
+        car.engine_on = bool(command.engine_on and not out_of_fuel)
+        if car.engine_on != engine_was_on:
+            audio.play_group("vehicle.engine_start" if car.engine_on else "vehicle.engine_stop")
+
+    if command.refuel:
+        station = nearest_fuel_station(scenery_objects, car.x, car.y)
+        if station is None:
+            taxi_mgr.notification_msg = tr(language, "fuel_no_station")
+        elif on_foot:
+            taxi_mgr.notification_msg = tr(language, "fuel_enter_car")
+        elif abs(car.speed) > 0.5:
+            taxi_mgr.notification_msg = tr(language, "fuel_stop_car")
+        elif car.fuel_l >= car.fuel_capacity_l - 1e-6:
+            taxi_mgr.notification_msg = tr(language, "fuel_tank_full")
+        else:
+            price_cents = fuel_station_price_cents(station)
+            purchase = calculate_fuel_purchase(
+                car.fuel_l,
+                car.fuel_capacity_l,
+                taxi_mgr.balance_cents,
+                price_cents,
+            )
+            if purchase.liters <= 0.0:
+                taxi_mgr.notification_msg = tr(language, "fuel_no_money")
+            else:
+                car.fuel_l = min(car.fuel_capacity_l, car.fuel_l + purchase.liters)
+                taxi_mgr.balance_cents -= purchase.cost_cents
+                audio.play_group("taxi.refuel")
+                taxi_mgr.notification_msg = tr(
+                    language,
+                    "fuel_purchased",
+                    liters=purchase.liters,
+                    cost=purchase.cost_cents / 100.0,
+                )
+        taxi_mgr.notification_timer = 4.0
+    throttle = 0.0 if on_foot or immobilized or out_of_fuel or not car.engine_on else command.throttle
     brake = 0.0 if on_foot or immobilized else command.brake
     steer_left = 0.0 if on_foot else command.steer_left
     steer_right = 0.0 if on_foot else command.steer_right
 
+    # The player drives on its own map level's road network (garage-05.md):
+    # the surface one, or the level's - never the surface as a fallback.
+    # NPCs below keep the surface network.
+    on_surface = car.map_level == SURFACE_LEVEL
+    if on_surface:
+        drive_ways, drive_grid = ways, spatial_grid
+    else:
+        drive_ways, drive_grid = world.level_roads.network(car.map_level)
     current_way = get_current_road_at_car(
-        car, ways=ways, spatial_grid=spatial_grid, car_roads_only=True, current_way=current_way
+        car, ways=drive_ways, spatial_grid=drive_grid, car_roads_only=True, current_way=current_way
     )
     speed_limit_mps = None
     if speed_limiter_enabled and current_way:
@@ -233,25 +331,39 @@ def advance_simulation(
             red_light_limit_mps if speed_limit_mps is None else min(speed_limit_mps, red_light_limit_mps)
         )
 
+    # Soft streaming boundary: ease off near tiles still being fetched
+    # instead of blocking the game behind a loading screen.
+    auto_fetch_manager = getattr(world, "auto_fetch_manager", None)
+    if auto_fetch_manager is not None and not on_foot:
+        streaming_cap_mps = auto_fetch_manager.streaming_speed_cap_mps(
+            car.x, car.y, math.cos(car.heading) * car.speed, math.sin(car.heading) * car.speed,
+        )
+        if streaming_cap_mps is not None:
+            speed_limit_mps = streaming_cap_mps if speed_limit_mps is None else min(speed_limit_mps, streaming_cap_mps)
+
     previous_position = (car.x, car.y)
+    approach_way = current_way  # the road the car drove along into this frame's movement
     # Off-road driving is allowed at a reduced speed.
     if not on_foot:
         with frame_profiler.section("physics"):
             update_car_physics(
                 car, throttle, brake, steer_left, steer_right, dt,
-                ways=ways, spatial_grid=spatial_grid,
+                ways=drive_ways, spatial_grid=drive_grid,
                 block_offroad=False, speed_limit_mps=speed_limit_mps,
-                nearby_vehicles=[], parking_spaces=parking_spaces,
-                scenery_grid=scenery_grid,
+                # Ground types and parking bays carry no level: surface only.
+                nearby_vehicles=[], parking_spaces=parking_spaces if on_surface else [],
+                scenery_grid=scenery_grid if on_surface else None,
                 current_way=current_way, physics_mode=physics_mode,
                 wetness=weather.road_grip_wetness,
+                black_ice=weather.road_ice_fraction,
+                wind=weather.wind_vector_mps,
             )
         car.braking = brake > 0.0 and car.speed > 0.05
         midpoint = (
             (previous_position[0] + car.x) * 0.5,
             (previous_position[1] + car.y) * 0.5,
         )
-        entered_roadwork = any(
+        entered_roadwork = on_surface and any(  # roadworks sit on surface roads
             not work.contains(*previous_position, margin_m=2.0)
             and (
                 work.contains(*midpoint, margin_m=2.0)
@@ -259,6 +371,7 @@ def advance_simulation(
             )
             for work in roadworks
         )
+        audio.on_rise("roadwork", entered_roadwork, "gameplay.roadwork_blocked")
         if entered_roadwork:
             car.x, car.y = previous_position
             car.speed = 0.0
@@ -266,9 +379,20 @@ def advance_simulation(
             taxi_mgr.notification_timer = 2.5
         else:
             current_way = get_current_road_at_car(
-                car, ways=ways, spatial_grid=spatial_grid, car_roads_only=True, current_way=current_way,
+                car, ways=drive_ways, spatial_grid=drive_grid, car_roads_only=True, current_way=current_way,
             )
-        in_water = not entered_roadwork and is_car_fully_in_water(car, waters, current_way=current_way)
+        # Driving through a parking entrance may change the player's map
+        # level (garage-08.md); everything level-aware follows car.map_level.
+        if world.level_transitions.update(car, previous_position, approach_way) is not None:
+            on_surface = car.map_level == SURFACE_LEVEL
+            drive_ways, drive_grid = (
+                (ways, spatial_grid) if on_surface else world.level_roads.network(car.map_level)
+            )
+            current_way = get_current_road_at_car(
+                car, ways=drive_ways, spatial_grid=drive_grid, car_roads_only=True,
+            )
+        in_water = on_surface and not entered_roadwork and is_car_fully_in_water(car, waters, current_way=current_way)
+        audio.on_rise("water", in_water, "vehicle.water_splash")
         if in_water:
             water_elapsed = min(10.0, water_elapsed + dt)
             taxi_mgr.notification_msg = (
@@ -286,29 +410,62 @@ def advance_simulation(
     if immobilized:
         car.speed = 0.0
     movement_distance = math.hypot(car.x - previous_position[0], car.y - previous_position[1])
-    audio.update_acceleration(abs(car.speed) > 0.5 and (throttle > 0.0 or brake > 0.0))
+    audio.update_engine(car.engine_on and not on_foot, car.speed, throttle)
+    audio.set_loop("engine_idle", "vehicle.engine_idle", 0.45 if car.engine_on and abs(car.speed) <= 0.5 else 0.0)
+    # Tyre squeal (vehicle.tire_squeal on car.is_sliding) is off for now: too annoying in play.
+    audio.on_rise("brake", brake > 0.0 and abs(car.speed) > 8.0, "vehicle.brake_hard", 0.7)
     audio.update_comments(dt)
     driven_distance = math.hypot(car.x - previous_position[0], car.y - previous_position[1])
+    fuel_emptied = update_car_fuel(
+        car,
+        driven_distance,
+        abs(car.speed),
+        throttle,
+        brake,
+        acceleration_mps2=max(0.0, car.raw_forward_g * 9.81),
+        elapsed_seconds=dt,
+        outside_temperature_c=outside_temperature_c,
+    )
+    if fuel_emptied:
+        audio.play_group("vehicle.fuel_empty")
+        taxi_mgr.notification_msg = tr(language, "fuel_empty")
+        taxi_mgr.notification_timer = 4.0
     road_limit_mps = current_way.speed_limit_kmh / 3.6 if current_way else None
     rage_power = _rage_from_speeding(rage_power, car.speed, road_limit_mps, driven_distance)
     if abs(car.speed) * 3.6 < 10.0 and taxi_mgr.sees_red_light(car, nearby_traffic_lights, traffic_mgr.sim_time):
-        rage_power = min(1.0, rage_power + 0.05 * dt)
+        rage_power = min(1.0, rage_power + 0.05 * RAGE_GAIN_SCALE * dt)
     if car.is_sliding:
         # Adrenaline from a hard, tire-losing-grip corner feeds the rage
         # meter too, same as speeding does.
-        rage_power = min(1.0, rage_power + 0.15 * dt)
+        rage_power = min(1.0, rage_power + 0.15 * RAGE_GAIN_SCALE * dt)
 
     taxi_mgr.update_passenger_happiness(dt, car.speed, road_limit_mps, car.is_sliding)
 
     with frame_profiler.section("collisions"):
+        # Level-aware (garage-06.md): buildings carry map_level and are
+        # filtered per candidate in check_building_collision; trees, fences,
+        # curbs and speed bumps have no level data, so they're surface-only
+        # and not checked off the surface (their indexes stay untouched).
+        # Road-overlap exemptions use the player's own level's roads.
         building_crash = taxi_mgr.check_building_collision(
-            car, buildings, traffic_mgr.sim_time, previous_position, ways=ways
+            car, buildings, traffic_mgr.sim_time, previous_position, ways=drive_ways
         )
-        tree_crash = taxi_mgr.check_tree_collision(car, sceneries, traffic_mgr.sim_time, previous_position, ways=ways)
-        fence_crash = taxi_mgr.check_fence_collision(car, sceneries, traffic_mgr.sim_time, previous_position)
-        taxi_mgr.check_curb_bump(car, curbs, previous_position, traffic_mgr.sim_time, curb_grid=curb_grid)
-        taxi_mgr.check_speed_bump(car, speed_bumps, previous_position, traffic_mgr.sim_time)
-        bridge_edge_crash = is_car_colliding_with_bridge_edge(car, current_way, ways=ways)
+        fallen_before = len(taxi_mgr.fallen_trees)
+        tree_crash = on_surface and taxi_mgr.check_tree_collision(
+            car, sceneries, traffic_mgr.sim_time, previous_position, ways=drive_ways
+        )
+        if len(taxi_mgr.fallen_trees) > fallen_before:
+            audio.play_group("collision.tree_fall")
+        fence_crash = on_surface and taxi_mgr.check_fence_collision(car, sceneries, traffic_mgr.sim_time, previous_position)
+        # Bollards and lamp posts are OSM nodes without a level: surface only.
+        post_crash = on_surface and taxi_mgr.check_post_collision(
+            car, scenery_objects, traffic_mgr.sim_time, previous_position
+        )
+        if on_surface and taxi_mgr.check_curb_bump(car, curbs, previous_position, traffic_mgr.sim_time, curb_grid=curb_grid):
+            audio.play_group("vehicle.curb_bump", min(1.0, 0.3 + abs(car.speed) / 10.0))
+        if on_surface and taxi_mgr.check_speed_bump(car, speed_bumps, previous_position, traffic_mgr.sim_time):
+            audio.play_group("vehicle.speed_bump", min(1.0, 0.3 + abs(car.speed) / 12.0))
+        bridge_edge_crash = is_car_colliding_with_bridge_edge(car, current_way, ways=drive_ways)
         if bridge_edge_crash:
             pull_car_inside_bridge_edge(car, current_way)
             # Bounce away from the rail so a held throttle cannot keep the
@@ -321,9 +478,18 @@ def advance_simulation(
                 taxi_mgr.adjust_passenger_happiness(-30.0)
                 taxi_mgr.notification_msg = tr(language, "bridge_crash", penalty=200)
                 taxi_mgr.notification_timer = 3.5
-    if building_crash or tree_crash or fence_crash or bridge_edge_crash:
-        audio.play("car-crash", volume=0.7)
+    # Once per impact (the checks stay true every frame the car touches).
+    crashed = any([
+        audio.on_rise("crash_building", building_crash, "collision.building", 0.8),
+        audio.on_rise("crash_tree", tree_crash, "collision.tree", 0.8),
+        audio.on_rise("crash_fence", fence_crash, "collision.fence", 0.8),
+        audio.on_rise("crash_post", post_crash, "collision.guardrail", 0.8),  # a metal pole
+        audio.on_rise("crash_guardrail", bridge_edge_crash, "collision.guardrail", 0.8),
+    ])
+    if crashed:
+        loud_event = True
         audio.play_driver_line("collision", language)
+    audio.set_loop("steam", "vehicle.damaged_steam", 0.35 if taxi_mgr.taxi_smoke_timer > 0.0 else 0.0)
 
     # Dynamic lookahead camera offset in vehicle driving direction. Look
     # ahead proportionally to car speed and heading, clamped to a
@@ -358,8 +524,18 @@ def advance_simulation(
     previous_nausea_resolved = (
         previous_passenger.nausea_resolved if previous_passenger is not None else False
     )
+    offers_before = len(taxi_mgr.offers)
+    fares_before = taxi_mgr.completed_fares
+    vomited_before = previous_passenger is not None and previous_passenger.nausea_vomited
     with frame_profiler.section("taxi"):
         taxi_mgr.update(car, dt, game_time_seconds=game_time_seconds)
+    if len(taxi_mgr.offers) > offers_before:
+        audio.play_group("ui.new_offer")
+    if taxi_mgr.completed_fares > fares_before:
+        audio.play_group("taxi.payment")
+    if previous_passenger is not None and previous_passenger.nausea_vomited and not vomited_before:
+        audio.play_group("passenger.vomit")
+        loud_event = True
     with frame_profiler.section("npc"):
         npc_manager.update(
             dt, car.x, car.y, residents, traffic_mgr, ways,
@@ -369,8 +545,16 @@ def advance_simulation(
             viewport_bounds=viewport_bounds,
             player_car=car, pedestrian_mgr=pedestrian_mgr,
         )
+    for x, y in npc_manager.accidents:
+        audio.play_group("collision.vehicle", at=(x, y))
+    npc_manager.accidents.clear()
+    if pedestrian_mgr.curses:
+        x, y = pedestrian_mgr.curses[-1]  # one curse per tick is plenty
+        audio.play("censored-cursing", 0.8, at=(x, y))
+        pedestrian_mgr.curses.clear()
     vomited_passenger = taxi_mgr.take_vomited_passenger(car)
     if vomited_passenger is not None:
+        audio.play_group("passenger.vomit")
         audio.play_passenger_line("Nyt alkaa jo helpottaa.", vomited_passenger.gender, language, vomited_passenger.name)
         passenger_pedestrian = pedestrian_mgr.spawn_pedestrian_at(
             vomited_passenger.ped_x, vomited_passenger.ped_y, heading=vomited_passenger.ped_heading,
@@ -409,7 +593,9 @@ def advance_simulation(
             taxi_mgr.current_passenger.name if taxi_mgr.current_passenger else None,
         )
         audio.play_driver_line("pickup", language)
-        audio.play("car-door-open")
+        audio.play_group("vehicle.door_close")  # the passenger is in
+        audio.play_group("taxi.meter_start", 0.7)
+        remove_boarded_rail_walker(taxi_mgr, pedestrian_mgr)
     elif (
         previous_taxi_state == TaxiState.DRIVING_TO_DROPOFF
         and previous_passenger is not None
@@ -431,18 +617,24 @@ def advance_simulation(
     city_summary = None
     next_active_city_name = None
     if career is None and taxi_mgr.completed_fares > saved_gig_fares:
-        save_gig_odometer(gig_odometer_file, car.odometer_m)
+        save_gig_odometer(gig_odometer_file, car.odometer_m, car.fuel_l, taxi_mgr.balance_cents)
         saved_gig_fares = taxi_mgr.completed_fares
     if career is not None and taxi_mgr.total_score >= CAREER_SCORE_LIMIT:
         career_index = int(career["city_index"])
         career_total_score = int(career["total_score"]) + taxi_mgr.total_score
         next_city_index = career_index + 1
         if next_city_index >= len(cities_list):
-            save_career(career_file, career_index, career_total_score, completed=True, total_distance_m=car.odometer_m)
+            save_career(
+                career_file, career_index, career_total_score, completed=True,
+                total_distance_m=car.odometer_m, balance_cents=taxi_mgr.balance_cents,
+            )
             city_summary = (chosen_city, taxi_mgr.total_score, taxi_mgr.completed_fares, None, career_total_score)
             should_stop = True
         else:
-            save_career(career_file, next_city_index, career_total_score, total_distance_m=car.odometer_m)
+            save_career(
+                career_file, next_city_index, career_total_score,
+                total_distance_m=car.odometer_m, balance_cents=taxi_mgr.balance_cents,
+            )
             next_city = list(reversed(cities_list))[next_city_index]
             next_active_city_name = next_city
             city_summary = (
@@ -454,12 +646,14 @@ def advance_simulation(
     if slow_check_elapsed >= 0.1:
         slow_check_dt = slow_check_elapsed
         slow_check_elapsed = 0.0
-        if taxi_mgr.check_wrong_way_violation(car, slow_check_dt, ways=ways, spatial_grid=spatial_grid):
+        if taxi_mgr.check_wrong_way_violation(car, slow_check_dt, ways=drive_ways, spatial_grid=drive_grid):
             if not was_wrong_way:
                 audio.play_driver_line("wrong_way", language)
-        taxi_mgr.check_pedestrian_way_violation(car, slow_check_dt, ways=ways, spatial_grid=spatial_grid)
-        if taxi_mgr.check_speed_cameras(car, speed_cameras):
+        taxi_mgr.check_pedestrian_way_violation(car, slow_check_dt, ways=drive_ways, spatial_grid=drive_grid)
+        if on_surface and taxi_mgr.check_speed_cameras(car, speed_cameras):
+            audio.play_group("gameplay.speed_camera")
             audio.play_driver_line("speed_camera", language)
+            loud_event = True
     # Advance signals and taxi-world time; no autonomous vehicle update.
     with frame_profiler.section("traffic"):
         traffic_mgr.advance_time(dt)
@@ -468,10 +662,17 @@ def advance_simulation(
         pedestrian_mgr.ensure_taxi_stop_waiter(taxi_stops, car, viewport_bounds=viewport_bounds)
     with frame_profiler.section("pedestrians"):
         pedestrian_mgr.update(car, dt, viewport_bounds=viewport_bounds, game_time_seconds=game_time_seconds)
+        pedestrian_mgr.track_vomit(taxi_mgr.vomit_puddles + pedestrian_mgr.vomit_puddles)
+    if on_foot:
+        audio.update_footsteps(player_pedestrian.speed, dt, running=command.sprint)
     traffic_mgr.let_taxi_pick_up_waiter(taxi_stops, pedestrian_mgr.pedestrians, dt)
     waiting_pedestrian = taxi_mgr.check_waiting_pickup(car, pedestrian_mgr.pedestrians, dt)
     if waiting_pedestrian is not None:
         pedestrian_mgr.pedestrians.remove(waiting_pedestrian)
+    # Points lost this tick (wrong way, pedestrian way, cancelled fare ...)
+    # with no crash/camera/vomit sound of its own.
+    if taxi_mgr.total_score < score_at_start and not loud_event:
+        audio.play_group("ui.penalty", 0.6)
 
     return SimulationFrameResult(
         camx=camx,

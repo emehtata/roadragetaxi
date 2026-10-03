@@ -35,6 +35,12 @@ class Way:
     is_roundabout: bool = False
     priority_road: bool = False
     service: Optional[str] = None
+    # Explicit OSM level metadata (garage-02.md), never derived from layer=*
+    # or geometry: map_level is level=* when it is one clean integer (see
+    # parse_map_level), else None = surface world; level is the raw tag.
+    map_level: Optional[int] = None
+    level: Optional[str] = None
+    indoor: Optional[str] = None  # raw indoor=* value, None when untagged
     segment_lengths: List[float] = field(default_factory=list, init=False, repr=False)
     segment_headings: List[float] = field(default_factory=list, init=False, repr=False)
     total_length_m: float = field(default=0.0, init=False, repr=False)
@@ -73,6 +79,11 @@ class Railway:
     kind: str = "rail"
     bbox: Tuple[float, float, float, float] = (0.0, 0.0, 0.0, 0.0)
     is_bridge: bool = False
+    layer: int = 0
+    half_width_m: float = 1.7
+    # OSM railway:track_ref without leading zeros ("011" -> "11"): the
+    # station track number, which timetable platform codes refer to.
+    track_ref: str = ""
 
 
 @dataclass
@@ -99,10 +110,76 @@ class Building:
     # Used to tell a detached house apart from an apartment/office block
     # for window density/size (render/buildings.py's _building_scale_category).
     building_type: Optional[str] = None
+    roof_shape: Optional[str] = None
+    height_is_explicit: bool = False
     center_m: Tuple[float, float] = (0.0, 0.0)
     texture_seed: float = 0.0
     entrances: List[Tuple[float, float]] = field(default_factory=list)
+    # Explicit OSM level metadata (garage-02.md), never derived from layer=*
+    # or geometry: map_level is level=* when it is one clean integer (see
+    # parse_map_level), else None = surface world; level is the raw tag.
+    map_level: Optional[int] = None
+    level: Optional[str] = None
+    indoor: Optional[str] = None  # raw indoor=* value, None when untagged
     associated_places: List["Place"] = field(default_factory=list, repr=False)
+
+
+@dataclass
+class ParkingGarage:
+    """An underground or multi-storey parking facility from OSM (garage-00.md).
+    Data only for now: nothing draws, drives into or routes through it.
+
+    levels are logical map levels (-2, -1 below ground, 0, 1, ... above),
+    so later phases can tell a surface road from garage level -1 at the
+    same x/y; levels_source names the tag they came from ("" = unknown).
+    The raw *_levels counts are kept as tagged, never merged into one."""
+
+    osm_type: str  # "node" | "way" | "relation"
+    osm_id: int
+    garage_type: str  # PARKING_UNDERGROUND | PARKING_MULTI_STOREY (osm/parking.py)
+    points_m: List[Tuple[float, float]]  # outer ring; a single point for a node
+    bbox: Tuple[float, float, float, float]
+    center_m: Tuple[float, float]
+    levels: Tuple[int, ...] = ()
+    levels_source: str = ""
+    parking_levels: Optional[int] = None
+    building_levels: Optional[int] = None
+    underground_levels: Optional[int] = None
+    capacity: Optional[int] = None
+    name: Optional[str] = None
+    operator: Optional[str] = None
+    access: Optional[str] = None
+    fee: Optional[str] = None
+    maxheight: Optional[str] = None  # raw OSM strings: "2.1", "6'6\"", "default"
+    maxweight: Optional[str] = None
+    opening_hours: Optional[str] = None
+    covered: Optional[str] = None
+
+
+@dataclass
+class LevelConnector:
+    """A possible connection between map levels, recorded exactly as OSM
+    states it (garage-07.md) - data only: never drawn, driven, routed or
+    collided with. In Oulu's data the only such objects are
+    amenity=parking_entrance nodes.
+
+    No from/to levels: an entrance's level=* says where the entrance is,
+    not what it connects to, so the other side stays unknown. map_level is
+    that level=* when it is one clean integer (parse_map_level), else None
+    = unknown (never assumed to be the surface); level keeps the raw tag.
+    garage_osm_id / road_osm_ids come only from OSM topology - ways that
+    share the entrance node - never from distance or containment."""
+
+    osm_type: str  # "node"
+    osm_id: int
+    connector_type: str  # "parking_entrance"
+    x: float
+    y: float
+    map_level: Optional[int] = None
+    level: Optional[str] = None
+    parking: Optional[str] = None  # raw parking=* ("underground", "multi-storey", ...)
+    garage_osm_id: Optional[int] = None  # a garage way with this node on its outline
+    road_osm_ids: Tuple[int, ...] = ()  # highway ways through this node, in OSM order
 
 
 @dataclass
@@ -115,6 +192,8 @@ class ParkingSpace:
     reserved: bool = False
     vehicle_id: Optional[int] = None
     reserved_by_pedestrian_id: Optional[int] = None
+    source_building_key: object = None
+    access_path: List[Tuple[float, float]] = field(default_factory=list)
 
     def __post_init__(self) -> None:
         orientation = self.orientation
@@ -156,6 +235,9 @@ class Scenery:
     # other kind: their color is already keyed by `kind` itself (forest,
     # grass, ...), which already says what the ground is.
     surface: Optional[str] = None
+    # True when this vegetation polygon is bounded by barrier=kerb and must
+    # remain visible above overlapping road asphalt.
+    kerbed: bool = False
     trees: List[Tuple[float, float]] = field(default_factory=list)
     tree_variations: List[float] = field(default_factory=list)
     # Rendered species, one per entry in `trees` - "spruce"/"pine"/"birch"
@@ -280,6 +362,7 @@ class TrafficLight:
     layer: int = 0
     id: Optional[int] = None
     direction_angle: Optional[float] = None  # Road alignment heading in radians
+    render_offset_m: float = 0.0  # Rightward visual offset from the OSM lane/control point
     signal_group: Optional[SignalGroup] = None
     approach_id: Optional[str] = None
     allowed_movements: frozenset[str] = frozenset({"straight", "right"})
@@ -340,24 +423,28 @@ class Place:
     kind: str
 
 
-def associate_places_with_buildings(buildings: List[Building], places: List[Place]) -> None:
-    """Attach named venue places to buildings once, before rendering."""
+def associate_places_with_buildings_steps(buildings: List[Building], places: List[Place]):
+    """Generator form of associate_places_with_buildings (bin-loader-v5.md):
+    yields after each unit of work so a caller can budget it across frames.
+    Nothing on the buildings is touched until the final, cheap apply step,
+    so an interrupted run never leaves buildings half-cleared."""
     cell_size = 128.0
+    buildings = list(buildings)
     building_cells = defaultdict(list)
     for building in buildings:
-        building.associated_places.clear()
         bbox = getattr(building, "bbox", (0.0, 0.0, 0.0, 0.0))
-        if bbox == (0.0, 0.0, 0.0, 0.0):
-            continue
-        for cell_x in range(math.floor(bbox[0] / cell_size), math.floor(bbox[2] / cell_size) + 1):
-            for cell_y in range(math.floor(bbox[1] / cell_size), math.floor(bbox[3] / cell_size) + 1):
-                building_cells[(cell_x, cell_y)].append(building)
+        if bbox != (0.0, 0.0, 0.0, 0.0):
+            for cell_x in range(math.floor(bbox[0] / cell_size), math.floor(bbox[2] / cell_size) + 1):
+                for cell_y in range(math.floor(bbox[1] / cell_size), math.floor(bbox[3] / cell_size) + 1):
+                    building_cells[(cell_x, cell_y)].append(building)
+        yield
     venue_places = [
         place for place in places
         if place.name and place.kind not in {
             "suburb", "neighbourhood", "quarter", "village", "town", "city",
         }
     ]
+    matches = []
     for place in venue_places:
         candidates = building_cells.get(
             (math.floor(place.x / cell_size), math.floor(place.y / cell_size)),
@@ -368,8 +455,19 @@ def associate_places_with_buildings(buildings: List[Building], places: List[Plac
             if not (bbox[0] <= place.x <= bbox[2] and bbox[1] <= place.y <= bbox[3]):
                 continue
             if point_in_polygon(place.x, place.y, building.points_m):
-                building.associated_places.append(place)
+                matches.append((building, place))
                 break
+        yield
+    for building in buildings:
+        building.associated_places.clear()
+    for building, place in matches:
+        building.associated_places.append(place)
+
+
+def associate_places_with_buildings(buildings: List[Building], places: List[Place]) -> None:
+    """Attach named venue places to buildings once, before rendering."""
+    for _ in associate_places_with_buildings_steps(buildings, places):
+        pass
 
 
 @dataclass
@@ -442,15 +540,16 @@ class SceneryObject:
     name: Optional[str] = None
     id: Optional[int] = None
     direction_angle: Optional[float] = None
+    is_area: bool = False
 
 
 class MapData(tuple):
     """Container tuple for build_ways results returning 6 elements for backward compatibility while providing traffic_lights and crossings via attributes and slicing."""
 
-    def __new__(cls, ways, waters, buildings, sceneries, places, bounds, traffic_lights=None, crossings=None, taxi_stops=None, bus_stops=None, parking_spaces=None, logical_intersections=None, stop_signs=None, yield_signs=None, curbs=None, scenery_objects=None, speed_bumps=None, railways=None, railings=None):
+    def __new__(cls, ways, waters, buildings, sceneries, places, bounds, traffic_lights=None, crossings=None, taxi_stops=None, bus_stops=None, parking_spaces=None, logical_intersections=None, stop_signs=None, yield_signs=None, curbs=None, scenery_objects=None, speed_bumps=None, railways=None, railings=None, parking_garages=None, level_ways=None, level_connectors=None):
         return super().__new__(cls, (ways, waters, buildings, sceneries, places, bounds))
 
-    def __init__(self, ways, waters, buildings, sceneries, places, bounds, traffic_lights=None, crossings=None, taxi_stops=None, bus_stops=None, parking_spaces=None, logical_intersections=None, stop_signs=None, yield_signs=None, curbs=None, scenery_objects=None, speed_bumps=None, railways=None, railings=None):
+    def __init__(self, ways, waters, buildings, sceneries, places, bounds, traffic_lights=None, crossings=None, taxi_stops=None, bus_stops=None, parking_spaces=None, logical_intersections=None, stop_signs=None, yield_signs=None, curbs=None, scenery_objects=None, speed_bumps=None, railways=None, railings=None, parking_garages=None, level_ways=None, level_connectors=None):
         self.ways = ways
         self.waters = waters
         self.buildings = buildings
@@ -470,6 +569,11 @@ class MapData(tuple):
         self.speed_bumps = speed_bumps if speed_bumps is not None else []
         self.railways = railways if railways is not None else []
         self.railings = railings if railings is not None else []
+        self.parking_garages = parking_garages if parking_garages is not None else []
+        # Roads with an explicit level=* that the surface road network
+        # filters out (underground service/track roads, garage-03.md).
+        self.level_ways = level_ways if level_ways is not None else []
+        self.level_connectors = level_connectors if level_connectors is not None else []
 
     @property
     def traffic_signals(self):

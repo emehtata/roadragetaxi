@@ -3,7 +3,10 @@ import random
 from dataclasses import dataclass
 from typing import Any, List, Optional, Tuple
 
+from .fuel import FUEL_TANK_CAPACITY_L, INITIAL_FUEL_L
 from .geo import angle_diff, clamp, closest_point_and_dist_to_segment, compute_bbox, dist_point_to_segment, point_in_polygon
+from .map_level import on_map_level
+from .performance import advance_chunked
 
 # Car physics (arcade)
 ACCEL = 4.6  # m/s^2; peak forward acceleration from rest
@@ -60,6 +63,7 @@ SURFACE_MAX_GRIP_G = {
     "grass": 0.50,
     "snow": 0.35,
     "ice": 0.20,
+    "black_ice": 0.08,
     "sand": 0.45,
 }
 # Off-road ground (see off_road_ground_kind) has no Way.surface to read a
@@ -178,6 +182,35 @@ FORWARD_ACCELERATION_CURVE = (
 )
 
 
+# Wind (weather.WeatherSystem.wind_vector_mps): only what wind *adds* to
+# calm-air drag, 0.5*rho*CdA*|v_air|*v_air, so calm-weather handling stays
+# as tuned. Frontal and side CdA of a saloon; the side area is ~3x the
+# front, so a crosswind pushes far harder than a headwind brakes. Its
+# centre of pressure sits ahead of the CG, so the push yaws the car
+# downwind - the driver has to hold a correction.
+AIR_DENSITY_KG_M3 = 1.225
+FRONTAL_CDA_M2 = 0.7
+SIDE_CDA_M2 = 2.4
+WIND_EFFECT_GAIN = 2.0  # calibration knob: arcade FRICTION/BRAKE are super-physical, so is this
+WIND_MIN_SPEED_MPS = 1.0  # a parked/crawling car is held by its tyres
+
+
+def wind_acceleration(car: "Car", wind: Tuple[float, float]) -> Tuple[float, float]:
+    """(forward, left) m/s^2 that the wind adds over still air."""
+    hx, hy = math.cos(car.heading), math.sin(car.heading)
+    forward_speed = car.speed
+    # Air velocity relative to the car, in the car's frame.
+    air_forward = wind[0] * hx + wind[1] * hy - forward_speed
+    air_left = -wind[0] * hy + wind[1] * hx
+    air_speed = math.hypot(air_forward, air_left)
+    scale = 0.5 * AIR_DENSITY_KG_M3 * WIND_EFFECT_GAIN / max(1.0, car.total_mass_kg)
+    calm_forward = -abs(forward_speed) * forward_speed
+    return (
+        scale * FRONTAL_CDA_M2 * (air_speed * air_forward - calm_forward),
+        scale * SIDE_CDA_M2 * air_speed * air_left,
+    )
+
+
 def forward_acceleration(speed_mps: float) -> float:
     """Return available forward acceleration for the current speed."""
     speed_mps = max(0.0, speed_mps)
@@ -197,6 +230,7 @@ class Car:
     heading: float  # radians, 0 = east
     speed: float  # m/s
     layer: int = 0  # current vertical layer / bridge level (default 0 = ground)
+    map_level: int = 0  # logical map level the player is on (map_level.py): 0 surface, -1/-2 garage levels
     trip_m: float = 0.0  # trip distance in meters
     odometer_m: float = 0.0  # total odometer distance in meters
     length_m: float = 4.0  # length in meters
@@ -230,6 +264,17 @@ class Car:
     _prev_vx: float = 0.0  # world-frame velocity, previous frame (g-force calc only)
     _prev_vy: float = 0.0
     _g_force_initialized: bool = False  # False until a first real dt has primed _prev_vx/vy
+    fuel_capacity_l: float = FUEL_TANK_CAPACITY_L
+    fuel_l: float = INITIAL_FUEL_L
+    fuel_consumption_l_per_100km: float = 0.0
+    idle_fuel_consumption_l_per_hour: float = 0.0
+    curb_mass_kg: float = 1400.0
+    driver_mass_kg: float = 90.0
+    passenger_mass_kg: float = 0.0
+
+    @property
+    def total_mass_kg(self) -> float:
+        return self.curb_mass_kg + self.driver_mass_kg + self.passenger_mass_kg
 
 
 def is_car_road(way) -> bool:
@@ -647,6 +692,11 @@ def respawn_car(
     """Place the car on a main connected drivable land road, avoiding isolated road segments."""
     if not ways:
         return
+    if car.fuel_l <= 0.0:
+        car.fuel_l = car.fuel_capacity_l
+    car.fuel_consumption_l_per_100km = 0.0
+    car.idle_fuel_consumption_l_per_hour = 0.0
+    car.engine_on = True
 
     if near_edge and bounds:
         minx, miny, maxx, maxy = bounds
@@ -782,23 +832,40 @@ def reset_trip(car: Car) -> None:
 class SpatialWayGrid:
     """Spatial hash grid indexing road ways for fast O(1) road collision checks."""
 
-    def __init__(self, ways_or_cell_size=200.0, cell_size: float = 200.0):
+    def __init__(self, ways_or_cell_size=200.0, cell_size: float = 200.0, map_level=None):
+        # map_level: index only ways on that logical level (map_level.
+        # on_map_level), e.g. SURFACE_LEVEL for the surface road grid so a
+        # level=-1 parking aisle stays out of surface driving. Filtered at
+        # insert, so queries cost nothing extra; indexed_way_count still
+        # counts the whole source list (map sync's staleness check).
+        # None = index everything (every other grid).
+        self.map_level = map_level
         # id(way) -> its index in the last rebuild()'s list - lets
         # ways_in_rect() return results in that stable order regardless of
         # which grid cell a query happens to reach an item through first
         # (see ways_in_rect's docstring for why that matters).
         self._insertion_order: dict[int, int] = {}
+        self._pending_ways: Optional[List] = None
+        self._pending_index: int = 0
+        self._pending_grid: Optional[dict] = None
         if isinstance(ways_or_cell_size, (list, tuple)):
             self.cell_size = cell_size
             self.grid: dict[Tuple[int, int], List] = {}
             self.indexed_way_count = 0
+            self.revision = 0
             self.rebuild(list(ways_or_cell_size))
         else:
             self.cell_size = float(ways_or_cell_size)
             self.grid: dict[Tuple[int, int], List] = {}
             self.indexed_way_count = 0
+            self.revision = 0
 
     def insert(self, way) -> None:
+        self._insert_into(self.grid, way)
+
+    def _insert_into(self, grid: dict, way) -> None:
+        if self.map_level is not None and not on_map_level(way, self.map_level):
+            return
         bbox = getattr(way, "bbox", None)
         if not bbox or bbox == (0.0, 0.0, 0.0, 0.0):
             points = getattr(way, "points_m", None)
@@ -821,9 +888,9 @@ class SpatialWayGrid:
         for gx in range(gx0, gx1 + 1):
             for gy in range(gy0, gy1 + 1):
                 cell = (gx, gy)
-                if cell not in self.grid:
-                    self.grid[cell] = []
-                self.grid[cell].append(way)
+                if cell not in grid:
+                    grid[cell] = []
+                grid[cell].append(way)
 
     def rebuild(self, ways: List) -> None:
         self.grid.clear()
@@ -831,6 +898,37 @@ class SpatialWayGrid:
         for w in ways:
             self.insert(w)
         self.indexed_way_count = len(ways)
+        self.revision += 1
+
+    def start_rebuild(self, ways: List) -> None:
+        """Begin a budgeted rebuild (bin-loader-v3.md) - queries keep
+        using the OLD grid, unchanged, until advance_rebuild() reports
+        finished. For map_sync's road spatial_grid stage specifically
+        (measured up to ~1.7s in one frame against a dense real city);
+        every other caller keeps using the synchronous rebuild() above."""
+        self._pending_ways = list(ways)
+        self._pending_index = 0
+        self._pending_grid: dict = {}
+
+    def advance_rebuild(self, budget_s: float) -> bool:
+        """Advance an in-progress start_rebuild() job by up to budget_s.
+        Returns True once finished (self.grid is now the new complete
+        result); False if more work remains."""
+        if self._pending_ways is None:
+            return True
+        self._pending_index = advance_chunked(
+            self._pending_ways, self._pending_index, budget_s,
+            lambda way: self._insert_into(self._pending_grid, way),
+        )
+        if self._pending_index < len(self._pending_ways):
+            return False
+        self.grid = self._pending_grid
+        self._insertion_order = {id(w): i for i, w in enumerate(self._pending_ways)}
+        self.indexed_way_count = len(self._pending_ways)
+        self.revision += 1
+        self._pending_ways = None
+        self._pending_grid = None
+        return True
 
     def _candidate_ways(
         self, px: float, py: float, car_roads_only: bool = False, layer: Optional[int] = None
@@ -1215,7 +1313,13 @@ def get_current_road_at_car(
     return best_way
 
 
-def _surface_max_grip_g(current_way, physics_mode: str, wetness: float = 0.0, ground_kind: str = "road") -> float:
+def _surface_max_grip_g(
+    current_way,
+    physics_mode: str,
+    wetness: float = 0.0,
+    ground_kind: str = "road",
+    black_ice: float = 0.0,
+) -> float:
     """Return this surface's maximum combined-g tire grip (GRIP.md section
     9), reusing the game's existing Way.surface/is_ice_road fields rather
     than a second surface classification.
@@ -1229,6 +1333,7 @@ def _surface_max_grip_g(current_way, physics_mode: str, wetness: float = 0.0, gr
     touch them - this was unreachable before a weather system existed to
     report wetness at all.
     """
+    asphalt = False
     if current_way is not None and getattr(current_way, "is_ice_road", False):
         base = SURFACE_MAX_GRIP_G["ice"]
     elif current_way is None and ground_kind in GROUND_KIND_MAX_GRIP_G:
@@ -1242,9 +1347,13 @@ def _surface_max_grip_g(current_way, physics_mode: str, wetness: float = 0.0, gr
         elif surface in _GRAVEL_SURFACES:
             base = SURFACE_MAX_GRIP_G["gravel"]
         else:
+            asphalt = True
             dry = SURFACE_MAX_GRIP_G["dry_asphalt"]
             wet = SURFACE_MAX_GRIP_G["wet_asphalt"]
             base = dry + (wet - dry) * clamp(wetness, 0.0, 1.0)
+    if asphalt and black_ice > 0.0:
+        ice = SURFACE_MAX_GRIP_G["black_ice"]
+        base = base + (ice - base) * clamp(black_ice, 0.0, 1.0)
     return base * PHYSICS_MODE_GRIP_MULTIPLIER.get(physics_mode, 1.0)
 
 
@@ -1478,8 +1587,12 @@ def update_car_physics(
     current_way=None,
     physics_mode: str = "arcade",
     wetness: float = 0.0,
+    black_ice: float = 0.0,
+    wind: Tuple[float, float] = (0.0, 0.0),
 ) -> bool:
     """Update car speed, heading, and position.
+
+    `wind` is the air velocity (east, north) in m/s - see wind_acceleration.
 
     When block_offroad is True and road data is provided, restricts motion to drivable
     car roads only, blocking movement if the vehicle attempts to leave the road.
@@ -1505,6 +1618,11 @@ def update_car_physics(
     """
     entry_x, entry_y, entry_heading = car.x, car.y, car.heading
     entry_speed = car.speed
+    # Existing solo-taxi handling is calibrated at curb mass + the 90 kg
+    # driver. Added passenger mass reduces acceleration from the same fixed
+    # engine/brake force without retuning the unloaded car.
+    reference_mass_kg = car.curb_mass_kg + 90.0
+    mass_force_scale = reference_mass_kg / max(1.0, car.total_mass_kg)
     using_longitudinal_tire_grip = False
     throttle_driven = False
     braking_driven = False
@@ -1517,15 +1635,15 @@ def update_car_physics(
     elif throttle > 0:
         using_longitudinal_tire_grip = True
         throttle_driven = True
-        acceleration = forward_acceleration(car.speed)
+        acceleration = forward_acceleration(car.speed) * mass_force_scale
         car.speed = min(car.speed + acceleration * dt, speed_limit_mps) if speed_limit_mps is not None else car.speed + acceleration * dt
     elif brake > 0:
         using_longitudinal_tire_grip = True
         braking_driven = True
         if car.speed > 0.0:
-            car.speed = max(0.0, car.speed - BRAKE * dt)
+            car.speed = max(0.0, car.speed - BRAKE * mass_force_scale * dt)
         else:
-            car.speed -= REVERSE_ACCEL * dt
+            car.speed -= REVERSE_ACCEL * mass_force_scale * dt
         if speed_limit_mps is not None:
             car.speed = max(-speed_limit_mps, car.speed)
     else:
@@ -1534,6 +1652,15 @@ def update_car_physics(
             car.speed = max(0.0, car.speed - FRICTION * dt)
         else:
             car.speed = min(0.0, car.speed + FRICTION * dt)
+
+    if (wind[0] or wind[1]) and abs(entry_speed) >= WIND_MIN_SPEED_MPS and dt > 0.0:
+        wind_forward, wind_left = wind_acceleration(car, wind)
+        before_wind = car.speed
+        car.speed += wind_forward * dt
+        if car.speed * before_wind < 0.0:
+            car.speed = 0.0  # wind can stop a coasting car, never reverse it
+        # Sideways push bends the path: heading rate = a_lateral / v.
+        car.heading += wind_left / car.speed * dt if abs(car.speed) >= WIND_MIN_SPEED_MPS else 0.0
 
     car.speed = clamp(car.speed, -10.0, MAX_SPEED)
     longitudinal_tire_g = (
@@ -1561,7 +1688,9 @@ def update_car_physics(
     # is_sliding is hysteresis on the *measured* slip_amount (set at the
     # end of the frame by _update_g_force, GRIP.md section 12) - not reset
     # here, so that hysteresis can see its own previous value.
-    car.max_grip_g = _surface_max_grip_g(current_way, physics_mode, wetness, car.ground_kind)
+    car.max_grip_g = _surface_max_grip_g(
+        current_way, physics_mode, wetness, car.ground_kind, black_ice
+    )
     steering_grip_limited = False
     steering_overshoot = 0.0
     # Drift decays by default every frame; the grip-exceeded branch below

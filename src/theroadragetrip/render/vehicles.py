@@ -1,5 +1,6 @@
 from . import common
 from .roads import STREET_LIGHT_SHADE_COLOR
+from .buildings import mask_buildings_from_light_surface
 from .common import (
     SCREEN_W,
     SCREEN_H,
@@ -258,6 +259,8 @@ def draw_headlight_beams(
     ways: Optional[List[Way]] = None,
     spatial_grid=None,
     current_way=None,
+    buildings=None,
+    building_spatial_grid=None,
 ) -> None:
     """Draw lightweight forward-facing headlight beams for visible vehicles at night."""
     import pygame
@@ -284,6 +287,7 @@ def draw_headlight_beams(
     )
     npc_ids = {id(vehicle) for vehicle in npc_vehicles or ()}
     bicycle_ids = {id(bicycle) for bicycle in bicycles or ()}
+    beam_bounds = None
 
     def draw_beam(origin, near_edge, far_edge, tip, cap_center, cap_radius):
         pygame.draw.polygon(
@@ -337,6 +341,8 @@ def draw_headlight_beams(
     for vehicle in [*vehicles, *(bicycles or ())]:
         if drawn >= 80:
             break
+        if not _vehicle_engine_on(vehicle):
+            continue
         x = getattr(vehicle, "x", None)
         y = getattr(vehicle, "y", None)
         heading = getattr(vehicle, "heading", None)
@@ -362,6 +368,15 @@ def draw_headlight_beams(
             and not has_oncoming_vehicle(vehicle, x, y, heading)
         ):
             beam_length_for_vehicle = long_beam_length
+        if building_spatial_grid is not None:
+            distance_m = beam_length_for_vehicle / px_per_m
+            end_x = x + math.cos(heading) * distance_m
+            end_y = y + math.sin(heading) * distance_m
+            bounds = (min(x, end_x), min(y, end_y), max(x, end_x), max(y, end_y))
+            beam_bounds = bounds if beam_bounds is None else (
+                min(beam_bounds[0], bounds[0]), min(beam_bounds[1], bounds[1]),
+                max(beam_bounds[2], bounds[2]), max(beam_bounds[3], bounds[3]),
+            )
         vehicle_width = max(3.0, getattr(vehicle, "width_m", 1.8) * px_per_m)
         if is_bicycle:
             vehicle_width = max(2.0, getattr(vehicle, "radius_m", 0.6) * px_per_m)
@@ -420,6 +435,18 @@ def draw_headlight_beams(
             )
         drawn += 1
     if drawn:
+        beam_buildings = buildings or ()
+        if building_spatial_grid is not None and beam_bounds is not None:
+            margin = 8.0
+            beam_buildings = building_spatial_grid.ways_in_rect(
+                beam_bounds[0] - margin, beam_bounds[1] - margin,
+                beam_bounds[2] + margin, beam_bounds[3] + margin,
+            )
+        mask_buildings_from_light_surface(
+            beam_mask,
+            beam_buildings,
+            camx, camy, px_per_m, screen_w, screen_h,
+        )
         if daylight_surface is not None:
             restored_daylight = _reusable_alpha_surface(pygame, "headlight_restored_daylight", screen.get_size())
             restored_daylight.blit(daylight_surface, (0, 0))
@@ -433,6 +460,16 @@ def draw_headlight_beams(
         pygame.draw.circle(screen, STREET_LIGHT_SHADE_COLOR, (int(lamp_center[0]), int(lamp_center[1])), lamp_radius)
 
 
+# Unlit bulbs of a shut-off vehicle: still visible, clearly not glowing.
+ENGINE_OFF_HEADLIGHT_COLOR = (120, 120, 108)
+ENGINE_OFF_TAILLIGHT_COLOR = (105, 28, 28)
+
+
+def _vehicle_engine_on(vehicle) -> bool:
+    """Player car tracks engine_on; an NPC's engine is off while PARKED."""
+    return getattr(vehicle, "engine_on", getattr(vehicle, "state", None) != "PARKED")
+
+
 def _draw_vehicle_lights(
     screen,
     cx: float,
@@ -444,6 +481,7 @@ def _draw_vehicle_lights(
     turn_signal_elapsed: float = 0.0,
     braking: bool = False,
     reversing: bool = False,
+    engine_on: bool = True,
 ) -> None:
     import pygame
 
@@ -474,11 +512,11 @@ def _draw_vehicle_lights(
     light_length = min(width_px * 0.25, max(1.0, light_r * 2.4))
     light_width = min(length_px * 0.08, max(1.0, light_r * 0.75))
     for light in (front_right, front_left):
-        draw_light_rectangle((255, 255, 230), light, light_width, light_length)
+        draw_light_rectangle((255, 255, 230) if engine_on else ENGINE_OFF_HEADLIGHT_COLOR, light, light_width, light_length)
     for light in (rear_right, rear_left):
         brake_scale = 1.2 if braking else 1.0
         draw_light_rectangle(
-            (255, 0, 0) if braking else (230, 30, 30),
+            (255, 0, 0) if braking else (230, 30, 30) if engine_on else ENGINE_OFF_TAILLIGHT_COLOR,
             light,
             light_width * brake_scale,
             light_length * brake_scale,
@@ -490,18 +528,15 @@ def _draw_vehicle_lights(
         draw_light_rectangle((245, 245, 235), (reverse_x, reverse_y), reverse_r, light_length * 0.65)
     turn_signal_on = turn_signal and (turn_signal_elapsed % 0.9 < 0.45)
     if turn_signal_on:
+        # Small amber lamps at the outer front/rear corners on the turning
+        # side, beside (not over) the head/tail lights.
         signal_side = 1.0 if turn_signal == "right" else -1.0
-        for signal_x, signal_y in (
-            (
-                cx + fx * (hl - 0.5) + rx * (light_inset * signal_side),
-                cy + fy * (hl - 0.5) + ry * (light_inset * signal_side),
-            ),
-            (
-                cx - fx * (hl - 0.5) + rx * (light_inset * signal_side),
-                cy - fy * (hl - 0.5) + ry * (light_inset * signal_side),
-            ),
-        ):
-            draw_light_rectangle((255, 170, 20), (signal_x, signal_y), light_width, light_length)
+        signal_inset = hw * 0.88 * signal_side
+        signal_length = max(1.0, light_length * 0.45)
+        for end in (1.0, -1.0):
+            signal_x = cx + fx * (hl - 0.5) * end + rx * signal_inset
+            signal_y = cy + fy * (hl - 0.5) * end + ry * signal_inset
+            draw_light_rectangle((255, 170, 20), (signal_x, signal_y), light_width * 1.2, signal_length)
 
 
 def _draw_vehicle(
@@ -517,6 +552,7 @@ def _draw_vehicle(
     turn_signal: str = "",
     turn_signal_elapsed: float = 0.0,
     door_open_progress: float = 0.0,
+    engine_on: bool = True,
 ) -> None:
     """Draw an oriented vehicle box on scale with headlights (white) and taillights (red)."""
     import pygame
@@ -597,7 +633,127 @@ def _draw_vehicle(
         pygame.draw.line(screen, outline_color, door_inner_front, door_outer_front, 1)
         pygame.draw.line(screen, outline_color, door_inner_rear, door_outer_rear, 1)
 
-    _draw_vehicle_lights(screen, cx, cy, heading, length_px, width_px, turn_signal, turn_signal_elapsed)
+    _draw_vehicle_lights(
+        screen, cx, cy, heading, length_px, width_px, turn_signal, turn_signal_elapsed, engine_on=engine_on
+    )
+
+
+def _vehicle_point(cx, cy, fx, fy, rx, ry, longitudinal, lateral):
+    """Convert vehicle-local coordinates to screen coordinates."""
+    return (
+        cx + fx * longitudinal + rx * lateral,
+        cy + fy * longitudinal + ry * lateral,
+    )
+
+
+def _draw_bus(
+    screen,
+    cx: float,
+    cy: float,
+    heading: float,
+    length_px: float,
+    width_px: float,
+    body_color,
+    turn_signal: str = "",
+    turn_signal_elapsed: float = 0.0,
+    engine_on: bool = True,
+) -> None:
+    """Draw a top-down city/coach bus instead of a stretched car body."""
+    import pygame
+
+    fx, fy = math.cos(heading), -math.sin(heading)
+    rx, ry = math.sin(heading), math.cos(heading)
+    hl, hw = length_px * 0.5, width_px * 0.5
+
+    # Slightly chamfered front corners make the direction and bus silhouette clear.
+    body = [
+        _vehicle_point(cx, cy, fx, fy, rx, ry, hl, hw * 0.72),
+        _vehicle_point(cx, cy, fx, fy, rx, ry, hl, -hw * 0.72),
+        _vehicle_point(cx, cy, fx, fy, rx, ry, hl * 0.90, -hw),
+        _vehicle_point(cx, cy, fx, fy, rx, ry, -hl, -hw),
+        _vehicle_point(cx, cy, fx, fy, rx, ry, -hl, hw),
+        _vehicle_point(cx, cy, fx, fy, rx, ry, hl * 0.90, hw),
+    ]
+    pygame.draw.polygon(screen, body_color, body)
+    pygame.draw.polygon(screen, (20, 20, 20), body, 1)
+
+    # Seen from straight above a bus is all flat roof: its windshield and
+    # side windows are vertical, so no glass is drawn. Roof hatches and the
+    # AC unit keep the broad roof from reading as an empty rectangle.
+    roof_detail = tuple(max(0, channel - 28) for channel in body_color)
+    for hatch_center in (hl * 0.55, -hl * 0.62):
+        hatch = [
+            _vehicle_point(cx, cy, fx, fy, rx, ry, hatch_center + hl * 0.07, hw * 0.30),
+            _vehicle_point(cx, cy, fx, fy, rx, ry, hatch_center + hl * 0.07, -hw * 0.30),
+            _vehicle_point(cx, cy, fx, fy, rx, ry, hatch_center - hl * 0.07, -hw * 0.30),
+            _vehicle_point(cx, cy, fx, fy, rx, ry, hatch_center - hl * 0.07, hw * 0.30),
+        ]
+        pygame.draw.polygon(screen, roof_detail, hatch)
+        pygame.draw.polygon(screen, (30, 30, 30), hatch, 1)
+
+    equipment = [
+        _vehicle_point(cx, cy, fx, fy, rx, ry, hl * 0.05, hw * 0.28),
+        _vehicle_point(cx, cy, fx, fy, rx, ry, hl * 0.05, -hw * 0.28),
+        _vehicle_point(cx, cy, fx, fy, rx, ry, -hl * 0.26, -hw * 0.28),
+        _vehicle_point(cx, cy, fx, fy, rx, ry, -hl * 0.26, hw * 0.28),
+    ]
+    pygame.draw.polygon(screen, roof_detail, equipment)
+    pygame.draw.polygon(screen, (30, 30, 30), equipment, 1)
+    _draw_vehicle_lights(
+        screen, cx, cy, heading, length_px, width_px, turn_signal, turn_signal_elapsed, engine_on=engine_on
+    )
+
+
+def _draw_truck(
+    screen,
+    cx: float,
+    cy: float,
+    heading: float,
+    length_px: float,
+    width_px: float,
+    body_color,
+    turn_signal: str = "",
+    turn_signal_elapsed: float = 0.0,
+    engine_on: bool = True,
+) -> None:
+    """Draw a rigid cargo truck with distinct cargo box and cab."""
+    import pygame
+
+    fx, fy = math.cos(heading), -math.sin(heading)
+    rx, ry = math.sin(heading), math.cos(heading)
+    hl, hw = length_px * 0.5, width_px * 0.5
+
+    def rectangle(front, rear, half_width):
+        return [
+            _vehicle_point(cx, cy, fx, fy, rx, ry, front, half_width),
+            _vehicle_point(cx, cy, fx, fy, rx, ry, front, -half_width),
+            _vehicle_point(cx, cy, fx, fy, rx, ry, rear, -half_width),
+            _vehicle_point(cx, cy, fx, fy, rx, ry, rear, half_width),
+        ]
+
+    cargo = rectangle(hl * 0.18, -hl, hw)
+    pygame.draw.polygon(screen, body_color, cargo)
+    pygame.draw.polygon(screen, (20, 20, 20), cargo, 1)
+    # Pale roof inset gives the box visible structure without changing its livery.
+    roof = rectangle(hl * 0.08, -hl * 0.86, hw * 0.78)
+    roof_color = tuple(min(255, channel + 28) for channel in body_color)
+    pygame.draw.polygon(screen, roof_color, roof)
+
+    cab = rectangle(hl, hl * 0.24, hw * 0.92)
+    pygame.draw.polygon(screen, body_color, cab)
+    pygame.draw.polygon(screen, (20, 20, 20), cab, 1)
+    windshield = rectangle(hl * 0.72, hl * 0.52, hw * 0.72)
+    pygame.draw.polygon(screen, (35, 48, 58), windshield)
+    pygame.draw.line(
+        screen,
+        (35, 35, 35),
+        _vehicle_point(cx, cy, fx, fy, rx, ry, hl * 0.20, -hw),
+        _vehicle_point(cx, cy, fx, fy, rx, ry, hl * 0.20, hw),
+        2,
+    )
+    _draw_vehicle_lights(
+        screen, cx, cy, heading, length_px, width_px, turn_signal, turn_signal_elapsed, engine_on=engine_on
+    )
 
 
 def _draw_vehicle_outline(screen, cx, cy, heading, length_px, width_px, color=(235, 235, 235)) -> None:
@@ -634,12 +790,17 @@ def draw_car(
     door_open_progress: float = 0.0,
     spatial_grid=None,
     current_way=None,
+    railways=None,
+    railway_grid=None,
 ) -> None:
     """Draw player taxi scaled in meters with headlights and taillights."""
     import pygame
 
     covered_by_higher_road = not _vehicle_is_on_bridge(car, current_way) and _covered_by_higher_road(
         car.x, car.y, getattr(car, "layer", 0), ways, spatial_grid, current_way
+    )
+    covered_by_higher_road |= _covered_by_higher_road(
+        car.x, car.y, getattr(car, "layer", 0), railways, railway_grid
     )
     if covered_by_higher_road:
         cx, cy = world_to_screen(car.x, car.y, camx, camy, px_per_m, screen_w, screen_h)
@@ -669,6 +830,7 @@ def draw_car(
         outline_color=(30, 30, 30),
         is_taxi=True,
         door_open_progress=door_open_progress,
+        engine_on=car.engine_on,
     )
 
     if shout_timer > 0.0 and font:
@@ -749,6 +911,7 @@ def draw_vehicle_lights(
             getattr(vehicle, "turn_signal_elapsed", 0.0),
             braking=getattr(vehicle, "braking", False),
             reversing=getattr(vehicle, "speed", 0.0) < -0.05,
+            engine_on=_vehicle_engine_on(vehicle),
         )
 
 
@@ -848,6 +1011,20 @@ def draw_npc_cars(
                 rotated_sprite = pygame.transform.rotate(scaled_sprite, render_angle)
                 _two_wheeler_render_cache[render_key] = rotated_sprite
             screen.blit(rotated_sprite, rotated_sprite.get_rect(center=(int(cx), int(cy))))
+        elif vehicle_type == "bus":
+            _draw_bus(
+                screen, cx, cy, npc.heading, length_px, width_px, npc.color,
+                getattr(npc, "turn_signal", ""),
+                getattr(npc, "turn_signal_elapsed", 0.0),
+                engine_on=_vehicle_engine_on(npc),
+            )
+        elif vehicle_type == "truck":
+            _draw_truck(
+                screen, cx, cy, npc.heading, length_px, width_px, npc.color,
+                getattr(npc, "turn_signal", ""),
+                getattr(npc, "turn_signal_elapsed", 0.0),
+                engine_on=_vehicle_engine_on(npc),
+            )
         elif getattr(npc, "lod_level", 0) > 0:
             sprite = _npc_vehicle_sprite(
                 pygame,
@@ -871,6 +1048,7 @@ def draw_npc_cars(
                 is_taxi=getattr(npc, "is_taxi", False),
                 turn_signal=getattr(npc, "turn_signal", ""),
                 turn_signal_elapsed=getattr(npc, "turn_signal_elapsed", 0.0),
+                engine_on=_vehicle_engine_on(npc),
             )
 
         if show_debug:
@@ -1165,3 +1343,114 @@ def draw_cyclists(
         tinted_sprite = _tinted_cyclist_sprite(_cyclist_sprite, cyclist.color)
         sprite = pygame.transform.rotozoom(tinted_sprite, math.degrees(cyclist.heading) - 90.0, sprite_scale)
         screen.blit(sprite, sprite.get_rect(center=(int(cx), int(cy))))
+
+
+TRAIN_ROOF_LINE_COLOR = (30, 30, 30)
+UNDER_ROOF_TRAIN_OUTLINE_COLOR = (225, 235, 225)  # a train under a station roof
+
+
+def draw_trains(
+    screen,
+    railway_mgr,
+    camx: float,
+    camy: float,
+    px_per_m: float = PX_PER_M,
+    screen_w: int = SCREEN_W,
+    screen_h: int = SCREEN_H,
+    show_debug: bool = False,
+    font=None,
+    roof_cover=None,
+) -> None:
+    """Trains (trains.py) vehicle by vehicle from their composition
+    (train_compositions.py): each a rotated rectangle of its own length
+    following the track, coloured by its visual profile - greens, a white
+    front band on a locomotive, a white stripe along a restaurant car.
+    A vehicle under an open roof (roof_cover, e.g. a station's platform
+    canopy) is only outlined, so the roof stays on top but the train shows.
+    Off-screen vehicles are skipped with one bounds check each."""
+    import pygame
+    from ..train_compositions import PROFILES
+    from ..trains import TRAIN_WIDTH_M
+
+    vminx, vminy, vmaxx, vmaxy = get_viewport_bounds(camx, camy, px_per_m, screen_w, screen_h, 30.0)
+    half_w = TRAIN_WIDTH_M / 2
+
+    def quad(x, y, cos_h, sin_h, front, back, left, right):
+        return [
+            world_to_screen(x + cos_h * lx - sin_h * ly, y + sin_h * lx + cos_h * ly, camx, camy, px_per_m, screen_w, screen_h)
+            for lx, ly in ((front, left), (front, right), (back, right), (back, left))
+        ]
+
+    for train in railway_mgr.trains:
+        for x, y, heading, length, profile in train.vehicles():
+            if not (vminx <= x <= vmaxx and vminy <= y <= vmaxy):
+                continue
+            base, pattern = PROFILES.get(profile, PROFILES["standard"])
+            cos_h, sin_h = math.cos(heading), math.sin(heading)
+            half_l = length / 2
+            body = quad(x, y, cos_h, sin_h, half_l, -half_l, half_w, -half_w)
+            if roof_cover and roof_cover.covers(x, y):
+                pygame.draw.polygon(screen, UNDER_ROOF_TRAIN_OUTLINE_COLOR, body, 2)
+                continue
+            pygame.draw.polygon(screen, base, body)
+            if pattern is not None and profile == "locomotive":
+                # The cab: a broad white front so the locomotive reads as one.
+                pygame.draw.polygon(screen, pattern, quad(x, y, cos_h, sin_h, half_l, half_l - 3.0, half_w, -half_w))
+            elif pattern is not None:  # restaurant car: a white stripe along it
+                pygame.draw.polygon(screen, pattern, quad(x, y, cos_h, sin_h, half_l - 1.0, -half_l + 1.0, 0.5, -0.5))
+            pygame.draw.polygon(screen, TRAIN_ROOF_LINE_COLOR, body, 1)
+    if show_debug:
+        for route in {id(t.route): t.route for t in railway_mgr.trains if t.service is not None}.values():
+            # Each timetable train's own selected track (plan_train_path).
+            pygame.draw.lines(
+                screen, (0, 220, 255), False,
+                [world_to_screen(px, py, camx, camy, px_per_m, screen_w, screen_h) for px, py in route.points], 3,
+            )
+        for train in railway_mgr.trains:  # timetable identity + travel direction at the locomotive
+            if font is not None and train.service is not None:
+                x, y, _ = train.cars()[0]
+                if vminx <= x <= vmaxx and vminy <= y <= vmaxy:
+                    sx, sy = world_to_screen(x, y, camx, camy, px_per_m, screen_w, screen_h)
+                    screen.blit(font.render(train.debug_label, True, (255, 255, 255), (20, 20, 20)), (sx + 8, sy - 8))
+        for route in railway_mgr.routes:
+            pygame.draw.lines(
+                screen, (255, 0, 255), False,
+                [world_to_screen(px, py, camx, camy, px_per_m, screen_w, screen_h) for px, py in route.points], 1,
+            )
+            for end in (route.points[0], route.points[-1]):  # spawn / turnaround points
+                pygame.draw.circle(screen, (255, 0, 255), world_to_screen(*end, camx, camy, px_per_m, screen_w, screen_h), 6, 2)
+
+
+TRAIN_CAR_POPUP_ROWS = 14
+
+
+def draw_train_car_popup(screen, font, train, index: int, passengers, language: str, screen_w: int = SCREEN_W) -> None:
+    """Who is inside a clicked train car (train_passengers.in_car)."""
+    import pygame
+    from ..localization import tr
+
+    vehicles = train.composition.vehicles
+    profile = vehicles[min(index, len(vehicles) - 1)][1]
+    types = train.composition.types
+    vehicle_type = f" {types[index]}" if index < len(types) and types[index] else ""
+    lines = [
+        f"{train.service.train_type} {train.service.number}  " if train.service else "",
+        f"{tr(language, 'train_car')} {index + 1}/{len(vehicles)}: {tr(language, 'car_profile_' + profile)}{vehicle_type}",
+        tr(language, "no_passengers") if profile == "locomotive" else f"{len(passengers)} {tr(language, 'passengers_in_car')}",
+    ]
+    if train.service is not None and getattr(train.service, "origin", ""):
+        lines[0] += f"{train.service.origin} - {train.service.destination}"
+    for passenger in passengers[:TRAIN_CAR_POPUP_ROWS]:
+        drunk = f"  {tr(language, 'drunk')} {passenger.promille:.1f} ‰" if passenger.promille >= 0.5 else ""
+        lines.append(f"{passenger.name or '#' + str(passenger.id)}  -> {passenger.destination}{drunk}")
+    if len(passengers) > TRAIN_CAR_POPUP_ROWS:
+        lines.append(f"... +{len(passengers) - TRAIN_CAR_POPUP_ROWS}")
+    width = max(font.size(line)[0] for line in lines) + 32
+    height = 20 + len(lines) * 24
+    rect = pygame.Rect(screen_w - width - 24, 150, width, height)
+    shade = pygame.Surface(rect.size, pygame.SRCALPHA)
+    shade.fill((12, 30, 18, 235))
+    screen.blit(shade, rect.topleft)
+    pygame.draw.rect(screen, (90, 190, 110), rect, width=2, border_radius=6)
+    for row, line in enumerate(lines):
+        screen.blit(font.render(line, True, (235, 245, 235) if row else (255, 230, 120)), (rect.x + 16, rect.y + 10 + row * 24))

@@ -18,7 +18,7 @@ make index-pbf
 or directly:
 
 ```bash
-PYTHONPATH=src .venv/bin/python -m theroadragetrip.utils.pbf_index src/theroadragetrip/assets/osm/finland-latest.osm.pbf
+.venv/bin/python src/theroadragetrip/utils/pbf_index.py src/theroadragetrip/assets/osm/finland-latest.osm.pbf
 ```
 
 (the `make index-pbf` target always points at the default Finland path

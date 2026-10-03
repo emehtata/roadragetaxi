@@ -56,5 +56,46 @@ def active_tiles(center: TileCoord) -> frozenset[TileCoord]:
     )
 
 
+def lookahead_tiles(
+    x: float, y: float, vx: float, vy: float, horizon_s: float, max_tiles: int,
+) -> frozenset[TileCoord]:
+    """Tiles along the direction of travel beyond the 3x3 active window -
+    none when slow/stationary, up to max_tiles when fast. Starts at two
+    tiles out: anything one tile out is already inside the 3x3."""
+    speed = math.hypot(vx, vy)
+    count = min(max_tiles, int(speed * horizon_s / TILE_SIZE_M))
+    if count < 1:
+        return frozenset()
+
+    dx = vx / speed * (count + 1) * TILE_SIZE_M
+    dy = vy / speed * (count + 1) * TILE_SIZE_M
+    tile = world_to_tile(x, y)
+    active = active_tiles(tile)
+    result: set[TileCoord] = set()
+    step_x = 1 if dx > 0 else -1 if dx < 0 else 0
+    step_y = 1 if dy > 0 else -1 if dy < 0 else 0
+    delta_x = TILE_SIZE_M / abs(dx) if dx else math.inf
+    delta_y = TILE_SIZE_M / abs(dy) if dy else math.inf
+    boundary_x = (tile.x + (1 if step_x > 0 else 0)) * TILE_SIZE_M
+    boundary_y = (tile.y + (1 if step_y > 0 else 0)) * TILE_SIZE_M
+    next_x = (boundary_x - x) / dx if dx else math.inf
+    next_y = (boundary_y - y) / dy if dy else math.inf
+
+    while min(next_x, next_y) <= 1.0 and len(result) < max_tiles:
+        if next_x < next_y:
+            tile = TileCoord(tile.x + step_x, tile.y)
+            next_x += delta_x
+        elif next_y < next_x:
+            tile = TileCoord(tile.x, tile.y + step_y)
+            next_y += delta_y
+        else:
+            tile = TileCoord(tile.x + step_x, tile.y + step_y)
+            next_x += delta_x
+            next_y += delta_y
+        if tile not in active:
+            result.add(tile)
+    return frozenset(result)
+
+
 def tile_changes(previous: set[TileCoord], current: set[TileCoord]) -> tuple[set[TileCoord], set[TileCoord]]:
     return current - previous, previous - current

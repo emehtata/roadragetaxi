@@ -260,3 +260,20 @@ def test_clear_world_cache_removes_entries(tmp_path):
 
     assert clear_world_cache(tmp_path) == 2
     assert list(tmp_path.iterdir()) == []
+
+
+
+def test_pending_count_counts_unfinished_loads_under_the_lock():
+    """Regression: the debug metric iterated _futures without the lock
+    while a background preload added to it - "dictionary changed size
+    during iteration"."""
+    import threading
+    from concurrent.futures import Future
+
+    from theroadragetrip.world_cache import WorldCacheManager
+
+    manager = WorldCacheManager.__new__(WorldCacheManager)
+    finished = Future()
+    finished.set_result(None)
+    manager._futures, manager._lock = {"a": Future(), "b": finished}, threading.Lock()
+    assert manager.pending_count() == 1
