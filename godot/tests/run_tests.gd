@@ -86,6 +86,25 @@ func test_interpolation() -> void:
 			frame += 1.0 / 150.0
 	check(slip.underruns == 0, "server clock slips cause no underrun (got %d frames)" % slip.underruns)
 
+	# godot-08: the render clock never runs backwards, whatever the arrivals
+	# do - late, early, bunched - and it still ends up `delay` behind.
+	var steady := StateBuffer.new()
+	steady.delay = 0.1
+	var arrivals := [0.0, 0.0, 0.03, -0.01, 0.025, 0.0, 0.04, -0.02, 0.0, 0.035, 0.01, 0.0]  # lateness per state (s)
+	var last_render := -INF
+	var backwards := 0
+	var frame_at := 0.0
+	for tick in range(1, 121):
+		var arrived: float = tick / 30.0 + arrivals[tick % arrivals.size()]
+		steady.push(tick, tick / 30.0, _state(tick * 1.0), arrived)
+		while frame_at < arrived + 1.0 / 30.0:
+			var now_render := steady.render_time(frame_at)
+			backwards += int(now_render < last_render)
+			last_render = now_render
+			frame_at += 1.0 / 144.0
+	check(backwards == 0, "the render clock is monotonic (%d backward steps)" % backwards)
+	check(absf(steady.render_time(frame_at) - steady.target_time(frame_at)) < 0.02, "and converges on its target")
+
 	# Events: handed out once, when the render time reaches their state.
 	var events := StateBuffer.new()
 	events.delay = 0.1

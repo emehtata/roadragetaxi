@@ -16,7 +16,13 @@ extends RefCounted
 const MAX_STATES := 16
 const LATE_FOLLOW := 0.5
 const EARLY_FOLLOW := 0.05
-const CLOCK_SNAP_S := 0.25  # a jump bigger than this (server restart, long stall) resets the clock
+const CLOCK_SNAP_S := 0.25
+# The render clock follows its target (local time + offset - delay) by
+# running slightly fast or slow - never by jumping, so it never goes back:
+# a backward step moved everything back a little and the next frames forward
+# again (godot-08 "vehicle jitter"). Rate stays within 1 +- MAX_SLEW.
+const SLEW_GAIN := 5.0  # per second of error
+const MAX_SLEW := 0.25  # a jump bigger than this (server restart, long stall) resets the clock
 
 var delay := 0.1
 var underruns := 0  # frames the render time was past the newest state
@@ -27,12 +33,17 @@ var underrun_episodes := 0
 var longest_underrun_s := 0.0
 var max_arrival_gap_s := 0.0
 var _underrun_since := -1.0
+var render_backsteps := 0  # samples whose render time was earlier than the previous sample's
+var max_backstep_s := 0.0
+var _last_render_time := -INF
 var _last_arrival := -1.0
 
 var _states: Array = []  # [{"tick", "time", "state"}], oldest first
 var _events: Array = []  # [{"time", "events"}] not yet presented
 var _offset := 0.0  # server time minus local time, smoothed
 var _has_clock := false
+var _clock_time := 0.0  # the render clock (server seconds)
+var _clock_local := -1.0  # local time it was last advanced at
 
 
 ## Zero the diagnostics (measure a steady stretch, not the connect burst).
@@ -42,10 +53,13 @@ func reset_diagnostics() -> void:
 	longest_underrun_s = 0.0
 	max_arrival_gap_s = 0.0
 	_underrun_since = -1.0
+	render_backsteps = 0
+	max_backstep_s = 0.0
 
 
 func clear() -> void:
 	_last_arrival = -1.0
+	_clock_local = -1.0
 	_states.clear()
 	_events.clear()
 	_has_clock = false
@@ -85,8 +99,24 @@ func push(tick: int, server_time: float, state: Dictionary, local_now: float) ->
 	return true
 
 
-func render_time(local_now: float) -> float:
+## Where the clock wants to be: `delay` behind the estimated server time.
+func target_time(local_now: float) -> float:
 	return local_now + _offset - delay
+
+
+## The render clock at `local_now`: advanced toward target_time at a rate
+## of 1 +- MAX_SLEW, so it is monotonic and smooth. It snaps only on a jump
+## bigger than CLOCK_SNAP_S (connect, server restart, long stall), or when
+## asked about an earlier local time than last.
+func render_time(local_now: float) -> float:
+	var target := target_time(local_now)
+	if _clock_local < 0.0 or local_now < _clock_local or absf(target - _clock_time) > CLOCK_SNAP_S:
+		_clock_time = target
+	else:
+		var rate := 1.0 + clampf((target - _clock_time) * SLEW_GAIN, -MAX_SLEW, MAX_SLEW)
+		_clock_time += (local_now - _clock_local) * rate
+	_clock_local = local_now
+	return _clock_time
 
 
 ## The two states around the render time: {"a", "b", "t"}, with discrete
@@ -96,6 +126,10 @@ func sample(local_now: float) -> Dictionary:
 	if _states.is_empty():
 		return {}
 	var at := render_time(local_now)
+	if at < _last_render_time:
+		render_backsteps += 1
+		max_backstep_s = maxf(max_backstep_s, _last_render_time - at)
+	_last_render_time = at
 	if at < _states[-1]["time"]:
 		_underrun_since = -1.0
 	if at >= _states[-1]["time"]:

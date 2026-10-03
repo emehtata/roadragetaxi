@@ -40,6 +40,7 @@ var _screenshot_wait := 6.0
 var _screenshot_drive := 0.0
 var _report := {}
 var _fps_samples: Array = []
+var _max_camera_lag_px := 0.0
 var _phone_check := {}  # selftest: what the phone saw and how an accept went
 var _phone_wait := 0.0  # --phone-wait S: after driving, wait up to S s for a real offer and accept it
 var events_presented := 0
@@ -135,6 +136,7 @@ func _key(a: Key, b: Key) -> float:
 
 
 func _process(delta: float) -> void:
+	entities.update_frame(delta)  # first: the camera below and the drawing use this one sample
 	var state: Dictionary = entities.shown_state()
 	_interp_usec = lerpf(_interp_usec, float(entities.interp_usec), 0.1)
 	if _selftest:
@@ -156,6 +158,10 @@ func _process(delta: float) -> void:
 			get_tree().quit()
 	camera.position = entities.player_position()
 	entities.px_per_m = camera.zoom.x
+	if _selftest and _selftest_start != Vector2.INF:
+		# How far from the screen centre the taxi is drawn this frame (it is
+		# drawn from the same sample the camera just used; godot-08).
+		_max_camera_lag_px = maxf(_max_camera_lag_px, entities.player_position().distance_to(camera.position) * camera.zoom.x)
 	_present(state)
 	_command_timer -= delta
 	if _command_timer <= 0.0 and not _selftest and not _audiotest and not screenshot_driving:  # the tests drive instead
@@ -287,10 +293,12 @@ func _run_selftest(delta: float, state: Dictionary) -> void:
 		_selftest_start = at
 		_selftest_time = 0.0
 		entities.buffer.reset_diagnostics()  # count from here: steady state, not the connect burst
+		_max_camera_lag_px = 0.0
 	var waiting_for_offer := _selftest_time > 6.0 and phone.items.is_empty() and _selftest_time < 6.0 + _phone_wait
 	send({"throttle": 0.0 if _selftest_time > 6.0 else 1.0, "brake": 1.0 if _selftest_time > 6.0 else 0.0,
 		"steer_left": 0.0, "steer_right": 0.0, "forward": 0.0, "turn": 0.0, "sprint": false})
 	_fps_samples.append(1.0 / maxf(delta, 0.0001))
+	# The taxi is drawn at the layer's sample of this frame; the camera should be on it.
 	if not phone.is_open:
 		phone.open()  # the selftest drives with the phone open: it must not get in the way
 	_phone_check["most_rows"] = maxi(_phone_check.get("most_rows", 0), phone.items.size())
@@ -319,7 +327,9 @@ func _run_selftest(delta: float, state: Dictionary) -> void:
 			"state_ms": _state_usec / 1000.0, "interp_draw_ms": _interp_usec / 1000.0,
 			"buffered_states": entities.buffer.size(), "underruns_6s": entities.buffer.underruns,
 			"underrun_episodes": entities.buffer.underrun_episodes, "longest_underrun_ms": entities.buffer.longest_underrun_s * 1000.0,
-			"max_state_gap_ms": entities.buffer.max_arrival_gap_s * 1000.0, "interp_delay_ms": entities.buffer.delay * 1000.0,
+			"max_state_gap_ms": entities.buffer.max_arrival_gap_s * 1000.0,
+			"render_backsteps": entities.buffer.render_backsteps, "max_backstep_ms": entities.buffer.max_backstep_s * 1000.0,
+			"taxi_off_centre_px": _max_camera_lag_px, "interp_delay_ms": entities.buffer.delay * 1000.0,
 			"fps_mean": _fps_samples.reduce(func(a, b): return a + b, 0.0) / _fps_samples.size(),
 			"sounds_played": audio.played, "engine_loop": audio.loop_playing("engine"), "unhandled_events": audio.unhandled,
 			"static_memory_mib": Performance.get_monitor(Performance.MEMORY_STATIC) / 1048576.0,

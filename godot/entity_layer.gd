@@ -65,11 +65,19 @@ static func current_target(state: Dictionary) -> Dictionary:
 	return {}
 
 
-func _process(delta: float) -> void:
+## This frame's picture: main.gd calls it once per frame before placing
+## the camera, so the camera and every drawn entity use the same sample.
+## (Sampling in this node's own _process ran after main's - the camera then
+## followed the previous frame's taxi: up to ~5 px of wobble at 30 km/h with
+## uneven frame times, godot-08.)
+func update_frame(delta: float) -> void:
 	_clock += delta
 	_frame = buffer.sample(now())
-	view_rect = (get_canvas_transform().affine_inverse() * get_viewport_rect()).grow(CULL_MARGIN_M)
 	queue_redraw()
+
+
+func _process(_delta: float) -> void:
+	view_rect = (get_canvas_transform().affine_inverse() * get_viewport_rect()).grow(CULL_MARGIN_M)
 
 
 ## Pygame's draw_npc_cars draws neither police (their own renderer) nor
