@@ -18,6 +18,7 @@ const COMMAND_INTERVAL_S := 0.05  # input -> simulation at 20 Hz, independent of
 @onready var audio: AudioManager = $Audio
 @onready var hud: Control = $Ui/Hud
 @onready var debug_label: Label = $Ui/Debug
+@onready var phone: Phone = $Ui/Phone
 
 var _tick := 0
 var _states_received := 0
@@ -36,6 +37,8 @@ var _screenshot_path := ""
 var _screenshot_wait := 6.0
 var _report := {}
 var _fps_samples: Array = []
+var _phone_check := {}  # selftest: what the phone saw and how an accept went
+var _phone_wait := 0.0  # --phone-wait S: after driving, wait up to S s for a real offer and accept it
 var events_presented := 0
 var _audiotest := false
 var override_night := -1.0  # >= 0: presentation override for the audio test (never sent to Python)
@@ -55,6 +58,8 @@ func _ready() -> void:
 				entities.buffer.delay = float(args[i + 1]) / 1000.0
 			"--selftest":
 				_selftest = true
+			"--phone-wait":
+				_phone_wait = float(args[i + 1])
 			"--audiotest":
 				_audiotest = true
 			"--screenshot":
@@ -64,6 +69,8 @@ func _ready() -> void:
 	sim.chunk_received.connect(func(message: Dictionary): map_layer.add_chunk(message))
 	sim.chunk_unloaded.connect(func(chunk_id: String): map_layer.remove_chunk(chunk_id))
 	sim.connection_changed.connect(_on_connection)
+	phone.sound.connect(func(group: String, variation: int): audio.handle_event({"type": "sound", "group": group, "variation": variation}))
+	phone.request.connect(func(action: String, item_id: String, request_id: int): sim.send_phone(action, item_id, request_id))
 	if _audiotest:
 		var tester: Node = preload("res://audio_test.gd").new()
 		tester.main = self
@@ -75,6 +82,7 @@ func _ready() -> void:
 
 func _on_connection(up: bool) -> void:
 	print("simulation ", "connected" if up else "disconnected")
+	phone.set_connected(up)
 	if not up:  # a new connection starts over: header, chunks, states
 		entities.buffer.clear()
 		map_layer.clear()
@@ -156,8 +164,11 @@ func _present(state: Dictionary) -> void:
 	var player: Dictionary = state["player_pedestrian"] if state.get("on_foot", false) else state["player"]
 	audio.player_at = Vector2(player["x"], player["y"])
 	for event in entities.buffer.take_due_events(entities.now()):
-		audio.handle_event(event)
 		events_presented += 1
+		if event.get("type") == "phone_result":
+			phone.handle_result(event)
+			continue
+		audio.handle_event(event)
 		_recent_events.push_front(event.get("group", event.get("type", "?")))
 	_recent_events.resize(min(_recent_events.size(), 6))
 	var driving: bool = not state.get("on_foot", true) and state["player"].get("engine_on", false)
@@ -170,6 +181,7 @@ func _present(state: Dictionary) -> void:
 	audio.set_loop("rain", (0.6 if raining else 0.0) if override_rain < 0.0 else override_rain)
 	_train_loop(state)
 	hud.show_state(state)
+	phone.show_phone(state.get("phone", {}))
 	if debug_label.visible:
 		_update_debug(state)
 
@@ -247,11 +259,30 @@ func _run_selftest(delta: float, state: Dictionary) -> void:
 		_selftest_start = at
 		_selftest_time = 0.0
 		entities.buffer.reset_diagnostics()  # count from here: steady state, not the connect burst
-	send({"throttle": 1.0, "brake": 0.0, "steer_left": 0.0, "steer_right": 0.0, "forward": 0.0, "turn": 0.0, "sprint": false})
+	var waiting_for_offer := _selftest_time > 6.0 and phone.items.is_empty() and _selftest_time < 6.0 + _phone_wait
+	send({"throttle": 0.0 if _selftest_time > 6.0 else 1.0, "brake": 1.0 if _selftest_time > 6.0 else 0.0,
+		"steer_left": 0.0, "steer_right": 0.0, "forward": 0.0, "turn": 0.0, "sprint": false})
 	_fps_samples.append(1.0 / maxf(delta, 0.0001))
+	if not phone.is_open:
+		phone.open()  # the selftest drives with the phone open: it must not get in the way
+	_phone_check["most_rows"] = maxi(_phone_check.get("most_rows", 0), phone.items.size())
+	if waiting_for_offer:
+		return
+	if _selftest_time > 6.0 and not phone.items.is_empty() and not _phone_check.has("asked"):
+		_phone_check["asked"] = phone.selected_id
+		_phone_check["sent"] = phone.accept_selected()
+		phone.handle_result_hook = func(result): _phone_check["result"] = result
+	# An accepted ride offer starts the fare (the phone turns busy); an accepted
+	# rail booking only changes that row's status.
+	var fare_started: bool = phone.busy or str(_phone_check.get("asked", "")).begins_with("booking-")
+	var answered: bool = _phone_check.has("result") and (fare_started or not _phone_check["result"].get("ok", false))
+	if _selftest_time > 6.0 and _phone_check.has("asked") and not answered and _selftest_time < 9.0 + _phone_wait:
+		return  # wait for the simulation's answer
 	if _selftest_time > 6.0:
 		var hud_text: Dictionary = hud.values(state)
-		_report.merge({"ok": at.distance_to(_selftest_start) > 5.0 and map_layer.chunk_count() > 0,
+		var phone_ok: bool = _phone_wait <= 0.0 or (_phone_check.get("result", {}).get("ok", false) and phone.pending.is_empty()
+			and (phone.busy or str(_phone_check.get("asked", "")).begins_with("booking-")))
+		_report.merge({"ok": at.distance_to(_selftest_start) > 5.0 and map_layer.chunk_count() > 0 and phone_ok,
 			"driven_m": at.distance_to(_selftest_start), "states": _states_received,
 			"trains": state["trains"].size(), "npcs": state["npcs"].size(), "pedestrians": state["pedestrians"].size(),
 			"drawn_entities": entities.drawn_entities, "map_chunks": map_layer.chunk_count(),
@@ -264,7 +295,7 @@ func _run_selftest(delta: float, state: Dictionary) -> void:
 			"fps_mean": _fps_samples.reduce(func(a, b): return a + b, 0.0) / _fps_samples.size(),
 			"sounds_played": audio.played, "engine_loop": audio.loop_playing("engine"), "unhandled_events": audio.unhandled,
 			"static_memory_mib": Performance.get_monitor(Performance.MEMORY_STATIC) / 1048576.0,
-			"player_id": sim.player_id})
+			"player_id": sim.player_id, "phone": _phone_check, "phone_busy_after": phone.busy, "phone_pending_after": phone.pending.size()})
 		_finish(_report)
 
 

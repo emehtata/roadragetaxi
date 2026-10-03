@@ -24,6 +24,7 @@ var _peer := StreamPeerTCP.new()
 var _buffer := PackedByteArray()
 var _retry_in := 0.0
 var _seq := 0
+var _last_command: Dictionary = {}
 
 
 func _process(delta: float) -> void:
@@ -85,11 +86,26 @@ func drop_connection() -> void:
 
 ## A player command: the simulation validates and applies it.
 func send_command(command: Dictionary) -> void:
+	_last_command = command
 	if not connected:
 		return
 	_seq += 1
 	_peer.put_data(command_line(command, _seq, player_id).to_utf8_buffer())
 
 
-static func command_line(command: Dictionary, seq: int, player: String) -> String:
-	return JSON.stringify({"type": "command", "version": PROTOCOL_VERSION, "seq": seq, "player_id": player, "command": command}) + "\n"
+## A phone answer, riding on a command with the current controls (the
+## simulation applies it once). False without a connection.
+func send_phone(action: String, item_id: String, request_id: int) -> bool:
+	if not connected:
+		return false
+	_seq += 1
+	var phone := {"action": action, "item_id": item_id, "request_id": request_id}
+	_peer.put_data(command_line(_last_command, _seq, player_id, phone).to_utf8_buffer())
+	return true
+
+
+static func command_line(command: Dictionary, seq: int, player: String, phone: Dictionary = {}) -> String:
+	var message := {"type": "command", "version": PROTOCOL_VERSION, "seq": seq, "player_id": player, "command": command}
+	if not phone.is_empty():
+		message["phone"] = phone
+	return JSON.stringify(message) + "\n"

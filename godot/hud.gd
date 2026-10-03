@@ -60,9 +60,9 @@ static func values(state: Dictionary) -> Dictionary:
 				text["fare"] = who
 	text["notice"] = str(taxi.get("notification_msg", "")) if taxi.get("notification_timer", 0.0) > 0.0 else ""
 	if on_foot:
-		text["hint"] = "F get in the taxi · WASD walk"
+		text["hint"] = "F get in the taxi · WASD walk · P phone"
 	elif not player.get("engine_on", true):
-		text["hint"] = "E start the engine · F get out"
+		text["hint"] = "E start the engine · F get out · P phone"
 	else:
-		text["hint"] = "WASD drive · F get out · E engine · +/- zoom"
+		text["hint"] = "WASD drive · F get out · E engine · P phone · +/- zoom"
 	return text

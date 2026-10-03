@@ -82,7 +82,7 @@ func resolve(event: Dictionary) -> Array:
 		if group.is_empty():
 			continue
 		var files: Array = group["files"]
-		var variation: int = step.get("variation", _pick_variation(step["group"], files.size()))
+		var variation: int = step.get("variation", event.get("variation", _pick_variation(step["group"], files.size())))
 		var action := {"group": step["group"], "file": files[clampi(variation, 0, files.size() - 1)],
 			"volume": float(step.get("volume", 1.0)), "bus": bus_for(step["group"])}
 		var at = event.get("at")

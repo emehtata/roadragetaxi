@@ -1,4 +1,4 @@
-[gd_scene load_steps=7 format=3]
+[gd_scene load_steps=8 format=3]
 
 [ext_resource type="Script" path="res://main.gd" id="1"]
 [ext_resource type="Script" path="res://sim_client.gd" id="2"]
@@ -6,6 +6,7 @@
 [ext_resource type="Script" path="res://entity_layer.gd" id="4"]
 [ext_resource type="Script" path="res://audio_manager.gd" id="5"]
 [ext_resource type="Script" path="res://hud.gd" id="6"]
+[ext_resource type="Script" path="res://phone.gd" id="7"]
 
 [node name="Main" type="Node2D"]
 script = ExtResource("1")
@@ -99,6 +100,18 @@ offset_top = -34.0
 offset_right = 400.0
 offset_bottom = -8.0
 horizontal_alignment = 1
+
+[node name="Phone" type="PanelContainer" parent="Ui"]
+anchors_preset = 11
+anchor_left = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = -440.0
+offset_top = 50.0
+offset_right = -16.0
+offset_bottom = -50.0
+grow_horizontal = 0
+script = ExtResource("7")
 
 [node name="Debug" type="Label" parent="Ui"]
 visible = false
