@@ -326,12 +326,16 @@ class AudioManager:
         if max(left, right) <= 0.0:
             return
         if variation is None:
-            choices = [i for i in range(len(sounds)) if i != self._last_variation.get(group_id)] or [0]
-            variation = random.choice(choices)
+            variation = self._pick_variation(group_id, len(sounds))
         self._last_variation[group_id] = variation
         channel = sounds[min(variation, len(sounds) - 1)].play()
         if channel is not None:
             channel.set_volume(left, right)
+
+    def _pick_variation(self, group_id: str, count: int) -> int:
+        """A random variation, never the one played last (with two, they alternate)."""
+        choices = [i for i in range(count) if i != self._last_variation.get(group_id)] or [0]
+        return random.choice(choices)
 
     def on_rise(self, key: str, active: bool, group_id: str, volume: float = 1.0) -> bool:
         """Play group_id when `active` turns true (not every frame it stays true)."""
@@ -341,10 +345,11 @@ class AudioManager:
             self.play_group(group_id, volume)
         return rose
 
-    def set_loop(self, key: str, group_id: str, volume: float, variation: int = 0, music: bool = False, at=None) -> None:
+    def set_loop(self, key: str, group_id: str, volume: float, variation: Optional[int] = 0, music: bool = False, at=None) -> None:
         """Keep a looping layer of group_id running at `volume` (0 stops it),
         placed at `at` when it has a place. Music-volume loops are the
-        background beds; the rest are effects."""
+        background beds; the rest are effects. variation=None picks one each
+        time the loop (re)starts, never the previous one."""
         channel = self.loop_channels.get(key)
         sounds = self.groups.get(group_id)
         left, right = self.levels(group_id, volume, at, music)
@@ -354,6 +359,8 @@ class AudioManager:
                 del self.loop_channels[key]
             return
         if channel is None or not channel.get_busy():
+            if variation is None:
+                variation = self._last_variation[group_id] = self._pick_variation(group_id, len(sounds))
             channel = sounds[min(variation, len(sounds) - 1)].play(loops=-1)
             if channel is None:
                 return
@@ -366,7 +373,7 @@ class AudioManager:
     ) -> None:
         """Background loops, each 0..1: the day city bed crossfades into the
         night one; rain, wind and wet tyres layer on."""
-        self.set_loop("city_day", "ambient.city_day", 1.0 - night, music=True)
+        self.set_loop("city_day", "ambient.city_day", 1.0 - night, variation=None, music=True)  # a fresh bed each morning
         self.set_loop("city_night", "ambient.city_night", night, music=True)
         self.set_loop("rain", "weather.rain", rain, variation=0)
         self.set_loop("rain_heavy", "weather.rain", heavy_rain, variation=1)

@@ -108,6 +108,13 @@ func test_audio() -> void:
 	var before := audio.played
 	audio.handle_event({"type": "sound", "group": "vehicle.door_close"})
 	check(audio.played == before + 1, "one event plays one sound")
+	var beds: Array = []
+	for day in 3:  # day, night (loop stopped), day ...
+		audio.set_loop("city_day", 0.5)
+		audio.set_loop("city_day", 0.4)  # an update, not a restart
+		beds.append(audio.loop_files["city_day"])
+		audio.set_loop("city_day", 0.0)
+	check(audio.loop_starts["city_day"] == 3 and beds[0] != beds[1] and beds[2] == beds[0], "the day bed alternates its two variations on each restart")
 	audio.set_loop("engine", 0.5, 1.2)
 	check(audio.loop_playing("engine"), "a loop starts")
 	audio.set_loop("engine", 0.0)

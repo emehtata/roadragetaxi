@@ -8,7 +8,7 @@ Problems found (exit 1 if any):
 - a loop group whose files aren't stereo (catalog format) or a one-shot that isn't mono
 - a group the game plays (play_group / set_loop / on_rise in src/, or the
   Godot client's audio_events.json) that doesn't exist or has no files
-- a Godot loop naming a variation the group doesn't have
+- a Godot loop naming a variation the group doesn't have (or not 'alternate')
 
 Quiet is fine (the night and day beds are meant to be soft): only clips
 below SILENT_DBFS - effectively nothing - fail. Whether Godot itself can
@@ -112,8 +112,12 @@ def validate(check_audio: bool = True) -> list[str]:
         group = catalog["groups"].get(loop["group"], {"files": [], "loop": False})
         if not group["loop"]:
             problems.append(f"godot loop {key}: {loop['group']} is not a loop group")
-        if loop.get("variation", 0) >= max(1, len(group["files"])):
-            problems.append(f"godot loop {key}: variation {loop['variation']} doesn't exist")
+        variation = loop.get("variation", 0)
+        if isinstance(variation, str):
+            if variation != "alternate":
+                problems.append(f"godot loop {key}: variation {variation!r} must be a number or 'alternate'")
+        elif variation >= max(1, len(group["files"])):
+            problems.append(f"godot loop {key}: variation {variation} doesn't exist")
     return problems
 
 

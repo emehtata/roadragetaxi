@@ -17,6 +17,7 @@ var origin := Vector2.ZERO  # map origin (MapMath)
 var player_at := Vector2.ZERO  # the taxi / walking player, world metres: where its own sounds come from
 var played := 0  # one-shots started (performance / test readout)
 var played_groups: Dictionary = {}  # group -> one-shots started
+var loop_files: Dictionary = {}  # loop key -> the file it is (or was last) playing
 var loop_starts: Dictionary = {}  # loop key -> times it (re)started: once per sounding stretch, not per state
 var unhandled: Dictionary = {}  # event key -> times seen with no sound
 
@@ -159,15 +160,11 @@ func set_loop(key: String, volume: float, pitch: float = 1.0, at = null) -> void
 		if player != null and player.playing:
 			player.stop()
 		return
+	var spec: Dictionary = _config.get("loops", {}).get(key, {})
+	var group: Dictionary = _groups.get(spec.get("group", ""), {})
+	if group.is_empty():
+		return
 	if player == null:
-		var spec: Dictionary = _config.get("loops", {}).get(key, {})
-		var group: Dictionary = _groups.get(spec.get("group", ""), {})
-		if group.is_empty():
-			return
-		var stream := _stream(group["files"][clampi(int(spec.get("variation", 0)), 0, group["files"].size() - 1)]) as AudioStreamOggVorbis
-		if stream == null:
-			return
-		stream.loop = true
 		if spec.get("positional", false):
 			var placed := AudioStreamPlayer2D.new()
 			placed.max_distance = _config.get("ranges_m", {}).get(spec["group"], [0.0, 200.0])[1]
@@ -175,10 +172,19 @@ func set_loop(key: String, volume: float, pitch: float = 1.0, at = null) -> void
 			player = placed
 		else:
 			player = AudioStreamPlayer.new()
-		player.stream = stream
 		player.bus = bus_for(spec["group"])
 		add_child(player)
 		_loops[key] = player
+	if not player.playing:  # (re)starting: which variation
+		var files: Array = group["files"]
+		var variation = spec.get("variation", 0)
+		var index: int = _pick_variation(spec["group"], files.size()) if variation is String else clampi(int(variation), 0, files.size() - 1)
+		var stream := _stream(files[index]) as AudioStreamOggVorbis
+		if stream == null:
+			return
+		stream.loop = true
+		player.stream = stream
+		loop_files[key] = files[index]
 	player.volume_db = linear_to_db(volume)
 	player.pitch_scale = pitch
 	if at != null and player is AudioStreamPlayer2D:

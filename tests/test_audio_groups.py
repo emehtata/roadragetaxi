@@ -64,6 +64,17 @@ def test_loops_start_once_follow_volume_and_stop_at_zero():
     assert "rain" not in audio.loop_channels and not channel.busy
 
 
+def test_the_day_bed_uses_both_variations_alternating_on_each_restart():
+    audio, log = manager({"ambient.city_day": 2})
+    for _ in range(3):  # day, night (silent), day ...
+        audio.set_loop("city_day", "ambient.city_day", 1.0, variation=None, music=True)
+        audio.set_loop("city_day", "ambient.city_day", 0.5, variation=None, music=True)  # still the same bed
+        audio.set_loop("city_day", "ambient.city_day", 0.0, variation=None, music=True)
+    names = [name for name, _ in log]
+    assert len(names) == 3  # started once per day, not per update
+    assert {names[0], names[1]} == {"ambient.city_day#0", "ambient.city_day#1"} and names[2] == names[0]
+
+
 def test_every_generated_catalog_group_loads_from_its_files():
     import json
     from theroadragetrip.audio import CATALOG
