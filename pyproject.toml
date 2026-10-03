@@ -4,7 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "theroadragetrip"
-version = "0.15.0alpha"
+# 0.16.0g-alpha (the Godot client experiment), in PEP 440 form - pip rejects "0.16.0g-alpha".
+version = "0.16.0a0+g"
 description = "PoC top-down driving game using OSM data"
 readme = "README.md"
 requires-python = ">=3.10"
