@@ -192,7 +192,11 @@ How sounds are chosen:
 - A sound's bus comes from its group's category.
 - A one-shot picks a random variation, never the same one twice in a row
   (as `audio.py` does).
-- A loop plays a fixed variation, default the first.
+- A loop plays a fixed variation, default the first. With
+  `"variation": "alternate"` it picks a new one each time it (re)starts,
+  never the previous one. The day bed uses this, as Pygame does with
+  `set_loop(..., variation=None)`, so its two generated loops alternate
+  from one morning to the next.
 
 `make audio-check` (`tools/validate_audio_assets.py`) fails on:
 - missing, non-OGG or duplicated files
@@ -204,6 +208,11 @@ How sounds are chosen:
 - Godot loops naming a missing variation
 
 `make godot-test` loads every catalog file through Godot's own OGG loader.
+
+Packaging: the Windows PyInstaller build copies `assets/` whole. The
+Python wheel's `package-data` used to be `assets/*`, which left out every
+subfolder: no sounds, no catalog, no announcements. It is now
+`assets/**/*`, guarded by `tests/test_packaging.py`.
 
 Placement:
 - Sounds with `at` are `AudioStreamPlayer2D` nodes at that spot, silent

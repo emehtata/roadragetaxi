@@ -154,6 +154,7 @@ func _finish() -> void:
 		"engine_playing_at_end": audio.loop_playing("engine"),
 		"events_presented": main.events_presented, "sounds_played": audio.played,
 		"audio_driver": AudioServer.get_driver_name(), "mix_rate": AudioServer.get_mix_rate()}
+	report["day_bed"] = audio.loop_files.get("city_day", "").get_file()
 	report.merge(_report_extra)
 	print("AUDIOTEST report ", JSON.stringify(report))
 	get_tree().quit()

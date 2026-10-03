@@ -89,7 +89,8 @@
         "spatial": false,
         "old_kept_at": "deleted after the listening review passed (2026-10-03); in git history",
         "gameplay_code_changed": "audio.py update_ambience: the day bed is now set_loop('city_day', 'ambient.city_day', ...) like the night bed (no special-case channel)",
-        "test_result": "day phase -31 dBFS (legacy -45); day/night crossfade and Environment mute unchanged; measured in the Godot real-window audio test (godot/audio_test.gd), see docs/architecture/godot-client.md; listening review passed 2026-10-03"
+        "test_result": "day phase -31 dBFS (legacy -45); day/night crossfade and Environment mute unchanged; measured in the Godot real-window audio test (godot/audio_test.gd), see docs/architecture/godot-client.md; listening review passed 2026-10-03",
+        "variation_selection": "both variations used: each (re)start of the day bed picks the other one (Pygame set_loop variation=None, Godot loops.city_day.variation 'alternate'); tested deterministically"
       }
     },
     {
