@@ -54,7 +54,10 @@ func test_interpolation() -> void:
 
 	var late := buffer.sample(5.0)  # long after the newest state: hold it, don't extrapolate
 	check(late["t"] == 0.0 and late["a"]["player"]["x"] == 10.0, "a missing state holds the newest one")
-	check(buffer.underruns == 1, "and counts an underrun")
+	check(buffer.underruns == 1 and buffer.underrun_episodes == 1, "and counts an underrun episode")
+	buffer.sample(5.1)
+	check(buffer.underruns == 2 and buffer.underrun_episodes == 1 and is_equal_approx(buffer.longest_underrun_s, 0.1), "consecutive underrun frames are one episode")
+	check(is_equal_approx(buffer.max_arrival_gap_s, 1.0 / 30.0), "the gap between state arrivals is measured")
 
 	# Heading across the +-pi seam turns the short way.
 	var near_pi := 3.1
@@ -62,6 +65,24 @@ func test_interpolation() -> void:
 	check(absf(absf(heading) - PI) < 0.01, "heading interpolation wraps (got %f)" % heading)
 	var p := StateBuffer.blend({"x": 0.0, "y": 0.0, "heading": near_pi}, {"x": 0.0, "y": 0.0, "heading": -near_pi}, 0.5)
 	check(absf(absf(p.z) - PI) < 0.01, "entity blend uses the short way round")
+
+	# Server ticks that run late shift the server clock for good (no catch-up):
+	# here every 4th tick is 30 ms late, as under load. The render time must
+	# keep following, not overtake the newest state between arrivals.
+	var slip := StateBuffer.new()
+	slip.delay = 0.1
+	var behind := 0.0
+	for tick in range(1, 121):
+		if tick > 30 and tick % 4 == 0:
+			behind += 0.03
+		var arrived := tick / 30.0 + behind
+		slip.push(tick, tick / 30.0, _state(0.0), arrived)
+		var next_arrival := (tick + 1) / 30.0 + behind + (0.03 if tick + 1 > 30 and (tick + 1) % 4 == 0 else 0.0)
+		var frame := arrived
+		while frame < next_arrival:
+			slip.sample(frame)
+			frame += 1.0 / 150.0
+	check(slip.underruns == 0, "server clock slips cause no underrun (got %d frames)" % slip.underruns)
 
 	# Events: handed out once, when the render time reaches their state.
 	var events := StateBuffer.new()

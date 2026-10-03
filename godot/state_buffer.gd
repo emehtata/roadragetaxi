@@ -14,10 +14,20 @@ class_name StateBuffer
 extends RefCounted
 
 const MAX_STATES := 16
+const LATE_FOLLOW := 0.5
+const EARLY_FOLLOW := 0.05
 const CLOCK_SNAP_S := 0.25  # a jump bigger than this (server restart, long stall) resets the clock
 
 var delay := 0.1
 var underruns := 0  # frames the render time was past the newest state
+# Diagnostics (selftest report): an underrun episode is a run of such
+# frames; the longest wait between two arriving states says whether one was
+# late (a server tick spike or a stalled client frame), not just slow frames.
+var underrun_episodes := 0
+var longest_underrun_s := 0.0
+var max_arrival_gap_s := 0.0
+var _underrun_since := -1.0
+var _last_arrival := -1.0
 
 var _states: Array = []  # [{"tick", "time", "state"}], oldest first
 var _events: Array = []  # [{"time", "events"}] not yet presented
@@ -25,7 +35,17 @@ var _offset := 0.0  # server time minus local time, smoothed
 var _has_clock := false
 
 
+## Zero the diagnostics (measure a steady stretch, not the connect burst).
+func reset_diagnostics() -> void:
+	underruns = 0
+	underrun_episodes = 0
+	longest_underrun_s = 0.0
+	max_arrival_gap_s = 0.0
+	_underrun_since = -1.0
+
+
 func clear() -> void:
+	_last_arrival = -1.0
 	_states.clear()
 	_events.clear()
 	_has_clock = false
@@ -40,20 +60,28 @@ func size() -> int:
 func push(tick: int, server_time: float, state: Dictionary, local_now: float) -> bool:
 	if not _states.is_empty() and tick <= _states[-1]["tick"]:
 		return false
+	if _last_arrival >= 0.0:
+		max_arrival_gap_s = maxf(max_arrival_gap_s, local_now - _last_arrival)
+	_last_arrival = local_now
 	_states.append({"tick": tick, "time": server_time, "state": state})
 	if _states.size() > MAX_STATES:
 		_states.pop_front()
 	var events: Array = state.get("events", [])
 	if not events.is_empty():
 		_events.append({"time": server_time, "events": events})
-	# Server-local clock offset, averaged so arrival jitter doesn't shake
-	# the render time.
+	# Server-local clock offset, smoothed so arrival jitter doesn't shake the
+	# render time - but asymmetrically: a state later than expected pulls
+	# the offset back fast, an early one only slowly. server_time is
+	# simulated time, and a server tick that runs late is never caught up,
+	# so the server clock falls behind for good; following that slowly let
+	# the render time overtake the newest state for a frame or two
+	# (godot-05 underrun investigation).
 	var sample := server_time - local_now
 	if not _has_clock or absf(sample - _offset) > CLOCK_SNAP_S:
 		_offset = sample
 		_has_clock = true
 	else:
-		_offset += (sample - _offset) * 0.05
+		_offset += (sample - _offset) * (LATE_FOLLOW if sample < _offset else EARLY_FOLLOW)
 	return true
 
 
@@ -68,9 +96,15 @@ func sample(local_now: float) -> Dictionary:
 	if _states.is_empty():
 		return {}
 	var at := render_time(local_now)
+	if at < _states[-1]["time"]:
+		_underrun_since = -1.0
 	if at >= _states[-1]["time"]:
 		if _states.size() > 1 and at > _states[-1]["time"]:
 			underruns += 1
+			if _underrun_since < 0.0:
+				_underrun_since = local_now
+				underrun_episodes += 1
+			longest_underrun_s = maxf(longest_underrun_s, local_now - _underrun_since)
 		return {"a": _states[-1]["state"], "b": _states[-1]["state"], "t": 0.0}
 	if at <= _states[0]["time"]:
 		return {"a": _states[0]["state"], "b": _states[0]["state"], "t": 0.0}

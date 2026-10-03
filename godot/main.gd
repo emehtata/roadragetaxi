@@ -246,7 +246,7 @@ func _run_selftest(delta: float, state: Dictionary) -> void:
 	if _selftest_start == Vector2.INF:
 		_selftest_start = at
 		_selftest_time = 0.0
-		entities.buffer.underruns = 0  # count from here: steady state, not the connect burst
+		entities.buffer.reset_diagnostics()  # count from here: steady state, not the connect burst
 	send({"throttle": 1.0, "brake": 0.0, "steer_left": 0.0, "steer_right": 0.0, "forward": 0.0, "turn": 0.0, "sprint": false})
 	_fps_samples.append(1.0 / maxf(delta, 0.0001))
 	if _selftest_time > 6.0:
@@ -259,6 +259,8 @@ func _run_selftest(delta: float, state: Dictionary) -> void:
 			"hud_money": hud_text["money"], "camera_follows": camera.position.distance_to(entities.player_position()) < 1.0,
 			"state_ms": _state_usec / 1000.0, "interp_draw_ms": _interp_usec / 1000.0,
 			"buffered_states": entities.buffer.size(), "underruns_6s": entities.buffer.underruns,
+			"underrun_episodes": entities.buffer.underrun_episodes, "longest_underrun_ms": entities.buffer.longest_underrun_s * 1000.0,
+			"max_state_gap_ms": entities.buffer.max_arrival_gap_s * 1000.0, "interp_delay_ms": entities.buffer.delay * 1000.0,
 			"fps_mean": _fps_samples.reduce(func(a, b): return a + b, 0.0) / _fps_samples.size(),
 			"sounds_played": audio.played, "engine_loop": audio.loop_playing("engine"), "unhandled_events": audio.unhandled,
 			"static_memory_mib": Performance.get_monitor(Performance.MEMORY_STATIC) / 1048576.0,
