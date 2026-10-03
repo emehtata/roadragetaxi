@@ -44,6 +44,7 @@ from ..climate import appearance_with_snow_depth, typical_temperature
 from ..fuel import fuel_station_price_cents, nearest_fuel_station
 from .. import protocol, transport
 from ..simulation import PlayerCommand, advance_simulation, apply_enter_exit_vehicle
+from ..osm.cache import OSM_CACHE_TTL_S
 from ..osm import (
     CACHE_DIR,
     DEFAULT_BBOX,
@@ -791,7 +792,7 @@ def _load_world(
     try:
         elements_count = 0
         world_cache = WorldCacheManager(
-            cache_ttl=float(os.getenv("OSM_CACHE_TTL", 24 * 3600)),
+            cache_ttl=float(os.getenv("OSM_CACHE_TTL", OSM_CACHE_TTL_S)),
             fetch_func=_resolve_osm_fetch_func(args, overpass_endpoints, progress_callback=on_load_progress),
             build_func=lambda raw: build_ways(
                 raw, progress_callback=on_build_progress, include_bus_stops=bus_stops_enabled
