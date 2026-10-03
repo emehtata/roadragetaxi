@@ -178,13 +178,33 @@ Files come from the game's own catalog
 `.ogg` files). They are loaded at runtime from there, not copied into
 `godot/`.
 
-`legacy_groups` registers the older single sounds that Pygame loads by
-name from `src/theroadragetrip/sounds/`:
-- `city-traffic-outdoor`, the day bed; the catalog's `ambient.city_day`
-  group has no files
-- `censored-cursing`
+Every sound the client plays is a Stable Audio Open OGG from that catalog.
+In godot-03 the last three legacy Freesound effects were replaced:
+- door open (a FLAC Godot couldn't load)
+- the day city bed
+- the pedestrian curse
 
-A sound's bus comes from its group's category.
+See `docs/audio/stable-audio-replacements.json` (plan, reasons,
+comparison) and `docs/audio/stable-audio-assets.json` (how each file was
+made). The old files are kept in `src/theroadragetrip/sounds/legacy/` until
+a listening review.
+
+How sounds are chosen:
+- A sound's bus comes from its group's category.
+- A one-shot picks a random variation, never the same one twice in a row
+  (as `audio.py` does).
+- A loop plays a fixed variation, default the first.
+
+`make audio-check` (`tools/validate_audio_assets.py`) fails on:
+- missing, non-OGG or duplicated files
+- clips that are silent (below −70 dBFS; quiet beds are fine), or much
+  shorter or longer than the group's `duration_s`
+- loops that aren't stereo, or one-shots that aren't mono
+- groups that the game code or `audio_events.json` play but that don't
+  exist or are empty
+- Godot loops naming a missing variation
+
+`make godot-test` loads every catalog file through Godot's own OGG loader.
 
 Placement:
 - Sounds with `at` are `AudioStreamPlayer2D` nodes at that spot, silent
@@ -306,7 +326,7 @@ and `tests/test_map_chunks.py`).
 
 ## Audio validation (real output, WSLg PulseAudio)
 
-`--audiotest` runs a scripted 13-phase sequence windowed, with the real
+`--audiotest` runs a scripted 17-phase sequence windowed, with the real
 PulseAudio driver, against the Oulu server. Each phase's Master-bus mix is
 recorded to its own WAV (`AudioEffectRecord`) and measured with
 `tools/analyse_godot_audio.py`. In parallel, the system output was recorded
@@ -318,14 +338,17 @@ Nobody has listened to it; these are measurements of the output.
 | phase | state | L / R dBFS | result |
 |---|---|---|---|
 | all_muted | Game and Environment at 0 | −120 / −120 | silence: nothing bypasses the buses |
-| day_ambience | Environment only | −45 / −45 | day bed plays (the asset itself is quiet, peak about −28 dBFS) |
+| day_ambience | Environment only | −31 / −31 | the generated day bed (the legacy one measured −45) |
 | night_ambience | night | −23 / −22 | night bed |
 | rain | + rain | −27 / −25 | rain loop |
-| enter_taxi | Game only, F | −21 / −20 | door close, then engine start (from the simulation) |
-| engine_idle / drive / brake | 0 → 8.3 m/s | −21 / −17 / −19 | engine loop: started once, pitch follows speed |
-| engine_off | E | −36 | engine loop stopped; engine_stop sound |
+| enter_taxi | Game only, engine off, F | −37 dBFS, peak 0.46 | the door-open sound alone, exactly once; −27 dBFS in the WSLg system recording |
+| engine_start / idle / drive / brake | E, then 0 → 8.3 m/s | about −20 | engine start, then the engine loop: started once, pitch follows speed |
+| engine_off | E | −50 | engine loop stopped; engine_stop sound |
+| train_movement | rumble loop 40 m away | −19 | positional train loop |
 | event_left / event_right | train_arrived ±60 m | L−R +1.6 / −1.6 dB | positional: pans to the correct side |
+| repeated_events | door-open ×3, 0.8 s apart | −25 | 3 events → 3 plays; 0 one-shot players left |
 | master_muted | Master 0 | silent in the OS recording | volume groups work |
+| disconnect | the client hangs up | −120; 0 loops and 0 one-shots playing | cleanup (measured 0.6 s after the drop, before the 1 s reconnect) |
 
 - **No restarts or duplicates:** loop starts were `engine 1`, `city_day 1`,
   `city_night 1`, `rain 1`, `train_running 2` (the train stopped and left
@@ -344,9 +367,13 @@ Nobody has listened to it; these are measurements of the output.
   plays the loudest intercity and commuter trains as two layers.
 - Distance: Godot uses its own attenuation curve up to the same "silent
   beyond" ranges. Pygame uses inverse distance with a soft fade-out.
-- `car-door-open`: Pygame plays a FLAC that Godot can't load at runtime,
-  and the catalog's `vehicle.door_open` has no file of its own. In Godot
-  this event has no sound; it is counted in `unhandled`.
+- Door sound when getting in: getting in now plays `vehicle.door_open` in
+  both clients; it was `door_close` before godot-03. Passengers boarding
+  still get `door_close`.
+- Measurements are not listening. Every check above is about levels,
+  panning, timing and counts. Whether the new sounds sound good is a
+  manual review, still pending, especially for `pedestrian_curse_03`,
+  whose raw generation clipped heavily.
 - No station announcements or passenger speech yet; that is a later phase.
 
 ## Known limitations
@@ -365,8 +392,9 @@ Nobody has listened to it; these are measurements of the output.
   `--auto-fetch` is off in server mode.
 - **Single player only**, though identified by `player_id`.
 - **HUD:** basics only; no phone, offers, bookings or menus.
-- **Missing sounds:** the door-open sound (above), station announcements
-  and passenger speech.
+- **Missing sounds:** no station announcements or passenger speech in
+  Godot. The pedestrian curse is generated and validated but wasn't
+  triggered in the scripted test.
 - **Native Windows** performance and audio were not measured.
 
 ## Migration from Pygame
