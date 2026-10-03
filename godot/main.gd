@@ -28,6 +28,7 @@ var _recent_events: Array = []
 var _command_timer := 0.0
 var _interact_pending := false
 var _engine_on := true
+var drive := DriveInput.new()  # the held driving keys (drive_input.gd)
 var _state_usec := 0.0  # handling one state (parse + buffer), smoothed
 var _interp_usec := 0.0  # sampling + blending one frame, smoothed
 
@@ -67,6 +68,10 @@ func _ready() -> void:
 				_phone_wait = float(args[i + 1])
 			"--audiotest":
 				_audiotest = true
+			"--inputtest":
+				var tester: Node = preload("res://input_test.gd").new()
+				tester.main = self
+				add_child.call_deferred(tester)
 			"--screenshot":
 				_screenshot_path = args[i + 1]
 			"--wetness":  # presentation override for visual checks (never sent to Python)
@@ -131,8 +136,17 @@ func _unhandled_input(event: InputEvent) -> void:
 				camera.zoom /= 1.25
 
 
-func _key(a: Key, b: Key) -> float:
-	return 1.0 if Input.is_physical_key_pressed(a) or Input.is_physical_key_pressed(b) else 0.0
+## Driving keys: every press and release, before any UI can consume it.
+func _input(event: InputEvent) -> void:
+	drive.handle(event)
+
+
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_APPLICATION_FOCUS_OUT or what == NOTIFICATION_WM_WINDOW_FOCUS_OUT:
+		# Key-ups of keys held now will never arrive: let go of everything,
+		# and tell the simulation at once rather than at the next interval.
+		drive.clear()
+		_command_timer = 0.0
 
 
 func _process(delta: float) -> void:
@@ -166,15 +180,7 @@ func _process(delta: float) -> void:
 	_command_timer -= delta
 	if _command_timer <= 0.0 and not _selftest and not _audiotest and not screenshot_driving:  # the tests drive instead
 		_command_timer = COMMAND_INTERVAL_S
-		var up := _key(KEY_W, KEY_UP)
-		var down := _key(KEY_S, KEY_DOWN)
-		var left := _key(KEY_A, KEY_LEFT)
-		var right := _key(KEY_D, KEY_RIGHT)
-		var on_foot: bool = state.get("on_foot", true)
-		send({"throttle": 0.0 if on_foot else up, "brake": 0.0 if on_foot else down,
-			"steer_left": 0.0 if on_foot else left, "steer_right": 0.0 if on_foot else right,
-			"forward": up - down if on_foot else 0.0, "turn": left - right if on_foot else 0.0,
-			"sprint": on_foot and Input.is_physical_key_pressed(KEY_SHIFT)})
+		send(drive.controls(state.get("on_foot", true)))
 
 
 ## Sound and HUD for the state on screen; events as the picture reaches them.

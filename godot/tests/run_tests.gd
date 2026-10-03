@@ -35,6 +35,7 @@ func _process(_delta: float) -> bool:  # first frame: the tree is live, so nodes
 	test_commands_carry_the_player_id()
 	test_phone()
 	test_rendering()
+	test_drive_input()
 	print("%d checks, %d failed" % [_checks, _failures])
 	quit(1 if _failures > 0 else 0)
 	return false
@@ -253,6 +254,50 @@ func test_rendering() -> void:
 	check(Entities.drawn_as_vehicle(npc) and Entities.drawn_as_vehicle(npc.merged({"lod_level": 1})), "ordinary NPC vehicles are drawn")
 	check(not Entities.drawn_as_vehicle(npc.merged({"is_police": true})) and not Entities.drawn_as_vehicle(npc.merged({"is_on_foot": true}))
 		and not Entities.drawn_as_vehicle(npc.merged({"lod_level": 2})), "police, drivers on foot and the far LOD band are not")
+
+
+func _release(code: Key) -> InputEventKey:
+	var event := _key(code)
+	event.pressed = false
+	return event
+
+
+func test_drive_input() -> void:
+	# godot-08: the accelerator is active exactly while it is held.
+	var drive := DriveInput.new()
+	check(drive.controls(false)["throttle"] == 0.0, "nothing held: no throttle")
+	drive.handle(_key(KEY_W))
+	check(drive.controls(false)["throttle"] == 1.0, "W pressed: throttle")
+	drive.handle(_release(KEY_W))
+	check(drive.controls(false)["throttle"] == 0.0 and not drive.any_held(), "W released: no throttle, nothing left held")
+	for i in 5:
+		drive.handle(_key(KEY_W))
+		drive.handle(_release(KEY_W))
+	check(drive.controls(false)["throttle"] == 0.0, "repeated taps leave nothing held")
+	drive.handle(_key(KEY_W))
+	drive.handle(_key(KEY_UP))
+	drive.handle(_release(KEY_W))
+	check(drive.controls(false)["throttle"] == 1.0, "the other accelerator key still held")
+	drive.handle(_release(KEY_UP))
+	drive.handle(_key(KEY_S))
+	check(drive.controls(false)["throttle"] == 0.0 and drive.controls(false)["brake"] == 1.0, "release then brake")
+	drive.handle(_release(KEY_S))
+	drive.handle(_key(KEY_W))
+	drive.handle(_key(KEY_A))
+	drive.handle(_release(KEY_W))
+	var turning := drive.controls(false)
+	check(turning["throttle"] == 0.0 and turning["steer_left"] == 1.0, "release W while turning: steering stays, throttle goes")
+	drive.handle(_key(KEY_W))
+	drive.clear()  # the window lost focus with W and A down: their key-ups never come
+	check(drive.controls(false)["throttle"] == 0.0 and drive.controls(false)["steer_left"] == 0.0, "focus lost: nothing held")
+	var echo := _key(KEY_W)
+	echo.echo = true
+	drive.handle(echo)
+	check(drive.controls(false)["throttle"] == 0.0, "key-repeat echoes don't press")
+	drive.handle(_key(KEY_W))
+	var walking := drive.controls(true)
+	check(walking["throttle"] == 0.0 and walking["forward"] == 1.0, "on foot, W walks instead of accelerating")
+	check(not drive.handle(_key(KEY_P)) and not drive.handle(_key(KEY_F)), "phone and enter keys are not driving keys")
 
 
 func _key(code: Key) -> InputEventKey:
