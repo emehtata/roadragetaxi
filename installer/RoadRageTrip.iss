@@ -1,5 +1,5 @@
 #define AppName "Road Rage Trip"
-#define AppVersion "0.14.2alpha"
+#define AppVersion "0.15.0alpha"
 #define AppPublisher "The Road Rage Trip"
 #define AppExeName "RoadRageTrip.exe"
 
