@@ -2,6 +2,7 @@
 of any real simulation or Pygame."""
 
 import ast
+import json
 
 import pytest
 
@@ -125,3 +126,20 @@ def test_no_pygame_reference_in_protocol_module():
 
 def test_no_pygame_reference_in_transport_module():
     _assert_no_pygame_import(transport)
+
+
+def test_the_waiting_customer_crosses_the_wire():
+    """godot-07: a client draws the customer waiting at (or walking to) the
+    taxi from these fields, as Pygame's draw_taxi_target does."""
+    from theroadragetrip.taxi import TaxiPassenger, TaxiTarget
+
+    passenger = TaxiPassenger(
+        name="Aino", pickup=TaxiTarget(x=10.0, y=20.0, address="Kirkkokatu 4"),
+        dropoff=TaxiTarget(x=500.0, y=-40.0, address="Rautatientori"),
+        ped_x=11.5, ped_y=19.0, ped_heading=1.25, is_walking_to_car=True,
+    )
+    data = protocol._passenger_to_dict(passenger)
+    assert data["ped"] == [11.5, 19.0, 1.25] and data["is_walking_to_car"] is True
+    assert data["boarded"] is False and data["rail_booking"] is False
+    back = protocol._passenger_from_dict(json.loads(json.dumps(data)))
+    assert (back.ped_x, back.ped_y, back.ped_heading, back.is_walking_to_car) == (11.5, 19.0, 1.25, True)

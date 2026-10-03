@@ -171,6 +171,13 @@ def _passenger_to_dict(passenger: Optional[TaxiPassenger]) -> Optional[dict]:
             "x": passenger.dropoff.x, "y": passenger.dropoff.y, "address": passenger.dropoff.address,
             "radius_m": passenger.dropoff.radius_m,
         },
+        # The waiting customer as Pygame draws them (render/navigation.py
+        # draw_taxi_target): where they stand or walk, until they board. A
+        # rail booking's customer is a pedestrian of their own instead.
+        "ped": [round(passenger.ped_x, 2), round(passenger.ped_y, 2), round(passenger.ped_heading, 3)],
+        "is_walking_to_car": passenger.is_walking_to_car,
+        "boarded": passenger.boarded,
+        "rail_booking": passenger.rail_booking is not None,
     }
 
 
@@ -261,6 +268,7 @@ def build_state_message(
             "curb_mass_kg": car.curb_mass_kg,
             "driver_mass_kg": car.driver_mass_kg,
             "passenger_mass_kg": car.passenger_mass_kg,
+            "length_m": getattr(car, "length_m", 4.0), "width_m": getattr(car, "width_m", 1.8),
         },
         "player_pedestrian": {
             "x": player_pedestrian.x, "y": player_pedestrian.y, "heading": player_pedestrian.heading,
@@ -409,6 +417,11 @@ def _passenger_from_dict(data: Optional[dict]) -> Optional[TaxiPassenger]:
         nausea_resolved=data["nausea_resolved"],
         pickup=TaxiTarget(x=data["pickup"]["x"], y=data["pickup"]["y"], address=data["pickup"]["address"], radius_m=data["pickup"]["radius_m"]),
         dropoff=TaxiTarget(x=data["dropoff"]["x"], y=data["dropoff"]["y"], address=data["dropoff"]["address"], radius_m=data["dropoff"]["radius_m"]),
+        ped_x=data.get("ped", (0.0, 0.0, 0.0))[0],
+        ped_y=data.get("ped", (0.0, 0.0, 0.0))[1],
+        ped_heading=data.get("ped", (0.0, 0.0, 0.0))[2],
+        is_walking_to_car=data.get("is_walking_to_car", False),
+        boarded=data.get("boarded", False),
     )
 
 
