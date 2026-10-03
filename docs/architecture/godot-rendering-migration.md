@@ -12,6 +12,47 @@ Rule throughout: Godot gets state and draws it. Anything the simulation
 decides (traffic-light phase, route, darkness, a booking's step) is sent,
 never recomputed in GDScript.
 
+## Status after godot-07 (rendering-only phase)
+
+**Done** (verified against Pygame's renderers; see the parity rows marked
+godot-07):
+- **Job:** the pickup/drop-off zone, marker and label; the waiting
+  customer; the off-screen arrow; the compass; the nausea bubble
+- **Vehicles:**
+  - appearance by type (car/van, bus, truck; two-wheelers simplified)
+  - lamps, brake lights and turn signals
+  - crash state and smoke; taxi exhaust
+  - Pygame's skip rules: police, drivers on foot drawn as pedestrians, far
+    level-of-detail band
+  - the taxi's own size
+- **Pedestrians:** heading, walk cycle, fallen and indoor states, curse
+  bubbles
+- **Trains:** profile colours, cab front, restaurant stripe, full length,
+  drawn above vehicles
+- **HUD:** fuel gauge, rage meter, water timer, trip and odometer
+- **Map:** wet roads; puddles (different spots, see the parity doc); roads
+  by layer with bridges on top
+- **Camera:** 9 px/m default as in Pygame; view culling of entities
+- **Two small protocol additions** for rows the audit classified as
+  rendering-only: the waiting customer's position and state, and the
+  taxi's size
+
+**Not done in Phase A**, because each needs data the server doesn't send:
+- the meet-and-greet panel and the booked-passenger arrow
+- day/night
+- traffic lights, taxi stands, fuel stations, roadworks
+- road name and speed limit
+- the navigation route, which also needs route planning moved into the
+  simulation
+
+**Rendering-only items still open:**
+- road colours by type; railway track style; two-wheeler sprites
+- street lights (lamp placement)
+- rain and snow particles, rain ripples on puddles
+- start hints and the HUD job line as in Pygame; the career summary;
+  limiter status
+- menus; camera follow / back button
+
 ## Two protocol extensions most items share
 
 Most protocol gaps fall into two groups. Doing these first unblocks the
@@ -145,7 +186,8 @@ rest is developer tooling.
 
 ## Recommended next phase
 
-Phase A, in dependency order:
+After godot-07 the rendering-only part of Phase A is done; the next step
+is item 2 below (the per-tick protocol additions). Original order:
 1. **Rendering-only items first** (data already in the state): waypoint
    and off-screen arrow, waiting passenger, compass, nausea bubble,
    vehicle appearance, turn signals, crash state, taxi lamps, trains above
