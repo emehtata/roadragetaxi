@@ -75,6 +75,11 @@ serialized as-is.
 
 Coordinates are world metres (x east, y north). Godot subtracts the world
 `center` and flips y to stay precise in float32 (`MapMath.point`).
+The subtraction must happen in GDScript's 64-bit floats, before any
+`Vector2`/`Vector3` (32-bit) holds a position: absolute Oulu metres have
+3 cm (x) and 50 cm (y) steps in 32 bits. `StateBuffer.blend` once packed
+them first, and the camera on the taxi moved in 50 cm jumps, so the world
+shook while the taxi looked steady (godot-09).
 
 ## Outgoing network traffic (`transport.py`)
 

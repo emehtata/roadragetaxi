@@ -42,6 +42,10 @@ var _screenshot_drive := 0.0
 var _report := {}
 var _fps_samples: Array = []
 var _max_camera_lag_px := 0.0
+var _motion: Array = []  # selftest, while driving: [raw dt, godot delta, render dt, camera step m]
+var _last_raw := 0.0
+var _last_render := 0.0
+var _last_camera := Vector2.ZERO
 var _phone_check := {}  # selftest: what the phone saw and how an accept went
 var _phone_wait := 0.0  # --phone-wait S: after driving, wait up to S s for a real offer and accept it
 var events_presented := 0
@@ -172,6 +176,13 @@ func _process(delta: float) -> void:
 			get_tree().quit()
 	camera.position = entities.player_position()
 	entities.px_per_m = camera.zoom.x
+	if _selftest and _selftest_start != Vector2.INF and _selftest_time > 0.5:
+		var raw: float = entities.now()
+		var render: float = entities.buffer._clock_time
+		_motion.append([raw - _last_raw, delta, render - _last_render, camera.position.distance_to(_last_camera)])
+	_last_raw = entities.now()
+	_last_render = entities.buffer._clock_time
+	_last_camera = camera.position
 	if _selftest and _selftest_start != Vector2.INF:
 		# How far from the screen centre the taxi is drawn this frame (it is
 		# drawn from the same sample the camera just used; godot-08).
@@ -335,12 +346,38 @@ func _run_selftest(delta: float, state: Dictionary) -> void:
 			"underrun_episodes": entities.buffer.underrun_episodes, "longest_underrun_ms": entities.buffer.longest_underrun_s * 1000.0,
 			"max_state_gap_ms": entities.buffer.max_arrival_gap_s * 1000.0,
 			"render_backsteps": entities.buffer.render_backsteps, "max_backstep_ms": entities.buffer.max_backstep_s * 1000.0,
-			"taxi_off_centre_px": _max_camera_lag_px, "interp_delay_ms": entities.buffer.delay * 1000.0,
+			"taxi_off_centre_px": _max_camera_lag_px, "motion": _motion_stats(), "interp_delay_ms": entities.buffer.delay * 1000.0,
 			"fps_mean": _fps_samples.reduce(func(a, b): return a + b, 0.0) / _fps_samples.size(),
 			"sounds_played": audio.played, "engine_loop": audio.loop_playing("engine"), "unhandled_events": audio.unhandled,
 			"static_memory_mib": Performance.get_monitor(Performance.MEMORY_STATIC) / 1048576.0,
 			"player_id": sim.player_id, "phone": _phone_check, "phone_busy_after": phone.busy, "phone_pending_after": phone.pending.size()})
 		_finish(_report)
+
+
+## Frame-to-frame smoothness while driving: how uneven the frame times
+## are (raw clock vs Godot's smoothed delta), the render clock's rate, and
+## the camera's step per frame against each time base (cv = stddev/mean).
+func _motion_stats() -> Dictionary:
+	var cv := func(values: Array) -> float:
+		var mean: float = values.reduce(func(a, b): return a + b, 0.0) / maxf(1.0, values.size())
+		var variance: float = values.reduce(func(a, b): return a + (b - mean) * (b - mean), 0.0) / maxf(1.0, values.size())
+		return sqrt(variance) / mean if mean > 0.0 else 0.0
+	var raw: Array = _motion.map(func(m): return m[0])
+	var smooth: Array = _motion.map(func(m): return m[1])
+	var rate: Array = _motion.map(func(m): return m[2] / maxf(m[0], 0.0001))
+	var steps: Array = _motion.map(func(m): return m[3])
+	# Shake: how much the camera's step changes from one frame to the next,
+	# in screen pixels (smooth driving: a fraction of a pixel; the float32
+	# position quantisation fixed in godot-09 made it ~4.5 px).
+	var changes: Array = []
+	for i in range(1, _motion.size()):
+		changes.append(absf(_motion[i][3] - _motion[i - 1][3]) * camera.zoom.x)
+	changes.sort()
+	return {"frames": _motion.size(),
+		"step_change_px_p95": changes[int(changes.size() * 0.95)] if not changes.is_empty() else 0.0,
+		"step_change_px_max": changes.max() if not changes.is_empty() else 0.0, "cv_raw_dt": cv.call(raw), "cv_delta": cv.call(smooth), "cv_camera_step": cv.call(steps),
+		"cv_step_per_delta": cv.call(_motion.map(func(m): return m[3] / maxf(m[1], 0.0001))),
+		"clock_rate_min": rate.min() if not rate.is_empty() else 0.0, "clock_rate_max": rate.max() if not rate.is_empty() else 0.0}
 
 
 func _finish(report: Dictionary) -> void:

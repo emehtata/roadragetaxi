@@ -62,6 +62,21 @@ func test_interpolation() -> void:
 	check(buffer.underruns == 2 and buffer.underrun_episodes == 1 and is_equal_approx(buffer.longest_underrun_s, 0.1), "consecutive underrun frames are one episode")
 	check(is_equal_approx(buffer.max_arrival_gap_s, 1.0 / 30.0), "the gap between state arrivals is measured")
 
+	# godot-09: at real map coordinates (Oulu: x ~ 428 km, y ~ 7210 km) the
+	# blended position must keep centimetres - 32-bit vectors of absolute
+	# metres step by 3 cm (x) and 50 cm (y), which shook the world.
+	var origin := Vector2(428000.0, 7210000.0)
+	var from := {"x": 428491.0, "y": 7210561.0, "heading": 0.0}
+	var to := {"x": 428491.1, "y": 7210561.4, "heading": 0.0}
+	var smooth := true
+	var previous := StateBuffer.blend(from, to, 0.0, origin)
+	for step in range(1, 11):
+		var here := StateBuffer.blend(from, to, step / 10.0, origin)
+		smooth = smooth and absf((here.x - previous.x) - 0.01) < 0.001 and absf((previous.y - here.y) - 0.04) < 0.001
+		previous = here
+	check(smooth, "blending keeps centimetre steps at Oulu coordinates")
+	check(is_equal_approx(StateBuffer.blend(from, from, 0.0, origin).y, -561.0), "blend returns canvas coordinates (y down) relative to the origin")
+
 	# Heading across the +-pi seam turns the short way.
 	var near_pi := 3.1
 	var heading := lerp_angle(near_pi, -near_pi, 0.5)

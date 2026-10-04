@@ -161,6 +161,13 @@ func take_due_events(local_now: float) -> Array:
 	return due
 
 
-static func blend(a: Dictionary, b: Dictionary, t: float) -> Vector3:
-	## x, y and heading (shortest way round) of one entity: z is the heading.
-	return Vector3(lerpf(a["x"], b["x"], t), lerpf(a["y"], b["y"], t), lerp_angle(a.get("heading", 0.0), b.get("heading", 0.0), t))
+## One entity between two states: its canvas position relative to the map
+## `origin` (MapMath.point's convention) in x, y, and its heading (shortest
+## way round) in z. The origin is subtracted in 64-bit floats BEFORE the
+## result becomes a (32-bit) vector: absolute map metres in Oulu (x ~ 428 km,
+## y ~ 7210 km) only have 3 cm and 50 cm steps in 32 bits, so the taxi and
+## the camera on it moved in 50 cm jumps and the world shook (godot-09).
+static func blend(a: Dictionary, b: Dictionary, t: float, origin := Vector2.ZERO) -> Vector3:
+	var x: float = lerpf(a["x"], b["x"], t) - origin.x
+	var y: float = lerpf(a["y"], b["y"], t) - origin.y
+	return Vector3(x, -y, lerp_angle(a.get("heading", 0.0), b.get("heading", 0.0), t))

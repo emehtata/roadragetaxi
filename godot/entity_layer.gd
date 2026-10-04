@@ -46,8 +46,8 @@ func player_position() -> Vector2:
 	if _frame.is_empty():
 		return Vector2.ZERO
 	var key := "player_pedestrian" if _frame["a"].get("on_foot", false) else "player"
-	var p := StateBuffer.blend(_frame["a"][key], _frame["b"].get(key, _frame["a"][key]), _frame["t"])
-	return MapMath.point(origin, p.x, p.y)
+	var p := StateBuffer.blend(_frame["a"][key], _frame["b"].get(key, _frame["a"][key]), _frame["t"], origin)
+	return Vector2(p.x, p.y)
 
 
 ## The job's target this frame (pickup or drop-off, as TaxiManager.get_current_target),
@@ -307,8 +307,8 @@ func _draw() -> void:
 	var later_peds := _by_id(b.get("pedestrians", []))
 	for ped in a.get("pedestrians", []):
 		var next: Dictionary = later_peds.get(ped["id"], ped)
-		var p := StateBuffer.blend(ped, next, t)
-		var c := MapMath.point(origin, p.x, p.y)
+		var p := StateBuffer.blend(ped, next, t, origin)
+		var c := Vector2(p.x, p.y)
 		if not view_rect.has_point(c):
 			continue
 		_pedestrian(c, p.z, ped, lerpf(ped.get("animation_time", 0.0), next.get("animation_time", 0.0), t))
@@ -317,21 +317,21 @@ func _draw() -> void:
 	for npc in a.get("npcs", []):  # NPC drivers out of their car: Pygame adds them to the pedestrians
 		if not npc.get("is_on_foot", false):
 			continue
-		var p := StateBuffer.blend(npc, later_npc_rows.get(npc["id"], npc), t)
-		var c := MapMath.point(origin, p.x, p.y)
+		var p := StateBuffer.blend(npc, later_npc_rows.get(npc["id"], npc), t, origin)
+		var c := Vector2(p.x, p.y)
 		if view_rect.has_point(c):
 			_pedestrian(c, p.z, {"color": npc.get("color", [200, 200, 200])}, 0.0)
 			count += 1
 	if a.get("on_foot", false):
-		var walker := StateBuffer.blend(a["player_pedestrian"], b.get("player_pedestrian", a["player_pedestrian"]), t)
-		_pedestrian(MapMath.point(origin, walker.x, walker.y), walker.z, {"color": [255, 217, 64], "animation_state": "standing"}, 0.0)
+		var walker := StateBuffer.blend(a["player_pedestrian"], b.get("player_pedestrian", a["player_pedestrian"]), t, origin)
+		_pedestrian(Vector2(walker.x, walker.y), walker.z, {"color": [255, 217, 64], "animation_state": "standing"}, 0.0)
 		count += 1
 
 	_target(a)
 
 	var player: Dictionary = a["player"]
-	var taxi := StateBuffer.blend(player, b.get("player", player), t)
-	var taxi_at := MapMath.point(origin, taxi.x, taxi.y)
+	var taxi := StateBuffer.blend(player, b.get("player", player), t, origin)
+	var taxi_at := Vector2(taxi.x, taxi.y)
 	var taxi_length: float = player.get("length_m", 4.4)
 	if player.get("engine_on", false):
 		_smoke(taxi_at, taxi.z, taxi_length, _clock, true)  # exhaust
@@ -346,8 +346,8 @@ func _draw() -> void:
 	for npc in a.get("npcs", []):
 		if not drawn_as_vehicle(npc):
 			continue
-		var p := StateBuffer.blend(npc, later_npcs.get(npc["id"], npc), t)
-		var c := MapMath.point(origin, p.x, p.y)
+		var p := StateBuffer.blend(npc, later_npcs.get(npc["id"], npc), t, origin)
+		var c := Vector2(p.x, p.y)
 		if not view_rect.has_point(c):
 			continue
 		_vehicle(c, p.z, npc["length_m"], npc["width_m"], _rgb(npc["color"]), npc.get("vehicle_type", "car"),
