@@ -12,6 +12,7 @@ extends Node2D
 const COMMAND_INTERVAL_S := 0.05  # input -> simulation at 20 Hz, independent of the frame rate
 
 const NightLayer := preload("res://night_layer.gd")
+const Perf := preload("res://perf.gd")
 @onready var sim: SimClient = $SimClient
 @onready var map_layer: Node2D = $MapLayer
 @onready var entities: Node2D = $EntityLayer
@@ -22,7 +23,7 @@ const NightLayer := preload("res://night_layer.gd")
 @onready var phone: Phone = $Ui/Phone
 @onready var instruments: Control = $Ui/Instruments
 @onready var nav_overlay: Control = $Ui/NavOverlay
-@onready var night: CanvasGroup = $NightLayer
+@onready var night: Node2D = $NightLayer
 @onready var labels: Control = $Ui/Labels
 @onready var flash: ColorRect = $Sky/Flash
 
@@ -55,6 +56,10 @@ var _phone_wait := 0.0  # --phone-wait S: after driving, wait up to S s for a re
 var events_presented := 0
 var _audiotest := false
 var _chunk_queue: Array = []  # chunk messages waiting for their frame
+var _last_frame_usec := 0  # frame-time accounting (godot-18): real time between frames, not the smoothed delta
+var _bench := 0.0  # --bench SECONDS: drive-through measurement, then the report as JSON
+var _bench_left := 0.0
+var _bench_hide: PackedStringArray = []
 var _visible_roads := -1  # drivable roads in view (night tint), recounted every 0.1 s as Pygame does
 var _visible_roads_elapsed := 0.0
 var override_night := -1.0  # >= 0: presentation override for the audio test (never sent to Python)
@@ -90,6 +95,12 @@ func _ready() -> void:
 				_screenshot_path = args[i + 1]
 			"--wetness":  # presentation override for visual checks (never sent to Python)
 				override_wetness = float(args[i + 1])
+			"--bench-hide":  # godot-18 profiling: hide layers ("z7,labels,...": chunk layers by z, or named groups)
+				_bench_hide = args[i + 1].split(",")
+			"--bench":  # godot-18: record SECONDS of frames once the simulation is here, print BENCH {json}, quit
+				_bench = float(args[i + 1])
+				_bench_left = _bench
+				Perf.keep_all = true
 			"--compass":
 				$Ui/NavOverlay.show_compass = true
 			"--screenshot-drive":  # with --screenshot: get in and drive this many seconds first
@@ -172,8 +183,13 @@ func _notification(what: int) -> void:
 
 
 func _process(delta: float) -> void:
+	var now_usec := Time.get_ticks_usec()
+	if _last_frame_usec > 0 and not entities.shown_state().is_empty() and (_bench <= 0.0 or _bench - _bench_left > 5.0):
+		Perf.frame((now_usec - _last_frame_usec) / 1000.0)  # --bench: after 5 s of warm-up (the first chunks)
+	_last_frame_usec = now_usec
 	if not _chunk_queue.is_empty():
 		map_layer.add_chunk(_chunk_queue.pop_front())
+		Perf.add("chunk_add", Time.get_ticks_usec() - now_usec)
 	entities.update_frame(delta)  # first: the camera below and the drawing use this one sample
 	var state: Dictionary = entities.shown_state()
 	_interp_usec = lerpf(_interp_usec, float(entities.interp_usec), 0.1)
@@ -207,7 +223,24 @@ func _process(delta: float) -> void:
 		# How far from the screen centre the taxi is drawn this frame (it is
 		# drawn from the same sample the camera just used; godot-08).
 		_max_camera_lag_px = maxf(_max_camera_lag_px, entities.player_position().distance_to(camera.position) * camera.zoom.x)
+	var present_started := Time.get_ticks_usec()
 	_present(state)
+	Perf.add("present", Time.get_ticks_usec() - present_started)
+	if not _bench_hide.is_empty():
+		_apply_bench_hide()  # after _present, which sets some layers' visibility itself
+	Perf.add("main_process", Time.get_ticks_usec() - now_usec)
+	if _bench > 0.0:  # the renderer's own measurement of the previous frame (godot-18)
+		var rid := get_viewport().get_viewport_rid()
+		RenderingServer.viewport_set_measure_render_time(rid, true)
+		Perf.add("render_cpu", int(RenderingServer.viewport_get_measured_render_time_cpu(rid) * 1000.0))
+		Perf.add("render_gpu", int(RenderingServer.viewport_get_measured_render_time_gpu(rid) * 1000.0))
+		Perf.add("frame_setup_cpu", int(RenderingServer.get_frame_setup_time_cpu() * 1000.0))
+	if _bench > 0.0 and not state.is_empty():
+		_bench_left -= delta
+		if _bench_left <= 0.0:
+			_perf_counters()
+			print("BENCH ", JSON.stringify(Perf.report()))
+			get_tree().quit()
 	_command_timer -= delta
 	if _command_timer <= 0.0 and not _selftest and not _audiotest and not screenshot_driving:  # the tests drive instead
 		_command_timer = COMMAND_INTERVAL_S
@@ -251,6 +284,7 @@ func _present(state: Dictionary) -> void:
 	map_layer.set_darkness(maxf(darkness, 0.0))  # lit windows (godot-17)
 	entities.reflectors_on = typeof(calendar) == TYPE_DICTIONARY and calendar.get("sun_altitude_deg", 90.0) < -7.5
 	var lit := [[], []]
+	var night_started := Time.get_ticks_usec()
 	if darkness > 0.25:
 		var beams: Array = entities.headlight_beams()
 		if not beams.is_empty():
@@ -260,9 +294,11 @@ func _present(state: Dictionary) -> void:
 					box = box.expand(point)
 			lit = NightLayer.clip_beams(beams, map_layer.buildings_in(box.grow(8.0)))
 	night.show_night(night_alpha(darkness, _visible_roads), view, lit[0], lit[1])
+	Perf.add("night_beams", Time.get_ticks_usec() - night_started)
 	var lightning: float = entities.lightning_now()
 	if not is_equal_approx(flash.color.a, lightning):
 		flash.color.a = lightning
+	flash.visible = lightning > 0.0  # godot-18: an invisible full-screen rect is still blended every frame
 	# The server's darkness; an older server without a calendar: the hour.
 	var night := (darkness if darkness >= 0.0 else _night(state.get("game_time_seconds", 12.0 * 3600.0))) if override_night < 0.0 else override_night
 	audio.set_loop("city_day", 0.5 * (1.0 - night))
@@ -344,7 +380,42 @@ func send(controls: Dictionary) -> void:
 	sim.send_command(command)
 
 
+func _apply_bench_hide() -> void:
+	for name in _bench_hide:
+		match name:
+			"labels": labels.visible = false
+			"buildings": map_layer._buildings.visible = false
+			"night": night.visible = false
+			"pools": map_layer._pool_group.visible = false
+			"entities": entities.visible = false
+			"ground": map_layer._ground.visible = false
+			_:
+				if name.begins_with("z"):
+					for chunk in map_layer._chunks.values():
+						for child in chunk.get_children():
+							if child is CanvasItem and child.z_index == int(name.substr(1)):
+								child.visible = false
+				elif name == "chunkself":
+					for chunk in map_layer._chunks.values():
+						chunk.self_modulate.a = 0.0
+
+
+## The performance counters (F3, --bench): what is loaded and drawn.
+func _perf_counters() -> void:
+	var totals := {"buildings": 0, "walls": 0, "windows": 0, "lit": 0}
+	for chunk in map_layer._chunks.values():
+		for key in totals:
+			totals[key] += chunk._volumes.get("stats", {}).get(key, 0)
+	Perf.counters.merge(totals, true)
+	Perf.counters["chunks"] = map_layer.chunk_count()
+	Perf.counters["chunks_queued"] = _chunk_queue.size()
+	Perf.counters["draw_calls"] = Performance.get_monitor(Performance.RENDER_TOTAL_DRAW_CALLS_IN_FRAME)
+	Perf.counters["static_memory_mib"] = Performance.get_monitor(Performance.MEMORY_STATIC) / 1048576.0
+
+
 func _update_debug(state: Dictionary) -> void:
+	_perf_counters()
+	var f := Perf.summary()
 	debug_label.text = "\n".join([
 		"Road Rage Trip - Godot client 0.16.0g-alpha   player %s" % sim.player_id,
 		"tick %d   %d fps   states %d   buffered %d   delay %d ms   underruns %d" % [_tick, Engine.get_frames_per_second(),
@@ -355,6 +426,9 @@ func _update_debug(state: Dictionary) -> void:
 		"sounds played %d   no sound for %s" % [audio.played, ", ".join(audio.unhandled.keys())],
 		"events: %s" % ", ".join(_recent_events),
 		hud.values(state)["road"],
+		"frames: avg %.1f ms  p99 %.1f ms  worst %.1f ms  1%% low %.0f fps   chunks %d (+%d queued)   draw calls %d" % [f.get("avg_ms", 0.0),
+			f.get("p99_ms", 0.0), f.get("worst_ms", 0.0), f.get("low_1pct_fps", 0.0), Perf.counters["chunks"], Perf.counters["chunks_queued"], Perf.counters["draw_calls"]],
+		"buildings %d  walls %d  windows %d  lit %d" % [Perf.counters["buildings"], Perf.counters["walls"], Perf.counters["windows"], Perf.counters["lit"]],
 	])
 
 

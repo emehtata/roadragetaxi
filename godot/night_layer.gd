@@ -5,52 +5,27 @@
 ## part of a beam (Pygame masks them out): the beam polygons arrive already
 ## clipped, and a building wholly inside a beam is tinted again here.
 ##
-## One CanvasGroup in the world at z 20: above the map and entities (and the
-## fuel boards, z 11), below the street lights (z 21) Pygame adds after it.
-## Redrawn when the view, the tint or the beams change: at night, every frame
-## a vehicle moves; by day, never.
-extends CanvasGroup
+## godot-18: drawn directly as polygons - the view minus the beams, at the
+## tint's own alpha - not as a CanvasGroup with the beams subtracted from a
+## full-screen tint: on a software renderer (llvmpipe) the group's
+## screen-sized copy and composite cost ~20 ms a frame at night.
+##
+## In the world at z 20: above the map and entities (and the fuel boards),
+## below the street lights (z 21) Pygame adds after it. Redrawn when the
+## view, the tint or the beams change: at night, every frame a vehicle
+## moves; by day, never.
+extends Node2D
 
 const TINT := Color8(10, 18, 48)
-# The group's buffer keeps colour but, in the compatibility renderer, only a
-# few alpha levels (0.451 came back 0.333): the tint is painted opaque inside
-# and this shader gives it its alpha - wherever the buffer holds the tint
-# colour, i.e. everywhere but the cleared beams.
-const SHADER := """shader_type canvas_item;
-uniform float tint_alpha;
-uniform sampler2D screen_texture : hint_screen_texture, repeat_disable, filter_nearest;
-void fragment() {
-	vec4 c = textureLod(screen_texture, SCREEN_UV, 0.0);
-	COLOR = vec4(c.rgb, c.b > 0.02 ? tint_alpha : 0.0);
-}"""
 
 var alpha := 0.0  # 0..1, main.gd: Main.night_alpha(darkness, visible roads)
 var view := Rect2()  # the visible world area in layer coordinates
 var _beams: Array = []  # PackedVector2Array: lit area (already clear of buildings)
 var _retint: Array = []  # PackedVector2Array: buildings wholly inside a beam
-var _tint: Node2D  # children made in _ready; the tint is a child: the group doesn't render its own draws
-var _holes: Node2D
-var _roofs: Node2D
 
 
 func _ready() -> void:
 	z_index = 20
-	var shader := Shader.new()
-	shader.code = SHADER
-	material = ShaderMaterial.new()
-	material.shader = shader
-	_tint = Node2D.new()
-	_holes = Node2D.new()
-	_roofs = Node2D.new()
-	_tint.draw.connect(func(): _tint.draw_rect(view, TINT))
-	add_child(_tint)
-	var subtract := CanvasItemMaterial.new()
-	subtract.blend_mode = CanvasItemMaterial.BLEND_MODE_SUB  # white clears the tint, colour and alpha
-	_holes.material = subtract
-	_holes.draw.connect(_draw_holes)
-	add_child(_holes)
-	_roofs.draw.connect(_draw_roofs)
-	add_child(_roofs)
 
 
 ## This frame's tint and beams; redraws only on a change.
@@ -62,22 +37,68 @@ func show_night(new_alpha: float, new_view: Rect2, beams: Array, retint: Array) 
 	_beams = beams
 	_retint = retint
 	visible = alpha > 0.0
-	if _tint == null:
-		return
-	material.set_shader_parameter("tint_alpha", alpha)
-	_tint.queue_redraw()
-	_holes.queue_redraw()
-	_roofs.queue_redraw()
+	queue_redraw()
 
 
-func _draw_holes() -> void:
-	for polygon in _beams:
-		_holes.draw_colored_polygon(polygon, Color.WHITE)
+func _draw() -> void:
+	var color := Color(TINT, alpha)
+	for piece in tint_pieces(view, _beams):
+		if piece.size() >= 3 and not Geometry2D.triangulate_polygon(piece).is_empty():
+			draw_colored_polygon(piece, color)
+	for polygon in _retint:  # buildings inside a beam: tinted after all (their area was cut out with the beam)
+		draw_colored_polygon(polygon, color)
 
 
-func _draw_roofs() -> void:
-	for polygon in _retint:
-		_roofs.draw_colored_polygon(polygon, TINT)
+## The view rectangle minus the beams, as polygons without holes (Godot
+## draws no polygon with a hole): a piece a beam lies wholly inside is
+## first split in two through the beam, so the cut reaches its edge.
+static func tint_pieces(rect: Rect2, beams: Array) -> Array:
+	var pieces: Array = [PackedVector2Array([rect.position, Vector2(rect.end.x, rect.position.y), rect.end, Vector2(rect.position.x, rect.end.y)])]
+	for beam in beams:
+		var box := _bounds(beam)
+		var next: Array = []
+		for piece in pieces:
+			if not _bounds(piece).intersects(box):
+				next.append(piece)
+				continue
+			next.append_array(_subtract(piece, beam, box, 2))
+		pieces = next
+	return pieces
+
+
+static func _subtract(piece: PackedVector2Array, beam: PackedVector2Array, box: Rect2, splits: int) -> Array:
+	var parts := Geometry2D.clip_polygons(piece, beam)
+	if not has_hole(parts):
+		return parts
+	if splits == 0:
+		return [piece]  # can't cut it cleanly: leave it tinted (never seen in practice)
+	var x := box.get_center().x
+	var out: Array = []
+	var far := 1e6
+	for half in [PackedVector2Array([Vector2(-far, -far), Vector2(x, -far), Vector2(x, far), Vector2(-far, far)]),
+			PackedVector2Array([Vector2(x, -far), Vector2(far, -far), Vector2(far, far), Vector2(x, far)])]:
+		for side in Geometry2D.intersect_polygons(piece, half):
+			out.append_array(_subtract(side, beam, box, splits - 1))
+	return out
+
+
+## Whether a clipping result holds a hole: Godot returns outer polygons in
+## one orientation and holes in the other, whatever the inputs' winding -
+## so a hole shows as mixed orientations (comparing with the input's own
+## winding, as before, took every piece for a hole when the input wound
+## the other way).
+static func has_hole(parts: Array) -> bool:
+	for part in parts:
+		if Geometry2D.is_polygon_clockwise(part) != Geometry2D.is_polygon_clockwise(parts[0]):
+			return true
+	return false
+
+
+static func _bounds(polygon: PackedVector2Array) -> Rect2:
+	var box := Rect2(polygon[0], Vector2.ZERO)
+	for point in polygon:
+		box = box.expand(point)
+	return box
 
 
 ## The beam polygons minus `buildings` ([Rect2, outline], Geometry2D, no
@@ -99,11 +120,7 @@ static func clip_beams(beams: Array, buildings: Array) -> Array:
 			var next: Array = []
 			for piece in pieces:
 				var parts := Geometry2D.clip_polygons(piece, building)
-				var has_hole := false
-				for part in parts:
-					if Geometry2D.is_polygon_clockwise(part) != Geometry2D.is_polygon_clockwise(piece):
-						has_hole = true
-				if has_hole:  # the building is inside this piece: keep it, tint the building again
+				if has_hole(parts):  # the building is inside this piece: keep it, tint the building again
 					next.append(piece)
 					if not retint.has(building):
 						retint.append(building)

@@ -32,6 +32,8 @@ extends Node2D
 const RS := preload("res://render_style.gd")
 const Detail := preload("res://chunk_detail.gd")  # godot-16: the rest of the static world's drawing
 const B25 := preload("res://buildings_25d.gd")  # godot-17: buildings in 2.5D
+const Perf := preload("res://perf.gd")
+const NightLayerScript := preload("res://night_layer.gd")
 const BRIDGE_Z_MAX := 3
 
 var _data: Dictionary = {}
@@ -66,6 +68,10 @@ var _flash = null  # the flashing speed camera's id (state speed_camera_flash)
 
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_PREDELETE:  # light nodes of a chunk without lights never joined the tree
+		if _pool_task >= 0:
+			WorkerThreadPool.wait_for_task_completion(_pool_task)
+		if _building_task >= 0:
+			WorkerThreadPool.wait_for_task_completion(_building_task)
 		for node in [_pools, _heads, building_node]:
 			if is_instance_valid(node) and node.get_parent() == null:
 				node.free()
@@ -122,7 +128,10 @@ func setup(message: Dictionary, origin: Vector2) -> void:
 	if not message.get("street_lights", []).is_empty():
 		for light in message["street_lights"]:
 			street_lights.append(MapMath.point(origin, light[0], light[1]))
-		_pools.draw.connect(_draw_light_pools.bind(_pools))  # MapLayer puts it in its pool group (added once)
+		var add := CanvasItemMaterial.new()
+		add.blend_mode = CanvasItemMaterial.BLEND_MODE_ADD
+		_pools.material = add
+		_pools.draw.connect(_draw_light_pools.bind(_pools))  # MapLayer puts it in its pool group
 		_px_layers.append(_pools)
 		_px_layers.append(_add_layer(21, _draw_lamp_heads, _heads))
 		set_lights_on(false)
@@ -162,6 +171,43 @@ func _compact() -> void:
 	for key_index in [["railings", 1], ["landuse", 2], ["traffic_islands", 2], ["level_roads", 1]]:
 		for entry in _data.get(key_index[0], []):
 			entry[key_index[1]] = _points(entry[key_index[1]])
+	if not _bounds.is_empty():
+		_clip_to_bounds()
+
+
+## godot-18: roads, water and railway tracks are in every chunk they
+## touch, whole - a long road made each such chunk's layer kilometres wide,
+## so the renderer counted it visible and batched all of it every frame.
+## Each chunk keeps only its own share; neighbours meet at the border.
+func _clip_to_bounds() -> void:
+	var roads: Array = []
+	for road in _data.get("roads", []):
+		for piece in Geometry2D.intersect_polyline_with_polygon(road["points"], _bounds):
+			if piece.size() >= 2:
+				var part: Dictionary = road.duplicate()
+				part["points"] = piece
+				roads.append(part)
+	_data["roads"] = roads
+	for z in _roads_by_z:  # the layers' lists, refilled in place
+		_roads_by_z[z].clear()
+	for road in roads:
+		var z := clampi(int(road.get("layer", 0)), 0, BRIDGE_Z_MAX) + 1
+		if _roads_by_z.has(z):
+			_roads_by_z[z].append(road)
+	for key in ["railways", "rail_bridges"]:
+		var pieces: Array = []
+		for line in _data.get(key, []):
+			for piece in Geometry2D.intersect_polyline_with_polygon(line, _bounds):
+				if piece.size() >= 2:
+					pieces.append(piece)
+		_data[key] = pieces
+	var waters: Array = []
+	for water in _data.get("waters", []):
+		if water.size() >= 3 and not Geometry2D.triangulate_polygon(water).is_empty():
+			for piece in Geometry2D.intersect_polygons(water, _bounds):
+				if not Geometry2D.triangulate_polygon(piece).is_empty():
+					waters.append(piece)
+	_data["waters"] = waters
 
 
 ## A child canvas item at z; `draw` is called with that node to draw into.
@@ -181,8 +227,16 @@ func set_wetness(wetness: float) -> void:
 	var alphas := RS.wet_alphas(wetness)
 	_wet_darken.modulate = Color(RS.WET_DARKEN, alphas[0])
 	_wet_sheen.modulate = Color(RS.WET_SHEEN, alphas[1])
-	# Alpha only, never `visible`: a canvas item hidden when it entered the
-	# tree didn't draw its strokes when shown later (found in a windowed run).
+	# godot-18: hidden when dry - at alpha 0 they still blended every road twice
+	# each frame. A canvas item hidden when it entered the tree didn't draw
+	# its strokes when shown later (found in a windowed run), so becoming
+	# visible asks for a redraw.
+	for node in [_wet_darken, _wet_sheen]:
+		var show: bool = node.modulate.a > 0.0
+		if show and not node.visible:
+			node.queue_redraw()
+		node.visible = show
+	_puddles.visible = wetness > 0.0
 	if not _puddle_spots.is_empty() and (wetness > 0.0 or previous > 0.0):
 		_puddles.queue_redraw()
 
@@ -269,6 +323,20 @@ func elevated_roads() -> Array:
 	return _elevated
 
 
+var _label_candidates = null
+
+
+## The chunk's labels in layer coordinates ([x, y, text, category]), made
+## once (labels.gd redraws often while driving).
+func label_candidates() -> Array:
+	if _label_candidates == null:
+		_label_candidates = []
+		for label in _data.get("labels", []):
+			var at := MapMath.point(_origin, label[0], label[1])
+			_label_candidates.append([at.x, at.y, label[2], label[3]])
+	return _label_candidates
+
+
 ## Building outlines with their bounds, for clipping headlight beams: made
 ## the first time a beam needs them (at night), then kept.
 func building_shapes() -> Array:
@@ -285,6 +353,7 @@ func building_shapes() -> Array:
 var _volumes: Dictionary = {}  # buildings_25d.build: the chunk's buildings as triangle lists
 var building_node: Node2D = null  # drawn in MapLayer's building group (ordered far to near across chunks)
 var _lit_windows: Node2D = null  # the lit windows' glow, z 21 (over the night tint), additive
+var _darkness := 0.0  # as last set (lit windows built later take it)
 
 
 ## godot-17: the chunk's buildings in 2.5D, built once.
@@ -292,9 +361,36 @@ func _build_2_5d() -> void:
 	var buildings: Array = _data.get("buildings", [])
 	if buildings.is_empty():
 		return
-	_volumes = B25.build(buildings, _data.get("building_styles", []), _origin)
 	building_node = Node2D.new()
 	building_node.draw.connect(_draw_volumes)
+	var styles: Array = _data.get("building_styles", [])
+	var origin := _origin
+	if not build_async:
+		_buildings_ready(_build_timed(buildings, styles, origin))
+		return
+	# godot-18: built on a worker thread (up to ~45 ms for a dense chunk, in the
+	# frame that added it); the chunk shows at once, its buildings when ready.
+	_building_task = WorkerThreadPool.add_task(func(): _buildings_ready.call_deferred(_build_timed(buildings, styles, origin)))
+
+
+static var build_async := true  # tests build in place
+var _building_task := -1
+
+
+static func _build_timed(buildings: Array, styles: Array, origin: Vector2) -> Dictionary:
+	var started := Time.get_ticks_usec()
+	var volumes := B25.build(buildings, styles, origin)
+	volumes["build_usec"] = Time.get_ticks_usec() - started
+	return volumes
+
+
+func _buildings_ready(volumes: Dictionary) -> void:
+	if _building_task >= 0:
+		WorkerThreadPool.wait_for_task_completion(_building_task)
+		_building_task = -1
+	_volumes = volumes
+	Perf.add("chunk_buildings_build", volumes.get("build_usec", 0))
+	building_node.queue_redraw()
 	if not _volumes["lit_indices"].is_empty():
 		_lit_windows = Node2D.new()
 		var add := CanvasItemMaterial.new()
@@ -302,12 +398,16 @@ func _build_2_5d() -> void:
 		_lit_windows.material = add
 		_lit_windows.visible = false
 		_add_layer(21, func(node: Node2D): _triangles(node, _volumes["lit_points"], _volumes["lit_indices"], B25.WINDOW_LIT), _lit_windows)
+		set_darkness(_darkness)
 
 
 ## The buildings' triangles go to the renderer, which keeps its own copy:
 ## ours is dropped after the draw (half the memory), rebuilt - identically -
 ## should the node ever be redrawn. The hulls (headlights) stay.
 func _draw_volumes() -> void:
+	if _building_task >= 0 or _volumes.is_empty():
+		return  # still being built (godot-18)
+	var started := Time.get_ticks_usec()
 	if _volumes.get("points", PackedVector2Array()).is_empty():
 		var hulls: Array = _volumes.get("hulls", [])
 		_volumes = B25.build(_data.get("buildings", []), _data.get("building_styles", []), _origin)
@@ -316,11 +416,13 @@ func _draw_volumes() -> void:
 	for key in ["points", "colors", "indices"]:
 		_volumes[key] = _volumes[key].duplicate()
 		_volumes[key].clear()
+	Perf.add("chunk_buildings_draw", Time.get_ticks_usec() - started)
 
 
 ## Night windows (render/buildings.py draw_illuminated_windows): from
 ## darkness 0.25, fading in to 165/255 by 0.5 - a modulate, never a redraw.
 func set_darkness(darkness: float) -> void:
+	_darkness = darkness
 	if _lit_windows == null:
 		return
 	var intensity := clampf((darkness - 0.25) / 0.25, 0.0, 1.0)
@@ -435,7 +537,8 @@ func _draw_wet(node: Node2D) -> void:
 		if not road.get("drivable", false):
 			continue
 		var line := _points(road["points"])
-		var parts: Array = [line] if _bounds.is_empty() else Geometry2D.clip_polyline_with_polygon(line, _bounds)
+		# godot-18: the part inside the chunk (clip_polyline_with_polygon, used before, returns the part outside)
+		var parts: Array = [line] if _bounds.is_empty() else Geometry2D.intersect_polyline_with_polygon(line, _bounds)
 		for part in parts:
 			if part.size() >= 2:
 				node.draw_polyline(part, Color.WHITE, 2.0 * float(road.get("half_width_m", 1.5)))
@@ -576,22 +679,79 @@ func _draw_railings(node: Node2D) -> void:
 ## All of a chunk's pools (and heads) are one triangle array each: one draw
 ## command instead of thousands.
 func _draw_light_pools(node: Node2D) -> void:
-	var head_r := maxf(_px(1.0), 0.28)
-	var points := PackedVector2Array()
-	var triangles := PackedInt32Array()
-	for i in street_lights.size():
-		if _broken.has(i):
+	if _pool_union == null or _pool_union_broken != _broken:
+		# godot-18: cut on a worker thread (up to ~160 ms for a dense chunk, and at
+		# dusk every chunk at once); the pools appear when it's done.
+		if _pool_task < 0:
+			_pool_union_broken = _broken.duplicate()
+			var positions := street_lights
+			var lights: Array = _data["street_lights"]
+			var broken := _pool_union_broken
+			_pool_task = WorkerThreadPool.add_task(func():
+				var started := Time.get_ticks_usec()
+				var pieces := pool_union(positions, lights, broken)
+				_pools_ready.call_deferred(pieces, Time.get_ticks_usec() - started))
+		if _pool_union == null:
+			return
+	for polygon in _pool_union:
+		if not Geometry2D.triangulate_polygon(polygon).is_empty():
+			node.draw_colored_polygon(polygon, Color8(22, 22, 22))
+
+
+var _pool_union = null  # the pools merged (godot-18), made at the first night, again when a lamp breaks
+var _pool_union_broken := PackedInt32Array()
+var _pool_task := -1  # the worker cutting the pools, or -1
+
+
+func _pools_ready(pieces: Array, usec: int) -> void:
+	WorkerThreadPool.wait_for_task_completion(_pool_task)
+	_pool_task = -1
+	_pool_union = pieces
+	Perf.add("pool_union", usec)
+	_pools.queue_redraw()
+
+
+## The chunk's light pools (render/roads.py: a 270-degree fan toward the
+## road) cut into disjoint pieces - each fan minus the earlier fans it
+## overlaps - so adding them all adds +22 once wherever pools overlap, as
+## Pygame's pool layer does. (Merging them into one union instead grew
+## polygons of thousands of points along lit streets: far too slow.) Where a
+## cut would leave a hole (a fan ringed by others) the fan stays whole and
+## adds twice there.
+static func pool_union(positions: PackedVector2Array, lights: Array, broken: PackedInt32Array) -> Array:
+	var fans: Array = []  # [polygon, bounds]
+	var pieces: Array = []
+	for i in positions.size():
+		if broken.has(i):
 			continue
-		var light: Array = _data["street_lights"][i]
-		var radius := maxf(head_r + _px(2.0), float(light[3]))
-		var centre := points.size()
-		points.append(street_lights[i])
+		var light: Array = lights[i]
+		var fan := PackedVector2Array([positions[i]])
 		for step in 17:
 			var angle: float = light[2] - deg_to_rad(135.0) + step * (deg_to_rad(270.0) / 16.0)
-			points.append(street_lights[i] + Vector2(cos(angle), -sin(angle)) * radius)
-			if step > 0:
-				triangles.append_array(PackedInt32Array([centre, centre + step, centre + step + 1]))
-	_triangles(node, points, triangles, Color8(22, 22, 22))
+			fan.append(positions[i] + Vector2(cos(angle), -sin(angle)) * float(light[3]))
+		var box := _box(fan)
+		var mine: Array = [fan]
+		for earlier in fans:
+			if not earlier[1].intersects(box):
+				continue
+			var next: Array = []
+			for piece in mine:
+				var cut := Geometry2D.clip_polygons(piece, earlier[0])
+				if NightLayerScript.has_hole(cut):
+					next.append(piece)  # would need a hole: keep it whole
+				else:
+					next.append_array(cut)
+			mine = next
+		pieces.append_array(mine)
+		fans.append([fan, box])
+	return pieces
+
+
+static func _box(polygon: PackedVector2Array) -> Rect2:
+	var box := Rect2(polygon[0], Vector2.ZERO)
+	for point in polygon:
+		box = box.expand(point)
+	return box
 
 
 ## A triangle list drawn in one colour, as one command.

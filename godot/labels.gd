@@ -40,6 +40,16 @@ func update_view(canvas: Transform2D, chunk_count: int, hidden: bool) -> void:
 	queue_redraw()
 
 
+static var _sizes := {}  # [text, font size] -> pixel size (godot-18: measured once, not every redraw)
+
+
+static func text_size(font: Font, text: String, font_size: int) -> Vector2:
+	var key := "%d|%s" % [font_size, text]
+	if not _sizes.has(key):
+		_sizes[key] = font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size)
+	return _sizes[key]
+
+
 ## The labels to show for a view: [[screen position, text, category], ...]
 ## in Pygame's order and rules. `candidates` are [x, y, text, category] in
 ## layer coordinates.
@@ -63,7 +73,7 @@ static func declutter(candidates: Array, canvas: Transform2D, screen: Vector2, f
 			var at: Vector2 = canvas * Vector2(label[0], label[1])
 			if at.x < 10.0 or at.x > screen.x - 10.0 or at.y < 80.0 or at.y > screen.y - 20.0:
 				continue
-			var size := font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, STYLES[category][3]) + Vector2(10, 6)
+			var size := text_size(font, text, STYLES[category][3]) + Vector2(10, 6)
 			var box := Rect2(at - size / 2.0, size)
 			if rects.any(func(r): return r.intersects(box)):
 				continue
@@ -76,10 +86,13 @@ static func declutter(candidates: Array, canvas: Transform2D, screen: Vector2, f
 func _draw() -> void:
 	if map_layer == null:
 		return
+	var started := Time.get_ticks_usec()
+	# godot-18: only the chunks under the view, their label positions converted once per chunk.
+	var view := _transform.affine_inverse() * Rect2(Vector2.ZERO, size)
 	var candidates: Array = []
 	for chunk in map_layer._chunks.values():
-		for label in chunk._data.get("labels", []):
-			candidates.append([MapMath.point(map_layer.origin, label[0], label[1]).x, MapMath.point(map_layer.origin, label[0], label[1]).y, label[2], label[3]])
+		if chunk._bounds_rect.size == Vector2.ZERO or chunk._bounds_rect.intersects(view):
+			candidates.append_array(chunk.label_candidates())
 	for label in declutter(candidates, _transform, size, _font):
 		var style: Array = STYLES[label[2]]
 		var box: Rect2 = label[0]
@@ -87,3 +100,4 @@ func _draw() -> void:
 		if style[2] != null:
 			draw_rect(box, style[2], false, 1.0)
 		draw_string(_font, box.position + Vector2(5, 3 + _font.get_ascent(style[3])), label[1], HORIZONTAL_ALIGNMENT_LEFT, -1, style[3], style[0])
+	preload("res://perf.gd").add("labels_draw", Time.get_ticks_usec() - started)

@@ -74,7 +74,8 @@ static func unit(seed: float) -> float:
 ## [roof, gabled, height, entrances, wall, floors, category].
 static func build(buildings: Array, styles: Array, origin: Vector2) -> Dictionary:
 	var out := {"points": PackedVector2Array(), "colors": PackedColorArray(), "indices": PackedInt32Array(),
-		"lit_points": PackedVector2Array(), "lit_indices": PackedInt32Array(), "hulls": []}
+		"lit_points": PackedVector2Array(), "lit_indices": PackedInt32Array(), "hulls": [],
+		"stats": {"buildings": 0, "walls": 0, "windows": 0, "lit": 0}}  # counts for the performance report
 	var order: Array = []
 	for i in buildings.size():
 		var footprint: PackedVector2Array = buildings[i]
@@ -132,9 +133,13 @@ static func _building(out: Dictionary, footprint: PackedVector2Array, style: Arr
 	for i in shadow.size():
 		shadow[i] -= LEAN.normalized() * clampf(depth * 0.25, 0.3, 2.0)
 	_polygon(out, shadow, SHADOW)
-	_polygon(out, footprint, wall_color.darkened(0.25))  # the base: no gap at the wall feet
+	# No base fill (godot-18): every footprint point lies under the raised roof or on a
+	# visible wall in front of it (walk from it against the lean: either the roof is
+	# reached within the height, or a visible wall is crossed), so it was always covered.
 	var outward_sign := -1.0 if signed_area(footprint) > 0.0 else 1.0
 	var walls := Array(visible_walls(footprint))
+	out["stats"]["buildings"] += 1
+	out["stats"]["walls"] += walls.size()
 	walls.sort_custom(func(a, b): return (footprint[a] + footprint[(a + 1) % footprint.size()]).dot(LEAN) > (footprint[b] + footprint[(b + 1) % footprint.size()]).dot(LEAN))
 	var stories := mini(floors, maxi(1, int(depth * 9.0 / 3.0)))  # Pygame: at most a floor per 3 px of facade
 	var seed_base := roundf(centre.x + origin.x) * 0.0001 + roundf(-centre.y + origin.y) * 0.00013
@@ -176,8 +181,10 @@ static func _windows(out: Dictionary, a: Vector2, b: Vector2, up: Vector2, stori
 			var centre := a + (b - a) * ((w + 1.0) / (count + 1.0)) + bottom
 			var p := [centre - along * half, centre + along * half, centre + along * half + floor_up * size, centre - along * half + floor_up * size]
 			_quad(out, p[0], p[1], p[2], p[3], STOREFRONT if storefront else WINDOW)
+			out["stats"]["windows"] += 1
 			if unit(seed + f * 3.71 + w * 1.37) < LIT_PROBABILITY[2 if storefront else category if category == 1 else 0]:
 				_quad(out, p[0], p[1], p[2], p[3], WINDOW_LIT, "lit_")
+				out["stats"]["lit"] += 1
 
 
 ## Doors at the OSM entrances, on the nearest wall if that wall is

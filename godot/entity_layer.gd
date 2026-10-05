@@ -144,6 +144,7 @@ func _lay_track() -> void:
 ## front one too where the fronts locked; faint to dark by intensity. One
 ## call per kind.
 func _draw_tracks() -> void:
+	var started := Time.get_ticks_usec()
 	var lines := {}
 	for trail in _trails:
 		var kind: String = trail[0]
@@ -163,6 +164,7 @@ func _draw_tracks() -> void:
 	for kind in lines:
 		if not lines[kind][1].is_empty():
 			_tracks.draw_multiline_colors(lines[kind][0], lines[kind][1], maxf(_px(3.0), TRACK_STYLES[kind][2]))
+	preload("res://perf.gd").add("tracks_draw", Time.get_ticks_usec() - started)
 
 
 func _process(_delta: float) -> void:
@@ -573,6 +575,7 @@ func _draw() -> void:
 
 	drawn_entities = count + _trains_drawn
 	interp_usec = Time.get_ticks_usec() - started
+	preload("res://perf.gd").add("entities_draw", interp_usec)
 
 
 ## Trains, last (render/vehicles.py draw_trains after the bridge rails),

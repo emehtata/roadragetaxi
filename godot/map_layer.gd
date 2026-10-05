@@ -17,26 +17,15 @@ var _knocked_posts: Node2D  # drawn here, from the state: a lamp has no static d
 var _last_obstacles := [[], []]
 var season := [0.0, 0.0, 1.0, 0.0]  # [winter, spring, summer, autumn] as last applied
 var lights_on := false
-const POOL_SHADER := """shader_type canvas_item;
-render_mode blend_add;
-uniform sampler2D screen_texture : hint_screen_texture, repeat_disable, filter_nearest;
-void fragment() {
-	COLOR = vec4(textureLod(screen_texture, SCREEN_UV, 0.0).rgb, 1.0);
-}"""
-var _pool_group: CanvasGroup  # every loaded chunk's street-light pools: painted, then added once
+var _pool_group: Node2D  # every loaded chunk's street-light pools (each chunk's: their union, added once)
 
 
 func _make_pool_group() -> void:
-	_pool_group = CanvasGroup.new()
+	# godot-18: a plain container; each chunk draws the union of its pools
+	# additively. It was a CanvasGroup (paint, then add the union once):
+	# its screen-sized copy cost ~19 ms a frame at night on llvmpipe.
+	_pool_group = Node2D.new()
 	_pool_group.z_index = 21
-	# A CanvasGroup's custom material must read the group's own buffer
-	# (a CanvasItemMaterial ADD on the group renders it white): the
-	# union of the pools, added once.
-	var shader := Shader.new()
-	shader.code = POOL_SHADER
-	var add := ShaderMaterial.new()
-	add.shader = shader
-	_pool_group.material = add
 	_pool_group.visible = false
 	add_child(_pool_group)
 
@@ -280,7 +269,8 @@ func _draw_ground() -> void:
 	# Ground, under the chunks: snow cover with the winter weight. (Pygame's
 	# other seasonal palettes are tuned to its dark grass; on this lighter
 	# ground autumn turns brown, so only the snow is taken.)
-	_ground.draw_rect(Rect2(-100000, -100000, 200000, 200000), Color(0.27, 0.33, 0.25).lerp(Color8(230, 236, 240), clampf(season[0], 0.0, 1.0)))
+	# godot-18: the viewport's clear colour, not a full-screen rectangle - one less layer to fill every frame.
+	RenderingServer.set_default_clear_color(Color(0.27, 0.33, 0.25).lerp(Color8(230, 236, 240), clampf(season[0], 0.0, 1.0)))
 
 
 ## render/roads.py draw_level_ways and main()'s underground view: below
