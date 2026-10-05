@@ -8,6 +8,7 @@ const MapLayer := preload("res://map_layer.gd")
 const Instruments := preload("res://instruments.gd")
 const EntityLayer := preload("res://entity_layer.gd")
 const MapChunk := preload("res://map_chunk.gd")
+const Main := preload("res://main.gd")
 
 var _failures := 0
 var _checks := 0
@@ -42,6 +43,7 @@ func _process(_delta: float) -> bool:  # first frame: the tree is live, so nodes
 	test_meet_road_camera_lightning()
 	test_gameplay_points()
 	test_obstacles()
+	test_day_night()
 	print("%d checks, %d failed" % [_checks, _failures])
 	quit(1 if _failures > 0 else 0)
 	return false
@@ -570,3 +572,38 @@ func test_obstacles() -> void:
 	check(map.chunk_count() == 1 and not map.add_chunk(message), "no duplicate after a revisit")
 	check(map.add_chunk({"chunk_id": "0_0"}) and map._chunks["0_0"]._trees == null, "a chunk without obstacles adds no layer (older servers too)")
 	map.free()
+
+
+## godot-14: night is the server's darkness, drawn as Pygame's tint; the
+## client keeps no clock of its own.
+func test_day_night() -> void:
+	# The tint: render/hud.py draw_day_night_overlay's alpha.
+	check(Main.night_alpha(0.0, 40) == 0.0, "day: no tint")
+	check(Main.night_alpha(1.0, 40) == 115.0 / 255.0, "night in town: 115")
+	check(Main.night_alpha(0.5, 40) == 57.0 / 255.0, "dusk: half, truncated as Pygame's int()")
+	check(Main.night_alpha(1.0, 0) == 210.0 / 255.0 and Main.night_alpha(1.0, 6) == (115.0 + 47.0) / 255.0, "night in empty country: up to 95 darker")
+	check(Main.night_alpha(0.0, 0) == 0.0, "an empty view in daylight stays light")
+	check(Main.night_alpha(-1.0, 0) == 0.0, "an older server without a calendar: no tint")
+
+	# The HUD clock: the server's date, and * while game time runs 1:1.
+	var state := {"game_time_seconds": 18.0 * 3600.0 + 20.0 * 60.0, "calendar": {"date": "2026-10-05", "time_scale": 60.0, "darkness": 0.2}}
+	check(Hud.values(state)["clock"] == "2026-10-05 18:20", "date and time (%s)" % Hud.values(state)["clock"])
+	state["calendar"]["time_scale"] = 1.0
+	check(Hud.values(state)["clock"] == "2026-10-05 18:20 *", "real-time marker during a fare")
+	check(Hud.values({"game_time_seconds": 3600.0})["clock"] == "01:00", "no calendar: the time alone")
+
+	# Roads in view, each once though two chunks carry it.
+	var map := MapLayer.new()
+	root.add_child(map)
+	var road := {"points": [[490.0, 10.0], [510.0, 10.0]], "half_width_m": 3.0, "drivable": true}
+	var path := {"points": [[100.0, 100.0], [110.0, 100.0]], "half_width_m": 1.0, "drivable": false}
+	map.add_chunk(JSON.parse_string(JSON.stringify({"chunk_id": "0_0", "bounds": [0, 0, 500, 500], "roads": [road, path]})))
+	map.add_chunk(JSON.parse_string(JSON.stringify({"chunk_id": "1_0", "bounds": [500, 0, 1000, 500], "roads": [road]})))
+	check(map.count_drivable_roads(Rect2(400, -100, 200, 200)) == 1, "a road in two chunks counts once; a path not at all")
+	check(map.count_drivable_roads(Rect2(2000, 2000, 100, 100)) == 0, "nothing in view")
+	map.free()
+
+	# Lightning: the sent intensity, nothing of the client's own (shown above the tint).
+	var entities = load("res://entity_layer.gd").new()
+	check(entities.lightning_now() == 0.0, "no state yet: no flash")
+	entities.free()

@@ -76,6 +76,9 @@ static func values(state: Dictionary) -> Dictionary:
 	if state.has("game_time_seconds"):
 		var minutes := int(state["game_time_seconds"] / 60.0)
 		text["clock"] = "%02d:%02d" % [minutes / 60 % 24, minutes % 60]
+		var calendar = state.get("calendar")
+		if typeof(calendar) == TYPE_DICTIONARY:  # hud.py: the date first, " *" while time runs 1:1 (a fare)
+			text["clock"] = "%s %s%s" % [calendar.get("date", ""), text["clock"], " *" if calendar.get("time_scale", 60.0) == 1.0 else ""]
 	else:
 		text["clock"] = "--:--"
 	if weather.has("weather_type"):

@@ -107,6 +107,21 @@ func _draw_knocked_posts() -> void:
 		_knocked_posts.draw_line(at, at + Vector2(cos(post[2]), -sin(post[2])) * length, Color8(88, 90, 92), maxf(2.0 / px_per_m, 0.25))
 
 
+## How many drivable roads reach into `view` (layer coordinates), each
+## counted once though it is in several chunks - Pygame's visible_road_count,
+## which darkens empty country at night. Only chunks overlapping the view
+## are looked at.
+func count_drivable_roads(view: Rect2) -> int:
+	var seen := {}
+	for chunk in _chunks.values():
+		if chunk._bounds_rect.size != Vector2.ZERO and not chunk._bounds_rect.intersects(view):
+			continue
+		for road in chunk.drivable_roads:
+			if road[0].intersects(view, true):
+				seen[road[1]] = true
+	return seen.size()
+
+
 ## The weather's road wetness 0..1 (state "weather.wetness"). Applied in
 ## steps of 3/255 overlay alpha, as Pygame's wet-road cache does, so a slowly
 ## drying road doesn't touch every chunk every tick.

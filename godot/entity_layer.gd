@@ -378,12 +378,14 @@ func _draw() -> void:
 				continue
 			_train_car(c, lerp_angle(car[2], to[2], t), car[3], str(car[4]))
 		count += 1
-	# render/weather.py draw_lightning_flash: over the whole world, under the UI.
-	var flash := lightning_alpha(a, b, t)
-	if flash > 0.0:
-		draw_rect(view_rect, Color(RS.LIGHTNING_FLASH, flash))
 	drawn_entities = count
 	interp_usec = Time.get_ticks_usec() - started
+
+
+## This frame's lightning flash alpha (main.gd shows it above the night
+## tint, as Pygame draws lightning after it).
+func lightning_now() -> float:
+	return 0.0 if _frame.is_empty() else lightning_alpha(_frame["a"], _frame["b"], _frame["t"])
 
 
 ## The flash's alpha for this frame: the simulation's fading

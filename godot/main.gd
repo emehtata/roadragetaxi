@@ -21,6 +21,8 @@ const COMMAND_INTERVAL_S := 0.05  # input -> simulation at 20 Hz, independent of
 @onready var phone: Phone = $Ui/Phone
 @onready var instruments: Control = $Ui/Instruments
 @onready var nav_overlay: Control = $Ui/NavOverlay
+@onready var night_tint: ColorRect = $Sky/Night
+@onready var flash: ColorRect = $Sky/Flash
 
 var _tick := 0
 var _states_received := 0
@@ -50,6 +52,8 @@ var _phone_check := {}  # selftest: what the phone saw and how an accept went
 var _phone_wait := 0.0  # --phone-wait S: after driving, wait up to S s for a real offer and accept it
 var events_presented := 0
 var _audiotest := false
+var _visible_roads := -1  # drivable roads in view (night tint), recounted every 0.1 s as Pygame does
+var _visible_roads_elapsed := 0.0
 var override_night := -1.0  # >= 0: presentation override for the audio test (never sent to Python)
 var override_rain := -1.0
 var override_train_at := Vector2.INF
@@ -217,7 +221,20 @@ func _present(state: Dictionary) -> void:
 	var driving: bool = not state.get("on_foot", true) and state["player"].get("engine_on", false)
 	var speed: float = absf(state["player"].get("speed", 0.0))
 	audio.set_loop("engine", 0.6 if driving else 0.0, minf(1.0 + speed / 25.0, 2.2))
-	var night := _night(state.get("game_time_seconds", 12.0 * 3600.0)) if override_night < 0.0 else override_night
+	var calendar = state.get("calendar")
+	var darkness: float = calendar.get("darkness", 0.0) if typeof(calendar) == TYPE_DICTIONARY else -1.0
+	_visible_roads_elapsed += get_process_delta_time()
+	if darkness > 0.0 and _visible_roads_elapsed >= 0.1:
+		_visible_roads_elapsed = 0.0
+		_visible_roads = map_layer.count_drivable_roads(get_viewport().get_canvas_transform().affine_inverse() * get_viewport().get_visible_rect())
+	var tint := night_alpha(darkness, _visible_roads)
+	if not is_equal_approx(night_tint.color.a, tint):
+		night_tint.color.a = tint
+	var lightning: float = entities.lightning_now()
+	if not is_equal_approx(flash.color.a, lightning):
+		flash.color.a = lightning
+	# The server's darkness; an older server without a calendar: the hour.
+	var night := (darkness if darkness >= 0.0 else _night(state.get("game_time_seconds", 12.0 * 3600.0))) if override_night < 0.0 else override_night
 	audio.set_loop("city_day", 0.5 * (1.0 - night))
 	audio.set_loop("city_night", 0.5 * night)
 	var raining: bool = state.get("weather", {}).get("weather_type", "") == "rain"
@@ -238,6 +255,16 @@ func _present(state: Dictionary) -> void:
 	nav_overlay.update_view(target, target_screen, camera_world, state["player"].get("heading", 0.0))
 	if debug_label.visible:
 		_update_debug(state)
+
+
+## render/hud.py draw_day_night_overlay: dark blue at 115 x darkness, up
+## to 95 more where fewer than 12 drivable roads are in view (no street
+## lighting out there). 0..1 alpha; darkness < 0 (no calendar) is none.
+static func night_alpha(darkness: float, visible_roads: int) -> float:
+	var alpha := int(115.0 * maxf(darkness, 0.0))
+	if visible_roads >= 0 and alpha > 0:
+		alpha += int(95.0 * clampf((12.0 - visible_roads) / 12.0, 0.0, 1.0))
+	return alpha / 255.0
 
 
 ## The nearest moving train rumbles from where it is (Pygame mixes the

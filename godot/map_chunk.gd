@@ -45,6 +45,7 @@ var _font: Font = ThemeDB.fallback_font
 var _trees: Node2D = null  # trees and bollards, if this chunk has any
 var _fallen: Dictionary = {}  # MapMath key -> angle, for this chunk's felled trees
 var _knocked: Dictionary = {}  # keys of this chunk's bollards lying flat
+var drivable_roads: Array = []  # [Rect2, key] per drivable road: the night tint counts them (main.gd)
 
 
 func setup(message: Dictionary, origin: Vector2) -> void:
@@ -58,6 +59,11 @@ func setup(message: Dictionary, origin: Vector2) -> void:
 		_bounds = PackedVector2Array([_bounds_rect.position, Vector2(_bounds_rect.end.x, _bounds_rect.position.y),
 			_bounds_rect.end, Vector2(_bounds_rect.position.x, _bounds_rect.end.y)])
 	for road in message.get("roads", []):
+		if road.get("drivable", false) and road["points"].size() >= 2:
+			var box := Rect2(MapMath.point(origin, road["points"][0][0], road["points"][0][1]), Vector2.ZERO)
+			for point in road["points"]:
+				box = box.expand(MapMath.point(origin, point[0], point[1]))
+			drivable_roads.append([box, "%s,%s" % [road["points"][0][0], road["points"][0][1]]])
 		var z := clampi(int(road.get("layer", 0)), 0, BRIDGE_Z_MAX) + 1
 		if not _roads_by_z.has(z):
 			_roads_by_z[z] = []
