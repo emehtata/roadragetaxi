@@ -9,7 +9,8 @@ rows marked godot-10 after the re-audit of 2026-10-05 (`734a3b7`; see
 [phase 4](#godot-13-phase-4-collision-relevant-static-world), rows marked godot-14 after
 [phase 5](#godot-14-phase-5-server-calendar-and-daynight), rows marked godot-15 after
 [phase 6a](#godot-15-the-static-world-drawing-only-objects-night-seasons), rows marked godot-16 after
-[phase 6b](#godot-16-the-rest-of-the-static-world).
+[phase 6b](#godot-16-the-rest-of-the-static-world), rows marked godot-17 after
+[the 2.5D buildings](#godot-17-25d-buildings).
 
 The Pygame side is the actual per-frame draw sequence in
 `main/__init__.py`: about 80 `draw_*` calls between lines 2771 and 3446,
@@ -70,8 +71,8 @@ find customers, avoid hazards); `medium` means world-reading or feedback;
 | Trees | `draw_trees` | chunk `trees`: crown by kind and variation, seeded irregular blob; felled trees lie the way they were hit (`state.fallen_trees`); collision on the server — godot-13; seasonal crown colours from `calendar.season` — godot-15. Missing: the hit's shake and leaf burst (`tree_effects`, not sent), wind lean (`weather.tree_lean_m`, not sent) | partial | medium (collisions) | missing protocol data (shake, leaves, wind lean) | C |
 | Scenery objects: benches, bollards, fountains | `draw_scenery_objects` (+ knocked-over state) | bollards and knocked posts (godot-13), fuel pumps (godot-12), and the decorative kinds — bench (along its path), bin, bicycle parking, statue, picnic table, fire pit, fountain, gate — from chunk `scenery_objects` — godot-15 | complete | medium (bollards collide) | – | – |
 | Bus stops (option) | `draw_bus_stops` | chunk `bus_stops`: bay, shelter and "BUS" from the nearest road, computed once by the server — godot-16 (Oulu has none: bus stops are off by default) | complete | low | – | – |
-| Buildings | `draw_buildings` (cached geometry, facades) | top-down: Pygame's roof colour (a colour in the name, else its texture pick), a height shadow, gabled facets and ridge, door marks at entrances — godot-16. No oblique facades, by design (the brief) | different by design | high | – | – |
-| Open-roof canopies over vehicles | `draw_open_roof_overlays` | chunk `canopies`: shadow and posts under the vehicles, the translucent roof above them; fuel pumps show — godot-16 | complete | medium | – | – |
+| Buildings | `draw_buildings` (cached geometry, facades) | 2.5D (godot-17): the footprint stays on the top-down map; the volume is projected by height along one screen direction (Pygame's oblique offset and cap, in map metres) - visible walls in Pygame's wall colours with windows and doors, the raised roof with its gabled facets and ridge. Not Pygame's renderer, and not pixel parity | different by design | high | – | – |
+| Open-roof canopies over vehicles | `draw_open_roof_overlays` | chunk `canopies`: shadow under the vehicles; raised by their own height (`canopy_heights`) as open structures, posts from the ground corners, the translucent roof above the vehicles - pumps visible under it (godot-16, -17) | complete | medium | – | – |
 | Tire tracks | `draw_tire_tracks` ×4 | the server's per-tick `tire_mark` (as `main()` decides it), laid along the drawn taxi, at most 4000 points — godot-16. The client keeps the trail, so a reconnect starts a new one | complete | low | – | – |
 | Roadworks barriers / cones | `draw_roadworks` | chunk `roadworks`: barriers at both ends (lane or full road), cones between, Pygame's pixel sizes — godot-12 | complete | high (block roads) | – | – |
 | Curbs | `draw_curbs` | chunk `curbs`, 0.15 m grey — godot-16 | complete | low (curb bump) | – | – |
@@ -85,7 +86,7 @@ find customers, avoid hazards); `medium` means world-reading or feedback;
 | Speed cameras | `draw_speed_cameras` (+ flash) | box, red lens, yellow arrow; the flash from `state.speed_camera_flash` — godot-16 | complete | medium | – | – |
 | Fuel stations (price boards) | `draw_fuel_station_signs` (+ the pumps in `draw_scenery_objects`) | chunk `fuel_stations`: pin and board with the name and the server's price above the vehicles, pumps under the buildings — godot-12 | complete | high (fuel runs out) | – | – |
 | Street lights (+ broken lamps dark) | `draw_street_lights` (placed from roads; `broken_lamps`) | chunk `street_lights`, placed by the server with Pygame's own placement; at darkness > 0.25 the pools' union added once (+22) over the tint, then the lamp heads; a knocked street lamp (`state.knocked_posts`) dark — godot-15 | complete | low | – | – |
-| Illuminated windows at night | `draw_illuminated_windows` | – (godot-15: drawn on Pygame's oblique facades - roof offset by height, which windows are lit seeded by `id(building)`; Godot's buildings are flat top-down, so there is no facade to light) | missing | low | Pygame-specific implementation (needs the building-detail rendering) | phase 6 |
+| Illuminated windows at night | `draw_illuminated_windows` | on the 2.5D facades (godot-17): Pygame's rules - from darkness 0.25 fading to 165/255 by 0.5, its lit colour, 12 % of windows (houses 8 %, storefronts 3 %) - seeded by the building's position (Pygame: `id()`, which changes every run); additive over the night tint | complete | low | – | – |
 | Map labels: place and street names | `draw_labels` (decluttered) | `labels.gd`: the server's candidates, decluttered per view by Pygame's rules (priority, unique, no overlap, ≤ 35, zoom gates) — godot-16 | complete | medium | – | – |
 | Vomit puddles and footprints | `draw_vomit_puddles` ×2, `draw_vomit_footprints` | – | missing | low | missing protocol data | C |
 
@@ -204,15 +205,15 @@ find customers, avoid hazards); `medium` means world-reading or feedback;
 Computed from the tables above: 108 rows (109 from godot-10), each counted once
 by status. godot-06 is the audit; godot-07 is after the rendering-only phase.
 
-| Status | godot-06 | godot-07 | godot-10 | godot-11 | godot-12 | godot-13 | godot-14 | godot-15 | godot-16 |
-|---|---|---|---|---|---|---|---|---|---|
-| complete | 7 | 30 | 31 | 35 | 39 | 40 | 42 | 46 | 65 |
-| partial | 22 | 18 | 16 | 17 | 17 | 19 | 18 | 19 | 14 |
-| missing | 71 | 52 | 52 | 47 | 43 | 40 | 39 | 34 | 19 |
-| different by design | 3 | 3 | 4 | 4 | 4 | 4 | 4 | 4 | 5 |
-| debug-only | 3 | 3 | 3 | 3 | 3 | 3 | 3 | 3 | 3 |
-| not applicable | 2 | 2 | 3 | 3 | 3 | 3 | 3 | 3 | 3 |
-| rows | 108 | 108 | 109 | 109 | 109 | 109 | 109 | 109 | 109 |
+| Status | godot-06 | godot-07 | godot-10 | godot-11 | godot-12 | godot-13 | godot-14 | godot-15 | godot-16 | godot-17 |
+|---|---|---|---|---|---|---|---|---|---|---|
+| complete | 7 | 30 | 31 | 35 | 39 | 40 | 42 | 46 | 65 | 66 |
+| partial | 22 | 18 | 16 | 17 | 17 | 19 | 18 | 19 | 14 | 14 |
+| missing | 71 | 52 | 52 | 47 | 43 | 40 | 39 | 34 | 19 | 18 |
+| different by design | 3 | 3 | 4 | 4 | 4 | 4 | 4 | 4 | 5 | 5 |
+| debug-only | 3 | 3 | 3 | 3 | 3 | 3 | 3 | 3 | 3 | 3 |
+| not applicable | 2 | 2 | 3 | 3 | 3 | 3 | 3 | 3 | 3 | 3 |
+| rows | 108 | 108 | 109 | 109 | 109 | 109 | 109 | 109 | 109 | 109 |
 
 Missing and partial rows by cause, after godot-07. The 3
 camera/layering rows have no cause column.
@@ -1132,3 +1133,132 @@ readable on snow and grass. It needs no weather detection.
 **Remaining before navigation:** the static world is done. What's left
 in the table is effects, HUD details, menus and debug tools, and the
 navigation route itself.
+
+## godot-17: 2.5D buildings
+
+**The game stays top-down.** Roads, markings, terrain, landuse, railways,
+vehicles, pedestrians, labels and the camera are unchanged. Only the
+volume of a building is projected, and its footprint stays exactly where
+the map has it. Navigation will use the ground plane.
+
+**Projection model** (`godot/buildings_25d.gd`). A point at height *h*
+metres on a building is drawn at:
+
+    ground position + LEAN × min(h × HEIGHT_SCALE, MAX_DEPTH_M)
+
+- `LEAN = (−0.7, −1)` is up and a little left on screen.
+- `HEIGHT_SCALE = 0.35`.
+- `MAX_DEPTH_M = 11.1`.
+
+These are Pygame's oblique roof offset and cap (`roof = (x − 0.7d,
+y − d)`, `d = 0.35 h` px/m, at most 100 px), expressed in map metres. The
+offset is one direction for every building. It doesn't depend on the
+player or the camera position, and the camera zoom scales it like
+everything else, so heights stay coherent at any zoom.
+
+**Height.** The server's authoritative height
+(`render/buildings.py _building_render_height`): the OSM height or
+levels, else 4.5 m for an untagged detached house, else at least 3 m.
+In Oulu that's 3 m (10th percentile), 7.2 m (median), 20 m (90th
+percentile) and up to 66 m. Heights above about 32 m reach the cap. The
+client never guesses a height.
+
+**Drawing.**
+- **Visible walls:** a wall is visible when its outward normal points
+  away from the lean (the south and east sides). This works for any simple
+  polygon, either winding; an L-shape's notch top faces north and stays
+  hidden.
+- **Order within a building:**
+  1. a soft ground shadow away from the lean
+  2. the footprint base
+  3. the visible walls, far to near, shaded by facing, in Pygame's wall
+     colour (paired with the roof colour, or named in the building's name)
+  4. windows, floor by floor by Pygame's rules: the OSM floor count or
+     height ÷ 3, at most one floor per 3 px of facade; up to 3 windows a
+     floor; houses 2, on every other floor; commercial ground floors as
+     storefronts
+  5. doors at the OSM entrances, on the nearest wall when it's visible,
+     one storey high
+  6. the roof, lifted by the full height, with gabled facets and ridge
+- **Order across buildings:** within a chunk, buildings are drawn far to
+  near along the lean. Across chunks, the map layer keeps one building
+  group ordered the same way.
+- **One owner per building:** each building now belongs to the chunk
+  containing its centre. A volume drawn twice by two chunks would paint
+  over its neighbours.
+
+**Lit windows** follow Pygame's rules:
+- they appear from darkness 0.25 and fade in to 165/255 by 0.5
+- the lit colour is Pygame's (232, 189, 108)
+- 12 % of windows are lit (houses 8 %, storefronts 3 %)
+- they're seeded by the building's position, so a reloaded chunk shows the
+  same windows (Pygame seeds by `id()`)
+- the glow is a separate additive list per chunk above the night tint,
+  faded by `modulate`, never redrawn for time
+
+**Canopies** are raised by their own height (`canopy_heights`, 5.5–8 m in
+Oulu) as open structures:
+- the shadow and the posts from the ground corners are drawn under the
+  vehicles
+- the translucent roof is drawn above them
+- pumps under a canopy remain visible through it (checked by pixel colour
+  at the Neste station)
+
+At St1 Limingantie a 19.4 m retail building 7 m south of the pumps now
+covers them with its raised roof. That's the projection's own occlusion of
+what stands behind a tall building, as in Pygame, which draws scenery
+before its oblique buildings. The station's pin and price board, above
+everything, still mark it.
+
+**Night and the rest.**
+- The night tint, street lights, lightning and seasons apply unchanged.
+- Headlight beams are clipped against each building's projected volume
+  (the hull of footprint and roof), not just its footprint.
+- Bridges and rail bridges (z 11) stay above the buildings (z 7).
+- Underground, the dark level view (z 9) covers them.
+
+**Memory and performance.**
+- Each chunk's buildings are one coloured triangle list, built at load and
+  handed to the renderer. The client's own copy is dropped after the draw;
+  keeping it cost ~15 MiB. It's rebuilt identically if ever needed. Only
+  the hulls stay.
+- Selftest: 145–151 FPS, 0 render backsteps, taxi 0 px off centre, static
+  memory 80.8–81.6 MiB (godot-16: 79.5).
+- 49 real Oulu chunks: parse and add 12.0 ms per chunk (godot-16: 7.5 ms;
+  the difference is the building geometry, still one chunk per frame), the
+  first frame drawing them 595 ms (639), unload 0.7 ms (0.4).
+
+**Verified:**
+- Godot unit tests (238):
+  - the lift and its cap
+  - visible walls for a box (either winding) and an L-shape
+  - wall and roof vertices; roof and window colours from the style
+  - deterministic rebuild, lit windows included
+  - more floors on a taller building
+  - gabled facets and ridge
+  - a door shown on the south wall, hidden on the north wall
+  - a scattering of lit windows
+  - far-to-near chunk order; hulls for headlights; canopy height
+  - underground and bridge z-order; buildings freed with their chunk; no
+    collision
+- Python test: a building across a chunk edge belongs to one chunk, its
+  style carries Pygame's wall/roof pair and floors and category, and
+  canopies carry their heights.
+- Real Oulu server (scratch launcher; production config untouched):
+  - **The start area at noon:** south and east facades with windows and
+    doors, roofs raised by height, the ground unchanged.
+  - **23:00:** scattered lit windows over the night tint.
+  - **Dusk at the 19.4 m Liiketulli:** deep facades with many floors.
+  - **Winter:** snow ground with the buildings intact.
+  - **St1 and Neste canopies:** raised with posts.
+  - **Bridges and the underground view:** unchanged.
+  - No client error lines.
+- **Finding (not from this phase):** a fourth fuel station, outside Oulu's
+  map data, isn't in any chunk.
+
+**Deliberately different from Pygame:**
+- not its oblique renderer, and not pixel parity
+- shop signs on facades are not drawn
+- roofs don't take snow (neither do Pygame's)
+- across chunks, overlapping volumes are ordered by chunk rather than per
+  building
