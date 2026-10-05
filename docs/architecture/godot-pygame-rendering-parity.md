@@ -8,7 +8,8 @@ rows marked godot-10 after the re-audit of 2026-10-05 (`734a3b7`; see
 [phase 3](#godot-12-phase-3-gameplay-points-in-chunks), rows marked godot-13 after
 [phase 4](#godot-13-phase-4-collision-relevant-static-world), rows marked godot-14 after
 [phase 5](#godot-14-phase-5-server-calendar-and-daynight), rows marked godot-15 after
-[phase 6a](#godot-15-the-static-world-drawing-only-objects-night-seasons).
+[phase 6a](#godot-15-the-static-world-drawing-only-objects-night-seasons), rows marked godot-16 after
+[phase 6b](#godot-16-the-rest-of-the-static-world).
 
 The Pygame side is the actual per-frame draw sequence in
 `main/__init__.py`: about 80 `draw_*` calls between lines 2771 and 3446,
@@ -54,38 +55,38 @@ find customers, avoid hazards); `medium` means world-reading or feedback;
 | Element | Pygame (render call) | Godot | Status | Importance | Cause | Phase |
 |---|---|---|---|---|---|---|
 | Ground / grass | `draw_grass_texture` (seasonal texture) | flat green rect (`map_layer.gd`) | partial | low | Godot rendering only (season: missing protocol data) | C |
-| Landuse fills: parks, forest, grass, parking areas | `draw_scenery` | – | missing | medium | missing protocol data (sceneries not in chunks) | B |
+| Landuse fills: parks, forest, grass, parking areas | `draw_scenery` | chunk `landuse`, clipped to each chunk square, filled in Pygame's kind colours, green kinds through the season — godot-16. Missing: the speckle texture on vegetation | partial | medium | Godot rendering only (speckles) | C |
 | Water | `draw_waters` (ice in winter, spring floes) | flat polygons, freezing to Pygame's ice colour with `calendar.season`'s winter weight — godot-15; no spring floes | partial | medium | Godot rendering only (spring floes: position-seeded plates) | C |
-| Roads (surface, width by type) | `draw_ways` | polyline, width 2×half_width, 2 colours (drivable / path), ordered by layer; the highway type (`kind`) is in the chunk but unused — godot-10 | partial | high | Godot rendering only (colours and edges by highway type) | B |
-| Road markings: centre lines, dashes | `draw_ways` (`center_lines`) | – | missing | medium | missing protocol data (lanes/oneway not in chunks) | B |
+| Roads (surface, width by type) | `draw_ways` | polyline by layer, width 2×half_width, colour from `road_color_for_way` (surface, then type) — godot-16. Pygame's paved verges beside paths are not drawn | complete | high | – | – |
+| Road markings: centre lines, dashes | `draw_ways` (`center_lines`) | centre line on roads ≥ 6 px wide (dashed 8/6 m, solid on two-way 3+ lanes), one-way chevrons every 40 m, per road layer — godot-16 | complete | medium | – | – |
 | Road layers: bridges over roads | `draw_ways` layer ordering, bridge pass | z level per `layer` (bridges above, dark edge), lowest first — godot-07 | partial | high | missing protocol data (Pygame outlines a vehicle under a higher road; the taxi's layer isn't sent) | B |
-| Underground / covered roads (map levels) | `draw_level_ways` | – | missing | medium | missing protocol data (`map_level` per way, `car.map_level`) | B |
+| Underground / covered roads (map levels) | `draw_level_ways` | below ground (`player.map_level`): a dark view with the level's roads, no surface traffic or street lights; on the surface, the covered level-0 roads — godot-16 | complete | medium | – | – |
 | Wet roads | `draw_wet_roads` | `map_chunk.gd` darken + sheen overlays on drivable roads, alpha by wetness in 3/255 steps — godot-07 | complete | low | – | – |
 | Puddles | `draw_puddles` (from road geometry and wetness) | 40 % of drivable roads, reveal threshold, size and alpha by wetness — godot-07; spots seeded from geometry (Pygame: OSM ids), no rain ripples | partial | low | Godot rendering only (ripples); exact spots need OSM ids (protocol) | C |
-| Parking spaces | `draw_parking_spaces` | – | missing | low | missing protocol data | B |
-| Railways: rails, sleepers, ballast | `draw_railways` | one dark line, 1.4 m | partial | medium | Godot rendering only (track gauge and style) | B |
-| Rail bridges above vehicles | `draw_railways(only_bridges=True)` after vehicles | – | missing | medium | missing protocol data (bridge flag/layer on railways) | B |
-| Traffic islands | `draw_traffic_islands` | – | missing | low | missing protocol data | B |
+| Parking spaces | `draw_parking_spaces` | chunk `parking`: asphalt bays with a light edge — godot-16 | complete | low | – | – |
+| Railways: rails, sleepers, ballast | `draw_railways` | ballast bed (zoomed in), two rails at standard gauge, a sleeper every 2 m — godot-16 | complete | medium | – | – |
+| Rail bridges above vehicles | `draw_railways(only_bridges=True)` after vehicles | chunk `rail_decks` (deck, guardrail edge) and `rail_bridges` (track) at z 11 above the vehicles, trains above them — godot-16 | complete | medium | – | – |
+| Traffic islands | `draw_traffic_islands` | chunk `traffic_islands` above roads and rails, in their landuse colour — godot-16 | complete | low | – | – |
 | Trees | `draw_trees` | chunk `trees`: crown by kind and variation, seeded irregular blob; felled trees lie the way they were hit (`state.fallen_trees`); collision on the server — godot-13; seasonal crown colours from `calendar.season` — godot-15. Missing: the hit's shake and leaf burst (`tree_effects`, not sent), wind lean (`weather.tree_lean_m`, not sent) | partial | medium (collisions) | missing protocol data (shake, leaves, wind lean) | C |
 | Scenery objects: benches, bollards, fountains | `draw_scenery_objects` (+ knocked-over state) | bollards and knocked posts (godot-13), fuel pumps (godot-12), and the decorative kinds — bench (along its path), bin, bicycle parking, statue, picnic table, fire pit, fountain, gate — from chunk `scenery_objects` — godot-15 | complete | medium (bollards collide) | – | – |
-| Bus stops (option) | `draw_bus_stops` | – | missing | low | missing protocol data | B |
-| Buildings | `draw_buildings` (cached geometry, facades) | flat grey polygons | partial | high | missing protocol data (facades, heights: building tags not in chunks) | B |
-| Open-roof canopies over vehicles | `draw_open_roof_overlays` | – | missing | medium | missing protocol data (open-roof buildings) | B |
-| Tire tracks | `draw_tire_tracks` ×4 | – | missing | low | missing protocol data (`taxi_mgr` track state) | C |
+| Bus stops (option) | `draw_bus_stops` | chunk `bus_stops`: bay, shelter and "BUS" from the nearest road, computed once by the server — godot-16 (Oulu has none: bus stops are off by default) | complete | low | – | – |
+| Buildings | `draw_buildings` (cached geometry, facades) | top-down: Pygame's roof colour (a colour in the name, else its texture pick), a height shadow, gabled facets and ridge, door marks at entrances — godot-16. No oblique facades, by design (the brief) | different by design | high | – | – |
+| Open-roof canopies over vehicles | `draw_open_roof_overlays` | chunk `canopies`: shadow and posts under the vehicles, the translucent roof above them; fuel pumps show — godot-16 | complete | medium | – | – |
+| Tire tracks | `draw_tire_tracks` ×4 | the server's per-tick `tire_mark` (as `main()` decides it), laid along the drawn taxi, at most 4000 points — godot-16. The client keeps the trail, so a reconnect starts a new one | complete | low | – | – |
 | Roadworks barriers / cones | `draw_roadworks` | chunk `roadworks`: barriers at both ends (lane or full road), cones between, Pygame's pixel sizes — godot-12 | complete | high (block roads) | – | – |
-| Curbs | `draw_curbs` | – | missing | low (curb bump) | missing protocol data | B |
+| Curbs | `draw_curbs` | chunk `curbs`, 0.15 m grey — godot-16 | complete | low (curb bump) | – | – |
 | Fences, railings, walls, hedges | `draw_railings` | chunk `railings`: hedges and walls solid (0.25 m), fences and railings dashed 0.8/0.4 m; no collision, as in the simulation — godot-15 | complete | low | – | – |
 | Construction fences | `draw_construction_fences` | chunk `construction_fences`: the site's ring as a dashed hazard fence, 1.5 m dash / 1 m gap round the corners; collision (`check_fence_collision`) on the server — godot-13 | complete | low | – | – |
-| Zebra crossings | `draw_crossings` | – | missing | medium | missing protocol data | B |
-| Speed bumps | `draw_speed_bumps` | – | missing | medium | missing protocol data | B |
+| Zebra crossings | `draw_crossings` | 0.5 m stripes along the road, 0.9 m apart, across its width — godot-16 | complete | medium | – | – |
+| Speed bumps | `draw_speed_bumps` | dark rectangles, length by kind — godot-16 | complete | medium | – | – |
 | Traffic lights (posts and live phase) | `draw_traffic_lights(sim_time)` | chunk `traffic_lights` posts (render position, angle, 7×18 px housing) lit by `state.traffic_lights`, the server's `get_state` — godot-12. Phases are sent within 600 m of the player: zoomed out past that (about ten zoom steps), farther posts show unlit | complete | high | – | – |
 | Taxi stands (TAXI signs) | `draw_taxi_stops` | chunk `taxi_stands`: the TAXI sign on its pole — godot-12 | complete | high (rail pickups) | – | – |
-| Stop / yield signs | `draw_stop_signs`, `draw_yield_signs` | – | missing | medium | missing protocol data | B |
-| Speed cameras | `draw_speed_cameras` (+ flash) | – | missing | medium | missing protocol data (positions; flash state not sent) | B |
+| Stop / yield signs | `draw_stop_signs`, `draw_yield_signs` | octagon with STOP / give-way triangle on a pole, pixel-sized as Pygame's — godot-16 | complete | medium | – | – |
+| Speed cameras | `draw_speed_cameras` (+ flash) | box, red lens, yellow arrow; the flash from `state.speed_camera_flash` — godot-16 | complete | medium | – | – |
 | Fuel stations (price boards) | `draw_fuel_station_signs` (+ the pumps in `draw_scenery_objects`) | chunk `fuel_stations`: pin and board with the name and the server's price above the vehicles, pumps under the buildings — godot-12 | complete | high (fuel runs out) | – | – |
 | Street lights (+ broken lamps dark) | `draw_street_lights` (placed from roads; `broken_lamps`) | chunk `street_lights`, placed by the server with Pygame's own placement; at darkness > 0.25 the pools' union added once (+22) over the tint, then the lamp heads; a knocked street lamp (`state.knocked_posts`) dark — godot-15 | complete | low | – | – |
 | Illuminated windows at night | `draw_illuminated_windows` | – (godot-15: drawn on Pygame's oblique facades - roof offset by height, which windows are lit seeded by `id(building)`; Godot's buildings are flat top-down, so there is no facade to light) | missing | low | Pygame-specific implementation (needs the building-detail rendering) | phase 6 |
-| Map labels: place and street names | `draw_labels` (decluttered) | – | missing | medium | missing protocol data (labels/places) | B |
+| Map labels: place and street names | `draw_labels` (decluttered) | `labels.gd`: the server's candidates, decluttered per view by Pygame's rules (priority, unique, no overlap, ≤ 35, zoom gates) — godot-16 | complete | medium | – | – |
 | Vomit puddles and footprints | `draw_vomit_puddles` ×2, `draw_vomit_footprints` | – | missing | low | missing protocol data | C |
 
 ## Vehicles
@@ -103,7 +104,7 @@ find customers, avoid hazards); `medium` means world-reading or feedback;
 | NPC crash state: fallen, crash smoke | `draw_npc_cars`, `draw_taxi_smoke` style | fallen two-wheelers on their side, smoke from `crashed_timer` — godot-07 | complete | medium | – | – |
 | Parked vehicles | `draw_npc_cars` (parked NPCs are NPCs; lamps off by `_vehicle_engine_on`: `state != "PARKED"`) | drawn as NPC vehicles by type, lamps off by the same rule — godot-10 | complete | medium | – | – |
 | Vehicle shadows | – (none in Pygame) | – | not applicable | – | – | – |
-| Night headlight beams | `draw_headlight_beams` | `night_layer.gd`: the taxi's and NPCs' beams (15 m; 45 m for an NPC away from street lights with nothing oncoming) cut out of the tint, minus buildings — godot-15. Missing: Pygame skips a vehicle under a higher road (needs the taxi's layer) | partial | medium | missing protocol data (the taxi's layer) | C |
+| Night headlight beams | `draw_headlight_beams` | `night_layer.gd`: the taxi's and NPCs' beams cut out of the tint, minus buildings — godot-15; skipped under a higher road (the taxi's sent road layer and bridge flag; an NPC on a raised layer counts as on its bridge) — godot-16 | complete | medium | – | – |
 | Vehicle on-foot drivers (`is_on_foot`) | drawn by `draw_pedestrians` | drawn as pedestrians — godot-07 | complete | low | – | – |
 
 ## Pedestrians
@@ -168,7 +169,7 @@ find customers, avoid hazards); `medium` means world-reading or feedback;
 | Money | yes | `hud.gd` | complete | high | – | – |
 | Taxi job / passenger | mission bar | `hud.gd` fare line | partial | high | Godot rendering only (fields sent) | A |
 | Notifications | yes | `hud.gd` notice | complete | high | – | – |
-| Speed-camera notice / flash | yes (notice centred, red border); lens flash at the camera (`draw_speed_cameras`) | notice centred with a red border from `taxi.speed_camera_notice` — godot-11; no lens flash | partial | medium | missing protocol data (the flash is drawn at the camera itself: needs camera positions in chunks) | B |
+| Speed-camera notice / flash | yes (notice centred, red border); lens flash at the camera (`draw_speed_cameras`) | notice centred with a red border — godot-11; the lens flash — godot-16 | complete | medium | – | – |
 | Road name, speed limit | limit sign always; road name in the debug HUD line | `instruments.gd` limit sign; road line in the F3 readout, both from `state.road` — godot-11 | complete | high | – | – |
 | Fuel gauge | yes (needle gauge, reserve zone, econometer) | `instruments.gd`, same gauge — godot-07 | complete | high | – | – |
 | Fuel price at a station | yes | – | missing | medium | missing protocol data | B |
@@ -195,7 +196,7 @@ find customers, avoid hazards); `medium` means world-reading or feedback;
 | Viewport resize | fixed `SCREEN_W`×`SCREEN_H` | window resizable, default 1280×720 | different by design | – |
 | Off-screen culling | explicit viewport culling per call | entities culled against the camera view + 30 m (godot-07); map chunks culled by Godot | complete | – |
 | Interpolation | in-process: none needed; `--connect`: `interpolate_state` for player, NPCs, pedestrians (not trains) | `StateBuffer`: player, NPCs, pedestrians, train cars | different by design | – |
-| Layering | grass → landuse → water → roads → parking → railways → islands → trees → objects → buildings → tracks → roadworks, curbs, signs → pedestrians → route → target → taxi → NPCs → splashes → roofs → bridge rails → trains → fuel boards → night tint → windows, beams, lamps → weather → labels → HUD → phone | ground → water (chunk z0) → roads by layer (z1–z4) → wet overlays, puddles (z5) → railways (z6) → buildings (z7) → entities (z10): pedestrians → target → taxi → NPCs → smoke → trains → HUD, overlay, phone (godot-10: as in `entity_layer.gd`) | partial | Godot-07: trains now above vehicles as in Pygame; roads by layer, wet overlays and puddles above roads, buildings above, entities above all (z 10). Still no roof layer above vehicles, no bridge-rail layer. |
+| Layering | grass → landuse → water → roads → parking → railways → islands → trees → objects → buildings → tracks → roadworks, curbs, signs → pedestrians → route → target → taxi → NPCs → splashes → roofs → bridge rails → trains → fuel boards → night tint → windows, beams, lamps → weather → labels → HUD → phone | ground (z −2) → landuse (−1) → water (0) → roads by layer with markings (1–4) → wet, puddles, parking, guardrails (5) → rails, islands, trees, objects, pumps (6) → buildings, canopy posts (7) → tyre tracks, curbs/crossings/bumps, railings, fences, roadworks, signs, lights (8) → underground (9) → entities (10) → canopies, rail bridges (11) → trains (12) → fuel boards (13) → night (20) → street lights (21) → reflectors (22) → labels, HUD, phone (UI) — godot-16 | complete | Pygame's order, with Godot z levels. |
 | Animations | turn-signal blink, exhaust puffs, smoke, splashes, rain, lightning, pedestrian walk cycle, door opening | godot-07: turn-signal blink, exhaust and crash smoke, walk cycle, curse fade | partial | Missing: splashes and rain (Phase C), lightning (protocol), door opening (Pygame-specific). |
 
 ## Counts
@@ -203,15 +204,15 @@ find customers, avoid hazards); `medium` means world-reading or feedback;
 Computed from the tables above: 108 rows (109 from godot-10), each counted once
 by status. godot-06 is the audit; godot-07 is after the rendering-only phase.
 
-| Status | godot-06 | godot-07 | godot-10 | godot-11 | godot-12 | godot-13 | godot-14 | godot-15 |
-|---|---|---|---|---|---|---|---|---|
-| complete | 7 | 30 | 31 | 35 | 39 | 40 | 42 | 46 |
-| partial | 22 | 18 | 16 | 17 | 17 | 19 | 18 | 19 |
-| missing | 71 | 52 | 52 | 47 | 43 | 40 | 39 | 34 |
-| different by design | 3 | 3 | 4 | 4 | 4 | 4 | 4 | 4 |
-| debug-only | 3 | 3 | 3 | 3 | 3 | 3 | 3 | 3 |
-| not applicable | 2 | 2 | 3 | 3 | 3 | 3 | 3 | 3 |
-| rows | 108 | 108 | 109 | 109 | 109 | 109 | 109 | 109 |
+| Status | godot-06 | godot-07 | godot-10 | godot-11 | godot-12 | godot-13 | godot-14 | godot-15 | godot-16 |
+|---|---|---|---|---|---|---|---|---|---|
+| complete | 7 | 30 | 31 | 35 | 39 | 40 | 42 | 46 | 65 |
+| partial | 22 | 18 | 16 | 17 | 17 | 19 | 18 | 19 | 14 |
+| missing | 71 | 52 | 52 | 47 | 43 | 40 | 39 | 34 | 19 |
+| different by design | 3 | 3 | 4 | 4 | 4 | 4 | 4 | 4 | 5 |
+| debug-only | 3 | 3 | 3 | 3 | 3 | 3 | 3 | 3 | 3 |
+| not applicable | 2 | 2 | 3 | 3 | 3 | 3 | 3 | 3 | 3 |
+| rows | 108 | 108 | 109 | 109 | 109 | 109 | 109 | 109 | 109 |
 
 Missing and partial rows by cause, after godot-07. The 3
 camera/layering rows have no cause column.
@@ -997,3 +998,137 @@ missing):**
 - tire tracks, vomit puddles
 
 **Next:** the rest of the static world above (phase 6b), then navigation.
+
+## godot-16: the rest of the static world
+
+Everything Pygame draws from the map is now drawn by Godot. It's all
+drawing: no collision, no routing, no client-side simulation (a test
+asserts no physics nodes).
+
+**Where the data comes from (all of it was server or map data already):**
+
+| Item | Server source | Sent as | Godot |
+|---|---|---|---|
+| Road colour, centre line, one-way, bridge | `road_color_for_way`, lanes/oneway, `is_bridge` | fields on each chunk road | `map_chunk._draw_roads` + `chunk_detail.road_markings` |
+| Bridge guardrails | road bridges, union with shapely once (outer side edges only) | chunk `guardrails` (segment's midpoint chunk) | z 5 |
+| Landuse, traffic islands | `sceneries` (kind colours, green kinds seasonal) | chunk `landuse` / `traffic_islands`, **clipped to each chunk square** | z −1 / z 6 |
+| Parking spaces, curbs | `parking_spaces`, `curbs` | chunk lists (first point's chunk) | z 5 / z 8 |
+| Crossings, speed bumps, stop/yield signs | snapped OSM points with angles | chunk lists | z 8 |
+| Speed cameras | `speed_cameras` (id = index); the flash from `taxi_mgr.speed_camera_flash_*` | chunk `speed_cameras`; state `speed_camera_flash` | z 8 |
+| Bus stops | bay/shelter/label from the nearest road (Pygame's geometry), once | chunk `bus_stops` | z 5 |
+| Labels | places, named waters/areas/buildings, road names, by Pygame's priority | chunk `labels` (candidates) | `labels.gd`, decluttered per view |
+| Buildings | roof colour (`_building_colors_from_name` / texture pick), gabled, height, entrances | chunk `building_styles` (parallel to `buildings`) | z 7, top-down |
+| Open-roof canopies | `building=roof` etc. (`_is_open_roof`) | chunk `canopies` (no longer in `buildings`) | posts z 7, roof z 11 |
+| Rail bridges | `railways[].is_bridge`; decks: union with shapely once | chunk `rail_bridges`, `rail_decks` | z 11, trains z 12 |
+| Underground | `level_ways` (levels), `car.map_level` (the simulation moves it) | chunk `level_roads`; `player.map_level` | z 9 |
+| Tire tracks | per tick, with `main()`'s own functions (ground kind, skid, wetness, front lockup, season) | state `tire_mark` | trail kept by the client, ≤ 4000 points |
+| Headlights under a higher road | the taxi's `current_way` layer and bridge flag | state `road.layer`, `road.bridge` | `MapLayer.covered` over the chunks' raised roads |
+
+**Ownership.**
+- Points belong to the chunk containing them; polylines to their first
+  point's chunk; guardrail segments to their midpoint's chunk.
+- Area polygons are cut along the chunk grid, so each piece belongs to
+  exactly one chunk. A forest relation can span kilometres, more than the
+  loaded chunks around the player.
+- Everything is computed once at startup (`static_world.py`). The Oulu
+  chunk index builds in 1.5 s (was ~0.3 s), and server init is ~6.6 s in
+  total.
+- Chunks grew from 41.8 to 51.0 KiB on average (max 267 → 392 KiB).
+
+**Batching and memory:**
+- Each kind is one canvas item per chunk, drawn with one call per style:
+  - multilines for curbs, stripes, rails, sleepers, centre lines,
+    chevrons and guardrails
+  - polygons only where they're areas
+- The first build held the chunk data as parsed JSON. Every point became
+  an Array of two Variants, and the client's static memory reached
+  105 MiB. Polylines and polygons are now converted once, at load, to
+  `PackedVector2Array`s in layer coordinates. That's back to ~79.5 MiB
+  (godot-15: 78.7), with all of the above loaded.
+- **Chunk load:** 7.5 ms per chunk (4.9 with godot-15's client on the same
+  data), and ~13 ms per chunk to draw the first time. A row of chunks
+  entering at once would have taken one long frame, so new chunks are now
+  added one per frame. 49 at startup take ~0.3 s; a boundary crossing is
+  spread over its frames. Unloading takes 0.4 ms for all 49.
+
+**Building detail (top-down, no facades).** Each building gets:
+- its roof colour, as Pygame picks it
+- a shadow offset by its height
+- for gabled roofs, the footprint split along its longest edge into a
+  lighter and a darker facet with a ridge line (Pygame's
+  `_draw_gabled_roof`, seen from straight above)
+- door marks at its OSM entrances
+
+Pygame's slanted facades and their windows are not drawn, by design. **Lit
+windows** therefore stay missing: there is no top-down surface where
+Pygame's facade windows would be correct.
+
+**Canopies:** the shadow and corner posts are drawn under the vehicles,
+and the translucent roof (alpha 185/255) with its edge above them. The
+fuel pumps under St1 Limingantie are visible now (godot-12's deferred
+item).
+
+**Snow readability:** the trip/odometer text has a dark 4 px outline,
+readable on snow and grass. It needs no weather detection.
+
+**Verified:**
+- Python tests (1565):
+  - landuse clipping: the pieces cover the original, with no overlap
+  - every new list in its chunk; canopies are not buildings
+  - a "Sininen" building gets a blue roof
+  - road style for a two-way four-lane road, a one-way bridge and a path
+  - guardrails only on the outer edges of two parallel carriageways
+  - bus-stop shapes
+  - a tire mark from a real tick; the flash index; the map level
+- Godot unit tests (216):
+  - layers per kind; packed data in layer coordinates
+  - centre-line rules (8 m dashes; none under 6 px; solid; chevrons at
+    40/80 m)
+  - covered/not covered under a bridge
+  - no street lights underground
+  - the flash redraws once
+  - label rules (priority over an overlap, one per name, the HUD band,
+    the 0.35 px/m road gate, at most 35)
+  - tire-track bounds (whole oldest trails go)
+  - the snow outline
+- Real Oulu server (scratch launcher; production config untouched):
+  - **Daylight start area:** labels (buildings, streets, Postiaukio),
+    crossings, parking bays, curbs, autumn landuse, roofs with door marks,
+    railway sleepers, the outlined trip text.
+  - **St1 Limingantie:** canopy with the pump visible under it, one-way
+    chevrons.
+  - **A rail bridge** over water: deck, guardrails, track; a road bridge
+    beside it with guardrails.
+  - **A speed camera** with its flash, and a stop sign.
+  - **Underground:** level −3, dark view with the level's road and the
+    taxi.
+  - **A park:** the client drove off and dirt tracks were laid behind the
+    taxi (both axles), broken where it crossed a paved path.
+  - **23:00:** tint, street lights, beams, untinted labels.
+  - One run logged a single "triangulation failed". It didn't reproduce;
+    puddle outlines and the new bump/bus polygons are now validity-checked.
+- `make godot-selftest`: 145 FPS, 0 render backsteps, taxi 0 px off
+  centre, ~79.5 MiB.
+
+**Deliberately left as they are:**
+- **Landuse speckle texture** (partial): the fills are drawn, not the
+  dots on vegetation.
+- **Road layers:** Pygame outlines a vehicle under a higher road, and
+  that outline isn't drawn (partial). Guardrails and the headlight cut
+  are done.
+- **Lit windows** (missing): no facades top-down.
+- **Ground texture:** a flat ground with snow, not Pygame's textured
+  grass.
+- **Water:** no spring ice floes.
+- **Trees:** no hit animation or wind lean.
+- **Vomit puddles and footprints, splashes, rain and snow particles:**
+  effects, not static world.
+- **Fuel-price HUD:** still deferred. It needs the nearest station in the
+  per-tick state.
+- **Traffic lights:** phases still sent only within 600 m (godot-12).
+- **NPC beams on bridges:** decided by layer > 0, because an NPC's way's
+  bridge flag isn't sent.
+
+**Remaining before navigation:** the static world is done. What's left
+in the table is effects, HUD details, menus and debug tools, and the
+navigation route itself.
