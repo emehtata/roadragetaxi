@@ -17,7 +17,7 @@
 extends Node2D
 
 const B25 := preload("res://buildings_25d.gd")  # colours, window rules, unit()
-const FOV := 40.0  # degrees, vertical. Higher means deeper facades. ponytail: one global knob, tune by eye.
+static var FOV := 30.0  # degrees, vertical; higher = deeper facades. godot-22: 40 let tall buildings swallow streets, 25 flattens low ones
 const LIGHT := Vector2(-0.6, -0.8)  # walls facing up-left are lit (2D screen direction)
 const WINDOW_OUT := 0.05  # metres in front of the wall, so depth testing keeps windows on top
 const LIT_OUT := 0.08

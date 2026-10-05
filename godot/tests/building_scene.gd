@@ -2,7 +2,7 @@
 ## directions are visible. Red outlines are the unchanged ground footprints.
 ## godot-21: the camera also sweeps across the scene (pan_*.png) to show the
 ## facades changing continuously. RENDERER: 3d (default) or 2d (godot-20).
-##   godot --path godot --script res://tests/building_scene.gd -- OUT_PREFIX [RENDERER]
+##   godot --path godot --script res://tests/building_scene.gd -- OUT_PREFIX [RENDERER] [FOV]
 extends SceneTree
 
 const MapLayer := preload("res://map_layer.gd")
@@ -20,6 +20,8 @@ func _initialize() -> void:
 	var args := OS.get_cmdline_user_args()
 	var prefix: String = args[0] if not args.is_empty() else "user://buildings"
 	MapChunk.buildings_3d = args.size() < 2 or args[1] != "2d"
+	if args.size() > 2:  # godot-22: FOV candidates
+		preload("res://buildings_3d.gd").FOV = float(args[2])
 	RenderingServer.set_default_clear_color(Color8(120, 128, 110))
 	var buildings := [
 		_box(0, 30, 16, 10),  # low

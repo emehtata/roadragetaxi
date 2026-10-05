@@ -104,6 +104,8 @@ func _ready() -> void:
 				Perf.keep_all = true
 			"--buildings":  # godot-21: "2d" the radial 2D renderer, "3d" (default) the 3D building layer
 				MapChunk.buildings_3d = args[i + 1] != "2d"
+			"--building-fov":  # godot-22: try a 3D building camera FOV (degrees)
+				preload("res://buildings_3d.gd").FOV = float(args[i + 1])
 			"--compass":
 				$Ui/NavOverlay.show_compass = true
 			"--screenshot-drive":  # with --screenshot: get in and drive this many seconds first
