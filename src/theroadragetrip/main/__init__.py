@@ -39,7 +39,7 @@ from ..career import (
     save_gig_odometer,
 )
 from ..localization import SUPPORTED_LANGUAGES, normalize_language, tr
-from ..calendar import GameCalendar, Season
+from ..calendar import GameCalendar, Season, darkness_for_sun_altitude
 from ..climate import appearance_with_snow_depth, typical_temperature
 from ..fuel import fuel_station_price_cents, nearest_fuel_station
 from .. import protocol, transport
@@ -1661,7 +1661,7 @@ def main() -> None:
             wind_mps = weather.wind_speed_mps * weather.gust_factor
             raining = weather.weather_type in (WeatherType.RAIN, WeatherType.SLUSH)
             audio.update_ambience(
-                night=1.0 - max(0.0, min(1.0, (sun_altitude + 12.0) / 18.0)),  # the street lights' darkness
+                night=darkness_for_sun_altitude(sun_altitude),  # the street lights' darkness
                 rain=0.6 if raining else 0.0,
                 heavy_rain=0.7 if raining and weather.is_thunderstorm else 0.0,
                 wind=max(0.0, min(1.0, wind_mps / 12.0)) * 0.5,

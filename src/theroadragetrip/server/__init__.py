@@ -31,6 +31,7 @@ import pygame
 from .. import protocol
 from ..map_chunks import CHUNK_SIZE_M, ChunkIndex, cell_of, plan
 from ..protocol import LOCAL_PLAYER_ID
+from ..calendar import GameCalendar, darkness_for_sun_altitude, solar_altitude_and_events_on
 from ..career import career_path, gig_odometer_path
 from ..config import CONFIG_PATH, cities_from_config, get_overpass_endpoints
 from ..main import _choose_city, _load_world
@@ -134,13 +135,19 @@ class SimulationServer:
         # attached onto `world` here so protocol.py's state builder (which
         # reads world.weather, matching how it reads every other manager)
         # doesn't need a separate parameter for it.
-        self.world.weather = WeatherSystem()
+        # The game's one calendar (godot-14), as main() keeps it: game time,
+        # date and the weather's season follow from it. The server starts
+        # today at 18:00, as it always has; Pygame's career default is
+        # another date, chosen on its start screen.
+        self.calendar = GameCalendar(datetime.combine(date.today(), datetime.min.time()) + timedelta(hours=18),
+                                     latitude=getattr(self.world, "sun_latitude", 65.01))
+        self.world.weather = WeatherSystem(season=self.calendar.season)
 
         self._on_foot = True
         self._camx, self._camy = self.car.x, self.car.y
         self._px_per_m = _DEFAULT_PX_PER_M
         self._current_way = None
-        self._game_time_seconds = 18.0 * 60.0 * 60.0
+        self._time_scale = 60.0
         self._bridge_edge_crash_cooldown = 0.0
         self._rage_power = 0.0
         self._water_elapsed = 0.0
@@ -165,6 +172,22 @@ class SimulationServer:
 
         self._listener: Optional[Listener] = None
         self._running = False
+
+    @property
+    def _game_time_seconds(self) -> float:
+        """Seconds since local midnight on the calendar (not a clock of its own)."""
+        return self.calendar.time_seconds
+
+    def calendar_state(self) -> dict:
+        """What a client needs of the calendar (state "calendar"): the date,
+        how fast game time runs, and the sun - computed here, never by the
+        client. The sun is at the city's latitude and longitude."""
+        altitude, _, _ = solar_altitude_and_events_on(
+            self.calendar.date, self.calendar.time_seconds,
+            getattr(self.world, "sun_latitude", self.calendar.latitude), getattr(self.world, "sun_longitude", 25.47),
+        )
+        return {"date": self.calendar.date.isoformat(), "time_scale": self._time_scale,
+                "sun_altitude_deg": round(altitude, 2), "darkness": round(darkness_for_sun_altitude(altitude), 3)}
 
     def start(self, host: str, port: int) -> None:
         self._listener = Listener(host, port, self._on_client_connect)
@@ -233,8 +256,12 @@ class SimulationServer:
                 self.car, self.world.player_pedestrian, self._on_foot, self.audio, self.world.taxi_mgr,
             )
 
-        time_scale = 1.0 if self.world.taxi_mgr.has_active_job() else 60.0
-        self._game_time_seconds = (self._game_time_seconds + dt * time_scale) % (24.0 * 60.0 * 60.0)
+        # Game time runs 60x while there is no fare, 1:1 during one (main()).
+        time_scale = self._time_scale = 1.0 if self.world.taxi_mgr.has_active_job() else 60.0
+        previous_date = self.calendar.date
+        self.calendar.advance(dt * time_scale)
+        if self.calendar.date != previous_date:
+            self.world.weather.season = self.calendar.season  # main()'s _sync_thermal_season
         self.world.weather.update(dt * time_scale, dt)
         if self.world.weather.lightning_event_id != self._lightning_event_id:  # a strike: thunder, once (as main())
             self.audio.play_group("weather.thunder", 0.8)
@@ -267,7 +294,7 @@ class SimulationServer:
             gig_odometer_file=self.gig_odometer_file,
             chosen_city=self.chosen_city,
             cities_list=self.cities_list,
-            now=datetime.combine(date.today(), datetime.min.time()) + timedelta(seconds=self._game_time_seconds),
+            now=self.calendar.current,
         )
         self._camx, self._camy = result.camx, result.camy
         self._current_way = result.current_way
@@ -342,7 +369,7 @@ class SimulationServer:
             rage_power=self._rage_power, water_elapsed=self._water_elapsed,
             should_stop=should_stop, city_summary=city_summary, events=events,
             server_time=self._server_time, player_id=LOCAL_PLAYER_ID,
-            current_way=self._current_way, language=self.language,
+            current_way=self._current_way, language=self.language, calendar=self.calendar_state(),
         )
         with self._clients_lock:
             clients = list(self._clients)

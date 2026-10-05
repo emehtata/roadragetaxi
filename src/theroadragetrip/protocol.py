@@ -319,6 +319,7 @@ def build_state_message(
     camx: float, camy: float, rage_power: float, water_elapsed: float,
     should_stop: bool = False, city_summary: Optional[tuple] = None, events: Optional[list] = None,
     server_time: float = 0.0, player_id: str = LOCAL_PLAYER_ID, current_way=None, language: str = "en",
+    calendar: Optional[dict] = None,
 ) -> dict:
     """Everything the Pygame client needs to render one frame, and nothing
     static (see module docstring). Called once per server tick."""
@@ -332,6 +333,9 @@ def build_state_message(
         "knocked_posts": knocked_posts,  # [x, y, angle, kind]: bollards and street lamps lying flat
         "player_id": player_id,  # whose `player` / `taxi` this is
         "game_time_seconds": game_time_seconds,
+        # {"date": "YYYY-MM-DD", "time_scale": game s per real s, "sun_altitude_deg",
+        #  "darkness": 0 day .. 1 night} - the server's calendar and sun (godot-14).
+        "calendar": calendar,
         "sim_time": traffic_mgr.sim_time,
         "on_foot": on_foot,
         # The camera-follow lookahead depends on car speed/heading, which

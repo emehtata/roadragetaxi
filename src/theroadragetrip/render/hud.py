@@ -8,6 +8,7 @@ from .common import (
     solar_altitude_and_events,
     world_to_screen,
 )
+from ..calendar import darkness_for_sun_altitude
 import functools
 import math
 import os
@@ -301,8 +302,7 @@ def draw_day_night_overlay(
     import pygame
 
     sun_altitude, _, _ = solar_altitude_and_events(game_time_seconds, latitude, longitude)
-    twilight = max(0.0, min(1.0, (sun_altitude + 12.0) / 18.0))
-    alpha = int(115.0 * (1.0 - twilight))
+    alpha = int(115.0 * darkness_for_sun_altitude(sun_altitude))
     if visible_road_count is not None and alpha > 0:
         sparse_area = max(0.0, min(1.0, (12.0 - visible_road_count) / 12.0))
         alpha += int(95.0 * sparse_area)

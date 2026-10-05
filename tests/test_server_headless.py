@@ -184,3 +184,53 @@ def test_traffic_light_phases_name_posts_in_the_chunks(tmp_path, monkeypatch):
     posts = {str(post["id"]) for cid in server._chunks_index._chunks for post in server._chunks_index.message(cid)["traffic_lights"]}
     assert set(phases) <= posts
     assert set(phases.values()) <= {"green", "yellow", "red", "red+yellow", "all-red"}
+
+
+def test_the_calendar_is_the_one_clock_and_carries_the_sun(tmp_path, monkeypatch):
+    """godot-14: the server's GameCalendar drives game time, the date and the
+    sun the client draws night from."""
+    from datetime import datetime
+
+    from theroadragetrip.calendar import solar_altitude_and_events_on
+
+    server = _build_server(tmp_path, monkeypatch)
+    assert server._game_time_seconds == server.calendar.time_seconds == 18 * 3600.0
+    server.calendar.current = datetime(2026, 6, 21, 13, 0)  # midsummer noon in Oulu
+    noon = server.calendar_state()
+    assert noon["date"] == "2026-06-21" and noon["darkness"] == 0.0 and noon["sun_altitude_deg"] > 40.0
+    server.calendar.current = datetime(2026, 12, 21, 20, 0)  # midwinter evening
+    night = server.calendar_state()
+    assert night["darkness"] == 1.0 and night["sun_altitude_deg"] < -12.0
+    altitude, _, _ = solar_altitude_and_events_on(server.calendar.date, server.calendar.time_seconds,
+                                                  server.world.sun_latitude, server.world.sun_longitude)
+    assert night["sun_altitude_deg"] == round(altitude, 2)  # the real model, not a copy
+
+    # Advancing: 60 game seconds per real second without a fare; past midnight the date and season move on.
+    server.calendar.current = datetime(2026, 11, 30, 23, 59, 30)
+    server.tick(1.0)
+    assert server.calendar.current == datetime(2026, 12, 1, 0, 0, 30) and server._game_time_seconds == 30.0
+    assert server.calendar_state()["time_scale"] == 60.0 and server.world.weather.season == server.calendar.season
+    assert _state(server)["game_time_seconds"] == 30.0
+
+
+def test_darkness_boundaries():
+    from theroadragetrip.calendar import darkness_for_sun_altitude
+
+    assert darkness_for_sun_altitude(6.0) == 0.0 and darkness_for_sun_altitude(30.0) == 0.0  # full day from 6 degrees up
+    assert darkness_for_sun_altitude(-3.0) == 0.5  # halfway through dusk
+    assert darkness_for_sun_altitude(-12.0) == 1.0 and darkness_for_sun_altitude(-40.0) == 1.0  # full night
+
+
+def test_the_calendar_crosses_the_wire(tmp_path, monkeypatch):
+    from theroadragetrip import protocol
+
+    server = _build_server(tmp_path, monkeypatch)
+    message = protocol.build_state_message(
+        tick=1, world=server.world, car=server.car, on_foot=True, player_pedestrian=server.world.player_pedestrian,
+        game_time_seconds=server._game_time_seconds, camx=0.0, camy=0.0, rage_power=0.0, water_elapsed=0.0,
+        calendar=server.calendar_state())
+    assert protocol.decode(protocol.encode(message))["state"]["calendar"] == server.calendar_state()
+    old = protocol.build_state_message(  # a caller without a calendar (old server code): the field is just null
+        tick=1, world=server.world, car=server.car, on_foot=True, player_pedestrian=server.world.player_pedestrian,
+        game_time_seconds=0.0, camx=0.0, camy=0.0, rage_power=0.0, water_elapsed=0.0)
+    assert old["state"]["calendar"] is None
