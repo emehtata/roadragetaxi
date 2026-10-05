@@ -19,7 +19,10 @@ from .fuel import fuel_station_price_cents
 from .protocol import PROTOCOL_VERSION, _line, encode, traffic_light_render_point
 
 _KINDS = ("roads", "railways", "waters", "buildings", "taxi_stands", "fuel_stations", "traffic_lights", "roadworks",
-          "trees", "construction_fences", "bollards")
+          "trees", "construction_fences", "bollards", "railings", "scenery_objects", "street_lights")
+# Decorative scenery_objects kinds (render/scenery.py draw_scenery_objects); bollards, fuel pumps
+# and street lamps have their own lists.
+DECORATIVE_KINDS = ("bench", "waste_basket", "bicycle_parking", "statue", "picnic_table", "firepit", "fountain", "gate")
 
 CHUNK_SIZE_M = 500.0
 LOAD_RADIUS = 3    # chunks around the player's chunk that must be loaded (7 x 7, >= 1.5 km each way)
@@ -106,6 +109,18 @@ class ChunkIndex:
         for post in getattr(world, "scenery_objects", ()):
             if post.kind == "bollard":  # street lamps are drawn with the street lights, not here (render/scenery.py)
                 self._add("bollards", ((post.x, post.y),), [round(post.x, 1), round(post.y, 1)])
+        # Drawing only (godot-15): nothing collides with these.
+        for railing in getattr(world, "railings", ()):  # render/roads.py draw_railings; its first point's chunk
+            if len(railing.points_m) >= 2:
+                self._add("railings", railing.points_m[:1], [getattr(railing, "kind", "fence"), _line(railing.points_m)])
+        for obj in getattr(world, "scenery_objects", ()):
+            if obj.kind in DECORATIVE_KINDS:
+                self._add("scenery_objects", ((obj.x, obj.y),),
+                          [round(obj.x, 1), round(obj.y, 1), obj.kind, round(obj.direction_angle or 0.0, 3)])
+        # Street lights as render/roads.py places them (explicit OSM lamps, then
+        # lit roads at fixed spacing): [x, y, the road's direction, pool radius].
+        for x, y, direction, pool_radius in getattr(world, "street_light_points", ()):
+            self._add("street_lights", ((x, y),), [round(x, 1), round(y, 1), round(direction, 3), pool_radius])
         for work in getattr(world, "roadworks", ()):  # render/roads.py draw_roadworks; in the chunk of its midpoint
             middle = ((work.start[0] + work.end[0]) / 2.0, (work.start[1] + work.end[1]) / 2.0)
             self._add("roadworks", (middle,), {

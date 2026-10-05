@@ -165,6 +165,7 @@ class SimulationServer:
         self._clients_lock = threading.Lock()
         self._clients: list = []
         # Per connection: the map chunks it has, and the player cell they were planned for.
+        self.world.street_light_points = place_street_lights(self.world)  # before the chunks carry them
         self._chunks_index = ChunkIndex(self.world)  # built and encoded once, before any client (~0.3 s for Oulu)
         self._chunks_index.encode_all()
         self._client_chunks: dict = {}
@@ -186,7 +187,9 @@ class SimulationServer:
             self.calendar.date, self.calendar.time_seconds,
             getattr(self.world, "sun_latitude", self.calendar.latitude), getattr(self.world, "sun_longitude", 25.47),
         )
+        look = self.calendar.seasonal_appearance  # continuous weights, as Pygame's renderers blend them
         return {"date": self.calendar.date.isoformat(), "time_scale": self._time_scale,
+                "season": [round(w * 20.0) / 20.0 for w in (look.winter, look.spring, look.summer, look.autumn)],
                 "sun_altitude_deg": round(altitude, 2), "darkness": round(darkness_for_sun_altitude(altitude), 3)}
 
     def start(self, host: str, port: int) -> None:
@@ -388,6 +391,30 @@ class SimulationServer:
                 time.sleep(sleep_for)
             else:
                 next_tick = time.monotonic()  # fell behind; don't try to catch up in a burst
+
+
+def place_street_lights(world) -> list:
+    """Every street light of the map, placed once with Pygame's own
+    placement (render/roads.py: explicit OSM lamps first, then lit roads at
+    fixed spacing, clear of junctions and buildings) - Pygame runs it per
+    view region in frame-budgeted steps; here it runs to the end over the
+    whole map (Oulu: ~21,500 lights, ~1.7 s at startup).
+    [(x, y, road direction, pool radius m)]."""
+    from ..render import roads
+
+    points = [p for way in world.ways for p in way.points_m]
+    if not points:
+        return []
+    region = (min(p[0] for p in points), min(p[1] for p in points), max(p[0] for p in points), max(p[1] for p in points))
+    work = roads._snapshot_street_light_job(
+        "server", region, world.ways, None, world.buildings, None,
+        getattr(world, "street_lamps", None), getattr(world, "street_lamp_grid", None),
+    )
+    while not roads._advance_street_light_prep(work):
+        pass
+    while not roads._advance_street_light_placement(work):
+        pass
+    return list(work["lamps"])
 
 
 class _NullFrameProfiler:

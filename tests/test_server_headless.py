@@ -234,3 +234,35 @@ def test_the_calendar_crosses_the_wire(tmp_path, monkeypatch):
         tick=1, world=server.world, car=server.car, on_foot=True, player_pedestrian=server.world.player_pedestrian,
         game_time_seconds=0.0, camx=0.0, camy=0.0, rage_power=0.0, water_elapsed=0.0)
     assert old["state"]["calendar"] is None
+
+
+def test_the_server_places_street_lights_as_pygame_does(tmp_path, monkeypatch):
+    """godot-15: the same placement render/roads.py runs per view, once over the map."""
+    from theroadragetrip.render import roads
+
+    server = _build_server(tmp_path, monkeypatch)
+    lights = server.world.street_light_points
+    assert lights, "the sample map has lit roads"
+    xs = [x for x, *_ in lights]; ys = [y for _, y, *_ in lights]
+    work = roads._snapshot_street_light_job("t", (min(xs) - 50, min(ys) - 50, max(xs) + 50, max(ys) + 50), server.world.ways,
+                                            None, server.world.buildings, None, server.world.street_lamps, server.world.street_lamp_grid)
+    while not roads._advance_street_light_prep(work):
+        pass
+    while not roads._advance_street_light_placement(work):
+        pass
+    assert sorted(work["lamps"]) == sorted(lights)
+    sent = [light for cid in server._chunks_index._chunks for light in server._chunks_index.message(cid)["street_lights"]]
+    assert len(sent) == len(lights)  # every light in exactly one chunk
+
+
+def test_the_season_weights_come_from_the_calendar(tmp_path, monkeypatch):
+    from datetime import datetime
+
+    server = _build_server(tmp_path, monkeypatch)
+    server.calendar.current = datetime(2026, 1, 15, 12, 0)
+    winter = server.calendar_state()["season"]
+    server.calendar.current = datetime(2026, 7, 15, 12, 0)
+    summer = server.calendar_state()["season"]
+    assert winter[0] > 0.9 and summer[2] > 0.9  # [winter, spring, summer, autumn]
+    look = server.calendar.seasonal_appearance
+    assert summer == [round(w * 20.0) / 20.0 for w in (look.winter, look.spring, look.summer, look.autumn)]

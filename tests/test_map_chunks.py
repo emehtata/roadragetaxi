@@ -119,3 +119,18 @@ def test_felled_trees_and_knocked_posts_reach_the_state_from_the_real_collisions
     assert fallen == [[10.0, 20.0, 0.0]]  # felled the way the taxi was heading
     assert knocked == [[40.0, 0.0, round(math.pi, 3), "bollard"]]
     assert protocol._fallen_and_knocked(world, 5000.0, 0.0) == ([], [])  # far away: not sent
+
+
+def test_railings_decorations_and_street_lights_are_each_in_one_chunk():
+    """godot-15: drawing-only static world."""
+    from theroadragetrip.osm.models import Railing, SceneryObject
+
+    world = _obstacle_world()
+    world.railings = [Railing([(480.0, 5.0), (530.0, 5.0)], kind="hedge"), Railing([(10.0, 10.0)], kind="wall")]
+    world.scenery_objects += [SceneryObject(12.0, 13.0, "bench", direction_angle=0.5), SceneryObject(14.0, 15.0, "gate")]
+    world.street_light_points = [(100.0, 100.0, 1.25, 14.0), (600.0, 100.0, 0.0, 14.0)]
+    index = map_chunks.ChunkIndex(world, size=500.0)
+    here, east = index.message("0_0"), index.message("1_0")
+    assert here["railings"] == [["hedge", [[480.0, 5.0], [530.0, 5.0]]]] and east["railings"] == []  # first point's chunk, whole
+    assert here["scenery_objects"] == [[46.0, 0.0, "bench", 0.0], [12.0, 13.0, "bench", 0.5], [14.0, 15.0, "gate", 0.0]]
+    assert here["street_lights"] == [[100.0, 100.0, 1.25, 14.0]] and east["street_lights"] == [[600.0, 100.0, 0.0, 14.0]]
