@@ -5,7 +5,8 @@ rows marked godot-07 were updated after that phase (rendering-only parity),
 rows marked godot-10 after the re-audit of 2026-10-05 (`734a3b7`; see
 [the godot-10 section](#godot-10-re-audit)), rows marked godot-11 after
 [phase 2](#godot-11-phase-2-server-state-already-owned), rows marked godot-12 after
-[phase 3](#godot-12-phase-3-gameplay-points-in-chunks).
+[phase 3](#godot-12-phase-3-gameplay-points-in-chunks), rows marked godot-13 after
+[phase 4](#godot-13-phase-4-collision-relevant-static-world).
 
 The Pygame side is the actual per-frame draw sequence in
 `main/__init__.py`: about 80 `draw_*` calls between lines 2771 and 3446,
@@ -63,16 +64,16 @@ find customers, avoid hazards); `medium` means world-reading or feedback;
 | Railways: rails, sleepers, ballast | `draw_railways` | one dark line, 1.4 m | partial | medium | Godot rendering only (track gauge and style) | B |
 | Rail bridges above vehicles | `draw_railways(only_bridges=True)` after vehicles | – | missing | medium | missing protocol data (bridge flag/layer on railways) | B |
 | Traffic islands | `draw_traffic_islands` | – | missing | low | missing protocol data | B |
-| Trees | `draw_trees` | – | missing | medium (collisions) | missing protocol data | B |
-| Scenery objects: benches, bollards, fountains | `draw_scenery_objects` (+ knocked-over state) | only the `fuel` kind's pumps (godot-12, with the fuel stations) | missing | medium (bollards collide) | missing protocol data (objects, knocked state) | B |
+| Trees | `draw_trees` | chunk `trees`: crown by kind and variation, seeded irregular blob; felled trees lie the way they were hit (`state.fallen_trees`); collision on the server — godot-13. Missing: the hit's shake and leaf burst (`tree_effects`, not sent), wind lean (`weather.tree_lean_m`, not sent), seasonal colours (needs the calendar) | partial | medium (collisions) | missing protocol data (shake, leaves, wind lean); missing simulation state (season) | C |
+| Scenery objects: benches, bollards, fountains | `draw_scenery_objects` (+ knocked-over state) | the colliding ones: bollards (chunk `bollards`), knocked bollards and street lamps bent over (`state.knocked_posts`) — godot-13; the `fuel` pumps (godot-12). Missing: the decorative kinds (benches, bins, bicycle parking, statues, tables, fire pits, fountains, gates), which collide with nothing | partial | medium (bollards collide) | missing protocol data (decorative objects) | phase 6 |
 | Bus stops (option) | `draw_bus_stops` | – | missing | low | missing protocol data | B |
 | Buildings | `draw_buildings` (cached geometry, facades) | flat grey polygons | partial | high | missing protocol data (facades, heights: building tags not in chunks) | B |
 | Open-roof canopies over vehicles | `draw_open_roof_overlays` | – | missing | medium | missing protocol data (open-roof buildings) | B |
 | Tire tracks | `draw_tire_tracks` ×4 | – | missing | low | missing protocol data (`taxi_mgr` track state) | C |
 | Roadworks barriers / cones | `draw_roadworks` | chunk `roadworks`: barriers at both ends (lane or full road), cones between, Pygame's pixel sizes — godot-12 | complete | high (block roads) | – | – |
 | Curbs | `draw_curbs` | – | missing | low (curb bump) | missing protocol data | B |
-| Fences, railings, walls, hedges | `draw_railings` | – | missing | medium (collisions) | missing protocol data | B |
-| Construction fences | `draw_construction_fences` | – | missing | low | missing protocol data | B |
+| Fences, railings, walls, hedges | `draw_railings` | – (godot-13: these collide with nothing in the simulation, no code reads `railings`; visual only, so left for the rest of the static world) | missing | low | missing protocol data | phase 6 |
+| Construction fences | `draw_construction_fences` | chunk `construction_fences`: the site's ring as a dashed hazard fence, 1.5 m dash / 1 m gap round the corners; collision (`check_fence_collision`) on the server — godot-13 | complete | low | – | – |
 | Zebra crossings | `draw_crossings` | – | missing | medium | missing protocol data | B |
 | Speed bumps | `draw_speed_bumps` | – | missing | medium | missing protocol data | B |
 | Traffic lights (posts and live phase) | `draw_traffic_lights(sim_time)` | chunk `traffic_lights` posts (render position, angle, 7×18 px housing) lit by `state.traffic_lights`, the server's `get_state` — godot-12. Phases are sent within 600 m of the player: zoomed out past that (about ten zoom steps), farther posts show unlit | complete | high | – | – |
@@ -80,7 +81,7 @@ find customers, avoid hazards); `medium` means world-reading or feedback;
 | Stop / yield signs | `draw_stop_signs`, `draw_yield_signs` | – | missing | medium | missing protocol data | B |
 | Speed cameras | `draw_speed_cameras` (+ flash) | – | missing | medium | missing protocol data (positions; flash state not sent) | B |
 | Fuel stations (price boards) | `draw_fuel_station_signs` (+ the pumps in `draw_scenery_objects`) | chunk `fuel_stations`: pin and board with the name and the server's price above the vehicles, pumps under the buildings — godot-12 | complete | high (fuel runs out) | – | – |
-| Street lights (+ broken lamps dark) | `draw_street_lights` (placed from roads; `broken_lamps`) | – | missing | low | Godot rendering only (lamp placement from roads); broken lamps need protocol data | C |
+| Street lights (+ broken lamps dark) | `draw_street_lights` (placed from roads; `broken_lamps`) | – (godot-13: a broken lamp is a knocked `street_lamp`, drawn lying down from `state.knocked_posts`; its dark head belongs here, with the night) | missing | low | Godot rendering only (lamp placement from roads); broken lamps need protocol data | C |
 | Illuminated windows at night | `draw_illuminated_windows` | – | missing | low | missing protocol data (window/facade data, darkness) | C |
 | Map labels: place and street names | `draw_labels` (decluttered) | – | missing | medium | missing protocol data (labels/places) | B |
 | Vomit puddles and footprints | `draw_vomit_puddles` ×2, `draw_vomit_footprints` | – | missing | low | missing protocol data | C |
@@ -200,15 +201,15 @@ find customers, avoid hazards); `medium` means world-reading or feedback;
 Computed from the tables above: 108 rows (109 from godot-10), each counted once
 by status. godot-06 is the audit; godot-07 is after the rendering-only phase.
 
-| Status | godot-06 | godot-07 | godot-10 | godot-11 | godot-12 |
-|---|---|---|---|---|---|
-| complete | 7 | 30 | 31 | 35 | 39 |
-| partial | 22 | 18 | 16 | 17 | 17 |
-| missing | 71 | 52 | 52 | 47 | 43 |
-| different by design | 3 | 3 | 4 | 4 | 4 |
-| debug-only | 3 | 3 | 3 | 3 | 3 |
-| not applicable | 2 | 2 | 3 | 3 | 3 |
-| rows | 108 | 108 | 109 | 109 | 109 |
+| Status | godot-06 | godot-07 | godot-10 | godot-11 | godot-12 | godot-13 |
+|---|---|---|---|---|---|---|
+| complete | 7 | 30 | 31 | 35 | 39 | 40 |
+| partial | 22 | 18 | 16 | 17 | 17 | 19 |
+| missing | 71 | 52 | 52 | 47 | 43 | 40 |
+| different by design | 3 | 3 | 4 | 4 | 4 | 4 |
+| debug-only | 3 | 3 | 3 | 3 | 3 | 3 |
+| not applicable | 2 | 2 | 3 | 3 | 3 | 3 |
+| rows | 108 | 108 | 109 | 109 | 109 | 109 |
 
 Missing and partial rows by cause, after godot-07. The 3
 camera/layering rows have no cause column.
@@ -680,3 +681,96 @@ client does (it fails without the fix).
 (trees, scenery objects, fences and railings, knocked-over posts and
 broken lamps), then the server calendar (day/night), the rest of the
 static world, and navigation.
+
+## godot-13: phase 4, collision-relevant static world
+
+**Collision authority.** Every collision with the static world is decided
+on the server. `simulation.advance_simulation`, which both Pygame's loop
+and the headless server run, calls these `TaxiManager` checks:
+- `check_tree_collision`
+- `check_fence_collision`
+- `check_post_collision`
+- `check_building_collision`, the curb and speed-bump checks
+
+The Godot client has no physics and predicts nothing. So this phase
+doesn't add collision shapes to Godot, which would make a second
+authority. It sends what the server collides with, and the state those
+collisions change, and Godot draws it.
+
+| Obstacle | Pygame / server source | Collision (server) | Affects | Godot |
+|---|---|---|---|---|
+| Trees | `world.sceneries[*].trees`, `tree_kinds`, `tree_variations` (OSM, `osm/trees.py`) | circle of the car's half-diagonal + 1 m around the trunk; trees on car roads exempt; over 80 km/h the tree falls (`fallen_trees`) and the taxi waits 5 s | the player's taxi | chunk `trees`; `state.fallen_trees` |
+| Construction fences | `sceneries` of kind `construction` (polygons) | the car's box against the polygon; stops the taxi, −150 points | the player's taxi | chunk `construction_fences` (the ring) |
+| Bollards, street lamps | `world.scenery_objects` of kind `bollard`, `street_lamp` (`POST_KINDS`) | the car's box + 0.15 m; under 50 km/h it stops the taxi, at or above it the post bends over (`knocked_angle`), a lamp goes into `broken_lamps`, and the taxi carries on slowed | the player's taxi | chunk `bollards`; `state.knocked_posts` |
+| Railings, walls, hedges | `world.railings` | **none**: no simulation code reads them | rendering only | left for phase 6 |
+
+Pedestrians collide only with buildings (`walk_blocked_by_walls`), and
+NPC routing doesn't use these obstacles. Nothing here affects navigation.
+
+**Protocol:**
+
+| Field | Source | Consumer | Static/dynamic | Collision relevance |
+|---|---|---|---|---|
+| chunk `trees`: `[x, y, kind, variation]` | scenery trees | `map_chunk._draw_trees` | static | the trees `check_tree_collision` tests |
+| chunk `construction_fences`: rings | `construction` sceneries | `_draw_fences` | static | the polygons `check_fence_collision` tests |
+| chunk `bollards`: `[x, y]` | `bollard` scenery objects | `_draw_trees` (same canvas item) | static | the posts `check_post_collision` tests |
+| state `fallen_trees`: `[x, y, angle]` | `taxi_mgr.fallen_trees` + `tree_effects` | `map_layer.set_obstacles` | dynamic, grows only, within 600 m | a felled tree |
+| state `knocked_posts`: `[x, y, angle, kind]` | scenery objects with `knocked_angle` | `map_layer` (draws them), chunks (hide the standing bollard) | dynamic, grows only, within 600 m | a knocked post no longer blocks |
+
+Each obstacle is in one chunk. A construction site goes in its first
+corner's chunk, with the whole ring. That's safe because a site is far
+smaller than the 1.5 km of chunks loaded around the player. The dynamic
+lists name obstacles by position at 0.1 m, as both sides round them.
+
+Knocked street lamps are drawn from the state alone. A standing lamp is
+drawn by Pygame's night street-light renderer, which waits for the
+day/night phase. Oulu has 6,851 trees, 8 construction sites and 50
+bollards, and chunks grew from 36.9 to 37.6 KiB on average (max 205 →
+210 KiB).
+
+**Godot:**
+- `map_chunk.gd` draws trees and bollards at z6, before the buildings as
+  Pygame does, and fences at z8 with the signs.
+- A chunk redraws its trees only when one of its own changes state, and on
+  zoom changes (the minimum pixel sizes).
+- `map_layer.gd` draws knocked posts from the state.
+- `main.gd` passes the two lists on, next to the traffic-light phases.
+
+**Verified:**
+- Python tests: each obstacle in one chunk (a site across a chunk edge
+  goes in one, whole), lamps and benches aren't bollards. A real
+  `TaxiManager` fells a pine at 90 km/h and knocks a bollard at 61 km/h,
+  and both reach `_fallen_and_knocked`; nothing is sent far away.
+- Godot unit tests (157 checks): obstacles arrive and leave with their
+  chunk, once; JSON-parsed data; tree styles as Pygame's palettes; the
+  dash pattern over a corner; felled and knocked state matched by
+  position; a lamp drawn from the state alone; no redraw for the same
+  state; still felled after a reload.
+- Real Oulu server, driving with the server's own collision code (a
+  scratch launcher, the production config untouched):
+  - A tree hit at 90 km/h fell, and the taxi stopped.
+  - A bollard at 18 km/h stopped the taxi and stayed up; at 61 km/h it
+    bent over and the taxi carried on.
+  - A construction fence at 54 km/h stopped the taxi, with −150 points
+    and the fence notice.
+  - Each time, the walker then went 4 km away (the chunk unloaded) and
+    back (reloaded) before Godot's screenshot. The felled tree, the
+    knocked bollard and the dashed fence were drawn in place after the
+    reload.
+  - Collision can't differ before and after a client's reload: it never
+    depended on the client.
+- `make godot-selftest`: `ok`, 145 FPS, taxi 0 px off centre, 0 render
+  backsteps. Static memory 66.0 → 68.1 MiB.
+
+**Remaining:**
+- **Trees (protocol and simulation):** the hit's shake and leaf burst,
+  and the wind lean, need `tree_effects` and `weather.tree_lean_m` in
+  the state. Seasonal colours need the calendar.
+- **Decorative scenery objects, railings, walls and hedges (phase 6):**
+  rendering and protocol only, since none of them collide.
+- **Street lamps and their dark heads when broken:** the night phase.
+- **Unchanged from godot-12:** the fuel pumps under the solid canopy, the
+  fuel-price HUD, and the 600 m traffic-light phase radius.
+
+**Next phase (unchanged order):** the server calendar and day/night, then
+the rest of the static world, then navigation.
