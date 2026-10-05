@@ -5,6 +5,8 @@ extends SceneTree
 
 const Hud := preload("res://hud.gd")
 const MapLayer := preload("res://map_layer.gd")
+const Instruments := preload("res://instruments.gd")
+const EntityLayer := preload("res://entity_layer.gd")
 
 var _failures := 0
 var _checks := 0
@@ -36,6 +38,7 @@ func _process(_delta: float) -> bool:  # first frame: the tree is live, so nodes
 	test_phone()
 	test_rendering()
 	test_drive_input()
+	test_meet_road_camera_lightning()
 	print("%d checks, %d failed" % [_checks, _failures])
 	quit(1 if _failures > 0 else 0)
 	return false
@@ -421,3 +424,58 @@ func test_commands_carry_the_player_id() -> void:
 	check(line.ends_with("\n") and message["type"] == "command" and message["player_id"] == "local_player" and message["seq"] == 7, "commands carry the player id")
 	var answer: Dictionary = JSON.parse_string(SimClient.command_line({"throttle": 0.0}, 8, "local_player", {"action": "accept", "item_id": "offer-2", "request_id": 1}))
 	check(answer["phone"] == {"action": "accept", "item_id": "offer-2", "request_id": 1.0} and answer["command"]["throttle"] == 0.0, "a phone answer rides on a command with the current controls")
+
+
+## godot-11: the server's meet, road, speed-camera and lightning state.
+func test_meet_road_camera_lightning() -> void:
+	# Road and limit: the simulation's values, Pygame's wording.
+	check(Hud.values({})["road"] == "" and Instruments.speed_limit({}) == 0, "no road field (older server): nothing shown")
+	check(Hud.values({"road": {"name": null, "speed_limit_kmh": null}})["road"] == "Road: Off-road", "off-road")
+	check(Hud.values({"road": {"name": "Isokatu", "speed_limit_kmh": 40}})["road"] == "Road: Isokatu [Limit: 40 km/h]", "named road with its limit")
+	check(Hud.values({"road": {"name": "Living Street", "speed_limit_kmh": null}})["road"] == "Road: Living Street", "unnamed road (highway type) without a limit")
+	check(Instruments.speed_limit({"road": {"name": "Isokatu", "speed_limit_kmh": 40}}) == 40, "limit sign value")
+	check(Instruments.speed_limit({"road": {"name": "Isokatu", "speed_limit_kmh": null}}) == 0, "no limit known: no sign")
+
+	# Speed camera: only a running notice flagged by the simulation.
+	var camera_hit := {"taxi": {"notification_msg": "Speed camera! 12 km/h over -50 pts", "notification_timer": 3.0, "speed_camera_notice": true}}
+	check(Hud.values(camera_hit)["notice_camera"], "a camera hit is styled as one")
+	check(not Hud.values({"taxi": {"notification_msg": "Fare paid", "notification_timer": 3.0}})["notice_camera"], "an ordinary notice is not")
+	camera_hit["taxi"]["notification_timer"] = 0.0
+	check(Hud.values(camera_hit)["notice"] == "" and not Hud.values(camera_hit)["notice_camera"], "an expired notice shows nothing")
+
+	# Meet panel: the server's lines while a meet is on, gone after.
+	var meet := {"status": "PASSENGER_WAITING", "lines": ["Meet: Aino", "IC57 | Oulu", "Park and get out (F)"],
+		"arrow": {"id": 7, "x": 20.0, "y": 40.0, "radius_m": 0.45}}
+	check(Hud.values({"meet": meet})["meet"] == "Meet: Aino\nIC57 | Oulu\nPark and get out (F)", "meet panel lines")
+	check(Hud.values({"meet": null})["meet"] == "" and Hud.values({})["meet"] == "", "no meet: no panel")
+	var scene: Node = load("res://main.tscn").instantiate()
+	var hud: Control = scene.get_node("Ui/Hud")
+	hud.owner = null
+	for child in hud.find_children("*", "", true, false):
+		child.owner = hud  # keep the %Unique names resolvable once detached
+	hud.get_parent().remove_child(hud)
+	scene.free()
+	root.add_child(hud)
+	hud.show_state({"meet": meet, "taxi": camera_hit["taxi"]})
+	check(hud._meet.visible and hud._meet.text.begins_with("Meet: Aino"), "the panel shows")
+	hud.show_state({"meet": null})
+	check(not hud._meet.visible, "boarded or missed: the panel goes")
+	hud.queue_free()
+
+	# Booked-passenger arrow: at the interpolated pedestrian by id, else the sent spot, never without a meet.
+	var ped := {"id": 7, "x": 10.0, "y": 0.0, "heading": 0.0}
+	var a := {"meet": meet, "pedestrians": [ped]}
+	var later := {7: {"id": 7, "x": 20.0, "y": 0.0, "heading": 0.0}}
+	check(EntityLayer.booked_arrow_at(a, {}, 0.5, later, Vector2.ZERO) == Vector2(15, 0), "the arrow follows the drawn (interpolated) passenger")
+	check(EntityLayer.booked_arrow_at({"meet": meet, "pedestrians": []}, {}, 0.5, {}, Vector2.ZERO) == Vector2(20, -40), "not among the pedestrians: the sent position")
+	var train_due := meet.duplicate()
+	train_due["arrow"] = null
+	check(EntityLayer.booked_arrow_at({"meet": train_due}, {}, 0.0, {}, Vector2.ZERO) == Vector2.INF, "train still due: no arrow")
+	check(EntityLayer.booked_arrow_at({"meet": null}, {}, 0.0, {}, Vector2.ZERO) == Vector2.INF, "no meet: no stale arrow")
+
+	# Lightning: the simulation's fading intensity, nothing of Godot's own.
+	var none := {"weather": {"lightning_intensity": 0.0}}
+	var strike := {"weather": {"lightning_intensity": 1.0}}
+	check(EntityLayer.lightning_alpha(none, none, 0.5) == 0.0 and EntityLayer.lightning_alpha({}, {}, 0.5) == 0.0, "no lightning, or an older server: no flash")
+	check(is_equal_approx(EntityLayer.lightning_alpha(strike, strike, 0.0), 145.0 / 255.0), "a strike flashes at Pygame's maximum alpha")
+	check(is_equal_approx(EntityLayer.lightning_alpha(strike, none, 0.5), 0.5 * 145.0 / 255.0), "the flash fades with the sent intensity")

@@ -45,6 +45,9 @@ const CURSE_BORDER := Color8(200, 30, 30)
 
 # render/navigation.py - draw_taxi_target, draw_compass
 const PICKUP := Color8(255, 200, 0)
+const BOOKED_CUSTOMER := Color8(90, 200, 255)  # render/pedestrians.py BOOKED_CUSTOMER_COLOR
+const LIGHTNING_FLASH := Color8(220, 228, 242)  # render/weather.py
+const LIGHTNING_FLASH_MAX_ALPHA := 145.0 / 255.0
 const DROPOFF := Color8(50, 220, 100)
 const CUSTOMER_COLOR := Color8(240, 220, 60)  # TaxiPassenger.ped_color default
 const NAUSEA_TEXT := Color8(210, 35, 35)

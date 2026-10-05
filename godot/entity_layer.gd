@@ -363,6 +363,8 @@ func _draw() -> void:
 		if a["taxi"].get("state") == "DROPOFF" and passenger.get("nausea_warning_timer", 0.0) > 0.0:
 			_bubble(taxi_at - Vector2(0, maxf(_px(34.0), 2.5)), "I feel sick!", RS.NAUSEA_TEXT, RS.NAUSEA_TEXT, 1.0, 16, true)
 
+	_booked_arrow(a, b, t, later_peds)
+
 	# Trains last: above the vehicles, as Pygame draws them after the bridge rails.
 	var later_trains := _by_id(b.get("trains", []))
 	for train in a.get("trains", []):
@@ -376,8 +378,48 @@ func _draw() -> void:
 				continue
 			_train_car(c, lerp_angle(car[2], to[2], t), car[3], str(car[4]))
 		count += 1
+	# render/weather.py draw_lightning_flash: over the whole world, under the UI.
+	var flash := lightning_alpha(a, b, t)
+	if flash > 0.0:
+		draw_rect(view_rect, Color(RS.LIGHTNING_FLASH, flash))
 	drawn_entities = count
 	interp_usec = Time.get_ticks_usec() - started
+
+
+## The flash's alpha for this frame: the simulation's fading
+## lightning_intensity, blended like a position (0 without one).
+static func lightning_alpha(a: Dictionary, b: Dictionary, t: float) -> float:
+	var from: float = a.get("weather", {}).get("lightning_intensity", 0.0)
+	var to: float = b.get("weather", {}).get("lightning_intensity", from)
+	return clampf(lerpf(from, to, t), 0.0, 1.0) * RS.LIGHTNING_FLASH_MAX_ALPHA
+
+
+## Where the meet's arrow points this frame: the booked passenger where
+## they are drawn (by id among the pedestrians), else where the simulation
+## last put them; INF when the meet has no arrow.
+static func booked_arrow_at(a: Dictionary, b: Dictionary, t: float, later_peds: Dictionary, origin: Vector2) -> Vector2:
+	var meet = a.get("meet")
+	if typeof(meet) != TYPE_DICTIONARY or typeof(meet.get("arrow")) != TYPE_DICTIONARY:
+		return Vector2.INF
+	var arrow: Dictionary = meet["arrow"]
+	for ped in a.get("pedestrians", []):
+		if arrow.get("id") != null and ped["id"] == arrow["id"]:
+			var p := StateBuffer.blend(ped, later_peds.get(ped["id"], ped), t, origin)
+			return Vector2(p.x, p.y)
+	return MapMath.point(origin, arrow["x"], arrow["y"])
+
+
+## render/pedestrians.py draw_booked_passenger_arrow: a downward arrow over
+## the booked passenger, sized in screen pixels.
+func _booked_arrow(a: Dictionary, b: Dictionary, t: float, later_peds: Dictionary) -> void:
+	var at := booked_arrow_at(a, b, t, later_peds, origin)
+	if at == Vector2.INF or not view_rect.has_point(at):
+		return
+	var radius := maxf(_px(4.0), a["meet"]["arrow"].get("radius_m", 0.45))
+	var tip := at - Vector2(0, radius * 1.8)
+	var size := maxf(_px(8.0), radius * 1.4)
+	var arrow := PackedVector2Array([tip, tip + Vector2(-size, -size * 1.3), tip + Vector2(size, -size * 1.3)])
+	_poly(arrow, RS.BOOKED_CUSTOMER, RS.OUTLINE, _px(2.0))
 
 
 ## One train vehicle (render/vehicles.py draw_trains): body in its profile

@@ -288,6 +288,7 @@ func _update_debug(state: Dictionary) -> void:
 		"npcs %d   pedestrians %d   trains %d" % [state["npcs"].size(), state["pedestrians"].size(), state["trains"].size()],
 		"sounds played %d   no sound for %s" % [audio.played, ", ".join(audio.unhandled.keys())],
 		"events: %s" % ", ".join(_recent_events),
+		hud.values(state)["road"],
 	])
 
 

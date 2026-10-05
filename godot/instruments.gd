@@ -45,11 +45,20 @@ func show_state(state: Dictionary) -> void:
 	var player: Dictionary = state.get("player", {})
 	var values := [snappedf(player.get("fuel_l", 0.0), 0.1), roundi(state.get("rage_power", 0.0) * 100.0),
 		snappedf(state.get("water_elapsed", 0.0), 0.1), roundi(player.get("trip_m", 0.0)), roundi(player.get("odometer_m", 0.0) / 100.0),
-		snappedf(player.get("fuel_consumption_l_per_100km", 0.0), 0.1), absf(player.get("speed", 0.0)) > 0.5, size]
+		snappedf(player.get("fuel_consumption_l_per_100km", 0.0), 0.1), absf(player.get("speed", 0.0)) > 0.5, size,
+		speed_limit(state)]
 	_state = state
 	if values != _shown:
 		_shown = values
 		queue_redraw()
+
+
+## The limit of the road under the taxi, as the simulation says (0: none known).
+static func speed_limit(state: Dictionary) -> int:
+	var road = state.get("road")
+	if typeof(road) != TYPE_DICTIONARY or road.get("speed_limit_kmh") == null:
+		return 0
+	return int(road["speed_limit_kmh"])
 
 
 static func trip_text(trip_m: float, odometer_m: float) -> String:
@@ -77,6 +86,14 @@ func _draw() -> void:
 		draw_rect(box, Color8(35, 25, 15, 225))
 		draw_rect(box, Color8(230, 120, 60), false, 2.0)
 		draw_string(_font, box.position + Vector2(12, text_size.y), text, HORIZONTAL_ALIGNMENT_LEFT, -1, 18, Color8(255, 210, 140))
+	var limit := speed_limit(_state)
+	if limit > 0:  # hud.py: the round limit sign under the clock
+		var sign_at := Vector2(size.x - 48.0, 76.0)
+		draw_circle(sign_at, 31.0, Color8(255, 210, 0))
+		draw_arc(sign_at, 27.0, 0.0, TAU, 40, Color8(210, 35, 35), 8.0)
+		var digits := str(limit)
+		var digits_size := _font.get_string_size(digits, HORIZONTAL_ALIGNMENT_LEFT, -1, 26)
+		draw_string(_font, sign_at + Vector2(-digits_size.x / 2.0, digits_size.y / 2.0 - 5.0), digits, HORIZONTAL_ALIGNMENT_LEFT, -1, 26, Color8(20, 20, 20))
 	draw_string(_font, Vector2(10, size.y - 230), trip_text(player.get("trip_m", 0.0), player.get("odometer_m", 0.0)),
 		HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Color8(205, 215, 220))
 
