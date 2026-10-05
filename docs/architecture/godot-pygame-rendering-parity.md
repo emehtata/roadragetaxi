@@ -6,7 +6,8 @@ rows marked godot-10 after the re-audit of 2026-10-05 (`734a3b7`; see
 [the godot-10 section](#godot-10-re-audit)), rows marked godot-11 after
 [phase 2](#godot-11-phase-2-server-state-already-owned), rows marked godot-12 after
 [phase 3](#godot-12-phase-3-gameplay-points-in-chunks), rows marked godot-13 after
-[phase 4](#godot-13-phase-4-collision-relevant-static-world).
+[phase 4](#godot-13-phase-4-collision-relevant-static-world), rows marked godot-14 after
+[phase 5](#godot-14-phase-5-server-calendar-and-daynight).
 
 The Pygame side is the actual per-frame draw sequence in
 `main/__init__.py`: about 80 `draw_*` calls between lines 2771 and 3446,
@@ -82,7 +83,7 @@ find customers, avoid hazards); `medium` means world-reading or feedback;
 | Speed cameras | `draw_speed_cameras` (+ flash) | – | missing | medium | missing protocol data (positions; flash state not sent) | B |
 | Fuel stations (price boards) | `draw_fuel_station_signs` (+ the pumps in `draw_scenery_objects`) | chunk `fuel_stations`: pin and board with the name and the server's price above the vehicles, pumps under the buildings — godot-12 | complete | high (fuel runs out) | – | – |
 | Street lights (+ broken lamps dark) | `draw_street_lights` (placed from roads; `broken_lamps`) | – (godot-13: a broken lamp is a knocked `street_lamp`, drawn lying down from `state.knocked_posts`; its dark head belongs here, with the night) | missing | low | Godot rendering only (lamp placement from roads); broken lamps need protocol data | C |
-| Illuminated windows at night | `draw_illuminated_windows` | – | missing | low | missing protocol data (window/facade data, darkness) | C |
+| Illuminated windows at night | `draw_illuminated_windows` | – | missing | low | missing protocol data (window/facade data; darkness is sent since godot-14) | C |
 | Map labels: place and street names | `draw_labels` (decluttered) | – | missing | medium | missing protocol data (labels/places) | B |
 | Vomit puddles and footprints | `draw_vomit_puddles` ×2, `draw_vomit_footprints` | – | missing | low | missing protocol data | C |
 
@@ -101,7 +102,7 @@ find customers, avoid hazards); `medium` means world-reading or feedback;
 | NPC crash state: fallen, crash smoke | `draw_npc_cars`, `draw_taxi_smoke` style | fallen two-wheelers on their side, smoke from `crashed_timer` — godot-07 | complete | medium | – | – |
 | Parked vehicles | `draw_npc_cars` (parked NPCs are NPCs; lamps off by `_vehicle_engine_on`: `state != "PARKED"`) | drawn as NPC vehicles by type, lamps off by the same rule — godot-10 | complete | medium | – | – |
 | Vehicle shadows | – (none in Pygame) | – | not applicable | – | – | – |
-| Night headlight beams | `draw_headlight_beams` | – | missing | medium | missing protocol data (darkness) | C |
+| Night headlight beams | `draw_headlight_beams` | – | missing | medium | Godot rendering only (darkness sent since godot-14) | C |
 | Vehicle on-foot drivers (`is_on_foot`) | drawn by `draw_pedestrians` | drawn as pedestrians — godot-07 | complete | low | – | – |
 
 ## Pedestrians
@@ -117,7 +118,7 @@ find customers, avoid hazards); `medium` means world-reading or feedback;
 | Waiting passenger at pickup | `draw_taxi_target` marker + passenger pedestrian | customer disc with heading notch and `[P]` / `[TO TAXI]` name tag (fields added to `current_passenger`) — godot-07 | complete | high | – | – |
 | Booked rail passenger arrow | `draw_booked_passenger_arrow` | downward arrow over the booked passenger, drawn at their interpolated position (by id, else the sent one), only while `meet.arrow` is set: waiting or met, as `main()` — godot-11 | complete | high | – | – |
 | People under roofs (outline) | `draw_pedestrians_under_roofs` | – | missing | low | missing protocol data (roofs) | B |
-| Night reflectors | `draw_pedestrian_reflectors` | – | missing | low | missing protocol data (darkness) | C |
+| Night reflectors | `draw_pedestrian_reflectors` | – | missing | low | Godot rendering only (darkness sent since godot-14) | C |
 
 ## Trains
 
@@ -153,8 +154,8 @@ find customers, avoid hazards); `medium` means world-reading or feedback;
 | Rain / snow particles | `draw_rain` (rain streaks, snow flakes) | – | missing | medium | Godot rendering only for type; intensity (heavy rain) missing protocol data | C |
 | Splashes | `draw_splashes` (spawned in Pygame's `main()` from puddle overlap) | – | missing | low | Pygame-specific implementation | C |
 | Lightning flash | `draw_lightning_flash` (`weather.lightning_intensity`) | full-world flash at the sent, fading intensity (max alpha 145/255), under the UI; thunder as a server sound event once per strike — godot-11 | complete | low | – | – |
-| Day/night tint | `draw_day_night_overlay` (sun altitude from time, lat/lon, date) | – | missing | high (night visibility) | missing protocol data (sun altitude or darkness, date) | A |
-| Snow cover / seasons | `draw_grass_texture(season)`, `draw_waters` ice | – | missing | low | missing protocol data (season, snow depth) | C |
+| Day/night tint | `draw_day_night_overlay` (sun altitude from time, lat/lon, date) | `Sky/Night`: dark blue at 115 × `state.calendar.darkness`, +95 × sparse where fewer than 12 drivable roads are in view; over the world, under the UI — godot-14 | complete | high (night visibility) | – | – |
+| Snow cover / seasons | `draw_grass_texture(season)`, `draw_waters` ice | – | missing | low | missing protocol data (the server has the season since godot-14; not sent: season, snow depth) | C |
 | Weather text | HUD | HUD `weather_type`, wetness | complete | medium | – | – |
 
 ## HUD and UI
@@ -162,7 +163,7 @@ find customers, avoid hazards); `medium` means world-reading or feedback;
 | Element | Pygame (`draw_hud` unless noted) | Godot | Status | Importance | Cause | Phase |
 |---|---|---|---|---|---|---|
 | Speed | yes | `hud.gd` | complete | high | – | – |
-| Game time | yes (+ date, real-time marker) | `hud.gd` HH:MM | partial | medium | missing protocol data (date, time scale) | B |
+| Game time | yes (+ date, real-time marker) | `hud.gd`: `state.calendar.date` HH:MM, ` *` while `time_scale` is 1 (a fare) — godot-14 | complete | medium | – | – |
 | Money | yes | `hud.gd` | complete | high | – | – |
 | Taxi job / passenger | mission bar | `hud.gd` fare line | partial | high | Godot rendering only (fields sent) | A |
 | Notifications | yes | `hud.gd` notice | complete | high | – | – |
@@ -201,15 +202,15 @@ find customers, avoid hazards); `medium` means world-reading or feedback;
 Computed from the tables above: 108 rows (109 from godot-10), each counted once
 by status. godot-06 is the audit; godot-07 is after the rendering-only phase.
 
-| Status | godot-06 | godot-07 | godot-10 | godot-11 | godot-12 | godot-13 |
-|---|---|---|---|---|---|---|
-| complete | 7 | 30 | 31 | 35 | 39 | 40 |
-| partial | 22 | 18 | 16 | 17 | 17 | 19 |
-| missing | 71 | 52 | 52 | 47 | 43 | 40 |
-| different by design | 3 | 3 | 4 | 4 | 4 | 4 |
-| debug-only | 3 | 3 | 3 | 3 | 3 | 3 |
-| not applicable | 2 | 2 | 3 | 3 | 3 | 3 |
-| rows | 108 | 108 | 109 | 109 | 109 | 109 |
+| Status | godot-06 | godot-07 | godot-10 | godot-11 | godot-12 | godot-13 | godot-14 |
+|---|---|---|---|---|---|---|---|
+| complete | 7 | 30 | 31 | 35 | 39 | 40 | 42 |
+| partial | 22 | 18 | 16 | 17 | 17 | 19 | 18 |
+| missing | 71 | 52 | 52 | 47 | 43 | 40 | 39 |
+| different by design | 3 | 3 | 4 | 4 | 4 | 4 | 4 |
+| debug-only | 3 | 3 | 3 | 3 | 3 | 3 | 3 |
+| not applicable | 2 | 2 | 3 | 3 | 3 | 3 | 3 |
+| rows | 108 | 108 | 109 | 109 | 109 | 109 | 109 |
 
 Missing and partial rows by cause, after godot-07. The 3
 camera/layering rows have no cause column.
@@ -774,3 +775,110 @@ bollards, and chunks grew from 36.9 to 37.6 KiB on average (max 205 →
 
 **Next phase (unchanged order):** the server calendar and day/night, then
 the rest of the static world, then navigation.
+
+## godot-14: phase 5, server calendar and day/night
+
+**Before:**
+- Pygame's `main()` kept a `GameCalendar` (date and time, advanced at
+  60× game time without a fare and 1× during one), synced the weather's
+  season on each new day, and computed the sun from the date, time and
+  the city's latitude and longitude (`solar_altitude_and_events`, cached
+  20 s of wall clock).
+- The headless server had none of this. It kept a separate
+  seconds-of-day counter starting at 18:00, used `date.today()` for the
+  simulation's `now`, and left the weather's season at its default.
+- Godot guessed night from the hour, for its ambience only.
+
+**Now: one authoritative clock.**
+- The server keeps the same `GameCalendar`, advanced with the same time
+  scale. `game_time_seconds` is derived from it (a property, not a second
+  counter), and so are the simulation's `now` and the weather's season
+  on every new day.
+- It still starts today at 18:00, so the server's timing is unchanged.
+  Pygame's career default (31 August) comes from its start screen, which
+  the server doesn't have.
+- The solar model is now one pure function,
+  `calendar.solar_altitude_and_events_on`. Pygame's cached
+  `render.common.solar_altitude_and_events` wraps it, so its behaviour is
+  unchanged and its existing tests pass.
+- Darkness is one function, `calendar.darkness_for_sun_altitude`, used by
+  Pygame's night tint, its ambience and the server.
+
+**Protocol:** `state.calendar`, sent every tick (null from a caller
+without a calendar; older clients ignore it):
+
+| Field | Unit / range | Meaning |
+|---|---|---|
+| `date` | `"YYYY-MM-DD"` | the calendar's date; the time of day stays `game_time_seconds` (seconds since local midnight, 0–86400) |
+| `time_scale` | game seconds per real second: 60, or 1 during a fare | Pygame's ` *` marker |
+| `sun_altitude_deg` | degrees, −90..90 | at the city's latitude and longitude |
+| `darkness` | 0 (day: sun ≥ 6° up) .. 1 (night: sun ≤ −12°), linear between | what the night tint, ambience and (later) street lights follow |
+
+All four are authoritative. Godot computes no time, date or sun.
+
+**Godot:**
+- A screen-space `Sky` canvas layer sits between the world and the UI.
+  `Night` has Pygame's colour (10, 18, 48) and alpha
+  `int(115 × darkness)`, plus `int(95 × sparse)` where fewer than 12
+  drivable roads are in view: Pygame's `visible_road_count`, counted once
+  per road across chunks, every 0.1 s and only at night, from the chunks
+  overlapping the view.
+- `Flash`, the lightning, moved here from the world layer so that it sits
+  above the night tint, as Pygame draws lightning after it.
+- Both are recoloured only when their alpha changes. No chunk is redrawn
+  for time.
+- The ambience loops use `darkness`. The old hour table remains only for
+  servers without a calendar.
+- The HUD clock shows the date and ` *` during a fare.
+
+**Smoothness:** the server computes the sun every tick, while Pygame
+recomputes it at most every 20 s of wall clock (its cache), so at 60× its
+tint steps every 20 game minutes. Godot's tint changes continuously. The
+values are the same at any moment Pygame refreshes; this is the only
+deliberate difference.
+
+**Verified:**
+- Python tests on the real `GameCalendar` and solar model: the server's
+  game time is the calendar's. Midsummer noon in Oulu is day (sun > 40°);
+  a midwinter evening is night (< −12°). The darkness boundaries are 6°,
+  −3° and −12°. At 60×, midnight rolls the date and the season follows.
+  `state.calendar` survives a JSON round trip and is null for a caller
+  without one.
+- Godot unit tests (169 checks):
+  - the tint alpha against Pygame's numbers (day 0, night 115, dusk 57,
+    empty country up to 210)
+  - no tint without a calendar
+  - the HUD date and ` *`
+  - a road in two chunks counted once, a footpath not at all
+  - no flash without state
+- Real Oulu server, with the calendar set from a scratch control file
+  and the production config untouched:
+  - At 12:00 the sun is 18° up, darkness 0. At 23:00 it's −27°, darkness
+    1; at 19:00 −4.6°, darkness 0.59, advancing at 60×.
+  - Each screenshot was a new client connection, so a reconnect shows
+    the server's time, not a reset.
+  - Solving the drawn pixels against the daytime shot gave tint alpha
+    116 at 23:00 (expected 115) and 70 at dusk (expected 115 × 0.61).
+  - The HUD showed "2026-10-05 23:06" untinted.
+  - godot-13's felled tree was drawn the same after a chunk unload and
+    reload.
+- `make godot-selftest`: 145 FPS, 0 render backsteps, taxi 0 px off
+  centre. Static memory measured 70.3, 68.8 and 71.2 MiB across runs,
+  against 69.9 without this phase's chunk change: noise of about
+  ±1.5 MiB around godot-13's 68.1, no measurable cost. Startup is
+  unaffected.
+
+**Remaining (unchanged scope):**
+- **Night effects:** headlight beams, street lights (with broken lamps
+  dark), lit windows and reflectors are now rendering-only. Lit windows
+  also need window data.
+- **Seasons:** snow cover, ice and seasonal tree colours need the season
+  (now on the server) and snow depth sent.
+- **Temperature:** still the simulation's default 15 °C; the server has
+  no temperature model.
+- **The sun's position:** taken at the city centre. Pygame re-centres
+  it on the taxi every 15 game minutes, a difference of a few kilometres.
+- **Deferred:** the godot-12 and godot-13 deferred items are unchanged.
+
+**Next phase (unchanged order):** the rest of the static world, then
+navigation.
