@@ -138,11 +138,11 @@ def test_road_name_and_limit_follow_the_way_under_the_taxi(tmp_path, monkeypatch
     from types import SimpleNamespace
 
     server = _build_server(tmp_path, monkeypatch)
-    assert _state(server)["road"] == {"name": None, "speed_limit_kmh": None}
-    server._current_way = SimpleNamespace(name="Isokatu", highway="primary", speed_limit_kmh=40)
-    assert _state(server)["road"] == {"name": "Isokatu", "speed_limit_kmh": 40}
+    assert _state(server)["road"] == {"name": None, "speed_limit_kmh": None, "layer": 0, "bridge": False}
+    server._current_way = SimpleNamespace(name="Isokatu", highway="primary", speed_limit_kmh=40, layer=1, is_bridge=True)
+    assert _state(server)["road"] == {"name": "Isokatu", "speed_limit_kmh": 40, "layer": 1, "bridge": True}
     server._current_way = SimpleNamespace(name="", highway="living_street", speed_limit_kmh=None)
-    assert _state(server)["road"] == {"name": "Living Street", "speed_limit_kmh": None}
+    assert _state(server)["road"] == {"name": "Living Street", "speed_limit_kmh": None, "layer": 0, "bridge": False}
 
 
 def test_speed_camera_notice_is_flagged_while_its_timer_runs(tmp_path, monkeypatch):
@@ -266,3 +266,17 @@ def test_the_season_weights_come_from_the_calendar(tmp_path, monkeypatch):
     assert winter[0] > 0.9 and summer[2] > 0.9  # [winter, spring, summer, autumn]
     look = server.calendar.seasonal_appearance
     assert summer == [round(w * 20.0) / 20.0 for w in (look.winter, look.spring, look.summer, look.autumn)]
+
+
+def test_tyre_marks_flash_and_level_in_the_state(tmp_path, monkeypatch):
+    """godot-16: per tick, the taxi's map level, its tyre mark (as main() decides
+    it) and the flashing speed camera."""
+    server = _build_server(tmp_path, monkeypatch)
+    assert _state(server)["player"]["map_level"] == 0 and _state(server)["tire_mark"] is None
+    assert _state(server)["speed_camera_flash"] is None
+    server.world.taxi_mgr.speed_camera_flash_timer, server.world.taxi_mgr.speed_camera_flash_index = 0.35, 3
+    assert _state(server)["speed_camera_flash"] == 3
+    server._on_foot = False
+    server.car.skid_amount = 1.0  # hard slip on asphalt or whatever is under the taxi
+    assert server._tyre_mark(previous=(server.car.x - 1.0, server.car.y)) is not None
+    assert server._tyre_mark(previous=(server.car.x, server.car.y)) is None  # not moving: nothing laid

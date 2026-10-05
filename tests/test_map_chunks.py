@@ -134,3 +134,67 @@ def test_railings_decorations_and_street_lights_are_each_in_one_chunk():
     assert here["railings"] == [["hedge", [[480.0, 5.0], [530.0, 5.0]]]] and east["railings"] == []  # first point's chunk, whole
     assert here["scenery_objects"] == [[46.0, 0.0, "bench", 0.0], [12.0, 13.0, "bench", 0.5], [14.0, 15.0, "gate", 0.0]]
     assert here["street_lights"] == [[100.0, 100.0, 1.25, 14.0]] and east["street_lights"] == [[600.0, 100.0, 0.0, 14.0]]
+
+
+def test_landuse_is_clipped_to_the_chunks_it_covers_without_overlap():
+    """godot-16: a big area is cut along the chunk grid - each piece in its
+    own chunk, together exactly the original."""
+    from shapely.geometry import Polygon
+    from theroadragetrip import static_world
+
+    forest = [(100.0, 100.0), (900.0, 100.0), (900.0, 300.0), (100.0, 300.0)]
+    pieces = list(static_world.clipped_pieces(forest, 500.0))
+    assert sorted(cell for cell, _ in pieces) == [(0, 0), (1, 0)]
+    assert abs(sum(Polygon(ring).area for _, ring in pieces) - Polygon(forest).area) < 1.0
+    assert all(Polygon(ring).bounds[0] >= cell[0] * 500.0 - 0.1 and Polygon(ring).bounds[2] <= (cell[0] + 1) * 500.0 + 0.1
+               for cell, ring in pieces)
+
+
+def test_static_world_lists_in_the_chunks():
+    from theroadragetrip.osm.models import Building, Crossing, Railway, SpeedBump, StopSign
+    from theroadragetrip import static_world
+
+    world = _obstacle_world()
+    world.sceneries[0].name = "Hupisaaret"
+    world.buildings = [Building([(10.0, 10.0), (20.0, 10.0), (20.0, 20.0), (10.0, 20.0)], building_type="house", name="Sininen talo"),
+                       Building([(30.0, 30.0), (40.0, 30.0), (40.0, 40.0), (30.0, 40.0)], building_type="roof")]
+    world.crossings = [Crossing(50.0, 60.0, direction_angle=0.5, width_m=6.0, length_m=2.5)]
+    world.speed_bumps = [SpeedBump(70.0, 60.0, direction_angle=1.0, width_m=4.0, kind="table")]
+    world.stop_signs = [StopSign(80.0, 60.0, direction_angle=0.0)]
+    world.speed_cameras = [SimpleNamespace(x=90.0, y=60.0, heading=1.5)]
+    world.railways = [Railway([(0.0, 400.0), (100.0, 400.0)], is_bridge=True), Railway([(0.0, 450.0), (100.0, 450.0)])]
+    index = map_chunks.ChunkIndex(world, size=500.0)
+    here = index.message("0_0")
+    assert here["buildings"] == [[[10.0, 10.0], [20.0, 10.0], [20.0, 20.0], [10.0, 20.0]]]  # the canopy is not a building
+    assert here["canopies"] == [[[30.0, 30.0], [40.0, 30.0], [40.0, 40.0], [30.0, 40.0]]]
+    assert here["building_styles"] == [static_world.building_style(world.buildings[0])]
+    assert here["building_styles"][0][0] == [40, 63, 92] and here["building_styles"][0][1] == 1  # "Sininen": a blue roof, gabled house
+    assert here["crossings"] == [[50.0, 60.0, 0.5, 6.0, 2.5]] and here["speed_bumps"] == [[70.0, 60.0, 1.0, 4.0, "table"]]
+    assert here["signs"] == [[80.0, 60.0, "stop", 0.0]] and here["speed_cameras"] == [[0, 90.0, 60.0, 1.5]]
+    assert here["rail_bridges"] == [[[0.0, 400.0], [100.0, 400.0]]] and here["railways"] == [[[0.0, 450.0], [100.0, 450.0]]]
+    assert len(here["rail_decks"]) == 1  # the bridge track's deck
+    assert [l for l in here["labels"] if l[2] == "Hupisaaret"][0][3] == static_world.LABEL_AREA
+    assert any(l[2] == "Sininen talo" and l[3] == static_world.LABEL_BUILDING for l in here["labels"])
+    assert [l[0] for l in here["landuse"]] == [[100, 145, 80], [170, 142, 96]]  # park, construction (render/scenery.py colours)
+
+
+def test_road_style_follows_pygames_road_look():
+    from theroadragetrip import static_world
+    from theroadragetrip.render.common import road_color_for_way
+
+    two_way = SimpleNamespace(is_drivable=True, highway="primary", lanes=4, oneway=0, is_ice_road=False, surface="")
+    oneway = SimpleNamespace(is_drivable=True, highway="residential", lanes=1, oneway=-1, is_ice_road=False, surface="", is_bridge=True)
+    path = SimpleNamespace(is_drivable=False, highway="footway", surface="")
+    assert static_world.road_style(two_way) == {"color": list(road_color_for_way(two_way)), "center": [110, 110, 110, 2]}
+    assert static_world.road_style(oneway) == {"color": list(road_color_for_way(oneway)), "center": [110, 110, 110, 1], "oneway": -1, "bridge": True}
+    assert static_world.road_style(path) == {"color": list(road_color_for_way(path))}
+
+
+def test_bridge_guardrails_run_along_the_outside_only():
+    from theroadragetrip import static_world
+
+    left = SimpleNamespace(points_m=[(0.0, 0.0), (100.0, 0.0)], half_width_m=3.0, is_bridge=True)
+    right = SimpleNamespace(points_m=[(0.0, 6.5), (100.0, 6.5)], half_width_m=3.0, is_bridge=True)  # a parallel carriageway
+    rails = static_world.bridge_guardrails([left, right])
+    ys = sorted({round(y, 1) for a, b in rails for _, y in (a, b)})
+    assert ys == [-3.0, 9.5]  # the two outer edges, nothing between the carriageways, no end caps

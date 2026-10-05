@@ -275,9 +275,11 @@ def _road_to_dict(current_way) -> dict:
     the highway type title-cased; None off-road. The limit is the
     simulation's own (None when unknown)."""
     if current_way is None:
-        return {"name": None, "speed_limit_kmh": None}
+        return {"name": None, "speed_limit_kmh": None, "layer": 0, "bridge": False}
     name = getattr(current_way, "name", None) or (getattr(current_way, "highway", None) or "Road").replace("_", " ").title()
-    return {"name": name, "speed_limit_kmh": getattr(current_way, "speed_limit_kmh", None)}
+    return {"name": name, "speed_limit_kmh": getattr(current_way, "speed_limit_kmh", None),
+            # godot-16: the layer the taxi drives on (headlights under a higher road)
+            "layer": getattr(current_way, "layer", 0), "bridge": bool(getattr(current_way, "is_bridge", False))}
 
 
 def _meet_to_dict(taxi_mgr, player_pedestrian, language: str) -> Optional[dict]:
@@ -319,7 +321,7 @@ def build_state_message(
     camx: float, camy: float, rage_power: float, water_elapsed: float,
     should_stop: bool = False, city_summary: Optional[tuple] = None, events: Optional[list] = None,
     server_time: float = 0.0, player_id: str = LOCAL_PLAYER_ID, current_way=None, language: str = "en",
-    calendar: Optional[dict] = None,
+    calendar: Optional[dict] = None, tire_mark: Optional[dict] = None,
 ) -> dict:
     """Everything the Pygame client needs to render one frame, and nothing
     static (see module docstring). Called once per server tick."""
@@ -347,6 +349,7 @@ def build_state_message(
         "water_elapsed": water_elapsed,
         "player": {
             "x": car.x, "y": car.y, "heading": car.heading, "speed": car.speed,
+            "map_level": getattr(car, "map_level", 0),  # 0 surface, < 0 underground (godot-16)
             "braking": car.braking, "trip_m": car.trip_m, "odometer_m": car.odometer_m,
             "engine_on": car.engine_on, "fuel_l": car.fuel_l,
             "fuel_capacity_l": car.fuel_capacity_l,
@@ -366,6 +369,10 @@ def build_state_message(
         "weather": {"weather_type": weather.weather_type.value, "wetness": weather.wetness,
                     "lightning_intensity": weather.lightning_intensity},  # 1 at a strike, fading (render/weather.py)
         "road": _road_to_dict(current_way),
+        # godot-16: the taxi's tyre mark this tick (kind rubber/dirt/sand/snow, intensity, front) or
+        # null; which speed camera is flashing (its index in the chunks) or null.
+        "tire_mark": tire_mark,
+        "speed_camera_flash": taxi_mgr.speed_camera_flash_index if taxi_mgr.speed_camera_flash_timer > 0.0 else None,
         "traffic_lights": _traffic_light_phases(traffic_mgr, *player_at),
         "meet": _meet_to_dict(taxi_mgr, player_pedestrian, language),
         "taxi": {

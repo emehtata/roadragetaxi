@@ -155,6 +155,7 @@ class SimulationServer:
         self._taxi_waiter_elapsed = 0.0
         self._saved_gig_fares = self.world.taxi_mgr.completed_fares
         self._tick = 0
+        self._tire_mark = None  # this tick's tyre mark under the taxi (godot-16), or None
         self._lightning_event_id = self.world.weather.lightning_event_id
 
         self._command_lock = threading.Lock()
@@ -173,6 +174,39 @@ class SimulationServer:
 
         self._listener: Optional[Listener] = None
         self._running = False
+
+    def _tyre_mark(self, previous) -> Optional[dict]:
+        """Whether the taxi lays a tyre mark this tick, and which, decided as
+        Pygame's main() decides it (SKIDMARK.md): rubber on a hard surface
+        when the tyres slip enough, a dirt (sand, snow) trail off-road on
+        soft ground whenever moving. None when nothing is laid. The client
+        keeps the trail."""
+        from ..calendar import Season
+        from ..map_level import SURFACE_LEVEL
+        from ..physics import (get_current_road_at_car, is_point_in_parking_lot, is_point_on_parking_space,
+                               off_road_ground_kind, skidmark_intensity, skidmark_should_mark,
+                               tire_tracks_include_front_wheels)
+
+        car, world = self.car, self.world
+        if self._on_foot or (car.x, car.y) == previous:
+            return None
+        on_surface = getattr(car, "map_level", SURFACE_LEVEL) == SURFACE_LEVEL
+        surface_way = get_current_road_at_car(car, ways=world.ways, spatial_grid=world.spatial_grid, car_roads_only=False) \
+            if on_surface else None
+        ground = (
+            off_road_ground_kind(car.x, car.y, scenery_grid=world.scenery_grid)
+            if on_surface and surface_way is None
+            and not is_point_on_parking_space(car.x, car.y, world.parking_spaces)
+            and not is_point_in_parking_lot(car.x, car.y, scenery_grid=world.scenery_grid)
+            else "hard"
+        )
+        soft = ground in ("soft", "sand")
+        skidding = skidmark_should_mark(car.skid_amount, wetness=world.weather.wetness, hard_surface=not soft)
+        if not (skidding or (soft and abs(car.speed) > 1.0)):
+            return None
+        kind = ("snow" if self.calendar.season == Season.WINTER else "sand" if ground == "sand" else "dirt") if soft else "rubber"
+        return {"kind": kind, "intensity": round(skidmark_intensity(car.skid_amount) if skidding else 1.0, 2),
+                "front": bool(tire_tracks_include_front_wheels(soft, skidding, getattr(car, "front_lockup", False)))}
 
     @property
     def _game_time_seconds(self) -> float:
@@ -270,6 +304,7 @@ class SimulationServer:
             self.audio.play_group("weather.thunder", 0.8)
             self._lightning_event_id = self.world.weather.lightning_event_id
 
+        car_x, car_y = self.car.x, self.car.y
         result = advance_simulation(
             dt, command, self.car, self.world,
             on_foot=self._on_foot,
@@ -299,6 +334,7 @@ class SimulationServer:
             cities_list=self.cities_list,
             now=self.calendar.current,
         )
+        self._tire_mark = self._tyre_mark(previous=(car_x, car_y))
         self._camx, self._camy = result.camx, result.camy
         self._current_way = result.current_way
         self._bridge_edge_crash_cooldown = result.bridge_edge_crash_cooldown
@@ -372,7 +408,7 @@ class SimulationServer:
             rage_power=self._rage_power, water_elapsed=self._water_elapsed,
             should_stop=should_stop, city_summary=city_summary, events=events,
             server_time=self._server_time, player_id=LOCAL_PLAYER_ID,
-            current_way=self._current_way, language=self.language, calendar=self.calendar_state(),
+            current_way=self._current_way, language=self.language, calendar=self.calendar_state(), tire_mark=self._tire_mark,
         )
         with self._clients_lock:
             clients = list(self._clients)
