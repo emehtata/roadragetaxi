@@ -13,6 +13,7 @@ const COMMAND_INTERVAL_S := 0.05  # input -> simulation at 20 Hz, independent of
 
 const NightLayer := preload("res://night_layer.gd")
 const Perf := preload("res://perf.gd")
+const MapChunk := preload("res://map_chunk.gd")
 @onready var sim: SimClient = $SimClient
 @onready var map_layer: Node2D = $MapLayer
 @onready var entities: Node2D = $EntityLayer
@@ -101,6 +102,8 @@ func _ready() -> void:
 				_bench = float(args[i + 1])
 				_bench_left = _bench
 				Perf.keep_all = true
+			"--buildings":  # godot-21: "2d" the radial 2D renderer, "3d" (default) the 3D building layer
+				MapChunk.buildings_3d = args[i + 1] != "2d"
 			"--compass":
 				$Ui/NavOverlay.show_compass = true
 			"--screenshot-drive":  # with --screenshot: get in and drive this many seconds first

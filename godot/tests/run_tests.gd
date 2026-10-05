@@ -13,6 +13,7 @@ const NightLayer := preload("res://night_layer.gd")
 const Labels := preload("res://labels.gd")
 const Detail := preload("res://chunk_detail.gd")
 const B25 := preload("res://buildings_25d.gd")
+const B3 := preload("res://buildings_3d.gd")
 const Perf := preload("res://perf.gd")
 const EntityLayer2 := preload("res://entity_layer.gd")
 
@@ -39,6 +40,7 @@ func _process(_delta: float) -> bool:  # first frame: the tree is live, so nodes
 		return false
 	_ran = true
 	MapChunk.build_async = false  # check the buildings right after a chunk loads
+	MapChunk.buildings_3d = false  # the legacy 2D renderer's checks; test_buildings_3d switches it on
 	test_interpolation()
 	test_audio()
 	test_hud()
@@ -54,6 +56,7 @@ func _process(_delta: float) -> bool:  # first frame: the tree is live, so nodes
 	test_static_world()
 	test_rest_of_static_world()
 	test_buildings_2_5d()
+	test_buildings_3d()
 	test_performance_paths()
 	print("%d checks, %d failed" % [_checks, _failures])
 	quit(1 if _failures > 0 else 0)
@@ -904,6 +907,70 @@ static func _area(polygons: Array) -> float:
 
 ## godot-18: the optimisations keep the picture - same areas tinted, lit,
 ## drawn - with less work.
+## godot-21: the 3D building layer's geometry and its alignment with the 2D map.
+func test_buildings_3d() -> void:
+	check(B3.to_3d(Vector2(12.5, -40.0)) == Vector3(12.5, 0.0, -40.0), "2D (x, y) -> 3D (x, 0, y)")
+	check(B3.to_3d(Vector2(1, 2), 7.0).y == 7.0, "height is the 3D y")
+	var centre := Vector2(30.0, -20.0)
+	var d := B3.camera_height(720.0 / 9.0)
+	check(is_equal_approx(2.0 * d * tan(deg_to_rad(B3.FOV) / 2.0), 80.0), "the ground plane fills the 2D view (720 px at 9 px/m = 80 m)")
+	for p in [Vector2(0, 0), Vector2(70, -60), Vector2(-5, 13)]:
+		check(B3.project(B3.to_3d(p), centre, d).is_equal_approx(p), "a ground point lands where the 2D map has it")
+	var r := 25.0
+	var low := B3.project(Vector3(centre.x + r, 5.0, centre.y), centre, d).x - centre.x - r
+	var high := B3.project(Vector3(centre.x + r, 10.0, centre.y), centre, d).x - centre.x - r
+	check(low > 0.0 and high > low * 1.9, "a roof moves outward from the view centre, a 10 m one about twice a 5 m one")
+	var a := B3.project(Vector3(centre.x + 0.01, 20.0, centre.y), centre, d)
+	var b := B3.project(Vector3(centre.x - 0.01, 20.0, centre.y), centre, d)
+	check(a.distance_to(b) < 0.05, "continuous through the view centre: no wall switching")
+	var box := PackedVector2Array([Vector2(0, 0), Vector2(20, 0), Vector2(20, 10), Vector2(0, 10)])
+	var reversed := box.duplicate()
+	reversed.reverse()
+	var l_shape := PackedVector2Array([Vector2(0, 0), Vector2(24, 0), Vector2(24, -10), Vector2(10, -10), Vector2(10, -22), Vector2(0, -22)])
+	var odd := PackedVector2Array([Vector2(0, 0), Vector2(9, -3), Vector2(14, 6), Vector2(4, 11), Vector2(-3, 5)])
+	var style := [[92, 57, 48], 0, 10.0, [], [158, 105, 82], 3, 0]
+	for footprint in [box, reversed, l_shape, odd]:
+		var out: Dictionary = B3.build([footprint], [style], Vector2.ZERO)
+		var ground := 0
+		var top := -INF
+		for v in out["verts"]:
+			if v.y == 0.0:
+				ground += 1
+				check(Geometry2D.is_point_in_polygon(Vector2(v.x, v.z), footprint.duplicate()) or _on_outline(Vector2(v.x, v.z), footprint) , "ground vertices on the footprint")
+			top = maxf(top, v.y)
+		check(out["stats"]["walls"] == footprint.size() and ground > 0 and is_equal_approx(top, 10.0), "every wall extruded from the ground to the height (%d sides)" % footprint.size())
+		check(out["verts"] == B3.build([footprint], [style], Vector2.ZERO)["verts"], "deterministic geometry")
+	var tall: Dictionary = B3.build([box], [[[92, 57, 48], 0, 40.0, [], [158, 105, 82], 12, 0]], Vector2.ZERO)
+	var top_tall := -INF
+	for v in tall["verts"]:
+		top_tall = maxf(top_tall, v.y)
+	check(is_equal_approx(top_tall, 40.0), "a 40 m building is 40 m tall")
+	var gabled: Dictionary = B3.build([box], [[[92, 57, 48], 1, 10.0, [], [158, 105, 82], 3, 0]], Vector2.ZERO)
+	var ridge := -INF
+	for v in gabled["verts"]:
+		ridge = maxf(ridge, v.y)
+	check(ridge > 10.0 and ridge <= 14.0, "a pitched roof rises above the walls")
+	check(B3.build([box], [[[92, 57, 48], 0, 10.0, [[10.0, -10.0]], [158, 105, 82], 3, 0]], Vector2.ZERO)["colors"].has(B25.DOOR), "a door at the entrance")
+	MapChunk.buildings_3d = true
+	var map := MapLayer.new()
+	root.add_child(map)
+	map.add_chunk({"chunk_id": "3d", "bounds": [0, 0, 100, 100], "buildings": [[[0, 0], [20, 0], [20, 10], [0, 10]]],
+		"building_styles": [style]})
+	check(map.buildings_3d != null and map.buildings_3d.instance_count() >= 2, "a chunk's mesh and its occluder (and lit windows) join the 3D layer")
+	check(map.buildings_in(Rect2(-5, -15, 30, 20)).size() == 1, "headlights still clip at the footprint")
+	map.clear()
+	check(map.buildings_3d.instance_count() == 0, "a chunk's meshes go with it")
+	map.free()
+	MapChunk.buildings_3d = false
+
+
+func _on_outline(p: Vector2, polygon: PackedVector2Array) -> bool:
+	for i in polygon.size():
+		if Geometry2D.get_closest_point_to_segment(p, polygon[i], polygon[(i + 1) % polygon.size()]).distance_to(p) < 1e-3:
+			return true
+	return false
+
+
 func test_performance_paths() -> void:
 	# The night tint as polygons: the view minus the beams, no holes, nothing lost.
 	var view := Rect2(0, 0, 100, 60)

@@ -6,6 +6,7 @@
 extends Node2D
 
 const MapChunk := preload("res://map_chunk.gd")
+const Buildings3D := preload("res://buildings_3d.gd")
 
 var origin := Vector2.ZERO
 var wetness := 0.0  # road wetness as last applied (bucketed, see set_wetness)
@@ -54,6 +55,20 @@ var flash = null  # the flashing speed camera (state speed_camera_flash)
 var _ground: Node2D
 var _buildings: Node2D  # every chunk's 2.5D buildings, z 7, ordered far to near (godot-17)
 var _underground: Node2D
+var buildings_3d: Node2D = null  # godot-21: the 3D building layer (MapChunk.buildings_3d)
+
+
+## Made on first use: main.gd reads --buildings after this node's _ready.
+func _layer_3d() -> Node2D:
+	if buildings_3d == null:
+		buildings_3d = Buildings3D.new()  # its sprites carry their own z (7, lit windows 21)
+		add_child(buildings_3d)
+	return buildings_3d
+
+
+func add_building_meshes(chunk: Node) -> void:
+	if not chunk.meshes_3d.is_empty():
+		_layer_3d().add(chunk.meshes_3d)
 
 
 func set_origin(world_origin: Vector2) -> void:
@@ -101,6 +116,8 @@ func set_building_view(view_centre: Vector2) -> void:
 
 ## Night windows follow the server's darkness (no redraw).
 func set_darkness(darkness: float) -> void:
+	if MapChunk.buildings_3d:
+		_layer_3d().set_darkness(darkness)
 	for chunk in _chunks.values():
 		chunk.set_darkness(darkness)
 
@@ -110,6 +127,9 @@ func _free_chunk(chunk: Node) -> void:
 	if chunk.building_node != null and chunk.building_node.get_parent() == _buildings:
 		_buildings.remove_child(chunk.building_node)
 		chunk.building_node.free()
+	for node in chunk.meshes_3d:
+		node.free()
+	chunk.meshes_3d = []
 	if _pool_group != null and chunk._pools.get_parent() == _pool_group:
 		_pool_group.remove_child(chunk._pools)
 		chunk._pools.free()  # out of the tree already; the chunk's own cleanup then skips it
@@ -147,6 +167,7 @@ func add_chunk(message: Dictionary) -> bool:
 		_pool_group.add_child(chunk._pools)
 	if chunk.building_node != null and _buildings != null:
 		_add_buildings(chunk)
+	add_building_meshes(chunk)
 	_chunks[chunk_id] = chunk
 	return true
 

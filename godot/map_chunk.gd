@@ -32,6 +32,7 @@ extends Node2D
 const RS := preload("res://render_style.gd")
 const Detail := preload("res://chunk_detail.gd")  # godot-16: the rest of the static world's drawing
 const B25 := preload("res://buildings_25d.gd")
+const B3 := preload("res://buildings_3d.gd")
 const Perf := preload("res://perf.gd")
 const NightLayerScript := preload("res://night_layer.gd")
 const BRIDGE_Z_MAX := 3
@@ -73,7 +74,7 @@ func _notification(what: int) -> void:
 			WorkerThreadPool.wait_for_task_completion(_pool_task)
 		if _building_task >= 0:
 			WorkerThreadPool.wait_for_task_completion(_building_task)
-		for node in [_pools, _heads, building_node]:
+		for node in [_pools, _heads, building_node] + meshes_3d:
 			if is_instance_valid(node) and node.get_parent() == null:
 				node.free()
 
@@ -369,10 +370,16 @@ func _build_2_5d() -> void:
 	var buildings: Array = _data.get("buildings", [])
 	if buildings.is_empty():
 		return
-	building_node = Node2D.new()
-	building_node.draw.connect(_draw_volumes)
 	var styles: Array = _data.get("building_styles", [])
 	var origin := _origin
+	if buildings_3d:  # godot-21: one mesh for the 3D building layer, never rebuilt for the view
+		if not build_async:
+			_meshes_ready(_build_3d_timed(buildings, styles, origin))
+		else:
+			_building_task = WorkerThreadPool.add_task(func(): _meshes_ready.call_deferred(_build_3d_timed(buildings, styles, origin)))
+		return
+	building_node = Node2D.new()
+	building_node.draw.connect(_draw_volumes)
 	var view := _building_view
 	if not build_async:
 		_buildings_ready(_build_timed(buildings, styles, origin, view))
@@ -383,6 +390,26 @@ func _build_2_5d() -> void:
 
 
 static var build_async := true  # tests build in place
+static var buildings_3d := true  # godot-21 prototype; --buildings 2d: the godot-20 radial renderer
+var meshes_3d: Array = []  # buildings_3d.meshes, added to MapLayer's 3D building layer
+
+
+static func _build_3d_timed(buildings: Array, styles: Array, origin: Vector2) -> Dictionary:
+	var started := Time.get_ticks_usec()
+	var arrays := B3.build(buildings, styles, origin)
+	arrays["build_usec"] = Time.get_ticks_usec() - started
+	return arrays
+
+
+func _meshes_ready(arrays: Dictionary) -> void:
+	if _building_task >= 0:
+		WorkerThreadPool.wait_for_task_completion(_building_task)
+		_building_task = -1
+	Perf.add("chunk_buildings_build", arrays.get("build_usec", 0))
+	meshes_3d = B3.meshes(arrays)
+	_volumes = {"hulls": arrays["hulls"], "stats": arrays["stats"]}  # the vertices live in the meshes
+	if is_inside_tree():
+		get_parent().add_building_meshes(self)
 var _building_task := -1
 
 
@@ -428,7 +455,7 @@ func set_building_view(view_centre: Vector2) -> void:
 	_building_view = view_centre
 	for node in _canopy_layers:
 		node.queue_redraw()
-	if not has_buildings:
+	if not has_buildings or buildings_3d:
 		_built_view = view_centre
 		return
 	if _building_task >= 0:
