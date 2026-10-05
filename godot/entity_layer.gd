@@ -29,6 +29,19 @@ var _font: Font
 var reflectors_on := false  # the sun below -7.5 degrees (main.gd, from state calendar)
 var lamp_near := func(_at: Vector2, _radius: float) -> bool: return false  # MapLayer.lamp_near
 var _reflectors: Node2D  # made in _ready (an instance never in the tree leaks nothing)
+var underground := false  # the taxi below ground (state player.map_level): only it and the walker are shown
+var covered := func(_at: Vector2, _layer: int) -> bool: return false  # MapLayer.covered (headlights under a bridge)
+var _trains: Node2D  # trains, z 12: above the canopies and rail bridges (z 11), as Pygame draws them last
+var _trains_drawn := 0
+var _tracks: Node2D  # tyre tracks, z 8 (render/roads.py draw_tire_tracks, before roadworks and signs)
+var _trails: Array = []  # [kind, [[position, heading, intensity, front], ...]]
+var _track_points := 0
+var _last_track = null  # where the last mark was laid (null: the trail is broken)
+var _last_track_px := 0.0
+const TRACK_STYLES := {  # render/roads.py draw_tire_tracks: [faint, dark, width m]
+	"rubber": [Color8(110, 110, 110), Color8(28, 28, 28), 0.24], "dirt": [Color8(150, 138, 118), Color8(105, 68, 38), 0.75],
+	"sand": [Color8(222, 208, 170), Color8(178, 158, 114), 0.75], "snow": [Color8(214, 226, 232), Color8(142, 169, 181), 0.75],
+}
 
 
 func _ready() -> void:
@@ -37,6 +50,14 @@ func _ready() -> void:
 	_reflectors.z_index = 12  # above the night tint (20) and the street lights (21): 10 + 12
 	_reflectors.draw.connect(_draw_reflectors)
 	add_child(_reflectors)
+	_trains = Node2D.new()
+	_trains.z_index = 2
+	_trains.draw.connect(_draw_trains)
+	add_child(_trains)
+	_tracks = Node2D.new()
+	_tracks.z_index = -2
+	_tracks.draw.connect(_draw_tracks)
+	add_child(_tracks)
 
 
 func now() -> float:
@@ -83,6 +104,65 @@ func update_frame(delta: float) -> void:
 	queue_redraw()
 	if _reflectors != null and (reflectors_on or _reflectors_drawn):
 		_reflectors.queue_redraw()
+	if _trains != null:
+		_trains.queue_redraw()
+		_lay_track()
+
+
+## The server says each tick whether the taxi marks the ground (state
+## tire_mark: kind, intensity, front); the trail follows the drawn taxi,
+## a point every 0.5 m or 4 degrees (main()'s sampling), at most 4000
+## points (the oldest trails go, down to 3500).
+func _lay_track() -> void:
+	if not is_equal_approx(_last_track_px, px_per_m):
+		_last_track_px = px_per_m
+		_tracks.queue_redraw()
+	if _frame.is_empty():
+		return
+	var a: Dictionary = _frame["a"]
+	var mark = a.get("tire_mark")
+	if typeof(mark) != TYPE_DICTIONARY or a.get("on_foot", false):
+		_last_track = null
+		return
+	var taxi := StateBuffer.blend(a["player"], _frame["b"].get("player", a["player"]), _frame["t"], origin)
+	var at := Vector2(taxi.x, taxi.y)
+	var kind := str(mark.get("kind", "rubber"))
+	if _last_track == null or _trails.is_empty() or _trails[-1][0] != kind:
+		_trails.append([kind, []])
+	elif at.distance_to(_last_track[0]) < 0.5 and absf(angle_difference(taxi.z, _last_track[1])) < deg_to_rad(4.0):
+		return
+	_trails[-1][1].append([at, taxi.z, float(mark.get("intensity", 1.0)), bool(mark.get("front", false))])
+	_last_track = [at, taxi.z]
+	_track_points += 1
+	if _track_points > 4000:
+		while not _trails.is_empty() and _track_points > 3500:
+			_track_points -= _trails.pop_front()[1].size()
+	_tracks.queue_redraw()
+
+
+## Each trail's tyre lines: the rear axle (1.2 m behind the centre), the
+## front one too where the fronts locked; faint to dark by intensity. One
+## call per kind.
+func _draw_tracks() -> void:
+	var lines := {}
+	for trail in _trails:
+		var kind: String = trail[0]
+		if not lines.has(kind):
+			lines[kind] = [PackedVector2Array(), PackedColorArray()]
+		var style: Array = TRACK_STYLES.get(kind, TRACK_STYLES["rubber"])
+		var previous = null
+		for point in trail[1]:
+			if previous != null:
+				var color: Color = style[0].lerp(style[1], point[2])
+				for axle: float in ([-1.2, 1.2] if point[3] else [-1.2]):
+					for side: float in [-0.72, 0.72]:
+						lines[kind][0].append(previous[0] + _forward(previous[1]) * axle + _right(previous[1]) * side)
+						lines[kind][0].append(point[0] + _forward(point[1]) * axle + _right(point[1]) * side)
+						lines[kind][1].append(color)
+			previous = point
+	for kind in lines:
+		if not lines[kind][1].is_empty():
+			_tracks.draw_multiline_colors(lines[kind][0], lines[kind][1], maxf(_px(3.0), TRACK_STYLES[kind][2]))
 
 
 func _process(_delta: float) -> void:
@@ -142,16 +222,20 @@ func headlight_beams() -> Array:
 	var t: float = _frame["t"]
 	var vehicles: Array = []  # [position, heading, width, is_npc]
 	var player: Dictionary = a["player"]
+	var road: Dictionary = a.get("road", {}) if typeof(a.get("road")) == TYPE_DICTIONARY else {}
 	if player.get("engine_on", false):
 		var p := StateBuffer.blend(player, b.get("player", player), t, origin)
-		vehicles.append([Vector2(p.x, p.y), p.z, player.get("width_m", 1.8), false])
+		# Under a higher road (render/vehicles.py): no beams - unless on a bridge itself.
+		if road.get("bridge", false) or not covered.call(Vector2(p.x, p.y), int(road.get("layer", 0))):
+			vehicles.append([Vector2(p.x, p.y), p.z, player.get("width_m", 1.8), false])
 	var later := _by_id(b.get("npcs", []))
 	var area := view_rect.grow(45.0 - CULL_MARGIN_M)
 	for npc in a.get("npcs", []):
 		if npc.get("is_on_foot", false) or npc.get("state", "") == "PARKED":
 			continue
 		var p := StateBuffer.blend(npc, later.get(npc["id"], npc), t, origin)
-		if area.has_point(Vector2(p.x, p.y)):
+		var layer := int(npc.get("layer", 0))  # an NPC on a raised layer counts as on its bridge
+		if area.has_point(Vector2(p.x, p.y)) and not underground and (layer > 0 or not covered.call(Vector2(p.x, p.y), layer)):
 			vehicles.append([Vector2(p.x, p.y), p.z, npc.get("width_m", 1.8), true])
 	var shown := view_rect.grow(30.0 - CULL_MARGIN_M)
 	var drawn := 0
@@ -427,7 +511,7 @@ func _draw() -> void:
 	var count := 0
 
 	var later_peds := _by_id(b.get("pedestrians", []))
-	for ped in a.get("pedestrians", []):
+	for ped in ([] if underground else a.get("pedestrians", [])):  # below ground: the surface world isn't shown
 		var next: Dictionary = later_peds.get(ped["id"], ped)
 		var p := StateBuffer.blend(ped, next, t, origin)
 		var c := Vector2(p.x, p.y)
@@ -437,7 +521,7 @@ func _draw() -> void:
 		count += 1
 	var later_npc_rows := _by_id(b.get("npcs", []))
 	for npc in a.get("npcs", []):  # NPC drivers out of their car: Pygame adds them to the pedestrians
-		if not npc.get("is_on_foot", false):
+		if underground or not npc.get("is_on_foot", false):
 			continue
 		var p := StateBuffer.blend(npc, later_npc_rows.get(npc["id"], npc), t, origin)
 		var c := Vector2(p.x, p.y)
@@ -466,7 +550,7 @@ func _draw() -> void:
 
 	var later_npcs := _by_id(b.get("npcs", []))
 	for npc in a.get("npcs", []):
-		if not drawn_as_vehicle(npc):
+		if underground or not drawn_as_vehicle(npc):
 			continue
 		var p := StateBuffer.blend(npc, later_npcs.get(npc["id"], npc), t, origin)
 		var c := Vector2(p.x, p.y)
@@ -487,7 +571,19 @@ func _draw() -> void:
 
 	_booked_arrow(a, b, t, later_peds)
 
-	# Trains last: above the vehicles, as Pygame draws them after the bridge rails.
+	drawn_entities = count + _trains_drawn
+	interp_usec = Time.get_ticks_usec() - started
+
+
+## Trains, last (render/vehicles.py draw_trains after the bridge rails),
+## from the same sample as everything else.
+func _draw_trains() -> void:
+	_trains_drawn = 0
+	if _frame.is_empty() or underground:
+		return
+	var a: Dictionary = _frame["a"]
+	var b: Dictionary = _frame["b"]
+	var t: float = _frame["t"]
 	var later_trains := _by_id(b.get("trains", []))
 	for train in a.get("trains", []):
 		var next: Dictionary = later_trains.get(train["id"], train)
@@ -498,10 +594,8 @@ func _draw() -> void:
 			var c := MapMath.point(origin, lerpf(car[0], to[0], t), lerpf(car[1], to[1], t))
 			if not view_rect.has_point(c):
 				continue
-			_train_car(c, lerp_angle(car[2], to[2], t), car[3], str(car[4]))
-		count += 1
-	drawn_entities = count
-	interp_usec = Time.get_ticks_usec() - started
+			_train_car(c, lerp_angle(car[2], to[2], t), car[3], str(car[4]), _trains)
+		_trains_drawn += 1
 
 
 ## This frame's lightning flash alpha (main.gd shows it above the night
@@ -549,18 +643,18 @@ func _booked_arrow(a: Dictionary, b: Dictionary, t: float, later_peds: Dictionar
 ## One train vehicle (render/vehicles.py draw_trains): body in its profile
 ## colour, a white cab front on a locomotive, a white stripe along a
 ## restaurant car, a dark roof line.
-func _train_car(c: Vector2, heading: float, length: float, profile: String) -> void:
+func _train_car(c: Vector2, heading: float, length: float, profile: String, node: CanvasItem = self) -> void:
 	var style: Array = RS.TRAIN_PROFILES.get(profile, RS.TRAIN_PROFILES["standard"])
 	var f := _forward(heading)
 	var r := _right(heading)
 	var hl := length / 2.0
 	var hw := RS.TRAIN_WIDTH_M / 2.0
 	var body := _rect(c, f, r, hl, -hl, hw)
-	draw_colored_polygon(body, style[0])
+	node.draw_colored_polygon(body, style[0])
 	if style[1] != null and profile == "locomotive":
-		draw_colored_polygon(_rect(c, f, r, hl, hl - 3.0, hw), style[1])
+		node.draw_colored_polygon(_rect(c, f, r, hl, hl - 3.0, hw), style[1])
 	elif style[1] != null:
-		draw_colored_polygon(_rect(c, f, r, hl - 1.0, -hl + 1.0, 0.5), style[1])
+		node.draw_colored_polygon(_rect(c, f, r, hl - 1.0, -hl + 1.0, 0.5), style[1])
 	var closed := body.duplicate()
 	closed.append(body[0])
-	draw_polyline(closed, RS.TRAIN_ROOF_LINE, _px(1.0))
+	node.draw_polyline(closed, RS.TRAIN_ROOF_LINE, _px(1.0))

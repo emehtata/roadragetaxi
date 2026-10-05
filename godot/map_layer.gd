@@ -42,12 +42,24 @@ func _make_pool_group() -> void:
 
 
 func _ready() -> void:
+	_ground = Node2D.new()  # under everything, the landuse (z -1) included
+	_ground.z_index = -2
+	_ground.draw.connect(_draw_ground)
+	add_child(_ground)
+	_underground = Node2D.new()  # level roads (and the dark below ground), over the surface map
+	_underground.z_index = 9
+	_underground.draw.connect(_draw_underground)
+	add_child(_underground)
 	_make_pool_group()
 	_knocked_posts = Node2D.new()
 	_knocked_posts.z_index = 6
 	_knocked_posts.draw.connect(_draw_knocked_posts)
 	add_child(_knocked_posts)
 var _chunks: Dictionary = {}  # chunk_id -> MapChunk
+var map_level := 0  # the taxi's map level (state player.map_level): 0 surface, < 0 underground
+var flash = null  # the flashing speed camera (state speed_camera_flash)
+var _ground: Node2D
+var _underground: Node2D
 
 
 func set_origin(world_origin: Vector2) -> void:
@@ -94,7 +106,10 @@ func add_chunk(message: Dictionary) -> bool:
 	chunk.set_obstacles(fallen, knocked)
 	chunk.set_season(season)
 	chunk.set_lights_on(lights_on)
+	chunk.set_flash(flash)
 	add_child(chunk)
+	if not chunk._data.get("level_roads", []).is_empty() and _underground != null:
+		_underground.queue_redraw()
 	if not chunk.street_lights.is_empty() and _pool_group != null:
 		_pool_group.add_child(chunk._pools)
 	_chunks[chunk_id] = chunk
@@ -169,7 +184,8 @@ func set_season(weights: Array) -> void:
 	if weights.size() != 4 or weights == season:
 		return
 	season = weights
-	queue_redraw()
+	if _ground != null:
+		_ground.queue_redraw()
 	for chunk in _chunks.values():
 		chunk.set_season(season)
 
@@ -180,7 +196,7 @@ func set_lights_on(on: bool) -> void:
 		return
 	lights_on = on
 	if _pool_group != null:
-		_pool_group.visible = on
+		_pool_group.visible = on and map_level == 0
 	for chunk in _chunks.values():
 		chunk.set_lights_on(on)
 
@@ -231,8 +247,55 @@ func remove_chunk(chunk_id: String) -> bool:
 	return true
 
 
-func _draw() -> void:
+func _draw_ground() -> void:
 	# Ground, under the chunks: snow cover with the winter weight. (Pygame's
 	# other seasonal palettes are tuned to its dark grass; on this lighter
 	# ground autumn turns brown, so only the snow is taken.)
-	draw_rect(Rect2(-100000, -100000, 200000, 200000), Color(0.27, 0.33, 0.25).lerp(Color8(230, 236, 240), clampf(season[0], 0.0, 1.0)))
+	_ground.draw_rect(Rect2(-100000, -100000, 200000, 200000), Color(0.27, 0.33, 0.25).lerp(Color8(230, 236, 240), clampf(season[0], 0.0, 1.0)))
+
+
+## render/roads.py draw_level_ways and main()'s underground view: below
+## ground, a dark fill over the surface map and the current level's roads;
+## on the surface, the covered (level 0) roads Pygame draws there.
+func _draw_underground() -> void:
+	if map_level != 0:
+		_underground.draw_rect(Rect2(-100000, -100000, 200000, 200000), Color8(34, 34, 38))
+	for chunk in _chunks.values():
+		for road in chunk._data.get("level_roads", []):
+			if road[0].any(func(level): return int(level) == map_level):  # JSON numbers are floats
+				_underground.draw_polyline(chunk._points(road[1]), MapChunk.Detail._rgb(road[3]), maxf(1.0 / px_per_m, 2.0 * float(road[2])))
+
+
+## The taxi's map level (state player.map_level): the underground view.
+func set_map_level(level: int) -> void:
+	if level == map_level:
+		return
+	map_level = level
+	_underground.queue_redraw()
+	if _pool_group != null:  # no street lights below ground
+		_pool_group.visible = lights_on and map_level == 0
+
+
+## The flashing speed camera, to the chunks (only theirs redraw).
+func set_flash(index) -> void:
+	if index == flash:
+		return
+	flash = index
+	for chunk in _chunks.values():
+		chunk.set_flash(flash)
+
+
+## Whether `at` (layer coordinates) is under a road on a higher layer than
+## `layer` (render/common.py _covered_by_higher_road): headlights there
+## are hidden by the bridge above.
+func covered(at: Vector2, layer: int) -> bool:
+	for chunk in _chunks.values():
+		if chunk._bounds_rect.size != Vector2.ZERO and not chunk._bounds_rect.grow(50.0).has_point(at):
+			continue
+		for road in chunk.elevated_roads():
+			if road[0] > layer and road[1].grow(road[2]).has_point(at):
+				var points: PackedVector2Array = road[3]
+				for i in points.size() - 1:
+					if Geometry2D.get_closest_point_to_segment(at, points[i], points[i + 1]).distance_to(at) <= road[2]:
+						return true
+	return false

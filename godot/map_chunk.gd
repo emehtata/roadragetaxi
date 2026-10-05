@@ -30,6 +30,7 @@
 extends Node2D
 
 const RS := preload("res://render_style.gd")
+const Detail := preload("res://chunk_detail.gd")  # godot-16: the rest of the static world's drawing
 const BRIDGE_Z_MAX := 3
 
 var _data: Dictionary = {}
@@ -57,6 +58,9 @@ var _pools := Node2D.new()
 var _heads := Node2D.new()
 var _broken := PackedInt32Array()  # indices of this chunk's street lights that are knocked down
 var _season := [0.0, 0.0, 1.0, 0.0]  # [winter, spring, summer, autumn] (state calendar.season)
+var _season_layers: Array[Node2D] = []  # landuse and islands: their green kinds follow the season
+var _signs: Node2D = null  # signs and speed cameras, if any
+var _flash = null  # the flashing speed camera's id (state speed_camera_flash)
 
 
 func _notification(what: int) -> void:
@@ -86,15 +90,32 @@ func setup(message: Dictionary, origin: Vector2) -> void:
 		if not _roads_by_z.has(z):
 			_roads_by_z[z] = []
 		_roads_by_z[z].append(road)
+	# z-1 landuse (under the water, as Pygame's draw_scenery comes before draw_waters)
+	if not message.get("landuse", []).is_empty():
+		_season_layers.append(_add_layer(-1, func(node: Node2D): Detail.draw_areas(self, node, "landuse")))
 	for z in _roads_by_z:
 		_roads_by_z[z].sort_custom(func(p, q): return int(p.get("layer", 0)) < int(q.get("layer", 0)))
 		var layer_z: int = z
-		_add_layer(z, func(node: Node2D): _draw_roads(layer_z, node))
+		_px_layers.append(_add_layer(z, func(node: Node2D): _draw_roads(layer_z, node)))  # markings depend on zoom
 	_add_layer(5, _draw_wet, _wet_darken)
 	_add_layer(5, _draw_wet, _wet_sheen)
 	_add_layer(5, _draw_puddles, _puddles)
-	_add_layer(6, _draw_railways)
-	_add_layer(7, _draw_buildings)
+	if not message.get("parking", []).is_empty():
+		_px_layers.append(_add_layer(5, func(node: Node2D): Detail.draw_parking(self, node)))
+	if not message.get("guardrails", []).is_empty():
+		_px_layers.append(_add_layer(5, func(node: Node2D): Detail.draw_guardrails(self, node)))
+	if not message.get("bus_stops", []).is_empty():
+		_px_layers.append(_add_layer(5, func(node: Node2D): Detail.draw_bus_stops(self, node)))
+	_px_layers.append(_add_layer(6, func(node: Node2D): Detail.draw_tracks(self, node, "railways")))
+	if not message.get("traffic_islands", []).is_empty():  # above the roads and rails (render/scenery.py)
+		_season_layers.append(_add_layer(6, func(node: Node2D): Detail.draw_areas(self, node, "traffic_islands")))
+	_px_layers.append(_add_layer(7, _draw_buildings))
+	if not message.get("curbs", []).is_empty() or not message.get("crossings", []).is_empty() or not message.get("speed_bumps", []).is_empty():
+		_px_layers.append(_add_layer(8, func(node: Node2D): Detail.draw_road_features(self, node)))
+	if not message.get("canopies", []).is_empty():  # z11: above the vehicles; then rail bridges, then (entities) trains
+		_px_layers.append(_add_layer(11, func(node: Node2D): Detail.draw_canopies(self, node)))
+	if not message.get("rail_bridges", []).is_empty() or not message.get("rail_decks", []).is_empty():
+		_px_layers.append(_add_layer(11, func(node: Node2D): Detail.draw_rail_bridges(self, node)))
 	if not message.get("railings", []).is_empty():
 		_px_layers.append(_add_layer(8, _draw_railings))
 	if not message.get("street_lights", []).is_empty():
@@ -111,14 +132,34 @@ func setup(message: Dictionary, origin: Vector2) -> void:
 		_px_layers.append(_add_layer(8, _draw_fences))
 	if not message.get("fuel_stations", []).is_empty():
 		_px_layers.append(_add_layer(6, _draw_fuel_pumps))
-		_px_layers.append(_add_layer(11, _draw_fuel_boards))
+		_px_layers.append(_add_layer(13, _draw_fuel_boards))  # above the trains (z12)
 	if not message.get("roadworks", []).is_empty() or not message.get("taxi_stands", []).is_empty():
 		_px_layers.append(_add_layer(8, _draw_points))
 	if not message.get("traffic_lights", []).is_empty():
 		_lights = _add_layer(8, _draw_traffic_lights)
 		_px_layers.append(_lights)
-	_puddle_spots = puddle_spots(message.get("roads", []), _bounds_rect, origin)
+	if not message.get("signs", []).is_empty() or not message.get("speed_cameras", []).is_empty():
+		_signs = _add_layer(8, func(node: Node2D): Detail.draw_signs(self, node, _flash))
+		_px_layers.append(_signs)
+	_puddle_spots = puddle_spots(message.get("roads", []), _bounds_rect, origin)  # from the raw coordinates
+	_compact()
 	set_wetness(_wetness)
+
+
+## Every polyline and polygon kept as a PackedVector2Array in layer
+## coordinates instead of the parsed JSON (an Array of 2-number Arrays per
+## point, ~10x the memory): one conversion at load, and the drawing uses
+## them directly (godot-16: the chunk data alone had grown by ~20 MiB).
+func _compact() -> void:
+	for road in _data.get("roads", []):
+		road["points"] = _points(road["points"])
+	for key in ["waters", "buildings", "parking", "curbs", "construction_fences", "railways", "rail_bridges", "rail_decks", "canopies"]:
+		var lines: Array = _data.get(key, [])
+		for i in lines.size():
+			lines[i] = _points(lines[i])
+	for key_index in [["railings", 1], ["landuse", 2], ["traffic_islands", 2], ["level_roads", 1]]:
+		for entry in _data.get(key_index[0], []):
+			entry[key_index[1]] = _points(entry[key_index[1]])
 
 
 ## A child canvas item at z; `draw` is called with that node to draw into.
@@ -208,6 +249,24 @@ func set_obstacles(fallen: Dictionary, knocked: Dictionary) -> bool:
 	return true
 
 
+var _elevated = null
+
+
+## Roads above ground level (layer > 0): [layer, bounds, half width,
+## points], made on the first headlight check, then kept.
+func elevated_roads() -> Array:
+	if _elevated == null:
+		_elevated = []
+		for road in _data.get("roads", []):
+			if int(road.get("layer", 0)) > 0 and road["points"].size() >= 2:
+				var points := _points(road["points"])
+				var box := Rect2(points[0], Vector2.ZERO)
+				for point in points:
+					box = box.expand(point)
+				_elevated.append([int(road["layer"]), box, float(road.get("half_width_m", 3.0)), points])
+	return _elevated
+
+
 ## Building outlines with their bounds, for clipping headlight beams: made
 ## the first time a beam needs them (at night), then kept.
 func building_shapes() -> Array:
@@ -221,6 +280,16 @@ func building_shapes() -> Array:
 					box = box.expand(point)
 				_building_shapes.append([box, outline])
 	return _building_shapes
+
+
+## Which speed camera flashes (state speed_camera_flash, or null): this
+## chunk redraws its cameras only if that changes for one of them.
+func set_flash(index) -> bool:
+	if _signs == null or index == _flash:
+		return false
+	_flash = index
+	_signs.queue_redraw()
+	return true
 
 
 ## Street lights shine at night only (darkness > 0.25, render/roads.py):
@@ -239,6 +308,8 @@ func set_season(weights: Array) -> bool:
 	queue_redraw()
 	if _trees != null:
 		_trees.queue_redraw()
+	for node in _season_layers:
+		node.queue_redraw()
 	return true
 
 
@@ -268,7 +339,9 @@ func _px(pixels: float) -> float:
 	return pixels / _px_per_m
 
 
-func _points(line: Array) -> PackedVector2Array:
+func _points(line) -> PackedVector2Array:
+	if typeof(line) == TYPE_PACKED_VECTOR2_ARRAY:  # already converted (_compact)
+		return line
 	var points := PackedVector2Array()
 	for point in line:
 		points.append(MapMath.point(_origin, point[0], point[1]))
@@ -285,12 +358,20 @@ func _draw() -> void:
 
 
 func _draw_roads(z: int, node: Node2D) -> void:
+	var lines := {}  # centre-line colour -> segments (one call each)
+	var chevrons := PackedVector2Array()
 	for road in _roads_by_z[z]:
 		var width: float = max(0.6, 2.0 * float(road.get("half_width_m", 1.5)))
-		var color := Color(0.33, 0.33, 0.35) if road.get("drivable", false) else Color(0.55, 0.52, 0.45)
+		var color: Color = Detail._rgb(road["color"]) if road.has("color") else (Color(0.33, 0.33, 0.35) if road.get("drivable", false) else Color(0.55, 0.52, 0.45))
+		var points := _points(road["points"])
 		if z > 1:
-			node.draw_polyline(_points(road["points"]), Color(0.12, 0.12, 0.13), width + 0.6)  # bridge edge
-		node.draw_polyline(_points(road["points"]), color, width)
+			node.draw_polyline(points, Color(0.12, 0.12, 0.13), width + 0.6)  # bridge edge
+		node.draw_polyline(points, color, width)
+		Detail.road_markings(self, road, points, lines, chevrons)
+	for line_color in lines:  # render/roads.py: after this layer's roads, under the next layer's
+		node.draw_multiline(lines[line_color], line_color, -1.0)
+	if not chevrons.is_empty():
+		node.draw_multiline(chevrons, Color8(200, 200, 200), _px(2.0))
 
 
 ## White strokes over drivable roads, tinted by the node's modulate.
@@ -316,19 +397,18 @@ func _draw_puddles(node: Node2D) -> void:
 		for i in shape.size():
 			var angle := TAU * i / shape.size()
 			polygon.append(spot["at"] + Vector2(cos(angle), sin(angle)) * radius * shape[i])
-		node.draw_colored_polygon(polygon, Color(RS.PUDDLE_COLOR, RS.PUDDLE_MAX_ALPHA * strength))
-
-
-func _draw_railways(node: Node2D) -> void:
-	for rail in _data.get("railways", []):
-		node.draw_polyline(_points(rail), Color(0.2, 0.17, 0.15), 1.4)
+		if Detail._valid(polygon):  # a jittered outline can cross itself
+			node.draw_colored_polygon(polygon, Color(RS.PUDDLE_COLOR, RS.PUDDLE_MAX_ALPHA * strength))
 
 
 func _draw_buildings(node: Node2D) -> void:
-	for building in _data.get("buildings", []):
-		var outline := _points(building)
+	var styles: Array = _data.get("building_styles", [])
+	var buildings: Array = _data.get("buildings", [])
+	for i in buildings.size():
+		var outline := _points(buildings[i])
 		if outline.size() >= 3 and not Geometry2D.triangulate_polygon(outline).is_empty():
-			node.draw_colored_polygon(outline, Color(0.6, 0.58, 0.55))
+			Detail.draw_building(self, node, outline, styles[i] if i < styles.size() else [])
+	Detail.draw_canopy_supports(self, node)  # an open roof's shadow and posts, under the vehicles
 
 
 const TREE_CROWNS := {  # render/scenery.py TREE_CROWN_PALETTES

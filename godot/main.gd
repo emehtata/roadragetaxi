@@ -23,6 +23,7 @@ const NightLayer := preload("res://night_layer.gd")
 @onready var instruments: Control = $Ui/Instruments
 @onready var nav_overlay: Control = $Ui/NavOverlay
 @onready var night: CanvasGroup = $NightLayer
+@onready var labels: Control = $Ui/Labels
 @onready var flash: ColorRect = $Sky/Flash
 
 var _tick := 0
@@ -53,6 +54,7 @@ var _phone_check := {}  # selftest: what the phone saw and how an accept went
 var _phone_wait := 0.0  # --phone-wait S: after driving, wait up to S s for a real offer and accept it
 var events_presented := 0
 var _audiotest := false
+var _chunk_queue: Array = []  # chunk messages waiting for their frame
 var _visible_roads := -1  # drivable roads in view (night tint), recounted every 0.1 s as Pygame does
 var _visible_roads_elapsed := 0.0
 var override_night := -1.0  # >= 0: presentation override for the audio test (never sent to Python)
@@ -63,6 +65,8 @@ var override_wetness := -1.0  # audio test: a moving train here (presentation on
 
 func _ready() -> void:
 	entities.lamp_near = map_layer.lamp_near  # reflectors and long beams look up working street lights
+	entities.covered = map_layer.covered  # headlights under a higher road
+	labels.map_layer = map_layer
 	var args := OS.get_cmdline_user_args()
 	for i in args.size():
 		match args[i]:
@@ -92,8 +96,10 @@ func _ready() -> void:
 				_screenshot_drive = float(args[i + 1])
 	sim.world_received.connect(_on_world)
 	sim.state_received.connect(_on_state)
-	sim.chunk_received.connect(func(message: Dictionary): map_layer.add_chunk(message))
-	sim.chunk_unloaded.connect(func(chunk_id: String): map_layer.remove_chunk(chunk_id))
+	# One new chunk per frame (godot-16): a chunk's first drawing takes ~10-20 ms, and crossing into
+	# a new area brings a whole row of them at once.
+	sim.chunk_received.connect(func(message: Dictionary): _chunk_queue.append(message))
+	sim.chunk_unloaded.connect(_unload_chunk)
 	sim.connection_changed.connect(_on_connection)
 	phone.sound.connect(func(group: String, variation: int): audio.handle_event({"type": "sound", "group": group, "variation": variation}))
 	phone.request.connect(func(action: String, item_id: String, request_id: int): sim.send_phone(action, item_id, request_id))
@@ -115,7 +121,13 @@ func _on_connection(up: bool) -> void:
 		audio.stop_loops()
 
 
+func _unload_chunk(chunk_id: String) -> void:
+	_chunk_queue = _chunk_queue.filter(func(m): return m["chunk_id"] != chunk_id)  # gone before it was ever drawn
+	map_layer.remove_chunk(chunk_id)
+
+
 func _on_world(world: Dictionary) -> void:
+	_chunk_queue.clear()  # a new world (reconnect): the old one's chunks are void
 	var origin := Vector2(world["center"][0], world["center"][1])
 	map_layer.set_origin(origin)
 	entities.origin = origin
@@ -160,6 +172,8 @@ func _notification(what: int) -> void:
 
 
 func _process(delta: float) -> void:
+	if not _chunk_queue.is_empty():
+		map_layer.add_chunk(_chunk_queue.pop_front())
 	entities.update_frame(delta)  # first: the camera below and the drawing use this one sample
 	var state: Dictionary = entities.shown_state()
 	_interp_usec = lerpf(_interp_usec, float(entities.interp_usec), 0.1)
@@ -260,6 +274,12 @@ func _present(state: Dictionary) -> void:
 	map_layer.set_wetness(state.get("weather", {}).get("wetness", 0.0) if override_wetness < 0.0 else override_wetness)
 	map_layer.set_px_per_m(camera.zoom.x)  # after the camera is placed; only reads its zoom
 	map_layer.set_traffic_lights(state.get("traffic_lights", {}))
+	# godot-16: below ground (the server's map level), the flashing speed camera, the labels.
+	var level := int(state.get("player", {}).get("map_level", 0))
+	map_layer.set_map_level(level)
+	entities.underground = level != 0
+	map_layer.set_flash(state.get("speed_camera_flash"))
+	labels.update_view(get_viewport().get_canvas_transform(), map_layer.chunk_count(), level != 0)
 	map_layer.set_obstacles(state.get("fallen_trees", []), state.get("knocked_posts", []))
 	phone.show_phone(state.get("phone", {}))
 	var target: Dictionary = entities.current_target(state)

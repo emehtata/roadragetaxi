@@ -10,6 +10,8 @@ const EntityLayer := preload("res://entity_layer.gd")
 const MapChunk := preload("res://map_chunk.gd")
 const Main := preload("res://main.gd")
 const NightLayer := preload("res://night_layer.gd")
+const Labels := preload("res://labels.gd")
+const Detail := preload("res://chunk_detail.gd")
 const EntityLayer2 := preload("res://entity_layer.gd")
 
 var _failures := 0
@@ -47,6 +49,7 @@ func _process(_delta: float) -> bool:  # first frame: the tree is live, so nodes
 	test_obstacles()
 	test_day_night()
 	test_static_world()
+	test_rest_of_static_world()
 	print("%d checks, %d failed" % [_checks, _failures])
 	quit(1 if _failures > 0 else 0)
 	return false
@@ -503,9 +506,9 @@ func test_gameplay_points() -> void:
 	message = JSON.parse_string(JSON.stringify(message))  # as the client gets it: every number a float
 	check(map.add_chunk(message) and not map.add_chunk(message), "points arrive with their chunk, once")
 	var chunk = map._chunks["2_4"]
-	check(chunk._px_layers.size() == 4 and chunk._lights != null, "pumps, boards, roadworks/stands and posts each get one canvas item")
+	check(chunk._px_layers.size() == 2 + 4 and chunk._lights != null, "pumps, boards, roadworks/stands and posts each get one canvas item (besides the tracks and buildings every chunk has)")
 	check(MapMath.point(map.origin, 1020.0, 2040.0) == Vector2(20, -40), "a stand sits at its map position relative to the origin")
-	check(map.add_chunk({"chunk_id": "0_0"}) and map._chunks["0_0"]._px_layers.is_empty() and map._chunks["0_0"]._lights == null,
+	check(map.add_chunk({"chunk_id": "0_0"}) and map._chunks["0_0"]._px_layers.size() == 2 and map._chunks["0_0"]._lights == null,
 		"a chunk without points adds no point layers (older servers too)")
 	check(MapChunk.fuel_board_text(message["fuel_stations"][0]) == "Neste  1.89 €/L", "the board shows the server's price")
 
@@ -547,7 +550,7 @@ func test_obstacles() -> void:
 		"bollards": [[1040.0, 2000.0]]}))
 	check(map.add_chunk(message) and not map.add_chunk(message), "obstacles arrive with their chunk, once")
 	var chunk = map._chunks["2_4"]
-	check(chunk._trees != null and chunk._px_layers.size() == 2, "trees and bollards share one canvas item, fences another")
+	check(chunk._trees != null and chunk._px_layers.size() == 2 + 2, "trees and bollards share one canvas item, fences another")
 	check(MapChunk.obstacle_key(1010.0, 2020.0) == "1010.0,2020.0", "obstacles are named by position at 0.1 m, as the server rounds")
 
 	# Look, as render/scenery.py: palette by variation, pine crowns smaller.
@@ -626,7 +629,7 @@ func test_static_world() -> void:
 		"street_lights": [[1200.0, 2200.0, 1.0, 14.0], [1212.0, 2200.0, 1.0, 14.0]]}))
 	check(map.add_chunk(message) and not map.add_chunk(message), "drawing-only objects arrive with their chunk, once")
 	var chunk = map._chunks["2_4"]
-	check(chunk._trees != null and chunk._px_layers.size() == 4, "decorations with the trees; railings, light pools, lamp heads: one canvas item each")
+	check(chunk._trees != null and chunk._px_layers.size() == 2 + 4, "decorations with the trees; railings, light pools, lamp heads: one canvas item each")
 	check(chunk.street_lights.size() == 2 and chunk.street_lights[0] == Vector2(200, -200), "street lights at their map position")
 	check(chunk._pools.get_parent() == map._pool_group, "a chunk's pools join the one pool group (added once, not per pool)")
 
@@ -687,3 +690,94 @@ func test_static_world() -> void:
 	night.show_night(0.0, Rect2(0, 0, 10, 10), [], [])
 	check(not night.visible, "day: the layer is off")
 	night.free()
+
+
+## godot-16: landuse, parking, islands, curbs, crossings, bumps, signs,
+## cameras, labels, road markings and colours, building roofs, canopies,
+## rail bridges, underground, tyre tracks - drawing only, from the chunks
+## and the state.
+func test_rest_of_static_world() -> void:
+	var map := MapLayer.new()
+	root.add_child(map)
+	map.set_origin(Vector2(0, 0))
+	var message: Dictionary = JSON.parse_string(JSON.stringify({"chunk_id": "0_0", "bounds": [0, 0, 500, 500],
+		"roads": [{"points": [[0, 10], [200, 10]], "half_width_m": 4.0, "kind": "primary", "drivable": true, "layer": 0, "color": [80, 80, 80], "center": [110, 110, 110, 1]},
+			{"points": [[50, 0], [50, 100]], "half_width_m": 5.0, "kind": "primary", "drivable": true, "layer": 1, "color": [80, 80, 80], "bridge": true}],
+		"railways": [[[0, 300], [100, 300]]], "rail_bridges": [[[0, 320], [100, 320]]], "rail_decks": [[[0, 318], [100, 318], [100, 322], [0, 322]]],
+		"waters": [], "buildings": [[[300, 300], [320, 300], [320, 310], [300, 310]]], "building_styles": [[[40, 63, 92], 1, 6.0, [[310, 300]]]],
+		"canopies": [[[400, 400], [410, 400], [410, 410], [400, 410]]],
+		"landuse": [[[100, 145, 80], 1, [[0, 0], [100, 0], [100, 100]]]], "traffic_islands": [[[112, 150, 86], 1, [[60, 60], [70, 60], [70, 70]]]],
+		"parking": [[[200, 200], [205, 200], [205, 210], [200, 210]]], "curbs": [[[0, 5], [50, 5]]],
+		"crossings": [[100, 10, 0.0, 6.0, 2.2]], "speed_bumps": [[150, 10, 0.0, 4.0, "table"]],
+		"signs": [[120, 20, "stop", 0.0]], "speed_cameras": [[3, 130, 20, 1.5]], "guardrails": [[45, 0, 45, 100]],
+		"labels": [[10, 10, "Isokatu", 4], [12, 10, "Keskusta", 0]], "level_roads": [[[-3], [[0, 50], [80, 50]], 3.0, [70, 70, 70]]]}))
+	check(map.add_chunk(message), "the rest of the static world arrives with its chunk")
+	var chunk = map._chunks["0_0"]
+	check(typeof(chunk._data["landuse"][0][2]) == TYPE_PACKED_VECTOR2_ARRAY and typeof(chunk._data["roads"][0]["points"]) == TYPE_PACKED_VECTOR2_ARRAY,
+		"polylines and polygons are kept packed, not as parsed JSON")
+	check(chunk._data["buildings"][0][2] == Vector2(320, -310), "packed in layer coordinates")
+	check(map.find_children("*", "CollisionObject2D", true, false).is_empty(), "still no collision on the client")
+	check(chunk._season_layers.size() == 2 and chunk._signs != null, "landuse and islands follow the season; signs and cameras have their layer")
+
+	# Road markings (render/roads.py): the centre line where the road is 6 px wide or more; chevrons on one-way roads zoomed in.
+	var lines := {}
+	var chevrons := PackedVector2Array()
+	var road: Dictionary = chunk._data["roads"][0]
+	Detail.road_markings(chunk, road, road["points"], lines, chevrons)
+	check(lines.size() == 1 and lines.values()[0].size() > 2 and chevrons.is_empty(), "a two-way road gets a dashed centre line, no chevrons")
+	var dashed: PackedVector2Array = lines.values()[0]
+	check(is_equal_approx(dashed[0].distance_to(dashed[1]), 8.0), "dashes are 8 m (at 9 px/m)")
+	chunk._px_per_m = 0.5
+	lines.clear()
+	Detail.road_markings(chunk, road, road["points"], lines, chevrons)
+	check(lines.is_empty(), "zoomed out, an 8 m road under 6 px has no centre line")
+	chunk._px_per_m = 9.0
+	var one_way: Dictionary = {"half_width_m": 4.0, "center": [110, 110, 110, 2], "oneway": -1}
+	lines.clear()
+	Detail.road_markings(chunk, one_way, PackedVector2Array([Vector2(0, 0), Vector2(100, 0)]), lines, chevrons)
+	check(lines.values()[0].size() == 2 and chevrons.size() == 2 * 4, "solid centre line; one-way chevrons at 40 and 80 m (none within 5 m of the start)")
+
+	# Headlights under a higher road; the taxi on that bridge keeps them.
+	check(map.covered(Vector2(50, -50), 0) and not map.covered(Vector2(50, -50), 1) and not map.covered(Vector2(150, -50), 0),
+		"under the bridge (layer 1) at layer 0: covered; on it or beside it: not")
+
+	# Underground: the level's roads, no street lights; the camera flash only where that camera is.
+	map.set_lights_on(true)
+	map.set_map_level(-3)
+	check(map.map_level == -3 and not map._pool_group.visible, "below ground: no street lights")
+	map.set_map_level(0)
+	check(map._pool_group.visible, "back up: the lights again")
+	check(chunk.set_flash(3) and chunk._flash == 3 and not chunk.set_flash(3), "the flashing camera redraws its chunk once")
+
+	# Labels (render/labels.py): priority, one per name, no overlaps, zoom gates, the HUD band left free.
+	var canvas := Transform2D(0.0, Vector2(9, 9), 0.0, Vector2(640, 360))
+	var font := ThemeDB.fallback_font
+	var shown := Labels.declutter([[0, 0, "Isokatu", 4], [1, 0, "Keskusta", 0], [0, -20, "Torikatu", 4], [0, 20, "Torikatu", 4], [0, -35, "Ylhaalla", 4]],
+		canvas, Vector2(1280, 720), font)
+	check(shown.map(func(l): return l[1]) == ["Keskusta", "Torikatu"],
+		"the district wins the spot over an overlapping road label; a name shows once; the HUD band (y < 80) stays free")
+	check(Labels.declutter([[0, 0, "Isokatu", 4]], Transform2D(0.0, Vector2(0.3, 0.3), 0.0, Vector2(640, 360)), Vector2(1280, 720), font).is_empty(),
+		"roads are labelled from 0.35 px/m")
+	var many: Array = []
+	for i in 50:
+		many.append([float(i % 10) * 12.0 - 60.0, float(i / 10) * 4.0 - 10.0, "Place %d" % i, 0])
+	check(Labels.declutter(many, canvas, Vector2(1280, 720), font).size() <= 35, "at most 35 labels")
+	map.free()
+
+	# Tyre tracks: laid from the server's mark along the drawn taxi; bounded.
+	var entities = load("res://entity_layer.gd").new()
+	root.add_child(entities)
+	for i in 4100:  # trails of 100 points (marking stops in between), as driving lays them
+		var mark = null if i % 101 == 100 else {"kind": "dirt", "intensity": 1.0, "front": true}
+		var state := {"player": {"x": i * 0.6, "y": 0.0, "heading": 0.0}, "on_foot": false, "tire_mark": mark}
+		entities._frame = {"a": state, "b": state, "t": 0.0}
+		entities._lay_track()
+	check(entities._track_points <= 4000 and entities._track_points >= 3400, "at most 4000 track points; whole oldest trails go, to about 3500 (%d)" % entities._track_points)
+	var gap := {"player": {"x": 99999.0, "y": 0.0, "heading": 0.0}, "on_foot": false, "tire_mark": null}
+	entities._frame = {"a": gap, "b": gap, "t": 0.0}
+	entities._lay_track()
+	check(entities._last_track == null, "no mark: the trail breaks")
+	entities.free()
+
+	# Snow: the trip text is outlined (readable on white).
+	check(Instruments.TEXT_OUTLINE.v < 0.2 and Instruments.TEXT_OUTLINE_PX >= 3, "a dark outline under the light HUD text")

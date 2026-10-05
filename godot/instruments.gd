@@ -8,6 +8,8 @@ extends Control
 const RAGE_ATLAS := "../src/theroadragetrip/assets/ragefaceatlas.png"  # the same image Pygame uses
 const WATER_LIMIT_S := 10.0  # main(): water_time_remaining = 10 - water_elapsed
 const RESERVE_L := 10.0
+const TEXT_OUTLINE := Color8(20, 24, 28, 230)
+const TEXT_OUTLINE_PX := 4
 
 var _faces: Array[Texture2D] = []
 var _font: Font
@@ -94,8 +96,10 @@ func _draw() -> void:
 		var digits := str(limit)
 		var digits_size := _font.get_string_size(digits, HORIZONTAL_ALIGNMENT_LEFT, -1, 26)
 		draw_string(_font, sign_at + Vector2(-digits_size.x / 2.0, digits_size.y / 2.0 - 5.0), digits, HORIZONTAL_ALIGNMENT_LEFT, -1, 26, Color8(20, 20, 20))
-	draw_string(_font, Vector2(10, size.y - 230), trip_text(player.get("trip_m", 0.0), player.get("odometer_m", 0.0)),
-		HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Color8(205, 215, 220))
+	# A dark outline keeps the light text readable on snow and on grass alike (godot-16).
+	var trip := trip_text(player.get("trip_m", 0.0), player.get("odometer_m", 0.0))
+	draw_string_outline(_font, Vector2(10, size.y - 230), trip, HORIZONTAL_ALIGNMENT_LEFT, -1, 14, TEXT_OUTLINE_PX, TEXT_OUTLINE)
+	draw_string(_font, Vector2(10, size.y - 230), trip, HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Color8(205, 215, 220))
 
 
 func _draw_fuel(at: Vector2, player: Dictionary) -> void:
