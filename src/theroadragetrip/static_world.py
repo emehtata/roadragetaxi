@@ -122,9 +122,9 @@ def rail_bridge_decks(railways):
 
 
 def building_style(building) -> list:
-    """[roof colour, gabled, height m] as render/buildings.py picks them: a
-    colour named in the building's (Finnish) name, else the per-building
-    texture pick."""
+    """[roof colour, gabled, height m, entrances] as render/buildings.py
+    picks them: a colour named in the building's (Finnish) name, else the
+    per-building texture pick; the OSM entrances ([x, y] each)."""
     from .render import buildings as rb
 
     named = rb._building_colors_from_name(getattr(building, "name", None))
@@ -136,7 +136,8 @@ def building_style(building) -> list:
             cx, cy = getattr(building, "center_m", (0.0, 0.0))
             seed = abs(math.sin(cx * 0.013 + cy * 0.017))
         roof = rb.BUILDING_ROOF_COLORS[min(len(rb.BUILDING_ROOF_COLORS) - 1, int(seed * len(rb.BUILDING_ROOF_COLORS)))]
-    return [_rgb(roof), 1 if rb._uses_gabled_roof(building) else 0, round(rb._building_render_height(building), 1)]
+    return [_rgb(roof), 1 if rb._uses_gabled_roof(building) else 0, round(rb._building_render_height(building), 1),
+            [[round(x, 1), round(y, 1)] for x, y in getattr(building, "entrances", ())]]
 
 
 def is_open_roof(building) -> bool:
