@@ -1,27 +1,28 @@
-## Buildings in 2.5D (godot-17): the map stays top-down; only a building's
-## volume is projected. A point at height h on the building is drawn at its
-## ground position plus lift(h):
+## Buildings as GTA1-style top-down extrusion (godot-19): the camera looks
+## straight down and never rotates, so "up" out of the map is one fixed
+## screen direction, straight up the screen. A point at height h on a
+## building is drawn at its ground position plus lift(h):
 ##
-##   lift(h) = LEAN * min(h * HEIGHT_SCALE, MAX_DEPTH_M)
+##   lift(h) = UP * h * BUILDING_HEIGHT_SCALE,  UP = (0, -1)
 ##
-## in map metres (layer coordinates, y down), the same for every building -
-## independent of the player, the camera position and the zoom (the zoom
-## scales it like everything else). LEAN, HEIGHT_SCALE and the cap are
-## Pygame's oblique roof offset (render/buildings.py: roof = (x - 0.7 d,
-## y - d), d = 0.35 h px/m, at most 100 px = 11.1 m at the default 9 px/m).
+## in map metres (layer coordinates, y down). x never changes with height,
+## so a building stays horizontally where its footprint is; the same for
+## every building, independent of the player, the camera position and the
+## zoom. (godot-17 lifted along Pygame's oblique (-0.7, -1), capped at
+## 11.1 m - a diagonal lean that read as isometric.)
 ##
-## The footprint stays where the map has it. Of its walls, those facing
-## away from LEAN (outward normal . LEAN < 0: the south and east sides)
-## are visible, drawn far to near, then the roof - the footprint lifted by
-## the full height - and its gabled facets. Windows and doors lie on the
-## visible walls. Everything for one chunk is built once, at load, into
-## one coloured triangle list in painter's order (shadow, base, walls,
-## windows, doors, roof), plus a small list of the lit windows' glow.
+## The footprint stays where the map has it. Of its walls, those whose
+## outward normal points down the screen (against UP) face the viewer and
+## are drawn far to near, then the roof - the footprint lifted by the full
+## height - and its gabled facets. A wall running straight north-south is
+## edge-on and has no area. Windows and doors lie on the visible walls.
+## Everything for one chunk is built once, at load, into one coloured
+## triangle list in painter's order (shadow, walls, windows, doors, roof),
+## plus a small list of the lit windows' glow.
 extends RefCounted
 
-const LEAN := Vector2(-0.7, -1.0)  # screen direction of "up"
-const HEIGHT_SCALE := 0.35  # metres of lift per metre of height
-const MAX_DEPTH_M := 100.0 / 9.0  # Pygame's 100 px cap at its 9 px/m
+const UP := Vector2(0.0, -1.0)  # screen direction of "up" (the camera never rotates)
+const BUILDING_HEIGHT_SCALE := 0.35  # metres of screen lift per metre of height (Pygame's ratio), no cap
 const SHADOW := Color8(45, 42, 39, 110)
 const RIDGE := Color8(58, 55, 52)
 const WINDOW := Color8(58, 80, 94)
@@ -34,7 +35,7 @@ const CANOPY_POST := Color8(105, 110, 112)
 
 ## The screen offset of height h (metres) above the ground.
 static func lift(height: float) -> Vector2:
-	return LEAN * minf(maxf(height, 0.0) * HEIGHT_SCALE, MAX_DEPTH_M)
+	return UP * maxf(height, 0.0) * BUILDING_HEIGHT_SCALE
 
 
 static func signed_area(polygon: PackedVector2Array) -> float:
@@ -45,7 +46,7 @@ static func signed_area(polygon: PackedVector2Array) -> float:
 
 
 ## Indices of the walls (edge i: point i to i + 1) seen from above-front:
-## outward normal against the lean. Works for any simple polygon, either winding.
+## outward normal pointing down the screen. Works for any simple polygon, either winding.
 static func visible_walls(footprint: PackedVector2Array) -> PackedInt32Array:
 	var walls := PackedInt32Array()
 	var outward_sign := -1.0 if signed_area(footprint) > 0.0 else 1.0  # y-down canvas: positive area = clockwise on screen, outward = -perpendicular
@@ -54,7 +55,7 @@ static func visible_walls(footprint: PackedVector2Array) -> PackedInt32Array:
 		if edge.length_squared() < 1e-6:
 			continue
 		var normal := Vector2(-edge.y, edge.x).normalized() * outward_sign
-		if normal.dot(LEAN) < -1e-6:
+		if normal.dot(UP) < -1e-6:
 			walls.append(i)
 	return walls
 
@@ -84,7 +85,7 @@ static func build(buildings: Array, styles: Array, origin: Vector2) -> Dictionar
 			for p in footprint:
 				centre += p
 			order.append([centre / footprint.size(), i])
-	order.sort_custom(func(a, b): return a[0].dot(LEAN) > b[0].dot(LEAN))  # far (along the lean) first
+	order.sort_custom(func(a, b): return a[0].dot(UP) > b[0].dot(UP))  # far (north) first
 	for entry in order:
 		var style: Array = styles[entry[1]] if entry[1] < styles.size() else []
 		_building(out, buildings[entry[1]], style, entry[0], origin)
@@ -113,7 +114,7 @@ static func _polygon(out: Dictionary, polygon: PackedVector2Array, color: Color)
 
 
 static func _shade(color: Color, normal: Vector2) -> Color:
-	var f := 0.72 + 0.28 * clampf(-normal.dot(LEAN.normalized()), 0.0, 1.0)  # walls facing the viewer are lighter
+	var f := 0.72 + 0.28 * clampf(-normal.dot(UP.normalized()), 0.0, 1.0)  # walls facing the viewer are lighter
 	return Color(color.r * f, color.g * f, color.b * f, color.a)
 
 
@@ -128,19 +129,19 @@ static func _building(out: Dictionary, footprint: PackedVector2Array, style: Arr
 	var roof := footprint.duplicate()
 	for i in roof.size():
 		roof[i] += up
-	# A soft shadow on the ground, away from the lean (one, under the volume).
+	# A soft shadow on the ground, below the building (one, under the volume).
 	var shadow := footprint.duplicate()
 	for i in shadow.size():
-		shadow[i] -= LEAN.normalized() * clampf(depth * 0.25, 0.3, 2.0)
+		shadow[i] -= UP.normalized() * clampf(depth * 0.25, 0.3, 2.0)
 	_polygon(out, shadow, SHADOW)
 	# No base fill (godot-18): every footprint point lies under the raised roof or on a
-	# visible wall in front of it (walk from it against the lean: either the roof is
+	# visible wall in front of it (walk from it down the screen: either the roof is
 	# reached within the height, or a visible wall is crossed), so it was always covered.
 	var outward_sign := -1.0 if signed_area(footprint) > 0.0 else 1.0
 	var walls := Array(visible_walls(footprint))
 	out["stats"]["buildings"] += 1
 	out["stats"]["walls"] += walls.size()
-	walls.sort_custom(func(a, b): return (footprint[a] + footprint[(a + 1) % footprint.size()]).dot(LEAN) > (footprint[b] + footprint[(b + 1) % footprint.size()]).dot(LEAN))
+	walls.sort_custom(func(a, b): return (footprint[a] + footprint[(a + 1) % footprint.size()]).dot(UP) > (footprint[b] + footprint[(b + 1) % footprint.size()]).dot(UP))
 	var stories := mini(floors, maxi(1, int(depth * 9.0 / 3.0)))  # Pygame: at most a floor per 3 px of facade
 	var seed_base := roundf(centre.x + origin.x) * 0.0001 + roundf(-centre.y + origin.y) * 0.00013
 	for i in walls:
@@ -158,7 +159,7 @@ static func _building(out: Dictionary, footprint: PackedVector2Array, style: Arr
 	out["hulls"].append(hull)
 
 
-## render/buildings.py _iter_building_window_slots on a 2.5D wall: up to 3
+## render/buildings.py _iter_building_window_slots on an extruded wall: up to 3
 ## windows a floor (2 on a house, every other floor), centred along the
 ## wall, a storefront row on a commercial ground floor; lit at night by
 ## Pygame's probabilities, deterministically.

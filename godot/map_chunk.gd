@@ -31,7 +31,7 @@ extends Node2D
 
 const RS := preload("res://render_style.gd")
 const Detail := preload("res://chunk_detail.gd")  # godot-16: the rest of the static world's drawing
-const B25 := preload("res://buildings_25d.gd")  # godot-17: buildings in 2.5D
+const B25 := preload("res://buildings_25d.gd")  # godot-19: buildings extruded straight up (GTA1-style)
 const Perf := preload("res://perf.gd")
 const NightLayerScript := preload("res://night_layer.gd")
 const BRIDGE_Z_MAX := 3
@@ -356,7 +356,7 @@ var _lit_windows: Node2D = null  # the lit windows' glow, z 21 (over the night t
 var _darkness := 0.0  # as last set (lit windows built later take it)
 
 
-## godot-17: the chunk's buildings in 2.5D, built once.
+## The chunk's extruded buildings (godot-19), built once.
 func _build_2_5d() -> void:
 	var buildings: Array = _data.get("buildings", [])
 	if buildings.is_empty():

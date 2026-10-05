@@ -70,11 +70,14 @@ func clear() -> void:
 
 
 ## A chunk's buildings into the building group, in order: chunks further
-## along the lean (B25.LEAN, "up" on screen) first, so a nearer chunk's
+## north (B25.UP, "up" on screen) first, so a nearer chunk's
 ## buildings cover a farther one's where their volumes meet - the order
-## within a chunk, across chunks.
+## within a chunk, across chunks. Chunks in one row go west to east (their
+## volumes rise straight up, so they rarely meet; the tie-break keeps the
+## order independent of load order).
 func _add_buildings(chunk: Node) -> void:
-	chunk.building_node.set_meta("depth", chunk._bounds_rect.get_center().dot(MapChunk.B25.LEAN))
+	var centre: Vector2 = chunk._bounds_rect.get_center()
+	chunk.building_node.set_meta("depth", centre.dot(MapChunk.B25.UP) * 1e6 - centre.x)
 	var at := 0
 	for other in _buildings.get_children():
 		if other.get_meta("depth") > chunk.building_node.get_meta("depth"):
