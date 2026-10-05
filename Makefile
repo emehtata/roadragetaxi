@@ -1,10 +1,11 @@
 PYTHON := .venv/bin/python
 PIP := .venv/bin/pip
-GODOT ?= $(HOME)/tools/godot/Godot_v4.7.2-stable_linux.x86_64
+GODOT_VERSION ?= 4.7.2
+GODOT ?= $(HOME)/tools/godot/Godot_v$(GODOT_VERSION)-stable_linux.x86_64
 PORT ?= 8765
 PRESET ?= Oulu
 
-.PHONY: help venv install run run-debug run-sample run-pbf index-pbf run-server run-godot run-godot-all godot-selftest godot-test audio-check audit-ai test compile check clean
+.PHONY: help venv install run run-debug run-sample run-pbf index-pbf run-server fetch-godot run-godot run-godot-all godot-selftest godot-test audio-check audit-ai test compile check clean
 
 help:
 	@printf '%s\n' \
@@ -15,6 +16,7 @@ help:
 		'run-pbf                Start using the local .osm.pbf extract instead of Overpass' \
 		'index-pbf              Build the grid index for the local .osm.pbf extract (faster run-pbf)' \
 		'run-server             Start the headless simulation server (PRESET=Oulu PORT=8765)' \
+		'fetch-godot            Download the Godot editor binary to $$(GODOT) if missing' \
 		'run-godot              Start the Godot client against a running server (GODOT=path)' \
 		'run-godot-all          Start the server in the background, then the Godot client' \
 		'godot-selftest         Server + headless Godot selftest, prints a JSON report' \
@@ -49,6 +51,13 @@ index-pbf:
 
 run-server:
 	PYTHONPATH=src $(PYTHON) -m theroadragetrip.server --preset $(PRESET) --port $(PORT) --tick-rate 30
+
+fetch-godot: $(GODOT)
+
+$(GODOT):
+	mkdir -p $(dir $@)
+	curl -fL -o $@.zip https://github.com/godotengine/godot/releases/download/$(GODOT_VERSION)-stable/$(notdir $@).zip
+	unzip -o -d $(dir $@) $@.zip && rm $@.zip && chmod +x $@
 
 run-godot:
 	$(GODOT) --path godot -- --port $(PORT)
