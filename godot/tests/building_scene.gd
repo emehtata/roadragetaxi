@@ -1,7 +1,8 @@
-## godot-20 visual check: buildings surround the view centre so all four
-## radial facade directions are visible. Red outlines are unchanged ground
-## footprints; roofs project outward and their facades open toward the centre.
-##   godot --path godot --script res://tests/building_scene.gd -- OUT_PREFIX
+## Visual check: buildings surround the view centre so facades in all four
+## directions are visible. Red outlines are the unchanged ground footprints.
+## godot-21: the camera also sweeps across the scene (pan_*.png) to show the
+## facades changing continuously. RENDERER: 3d (default) or 2d (godot-20).
+##   godot --path godot --script res://tests/building_scene.gd -- OUT_PREFIX [RENDERER]
 extends SceneTree
 
 const MapLayer := preload("res://map_layer.gd")
@@ -16,7 +17,9 @@ func _box(x: float, y: float, w: float, h: float) -> Array:
 
 func _initialize() -> void:
 	MapChunk.build_async = false
-	var prefix: String = OS.get_cmdline_user_args()[0] if not OS.get_cmdline_user_args().is_empty() else "user://buildings"
+	var args := OS.get_cmdline_user_args()
+	var prefix: String = args[0] if not args.is_empty() else "user://buildings"
+	MapChunk.buildings_3d = args.size() < 2 or args[1] != "2d"
 	RenderingServer.set_default_clear_color(Color8(120, 128, 110))
 	var buildings := [
 		_box(0, 30, 16, 10),  # low
@@ -26,6 +29,7 @@ func _initialize() -> void:
 		_box(0, 70, 40, 14),  # commercial
 		_box(55, 70, 20, 12),  # entrance on the south wall
 		[[100, 70], [110, 60], [120, 70], [110, 80]],  # turned box: two walls
+		[[0, 100], [14, 96], [22, 108], [12, 118], [2, 112]],  # irregular
 	]
 	var styles := [
 		[[92, 57, 48], 0, 4.0, [], STYLE_WALL, 1, 1],
@@ -35,6 +39,7 @@ func _initialize() -> void:
 		[[83, 86, 87], 0, 15.0, [], [190, 186, 176], 5, 2],
 		[[92, 57, 48], 0, 9.0, [[65.0, 70.0]], STYLE_WALL, 3, 0],
 		[[92, 57, 48], 0, 18.0, [], STYLE_WALL, 6, 0],
+		[[92, 57, 48], 0, 10.0, [], STYLE_WALL, 3, 0],
 	]
 	var chunk := {"chunk_id": "0_0", "bounds": [-50, -50, 200, 150], "buildings": buildings, "building_styles": styles,
 		"roads": [{"points": [[-40, 22], [190, 22]], "half_width_m": 4.0, "kind": "primary", "drivable": true, "layer": 0},
@@ -66,4 +71,13 @@ func _initialize() -> void:
 			await process_frame
 		await RenderingServer.frame_post_draw
 		root.get_texture().get_image().save_png("%s_zoom%d.png" % [prefix, zoom])
+	camera.zoom = Vector2(7.0, 7.0)
+	map.set_px_per_m(7.0)
+	for step in 5:  # a pan from left to right across the scene
+		camera.position = MapMath.point(Vector2.ZERO, 20 + step * 25, 55)
+		map.set_building_view(camera.position)
+		for i in 4:
+			await process_frame
+		await RenderingServer.frame_post_draw
+		root.get_texture().get_image().save_png("%s_pan%d.png" % [prefix, step])
 	quit()
