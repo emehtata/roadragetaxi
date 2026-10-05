@@ -78,3 +78,44 @@ def test_traffic_light_phases_are_the_simulations_near_the_player():
     mgr.sim_time = 6.0  # past the green: the phase comes from the light's own cycle
     assert protocol._traffic_light_phases(mgr, 100.0, 50.0)["0"] == mgr.traffic_lights[0].get_state(6.0) != phases["0"]
     assert protocol._traffic_light_phases(mgr, 5000.0, 50.0) == {}  # none near: nothing sent
+
+
+def _obstacle_world():
+    """godot-13: a tree, a construction site across a chunk edge, a bollard and a lamp."""
+    from theroadragetrip.osm.models import SceneryObject
+
+    park = SimpleNamespace(kind="park", points_m=[(0, 0), (50, 0), (50, 50)], bbox=(0, 0, 50, 50),
+                           trees=[(10.0, 20.0), (30.0, 20.0)], tree_kinds=["pine", "birch"], tree_variations=[0.25, 0.8])
+    site = SimpleNamespace(kind="construction", points_m=[(490.0, 10.0), (520.0, 10.0), (520.0, 40.0), (490.0, 40.0)],
+                           bbox=(490, 10, 520, 40), trees=[])
+    objects = [SceneryObject(40.0, 0.0, "bollard"), SceneryObject(45.0, 0.0, "street_lamp"), SceneryObject(46.0, 0.0, "bench")]
+    return SimpleNamespace(ways=[], railways=[], waters=[], buildings=[], sceneries=[park, site], scenery_objects=objects,
+                           taxi_stops=[], roadworks=[], traffic_mgr=SimpleNamespace(traffic_lights=[], sim_time=0.0))
+
+
+def test_obstacles_are_each_in_exactly_one_chunk():
+    index = map_chunks.ChunkIndex(_obstacle_world(), size=500.0)
+    here, east = index.message("0_0"), index.message("1_0")
+    assert here["trees"] == [[10.0, 20.0, "pine", 0.25], [30.0, 20.0, "birch", 0.8]] and east["trees"] == []
+    # The site spans two chunks: one owner (its first corner's), the whole ring.
+    assert here["construction_fences"] == [[[490.0, 10.0], [520.0, 10.0], [520.0, 40.0], [490.0, 40.0]]]
+    assert east["construction_fences"] == []
+    assert here["bollards"] == [[40.0, 0.0]]  # a street lamp is not a bollard; a bench collides with nothing
+
+
+def test_felled_trees_and_knocked_posts_reach_the_state_from_the_real_collisions():
+    from theroadragetrip import protocol
+    from theroadragetrip.physics import Car
+    from theroadragetrip.taxi import TaxiManager
+
+    world = _obstacle_world()
+    world.taxi_mgr = TaxiManager(ways=[])
+    assert protocol._fallen_and_knocked(world, 0.0, 0.0) == ([], [])
+    car = Car(x=10.0, y=19.0, heading=0.0, speed=25.0)  # 90 km/h into the pine
+    assert world.taxi_mgr.check_tree_collision(car, world.sceneries, 0.0, previous_position=(5.0, 19.0))
+    car = Car(x=40.0, y=0.0, heading=math.pi, speed=17.0)  # 61 km/h through the bollard
+    assert world.taxi_mgr.check_post_collision(car, world.scenery_objects, 0.0)
+    fallen, knocked = protocol._fallen_and_knocked(world, 0.0, 0.0)
+    assert fallen == [[10.0, 20.0, 0.0]]  # felled the way the taxi was heading
+    assert knocked == [[40.0, 0.0, round(math.pi, 3), "bollard"]]
+    assert protocol._fallen_and_knocked(world, 5000.0, 0.0) == ([], [])  # far away: not sent

@@ -18,7 +18,8 @@ import math
 from .fuel import fuel_station_price_cents
 from .protocol import PROTOCOL_VERSION, _line, encode, traffic_light_render_point
 
-_KINDS = ("roads", "railways", "waters", "buildings", "taxi_stands", "fuel_stations", "traffic_lights", "roadworks")
+_KINDS = ("roads", "railways", "waters", "buildings", "taxi_stands", "fuel_stations", "traffic_lights", "roadworks",
+          "trees", "construction_fences", "bollards")
 
 CHUNK_SIZE_M = 500.0
 LOAD_RADIUS = 3    # chunks around the player's chunk that must be loaded (7 x 7, >= 1.5 km each way)
@@ -91,6 +92,20 @@ class ChunkIndex:
                 self._add("traffic_lights", ((light.x, light.y),), {
                     "id": index, "x": round(x, 2), "y": round(y, 2), "angle": round(light.direction_angle or 0.0, 4),
                 })
+        # Obstacles the simulation collides with (taxi.py check_tree_collision,
+        # check_fence_collision, check_post_collision); the collisions stay on
+        # the server, these are for drawing them. Each in one chunk.
+        for scenery in getattr(world, "sceneries", ()):
+            kinds = getattr(scenery, "tree_kinds", ())
+            variations = getattr(scenery, "tree_variations", ())
+            for index, (x, y) in enumerate(getattr(scenery, "trees", ())):
+                self._add("trees", ((x, y),), [round(x, 1), round(y, 1), kinds[index] if index < len(kinds) else "birch",
+                                               round(variations[index], 2) if index < len(variations) else 0.5])
+            if str(getattr(scenery, "kind", "")).lower() == "construction" and len(scenery.points_m) >= 3:
+                self._add("construction_fences", scenery.points_m[:1], _line(scenery.points_m))  # its first corner's chunk
+        for post in getattr(world, "scenery_objects", ()):
+            if post.kind == "bollard":  # street lamps are drawn with the street lights, not here (render/scenery.py)
+                self._add("bollards", ((post.x, post.y),), [round(post.x, 1), round(post.y, 1)])
         for work in getattr(world, "roadworks", ()):  # render/roads.py draw_roadworks; in the chunk of its midpoint
             middle = ((work.start[0] + work.end[0]) / 2.0, (work.start[1] + work.end[1]) / 2.0)
             self._add("roadworks", (middle,), {

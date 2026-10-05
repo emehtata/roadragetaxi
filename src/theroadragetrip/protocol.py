@@ -251,6 +251,25 @@ def _traffic_light_phases(traffic_mgr, x: float, y: float) -> dict:
     }
 
 
+def _fallen_and_knocked(world, x: float, y: float) -> tuple:
+    """Trees felled and posts knocked over this session near (x, y), as
+    [x, y, angle(, kind)] - matched by position to the chunks' trees and
+    bollards. Only ever grows (taxi.py), so it stays small."""
+    radius_sq = TRAFFIC_LIGHT_PHASE_RADIUS_M * TRAFFIC_LIGHT_PHASE_RADIUS_M
+    taxi_mgr = world.taxi_mgr
+    fallen = []
+    for key in getattr(taxi_mgr, "fallen_trees", ()):
+        effect = taxi_mgr.tree_effects.get(key, {})
+        if "x" in effect and (effect["x"] - x) ** 2 + (effect["y"] - y) ** 2 <= radius_sq:
+            fallen.append([round(effect["x"], 1), round(effect["y"], 1), round(effect.get("angle", 0.0), 3)])
+    knocked = [
+        [round(post.x, 1), round(post.y, 1), round(post.knocked_angle, 3), post.kind]
+        for post in getattr(world, "scenery_objects", ())
+        if getattr(post, "knocked_angle", None) is not None and (post.x - x) ** 2 + (post.y - y) ** 2 <= radius_sq
+    ]
+    return fallen, knocked
+
+
 def _road_to_dict(current_way) -> dict:
     """The road under the taxi as Pygame's HUD names it: the OSM name, else
     the highway type title-cased; None off-road. The limit is the
@@ -306,7 +325,11 @@ def build_state_message(
     weather = world.weather
     taxi_mgr = world.taxi_mgr
     traffic_mgr = world.traffic_mgr
+    player_at = (player_pedestrian.x, player_pedestrian.y) if on_foot else (car.x, car.y)
+    fallen_trees, knocked_posts = _fallen_and_knocked(world, *player_at)
     state = {
+        "fallen_trees": fallen_trees,  # [x, y, angle] (the way the taxi hit it)
+        "knocked_posts": knocked_posts,  # [x, y, angle, kind]: bollards and street lamps lying flat
         "player_id": player_id,  # whose `player` / `taxi` this is
         "game_time_seconds": game_time_seconds,
         "sim_time": traffic_mgr.sim_time,
@@ -339,8 +362,7 @@ def build_state_message(
         "weather": {"weather_type": weather.weather_type.value, "wetness": weather.wetness,
                     "lightning_intensity": weather.lightning_intensity},  # 1 at a strike, fading (render/weather.py)
         "road": _road_to_dict(current_way),
-        "traffic_lights": _traffic_light_phases(
-            traffic_mgr, *((player_pedestrian.x, player_pedestrian.y) if on_foot else (car.x, car.y))),
+        "traffic_lights": _traffic_light_phases(traffic_mgr, *player_at),
         "meet": _meet_to_dict(taxi_mgr, player_pedestrian, language),
         "taxi": {
             "state": taxi_mgr.state,
