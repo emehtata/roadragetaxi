@@ -210,3 +210,24 @@ def test_bus_stop_shapes_follow_the_nearest_road():
     assert shapes["bay"] == [[36.0, 3.0], [64.0, 3.0], [60.0, 5.2], [40.0, 5.2]]  # on the stop's side of the road
     assert shapes["shelter"] is not None and shapes["label"] == [50.0, 6.2] and shapes["angle"] == 0.0
     assert static_world.bus_stop_shapes(SimpleNamespace(x=50.0, y=80.0, layer=0, shelter=False), [road]) is None  # beyond 45 m
+
+
+def test_buildings_have_one_owner_and_their_facade_style():
+    """godot-17: a building drawn as a volume belongs to one chunk (its
+    centre's); its style carries the wall colour, floors and category the
+    facades and windows use (render/buildings.py's own picks)."""
+    from theroadragetrip.osm.models import Building
+    from theroadragetrip.render import buildings as rb
+    from theroadragetrip import static_world
+
+    across = Building([(480.0, 10.0), (530.0, 10.0), (530.0, 30.0), (480.0, 30.0)], building_type="apartments", levels=5)
+    canopy = Building([(490.0, 100.0), (520.0, 100.0), (520.0, 120.0), (490.0, 120.0)], building_type="roof")
+    world = SimpleNamespace(ways=[], railways=[], waters=[], buildings=[across, canopy])
+    index = map_chunks.ChunkIndex(world, size=500.0)
+    west, east = index.message("0_0"), index.message("1_0")
+    assert west["buildings"] == [] and len(east["buildings"]) == 1  # centre x = 505: east owns it, once
+    roof, gabled, height, entrances, wall, floors, category = east["building_styles"][0]
+    assert floors == 5 and category == 0 and wall in [list(c) for c in rb.BUILDING_WALL_COLORS]
+    assert rb.BUILDING_WALL_COLORS.index(tuple(wall)) == rb.BUILDING_ROOF_COLORS.index(tuple(roof))  # the pair Pygame uses
+    assert east["canopies"] and east["canopy_heights"] == [static_world.building_style(canopy)[2]]
+    assert static_world.building_style(Building([(0, 0), (9, 0), (9, 9)], building_type="house"))[6] == 1

@@ -122,22 +122,37 @@ def rail_bridge_decks(railways):
 
 
 def building_style(building) -> list:
-    """[roof colour, gabled, height m, entrances] as render/buildings.py
-    picks them: a colour named in the building's (Finnish) name, else the
-    per-building texture pick; the OSM entrances ([x, y] each)."""
+    """[roof colour, gabled, height m, entrances, wall colour, floors,
+    category] as render/buildings.py picks them: colours named in the
+    building's (Finnish) name, else the per-building texture pick; the OSM
+    entrances ([x, y] each); its floor count (OSM levels, else height / 3);
+    category 1 house, 2 commercial, 0 other (the window rules)."""
     from .render import buildings as rb
 
     named = rb._building_colors_from_name(getattr(building, "name", None))
     if named is not None:
-        roof = named[1]
+        wall, roof = named
     else:
         seed = getattr(building, "texture_seed", None)
         if seed is None:
             cx, cy = getattr(building, "center_m", (0.0, 0.0))
             seed = abs(math.sin(cx * 0.013 + cy * 0.017))
-        roof = rb.BUILDING_ROOF_COLORS[min(len(rb.BUILDING_ROOF_COLORS) - 1, int(seed * len(rb.BUILDING_ROOF_COLORS)))]
+        index = min(len(rb.BUILDING_ROOF_COLORS) - 1, int(seed * len(rb.BUILDING_ROOF_COLORS)))
+        roof, wall = rb.BUILDING_ROOF_COLORS[index], rb.BUILDING_WALL_COLORS[index]
     return [_rgb(roof), 1 if rb._uses_gabled_roof(building) else 0, round(rb._building_render_height(building), 1),
-            [[round(x, 1), round(y, 1)] for x, y in getattr(building, "entrances", ())]]
+            [[round(x, 1), round(y, 1)] for x, y in getattr(building, "entrances", ())],
+            _rgb(wall), rb._building_window_story_count(building),
+            1 if rb._building_is_house(building) else 2 if rb._building_is_commercial(building) else 0]
+
+
+def building_owner(building):
+    """The one point a building is owned by (godot-17): its centre - a 2.5D
+    volume drawn twice, by two chunks, would cover its neighbours."""
+    cx, cy = getattr(building, "center_m", None) or (0.0, 0.0)
+    if (cx, cy) == (0.0, 0.0):
+        points = building.points_m
+        cx, cy = sum(p[0] for p in points) / len(points), sum(p[1] for p in points) / len(points)
+    return cx, cy
 
 
 def is_open_roof(building) -> bool:

@@ -23,7 +23,8 @@ _KINDS = ("roads", "railways", "waters", "buildings", "taxi_stands", "fuel_stati
           "trees", "construction_fences", "bollards", "railings", "scenery_objects", "street_lights",
           # godot-16 (static_world.py)
           "building_styles", "canopies", "rail_bridges", "rail_decks", "guardrails", "landuse", "traffic_islands",
-          "parking", "curbs", "crossings", "speed_bumps", "signs", "speed_cameras", "bus_stops", "labels", "level_roads")
+          "parking", "curbs", "crossings", "speed_bumps", "signs", "speed_cameras", "bus_stops", "labels", "level_roads",
+          "canopy_heights")
 # Decorative scenery_objects kinds (render/scenery.py draw_scenery_objects); bollards, fuel pumps
 # and street lamps have their own lists.
 DECORATIVE_KINDS = ("bench", "waste_basket", "bicycle_parking", "statue", "picnic_table", "firepit", "fountain", "gate")
@@ -84,13 +85,14 @@ class ChunkIndex:
         for building in world.buildings:
             if len(building.points_m) < 3:
                 continue
-            if static_world.is_open_roof(building):  # a canopy: drawn see-through, above the vehicles
-                self._add("canopies", building.points_m, _line(building.points_m))
+            # One owner each, the chunk of its centre (godot-17: drawn as a volume, a duplicate would cover others).
+            chunk = self._chunk(cell_of(*static_world.building_owner(building), self.size))
+            if static_world.is_open_roof(building):  # a canopy: drawn see-through, raised by its height, above the vehicles
+                chunk["canopies"].append(_line(building.points_m))
+                chunk["canopy_heights"].append(static_world.building_style(building)[2])
                 continue
-            for cell in {cell_of(x, y, self.size) for x, y in building.points_m}:  # buildings and their styles in step
-                chunk = self._chunk(cell)
-                chunk["buildings"].append(_line(building.points_m))
-                chunk["building_styles"].append(static_world.building_style(building))
+            chunk["buildings"].append(_line(building.points_m))  # buildings and their styles in step
+            chunk["building_styles"].append(static_world.building_style(building))
         for stop in getattr(world, "taxi_stops", ()):  # render/roads.py draw_taxi_stops
             self._add("taxi_stands", ((stop.x, stop.y),), [round(stop.x, 1), round(stop.y, 1)])
         for station in getattr(world, "scenery_objects", ()):  # draw_scenery_objects' pumps, draw_fuel_station_signs
