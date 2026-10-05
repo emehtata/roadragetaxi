@@ -429,6 +429,20 @@ and `tests/test_map_chunks.py`).
 | Rendered entities / loaded chunks | about 44 / 49–56 |
 | Godot static memory | 67 MiB windowed |
 
+**godot-18 rendering benchmark** (`godot --path godot -- --bench 60`
+with a scripted server route; see the parity doc's godot-18 section):
+- **Headless numbers:** the selftest's FPS is headless, not a rendering
+  measure.
+- **Windowed software rendering (llvmpipe):**
+  - day: 21.6–27.7 FPS, 1 % low 9.7–14.9 (before: 17.7–19.7)
+  - night: 16.4–18.4 FPS, 1 % low 8.7–12.0 (before: 12.0, 6.1)
+- **Where the time goes:**
+  - the frame is fill-bound
+  - chunk parse, building build and pool cutting run on worker threads
+- **`--bench-hide`** takes z levels, `labels`, `buildings`, `night`,
+  `pools`, `entities`, `ground` or `chunkself`; it hides layers to
+  attribute cost.
+
 ## Audio validation (real output, WSLg PulseAudio)
 
 `--audiotest` runs a scripted 17-phase sequence windowed, with the real

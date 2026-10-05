@@ -10,7 +10,8 @@ rows marked godot-10 after the re-audit of 2026-10-05 (`734a3b7`; see
 [phase 5](#godot-14-phase-5-server-calendar-and-daynight), rows marked godot-15 after
 [phase 6a](#godot-15-the-static-world-drawing-only-objects-night-seasons), rows marked godot-16 after
 [phase 6b](#godot-16-the-rest-of-the-static-world), rows marked godot-17 after
-[the 2.5D buildings](#godot-17-25d-buildings).
+[the 2.5D buildings](#godot-17-25d-buildings); godot-18 changed no rows
+([performance](#godot-18-performance-investigation)).
 
 The Pygame side is the actual per-frame draw sequence in
 `main/__init__.py`: about 80 `draw_*` calls between lines 2771 and 3446,
@@ -1262,3 +1263,73 @@ everything, still mark it.
 - roofs don't take snow (neither do Pygame's)
 - across chunks, overlapping volumes are ordered by chunk rather than per
   building
+
+## godot-18: performance investigation
+
+No parity rows changed; the visuals are the godot-17 ones (compared at a
+pinned position, day and night).
+
+**Root causes of the <15 FPS drops:**
+- **The earlier FPS figures were misleading.** `make godot-selftest` runs
+  `--headless`, so its 145–151 FPS never included rendering.
+- **The frame is fill-bound** on this machine's software renderer
+  (llvmpipe): a full-screen rect costs about 6.6 ms, an empty frame 4.4 ms.
+  Layers that covered the whole screen were the main cost:
+  - the night tint and the headlight pools were two `CanvasGroup`s, about
+    20 ms each (screen copy plus composite)
+  - invisible full-screen layers still drawn: the lightning flash at alpha
+    0, the 200 km ground rect, and the wet overlays when dry
+  - chunk geometry was not clipped to the chunk, so roads and water were
+    drawn several times over
+- **Main-thread spikes:**
+  - chunk JSON parse (up to 26 ms)
+  - the 2.5D building build (up to 69 ms)
+  - pool cutting (up to 254 ms)
+  - label redraws (5 ms)
+
+**Changes, each measured before and after:**
+- **Ground:** the clear colour replaces the 200 km rect.
+- **Flash:** visible only during lightning.
+- **Wet overlays and puddles:** hidden when dry.
+- **Chunk geometry:** roads, railways, rail bridges and water are clipped
+  to the chunk bounds. This also fixed a godot-07 bug: wet roads used
+  `clip_polyline_with_polygon`, which returns the part *outside* the chunk.
+- **Night tint:** a plain `Node2D` drawing the view minus the beams as
+  pieces, with buildings re-tinted inside the beams.
+- **Headlight pools:** disjoint pieces drawn additively, no `CanvasGroup`.
+  They are cut on a worker thread.
+- **Chunk parsing and 2.5D building build:** moved to `WorkerThreadPool`
+  tasks; a chunk unloaded mid-parse is cancelled.
+- **Labels:** candidates are cached per chunk, only chunks in view are
+  checked, and text sizes are cached.
+- **Tried and reverted:** batching roads into one triangle list cut draw
+  calls but not render time.
+
+**Benchmark** (`--bench 60`, a 7.5 km route through central Oulu at
+12 m/s, llvmpipe, 1280×720; render times are Godot's own measured times):
+
+| | day before | day after | night before | night after |
+|---|---|---|---|---|
+| average FPS | 17.7–19.7 | 21.6–27.7 | 12.0 | 16.4–18.4 |
+| 1 % low FPS | 8–12 | 9.7–14.9 | 6.1 | 8.7–12.0 |
+| worst frame | 95–146 ms | 77–110 ms | 171 ms | 95–122 ms |
+| render per frame | 36–38 ms | 25–31 ms | 62 ms | 39–46 ms |
+
+**Other numbers:**
+- **Worst chunk add:** 67 ms before, 23–34 ms after.
+- **Label draw:** 5 ms before, 0.3–1.0 ms after.
+- **Static memory:** 87–104 MiB with 49–56 chunks loaded.
+- **Worst area:** 2,533 buildings, 11,187 walls, 62,238 windows, 7,231 lit.
+
+**Remaining:**
+- Software rendering stays below 30 FPS, because the frame is fill-bound.
+  With z1–z4 hidden it reaches 33 FPS.
+- Pool cutting still takes up to 243 ms, but on a worker thread, so it
+  only delays the pools.
+
+**Diagnostics:**
+- `perf.gd` keeps section timings and counters.
+- `--bench SECONDS` prints `BENCH {json}`; `--bench-hide` hides layers.
+- F3 shows frame stats and building counts.
+
+**Tests:** Godot 255 checks, Python 1566.

@@ -13,6 +13,7 @@ const NightLayer := preload("res://night_layer.gd")
 const Labels := preload("res://labels.gd")
 const Detail := preload("res://chunk_detail.gd")
 const B25 := preload("res://buildings_25d.gd")
+const Perf := preload("res://perf.gd")
 const EntityLayer2 := preload("res://entity_layer.gd")
 
 var _failures := 0
@@ -37,6 +38,7 @@ func _process(_delta: float) -> bool:  # first frame: the tree is live, so nodes
 	if _ran:
 		return false
 	_ran = true
+	MapChunk.build_async = false  # check the buildings right after a chunk loads
 	test_interpolation()
 	test_audio()
 	test_hud()
@@ -52,6 +54,7 @@ func _process(_delta: float) -> bool:  # first frame: the tree is live, so nodes
 	test_static_world()
 	test_rest_of_static_world()
 	test_buildings_2_5d()
+	test_performance_paths()
 	print("%d checks, %d failed" % [_checks, _failures])
 	quit(1 if _failures > 0 else 0)
 	return false
@@ -854,3 +857,103 @@ func test_buildings_2_5d() -> void:
 	check(map._buildings.get_child_count() == 1, "a chunk's buildings go with it")
 	check(map.find_children("*", "CollisionObject2D", true, false).is_empty(), "no collision")
 	map.free()
+
+
+static func _area(polygons: Array) -> float:
+	var total := 0.0
+	for polygon in polygons:
+		total += absf(B25.signed_area(polygon))
+	return total
+
+
+## godot-18: the optimisations keep the picture - same areas tinted, lit,
+## drawn - with less work.
+func test_performance_paths() -> void:
+	# The night tint as polygons: the view minus the beams, no holes, nothing lost.
+	var view := Rect2(0, 0, 100, 60)
+	var beam := PackedVector2Array([Vector2(40, 20), Vector2(60, 20), Vector2(60, 40), Vector2(40, 40)])  # wholly inside
+	var pieces := NightLayer.tint_pieces(view, [beam])
+	check(not NightLayer.has_hole(pieces) and is_equal_approx(_area(pieces), 100.0 * 60.0 - 400.0), "tint = view minus a beam inside it, cut without holes")
+	var edge_beam := PackedVector2Array([Vector2(90, 0), Vector2(120, 0), Vector2(120, 10), Vector2(90, 10)])
+	check(is_equal_approx(_area(NightLayer.tint_pieces(view, [beam, edge_beam])), 6000.0 - 400.0 - 100.0), "two beams, one over the edge")
+	var reversed := beam.duplicate()
+	reversed.reverse()
+	check(is_equal_approx(_area(NightLayer.tint_pieces(view, [reversed])), 5600.0), "either winding (the hole test is about mixed orientations)")
+
+	# Light pools cut into disjoint pieces: their total is the union, so +22 is added once.
+	var positions := PackedVector2Array([Vector2(0, 0), Vector2(12, 0), Vector2(24, 0)])
+	var lights := [[0, 0, 0.0, 14.0], [12, 0, 0.0, 14.0], [24, 0, 0.0, 14.0]]
+	var parts := MapChunk.pool_union(positions, lights, PackedInt32Array())
+	var fans := MapChunk.pool_union(PackedVector2Array([positions[0]]), [lights[0]], PackedInt32Array())
+	check(parts.size() >= 3 and _area(parts) < 3.0 * _area(fans) - 1.0, "overlapping pools: pieces cover the union, not the sum")
+	var cross := 0.0
+	for i in parts.size():
+		for j in range(i + 1, parts.size()):
+			cross += _area(Geometry2D.intersect_polygons(parts[i], parts[j]))
+	check(cross < 0.01, "the pieces don't overlap (%.3f)" % cross)
+	check(MapChunk.pool_union(positions, lights, PackedInt32Array([1])).size() < parts.size() + 1, "a broken lamp's pool is left out")
+
+	# Roads, rails and water clipped to the chunk: only its own share.
+	var map := MapLayer.new()
+	root.add_child(map)
+	map.add_chunk(JSON.parse_string(JSON.stringify({"chunk_id": "0_0", "bounds": [0, 0, 500, 500],
+		"roads": [{"points": [[100, 100], [900, 100]], "half_width_m": 4.0, "drivable": true, "layer": 0}],
+		"railways": [[[100, 200], [100, 900]]], "waters": [[[400, 400], [700, 400], [700, 700], [400, 700]]]})))
+	var chunk = map._chunks["0_0"]
+	var road: PackedVector2Array = chunk._data["roads"][0]["points"]
+	check(road.size() == 2 and is_equal_approx(road[1].x, 500.0) and chunk._roads_by_z[1].size() == 1, "a road leaving the chunk is cut at its border")
+	check(is_equal_approx(chunk._data["railways"][0][1].y, -500.0), "rails too")
+	check(is_equal_approx(_area(chunk._data["waters"]), 100.0 * 100.0), "water: only the part inside")
+
+	# Dry: no wet overlays drawn; no lightning: no full-screen flash.
+	chunk.set_wetness(0.0)
+	check(not chunk._wet_darken.visible and not chunk._wet_sheen.visible, "dry roads: the wet overlays are not drawn at all")
+	chunk.set_wetness(0.6)
+	check(chunk._wet_darken.visible and chunk._wet_sheen.visible, "wet: they are")
+	map.free()
+
+	# Buildings built on a worker: nothing drawn until ready, then exactly what in-place building gives.
+	MapChunk.build_async = true
+	var style := [[92, 57, 48], 0, 10.0, [], [158, 105, 82], 3, 0]
+	var message: Dictionary = JSON.parse_string(JSON.stringify({"chunk_id": "0_0", "bounds": [0, 0, 500, 500],
+		"buildings": [[[10, 10], [30, 10], [30, 30], [10, 30]]], "building_styles": [style]}))
+	var async_chunk = MapChunk.new()
+	async_chunk.setup(message, Vector2.ZERO)
+	check(async_chunk.building_node != null and async_chunk._building_task >= 0, "the build runs on a worker")
+	while not WorkerThreadPool.is_task_completed(async_chunk._building_task):
+		OS.delay_msec(1)
+	var built: Dictionary = MapChunk._build_timed([async_chunk._data["buildings"][0]], [style], Vector2.ZERO)
+	async_chunk._buildings_ready(built)
+	MapChunk.build_async = false
+	var sync_chunk = MapChunk.new()
+	sync_chunk.setup(message.duplicate(true), Vector2.ZERO)
+	check(async_chunk._volumes["points"] == sync_chunk._volumes["points"] and async_chunk._volumes["stats"] == sync_chunk._volumes["stats"],
+		"the worker builds the same buildings as in place")
+	async_chunk.free()
+	sync_chunk.free()
+
+	# Chunk messages parsed off the main thread: one unloaded meanwhile is dropped.
+	var sim := SimClient.new()
+	root.add_child(sim)
+	var got: Array = []
+	sim.chunk_received.connect(func(m): got.append(m["chunk_id"]))
+	sim._parse_chunk('{"type":"chunk","version":1,"chunk_id":"3_4","bounds":[0,0,1,1]}')
+	sim._parse_chunk('{"type":"chunk","version":1,"chunk_id":"5_6","bounds":[0,0,1,1]}')
+	check(sim._parsing.has("3_4") and sim._parsing.has("5_6"), "the chunk id is read without parsing the line")
+	sim._cancelled["5_6"] = true  # its chunk_unload came first
+	for id in sim._parsing.keys():
+		while not WorkerThreadPool.is_task_completed(sim._parsing[id]):
+			OS.delay_msec(1)
+	sim._chunk_parsed("3_4", JSON.parse_string('{"type":"chunk","version":1,"chunk_id":"3_4"}'), 10)
+	sim._chunk_parsed("5_6", JSON.parse_string('{"type":"chunk","version":1,"chunk_id":"5_6"}'), 10)
+	check(got == ["3_4"], "parsed chunks arrive; one unloaded while parsing doesn't (%s)" % [got])
+	sim.free()
+
+	# The frame report: percentiles, lows and long frames from the recorded frame times.
+	var times := PackedFloat32Array()
+	for i in 99:
+		times.append(10.0)
+	times.append(100.0)
+	var report := Perf.summary(times)
+	check(is_equal_approx(report["worst_ms"], 100.0) and is_equal_approx(report["p95_ms"], 10.0) and report["over_66ms"] == 1, "worst, p95 and frames over 66 ms")
+	check(is_equal_approx(report["low_1pct_fps"], 10.0) and is_equal_approx(report["avg_ms"], 10.9), "1 % low is the slowest 1 % of frames, as FPS")
