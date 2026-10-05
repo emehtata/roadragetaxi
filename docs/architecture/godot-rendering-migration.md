@@ -186,6 +186,14 @@ rest is developer tooling.
 
 ## Recommended next phase
 
+**Superseded by the godot-10 re-audit:** see the roadmap in
+[godot-pygame-rendering-parity.md](godot-pygame-rendering-parity.md#godot-10-re-audit).
+In short: darkness, date, season and temperature need a server calendar
+first (simulation work, not only protocol); traffic-light phases and
+roadworks are server data to send, not simulation; the next phase is the
+per-tick values the server already has (meet booking, road name and
+limit, speed-camera notice, lightning).
+
 After godot-07 the rendering-only part of Phase A is done; the next step
 is item 2 below (the per-tick protocol additions). Original order:
 1. **Rendering-only items first** (data already in the state): waypoint
