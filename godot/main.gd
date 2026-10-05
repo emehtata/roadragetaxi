@@ -394,6 +394,10 @@ func _apply_bench_hide() -> void:
 		match name:
 			"labels": labels.visible = false
 			"buildings": map_layer._buildings.visible = false
+			"composite3d": if map_layer.buildings_3d: map_layer.buildings_3d._sprite.visible = false  # the 3D pass still renders
+			"buildings3d": if map_layer.buildings_3d:
+				map_layer.buildings_3d._sprite.visible = false
+				map_layer.buildings_3d._view.render_target_update_mode = SubViewport.UPDATE_DISABLED
 			"night": night.visible = false
 			"pools": map_layer._pool_group.visible = false
 			"entities": entities.visible = false
