@@ -11,7 +11,8 @@ rows marked godot-10 after the re-audit of 2026-10-05 (`734a3b7`; see
 [phase 6a](#godot-15-the-static-world-drawing-only-objects-night-seasons), rows marked godot-16 after
 [phase 6b](#godot-16-the-rest-of-the-static-world), rows marked godot-17 after
 [the 2.5D buildings](#godot-17-25d-buildings); godot-18 changed no rows
-([performance](#godot-18-performance-investigation)).
+([performance](#godot-18-performance-investigation)), rows marked godot-19 after
+[the GTA1-style extrusion](#godot-19-gta1-style-top-down-building-extrusion).
 
 The Pygame side is the actual per-frame draw sequence in
 `main/__init__.py`: about 80 `draw_*` calls between lines 2771 and 3446,
@@ -72,7 +73,7 @@ find customers, avoid hazards); `medium` means world-reading or feedback;
 | Trees | `draw_trees` | chunk `trees`: crown by kind and variation, seeded irregular blob; felled trees lie the way they were hit (`state.fallen_trees`); collision on the server — godot-13; seasonal crown colours from `calendar.season` — godot-15. Missing: the hit's shake and leaf burst (`tree_effects`, not sent), wind lean (`weather.tree_lean_m`, not sent) | partial | medium (collisions) | missing protocol data (shake, leaves, wind lean) | C |
 | Scenery objects: benches, bollards, fountains | `draw_scenery_objects` (+ knocked-over state) | bollards and knocked posts (godot-13), fuel pumps (godot-12), and the decorative kinds — bench (along its path), bin, bicycle parking, statue, picnic table, fire pit, fountain, gate — from chunk `scenery_objects` — godot-15 | complete | medium (bollards collide) | – | – |
 | Bus stops (option) | `draw_bus_stops` | chunk `bus_stops`: bay, shelter and "BUS" from the nearest road, computed once by the server — godot-16 (Oulu has none: bus stops are off by default) | complete | low | – | – |
-| Buildings | `draw_buildings` (cached geometry, facades) | 2.5D (godot-17): the footprint stays on the top-down map; the volume is projected by height along one screen direction (Pygame's oblique offset and cap, in map metres) - visible walls in Pygame's wall colours with windows and doors, the raised roof with its gabled facets and ridge. Not Pygame's renderer, and not pixel parity | different by design | high | – | – |
+| Buildings | `draw_buildings` (cached geometry, facades) | GTA1-style top-down vertical building extrusion (godot-19): the footprint stays on the top-down map; walls rise straight up the screen by height × 0.35, no cap, the roof directly above the footprint - visible walls in Pygame's wall colours with windows and doors, the raised roof with its gabled facets and ridge. Not Pygame's renderer, and not pixel parity | different by design | high | – | – |
 | Open-roof canopies over vehicles | `draw_open_roof_overlays` | chunk `canopies`: shadow under the vehicles; raised by their own height (`canopy_heights`) as open structures, posts from the ground corners, the translucent roof above the vehicles - pumps visible under it (godot-16, -17) | complete | medium | – | – |
 | Tire tracks | `draw_tire_tracks` ×4 | the server's per-tick `tire_mark` (as `main()` decides it), laid along the drawn taxi, at most 4000 points — godot-16. The client keeps the trail, so a reconnect starts a new one | complete | low | – | – |
 | Roadworks barriers / cones | `draw_roadworks` | chunk `roadworks`: barriers at both ends (lane or full road), cones between, Pygame's pixel sizes — godot-12 | complete | high (block roads) | – | – |
@@ -87,7 +88,7 @@ find customers, avoid hazards); `medium` means world-reading or feedback;
 | Speed cameras | `draw_speed_cameras` (+ flash) | box, red lens, yellow arrow; the flash from `state.speed_camera_flash` — godot-16 | complete | medium | – | – |
 | Fuel stations (price boards) | `draw_fuel_station_signs` (+ the pumps in `draw_scenery_objects`) | chunk `fuel_stations`: pin and board with the name and the server's price above the vehicles, pumps under the buildings — godot-12 | complete | high (fuel runs out) | – | – |
 | Street lights (+ broken lamps dark) | `draw_street_lights` (placed from roads; `broken_lamps`) | chunk `street_lights`, placed by the server with Pygame's own placement; at darkness > 0.25 the pools' union added once (+22) over the tint, then the lamp heads; a knocked street lamp (`state.knocked_posts`) dark — godot-15 | complete | low | – | – |
-| Illuminated windows at night | `draw_illuminated_windows` | on the 2.5D facades (godot-17): Pygame's rules - from darkness 0.25 fading to 165/255 by 0.5, its lit colour, 12 % of windows (houses 8 %, storefronts 3 %) - seeded by the building's position (Pygame: `id()`, which changes every run); additive over the night tint | complete | low | – | – |
+| Illuminated windows at night | `draw_illuminated_windows` | on the extruded walls (godot-19): Pygame's rules - from darkness 0.25 fading to 165/255 by 0.5, its lit colour, 12 % of windows (houses 8 %, storefronts 3 %) - seeded by the building's position (Pygame: `id()`, which changes every run); additive over the night tint | complete | low | – | – |
 | Map labels: place and street names | `draw_labels` (decluttered) | `labels.gd`: the server's candidates, decluttered per view by Pygame's rules (priority, unique, no overlap, ≤ 35, zoom gates) — godot-16 | complete | medium | – | – |
 | Vomit puddles and footprints | `draw_vomit_puddles` ×2, `draw_vomit_footprints` | – | missing | low | missing protocol data | C |
 
@@ -1333,3 +1334,83 @@ pinned position, day and night).
 - F3 shows frame stats and building counts.
 
 **Tests:** Godot 255 checks, Python 1566.
+
+## godot-19: GTA1-style top-down building extrusion
+
+**What looked isometric:** godot-17 lifted every point at height h along
+Pygame's oblique vector, `(-0.7, -1) × min(0.35 h, 11.1 m)`. Roofs slid
+diagonally north-west of their footprints, and buildings leaned.
+
+**Now:** a GTA1-style top-down vertical building extrusion
+(`buildings_25d.gd`):
+- `lift(h) = UP × h × BUILDING_HEIGHT_SCALE`, with `UP = (0, -1)` and a
+  scale of 0.35 screen metres per metre of height. There is no cap.
+- The camera never rotates, so "up" out of the map is always straight up
+  the screen. x never changes with height, and nothing depends on the
+  player or the zoom.
+- **Visible walls:** those whose outward normal points down the screen
+  (normal · UP < 0). The test works for either winding and for concave
+  footprints.
+  - An axis-aligned box shows only its south wall; its east and west
+    walls are edge-on, which is correct for a vertical extrusion.
+  - A box turned 45° shows its two lower walls.
+- **Roof:** the footprint moved straight up by the lift. Gabled facets and
+  the ridge are cut on that roof.
+- **Windows and doors:** they are laid on the visible walls. Their rules
+  are unchanged, and lit windows are still seeded by the building's
+  position.
+- **Canopies:** the posts rise straight up; the roof stays open.
+- **Draw order:**
+  - within a chunk, far (north) to near
+  - across chunks, by row from north to south, then west to east, so the
+    order no longer depends on load order
+- The old diagonal path is removed; no second renderer is kept.
+
+**Parity:** no count changes; the buildings row stays "different by
+design".
+
+**Verified:**
+- **Godot unit tests (267):**
+  - vertical lift with no cap
+  - visible walls of a box (either winding), a turned box and an L-shape
+  - L walls rising straight up from their ground edges
+  - at 5, 20 and 100 m: the ground edge where the footprint is, and the
+    volume spanning exactly the footprint's x
+  - windows lying on the south wall; the pitched roof over the footprint
+  - deterministic rebuild; doors on visible walls, hidden on others
+  - chunk row order; bridges and underground z-order; no collision
+- **`tests/building_scene.gd`:** a dev scene drawn by the real map layer
+  at zooms 4, 7 and 12, with red ground outlines. It contains:
+  - low, 60 m, L-shaped, pitched, commercial, entrance and turned
+    buildings
+  - a canopy and roads
+- **Real Oulu server** (scratch launcher; production config untouched):
+  - the central pinned spot at noon and 23:00
+  - Liiketulli at dusk, the 66 m tower, winter
+  - St1 Limingantie and Neste: open canopies, pumps and price boards
+    visible
+  - the rail bridge and the underground view, unchanged
+  - no client errors
+
+**Performance** (the godot-18 benchmark, llvmpipe, two runs each):
+
+| | godot-18 | godot-19 |
+|---|---|---|
+| day average FPS | 21.6–27.7 | 24.0–29.1 |
+| day 1 % low / worst | 9.7–14.9 / 77–110 ms | 16.0–20.4 / 53–77 ms |
+| night average FPS | 16.4–18.4 | 17.5–20.0 |
+| night 1 % low / worst | 8.7–12.0 / 95–122 ms | 12.7–13.9 / 78–80 ms |
+
+- **No regression:** the geometry has the same triangle count (walls are
+  still one quad each). The vertical walls are a little thinner on screen,
+  since east and west walls are edge-on, so they cover fewer pixels.
+- **Other numbers:**
+  - chunk add 5.7–6.8 ms average, 29 ms worst
+  - building build 12.5–13.4 ms average on the worker
+  - static memory 89–106 MiB
+  - 2,533 buildings, 11,166 walls, 62,226 windows, 7,280 lit
+- **Remaining:**
+  - very tall buildings (60–66 m) have roofs 21–23 m up the screen, so
+    they cover the street north of them, as in GTA1. If that hurts
+    readability, a cap would be a separate constant.
+  - software rendering is still under 30 FPS (godot-18).
