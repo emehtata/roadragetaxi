@@ -14,7 +14,8 @@ rows marked godot-10 after the re-audit of 2026-10-05 (`734a3b7`; see
 ([performance](#godot-18-performance-investigation)), rows marked godot-19 after
 [the first GTA1-style extrusion](#godot-19-gta1-style-top-down-building-extrusion),
 godot-20 after the screenshot-authoritative radial correction, and godot-21
-after [the 3D building layer prototype](#godot-21-lightweight-3d-building-layer-prototype).
+after [the 3D building layer prototype](#godot-21-lightweight-3d-building-layer-prototype);
+godot-22 changed no rows ([culling and FOV](#godot-22-back-face-culling-and-fov)).
 
 The Pygame side is the actual per-frame draw sequence in
 `main/__init__.py`: about 80 `draw_*` calls between lines 2771 and 3446,
@@ -1457,7 +1458,7 @@ the camera moves. No code picks walls; the depth buffer does.
 Height is the 3D `y`.
 
 **Camera.** `Camera3D` at `(cx, D, cy)`, rotation `(-90°, 0, 0)` (screen up =
-−z = 2D up), vertical FOV 40° (`buildings_3d.gd FOV`, the one tuning knob),
+−z = 2D up), vertical FOV 40° (30° since godot-22; `buildings_3d.gd FOV`, the one tuning knob),
 `KEEP_HEIGHT`. `D = view_height_m / 2 / tan(FOV / 2)`, with `view_height_m =
 viewport_px / zoom`, so the ground plane fills exactly the `Camera2D` view.
 Each frame it copies the `Camera2D`'s screen centre and zoom.
@@ -1513,3 +1514,58 @@ rendered at all by day.
 - The night pass renders the whole view twice.
 
 **Tests:** Godot 347 checks (all pass), Python 1562 passed, 3 failed (`test_main_city_bin_integration.py`, Pygame city-bin loading; no Python was changed in this phase).
+
+## godot-22: back-face culling and FOV
+
+**Culling.** The building material uses `CULL_BACK`. All triangles go
+through one helper (`_tri`), which takes the surface's outward normal (walls,
+windows and doors: the wall normal; roofs: up) and swaps two vertices when
+needed. Godot's front faces are clockwise, so every triangle faces out
+whichever way the footprint winds. A test checks every triangle of three
+footprints, in both windings and with a pitched roof, door, storefront and
+lit windows.
+- **Pixel check:** the culled building scene matches the unculled one
+  within 0–85 edge pixels per 1280×720 frame, across eight frames.
+- **Proof culling is active:** deliberately flipping the winding changes
+  155,815 pixels, because roofs and front walls disappear.
+
+**Benchmark method.** The spawn and weather are random per server start
+(2,315, 2,531 or 2,533 buildings loaded), and the game clock starts at 18:00
+and runs at 60×. So each run starts a fresh server with Python's `random`
+seeded to 22, without changing the server. Runs are interleaved before /
+after / 2D. Each run is `--bench 30`, standing, 1280×720, llvmpipe, at a
+seeded spot (Hallituskatu, 2,533 buildings). The Windows host's load
+changed between the two sets, so compare within a set only.
+
+| | before culling | after culling | 2D renderer |
+|---|---|---|---|
+| set 1 (FOV 40), average FPS | 27.1 | 27.6 (+2 %) | 36.0 |
+| set 1, 1 % low | 18.0 | 16.8 | 20.4 |
+| set 1, worst frame | 58.3 ms | 63.9 ms | 57.2 ms |
+| set 2 (FOV 30), average FPS | 20.5 | 21.7 (+6 %) | 25.9 |
+| set 2, 1 % low | 9.6 | 10.6 (+10 %) | 11.7 |
+| set 2, worst frame | 112.8 ms | 104.5 ms | 96.0 ms |
+| memory | 104.9–108.3 MiB | 106.7–109.9 MiB | 103.3–107.0 MiB |
+
+**Why the gain is small.** `--bench` now measures the 3D view's own render
+time. It is 3.5–4 ms per frame with or without culling, against about
+22–27 ms for the main view. On llvmpipe, rejecting back faces is cheap, and
+a culled back face had covered only pixels that its front faces cover anyway.
+Triangle count is not the bottleneck; the 3D layer's cost is fill:
+- clearing and drawing a 1280×720 3D target
+- blending it full-screen into the 2D frame
+
+`--bench-hide composite3d` / `buildings3d` hides those for attribution, but
+host noise was larger than the effect in those runs. The remaining gap to
+the 2D renderer is roughly that fill cost.
+
+**FOV.** Tried 40°, 35°, 30°, 25° and 20°, in the building scene at zoom 4,
+7 and 12, and in Oulu with `--building-fov`. At 40° a 60 m building covers
+much of the street beside it. At 25° and below, low buildings (4 m) lose
+their visible facades at normal zoom. **30°** keeps tall buildings clearly
+volumetric with about a quarter less facade depth than 40°, and low ones
+still show walls. Footprints stay on their outlines at every value: the
+camera height follows the FOV, so ground alignment does not depend on it.
+
+**Unchanged (deferred):** canopies, headlight clipping, pitched-roof gable
+caps and the night's second building pass.

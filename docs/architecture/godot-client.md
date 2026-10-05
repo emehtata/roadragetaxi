@@ -500,8 +500,8 @@ Nobody has listened to it; these are measurements of the output.
 
 The game stays 2D. Only buildings are 3D (`buildings_3d.gd`):
 - 2D `(x, y)` → 3D `(x, 0, y)`
-- a straight-down perspective `Camera3D` whose ground plane matches the
-  `Camera2D` exactly
+- a straight-down perspective `Camera3D` (30° FOV, `--building-fov` to try
+  others) whose ground plane matches the `Camera2D` exactly
 - one `ArrayMesh` per chunk, rendered in a transparent `SubViewport` and drawn
   as a `Sprite2D` at z 7
 - a second, additive pass for lit windows at z 21, rendered only at night
@@ -530,8 +530,9 @@ godot-21 section.
   Godot. The pedestrian curse is generated and validated but wasn't
   triggered in the scripted test.
 - **Native Windows** performance and audio were not measured.
-- **3D buildings** are a prototype: about 22 % slower than the 2D renderer on
-  software GL, so they need back-face culling (see the parity doc).
+- **3D buildings** are a prototype: still slower than the 2D renderer on
+  software GL. Back-face culling is in (godot-22), but the remaining cost is
+  fill: the 3D target plus its full-screen composite (see the parity doc).
 
 ## Migration from Pygame
 
