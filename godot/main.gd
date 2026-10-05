@@ -245,6 +245,9 @@ func _process(delta: float) -> void:
 			RenderingServer.viewport_set_measure_render_time(view_3d, true)
 			Perf.add("render_3d_cpu", int(RenderingServer.viewport_get_measured_render_time_cpu(view_3d) * 1000.0))
 			Perf.add("render_3d_gpu", int(RenderingServer.viewport_get_measured_render_time_gpu(view_3d) * 1000.0))
+			var lit_3d: RID = map_layer.buildings_3d._lit_view.get_viewport_rid()  # godot-23: the night's lit-window pass
+			RenderingServer.viewport_set_measure_render_time(lit_3d, true)
+			Perf.add("render_3d_lit_cpu", int(RenderingServer.viewport_get_measured_render_time_cpu(lit_3d) * 1000.0))
 	if _bench > 0.0 and not state.is_empty():
 		_bench_left -= delta
 		if _bench_left <= 0.0:
