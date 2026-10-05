@@ -64,7 +64,7 @@ serialized as-is.
 | `world` | server→client | once per connection, first | `center` (map origin), `chunk_size_m` (500), `player_id` |
 | `chunk` | server→client | when the player's chunk changes | `chunk_id` (`"ix_iy"`, ix = floor(x/500)), `bounds`, `roads` (`points`, `half_width_m`, `kind`, `drivable`, `layer`), `railways`, `waters`, `buildings` |
 | `chunk_unload` | server→client | same | `chunk_id` |
-| `state` | server→client | every tick (30 Hz) | `tick`, `server_time` (simulation seconds), `state`: `player_id`, game time, `player`, `player_pedestrian`, `on_foot`, `npcs`, `pedestrians`, `trains` (`id`, `label`, `state`, `speed`, `cars` as `[x, y, heading, length, look]`), `weather`, `taxi`, `events` |
+| `state` | server→client | every tick (30 Hz) | `tick`, `server_time` (simulation seconds), `state`: `player_id`, game time, `player`, `player_pedestrian`, `on_foot`, `npcs`, `pedestrians`, `trains` (`id`, `label`, `state`, `speed`, `cars` as `[x, y, heading, length, look]`), `weather` (incl. `lightning_intensity`), `taxi` (incl. `speed_camera_notice`), `road` (`name`, `speed_limit_kmh`), `meet` (meet & greet panel lines and arrow target, or null), `events` |
 | `command` | client→server | client-paced (Godot: 20 Hz) | `seq`, `player_id`, `command` (`throttle`, `brake`, `steer_*`, `forward`, `turn`, `engine_on`, ..., `interact`), optional `phone` request |
 
 `events` are each sent once:

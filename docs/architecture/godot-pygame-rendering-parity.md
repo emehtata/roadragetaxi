@@ -3,7 +3,8 @@
 Audited on 2026-10-03 against `release/v0.16.0g-alpha` at commit `0445643`;
 rows marked godot-07 were updated after that phase (rendering-only parity),
 rows marked godot-10 after the re-audit of 2026-10-05 (`734a3b7`; see
-[the godot-10 section](#godot-10-re-audit)).
+[the godot-10 section](#godot-10-re-audit)), rows marked godot-11 after
+[phase 2](#godot-11-phase-2-server-state-already-owned).
 
 The Pygame side is the actual per-frame draw sequence in
 `main/__init__.py`: about 80 `draw_*` calls between lines 2771 and 3446,
@@ -112,7 +113,7 @@ find customers, avoid hazards); `medium` means world-reading or feedback;
 | Cursing bubbles | `draw_pedestrians` (`curse_timer`, `curse_text`) | white bubble, red text, fades in the last 0.5 s — godot-07 | complete | low | – | – |
 | Walking player (on foot) | `draw_pedestrians` (`is_player`) | pedestrian figure, standing pose — godot-07 | partial | high | missing protocol data (the player's animation state/time) | B |
 | Waiting passenger at pickup | `draw_taxi_target` marker + passenger pedestrian | customer disc with heading notch and `[P]` / `[TO TAXI]` name tag (fields added to `current_passenger`) — godot-07 | complete | high | – | – |
-| Booked rail passenger arrow | `draw_booked_passenger_arrow` | – | missing | high | missing protocol data (meet booking's pedestrian) | A |
+| Booked rail passenger arrow | `draw_booked_passenger_arrow` | downward arrow over the booked passenger, drawn at their interpolated position (by id, else the sent one), only while `meet.arrow` is set: waiting or met, as `main()` — godot-11 | complete | high | – | – |
 | People under roofs (outline) | `draw_pedestrians_under_roofs` | – | missing | low | missing protocol data (roofs) | B |
 | Night reflectors | `draw_pedestrian_reflectors` | – | missing | low | missing protocol data (darkness) | C |
 
@@ -136,7 +137,7 @@ find customers, avoid hazards); `medium` means world-reading or feedback;
 | Off-screen arrow to the target | `draw_taxi_target` | `nav_overlay.gd`: edge arrow (130 px margin) with PICKUP/DROPOFF distance — godot-07 | complete | high | – | – |
 | Navigation route line (N) | `draw_navigation_route` (route from `traffic_mgr.plan_route` in `main()`) | – | missing | high | missing shared simulation state (routing runs in Pygame's loop, not the simulation step) | A |
 | Compass with target bearing (C) | `draw_compass` | `nav_overlay.gd`, C toggles, off by default — godot-07 | complete | medium | – | – |
-| Meet-and-greet panel | `draw_meet_panel` | – | missing | high | missing protocol data (meet booking: who, train, platform, step) | A |
+| Meet-and-greet panel | `draw_meet_panel` | `hud.gd` panel, Pygame's colours, the three lines from the server's `meet_prompt` (localized there) — godot-11 | complete | high | – | – |
 | Nausea warning bubble | `draw_passenger_nausea_bubble` | bubble with tail above the taxi while dropping off — godot-07 | complete | medium | – | – |
 | Phone and offers | `draw_phone_offers` (pauses the game) | `phone.gd` (game keeps running) | different by design | high | – | – |
 | Game start: city sign, 24 h forecast | `draw_game_start_overlay` | – | missing | low | missing protocol data (city, forecast) | B |
@@ -149,7 +150,7 @@ find customers, avoid hazards); `medium` means world-reading or feedback;
 |---|---|---|---|---|---|---|
 | Rain / snow particles | `draw_rain` (rain streaks, snow flakes) | – | missing | medium | Godot rendering only for type; intensity (heavy rain) missing protocol data | C |
 | Splashes | `draw_splashes` (spawned in Pygame's `main()` from puddle overlap) | – | missing | low | Pygame-specific implementation | C |
-| Lightning flash | `draw_lightning_flash` (`weather.lightning_intensity`) | – | missing | low | missing protocol data | C |
+| Lightning flash | `draw_lightning_flash` (`weather.lightning_intensity`) | full-world flash at the sent, fading intensity (max alpha 145/255), under the UI; thunder as a server sound event once per strike — godot-11 | complete | low | – | – |
 | Day/night tint | `draw_day_night_overlay` (sun altitude from time, lat/lon, date) | – | missing | high (night visibility) | missing protocol data (sun altitude or darkness, date) | A |
 | Snow cover / seasons | `draw_grass_texture(season)`, `draw_waters` ice | – | missing | low | missing protocol data (season, snow depth) | C |
 | Weather text | HUD | HUD `weather_type`, wetness | complete | medium | – | – |
@@ -163,8 +164,8 @@ find customers, avoid hazards); `medium` means world-reading or feedback;
 | Money | yes | `hud.gd` | complete | high | – | – |
 | Taxi job / passenger | mission bar | `hud.gd` fare line | partial | high | Godot rendering only (fields sent) | A |
 | Notifications | yes | `hud.gd` notice | complete | high | – | – |
-| Speed-camera notice / flash | yes | – | missing | medium | missing protocol data (`speed_camera_notice_msg`, flash) | B |
-| Road name, speed limit | yes | – | missing | high | missing protocol data (current way, limit) | A |
+| Speed-camera notice / flash | yes (notice centred, red border); lens flash at the camera (`draw_speed_cameras`) | notice centred with a red border from `taxi.speed_camera_notice` — godot-11; no lens flash | partial | medium | missing protocol data (the flash is drawn at the camera itself: needs camera positions in chunks) | B |
+| Road name, speed limit | limit sign always; road name in the debug HUD line | `instruments.gd` limit sign; road line in the F3 readout, both from `state.road` — godot-11 | complete | high | – | – |
 | Fuel gauge | yes (needle gauge, reserve zone, econometer) | `instruments.gd`, same gauge — godot-07 | complete | high | – | – |
 | Fuel price at a station | yes | – | missing | medium | missing protocol data | B |
 | Trip, odometer | yes | `instruments.gd` — godot-07 | complete | low | – | – |
@@ -198,15 +199,15 @@ find customers, avoid hazards); `medium` means world-reading or feedback;
 Computed from the tables above: 108 rows (109 from godot-10), each counted once
 by status. godot-06 is the audit; godot-07 is after the rendering-only phase.
 
-| Status | godot-06 | godot-07 | godot-10 |
-|---|---|---|---|
-| complete | 7 | 30 | 31 |
-| partial | 22 | 18 | 16 |
-| missing | 71 | 52 | 52 |
-| different by design | 3 | 3 | 4 |
-| debug-only | 3 | 3 | 3 |
-| not applicable | 2 | 2 | 3 |
-| rows | 108 | 108 | 109 |
+| Status | godot-06 | godot-07 | godot-10 | godot-11 |
+|---|---|---|---|---|
+| complete | 7 | 30 | 31 | 35 |
+| partial | 22 | 18 | 16 | 17 |
+| missing | 71 | 52 | 52 | 47 |
+| different by design | 3 | 3 | 4 | 4 |
+| debug-only | 3 | 3 | 3 | 3 |
+| not applicable | 2 | 2 | 3 | 3 |
+| rows | 108 | 108 | 109 | 109 |
 
 Missing and partial rows by cause, after godot-07. The 3
 camera/layering rows have no cause column.
@@ -532,3 +533,63 @@ it, or right after, since it doesn't touch the server.
 | `make godot-selftest` | PASS (`ok: true`, 49 chunks, 24 NPCs, 34 pedestrians, 2 trains, 145 FPS on llvmpipe, taxi 0 px off centre) |
 | `make audio-check` | PASS (126 files, 50 groups, 0 problems) |
 | Python tests | PASS: 1543 passed with `tests/test_packaging.py` excluded. That file can't be collected on this machine's Python 3.10 (`tomllib`), so plain `make test` fails at collection. |
+
+## godot-11: phase 2, server state already owned
+
+Phase 2 of the godot-10 roadmap. Data the server already computed is now
+in `state`, and Godot draws it. There's no simulation change and no
+chunk-format change.
+
+**Protocol (`protocol.py`, all optional for older clients):**
+
+| Field | Contents | Why |
+|---|---|---|
+| `meet` | `null`, or `status`, `lines` (3 strings), `arrow` (`null` or `id`, `x`, `y`, `radius_m`) | `taxi_mgr.meet_prompt(player_pedestrian)` decides the step, as in Pygame's `main()`; the server localizes the lines in its language. `arrow` is set only for `PASSENGER_WAITING` / `PASSENGER_MET` with a pedestrian, the same condition as `main()`. |
+| `road` | `name` (OSM name, else the highway type title-cased; `null` off-road), `speed_limit_kmh` (`null` when unknown) | The server's `current_way`, with Pygame's naming rule. Godot never works out a limit itself. |
+| `taxi.speed_camera_notice` | bool | The current `notification_msg` is a speed-camera hit (its 4 s timer is running); Pygame styles it differently. |
+| `weather.lightning_intensity` | 0..1, 1 at a strike, fading | Pygame's flash alpha. Thunder is a `sound` event (`weather.thunder`) the server emits once per `lightning_event_id`, as `main()` does. |
+
+Not sent, because no Godot renderer uses it yet: precipitation intensity
+(`is_precipitating`, the particle pool). Godot has no rain or snow
+particles yet, so that row stays missing and belongs with the rendering
+quick wins (godot-10 phase 1).
+
+**Godot:**
+- `hud.gd`: the meet panel, and the camera-hit notice style
+- `instruments.gd`: the limit sign
+- `entity_layer.gd`: the booked-passenger arrow and the lightning flash
+- `main.gd`: only the road line in the F3 readout
+
+The camera, `StateBuffer` and `drive_input.gd` are unchanged. The selftest
+still reports the taxi 0 px off centre and 0 render backsteps.
+
+**Deliberate differences:**
+- The meet panel sits under the notice line (y = 100) instead of
+  Pygame's y = 50, because the Godot notice uses that place.
+- Like Pygame, the arrow is drawn only where the passenger is. It isn't
+  an off-screen indicator: the panel text says where to go.
+
+**Still open from this phase's rows:** the speed camera's lens flash.
+It's drawn at the camera, so it needs camera positions in the chunks
+(the static phase).
+
+**Verified:**
+- Python tests: every meet step through `protocol._meet_to_dict` with the
+  real `TaxiManager` fixtures (train due without an arrow, at the stand,
+  getting out, walking, greeting, met, none, missed); road naming;
+  the notice flag and its expiry; one thunder per strike.
+- Godot unit tests: 128 checks. They cover the HUD values, the panel
+  showing and going, the arrow following the interpolated passenger and
+  never going stale, and the flash alpha.
+- Against the real Oulu server: the limit sign while driving, and road
+  changes logged from the running simulation (named road with limit,
+  "Service" for an unnamed one, off-road with no limit).
+- With scripted states: screenshots of the meet panel, arrow, camera
+  notice and lightning flash.
+- **Not reproduced live:** a full rail meet-and-greet and a natural
+  thunderstorm. Both need long in-game waits.
+
+**Next phase (unchanged order):** gameplay points in chunks — taxi stands,
+fuel stations, traffic-light posts and nearby phases, roadworks — then the
+collision-relevant static world, the server calendar (day/night),
+the rest of the static world, and navigation.
