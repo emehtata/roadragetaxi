@@ -15,7 +15,8 @@ rows marked godot-10 after the re-audit of 2026-10-05 (`734a3b7`; see
 [the first GTA1-style extrusion](#godot-19-gta1-style-top-down-building-extrusion),
 godot-20 after the screenshot-authoritative radial correction, and godot-21
 after [the 3D building layer prototype](#godot-21-lightweight-3d-building-layer-prototype);
-godot-22 changed no rows ([culling and FOV](#godot-22-back-face-culling-and-fov)).
+godot-22 and godot-23 changed no rows ([culling and FOV](#godot-22-back-face-culling-and-fov),
+[render pass and geometry](#godot-23-render-pass-measurements-gables-canopies-headlights)).
 
 The Pygame side is the actual per-frame draw sequence in
 `main/__init__.py`: about 80 `draw_*` calls between lines 2771 and 3446,
@@ -1569,3 +1570,99 @@ camera height follows the FOV, so ground alignment does not depend on it.
 
 **Unchanged (deferred):** canopies, headlight clipping, pitched-roof gable
 caps and the night's second building pass.
+
+## godot-23: render-pass measurements, gables, canopies, headlights
+
+**The render path as built.**
+- **3D target:** a `SubViewport` exactly the window's size (1280×720),
+  `transparent_bg`, RGBA8, MSAA off, no HDR (Compatibility renderer), no
+  mipmaps.
+- **Updates:** it renders every frame (the default `UPDATE_WHEN_VISIBLE`).
+- **Composite:** one full-screen `Sprite2D` with nearest filtering, at the
+  camera centre, blended over the whole screen every frame, empty pixels
+  included. The texture is used directly, never copied.
+
+**Baseline.** Same method as godot-22: fresh seeded server, `--bench 30`,
+standing, 1280×720, llvmpipe. Each figure is the mean of 3 runs.
+
+| | frame | main view render | 3D pass |
+|---|---|---|---|
+| no 3D layer (`--bench-hide buildings3d`) | 38.6 ms | 29.4 ms | – |
+| 3D pass rendered, not composited (`composite3d`) | 42.9 ms | 28.2 ms | 3.9 ms |
+| full 3D layer | 47.2 ms (21.2 FPS) | 32.5 ms | 4.3 ms |
+| 3D pass with every mesh hidden (`meshes3d`) | 39.1 ms | 28.2 ms | 1.0 ms |
+
+So the layer costs about 8.6 ms a frame:
+- about 4.3 ms is the 3D pass: about 1 ms fixed (clear and set-up) plus
+  about 3.2 ms for the meshes
+- about 4.3 ms is the composite: one full-screen blend into the main view
+
+(With the sprite hidden, Godot also skips rendering the viewport, so
+`composite3d` now forces the pass to keep updating.)
+
+**Lower internal resolution: tried, rejected.** Two runs each:
+
+| target scale | 3D pass | frame |
+|---|---|---|
+| 1.0 | 4.0–4.3 ms | 41.6–42.3 ms |
+| 0.75 | 3.6–3.7 ms | 45.0–45.5 ms |
+| 0.5 | 3.5–3.7 ms | 42.2–46.6 ms |
+
+Halving the pixels saves only about 0.5 ms of the 3D pass, so the pass is not
+pixel-bound. The composite still covers every screen pixel, and its upscale
+needs linear filtering, which blurs edges and windows. The frame did not get
+faster, so the code was reverted.
+
+**Partial viewport: not done.** In the city, buildings cover most of the
+screen, so a scissor or partial target would rarely shrink the blend. It
+would also need per-frame bounds work.
+
+**Transparency.** The cost is the blend over every screen pixel. The layer
+must be transparent to sit between roads and vehicles. The cheaper
+alternative is the 3D pass rendering straight into the main view, with the
+roads drawn as its background canvas (`Environment.BG_CANVAS`). That means
+moving the 2D map into `CanvasLayer`s, which is an architecture change, so it
+was left out of this phase.
+
+**Conclusion.** The remaining cost is inherent to compositing a full-screen
+SubViewport. Nothing was changed for performance.
+
+**Final daytime run** (mean of 3, no intended change): 44.4 ms, 22.6 FPS,
+1 % low 10.8, worst 101.2 ms, 106–110 MiB; 3D pass 4.1 ms. This is within the
+spread of the baseline (47.2 ms, 21.2 FPS, 1 % low 9.7, worst 111.4 ms,
+109 MiB).
+
+**Night.** After about 120–150 s of game clock, the passes cost:
+- main 3D pass: 4.2 ms (the same as by day)
+- lit-window pass: 1.4 ms
+
+The whole night frame is 63–69 ms. Its cost lies elsewhere (the night tint,
+light pools, beams), so the second pass was left unchanged.
+
+The "daytime" benchmark spans game time 18:00 to about 18:40 on today's date.
+On 5 October the sun sets in Oulu around 18:45, so its last part is dusk and
+the lit pass already runs. All godot-21 to godot-23 runs share this.
+
+**Geometry fixes.**
+- **Gables:** each wall under a sloping roof edge now continues up to the
+  roof, including the peak where the ridge crosses it. The pitched roof is a
+  closed volume. The triangles go through the same winding helper, so the
+  outward-facing test covers them. A new test checks that both gable ends
+  reach the ridge.
+- **Canopies:** they stay translucent 2D roofs above the vehicles (z 11).
+  Their corners and posts now use `lift_point`, the 3D camera's exact
+  projection of a point at height `h`:
+  `c + (p − c) × D / (D − h)`.
+  So they line up with the 3D buildings. Chunks in view redraw them each
+  frame, so there is no angle-bucket stepping. The 2D renderer keeps the old
+  radial lift.
+- **Headlights:** each building keeps its top (the ridge on pitched roofs).
+  `buildings_in` returns the hull of the footprint and its projected roof,
+  the visible silhouette, which is computed only for buildings near the
+  beams. A concave building is clipped at its convex hull, as in godot-17.
+  Tests check the projection and the silhouette bounds; a night screenshot
+  had no beam reaching a building.
+
+**Tests:** Godot 355 checks (5 new), selftest ok (taxi 0 px off centre, no
+render backsteps), audio check 0 problems. Python: 1562 passed, plus the 3
+known `test_main_city_bin_integration.py` failures.

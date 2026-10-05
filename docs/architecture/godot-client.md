@@ -530,9 +530,10 @@ godot-21 section.
   Godot. The pedestrian curse is generated and validated but wasn't
   triggered in the scripted test.
 - **Native Windows** performance and audio were not measured.
-- **3D buildings** are a prototype: still slower than the 2D renderer on
-  software GL. Back-face culling is in (godot-22), but the remaining cost is
-  fill: the 3D target plus its full-screen composite (see the parity doc).
+- **3D buildings** cost about 8.6 ms a frame on software GL: the 3D pass
+  (about 4.3 ms, mostly meshes) plus the full-screen composite (about 4.3 ms).
+  The composite is inherent to the SubViewport design (godot-23 in the parity
+  doc).
 
 ## Migration from Pygame
 
