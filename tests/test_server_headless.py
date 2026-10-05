@@ -119,3 +119,55 @@ def test_engine_stays_off_after_entering_until_started():
     car.engine_on = True
     assert apply_enter_exit_vehicle(car, pedestrian, False, audio) is True
     assert car.engine_on is True
+
+
+def _state(server):
+    from theroadragetrip import protocol
+
+    return protocol.build_state_message(
+        tick=server._tick, world=server.world, car=server.car, on_foot=server._on_foot,
+        player_pedestrian=server.world.player_pedestrian, game_time_seconds=server._game_time_seconds,
+        camx=server._camx, camy=server._camy, rage_power=server._rage_power, water_elapsed=server._water_elapsed,
+        current_way=server._current_way, language="en",
+    )["state"]
+
+
+def test_road_name_and_limit_follow_the_way_under_the_taxi(tmp_path, monkeypatch):
+    """godot-11: Pygame's HUD rules - the OSM name, else the highway type;
+    no road (and no limit) off-road."""
+    from types import SimpleNamespace
+
+    server = _build_server(tmp_path, monkeypatch)
+    assert _state(server)["road"] == {"name": None, "speed_limit_kmh": None}
+    server._current_way = SimpleNamespace(name="Isokatu", highway="primary", speed_limit_kmh=40)
+    assert _state(server)["road"] == {"name": "Isokatu", "speed_limit_kmh": 40}
+    server._current_way = SimpleNamespace(name="", highway="living_street", speed_limit_kmh=None)
+    assert _state(server)["road"] == {"name": "Living Street", "speed_limit_kmh": None}
+
+
+def test_speed_camera_notice_is_flagged_while_its_timer_runs(tmp_path, monkeypatch):
+    server = _build_server(tmp_path, monkeypatch)
+    taxi_mgr = server.world.taxi_mgr
+    assert _state(server)["taxi"]["speed_camera_notice"] is False
+    taxi_mgr.speed_camera_notice_timer, taxi_mgr.speed_camera_notice_msg = 4.0, "Speed camera!"
+    taxi_mgr.notification_msg, taxi_mgr.notification_timer = "Speed camera!", 4.0
+    assert _state(server)["taxi"]["speed_camera_notice"] is True
+    taxi_mgr.update(server.car, 4.1)  # the timer runs out: the message goes with it
+    assert _state(server)["taxi"]["speed_camera_notice"] is False
+
+
+def test_a_lightning_strike_sends_its_flash_and_one_thunder(tmp_path, monkeypatch):
+    server = _build_server(tmp_path, monkeypatch)
+    weather = server.world.weather
+    weather.update = lambda *args: None  # no weather of its own: the strike below is the only one
+    server.tick(1.0 / 30.0)
+    assert _state(server)["weather"]["lightning_intensity"] == 0.0
+    weather.lightning_event_id += 1
+    weather.lightning_intensity = 1.0
+    sent = []
+    server._broadcast_state = lambda **kwargs: sent.extend(kwargs["events"])
+    for _ in range(5):
+        server.tick(1.0 / 30.0)
+    thunders = [e for e in sent if e.get("group") == "weather.thunder"]
+    assert len(thunders) == 1  # once per strike, not every tick
+    assert _state(server)["weather"]["lightning_intensity"] == 1.0

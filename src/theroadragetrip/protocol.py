@@ -40,6 +40,8 @@ from dataclasses import asdict
 from typing import Any, Optional
 
 from .geo import angle_diff
+from .localization import tr
+from .rail_bookings import PASSENGER_MET, PASSENGER_WAITING
 from .simulation import PlayerCommand
 from .taxi import TaxiPassenger, TaxiTarget
 
@@ -225,6 +227,40 @@ def _line(points) -> list:
     return [[round(x, 1), round(y, 1)] for x, y in points]
 
 
+def _road_to_dict(current_way) -> dict:
+    """The road under the taxi as Pygame's HUD names it: the OSM name, else
+    the highway type title-cased; None off-road. The limit is the
+    simulation's own (None when unknown)."""
+    if current_way is None:
+        return {"name": None, "speed_limit_kmh": None}
+    name = getattr(current_way, "name", None) or (getattr(current_way, "highway", None) or "Road").replace("_", " ").title()
+    return {"name": name, "speed_limit_kmh": getattr(current_way, "speed_limit_kmh", None)}
+
+
+def _meet_to_dict(taxi_mgr, player_pedestrian, language: str) -> Optional[dict]:
+    """The meet & greet in progress, as Pygame's main() shows it: the
+    panel's three lines (taxi_mgr.meet_prompt, localized here) and, while
+    the passenger is out at the station, who the arrow points at."""
+    meet = taxi_mgr.meet_prompt(player_pedestrian)
+    if meet is None:
+        return None
+    booking, action = meet
+    pedestrian = booking.passenger.pedestrian
+    arrow = None
+    if pedestrian is not None and booking.status in (PASSENGER_WAITING, PASSENGER_MET):  # not while still at their origin
+        arrow = {"id": getattr(pedestrian, "resident_id", None), "x": round(pedestrian.x, 2), "y": round(pedestrian.y, 2),
+                 "radius_m": getattr(pedestrian, "radius_m", 0.45)}
+    return {
+        "status": booking.status,
+        "lines": [
+            tr(language, "meet_title", name=booking.passenger.name or "?"),
+            f"{booking.train_number} | {booking.station}",
+            tr(language, action, station=booking.station, arrival=f"{booking.arrival_at:%H:%M}"),
+        ],
+        "arrow": arrow,
+    }
+
+
 def build_world_message(center: tuple, chunk_size_m: float, player_id: str = LOCAL_PLAYER_ID) -> dict:
     """What a client learns once on connect: the map origin (it draws
     relative to it, for float32 precision), the chunk grid size, and which
@@ -239,7 +275,7 @@ def build_state_message(
     *, tick: int, world, car, on_foot: bool, player_pedestrian, game_time_seconds: float,
     camx: float, camy: float, rage_power: float, water_elapsed: float,
     should_stop: bool = False, city_summary: Optional[tuple] = None, events: Optional[list] = None,
-    server_time: float = 0.0, player_id: str = LOCAL_PLAYER_ID,
+    server_time: float = 0.0, player_id: str = LOCAL_PLAYER_ID, current_way=None, language: str = "en",
 ) -> dict:
     """Everything the Pygame client needs to render one frame, and nothing
     static (see module docstring). Called once per server tick."""
@@ -276,7 +312,10 @@ def build_state_message(
         "npcs": [_npc_to_dict(npc) for npc in world.npc_manager.vehicles],
         "pedestrians": [_pedestrian_to_dict(p) for p in world.pedestrian_mgr.pedestrians if p.resident_id is not None],
         "trains": [_train_to_dict(t) for t in getattr(getattr(world, "railway_mgr", None), "trains", ())],
-        "weather": {"weather_type": weather.weather_type.value, "wetness": weather.wetness},
+        "weather": {"weather_type": weather.weather_type.value, "wetness": weather.wetness,
+                    "lightning_intensity": weather.lightning_intensity},  # 1 at a strike, fading (render/weather.py)
+        "road": _road_to_dict(current_way),
+        "meet": _meet_to_dict(taxi_mgr, player_pedestrian, language),
         "taxi": {
             "state": taxi_mgr.state,
             "total_score": taxi_mgr.total_score,
@@ -284,6 +323,8 @@ def build_state_message(
             "balance_cents": taxi_mgr.balance_cents,
             "notification_msg": taxi_mgr.notification_msg,
             "notification_timer": taxi_mgr.notification_timer,
+            # The notice is a speed-camera hit: Pygame centres it with a red border.
+            "speed_camera_notice": taxi_mgr.speed_camera_notice_timer > 0.0 and bool(taxi_mgr.speed_camera_notice_msg),
             "taxi_smoke_timer": taxi_mgr.taxi_smoke_timer,
             "current_passenger": _passenger_to_dict(taxi_mgr.current_passenger),
         },

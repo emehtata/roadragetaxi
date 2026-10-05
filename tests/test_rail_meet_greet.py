@@ -1,5 +1,6 @@
 """Railway taxi phases 9-10: the booked passenger at the stand, met by the
 driver on foot with a name card and an explicit greeting."""
+import json
 from datetime import datetime, timedelta
 from types import SimpleNamespace
 
@@ -403,3 +404,42 @@ def test_from_accepting_the_panel_says_who_off_which_train_and_where():
     sooner.status = TRAIN_ARRIVING
     assert manager.meet_prompt(player) == (sooner, "meet_train_due")
     assert manager.meet_booking() is None  # no card or greeting before they are off the train
+
+
+def test_the_meet_crosses_the_wire_step_by_step():
+    """godot-11: the Godot client draws the meet panel and the arrow from
+    protocol's `meet`, which follows meet_prompt as Pygame's main() does."""
+    from theroadragetrip import protocol
+
+    bookings, train = booked_train("Aino Virtanen")
+    manager = taxi(bookings)
+    player = PlayerPedestrian(x=0.0, y=0.0)
+    meet = protocol._meet_to_dict(manager, player, "en")
+    assert meet["status"] == "ACCEPTED" and meet["arrow"] is None  # train due: no arrow yet
+    assert meet["lines"] == ["Meet: Aino Virtanen", "IC57 | Oulu", "Train due 18:42 - drive to Oulu taxi stand"]
+
+    bookings, (passenger,), pedestrians, manager, car = at_stand("Aino Virtanen")
+    meet = protocol._meet_to_dict(manager, player, "en")
+    assert meet["status"] == PASSENGER_WAITING and meet["lines"][2] == "Park and get out (F)"
+    assert (meet["arrow"]["x"], meet["arrow"]["y"]) == (20.0, 40.0)
+    assert meet["arrow"]["id"] == getattr(passenger.pedestrian, "resident_id", None)
+
+    player = get_out(car, manager)
+    assert protocol._meet_to_dict(manager, player, "en")["lines"][2] == "Walk to the passenger under the arrow"
+    walk_to(player, passenger.pedestrian)
+    assert protocol._meet_to_dict(manager, player, "en")["lines"][2] == "F: greet passenger"
+    assert press_f(car, player, manager) is True
+    meet = protocol._meet_to_dict(manager, player, "en")
+    assert meet["status"] == PASSENGER_MET and meet["arrow"] is not None  # walking to the taxi: still pointed at
+    assert meet["lines"][2] == "Passenger is coming - back to the taxi (F)"
+    assert json.loads(json.dumps(meet)) == meet
+
+
+def test_no_meet_on_the_wire_without_a_booking_or_after_it_is_missed():
+    from theroadragetrip import protocol
+
+    assert protocol._meet_to_dict(taxi(None), PlayerPedestrian(x=0.0, y=0.0), "en") is None
+    bookings, (passenger,), pedestrians, manager, car = at_stand("Aino Virtanen")
+    bookings.update(NOW + PICKUP_WINDOW + timedelta(seconds=1))
+    assert passenger.booking.status == MISSED
+    assert protocol._meet_to_dict(manager, PlayerPedestrian(x=0.0, y=0.0), "en") is None

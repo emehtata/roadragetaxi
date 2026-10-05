@@ -148,6 +148,7 @@ class SimulationServer:
         self._taxi_waiter_elapsed = 0.0
         self._saved_gig_fares = self.world.taxi_mgr.completed_fares
         self._tick = 0
+        self._lightning_event_id = self.world.weather.lightning_event_id
 
         self._command_lock = threading.Lock()
         self._latest_command = PlayerCommand()
@@ -235,6 +236,9 @@ class SimulationServer:
         time_scale = 1.0 if self.world.taxi_mgr.has_active_job() else 60.0
         self._game_time_seconds = (self._game_time_seconds + dt * time_scale) % (24.0 * 60.0 * 60.0)
         self.world.weather.update(dt * time_scale, dt)
+        if self.world.weather.lightning_event_id != self._lightning_event_id:  # a strike: thunder, once (as main())
+            self.audio.play_group("weather.thunder", 0.8)
+            self._lightning_event_id = self.world.weather.lightning_event_id
 
         result = advance_simulation(
             dt, command, self.car, self.world,
@@ -338,6 +342,7 @@ class SimulationServer:
             rage_power=self._rage_power, water_elapsed=self._water_elapsed,
             should_stop=should_stop, city_summary=city_summary, events=events,
             server_time=self._server_time, player_id=LOCAL_PLAYER_ID,
+            current_way=self._current_way, language=self.language,
         )
         with self._clients_lock:
             clients = list(self._clients)
