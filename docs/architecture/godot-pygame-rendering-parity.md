@@ -12,7 +12,8 @@ rows marked godot-10 after the re-audit of 2026-10-05 (`734a3b7`; see
 [phase 6b](#godot-16-the-rest-of-the-static-world), rows marked godot-17 after
 [the 2.5D buildings](#godot-17-25d-buildings); godot-18 changed no rows
 ([performance](#godot-18-performance-investigation)), rows marked godot-19 after
-[the GTA1-style extrusion](#godot-19-gta1-style-top-down-building-extrusion).
+[the first GTA1-style extrusion](#godot-19-gta1-style-top-down-building-extrusion),
+and godot-20 after the screenshot-authoritative radial correction below.
 
 The Pygame side is the actual per-frame draw sequence in
 `main/__init__.py`: about 80 `draw_*` calls between lines 2771 and 3446,
@@ -73,7 +74,7 @@ find customers, avoid hazards); `medium` means world-reading or feedback;
 | Trees | `draw_trees` | chunk `trees`: crown by kind and variation, seeded irregular blob; felled trees lie the way they were hit (`state.fallen_trees`); collision on the server — godot-13; seasonal crown colours from `calendar.season` — godot-15. Missing: the hit's shake and leaf burst (`tree_effects`, not sent), wind lean (`weather.tree_lean_m`, not sent) | partial | medium (collisions) | missing protocol data (shake, leaves, wind lean) | C |
 | Scenery objects: benches, bollards, fountains | `draw_scenery_objects` (+ knocked-over state) | bollards and knocked posts (godot-13), fuel pumps (godot-12), and the decorative kinds — bench (along its path), bin, bicycle parking, statue, picnic table, fire pit, fountain, gate — from chunk `scenery_objects` — godot-15 | complete | medium (bollards collide) | – | – |
 | Bus stops (option) | `draw_bus_stops` | chunk `bus_stops`: bay, shelter and "BUS" from the nearest road, computed once by the server — godot-16 (Oulu has none: bus stops are off by default) | complete | low | – | – |
-| Buildings | `draw_buildings` (cached geometry, facades) | GTA1-style top-down vertical building extrusion (godot-19): the footprint stays on the top-down map; walls rise straight up the screen by height × 0.35, no cap, the roof directly above the footprint - visible walls in Pygame's wall colours with windows and doors, the raised roof with its gabled facets and ridge. Not Pygame's renderer, and not pixel parity | different by design | high | – | – |
+| Buildings | `draw_buildings` (cached geometry, facades) | GTA1/GTA2-style screen-relative radial facade extrusion (godot-20): ground footprints stay exact; roofs project away from the live view centre by height × 0.35, exposing camera-facing walls toward the play area. Windows, doors and gabled roofs use the same volume geometry. Roads and the camera remain top-down. | different by design | high | – | – |
 | Open-roof canopies over vehicles | `draw_open_roof_overlays` | chunk `canopies`: shadow under the vehicles; raised by their own height (`canopy_heights`) as open structures, posts from the ground corners, the translucent roof above the vehicles - pumps visible under it (godot-16, -17) | complete | medium | – | – |
 | Tire tracks | `draw_tire_tracks` ×4 | the server's per-tick `tire_mark` (as `main()` decides it), laid along the drawn taxi, at most 4000 points — godot-16. The client keeps the trail, so a reconnect starts a new one | complete | low | – | – |
 | Roadworks barriers / cones | `draw_roadworks` | chunk `roadworks`: barriers at both ends (lane or full road), cones between, Pygame's pixel sizes — godot-12 | complete | high (block roads) | – | – |
@@ -1414,3 +1415,23 @@ design".
     they cover the street north of them, as in GTA1. If that hurts
     readability, a cap would be a separate constant.
   - software rendering is still under 30 FPS (godot-18).
+
+## godot-20: screen-relative radial facades
+
+The reference screenshots supersede godot-19's single upward vector. For a
+building centre `b`, view centre `c`, and height `h`, the roof offset is:
+
+`normalize(b - c) × h × 0.35`
+
+Thus a top-screen roof moves farther upward and its facade runs down toward
+the play area; bottom, left, and right buildings reverse or rotate that
+relationship naturally. The ground footprint never moves. An edge is visible
+when its winding-independent outward normal points opposite the roof offset.
+Windows and visible entrances are generated on those wall quads; pitched roofs
+and open canopies receive the same radial offset.
+
+The camera remains an ordinary top-down `Camera2D`; roads, terrain, vehicles,
+and pedestrians receive no projection. Geometry remains batched per chunk.
+Camera movement updates a chunk when its view angle changes by 0.06 radians,
+avoiding a full-city rebuild every frame while keeping the facade direction
+screen-relative.

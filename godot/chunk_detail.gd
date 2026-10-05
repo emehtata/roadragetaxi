@@ -126,7 +126,11 @@ static func draw_canopy_supports(chunk, node: Node2D) -> void:
 		for i in shadow.size():
 			shadow[i] += Vector2(0.35, 0.35)
 		node.draw_colored_polygon(shadow, Color8(30, 32, 33, 75))
-		var up := B25.lift(canopy_height(chunk, canopy))  # godot-17: posts from the ground corners up to the raised roof
+		var centre := Vector2.ZERO
+		for p in polygon:
+			centre += p
+		centre /= polygon.size()
+		var up := B25.lift(canopy_height(chunk, canopy), centre, chunk._building_view)
 		for point in polygon:
 			node.draw_line(point, point + up, OPEN_ROOF_POLE, maxf(chunk._px(1.0), 0.24))
 			node.draw_circle(point, maxf(chunk._px(1.0), 0.18) + chunk._px(1.0), OPEN_ROOF_EDGE)
@@ -145,7 +149,11 @@ static func canopy_height(chunk, canopy) -> float:
 static func draw_canopies(chunk, node: Node2D) -> void:
 	for canopy in chunk._data.get("canopies", []):
 		var polygon: PackedVector2Array = chunk._points(canopy).duplicate()
-		var up := B25.lift(canopy_height(chunk, canopy))  # raised as an open structure (godot-17)
+		var centre := Vector2.ZERO
+		for p in polygon:
+			centre += p
+		centre /= polygon.size()
+		var up := B25.lift(canopy_height(chunk, canopy), centre, chunk._building_view)
 		for i in polygon.size():
 			polygon[i] += up
 		if _valid(polygon):

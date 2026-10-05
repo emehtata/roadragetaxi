@@ -1,27 +1,17 @@
-## Buildings as GTA1-style top-down extrusion (godot-19): the camera looks
-## straight down and never rotates, so "up" out of the map is one fixed
-## screen direction, straight up the screen. A point at height h on a
-## building is drawn at its ground position plus lift(h):
+## GTA1/GTA2-style radial building extrusion. The ground stays orthographic.
+## Only height is projected: the roof moves away from the current view centre,
+## so the wall from roof to its unchanged ground edge opens toward the player.
 ##
-##   lift(h) = UP * h * BUILDING_HEIGHT_SCALE,  UP = (0, -1)
-##
-## in map metres (layer coordinates, y down). x never changes with height,
-## so a building stays horizontally where its footprint is; the same for
-## every building, independent of the player, the camera position and the
-## zoom. (godot-17 lifted along Pygame's oblique (-0.7, -1), capped at
-## 11.1 m - a diagonal lean that read as isometric.)
-##
-## The footprint stays where the map has it. Of its walls, those whose
-## outward normal points down the screen (against UP) face the viewer and
-## are drawn far to near, then the roof - the footprint lifted by the full
-## height - and its gabled facets. A wall running straight north-south is
-## edge-on and has no area. Windows and doors lie on the visible walls.
+## The footprint stays where the map has it. Walls whose outward normal
+## points back toward the view centre are drawn far to near, followed by the
+## radially offset roof and its gabled facets. Windows and doors lie on those
+## visible wall surfaces.
 ## Everything for one chunk is built once, at load, into one coloured
 ## triangle list in painter's order (shadow, walls, windows, doors, roof),
 ## plus a small list of the lit windows' glow.
 extends RefCounted
 
-const UP := Vector2(0.0, -1.0)  # screen direction of "up" (the camera never rotates)
+const UP := Vector2(0.0, -1.0)  # fallback for a building exactly under the camera
 const BUILDING_HEIGHT_SCALE := 0.35  # metres of screen lift per metre of height (Pygame's ratio), no cap
 const SHADOW := Color8(45, 42, 39, 110)
 const RIDGE := Color8(58, 55, 52)
@@ -34,8 +24,9 @@ const CANOPY_POST := Color8(105, 110, 112)
 
 
 ## The screen offset of height h (metres) above the ground.
-static func lift(height: float) -> Vector2:
-	return UP * maxf(height, 0.0) * BUILDING_HEIGHT_SCALE
+static func lift(height: float, building_centre := Vector2.ZERO, view_centre := Vector2.ZERO) -> Vector2:
+	var away: Vector2 = building_centre - view_centre
+	return (away.normalized() if not away.is_zero_approx() else UP) * maxf(height, 0.0) * BUILDING_HEIGHT_SCALE
 
 
 static func signed_area(polygon: PackedVector2Array) -> float:
@@ -47,7 +38,7 @@ static func signed_area(polygon: PackedVector2Array) -> float:
 
 ## Indices of the walls (edge i: point i to i + 1) seen from above-front:
 ## outward normal pointing down the screen. Works for any simple polygon, either winding.
-static func visible_walls(footprint: PackedVector2Array) -> PackedInt32Array:
+static func visible_walls(footprint: PackedVector2Array, roof_offset := UP) -> PackedInt32Array:
 	var walls := PackedInt32Array()
 	var outward_sign := -1.0 if signed_area(footprint) > 0.0 else 1.0  # y-down canvas: positive area = clockwise on screen, outward = -perpendicular
 	for i in footprint.size():
@@ -55,7 +46,7 @@ static func visible_walls(footprint: PackedVector2Array) -> PackedInt32Array:
 		if edge.length_squared() < 1e-6:
 			continue
 		var normal := Vector2(-edge.y, edge.x).normalized() * outward_sign
-		if normal.dot(UP) < -1e-6:
+		if normal.dot(roof_offset) < -1e-6:
 			walls.append(i)
 	return walls
 
@@ -73,7 +64,7 @@ static func unit(seed: float) -> float:
 ## glow, and per building the screen hull (headlights skip it).
 ## `buildings`: footprints (layer coordinates); `styles`: the server's
 ## [roof, gabled, height, entrances, wall, floors, category].
-static func build(buildings: Array, styles: Array, origin: Vector2) -> Dictionary:
+static func build(buildings: Array, styles: Array, origin: Vector2, view_centre := Vector2.ZERO) -> Dictionary:
 	var out := {"points": PackedVector2Array(), "colors": PackedColorArray(), "indices": PackedInt32Array(),
 		"lit_points": PackedVector2Array(), "lit_indices": PackedInt32Array(), "hulls": [],
 		"stats": {"buildings": 0, "walls": 0, "windows": 0, "lit": 0}}  # counts for the performance report
@@ -85,10 +76,10 @@ static func build(buildings: Array, styles: Array, origin: Vector2) -> Dictionar
 			for p in footprint:
 				centre += p
 			order.append([centre / footprint.size(), i])
-	order.sort_custom(func(a, b): return a[0].dot(UP) > b[0].dot(UP))  # far (north) first
+	order.sort_custom(func(a, b): return a[0].distance_squared_to(view_centre) > b[0].distance_squared_to(view_centre))
 	for entry in order:
 		var style: Array = styles[entry[1]] if entry[1] < styles.size() else []
-		_building(out, buildings[entry[1]], style, entry[0], origin)
+		_building(out, buildings[entry[1]], style, entry[0], origin, view_centre)
 	return out
 
 
@@ -113,18 +104,18 @@ static func _polygon(out: Dictionary, polygon: PackedVector2Array, color: Color)
 		out["indices"].append(base + t)
 
 
-static func _shade(color: Color, normal: Vector2) -> Color:
-	var f := 0.72 + 0.28 * clampf(-normal.dot(UP.normalized()), 0.0, 1.0)  # walls facing the viewer are lighter
+static func _shade(color: Color, normal: Vector2, roof_offset: Vector2) -> Color:
+	var f := 0.72 + 0.28 * clampf(-normal.dot(roof_offset.normalized()), 0.0, 1.0)
 	return Color(color.r * f, color.g * f, color.b * f, color.a)
 
 
-static func _building(out: Dictionary, footprint: PackedVector2Array, style: Array, centre: Vector2, origin: Vector2) -> void:
+static func _building(out: Dictionary, footprint: PackedVector2Array, style: Array, centre: Vector2, origin: Vector2, view_centre: Vector2) -> void:
 	var roof_color := Color8(int(style[0][0]), int(style[0][1]), int(style[0][2])) if style.size() > 0 else Color8(83, 86, 87)
 	var height: float = style[2] if style.size() > 2 else 8.0
 	var wall_color := Color8(int(style[4][0]), int(style[4][1]), int(style[4][2])) if style.size() > 4 else Color8(139, 139, 137)
 	var floors: int = int(style[5]) if style.size() > 5 else maxi(1, roundi(height / 3.0))
 	var category: int = int(style[6]) if style.size() > 6 else 0
-	var up := lift(height)
+	var up := lift(height, centre, view_centre)
 	var depth := up.length()
 	var roof := footprint.duplicate()
 	for i in roof.size():
@@ -132,16 +123,16 @@ static func _building(out: Dictionary, footprint: PackedVector2Array, style: Arr
 	# A soft shadow on the ground, below the building (one, under the volume).
 	var shadow := footprint.duplicate()
 	for i in shadow.size():
-		shadow[i] -= UP.normalized() * clampf(depth * 0.25, 0.3, 2.0)
+		shadow[i] -= up.normalized() * clampf(depth * 0.25, 0.3, 2.0)
 	_polygon(out, shadow, SHADOW)
 	# No base fill (godot-18): every footprint point lies under the raised roof or on a
 	# visible wall in front of it (walk from it down the screen: either the roof is
 	# reached within the height, or a visible wall is crossed), so it was always covered.
 	var outward_sign := -1.0 if signed_area(footprint) > 0.0 else 1.0
-	var walls := Array(visible_walls(footprint))
+	var walls := Array(visible_walls(footprint, up))
 	out["stats"]["buildings"] += 1
 	out["stats"]["walls"] += walls.size()
-	walls.sort_custom(func(a, b): return (footprint[a] + footprint[(a + 1) % footprint.size()]).dot(UP) > (footprint[b] + footprint[(b + 1) % footprint.size()]).dot(UP))
+	walls.sort_custom(func(a, b): return (footprint[a] + footprint[(a + 1) % footprint.size()]).distance_squared_to(view_centre) > (footprint[b] + footprint[(b + 1) % footprint.size()]).distance_squared_to(view_centre))
 	var stories := mini(floors, maxi(1, int(depth * 9.0 / 3.0)))  # Pygame: at most a floor per 3 px of facade
 	var seed_base := roundf(centre.x + origin.x) * 0.0001 + roundf(-centre.y + origin.y) * 0.00013
 	for i in walls:
@@ -149,7 +140,7 @@ static func _building(out: Dictionary, footprint: PackedVector2Array, style: Arr
 		var b := footprint[(i + 1) % footprint.size()]
 		var edge := b - a
 		var normal := Vector2(-edge.y, edge.x).normalized() * outward_sign
-		_quad(out, a, b, b + up, a + up, _shade(wall_color, normal))
+		_quad(out, a, b, b + up, a + up, _shade(wall_color, normal, up))
 		_windows(out, a, b, up, stories, category, seed_base + i * 7.13)
 	_doors(out, footprint, style[3] if style.size() > 3 else [], walls, up, stories, origin)
 	_polygon(out, roof, roof_color)

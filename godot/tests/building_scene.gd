@@ -1,7 +1,6 @@
-## godot-19 visual check: one synthetic chunk with each kind of building
-## beside a road, drawn by the real map layer, saved at three zooms. Red
-## outlines are the ground footprints: a correct extrusion has roofs straight
-## above them (same x), never shifted sideways.
+## godot-20 visual check: buildings surround the view centre so all four
+## radial facade directions are visible. Red outlines are unchanged ground
+## footprints; roofs project outward and their facades open toward the centre.
 ##   godot --path godot --script res://tests/building_scene.gd -- OUT_PREFIX
 extends SceneTree
 
@@ -59,6 +58,7 @@ func _initialize() -> void:
 	camera.position = MapMath.point(Vector2.ZERO, 75, 55)
 	root.add_child(camera)
 	camera.make_current()
+	map.set_building_view(camera.position)
 	for zoom: float in [4.0, 7.0, 12.0]:
 		camera.zoom = Vector2(zoom, zoom)
 		map.set_px_per_m(zoom)

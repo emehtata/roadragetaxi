@@ -31,7 +31,7 @@ extends Node2D
 
 const RS := preload("res://render_style.gd")
 const Detail := preload("res://chunk_detail.gd")  # godot-16: the rest of the static world's drawing
-const B25 := preload("res://buildings_25d.gd")  # godot-19: buildings extruded straight up (GTA1-style)
+const B25 := preload("res://buildings_25d.gd")
 const Perf := preload("res://perf.gd")
 const NightLayerScript := preload("res://night_layer.gd")
 const BRIDGE_Z_MAX := 3
@@ -48,6 +48,7 @@ var _puddle_spots: Array = []  # [{"at", "radius", "reveal", "shape"}]
 var _wetness := 0.0
 var _px_per_m := 9.0
 var _px_layers: Array[Node2D] = []  # point layers drawn in screen-pixel sizes
+var _canopy_layers: Array[Node2D] = []
 var _lights: Node2D = null  # traffic-light posts, if this chunk has any
 var _phases: Dictionary = {}  # post id (String) -> phase as last drawn
 var _font: Font = ThemeDB.fallback_font
@@ -116,11 +117,15 @@ func setup(message: Dictionary, origin: Vector2) -> void:
 	_px_layers.append(_add_layer(6, func(node: Node2D): Detail.draw_tracks(self, node, "railways")))
 	if not message.get("traffic_islands", []).is_empty():  # above the roads and rails (render/scenery.py)
 		_season_layers.append(_add_layer(6, func(node: Node2D): Detail.draw_areas(self, node, "traffic_islands")))
-	_px_layers.append(_add_layer(7, _draw_canopy_supports))
+	var canopy_supports := _add_layer(7, _draw_canopy_supports)
+	_px_layers.append(canopy_supports)
+	_canopy_layers.append(canopy_supports)
 	if not message.get("curbs", []).is_empty() or not message.get("crossings", []).is_empty() or not message.get("speed_bumps", []).is_empty():
 		_px_layers.append(_add_layer(8, func(node: Node2D): Detail.draw_road_features(self, node)))
 	if not message.get("canopies", []).is_empty():  # z11: above the vehicles; then rail bridges, then (entities) trains
-		_px_layers.append(_add_layer(11, func(node: Node2D): Detail.draw_canopies(self, node)))
+		var canopy_roofs := _add_layer(11, func(node: Node2D): Detail.draw_canopies(self, node))
+		_px_layers.append(canopy_roofs)
+		_canopy_layers.append(canopy_roofs)
 	if not message.get("rail_bridges", []).is_empty() or not message.get("rail_decks", []).is_empty():
 		_px_layers.append(_add_layer(11, func(node: Node2D): Detail.draw_rail_bridges(self, node)))
 	if not message.get("railings", []).is_empty():
@@ -354,9 +359,12 @@ var _volumes: Dictionary = {}  # buildings_25d.build: the chunk's buildings as t
 var building_node: Node2D = null  # drawn in MapLayer's building group (ordered far to near across chunks)
 var _lit_windows: Node2D = null  # the lit windows' glow, z 21 (over the night tint), additive
 var _darkness := 0.0  # as last set (lit windows built later take it)
+var _building_view := Vector2.ZERO
+var _built_view := Vector2.INF
 
 
-## The chunk's extruded buildings (godot-19), built once.
+## The chunk's radial building volumes, rebuilt only when its camera angle
+## crosses a small bucket.
 func _build_2_5d() -> void:
 	var buildings: Array = _data.get("buildings", [])
 	if buildings.is_empty():
@@ -365,22 +373,24 @@ func _build_2_5d() -> void:
 	building_node.draw.connect(_draw_volumes)
 	var styles: Array = _data.get("building_styles", [])
 	var origin := _origin
+	var view := _building_view
 	if not build_async:
-		_buildings_ready(_build_timed(buildings, styles, origin))
+		_buildings_ready(_build_timed(buildings, styles, origin, view))
 		return
 	# godot-18: built on a worker thread (up to ~45 ms for a dense chunk, in the
 	# frame that added it); the chunk shows at once, its buildings when ready.
-	_building_task = WorkerThreadPool.add_task(func(): _buildings_ready.call_deferred(_build_timed(buildings, styles, origin)))
+	_building_task = WorkerThreadPool.add_task(func(): _buildings_ready.call_deferred(_build_timed(buildings, styles, origin, view)))
 
 
 static var build_async := true  # tests build in place
 var _building_task := -1
 
 
-static func _build_timed(buildings: Array, styles: Array, origin: Vector2) -> Dictionary:
+static func _build_timed(buildings: Array, styles: Array, origin: Vector2, view_centre := Vector2.ZERO) -> Dictionary:
 	var started := Time.get_ticks_usec()
-	var volumes := B25.build(buildings, styles, origin)
+	var volumes := B25.build(buildings, styles, origin, view_centre)
 	volumes["build_usec"] = Time.get_ticks_usec() - started
+	volumes["view_centre"] = view_centre
 	return volumes
 
 
@@ -389,16 +399,48 @@ func _buildings_ready(volumes: Dictionary) -> void:
 		WorkerThreadPool.wait_for_task_completion(_building_task)
 		_building_task = -1
 	_volumes = volumes
+	_built_view = volumes.get("view_centre", _building_view)
 	Perf.add("chunk_buildings_build", volumes.get("build_usec", 0))
 	building_node.queue_redraw()
-	if not _volumes["lit_indices"].is_empty():
+	if not _volumes["lit_indices"].is_empty() and _lit_windows == null:
 		_lit_windows = Node2D.new()
 		var add := CanvasItemMaterial.new()
 		add.blend_mode = CanvasItemMaterial.BLEND_MODE_ADD  # render/buildings.py: BLEND_RGB_ADD
 		_lit_windows.material = add
 		_lit_windows.visible = false
 		_add_layer(21, func(node: Node2D): _triangles(node, _volumes["lit_points"], _volumes["lit_indices"], B25.WINDOW_LIT), _lit_windows)
+	if _lit_windows != null:
+		_lit_windows.queue_redraw()
 		set_darkness(_darkness)
+
+
+func set_building_view(view_centre: Vector2) -> void:
+	var has_buildings: bool = not _data.get("buildings", []).is_empty()
+	var has_canopies: bool = not _data.get("canopies", []).is_empty()
+	if not has_buildings and not has_canopies:
+		return
+	var from := _bounds_rect.get_center() - _built_view
+	var to := _bounds_rect.get_center() - view_centre
+	# ponytail: one angular bucket per chunk avoids rebuilding the whole city
+	# every frame; lower this threshold if close-up direction changes look stepped.
+	if _built_view != Vector2.INF and not from.is_zero_approx() and not to.is_zero_approx() and absf(from.angle_to(to)) < 0.06:
+		return
+	_building_view = view_centre
+	for node in _canopy_layers:
+		node.queue_redraw()
+	if not has_buildings:
+		_built_view = view_centre
+		return
+	if _building_task >= 0:
+		return
+	var buildings: Array = _data.get("buildings", [])
+	var styles: Array = _data.get("building_styles", [])
+	var origin := _origin
+	var view := _building_view
+	if build_async:
+		_building_task = WorkerThreadPool.add_task(func(): _buildings_ready.call_deferred(_build_timed(buildings, styles, origin, view)))
+	else:
+		_buildings_ready(_build_timed(buildings, styles, origin, view))
 
 
 ## The buildings' triangles go to the renderer, which keeps its own copy:
@@ -410,7 +452,7 @@ func _draw_volumes() -> void:
 	var started := Time.get_ticks_usec()
 	if _volumes.get("points", PackedVector2Array()).is_empty():
 		var hulls: Array = _volumes.get("hulls", [])
-		_volumes = B25.build(_data.get("buildings", []), _data.get("building_styles", []), _origin)
+		_volumes = B25.build(_data.get("buildings", []), _data.get("building_styles", []), _origin, _building_view)
 		_volumes["hulls"] = hulls if not hulls.is_empty() else _volumes["hulls"]
 	_triangles_colored(building_node, _volumes["points"], _volumes["indices"], _volumes["colors"])
 	for key in ["points", "colors", "indices"]:

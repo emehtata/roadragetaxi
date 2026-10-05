@@ -18,6 +18,7 @@ var _last_obstacles := [[], []]
 var season := [0.0, 0.0, 1.0, 0.0]  # [winter, spring, summer, autumn] as last applied
 var lights_on := false
 var _pool_group: Node2D  # every loaded chunk's street-light pools (each chunk's: their union, added once)
+var building_view_centre := Vector2.ZERO
 
 
 func _make_pool_group() -> void:
@@ -69,21 +70,33 @@ func clear() -> void:
 	_chunks.clear()
 
 
-## A chunk's buildings into the building group, in order: chunks further
-## north (B25.UP, "up" on screen) first, so a nearer chunk's
-## buildings cover a farther one's where their volumes meet - the order
-## within a chunk, across chunks. Chunks in one row go west to east (their
-## volumes rise straight up, so they rarely meet; the tie-break keeps the
-## order independent of load order).
+## A chunk's buildings into the shared group, farthest from the current view
+## centre first. Nearer radial volumes then cover farther ones.
 func _add_buildings(chunk: Node) -> void:
 	var centre: Vector2 = chunk._bounds_rect.get_center()
-	chunk.building_node.set_meta("depth", centre.dot(MapChunk.B25.UP) * 1e6 - centre.x)
+	chunk.building_node.set_meta("depth", centre.distance_squared_to(building_view_centre))
+	chunk.building_node.set_meta("centre", centre)
 	var at := 0
 	for other in _buildings.get_children():
 		if other.get_meta("depth") > chunk.building_node.get_meta("depth"):
 			at += 1
 	_buildings.add_child(chunk.building_node)
 	_buildings.move_child(chunk.building_node, at)
+
+
+func set_building_view(view_centre: Vector2) -> void:
+	if view_centre.is_equal_approx(building_view_centre):
+		return
+	building_view_centre = view_centre
+	for chunk in _chunks.values():
+		chunk.set_building_view(view_centre)
+	var ordered := _buildings.get_children()
+	for node in ordered:
+		node.set_meta("depth", Vector2(node.get_meta("centre")).distance_squared_to(view_centre))
+	ordered.sort_custom(func(a, b):
+		return Vector2(a.get_meta("centre")).distance_squared_to(view_centre) > Vector2(b.get_meta("centre")).distance_squared_to(view_centre))
+	for i in ordered.size():
+		_buildings.move_child(ordered[i], i)
 
 
 ## Night windows follow the server's darkness (no redraw).
@@ -118,6 +131,7 @@ func add_chunk(message: Dictionary) -> bool:
 		return false
 	var chunk := MapChunk.new()
 	chunk.name = "Chunk_" + chunk_id
+	chunk._building_view = building_view_centre
 	chunk.setup(message, origin)
 	chunk.set_wetness(wetness)
 	chunk.set_px_per_m(px_per_m)

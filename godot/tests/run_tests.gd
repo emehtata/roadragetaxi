@@ -788,12 +788,16 @@ func test_rest_of_static_world() -> void:
 	check(Instruments.TEXT_OUTLINE.v < 0.2 and Instruments.TEXT_OUTLINE_PX >= 3, "a dark outline under the light HUD text")
 
 
-## godot-19: buildings extruded straight up (GTA1-style) - height lifts
-## the roof up the screen only, the map stays top-down.
+## godot-20: buildings project radially away from the view centre, leaving
+## the ground map untouched and exposing facades toward the visible play area.
 func test_buildings_2_5d() -> void:
-	# The extrusion: straight up the screen, scaled by height, no cap, no diagonal.
-	check(B25.lift(10.0) == Vector2(0.0, -3.5), "lift(10 m) = (0, -10 x 0.35): vertical only")
-	check(B25.lift(100.0).x == 0.0 and B25.lift(100.0).y < B25.lift(40.0).y * 2.0, "no diagonal and no cap: 100 m lifts 2.5 x as far as 40 m")
+	# The extrusion is screen-relative: roofs move away from the camera, so
+	# their walls run back toward the centre on every side of the screen.
+	check(B25.lift(10.0, Vector2(0, -20), Vector2.ZERO) == Vector2(0.0, -3.5), "top-screen roof projects upward")
+	check(B25.lift(10.0, Vector2(0, 20), Vector2.ZERO) == Vector2(0.0, 3.5), "bottom-screen roof projects downward")
+	check(B25.lift(10.0, Vector2(-20, 0), Vector2.ZERO) == Vector2(-3.5, 0.0), "left-screen roof projects left")
+	check(B25.lift(10.0, Vector2(20, 0), Vector2.ZERO) == Vector2(3.5, 0.0), "right-screen roof projects right")
+	check(B25.lift(100.0).y < B25.lift(40.0).y * 2.0, "no height cap: 100 m projects 2.5 x as far as 40 m")
 	check(B25.lift(3.0).length() < B25.lift(9.0).length() and B25.lift(9.0).length() < B25.lift(30.0).length(), "taller lifts further")
 
 	# Visible walls: those whose outward side faces down the screen, either winding.
@@ -806,27 +810,20 @@ func test_buildings_2_5d() -> void:
 	check(B25.visible_walls(diamond) == PackedInt32Array([1, 2]), "a turned box shows its two lower walls")
 	var l_shape := PackedVector2Array([Vector2(0, 0), Vector2(20, 0), Vector2(20, 10), Vector2(10, 10), Vector2(10, 20), Vector2(0, 20)])
 	check(B25.visible_walls(l_shape) == PackedInt32Array([2, 4]), "an L shows the notch's south wall and the bottom wall")
-	var l_out: Dictionary = B25.build([l_shape], [[[92, 57, 48], 0, 10.0, [], [158, 105, 82], 3, 0]], Vector2.ZERO)
+	var view := Vector2(10, 100)
+	var l_up := B25.lift(10.0, Vector2(10, 10), view)
+	var l_out: Dictionary = B25.build([l_shape], [[[92, 57, 48], 0, 10.0, [], [158, 105, 82], 3, 0]], Vector2.ZERO, view)
 	var l_points: PackedVector2Array = l_out["points"]
-	check(l_points.has(Vector2(20, 10) + B25.lift(10.0)) and l_points.has(Vector2(0, 20) + B25.lift(10.0)), "L walls rise straight up from their ground edges")
+	check(l_points.has(Vector2(20, 10) + l_up) and l_points.has(Vector2(0, 20) + l_up), "L walls use the same radial projection")
 
 	# Footprint and alignment: height never moves a building sideways.
 	for h: float in [5.0, 20.0, 100.0]:
-		var o: Dictionary = B25.build([box], [[[92, 57, 48], 0, h, [], [158, 105, 82], 3, 0]], Vector2.ZERO)
-		var xs := {}
-		for p in o["points"]:
-			xs[snappedf(p.x, 0.001)] = true
-		check(o["points"].has(Vector2(20, 10)) and o["points"].has(Vector2(0, 10)) and o["points"].has(Vector2(0, 10) + B25.lift(h)),
-			"%d m: ground edge where the footprint is, raised edge straight above it" % h)
-		var hull: PackedVector2Array = o["hulls"][0]
-		var lo := INF
-		var hi := -INF
-		for p in hull:
-			lo = minf(lo, p.x)
-			hi = maxf(hi, p.x)
-		check(is_equal_approx(lo, 0.0) and is_equal_approx(hi, 20.0), "%d m: the volume spans exactly the footprint's x" % h)
-	var flip: Dictionary = B25.build([reversed], [[[92, 57, 48], 0, 10.0, [], [158, 105, 82], 3, 0]], Vector2.ZERO)
-	var fwd: Dictionary = B25.build([box], [[[92, 57, 48], 0, 10.0, [], [158, 105, 82], 3, 0]], Vector2.ZERO)
+		var radial := B25.lift(h, Vector2(10, 5), view)
+		var o: Dictionary = B25.build([box], [[[92, 57, 48], 0, h, [], [158, 105, 82], 3, 0]], Vector2.ZERO, view)
+		check(o["points"].has(Vector2(20, 10)) and o["points"].has(Vector2(0, 10)) and o["points"].has(Vector2(0, 10) + radial),
+			"%d m: ground edge stays fixed and roof edge gets the radial offset" % h)
+	var flip: Dictionary = B25.build([reversed], [[[92, 57, 48], 0, 10.0, [], [158, 105, 82], 3, 0]], Vector2.ZERO, view)
+	var fwd: Dictionary = B25.build([box], [[[92, 57, 48], 0, 10.0, [], [158, 105, 82], 3, 0]], Vector2.ZERO, view)
 	var fp := Array(fwd["points"])
 	var rp := Array(flip["points"])
 	fp.sort()
@@ -835,12 +832,12 @@ func test_buildings_2_5d() -> void:
 
 	# The built geometry: walls from the ground edge to the lifted edge; the roof is the footprint lifted.
 	var style := [[92, 57, 48], 0, 10.0, [], [158, 105, 82], 3, 0]
-	var out: Dictionary = B25.build([box], [style], Vector2.ZERO)
-	var up := B25.lift(10.0)
+	var out: Dictionary = B25.build([box], [style], Vector2.ZERO, view)
+	var up := B25.lift(10.0, Vector2(10, 5), view)
 	var points: PackedVector2Array = out["points"]
 	var has := func(p: Vector2) -> bool: return points.has(p)
-	check(has.call(Vector2(20, 10)) and has.call(Vector2(20, 10) + up) and has.call(Vector2(0, 10) + up), "the south wall spans ground to roof, corners vertically aligned")
-	check(has.call(Vector2(0, 0) + up) and has.call(Vector2(20, 0) + up), "the roof is the footprint straight above it")
+	check(has.call(Vector2(20, 10)) and has.call(Vector2(20, 10) + up) and has.call(Vector2(0, 10) + up), "the south wall spans its fixed ground edge to the radial roof edge")
+	check(has.call(Vector2(0, 0) + up) and has.call(Vector2(20, 0) + up), "the roof is the footprint plus the radial height projection")
 	for i in out["colors"].size():
 		if out["colors"][i] == B25.WINDOW:
 			var p: Vector2 = points[i]
@@ -848,20 +845,20 @@ func test_buildings_2_5d() -> void:
 			break
 	check(out["colors"].has(Color8(92, 57, 48)) and out["colors"].has(Color8(58, 80, 94)), "roof colour and facade windows from the style")
 	check(out["indices"].size() % 3 == 0 and out["hulls"].size() == 1, "triangles; one hull (headlights) per building")
-	var again: Dictionary = B25.build([box], [style], Vector2.ZERO)
+	var again: Dictionary = B25.build([box], [style], Vector2.ZERO, view)
 	check(again["points"] == out["points"] and again["colors"] == out["colors"] and again["lit_points"] == out["lit_points"],
 		"deterministic: a reloaded chunk builds the same building, lit windows included")
-	var tall: Dictionary = B25.build([box], [[[92, 57, 48], 0, 30.0, [], [158, 105, 82], 10, 0]], Vector2.ZERO)
+	var tall: Dictionary = B25.build([box], [[[92, 57, 48], 0, 30.0, [], [158, 105, 82], 10, 0]], Vector2.ZERO, view)
 	check(tall["points"].size() > out["points"].size(), "a taller building has more floors of windows")
 
 	# Gabled roof: two facets and the ridge, on the raised roof.
-	var gabled: Dictionary = B25.build([box], [[[92, 57, 48], 1, 10.0, [], [158, 105, 82], 3, 0]], Vector2.ZERO)
+	var gabled: Dictionary = B25.build([box], [[[92, 57, 48], 1, 10.0, [], [158, 105, 82], 3, 0]], Vector2.ZERO, view)
 	check(gabled["colors"].has(Color8(92, 57, 48).lightened(14.0 / 255.0)) and gabled["colors"].has(B25.RIDGE), "pitched roof: lit facet and ridge")
 	check(gabled["points"].has(Vector2(0, 0) + up) and gabled["points"].has(Vector2(20, 10) + up), "the pitched roof is over the footprint, not shifted")
 
 	# Doors: on a visible wall at the entrance, one storey high; not on a hidden wall.
-	var south_door: Dictionary = B25.build([box], [[[92, 57, 48], 0, 10.0, [[10.0, -10.0]], [158, 105, 82], 3, 0]], Vector2.ZERO)
-	var north_door: Dictionary = B25.build([box], [[[92, 57, 48], 0, 10.0, [[10.0, 0.0]], [158, 105, 82], 3, 0]], Vector2.ZERO)
+	var south_door: Dictionary = B25.build([box], [[[92, 57, 48], 0, 10.0, [[10.0, -10.0]], [158, 105, 82], 3, 0]], Vector2.ZERO, view)
+	var north_door: Dictionary = B25.build([box], [[[92, 57, 48], 0, 10.0, [[10.0, 0.0]], [158, 105, 82], 3, 0]], Vector2.ZERO, view)
 	check(south_door["colors"].has(B25.DOOR) and not north_door["colors"].has(B25.DOOR), "a door on the south wall shows; one on the hidden north wall doesn't")
 
 	# Lit windows: Pygame's probabilities, by category; the glow is a separate list.
@@ -881,9 +878,11 @@ func test_buildings_2_5d() -> void:
 		"canopies": [[[100, 100], [110, 100], [110, 110], [100, 110]]], "canopy_heights": [6.0]}))
 	map.add_chunk(south)
 	map.add_chunk(north)
-	check(map._buildings.get_child_count() == 2 and map._buildings.get_child(0) == map._chunks["0_1"].building_node, "the northern (farther) chunk's buildings first")
+	check(map._buildings.get_child_count() == 2 and map._buildings.get_child(0) == map._chunks["0_1"].building_node, "the farther chunk's buildings draw first")
+	map.set_building_view(Vector2(0, 100))
+	check(map._chunks["0_0"]._built_view == Vector2(0, 100), "camera movement recalculates radial building geometry")
 	map.add_chunk(JSON.parse_string(JSON.stringify({"chunk_id": "1_0", "bounds": [500, 0, 1000, 500], "buildings": [[[510, 10], [530, 10], [530, 30], [510, 30]]], "building_styles": [style]})))
-	check(map._buildings.get_child(2) == map._chunks["1_0"].building_node, "one row: west before east, whatever the load order")
+	check(map._buildings.get_child(2) == map._chunks["0_0"].building_node, "radial order: the chunk nearest the view centre draws last")
 	map.remove_chunk("1_0")
 	check(map._chunks["0_0"].building_shapes()[0][1].size() >= 4, "headlights clip against the whole projected volume")
 	check(is_equal_approx(Detail.canopy_height(map._chunks["0_0"], map._chunks["0_0"]._data["canopies"][0]), 6.0), "a canopy is raised by its own height")

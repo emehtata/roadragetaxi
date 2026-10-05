@@ -310,6 +310,7 @@ func _present(state: Dictionary) -> void:
 	instruments.show_state(state)
 	map_layer.set_wetness(state.get("weather", {}).get("wetness", 0.0) if override_wetness < 0.0 else override_wetness)
 	map_layer.set_px_per_m(camera.zoom.x)  # after the camera is placed; only reads its zoom
+	map_layer.set_building_view(camera.position)
 	map_layer.set_traffic_lights(state.get("traffic_lights", {}))
 	# godot-16: below ground (the server's map level), the flashing speed camera, the labels.
 	var level := int(state.get("player", {}).get("map_level", 0))
