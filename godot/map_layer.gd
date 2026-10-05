@@ -11,6 +11,16 @@ var origin := Vector2.ZERO
 var wetness := 0.0  # road wetness as last applied (bucketed, see set_wetness)
 var px_per_m := 9.0  # the camera zoom, for the chunks' pixel-sized points
 var phases: Dictionary = {}  # traffic-light phases as last applied (state "traffic_lights")
+var fallen: Dictionary = {}  # felled trees: MapChunk.obstacle_key -> angle (state "fallen_trees")
+var knocked: Dictionary = {}  # knocked posts: key -> [x, y, angle, kind] (state "knocked_posts")
+var _knocked_posts := Node2D.new()  # drawn here, from the state: a lamp has no static data
+var _last_obstacles := [[], []]
+
+
+func _ready() -> void:
+	_knocked_posts.z_index = 6
+	_knocked_posts.draw.connect(_draw_knocked_posts)
+	add_child(_knocked_posts)
 var _chunks: Dictionary = {}  # chunk_id -> MapChunk
 
 
@@ -18,6 +28,7 @@ func set_origin(world_origin: Vector2) -> void:
 	origin = world_origin
 	clear()
 	queue_redraw()
+	_knocked_posts.queue_redraw()
 
 
 func clear() -> void:
@@ -45,6 +56,7 @@ func add_chunk(message: Dictionary) -> bool:
 	chunk.set_wetness(wetness)
 	chunk.set_px_per_m(px_per_m)
 	chunk.set_phases(phases)
+	chunk.set_obstacles(fallen, knocked)
 	add_child(chunk)
 	_chunks[chunk_id] = chunk
 	return true
@@ -56,6 +68,7 @@ func set_px_per_m(value: float) -> void:
 	px_per_m = value
 	for chunk in _chunks.values():
 		chunk.set_px_per_m(px_per_m)
+	_knocked_posts.queue_redraw()
 
 
 ## The simulation's traffic-light phases this tick; chunks redraw only
@@ -66,6 +79,32 @@ func set_traffic_lights(value: Dictionary) -> void:
 	phases = value
 	for chunk in _chunks.values():
 		chunk.set_phases(phases)
+
+
+## The simulation's felled trees and knocked posts this tick (lists that
+## only grow, so usually unchanged): chunks redraw only their own.
+func set_obstacles(fallen_trees: Array, knocked_posts: Array) -> void:
+	if fallen_trees == _last_obstacles[0] and knocked_posts == _last_obstacles[1]:
+		return
+	_last_obstacles = [fallen_trees, knocked_posts]
+	fallen = {}
+	for tree in fallen_trees:
+		fallen[MapChunk.obstacle_key(tree[0], tree[1])] = float(tree[2])
+	knocked = {}
+	for post in knocked_posts:
+		knocked[MapChunk.obstacle_key(post[0], post[1])] = post
+	for chunk in _chunks.values():
+		chunk.set_obstacles(fallen, knocked)
+	_knocked_posts.queue_redraw()
+
+
+## render/scenery.py: a post hit hard lies bent over the way the taxi went
+## (a street lamp 4 m, a bollard 0.9 m).
+func _draw_knocked_posts() -> void:
+	for post in knocked.values():
+		var at := MapMath.point(origin, post[0], post[1])
+		var length := 4.0 if post[3] == "street_lamp" else 0.9
+		_knocked_posts.draw_line(at, at + Vector2(cos(post[2]), -sin(post[2])) * length, Color8(88, 90, 92), maxf(2.0 / px_per_m, 0.25))
 
 
 ## The weather's road wetness 0..1 (state "weather.wetness"). Applied in

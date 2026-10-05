@@ -7,9 +7,11 @@
 ##   z1  roads at ground level and below, lowest layer first
 ##   z2+ bridges: layer 1, 2, 3 (higher clamps to 3)
 ##   z5  wet-road darkening and sheen, puddles (weather; alpha follows wetness)
-##   z6  railways; fuel pumps (Pygame draws scenery objects before buildings)
+##   z6  railways; trees, bollards, fuel pumps (Pygame draws trees and scenery
+##       objects before buildings); a felled tree lies down, a knocked bollard
+##       is drawn by MapLayer from the state instead
 ##   z7  buildings
-##   z8  roadworks, taxi-stand signs; traffic-light posts (own node, redrawn
+##   z8  construction-site fences, roadworks, taxi-stand signs; traffic-light posts (own node, redrawn
 ##       only when one of its lights changes phase - the phase is the server's)
 ##   z11 fuel price boards: above the vehicles, as draw_fuel_station_signs
 ##
@@ -40,6 +42,9 @@ var _px_layers: Array[Node2D] = []  # point layers drawn in screen-pixel sizes
 var _lights: Node2D = null  # traffic-light posts, if this chunk has any
 var _phases: Dictionary = {}  # post id (String) -> phase as last drawn
 var _font: Font = ThemeDB.fallback_font
+var _trees: Node2D = null  # trees and bollards, if this chunk has any
+var _fallen: Dictionary = {}  # MapMath key -> angle, for this chunk's felled trees
+var _knocked: Dictionary = {}  # keys of this chunk's bollards lying flat
 
 
 func setup(message: Dictionary, origin: Vector2) -> void:
@@ -66,6 +71,11 @@ func setup(message: Dictionary, origin: Vector2) -> void:
 	_add_layer(5, _draw_puddles, _puddles)
 	_add_layer(6, _draw_railways)
 	_add_layer(7, _draw_buildings)
+	if not message.get("trees", []).is_empty() or not message.get("bollards", []).is_empty():
+		_trees = _add_layer(6, _draw_trees)
+		_px_layers.append(_trees)
+	if not message.get("construction_fences", []).is_empty():
+		_px_layers.append(_add_layer(8, _draw_fences))
 	if not message.get("fuel_stations", []).is_empty():
 		_px_layers.append(_add_layer(6, _draw_fuel_pumps))
 		_px_layers.append(_add_layer(11, _draw_fuel_boards))
@@ -127,6 +137,36 @@ func set_phases(phases: Dictionary) -> bool:
 	if changed:
 		_lights.queue_redraw()
 	return changed
+
+
+## The simulation's felled trees ({key: angle}) and knocked posts ({key:
+## ...}), keyed by position (obstacle_key): redraws this chunk's trees only
+## if one of its own changed. Returns whether it did.
+func set_obstacles(fallen: Dictionary, knocked: Dictionary) -> bool:
+	if _trees == null:
+		return false
+	var own_fallen := {}
+	for tree in _data.get("trees", []):
+		var key := obstacle_key(tree[0], tree[1])
+		if fallen.has(key):
+			own_fallen[key] = fallen[key]
+	var own_knocked := {}
+	for post in _data.get("bollards", []):
+		var key := obstacle_key(post[0], post[1])
+		if knocked.has(key):
+			own_knocked[key] = true
+	if own_fallen == _fallen and own_knocked == _knocked:
+		return false
+	_fallen = own_fallen
+	_knocked = own_knocked
+	_trees.queue_redraw()
+	return true
+
+
+## How the state names a static obstacle: its position at 0.1 m, as both
+## the chunks and the state round it.
+static func obstacle_key(x: float, y: float) -> String:
+	return "%.1f,%.1f" % [x, y]
 
 
 func _px(pixels: float) -> float:
@@ -192,6 +232,82 @@ func _draw_buildings(node: Node2D) -> void:
 		var outline := _points(building)
 		if outline.size() >= 3 and not Geometry2D.triangulate_polygon(outline).is_empty():
 			node.draw_colored_polygon(outline, Color(0.6, 0.58, 0.55))
+
+
+const TREE_CROWNS := {  # render/scenery.py TREE_CROWN_PALETTES
+	"spruce": [Color8(14, 54, 20), Color8(18, 64, 24), Color8(24, 76, 30)],
+	"pine": [Color8(88, 108, 42), Color8(102, 122, 50), Color8(118, 136, 60)],
+	"birch": [Color8(25, 78, 29), Color8(34, 101, 35), Color8(48, 119, 42), Color8(63, 112, 34)],
+}
+
+
+## A tree's look from its kind and variation (render/scenery.py
+## _draw_trees_uncached): crown colour and radius in metres, trunk colour.
+static func tree_style(kind: String, variation: float) -> Dictionary:
+	var palette: Array = TREE_CROWNS.get(kind, TREE_CROWNS["birch"])
+	var size := 0.72 + variation * 0.62
+	var trunk := Color8(222, 218, 206)
+	if kind == "pine":
+		trunk = Color8(112 + int(20 * variation), 70 + int(14 * variation), 36)
+	elif kind != "birch":
+		trunk = Color8(78 + int(22 * variation), 52 + int(18 * variation), 27)
+	return {"crown": palette[mini(palette.size() - 1, int(variation * palette.size()))],
+		"radius": (1.9 if kind == "pine" else 2.2) * size, "trunk": trunk, "trunk_width": 0.7 * size}
+
+
+## render/scenery.py draw_trees: an irregular crown blob seeded by the
+## tree's position (same shape every redraw); a felled tree lies 3.2 m
+## along the way it was hit, trunk showing. Then the standing bollards.
+func _draw_trees(node: Node2D) -> void:
+	var rng := RandomNumberGenerator.new()
+	for tree in _data.get("trees", []):
+		var at := MapMath.point(_origin, tree[0], tree[1])
+		var style := tree_style(str(tree[2]), float(tree[3]))
+		var radius := maxf(_px(2.0), style["radius"])
+		var key := obstacle_key(tree[0], tree[1])
+		if _fallen.has(key):
+			var tip := at + Vector2(cos(_fallen[key]), -sin(_fallen[key])) * 3.2
+			node.draw_line(at, tip, style["trunk"], maxf(_px(2.0), style["trunk_width"]))
+			node.draw_circle(tip, radius, style["crown"])
+			continue
+		rng.seed = hash(key)
+		var crown := PackedVector2Array()
+		for i in 8:
+			var angle := TAU * i / 8.0 + rng.randf_range(-0.2, 0.2)
+			crown.append(at + Vector2(cos(angle), sin(angle)) * radius * rng.randf_range(0.78, 1.15))
+		node.draw_colored_polygon(crown, style["crown"])
+	for post in _data.get("bollards", []):
+		if not _knocked.has(obstacle_key(post[0], post[1])):
+			node.draw_circle(MapMath.point(_origin, post[0], post[1]), maxf(_px(1.0), 0.25), Color8(48, 48, 46))
+
+
+## render/scenery.py draw_construction_fences: the site's outline as a
+## dashed hazard fence (1.5 m dashes, 1 m gaps, continuous round the ring).
+func _draw_fences(node: Node2D) -> void:
+	for ring in _data["construction_fences"]:
+		var points := _points(ring)
+		points.append(points[0])
+		for dash in dashes(points, 1.5, 1.0):
+			node.draw_line(dash[0], dash[1], Color8(235, 140, 30), maxf(_px(1.0), 0.25))
+
+
+## [from, to] pieces of a polyline: `dash` long, `gap` apart, the pattern
+## carried over the corners.
+static func dashes(points: PackedVector2Array, dash: float, gap: float) -> Array:
+	var pieces: Array = []
+	var phase := 0.0  # distance into the current dash+gap period
+	for i in points.size() - 1:
+		var a := points[i]
+		var b := points[i + 1]
+		var length := a.distance_to(b)
+		var done := 0.0
+		while done < length:
+			var step := minf(length - done, (dash - phase) if phase < dash else (dash + gap - phase))
+			if phase < dash:
+				pieces.append([a.lerp(b, done / length), a.lerp(b, (done + step) / length)])
+			done += step
+			phase = fmod(phase + step, dash + gap)
+	return pieces
 
 
 ## render/scenery.py draw_scenery_objects' "fuel" pumps: red pumps with a

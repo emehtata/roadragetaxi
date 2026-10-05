@@ -41,6 +41,7 @@ func _process(_delta: float) -> bool:  # first frame: the tree is live, so nodes
 	test_drive_input()
 	test_meet_road_camera_lightning()
 	test_gameplay_points()
+	test_obstacles()
 	print("%d checks, %d failed" % [_checks, _failures])
 	quit(1 if _failures > 0 else 0)
 	return false
@@ -525,3 +526,47 @@ func test_gameplay_points() -> void:
 
 func map_message_copy(message: Dictionary) -> Dictionary:
 	return message.duplicate(true)
+
+
+## godot-13: trees, construction fences and bollards come and go with their
+## chunk; felled trees and knocked posts are the server's state, matched by
+## position. (Collision stays on the server: nothing here collides.)
+func test_obstacles() -> void:
+	var map := MapLayer.new()
+	root.add_child(map)
+	map.set_origin(Vector2(1000, 2000))
+	var message: Dictionary = JSON.parse_string(JSON.stringify({"chunk_id": "2_4", "bounds": [1000, 2000, 1500, 2500],
+		"roads": [], "railways": [], "waters": [], "buildings": [],
+		"trees": [[1010.0, 2020.0, "pine", 0.25], [1030.0, 2020.0, "birch", 0.8]],
+		"construction_fences": [[[1100.0, 2100.0], [1110.0, 2100.0], [1110.0, 2110.0]]],
+		"bollards": [[1040.0, 2000.0]]}))
+	check(map.add_chunk(message) and not map.add_chunk(message), "obstacles arrive with their chunk, once")
+	var chunk = map._chunks["2_4"]
+	check(chunk._trees != null and chunk._px_layers.size() == 2, "trees and bollards share one canvas item, fences another")
+	check(MapChunk.obstacle_key(1010.0, 2020.0) == "1010.0,2020.0", "obstacles are named by position at 0.1 m, as the server rounds")
+
+	# Look, as render/scenery.py: palette by variation, pine crowns smaller.
+	var pine := MapChunk.tree_style("pine", 0.25)
+	check(pine["crown"] == Color8(88, 108, 42) and is_equal_approx(pine["radius"], 1.9 * (0.72 + 0.25 * 0.62)), "a pine's crown")
+	check(MapChunk.tree_style("birch", 0.8)["trunk"] == Color8(222, 218, 206) and is_equal_approx(MapChunk.tree_style("birch", 0.8)["radius"], 2.2 * (0.72 + 0.8 * 0.62)), "a birch's crown and white trunk")
+
+	# Dashes: 1.5 m on, 1 m off, carried round a corner.
+	var pieces := MapChunk.dashes(PackedVector2Array([Vector2(0, 0), Vector2(2, 0), Vector2(2, 3)]), 1.5, 1.0)
+	check(pieces.size() == 2 and pieces[0] == [Vector2(0, 0), Vector2(1.5, 0)] and pieces[1][0].is_equal_approx(Vector2(2, 0.5)) and pieces[1][1].is_equal_approx(Vector2(2, 2)), "dash pattern carries over the corner")
+
+	# The server's state: a felled tree, a knocked bollard and a knocked lamp (no static lamp data).
+	var fallen: Array = JSON.parse_string("[[1010.0, 2020.0, 1.5]]")
+	var knocked: Array = JSON.parse_string("[[1040.0, 2000.0, 3.14, \"bollard\"], [1200.0, 2200.0, 0.0, \"street_lamp\"]]")
+	map.set_obstacles(fallen, knocked)
+	check(chunk._fallen == {"1010.0,2020.0": 1.5} and chunk._knocked.has("1040.0,2000.0"), "the chunk takes its own felled tree and knocked bollard")
+	check(map.knocked.size() == 2, "the knocked lamp is drawn from the state alone")
+	check(not chunk.set_obstacles(map.fallen, map.knocked), "unchanged state: no redraw")
+	map.set_obstacles(fallen.duplicate(true), knocked.duplicate(true))
+	check(chunk._fallen.size() == 1, "the same lists again change nothing")
+
+	# Unload and reload: gone, back once, still felled.
+	check(map.remove_chunk("2_4") and map.chunk_count() == 0, "obstacles go with their chunk")
+	check(map.add_chunk(message.duplicate(true)) and map._chunks["2_4"]._fallen.has("1010.0,2020.0"), "reloaded, the felled tree is still down")
+	check(map.chunk_count() == 1 and not map.add_chunk(message), "no duplicate after a revisit")
+	check(map.add_chunk({"chunk_id": "0_0"}) and map._chunks["0_0"]._trees == null, "a chunk without obstacles adds no layer (older servers too)")
+	map.free()
