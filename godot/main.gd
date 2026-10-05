@@ -226,6 +226,8 @@ func _present(state: Dictionary) -> void:
 	hud.show_state(state)
 	instruments.show_state(state)
 	map_layer.set_wetness(state.get("weather", {}).get("wetness", 0.0) if override_wetness < 0.0 else override_wetness)
+	map_layer.set_px_per_m(camera.zoom.x)  # after the camera is placed; only reads its zoom
+	map_layer.set_traffic_lights(state.get("traffic_lights", {}))
 	phone.show_phone(state.get("phone", {}))
 	var target: Dictionary = entities.current_target(state)
 	var target_screen := Vector2.ZERO

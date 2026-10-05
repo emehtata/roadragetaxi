@@ -9,6 +9,8 @@ const MapChunk := preload("res://map_chunk.gd")
 
 var origin := Vector2.ZERO
 var wetness := 0.0  # road wetness as last applied (bucketed, see set_wetness)
+var px_per_m := 9.0  # the camera zoom, for the chunks' pixel-sized points
+var phases: Dictionary = {}  # traffic-light phases as last applied (state "traffic_lights")
 var _chunks: Dictionary = {}  # chunk_id -> MapChunk
 
 
@@ -41,9 +43,29 @@ func add_chunk(message: Dictionary) -> bool:
 	chunk.name = "Chunk_" + chunk_id
 	chunk.setup(message, origin)
 	chunk.set_wetness(wetness)
+	chunk.set_px_per_m(px_per_m)
+	chunk.set_phases(phases)
 	add_child(chunk)
 	_chunks[chunk_id] = chunk
 	return true
+
+
+func set_px_per_m(value: float) -> void:
+	if is_equal_approx(value, px_per_m):
+		return
+	px_per_m = value
+	for chunk in _chunks.values():
+		chunk.set_px_per_m(px_per_m)
+
+
+## The simulation's traffic-light phases this tick; chunks redraw only
+## posts whose phase changed. Nothing here computes a phase.
+func set_traffic_lights(value: Dictionary) -> void:
+	if value == phases:
+		return
+	phases = value
+	for chunk in _chunks.values():
+		chunk.set_phases(phases)
 
 
 ## The weather's road wetness 0..1 (state "weather.wetness"). Applied in

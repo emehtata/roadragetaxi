@@ -7,8 +7,14 @@
 ##   z1  roads at ground level and below, lowest layer first
 ##   z2+ bridges: layer 1, 2, 3 (higher clamps to 3)
 ##   z5  wet-road darkening and sheen, puddles (weather; alpha follows wetness)
-##   z6  railways
+##   z6  railways; fuel pumps (Pygame draws scenery objects before buildings)
 ##   z7  buildings
+##   z8  roadworks, taxi-stand signs; traffic-light posts (own node, redrawn
+##       only when one of its lights changes phase - the phase is the server's)
+##   z11 fuel price boards: above the vehicles, as draw_fuel_station_signs
+##
+## The z8+ points are sized in screen pixels as Pygame's, so they redraw
+## when the zoom changes (set_px_per_m), never per frame.
 ##
 ## Wet overlays are clipped to the chunk's bounds, since a road spanning
 ## several chunks is in each of them, and overlapping alpha would darken
@@ -29,6 +35,11 @@ var _wet_sheen := Node2D.new()
 var _puddles := Node2D.new()
 var _puddle_spots: Array = []  # [{"at", "radius", "reveal", "shape"}]
 var _wetness := 0.0
+var _px_per_m := 9.0
+var _px_layers: Array[Node2D] = []  # point layers drawn in screen-pixel sizes
+var _lights: Node2D = null  # traffic-light posts, if this chunk has any
+var _phases: Dictionary = {}  # post id (String) -> phase as last drawn
+var _font: Font = ThemeDB.fallback_font
 
 
 func setup(message: Dictionary, origin: Vector2) -> void:
@@ -55,6 +66,14 @@ func setup(message: Dictionary, origin: Vector2) -> void:
 	_add_layer(5, _draw_puddles, _puddles)
 	_add_layer(6, _draw_railways)
 	_add_layer(7, _draw_buildings)
+	if not message.get("fuel_stations", []).is_empty():
+		_px_layers.append(_add_layer(6, _draw_fuel_pumps))
+		_px_layers.append(_add_layer(11, _draw_fuel_boards))
+	if not message.get("roadworks", []).is_empty() or not message.get("taxi_stands", []).is_empty():
+		_px_layers.append(_add_layer(8, _draw_points))
+	if not message.get("traffic_lights", []).is_empty():
+		_lights = _add_layer(8, _draw_traffic_lights)
+		_px_layers.append(_lights)
 	_puddle_spots = puddle_spots(message.get("roads", []), _bounds_rect, origin)
 	set_wetness(_wetness)
 
@@ -80,6 +99,38 @@ func set_wetness(wetness: float) -> void:
 	# tree didn't draw its strokes when shown later (found in a windowed run).
 	if not _puddle_spots.is_empty() and (wetness > 0.0 or previous > 0.0):
 		_puddles.queue_redraw()
+
+
+## Screen pixels per metre (the camera zoom): the point layers keep
+## Pygame's pixel sizes, so they redraw when it changes.
+func set_px_per_m(value: float) -> void:
+	if is_equal_approx(value, _px_per_m):
+		return
+	_px_per_m = value
+	for node in _px_layers:
+		node.queue_redraw()
+
+
+## The simulation's phases ({post id: phase}, state "traffic_lights"):
+## redraws the posts only when one of this chunk's own lights changed.
+## Returns whether it did.
+func set_phases(phases: Dictionary) -> bool:
+	if _lights == null:
+		return false
+	var changed := false
+	for post in _data["traffic_lights"]:
+		var id := str(int(post["id"]))  # JSON numbers arrive as floats: str(0.0) is "0.0"
+		var phase: String = phases.get(id, "")
+		if _phases.get(id, "") != phase:
+			_phases[id] = phase
+			changed = true
+	if changed:
+		_lights.queue_redraw()
+	return changed
+
+
+func _px(pixels: float) -> float:
+	return pixels / _px_per_m
 
 
 func _points(line: Array) -> PackedVector2Array:
@@ -141,6 +192,99 @@ func _draw_buildings(node: Node2D) -> void:
 		var outline := _points(building)
 		if outline.size() >= 3 and not Geometry2D.triangulate_polygon(outline).is_empty():
 			node.draw_colored_polygon(outline, Color(0.6, 0.58, 0.55))
+
+
+## render/scenery.py draw_scenery_objects' "fuel" pumps: red pumps with a
+## display, two side by side for an area station, along its angle.
+func _draw_fuel_pumps(node: Node2D) -> void:
+	for station in _data["fuel_stations"]:
+		var at := MapMath.point(_origin, station["x"], station["y"])
+		var width := maxf(_px(7.0), 0.8)
+		var height := maxf(_px(12.0), 1.3)
+		var along := Vector2(cos(station["angle"]), -sin(station["angle"]))
+		for offset: float in ([-0.85, 0.85] if station["is_area"] else [0.0]):
+			var pump := Rect2(at + along * offset - Vector2(width / 2.0, height), Vector2(width, height))
+			node.draw_rect(pump, Color8(205, 62, 48))
+			node.draw_rect(pump, Color8(245, 245, 230), false, _px(1.0))
+			var inset := maxf(_px(1.0), width / 5.0)
+			node.draw_rect(Rect2(pump.position + Vector2(inset, maxf(_px(2.0), height / 6.0)),
+				Vector2(maxf(_px(2.0), width - 2.0 * inset), maxf(_px(2.0), height / 4.0))), Color8(20, 30, 32))
+
+
+## render/scenery.py draw_fuel_station_signs: a pin over the pumps and a
+## board with the station's name and the simulation's price, in pixels.
+func _draw_fuel_boards(node: Node2D) -> void:
+	for station in _data["fuel_stations"]:
+		var at := MapMath.point(_origin, station["x"], station["y"])
+		node.draw_set_transform(at, 0.0, Vector2.ONE / _px_per_m)  # pixels from here on
+		var pump_height := maxf(12.0, 1.3 * _px_per_m)
+		var marker := Vector2(0, -pump_height - 18.0)
+		node.draw_colored_polygon(PackedVector2Array([marker + Vector2(-6, 7), marker + Vector2(6, 7), Vector2(0, -pump_height - 2.0)]), Color8(255, 205, 35))
+		node.draw_circle(marker, 10.0, Color8(255, 205, 35))
+		node.draw_arc(marker, 9.0, 0.0, TAU, 24, Color8(25, 28, 30), 2.0)
+		var text := fuel_board_text(station)
+		var text_size := _font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, 16)
+		var board := Rect2(Vector2(-text_size.x / 2.0 - 6.0, marker.y - 13.0 - text_size.y - 8.0), text_size + Vector2(12, 8))
+		node.draw_rect(board, Color8(15, 22, 25))
+		node.draw_rect(board, Color8(255, 205, 35), false, 2.0)
+		node.draw_string(_font, board.position + Vector2(6, text_size.y), text, HORIZONTAL_ALIGNMENT_LEFT, -1, 16, Color8(255, 235, 120))
+	node.draw_set_transform(Vector2.ZERO)
+
+
+static func fuel_board_text(station: Dictionary) -> String:
+	return "%s  %.2f €/L" % [station.get("name", "FUEL"), station["price_cents"] / 100.0]
+
+
+## render/roads.py draw_roadworks (barriers at both ends, cones between)
+## and draw_taxi_stops (a yellow TAXI sign on a pole).
+func _draw_points(node: Node2D) -> void:
+	for work in _data.get("roadworks", []):
+		var start := MapMath.point(_origin, work["start"][0], work["start"][1])
+		var end := MapMath.point(_origin, work["end"][0], work["end"][1])
+		var length := maxf(start.distance_to(end), 0.001)
+		var normal := Vector2(-(end.y - start.y), end.x - start.x) / length
+		var barrier := maxf(_px(2.0), float(work["half_width_m"]))
+		var closed: bool = work["lane_closed"]
+		for point in [start, end]:
+			node.draw_line(point if closed else point - normal * barrier, point + normal * barrier, Color8(235, 190, 35), maxf(_px(2.0), 2.0))
+		var steps := maxi(2, int(length * _px_per_m / maxf(18.0, 25.0 * _px_per_m)))
+		var cone_r := maxf(_px(2.0), 0.35)
+		for i in steps + 1:
+			var c := start.lerp(end, float(i) / steps) + (normal * barrier * 0.5 if closed else Vector2.ZERO)
+			node.draw_colored_polygon(PackedVector2Array([c + Vector2(0, -cone_r * 2.0), c + Vector2(-cone_r, cone_r), c + Vector2(cone_r, cone_r)]), Color8(245, 105, 25))
+			node.draw_line(c - Vector2(cone_r / 2.0, 0), c + Vector2(cone_r / 2.0, 0), Color8(255, 220, 120), maxf(_px(1.0), cone_r / 2.0))
+	for stand in _data.get("taxi_stands", []):
+		node.draw_set_transform(MapMath.point(_origin, stand[0], stand[1]), 0.0, Vector2.ONE / _px_per_m)
+		node.draw_line(Vector2(0, -1), Vector2(0, 11), Color8(55, 55, 55), 2.0)
+		node.draw_rect(Rect2(-14, -13, 28, 14), Color8(20, 20, 20))
+		node.draw_rect(Rect2(-13, -12, 26, 12), Color8(255, 205, 25))
+		var label_size := _font.get_string_size("TAXI", HORIZONTAL_ALIGNMENT_LEFT, -1, 10)
+		node.draw_string(_font, Vector2(-label_size.x / 2.0, -2), "TAXI", HORIZONTAL_ALIGNMENT_LEFT, -1, 10, Color8(20, 20, 20))
+	node.draw_set_transform(Vector2.ZERO)
+
+
+## Which lamps a phase lights: [red, yellow, green]. Unknown (no phase
+## sent: the post is far from the player) lights none.
+static func lamps(phase: String) -> Array:
+	return [phase in ["red", "red+yellow", "all-red"], phase in ["yellow", "red+yellow"], phase == "green"]
+
+
+## render/roads.py draw_traffic_lights: a 7 x 18 px housing along the
+## traffic, red end toward the intersection, lamps by the server's phase.
+func _draw_traffic_lights(node: Node2D) -> void:
+	var colors := [[Color8(255, 30, 30), Color8(60, 10, 10)], [Color8(255, 210, 0), Color8(60, 50, 0)], [Color8(40, 240, 60), Color8(10, 50, 15)]]
+	for post in _data["traffic_lights"]:
+		# Pygame rotates the upright housing by degrees(angle) - 90 counter-clockwise on screen.
+		node.draw_set_transform(MapMath.point(_origin, post["x"], post["y"]), PI / 2.0 - float(post["angle"]), Vector2.ONE / _px_per_m)
+		node.draw_rect(Rect2(-3.5, -9, 7, 18), Color8(15, 15, 15))
+		node.draw_rect(Rect2(-3.5, -9, 7, 18), Color8(70, 70, 70), false, 1.0)
+		var lit := lamps(_phases.get(str(int(post["id"])), ""))
+		for i in 3:
+			var c := Vector2(0, -5 + 5 * i)
+			if lit[i]:
+				node.draw_circle(c, 4.0, Color(colors[i][0], 90.0 / 255.0))
+			node.draw_circle(c, 2.0, colors[i][0] if lit[i] else colors[i][1])
+	node.draw_set_transform(Vector2.ZERO)
 
 
 ## Where this chunk's puddles are: like render/weather.py _puddle_for_way, a

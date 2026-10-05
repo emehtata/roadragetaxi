@@ -7,6 +7,7 @@ const Hud := preload("res://hud.gd")
 const MapLayer := preload("res://map_layer.gd")
 const Instruments := preload("res://instruments.gd")
 const EntityLayer := preload("res://entity_layer.gd")
+const MapChunk := preload("res://map_chunk.gd")
 
 var _failures := 0
 var _checks := 0
@@ -39,6 +40,7 @@ func _process(_delta: float) -> bool:  # first frame: the tree is live, so nodes
 	test_rendering()
 	test_drive_input()
 	test_meet_road_camera_lightning()
+	test_gameplay_points()
 	print("%d checks, %d failed" % [_checks, _failures])
 	quit(1 if _failures > 0 else 0)
 	return false
@@ -479,3 +481,47 @@ func test_meet_road_camera_lightning() -> void:
 	check(EntityLayer.lightning_alpha(none, none, 0.5) == 0.0 and EntityLayer.lightning_alpha({}, {}, 0.5) == 0.0, "no lightning, or an older server: no flash")
 	check(is_equal_approx(EntityLayer.lightning_alpha(strike, strike, 0.0), 145.0 / 255.0), "a strike flashes at Pygame's maximum alpha")
 	check(is_equal_approx(EntityLayer.lightning_alpha(strike, none, 0.5), 0.5 * 145.0 / 255.0), "the flash fades with the sent intensity")
+
+
+## godot-12: taxi stands, fuel stations, traffic-light posts and roadworks
+## come with their chunk and go with it; the phase is only ever the server's.
+func test_gameplay_points() -> void:
+	var map := MapLayer.new()
+	root.add_child(map)
+	map.set_origin(Vector2(1000, 2000))
+	var message := {"chunk_id": "2_4", "bounds": [1000, 2000, 1500, 2500], "roads": [], "railways": [], "waters": [], "buildings": [],
+		"taxi_stands": [[1020.0, 2040.0]],
+		"fuel_stations": [{"x": 1030.0, "y": 2060.0, "angle": 0.5, "is_area": true, "name": "Neste", "price_cents": 189}],
+		"traffic_lights": [{"id": 0, "x": 1102.0, "y": 2050.0, "angle": 1.5708}, {"id": 1, "x": 1200.0, "y": 2050.0, "angle": 0.0}],
+		"roadworks": [{"start": [1480.0, 2100.0], "end": [1540.0, 2100.0], "lane_closed": true, "half_width_m": 3.5}]}
+	message = JSON.parse_string(JSON.stringify(message))  # as the client gets it: every number a float
+	check(map.add_chunk(message) and not map.add_chunk(message), "points arrive with their chunk, once")
+	var chunk = map._chunks["2_4"]
+	check(chunk._px_layers.size() == 4 and chunk._lights != null, "pumps, boards, roadworks/stands and posts each get one canvas item")
+	check(MapMath.point(map.origin, 1020.0, 2040.0) == Vector2(20, -40), "a stand sits at its map position relative to the origin")
+	check(map.add_chunk({"chunk_id": "0_0"}) and map._chunks["0_0"]._px_layers.is_empty() and map._chunks["0_0"]._lights == null,
+		"a chunk without points adds no point layers (older servers too)")
+	check(MapChunk.fuel_board_text(message["fuel_stations"][0]) == "Neste  1.89 €/L", "the board shows the server's price")
+
+	# Phases: lit as sent, unlit when not sent, redrawn only on change.
+	check(MapChunk.lamps("green") == [false, false, true] and MapChunk.lamps("red+yellow") == [true, true, false], "lamps by phase")
+	check(MapChunk.lamps("all-red") == [true, false, false] and MapChunk.lamps("") == [false, false, false], "all-red reads as red; no phase lights nothing")
+	map.set_traffic_lights({"0": "green"})
+	check(chunk._phases.get("0") == "green" and chunk._phases.get("1", "") == "", "each post takes the server's phase (a far one none)")
+	check(not chunk.set_phases({"0": "green"}), "the same phases don't redraw")
+	check(chunk.set_phases({"0": "yellow"}) and chunk._phases["0"] == "yellow", "a changed phase redraws")
+	map.set_traffic_lights({"0": "yellow"})
+	chunk._process(1.0) if chunk.has_method("_process") else null
+	check(chunk._phases["0"] == "yellow" and not chunk.has_method("_process"), "no phase change without the server (no client clock)")
+
+	# Unload and reload: gone, then back once at the same place.
+	check(map.remove_chunk("2_4") and not map.has_chunk("2_4"), "points go with their chunk")
+	check(map.add_chunk(map_message_copy(message)) and map._chunks["2_4"]._phases.get("0") == "yellow", "reloaded with the current phases")
+	check(map.chunk_count() == 2 and not map.add_chunk(message), "no duplicate after a revisit")
+	map.set_px_per_m(4.5)
+	check(map._chunks["2_4"]._px_per_m == 4.5, "zoom reaches the pixel-sized points")
+	map.free()
+
+
+func map_message_copy(message: Dictionary) -> Dictionary:
+	return message.duplicate(true)
