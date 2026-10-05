@@ -4,7 +4,8 @@ Audited on 2026-10-03 against `release/v0.16.0g-alpha` at commit `0445643`;
 rows marked godot-07 were updated after that phase (rendering-only parity),
 rows marked godot-10 after the re-audit of 2026-10-05 (`734a3b7`; see
 [the godot-10 section](#godot-10-re-audit)), rows marked godot-11 after
-[phase 2](#godot-11-phase-2-server-state-already-owned).
+[phase 2](#godot-11-phase-2-server-state-already-owned), rows marked godot-12 after
+[phase 3](#godot-12-phase-3-gameplay-points-in-chunks).
 
 The Pygame side is the actual per-frame draw sequence in
 `main/__init__.py`: about 80 `draw_*` calls between lines 2771 and 3446,
@@ -63,22 +64,22 @@ find customers, avoid hazards); `medium` means world-reading or feedback;
 | Rail bridges above vehicles | `draw_railways(only_bridges=True)` after vehicles | – | missing | medium | missing protocol data (bridge flag/layer on railways) | B |
 | Traffic islands | `draw_traffic_islands` | – | missing | low | missing protocol data | B |
 | Trees | `draw_trees` | – | missing | medium (collisions) | missing protocol data | B |
-| Scenery objects: benches, bollards, fountains | `draw_scenery_objects` (+ knocked-over state) | – | missing | medium (bollards collide) | missing protocol data (objects, knocked state) | B |
+| Scenery objects: benches, bollards, fountains | `draw_scenery_objects` (+ knocked-over state) | only the `fuel` kind's pumps (godot-12, with the fuel stations) | missing | medium (bollards collide) | missing protocol data (objects, knocked state) | B |
 | Bus stops (option) | `draw_bus_stops` | – | missing | low | missing protocol data | B |
 | Buildings | `draw_buildings` (cached geometry, facades) | flat grey polygons | partial | high | missing protocol data (facades, heights: building tags not in chunks) | B |
 | Open-roof canopies over vehicles | `draw_open_roof_overlays` | – | missing | medium | missing protocol data (open-roof buildings) | B |
 | Tire tracks | `draw_tire_tracks` ×4 | – | missing | low | missing protocol data (`taxi_mgr` track state) | C |
-| Roadworks barriers / cones | `draw_roadworks` | – | missing | high (block roads) | missing protocol data | A |
+| Roadworks barriers / cones | `draw_roadworks` | chunk `roadworks`: barriers at both ends (lane or full road), cones between, Pygame's pixel sizes — godot-12 | complete | high (block roads) | – | – |
 | Curbs | `draw_curbs` | – | missing | low (curb bump) | missing protocol data | B |
 | Fences, railings, walls, hedges | `draw_railings` | – | missing | medium (collisions) | missing protocol data | B |
 | Construction fences | `draw_construction_fences` | – | missing | low | missing protocol data | B |
 | Zebra crossings | `draw_crossings` | – | missing | medium | missing protocol data | B |
 | Speed bumps | `draw_speed_bumps` | – | missing | medium | missing protocol data | B |
-| Traffic lights (posts and live phase) | `draw_traffic_lights(sim_time)` | – | missing | high | missing protocol data (positions and phase; the phase must come from the server, not be recomputed) | A |
-| Taxi stands (TAXI signs) | `draw_taxi_stops` | – | missing | high (rail pickups) | missing protocol data | A |
+| Traffic lights (posts and live phase) | `draw_traffic_lights(sim_time)` | chunk `traffic_lights` posts (render position, angle, 7×18 px housing) lit by `state.traffic_lights`, the server's `get_state` — godot-12. Phases are sent within 600 m of the player: zoomed out past that (about ten zoom steps), farther posts show unlit | complete | high | – | – |
+| Taxi stands (TAXI signs) | `draw_taxi_stops` | chunk `taxi_stands`: the TAXI sign on its pole — godot-12 | complete | high (rail pickups) | – | – |
 | Stop / yield signs | `draw_stop_signs`, `draw_yield_signs` | – | missing | medium | missing protocol data | B |
 | Speed cameras | `draw_speed_cameras` (+ flash) | – | missing | medium | missing protocol data (positions; flash state not sent) | B |
-| Fuel stations (price boards) | `draw_fuel_station_signs` | – | missing | high (fuel runs out) | missing protocol data | A |
+| Fuel stations (price boards) | `draw_fuel_station_signs` (+ the pumps in `draw_scenery_objects`) | chunk `fuel_stations`: pin and board with the name and the server's price above the vehicles, pumps under the buildings — godot-12 | complete | high (fuel runs out) | – | – |
 | Street lights (+ broken lamps dark) | `draw_street_lights` (placed from roads; `broken_lamps`) | – | missing | low | Godot rendering only (lamp placement from roads); broken lamps need protocol data | C |
 | Illuminated windows at night | `draw_illuminated_windows` | – | missing | low | missing protocol data (window/facade data, darkness) | C |
 | Map labels: place and street names | `draw_labels` (decluttered) | – | missing | medium | missing protocol data (labels/places) | B |
@@ -199,15 +200,15 @@ find customers, avoid hazards); `medium` means world-reading or feedback;
 Computed from the tables above: 108 rows (109 from godot-10), each counted once
 by status. godot-06 is the audit; godot-07 is after the rendering-only phase.
 
-| Status | godot-06 | godot-07 | godot-10 | godot-11 |
-|---|---|---|---|---|
-| complete | 7 | 30 | 31 | 35 |
-| partial | 22 | 18 | 16 | 17 |
-| missing | 71 | 52 | 52 | 47 |
-| different by design | 3 | 3 | 4 | 4 |
-| debug-only | 3 | 3 | 3 | 3 |
-| not applicable | 2 | 2 | 3 | 3 |
-| rows | 108 | 108 | 109 | 109 |
+| Status | godot-06 | godot-07 | godot-10 | godot-11 | godot-12 |
+|---|---|---|---|---|---|
+| complete | 7 | 30 | 31 | 35 | 39 |
+| partial | 22 | 18 | 16 | 17 | 17 |
+| missing | 71 | 52 | 52 | 47 | 43 |
+| different by design | 3 | 3 | 4 | 4 | 4 |
+| debug-only | 3 | 3 | 3 | 3 | 3 |
+| not applicable | 2 | 2 | 3 | 3 | 3 |
+| rows | 108 | 108 | 109 | 109 | 109 |
 
 Missing and partial rows by cause, after godot-07. The 3
 camera/layering rows have no cause column.
@@ -593,3 +594,89 @@ It's drawn at the camera, so it needs camera positions in the chunks
 fuel stations, traffic-light posts and nearby phases, roadworks — then the
 collision-relevant static world, the server calendar (day/night),
 the rest of the static world, and navigation.
+
+## godot-12: phase 3, gameplay points in chunks
+
+Taxi stands, fuel stations, traffic-light posts with their live phases,
+and roadworks. All are static data the server already held, added to the
+existing chunks, plus one per-tick field for the phases. There's no
+simulation change, and no change to how roadworks block driving.
+
+**What existed before:**
+
+| Data | Where | Class |
+|---|---|---|
+| Taxi stands | `world.taxi_stops` (`TaxiStop` x, y, id); no queue state: waiting people are ordinary pedestrians | protocol/data + rendering |
+| Fuel stations | `world.scenery_objects` of kind `fuel` (x, y, name, `direction_angle`, `is_area`); the price is `fuel.fuel_station_price_cents` | protocol/data + rendering |
+| Traffic lights | `traffic_mgr.traffic_lights` (OSM posts plus the roadworks' temporary ones, which have **no id**); phase from `TrafficLight.get_state(sim_time)` on the server | protocol/data + rendering |
+| Roadworks | `world.roadworks`, made once at load and only when `roadworks_enabled` is set: start, end, lane or full closure; the server already blocks driving into them | protocol/data + rendering |
+
+**Protocol:**
+
+| Field | Source | Consumer | Why | Static/dynamic |
+|---|---|---|---|---|
+| chunk `taxi_stands`: `[x, y]` | `world.taxi_stops` | `map_chunk._draw_points` | the TAXI sign | static |
+| chunk `fuel_stations`: `x, y, angle, is_area, name, price_cents` | fuel scenery objects; `fuel_station_price_cents` | `_draw_fuel_pumps`, `_draw_fuel_boards` | pumps, pin, board with the simulation's price | static |
+| chunk `traffic_lights`: `id, x, y, angle` | `traffic_mgr.traffic_lights`; position from Pygame's `_traffic_light_render_position` | `_draw_traffic_lights` | the post; `id` is the list index (stable for the session; roadwork lights have no OSM id) | static |
+| chunk `roadworks`: `start, end, lane_closed, half_width_m` | `world.roadworks` | `_draw_points` | barriers and cones | static |
+| state `traffic_lights`: `{id: phase}` | `get_state(sim_time)` for posts within 600 m of the player (on foot: the walker) | `map_layer.set_traffic_lights` | lamps; Godot never computes a phase | per tick |
+
+Every point is in exactly one chunk, the one containing it. A roadwork
+goes in its midpoint's chunk. So no client draws a point twice, even
+though long roads are in several chunks. Older clients ignore the new
+lists, and a newer client handles an older server (missing lists draw
+nothing).
+
+**Godot:**
+- `map_chunk.gd` draws the points into the chunk's own canvas items:
+  - pumps at z6, under the buildings, as Pygame draws them
+  - roadworks and taxi signs at z8
+  - the traffic-light posts as their own z8 node
+  - the fuel boards at z11, above the vehicles (`draw_fuel_station_signs`
+    runs after them)
+- They use Pygame's pixel sizes, so they redraw when the zoom changes,
+  never per frame. Chunks without points get no extra nodes.
+- The posts redraw only when one of that chunk's own lights changes phase.
+- `map_layer.gd` passes the zoom and the phases on. `main.gd` gains two
+  lines after the camera is placed, which only read its zoom.
+
+**Bug found and fixed:** post ids arrive as JSON floats, and `str(0.0)` is
+`"0.0"`, so every lamp stayed unlit on the real server. Ids are now read
+as ints, and the Godot test parses its chunk through JSON like the real
+client does (it fails without the fix).
+
+**Verified:**
+- Python tests: one chunk per point (a roadwork across a chunk edge goes
+  in one), the post id and render position, a non-renderable post left
+  out, an empty chunk carries every list, the phases follow `sim_time`
+  and nothing is sent far away. Every phase sent names a post the
+  server's own chunks carry.
+- Godot unit tests (143 checks): points arrive with their chunk and only
+  once, chunks without points get no point layers, the board text, the
+  lamps by phase (`all-red` reads as red; no phase lights nothing),
+  redraw only on change, no phase change without the server, unload and
+  reload with the current phases, zoom reaching the points.
+- Real Oulu server (roadworks on through a scratch config copy):
+  screenshots at a taxi stand, a fuel station (St1, 2.57 €/L), a
+  junction's lights and a lane-closure roadwork with its temporary
+  lights. Pixel checks at three posts: shots 8 s apart show opposing
+  approaches switching green and red with the server. After walking
+  4 km away (the chunk unloaded) and back (reloaded), the posts covered
+  exactly the same pixels.
+- `make godot-selftest`: `ok`, 145 FPS, taxi 0 px off centre, 0 render
+  backsteps. Static memory 65.1 → 66.0 MiB.
+
+**Deferred or still open:**
+- Fuel pumps under a station's canopy are hidden. Godot draws every
+  building as a flat roof, and open-roof canopies are their own missing
+  row (phase 6, building detail).
+- The HUD's fuel price and refuel prompt near a station (the "Fuel price
+  at a station" row) needs the nearest station in `state`. That's a small
+  per-tick addition, not done here.
+- The speed camera's lens flash still needs camera positions (the static
+  world phase).
+
+**Next phase (unchanged order):** the collision-relevant static world
+(trees, scenery objects, fences and railings, knocked-over posts and
+broken lamps), then the server calendar (day/night), the rest of the
+static world, and navigation.
