@@ -238,6 +238,11 @@ func _process(delta: float) -> void:
 		Perf.add("render_cpu", int(RenderingServer.viewport_get_measured_render_time_cpu(rid) * 1000.0))
 		Perf.add("render_gpu", int(RenderingServer.viewport_get_measured_render_time_gpu(rid) * 1000.0))
 		Perf.add("frame_setup_cpu", int(RenderingServer.get_frame_setup_time_cpu() * 1000.0))
+		if map_layer.buildings_3d != null:  # godot-22: the 3D building pass alone
+			var view_3d: RID = map_layer.buildings_3d._view.get_viewport_rid()
+			RenderingServer.viewport_set_measure_render_time(view_3d, true)
+			Perf.add("render_3d_cpu", int(RenderingServer.viewport_get_measured_render_time_cpu(view_3d) * 1000.0))
+			Perf.add("render_3d_gpu", int(RenderingServer.viewport_get_measured_render_time_gpu(view_3d) * 1000.0))
 	if _bench > 0.0 and not state.is_empty():
 		_bench_left -= delta
 		if _bench_left <= 0.0:
