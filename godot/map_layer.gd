@@ -13,11 +13,37 @@ var px_per_m := 9.0  # the camera zoom, for the chunks' pixel-sized points
 var phases: Dictionary = {}  # traffic-light phases as last applied (state "traffic_lights")
 var fallen: Dictionary = {}  # felled trees: MapChunk.obstacle_key -> angle (state "fallen_trees")
 var knocked: Dictionary = {}  # knocked posts: key -> [x, y, angle, kind] (state "knocked_posts")
-var _knocked_posts := Node2D.new()  # drawn here, from the state: a lamp has no static data
+var _knocked_posts: Node2D  # drawn here, from the state: a lamp has no static data (made in _ready)
 var _last_obstacles := [[], []]
+var season := [0.0, 0.0, 1.0, 0.0]  # [winter, spring, summer, autumn] as last applied
+var lights_on := false
+const POOL_SHADER := """shader_type canvas_item;
+render_mode blend_add;
+uniform sampler2D screen_texture : hint_screen_texture, repeat_disable, filter_nearest;
+void fragment() {
+	COLOR = vec4(textureLod(screen_texture, SCREEN_UV, 0.0).rgb, 1.0);
+}"""
+var _pool_group: CanvasGroup  # every loaded chunk's street-light pools: painted, then added once
+
+
+func _make_pool_group() -> void:
+	_pool_group = CanvasGroup.new()
+	_pool_group.z_index = 21
+	# A CanvasGroup's custom material must read the group's own buffer
+	# (a CanvasItemMaterial ADD on the group renders it white): the
+	# union of the pools, added once.
+	var shader := Shader.new()
+	shader.code = POOL_SHADER
+	var add := ShaderMaterial.new()
+	add.shader = shader
+	_pool_group.material = add
+	_pool_group.visible = false
+	add_child(_pool_group)
 
 
 func _ready() -> void:
+	_make_pool_group()
+	_knocked_posts = Node2D.new()
 	_knocked_posts.z_index = 6
 	_knocked_posts.draw.connect(_draw_knocked_posts)
 	add_child(_knocked_posts)
@@ -28,13 +54,22 @@ func set_origin(world_origin: Vector2) -> void:
 	origin = world_origin
 	clear()
 	queue_redraw()
-	_knocked_posts.queue_redraw()
+	if _knocked_posts != null:
+		_knocked_posts.queue_redraw()
 
 
 func clear() -> void:
 	for chunk in _chunks.values():
-		chunk.queue_free()
+		_free_chunk(chunk)
 	_chunks.clear()
+
+
+## A chunk and its street-light pools (which live in the pool group), gone now.
+func _free_chunk(chunk: Node) -> void:
+	if _pool_group != null and chunk._pools.get_parent() == _pool_group:
+		_pool_group.remove_child(chunk._pools)
+		chunk._pools.free()  # out of the tree already; the chunk's own cleanup then skips it
+	chunk.queue_free()
 
 
 func chunk_count() -> int:
@@ -57,7 +92,11 @@ func add_chunk(message: Dictionary) -> bool:
 	chunk.set_px_per_m(px_per_m)
 	chunk.set_phases(phases)
 	chunk.set_obstacles(fallen, knocked)
+	chunk.set_season(season)
+	chunk.set_lights_on(lights_on)
 	add_child(chunk)
+	if not chunk.street_lights.is_empty() and _pool_group != null:
+		_pool_group.add_child(chunk._pools)
 	_chunks[chunk_id] = chunk
 	return true
 
@@ -68,7 +107,8 @@ func set_px_per_m(value: float) -> void:
 	px_per_m = value
 	for chunk in _chunks.values():
 		chunk.set_px_per_m(px_per_m)
-	_knocked_posts.queue_redraw()
+	if _knocked_posts != null:
+		_knocked_posts.queue_redraw()
 
 
 ## The simulation's traffic-light phases this tick; chunks redraw only
@@ -95,7 +135,8 @@ func set_obstacles(fallen_trees: Array, knocked_posts: Array) -> void:
 		knocked[MapChunk.obstacle_key(post[0], post[1])] = post
 	for chunk in _chunks.values():
 		chunk.set_obstacles(fallen, knocked)
-	_knocked_posts.queue_redraw()
+	if _knocked_posts != null:
+		_knocked_posts.queue_redraw()
 
 
 ## render/scenery.py: a post hit hard lies bent over the way the taxi went
@@ -122,6 +163,53 @@ func count_drivable_roads(view: Rect2) -> int:
 	return seen.size()
 
 
+## The server's season weights (state calendar.season): ground, water and
+## trees recolour - about once a game day.
+func set_season(weights: Array) -> void:
+	if weights.size() != 4 or weights == season:
+		return
+	season = weights
+	queue_redraw()
+	for chunk in _chunks.values():
+		chunk.set_season(season)
+
+
+## Street lights on at night (darkness > 0.25), off by day.
+func set_lights_on(on: bool) -> void:
+	if on == lights_on:
+		return
+	lights_on = on
+	if _pool_group != null:
+		_pool_group.visible = on
+	for chunk in _chunks.values():
+		chunk.set_lights_on(on)
+
+
+## Whether a working street light is within `radius` of `at` (layer
+## coordinates): reflectors and long beams. Only chunks near `at` are looked at.
+func lamp_near(at: Vector2, radius: float) -> bool:
+	var around := Rect2(at - Vector2(radius, radius), Vector2(radius, radius) * 2.0)
+	for chunk in _chunks.values():
+		if chunk._bounds_rect.size != Vector2.ZERO and not chunk._bounds_rect.intersects(around):
+			continue
+		for i in chunk.street_lights.size():
+			if chunk.street_lights[i].distance_squared_to(at) <= radius * radius and not chunk._broken.has(i):
+				return true
+	return false
+
+
+## Building outlines reaching into `area` (layer coordinates), for the beams.
+func buildings_in(area: Rect2) -> Array:
+	var found: Array = []
+	for chunk in _chunks.values():
+		if chunk._bounds_rect.size != Vector2.ZERO and not chunk._bounds_rect.grow(200.0).intersects(area):
+			continue  # (a building is in each chunk it touches: 200 m covers one reaching in)
+		for building in chunk.building_shapes():
+			if building[0].intersects(area) and not found.any(func(f): return f[1] == building[1]):
+				found.append(building)
+	return found
+
+
 ## The weather's road wetness 0..1 (state "weather.wetness"). Applied in
 ## steps of 3/255 overlay alpha, as Pygame's wet-road cache does, so a slowly
 ## drying road doesn't touch every chunk every tick.
@@ -138,10 +226,13 @@ func set_wetness(value: float) -> bool:
 func remove_chunk(chunk_id: String) -> bool:
 	if not _chunks.has(chunk_id):
 		return false
-	_chunks[chunk_id].queue_free()
+	_free_chunk(_chunks[chunk_id])
 	_chunks.erase(chunk_id)
 	return true
 
 
 func _draw() -> void:
-	draw_rect(Rect2(-100000, -100000, 200000, 200000), Color(0.27, 0.33, 0.25))  # ground, under the chunks
+	# Ground, under the chunks: snow cover with the winter weight. (Pygame's
+	# other seasonal palettes are tuned to its dark grass; on this lighter
+	# ground autumn turns brown, so only the snow is taken.)
+	draw_rect(Rect2(-100000, -100000, 200000, 200000), Color(0.27, 0.33, 0.25).lerp(Color8(230, 236, 240), clampf(season[0], 0.0, 1.0)))

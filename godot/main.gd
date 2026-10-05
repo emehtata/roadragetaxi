@@ -11,6 +11,7 @@ extends Node2D
 
 const COMMAND_INTERVAL_S := 0.05  # input -> simulation at 20 Hz, independent of the frame rate
 
+const NightLayer := preload("res://night_layer.gd")
 @onready var sim: SimClient = $SimClient
 @onready var map_layer: Node2D = $MapLayer
 @onready var entities: Node2D = $EntityLayer
@@ -21,7 +22,7 @@ const COMMAND_INTERVAL_S := 0.05  # input -> simulation at 20 Hz, independent of
 @onready var phone: Phone = $Ui/Phone
 @onready var instruments: Control = $Ui/Instruments
 @onready var nav_overlay: Control = $Ui/NavOverlay
-@onready var night_tint: ColorRect = $Sky/Night
+@onready var night: CanvasGroup = $NightLayer
 @onready var flash: ColorRect = $Sky/Flash
 
 var _tick := 0
@@ -61,6 +62,7 @@ var override_wetness := -1.0  # audio test: a moving train here (presentation on
 
 
 func _ready() -> void:
+	entities.lamp_near = map_layer.lamp_near  # reflectors and long beams look up working street lights
 	var args := OS.get_cmdline_user_args()
 	for i in args.size():
 		match args[i]:
@@ -223,13 +225,26 @@ func _present(state: Dictionary) -> void:
 	audio.set_loop("engine", 0.6 if driving else 0.0, minf(1.0 + speed / 25.0, 2.2))
 	var calendar = state.get("calendar")
 	var darkness: float = calendar.get("darkness", 0.0) if typeof(calendar) == TYPE_DICTIONARY else -1.0
+	var view := get_viewport().get_canvas_transform().affine_inverse() * get_viewport().get_visible_rect()
 	_visible_roads_elapsed += get_process_delta_time()
 	if darkness > 0.0 and _visible_roads_elapsed >= 0.1:
 		_visible_roads_elapsed = 0.0
-		_visible_roads = map_layer.count_drivable_roads(get_viewport().get_canvas_transform().affine_inverse() * get_viewport().get_visible_rect())
-	var tint := night_alpha(darkness, _visible_roads)
-	if not is_equal_approx(night_tint.color.a, tint):
-		night_tint.color.a = tint
+		_visible_roads = map_layer.count_drivable_roads(view)
+	if typeof(calendar) == TYPE_DICTIONARY:
+		map_layer.set_season(calendar.get("season", []))
+	# Street lights, beams and reflectors at the server's darkness and sun (render/roads.py, vehicles.py, pedestrians.py).
+	map_layer.set_lights_on(darkness > 0.25)
+	entities.reflectors_on = typeof(calendar) == TYPE_DICTIONARY and calendar.get("sun_altitude_deg", 90.0) < -7.5
+	var lit := [[], []]
+	if darkness > 0.25:
+		var beams: Array = entities.headlight_beams()
+		if not beams.is_empty():
+			var box := Rect2(beams[0][0], Vector2.ZERO)
+			for beam in beams:
+				for point in beam:
+					box = box.expand(point)
+			lit = NightLayer.clip_beams(beams, map_layer.buildings_in(box.grow(8.0)))
+	night.show_night(night_alpha(darkness, _visible_roads), view, lit[0], lit[1])
 	var lightning: float = entities.lightning_now()
 	if not is_equal_approx(flash.color.a, lightning):
 		flash.color.a = lightning

@@ -26,10 +26,17 @@ var view_rect := Rect2()  # visible area in this layer's coordinates, with margi
 var _frame: Dictionary = {}  # this frame's sample: {"a", "b", "t"}
 var _clock := 0.0  # local seconds, for purely presentational loops (exhaust puffs)
 var _font: Font
+var reflectors_on := false  # the sun below -7.5 degrees (main.gd, from state calendar)
+var lamp_near := func(_at: Vector2, _radius: float) -> bool: return false  # MapLayer.lamp_near
+var _reflectors: Node2D  # made in _ready (an instance never in the tree leaks nothing)
 
 
 func _ready() -> void:
 	_font = ThemeDB.fallback_font
+	_reflectors = Node2D.new()
+	_reflectors.z_index = 12  # above the night tint (20) and the street lights (21): 10 + 12
+	_reflectors.draw.connect(_draw_reflectors)
+	add_child(_reflectors)
 
 
 func now() -> float:
@@ -74,10 +81,125 @@ func update_frame(delta: float) -> void:
 	_clock += delta
 	_frame = buffer.sample(now())
 	queue_redraw()
+	if _reflectors != null and (reflectors_on or _reflectors_drawn):
+		_reflectors.queue_redraw()
 
 
 func _process(_delta: float) -> void:
 	view_rect = (get_canvas_transform().affine_inverse() * get_viewport_rect()).grow(CULL_MARGIN_M)
+
+
+var _reflectors_drawn := false
+
+
+## render/pedestrians.py draw_pedestrian_reflectors: at deep night a bright
+## point on everyone not lit - not in the taxi's beam cone, not within 10 m
+## of a working street light.
+func _draw_reflectors() -> void:
+	_reflectors_drawn = reflectors_on and not _frame.is_empty()
+	if not _reflectors_drawn:
+		return
+	var a: Dictionary = _frame["a"]
+	var b: Dictionary = _frame["b"]
+	var t: float = _frame["t"]
+	var taxi := StateBuffer.blend(a["player"], b.get("player", a["player"]), t, origin)
+	var walkers: Array = []
+	var later := _by_id(b.get("pedestrians", []))
+	for ped in a.get("pedestrians", []):
+		walkers.append(StateBuffer.blend(ped, later.get(ped["id"], ped), t, origin))
+	var later_npcs := _by_id(b.get("npcs", []))
+	for npc in a.get("npcs", []):
+		if npc.get("is_on_foot", false):
+			walkers.append(StateBuffer.blend(npc, later_npcs.get(npc["id"], npc), t, origin))
+	if a.get("on_foot", false):
+		walkers.append(StateBuffer.blend(a["player_pedestrian"], b.get("player_pedestrian", a["player_pedestrian"]), t, origin))
+	var area := view_rect.grow(15.0 - CULL_MARGIN_M)
+	for walker in walkers:
+		var at := Vector2(walker.x, walker.y)
+		if area.has_point(at) and not reflector_lit(at, Vector2(taxi.x, taxi.y), taxi.z) and not lamp_near.call(at, 10.0):
+			_reflectors.draw_circle(at, maxf(_px(1.0), 0.35), Color8(255, 255, 245))
+
+
+## In the taxi's headlight cone (render/pedestrians.py is_lit): ahead within
+## 15 m, sideways within 1.5 m + 0.35 per metre ahead.
+static func reflector_lit(at: Vector2, taxi: Vector2, heading: float) -> bool:
+	var delta := at - taxi
+	var ahead := delta.dot(_forward(heading))
+	return ahead > 0.0 and ahead <= 15.0 and absf(delta.dot(_right(heading))) <= 1.5 + ahead * 0.35
+
+
+## render/vehicles.py draw_headlight_beams, in metres: two beams per vehicle
+## with its engine on (the taxi first, then NPCs near the view, at most 80),
+## each a quad from the lamp to 15 m ahead and a round cap; an NPC far from a
+## street light (22 m) with nothing oncoming (45 m) has long beams (45 m).
+## Polygons in layer coordinates, from this frame's sample.
+func headlight_beams() -> Array:
+	var polygons: Array = []
+	if _frame.is_empty():
+		return polygons
+	var a: Dictionary = _frame["a"]
+	var b: Dictionary = _frame["b"]
+	var t: float = _frame["t"]
+	var vehicles: Array = []  # [position, heading, width, is_npc]
+	var player: Dictionary = a["player"]
+	if player.get("engine_on", false):
+		var p := StateBuffer.blend(player, b.get("player", player), t, origin)
+		vehicles.append([Vector2(p.x, p.y), p.z, player.get("width_m", 1.8), false])
+	var later := _by_id(b.get("npcs", []))
+	var area := view_rect.grow(45.0 - CULL_MARGIN_M)
+	for npc in a.get("npcs", []):
+		if npc.get("is_on_foot", false) or npc.get("state", "") == "PARKED":
+			continue
+		var p := StateBuffer.blend(npc, later.get(npc["id"], npc), t, origin)
+		if area.has_point(Vector2(p.x, p.y)):
+			vehicles.append([Vector2(p.x, p.y), p.z, npc.get("width_m", 1.8), true])
+	var shown := view_rect.grow(30.0 - CULL_MARGIN_M)
+	var drawn := 0
+	for vehicle in vehicles:
+		if drawn >= 80:
+			break
+		var c: Vector2 = vehicle[0]
+		if not shown.has_point(c):
+			continue
+		var length := 15.0
+		if vehicle[3] and not lamp_near.call(c, 22.0) and not oncoming(vehicle, vehicles):
+			length = 45.0
+		polygons.append_array(beam_polygons(c, vehicle[1], maxf(_px(3.0), vehicle[2]), length))
+		drawn += 1
+	return polygons
+
+
+## Another vehicle within 45 m ahead, heading the other way (Pygame's has_oncoming_vehicle).
+static func oncoming(vehicle: Array, vehicles: Array) -> bool:
+	var f := _forward(vehicle[1])
+	for other in vehicles:
+		if other == vehicle:
+			continue
+		var delta: Vector2 = other[0] - vehicle[0]
+		var distance := delta.length()
+		if distance > 0.1 and distance <= 45.0 and delta.dot(f) / distance > 0.2 and f.dot(_forward(other[1])) < -0.5:
+			return true
+	return false
+
+
+## One vehicle's two beams and caps (Pygame's quad and circle per side).
+static func beam_polygons(c: Vector2, heading: float, width: float, length: float) -> Array:
+	var f := _forward(heading)
+	var r := _right(heading)
+	var front := c + f * (1.0 + width * 0.55)
+	var polygons: Array = []
+	for side: float in [-1.0, 1.0]:
+		var side_v := r * side
+		var lamp := front + side_v * width * 0.35
+		var tip := c + f * length + r * (3.0 if side < 0.0 else 2.25)
+		var near := lamp + side_v * minf(4.5 * 0.08, width * 0.10)
+		var far_width := 4.5 * 1.7
+		polygons.append(PackedVector2Array([lamp, near, tip + side_v * far_width, tip]))
+		var cap := PackedVector2Array()
+		for i in 12:
+			cap.append(tip + side_v * far_width * 0.5 + Vector2(cos(TAU * i / 12.0), sin(TAU * i / 12.0)) * far_width * 0.5)
+		polygons.append(cap)
+	return polygons
 
 
 ## Pygame's draw_npc_cars draws neither police (their own renderer) nor

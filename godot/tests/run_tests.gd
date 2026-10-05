@@ -9,6 +9,8 @@ const Instruments := preload("res://instruments.gd")
 const EntityLayer := preload("res://entity_layer.gd")
 const MapChunk := preload("res://map_chunk.gd")
 const Main := preload("res://main.gd")
+const NightLayer := preload("res://night_layer.gd")
+const EntityLayer2 := preload("res://entity_layer.gd")
 
 var _failures := 0
 var _checks := 0
@@ -44,6 +46,7 @@ func _process(_delta: float) -> bool:  # first frame: the tree is live, so nodes
 	test_gameplay_points()
 	test_obstacles()
 	test_day_night()
+	test_static_world()
 	print("%d checks, %d failed" % [_checks, _failures])
 	quit(1 if _failures > 0 else 0)
 	return false
@@ -607,3 +610,80 @@ func test_day_night() -> void:
 	var entities = load("res://entity_layer.gd").new()
 	check(entities.lightning_now() == 0.0, "no state yet: no flash")
 	entities.free()
+
+
+## godot-15: railings, decorations, street lights (on at night, dark when
+## knocked), headlight beams, reflectors, seasons - all drawing, no collision.
+func test_static_world() -> void:
+	var map := MapLayer.new()
+	root.add_child(map)
+	map.set_origin(Vector2(1000, 2000))
+	var message: Dictionary = JSON.parse_string(JSON.stringify({"chunk_id": "2_4", "bounds": [1000, 2000, 1500, 2500],
+		"roads": [], "railways": [], "waters": [[[1100, 2100], [1120, 2100], [1120, 2120]]],
+		"buildings": [[[1300, 2300], [1310, 2300], [1310, 2310], [1300, 2310]]],
+		"railings": [["hedge", [[1000.0, 2010.0], [1020.0, 2010.0]]], ["fence", [[1000.0, 2020.0], [1010.0, 2020.0]]]],
+		"scenery_objects": [[1050.0, 2050.0, "bench", 0.5], [1052.0, 2050.0, "fountain", 0.0]],
+		"street_lights": [[1200.0, 2200.0, 1.0, 14.0], [1212.0, 2200.0, 1.0, 14.0]]}))
+	check(map.add_chunk(message) and not map.add_chunk(message), "drawing-only objects arrive with their chunk, once")
+	var chunk = map._chunks["2_4"]
+	check(chunk._trees != null and chunk._px_layers.size() == 4, "decorations with the trees; railings, light pools, lamp heads: one canvas item each")
+	check(chunk.street_lights.size() == 2 and chunk.street_lights[0] == Vector2(200, -200), "street lights at their map position")
+	check(chunk._pools.get_parent() == map._pool_group, "a chunk's pools join the one pool group (added once, not per pool)")
+
+	# Night only; a knocked street lamp is dark; nothing collides (no physics nodes anywhere).
+	check(not map._pool_group.visible and not chunk._heads.visible, "by day the street lights are off")
+	map.set_lights_on(true)
+	check(map._pool_group.visible and chunk._heads.visible, "at night they are on")
+	check(map.lamp_near(Vector2(203, -200), 5.0) and not map.lamp_near(Vector2(203, -250), 5.0), "a working light is near")
+	map.set_obstacles([], JSON.parse_string("[[1200.0, 2200.0, 0.5, \"street_lamp\"]]"))
+	check(chunk._broken == PackedInt32Array([0]), "the knocked lamp's light goes dark")
+	check(not map.lamp_near(Vector2(200, -200), 3.0) and map.lamp_near(Vector2(212, -200), 3.0), "a broken light lights nothing; its neighbour still does")
+	check(map.find_children("*", "CollisionObject2D", true, false).is_empty() and map.find_children("*", "CollisionShape2D", true, false).is_empty(),
+		"no collision on the client")
+
+	# Seasons: the server's weights, Pygame's palettes; unchanged weights redraw nothing.
+	check(MapChunk.seasonal_color(Color8(34, 101, 35), [0.0, 0.0, 1.0, 0.0]) == Color8(34, 101, 35), "summer keeps the colour")
+	check(MapChunk.seasonal_color(Color8(34, 101, 35), [1.0, 0.0, 0.0, 0.0]) == Color8(221, 228, 221), "winter: Pygame's frosted palette")
+	check(MapChunk.seasonal_color(Color8(34, 101, 35), [0.0, 0.0, 0.0, 1.0]) == Color8(83, 116, 37), "autumn: Pygame's ochre palette")
+	map.set_season([1.0, 0.0, 0.0, 0.0])
+	check(chunk._season == [1.0, 0.0, 0.0, 0.0] and not chunk.set_season([1.0, 0.0, 0.0, 0.0]), "the chunk takes the season once")
+
+	# Unload: the pools leave the group with their chunk; reload: once again, still dark.
+	check(map.remove_chunk("2_4"), "unload")
+	check(map._pool_group.get_child_count() == 0, "no stale pools after an unload")
+	check(map.add_chunk(message.duplicate(true)) and map._chunks["2_4"]._broken == PackedInt32Array([0]), "reloaded: the knocked lamp is still dark")
+	check(map._pool_group.get_child_count() == 1, "no duplicate pools after a revisit")
+	map.free()
+
+	# Headlight beams (render/vehicles.py): two quads and two caps per car, 15 m; long beams 45 m.
+	var beams := EntityLayer2.beam_polygons(Vector2.ZERO, 0.0, 1.8, 15.0)
+	check(beams.size() == 4 and is_equal_approx(beams[0][3].x, 15.0) and is_equal_approx(beams[0][3].y, 3.0), "a beam reaches 15 m ahead, its tip shifted right")
+	check(is_equal_approx(EntityLayer2.beam_polygons(Vector2.ZERO, 0.0, 1.8, 45.0)[2][3].x, 45.0), "long beams reach 45 m")
+	var car := [Vector2.ZERO, 0.0, 1.8, true]
+	check(EntityLayer2.oncoming(car, [car, [Vector2(30, 0), PI, 1.8, true]]), "a car 30 m ahead coming the other way dips the beams")
+	check(not EntityLayer2.oncoming(car, [car, [Vector2(30, 0), 0.0, 1.8, true]]), "one going the same way doesn't")
+
+	# Beams minus buildings: clipped where they meet one; one wholly inside is tinted again.
+	var beam := PackedVector2Array([Vector2(0, -5), Vector2(20, -5), Vector2(20, 5), Vector2(0, 5)])
+	var inside := PackedVector2Array([Vector2(8, -1), Vector2(10, -1), Vector2(10, 1), Vector2(8, 1)])
+	var across := PackedVector2Array([Vector2(15, -10), Vector2(30, -10), Vector2(30, 10), Vector2(15, 10)])
+	var clipped := NightLayer.clip_beams([beam], [[Rect2(8, -1, 2, 2), inside], [Rect2(15, -10, 15, 20), across], [Rect2(100, 100, 1, 1), inside]])
+	check(clipped[1] == [inside], "a building inside the beam is tinted again")
+	var right_edge := -INF
+	for piece in clipped[0]:
+		for point in piece:
+			right_edge = maxf(right_edge, point.x)
+	check(is_equal_approx(right_edge, 15.0), "the beam stops at the building it meets")
+
+	# Reflectors: not in the taxi's cone.
+	check(EntityLayer2.reflector_lit(Vector2(10, 0), Vector2.ZERO, 0.0), "ahead in the beam: lit, no reflector needed")
+	check(not EntityLayer2.reflector_lit(Vector2(-5, 0), Vector2.ZERO, 0.0) and not EntityLayer2.reflector_lit(Vector2(10, -8), Vector2.ZERO, 0.0), "behind or aside: the reflector shows")
+
+	# The night layer redraws only on a change.
+	var night = NightLayer.new()
+	root.add_child(night)
+	night.show_night(0.4, Rect2(0, 0, 10, 10), [], [])
+	check(night.visible and night.alpha == 0.4, "night shown")
+	night.show_night(0.0, Rect2(0, 0, 10, 10), [], [])
+	check(not night.visible, "day: the layer is off")
+	night.free()

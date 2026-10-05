@@ -11,9 +11,14 @@
 ##       objects before buildings); a felled tree lies down, a knocked bollard
 ##       is drawn by MapLayer from the state instead
 ##   z7  buildings
-##   z8  construction-site fences, roadworks, taxi-stand signs; traffic-light posts (own node, redrawn
+##   z8  railings/walls/hedges, construction-site fences, roadworks,
+##       taxi-stand signs; traffic-light posts (own node, redrawn
 ##       only when one of its lights changes phase - the phase is the server's)
 ##   z11 fuel price boards: above the vehicles, as draw_fuel_station_signs
+##   (z20 the night tint: night_layer.gd)
+##   z21 street lights, shown only at night: the light pool added onto the
+##       tinted scene, then the lamp head (render/roads.py draw_street_lights);
+##       a broken lamp (a knocked street lamp) stays dark
 ##
 ## The z8+ points are sized in screen pixels as Pygame's, so they redraw
 ## when the zoom changes (set_px_per_m), never per frame.
@@ -46,6 +51,19 @@ var _trees: Node2D = null  # trees and bollards, if this chunk has any
 var _fallen: Dictionary = {}  # MapMath key -> angle, for this chunk's felled trees
 var _knocked: Dictionary = {}  # keys of this chunk's bollards lying flat
 var drivable_roads: Array = []  # [Rect2, key] per drivable road: the night tint counts them (main.gd)
+var _building_shapes = null  # [Rect2, PackedVector2Array], built on the first night beam (building_shapes())
+var street_lights := PackedVector2Array()  # positions, for reflectors and long beams
+var _pools := Node2D.new()
+var _heads := Node2D.new()
+var _broken := PackedInt32Array()  # indices of this chunk's street lights that are knocked down
+var _season := [0.0, 0.0, 1.0, 0.0]  # [winter, spring, summer, autumn] (state calendar.season)
+
+
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_PREDELETE:  # light nodes of a chunk without lights never joined the tree
+		for node in [_pools, _heads]:
+			if is_instance_valid(node) and node.get_parent() == null:
+				node.free()
 
 
 func setup(message: Dictionary, origin: Vector2) -> void:
@@ -77,7 +95,16 @@ func setup(message: Dictionary, origin: Vector2) -> void:
 	_add_layer(5, _draw_puddles, _puddles)
 	_add_layer(6, _draw_railways)
 	_add_layer(7, _draw_buildings)
-	if not message.get("trees", []).is_empty() or not message.get("bollards", []).is_empty():
+	if not message.get("railings", []).is_empty():
+		_px_layers.append(_add_layer(8, _draw_railings))
+	if not message.get("street_lights", []).is_empty():
+		for light in message["street_lights"]:
+			street_lights.append(MapMath.point(origin, light[0], light[1]))
+		_pools.draw.connect(_draw_light_pools.bind(_pools))  # MapLayer puts it in its pool group (added once)
+		_px_layers.append(_pools)
+		_px_layers.append(_add_layer(21, _draw_lamp_heads, _heads))
+		set_lights_on(false)
+	if not message.get("trees", []).is_empty() or not message.get("bollards", []).is_empty() or not message.get("scenery_objects", []).is_empty():
 		_trees = _add_layer(6, _draw_trees)
 		_px_layers.append(_trees)
 	if not message.get("construction_fences", []).is_empty():
@@ -149,8 +176,20 @@ func set_phases(phases: Dictionary) -> bool:
 ## ...}), keyed by position (obstacle_key): redraws this chunk's trees only
 ## if one of its own changed. Returns whether it did.
 func set_obstacles(fallen: Dictionary, knocked: Dictionary) -> bool:
+	var broken := PackedInt32Array()  # a knocked street lamp is the light at its spot
+	for post in knocked.values():
+		if post[3] == "street_lamp" and not street_lights.is_empty():
+			var at := MapMath.point(_origin, post[0], post[1])
+			for i in street_lights.size():
+				if street_lights[i].distance_squared_to(at) < 0.01:
+					broken.append(i)
+	var lamps_changed: bool = broken != _broken
+	if lamps_changed:
+		_broken = broken
+		_pools.queue_redraw()
+		_heads.queue_redraw()
 	if _trees == null:
-		return false
+		return lamps_changed
 	var own_fallen := {}
 	for tree in _data.get("trees", []):
 		var key := obstacle_key(tree[0], tree[1])
@@ -167,6 +206,56 @@ func set_obstacles(fallen: Dictionary, knocked: Dictionary) -> bool:
 	_knocked = own_knocked
 	_trees.queue_redraw()
 	return true
+
+
+## Building outlines with their bounds, for clipping headlight beams: made
+## the first time a beam needs them (at night), then kept.
+func building_shapes() -> Array:
+	if _building_shapes == null:
+		_building_shapes = []
+		for building in _data.get("buildings", []):
+			var outline := _points(building)
+			if outline.size() >= 3 and not Geometry2D.triangulate_polygon(outline).is_empty():
+				var box := Rect2(outline[0], Vector2.ZERO)
+				for point in outline:
+					box = box.expand(point)
+				_building_shapes.append([box, outline])
+	return _building_shapes
+
+
+## Street lights shine at night only (darkness > 0.25, render/roads.py):
+## shown or hidden, never redrawn for it.
+func set_lights_on(on: bool) -> void:
+	_heads.visible = on  # the pools: MapLayer shows or hides its group
+
+
+## The season's weights (state calendar.season): water, trees and their
+## colours follow (render/scenery.py seasonal_vegetation_color, render/waters.py
+## ice). They change about once a game day, not with the clock.
+func set_season(weights: Array) -> bool:
+	if weights == _season or weights.size() != 4:
+		return false
+	_season = weights
+	queue_redraw()
+	if _trees != null:
+		_trees.queue_redraw()
+	return true
+
+
+## render/scenery.py _season_palette_color and seasonal_vegetation_color:
+## a summer colour through the season's palettes, by weight.
+static func seasonal_color(summer: Color, weights: Array) -> Color:
+	var c := [summer.r8, summer.g8, summer.b8]
+	var winter := Color8(mini(245, 218 + c[0] / 10), mini(245, 218 + c[1] / 10), mini(245, 218 + c[2] / 10))
+	var spring := Color8(mini(255, int(c[0] * 0.82 + 62)), mini(255, int(c[1] * 0.82 + 62)), mini(255, int(c[2] * 0.82 + 62)))
+	var autumn := Color8(mini(210, int(c[0] * 1.35 + 38)), mini(170, int(c[1] * 0.92 + 24)), mini(105, int(c[2] * 0.55 + 18)))
+	var palettes := [winter, spring, summer, autumn]
+	var out := [0.0, 0.0, 0.0]
+	for i in 4:
+		out[0] += palettes[i].r8 * weights[i]
+		out[1] += palettes[i].g8 * weights[i]
+		out[2] += palettes[i].b8 * weights[i]
+	return Color8(clampi(roundi(out[0]), 0, 255), clampi(roundi(out[1]), 0, 255), clampi(roundi(out[2]), 0, 255))
 
 
 ## How the state names a static obstacle: its position at 0.1 m, as both
@@ -187,10 +276,12 @@ func _points(line: Array) -> PackedVector2Array:
 
 
 func _draw() -> void:
+	# render/waters.py: water freezes with the winter weight.
+	var water_color := Color(0.25, 0.45, 0.65).lerp(Color8(232, 240, 244), clampf(_season[0], 0.0, 1.0))
 	for water in _data.get("waters", []):
 		var polygon := _points(water)
 		if polygon.size() >= 3 and not Geometry2D.triangulate_polygon(polygon).is_empty():
-			draw_colored_polygon(polygon, Color(0.25, 0.45, 0.65))
+			draw_colored_polygon(polygon, water_color)
 
 
 func _draw_roads(z: int, node: Node2D) -> void:
@@ -269,6 +360,7 @@ func _draw_trees(node: Node2D) -> void:
 	for tree in _data.get("trees", []):
 		var at := MapMath.point(_origin, tree[0], tree[1])
 		var style := tree_style(str(tree[2]), float(tree[3]))
+		style["crown"] = seasonal_color(style["crown"], _season)
 		var radius := maxf(_px(2.0), style["radius"])
 		var key := obstacle_key(tree[0], tree[1])
 		if _fallen.has(key):
@@ -285,6 +377,121 @@ func _draw_trees(node: Node2D) -> void:
 	for post in _data.get("bollards", []):
 		if not _knocked.has(obstacle_key(post[0], post[1])):
 			node.draw_circle(MapMath.point(_origin, post[0], post[1]), maxf(_px(1.0), 0.25), Color8(48, 48, 46))
+	for obj in _data.get("scenery_objects", []):
+		_draw_scenery_object(node, MapMath.point(_origin, obj[0], obj[1]), str(obj[2]), float(obj[3]))
+
+
+## render/scenery.py draw_scenery_objects' decorative kinds, in metres with
+## Pygame's minimum pixel sizes.
+func _draw_scenery_object(node: Node2D, at: Vector2, kind: String, angle: float) -> void:
+	match kind:
+		"bench":  # 1.4 x 0.4 m, along the path it's beside
+			var along := Vector2(cos(angle), -sin(angle))
+			var across := Vector2(-along.y, along.x)
+			node.draw_colored_polygon(PackedVector2Array([at - along * 0.7 - across * 0.2, at + along * 0.7 - across * 0.2,
+				at + along * 0.7 + across * 0.2, at - along * 0.7 + across * 0.2]), Color8(120, 82, 45))
+		"waste_basket":
+			var size := maxf(_px(2.0), 0.6)
+			node.draw_rect(Rect2(at - Vector2(size, size) / 2.0, Vector2(size, size)), Color8(58, 66, 56))
+		"bicycle_parking":
+			var size := maxf(_px(2.0), 0.8)
+			var color := Color8(75, 95, 115)
+			node.draw_rect(Rect2(at - Vector2(size / 2.0, size / 4.0), Vector2(size, maxf(_px(1.0), size / 2.0))), color)
+			for dx: float in [-size / 3.0, 0.0, size / 3.0]:
+				node.draw_line(at + Vector2(dx, -maxf(_px(2.0), 0.5)), at + Vector2(dx, 0), color, maxf(_px(1.0), 0.08))
+		"statue":
+			var pedestal := Vector2(maxf(_px(2.0), 0.9), maxf(_px(2.0), 0.6))
+			node.draw_rect(Rect2(at - Vector2(pedestal.x / 2.0, 0), pedestal), Color8(110, 110, 105))
+			var radius := maxf(_px(2.0), 0.5)
+			node.draw_circle(at - Vector2(0, radius / 2.0), radius, Color8(150, 130, 85))
+		"picnic_table":
+			var size := Vector2(maxf(_px(2.0), 1.6), maxf(_px(2.0), 0.9))
+			node.draw_rect(Rect2(at - size / 2.0, size), Color8(135, 95, 55))
+		"firepit":
+			var radius := maxf(_px(2.0), 0.5)
+			node.draw_arc(at, radius, 0.0, TAU, 16, Color8(60, 58, 55), maxf(_px(1.0), radius / 3.0))
+			node.draw_circle(at, maxf(_px(1.0), radius / 2.0), Color8(216, 120, 40))
+		"fountain":
+			var radius := maxf(_px(2.0), 0.7)
+			node.draw_circle(at, radius, Color8(90, 165, 185))
+			node.draw_circle(at, maxf(_px(1.0), radius / 3.0), Color8(220, 240, 245))
+		"gate":
+			var half := maxf(_px(2.0), 1.0)
+			node.draw_line(at - Vector2(half, 0), at + Vector2(half, 0), Color8(100, 92, 80), maxf(_px(1.0), 0.15))
+
+
+## render/roads.py draw_railings: hedges and walls solid, fences and
+## railings dashed (0.8 m on, 0.4 m off).
+## One draw call per style (a city has thousands of fences: a call per
+## dash cost megabytes of draw commands).
+func _draw_railings(node: Node2D) -> void:
+	var lines := {"hedge": PackedVector2Array(), "wall": PackedVector2Array(), "fence": PackedVector2Array()}
+	for railing in _data["railings"]:
+		var points := _points(railing[1])
+		var kind := str(railing[0]) if railing[0] in ["hedge", "wall"] else "fence"
+		if kind == "fence":
+			for dash in dashes(points, 0.8, 0.4):
+				lines["fence"].append_array(PackedVector2Array([dash[0], dash[1]]))
+		else:
+			for i in points.size() - 1:
+				lines[kind].append_array(PackedVector2Array([points[i], points[i + 1]]))
+	if not lines["hedge"].is_empty():
+		node.draw_multiline(lines["hedge"], Color8(58, 92, 48), maxf(_px(2.0), 0.25))
+	if not lines["wall"].is_empty():
+		node.draw_multiline(lines["wall"], Color8(128, 122, 112), maxf(_px(2.0), 0.25))
+	if not lines["fence"].is_empty():
+		# 0.12 m is a pixel or so at normal zoom: a hairline then (no triangles per dash).
+		node.draw_multiline(lines["fence"], Color8(150, 145, 130), -1.0 if 0.12 * _px_per_m < 1.5 else 0.12)
+
+
+## render/roads.py draw_street_lights: each light's pool, a 270-degree fan
+## toward its road. Painted plain into MapLayer's pool group, which adds the
+## union onto the tinted scene once - overlapping pools don't add up, as in
+## Pygame's pool layer.
+## All of a chunk's pools (and heads) are one triangle array each: one draw
+## command instead of thousands.
+func _draw_light_pools(node: Node2D) -> void:
+	var head_r := maxf(_px(1.0), 0.28)
+	var points := PackedVector2Array()
+	var triangles := PackedInt32Array()
+	for i in street_lights.size():
+		if _broken.has(i):
+			continue
+		var light: Array = _data["street_lights"][i]
+		var radius := maxf(head_r + _px(2.0), float(light[3]))
+		var centre := points.size()
+		points.append(street_lights[i])
+		for step in 17:
+			var angle: float = light[2] - deg_to_rad(135.0) + step * (deg_to_rad(270.0) / 16.0)
+			points.append(street_lights[i] + Vector2(cos(angle), -sin(angle)) * radius)
+			if step > 0:
+				triangles.append_array(PackedInt32Array([centre, centre + step, centre + step + 1]))
+	_triangles(node, points, triangles, Color8(22, 22, 22))
+
+
+## A triangle list drawn in one colour, as one command.
+static func _triangles(node: Node2D, points: PackedVector2Array, triangles: PackedInt32Array, color: Color) -> void:
+	if triangles.is_empty():
+		return
+	var colors := PackedColorArray()
+	colors.resize(points.size())
+	colors.fill(color)
+	RenderingServer.canvas_item_add_triangle_array(node.get_canvas_item(), triangles, points, colors)
+
+
+func _draw_lamp_heads(node: Node2D) -> void:
+	var radius := maxf(_px(1.0), 0.28)
+	var points := PackedVector2Array()
+	var triangles := PackedInt32Array()
+	for i in street_lights.size():
+		if _broken.has(i):
+			continue
+		var centre := points.size()
+		points.append(street_lights[i])
+		for step in 8:
+			points.append(street_lights[i] + Vector2(cos(TAU * step / 8.0), sin(TAU * step / 8.0)) * radius)
+			triangles.append_array(PackedInt32Array([centre, centre + 1 + step, centre + 1 + (step + 1) % 8]))
+	_triangles(node, points, triangles, Color8(215, 215, 200))
 
 
 ## render/scenery.py draw_construction_fences: the site's outline as a
