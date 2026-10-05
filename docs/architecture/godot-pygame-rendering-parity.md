@@ -13,7 +13,8 @@ rows marked godot-10 after the re-audit of 2026-10-05 (`734a3b7`; see
 [the 2.5D buildings](#godot-17-25d-buildings); godot-18 changed no rows
 ([performance](#godot-18-performance-investigation)), rows marked godot-19 after
 [the first GTA1-style extrusion](#godot-19-gta1-style-top-down-building-extrusion),
-and godot-20 after the screenshot-authoritative radial correction below.
+godot-20 after the screenshot-authoritative radial correction, and godot-21
+after [the 3D building layer prototype](#godot-21-lightweight-3d-building-layer-prototype).
 
 The Pygame side is the actual per-frame draw sequence in
 `main/__init__.py`: about 80 `draw_*` calls between lines 2771 and 3446,
@@ -74,7 +75,7 @@ find customers, avoid hazards); `medium` means world-reading or feedback;
 | Trees | `draw_trees` | chunk `trees`: crown by kind and variation, seeded irregular blob; felled trees lie the way they were hit (`state.fallen_trees`); collision on the server — godot-13; seasonal crown colours from `calendar.season` — godot-15. Missing: the hit's shake and leaf burst (`tree_effects`, not sent), wind lean (`weather.tree_lean_m`, not sent) | partial | medium (collisions) | missing protocol data (shake, leaves, wind lean) | C |
 | Scenery objects: benches, bollards, fountains | `draw_scenery_objects` (+ knocked-over state) | bollards and knocked posts (godot-13), fuel pumps (godot-12), and the decorative kinds — bench (along its path), bin, bicycle parking, statue, picnic table, fire pit, fountain, gate — from chunk `scenery_objects` — godot-15 | complete | medium (bollards collide) | – | – |
 | Bus stops (option) | `draw_bus_stops` | chunk `bus_stops`: bay, shelter and "BUS" from the nearest road, computed once by the server — godot-16 (Oulu has none: bus stops are off by default) | complete | low | – | – |
-| Buildings | `draw_buildings` (cached geometry, facades) | GTA1/GTA2-style screen-relative radial facade extrusion (godot-20): ground footprints stay exact; roofs project away from the live view centre by height × 0.35, exposing camera-facing walls toward the play area. Windows, doors and gabled roofs use the same volume geometry. Roads and the camera remain top-down. | different by design | high | – | – |
+| Buildings | `draw_buildings` (cached geometry, facades) | godot-21 (prototype, default): real 3D volumes seen by a top-down perspective camera in a SubViewport, composited at z 7; facades open toward the view centre continuously. `--buildings 2d`: godot-20 radial renderer: GTA1/GTA2-style screen-relative radial facade extrusion (godot-20): ground footprints stay exact; roofs project away from the live view centre by height × 0.35, exposing camera-facing walls toward the play area. Windows, doors and gabled roofs use the same volume geometry. Roads and the camera remain top-down. | different by design | high | – | – |
 | Open-roof canopies over vehicles | `draw_open_roof_overlays` | chunk `canopies`: shadow under the vehicles; raised by their own height (`canopy_heights`) as open structures, posts from the ground corners, the translucent roof above the vehicles - pumps visible under it (godot-16, -17) | complete | medium | – | – |
 | Tire tracks | `draw_tire_tracks` ×4 | the server's per-tick `tire_mark` (as `main()` decides it), laid along the drawn taxi, at most 4000 points — godot-16. The client keeps the trail, so a reconnect starts a new one | complete | low | – | – |
 | Roadworks barriers / cones | `draw_roadworks` | chunk `roadworks`: barriers at both ends (lane or full road), cones between, Pygame's pixel sizes — godot-12 | complete | high (block roads) | – | – |
@@ -1435,3 +1436,80 @@ and pedestrians receive no projection. Geometry remains batched per chunk.
 Camera movement updates a chunk when its view angle changes by 0.06 radians,
 avoiding a full-city rebuild every frame while keeping the facade direction
 screen-relative.
+
+## godot-21: lightweight 3D building layer (prototype)
+
+**Status: prototype, on by default; `--buildings 2d` restores the godot-20
+renderer for comparison.** Only the buildings are 3D. Roads, terrain,
+vehicles, pedestrians, labels and the HUD are unchanged, and the server is
+unchanged.
+
+**Why perspective, not orthographic.** A straight-down orthographic camera
+shows no walls. A tilted orthographic one shows walls on one side only (the
+godot-19 look) and squashes the ground by cos(tilt), so footprints no longer
+match the 2D map. A straight-down **perspective** camera (what GTA1/GTA2 did)
+keeps the ground plane exact and pushes every point at height `h` out from
+the view centre by `r × h / (D − h)`. Facades open toward the player, deeper
+near the screen edges and for taller buildings, and change continuously as
+the camera moves. No code picks walls; the depth buffer does.
+
+**Coordinate mapping.** 2D layer `(x, y)` (metres, y down) → 3D `(x, 0, y)`.
+Height is the 3D `y`.
+
+**Camera.** `Camera3D` at `(cx, D, cy)`, rotation `(-90°, 0, 0)` (screen up =
+−z = 2D up), vertical FOV 40° (`buildings_3d.gd FOV`, the one tuning knob),
+`KEEP_HEIGHT`. `D = view_height_m / 2 / tan(FOV / 2)`, with `view_height_m =
+viewport_px / zoom`, so the ground plane fills exactly the `Camera2D` view.
+Each frame it copies the `Camera2D`'s screen centre and zoom.
+
+**Geometry.** One `ArrayMesh` per chunk, built on a worker thread. Every
+footprint edge is extruded from 0 to the server height, the roof is the
+triangulated footprint at that height, and a pitched roof is two planar
+halves rising to a ridge (0.3 × half width, at most 4 m). Windows (Pygame's
+slot rules, deterministic) and doors are quads 5 cm in front of the walls.
+Materials are unshaded vertex colours with no culling. There are no lights
+and no shadows; walls are shaded by their direction.
+
+**Composition.** A transparent `SubViewport` renders the meshes. Its texture
+is a `Sprite2D` at z 7, at the camera centre and scaled by 1/zoom, so one
+texel is one screen pixel. Roads stay below it and vehicles and the night
+tint stay above. Lit windows use a second camera on the same `World3D`. It
+renders the lit-window mesh, and the building mesh again in black as an
+occluder. That pass is added at z 21 over the night tint, and it isn't
+rendered at all by day.
+
+**Checks.**
+- `tests/building_scene.gd -- OUT 3d|2d` renders low, tall, L-shaped,
+  irregular, pitched, commercial and turned buildings at three zooms. It
+  also pans the camera across them in five steps. Footprints stay on their
+  red outlines, and facades turn smoothly through the view centre.
+- In real Oulu (Rantakatu, at dusk) streets stay readable and footprints
+  stay on the map.
+
+**Benchmark** (stationary at the Oulu spawn, `--bench 30`, llvmpipe,
+1280×720, day, 49 chunks; the godot-18 route script was not available):
+
+| | 2D radial (godot-20) | 3D prototype |
+|---|---|---|
+| average FPS | 43.4 | 33.9 |
+| 1 % low FPS | 35.7 | 27.5 |
+| worst frame | 31.1 ms | 38.9 ms |
+| p99 frame | 26.5 ms | 34.6 ms |
+| static memory | 104.5 MiB | 107.9 MiB |
+| buildings / walls | 2,315 / 10,631 visible | 2,315 / 21,121 (all) |
+| windows | 60,112 | 119,838 |
+| chunk building build (worker) | 7.0 ms avg, 27 ms max | 14.4 ms avg, 59 ms max |
+| 3D objects | – | 2–3 `MeshInstance3D` per chunk (~150) |
+
+**Known limitations.**
+- About 22 % slower on software rendering, because every wall and window is
+  sent to the GPU, not only the visible ones. Back-face culling with
+  consistent winding would cut that roughly in half.
+- Facades are deep at FOV 40° (a 60 m building near the screen edge covers
+  much of the street). Lower `FOV` for shallower facades.
+- Canopies still use the godot-20 radial lift.
+- Headlight beams clip at the footprint, not at the projected volume.
+- Gable-end triangles are left open.
+- The night pass renders the whole view twice.
+
+**Tests:** Godot 347 checks (all pass), Python 1562 passed, 3 failed (`test_main_city_bin_integration.py`, Pygame city-bin loading; no Python was changed in this phase).

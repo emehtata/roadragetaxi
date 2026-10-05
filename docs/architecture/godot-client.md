@@ -28,6 +28,8 @@ BIN; the map comes from the existing OSM pipeline.
                                        ▼
                                  Godot client (godot/)
    SimClient ─► MapLayer/MapChunk   StateBuffer ─► EntityLayer ─► Camera2D
+                     └─► Buildings3D (godot-21 prototype): SubViewport + Camera3D
+                         (top-down perspective, follows Camera2D) ─► Sprite2D at z 7
                                          │
                             HUD (hud.gd) ◄┴► AudioManager (audio_events.json → game sound catalog)
                                               buses: Master > Game, Environment, UI
@@ -494,6 +496,20 @@ Nobody has listened to it; these are measurements of the output.
   listening review (2026-10-03).
 - No station announcements or passenger speech yet; that is a later phase.
 
+## Buildings: 2D map + lightweight 3D layer (godot-21, prototype)
+
+The game stays 2D. Only buildings are 3D (`buildings_3d.gd`):
+- 2D `(x, y)` → 3D `(x, 0, y)`
+- a straight-down perspective `Camera3D` whose ground plane matches the
+  `Camera2D` exactly
+- one `ArrayMesh` per chunk, rendered in a transparent `SubViewport` and drawn
+  as a `Sprite2D` at z 7
+- a second, additive pass for lit windows at z 21, rendered only at night
+
+`--buildings 2d` keeps the godot-20 renderer for comparison until the 3D
+layer is accepted. The details and measurements are in the parity doc's
+godot-21 section.
+
 ## Known limitations
 
 - **Spikes:** occasional 20–39 ms ticks, plus the unexplained 135–145 ms
@@ -514,6 +530,8 @@ Nobody has listened to it; these are measurements of the output.
   Godot. The pedestrian curse is generated and validated but wasn't
   triggered in the scripted test.
 - **Native Windows** performance and audio were not measured.
+- **3D buildings** are a prototype: about 22 % slower than the 2D renderer on
+  software GL, so they need back-face culling (see the parity doc).
 
 ## Migration from Pygame
 
