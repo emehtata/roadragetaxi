@@ -966,6 +966,29 @@ func test_buildings_3d() -> void:
 		ridge = maxf(ridge, v.y)
 	check(ridge > 10.0 and ridge <= 14.0, "a pitched roof rises above the walls")
 	check(B3.build([box], [[[92, 57, 48], 0, 10.0, [[10.0, -10.0]], [158, 105, 82], 3, 0]], Vector2.ZERO)["colors"].has(B25.DOOR), "a door at the entrance")
+	# godot-23: the gables close the pitched roof. The ridge runs along x
+	# (the box's longest edge) at y = 5, so the two short walls get a peak.
+	var peaks := 0
+	var capped := 0
+	for v in gabled["verts"]:
+		if is_equal_approx(v.y, ridge) and (is_equal_approx(v.x, 0.0) or is_equal_approx(v.x, 20.0)):
+			peaks += 1
+	for t in range(0, gabled["verts"].size(), 3):
+		var tri: Array = [gabled["verts"][t], gabled["verts"][t + 1], gabled["verts"][t + 2]]
+		if tri.all(func(v): return is_equal_approx(v.x, tri[0].x)) and (is_equal_approx(tri[0].x, 0.0) or is_equal_approx(tri[0].x, 20.0)) and tri.any(func(v): return v.y > 10.0):
+			capped += 1
+	check(peaks >= 2 and capped >= 2, "both gable ends are closed up to the ridge (%d peaks, %d triangles)" % [peaks, capped])
+	check(B3.build([box], [[[92, 57, 48], 1, 10.0, [], [158, 105, 82], 3, 0]], Vector2.ZERO)["tops"] == [ridge], "a pitched roof's top is its ridge (headlight silhouette)")
+	# godot-23: canopies and headlight silhouettes project as the 3D camera does.
+	B3.view_centre = Vector2(30.0, -20.0)
+	B3.view_height = d
+	var lifted := B3.lift_point(Vector2(55.0, -20.0), 6.0)
+	check(lifted.is_equal_approx(B3.project(Vector3(55.0, 6.0, -20.0), B3.view_centre, d)) and lifted.x > 55.0, "a canopy corner 6 m up moves out from the view centre exactly as the 3D camera shows it")
+	check(B3.lift_point(Vector2(55.0, -20.0), 0.0).is_equal_approx(Vector2(55.0, -20.0)), "at ground level nothing moves")
+	var shape: Array = B3.silhouette(Geometry2D.convex_hull(box), 10.0)
+	var far_corner := B3.lift_point(Vector2(0.0, 10.0), 10.0)
+	check(shape[0].grow(1e-3).has_point(far_corner) and shape[0].grow(1e-3).has_point(Vector2(0.0, 10.0)), "the headlight silhouette covers the footprint and the projected roof")
+	B3.view_height = 0.0
 	MapChunk.buildings_3d = true
 	var map := MapLayer.new()
 	root.add_child(map)

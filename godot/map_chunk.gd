@@ -352,7 +352,7 @@ func building_shapes() -> Array:
 			var box := Rect2(hull[0], Vector2.ZERO)
 			for point in hull:
 				box = box.expand(point)
-			_building_shapes.append([box, hull])
+			_building_shapes.append([box, hull, _volumes.get("tops", [])[_building_shapes.size()] if buildings_3d else 0.0])
 	return _building_shapes
 
 
@@ -407,7 +407,7 @@ func _meshes_ready(arrays: Dictionary) -> void:
 		_building_task = -1
 	Perf.add("chunk_buildings_build", arrays.get("build_usec", 0))
 	meshes_3d = B3.meshes(arrays)
-	_volumes = {"hulls": arrays["hulls"], "stats": arrays["stats"]}  # the vertices live in the meshes
+	_volumes = {"hulls": arrays["hulls"], "tops": arrays["tops"], "stats": arrays["stats"]}  # the vertices live in the meshes
 	if is_inside_tree():
 		get_parent().add_building_meshes(self)
 var _building_task := -1

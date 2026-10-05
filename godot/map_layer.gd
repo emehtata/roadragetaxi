@@ -277,9 +277,25 @@ func buildings_in(area: Rect2) -> Array:
 		if chunk._bounds_rect.size != Vector2.ZERO and not chunk._bounds_rect.grow(200.0).intersects(area):
 			continue  # (a building is in each chunk it touches: 200 m covers one reaching in)
 		for building in chunk.building_shapes():
-			if building[0].intersects(area) and not found.any(func(f): return f[1] == building[1]):
-				found.append(building)
+			if not MapChunk.buildings_3d:
+				if building[0].intersects(area) and not found.any(func(f): return f[1] == building[1]):
+					found.append(building)
+				continue
+			# godot-23: the visible 3D volume. Its roof is the footprint scaled
+			# about the view centre, so the footprint box and its image bound it.
+			var roof := Rect2(Buildings3D.lift_point(building[0].position, building[2]), Vector2.ZERO).expand(Buildings3D.lift_point(building[0].end, building[2]))
+			if building[0].merge(roof).intersects(area) and not found.any(func(f): return f[2] == building[1]):
+				var shape := Buildings3D.silhouette(building[1], building[2])
+				found.append([shape[0], shape[1], building[1]])
 	return found
+
+
+## 3D buildings: canopies in view project with the camera, so they redraw each frame.
+func canopies_moved(view: Rect2) -> void:
+	for chunk in _chunks.values():
+		if not chunk._canopy_layers.is_empty() and not chunk._data.get("canopies", []).is_empty() and chunk._bounds_rect.grow(50.0).intersects(view):
+			for node in chunk._canopy_layers:
+				node.queue_redraw()
 
 
 ## The weather's road wetness 0..1 (state "weather.wetness"). Applied in

@@ -15,6 +15,7 @@ const HALF_TIE := 2.6 / 2.0
 const TIE_SPACING := 2.0
 const BUMP_LENGTHS := {"table": 2.2, "bump": 0.6, "cushion": 0.4, "hump": 0.6}
 const B25 := preload("res://buildings_25d.gd")
+const B3 := preload("res://buildings_3d.gd")
 const OPEN_ROOF := Color8(138, 145, 148, 185)  # render/buildings.py
 const OPEN_ROOF_EDGE := Color8(65, 69, 71, 235)
 const OPEN_ROOF_POLE := Color8(105, 110, 112)
@@ -130,11 +131,18 @@ static func draw_canopy_supports(chunk, node: Node2D) -> void:
 		for p in polygon:
 			centre += p
 		centre /= polygon.size()
-		var up := B25.lift(canopy_height(chunk, canopy), centre, chunk._building_view)
+		var height := canopy_height(chunk, canopy)
+		var up := B25.lift(height, centre, chunk._building_view)
 		for point in polygon:
-			node.draw_line(point, point + up, OPEN_ROOF_POLE, maxf(chunk._px(1.0), 0.24))
+			node.draw_line(point, _lift(chunk, point, height, up), OPEN_ROOF_POLE, maxf(chunk._px(1.0), 0.24))
 			node.draw_circle(point, maxf(chunk._px(1.0), 0.18) + chunk._px(1.0), OPEN_ROOF_EDGE)
 			node.draw_circle(point, maxf(chunk._px(1.0), 0.18), OPEN_ROOF_POLE)
+
+
+## A canopy point raised to `height`: with the 3D buildings, exactly where
+## their camera shows that height (godot-23); otherwise the 2D radial lift.
+static func _lift(chunk, point: Vector2, height: float, radial: Vector2) -> Vector2:
+	return B3.lift_point(point, height) if chunk.buildings_3d else point + radial
 
 
 ## A canopy's height (chunk canopy_heights, in step with canopies; 6 m without).
@@ -153,9 +161,10 @@ static func draw_canopies(chunk, node: Node2D) -> void:
 		for p in polygon:
 			centre += p
 		centre /= polygon.size()
-		var up := B25.lift(canopy_height(chunk, canopy), centre, chunk._building_view)
+		var height := canopy_height(chunk, canopy)
+		var up := B25.lift(height, centre, chunk._building_view)
 		for i in polygon.size():
-			polygon[i] += up
+			polygon[i] = _lift(chunk, polygon[i], height, up)
 		if _valid(polygon):
 			node.draw_colored_polygon(polygon, OPEN_ROOF)
 			var ring := polygon.duplicate()

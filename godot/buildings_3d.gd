@@ -88,6 +88,31 @@ static func camera_height(view_height_m: float) -> float:
 	return view_height_m / 2.0 / tan(deg_to_rad(FOV) / 2.0)
 
 
+## The 3D camera this frame: what draws at a height in 2D (canopies,
+## the headlights' building silhouettes) projects the same way.
+static var view_centre := Vector2.ZERO
+static var view_height := 0.0
+
+
+## A point at height h, where the 3D camera shows it (the 2D map position
+## of its image); unchanged before the first frame.
+static func lift_point(p: Vector2, h: float) -> Vector2:
+	return project(to_3d(p, h), view_centre, view_height) if view_height > h else p
+
+
+## A building's silhouette for the headlights: its footprint hull and its
+## projected top, hulled, with their bounds.
+static func silhouette(hull: PackedVector2Array, top: float) -> Array:
+	var points := hull.duplicate()
+	for p in hull:
+		points.append(lift_point(p, top))
+	var outline := Geometry2D.convex_hull(points)
+	var box := Rect2(outline[0], Vector2.ZERO)
+	for p in outline:
+		box = box.expand(p)
+	return [box, outline]
+
+
 ## Where a 3D point appears on the 2D map (layer coordinates), seen by the
 ## camera above `centre` at `height`: a pure function, for the alignment tests.
 static func project(p: Vector3, centre: Vector2, height: float) -> Vector2:
@@ -109,6 +134,9 @@ func _process(_delta: float) -> void:
 	for v in [_view, _lit_view]:
 		if v.size != size:
 			v.size = size
+	view_centre = centre
+	view_height = height
+	get_parent().canopies_moved(Rect2(centre - Vector2(size) / camera_2d.zoom / 2.0, Vector2(size) / camera_2d.zoom))
 	for c in [_camera, _lit_camera]:
 		c.position = Vector3(centre.x, height, centre.y)
 		c.near = maxf(1.0, height * 0.02)
@@ -141,7 +169,7 @@ func instance_count() -> int:
 ## One chunk's mesh arrays (any thread): {"verts", "colors", "lit" (the
 ## lit windows' verts), "hulls", "stats"}.
 static func build(buildings: Array, styles: Array, origin: Vector2) -> Dictionary:
-	var out := {"verts": PackedVector3Array(), "colors": PackedColorArray(), "lit": PackedVector3Array(), "hulls": [],
+	var out := {"verts": PackedVector3Array(), "colors": PackedColorArray(), "lit": PackedVector3Array(), "hulls": [], "tops": [],
 		"stats": {"buildings": 0, "walls": 0, "windows": 0, "lit": 0, "triangles": 0}}
 	for i in buildings.size():
 		var footprint: PackedVector2Array = buildings[i]
@@ -243,14 +271,16 @@ static func _building(out: Dictionary, footprint: PackedVector2Array, style: Arr
 		out["stats"]["walls"] += 1
 		_windows(out, a, b, normal, height, floors, category, seed_base + i * 7.13)
 	_doors(out, footprint, style[3] if style.size() > 3 else [], outward_sign, height, floors, origin)
+	var top := height
 	if gabled:
-		_gabled(out, footprint, height, roof_color)
+		top += _gabled(out, footprint, height, roof_color, wall_color)
 	else:
 		var heights := PackedFloat32Array()
 		heights.resize(footprint.size())
 		heights.fill(height)
 		_polygon(out, footprint, heights, roof_color)
-	out["hulls"].append(Geometry2D.convex_hull(footprint))  # headlight clipping: the footprint (the roof moves with the camera)
+	out["hulls"].append(Geometry2D.convex_hull(footprint))  # headlight clipping: with the top, projected per frame (silhouette())
+	out["tops"].append(top)
 
 
 ## render/buildings.py's window slots on a real wall: up to 3 a floor (2 on a
@@ -313,8 +343,9 @@ static func _doors(out: Dictionary, footprint: PackedVector2Array, entrances: Ar
 ## through the centre, rising 0.3 x the half width (at most 4 m). Each side
 ## is one plane (height grows linearly toward the ridge), so the footprint is
 ## cut at the ridge line and each half triangulated with its vertex heights.
-## ponytail: the gable-end triangles stay open; add them if they show.
-static func _gabled(out: Dictionary, footprint: PackedVector2Array, height: float, color: Color) -> void:
+## Every wall under a sloping edge gets its gable: the wall continued up to
+## the roof (godot-23). Returns the ridge's rise.
+static func _gabled(out: Dictionary, footprint: PackedVector2Array, height: float, color: Color, wall_color: Color) -> float:
 	var longest := 0
 	for i in footprint.size():
 		if footprint[i].distance_squared_to(footprint[(i + 1) % footprint.size()]) > footprint[longest].distance_squared_to(footprint[(longest + 1) % footprint.size()]):
@@ -338,3 +369,23 @@ static func _gabled(out: Dictionary, footprint: PackedVector2Array, height: floa
 			for p in facet:
 				heights.append(height + rise * (1.0 - absf((p - centre).dot(normal)) / reach) if reach > 0.0 else height)
 			_polygon(out, facet, heights, shade)
+	var outward_sign := -1.0 if B25.signed_area(footprint) > 0.0 else 1.0
+	var roof_at := func(p: Vector2) -> float: return height + rise * (1.0 - absf((p - centre).dot(normal)) / reach) if reach > 0.0 else height
+	for i in footprint.size():
+		var a := footprint[i]
+		var b := footprint[(i + 1) % footprint.size()]
+		var top := [to_3d(b, roof_at.call(b)), to_3d(a, roof_at.call(a))]
+		var da := (a - centre).dot(normal)
+		var db := (b - centre).dot(normal)
+		if signf(da) != signf(db) and da != db:  # the ridge crosses this wall: the gable's peak
+			top.insert(1, to_3d(a.lerp(b, da / (da - db)), height + rise))
+		if top.all(func(v): return v.y - height < 1e-3) or a.distance_squared_to(b) < 1e-6:
+			continue  # an eave: the roof meets this wall at its top
+		var edge := b - a
+		var facing := to_3d(Vector2(-edge.y, edge.x).normalized() * outward_sign)
+		var shade := 0.72 + 0.28 * clampf(Vector2(facing.x, facing.z).dot(LIGHT.normalized()) * 0.5 + 0.5, 0.0, 1.0)
+		var wall := Color(wall_color.r * shade, wall_color.g * shade, wall_color.b * shade)
+		var fan := [to_3d(b, height)] + top
+		for t in fan.size() - 1:
+			_tri(out, to_3d(a, height), fan[t], fan[t + 1], wall, facing)
+	return rise
