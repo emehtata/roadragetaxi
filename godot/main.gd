@@ -396,7 +396,13 @@ func _apply_bench_hide() -> void:
 		match name:
 			"labels": labels.visible = false
 			"buildings": map_layer._buildings.visible = false
-			"composite3d": if map_layer.buildings_3d: map_layer.buildings_3d._sprite.visible = false  # the 3D pass still renders
+			"composite3d": if map_layer.buildings_3d:  # the 3D pass still renders (a hidden texture's viewport would skip it)
+				map_layer.buildings_3d._sprite.visible = false
+				map_layer.buildings_3d._view.render_target_update_mode = SubViewport.UPDATE_ALWAYS
+			"meshes3d": if map_layer.buildings_3d:  # the 3D pass with nothing to draw: its fixed cost
+				for node in map_layer.buildings_3d._view.get_children():
+					if node is MeshInstance3D:
+						node.visible = false
 			"buildings3d": if map_layer.buildings_3d:
 				map_layer.buildings_3d._sprite.visible = false
 				map_layer.buildings_3d._view.render_target_update_mode = SubViewport.UPDATE_DISABLED
