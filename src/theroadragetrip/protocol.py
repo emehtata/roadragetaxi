@@ -227,6 +227,30 @@ def _line(points) -> list:
     return [[round(x, 1), round(y, 1)] for x, y in points]
 
 
+TRAFFIC_LIGHT_PHASE_RADIUS_M = 600.0  # phases sent for posts this near the player (well past the view)
+
+
+def traffic_light_render_point(light) -> tuple:
+    """Where Pygame draws a light (render/roads.py _traffic_light_render_position):
+    shifted right of the lane by its render_offset_m."""
+    heading = light.direction_angle or 0.0
+    offset = getattr(light, "render_offset_m", 0.0)
+    return light.x + math.sin(heading) * offset, light.y - math.cos(heading) * offset
+
+
+def _traffic_light_phases(traffic_mgr, x: float, y: float) -> dict:
+    """{post id: phase} for the posts near (x, y), the id being the light's
+    index (map_chunks.ChunkIndex) and the phase TrafficLight.get_state's
+    ("green", "yellow", "red", "red+yellow", "all-red") - the client never
+    computes one."""
+    radius_sq = TRAFFIC_LIGHT_PHASE_RADIUS_M * TRAFFIC_LIGHT_PHASE_RADIUS_M
+    return {
+        str(index): light.get_state(traffic_mgr.sim_time)
+        for index, light in enumerate(traffic_mgr.traffic_lights)
+        if getattr(light, "renderable", True) and (light.x - x) ** 2 + (light.y - y) ** 2 <= radius_sq
+    }
+
+
 def _road_to_dict(current_way) -> dict:
     """The road under the taxi as Pygame's HUD names it: the OSM name, else
     the highway type title-cased; None off-road. The limit is the
@@ -315,6 +339,8 @@ def build_state_message(
         "weather": {"weather_type": weather.weather_type.value, "wetness": weather.wetness,
                     "lightning_intensity": weather.lightning_intensity},  # 1 at a strike, fading (render/weather.py)
         "road": _road_to_dict(current_way),
+        "traffic_lights": _traffic_light_phases(
+            traffic_mgr, *((player_pedestrian.x, player_pedestrian.y) if on_foot else (car.x, car.y))),
         "meet": _meet_to_dict(taxi_mgr, player_pedestrian, language),
         "taxi": {
             "state": taxi_mgr.state,

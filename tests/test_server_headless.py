@@ -171,3 +171,16 @@ def test_a_lightning_strike_sends_its_flash_and_one_thunder(tmp_path, monkeypatc
     thunders = [e for e in sent if e.get("group") == "weather.thunder"]
     assert len(thunders) == 1  # once per strike, not every tick
     assert _state(server)["weather"]["lightning_intensity"] == 1.0
+
+
+def test_traffic_light_phases_name_posts_in_the_chunks(tmp_path, monkeypatch):
+    """godot-12: every phase in `state` belongs to a post some chunk carries."""
+    server = _build_server(tmp_path, monkeypatch)
+    light = server.world.traffic_mgr.traffic_lights[0]
+    walker = server.world.player_pedestrian  # on foot at the start: phases follow the walker
+    walker.x, walker.y = light.x, light.y
+    phases = _state(server)["traffic_lights"]
+    assert phases, "the sample map has traffic lights"
+    posts = {str(post["id"]) for cid in server._chunks_index._chunks for post in server._chunks_index.message(cid)["traffic_lights"]}
+    assert set(phases) <= posts
+    assert set(phases.values()) <= {"green", "yellow", "red", "red+yellow", "all-red"}

@@ -4,8 +4,10 @@
 A chunk is identified by its grid cell, "ix_iy" with ix = floor(x / size).
 It holds every road, railway, water and building with at least one vertex
 in the cell, so a long road is in each chunk it passes through, and
-clients draw it once per loaded chunk. Python decides which chunks a
-client needs (`plan`); the client only adds and removes what it's told.
+clients draw it once per loaded chunk. Gameplay points (taxi stands, fuel
+stations, traffic-light posts, roadworks) are in exactly one chunk, the
+one containing them, so no client draws one twice. Python decides which
+chunks a client needs (`plan`); the client only adds and removes what it's told.
 Built from the same world objects the simulation uses - no second map model.
 """
 
@@ -13,7 +15,10 @@ from __future__ import annotations
 
 import math
 
-from .protocol import PROTOCOL_VERSION, _line, encode
+from .fuel import fuel_station_price_cents
+from .protocol import PROTOCOL_VERSION, _line, encode, traffic_light_render_point
+
+_KINDS = ("roads", "railways", "waters", "buildings", "taxi_stands", "fuel_stations", "traffic_lights", "roadworks")
 
 CHUNK_SIZE_M = 500.0
 LOAD_RADIUS = 3    # chunks around the player's chunk that must be loaded (7 x 7, >= 1.5 km each way)
@@ -70,17 +75,39 @@ class ChunkIndex:
         for building in world.buildings:
             if len(building.points_m) >= 3:
                 self._add("buildings", building.points_m, _line(building.points_m))
+        for stop in getattr(world, "taxi_stops", ()):  # render/roads.py draw_taxi_stops
+            self._add("taxi_stands", ((stop.x, stop.y),), [round(stop.x, 1), round(stop.y, 1)])
+        for station in getattr(world, "scenery_objects", ()):  # draw_scenery_objects' pumps, draw_fuel_station_signs
+            if station.kind == "fuel":
+                self._add("fuel_stations", ((station.x, station.y),), {
+                    "x": round(station.x, 1), "y": round(station.y, 1), "angle": round(station.direction_angle or 0.0, 3),
+                    "is_area": bool(station.is_area), "name": station.name or "FUEL",
+                    "price_cents": fuel_station_price_cents(station),  # the simulation's own price
+                })
+        # Posts only: the phase is per tick in `state` ("traffic_lights", by this id).
+        for index, light in enumerate(getattr(getattr(world, "traffic_mgr", None), "traffic_lights", ())):
+            if getattr(light, "renderable", True):
+                x, y = traffic_light_render_point(light)
+                self._add("traffic_lights", ((light.x, light.y),), {
+                    "id": index, "x": round(x, 2), "y": round(y, 2), "angle": round(light.direction_angle or 0.0, 4),
+                })
+        for work in getattr(world, "roadworks", ()):  # render/roads.py draw_roadworks; in the chunk of its midpoint
+            middle = ((work.start[0] + work.end[0]) / 2.0, (work.start[1] + work.end[1]) / 2.0)
+            self._add("roadworks", (middle,), {
+                "start": [round(work.start[0], 2), round(work.start[1], 2)], "end": [round(work.end[0], 2), round(work.end[1], 2)],
+                "lane_closed": bool(work.lane_closed), "half_width_m": getattr(work.way, "half_width_m", 4.0),
+            })
 
     def _add(self, kind: str, points, feature) -> None:
         for cell in {cell_of(x, y, self.size) for x, y in points}:
-            chunk = self._chunks.setdefault(chunk_id(*cell), {"roads": [], "railways": [], "waters": [], "buildings": []})
+            chunk = self._chunks.setdefault(chunk_id(*cell), {kind: [] for kind in _KINDS})
             chunk[kind].append(feature)
 
     def message(self, cid: str) -> dict:
         """The "chunk" message for one chunk (an empty one outside the map,
         so the client knows it has it)."""
         ix, iy = (int(part) for part in cid.split("_"))
-        content = self._chunks.get(cid, {"roads": [], "railways": [], "waters": [], "buildings": []})
+        content = self._chunks.get(cid, {kind: [] for kind in _KINDS})
         return {
             "type": "chunk", "version": PROTOCOL_VERSION, "chunk_id": cid,
             "bounds": [ix * self.size, iy * self.size, (ix + 1) * self.size, (iy + 1) * self.size],
