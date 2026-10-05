@@ -248,6 +248,7 @@ func _present(state: Dictionary) -> void:
 		map_layer.set_season(calendar.get("season", []))
 	# Street lights, beams and reflectors at the server's darkness and sun (render/roads.py, vehicles.py, pedestrians.py).
 	map_layer.set_lights_on(darkness > 0.25)
+	map_layer.set_darkness(maxf(darkness, 0.0))  # lit windows (godot-17)
 	entities.reflectors_on = typeof(calendar) == TYPE_DICTIONARY and calendar.get("sun_altitude_deg", 90.0) < -7.5
 	var lit := [[], []]
 	if darkness > 0.25:

@@ -14,6 +14,7 @@ const HALF_GAUGE := 1.435 / 2.0
 const HALF_TIE := 2.6 / 2.0
 const TIE_SPACING := 2.0
 const BUMP_LENGTHS := {"table": 2.2, "bump": 0.6, "cushion": 0.4, "hump": 0.6}
+const B25 := preload("res://buildings_25d.gd")
 const OPEN_ROOF := Color8(138, 145, 148, 185)  # render/buildings.py
 const OPEN_ROOF_EDGE := Color8(65, 69, 71, 235)
 const OPEN_ROOF_POLE := Color8(105, 110, 112)
@@ -125,16 +126,28 @@ static func draw_canopy_supports(chunk, node: Node2D) -> void:
 		for i in shadow.size():
 			shadow[i] += Vector2(0.35, 0.35)
 		node.draw_colored_polygon(shadow, Color8(30, 32, 33, 75))
+		var up := B25.lift(canopy_height(chunk, canopy))  # godot-17: posts from the ground corners up to the raised roof
 		for point in polygon:
+			node.draw_line(point, point + up, OPEN_ROOF_POLE, maxf(chunk._px(1.0), 0.24))
 			node.draw_circle(point, maxf(chunk._px(1.0), 0.18) + chunk._px(1.0), OPEN_ROOF_EDGE)
 			node.draw_circle(point, maxf(chunk._px(1.0), 0.18), OPEN_ROOF_POLE)
+
+
+## A canopy's height (chunk canopy_heights, in step with canopies; 6 m without).
+static func canopy_height(chunk, canopy) -> float:
+	var index: int = chunk._data.get("canopies", []).find(canopy)
+	var heights: Array = chunk._data.get("canopy_heights", [])
+	return float(heights[index]) if index >= 0 and index < heights.size() else 6.0
 
 
 ## The see-through canopy above the vehicles (draw_open_roof_overlays):
 ## fuel pumps and the taxi stay visible under it.
 static func draw_canopies(chunk, node: Node2D) -> void:
 	for canopy in chunk._data.get("canopies", []):
-		var polygon: PackedVector2Array = chunk._points(canopy)
+		var polygon: PackedVector2Array = chunk._points(canopy).duplicate()
+		var up := B25.lift(canopy_height(chunk, canopy))  # raised as an open structure (godot-17)
+		for i in polygon.size():
+			polygon[i] += up
 		if _valid(polygon):
 			node.draw_colored_polygon(polygon, OPEN_ROOF)
 			var ring := polygon.duplicate()
@@ -276,56 +289,3 @@ static func road_markings(chunk, road: Dictionary, points: PackedVector2Array, l
 				chevrons.append_array(PackedVector2Array([at - u.rotated(-0.6) * arm, at, at, at - u.rotated(0.6) * arm]))
 			carry += 40.0
 		carry -= length
-
-
-## A building seen from above (godot-16): its roof colour as Pygame picks
-## it (a colour in its name, else the texture pick), a short shadow by its
-## height, the two facets and the ridge of a gabled roof, door marks at
-## its entrances. (Pygame's oblique facades and their windows are not drawn.)
-static func draw_building(chunk, node: Node2D, outline: PackedVector2Array, style: Array) -> void:
-	var roof := _rgb(style[0]) if not style.is_empty() else Color(0.6, 0.58, 0.55)
-	var height: float = style[2] if style.size() > 2 else 8.0
-	var shadow := outline.duplicate()
-	var offset := Vector2.ONE * clampf(height * 0.08, 0.3, 2.0)
-	for i in shadow.size():
-		shadow[i] += offset
-	node.draw_colored_polygon(shadow, Color8(45, 42, 39, 140))
-	node.draw_colored_polygon(outline, roof)
-	if style.size() > 1 and int(style[1]) == 1:
-		_gabled(node, outline, roof)
-	var ring := outline.duplicate()
-	ring.append(outline[0])
-	node.draw_polyline(ring, Color8(70, 66, 61), maxf(chunk._px(1.0), 0.08))
-	if style.size() > 3:
-		for door in style[3]:
-			node.draw_circle(MapMath.point(chunk._origin, door[0], door[1]), maxf(chunk._px(1.5), 0.45), Color8(58, 44, 34))
-
-
-## render/buildings.py _draw_gabled_roof, top-down: the footprint split
-## along its longest edge's direction, one facet lighter, one darker, the ridge.
-static func _gabled(node: Node2D, outline: PackedVector2Array, roof: Color) -> void:
-	var longest := 0
-	for i in outline.size():
-		if outline[i].distance_squared_to(outline[(i + 1) % outline.size()]) > outline[longest].distance_squared_to(outline[(longest + 1) % outline.size()]):
-			longest = i
-	var axis := (outline[(longest + 1) % outline.size()] - outline[longest]).normalized()
-	var centre := Vector2.ZERO
-	for point in outline:
-		centre += point
-	centre /= outline.size()
-	var normal := Vector2(-axis.y, axis.x)
-	var far := 10000.0
-	var lo := INF
-	var hi := -INF
-	for point in outline:
-		var t := (point - centre).dot(axis)
-		lo = minf(lo, t)
-		hi = maxf(hi, t)
-	for side: float in [1.0, -1.0]:
-		var half := PackedVector2Array([centre - axis * far, centre + axis * far, centre + axis * far + normal * side * far, centre - axis * far + normal * side * far])
-		var color := Color8(mini(255, roof.r8 + 14), mini(255, roof.g8 + 14), mini(255, roof.b8 + 14)) if side > 0.0 \
-			else Color8(maxi(0, roof.r8 - 12), maxi(0, roof.g8 - 12), maxi(0, roof.b8 - 12))
-		for facet in Geometry2D.intersect_polygons(outline, half):
-			if _valid(facet):
-				node.draw_colored_polygon(facet, color)
-	node.draw_line(centre + axis * lo, centre + axis * hi, Color8(58, 55, 52), 0.25)

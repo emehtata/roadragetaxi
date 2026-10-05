@@ -31,6 +31,7 @@ extends Node2D
 
 const RS := preload("res://render_style.gd")
 const Detail := preload("res://chunk_detail.gd")  # godot-16: the rest of the static world's drawing
+const B25 := preload("res://buildings_25d.gd")  # godot-17: buildings in 2.5D
 const BRIDGE_Z_MAX := 3
 
 var _data: Dictionary = {}
@@ -65,7 +66,7 @@ var _flash = null  # the flashing speed camera's id (state speed_camera_flash)
 
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_PREDELETE:  # light nodes of a chunk without lights never joined the tree
-		for node in [_pools, _heads]:
+		for node in [_pools, _heads, building_node]:
 			if is_instance_valid(node) and node.get_parent() == null:
 				node.free()
 
@@ -109,7 +110,7 @@ func setup(message: Dictionary, origin: Vector2) -> void:
 	_px_layers.append(_add_layer(6, func(node: Node2D): Detail.draw_tracks(self, node, "railways")))
 	if not message.get("traffic_islands", []).is_empty():  # above the roads and rails (render/scenery.py)
 		_season_layers.append(_add_layer(6, func(node: Node2D): Detail.draw_areas(self, node, "traffic_islands")))
-	_px_layers.append(_add_layer(7, _draw_buildings))
+	_px_layers.append(_add_layer(7, _draw_canopy_supports))
 	if not message.get("curbs", []).is_empty() or not message.get("crossings", []).is_empty() or not message.get("speed_bumps", []).is_empty():
 		_px_layers.append(_add_layer(8, func(node: Node2D): Detail.draw_road_features(self, node)))
 	if not message.get("canopies", []).is_empty():  # z11: above the vehicles; then rail bridges, then (entities) trains
@@ -143,6 +144,7 @@ func setup(message: Dictionary, origin: Vector2) -> void:
 		_px_layers.append(_signs)
 	_puddle_spots = puddle_spots(message.get("roads", []), _bounds_rect, origin)  # from the raw coordinates
 	_compact()
+	_build_2_5d()
 	set_wetness(_wetness)
 
 
@@ -272,14 +274,67 @@ func elevated_roads() -> Array:
 func building_shapes() -> Array:
 	if _building_shapes == null:
 		_building_shapes = []
-		for building in _data.get("buildings", []):
-			var outline := _points(building)
-			if outline.size() >= 3 and not Geometry2D.triangulate_polygon(outline).is_empty():
-				var box := Rect2(outline[0], Vector2.ZERO)
-				for point in outline:
-					box = box.expand(point)
-				_building_shapes.append([box, outline])
+		for hull in _volumes.get("hulls", []):  # the whole projected volume, not just the footprint (godot-17)
+			var box := Rect2(hull[0], Vector2.ZERO)
+			for point in hull:
+				box = box.expand(point)
+			_building_shapes.append([box, hull])
 	return _building_shapes
+
+
+var _volumes: Dictionary = {}  # buildings_25d.build: the chunk's buildings as triangle lists
+var building_node: Node2D = null  # drawn in MapLayer's building group (ordered far to near across chunks)
+var _lit_windows: Node2D = null  # the lit windows' glow, z 21 (over the night tint), additive
+
+
+## godot-17: the chunk's buildings in 2.5D, built once.
+func _build_2_5d() -> void:
+	var buildings: Array = _data.get("buildings", [])
+	if buildings.is_empty():
+		return
+	_volumes = B25.build(buildings, _data.get("building_styles", []), _origin)
+	building_node = Node2D.new()
+	building_node.draw.connect(_draw_volumes)
+	if not _volumes["lit_indices"].is_empty():
+		_lit_windows = Node2D.new()
+		var add := CanvasItemMaterial.new()
+		add.blend_mode = CanvasItemMaterial.BLEND_MODE_ADD  # render/buildings.py: BLEND_RGB_ADD
+		_lit_windows.material = add
+		_lit_windows.visible = false
+		_add_layer(21, func(node: Node2D): _triangles(node, _volumes["lit_points"], _volumes["lit_indices"], B25.WINDOW_LIT), _lit_windows)
+
+
+## The buildings' triangles go to the renderer, which keeps its own copy:
+## ours is dropped after the draw (half the memory), rebuilt - identically -
+## should the node ever be redrawn. The hulls (headlights) stay.
+func _draw_volumes() -> void:
+	if _volumes.get("points", PackedVector2Array()).is_empty():
+		var hulls: Array = _volumes.get("hulls", [])
+		_volumes = B25.build(_data.get("buildings", []), _data.get("building_styles", []), _origin)
+		_volumes["hulls"] = hulls if not hulls.is_empty() else _volumes["hulls"]
+	_triangles_colored(building_node, _volumes["points"], _volumes["indices"], _volumes["colors"])
+	for key in ["points", "colors", "indices"]:
+		_volumes[key] = _volumes[key].duplicate()
+		_volumes[key].clear()
+
+
+## Night windows (render/buildings.py draw_illuminated_windows): from
+## darkness 0.25, fading in to 165/255 by 0.5 - a modulate, never a redraw.
+func set_darkness(darkness: float) -> void:
+	if _lit_windows == null:
+		return
+	var intensity := clampf((darkness - 0.25) / 0.25, 0.0, 1.0)
+	_lit_windows.visible = intensity > 0.0
+	_lit_windows.modulate = Color(1, 1, 1, 165.0 / 255.0 * intensity)
+
+
+static func _triangles_colored(node: Node2D, points: PackedVector2Array, indices: PackedInt32Array, colors: PackedColorArray) -> void:
+	if not indices.is_empty():
+		RenderingServer.canvas_item_add_triangle_array(node.get_canvas_item(), indices, points, colors)
+
+
+func _draw_canopy_supports(node: Node2D) -> void:
+	Detail.draw_canopy_supports(self, node)
 
 
 ## Which speed camera flashes (state speed_camera_flash, or null): this
@@ -399,16 +454,6 @@ func _draw_puddles(node: Node2D) -> void:
 			polygon.append(spot["at"] + Vector2(cos(angle), sin(angle)) * radius * shape[i])
 		if Detail._valid(polygon):  # a jittered outline can cross itself
 			node.draw_colored_polygon(polygon, Color(RS.PUDDLE_COLOR, RS.PUDDLE_MAX_ALPHA * strength))
-
-
-func _draw_buildings(node: Node2D) -> void:
-	var styles: Array = _data.get("building_styles", [])
-	var buildings: Array = _data.get("buildings", [])
-	for i in buildings.size():
-		var outline := _points(buildings[i])
-		if outline.size() >= 3 and not Geometry2D.triangulate_polygon(outline).is_empty():
-			Detail.draw_building(self, node, outline, styles[i] if i < styles.size() else [])
-	Detail.draw_canopy_supports(self, node)  # an open roof's shadow and posts, under the vehicles
 
 
 const TREE_CROWNS := {  # render/scenery.py TREE_CROWN_PALETTES

@@ -46,6 +46,9 @@ func _ready() -> void:
 	_ground.z_index = -2
 	_ground.draw.connect(_draw_ground)
 	add_child(_ground)
+	_buildings = Node2D.new()
+	_buildings.z_index = 7
+	add_child(_buildings)
 	_underground = Node2D.new()  # level roads (and the dark below ground), over the surface map
 	_underground.z_index = 9
 	_underground.draw.connect(_draw_underground)
@@ -59,6 +62,7 @@ var _chunks: Dictionary = {}  # chunk_id -> MapChunk
 var map_level := 0  # the taxi's map level (state player.map_level): 0 surface, < 0 underground
 var flash = null  # the flashing speed camera (state speed_camera_flash)
 var _ground: Node2D
+var _buildings: Node2D  # every chunk's 2.5D buildings, z 7, ordered far to near (godot-17)
 var _underground: Node2D
 
 
@@ -76,8 +80,31 @@ func clear() -> void:
 	_chunks.clear()
 
 
+## A chunk's buildings into the building group, in order: chunks further
+## along the lean (B25.LEAN, "up" on screen) first, so a nearer chunk's
+## buildings cover a farther one's where their volumes meet - the order
+## within a chunk, across chunks.
+func _add_buildings(chunk: Node) -> void:
+	chunk.building_node.set_meta("depth", chunk._bounds_rect.get_center().dot(MapChunk.B25.LEAN))
+	var at := 0
+	for other in _buildings.get_children():
+		if other.get_meta("depth") > chunk.building_node.get_meta("depth"):
+			at += 1
+	_buildings.add_child(chunk.building_node)
+	_buildings.move_child(chunk.building_node, at)
+
+
+## Night windows follow the server's darkness (no redraw).
+func set_darkness(darkness: float) -> void:
+	for chunk in _chunks.values():
+		chunk.set_darkness(darkness)
+
+
 ## A chunk and its street-light pools (which live in the pool group), gone now.
 func _free_chunk(chunk: Node) -> void:
+	if chunk.building_node != null and chunk.building_node.get_parent() == _buildings:
+		_buildings.remove_child(chunk.building_node)
+		chunk.building_node.free()
 	if _pool_group != null and chunk._pools.get_parent() == _pool_group:
 		_pool_group.remove_child(chunk._pools)
 		chunk._pools.free()  # out of the tree already; the chunk's own cleanup then skips it
@@ -112,6 +139,8 @@ func add_chunk(message: Dictionary) -> bool:
 		_underground.queue_redraw()
 	if not chunk.street_lights.is_empty() and _pool_group != null:
 		_pool_group.add_child(chunk._pools)
+	if chunk.building_node != null and _buildings != null:
+		_add_buildings(chunk)
 	_chunks[chunk_id] = chunk
 	return true
 

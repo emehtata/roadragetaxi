@@ -12,6 +12,7 @@ const Main := preload("res://main.gd")
 const NightLayer := preload("res://night_layer.gd")
 const Labels := preload("res://labels.gd")
 const Detail := preload("res://chunk_detail.gd")
+const B25 := preload("res://buildings_25d.gd")
 const EntityLayer2 := preload("res://entity_layer.gd")
 
 var _failures := 0
@@ -50,6 +51,7 @@ func _process(_delta: float) -> bool:  # first frame: the tree is live, so nodes
 	test_day_night()
 	test_static_world()
 	test_rest_of_static_world()
+	test_buildings_2_5d()
 	print("%d checks, %d failed" % [_checks, _failures])
 	quit(1 if _failures > 0 else 0)
 	return false
@@ -781,3 +783,74 @@ func test_rest_of_static_world() -> void:
 
 	# Snow: the trip text is outlined (readable on white).
 	check(Instruments.TEXT_OUTLINE.v < 0.2 and Instruments.TEXT_OUTLINE_PX >= 3, "a dark outline under the light HUD text")
+
+
+## godot-17: buildings in 2.5D - only the volume is projected, the map
+## stays top-down.
+func test_buildings_2_5d() -> void:
+	# The projection: one direction, scaled by height, capped; the same everywhere.
+	check(B25.lift(10.0) == Vector2(-0.7, -1.0) * 3.5, "lift(10 m) = LEAN x 0.35 x 10")
+	check(B25.lift(100.0) == B25.lift(40.0) and is_equal_approx(B25.lift(100.0).y, -100.0 / 9.0), "capped at Pygame's 100 px (at 9 px/m)")
+	check(B25.lift(3.0).length() < B25.lift(9.0).length() and B25.lift(9.0).length() < B25.lift(30.0).length(), "taller lifts further")
+
+	# Visible walls: those facing away from the lean (south and east), either winding; an L-shape too.
+	var box := PackedVector2Array([Vector2(0, 0), Vector2(20, 0), Vector2(20, 10), Vector2(0, 10)])
+	check(B25.visible_walls(box) == PackedInt32Array([1, 2]), "a box shows its east (1) and south (2) walls")
+	var reversed := box.duplicate()
+	reversed.reverse()
+	check(B25.visible_walls(reversed) == PackedInt32Array([0, 1]), "the same walls whichever way the footprint winds")
+	var l_shape := PackedVector2Array([Vector2(0, 0), Vector2(10, 0), Vector2(10, 10), Vector2(20, 10), Vector2(20, 20), Vector2(0, 20)])
+	check(B25.visible_walls(l_shape) == PackedInt32Array([1, 3, 4]), "an L shows both east walls and the south; the notch's top faces north, hidden")
+
+	# The built geometry: walls from the ground edge to the lifted edge; the roof is the footprint lifted.
+	var style := [[92, 57, 48], 0, 10.0, [], [158, 105, 82], 3, 0]
+	var out: Dictionary = B25.build([box], [style], Vector2.ZERO)
+	var up := B25.lift(10.0)
+	var points: PackedVector2Array = out["points"]
+	var has := func(p: Vector2) -> bool: return points.has(p)
+	check(has.call(Vector2(20, 0)) and has.call(Vector2(20, 0) + up) and has.call(Vector2(20, 10) + up), "the east wall spans ground to roof")
+	check(has.call(Vector2(0, 0) + up) and has.call(Vector2(0, 10) + up), "the roof sits at the full height")
+	check(out["colors"].has(Color8(92, 57, 48)) and out["colors"].has(Color8(58, 80, 94)), "roof colour and facade windows from the style")
+	check(out["indices"].size() % 3 == 0 and out["hulls"].size() == 1, "triangles; one hull (headlights) per building")
+	var again: Dictionary = B25.build([box], [style], Vector2.ZERO)
+	check(again["points"] == out["points"] and again["colors"] == out["colors"] and again["lit_points"] == out["lit_points"],
+		"deterministic: a reloaded chunk builds the same building, lit windows included")
+	var tall: Dictionary = B25.build([box], [[[92, 57, 48], 0, 30.0, [], [158, 105, 82], 10, 0]], Vector2.ZERO)
+	check(tall["points"].size() > out["points"].size(), "a taller building has more floors of windows")
+
+	# Gabled roof: two facets and the ridge, on the raised roof.
+	var gabled: Dictionary = B25.build([box], [[[92, 57, 48], 1, 10.0, [], [158, 105, 82], 3, 0]], Vector2.ZERO)
+	check(gabled["colors"].has(Color8(92, 57, 48).lightened(14.0 / 255.0)) and gabled["colors"].has(B25.RIDGE), "pitched roof: lit facet and ridge")
+
+	# Doors: on a visible wall at the entrance, one storey high; not on a hidden wall.
+	var south_door: Dictionary = B25.build([box], [[[92, 57, 48], 0, 10.0, [[10.0, -10.0]], [158, 105, 82], 3, 0]], Vector2.ZERO)
+	var north_door: Dictionary = B25.build([box], [[[92, 57, 48], 0, 10.0, [[10.0, 0.0]], [158, 105, 82], 3, 0]], Vector2.ZERO)
+	check(south_door["colors"].has(B25.DOOR) and not north_door["colors"].has(B25.DOOR), "a door on the south wall shows; one on the hidden north wall doesn't")
+
+	# Lit windows: Pygame's probabilities, by category; the glow is a separate list.
+	var lit := 0
+	var total := 0
+	for i in 60:
+		var many: Dictionary = B25.build([box], [[[92, 57, 48], 0, 20.0, [], [158, 105, 82], 6, 0]], Vector2(i * 37.0, i * 11.0))
+		lit += many["lit_indices"].size() / 6
+		total += many["colors"].count(B25.WINDOW) / 4
+	check(total > 0 and lit > 0 and float(lit) / total < 0.25, "a scattering of windows lit at night (%d of %d)" % [lit, total])
+
+	# In the map: one building group, ordered far to near; freed with the chunk; no collision.
+	var map := MapLayer.new()
+	root.add_child(map)
+	var north: Dictionary = JSON.parse_string(JSON.stringify({"chunk_id": "0_1", "bounds": [0, 500, 500, 1000], "buildings": [[[10, 510], [30, 510], [30, 530], [10, 530]]], "building_styles": [style]}))
+	var south: Dictionary = JSON.parse_string(JSON.stringify({"chunk_id": "0_0", "bounds": [0, 0, 500, 500], "buildings": [[[10, 10], [30, 10], [30, 30], [10, 30]]], "building_styles": [style],
+		"canopies": [[[100, 100], [110, 100], [110, 110], [100, 110]]], "canopy_heights": [6.0]}))
+	map.add_chunk(south)
+	map.add_chunk(north)
+	check(map._buildings.get_child_count() == 2 and map._buildings.get_child(0) == map._chunks["0_1"].building_node, "the northern (farther) chunk's buildings first")
+	check(map._chunks["0_0"].building_shapes()[0][1].size() >= 4, "headlights clip against the whole projected volume")
+	check(is_equal_approx(Detail.canopy_height(map._chunks["0_0"], map._chunks["0_0"]._data["canopies"][0]), 6.0), "a canopy is raised by its own height")
+	map.set_map_level(-3)
+	check(map._underground.z_index > map._buildings.z_index, "below ground the dark view covers the buildings")
+	check(map._buildings.z_index < 11, "rail bridges (z 11) stay above the buildings")
+	map.remove_chunk("0_1")
+	check(map._buildings.get_child_count() == 1, "a chunk's buildings go with it")
+	check(map.find_children("*", "CollisionObject2D", true, false).is_empty(), "no collision")
+	map.free()
