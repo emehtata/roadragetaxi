@@ -59,15 +59,19 @@ $(GODOT):
 	curl -fL -o $@.zip https://github.com/godotengine/godot/releases/download/$(GODOT_VERSION)-stable/$(notdir $@).zip
 	unzip -o -d $(dir $@) $@.zip && rm $@.zip && chmod +x $@
 
-run-godot:
+# A fresh checkout has no .godot/ class cache; import once or class_name types fail to parse.
+godot/.godot: | $(GODOT)
+	$(GODOT) --headless --path godot --import
+
+run-godot: godot/.godot
 	$(GODOT) --path godot -- --port $(PORT)
 
-run-godot-all:
+run-godot-all: godot/.godot
 	PYTHONPATH=src $(PYTHON) -m theroadragetrip.server --preset $(PRESET) --port $(PORT) --tick-rate 30 & \
 	server=$$!; trap 'kill $$server' EXIT INT TERM; \
 	sleep 5; $(GODOT) --path godot -- --port $(PORT)
 
-godot-selftest:
+godot-selftest: godot/.godot
 	PYTHONPATH=src $(PYTHON) -m theroadragetrip.server --preset $(PRESET) --port $(PORT) --tick-rate 30 & \
 	server=$$!; trap 'kill $$server' EXIT INT TERM; \
 	sleep 5; $(GODOT) --headless --path godot -- --port $(PORT) --selftest
