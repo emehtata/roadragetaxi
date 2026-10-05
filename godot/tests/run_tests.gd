@@ -940,6 +940,21 @@ func test_buildings_3d() -> void:
 			top = maxf(top, v.y)
 		check(out["stats"]["walls"] == footprint.size() and ground > 0 and is_equal_approx(top, 10.0), "every wall extruded from the ground to the height (%d sides)" % footprint.size())
 		check(out["verts"] == B3.build([footprint], [style], Vector2.ZERO)["verts"], "deterministic geometry")
+	# godot-22 back-face culling: every triangle's front (clockwise, so its cross
+	# product points away) faces out of the building, whichever way it winds.
+	for footprint in [box, reversed, PackedVector2Array([Vector2(10, 0), Vector2(20, -10), Vector2(10, -20), Vector2(0, -10)])]:
+		var mid := Vector3.ZERO
+		for p in footprint:
+			mid += B3.to_3d(p, 5.0) / footprint.size()
+		var out: Dictionary = B3.build([footprint], [[[92, 57, 48], 1, 10.0, [[10.0, 0.0]], [158, 105, 82], 3, 2]], Vector2.ZERO)
+		var inward := 0
+		for key in ["verts", "lit"]:
+			var v: PackedVector3Array = out[key]
+			for t in range(0, v.size(), 3):
+				var away := (v[t + 1] - v[t]).cross(v[t + 2] - v[t])
+				if away.dot((v[t] + v[t + 1] + v[t + 2]) / 3.0 - mid) > 0.0:
+					inward += 1
+		check(inward == 0, "every wall, roof, window and door triangle faces outward (%d did not)" % inward)
 	var tall: Dictionary = B3.build([box], [[[92, 57, 48], 0, 40.0, [], [158, 105, 82], 12, 0]], Vector2.ZERO)
 	var top_tall := -INF
 	for v in tall["verts"]:

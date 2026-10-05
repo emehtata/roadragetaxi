@@ -36,7 +36,7 @@ var _lit_sprite: Sprite2D
 static func _make_material(black: bool) -> StandardMaterial3D:
 	var m := StandardMaterial3D.new()
 	m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	m.cull_mode = BaseMaterial3D.CULL_DISABLED  # either winding, no normals to keep right
+	m.cull_mode = BaseMaterial3D.CULL_BACK  # godot-22: _tri winds every triangle toward its outward side
 	m.vertex_color_use_as_albedo = not black
 	m.albedo_color = Color.BLACK if black else Color.WHITE
 	return m
@@ -190,24 +190,30 @@ static func _instance(mesh: ArrayMesh, material: Material, layer: int) -> MeshIn
 	return node
 
 
-static func _tri(out: Dictionary, a: Vector3, b: Vector3, c: Vector3, color: Color) -> void:
-	out["verts"].append_array(PackedVector3Array([a, b, c]))
+## One triangle, wound so its front faces `facing` (the outward normal):
+## Godot's front faces are clockwise, i.e. (b - a) x (c - a) points away.
+## Footprints come either way round, so the winding is decided here, once.
+static func _tri(out: Dictionary, a: Vector3, b: Vector3, c: Vector3, color: Color, facing: Vector3, key := "verts") -> void:
+	if (b - a).cross(c - a).dot(facing) > 0.0:
+		var t := b
+		b = c
+		c = t
+	out[key].append_array(PackedVector3Array([a, b, c]))
+	if key == "lit":
+		return
 	out["colors"].append_array(PackedColorArray([color, color, color]))
 
 
-static func _quad(out: Dictionary, a: Vector3, b: Vector3, c: Vector3, d: Vector3, color: Color, lit := false) -> void:
-	if lit:
-		out["lit"].append_array(PackedVector3Array([a, b, c, a, c, d]))
-		return
-	_tri(out, a, b, c, color)
-	_tri(out, a, c, d, color)
+static func _quad(out: Dictionary, a: Vector3, b: Vector3, c: Vector3, d: Vector3, color: Color, facing: Vector3, lit := false) -> void:
+	_tri(out, a, b, c, color, facing, "lit" if lit else "verts")
+	_tri(out, a, c, d, color, facing, "lit" if lit else "verts")
 
 
 static func _polygon(out: Dictionary, polygon: PackedVector2Array, heights: PackedFloat32Array, color: Color) -> void:
 	var triangles := Geometry2D.triangulate_polygon(polygon)
 	for t in range(0, triangles.size(), 3):
 		_tri(out, to_3d(polygon[triangles[t]], heights[triangles[t]]), to_3d(polygon[triangles[t + 1]], heights[triangles[t + 1]]),
-			to_3d(polygon[triangles[t + 2]], heights[triangles[t + 2]]), color)
+			to_3d(polygon[triangles[t + 2]], heights[triangles[t + 2]]), color, Vector3.UP)
 
 
 static func _building(out: Dictionary, footprint: PackedVector2Array, style: Array, origin: Vector2) -> void:
@@ -233,7 +239,7 @@ static func _building(out: Dictionary, footprint: PackedVector2Array, style: Arr
 			continue
 		var normal := Vector2(-edge.y, edge.x).normalized() * outward_sign
 		var shade := 0.72 + 0.28 * clampf(normal.dot(LIGHT.normalized()) * 0.5 + 0.5, 0.0, 1.0)
-		_quad(out, to_3d(a), to_3d(b), to_3d(b, height), to_3d(a, height), Color(wall_color.r * shade, wall_color.g * shade, wall_color.b * shade))
+		_quad(out, to_3d(a), to_3d(b), to_3d(b, height), to_3d(a, height), Color(wall_color.r * shade, wall_color.g * shade, wall_color.b * shade), to_3d(normal))
 		out["stats"]["walls"] += 1
 		_windows(out, a, b, normal, height, floors, category, seed_base + i * 7.13)
 	_doors(out, footprint, style[3] if style.size() > 3 else [], outward_sign, height, floors, origin)
@@ -274,7 +280,7 @@ static func _windows(out: Dictionary, a: Vector2, b: Vector2, normal: Vector2, h
 					continue
 				var o := normal * (LIT_OUT if lit else WINDOW_OUT)
 				_quad(out, to_3d(p0 + o, bottom), to_3d(p1 + o, bottom), to_3d(p1 + o, bottom + tall), to_3d(p0 + o, bottom + tall),
-					B25.STOREFRONT if storefront else B25.WINDOW, lit)
+					B25.STOREFRONT if storefront else B25.WINDOW, to_3d(normal), lit)
 				out["stats"]["lit" if lit else "windows"] += 1
 
 
@@ -300,7 +306,7 @@ static func _doors(out: Dictionary, footprint: PackedVector2Array, entrances: Ar
 		var foot := Geometry2D.get_closest_point_to_segment(at, a, b) + o
 		var half := clampf(a.distance_to(b) * 0.22, 0.33, 1.22) / 2.0
 		var top := minf(2.2, height / floors * 0.8)
-		_quad(out, to_3d(foot - along * half), to_3d(foot + along * half), to_3d(foot + along * half, top), to_3d(foot - along * half, top), B25.DOOR)
+		_quad(out, to_3d(foot - along * half), to_3d(foot + along * half), to_3d(foot + along * half, top), to_3d(foot - along * half, top), B25.DOOR, to_3d(o))
 
 
 ## A simple pitched roof: the ridge along the longest edge's direction,
