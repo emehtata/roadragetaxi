@@ -662,6 +662,34 @@ Godot 428 checks.
 **Noticed, not changed.** A long fare line plus the godot-final-03 meter
 details can overflow the top row at 1280 px.
 
+**Fix after play-testing: routes on the opposite carriageway and the wrong
+way up one-way streets.** There were two causes, both reproduced on Oulu
+(300 routes from cars on real one-way roads):
+1. **Bridge ends were dead ends.** Route nodes merge per OSM layer, so a
+   bridge or ramp (layer 1) ending on the ground road's shared node
+   (layer 0) was never joined to it. One-way ramps reached only 1–3 nodes.
+   `RouteGraphBuild` now links nodes at exactly the same point on different
+   layers. A bridge passing over a road shares no node with it, so that stays
+   apart. Those ramps now reach 11,029 of 11,835 nodes, and nodes with no
+   way out fell from 34 to 13. This is the shared graph, so NPCs can now
+   drive those junctions too.
+2. **The search started from the cheapest nearby node** (4 × the straight
+   distance), often across the road or behind the taxi on a one-way street.
+   With `on_road=True`, used by navigation only so NPC routing is unchanged,
+   the start and target join their own road segment within 12 m, in its
+   allowed directions, costed along it. A target further along the same
+   segment is a straight line. Off the car network (service roads, parking
+   aisles), or when no route exists that way, it falls back to the old
+   candidates.
+
+Routes starting against the taxi's one-way fell from 81 to 14 of 300. The
+rest are cars on roads outside the car graph, or isolated pockets of the data.
+Each segment lookup is its own job step, and the longest step is 1.38 ms.
+
+Two tests in `tests/test_navigation_route.py` fail without the fix: the
+bridge-end link (and no link to a road crossed below), and a divided road
+whose carriageway leads on, round and back.
+
 ---
 
 # Audit 1 (godot-06, 2026-10-03) and per-phase history
