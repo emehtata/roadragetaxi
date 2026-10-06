@@ -501,6 +501,16 @@ func route_for(state: Dictionary) -> PackedVector2Array:
 	return _route_points
 
 
+## The server's active rage shout ([text, alpha]: full, fading over the last
+## 0.5 s as draw_car), or [] - nothing for absent, malformed or expired state.
+static func shout_for(state: Dictionary) -> Array:
+	var shout = state.get("road_rage")
+	if not shout is Dictionary or typeof(shout.get("text")) != TYPE_STRING or shout["text"] == "" \
+			or not typeof(shout.get("timer")) in [TYPE_INT, TYPE_FLOAT] or not is_finite(shout["timer"]) or shout["timer"] <= 0.0:
+		return []
+	return [shout["text"], minf(1.0, shout["timer"] / 0.5)]
+
+
 ## World [[x, y], ...] -> layer points; anything malformed (or < 2 points) -> none.
 static func route_points(source, world_origin: Vector2) -> PackedVector2Array:
 	var points := PackedVector2Array()
@@ -586,6 +596,9 @@ func _draw() -> void:
 	var smoke_timer: float = a.get("taxi", {}).get("taxi_smoke_timer", 0.0)
 	if smoke_timer > 0.0:
 		_smoke(taxi_at, taxi.z, taxi_length, 5.0 - smoke_timer)
+	var shout := shout_for(a)
+	if not shout.is_empty():  # render/vehicles.py draw_car: the rage shout above the taxi, before the NPCs
+		_bubble(taxi_at - Vector2(0.0, maxf(_px(22.0), 0.7 * taxi_length) + _px(6.0)), shout[0], RS.SHOUT, RS.SHOUT_BORDER, shout[1])
 	count += 1
 
 	var later_npcs := _by_id(b.get("npcs", []))

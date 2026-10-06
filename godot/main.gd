@@ -35,6 +35,7 @@ var _recent_events: Array = []
 var _command_timer := 0.0
 var _interact_pending := false
 var _refuel_pending := false  # G: one press, sent once (the server buys once per press)
+var _road_rage_pending := false  # SPACE: one press, sent once; the simulation decides if there's rage to spend
 var speed_limiter := true  # V (render/hud.py "V = limiter"): a session toggle, reported in every command
 var red_light_assist := false  # B: likewise
 var summary_shown := false  # the career city summary is up: the session is over, no more driving commands
@@ -173,6 +174,9 @@ func _unhandled_input(event: InputEvent) -> void:
 				_interact_pending = true
 			KEY_G:
 				_refuel_pending = true
+			KEY_SPACE:
+				if not phone.is_open and not summary_shown:  # main(): never while the phone is open
+					_road_rage_pending = true
 			KEY_V:
 				speed_limiter = not speed_limiter
 			KEY_B:
@@ -418,15 +422,16 @@ func show_summary(state: Dictionary) -> void:
 ## One command to the simulation (it validates and applies it). The
 ## presses (F, G) go out once, in the next command only.
 func send(controls: Dictionary) -> void:
-	var command := command_for(controls, _engine_on, _interact_pending, _refuel_pending, speed_limiter, red_light_assist)
+	var command := command_for(controls, _engine_on, _interact_pending, _refuel_pending, speed_limiter, red_light_assist, _road_rage_pending)
 	_interact_pending = false
 	_refuel_pending = false
+	_road_rage_pending = false
 	sim.send_command(command)
 
 
 static func command_for(controls: Dictionary, engine_on: bool, interact: bool, refuel: bool,
-		limiter := true, assist := false) -> Dictionary:
-	var command := {"speed_limiter_enabled": limiter, "red_light_assist_enabled": assist, "refuel": refuel,
+		limiter := true, assist := false, road_rage := false) -> Dictionary:
+	var command := {"speed_limiter_enabled": limiter, "red_light_assist_enabled": assist, "refuel": refuel, "road_rage": road_rage,
 		"engine_on": engine_on, "interact": interact}
 	command.merge(controls, true)
 	return command

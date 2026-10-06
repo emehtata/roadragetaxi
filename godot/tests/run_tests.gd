@@ -452,6 +452,7 @@ func test_commands_carry_the_player_id() -> void:
 	test_taxi_information()
 	test_navigation_route()
 	test_label_modes()
+	test_road_rage()
 	# The limit sign (Wikimedia C32-60 / C32-100, Traficom numeral widths), at a digit height of 100.
 	var sixty: Array = Instruments.digit_layout("60")
 	check(is_equal_approx(sixty[0][1], 55.0 + 37.0 / 3.0) and is_equal_approx(sixty[1] * 3.0, 367.0), "60 as C32-60: 165 + 37 + 165")
@@ -461,6 +462,54 @@ func test_commands_carry_the_player_id() -> void:
 	for d in "1234567890":
 		check(not Instruments.digit_strokes(d).is_empty(), "digit %s has strokes" % d)
 	check(Instruments.digit_layout("120")[1] * 3.0 <= 490.0, "120 fits inside the red ring (radius 245)")
+
+
+## godot-final-05: SPACE sends one road-rage press; the server's shout is drawn above the taxi.
+func test_road_rage() -> void:
+	var main: Node = load("res://main.tscn").instantiate()
+	root.add_child(main)
+	var sim: Node = main.get_node("SimClient")
+	main.send({})
+	check(sim._last_command["road_rage"] == false, "no press: road_rage false")
+	main._unhandled_input(_key_event(KEY_SPACE))
+	var echo := _key_event(KEY_SPACE)
+	echo.echo = true
+	main._unhandled_input(echo)  # held: no second press
+	main.send({"throttle": 1.0})
+	check(sim._last_command["road_rage"] == true and sim._last_command["throttle"] == 1.0, "SPACE rides on the next command with the held input")
+	main.send({"throttle": 1.0})
+	check(sim._last_command["road_rage"] == false, "sent once; a held key doesn't repeat it")
+	main.phone.is_open = true
+	main._unhandled_input(_key_event(KEY_SPACE))
+	main.send({})
+	check(sim._last_command["road_rage"] == false, "not while the phone is open (main())")
+	main.phone.is_open = false
+	main._unhandled_input(_key_event(KEY_SPACE))
+	main._unhandled_input(_key_event(KEY_G))
+	main.send({})
+	check(sim._last_command["road_rage"] == true and sim._last_command["refuel"] == true, "SPACE and G are independent presses")
+	main.summary_shown = true
+	main._unhandled_input(_key_event(KEY_SPACE))
+	main.send({})
+	check(sim._last_command["road_rage"] == false, "not after the career summary")
+	main.free()
+
+	check(EntityLayer.shout_for({"road_rage": {"text": "PRKL!", "timer": 3.2}}) == ["PRKL!", 1.0], "the server's text, fully visible")
+	check(EntityLayer.shout_for({"road_rage": {"text": "VTTU!", "timer": 0.5}})[1] == 1.0 and is_equal_approx(EntityLayer.shout_for({"road_rage": {"text": "VTTU!", "timer": 0.2}})[1], 0.4), "fades over the last 0.5 s")
+	for bad in [{}, {"road_rage": null}, {"road_rage": "PRKL!"}, {"road_rage": {"text": "", "timer": 2.0}}, {"road_rage": {"text": "PRKL!", "timer": 0.0}},
+			{"road_rage": {"text": "PRKL!", "timer": -1.0}}, {"road_rage": {"text": "PRKL!", "timer": INF}}, {"road_rage": {"text": "PRKL!", "timer": NAN}}, {"road_rage": {"text": 5, "timer": 2.0}}]:
+		check(EntityLayer.shout_for(bad).is_empty(), "no shout from %s" % str(bad))
+	var source: String = (EntityLayer as Script).source_code
+	var draw := source.substr(source.find("func _draw() -> void:"))
+	var taxi_body := draw.find("_vehicle(taxi_at")
+	check(taxi_body < draw.find("shout_for(a)") and draw.find("shout_for(a)") < draw.find("drawn_as_vehicle(npc)"), "the shout after the taxi body, before the NPC vehicles (draw_car)")
+	check(draw.find("_bubble(taxi_at") > 0 and source.find("draw_set_transform(anchor, 0.0, Vector2.ONE / px_per_m)") > 0, "drawn at the interpolated taxi, in constant screen pixels")
+	var audio: Node = load("res://audio_manager.gd").new()
+	audio.load_config("res://audio/audio_events.json")
+	var horn: Array = audio.resolve({"type": "sound", "group": "vehicle.horn"})
+	check(horn.size() == 1 and horn[0]["group"] == "vehicle.horn" and is_equal_approx(horn[0]["volume"], 0.45), "the horn event plays vehicle.horn at Pygame's 0.45")
+	audio.free()
+	check(Hud.values({"on_foot": false, "player": {"engine_on": true}})["hint"].contains("SPACE road rage"), "the hint names SPACE")
 
 
 ## L cycles the labels as Pygame's label_mode: off (start), street names, everything.

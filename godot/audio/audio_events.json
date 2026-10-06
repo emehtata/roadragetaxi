@@ -41,6 +41,12 @@
         "group": "railway.train_horn",
         "volume": 0.8
       }
+    ],
+    "vehicle.horn": [
+      {
+        "group": "vehicle.horn",
+        "volume": 0.45
+      }
     ]
   },
   "ranges_m": {

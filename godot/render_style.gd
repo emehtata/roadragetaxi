@@ -87,3 +87,7 @@ static func puddle_strength(wetness: float, reveal: float) -> float:
 # render/navigation.py draw_navigation_route
 const ROUTE_EDGE := Color8(60, 45, 5)
 const ROUTE := Color8(255, 215, 35)
+
+# render/vehicles.py draw_car: the rage shout, red on white
+const SHOUT := Color8(240, 40, 40)
+const SHOUT_BORDER := Color8(200, 30, 30)
