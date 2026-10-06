@@ -33,6 +33,7 @@ var _states_received := 0
 var _recent_events: Array = []
 var _command_timer := 0.0
 var _interact_pending := false
+var _refuel_pending := false  # G: one press, sent once (the server buys once per press)
 var _engine_on := true
 var drive := DriveInput.new()  # the held driving keys (drive_input.gd)
 var _state_usec := 0.0  # handling one state (parse + buffer), smoothed
@@ -164,6 +165,8 @@ func _unhandled_input(event: InputEvent) -> void:
 		match event.keycode:
 			KEY_F:
 				_interact_pending = true
+			KEY_G:
+				_refuel_pending = true
 			KEY_E:
 				_engine_on = not _engine_on
 			KEY_F3:
@@ -385,13 +388,20 @@ static func _night(game_time_seconds: float) -> float:
 	return 0.0
 
 
-## One command to the simulation (it validates and applies it).
+## One command to the simulation (it validates and applies it). The
+## presses (F, G) go out once, in the next command only.
 func send(controls: Dictionary) -> void:
-	var command := {"speed_limiter_enabled": true, "red_light_assist_enabled": false, "refuel": false,
-		"engine_on": _engine_on, "interact": _interact_pending}
-	command.merge(controls, true)
+	var command := command_for(controls, _engine_on, _interact_pending, _refuel_pending)
 	_interact_pending = false
+	_refuel_pending = false
 	sim.send_command(command)
+
+
+static func command_for(controls: Dictionary, engine_on: bool, interact: bool, refuel: bool) -> Dictionary:
+	var command := {"speed_limiter_enabled": true, "red_light_assist_enabled": false, "refuel": refuel,
+		"engine_on": engine_on, "interact": interact}
+	command.merge(controls, true)
+	return command
 
 
 func _apply_bench_hide() -> void:

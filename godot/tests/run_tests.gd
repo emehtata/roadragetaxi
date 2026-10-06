@@ -443,6 +443,11 @@ func test_commands_carry_the_player_id() -> void:
 	check(line.ends_with("\n") and message["type"] == "command" and message["player_id"] == "local_player" and message["seq"] == 7, "commands carry the player id")
 	var answer: Dictionary = JSON.parse_string(SimClient.command_line({"throttle": 0.0}, 8, "local_player", {"action": "accept", "item_id": "offer-2", "request_id": 1}))
 	check(answer["phone"] == {"action": "accept", "item_id": "offer-2", "request_id": 1.0} and answer["command"]["throttle"] == 0.0, "a phone answer rides on a command with the current controls")
+	# godot-final-01: G asks the simulation to refuel (it checks the station, speed, tank and money).
+	var refuel := Main.command_for({"throttle": 0.0}, true, false, true)
+	check(refuel["refuel"] == true and refuel["interact"] == false and refuel["throttle"] == 0.0, "a G press sends refuel")
+	check(Main.command_for({}, true, false, false)["refuel"] == false, "no press, no refuel")
+	check(Hud.values({"on_foot": false, "player": {"engine_on": true}})["hint"].contains("G refuel"), "the driving hint names G")
 
 
 ## godot-11: the server's meet, road, speed-camera and lightning state.
