@@ -344,7 +344,10 @@ def graph_route_steps(
         return path
 
     if on_road:
-        start_edges, target_edges = _edges_at(graph, start, allowed), _edges_at(graph, target, allowed)
+        yield
+        start_edges = _edges_at(graph, start, allowed)
+        yield  # one lookup per step: each scans the 3x3 cells around its point
+        target_edges = _edges_at(graph, target, allowed)
         if start_edges and target_edges:
             ahead = {(u, v): t for u, v, t, _length, _off in start_edges}
             if any((u, v) in ahead and t >= ahead[(u, v)] for u, v, t, _length, _off in target_edges):
