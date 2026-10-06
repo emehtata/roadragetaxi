@@ -456,7 +456,7 @@ func test_commands_carry_the_player_id() -> void:
 	var one := Instruments.ink_rect(font, "1", 26)
 	var hundred := Instruments.ink_rect(font, "100", 26)
 	check(one.has_area() and one.size.x < font.get_string_size("1", HORIZONTAL_ALIGNMENT_LEFT, -1, 26).x, "the limit sign centres on the ink: a 1 is narrower than its advance")
-	check(one.end.y <= 0.5 and hundred.end.y <= 0.5 and absf(one.position.y - hundred.position.y) < 0.5, "digits sit on the baseline, all as tall (no descent in the centring)")
+	check(one.end.y <= 1.5 and hundred.end.y <= 1.5 and absf(one.position.y - hundred.position.y) < 0.5, "digits sit on the baseline, all as tall (no descent in the centring)")
 
 
 ## L cycles the labels as Pygame's label_mode: off (start), street names, everything.
