@@ -17,6 +17,8 @@ import math
 
 from . import static_world
 from .fuel import fuel_station_price_cents
+from .geo import dist_point_to_segment
+from .map_level import SURFACE_MAP_LEVELS
 from .protocol import PROTOCOL_VERSION, _line, encode, traffic_light_render_point
 
 _KINDS = ("roads", "railways", "waters", "buildings", "taxi_stands", "fuel_stations", "traffic_lights", "roadworks",
@@ -61,6 +63,29 @@ def plan(loaded: set, center: tuple[int, int], load_radius: int = LOAD_RADIUS,
     return to_load, to_drop
 
 
+def _underground_test(ways, surface_levels, on_m: float = 0.5):
+    """A test for road-surface points (crossings, speed bumps, which the OSM
+    build snaps onto their road, ignoring its map level): True when the
+    point lies on a garage way (map_level off the surface) and on no
+    surface road - so a garage ramp's street mouth stays. Garage ways are
+    few, so this is a scan of them first; surface roads only for a hit."""
+    levelled = [w.points_m for w in ways if getattr(w, "map_level", None) not in surface_levels and len(w.points_m) >= 2]
+    surface = None
+
+    def near(points, x, y) -> bool:
+        return any(dist_point_to_segment(x, y, a[0], a[1], b[0], b[1]) <= on_m for a, b in zip(points, points[1:]))
+
+    def test(x: float, y: float) -> bool:
+        nonlocal surface
+        if not any(near(points, x, y) for points in levelled):
+            return False
+        if surface is None:
+            surface = [w.points_m for w in ways if getattr(w, "map_level", None) in surface_levels and len(w.points_m) >= 2]
+        return not any(near(points, x, y) for points in surface)
+
+    return test
+
+
 class ChunkIndex:
     """The world's static geometry bucketed by chunk, built once (the map
     doesn't change during a session)."""
@@ -69,7 +94,6 @@ class ChunkIndex:
         self.size = size
         self._chunks: dict[str, dict] = {}
         self._encoded: dict[str, bytes] = {}
-        from .map_level import SURFACE_MAP_LEVELS
         for way in world.ways:
             # Surface roads only, as render/roads.py draw_ways: a garage aisle
             # (map_level -1) stays in world.ways but is sent as a level road below.
@@ -179,10 +203,15 @@ class ChunkIndex:
         for curb in getattr(world, "curbs", ()):
             if len(curb.points_m) >= 2:
                 self._add("curbs", curb.points_m[:1], _line(curb.points_m))
+        underground = _underground_test(world.ways, SURFACE_MAP_LEVELS)
         for c in getattr(world, "crossings", ()):
+            if underground(c.x, c.y):
+                continue  # on a garage aisle: not a surface marking (the bug that showed them over the street)
             self._add("crossings", ((c.x, c.y),), [round(c.x, 2), round(c.y, 2), round(c.direction_angle or 0.0, 3),
                                                    round(getattr(c, "width_m", 5.0), 2), round(getattr(c, "length_m", 2.2), 2)])
         for b in getattr(world, "speed_bumps", ()):
+            if underground(b.x, b.y):
+                continue
             self._add("speed_bumps", ((b.x, b.y),), [round(b.x, 2), round(b.y, 2), round(b.direction_angle or 0.0, 3),
                                                      round(getattr(b, "width_m", 3.5), 2), getattr(b, "kind", "bump")])
         for kind, signs in (("stop", getattr(world, "stop_signs", ())), ("yield", getattr(world, "yield_signs", ()))):

@@ -248,3 +248,19 @@ def test_garage_aisles_are_not_sent_as_surface_roads():
     chunk = map_chunks.ChunkIndex(world, size=500.0).message("0_0")
     assert [road["points"][0] for road in chunk["roads"]] == [[0.0, 5.0], [0.0, 50.0]]
     assert len(chunk["level_roads"]) == 1 and -1 in chunk["level_roads"][0][0]  # still there, for its level
+
+
+def test_garage_crossings_and_bumps_are_not_surface_markings():
+    """Bug: a crossing on a level -1 garage aisle was drawn over the street
+    map (the OSM build snaps it to its road at layer 0, whatever the level)."""
+    street = SimpleNamespace(points_m=[(0.0, 0.0), (100.0, 0.0)], half_width_m=4.0, highway="residential",
+                             is_drivable=True, layer=0, map_level=None)
+    aisle = SimpleNamespace(points_m=[(100.0, 0.0), (100.0, 60.0)], half_width_m=3.0, highway="service",
+                            is_drivable=True, layer=0, map_level=-1)  # its mouth meets the street at (100, 0)
+    mark = lambda x, y: SimpleNamespace(x=x, y=y, direction_angle=0.0, width_m=4.0, length_m=2.4, kind="bump")
+    world = SimpleNamespace(ways=[street, aisle], railways=[], waters=[], buildings=[], level_ways=[aisle],
+                            crossings=[mark(50.0, 0.0), mark(100.0, 30.0), mark(100.0, 0.0)],
+                            speed_bumps=[mark(100.0, 45.0), mark(20.0, 0.1)])
+    chunk = map_chunks.ChunkIndex(world, size=500.0).message("0_0")
+    assert [c[:2] for c in chunk["crossings"]] == [[50.0, 0.0], [100.0, 0.0]]  # the street's and the ramp mouth's
+    assert [b[:2] for b in chunk["speed_bumps"]] == [[20.0, 0.1]]
