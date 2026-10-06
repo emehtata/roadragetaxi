@@ -1,5 +1,438 @@
 # Pygame → Godot rendering parity (audit, 0.16.0g-alpha)
 
+# Parity audit 2 (2026-10-06)
+
+**Repository state:** branch `release/v0.16.0g-alpha`, audited at `4407fd7`.
+
+**Method:** traced each feature from the Pygame source through to the screen,
+reading the current code:
+
+Pygame (`main/__init__.py` loop, `render/*.py`, `audio.py`)
+→ shared simulation (`simulation.py`, managers)
+→ server (`server/__init__.py`)
+→ protocol (`protocol.py` `build_state_message`, `map_chunks.py` chunks, command fields)
+→ Godot (`godot/*.gd`)
+→ what the player sees or hears.
+
+The previous audit and the per-phase history are kept below as history. They
+were not used as evidence here.
+
+**Constraints the audit respects:**
+- The 3D building layer is the intended Godot 1.x renderer, so it is not a
+  gap.
+- The camera, vehicle movement and the BIN map are out of scope.
+- The server owns all game state.
+
+**Aircraft:** the current Pygame code has no aircraft, aircraft movement,
+schedules or airport demand. `world_places.py` only lists airports as places,
+and `main()` logs them at city start. There is nothing to port, so aircraft
+has no row.
+
+## Executive summary
+
+| Status | Count |
+|---|---|
+| COMPLETE | 76 |
+| PARTIAL | 9 |
+| DIFFERENT BY DESIGN | 6 |
+| SERVER/PROTOCOL GAP | 20 |
+| GODOT RENDERING GAP | 5 |
+| GODOT UI GAP | 9 |
+| AUDIO GAP | 5 |
+| MISSING | 0 |
+| PYGAME-ONLY / OBSOLETE | 11 |
+| **rows** | **141** |
+
+Incomplete rows by priority: 1 P0, 6 P1, 13 P2, 28 P3.
+
+**What is left by type:**
+- **Protocol gaps:** most remaining work is in the protocol. The simulation
+  or Pygame's `main()` has the state, but the client never receives it:
+  navigation route, live taximeter, road rage, speech, timetable, temperature.
+- **Client-only gaps:** a smaller set needs no protocol change, because the
+  data already reaches Godot:
+  - rain and snow particles
+  - the score
+  - the career city summary
+  - refuelling input (G)
+  - limiter and assist toggles
+- **Why no MISSING rows:** every gap has a specific cause, so the generic
+  MISSING status is not used.
+
+**The single most important gap is refuelling.** The simulation supports it
+(`PlayerCommand.refuel`, `simulation.py:275`), but `godot/main.gd` `send()`
+always sends `"refuel": false` and binds no key. A Godot player cannot
+refuel, and the tank runs dry.
+
+## Feature matrix
+
+Priority: P0 core gameplay, P1 major world/presentation, P2 secondary, P3
+polish. Complete rows have no priority.
+
+| Area | Feature | Pygame implementation | Godot implementation | Status | Exact gap | Data source/dependency | Performance risk | Priority |
+| ---- | ------- | --------------------- | -------------------- | ------ | --------- | ---------------------- | ---------------- | -------- |
+| World | Ground / grass | `render/scenery.py` `draw_grass_texture` (seasonal texture) | `map_layer.gd` flat ground, snow with `calendar.season` | PARTIAL | no grass texture, no seasonal grass palettes | `state.calendar.season` | LOW | P3 |
+| World | Landuse fills | `draw_scenery` | `chunk_detail.gd` `draw_areas`, seasonal greens | PARTIAL | vegetation speckle texture | chunk `landuse` | LOW | P3 |
+| World | Water, winter ice | `render/waters.py` `draw_waters` | `map_chunk.gd` water, ice by winter weight | PARTIAL | spring ice floes | chunk `waters`, `calendar.season` | LOW | P3 |
+| World | Roads (surface, width, colour) | `render/roads.py` `draw_ways` | `map_chunk.gd` `_draw_roads` | COMPLETE | (paved path verges not drawn) | chunk `roads` | – | – |
+| World | Road markings, one-way arrows | `draw_ways` | `map_chunk.gd` | COMPLETE | – | chunk `roads` | – | – |
+| World | Bridges / road layers | `draw_ways` layer order; vehicle outlined under a higher road | z per layer (`map_chunk.gd`) | PARTIAL | a vehicle under a higher road is not outlined | `state.road.layer`, npc `layer` | LOW | P2 |
+| World | Underground / covered levels | `draw_level_ways` | `map_layer.gd` `_draw_underground`, `player.map_level` | COMPLETE | – | chunk `level_roads` | – | – |
+| World | Wet roads | `render/weather.py` `draw_wet_roads` | `map_chunk.gd` wet overlays | COMPLETE | – | `weather.wetness` | – | – |
+| World | Puddles | `draw_puddles` | `map_chunk.gd` `_draw_puddles` | PARTIAL | no rain ripples | `weather.wetness` | LOW | P3 |
+| World | Parking spaces | `draw_parking_spaces` | `chunk_detail.gd` `draw_parking` | COMPLETE | – | chunk `parking` | – | – |
+| World | Railways (ballast, rails, sleepers) | `draw_railways` | `chunk_detail.gd` `draw_tracks` | COMPLETE | – | chunk `railways` | – | – |
+| World | Rail bridges above vehicles | `draw_railways(only_bridges=True)` | `map_chunk.gd` z 11 | COMPLETE | – | chunk `rail_decks`, `rail_bridges` | – | – |
+| World | Traffic islands | `draw_traffic_islands` | `chunk_detail.gd` `draw_areas` | COMPLETE | – | chunk `traffic_islands` | – | – |
+| World | Trees (felled, seasonal) | `draw_trees` | `map_chunk.gd` `_draw_trees` | COMPLETE | – | chunk `trees`, `state.fallen_trees` | – | – |
+| World | Scenery objects, knocked posts | `draw_scenery_objects` | `map_chunk.gd`, `map_layer.gd` `_draw_knocked_posts` | COMPLETE | – | chunk `scenery_objects`, `state.knocked_posts` | – | – |
+| World | Bus stops | `draw_bus_stops` | `chunk_detail.gd` `draw_bus_stops` | COMPLETE | – | chunk `bus_stops` | – | – |
+| World | Buildings: shapes, heights, pitched roofs | `render/buildings.py` `draw_buildings` (2.5D) | `buildings_3d.gd` 3D layer (gables closed, godot-23) | DIFFERENT BY DESIGN | – | chunk `buildings`, `building_styles` | – | – |
+| World | Building windows and doors | `draw_buildings` facades | `buildings_3d.gd` `_windows`, `_doors` | COMPLETE | – | `building_styles` floors, category, entrances | – | – |
+| World | Night windows | `draw_illuminated_windows` | `buildings_3d.gd` lit pass at z 21 | COMPLETE | – | `calendar.darkness` | – | – |
+| World | Open-roof canopies | `draw_open_roof_overlays` | `chunk_detail.gd` `draw_canopies`, 3D projection | COMPLETE | – | chunk `canopies`, `canopy_heights` | – | – |
+| World | Tyre tracks | `draw_tire_tracks` | `entity_layer.gd` `_lay_track` | COMPLETE | – | `state.tire_mark` | – | – |
+| World | Roadworks | `draw_roadworks` | `map_chunk.gd` `_draw_points` | COMPLETE | – | chunk `roadworks` | – | – |
+| World | Curbs | `draw_curbs` | `chunk_detail.gd` | COMPLETE | – | chunk `curbs` | – | – |
+| World | Railings, walls, hedges | `draw_railings` | `chunk_detail.gd` | COMPLETE | – | chunk `railings` | – | – |
+| World | Construction fences | `draw_construction_fences` | `map_chunk.gd` `_draw_fences` | COMPLETE | – | chunk `construction_fences` | – | – |
+| World | Zebra crossings, speed bumps | `draw_crossings`, `draw_speed_bumps` | `chunk_detail.gd` `draw_road_features` | COMPLETE | – | chunk | – | – |
+| World | Traffic lights (live phase) | `draw_traffic_lights` | `map_chunk.gd` `_draw_traffic_lights` | COMPLETE | – | chunk `traffic_lights`, `state.traffic_lights` (600 m) | – | – |
+| World | Taxi stands | `draw_taxi_stops` | `map_chunk.gd` `_draw_points` | COMPLETE | – | chunk `taxi_stands` | – | – |
+| World | Stop / yield signs | `draw_stop_signs`, `draw_yield_signs` | `chunk_detail.gd` `draw_signs` | COMPLETE | – | chunk `signs` | – | – |
+| World | Speed cameras + flash | `draw_speed_cameras` | `chunk_detail.gd` `draw_signs` | COMPLETE | – | chunk `speed_cameras`, `state.speed_camera_flash` | – | – |
+| World | Fuel stations (pumps, price boards) | `draw_fuel_station_signs`, pumps | `map_chunk.gd` `_draw_fuel_pumps`, `_draw_fuel_boards` | COMPLETE | – | chunk `fuel_stations` | – | – |
+| World | Street lights, broken lamps | `draw_street_lights` | `map_chunk.gd` pools and heads | COMPLETE | – | chunk `street_lights`, `state.knocked_posts` | – | – |
+| World | Place and street labels | `render/labels.py` `draw_labels` | `labels.gd` | COMPLETE | – | chunk labels | – | – |
+| World | Vomit puddles and footprints | `draw_vomit_puddles` ×2, `draw_vomit_footprints` | – | SERVER/PROTOCOL GAP | `taxi_mgr.vomit_puddles`, `pedestrian_mgr.vomit_puddles` and `vomit_footprints` exist in the simulation but are not sent | `taxi.py:226`, `simulation.py:681` | LOW | P3 |
+| Weather | Rain / snow particles | `render/weather.py` `draw_rain` | – | GODOT RENDERING GAP | no particles; heavy-rain intensity is not sent | `weather.weather_type` | MEDIUM | P1 |
+| Weather | Splashes | `draw_splashes` (spawned in `main()` from puddle overlap) | – | GODOT RENDERING GAP | presentation only; Godot has the puddles and the taxi | puddles, `player` | MEDIUM | P3 |
+| Weather | Lightning flash | `draw_lightning_flash` | `main.gd` Sky/Flash | COMPLETE | – | `weather.lightning_intensity` | – | – |
+| Time | Day/night tint | `draw_day_night_overlay` | `night_layer.gd` | COMPLETE | – | `calendar.darkness` | – | – |
+| Time | Seasons | grass, ice, trees by season | snow, ice, tree crowns (`calendar.season`) | COMPLETE | (details in the ground/landuse/water rows) | `calendar.season` | – | – |
+| Vehicle | Taxi body, roof sign, size | `render/vehicles.py` `draw_car` | `entity_layer.gd` `_vehicle` | COMPLETE | – | `player.length_m`, `width_m` | – | – |
+| Vehicle | Headlights, tail and brake lamps | `draw_car`, `draw_vehicle_lights` | `entity_layer.gd` | COMPLETE | – | `player.engine_on`, `braking` | – | – |
+| Vehicle | Reversing lamp (taxi, NPCs) | `_draw_vehicle_lights(reversing=speed < −0.05)` | – | GODOT RENDERING GAP | white lamp between the tail lamps not drawn | `player.speed`, npc `speed` | LOW | P3 |
+| Vehicle | Exhaust, crash smoke | `draw_taxi_exhaust`, `draw_taxi_smoke` | `entity_layer.gd` `_smoke` | COMPLETE | – | `engine_on`, `taxi.taxi_smoke_timer` | – | – |
+| Vehicle | Night headlight beams | `draw_headlight_beams` | `night_layer.gd`, clipped at 3D silhouettes | COMPLETE | – | npcs, `player`, chunk buildings | – | – |
+| Vehicle | Rage shout bubble ("PRKL!") | `draw_car(shout_timer, shout_text)` | – | SERVER/PROTOCOL GAP | `rage_shout_timer`/`text` live only in `main()` | `main/__init__.py:1900` | LOW | P1 |
+| Vehicle | Water / in-water timer | `draw_hud(water_time_remaining)` | `instruments.gd` | COMPLETE | – | `water_elapsed` | – | – |
+| Vehicle | Passenger nausea bubble | `draw_passenger_nausea_bubble` | `entity_layer.gd` | COMPLETE | – | `nausea_warning_timer` | – | – |
+| NPC | Vehicles by type, colour | `draw_npc_cars` sprites | `entity_layer.gd` car, van, bus, truck, two-wheeler | PARTIAL | two-wheelers are body + rider, not Pygame's sprites | npc `vehicle_type` | LOW | P3 |
+| NPC | Turn signals | `draw_npc_cars` | `entity_layer.gd` | COMPLETE | – | npc `turn_signal`, `turn_signal_elapsed` | – | – |
+| NPC | Crashes: fallen, smoke | `draw_npc_cars` | `entity_layer.gd` | COMPLETE | – | npc `fallen`, `crashed_timer` | – | – |
+| NPC | Parked vehicles, lamps off | `draw_npc_cars` | `entity_layer.gd` | COMPLETE | – | npc `state` | – | – |
+| NPC | Police, on-foot, distant culling | `draw_npc_cars` skips `is_police`, `is_on_foot`, `lod_level ≥ 2` | `entity_layer.gd` `drawn_as_vehicle` (same rule) | COMPLETE | – | npc fields | – | – |
+| Pedestrian | Body appearance (clothing, hair, legs) | `render/pedestrians.py` `appearance` | defaults from `color` (`render_style.gd`) | SERVER/PROTOCOL GAP | `PedestrianAppearance` not sent | `pedestrian.py:416` | LOW | P3 |
+| Pedestrian | Direction, walk animation | `draw_pedestrians` | `entity_layer.gd` `_pedestrian` | COMPLETE | – | `heading`, `animation_state`, `animation_time` | – | – |
+| Pedestrian | Fallen, indoors, cursing | `draw_pedestrians` | `entity_layer.gd` | COMPLETE | – | `state`, `curse_timer`, `curse_text` | – | – |
+| Pedestrian | Walking player | `draw_pedestrians(is_player)` | standing figure | SERVER/PROTOCOL GAP | `player_pedestrian` has only x, y, heading: no walk animation | `protocol.py:363` | LOW | P2 |
+| Pedestrian | Waiting / walking customer tag | `draw_taxi_target` + passenger | `entity_layer.gd` `[P]` / `[TO TAXI]` | COMPLETE | – | `current_passenger.ped`, `is_walking_to_car` | – | – |
+| Pedestrian | Booked passenger arrow | `draw_booked_passenger_arrow` | `entity_layer.gd` `_booked_arrow` | COMPLETE | – | `state.meet.arrow` | – | – |
+| Pedestrian | People under roofs (outline) | `draw_pedestrians_under_roofs(roof_cover)` | – | GODOT RENDERING GAP | canopy polygons now reach Godot; the outline pass is not drawn | chunk `canopies` | LOW | P3 |
+| Pedestrian | Night reflectors | `draw_pedestrian_reflectors` | `entity_layer.gd` `_draw_reflectors` | COMPLETE | – | pedestrians, street lights | – | – |
+| Trains | Cars, length, direction, colours, restaurant stripe | `draw_trains` | `entity_layer.gd` `_train_car`, `render_style.gd` profiles | COMPLETE | – | `trains[].cars` | – | – |
+| Trains | Draw order above bridges / canopies | `draw_trains` after bridges | `entity_layer.gd` trains z 12 | COMPLETE | – | – | – | – |
+| Trains | Trains under station roofs (outline) | `draw_trains(roof_cover)` | – | GODOT RENDERING GAP | outline under canopies not drawn | chunk `canopies` | LOW | P3 |
+| Trains | Station / platform behaviour, timetable | `trains.py`, `train_timetable.py` | server-run, trains move and stop | COMPLETE | – | `trains[].state` | – | – |
+| Trains | Next-train panel (J) | `draw_next_train` | – | SERVER/PROTOCOL GAP | timetable query not sent | `train_timetable.py` | LOW | P2 |
+| Trains | Clicked car's passengers | `draw_train_car_popup` | – | SERVER/PROTOCOL GAP | `passengers.in_car` not sent; no click picking | `train_passengers.py` | LOW | P3 |
+| Taxi | Pickup / drop-off zone, marker, address tag | `render/navigation.py` `draw_taxi_target` | `entity_layer.gd` `_target` | COMPLETE | – | `current_passenger.pickup/dropoff` | – | – |
+| Taxi | Off-screen target arrow + distance | `draw_taxi_target` | `nav_overlay.gd` | COMPLETE | – | `EntityLayer.current_target` | – | – |
+| Taxi | Customer name / address (mission bar) | `draw_hud` mission bar | `hud.gd` fare line | COMPLETE | – | `taxi.state`, `current_passenger` | – | – |
+| Taxi | Live taximeter, fare distance, happiness, elapsed time | `draw_hud` mission bar (`live_fare_cents`, `fare_distance_m`, `passenger_happiness`, `elapsed_time`) | – | SERVER/PROTOCOL GAP | none of the four fields is in `state.taxi` | `taxi.py` TaxiManager | LOW | P1 |
+| Taxi | Score | `draw_hud` score box | – | GODOT UI GAP | `taxi.total_score` is sent but not shown | `state.taxi.total_score` | LOW | P2 |
+| Taxi | Offers and pre-bookings | `draw_phone_offers` (pauses) | `phone.gd` (game keeps running) | DIFFERENT BY DESIGN | – | `state.phone` | – | – |
+| Taxi | Pre-booking surcharge | phone booking row | `phone.gd` "Pre-booking fee" | COMPLETE | – | `phone[].surcharge_cents` | – | – |
+| Taxi | Meet-and-greet panel | `render/menus.py` `draw_meet_panel` | `hud.gd` `_meet` | COMPLETE | – | `state.meet.lines` | – | – |
+| Taxi | Customer walks to taxi / stand; boarding | `taxi.py`, `rail_bookings.py`, `station_passengers.py` | server-run, `WALKING` shown | COMPLETE | – | `taxi.state`, `boarded` | – | – |
+| Taxi | Fare, payment, starting fare | `fare.py`, `taxi.py` | server-run; balance and notices shown | COMPLETE | – | `taxi.balance_cents`, `notification_msg` | – | – |
+| Taxi | Career city summary | `draw_city_summary` | – | GODOT UI GAP | `should_stop` and `city_summary` are sent but ignored | `state.city_summary` | LOW | P1 |
+| Taxi | Game start overlay (city sign, 24 h forecast) | `draw_game_start_overlay` | – | SERVER/PROTOCOL GAP | city name and forecast not sent; forecast is `main()`-only | `main/__init__.py` `weather_history` | LOW | P3 |
+| Taxi | Start hints | `draw_game_start_hint` | `hud.gd` hint line | PARTIAL | one control line, not Pygame's timed get-in/engine hints | `on_foot`, `engine_on` | LOW | P3 |
+| Navigation | Route line (N) | `draw_navigation_route`; `traffic_mgr.plan_route` in `main()` (`main/__init__.py:2714`) | – | SERVER/PROTOCOL GAP | the server never routes; no route in the state | `traffic_world.py:439` `plan_route` | MEDIUM | P1 |
+| Navigation | Compass (C) | `draw_compass` | `nav_overlay.gd` | COMPLETE | – | current target | – | – |
+| HUD | Speed | `_draw_analog_speedometer` + assist indicators | `hud.gd` text km/h | GODOT UI GAP | no analog dial or its lane/limiter/nav indicators | `player.speed` | LOW | P3 |
+| HUD | Game time, date, real-time marker | `draw_hud` clock | `hud.gd` | COMPLETE | – | `calendar.date`, `time_scale` | – | – |
+| HUD | Temperature | `draw_hud(temperature_c)` | – | SERVER/PROTOCOL GAP | server has no temperature (fixed 15 °C into the simulation) | `main/__init__.py:1568` | LOW | P3 |
+| HUD | Money | `draw_hud` balance | `hud.gd` | COMPLETE | – | `taxi.balance_cents` | – | – |
+| HUD | Notifications, speed-camera notice | `draw_hud` | `hud.gd` | COMPLETE | – | `notification_msg`, `speed_camera_notice` | – | – |
+| HUD | Speed-limit sign, road name | `draw_hud` | `instruments.gd`, F3 readout | COMPLETE | – | `state.road` | – | – |
+| HUD | Fuel gauge, reserve, economy | `_draw_fuel_meter` | `instruments.gd` `_draw_fuel` | COMPLETE | – | `player.fuel_l` and economy fields | – | – |
+| HUD | Fuel price at a station (gauge) | `_draw_fuel_meter(fuel_station_price_cents)` | – | SERVER/PROTOCOL GAP | the station the taxi is at is not sent | `main()` station lookup | LOW | P2 |
+| HUD | Trip, odometer | `draw_hud` meters | `instruments.gd` | COMPLETE | – | `trip_m`, `odometer_m` | – | – |
+| HUD | Rage meter | `draw_hud` faces, %, bar | `instruments.gd` `_draw_rage` | COMPLETE | – | `rage_power` | – | – |
+| HUD | Water timer | `draw_hud` | `instruments.gd` | COMPLETE | – | `water_elapsed` | – | – |
+| HUD | Speech subtitles | `draw_hud(comment_text)` | – | SERVER/PROTOCOL GAP | speech lines go to the server's no-op audio; nothing is sent | `simulation.py` `play_driver_line`, `play_passenger_line` | LOW | P2 |
+| HUD | Speed limiter / red-light assist toggles (V, B) | key toggles + HUD status | `main.gd` `send()` hard-codes limiter on, assist off | GODOT UI GAP | no toggle, no status | `PlayerCommand` fields exist | LOW | P2 |
+| HUD | Lane assist (K) | `car.lane_assist_enabled` toggle | – | SERVER/PROTOCOL GAP | not a command field | `physics.py:240` | LOW | P2 |
+| HUD | FPS counter | normal HUD | F3 readout | DIFFERENT BY DESIGN | – | – | – | – |
+| UI | Pause / settings (language, volumes, subtitles) | `render/menus.py` `draw_pause_menu`, `draw_settings_menu` | – | GODOT UI GAP | no menus; settings are client-side | client settings | LOW | P2 |
+| UI | Tutorial screen | `draw_tutorial_screen` | – | GODOT UI GAP | – | – | LOW | P3 |
+| UI | Mode and city selection, loading | `draw_mode_selection_menu`, `draw_city_selection_menu` | server CLI chooses | DIFFERENT BY DESIGN | – | server `--preset` | – | – |
+| UI | Resident popup (click a person) | `draw_resident_popup` | – | SERVER/PROTOCOL GAP | resident details not sent; no click picking | `residents.py` | LOW | P3 |
+| UI | Follow another entity + back button | `camera_focus.py`, `draw_camera_back_button` | – | GODOT UI GAP | ids are in the state; no picking or follow mode | npc/pedestrian ids | LOW | P3 |
+| UI | Label modes (L) | `label_mode` 0–2 | – | GODOT UI GAP | labels always on | – | LOW | P3 |
+| UI | Trip reset (T) | `reset_trip(car)` | – | SERVER/PROTOCOL GAP | not a command; `trip_m` is the server's | `PlayerCommand` | LOW | P3 |
+| Gameplay | Refuel at a station (G) | `refuel_pending` → `PlayerCommand.refuel` | `main.gd` sends `refuel: false` always | GODOT UI GAP | no key, never sent: the player cannot refuel | `simulation.py:275` | LOW | P0 |
+| Gameplay | Road rage (SPACE): rage cost, horn, shout, nearest NPC provoked | `main/__init__.py:1900` → `npc_manager.trigger_road_rage` | – | SERVER/PROTOCOL GAP | logic only in `main()`; no command field | `npc.py` `trigger_road_rage` | LOW | P1 |
+| Gameplay | Manual respawn (R) | `main()` respawn | – | SERVER/PROTOCOL GAP | not a command (the in-water respawn is in the simulation) | `simulation.py:405` | LOW | P2 |
+| Gameplay | Historical weather (FMI observations) | `weather_history.py` in `main()` | server weather | SERVER/PROTOCOL GAP | the server does not use `WeatherHistory` | `main/__init__.py:1559` | LOW | P2 |
+| Gameplay | Weather transitions, wetness, drying | `weather.py` | server-run | COMPLETE | – | `weather` | – | – |
+| Gameplay | Accelerated time, 1:1 during a fare | `GameCalendar`, `time_scale` | server-run, `*` marker | COMPLETE | – | `calendar.time_scale` | – | – |
+| Gameplay | Fuel use, out of fuel | `fuel.py`, `simulation.py:267` | server-run | COMPLETE | – | `player.fuel_l` | – | – |
+| Gameplay | Speed-camera fines, collisions, curbs, water | `simulation.py` | server-run | COMPLETE | – | state + events | – | – |
+| Gameplay | Nausea, vomiting | `taxi.py` | server-run; bubble shown | COMPLETE | (visuals: vomit row) | `current_passenger` | – | – |
+| Gameplay | Rail bookings, meet-and-greet lifecycle | `rail_bookings.py` | server-run, phone + meet panel | COMPLETE | – | `phone`, `meet` | – | – |
+| Camera | World → screen, north up, zoom | `px_per_m`, ± keys | `MapMath`, Camera2D zoom | COMPLETE | – | – | – | – |
+| Camera | Camera target | `camx`/`camy` look-ahead | interpolated player position | DIFFERENT BY DESIGN | – | (godot-08/09 jitter fix) | – | – |
+| Camera | Interpolation | `interpolate_state` (`--connect`) | `state_buffer.gd` | DIFFERENT BY DESIGN | – | – | – | – |
+| Camera | Off-screen culling | per draw call | entity cull + chunks | COMPLETE | – | – | – | – |
+| Audio | Engine | `audio.update_engine`: idle loop + 3 accelerate layers by throttle | `main.gd` one `engine` loop, pitch by speed | PARTIAL | no throttle layers; the server does not forward loops | `player.speed`, `engine_on` | LOW | P3 |
+| Audio | Simulation one-shots | `simulation.py`: collisions, brake, water splash, curb/speed bump, doors, engine start, fuel empty, refuel, meter start, payment, speed camera, meet-and-greet, penalty, new offer, vomit, curse, tree fall | `audio_manager.gd` `handle_event` (server `EventAudio`) | COMPLETE | – | `events` `sound` | – | – |
+| Audio | City day / night ambience | `audio.update_ambience` | `main.gd` `city_day`/`city_night` | COMPLETE | – | `calendar.darkness` | – | – |
+| Audio | Rain loop | `update_ambience` `rain` | `main.gd` `rain` | PARTIAL | no heavy-rain variant | `weather_type` | LOW | P3 |
+| Audio | Wind, strong wind, wet tyres | `update_ambience` | – | AUDIO GAP | wet tyres derivable (wetness, speed); wind needs `weather.wind_vector_mps`, which is not sent | `simulation.py:361` | LOW | P3 |
+| Audio | Thunder | `weather.thunder` | server event | COMPLETE | – | `events` | – | – |
+| Audio | Damaged-taxi steam loop | `set_loop("steam", vehicle.damaged_steam)` | – | AUDIO GAP | loop not derived from `taxi_smoke_timer` | `taxi.taxi_smoke_timer` | LOW | P3 |
+| Audio | Footsteps on foot | `update_footsteps` | – | AUDIO GAP | loop not derived (on foot + player movement) | `on_foot`, player positions | LOW | P3 |
+| Audio | Train running, brakes, doors, horn | `_play_rail_sounds` in `main()` | `main.gd` `train_running` loop; `train_arrived`/`train_departed` events | COMPLETE | – | `trains`, events | – | – |
+| Audio | Station ambience, crowd, luggage | `main()` | – | AUDIO GAP | not played near stations | station positions (chunk `taxi_stands` / places) | LOW | P3 |
+| Audio | Station announcements | `station_announcer.py` in `main()` | – | SERVER/PROTOCOL GAP | announcer state and timetable not on the server | `station_announcer.py` | LOW | P2 |
+| Audio | Driver / passenger speech and chatter | `audio.play_driver_line`, `play_passenger_line`, `update_passenger_speech` | – | SERVER/PROTOCOL GAP | `EventAudio` drops speech; no event | `simulation.py:493–622` | LOW | P2 |
+| Audio | Phone UI: reject, new booking, missed booking, menu | `main()` `ui.*` groups | `phone.gd` only `ui.phone_open`; `ui.accept` from the server | AUDIO GAP | the other UI cues are not played | `phone` statuses | LOW | P3 |
+| Obsolete | BIN map loading | `main()` city bin | – | PYGAME-ONLY / OBSOLETE | superseded by OSM chunks | – | – | – |
+| Obsolete | Debug overlays: profiler, g-force, NPC panels, spatial grid, intersections, feature inspector, activity | `render/hud.py` debug panels | F3 readout | PYGAME-ONLY / OBSOLETE | developer UI | – | – | – |
+| Obsolete | Debug HUD line (lat/lon, ways, zoom) | `draw_hud(show_debug_hud)` | F3 readout | PYGAME-ONLY / OBSOLETE | developer UI | – | – | – |
+| Obsolete | Debug keys: PageUp/Down time skip, HOME respawn, F-keys | `main()` | – | PYGAME-ONLY / OBSOLETE | developer tools | – | – | – |
+| Obsolete | Taxi door opening animation | `draw_car(door_open_progress)` | – | PYGAME-ONLY / OBSOLETE | `main()` never passes a progress: it always draws closed | – | – | – |
+| Obsolete | Taxi turn signals | `draw_car` reads `car.turn_signal` | – | PYGAME-ONLY / OBSOLETE | the player `Car` has none; Pygame's taxi never blinks | – | – | – |
+| Obsolete | NPC brake lights | – | – | PYGAME-ONLY / OBSOLETE | Pygame draws none | – | – | – |
+| Obsolete | `draw_cyclists` | `render/pedestrians.py` | – | PYGAME-ONLY / OBSOLETE | never called; cyclists are pedestrians | – | – | – |
+| Obsolete | 2.5D building renderer | `render/buildings.py` | `--buildings 2d` (comparison only) | PYGAME-ONLY / OBSOLETE | replaced by the 3D layer | – | – | – |
+| Obsolete | Draggable HUD layout (U reset) | `hud_layout` | – | PYGAME-ONLY / OBSOLETE | Godot anchors its HUD | – | – | – |
+| Obsolete | Police siren, tyre squeal | `audio.update_police_siren` (never called); squeal disabled (`simulation.py:417`) | – | PYGAME-ONLY / OBSOLETE | inactive in Pygame too | – | – | – |
+
+## Server/protocol gaps
+
+Only missing state or data:
+
+1. **Navigation route.** `plan_route` (`traffic_world.py:439`) runs only in
+   Pygame's `main()`. The server would compute a route for the current
+   target and send it, for example as `state.navigation.points`, decimated.
+2. **Live taximeter.** `TaxiManager` has `live_fare_cents`,
+   `fare_distance_m`, `passenger_happiness` and `elapsed_time`;
+   `state.taxi` sends none of them.
+3. **Road rage.** The rage cost, horn, shout text/timer and
+   `npc_manager.trigger_road_rage` are all in `main()`. They need a command
+   field and the shout state.
+4. **Speech.** Driver/passenger lines and chatter are chosen in the
+   simulation, but `EventAudio` drops them. They need `speech` events with
+   text, for audio and subtitles.
+5. **Timetable / next trains.** No query or state reaches the client.
+6. **Station announcements.** `station_announcer.py` is `main()`-only.
+7. **Historical weather and temperature.** `WeatherHistory` is
+   `main()`-only, and the server gives the simulation a fixed 15 °C.
+8. **Fuel station at the taxi** (price in the gauge).
+9. **Commands:** lane assist (K), manual respawn (R) and trip reset (T).
+   The limiter and red-light assist (V, B) already exist as fields.
+10. **Walking player animation:** `player_pedestrian` has no animation
+    state.
+11. **Pedestrian appearance:** `PedestrianAppearance` is not sent.
+12. **Vomit puddles and footprints.**
+13. **Clicked entity details:** resident popup and train car passengers.
+14. **Game start overlay:** city name and forecast.
+
+## Godot rendering gaps
+
+Only presentation; the data is already in Godot:
+- **Rain / snow particles:** `weather_type` is sent; intensity would need
+  protocol data. Performance risk MEDIUM: full-screen particles on a
+  fill-bound frame (godot-18).
+- **Splashes:** puddles and the taxi are known. MEDIUM (particles).
+- **Reversing lamp:** from the sign of `speed`. LOW.
+- **People and trains under canopies, outlined:** canopy polygons are in the
+  chunks. LOW.
+- **Partial rows:**
+  - a vehicle outlined under a higher road (LOW)
+  - grass texture and seasonal palettes (LOW)
+  - landuse speckle (LOW)
+  - spring ice floes (LOW)
+  - puddle ripples (LOW, animated)
+  - two-wheeler sprites (LOW)
+
+## Godot UI gaps
+
+The state or command field exists, but the UI is missing:
+- **Refuel (G):** P0. The command field exists, and only a key and the
+  `refuel` flag are missing.
+- **Career city summary:** `should_stop`, `city_summary`.
+- **Score:** `taxi.total_score`.
+- **Speed limiter / red-light assist toggles and status.**
+- **Pause / settings menu:** language, volumes, subtitles.
+- **Analog speedometer** with indicators.
+- **Tutorial screen.**
+- **Label modes.**
+- **Follow-entity camera and back button.** This is planning only; the
+  camera is not to be changed.
+
+## Audio gaps
+
+| Feature | Godot equivalent | Silent? | Asset exists | Playback logic | Missing part |
+|---|---|---|---|---|---|
+| Wind, strong wind | none | silent | `weather.wind` | none | logic + `wind_vector_mps` in the protocol |
+| Wet tyres | none | silent | `weather.wet_road` | none | logic (wetness, speed) |
+| Damaged steam | none | silent | `vehicle.damaged_steam` | none | logic (`taxi_smoke_timer`) |
+| Footsteps | none | silent | `pedestrian.footsteps` | none | logic (on foot, moving) |
+| Station ambience, crowd, luggage | none | silent | `station.ambience` | none | logic (near a station) |
+| Phone reject / new booking / missed booking / menu | `ui.phone_open` only | silent | `ui.reject`, `ui.booking_new`, `ui.booking_missed`, `ui.menu` | none | logic in `phone.gd` |
+| Engine throttle layers | one pitched loop | partial | `vehicle.engine_accelerate` (3), `engine_idle` | partial | layering by throttle |
+| Heavy rain | rain loop | partial | `weather.rain` variants | partial | variant by intensity |
+| Speech / chatter, announcements | none | silent | `driver.chatter`, `passenger.chatter`, announcements | none | **server/protocol** (above) |
+
+Assets exist for every gap, so all of them are implementation work.
+Replacing assets is not a parity issue.
+
+## Gameplay gaps
+
+Behaviour differs from Pygame, independent of drawing:
+- **Refuelling impossible:** P0.
+- **Road rage absent:** P1. No horn, shout, rage spend or NPC reaction.
+- **No navigation route:** P1.
+- **Limiter always on, red-light assist always off, lane assist
+  unavailable:** P2.
+- **No manual respawn or trip reset:** P2 / P3.
+- **Weather not historical:** P2. The server does not use FMI
+  observations or temperature.
+- **No pause:** design. The phone does not pause the game, and there is no
+  pause menu yet.
+
+## Intentional differences
+
+- **3D building layer:** smooth, aligned facades without 2D tricks; the
+  Godot 1.x architecture (godot-21 to godot-23).
+- **Phone doesn't pause:** the game runs on a shared server clock that one
+  client can't stop.
+- **Camera follows the interpolated player, no look-ahead:** the godot-08/09
+  stability fix. It must not be changed.
+- **Interpolation buffer:** the client renders between server states.
+- **City and mode chosen by the server CLI:** the server owns the world. A
+  client menu can come later as a server request.
+- **FPS in the F3 readout,** not the normal HUD.
+
+## Pygame-only / obsolete
+
+Not to be ported:
+- the BIN map loading
+- Pygame's debug overlays, debug HUD line and debug keys
+- the never-animated door
+- taxi turn signals and NPC brake lights, which don't exist in Pygame
+- `draw_cyclists`, which is never called
+- the 2.5D building renderer
+- the draggable HUD layout
+- the police siren and tyre squeal, both inactive
+
+## Prioritized gaps
+
+- **P0:** refuel (G).
+- **P1:**
+  - navigation route
+  - live taximeter, fare distance and happiness
+  - road rage (horn, shout, NPC)
+  - career city summary
+  - rain and snow particles
+- **P2:**
+  - score
+  - speech + subtitles
+  - station announcements
+  - next-train panel
+  - limiter / assist toggles
+  - lane assist
+  - manual respawn
+  - historical weather
+  - fuel price in the gauge
+  - walking-player animation
+  - pause/settings menu
+  - vehicle outline under bridges
+- **P3:** every other incomplete row.
+
+## Recommended next phases
+
+1. **Core controls and economy.**
+   - **Features:** refuel (G); speed limiter and red-light assist toggles
+     with status; score in the HUD; the career city summary.
+   - **Why together:** client-only work on fields that already exist, plus
+     one key binding each.
+   - **Dependencies:** none.
+   - **Result:** the player can refuel, see the score and finish a career
+     city.
+   - **Performance risk:** LOW.
+2. **Taxi information.**
+   - **Features:** live taximeter, fare distance, happiness and elapsed time
+     in `state.taxi`, shown in the mission bar; fuel station price in the
+     gauge.
+   - **Why together:** one protocol extension of `state.taxi`, one HUD
+     change.
+   - **Dependencies:** a protocol field addition.
+   - **Result:** the fare reads as in Pygame.
+   - **Performance risk:** LOW.
+3. **Navigation route.**
+   - **Features:** the server computes the route (`plan_route`) when the
+     target changes and sends decimated points; Godot draws the line (N
+     toggles).
+   - **Why together:** it is one feature end to end.
+   - **Dependencies:** routing cost on the server tick (route on change,
+     not per tick).
+   - **Result:** turn-by-turn route line.
+   - **Performance risk:** MEDIUM (server routing; the line itself is
+     cheap).
+4. **Road rage.**
+   - **Features:** a `road_rage` command; the server spends rage, provokes
+     the NPC and sends shout state and a horn event; Godot shows the bubble.
+   - **Why together:** the mechanic, its audio and its visual are one loop.
+   - **Dependencies:** move the `main()` logic into the simulation.
+   - **Result:** SPACE works as in Pygame.
+   - **Performance risk:** LOW.
+5. **Weather presentation.**
+   - **Features:** rain/snow particles (intensity in the protocol), splashes,
+     puddle ripples; wind and wet-tyre audio (wind vector in the protocol).
+   - **Why together:** they share the weather state and the frame budget.
+   - **Dependencies:** a protocol weather extension.
+   - **Result:** visible precipitation.
+   - **Performance risk:** MEDIUM. The frame is fill-bound, so particles
+     must be batched (one draw).
+6. **Speech and stations.**
+   - **Features:** speech events with text (audio + subtitles); station
+     announcements and ambience; next-train panel.
+   - **Why together:** all are server-side `main()` logic moved into the
+     simulation, plus client playback.
+   - **Dependencies:** `EventAudio` speech events; timetable state.
+   - **Result:** talking passengers, announced trains.
+   - **Performance risk:** LOW.
+7. **Settings and polish.**
+   - **Features:** pause/settings menu; lane assist, respawn and trip-reset
+     commands; walking-player animation; appearance; reversing lamp;
+     outlines under canopies and bridges; vomit; steam, footsteps and phone
+     sounds; engine layers.
+   - **Why together:** small independent items.
+   - **Dependencies:** small protocol additions.
+   - **Result:** Pygame's remaining details.
+   - **Performance risk:** LOW.
+8. **Historical weather** (server).
+   - **Features:** run `WeatherHistory` on the server; send temperature;
+     the start forecast overlay.
+   - **Why together:** they share the same observations.
+   - **Dependencies:** network fetch and cache on the server.
+   - **Result:** real Oulu weather and temperature.
+   - **Performance risk:** LOW (I/O off the tick thread).
+
+---
+
+# Audit 1 (godot-06, 2026-10-03) and per-phase history
+
+The sections below are the first audit and its phase-by-phase updates,
+kept as history. Parity audit 2 above supersedes their statuses.
+
 Audited on 2026-10-03 against `release/v0.16.0g-alpha` at commit `0445643`;
 rows marked godot-07 were updated after that phase (rendering-only parity),
 rows marked godot-10 after the re-audit of 2026-10-05 (`734a3b7`; see
