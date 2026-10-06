@@ -95,7 +95,7 @@ class NavigationRoute:
         self.plans_started += 1
         if level == SURFACE_LEVEL:
             layer = getattr(current_way, "layer", None) if current_way else None
-            self._job = world.traffic_mgr.plan_route_steps((car.x, car.y), (target.x, target.y), layer=layer)
+            self._job = world.traffic_mgr.plan_route_steps((car.x, car.y), (target.x, target.y), layer=layer, on_road=True)
             self._job_started = time.perf_counter()
             return
         # Off the surface: this level's graph, out through its connectors; the

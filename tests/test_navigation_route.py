@@ -8,7 +8,7 @@ from theroadragetrip.geo import dist_point_to_segment
 from theroadragetrip.navigation_route import ROUTE_TOLERANCE_M, NavigationRoute, simplify_polyline
 from theroadragetrip.osm import Way
 from theroadragetrip.taxi import TaxiTarget
-from theroadragetrip.traffic_world import TrafficWorld
+from theroadragetrip.traffic_world import TrafficWorld, run_route_steps
 
 
 def _grid(blocks=12, step=40.0):
@@ -131,3 +131,47 @@ def test_simplify_keeps_the_shape_and_drops_the_straight_points():
     assert len(simple) <= 4 < len(line) // 50
     for p in line:  # every dropped point stays within the tolerance of the compact line
         assert min(dist_point_to_segment(p[0], p[1], *a, *b) for a, b in zip(simple, simple[1:])) <= ROUTE_TOLERANCE_M + 1e-9
+
+
+def test_a_bridge_end_joins_the_road_it_meets_but_not_one_it_crosses():
+    """Bug: nodes merge per layer, so a bridge (layer 1) ending on the ground
+    road's shared OSM node (layer 0) was a dead end; one-way ramps and
+    carriageways could only be left by teleporting."""
+    ground = Way(points_m=[(0.0, 0.0), (100.0, 0.0)], highway="primary", half_width_m=4.0)
+    bridge = Way(points_m=[(100.0, 0.0), (200.0, 0.0)], highway="primary", half_width_m=4.0, layer=1, oneway=1)
+    beyond = Way(points_m=[(200.0, 0.0), (300.0, 0.0)], highway="primary", half_width_m=4.0)
+    under = Way(points_m=[(150.0, -50.0), (150.0, 50.0)], highway="residential", half_width_m=4.0)  # crosses below, no shared node
+    traffic = TrafficWorld([ground, bridge, beyond, under])
+    route = traffic.plan_route((20.0, 0.0), (280.0, 0.0), layer=None)
+    assert route is not None and all(abs(y) < 1e-6 for _x, y in route)  # straight over the bridge
+    edges = traffic._route_edges
+    at = {}
+    for i, n in enumerate(traffic._route_nodes):
+        at.setdefault((n[0], n[1]), []).append(i)
+    for end in ((100.0, 0.0), (200.0, 0.0)):  # each bridge end: one node per layer, linked both ways
+        first, second = at[end]
+        assert any(v == second for v, _ in edges[first]) and any(v == first for v, _ in edges[second])
+    under_nodes = [i for i, n in enumerate(traffic._route_nodes) if n[0] == 150.0]
+    bridge_nodes = [i for i, n in enumerate(traffic._route_nodes) if n[2] == 1]
+    assert not any(v in under_nodes for b in bridge_nodes for v, _ in edges[b])  # the road below stays below
+
+
+def test_navigation_starts_the_way_the_taxis_one_way_road_goes():
+    """Bug: the route joined the graph at whichever nearby node was cheapest -
+    the opposite carriageway of a divided road, or behind on a one-way street."""
+    north = Way(points_m=[(0.0, 0.0), (0.0, 400.0)], highway="primary", half_width_m=4.0, oneway=1)  # carriageway going north
+    south = Way(points_m=[(12.0, 400.0), (12.0, 0.0)], highway="primary", half_width_m=4.0, oneway=1)  # and back, 12 m away
+    top = Way(points_m=[(0.0, 400.0), (12.0, 400.0)], highway="primary", half_width_m=4.0)
+    bottom = Way(points_m=[(12.0, 0.0), (0.0, 0.0)], highway="primary", half_width_m=4.0)
+    traffic = TrafficWorld([north, south, top, bottom])
+    world = _world(traffic, TaxiTarget(x=12.0, y=150.0, address="Vastapuoli 1"))  # on the far carriageway, behind
+    car, nav = SimpleNamespace(x=0.0, y=200.0, map_level=0), NavigationRoute()
+    _finish(nav, world, car)
+    ys = [p[1] for p in nav.points]
+    assert nav.points[1] == [0.0, 400.0]  # on along its own carriageway, north
+    assert max(ys) == 400.0 and nav.points[-1] == [12.0, 150.0]  # round the top, down the other side
+    old = run_route_steps(traffic.plan_route_steps((0.0, 200.0), (12.0, 150.0)))  # what NPCs still use
+    assert old is not None  # (their routing is unchanged)
+    world.taxi_mgr.target = TaxiTarget(x=0.0, y=300.0, address="Edessä 2")  # ahead on the same segment
+    _finish(nav, world, car)
+    assert nav.points == [[0.0, 200.0], [0.0, 300.0]]
