@@ -108,7 +108,7 @@ static func values(state: Dictionary, toggles := {}) -> Dictionary:
 			"WALKING":
 				text["fare"] = "%s is walking to the taxi" % who
 			"DROPOFF":
-				text["fare"] = "Drive %s to %s" % [who, passenger.get("dropoff", {}).get("address", "?")]
+				text["fare"] = "Drive %s to %s" % [who, passenger.get("dropoff", {}).get("address", "?")] + fare_details(taxi)
 			_:
 				text["fare"] = who
 	text["notice"] = str(taxi.get("notification_msg", "")) if taxi.get("notification_timer", 0.0) > 0.0 else ""
@@ -154,3 +154,20 @@ static func summary_text(state: Dictionary) -> String:
 		if typeof(summary[4]) in [TYPE_INT, TYPE_FLOAT]:
 			lines.append("Total career score: %d" % int(summary[4]))
 	return "\n".join(lines)
+
+
+## render/hud.py's mission bar while driving a fare: elapsed time, then the
+## meter, its distance and the passenger's happiness once the meter runs
+## (the server sends those null before). Missing or malformed values are left out.
+static func fare_details(taxi: Dictionary) -> String:
+	var parts := []
+	var numeric := func(key): return typeof(taxi.get(key)) in [TYPE_INT, TYPE_FLOAT]
+	if numeric.call("elapsed_time"):
+		parts.append("%.0f s" % taxi["elapsed_time"])
+	if numeric.call("live_fare_cents"):
+		parts.append("meter %.2f €" % (int(taxi["live_fare_cents"]) / 100.0))
+	if numeric.call("fare_distance_m"):
+		parts.append("%.2f km" % (taxi["fare_distance_m"] / 1000.0))
+	if numeric.call("passenger_happiness"):
+		parts.append("happiness %d%%" % roundi(taxi["passenger_happiness"]))
+	return "" if parts.is_empty() else " · " + " · ".join(parts)

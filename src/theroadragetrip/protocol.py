@@ -39,6 +39,7 @@ import math
 from dataclasses import asdict
 from typing import Any, Optional
 
+from .fuel import fuel_station_price_cents, nearest_fuel_station
 from .geo import angle_diff
 from .localization import tr
 from .rail_bookings import PASSENGER_MET, PASSENGER_WAITING
@@ -282,6 +283,13 @@ def _road_to_dict(current_way) -> dict:
             "layer": getattr(current_way, "layer", 0), "bridge": bool(getattr(current_way, "is_bridge", False))}
 
 
+def _station_price_cents(world, car) -> Optional[int]:
+    """Price at the nearest pump within refuelling range of the car - the
+    same lookup and price refuelling uses (simulation.py), as main() does."""
+    station = nearest_fuel_station(getattr(world, "scenery_objects", ()), car.x, car.y)
+    return fuel_station_price_cents(station) if station is not None else None
+
+
 def _meet_to_dict(taxi_mgr, player_pedestrian, language: str) -> Optional[dict]:
     """The meet & greet in progress, as Pygame's main() shows it: the
     panel's three lines (taxi_mgr.meet_prompt, localized here) and, while
@@ -386,6 +394,14 @@ def build_state_message(
             "speed_camera_notice": taxi_mgr.speed_camera_notice_timer > 0.0 and bool(taxi_mgr.speed_camera_notice_msg),
             "taxi_smoke_timer": taxi_mgr.taxi_smoke_timer,
             "current_passenger": _passenger_to_dict(taxi_mgr.current_passenger),
+            # The running fare (render/hud.py's mission bar). The meter's three are
+            # null until the meter starts, as Pygame shows them only then.
+            "elapsed_time": taxi_mgr.elapsed_time,
+            "live_fare_cents": taxi_mgr.live_fare_cents if taxi_mgr.fare_started_at is not None else None,
+            "fare_distance_m": taxi_mgr.fare_distance_m if taxi_mgr.fare_started_at is not None else None,
+            "passenger_happiness": taxi_mgr.passenger_happiness if taxi_mgr.fare_started_at is not None else None,
+            # The pump in refuelling range of the taxi (the gauge's "G: REFUEL" price), else null.
+            "fuel_station_price_cents": _station_price_cents(world, car),
         },
         "phone": _phone_to_dict(taxi_mgr, car),
         # Career-mode session end (score threshold reached -> next city or

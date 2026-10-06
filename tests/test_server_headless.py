@@ -280,3 +280,60 @@ def test_tyre_marks_flash_and_level_in_the_state(tmp_path, monkeypatch):
     server.car.skid_amount = 1.0  # hard slip on asphalt or whatever is under the taxi
     assert server._tyre_mark(previous=(server.car.x - 1.0, server.car.y)) is not None
     assert server._tyre_mark(previous=(server.car.x, server.car.y)) is None  # not moving: nothing laid
+
+
+def test_the_running_fare_crosses_the_wire(tmp_path, monkeypatch):
+    """godot-final-03: the mission bar's live values, straight from TaxiManager.
+    The meter's three are null until the meter starts (Pygame shows them only then)."""
+    import json
+    from datetime import datetime
+
+    from theroadragetrip import protocol
+
+    server = _build_server(tmp_path, monkeypatch)
+    taxi = server.world.taxi_mgr
+    taxi.fare_started_at = None
+    taxi.elapsed_time = 0.0
+    state = _state(server)["taxi"]
+    assert state["elapsed_time"] == 0.0  # zero is sent, not omitted
+    assert state["live_fare_cents"] is None and state["fare_distance_m"] is None and state["passenger_happiness"] is None
+
+    taxi.fare_started_at = datetime(2026, 10, 6, 18, 0)
+    taxi.elapsed_time, taxi.live_fare_cents, taxi.fare_distance_m, taxi.passenger_happiness = 61.5, 1234, 2345.6, 0.0
+    state = _state(server)["taxi"]
+    assert (state["elapsed_time"], state["live_fare_cents"], state["fare_distance_m"], state["passenger_happiness"]) == (61.5, 1234, 2345.6, 0.0)
+    taxi.live_fare_cents, taxi.fare_distance_m, taxi.passenger_happiness = 0, 0.0, 100.0  # boundaries
+    wire = json.loads(protocol.encode({"type": "state", "state": _state(server)}).decode())["state"]["taxi"]
+    assert (wire["live_fare_cents"], wire["fare_distance_m"], wire["passenger_happiness"]) == (0, 0.0, 100.0)
+
+
+def test_the_pump_in_refuelling_range_sends_its_price(tmp_path, monkeypatch):
+    """godot-final-03: the gauge's "G: REFUEL" price is the nearest pump within
+    the refuelling range - the same lookup and price refuelling charges."""
+    from types import SimpleNamespace
+
+    from theroadragetrip.fuel import FUEL_STATION_RANGE_M, fuel_station_price_cents, nearest_fuel_station
+    from theroadragetrip.simulation import PlayerCommand
+
+    server = _build_server(tmp_path, monkeypatch)
+    car = server.car
+    far = SimpleNamespace(kind="fuel", x=car.x + FUEL_STATION_RANGE_M + 0.5, y=car.y, id=11)
+    server.world.scenery_objects = [o for o in getattr(server.world, "scenery_objects", ()) if getattr(o, "kind", None) != "fuel"] + [far]
+    assert _state(server)["taxi"]["fuel_station_price_cents"] is None  # 8.5 m: out of range
+
+    near = SimpleNamespace(kind="fuel", x=car.x + 3.0, y=car.y, id=12)
+    nearer = SimpleNamespace(kind="fuel", x=car.x, y=car.y + 2.0, id=13)
+    server.world.scenery_objects += [near, nearer]
+    assert fuel_station_price_cents(near) != fuel_station_price_cents(nearer)  # so the choice shows
+    price = _state(server)["taxi"]["fuel_station_price_cents"]
+    assert nearest_fuel_station(server.world.scenery_objects, car.x, car.y) is nearer
+    assert price == fuel_station_price_cents(nearer)
+
+    # Refuelling charges exactly that price.
+    server._on_foot = False
+    car.speed, car.fuel_l = 0.0, car.fuel_capacity_l - 10.0
+    server.world.taxi_mgr.balance_cents = 100_000
+    server._latest_command = PlayerCommand()
+    server._pending_refuels = 1
+    server.tick(1.0 / 30.0)
+    assert 100_000 - server.world.taxi_mgr.balance_cents == pytest.approx(10.0 * price, abs=2)

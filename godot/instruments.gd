@@ -48,11 +48,21 @@ func show_state(state: Dictionary) -> void:
 	var values := [snappedf(player.get("fuel_l", 0.0), 0.1), roundi(state.get("rage_power", 0.0) * 100.0),
 		snappedf(state.get("water_elapsed", 0.0), 0.1), roundi(player.get("trip_m", 0.0)), roundi(player.get("odometer_m", 0.0) / 100.0),
 		snappedf(player.get("fuel_consumption_l_per_100km", 0.0), 0.1), absf(player.get("speed", 0.0)) > 0.5, size,
-		speed_limit(state)]
+		speed_limit(state), price_text(state)]
 	_state = state
 	if values != _shown:
 		_shown = values
 		queue_redraw()
+
+
+## render/hud.py _draw_fuel_meter's station line: the pump in refuelling
+## range, priced by the server ("" without one, or with a malformed price).
+static func price_text(state: Dictionary) -> String:
+	var taxi = state.get("taxi", {})
+	var cents = taxi.get("fuel_station_price_cents") if typeof(taxi) == TYPE_DICTIONARY else null
+	if not typeof(cents) in [TYPE_INT, TYPE_FLOAT] or cents < 0:
+		return ""
+	return "G: REFUEL  %.2f €/L" % (int(cents) / 100.0)
 
 
 ## The limit of the road under the taxi, as the simulation says (0: none known).
@@ -133,6 +143,9 @@ func _draw_fuel(at: Vector2, player: Dictionary) -> void:
 		else "%.1f l/h" % player.get("idle_fuel_consumption_l_per_hour", 0.0)
 	draw_string(_font, at + Vector2(74, 22), economy, HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Color8(205, 215, 220))
 	draw_string(_font, at + Vector2(74, 40), "FUEL", HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Color8(205, 215, 220))
+	var price := price_text(_state)
+	if price != "":
+		draw_string(_font, at + Vector2(74, 62), price, HORIZONTAL_ALIGNMENT_LEFT, 150, 14, Color8(255, 215, 90))
 
 
 func _draw_rage(at: Vector2, rage: float) -> void:

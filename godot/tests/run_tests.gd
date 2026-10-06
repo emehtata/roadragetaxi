@@ -449,6 +449,41 @@ func test_commands_carry_the_player_id() -> void:
 	check(Main.command_for({}, true, false, false)["refuel"] == false, "no press, no refuel")
 	check(Hud.values({"on_foot": false, "player": {"engine_on": true}})["hint"].contains("G refuel"), "the driving hint names G")
 	test_controls_and_economy()
+	test_taxi_information()
+
+
+## godot-final-03: the running fare in the mission line, the pump price in the gauge.
+func test_taxi_information() -> void:
+	var passenger := {"name": "Aino", "pickup": {"address": "Kirkkokatu 4"}, "dropoff": {"address": "Rautatientori"}}
+	var fare := {"state": "DROPOFF", "current_passenger": passenger, "elapsed_time": 61.6, "live_fare_cents": 1234,
+		"fare_distance_m": 2345.6, "passenger_happiness": 49.6}
+	check(Hud.values({"taxi": fare})["fare"] == "Drive Aino to Rautatientori · 62 s · meter 12.34 € · 2.35 km · happiness 50%", "a running fare: time, meter, distance, happiness")
+	var started := fare.merged({"elapsed_time": 0.0, "live_fare_cents": 0, "fare_distance_m": 0.0, "passenger_happiness": 100.0}, true)
+	check(Hud.values({"taxi": started})["fare"].ends_with("· 0 s · meter 0.00 € · 0.00 km · happiness 100%"), "zeroes and the boundaries show as they are")
+	check(Hud.values({"taxi": fare.merged({"live_fare_cents": 5}, true)})["fare"].contains("meter 0.05 €"), "a cent-level meter")
+	var before := fare.merged({"live_fare_cents": null, "fare_distance_m": null, "passenger_happiness": null}, true)
+	check(Hud.values({"taxi": before})["fare"] == "Drive Aino to Rautatientori · 62 s", "before the meter starts: no made-up meter values")
+	var old := {"state": "DROPOFF", "current_passenger": passenger}
+	check(Hud.values({"taxi": old})["fare"] == "Drive Aino to Rautatientori", "an older server: the plain mission line")
+	check(Hud.values({"taxi": fare.merged({"live_fare_cents": "12", "passenger_happiness": [1]}, true)})["fare"] == "Drive Aino to Rautatientori · 62 s · 2.35 km", "malformed values are left out")
+	check(Hud.values({"taxi": fare.merged({"state": "PICKUP"}, true)})["fare"] == "Pick up Aino at Kirkkokatu 4", "pickup text unchanged")
+	check(Hud.values({"taxi": fare.merged({"state": "WALKING"}, true)})["fare"] == "Aino is walking to the taxi", "walking text unchanged")
+	check(Hud.values({"taxi": {"completed_fares": 3, "elapsed_time": 9.0}})["fare"] == "No fare - 3 done", "no passenger: unchanged")
+
+	check(Instruments.price_text({"taxi": {"fuel_station_price_cents": 189}}) == "G: REFUEL  1.89 €/L", "a pump in range: its price from cents")
+	check(Instruments.price_text({"taxi": {"fuel_station_price_cents": 300.0}}) == "G: REFUEL  3.00 €/L", "a whole-euro price")
+	for none in [{"taxi": {"fuel_station_price_cents": null}}, {"taxi": {}}, {}, {"taxi": {"fuel_station_price_cents": "189"}}, {"taxi": {"fuel_station_price_cents": -5}}]:
+		check(Instruments.price_text(none) == "", "no pump, or a bad price %s: no line" % str(none))
+	var gauge: Control = Instruments.new()
+	root.add_child(gauge)
+	gauge.show_state({"player": {"fuel_l": 20.0}, "taxi": {"fuel_station_price_cents": 189}})
+	var shown: Array = gauge._shown.duplicate()
+	gauge.show_state({"player": {"fuel_l": 20.0}, "taxi": {"fuel_station_price_cents": 245}})
+	check(gauge._shown != shown, "another pump: the gauge redraws")
+	shown = gauge._shown.duplicate()
+	gauge.show_state({"player": {"fuel_l": 20.0}, "taxi": {"fuel_station_price_cents": null}})
+	check(gauge._shown != shown and gauge._shown[-1] == "", "driving away: the price goes")
+	gauge.free()
 
 
 func _key_event(code: Key) -> InputEventKey:
