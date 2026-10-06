@@ -65,6 +65,26 @@ static func price_text(state: Dictionary) -> String:
 	return "G: REFUEL  %.2f €/L" % (int(cents) / 100.0)
 
 
+## The inked area of `text` drawn at the origin (baseline at y = 0): the
+## shaped glyphs' bitmaps, not the line box - so "1" and "120" alike sit
+## exactly in the middle of the limit sign (advance widths include side
+## bearings, line heights include the descent digits never use).
+static func ink_rect(font: Font, text: String, font_size: int) -> Rect2:
+	var line := TextLine.new()
+	line.add_string(text, font, font_size)
+	var ts := TextServerManager.get_primary_interface()
+	var ink := Rect2()
+	var pen := 0.0
+	for glyph in ts.shaped_text_get_glyphs(line.get_rid()):
+		var size := Vector2i(int(glyph["font_size"]), 0)
+		var at: Vector2 = Vector2(pen, 0.0) + glyph["offset"] + ts.font_get_glyph_offset(glyph["font_rid"], size, glyph["index"])
+		var box := Rect2(at, ts.font_get_glyph_size(glyph["font_rid"], size, glyph["index"]))
+		if box.has_area():
+			ink = box if not ink.has_area() else ink.merge(box)
+		pen += glyph["advance"]
+	return ink if ink.has_area() else Rect2(Vector2(0.0, -font_size * 0.7), Vector2(font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x, font_size * 0.7))
+
+
 ## The limit of the road under the taxi, as the simulation says (0: none known).
 static func speed_limit(state: Dictionary) -> int:
 	var road = state.get("road")
@@ -104,8 +124,7 @@ func _draw() -> void:
 		draw_circle(sign_at, 31.0, Color8(255, 210, 0))
 		draw_arc(sign_at, 27.0, 0.0, TAU, 40, Color8(210, 35, 35), 8.0)
 		var digits := str(limit)
-		var digits_size := _font.get_string_size(digits, HORIZONTAL_ALIGNMENT_LEFT, -1, 26)
-		draw_string(_font, sign_at + Vector2(-digits_size.x / 2.0, digits_size.y / 2.0 - 5.0), digits, HORIZONTAL_ALIGNMENT_LEFT, -1, 26, Color8(20, 20, 20))
+		draw_string(_font, sign_at - ink_rect(_font, digits, 26).get_center(), digits, HORIZONTAL_ALIGNMENT_LEFT, -1, 26, Color8(20, 20, 20))
 	# A dark outline keeps the light text readable on snow and on grass alike (godot-16).
 	var trip := trip_text(player.get("trip_m", 0.0), player.get("odometer_m", 0.0))
 	draw_string_outline(_font, Vector2(10, size.y - 230), trip, HORIZONTAL_ALIGNMENT_LEFT, -1, 14, TEXT_OUTLINE_PX, TEXT_OUTLINE)
