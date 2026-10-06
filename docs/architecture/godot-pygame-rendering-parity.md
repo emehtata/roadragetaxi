@@ -32,10 +32,10 @@ has no row.
 
 | Status | Count |
 |---|---|
-| COMPLETE | 82 |
+| COMPLETE | 83 |
 | PARTIAL | 9 |
 | DIFFERENT BY DESIGN | 6 |
-| SERVER/PROTOCOL GAP | 18 |
+| SERVER/PROTOCOL GAP | 17 |
 | GODOT RENDERING GAP | 5 |
 | GODOT UI GAP | 5 |
 | AUDIO GAP | 5 |
@@ -43,7 +43,7 @@ has no row.
 | PYGAME-ONLY / OBSOLETE | 11 |
 | **rows** | **141** |
 
-Incomplete rows by priority: 0 P0 (refuelling done in godot-final-01), 4 P1, 10 P2, 28 P3 (score, toggles and summary done in godot-final-02; taximeter and pump price in godot-final-03).
+Incomplete rows by priority: 0 P0 (refuelling done in godot-final-01), 3 P1, 10 P2, 28 P3 (score, toggles and summary done in godot-final-02; taximeter and pump price in godot-final-03; navigation route in godot-final-04).
 
 **What is left by type:**
 - **Protocol gaps:** most remaining work is in the protocol. The simulation
@@ -151,7 +151,7 @@ polish. Complete rows have no priority.
 | Taxi | Career city summary | `draw_city_summary` | `hud.gd` full-screen summary, latched; driving commands stop (godot-final-02) | COMPLETE | – | `state.should_stop`, `city_summary` | – | – |
 | Taxi | Game start overlay (city sign, 24 h forecast) | `draw_game_start_overlay` | – | SERVER/PROTOCOL GAP | city name and forecast not sent; forecast is `main()`-only | `main/__init__.py` `weather_history` | LOW | P3 |
 | Taxi | Start hints | `draw_game_start_hint` | `hud.gd` hint line | PARTIAL | one control line, not Pygame's timed get-in/engine hints | `on_foot`, `engine_on` | LOW | P3 |
-| Navigation | Route line (N) | `draw_navigation_route`; `traffic_mgr.plan_route` in `main()` (`main/__init__.py:2714`) | – | SERVER/PROTOCOL GAP | the server never routes; no route in the state | `traffic_world.py:439` `plan_route` | MEDIUM | P1 |
+| Navigation | Route line (N) | `draw_navigation_route`; `traffic_mgr.plan_route` in `main()` (`main/__init__.py:2714`) | server `navigation_route.py` → `state.navigation.points`; `entity_layer.gd` `_route`, N in `nav_overlay.gd` (godot-final-04) | COMPLETE | – | `traffic_world.py` `plan_route_steps`, `level_routes` | – | – |
 | Navigation | Compass (C) | `draw_compass` | `nav_overlay.gd` | COMPLETE | – | current target | – | – |
 | HUD | Speed | `_draw_analog_speedometer` + assist indicators | `hud.gd` text km/h | GODOT UI GAP | no analog dial or its lane/limiter/nav indicators | `player.speed` | LOW | P3 |
 | HUD | Game time, date, real-time marker | `draw_hud` clock | `hud.gd` | COMPLETE | – | `calendar.date`, `time_scale` | – | – |
@@ -573,6 +573,94 @@ Godot 403 checks.
   cost 24.40 €; the price cleared after driving away
 
 A Godot screenshot at the pump shows the gauge line.
+
+## godot-final-04: navigation route
+
+**Server ownership** (`navigation_route.py`, `SimulationServer.navigation`,
+updated once per tick after the simulation step). This is Pygame's `main()`
+lifecycle, computed whether or not a client shows it.
+- **Lifecycle:**
+  - no target means no route, and no search starts
+  - a new target replans: the target is keyed on its coordinates and address,
+    never an object id
+  - so does a new map level, and a new `route_graph_revision` (the old line
+    stays until the new route is done)
+  - so does being more than 35 m from every segment of the cached route; the
+    check runs only on a finished route
+  - an unreachable target gives `[]`, without retrying every tick, as in
+    `main()`
+- **Search:** surface routes run as `plan_route_steps`, honouring the road
+  layer. The generator is kept between ticks and advanced 2 ms a tick
+  (`ROUTE_BUDGET_S`). Off the surface, `world.level_routes.plan` gives this
+  level's leg, synchronously as in Pygame.
+- **Publishing:** a job belongs to its target, level and revision key and is
+  dropped when the key changes, so a stale search can never publish. Only a
+  finished route is published.
+
+**Protocol.** `state.navigation = {"points": [[x, y], ...]}`, in world
+metres, rounded to 1 cm, `[]` while there is none. The points are compacted
+once per route with iterative Douglas-Peucker at 0.5 m
+(`simplify_polyline`), which keeps both endpoints, and cached. Interpolation
+copies it from the newest state, never blending it. A new client's first
+state carries the cached route. The protocol version is unchanged.
+
+**Godot.**
+- **Toggle:** N in `nav_overlay.gd` (`show_route`, off by default, non-echo
+  presses). It is local only, so no command field. C is unchanged, and the
+  hint shows `N navigation ON/OFF`.
+- **Drawing:** `entity_layer.gd` `_route` draws it in world space via
+  `MapMath.point`:
+  - dark edge (60, 45, 5) at max(5 px, 0.8 m), gold centre (255, 215, 35) at
+    max(2 px, 0.45 m), Pygame's widths
+  - after the pedestrians, before the target marker, the taxi and the NPCs
+  - within the entity layer (z 10): above roads and buildings, under
+    canopies, rail bridges (z 11) and trains (z 12)
+- **Caching:** points are converted only when the received route changes.
+  Nothing is drawn while hidden, when there is no target, or for malformed
+  data, including non-finite, one-point or missing routes. `--navigation`
+  starts with it shown, for screenshots.
+
+**Measured (Oulu, 11,835 route nodes).**
+- **Search steps:** a single step is at most 1.04 ms (the first, nearest
+  nodes); later steps are at most 0.62 ms, over 20 random routes of 4–5,933
+  steps.
+- **Worst slice:** 2.9–4.0 ms in three runs, i.e. the budget plus one step.
+- **Point counts:** routes went 59 → 10, 91 → 36, 60 → 21 and 116 → 33 points.
+- **Slow ticks:** 50–250 ms ticks occur with the route job idle, and with
+  route planning off entirely (224 ms max). They are the server's existing
+  spikes.
+- **Godot:** two polylines of ≤ 36 points a frame; the selftest ran at 145 FPS
+  headless (147 before).
+
+**Tests.**
+- **`tests/test_navigation_route.py`,** on a real TrafficWorld grid:
+  - no target, no search
+  - an exact start and end; no replan when nothing changes
+  - the drop-off replaces a running pickup job, which never publishes
+  - at 35 m it keeps the route; at 36 m it replans
+  - a new graph revision replans and keeps the old line meanwhile
+  - a level leg, then back to the surface
+  - unreachable: `[]`, no retry
+  - a multi-tick job within its budget
+  - simplification: endpoints, error ≤ 0.5 m, reduction
+- **`test_server_headless.py`:** empty by default, the encode/decode round
+  trip, a new client's snapshot, discrete under interpolation.
+- **Godot `test_navigation_route`:**
+  - N default, toggle, echo; C independent; the hint
+  - origin conversion; malformed routes
+  - hide/show at once, replacement, the unchanged-route cache
+  - no target; draw order and z
+
+Godot 428 checks.
+
+**Scripted Oulu run** (real offer, Godot screenshots with `--navigation`):
+- the pickup route follows the roads
+- 30 m beside it keeps the route; 60 m replans from the new position
+- boarding switches to the drop-off route
+- after the fare the route clears
+
+**Noticed, not changed.** A long fare line plus the godot-final-03 meter
+details can overflow the top row at 1280 px.
 
 ---
 
