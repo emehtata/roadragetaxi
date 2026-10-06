@@ -283,6 +283,11 @@ def _road_to_dict(current_way) -> dict:
             "layer": getattr(current_way, "layer", 0), "bridge": bool(getattr(current_way, "is_bridge", False))}
 
 
+def _finite_pair(vector) -> list:
+    """[east, north] rounded to 1 mm/s; a non-finite component as 0."""
+    return [round(v, 3) if math.isfinite(v) else 0.0 for v in vector]
+
+
 def _station_price_cents(world, car) -> Optional[int]:
     """Price at the nearest pump within refuelling range of the car - the
     same lookup and price refuelling uses (simulation.py), as main() does."""
@@ -376,7 +381,10 @@ def build_state_message(
         "pedestrians": [_pedestrian_to_dict(p) for p in world.pedestrian_mgr.pedestrians if p.resident_id is not None],
         "trains": [_train_to_dict(t) for t in getattr(getattr(world, "railway_mgr", None), "trains", ())],
         "weather": {"weather_type": weather.weather_type.value, "wetness": weather.wetness,
-                    "lightning_intensity": weather.lightning_intensity},  # 1 at a strike, fading (render/weather.py)
+                    "lightning_intensity": weather.lightning_intensity,  # 1 at a strike, fading (render/weather.py)
+                    # For the client's weather audio (main()'s update_ambience): heavy rain, wind loops.
+                    "is_thunderstorm": bool(weather.is_thunderstorm),
+                    "wind_vector_mps": _finite_pair(weather.wind_vector_mps)},
         "road": _road_to_dict(current_way),
         # godot-16: the taxi's tyre mark this tick (kind rubber/dirt/sand/snow, intensity, front) or
         # null; which speed camera is flashing (its index in the chunks) or null.

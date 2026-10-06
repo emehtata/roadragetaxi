@@ -431,3 +431,29 @@ def test_road_rage_is_the_simulations_and_runs_once_per_press(tmp_path, monkeypa
     assert protocol.interpolate_state(wire["state"], later, 0.5)["road_rage"] is None  # discrete: the newest
     main_source = Path(protocol.__file__).with_name("main").joinpath("__init__.py").read_text(encoding="utf-8")
     assert "trigger_road_rage" not in main_source and "RAGE_SHOUT_COST" not in main_source  # Pygame only queues the press now
+
+
+def test_weather_audio_facts_cross_the_wire(tmp_path, monkeypatch):
+    """godot-final-06: is_thunderstorm and the gust-adjusted wind vector,
+    straight from WeatherSystem; nothing else new (no particles, ripples,
+    splashes, volumes or a made-up precipitation intensity)."""
+    import json
+
+    from theroadragetrip import protocol
+    from theroadragetrip.weather import WeatherType
+
+    server = _build_server(tmp_path, monkeypatch)
+    weather = server.world.weather
+    for kind in (WeatherType.CLEAR, WeatherType.RAIN, WeatherType.SLUSH, WeatherType.SNOW):
+        weather.weather_type = kind
+        assert _state(server)["weather"]["weather_type"] == kind.value
+    weather.is_thunderstorm = True
+    state = _state(server)["weather"]
+    assert state["is_thunderstorm"] is True
+    assert state["wind_vector_mps"] == [round(v, 3) for v in weather.wind_vector_mps]
+    assert set(state) == {"weather_type", "wetness", "lightning_intensity", "is_thunderstorm", "wind_vector_mps"}
+    for vector in ((0.0, 0.0), (3.25, -7.5), (-12.0, 4.0), (float("nan"), float("inf"))):
+        monkeypatch.setattr(type(weather), "wind_vector_mps", property(lambda self, v=vector: v))  # restored after the test
+        wire = json.loads(json.dumps(_state(server)["weather"]))["wind_vector_mps"]
+        assert wire == [v if v == v and abs(v) != float("inf") else 0.0 for v in vector]
+
