@@ -69,8 +69,11 @@ class ChunkIndex:
         self.size = size
         self._chunks: dict[str, dict] = {}
         self._encoded: dict[str, bytes] = {}
+        from .map_level import SURFACE_MAP_LEVELS
         for way in world.ways:
-            if len(way.points_m) >= 2:
+            # Surface roads only, as render/roads.py draw_ways: a garage aisle
+            # (map_level -1) stays in world.ways but is sent as a level road below.
+            if len(way.points_m) >= 2 and getattr(way, "map_level", None) in SURFACE_MAP_LEVELS:
                 self._add("roads", way.points_m, {
                     "points": _line(way.points_m), "half_width_m": way.half_width_m, "kind": way.highway or "",
                     "drivable": bool(way.is_drivable), "layer": way.layer,

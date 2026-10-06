@@ -231,3 +231,20 @@ def test_buildings_have_one_owner_and_their_facade_style():
     assert rb.BUILDING_WALL_COLORS.index(tuple(wall)) == rb.BUILDING_ROOF_COLORS.index(tuple(roof))  # the pair Pygame uses
     assert east["canopies"] and east["canopy_heights"] == [static_world.building_style(canopy)[2]]
     assert static_world.building_style(Building([(0, 0), (9, 0), (9, 9)], building_type="house"))[6] == 1
+
+
+def test_garage_aisles_are_not_sent_as_surface_roads():
+    """Bug: a map_level -1 garage aisle (kept in world.ways) was sent with
+    the surface roads, so Godot drew it over the street map. Pygame's
+    draw_ways takes only SURFACE_MAP_LEVELS; underground roads are
+    level_roads, shown on their own level."""
+    street = SimpleNamespace(points_m=[(0.0, 5.0), (100.0, 5.0)], half_width_m=4.0, highway="residential",
+                             is_drivable=True, layer=0, map_level=0)
+    unlevelled = SimpleNamespace(points_m=[(0.0, 50.0), (100.0, 50.0)], half_width_m=4.0, highway="residential",
+                                 is_drivable=True, layer=0, map_level=None)
+    aisle = SimpleNamespace(points_m=[(10.0, 20.0), (60.0, 20.0)], half_width_m=3.0, highway="service",
+                            is_drivable=True, layer=-1, map_level=-1, tags={"level": "-1"})
+    world = SimpleNamespace(ways=[street, unlevelled, aisle], railways=[], waters=[], buildings=[], level_ways=[aisle])
+    chunk = map_chunks.ChunkIndex(world, size=500.0).message("0_0")
+    assert [road["points"][0] for road in chunk["roads"]] == [[0.0, 5.0], [0.0, 50.0]]
+    assert len(chunk["level_roads"]) == 1 and -1 in chunk["level_roads"][0][0]  # still there, for its level
