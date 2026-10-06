@@ -452,11 +452,15 @@ func test_commands_carry_the_player_id() -> void:
 	test_taxi_information()
 	test_navigation_route()
 	test_label_modes()
-	var font: Font = ThemeDB.fallback_font
-	var one := Instruments.ink_rect(font, "1", 26)
-	var hundred := Instruments.ink_rect(font, "100", 26)
-	check(one.has_area() and one.size.x < font.get_string_size("1", HORIZONTAL_ALIGNMENT_LEFT, -1, 26).x, "the limit sign centres on the ink: a 1 is narrower than its advance")
-	check(one.end.y <= 1.5 and hundred.end.y <= 1.5 and absf(one.position.y - hundred.position.y) < 0.5, "digits sit on the baseline, all as tall (no descent in the centring)")
+	# The limit sign (Wikimedia C32-60 / C32-100, Traficom numeral widths), at a digit height of 100.
+	var sixty: Array = Instruments.digit_layout("60")
+	check(is_equal_approx(sixty[0][1], 55.0 + 37.0 / 3.0) and is_equal_approx(sixty[1] * 3.0, 367.0), "60 as C32-60: 165 + 37 + 165")
+	var hundred: Array = Instruments.digit_layout("100")
+	check(is_equal_approx(hundred[0][1] * 3.0, 96.0) and is_equal_approx(hundred[0][2] * 3.0, 271.0) and is_equal_approx(hundred[1] * 3.0, 436.0), "100 as C32-100: 1 at 0, zeros at 96 and 271, 436 wide")
+	check(Instruments.digit_layout("7")[1] == 47.0 and Instruments.digit_layout("4")[1] == 60.0, "7 and 4 widths (Traficom)")
+	for d in "1234567890":
+		check(not Instruments.digit_strokes(d).is_empty(), "digit %s has strokes" % d)
+	check(Instruments.digit_layout("120")[1] * 3.0 <= 490.0, "120 fits inside the red ring (radius 245)")
 
 
 ## L cycles the labels as Pygame's label_mode: off (start), street names, everything.

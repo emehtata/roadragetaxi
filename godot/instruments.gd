@@ -65,24 +65,89 @@ static func price_text(state: Dictionary) -> String:
 	return "G: REFUEL  %.2f €/L" % (int(cents) / 100.0)
 
 
-## The inked area of `text` drawn at the origin (baseline at y = 0): the
-## shaped glyphs' bitmaps, not the line box - so "1" and "120" alike sit
-## exactly in the middle of the limit sign (advance widths include side
-## bearings, line heights include the descent digits never use).
-static func ink_rect(font: Font, text: String, font_size: int) -> Rect2:
-	var line := TextLine.new()
-	line.add_string(text, font, font_size)
-	var ts := TextServerManager.get_primary_interface()
-	var ink := Rect2()
-	var pen := 0.0
-	for glyph in ts.shaped_text_get_glyphs(line.get_rid()):
-		var size := Vector2i(int(glyph["font_size"]), 0)
-		var at: Vector2 = Vector2(pen, 0.0) + glyph["offset"] + ts.font_get_glyph_offset(glyph["font_rid"], size, glyph["index"])
-		var box := Rect2(at, ts.font_get_glyph_size(glyph["font_rid"], size, glyph["index"]))
-		if box.has_area():
-			ink = box if not ink.has_area() else ink.merge(box)
-		pen += glyph["advance"]
-	return ink if ink.has_area() else Rect2(Vector2(0.0, -font_size * 0.7), Vector2(font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x, font_size * 0.7))
+## Finnish speed limit sign C32, as Wikimedia's Finland_road_sign_C32-*.svg
+## draw it: radius 320 = yellow rim to 310, red ring to 245, yellow inside;
+## digits 300 high, centred, set 37 apart (two digits) or 13.5 after a 1 and
+## 10 otherwise (three - C32-100). The glyphs are Traficom's road-sign
+## numerals (Liite 11, 3.3): their widths, strokes 15 % of the height (the
+## SVG's 45 of 300).
+const SIGN_YELLOW := Color8(255, 205, 0)
+const SIGN_RED := Color8(228, 0, 43)
+const DIGIT_WIDTH := {"1": 27.5, "2": 55.0, "3": 55.0, "4": 60.0, "5": 55.0, "6": 55.0, "7": 47.0, "8": 55.0, "9": 55.0, "0": 55.0}  # at 100
+const DIGIT_STROKE := 15.0  # at 100 mm
+
+
+func _draw_limit_sign(at: Vector2, radius: float, limit: int) -> void:
+	var unit := radius / 320.0  # the SVG's units
+	draw_circle(at, radius, SIGN_YELLOW)
+	draw_circle(at, 310.0 * unit, SIGN_RED)
+	draw_circle(at, 245.0 * unit, SIGN_YELLOW)
+	var text := str(limit)
+	var height := 300.0 * unit
+	var scale := height / 100.0
+	var layout := digit_layout(text)
+	var origin := at - Vector2(layout[1] * scale, height) / 2.0
+	for i in text.length():
+		for stroke in digit_strokes(text[i]):
+			var points := PackedVector2Array()
+			for p in stroke:
+				points.append(origin + (p + Vector2(layout[0][i], 0.0)) * scale)
+			draw_polyline(points, Color.BLACK, DIGIT_STROKE * scale, true)
+			for j in range(1, points.size() - 1):  # filled joints on the sharp corners
+				if absf((points[j] - points[j - 1]).angle_to(points[j + 1] - points[j])) > 0.5:
+					draw_circle(points[j], DIGIT_STROKE * scale / 2.0, Color.BLACK)
+
+
+## [x of each digit, total width] at a digit height of 100.
+static func digit_layout(text: String) -> Array:
+	var xs := []
+	var x := 0.0
+	for i in text.length():
+		if i > 0:
+			x += (37.0 if text.length() < 3 else 13.5 if text[i - 1] == "1" else 10.0) / 3.0
+		xs.append(x)
+		x += DIGIT_WIDTH[text[i]]
+	return [xs, x]
+
+
+static func _arc(c: Vector2, r: float, from_deg: float, to_deg: float) -> Array:
+	var points := []
+	var steps := maxi(4, int(absf(to_deg - from_deg) / 10.0))
+	for i in steps + 1:
+		var a := deg_to_rad(lerpf(from_deg, to_deg, float(i) / steps))
+		points.append(c + Vector2(cos(a), sin(a)) * r)
+	return points
+
+
+## One digit's stroke centre lines in a 100-high box (y down, x from 0 to its
+## width), stroke 15: Traficom's 100 mm numeral models (Liite 11, 3.3).
+static func digit_strokes(digit: String) -> Array:
+	match digit:
+		"0":
+			return [_arc(Vector2(27.5, 27.5), 20.0, 180.0, 360.0) + _arc(Vector2(27.5, 72.5), 20.0, 0.0, 180.0) + [Vector2(7.5, 27.5)]]
+		"1":
+			return [[Vector2(20.0, 0.0), Vector2(20.0, 100.0)], [Vector2(3.0, 26.0), Vector2(17.0, 10.0)]]  # flat-topped stem, the flag into its side
+		"2":
+			return [_arc(Vector2(27.5, 27.5), 20.0, 195.0, 400.0) + [Vector2(7.5, 92.5), Vector2(55.0, 92.5)]]
+		"3":
+			return [_arc(Vector2(27.5, 26.0), 18.5, 200.0, 450.0) + _arc(Vector2(27.5, 70.0), 22.5, 270.0, 520.0)]
+		"4":
+			return [[Vector2(38.0, 3.0), Vector2(7.5, 70.0), Vector2(60.0, 70.0)], [Vector2(43.0, 38.0), Vector2(43.0, 100.0)]]
+		"5":
+			return [[Vector2(50.0, 7.5), Vector2(9.5, 7.5), Vector2(8.0, 47.0)] + _arc(Vector2(27.5, 70.0), 22.5, 237.0, 510.0)]
+		"6":
+			return [_arc(Vector2(27.5, 67.5), 20.0, 180.0, 360.0) + _arc(Vector2(27.5, 72.5), 20.0, 0.0, 180.0) + [Vector2(7.5, 67.5)],
+				[Vector2(33.0, 2.0), Vector2(21.0, 20.0), Vector2(12.0, 40.0), Vector2(7.5, 67.5)]]
+		"7":
+			return [[Vector2(0.0, 7.5), Vector2(47.0, 7.5), Vector2(14.0, 100.0)]]
+		"8":
+			return [_arc(Vector2(27.5, 26.0), 18.5, 0.0, 360.0), _arc(Vector2(27.5, 70.0), 20.0, 180.0, 360.0) + _arc(Vector2(27.5, 72.5), 20.0, 0.0, 180.0) + [Vector2(7.5, 70.0)]]
+		"9":
+			var strokes := []
+			for stroke in digit_strokes("6"):  # the 6 turned half round
+				strokes.append(stroke.map(func(p): return Vector2(55.0, 100.0) - p))
+			return strokes
+	return []
 
 
 ## The limit of the road under the taxi, as the simulation says (0: none known).
@@ -120,11 +185,7 @@ func _draw() -> void:
 		draw_string(_font, box.position + Vector2(12, text_size.y), text, HORIZONTAL_ALIGNMENT_LEFT, -1, 18, Color8(255, 210, 140))
 	var limit := speed_limit(_state)
 	if limit > 0:  # hud.py: the round limit sign under the clock
-		var sign_at := Vector2(size.x - 48.0, 76.0)
-		draw_circle(sign_at, 31.0, Color8(255, 210, 0))
-		draw_arc(sign_at, 27.0, 0.0, TAU, 40, Color8(210, 35, 35), 8.0)
-		var digits := str(limit)
-		draw_string(_font, sign_at - ink_rect(_font, digits, 26).get_center(), digits, HORIZONTAL_ALIGNMENT_LEFT, -1, 26, Color8(20, 20, 20))
+		_draw_limit_sign(Vector2(size.x - 48.0, 76.0), 31.0, limit)
 	# A dark outline keeps the light text readable on snow and on grass alike (godot-16).
 	var trip := trip_text(player.get("trip_m", 0.0), player.get("odometer_m", 0.0))
 	draw_string_outline(_font, Vector2(10, size.y - 230), trip, HORIZONTAL_ALIGNMENT_LEFT, -1, 14, TEXT_OUTLINE_PX, TEXT_OUTLINE)
