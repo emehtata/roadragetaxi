@@ -32,10 +32,10 @@ has no row.
 
 | Status | Count |
 |---|---|
-| COMPLETE | 80 |
+| COMPLETE | 82 |
 | PARTIAL | 9 |
 | DIFFERENT BY DESIGN | 6 |
-| SERVER/PROTOCOL GAP | 20 |
+| SERVER/PROTOCOL GAP | 18 |
 | GODOT RENDERING GAP | 5 |
 | GODOT UI GAP | 5 |
 | AUDIO GAP | 5 |
@@ -43,7 +43,7 @@ has no row.
 | PYGAME-ONLY / OBSOLETE | 11 |
 | **rows** | **141** |
 
-Incomplete rows by priority: 0 P0 (refuelling done in godot-final-01), 5 P1, 11 P2, 28 P3 (score, toggles and summary done in godot-final-02).
+Incomplete rows by priority: 0 P0 (refuelling done in godot-final-01), 4 P1, 10 P2, 28 P3 (score, toggles and summary done in godot-final-02; taximeter and pump price in godot-final-03).
 
 **What is left by type:**
 - **Protocol gaps:** most remaining work is in the protocol. The simulation
@@ -141,7 +141,7 @@ polish. Complete rows have no priority.
 | Taxi | Pickup / drop-off zone, marker, address tag | `render/navigation.py` `draw_taxi_target` | `entity_layer.gd` `_target` | COMPLETE | – | `current_passenger.pickup/dropoff` | – | – |
 | Taxi | Off-screen target arrow + distance | `draw_taxi_target` | `nav_overlay.gd` | COMPLETE | – | `EntityLayer.current_target` | – | – |
 | Taxi | Customer name / address (mission bar) | `draw_hud` mission bar | `hud.gd` fare line | COMPLETE | – | `taxi.state`, `current_passenger` | – | – |
-| Taxi | Live taximeter, fare distance, happiness, elapsed time | `draw_hud` mission bar (`live_fare_cents`, `fare_distance_m`, `passenger_happiness`, `elapsed_time`) | – | SERVER/PROTOCOL GAP | none of the four fields is in `state.taxi` | `taxi.py` TaxiManager | LOW | P1 |
+| Taxi | Live taximeter, fare distance, happiness, elapsed time | `draw_hud` mission bar (`live_fare_cents`, `fare_distance_m`, `passenger_happiness`, `elapsed_time`) | `hud.gd` `fare_details` on the drop-off line, from `state.taxi` (godot-final-03) | COMPLETE | – | `taxi.py` TaxiManager | – | – |
 | Taxi | Score | `draw_hud` score box | `hud.gd` top row beside the money (godot-final-02) | COMPLETE | – | `state.taxi.total_score` | – | – |
 | Taxi | Offers and pre-bookings | `draw_phone_offers` (pauses) | `phone.gd` (game keeps running) | DIFFERENT BY DESIGN | – | `state.phone` | – | – |
 | Taxi | Pre-booking surcharge | phone booking row | `phone.gd` "Pre-booking fee" | COMPLETE | – | `phone[].surcharge_cents` | – | – |
@@ -160,7 +160,7 @@ polish. Complete rows have no priority.
 | HUD | Notifications, speed-camera notice | `draw_hud` | `hud.gd` | COMPLETE | – | `notification_msg`, `speed_camera_notice` | – | – |
 | HUD | Speed-limit sign, road name | `draw_hud` | `instruments.gd`, F3 readout | COMPLETE | – | `state.road` | – | – |
 | HUD | Fuel gauge, reserve, economy | `_draw_fuel_meter` | `instruments.gd` `_draw_fuel` | COMPLETE | – | `player.fuel_l` and economy fields | – | – |
-| HUD | Fuel price at a station (gauge) | `_draw_fuel_meter(fuel_station_price_cents)` | – | SERVER/PROTOCOL GAP | the station the taxi is at is not sent | `main()` station lookup | LOW | P2 |
+| HUD | Fuel price at a station (gauge) | `_draw_fuel_meter(fuel_station_price_cents)` | `instruments.gd` "G: REFUEL x.xx €/L" from `taxi.fuel_station_price_cents` (godot-final-03) | COMPLETE | – | `nearest_fuel_station`, `fuel_station_price_cents` | – | – |
 | HUD | Trip, odometer | `draw_hud` meters | `instruments.gd` | COMPLETE | – | `trip_m`, `odometer_m` | – | – |
 | HUD | Rage meter | `draw_hud` faces, %, bar | `instruments.gd` `_draw_rage` | COMPLETE | – | `rage_power` | – | – |
 | HUD | Water timer | `draw_hud` | `instruments.gd` | COMPLETE | – | `water_elapsed` | – | – |
@@ -513,6 +513,66 @@ does that itself. That is why the client latches the summary.
   commands (that check fails with the guard removed)
 
 Godot 385 checks. `tests/summary_shot.gd` renders both summaries.
+
+## godot-final-03: taxi information
+
+**Protocol, additive.** Five fields in `state.taxi`, read directly from
+production state construction (`protocol.py`). The protocol version is
+unchanged.
+- **The running fare:** `elapsed_time`, `live_fare_cents`, `fare_distance_m`
+  and `passenger_happiness` come from `TaxiManager`. The last three are null
+  while `fare_started_at` is unset, because Pygame shows them only once the
+  meter runs.
+- **The pump price:** `fuel_station_price_cents` is the price of
+  `nearest_fuel_station(scenery_objects, car)` within `FUEL_STATION_RANGE_M`,
+  priced by `fuel_station_price_cents`. That is the same lookup and price
+  refuelling uses. It is null when no pump is in range.
+
+No rule changed.
+
+**Godot.**
+- **Fare line:** the drop-off line gains Pygame's mission-bar details, for
+  example "Drive Aino to Rautatientori · 62 s · meter 12.34 € · 2.35 km ·
+  happiness 50%". Absent, null or malformed values are left out. The pickup,
+  walking and no-fare texts are unchanged.
+- **Fuel gauge:** it shows "G: REFUEL  2.44 €/L" in Pygame's amber, inside
+  the existing box, only while the server sends a price. The price is part of
+  the gauge's redraw key.
+
+**Existing behaviour noticed (not changed).** After a drop-off,
+`taxi.state` stays `DROPOFF` and the meter fields keep their last values
+until the next fare. The passenger is null, so the HUD shows "No fare", as
+Pygame does.
+
+**Cost.** `nearest_fuel_station` is a linear scan of the scenery objects
+once per state (30 Hz), as Pygame does every frame. On the client it is one
+string format.
+
+**Tests.**
+- **Python** (`tests/test_server_headless.py`):
+  - the four fare fields: null before the meter starts, exact values, zero and
+    boundary values, encode/decode
+  - the price: null at 8.5 m; the nearest of two in range, equal to
+    `nearest_fuel_station` and `fuel_station_price_cents`; refuelling charges
+    that price
+- **Godot** (`test_taxi_information`):
+  - fare, zero and cent formats
+  - before the meter starts, an older server, malformed values
+  - pickup, walking and no-fare texts
+  - price formats, null, absent and invalid prices
+  - gauge redraw on another pump and on leaving
+
+Godot 403 checks.
+
+**Scripted Oulu run.** Real server, real phone offer:
+- before boarding, the meter fields are null
+- the meter then ran 8.00 → 8.20 → 8.40 → 8.50 €, distance 0 → 152 m, time
+  0 → 12 s, happiness 50 → 49 → 72 %
+- the fare completed
+- at a real pump, the price showed at 4 m but not at 12 m (2.44 €/l); 10 l
+  cost 24.40 €; the price cleared after driving away
+
+A Godot screenshot at the pump shows the gauge line.
 
 ---
 
