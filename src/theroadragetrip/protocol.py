@@ -329,7 +329,7 @@ def build_state_message(
     camx: float, camy: float, rage_power: float, water_elapsed: float,
     should_stop: bool = False, city_summary: Optional[tuple] = None, events: Optional[list] = None,
     server_time: float = 0.0, player_id: str = LOCAL_PLAYER_ID, current_way=None, language: str = "en",
-    calendar: Optional[dict] = None, tire_mark: Optional[dict] = None,
+    calendar: Optional[dict] = None, tire_mark: Optional[dict] = None, navigation: Optional[dict] = None,
 ) -> dict:
     """Everything the Pygame client needs to render one frame, and nothing
     static (see module docstring). Called once per server tick."""
@@ -383,6 +383,8 @@ def build_state_message(
         "speed_camera_flash": taxi_mgr.speed_camera_flash_index if taxi_mgr.speed_camera_flash_timer > 0.0 else None,
         "traffic_lights": _traffic_light_phases(traffic_mgr, *player_at),
         "meet": _meet_to_dict(taxi_mgr, player_pedestrian, language),
+        # The route to the taxi target, planned by the server (navigation_route.py): [[x, y], ...], [] while none.
+        "navigation": navigation if navigation is not None else {"points": []},
         "taxi": {
             "state": taxi_mgr.state,
             "total_score": taxi_mgr.total_score,

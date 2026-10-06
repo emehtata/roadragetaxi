@@ -30,6 +30,7 @@ from typing import Optional
 import pygame
 
 from .. import protocol
+from ..navigation_route import NavigationRoute
 from ..map_chunks import CHUNK_SIZE_M, ChunkIndex, cell_of, plan
 from ..protocol import LOCAL_PLAYER_ID
 from ..calendar import GameCalendar, darkness_for_sun_altitude, solar_altitude_and_events_on
@@ -162,6 +163,7 @@ class SimulationServer:
         self._command_lock = threading.Lock()
         self._latest_command = PlayerCommand()
         self._pending_interacts = 0
+        self.navigation = NavigationRoute()  # the player's route to the taxi target (godot-final-04)
         self._pending_refuels = 0  # edge-triggered too: one press buys fuel once, never again each tick
         self._phone_requests: list = []  # edge-triggered like interacts: each one is applied once
 
@@ -363,6 +365,7 @@ class SimulationServer:
                 })
             railway_mgr.sound_events.clear()
         self._stream_map_chunks()
+        self.navigation.update(self.world, self.car, self._current_way)
         self._broadcast_state(should_stop=result.should_stop, city_summary=result.city_summary, events=events)
 
     def _apply_phone_request(self, request: dict) -> dict:
@@ -416,6 +419,7 @@ class SimulationServer:
             should_stop=should_stop, city_summary=city_summary, events=events,
             server_time=self._server_time, player_id=LOCAL_PLAYER_ID,
             current_way=self._current_way, language=self.language, calendar=self.calendar_state(), tire_mark=self._tire_mark,
+            navigation={"points": self.navigation.points},
         )
         with self._clients_lock:
             clients = list(self._clients)

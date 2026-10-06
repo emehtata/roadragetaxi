@@ -337,3 +337,29 @@ def test_the_pump_in_refuelling_range_sends_its_price(tmp_path, monkeypatch):
     server._pending_refuels = 1
     server.tick(1.0 / 30.0)
     assert 100_000 - server.world.taxi_mgr.balance_cents == pytest.approx(10.0 * price, abs=2)
+
+
+def test_the_navigation_route_crosses_the_wire(tmp_path, monkeypatch):
+    """godot-final-04: state.navigation.points - the server's cached route,
+    world metres, unchanged through encode/decode; discrete under interpolation."""
+    import json
+
+    from theroadragetrip import protocol
+
+    server = _build_server(tmp_path, monkeypatch)
+    server.world.taxi_mgr.current_passenger = None
+    server.tick(1.0 / 30.0)
+    assert server.navigation.points == [] and _state(server)["navigation"] == {"points": []}  # no caller value: empty, never missing
+    car = server.car
+    points = [[1.25, -2.5], [100.0, 3.75], [250.5, 3.75]]
+    server.navigation.points = points  # what a finished route publishes
+    message = protocol.build_state_message(
+        tick=1, world=server.world, car=car, on_foot=False, player_pedestrian=server.world.player_pedestrian,
+        game_time_seconds=0.0, camx=0.0, camy=0.0, rage_power=0.0, water_elapsed=0.0,
+        navigation={"points": server.navigation.points})
+    wire = protocol.decode(protocol.encode(message))
+    assert wire["state"]["navigation"]["points"] == points  # a new client's first state carries the cached route
+    other = json.loads(json.dumps(wire["state"]))
+    other["navigation"] = {"points": [[0.0, 0.0], [9.0, 9.0]]}
+    blended = protocol.interpolate_state(wire["state"], other, 0.5)
+    assert blended["navigation"]["points"] == [[0.0, 0.0], [9.0, 9.0]]  # the newest route, never a blend
