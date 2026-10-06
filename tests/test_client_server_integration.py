@@ -358,3 +358,43 @@ def test_a_refuel_press_buys_fuel_once(monkeypatch):
     server.tick(1.0 / 30.0)
     assert car.fuel_l == 5.0 and taxi_mgr.balance_cents == 100_000
     connection.close()
+
+
+def test_a_road_rage_press_acts_once_and_a_new_client_sees_the_shout(monkeypatch):
+    """godot-final-05: `road_rage` is edge-triggered like refuel; the shout
+    is server state a client connecting mid-shout receives."""
+    from theroadragetrip import protocol, transport
+    from theroadragetrip.simulation import RAGE_SHOUTS, PlayerCommand
+
+    assert PlayerCommand().road_rage is False
+    decoded, _ = protocol.command_from_message(protocol.decode(protocol.encode(
+        protocol.build_command_message(PlayerCommand(road_rage=True), interact=False, seq=1))))
+    assert decoded.road_rage is True
+
+    server = _start_server(monkeypatch)
+    connection = transport.connect(server.host, server.port)
+    time.sleep(0.05)
+    server._rage_power = 0.9
+    connection.send(protocol.build_command_message(PlayerCommand(road_rage=True), interact=False, seq=1))
+    connection.send(protocol.build_command_message(PlayerCommand(), interact=False, seq=2))  # the next ordinary command, same tick
+    time.sleep(0.05)
+    for _ in range(10):
+        server.tick(1.0 / 30.0)
+    assert server._latest_command.road_rage is False
+    assert server._rage_power == pytest.approx(0.65, abs=0.02)  # spent once, not each tick
+    later = transport.connect(server.host, server.port)  # joins during the shout
+    time.sleep(0.05)
+    server.tick(1.0 / 30.0)
+    assert _tick_until(server, lambda: any(m.get("type") == "state" for m in _peek(later)))
+    state = [m for m in _seen[later] if m.get("type") == "state"][-1]["state"]
+    assert state["road_rage"]["text"] in RAGE_SHOUTS and 0.0 < state["road_rage"]["timer"] < 5.0
+    connection.close()
+    later.close()
+
+
+_seen: dict = {}
+
+
+def _peek(connection):
+    _seen.setdefault(connection, []).extend(connection.try_recv_all())
+    return _seen[connection]

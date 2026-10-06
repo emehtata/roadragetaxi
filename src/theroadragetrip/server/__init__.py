@@ -38,7 +38,7 @@ from ..career import career_path, gig_odometer_path
 from ..config import CONFIG_PATH, cities_from_config, get_overpass_endpoints
 from ..main import _choose_city, _load_world
 from ..render import SCREEN_H, SCREEN_W
-from ..simulation import PlayerCommand, advance_simulation, apply_enter_exit_vehicle
+from ..simulation import RAGE_SHOUT_DURATION_S, PlayerCommand, advance_simulation, apply_enter_exit_vehicle
 from ..transport import Listener
 from ..weather import WeatherSystem
 
@@ -165,6 +165,8 @@ class SimulationServer:
         self._pending_interacts = 0
         self.navigation = NavigationRoute()  # the player's route to the taxi target (godot-final-04)
         self._pending_refuels = 0  # edge-triggered too: one press buys fuel once, never again each tick
+        self._pending_road_rages = 0  # SPACE presses, likewise
+        self._road_rage = None  # the active shout: {"text", "timer"}
         self._phone_requests: list = []  # edge-triggered like interacts: each one is applied once
 
         self._clients_lock = threading.Lock()
@@ -258,11 +260,13 @@ class SimulationServer:
                 command, interact = protocol.command_from_message(message)
                 phone = protocol.phone_request_from_message(message)
                 with self._command_lock:
-                    self._latest_command = replace(command, refuel=False)  # the held part only
+                    self._latest_command = replace(command, refuel=False, road_rage=False)  # the held part only
                     if interact:
                         self._pending_interacts += 1
                     if command.refuel:
                         self._pending_refuels += 1
+                    if command.road_rage:
+                        self._pending_road_rages += 1
                     if phone is not None:
                         self._phone_requests.append(phone)
         with self._clients_lock:
@@ -292,6 +296,9 @@ class SimulationServer:
             if self._pending_refuels > 0:
                 self._pending_refuels -= 1
                 command = replace(command, refuel=True)
+            if self._pending_road_rages > 0:
+                self._pending_road_rages -= 1
+                command = replace(command, road_rage=True)
 
         with self._command_lock:
             phone_requests, self._phone_requests = self._phone_requests, []
@@ -344,6 +351,11 @@ class SimulationServer:
             now=self.calendar.current,
         )
         self._tire_mark = self._tyre_mark(previous=(car_x, car_y))
+        if self._road_rage is not None:  # main(): the shout counts down in real time
+            timer = max(0.0, self._road_rage["timer"] - dt)
+            self._road_rage = {"text": self._road_rage["text"], "timer": round(timer, 3)} if timer > 0.0 else None
+        if result.rage_shout:
+            self._road_rage = {"text": result.rage_shout, "timer": RAGE_SHOUT_DURATION_S}
         self._camx, self._camy = result.camx, result.camy
         self._current_way = result.current_way
         self._bridge_edge_crash_cooldown = result.bridge_edge_crash_cooldown
@@ -419,7 +431,7 @@ class SimulationServer:
             should_stop=should_stop, city_summary=city_summary, events=events,
             server_time=self._server_time, player_id=LOCAL_PLAYER_ID,
             current_way=self._current_way, language=self.language, calendar=self.calendar_state(), tire_mark=self._tire_mark,
-            navigation={"points": self.navigation.points},
+            navigation={"points": self.navigation.points}, road_rage=self._road_rage,
         )
         with self._clients_lock:
             clients = list(self._clients)

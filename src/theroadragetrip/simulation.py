@@ -17,6 +17,7 @@ in ``main()`` since they own genuinely Pygame- or client-only concerns
 from __future__ import annotations
 
 import math
+import random
 from dataclasses import dataclass
 from typing import Optional, Tuple
 
@@ -50,6 +51,11 @@ RAGE_DISTANCE_TO_FULL_M = 400.0
 RAGE_GAIN_SCALE = 1.0 / 3.0
 
 
+RAGE_SHOUTS = ("PRKL!", "STNA!", "VTTU!", "HLVT!", "KRPÄ!", "KSPÄ!", "PSKA!")
+RAGE_SHOUT_COST = 0.25
+RAGE_SHOUT_DURATION_S = 5.0
+
+
 @dataclass
 class PlayerCommand:
     """Everything the current frame's player input contributes to the
@@ -70,6 +76,7 @@ class PlayerCommand:
     red_light_assist_enabled: bool = False
     refuel: bool = False
     engine_on: Optional[bool] = None
+    road_rage: bool = False  # SPACE: one press (the server counts presses like refuel)
 
 
 @dataclass
@@ -93,6 +100,7 @@ class SimulationFrameResult:
     should_stop: bool = False
     city_summary: Optional[tuple] = None
     next_active_city_name: Optional[str] = None
+    rage_shout: Optional[str] = None  # an accepted SPACE this tick: the shout to show for RAGE_SHOUT_DURATION_S
 
 
 def walk_blocked_by_walls(x: float, y: float, step_x: float, step_y: float, blocked) -> Tuple[float, float]:
@@ -272,6 +280,16 @@ def advance_simulation(
         car.engine_on = bool(command.engine_on and not out_of_fuel)
         if car.engine_on != engine_was_on:
             audio.play_group("vehicle.engine_start" if car.engine_on else "vehicle.engine_stop")
+
+    rage_shout = None
+    if command.road_rage and rage_power >= RAGE_SHOUT_COST:  # main()'s SPACE: horn, shout, the nearest driver ahead
+        audio.play_driver_line("rage", language)
+        audio.play_group("vehicle.horn", 0.45)
+        rage_power = max(0.0, rage_power - RAGE_SHOUT_COST)
+        rage_shout = random.choice(RAGE_SHOUTS)
+        # NPC-005: Road Rage reaches exactly one real NPC driver - whichever
+        # is nearest ahead of the player right now (trigger_road_rage).
+        world.npc_manager.trigger_road_rage(car.x, car.y, car.heading, sim_time=world.traffic_mgr.sim_time)
 
     if command.refuel:
         station = nearest_fuel_station(scenery_objects, car.x, car.y)
@@ -706,6 +724,7 @@ def advance_simulation(
         should_stop=should_stop,
         city_summary=city_summary,
         next_active_city_name=next_active_city_name,
+        rage_shout=rage_shout,
     )
 
 

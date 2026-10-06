@@ -363,3 +363,71 @@ def test_the_navigation_route_crosses_the_wire(tmp_path, monkeypatch):
     other["navigation"] = {"points": [[0.0, 0.0], [9.0, 9.0]]}
     blended = protocol.interpolate_state(wire["state"], other, 0.5)
     assert blended["navigation"]["points"] == [[0.0, 0.0], [9.0, 9.0]]  # the newest route, never a blend
+
+
+def test_road_rage_is_the_simulations_and_runs_once_per_press(tmp_path, monkeypatch):
+    """godot-final-05: SPACE moved from Pygame's event loop into the shared
+    simulation - cost 0.25, the 0.45 horn, a shout for 5 s, the nearest
+    driver ahead provoked once; nothing below 0.25."""
+    import json
+    from pathlib import Path
+
+    from theroadragetrip import protocol
+    from theroadragetrip.simulation import RAGE_SHOUTS, PlayerCommand
+
+    server = _build_server(tmp_path, monkeypatch)
+    calls = []
+    real_trigger = server.world.npc_manager.trigger_road_rage
+    monkeypatch.setattr(server.world.npc_manager, "trigger_road_rage",
+                        lambda *a, **k: calls.append((a, k)) or real_trigger(*a, **k))
+    server._on_foot = False
+    server.car.speed = 0.0
+    server._latest_command = PlayerCommand()
+
+    sent = []
+    real_broadcast = server._broadcast_state
+    monkeypatch.setattr(server, "_broadcast_state", lambda **k: sent.append(k.get("events") or []) or real_broadcast(**k))
+
+    server._rage_power = 0.2  # below the cost: nothing at all
+    server._pending_road_rages = 1
+    server.tick(1.0 / 30.0)
+    assert calls == [] and server._road_rage is None and not any(e.get("group") == "vehicle.horn" for e in sent[-1])
+    assert server._rage_power == pytest.approx(0.2, abs=0.01)
+
+    server._rage_power = 0.25  # exactly the cost: accepted, down to zero
+    server._pending_road_rages = 1
+    at = (server.car.x, server.car.y, server.car.heading, server.world.traffic_mgr.sim_time)  # as the tick starts (main(): the press before the step)
+    server.tick(1.0 / 30.0)
+    assert server._rage_power == pytest.approx(0.0, abs=0.01)
+    assert [e for e in sent[-1] if e.get("group") == "vehicle.horn"] == [{"type": "sound", "group": "vehicle.horn"}]
+    assert len(calls) == 1
+    args, kwargs = calls[0]
+    assert args == at[:3] and kwargs == {"sim_time": at[3]}
+    shout = _state(server)  # no road_rage passed: the builder's default
+    state = protocol.build_state_message(
+        tick=1, world=server.world, car=server.car, on_foot=False, player_pedestrian=server.world.player_pedestrian,
+        game_time_seconds=0.0, camx=0.0, camy=0.0, rage_power=0.0, water_elapsed=0.0, road_rage=server._road_rage)["state"]
+    assert state["road_rage"]["text"] in RAGE_SHOUTS and state["road_rage"]["timer"] == 5.0
+    assert shout["road_rage"] is None
+
+    for _ in range(30):  # the press is not replayed; the shout counts down in real time
+        server.tick(1.0 / 30.0)
+    assert len(calls) == 1 and server._road_rage["timer"] == pytest.approx(4.0, abs=0.01)
+    for _ in range(130):
+        server.tick(1.0 / 30.0)
+    assert server._road_rage is None  # expired and cleared, never negative
+
+    server._rage_power = 0.6  # two distinct presses, two actions on two ticks
+    server._pending_road_rages = 2
+    server.tick(1.0 / 30.0)
+    server.tick(1.0 / 30.0)
+    server.tick(1.0 / 30.0)
+    assert len(calls) == 3 and server._rage_power == pytest.approx(0.1, abs=0.01)
+    assert sum(1 for events in sent[-3:] for e in events if e.get("group") == "vehicle.horn") == 2
+
+    wire = protocol.decode(protocol.encode({"type": "state", "version": protocol.PROTOCOL_VERSION, "state": state}))
+    later = json.loads(json.dumps(wire["state"]))
+    later["road_rage"] = None
+    assert protocol.interpolate_state(wire["state"], later, 0.5)["road_rage"] is None  # discrete: the newest
+    main_source = Path(protocol.__file__).with_name("main").joinpath("__init__.py").read_text(encoding="utf-8")
+    assert "trigger_road_rage" not in main_source and "RAGE_SHOUT_COST" not in main_source  # Pygame only queues the press now

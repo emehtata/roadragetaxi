@@ -43,7 +43,7 @@ from ..calendar import GameCalendar, Season, darkness_for_sun_altitude
 from ..climate import appearance_with_snow_depth, typical_temperature
 from ..fuel import fuel_station_price_cents, nearest_fuel_station
 from .. import protocol, transport
-from ..simulation import PlayerCommand, advance_simulation, apply_enter_exit_vehicle
+from ..simulation import RAGE_SHOUT_DURATION_S, RAGE_SHOUTS, PlayerCommand, advance_simulation, apply_enter_exit_vehicle
 from ..osm.cache import OSM_CACHE_TTL_S
 from ..osm import (
     CACHE_DIR,
@@ -259,8 +259,6 @@ def _play_rail_sounds(audio, railway_mgr, announcer=None) -> None:
     audio.set_loop("station_luggage", "station.ambience", crowd[1] * 0.4, variation=1, at=crowd[2])
 
 
-RAGE_SHOUTS = ("PRKL!", "STNA!", "VTTU!", "HLVT!", "KRPÄ!", "KSPÄ!", "PSKA!")
-RAGE_SHOUT_COST = 0.25
 NEARBY_PLACES_RADIUS_M = 50_000.0
 NEXT_TRAINS_SHOWN = 5  # arrivals listed in the J box  # airports/stations logged at city start
 # F5 activity debug panel's force-an-activity testing keys (residents-
@@ -1539,6 +1537,7 @@ def main() -> None:
         on_foot = True
         interact_pending = False
         refuel_pending = False
+        road_rage_pending = False
         engine_on_pending = None
         command_seq = 0
         prev_state_snapshot = None
@@ -1898,19 +1897,7 @@ def main() -> None:
                     elif event.key == pygame.K_e and not on_foot:
                         engine_on_pending = not car.engine_on
                     elif event.key == pygame.K_SPACE and not phone_open:
-                        if rage_power >= RAGE_SHOUT_COST:
-                            audio.play_driver_line("rage", language)
-                            audio.play_group("vehicle.horn", 0.45)
-                            rage_power -= RAGE_SHOUT_COST
-                            rage_shout_timer = 5.0
-                            rage_shout_text = random.choice(RAGE_SHOUTS)
-                            # NPC-005: Road Rage reaches exactly one real
-                            # NPC driver - whichever is nearest ahead of
-                            # the player right now - not a whole area; see
-                            # NPCVehicleManager.trigger_road_rage's own
-                            # docstring for why that's enough to produce
-                            # an emergent queue behind it.
-                            npc_manager.trigger_road_rage(car.x, car.y, car.heading, sim_time=traffic_mgr.sim_time)
+                        road_rage_pending = True  # the simulation spends the rage, honks and provokes (godot-final-05)
                     elif phone_open:
                         if event.key == pygame.K_ESCAPE:
                             phone_open = False
@@ -2192,8 +2179,10 @@ def main() -> None:
                 red_light_assist_enabled=red_light_assist_enabled,
                 refuel=refuel_pending,
                 engine_on=engine_on_pending,
+                road_rage=road_rage_pending,
             )
             refuel_pending = False
+            road_rage_pending = False
             engine_on_pending = None
             previous_car_position = (car.x, car.y)
 
@@ -2229,6 +2218,8 @@ def main() -> None:
                     game_time_seconds = applied["game_time_seconds"]
                     camx, camy = applied["camx"], applied["camy"]
                     rage_power = applied["rage_power"]
+                    if applied.get("road_rage"):  # the server's shout, as it counts it down
+                        rage_shout_text, rage_shout_timer = applied["road_rage"]["text"], applied["road_rage"]["timer"]
                     water_elapsed = applied["water_elapsed"]
                     if previous_on_foot and not on_foot:
                         start_hint_remaining = 0.0
@@ -2300,6 +2291,8 @@ def main() -> None:
                 current_way = result.current_way
                 water_elapsed = result.water_elapsed
                 rage_power = result.rage_power
+                if result.rage_shout:
+                    rage_shout_text, rage_shout_timer = result.rage_shout, RAGE_SHOUT_DURATION_S
                 bridge_edge_crash_cooldown = result.bridge_edge_crash_cooldown
                 slow_check_elapsed = result.slow_check_elapsed
                 taxi_waiter_elapsed = result.taxi_waiter_elapsed
