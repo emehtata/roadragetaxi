@@ -19,6 +19,7 @@ limitations".
 from __future__ import annotations
 
 from contextlib import nullcontext
+from dataclasses import replace
 
 import logging
 import threading
@@ -161,6 +162,7 @@ class SimulationServer:
         self._command_lock = threading.Lock()
         self._latest_command = PlayerCommand()
         self._pending_interacts = 0
+        self._pending_refuels = 0  # edge-triggered too: one press buys fuel once, never again each tick
         self._phone_requests: list = []  # edge-triggered like interacts: each one is applied once
 
         self._clients_lock = threading.Lock()
@@ -254,9 +256,11 @@ class SimulationServer:
                 command, interact = protocol.command_from_message(message)
                 phone = protocol.phone_request_from_message(message)
                 with self._command_lock:
-                    self._latest_command = command
+                    self._latest_command = replace(command, refuel=False)  # the held part only
                     if interact:
                         self._pending_interacts += 1
+                    if command.refuel:
+                        self._pending_refuels += 1
                     if phone is not None:
                         self._phone_requests.append(phone)
         with self._clients_lock:
@@ -283,6 +287,9 @@ class SimulationServer:
             interact = self._pending_interacts > 0
             if interact:
                 self._pending_interacts -= 1
+            if self._pending_refuels > 0:
+                self._pending_refuels -= 1
+                command = replace(command, refuel=True)
 
         with self._command_lock:
             phone_requests, self._phone_requests = self._phone_requests, []

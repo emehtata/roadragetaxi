@@ -288,3 +288,69 @@ def test_the_phone_shows_offers_and_answers_by_id(monkeypatch):
     state, results = _phone_round(server, connection, action="steal", item_id=ids[0])
     assert results == []  # malformed phone requests are ignored
     connection.close()
+
+
+def test_a_refuel_press_buys_fuel_once(monkeypatch):
+    """godot-final-01: `refuel` is edge-triggered like `interact`. The server
+    replays the latest command every tick, so a held `refuel: true` used to buy
+    again each tick ("tank full" then overwrote the purchase), and a press
+    followed by another command within one tick was lost."""
+    from types import SimpleNamespace
+
+    from theroadragetrip import protocol, transport
+    from theroadragetrip.fuel import calculate_fuel_purchase, fuel_station_price_cents
+    from theroadragetrip.simulation import PlayerCommand
+
+    server = _start_server(monkeypatch)
+    connection = transport.connect(server.host, server.port)
+    time.sleep(0.05)
+    connection.send(protocol.build_command_message(PlayerCommand(), interact=True, seq=1))  # get in
+    time.sleep(0.05)
+    server.tick(1.0 / 30.0)
+    assert server._on_foot is False
+    car, taxi_mgr = server.car, server.world.taxi_mgr
+    station = SimpleNamespace(kind="fuel", x=car.x + 5.0, y=car.y, id=4242)
+    server.world.scenery_objects = list(getattr(server.world, "scenery_objects", ())) + [station]
+    car.speed = 0.0
+    car.fuel_l = 10.0
+    taxi_mgr.balance_cents = 100_000
+    expected = calculate_fuel_purchase(10.0, car.fuel_capacity_l, 100_000, fuel_station_price_cents(station))
+
+    # The press, then (within the same tick) the next ordinary command.
+    connection.send(protocol.build_command_message(PlayerCommand(refuel=True), interact=False, seq=2))
+    connection.send(protocol.build_command_message(PlayerCommand(), interact=False, seq=3))
+    time.sleep(0.05)
+    server.tick(1.0 / 30.0)
+    time.sleep(0.05)
+    assert [e for e in _all_messages(connection)[-1]["state"]["events"] if e.get("group") == "taxi.refuel"]  # the pump sound, once
+    for _ in range(4):
+        server.tick(1.0 / 30.0)
+    time.sleep(0.05)
+    assert car.fuel_l == pytest.approx(min(car.fuel_capacity_l, 10.0 + expected.liters))
+    assert taxi_mgr.balance_cents == 100_000 - expected.cost_cents  # charged once
+    assert "fuel_tank_full" not in taxi_mgr.notification_msg and taxi_mgr.notification_msg  # the purchase notice stays
+    state = _all_messages(connection)[-1]["state"]
+    assert state["player"]["fuel_l"] == pytest.approx(car.fuel_l)  # what the client's gauge shows
+    assert state["taxi"]["balance_cents"] == taxi_mgr.balance_cents
+
+    # A full tank, then an empty purse: nothing is bought.
+    balance = taxi_mgr.balance_cents
+    connection.send(protocol.build_command_message(PlayerCommand(refuel=True), interact=False, seq=4))
+    time.sleep(0.05)
+    server.tick(1.0 / 30.0)
+    assert taxi_mgr.balance_cents == balance
+    car.fuel_l = 5.0
+    taxi_mgr.balance_cents = 0
+    connection.send(protocol.build_command_message(PlayerCommand(refuel=True), interact=False, seq=5))
+    time.sleep(0.05)
+    server.tick(1.0 / 30.0)
+    assert car.fuel_l == 5.0 and taxi_mgr.balance_cents == 0
+
+    # Out of range: no station within 8 m.
+    server.world.scenery_objects.remove(station)
+    taxi_mgr.balance_cents = 100_000
+    connection.send(protocol.build_command_message(PlayerCommand(refuel=True), interact=False, seq=6))
+    time.sleep(0.05)
+    server.tick(1.0 / 30.0)
+    assert car.fuel_l == 5.0 and taxi_mgr.balance_cents == 100_000
+    connection.close()
