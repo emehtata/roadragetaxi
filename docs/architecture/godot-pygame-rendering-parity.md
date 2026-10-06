@@ -32,10 +32,10 @@ has no row.
 
 | Status | Count |
 |---|---|
-| COMPLETE | 84 |
+| COMPLETE | 86 |
 | PARTIAL | 9 |
 | DIFFERENT BY DESIGN | 6 |
-| SERVER/PROTOCOL GAP | 17 |
+| SERVER/PROTOCOL GAP | 15 |
 | GODOT RENDERING GAP | 5 |
 | GODOT UI GAP | 4 |
 | AUDIO GAP | 5 |
@@ -43,7 +43,7 @@ has no row.
 | PYGAME-ONLY / OBSOLETE | 11 |
 | **rows** | **141** |
 
-Incomplete rows by priority: 0 P0 (refuelling done in godot-final-01), 3 P1, 10 P2, 27 P3 (label modes done; score, toggles and summary done in godot-final-02; taximeter and pump price in godot-final-03; navigation route in godot-final-04).
+Incomplete rows by priority: 0 P0 (refuelling done in godot-final-01), 1 P1, 10 P2, 27 P3 (label modes done; road rage in godot-final-05; score, toggles and summary done in godot-final-02; taximeter and pump price in godot-final-03; navigation route in godot-final-04).
 
 **What is left by type:**
 - **Protocol gaps:** most remaining work is in the protocol. The simulation
@@ -116,7 +116,7 @@ polish. Complete rows have no priority.
 | Vehicle | Reversing lamp (taxi, NPCs) | `_draw_vehicle_lights(reversing=speed < −0.05)` | – | GODOT RENDERING GAP | white lamp between the tail lamps not drawn | `player.speed`, npc `speed` | LOW | P3 |
 | Vehicle | Exhaust, crash smoke | `draw_taxi_exhaust`, `draw_taxi_smoke` | `entity_layer.gd` `_smoke` | COMPLETE | – | `engine_on`, `taxi.taxi_smoke_timer` | – | – |
 | Vehicle | Night headlight beams | `draw_headlight_beams` | `night_layer.gd`, clipped at 3D silhouettes | COMPLETE | – | npcs, `player`, chunk buildings | – | – |
-| Vehicle | Rage shout bubble ("PRKL!") | `draw_car(shout_timer, shout_text)` | – | SERVER/PROTOCOL GAP | `rage_shout_timer`/`text` live only in `main()` | `main/__init__.py:1900` | LOW | P1 |
+| Vehicle | Rage shout bubble ("PRKL!") | `draw_car(shout_timer, shout_text)` | `entity_layer.gd` `shout_for` + `_bubble` from `state.road_rage` (godot-final-05) | COMPLETE | – | server `_road_rage` | – | – |
 | Vehicle | Water / in-water timer | `draw_hud(water_time_remaining)` | `instruments.gd` | COMPLETE | – | `water_elapsed` | – | – |
 | Vehicle | Passenger nausea bubble | `draw_passenger_nausea_bubble` | `entity_layer.gd` | COMPLETE | – | `nausea_warning_timer` | – | – |
 | NPC | Vehicles by type, colour | `draw_npc_cars` sprites | `entity_layer.gd` car, van, bus, truck, two-wheeler | PARTIAL | two-wheelers are body + rider, not Pygame's sprites | npc `vehicle_type` | LOW | P3 |
@@ -176,7 +176,7 @@ polish. Complete rows have no priority.
 | UI | Label modes (L) | `label_mode` 0–2 | `labels.gd` L cycles off (start) → street names → all; hint shows it | COMPLETE | – | – | – | – |
 | UI | Trip reset (T) | `reset_trip(car)` | – | SERVER/PROTOCOL GAP | not a command; `trip_m` is the server's | `PlayerCommand` | LOW | P3 |
 | Gameplay | Refuel at a station (G) | `refuel_pending` → `PlayerCommand.refuel` | `main.gd` G → `command_for(refuel)`; the server applies each press once (godot-final-01) | COMPLETE | – | `simulation.py:275` | – | – |
-| Gameplay | Road rage (SPACE): rage cost, horn, shout, nearest NPC provoked | `main/__init__.py:1900` → `npc_manager.trigger_road_rage` | – | SERVER/PROTOCOL GAP | logic only in `main()`; no command field | `npc.py` `trigger_road_rage` | LOW | P1 |
+| Gameplay | Road rage (SPACE): rage cost, horn, shout, nearest NPC provoked | `main/__init__.py` SPACE (now only queues the press) | shared `advance_simulation` (`PlayerCommand.road_rage`), server press count, Godot SPACE (godot-final-05) | COMPLETE | – | `npc.py` `trigger_road_rage` | – | – |
 | Gameplay | Manual respawn (R) | `main()` respawn | – | SERVER/PROTOCOL GAP | not a command (the in-water respawn is in the simulation) | `simulation.py:405` | LOW | P2 |
 | Gameplay | Historical weather (FMI observations) | `weather_history.py` in `main()` | server weather | SERVER/PROTOCOL GAP | the server does not use `WeatherHistory` | `main/__init__.py:1559` | LOW | P2 |
 | Gameplay | Weather transitions, wetness, drying | `weather.py` | server-run | COMPLETE | – | `weather` | – | – |
@@ -689,6 +689,79 @@ Each segment lookup is its own job step, and the longest step is 1.38 ms.
 Two tests in `tests/test_navigation_route.py` fail without the fix: the
 bridge-end link (and no link to a road crossed below), and a divided road
 whose carriageway leads on, round and back.
+
+## godot-final-05: road rage
+
+**Shared rule.** `advance_simulation` handles `PlayerCommand.road_rage`
+first, as Pygame did with the key press before the step. With `rage_power >=
+RAGE_SHOUT_COST` (0.25):
+- the driver line (a no-op on the server until the speech phase)
+- `vehicle.horn` at 0.45
+- the cost, clamped at 0
+- `random.choice(RAGE_SHOUTS)`
+- `npc_manager.trigger_road_rage(car.x, car.y, car.heading, sim_time)`, once
+
+It returns `rage_shout`. Below the cost nothing happens. The constants moved
+from `main/__init__.py` to `simulation.py`. Pygame's SPACE handler now only
+queues the press, still not while the phone is open, and starts its
+five-second timer from the result. `--connect` takes the server's.
+`trigger_road_rage` and its constants are unchanged: 40 m ahead, 6 m
+sideways, 8 s, 1.5 m/s.
+
+**Server and protocol.**
+- **The press:** `road_rage` is a command press like `refuel`. It is
+  stripped from `_latest_command` and counted, and at most one is applied per
+  tick, so two presses act on two ticks.
+- **The shout:** `state.road_rage = {"text", "timer"}` while it lasts. The
+  server counts it down by `dt`, clears it at 0, and sends it to every state,
+  so a client connecting mid-shout sees the rest. Interpolation keeps the
+  newest. The horn is the simulation's own `vehicle.horn` sound event;
+  `audio_events.json` maps it to volume 0.45.
+
+**Godot.**
+- **The press:** a non-echo SPACE sets one pending press, sent once in the
+  next command (`command_for(..., road_rage)`). It is never sent while the
+  phone is open or after the career summary. The client never checks rage.
+- **The bubble:** `entity_layer.gd` `shout_for(state)` validates the shout
+  (a non-empty string, a finite positive timer), with alpha
+  `min(1, timer / 0.5)`. `_bubble` draws it above the interpolated taxi at
+  max(22 px, 0.7 × length) + 6 px, with red (240, 40, 40) text, a
+  (200, 30, 30) border and a white fill, at a constant screen size. It comes
+  after the taxi body and before the NPC vehicles, as in `draw_car`.
+- **Hint:** `SPACE road rage`.
+
+**Tests.**
+- **Python:**
+  - `test_npc.py`: crashed, behind, too far and too lateral are skipped; the
+    nearest eligible gets 8 s
+  - `test_server_headless.py`:
+    - 0.2 does nothing
+    - 0.25 is accepted down to 0, with one horn and one trigger (the car's
+      position, heading and the sim time as the tick starts)
+    - a valid shout, 5 s, counting down and clearing
+    - two presses give two actions, no replay
+    - interpolation keeps it discrete
+    - `main()` no longer calls the trigger
+  - `test_client_server_integration.py`: encode/decode and the false
+    default; a press and an ordinary command in one tick act once; a
+    connecting client receives the remaining shout
+- **Godot** (`test_road_rage`):
+  - SPACE once; echo and held commands don't repeat it
+  - phone-open and post-summary suppression; G stays independent
+  - text and fade; invalid states don't draw
+  - draw order and constant size
+  - the horn resolves at 0.45; the hint
+
+Godot 471 checks.
+
+**Scripted Oulu run.**
+- **20 % rage:** nothing.
+- **60 % behind a moving NPC 20 m ahead:** rage fell 25 points, with one horn
+  and the shout "PSKA!" for 5 s. That NPC alone was provoked, for 8 s, and
+  slowed 6.1 → 1.5 m/s. 20 ordinary (held) commands repeated nothing.
+- **Two presses at 35 %, nothing ahead:** the first was accepted; the second
+  had too little rage.
+- **Godot:** the screenshot shows the server's shout above the taxi.
 
 ---
 
