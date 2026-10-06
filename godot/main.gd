@@ -337,7 +337,7 @@ func _present(state: Dictionary) -> void:
 	_train_loop(state)
 	if state.get("should_stop", false) and not summary_shown:
 		show_summary(state)
-	hud.show_state(state, {"speed_limiter": speed_limiter, "red_light_assist": red_light_assist, "navigation": nav_overlay.show_route})
+	hud.show_state(state, {"speed_limiter": speed_limiter, "red_light_assist": red_light_assist, "navigation": nav_overlay.show_route, "labels": labels.mode})
 	instruments.show_state(state)
 	map_layer.set_wetness(state.get("weather", {}).get("wetness", 0.0) if override_wetness < 0.0 else override_wetness)
 	map_layer.set_px_per_m(camera.zoom.x)  # after the camera is placed; only reads its zoom

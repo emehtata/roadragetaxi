@@ -32,18 +32,18 @@ has no row.
 
 | Status | Count |
 |---|---|
-| COMPLETE | 83 |
+| COMPLETE | 84 |
 | PARTIAL | 9 |
 | DIFFERENT BY DESIGN | 6 |
 | SERVER/PROTOCOL GAP | 17 |
 | GODOT RENDERING GAP | 5 |
-| GODOT UI GAP | 5 |
+| GODOT UI GAP | 4 |
 | AUDIO GAP | 5 |
 | MISSING | 0 |
 | PYGAME-ONLY / OBSOLETE | 11 |
 | **rows** | **141** |
 
-Incomplete rows by priority: 0 P0 (refuelling done in godot-final-01), 3 P1, 10 P2, 28 P3 (score, toggles and summary done in godot-final-02; taximeter and pump price in godot-final-03; navigation route in godot-final-04).
+Incomplete rows by priority: 0 P0 (refuelling done in godot-final-01), 3 P1, 10 P2, 27 P3 (label modes done; score, toggles and summary done in godot-final-02; taximeter and pump price in godot-final-03; navigation route in godot-final-04).
 
 **What is left by type:**
 - **Protocol gaps:** most remaining work is in the protocol. The simulation
@@ -173,7 +173,7 @@ polish. Complete rows have no priority.
 | UI | Mode and city selection, loading | `draw_mode_selection_menu`, `draw_city_selection_menu` | server CLI chooses | DIFFERENT BY DESIGN | – | server `--preset` | – | – |
 | UI | Resident popup (click a person) | `draw_resident_popup` | – | SERVER/PROTOCOL GAP | resident details not sent; no click picking | `residents.py` | LOW | P3 |
 | UI | Follow another entity + back button | `camera_focus.py`, `draw_camera_back_button` | – | GODOT UI GAP | ids are in the state; no picking or follow mode | npc/pedestrian ids | LOW | P3 |
-| UI | Label modes (L) | `label_mode` 0–2 | – | GODOT UI GAP | labels always on | – | LOW | P3 |
+| UI | Label modes (L) | `label_mode` 0–2 | `labels.gd` L cycles off (start) → street names → all; hint shows it | COMPLETE | – | – | – | – |
 | UI | Trip reset (T) | `reset_trip(car)` | – | SERVER/PROTOCOL GAP | not a command; `trip_m` is the server's | `PlayerCommand` | LOW | P3 |
 | Gameplay | Refuel at a station (G) | `refuel_pending` → `PlayerCommand.refuel` | `main.gd` G → `command_for(refuel)`; the server applies each press once (godot-final-01) | COMPLETE | – | `simulation.py:275` | – | – |
 | Gameplay | Road rage (SPACE): rage cost, horn, shout, nearest NPC provoked | `main/__init__.py:1900` → `npc_manager.trigger_road_rage` | – | SERVER/PROTOCOL GAP | logic only in `main()`; no command field | `npc.py` `trigger_road_rage` | LOW | P1 |

@@ -17,6 +17,8 @@ const STYLES := [  # [text colour, background, border or null, font size] per ca
 ]
 const MIN_PX_PER_M := [0.0, 0.0, 0.0, 0.45, 0.35]
 
+const MODE_NAMES := ["OFF", "STREETS", "ALL"]
+var mode := 0  # L cycles main()'s label_mode: 0 none (Pygame's start), 1 street names, 2 everything
 var map_layer: Node2D  # MapLayer: the loaded chunks and their labels
 var _font: Font
 var _key := []  # what the last drawing was for: [view cell, zoom, chunks]
@@ -28,15 +30,21 @@ func _ready() -> void:
 	_font = ThemeDB.fallback_font
 
 
+func _unhandled_input(event: InputEvent) -> void:
+	if event is InputEventKey and event.pressed and not event.echo and event.physical_keycode == KEY_L:
+		mode = (mode + 1) % 3
+		_key = []  # redraw now
+
+
 ## main.gd, each frame: redraw when the view has moved 16 px, or the zoom
 ## or the chunks changed.
 func update_view(canvas: Transform2D, chunk_count: int, hidden: bool) -> void:
-	var key := [Vector2i((canvas.origin / 16.0).floor()), snappedf(canvas.x.x, 0.0001), chunk_count, hidden]
+	var key := [Vector2i((canvas.origin / 16.0).floor()), snappedf(canvas.x.x, 0.0001), chunk_count, hidden, mode]
 	if key == _key:
 		return
 	_key = key
 	_transform = canvas
-	visible = not hidden
+	visible = not hidden and mode > 0
 	queue_redraw()
 
 
@@ -53,7 +61,7 @@ static func text_size(font: Font, text: String, font_size: int) -> Vector2:
 ## The labels to show for a view: [[screen position, text, category], ...]
 ## in Pygame's order and rules. `candidates` are [x, y, text, category] in
 ## layer coordinates.
-static func declutter(candidates: Array, canvas: Transform2D, screen: Vector2, font: Font) -> Array:
+static func declutter(candidates: Array, canvas: Transform2D, screen: Vector2, font: Font, label_mode := 2) -> Array:
 	var px_per_m := canvas.x.x
 	var by_category := [[], [], [], [], []]
 	for label in candidates:
@@ -62,6 +70,8 @@ static func declutter(candidates: Array, canvas: Transform2D, screen: Vector2, f
 	var rects: Array = []
 	var seen := {}
 	for category in 5:
+		if label_mode <= 0 or label_mode == 1 and category != 4:  # render/labels.py: mode 1 draws only road names
+			continue
 		if px_per_m < MIN_PX_PER_M[category]:
 			continue
 		for label in by_category[category]:
@@ -93,7 +103,7 @@ func _draw() -> void:
 	for chunk in map_layer._chunks.values():
 		if chunk._bounds_rect.size == Vector2.ZERO or chunk._bounds_rect.intersects(view):
 			candidates.append_array(chunk.label_candidates())
-	for label in declutter(candidates, _transform, size, _font):
+	for label in declutter(candidates, _transform, size, _font, mode):
 		var style: Array = STYLES[label[2]]
 		var box: Rect2 = label[0]
 		draw_rect(box, style[1])

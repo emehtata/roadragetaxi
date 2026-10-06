@@ -451,6 +451,35 @@ func test_commands_carry_the_player_id() -> void:
 	test_controls_and_economy()
 	test_taxi_information()
 	test_navigation_route()
+	test_label_modes()
+
+
+## L cycles the labels as Pygame's label_mode: off (start), street names, everything.
+func test_label_modes() -> void:
+	var labels: Control = Labels.new()
+	check(labels.mode == 0, "labels start off, as in Pygame")
+	var l := _key_event(KEY_L)
+	l.physical_keycode = KEY_L
+	var seen := []
+	for i in 3:
+		labels._unhandled_input(l)
+		seen.append(labels.mode)
+	check(seen == [1, 2, 0], "L: streets, all, off again")
+	labels.mode = 0
+	labels.update_view(Transform2D(), 1, false)
+	check(not labels.visible, "mode 0 draws nothing")
+	labels.mode = 1
+	labels.update_view(Transform2D(), 1, false)
+	check(labels.visible, "mode 1 shows the overlay")
+	labels.free()
+	var candidates := [[0.0, 0.0, "Keskusta", 0], [0.0, 0.0, "Kirkkokatu", 4]]
+	var canvas := Transform2D(0.0, Vector2(640, 360)).scaled_local(Vector2(9, 9))
+	var font: Font = ThemeDB.fallback_font
+	check(Labels.declutter(candidates, canvas, Vector2(1280, 720), font, 1).map(func(p): return p[1]) == ["Kirkkokatu"], "mode 1: only the street name")
+	check(Labels.declutter(candidates, canvas, Vector2(1280, 720), font, 2).map(func(p): return p[1]) == ["Keskusta"], "mode 2: everything, by priority (one spot: the district wins)")
+	check(Labels.declutter(candidates, canvas, Vector2(1280, 720), font, 0).is_empty(), "mode 0: none")
+	var driving := {"on_foot": false, "player": {"engine_on": true}}
+	check(Hud.values(driving, {"labels": 1})["hint"].contains("L labels STREETS") and Hud.values(driving)["hint"].contains("L labels OFF"), "the hint names the label mode")
 
 
 ## godot-final-04: the server's route, N to show it (C stays the compass).
