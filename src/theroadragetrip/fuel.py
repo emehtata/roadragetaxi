@@ -8,6 +8,7 @@ import math
 FUEL_TANK_CAPACITY_L = 60.0
 INITIAL_FUEL_L = 30.0
 FUEL_STATION_RANGE_M = 8.0
+FULL_TANK_TOLERANCE_L = 0.05  # a smaller top-up shows as "0.0 l" yet cost a cent: the tank counts as full
 MIN_FUEL_PRICE_CENTS = 150
 MAX_FUEL_PRICE_CENTS = 300
 MILD_IDLE_CONSUMPTION_L_PER_HOUR = 1.0

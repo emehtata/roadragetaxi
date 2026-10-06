@@ -333,12 +333,16 @@ def test_a_refuel_press_buys_fuel_once(monkeypatch):
     assert state["player"]["fuel_l"] == pytest.approx(car.fuel_l)  # what the client's gauge shows
     assert state["taxi"]["balance_cents"] == taxi_mgr.balance_cents
 
-    # A full tank, then an empty purse: nothing is bought.
+    # A full tank - even after idling a sliver away since the fill-up (the
+    # receipt said "0.0 l" yet cost a cent) - then an empty purse: nothing is bought.
     balance = taxi_mgr.balance_cents
+    car.fuel_l = car.fuel_capacity_l - 0.004
     connection.send(protocol.build_command_message(PlayerCommand(refuel=True), interact=False, seq=4))
     time.sleep(0.05)
     server.tick(1.0 / 30.0)
     assert taxi_mgr.balance_cents == balance
+    from theroadragetrip.localization import tr
+    assert taxi_mgr.notification_msg in (tr("fi", "fuel_tank_full"), tr("en", "fuel_tank_full"))
     car.fuel_l = 5.0
     taxi_mgr.balance_cents = 0
     connection.send(protocol.build_command_message(PlayerCommand(refuel=True), interact=False, seq=5))

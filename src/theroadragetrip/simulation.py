@@ -22,6 +22,7 @@ from typing import Optional, Tuple
 
 from .career import CAREER_SCORE_LIMIT, save_career, save_gig_odometer
 from .fuel import (
+    FULL_TANK_TOLERANCE_L,
     calculate_fuel_purchase,
     fuel_station_price_cents,
     nearest_fuel_station,
@@ -280,7 +281,7 @@ def advance_simulation(
             taxi_mgr.notification_msg = tr(language, "fuel_enter_car")
         elif abs(car.speed) > 0.5:
             taxi_mgr.notification_msg = tr(language, "fuel_stop_car")
-        elif car.fuel_l >= car.fuel_capacity_l - 1e-6:
+        elif car.fuel_l >= car.fuel_capacity_l - FULL_TANK_TOLERANCE_L:  # idling since the last fill-up still reads as full
             taxi_mgr.notification_msg = tr(language, "fuel_tank_full")
         else:
             price_cents = fuel_station_price_cents(station)
