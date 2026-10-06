@@ -32,18 +32,18 @@ has no row.
 
 | Status | Count |
 |---|---|
-| COMPLETE | 76 |
+| COMPLETE | 77 |
 | PARTIAL | 9 |
 | DIFFERENT BY DESIGN | 6 |
 | SERVER/PROTOCOL GAP | 20 |
 | GODOT RENDERING GAP | 5 |
-| GODOT UI GAP | 9 |
+| GODOT UI GAP | 8 |
 | AUDIO GAP | 5 |
 | MISSING | 0 |
 | PYGAME-ONLY / OBSOLETE | 11 |
 | **rows** | **141** |
 
-Incomplete rows by priority: 1 P0, 6 P1, 13 P2, 28 P3.
+Incomplete rows by priority: 0 P0 (refuelling done in godot-final-01), 6 P1, 13 P2, 28 P3.
 
 **What is left by type:**
 - **Protocol gaps:** most remaining work is in the protocol. The simulation
@@ -59,7 +59,8 @@ Incomplete rows by priority: 1 P0, 6 P1, 13 P2, 28 P3.
 - **Why no MISSING rows:** every gap has a specific cause, so the generic
   MISSING status is not used.
 
-**The single most important gap is refuelling.** The simulation supports it
+**The single most important gap was refuelling** (fixed in
+[godot-final-01](#godot-final-01-refuelling)). The simulation supports it
 (`PlayerCommand.refuel`, `simulation.py:275`), but `godot/main.gd` `send()`
 always sends `"refuel": false` and binds no key. A Godot player cannot
 refuel, and the tank runs dry.
@@ -174,7 +175,7 @@ polish. Complete rows have no priority.
 | UI | Follow another entity + back button | `camera_focus.py`, `draw_camera_back_button` | – | GODOT UI GAP | ids are in the state; no picking or follow mode | npc/pedestrian ids | LOW | P3 |
 | UI | Label modes (L) | `label_mode` 0–2 | – | GODOT UI GAP | labels always on | – | LOW | P3 |
 | UI | Trip reset (T) | `reset_trip(car)` | – | SERVER/PROTOCOL GAP | not a command; `trip_m` is the server's | `PlayerCommand` | LOW | P3 |
-| Gameplay | Refuel at a station (G) | `refuel_pending` → `PlayerCommand.refuel` | `main.gd` sends `refuel: false` always | GODOT UI GAP | no key, never sent: the player cannot refuel | `simulation.py:275` | LOW | P0 |
+| Gameplay | Refuel at a station (G) | `refuel_pending` → `PlayerCommand.refuel` | `main.gd` G → `command_for(refuel)`; the server applies each press once (godot-final-01) | COMPLETE | – | `simulation.py:275` | – | – |
 | Gameplay | Road rage (SPACE): rage cost, horn, shout, nearest NPC provoked | `main/__init__.py:1900` → `npc_manager.trigger_road_rage` | – | SERVER/PROTOCOL GAP | logic only in `main()`; no command field | `npc.py` `trigger_road_rage` | LOW | P1 |
 | Gameplay | Manual respawn (R) | `main()` respawn | – | SERVER/PROTOCOL GAP | not a command (the in-water respawn is in the simulation) | `simulation.py:405` | LOW | P2 |
 | Gameplay | Historical weather (FMI observations) | `weather_history.py` in `main()` | server weather | SERVER/PROTOCOL GAP | the server does not use `WeatherHistory` | `main/__init__.py:1559` | LOW | P2 |
@@ -264,8 +265,6 @@ Only presentation; the data is already in Godot:
 ## Godot UI gaps
 
 The state or command field exists, but the UI is missing:
-- **Refuel (G):** P0. The command field exists, and only a key and the
-  `refuel` flag are missing.
 - **Career city summary:** `should_stop`, `city_summary`.
 - **Score:** `taxi.total_score`.
 - **Speed limiter / red-light assist toggles and status.**
@@ -296,7 +295,6 @@ Replacing assets is not a parity issue.
 ## Gameplay gaps
 
 Behaviour differs from Pygame, independent of drawing:
-- **Refuelling impossible:** P0.
 - **Road rage absent:** P1. No horn, shout, rage spend or NPC reaction.
 - **No navigation route:** P1.
 - **Limiter always on, red-light assist always off, lane assist
@@ -334,7 +332,7 @@ Not to be ported:
 
 ## Prioritized gaps
 
-- **P0:** refuel (G).
+- **P0:** none (refuel done in godot-final-01).
 - **P1:**
   - navigation route
   - live taximeter, fare distance and happiness
@@ -359,7 +357,7 @@ Not to be ported:
 ## Recommended next phases
 
 1. **Core controls and economy.**
-   - **Features:** refuel (G); speed limiter and red-light assist toggles
+   - **Features:** refuel (G, done in godot-final-01); speed limiter and red-light assist toggles
      with status; score in the HUD; the career city summary.
    - **Why together:** client-only work on fields that already exist, plus
      one key binding each.
@@ -425,6 +423,58 @@ Not to be ported:
    - **Dependencies:** network fetch and cache on the server.
    - **Result:** real Oulu weather and temperature.
    - **Performance risk:** LOW (I/O off the tick thread).
+
+## godot-final-01: refuelling
+
+**Rules (unchanged; Pygame's shared simulation rule, `simulation.py` `if
+command.refuel`).** The pump must be within 8 m (`FUEL_STATION_RANGE_M`), with
+the driver in the taxi, stopped (|speed| ≤ 0.5 m/s), and the tank not full.
+- **Instant fill:** fills up to `fuel_capacity_l`, or as much as the balance
+  buys.
+- **Price:** set per station by `fuel_station_price_cents`, 1.50–3.00 €/l.
+- **Cost:** rounded up to a cent, and never overdraws the balance.
+- **Feedback:** the `taxi.refuel` sound, and a 4 s notice with the litres
+  and cost, or the reason nothing was bought: no pump in range, enter the
+  taxi, stop the taxi, tank full, no money.
+
+**Godot.**
+- **Key:** G sets a press that the next command carries once
+  (`main.gd` `command_for`).
+- **Feedback:** the notice, sound, gauge and balance already came from the
+  state. The driving hint names G.
+
+**Server fix.** `refuel` is now edge-triggered like `interact`
+(`_pending_refuels`). The server replays its latest command every tick, so
+before the fix a press was either lost when the next command arrived in the
+same tick, or applied again every tick.
+
+**Rule fix.** A top-up under 0.05 l now counts as a full tank
+(`FULL_TANK_TOLERANCE_L`). Idling after a fill-up had made a second press
+buy "0.0 l" for a cent. The fix is in the shared simulation, so Pygame
+gets it too.
+
+**Deferred.** Pygame's "G: REFUEL" and price inside the fuel gauge at a
+station belong to the separate "fuel price at a station" row (protocol gap,
+P2).
+
+**Tests.**
+- **Server:** `test_a_refuel_press_buys_fuel_once`. One press followed by
+  another command in the same tick buys exactly once: fuel, cost, the sound
+  event, and the gauge and balance values in the state. It also covers a full
+  tank after idling, an empty balance, and out of range. It fails without the
+  fix.
+- **Godot:** `command_for` carries the press, and the hint names G.
+- **Existing:** `tests/test_fuel.py` purchase rules.
+
+**Scripted check against the real Oulu server.** The commands were the same
+JSON that Godot sends, at a real Oulu pump (2.44 €/l):
+- 20 m away: "drive closer"
+- moving: "stop the taxi"
+- nearly empty: 58.0 l for 141.53 €, with the sound
+- full: "tank full"
+- 5 € left: 2.0 l for 5.00 €
+- no money: "not enough money"
+- driving away: normal consumption
 
 ---
 
