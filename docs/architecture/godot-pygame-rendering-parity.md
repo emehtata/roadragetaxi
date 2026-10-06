@@ -32,18 +32,18 @@ has no row.
 
 | Status | Count |
 |---|---|
-| COMPLETE | 86 |
-| PARTIAL | 9 |
+| COMPLETE | 91 |
+| PARTIAL | 7 |
 | DIFFERENT BY DESIGN | 6 |
 | SERVER/PROTOCOL GAP | 15 |
-| GODOT RENDERING GAP | 5 |
+| GODOT RENDERING GAP | 3 |
 | GODOT UI GAP | 4 |
-| AUDIO GAP | 5 |
+| AUDIO GAP | 4 |
 | MISSING | 0 |
 | PYGAME-ONLY / OBSOLETE | 11 |
 | **rows** | **141** |
 
-Incomplete rows by priority: 0 P0 (refuelling done in godot-final-01), 1 P1, 10 P2, 27 P3 (label modes done; road rage in godot-final-05; score, toggles and summary done in godot-final-02; taximeter and pump price in godot-final-03; navigation route in godot-final-04).
+Incomplete rows by priority: 0 P0 (refuelling done in godot-final-01), 0 P1, 10 P2, 23 P3 (label modes done; road rage in godot-final-05; weather presentation in godot-final-06; score, toggles and summary done in godot-final-02; taximeter and pump price in godot-final-03; navigation route in godot-final-04).
 
 **What is left by type:**
 - **Protocol gaps:** most remaining work is in the protocol. The simulation
@@ -80,7 +80,7 @@ polish. Complete rows have no priority.
 | World | Bridges / road layers | `draw_ways` layer order; vehicle outlined under a higher road | z per layer (`map_chunk.gd`) | PARTIAL | a vehicle under a higher road is not outlined | `state.road.layer`, npc `layer` | LOW | P2 |
 | World | Underground / covered levels | `draw_level_ways` | `map_layer.gd` `_draw_underground`, `player.map_level` | COMPLETE | – | chunk `level_roads` | – | – |
 | World | Wet roads | `render/weather.py` `draw_wet_roads` | `map_chunk.gd` wet overlays | COMPLETE | – | `weather.wetness` | – | – |
-| World | Puddles | `draw_puddles` | `map_chunk.gd` `_draw_puddles` | PARTIAL | no rain ripples | `weather.wetness` | LOW | P3 |
+| World | Puddles | `draw_puddles` | `map_chunk.gd` `_draw_puddles`; ambient ripples in `weather_layer.gd` while it falls (godot-final-06) | COMPLETE | – | `weather.wetness`, `weather_type` | – | – |
 | World | Parking spaces | `draw_parking_spaces` | `chunk_detail.gd` `draw_parking` | COMPLETE | – | chunk `parking` | – | – |
 | World | Railways (ballast, rails, sleepers) | `draw_railways` | `chunk_detail.gd` `draw_tracks` | COMPLETE | – | chunk `railways` | – | – |
 | World | Rail bridges above vehicles | `draw_railways(only_bridges=True)` | `map_chunk.gd` z 11 | COMPLETE | – | chunk `rail_decks`, `rail_bridges` | – | – |
@@ -106,8 +106,8 @@ polish. Complete rows have no priority.
 | World | Street lights, broken lamps | `draw_street_lights` | `map_chunk.gd` pools and heads | COMPLETE | – | chunk `street_lights`, `state.knocked_posts` | – | – |
 | World | Place and street labels | `render/labels.py` `draw_labels` | `labels.gd` | COMPLETE | – | chunk labels | – | – |
 | World | Vomit puddles and footprints | `draw_vomit_puddles` ×2, `draw_vomit_footprints` | – | SERVER/PROTOCOL GAP | `taxi_mgr.vomit_puddles`, `pedestrian_mgr.vomit_puddles` and `vomit_footprints` exist in the simulation but are not sent | `taxi.py:226`, `simulation.py:681` | LOW | P3 |
-| Weather | Rain / snow particles | `render/weather.py` `draw_rain` | – | GODOT RENDERING GAP | no particles; heavy-rain intensity is not sent | `weather.weather_type` | MEDIUM | P1 |
-| Weather | Splashes | `draw_splashes` (spawned in `main()` from puddle overlap) | – | GODOT RENDERING GAP | presentation only; Godot has the puddles and the taxi | puddles, `player` | MEDIUM | P3 |
+| Weather | Rain / slush / snow particles | `render/weather.py` `draw_rain` (fixed pool of 220) | `weather_layer.gd`: the same pool, real time, batched (godot-final-06) | COMPLETE | – | `weather.weather_type` | – | – |
+| Weather | Splashes | `draw_splashes` (spawned in `main()` on puddle entry) | `weather_layer.gd` on Godot's own puddle spots, entry edge, cap 40 (godot-final-06) | COMPLETE | – | puddles, `player` | – | – |
 | Weather | Lightning flash | `draw_lightning_flash` | `main.gd` Sky/Flash | COMPLETE | – | `weather.lightning_intensity` | – | – |
 | Time | Day/night tint | `draw_day_night_overlay` | `night_layer.gd` | COMPLETE | – | `calendar.darkness` | – | – |
 | Time | Seasons | grass, ice, trees by season | snow, ice, tree crowns (`calendar.season`) | COMPLETE | (details in the ground/landuse/water rows) | `calendar.season` | – | – |
@@ -192,8 +192,8 @@ polish. Complete rows have no priority.
 | Audio | Engine | `audio.update_engine`: idle loop + 3 accelerate layers by throttle | `main.gd` one `engine` loop, pitch by speed | PARTIAL | no throttle layers; the server does not forward loops | `player.speed`, `engine_on` | LOW | P3 |
 | Audio | Simulation one-shots | `simulation.py`: collisions, brake, water splash, curb/speed bump, doors, engine start, fuel empty, refuel, meter start, payment, speed camera, meet-and-greet, penalty, new offer, vomit, curse, tree fall | `audio_manager.gd` `handle_event` (server `EventAudio`) | COMPLETE | – | `events` `sound` | – | – |
 | Audio | City day / night ambience | `audio.update_ambience` | `main.gd` `city_day`/`city_night` | COMPLETE | – | `calendar.darkness` | – | – |
-| Audio | Rain loop | `update_ambience` `rain` | `main.gd` `rain` | PARTIAL | no heavy-rain variant | `weather_type` | LOW | P3 |
-| Audio | Wind, strong wind, wet tyres | `update_ambience` | – | AUDIO GAP | wet tyres derivable (wetness, speed); wind needs `weather.wind_vector_mps`, which is not sent | `simulation.py:361` | LOW | P3 |
+| Audio | Rain loop, heavy rain | `update_ambience` `rain`, `rain_heavy` | `main.gd` `weather_loops`: rain/slush 0.6, thunderstorm 0.7 (godot-final-06) | COMPLETE | – | `weather_type`, `is_thunderstorm` | – | – |
+| Audio | Wind, strong wind, wet tyres | `update_ambience` | `main.gd` `weather_loops` from `weather.wind_vector_mps`, wetness, speed (godot-final-06) | COMPLETE | – | `state.weather` | – | – |
 | Audio | Thunder | `weather.thunder` | server event | COMPLETE | – | `events` | – | – |
 | Audio | Damaged-taxi steam loop | `set_loop("steam", vehicle.damaged_steam)` | – | AUDIO GAP | loop not derived from `taxi_smoke_timer` | `taxi.taxi_smoke_timer` | LOW | P3 |
 | Audio | Footsteps on foot | `update_footsteps` | – | AUDIO GAP | loop not derived (on foot + player movement) | `on_foot`, player positions | LOW | P3 |
@@ -762,6 +762,101 @@ Godot 471 checks.
 - **Two presses at 35 %, nothing ahead:** the first was accepted; the second
   had too little rage.
 - **Godot:** the screenshot shows the server's shout above the taxi.
+
+## godot-final-06: weather presentation
+
+**No precipitation intensity.** The audit row's "heavy-rain intensity"
+assumed a state that doesn't exist. Pygame has:
+- `weather_type`: clear, rain, slush or snow
+- one fixed pool of 220 particles while it falls
+- `is_thunderstorm`, which adds the heavy-rain loop
+
+Godot uses exactly that, so no intensity field was added.
+
+**Protocol, additive.** `state.weather.is_thunderstorm` and
+`wind_vector_mps` (the gust-adjusted `[east, north]`, rounded to 1 mm/s,
+non-finite as 0), read straight from `WeatherSystem`. Nothing else: no
+particles, ripples, splashes or volumes. The version is unchanged.
+
+**Godot** (`weather_layer.gd`): one presenter owning only client presentation
+state, drawing into three canvas items:
+- **Precipitation** (screen space, Sky layer above the lightning flash):
+  - 220 particles allocated once in a `PackedFloat32Array`, moved in real
+    seconds by weather.py's fall and drift factors (rain 1/1, slush
+    0.55/1.35, snow 0.22/1.8), recycled in place
+  - rain: pale streaks 9–20 px; snow: flakes, radius 1 or 2; slush: flakes
+    plus short streaks
+  - at most 3 `draw_multiline` submissions a frame
+  - hidden when clear or underground, as Pygame's `surface_world` check
+- **Ripples** (world, z 5): each puddle spot gains a `phase` from the same
+  per-road seed. While it falls, a ring for each visible puddle in its 1 s of
+  every 2.4 s, from 0.25 to 1.1 of the radius, with alpha 70 × (1 − progress)
+  × strength. All rings go in one `draw_multiline_colors`; wet but clear
+  means no ripples.
+- **Splashes** (world, z 11, above the vehicles): the interpolated taxi
+  against the loaded chunks around it. The probe radius is half the larger of
+  length and width, and the puddle must be showing at this wetness. A splash
+  spawns on the edge into "in a puddle at ≥ 1 m/s", with strength
+  min(1, km/h / 60). Each lasts 0.5 s, growing 0.25 + progress × 1.4 ×
+  strength m, with alpha 200 × (1 − p) × (0.5 + 0.5 s). At most 40; never on
+  foot or underground. One submission.
+- **Audio** (`main.gd` `weather_loops`, `main()`'s `update_ambience`):
+
+  | Loop | Volume | Variation |
+  |---|---|---|
+  | rain | 0.6 in rain or slush | 0 |
+  | rain_heavy | 0.7 in rain or slush during a thunderstorm | 1 |
+  | wind | clamp(\|wind\| / 12) × 0.5 | 0 |
+  | wind_strong | clamp((\|wind\| − 10) / 10) × 0.6 | 1 |
+  | wet_tires | clamp(wetness × \|speed\| / 15) × 0.6, 0 on foot | 0 |
+  | wet_slush | the same, in slush only | 1 |
+
+  These are new loops in `audio_events.json`, with existing assets only. An
+  older server without the new fields keeps only the base rain.
+
+**Benchmark** (llvmpipe, 1280×720, `--bench 30`, the Oulu spawn, a
+real-time server with forced weather). The new presenter's own CPU per frame
+is update 0.08 ms + precipitation 0.10 ms + ripples 0.16 ms (about 5 rings
+in view).
+
+| scenario | before: avg / p99 / worst / 1 % low | after | render CPU/GPU before → after | draws |
+|---|---|---|---|---|
+| clear, dry | 35.5–36.6 / 59–60 / 64–66 / 15.6–16.3 | 35.1–36.1 / 56–57 / 62–67 / 16.1–17.1 | 23.5–23.8 → 22.6–23.8 | 4,291 → 4,274–4,300 |
+| rain, wet | 39.3–40.0 / 61–64 / 70–82 / 14.4–15.5 | 40.7–41.6 / 62–66 / 74–78 / 14.2–14.7 | 26.0–27.4 → 27.4–27.9 | 5,333–5,367 → 5,337–5,371 |
+| snow | 38.9 / 61.5 / 73.7 / 14.7 | 40.2 / 64.1 / 67.6 / 15.2 | 25.6 → 27.3 | 5,314 → 5,308 |
+| rain, driving through puddles | 38.5 / 59.9 / 67.8 / 15.8 | 41.3 / 64.7 / 74.9 / 14.8 | 25.4 → 27.6 | 5,374 → 5,356 |
+
+**Attribution** (rain, `--bench-hide`):
+- all on: 40.7 ms
+- without precipitation: 40.1 ms
+- without ripples: 40.6 ms
+- without both: 39.7 ms, i.e. the old client's
+
+So the layer costs about 1 ms a frame in rain or snow (fill on llvmpipe) and
+nothing when clear. One rain pair measured +6 ms; it did not repeat.
+
+**Noticed, not changed.** The server passes a fixed 15 °C to the simulation,
+and `WeatherSystem` turns falling snow and slush into rain above freezing. So
+a server session can't yet have snow or slush; it needs the historical
+weather / temperature row (P2). The benchmark and screenshots disable that
+conversion on the test server only.
+
+**Tests.**
+- **Python** (`test_server_headless.py`): the thunderstorm and the exact wind
+  vector reach the state; the four types unchanged; zero, negative and
+  non-finite wind encode; the weather keys are exactly the five.
+- **Godot** (`test_weather_presentation`, 37 checks):
+  - the fixed pool and per-type motion in real seconds; recycling without
+    growth; no work when clear
+  - visibility for rain, underground, wet-but-clear; three canvas items
+  - deterministic phases; the ripple maths
+  - the splash edge cases: outside, entering, staying, too slow, on foot,
+    underground, re-entering; strength, ring, cap and lifetime
+  - only nearby chunks are queried
+  - all the loop formulas and variations; malformed and older states
+
+Godot 508 checks. Screenshots of rain, slush and snow were taken through the
+same server.
 
 ---
 
