@@ -511,6 +511,8 @@ func test_controls_and_economy() -> void:
 	check(others.all(func(n): return not n.visible), "the rest of the game UI is hidden")
 	main._present(base.merged({"should_stop": false}))
 	check(hud._summary.visible, "it stays: the session is over")
+	main._present({})
+	check(hud.visible and hud._summary.visible, "no state any more (the server went away): the summary stays")
 	sim._last_command = {}
 	main._command_timer = 0.0
 	main._process(0.1)

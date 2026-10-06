@@ -32,18 +32,18 @@ has no row.
 
 | Status | Count |
 |---|---|
-| COMPLETE | 77 |
+| COMPLETE | 80 |
 | PARTIAL | 9 |
 | DIFFERENT BY DESIGN | 6 |
 | SERVER/PROTOCOL GAP | 20 |
 | GODOT RENDERING GAP | 5 |
-| GODOT UI GAP | 8 |
+| GODOT UI GAP | 5 |
 | AUDIO GAP | 5 |
 | MISSING | 0 |
 | PYGAME-ONLY / OBSOLETE | 11 |
 | **rows** | **141** |
 
-Incomplete rows by priority: 0 P0 (refuelling done in godot-final-01), 6 P1, 13 P2, 28 P3.
+Incomplete rows by priority: 0 P0 (refuelling done in godot-final-01), 5 P1, 11 P2, 28 P3 (score, toggles and summary done in godot-final-02).
 
 **What is left by type:**
 - **Protocol gaps:** most remaining work is in the protocol. The simulation
@@ -142,13 +142,13 @@ polish. Complete rows have no priority.
 | Taxi | Off-screen target arrow + distance | `draw_taxi_target` | `nav_overlay.gd` | COMPLETE | – | `EntityLayer.current_target` | – | – |
 | Taxi | Customer name / address (mission bar) | `draw_hud` mission bar | `hud.gd` fare line | COMPLETE | – | `taxi.state`, `current_passenger` | – | – |
 | Taxi | Live taximeter, fare distance, happiness, elapsed time | `draw_hud` mission bar (`live_fare_cents`, `fare_distance_m`, `passenger_happiness`, `elapsed_time`) | – | SERVER/PROTOCOL GAP | none of the four fields is in `state.taxi` | `taxi.py` TaxiManager | LOW | P1 |
-| Taxi | Score | `draw_hud` score box | – | GODOT UI GAP | `taxi.total_score` is sent but not shown | `state.taxi.total_score` | LOW | P2 |
+| Taxi | Score | `draw_hud` score box | `hud.gd` top row beside the money (godot-final-02) | COMPLETE | – | `state.taxi.total_score` | – | – |
 | Taxi | Offers and pre-bookings | `draw_phone_offers` (pauses) | `phone.gd` (game keeps running) | DIFFERENT BY DESIGN | – | `state.phone` | – | – |
 | Taxi | Pre-booking surcharge | phone booking row | `phone.gd` "Pre-booking fee" | COMPLETE | – | `phone[].surcharge_cents` | – | – |
 | Taxi | Meet-and-greet panel | `render/menus.py` `draw_meet_panel` | `hud.gd` `_meet` | COMPLETE | – | `state.meet.lines` | – | – |
 | Taxi | Customer walks to taxi / stand; boarding | `taxi.py`, `rail_bookings.py`, `station_passengers.py` | server-run, `WALKING` shown | COMPLETE | – | `taxi.state`, `boarded` | – | – |
 | Taxi | Fare, payment, starting fare | `fare.py`, `taxi.py` | server-run; balance and notices shown | COMPLETE | – | `taxi.balance_cents`, `notification_msg` | – | – |
-| Taxi | Career city summary | `draw_city_summary` | – | GODOT UI GAP | `should_stop` and `city_summary` are sent but ignored | `state.city_summary` | LOW | P1 |
+| Taxi | Career city summary | `draw_city_summary` | `hud.gd` full-screen summary, latched; driving commands stop (godot-final-02) | COMPLETE | – | `state.should_stop`, `city_summary` | – | – |
 | Taxi | Game start overlay (city sign, 24 h forecast) | `draw_game_start_overlay` | – | SERVER/PROTOCOL GAP | city name and forecast not sent; forecast is `main()`-only | `main/__init__.py` `weather_history` | LOW | P3 |
 | Taxi | Start hints | `draw_game_start_hint` | `hud.gd` hint line | PARTIAL | one control line, not Pygame's timed get-in/engine hints | `on_foot`, `engine_on` | LOW | P3 |
 | Navigation | Route line (N) | `draw_navigation_route`; `traffic_mgr.plan_route` in `main()` (`main/__init__.py:2714`) | – | SERVER/PROTOCOL GAP | the server never routes; no route in the state | `traffic_world.py:439` `plan_route` | MEDIUM | P1 |
@@ -165,7 +165,7 @@ polish. Complete rows have no priority.
 | HUD | Rage meter | `draw_hud` faces, %, bar | `instruments.gd` `_draw_rage` | COMPLETE | – | `rage_power` | – | – |
 | HUD | Water timer | `draw_hud` | `instruments.gd` | COMPLETE | – | `water_elapsed` | – | – |
 | HUD | Speech subtitles | `draw_hud(comment_text)` | – | SERVER/PROTOCOL GAP | speech lines go to the server's no-op audio; nothing is sent | `simulation.py` `play_driver_line`, `play_passenger_line` | LOW | P2 |
-| HUD | Speed limiter / red-light assist toggles (V, B) | key toggles + HUD status | `main.gd` `send()` hard-codes limiter on, assist off | GODOT UI GAP | no toggle, no status | `PlayerCommand` fields exist | LOW | P2 |
+| HUD | Speed limiter / red-light assist toggles (V, B) | key toggles + HUD status | `main.gd` V/B session toggles in every command, ON/OFF in the hint (godot-final-02) | COMPLETE | – | `PlayerCommand` fields | – | – |
 | HUD | Lane assist (K) | `car.lane_assist_enabled` toggle | – | SERVER/PROTOCOL GAP | not a command field | `physics.py:240` | LOW | P2 |
 | HUD | FPS counter | normal HUD | F3 readout | DIFFERENT BY DESIGN | – | – | – | – |
 | UI | Pause / settings (language, volumes, subtitles) | `render/menus.py` `draw_pause_menu`, `draw_settings_menu` | – | GODOT UI GAP | no menus; settings are client-side | client settings | LOW | P2 |
@@ -265,9 +265,6 @@ Only presentation; the data is already in Godot:
 ## Godot UI gaps
 
 The state or command field exists, but the UI is missing:
-- **Career city summary:** `should_stop`, `city_summary`.
-- **Score:** `taxi.total_score`.
-- **Speed limiter / red-light assist toggles and status.**
 - **Pause / settings menu:** language, volumes, subtitles.
 - **Analog speedometer** with indicators.
 - **Tutorial screen.**
@@ -475,6 +472,47 @@ JSON that Godot sends, at a real Oulu pump (2.44 €/l):
 - 5 € left: 2.0 l for 5.00 €
 - no money: "not enough money"
 - driving away: normal consumption
+
+## godot-final-02: core controls and economy
+
+Client-only: no Python, protocol or server change.
+
+- **V / B:** session toggles in `main.gd` (`speed_limiter`, default on;
+  `red_light_assist`, default off). Non-echo key presses flip them, and
+  `command_for()` reports both in every command, so the server applies its
+  unchanged rules. F and G stay one-shot. Losing window focus clears held
+  keys but keeps the toggles. The driving hint shows `V limiter ON/OFF · B
+  red-light assist ON/OFF`.
+- **Score:** `state.taxi.total_score`, read from each state, shown in the
+  top row after the money. Negative values show as they are; a missing
+  score shows `–`.
+- **City summary:** the first state with `should_stop` latches a
+  full-screen panel in `hud.gd` with Pygame's `draw_city_summary` lines:
+  title, city, score, fares, then either the next city or "Career complete"
+  with the total career score. It hides the rest of the UI and stops all
+  driving commands. It stays when states stop arriving.
+  - **Malformed summaries:** `city_summary` that is absent or malformed
+    shows "This city is complete." rather than made-up values.
+  - **No Enter hint:** Pygame's "Enter to continue" is left out, because
+    the server has no continue request.
+
+**Contract finding (not changed, server-side).** `should_stop` is
+per tick and stays true while `total_score ≥ CAREER_SCORE_LIMIT`, so the
+server re-sends it, and calls `save_career` again, every tick after a city
+is done. The server never stops or loads the next city: Pygame's `main()`
+does that itself. That is why the client latches the summary.
+
+**Tests.** `run_tests.gd` `test_controls_and_economy`, through a real
+`main.tscn`:
+- defaults, V/B through `_unhandled_input`, both toggles kept by later
+  commands, F/G still one-shot
+- the hint's ON/OFF
+- positive, zero, negative and missing scores
+- both summary variants, and malformed summaries
+- the summary hides the UI, survives an empty state, and suppresses
+  commands (that check fails with the guard removed)
+
+Godot 385 checks. `tests/summary_shot.gd` renders both summaries.
 
 ---
 

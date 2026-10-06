@@ -274,6 +274,8 @@ func _process(delta: float) -> void:
 ## Sound and HUD for the state on screen; events as the picture reaches them.
 func _present(state: Dictionary) -> void:
 	if state.is_empty():
+		if summary_shown:
+			return  # the session is over: the summary stays, even when the server goes away
 		hud.visible = false
 		debug_label.visible = true
 		debug_label.text = "Waiting for the simulation at %s:%d ..." % [sim.host, sim.port]
