@@ -453,6 +453,7 @@ func test_commands_carry_the_player_id() -> void:
 	test_navigation_route()
 	test_label_modes()
 	test_road_rage()
+	test_weather_presentation()
 	# The limit sign (Wikimedia C32-60 / C32-100, Traficom numeral widths), at a digit height of 100.
 	var sixty: Array = Instruments.digit_layout("60")
 	check(is_equal_approx(sixty[0][1], 55.0 + 37.0 / 3.0) and is_equal_approx(sixty[1] * 3.0, 367.0), "60 as C32-60: 165 + 37 + 165")
@@ -462,6 +463,138 @@ func test_commands_carry_the_player_id() -> void:
 	for d in "1234567890":
 		check(not Instruments.digit_strokes(d).is_empty(), "digit %s has strokes" % d)
 	check(Instruments.digit_layout("120")[1] * 3.0 <= 490.0, "120 fits inside the red ring (radius 245)")
+
+
+## godot-final-06: precipitation, ripples, splashes and weather audio (render/weather.py, weather.py, audio.py).
+func test_weather_presentation() -> void:
+	var W := preload("res://weather_layer.gd")
+	var wx: Node = W.new()
+	check(wx.particles.size() == 220 * 3, "a fixed pool of 220 particles")
+	check(W.falling({"weather": {"weather_type": "clear"}}) == "" and W.falling({}) == "" and W.falling({"weather": "rain"}) == "", "clear, missing or malformed: nothing falls")
+	check(W.falling({"weather": {"weather_type": "rain"}}) == "rain" and W.falling({"weather": {"weather_type": "slush"}}) == "slush" and W.falling({"weather": {"weather_type": "snow"}}) == "snow", "rain, slush, snow")
+	for kind in ["rain", "slush", "snow"]:
+		wx.kind = kind
+		var before := Vector2(wx.particles[0], wx.particles[1])
+		var factor: float = wx.particles[2]
+		wx.advance_particles(0.01)
+		var motion: Vector2 = W.MOTION[kind]
+		var moved := Vector2(wx.particles[0], wx.particles[1]) - before
+		check(moved.is_equal_approx(Vector2(0.05 * motion.y, 0.9 * motion.x) * factor * 0.01), "%s: Pygame's fall and drift in real seconds" % kind)
+	wx.kind = "snow"
+	for i in 2000:  # long runs and weather changes: the pool never grows, everything stays on screen
+		wx.advance_particles(0.05)
+		if i == 1000:
+			wx.kind = "rain"
+	var inside := true
+	for i in 220:
+		inside = inside and wx.particles[i * 3] >= 0.0 and wx.particles[i * 3] <= 1.0 and wx.particles[i * 3 + 1] >= 0.0 and wx.particles[i * 3 + 1] <= 1.0
+	check(wx.particles.size() == 660 and inside, "recycled in place, in screen fractions")
+	wx.kind = ""
+	var frozen: PackedFloat32Array = wx.particles.duplicate()
+	wx.advance_particles(1.0)
+	check(wx.particles == frozen, "clear: no particle work")
+	wx.free()
+
+	# The canvas items: one batched draw per primitive, none while clear or underground.
+	var sky := CanvasLayer.new()
+	var world := Node2D.new()
+	world.set_script(null)
+	root.add_child(sky)
+	root.add_child(world)
+	var map := MapLayer.new()
+	root.add_child(map)
+	var live: Node = W.new()
+	root.add_child(live)
+	live.setup(sky, map)
+	live.precipitation.size = Vector2(1280, 720)
+	var rainy := {"weather": {"weather_type": "rain", "wetness": 0.9}, "player": {"speed": 0.0}, "on_foot": false}
+	live.update(0.016, rainy, Vector2.ZERO, false)
+	check(live.precipitation.visible and live.ripples.visible, "rain: precipitation and ripples on")
+	live.update(0.016, rainy, Vector2.ZERO, true)
+	check(not live.precipitation.visible and not live.ripples.visible, "underground: no rain, no ripples")
+	live.update(0.016, {"weather": {"weather_type": "clear", "wetness": 0.9}, "player": {}, "on_foot": false}, Vector2.ZERO, false)
+	check(not live.precipitation.visible and not live.ripples.visible, "wet but clear: puddles stay, no ripples, no particles")
+	check(sky.get_child_count() == 1 and map.get_children().filter(func(n): return n == live.ripples or n == live.splash_node).size() == 2, "three canvas items in all, never one per particle")
+
+	# Ripples: deterministic phases, the 2.4 s cycle and 1 s ring.
+	var roads := [{"points": [[0.0, 0.0], [30.0, 0.0]], "drivable": true, "half_width_m": 4.0}]
+	var spots_a := MapChunk.puddle_spots(roads.duplicate(true), Rect2(), Vector2.ZERO)
+	var spots_b := MapChunk.puddle_spots(roads.duplicate(true), Rect2(), Vector2.ZERO)
+	check(spots_a == spots_b and (spots_a.is_empty() or spots_a[0].has("phase")), "the same road: the same puddle and ripple phase")
+	var spot := {"at": Vector2.ZERO, "radius": 2.0, "reveal": 0.2, "phase": 0.0}
+	var ring: Array = W.ripple(spot, 1.0, 0.5)
+	check(is_equal_approx(ring[0], 2.0 * (0.25 + 0.85 * 0.5)) and is_equal_approx(ring[1], 70.0 / 255.0 * 0.5), "half-way: 0.675 of the radius, half the alpha")
+	check(W.ripple(spot, 1.0, 1.5).is_empty() and not W.ripple(spot, 1.0, 2.4 + 0.2).is_empty(), "1 s of ripple in every 2.4 s")
+	check(W.ripple(spot, 0.1, 0.5).is_empty(), "a puddle not showing yet: no ripple")
+
+	# Splashes: edge-triggered on entering a showing puddle at 1 m/s or more.
+	var fake := MapChunk.new()
+	fake._puddle_spots = [{"at": Vector2(100, 0), "radius": 1.5, "reveal": 0.2, "shape": [], "phase": 0.0}]
+	fake._bounds_rect = Rect2(50, -50, 100, 100)
+	map._chunks["fake"] = fake
+	var drive := func(at: Vector2, speed: float, on_foot := false, under := false):
+		live.update(0.016, {"weather": {"weather_type": "rain", "wetness": 0.9}, "player": {"speed": speed, "length_m": 4.4, "width_m": 1.8}, "on_foot": on_foot}, at, under)
+	live.splashes.clear()
+	drive.call(Vector2(90, 0), 10.0)
+	check(live.splashes.is_empty(), "outside the puddle: nothing")
+	drive.call(Vector2(99, 0), 10.0)
+	check(live.splashes.size() == 1 and is_equal_approx(live.splashes[0][2], 10.0 * 3.6 / 60.0), "entering at 10 m/s: one splash, strength speed km/h / 60")
+	drive.call(Vector2(100, 0), 10.0)
+	check(live.splashes.size() == 1, "staying inside: no more")
+	drive.call(Vector2(120, 0), 10.0)
+	drive.call(Vector2(100, 0), 0.5)
+	check(live.splashes.size() == 1, "too slow: no splash")
+	drive.call(Vector2(120, 0), 10.0)
+	drive.call(Vector2(100, 0), 10.0, true)
+	drive.call(Vector2(120, 0), 10.0)
+	drive.call(Vector2(100, 0), 10.0, false, true)
+	check(live.splashes.size() == 1, "on foot or underground: no splash")
+	drive.call(Vector2(120, 0), 10.0)
+	drive.call(Vector2(100, 0), 10.0)
+	check(live.splashes.size() == 2, "out and in again: another")
+	check(live.puddle_at(Vector2(100, 0), 2.2, 0.1) == null, "a puddle not showing at this wetness can't be hit")
+	var faraway := MapChunk.new()
+	faraway._bounds_rect = Rect2(5000, 5000, 500, 500)
+	faraway._puddle_spots = [{"at": Vector2(100, 0), "radius": 9.0, "reveal": 0.0}]  # wrongly placed: only found if far chunks were scanned
+	map._chunks["faraway"] = faraway
+	map._chunks.erase("fake")
+	check(live.puddle_at(Vector2(100, 0), 2.2, 0.9) == null, "only chunks around the taxi are looked at")
+	map._chunks.erase("faraway")
+	var young: Array = W.splash_ring([Vector2.ZERO, 0.0, 1.0])
+	var old: Array = W.splash_ring([Vector2.ZERO, 0.25, 0.5])
+	check(is_equal_approx(young[0], 0.25) and is_equal_approx(young[1], 200.0 / 255.0), "a splash starts 0.25 m, full alpha")
+	check(is_equal_approx(old[0], 0.25 + 0.5 * 1.4 * 0.5) and is_equal_approx(old[1], 200.0 / 255.0 * 0.5 * 0.75), "half-way: grown and faded by its strength")
+	live.splashes.clear()
+	for i in 45:
+		live.spawn_splash(Vector2(i, 0), 1.0)
+	check(live.splashes.size() == 40 and live.splashes[0][0] == Vector2(5, 0), "at most 40: the oldest go")
+	live.age_splashes(0.5)
+	check(live.splashes.is_empty(), "gone after 0.5 s")
+	live.free()
+	map.free()
+	sky.free()
+	world.free()
+	fake.free()
+	faraway.free()
+
+	# Weather audio: main()'s update_ambience formulas.
+	var loops := Main.weather_loops({"weather": {"weather_type": "rain", "wetness": 0.5, "is_thunderstorm": true, "wind_vector_mps": [6.0, 8.0]}, "player": {"speed": 15.0}, "on_foot": false})
+	check(loops["rain"] == 0.6 and loops["rain_heavy"] == 0.7, "a thunderstorm: rain and heavy rain")
+	check(is_equal_approx(loops["wind"], 10.0 / 12.0 * 0.5) and loops["wind_strong"] == 0.0, "10 m/s wind: 0.42, no strong wind yet")
+	check(is_equal_approx(loops["wet_tires"], 0.5 * 0.6) and loops["wet_slush"] == 0.0, "wet tyres by wetness x speed / 15")
+	var gale := Main.weather_loops({"weather": {"weather_type": "slush", "wetness": 1.0, "wind_vector_mps": [0.0, -20.0]}, "player": {"speed": 30.0}, "on_foot": false})
+	check(gale["wind"] == 0.5 and is_equal_approx(gale["wind_strong"], 0.6) and gale["rain_heavy"] == 0.0, "20 m/s: both wind layers full; no storm: no heavy rain")
+	check(gale["wet_slush"] == 0.6 and gale["wet_tires"] == 0.0 and gale["rain"] == 0.6, "slush: its own tyre variation, and rain")
+	var snow := Main.weather_loops({"weather": {"weather_type": "snow", "wetness": 0.8}, "player": {"speed": 10.0}, "on_foot": true})
+	check(snow["rain"] == 0.0 and snow["wet_tires"] == 0.0 and snow["wind"] == 0.0, "snow: no rain loop; on foot: no tyres; no wind field: silent")
+	var older := Main.weather_loops({"weather": {"weather_type": "rain", "wetness": "x", "wind_vector_mps": [NAN, 1.0]}})
+	check(older["rain"] == 0.6 and older["rain_heavy"] == 0.0 and older["wind"] == 0.0, "an older or malformed state: base rain only")
+	var audio: Node = load("res://audio_manager.gd").new()
+	audio.load_config("res://audio/audio_events.json")
+	var spec: Dictionary = audio._config["loops"]
+	check(spec["rain"]["variation"] == 0 and spec["rain_heavy"]["variation"] == 1 and spec["wind_strong"]["variation"] == 1 and spec["wet_slush"]["variation"] == 1 and spec["wet_tires"]["variation"] == 0, "loop variations as audio.py")
+	check(spec.has("engine") and spec.has("city_day") and spec.has("train_running"), "the other loops are unchanged")
+	audio.free()
 
 
 ## godot-final-05: SPACE sends one road-rage press; the server's shout is drawn above the taxi.

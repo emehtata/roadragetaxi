@@ -15,6 +15,7 @@ const NightLayer := preload("res://night_layer.gd")
 const Perf := preload("res://perf.gd")
 const MapChunk := preload("res://map_chunk.gd")
 const Hud := preload("res://hud.gd")
+const WeatherLayer := preload("res://weather_layer.gd")
 @onready var sim: SimClient = $SimClient
 @onready var map_layer: Node2D = $MapLayer
 @onready var entities: Node2D = $EntityLayer
@@ -75,7 +76,12 @@ var override_train_at := Vector2.INF
 var override_wetness := -1.0  # audio test: a moving train here (presentation only)
 
 
+var weather: Node = WeatherLayer.new()  # godot-final-06: precipitation, ripples, splashes
+
+
 func _ready() -> void:
+	add_child(weather)
+	weather.setup($Sky, map_layer)
 	entities.lamp_near = map_layer.lamp_near  # reflectors and long beams look up working street lights
 	entities.covered = map_layer.covered  # headlights under a higher road
 	labels.map_layer = map_layer
@@ -336,8 +342,11 @@ func _present(state: Dictionary) -> void:
 	var night := (darkness if darkness >= 0.0 else _night(state.get("game_time_seconds", 12.0 * 3600.0))) if override_night < 0.0 else override_night
 	audio.set_loop("city_day", 0.5 * (1.0 - night))
 	audio.set_loop("city_night", 0.5 * night)
-	var raining: bool = state.get("weather", {}).get("weather_type", "") == "rain"
-	audio.set_loop("rain", (0.6 if raining else 0.0) if override_rain < 0.0 else override_rain)
+	var loops := weather_loops(state)
+	if override_rain >= 0.0:
+		loops["rain"] = override_rain
+	for key in loops:
+		audio.set_loop(key, loops[key])
 	_train_loop(state)
 	if state.get("should_stop", false) and not summary_shown:
 		show_summary(state)
@@ -351,6 +360,7 @@ func _present(state: Dictionary) -> void:
 	var level := int(state.get("player", {}).get("map_level", 0))
 	map_layer.set_map_level(level)
 	entities.underground = level != 0
+	weather.update(get_process_delta_time(), state, entities.player_position(), level != 0)
 	map_layer.set_flash(state.get("speed_camera_flash"))
 	labels.update_view(get_viewport().get_canvas_transform(), map_layer.chunk_count(), level != 0)
 	map_layer.set_obstacles(state.get("fallen_trees", []), state.get("knocked_posts", []))
@@ -419,6 +429,34 @@ func show_summary(state: Dictionary) -> void:
 	hud.show_summary(Hud.summary_text(state))
 
 
+## main()'s update_ambience weather layers from the server's state: rain
+## and slush 0.6, heavy rain 0.7 in a thunderstorm, wind by its gusting
+## speed, wet tyres by wetness and speed (slush: its own variation). An older
+## server without the wind or thunderstorm: those stay silent.
+static func weather_loops(state: Dictionary) -> Dictionary:
+	var weather: Dictionary = state.get("weather", {}) if state.get("weather") is Dictionary else {}
+	var type = weather.get("weather_type", "")
+	var raining: bool = type in ["rain", "slush"]
+	var wind_speed := 0.0
+	var wind = weather.get("wind_vector_mps")
+	if wind is Array and wind.size() == 2 and typeof(wind[0]) in [TYPE_INT, TYPE_FLOAT] and typeof(wind[1]) in [TYPE_INT, TYPE_FLOAT]:
+		wind_speed = Vector2(wind[0], wind[1]).length()
+		if not is_finite(wind_speed):
+			wind_speed = 0.0
+	var wetness := float(weather.get("wetness", 0.0)) if typeof(weather.get("wetness")) in [TYPE_INT, TYPE_FLOAT] else 0.0
+	var player: Dictionary = state.get("player", {}) if state.get("player") is Dictionary else {}
+	var speed := absf(float(player.get("speed", 0.0))) if typeof(player.get("speed")) in [TYPE_INT, TYPE_FLOAT] else 0.0
+	var tyres := 0.0 if state.get("on_foot", true) else minf(1.0, wetness * speed / 15.0) * 0.6
+	return {
+		"rain": 0.6 if raining else 0.0,
+		"rain_heavy": 0.7 if raining and weather.get("is_thunderstorm", false) == true else 0.0,
+		"wind": clampf(wind_speed / 12.0, 0.0, 1.0) * 0.5,
+		"wind_strong": clampf((wind_speed - 10.0) / 10.0, 0.0, 1.0) * 0.6,
+		"wet_tires": tyres if type != "slush" else 0.0,
+		"wet_slush": tyres if type == "slush" else 0.0,
+	}
+
+
 ## One command to the simulation (it validates and applies it). The
 ## presses (F, G) go out once, in the next command only.
 func send(controls: Dictionary) -> void:
@@ -441,6 +479,8 @@ func _apply_bench_hide() -> void:
 	for name in _bench_hide:
 		match name:
 			"labels": labels.visible = false
+			"precipitation": weather.precipitation.visible = false  # godot-final-06 attribution
+			"ripples": weather.ripples.visible = false
 			"buildings": map_layer._buildings.visible = false
 			"composite3d": if map_layer.buildings_3d:  # the 3D pass still renders (a hidden texture's viewport would skip it)
 				map_layer.buildings_3d._sprite.visible = false

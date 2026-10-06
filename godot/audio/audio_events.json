@@ -106,7 +106,28 @@
       "group": "ambient.city_night"
     },
     "rain": {
-      "group": "weather.rain"
+      "group": "weather.rain",
+      "variation": 0
+    },
+    "rain_heavy": {
+      "group": "weather.rain",
+      "variation": 1
+    },
+    "wind": {
+      "group": "weather.wind",
+      "variation": 0
+    },
+    "wind_strong": {
+      "group": "weather.wind",
+      "variation": 1
+    },
+    "wet_tires": {
+      "group": "weather.wet_road",
+      "variation": 0
+    },
+    "wet_slush": {
+      "group": "weather.wet_road",
+      "variation": 1
     }
   }
 }

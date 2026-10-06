@@ -1000,6 +1000,7 @@ static func puddle_spots(roads: Array, bounds: Rect2, origin: Vector2) -> Array:
 		var shape: Array = []
 		for i in RS.PUDDLE_SHAPE_POINTS:
 			shape.append(1.0 + rng.randf_range(-RS.PUDDLE_SHAPE_JITTER, RS.PUDDLE_SHAPE_JITTER))
+		var phase := rng.randf()  # the ripple's place in its 2.4 s cycle (render/weather.py ripple_phase)
 		if bounds.size == Vector2.ZERO or bounds.has_point(at):
-			spots.append({"at": at, "radius": maxf(RS.PUDDLE_MIN_RADIUS_M, radius), "reveal": reveal, "shape": shape})
+			spots.append({"at": at, "radius": maxf(RS.PUDDLE_MIN_RADIUS_M, radius), "reveal": reveal, "shape": shape, "phase": phase})
 	return spots
