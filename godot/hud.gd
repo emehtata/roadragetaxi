@@ -13,6 +13,7 @@ extends Control
 @onready var _hint: Label = %Hint
 
 var _meet := Label.new()  # render/menus.py draw_meet_panel
+var _summary := Label.new()  # render/menus.py draw_city_summary: covers everything once the career city is done
 var _notice_style := StyleBoxFlat.new()
 
 
@@ -27,6 +28,16 @@ func _ready() -> void:
 	_meet.position.y = 100.0  # under the notice line
 	_meet.visible = false
 	add_child(_meet)
+	var summary_style := StyleBoxFlat.new()
+	summary_style.bg_color = Color8(18, 24, 32)  # Pygame fills the screen with this
+	_summary.add_theme_stylebox_override("normal", summary_style)
+	_summary.add_theme_font_size_override("font_size", 24)
+	_summary.add_theme_color_override("font_color", Color8(205, 215, 225))
+	_summary.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_summary.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	_summary.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_summary.visible = false
+	add_child(_summary)  # last child: above the HUD rows
 	_notice_style = _box(Color8(20, 30, 40, 235), Color8(255, 200, 50))
 	_notice.add_theme_stylebox_override("normal", _notice_style)
 
@@ -40,9 +51,9 @@ static func _box(fill: Color, border: Color) -> StyleBoxFlat:
 	return style
 
 
-func show_state(state: Dictionary) -> void:
-	var text := values(state)
-	_money.text = text["money"]
+func show_state(state: Dictionary, toggles := {}) -> void:
+	var text := values(state, toggles)
+	_money.text = "%s   Score: %s" % [text["money"], text["score"]]
 	_speed.text = text["speed"]
 	_clock.text = text["clock"]
 	_weather.text = text["weather"]
@@ -65,13 +76,14 @@ func show_state(state: Dictionary) -> void:
 
 ## Display text for one state. Every field is optional: a missing one shows
 ## a placeholder instead of failing.
-static func values(state: Dictionary) -> Dictionary:
+static func values(state: Dictionary, toggles := {}) -> Dictionary:
 	var player: Dictionary = state.get("player", {})
 	var taxi: Dictionary = state.get("taxi", {})
 	var weather: Dictionary = state.get("weather", {})
 	var on_foot: bool = state.get("on_foot", true)
 	var text := {}
 	text["money"] = "%.2f €" % (taxi["balance_cents"] / 100.0) if taxi.has("balance_cents") else "– €"
+	text["score"] = str(int(taxi["total_score"])) if typeof(taxi.get("total_score")) in [TYPE_INT, TYPE_FLOAT] else "–"
 	text["speed"] = "on foot" if on_foot else ("%d km/h" % roundi(absf(player.get("speed", 0.0)) * 3.6))
 	if state.has("game_time_seconds"):
 		var minutes := int(state["game_time_seconds"] / 60.0)
@@ -116,5 +128,29 @@ static func values(state: Dictionary) -> Dictionary:
 	elif not player.get("engine_on", true):
 		text["hint"] = "E start the engine · F get out · P phone"
 	else:
-		text["hint"] = "WASD drive · F get out · E engine · G refuel · P phone · C compass · +/- zoom"
+		text["hint"] = "WASD drive · F get out · E engine · G refuel · V limiter %s · B red-light assist %s · P phone · C compass · +/- zoom" % [
+			"ON" if toggles.get("speed_limiter", true) else "OFF", "ON" if toggles.get("red_light_assist", false) else "OFF"]
 	return text
+
+
+func show_summary(text: String) -> void:
+	_summary.text = text
+	_summary.visible = true
+
+
+## render/menus.py draw_city_summary's lines from state city_summary
+## [city, score, fares, next_city, career_total_score]; a missing or
+## malformed summary shows only that the city is done, never made-up values.
+static func summary_text(state: Dictionary) -> String:
+	var summary = state.get("city_summary")
+	if typeof(summary) != TYPE_ARRAY or summary.size() < 5 or typeof(summary[0]) != TYPE_STRING \
+			or not typeof(summary[1]) in [TYPE_INT, TYPE_FLOAT] or not typeof(summary[2]) in [TYPE_INT, TYPE_FLOAT]:
+		return "City summary\n\nThis city is complete."
+	var lines := ["City summary", "", summary[0], "Score: %d" % int(summary[1]), "Fares completed: %d" % int(summary[2])]
+	if typeof(summary[3]) == TYPE_STRING and summary[3] != "":
+		lines.append("Next city: %s" % summary[3])
+	else:
+		lines.append("Career complete! Helsinki conquered.")
+		if typeof(summary[4]) in [TYPE_INT, TYPE_FLOAT]:
+			lines.append("Total career score: %d" % int(summary[4]))
+	return "\n".join(lines)

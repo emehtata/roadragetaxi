@@ -448,6 +448,74 @@ func test_commands_carry_the_player_id() -> void:
 	check(refuel["refuel"] == true and refuel["interact"] == false and refuel["throttle"] == 0.0, "a G press sends refuel")
 	check(Main.command_for({}, true, false, false)["refuel"] == false, "no press, no refuel")
 	check(Hud.values({"on_foot": false, "player": {"engine_on": true}})["hint"].contains("G refuel"), "the driving hint names G")
+	test_controls_and_economy()
+
+
+func _key_event(code: Key) -> InputEventKey:
+	var event := InputEventKey.new()
+	event.keycode = code
+	event.pressed = true
+	return event
+
+
+## godot-final-02: V/B session toggles, the score, the career city summary.
+func test_controls_and_economy() -> void:
+	var defaults := Main.command_for({}, true, false, false)
+	check(defaults["speed_limiter_enabled"] == true and defaults["red_light_assist_enabled"] == false, "defaults: limiter on, red-light assist off (PlayerCommand's)")
+	var main: Node = load("res://main.tscn").instantiate()
+	root.add_child(main)
+	var sim: Node = main.get_node("SimClient")
+	main._unhandled_input(_key_event(KEY_V))
+	main.send({})
+	check(sim._last_command["speed_limiter_enabled"] == false, "V turns the limiter off in the commands")
+	main._unhandled_input(_key_event(KEY_B))
+	main._unhandled_input(_key_event(KEY_F))
+	main._unhandled_input(_key_event(KEY_G))
+	main.send({"throttle": 1.0})
+	var pressed: Dictionary = sim._last_command
+	check(pressed["red_light_assist_enabled"] == true and pressed["speed_limiter_enabled"] == false, "B turns the assist on; the limiter stays off")
+	check(pressed["interact"] == true and pressed["refuel"] == true, "F and G still ride on the next command")
+	main.send({"throttle": 0.0})
+	var later: Dictionary = sim._last_command
+	check(later["speed_limiter_enabled"] == false and later["red_light_assist_enabled"] == true, "later commands keep both toggles")
+	check(later["interact"] == false and later["refuel"] == false, "F and G are sent once")
+	main._unhandled_input(_key_event(KEY_V))
+	main.send({})
+	check(sim._last_command["speed_limiter_enabled"] == true, "V again: the limiter back on")
+	var driving := {"on_foot": false, "player": {"engine_on": true}}
+	check(Hud.values(driving, {"speed_limiter": false, "red_light_assist": true})["hint"].contains("V limiter OFF · B red-light assist ON"), "the hint shows both states")
+	check(Hud.values(driving)["hint"].contains("V limiter ON · B red-light assist OFF"), "the hint's defaults match the commands'")
+
+	# Score: the server's number, whatever its sign; a missing one is a placeholder.
+	check(Hud.values({"taxi": {"total_score": 1234}})["score"] == "1234", "positive score")
+	check(Hud.values({"taxi": {"total_score": 0}})["score"] == "0", "zero score")
+	check(Hud.values({"taxi": {"total_score": -250.0}})["score"] == "-250", "negative score (JSON numbers arrive as floats)")
+	check(Hud.values({})["score"] == "–" and Hud.values({"taxi": {"total_score": null}})["score"] == "–", "a missing score is safe")
+
+	# The city summary (render/menus.py draw_city_summary).
+	var next := Hud.summary_text({"should_stop": true, "city_summary": ["Oulu", 10500, 12, "Tampere", 21000]})
+	check(next == "City summary\n\nOulu\nScore: 10500\nFares completed: 12\nNext city: Tampere", "a next-city summary")
+	var done := Hud.summary_text({"should_stop": true, "city_summary": ["Helsinki", 10200.0, 9.0, null, 98765.0]})
+	check(done.ends_with("Career complete! Helsinki conquered.\nTotal career score: 98765") and done.contains("Helsinki\nScore: 10200"), "the last city: career complete and the total")
+	for bad in [null, [], ["Oulu"], [1, 2, 3, 4, 5], "Oulu", ["Oulu", "x", 1, null, 2]]:
+		check(Hud.summary_text({"should_stop": true, "city_summary": bad}) == "City summary\n\nThis city is complete.", "malformed summary %s: no made-up values" % str(bad))
+
+	# Shown once should_stop arrives: it covers the UI and no more driving commands go out.
+	var base := _state(0.0)
+	main._present(base.merged({"should_stop": false, "taxi": {"total_score": 5}}))
+	check(not main.summary_shown, "ordinary states: no summary")
+	main._present(base.merged({"should_stop": true, "city_summary": ["Oulu", 10500, 12, "Tampere", 21000]}))
+	var hud: Control = main.get_node("Ui/Hud")
+	check(main.summary_shown and hud._summary.visible and hud._summary.text.contains("Next city: Tampere"), "should_stop shows the summary")
+	var others: Array = main.get_node("Ui").get_children().filter(func(n): return n != hud)
+	check(others.all(func(n): return not n.visible), "the rest of the game UI is hidden")
+	main._present(base.merged({"should_stop": false}))
+	check(hud._summary.visible, "it stays: the session is over")
+	sim._last_command = {}
+	main._command_timer = 0.0
+	main._process(0.1)
+	check(sim._last_command.is_empty(), "no driving command after the summary")
+	main.free()
 
 
 ## godot-11: the server's meet, road, speed-camera and lightning state.

@@ -14,6 +14,7 @@ const COMMAND_INTERVAL_S := 0.05  # input -> simulation at 20 Hz, independent of
 const NightLayer := preload("res://night_layer.gd")
 const Perf := preload("res://perf.gd")
 const MapChunk := preload("res://map_chunk.gd")
+const Hud := preload("res://hud.gd")
 @onready var sim: SimClient = $SimClient
 @onready var map_layer: Node2D = $MapLayer
 @onready var entities: Node2D = $EntityLayer
@@ -34,6 +35,9 @@ var _recent_events: Array = []
 var _command_timer := 0.0
 var _interact_pending := false
 var _refuel_pending := false  # G: one press, sent once (the server buys once per press)
+var speed_limiter := true  # V (render/hud.py "V = limiter"): a session toggle, reported in every command
+var red_light_assist := false  # B: likewise
+var summary_shown := false  # the career city summary is up: the session is over, no more driving commands
 var _engine_on := true
 var drive := DriveInput.new()  # the held driving keys (drive_input.gd)
 var _state_usec := 0.0  # handling one state (parse + buffer), smoothed
@@ -167,6 +171,10 @@ func _unhandled_input(event: InputEvent) -> void:
 				_interact_pending = true
 			KEY_G:
 				_refuel_pending = true
+			KEY_V:
+				speed_limiter = not speed_limiter
+			KEY_B:
+				red_light_assist = not red_light_assist
 			KEY_E:
 				_engine_on = not _engine_on
 			KEY_F3:
@@ -258,7 +266,7 @@ func _process(delta: float) -> void:
 			print("BENCH ", JSON.stringify(Perf.report()))
 			get_tree().quit()
 	_command_timer -= delta
-	if _command_timer <= 0.0 and not _selftest and not _audiotest and not screenshot_driving:  # the tests drive instead
+	if _command_timer <= 0.0 and not _selftest and not _audiotest and not screenshot_driving and not summary_shown:  # the tests drive instead
 		_command_timer = COMMAND_INTERVAL_S
 		send(drive.controls(state.get("on_foot", true)))
 
@@ -322,7 +330,9 @@ func _present(state: Dictionary) -> void:
 	var raining: bool = state.get("weather", {}).get("weather_type", "") == "rain"
 	audio.set_loop("rain", (0.6 if raining else 0.0) if override_rain < 0.0 else override_rain)
 	_train_loop(state)
-	hud.show_state(state)
+	if state.get("should_stop", false) and not summary_shown:
+		show_summary(state)
+	hud.show_state(state, {"speed_limiter": speed_limiter, "red_light_assist": red_light_assist})
 	instruments.show_state(state)
 	map_layer.set_wetness(state.get("weather", {}).get("wetness", 0.0) if override_wetness < 0.0 else override_wetness)
 	map_layer.set_px_per_m(camera.zoom.x)  # after the camera is placed; only reads its zoom
@@ -388,17 +398,30 @@ static func _night(game_time_seconds: float) -> float:
 	return 0.0
 
 
+## The career city is done (state should_stop): the summary covers the
+## game and the client stops driving. The server owns what comes next; it
+## has no continue request, so this is the end of the session here.
+func show_summary(state: Dictionary) -> void:
+	summary_shown = true
+	drive.clear()
+	for node in $Ui.get_children():
+		if node != hud:
+			node.visible = false
+	hud.show_summary(Hud.summary_text(state))
+
+
 ## One command to the simulation (it validates and applies it). The
 ## presses (F, G) go out once, in the next command only.
 func send(controls: Dictionary) -> void:
-	var command := command_for(controls, _engine_on, _interact_pending, _refuel_pending)
+	var command := command_for(controls, _engine_on, _interact_pending, _refuel_pending, speed_limiter, red_light_assist)
 	_interact_pending = false
 	_refuel_pending = false
 	sim.send_command(command)
 
 
-static func command_for(controls: Dictionary, engine_on: bool, interact: bool, refuel: bool) -> Dictionary:
-	var command := {"speed_limiter_enabled": true, "red_light_assist_enabled": false, "refuel": refuel,
+static func command_for(controls: Dictionary, engine_on: bool, interact: bool, refuel: bool,
+		limiter := true, assist := false) -> Dictionary:
+	var command := {"speed_limiter_enabled": limiter, "red_light_assist_enabled": assist, "refuel": refuel,
 		"engine_on": engine_on, "interact": interact}
 	command.merge(controls, true)
 	return command
