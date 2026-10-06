@@ -113,6 +113,8 @@ func _ready() -> void:
 				preload("res://buildings_3d.gd").FOV = float(args[i + 1])
 			"--compass":
 				$Ui/NavOverlay.show_compass = true
+			"--navigation":  # godot-final-04: start with the route shown (N), for screenshots
+				$Ui/NavOverlay.show_route = true
 			"--screenshot-drive":  # with --screenshot: get in and drive this many seconds first
 				_screenshot_drive = float(args[i + 1])
 	sim.world_received.connect(_on_world)
@@ -228,6 +230,7 @@ func _process(delta: float) -> void:
 			get_tree().quit()
 	camera.position = entities.player_position()
 	entities.px_per_m = camera.zoom.x
+	entities.show_route = nav_overlay.show_route
 	if _selftest and _selftest_start != Vector2.INF and _selftest_time > 0.5:
 		var raw: float = entities.now()
 		var render: float = entities.buffer._clock_time
@@ -334,7 +337,7 @@ func _present(state: Dictionary) -> void:
 	_train_loop(state)
 	if state.get("should_stop", false) and not summary_shown:
 		show_summary(state)
-	hud.show_state(state, {"speed_limiter": speed_limiter, "red_light_assist": red_light_assist})
+	hud.show_state(state, {"speed_limiter": speed_limiter, "red_light_assist": red_light_assist, "navigation": nav_overlay.show_route})
 	instruments.show_state(state)
 	map_layer.set_wetness(state.get("weather", {}).get("wetness", 0.0) if override_wetness < 0.0 else override_wetness)
 	map_layer.set_px_per_m(camera.zoom.x)  # after the camera is placed; only reads its zoom

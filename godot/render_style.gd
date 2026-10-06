@@ -83,3 +83,7 @@ static func wet_alphas(wetness: float) -> Array:
 ## A puddle's visible strength 0..1 at this wetness (Pygame draw_puddles).
 static func puddle_strength(wetness: float, reveal: float) -> float:
 	return clampf((wetness - reveal) / (1.0 - reveal), 0.0, 1.0)
+
+# render/navigation.py draw_navigation_route
+const ROUTE_EDGE := Color8(60, 45, 5)
+const ROUTE := Color8(255, 215, 35)

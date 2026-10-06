@@ -18,6 +18,9 @@ const INDOORS := ["entering_building", "in_building"]
 
 var origin := Vector2.ZERO
 var buffer := StateBuffer.new()
+var show_route := false  # N, from NavOverlay (main.gd)
+var _route_source = null  # the last state's navigation.points, as received
+var _route_points := PackedVector2Array()  # ... in layer coordinates
 var px_per_m := 9.0  # the camera's zoom (main.gd): screen pixels per metre
 var drawn_entities := 0  # last frame (performance readout)
 var interp_usec := 0  # time spent sampling and blending last frame
@@ -477,6 +480,40 @@ func _rgb(values: Array) -> Color:
 
 ## The job target and the waiting customer (render/navigation.py
 ## draw_taxi_target); the off-screen arrow is screen UI (nav_overlay.gd).
+## render/navigation.py draw_navigation_route: the server's route (state
+## navigation.points) above the roads and pedestrians, under the target
+## marker and the vehicles - dark edge, gold centre. Converted once per new route.
+func _route(state: Dictionary) -> void:
+	var points := route_for(state)
+	if points.size() >= 2:
+		draw_polyline(points, RS.ROUTE_EDGE, maxf(_px(5.0), 0.8))
+		draw_polyline(points, RS.ROUTE, maxf(_px(2.0), 0.45))
+
+
+## The route to draw this frame: none while N is off or there's no target.
+func route_for(state: Dictionary) -> PackedVector2Array:
+	if not show_route or current_target(state).is_empty():
+		return PackedVector2Array()
+	var source = state.get("navigation", {}).get("points") if state.get("navigation") is Dictionary else null
+	if source != _route_source:  # a new route (or the first): convert once
+		_route_source = source
+		_route_points = route_points(source, origin)
+	return _route_points
+
+
+## World [[x, y], ...] -> layer points; anything malformed (or < 2 points) -> none.
+static func route_points(source, world_origin: Vector2) -> PackedVector2Array:
+	var points := PackedVector2Array()
+	if typeof(source) != TYPE_ARRAY or source.size() < 2:
+		return points
+	for p in source:
+		if typeof(p) != TYPE_ARRAY or p.size() < 2 or not typeof(p[0]) in [TYPE_INT, TYPE_FLOAT] or not typeof(p[1]) in [TYPE_INT, TYPE_FLOAT] \
+				or not is_finite(p[0]) or not is_finite(p[1]):
+			return PackedVector2Array()
+		points.append(MapMath.point(world_origin, p[0], p[1]))
+	return points
+
+
 func _target(state: Dictionary) -> void:
 	var target := current_target(state)
 	if target.is_empty():
@@ -535,6 +572,7 @@ func _draw() -> void:
 		_pedestrian(Vector2(walker.x, walker.y), walker.z, {"color": [255, 217, 64], "animation_state": "standing"}, 0.0)
 		count += 1
 
+	_route(a)
 	_target(a)
 
 	var player: Dictionary = a["player"]

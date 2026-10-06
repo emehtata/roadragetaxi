@@ -128,8 +128,9 @@ static func values(state: Dictionary, toggles := {}) -> Dictionary:
 	elif not player.get("engine_on", true):
 		text["hint"] = "E start the engine · F get out · P phone"
 	else:
-		text["hint"] = "WASD drive · F get out · E engine · G refuel · V limiter %s · B red-light assist %s · P phone · C compass · +/- zoom" % [
-			"ON" if toggles.get("speed_limiter", true) else "OFF", "ON" if toggles.get("red_light_assist", false) else "OFF"]
+		text["hint"] = "WASD drive · F get out · E engine · G refuel · V limiter %s · B red-light assist %s · N navigation %s · P phone · C compass · +/- zoom" % [
+			"ON" if toggles.get("speed_limiter", true) else "OFF", "ON" if toggles.get("red_light_assist", false) else "OFF",
+			"ON" if toggles.get("navigation", false) else "OFF"]
 	return text
 
 

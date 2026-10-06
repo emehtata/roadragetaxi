@@ -450,6 +450,64 @@ func test_commands_carry_the_player_id() -> void:
 	check(Hud.values({"on_foot": false, "player": {"engine_on": true}})["hint"].contains("G refuel"), "the driving hint names G")
 	test_controls_and_economy()
 	test_taxi_information()
+	test_navigation_route()
+
+
+## godot-final-04: the server's route, N to show it (C stays the compass).
+func test_navigation_route() -> void:
+	var nav: Control = load("res://nav_overlay.gd").new()
+	check(not nav.show_route and not nav.show_compass, "N and C start off, as in Pygame")
+	var n := _key_event(KEY_N)
+	n.physical_keycode = KEY_N
+	nav._unhandled_input(n)
+	check(nav.show_route and not nav.show_compass, "N shows the route; the compass stays as it was")
+	var echo := _key_event(KEY_N)
+	echo.physical_keycode = KEY_N
+	echo.echo = true
+	nav._unhandled_input(echo)
+	check(nav.show_route, "a held N (echo) doesn't flip it")
+	var c := _key_event(KEY_C)
+	c.physical_keycode = KEY_C
+	nav._unhandled_input(c)
+	check(nav.show_route and nav.show_compass, "C toggles only the compass")
+	nav._unhandled_input(n)
+	check(not nav.show_route, "N again hides it")
+	nav.free()
+	var driving := {"on_foot": false, "player": {"engine_on": true}}
+	check(Hud.values(driving, {"navigation": true})["hint"].contains("N navigation ON") and Hud.values(driving)["hint"].contains("N navigation OFF"), "the hint reports N")
+
+	var origin := Vector2(100.0, 200.0)
+	check(EntityLayer.route_points([[100.0, 200.0], [130.0, 160.0]], origin) == PackedVector2Array([Vector2(0, 0), Vector2(30, 40)]), "world metres through the map origin (y flipped)")
+	for bad in [null, [], [[1.0, 2.0]], "x", [[1.0, 2.0], [3.0]], [[1.0, 2.0], ["a", 3.0]], [[1.0, 2.0], [INF, 3.0]], [[1.0, 2.0], [NAN, 3.0]]]:
+		check(EntityLayer.route_points(bad, origin).is_empty(), "no line from %s" % str(bad))
+	var layer: Node2D = EntityLayer.new()
+	layer.origin = origin
+	var passenger := {"name": "Aino", "pickup": {"x": 130.0, "y": 160.0, "address": "A", "radius_m": 4.0}, "dropoff": {"x": 0.0, "y": 0.0, "address": "B", "radius_m": 4.0}}
+	var state := {"taxi": {"state": "PICKUP", "current_passenger": passenger}, "navigation": {"points": [[100.0, 200.0], [130.0, 160.0]]}}
+	check(layer.route_for(state).is_empty(), "N off: nothing drawn")
+	layer.show_route = true
+	check(layer.route_for(state).size() == 2, "N on: the newest route at once")
+	var cached: PackedVector2Array = layer._route_points
+	var same := state.duplicate(true)  # the next state: an equal route, parsed anew
+	layer.route_for(same)
+	check(layer._route_points == cached and layer._route_source == same["navigation"]["points"], "an unchanged route isn't rebuilt")
+	var replanned := state.duplicate(true)
+	replanned["navigation"]["points"] = [[100.0, 200.0], [100.0, 150.0], [130.0, 160.0]]
+	check(layer.route_for(replanned).size() == 3, "a new route replaces the old line")
+	check(layer.route_for({"taxi": {"state": "PICKUP"}, "navigation": replanned["navigation"]}).is_empty(), "no target: no route")
+	check(layer.route_for(replanned.merged({"navigation": {"points": []}}, true)).is_empty(), "an empty route: nothing")
+	check(layer.route_for(replanned.merged({"navigation": null}, true)).is_empty() and layer.route_for({"taxi": replanned["taxi"]}).is_empty(), "null or missing navigation: nothing")
+	layer.show_route = false
+	check(layer.route_for(replanned).is_empty(), "N off again: gone at once")
+	layer.free()
+	var source: String = (EntityLayer as Script).source_code
+	var draw := source.substr(source.find("func _draw() -> void:"))
+	check(draw.find("_pedestrian(") < draw.find("_route(a)") and draw.find("_route(a)") < draw.find("_target(a)") and draw.find("_target(a)") < draw.find("_vehicle("),
+		"drawn after the pedestrians, before the target marker and the vehicles")
+	var scene: Node = load("res://main.tscn").instantiate()
+	var z: int = scene.get_node("EntityLayer").z_index
+	scene.free()
+	check(z > 7 and z < 11, "the entity layer (z %d) sits above the roads and buildings (z 7), under canopies and rail bridges (z 11)" % z)
 
 
 ## godot-final-03: the running fare in the mission line, the pump price in the gauge.
