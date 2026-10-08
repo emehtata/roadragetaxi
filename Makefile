@@ -5,7 +5,7 @@ GODOT ?= $(HOME)/tools/godot/Godot_v$(GODOT_VERSION)-stable_linux.x86_64
 PORT ?= 8765
 PRESET ?= Oulu
 
-.PHONY: help venv install run run-debug run-sample run-pbf index-pbf run-server fetch-godot run-godot run-godot-all run-godot-pbf godot-selftest godot-test audio-check audit-ai test compile check clean
+.PHONY: help venv install run run-debug run-sample run-pbf run-pbf-pygame index-pbf run-server fetch-godot run-godot run-godot-all godot-selftest godot-test audio-check audit-ai test compile check clean
 
 help:
 	@printf '%s\n' \
@@ -13,8 +13,8 @@ help:
 		'run                    Start the game' \
 		'run-debug              Start the game with DEBUG logging' \
 		'run-sample             Start offline with bundled sample data' \
-		'run-pbf                Start using the local .osm.pbf extract instead of Overpass' \
-		'run-godot-pbf          Server from the local .osm.pbf extract + the Godot client' \
+		'run-pbf                Start the game with the map from the local .osm.pbf extract' \
+		'run-pbf-pygame         The Pygame version with the local .osm.pbf extract' \
 		'index-pbf              Build the grid index for the local .osm.pbf extract (faster run-pbf)' \
 		'run-server             Start the headless simulation server (PRESET=Oulu PORT=8765)' \
 		'fetch-godot            Download the Godot editor binary to $$(GODOT) if missing' \
@@ -44,7 +44,10 @@ run-debug: godot/.godot
 run-sample:
 	PYTHONPATH=src $(PYTHON) road_rage_trip.py --use-sample
 
-run-pbf:
+run-pbf: godot/.godot
+	$(GODOT) --path godot -- --osm-source pbf
+
+run-pbf-pygame:
 	PYTHONPATH=src $(PYTHON) road_rage_trip.py --osm-source pbf
 
 index-pbf:
@@ -69,11 +72,6 @@ run-godot: godot/.godot
 
 run-godot-all: godot/.godot
 	PYTHONPATH=src $(PYTHON) -m theroadragetrip.server --preset $(PRESET) --port $(PORT) --tick-rate 30 & \
-	server=$$!; trap 'kill $$server' EXIT INT TERM; \
-	sleep 5; $(GODOT) --path godot -- --skip-menu --port $(PORT)
-
-run-godot-pbf: godot/.godot
-	PYTHONPATH=src $(PYTHON) -m theroadragetrip.server --preset $(PRESET) --port $(PORT) --tick-rate 30 --osm-source pbf & \
 	server=$$!; trap 'kill $$server' EXIT INT TERM; \
 	sleep 5; $(GODOT) --path godot -- --skip-menu --port $(PORT)
 

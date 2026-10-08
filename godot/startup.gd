@@ -33,6 +33,10 @@ func _ready() -> void:
 	var log_level := command_line.find("--log-level")
 	if log_level >= 0 and log_level + 1 < command_line.size():
 		_server_extra.assign(["--log-level", command_line[log_level + 1]])
+	for option in ["--osm-source", "--osm-pbf-path"]:  # make run-pbf: passed on, over the settings
+		var at := command_line.find(option)
+		if at >= 0 and at + 1 < command_line.size():
+			_server_extra.append_array([option, command_line[at + 1]])
 	_cities = _server_query("--list-cities")
 	if _cities.is_empty():
 		_cities = ["Oulu"]
