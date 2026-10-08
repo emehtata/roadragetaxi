@@ -535,3 +535,18 @@ def test_npc_brake_lamps_when_slowing_or_standing_in_traffic():
     assert not npc_braking(npc(0.0, "PARKED"), 0.0, dt)
     assert not npc_braking(npc(-1.0), -0.5, dt)  # reversing: the reversing lamp, not the brakes
     assert not npc_braking(npc(0.0, on_foot=True), 0.0, dt)
+
+
+def test_the_world_message_carries_the_start_sign(tmp_path, monkeypatch):
+    """main()'s draw_game_start_overlay: the city and a 24-hour forecast,
+    now and every 6 hours; the engine starts off (E after getting in)."""
+    from theroadragetrip import protocol
+
+    server = _build_server(tmp_path, monkeypatch)
+    forecast = server.start_forecast
+    assert len(forecast) == 5 and forecast[0]["source"] == "generated"
+    assert all(set(line) == {"time", "temperature_c", "weather", "source"} for line in forecast)
+    assert forecast[0]["weather"] in ("clear", "rain", "slush", "snow", "thunderstorm")
+    message = protocol.build_world_message((0.0, 0.0), 250.0, "p1", "Oulu", forecast)
+    assert message["city"] == "Oulu" and message["forecast"] == forecast
+    assert server.car.engine_on is False

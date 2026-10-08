@@ -89,10 +89,12 @@ func show_state(state: Dictionary, toggles := {}) -> void:
 	_clock.text = text["clock"]
 	_weather.text = text["weather"]
 	_fare.text = text["fare"]
-	_notice.text = text["notice"]
-	_notice.visible = text["notice"] != ""
+	var start_hint: bool = text["notice"] == "" and text["start_hint"] != ""  # main(): draw_game_start_hint, blue
+	_notice.text = text["start_hint"] if start_hint else text["notice"]
+	_notice.visible = _notice.text != ""
 	# hud.py: a speed-camera hit is centred on screen with a red border, other notices at the top in amber.
-	_notice_style.border_color = Color8(255, 70, 45) if text["notice_camera"] else Color8(255, 200, 50)
+	_notice_style.border_color = Color8(255, 70, 45) if text["notice_camera"] else (Color8(100, 190, 240) if start_hint else Color8(255, 200, 50))
+	_notice_style.bg_color = Color8(16, 35, 55, 235) if start_hint else Color8(20, 30, 40, 235)
 	var camera: bool = text["notice_camera"]
 	_notice.anchor_top = 0.5 if camera else 0.0
 	_notice.anchor_bottom = _notice.anchor_top
@@ -160,6 +162,12 @@ static func values(state: Dictionary, toggles := {}, language := "en") -> Dictio
 				text["fare"] = who
 	text["notice"] = str(taxi.get("notification_msg", "")) if taxi.get("notification_timer", 0.0) > 0.0 else ""
 	text["notice_camera"] = text["notice"] != "" and taxi.get("speed_camera_notice", false)
+	# main()'s start hints: get in (until the driver first does), then start the engine.
+	text["start_hint"] = ""
+	if on_foot and not toggles.get("entered_taxi", true):
+		text["start_hint"] = T.text("hint_enter_taxi", language, "Press F to get into your taxi")
+	elif not on_foot and not player.get("engine_on", true) and player.get("fuel_l", 0.0) > 0.0:
+		text["start_hint"] = T.text("hint_start_engine", language, "Press E to start the engine")
 	var meet = state.get("meet")
 	text["meet"] = "\n".join(meet.get("lines", [])) if typeof(meet) == TYPE_DICTIONARY else ""
 	# hud.py's road line (Pygame shows it in the debug HUD; here the F3 readout).

@@ -47,7 +47,9 @@ var _cancel_ride_pending := false
 var _reset_trip_pending := false
 var _help: PanelContainer
 var summary_shown := false  # the career city summary is up: the session is over, no more driving commands
-var _engine_on := true
+var _engine_on := false  # main(): the driver starts on foot, E starts the engine after getting in
+var _entered_taxi := false  # the "Press F" hint until the driver first gets in
+var _start_sign: PanelContainer  # main()'s draw_game_start_overlay: city and forecast, any key starts
 var drive := DriveInput.new()  # the held driving keys (drive_input.gd)
 var _state_usec := 0.0  # handling one state (parse + buffer), smoothed
 var _interp_usec := 0.0  # sampling + blending one frame, smoothed
@@ -139,6 +141,9 @@ func _ready() -> void:
 				show_next_train = true
 			"--screenshot-drive":  # with --screenshot: get in and drive this many seconds first
 				_screenshot_drive = float(args[i + 1])
+	if _selftest or _bench > 0.0 or _screenshot_path != "" or "--audiotest" in args or "--inputtest" in args:
+		_engine_on = true  # automated runs drive straight away: no sign, no hints
+		_entered_taxi = true
 	sim.world_received.connect(_on_world)
 	sim.state_received.connect(_on_state)
 	# One new chunk per frame (godot-16): a chunk's first drawing takes ~10-20 ms, and crossing into
@@ -196,6 +201,9 @@ func _on_world(world: Dictionary) -> void:
 	entities.origin = origin
 	audio.origin = origin
 	sim.player_id = world.get("player_id", sim.player_id)
+	if not _entered_taxi and _start_sign == null and world.get("city", "") != "":
+		_start_sign = start_sign(world, language)
+		$Ui.add_child(_start_sign)
 
 
 func _on_state(message: Dictionary) -> void:
@@ -225,6 +233,12 @@ static func screenshot_directory(os_name: String, user_profile: String) -> Strin
 
 
 func _unhandled_input(event: InputEvent) -> void:
+	if _start_sign != null and event is InputEventKey and event.pressed and not event.echo:
+		if event.keycode != KEY_ESCAPE:  # main(): any key but Esc starts
+			_start_sign.queue_free()
+			_start_sign = null
+		get_viewport().set_input_as_handled()
+		return
 	if event is InputEventKey and event.pressed and not event.echo:
 		match event.keycode:
 			KEY_F12:
@@ -252,8 +266,8 @@ func _unhandled_input(event: InputEvent) -> void:
 					_cancel_ride_pending = true
 			KEY_T:
 				_reset_trip_pending = true
-			KEY_E:
-				_engine_on = not _engine_on
+			KEY_E:  # toggles what the simulation shows (it may have stopped the engine: no fuel)
+				_engine_on = not bool(entities.shown_state().get("player", {}).get("engine_on", _engine_on))
 			KEY_F1:
 				_help.visible = not _help.visible
 			KEY_ESCAPE:
@@ -349,7 +363,7 @@ func _process(delta: float) -> void:
 	_command_timer -= delta
 	if _command_timer <= 0.0 and not _selftest and not _audiotest and not screenshot_driving and not summary_shown:  # the tests drive instead
 		_command_timer = COMMAND_INTERVAL_S
-		send(drive.controls(state.get("on_foot", true)))
+		send({} if _start_sign != null else drive.controls(state.get("on_foot", true)))  # the start sign: no driving yet
 
 
 ## Sound and HUD for the state on screen; events as the picture reaches them.
@@ -424,7 +438,9 @@ func _present(state: Dictionary) -> void:
 	audio.set_loop("station_luggage", crowd[0] * 0.4, 1.0, crowd[1])
 	if state.get("should_stop", false) and not summary_shown:
 		show_summary(state)
-	hud.show_state(state, {"speed_limiter": speed_limiter, "red_light_assist": red_light_assist, "lane_assist": lane_assist, "navigation": nav_overlay.show_route, "labels": labels.mode, "next_train": show_next_train})
+	if not state.get("on_foot", true):
+		_entered_taxi = true
+	hud.show_state(state, {"entered_taxi": _entered_taxi, "speed_limiter": speed_limiter, "red_light_assist": red_light_assist, "lane_assist": lane_assist, "navigation": nav_overlay.show_route, "labels": labels.mode, "next_train": show_next_train})
 	instruments.chips = [lane_assist, speed_limiter, nav_overlay.show_route]  # K, V, N under the speedometer
 	instruments.show_state(state)
 	map_layer.set_wetness(state.get("weather", {}).get("wetness", 0.0) if override_wetness < 0.0 else override_wetness)
@@ -547,6 +563,40 @@ static func weather_loops(state: Dictionary) -> Dictionary:
 		"wet_tires": tyres if type != "slush" else 0.0,
 		"wet_slush": tyres if type == "slush" else 0.0,
 	}
+
+
+## main()'s start sign: the city, the 24-hour forecast (the source in
+## brackets with historical weather) and "press any key".
+static func start_sign(world: Dictionary, language: String) -> PanelContainer:
+	var sign := PanelContainer.new()
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color8(28, 84, 155)
+	style.border_color = Color8(220, 235, 255)
+	style.set_border_width_all(3)
+	style.set_corner_radius_all(8)
+	style.set_content_margin_all(24)
+	sign.add_theme_stylebox_override("panel", style)
+	var lines := VBoxContainer.new()
+	lines.add_theme_constant_override("separation", 6)
+	sign.add_child(lines)
+	var rows := [[str(world.get("city", "")).to_upper(), 46, Color.WHITE], [T.text("weather_forecast_24h", language, "Weather forecast for the next 24 hours"), 20, Color8(180, 220, 255)]]
+	for line in world.get("forecast", []):
+		if line is Dictionary:
+			var source := str(line.get("source", "generated"))
+			rows.append(["%s   %+.0f °C   %s%s" % [line.get("time", ""), float(line.get("temperature_c", 0.0)), T.weather(str(line.get("weather", "")), language),
+				"" if source == "generated" else "   (%s)" % T.text("weather_source_" + source, language, source)], 20, Color.WHITE])
+	rows.append([T.text("press_any_key_start", language, "Press any key to start"), 24, Color.WHITE])
+	for row in rows:
+		var label := Label.new()
+		label.text = row[0]
+		label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		label.add_theme_font_size_override("font_size", row[1])
+		label.add_theme_color_override("font_color", row[2])
+		lines.add_child(label)
+	sign.set_anchors_preset(Control.PRESET_CENTER)
+	sign.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	sign.grow_vertical = Control.GROW_DIRECTION_BOTH
+	return sign
 
 
 ## One command to the simulation (it validates and applies it). The

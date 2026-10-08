@@ -43,8 +43,8 @@ from ..render import SCREEN_H, SCREEN_W
 from ..simulation import RAGE_SHOUT_DURATION_S, PlayerCommand, advance_simulation, apply_enter_exit_vehicle
 from ..physics import reset_trip, respawn_car
 from ..transport import Listener
-from ..weather import WeatherSystem
-from ..weather_history import WeatherHistory
+from ..weather import WeatherSystem, weather_type_for_observation
+from ..weather_history import WeatherHistory, precipitation_from_observation
 from ..main.startup_screens import _clamp_start_datetime
 from ..osm import CACHE_DIR
 from ..climate import typical_temperature
@@ -232,6 +232,7 @@ class SimulationServer:
             self.weather_history.request(self.calendar.current - timedelta(hours=6), self.calendar.current + timedelta(hours=48))
             self.weather_history.wait_idle(3.0)  # brief: the first hour can be the real weather
         self._update_outside()
+        self.start_forecast = self._forecast()
 
         self._on_foot = True
         self._camx, self._camy = self.car.x, self.car.y
@@ -276,6 +277,28 @@ class SimulationServer:
 
         self._listener: Optional[Listener] = None
         self._running = False
+
+    def _forecast(self) -> list:
+        """main()'s start-screen forecast: now and every 6 h for 24 h - the
+        temperature (observed/forecast, else typical), the weather (FMI's
+        precipitation where known, else the generator's prediction) and
+        where it came from."""
+        moments = [self.calendar.current + timedelta(hours=offset) for offset in range(0, 25, 6)]
+        history = self.weather_history
+        observed = [history.get(moment) if history is not None else None for moment in moments]
+        temperatures = [o.temperature_c if o is not None and o.temperature_c is not None
+                        else typical_temperature(moment, self.calendar.latitude) for moment, o in zip(moments, observed)]
+        conditions = self.world.weather.forecast(temperatures, 6.0 * 60.0 * 60.0)
+        lines = []
+        for moment, temperature, (condition, thunder), seen in zip(moments, temperatures, conditions, observed):
+            kind, seen_thunder = precipitation_from_observation(seen) if seen is not None else (None, False)
+            if kind is not None:
+                condition = weather_type_for_observation(kind, temperature)
+                thunder = seen_thunder and condition.value == "rain"
+            lines.append({"time": f"{moment:%d.%m. %H:%M}", "temperature_c": round(temperature, 1),
+                          "weather": "thunderstorm" if thunder else condition.value,
+                          "source": history.source_at(moment) if history is not None else "generated"})
+        return lines
 
     def _update_outside(self):
         """This game hour's FMI weather (None: generated) and the outside
@@ -352,7 +375,8 @@ class SimulationServer:
         logger.info("Client connected")
         # Who it is and the map origin first; the map chunks around the
         # player and every tick's state follow from the tick loop.
-        connection.send(protocol.build_world_message((self.car.x, self.car.y), CHUNK_SIZE_M, LOCAL_PLAYER_ID))
+        connection.send(protocol.build_world_message((self.car.x, self.car.y), CHUNK_SIZE_M, LOCAL_PLAYER_ID,
+                                                     str(self.chosen_city or ""), self.start_forecast))
         with self._clients_lock:
             self._client_chunks[connection] = (set(), None)
             self._clients.append(connection)

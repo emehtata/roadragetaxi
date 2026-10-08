@@ -540,6 +540,17 @@ func test_speech_and_stations() -> void:
 	check(glow_t.size() == 3 * EntityLayer.GLOW_STEPS and glow_c[0].r > 0.5 and glow_c[1] == Color(0, 0, 0, 1) and is_equal_approx(glow_p[1].distance_to(Vector2(5, 5)), EntityLayer.BRAKE_GLOW[1]), "lamp halos: red at the lamp, nothing at the reach")
 	check(EntityLayer.BRAKE_GLOW[1] > EntityLayer.TAIL_GLOW[1] and EntityLayer.BRAKE_GLOW[0].r > EntityLayer.TAIL_GLOW[0].r and EntityLayer.REVERSE_GLOW[1] > EntityLayer.BRAKE_GLOW[1], "brake halos outshine tail lamps; reversing lights the ground behind")
 	check(FileAccess.get_file_as_string("res://entity_layer.gd").contains("npc.get(\"braking\", false)"), "NPCs' brake lamps from the server")
+	var on_foot_state := {"on_foot": true, "player": {"engine_on": false, "fuel_l": 30.0}, "taxi": {}}
+	check(Hud.values(on_foot_state, {"entered_taxi": false})["start_hint"] == "Press F to get into your taxi", "start hint: get in, until the driver first does")
+	check(Hud.values(on_foot_state, {"entered_taxi": true})["start_hint"] == "", "start hint: not again once in")
+	check(Hud.values({"on_foot": false, "player": {"engine_on": false, "fuel_l": 30.0}, "taxi": {}})["start_hint"] == "Press E to start the engine", "start hint: start the engine")
+	check(Hud.values({"on_foot": false, "player": {"engine_on": true, "fuel_l": 30.0}, "taxi": {}})["start_hint"] == "" and Hud.values({"on_foot": false, "player": {"engine_on": false, "fuel_l": 0.0}, "taxi": {}})["start_hint"] == "", "start hint: none running or out of fuel")
+	var sign := Main.start_sign({"city": "Sysmä", "forecast": [{"time": "08.10. 18:00", "temperature_c": 8.4, "weather": "clear", "source": "observed"}]}, "en")
+	var sign_text := ""
+	for label in sign.get_child(0).get_children():
+		sign_text += label.text + "\n"
+	check(sign_text == "SYSMÄ\nWeather forecast for the next 24 hours\n08.10. 18:00   +8 °C   Clear   (observed)\nPress any key to start\n", "start sign: city, forecast with its source, the prompt")
+	sign.free()
 	var Instruments := load("res://instruments.gd")
 	check(is_equal_approx(Instruments.speed_kmh(-5.0), 18.0) and Instruments.speed_kmh(100.0) == 210.0, "speedometer: |speed| in km/h, up to 210")
 	check(is_equal_approx(Instruments.speed_angle(0.0), deg_to_rad(135.0)) and is_equal_approx(Instruments.speed_angle(210.0), deg_to_rad(405.0)), "speedometer: 270 degrees from lower left")

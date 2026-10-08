@@ -351,13 +351,17 @@ def _meet_to_dict(taxi_mgr, player_pedestrian, language: str) -> Optional[dict]:
     }
 
 
-def build_world_message(center: tuple, chunk_size_m: float, player_id: str = LOCAL_PLAYER_ID) -> dict:
+def build_world_message(center: tuple, chunk_size_m: float, player_id: str = LOCAL_PLAYER_ID,
+                        city: str = "", forecast: Optional[list] = None) -> dict:
     """What a client learns once on connect: the map origin (it draws
     relative to it, for float32 precision), the chunk grid size, and which
-    player it controls. The map itself follows as "chunk" messages."""
+    player it controls; for main()'s start sign the city and the 24-hour
+    forecast ([{time, temperature_c, weather, source}]). The map itself
+    follows as "chunk" messages."""
     return {
         "type": "world", "version": PROTOCOL_VERSION,
         "center": [center[0], center[1]], "chunk_size_m": chunk_size_m, "player_id": player_id,
+        "city": city, "forecast": forecast or [],
     }
 
 
