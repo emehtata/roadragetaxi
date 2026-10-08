@@ -47,6 +47,11 @@ MAX_VISIBLE_STREET_LIGHTS = 400
 # slower device needs smaller, more frequent rebuilds instead.
 STREET_LIGHT_GEOMETRY_REGION_PADDING_M = 150.0
 STREET_LIGHT_SPACING_M = 12.0
+# A parking lot's lamps stand where two back-to-back rows of spots meet,
+# not along both sides of every aisle (which put them inside the spots):
+# one side of each aisle, a spot's depth beyond its edge, sparser.
+PARKING_LIGHT_SPACING_M = 24.0
+PARKING_SPOT_DEPTH_M = 5.0
 STREET_LIGHT_JUNCTION_CLEARANCE_M = 3.0
 STREET_LIGHT_SHADE_COLOR = (0, 0, 0)
 STREET_LIGHT_BUILDING_DISTANCE_M = 200.0
@@ -1287,7 +1292,10 @@ def _advance_street_light_placement(work) -> bool:
             if time.perf_counter() >= deadline:
                 break
             continue
-        distance_to_lamp = 0.0
+        parking_aisle = getattr(way, "service", None) == "parking_aisle"
+        lamp_spacing = PARKING_LIGHT_SPACING_M if parking_aisle else STREET_LIGHT_SPACING_M
+        sides = (1.0,) if parking_aisle else (-1.0, 1.0)
+        distance_to_lamp = lamp_spacing / 2.0 if parking_aisle else 0.0
         segment_lengths = getattr(way, "segment_lengths", ())
         segment_lighting = way_lit_cache.get(id(way), ())
         for segment_index, (start, end) in enumerate(zip(way.points_m, way.points_m[1:])):
@@ -1301,7 +1309,7 @@ def _advance_street_light_placement(work) -> bool:
             if segment_length < 1.0:
                 continue
             segment_phase = distance_to_lamp
-            edge_distance = half_width + 1.0
+            edge_distance = half_width + (PARKING_SPOT_DEPTH_M if parking_aisle else 1.0)
             clipped = _segment_viewport_t_range(
                 start[0], start[1], dx / segment_length, dy / segment_length,
                 segment_length,
@@ -1325,7 +1333,7 @@ def _advance_street_light_placement(work) -> bool:
                 normal_x = -dy / segment_length
                 normal_y = dx / segment_length
                 if segment_index < len(segment_lighting) and segment_lighting[segment_index]:
-                    for side in (-1.0, 1.0):
+                    for side in sides:
                         world_x = lamp_x + normal_x * edge_distance * side
                         world_y = lamp_y + normal_y * edge_distance * side
                         if _point_overlaps_indexed_road(

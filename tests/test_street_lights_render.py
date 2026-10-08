@@ -844,3 +844,25 @@ def test_v8_budgeted_preparation_resumes_keeps_old_cache_and_snapshots_revisions
         common_module._solar_position_cache.clear()
         roads_module.STREET_LIGHT_PREP_BUDGET_S, roads_module.STREET_LIGHT_CACHE_BUDGET_S = old_budgets
         pygame.quit()
+
+
+def test_parking_aisle_lamps_stand_between_the_rows_not_in_the_spots():
+    """A parking lot: one side of each aisle, a spot's depth beyond its edge
+    (where back-to-back rows meet), every 24 m - not both sides every 12 m."""
+    from theroadragetrip.render.roads import PARKING_LIGHT_SPACING_M, PARKING_SPOT_DEPTH_M
+
+    pygame.init()
+    try:
+        screen = pygame.Surface((400, 300), pygame.SRCALPHA)
+        aisle = Way(points_m=[(0.0, 0.0), (100.0, 0.0)], highway="service", service="parking_aisle",
+                    half_width_m=3.0, lit="yes")
+        draw_street_lights(screen, [aisle], camx=50.0, camy=0.0, game_time_seconds=0.0, px_per_m=2.0,
+                           screen_w=400, screen_h=300, daylight_surface=None, buildings=[])
+        positions = render._street_light_frame_world_positions
+        assert positions
+        assert {round(abs(y), 3) for _, y in positions} == {3.0 + PARKING_SPOT_DEPTH_M}
+        assert len({y > 0 for _, y in positions}) == 1  # one side only
+        xs = sorted(x for x, _ in positions)
+        assert all(abs((b - a) - PARKING_LIGHT_SPACING_M) < 1e-6 for a, b in zip(xs, xs[1:]))
+    finally:
+        pygame.quit()
