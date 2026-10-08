@@ -267,7 +267,9 @@ func test_rendering() -> void:
 	var bounds := Rect2(0, -500, 500, 500)  # world 0..500 x 0..500, y flipped
 	var first: Array = Chunk.puddle_spots(roads, bounds, Vector2.ZERO)
 	var again: Array = Chunk.puddle_spots(roads, bounds, Vector2.ZERO)
-	check(first.size() > 5 and first.size() < 40 and str(first) == str(again), "puddle spots are deterministic (%d of 40 roads)" % first.size())
+	# 40 roads of 400 m: a 40 % chance per PUDDLE_STRETCH_M, within 20 % of the expectation.
+	var expected := 40 * 400.0 / RS.PUDDLE_STRETCH_M * RS.PUDDLE_CHANCE_PER_WAY
+	check(absf(first.size() - expected) < expected * 0.2 and str(first) == str(again), "puddle spots follow road length and are deterministic (%d on 40 x 400 m)" % first.size())
 	check(first.all(func(spot): return bounds.has_point(spot["at"])), "puddles only inside their chunk")
 	check(Chunk.puddle_spots(roads, Rect2(1000, 1000, 10, 10), Vector2.ZERO).is_empty(), "a road's puddle is drawn by one chunk only")
 
@@ -523,7 +525,7 @@ func test_weather_presentation() -> void:
 	check(spots_a == spots_b and (spots_a.is_empty() or spots_a[0].has("phase")), "the same road: the same puddle and ripple phase")
 	var spot := {"at": Vector2.ZERO, "radius": 2.0, "reveal": 0.2, "phase": 0.0}
 	var ring: Array = W.ripple(spot, 1.0, 0.5)
-	check(is_equal_approx(ring[0], 2.0 * (0.25 + 0.85 * 0.5)) and is_equal_approx(ring[1], 70.0 / 255.0 * 0.5), "half-way: 0.675 of the radius, half the alpha")
+	check(is_equal_approx(ring[0], 2.0 * (0.25 + 0.85 * 0.5)) and is_equal_approx(ring[1], 150.0 / 255.0 * 0.5), "half-way: 0.675 of the radius, half the alpha")
 	check(W.ripple(spot, 1.0, 1.5).is_empty() and not W.ripple(spot, 1.0, 2.4 + 0.2).is_empty(), "1 s of ripple in every 2.4 s")
 	check(W.ripple(spot, 0.1, 0.5).is_empty(), "a puddle not showing yet: no ripple")
 

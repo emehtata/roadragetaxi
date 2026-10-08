@@ -835,6 +835,21 @@ in view).
 So the layer costs about 1 ms a frame in rain or snow (fill on llvmpipe) and
 nothing when clear. One rain pair measured +6 ms; it did not repeat.
 
+**Fix after play-testing: no visible puddles or ripples in rain.** Two
+causes, both measured in the live client:
+- **Too few.** Pygame gives each OSM way one 40 % chance, whatever its
+  length. On Oulu that is about one small puddle per screen; the live view
+  had 1 of 1,231 spots.
+- **Too faint.** The colour, navy (32, 40, 54) at 150, vanished on the
+  wet-darkened road, and 1 px rings at alpha ≤ 70 can't be seen.
+
+Godot now gives each `PUDDLE_STRETCH_M` (8 m) of drivable road a 40 % chance,
+placed uniformly along the road from the same per-road seed: about 5
+puddles per 100 m. Puddles are a blue-grey (92, 108, 128) at 170, and ripple
+and splash rings are 2 px wide, ripples at alpha up to 150. These are
+deliberate differences from Pygame. Rain measured 38.6 ms a frame; ripples
+take 0.31 ms of CPU.
+
 **Noticed, not changed.** The server passes a fixed 15 °C to the simulation,
 and `WeatherSystem` turns falling snow and slush into rain above freezing. So
 a server session can't yet have snow or slush; it needs the historical

@@ -984,23 +984,35 @@ static func puddle_spots(roads: Array, bounds: Rect2, origin: Vector2) -> Array:
 		if not road.get("drivable", false) or points.size() < 2:
 			continue
 		rng.seed = hash(points)
-		if rng.randf() > RS.PUDDLE_CHANCE_PER_WAY:
-			continue
-		var index := rng.randi_range(0, points.size() - 2)
-		var a := Vector2(points[index][0], points[index][1])
-		var b := Vector2(points[index + 1][0], points[index + 1][1])
-		var along := rng.randf_range(0.2, 0.8)
-		var segment := b - a
-		var perp := Vector2(-segment.y, segment.x).normalized() if segment.length() > 0.0 else Vector2.ZERO
-		var half_width := float(road.get("half_width_m", 3.0))
-		var world := a + segment * along + perp * rng.randf_range(-0.5, 0.5) * half_width * 0.6
-		var at := MapMath.point(origin, world.x, world.y)
-		var radius := rng.randf_range(RS.PUDDLE_MIN_RADIUS_M, minf(RS.PUDDLE_MAX_RADIUS_M, half_width * 0.9))
-		var reveal := rng.randf_range(RS.PUDDLE_REVEAL_MIN, RS.PUDDLE_REVEAL_MAX)
-		var shape: Array = []
-		for i in RS.PUDDLE_SHAPE_POINTS:
-			shape.append(1.0 + rng.randf_range(-RS.PUDDLE_SHAPE_JITTER, RS.PUDDLE_SHAPE_JITTER))
-		var phase := rng.randf()  # the ripple's place in its 2.4 s cycle (render/weather.py ripple_phase)
-		if bounds.size == Vector2.ZERO or bounds.has_point(at):
-			spots.append({"at": at, "radius": maxf(RS.PUDDLE_MIN_RADIUS_M, radius), "reveal": reveal, "shape": shape, "phase": phase})
+		# One chance per PUDDLE_STRETCH_M of road, not Pygame's one per way: a
+		# way can be a whole street, which left about one puddle a screen.
+		var lengths := PackedFloat32Array()
+		var total := 0.0
+		for i in points.size() - 1:
+			total += Vector2(points[i][0], points[i][1]).distance_to(Vector2(points[i + 1][0], points[i + 1][1]))
+			lengths.append(total)
+		for chance in maxi(1, int(total / RS.PUDDLE_STRETCH_M)):
+			if rng.randf() > RS.PUDDLE_CHANCE_PER_WAY:
+				continue
+			var s := rng.randf_range(0.0, total)  # where along the road
+			var index := 0
+			while index < lengths.size() - 1 and lengths[index] < s:
+				index += 1
+			var a := Vector2(points[index][0], points[index][1])
+			var b := Vector2(points[index + 1][0], points[index + 1][1])
+			var segment := b - a
+			var start := lengths[index] - segment.length()
+			var along := clampf((s - start) / segment.length(), 0.0, 1.0) if segment.length() > 0.0 else 0.0
+			var perp := Vector2(-segment.y, segment.x).normalized() if segment.length() > 0.0 else Vector2.ZERO
+			var half_width := float(road.get("half_width_m", 3.0))
+			var world := a + segment * along + perp * rng.randf_range(-0.5, 0.5) * half_width * 0.6
+			var at := MapMath.point(origin, world.x, world.y)
+			var radius := rng.randf_range(RS.PUDDLE_MIN_RADIUS_M, minf(RS.PUDDLE_MAX_RADIUS_M, half_width * 0.9))
+			var reveal := rng.randf_range(RS.PUDDLE_REVEAL_MIN, RS.PUDDLE_REVEAL_MAX)
+			var shape: Array = []
+			for i in RS.PUDDLE_SHAPE_POINTS:
+				shape.append(1.0 + rng.randf_range(-RS.PUDDLE_SHAPE_JITTER, RS.PUDDLE_SHAPE_JITTER))
+			var phase := rng.randf()  # the ripple's place in its 2.4 s cycle (render/weather.py ripple_phase)
+			if bounds.size == Vector2.ZERO or bounds.has_point(at):
+				spots.append({"at": at, "radius": maxf(RS.PUDDLE_MIN_RADIUS_M, radius), "reveal": reveal, "shape": shape, "phase": phase})
 	return spots

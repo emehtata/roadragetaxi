@@ -27,7 +27,8 @@ const SLUSH_COLOR := Color8(218, 226, 232)
 const RIPPLE_CYCLE_S := 2.4
 const RIPPLE_DURATION_S := 1.0
 const RIPPLE_COLOR := Color8(190, 202, 218)
-const RIPPLE_MAX_ALPHA := 70.0 / 255.0
+const RIPPLE_MAX_ALPHA := 150.0 / 255.0  # Pygame 70, with 1 px rings: invisible in play
+const RING_WIDTH_PX := 2.0
 const SPLASH_LIFETIME_S := 0.5
 const SPLASH_MIN_SPEED_MPS := 1.0
 const SPLASH_POOL_MAX := 40
@@ -198,7 +199,7 @@ func _draw_ripples() -> void:
 			if not ring.is_empty():
 				_ring(spot["at"], ring[0], Color(RIPPLE_COLOR, ring[1]))
 	if not _ripple_points.is_empty():
-		ripples.draw_multiline_colors(_ripple_points, _ripple_colors)
+		ripples.draw_multiline_colors(_ripple_points, _ripple_colors, RING_WIDTH_PX / map_layer.px_per_m)
 		draw_calls += 1
 	Perf.add("weather_draw_ripples", Time.get_ticks_usec() - started)
 
@@ -244,7 +245,7 @@ func _draw_splashes() -> void:
 		if ring[1] > 0.0:
 			_ring(splash[0], ring[0], Color(SPLASH_COLOR, ring[1]))
 	if not _ripple_points.is_empty():
-		splash_node.draw_multiline_colors(_ripple_points, _ripple_colors)
+		splash_node.draw_multiline_colors(_ripple_points, _ripple_colors, RING_WIDTH_PX / map_layer.px_per_m)
 		draw_calls += 1
 
 

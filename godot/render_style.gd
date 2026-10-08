@@ -58,13 +58,16 @@ const WET_DARKEN_MAX_ALPHA := 90 / 255.0
 const WET_SHEEN := Color8(205, 215, 230)
 const WET_SHEEN_MAX_ALPHA := 12 / 255.0
 const WET_SHEEN_MIN_WETNESS := 0.15
-const PUDDLE_CHANCE_PER_WAY := 0.4
+const PUDDLE_CHANCE_PER_WAY := 0.4  # render/weather.py - per PUDDLE_STRETCH_M here
+const PUDDLE_STRETCH_M := 8.0  # ~5 puddles per 100 m of street at 0.4 (Pygame: ~1 a screen)
 const PUDDLE_MIN_RADIUS_M := 0.6
 const PUDDLE_MAX_RADIUS_M := 2.2
 const PUDDLE_REVEAL_MIN := 0.2
 const PUDDLE_REVEAL_MAX := 0.75
-const PUDDLE_COLOR := Color8(32, 40, 54)
-const PUDDLE_MAX_ALPHA := 150 / 255.0
+# Brighter than Pygame's (32, 40, 54) at 150: on a road already darkened by
+# the wetness, that navy all but vanished. Standing water reflects the sky.
+const PUDDLE_COLOR := Color8(92, 108, 128)
+const PUDDLE_MAX_ALPHA := 170 / 255.0
 const PUDDLE_SHAPE_POINTS := 7
 const PUDDLE_SHAPE_JITTER := 0.35
 
