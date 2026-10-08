@@ -283,6 +283,35 @@ def _road_to_dict(current_way) -> dict:
             "layer": getattr(current_way, "layer", 0), "bridge": bool(getattr(current_way, "is_bridge", False))}
 
 
+NEXT_TRAINS = 5  # main(): NEXT_TRAINS_SHOWN, the rows of the J board
+
+
+def railway_state(railway_mgr, x: float, y: float, now) -> dict:
+    """state.railway (godot-final-07): every timetabled station with its
+    waiting passengers (station ambience), the one nearest (x, y) and its next
+    arrivals and departures (the J board), from RailwayManager's own queries
+    at the game time `now`. Times are "HH:MM" (game time); {} without one."""
+    stations = getattr(railway_mgr, "stations", None) if railway_mgr is not None else None
+    if not stations:
+        return {}
+    passengers = getattr(railway_mgr, "passengers", None)
+    rows = []
+    for name, point, _, _ in stations:
+        waiting = passengers.waiting_count(name) if passengers is not None else 0
+        if math.isfinite(point[0]) and math.isfinite(point[1]):
+            rows.append({"name": str(name), "x": round(point[0], 2), "y": round(point[1], 2), "waiting": max(0, int(waiting))})
+    nearest = min(stations, key=lambda station: math.dist(station[1], (x, y)))[0]
+
+    def calls(found, other_end):
+        return [{"time": f"{when:%H:%M}", "train_type": str(call.train_type), "number": str(call.number),
+                 other_end: str(getattr(call, other_end)), "track": str(call.track or "")}
+                for when, call in found[:NEXT_TRAINS]]
+
+    return {"stations": rows, "nearest_station": str(nearest),
+            "arrivals": calls(railway_mgr.next_arrivals(x, y, now, NEXT_TRAINS), "origin"),
+            "departures": calls(railway_mgr.next_departures(x, y, now, NEXT_TRAINS), "destination")}
+
+
 def _finite_pair(vector) -> list:
     """[east, north] rounded to 1 mm/s; a non-finite component as 0."""
     return [round(v, 3) if math.isfinite(v) else 0.0 for v in vector]
@@ -335,7 +364,7 @@ def build_state_message(
     should_stop: bool = False, city_summary: Optional[tuple] = None, events: Optional[list] = None,
     server_time: float = 0.0, player_id: str = LOCAL_PLAYER_ID, current_way=None, language: str = "en",
     calendar: Optional[dict] = None, tire_mark: Optional[dict] = None, navigation: Optional[dict] = None,
-    road_rage: Optional[dict] = None,
+    road_rage: Optional[dict] = None, railway: Optional[dict] = None,
 ) -> dict:
     """Everything the Pygame client needs to render one frame, and nothing
     static (see module docstring). Called once per server tick."""
@@ -396,6 +425,8 @@ def build_state_message(
         "navigation": navigation if navigation is not None else {"points": []},
         # The rage shout above the taxi while it lasts ({"text", "timer"} seconds left), else null.
         "road_rage": road_rage,
+        # Stations and the nearest one's next trains (railway_state), else {}.
+        "railway": railway if railway is not None else {},
         "taxi": {
             "state": taxi_mgr.state,
             "total_score": taxi_mgr.total_score,

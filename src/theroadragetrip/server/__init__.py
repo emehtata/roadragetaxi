@@ -69,9 +69,48 @@ class EventAudio(NullAudio):
     which decide how to present it. Loops and per-frame audio state stay
     no-ops - a client derives those from the state itself."""
 
-    def __init__(self) -> None:
+    def __init__(self, rng=None) -> None:
         self.events: list = []
         self._edges: dict = {}
+        # Speech (godot-final-07): speech.py chooses as Pygame does; a line
+        # is "busy" until its recording would have finished, on the
+        # simulation clock (advance()).
+        import random as _random
+
+        from ..speech import Speech, recorded_lines
+        self._clips = {speaker: recorded_lines(speaker) for speaker in ("driver", "passenger")}
+        self._speech = Speech(lambda speaker, key: key in self._clips[speaker], rng or _random)
+        self.clock = 0.0
+        self._busy_until = 0.0
+
+    def advance(self, dt: float) -> None:
+        """The server tick's simulation time (the speech timing runs on it)."""
+        self.clock += max(0.0, dt)
+
+    def _speak(self, line) -> None:
+        if line is None:
+            return
+        from ..speech import SUBTITLE_S
+        g, language, audio_hash = line["key"]
+        self._busy_until = self.clock + self._clips[line["speaker"]][line["key"]]
+        self.events.append({"type": "speech", "speaker": line["speaker"], "speaker_name": line["speaker_name"],
+                            "gender": g, "language": language, "hash": audio_hash, "text": line["text"],
+                            "duration_s": SUBTITLE_S})
+
+    def _busy(self) -> bool:
+        return self.clock < self._busy_until
+
+    def play_driver_line(self, situation, language, gender="man"):
+        self._speak(self._speech.driver(situation, language, gender, self.clock, self._busy()))
+
+    def play_passenger_line_for_situation(self, situation, gender, language, speaker_name=None):
+        self._speak(self._speech.passenger_for_situation(situation, gender, language, speaker_name, self._busy()))
+
+    def update_passenger_speech(self, active, gender, language, dt, speaker_name=None):
+        self._speak(self._speech.passenger_tick(active, gender, language, dt, speaker_name, self._busy()))
+
+    def play_passenger_line(self, finnish_text, gender, language, speaker_name=None):
+        self._speak(self._speech.passenger_line(finnish_text, gender, language, speaker_name, self._busy()))
 
     def play_group(self, group_id, volume=1.0, variation=None, at=None):
         self.events.append({"type": "sound", "group": group_id, **({"at": list(at)} if at else {})})
@@ -163,6 +202,9 @@ class SimulationServer:
         self._command_lock = threading.Lock()
         self._latest_command = PlayerCommand()
         self._pending_interacts = 0
+        from ..station_announcer import StationAnnouncer
+        self.announcer = StationAnnouncer(platforms=[way for way in self.world.ways
+                                                     if way.highway == "platform" and not getattr(way, "is_busway", False)])
         self.navigation = NavigationRoute()  # the player's route to the taxi target (godot-final-04)
         self._pending_refuels = 0  # edge-triggered too: one press buys fuel once, never again each tick
         self._pending_road_rages = 0  # SPACE presses, likewise
@@ -287,6 +329,7 @@ class SimulationServer:
 
     def tick(self, dt: float) -> None:
         self._apply_incoming_messages()
+        self.audio.advance(dt)
 
         with self._command_lock:
             command = self._latest_command
@@ -371,6 +414,11 @@ class SimulationServer:
         railway_mgr = getattr(self.world, "railway_mgr", None)
         if railway_mgr is not None:
             for kind, x, y, train, stop in railway_mgr.sound_events:
+                if stop is not None:  # main()'s _play_rail_sounds: the station's announcement, from its platform
+                    platform = stop[5] if len(stop) > 5 and stop[5] is not None else (x, y)
+                    announcement = self.announcer.event(kind, train, stop, platform, (self.car.x, self.car.y))
+                    if announcement is not None:
+                        events.append(announcement)
                 events.append({
                     "type": f"train_{kind}", "at": [x, y], "station": stop[2] if stop else None,
                     "train": f"{train.service.train_type} {train.service.number}" if train.service else None,
@@ -432,6 +480,7 @@ class SimulationServer:
             server_time=self._server_time, player_id=LOCAL_PLAYER_ID,
             current_way=self._current_way, language=self.language, calendar=self.calendar_state(), tire_mark=self._tire_mark,
             navigation={"points": self.navigation.points}, road_rage=self._road_rage,
+            railway=protocol.railway_state(getattr(self.world, "railway_mgr", None), self.car.x, self.car.y, self.calendar.current),
         )
         with self._clients_lock:
             clients = list(self._clients)
