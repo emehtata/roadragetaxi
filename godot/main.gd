@@ -16,6 +16,7 @@ const Perf := preload("res://perf.gd")
 const MapChunk := preload("res://map_chunk.gd")
 const Hud := preload("res://hud.gd")
 const WeatherLayer := preload("res://weather_layer.gd")
+const T := preload("res://i18n.gd")
 @onready var sim: SimClient = $SimClient
 @onready var map_layer: Node2D = $MapLayer
 @onready var entities: Node2D = $EntityLayer
@@ -40,6 +41,11 @@ var show_next_train := false  # J (main()'s show_next_train): the nearest statio
 var _road_rage_pending := false  # SPACE: one press, sent once; the simulation decides if there's rage to spend
 var speed_limiter := true  # V (render/hud.py "V = limiter"): a session toggle, reported in every command
 var red_light_assist := false  # B: likewise
+var lane_assist := false  # K: likewise
+var _respawn_pending := false
+var _cancel_ride_pending := false
+var _reset_trip_pending := false
+var _help: PanelContainer
 var summary_shown := false  # the career city summary is up: the session is over, no more driving commands
 var _engine_on := true
 var drive := DriveInput.new()  # the held driving keys (drive_input.gd)
@@ -74,6 +80,7 @@ var override_night := -1.0  # >= 0: presentation override for the audio test (ne
 var override_rain := -1.0
 var override_train_at := Vector2.INF
 var override_wetness := -1.0  # audio test: a moving train here (presentation only)
+var language := "en"
 
 
 var weather: Node = WeatherLayer.new()  # godot-final-06: precipitation, ripples, splashes
@@ -81,6 +88,8 @@ var world_light := CanvasModulate.new()  # godot-lights-01: the ambient light, m
 
 
 func _ready() -> void:
+	_apply_language()
+	_build_help()
 	add_child(weather)
 	add_child(world_light)
 	weather.setup($Sky, map_layer)
@@ -148,6 +157,23 @@ func _ready() -> void:
 		add_child(tester)
 
 
+func set_language(value: String) -> void:
+	language = value
+	if is_inside_tree():
+		_apply_language()
+
+
+func _apply_language() -> void:
+	hud.language = language
+	phone.set_language(language)
+	instruments.language = language
+	nav_overlay.language = language
+	entities.language = language
+	if _help != null:
+		_help.queue_free()
+		_build_help()
+
+
 func _on_connection(up: bool) -> void:
 	print("simulation ", "connected" if up else "disconnected")
 	phone.set_connected(up)
@@ -180,9 +206,29 @@ func _on_state(message: Dictionary) -> void:
 	_state_usec = lerpf(_state_usec, float(Time.get_ticks_usec() - started + sim.parse_usec), 0.1)
 
 
+## F12 (main/__init__.py): the window as screenshot_<ns>.png in Pygame's
+## folder (debug_tools._screenshot_directory). Pygame's JSON debug snapshot
+## is server state and isn't written here.
+func save_screenshot() -> String:
+	var path := screenshot_directory(OS.get_name(), OS.get_environment("USERPROFILE")).path_join(
+		"screenshot_%d.png" % int(Time.get_unix_time_from_system() * 1e9))
+	DirAccess.make_dir_recursive_absolute(path.get_base_dir())
+	var error := get_viewport().get_texture().get_image().save_png(path)
+	print("Screenshot " + (path if error == OK else "failed: %s" % error_string(error)))
+	return path
+
+
+static func screenshot_directory(os_name: String, user_profile: String) -> String:
+	if os_name == "Windows":
+		return user_profile.path_join("Pictures").path_join("TheRoadRageTrip")
+	return OS.get_environment("PWD").path_join("screenshots") if OS.has_environment("PWD") else "screenshots"
+
+
 func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventKey and event.pressed and not event.echo:
 		match event.keycode:
+			KEY_F12:
+				save_screenshot()
 			KEY_F:
 				_interact_pending = true
 			KEY_G:
@@ -197,8 +243,23 @@ func _unhandled_input(event: InputEvent) -> void:
 				speed_limiter = not speed_limiter
 			KEY_B:
 				red_light_assist = not red_light_assist
+			KEY_K:
+				lane_assist = not lane_assist
+			KEY_R:
+				_respawn_pending = true
+			KEY_X:
+				if not phone.is_open:
+					_cancel_ride_pending = true
+			KEY_T:
+				_reset_trip_pending = true
 			KEY_E:
 				_engine_on = not _engine_on
+			KEY_F1:
+				_help.visible = not _help.visible
+			KEY_ESCAPE:
+				if _help.visible:
+					_help.visible = false
+					get_viewport().set_input_as_handled()
 			KEY_F3:
 				debug_label.visible = not debug_label.visible
 			KEY_EQUAL, KEY_KP_ADD:
@@ -298,7 +359,7 @@ func _present(state: Dictionary) -> void:
 			return  # the session is over: the summary stays, even when the server goes away
 		hud.visible = false
 		debug_label.visible = true
-		debug_label.text = "Waiting for the simulation at %s:%d ..." % [sim.host, sim.port]
+		debug_label.text = T.text("waiting", language, "Waiting for the simulation at %s:%d …") % [sim.host, sim.port]
 		return
 	if not hud.visible:  # the simulation is here: the HUD replaces the waiting text (F3 brings the readout back)
 		hud.visible = true
@@ -362,7 +423,7 @@ func _present(state: Dictionary) -> void:
 	audio.set_loop("station_luggage", crowd[0] * 0.4, 1.0, crowd[1])
 	if state.get("should_stop", false) and not summary_shown:
 		show_summary(state)
-	hud.show_state(state, {"speed_limiter": speed_limiter, "red_light_assist": red_light_assist, "navigation": nav_overlay.show_route, "labels": labels.mode, "next_train": show_next_train})
+	hud.show_state(state, {"speed_limiter": speed_limiter, "red_light_assist": red_light_assist, "lane_assist": lane_assist, "navigation": nav_overlay.show_route, "labels": labels.mode, "next_train": show_next_train})
 	instruments.show_state(state)
 	map_layer.set_wetness(state.get("weather", {}).get("wetness", 0.0) if override_wetness < 0.0 else override_wetness)
 	map_layer.set_px_per_m(camera.zoom.x)  # after the camera is placed; only reads its zoom
@@ -428,7 +489,7 @@ func show_summary(state: Dictionary) -> void:
 	for node in $Ui.get_children():
 		if node != hud:
 			node.visible = false
-	hud.show_summary(Hud.summary_text(state))
+	hud.show_summary(Hud.summary_text(state, language))
 
 
 ## audio.py spatial_levels' gain: full within `range[0]`, 1/distance
@@ -489,19 +550,39 @@ static func weather_loops(state: Dictionary) -> Dictionary:
 ## One command to the simulation (it validates and applies it). The
 ## presses (F, G) go out once, in the next command only.
 func send(controls: Dictionary) -> void:
-	var command := command_for(controls, _engine_on, _interact_pending, _refuel_pending, speed_limiter, red_light_assist, _road_rage_pending)
+	var command := command_for(controls, _engine_on, _interact_pending, _refuel_pending, speed_limiter, red_light_assist,
+		_road_rage_pending, lane_assist, _respawn_pending, _cancel_ride_pending, _reset_trip_pending)
 	_interact_pending = false
 	_refuel_pending = false
 	_road_rage_pending = false
+	_respawn_pending = false
+	_cancel_ride_pending = false
+	_reset_trip_pending = false
 	sim.send_command(command)
 
 
 static func command_for(controls: Dictionary, engine_on: bool, interact: bool, refuel: bool,
-		limiter := true, assist := false, road_rage := false) -> Dictionary:
+		limiter := true, assist := false, road_rage := false, lane := false, respawn := false,
+		cancel_ride := false, reset_trip := false) -> Dictionary:
 	var command := {"speed_limiter_enabled": limiter, "red_light_assist_enabled": assist, "refuel": refuel, "road_rage": road_rage,
+		"lane_assist_enabled": lane, "respawn": respawn, "cancel_ride": cancel_ride, "reset_trip": reset_trip,
 		"engine_on": engine_on, "interact": interact}
 	command.merge(controls, true)
 	return command
+
+
+func _build_help() -> void:
+	_help = PanelContainer.new()
+	_help.visible = false
+	_help.set_anchors_preset(Control.PRESET_CENTER)
+	_help.position = Vector2(-390, -255)
+	_help.custom_minimum_size = Vector2(780, 510)
+	$Ui.add_child(_help)
+	var text := Label.new()
+	text.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	text.add_theme_font_size_override("font_size", 18)
+	text.text = T.text("controls_help", language, "CONTROLS\n\nWASD / arrows   Drive or walk       Shift   Sprint\nF   Enter / exit taxi               E   Engine\nP   Phone                            1–3 / Enter / X   Phone actions\nSpace   Road rage                   G   Refuel\nR   Respawn taxi                    X   Cancel fare\nT   Reset trip meter                K   Lane assist\nV   Speed limiter                   B   Red-light assist\nN   Navigation                      C   Compass\nJ   Train board                     L   Labels\n+ / -   Zoom                        Esc   Pause\nF1   Close help                     F3   Diagnostics")
+	_help.add_child(text)
 
 
 func _apply_bench_hide() -> void:

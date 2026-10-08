@@ -228,6 +228,8 @@ func test_hud() -> void:
 	check(text["clock"] == "18:05", "clock (%s)" % text["clock"])
 	check(text["weather"] == "Rain, road 40% wet", "weather (%s)" % text["weather"])
 	check(text["fare"] == "Drive Aino to Rautatientori", "fare (%s)" % text["fare"])
+	var finnish := Hud.values({"on_foot": true, "taxi": {"completed_fares": 2}, "weather": {"weather_type": "rain", "wetness": 0.4}}, {}, "fi")
+	check(finnish["speed"] == "jalan" and finnish["fare"] == "Ei kyytiä – 2 ajettu" and finnish["weather"].begins_with("Sadetta"), "Finnish selection localizes the HUD")
 	check(text["notice"] == "Fare paid", "notice")
 	var empty := Hud.values({})
 	check(empty["money"] == "– €" and empty["clock"] == "--:--" and empty["speed"] == "on foot", "missing fields show placeholders")
@@ -293,6 +295,7 @@ func test_rendering() -> void:
 
 	# Instruments.
 	check(Instruments.trip_text(950.0, 12345.0) == "Trip: 950 m · Odometer: 12.3 km" and Instruments.trip_text(1500.0, 0.0).begins_with("Trip: 1.50 km"), "trip and odometer text")
+	check(Instruments.trip_text(950.0, 12345.0, "fi") == "Matka: 950 m · Mittari: 12.3 km", "instruments follow the selected language")
 	var center := Vector2(100, 100)
 	check(Instruments.dial_point(center, 0.0, 10.0).x < 100.0 and Instruments.dial_point(center, 1.0, 10.0).x > 100.0
 		and is_equal_approx(Instruments.dial_point(center, 0.5, 10.0).y, 90.0), "fuel needle: E left, F right, half up")
@@ -528,6 +531,9 @@ func test_speech_and_stations() -> void:
 	check(Hud.subtitle_text({"speaker": "passenger", "text": ""}) == "" and Hud.subtitle_text({}) == "", "no text: no subtitle")
 	hud.show_subtitle({"speaker": "passenger", "speaker_name": "Aino", "text": "Hei", "duration_s": 4.0})
 	check(hud._subtitle.visible and hud._subtitle.text == "Aino: Hei", "one subtitle shows")
+	check(Main.screenshot_directory("Windows", "C:/Users/esa") == "C:/Users/esa/Pictures/TheRoadRageTrip", "F12 on Windows: Pictures/TheRoadRageTrip")
+	check(Main.screenshot_directory("Linux", "").ends_with("screenshots"), "F12 elsewhere: ./screenshots")
+	check(FileAccess.get_file_as_string("res://main.gd").contains("KEY_F12:\n\t\t\t\tsave_screenshot()"), "F12 saves a screenshot")
 	hud.size = Vector2(1280, 720)
 	hud.show_subtitle({"speaker": "driver", "text": "Nyt mennään kovaa, pidä kiinni", "duration_s": 4.0})
 	check(hud._subtitle.size.x > 3.0 * hud._subtitle.size.y, "a subtitle is one horizontal line, not a letter per row")
@@ -885,6 +891,7 @@ func _key_event(code: Key) -> InputEventKey:
 func test_controls_and_economy() -> void:
 	var defaults := Main.command_for({}, true, false, false)
 	check(defaults["speed_limiter_enabled"] == true and defaults["red_light_assist_enabled"] == false, "defaults: limiter on, red-light assist off (PlayerCommand's)")
+	check(defaults["lane_assist_enabled"] == false and not defaults["respawn"] and not defaults["cancel_ride"] and not defaults["reset_trip"], "the remaining gameplay controls have safe defaults")
 	var main: Node = load("res://main.tscn").instantiate()
 	root.add_child(main)
 	var sim: Node = main.get_node("SimClient")
@@ -892,16 +899,21 @@ func test_controls_and_economy() -> void:
 	main.send({})
 	check(sim._last_command["speed_limiter_enabled"] == false, "V turns the limiter off in the commands")
 	main._unhandled_input(_key_event(KEY_B))
+	main._unhandled_input(_key_event(KEY_K))
 	main._unhandled_input(_key_event(KEY_F))
 	main._unhandled_input(_key_event(KEY_G))
+	main._unhandled_input(_key_event(KEY_R))
+	main._unhandled_input(_key_event(KEY_X))
+	main._unhandled_input(_key_event(KEY_T))
 	main.send({"throttle": 1.0})
 	var pressed: Dictionary = sim._last_command
-	check(pressed["red_light_assist_enabled"] == true and pressed["speed_limiter_enabled"] == false, "B turns the assist on; the limiter stays off")
-	check(pressed["interact"] == true and pressed["refuel"] == true, "F and G still ride on the next command")
+	check(pressed["red_light_assist_enabled"] == true and pressed["speed_limiter_enabled"] == false and pressed["lane_assist_enabled"] == true, "B/K turn the assists on; the limiter stays off")
+	check(pressed["interact"] and pressed["refuel"] and pressed["respawn"] and pressed["cancel_ride"] and pressed["reset_trip"], "F/G/R/X/T ride on the next command")
 	main.send({"throttle": 0.0})
 	var later: Dictionary = sim._last_command
 	check(later["speed_limiter_enabled"] == false and later["red_light_assist_enabled"] == true, "later commands keep both toggles")
 	check(later["interact"] == false and later["refuel"] == false, "F and G are sent once")
+	check(not later["respawn"] and not later["cancel_ride"] and not later["reset_trip"] and later["lane_assist_enabled"], "R/X/T are sent once; K stays on")
 	main._unhandled_input(_key_event(KEY_V))
 	main.send({})
 	check(sim._last_command["speed_limiter_enabled"] == true, "V again: the limiter back on")
