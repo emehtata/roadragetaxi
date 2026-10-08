@@ -310,6 +310,10 @@ def railway_state(railway_mgr, x: float, y: float, now) -> dict:
             "departures": calls(railway_mgr.next_departures(x, y, now, NEXT_TRAINS), "destination")}
 
 
+def _finite(value) -> Optional[float]:
+    return round(float(value), 2) if isinstance(value, (int, float)) and math.isfinite(value) else None
+
+
 def _finite_pair(vector) -> list:
     """[east, north] rounded to 1 mm/s; a non-finite component as 0."""
     return [round(v, 3) if math.isfinite(v) else 0.0 for v in vector]
@@ -410,7 +414,10 @@ def build_state_message(
                     "lightning_intensity": weather.lightning_intensity,  # 1 at a strike, fading (render/weather.py)
                     # For the client's weather audio (main()'s update_ambience): heavy rain, wind loops.
                     "is_thunderstorm": bool(weather.is_thunderstorm),
-                    "wind_vector_mps": _finite_pair(weather.wind_vector_mps)},
+                    "wind_vector_mps": _finite_pair(weather.wind_vector_mps),
+                    # Historical weather (main()'s): FMI "observed"/"forecast", else "generated"; the HUD's temperature.
+                    "source": getattr(weather, "weather_source", "generated"),
+                    "temperature_c": _finite(getattr(weather, "outside_temperature_c", None))},
         "road": _road_to_dict(current_way),
         # godot-16: the taxi's tyre mark this tick (kind rubber/dirt/sand/snow, intensity, front) or
         # null; which speed camera is flashing (its index in the chunks) or null.

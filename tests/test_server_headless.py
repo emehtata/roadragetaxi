@@ -14,7 +14,7 @@ pytestmark = pytest.mark.skipif(
 
 def _build_server(tmp_path, monkeypatch):
     monkeypatch.setenv("SDL_VIDEODRIVER", "dummy")
-    argv = ["prog", "--use-sample", "--no-menu"]
+    argv = ["prog", "--use-sample", "--no-menu", "--no-historical-weather"]
     monkeypatch.setattr(sys, "argv", argv)
     from theroadragetrip.server.cli import parse_server_args
     from theroadragetrip.server import SimulationServer
@@ -179,7 +179,7 @@ def test_speed_camera_notice_is_flagged_while_its_timer_runs(tmp_path, monkeypat
 def test_a_lightning_strike_sends_its_flash_and_one_thunder(tmp_path, monkeypatch):
     server = _build_server(tmp_path, monkeypatch)
     weather = server.world.weather
-    weather.update = lambda *args: None  # no weather of its own: the strike below is the only one
+    weather.update = lambda *args, **kwargs: None  # no weather of its own: the strike below is the only one
     server.tick(1.0 / 30.0)
     assert _state(server)["weather"]["lightning_intensity"] == 0.0
     weather.lightning_event_id += 1
@@ -471,8 +471,39 @@ def test_weather_audio_facts_cross_the_wire(tmp_path, monkeypatch):
     state = _state(server)["weather"]
     assert state["is_thunderstorm"] is True
     assert state["wind_vector_mps"] == [round(v, 3) for v in weather.wind_vector_mps]
-    assert set(state) == {"weather_type", "wetness", "lightning_intensity", "is_thunderstorm", "wind_vector_mps"}
+    assert set(state) == {"weather_type", "wetness", "lightning_intensity", "is_thunderstorm", "wind_vector_mps",
+                          "source", "temperature_c"}
     for vector in ((0.0, 0.0), (3.25, -7.5), (-12.0, 4.0), (float("nan"), float("inf"))):
         monkeypatch.setattr(type(weather), "wind_vector_mps", property(lambda self, v=vector: v))  # restored after the test
         wire = json.loads(json.dumps(_state(server)["weather"]))["wind_vector_mps"]
         assert wire == [v if v == v and abs(v) != float("inf") else 0.0 for v in vector]
+
+
+def test_historical_weather_drives_the_servers_weather_and_temperature(tmp_path, monkeypatch):
+    """main()'s historical weather on the server: the FMI hour replaces the
+    generated precipitation, its temperature reaches the state; off: generated
+    weather and the climate's typical temperature."""
+    from theroadragetrip.weather import WeatherType
+    from theroadragetrip.weather_history import HourlyWeather
+
+    server = _build_server(tmp_path, monkeypatch)
+    server.weather_history = None  # off (whatever the local config says)
+    server.tick(1.0 / 30.0)
+    assert _state(server)["weather"]["source"] == "generated"
+    assert isinstance(_state(server)["weather"]["temperature_c"], float)
+
+    class FakeHistory:
+        def request(self, start, end):
+            pass
+
+        def get(self, moment):
+            return HourlyWeather(temperature_c=-3.5, precipitation_mm=2.0, wawa=71)
+
+        def source_at(self, moment):
+            return "observed"
+
+    server.weather_history = FakeHistory()
+    server.tick(1.0 / 30.0)
+    weather = _state(server)["weather"]
+    assert weather["source"] == "observed" and weather["temperature_c"] == -3.5
+    assert server.world.weather.weather_type == WeatherType.SNOW

@@ -21,6 +21,8 @@ def parse_server_args():
     parser.add_argument("--game-mode", choices=["career", "gig_driver"], default="gig_driver")
     parser.add_argument("--language", choices=["en", "fi"], default=None)
     parser.add_argument("--list-cities", action="store_true", help=argparse.SUPPRESS)
+    parser.add_argument("--historical-weather", action=argparse.BooleanOptionalAction, default=None,
+                        help="FMI observed/forecast weather for the city and game time (default: config game.historical_weather)")
 
     args = parse_args(config, city_names=list(city_centers), parser=parser)
     args.no_menu = True  # a server can never show an interactive menu

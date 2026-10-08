@@ -3,7 +3,7 @@ extends RefCounted
 
 const FI := {
 	"choose_language": "VALITSE KIELI", "choose_start": "Valitse pelitapa", "career": "Ura",
-	"gig_driver": "Keikkakuski", "settings": "Asetukset", "quit": "Lopeta peli",
+	"gig_driver": "Keikkakuski", "settings": "Asetukset", "historical_weather": "Historiallinen sää (FMI)", "quit": "Lopeta peli",
 	"choose_city": "VALITSE KAUPUNKI", "drive": "Aloita", "back": "Takaisin",
 	"master_volume": "Kokonaisäänenvoimakkuus", "game_volume": "Peliäänet",
 	"environment_volume": "Ympäristöäänet", "ui_volume": "Käyttöliittymän äänet",

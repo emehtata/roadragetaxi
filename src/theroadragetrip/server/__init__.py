@@ -25,6 +25,7 @@ import logging
 import threading
 import time
 from datetime import date, datetime, timedelta
+from pathlib import Path
 from types import SimpleNamespace
 from typing import Optional
 
@@ -43,6 +44,9 @@ from ..simulation import RAGE_SHOUT_DURATION_S, PlayerCommand, advance_simulatio
 from ..physics import reset_trip, respawn_car
 from ..transport import Listener
 from ..weather import WeatherSystem
+from ..weather_history import WeatherHistory
+from ..osm import CACHE_DIR
+from ..climate import typical_temperature
 
 logger = logging.getLogger(__name__)
 
@@ -198,6 +202,18 @@ class SimulationServer:
         self.calendar = GameCalendar(datetime.combine(date.today(), datetime.min.time()) + timedelta(hours=18),
                                      latitude=getattr(self.world, "sun_latitude", 65.01))
         self.world.weather = WeatherSystem(season=self.calendar.season)
+        # Historical weather (main()'s, opt-in): FMI observations/forecast for
+        # this city and game time where known, generated weather otherwise.
+        historical = getattr(args, "historical_weather", None)
+        if historical is None:
+            historical = config.getboolean("game", "historical_weather", fallback=False)
+        self.weather_history = WeatherHistory(
+            getattr(self.world, "sun_latitude", 65.01), getattr(self.world, "sun_longitude", 25.47),
+            cache_path=Path(CACHE_DIR) / "weather_history.db") if historical else None
+        if self.weather_history is not None:
+            self.weather_history.request(self.calendar.current - timedelta(hours=6), self.calendar.current + timedelta(hours=48))
+            self.weather_history.wait_idle(3.0)  # brief: the first hour can be the real weather
+        self._update_outside()
 
         self._on_foot = True
         self._camx, self._camy = self.car.x, self.car.y
@@ -242,6 +258,20 @@ class SimulationServer:
 
         self._listener: Optional[Listener] = None
         self._running = False
+
+    def _update_outside(self):
+        """This game hour's FMI weather (None: generated) and the outside
+        temperature (observed, else the climate's typical), on the weather
+        for the state; queues the next 48 h in the background (cheap)."""
+        moment, weather = self.calendar.current, self.world.weather
+        observed = None
+        if self.weather_history is not None:
+            self.weather_history.request(moment, moment + timedelta(hours=48))
+            observed = self.weather_history.get(moment)
+        weather.weather_source = self.weather_history.source_at(moment) if self.weather_history is not None else "generated"
+        weather.outside_temperature_c = (observed.temperature_c if observed is not None and observed.temperature_c is not None
+                                         else typical_temperature(moment, self.calendar.latitude))
+        return observed
 
     def _tyre_mark(self, previous) -> Optional[dict]:
         """Whether the taxi lays a tyre mark this tick, and which, decided as
@@ -401,7 +431,9 @@ class SimulationServer:
         self.calendar.advance(dt * time_scale)
         if self.calendar.date != previous_date:
             self.world.weather.season = self.calendar.season  # main()'s _sync_thermal_season
-        self.world.weather.update(dt * time_scale, dt)
+        observed = self._update_outside()
+        self.world.weather.update(dt * time_scale, dt, outside_temperature_c=self.world.weather.outside_temperature_c,
+                                  observed=observed)
         if self.world.weather.lightning_event_id != self._lightning_event_id:  # a strike: thunder, once (as main())
             self.audio.play_group("weather.thunder", 0.8)
             self._lightning_event_id = self.world.weather.lightning_event_id
@@ -434,6 +466,7 @@ class SimulationServer:
             gig_odometer_file=self.gig_odometer_file,
             chosen_city=self.chosen_city,
             cities_list=self.cities_list,
+            outside_temperature_c=self.world.weather.outside_temperature_c,
             now=self.calendar.current,
         )
         self._tire_mark = self._tyre_mark(previous=(car_x, car_y))

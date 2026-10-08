@@ -199,6 +199,14 @@ func _settings_menu() -> void:
 			_game.set_language(_language))
 	_body.add_child(language)
 	_focusables.append(language)
+	var historical := CheckButton.new()  # Pygame's settings: FMI weather for the city and game time
+	historical.text = _t("historical_weather", "Historical weather (FMI)")
+	historical.button_pressed = _settings.get_value("game", "historical_weather", false)
+	historical.toggled.connect(func(on: bool):
+		_settings.set_value("game", "historical_weather", on)
+		_settings.save("user://settings.cfg"))
+	_body.add_child(historical)
+	_focusables.append(historical)
 	for item in [[_t("master_volume", "Master volume"), "Master"], [_t("game_volume", "Game volume"), "Game"], [_t("environment_volume", "Environment volume"), "Environment"], [_t("ui_volume", "UI volume"), "UI"]]:
 		var row := HBoxContainer.new()
 		var label := Label.new()
@@ -238,6 +246,8 @@ func _start(mode: String) -> void:
 		"-m", "theroadragetrip.server", "--port", str(PORT), "--game-mode", mode, "--language", _language]
 	if mode == "gig_driver":
 		args.append_array(["--preset", _city])
+	if _settings.has_section_key("game", "historical_weather"):  # else the server's config decides
+		args.append("--historical-weather" if _settings.get_value("game", "historical_weather") else "--no-historical-weather")
 	args.append_array(_server_extra)
 	_server_pid = OS.create_process("/usr/bin/env", args)
 	if _server_pid <= 0:
