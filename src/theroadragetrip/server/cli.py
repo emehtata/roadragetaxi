@@ -1,4 +1,5 @@
 import argparse
+from datetime import datetime
 
 from ..config import load_config, cities_from_config
 from ..main.cli import parse_args
@@ -21,6 +22,8 @@ def parse_server_args():
     parser.add_argument("--game-mode", choices=["career", "gig_driver"], default="gig_driver")
     parser.add_argument("--language", choices=["en", "fi"], default=None)
     parser.add_argument("--list-cities", action="store_true", help=argparse.SUPPRESS)
+    parser.add_argument("--start-time", type=datetime.fromisoformat, default=None,
+                        help="Gig game start, local YYYY-MM-DDTHH:MM, up to a year back (default: today 18:00)")
     parser.add_argument("--historical-weather", action=argparse.BooleanOptionalAction, default=None,
                         help="FMI observed/forecast weather for the city and game time (default: config game.historical_weather)")
 

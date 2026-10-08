@@ -18,6 +18,7 @@ var _loading := false
 var _focusables: Array[Control] = []
 var _back_action := Callable()
 var _logo: TextureRect
+var _start_time := {}  # the gig start (year, month, day, hour, minute), remembered
 var _back: CanvasLayer  # the backdrop and logo: hidden while the game runs
 
 
@@ -35,7 +36,10 @@ func _ready() -> void:
 	_cities = _server_query("--list-cities")
 	if _cities.is_empty():
 		_cities = ["Oulu"]
-	_city = _cities[0]
+	_city = _settings.get_value("gig", "city", _cities[0])  # the last gig city, remembered
+	if not _city in _cities:
+		_city = _cities[0]
+	_start_time = clamp_start(_settings.get_value("gig", "start", Time.get_datetime_dict_from_system()), Time.get_date_dict_from_system())
 	_build_shell()
 	for flag in ["--skip-menu", "--selftest", "--audiotest", "--inputtest", "--screenshot", "--bench"]:
 		if flag in command_line:
@@ -175,13 +179,85 @@ func _city_menu() -> void:
 	for city in _cities:
 		choices.add_item(str(city))
 	choices.selected = maxi(0, _cities.find(_city))
-	choices.item_selected.connect(func(index: int): _city = str(_cities[index]))
+	choices.item_selected.connect(func(index: int):
+		_city = str(_cities[index])
+		_settings.set_value("gig", "city", _city)
+		_settings.save("user://settings.cfg"))
 	_body.add_child(choices)
 	_focusables.append(choices)
-	_button(_t("drive", "Drive"), func(): _start("gig_driver"))
+	_button(_t("drive", "Drive"), _time_menu)
 	_button(_t("back", "Back"), _main_menu)
 	_back_action = _main_menu
 	_focus_menu()
+
+
+## Pygame's choose_start_datetime: year, month, day, hour and minute of the
+## gig's start, a calendar year back at most, no later than today.
+func _time_menu() -> void:
+	_clear()
+	_title(_t("start_time", "START TIME"), _city)
+	var fields := [["year", _t("year", "Year")], ["month", _t("month", "Month")], ["day", _t("day", "Day")],
+		["hour", _t("hour", "Hour")], ["minute", _t("minute", "Minute")]]
+	var spins := {}
+	for field in fields:
+		var row := HBoxContainer.new()
+		var label := Label.new()
+		label.text = field[1]
+		label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		row.add_child(label)
+		var spin := SpinBox.new()
+		spin.min_value = {"year": 1900, "month": 1, "day": 1, "hour": 0, "minute": 0}[field[0]]
+		spin.max_value = {"year": 9999, "month": 12, "day": 31, "hour": 23, "minute": 59}[field[0]]
+		spin.custom_minimum_size.x = 160
+		spins[field[0]] = spin
+		row.add_child(spin)
+		_body.add_child(row)
+		_focusables.append(spin.get_line_edit())
+	var show := func():
+		for key in spins:
+			spins[key].set_value_no_signal(_start_time[key])
+	for key in spins:
+		spins[key].value_changed.connect(func(value: float):
+			_start_time[key] = int(value)
+			_start_time = clamp_start(_start_time, Time.get_date_dict_from_system())
+			show.call())
+	show.call()
+	_button(_t("now", "Now"), func():
+		_start_time = clamp_start(Time.get_datetime_dict_from_system(), Time.get_date_dict_from_system())
+		show.call())
+	_button(_t("drive", "Drive"), func():
+		_settings.set_value("gig", "start", _start_time)
+		_settings.save("user://settings.cfg")
+		_start("gig_driver"))
+	_button(_t("back", "Back"), _city_menu)
+	_back_action = _city_menu
+	_focus_menu()
+
+
+## A start time inside [the same day a year ago, today] (startup_screens.py
+## _clamp_start_datetime; 29 February a year back is the 28th), the day
+## within its month.
+static func clamp_start(value: Dictionary, today: Dictionary) -> Dictionary:
+	var out := {}
+	for key in ["year", "month", "day", "hour", "minute"]:
+		out[key] = int(value.get(key, today.get(key, 0)))
+	out["month"] = clampi(out["month"], 1, 12)
+	out["hour"] = clampi(out["hour"], 0, 23)
+	out["minute"] = clampi(out["minute"], 0, 59)
+	var earliest := {"year": int(today["year"]) - 1, "month": int(today["month"]), "day": mini(int(today["day"]), _days_in(int(today["year"]) - 1, int(today["month"])))}
+	out["day"] = clampi(out["day"], 1, _days_in(out["year"], out["month"]))
+	var key := func(d: Dictionary) -> int: return int(d["year"]) * 10000 + int(d["month"]) * 100 + int(d["day"])
+	for limit in [[earliest, key.call(out) < key.call(earliest)], [today, key.call(out) > key.call(today)]]:
+		if limit[1]:
+			for part in ["year", "month", "day"]:
+				out[part] = int(limit[0][part])
+	return out
+
+
+static func _days_in(year: int, month: int) -> int:
+	if month == 2:
+		return 29 if (year % 4 == 0 and year % 100 != 0) or year % 400 == 0 else 28
+	return 30 if month in [4, 6, 9, 11] else 31
 
 
 func _settings_menu() -> void:
@@ -245,7 +321,7 @@ func _start(mode: String) -> void:
 	var args := ["PYGAME_HIDE_SUPPORT_PROMPT=1", "PYTHONPATH=" + root.path_join("src"), python,
 		"-m", "theroadragetrip.server", "--port", str(PORT), "--game-mode", mode, "--language", _language]
 	if mode == "gig_driver":
-		args.append_array(["--preset", _city])
+		args.append_array(["--preset", _city, "--start-time", "%04d-%02d-%02dT%02d:%02d" % [_start_time["year"], _start_time["month"], _start_time["day"], _start_time["hour"], _start_time["minute"]]])
 	if _settings.has_section_key("game", "historical_weather"):  # else the server's config decides
 		args.append("--historical-weather" if _settings.get_value("game", "historical_weather") else "--no-historical-weather")
 	args.append_array(_server_extra)

@@ -45,6 +45,7 @@ from ..physics import reset_trip, respawn_car
 from ..transport import Listener
 from ..weather import WeatherSystem
 from ..weather_history import WeatherHistory
+from ..main.startup_screens import _clamp_start_datetime
 from ..osm import CACHE_DIR
 from ..climate import typical_temperature
 
@@ -199,7 +200,10 @@ class SimulationServer:
         # date and the weather's season follow from it. The server starts
         # today at 18:00, as it always has; Pygame's career default is
         # another date, chosen on its start screen.
-        self.calendar = GameCalendar(datetime.combine(date.today(), datetime.min.time()) + timedelta(hours=18),
+        start = getattr(args, "start_time", None)  # the gig start picker's (Pygame's choose_start_datetime), a year back at most
+        if start is not None:
+            start = _clamp_start_datetime(start.replace(second=0, microsecond=0), date.today())
+        self.calendar = GameCalendar(start or datetime.combine(date.today(), datetime.min.time()) + timedelta(hours=18),
                                      latitude=getattr(self.world, "sun_latitude", 65.01))
         self.world.weather = WeatherSystem(season=self.calendar.season)
         # Historical weather (main()'s, opt-in): FMI observations/forecast for

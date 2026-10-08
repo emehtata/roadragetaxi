@@ -12,9 +12,9 @@ pytestmark = pytest.mark.skipif(
 )
 
 
-def _build_server(tmp_path, monkeypatch):
+def _build_server(tmp_path, monkeypatch, extra=()):
     monkeypatch.setenv("SDL_VIDEODRIVER", "dummy")
-    argv = ["prog", "--use-sample", "--no-menu", "--no-historical-weather"]
+    argv = ["prog", "--use-sample", "--no-menu", "--no-historical-weather", *extra]
     monkeypatch.setattr(sys, "argv", argv)
     from theroadragetrip.server.cli import parse_server_args
     from theroadragetrip.server import SimulationServer
@@ -507,3 +507,13 @@ def test_historical_weather_drives_the_servers_weather_and_temperature(tmp_path,
     weather = _state(server)["weather"]
     assert weather["source"] == "observed" and weather["temperature_c"] == -3.5
     assert server.world.weather.weather_type == WeatherType.SNOW
+
+
+def test_start_time_starts_the_calendar_clamped_to_a_year_back(tmp_path, monkeypatch):
+    """The gig start picker (Pygame's choose_start_datetime) via --start-time."""
+    from datetime import date, datetime, timedelta
+
+    picked = (datetime.now() - timedelta(days=40)).replace(hour=7, minute=15, second=0, microsecond=0)
+    server = _build_server(tmp_path, monkeypatch, ["--start-time", picked.isoformat()])
+    assert server.calendar.current == picked
+    assert _build_server(tmp_path, monkeypatch, ["--start-time", "2001-02-03T04:05"]).calendar.current.date() >= date.today() - timedelta(days=366)
