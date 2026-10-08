@@ -555,6 +555,8 @@ func test_speech_and_stations() -> void:
 	check(is_equal_approx(Instruments.speed_kmh(-5.0), 18.0) and Instruments.speed_kmh(100.0) == 210.0, "speedometer: |speed| in km/h, up to 210")
 	check(is_equal_approx(Instruments.speed_angle(0.0), deg_to_rad(135.0)) and is_equal_approx(Instruments.speed_angle(210.0), deg_to_rad(405.0)), "speedometer: 270 degrees from lower left")
 	var Startup := load("res://startup.gd")
+	check(Startup.map_source_args("pbf", "") == ["--osm-source", "pbf"] and Startup.map_source_args("pbf", "/maps/fi.osm.pbf") == ["--osm-source", "pbf", "--osm-pbf-path", "/maps/fi.osm.pbf"], "map source: a local .osm.pbf, its path when set")
+	check(Startup.map_source_args("overpass", "x") == ["--osm-source", "overpass"] and Startup.map_source_args("", "") == [], "map source: Overpass, or the server's config")
 	var today := {"year": 2026, "month": 10, "day": 8}
 	check(Startup.clamp_start({"year": 2026, "month": 3, "day": 5, "hour": 7, "minute": 15}, today) == {"year": 2026, "month": 3, "day": 5, "hour": 7, "minute": 15}, "start time: a date in the last year stays")
 	check(Startup.clamp_start({"year": 2024, "month": 1, "day": 1, "hour": 7, "minute": 0}, today).year == 2025 and Startup.clamp_start({"year": 2024, "month": 1, "day": 1, "hour": 7, "minute": 0}, today).month == 10, "start time: a year back at most")

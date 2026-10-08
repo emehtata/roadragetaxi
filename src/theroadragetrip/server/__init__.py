@@ -626,7 +626,9 @@ class SimulationServer:
                 index = ChunkIndex(self.world)
             finally:
                 self.world.street_light_points = previous  # the tick's own until the swap
-            self._map_growth = (lights, index, old_bounds, new_bounds, time.perf_counter() - started)
+            old_chunks = self._chunks_index._chunks  # compared here: seconds with big lakes in many chunks
+            changed = {cid for cid in set(old_chunks) | set(index._chunks) if old_chunks.get(cid) != index._chunks.get(cid)}
+            self._map_growth = (lights, index, changed, old_bounds, new_bounds, time.perf_counter() - started)
 
         self._map_streamer.hold = True
         threading.Thread(target=build, name="map-growth", daemon=True).start()
@@ -635,13 +637,11 @@ class SimulationServer:
         """Swap in the grown map's lamps and chunks; resend every chunk a
         client has whose content changed (new roads across the old edge,
         lamps, buildings...)."""
-        lights, index, old_bounds, new_bounds, build_s = self._map_growth
+        lights, index, changed, old_bounds, new_bounds, build_s = self._map_growth
         self._map_growth = None
-        old_index, self._chunks_index = self._chunks_index, index
+        self._chunks_index = index
         self.world.street_light_points = lights
         self._map_streamer.hold = False
-        changed = {cid for cid in set(old_index._chunks) | set(index._chunks)
-                   if old_index._chunks.get(cid) != index._chunks.get(cid)}
         with self._clients_lock:
             for connection, (loaded, _) in list(self._client_chunks.items()):
                 for cid in loaded & changed:

@@ -252,6 +252,16 @@ static func clamp_start(value: Dictionary, today: Dictionary) -> Dictionary:
 	return out
 
 
+## The server's map source options from the settings ("" source: the
+## server's own config decides).
+static func map_source_args(source: String, pbf_path: String) -> Array:
+	if source == "pbf":
+		return ["--osm-source", "pbf"] + (["--osm-pbf-path", pbf_path] if pbf_path != "" else [])
+	if source == "overpass":
+		return ["--osm-source", "overpass"]
+	return []
+
+
 static func _days_in(year: int, month: int) -> int:
 	if month == 2:
 		return 29 if (year % 4 == 0 and year % 100 != 0) or year % 400 == 0 else 28
@@ -281,6 +291,25 @@ func _settings_menu() -> void:
 		_settings.save("user://settings.cfg"))
 	_body.add_child(historical)
 	_focusables.append(historical)
+	var source := OptionButton.new()  # --osm-source: the map from Overpass, or a local .osm.pbf via osmium
+	source.add_item(_t("map_overpass", "Map data: Overpass (online)"))
+	source.add_item(_t("map_pbf", "Map data: local .osm.pbf file"))
+	source.selected = 1 if _settings.get_value("map", "osm_source", "overpass") == "pbf" else 0
+	_body.add_child(source)
+	_focusables.append(source)
+	var pbf_path := LineEdit.new()
+	pbf_path.placeholder_text = _t("pbf_default", "assets/osm/finland-latest.osm.pbf (default)")
+	pbf_path.text = _settings.get_value("map", "osm_pbf_path", "")
+	pbf_path.visible = source.selected == 1
+	pbf_path.text_changed.connect(func(text: String):
+		_settings.set_value("map", "osm_pbf_path", text.strip_edges())
+		_settings.save("user://settings.cfg"))
+	source.item_selected.connect(func(index: int):
+		_settings.set_value("map", "osm_source", "pbf" if index == 1 else "overpass")
+		_settings.save("user://settings.cfg")
+		pbf_path.visible = index == 1)
+	_body.add_child(pbf_path)
+	_focusables.append(pbf_path)
 	for item in [[_t("master_volume", "Master volume"), "Master"], [_t("game_volume", "Game volume"), "Game"], [_t("environment_volume", "Environment volume"), "Environment"], [_t("ui_volume", "UI volume"), "UI"]]:
 		var row := HBoxContainer.new()
 		var label := Label.new()
@@ -320,6 +349,7 @@ func _start(mode: String) -> void:
 		"-m", "theroadragetrip.server", "--port", str(PORT), "--game-mode", mode, "--language", _language]
 	if mode == "gig_driver":
 		args.append_array(["--preset", _city, "--start-time", "%04d-%02d-%02dT%02d:%02d" % [_start_time["year"], _start_time["month"], _start_time["day"], _start_time["hour"], _start_time["minute"]]])
+	args.append_array(map_source_args(_settings.get_value("map", "osm_source", ""), _settings.get_value("map", "osm_pbf_path", "")))
 	if _settings.has_section_key("game", "historical_weather"):  # else the server's config decides
 		args.append("--historical-weather" if _settings.get_value("game", "historical_weather") else "--no-historical-weather")
 	args.append_array(_server_extra)
