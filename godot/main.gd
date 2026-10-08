@@ -215,14 +215,15 @@ func _on_state(message: Dictionary) -> void:
 
 
 ## F12 (main/__init__.py): the window as screenshot_<ns>.png in Pygame's
-## folder (debug_tools._screenshot_directory). Pygame's JSON debug snapshot
-## is server state and isn't written here.
+## folder (debug_tools._screenshot_directory), and the server writes the
+## debug JSON (_write_debug_snapshot) beside it.
 func save_screenshot() -> String:
 	var path := screenshot_directory(OS.get_name(), OS.get_environment("USERPROFILE")).path_join(
 		"screenshot_%d.png" % int(Time.get_unix_time_from_system() * 1e9))
 	DirAccess.make_dir_recursive_absolute(path.get_base_dir())
 	var error := get_viewport().get_texture().get_image().save_png(path)
 	print("Screenshot " + (path if error == OK else "failed: %s" % error_string(error)))
+	sim.send_debug_snapshot(path.get_basename() + ".json")  # Pygame's debug JSON beside it, from the server
 	return path
 
 

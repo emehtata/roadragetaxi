@@ -550,3 +550,14 @@ def test_the_world_message_carries_the_start_sign(tmp_path, monkeypatch):
     message = protocol.build_world_message((0.0, 0.0), 250.0, "p1", "Oulu", forecast)
     assert message["city"] == "Oulu" and message["forecast"] == forecast
     assert server.car.engine_on is False
+
+
+def test_f12_debug_snapshot_is_written_by_the_server(tmp_path, monkeypatch):
+    import json
+
+    server = _build_server(tmp_path, monkeypatch)
+    path = tmp_path / "shots" / "screenshot_1.json"
+    server._debug_snapshots.append(str(path))
+    server.tick(1 / 30)
+    data = json.loads(path.read_text())
+    assert data and isinstance(data, dict)

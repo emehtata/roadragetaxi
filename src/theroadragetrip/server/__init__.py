@@ -22,6 +22,7 @@ from contextlib import nullcontext
 from dataclasses import replace
 
 import logging
+import os
 import threading
 import time
 from datetime import date, datetime, timedelta
@@ -194,6 +195,8 @@ class SimulationServer:
                     args.force_refresh, False,
                 )
         self.chosen_city = city_choice.chosen_city
+        self.bbox = city_choice.bbox  # the loaded box (the F12 debug JSON)
+        self.camera_city_name = city_choice.camera_city_name
         self.cities_list = city_choice.cities_list
         self.career = city_choice.career
 
@@ -262,6 +265,7 @@ class SimulationServer:
         self._pending_cancels = 0
         self._pending_trip_resets = 0
         self._road_rage = None  # the active shout: {"text", "timer"}
+        self._debug_snapshots: list = []  # F12: JSON paths to write on the next tick
         self._phone_requests: list = []  # edge-triggered like interacts: each one is applied once
 
         self._clients_lock = threading.Lock()
@@ -410,6 +414,9 @@ class SimulationServer:
                         self._pending_trip_resets += 1
                     if phone is not None:
                         self._phone_requests.append(phone)
+                    snapshot = message.get("debug_snapshot")  # F12 in the client: Pygame's screenshot JSON
+                    if isinstance(snapshot, str) and snapshot.endswith(".json"):
+                        self._debug_snapshots.append(snapshot)
         with self._clients_lock:
             before = len(self._clients)
             self._clients = [c for c in self._clients if not c.is_closed]
@@ -426,7 +433,33 @@ class SimulationServer:
             with self._command_lock:
                 self._latest_command = PlayerCommand()
 
+    def write_debug_snapshot(self, path: str) -> None:
+        """main()'s F12 JSON (debug_tools._write_debug_snapshot) for the
+        client's screenshot, from the server's world; the client's view is
+        the server's camera at its zoom."""
+        from ..main.debug_tools import _write_debug_snapshot
+        from ..render.common import get_viewport_bounds
+
+        w = self.world
+        try:
+            os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
+            _write_debug_snapshot(
+                path, self.car, w.taxi_mgr, w.auto_fetch_manager, self.args, self.bbox or w.auto_fetch_manager.get_bounds(),
+                get_viewport_bounds(self._camx, self._camy, px_per_m=self._px_per_m, margin_m=30.0),
+                self._camx, self._camy, self._px_per_m, self._current_way, w.ways, w.waters, w.buildings,
+                w.sceneries, w.places, w.taxi_stops, w.traffic_lights, w.crossings, w.elements_count,
+                w.traffic_mgr, w.pedestrian_mgr, w.spatial_grid, 0, self.chosen_city,
+                getattr(self, "camera_city_name", self.chosen_city), getattr(self.args, "game_mode", "gig_driver"),
+                self._on_foot, scenery_objects=w.scenery_objects, speed_bumps=w.speed_bumps, railways=w.railways,
+                railings=w.railings, npcs=w.npcs, npc_drivers=w.npc_drivers, npc_manager=w.npc_manager,
+            )
+            logger.info("Debug snapshot %s", path)
+        except Exception:  # a debugging aid: never take the game down
+            logger.exception("Debug snapshot %s failed", path)
+
     def tick(self, dt: float) -> None:
+        while self._debug_snapshots:
+            self.write_debug_snapshot(self._debug_snapshots.pop(0))
         self._apply_incoming_messages()
         self.audio.advance(dt)
 

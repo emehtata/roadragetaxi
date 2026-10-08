@@ -142,8 +142,19 @@ func send_phone(action: String, item_id: String, request_id: int) -> bool:
 	return true
 
 
-static func command_line(command: Dictionary, seq: int, player: String, phone: Dictionary = {}) -> String:
+## F12: the server writes Pygame's debug JSON (its world) at `path`.
+func send_debug_snapshot(path: String) -> bool:
+	if not connected:
+		return false
+	_seq += 1
+	_peer.put_data(command_line(_last_command, _seq, player_id, {}, path).to_utf8_buffer())
+	return true
+
+
+static func command_line(command: Dictionary, seq: int, player: String, phone: Dictionary = {}, debug_snapshot := "") -> String:
 	var message := {"type": "command", "version": PROTOCOL_VERSION, "seq": seq, "player_id": player, "command": command}
 	if not phone.is_empty():
 		message["phone"] = phone
+	if debug_snapshot != "":
+		message["debug_snapshot"] = debug_snapshot
 	return JSON.stringify(message) + "\n"
