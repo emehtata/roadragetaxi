@@ -7,13 +7,11 @@ docs/architecture/simulation-rendering.md for the full boundary writeup,
 including the one remaining (display-free) Pygame touchpoint here:
 `pygame.time.Clock` for tick pacing.
 
-Scope note: auto-fetch (live map expansion as the car nears the loaded
-bbox's edge) is disabled in server mode for this phase - the map-sync/
-tile-streaming pipeline still calls a loading-screen helper that assumes
-a Pygame display, and replicating that headlessly is left to a later
-pass. The server runs the same `advance_simulation` tick as the old
-single-process game otherwise; see the architecture doc's "Known
-limitations".
+Live map expansion (auto-fetch as the car nears the loaded bbox's edge):
+server/map_sync.py streams and merges tiles, runs main()'s map sync in
+budgeted steps, and the server resends the chunks that changed
+(--no-auto-fetch turns it off). The server runs the same
+`advance_simulation` tick as the old single-process game otherwise.
 """
 
 from __future__ import annotations
@@ -22,6 +20,7 @@ from contextlib import nullcontext
 from dataclasses import replace
 
 import logging
+import math
 import os
 import threading
 import time
@@ -35,6 +34,7 @@ import pygame
 from .. import protocol
 from ..navigation_route import NavigationRoute
 from ..map_chunks import CHUNK_SIZE_M, ChunkIndex, cell_of, plan
+from .map_sync import MapStreamer
 from ..protocol import LOCAL_PLAYER_ID
 from ..calendar import GameCalendar, darkness_for_sun_altitude, solar_altitude_and_events_on
 from ..career import career_path, gig_odometer_path, load_career
@@ -172,7 +172,9 @@ class SimulationServer:
         overpass_endpoints = get_overpass_endpoints(config)
         bus_stops_enabled = config.getboolean("game", "bus_stops", fallback=False)
         roadworks_enabled = config.getboolean("game", "roadworks_enabled", fallback=False)
-        args.auto_fetch = False  # see module docstring's scope note
+        # Loading never streams; the map grows while playing (map_sync.py).
+        self._auto_fetch = bool(getattr(args, "auto_fetch", True)) and not getattr(args, "use_sample", False)
+        args.auto_fetch = False
 
         if city_choice is None:
             if getattr(args, "game_mode", "gig_driver") == "career":
@@ -277,6 +279,8 @@ class SimulationServer:
         # irrelevant buckets; eagerly encoding all of them delayed startup.
         self._chunks_index = ChunkIndex(self.world)
         self._client_chunks: dict = {}
+        self._map_streamer = MapStreamer(self.world, self._map_grew) if self._auto_fetch else None
+        self._map_growth = None  # the background rebuild's result, swapped in by a tick
         self._server_time = 0.0
 
         self._listener: Optional[Listener] = None
@@ -578,6 +582,11 @@ class SimulationServer:
                     "train": f"{train.service.train_type} {train.service.number}" if train.service else None,
                 })
             railway_mgr.sound_events.clear()
+        if self._map_growth is not None:
+            self._apply_map_growth()
+        if self._map_streamer is not None:  # main(): auto-fetch near the edge, then map sync
+            self._map_streamer.tick(self.car.x, self.car.y, math.cos(self.car.heading) * self.car.speed,
+                                    math.sin(self.car.heading) * self.car.speed)
         self._stream_map_chunks()
         self.navigation.update(self.world, self.car, self._current_way)
         self._broadcast_state(should_stop=result.should_stop, city_summary=result.city_summary, events=events)
@@ -600,6 +609,47 @@ class SimulationServer:
             self.audio.play_group("ui.accept" if request["action"] == "accept" else "ui.reject", 0.6)
         return {"type": "phone_result", "action": request["action"], "item_id": request["item_id"],
                 "request_id": request["request_id"], "ok": ok, "reason": reason}
+
+    def _map_grew(self, old_bounds, new_bounds) -> None:
+        """A map sync finished: light the new roads and rebuild the chunks in
+        the background (seconds on a city; the streamer holds further merges
+        meanwhile, so the world stays as synced); _apply_map_growth swaps
+        them in on a later tick."""
+        def build():
+            started = time.perf_counter()
+            known = {(round(x, 1), round(y, 1)) for x, y, _, _ in self.world.street_light_points}
+            lights = list(self.world.street_light_points) + [
+                lamp for lamp in place_street_lights(self.world, outside=old_bounds)
+                if (round(lamp[0], 1), round(lamp[1], 1)) not in known]
+            self.world.street_light_points, previous = lights, self.world.street_light_points
+            try:
+                index = ChunkIndex(self.world)
+            finally:
+                self.world.street_light_points = previous  # the tick's own until the swap
+            self._map_growth = (lights, index, old_bounds, new_bounds, time.perf_counter() - started)
+
+        self._map_streamer.hold = True
+        threading.Thread(target=build, name="map-growth", daemon=True).start()
+
+    def _apply_map_growth(self) -> None:
+        """Swap in the grown map's lamps and chunks; resend every chunk a
+        client has whose content changed (new roads across the old edge,
+        lamps, buildings...)."""
+        lights, index, old_bounds, new_bounds, build_s = self._map_growth
+        self._map_growth = None
+        old_index, self._chunks_index = self._chunks_index, index
+        self.world.street_light_points = lights
+        self._map_streamer.hold = False
+        changed = {cid for cid in set(old_index._chunks) | set(index._chunks)
+                   if old_index._chunks.get(cid) != index._chunks.get(cid)}
+        with self._clients_lock:
+            for connection, (loaded, _) in list(self._client_chunks.items()):
+                for cid in loaded & changed:
+                    connection.send({"type": "chunk_unload", "version": protocol.PROTOCOL_VERSION, "chunk_id": cid})
+                    connection.send(self._chunks_index.encoded(cid))
+                self._client_chunks[connection] = (loaded, None)  # replan: the new area may be in reach
+        logger.info("Map grew %s -> %s: %d chunks changed, built in %.0f ms", old_bounds, new_bounds, len(changed),
+                    build_s * 1000.0)
 
     def _stream_map_chunks(self) -> None:
         """Each client gets the map chunks around the player it doesn't have
@@ -655,7 +705,7 @@ class SimulationServer:
                 next_tick = time.monotonic()  # fell behind; don't try to catch up in a burst
 
 
-def place_street_lights(world) -> list:
+def place_street_lights(world, outside=None) -> list:
     """Every street light of the map, placed once with Pygame's own
     placement (render/roads.py: explicit OSM lamps first, then lit roads at
     fixed spacing, clear of junctions and buildings) - Pygame runs it per
@@ -664,12 +714,16 @@ def place_street_lights(world) -> list:
     [(x, y, road direction, pool radius m)]."""
     from ..render import roads
 
-    points = [p for way in world.ways for p in way.points_m]
+    ways = world.ways
+    if outside is not None:  # a map that grew: only ways reaching out of the old bounds
+        minx, miny, maxx, maxy = outside
+        ways = [way for way in ways if any(not (minx <= x <= maxx and miny <= y <= maxy) for x, y in way.points_m)]
+    points = [p for way in ways for p in way.points_m]
     if not points:
         return []
     region = (min(p[0] for p in points), min(p[1] for p in points), max(p[0] for p in points), max(p[1] for p in points))
     work = roads._snapshot_street_light_job(
-        "server", region, world.ways, None, world.buildings, None,
+        "server", region, ways, None, world.buildings, None,
         getattr(world, "street_lamps", None), getattr(world, "street_lamp_grid", None),
     )
     while not roads._advance_street_light_prep(work):
