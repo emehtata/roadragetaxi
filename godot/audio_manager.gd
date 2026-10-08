@@ -27,6 +27,13 @@ var _streams: Dictionary = {}  # path -> AudioStream (loaded once)
 var _loops: Dictionary = {}  # key -> AudioStreamPlayer
 var _bus_of_category: Dictionary = {}
 var _last_variation: Dictionary = {}  # group -> index last picked, so a random pick never repeats it back to back (as audio.py)
+# godot-final-07: one voice (driver/passenger speech) and one station loudspeaker.
+const ANNOUNCEMENT_MAX_WAIT_MS := 20000  # station_announcer.py MAX_WAIT_S: a queued announcement older is dropped
+var package_root := ProjectSettings.globalize_path("res://").path_join("../src/theroadragetrip").simplify_path()
+var speech_player := AudioStreamPlayer.new()
+var announcer := AudioStreamPlayer2D.new()
+var announcements: Array = []  # waiting: [queued at ms, clip paths, world position]
+var _announcing: Array = []  # the clips still to play of the one on air
 
 
 func _ready() -> void:
@@ -37,6 +44,13 @@ func _ready() -> void:
 			AudioServer.set_bus_name(index, bus)
 			AudioServer.set_bus_send(index, "Master")
 	load_config(CONFIG_PATH)
+	speech_player.bus = "Game"
+	add_child(speech_player)
+	announcer.bus = "Game"
+	announcer.attenuation = 1.0
+	announcer.max_distance = _config.get("ranges_m", {}).get("railway.announcement", [60.0, 300.0])[1]
+	announcer.finished.connect(_next_clip)  # the next clip the moment one ends: no polling gaps
+	add_child(announcer)
 
 
 func load_config(path: String) -> void:
@@ -213,9 +227,90 @@ func loop_playing(key: String) -> bool:
 	return _loops.has(key) and _loops[key].playing
 
 
+## The recording of a server "speech" event, or "" for a malformed one: only
+## sounds/<driver|passenger>_chatter/<f|m>_<fi|en>_<hex hash>.wav, never a path from the wire.
+func speech_file(event: Dictionary) -> String:
+	var speaker = event.get("speaker")
+	var gender = event.get("gender")
+	var language = event.get("language")
+	var key = event.get("hash")
+	if not speaker in ["driver", "passenger"] or not gender in ["f", "m"] or not language in ["fi", "en"] \
+			or typeof(key) != TYPE_STRING or key.is_empty() or key.length() > 32 or not key.is_valid_hex_number():
+		return ""
+	return package_root.path_join("sounds/%s_chatter/%s_%s_%s.wav" % [speaker, gender, language, key])
+
+
+## Plays a "speech" event on the one voice; false (and silent) if it's
+## malformed, its recording is missing, or someone is already speaking.
+func speak(event: Dictionary) -> bool:
+	var path := speech_file(event)
+	if path == "" or speech_player.playing or not FileAccess.file_exists(path):
+		return false
+	var stream := _stream(path)
+	if stream == null:
+		return false
+	speech_player.stream = stream
+	speech_player.play()
+	played_groups["speech"] = played_groups.get("speech", 0) + 1
+	return true
+
+
+## A manifest clip under assets/railway_announcements, or "" (no traversal, no absolute paths).
+func announcement_file(clip) -> String:
+	if typeof(clip) != TYPE_STRING or clip.is_empty() or clip.begins_with("/") or ".." in clip or not clip.ends_with(".ogg"):
+		return ""
+	return package_root.path_join("assets/railway_announcements").path_join(clip)
+
+
+## Queues a whole "station_announcement" (station_announcer.py): its clips
+## play strictly in order on the one loudspeaker; one still waiting after 20 s is dropped.
+func announce(event: Dictionary) -> bool:
+	var clips = event.get("clips")
+	var at = event.get("at")
+	if not clips is Array or clips.is_empty() or not at is Array or at.size() != 2:
+		return false
+	var paths: Array = []
+	for clip in clips:
+		var path := announcement_file(clip)
+		if path == "":
+			return false
+		paths.append(path)
+	announcements.append([Time.get_ticks_msec(), paths, Vector2(float(at[0]), float(at[1]))])
+	if not announcer.playing and _announcing.is_empty():
+		_next_clip()
+	return true
+
+
+func _next_clip() -> void:
+	while _announcing.is_empty() and not announcements.is_empty():
+		var waiting: Array = announcements.pop_front()
+		if Time.get_ticks_msec() - int(waiting[0]) <= ANNOUNCEMENT_MAX_WAIT_MS:  # older: stale, the train is long gone
+			_announcing = waiting[1].duplicate()
+			announcer.position = MapMath.point(origin, waiting[2].x, waiting[2].y)
+	while not _announcing.is_empty():
+		var stream := _stream(_announcing.pop_front())
+		if stream != null:  # a missing clip is skipped, the rest still plays (as Pygame)
+			announcer.stream = stream
+			announcer.play()
+			played_groups["announcement_clips"] = played_groups.get("announcement_clips", 0) + 1
+			return
+
+
+## The voice and the loudspeaker stop (the simulation went away).
+func stop_voices() -> void:
+	speech_player.stop()
+	announcer.stop()
+	announcements.clear()
+	_announcing.clear()
+
+
 func _stream(path: String) -> AudioStream:
 	if not _streams.has(path):
-		var stream: AudioStream = AudioStreamOggVorbis.load_from_file(path) if path.ends_with(".ogg") else null
+		var stream: AudioStream = null
+		if path.ends_with(".ogg"):
+			stream = AudioStreamOggVorbis.load_from_file(path)
+		elif path.ends_with(".wav"):  # the chatter recordings (PCM WAV), decoded once
+			stream = AudioStreamWAV.load_from_file(path)
 		if stream == null:
 			push_warning("AudioManager: could not load %s" % path)
 		_streams[path] = stream

@@ -13,6 +13,11 @@ extends Control
 @onready var _hint: Label = %Hint
 
 var _meet := Label.new()  # render/menus.py draw_meet_panel
+var _subtitle := Label.new()  # render/hud.py comment_text: "Speaker: line" (godot-final-07)
+var _subtitle_until := 0  # real-time ms
+var _board := Label.new()  # render/hud.py draw_next_train (J)
+var _timetable_hint_shown := false  # main(): once a session, when the map first has timetabled stations
+var _timetable_hint_until := 0
 var _summary := Label.new()  # render/menus.py draw_city_summary: covers everything once the career city is done
 var _notice_style := StyleBoxFlat.new()
 
@@ -37,6 +42,30 @@ func _ready() -> void:
 	_summary.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	_summary.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	_summary.visible = false
+	var subtitle_style := StyleBoxFlat.new()
+	subtitle_style.bg_color = Color(0, 0, 0, 205.0 / 255.0)
+	subtitle_style.set_content_margin_all(8)
+	subtitle_style.content_margin_left = 17
+	subtitle_style.content_margin_right = 17
+	_subtitle.add_theme_stylebox_override("normal", subtitle_style)
+	_subtitle.add_theme_font_size_override("font_size", 20)
+	_subtitle.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_subtitle.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_subtitle.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
+	_subtitle.visible = false
+	add_child(_subtitle)
+	var board_style := _box(Color8(20, 25, 35, 210), Color8(120, 160, 220))
+	board_style.border_width_left = 1
+	board_style.border_width_right = 1
+	board_style.border_width_top = 1
+	board_style.border_width_bottom = 1
+	board_style.set_content_margin_all(6)
+	board_style.set_corner_radius_all(3)
+	_board.add_theme_stylebox_override("normal", board_style)
+	_board.add_theme_color_override("font_color", Color8(200, 225, 255))
+	_board.add_theme_font_size_override("font_size", 15)
+	_board.visible = false
+	add_child(_board)
 	add_child(_summary)  # last child: above the HUD rows
 	_notice_style = _box(Color8(20, 30, 40, 235), Color8(255, 200, 50))
 	_notice.add_theme_stylebox_override("normal", _notice_style)
@@ -72,6 +101,20 @@ func show_state(state: Dictionary, toggles := {}) -> void:
 	_meet.text = text["meet"]
 	_meet.visible = text["meet"] != ""
 	_hint.text = text["hint"]
+	var board := next_train_text(state.get("railway")) if toggles.get("next_train", false) else ""
+	_board.text = board
+	_board.visible = board != ""
+	if _board.visible:
+		_board.reset_size()
+		_board.position = Vector2(size.x - 10.0 - _board.size.x, 116.0)  # draw_next_train: top right under the limit sign
+	_layout_subtitle()
+	_subtitle.visible = Time.get_ticks_msec() < _subtitle_until
+	var railway = state.get("railway")
+	if not _timetable_hint_shown and railway is Dictionary and railway.get("stations") is Array and not railway["stations"].is_empty():
+		_timetable_hint_shown = true  # the client's own hint: it never overwrites the server's notices
+		_timetable_hint_until = Time.get_ticks_msec() + 6000
+	if Time.get_ticks_msec() < _timetable_hint_until and _hint.text != "":
+		_hint.text = "Train timetables available. Press J.   " + _hint.text
 
 
 ## Display text for one state. Every field is optional: a missing one shows
@@ -128,10 +171,65 @@ static func values(state: Dictionary, toggles := {}) -> Dictionary:
 	elif not player.get("engine_on", true):
 		text["hint"] = "E start the engine · F get out · P phone"
 	else:
-		text["hint"] = "WASD drive · SPACE road rage · F get out · E engine · G refuel · V limiter %s · B red-light assist %s · N navigation %s · L labels %s · P phone · C compass · +/- zoom" % [
+		text["hint"] = "WASD drive · SPACE road rage · F get out · E engine · G refuel · V limiter %s · B red-light assist %s · N navigation %s · L labels %s · J trains · P phone · C compass · +/- zoom" % [
 			"ON" if toggles.get("speed_limiter", true) else "OFF", "ON" if toggles.get("red_light_assist", false) else "OFF",
 			"ON" if toggles.get("navigation", false) else "OFF", ["OFF", "STREETS", "ALL"][clampi(int(toggles.get("labels", 0)), 0, 2)]]
 	return text
+
+
+## A server speech line: "<name or Driver/Passenger>: <text>" for its
+## duration in real seconds; a later one replaces it. No text: no subtitle.
+func show_subtitle(event: Dictionary) -> void:
+	var line := subtitle_text(event)
+	if line == "":
+		return
+	_subtitle.text = line
+	var duration = event.get("duration_s", 4.0)
+	_subtitle_until = Time.get_ticks_msec() + int(1000.0 * clampf(float(duration) if typeof(duration) in [TYPE_INT, TYPE_FLOAT] else 4.0, 0.0, 15.0))
+	_layout_subtitle()
+	_subtitle.visible = true
+
+
+static func subtitle_text(event: Dictionary) -> String:
+	var text = event.get("text")
+	if typeof(text) != TYPE_STRING or text == "":
+		return ""
+	var name = event.get("speaker_name")
+	var speaker: String = name if typeof(name) == TYPE_STRING and name != "" else ("Passenger" if event.get("speaker") == "passenger" else "Driver")
+	return "%s: %s" % [speaker, text]
+
+
+func _layout_subtitle() -> void:
+	if not _subtitle.visible and Time.get_ticks_msec() >= _subtitle_until:
+		return
+	_subtitle.custom_minimum_size = Vector2.ZERO
+	_subtitle.size = Vector2.ZERO
+	var width := minf(_subtitle.get_minimum_size().x, size.x - 40.0)
+	_subtitle.custom_minimum_size.x = width
+	_subtitle.reset_size()
+	_subtitle.position = Vector2((size.x - _subtitle.size.x) / 2.0, size.y - 82.0 - _subtitle.size.y / 2.0)  # hud.py: centred at height - 82
+
+
+## render/hud.py draw_next_train's board: the station, "Next trains:" and
+## "Departing trains:" (time, track, train, where from / to), "" when there's nothing.
+static func next_train_text(railway) -> String:
+	if not railway is Dictionary:
+		return ""
+	var lines := []
+	for section in [["arrivals", "Next trains", "origin"], ["departures", "Departing trains", "destination"]]:
+		var rows = railway.get(section[0])
+		if not rows is Array or rows.is_empty():
+			continue
+		lines.append(section[1] + ":")
+		for row in rows.slice(0, 5):
+			if not row is Dictionary:
+				continue
+			var track := str(row.get("track", ""))
+			lines.append("%s%s  %s %s %s" % [str(row.get("time", "--:--")), (" track " + track) if track != "" else "",
+				str(row.get("train_type", "")), str(row.get("number", "")), str(row.get(section[2], ""))])
+	if lines.is_empty():
+		return ""
+	return "\n".join([str(railway.get("nearest_station", ""))] + lines)
 
 
 func show_summary(text: String) -> void:

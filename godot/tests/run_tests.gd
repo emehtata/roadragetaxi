@@ -456,6 +456,7 @@ func test_commands_carry_the_player_id() -> void:
 	test_label_modes()
 	test_road_rage()
 	test_weather_presentation()
+	test_speech_and_stations()
 	# The limit sign (Wikimedia C32-60 / C32-100, Traficom numeral widths), at a digit height of 100.
 	var sixty: Array = Instruments.digit_layout("60")
 	check(is_equal_approx(sixty[0][1], 55.0 + 37.0 / 3.0) and is_equal_approx(sixty[1] * 3.0, 367.0), "60 as C32-60: 165 + 37 + 165")
@@ -465,6 +466,96 @@ func test_commands_carry_the_player_id() -> void:
 	for d in "1234567890":
 		check(not Instruments.digit_strokes(d).is_empty(), "digit %s has strokes" % d)
 	check(Instruments.digit_layout("120")[1] * 3.0 <= 490.0, "120 fits inside the red ring (radius 245)")
+
+
+## godot-final-07: speech, station announcements, station ambience, the J board.
+func test_speech_and_stations() -> void:
+	var audio: Node = load("res://audio_manager.gd").new()
+	root.add_child(audio)
+	var dir := DirAccess.open(audio.package_root.path_join("sounds/driver_chatter"))
+	var wav := ""
+	for file in dir.get_files():
+		if file.ends_with(".wav"):
+			wav = file
+			break
+	var parts := wav.get_basename().split("_")
+	var line := {"type": "speech", "speaker": "driver", "speaker_name": null, "gender": parts[0], "language": parts[1], "hash": parts[2],
+		"text": "Asiakas kyytiin.", "duration_s": 4.0}
+	check(audio.speech_file(line).ends_with("sounds/driver_chatter/" + wav), "a speech event names exactly one existing recording")
+	check(audio.speak(line) and audio.speech_player.playing and audio.speech_player.bus == "Game", "it plays on the one voice, the Game bus")
+	check(not audio.speak(line) and audio.played_groups["speech"] == 1, "never two lines at once")
+	for bad in [line.merged({"hash": "../../etc/passwd"}, true), line.merged({"speaker": "../x"}, true), line.merged({"gender": "x"}, true),
+			line.merged({"hash": "00000000deadbeef"}, true), {"type": "speech"}]:
+		check(audio.speech_file(bad) == "" or not FileAccess.file_exists(audio.speech_file(bad)), "a malformed or missing recording: nothing (%s)" % str(bad.get("hash")))
+	audio.stop_voices()
+	check(not audio.speech_player.playing, "stops on disconnect")
+	var announcement := {"type": "station_announcement", "clips": ["phrases/attention.ogg", "connectors/pause_medium.ogg", "train_types/intercity.ogg"],
+		"at": [10.0, 20.0], "text": "Hyvät matkustajat. InterCity"}
+	check(audio.announce(announcement), "an announcement is queued and starts")
+	check(audio.announcer.playing and audio._announcing == [audio.package_root.path_join("assets/railway_announcements/connectors/pause_medium.ogg"),
+		audio.package_root.path_join("assets/railway_announcements/train_types/intercity.ogg")], "its clips play in order on one player")
+	check(audio.announcer.position == MapMath.point(audio.origin, 10.0, 20.0) and audio.announcer.max_distance == 300.0, "from the station, heard to 300 m")
+	check(not audio.announce(announcement.merged({"clips": ["../../../secrets.ogg"]}, true)) and not audio.announce(announcement.merged({"clips": ["/abs.ogg"]}, true)), "no clip outside the announcement assets")
+	check(audio.announce(announcement) and audio.announcements.size() == 1, "a second one waits its turn, whole")
+	audio.announcements[0][0] -= 21000
+	audio._announcing.clear()
+	audio._next_clip()
+	check(audio.announcements.is_empty() and audio._announcing.is_empty(), "one waiting more than 20 s is dropped")
+	audio.stop_voices()
+	audio.free()
+
+	var hud_scene: Node = load("res://main.tscn").instantiate()
+	var hud: Control = hud_scene.get_node("Ui/Hud")
+	hud.owner = null
+	for child in hud.find_children("*", "", true, false):
+		child.owner = hud
+	hud.get_parent().remove_child(hud)
+	hud_scene.free()
+	root.add_child(hud)
+	check(Hud.subtitle_text({"speaker": "passenger", "speaker_name": "Aino", "text": "Hei"}) == "Aino: Hei" and Hud.subtitle_text({"speaker": "driver", "text": "Mennään"}) == "Driver: Mennään", "the passenger's name, else the speaker")
+	check(Hud.subtitle_text({"speaker": "passenger", "text": ""}) == "" and Hud.subtitle_text({}) == "", "no text: no subtitle")
+	hud.show_subtitle({"speaker": "passenger", "speaker_name": "Aino", "text": "Hei", "duration_s": 4.0})
+	check(hud._subtitle.visible and hud._subtitle.text == "Aino: Hei", "one subtitle shows")
+	hud._subtitle_until = Time.get_ticks_msec() - 1
+	hud.show_state({})
+	check(not hud._subtitle.visible, "gone after its duration")
+	var railway := {"nearest_station": "Oulu", "stations": [{"name": "Oulu", "x": 0.0, "y": 0.0, "waiting": 12}],
+		"arrivals": [{"time": "18:02", "train_type": "IC", "number": "28", "origin": "Rovaniemi", "track": "1"}],
+		"departures": [{"time": "18:08", "train_type": "IC", "number": "28", "destination": "Helsinki", "track": ""}]}
+	check(Hud.next_train_text(railway) == "Oulu\nNext trains:\n18:02 track 1  IC 28 Rovaniemi\nDeparting trains:\n18:08  IC 28 Helsinki", "the J board as draw_next_train")
+	var many := railway.duplicate(true)
+	for i in 8:
+		many["arrivals"].append(railway["arrivals"][0])
+	check(Hud.next_train_text(many).count("Rovaniemi") == 5, "five rows at most")
+	check(Hud.next_train_text({}) == "" and Hud.next_train_text(null) == "" and Hud.next_train_text({"arrivals": "x"}) == "", "nothing to show: no board")
+	hud.show_state({"railway": railway}, {"next_train": true})
+	check(hud._board.visible and hud._board.text.begins_with("Oulu"), "J on: the board")
+	hud.show_state({"railway": railway}, {"next_train": false})
+	check(not hud._board.visible, "J off: gone")
+	hud.queue_free()
+
+	var main: Node = load("res://main.tscn").instantiate()
+	root.add_child(main)
+	var sim: Node = main.get_node("SimClient")
+	main._unhandled_input(_key_event(KEY_J))
+	main.send({})
+	check(main.show_next_train and not sim._last_command.has("next_train") and not sim._last_command.has("j"), "J is local: no command")
+	main.phone.is_open = true
+	main._unhandled_input(_key_event(KEY_J))
+	check(main.show_next_train, "not while the phone is open")
+	main.free()
+	check(Hud.values({"on_foot": false, "player": {"engine_on": true}})["hint"].contains("J trains"), "the hint names J")
+
+	var range_m := [15.0, 150.0]
+	var stations := {"stations": [{"name": "A", "x": 0.0, "y": 0.0, "waiting": 30}, {"name": "B", "x": 40.0, "y": 0.0, "waiting": 6}, {"name": "C", "x": 5.0, "y": 0.0, "waiting": 0}]}
+	var crowd: Array = Main.station_ambience(stations, Vector2(100.0, 0.0), range_m)
+	check(crowd[1] == Vector2(0, 0) and is_equal_approx(crowd[0], 1.0), "the station heard loudest: busy A at 100 m (1.0 x 0.15) over quiet B at 60 m (0.2 x 0.25)")
+	check(Main.station_ambience(stations, Vector2(160.0, 0.0), range_m)[1] == Vector2(40, 0), "A out of earshot (160 m): quiet B")
+	check(Main.station_ambience(stations, Vector2(1000.0, 0.0), range_m)[1] == null and Main.station_ambience(stations, Vector2(1000.0, 0.0), range_m)[0] == 0.0, "nobody in earshot: silent")
+	check(Main.station_ambience(null, Vector2.ZERO, range_m)[0] == 0.0 and Main.station_ambience({"stations": [{"x": "a"}]}, Vector2.ZERO, range_m)[0] == 0.0, "older or malformed state: silent")
+	check(is_equal_approx(Main.heard(Vector2.ZERO, Vector2(30, 0), range_m), 0.5) and Main.heard(Vector2.ZERO, Vector2(150, 0), range_m) == 0.0, "audio.py's distance gain")
+	var cfg: Dictionary = JSON.parse_string(FileAccess.get_file_as_string("res://audio/audio_events.json"))
+	check(cfg["loops"]["station_crowd"]["variation"] == 0 and cfg["loops"]["station_luggage"]["variation"] == 1 and cfg["loops"]["station_crowd"]["positional"], "crowd and luggage loops, placed")
 
 
 ## godot-final-06: precipitation, ripples, splashes and weather audio (render/weather.py, weather.py, audio.py).

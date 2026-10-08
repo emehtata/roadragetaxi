@@ -77,6 +77,10 @@
     "pedestrian.curse": [
       3.0,
       40.0
+    ],
+    "railway.announcement": [
+      60.0,
+      300.0
     ]
   },
   "player_categories": [
@@ -128,6 +132,16 @@
     "wet_slush": {
       "group": "weather.wet_road",
       "variation": 1
+    },
+    "station_crowd": {
+      "group": "station.ambience",
+      "variation": 0,
+      "positional": true
+    },
+    "station_luggage": {
+      "group": "station.ambience",
+      "variation": 1,
+      "positional": true
     }
   }
 }

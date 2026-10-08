@@ -36,6 +36,7 @@ var _recent_events: Array = []
 var _command_timer := 0.0
 var _interact_pending := false
 var _refuel_pending := false  # G: one press, sent once (the server buys once per press)
+var show_next_train := false  # J (main()'s show_next_train): the nearest station's board, local only
 var _road_rage_pending := false  # SPACE: one press, sent once; the simulation decides if there's rage to spend
 var speed_limiter := true  # V (render/hud.py "V = limiter"): a session toggle, reported in every command
 var red_light_assist := false  # B: likewise
@@ -122,6 +123,8 @@ func _ready() -> void:
 				$Ui/NavOverlay.show_compass = true
 			"--navigation":  # godot-final-04: start with the route shown (N), for screenshots
 				$Ui/NavOverlay.show_route = true
+			"--next-train":  # godot-final-07: start with the J board shown, for screenshots
+				show_next_train = true
 			"--screenshot-drive":  # with --screenshot: get in and drive this many seconds first
 				_screenshot_drive = float(args[i + 1])
 	sim.world_received.connect(_on_world)
@@ -149,6 +152,7 @@ func _on_connection(up: bool) -> void:
 		entities.buffer.clear()
 		map_layer.clear()
 		audio.stop_loops()
+		audio.stop_voices()
 
 
 func _unload_chunk(chunk_id: String) -> void:
@@ -180,6 +184,9 @@ func _unhandled_input(event: InputEvent) -> void:
 				_interact_pending = true
 			KEY_G:
 				_refuel_pending = true
+			KEY_J:
+				if not phone.is_open:
+					show_next_train = not show_next_train
 			KEY_SPACE:
 				if not phone.is_open and not summary_shown:  # main(): never while the phone is open
 					_road_rage_pending = true
@@ -303,6 +310,13 @@ func _present(state: Dictionary) -> void:
 		if event.get("type") == "phone_result":
 			phone.handle_result(event)
 			continue
+		if event.get("type") == "speech":  # godot-final-07: the server chose the line; play it, subtitle it
+			if audio.speak(event):
+				hud.show_subtitle(event)
+			continue
+		if event.get("type") == "station_announcement":
+			audio.announce(event)
+			continue
 		audio.handle_event(event)
 		_recent_events.push_front(event.get("group", event.get("type", "?")))
 	_recent_events.resize(min(_recent_events.size(), 6))
@@ -348,9 +362,13 @@ func _present(state: Dictionary) -> void:
 	for key in loops:
 		audio.set_loop(key, loops[key])
 	_train_loop(state)
+	var crowd := station_ambience(state.get("railway"), Vector2(camera.position.x + entities.origin.x, entities.origin.y - camera.position.y),
+		audio._config.get("ranges_m", {}).get("station.ambience", [15.0, 150.0]))
+	audio.set_loop("station_crowd", crowd[0] * 0.6, 1.0, crowd[1])
+	audio.set_loop("station_luggage", crowd[0] * 0.4, 1.0, crowd[1])
 	if state.get("should_stop", false) and not summary_shown:
 		show_summary(state)
-	hud.show_state(state, {"speed_limiter": speed_limiter, "red_light_assist": red_light_assist, "navigation": nav_overlay.show_route, "labels": labels.mode})
+	hud.show_state(state, {"speed_limiter": speed_limiter, "red_light_assist": red_light_assist, "navigation": nav_overlay.show_route, "labels": labels.mode, "next_train": show_next_train})
 	instruments.show_state(state)
 	map_layer.set_wetness(state.get("weather", {}).get("wetness", 0.0) if override_wetness < 0.0 else override_wetness)
 	map_layer.set_px_per_m(camera.zoom.x)  # after the camera is placed; only reads its zoom
@@ -427,6 +445,33 @@ func show_summary(state: Dictionary) -> void:
 		if node != hud:
 			node.visible = false
 	hud.show_summary(Hud.summary_text(state))
+
+
+## audio.py spatial_levels' gain: full within `range[0]`, 1/distance
+## beyond, faded out over the last quarter of `range[1]`.
+static func heard(listener: Vector2, at: Vector2, range_m: Array) -> float:
+	var distance := listener.distance_to(at)
+	if distance >= range_m[1]:
+		return 0.0
+	return range_m[0] / maxf(range_m[0], distance) * minf(1.0, (range_m[1] - distance) / (0.25 * range_m[1]))
+
+
+## main()'s _play_rail_sounds station crowd: of the stations with people
+## waiting, the one heard loudest; [volume min(1, waiting / 30), world position].
+static func station_ambience(railway, listener: Vector2, range_m: Array) -> Array:
+	var best := [0.0, 0.0, null]  # heard, volume, at
+	if railway is Dictionary and railway.get("stations") is Array:
+		for station in railway["stations"]:
+			if not station is Dictionary or not typeof(station.get("waiting")) in [TYPE_INT, TYPE_FLOAT] or station["waiting"] <= 0:
+				continue
+			if not typeof(station.get("x")) in [TYPE_INT, TYPE_FLOAT] or not typeof(station.get("y")) in [TYPE_INT, TYPE_FLOAT]:
+				continue
+			var at := Vector2(station["x"], station["y"])
+			var volume := minf(1.0, station["waiting"] / 30.0)
+			var loud := volume * heard(listener, at, range_m)
+			if loud > best[0]:
+				best = [loud, volume, at]
+	return [best[1], best[2]]
 
 
 ## main()'s update_ambience weather layers from the server's state: rain
