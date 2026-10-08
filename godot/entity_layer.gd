@@ -297,6 +297,10 @@ static func drawn_as_vehicle(npc: Dictionary) -> bool:
 	return not npc.get("is_police", false) and not npc.get("is_on_foot", false) and npc.get("lod_level", 0) < 2
 
 
+static func is_reversing(speed: float) -> bool:
+	return speed < -0.05
+
+
 func _by_id(items: Array) -> Dictionary:
 	var found := {}
 	for item in items:
@@ -336,7 +340,7 @@ func _poly(points: PackedVector2Array, fill: Color, outline = null, width := -1.
 ## _draw_truck; two-wheelers are sprites in Pygame, a body and rider here),
 ## then its lamps (_draw_vehicle_lights).
 func _vehicle(c: Vector2, heading: float, length: float, width: float, color: Color, kind: String,
-		is_taxi: bool, engine_on: bool, braking: bool, turn_signal: String, signal_elapsed: float, fallen := false) -> void:
+		is_taxi: bool, engine_on: bool, braking: bool, reversing: bool, turn_signal: String, signal_elapsed: float, fallen := false) -> void:
 	length = maxf(length, _px(5.0))
 	width = maxf(width, _px(2.5))
 	var f := _forward(heading)
@@ -384,6 +388,9 @@ func _vehicle(c: Vector2, heading: float, length: float, width: float, color: Co
 		var scale := 1.2 if braking else 1.0
 		var tail := RS.BRAKE_LIGHT if braking else (RS.TAILLIGHT if engine_on else RS.TAILLIGHT_OFF)
 		_poly(_rect(rear, f, r, light_w * 0.5 * scale, -light_w * 0.5 * scale, light_len * 0.5 * scale), tail)
+	if reversing:
+		var rear := c - f * tip
+		_poly(_rect(rear, f, r, light_r * 0.325, -light_r * 0.325, light_len * 0.325), RS.REVERSE_LIGHT)
 	if turn_signal != "" and RS.signal_lit(signal_elapsed):
 		var signal_side := 1.0 if turn_signal == "right" else -1.0
 		for end: float in [1.0, -1.0]:
@@ -592,7 +599,7 @@ func _draw() -> void:
 	if player.get("engine_on", false):
 		_smoke(taxi_at, taxi.z, taxi_length, _clock, true)  # exhaust
 	_vehicle(taxi_at, taxi.z, taxi_length, player.get("width_m", 1.8), RS.TAXI_BODY, "car", true,
-		player.get("engine_on", false), player.get("braking", false), "", 0.0)
+		player.get("engine_on", false), player.get("braking", false), is_reversing(player.get("speed", 0.0)), "", 0.0)
 	var smoke_timer: float = a.get("taxi", {}).get("taxi_smoke_timer", 0.0)
 	if smoke_timer > 0.0:
 		_smoke(taxi_at, taxi.z, taxi_length, 5.0 - smoke_timer)
@@ -610,7 +617,7 @@ func _draw() -> void:
 		if not view_rect.has_point(c):
 			continue
 		_vehicle(c, p.z, npc["length_m"], npc["width_m"], _rgb(npc["color"]), npc.get("vehicle_type", "car"),
-			npc.get("is_taxi", false), npc.get("state", "") != "PARKED", false,
+			npc.get("is_taxi", false), npc.get("state", "") != "PARKED", false, is_reversing(npc.get("speed", 0.0)),
 			npc.get("turn_signal", ""), npc.get("turn_signal_elapsed", 0.0), npc.get("fallen", false))
 		var crashed: float = npc.get("crashed_timer", 0.0)
 		if crashed > 0.0:

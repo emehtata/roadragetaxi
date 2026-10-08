@@ -27,6 +27,9 @@ var _streams: Dictionary = {}  # path -> AudioStream (loaded once)
 var _loops: Dictionary = {}  # key -> AudioStreamPlayer
 var _bus_of_category: Dictionary = {}
 var _last_variation: Dictionary = {}  # group -> index last picked, so a random pick never repeats it back to back (as audio.py)
+var _foot_at := Vector2.INF
+var _foot_distance := 0.0
+const FOOTSTEP_M := 0.8
 # godot-final-07: one voice (driver/passenger speech) and one station loudspeaker.
 const ANNOUNCEMENT_MAX_WAIT_MS := 20000  # station_announcer.py MAX_WAIT_S: a queued announcement older is dropped
 var package_root := ProjectSettings.globalize_path("res://").path_join("../src/theroadragetrip").simplify_path()
@@ -162,6 +165,26 @@ func handle_event(event: Dictionary) -> void:
 		player.play()
 		played += 1
 		played_groups[action["group"]] = played_groups.get(action["group"], 0) + 1
+
+
+## Play local footsteps from actual interpolated movement, not key state.
+func update_footsteps(on_foot: bool, at: Vector2) -> void:
+	if not on_foot:
+		_foot_at = Vector2.INF
+		_foot_distance = 0.0
+		return
+	if _foot_at == Vector2.INF:
+		_foot_at = at
+		return
+	var moved := _foot_at.distance_to(at)
+	_foot_at = at
+	if moved > 5.0:  # respawn/teleport, not walking
+		_foot_distance = 0.0
+		return
+	_foot_distance += moved
+	if _foot_distance >= FOOTSTEP_M:
+		_foot_distance = fmod(_foot_distance, FOOTSTEP_M)
+		handle_event({"type": "sound", "group": "pedestrian.footsteps"})
 
 
 ## A continuous sound named in the config's "loops": on at `volume` (0

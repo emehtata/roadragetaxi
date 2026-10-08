@@ -132,6 +132,16 @@ def _state(server):
     )["state"]
 
 
+def test_train_state_omits_the_unused_label():
+    from types import SimpleNamespace
+
+    from theroadragetrip import protocol
+
+    train = SimpleNamespace(state="RUNNING", current_speed_mps=12.0,
+                            vehicles=lambda: [(1.0, 2.0, 0.5, 20.0, "locomotive")])
+    assert set(protocol._train_to_dict(train)) == {"id", "state", "speed", "cars"}
+
+
 def test_road_name_and_limit_follow_the_way_under_the_taxi(tmp_path, monkeypatch):
     """godot-11: Pygame's HUD rules - the OSM name, else the highway type;
     no road (and no limit) off-road."""
@@ -456,4 +466,3 @@ def test_weather_audio_facts_cross_the_wire(tmp_path, monkeypatch):
         monkeypatch.setattr(type(weather), "wind_vector_mps", property(lambda self, v=vector: v))  # restored after the test
         wire = json.loads(json.dumps(_state(server)["weather"]))["wind_vector_mps"]
         assert wire == [v if v == v and abs(v) != float("inf") else 0.0 for v in vector]
-

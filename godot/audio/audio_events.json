@@ -47,6 +47,12 @@
         "group": "vehicle.horn",
         "volume": 0.45
       }
+    ],
+    "pedestrian.footsteps": [
+      {
+        "group": "pedestrian.footsteps",
+        "volume": 0.5
+      }
     ]
   },
   "ranges_m": {
@@ -97,6 +103,9 @@
   "loops": {
     "engine": {
       "group": "vehicle.engine_idle"
+    },
+    "damaged_steam": {
+      "group": "vehicle.damaged_steam"
     },
     "train_running": {
       "group": "railway.train_running",

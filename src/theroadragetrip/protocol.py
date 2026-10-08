@@ -185,10 +185,8 @@ def _passenger_to_dict(passenger: Optional[TaxiPassenger]) -> Optional[dict]:
 
 
 def _train_to_dict(train) -> dict:
-    service = train.service
     return {
         "id": id(train),
-        "label": f"{service.train_type} {service.number}" if service is not None else "",
         "state": train.state,
         "speed": train.current_speed_mps,
         # Each vehicle, front first: x, y, heading, length, look (locomotive, restaurant, ...).
@@ -362,7 +360,7 @@ def build_state_message(
     *, tick: int, world, car, on_foot: bool, player_pedestrian, game_time_seconds: float,
     camx: float, camy: float, rage_power: float, water_elapsed: float,
     should_stop: bool = False, city_summary: Optional[tuple] = None, events: Optional[list] = None,
-    server_time: float = 0.0, player_id: str = LOCAL_PLAYER_ID, current_way=None, language: str = "en",
+    server_time: float = 0.0, current_way=None, language: str = "en",
     calendar: Optional[dict] = None, tire_mark: Optional[dict] = None, navigation: Optional[dict] = None,
     road_rage: Optional[dict] = None, railway: Optional[dict] = None,
 ) -> dict:
@@ -376,7 +374,6 @@ def build_state_message(
     state = {
         "fallen_trees": fallen_trees,  # [x, y, angle] (the way the taxi hit it)
         "knocked_posts": knocked_posts,  # [x, y, angle, kind]: bollards and street lamps lying flat
-        "player_id": player_id,  # whose `player` / `taxi` this is
         "game_time_seconds": game_time_seconds,
         # {"date": "YYYY-MM-DD", "time_scale": game s per real s, "sun_altitude_deg",
         #  "darkness": 0 day .. 1 night} - the server's calendar and sun (godot-14).

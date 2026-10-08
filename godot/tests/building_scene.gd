@@ -44,9 +44,9 @@ func _initialize() -> void:
 		[[92, 57, 48], 0, 10.0, [], STYLE_WALL, 3, 0],
 	]
 	var chunk := {"chunk_id": "0_0", "bounds": [-50, -50, 200, 150], "buildings": buildings, "building_styles": styles,
-		"roads": [{"points": [[-40, 22], [190, 22]], "half_width_m": 4.0, "kind": "primary", "drivable": true, "layer": 0},
-			{"points": [[-40, 62], [190, 62]], "half_width_m": 3.0, "kind": "residential", "drivable": true, "layer": 0},
-			{"points": [[50, -40], [50, 140]], "half_width_m": 3.0, "kind": "residential", "drivable": true, "layer": 0}],
+		"roads": [{"points": [[-40, 22], [190, 22]], "half_width_m": 4.0, "drivable": true, "layer": 0},
+			{"points": [[-40, 62], [190, 62]], "half_width_m": 3.0, "drivable": true, "layer": 0},
+			{"points": [[50, -40], [50, 140]], "half_width_m": 3.0, "drivable": true, "layer": 0}],
 		"canopies": [_box(130, 30, 20, 14)], "canopy_heights": [5.5]}
 	var map := MapLayer.new()
 	root.add_child(map)

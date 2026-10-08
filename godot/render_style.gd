@@ -15,6 +15,7 @@ const HEADLIGHT_OFF := Color8(120, 120, 108)  # ENGINE_OFF_HEADLIGHT_COLOR
 const TAILLIGHT := Color8(230, 30, 30)
 const TAILLIGHT_OFF := Color8(105, 28, 28)  # ENGINE_OFF_TAILLIGHT_COLOR
 const BRAKE_LIGHT := Color8(255, 0, 0)
+const REVERSE_LIGHT := Color8(245, 245, 235)
 const TURN_SIGNAL := Color8(255, 170, 20)
 const TURN_SIGNAL_PERIOD_S := 0.9  # on for the first half of each period
 const TRUCK_WINDSHIELD := Color8(35, 48, 58)

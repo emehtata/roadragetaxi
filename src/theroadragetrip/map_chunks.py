@@ -99,7 +99,7 @@ class ChunkIndex:
             # (map_level -1) stays in world.ways but is sent as a level road below.
             if len(way.points_m) >= 2 and getattr(way, "map_level", None) in SURFACE_MAP_LEVELS:
                 self._add("roads", way.points_m, {
-                    "points": _line(way.points_m), "half_width_m": way.half_width_m, "kind": way.highway or "",
+                    "points": _line(way.points_m), "half_width_m": way.half_width_m,
                     "drivable": bool(way.is_drivable), "layer": way.layer,
                     **static_world.road_style(way),  # colour, centre line, one-way, bridge (godot-16)
                 })

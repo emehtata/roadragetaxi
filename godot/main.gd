@@ -305,6 +305,7 @@ func _present(state: Dictionary) -> void:
 		debug_label.visible = false
 	var player: Dictionary = state["player_pedestrian"] if state.get("on_foot", false) else state["player"]
 	audio.player_at = Vector2(player["x"], player["y"])
+	audio.update_footsteps(state.get("on_foot", false), audio.player_at)
 	for event in entities.buffer.take_due_events(entities.now()):
 		events_presented += 1
 		if event.get("type") == "phone_result":
@@ -323,6 +324,7 @@ func _present(state: Dictionary) -> void:
 	var driving: bool = not state.get("on_foot", true) and state["player"].get("engine_on", false)
 	var speed: float = absf(state["player"].get("speed", 0.0))
 	audio.set_loop("engine", 0.6 if driving else 0.0, minf(1.0 + speed / 25.0, 2.2))
+	audio.set_loop("damaged_steam", 0.35 if state.get("taxi", {}).get("taxi_smoke_timer", 0.0) > 0.0 else 0.0)
 	var calendar = state.get("calendar")
 	var darkness: float = calendar.get("darkness", 0.0) if typeof(calendar) == TYPE_DICTIONARY else -1.0
 	var view := get_viewport().get_canvas_transform().affine_inverse() * get_viewport().get_visible_rect()

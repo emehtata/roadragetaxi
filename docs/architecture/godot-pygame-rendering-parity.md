@@ -113,7 +113,7 @@ polish. Complete rows have no priority.
 | Time | Seasons | grass, ice, trees by season | snow, ice, tree crowns (`calendar.season`) | COMPLETE | (details in the ground/landuse/water rows) | `calendar.season` | – | – |
 | Vehicle | Taxi body, roof sign, size | `render/vehicles.py` `draw_car` | `entity_layer.gd` `_vehicle` | COMPLETE | – | `player.length_m`, `width_m` | – | – |
 | Vehicle | Headlights, tail and brake lamps | `draw_car`, `draw_vehicle_lights` | `entity_layer.gd` | COMPLETE | – | `player.engine_on`, `braking` | – | – |
-| Vehicle | Reversing lamp (taxi, NPCs) | `_draw_vehicle_lights(reversing=speed < −0.05)` | – | GODOT RENDERING GAP | white lamp between the tail lamps not drawn | `player.speed`, npc `speed` | LOW | P3 |
+| Vehicle | Reversing lamp (taxi, NPCs) | `_draw_vehicle_lights(reversing=speed < −0.05)` | `entity_layer.gd` `_vehicle` | COMPLETE | – | `player.speed`, npc `speed` | – | – |
 | Vehicle | Exhaust, crash smoke | `draw_taxi_exhaust`, `draw_taxi_smoke` | `entity_layer.gd` `_smoke` | COMPLETE | – | `engine_on`, `taxi.taxi_smoke_timer` | – | – |
 | Vehicle | Night headlight beams | `draw_headlight_beams` | `night_layer.gd`, additive gradient beams (godot-lights-01) | COMPLETE | – | npcs, `player` | – | – |
 | Vehicle | Rage shout bubble ("PRKL!") | `draw_car(shout_timer, shout_text)` | `entity_layer.gd` `shout_for` + `_bubble` from `state.road_rage` (godot-final-05) | COMPLETE | – | server `_road_rage` | – | – |
@@ -195,8 +195,8 @@ polish. Complete rows have no priority.
 | Audio | Rain loop, heavy rain | `update_ambience` `rain`, `rain_heavy` | `main.gd` `weather_loops`: rain/slush 0.6, thunderstorm 0.7 (godot-final-06) | COMPLETE | – | `weather_type`, `is_thunderstorm` | – | – |
 | Audio | Wind, strong wind, wet tyres | `update_ambience` | `main.gd` `weather_loops` from `weather.wind_vector_mps`, wetness, speed (godot-final-06) | COMPLETE | – | `state.weather` | – | – |
 | Audio | Thunder | `weather.thunder` | server event | COMPLETE | – | `events` | – | – |
-| Audio | Damaged-taxi steam loop | `set_loop("steam", vehicle.damaged_steam)` | – | AUDIO GAP | loop not derived from `taxi_smoke_timer` | `taxi.taxi_smoke_timer` | LOW | P3 |
-| Audio | Footsteps on foot | `update_footsteps` | – | AUDIO GAP | loop not derived (on foot + player movement) | `on_foot`, player positions | LOW | P3 |
+| Audio | Damaged-taxi steam loop | `set_loop("steam", vehicle.damaged_steam)` | `main.gd` `damaged_steam` loop | COMPLETE | – | `taxi.taxi_smoke_timer` | – | – |
+| Audio | Footsteps on foot | `update_footsteps` | `audio_manager.gd` distance cadence | COMPLETE | – | `on_foot`, player positions | – | – |
 | Audio | Train running, brakes, doors, horn | `_play_rail_sounds` in `main()` | `main.gd` `train_running` loop; `train_arrived`/`train_departed` events | COMPLETE | – | `trains`, events | – | – |
 | Audio | Station ambience, crowd, luggage | `_play_rail_sounds` | `main.gd` `station_ambience`: the loudest station, two placed loops (godot-final-07) | COMPLETE | – | `state.railway.stations` | – | – |
 | Audio | Station announcements | `station_announcer.py` in `main()` | server `StationAnnouncer.event` → `station_announcement`; `audio_manager.gd` one loudspeaker, FIFO (godot-final-07) | COMPLETE | – | manifest clips | – | – |
@@ -251,7 +251,6 @@ Only presentation; the data is already in Godot:
   protocol data. Performance risk MEDIUM: full-screen particles on a
   fill-bound frame (godot-18).
 - **Splashes:** puddles and the taxi are known. MEDIUM (particles).
-- **Reversing lamp:** from the sign of `speed`. LOW.
 - **People and trains under canopies, outlined:** canopy polygons are in the
   chunks. LOW.
 - **Partial rows:**
@@ -278,8 +277,6 @@ The state or command field exists, but the UI is missing:
 |---|---|---|---|---|---|
 | Wind, strong wind | none | silent | `weather.wind` | none | logic + `wind_vector_mps` in the protocol |
 | Wet tyres | none | silent | `weather.wet_road` | none | logic (wetness, speed) |
-| Damaged steam | none | silent | `vehicle.damaged_steam` | none | logic (`taxi_smoke_timer`) |
-| Footsteps | none | silent | `pedestrian.footsteps` | none | logic (on foot, moving) |
 | Station ambience, crowd, luggage | none | silent | `station.ambience` | none | logic (near a station) |
 | Phone reject / new booking / missed booking / menu | `ui.phone_open` only | silent | `ui.reject`, `ui.booking_new`, `ui.booking_missed`, `ui.menu` | none | logic in `phone.gd` |
 | Engine throttle layers | one pitched loop | partial | `vehicle.engine_accelerate` (3), `engine_idle` | partial | layering by throttle |
@@ -1006,7 +1003,7 @@ in `render/*.py`. The Godot side is what `godot/` really draws:
 - `hud.gd`, `phone.gd`, and the F3 debug label in `main.gd`
 
 The Godot client gets only what `protocol.py` and `map_chunks.py` send:
-- **chunks:** `roads` (`points`, `half_width_m`, `kind`, `drivable`,
+- **chunks:** `roads` (`points`, `half_width_m`, `drivable`,
   `layer`), and `railways`, `waters`, `buildings` as bare polylines or
   polygons
 - **state:** `player`, `player_pedestrian`, `npcs`, `pedestrians`,
@@ -1112,7 +1109,7 @@ p95 47.3 → 33.2 ms, draw calls 4,315 → 1,743, memory 112 → 97 MiB; day
 | Player taxi | `draw_car` (sprite, taxi sign, door animation) | body, cabin, roof sign, lamps, own `length_m`/`width_m` — godot-07; no door-opening animation | partial | high | Pygame-specific implementation (door progress is a `main()` variable) | C |
 | Taxi headlights / taillights / brake lights | `draw_car`, `draw_vehicle_lights` | lamps from `engine_on`, `braking` (brake lamps 1.2× brighter red) — godot-07 | complete | medium | – (night glow: see headlight beams) | – |
 | Taxi turn signals | `draw_car` reads `getattr(car, "turn_signal", "")`, but the player `Car` has no turn signal: Pygame's taxi never blinks — godot-10 | – | not applicable | – | – | – |
-| Reversing lamp (taxi and NPCs) | `_draw_vehicle_lights(reversing=speed < −0.05)`: white lamp between the tail lights — godot-10 | – | missing | low | Godot rendering only (`speed` is sent for both) | A |
+| Reversing lamp (taxi and NPCs) | `_draw_vehicle_lights(reversing=speed < −0.05)`: white lamp between the tail lights — godot-10 | same threshold and placement in `entity_layer.gd` | complete | low | – | – |
 | Taxi exhaust / crash smoke | `draw_taxi_exhaust`, `draw_taxi_smoke` | 4 rising puffs from `engine_on` / `taxi_smoke_timer` — godot-07 | complete | low | – | – |
 | NPC vehicles | `draw_npc_cars` (type-specific sprites, taxi sign, police) | car/van with cabin and taxi sign, bus, truck as Pygame; two-wheelers as body + rider, not Pygame's sprites; police, on-foot, LOD ≥ 2 skipped as Pygame — godot-07 | partial | high | Godot rendering only (two-wheeler sprites) | B |
 | NPC turn signals | `draw_npc_cars` | amber corner lamps, `turn_signal_elapsed % 0.9 < 0.45` — godot-07 | complete | medium | – | – |
@@ -1310,9 +1307,8 @@ Every draw path from godot-07 is still called from `entity_layer._draw` and
 - **Taxi turn signals:** missing → **not applicable**. `draw_car` reads
   `getattr(car, "turn_signal", "")`, but the player `Car` has no such field
   (only `npc.py` has one), so Pygame's taxi never blinks either.
-- **Reversing lamp:** new row, **missing**. `_draw_vehicle_lights` draws
-  a white lamp when `speed < −0.05`; Godot draws none. `speed` is sent for
-  the taxi and NPCs.
+- **Reversing lamp:** now complete. Godot uses the same `speed < −0.05`
+  threshold for the taxi and NPCs.
 - **Parked vehicles:** partial → **complete**. Both clients draw them as
   NPCs by type, with lamps off for `state == "PARKED"`.
 - **Camera target:** partial → **different by design**. The camera follows
@@ -1386,7 +1382,7 @@ altitude isn't computed. In Pygame, all of these come from `main()`
 | Road colours by type | `kind` | **yes** | 2 colours | A | P2 |
 | Road markings | lanes/oneway | no | no | B | P2 |
 | Railway track style | rail polylines | **yes** | one dark line | A | P2 |
-| Reversing lamp | `speed` | **yes** | no | A | P3 |
+| Reversing lamp | `speed` | **yes** | yes | – | – |
 | Two-wheeler sprites | `vehicle_type` | **yes** | body and rider | A | P3 |
 | Rain and snow particles by type | `weather_type` | **yes** | no | A (intensity: B) | P2 |
 | Splashes | spawned in Pygame's `main()` (`weather.spawn_splash`) | – | no | E (client effect from taxi speed over its own puddles) | P3 |

@@ -128,7 +128,8 @@ def test_a_new_client_first_gets_the_map_then_states_with_trains_and_events(monk
     assert messages[-1]["type"] == "state"  # the map arrives before the state that needs it
     roads = [road for chunk in chunks for road in chunk["roads"]]
     assert roads and all(len(point) == 2 for point in roads[0]["points"])
-    assert {"half_width_m", "kind", "drivable"} <= set(roads[0])
+    assert {"half_width_m", "drivable"} <= set(roads[0])
+    assert "kind" not in roads[0]
 
     connection.send(protocol.build_command_message(PlayerCommand(), interact=True, seq=1))  # get in
     time.sleep(0.05)
@@ -236,7 +237,7 @@ def test_commands_carry_the_player_id_and_others_are_ignored(monkeypatch):
     server.tick(1.0 / 30.0)
     assert server._latest_command.throttle == 1.0
     state = [m for m in _all_messages(connection) if m["type"] == "state"][-1]
-    assert state["state"]["player_id"] == protocol.LOCAL_PLAYER_ID
+    assert "player_id" not in state["state"]  # sent once in the world header, not repeated at 30 Hz
     assert state["server_time"] > 0
     connection.close()
 

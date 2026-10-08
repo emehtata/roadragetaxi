@@ -477,7 +477,7 @@ class SimulationServer:
             camx=self._camx, camy=self._camy,
             rage_power=self._rage_power, water_elapsed=self._water_elapsed,
             should_stop=should_stop, city_summary=city_summary, events=events,
-            server_time=self._server_time, player_id=LOCAL_PLAYER_ID,
+            server_time=self._server_time,
             current_way=self._current_way, language=self.language, calendar=self.calendar_state(), tire_mark=self._tire_mark,
             navigation={"points": self.navigation.points}, road_rage=self._road_rage,
             railway=protocol.railway_state(getattr(self.world, "railway_mgr", None), self.car.x, self.car.y, self.calendar.current),

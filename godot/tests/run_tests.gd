@@ -199,6 +199,17 @@ func test_audio() -> void:
 	check(audio.loop_playing("engine"), "a loop starts")
 	audio.set_loop("engine", 0.0)
 	check(not audio.loop_playing("engine"), "and stops at volume 0")
+	audio.set_loop("damaged_steam", 0.35)
+	check(audio.loop_playing("damaged_steam"), "taxi damage starts the steam loop")
+	audio.set_loop("damaged_steam", 0.0)
+	var steps_before: int = audio.played_groups.get("pedestrian.footsteps", 0)
+	audio.update_footsteps(true, Vector2.ZERO)
+	audio.update_footsteps(true, Vector2(0.4, 0.0))
+	audio.update_footsteps(true, Vector2(0.9, 0.0))
+	check(audio.played_groups.get("pedestrian.footsteps", 0) == steps_before + 1, "on-foot distance plays one footstep per stride")
+	audio.update_footsteps(false, Vector2.ZERO)
+	audio.update_footsteps(true, Vector2(100.0, 100.0))
+	check(audio.played_groups.get("pedestrian.footsteps", 0) == steps_before + 1, "entering on foot or teleporting does not make a step")
 	audio.set_bus_volume("Game", 0.5)
 	check(is_equal_approx(AudioServer.get_bus_volume_db(AudioServer.get_bus_index("Game")), linear_to_db(0.5)), "bus volume")
 	audio.free()
@@ -293,6 +304,7 @@ func test_rendering() -> void:
 	check(Entities.drawn_as_vehicle(npc) and Entities.drawn_as_vehicle(npc.merged({"lod_level": 1})), "ordinary NPC vehicles are drawn")
 	check(not Entities.drawn_as_vehicle(npc.merged({"is_police": true})) and not Entities.drawn_as_vehicle(npc.merged({"is_on_foot": true}))
 		and not Entities.drawn_as_vehicle(npc.merged({"lod_level": 2})), "police, drivers on foot and the far LOD band are not")
+	check(Entities.is_reversing(-0.051) and not Entities.is_reversing(-0.05) and not Entities.is_reversing(1.0), "signed speed switches the reversing lamp at Pygame's threshold")
 
 
 func _release(code: Key) -> InputEventKey:
@@ -1209,8 +1221,8 @@ func test_rest_of_static_world() -> void:
 	root.add_child(map)
 	map.set_origin(Vector2(0, 0))
 	var message: Dictionary = JSON.parse_string(JSON.stringify({"chunk_id": "0_0", "bounds": [0, 0, 500, 500],
-		"roads": [{"points": [[0, 10], [200, 10]], "half_width_m": 4.0, "kind": "primary", "drivable": true, "layer": 0, "color": [80, 80, 80], "center": [110, 110, 110, 1]},
-			{"points": [[50, 0], [50, 100]], "half_width_m": 5.0, "kind": "primary", "drivable": true, "layer": 1, "color": [80, 80, 80], "bridge": true}],
+		"roads": [{"points": [[0, 10], [200, 10]], "half_width_m": 4.0, "drivable": true, "layer": 0, "color": [80, 80, 80], "center": [110, 110, 110, 1]},
+			{"points": [[50, 0], [50, 100]], "half_width_m": 5.0, "drivable": true, "layer": 1, "color": [80, 80, 80], "bridge": true}],
 		"railways": [[[0, 300], [100, 300]]], "rail_bridges": [[[0, 320], [100, 320]]], "rail_decks": [[[0, 318], [100, 318], [100, 322], [0, 322]]],
 		"waters": [], "buildings": [[[300, 300], [320, 300], [320, 310], [300, 310]]], "building_styles": [[[40, 63, 92], 1, 6.0, [[310, 300]]]],
 		"canopies": [[[400, 400], [410, 400], [410, 410], [400, 410]]],
