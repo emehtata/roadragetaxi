@@ -1072,13 +1072,39 @@ func test_obstacles() -> void:
 ## godot-14: night is the server's darkness, drawn as Pygame's tint; the
 ## client keeps no clock of its own.
 func test_day_night() -> void:
-	# The tint: render/hud.py draw_day_night_overlay's alpha.
-	check(Main.night_alpha(0.0, 40) == 0.0, "day: no tint")
-	check(Main.night_alpha(1.0, 40) == 115.0 / 255.0, "night in town: 115")
-	check(Main.night_alpha(0.5, 40) == 57.0 / 255.0, "dusk: half, truncated as Pygame's int()")
-	check(Main.night_alpha(1.0, 0) == 210.0 / 255.0 and Main.night_alpha(1.0, 6) == (115.0 + 47.0) / 255.0, "night in empty country: up to 95 darker")
-	check(Main.night_alpha(0.0, 0) == 0.0, "an empty view in daylight stays light")
-	check(Main.night_alpha(-1.0, 0) == 0.0, "an older server without a calendar: no tint")
+	# godot-lights-01: the light is a continuous function of the sun's altitude.
+	check(Daylight.ambient(30.0) == 1.0 and Daylight.artificial(30.0) == 0.0 and Daylight.ambient_color(30.0) == Color.WHITE, "full daylight: no darkening, no artificial light")
+	check(Daylight.ambient(-30.0) == 0.0 and Daylight.artificial(-30.0) == 1.0, "deep night: ambient at its floor, the lights full")
+	var night_blue := Daylight.ambient_color(-30.0)
+	check(night_blue.b > night_blue.r and night_blue.b > night_blue.g and night_blue.r > 0.1, "night is a cold blue, never black")
+	var low := Daylight.ambient(5.0)
+	check(low > 0.8 and low < 1.0 and Daylight.artificial(5.0) > 0.0 and Daylight.artificial(5.0) < 0.5, "a low sun: still bright, the lights starting to show")
+	var above := Daylight.ambient(0.01)
+	var below := Daylight.ambient(-0.01)
+	check(above > below and above - below < 0.005 and absf(Daylight.artificial(0.01) - Daylight.artificial(-0.01)) < 0.005, "no step at the horizon (0.02 degrees changes it by under 0.5 %)")
+	var previous_ambient := 2.0
+	var previous_lights := -1.0
+	var worst_step := 0.0
+	var monotonic := true
+	var altitude := 40.0
+	while altitude >= -40.0:
+		var a := Daylight.ambient(altitude)
+		var l := Daylight.artificial(altitude)
+		monotonic = monotonic and a <= previous_ambient + 1e-9 and l >= previous_lights - 1e-9
+		if previous_ambient <= 1.0:
+			worst_step = maxf(worst_step, maxf(absf(a - previous_ambient), absf(l - previous_lights)))
+			var colour_step := Daylight.ambient_color(altitude) - Daylight.ambient_color(altitude + 0.1)
+			worst_step = maxf(worst_step, maxf(absf(colour_step.r), maxf(absf(colour_step.g), absf(colour_step.b))))
+		previous_ambient = a
+		previous_lights = l
+		altitude -= 0.1
+	check(monotonic, "darker and more lights as the sun sinks, all the way down")
+	check(worst_step < 0.012, "no step anywhere: at most %.4f per 0.1 degree" % worst_step)
+	check(Daylight.ambient(-3.0) == Daylight.ambient(-3.0) and Daylight.artificial(2.0) == Daylight.artificial(2.0), "dusk and dawn are the same curve (a function of altitude alone)")
+	check(Daylight.altitude({"calendar": {"sun_altitude_deg": -4.5, "darkness": 0.9}}) == -4.5, "the server's altitude when it sends one")
+	check(is_equal_approx(Daylight.altitude({"calendar": {"darkness": 0.5}}), -3.0) and Daylight.altitude({}) == 90.0, "an older server: back from its darkness; none: daylight")
+	var main_source: String = (Main as Script).source_code
+	check(not main_source.contains("darkness > 0.25") and not main_source.contains("night_alpha"), "no day/night switch left in the light path")
 
 	# The HUD clock: the server's date, and * while game time runs 1:1.
 	var state := {"game_time_seconds": 18.0 * 3600.0 + 20.0 * 60.0, "calendar": {"date": "2026-10-05", "time_scale": 60.0, "darkness": 0.2}}
@@ -1087,16 +1113,6 @@ func test_day_night() -> void:
 	check(Hud.values(state)["clock"] == "2026-10-05 18:20 *", "real-time marker during a fare")
 	check(Hud.values({"game_time_seconds": 3600.0})["clock"] == "01:00", "no calendar: the time alone")
 
-	# Roads in view, each once though two chunks carry it.
-	var map := MapLayer.new()
-	root.add_child(map)
-	var road := {"points": [[490.0, 10.0], [510.0, 10.0]], "half_width_m": 3.0, "drivable": true}
-	var path := {"points": [[100.0, 100.0], [110.0, 100.0]], "half_width_m": 1.0, "drivable": false}
-	map.add_chunk(JSON.parse_string(JSON.stringify({"chunk_id": "0_0", "bounds": [0, 0, 500, 500], "roads": [road, path]})))
-	map.add_chunk(JSON.parse_string(JSON.stringify({"chunk_id": "1_0", "bounds": [500, 0, 1000, 500], "roads": [road]})))
-	check(map.count_drivable_roads(Rect2(400, -100, 200, 200)) == 1, "a road in two chunks counts once; a path not at all")
-	check(map.count_drivable_roads(Rect2(2000, 2000, 100, 100)) == 0, "nothing in view")
-	map.free()
 
 	# Lightning: the sent intensity, nothing of the client's own (shown above the tint).
 	var entities = load("res://entity_layer.gd").new()
@@ -1124,8 +1140,10 @@ func test_static_world() -> void:
 
 	# Night only; a knocked street lamp is dark; nothing collides (no physics nodes anywhere).
 	check(not map._pool_group.visible and not chunk._heads.visible, "by day the street lights are off")
-	map.set_lights_on(true)
-	check(map._pool_group.visible and chunk._heads.visible, "at night they are on")
+	map.set_light(0.5, Color(0.5, 0.5, 0.7))
+	check(map._pool_group.visible and chunk._heads.visible and is_equal_approx(map._pool_group.modulate.a, 0.5), "as the light fades they come on, as strong as the artificial light shows")
+	map.set_light(1.0, Color(0.15, 0.2, 0.34))
+	check(is_equal_approx(map._pool_group.modulate.a, 1.0), "at night, full")
 	check(map.lamp_near(Vector2(203, -200), 5.0) and not map.lamp_near(Vector2(203, -250), 5.0), "a working light is near")
 	map.set_obstacles([], JSON.parse_string("[[1200.0, 2200.0, 0.5, \"street_lamp\"]]"))
 	check(chunk._broken == PackedInt32Array([0]), "the knocked lamp's light goes dark")
@@ -1155,29 +1173,25 @@ func test_static_world() -> void:
 	check(EntityLayer2.oncoming(car, [car, [Vector2(30, 0), PI, 1.8, true]]), "a car 30 m ahead coming the other way dips the beams")
 	check(not EntityLayer2.oncoming(car, [car, [Vector2(30, 0), 0.0, 1.8, true]]), "one going the same way doesn't")
 
-	# Beams minus buildings: clipped where they meet one; one wholly inside is tinted again.
-	var beam := PackedVector2Array([Vector2(0, -5), Vector2(20, -5), Vector2(20, 5), Vector2(0, 5)])
-	var inside := PackedVector2Array([Vector2(8, -1), Vector2(10, -1), Vector2(10, 1), Vector2(8, 1)])
-	var across := PackedVector2Array([Vector2(15, -10), Vector2(30, -10), Vector2(30, 10), Vector2(15, 10)])
-	var clipped := NightLayer.clip_beams([beam], [[Rect2(8, -1, 2, 2), inside], [Rect2(15, -10, 15, 20), across], [Rect2(100, 100, 1, 1), inside]])
-	check(clipped[1] == [inside], "a building inside the beam is tinted again")
-	var right_edge := -INF
-	for piece in clipped[0]:
-		for point in piece:
-			right_edge = maxf(right_edge, point.x)
-	check(is_equal_approx(right_edge, 15.0), "the beam stops at the building it meets")
 
 	# Reflectors: not in the taxi's cone.
 	check(EntityLayer2.reflector_lit(Vector2(10, 0), Vector2.ZERO, 0.0), "ahead in the beam: lit, no reflector needed")
 	check(not EntityLayer2.reflector_lit(Vector2(-5, 0), Vector2.ZERO, 0.0) and not EntityLayer2.reflector_lit(Vector2(10, -8), Vector2.ZERO, 0.0), "behind or aside: the reflector shows")
 
-	# The night layer redraws only on a change.
+	# godot-final-09: one tint rectangle and every beam in one additive batch.
 	var night = NightLayer.new()
 	root.add_child(night)
-	night.show_night(0.4, Rect2(0, 0, 10, 10), [], [])
-	check(night.visible and night.alpha == 0.4, "night shown")
-	night.show_night(0.0, Rect2(0, 0, 10, 10), [], [])
-	check(not night.visible, "day: the layer is off")
+	var two_cars: Array = EntityLayer2.beam_polygons(Vector2.ZERO, 0.0, 1.8, 15.0) + EntityLayer2.beam_polygons(Vector2(0, 20), PI, 1.8, 45.0)
+	night.show_lights(1.0, Rect2(0, 0, 10, 10), two_cars)
+	check(night.visible and night.beam_triangles.size() == 4 * 6 and night.beam_points.size() == 4 * 4, "two cars, four lamps: four quads in one batch (the caps left out)")
+	check(night.beam_colors[0] == Color(NightLayer.BEAM, 1.0) and night.beam_colors[2] == Color(0, 0, 0, 1.0), "bright at the lamp, nothing at the far end")
+	check(night.get_child_count() == 1 and (night.beams.material as CanvasItemMaterial).light_mode == CanvasItemMaterial.LIGHT_MODE_UNSHADED, "one node; light the ambient multiply doesn't darken")
+	night.show_lights(0.5, Rect2(0, 0, 10, 10), two_cars)
+	check(night.beam_colors[0].is_equal_approx(Color(NightLayer.BEAM * 0.5, 1.0)) and night.beam_points.size() == 16, "half the light at dusk; the arrays reused")
+	night.show_lights(0.0, Rect2(0, 0, 10, 10), two_cars)
+	check(not night.visible and night.beam_triangles.is_empty(), "day: no beams")
+	var source: String = (NightLayer as Script).source_code
+	check(not source.contains("clip_polygons") and not source.contains("draw_rect"), "no tint polygon, no polygon booleans")
 	night.free()
 
 
@@ -1231,7 +1245,7 @@ func test_rest_of_static_world() -> void:
 		"under the bridge (layer 1) at layer 0: covered; on it or beside it: not")
 
 	# Underground: the level's roads, no street lights; the camera flash only where that camera is.
-	map.set_lights_on(true)
+	map.set_light(1.0, Color(0.15, 0.2, 0.34))
 	map.set_map_level(-3)
 	check(map.map_level == -3 and not map._pool_group.visible, "below ground: no street lights")
 	map.set_map_level(0)
@@ -1368,7 +1382,6 @@ func test_buildings_2_5d() -> void:
 	map.add_chunk(JSON.parse_string(JSON.stringify({"chunk_id": "1_0", "bounds": [500, 0, 1000, 500], "buildings": [[[510, 10], [530, 10], [530, 30], [510, 30]]], "building_styles": [style]})))
 	check(map._buildings.get_child(2) == map._chunks["0_0"].building_node, "radial order: the chunk nearest the view centre draws last")
 	map.remove_chunk("1_0")
-	check(map._chunks["0_0"].building_shapes()[0][1].size() >= 4, "headlights clip against the whole projected volume")
 	check(is_equal_approx(Detail.canopy_height(map._chunks["0_0"], map._chunks["0_0"]._data["canopies"][0]), 6.0), "a canopy is raised by its own height")
 	map.set_map_level(-3)
 	check(map._underground.z_index > map._buildings.z_index, "below ground the dark view covers the buildings")
@@ -1459,24 +1472,34 @@ func test_buildings_3d() -> void:
 		if tri.all(func(v): return is_equal_approx(v.x, tri[0].x)) and (is_equal_approx(tri[0].x, 0.0) or is_equal_approx(tri[0].x, 20.0)) and tri.any(func(v): return v.y > 10.0):
 			capped += 1
 	check(peaks >= 2 and capped >= 2, "both gable ends are closed up to the ridge (%d peaks, %d triangles)" % [peaks, capped])
-	check(B3.build([box], [[[92, 57, 48], 1, 10.0, [], [158, 105, 82], 3, 0]], Vector2.ZERO)["tops"] == [ridge], "a pitched roof's top is its ridge (headlight silhouette)")
-	# godot-23: canopies and headlight silhouettes project as the 3D camera does.
+	# godot-23: canopies project as the 3D camera does.
 	B3.view_centre = Vector2(30.0, -20.0)
 	B3.view_height = d
 	var lifted := B3.lift_point(Vector2(55.0, -20.0), 6.0)
 	check(lifted.is_equal_approx(B3.project(Vector3(55.0, 6.0, -20.0), B3.view_centre, d)) and lifted.x > 55.0, "a canopy corner 6 m up moves out from the view centre exactly as the 3D camera shows it")
 	check(B3.lift_point(Vector2(55.0, -20.0), 0.0).is_equal_approx(Vector2(55.0, -20.0)), "at ground level nothing moves")
-	var shape: Array = B3.silhouette(Geometry2D.convex_hull(box), 10.0)
-	var far_corner := B3.lift_point(Vector2(0.0, 10.0), 10.0)
-	check(shape[0].grow(1e-3).has_point(far_corner) and shape[0].grow(1e-3).has_point(Vector2(0.0, 10.0)), "the headlight silhouette covers the footprint and the projected roof")
 	B3.view_height = 0.0
 	MapChunk.buildings_3d = true
 	var map := MapLayer.new()
 	root.add_child(map)
 	map.add_chunk({"chunk_id": "3d", "bounds": [0, 0, 100, 100], "buildings": [[[0, 0], [20, 0], [20, 10], [0, 10]]],
 		"building_styles": [style]})
-	check(map.buildings_3d != null and map.buildings_3d.instance_count() >= 2, "a chunk's mesh and its occluder (and lit windows) join the 3D layer")
-	check(map.buildings_in(Rect2(-5, -15, 30, 20)).size() == 1, "headlights still clip at the footprint")
+	check(map.buildings_3d != null and map.buildings_3d.instance_count() >= 1, "a chunk's mesh (and its lit windows) join the 3D layer")
+	var lit_instances: Array = map.buildings_3d._view.get_children().filter(func(n): return n is MeshInstance3D and n.material_override == B3._shared["lit"])
+	check(map.buildings_3d._view.get_children().filter(func(n): return n is MeshInstance3D).all(func(n): return n.layers == B3.LAYER_BUILDINGS), "every instance is in the one building view (godot-final-09)")
+	check(map.buildings_3d.get_children().filter(func(n): return n is SubViewport).size() == 1 and map.buildings_3d.get_children().filter(func(n): return n is Sprite2D).size() == 1, "one viewport, one composite: no lit-window pass")
+	map.buildings_3d.set_light(0.0, Color.WHITE)
+	check(lit_instances.all(func(n): return not n.visible) and B3._shared["material"].albedo_color == Color.WHITE, "by day: the buildings as they are, the lit windows not drawn at all")
+	var dusk := Color(0.6, 0.65, 0.8)
+	map.buildings_3d.set_light(0.5, dusk)
+	check(B3._shared["material"].albedo_color == dusk and lit_instances.all(func(n): return n.visible), "the buildings take the ambient light in their own material")
+	check(B3._shared["lit"].albedo_color.is_equal_approx(B3.lit_color(0.0, dusk).lerp(Color.WHITE, 0.5)), "the windows half way to their own light")
+	map.buildings_3d.set_light(1.0, Color(0.15, 0.2, 0.34))
+	check(B3._shared["lit"].albedo_color.is_equal_approx(Color.WHITE) and lit_instances.size() <= 1, "fully lit at night, whatever the ambient; one lit mesh per chunk")
+	var window := B3.lit_color(0.0, Color.WHITE) * B3.WINDOW_LIT_NIGHT
+	check(window.is_equal_approx(Color(B25.WINDOW.r, B25.WINDOW.g, B25.WINDOW.b) * Color.WHITE) or absf(window.r - B25.WINDOW.r) < 0.01, "at level 0 a lit window looks like an ordinary one (no pop)")
+	check((map.buildings_3d._sprite.material as CanvasItemMaterial).light_mode == CanvasItemMaterial.LIGHT_MODE_UNSHADED, "the composite isn't darkened twice")
+	map.buildings_3d.set_light(0.0, Color.WHITE)
 	map.clear()
 	check(map.buildings_3d.instance_count() == 0, "a chunk's meshes go with it")
 	map.free()
@@ -1491,29 +1514,21 @@ func _on_outline(p: Vector2, polygon: PackedVector2Array) -> bool:
 
 
 func test_performance_paths() -> void:
-	# The night tint as polygons: the view minus the beams, no holes, nothing lost.
-	var view := Rect2(0, 0, 100, 60)
-	var beam := PackedVector2Array([Vector2(40, 20), Vector2(60, 20), Vector2(60, 40), Vector2(40, 40)])  # wholly inside
-	var pieces := NightLayer.tint_pieces(view, [beam])
-	check(not NightLayer.has_hole(pieces) and is_equal_approx(_area(pieces), 100.0 * 60.0 - 400.0), "tint = view minus a beam inside it, cut without holes")
-	var edge_beam := PackedVector2Array([Vector2(90, 0), Vector2(120, 0), Vector2(120, 10), Vector2(90, 10)])
-	check(is_equal_approx(_area(NightLayer.tint_pieces(view, [beam, edge_beam])), 6000.0 - 400.0 - 100.0), "two beams, one over the edge")
-	var reversed := beam.duplicate()
-	reversed.reverse()
-	check(is_equal_approx(_area(NightLayer.tint_pieces(view, [reversed])), 5600.0), "either winding (the hole test is about mixed orientations)")
-
-	# Light pools cut into disjoint pieces: their total is the union, so +22 is added once.
+	# godot-final-09: street-light pools are direct fans in one triangle list (no boolean union, no worker).
 	var positions := PackedVector2Array([Vector2(0, 0), Vector2(12, 0), Vector2(24, 0)])
 	var lights := [[0, 0, 0.0, 14.0], [12, 0, 0.0, 14.0], [24, 0, 0.0, 14.0]]
-	var parts := MapChunk.pool_union(positions, lights, PackedInt32Array())
-	var fans := MapChunk.pool_union(PackedVector2Array([positions[0]]), [lights[0]], PackedInt32Array())
-	check(parts.size() >= 3 and _area(parts) < 3.0 * _area(fans) - 1.0, "overlapping pools: pieces cover the union, not the sum")
-	var cross := 0.0
-	for i in parts.size():
-		for j in range(i + 1, parts.size()):
-			cross += _area(Geometry2D.intersect_polygons(parts[i], parts[j]))
-	check(cross < 0.01, "the pieces don't overlap (%.3f)" % cross)
-	check(MapChunk.pool_union(positions, lights, PackedInt32Array([1])).size() < parts.size() + 1, "a broken lamp's pool is left out")
+	var fans: Array = MapChunk.pool_fans(positions, lights, PackedInt32Array())
+	check(fans[0].size() == 3 * (2 * MapChunk.POOL_STEPS + 1) and fans[1].size() == 3 * MapChunk.POOL_STEPS * 9, "three lamps: three whole pools, overlapping as they are")
+	var far_point := 0.0
+	for k in range(MapChunk.POOL_STEPS + 1, 2 * MapChunk.POOL_STEPS + 1):
+		far_point = maxf(far_point, fans[0][k].length())
+	check(far_point <= 14.0 and far_point > 10.0, "each within its lamp's reach")
+	var broken: Array = MapChunk.pool_fans(positions, lights, PackedInt32Array([1]))
+	check(broken[0].size() == 2 * (2 * MapChunk.POOL_STEPS + 1) and not broken[0].has(Vector2(12, 0)), "a broken lamp leaves a dark gap")
+	var chunk_source: String = (MapChunk as Script).source_code
+	check(not chunk_source.contains("pool_union") and not chunk_source.contains("_pool_task"), "no boolean pool pieces, no dusk worker")
+	check(MapChunk.POOL_CORE.r > MapChunk.POOL_CORE.g and MapChunk.POOL_CORE.g > MapChunk.POOL_CORE.b and MapChunk.POOL_CORE.r * 2.5 < 1.0, "warm amber at the lamp, fading out; two or three overlapping stay amber, not white")
+	check(fans[2].size() == 3 and fans[2][1] == 2 * MapChunk.POOL_STEPS + 1, "the lamp points (bright) per pool")
 
 	# Roads, rails and water clipped to the chunk: only its own share.
 	var map := MapLayer.new()

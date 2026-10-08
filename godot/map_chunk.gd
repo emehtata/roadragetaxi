@@ -34,7 +34,6 @@ const Detail := preload("res://chunk_detail.gd")  # godot-16: the rest of the st
 const B25 := preload("res://buildings_25d.gd")
 const B3 := preload("res://buildings_3d.gd")
 const Perf := preload("res://perf.gd")
-const NightLayerScript := preload("res://night_layer.gd")
 const BRIDGE_Z_MAX := 3
 
 var _data: Dictionary = {}
@@ -57,7 +56,6 @@ var _trees: Node2D = null  # trees and bollards, if this chunk has any
 var _fallen: Dictionary = {}  # MapMath key -> angle, for this chunk's felled trees
 var _knocked: Dictionary = {}  # keys of this chunk's bollards lying flat
 var drivable_roads: Array = []  # [Rect2, key] per drivable road: the night tint counts them (main.gd)
-var _building_shapes = null  # [Rect2, PackedVector2Array], built on the first night beam (building_shapes())
 var street_lights := PackedVector2Array()  # positions, for reflectors and long beams
 var _pools := Node2D.new()
 var _heads := Node2D.new()
@@ -70,8 +68,6 @@ var _flash = null  # the flashing speed camera's id (state speed_camera_flash)
 
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_PREDELETE:  # light nodes of a chunk without lights never joined the tree
-		if _pool_task >= 0:
-			WorkerThreadPool.wait_for_task_completion(_pool_task)
 		if _building_task >= 0:
 			WorkerThreadPool.wait_for_task_completion(_building_task)
 		for node in [_pools, _heads, building_node] + meshes_3d:
@@ -136,10 +132,12 @@ func setup(message: Dictionary, origin: Vector2) -> void:
 			street_lights.append(MapMath.point(origin, light[0], light[1]))
 		var add := CanvasItemMaterial.new()
 		add.blend_mode = CanvasItemMaterial.BLEND_MODE_ADD
+		add.light_mode = CanvasItemMaterial.LIGHT_MODE_UNSHADED  # light, not lit: the ambient multiply leaves it be
 		_pools.material = add
 		_pools.draw.connect(_draw_light_pools.bind(_pools))  # MapLayer puts it in its pool group
 		_px_layers.append(_pools)
 		_px_layers.append(_add_layer(21, _draw_lamp_heads, _heads))
+		_heads.material = EMISSIVE
 		set_lights_on(false)
 	if not message.get("trees", []).is_empty() or not message.get("bollards", []).is_empty() or not message.get("scenery_objects", []).is_empty():
 		_trees = _add_layer(6, _draw_trees)
@@ -148,11 +146,14 @@ func setup(message: Dictionary, origin: Vector2) -> void:
 		_px_layers.append(_add_layer(8, _draw_fences))
 	if not message.get("fuel_stations", []).is_empty():
 		_px_layers.append(_add_layer(6, _draw_fuel_pumps))
-		_px_layers.append(_add_layer(13, _draw_fuel_boards))  # above the trains (z12)
+		var boards := _add_layer(13, _draw_fuel_boards)  # above the trains (z12)
+		boards.material = EMISSIVE  # lit price boards
+		_px_layers.append(boards)
 	if not message.get("roadworks", []).is_empty() or not message.get("taxi_stands", []).is_empty():
 		_px_layers.append(_add_layer(8, _draw_points))
 	if not message.get("traffic_lights", []).is_empty():
 		_lights = _add_layer(8, _draw_traffic_lights)
+		_lights.material = EMISSIVE  # the signals glow (godot-lights-01)
 		_px_layers.append(_lights)
 	if not message.get("signs", []).is_empty() or not message.get("speed_cameras", []).is_empty():
 		_signs = _add_layer(8, func(node: Node2D): Detail.draw_signs(self, node, _flash))
@@ -343,19 +344,6 @@ func label_candidates() -> Array:
 	return _label_candidates
 
 
-## Building outlines with their bounds, for clipping headlight beams: made
-## the first time a beam needs them (at night), then kept.
-func building_shapes() -> Array:
-	if _building_shapes == null:
-		_building_shapes = []
-		for hull in _volumes.get("hulls", []):  # the whole projected volume, not just the footprint (godot-17)
-			var box := Rect2(hull[0], Vector2.ZERO)
-			for point in hull:
-				box = box.expand(point)
-			_building_shapes.append([box, hull, _volumes.get("tops", [])[_building_shapes.size()] if buildings_3d else 0.0])
-	return _building_shapes
-
-
 var _volumes: Dictionary = {}  # buildings_25d.build: the chunk's buildings as triangle lists
 var building_node: Node2D = null  # drawn in MapLayer's building group (ordered far to near across chunks)
 var _lit_windows: Node2D = null  # the lit windows' glow, z 21 (over the night tint), additive
@@ -407,7 +395,7 @@ func _meshes_ready(arrays: Dictionary) -> void:
 		_building_task = -1
 	Perf.add("chunk_buildings_build", arrays.get("build_usec", 0))
 	meshes_3d = B3.meshes(arrays)
-	_volumes = {"hulls": arrays["hulls"], "tops": arrays["tops"], "stats": arrays["stats"]}  # the vertices live in the meshes
+	_volumes = {"stats": arrays["stats"]}  # the vertices live in the meshes
 	if is_inside_tree():
 		get_parent().add_building_meshes(self)
 var _building_task := -1
@@ -742,78 +730,64 @@ func _draw_railings(node: Node2D) -> void:
 
 
 ## render/roads.py draw_street_lights: each light's pool, a 270-degree fan
-## toward its road. Painted plain into MapLayer's pool group, which adds the
-## union onto the tinted scene once - overlapping pools don't add up, as in
-## Pygame's pool layer.
-## All of a chunk's pools (and heads) are one triangle array each: one draw
-## command instead of thousands.
+## toward its road, added onto the tinted scene. godot-final-09: the fans
+## go straight into one triangle array - one draw for the chunk - and simply
+## add where they overlap, at a low alpha so a dense junction stays a warm
+## pool rather than white. (They used to be boolean-cut into disjoint pieces
+## on a worker at dusk - up to 260 ms - and drawn as ~2,500 separate
+## polygons: ~7 ms a night frame on llvmpipe.) Broken lamps are left out.
+const POOL_CORE := Color(0.34, 0.23, 0.08)  # added at the lamp: warm amber (godot-lights-01)
+const POOL_MID := Color(0.11, 0.075, 0.025)  # the inner ring: a soft shoulder
+const POOL_EDGE := Color(0, 0, 0)  # ... fading to nothing at the reach
+const POOL_STEPS := 16
+const POOL_INNER := 0.32  # the inner ring's share of the pool
+const EMISSIVE := preload("res://emissive.tres")  # unshaded: lamps, signals and boards glow through the night
+
+
 func _draw_light_pools(node: Node2D) -> void:
-	if _pool_union == null or _pool_union_broken != _broken:
-		# godot-18: cut on a worker thread (up to ~160 ms for a dense chunk, and at
-		# dusk every chunk at once); the pools appear when it's done.
-		if _pool_task < 0:
-			_pool_union_broken = _broken.duplicate()
-			var positions := street_lights
-			var lights: Array = _data["street_lights"]
-			var broken := _pool_union_broken
-			_pool_task = WorkerThreadPool.add_task(func():
-				var started := Time.get_ticks_usec()
-				var pieces := pool_union(positions, lights, broken)
-				_pools_ready.call_deferred(pieces, Time.get_ticks_usec() - started))
-		if _pool_union == null:
-			return
-	for polygon in _pool_union:
-		if not Geometry2D.triangulate_polygon(polygon).is_empty():
-			node.draw_colored_polygon(polygon, Color8(22, 22, 22))
+	var fans := pool_fans(street_lights, _data.get("street_lights", []), _broken)
+	var colors := PackedColorArray()
+	colors.resize(fans[0].size())
+	for centre in fans[2]:  # per lamp: centre, POOL_STEPS inner ring points, POOL_STEPS outer
+		colors[centre] = POOL_CORE
+		for k in POOL_STEPS:
+			colors[centre + 1 + k] = POOL_MID
+			colors[centre + 1 + POOL_STEPS + k] = POOL_EDGE
+	if not fans[1].is_empty():
+		RenderingServer.canvas_item_add_triangle_array(node.get_canvas_item(), fans[1], fans[0], colors)
 
 
-var _pool_union = null  # the pools merged (godot-18), made at the first night, again when a lamp breaks
-var _pool_union_broken := PackedInt32Array()
-var _pool_task := -1  # the worker cutting the pools, or -1
-
-
-func _pools_ready(pieces: Array, usec: int) -> void:
-	WorkerThreadPool.wait_for_task_completion(_pool_task)
-	_pool_task = -1
-	_pool_union = pieces
-	Perf.add("pool_union", usec)
-	_pools.queue_redraw()
-
-
-## The chunk's light pools (render/roads.py: a 270-degree fan toward the
-## road) cut into disjoint pieces - each fan minus the earlier fans it
-## overlaps - so adding them all adds +22 once wherever pools overlap, as
-## Pygame's pool layer does. (Merging them into one union instead grew
-## polygons of thousands of points along lit streets: far too slow.) Where a
-## cut would leave a hole (a fan ringed by others) the fan stays whole and
-## adds twice there.
-static func pool_union(positions: PackedVector2Array, lights: Array, broken: PackedInt32Array) -> Array:
-	var fans: Array = []  # [polygon, bounds]
-	var pieces: Array = []
+## The working lamps' pools as one triangle list: [points, indices, each
+## pool's centre index]. A pool is a soft ellipse leaning toward its road
+## (the lamp's direction): a centre, an inner ring and an outer ring that
+## fades to nothing - no straight fan edges (render/roads.py: a 270-degree
+## fan; this reads as light, not a wedge).
+static func pool_fans(positions: PackedVector2Array, lights: Array, broken: PackedInt32Array) -> Array:
+	var points := PackedVector2Array()
+	var triangles := PackedInt32Array()
+	var centres := PackedInt32Array()
 	for i in positions.size():
-		if broken.has(i):
+		if broken.has(i) or i >= lights.size():
 			continue
 		var light: Array = lights[i]
-		var fan := PackedVector2Array([positions[i]])
-		for step in 17:
-			var angle: float = light[2] - deg_to_rad(135.0) + step * (deg_to_rad(270.0) / 16.0)
-			fan.append(positions[i] + Vector2(cos(angle), -sin(angle)) * float(light[3]))
-		var box := _box(fan)
-		var mine: Array = [fan]
-		for earlier in fans:
-			if not earlier[1].intersects(box):
-				continue
-			var next: Array = []
-			for piece in mine:
-				var cut := Geometry2D.clip_polygons(piece, earlier[0])
-				if NightLayerScript.has_hole(cut):
-					next.append(piece)  # would need a hole: keep it whole
-				else:
-					next.append_array(cut)
-			mine = next
-		pieces.append_array(mine)
-		fans.append([fan, box])
-	return pieces
+		var reach := float(light[3])
+		var along := Vector2(cos(light[2]), -sin(light[2]))  # toward the road
+		var across := Vector2(-along.y, along.x)
+		var middle: Vector2 = positions[i] + along * reach * 0.22
+		var centre := points.size()
+		centres.append(centre)
+		points.append(positions[i])
+		for ring in [POOL_INNER, 1.0]:
+			for k in POOL_STEPS:
+				var angle := TAU * k / POOL_STEPS
+				points.append(middle + (along * cos(angle) * 0.78 + across * sin(angle) * 0.62) * reach * ring)
+		for k in POOL_STEPS:
+			var next := (k + 1) % POOL_STEPS
+			var inner := centre + 1
+			var outer := centre + 1 + POOL_STEPS
+			triangles.append_array(PackedInt32Array([centre, inner + k, inner + next]))
+			triangles.append_array(PackedInt32Array([inner + k, outer + k, outer + next, inner + k, outer + next, inner + next]))
+	return [points, triangles, centres]
 
 
 static func _box(polygon: PackedVector2Array) -> Rect2:

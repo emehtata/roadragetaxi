@@ -114,12 +114,30 @@ func set_building_view(view_centre: Vector2) -> void:
 		_buildings.move_child(ordered[i], i)
 
 
-## Night windows follow the server's darkness (no redraw).
-func set_darkness(darkness: float) -> void:
+## godot-lights-01: how much artificial light shows (Daylight.artificial,
+## 0 by day .. 1 at night) and the ambient multiply - continuous, no redraw:
+## the pools fade in by their group's alpha, the buildings darken in their
+## own material (their composite is unshaded), the windows light up.
+var light_level := 0.0
+
+
+func set_light(level: float, ambient: Color) -> void:
 	if MapChunk.buildings_3d:
-		_layer_3d().set_darkness(darkness)
+		_layer_3d().set_light(level, ambient)
+	if is_equal_approx(level, light_level) and (level > 0.01) == lights_on:
+		return
+	light_level = level
+	if _pool_group != null:
+		_pool_group.modulate = Color(1, 1, 1, level)
+	var on := level > 0.01
+	if on != lights_on:
+		lights_on = on
+		if _pool_group != null:
+			_pool_group.visible = on and map_level == 0
+		for chunk in _chunks.values():
+			chunk.set_lights_on(on)
 	for chunk in _chunks.values():
-		chunk.set_darkness(darkness)
+		chunk.set_darkness(0.25 + 0.25 * level)  # the legacy 2D renderer's windows (--buildings 2d)
 
 
 ## A chunk and its street-light pools (which live in the pool group), gone now.
@@ -219,21 +237,6 @@ func _draw_knocked_posts() -> void:
 		_knocked_posts.draw_line(at, at + Vector2(cos(post[2]), -sin(post[2])) * length, Color8(88, 90, 92), maxf(2.0 / px_per_m, 0.25))
 
 
-## How many drivable roads reach into `view` (layer coordinates), each
-## counted once though it is in several chunks - Pygame's visible_road_count,
-## which darkens empty country at night. Only chunks overlapping the view
-## are looked at.
-func count_drivable_roads(view: Rect2) -> int:
-	var seen := {}
-	for chunk in _chunks.values():
-		if chunk._bounds_rect.size != Vector2.ZERO and not chunk._bounds_rect.intersects(view):
-			continue
-		for road in chunk.drivable_roads:
-			if road[0].intersects(view, true):
-				seen[road[1]] = true
-	return seen.size()
-
-
 ## The server's season weights (state calendar.season): ground, water and
 ## trees recolour - about once a game day.
 func set_season(weights: Array) -> void:
@@ -244,17 +247,6 @@ func set_season(weights: Array) -> void:
 		_ground.queue_redraw()
 	for chunk in _chunks.values():
 		chunk.set_season(season)
-
-
-## Street lights on at night (darkness > 0.25), off by day.
-func set_lights_on(on: bool) -> void:
-	if on == lights_on:
-		return
-	lights_on = on
-	if _pool_group != null:
-		_pool_group.visible = on and map_level == 0
-	for chunk in _chunks.values():
-		chunk.set_lights_on(on)
 
 
 ## Whether a working street light is within `radius` of `at` (layer
@@ -268,26 +260,6 @@ func lamp_near(at: Vector2, radius: float) -> bool:
 			if chunk.street_lights[i].distance_squared_to(at) <= radius * radius and not chunk._broken.has(i):
 				return true
 	return false
-
-
-## Building outlines reaching into `area` (layer coordinates), for the beams.
-func buildings_in(area: Rect2) -> Array:
-	var found: Array = []
-	for chunk in _chunks.values():
-		if chunk._bounds_rect.size != Vector2.ZERO and not chunk._bounds_rect.grow(200.0).intersects(area):
-			continue  # (a building is in each chunk it touches: 200 m covers one reaching in)
-		for building in chunk.building_shapes():
-			if not MapChunk.buildings_3d:
-				if building[0].intersects(area) and not found.any(func(f): return f[1] == building[1]):
-					found.append(building)
-				continue
-			# godot-23: the visible 3D volume. Its roof is the footprint scaled
-			# about the view centre, so the footprint box and its image bound it.
-			var roof := Rect2(Buildings3D.lift_point(building[0].position, building[2]), Vector2.ZERO).expand(Buildings3D.lift_point(building[0].end, building[2]))
-			if building[0].merge(roof).intersects(area) and not found.any(func(f): return f[2] == building[1]):
-				var shape := Buildings3D.silhouette(building[1], building[2])
-				found.append([shape[0], shape[1], building[1]])
-	return found
 
 
 ## 3D buildings: canopies in view project with the camera, so they redraw each frame.

@@ -69,8 +69,7 @@ var _last_frame_usec := 0  # frame-time accounting (godot-18): real time between
 var _bench := 0.0  # --bench SECONDS: drive-through measurement, then the report as JSON
 var _bench_left := 0.0
 var _bench_hide: PackedStringArray = []
-var _visible_roads := -1  # drivable roads in view (night tint), recounted every 0.1 s as Pygame does
-var _visible_roads_elapsed := 0.0
+var override_altitude := NAN  # --sun-altitude
 var override_night := -1.0  # >= 0: presentation override for the audio test (never sent to Python)
 var override_rain := -1.0
 var override_train_at := Vector2.INF
@@ -78,10 +77,12 @@ var override_wetness := -1.0  # audio test: a moving train here (presentation on
 
 
 var weather: Node = WeatherLayer.new()  # godot-final-06: precipitation, ripples, splashes
+var world_light := CanvasModulate.new()  # godot-lights-01: the ambient light, multiplied over the world canvas
 
 
 func _ready() -> void:
 	add_child(weather)
+	add_child(world_light)
 	weather.setup($Sky, map_layer)
 	entities.lamp_near = map_layer.lamp_near  # reflectors and long beams look up working street lights
 	entities.covered = map_layer.covered  # headlights under a higher road
@@ -109,6 +110,8 @@ func _ready() -> void:
 				_screenshot_path = args[i + 1]
 			"--wetness":  # presentation override for visual checks (never sent to Python)
 				override_wetness = float(args[i + 1])
+			"--sun-altitude":  # godot-lights-01 visual checks: the sun at this altitude (never sent to Python)
+				override_altitude = float(args[i + 1])
 			"--bench-hide":  # godot-18 profiling: hide layers ("z7,labels,...": chunk layers by z, or named groups)
 				_bench_hide = args[i + 1].split(",")
 			"--bench":  # godot-18: record SECONDS of frames once the simulation is here, print BENCH {json}, quit
@@ -276,9 +279,6 @@ func _process(delta: float) -> void:
 			RenderingServer.viewport_set_measure_render_time(view_3d, true)
 			Perf.add("render_3d_cpu", int(RenderingServer.viewport_get_measured_render_time_cpu(view_3d) * 1000.0))
 			Perf.add("render_3d_gpu", int(RenderingServer.viewport_get_measured_render_time_gpu(view_3d) * 1000.0))
-			var lit_3d: RID = map_layer.buildings_3d._lit_view.get_viewport_rid()  # godot-23: the night's lit-window pass
-			RenderingServer.viewport_set_measure_render_time(lit_3d, true)
-			Perf.add("render_3d_lit_cpu", int(RenderingServer.viewport_get_measured_render_time_cpu(lit_3d) * 1000.0))
 	if _bench > 0.0 and not state.is_empty():
 		_bench_left -= delta
 		if _bench_left <= 0.0:
@@ -326,27 +326,19 @@ func _present(state: Dictionary) -> void:
 	var calendar = state.get("calendar")
 	var darkness: float = calendar.get("darkness", 0.0) if typeof(calendar) == TYPE_DICTIONARY else -1.0
 	var view := get_viewport().get_canvas_transform().affine_inverse() * get_viewport().get_visible_rect()
-	_visible_roads_elapsed += get_process_delta_time()
-	if darkness > 0.0 and _visible_roads_elapsed >= 0.1:
-		_visible_roads_elapsed = 0.0
-		_visible_roads = map_layer.count_drivable_roads(view)
 	if typeof(calendar) == TYPE_DICTIONARY:
 		map_layer.set_season(calendar.get("season", []))
-	# Street lights, beams and reflectors at the server's darkness and sun (render/roads.py, vehicles.py, pedestrians.py).
-	map_layer.set_lights_on(darkness > 0.25)
-	map_layer.set_darkness(maxf(darkness, 0.0))  # lit windows (godot-17)
+	# godot-lights-01: the world's light from the sun's altitude, continuously - the
+	# ambient multiply (CanvasModulate: no fill) and how strongly the lights show.
+	var altitude := Daylight.altitude(state) if is_nan(override_altitude) else override_altitude
+	var ambient := Daylight.ambient_color(altitude)
+	var lights := Daylight.artificial(altitude)
+	if not ambient.is_equal_approx(world_light.color):
+		world_light.color = ambient
+	map_layer.set_light(lights, ambient)
 	entities.reflectors_on = typeof(calendar) == TYPE_DICTIONARY and calendar.get("sun_altitude_deg", 90.0) < -7.5
-	var lit := [[], []]
 	var night_started := Time.get_ticks_usec()
-	if darkness > 0.25:
-		var beams: Array = entities.headlight_beams()
-		if not beams.is_empty():
-			var box := Rect2(beams[0][0], Vector2.ZERO)
-			for beam in beams:
-				for point in beam:
-					box = box.expand(point)
-			lit = NightLayer.clip_beams(beams, map_layer.buildings_in(box.grow(8.0)))
-	night.show_night(night_alpha(darkness, _visible_roads), view, lit[0], lit[1])
+	night.show_lights(lights, view, entities.headlight_beams() if lights > 0.01 else [])
 	Perf.add("night_beams", Time.get_ticks_usec() - night_started)
 	var lightning: float = entities.lightning_now()
 	if not is_equal_approx(flash.color.a, lightning):
@@ -391,16 +383,6 @@ func _present(state: Dictionary) -> void:
 	nav_overlay.update_view(target, target_screen, camera_world, state["player"].get("heading", 0.0))
 	if debug_label.visible:
 		_update_debug(state)
-
-
-## render/hud.py draw_day_night_overlay: dark blue at 115 x darkness, up
-## to 95 more where fewer than 12 drivable roads are in view (no street
-## lighting out there). 0..1 alpha; darkness < 0 (no calendar) is none.
-static func night_alpha(darkness: float, visible_roads: int) -> float:
-	var alpha := int(115.0 * maxf(darkness, 0.0))
-	if visible_roads >= 0 and alpha > 0:
-		alpha += int(95.0 * clampf((12.0 - visible_roads) / 12.0, 0.0, 1.0))
-	return alpha / 255.0
 
 
 ## The nearest moving train rumbles from where it is (Pygame mixes the

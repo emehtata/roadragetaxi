@@ -90,7 +90,7 @@ polish. Complete rows have no priority.
 | World | Bus stops | `draw_bus_stops` | `chunk_detail.gd` `draw_bus_stops` | COMPLETE | – | chunk `bus_stops` | – | – |
 | World | Buildings: shapes, heights, pitched roofs | `render/buildings.py` `draw_buildings` (2.5D) | `buildings_3d.gd` 3D layer (gables closed, godot-23) | DIFFERENT BY DESIGN | – | chunk `buildings`, `building_styles` | – | – |
 | World | Building windows and doors | `draw_buildings` facades | `buildings_3d.gd` `_windows`, `_doors` | COMPLETE | – | `building_styles` floors, category, entrances | – | – |
-| World | Night windows | `draw_illuminated_windows` | `buildings_3d.gd` lit pass at z 21 | COMPLETE | – | `calendar.darkness` | – | – |
+| World | Night windows | `draw_illuminated_windows` | `buildings_3d.gd` lit windows (godot-lights-01) | COMPLETE | – | `calendar.sun_altitude_deg` | – | – |
 | World | Open-roof canopies | `draw_open_roof_overlays` | `chunk_detail.gd` `draw_canopies`, 3D projection | COMPLETE | – | chunk `canopies`, `canopy_heights` | – | – |
 | World | Tyre tracks | `draw_tire_tracks` | `entity_layer.gd` `_lay_track` | COMPLETE | – | `state.tire_mark` | – | – |
 | World | Roadworks | `draw_roadworks` | `map_chunk.gd` `_draw_points` | COMPLETE | – | chunk `roadworks` | – | – |
@@ -109,13 +109,13 @@ polish. Complete rows have no priority.
 | Weather | Rain / slush / snow particles | `render/weather.py` `draw_rain` (fixed pool of 220) | `weather_layer.gd`: the same pool, real time, batched (godot-final-06) | COMPLETE | – | `weather.weather_type` | – | – |
 | Weather | Splashes | `draw_splashes` (spawned in `main()` on puddle entry) | `weather_layer.gd` on Godot's own puddle spots, entry edge, cap 40 (godot-final-06) | COMPLETE | – | puddles, `player` | – | – |
 | Weather | Lightning flash | `draw_lightning_flash` | `main.gd` Sky/Flash | COMPLETE | – | `weather.lightning_intensity` | – | – |
-| Time | Day/night tint | `draw_day_night_overlay` | `night_layer.gd` | COMPLETE | – | `calendar.darkness` | – | – |
+| Time | Day/night tint | `draw_day_night_overlay` | `daylight.gd` + `main.gd` CanvasModulate (godot-lights-01) | COMPLETE | – | `calendar.sun_altitude_deg` | – | – |
 | Time | Seasons | grass, ice, trees by season | snow, ice, tree crowns (`calendar.season`) | COMPLETE | (details in the ground/landuse/water rows) | `calendar.season` | – | – |
 | Vehicle | Taxi body, roof sign, size | `render/vehicles.py` `draw_car` | `entity_layer.gd` `_vehicle` | COMPLETE | – | `player.length_m`, `width_m` | – | – |
 | Vehicle | Headlights, tail and brake lamps | `draw_car`, `draw_vehicle_lights` | `entity_layer.gd` | COMPLETE | – | `player.engine_on`, `braking` | – | – |
 | Vehicle | Reversing lamp (taxi, NPCs) | `_draw_vehicle_lights(reversing=speed < −0.05)` | – | GODOT RENDERING GAP | white lamp between the tail lamps not drawn | `player.speed`, npc `speed` | LOW | P3 |
 | Vehicle | Exhaust, crash smoke | `draw_taxi_exhaust`, `draw_taxi_smoke` | `entity_layer.gd` `_smoke` | COMPLETE | – | `engine_on`, `taxi.taxi_smoke_timer` | – | – |
-| Vehicle | Night headlight beams | `draw_headlight_beams` | `night_layer.gd`, clipped at 3D silhouettes | COMPLETE | – | npcs, `player`, chunk buildings | – | – |
+| Vehicle | Night headlight beams | `draw_headlight_beams` | `night_layer.gd`, additive gradient beams (godot-lights-01) | COMPLETE | – | npcs, `player` | – | – |
 | Vehicle | Rage shout bubble ("PRKL!") | `draw_car(shout_timer, shout_text)` | `entity_layer.gd` `shout_for` + `_bubble` from `state.road_rage` (godot-final-05) | COMPLETE | – | server `_road_rage` | – | – |
 | Vehicle | Water / in-water timer | `draw_hud(water_time_remaining)` | `instruments.gd` | COMPLETE | – | `water_elapsed` | – | – |
 | Vehicle | Passenger nausea bubble | `draw_passenger_nausea_bubble` | `entity_layer.gd` | COMPLETE | – | `nausea_warning_timer` | – | – |
@@ -1036,6 +1036,35 @@ find customers, avoid hazards); `medium` means world-reading or feedback;
 `low` means decoration.
 
 **Phase** refers to [godot-rendering-migration.md](godot-rendering-migration.md).
+
+
+## godot-lights-01: continuous night lighting
+
+The old tint polygon over the world (darker plus lights cut out of it) is
+gone; the lights had only ever made it whiter. Now:
+
+- `daylight.gd`: pure functions of the sun's altitude
+  (`state.calendar.sun_altitude_deg`, else back from `darkness`):
+  `ambient` (smootherstep -16° .. 8°), `artificial` (lights, 1 at -8° .. 0
+  at 10°), `ambient_color` (white → bluish twilight → cold blue night,
+  never black). No day/dusk/night states, no steps; tested for continuity
+  and monotonicity.
+- `main.gd`: one CanvasModulate multiplies the world by `ambient_color`
+  (zero fill cost). Lamp heads, traffic lights and fuel boards use
+  `emissive.tres` (unshaded) and stay bright.
+- Street lights (`map_chunk.gd`): per lamp a soft ellipse leaning toward its
+  road, warm amber core → dim shoulder → nothing, additive and unshaded, in
+  one mesh per chunk (no polygon unions); fade in with `artificial`.
+- Headlights (`night_layer.gd`): the beam quads as one additive vertex-
+  coloured batch, slightly warm white at the lamps fading to nothing.
+- Windows (`buildings_3d.gd`): one viewport; the building albedo follows the
+  ambient colour, lit windows fade in warm (±18 % per window) with
+  `artificial`. No second lit viewport, no silhouettes.
+- `--sun-altitude DEG` overrides the altitude for screenshots and benches.
+
+Bench (Oulu dense, 1280×720, llvmpipe, 30 s): night p50 34.3 → 23.7 ms,
+p95 47.3 → 33.2 ms, draw calls 4,315 → 1,743, memory 112 → 97 MiB; day
+21.4 → 21.0 ms (unchanged). This also covers godot-final-09.
 
 ## World
 
