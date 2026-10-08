@@ -137,6 +137,20 @@ class EventAudio(NullAudio):
         return events
 
 
+
+NPC_BRAKE_DECEL_MPS2 = 0.8  # slowing harder than rolling resistance: the brake lamps are lit
+
+
+def npc_braking(npc, last_speed: float, dt: float) -> bool:
+    """An NPC's brake lamps: slowing down, or standing in traffic (a
+    driver holds the brake at a light or in a queue); not parked, not
+    reversing, not on foot."""
+    if npc.state == "PARKED" or getattr(npc, "is_on_foot", False) or npc.speed < -0.05:
+        return False
+    if abs(npc.speed) < 0.3:
+        return True
+    return dt > 0.0 and (abs(last_speed) - abs(npc.speed)) / dt > NPC_BRAKE_DECEL_MPS2
+
 class SimulationServer:
     def __init__(self, args, config, city_choice=None):
         """`city_choice` (a `_choose_city`-shaped SimpleNamespace) lets an
@@ -474,6 +488,9 @@ class SimulationServer:
             now=self.calendar.current,
         )
         self._tire_mark = self._tyre_mark(previous=(car_x, car_y))
+        for npc in self.world.npc_manager.vehicles:  # brake lamps (Pygame has none for NPCs)
+            npc.braking = npc_braking(npc, getattr(npc, "_last_speed", npc.speed), dt)
+            npc._last_speed = npc.speed
         if self._road_rage is not None:  # main(): the shout counts down in real time
             timer = max(0.0, self._road_rage["timer"] - dt)
             self._road_rage = {"text": self._road_rage["text"], "timer": round(timer, 3)} if timer > 0.0 else None

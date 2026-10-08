@@ -517,3 +517,21 @@ def test_start_time_starts_the_calendar_clamped_to_a_year_back(tmp_path, monkeyp
     server = _build_server(tmp_path, monkeypatch, ["--start-time", picked.isoformat()])
     assert server.calendar.current == picked
     assert _build_server(tmp_path, monkeypatch, ["--start-time", "2001-02-03T04:05"]).calendar.current.date() >= date.today() - timedelta(days=366)
+
+
+def test_npc_brake_lamps_when_slowing_or_standing_in_traffic():
+    from types import SimpleNamespace
+
+    from theroadragetrip.server import npc_braking
+
+    def npc(speed, state="DRIVING", on_foot=False):
+        return SimpleNamespace(speed=speed, state=state, is_on_foot=on_foot)
+
+    dt = 1 / 30
+    assert npc_braking(npc(10.0 - 3.0 * dt), 10.0, dt)  # 3 m/s² down
+    assert not npc_braking(npc(10.0 - 0.2 * dt), 10.0, dt)  # coasting
+    assert not npc_braking(npc(10.0 + 1.0 * dt), 10.0, dt)  # speeding up
+    assert npc_braking(npc(0.0), 0.0, dt)  # waiting at a light
+    assert not npc_braking(npc(0.0, "PARKED"), 0.0, dt)
+    assert not npc_braking(npc(-1.0), -0.5, dt)  # reversing: the reversing lamp, not the brakes
+    assert not npc_braking(npc(0.0, on_foot=True), 0.0, dt)

@@ -129,6 +129,7 @@ def _npc_to_dict(npc) -> dict:
         "turn_signal": npc.turn_signal,
         "turn_signal_elapsed": npc.turn_signal_elapsed,
         "state": npc.state,
+        "braking": bool(getattr(npc, "braking", False)),
         "crashed_timer": npc.crashed_timer,
         "driver_departed": npc.driver_departed,
         "debug_waiting_for": npc.debug_waiting_for,

@@ -401,6 +401,7 @@ func _present(state: Dictionary) -> void:
 	map_layer.set_light(lights, ambient)
 	entities.reflectors_on = typeof(calendar) == TYPE_DICTIONARY and calendar.get("sun_altitude_deg", 90.0) < -7.5
 	var night_started := Time.get_ticks_usec()
+	entities.light_level = lights
 	night.show_lights(lights, view, entities.headlight_beams() if lights > 0.01 else [])
 	Perf.add("night_beams", Time.get_ticks_usec() - night_started)
 	var lightning: float = entities.lightning_now()

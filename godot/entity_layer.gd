@@ -43,6 +43,21 @@ var _trails: Array = []  # [kind, [[position, heading, intensity, front], ...]]
 var _track_points := 0
 var _last_track = null  # where the last mark was laid (null: the trail is broken)
 var _last_track_px := 0.0
+# Vehicle lamps: drawn unshaded (the night's ambient multiply leaves them
+# bright) and, as it gets dark, with an additive glow - tail lamps a red
+# halo, brake lamps a bigger, brighter one, the reversing lamp a white wash
+# behind the car (godot-lights-01 style; Pygame draws none of the glow).
+var light_level := 0.0  # Daylight.artificial (main.gd)
+var _lamps: Node2D
+var _glow: Node2D
+var _lamp_polys: Array = []  # [points, colour] this frame
+var glow_points := PackedVector2Array()
+var glow_colors := PackedColorArray()
+var glow_triangles := PackedInt32Array()
+const GLOW_STEPS := 10
+const TAIL_GLOW := [Color(0.30, 0.03, 0.02), 0.9]  # added colour at the lamp, reach in metres
+const BRAKE_GLOW := [Color(0.65, 0.05, 0.03), 2.2]
+const REVERSE_GLOW := [Color(0.55, 0.55, 0.50), 4.5]
 const TRACK_STYLES := {  # render/roads.py draw_tire_tracks: [faint, dark, width m]
 	"rubber": [Color8(110, 110, 110), Color8(28, 28, 28), 0.24], "dirt": [Color8(150, 138, 118), Color8(105, 68, 38), 0.75],
 	"sand": [Color8(222, 208, 170), Color8(178, 158, 114), 0.75], "snow": [Color8(214, 226, 232), Color8(142, 169, 181), 0.75],
@@ -63,6 +78,20 @@ func _ready() -> void:
 	_tracks.z_index = -2
 	_tracks.draw.connect(_draw_tracks)
 	add_child(_tracks)
+	_glow = Node2D.new()
+	var add := CanvasItemMaterial.new()
+	add.blend_mode = CanvasItemMaterial.BLEND_MODE_ADD
+	add.light_mode = CanvasItemMaterial.LIGHT_MODE_UNSHADED
+	_glow.material = add
+	_glow.draw.connect(func(): if not glow_triangles.is_empty():
+		RenderingServer.canvas_item_add_triangle_array(_glow.get_canvas_item(), glow_triangles, glow_points, glow_colors))
+	add_child(_glow)
+	_lamps = Node2D.new()
+	_lamps.material = preload("res://emissive.tres")
+	_lamps.draw.connect(func():
+		for lamp in _lamp_polys:
+			_lamps.draw_colored_polygon(lamp[0], lamp[1]))
+	add_child(_lamps)
 
 
 func now() -> float:
@@ -341,6 +370,22 @@ func _poly(points: PackedVector2Array, fill: Color, outline = null, width := -1.
 ## A vehicle body by type (render/vehicles.py _draw_vehicle, _draw_bus,
 ## _draw_truck; two-wheelers are sprites in Pygame, a body and rider here),
 ## then its lamps (_draw_vehicle_lights).
+## A lamp's soft halo: a fan bright at `at` (glow[0] × level), nothing at
+## glow[1] metres; none by day.
+static func lamp_glow(at: Vector2, glow: Array, level: float, points: PackedVector2Array,
+		colors: PackedColorArray, triangles: PackedInt32Array) -> void:
+	if level <= 0.01:
+		return
+	var centre := points.size()
+	points.append(at)
+	colors.append(Color(glow[0] * level, 1.0))
+	for k in GLOW_STEPS:
+		var angle := TAU * k / GLOW_STEPS
+		points.append(at + Vector2(cos(angle), sin(angle)) * float(glow[1]))
+		colors.append(Color(0, 0, 0, 1))
+		triangles.append_array(PackedInt32Array([centre, centre + 1 + k, centre + 1 + (k + 1) % GLOW_STEPS]))
+
+
 func _vehicle(c: Vector2, heading: float, length: float, width: float, color: Color, kind: String,
 		is_taxi: bool, engine_on: bool, braking: bool, reversing: bool, turn_signal: String, signal_elapsed: float, fallen := false) -> void:
 	length = maxf(length, _px(5.0))
@@ -385,14 +430,17 @@ func _vehicle(c: Vector2, heading: float, length: float, width: float, color: Co
 	var tip := hl - _px(0.5)
 	for side: float in [1.0, -1.0]:
 		var front: Vector2 = c + f * tip + r * inset * side
-		_poly(_rect(front, f, r, light_w * 0.5, -light_w * 0.5, light_len * 0.5), RS.HEADLIGHT if engine_on else RS.HEADLIGHT_OFF)
+		_lamp_polys.append([_rect(front, f, r, light_w * 0.5, -light_w * 0.5, light_len * 0.5), RS.HEADLIGHT if engine_on else RS.HEADLIGHT_OFF])
 		var rear: Vector2 = c - f * tip + r * inset * side
 		var scale := 1.2 if braking else 1.0
 		var tail := RS.BRAKE_LIGHT if braking else (RS.TAILLIGHT if engine_on else RS.TAILLIGHT_OFF)
-		_poly(_rect(rear, f, r, light_w * 0.5 * scale, -light_w * 0.5 * scale, light_len * 0.5 * scale), tail)
+		_lamp_polys.append([_rect(rear, f, r, light_w * 0.5 * scale, -light_w * 0.5 * scale, light_len * 0.5 * scale), tail])
+		if braking or engine_on:
+			lamp_glow(rear - f * 0.15, BRAKE_GLOW if braking else TAIL_GLOW, light_level, glow_points, glow_colors, glow_triangles)
 	if reversing:
 		var rear := c - f * tip
-		_poly(_rect(rear, f, r, light_r * 0.325, -light_r * 0.325, light_len * 0.325), RS.REVERSE_LIGHT)
+		_lamp_polys.append([_rect(rear, f, r, light_r * 0.325, -light_r * 0.325, light_len * 0.325), RS.REVERSE_LIGHT])
+		lamp_glow(rear - f * REVERSE_GLOW[1] * 0.45, REVERSE_GLOW, light_level, glow_points, glow_colors, glow_triangles)
 	if turn_signal != "" and RS.signal_lit(signal_elapsed):
 		var signal_side := 1.0 if turn_signal == "right" else -1.0
 		for end: float in [1.0, -1.0]:
@@ -567,6 +615,10 @@ func _draw() -> void:
 	var b: Dictionary = _frame["b"]
 	var t: float = _frame["t"]
 	var count := 0
+	_lamp_polys.clear()
+	glow_points.clear()
+	glow_colors.clear()
+	glow_triangles.clear()
 
 	var later_peds := _by_id(b.get("pedestrians", []))
 	for ped in ([] if underground else a.get("pedestrians", [])):  # below ground: the surface world isn't shown
@@ -619,7 +671,7 @@ func _draw() -> void:
 		if not view_rect.has_point(c):
 			continue
 		_vehicle(c, p.z, npc["length_m"], npc["width_m"], _rgb(npc["color"]), npc.get("vehicle_type", "car"),
-			npc.get("is_taxi", false), npc.get("state", "") != "PARKED", false, is_reversing(npc.get("speed", 0.0)),
+			npc.get("is_taxi", false), npc.get("state", "") != "PARKED", npc.get("braking", false), is_reversing(npc.get("speed", 0.0)),
 			npc.get("turn_signal", ""), npc.get("turn_signal_elapsed", 0.0), npc.get("fallen", false))
 		var crashed: float = npc.get("crashed_timer", 0.0)
 		if crashed > 0.0:
@@ -634,6 +686,8 @@ func _draw() -> void:
 	_booked_arrow(a, b, t, later_peds)
 
 	drawn_entities = count + _trains_drawn
+	_lamps.queue_redraw()  # this frame's lamps and halos, collected above
+	_glow.queue_redraw()
 	interp_usec = Time.get_ticks_usec() - started
 	preload("res://perf.gd").add("entities_draw", interp_usec)
 
