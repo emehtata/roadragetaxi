@@ -18,7 +18,7 @@ var _loading := false
 var _focusables: Array[Control] = []
 var _back_action := Callable()
 var _logo: TextureRect
-var _start_time := {}  # the gig start (year, month, day, hour, minute), remembered
+var _start_time := {}  # the gig start (year, month, day, hour, minute): now, each time the picker opens
 var _back: CanvasLayer  # the backdrop and logo: hidden while the game runs
 
 
@@ -39,7 +39,6 @@ func _ready() -> void:
 	_city = _settings.get_value("gig", "city", _cities[0])  # the last gig city, remembered
 	if not _city in _cities:
 		_city = _cities[0]
-	_start_time = clamp_start(_settings.get_value("gig", "start", Time.get_datetime_dict_from_system()), Time.get_date_dict_from_system())
 	_build_shell()
 	for flag in ["--skip-menu", "--selftest", "--audiotest", "--inputtest", "--screenshot", "--bench"]:
 		if flag in command_line:
@@ -194,6 +193,7 @@ func _city_menu() -> void:
 ## Pygame's choose_start_datetime: year, month, day, hour and minute of the
 ## gig's start, a calendar year back at most, no later than today.
 func _time_menu() -> void:
+	_start_time = clamp_start(Time.get_datetime_dict_from_system(), Time.get_date_dict_from_system())
 	_clear()
 	_title(_t("start_time", "START TIME"), _city)
 	var fields := [["year", _t("year", "Year")], ["month", _t("month", "Month")], ["day", _t("day", "Day")],
@@ -225,13 +225,11 @@ func _time_menu() -> void:
 	_button(_t("now", "Now"), func():
 		_start_time = clamp_start(Time.get_datetime_dict_from_system(), Time.get_date_dict_from_system())
 		show.call())
-	_button(_t("drive", "Drive"), func():
-		_settings.set_value("gig", "start", _start_time)
-		_settings.save("user://settings.cfg")
-		_start("gig_driver"))
+	var start := _button(_t("start", "Start"), func(): _start("gig_driver"))
 	_button(_t("back", "Back"), _city_menu)
 	_back_action = _city_menu
 	_focus_menu()
+	start.call_deferred("grab_focus")  # Enter plays from now
 
 
 ## A start time inside [the same day a year ago, today] (startup_screens.py
