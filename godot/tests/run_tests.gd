@@ -540,6 +540,9 @@ func test_speech_and_stations() -> void:
 	check(glow_t.size() == 3 * EntityLayer.GLOW_STEPS and glow_c[0].r > 0.5 and glow_c[1] == Color(0, 0, 0, 1) and is_equal_approx(glow_p[1].distance_to(Vector2(5, 5)), EntityLayer.BRAKE_GLOW[1]), "lamp halos: red at the lamp, nothing at the reach")
 	check(EntityLayer.BRAKE_GLOW[1] > EntityLayer.TAIL_GLOW[1] and EntityLayer.BRAKE_GLOW[0].r > EntityLayer.TAIL_GLOW[0].r and EntityLayer.REVERSE_GLOW[1] > EntityLayer.BRAKE_GLOW[1], "brake halos outshine tail lamps; reversing lights the ground behind")
 	check(FileAccess.get_file_as_string("res://entity_layer.gd").contains("npc.get(\"braking\", false)"), "NPCs' brake lamps from the server")
+	var Instruments := load("res://instruments.gd")
+	check(is_equal_approx(Instruments.speed_kmh(-5.0), 18.0) and Instruments.speed_kmh(100.0) == 210.0, "speedometer: |speed| in km/h, up to 210")
+	check(is_equal_approx(Instruments.speed_angle(0.0), deg_to_rad(135.0)) and is_equal_approx(Instruments.speed_angle(210.0), deg_to_rad(405.0)), "speedometer: 270 degrees from lower left")
 	var Startup := load("res://startup.gd")
 	var today := {"year": 2026, "month": 10, "day": 8}
 	check(Startup.clamp_start({"year": 2026, "month": 3, "day": 5, "hour": 7, "minute": 15}, today) == {"year": 2026, "month": 3, "day": 5, "hour": 7, "minute": 15}, "start time: a date in the last year stays")
@@ -893,7 +896,7 @@ func test_taxi_information() -> void:
 	check(gauge._shown != shown, "another pump: the gauge redraws")
 	shown = gauge._shown.duplicate()
 	gauge.show_state({"player": {"fuel_l": 20.0}, "taxi": {"fuel_station_price_cents": null}})
-	check(gauge._shown != shown and gauge._shown[-1] == "", "driving away: the price goes")
+	check(gauge._shown != shown and gauge._shown[9] == "", "driving away: the price goes")
 	gauge.free()
 
 

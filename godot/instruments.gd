@@ -18,6 +18,8 @@ var _font: Font
 var _shown := []  # the values last drawn
 var _state: Dictionary = {}
 var language := "en"
+var chips := [false, false, false]  # lane assist (K), speed limiter (V), navigation (N): main.gd
+const MAX_SPEED_KMH := 210.0  # physics.MAX_SPEED: the dial's end
 
 
 func _ready() -> void:
@@ -51,7 +53,7 @@ func show_state(state: Dictionary) -> void:
 	var values := [snappedf(player.get("fuel_l", 0.0), 0.1), roundi(state.get("rage_power", 0.0) * 100.0),
 		snappedf(state.get("water_elapsed", 0.0), 0.1), roundi(player.get("trip_m", 0.0)), roundi(player.get("odometer_m", 0.0) / 100.0),
 		snappedf(player.get("fuel_consumption_l_per_100km", 0.0), 0.1), absf(player.get("speed", 0.0)) > 0.5, size,
-		speed_limit(state), price_text(state)]
+		speed_limit(state), price_text(state), roundi(speed_kmh(player.get("speed", 0.0))), chips.duplicate()]
 	_state = state
 	if values != _shown:
 		_shown = values
@@ -177,6 +179,7 @@ func _draw() -> void:
 		return
 	var player: Dictionary = _state.get("player", {})
 	_draw_fuel(Vector2(210, size.y - 100), player)
+	_draw_speedometer(Vector2(10, size.y - 232), speed_kmh(player.get("speed", 0.0)))
 	_draw_rage(Vector2(size.x - 190, size.y - 246), _state.get("rage_power", 0.0))
 	var water: float = _state.get("water_elapsed", 0.0)
 	if water > 0.0:
@@ -191,8 +194,59 @@ func _draw() -> void:
 		_draw_limit_sign(Vector2(size.x - 48.0, 76.0), 31.0, limit)
 	# A dark outline keeps the light text readable on snow and on grass alike (godot-16).
 	var trip := trip_text(player.get("trip_m", 0.0), player.get("odometer_m", 0.0), language)
-	draw_string_outline(_font, Vector2(10, size.y - 230), trip, HORIZONTAL_ALIGNMENT_LEFT, -1, 14, TEXT_OUTLINE_PX, TEXT_OUTLINE)
-	draw_string(_font, Vector2(10, size.y - 230), trip, HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Color8(205, 215, 220))
+	draw_string_outline(_font, Vector2(10, size.y - 248), trip, HORIZONTAL_ALIGNMENT_LEFT, -1, 14, TEXT_OUTLINE_PX, TEXT_OUTLINE)
+	draw_string(_font, Vector2(10, size.y - 248), trip, HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Color8(205, 215, 220))
+
+
+## The dial's reading: |speed| in km/h up to the car's top speed (hud.py
+## clamps the same; reversing reads positive).
+static func speed_kmh(speed_mps: float) -> float:
+	return clampf(absf(speed_mps) * 3.6, 0.0, MAX_SPEED_KMH)
+
+
+## hud.py _draw_analog_speedometer: 0..210 km/h over 270 degrees from
+## lower left, ticks every 10 (labels every 20), the red needle, the
+## number and "km/h" below; then _draw_speedometer_indicators' chips.
+static func speed_angle(kmh: float) -> float:
+	return deg_to_rad(135.0 + kmh / MAX_SPEED_KMH * 270.0)
+
+
+func _draw_speedometer(at: Vector2, kmh: float) -> void:
+	var center := at + Vector2(95, 88)
+	var radius := 68.0
+	draw_circle(center, radius, Color8(12, 16, 20))
+	draw_arc(center, radius, 0.0, TAU, 64, Color8(130, 140, 150), 2.0)
+	for mark in range(0, 211, 10):
+		var direction := Vector2.from_angle(speed_angle(mark))
+		var major := mark % 20 == 0
+		draw_line(center + direction * (radius - (18.0 if major else 11.0)), center + direction * (radius - 5.0),
+			Color8(235, 220, 170), 3.0 if major else 2.0)
+		if major:
+			_centered(str(mark), center + direction * (radius - 25.0), 10, Color8(220, 225, 215))
+	draw_line(center, center + Vector2.from_angle(speed_angle(kmh)) * (radius - 20.0), Color8(230, 65, 45), 4.0)
+	draw_circle(center, 6.0, Color8(240, 220, 170))
+	_centered("%d" % roundi(kmh), Vector2(center.x, at.y + 132), 16, Color8(240, 240, 240))
+	_centered("km/h", Vector2(center.x, at.y + 153), 14, Color8(190, 200, 205))
+	var labels := ["LANE (K)", "LIMIT (V)", "NAVI (N)"]
+	var widths := []
+	var total := 12.0
+	for label in labels:
+		widths.append(_font.get_string_size(label, HORIZONTAL_ALIGNMENT_LEFT, -1, 11).x + 20.0)
+		total += widths[-1]
+	var x := at.x + (190.0 - total) / 2.0
+	for i in labels.size():
+		var chip := Rect2(x, at.y + 176, widths[i], 22)
+		var on: bool = chips[i]
+		draw_rect(chip, Color8(30, 90, 45) if on else Color8(28, 32, 36))
+		draw_rect(chip, Color8(80, 220, 110) if on else Color8(70, 78, 86), false, 1.0)
+		_centered(labels[i], chip.get_center(), 11, Color8(230, 255, 235) if on else Color8(120, 128, 135))
+		x += widths[i] + 6.0
+
+
+func _centered(text: String, at: Vector2, font_size: int, color: Color) -> void:
+	var text_size := _font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size)
+	draw_string(_font, at + Vector2(-text_size.x / 2.0, _font.get_ascent(font_size) - text_size.y / 2.0), text,
+		HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, color)
 
 
 func _draw_fuel(at: Vector2, player: Dictionary) -> void:
