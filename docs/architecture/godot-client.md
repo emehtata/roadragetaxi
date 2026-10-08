@@ -363,12 +363,13 @@ pause for one client's UI. Expiring offers therefore keep counting down.
 - Commands carry `player_id`. The server ignores commands for any other
   player. A command without one, from an older client, counts as
   `local_player`.
-- States say whose `player` and `taxi` they describe.
+- The connection's states describe that assigned player and taxi.
 - There is no multiplayer, no accounts, and no second player.
 
 ## Running
 
 ```bash
+make run                                # Godot menu; it starts/stops the server
 make run-godot-all                      # server (PRESET=Oulu PORT=8765) + Godot window
 make run-server   /   make run-godot    # separately
 make godot-selftest                     # server + headless Godot: drive 6 s, JSON report
@@ -525,7 +526,9 @@ godot-21 section.
 - **Map extent:** there is no map beyond the loaded OSM area, and
   `--auto-fetch` is off in server mode.
 - **Single player only**, though identified by `player_id`.
-- **HUD:** basics plus the phone; no menus or settings yet.
+- **Menus:** Godot owns the first-run language choice and the keyboard/mouse
+  main, city, settings and pause screens, and starts or stops the Python
+  server for the selected career/gig session.
 - **Missing sounds:** no station announcements or passenger speech in
   Godot. The pedestrian curse is generated and validated but wasn't
   triggered in the scripted test.
@@ -542,6 +545,5 @@ time, with Pygame as the visual reference:
 1. phone and offer UI
 2. station announcements
 3. sprites
-4. menus
 
 Retire Pygame only when the Godot client covers everything.

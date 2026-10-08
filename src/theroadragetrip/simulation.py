@@ -69,14 +69,18 @@ class PlayerCommand:
     forward: float = 0.0  # on-foot forward(+)/back(-), -1..1
     turn: float = 0.0  # on-foot turn left(+)/right(-), -1..1
     sprint: bool = False
-    # Session toggles (V/B keys) - continuously reported rather than
+    # Session toggles (K/V/B keys) - continuously reported rather than
     # edge-triggered, since the client already tracks their current
     # on/off state locally exactly like it tracks on_foot today.
     speed_limiter_enabled: bool = True
     red_light_assist_enabled: bool = False
+    lane_assist_enabled: bool = False
     refuel: bool = False
     engine_on: Optional[bool] = None
     road_rage: bool = False  # SPACE: one press (the server counts presses like refuel)
+    respawn: bool = False
+    cancel_ride: bool = False
+    reset_trip: bool = False
 
 
 @dataclass

@@ -9,6 +9,8 @@
 class_name Phone
 extends PanelContainer
 
+const T := preload("res://i18n.gd")
+
 signal request(action: String, item_id: String, request_id: int)  # main sends it to the simulation
 signal sound(group: String, variation: int)  # main plays it (ui.phone_open: 0 opens, 1 closes, as Pygame)
 
@@ -30,6 +32,7 @@ var busy := false  # a fare is under way: the simulation offers nothing new
 var selected_id := ""
 var pending: Dictionary = {}  # request_id -> {"action", "item_id"}: asked, not yet answered
 var notice := ""  # the last answer worth telling ("no longer available")
+var language := "en"
 
 var handle_result_hook = null  # selftest: sees each answer
 var _next_request := 1
@@ -39,6 +42,8 @@ var _status: Label
 var _details: Label
 var _accept: Button
 var _reject: Button
+var _title: Label
+var _close: Button
 
 
 func _ready() -> void:
@@ -54,11 +59,10 @@ func _ready() -> void:
 	var box := VBoxContainer.new()
 	box.add_theme_constant_override("separation", 8)
 	add_child(box)
-	var title := Label.new()
-	title.text = "TAXI PHONE"
-	title.add_theme_font_size_override("font_size", 22)
-	title.add_theme_color_override("font_color", Color(0.96, 0.86, 0.43))
-	box.add_child(title)
+	_title = Label.new()
+	_title.add_theme_font_size_override("font_size", 22)
+	_title.add_theme_color_override("font_color", Color(0.96, 0.86, 0.43))
+	box.add_child(_title)
 	_status = Label.new()
 	_status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	box.add_child(_status)
@@ -70,17 +74,28 @@ func _ready() -> void:
 	var buttons := HBoxContainer.new()
 	box.add_child(buttons)
 	_accept = Button.new()
-	_accept.text = "Accept [Enter]"
+	_accept.text = "Hyväksy [Enter]" if language == "fi" else "Accept [Enter]"
 	_accept.pressed.connect(accept_selected)
 	buttons.add_child(_accept)
 	_reject = Button.new()
-	_reject.text = "Reject [X]"
+	_reject.text = "Hylkää [X]" if language == "fi" else "Reject [X]"
 	_reject.pressed.connect(reject_selected)
 	buttons.add_child(_reject)
-	var close_button := Button.new()
-	close_button.text = "Close [P]"
-	close_button.pressed.connect(close)
-	buttons.add_child(close_button)
+	_close = Button.new()
+	_close.pressed.connect(close)
+	buttons.add_child(_close)
+	set_language(language)
+	_refresh()
+
+
+func set_language(value: String) -> void:
+	language = value
+	if _title == null:
+		return
+	_title.text = "TAKSIPUHELIN" if language == "fi" else "TAXI PHONE"
+	_accept.text = "Hyväksy [Enter]" if language == "fi" else "Accept [Enter]"
+	_reject.text = "Hylkää [X]" if language == "fi" else "Reject [X]"
+	_close.text = "Sulje [P]" if language == "fi" else "Close [P]"
 	_refresh()
 
 
@@ -192,7 +207,10 @@ func handle_result(result: Dictionary) -> void:
 		if result.get("action") == "accept":
 			close()  # as the Pygame phone: the fare is on, back to driving
 	else:
-		notice = "That request is no longer available." if result.get("reason") == "gone" else "The request could not be answered."
+		if language == "fi":
+			notice = "Pyyntö ei ole enää saatavilla." if result.get("reason") == "gone" else "Pyyntöön ei voitu vastata."
+		else:
+			notice = "That request is no longer available." if result.get("reason") == "gone" else "The request could not be answered."
 	_refresh()
 
 
@@ -238,59 +256,59 @@ func _refresh() -> void:
 			_rows.add_child(row)
 	for i in min(items.size(), _rows.get_child_count()):  # values and selection: in place, no rebuild
 		var row: Button = _rows.get_child(i)
-		row.text = row_text(i + 1, items[i], is_pending(items[i]["id"]))
+		row.text = row_text(i + 1, items[i], is_pending(items[i]["id"]), language)
 		row.set_pressed_no_signal(items[i]["id"] == selected_id)
-	_status.text = status_text(connected, busy, items, notice)
+	_status.text = status_text(connected, busy, items, notice, language)
 	var item := selected()
-	_details.text = details_text(item) if not item.is_empty() else ""
+	_details.text = details_text(item, language) if not item.is_empty() else ""
 	_accept.disabled = not can_answer()
 	_reject.disabled = not can_answer()
 
 
 ## --- pure text (tested) ---
 
-static func distance_text(metres) -> String:
+static func distance_text(metres, language := "en") -> String:
 	if metres == null:
-		return "unavailable"
+		return "ei saatavilla" if language == "fi" else "unavailable"
 	return "%d m" % metres if metres < 1000 else "%.2f km" % (metres / 1000.0)
 
 
-static func status_text(is_connected: bool, is_busy: bool, rows: Array, last_notice: String) -> String:
+static func status_text(is_connected: bool, is_busy: bool, rows: Array, last_notice: String, language := "en") -> String:
 	if not is_connected:
-		return "No connection to the simulation."
+		return "Ei yhteyttä simulaatioon." if language == "fi" else "No connection to the simulation."
 	if last_notice != "":
 		return last_notice
 	if is_busy and rows.is_empty():
-		return "Finish the current fare first."
+		return "Aja nykyinen kyyti ensin loppuun." if language == "fi" else "Finish the current fare first."
 	if rows.is_empty():
-		return "No ride requests right now."
-	return "Pick a request (1-3)."
+		return "Ei kyytipyyntöjä juuri nyt." if language == "fi" else "No ride requests right now."
+	return "Valitse pyyntö (1–3)." if language == "fi" else "Pick a request (1-3)."
 
 
-static func row_text(number: int, item: Dictionary, waiting: bool) -> String:
-	var who: String = item.get("name", "") if item.get("name", "") != "" else "Customer"
+static func row_text(number: int, item: Dictionary, waiting: bool, language := "en") -> String:
+	var who: String = item.get("name", "") if item.get("name", "") != "" else ("Asiakas" if language == "fi" else "Customer")
 	var head := "[%d] %s" % [number, who]
 	if item.get("kind") == "booking":
-		head = "[%d] Pre-booked: %s, train %s" % [number, who, item.get("train", "?")]
+		head = ("[%d] Ennakkotilaus: %s, juna %s" if language == "fi" else "[%d] Pre-booked: %s, train %s") % [number, who, item.get("train", "?")]
 	if waiting:
-		return head + " - waiting for answer..."
+		return head + (" – odotetaan vastausta…" if language == "fi" else " - waiting for answer...")
 	if item.get("status", "") not in ANSWERABLE:
 		return head + " - " + str(item.get("status", "")).to_lower().replace("_", " ")
 	return head
 
 
-static func details_text(item: Dictionary) -> String:
+static func details_text(item: Dictionary, language := "en") -> String:
 	var lines: Array = []
 	if item.get("kind") == "booking":
-		lines.append("Pickup: %s station, train arrives %s" % [item.get("pickup", "?"), item.get("arrival", "?")])
-		lines.append("To: %s" % item.get("dropoff", "?"))
-		lines.append("Pre-booking fee: +%.2f €" % (item["surcharge_cents"] / 100.0) if item.has("surcharge_cents") else "Pre-booking fee: unavailable")
-		lines.append("Status: %s" % str(item.get("status", "?")).to_lower().replace("_", " "))
+		lines.append(("Nouto: %s, juna saapuu %s" if language == "fi" else "Pickup: %s station, train arrives %s") % [item.get("pickup", "?"), item.get("arrival", "?")])
+		lines.append(("Määränpää: %s" if language == "fi" else "To: %s") % item.get("dropoff", "?"))
+		lines.append((("Ennakkotilauslisä: +%.2f €" if language == "fi" else "Pre-booking fee: +%.2f €") % (item["surcharge_cents"] / 100.0)) if item.has("surcharge_cents") else ("Ennakkotilauslisä: ei saatavilla" if language == "fi" else "Pre-booking fee: unavailable"))
+		lines.append(("Tila: %s" if language == "fi" else "Status: %s") % str(item.get("status", "?")).to_lower().replace("_", " "))
 	else:
-		lines.append("Pickup: %s" % item.get("pickup", "?"))
-		lines.append("To: %s" % item.get("dropoff", "?"))
-		lines.append("To the customer: %s · Trip: %s" % [distance_text(item.get("pickup_distance_m")), distance_text(item.get("trip_distance_m"))])
-		lines.append("Fare: unavailable until the ride (taximeter)")
+		lines.append(("Nouto: %s" if language == "fi" else "Pickup: %s") % item.get("pickup", "?"))
+		lines.append(("Määränpää: %s" if language == "fi" else "To: %s") % item.get("dropoff", "?"))
+		lines.append(("Asiakkaalle: %s · Kyyti: %s" if language == "fi" else "To the customer: %s · Trip: %s") % [distance_text(item.get("pickup_distance_m"), language), distance_text(item.get("trip_distance_m"), language)])
+		lines.append("Hinta selviää kyydin aikana (taksamittari)" if language == "fi" else "Fare: unavailable until the ride (taximeter)")
 		if item.has("time_remaining_s"):
-			lines.append("Request expires in %d s" % ceili(item["time_remaining_s"]))
+			lines.append(("Pyyntö vanhenee %d sekunnissa" if language == "fi" else "Request expires in %d s") % ceili(item["time_remaining_s"]))
 	return "\n".join(lines)

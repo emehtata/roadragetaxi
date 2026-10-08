@@ -25,6 +25,7 @@ def _build_server(tmp_path, monkeypatch):
 
 def test_server_builds_and_ticks_with_no_client_connected(tmp_path, monkeypatch):
     server = _build_server(tmp_path, monkeypatch)
+    assert server._chunks_index._encoded == {}  # distant chunks are encoded lazily, not on startup
     for _ in range(30):
         server.tick(1.0 / 30.0)
     assert server._tick == 30
@@ -97,6 +98,15 @@ def test_player_commands_reach_the_simulation(tmp_path, monkeypatch):
     for _ in range(20):
         server.tick(1.0 / 30.0)
     assert server.car.x != start_x
+
+    trip_before_reset = server.car.trip_m
+    connection.send(protocol.build_command_message(
+        PlayerCommand(lane_assist_enabled=True, reset_trip=True), interact=False, seq=3,
+    ))
+    time.sleep(0.05)
+    server.tick(1.0 / 30.0)
+    assert server.car.lane_assist_enabled is True
+    assert server.car.trip_m < trip_before_reset  # this tick's coasting distance follows the reset
     connection.close()
 
 

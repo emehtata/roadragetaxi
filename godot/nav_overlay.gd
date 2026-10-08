@@ -7,6 +7,7 @@ extends Control
 
 const EDGE_MARGIN := 130.0
 const RS := preload("res://render_style.gd")
+const T := preload("res://i18n.gd")
 
 var show_compass := false
 var show_route := false  # N (render/navigation.py draw_navigation_route), off by default: drawn by EntityLayer
@@ -15,6 +16,7 @@ var _target: Dictionary = {}
 var _target_screen := Vector2.ZERO  # target position on screen
 var _camera_world := Vector2.ZERO  # world metres at the screen centre
 var _heading := 0.0
+var language := "en"
 
 
 func _ready() -> void:
@@ -72,7 +74,7 @@ func _draw() -> void:
 		var arrow := PackedVector2Array([tip, left, right])
 		draw_colored_polygon(arrow, color)
 		draw_polyline(PackedVector2Array([tip, left, right, tip]), RS.OUTLINE, 1.0)
-		var text := "%s %s" % ["PICKUP" if _target["is_pickup"] else "DROPOFF", distance_text(delta.length())]
+		var text := "%s %s" % [T.text("pickup", language, "PICKUP") if _target["is_pickup"] else T.text("dropoff", language, "DROPOFF"), distance_text(delta.length())]
 		var text_size := _font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, 14)
 		var label_y := at.y + 18.0 if at.y < size.y - 40.0 else at.y - 18.0
 		var box := Rect2(Vector2(at.x - text_size.x / 2.0 - 3.0, label_y - text_size.y / 2.0 - 2.0), text_size + Vector2(6, 4))

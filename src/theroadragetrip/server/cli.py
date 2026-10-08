@@ -18,6 +18,9 @@ def parse_server_args():
     parser.add_argument("--host", type=str, default="127.0.0.1", help="Address to listen on")
     parser.add_argument("--port", type=int, default=DEFAULT_PORT, help="Port to listen on")
     parser.add_argument("--tick-rate", type=float, default=30.0, help="Simulation ticks per second")
+    parser.add_argument("--game-mode", choices=["career", "gig_driver"], default="gig_driver")
+    parser.add_argument("--language", choices=["en", "fi"], default=None)
+    parser.add_argument("--list-cities", action="store_true", help=argparse.SUPPRESS)
 
     args = parse_args(config, city_names=list(city_centers), parser=parser)
     args.no_menu = True  # a server can never show an interactive menu

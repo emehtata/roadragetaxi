@@ -166,10 +166,10 @@ polish. Complete rows have no priority.
 | HUD | Water timer | `draw_hud` | `instruments.gd` | COMPLETE | – | `water_elapsed` | – | – |
 | HUD | Speech subtitles | `draw_hud(comment_text)` | `hud.gd` one subtitle from the server's `speech` events (godot-final-07) | COMPLETE | – | `speech` events | – | – |
 | HUD | Speed limiter / red-light assist toggles (V, B) | key toggles + HUD status | `main.gd` V/B session toggles in every command, ON/OFF in the hint (godot-final-02) | COMPLETE | – | `PlayerCommand` fields | – | – |
-| HUD | Lane assist (K) | `car.lane_assist_enabled` toggle | – | SERVER/PROTOCOL GAP | not a command field | `physics.py:240` | LOW | P2 |
+| HUD | Lane assist (K) | `car.lane_assist_enabled` toggle | `main.gd` toggle sent in every command | COMPLETE | – | `PlayerCommand.lane_assist_enabled` | – | – |
 | HUD | FPS counter | normal HUD | F3 readout | DIFFERENT BY DESIGN | – | – | – | – |
-| UI | Pause / settings (language, volumes, subtitles) | `render/menus.py` `draw_pause_menu`, `draw_settings_menu` | – | GODOT UI GAP | no menus; settings are client-side | client settings | LOW | P2 |
-| UI | Tutorial screen | `draw_tutorial_screen` | – | GODOT UI GAP | – | – | LOW | P3 |
+| UI | Startup / pause / settings | `render/menus.py` mode, city, pause and settings menus | `startup.gd`: career/gig, city, volume/language settings, pause | PARTIAL | no tutorial, city-list editor or advanced simulation settings | client settings | LOW | P3 |
+| UI | Tutorial / controls (F1) | `draw_tutorial_screen` | localized in-game controls overlay | COMPLETE | – | – | – | – |
 | UI | Mode and city selection, loading | `draw_mode_selection_menu`, `draw_city_selection_menu` | server CLI chooses | DIFFERENT BY DESIGN | – | server `--preset` | – | – |
 | UI | Resident popup (click a person) | `draw_resident_popup` | – | SERVER/PROTOCOL GAP | resident details not sent; no click picking | `residents.py` | LOW | P3 |
 | UI | Follow another entity + back button | `camera_focus.py`, `draw_camera_back_button` | – | GODOT UI GAP | ids are in the state; no picking or follow mode | npc/pedestrian ids | LOW | P3 |
@@ -235,8 +235,9 @@ Only missing state or data:
 7. **Historical weather and temperature.** `WeatherHistory` is
    `main()`-only, and the server gives the simulation a fixed 15 °C.
 8. **Fuel station at the taxi** (price in the gauge).
-9. **Commands:** lane assist (K), manual respawn (R) and trip reset (T).
-   The limiter and red-light assist (V, B) already exist as fields.
+9. **Commands:** COMPLETE — lane assist (K), manual respawn (R), cancel
+   fare (X), and trip reset (T) now cross the same command protocol as the
+   limiter and red-light assist (V, B).
 10. **Walking player animation:** `player_pedestrian` has no animation
     state.
 11. **Pedestrian appearance:** `PedestrianAppearance` is not sent.
@@ -264,7 +265,9 @@ Only presentation; the data is already in Godot:
 ## Godot UI gaps
 
 The state or command field exists, but the UI is missing:
-- **Pause / settings menu:** language, volumes, subtitles.
+- **Menu details:** tutorial, city-list editor, subtitles and advanced
+  simulation settings remain. The startup, city, volume/language and pause
+  flow is in Godot.
 - **Analog speedometer** with indicators.
 - **Tutorial screen.**
 - **Label modes.**
@@ -402,7 +405,7 @@ Not to be ported:
    - **Result:** talking passengers, announced trains.
    - **Performance risk:** LOW.
 7. **Settings and polish.**
-   - **Features:** pause/settings menu; lane assist, respawn and trip-reset
+   - **Features:** pause/settings menu; lane assist, respawn, cancel-fare and trip-reset
      commands; walking-player animation; appearance; reversing lamp;
      outlines under canopies and bridges; vomit; steam, footsteps and phone
      sounds; engine layers.
@@ -1195,7 +1198,7 @@ p95 47.3 → 33.2 ms, draw calls 4,315 → 1,743, memory 112 → 97 MiB; day
 | Lat/lon, ways count, zoom | yes | – | debug-only | – | – | D |
 | Resident popup (click a person) | `draw_resident_popup` | – | missing | low | missing protocol data (resident details); needs click picking | D |
 | Camera follow other / back button | `draw_camera_back_button` | – | missing | low | Godot rendering only plus input | D |
-| Pause / settings / main menus | `render/menus.py` (pause, settings, mode and city selection, tutorial, loading screen) | – | missing | medium | Godot rendering only (UI; settings are client-side); city and mode choice is made by the server at startup | B |
+| Pause / settings / main menus | `render/menus.py` (pause, settings, mode and city selection, tutorial, loading screen) | `startup.gd`: career/gig and city startup, loading, pause, volume/language settings | partial | medium | tutorial, city editor and advanced settings remain | A |
 | Debug overlays: profiler, g-force, NPC panels, spatial grid, intersections, feature inspector, activity | various | F3 text readout | debug-only | – | – | D |
 
 ## Camera, coordinates, layering, motion

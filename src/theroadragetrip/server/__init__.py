@@ -25,6 +25,7 @@ import logging
 import threading
 import time
 from datetime import date, datetime, timedelta
+from types import SimpleNamespace
 from typing import Optional
 
 import pygame
@@ -34,11 +35,12 @@ from ..navigation_route import NavigationRoute
 from ..map_chunks import CHUNK_SIZE_M, ChunkIndex, cell_of, plan
 from ..protocol import LOCAL_PLAYER_ID
 from ..calendar import GameCalendar, darkness_for_sun_altitude, solar_altitude_and_events_on
-from ..career import career_path, gig_odometer_path
-from ..config import CONFIG_PATH, cities_from_config, get_overpass_endpoints
+from ..career import career_path, gig_odometer_path, load_career
+from ..config import CONFIG_PATH, cities_from_config, default_city_configuration, get_overpass_endpoints
 from ..main import _choose_city, _load_world
 from ..render import SCREEN_H, SCREEN_W
 from ..simulation import RAGE_SHOUT_DURATION_S, PlayerCommand, advance_simulation, apply_enter_exit_vehicle
+from ..physics import reset_trip, respawn_car
 from ..transport import Listener
 from ..weather import WeatherSystem
 
@@ -142,7 +144,7 @@ class SimulationServer:
         self.args = args
         self.tick_rate = max(1.0, float(getattr(args, "tick_rate", 30.0)))
         self.audio = EventAudio()
-        self.language = config.get("game", "language", fallback="") or "en"
+        self.language = getattr(args, "language", None) or config.get("game", "language", fallback="") or "en"
         self.physics_mode = config.get("game", "physics_realism", fallback="arcade")
         self.career_file = career_path(CONFIG_PATH)
         self.gig_odometer_file = gig_odometer_path(CONFIG_PATH)
@@ -153,12 +155,25 @@ class SimulationServer:
         args.auto_fetch = False  # see module docstring's scope note
 
         if city_choice is None:
-            city_centers, bbox_presets = cities_from_config(config)
-            city_choice = _choose_city(
-                None, "gig_driver", city_centers, bbox_presets, self.career_file, None,
-                None, None, pygame.time.Clock(), config, self.language, args,
-                args.force_refresh, False,
-            )
+            if getattr(args, "game_mode", "gig_driver") == "career":
+                city_centers, bbox_presets = default_city_configuration()
+                cities = list(city_centers)
+                career = load_career(self.career_file, len(cities))
+                selected = len(cities) - 1 - int(career["city_index"])
+                chosen = cities[selected]
+                city_choice = SimpleNamespace(
+                    chosen_city=chosen, camera_city_name=chosen, bbox=bbox_presets[chosen.lower()],
+                    city_centers=city_centers, bbox_presets=bbox_presets, game_mode="career",
+                    career=career, force_refresh=args.force_refresh, cities_list=cities,
+                    selected_city_idx=selected, language=self.language,
+                )
+            else:
+                city_centers, bbox_presets = cities_from_config(config)
+                city_choice = _choose_city(
+                    None, "gig_driver", city_centers, bbox_presets, self.career_file, None,
+                    None, None, pygame.time.Clock(), config, self.language, args,
+                    args.force_refresh, False,
+                )
         self.chosen_city = city_choice.chosen_city
         self.cities_list = city_choice.cities_list
         self.career = city_choice.career
@@ -208,6 +223,9 @@ class SimulationServer:
         self.navigation = NavigationRoute()  # the player's route to the taxi target (godot-final-04)
         self._pending_refuels = 0  # edge-triggered too: one press buys fuel once, never again each tick
         self._pending_road_rages = 0  # SPACE presses, likewise
+        self._pending_respawns = 0
+        self._pending_cancels = 0
+        self._pending_trip_resets = 0
         self._road_rage = None  # the active shout: {"text", "timer"}
         self._phone_requests: list = []  # edge-triggered like interacts: each one is applied once
 
@@ -215,8 +233,10 @@ class SimulationServer:
         self._clients: list = []
         # Per connection: the map chunks it has, and the player cell they were planned for.
         self.world.street_light_points = place_street_lights(self.world)  # before the chunks carry them
-        self._chunks_index = ChunkIndex(self.world)  # built and encoded once, before any client (~0.3 s for Oulu)
-        self._chunks_index.encode_all()
+        # Build the index now, but encode only the nearby chunks a client asks
+        # for. Some rural maps contain far-flung geometry in thousands of
+        # irrelevant buckets; eagerly encoding all of them delayed startup.
+        self._chunks_index = ChunkIndex(self.world)
         self._client_chunks: dict = {}
         self._server_time = 0.0
 
@@ -302,13 +322,20 @@ class SimulationServer:
                 command, interact = protocol.command_from_message(message)
                 phone = protocol.phone_request_from_message(message)
                 with self._command_lock:
-                    self._latest_command = replace(command, refuel=False, road_rage=False)  # the held part only
+                    self._latest_command = replace(command, refuel=False, road_rage=False, respawn=False,
+                                                   cancel_ride=False, reset_trip=False)  # the held part only
                     if interact:
                         self._pending_interacts += 1
                     if command.refuel:
                         self._pending_refuels += 1
                     if command.road_rage:
                         self._pending_road_rages += 1
+                    if command.respawn:
+                        self._pending_respawns += 1
+                    if command.cancel_ride:
+                        self._pending_cancels += 1
+                    if command.reset_trip:
+                        self._pending_trip_resets += 1
                     if phone is not None:
                         self._phone_requests.append(phone)
         with self._clients_lock:
@@ -342,6 +369,12 @@ class SimulationServer:
             if self._pending_road_rages > 0:
                 self._pending_road_rages -= 1
                 command = replace(command, road_rage=True)
+            respawn = self._pending_respawns > 0
+            cancel_ride = self._pending_cancels > 0
+            reset_trip_meter = self._pending_trip_resets > 0
+            self._pending_respawns -= int(respawn)
+            self._pending_cancels -= int(cancel_ride)
+            self._pending_trip_resets -= int(reset_trip_meter)
 
         with self._command_lock:
             phone_requests, self._phone_requests = self._phone_requests, []
@@ -351,6 +384,16 @@ class SimulationServer:
             self._on_foot = apply_enter_exit_vehicle(
                 self.car, self.world.player_pedestrian, self._on_foot, self.audio, self.world.taxi_mgr,
             )
+
+        self.car.lane_assist_enabled = command.lane_assist_enabled
+        if respawn and not self._on_foot:
+            respawn_car(self.car, self.world.ways, waters=self.world.waters, taxi_stops=self.world.taxi_stops)
+            self.world.taxi_mgr.handle_respawn(self.car.x, self.car.y)
+            self._camx, self._camy = self.car.x, self.car.y
+        if cancel_ride:
+            self.world.taxi_mgr.discard_mission(self.car.x, self.car.y)
+        if reset_trip_meter:
+            reset_trip(self.car)
 
         # Game time runs 60x while there is no fare, 1:1 during one (main()).
         time_scale = self._time_scale = 1.0 if self.world.taxi_mgr.has_active_job() else 60.0

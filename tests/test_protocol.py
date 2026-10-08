@@ -20,7 +20,8 @@ def _assert_no_pygame_import(module) -> None:
 
 
 def test_command_round_trips_through_encode_decode():
-    command = PlayerCommand(throttle=1.0, steer_left=0.5, sprint=True, refuel=True)
+    command = PlayerCommand(throttle=1.0, steer_left=0.5, sprint=True, refuel=True,
+                            lane_assist_enabled=True, respawn=True, cancel_ride=True, reset_trip=True)
     message = protocol.build_command_message(command, interact=True, seq=7)
     wire = protocol.encode(message)
     assert wire.endswith(b"\n")

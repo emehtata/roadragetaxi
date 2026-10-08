@@ -34,11 +34,11 @@ venv:
 install: venv
 	$(PIP) install -r requirements.txt
 
-run:
-	PYTHONPATH=src $(PYTHON) road_rage_trip.py
+run: godot/.godot
+	$(GODOT) --path godot
 
-run-debug:
-	PYTHONPATH=src $(PYTHON) road_rage_trip.py --log-level DEBUG
+run-debug: godot/.godot
+	$(GODOT) --path godot -- --log-level DEBUG
 
 run-sample:
 	PYTHONPATH=src $(PYTHON) road_rage_trip.py --use-sample
@@ -64,12 +64,12 @@ godot/.godot: | $(GODOT)
 	$(GODOT) --headless --path godot --import
 
 run-godot: godot/.godot
-	$(GODOT) --path godot -- --port $(PORT)
+	$(GODOT) --path godot -- --skip-menu --port $(PORT)
 
 run-godot-all: godot/.godot
 	PYTHONPATH=src $(PYTHON) -m theroadragetrip.server --preset $(PRESET) --port $(PORT) --tick-rate 30 & \
 	server=$$!; trap 'kill $$server' EXIT INT TERM; \
-	sleep 5; $(GODOT) --path godot -- --port $(PORT)
+	sleep 5; $(GODOT) --path godot -- --skip-menu --port $(PORT)
 
 godot-selftest: godot/.godot
 	PYTHONPATH=src $(PYTHON) -m theroadragetrip.server --preset $(PRESET) --port $(PORT) --tick-rate 30 & \

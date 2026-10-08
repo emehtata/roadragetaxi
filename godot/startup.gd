@@ -1,0 +1,334 @@
+## Godot-owned application shell: main/city/settings menus and the Python
+## simulation process. The game scene remains a pure network client.
+extends Control
+
+const PORT := 8765
+const T := preload("res://i18n.gd")
+
+var _server_pid := -1
+var _game: Node
+var _panel: PanelContainer
+var _body: VBoxContainer
+var _cities: Array = []
+var _city := "Oulu"
+var _language := "en"
+var _settings := ConfigFile.new()
+var _server_extra: Array[String] = []
+var _loading := false
+var _focusables: Array[Control] = []
+var _back_action := Callable()
+var _logo: TextureRect
+var _back: CanvasLayer  # the backdrop and logo: hidden while the game runs
+
+
+func _t(key: String, english: String) -> String:
+	return T.text(key, _language, english)
+
+
+func _ready() -> void:
+	var first_run := _settings.load("user://settings.cfg") != OK or not _settings.has_section_key("game", "language")
+	_language = _settings.get_value("game", "language", "en")
+	var command_line := OS.get_cmdline_user_args()
+	var log_level := command_line.find("--log-level")
+	if log_level >= 0 and log_level + 1 < command_line.size():
+		_server_extra.assign(["--log-level", command_line[log_level + 1]])
+	_cities = _server_query("--list-cities")
+	if _cities.is_empty():
+		_cities = ["Oulu"]
+	_city = _cities[0]
+	_build_shell()
+	for flag in ["--skip-menu", "--selftest", "--audiotest", "--inputtest", "--screenshot", "--bench"]:
+		if flag in command_line:
+			_game = preload("res://main.tscn").instantiate()
+			_game.language = _language
+			add_child(_game)
+			move_child(_game, 1)
+			_panel.visible = false
+			_back.visible = false
+			return
+	if first_run:
+		_language_menu()
+	else:
+		_main_menu()
+
+
+func _build_shell() -> void:
+	# Own canvas layers: as plain children of this Control the game's
+	# Camera2D moved them with the world (a backdrop/logo from mid-screen).
+	_back = CanvasLayer.new()
+	var back := _back
+	back.layer = -1  # behind the game's world
+	add_child(back)
+	var front := CanvasLayer.new()
+	front.layer = 100  # over the game's UI
+	add_child(front)
+	var backdrop := ColorRect.new()
+	backdrop.color = Color8(10, 14, 20)
+	backdrop.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	back.add_child(backdrop)
+	_logo = TextureRect.new()
+	var image := Image.load_from_file(ProjectSettings.globalize_path("res://../src/theroadragetrip/img/theroadragetrip_1672_941.png"))
+	if not image.is_empty():
+		_logo.texture = ImageTexture.create_from_image(image)
+	_logo.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	_logo.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
+	_logo.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_logo.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	back.add_child(_logo)
+	_panel = PanelContainer.new()
+	_panel.custom_minimum_size = Vector2(520, 0)
+	_panel.set_anchors_preset(Control.PRESET_CENTER)
+	_panel.position = Vector2(50, -250)
+	var panel_style := StyleBoxFlat.new()
+	panel_style.bg_color = Color8(17, 23, 31, 245)
+	panel_style.border_color = Color8(255, 199, 0)
+	panel_style.set_border_width_all(3)
+	panel_style.set_corner_radius_all(14)
+	panel_style.set_content_margin_all(28)
+	_panel.add_theme_stylebox_override("panel", panel_style)
+	front.add_child(_panel)
+	_body = VBoxContainer.new()
+	_body.add_theme_constant_override("separation", 12)
+	_panel.add_child(_body)
+
+
+func _clear() -> void:
+	for child in _body.get_children():
+		_body.remove_child(child)
+		child.queue_free()
+	_focusables.clear()
+	_back_action = Callable()
+
+
+func _focus_menu() -> void:
+	if _focusables.is_empty():
+		return
+	for i in _focusables.size():
+		var control := _focusables[i]
+		control.focus_neighbor_top = control.get_path_to(_focusables[(i - 1 + _focusables.size()) % _focusables.size()])
+		control.focus_neighbor_bottom = control.get_path_to(_focusables[(i + 1) % _focusables.size()])
+	_focusables[0].call_deferred("grab_focus")
+
+
+func _title(text: String, subtitle := "") -> void:
+	var title := Label.new()
+	title.text = text
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	title.add_theme_font_size_override("font_size", 34)
+	title.add_theme_color_override("font_color", Color8(255, 205, 26))
+	_body.add_child(title)
+	if subtitle:
+		var sub := Label.new()
+		sub.text = subtitle
+		sub.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		_body.add_child(sub)
+
+
+func _button(text: String, action: Callable) -> Button:
+	var button := Button.new()
+	button.text = text
+	button.custom_minimum_size.y = 44
+	button.add_theme_font_size_override("font_size", 18)
+	button.add_theme_color_override("font_focus_color", Color.BLACK)
+	button.add_theme_color_override("font_hover_color", Color.BLACK)
+	for state in ["hover", "focus", "pressed"]:
+		var style := StyleBoxFlat.new()
+		style.bg_color = Color8(255, 199, 0)
+		style.set_corner_radius_all(7)
+		button.add_theme_stylebox_override(state, style)
+	button.pressed.connect(action)
+	_body.add_child(button)
+	_focusables.append(button)
+	return button
+
+
+func _language_menu() -> void:
+	_clear()
+	_title("CHOOSE LANGUAGE / VALITSE KIELI")
+	_button("English", func(): _choose_language("en"))
+	_button("Suomi", func(): _choose_language("fi"))
+	_focus_menu()
+
+
+func _choose_language(language: String) -> void:
+	_language = language
+	_settings.set_value("game", "language", language)
+	_settings.save("user://settings.cfg")
+	_main_menu()
+
+
+func _main_menu() -> void:
+	get_tree().paused = false
+	_clear()
+	_title("ROAD RAGE TRIP", _t("choose_start", "Choose how to start"))
+	_button(_t("career", "Career"), func(): _start("career"))
+	_button(_t("gig_driver", "Gig driver"), _city_menu)
+	_button(_t("settings", "Settings"), _settings_menu)
+	_button(_t("quit", "Quit"), get_tree().quit)
+	_focus_menu()
+
+
+func _city_menu() -> void:
+	_clear()
+	_title(_t("choose_city", "CHOOSE CITY"), _t("gig_driver", "Gig driver"))
+	var choices := OptionButton.new()
+	for city in _cities:
+		choices.add_item(str(city))
+	choices.selected = maxi(0, _cities.find(_city))
+	choices.item_selected.connect(func(index: int): _city = str(_cities[index]))
+	_body.add_child(choices)
+	_focusables.append(choices)
+	_button(_t("drive", "Drive"), func(): _start("gig_driver"))
+	_button(_t("back", "Back"), _main_menu)
+	_back_action = _main_menu
+	_focus_menu()
+
+
+func _settings_menu() -> void:
+	_clear()
+	_title(_t("settings", "SETTINGS").to_upper())
+	var language := OptionButton.new()
+	language.add_item("English")
+	language.add_item("Suomi")
+	language.selected = 1 if _language == "fi" else 0
+	language.item_selected.connect(func(index: int):
+		_language = "fi" if index == 1 else "en"
+		_settings.set_value("game", "language", _language)
+		_settings.save("user://settings.cfg")
+		if _game != null:
+			_game.set_language(_language))
+	_body.add_child(language)
+	_focusables.append(language)
+	for item in [[_t("master_volume", "Master volume"), "Master"], [_t("game_volume", "Game volume"), "Game"], [_t("environment_volume", "Environment volume"), "Environment"], [_t("ui_volume", "UI volume"), "UI"]]:
+		var row := HBoxContainer.new()
+		var label := Label.new()
+		label.text = item[0]
+		label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		row.add_child(label)
+		var slider := HSlider.new()
+		slider.min_value = 0.0
+		slider.max_value = 1.0
+		slider.step = 0.05
+		slider.custom_minimum_size.x = 240
+		slider.value = _settings.get_value("audio", item[1], 1.0)
+		slider.value_changed.connect(func(value: float): _set_volume(item[1], value))
+		row.add_child(slider)
+		_body.add_child(row)
+		_focusables.append(slider)
+	var back := _pause_menu if _game != null else _main_menu
+	_button(_t("back", "Back"), back)
+	_back_action = back
+	_focus_menu()
+
+
+func _set_volume(bus: String, value: float) -> void:
+	var index := AudioServer.get_bus_index(bus)
+	if index >= 0:
+		AudioServer.set_bus_volume_db(index, linear_to_db(maxf(value, 0.0001)))
+	_settings.set_value("audio", bus, value)
+	_settings.save("user://settings.cfg")
+
+
+func _start(mode: String) -> void:
+	_clear()
+	_title(_t("loading", "LOADING"), _t("starting", "Starting the simulation…"))
+	var root := ProjectSettings.globalize_path("res://..").simplify_path()
+	var python := root.path_join(".venv/bin/python")
+	var args := ["PYGAME_HIDE_SUPPORT_PROMPT=1", "PYTHONPATH=" + root.path_join("src"), python,
+		"-m", "theroadragetrip.server", "--port", str(PORT), "--game-mode", mode, "--language", _language]
+	if mode == "gig_driver":
+		args.append_array(["--preset", _city])
+	args.append_array(_server_extra)
+	_server_pid = OS.create_process("/usr/bin/env", args)
+	if _server_pid <= 0:
+		_title(_t("start_failed", "START FAILED"), _t("start_failed_detail", "Could not launch the Python simulation"))
+		_button(_t("back", "Back"), _main_menu)
+		_back_action = _main_menu
+		_focus_menu()
+		return
+	_game = preload("res://main.tscn").instantiate()
+	_game.language = _language
+	_game.get_node("SimClient").connection_changed.connect(_server_connected)
+	add_child(_game)
+	move_child(_game, 1)
+	_loading = true
+	for bus in ["Master", "Game", "Environment", "UI"]:
+		_set_volume(bus, _settings.get_value("audio", bus, 1.0))
+
+
+func _server_connected(up: bool) -> void:
+	if not up or not _loading:
+		return
+	_loading = false
+	_panel.visible = false
+	_back.visible = false
+
+
+func _pause_menu() -> void:
+	get_tree().paused = true
+	if _game != null and _game._help != null:
+		_game._help.visible = false
+	_panel.visible = true
+	_back.visible = false
+	_clear()
+	_title(_t("paused", "PAUSED"))
+	_button(_t("resume", "Resume"), _resume)
+	_button(_t("settings", "Settings"), _settings_menu)
+	_button(_t("main_menu", "Main menu"), _stop_game)
+	_button(_t("quit", "Quit"), get_tree().quit)
+	_back_action = _resume
+	_focus_menu()
+
+
+func _resume() -> void:
+	_panel.visible = false
+	get_tree().paused = false
+
+
+func _stop_game() -> void:
+	_loading = false
+	get_tree().paused = false
+	if _game != null:
+		_game.queue_free()
+		_game = null
+	_stop_server()
+	_panel.visible = true
+	_back.visible = true
+	_main_menu()
+
+
+func _unhandled_input(event: InputEvent) -> void:
+	if not event.is_action_pressed("ui_cancel"):
+		return
+	if _game != null:
+		if _game.phone.is_open:
+			return
+		if get_tree().paused:
+			_resume()
+		else:
+			_pause_menu()
+	elif _back_action.is_valid():
+		_back_action.call()
+	get_viewport().set_input_as_handled()
+
+
+func _server_query(flag: String) -> Array:
+	var root := ProjectSettings.globalize_path("res://..").simplify_path()
+	var output: Array = []
+	var code := OS.execute("/usr/bin/env", ["PYGAME_HIDE_SUPPORT_PROMPT=1", "PYTHONPATH=" + root.path_join("src"),
+		root.path_join(".venv/bin/python"), "-m", "theroadragetrip.server", flag], output, true)
+	if code != 0 or output.is_empty():
+		return []
+	var parsed = JSON.parse_string(output[-1].strip_edges())
+	return parsed if parsed is Array else []
+
+
+func _stop_server() -> void:
+	if _server_pid > 0:
+		OS.kill(_server_pid)
+		_server_pid = -1
+
+
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_WM_CLOSE_REQUEST or what == NOTIFICATION_PREDELETE:
+		_stop_server()

@@ -125,13 +125,13 @@ Use `m` for male voices or `en` for English. The script stores hashes based only
 
 ### 2. Run the Game
 ```bash
-# Recommended launcher (default area: Oulu)
+# Godot launcher: career, gig/city selection, settings, then the game
 make run
 
 # Start with DEBUG-level logging
 make run-debug
 
-# Or run as a module
+# Legacy Pygame client
 source .venv/bin/activate
 PYTHONPATH=src python -m theroadragetrip
 
