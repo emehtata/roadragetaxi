@@ -50,7 +50,6 @@ func _ready() -> void:
 	_subtitle.add_theme_stylebox_override("normal", subtitle_style)
 	_subtitle.add_theme_font_size_override("font_size", 20)
 	_subtitle.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_subtitle.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_subtitle.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
 	_subtitle.visible = false
 	add_child(_subtitle)
@@ -202,10 +201,14 @@ static func subtitle_text(event: Dictionary) -> String:
 func _layout_subtitle() -> void:
 	if not _subtitle.visible and Time.get_ticks_msec() >= _subtitle_until:
 		return
-	_subtitle.custom_minimum_size = Vector2.ZERO
+	# An autowrapping Label reports ~0 minimum width (one letter per line):
+	# wrap only a line wider than the screen.
+	var font := _subtitle.get_theme_font("font")
+	var text_width := font.get_string_size(_subtitle.text, HORIZONTAL_ALIGNMENT_LEFT, -1, _subtitle.get_theme_font_size("font_size")).x
+	var too_wide := text_width + 34.0 > size.x - 40.0
+	_subtitle.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART if too_wide else TextServer.AUTOWRAP_OFF
+	_subtitle.custom_minimum_size = Vector2(size.x - 40.0 if too_wide else 0.0, 0.0)
 	_subtitle.size = Vector2.ZERO
-	var width := minf(_subtitle.get_minimum_size().x, size.x - 40.0)
-	_subtitle.custom_minimum_size.x = width
 	_subtitle.reset_size()
 	_subtitle.position = Vector2((size.x - _subtitle.size.x) / 2.0, size.y - 82.0 - _subtitle.size.y / 2.0)  # hud.py: centred at height - 82
 

@@ -516,6 +516,11 @@ func test_speech_and_stations() -> void:
 	check(Hud.subtitle_text({"speaker": "passenger", "text": ""}) == "" and Hud.subtitle_text({}) == "", "no text: no subtitle")
 	hud.show_subtitle({"speaker": "passenger", "speaker_name": "Aino", "text": "Hei", "duration_s": 4.0})
 	check(hud._subtitle.visible and hud._subtitle.text == "Aino: Hei", "one subtitle shows")
+	hud.size = Vector2(1280, 720)
+	hud.show_subtitle({"speaker": "driver", "text": "Nyt mennään kovaa, pidä kiinni", "duration_s": 4.0})
+	check(hud._subtitle.size.x > 3.0 * hud._subtitle.size.y, "a subtitle is one horizontal line, not a letter per row")
+	hud.show_subtitle({"speaker": "driver", "text": "pitkä rivi ".repeat(30), "duration_s": 4.0})
+	check(hud._subtitle.size.x <= 1240.0 and hud._subtitle.size.x > 1000.0 and hud._subtitle.size.y > 50.0, "a line wider than the screen wraps across it")
 	hud._subtitle_until = Time.get_ticks_msec() - 1
 	hud.show_state({})
 	check(not hud._subtitle.visible, "gone after its duration")
