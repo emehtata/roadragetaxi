@@ -32,18 +32,18 @@ has no row.
 
 | Status | Count |
 |---|---|
-| COMPLETE | 91 |
+| COMPLETE | 96 |
 | PARTIAL | 7 |
 | DIFFERENT BY DESIGN | 6 |
-| SERVER/PROTOCOL GAP | 15 |
+| SERVER/PROTOCOL GAP | 11 |
 | GODOT RENDERING GAP | 3 |
 | GODOT UI GAP | 4 |
-| AUDIO GAP | 4 |
+| AUDIO GAP | 3 |
 | MISSING | 0 |
 | PYGAME-ONLY / OBSOLETE | 11 |
 | **rows** | **141** |
 
-Incomplete rows by priority: 0 P0 (refuelling done in godot-final-01), 0 P1, 10 P2, 23 P3 (label modes done; road rage in godot-final-05; weather presentation in godot-final-06; score, toggles and summary done in godot-final-02; taximeter and pump price in godot-final-03; navigation route in godot-final-04).
+Incomplete rows by priority: 0 P0 (refuelling done in godot-final-01), 0 P1, 6 P2, 22 P3 (speech and stations in godot-final-07; label modes done; road rage in godot-final-05; weather presentation in godot-final-06; score, toggles and summary done in godot-final-02; taximeter and pump price in godot-final-03; navigation route in godot-final-04).
 
 **What is left by type:**
 - **Protocol gaps:** most remaining work is in the protocol. The simulation
@@ -136,7 +136,7 @@ polish. Complete rows have no priority.
 | Trains | Draw order above bridges / canopies | `draw_trains` after bridges | `entity_layer.gd` trains z 12 | COMPLETE | – | – | – | – |
 | Trains | Trains under station roofs (outline) | `draw_trains(roof_cover)` | – | GODOT RENDERING GAP | outline under canopies not drawn | chunk `canopies` | LOW | P3 |
 | Trains | Station / platform behaviour, timetable | `trains.py`, `train_timetable.py` | server-run, trains move and stop | COMPLETE | – | `trains[].state` | – | – |
-| Trains | Next-train panel (J) | `draw_next_train` | – | SERVER/PROTOCOL GAP | timetable query not sent | `train_timetable.py` | LOW | P2 |
+| Trains | Next-train panel (J) | `draw_next_train` | `hud.gd` board from `state.railway`, J local (godot-final-07) | COMPLETE | – | `RailwayManager.next_arrivals/departures` | – | – |
 | Trains | Clicked car's passengers | `draw_train_car_popup` | – | SERVER/PROTOCOL GAP | `passengers.in_car` not sent; no click picking | `train_passengers.py` | LOW | P3 |
 | Taxi | Pickup / drop-off zone, marker, address tag | `render/navigation.py` `draw_taxi_target` | `entity_layer.gd` `_target` | COMPLETE | – | `current_passenger.pickup/dropoff` | – | – |
 | Taxi | Off-screen target arrow + distance | `draw_taxi_target` | `nav_overlay.gd` | COMPLETE | – | `EntityLayer.current_target` | – | – |
@@ -164,7 +164,7 @@ polish. Complete rows have no priority.
 | HUD | Trip, odometer | `draw_hud` meters | `instruments.gd` | COMPLETE | – | `trip_m`, `odometer_m` | – | – |
 | HUD | Rage meter | `draw_hud` faces, %, bar | `instruments.gd` `_draw_rage` | COMPLETE | – | `rage_power` | – | – |
 | HUD | Water timer | `draw_hud` | `instruments.gd` | COMPLETE | – | `water_elapsed` | – | – |
-| HUD | Speech subtitles | `draw_hud(comment_text)` | – | SERVER/PROTOCOL GAP | speech lines go to the server's no-op audio; nothing is sent | `simulation.py` `play_driver_line`, `play_passenger_line` | LOW | P2 |
+| HUD | Speech subtitles | `draw_hud(comment_text)` | `hud.gd` one subtitle from the server's `speech` events (godot-final-07) | COMPLETE | – | `speech` events | – | – |
 | HUD | Speed limiter / red-light assist toggles (V, B) | key toggles + HUD status | `main.gd` V/B session toggles in every command, ON/OFF in the hint (godot-final-02) | COMPLETE | – | `PlayerCommand` fields | – | – |
 | HUD | Lane assist (K) | `car.lane_assist_enabled` toggle | – | SERVER/PROTOCOL GAP | not a command field | `physics.py:240` | LOW | P2 |
 | HUD | FPS counter | normal HUD | F3 readout | DIFFERENT BY DESIGN | – | – | – | – |
@@ -198,9 +198,9 @@ polish. Complete rows have no priority.
 | Audio | Damaged-taxi steam loop | `set_loop("steam", vehicle.damaged_steam)` | – | AUDIO GAP | loop not derived from `taxi_smoke_timer` | `taxi.taxi_smoke_timer` | LOW | P3 |
 | Audio | Footsteps on foot | `update_footsteps` | – | AUDIO GAP | loop not derived (on foot + player movement) | `on_foot`, player positions | LOW | P3 |
 | Audio | Train running, brakes, doors, horn | `_play_rail_sounds` in `main()` | `main.gd` `train_running` loop; `train_arrived`/`train_departed` events | COMPLETE | – | `trains`, events | – | – |
-| Audio | Station ambience, crowd, luggage | `main()` | – | AUDIO GAP | not played near stations | station positions (chunk `taxi_stands` / places) | LOW | P3 |
-| Audio | Station announcements | `station_announcer.py` in `main()` | – | SERVER/PROTOCOL GAP | announcer state and timetable not on the server | `station_announcer.py` | LOW | P2 |
-| Audio | Driver / passenger speech and chatter | `audio.play_driver_line`, `play_passenger_line`, `update_passenger_speech` | – | SERVER/PROTOCOL GAP | `EventAudio` drops speech; no event | `simulation.py:493–622` | LOW | P2 |
+| Audio | Station ambience, crowd, luggage | `_play_rail_sounds` | `main.gd` `station_ambience`: the loudest station, two placed loops (godot-final-07) | COMPLETE | – | `state.railway.stations` | – | – |
+| Audio | Station announcements | `station_announcer.py` in `main()` | server `StationAnnouncer.event` → `station_announcement`; `audio_manager.gd` one loudspeaker, FIFO (godot-final-07) | COMPLETE | – | manifest clips | – | – |
+| Audio | Driver / passenger speech and chatter | `audio.play_driver_line`, `play_passenger_line`, `update_passenger_speech` | shared `speech.py`; `EventAudio` → `speech` events; `audio_manager.gd` one voice (godot-final-07) | COMPLETE | – | chatter catalogs + WAVs | – | – |
 | Audio | Phone UI: reject, new booking, missed booking, menu | `main()` `ui.*` groups | `phone.gd` only `ui.phone_open`; `ui.accept` from the server | AUDIO GAP | the other UI cues are not played | `phone` statuses | LOW | P3 |
 | Obsolete | BIN map loading | `main()` city bin | – | PYGAME-ONLY / OBSOLETE | superseded by OSM chunks | – | – | – |
 | Obsolete | Debug overlays: profiler, g-force, NPC panels, spatial grid, intersections, feature inspector, activity | `render/hud.py` debug panels | F3 readout | PYGAME-ONLY / OBSOLETE | developer UI | – | – | – |
@@ -872,6 +872,106 @@ conversion on the test server only.
 
 Godot 508 checks. Screenshots of rain, slush and snow were taken through the
 same server.
+
+## godot-final-07: speech and stations
+
+**Speech (server decides, client plays).**
+- **`speech.py`:** the chatter catalogs and `audio.py`'s rules, unchanged and
+  pygame-free:
+  - situation moods
+  - the Finnish driver recording when there is none in the requested
+    language (the subtitle keeps the requested text)
+  - a 3 s cooldown per driver situation
+  - one line at a time
+  - passenger chatter every 5–20 s at random while riding
+  - a specific line by its Finnish text
+
+  Pygame's `AudioManager` now uses it, with its channel as the busy flag.
+- **The server's `EventAudio`** uses it on the simulation clock: a line is
+  "busy" for its recording's length, read from the WAV header. Each accepted
+  line becomes one event:
+  `{"type": "speech", "speaker", "speaker_name", "gender": "f"|"m",
+  "language" (the recording's), "hash", "text", "duration_s": 4.0}`.
+  Events go through the existing due-event path once.
+- **Godot:**
+  - **The voice:** `audio_manager.gd` `speak` resolves only
+    `sounds/<speaker>_chatter/<g>_<lang>_<hex>.wav`, decodes it once
+    (`AudioStreamWAV`) and plays it on one `AudioStreamPlayer` (Game bus).
+    Nothing plays over a line already playing; malformed events or missing
+    files are ignored.
+  - **The subtitle:** `hud.gd` `show_subtitle` shows one label, "name or
+    Driver/Passenger: text", white on black (205), centred at height − 82,
+    word-wrapped, for the event's seconds in real time.
+
+**Announcements.**
+- **The event:** `StationAnnouncer.event` uses the same script, phrases,
+  `clips()` (pauses included) and platform source as `announce`. It gives
+  one `station_announcement` per arrival or departure:
+  `{"clips": [manifest-relative files in order], "at": the platform point
+  nearest the taxi (else the stop), "text", "station"}`. It doesn't depend
+  on an audio device; the existing `train_arrived`/`train_departed` events
+  stay.
+- **Godot:** `announce` accepts only clips under
+  `assets/railway_announcements` (no `..`, no absolute paths). One
+  `AudioStreamPlayer2D` (Game bus, range 300 m) plays the clips in order,
+  starting each on `finished`. Whole announcements queue; one still waiting
+  after 20 s is dropped.
+
+**`state.railway`** (`protocol.railway_state`):
+`{"stations": [{name, x, y, waiting}], "nearest_station", "arrivals": [{time
+"HH:MM", train_type, number, origin, track}], "departures": [... destination
+...]}`. It comes from `RailwayManager.stations`, `next_arrivals` and
+`next_departures` (5) at the server's game time, and the station passengers'
+`waiting_count`. It is `{}` without a railway. On Oulu it takes 0.9 ms and
+about 1 KB a state.
+
+**Station ambience** (`main.gd` `station_ambience`, `_play_rail_sounds`):
+- **Which station:** of the stations with people waiting, the one heard
+  loudest, by audio.py's gain (full within 15 m, 1/d, faded over the last
+  quarter of 150 m).
+- **Loops:** `station_crowd` (variation 0) at min(1, waiting / 30) × 0.6 and
+  `station_luggage` (variation 1) × 0.4, placed and updated, not restarted.
+
+**J board:** a local toggle that sends no command and is ignored while the
+phone is open. `hud.gd` `next_train_text` lays out the station, "Next
+trains:" and "Departing trains:" with up to 5 rows each ("HH:MM track N  IC
+28 Rovaniemi"), top right at y 116, in pale blue on dark with a blue border.
+It hides when empty or malformed. The one-time "Train timetables available.
+Press J." is the client's own 6 s hint, so it never overwrites a server
+notice.
+
+**Bounded:** one voice, one subtitle, one loudspeaker with a queue, two
+station loops and one board. Streams are cached by path. No nodes are created
+per event.
+
+**Tests.**
+- **Python** (`tests/test_speech.py`, 8):
+  - no pygame import; driver Finnish fallback with the English text
+  - busy, cooldown, moods, the specific line, the random interval
+  - missing catalogs; the announcement event equals
+    `clips(phrases)`/`sentence`, and is None without a service or stop
+  - `railway_state`: the nearest station, five rows, JSON-safe, `{}`
+    without a railway
+- **Godot** (33 checks):
+  - a real WAV plays once; traversal and missing files are rejected; stop
+    on disconnect
+  - the clip order, the 300 m placement, traversal rejected, the queue and
+    staleness
+  - the subtitle text and lifetime; the board format, the five-row cap and
+    malformed boards
+  - J is local and phone-gated; the hint
+  - station selection, the gain, malformed stations, the loop variations
+
+Godot 541 checks.
+
+**Oulu run** (a real offer and fare):
+- three passenger lines in the passenger's name: the pickup line ("Voitin
+  liput kesän konserttiin."), chatter, and the drop-off line
+- the driver lines were blocked while the passenger spoke, as Pygame
+- 7 station announcements, e.g. "Hyvät matkustajat. InterCity kaksikymmentä
+  kahdeksan Rovaniemeltä saapuu raiteelle yksi"
+- 16 waiting at Oulu
+- the J board screenshot shows Oulu's arrivals and departures
 
 ---
 
