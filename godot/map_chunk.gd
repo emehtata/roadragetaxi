@@ -210,11 +210,20 @@ func _clip_to_bounds() -> void:
 		_data[key] = pieces
 	var waters: Array = []
 	for water in _data.get("waters", []):
-		if water.size() >= 3 and not Geometry2D.triangulate_polygon(water).is_empty():
+		# Clip first: a big lake (Sysmä) has thousands of points and is in
+		# every chunk it touches - triangulating it whole took seconds a chunk.
+		if water.size() >= 3 and _rect(water).intersects(_bounds_rect, true):
 			for piece in Geometry2D.intersect_polygons(water, _bounds):
 				if not Geometry2D.triangulate_polygon(piece).is_empty():
 					waters.append(piece)
 	_data["waters"] = waters
+
+
+static func _rect(points: PackedVector2Array) -> Rect2:
+	var rect := Rect2(points[0], Vector2.ZERO)
+	for point in points:
+		rect = rect.expand(point)
+	return rect
 
 
 ## A child canvas item at z; `draw` is called with that node to draw into.
