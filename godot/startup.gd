@@ -169,10 +169,11 @@ func _main_menu() -> void:
 	_clear()
 	_title("ROAD RAGE TRIP", _t("choose_start", "Choose how to start"))
 	_button(_t("career", "Career"), func(): _start("career"))
-	_button(_t("gig_driver", "Gig driver"), _city_menu)
+	var gig := _button(_t("gig_driver", "Gig driver"), _city_menu)
 	_button(_t("settings", "Settings"), _settings_menu)
 	_button(_t("quit", "Quit"), get_tree().quit)
 	_focus_menu()
+	gig.call_deferred("grab_focus")  # Enter: gig driving
 
 
 func _city_menu() -> void:
@@ -188,10 +189,11 @@ func _city_menu() -> void:
 		_settings.save("user://settings.cfg"))
 	_body.add_child(choices)
 	_focusables.append(choices)
-	_button(_t("drive", "Drive"), _time_menu)
+	var drive := _button(_t("drive", "Drive"), _time_menu)
 	_button(_t("back", "Back"), _main_menu)
 	_back_action = _main_menu
 	_focus_menu()
+	drive.call_deferred("grab_focus")  # Enter: on to the start time (the remembered city)
 
 
 ## Pygame's choose_start_datetime: year, month, day, hour and minute of the
