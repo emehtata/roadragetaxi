@@ -171,10 +171,33 @@ func _main_menu() -> void:
 	var career := _button(_t("career", "Career"), func(): _start("career"))
 	var gig := _button(_t("gig_driver", "Gig driver"), _city_menu)
 	_button(_t("settings", "Settings"), _settings_menu)
+	_button(_t("clear_cache", "Clear all map cache"), _confirm_clear_cache)
 	_button(_t("quit", "Quit"), get_tree().quit)
 	_focus_menu()
 	# Enter: the mode played last time (gig driving the first time).
 	(career if _settings.get_value("menu", "mode", "gig_driver") == "career" else gig).call_deferred("grab_focus")
+
+
+## Pygame's "Clear all map cache": asked first; then the server deletes
+## the OSM downloads and the built worlds, and maps load fresh next time.
+func _confirm_clear_cache() -> void:
+	_clear()
+	_title(_t("clear_cache", "Clear all map cache").to_upper(), _t("confirm_clear_cache", "Clear the map cache? Maps will be downloaded again."))
+	var no := _button(_t("cancel", "Cancel"), _main_menu)
+	_button(_t("clear", "Clear"), func():
+		_clear()
+		_title(_t("clearing", "Clearing…"))
+		await get_tree().process_frame
+		var removed := _server_query("--clear-cache")
+		_clear()
+		_title(_t("clear_cache", "Clear all map cache").to_upper(),
+			_t("cache_cleared_done", "Map cache cleared.") if removed.size() == 2 else _t("cache_clear_failed", "Could not clear the map cache."))
+		_button(_t("back", "Back"), _main_menu)
+		_back_action = _main_menu
+		_focus_menu())
+	_back_action = _main_menu
+	_focus_menu()
+	no.call_deferred("grab_focus")  # Enter does not delete anything
 
 
 func _city_menu() -> void:

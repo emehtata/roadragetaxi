@@ -201,13 +201,16 @@ def save_osm_cache(bbox: Tuple[float, float, float, float], elements: List[dict]
 
 
 def clear_osm_cache() -> int:
-    """Delete all files stored in the OSM cache directory."""
+    """Delete all files stored in the OSM cache directory - the map data;
+    the FMI weather history kept there is not map data and stays."""
     from . import CACHE_DIR  # re-read each call so tests can monkeypatch theroadragetrip.osm.CACHE_DIR
 
     if not os.path.isdir(CACHE_DIR):
         return 0
     removed = 0
     for entry in os.scandir(CACHE_DIR):
+        if entry.name.startswith("weather_history.db"):
+            continue
         try:
             if entry.is_dir():
                 shutil.rmtree(entry.path)

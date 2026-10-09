@@ -539,3 +539,30 @@ def test_endpoint_is_not_recontacted_within_30_seconds_even_on_a_clean_success(m
         "the endpoint that just answered successfully was contacted again within 30s"
     )
 
+
+
+def test_clearing_the_map_cache_keeps_the_weather_history(tmp_path, monkeypatch):
+    """The menu's "Clear all map cache": map data goes, the FMI weather
+    (weather_history.db, which lives in the same directory) stays."""
+    import theroadragetrip.osm as osm
+
+    monkeypatch.setattr(osm, "CACHE_DIR", str(tmp_path))
+    (tmp_path / "ways_a.json").write_text("{}")
+    (tmp_path / "weather_history.db").write_text("")
+    assert clear_osm_cache() == 1
+    assert sorted(p.name for p in tmp_path.iterdir()) == ["weather_history.db"]
+
+
+def test_the_server_clears_the_map_cache_and_says_how_much(monkeypatch, capsys):
+    import json
+    import sys
+
+    import theroadragetrip.osm.cache as osm_cache
+    import theroadragetrip.world_cache as world_cache
+    from theroadragetrip.server import __main__ as server_main
+
+    monkeypatch.setattr(osm_cache, "clear_osm_cache", lambda: 4)
+    monkeypatch.setattr(world_cache, "clear_world_cache", lambda: 2)
+    monkeypatch.setattr(sys, "argv", ["prog", "--clear-cache", "--use-sample", "--no-menu"])
+    server_main.main()
+    assert json.loads(capsys.readouterr().out.strip().splitlines()[-1]) == [4, 2]
