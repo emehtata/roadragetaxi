@@ -19,7 +19,7 @@
       <a href="#roadmap">Tulossa</a>
       <a href="#how-to-play">Näin pelaat</a>
       <a href="#release-notes">Julkaisutiedot</a>
-      <a class="nav-release" href="https://github.com/emehtata/roadragetaxi/releases" target="_blank" rel="noreferrer">Lataa peli <span aria-hidden="true">↗</span></a>
+      <a class="nav-release" href="https://github.com/emehtata/roadragetaxi/releases/download/v0.16.0g-alpha/RoadRageTrip-Setup.exe" target="_blank" rel="noreferrer">Lataa peli <span aria-hidden="true">↗</span></a>
     </nav>
     <button class="language-toggle" type="button" aria-label="Vaihda kieleksi English">EN</button>
   </header>
@@ -33,12 +33,21 @@
         <h1>Vie asiakkaat perille.<br><em>Haasta tie.</em></h1>
         <p class="hero-copy">Oikeita suomalaisia katuja. Neljä vuodenaikaa. Taksamittari käy, ja asiakas arvioi jokaisen mutkan.</p>
         <div class="hero-actions">
-          <a class="button button-primary" href="https://github.com/emehtata/roadragetaxi/releases" target="_blank" rel="noreferrer">Lataa uusin julkaisu <span>↗</span></a>
+          <a class="button button-primary" href="https://github.com/emehtata/roadragetaxi/releases/download/v0.16.0g-alpha/RoadRageTrip-Setup.exe" target="_blank" rel="noreferrer">Lataa Windows-asennus <span>↗</span></a>
           <a class="button button-ghost" href="#features">Tutustu peliin <span>↓</span></a>
         </div>
-        <div class="hero-meta"><span>PYTHON + PYGAME</span><span>OIKEA OSM-DATA</span><span>AVOINTA LÄHDEKOODIA</span></div>
+        <div class="hero-meta"><span>GODOT + PYTHON-PALVELIN</span><span>OIKEA OSM-DATA</span><span>AVOINTA LÄHDEKOODIA</span></div>
       </div>
       <div class="hero-scroll">VIERITÄ ALASPÄIN <span></span></div>
+    </section>
+
+    <section class="screenshots section-shell" aria-labelledby="screenshots-title">
+      <div class="section-kicker" id="screenshots-title">PELIKUVIA / GODOT 0.16.0g-alpha</div>
+      <div class="screenshot-grid">
+        <figure><a href="assets/godot-city.png" target="_blank"><img src="assets/godot-city.png" alt="Taksi suomalaisessa kaupungissa illansuussa" loading="lazy"></a><figcaption>Kaupunki / City</figcaption></figure>
+        <figure><a href="assets/godot-rain.png" target="_blank"><img src="assets/godot-rain.png" alt="Liikennettä ja sadetta Godot-pelin tiellä" loading="lazy"></a><figcaption>Sade ja liikenne / Rain and traffic</figcaption></figure>
+        <figure><a href="assets/godot-night.png" target="_blank"><img src="assets/godot-night.png" alt="Taksi valaistussa risteyksessä yöllä" loading="lazy"></a><figcaption>Yökaupunki / Night city</figcaption></figure>
+      </div>
     </section>
 
     <section class="intro section-shell">
@@ -106,25 +115,22 @@
     </section>
 
     <section class="release-notes section-shell" id="release-notes">
-      <div class="section-kicker">05 / JULKAISU 0.14.2alpha</div>
+      <div class="section-kicker">05 / JULKAISU 0.16.0g-alpha</div>
       <div class="how-grid">
-        <div><h2>Mitä on<br><em>uutta.</em></h2><p class="lead">Aika, sää ja vuodenajat muuttavat nyt sekä maisemaa että ajotuntumaa — ja jokaisesta kyydistä maksetaan.</p></div>
+        <div><h2>Mitä on<br><em>uutta.</em></h2><p class="lead">Peli toimii nyt Godot-asiakkaalla ja on saatavilla Windows-asennuspakettina.</p></div>
         <ul class="notes-list">
-          <li><strong>Vapaa aloitusaika</strong>Keikkakuski-tilassa voit valita aloituspäivän ja kellonajan; oletuksena käytetään oikeaa paikallista aikaa.</li>
-          <li><strong>Vuodenajat muuttavat maailman</strong>Lumi, kevään vaaleat sävyt ja jäälautat, kesän vihreys sekä syksyn ruska vaihtuvat kalenterin mukana.</li>
-          <li><strong>Suomalainen sää</strong>Lämpötila seuraa vuodenaikaa ja leveysastetta. Talvella sataa ajoittain lunta ja syksyllä tavallista useammin vettä.</li>
-          <li><strong>Jää, vesi ja ajopinnat</strong>Talven vesistöt jäätyvät valkoisiksi. Märkä tie, lumi ja jää vaikuttavat pitoon, ja pehmeälle pinnalle jää neljän renkaan jäljet.</li>
-          <li><strong>Taksamittari ja saldo</strong>Kyytiin lisätään kellonajasta riippuva lähtömaksu sekä kilometri- ja aikamaksu, pyöristettynä ylöspäin kymmeneen senttiin.</li>
-          <li><strong>Tyytyväisyys ja tipit</strong>Asiakas palkitsee nopean, ajoissa valmistuneen kyydin, mutta kolarit ja holtiton ajo pienentävät enintään 10 euron tippiä.</li>
-          <li><strong>Selkeämpi ajotuntuma</strong>Renkaiden pitoa on lisätty kaikilla pinnoilla, märkä kova pinta ei jätä skidmark-jälkiä ja talven pehmeälle lumelle syntyy lumijäljet mudan sijaan.</li>
+          <li><strong>Godot-pelikuva</strong>Kaupunki, liikenne, sää ja yövalaistus renderöidään nyt Godotissa.</li>
+          <li><strong>Windows-asennus</strong>Lataa Setup.exe ja asenna peli ilman erillistä Python- tai Godot-asennusta.</li>
+          <li><strong>Aloitusvalikko</strong>Valitse kieli ensimmäisellä käynnistyksellä, kaupunki ja pelitila valikosta.</li>
+          <li><strong>Suomenkielinen käyttöliittymä</strong>Valikot ja pelitekstit seuraavat valittua kieltä.</li>
         </ul>
       </div>
     </section>
 
     <section class="release-callout section-shell">
       <div class="release-marker">UUSIN JULKAISU</div>
-      <div><h2>Seuraava kyyti<br>odottaa.</h2><p>Lataa uusin Windows-versio GitHub Releases -sivulta ja lähde tien päälle.</p></div>
-      <a class="button button-primary" href="https://github.com/emehtata/roadragetaxi/releases" target="_blank" rel="noreferrer">Avaa GitHub Releases <span>↗</span></a>
+      <div><h2>Seuraava kyyti<br>odottaa.</h2><p>Lataa Windows-asennuspaketti v0.16.0g-alpha ja lähde tien päälle.</p></div>
+      <a class="button button-primary" href="https://github.com/emehtata/roadragetaxi/releases/download/v0.16.0g-alpha/RoadRageTrip-Setup.exe" target="_blank" rel="noreferrer">Lataa Windows-asennus <span>↗</span></a>
     </section>
   </main>
 
