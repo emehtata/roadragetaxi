@@ -168,12 +168,13 @@ func _main_menu() -> void:
 	get_tree().paused = false
 	_clear()
 	_title("ROAD RAGE TRIP", _t("choose_start", "Choose how to start"))
-	_button(_t("career", "Career"), func(): _start("career"))
+	var career := _button(_t("career", "Career"), func(): _start("career"))
 	var gig := _button(_t("gig_driver", "Gig driver"), _city_menu)
 	_button(_t("settings", "Settings"), _settings_menu)
 	_button(_t("quit", "Quit"), get_tree().quit)
 	_focus_menu()
-	gig.call_deferred("grab_focus")  # Enter: gig driving
+	# Enter: the mode played last time (gig driving the first time).
+	(career if _settings.get_value("menu", "mode", "gig_driver") == "career" else gig).call_deferred("grab_focus")
 
 
 func _city_menu() -> void:
@@ -347,6 +348,8 @@ func _set_volume(bus: String, value: float) -> void:
 
 
 func _start(mode: String) -> void:
+	_settings.set_value("menu", "mode", mode)  # the main menu's choice next time
+	_settings.save("user://settings.cfg")
 	_clear()
 	_title(_t("loading", "LOADING"), _t("starting", "Starting the simulation…"))
 	var root := ProjectSettings.globalize_path("res://..").simplify_path()
