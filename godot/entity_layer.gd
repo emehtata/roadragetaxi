@@ -36,6 +36,9 @@ var light_at := func(_at: Vector2) -> float: return 0.0  # MapLayer.light_at: st
 var ambient := Color.WHITE  # the world's ambient multiply (main.gd): lit vehicles are pre-brightened against it
 var _tint = null  # while a vehicle is drawn: its light (ambient + street light); its shapes go to _cars
 var _cars: Node2D  # the vehicles, unshaded: each tinted by its own light instead of the world's ambient
+var _route_node: Node2D  # the navigation route, unshaded (_draw_route)
+var _route_now := PackedVector2Array()
+const ROUTE_NIGHT_VISIBILITY := 0.55  # 0: as dark as the night, 1: as clear as by day
 var _car_shapes: Array = []  # [kind, ...] this frame: ["poly", points, fill, outline, width], ["circle", ...], ["line", ...]
 const STREET_LIGHT_ON_VEHICLES := 0.55  # how strongly a lamp lights a car, like the pool on the road
 var language := "en"
@@ -92,6 +95,10 @@ func _ready() -> void:
 	_glow.draw.connect(func(): if not glow_triangles.is_empty():
 		RenderingServer.canvas_item_add_triangle_array(_glow.get_canvas_item(), glow_triangles, glow_points, glow_colors))
 	add_child(_glow)
+	_route_node = Node2D.new()
+	_route_node.material = preload("res://emissive.tres")
+	_route_node.draw.connect(_draw_route)
+	add_child(_route_node)  # before the vehicles' node: under them
 	_cars = Node2D.new()
 	_cars.material = preload("res://emissive.tres")  # lit by vehicle_light, not the ambient multiply
 	_cars.draw.connect(_draw_cars)
@@ -593,11 +600,23 @@ func _rgb(values: Array) -> Color:
 ## render/navigation.py draw_navigation_route: the server's route (state
 ## navigation.points) above the roads and pedestrians, under the target
 ## marker and the vehicles - dark edge, gold centre. Converted once per new route.
+## Drawn on its own unshaded node, tinted half way from the night's
+## ambient to daylight: dimmer at night, never lost in the dark.
 func _route(state: Dictionary) -> void:
-	var points := route_for(state)
-	if points.size() >= 2:
-		draw_polyline(points, RS.ROUTE_EDGE, maxf(_px(5.0), 0.8))
-		draw_polyline(points, RS.ROUTE, maxf(_px(2.0), 0.45))
+	_route_now = route_for(state)
+	_route_node.queue_redraw()
+
+
+func _draw_route() -> void:
+	if _route_now.size() < 2:
+		return
+	var tint := route_tint(ambient)
+	_route_node.draw_polyline(_route_now, RS.ROUTE_EDGE * tint, maxf(_px(5.0), 0.8))
+	_route_node.draw_polyline(_route_now, RS.ROUTE * tint, maxf(_px(2.0), 0.45))
+
+
+static func route_tint(ambient_color: Color) -> Color:
+	return Color(ambient_color.lerp(Color.WHITE, ROUTE_NIGHT_VISIBILITY), 1.0)
 
 
 ## The route to draw this frame: none while N is off or there's no target.
