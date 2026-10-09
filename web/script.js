@@ -1,7 +1,8 @@
 const translations = {
   fi: {
-    navGame: 'Peli', navFeatures: 'Ominaisuudet', navRoadmap: 'Tulossa', navHow: 'Näin pelaat', navNotes: 'Julkaisutiedot', download: 'Lataa peli', release: 'Lataa uusin julkaisu', explore: 'Tutustu peliin',
+    navGame: 'Peli', navFeatures: 'Ominaisuudet', navRoadmap: 'Tulossa', navHow: 'Näin pelaat', navNotes: 'Julkaisutiedot', download: 'Lataa peli', release: 'Lataa Windows-asennus', explore: 'Tutustu peliin',
     kicker: 'Avoimen maailman taksipeli · Suomi', title: 'Vie asiakkaat perille.<br><em>Haasta tie.</em>', copy: 'Oikeita suomalaisia katuja. Neljä vuodenaikaa. Taksamittari käy, ja asiakas arvioi jokaisen mutkan.',
+    screenshotsKicker: 'PELIKUVIA / GODOT 0.16.0g-alpha', platform: 'GODOT + PYTHON-PALVELIN',
     introKicker: '01 / TYÖ', intro: 'Yksi kaupunki.<br><span>Loputtomasti tekosyitä.</span>', lead: 'The Road Rage Trip on ylhäältä kuvattu taksipeli, joka perustuu Suomen oikeisiin OpenStreetMap-katuihin.',
     introText: 'Nouda asiakkaita puhelimesta, taksiasemilta tai kadulta. Aja heidät perille, seuraa ehdotettua reittiä ja pidä pisteesi kasassa, kun liikenne, kamerat, sää ja tie itse testaavat hermojasi.',
     featureKicker: '02 / KONEPELLIN ALLA', featureTitle: 'Kauniisti<br><em>ärtyneille.</em>', featureIntro: 'Tämä ei ole pelkkä tausta. Tieverkosto, sää, jalankulkijat ja sääntöjen rikkomisen seuraukset elävät ympärilläsi.',
@@ -29,22 +30,20 @@ const translations = {
     ],
     howKicker: '04 / RATTIIN', howTitle: 'Tunne<br><span>säännöt.</span><br>Riko rauha.', howLead: 'Kaupunki on sinun pelikenttäsi. Pisteet voit pilata itse.',
     controls: ['Aja, jarruta, ohjaa', 'Avaa taksin puhelin', 'Raivohuuto: raivaa tie', 'Näytä ehdotettu reitti', 'Kaista-avustin', 'Nopeusrajoitin', 'Liikennevaloavustin', 'Respawn, T nollaa trippimittarin', 'Tauko, asetukset ja kaupungin vaihto'],
-    notesKicker: '05 / JULKAISU 0.14.2alpha', notesTitle: 'Mitä on<br><em>uutta.</em>', notesLead: 'Aika, sää ja vuodenajat muuttavat nyt sekä maisemaa että ajotuntumaa — ja jokaisesta kyydistä maksetaan.',
+    notesKicker: '05 / JULKAISU 0.16.0g-alpha', notesTitle: 'Mitä on<br><em>uutta.</em>', notesLead: 'Peli toimii nyt Godot-asiakkaalla ja on saatavilla Windows-asennuspakettina.',
     notes: [
-      ['Vapaa aloitusaika', 'Keikkakuski-tilassa voit valita aloituspäivän ja kellonajan; oletuksena käytetään oikeaa paikallista aikaa.'],
-      ['Vuodenajat muuttavat maailman', 'Lumi, kevään vaaleat sävyt ja jäälautat, kesän vihreys sekä syksyn ruska vaihtuvat kalenterin mukana.'],
-      ['Suomalainen sää', 'Lämpötila seuraa vuodenaikaa ja leveysastetta. Talvella sataa ajoittain lunta ja syksyllä tavallista useammin vettä.'],
-      ['Jää, vesi ja ajopinnat', 'Talven vesistöt jäätyvät valkoisiksi. Märkä tie, lumi ja jää vaikuttavat pitoon, ja pehmeälle pinnalle jää neljän renkaan jäljet.'],
-      ['Taksamittari ja saldo', 'Kyytiin lisätään kellonajasta riippuva lähtömaksu sekä kilometri- ja aikamaksu, pyöristettynä ylöspäin kymmeneen senttiin.'],
-      ['Tyytyväisyys ja tipit', 'Asiakas palkitsee nopean, ajoissa valmistuneen kyydin, mutta kolarit ja holtiton ajo pienentävät enintään 10 euron tippiä.'],
-      ['Selkeämpi ajotuntuma', 'Renkaiden pitoa on lisätty kaikilla pinnoilla, märkä kova pinta ei jätä skidmark-jälkiä ja talven pehmeälle lumelle syntyy lumijäljet mudan sijaan.'],
+      ['Godot-pelikuva', 'Kaupunki, liikenne, sää ja yövalaistus renderöidään nyt Godotissa.'],
+      ['Windows-asennus', 'Lataa Setup.exe ja asenna peli ilman erillistä Python- tai Godot-asennusta.'],
+      ['Aloitusvalikko', 'Valitse kieli ensimmäisellä käynnistyksellä, kaupunki ja pelitila valikosta.'],
+      ['Suomenkielinen käyttöliittymä', 'Valikot ja pelitekstit seuraavat valittua kieltä.'],
     ],
-    releaseKicker: 'UUSIN JULKAISU', releaseTitle: 'Seuraava kyyti<br>odottaa.', releaseText: 'Lataa uusin Windows-versio GitHub Releases -sivulta ja lähde tien päälle.', releaseButton: 'Avaa GitHub Releases',
+    releaseKicker: 'UUSIN JULKAISU', releaseTitle: 'Seuraava kyyti<br>odottaa.', releaseText: 'Lataa Windows-asennuspaketti v0.16.0g-alpha ja lähde tien päälle.', releaseButton: 'Lataa Windows-asennus',
     scroll: 'VIERITÄ ALASPÄIN', toggle: 'Vaihda kieleksi English',
   },
   en: {
-    navGame: 'Game', navFeatures: 'Features', navRoadmap: "What's next", navHow: 'How to play', navNotes: 'Release notes', download: 'Download', release: 'Download latest release', explore: 'Explore the game',
+    navGame: 'Game', navFeatures: 'Features', navRoadmap: "What's next", navHow: 'How to play', navNotes: 'Release notes', download: 'Download', release: 'Download Windows installer', explore: 'Explore the game',
     kicker: 'Open-world taxi driving · Finland', title: 'Deliver fares.<br><em>Unleash the rage.</em>', copy: 'Real Finnish streets. Four changing seasons. The meter is running, and your passenger judges every turn.',
+    screenshotsKicker: 'GAMEPLAY SCREENSHOTS / GODOT 0.16.0g-alpha', platform: 'GODOT + PYTHON SERVER',
     introKicker: '01 / THE JOB', intro: 'One city.<br><span>Infinite excuses.</span>', lead: 'The Road Rage Trip is a top-down taxi game powered by real OpenStreetMap roads from Finland.',
     introText: 'Pick up passengers from the phone, taxi stands, or the street. Get them there, follow the suggested route, and keep your score intact while traffic, cameras, weather, and the road itself test your patience.',
     featureKicker: '02 / UNDER THE HOOD', featureTitle: 'Built for the<br><em>beautifully irritated.</em>', featureIntro: 'Not a backdrop. Roads, weather, pedestrians, and consequences are alive around you.',
@@ -72,17 +71,14 @@ const translations = {
     ],
     howKicker: '04 / TAKE THE WHEEL', howTitle: 'Know the<br><span>rules.</span><br>Break the calm.', howLead: 'The city is yours to navigate. The score is yours to ruin.',
     controls: ['Drive, brake, steer', 'Open the taxi phone', 'Rage shout: clear the way', 'Show suggested route', 'Lane assist', 'Speed limiter', 'Traffic-light assist', 'Respawn, T resets trip meter', 'Pause, settings, change city'],
-    notesKicker: '05 / RELEASE 0.14.2alpha', notesTitle: "What's<br><em>new.</em>", notesLead: 'Time, weather, and seasons now transform both the scenery and the drive — and every completed fare pays.',
+    notesKicker: '05 / RELEASE 0.16.0g-alpha', notesTitle: "What's<br><em>new.</em>", notesLead: 'The game now runs in a Godot client and comes as a Windows installer.',
     notes: [
-      ['Choose your starting time', 'Freelance-driver mode lets you choose the starting date and time, defaulting to your real local time.'],
-      ['Seasons transform the world', 'Snow, pale spring colors and floating ice, summer greenery, and autumn foliage follow the calendar.'],
-      ['Finnish weather', 'Temperature follows the season and latitude. Winter brings intermittent snowfall, while rain is more frequent in autumn.'],
-      ['Ice, water, and surfaces', 'Winter water freezes into a white surface. Wet roads, snow, and ice change grip, while soft terrain records tracks from all four tires.'],
-      ['Taxi meter and balance', 'Fares combine a time-dependent starting fee with distance and time charges, rounded up to the next ten cents.'],
-      ['Satisfaction and tips', 'Passengers reward fast, on-time rides, while crashes and reckless driving reduce tips worth up to €10.'],
-      ['A clearer driving feel', 'Grip is increased across every surface, wet hard surfaces no longer leave skid marks, and winter snow records snow tracks instead of mud.'],
+      ['Godot graphics', 'The city, traffic, weather, and night lighting are now rendered in Godot.'],
+      ['Windows installer', 'Download Setup.exe and install without a separate Python or Godot installation.'],
+      ['Startup menu', 'Choose your language on first launch, then select a city and game mode from the menu.'],
+      ['Finnish interface', 'Menus and game text follow the selected language.'],
     ],
-    releaseKicker: 'LATEST RELEASE', releaseTitle: 'Your next fare<br>is waiting.', releaseText: 'Download the latest Windows build from GitHub Releases and hit the road.', releaseButton: 'Open GitHub Releases',
+    releaseKicker: 'LATEST RELEASE', releaseTitle: 'Your next fare<br>is waiting.', releaseText: 'Download the v0.16.0g-alpha Windows installer and hit the road.', releaseButton: 'Download Windows installer',
     scroll: 'SCROLL TO EXPLORE', toggle: 'Vaihda kieleksi Suomi',
   },
 };
@@ -110,6 +106,8 @@ function setLanguage(next) {
   document.querySelector('.intro-grid > div p:last-child').textContent = t.introText;
   document.querySelector('.intro .section-kicker').textContent = t.introKicker;
   document.querySelector('.hero .eyebrow').lastChild.textContent = ` ${t.kicker}`;
+  document.querySelector('.hero-meta span').textContent = t.platform;
+  document.querySelector('#screenshots-title').textContent = t.screenshotsKicker;
   document.querySelector('#features .section-kicker').textContent = t.featureKicker;
   document.querySelector('#features .feature-heading h2').innerHTML = t.featureTitle;
   document.querySelector('#features .feature-heading p').textContent = t.featureIntro;
