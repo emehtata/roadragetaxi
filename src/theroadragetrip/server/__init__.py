@@ -694,6 +694,7 @@ class SimulationServer:
             server_time=self._server_time,
             current_way=self._current_way, language=self.language, calendar=self.calendar_state(), tire_mark=self._tire_mark,
             navigation={"points": self.navigation.points}, road_rage=self._road_rage,
+            map_loading=self._map_streamer.status() if self._map_streamer is not None else "",
             railway=protocol.railway_state(getattr(self.world, "railway_mgr", None), self.car.x, self.car.y, self.calendar.current),
         )
         with self._clients_lock:

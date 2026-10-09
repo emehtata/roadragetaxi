@@ -24,7 +24,8 @@ var _summary := Label.new()  # render/menus.py draw_city_summary: covers everyth
 var _notice_style := StyleBoxFlat.new()
 var _fare_style := StyleBoxFlat.new()
 var layout = preload("res://hud_layout.gd").new(false)  # main.gd gives the shared, saved one
-var _notice_mode := ""  # "camera", "start" or "" (the banner)
+var _notice_mode := ""
+var _map_sign := Label.new()  # the map growing at its edge: wait for it (state.map_loading)  # "camera", "start" or "" (the banner)
 var language := "en"
 
 
@@ -71,6 +72,15 @@ func _ready() -> void:
 	_board.add_theme_font_size_override("font_size", 15)
 	_board.visible = false
 	add_child(_board)
+	var map_style := _box(Color8(20, 30, 40, 230), Color8(90, 200, 255))
+	map_style.set_border_width_all(1)
+	map_style.set_corner_radius_all(6)
+	_map_sign.add_theme_stylebox_override("normal", map_style)
+	_map_sign.add_theme_font_size_override("font_size", 17)
+	_map_sign.add_theme_color_override("font_color", Color8(200, 230, 255))
+	_map_sign.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_map_sign.visible = false
+	add_child(_map_sign)
 	add_child(_summary)  # last child: above the HUD rows
 	_notice_style = _box(Color8(20, 30, 40, 235), Color8(255, 200, 50))
 	_notice.add_theme_stylebox_override("normal", _notice_style)
@@ -147,6 +157,8 @@ func show_state(state: Dictionary, toggles := {}) -> void:
 		_board.position = Vector2(size.x - 10.0 - _board.size.x, 116.0)  # draw_next_train: top right under the limit sign
 	_layout_subtitle()
 	_subtitle.visible = Time.get_ticks_msec() < _subtitle_until
+	_map_sign.text = map_loading_text(str(state.get("map_loading", "")), Time.get_ticks_msec(), language)
+	_map_sign.visible = _map_sign.text != ""
 	_layout()
 	var railway = state.get("railway")
 	if not _timetable_hint_shown and railway is Dictionary and railway.get("stations") is Array and not railway["stations"].is_empty():
@@ -186,6 +198,10 @@ func _layout() -> void:
 		layout.rects.erase("fare")  # nothing there to grab
 	_hint.visible = _hint.text != "" and not _notice.visible
 	_hint.position = Vector2((size.x - _hint.size.x) / 2.0, size.y - 30.0)
+	if _map_sign.visible:  # top middle, under the start hint's place
+		_map_sign.size = Vector2.ZERO
+		_map_sign.reset_size()
+		_map_sign.position = Vector2((size.x - _map_sign.size.x) / 2.0, 150.0)
 	match _notice_mode:
 		"camera":  # hud.py: a speed-camera hit centred on screen, red
 			_notice.position = (size - _notice.size) / 2.0
@@ -193,6 +209,21 @@ func _layout() -> void:
 			_notice.position = Vector2((size.x - _notice.size.x) / 2.0, 100.0)
 		_:  # the notification banner: low in the middle
 			_notice.position = Vector2((size.x - _notice.size.x) / 2.0, size.y - 45.0 - _notice.size.y / 2.0)
+
+
+## The loading sign: "" when the map is settled, else a turning spinner,
+## "Loading map…" and what it is at (the server's map_loading stage).
+static func map_loading_text(stage: String, now_ms: int, language := "en") -> String:
+	if stage == "":
+		return ""
+	var spinner: String = ["◐", "◓", "◑", "◒"][int(now_ms / 150) % 4]
+	var what: String = {
+		"fetching": T.text("map_fetching", language, "downloading the area ahead"),
+		"merging": T.text("map_merging", language, "adding it to the map"),
+		"syncing": T.text("map_syncing", language, "preparing roads and traffic"),
+		"building": T.text("map_building", language, "drawing the new area"),
+	}.get(stage, stage)
+	return "%s  %s\n%s" % [spinner, T.text("map_loading", language, "Loading map…"), what]
 
 
 ## Display text for one state. Every field is optional: a missing one shows

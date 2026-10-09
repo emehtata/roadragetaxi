@@ -371,7 +371,7 @@ def build_state_message(
     should_stop: bool = False, city_summary: Optional[tuple] = None, events: Optional[list] = None,
     server_time: float = 0.0, current_way=None, language: str = "en",
     calendar: Optional[dict] = None, tire_mark: Optional[dict] = None, navigation: Optional[dict] = None,
-    road_rage: Optional[dict] = None, railway: Optional[dict] = None,
+    road_rage: Optional[dict] = None, railway: Optional[dict] = None, map_loading: str = "",
 ) -> dict:
     """Everything the Pygame client needs to render one frame, and nothing
     static (see module docstring). Called once per server tick."""
@@ -424,6 +424,8 @@ def build_state_message(
                     "source": getattr(weather, "weather_source", "generated"),
                     "temperature_c": _finite(getattr(weather, "outside_temperature_c", None))},
         "road": _road_to_dict(current_way),
+        # The map growing as the taxi nears its edge: "" or fetching / merging / syncing / building.
+        "map_loading": map_loading,
         # godot-16: the taxi's tyre mark this tick (kind rubber/dirt/sand/snow, intensity, front) or
         # null; which speed camera is flashing (its index in the chunks) or null.
         "tire_mark": tire_mark,

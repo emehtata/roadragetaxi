@@ -62,3 +62,26 @@ def test_streamer_syncs_once_a_merge_settles_and_reports_the_growth(monkeypatch)
     before = manager.integrated
     streamer.tick(50, 50, 10, 0)
     assert manager.integrated == before
+
+
+def test_the_status_tells_the_client_what_the_map_is_doing(monkeypatch):
+    """For the loading sign: fetching, merging, syncing, building, then ""."""
+    monkeypatch.setattr(map_sync, "map_sync_steps", lambda world: iter([None]))
+    manager = FakeManager()
+    manager.fetching = False
+    manager.get_fetching = lambda: manager.fetching
+    streamer = map_sync.MapStreamer(SimpleNamespace(auto_fetch_manager=manager, ways=[]), lambda old, new: None)
+    assert streamer.status() == ""
+    manager.fetching = True
+    assert streamer.status() == "fetching"
+    manager.fetching, manager.busy = False, True
+    assert streamer.status() == "merging"
+    manager.busy, manager.revision = False, 2
+    assert streamer.status() == "merging"  # merged: the sync starts next tick
+    streamer.tick(0, 0, 0, 0)
+    assert streamer.status() == "syncing"
+    streamer.tick(0, 0, 0, 0)
+    streamer.hold = True
+    assert streamer.status() == "building"
+    streamer.hold = False
+    assert streamer.status() == ""

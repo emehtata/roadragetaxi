@@ -95,6 +95,23 @@ class MapStreamer:
     def syncing(self) -> bool:
         return self._sync is not None
 
+    def status(self) -> str:
+        """What the map is doing, for the client's loading sign: "" settled,
+        "fetching" (tiles downloading or built), "merging", "syncing" (the
+        world catching up) or "building" (the server rebuilding its chunks:
+        `hold`)."""
+        if self.hold:
+            return "building"
+        if self._sync is not None:
+            return "syncing"
+        if self.manager.get_tile_merge_metrics()["tile_merge_active"]:
+            return "merging"
+        if self.manager.get_fetching():
+            return "fetching"
+        if self.manager.get_map_revision() != self._synced_revision:
+            return "merging"  # merged, the sync starts on the next tick
+        return ""
+
     def tick(self, x: float, y: float, vx: float, vy: float, budget_s: float = TILE_MERGE_BUDGET_S) -> None:
         manager = self.manager
         if self.hold:

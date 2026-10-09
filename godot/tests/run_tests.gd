@@ -572,6 +572,8 @@ func test_speech_and_stations() -> void:
 		sign_text += label.text + "\n"
 	check(sign_text == "SYSMÄ\nWeather forecast for the next 24 hours\n08.10. 18:00   +8 °C   Clear   (observed)\nPress any key to start\n", "start sign: city, forecast with its source, the prompt")
 	sign.free()
+	check(Hud.map_loading_text("", 0) == "" and Hud.map_loading_text("fetching", 0).contains("Loading map…") and Hud.map_loading_text("fetching", 0).contains("downloading"), "map loading sign: shown while the map grows, gone when settled")
+	check(Hud.map_loading_text("syncing", 0, "fi").contains("Ladataan karttaa") and Hud.map_loading_text("building", 0).left(1) != Hud.map_loading_text("building", 150).left(1), "map loading sign: Finnish, and the spinner turns")
 	var HudLayout := load("res://hud_layout.gd")
 	var hl = HudLayout.new(false)
 	var screen := Vector2(1280, 720)
