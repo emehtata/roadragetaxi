@@ -103,7 +103,7 @@ def fetch_osm_ways_from_pbf(
         )
 
     if progress_callback:
-        progress_callback(0.2, f"Extracting from {path.name}...")
+        progress_callback(0.2, f"Extracting from {path}...")
 
     index_dir = default_index_dir(path)
     tiles = [] if index_is_stale(path, index_dir) else tiles_for_bbox(index_dir, bbox)

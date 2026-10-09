@@ -156,7 +156,7 @@ func show_state(state: Dictionary, toggles := {}) -> void:
 		_board.position = Vector2(size.x - 10.0 - _board.size.x, 116.0)  # draw_next_train: top right under the limit sign
 	_layout_subtitle()
 	_subtitle.visible = Time.get_ticks_msec() < _subtitle_until
-	_map_sign.text = map_loading_text(str(state.get("map_loading", "")), Time.get_ticks_msec(), language)
+	_map_sign.text = map_loading_text(str(state.get("map_loading", "")), Time.get_ticks_msec(), language, str(state.get("map_loading_detail", "")))
 	_map_sign.visible = _map_sign.text != ""
 	_layout()
 	var railway = state.get("railway")
@@ -212,7 +212,7 @@ func _layout() -> void:
 
 ## The loading sign: "" when the map is settled, else a turning spinner,
 ## "Loading map…" and what it is at (the server's map_loading stage).
-static func map_loading_text(stage: String, now_ms: int, language := "en") -> String:
+static func map_loading_text(stage: String, now_ms: int, language := "en", detail := "") -> String:
 	if stage == "":
 		return ""
 	var spinner: String = ["◐", "◓", "◑", "◒"][int(now_ms / 150) % 4]
@@ -222,7 +222,8 @@ static func map_loading_text(stage: String, now_ms: int, language := "en") -> St
 		"syncing": T.text("map_syncing", language, "preparing roads and traffic"),
 		"building": T.text("map_building", language, "drawing the new area"),
 	}.get(stage, stage)
-	return "%s %s %s" % [spinner, T.text("map_loading", language, "Loading map…"), what]
+	# The fetcher's own line names where it loads from (an Overpass URL, the .pbf file).
+	return "%s %s %s" % [spinner, T.text("map_loading", language, "Loading map…"), what] + ("\n" + detail if detail != "" else "")
 
 
 ## Display text for one state. Every field is optional: a missing one shows

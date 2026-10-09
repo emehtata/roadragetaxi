@@ -372,6 +372,7 @@ def build_state_message(
     server_time: float = 0.0, current_way=None, language: str = "en",
     calendar: Optional[dict] = None, tire_mark: Optional[dict] = None, navigation: Optional[dict] = None,
     road_rage: Optional[dict] = None, railway: Optional[dict] = None, map_loading: str = "",
+    map_loading_detail: str = "",
 ) -> dict:
     """Everything the Pygame client needs to render one frame, and nothing
     static (see module docstring). Called once per server tick."""
@@ -426,6 +427,8 @@ def build_state_message(
         "road": _road_to_dict(current_way),
         # The map growing as the taxi nears its edge: "" or fetching / merging / syncing / building.
         "map_loading": map_loading,
+        # While fetching: the fetcher's own line, e.g. "Fetching from https://overpass-api.de/api/interpreter (attempt 1/3)...".
+        "map_loading_detail": map_loading_detail if map_loading == "fetching" else "",
         # godot-16: the taxi's tyre mark this tick (kind rubber/dirt/sand/snow, intensity, front) or
         # null; which speed camera is flashing (its index in the chunks) or null.
         "tire_mark": tire_mark,

@@ -573,6 +573,7 @@ func test_speech_and_stations() -> void:
 	check(sign_text == "SYSMÄ\nWeather forecast for the next 24 hours\n08.10. 18:00   +8 °C   Clear   (observed)\nPress any key to start\n", "start sign: city, forecast with its source, the prompt")
 	sign.free()
 	check(Hud.map_loading_text("", 0) == "" and Hud.map_loading_text("fetching", 0).contains("Loading map…") and Hud.map_loading_text("fetching", 0).contains("downloading"), "map loading sign: shown while the map grows, gone when settled")
+	check(Hud.map_loading_text("fetching", 0, "en", "Fetching from https://overpass-api.de/api/interpreter (attempt 1/3)...").contains("https://overpass-api.de/api/interpreter"), "map loading sign: where it loads from while fetching")
 	check(Hud.map_loading_text("syncing", 0, "fi").contains("Ladataan karttaa") and Hud.map_loading_text("building", 0).left(1) != Hud.map_loading_text("building", 150).left(1), "map loading sign: Finnish, and the spinner turns")
 	var night_blue := Color(0.2, 0.25, 0.4)
 	check(EntityLayer.vehicle_light(0.0, night_blue) == night_blue and EntityLayer.vehicle_light(1.0, Color.WHITE) == Color.WHITE, "a car in the dark gets the night's light; by day its own colours")
