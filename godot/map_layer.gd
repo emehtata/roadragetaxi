@@ -262,6 +262,26 @@ func lamp_near(at: Vector2, radius: float) -> bool:
 	return false
 
 
+## How much street light falls on a point, 0 (none) .. ~1.5 (several
+## lamps): each working lamp within its pool's reach adds (1 - d/reach)²,
+## the shape of its pool. For lighting what stands on the street (vehicles).
+func light_at(at: Vector2) -> float:
+	var total := 0.0
+	var around := Rect2(at - Vector2(20, 20), Vector2(40, 40))
+	for chunk in _chunks.values():
+		if chunk._bounds_rect.size != Vector2.ZERO and not chunk._bounds_rect.intersects(around):
+			continue
+		var lights: Array = chunk._data.get("street_lights", [])
+		for i in chunk.street_lights.size():
+			if chunk._broken.has(i):
+				continue
+			var reach := float(lights[i][3]) if i < lights.size() and lights[i].size() > 3 else 10.0
+			var d: float = chunk.street_lights[i].distance_to(at)
+			if d < reach:
+				total += (1.0 - d / reach) * (1.0 - d / reach)
+	return minf(total, 1.5)
+
+
 ## 3D buildings: canopies in view project with the camera, so they redraw each frame.
 func canopies_moved(view: Rect2) -> void:
 	for chunk in _chunks.values():

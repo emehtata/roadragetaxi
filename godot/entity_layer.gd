@@ -32,6 +32,12 @@ var _clock := 0.0  # local seconds, for purely presentational loops (exhaust puf
 var _font: Font
 var reflectors_on := false  # the sun below -7.5 degrees (main.gd, from state calendar)
 var lamp_near := func(_at: Vector2, _radius: float) -> bool: return false  # MapLayer.lamp_near
+var light_at := func(_at: Vector2) -> float: return 0.0  # MapLayer.light_at: street light on a point
+var ambient := Color.WHITE  # the world's ambient multiply (main.gd): lit vehicles are pre-brightened against it
+var _tint = null  # while a vehicle is drawn: its light (ambient + street light); its shapes go to _cars
+var _cars: Node2D  # the vehicles, unshaded: each tinted by its own light instead of the world's ambient
+var _car_shapes: Array = []  # [kind, ...] this frame: ["poly", points, fill, outline, width], ["circle", ...], ["line", ...]
+const STREET_LIGHT_ON_VEHICLES := 0.55  # how strongly a lamp lights a car, like the pool on the road
 var language := "en"
 var _reflectors: Node2D  # made in _ready (an instance never in the tree leaks nothing)
 var underground := false  # the taxi below ground (state player.map_level): only it and the walker are shown
@@ -86,6 +92,10 @@ func _ready() -> void:
 	_glow.draw.connect(func(): if not glow_triangles.is_empty():
 		RenderingServer.canvas_item_add_triangle_array(_glow.get_canvas_item(), glow_triangles, glow_points, glow_colors))
 	add_child(_glow)
+	_cars = Node2D.new()
+	_cars.material = preload("res://emissive.tres")  # lit by vehicle_light, not the ambient multiply
+	_cars.draw.connect(_draw_cars)
+	add_child(_cars)
 	_lamps = Node2D.new()
 	_lamps.material = preload("res://emissive.tres")
 	_lamps.draw.connect(func():
@@ -365,6 +375,9 @@ static func _rect(c: Vector2, f: Vector2, r: Vector2, front: float, rear: float,
 
 
 func _poly(points: PackedVector2Array, fill: Color, outline = null, width := -1.0) -> void:
+	if _tint != null:  # a vehicle's: lit by its own light, drawn on _cars
+		_car_shapes.append(["poly", points, _lit(fill), _lit(outline) if outline != null else null, width])
+		return
 	draw_colored_polygon(points, fill)
 	if outline != null:
 		var closed := points.duplicate()
@@ -375,6 +388,15 @@ func _poly(points: PackedVector2Array, fill: Color, outline = null, width := -1.
 ## A vehicle body by type (render/vehicles.py _draw_vehicle, _draw_bus,
 ## _draw_truck; two-wheelers are sprites in Pygame, a body and rider here),
 ## then its lamps (_draw_vehicle_lights).
+## A vehicle's light: the world's ambient plus the street light on it, the
+## LED pool's colour - its colours are multiplied by this (drawn unshaded),
+## so under a lamp a yellow taxi is a brighter yellow, not the night's grey
+## olive; white by day.
+static func vehicle_light(light: float, ambient_color: Color) -> Color:
+	var lamp := Color(1.0, 0.93, 0.78) * (maxf(light, 0.0) * STREET_LIGHT_ON_VEHICLES)
+	return Color(minf(ambient_color.r + lamp.r, 1.0), minf(ambient_color.g + lamp.g, 1.0), minf(ambient_color.b + lamp.b, 1.0))
+
+
 ## A lamp's soft halo: a fan bright at `at` (glow[0] × level), nothing at
 ## glow[1] metres; none by day.
 static func lamp_glow(at: Vector2, glow: Array, level: float, points: PackedVector2Array,
@@ -393,6 +415,32 @@ static func lamp_glow(at: Vector2, glow: Array, level: float, points: PackedVect
 
 func _vehicle(c: Vector2, heading: float, length: float, width: float, color: Color, kind: String,
 		is_taxi: bool, engine_on: bool, braking: bool, reversing: bool, turn_signal: String, signal_elapsed: float, fallen := false) -> void:
+	_tint = vehicle_light(light_level * float(light_at.call(c)), ambient)  # lit by the street lights it stands under
+	_vehicle_body(c, heading, length, width, color, kind, is_taxi, engine_on, braking, reversing, turn_signal, signal_elapsed, fallen)
+	_tint = null
+
+
+func _draw_cars() -> void:
+	for shape in _car_shapes:
+		match shape[0]:
+			"poly":
+				_cars.draw_colored_polygon(shape[1], shape[2])
+				if shape[3] != null:
+					var closed: PackedVector2Array = shape[1].duplicate()
+					closed.append(shape[1][0])
+					_cars.draw_polyline(closed, shape[3], shape[4])
+			"circle":
+				_cars.draw_circle(shape[1], shape[2], shape[3])
+			"line":
+				_cars.draw_line(shape[1], shape[2], shape[3], shape[4])
+
+
+func _lit(color: Color) -> Color:
+	return Color(minf(color.r * _tint.r, 1.0), minf(color.g * _tint.g, 1.0), minf(color.b * _tint.b, 1.0), color.a)
+
+
+func _vehicle_body(c: Vector2, heading: float, length: float, width: float, color: Color, kind: String,
+		is_taxi: bool, engine_on: bool, braking: bool, reversing: bool, turn_signal: String, signal_elapsed: float, fallen := false) -> void:
 	length = maxf(length, _px(5.0))
 	width = maxf(width, _px(2.5))
 	var f := _forward(heading)
@@ -404,7 +452,7 @@ func _vehicle(c: Vector2, heading: float, length: float, width: float, color: Co
 			f = _forward(heading - PI / 2.0)
 			r = _right(heading - PI / 2.0)
 		_poly(_rect(c, f, r, hl, -hl, hw), color, RS.OUTLINE)
-		draw_circle(c - f * hl * 0.1, hw * 0.9, RS.CABIN)  # rider
+		_car_shapes.append(["circle", c - f * hl * 0.1, hw * 0.9, _lit(RS.CABIN)])  # rider
 		return
 	match kind:
 		"bus":
@@ -420,7 +468,7 @@ func _vehicle(c: Vector2, heading: float, length: float, width: float, color: Co
 			_poly(_rect(c, f, r, hl * 0.08, -hl * 0.86, hw * 0.78), color.lightened(28.0 / 255.0))
 			_poly(_rect(c, f, r, hl, hl * 0.24, hw * 0.92), color, RS.OUTLINE)
 			_poly(_rect(c, f, r, hl * 0.72, hl * 0.52, hw * 0.72), RS.TRUCK_WINDSHIELD)
-			draw_line(c + f * hl * 0.20 - r * hw, c + f * hl * 0.20 + r * hw, Color8(35, 35, 35), _px(2.0))
+			_car_shapes.append(["line", c + f * hl * 0.20 - r * hw, c + f * hl * 0.20 + r * hw, _lit(Color8(35, 35, 35)), _px(2.0)])
 		_:
 			_poly(_rect(c, f, r, hl, -hl, hw), color, RS.OUTLINE)
 			var cabin_hl := hl * 0.45
@@ -621,6 +669,7 @@ func _draw() -> void:
 	var t: float = _frame["t"]
 	var count := 0
 	_lamp_polys.clear()
+	_car_shapes.clear()
 	glow_points.clear()
 	glow_colors.clear()
 	glow_triangles.clear()
@@ -691,6 +740,7 @@ func _draw() -> void:
 	_booked_arrow(a, b, t, later_peds)
 
 	drawn_entities = count + _trains_drawn
+	_cars.queue_redraw()
 	_lamps.queue_redraw()  # this frame's lamps and halos, collected above
 	_glow.queue_redraw()
 	interp_usec = Time.get_ticks_usec() - started

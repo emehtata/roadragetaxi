@@ -96,7 +96,8 @@ func _ready() -> void:
 	add_child(weather)
 	add_child(world_light)
 	weather.setup($Sky, map_layer)
-	entities.lamp_near = map_layer.lamp_near  # reflectors and long beams look up working street lights
+	entities.lamp_near = map_layer.lamp_near
+	entities.light_at = map_layer.light_at  # street light on the vehicles  # reflectors and long beams look up working street lights
 	entities.covered = map_layer.covered  # headlights under a higher road
 	labels.map_layer = map_layer
 	var args := OS.get_cmdline_user_args()
@@ -428,6 +429,7 @@ func _present(state: Dictionary) -> void:
 	if not ambient.is_equal_approx(world_light.color):
 		world_light.color = ambient
 	map_layer.set_light(lights, ambient)
+	entities.ambient = ambient
 	entities.reflectors_on = typeof(calendar) == TYPE_DICTIONARY and calendar.get("sun_altitude_deg", 90.0) < -7.5
 	var night_started := Time.get_ticks_usec()
 	entities.light_level = lights
