@@ -1607,7 +1607,7 @@ func test_performance_paths() -> void:
 	check(broken[0].size() == 2 * (2 * MapChunk.POOL_STEPS + 1) and not broken[0].has(Vector2(12, 0)), "a broken lamp leaves a dark gap")
 	var chunk_source: String = (MapChunk as Script).source_code
 	check(not chunk_source.contains("pool_union") and not chunk_source.contains("_pool_task"), "no boolean pool pieces, no dusk worker")
-	check(MapChunk.POOL_CORE.r > MapChunk.POOL_CORE.g and MapChunk.POOL_CORE.g > MapChunk.POOL_CORE.b and MapChunk.POOL_CORE.r * 2.5 < 1.0, "warm amber at the lamp, fading out; two or three overlapping stay amber, not white")
+	check(MapChunk.POOL_CORE.r > MapChunk.POOL_CORE.g and MapChunk.POOL_CORE.g > MapChunk.POOL_CORE.b and MapChunk.POOL_CORE.b > 0.75 * MapChunk.POOL_CORE.r and MapChunk.POOL_CORE.r * 2.5 < 1.0, "LED near-white at the lamp (a touch warm), fading out; two or three overlapping do not burn out")
 	check(fans[2].size() == 3 and fans[2][1] == 2 * MapChunk.POOL_STEPS + 1, "the lamp points (bright) per pool")
 
 	# Roads, rails and water clipped to the chunk: only its own share.
