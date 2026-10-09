@@ -67,8 +67,8 @@ const GLOW_STEPS := 10
 const TAIL_GLOW := [Color(0.30, 0.03, 0.02), 0.9]  # added colour at the lamp, reach in metres
 const BRAKE_GLOW := [Color(0.65, 0.05, 0.03), 2.2]
 const REVERSE_GLOW := [Color(0.55, 0.55, 0.50), 4.5]
-const TAXI_SIGN_GLOW := [Color(0.35, 0.30, 0.05), 1.6]  # the free taxi's roof light, a small yellow halo
-var taxi_sign_on := true  # the taxi being drawn is free (its roof light on)
+const TAXI_SIGN_GLOW := [Color(0.35, 0.30, 0.05), 1.6]  # the roof light during a fare, a small yellow halo
+var taxi_sign_on := false  # the taxi being drawn has a fare on (its roof light lit)
 const TRACK_STYLES := {  # render/roads.py draw_tire_tracks: [faint, dark, width m]
 	"rubber": [Color8(110, 110, 110), Color8(28, 28, 28), 0.24], "dirt": [Color8(150, 138, 118), Color8(105, 68, 38), 0.75],
 	"sand": [Color8(222, 208, 170), Color8(178, 158, 114), 0.75], "snow": [Color8(214, 226, 232), Color8(142, 169, 181), 0.75],
@@ -487,7 +487,7 @@ func _vehicle_body(c: Vector2, heading: float, length: float, width: float, colo
 		_:
 			# A car from above: body, the roof in its own (darker) colour, the
 			# windshield sloping down to the bonnet, the smaller rear window,
-			# and on a taxi the roof light - lit while it is free.
+			# and on a taxi the roof light - lit while a fare is on.
 			_poly(_rect(c, f, r, hl, -hl, hw), color, RS.OUTLINE)
 			_poly(_trapezoid(c, f, r, hl * 0.42, hl * 0.12, hw * 0.86, hw * 0.72), RS.WINDSHIELD)
 			_poly(_rect(c, f, r, hl * 0.12, -hl * 0.42, hw * 0.74), color.darkened(0.12))
@@ -743,10 +743,10 @@ func _draw() -> void:
 	var taxi_length: float = player.get("length_m", 4.4)
 	if player.get("engine_on", false):
 		_smoke(taxi_at, taxi.z, taxi_length, _clock, true)  # exhaust
-	taxi_sign_on = not (a.get("taxi", {}).get("current_passenger") is Dictionary)  # free: the roof light on
+	taxi_sign_on = a.get("taxi", {}).get("current_passenger") is Dictionary  # a fare on: the roof light lit
 	_vehicle(taxi_at, taxi.z, taxi_length, player.get("width_m", 1.8), RS.TAXI_BODY, "car", true,
 		player.get("engine_on", false), player.get("braking", false), is_reversing(player.get("speed", 0.0)), "", 0.0)
-	taxi_sign_on = true  # NPC taxis: lit while they drive
+	taxi_sign_on = false  # NPC taxis: no fare of theirs is known, unlit
 	var smoke_timer: float = a.get("taxi", {}).get("taxi_smoke_timer", 0.0)
 	if smoke_timer > 0.0:
 		_smoke(taxi_at, taxi.z, taxi_length, 5.0 - smoke_timer)
