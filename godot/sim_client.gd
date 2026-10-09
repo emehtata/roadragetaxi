@@ -25,7 +25,6 @@ var _buffer := PackedByteArray()
 var _retry_in := 0.0
 var _seq := 0
 var _last_command: Dictionary = {}
-var paused := false  # the phone or the pause menu is open: the simulation waits (main()'s dt = 0)
 var _parsing := {}  # chunk_id -> worker task parsing it (godot-18: a big chunk took up to ~18 ms on the main thread)
 var _cancelled := {}  # chunk ids unloaded while still being parsed
 const CHUNK_PREFIX := "{\"type\":\"chunk\","  # protocol.encode: compact JSON, "type" first
@@ -129,7 +128,7 @@ func send_command(command: Dictionary) -> void:
 	if not connected:
 		return
 	_seq += 1
-	_peer.put_data(command_line(command, _seq, player_id, {}, "", paused).to_utf8_buffer())
+	_peer.put_data(command_line(command, _seq, player_id).to_utf8_buffer())
 
 
 ## A phone answer, riding on a command with the current controls (the
@@ -139,7 +138,7 @@ func send_phone(action: String, item_id: String, request_id: int) -> bool:
 		return false
 	_seq += 1
 	var phone := {"action": action, "item_id": item_id, "request_id": request_id}
-	_peer.put_data(command_line(_last_command, _seq, player_id, phone, "", paused).to_utf8_buffer())
+	_peer.put_data(command_line(_last_command, _seq, player_id, phone).to_utf8_buffer())
 	return true
 
 
@@ -148,16 +147,14 @@ func send_debug_snapshot(path: String) -> bool:
 	if not connected:
 		return false
 	_seq += 1
-	_peer.put_data(command_line(_last_command, _seq, player_id, {}, path, paused).to_utf8_buffer())
+	_peer.put_data(command_line(_last_command, _seq, player_id, {}, path).to_utf8_buffer())
 	return true
 
 
-static func command_line(command: Dictionary, seq: int, player: String, phone: Dictionary = {}, debug_snapshot := "", paused := false) -> String:
+static func command_line(command: Dictionary, seq: int, player: String, phone: Dictionary = {}, debug_snapshot := "") -> String:
 	var message := {"type": "command", "version": PROTOCOL_VERSION, "seq": seq, "player_id": player, "command": command}
 	if not phone.is_empty():
 		message["phone"] = phone
 	if debug_snapshot != "":
 		message["debug_snapshot"] = debug_snapshot
-	if paused:
-		message["paused"] = true
 	return JSON.stringify(message) + "\n"

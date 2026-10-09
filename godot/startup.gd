@@ -389,7 +389,6 @@ func _server_connected(up: bool) -> void:
 
 func _pause_menu() -> void:
 	get_tree().paused = true
-	_pause_simulation(true)
 	if _game != null and _game._help != null:
 		_game._help.visible = false
 	_panel.visible = true
@@ -407,15 +406,6 @@ func _pause_menu() -> void:
 func _resume() -> void:
 	_panel.visible = false
 	get_tree().paused = false
-	_pause_simulation(false)
-
-
-## The pause menu stops the world too, not just this window (the game
-## node sends nothing while the tree is paused, so say it now).
-func _pause_simulation(paused: bool) -> void:
-	if _game != null and _game.sim != null:
-		_game.sim.paused = paused
-		_game.sim.send_command(_game.sim._last_command)
 
 
 func _stop_game() -> void:

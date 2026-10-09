@@ -626,7 +626,6 @@ func send(controls: Dictionary) -> void:
 	_respawn_pending = false
 	_cancel_ride_pending = false
 	_reset_trip_pending = false
-	sim.paused = phone.is_open  # main(): the world waits while the phone is up
 	sim.send_command(command)
 
 
