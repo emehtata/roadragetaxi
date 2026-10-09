@@ -1101,7 +1101,9 @@ def _load_world(
 
     # Trains are simulation (advance_simulation updates them): built with the
     # world so a headless server has them too.
-    railway_mgr = RailwayManager(railways, load_timetable(), _latlon_to_world_metres(), load_compositions())
+    # The real timetable (Digitraffic), or - turned off - trains at a fixed interval.
+    timetable = load_timetable() if getattr(args, "train_timetable", True) else None
+    railway_mgr = RailwayManager(railways, timetable, _latlon_to_world_metres(), load_compositions())
     railway_mgr.associate_taxi_stands(taxi_mgr.taxi_stops)
     railway_mgr.bookings.destination_for = lambda stand: taxi_mgr.pick_phone_dropoff(stand.x, stand.y)
     taxi_mgr.rail_bookings = railway_mgr.bookings

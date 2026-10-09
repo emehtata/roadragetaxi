@@ -57,6 +57,8 @@ func _ready() -> void:
 			return
 	if first_run:
 		_language_menu()
+	elif not (_settings.has_section_key("game", "historical_weather") and _settings.has_section_key("game", "train_timetable")):
+		_online_menu()  # asked once, also of players from before the question existed
 	else:
 		_main_menu()
 
@@ -170,7 +172,34 @@ func _choose_language(language: String) -> void:
 	_language = language
 	_settings.set_value("game", "language", language)
 	_settings.save("user://settings.cfg")
-	_main_menu()
+	if _settings.has_section_key("game", "historical_weather") and _settings.has_section_key("game", "train_timetable"):
+		_main_menu()
+	else:
+		_online_menu()  # the first run: ask once (Settings changes it later)
+
+
+## First run: the real-world data, each a choice - FMI's weather for the
+## city and time, Digitraffic's train timetable (off: trains at a fixed
+## interval). Both on by default; Continue saves them.
+func _online_menu() -> void:
+	_clear()
+	_title(_t("real_data", "REAL-WORLD DATA"), _t("real_data_detail", "The game can use real data for the city and time you play in."))
+	var choices := {"historical_weather": [_t("realtime_weather", "Real-time weather (FMI)"), true],
+		"train_timetable": [_t("realtime_trains", "Real train timetables (Digitraffic)"), true]}
+	for key in choices:
+		var check := CheckButton.new()
+		check.text = choices[key][0]
+		check.button_pressed = _settings.get_value("game", key, choices[key][1])
+		_settings.set_value("game", key, check.button_pressed)
+		check.toggled.connect(func(on: bool): _settings.set_value("game", key, on))
+		_body.add_child(check)
+		_focusables.append(check)
+	var go := _button(_t("continue", "Continue"), func():
+		_settings.save("user://settings.cfg")
+		_main_menu())
+	_back_action = Callable()
+	_focus_menu()
+	go.call_deferred("grab_focus")
 
 
 func _main_menu() -> void:
@@ -330,6 +359,14 @@ func _settings_menu() -> void:
 		_settings.save("user://settings.cfg"))
 	_body.add_child(historical)
 	_focusables.append(historical)
+	var timetable := CheckButton.new()  # the real Digitraffic timetable, else trains at a fixed interval
+	timetable.text = _t("realtime_trains", "Real train timetables (Digitraffic)")
+	timetable.button_pressed = _settings.get_value("game", "train_timetable", true)
+	timetable.toggled.connect(func(on: bool):
+		_settings.set_value("game", "train_timetable", on)
+		_settings.save("user://settings.cfg"))
+	_body.add_child(timetable)
+	_focusables.append(timetable)
 	var source := OptionButton.new()  # --osm-source: the map from Overpass, or a local .osm.pbf via osmium
 	source.add_item(_t("map_overpass", "Map data: Overpass (online)"))
 	source.add_item(_t("map_pbf", "Map data: local .osm.pbf file"))
@@ -390,6 +427,8 @@ func _start(mode: String) -> void:
 	args.append_array(map_source_args(_settings.get_value("map", "osm_source", ""), _settings.get_value("map", "osm_pbf_path", "")))
 	if _settings.has_section_key("game", "historical_weather"):  # else the server's config decides
 		args.append("--historical-weather" if _settings.get_value("game", "historical_weather") else "--no-historical-weather")
+	if _settings.has_section_key("game", "train_timetable"):
+		args.append("--train-timetable" if _settings.get_value("game", "train_timetable") else "--no-train-timetable")
 	args.append_array(_server_extra)
 	var command := Paths.server_command(args)  # the repo's .venv, or the release's bundled server
 	_server_pid = OS.create_process(command[0], command[1])

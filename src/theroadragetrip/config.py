@@ -90,6 +90,7 @@ DEFAULT_CONFIG = {
         # Real FMI weather observations for the game's city and date
         # (Settings -> historical weather); generated weather otherwise.
         "historical_weather": "false",
+        "train_timetable": "true",  # trains on the real Digitraffic timetable; false: a fixed interval
     },
     "map": {
         "overpass_endpoints": ", ".join(DEFAULT_OVERPASS_ENDPOINTS),
