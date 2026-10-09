@@ -86,8 +86,9 @@ func _build_shell() -> void:
 	back.add_child(_logo)
 	_panel = PanelContainer.new()
 	_panel.custom_minimum_size = Vector2(520, 0)
-	_panel.set_anchors_preset(Control.PRESET_CENTER)
-	_panel.position = Vector2(50, -250)
+	# Centred on the screen, whatever its content and the window size.
+	_panel.resized.connect(_center_panel)
+	get_viewport().size_changed.connect(_center_panel)
 	var panel_style := StyleBoxFlat.new()
 	panel_style.bg_color = Color8(17, 23, 31, 245)
 	panel_style.border_color = Color8(255, 199, 0)
@@ -101,6 +102,11 @@ func _build_shell() -> void:
 	_panel.add_child(_body)
 
 
+func _center_panel() -> void:
+	_panel.reset_size()  # shrink back to the new content's size first
+	_panel.position = ((get_viewport().get_visible_rect().size - _panel.size) / 2.0).floor()
+
+
 func _clear() -> void:
 	for child in _body.get_children():
 		_body.remove_child(child)
@@ -110,6 +116,7 @@ func _clear() -> void:
 
 
 func _focus_menu() -> void:
+	_center_panel.call_deferred()  # after this menu's rows are laid out (a smaller menu doesn't resize the panel)
 	if _focusables.is_empty():
 		return
 	for i in _focusables.size():
