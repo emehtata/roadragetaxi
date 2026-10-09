@@ -72,12 +72,11 @@ func _ready() -> void:
 	_board.add_theme_font_size_override("font_size", 15)
 	_board.visible = false
 	add_child(_board)
-	var map_style := _box(Color8(20, 30, 40, 230), Color8(90, 200, 255))
-	map_style.set_border_width_all(1)
-	map_style.set_corner_radius_all(6)
-	_map_sign.add_theme_stylebox_override("normal", map_style)
-	_map_sign.add_theme_font_size_override("font_size", 17)
-	_map_sign.add_theme_color_override("font_color", Color8(200, 230, 255))
+	# Just a small line, no box: the map is still drivable while it grows.
+	_map_sign.add_theme_font_size_override("font_size", 13)
+	_map_sign.add_theme_color_override("font_color", Color8(190, 215, 235))
+	_map_sign.add_theme_constant_override("outline_size", 4)
+	_map_sign.add_theme_color_override("font_outline_color", Color8(20, 24, 28, 220))
 	_map_sign.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_map_sign.visible = false
 	add_child(_map_sign)
@@ -198,10 +197,10 @@ func _layout() -> void:
 		layout.rects.erase("fare")  # nothing there to grab
 	_hint.visible = _hint.text != "" and not _notice.visible
 	_hint.position = Vector2((size.x - _hint.size.x) / 2.0, size.y - 30.0)
-	if _map_sign.visible:  # top middle, under the start hint's place
+	if _map_sign.visible:  # small, right under the weather line
 		_map_sign.size = Vector2.ZERO
 		_map_sign.reset_size()
-		_map_sign.position = Vector2((size.x - _map_sign.size.x) / 2.0, 150.0)
+		_map_sign.position = Vector2(_weather.position.x + _weather.size.x - _map_sign.size.x, _weather.position.y + _weather.size.y)
 	match _notice_mode:
 		"camera":  # hud.py: a speed-camera hit centred on screen, red
 			_notice.position = (size - _notice.size) / 2.0
@@ -223,7 +222,7 @@ static func map_loading_text(stage: String, now_ms: int, language := "en") -> St
 		"syncing": T.text("map_syncing", language, "preparing roads and traffic"),
 		"building": T.text("map_building", language, "drawing the new area"),
 	}.get(stage, stage)
-	return "%s  %s\n%s" % [spinner, T.text("map_loading", language, "Loading map…"), what]
+	return "%s %s %s" % [spinner, T.text("map_loading", language, "Loading map…"), what]
 
 
 ## Display text for one state. Every field is optional: a missing one shows
