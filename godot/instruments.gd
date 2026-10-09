@@ -7,7 +7,8 @@ extends Control
 
 const T := preload("res://i18n.gd")
 
-const RAGE_ATLAS := "../src/theroadragetrip/assets/ragefaceatlas.png"  # the same image Pygame uses
+const Paths := preload("res://paths.gd")
+const RAGE_ATLAS := "assets/ragefaceatlas.png"  # the same image Pygame uses, in the Python package
 const WATER_LIMIT_S := 10.0  # main(): water_time_remaining = 10 - water_elapsed
 const RESERVE_L := 10.0
 const TEXT_OUTLINE := Color8(20, 24, 28, 230)
@@ -26,7 +27,7 @@ const MAX_SPEED_KMH := 210.0  # physics.MAX_SPEED: the dial's end
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_font = ThemeDB.fallback_font
-	_faces = load_rage_faces(ProjectSettings.globalize_path("res://").path_join(RAGE_ATLAS).simplify_path())
+	_faces = load_rage_faces(Paths.package_path(RAGE_ATLAS))
 
 
 ## The 11 face frames, cropped from the atlas as hud.py _load_rage_face_frames.

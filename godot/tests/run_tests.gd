@@ -299,7 +299,7 @@ func test_rendering() -> void:
 	var center := Vector2(100, 100)
 	check(Instruments.dial_point(center, 0.0, 10.0).x < 100.0 and Instruments.dial_point(center, 1.0, 10.0).x > 100.0
 		and is_equal_approx(Instruments.dial_point(center, 0.5, 10.0).y, 90.0), "fuel needle: E left, F right, half up")
-	var faces: Array = Instruments.load_rage_faces(ProjectSettings.globalize_path("res://").path_join(Instruments.RAGE_ATLAS).simplify_path())
+	var faces: Array = Instruments.load_rage_faces(preload("res://paths.gd").package_path(Instruments.RAGE_ATLAS))
 	check(faces.size() == 11 and faces[0].get_size().x <= 170.0, "11 rage faces cut from Pygame's atlas")
 
 	# Pygame skips police, drivers on foot and the far LOD band in draw_npc_cars.
@@ -603,6 +603,10 @@ func test_speech_and_stations() -> void:
 	var Instruments := load("res://instruments.gd")
 	check(is_equal_approx(Instruments.speed_kmh(-5.0), 18.0) and Instruments.speed_kmh(100.0) == 210.0, "speedometer: |speed| in km/h, up to 210")
 	check(is_equal_approx(Instruments.speed_angle(0.0), deg_to_rad(135.0)) and is_equal_approx(Instruments.speed_angle(210.0), deg_to_rad(405.0)), "speedometer: 270 degrees from lower left")
+	var Paths := preload("res://paths.gd")
+	check(not Paths.exported() and Paths.package_path("assets/ragefaceatlas.png").ends_with("src/theroadragetrip/assets/ragefaceatlas.png") and FileAccess.file_exists(Paths.package_path("assets/ragefaceatlas.png")), "paths: the repo's Python package, files found")
+	var server_cmd: Array = Paths.server_command(["--list-cities"])
+	check(server_cmd[1].has("theroadragetrip.server") and server_cmd[1][-1] == "--list-cities", "paths: the repo's server runs from .venv with the arguments last")
 	var Startup := load("res://startup.gd")
 	check(Startup.map_source_args("pbf", "") == ["--osm-source", "pbf"] and Startup.map_source_args("pbf", "/maps/fi.osm.pbf") == ["--osm-source", "pbf", "--osm-pbf-path", "/maps/fi.osm.pbf"], "map source: a local .osm.pbf, its path when set")
 	check(Startup.map_source_args("overpass", "x") == ["--osm-source", "overpass"] and Startup.map_source_args("", "") == [], "map source: Overpass, or the server's config")

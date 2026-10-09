@@ -59,3 +59,7 @@ src/theroadragetrip/assets/roads/*.bin
 
 # graphify knowledge-graph output and cache
 graphify-out/
+
+# Release builds (windows-release.yml, local exports)
+/dist/
+/build/

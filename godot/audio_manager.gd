@@ -32,7 +32,7 @@ var _foot_distance := 0.0
 const FOOTSTEP_M := 0.8
 # godot-final-07: one voice (driver/passenger speech) and one station loudspeaker.
 const ANNOUNCEMENT_MAX_WAIT_MS := 20000  # station_announcer.py MAX_WAIT_S: a queued announcement older is dropped
-var package_root := ProjectSettings.globalize_path("res://").path_join("../src/theroadragetrip").simplify_path()
+var package_root: String = preload("res://paths.gd").package_root()  # the repo's or the release's
 var speech_player := AudioStreamPlayer.new()
 var announcer := AudioStreamPlayer2D.new()
 var announcements: Array = []  # waiting: [queued at ms, clip paths, world position]
@@ -61,7 +61,8 @@ func load_config(path: String) -> void:
 	for bus in _config.get("buses", {}):
 		for category in _config["buses"][bus]:
 			_bus_of_category[category] = bus
-	var catalog_path := ProjectSettings.globalize_path("res://").path_join(_config["catalog"]).simplify_path()
+	# The catalog sits in the Python package ("../src/theroadragetrip/..." from the repo's godot/).
+	var catalog_path := package_root.path_join(str(_config["catalog"]).trim_prefix("../src/theroadragetrip/"))
 	var catalog = JSON.parse_string(FileAccess.get_file_as_string(catalog_path))
 	if typeof(catalog) != TYPE_DICTIONARY:
 		push_warning("AudioManager: no sound catalog at %s - running silent" % catalog_path)

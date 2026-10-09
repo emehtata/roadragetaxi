@@ -4,6 +4,7 @@ extends Control
 
 const PORT := 8765
 const T := preload("res://i18n.gd")
+const Paths := preload("res://paths.gd")
 
 var _server_pid := -1
 var _game: Node
@@ -38,6 +39,7 @@ func _ready() -> void:
 		if at >= 0 and at + 1 < command_line.size():
 			_server_extra.append_array([option, command_line[at + 1]])
 	_cities = _server_query("--list-cities")
+	print("startup: %d cities from the simulation (%s)" % [_cities.size(), "release" if Paths.exported() else "repo"])
 	if _cities.is_empty():
 		_cities = ["Oulu"]
 	_city = _settings.get_value("gig", "city", _cities[0])  # the last gig city, remembered
@@ -74,7 +76,7 @@ func _build_shell() -> void:
 	backdrop.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	back.add_child(backdrop)
 	_logo = TextureRect.new()
-	var image := Image.load_from_file(ProjectSettings.globalize_path("res://../src/theroadragetrip/img/theroadragetrip_1672_941.png"))
+	var image := Image.load_from_file(Paths.package_path("img/theroadragetrip_1672_941.png"))
 	if not image.is_empty():
 		_logo.texture = ImageTexture.create_from_image(image)
 	_logo.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
@@ -375,17 +377,15 @@ func _start(mode: String) -> void:
 	_settings.save("user://settings.cfg")
 	_clear()
 	_title(_t("loading", "LOADING"), _t("starting", "Starting the simulation…"))
-	var root := ProjectSettings.globalize_path("res://..").simplify_path()
-	var python := root.path_join(".venv/bin/python")
-	var args := ["PYGAME_HIDE_SUPPORT_PROMPT=1", "PYTHONPATH=" + root.path_join("src"), python,
-		"-m", "theroadragetrip.server", "--port", str(PORT), "--game-mode", mode, "--language", _language]
+	var args := ["--port", str(PORT), "--game-mode", mode, "--language", _language]
 	if mode == "gig_driver":
 		args.append_array(["--preset", _city, "--start-time", "%04d-%02d-%02dT%02d:%02d" % [_start_time["year"], _start_time["month"], _start_time["day"], _start_time["hour"], _start_time["minute"]]])
 	args.append_array(map_source_args(_settings.get_value("map", "osm_source", ""), _settings.get_value("map", "osm_pbf_path", "")))
 	if _settings.has_section_key("game", "historical_weather"):  # else the server's config decides
 		args.append("--historical-weather" if _settings.get_value("game", "historical_weather") else "--no-historical-weather")
 	args.append_array(_server_extra)
-	_server_pid = OS.create_process("/usr/bin/env", args)
+	var command := Paths.server_command(args)  # the repo's .venv, or the release's bundled server
+	_server_pid = OS.create_process(command[0], command[1])
 	if _server_pid <= 0:
 		_title(_t("start_failed", "START FAILED"), _t("start_failed_detail", "Could not launch the Python simulation"))
 		_button(_t("back", "Back"), _main_menu)
@@ -459,10 +459,9 @@ func _unhandled_input(event: InputEvent) -> void:
 
 
 func _server_query(flag: String) -> Array:
-	var root := ProjectSettings.globalize_path("res://..").simplify_path()
 	var output: Array = []
-	var code := OS.execute("/usr/bin/env", ["PYGAME_HIDE_SUPPORT_PROMPT=1", "PYTHONPATH=" + root.path_join("src"),
-		root.path_join(".venv/bin/python"), "-m", "theroadragetrip.server", flag], output, true)
+	var command := Paths.server_command([flag])
+	var code := OS.execute(command[0], command[1], output, true)
 	if code != 0 or output.is_empty():
 		return []
 	var parsed = JSON.parse_string(output[-1].strip_edges())
