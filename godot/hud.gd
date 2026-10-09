@@ -23,6 +23,7 @@ var _timetable_hint_until := 0
 var _summary := Label.new()  # render/menus.py draw_city_summary: covers everything once the career city is done
 var _notice_style := StyleBoxFlat.new()
 var _fare_style := StyleBoxFlat.new()
+var layout = preload("res://hud_layout.gd").new(false)  # main.gd gives the shared, saved one
 var _notice_mode := ""  # "camera", "start" or "" (the banner)
 var language := "en"
 
@@ -164,6 +165,13 @@ func _layout() -> void:
 	_clock.position = Vector2(size.x - 12.0 - _clock.size.x, 8.0)
 	_money.position = Vector2(_clock.position.x - 12.0 - _money.size.x, 6.0)
 	_weather.position = Vector2(size.x - 92.0 - _weather.size.x, 40.0)  # left of the limit sign
+	# The clock, the score box and the weather move as one panel.
+	var status := Rect2(_money.position, Vector2.ZERO).merge(Rect2(_clock.position, _clock.size)).merge(Rect2(_money.position, _money.size))
+	if _weather.text != "":
+		status = status.merge(Rect2(_weather.position, _weather.size))
+	var moved: Vector2 = layout.place("status", status, size).position - status.position
+	for label: Label in [_clock, _money, _weather]:
+		label.position += moved
 	_fare.position = Vector2(10.0, 44.0)  # under the trip meter
 	# A clipping Label reports no minimum width: measure the text instead.
 	var font := _fare.get_theme_font("font")
@@ -172,6 +180,10 @@ func _layout() -> void:
 	var room := maxf(120.0, minf(_weather.position.x, size.x - 100.0) - 20.0)  # left of the weather and the sign
 	_fare.size = Vector2(minf(text_size.x + 14.0, room), text_size.y + 10.0)
 	_fare.visible = _fare.text != ""
+	if _fare.visible:
+		_fare.position = layout.place("fare", Rect2(_fare.position, _fare.size), size).position
+	else:
+		layout.rects.erase("fare")  # nothing there to grab
 	_hint.visible = _hint.text != "" and not _notice.visible
 	_hint.position = Vector2((size.x - _hint.size.x) / 2.0, size.y - 30.0)
 	match _notice_mode:

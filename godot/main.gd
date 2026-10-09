@@ -49,6 +49,7 @@ var _help: PanelContainer
 var summary_shown := false  # the career city summary is up: the session is over, no more driving commands
 var _engine_on := false  # main(): the driver starts on foot, E starts the engine after getting in
 var _entered_taxi := false  # the "Press F" hint until the driver first gets in
+var hud_layout = preload("res://hud_layout.gd").new()  # the movable panels, saved (U / F2 resets)
 var _start_sign: PanelContainer  # main()'s draw_game_start_overlay: city and forecast, any key starts
 var drive := DriveInput.new()  # the held driving keys (drive_input.gd)
 var _state_usec := 0.0  # handling one state (parse + buffer), smoothed
@@ -144,6 +145,8 @@ func _ready() -> void:
 	if _selftest or _bench > 0.0 or _screenshot_path != "" or "--audiotest" in args or "--inputtest" in args:
 		_engine_on = true  # automated runs drive straight away: no sign, no hints
 		_entered_taxi = true
+	instruments.layout = hud_layout
+	hud.layout = hud_layout
 	sim.world_received.connect(_on_world)
 	sim.state_received.connect(_on_state)
 	# One new chunk per frame (godot-16): a chunk's first drawing takes ~10-20 ms, and crossing into
@@ -233,6 +236,15 @@ static func screenshot_directory(os_name: String, user_profile: String) -> Strin
 	return OS.get_environment("PWD").path_join("screenshots") if OS.has_environment("PWD") else "screenshots"
 
 
+## Mouse on a HUD panel: drag it (main()'s hud_dragging), kept on screen.
+func _input(event: InputEvent) -> void:
+	drive.handle(event)
+	if _start_sign == null and hud.visible and hud_layout.handle(event):
+		instruments.queue_redraw()
+		hud._layout()
+		get_viewport().set_input_as_handled()
+
+
 func _unhandled_input(event: InputEvent) -> void:
 	if _start_sign != null and event is InputEventKey and event.pressed and not event.echo:
 		if event.keycode != KEY_ESCAPE:  # main(): any key but Esc starts
@@ -244,6 +256,10 @@ func _unhandled_input(event: InputEvent) -> void:
 		match event.keycode:
 			KEY_F12:
 				save_screenshot()
+			KEY_U, KEY_F2:  # main(): the HUD layout back to default
+				hud_layout.reset()
+				instruments.queue_redraw()
+				hud._layout()
 			KEY_F:
 				_interact_pending = true
 			KEY_G:
@@ -284,10 +300,6 @@ func _unhandled_input(event: InputEvent) -> void:
 
 
 ## Driving keys: every press and release, before any UI can consume it.
-func _input(event: InputEvent) -> void:
-	drive.handle(event)
-
-
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_APPLICATION_FOCUS_OUT or what == NOTIFICATION_WM_WINDOW_FOCUS_OUT:
 		# Key-ups of keys held now will never arrive: let go of everything,
@@ -634,7 +646,7 @@ func _build_help() -> void:
 	var text := Label.new()
 	text.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	text.add_theme_font_size_override("font_size", 18)
-	text.text = T.text("controls_help", language, "CONTROLS\n\nWASD / arrows   Drive or walk       Shift   Sprint\nF   Enter / exit taxi               E   Engine\nP   Phone                            1–3 / Enter / X   Phone actions\nSpace   Road rage                   G   Refuel\nR   Respawn taxi                    X   Cancel fare\nT   Reset trip meter                K   Lane assist\nV   Speed limiter                   B   Red-light assist\nN   Navigation                      C   Compass\nJ   Train board                     L   Labels\n+ / -   Zoom                        Esc   Pause\nF1   Close help                     F3   Diagnostics")
+	text.text = T.text("controls_help", language, "CONTROLS\n\nWASD / arrows   Drive or walk       Shift   Sprint\nF   Enter / exit taxi               E   Engine\nP   Phone                            1–3 / Enter / X   Phone actions\nSpace   Road rage                   G   Refuel\nR   Respawn taxi                    X   Cancel fare\nT   Reset trip meter                K   Lane assist\nV   Speed limiter                   B   Red-light assist\nN   Navigation                      C   Compass\nJ   Train board                     L   Labels\n+ / -   Zoom                        Esc   Pause\nF1   Close help                     F3   Diagnostics\nMouse   Drag HUD panels             U   Reset HUD layout\nF12   Screenshot")
 	_help.add_child(text)
 
 

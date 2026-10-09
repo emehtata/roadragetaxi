@@ -18,6 +18,7 @@ var _font: Font
 var _shown := []  # the values last drawn
 var _state: Dictionary = {}
 var language := "en"
+var layout = preload("res://hud_layout.gd").new(false)  # main.gd gives the shared, saved one
 var chips := [false, false, false]  # lane assist (K), speed limiter (V), navigation (N): main.gd
 const MAX_SPEED_KMH := 210.0  # physics.MAX_SPEED: the dial's end
 
@@ -196,8 +197,9 @@ func _draw() -> void:
 	var trip := trip_text(player.get("trip_m", 0.0), player.get("odometer_m", 0.0), language)
 	# hud.py's meters box, top left.
 	var trip_size := _font.get_string_size(trip, HORIZONTAL_ALIGNMENT_LEFT, -1, 15)
-	draw_rect(Rect2(4, 4, trip_size.x + 16, 28), Color8(15, 20, 25, 210))
-	draw_string(_font, Vector2(12, 4 + 14 + _font.get_ascent(15) / 2.0 - 2), trip, HORIZONTAL_ALIGNMENT_LEFT, -1, 15, Color8(255, 245, 190))
+	var meters: Rect2 = layout.place("meters", Rect2(4, 4, trip_size.x + 16, 28), size)
+	draw_rect(meters, Color8(15, 20, 25, 210))
+	draw_string(_font, meters.position + Vector2(8, 14 + _font.get_ascent(15) / 2.0 - 2), trip, HORIZONTAL_ALIGNMENT_LEFT, -1, 15, Color8(255, 245, 190))
 
 
 ## The dial's reading: |speed| in km/h up to the car's top speed (hud.py
@@ -214,6 +216,7 @@ static func speed_angle(kmh: float) -> float:
 
 
 func _draw_speedometer(at: Vector2, kmh: float) -> void:
+	at = layout.place("speedometer", Rect2(at, Vector2(190, 200)), size).position  # the dial and its chips
 	var center := at + Vector2(95, 88)
 	var radius := 68.0
 	draw_circle(center, radius, Color8(12, 16, 20))
@@ -254,6 +257,7 @@ func _centered(text: String, at: Vector2, font_size: int, color: Color) -> void:
 func _draw_fuel(at: Vector2, player: Dictionary) -> void:
 	var capacity := maxf(0.001, player.get("fuel_capacity_l", 50.0))
 	var fraction := clampf(player.get("fuel_l", 0.0) / capacity, 0.0, 1.0)
+	at = layout.place("fuel", Rect2(at, Vector2(230, 92 if price_text(_state, language) != "" else 78)), size).position
 	draw_rect(Rect2(at, Vector2(230, 78)), Color8(20, 25, 30, 220))
 	draw_rect(Rect2(at, Vector2(230, 78)), Color8(130, 140, 150), false, 1.0)
 	var center := at + Vector2(36, 50)
@@ -292,7 +296,8 @@ func _draw_rage(at: Vector2, rage: float) -> void:
 	var text_size := _font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, 16)
 	var face: Texture2D = _faces[mini(10, maxi(0, int(clampf(rage, 0.0, 1.0) * 10.0)))] if _faces.size() == 11 else null
 	var face_size := face.get_size() if face != null else Vector2.ZERO
-	var box := Rect2(at, Vector2(maxf(text_size.x, face_size.x) + 20.0, face_size.y + text_size.y + 24.0))
+	var box: Rect2 = layout.place("rage", Rect2(at, Vector2(maxf(text_size.x, face_size.x) + 20.0, face_size.y + text_size.y + 24.0)), size)
+	at = box.position
 	draw_rect(box, Color8(20, 25, 30, 220))
 	draw_rect(box, Color8(130, 140, 150), false, 1.0)
 	if face != null:
