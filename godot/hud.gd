@@ -22,6 +22,8 @@ var _timetable_hint_shown := false  # main(): once a session, when the map first
 var _timetable_hint_until := 0
 var _summary := Label.new()  # render/menus.py draw_city_summary: covers everything once the career city is done
 var _notice_style := StyleBoxFlat.new()
+var _fare_style := StyleBoxFlat.new()
+var _notice_mode := ""  # "camera", "start" or "" (the banner)
 var language := "en"
 
 
@@ -71,6 +73,40 @@ func _ready() -> void:
 	add_child(_summary)  # last child: above the HUD rows
 	_notice_style = _box(Color8(20, 30, 40, 235), Color8(255, 200, 50))
 	_notice.add_theme_stylebox_override("normal", _notice_style)
+	# render/hud.py's layout, no shared bar: the clock top right, the score
+	# box left of it, the weather under them, the fare banner top left
+	# under the trip meter (instruments.gd), notices low in the middle.
+	var bar: Control = _clock.get_parent().get_parent()
+	for label: Label in [_clock, _money, _speed, _weather, _fare]:
+		label.get_parent().remove_child(label)
+		add_child(label)
+		label.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+		label.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
+		label.add_theme_font_size_override("font_size", 17)
+		label.add_theme_constant_override("outline_size", 4)
+		label.add_theme_color_override("font_outline_color", Color8(20, 24, 28, 230))
+	bar.visible = false
+	_speed.visible = false  # the speedometer shows it (hud.py has no speed text)
+	_clock.add_theme_color_override("font_color", Color8(255, 230, 120))
+	_money.add_theme_color_override("font_color", Color8(255, 230, 110))
+	var money_style := _box(Color8(20, 20, 20, 200), Color8(220, 180, 50))
+	money_style.set_border_width_all(1)
+	money_style.set_content_margin_all(4)
+	money_style.content_margin_left = 6
+	money_style.content_margin_right = 6
+	money_style.set_corner_radius_all(3)
+	_money.add_theme_stylebox_override("normal", money_style)
+	_weather.add_theme_font_size_override("font_size", 15)
+	_weather.add_theme_color_override("font_color", Color8(200, 220, 240))
+	_fare_style = _box(Color8(25, 30, 35, 220), Color8(190, 200, 205))
+	_fare_style.set_border_width_all(1)
+	_fare_style.set_content_margin_all(4)
+	_fare_style.content_margin_left = 6
+	_fare_style.content_margin_right = 6
+	_fare_style.set_corner_radius_all(3)
+	_fare.add_theme_stylebox_override("normal", _fare_style)
+	_fare.clip_text = true
+	_fare.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 
 
 static func _box(fill: Color, border: Color) -> StyleBoxFlat:
@@ -84,24 +120,21 @@ static func _box(fill: Color, border: Color) -> StyleBoxFlat:
 
 func show_state(state: Dictionary, toggles := {}) -> void:
 	var text := values(state, toggles, language)
-	_money.text = "%s   %s: %s" % [text["money"], T.text("score", language, "Score"), text["score"]]
+	_money.text = "%s: %s  |  %s: %d  |  %s" % [T.text("score", language, "Score"), text["score"],
+		T.text("fares", language, "Fares"), int(state.get("taxi", {}).get("completed_fares", 0)), text["money"]]
 	_speed.text = text["speed"]
 	_clock.text = text["clock"]
 	_weather.text = text["weather"]
 	_fare.text = text["fare"]
+	_fare_style.border_color = text["fare_color"]
+	_fare.add_theme_color_override("font_color", text["fare_color"])
 	var start_hint: bool = text["notice"] == "" and text["start_hint"] != ""  # main(): draw_game_start_hint, blue
 	_notice.text = text["start_hint"] if start_hint else text["notice"]
 	_notice.visible = _notice.text != ""
 	# hud.py: a speed-camera hit is centred on screen with a red border, other notices at the top in amber.
 	_notice_style.border_color = Color8(255, 70, 45) if text["notice_camera"] else (Color8(100, 190, 240) if start_hint else Color8(255, 200, 50))
 	_notice_style.bg_color = Color8(16, 35, 55, 235) if start_hint else Color8(20, 30, 40, 235)
-	var camera: bool = text["notice_camera"]
-	_notice.anchor_top = 0.5 if camera else 0.0
-	_notice.anchor_bottom = _notice.anchor_top
-	_notice.offset_top = -15.0 if camera else 60.0
-	_notice.offset_bottom = _notice.offset_top + 30.0
-	_notice.reset_size()  # the box fits the text, as Pygame's
-	_notice.position.x = (size.x - _notice.size.x) / 2.0
+	_notice_mode = "camera" if text["notice_camera"] else ("start" if start_hint else "")
 	_meet.text = text["meet"]
 	_meet.visible = text["meet"] != ""
 	_hint.text = text["hint"]
@@ -113,12 +146,41 @@ func show_state(state: Dictionary, toggles := {}) -> void:
 		_board.position = Vector2(size.x - 10.0 - _board.size.x, 116.0)  # draw_next_train: top right under the limit sign
 	_layout_subtitle()
 	_subtitle.visible = Time.get_ticks_msec() < _subtitle_until
+	_layout()
 	var railway = state.get("railway")
 	if not _timetable_hint_shown and railway is Dictionary and railway.get("stations") is Array and not railway["stations"].is_empty():
 		_timetable_hint_shown = true  # the client's own hint: it never overwrites the server's notices
 		_timetable_hint_until = Time.get_ticks_msec() + 6000
 	if Time.get_ticks_msec() < _timetable_hint_until and _hint.text != "":
 		_hint.text = T.text("train_hint", language, "Train timetables available. Press J.   ") + _hint.text
+
+
+## Where everything goes (render/hud.py draw_hud), after the texts changed:
+## nothing shares a row, so nothing can run into anything else.
+func _layout() -> void:
+	for label: Label in [_clock, _money, _weather, _notice, _hint]:
+		label.size = Vector2.ZERO
+		label.reset_size()
+	_clock.position = Vector2(size.x - 12.0 - _clock.size.x, 8.0)
+	_money.position = Vector2(_clock.position.x - 12.0 - _money.size.x, 6.0)
+	_weather.position = Vector2(size.x - 92.0 - _weather.size.x, 40.0)  # left of the limit sign
+	_fare.position = Vector2(10.0, 44.0)  # under the trip meter
+	# A clipping Label reports no minimum width: measure the text instead.
+	var font := _fare.get_theme_font("font")
+	var font_size := _fare.get_theme_font_size("font_size")
+	var text_size := font.get_multiline_string_size(_fare.text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size)
+	var room := maxf(120.0, minf(_weather.position.x, size.x - 100.0) - 20.0)  # left of the weather and the sign
+	_fare.size = Vector2(minf(text_size.x + 14.0, room), text_size.y + 10.0)
+	_fare.visible = _fare.text != ""
+	_hint.visible = _hint.text != "" and not _notice.visible
+	_hint.position = Vector2((size.x - _hint.size.x) / 2.0, size.y - 30.0)
+	match _notice_mode:
+		"camera":  # hud.py: a speed-camera hit centred on screen, red
+			_notice.position = (size - _notice.size) / 2.0
+		"start":  # menus.py draw_game_start_hint: top middle, blue
+			_notice.position = Vector2((size.x - _notice.size.x) / 2.0, 100.0)
+		_:  # the notification banner: low in the middle
+			_notice.position = Vector2((size.x - _notice.size.x) / 2.0, size.y - 45.0 - _notice.size.y / 2.0)
 
 
 ## Display text for one state. Every field is optional: a missing one shows
@@ -147,6 +209,10 @@ static func values(state: Dictionary, toggles := {}, language := "en") -> Dictio
 	else:
 		text["weather"] = ""
 	var passenger = taxi.get("current_passenger")
+	# hud.py's banner colours: grey idle, yellow picking up, green with the passenger.
+	text["fare_color"] = Color8(190, 200, 205)
+	if typeof(passenger) == TYPE_DICTIONARY:
+		text["fare_color"] = Color8(100, 240, 140) if taxi.get("state", "") == "DROPOFF" else Color8(255, 215, 60)
 	if passenger == null or typeof(passenger) != TYPE_DICTIONARY:
 		text["fare"] = T.text("no_fare", language, "No fare - %d done") % taxi.get("completed_fares", 0)
 	else:
@@ -182,13 +248,8 @@ static func values(state: Dictionary, toggles := {}, language := "en") -> Dictio
 		text["hint"] = T.text("hint_foot", language, "F get in the taxi · WASD walk · P phone")
 	elif not player.get("engine_on", true):
 		text["hint"] = T.text("hint_engine", language, "E start the engine · F get out · P phone")
-	else:
-		var on := T.text("on", language, "ON")
-		var off := T.text("off", language, "OFF")
-		text["hint"] = T.text("hint_drive", language, "WASD drive · SPACE road rage · F get out · E engine · G refuel · K lane assist %s · V limiter %s · B red-light assist %s · N navigation %s · L labels %s · J trains · P phone · C compass · F1 help · +/- zoom") % [
-			on if toggles.get("lane_assist", false) else off,
-			on if toggles.get("speed_limiter", true) else off, on if toggles.get("red_light_assist", false) else off,
-			on if toggles.get("navigation", false) else off, [off, T.text("streets", language, "STREETS"), T.text("all", language, "ALL")][clampi(int(toggles.get("labels", 0)), 0, 2)]]
+	else:  # hud.py's long controls line is debug-only; F1 lists them all
+		text["hint"] = ""
 	return text
 
 

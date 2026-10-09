@@ -464,7 +464,7 @@ func test_commands_carry_the_player_id() -> void:
 	var refuel := Main.command_for({"throttle": 0.0}, true, false, true)
 	check(refuel["refuel"] == true and refuel["interact"] == false and refuel["throttle"] == 0.0, "a G press sends refuel")
 	check(Main.command_for({}, true, false, false)["refuel"] == false, "no press, no refuel")
-	check(Hud.values({"on_foot": false, "player": {"engine_on": true}})["hint"].contains("G refuel"), "the driving hint names G")
+	check(FileAccess.get_file_as_string("res://main.gd").contains("G   Refuel"), "F1 help names G")
 	test_controls_and_economy()
 	test_taxi_information()
 	test_navigation_route()
@@ -527,6 +527,22 @@ func test_speech_and_stations() -> void:
 	hud.get_parent().remove_child(hud)
 	hud_scene.free()
 	root.add_child(hud)
+	hud.size = Vector2(1280, 720)
+	hud.show_state({"game_time_seconds": 31980.0, "calendar": {"date": "2026-10-10", "time_scale": 1.0}, "on_foot": false,
+		"player": {"engine_on": true}, "weather": {"weather_type": "rain", "wetness": 1.0, "temperature_c": -0.2},
+		"taxi": {"balance_cents": 123456, "total_score": -1200, "completed_fares": 12, "state": "PICKUP",
+			"current_passenger": {"name": "Matti Vesterinen", "pickup": {"address": "Aaltovaarantie 12, Kaakkuri, a very long address indeed that goes on"}}}})
+	var boxes := []
+	for name in ["_clock", "_money", "_weather", "_fare"]:
+		var label: Label = hud.get(name)
+		boxes.append(Rect2(label.position, label.size))
+	var apart := true
+	for i in boxes.size():
+		apart = apart and boxes[i].position.x >= 0.0 and boxes[i].end.x <= 1280.0
+		for j in range(i + 1, boxes.size()):
+			apart = apart and not boxes[i].intersects(boxes[j])
+	check(apart and not boxes[3].intersects(Rect2(1280 - 79, 45, 62, 62)), "HUD: clock, score, weather and fare banner on screen, none overlapping, clear of the limit sign")
+	check(hud._fare_style.border_color == Color8(255, 215, 60), "HUD: the fare banner yellow while picking up (hud.py)")
 	check(Hud.subtitle_text({"speaker": "passenger", "speaker_name": "Aino", "text": "Hei"}) == "Aino: Hei" and Hud.subtitle_text({"speaker": "driver", "text": "Mennään"}) == "Driver: Mennään", "the passenger's name, else the speaker")
 	check(Hud.subtitle_text({"speaker": "passenger", "text": ""}) == "" and Hud.subtitle_text({}) == "", "no text: no subtitle")
 	hud.show_subtitle({"speaker": "passenger", "speaker_name": "Aino", "text": "Hei", "duration_s": 4.0})
@@ -600,7 +616,7 @@ func test_speech_and_stations() -> void:
 	main._unhandled_input(_key_event(KEY_J))
 	check(main.show_next_train, "not while the phone is open")
 	main.free()
-	check(Hud.values({"on_foot": false, "player": {"engine_on": true}})["hint"].contains("J trains"), "the hint names J")
+	check(FileAccess.get_file_as_string("res://main.gd").contains("J   Train board"), "F1 help names J")
 
 	var range_m := [15.0, 150.0]
 	var stations := {"stations": [{"name": "A", "x": 0.0, "y": 0.0, "waiting": 30}, {"name": "B", "x": 40.0, "y": 0.0, "waiting": 6}, {"name": "C", "x": 5.0, "y": 0.0, "waiting": 0}]}
@@ -791,7 +807,7 @@ func test_road_rage() -> void:
 	var horn: Array = audio.resolve({"type": "sound", "group": "vehicle.horn"})
 	check(horn.size() == 1 and horn[0]["group"] == "vehicle.horn" and is_equal_approx(horn[0]["volume"], 0.45), "the horn event plays vehicle.horn at Pygame's 0.45")
 	audio.free()
-	check(Hud.values({"on_foot": false, "player": {"engine_on": true}})["hint"].contains("SPACE road rage"), "the hint names SPACE")
+	check(FileAccess.get_file_as_string("res://main.gd").contains("Space   Road rage"), "F1 help names SPACE")
 
 
 ## L cycles the labels as Pygame's label_mode: off (start), street names, everything.
@@ -819,7 +835,7 @@ func test_label_modes() -> void:
 	check(Labels.declutter(candidates, canvas, Vector2(1280, 720), font, 2).map(func(p): return p[1]) == ["Keskusta"], "mode 2: everything, by priority (one spot: the district wins)")
 	check(Labels.declutter(candidates, canvas, Vector2(1280, 720), font, 0).is_empty(), "mode 0: none")
 	var driving := {"on_foot": false, "player": {"engine_on": true}}
-	check(Hud.values(driving, {"labels": 1})["hint"].contains("L labels STREETS") and Hud.values(driving)["hint"].contains("L labels OFF"), "the hint names the label mode")
+	check(Hud.values(driving)["hint"] == "" and FileAccess.get_file_as_string("res://main.gd").contains("L   Labels"), "driving: no controls line (hud.py: debug only); F1 names L")
 
 
 ## godot-final-04: the server's route, N to show it (C stays the compass).
@@ -843,7 +859,7 @@ func test_navigation_route() -> void:
 	check(not nav.show_route, "N again hides it")
 	nav.free()
 	var driving := {"on_foot": false, "player": {"engine_on": true}}
-	check(Hud.values(driving, {"navigation": true})["hint"].contains("N navigation ON") and Hud.values(driving)["hint"].contains("N navigation OFF"), "the hint reports N")
+	check(FileAccess.get_file_as_string("res://main.gd").contains("N   Navigation"), "F1 help names N")
 
 	var origin := Vector2(100.0, 200.0)
 	check(EntityLayer.route_points([[100.0, 200.0], [130.0, 160.0]], origin) == PackedVector2Array([Vector2(0, 0), Vector2(30, 40)]), "world metres through the map origin (y flipped)")
@@ -951,8 +967,8 @@ func test_controls_and_economy() -> void:
 	main.send({})
 	check(sim._last_command["speed_limiter_enabled"] == true, "V again: the limiter back on")
 	var driving := {"on_foot": false, "player": {"engine_on": true}}
-	check(Hud.values(driving, {"speed_limiter": false, "red_light_assist": true})["hint"].contains("V limiter OFF · B red-light assist ON"), "the hint shows both states")
-	check(Hud.values(driving)["hint"].contains("V limiter ON · B red-light assist OFF"), "the hint's defaults match the commands'")
+	check(FileAccess.get_file_as_string("res://main.gd").contains("V   Speed limiter") and FileAccess.get_file_as_string("res://main.gd").contains("B   Red-light assist"), "F1 help names V and B")
+	check(Hud.values({"on_foot": true})["hint"] != "" and Hud.values({"on_foot": false, "player": {"engine_on": false}})["hint"] != "", "the short hints on foot and with the engine off stay")
 
 	# Score: the server's number, whatever its sign; a missing one is a placeholder.
 	check(Hud.values({"taxi": {"total_score": 1234}})["score"] == "1234", "positive score")

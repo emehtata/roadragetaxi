@@ -179,7 +179,7 @@ func _draw() -> void:
 		return
 	var player: Dictionary = _state.get("player", {})
 	_draw_fuel(Vector2(210, size.y - 100), player)
-	_draw_speedometer(Vector2(10, size.y - 232), speed_kmh(player.get("speed", 0.0)))
+	_draw_speedometer(Vector2(10, size.y - 214), speed_kmh(player.get("speed", 0.0)))
 	_draw_rage(Vector2(size.x - 190, size.y - 246), _state.get("rage_power", 0.0))
 	var water: float = _state.get("water_elapsed", 0.0)
 	if water > 0.0:
@@ -194,8 +194,10 @@ func _draw() -> void:
 		_draw_limit_sign(Vector2(size.x - 48.0, 76.0), 31.0, limit)
 	# A dark outline keeps the light text readable on snow and on grass alike (godot-16).
 	var trip := trip_text(player.get("trip_m", 0.0), player.get("odometer_m", 0.0), language)
-	draw_string_outline(_font, Vector2(10, size.y - 248), trip, HORIZONTAL_ALIGNMENT_LEFT, -1, 14, TEXT_OUTLINE_PX, TEXT_OUTLINE)
-	draw_string(_font, Vector2(10, size.y - 248), trip, HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Color8(205, 215, 220))
+	# hud.py's meters box, top left.
+	var trip_size := _font.get_string_size(trip, HORIZONTAL_ALIGNMENT_LEFT, -1, 15)
+	draw_rect(Rect2(4, 4, trip_size.x + 16, 28), Color8(15, 20, 25, 210))
+	draw_string(_font, Vector2(12, 4 + 14 + _font.get_ascent(15) / 2.0 - 2), trip, HORIZONTAL_ALIGNMENT_LEFT, -1, 15, Color8(255, 245, 190))
 
 
 ## The dial's reading: |speed| in km/h up to the car's top speed (hud.py
