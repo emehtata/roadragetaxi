@@ -1573,6 +1573,12 @@ def _apply_npc_trip(
 
 
 NPC_TARGET_COUNT_DEFAULT = 40  # when the city's population is unknown
+# The city's target is for its built-up parts: around the player it scales
+# with the buildings within the spawn radius - a town centre (this many or
+# more) gets all of it, a remote road with a few houses a car or two, an
+# empty forest road one passing car at most.
+NPC_FULL_TRAFFIC_BUILDINGS = 120
+NPC_LOCAL_TARGET_CELL_M = 100.0  # recounted when the player moves into another cell this size
 NPC_TARGET_COUNT_MIN = 15
 NPC_TARGET_COUNT_MAX = 100
 
@@ -3046,6 +3052,11 @@ class NPCVehicleManager:
         # size), not derived from the momentarily-fluctuating current
         # vehicle count - see _run_population_tick's trip-start step.
         self.target_moving_count = max(1, int(target_count * target_moving_fraction))
+        # The city-wide figures; target_count/min_count/target_moving_count
+        # follow the local building density (set_local_density).
+        self.city_target_count, self.city_min_count = self.target_count, self.min_count
+        self.target_moving_fraction = target_moving_fraction
+        self._local_density_cell = None
         self.spawn_radius_m = spawn_radius_m
         self.despawn_radius_m = despawn_radius_m
         self.simulation_radius_m = simulation_radius_m
@@ -3311,6 +3322,23 @@ class NPCVehicleManager:
         vehicle.home_position = (vehicle.x, vehicle.y)
         vehicle.home_parking_space = vehicle.reserved_parking_space
 
+    def set_local_density(self, player_x: float, player_y: float, building_grid) -> None:
+        """Scale the population to the buildings within the spawn radius
+        (NPC_FULL_TRAFFIC_BUILDINGS: the city's whole target). Cheap: only
+        recounted when the player enters another NPC_LOCAL_TARGET_CELL_M cell."""
+        if building_grid is None:
+            return
+        cell = (math.floor(player_x / NPC_LOCAL_TARGET_CELL_M), math.floor(player_y / NPC_LOCAL_TARGET_CELL_M))
+        if cell == self._local_density_cell:
+            return
+        self._local_density_cell = cell
+        r = self.spawn_radius_m
+        nearby = sum(1 for _ in building_grid.ways_in_rect(player_x - r, player_y - r, player_x + r, player_y + r))
+        fraction = min(1.0, nearby / NPC_FULL_TRAFFIC_BUILDINGS)
+        self.target_count = max(1, round(self.city_target_count * fraction))
+        self.min_count = min(self.city_min_count, max(0, round(self.city_min_count * fraction)))
+        self.target_moving_count = max(1, int(self.target_count * self.target_moving_fraction))
+
     def populate_initial(
         self,
         player_x: float,
@@ -3333,6 +3361,7 @@ class NPCVehicleManager:
         top-up during play still goes through the small per-tick budget in
         update() (section 23: never spawn a large number in one frame of
         actual gameplay)."""
+        self.set_local_density(player_x, player_y, building_grid)
         attempts = 0
         max_attempts = self.target_count * 6
         while len(self.vehicles) < self.target_count and attempts < max_attempts:
@@ -3991,6 +4020,7 @@ class NPCVehicleManager:
     ) -> None:
         population_tick_started = time.perf_counter()
         population_deadline = population_tick_started + NPC_TRIP_START_TICK_BUDGET_S
+        self.set_local_density(player_x, player_y, building_grid)
         self._population_tick_number += 1
         # 1. Despawn only genuinely idle, currently-parked vehicles beyond
         # despawn_radius_m (section 19) - never mid-trip, never with a

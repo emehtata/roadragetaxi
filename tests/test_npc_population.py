@@ -1541,3 +1541,29 @@ def test_a_taxi_rolled_back_from_a_wreck_is_not_put_back_into_it():
     assert tick(contact + 0.05)  # throttle still held: into it again ...
     assert taxi.x == contact - 0.1  # ... and back to the clear pose, not the undone one inside the wreck
     assert not tick(contact - 0.5)  # reversing away is free at once
+
+
+def test_traffic_follows_the_buildings_around_the_player():
+    """The city's NPC target is for its built-up parts: a remote road with a
+    few houses gets a car or two, a town centre all of it, recounted as the
+    player moves."""
+    from types import SimpleNamespace
+
+    from theroadragetrip.npc import NPC_FULL_TRAFFIC_BUILDINGS
+    from theroadragetrip.physics import SpatialWayGrid
+
+    def house(x, y):
+        return SimpleNamespace(points_m=[(x, y), (x + 8, y), (x + 8, y + 8), (x, y + 8)], bbox=(x, y, x + 8, y + 8))
+
+    town = [house(5000 + (i % 15) * 20, (i // 15) * 20) for i in range(NPC_FULL_TRAFFIC_BUILDINGS + 30)]
+    grid = SpatialWayGrid()
+    grid.rebuild([house(0, 0), house(30, 40)] + town)
+    manager = NPCVehicleManager(target_count=20)
+
+    manager.set_local_density(10.0, 10.0, grid)  # two houses by the road
+    assert manager.target_count == 1 and manager.min_count == 0
+    manager.set_local_density(5100.0, 100.0, grid)  # the town
+    assert manager.target_count == 20 and manager.min_count == manager.city_min_count
+    assert manager.target_moving_count == max(1, int(20 * manager.target_moving_fraction))
+    manager.set_local_density(-20000.0, 0.0, grid)  # an empty forest road: one passing car at most
+    assert manager.target_count == 1
