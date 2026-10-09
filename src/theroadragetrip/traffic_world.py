@@ -81,6 +81,7 @@ class RouteGraphBuild:
         self.node_grid: dict[Tuple[int, int], List[int]] = {}
         self.component_parent: List[int] = []
         self._buckets: dict[Tuple[int, int, int], List[int]] = {}
+        self._at: dict[Tuple[float, float], List[int]] = {}  # exact point -> nodes of any layer there
         self._parking_index = 0
         self._way_index = 0
 
@@ -108,6 +109,21 @@ class RouteGraphBuild:
                 self.parking_grid.setdefault((cell_x, cell_y), []).append(space)
 
     def _node_id(self, point: Tuple[float, float], layer: int) -> int:
+        index = self._layer_node_id(point, layer)
+        # A bridge's end (layer 1) and the road it joins (layer 0) share one
+        # OSM node: the same point on two layers is a junction, so link them.
+        # (A bridge passing over a road shares no node with it.)
+        here = self._at.setdefault((point[0], point[1]), [])
+        if index not in here:
+            for other in here:
+                if self.nodes[other][2] != layer:
+                    self.edges[index].append((other, 0.0))
+                    self.edges[other].append((index, 0.0))
+                    self._union(index, other)
+            here.append(index)
+        return index
+
+    def _layer_node_id(self, point: Tuple[float, float], layer: int) -> int:
         key = (round(point[0] / 3.0), round(point[1] / 3.0), layer)
         nodes = self.nodes
         for candidate in self._buckets.get(key, ()):
@@ -198,17 +214,54 @@ def nearest_node_indices(nodes, node_grid, point: Tuple[float, float], count: in
     return found[:count]
 
 
+ROUTE_SNAP_M = 12.0  # on_road: a start/target this close to a road segment joins it there
+
+
+def _edges_at(graph, point: Tuple[float, float], allowed, within_m: float = ROUTE_SNAP_M) -> List[Tuple[int, int, float, float, float]]:
+    """The directed edges (u, v) whose segment passes nearest `point` (within
+    `within_m`; both directions of a two-way road), as (u, v, t, length,
+    off): `t` along u->v of the closest point, `off` its distance. Looks at
+    the 3x3 grid cells around the point; [] when no segment is close."""
+    cx = math.floor(point[0] / _ROUTE_NODE_GRID_CELL_M)
+    cy = math.floor(point[1] / _ROUTE_NODE_GRID_CELL_M)
+    found = []
+    best = within_m
+    for dx in (-1, 0, 1):
+        for dy in (-1, 0, 1):
+            for u in graph.node_grid.get((cx + dx, cy + dy), ()):
+                if allowed is not None and u not in allowed:
+                    continue
+                ux, uy = graph.nodes[u][0], graph.nodes[u][1]
+                for v, length in graph.edges.get(u, ()):
+                    if length <= 0.0 or allowed is not None and v not in allowed:
+                        continue
+                    vx, vy = graph.nodes[v][0], graph.nodes[v][1]
+                    t = max(0.0, min(1.0, ((point[0] - ux) * (vx - ux) + (point[1] - uy) * (vy - uy)) / (length * length)))
+                    off = math.hypot(ux + (vx - ux) * t - point[0], uy + (vy - uy) * t - point[1])
+                    if off <= best + 0.5:
+                        found.append((u, v, t, length, off))
+                        best = min(best, off)
+    return [edge for edge in found if edge[4] <= best + 0.5]
+
+
 def graph_route_steps(
     graph,
     start: Tuple[float, float],
     target: Tuple[float, float],
     layer: Optional[int] = None,
+    on_road: bool = False,
 ) -> RouteSteps:
     """A shortest route on one route graph (anything with nodes, edges,
     node_grid and component_parent: a RouteGraphBuild, or TrafficWorld's
     committed surface graph) as a resumable job: yields after every search
     node expansion, returns the route points (or None) - see
-    run_route_steps. Shared by surface and level routing (garage-10_11.md)."""
+    run_route_steps. Shared by surface and level routing (garage-10_11.md).
+
+    `on_road` (the player's navigation): a start or target on a road joins
+    it on its own segment, in that segment's allowed directions, at its
+    distance along it - not at whichever nearby node is cheapest, which is
+    often the opposite carriageway or behind on a one-way street. Falls back
+    to the nearest-node candidates off-road or when that finds no route."""
     # None = every node allowed (layer is None): no whole-graph set per call.
     allowed = None if layer is None else {
         index for index, node in enumerate(graph.nodes) if node[2] == layer
@@ -229,16 +282,19 @@ def graph_route_steps(
     def search(candidate_count: int):
         starts = ranked_starts[:candidate_count]
         targets = ranked_targets[:candidate_count]
+        return (yield from search_from(
+            {index: ROUTE_CONNECTOR_COST_FACTOR * math.hypot(nodes[index][0] - start[0], nodes[index][1] - start[1]) for index in starts},
+            {index: ROUTE_CONNECTOR_COST_FACTOR * math.hypot(nodes[index][0] - target[0], nodes[index][1] - target[1]) for index in targets},
+        ))
+
+    def search_from(start_cost: dict, target_distance: dict):
         # No start shares a weak component with any target: no route
         # can exist, so skip the search that would explore it all.
-        if not {_component_root(parent, index) for index in starts} & {
-            _component_root(parent, index) for index in targets
+        if not {_component_root(parent, index) for index in start_cost} & {
+            _component_root(parent, index) for index in target_distance
         }:
             return None
-        target_distance = {
-            index: ROUTE_CONNECTOR_COST_FACTOR * math.hypot(nodes[index][0] - target[0], nodes[index][1] - target[1])
-            for index in targets
-        }
+        targets = list(target_distance)
         heuristic_cache: dict = {}
 
         def heuristic(index: int) -> float:
@@ -254,8 +310,7 @@ def graph_route_steps(
         distances = {}
         previous = {}
         queue = []
-        for index in starts:
-            distance = ROUTE_CONNECTOR_COST_FACTOR * math.hypot(nodes[index][0] - start[0], nodes[index][1] - start[1])
+        for index, distance in start_cost.items():
             distances[index] = distance
             heapq.heappush(queue, (distance + heuristic(index), distance, index))
         best_target = None
@@ -288,6 +343,25 @@ def graph_route_steps(
         path.reverse()
         return path
 
+    if on_road:
+        yield
+        start_edges = _edges_at(graph, start, allowed)
+        yield  # one lookup per step: each scans the 3x3 cells around its point
+        target_edges = _edges_at(graph, target, allowed)
+        if start_edges and target_edges:
+            ahead = {(u, v): t for u, v, t, _length, _off in start_edges}
+            if any((u, v) in ahead and t >= ahead[(u, v)] for u, v, t, _length, _off in target_edges):
+                return [start, target]  # further along the same segment, the way it allows
+            start_cost: dict = {}
+            for u, v, t, length, off in start_edges:  # drive on to the segment's end, the way it allows
+                start_cost[v] = min(start_cost.get(v, math.inf), (1.0 - t) * length + off)
+            target_cost: dict = {}
+            for u, v, t, length, off in target_edges:  # enter the target's segment from its tail
+                target_cost[u] = min(target_cost.get(u, math.inf), t * length + off)
+            yield
+            path = yield from search_from(start_cost, target_cost)
+            if path is not None:
+                return [start] + [(nodes[index][0], nodes[index][1]) for index in path] + [target]
     for candidate_count in (8, 16, 32, 64):
         yield
         path = yield from search(min(candidate_count, node_count))
@@ -457,10 +531,11 @@ class TrafficWorld:
         start: Tuple[float, float],
         target: Tuple[float, float],
         layer: Optional[int] = None,
+        on_road: bool = False,
     ) -> RouteSteps:
         """plan_route as a resumable job on the surface graph - see
-        graph_route_steps."""
-        return graph_route_steps(_SurfaceGraphView(self), start, target, layer)
+        graph_route_steps (on_road: the player's navigation)."""
+        return graph_route_steps(_SurfaceGraphView(self), start, target, layer, on_road)
 
     def _nearby_traffic_lights(self, x: float, y: float, radius_m: float = 60.0) -> List[TrafficLight]:
         radius_sq = radius_m * radius_m

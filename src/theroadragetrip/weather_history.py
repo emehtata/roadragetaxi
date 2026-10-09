@@ -53,6 +53,7 @@ FETCH_RETRY_DELAY_S = 60.0  # after a failed fetch (offline), wait before asking
 FMI_FORECAST_QUERY = "fmi::forecast::edited::weather::scandinavia::point::timevaluepair"
 FMI_FORECAST_PARAMETERS = ("Temperature", "Precipitation1h", "WeatherSymbol3", "WindSpeedMS", "WindDirection")
 FORECAST_REFRESH_S = 3600.0
+RECENT_REFRESH_S = 3600.0  # a cached chunk still reaching into the last hours: fetched again after this
 FORECAST = "forecast"  # pending-work marker next to observation chunk numbers
 
 _NS = {
@@ -264,6 +265,12 @@ class WeatherHistory:
                     " PRIMARY KEY (location, hour));"
                     "CREATE TABLE IF NOT EXISTS fetched_chunks_v3 (location TEXT, chunk INTEGER,"
                     " PRIMARY KEY (location, chunk));"
+                    # Not final yet (the last hours, the forecast): reused for an hour of wall time.
+                    "CREATE TABLE IF NOT EXISTS recent_chunks_v3 (location TEXT, chunk INTEGER, fetched_at REAL,"
+                    " PRIMARY KEY (location, chunk));"
+                    "CREATE TABLE IF NOT EXISTS forecast_hours_v1 (location TEXT, hour INTEGER, fetched_at REAL,"
+                    " temperature REAL, precipitation REAL, wawa INTEGER, wind_speed REAL, wind_from REAL,"
+                    " PRIMARY KEY (location, hour));"
                 )
             except sqlite3.Error as exc:
                 logger.warning("Weather history cache unavailable (%s); using memory only", exc)
@@ -324,6 +331,8 @@ class WeatherHistory:
                 self._forecast_fetched_at is None
                 or time.monotonic() - self._forecast_fetched_at > FORECAST_REFRESH_S
             )
+            if reaches_future and self._forecast_fetched_at is None and self._load_cached_forecast():
+                forecast_stale = False
             if reaches_future and forecast_stale and FORECAST not in self._pending:
                 self._pending.append(FORECAST)
             if self._pending and (self._worker is None or not self._worker.is_alive()):
@@ -342,6 +351,9 @@ class WeatherHistory:
         try:
             if self._db.execute(
                 "SELECT 1 FROM fetched_chunks_v3 WHERE location=? AND chunk=?", (self.location, chunk),
+            ).fetchone() is None and self._db.execute(
+                "SELECT 1 FROM recent_chunks_v3 WHERE location=? AND chunk=? AND fetched_at>?",
+                (self.location, chunk, time.time() - RECENT_REFRESH_S),
             ).fetchone() is None:
                 return False
             rows = self._db.execute(
@@ -355,6 +367,25 @@ class WeatherHistory:
             self._hours[hour] = HourlyWeather(temperature, precipitation, wawa, snow_depth, wind_speed, wind_from)
         self._remember_snow(self._hours)
         self._covered_chunks.add(chunk)
+        return True
+
+    def _load_cached_forecast(self) -> bool:
+        """Called with the lock held. True if a forecast under an hour old
+        came from SQLite (it then ages from its real fetch time)."""
+        if self._db is None:
+            return False
+        try:
+            rows = self._db.execute(
+                "SELECT hour, fetched_at, temperature, precipitation, wawa, wind_speed, wind_from FROM forecast_hours_v1"
+                " WHERE location=? AND fetched_at>?", (self.location, time.time() - FORECAST_REFRESH_S),
+            ).fetchall()
+        except sqlite3.Error:
+            return False
+        if not rows:
+            return False
+        self._forecast_hours = {hour: HourlyWeather(temperature, precipitation, wawa, None, wind_speed, wind_from, "forecast")
+                                for hour, _, temperature, precipitation, wawa, wind_speed, wind_from in rows}
+        self._forecast_fetched_at = time.monotonic() - (time.time() - min(row[1] for row in rows))
         return True
 
     def _work(self) -> None:
@@ -384,9 +415,10 @@ class WeatherHistory:
                 self._remember_snow(hours)
                 self._covered_chunks.add(chunk)
                 self._pending.remove(chunk)
-                # A chunk reaching into the last hours isn't final yet: keep it
-                # in memory only, so a later session fetches it again.
-                if self._db is not None and complete:
+                # A chunk reaching into the last hours isn't final yet: cached
+                # as recent, so a session within the hour reuses it and a later
+                # one fetches it again.
+                if self._db is not None:
                     try:
                         self._db.executemany(
                             "INSERT OR REPLACE INTO weather_hours_v3 VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
@@ -394,9 +426,14 @@ class WeatherHistory:
                               w.wind_speed_mps, w.wind_from_deg)
                              for hour, w in hours.items()],
                         )
-                        self._db.execute(
-                            "INSERT OR REPLACE INTO fetched_chunks_v3 VALUES (?, ?)", (self.location, chunk),
-                        )
+                        if complete:
+                            self._db.execute(
+                                "INSERT OR REPLACE INTO fetched_chunks_v3 VALUES (?, ?)", (self.location, chunk),
+                            )
+                        else:
+                            self._db.execute(
+                                "INSERT OR REPLACE INTO recent_chunks_v3 VALUES (?, ?, ?)", (self.location, chunk, time.time()),
+                            )
                         self._db.commit()
                     except sqlite3.Error as exc:
                         logger.warning("Weather history cache write failed (%s)", exc)
@@ -422,6 +459,17 @@ class WeatherHistory:
             self._forecast_hours = hours
             self._forecast_fetched_at = time.monotonic()
             self._pending.remove(FORECAST)
+            if self._db is not None:
+                try:
+                    self._db.execute("DELETE FROM forecast_hours_v1 WHERE location=?", (self.location,))
+                    self._db.executemany(
+                        "INSERT OR REPLACE INTO forecast_hours_v1 VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                        [(self.location, hour, time.time(), w.temperature_c, w.precipitation_mm, w.wawa,
+                          w.wind_speed_mps, w.wind_from_deg) for hour, w in hours.items()],
+                    )
+                    self._db.commit()
+                except sqlite3.Error as exc:
+                    logger.warning("Weather forecast cache write failed (%s)", exc)
         if hours:
             first = datetime.fromtimestamp(min(hours) * 3600, GAME_TIMEZONE)
             last = datetime.fromtimestamp(max(hours) * 3600, GAME_TIMEZONE)

@@ -17,11 +17,13 @@ in ``main()`` since they own genuinely Pygame- or client-only concerns
 from __future__ import annotations
 
 import math
+import random
 from dataclasses import dataclass
 from typing import Optional, Tuple
 
 from .career import CAREER_SCORE_LIMIT, save_career, save_gig_odometer
 from .fuel import (
+    FULL_TANK_TOLERANCE_L,
     calculate_fuel_purchase,
     fuel_station_price_cents,
     nearest_fuel_station,
@@ -42,10 +44,16 @@ from .physics import (
     respawn_car,
     update_car_physics,
 )
+from .station_passengers import StationPassengerView, track_checker
 from .taxi import TaxiState
 
 RAGE_DISTANCE_TO_FULL_M = 400.0
 RAGE_GAIN_SCALE = 1.0 / 3.0
+
+
+RAGE_SHOUTS = ("PRKL!", "STNA!", "VTTU!", "HLVT!", "KRPÄ!", "KSPÄ!", "PSKA!")
+RAGE_SHOUT_COST = 0.25
+RAGE_SHOUT_DURATION_S = 5.0
 
 
 @dataclass
@@ -61,13 +69,18 @@ class PlayerCommand:
     forward: float = 0.0  # on-foot forward(+)/back(-), -1..1
     turn: float = 0.0  # on-foot turn left(+)/right(-), -1..1
     sprint: bool = False
-    # Session toggles (V/B keys) - continuously reported rather than
+    # Session toggles (K/V/B keys) - continuously reported rather than
     # edge-triggered, since the client already tracks their current
     # on/off state locally exactly like it tracks on_foot today.
     speed_limiter_enabled: bool = True
     red_light_assist_enabled: bool = False
+    lane_assist_enabled: bool = False
     refuel: bool = False
     engine_on: Optional[bool] = None
+    road_rage: bool = False  # SPACE: one press (the server counts presses like refuel)
+    respawn: bool = False
+    cancel_ride: bool = False
+    reset_trip: bool = False
 
 
 @dataclass
@@ -91,6 +104,7 @@ class SimulationFrameResult:
     should_stop: bool = False
     city_summary: Optional[tuple] = None
     next_active_city_name: Optional[str] = None
+    rage_shout: Optional[str] = None  # an accepted SPACE this tick: the shout to show for RAGE_SHOUT_DURATION_S
 
 
 def walk_blocked_by_walls(x: float, y: float, step_x: float, step_y: float, blocked) -> Tuple[float, float]:
@@ -128,11 +142,11 @@ def apply_enter_exit_vehicle(car, player_pedestrian, on_foot: bool, audio, taxi_
         )
         player_pedestrian.heading = car.heading
         car.speed = 0.0  # the engine keeps running (idling) until E turns it off
-        audio.play("car-door-open")
+        audio.play_group("vehicle.door_open")
         return True
     elif math.hypot(player_pedestrian.x - car.x, player_pedestrian.y - car.y) <= 3.0:
         car.speed = 0.0
-        audio.play_group("vehicle.door_close")
+        audio.play_group("vehicle.door_open")  # getting in: the door opens (passengers boarding get door_close)
         return False
     return on_foot
 
@@ -196,6 +210,7 @@ def advance_simulation(
     chosen_city,
     cities_list,
     outside_temperature_c: float = 15.0,
+    now=None,
 ) -> SimulationFrameResult:
     """Run one gameplay tick: physics, collisions, camera follow, and the
     taxi/NPC/traffic/pedestrian manager updates. Extracted verbatim from
@@ -270,6 +285,16 @@ def advance_simulation(
         if car.engine_on != engine_was_on:
             audio.play_group("vehicle.engine_start" if car.engine_on else "vehicle.engine_stop")
 
+    rage_shout = None
+    if command.road_rage and rage_power >= RAGE_SHOUT_COST:  # main()'s SPACE: horn, shout, the nearest driver ahead
+        audio.play_driver_line("rage", language)
+        audio.play_group("vehicle.horn", 0.45)
+        rage_power = max(0.0, rage_power - RAGE_SHOUT_COST)
+        rage_shout = random.choice(RAGE_SHOUTS)
+        # NPC-005: Road Rage reaches exactly one real NPC driver - whichever
+        # is nearest ahead of the player right now (trigger_road_rage).
+        world.npc_manager.trigger_road_rage(car.x, car.y, car.heading, sim_time=world.traffic_mgr.sim_time)
+
     if command.refuel:
         station = nearest_fuel_station(scenery_objects, car.x, car.y)
         if station is None:
@@ -278,7 +303,7 @@ def advance_simulation(
             taxi_mgr.notification_msg = tr(language, "fuel_enter_car")
         elif abs(car.speed) > 0.5:
             taxi_mgr.notification_msg = tr(language, "fuel_stop_car")
-        elif car.fuel_l >= car.fuel_capacity_l - 1e-6:
+        elif car.fuel_l >= car.fuel_capacity_l - FULL_TANK_TOLERANCE_L:  # idling since the last fill-up still reads as full
             taxi_mgr.notification_msg = tr(language, "fuel_tank_full")
         else:
             price_cents = fuel_station_price_cents(station)
@@ -515,6 +540,20 @@ def advance_simulation(
 
     viewport_bounds = _viewport_bounds(camx, camy, px_per_m, screen_w, screen_h, margin_m=30.0)
 
+    # Trains: timetable trains, their passengers and pre-bookings follow the
+    # game clock (`now`, a datetime); presentation (drawing, train sounds,
+    # station announcements) stays with the client.
+    railway_mgr = getattr(world, "railway_mgr", None)
+    if railway_mgr is not None and now is not None:
+        with frame_profiler.section("trains"):
+            if railway_mgr.passenger_view is None:
+                railway_mgr.associate_taxi_stands(taxi_mgr.taxi_stops)  # existing stands only
+                railway_mgr.passenger_view = StationPassengerView(
+                    pedestrian_mgr, on_track=track_checker(world.railway_grid),
+                )
+            railway_mgr.view_point = (camx, camy)
+            railway_mgr.update(dt, dt * (1.0 if taxi_mgr.has_active_job() else 60.0), now)
+
     # Update taxi missions & pickups
     previous_taxi_state = taxi_mgr.state
     previous_passenger = taxi_mgr.current_passenger
@@ -550,7 +589,7 @@ def advance_simulation(
     npc_manager.accidents.clear()
     if pedestrian_mgr.curses:
         x, y = pedestrian_mgr.curses[-1]  # one curse per tick is plenty
-        audio.play("censored-cursing", 0.8, at=(x, y))
+        audio.play_group("pedestrian.curse", 0.8, at=(x, y))
         pedestrian_mgr.curses.clear()
     vomited_passenger = taxi_mgr.take_vomited_passenger(car)
     if vomited_passenger is not None:
@@ -604,7 +643,7 @@ def advance_simulation(
     ):
         audio.play_passenger_line_for_situation("dropoff", previous_passenger.gender, language, previous_passenger.name)
         audio.play_driver_line("dropoff", language)
-        audio.play("car-door-open")
+        audio.play_group("vehicle.door_open")
         passenger_pedestrian = pedestrian_mgr.spawn_pedestrian_at(
             car.x + math.sin(car.heading) * 1.8,
             car.y - math.cos(car.heading) * 1.8,
@@ -689,6 +728,7 @@ def advance_simulation(
         should_stop=should_stop,
         city_summary=city_summary,
         next_active_city_name=next_active_city_name,
+        rage_shout=rage_shout,
     )
 
 

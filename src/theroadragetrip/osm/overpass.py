@@ -238,7 +238,7 @@ def fetch_osm_ways(
         for attempt in range(1, 4):
             try:
                 if progress_callback:
-                    progress_callback(0.25, f"Fetching scenery from {ep[:35]}...")
+                    progress_callback(0.25, f"Fetching from {ep} (attempt {attempt}/3)...")
                 with _overpass_stats_lock:
                     _overpass_stats["requests"] += 1
                 logger.info("Overpass request: endpoint=%s attempt=%d", ep, attempt)

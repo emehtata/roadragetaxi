@@ -228,6 +228,24 @@ class StationAnnouncer:
         )
         return best[0], best[1]
 
+    def event(self, kind: str, train, stop, position, listener=None) -> Optional[dict]:
+        """The whole announcement as one client event (godot-final-07): the
+        clip files in playing order (manifest-relative, pauses included), the
+        sentence, and the loudspeaker point - the station's platform point
+        nearest `listener` (the taxi), else the train's stop. None without a
+        script, a timetable service or a stop."""
+        if self.script is None or train.service is None or stop is None:
+            return None
+        service = train.service
+        phrases = self.script.phrases(kind, service.train_type, service.number, stop[2], service.origin,
+                                      service.destination, stop[6] if len(stop) > 6 else "",
+                                      getattr(service, "category", ""))
+        if not phrases:
+            return None
+        at = self.heard_from(self.station_source(position), listener)
+        return {"type": "station_announcement", "clips": self.clips(phrases), "at": [round(at[0], 2), round(at[1], 2)],
+                "text": self.script.sentence(phrases), "station": stop[2]}
+
     def announce(self, audio, kind: str, train, stop, position) -> bool:
         """A train event at a station (stop: the train's stop tuple,
         position: where the train stops) - queue its announcement, from the

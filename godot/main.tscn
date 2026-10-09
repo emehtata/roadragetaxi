@@ -1,0 +1,162 @@
+[gd_scene load_steps=12 format=3]
+
+[ext_resource type="Script" path="res://main.gd" id="1"]
+[ext_resource type="Script" path="res://sim_client.gd" id="2"]
+[ext_resource type="Script" path="res://map_layer.gd" id="3"]
+[ext_resource type="Script" path="res://entity_layer.gd" id="4"]
+[ext_resource type="Script" path="res://audio_manager.gd" id="5"]
+[ext_resource type="Script" path="res://hud.gd" id="6"]
+[ext_resource type="Script" path="res://phone.gd" id="7"]
+[ext_resource type="Script" path="res://instruments.gd" id="8"]
+[ext_resource type="Script" path="res://nav_overlay.gd" id="9"]
+[ext_resource type="Script" path="res://night_layer.gd" id="10"]
+[ext_resource type="Script" path="res://labels.gd" id="11"]
+
+[node name="Main" type="Node2D"]
+script = ExtResource("1")
+
+[node name="SimClient" type="Node" parent="."]
+script = ExtResource("2")
+
+[node name="MapLayer" type="Node2D" parent="."]
+script = ExtResource("3")
+
+[node name="EntityLayer" type="Node2D" parent="."]
+z_index = 10
+script = ExtResource("4")
+
+[node name="NightLayer" type="Node2D" parent="."]
+script = ExtResource("10")
+
+[node name="Camera" type="Camera2D" parent="."]
+zoom = Vector2(9, 9)
+
+[node name="Audio" type="Node" parent="."]
+script = ExtResource("5")
+
+[node name="Sky" type="CanvasLayer" parent="."]
+
+[node name="Flash" type="ColorRect" parent="Sky"]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+mouse_filter = 2
+color = Color(0.862745, 0.894118, 0.94902, 0)
+
+[node name="Ui" type="CanvasLayer" parent="."]
+layer = 2
+
+[node name="Labels" type="Control" parent="Ui"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+mouse_filter = 2
+script = ExtResource("11")
+
+[node name="Instruments" type="Control" parent="Ui"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+mouse_filter = 2
+script = ExtResource("8")
+
+[node name="NavOverlay" type="Control" parent="Ui"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+mouse_filter = 2
+script = ExtResource("9")
+
+[node name="Hud" type="Control" parent="Ui"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+mouse_filter = 2
+script = ExtResource("6")
+
+[node name="Top" type="PanelContainer" parent="Ui/Hud"]
+layout_mode = 1
+anchors_preset = 10
+anchor_right = 1.0
+offset_bottom = 34.0
+
+[node name="Row" type="HBoxContainer" parent="Ui/Hud/Top"]
+layout_mode = 2
+theme_override_constants/separation = 28
+
+[node name="Clock" type="Label" parent="Ui/Hud/Top/Row"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_font_sizes/font_size = 20
+
+[node name="Money" type="Label" parent="Ui/Hud/Top/Row"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_font_sizes/font_size = 20
+
+[node name="Speed" type="Label" parent="Ui/Hud/Top/Row"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_font_sizes/font_size = 20
+
+[node name="Weather" type="Label" parent="Ui/Hud/Top/Row"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_font_sizes/font_size = 20
+
+[node name="Fare" type="Label" parent="Ui/Hud/Top/Row"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+horizontal_alignment = 2
+theme_override_font_sizes/font_size = 20
+
+[node name="Notice" type="Label" parent="Ui/Hud"]
+unique_name_in_owner = true
+layout_mode = 1
+anchors_preset = 5
+anchor_left = 0.5
+anchor_right = 0.5
+offset_left = -400.0
+offset_top = 60.0
+offset_right = 400.0
+offset_bottom = 90.0
+horizontal_alignment = 1
+theme_override_font_sizes/font_size = 22
+
+[node name="Hint" type="Label" parent="Ui/Hud"]
+unique_name_in_owner = true
+layout_mode = 1
+anchors_preset = 7
+anchor_left = 0.5
+anchor_top = 1.0
+anchor_right = 0.5
+anchor_bottom = 1.0
+offset_left = -400.0
+offset_top = -34.0
+offset_right = 400.0
+offset_bottom = -8.0
+horizontal_alignment = 1
+
+[node name="Phone" type="PanelContainer" parent="Ui"]
+anchors_preset = 11
+anchor_left = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = -440.0
+offset_top = 50.0
+offset_right = -16.0
+offset_bottom = -50.0
+grow_horizontal = 0
+script = ExtResource("7")
+
+[node name="Debug" type="Label" parent="Ui"]
+visible = false
+offset_left = 10.0
+offset_top = 44.0
+offset_right = 700.0
+offset_bottom = 400.0

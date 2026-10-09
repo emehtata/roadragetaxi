@@ -8,6 +8,7 @@ from importlib.metadata import PackageNotFoundError, version as package_version
 from typing import List, Optional, Tuple
 
 
+from ..calendar import FINLAND_SUMMER_TIME_OFFSET, solar_altitude_and_events_on  # noqa: F401 (re-exported)
 from ..geo import compute_bbox, dist_point_to_segment
 from ..osm import Way
 
@@ -90,7 +91,6 @@ def _phased_cache_grid_cell(layer: str, camx: float, camy: float, cache_zoom: fl
 
 SOLAR_UPDATE_INTERVAL_SECONDS = 20.0
 GAME_DATE = date(2026, 9, 4) # Backward-compatible default; sessions replace this through set_game_date().
-FINLAND_SUMMER_TIME_OFFSET = 3.0
 DEFAULT_SUN_LATITUDE = 65.012
 DEFAULT_SUN_LONGITUDE = 25.468
 _street_light_frame_world_positions = []
@@ -410,41 +410,7 @@ def solar_altitude_and_events(
         last_updated, cached_result = cached
         if now - last_updated < SOLAR_UPDATE_INTERVAL_SECONDS:
             return cached_result
-    day_of_year = GAME_DATE.timetuple().tm_yday
-    declination = math.radians(
-        23.45 * math.sin(math.radians(360.0 * (284.0 + day_of_year) / 365.0))
-    )
-    latitude_radians = math.radians(latitude)
-    gamma = 2.0 * math.pi / 365.0 * (day_of_year - 1.0)
-    equation_of_time = 229.18 * (
-        0.000075
-        + 0.001868 * math.cos(gamma)
-        - 0.032077 * math.sin(gamma)
-        - 0.014615 * math.cos(2.0 * gamma)
-        - 0.040849 * math.sin(2.0 * gamma)
-    )
-    solar_minutes = game_time_seconds / 60.0 + equation_of_time + 4.0 * longitude - 60.0 * FINLAND_SUMMER_TIME_OFFSET
-    hour_angle = math.radians(solar_minutes / 4.0 - 180.0)
-    altitude = math.degrees(
-        math.asin(
-            math.sin(latitude_radians) * math.sin(declination)
-            + math.cos(latitude_radians) * math.cos(declination) * math.cos(hour_angle)
-        )
-    )
-    sunrise_cosine = (
-        math.cos(math.radians(90.833)) / (math.cos(latitude_radians) * math.cos(declination))
-        - math.tan(latitude_radians) * math.tan(declination)
-    )
-    if sunrise_cosine <= -1.0:
-        sunrise_minutes, sunset_minutes = 0.0, 1440.0
-    elif sunrise_cosine >= 1.0:
-        sunrise_minutes = sunset_minutes = float("nan")
-    else:
-        solar_noon = 720.0 - 4.0 * longitude - equation_of_time + 60.0 * FINLAND_SUMMER_TIME_OFFSET
-        hour_angle_minutes = 4.0 * math.degrees(math.acos(sunrise_cosine))
-        sunrise_minutes = solar_noon - hour_angle_minutes
-        sunset_minutes = solar_noon + hour_angle_minutes
-    result = altitude, sunrise_minutes, sunset_minutes
+    result = solar_altitude_and_events_on(GAME_DATE, game_time_seconds, latitude, longitude)
     _solar_position_cache[cache_key] = (now, result)
     return result
 
@@ -473,7 +439,7 @@ def _get_game_version() -> str:
     try:
         return f"v{package_version('theroadragetrip')}"
     except PackageNotFoundError:
-        return "v0.15.0alpha"
+        return "v0.16.0g-alpha"
 
 
 def _draw_version(screen, font, screen_w: int, screen_h: int) -> None:

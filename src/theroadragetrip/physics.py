@@ -11,6 +11,7 @@ from .performance import advance_chunked
 # Car physics (arcade)
 ACCEL = 4.6  # m/s^2; peak forward acceleration from rest
 REVERSE_ACCEL = 2.5  # m/s^2; slower acceleration while reversing
+GEAR_CHANGE_S = 0.5  # stopped by braking (or by throttle from reverse): this long before moving the other way
 BRAKE = 28.0  # m/s^2
 FRICTION = 6.0  # m/s^2
 STEER_RATE = 2.6  # rad/s at low speed
@@ -1618,6 +1619,13 @@ def update_car_physics(
     """
     entry_x, entry_y, entry_heading = car.x, car.y, car.heading
     entry_speed = car.speed
+    # The gear change: having come to a stop against the travel direction,
+    # the car waits GEAR_CHANGE_S at zero before it moves the other way
+    # (car.gear_hold_dir: +1 forward is held, -1 reverse is held).
+    gear_hold = getattr(car, "gear_hold_s", 0.0)
+    if gear_hold > 0.0:
+        gear_hold = max(0.0, gear_hold - dt) if car.speed == 0.0 else 0.0
+    gear_hold_dir = getattr(car, "gear_hold_dir", 0)
     # Existing solo-taxi handling is calibrated at curb mass + the 90 kg
     # driver. Added passenger mass reduces acceleration from the same fixed
     # engine/brake force without retuning the unloaded car.
@@ -1626,23 +1634,44 @@ def update_car_physics(
     using_longitudinal_tire_grip = False
     throttle_driven = False
     braking_driven = False
-    if speed_limit_mps is not None and car.speed > speed_limit_mps:
+    # The limiter: over the limit it slows the car at SPEED_LIMIT_DECEL. While
+    # the driver keeps asking for more (throttle forward, brake in reverse)
+    # it holds the car AT the limit; with no input it doesn't clamp there,
+    # so the car slows on through the limit and coasts; braking always
+    # brakes. Clamping at the limit without input held the car there after
+    # the throttle was released - wind lifts it a hair over every tick, the
+    # clamp set it back, and coasting or braking never ran (godot-08).
+    over_limit = speed_limit_mps is not None and abs(car.speed) > speed_limit_mps
+    if over_limit and car.speed > 0 and throttle > 0:
         using_longitudinal_tire_grip = True
         car.speed = max(speed_limit_mps, car.speed - SPEED_LIMIT_DECEL * dt)
-    elif speed_limit_mps is not None and car.speed < -speed_limit_mps:
+    elif over_limit and car.speed < 0 and brake > 0:
         using_longitudinal_tire_grip = True
         car.speed = min(-speed_limit_mps, car.speed + SPEED_LIMIT_DECEL * dt)
+    elif over_limit and throttle <= 0 and brake <= 0:
+        using_longitudinal_tire_grip = True
+        if car.speed > 0:
+            car.speed = max(0.0, car.speed - SPEED_LIMIT_DECEL * dt)
+        else:
+            car.speed = min(0.0, car.speed + SPEED_LIMIT_DECEL * dt)
     elif throttle > 0:
         using_longitudinal_tire_grip = True
         throttle_driven = True
         acceleration = forward_acceleration(car.speed) * mass_force_scale
+        if gear_hold > 0.0 and gear_hold_dir > 0:
+            acceleration = 0.0  # into first gear yet
         car.speed = min(car.speed + acceleration * dt, speed_limit_mps) if speed_limit_mps is not None else car.speed + acceleration * dt
+        if entry_speed < 0.0 <= car.speed:  # stopped from reverse: the forward gear takes a moment
+            car.speed = 0.0
+            gear_hold, gear_hold_dir = GEAR_CHANGE_S, 1
     elif brake > 0:
         using_longitudinal_tire_grip = True
         braking_driven = True
         if car.speed > 0.0:
             car.speed = max(0.0, car.speed - BRAKE * mass_force_scale * dt)
-        else:
+            if car.speed == 0.0:  # braked to a stop: reverse takes a moment
+                gear_hold, gear_hold_dir = GEAR_CHANGE_S, -1
+        elif not (gear_hold > 0.0 and gear_hold_dir < 0):
             car.speed -= REVERSE_ACCEL * mass_force_scale * dt
         if speed_limit_mps is not None:
             car.speed = max(-speed_limit_mps, car.speed)
@@ -1663,6 +1692,7 @@ def update_car_physics(
         car.heading += wind_left / car.speed * dt if abs(car.speed) >= WIND_MIN_SPEED_MPS else 0.0
 
     car.speed = clamp(car.speed, -10.0, MAX_SPEED)
+    car.gear_hold_s, car.gear_hold_dir = gear_hold, gear_hold_dir
     longitudinal_tire_g = (
         abs(car.speed - entry_speed) / (dt * GRAVITY_MPS2)
         if using_longitudinal_tire_grip and dt > 0.0 else 0.0

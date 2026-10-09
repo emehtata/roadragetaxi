@@ -9,6 +9,8 @@ from typing import Optional
 
 import pygame
 
+from .speech import Speech
+
 try:
     import pygame.mixer as pygame_mixer
 except (ImportError, AttributeError):
@@ -30,7 +32,7 @@ SPATIAL_RANGES_M = {
     "railway.train_doors": (2.5, 30.0),
     "collision.vehicle": (15.0, 250.0),
     "station.ambience": (15.0, 150.0),
-    "censored-cursing": (3.0, 40.0),
+    "pedestrian.curse": (3.0, 40.0),
     "railway.announcement": (60.0, 300.0),  # station loudspeakers carry
 }
 # The taxi's own sounds come from the taxi: heard fully unless the camera
@@ -91,11 +93,11 @@ class AudioManager:
         self._step_timer = 0.0
         self.listener: Optional[tuple[float, float]] = None  # camera centre, set by the game every frame
         self.player_position: Optional[tuple[float, float]] = None  # the taxi, set every simulation tick
-        self.speech_interval = random.uniform(speech_min_interval, speech_max_interval)
-        self.speech_min_interval = speech_min_interval
-        self.speech_max_interval = speech_max_interval
-        self._speech_lines = self._load_speech_lines()
-        self._driver_lines = self._load_driver_lines()
+        # The choice of lines is speech.py's (shared with the server); playing them is here.
+        self._speech = Speech(
+            lambda speaker, key: key in (self.driver_sounds if speaker == "driver" else self.passenger_sounds),
+            random, speech_min_interval, speech_max_interval,
+        )
 
         mixer = pygame_mixer
         if mixer is None:
@@ -108,7 +110,7 @@ class AudioManager:
             # Before any sound plays: Sound.play() never picks a reserved channel.
             mixer.set_reserved(ANNOUNCEMENT_CHANNEL + 1)
             sounds_dir = Path(__file__).with_name("sounds")
-            for name in ("car-door-open", "censored-cursing", "city-traffic-outdoor", "police_car_siren-esp"):
+            for name in ("police_car_siren-esp",):  # the rest are catalog groups now (godot-03.md)
                 path = next(
                     (
                         sounds_dir / f"{name}{extension}"
@@ -164,119 +166,38 @@ class AudioManager:
             if sounds:
                 self.groups[group_id] = sounds
 
-    @staticmethod
-    def _load_speech_lines() -> list[dict[str, object]]:
-        path = Path(__file__).with_name("assets") / "passenger_chatter.json"
-        try:
-            data = json.loads(path.read_text(encoding="utf-8"))
-            lines = data.get("lines", [])
-            return lines if isinstance(lines, list) else []
-        except (OSError, json.JSONDecodeError) as exc:
-            logger.warning("Could not load passenger chatter: %s", exc)
-            return []
+    def _busy(self) -> bool:
+        return self.comment_channel is not None and self.comment_channel.get_busy()
 
-    @staticmethod
-    def _load_driver_lines() -> list[dict[str, object]]:
-        path = Path(__file__).with_name("assets") / "driver_chatter.json"
-        try:
-            data = json.loads(path.read_text(encoding="utf-8"))
-            lines = data.get("lines", [])
-            return lines if isinstance(lines, list) else []
-        except (OSError, json.JSONDecodeError) as exc:
-            logger.warning("Could not load driver chatter: %s", exc)
-            return []
+    def _speak(self, line) -> None:
+        """Play a chosen line (speech.py) on the comment channel and show its subtitle."""
+        if line is None or not self.enabled or not self.comments_enabled:
+            return
+        sounds = self.driver_sounds if line["speaker"] == "driver" else self.passenger_sounds
+        sound = sounds[line["key"]]
+        sound.set_volume(self.master_volume * self.effects_volume)
+        if not self._play_comment_sound(sound):
+            return
+        self._set_comment(line["text"], line["speaker"], line["speaker_name"])
+        logger.info("%s chatter played: mood=%s hash=%s", line["speaker"].capitalize(), line["mood"], line["key"][2])
 
     def play_driver_line(self, situation: str, language: str, gender: str = "man") -> None:
-        if self.comment_channel is not None and self.comment_channel.get_busy():
-            return
-        now = time.monotonic()
-        if now - self._driver_speech_times.get(situation, 0.0) < 3.0:
-            return
-        candidates = [
-            line for line in self._driver_lines
-            if isinstance(line, dict) and line.get("situation") == situation and line.get(language)
-        ]
-        if not candidates:
-            return
-        entry = random.choice(candidates)
-        audio_hash = str(entry.get("hash", ""))
-        gender_code = "f" if gender == "woman" else "m"
-        sound = self.driver_sounds.get((gender_code, language, audio_hash))
-        if sound is None and language != "fi":
-            sound = self.driver_sounds.get((gender_code, "fi", audio_hash))
-        if sound is None or not self.enabled or not self.comments_enabled:
-            return
-        if not self._play_comment_sound(sound):
-            return
-        self._set_comment(str(entry.get(language, "")), "driver")
-        self._driver_speech_times[situation] = now
-        sound.set_volume(self.master_volume * self.effects_volume)
-        logger.info("Driver chatter played: situation=%s mood=%s hash=%s", situation, entry.get("mood"), audio_hash)
+        if self.enabled and self.comments_enabled:
+            self._speak(self._speech.driver(situation, language, gender, time.monotonic(), self._busy()))
 
     def play_passenger_line_for_situation(self, situation: str, gender: str, language: str, speaker_name: Optional[str] = None) -> None:
-        moods_by_situation = {
-            "collision": {"anxious", "stressed", "bad"},
-            "nausea": {"nausea", "anxious"},
-            "water": {"anxious", "stressed", "bad"},
-            "pickup": {"good", "neutral", "curious"},
-            "dropoff": {"good", "sad", "neutral"},
-        }
-        moods = moods_by_situation.get(situation)
-        candidates = [
-            line for line in self._speech_lines
-            if isinstance(line, dict)
-            and line.get(language)
-            and (moods is None or line.get("mood") in moods)
-        ]
-        if not candidates:
-            return
-        entry = random.choice(candidates)
-        audio_hash = str(entry.get("hash"))
-        sound = self.passenger_sounds.get(("f" if gender == "woman" else "m", language, audio_hash))
-        if sound is None or not self.enabled or not self.comments_enabled:
-            return
-        sound.set_volume(self.master_volume * self.effects_volume)
-        if not self._play_comment_sound(sound):
-            return
-        self._set_comment(str(entry.get(language, "")), "passenger", speaker_name)
+        if self.enabled and self.comments_enabled:
+            self._speak(self._speech.passenger_for_situation(situation, gender, language, speaker_name, self._busy()))
 
     def update_passenger_speech(self, active: bool, gender: str, language: str, dt: float, speaker_name: Optional[str] = None) -> None:
         """Play occasional pre-rendered chatter matching the passenger's gender."""
-        if not active:
-            self.speech_interval = random.uniform(self.speech_min_interval, self.speech_max_interval)
-            return
-        self.speech_interval -= dt
-        if self.speech_interval > 0.0:
-            return
-        candidates = [line for line in self._speech_lines if isinstance(line, dict) and line.get(language)]
-        if not candidates:
-            return
-        entry = random.choice(candidates)
-        gender_code = "f" if gender == "woman" else "m"
-        audio_hash = entry.get("hash")
-        sound = self.passenger_sounds.get((gender_code, language, str(audio_hash)))
-        if sound is not None and self.enabled and self.comments_enabled and self._play_comment_sound(sound):
-            self._set_comment(str(entry.get(language, "")), "passenger", speaker_name)
-            sound.set_volume(self.master_volume * self.effects_volume)
-            logger.info("Passenger chatter played: gender=%s language=%s hash=%s", gender, language, audio_hash)
-        self.speech_interval = random.uniform(self.speech_min_interval, self.speech_max_interval)
+        line = self._speech.passenger_tick(active, gender, language, dt, speaker_name, self._busy())
+        self._speak(line)
 
     def play_passenger_line(self, finnish_text: str, gender: str, language: str, speaker_name: Optional[str] = None) -> None:
         """Play one specific pre-rendered passenger line."""
-        entry = next(
-            (line for line in self._speech_lines if line.get("fi") == finnish_text),
-            None,
-        )
-        if entry is None:
-            return
-        audio_hash = entry.get("hash")
-        sound = self.passenger_sounds.get(("f" if gender == "woman" else "m", language, str(audio_hash)))
-        if sound is None or not self.enabled or not self.comments_enabled:
-            return
-        sound.set_volume(self.master_volume * self.effects_volume)
-        if not self._play_comment_sound(sound):
-            return
-        self._set_comment(str(entry.get(language, "")), "passenger", speaker_name)
+        if self.enabled and self.comments_enabled:
+            self._speak(self._speech.passenger_line(finnish_text, gender, language, speaker_name, self._busy()))
 
     def _play_comment_sound(self, sound: pygame.mixer.Sound) -> bool:
         if self.comment_channel is not None and self.comment_channel.get_busy():
@@ -326,12 +247,16 @@ class AudioManager:
         if max(left, right) <= 0.0:
             return
         if variation is None:
-            choices = [i for i in range(len(sounds)) if i != self._last_variation.get(group_id)] or [0]
-            variation = random.choice(choices)
+            variation = self._pick_variation(group_id, len(sounds))
         self._last_variation[group_id] = variation
         channel = sounds[min(variation, len(sounds) - 1)].play()
         if channel is not None:
             channel.set_volume(left, right)
+
+    def _pick_variation(self, group_id: str, count: int) -> int:
+        """A random variation, never the one played last (with two, they alternate)."""
+        choices = [i for i in range(count) if i != self._last_variation.get(group_id)] or [0]
+        return random.choice(choices)
 
     def on_rise(self, key: str, active: bool, group_id: str, volume: float = 1.0) -> bool:
         """Play group_id when `active` turns true (not every frame it stays true)."""
@@ -341,10 +266,11 @@ class AudioManager:
             self.play_group(group_id, volume)
         return rose
 
-    def set_loop(self, key: str, group_id: str, volume: float, variation: int = 0, music: bool = False, at=None) -> None:
+    def set_loop(self, key: str, group_id: str, volume: float, variation: Optional[int] = 0, music: bool = False, at=None) -> None:
         """Keep a looping layer of group_id running at `volume` (0 stops it),
         placed at `at` when it has a place. Music-volume loops are the
-        background beds; the rest are effects."""
+        background beds; the rest are effects. variation=None picks one each
+        time the loop (re)starts, never the previous one."""
         channel = self.loop_channels.get(key)
         sounds = self.groups.get(group_id)
         left, right = self.levels(group_id, volume, at, music)
@@ -354,6 +280,8 @@ class AudioManager:
                 del self.loop_channels[key]
             return
         if channel is None or not channel.get_busy():
+            if variation is None:
+                variation = self._last_variation[group_id] = self._pick_variation(group_id, len(sounds))
             channel = sounds[min(variation, len(sounds) - 1)].play(loops=-1)
             if channel is None:
                 return
@@ -364,17 +292,9 @@ class AudioManager:
         self, night: float = 0.0, rain: float = 0.0, heavy_rain: float = 0.0, wind: float = 0.0,
         strong_wind: float = 0.0, wet_tires: float = 0.0, slush: bool = False,
     ) -> None:
-        """Background loops, each 0..1: the day city bed (existing asset)
-        crossfades into the night one; rain, wind and wet tyres layer on."""
-        day_bed = self.sounds.get("city-traffic-outdoor")
-        if day_bed is not None and self.enabled:
-            channel = self.loop_channels.get("city_day")
-            if channel is None or not channel.get_busy():
-                channel = day_bed.play(loops=-1)
-                if channel is not None:
-                    self.loop_channels["city_day"] = channel
-            if channel is not None:
-                channel.set_volume(self.master_volume * self.music_volume * (1.0 - night))
+        """Background loops, each 0..1: the day city bed crossfades into the
+        night one; rain, wind and wet tyres layer on."""
+        self.set_loop("city_day", "ambient.city_day", 1.0 - night, variation=None, music=True)  # a fresh bed each morning
         self.set_loop("city_night", "ambient.city_night", night, music=True)
         self.set_loop("rain", "weather.rain", rain, variation=0)
         self.set_loop("rain_heavy", "weather.rain", heavy_rain, variation=1)

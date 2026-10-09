@@ -39,11 +39,11 @@ from ..career import (
     save_gig_odometer,
 )
 from ..localization import SUPPORTED_LANGUAGES, normalize_language, tr
-from ..calendar import GameCalendar, Season
+from ..calendar import GameCalendar, Season, darkness_for_sun_altitude
 from ..climate import appearance_with_snow_depth, typical_temperature
 from ..fuel import fuel_station_price_cents, nearest_fuel_station
 from .. import protocol, transport
-from ..simulation import PlayerCommand, advance_simulation, apply_enter_exit_vehicle
+from ..simulation import RAGE_SHOUT_DURATION_S, RAGE_SHOUTS, PlayerCommand, advance_simulation, apply_enter_exit_vehicle
 from ..osm.cache import OSM_CACHE_TTL_S
 from ..osm import (
     CACHE_DIR,
@@ -188,12 +188,11 @@ from ..tile_streaming import PBF_TILE_SIZE_M, set_tile_size_m
 from ..traffic_world import TrafficWorld
 from ..world_cache import WorldCacheManager, clear_world_cache
 from ..performance import MAP_SYNC_BUDGET_S, FrameProfiler
-from ..weather import SPLASH_MIN_SPEED_MPS, WeatherSystem, WeatherType, weather_type_for_observation
+from ..weather import SPLASH_MIN_SPEED_MPS, WeatherSystem, WeatherType, raining_last_hour, weather_type_for_observation
 from .. import camera_focus as camera_focus_module
 from ..train_compositions import load_compositions
 from ..train_timetable import load_timetable
 from ..trains import RailwayManager
-from ..station_passengers import StationPassengerView, track_checker
 from ..world_places import load_places
 from ..weather_history import WeatherHistory, precipitation_from_observation
 
@@ -260,8 +259,6 @@ def _play_rail_sounds(audio, railway_mgr, announcer=None) -> None:
     audio.set_loop("station_luggage", "station.ambience", crowd[1] * 0.4, variation=1, at=crowd[2])
 
 
-RAGE_SHOUTS = ("PRKL!", "STNA!", "VTTU!", "HLVT!", "KRPÄ!", "KSPÄ!", "PSKA!")
-RAGE_SHOUT_COST = 0.25
 NEARBY_PLACES_RADIUS_M = 50_000.0
 NEXT_TRAINS_SHOWN = 5  # arrivals listed in the J box  # airports/stations logged at city start
 # F5 activity debug panel's force-an-activity testing keys (residents-
@@ -1065,6 +1062,9 @@ def _load_world(
         transformer_to_ll = None
         logger.debug("pyproj not available; lat/lon display disabled")
 
+    from ..static_world import inherit_part_colours
+    inherit_part_colours(buildings)  # a building:part takes its colour-named building's colour
+
     # Auto fetch manager (background)
     on_load_progress(0.97, "Starting game...")
     auto_fetch_manager = AutoFetchManager(
@@ -1099,7 +1099,17 @@ def _load_world(
     on_load_progress(1.0, "Ready")
     logger.info("Entering gameplay loop")
 
+    # Trains are simulation (advance_simulation updates them): built with the
+    # world so a headless server has them too.
+    # The real timetable (Digitraffic), or - turned off - trains at a fixed interval.
+    timetable = load_timetable() if getattr(args, "train_timetable", True) else None
+    railway_mgr = RailwayManager(railways, timetable, _latlon_to_world_metres(), load_compositions())
+    railway_mgr.associate_taxi_stands(taxi_mgr.taxi_stops)
+    railway_mgr.bookings.destination_for = lambda stand: taxi_mgr.pick_phone_dropoff(stand.x, stand.y)
+    taxi_mgr.rail_bookings = railway_mgr.bookings
+
     return SimpleNamespace(
+        railway_mgr=railway_mgr,
         auto_fetch_manager=auto_fetch_manager,
         base_pedestrian_count=base_pedestrian_count,
         bounds=bounds,
@@ -1371,7 +1381,7 @@ def main() -> None:
         curbs = world.curbs
         railway_grid = world.railway_grid
         railways = world.railways
-        railway_mgr = RailwayManager(railways, load_timetable(), _latlon_to_world_metres(), load_compositions())
+        railway_mgr = world.railway_mgr
         # ponytail: the platforms of the map as loaded; streamed-in tiles' platforms aren't added
         station_announcer.platforms = [way for way in world.ways if way.highway == "platform" and not way.is_busway]
         railway_mgr_source_count = len(railways)
@@ -1402,8 +1412,6 @@ def main() -> None:
         sun_longitude = world.sun_longitude
         taxi_mgr = world.taxi_mgr
         taxi_stops = world.taxi_stops
-        railway_mgr.associate_taxi_stands(taxi_mgr.taxi_stops)
-        railway_mgr.bookings.destination_for = lambda stand: taxi_mgr.pick_phone_dropoff(stand.x, stand.y)
         def _booking_created(booking) -> None:
             taxi_mgr.notify_rail_booking(booking)
             audio.play_group("ui.booking_new")
@@ -1415,7 +1423,6 @@ def main() -> None:
 
         railway_mgr.bookings.on_created = _booking_created
         railway_mgr.bookings.on_missed = _booking_missed
-        taxi_mgr.rail_bookings = railway_mgr.bookings
         traffic_light_grid = world.traffic_light_grid
         traffic_lights = world.traffic_lights
         traffic_mgr = world.traffic_mgr
@@ -1535,6 +1542,7 @@ def main() -> None:
         on_foot = True
         interact_pending = False
         refuel_pending = False
+        road_rage_pending = False
         engine_on_pending = None
         command_seq = 0
         prev_state_snapshot = None
@@ -1568,6 +1576,9 @@ def main() -> None:
         if historical_weather:
             weather_history.request(game_calendar.current - timedelta(hours=6), game_calendar.current + timedelta(hours=48))
             weather_history.wait_idle(3.0)  # brief: the start forecast can show real weather
+        weather.settle_initial_wetness(raining_last_hour(  # the road as the last hour's weather left it
+            weather_history, game_calendar.current, lambda moment: typical_temperature(moment, sun_latitude),
+        ) if historical_weather else [])
         forecast_moments = [game_calendar.current + timedelta(hours=offset) for offset in range(0, 25, 6)]
         forecast_temperatures = [outside_temperature(moment) for moment in forecast_moments]
         forecast_conditions = weather.forecast(forecast_temperatures, 6.0 * 60.0 * 60.0)
@@ -1657,7 +1668,7 @@ def main() -> None:
             wind_mps = weather.wind_speed_mps * weather.gust_factor
             raining = weather.weather_type in (WeatherType.RAIN, WeatherType.SLUSH)
             audio.update_ambience(
-                night=1.0 - max(0.0, min(1.0, (sun_altitude + 12.0) / 18.0)),  # the street lights' darkness
+                night=darkness_for_sun_altitude(sun_altitude),  # the street lights' darkness
                 rain=0.6 if raining else 0.0,
                 heavy_rain=0.7 if raining and weather.is_thunderstorm else 0.0,
                 wind=max(0.0, min(1.0, wind_mps / 12.0)) * 0.5,
@@ -1894,19 +1905,7 @@ def main() -> None:
                     elif event.key == pygame.K_e and not on_foot:
                         engine_on_pending = not car.engine_on
                     elif event.key == pygame.K_SPACE and not phone_open:
-                        if rage_power >= RAGE_SHOUT_COST:
-                            audio.play_driver_line("rage", language)
-                            audio.play_group("vehicle.horn", 0.45)
-                            rage_power -= RAGE_SHOUT_COST
-                            rage_shout_timer = 5.0
-                            rage_shout_text = random.choice(RAGE_SHOUTS)
-                            # NPC-005: Road Rage reaches exactly one real
-                            # NPC driver - whichever is nearest ahead of
-                            # the player right now - not a whole area; see
-                            # NPCVehicleManager.trigger_road_rage's own
-                            # docstring for why that's enough to produce
-                            # an emergent queue behind it.
-                            npc_manager.trigger_road_rage(car.x, car.y, car.heading, sim_time=traffic_mgr.sim_time)
+                        road_rage_pending = True  # the simulation spends the rage, honks and provokes (godot-final-05)
                     elif phone_open:
                         if event.key == pygame.K_ESCAPE:
                             phone_open = False
@@ -2188,8 +2187,10 @@ def main() -> None:
                 red_light_assist_enabled=red_light_assist_enabled,
                 refuel=refuel_pending,
                 engine_on=engine_on_pending,
+                road_rage=road_rage_pending,
             )
             refuel_pending = False
+            road_rage_pending = False
             engine_on_pending = None
             previous_car_position = (car.x, car.y)
 
@@ -2203,7 +2204,7 @@ def main() -> None:
                 interact_pending = False
 
                 new_snapshot = connection.try_recv_latest()
-                if new_snapshot is not None:
+                if new_snapshot is not None and new_snapshot.get("type") == "state":  # not the one-off "world"
                     prev_state_snapshot, prev_snapshot_time = curr_state_snapshot, curr_snapshot_time
                     curr_state_snapshot, curr_snapshot_time = new_snapshot["state"], time.monotonic()
 
@@ -2225,6 +2226,8 @@ def main() -> None:
                     game_time_seconds = applied["game_time_seconds"]
                     camx, camy = applied["camx"], applied["camy"]
                     rage_power = applied["rage_power"]
+                    if applied.get("road_rage"):  # the server's shout, as it counts it down
+                        rage_shout_text, rage_shout_timer = applied["road_rage"]["text"], applied["road_rage"]["timer"]
                     water_elapsed = applied["water_elapsed"]
                     if previous_on_foot and not on_foot:
                         start_hint_remaining = 0.0
@@ -2290,11 +2293,14 @@ def main() -> None:
                     chosen_city=chosen_city,
                     cities_list=cities_list,
                     outside_temperature_c=outside_temperature(game_calendar.current),
+                    now=game_calendar.current,
                 )
                 camx, camy = result.camx, result.camy
                 current_way = result.current_way
                 water_elapsed = result.water_elapsed
                 rage_power = result.rage_power
+                if result.rage_shout:
+                    rage_shout_text, rage_shout_timer = result.rage_shout, RAGE_SHOUT_DURATION_S
                 bridge_edge_crash_cooldown = result.bridge_edge_crash_cooldown
                 slow_check_elapsed = result.slow_check_elapsed
                 taxi_waiter_elapsed = result.taxi_waiter_elapsed
@@ -3063,15 +3069,8 @@ def main() -> None:
                 )
             # After bridge track, so a train crossing a rail bridge stays
             # visible. Same time scale the game clock uses for the spawn timer.
-            with frame_profiler.section("trains"):
-                if railway_mgr.passenger_view is None:
-                    railway_mgr.associate_taxi_stands(taxi_mgr.taxi_stops)  # existing stands only
-                    railway_mgr.passenger_view = StationPassengerView(
-                        pedestrian_mgr, on_track=track_checker(railway_grid),
-                    )
-                railway_mgr.view_point = (camx, camy)
-                railway_mgr.update(dt, dt * (1.0 if taxi_mgr.has_active_job() else 60.0), game_calendar.current)
-                _play_rail_sounds(audio, railway_mgr, station_announcer)
+            # (The trains themselves advance in advance_simulation.)
+            _play_rail_sounds(audio, railway_mgr, station_announcer)
             with frame_profiler.section("render:trains"):
                 if surface_world:
                     draw_trains(

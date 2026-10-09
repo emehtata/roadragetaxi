@@ -164,3 +164,35 @@ def test_forecast_weather_symbols_map_to_game_weather():
     for symbol, kind in expected.items():
         assert precipitation_from_observation(HourlyWeather(wawa=_wawa_for_weather_symbol(symbol)))[0] == kind
     assert precipitation_from_observation(HourlyWeather(wawa=_wawa_for_weather_symbol(63))) == ("rain", True)
+
+
+def test_recent_chunks_and_the_forecast_are_cached_for_an_hour(tmp_path, monkeypatch):
+    """Not-yet-final data (the last hours, the forecast) is cached too: a new
+    session within an hour asks FMI for nothing; after it, both again."""
+    import theroadragetrip.weather_history as wh
+
+    observation_calls, forecast_calls = [], []
+
+    def fake_forecast(lat, lon):
+        forecast_calls.append((lat, lon))
+        return FORECAST_FIXTURE
+
+    def session():
+        history = WeatherHistory(*OULU, cache_path=tmp_path / "weather.db", fetch=_fake_fmi(observation_calls),
+                                 fetch_forecast=fake_forecast)
+        now = datetime.now()
+        history.request(now - timedelta(hours=1), now + timedelta(hours=24))
+        history.wait_idle(5.0)
+        return history
+
+    first = session()
+    assert len(observation_calls) >= 1 and len(forecast_calls) == 1
+    calls = len(observation_calls)
+    second = session()
+    assert len(observation_calls) == calls and len(forecast_calls) == 1  # all from SQLite
+    moment = datetime(2026, 9, 24, 20, 0)  # in the fixture forecast
+    assert second.get(moment).temperature_c == first.get(moment).temperature_c and second.source_at(moment) == "forecast"
+    real_time = wh.time.time
+    monkeypatch.setattr(wh.time, "time", lambda: real_time() + 2 * 3600)  # two hours later
+    session()
+    assert len(observation_calls) > calls and len(forecast_calls) == 2

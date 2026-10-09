@@ -1,0 +1,242 @@
+## GTA1/GTA2-style radial building extrusion. The ground stays orthographic.
+## Only height is projected: the roof moves away from the current view centre,
+## so the wall from roof to its unchanged ground edge opens toward the player.
+##
+## The footprint stays where the map has it. Walls whose outward normal
+## points back toward the view centre are drawn far to near, followed by the
+## radially offset roof and its gabled facets. Windows and doors lie on those
+## visible wall surfaces.
+## Everything for one chunk is built once, at load, into one coloured
+## triangle list in painter's order (shadow, walls, windows, doors, roof),
+## plus a small list of the lit windows' glow.
+extends RefCounted
+
+const UP := Vector2(0.0, -1.0)  # fallback for a building exactly under the camera
+const BUILDING_HEIGHT_SCALE := 0.35  # metres of screen lift per metre of height (Pygame's ratio), no cap
+const SHADOW := Color8(45, 42, 39, 110)
+const RIDGE := Color8(58, 55, 52)
+const WINDOW := Color8(58, 80, 94)
+const STOREFRONT := Color8(84, 106, 122)
+const DOOR := Color8(58, 48, 42)
+const WINDOW_LIT := Color8(232, 189, 108)  # render/buildings.py WINDOW_LIT_COLOR
+const LIT_PROBABILITY := [0.12, 0.08, 0.03]  # other / house / storefront (render/buildings.py)
+const CANOPY_POST := Color8(105, 110, 112)
+
+
+## The screen offset of height h (metres) above the ground.
+static func lift(height: float, building_centre := Vector2.ZERO, view_centre := Vector2.ZERO) -> Vector2:
+	var away: Vector2 = building_centre - view_centre
+	return (away.normalized() if not away.is_zero_approx() else UP) * maxf(height, 0.0) * BUILDING_HEIGHT_SCALE
+
+
+static func signed_area(polygon: PackedVector2Array) -> float:
+	var area := 0.0
+	for i in polygon.size():
+		area += polygon[i].cross(polygon[(i + 1) % polygon.size()])
+	return area / 2.0
+
+
+## Indices of the walls (edge i: point i to i + 1) seen from above-front:
+## outward normal pointing down the screen. Works for any simple polygon, either winding.
+static func visible_walls(footprint: PackedVector2Array, roof_offset := UP) -> PackedInt32Array:
+	var walls := PackedInt32Array()
+	var outward_sign := -1.0 if signed_area(footprint) > 0.0 else 1.0  # y-down canvas: positive area = clockwise on screen, outward = -perpendicular
+	for i in footprint.size():
+		var edge := footprint[(i + 1) % footprint.size()] - footprint[i]
+		if edge.length_squared() < 1e-6:
+			continue
+		var normal := Vector2(-edge.y, edge.x).normalized() * outward_sign
+		if normal.dot(roof_offset) < -1e-6:
+			walls.append(i)
+	return walls
+
+
+## A deterministic unit value per window (render/buildings.py
+## _pseudo_random_unit), seeded by the building's position - the same after
+## every reload (Pygame seeds by id(), which changes every run).
+static func unit(seed: float) -> float:
+	var f := sin(seed * 12.9898) * 43758.5453
+	return f - floor(f)
+
+
+## One chunk's buildings as triangle lists: {"points", "colors", "indices"}
+## for the buildings, {"lit_points", "lit_indices"} for the lit windows'
+## glow, and per building the screen hull (headlights skip it).
+## `buildings`: footprints (layer coordinates); `styles`: the server's
+## [roof, gabled, height, entrances, wall, floors, category].
+static func build(buildings: Array, styles: Array, origin: Vector2, view_centre := Vector2.ZERO) -> Dictionary:
+	var out := {"points": PackedVector2Array(), "colors": PackedColorArray(), "indices": PackedInt32Array(),
+		"lit_points": PackedVector2Array(), "lit_indices": PackedInt32Array(), "hulls": [],
+		"stats": {"buildings": 0, "walls": 0, "windows": 0, "lit": 0}}  # counts for the performance report
+	var order: Array = []
+	for i in buildings.size():
+		var footprint: PackedVector2Array = buildings[i]
+		if footprint.size() >= 3 and not Geometry2D.triangulate_polygon(footprint).is_empty():
+			var centre := Vector2.ZERO
+			for p in footprint:
+				centre += p
+			order.append([centre / footprint.size(), i])
+	order.sort_custom(func(a, b): return a[0].distance_squared_to(view_centre) > b[0].distance_squared_to(view_centre))
+	for entry in order:
+		var style: Array = styles[entry[1]] if entry[1] < styles.size() else []
+		_building(out, buildings[entry[1]], style, entry[0], origin, view_centre)
+	return out
+
+
+static func _quad(out: Dictionary, a: Vector2, b: Vector2, c: Vector2, d: Vector2, color: Color, key := "") -> void:
+	var points: PackedVector2Array = out[key + "points"]
+	var base := points.size()
+	points.append_array(PackedVector2Array([a, b, c, d]))
+	if key == "":
+		out["colors"].append_array(PackedColorArray([color, color, color, color]))
+	out[key + "indices"].append_array(PackedInt32Array([base, base + 1, base + 2, base, base + 2, base + 3]))
+
+
+static func _polygon(out: Dictionary, polygon: PackedVector2Array, color: Color) -> void:
+	var triangles := Geometry2D.triangulate_polygon(polygon)
+	if triangles.is_empty():
+		return
+	var base: int = out["points"].size()
+	out["points"].append_array(polygon)
+	for i in polygon.size():
+		out["colors"].append(color)
+	for t in triangles:
+		out["indices"].append(base + t)
+
+
+static func _shade(color: Color, normal: Vector2, roof_offset: Vector2) -> Color:
+	var f := 0.72 + 0.28 * clampf(-normal.dot(roof_offset.normalized()), 0.0, 1.0)
+	return Color(color.r * f, color.g * f, color.b * f, color.a)
+
+
+static func _building(out: Dictionary, footprint: PackedVector2Array, style: Array, centre: Vector2, origin: Vector2, view_centre: Vector2) -> void:
+	var roof_color := Color8(int(style[0][0]), int(style[0][1]), int(style[0][2])) if style.size() > 0 else Color8(83, 86, 87)
+	var height: float = style[2] if style.size() > 2 else 8.0
+	var wall_color := Color8(int(style[4][0]), int(style[4][1]), int(style[4][2])) if style.size() > 4 else Color8(139, 139, 137)
+	var floors: int = int(style[5]) if style.size() > 5 else maxi(1, roundi(height / 3.0))
+	var category: int = int(style[6]) if style.size() > 6 else 0
+	var up := lift(height, centre, view_centre)
+	var depth := up.length()
+	var roof := footprint.duplicate()
+	for i in roof.size():
+		roof[i] += up
+	# A soft shadow on the ground, below the building (one, under the volume).
+	var shadow := footprint.duplicate()
+	for i in shadow.size():
+		shadow[i] -= up.normalized() * clampf(depth * 0.25, 0.3, 2.0)
+	_polygon(out, shadow, SHADOW)
+	# No base fill (godot-18): every footprint point lies under the raised roof or on a
+	# visible wall in front of it (walk from it down the screen: either the roof is
+	# reached within the height, or a visible wall is crossed), so it was always covered.
+	var outward_sign := -1.0 if signed_area(footprint) > 0.0 else 1.0
+	var walls := Array(visible_walls(footprint, up))
+	out["stats"]["buildings"] += 1
+	out["stats"]["walls"] += walls.size()
+	walls.sort_custom(func(a, b): return (footprint[a] + footprint[(a + 1) % footprint.size()]).distance_squared_to(view_centre) > (footprint[b] + footprint[(b + 1) % footprint.size()]).distance_squared_to(view_centre))
+	var stories := mini(floors, maxi(1, int(depth * 9.0 / 3.0)))  # Pygame: at most a floor per 3 px of facade
+	var seed_base := roundf(centre.x + origin.x) * 0.0001 + roundf(-centre.y + origin.y) * 0.00013
+	for i in walls:
+		var a := footprint[i]
+		var b := footprint[(i + 1) % footprint.size()]
+		var edge := b - a
+		var normal := Vector2(-edge.y, edge.x).normalized() * outward_sign
+		_quad(out, a, b, b + up, a + up, _shade(wall_color, normal, up))
+		_windows(out, a, b, up, stories, category, seed_base + i * 7.13)
+	_doors(out, footprint, style[3] if style.size() > 3 else [], walls, up, stories, origin)
+	_polygon(out, roof, roof_color)
+	if style.size() > 1 and int(style[1]) == 1:
+		_gabled(out, roof, roof_color)
+	var hull := Geometry2D.convex_hull(footprint + roof)
+	out["hulls"].append(hull)
+
+
+## render/buildings.py _iter_building_window_slots on an extruded wall: up to 3
+## windows a floor (2 on a house, every other floor), centred along the
+## wall, a storefront row on a commercial ground floor; lit at night by
+## Pygame's probabilities, deterministically.
+static func _windows(out: Dictionary, a: Vector2, b: Vector2, up: Vector2, stories: int, category: int, seed: float) -> void:
+	var length := a.distance_to(b)
+	if length < 12.0 / 9.0 or up.length() < 0.5:
+		return
+	var house := category == 1
+	var along := (b - a) / length
+	var count := clampi(int(length / ((44.0 if house else 32.0) / 9.0)), 1, 2 if house else 3)
+	var floor_up := up / stories
+	for f in stories:
+		if house and stories > 1 and f % 2 == 1:
+			continue
+		var storefront := category == 2 and f == 0
+		var size := 0.55 * (1.45 if storefront else 0.75 if house else 1.0)
+		var half := length / (count + 2) * 0.45 / 2.0 * (1.35 if storefront else 0.75 if house else 1.0)
+		var bottom := up * (0.18 + 0.64 * (f + 0.5) / stories) - floor_up * size * 0.5
+		for w in count:
+			var centre := a + (b - a) * ((w + 1.0) / (count + 1.0)) + bottom
+			var p := [centre - along * half, centre + along * half, centre + along * half + floor_up * size, centre - along * half + floor_up * size]
+			_quad(out, p[0], p[1], p[2], p[3], STOREFRONT if storefront else WINDOW)
+			out["stats"]["windows"] += 1
+			if unit(seed + f * 3.71 + w * 1.37) < LIT_PROBABILITY[2 if storefront else category if category == 1 else 0]:
+				_quad(out, p[0], p[1], p[2], p[3], WINDOW_LIT, "lit_")
+				out["stats"]["lit"] += 1
+
+
+## Doors at the OSM entrances, on the nearest wall if that wall is
+## visible (render/buildings.py does the same on its facades): one storey high.
+static func _doors(out: Dictionary, footprint: PackedVector2Array, entrances: Array, walls: Array, up: Vector2, stories: int, origin: Vector2) -> void:
+	for entrance in entrances:
+		var at := MapMath.point(origin, entrance[0], entrance[1])
+		var best := -1
+		var best_distance := INF
+		for i in footprint.size():
+			var d := Geometry2D.get_closest_point_to_segment(at, footprint[i], footprint[(i + 1) % footprint.size()]).distance_to(at)
+			if d < best_distance:
+				best_distance = d
+				best = i
+		if best < 0 or not walls.has(best):
+			continue
+		var a := footprint[best]
+		var b := footprint[(best + 1) % footprint.size()]
+		var along := (b - a).normalized()
+		var foot := Geometry2D.get_closest_point_to_segment(at, a, b)
+		var half := clampf(a.distance_to(b) * 0.22, 0.33, 1.22) / 2.0
+		var top := up / stories * 0.68
+		_quad(out, foot - along * half, foot + along * half, foot + along * half + top, foot - along * half + top, DOOR)
+
+
+## render/buildings.py _draw_gabled_roof on the raised roof: two facets
+## along the longest edge, one lighter, one darker, and the ridge.
+static func _gabled(out: Dictionary, roof: PackedVector2Array, color: Color) -> void:
+	var longest := 0
+	for i in roof.size():
+		if roof[i].distance_squared_to(roof[(i + 1) % roof.size()]) > roof[longest].distance_squared_to(roof[(longest + 1) % roof.size()]):
+			longest = i
+	var axis := (roof[(longest + 1) % roof.size()] - roof[longest]).normalized()
+	var centre := Vector2.ZERO
+	for p in roof:
+		centre += p
+	centre /= roof.size()
+	var normal := Vector2(-axis.y, axis.x)
+	var lo := INF
+	var hi := -INF
+	for p in roof:
+		lo = minf(lo, (p - centre).dot(axis))
+		hi = maxf(hi, (p - centre).dot(axis))
+	var far := 10000.0
+	for side: float in [1.0, -1.0]:
+		var half := PackedVector2Array([centre - axis * far, centre + axis * far, centre + axis * far + normal * side * far, centre - axis * far + normal * side * far])
+		var shade := color.lightened(14.0 / 255.0) if side > 0.0 else color.darkened(12.0 / 255.0)
+		for facet in Geometry2D.intersect_polygons(roof, half):
+			_polygon(out, facet, shade)
+	var r0 := centre + axis * lo
+	var r1 := centre + axis * hi
+	var n := normal * 0.12
+	_quad(out, r0 - n, r1 - n, r1 + n, r0 + n, RIDGE)
+
+
+## Canopies (open roofs) raised by their height: four thin posts from the
+## ground corners up to the roof - drawn under the vehicles; the roof itself
+## stays see-through above them (chunk_detail.draw_canopies, lifted).
+static func canopy_posts(out: Dictionary, canopy: PackedVector2Array, height: float) -> void:
+	var up := lift(height)
+	for p in canopy:
+		var side := Vector2(-up.y, up.x).normalized() * 0.12
+		_quad(out, p - side, p + side, p + up + side, p + up - side, CANOPY_POST)

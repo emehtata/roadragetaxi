@@ -1,5 +1,15 @@
 name: Windows release
 
+# The Godot game with its Python simulation server bundled beside it:
+#
+#   dist/RoadRageTrip/RoadRageTrip.exe, RoadRageTrip.pck      (Godot export)
+#   dist/RoadRageTrip/server/RoadRageServer.exe + _internal/   (PyInstaller)
+#
+# godot/paths.gd finds the server and the game's data (sounds, images) there.
+# A manual run (workflow_dispatch) uploads the builds as artifacts to try
+# before tagging; a v* tag publishes them as a GitHub release. The Pygame
+# version is still built too, as its own zip.
+
 on:
   push:
     tags:
@@ -8,6 +18,9 @@ on:
 
 permissions:
   contents: write
+
+env:
+  GODOT_VERSION: "4.7.2"
 
 jobs:
   build-windows:
@@ -26,7 +39,69 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install -r requirements.txt pyinstaller
 
-      - name: Build executable
+      - name: Build the simulation server
+        run: >-
+          python -m PyInstaller --noconfirm --clean --onedir --console
+          --name RoadRageServer --paths src
+          --collect-submodules theroadragetrip
+          --icon "src/theroadragetrip/assets/road_rage_trip_taxi.ico"
+          --add-data "sample_osm.json;."
+          --add-data "src/theroadragetrip/img;theroadragetrip/img"
+          --add-data "src/theroadragetrip/sounds;theroadragetrip/sounds"
+          --add-data "src/theroadragetrip/assets;theroadragetrip/assets"
+          --distpath build/server --workpath build/server-work
+          road_rage_server.py
+
+      - name: Smoke-test the server
+        shell: pwsh
+        run: |
+          $cities = & build/server/RoadRageServer/RoadRageServer.exe --list-cities | Select-Object -Last 1
+          Write-Host "Cities: $cities"
+          if (-not ($cities | ConvertFrom-Json).Count) { throw "the bundled server lists no cities" }
+
+      - name: Cache Godot
+        id: godot-cache
+        uses: actions/cache@v4
+        with:
+          path: godot-bin
+          key: godot-${{ env.GODOT_VERSION }}-win64-templates
+
+      - name: Download Godot and its export templates
+        if: steps.godot-cache.outputs.cache-hit != 'true'
+        shell: pwsh
+        run: |
+          $base = "https://github.com/godotengine/godot/releases/download/$env:GODOT_VERSION-stable"
+          New-Item -ItemType Directory -Force godot-bin | Out-Null
+          Invoke-WebRequest "$base/Godot_v$env:GODOT_VERSION-stable_win64.exe.zip" -OutFile godot-bin/editor.zip
+          Expand-Archive godot-bin/editor.zip -DestinationPath godot-bin -Force
+          Invoke-WebRequest "$base/Godot_v$env:GODOT_VERSION-stable_export_templates.tpz" -OutFile godot-bin/templates.zip
+          Expand-Archive godot-bin/templates.zip -DestinationPath godot-bin/templates-all -Force
+          # Only Windows' are needed: keep the cache small.
+          New-Item -ItemType Directory -Force godot-bin/templates | Out-Null
+          Copy-Item godot-bin/templates-all/templates/windows_* godot-bin/templates/
+          Copy-Item godot-bin/templates-all/templates/version.txt godot-bin/templates/
+          Remove-Item godot-bin/editor.zip, godot-bin/templates.zip
+          Remove-Item -Recurse godot-bin/templates-all
+
+      - name: Install the export templates
+        shell: pwsh
+        run: |
+          $dest = "$env:APPDATA/Godot/export_templates/$env:GODOT_VERSION.stable"
+          New-Item -ItemType Directory -Force $dest | Out-Null
+          Copy-Item godot-bin/templates/* $dest
+
+      - name: Export the Godot game
+        shell: pwsh
+        run: |
+          $godot = "godot-bin/Godot_v$env:GODOT_VERSION-stable_win64_console.exe"
+          New-Item -ItemType Directory -Force dist/RoadRageTrip | Out-Null
+          & $godot --headless --path godot --import
+          & $godot --headless --path godot --export-release "Windows Desktop" "$PWD/dist/RoadRageTrip/RoadRageTrip.exe"
+          if (-not (Test-Path dist/RoadRageTrip/RoadRageTrip.exe)) { throw "the Godot export produced no RoadRageTrip.exe" }
+          Move-Item build/server/RoadRageServer dist/RoadRageTrip/server
+          Get-ChildItem dist/RoadRageTrip
+
+      - name: Build the Pygame version
         run: >-
           python -m PyInstaller --noconfirm --clean --onedir --windowed
           --name RoadRageTrip --paths src
@@ -37,13 +112,43 @@ jobs:
           --add-data "src/theroadragetrip/img;theroadragetrip/img"
           --add-data "src/theroadragetrip/sounds;theroadragetrip/sounds"
           --add-data "src/theroadragetrip/assets;theroadragetrip/assets"
+          --distpath build/pygame --workpath build/pygame-work
           road_rage_trip.py
 
       - name: Package release
+        shell: pwsh
         run: |
           Compress-Archive -Path dist/RoadRageTrip/* -DestinationPath dist/RoadRageTrip-windows-x64.zip
+          Compress-Archive -Path build/pygame/RoadRageTrip/* -DestinationPath dist/RoadRageTrip-pygame-windows-x64.zip
           choco install innosetup --no-progress --yes
           & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" installer/RoadRageTrip.iss
+
+      - name: Smoke-test the setup installer
+        shell: pwsh
+        run: |
+          $install = Join-Path $env:RUNNER_TEMP "RoadRageTripSmoke"
+          $setup = (Resolve-Path dist/RoadRageTrip-Setup.exe).Path
+          $result = Start-Process $setup -ArgumentList "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/DIR=$install" -Wait -PassThru
+          if ($result.ExitCode -ne 0) { throw "setup exited with $($result.ExitCode)" }
+          foreach ($file in @("RoadRageTrip.exe", "RoadRageTrip.pck", "server/RoadRageServer.exe", "server/_internal/theroadragetrip/img/theroadragetrip_1672_941.png", "server/_internal/theroadragetrip/assets/audio/audio_catalog.json")) {
+            if (-not (Test-Path (Join-Path $install $file))) { throw "installed file missing: $file" }
+          }
+          $cities = & (Join-Path $install "server/RoadRageServer.exe") --list-cities | Select-Object -Last 1
+          if (-not ($cities | ConvertFrom-Json).Count) { throw "installed server lists no cities" }
+          $log = Join-Path $env:RUNNER_TEMP "godot-startup.log"
+          $game = Start-Process (Join-Path $install "RoadRageTrip.exe") -ArgumentList "--headless", "--quit-after", "10", "--log-file", $log -Wait -PassThru
+          if ($game.ExitCode -ne 0 -or -not (Test-Path $log) -or -not ((Get-Content $log -Raw) -match 'startup: \d+ cities from the simulation \(release\)')) {
+            throw "installed game did not start: $((Get-Content $log -Raw -ErrorAction SilentlyContinue))"
+          }
+
+      - name: Upload the builds
+        uses: actions/upload-artifact@v4
+        with:
+          name: RoadRageTrip-windows
+          path: |
+            dist/RoadRageTrip-windows-x64.zip
+            dist/RoadRageTrip-Setup.exe
+            dist/RoadRageTrip-pygame-windows-x64.zip
 
       - name: Publish GitHub release
         if: startsWith(github.ref, 'refs/tags/')
@@ -51,5 +156,5 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: >-
           gh release create "${{ github.ref_name }}"
-          dist/RoadRageTrip-windows-x64.zip dist/RoadRageTrip-Setup.exe
+          dist/RoadRageTrip-windows-x64.zip dist/RoadRageTrip-Setup.exe dist/RoadRageTrip-pygame-windows-x64.zip
           --generate-notes

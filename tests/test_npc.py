@@ -2125,3 +2125,28 @@ def test_right_turn_lane_bias_keeps_clear_of_the_road_edge():
         right = -_lane_offset_point(road, 50.0, 0.0, 0.0, maneuver="right")[1]
         assert cruise <= right
         assert half_width - (right + NPC_VEHICLE_WIDTH_M / 2) > CURB_CLEARANCE_MARGIN_M or right == cruise
+
+
+def test_trigger_road_rage_skips_crashed_behind_too_far_and_too_lateral_vehicles():
+    """godot-final-05: the eligibility the shared road-rage action relies on
+    (40 m ahead, within 6 m sideways, driving) - unchanged NPC-005 rule."""
+    from theroadragetrip.npc import NPCVehicleManager
+
+    ways = _straight_chain(count=20)
+    tw = TrafficWorld(ways)
+    residents = ResidentManager()
+    manager = NPCVehicleManager(target_count=0)
+    placed = {}
+    for vid, at in ((1, (30.0, 0.0)), (2, (-15.0, 0.0)), (3, (45.0, 0.0)), (4, (20.0, 8.0)), (5, (35.0, 0.0))):
+        spawned = spawn_npc(vid, residents, tw, ways, at, (200.0, 0.0))
+        assert spawned is not None
+        _, driver, vehicle = spawned
+        vehicle.car.x, vehicle.car.y = at
+        manager.vehicles.append(vehicle)
+        manager.drivers[vehicle.vehicle_id] = driver
+        placed[vid] = (driver, vehicle)
+    placed[1][1].state = NPCState.CRASHED  # 30 m ahead, but crashed
+    # 2: behind; 3: 45 m ahead (> 40); 4: 8 m to the side (> 6); 5: 35 m ahead - the one
+    assert manager.trigger_road_rage(0.0, 0.0, 0.0, sim_time=10.0) == placed[5][1].vehicle_id
+    assert all(placed[v][0].road_rage_until_sim_time is None for v in (1, 2, 3, 4))
+    assert placed[5][0].road_rage_until_sim_time == 10.0 + NPC_ROAD_RAGE_REACTION_DURATION_S

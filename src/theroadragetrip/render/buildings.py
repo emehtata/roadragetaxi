@@ -1094,7 +1094,7 @@ def _advance_building_rebuild(job: dict, deadline: float) -> bool:
         if center_x == 0.0 and center_y == 0.0 and b.points_m:
             center_x = sum(point[0] for point in b.points_m) / len(b.points_m)
             center_y = sum(point[1] for point in b.points_m) / len(b.points_m)
-        named_colors = _building_colors_from_name(getattr(b, "name", None))
+        named_colors = _building_colors_from_name(getattr(b, "colour_name", None) or getattr(b, "name", None))
         if named_colors is not None:
             wall_color, roof_color = named_colors
         else:

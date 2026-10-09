@@ -275,3 +275,23 @@ def test_splash_expires_after_its_lifetime():
     assert len(weather.splashes) == 1
     weather.update(0.0, 0.02)  # crosses the lifetime threshold
     assert weather.splashes == []
+
+
+def test_the_road_starts_as_the_last_hours_weather_left_it():
+    """The initial wetness from the last hour (5-minute steps, oldest first,
+    the first one deciding whether the hour began wet), with the game's own
+    wetting (10 min) and drying (1 h)."""
+    from theroadragetrip.weather import WeatherSystem, WeatherType, wetness_after
+
+    assert wetness_after([True] * 2, 300.0) == 1.0  # 10 minutes of rain: soaked
+    assert abs(wetness_after([False] * 6, 300.0, 1.0) - 0.5) < 1e-9  # half an hour dry after rain
+    assert wetness_after([None, None], 300.0, 0.4) == 0.4  # nothing known: as it was
+
+    weather = WeatherSystem(weather_type=WeatherType.CLEAR)
+    weather.settle_initial_wetness([True] + [True] * 6 + [False] * 6)  # rained, stopped half an hour ago
+    assert abs(weather.wetness - 0.5) < 1e-9
+    weather.settle_initial_wetness([False] * 13)  # a dry hour
+    assert weather.wetness == 0.0
+    raining = WeatherSystem(weather_type=WeatherType.RAIN)
+    raining.settle_initial_wetness([])  # no history: raining now means it has rained a while
+    assert raining.wetness == 1.0

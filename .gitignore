@@ -56,3 +56,6 @@ game-mechanics-optimizations
 *.pbf
 *.pbf.index/
 src/theroadragetrip/assets/roads/*.bin
+
+# graphify knowledge-graph output and cache
+graphify-out/

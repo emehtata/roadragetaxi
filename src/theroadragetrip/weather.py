@@ -104,6 +104,39 @@ def weather_type_for_observation(kind: str, temperature_c: Optional[float]) -> W
     return WeatherType.SLUSH if temperature_c < SLUSH_MAX_TEMPERATURE_C else WeatherType.RAIN
 
 
+def wetness_after(raining: list, step_s: float, start: float = 0.0) -> float:
+    """Road wetness after a run of equal steps, oldest first, with the
+    game's own wetting and drying (RAIN_WETTING_DURATION_S, DRY_DURATION_S):
+    True raining (rain or slush), False dry, None unknown (unchanged)."""
+    wetness = start
+    for wet in raining:
+        if wet is True:
+            wetness = min(1.0, wetness + step_s / RAIN_WETTING_DURATION_S)
+        elif wet is False:
+            wetness = max(0.0, wetness - step_s / DRY_DURATION_S)
+    return wetness
+
+
+def raining_last_hour(history, now, typical_temperature) -> list:
+    """WeatherHistory's weather every 5 minutes over the hour before `now`
+    (and the step before it), oldest first: True rain or slush, False dry,
+    None unknown; [] when nothing is known. `typical_temperature(moment)`
+    types precipitation without an observed temperature."""
+    from datetime import timedelta
+
+    steps = []
+    for minutes in range(65, -1, -5):
+        moment = now - timedelta(minutes=minutes)
+        seen = history.get(moment)
+        kind = precipitation_from_observation(seen)[0] if seen is not None else None
+        if kind is None:
+            steps.append(None)
+            continue
+        temperature = seen.temperature_c if seen.temperature_c is not None else typical_temperature(moment)
+        steps.append(weather_type_for_observation(kind, temperature) in (WeatherType.RAIN, WeatherType.SLUSH))
+    return steps if any(step is not None for step in steps) else []
+
+
 class WeatherSystem:
     """Owns the current weather type and road wetness.
 
@@ -334,6 +367,17 @@ class WeatherSystem:
             self.is_thunderstorm = thunder
             self.lightning_intensity = 0.0
             self._lightning_timer = self._rng.uniform(*LIGHTNING_INTERVAL_RANGE_S)
+
+    def settle_initial_wetness(self, raining_last_hour: Optional[list] = None, step_s: float = 300.0) -> None:
+        """The road at the start: as the last hour's observed weather left it
+        (`raining_last_hour`, oldest first, see wetness_after; the step
+        before it decides whether the hour began wet), else - no history -
+        wet if it is raining now (it has rained a while), dry otherwise."""
+        if raining_last_hour:
+            start = 1.0 if raining_last_hour[0] else 0.0
+            self.wetness = wetness_after(raining_last_hour[1:], step_s, start)
+        else:
+            self.wetness = 1.0 if self.weather_type in (WeatherType.RAIN, WeatherType.SLUSH) else 0.0
 
     def toggle_rain(self) -> None:
         """Debug toggle (F8), disabling automatic changes for this session."""

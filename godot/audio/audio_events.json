@@ -1,0 +1,156 @@
+{
+  "_doc": "Semantic simulation events -> sounds, for audio_manager.gd. Sounds are groups of the game's catalog (src/theroadragetrip/assets/audio/audio_catalog.json, all Stable Audio Open generated OGG); a 'sound' event names its group directly and plays one of its variations at random. Loops play a fixed variation (default the first), or with \"variation\": \"alternate\" a different one each time they (re)start. Ranges mirror audio.py's SPATIAL_RANGES_M: [full volume within, silent beyond] metres.",
+  "catalog": "../src/theroadragetrip/assets/audio/audio_catalog.json",
+  "buses": {
+    "Game": [
+      "vehicle",
+      "collision",
+      "taxi",
+      "passenger",
+      "gameplay",
+      "pedestrian",
+      "railway",
+      "station"
+    ],
+    "Environment": [
+      "ambient",
+      "weather"
+    ],
+    "UI": [
+      "ui"
+    ]
+  },
+  "events": {
+    "train_arrived": [
+      {
+        "group": "railway.train_brakes"
+      },
+      {
+        "group": "railway.train_doors",
+        "variation": 1,
+        "volume": 0.7
+      }
+    ],
+    "train_departed": [
+      {
+        "group": "railway.train_doors",
+        "variation": 0,
+        "volume": 0.7
+      },
+      {
+        "group": "railway.train_horn",
+        "volume": 0.8
+      }
+    ],
+    "vehicle.horn": [
+      {
+        "group": "vehicle.horn",
+        "volume": 0.45
+      }
+    ],
+    "pedestrian.footsteps": [
+      {
+        "group": "pedestrian.footsteps",
+        "volume": 0.5
+      }
+    ]
+  },
+  "ranges_m": {
+    "railway.train_horn": [
+      25.0,
+      400.0
+    ],
+    "railway.train_running": [
+      15.0,
+      200.0
+    ],
+    "railway.train_brakes": [
+      10.0,
+      150.0
+    ],
+    "railway.train_doors": [
+      2.5,
+      30.0
+    ],
+    "collision.vehicle": [
+      15.0,
+      250.0
+    ],
+    "station.ambience": [
+      15.0,
+      150.0
+    ],
+    "pedestrian.curse": [
+      3.0,
+      40.0
+    ],
+    "railway.announcement": [
+      60.0,
+      300.0
+    ]
+  },
+  "player_categories": [
+    "vehicle",
+    "collision",
+    "taxi",
+    "passenger",
+    "gameplay"
+  ],
+  "player_range_m": [
+    20.0,
+    300.0
+  ],
+  "loops": {
+    "engine": {
+      "group": "vehicle.engine_idle"
+    },
+    "damaged_steam": {
+      "group": "vehicle.damaged_steam"
+    },
+    "train_running": {
+      "group": "railway.train_running",
+      "positional": true
+    },
+    "city_day": {
+      "group": "ambient.city_day",
+      "variation": "alternate"
+    },
+    "city_night": {
+      "group": "ambient.city_night"
+    },
+    "rain": {
+      "group": "weather.rain",
+      "variation": 0
+    },
+    "rain_heavy": {
+      "group": "weather.rain",
+      "variation": 1
+    },
+    "wind": {
+      "group": "weather.wind",
+      "variation": 0
+    },
+    "wind_strong": {
+      "group": "weather.wind",
+      "variation": 1
+    },
+    "wet_tires": {
+      "group": "weather.wet_road",
+      "variation": 0
+    },
+    "wet_slush": {
+      "group": "weather.wet_road",
+      "variation": 1
+    },
+    "station_crowd": {
+      "group": "station.ambience",
+      "variation": 0,
+      "positional": true
+    },
+    "station_luggage": {
+      "group": "station.ambience",
+      "variation": 1,
+      "positional": true
+    }
+  }
+}

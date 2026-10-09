@@ -125,13 +125,13 @@ Use `m` for male voices or `en` for English. The script stores hashes based only
 
 ### 2. Run the Game
 ```bash
-# Recommended launcher (default area: Oulu)
+# Godot launcher: career, gig/city selection, settings, then the game
 make run
 
 # Start with DEBUG-level logging
 make run-debug
 
-# Or run as a module
+# Legacy Pygame client
 source .venv/bin/activate
 PYTHONPATH=src python -m theroadragetrip
 
@@ -229,16 +229,16 @@ Other common development commands are `make test`, `make compile`, and `make che
 
 ### Windows Release
 
-Push a version tag to build and publish a Windows package containing `RoadRageTrip.exe`:
+Run the Windows release workflow on the release branch to test the setup installer, then merge the branch and tag `master` to publish the Windows package:
 
 ```bash
-git tag v0.15.0alpha
-git push origin v0.15.0alpha
+git tag v0.16.0g-alpha
+git push origin v0.16.0g-alpha
 ```
 
-GitHub Actions builds the package on Windows with PyInstaller and attaches both `RoadRageTrip-windows-x64.zip` and `RoadRageTrip-Setup.exe` to the GitHub Release. Use the EXE installer for a normal Windows installation, or extract the zip and launch `RoadRageTrip.exe`; no Python installation is required.
+GitHub Actions builds the Godot game and bundled Python server on Windows, installs the setup EXE in a temporary directory for a smoke test, then attaches `RoadRageTrip-windows-x64.zip` and `RoadRageTrip-Setup.exe` to the GitHub Release. Use the EXE installer for a normal Windows installation, or extract the zip and launch `RoadRageTrip.exe`; no Python installation is required.
 
-Recorded game sounds are stored in `src/theroadragetrip/sounds/`. CC0 sounds require no attribution; the included `city-traffic-outdoor.wav` is CC BY 4.0. Attribution details are recorded in the sounds directory license file. Generated sound effects (Stable Audio Open) live in `src/theroadragetrip/assets/audio/`, catalogued in `audio_catalog.json`.
+Recorded sounds (the CC0 police siren, and the TTS chatter voices) are stored in `src/theroadragetrip/sounds/`; attribution is in that directory's license file. Generated sound effects (Stable Audio Open) live in `src/theroadragetrip/assets/audio/`, catalogued in `audio_catalog.json`.
 
 Map, timetable and weather data:
 

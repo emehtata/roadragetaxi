@@ -64,6 +64,13 @@ def parse_args(config=None, city_names=None, parser: Optional[argparse.ArgumentP
         help="Path to a local .osm.pbf file for --osm-source=pbf (default: assets/osm/finland-latest.osm.pbf)",
     )
 
+    p.add_argument(
+        "--train-timetable",
+        action=argparse.BooleanOptionalAction,
+        default=config.getboolean("game", "train_timetable", fallback=True) if config else True,
+        help="Trains run on the real Digitraffic timetable; off: at a fixed interval (default: config game.train_timetable)",
+    )
+
     # Auto-fetching nearby map tiles when the car approaches the bbox edge
     p.add_argument("--no-auto-fetch", dest="auto_fetch", action="store_false", default=map_config.getboolean("auto_fetch", fallback=True), help="Disable on-demand map expansion")
     p.add_argument(
