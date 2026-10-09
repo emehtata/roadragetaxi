@@ -384,6 +384,33 @@ Python tests: `SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy python -m pytest -q`
 (see `tests/test_client_server_integration.py`, `tests/test_slow_clients.py`
 and `tests/test_map_chunks.py`).
 
+## Windows release (`.github/workflows/windows-release.yml`)
+
+A `v*` tag (or a manual run, which only uploads artifacts) builds:
+
+```
+RoadRageTrip/
+  RoadRageTrip.exe, RoadRageTrip.pck       Godot export ("Windows Desktop", godot/export_presets.cfg)
+  server/RoadRageServer.exe                 PyInstaller of road_rage_server.py (the simulation, headless)
+  server/_internal/theroadragetrip/         its Python package and data: assets/, img/, sounds/
+```
+
+`godot/paths.gd` decides where things are: in the repo the package is
+`../src/theroadragetrip` and the server runs from `.venv`; exported
+(`OS.has_feature("template")`) the server is `server/RoadRageServer(.exe)`
+beside the game and the client reads its sounds, speech, rage faces and logo
+from the server's `_internal/theroadragetrip` - nothing is shipped twice.
+The workflow smoke-tests the server (`--list-cities`), exports with Godot
+4.7.2 and its Windows templates (cached), zips the folder, builds the Inno
+Setup installer (`installer/RoadRageTrip.iss`), and still builds the Pygame
+version as its own zip. The local `.osm.pbf` is not shipped (gitignored);
+releases read the map from Overpass.
+
+A local equivalent on Linux: `godot --headless --path godot --export-release
+"Linux" <dir>/RoadRageTrip.x86_64`, the PyInstaller command from the workflow
+(`:` instead of `;` in `--add-data`), and its `RoadRageServer` folder moved to
+`<dir>/server`.
+
 ## Measurements (Oulu, WSL2 on one machine; native Windows not measured)
 
 **Network change (phase 3), 30 Hz paced ticks:**
