@@ -8,7 +8,7 @@
 ## included (no per-frame polygon booleans).
 extends Node2D
 
-const BEAM := Color(0.27, 0.26, 0.22)  # near the lamps: a neutral, slightly warm white, added
+const BEAM := Color(0.34, 0.33, 0.28)  # near the lamps: a neutral, slightly warm white, added
 
 var level := 0.0  # Daylight.artificial: 0 by day .. 1 at night
 var view := Rect2()

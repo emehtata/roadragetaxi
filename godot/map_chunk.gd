@@ -745,8 +745,8 @@ func _draw_railings(node: Node2D) -> void:
 ## pool rather than white. (They used to be boolean-cut into disjoint pieces
 ## on a worker at dusk - up to 260 ms - and drawn as ~2,500 separate
 ## polygons: ~7 ms a night frame on llvmpipe.) Broken lamps are left out.
-const POOL_CORE := Color(0.34, 0.23, 0.08)  # added at the lamp: warm amber (godot-lights-01)
-const POOL_MID := Color(0.11, 0.075, 0.025)  # the inner ring: a soft shoulder
+const POOL_CORE := Color(0.39, 0.265, 0.092)  # added at the lamp: warm amber (godot-lights-01)
+const POOL_MID := Color(0.16, 0.11, 0.036)  # the inner ring: a soft shoulder
 const POOL_EDGE := Color(0, 0, 0)  # ... fading to nothing at the reach
 const POOL_STEPS := 16
 const POOL_INNER := 0.32  # the inner ring's share of the pool
