@@ -1941,7 +1941,7 @@ class TaxiManager:
         self.state = TaxiState.WAITING_FOR_PICKUP
         self.generate_offers(car.x, car.y, count=1)
         self.notification_msg = tr(self.language, "passenger_vomited_outside")
-        self.notification_timer = 5.0
+        self.notification_timer = 6.0  # the fare is over: long enough to read why the route is gone
         logger.info("Passenger left taxi after vomiting: passenger=%s", passenger.name)
         return passenger
 
