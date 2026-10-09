@@ -67,6 +67,8 @@ const GLOW_STEPS := 10
 const TAIL_GLOW := [Color(0.30, 0.03, 0.02), 0.9]  # added colour at the lamp, reach in metres
 const BRAKE_GLOW := [Color(0.65, 0.05, 0.03), 2.2]
 const REVERSE_GLOW := [Color(0.55, 0.55, 0.50), 4.5]
+const TAXI_SIGN_GLOW := [Color(0.35, 0.30, 0.05), 1.6]  # the free taxi's roof light, a small yellow halo
+var taxi_sign_on := true  # the taxi being drawn is free (its roof light on)
 const TRACK_STYLES := {  # render/roads.py draw_tire_tracks: [faint, dark, width m]
 	"rubber": [Color8(110, 110, 110), Color8(28, 28, 28), 0.24], "dirt": [Color8(150, 138, 118), Color8(105, 68, 38), 0.75],
 	"sand": [Color8(222, 208, 170), Color8(178, 158, 114), 0.75], "snow": [Color8(214, 226, 232), Color8(142, 169, 181), 0.75],
@@ -376,6 +378,12 @@ static func _right(heading: float) -> Vector2:
 
 ## Vehicle-local rectangle (Pygame's _vehicle_point convention: +long is
 ## forward, +lat is the vehicle's right side), as a polygon.
+## A quad across the car: `front_half` wide at `front`, `rear_half` at `rear`.
+static func _trapezoid(c: Vector2, f: Vector2, r: Vector2, front: float, rear: float, front_half: float, rear_half: float) -> PackedVector2Array:
+	return PackedVector2Array([c + f * front + r * front_half, c + f * front - r * front_half,
+		c + f * rear - r * rear_half, c + f * rear + r * rear_half])
+
+
 static func _rect(c: Vector2, f: Vector2, r: Vector2, front: float, rear: float, half_width: float) -> PackedVector2Array:
 	return PackedVector2Array([c + f * front + r * half_width, c + f * front - r * half_width,
 		c + f * rear - r * half_width, c + f * rear + r * half_width])
@@ -477,11 +485,21 @@ func _vehicle_body(c: Vector2, heading: float, length: float, width: float, colo
 			_poly(_rect(c, f, r, hl * 0.72, hl * 0.52, hw * 0.72), RS.TRUCK_WINDSHIELD)
 			_car_shapes.append(["line", c + f * hl * 0.20 - r * hw, c + f * hl * 0.20 + r * hw, _lit(Color8(35, 35, 35)), _px(2.0)])
 		_:
+			# A car from above: body, the roof in its own (darker) colour, the
+			# windshield sloping down to the bonnet, the smaller rear window,
+			# and on a taxi the roof light - lit while it is free.
 			_poly(_rect(c, f, r, hl, -hl, hw), color, RS.OUTLINE)
-			var cabin_hl := hl * 0.45
-			_poly(_rect(c, f, r, cabin_hl * 0.4, -cabin_hl * 0.8, hw * 0.75), RS.CABIN)
+			_poly(_trapezoid(c, f, r, hl * 0.42, hl * 0.12, hw * 0.86, hw * 0.72), RS.WINDSHIELD)
+			_poly(_rect(c, f, r, hl * 0.12, -hl * 0.42, hw * 0.74), color.darkened(0.12))
+			_poly(_trapezoid(c, f, r, -hl * 0.42, -hl * 0.62, hw * 0.72, hw * 0.80), RS.WINDSHIELD)
 			if is_taxi:
-				_poly(_rect(c, f, r, hl * 0.2, -hl * 0.2, hw * 0.4), RS.TAXI_SIGN, Color8(30, 30, 30))
+				var roof_light := _rect(c, f, r, -hl * 0.06, -hl * 0.22, hw * 0.42)
+				_poly(_rect(c, f, r, -hl * 0.04, -hl * 0.24, hw * 0.48), Color8(30, 30, 30))  # its frame, readable on a yellow roof
+				if engine_on and taxi_sign_on:
+					_lamp_polys.append([roof_light, RS.TAXI_SIGN])  # unshaded: it shines at night
+					lamp_glow(c - f * hl * 0.14, TAXI_SIGN_GLOW, light_level, glow_points, glow_colors, glow_triangles)
+				else:
+					_poly(roof_light, RS.TAXI_SIGN.darkened(0.45), Color8(30, 30, 30))
 	# Lamps (inset, sizes and colours as _draw_vehicle_lights, in metres).
 	var light_r := maxf(_px(1.2), width * 0.18)
 	var light_len := minf(width * 0.25, maxf(_px(1.0), light_r * 2.4))
@@ -725,8 +743,10 @@ func _draw() -> void:
 	var taxi_length: float = player.get("length_m", 4.4)
 	if player.get("engine_on", false):
 		_smoke(taxi_at, taxi.z, taxi_length, _clock, true)  # exhaust
+	taxi_sign_on = not (a.get("taxi", {}).get("current_passenger") is Dictionary)  # free: the roof light on
 	_vehicle(taxi_at, taxi.z, taxi_length, player.get("width_m", 1.8), RS.TAXI_BODY, "car", true,
 		player.get("engine_on", false), player.get("braking", false), is_reversing(player.get("speed", 0.0)), "", 0.0)
+	taxi_sign_on = true  # NPC taxis: lit while they drive
 	var smoke_timer: float = a.get("taxi", {}).get("taxi_smoke_timer", 0.0)
 	if smoke_timer > 0.0:
 		_smoke(taxi_at, taxi.z, taxi_length, 5.0 - smoke_timer)

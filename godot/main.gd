@@ -137,8 +137,12 @@ func _ready() -> void:
 				preload("res://buildings_3d.gd").FOV = float(args[i + 1])
 			"--compass":
 				$Ui/NavOverlay.show_compass = true
+			"--zoom":  # start zoomed by this factor (+/- keys), for screenshots
+				camera.zoom *= float(args[i + 1])
 			"--phone":  # start with the phone open, for screenshots
 				phone.call_deferred("open")
+			"--labels":  # start with labels: 1 streets, 2 everything (L), for screenshots
+				labels.mode = int(args[i + 1])
 			"--navigation":  # godot-final-04: start with the route shown (N), for screenshots
 				$Ui/NavOverlay.show_route = true
 			"--next-train":  # godot-final-07: start with the J board shown, for screenshots

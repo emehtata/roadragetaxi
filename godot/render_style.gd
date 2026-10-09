@@ -8,6 +8,7 @@ extends RefCounted
 # render/vehicles.py - _draw_vehicle, _draw_vehicle_lights, draw_car
 const OUTLINE := Color8(20, 20, 20)
 const CABIN := Color8(30, 35, 45)
+const WINDSHIELD := Color8(52, 74, 92)  # car glass from above: a dark blue sheen
 const TAXI_SIGN := Color8(240, 220, 20)
 const TAXI_BODY := Color8(235, 195, 30)
 const HEADLIGHT := Color8(255, 255, 230)
