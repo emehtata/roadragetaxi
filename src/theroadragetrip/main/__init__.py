@@ -188,7 +188,7 @@ from ..tile_streaming import PBF_TILE_SIZE_M, set_tile_size_m
 from ..traffic_world import TrafficWorld
 from ..world_cache import WorldCacheManager, clear_world_cache
 from ..performance import MAP_SYNC_BUDGET_S, FrameProfiler
-from ..weather import SPLASH_MIN_SPEED_MPS, WeatherSystem, WeatherType, weather_type_for_observation
+from ..weather import SPLASH_MIN_SPEED_MPS, WeatherSystem, WeatherType, raining_last_hour, weather_type_for_observation
 from .. import camera_focus as camera_focus_module
 from ..train_compositions import load_compositions
 from ..train_timetable import load_timetable
@@ -1574,6 +1574,9 @@ def main() -> None:
         if historical_weather:
             weather_history.request(game_calendar.current - timedelta(hours=6), game_calendar.current + timedelta(hours=48))
             weather_history.wait_idle(3.0)  # brief: the start forecast can show real weather
+        weather.settle_initial_wetness(raining_last_hour(  # the road as the last hour's weather left it
+            weather_history, game_calendar.current, lambda moment: typical_temperature(moment, sun_latitude),
+        ) if historical_weather else [])
         forecast_moments = [game_calendar.current + timedelta(hours=offset) for offset in range(0, 25, 6)]
         forecast_temperatures = [outside_temperature(moment) for moment in forecast_moments]
         forecast_conditions = weather.forecast(forecast_temperatures, 6.0 * 60.0 * 60.0)

@@ -44,7 +44,7 @@ from ..render import SCREEN_H, SCREEN_W
 from ..simulation import RAGE_SHOUT_DURATION_S, PlayerCommand, advance_simulation, apply_enter_exit_vehicle
 from ..physics import reset_trip, respawn_car
 from ..transport import Listener
-from ..weather import WeatherSystem, weather_type_for_observation
+from ..weather import WeatherSystem, raining_last_hour, weather_type_for_observation
 from ..weather_history import WeatherHistory, precipitation_from_observation
 from ..main.startup_screens import _clamp_start_datetime
 from ..osm import CACHE_DIR
@@ -236,7 +236,11 @@ class SimulationServer:
         if self.weather_history is not None:
             self.weather_history.request(self.calendar.current - timedelta(hours=6), self.calendar.current + timedelta(hours=48))
             self.weather_history.wait_idle(3.0)  # brief: the first hour can be the real weather
-        self._update_outside()
+        observed = self._update_outside()
+        if observed is not None:  # the first tick follows it; the start's weather is it already
+            self.world.weather.update(0.001, 0.0, outside_temperature_c=self.world.weather.outside_temperature_c,
+                                      observed=observed)
+        self.world.weather.settle_initial_wetness(self._raining_last_hour())
         self.start_forecast = self._forecast()
 
         self._on_foot = True
@@ -285,6 +289,12 @@ class SimulationServer:
 
         self._listener: Optional[Listener] = None
         self._running = False
+
+    def _raining_last_hour(self) -> list:
+        if self.weather_history is None:
+            return []
+        return raining_last_hour(self.weather_history, self.calendar.current,
+                                 lambda moment: typical_temperature(moment, self.calendar.latitude))
 
     def _forecast(self) -> list:
         """main()'s start-screen forecast: now and every 6 h for 24 h - the
