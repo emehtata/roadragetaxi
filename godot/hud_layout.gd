@@ -10,9 +10,11 @@ var offsets := {}  # panel name -> Vector2 from its default position
 var rects := {}  # panel name -> Rect2 where it was drawn last
 var _dragging := ""
 var _store := ConfigFile.new()
+var _persist := true  # false: never reads or writes the player's saved layout (tests, defaults)
 
 
 func _init(load_saved := true) -> void:
+	_persist = load_saved
 	if load_saved and _store.load(PATH) == OK:
 		for name in _store.get_section_keys("offsets") if _store.has_section("offsets") else []:
 			var value = _store.get_value("offsets", name)
@@ -68,6 +70,8 @@ func reset() -> void:
 
 
 func save() -> void:
+	if not _persist:
+		return
 	_store.clear()
 	for name in offsets:
 		_store.set_value("offsets", name, offsets[name])

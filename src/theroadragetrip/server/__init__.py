@@ -271,6 +271,7 @@ class SimulationServer:
         self._pending_cancels = 0
         self._pending_trip_resets = 0
         self._road_rage = None  # the active shout: {"text", "timer"}
+        self._paused = False  # the client says its phone or pause menu is open (main(): dt = 0)
         self._debug_snapshots: list = []  # F12: JSON paths to write on the next tick
         self._phone_requests: list = []  # edge-triggered like interacts: each one is applied once
 
@@ -428,6 +429,7 @@ class SimulationServer:
                         self._pending_trip_resets += 1
                     if phone is not None:
                         self._phone_requests.append(phone)
+                    self._paused = bool(message.get("paused", False))  # the client's phone / pause menu
                     snapshot = message.get("debug_snapshot")  # F12 in the client: Pygame's screenshot JSON
                     if isinstance(snapshot, str) and snapshot.endswith(".json"):
                         self._debug_snapshots.append(snapshot)
@@ -498,6 +500,9 @@ class SimulationServer:
         with self._command_lock:
             phone_requests, self._phone_requests = self._phone_requests, []
         phone_results = [self._apply_phone_request(request) for request in phone_requests]
+        if self._paused:  # main(): the phone (or the pause menu) is open - the world waits
+            self._broadcast_state(events=phone_results + self.audio.take_events())
+            return
 
         if interact:
             self._on_foot = apply_enter_exit_vehicle(

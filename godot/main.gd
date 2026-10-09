@@ -136,6 +136,8 @@ func _ready() -> void:
 				preload("res://buildings_3d.gd").FOV = float(args[i + 1])
 			"--compass":
 				$Ui/NavOverlay.show_compass = true
+			"--phone":  # start with the phone open, for screenshots
+				phone.call_deferred("open")
 			"--navigation":  # godot-final-04: start with the route shown (N), for screenshots
 				$Ui/NavOverlay.show_route = true
 			"--next-train":  # godot-final-07: start with the J board shown, for screenshots
@@ -468,6 +470,7 @@ func _present(state: Dictionary) -> void:
 	map_layer.set_flash(state.get("speed_camera_flash"))
 	labels.update_view(get_viewport().get_canvas_transform(), map_layer.chunk_count(), level != 0)
 	map_layer.set_obstacles(state.get("fallen_trees", []), state.get("knocked_posts", []))
+	phone.clock_text = hud._clock.text.get_slice(" ", 1) if hud._clock.text.contains(" ") else hud._clock.text
 	phone.show_phone(state.get("phone", {}))
 	var target: Dictionary = entities.current_target(state)
 	var target_screen := Vector2.ZERO
@@ -623,6 +626,7 @@ func send(controls: Dictionary) -> void:
 	_respawn_pending = false
 	_cancel_ride_pending = false
 	_reset_trip_pending = false
+	sim.paused = phone.is_open  # main(): the world waits while the phone is up
 	sim.send_command(command)
 
 

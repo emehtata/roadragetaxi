@@ -562,3 +562,22 @@ def test_f12_debug_snapshot_is_written_by_the_server(tmp_path, monkeypatch):
     server.tick(1 / 30)
     data = json.loads(path.read_text())
     assert data and isinstance(data, dict)
+
+
+def test_a_paused_client_stops_the_world_but_still_gets_its_answers(tmp_path, monkeypatch):
+    """main(): dt = 0 while the phone is open - the server's tick with the
+    client's `paused` keeps the clock, the taxi and the NPCs where they are,
+    still answering phone requests and sending state."""
+    server = _build_server(tmp_path, monkeypatch)
+    server.tick(1 / 30)
+    before = (server.calendar.current, server._tick, server.world.traffic_mgr.sim_time)
+    server._paused = True
+    server._phone_requests.append({"action": "accept", "item_id": "nope", "request_id": 7})
+    sent = []
+    monkeypatch.setattr(server, "_broadcast_state", lambda **kwargs: sent.append(kwargs))
+    server.tick(1 / 30)
+    assert (server.calendar.current, server._tick, server.world.traffic_mgr.sim_time) == before
+    assert sent and sent[0]["events"][0]["request_id"] == 7 and sent[0]["events"][0]["ok"] is False
+    server._paused = False
+    server.tick(1 / 30)
+    assert server.calendar.current > before[0]
