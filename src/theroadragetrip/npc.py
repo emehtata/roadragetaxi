@@ -3449,6 +3449,12 @@ class NPCVehicleManager:
                     obstacle.car.x, obstacle.car.y, obstacle.car.heading = other_previous
                 else:
                     obstacle.x, obstacle.y, obstacle.heading = other_previous
+                    # The taxi's pose is back where it was clear: that is its
+                    # previous pose now. The undone (penetrating) one stored
+                    # at this update's start would put it back into the wreck
+                    # on the next hit - colliding every tick, stuck until it
+                    # reversed far enough away.
+                    self._previous_player_pose = other_previous
             if obstacle_is_npc:
                 obstacle.car.speed = 0.0
             elif hasattr(obstacle, "speed"):

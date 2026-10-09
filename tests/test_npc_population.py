@@ -1512,3 +1512,32 @@ def test_v12_failed_trip_start_backs_off_instead_of_retrying_every_tick():
     _finish_route_jobs(manager, *_CENTER, residents, traffic_world)
     assert manager.route_job_stats["failed"] == 1
     assert manager._trip_retry_after_tick[vehicle.vehicle_id] > manager._population_tick_number
+
+
+def test_a_taxi_rolled_back_from_a_wreck_is_not_put_back_into_it():
+    """The taxi hits a crashed car and is rolled back to its clear pose; on
+    the next push forward it must be rolled back there again - not to the
+    undone penetrating pose (that stuck it in the wreck, crashing every tick,
+    until it reversed far enough)."""
+    residents = ResidentManager()
+    manager = NPCVehicleManager(target_count=1)
+    wreck, _ = _driving_vehicle(residents, 0.0, 0.0)
+    wreck.state = NPCState.CRASHED
+    manager.vehicles.append(wreck)
+    pedestrian_mgr = PedestrianManager([], target_count=0)
+    taxi = Car(x=-6.0, y=0.0, heading=0.0, speed=5.0)
+
+    def tick(new_x):
+        previous = manager._previous_player_pose  # NPCVehicleManager.update's bookkeeping
+        taxi.x = new_x
+        manager._previous_player_pose = (taxi.x, taxi.y, taxi.heading)
+        return manager._check_vehicle_collision(
+            wreck, [taxi], residents, pedestrian_mgr, sim_time=50.0,
+            previous_vehicle_pose=(0.0, 0.0, 0.0), previous_obstacle_poses={id(taxi): previous} if previous else {})
+
+    contact = -(wreck.length_m + taxi.length_m) / 2.0  # bumpers touch with the taxi's centre here
+    assert not tick(contact - 0.1)
+    assert tick(contact + 0.1) and taxi.x == contact - 0.1  # into the wreck: back to the clear pose
+    assert tick(contact + 0.05)  # throttle still held: into it again ...
+    assert taxi.x == contact - 0.1  # ... and back to the clear pose, not the undone one inside the wreck
+    assert not tick(contact - 0.5)  # reversing away is free at once
