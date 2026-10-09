@@ -118,7 +118,8 @@ func setup(message: Dictionary, origin: Vector2) -> void:
 	_px_layers.append(canopy_supports)
 	_canopy_layers.append(canopy_supports)
 	if not message.get("curbs", []).is_empty() or not message.get("crossings", []).is_empty() or not message.get("speed_bumps", []).is_empty():
-		_px_layers.append(_add_layer(8, func(node: Node2D): Detail.draw_road_features(self, node)))
+		# Under the light pools (6): crossings and kerbs are lit like the road.
+		_px_layers.append(_add_layer(5, func(node: Node2D): Detail.draw_road_features(self, node)))
 	if not message.get("canopies", []).is_empty():  # z11: above the vehicles; then rail bridges, then (entities) trains
 		var canopy_roofs := _add_layer(11, func(node: Node2D): Detail.draw_canopies(self, node))
 		_px_layers.append(canopy_roofs)
@@ -745,12 +746,12 @@ func _draw_railings(node: Node2D) -> void:
 ## pool rather than white. (They used to be boolean-cut into disjoint pieces
 ## on a worker at dusk - up to 260 ms - and drawn as ~2,500 separate
 ## polygons: ~7 ms a night frame on llvmpipe.) Broken lamps are left out.
-const POOL_CORE := Color(0.31, 0.295, 0.26)  # added at the lamp: LED, near white with a touch of warmth (~4000 K)
-const POOL_MID := Color(0.13, 0.124, 0.108)  # the inner ring: a soft shoulder
+const POOL_CORE := Color(0.26, 0.24, 0.195)  # added at the lamp: LED, near white, a little warm (~3500 K)
+const POOL_MID := Color(0.075, 0.068, 0.054)  # the inner ring: a quick falloff, no wide haze
 const POOL_EDGE := Color(0, 0, 0)  # ... fading to nothing at the reach
 const POOL_STEPS := 16
-const POOL_INNER := 0.32  # the inner ring's share of the pool
-const POOL_SPREAD := 1.15  # the pool's half-length along the road, x reach: neighbouring lamps (12 m apart) overlap
+const POOL_INNER := 0.42  # the inner ring's share of the pool
+const POOL_SPREAD := 1.0  # the pool's half-length along the road, x reach: neighbouring lamps (12 m apart) overlap
 const EMISSIVE := preload("res://emissive.tres")  # unshaded: lamps, signals and boards glow through the night
 
 

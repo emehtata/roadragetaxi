@@ -27,7 +27,7 @@ func _make_pool_group() -> void:
 	# additively. It was a CanvasGroup (paint, then add the union once):
 	# its screen-sized copy cost ~19 ms a frame at night on llvmpipe.
 	_pool_group = Node2D.new()
-	_pool_group.z_index = 21
+	_pool_group.z_index = 6  # under the buildings (7): lamps light the street, not the roofs above them
 	_pool_group.visible = false
 	add_child(_pool_group)
 
