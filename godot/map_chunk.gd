@@ -750,6 +750,7 @@ const POOL_MID := Color(0.16, 0.11, 0.036)  # the inner ring: a soft shoulder
 const POOL_EDGE := Color(0, 0, 0)  # ... fading to nothing at the reach
 const POOL_STEPS := 16
 const POOL_INNER := 0.32  # the inner ring's share of the pool
+const POOL_SPREAD := 1.15  # the pool's half-length along the road, x reach: neighbouring lamps (12 m apart) overlap
 const EMISSIVE := preload("res://emissive.tres")  # unshaded: lamps, signals and boards glow through the night
 
 
@@ -789,7 +790,7 @@ static func pool_fans(positions: PackedVector2Array, lights: Array, broken: Pack
 		for ring in [POOL_INNER, 1.0]:
 			for k in POOL_STEPS:
 				var angle := TAU * k / POOL_STEPS
-				points.append(middle + (along * cos(angle) * 0.78 + across * sin(angle) * 0.62) * reach * ring)
+				points.append(middle + (along * cos(angle) * 0.8 + across * sin(angle) * POOL_SPREAD) * reach * ring)
 		for k in POOL_STEPS:
 			var next := (k + 1) % POOL_STEPS
 			var inner := centre + 1

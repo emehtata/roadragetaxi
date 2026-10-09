@@ -1586,7 +1586,7 @@ func test_performance_paths() -> void:
 	var far_point := 0.0
 	for k in range(MapChunk.POOL_STEPS + 1, 2 * MapChunk.POOL_STEPS + 1):
 		far_point = maxf(far_point, fans[0][k].length())
-	check(far_point <= 14.0 and far_point > 10.0, "each within its lamp's reach")
+	check(far_point <= 14.0 * (MapChunk.POOL_SPREAD + 0.25) and far_point > 14.0, "each reaching along its road past the lamp's reach, so neighbours overlap")
 	var broken: Array = MapChunk.pool_fans(positions, lights, PackedInt32Array([1]))
 	check(broken[0].size() == 2 * (2 * MapChunk.POOL_STEPS + 1) and not broken[0].has(Vector2(12, 0)), "a broken lamp leaves a dark gap")
 	var chunk_source: String = (MapChunk as Script).source_code
