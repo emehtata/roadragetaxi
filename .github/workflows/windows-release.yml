@@ -135,8 +135,11 @@ jobs:
           }
           $cities = & (Join-Path $install "server/RoadRageServer.exe") --list-cities | Select-Object -Last 1
           if (-not ($cities | ConvertFrom-Json).Count) { throw "installed server lists no cities" }
-          $startup = & (Join-Path $install "RoadRageTrip.exe") --headless --quit-after 10 2>&1
-          if ($LASTEXITCODE -ne 0 -or -not ($startup -match 'startup: \d+ cities from the simulation \(release\)')) { throw "installed game did not start: $startup" }
+          $log = Join-Path $env:RUNNER_TEMP "godot-startup.log"
+          $game = Start-Process (Join-Path $install "RoadRageTrip.exe") -ArgumentList "--headless", "--quit-after", "10", "--log-file", $log -Wait -PassThru
+          if ($game.ExitCode -ne 0 -or -not (Test-Path $log) -or -not ((Get-Content $log -Raw) -match 'startup: \d+ cities from the simulation \(release\)')) {
+            throw "installed game did not start: $((Get-Content $log -Raw -ErrorAction SilentlyContinue))"
+          }
 
       - name: Upload the builds
         uses: actions/upload-artifact@v4
