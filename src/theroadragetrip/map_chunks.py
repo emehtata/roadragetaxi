@@ -21,7 +21,7 @@ from .geo import dist_point_to_segment
 from .map_level import SURFACE_MAP_LEVELS
 from .protocol import PROTOCOL_VERSION, _line, encode, traffic_light_render_point
 
-_KINDS = ("roads", "railways", "waters", "buildings", "taxi_stands", "fuel_stations", "traffic_lights", "roadworks",
+_KINDS = ("roads", "railways", "waters", "water_lines", "buildings", "taxi_stands", "fuel_stations", "traffic_lights", "roadworks",
           "trees", "construction_fences", "bollards", "railings", "scenery_objects", "street_lights",
           # godot-16 (static_world.py)
           "building_styles", "canopies", "rail_bridges", "rail_decks", "guardrails", "landuse", "traffic_islands",
@@ -107,8 +107,14 @@ class ChunkIndex:
             if len(rail.points_m) >= 2:  # a bridge track is drawn above the vehicles (render/roads.py)
                 self._add("rail_bridges" if rail.is_bridge else "railways", rail.points_m, _line(rail.points_m))
         for water in world.waters:
-            if len(getattr(water, "points_m", ())) >= 3:
-                self._add("waters", water.points_m, _line(water.points_m))
+            # render/waters.py: only a closed water area is filled; a river or
+            # stream line (Oulujoki's centre line) is drawn as a line, 3 m wide
+            # - filled, it flooded the city.
+            points = getattr(water, "points_m", ())
+            if getattr(water, "is_polygon", False) and len(points) >= 4 and points[0] == points[-1]:
+                self._add("waters", points, _line(points))
+            elif len(points) >= 2:
+                self._add("water_lines", points, _line(points))
         static_world.inherit_part_colours(world.buildings)
         for building in world.buildings:
             if len(building.points_m) < 3:

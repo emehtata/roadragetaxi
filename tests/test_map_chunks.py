@@ -264,3 +264,18 @@ def test_garage_crossings_and_bumps_are_not_surface_markings():
     chunk = map_chunks.ChunkIndex(world, size=500.0).message("0_0")
     assert [c[:2] for c in chunk["crossings"]] == [[50.0, 0.0], [100.0, 0.0]]  # the street's and the ramp mouth's
     assert [b[:2] for b in chunk["speed_bumps"]] == [[20.0, 0.1]]
+
+
+def test_a_river_line_is_a_line_not_a_filled_area():
+    """render/waters.py fills only closed water areas: Oulujoki's centre line
+    (waterway=river, open) sent as an area flooded the city."""
+    from types import SimpleNamespace
+
+    from theroadragetrip.map_chunks import ChunkIndex
+
+    lake = SimpleNamespace(points_m=[(10.0, 10.0), (60.0, 10.0), (60.0, 60.0), (10.0, 10.0)], is_polygon=True)
+    river = SimpleNamespace(points_m=[(5.0, 5.0), (80.0, 30.0), (150.0, 90.0)], is_polygon=False)
+    world = SimpleNamespace(ways=[], railways=[], waters=[lake, river], buildings=[])
+    chunks = ChunkIndex(world)._chunks.values()
+    assert sum(len(c["waters"]) for c in chunks) == 1
+    assert sum(len(c["water_lines"]) for c in chunks) >= 1

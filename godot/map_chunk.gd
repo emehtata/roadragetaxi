@@ -172,7 +172,7 @@ func setup(message: Dictionary, origin: Vector2) -> void:
 func _compact() -> void:
 	for road in _data.get("roads", []):
 		road["points"] = _points(road["points"])
-	for key in ["waters", "buildings", "parking", "curbs", "construction_fences", "railways", "rail_bridges", "rail_decks", "canopies"]:
+	for key in ["waters", "water_lines", "buildings", "parking", "curbs", "construction_fences", "railways", "rail_bridges", "rail_decks", "canopies"]:
 		var lines: Array = _data.get(key, [])
 		for i in lines.size():
 			lines[i] = _points(lines[i])
@@ -202,7 +202,7 @@ func _clip_to_bounds() -> void:
 		var z := clampi(int(road.get("layer", 0)), 0, BRIDGE_Z_MAX) + 1
 		if _roads_by_z.has(z):
 			_roads_by_z[z].append(road)
-	for key in ["railways", "rail_bridges"]:
+	for key in ["railways", "rail_bridges", "water_lines"]:
 		var pieces: Array = []
 		for line in _data.get(key, []):
 			for piece in Geometry2D.intersect_polyline_with_polygon(line, _bounds):
@@ -579,6 +579,10 @@ func _draw() -> void:
 		var polygon := _points(water)
 		if polygon.size() >= 3 and not Geometry2D.triangulate_polygon(polygon).is_empty():
 			draw_colored_polygon(polygon, water_color)
+	for line in _data.get("water_lines", []):  # render/waters.py: a stream or river line, 3 m wide
+		var points := _points(line)
+		if points.size() >= 2:
+			draw_polyline(points, water_color, 3.0)
 
 
 func _draw_roads(z: int, node: Node2D) -> void:
