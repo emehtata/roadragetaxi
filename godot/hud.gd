@@ -266,7 +266,7 @@ static func values(state: Dictionary, toggles := {}, language := "en") -> Dictio
 			"WALKING":
 				text["fare"] = T.text("walking_taxi", language, "%s is walking to the taxi") % who
 			"DROPOFF":
-				text["fare"] = T.text("drive_to", language, "Drive %s to %s") % [who, passenger.get("dropoff", {}).get("address", "?")] + fare_details(taxi)
+				text["fare"] = T.text("drive_to", language, "Drive %s to %s") % [who, passenger.get("dropoff", {}).get("address", "?")] + fare_details(taxi, language)
 			_:
 				text["fare"] = who
 	text["notice"] = str(taxi.get("notification_msg", "")) if taxi.get("notification_timer", 0.0) > 0.0 else ""
@@ -299,7 +299,7 @@ static func values(state: Dictionary, toggles := {}, language := "en") -> Dictio
 ## A server speech line: "<name or Driver/Passenger>: <text>" for its
 ## duration in real seconds; a later one replaces it. No text: no subtitle.
 func show_subtitle(event: Dictionary) -> void:
-	var line := subtitle_text(event)
+	var line := subtitle_text(event, language)
 	if line == "":
 		return
 	_subtitle.text = line
@@ -309,12 +309,12 @@ func show_subtitle(event: Dictionary) -> void:
 	_subtitle.visible = true
 
 
-static func subtitle_text(event: Dictionary) -> String:
+static func subtitle_text(event: Dictionary, language := "en") -> String:
 	var text = event.get("text")
 	if typeof(text) != TYPE_STRING or text == "":
 		return ""
 	var name = event.get("speaker_name")
-	var speaker: String = name if typeof(name) == TYPE_STRING and name != "" else ("Passenger" if event.get("speaker") == "passenger" else "Driver")
+	var speaker: String = name if typeof(name) == TYPE_STRING and name != "" else (T.text("passenger", language, "Passenger") if event.get("speaker") == "passenger" else T.text("driver", language, "Driver"))
 	return "%s: %s" % [speaker, text]
 
 
@@ -381,15 +381,15 @@ static func summary_text(state: Dictionary, language := "en") -> String:
 ## render/hud.py's mission bar while driving a fare: elapsed time, then the
 ## meter, its distance and the passenger's happiness once the meter runs
 ## (the server sends those null before). Missing or malformed values are left out.
-static func fare_details(taxi: Dictionary) -> String:
+static func fare_details(taxi: Dictionary, language := "en") -> String:
 	var parts := []
 	var numeric := func(key): return typeof(taxi.get(key)) in [TYPE_INT, TYPE_FLOAT]
 	if numeric.call("elapsed_time"):
 		parts.append("%.0f s" % taxi["elapsed_time"])
 	if numeric.call("live_fare_cents"):
-		parts.append("meter %.2f €" % (int(taxi["live_fare_cents"]) / 100.0))
+		parts.append(T.text("meter", language, "meter %.2f €") % (int(taxi["live_fare_cents"]) / 100.0))
 	if numeric.call("fare_distance_m"):
 		parts.append("%.2f km" % (taxi["fare_distance_m"] / 1000.0))
 	if numeric.call("passenger_happiness"):
-		parts.append("happiness %d%%" % roundi(taxi["passenger_happiness"]))
+		parts.append(T.text("happiness", language, "happiness %d%%") % roundi(taxi["passenger_happiness"]))
 	return "" if parts.is_empty() else " · " + " · ".join(parts)
