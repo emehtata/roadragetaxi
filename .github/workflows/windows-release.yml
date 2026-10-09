@@ -123,6 +123,21 @@ jobs:
           choco install innosetup --no-progress --yes
           & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" installer/RoadRageTrip.iss
 
+      - name: Smoke-test the setup installer
+        shell: pwsh
+        run: |
+          $install = Join-Path $env:RUNNER_TEMP "RoadRageTripSmoke"
+          $setup = (Resolve-Path dist/RoadRageTrip-Setup.exe).Path
+          $result = Start-Process $setup -ArgumentList "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/DIR=$install" -Wait -PassThru
+          if ($result.ExitCode -ne 0) { throw "setup exited with $($result.ExitCode)" }
+          foreach ($file in @("RoadRageTrip.exe", "RoadRageTrip.pck", "server/RoadRageServer.exe", "server/_internal/theroadragetrip/img/theroadragetrip_1672_941.png", "server/_internal/theroadragetrip/assets/audio/audio_catalog.json")) {
+            if (-not (Test-Path (Join-Path $install $file))) { throw "installed file missing: $file" }
+          }
+          $cities = & (Join-Path $install "server/RoadRageServer.exe") --list-cities | Select-Object -Last 1
+          if (-not ($cities | ConvertFrom-Json).Count) { throw "installed server lists no cities" }
+          $startup = & (Join-Path $install "RoadRageTrip.exe") --headless --quit-after 10 2>&1
+          if ($LASTEXITCODE -ne 0 -or -not ($startup -match 'startup: \d+ cities from the simulation \(release\)')) { throw "installed game did not start: $startup" }
+
       - name: Upload the builds
         uses: actions/upload-artifact@v4
         with:
