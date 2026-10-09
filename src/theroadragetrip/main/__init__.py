@@ -1062,6 +1062,9 @@ def _load_world(
         transformer_to_ll = None
         logger.debug("pyproj not available; lat/lon display disabled")
 
+    from ..static_world import inherit_part_colours
+    inherit_part_colours(buildings)  # a building:part takes its colour-named building's colour
+
     # Auto fetch manager (background)
     on_load_progress(0.97, "Starting game...")
     auto_fetch_manager = AutoFetchManager(

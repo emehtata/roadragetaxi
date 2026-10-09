@@ -109,6 +109,7 @@ class ChunkIndex:
         for water in world.waters:
             if len(getattr(water, "points_m", ())) >= 3:
                 self._add("waters", water.points_m, _line(water.points_m))
+        static_world.inherit_part_colours(world.buildings)
         for building in world.buildings:
             if len(building.points_m) < 3:
                 continue

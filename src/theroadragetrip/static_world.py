@@ -129,7 +129,7 @@ def building_style(building) -> list:
     category 1 house, 2 commercial, 0 other (the window rules)."""
     from .render import buildings as rb
 
-    named = rb._building_colors_from_name(getattr(building, "name", None))
+    named = rb._building_colors_from_name(getattr(building, "colour_name", None) or getattr(building, "name", None))
     if named is not None:
         wall, roof = named
     else:
@@ -143,6 +143,29 @@ def building_style(building) -> list:
             [[round(x, 1), round(y, 1)] for x, y in getattr(building, "entrances", ())],
             _rgb(wall), rb._building_window_story_count(building),
             1 if rb._building_is_house(building) else 2 if rb._building_is_commercial(building) else 0]
+
+
+def inherit_part_colours(buildings) -> int:
+    """A building:part (no building type of its own, no name) inside a
+    building whose name names a colour takes that name for its colour
+    (`colour_name`): Valkealinnantalo's taller unnamed part otherwise
+    covered its white roof with a palette brown. Returns how many."""
+    from .geo import point_in_polygon
+    from .render import buildings as rb
+
+    named = [b for b in buildings if len(b.points_m) >= 3 and rb._building_colors_from_name(getattr(b, "name", None))]
+    count = 0
+    for part in buildings:
+        if getattr(part, "name", None) or getattr(part, "building_type", None) is not None or len(part.points_m) < 3:
+            continue
+        cx, cy = building_owner(part)
+        for parent in named:
+            minx, miny, maxx, maxy = parent.bbox
+            if minx <= cx <= maxx and miny <= cy <= maxy and point_in_polygon(cx, cy, parent.points_m):
+                part.colour_name = parent.name
+                count += 1
+                break
+    return count
 
 
 def building_owner(building):
