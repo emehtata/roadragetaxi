@@ -1231,6 +1231,8 @@ func test_static_world() -> void:
 	var beams := EntityLayer2.beam_polygons(Vector2.ZERO, 0.0, 1.8, 15.0)
 	check(beams.size() == 4 and is_equal_approx(beams[0][3].x, 15.0) and is_equal_approx(beams[0][3].y, 3.0), "a beam reaches 15 m ahead, its tip shifted right")
 	check(is_equal_approx(EntityLayer2.beam_polygons(Vector2.ZERO, 0.0, 1.8, 45.0)[2][3].x, 45.0), "long beams reach 45 m")
+	check(EntityLayer2.beam_length(false, false) == 45.0 and EntityLayer2.beam_length(true, false) == 15.0 and EntityLayer2.beam_length(false, true) == 15.0, "high beam on a dark road, dipped by street lights and oncoming traffic")
+	check(not FileAccess.get_file_as_string("res://entity_layer.gd").contains("if vehicle[3] and not lamp_near"), "the taxi gets the high beam too")
 	var car := [Vector2.ZERO, 0.0, 1.8, true]
 	check(EntityLayer2.oncoming(car, [car, [Vector2(30, 0), PI, 1.8, true]]), "a car 30 m ahead coming the other way dips the beams")
 	check(not EntityLayer2.oncoming(car, [car, [Vector2(30, 0), 0.0, 1.8, true]]), "one going the same way doesn't")

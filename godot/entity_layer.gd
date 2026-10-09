@@ -281,12 +281,17 @@ func headlight_beams() -> Array:
 		var c: Vector2 = vehicle[0]
 		if not shown.has_point(c):
 			continue
-		var length := 15.0
-		if vehicle[3] and not lamp_near.call(c, 22.0) and not oncoming(vehicle, vehicles):
-			length = 45.0
+		var length := beam_length(lamp_near.call(c, 22.0), oncoming(vehicle, vehicles))
 		polygons.append_array(beam_polygons(c, vehicle[1], maxf(_px(3.0), vehicle[2]), length))
 		drawn += 1
 	return polygons
+
+
+## Automatic high beam, the taxi's as every NPC's (Pygame gives it to NPCs
+## only): 45 m on a dark road, dipped to 15 m within 22 m of a street
+## light or with a vehicle coming the other way.
+static func beam_length(near_street_light: bool, has_oncoming: bool) -> float:
+	return 15.0 if near_street_light or has_oncoming else 45.0
 
 
 ## Another vehicle within 45 m ahead, heading the other way (Pygame's has_oncoming_vehicle).
