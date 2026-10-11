@@ -68,6 +68,19 @@ const TAIL_GLOW := [Color(0.30, 0.03, 0.02), 0.9]  # added colour at the lamp, r
 const BRAKE_GLOW := [Color(0.65, 0.05, 0.03), 2.2]
 const REVERSE_GLOW := [Color(0.55, 0.55, 0.50), 4.5]
 const TAXI_SIGN_GLOW := [Color(0.35, 0.30, 0.05), 1.6]  # the roof light during a fare, a small yellow halo
+var body_style := 0  # an NPC car's body (CAR_SHAPES), from its id: the same car keeps its look
+# Car bodies from above, in half-lengths from the centre (+ front): windshield
+# front, roof front, roof rear, rear window rear, roof half-width, an extra.
+const CAR_SHAPES := [
+	[0.42, 0.12, -0.42, -0.62, 0.74, ""],  # sedan (the taxi)
+	[0.40, 0.10, -0.58, -0.76, 0.76, ""],  # hatchback: the roof runs far back
+	[0.42, 0.12, -0.74, -0.88, 0.76, "rails"],  # estate: a long roof, roof rails
+	[0.40, 0.16, -0.66, -0.80, 0.80, "rails"],  # SUV: big, boxy roof
+	[0.46, 0.20, -0.16, -0.24, 0.76, "bed"],  # pickup: a short cab, an open bed
+	[0.18, -0.06, -0.36, -0.52, 0.64, "stripes"],  # sports coupe: long bonnet, small cabin
+	[0.36, 0.06, -0.46, -0.66, 0.76, ""],  # city car
+]
+const VAN_SHAPE := [0.78, 0.56, -0.96, -0.96, 0.84, "door"]  # a van: short nose, one long roof
 var taxi_sign_on := false  # the taxi being drawn has a fare on (its roof light lit)
 const TRACK_STYLES := {  # render/roads.py draw_tire_tracks: [faint, dark, width m]
 	"rubber": [Color8(110, 110, 110), Color8(28, 28, 28), 0.24], "dirt": [Color8(150, 138, 118), Color8(105, 68, 38), 0.75],
@@ -531,9 +544,29 @@ func _vehicle_body(c: Vector2, heading: float, length: float, width: float, colo
 			# windshield sloping down to the bonnet, the smaller rear window,
 			# and on a taxi the roof light - lit while a fare is on.
 			_poly(_rect(c, f, r, hl, -hl, hw), color, RS.OUTLINE)
-			_poly(_trapezoid(c, f, r, hl * 0.42, hl * 0.12, hw * 0.86, hw * 0.72), RS.WINDSHIELD)
-			_poly(_rect(c, f, r, hl * 0.12, -hl * 0.42, hw * 0.74), color.darkened(0.12))
-			_poly(_trapezoid(c, f, r, -hl * 0.42, -hl * 0.62, hw * 0.72, hw * 0.80), RS.WINDSHIELD)
+			var shape: Array = VAN_SHAPE if kind == "van" else CAR_SHAPES[0 if is_taxi else body_style % CAR_SHAPES.size()]
+			var glass_front: float = shape[0]
+			var roof_front: float = shape[1]
+			var roof_rear: float = shape[2]
+			var glass_rear: float = shape[3]
+			var roof_half: float = shape[4]
+			_poly(_trapezoid(c, f, r, hl * glass_front, hl * roof_front, hw * 0.86, hw * roof_half), RS.WINDSHIELD)
+			_poly(_rect(c, f, r, hl * roof_front, hl * roof_rear, hw * roof_half), color.darkened(0.12))
+			if glass_rear < roof_rear:
+				_poly(_trapezoid(c, f, r, hl * roof_rear, hl * glass_rear, hw * roof_half, hw * minf(roof_half + 0.08, 0.86)), RS.WINDSHIELD)
+			match shape[5]:
+				"bed":  # a pickup's open load bed behind the cab
+					_poly(_rect(c, f, r, hl * (glass_rear - 0.06), -hl * 0.92, hw * 0.8), color.darkened(0.35), color.darkened(0.55))
+				"rails":  # roof rails: an estate or an SUV
+					for side: float in [1.0, -1.0]:
+						_car_shapes.append(["line", c + f * hl * roof_front + r * hw * roof_half * 0.82 * side,
+							c + f * hl * roof_rear + r * hw * roof_half * 0.82 * side, _lit(color.darkened(0.5)), maxf(_px(1.0), hw * 0.08)])
+				"stripes":  # a sports car's bonnet stripes
+					for side: float in [1.0, -1.0]:
+						_car_shapes.append(["line", c + f * hl * 0.98 + r * hw * 0.18 * side,
+							c + f * hl * glass_front + r * hw * 0.18 * side, _lit(color.lightened(0.55)), maxf(_px(1.0), hw * 0.12)])
+				"door":  # a van's sliding door seam
+					_car_shapes.append(["line", c + f * hl * 0.1 + r * hw, c - f * hl * 0.35 + r * hw, _lit(color.darkened(0.45)), maxf(_px(1.0), hw * 0.06)])
 			if is_taxi:
 				var roof_light := _rect(c, f, r, -hl * 0.06, -hl * 0.22, hw * 0.42)
 				_poly(_rect(c, f, r, -hl * 0.04, -hl * 0.24, hw * 0.48), Color8(30, 30, 30))  # its frame, readable on a yellow roof
@@ -818,6 +851,7 @@ func _draw() -> void:
 		var c := Vector2(p.x, p.y)
 		if not view_rect.has_point(c):
 			continue
+		body_style = absi(hash(npc["id"]))  # its own body, every frame the same
 		_vehicle(c, p.z, npc["length_m"], npc["width_m"], _rgb(npc["color"]), npc.get("vehicle_type", "car"),
 			npc.get("is_taxi", false), npc.get("state", "") != "PARKED", npc.get("braking", false), is_reversing(npc.get("speed", 0.0)),
 			npc.get("turn_signal", ""), npc.get("turn_signal_elapsed", 0.0), npc.get("fallen", false))
