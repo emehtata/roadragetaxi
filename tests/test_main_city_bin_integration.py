@@ -31,6 +31,10 @@ def _build_args(monkeypatch, argv):
 
 
 def _load_sample_world(monkeypatch, tmp_path, city_name, extra_args=("--use-prebuilt-roads",)):
+    # The real binary (assets/roads/*.bin) is built locally and gitignored:
+    # these tests are about _load_world's wiring, so the city "has" one.
+    real_available = main_module.city_bin_available
+    monkeypatch.setattr(main_module, "city_bin_available", lambda city: city.lower() == "oulu" or real_available(city))
     args = _build_args(monkeypatch, ["--use-sample", "--no-cache", *extra_args])
     return _load_world(
         city_name, city_name, DEFAULT_BBOX, {city_name: (65.0121, 25.4651)},
@@ -44,8 +48,8 @@ def _load_sample_world(monkeypatch, tmp_path, city_name, extra_args=("--use-preb
 
 
 def test_predefined_city_with_bin_loads_from_binary(monkeypatch, tmp_path, caplog):
-    # city_bin_available("oulu") is genuinely True (the real bundled
-    # binary exists), but load_city_ways is mocked to a tiny synthetic
+    # city_bin_available is stubbed True (_load_sample_world) and
+    # load_city_ways is mocked to a tiny synthetic
     # result here - this test is about _load_world's wiring (does it call
     # load_city_ways and substitute `ways` on success?), not about
     # decoding the real ~87k-node binary, which test_city_bin_source.py

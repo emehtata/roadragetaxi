@@ -2437,7 +2437,11 @@ def _roadside_parking_point(
     if ways is None:
         return None
     way, distance = _way_at_point(spatial_grid, ways, x, y)
-    if way is None or distance > ROADSIDE_PARKING_MAX_ROAD_DISTANCE_M:
+    # A point on the shoulder itself (a car parked there, its home) is
+    # beyond the carriageway: reach that far too, or it never finds its
+    # way back to the road.
+    shoulder = getattr(way, "half_width_m", 0.0) + NPC_VEHICLE_WIDTH_M * 0.5 + ROADSIDE_SHOULDER_MARGIN_M if way is not None else 0.0
+    if way is None or distance > max(ROADSIDE_PARKING_MAX_ROAD_DISTANCE_M, shoulder + 0.5):
         return None
     if getattr(way, "is_roundabout", False) or not getattr(way, "is_drivable", True):
         return None

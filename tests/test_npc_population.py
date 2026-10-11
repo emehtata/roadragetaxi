@@ -1610,3 +1610,17 @@ def test_traffic_follows_the_buildings_around_the_player():
     assert manager.target_moving_count == max(1, int(20 * manager.target_moving_fraction))
     manager.set_local_density(-20000.0, 0.0, grid)  # an empty forest road: one passing car at most
     assert manager.target_count == 1
+
+
+def test_a_car_parked_on_the_shoulder_finds_its_way_back():
+    """Roadside parking puts a car on the shoulder, beyond the carriageway;
+    from there the next trip (home, after a visit) must still find that road
+    - beyond the plain 5 m reach it stayed parked for good."""
+    from theroadragetrip.npc import _roadside_parking_point
+
+    ways = _city_block_grid()
+    road = ways[0]
+    (ax, ay), (bx, by) = road.points_m[0], road.points_m[1]
+    shoulder = _roadside_parking_point((ax + bx) / 2.0, (ay + by) / 2.0, ways, None)
+    assert shoulder is not None
+    assert _roadside_parking_point(shoulder[0], shoulder[1], ways, None) is not None

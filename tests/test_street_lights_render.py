@@ -821,8 +821,9 @@ def test_v8_budgeted_preparation_resumes_keeps_old_cache_and_snapshots_revisions
 
     def finish():
         for _ in range(10_000):
-            if frame() is None and roads_module._street_light_geometry_cache_key == (
-                    grid.revision, building_grid.revision, lamp_grid.revision):
+            done = frame() is None
+            key = roads_module._street_light_geometry_cache_key  # (roads, buildings, lamps, parking spots)
+            if done and key is not None and key[:3] == (grid.revision, building_grid.revision, lamp_grid.revision):
                 return list(roads_module._street_light_geometry_cache)
         raise AssertionError("street-light job did not finish")
 
