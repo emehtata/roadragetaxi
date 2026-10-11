@@ -937,12 +937,16 @@ func test_label_modes() -> void:
 	var labels: Control = Labels.new()
 	check(labels.mode == 0, "labels start off, as in Pygame")
 	var l := _key_event(KEY_L)
-	l.physical_keycode = KEY_L
 	var seen := []
 	for i in 3:
 		labels._unhandled_input(l)
 		seen.append(labels.mode)
 	check(seen == [1, 2, 0], "L: streets, all, off again")
+	var physical_l := InputEventKey.new()
+	physical_l.physical_keycode = KEY_L
+	physical_l.pressed = true
+	labels._unhandled_input(physical_l)
+	check(labels.mode == 1, "physical L still toggles labels")
 	labels.mode = 0
 	labels.update_view(Transform2D(), 1, false)
 	check(not labels.visible, "mode 0 draws nothing")

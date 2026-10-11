@@ -31,7 +31,7 @@ func _ready() -> void:
 
 
 func _unhandled_input(event: InputEvent) -> void:
-	if event is InputEventKey and event.pressed and not event.echo and event.physical_keycode == KEY_L:
+	if event is InputEventKey and event.pressed and not event.echo and (event.keycode == KEY_L or event.physical_keycode == KEY_L):
 		mode = (mode + 1) % 3
 		_key = []  # redraw now
 
