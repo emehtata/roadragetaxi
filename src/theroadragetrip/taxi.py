@@ -1688,7 +1688,8 @@ class TaxiManager:
         resident = self.residents.get(getattr(pedestrian, "resident_id", None))
         passenger_name, passenger_gender, resident_id, passenger_weight_kg = self._new_passenger_identity(resident)
         if booking is not None and booking.passenger.name:
-            passenger_name = booking.passenger.name  # the name on the booking
+            passenger_name = booking.passenger.name  # the name on the booking, and its gender (the voice)
+            passenger_gender = {"female": "woman", "male": "man"}.get(getattr(booking.passenger, "gender", ""), passenger_gender)
         is_drunk = bool(getattr(pedestrian, "is_drunk", False))
         passenger = TaxiPassenger(
             name=passenger_name,

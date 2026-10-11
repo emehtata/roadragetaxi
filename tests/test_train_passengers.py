@@ -216,3 +216,18 @@ def test_waiting_passengers_stand_where_their_own_train_stops_not_at_the_station
         waiting = flow.waiting["A"][("IC", number)]
         assert waiting
         assert all(passenger.platform == stopping_point for passenger in waiting)
+
+
+def test_a_rail_passengers_name_keeps_its_gender():
+    """A pre-booked passenger's name and voice agree: the name comes with its
+    first name's gender (Irmeli is a woman)."""
+    import random
+
+    from theroadragetrip import train_passengers
+    from theroadragetrip.residents import FIRST_NAMES
+
+    genders = {entry["name"]: entry["group"] for entry in FIRST_NAMES}
+    rng = random.Random(3)
+    for _ in range(50):
+        name, gender = train_passengers._name(rng)
+        assert gender == genders[name.split(" ")[0]]

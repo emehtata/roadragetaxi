@@ -72,6 +72,7 @@ class RailPassenger:
     pedestrian: object = None
     resident_id: Optional[int] = None  # the resident they are shown as (kept across shows)
     name: str = ""
+    gender: str = ""  # the name's: "female", "male" or "" (unknown)
     car: Optional[int] = None  # index into the train's composition vehicles while aboard
     promille: float = 0.0  # blood alcohol - the restaurant car
     intent: str = WALK  # WALK or TAXI, decided when the journey is created
@@ -84,12 +85,20 @@ def train_key(service) -> Tuple[str, str]:
     return service.train_type, service.number
 
 
-def _name(rng: random.Random) -> str:
+def _name(rng: random.Random) -> Tuple[str, str]:
+    """A random full name and its first name's gender ("female"/"male", ""
+    unknown) - kept together, so a pre-booked Irmeli speaks as a woman."""
     from .residents import FIRST_NAMES, SURNAMES
 
     if not FIRST_NAMES or not SURNAMES:
-        return ""
-    return f"{rng.choice(FIRST_NAMES)['name']} {rng.choice(SURNAMES)['name']}"
+        return "", ""
+    first = rng.choice(FIRST_NAMES)
+    return f"{first['name']} {rng.choice(SURNAMES)['name']}", first.get("group", "") or ""
+
+
+def _named(rng: random.Random) -> dict:
+    name, gender = _name(rng)
+    return {"name": name, "gender": gender}
 
 
 def _cars(train, profile: Optional[str] = None) -> List[int]:
@@ -162,7 +171,7 @@ class PassengerFlow:
                     continue  # already got off before the map
                 destination = calls[destination_index]
                 passenger = self._plan_onward(
-                    RailPassenger(calls[origin_index], destination, train_key(service), ON_TRAIN, name=_name(rng)), rng,
+                    RailPassenger(calls[origin_index], destination, train_key(service), ON_TRAIN, **_named(rng)), rng,
                 )
                 if self.booking_manager is not None:
                     self.booking_manager.consider(passenger, train, now, rng)
@@ -186,7 +195,7 @@ class PassengerFlow:
                 destination = calls[rng.randrange(index + 1, len(calls))]
                 passenger = self._plan_onward(RailPassenger(
                     station, destination, train_key(service), WAITING, waiting_since=now, platform=platforms.get(station),
-                    name=_name(rng),
+                    **_named(rng),
                 ), rng)
                 if self.booking_manager is not None:
                     self.booking_manager.consider(passenger, train, now, rng)

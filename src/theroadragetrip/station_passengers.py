@@ -50,6 +50,19 @@ def track_checker(railway_grid, clearance_m: float = TRACK_CLEARANCE_M) -> Calla
 
 
 class StationPassengerView:
+    def _become(self, resident_id, passenger) -> None:
+        """The resident shown for a rail passenger takes the passenger's name
+        and its gender: the name on a booking, the person at the station and
+        the voice in the taxi are one person (a pre-booked Irmeli spoke as a man)."""
+        residents = getattr(self.pedestrians, "residents", None)
+        resident = residents.get(resident_id) if residents is not None and resident_id is not None else None
+        if resident is None or not passenger.name:
+            return
+        first, _, surname = passenger.name.partition(" ")
+        resident.first_name, resident.surname = first, surname
+        if passenger.gender in ("female", "male"):
+            resident.gender = passenger.gender
+
     def __init__(self, pedestrians, on_track: Optional[Callable[[Tuple[float, float]], bool]] = None, seed: int = 0) -> None:
         """pedestrians: pedestrian.PedestrianManager; on_track(point): is a
         railway track within TRACK_CLEARANCE_M there."""
@@ -101,6 +114,8 @@ class StationPassengerView:
         )
         if pedestrian is None:
             return False
+        if passenger.resident_id is None:  # shown the first time: the resident becomes them
+            self._become(pedestrian.resident_id, passenger)
         passenger.resident_id = pedestrian.resident_id  # the same person every time they are shown
         pedestrian.x, pedestrian.y = x, y  # on the walkway itself
         pedestrian.rail_passenger = passenger  # identity / debug: the journey behind this NPC
@@ -144,6 +159,8 @@ class StationPassengerView:
         pedestrian = self.pedestrians.spawn_pedestrian_at(x, y, resident_id=passenger.resident_id)
         if pedestrian is None:
             return False
+        if passenger.resident_id is None:
+            self._become(pedestrian.resident_id, passenger)
         passenger.resident_id = pedestrian.resident_id
         pedestrian.x, pedestrian.y = x, y
         pedestrian.rail_passenger = passenger
