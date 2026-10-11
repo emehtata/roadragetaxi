@@ -52,6 +52,37 @@ STREET_LIGHT_SPACING_M = 12.0
 # one side of each aisle, a spot's depth beyond its edge, sparser.
 PARKING_LIGHT_SPACING_M = 24.0
 PARKING_SPOT_DEPTH_M = 5.0
+PARKING_POLE_CLEARANCE_M = 10.0  # aisle-guessed lamps this close to a row-seam pole are dropped
+PARKING_CORNER_SNAP_M = 0.6  # spot corners this close are the same point
+
+
+def parking_row_lamps(parking_spaces, spacing: float = PARKING_LIGHT_SPACING_M) -> list:
+    """Light poles of parking lots whose spots are mapped: at the points
+    where four spots meet - two back-to-back rows, between two spots of
+    each - about `spacing` apart. [(x, y, direction, pool radius m, all round)]."""
+    corners: dict = {}  # snapped corner -> [sum x, sum y, points added, spots]
+    snap = PARKING_CORNER_SNAP_M
+    for index, space in enumerate(parking_spaces):
+        if getattr(space, "osm_id", None) is None or len(space.points_m) < 4:
+            continue  # generated house parking has no rows
+        points = space.points_m[:-1] if space.points_m[0] == space.points_m[-1] else space.points_m
+        for x, y in points:
+            key = (round(x / snap), round(y / snap))
+            hit = next((k for k in ((key[0] + dx, key[1] + dy) for dx in (-1, 0, 1) for dy in (-1, 0, 1)) if k in corners), key)
+            entry = corners.setdefault(hit, [0.0, 0.0, 0, set()])
+            entry[0] += x
+            entry[1] += y
+            entry[2] += 1
+            entry[3].add(index)
+    crossings = sorted(
+        ((entry[0] / entry[2], entry[1] / entry[2]) for entry in corners.values() if len(entry[3]) >= 4),
+        key=lambda point: (round(point[0]), round(point[1])),
+    )
+    poles: list = []
+    for x, y in crossings:  # greedy: one pole per `spacing` along the seams
+        if all((x - px) ** 2 + (y - py) ** 2 >= spacing * spacing for px, py, *_ in poles):
+            poles.append((x, y, 0.0, 9.0, True))  # True: lights all round, not toward a road
+    return poles
 STREET_LIGHT_JUNCTION_CLEARANCE_M = 3.0
 STREET_LIGHT_SHADE_COLOR = (0, 0, 0)
 STREET_LIGHT_BUILDING_DISTANCE_M = 200.0
@@ -1364,7 +1395,15 @@ def _advance_street_light_placement(work) -> bool:
                 normal_x = -dy / segment_length
                 normal_y = dx / segment_length
                 if segment_index < len(segment_lighting) and segment_lighting[segment_index]:
-                    for side in sides:
+                    # A street: each side at its edge. A parking aisle: one lamp,
+                    # the first free spot from the row seam inwards, either side -
+                    # tight lots put the seam on the next aisle (Raksila).
+                    candidates = (
+                        [(side, half_width + depth) for depth in (PARKING_SPOT_DEPTH_M, PARKING_SPOT_DEPTH_M / 2.0, 1.0)
+                         for side in (1.0, -1.0)]
+                        if parking_aisle else [(side, edge_distance) for side in sides]
+                    )
+                    for side, edge_distance in candidates:
                         world_x = lamp_x + normal_x * edge_distance * side
                         world_y = lamp_y + normal_y * edge_distance * side
                         if _point_overlaps_indexed_road(
@@ -1384,6 +1423,8 @@ def _advance_street_light_placement(work) -> bool:
                         road_direction = math.atan2(-normal_y * side, -normal_x * side)
                         pool_radius_m = edge_distance + half_width + 1.0
                         cached_lamps.append((world_x, world_y, road_direction, pool_radius_m))
+                        if parking_aisle:
+                            break  # one lamp per aisle spot
                 distance_to_lamp += lamp_spacing
             distance_to_lamp = (segment_phase - segment_length) % lamp_spacing
             if distance_to_lamp < 1e-9:

@@ -789,13 +789,20 @@ static func pool_fans(positions: PackedVector2Array, lights: Array, broken: Pack
 		var along := Vector2(cos(light[2]), -sin(light[2]))  # toward the road
 		var across := Vector2(-along.y, along.x)
 		var middle: Vector2 = positions[i] + along * reach * 0.22
+		var all_round: bool = light.size() > 4 and int(light[4]) == 1  # a parking pole: a circle round it
+		var stretch_along := 0.8
+		var stretch_across := POOL_SPREAD
+		if all_round:
+			middle = positions[i]
+			stretch_along = 0.9
+			stretch_across = 0.9
 		var centre := points.size()
 		centres.append(centre)
 		points.append(positions[i])
 		for ring in [POOL_INNER, 1.0]:
 			for k in POOL_STEPS:
 				var angle := TAU * k / POOL_STEPS
-				points.append(middle + (along * cos(angle) * 0.8 + across * sin(angle) * POOL_SPREAD) * reach * ring)
+				points.append(middle + (along * cos(angle) * stretch_along + across * sin(angle) * stretch_across) * reach * ring)
 		for k in POOL_STEPS:
 			var next := (k + 1) % POOL_STEPS
 			var inner := centre + 1

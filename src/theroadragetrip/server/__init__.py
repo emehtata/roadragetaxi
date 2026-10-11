@@ -632,7 +632,7 @@ class SimulationServer:
         them in on a later tick."""
         def build():
             started = time.perf_counter()
-            known = {(round(x, 1), round(y, 1)) for x, y, _, _ in self.world.street_light_points}
+            known = {(round(x, 1), round(y, 1)) for x, y, *_ in self.world.street_light_points}
             lights = list(self.world.street_light_points) + [
                 lamp for lamp in place_street_lights(self.world, outside=old_bounds)
                 if (round(lamp[0], 1), round(lamp[1], 1)) not in known]
@@ -748,7 +748,28 @@ def place_street_lights(world, outside=None) -> list:
         pass
     while not roads._advance_street_light_placement(work):
         pass
-    return list(work["lamps"])
+    lamps = list(work["lamps"])
+    # Parking lots with mapped spots: the poles stand where two back-to-back
+    # rows meet, at the spots' shared corners; the aisle-guessed lamps around
+    # them go. Lots without mapped spots keep the aisle placement.
+    spaces = getattr(world, "parking_spaces", None) or []
+    if outside is not None:
+        minx, miny, maxx, maxy = outside
+        spaces = [p for p in spaces if not (minx <= p.bbox[0] and p.bbox[2] <= maxx and miny <= p.bbox[1] and p.bbox[3] <= maxy)]
+    poles = roads.parking_row_lamps(spaces)
+    if poles:
+        near_pole = roads.PARKING_POLE_CLEARANCE_M ** 2
+        cell = roads.PARKING_LIGHT_SPACING_M
+        grid: dict = {}
+        for pole in poles:
+            grid.setdefault((math.floor(pole[0] / cell), math.floor(pole[1] / cell)), []).append(pole)
+
+        def by_a_pole(x, y):
+            cx, cy = math.floor(x / cell), math.floor(y / cell)
+            return any((x - p[0]) ** 2 + (y - p[1]) ** 2 < near_pole
+                       for gx in (cx - 1, cx, cx + 1) for gy in (cy - 1, cy, cy + 1) for p in grid.get((gx, gy), ()))
+        lamps = [lamp for lamp in lamps if not by_a_pole(lamp[0], lamp[1])] + poles
+    return lamps
 
 
 class _NullFrameProfiler:

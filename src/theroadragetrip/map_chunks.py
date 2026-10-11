@@ -167,8 +167,11 @@ class ChunkIndex:
                           [round(obj.x, 1), round(obj.y, 1), obj.kind, round(obj.direction_angle or 0.0, 3)])
         # Street lights as render/roads.py places them (explicit OSM lamps, then
         # lit roads at fixed spacing): [x, y, the road's direction, pool radius].
-        for x, y, direction, pool_radius in getattr(world, "street_light_points", ()):
-            self._add("street_lights", ((x, y),), [round(x, 1), round(y, 1), round(direction, 3), pool_radius])
+        for lamp in getattr(world, "street_light_points", ()):
+            x, y, direction, pool_radius = lamp[:4]
+            # A fifth 1: a parking pole lighting all round (street lamps lean toward their road).
+            self._add("street_lights", ((x, y),), [round(x, 1), round(y, 1), round(direction, 3), pool_radius]
+                      + ([1] if len(lamp) > 4 and lamp[4] else []))
         self._add_static_world(world)
         for work in getattr(world, "roadworks", ()):  # render/roads.py draw_roadworks; in the chunk of its midpoint
             middle = ((work.start[0] + work.end[0]) / 2.0, (work.start[1] + work.end[1]) / 2.0)

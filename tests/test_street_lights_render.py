@@ -901,3 +901,26 @@ def test_parking_aisle_lamps_stand_between_the_rows_not_in_the_spots():
         assert all(abs((b - a) - PARKING_LIGHT_SPACING_M) < 1e-6 for a, b in zip(xs, xs[1:]))
     finally:
         pygame.quit()
+
+
+def test_parking_poles_stand_where_four_spots_meet():
+    """Two back-to-back rows of mapped spots: the poles at the shared
+    corners between them, about PARKING_LIGHT_SPACING_M apart; no pole on a
+    single row or on generated house parking."""
+    from types import SimpleNamespace
+
+    from theroadragetrip.render.roads import PARKING_LIGHT_SPACING_M, parking_row_lamps
+
+    def spot(x, y, osm_id=1):
+        points = [(x, y), (x + 2.5, y), (x + 2.5, y + 5.0), (x, y + 5.0), (x, y)]
+        return SimpleNamespace(points_m=points, osm_id=osm_id, bbox=(x, y, x + 2.5, y + 5.0))
+
+    rows = [spot(i * 2.5, 0.0) for i in range(20)] + [spot(i * 2.5, 5.0) for i in range(20)]  # back to back at y = 5
+    poles = parking_row_lamps(rows)
+    assert poles and all(abs(y - 5.0) < 1e-6 for _, y, *_ in poles)  # on the seam
+    assert all(abs(x / 2.5 - round(x / 2.5)) < 1e-6 and 0.0 < x < 50.0 for x, *_ in poles)  # at a spot corner inside
+    xs = sorted(x for x, *_ in poles)
+    assert all(b - a >= PARKING_LIGHT_SPACING_M for a, b in zip(xs, xs[1:]))
+    assert all(pole[4] is True for pole in poles)  # all round
+    assert parking_row_lamps(rows[:20]) == []  # one row: no seam
+    assert parking_row_lamps([spot(i * 2.5, 0.0, None) for i in range(20)] + [spot(i * 2.5, 5.0, None) for i in range(20)]) == []
