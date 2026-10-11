@@ -122,7 +122,8 @@ func _ready() -> void:
 	_lamps.material = preload("res://emissive.tres")
 	_lamps.draw.connect(func():
 		for lamp in _lamp_polys:
-			_lamps.draw_colored_polygon(lamp[0], lamp[1]))
+			if drawable(lamp[0]):
+				_lamps.draw_colored_polygon(lamp[0], lamp[1]))
 	add_child(_lamps)
 
 
@@ -448,6 +449,8 @@ func _poly(points: PackedVector2Array, fill: Color, outline = null, width := -1.
 	if _tint != null:  # a vehicle's: lit by its own light, drawn on _cars
 		_car_shapes.append(["poly", points, _lit(fill), _lit(outline) if outline != null else null, width])
 		return
+	if not drawable(points):
+		return
 	draw_colored_polygon(points, fill)
 	if outline != null:
 		var closed := points.duplicate()
@@ -494,6 +497,8 @@ func _draw_cars() -> void:
 	for shape in _car_shapes:
 		match shape[0]:
 			"poly":
+				if not drawable(shape[1]):
+					continue
 				_cars.draw_colored_polygon(shape[1], shape[2])
 				if shape[3] != null:
 					var closed: PackedVector2Array = shape[1].duplicate()
@@ -503,6 +508,22 @@ func _draw_cars() -> void:
 				_cars.draw_circle(shape[1], shape[2], shape[3])
 			"line":
 				_cars.draw_line(shape[1], shape[2], shape[3], shape[4])
+
+
+## A polygon Godot can triangulate: finite points, some area. A lamp or a
+## body part shrunk to a line (no width, a bad heading) is skipped instead
+## of "Invalid polygon data, triangulation failed".
+static func drawable(points: PackedVector2Array) -> bool:
+	if points.size() < 3:
+		return false
+	var area := 0.0
+	for i in points.size():
+		var a := points[i]
+		var b := points[(i + 1) % points.size()]
+		if not (is_finite(a.x) and is_finite(a.y)):
+			return false
+		area += a.x * b.y - b.x * a.y
+	return absf(area) > 1e-6
 
 
 func _lit(color: Color) -> Color:
@@ -950,6 +971,8 @@ func _train_car(c: Vector2, heading: float, length: float, profile: String, node
 	var hl := length / 2.0
 	var hw := RS.TRAIN_WIDTH_M / 2.0
 	var body := _rect(c, f, r, hl, -hl, hw)
+	if not drawable(body):  # a car of no length or a bad heading
+		return
 	node.draw_colored_polygon(body, style[0])
 	if style[1] != null and profile == "locomotive":
 		node.draw_colored_polygon(_rect(c, f, r, hl, hl - 3.0, hw), style[1])

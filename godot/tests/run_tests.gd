@@ -651,6 +651,8 @@ func test_speech_and_stations() -> void:
 	check(Hud.map_loading_text("", 0) == "" and Hud.map_loading_text("fetching", 0).contains("Loading map…") and Hud.map_loading_text("fetching", 0).contains("downloading"), "map loading sign: shown while the map grows, gone when settled")
 	check(Hud.map_loading_text("fetching", 0, "en", "Fetching from https://overpass-api.de/api/interpreter (attempt 1/3)...").contains("https://overpass-api.de/api/interpreter"), "map loading sign: where it loads from while fetching")
 	check(Hud.map_loading_text("syncing", 0, "fi").contains("Ladataan karttaa") and Hud.map_loading_text("building", 0).left(1) != Hud.map_loading_text("building", 150).left(1), "map loading sign: Finnish, and the spinner turns")
+	check(EntityLayer.drawable(PackedVector2Array([Vector2(0, 0), Vector2(1, 0), Vector2(1, 1)])) and not EntityLayer.drawable(PackedVector2Array([Vector2(0, 0), Vector2(1, 0), Vector2(2, 0)]))
+		and not EntityLayer.drawable(PackedVector2Array([Vector2(0, 0), Vector2(NAN, 0), Vector2(1, 1)])), "a flat or NaN lamp polygon is skipped, not handed to the triangulator")
 	var night_blue := Color(0.2, 0.25, 0.4)
 	var route_night := EntityLayer.route_tint(night_blue)
 	check(EntityLayer.route_tint(Color.WHITE) == Color.WHITE and route_night.r > night_blue.r + 0.3 and route_night.r < 1.0, "the route at night: dimmer than by day, far clearer than the night around it")
