@@ -530,13 +530,13 @@ def _draw_vehicle_lights(
     if turn_signal_on:
         # Small amber lamps at the outer front/rear corners on the turning
         # side, beside (not over) the head/tail lights.
-        signal_side = 1.0 if turn_signal == "right" else -1.0
-        signal_inset = hw * 0.88 * signal_side
         signal_length = max(1.0, light_length * 0.45)
-        for end in (1.0, -1.0):
-            signal_x = cx + fx * (hl - 0.5) * end + rx * signal_inset
-            signal_y = cy + fy * (hl - 0.5) * end + ry * signal_inset
-            draw_light_rectangle((255, 170, 20), (signal_x, signal_y), light_width * 1.2, signal_length)
+        for signal_side in ((1.0, -1.0) if turn_signal == "hazard" else (1.0 if turn_signal == "right" else -1.0,)):
+            signal_inset = hw * 0.88 * signal_side
+            for end in (1.0, -1.0):
+                signal_x = cx + fx * (hl - 0.5) * end + rx * signal_inset
+                signal_y = cy + fy * (hl - 0.5) * end + ry * signal_inset
+                draw_light_rectangle((255, 170, 20), (signal_x, signal_y), light_width * 1.2, signal_length)
 
 
 def _draw_vehicle(

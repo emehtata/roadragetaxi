@@ -51,6 +51,30 @@ def test_decode_rejects_missing_type():
         protocol.decode(protocol.encode({"version": protocol.PROTOCOL_VERSION}).rstrip(b"\n"))
 
 
+def test_character_details_reach_godot_state():
+    from datetime import date
+    from types import SimpleNamespace as Row
+
+    resident = Row(resident_id=7, first_name="Aino", surname="Korhonen", gender="female",
+                   birth_date=date(1990, 4, 5), mode="driving")
+    npc = Row(vehicle_id=8, x=1.0, y=2.0, heading=0.0, speed=3.0, color=(1, 2, 3),
+              vehicle_type="car", is_taxi=False, is_police=False, is_on_foot=False,
+              fallen=False, layer=0, lod_level=0, turn_signal="", turn_signal_elapsed=0.0,
+              state="DRIVING", braking=False, crashed_timer=0.0, driver_departed=False,
+              debug_waiting_for="", car=Row(length_m=4.0, width_m=1.8), owner_id=7,
+              occupant_ids=(7,), passenger_ids=(), current_driver_id=7)
+    ped = Row(resident_id=7, x=1.0, y=2.0, heading=0.0, radius_m=0.45, color=(1, 2, 3),
+              state="walking", animation_state="walking", animation_time=0.0,
+              curse_timer=0.0, curse_text="", mood="normal", is_cyclist=False,
+              blood_alcohol_promille=0.5, activity=None)
+    vehicle = protocol._npc_to_dict(npc, {7: resident})
+    walker = protocol._pedestrian_to_dict(ped, {7: resident})
+    assert vehicle["owner"]["name"] == "Aino Korhonen"
+    assert vehicle["occupants"] == [vehicle["owner"]]
+    assert walker["resident"]["birth_date"] == "1990-04-05"
+    assert walker["blood_alcohol_promille"] == 0.5
+
+
 def test_reconcile_npcs_adds_updates_and_removes_by_id():
     vehicles = []
     npc_data = {

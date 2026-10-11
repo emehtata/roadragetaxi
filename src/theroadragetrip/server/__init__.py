@@ -313,9 +313,11 @@ class SimulationServer:
             if kind is not None:
                 condition = weather_type_for_observation(kind, temperature)
                 thunder = seen_thunder and condition.value == "rain"
+            source = seen.source if seen is not None else "generated"
             lines.append({"time": f"{moment:%d.%m. %H:%M}", "temperature_c": round(temperature, 1),
-                          "weather": "thunderstorm" if thunder else condition.value,
-                          "source": history.source_at(moment) if history is not None else "generated"})
+                          "weather": "thunderstorm" if thunder else condition.value, "source": source})
+            if source in ("observed", "forecast"):
+                logger.info("FMI weather %s: %s", f"{moment:%d.%m. %H:%M}", source)
         return lines
 
     def _update_outside(self):
@@ -327,7 +329,10 @@ class SimulationServer:
         if self.weather_history is not None:
             self.weather_history.request(moment, moment + timedelta(hours=48))
             observed = self.weather_history.get(moment)
-        weather.weather_source = self.weather_history.source_at(moment) if self.weather_history is not None else "generated"
+        source = observed.source if observed is not None else "generated"
+        if source in ("observed", "forecast") and source != getattr(weather, "weather_source", None):
+            logger.info("FMI weather now %s: %s", f"{moment:%d.%m. %H:%M}", source)
+        weather.weather_source = source
         weather.outside_temperature_c = (observed.temperature_c if observed is not None and observed.temperature_c is not None
                                          else typical_temperature(moment, self.calendar.latitude))
         return observed
@@ -737,6 +742,7 @@ def place_street_lights(world, outside=None) -> list:
     work = roads._snapshot_street_light_job(
         "server", region, ways, None, world.buildings, None,
         getattr(world, "street_lamps", None), getattr(world, "street_lamp_grid", None),
+        getattr(world, "parking_spaces", None),
     )
     while not roads._advance_street_light_prep(work):
         pass

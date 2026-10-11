@@ -104,6 +104,41 @@ def test_lamps_are_outside_the_road_edges():
         pygame.quit()
 
 
+def test_street_lamps_skip_building_footprints():
+    from theroadragetrip.osm import Building
+
+    road = Way(points_m=[(0.0, 0.0), (100.0, 0.0)], highway="tertiary", half_width_m=4.0, lit="yes")
+    building = Building(points_m=[(40.0, 4.0), (56.0, 4.0), (56.0, 8.0), (40.0, 8.0)], bbox=(40.0, 4.0, 56.0, 8.0))
+    lamp = SceneryObject(x=48.0, y=5.0, kind="street_lamp")
+    work = render.roads._snapshot_street_light_job("test", (-10.0, -20.0, 110.0, 20.0),
+                                                   [road], None, [building], None, [lamp], None)
+    work["explicit_lamps"] = [lamp]
+    assert render.roads._advance_street_light_prep(work)
+    assert render.roads._advance_street_light_placement(work)
+    positions = [(x, y) for x, y, _, _ in work["lamps"]]
+    assert positions
+    assert all(not (40.0 < x < 56.0 and 4.0 < y < 8.0) for x, y in positions)
+
+
+def test_street_lamps_skip_parking_bays():
+    from theroadragetrip.osm import ParkingSpace
+
+    aisle = Way(points_m=[(0.0, 0.0), (100.0, 0.0)], highway="service", service="parking_aisle",
+                half_width_m=3.0, lit="yes")
+    bay = ParkingSpace(points_m=[(20.0, 6.0), (28.0, 6.0), (28.0, 10.0), (20.0, 10.0)],
+                       bbox=(20.0, 6.0, 28.0, 10.0))
+    lamp = SceneryObject(x=24.0, y=8.0, kind="street_lamp")
+    work = render.roads._snapshot_street_light_job("test", (-10.0, -20.0, 110.0, 20.0),
+                                                   [aisle], None, [], None, [lamp], None, [bay])
+    work["explicit_lamps"] = [lamp]
+    assert render.roads._advance_street_light_prep(work)
+    assert render.roads._advance_street_light_placement(work)
+    positions = [(x, y) for x, y, _, _ in work["lamps"]]
+    assert positions
+    assert (24.0, 8.0) not in positions
+    assert all(not (20.0 < x < 28.0 and 6.0 < y < 10.0) for x, y in positions)
+
+
 def test_lamp_fixture_never_lands_on_crossing_road():
     pygame.init()
     try:

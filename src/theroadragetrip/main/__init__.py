@@ -3166,6 +3166,7 @@ def main() -> None:
                         building_spatial_grid=building_grid,
                         street_lamps=street_lamps,
                         street_lamp_grid=street_lamp_grid,
+                        parking_spaces=parking_spaces,
                         profiler=frame_profiler,
                         broken_lamps=taxi_mgr.broken_lamps,
                     )

@@ -16,8 +16,8 @@
 ##       only when one of its lights changes phase - the phase is the server's)
 ##   z11 fuel price boards: above the vehicles, as draw_fuel_station_signs
 ##   (z20 the night tint: night_layer.gd)
-##   z21 street lights, shown only at night: the light pool added onto the
-##       tinted scene, then the lamp head (render/roads.py draw_street_lights);
+##   z6 street-light heads, behind buildings; the light pool is added onto the
+##       tinted scene at z6 (render/roads.py draw_street_lights);
 ##       a broken lamp (a knocked street lamp) stays dark
 ##
 ## The z8+ points are sized in screen pixels as Pygame's, so they redraw
@@ -137,7 +137,7 @@ func setup(message: Dictionary, origin: Vector2) -> void:
 		_pools.material = add
 		_pools.draw.connect(_draw_light_pools.bind(_pools))  # MapLayer puts it in its pool group
 		_px_layers.append(_pools)
-		_px_layers.append(_add_layer(21, _draw_lamp_heads, _heads))
+		_px_layers.append(_add_layer(6, _draw_lamp_heads, _heads))
 		_heads.material = EMISSIVE
 		set_lights_on(false)
 	if not message.get("trees", []).is_empty() or not message.get("bollards", []).is_empty() or not message.get("scenery_objects", []).is_empty():

@@ -142,6 +142,17 @@ def _state(server):
     )["state"]
 
 
+def test_vomit_puddles_reach_godot(tmp_path, monkeypatch):
+    server = _build_server(tmp_path, monkeypatch)
+    server.world.taxi_mgr.vomit_puddles.append((server.car.x + 1.0, server.car.y))
+    server.world.pedestrian_mgr.vomit_puddles.append((server.car.x - 1.0, server.car.y))
+    server.world.pedestrian_mgr.vomit_footprints.append((server.car.x, server.car.y, 0.5))
+    assert _state(server)["vomit_puddles"] == [
+        [server.car.x + 1.0, server.car.y], [server.car.x - 1.0, server.car.y],
+    ]
+    assert _state(server)["vomit_footprints"] == [[server.car.x, server.car.y, 0.5]]
+
+
 def test_train_state_omits_the_unused_label():
     from types import SimpleNamespace
 
@@ -265,7 +276,8 @@ def test_the_server_places_street_lights_as_pygame_does(tmp_path, monkeypatch):
     assert lights, "the sample map has lit roads"
     xs = [x for x, *_ in lights]; ys = [y for _, y, *_ in lights]
     work = roads._snapshot_street_light_job("t", (min(xs) - 50, min(ys) - 50, max(xs) + 50, max(ys) + 50), server.world.ways,
-                                            None, server.world.buildings, None, server.world.street_lamps, server.world.street_lamp_grid)
+                                            None, server.world.buildings, None, server.world.street_lamps, server.world.street_lamp_grid,
+                                            server.world.parking_spaces)
     while not roads._advance_street_light_prep(work):
         pass
     while not roads._advance_street_light_placement(work):
@@ -480,7 +492,7 @@ def test_weather_audio_facts_cross_the_wire(tmp_path, monkeypatch):
         assert wire == [v if v == v and abs(v) != float("inf") else 0.0 for v in vector]
 
 
-def test_historical_weather_drives_the_servers_weather_and_temperature(tmp_path, monkeypatch):
+def test_historical_weather_drives_the_servers_weather_and_temperature(tmp_path, monkeypatch, caplog):
     """main()'s historical weather on the server: the FMI hour replaces the
     generated precipitation, its temperature reaches the state; off: generated
     weather and the climate's typical temperature."""
@@ -504,7 +516,13 @@ def test_historical_weather_drives_the_servers_weather_and_temperature(tmp_path,
             return "observed"
 
     server.weather_history = FakeHistory()
-    server.tick(1.0 / 30.0)
+    import logging
+    with caplog.at_level(logging.INFO, logger="theroadragetrip.server"):
+        server.tick(1.0 / 30.0)
+        server.tick(1.0 / 30.0)
+        server._forecast()
+    assert sum("FMI weather now" in record.message for record in caplog.records) == 1
+    assert any("FMI weather " in record.message for record in caplog.records)
     weather = _state(server)["weather"]
     assert weather["source"] == "observed" and weather["temperature_c"] == -3.5
     assert server.world.weather.weather_type == WeatherType.SNOW

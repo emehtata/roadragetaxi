@@ -131,6 +131,48 @@ func player_position() -> Vector2:
 	return Vector2(p.x, p.y)
 
 
+func entity_position(kind: String, id: int) -> Vector2:
+	if _frame.is_empty():
+		return Vector2.INF
+	var key := "pedestrians" if kind == "pedestrian" else "npcs"
+	var later := _by_id(_frame["b"].get(key, []))
+	for row in _frame["a"].get(key, []):
+		if row.get("id") == id:
+			var p := StateBuffer.blend(row, later.get(id, row), _frame["t"], origin)
+			return Vector2(p.x, p.y)
+	if kind == "pedestrian":
+		var later_npcs := _by_id(_frame["b"].get("npcs", []))
+		for npc in _frame["a"].get("npcs", []):
+			for person in npc.get("occupants", []):
+				if person.get("id") == id:
+					var p := StateBuffer.blend(npc, later_npcs.get(npc["id"], npc), _frame["t"], origin)
+					return Vector2(p.x, p.y)
+	return Vector2.INF
+
+
+func entity_at(screen: Vector2, canvas: Transform2D) -> Dictionary:
+	if _frame.is_empty() or underground:
+		return {}
+	var a: Dictionary = _frame["a"]
+	var b: Dictionary = _frame["b"]
+	for key in ["pedestrians", "npcs"]:
+		var later := _by_id(b.get(key, []))
+		var best := {}
+		var distance := INF
+		for row in a.get(key, []):
+			if key == "npcs" and not row.get("is_on_foot", false) and not drawn_as_vehicle(row):
+				continue
+			var p := StateBuffer.blend(row, later.get(row["id"], row), _frame["t"], origin)
+			var pixels := screen.distance_to(canvas * Vector2(p.x, p.y))
+			var radius := 12.0 if key == "pedestrians" or row.get("is_on_foot", false) else maxf(12.0, float(row.get("length_m", 4.5)) * px_per_m * 0.5)
+			if pixels <= radius and pixels < distance:
+				best = {"kind": "pedestrian" if key == "pedestrians" else "npc", "id": row["id"]}
+				distance = pixels
+		if not best.is_empty():
+			return best
+	return {}
+
+
 ## The job's target this frame (pickup or drop-off, as TaxiManager.get_current_target),
 ## or {} - shared with the screen-space arrow and compass (nav_overlay.gd).
 static func current_target(state: Dictionary) -> Dictionary:
@@ -520,10 +562,10 @@ func _vehicle_body(c: Vector2, heading: float, length: float, width: float, colo
 		_lamp_polys.append([_rect(rear, f, r, light_r * 0.325, -light_r * 0.325, light_len * 0.325), RS.REVERSE_LIGHT])
 		lamp_glow(rear - f * REVERSE_GLOW[1] * 0.45, REVERSE_GLOW, light_level, glow_points, glow_colors, glow_triangles)
 	if turn_signal != "" and RS.signal_lit(signal_elapsed):
-		var signal_side := 1.0 if turn_signal == "right" else -1.0
-		for end: float in [1.0, -1.0]:
-			var lamp: Vector2 = c + f * tip * end + r * hw * 0.88 * signal_side
-			_poly(_rect(lamp, f, r, light_w * 0.6, -light_w * 0.6, maxf(_px(1.0), light_len * 0.45) * 0.5), RS.TURN_SIGNAL)
+		for signal_side: float in ([1.0, -1.0] if turn_signal == "hazard" else [1.0 if turn_signal == "right" else -1.0]):
+			for end: float in [1.0, -1.0]:
+				var lamp: Vector2 = c + f * tip * end + r * hw * 0.88 * signal_side
+				_lamp_polys.append([_rect(lamp, f, r, light_w * 0.6, -light_w * 0.6, maxf(_px(1.0), light_len * 0.45) * 0.5), RS.TURN_SIGNAL])
 
 
 ## Four rising, fading puffs (render/vehicles.py crash smoke and exhaust;
@@ -710,6 +752,19 @@ func _draw() -> void:
 	glow_points.clear()
 	glow_colors.clear()
 	glow_triangles.clear()
+	if not underground:
+		for point in a.get("vomit_puddles", []):
+			if point.size() >= 2:
+				var at := MapMath.point(origin, point[0], point[1])
+				if view_rect.has_point(at):
+					_ellipse(at, 1.2, 0.7, Color8(105, 115, 62))
+		for print_point in a.get("vomit_footprints", []):
+			if print_point.size() >= 3:
+				var at := MapMath.point(origin, print_point[0], print_point[1])
+				if view_rect.has_point(at):
+					draw_set_transform(at, -float(print_point[2]), Vector2(maxf(_px(1.5), 0.14), maxf(_px(1.0), 0.06)))
+					draw_circle(Vector2.ZERO, 1.0, Color8(95, 104, 55, 210))
+					draw_set_transform(Vector2.ZERO)
 
 	var later_peds := _by_id(b.get("pedestrians", []))
 	for ped in ([] if underground else a.get("pedestrians", [])):  # below ground: the surface world isn't shown

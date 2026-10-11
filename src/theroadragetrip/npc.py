@@ -2050,6 +2050,16 @@ def update_npc(
     final_point = path[-1]
     distance_to_target = math.hypot(final_point.x - vehicle.car.x, final_point.y - vehicle.car.y)
     at_destination = approaching_final_waypoint and distance_to_target < NPC_ARRIVAL_RADIUS_M
+    # A physics-drifted car must clear a curb/building before arrival can stop it.
+    vehicle.footprint_check_elapsed_s += dt
+    if vehicle.footprint_check_elapsed_s >= NPC_FOOTPRINT_CHECK_INTERVAL_S:
+        vehicle.footprint_check_elapsed_s = 0.0
+        vehicle.footprint_check_cached = is_vehicle_pose_valid(
+            vehicle.car.x, vehicle.car.y, vehicle.car.heading,
+            curbs=curbs, buildings=buildings, curb_grid=curb_grid, building_grid=building_grid,
+            length_m=vehicle.length_m, width_m=vehicle.width_m, clearance_m=NPC_LIVE_FOOTPRINT_CLEARANCE_M,
+        )
+    footprint_clear = vehicle.footprint_check_cached
     # Only the actual off-road hop (at most NPC_PARKING_ACCESS_TOLERANCE_M,
     # the most route validation allows) is driven at yard pace - not the
     # whole final leg, which can be a long straight road stretch.
@@ -2082,7 +2092,7 @@ def update_npc(
         remaining_m = math.hypot(route_target.x - vehicle.car.x, route_target.y - vehicle.car.y) + sum(
             math.hypot(b.x - a.x, b.y - a.y) for a, b in zip(path[driver.path_index:], path[driver.path_index + 1:])
         )
-        arrival_cap = math.sqrt(2.0 * ARRIVAL_DECEL_MPS2 * max(0.0, remaining_m - NPC_ARRIVAL_RADIUS_M))
+        arrival_cap = math.sqrt(2.0 * ARRIVAL_DECEL_MPS2 * max(0.0, remaining_m - (NPC_ARRIVAL_RADIUS_M if footprint_clear else 0.0)))
         driver.target_speed_mps = min(driver.target_speed_mps, arrival_cap)
     if approaching_final_waypoint:
         if in_offroad_approach:
@@ -2155,33 +2165,13 @@ def update_npc(
         else:
             driver.target_speed_mps = min(driver.target_speed_mps, NPC_ROAD_RAGE_YIELD_SPEED_MPS)
 
-    if at_destination:
+    if at_destination and footprint_clear:
         driver.target_speed_mps = 0.0
         if vehicle.reserved_parking_space is not None:
             # RESERVED -> OCCUPIED (NPC-more.md section 4's state trio) -
             # the vehicle has actually arrived, not merely en route.
             vehicle.reserved_parking_space.occupied = True
 
-    # NPC-more.md sections 12/13/19: the live safety net (see this
-    # function's own docstring) - spawn_npc already fully validated this
-    # exact path once, so this should in practice never actually trip;
-    # it exists for physics drift, not as the primary defense.
-    # NPC_LIVE_FOOTPRINT_CLEARANCE_M (a bare few cm, not
-    # CURB/BUILDING_CLEARANCE_MARGIN_M's stricter validate-before-spawning
-    # margin) - the live pose is expected to run right up against that
-    # margin near a legitimately tight final approach (a parking yard
-    # sits just outside a wall on purpose), so requiring the same safety
-    # cushion live would flag ordinary steering lag as a "violation"
-    # every single frame near any such approach.
-    vehicle.footprint_check_elapsed_s += dt
-    if vehicle.footprint_check_elapsed_s >= NPC_FOOTPRINT_CHECK_INTERVAL_S:
-        vehicle.footprint_check_elapsed_s = 0.0
-        vehicle.footprint_check_cached = is_vehicle_pose_valid(
-            vehicle.car.x, vehicle.car.y, vehicle.car.heading,
-            curbs=curbs, buildings=buildings, curb_grid=curb_grid, building_grid=building_grid,
-            length_m=vehicle.length_m, width_m=vehicle.width_m, clearance_m=NPC_LIVE_FOOTPRINT_CLEARANCE_M,
-        )
-    footprint_clear = vehicle.footprint_check_cached
     if not footprint_clear:
         # A slow crawl, never a hard 0 - update_car_physics refuses to
         # turn the vehicle at all below 0.05 m/s ("cars cannot steer in
@@ -2208,7 +2198,7 @@ def update_npc(
     # kicked into REVERSING mid-parking).
     waiting_for_light = decision.light is not None and decision.action != TrafficAction.PROCEED
     finishing_approach = approaching_final_waypoint or vehicle.state in (NPCState.PARKING, NPCState.ARRIVING)
-    if at_destination or waiting_for_light or finishing_approach or driver.recovery_stage != "NORMAL":
+    if waiting_for_light or ((at_destination or finishing_approach) and footprint_clear) or driver.recovery_stage != "NORMAL":
         driver.stuck_timer_s = 0.0
         driver.stuck_check_position = None
         driver.stuck_check_elapsed_s = 0.0
@@ -2235,7 +2225,7 @@ def update_npc(
     # State machine (section 10) - priority order is what a real driver
     # would report as "what am I doing right now".
     if not footprint_clear:
-        vehicle.state = NPCState.WAITING
+        vehicle.state = NPCState.PARKING if approaching_final_waypoint and abs(vehicle.car.speed) > 0.05 else NPCState.WAITING
         vehicle.debug_waiting_for = "footprint blocked (curb/building)"
     elif driver.recovery_stage == "STUCK":
         vehicle.state = NPCState.WAITING
@@ -2297,7 +2287,7 @@ def update_npc(
     # (there's nothing after it) - chasing that now-fixed point would spin
     # the heading 180 degrees the instant the car coasts past it, so
     # arrival stops steering entirely and just coasts/brakes straight.
-    if at_destination:
+    if at_destination and footprint_clear:
         steer_left = steer_right = 0.0
     else:
         desired_heading = math.atan2(target.y - vehicle.car.y, target.x - vehicle.car.x)
@@ -2432,19 +2422,18 @@ def _parking_space_fits_vehicle(
 
 _LOW_TRAFFIC_HIGHWAY_TYPES = {"residential", "living_street", "service", "unclassified", "track"}
 ROADSIDE_PARKING_MAX_ROAD_DISTANCE_M = 5.0
+ROADSIDE_SHOULDER_MARGIN_M = 0.5
 
 
 def _roadside_parking_point(
     x: float, y: float, ways: Optional[List[Way]], spatial_grid: Optional[SpatialWayGrid],
 ) -> Optional[Tuple[float, float]]:
     """NPC-more.md section 2 tier 5, the last resort: legal roadside
-    parking on a quiet street - never a busy/arterial road (only
-    residential/living_street/service/unclassified/track) and never a
-    roundabout - relying on the existing lane-offset step
-    (build_driving_path/_lane_offset_point) to place the actual resting
-    point at the curb side of the lane, not its center, once this point
-    becomes the route's destination. Only used when nothing better
-    (dedicated space, lot, building yard) exists anywhere nearby."""
+    parking on a quiet street - never a busy/arterial road or roundabout.
+    Return a point beyond the carriageway edge, not the route node itself:
+    a car left in the travel lane traps following traffic in recovery.
+    Route and footprint validation reject this shoulder if a curb or
+    building makes it inaccessible. Only used when better parking fails."""
     if ways is None:
         return None
     way, distance = _way_at_point(spatial_grid, ways, x, y)
@@ -2454,7 +2443,19 @@ def _roadside_parking_point(
         return None
     if str(getattr(way, "highway", "") or "").lower() not in _LOW_TRAFFIC_HIGHWAY_TYPES:
         return None
-    return x, y
+    if len(way.points_m) < 2:
+        return None
+    (ax, ay), (bx, by) = min(
+        zip(way.points_m, way.points_m[1:]),
+        key=lambda segment: closest_point_and_dist_to_segment(x, y, *segment[0], *segment[1])[3],
+    )
+    _, _, t, _ = closest_point_and_dist_to_segment(x, y, ax, ay, bx, by)
+    # Leave room to turn onto the shoulder without parking in a junction.
+    t = max(0.25, min(0.75, t))
+    cx, cy = ax + (bx - ax) * t, ay + (by - ay) * t
+    heading = math.atan2(by - ay, bx - ax)
+    offset = way.half_width_m + NPC_VEHICLE_WIDTH_M * 0.5 + ROADSIDE_SHOULDER_MARGIN_M
+    return cx + math.sin(heading) * offset, cy - math.cos(heading) * offset
 
 
 NPC_PARKING_CANDIDATE_LIMIT = 8  # try at most this many destination candidates per road point
@@ -2559,11 +2560,9 @@ def _pick_npc_destination_candidates(
 ) -> List[Tuple[Tuple[float, float], object]]:
     """Every acceptable place to stop near (x, y), in NPC-more.md section
     2's tier order (dedicated space > parking lot > building yard >
-    roadside on a quiet street as an explicit last resort), nearest first
-    within each tier. A road carriageway/lane/roundabout itself is never
-    a candidate at all (section 2's "do NOT treat road carriageways as
-    valid parking locations") - roadside parking (tier 5) still returns
-    an actual curb-side stopping point, not the bare lane center.
+    roadside shoulder on a quiet street as an explicit last resort),
+    nearest first within each tier. A carriageway/lane/roundabout is
+    never a parking candidate.
 
     Returns a *list* rather than a single best guess so a caller can try
     the next-nearest option when the nearest turns out unroutable
@@ -2870,11 +2869,8 @@ def spawn_deterministic_npc(
             ways=ways, spatial_grid=spatial_grid,
         )
         for destination, target_space in destination_candidates:
-            # The roadside-parking fallback (see _pick_npc_destination_
-            # candidates) returns the raw road point completely unchanged -
-            # every other tier (space/lot/building yard) always offsets it
-            # off the road by construction, so an exact match here can
-            # only be that fallback, still meant to be reached in-lane.
+            # Every parking tier may be off the road; the raw point only
+            # stays unchanged for a destination already on its road node.
             destination_is_off_road = destination != raw_destination
             spawned = spawn_npc(
                 vehicle_id, resident_manager, traffic_world, ways, origin, destination,
@@ -2976,6 +2972,7 @@ def continue_npc_trip(
                 traffic_world, ways, origin, destination, spatial_grid=spatial_grid,
                 curbs=curbs, curb_grid=curb_grid, buildings=buildings, building_grid=building_grid,
                 parking_space=target_space, destination_is_off_road=destination_is_off_road,
+                origin_is_off_road=True,
                 deadline=deadline,
             )
             if path is None:
@@ -3556,6 +3553,7 @@ class NPCVehicleManager:
         vehicle.driver_departed = True
         vehicle.debug_waiting_for = "accident"
         vehicle.crashed_timer = 0.0
+        _set_turn_signal(vehicle, "hazard", 0.0)
         release_npc_parking_reservation(vehicle)
         self.drivers.pop(vehicle.vehicle_id, None)
         vehicle.trip_group = None
@@ -3723,16 +3721,16 @@ class NPCVehicleManager:
         other_positions = [pos for _, pos in claimed_points]
         for index in near:
             yield
-            # Midway along an edge (not the node itself, an intersection
-            # centre) on a quiet street: legal roadside parking, an on-road
-            # destination - the off-road lot/space tiers are what fail
+            # Midway along an edge (not an intersection centre): roadside
+            # shoulder parking when the off-road lot/space tiers fail
             # validation almost every time on real maps.
             neighbors = [n for n, length in edges.get(index, ()) if length >= 20.0]
             if not neighbors:
                 continue
             other = nodes[random.choice(neighbors)]
-            destination = ((nodes[index][0] + other[0]) / 2.0, (nodes[index][1] + other[1]) / 2.0)
-            if _roadside_parking_point(destination[0], destination[1], ways, spatial_grid) is None:
+            road_point = ((nodes[index][0] + other[0]) / 2.0, (nodes[index][1] + other[1]) / 2.0)
+            destination = _roadside_parking_point(road_point[0], road_point[1], ways, spatial_grid)
+            if destination is None:
                 continue
             if not _point_is_clear_of_vehicles(destination, other_positions):
                 continue
@@ -3740,9 +3738,10 @@ class NPCVehicleManager:
                 traffic_world, ways, (vehicle.car.x, vehicle.car.y), destination,
                 spatial_grid=spatial_grid, curbs=curbs, curb_grid=curb_grid,
                 buildings=buildings, building_grid=building_grid, origin_is_off_road=True,
+                destination_is_off_road=True,
             )
             if path is not None:
-                return path, destination, None, False
+                return path, destination, None, True
         return None
 
     def _start_short_transit_trip(
@@ -3851,6 +3850,9 @@ class NPCVehicleManager:
                     vehicle.x, vehicle.y, viewport_bounds, margin_m=NPC_PARKING_ACCESS_TOLERANCE_M,
                 ))
                 or any(True for _ in self.nearby_vehicles_at(vehicle.x, vehicle.y, NPC_TRANSIT_SPAWN_CLEARANCE_M))
+                or (result[1][2] is None and not _point_is_clear_of_vehicles(
+                    result[1][1], [pos for _, pos in claimed_points]
+                ))
             ):
                 release_npc_parking_reservation(vehicle)
                 stats["discarded"] += 1
@@ -3885,6 +3887,9 @@ class NPCVehicleManager:
             or vehicle.driver_departed
             or (parking_space is not None and (
                 getattr(parking_space, "reserved", False) or getattr(parking_space, "occupied", False)
+            ))
+            or (parking_space is None and not _point_is_clear_of_vehicles(
+                result[1], [pos for vid, pos in claimed_points if vid != vehicle.vehicle_id]
             ))
             or any(resident_id in busy for resident_id in job["members"] or ())
         ):
@@ -4171,6 +4176,34 @@ class NPCVehicleManager:
         # destination chosen earlier in this same tick.
         claimed_points: List[Tuple[int, Tuple[float, float]]] = self._claimed_vehicle_points()
 
+        # Async jobs can have claimed the same unreserved roadside spot before
+        # either finished; free an already-waiting car before starting more trips.
+        vehicles_by_id = {vehicle.vehicle_id: vehicle for vehicle in self.vehicles}
+        for vehicle in self.vehicles:
+            driver = self.drivers.get(vehicle.vehicle_id)
+            if (driver is None or vehicle.state != NPCState.WAITING or vehicle.destination is None
+                    or vehicle.reserved_parking_space is not None):
+                continue
+            taken = not _point_is_clear_of_vehicles(vehicle.destination, [
+                pos for vid, pos in claimed_points
+                if vid != vehicle.vehicle_id and vid in vehicles_by_id
+                and (vehicles_by_id[vid].state == NPCState.PARKED or vid < vehicle.vehicle_id)
+            ])
+            if not taken:
+                continue
+            if continue_npc_trip(
+                vehicle, driver, traffic_world, ways, spatial_grid=spatial_grid,
+                parking_spaces=parking_spaces, sceneries=sceneries, buildings=buildings,
+                curbs=curbs, curb_grid=curb_grid, building_grid=building_grid,
+                other_vehicle_positions=[pos for vid, pos in claimed_points if vid != vehicle.vehicle_id],
+                time_budget_s=max(0.0, population_deadline - time.perf_counter()),
+            ):
+                driver.recovery_stage = "NORMAL"
+                if vehicle.vehicle_kind == "household":
+                    vehicle.returning_home = False  # retry home after this stop, not at the substitute spot
+                claimed_points.append((vehicle.vehicle_id, vehicle.destination))
+            break  # at most one reroute per tick
+
         # 3. Roll idle parked vehicles for "start a new trip now" (section
         # 9's parked/driving mixture), bounded to
         # NPC_TRIP_START_ATTEMPTS_PER_TICK actual attempts regardless of
@@ -4428,6 +4461,7 @@ class NPCVehicleManager:
             if vehicle.state == NPCState.CRASHED:
                 vehicle.car.speed = 0.0
                 vehicle.crashed_timer += dt
+                vehicle.turn_signal_elapsed += dt
         previous_player_pose = self._previous_player_pose
         if player_car is not None:
             self._previous_player_pose = (player_car.x, player_car.y, player_car.heading)

@@ -46,6 +46,10 @@ var _respawn_pending := false
 var _cancel_ride_pending := false
 var _reset_trip_pending := false
 var _help: PanelContainer
+var _inspect_panel: PanelContainer
+var _inspect_label: Label
+var _focus := {}  # {kind: pan|pedestrian|npc, id or position}; empty follows the player
+var _pan_button := 0
 var summary_shown := false  # the career city summary is up: the session is over, no more driving commands
 var _engine_on := false  # main(): the driver starts on foot, E starts the engine after getting in
 var _entered_taxi := false  # the "Press F" hint until the driver first gets in
@@ -93,6 +97,7 @@ var world_light := CanvasModulate.new()  # godot-lights-01: the ambient light, m
 func _ready() -> void:
 	_apply_language()
 	_build_help()
+	_build_inspector()
 	add_child(weather)
 	add_child(world_light)
 	weather.setup($Sky, map_layer)
@@ -187,12 +192,15 @@ func _apply_language() -> void:
 	if _help != null:
 		_help.queue_free()
 		_build_help()
+	if _inspect_panel != null:
+		_inspect_panel.get_node("Rows/Back").text = T.text("back_to_taxi", language, "Back to taxi")
 
 
 func _on_connection(up: bool) -> void:
 	print("simulation ", "connected" if up else "disconnected")
 	phone.set_connected(up)
 	if not up:  # a new connection starts over: header, chunks, states
+		_clear_focus()
 		entities.buffer.clear()
 		map_layer.clear()
 		audio.stop_loops()
@@ -246,6 +254,23 @@ static func screenshot_directory(os_name: String, user_profile: String) -> Strin
 ## Mouse on a HUD panel: drag it (main()'s hud_dragging), kept on screen.
 func _input(event: InputEvent) -> void:
 	drive.handle(event)
+	if event is InputEventMouseButton:
+		if event.pressed and _start_sign == null and not phone.is_open and (event.button_index == MOUSE_BUTTON_MIDDLE or (event.button_index == MOUSE_BUTTON_LEFT and event.ctrl_pressed)):
+			_pan_button = event.button_index
+			_focus = {"kind": "pan", "position": camera.position}
+			_inspect_panel.visible = true
+			get_viewport().set_input_as_handled()
+			return
+		if not event.pressed and event.button_index == _pan_button:
+			_pan_button = 0
+			get_viewport().set_input_as_handled()
+			return
+	if event is InputEventMouseMotion and _pan_button != 0:
+		_focus["position"] -= event.relative / camera.zoom.x
+		get_viewport().set_input_as_handled()
+		return
+	if event is InputEventMouseButton and event.pressed and _inspect_panel.visible and _inspect_panel.get_global_rect().has_point(event.position):
+		return  # the Back button gets the click, even if a HUD panel overlaps it
 	if _start_sign == null and hud.visible and hud_layout.handle(event):
 		instruments.queue_redraw()
 		hud._layout()
@@ -253,6 +278,16 @@ func _input(event: InputEvent) -> void:
 
 
 func _unhandled_input(event: InputEvent) -> void:
+	if event is InputEventMouseButton and event.pressed and _start_sign == null:
+		if event.button_index == MOUSE_BUTTON_WHEEL_UP or event.button_index == MOUSE_BUTTON_WHEEL_DOWN:
+			_zoom(1.1 if event.button_index == MOUSE_BUTTON_WHEEL_UP else 0.9)
+			get_viewport().set_input_as_handled()
+			return
+		if event.button_index == MOUSE_BUTTON_LEFT and not phone.is_open:
+			_focus = entities.entity_at(event.position, get_viewport().get_canvas_transform())
+			_inspect_panel.visible = not _focus.is_empty()
+			get_viewport().set_input_as_handled()
+			return
 	if _start_sign != null and event is InputEventKey and event.pressed and not event.echo:
 		if event.keycode != KEY_ESCAPE:  # main(): any key but Esc starts
 			_start_sign.queue_free()
@@ -301,9 +336,20 @@ func _unhandled_input(event: InputEvent) -> void:
 			KEY_F3:
 				debug_label.visible = not debug_label.visible
 			KEY_EQUAL, KEY_KP_ADD:
-				camera.zoom *= 1.25
+				_zoom(1.25)
 			KEY_MINUS, KEY_KP_SUBTRACT:
-				camera.zoom /= 1.25
+				_zoom(0.8)
+
+
+func _zoom(factor: float) -> void:
+	camera.zoom = Vector2.ONE * clampf(camera.zoom.x * factor, 3.0, 24.0)
+
+
+func _clear_focus() -> void:
+	_focus.clear()
+	_pan_button = 0
+	if _inspect_panel != null:
+		_inspect_panel.visible = false
 
 
 ## Driving keys: every press and release, before any UI can consume it.
@@ -312,6 +358,7 @@ func _notification(what: int) -> void:
 		# Key-ups of keys held now will never arrive: let go of everything,
 		# and tell the simulation at once rather than at the next interval.
 		drive.clear()
+		_pan_button = 0
 		_command_timer = 0.0
 
 
@@ -344,6 +391,14 @@ func _process(delta: float) -> void:
 			print("screenshot saved: ", _screenshot_path)
 			get_tree().quit()
 	camera.position = entities.player_position()
+	if _focus.get("kind") == "pan":
+		camera.position = _focus["position"]
+	elif _focus.has("id"):
+		var focused: Vector2 = entities.entity_position(_focus["kind"], _focus["id"])
+		if focused == Vector2.INF:
+			_clear_focus()
+		else:
+			camera.position = focused
 	entities.px_per_m = camera.zoom.x
 	entities.show_route = nav_overlay.show_route
 	if _selftest and _selftest_start != Vector2.INF and _selftest_time > 0.5:
@@ -478,6 +533,7 @@ func _present(state: Dictionary) -> void:
 	map_layer.set_obstacles(state.get("fallen_trees", []), state.get("knocked_posts", []))
 	phone.clock_text = hud._clock.text.get_slice(" ", 1) if hud._clock.text.contains(" ") else hud._clock.text
 	phone.show_phone(state.get("phone", {}))
+	_refresh_inspector(state)
 	var target: Dictionary = entities.current_target(state)
 	var target_screen := Vector2.ZERO
 	if not target.is_empty():
@@ -655,8 +711,88 @@ func _build_help() -> void:
 	var text := Label.new()
 	text.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	text.add_theme_font_size_override("font_size", 18)
-	text.text = T.text("controls_help", language, "CONTROLS\n\nWASD / arrows   Drive or walk       Shift   Sprint\nF   Enter / exit taxi               E   Engine\nP   Phone                            1–3 / Enter / X   Phone actions\nSpace   Road rage                   G   Refuel\nR   Respawn taxi                    X   Cancel fare\nT   Reset trip meter                K   Lane assist\nV   Speed limiter                   B   Red-light assist\nN   Navigation                      C   Compass\nJ   Train board                     L   Labels\n+ / -   Zoom                        Esc   Pause\nF1   Close help                     F3   Diagnostics\nMouse   Drag HUD panels             U   Reset HUD layout\nF12   Screenshot")
+	text.text = T.text("controls_help", language, "CONTROLS\n\nWASD / arrows   Drive or walk       Shift   Sprint\nF   Enter / exit taxi               E   Engine\nP   Phone                            1–3 / Enter / X   Phone actions\nSpace   Road rage                   G   Refuel\nR   Respawn taxi                    X   Cancel fare\nT   Reset trip meter                K   Lane assist\nV   Speed limiter                   B   Red-light assist\nN   Navigation                      C   Compass\nJ   Train board                     L   Labels\n+ / - / Wheel   Zoom                Esc   Pause\nCtrl+drag / Middle-drag   Pan        Click NPC   Inspect\nF1   Close help                     F3   Diagnostics\nMouse   Drag HUD panels             U   Reset HUD layout\nF12   Screenshot")
 	_help.add_child(text)
+
+
+func _build_inspector() -> void:
+	_inspect_panel = PanelContainer.new()
+	_inspect_panel.visible = false
+	_inspect_panel.custom_minimum_size = Vector2(320, 0)
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color8(12, 20, 30, 242)
+	style.border_color = Color8(255, 190, 80)
+	style.set_border_width_all(2)
+	style.set_corner_radius_all(6)
+	style.set_content_margin_all(12)
+	_inspect_panel.add_theme_stylebox_override("panel", style)
+	$Ui.add_child(_inspect_panel)
+	var rows := VBoxContainer.new()
+	rows.name = "Rows"
+	rows.add_theme_constant_override("separation", 8)
+	_inspect_panel.add_child(rows)
+	var back := Button.new()
+	back.name = "Back"
+	back.text = T.text("back_to_taxi", language, "Back to taxi")
+	back.pressed.connect(_clear_focus)
+	rows.add_child(back)
+	_inspect_label = Label.new()
+	_inspect_label.add_theme_font_size_override("font_size", 16)
+	rows.add_child(_inspect_label)
+	_inspect_panel.resized.connect(_position_inspector)
+	get_viewport().size_changed.connect(_position_inspector)
+	_position_inspector.call_deferred()
+
+
+func _position_inspector() -> void:
+	_inspect_panel.position = Vector2(maxf(8.0, get_viewport().get_visible_rect().size.x - _inspect_panel.size.x - 16.0), 54.0)
+
+
+func _refresh_inspector(state: Dictionary) -> void:
+	if _focus.is_empty() or _inspect_panel == null:
+		return
+	if _focus.get("kind") == "pan":
+		_inspect_label.text = T.text("pan_view", language, "Panned view")
+		return
+	var key := "pedestrians" if _focus["kind"] == "pedestrian" else "npcs"
+	for row in state.get(key, []):
+		if row.get("id") == _focus["id"]:
+			_inspect_label.text = _character_text(_focus["kind"], row)
+			return
+	if _focus["kind"] == "pedestrian":
+		for npc in state.get("npcs", []):
+			for person in npc.get("occupants", []):
+				if person.get("id") == _focus["id"]:
+					_inspect_label.text = _character_text("pedestrian", {"id": _focus["id"], "resident": person, "state": T.text("in_vehicle", language, "in vehicle")})
+					return
+
+
+func _character_text(kind: String, row: Dictionary) -> String:
+	var unknown := T.text("unknown", language, "Unknown")
+	if kind == "pedestrian":
+		var resident: Dictionary = row.get("resident") if row.get("resident") is Dictionary else {}
+		return "\n".join([
+			"%s #%s" % [T.text("resident", language, "Resident"), row.get("id", "?")],
+			str(resident.get("name", unknown)),
+			"%s: %s" % [T.text("born", language, "Born"), resident.get("birth_date", unknown)],
+			"%s: %s" % [T.text("gender", language, "Gender"), resident.get("gender", unknown) if resident.get("gender") != null else unknown],
+			"%s: %s" % [T.text("status", language, "State"), row.get("state", unknown)],
+			"%s: %s" % [T.text("activity", language, "Activity"), str(row.get("activity", "")).replace("_", " ") if row.get("activity", "") != "" else unknown],
+			"%s: %.2f ‰" % [T.text("blood_alcohol", language, "Blood alcohol"), float(row.get("blood_alcohol_promille", 0.0))],
+		])
+	var owner: Dictionary = row.get("owner") if row.get("owner") is Dictionary else {}
+	var occupants := PackedStringArray()
+	for person in row.get("occupants", []):
+		if person is Dictionary:
+			occupants.append(person.get("name", unknown))
+	return "\n".join([
+		"%s #%s" % [T.text("npc_vehicle", language, "NPC vehicle"), row.get("id", "?")],
+		"%s: %s" % [T.text("type", language, "Type"), row.get("vehicle_type", unknown)],
+		"%s: %s" % [T.text("status", language, "State"), row.get("state", unknown)],
+		"%s: %.0f km/h" % [T.text("speed", language, "Speed"), absf(float(row.get("speed", 0.0))) * 3.6],
+		"%s: %s" % [T.text("owner", language, "Owner"), owner.get("name", unknown)],
+		"%s: %s" % [T.text("occupants", language, "Occupants"), ", ".join(occupants) if not occupants.is_empty() else unknown],
+	])
 
 
 func _apply_bench_hide() -> void:

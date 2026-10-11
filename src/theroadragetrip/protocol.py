@@ -111,7 +111,23 @@ def command_from_message(message: dict) -> tuple[PlayerCommand, bool]:
     return command, interact
 
 
-def _npc_to_dict(npc) -> dict:
+def _resident_to_dict(resident) -> Optional[dict]:
+    if resident is None:
+        return None
+    return {
+        "id": resident.resident_id,
+        "name": f"{resident.first_name} {resident.surname}".strip(),
+        "gender": resident.gender,
+        "birth_date": resident.birth_date.isoformat(),
+        "mode": resident.mode,
+    }
+
+
+def _npc_to_dict(npc, residents=None) -> dict:
+    residents = residents or {}
+    occupant_ids = set(getattr(npc, "occupant_ids", ()) or ()) | set(getattr(npc, "passenger_ids", ()) or ())
+    if getattr(npc, "current_driver_id", None) is not None:
+        occupant_ids.add(npc.current_driver_id)
     return {
         "id": npc.vehicle_id,
         "x": npc.x,
@@ -135,10 +151,12 @@ def _npc_to_dict(npc) -> dict:
         "debug_waiting_for": npc.debug_waiting_for,
         "length_m": npc.car.length_m,
         "width_m": npc.car.width_m,
+        "owner": _resident_to_dict(residents.get(npc.owner_id)),
+        "occupants": [_resident_to_dict(residents[resident_id]) for resident_id in sorted(occupant_ids) if resident_id in residents],
     }
 
 
-def _pedestrian_to_dict(ped) -> dict:
+def _pedestrian_to_dict(ped, residents=None) -> dict:
     return {
         "id": ped.resident_id,
         "x": ped.x,
@@ -153,6 +171,9 @@ def _pedestrian_to_dict(ped) -> dict:
         "curse_text": ped.curse_text,
         "mood": ped.mood,
         "is_cyclist": ped.is_cyclist,
+        "resident": _resident_to_dict((residents or {}).get(ped.resident_id)),
+        "blood_alcohol_promille": getattr(ped, "blood_alcohol_promille", 0.0),
+        "activity": getattr(getattr(ped, "activity", None), "plugin_id", ""),
     }
 
 
@@ -381,6 +402,7 @@ def build_state_message(
     traffic_mgr = world.traffic_mgr
     player_at = (player_pedestrian.x, player_pedestrian.y) if on_foot else (car.x, car.y)
     fallen_trees, knocked_posts = _fallen_and_knocked(world, *player_at)
+    residents = getattr(getattr(world, "residents", None), "residents", {})
     state = {
         "fallen_trees": fallen_trees,  # [x, y, angle] (the way the taxi hit it)
         "knocked_posts": knocked_posts,  # [x, y, angle, kind]: bollards and street lamps lying flat
@@ -413,8 +435,10 @@ def build_state_message(
         "player_pedestrian": {
             "x": player_pedestrian.x, "y": player_pedestrian.y, "heading": player_pedestrian.heading,
         },
-        "npcs": [_npc_to_dict(npc) for npc in world.npc_manager.vehicles],
-        "pedestrians": [_pedestrian_to_dict(p) for p in world.pedestrian_mgr.pedestrians if p.resident_id is not None],
+        "npcs": [_npc_to_dict(npc, residents) for npc in world.npc_manager.vehicles],
+        "pedestrians": [_pedestrian_to_dict(p, residents) for p in world.pedestrian_mgr.pedestrians if p.resident_id is not None],
+        "vomit_puddles": [list(point) for point in taxi_mgr.vomit_puddles + world.pedestrian_mgr.vomit_puddles],
+        "vomit_footprints": [list(point) for point in world.pedestrian_mgr.vomit_footprints],
         "trains": [_train_to_dict(t) for t in getattr(getattr(world, "railway_mgr", None), "trains", ())],
         "weather": {"weather_type": weather.weather_type.value, "wetness": weather.wetness,
                     "lightning_intensity": weather.lightning_intensity,  # 1 at a strike, fading (render/weather.py)

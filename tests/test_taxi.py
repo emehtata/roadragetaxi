@@ -576,6 +576,7 @@ def test_vomiting_ends_fare_only_after_taxi_stops():
     released = taxi_mgr.take_vomited_passenger(car)
     assert released is passenger
     assert taxi_mgr.current_passenger is None
+    assert taxi_mgr.vomit_puddles == [(passenger.ped_x, passenger.ped_y)]
 
 
 def test_sober_passenger_cannot_become_nauseous():

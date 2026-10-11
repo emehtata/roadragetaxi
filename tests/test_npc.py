@@ -54,7 +54,7 @@ from theroadragetrip.npc import (
 from theroadragetrip.osm import Building, Curb, ParkingSpace, Scenery, TrafficLight, Way
 from theroadragetrip.physics import Car
 from theroadragetrip.residents import ResidentManager
-from theroadragetrip.traffic_rules import TrafficAction, decide_traffic_action
+from theroadragetrip.traffic_rules import TrafficAction, decide_traffic_action, nearest_vehicle_ahead
 from theroadragetrip.traffic_world import TrafficWorld
 
 
@@ -677,7 +677,9 @@ def test_roadside_parking_point_only_on_a_quiet_drivable_way():
     roundabout = Way(points_m=[(0.0, 0.0), (100.0, 0.0)], highway="residential", half_width_m=4.5, is_roundabout=True)
     sidewalk = Way(points_m=[(0.0, 0.0), (100.0, 0.0)], highway="footway", half_width_m=1.0, is_drivable=False)
 
-    assert _roadside_parking_point(50.0, 0.0, [quiet], None) == (50.0, 0.0)
+    shoulder = _roadside_parking_point(50.0, 0.0, [quiet], None)
+    assert shoulder == pytest.approx((50.0, -5.9))
+    assert nearest_vehicle_ahead(40.0, -2.0, 0.0, [SimpleNamespace(x=shoulder[0], y=shoulder[1])]) is None
     assert _roadside_parking_point(50.0, 0.0, [busy], None) is None
     assert _roadside_parking_point(50.0, 0.0, [roundabout], None) is None
     assert _roadside_parking_point(50.0, 0.0, [sidewalk], None) is None
@@ -963,10 +965,9 @@ def test_spawn_deterministic_npc_falls_back_to_roadside_parking_on_a_quiet_stree
     result = spawn_deterministic_npc(residents, tw, ways)
     assert result is not None
     _, driver, vehicle = result
-    assert vehicle.destination == (400.0, 0.0)  # the raw road point itself
-    # But the actual resting path point must be off the lane's centerline
-    # (y=0), hugging the curb side - never dead-center in the lane.
-    assert abs(driver.path[-1].y) > 0.5
+    assert vehicle.destination[0] == pytest.approx(395.0)  # clear of the endpoint junction
+    assert vehicle.destination[1] < -ways[-1].half_width_m  # beyond the carriageway, not blocking its lane
+    assert driver.path[-1].y == pytest.approx(vehicle.destination[1])
 
 
 def test_route_crosses_curbs_rejects_a_path_clipping_a_mapped_curb():
@@ -1158,6 +1159,52 @@ def test_update_npc_recovers_from_a_stopped_footprint_violation_instead_of_deadl
             break
     assert cleared, "vehicle never escaped the footprint violation - deadlocked"
     assert vehicle.car.x > start_x + 1.0  # actually drove clear of the curb, not just relabeled
+
+
+def test_update_npc_clears_a_curb_before_finishing_the_final_approach():
+    ways = _straight_chain(count=20)
+    tw = TrafficWorld(ways)
+    residents = ResidentManager()
+    result = spawn_npc(1, residents, tw, ways, (0.0, 0.0), (200.0, 0.0))
+    assert result is not None
+    _, driver, vehicle = result
+    vehicle.car.x = 198.6  # inside the 1.5 m arrival radius, but rear still touches curb
+    vehicle.car.speed = 0.0
+    driver.path_index = len(driver.path) - 1
+    curb = Curb(points_m=[(196.8, -5.0), (196.8, 5.0)])
+
+    for _ in range(300):
+        update_npc(vehicle, driver, 1.0 / 60.0, tw, residents, curbs=[curb])
+        if vehicle.state == NPCState.PARKED:
+            break
+
+    assert vehicle.state == NPCState.PARKED
+    assert vehicle.car.x > 199.0
+    assert is_vehicle_pose_valid(vehicle.car.x, vehicle.car.y, vehicle.car.heading, curbs=[curb])
+
+
+def test_update_npc_recovery_still_triggers_when_final_pose_stays_blocked(monkeypatch):
+    import theroadragetrip.npc as npc_module
+
+    monkeypatch.setattr(npc_module, "update_car_physics", lambda *args, **kwargs: None)
+    ways = _straight_chain(count=20)
+    tw = TrafficWorld(ways)
+    residents = ResidentManager()
+    result = spawn_npc(1, residents, tw, ways, (0.0, 0.0), (200.0, 0.0))
+    assert result is not None
+    _, driver, vehicle = result
+    vehicle.car.x = 198.6
+    vehicle.car.speed = 0.0
+    driver.path_index = len(driver.path) - 1
+    curb = Curb(points_m=[(190.0, vehicle.car.y), (300.0, vehicle.car.y)])
+
+    for _ in range(600):
+        update_npc(vehicle, driver, 1.0 / 60.0, tw, residents, curbs=[curb])
+        if driver.recovery_stage == "STUCK":
+            break
+
+    assert driver.recovery_stage == "STUCK"
+    assert vehicle.state == NPCState.WAITING
 
 
 def test_update_npc_slows_down_for_a_stopped_vehicle_ahead():

@@ -1936,6 +1936,9 @@ class TaxiManager:
         passenger.ped_x = car.x + math.sin(car.heading) * 1.8
         passenger.ped_y = car.y - math.cos(car.heading) * 1.8
         passenger.ped_heading = car.heading
+        self.vomit_puddles.append((passenger.ped_x, passenger.ped_y))
+        if len(self.vomit_puddles) > 50:
+            del self.vomit_puddles[:-50]
         passenger.boarded = False
         passenger.is_walking_to_car = False
         self.current_passenger = None

@@ -49,6 +49,7 @@ func _process(_delta: float) -> bool:  # first frame: the tree is live, so nodes
 	test_phone()
 	test_rendering()
 	test_drive_input()
+	test_mouse_inspection()
 	test_meet_road_camera_lightning()
 	test_gameplay_points()
 	test_obstacles()
@@ -264,6 +265,15 @@ func test_rendering() -> void:
 
 	# Turn signals blink as Pygame's elapsed % 0.9 < 0.45.
 	check(RS.signal_lit(0.1) and not RS.signal_lit(0.5) and RS.signal_lit(0.95), "turn signal blink phase")
+	var signal_car := Entities.new()
+	signal_car._tint = Color.WHITE
+	signal_car._vehicle(Vector2.ZERO, 0.0, 4.5, 1.8, Color.RED, "car", false, false, false, false, "hazard", 0.1)
+	var amber_count := 0
+	for lamp in signal_car._lamp_polys:
+		if lamp[1] == RS.TURN_SIGNAL:
+			amber_count += 1
+	check(amber_count == 4, "crashed car has four hazard lamps")
+	signal_car.free()
 
 	# Wet roads: darken 90/255 at full wetness, no sheen below 0.15.
 	var dry := RS.wet_alphas(0.0)
@@ -352,6 +362,69 @@ func test_drive_input() -> void:
 	var walking := drive.controls(true)
 	check(walking["throttle"] == 0.0 and walking["forward"] == 1.0, "on foot, W walks instead of accelerating")
 	check(not drive.handle(_key(KEY_P)) and not drive.handle(_key(KEY_F)), "phone and enter keys are not driving keys")
+
+
+func test_mouse_inspection() -> void:
+	var layer: Node2D = EntityLayer.new()
+	layer.px_per_m = 10.0
+	var pedestrian := {"id": 7, "x": 10.0, "y": 0.0, "heading": 0.0}
+	var npc := {"id": 8, "x": 20.0, "y": 0.0, "heading": 0.0, "length_m": 4.0}
+	var state := {"pedestrians": [pedestrian], "npcs": [npc]}
+	layer._frame = {"a": state, "b": state, "t": 0.0}
+	var canvas := Transform2D(Vector2(10.0, 0.0), Vector2(0.0, 10.0), Vector2(640.0, 360.0))
+	check(layer.entity_at(Vector2(740.0, 360.0), canvas) == {"kind": "pedestrian", "id": 7}, "clicking a resident selects it")
+	check(layer.entity_at(Vector2(840.0, 360.0), canvas) == {"kind": "npc", "id": 8}, "clicking an NPC vehicle selects it")
+	check(layer.entity_at(Vector2(900.0, 360.0), canvas).is_empty(), "clicking empty map selects nothing")
+	check(layer.entity_position("npc", 8) == Vector2(20.0, 0.0), "camera can follow a selected NPC")
+	state["pedestrians"] = []
+	npc["occupants"] = [{"id": 7}]
+	check(layer.entity_position("pedestrian", 7) == Vector2(20.0, 0.0), "camera follows a resident into a vehicle")
+	layer.free()
+	var main: Node = load("res://main.tscn").instantiate()
+	root.add_child(main)
+	check(main._character_text("pedestrian", {"id": 7, "resident": {"name": "Aino Korhonen", "birth_date": "1990-04-05"}}).contains("Aino Korhonen"), "inspector shows the resident name")
+	check(main._character_text("npc", {"id": 8, "owner": {"name": "Aino Korhonen"}, "occupants": [{"name": "Aino Korhonen"}]}).contains("Aino Korhonen"), "vehicle inspector shows its people")
+	main.entities._frame = {"a": state, "b": state, "t": 0.0}
+	state["pedestrians"] = [pedestrian]
+	pedestrian["x"] = 1.0  # inside the headless viewport, so GUI routing is exercised
+	main.camera.zoom = Vector2(10.0, 10.0)
+	var click := InputEventMouseButton.new()
+	click.button_index = MOUSE_BUTTON_LEFT
+	click.position = main.get_viewport().get_canvas_transform() * Vector2(1.0, 0.0)
+	click.pressed = true
+	var blocking_shell := Control.new()
+	blocking_shell.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	root.add_child(blocking_shell)
+	Input.parse_input_event(click)
+	Input.flush_buffered_events()
+	check(main._focus.is_empty(), "a full-screen Control consumes map clicks")
+	blocking_shell.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	Input.parse_input_event(click)
+	Input.flush_buffered_events()
+	check(main._focus == {"kind": "pedestrian", "id": 7}, "a routed click selects a visible person")
+	blocking_shell.free()
+	check(main.entities.entity_at(click.position, main.get_viewport().get_canvas_transform()) == {"kind": "pedestrian", "id": 7}, "person hit-test matches the live camera")
+	var shell: Control = load("res://startup.tscn").instantiate()
+	check(shell.mouse_filter == Control.MOUSE_FILTER_IGNORE, "startup background lets map clicks reach people")
+	shell.free()
+	main._clear_focus()
+	main.camera.zoom = Vector2(9.0, 9.0)
+	var wheel := InputEventMouseButton.new()
+	wheel.button_index = MOUSE_BUTTON_WHEEL_UP
+	wheel.pressed = true
+	main._unhandled_input(wheel)
+	check(is_equal_approx(main.camera.zoom.x, 9.9), "mouse wheel zooms the camera")
+	var drag := InputEventMouseButton.new()
+	drag.button_index = MOUSE_BUTTON_MIDDLE
+	drag.pressed = true
+	main._input(drag)
+	var motion := InputEventMouseMotion.new()
+	motion.relative = Vector2(99.0, 0.0)
+	main._input(motion)
+	check(main._focus.get("kind") == "pan" and is_equal_approx(main._focus["position"].x, -10.0), "middle drag pans the persistent camera focus")
+	main._clear_focus()
+	check(main._focus.is_empty() and not main._inspect_panel.visible, "back to taxi clears camera focus and panel")
+	main.free()
 
 
 func _key(code: Key) -> InputEventKey:

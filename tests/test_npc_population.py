@@ -947,6 +947,10 @@ def test_trigger_vehicle_accident_stops_the_vehicle_and_ejects_the_driver():
     manager._trigger_vehicle_accident(vehicle, residents, pedestrian_mgr, sim_time=100.0)
 
     assert vehicle.state == NPCState.CRASHED
+    assert vehicle.turn_signal == "hazard"
+    assert vehicle.turn_signal_elapsed == 0.0
+    manager.update(0.2, 5.0, 0.0, residents, TrafficWorld([]), [], pedestrian_mgr=pedestrian_mgr)
+    assert vehicle.turn_signal_elapsed == 0.2
     assert vehicle.driver_departed is True
     assert vehicle.car.speed == 0.0
     assert manager.drivers.get(vehicle.vehicle_id) is None
@@ -1498,6 +1502,45 @@ def test_v12_stale_or_orphaned_route_results_are_never_applied():
     assert manager.drivers.get(second.vehicle_id) is None
     assert manager.route_job_stats["ready"] == 0
     assert manager.route_job_stats["stale"] + manager.route_job_stats["discarded"] == 2
+
+
+def test_route_job_rechecks_unreserved_destination_when_committing():
+    manager = NPCVehicleManager(target_count=3)
+    residents = ResidentManager()
+    waiting = place_parked_npc(1, (0.0, 0.0), None)
+    occupied = place_parked_npc(2, (100.0, 0.0), None)
+    manager.vehicles.extend([waiting, occupied])
+    plan = ([PathPoint(0.0, 0.0), PathPoint(100.0, 0.0)], (100.0, 0.0), None, True)
+    manager._finish_route_job({"kind": "trip", "vehicle": waiting, "members": None}, plan,
+                              0.0, 0.0, residents, None)
+    assert waiting.state == NPCState.PARKED
+    assert waiting.vehicle_id not in manager.drivers
+    assert manager.route_job_stats["discarded"] == 1
+
+    transit = place_parked_npc(3, (-100.0, 0.0), None)
+    manager.rebuild_spatial_grid()
+    manager._finish_route_job({"kind": "transit", "vehicle": None, "members": None}, (transit, plan),
+                              0.0, 0.0, residents, None)
+    assert transit not in manager.vehicles
+    assert manager.route_job_stats["discarded"] == 2
+
+
+def test_waiting_car_retargets_when_another_car_owns_its_destination():
+    ways = _city_block_grid()
+    traffic_world = TrafficWorld(ways)
+    residents = ResidentManager()
+    manager = NPCVehicleManager(target_count=2)
+    blocker = place_parked_npc(1, _CENTER, None)
+    blocker.availability = NPCAvailability.RESERVED
+    result = spawn_npc(2, residents, traffic_world, ways, (_CENTER[0] - 80.0, _CENTER[1]), _CENTER)
+    assert result is not None
+    _, driver, follower = result
+    follower.state = NPCState.WAITING
+    manager.vehicles.extend([blocker, follower])
+    manager.drivers[follower.vehicle_id] = driver
+    manager._run_population_tick(*_CENTER, residents, traffic_world, ways, None, None, None, None, None, None, None)
+    assert follower.destination != (blocker.x, blocker.y)
+    assert follower.state == NPCState.CRUISING
 
 
 def test_v12_failed_trip_start_backs_off_instead_of_retrying_every_tick():

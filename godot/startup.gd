@@ -184,7 +184,7 @@ func _choose_language(language: String) -> void:
 func _online_menu() -> void:
 	_clear()
 	_title(_t("real_data", "REAL-WORLD DATA"), _t("real_data_detail", "The game can use real data for the city and time you play in."))
-	var choices := {"historical_weather": [_t("realtime_weather", "Real-time weather (FMI)"), true],
+	var choices := {"historical_weather": [_t("historical_weather", "FMI weather (observations and forecasts)"), true],
 		"train_timetable": [_t("realtime_trains", "Real train timetables (Digitraffic)"), true]}
 	for key in choices:
 		var check := CheckButton.new()
@@ -352,7 +352,7 @@ func _settings_menu() -> void:
 	_body.add_child(language)
 	_focusables.append(language)
 	var historical := CheckButton.new()  # Pygame's settings: FMI weather for the city and game time
-	historical.text = _t("historical_weather", "Historical weather (FMI)")
+	historical.text = _t("historical_weather", "FMI weather (observations and forecasts)")
 	historical.button_pressed = _settings.get_value("game", "historical_weather", false)
 	historical.toggled.connect(func(on: bool):
 		_settings.set_value("game", "historical_weather", on)
