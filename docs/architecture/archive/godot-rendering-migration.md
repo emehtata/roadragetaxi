@@ -1,5 +1,8 @@
 # Godot rendering migration backlog
 
+> **Archived (0.17.0alpha):** the Pygame client was removed. This records how
+> the Godot client and the simulation server were split from it.
+
 This backlog is built from [godot-pygame-rendering-parity.md](godot-pygame-rendering-parity.md).
 Items are grouped by dependency and gameplay need, not by preference. Each
 item says what it needs and which layer changes:

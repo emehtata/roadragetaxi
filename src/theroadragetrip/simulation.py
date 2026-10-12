@@ -5,7 +5,7 @@ gameplay loop (physics, collisions, camera follow, and the taxi/NPC/
 traffic/pedestrian manager updates). It is moved here verbatim from
 ``main/__init__.py`` so it can be called without a display - by tests, by
 ``--headless`` mode, and eventually by an alternate (non-Pygame) client or
-a server. See ``docs/architecture/simulation-rendering.md``.
+a server. See ``docs/architecture/archive/simulation-rendering.md``.
 
 This module must never import pygame, directly or indirectly. Player
 input crosses the boundary as a plain ``PlayerCommand``, not raw key

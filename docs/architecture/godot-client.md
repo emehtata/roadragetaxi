@@ -1,8 +1,8 @@
-# Godot client (0.16.0g-alpha experiment)
+# Godot client
 
 Python stays the authoritative simulation. Godot (`godot/`) is a rendering,
-audio, UI and input client only. Pygame still works unchanged. There is no
-BIN; the map comes from the existing OSM pipeline.
+audio, UI and input client only (since 0.17.0alpha the only client: the
+Pygame client was removed). There is no BIN; the map comes from the existing OSM pipeline.
 
 ## Architecture
 
@@ -33,13 +33,11 @@ BIN; the map comes from the existing OSM pipeline.
                                          │
                             HUD (hud.gd) ◄┴► AudioManager (audio_events.json → game sound catalog)
                                               buses: Master > Game, Environment, UI
-
- Pygame client (python -m theroadragetrip [--connect]) - unchanged, same transport
 ```
 
-Before this experiment, `main()` ran the Pygame window, input and the
+Before the Godot client, Pygame's `main()` ran the Pygame window, input and the
 simulation in one loop. `simulation.advance_simulation()` had already been
-split out (see [simulation-rendering.md](simulation-rendering.md)), and a
+split out (see [simulation-rendering.md](archive/simulation-rendering.md)), and a
 headless server already broadcast states. Phase 1 moved trains into
 `advance_simulation`. Phase 2 added interpolation, audio, the HUD, map
 streaming and player identity.
@@ -86,7 +84,7 @@ shook while the taxi looked steady (godot-09).
 ## Outgoing network traffic (`transport.py`)
 
 The simulation tick never writes to a socket. Each connection
-(`LineJSONConnection`, used by the server and by Pygame's `--connect` client)
+(`LineJSONConnection`)
 has its own reader thread and its own sender thread. A slow client therefore
 only ever holds up its own sender.
 
@@ -301,7 +299,7 @@ events and reports the throttle sent and the taxi's speed after each
 release.
 
 **UI.** `phone.gd` is a `PanelContainer` on the right. The road stays
-visible, and the simulation does not pause; Pygame does pause, see below.
+visible, and the simulation does not pause, see below.
 - Keys are InputMap actions added by the phone: P toggles, Esc closes, 1–3
   pick a row, Enter accepts, X rejects. Buttons do the same.
 - No phone key is a driving, taxi or camera key, so driving keeps working
@@ -318,8 +316,8 @@ visible, and the simulation does not pause; Pygame does pause, see below.
 - On disconnect the rows and pending requests are cleared and actions are
   disabled. After reconnecting, the phone shows only what new states say.
 
-**Difference from Pygame:** Pygame stops the clock (`dt = 0`) while its
-phone is open. The Godot client doesn't, because a shared server shouldn't
+**Not paused:** the old Pygame client stopped the clock while its phone
+was open. The Godot client doesn't, because a shared server shouldn't
 pause for one client's UI. Expiring offers therefore keep counting down.
 
 **Tests:**
@@ -377,10 +375,9 @@ make godot-test                         # Godot unit tests, no server
 # audio check: server running, then
 godot --path godot -- --port 8765 --audiotest /tmp/phases > log.txt
 python tools/analyse_godot_audio.py log.txt
-python -m theroadragetrip --connect 127.0.0.1:8765   # Pygame client on the same server
 ```
 
-Python tests: `SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy python -m pytest -q`
+Python tests: `python -m pytest -q`
 (see `tests/test_client_server_integration.py`, `tests/test_slow_clients.py`
 and `tests/test_map_chunks.py`).
 
@@ -402,8 +399,7 @@ beside the game and the client reads its sounds, speech, rage faces and logo
 from the server's `_internal/theroadragetrip` - nothing is shipped twice.
 The workflow smoke-tests the server (`--list-cities`), exports with Godot
 4.7.2 and its Windows templates (cached), zips the folder, builds the Inno
-Setup installer (`installer/RoadRageTrip.iss`), and still builds the Pygame
-version as its own zip. The local `.osm.pbf` is not shipped (gitignored);
+Setup installer (`installer/RoadRageTrip.iss`). The local `.osm.pbf` is not shipped (gitignored);
 releases read the map from Overpass.
 
 A local equivalent on Linux: `godot --headless --path godot --export-release
@@ -509,7 +505,7 @@ Nobody has listened to it; these are measurements of the output.
 - **Coordinates:** placed sounds use the same map coordinates as drawing
   (`MapMath.point`, y flipped). The camera is the 2D listener.
 
-**Differences from Pygame audio**
+**Differences from the old Pygame audio**
 - Engine: Godot uses the idle loop pitched by speed; Pygame crossfades rev
   layers.
 - Train rumble: Godot plays one loop for the nearest moving train; Pygame
@@ -564,13 +560,3 @@ godot-21 section.
   (about 4.3 ms, mostly meshes) plus the full-screen composite (about 4.3 ms).
   The composite is inherent to the SubViewport design (godot-23 in the parity
   doc).
-
-## Migration from Pygame
-
-Keep both clients on the same server. Move one presentation feature at a
-time, with Pygame as the visual reference:
-1. phone and offer UI
-2. station announcements
-3. sprites
-
-Retire Pygame only when the Godot client covers everything.

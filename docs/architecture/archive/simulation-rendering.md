@@ -1,5 +1,8 @@
 # Simulation / rendering boundary
 
+> **Archived (0.17.0alpha):** the Pygame client was removed. This records how
+> the Godot client and the simulation server were split from it.
+
 Phase 1 of `.github/prompts/client-server-01.md`: separate the gameplay
 simulation from Pygame rendering, incrementally, without changing
 behavior. Not multiplayer, not a new renderer, not a real server yet.

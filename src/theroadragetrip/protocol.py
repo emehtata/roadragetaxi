@@ -488,7 +488,7 @@ def build_state_message(
         "phone": _phone_to_dict(taxi_mgr, car),
         # Career-mode session end (score threshold reached -> next city or
         # completed). Not fully wired end-to-end this phase - see
-        # docs/architecture/simulation-rendering.md's known limitations.
+        # docs/architecture/archive/simulation-rendering.md's known limitations.
         "should_stop": should_stop,
         "city_summary": list(city_summary) if city_summary is not None else None,
         # What happened this tick, for the client to present (sound, UI):

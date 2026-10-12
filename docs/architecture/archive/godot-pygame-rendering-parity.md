@@ -1,5 +1,8 @@
 # Pygame → Godot rendering parity (audit, 0.16.0g-alpha)
 
+> **Archived (0.17.0alpha):** the Pygame client was removed. This records how
+> the Godot client and the simulation server were split from it.
+
 # Parity audit 2 (2026-10-06)
 
 **Repository state:** branch `release/v0.16.0g-alpha`, audited at `4407fd7`.
