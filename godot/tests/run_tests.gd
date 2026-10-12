@@ -1375,6 +1375,10 @@ func test_static_world() -> void:
 	var beams := EntityLayer2.beam_polygons(Vector2.ZERO, 0.0, 1.8, 15.0)
 	check(beams.size() == 4 and is_equal_approx(beams[0][3].x, 15.0) and is_equal_approx(beams[0][3].y, 3.0), "a beam reaches 15 m ahead, its tip shifted right")
 	check(is_equal_approx(EntityLayer2.beam_polygons(Vector2.ZERO, 0.0, 1.8, 45.0)[2][3].x, 45.0), "long beams reach 45 m")
+	var train := {"id": 1, "cars": [[0.0, 0.0, 0.0, 20.0, "locomotive"], [-20.0, 0.0, 0.0, 20.0, "standard"]]}
+	var train_beams := EntityLayer2.train_beams(train, train, 0.0, Vector2.ZERO)
+	check(train_beams.size() == 4 and is_equal_approx(train_beams[0][0].x, 10.0) and train_beams[0][3].x > 60.0, "a train's beams start at the lead car's nose and reach far ahead")
+	check(EntityLayer2.train_beams({"id": 2, "cars": []}, {}, 0.0, Vector2.ZERO).is_empty(), "no cars, no train beams")
 	check(EntityLayer2.beam_length(false, false) == 45.0 and EntityLayer2.beam_length(true, false) == 15.0 and EntityLayer2.beam_length(false, true) == 15.0, "high beam on a dark road, dipped by street lights and oncoming traffic")
 	check(not FileAccess.get_file_as_string("res://entity_layer.gd").contains("if vehicle[3] and not lamp_near"), "the taxi gets the high beam too")
 	var car := [Vector2.ZERO, 0.0, 1.8, true]

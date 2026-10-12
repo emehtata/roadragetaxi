@@ -358,7 +358,31 @@ func headlight_beams() -> Array:
 		var length := beam_length(lamp_near.call(c, 22.0), oncoming(vehicle, vehicles))
 		polygons.append_array(beam_polygons(c, vehicle[1], maxf(_px(3.0), vehicle[2]), length))
 		drawn += 1
+	if not underground:
+		var later_trains := _by_id(b.get("trains", []))
+		for train in a.get("trains", []):
+			var beams := train_beams(train, later_trains.get(train["id"], train), t, origin)
+			if not beams.is_empty() and shown.grow(TRAIN_BEAM_M).has_point(beams[0][0]):
+				polygons.append_array(beams)
 	return polygons
+
+
+const TRAIN_BEAM_M := 60.0
+
+
+## A train's headlights: two long beams from the nose of its lead car (the
+## first car, facing the way it runs), standing or moving; [] without cars.
+static func train_beams(train: Dictionary, next: Dictionary, t: float, origin: Vector2) -> Array:
+	var cars: Array = train.get("cars", [])
+	if cars.is_empty():
+		return []
+	var car: Array = cars[0]
+	var to: Array = next.get("cars", cars)[0] if not next.get("cars", []).is_empty() else car
+	var heading := lerp_angle(float(car[2]), float(to[2]), t)
+	var f := _forward(heading)
+	var nose := MapMath.point(origin, lerpf(car[0], to[0], t), lerpf(car[1], to[1], t)) + f * float(car[3]) / 2.0
+	var width: float = RS.TRAIN_WIDTH_M
+	return beam_polygons(nose - f * (1.0 + width * 0.55), heading, width, TRAIN_BEAM_M)
 
 
 ## Automatic high beam, the taxi's as every NPC's: 45 m on a dark road, dipped to 15 m within 22 m of a street
