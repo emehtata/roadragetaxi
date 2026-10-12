@@ -695,6 +695,12 @@ func test_speech_and_stations() -> void:
 	var server_cmd: Array = Paths.server_command(["--list-cities"])
 	check(server_cmd[1].has("theroadragetrip.server") and server_cmd[1][-1] == "--list-cities", "paths: the repo's server runs from .venv with the arguments last")
 	var Startup := load("res://startup.gd")
+	var map_nw: Vector2 = Startup.city_map_position(70.5, 19.0, Vector2(420, 360))
+	var map_se: Vector2 = Startup.city_map_position(59.5, 32.0, Vector2(420, 360))
+	check(is_equal_approx(map_nw.y, 0.0) and is_equal_approx(map_se.y, 360.0), "city map: latitude fills the available height")
+	check(map_nw.x > 100.0 and map_se.x < 320.0, "city map: longitude keeps geographic scale instead of stretching")
+	var minimap := Image.new()
+	check(minimap.load_svg_from_string(FileAccess.get_file_as_string("res://finland_minimap.svg")) == OK, "city map: bundled SVG decodes without ResourceLoader")
 	check(Startup.map_source_args("pbf", "") == ["--osm-source", "pbf"] and Startup.map_source_args("pbf", "/maps/fi.osm.pbf") == ["--osm-source", "pbf", "--osm-pbf-path", "/maps/fi.osm.pbf"], "map source: a local .osm.pbf, its path when set")
 	check(Startup.map_source_args("overpass", "x") == ["--osm-source", "overpass"] and Startup.map_source_args("", "") == [], "map source: Overpass, or the server's config")
 	var today := {"year": 2026, "month": 10, "day": 8}

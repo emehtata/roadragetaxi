@@ -11,6 +11,7 @@ var _game: Node
 var _panel: PanelContainer
 var _body: VBoxContainer
 var _cities: Array = []
+var _city_locations: Array = []
 var _city := "Oulu"
 var _language := "en"
 var _settings := ConfigFile.new()
@@ -38,10 +39,12 @@ func _ready() -> void:
 		var at := command_line.find(option)
 		if at >= 0 and at + 1 < command_line.size():
 			_server_extra.append_array([option, command_line[at + 1]])
-	_cities = _server_query("--list-cities")
+	_city_locations = _server_query("--list-city-locations")
+	_cities.assign(_city_locations.map(func(city): return str(city["name"])))
 	print("startup: %d cities from the simulation (%s)" % [_cities.size(), "release" if Paths.exported() else "repo"])
 	if _cities.is_empty():
 		_cities = ["Oulu"]
+		_city_locations = [{"name": "Oulu", "latitude": 65.012, "longitude": 25.468}]
 	_city = _settings.get_value("gig", "city", _cities[0])  # the last gig city, remembered
 	if not _city in _cities:
 		_city = _cities[0]
@@ -245,10 +248,47 @@ func _city_menu() -> void:
 	for city in _cities:
 		choices.add_item(str(city))
 	choices.selected = maxi(0, _cities.find(_city))
-	choices.item_selected.connect(func(index: int):
+	var select_city := func(index: int):
 		_city = str(_cities[index])
+		choices.select(index)
 		_settings.set_value("gig", "city", _city)
-		_settings.save("user://settings.cfg"))
+		_settings.save("user://settings.cfg")
+	choices.item_selected.connect(select_city)
+
+	var map_size := Vector2(420, 360)
+	var map := Control.new()
+	map.custom_minimum_size = map_size
+	map.size = map_size
+	map.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	var map_image := TextureRect.new()
+	var svg := FileAccess.get_file_as_string("res://finland_minimap.svg")
+	var image := Image.new()
+	if not svg.is_empty() and image.load_svg_from_string(svg) == OK:
+		map_image.texture = ImageTexture.create_from_image(image)
+	map_image.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	map_image.stretch_mode = TextureRect.STRETCH_SCALE
+	map_image.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	map_image.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	map.add_child(map_image)
+	for i in _city_locations.size():
+		var location: Dictionary = _city_locations[i]
+		var city_index := i
+		var marker := Button.new()
+		marker.tooltip_text = str(location["name"])
+		marker.focus_mode = Control.FOCUS_NONE  # the synced dropdown owns keyboard/controller selection
+		marker.custom_minimum_size = Vector2(12, 12)
+		marker.size = Vector2(12, 12)
+		marker.position = city_map_position(
+			float(location["latitude"]), float(location["longitude"]), map_size
+		) - marker.size / 2.0
+		for state in ["normal", "hover", "pressed"]:
+			var dot := StyleBoxFlat.new()
+			dot.bg_color = Color.WHITE if state == "hover" else Color8(255, 205, 26)
+			dot.set_corner_radius_all(6)
+			marker.add_theme_stylebox_override(state, dot)
+		marker.pressed.connect(func(): select_city.call(city_index))
+		map.add_child(marker)
+	_body.add_child(map)
 	_body.add_child(choices)
 	_focusables.append(choices)
 	var drive := _button(_t("drive", "Drive"), _time_menu)
@@ -256,6 +296,14 @@ func _city_menu() -> void:
 	_back_action = _main_menu
 	_focus_menu()
 	drive.call_deferred("grab_focus")  # Enter: on to the start time (the remembered city)
+
+
+static func city_map_position(latitude: float, longitude: float, size: Vector2) -> Vector2:
+	var scale := size.y / 11.0
+	return Vector2(
+		size.x / 2.0 + (longitude - 25.5) * cos(deg_to_rad(65.0)) * scale,
+		clampf((70.5 - latitude) / 11.0, 0.0, 1.0) * size.y,
+	)
 
 
 ## The gig start picker: year, month, day, hour and minute of the

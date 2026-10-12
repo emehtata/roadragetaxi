@@ -14,6 +14,13 @@ def main() -> None:
     if args.list_cities:
         print(json.dumps(list(cities_from_config(config)[0]), ensure_ascii=False))
         return
+    if args.list_city_locations:
+        centers = cities_from_config(config)[0]
+        print(json.dumps([
+            {"name": name, "latitude": latitude, "longitude": longitude}
+            for name, (latitude, longitude) in centers.items()
+        ], ensure_ascii=False))
+        return
     if args.clear_cache:  # [OSM files, world caches] removed
         from ..osm.cache import clear_osm_cache
         from ..world_cache import clear_world_cache

@@ -21,6 +21,7 @@ def parse_server_args():
     parser.add_argument("--game-mode", choices=["career", "gig_driver"], default="gig_driver")
     parser.add_argument("--language", choices=["en", "fi"], default=None)
     parser.add_argument("--list-cities", action="store_true", help=argparse.SUPPRESS)
+    parser.add_argument("--list-city-locations", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument("--clear-cache", action="store_true",
                         help="Delete all cached map data (OSM downloads and built worlds) and exit")
     parser.add_argument("--start-time", type=datetime.fromisoformat, default=None,
