@@ -19,7 +19,7 @@ dependencies = [
 windows = ["pyinstaller"]
 
 [project.scripts]
-roadragetrip = "theroadragetrip.main:main"
+roadragetrip-server = "theroadragetrip.server.__main__:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

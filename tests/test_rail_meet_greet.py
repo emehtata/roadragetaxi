@@ -4,7 +4,6 @@ import json
 from datetime import datetime, timedelta
 from types import SimpleNamespace
 
-import pygame
 
 from theroadragetrip.fare import calculate_fare_cents
 from theroadragetrip.pedestrian import PlayerPedestrian
@@ -20,7 +19,6 @@ from theroadragetrip.rail_bookings import (
     RailBookingManager,
     waiting_booking,
 )
-from theroadragetrip.render.pedestrians import BOOKED_CUSTOMER_COLOR, draw_booked_passenger_arrow, draw_pedestrians
 from theroadragetrip.simulation import apply_enter_exit_vehicle, remove_boarded_rail_walker
 from theroadragetrip.station_passengers import SYNC_INTERVAL_S, StationPassengerView
 from theroadragetrip.taxi import GREET_RADIUS_M, TaxiManager, TaxiState
@@ -349,34 +347,6 @@ def test_an_out_of_view_arrival_stays_data_until_its_station_is_seen():
 
     view.update(SYNC_INTERVAL_S, PassengerFlow(), [("Oulu", STATION)], STATION, bookings.waiting())
     assert passenger.pedestrian.resident_id == pedestrian.resident_id  # the same person again
-
-
-def _drawn(draw):
-    screen = pygame.Surface((200, 200))
-    draw(screen)
-    return screen
-
-
-def _count(screen, color):
-    return sum(1 for x in range(200) for y in range(200) if screen.get_at((x, y))[:3] == color)
-
-
-def test_arrow_and_white_card_are_drawn_without_any_name_text():
-    class NoText:
-        def render(self, *args, **kwargs):
-            raise AssertionError("the meet & greet needs no text")
-
-    booked = SimpleNamespace(x=0.0, y=0.0, heading=0.0, radius_m=0.45)
-    arrow = _drawn(lambda screen: draw_booked_passenger_arrow(screen, booked, 0.0, 0.0, 10.0, 200, 200))
-    assert _count(arrow, BOOKED_CUSTOMER_COLOR) > 0
-
-    player = PlayerPedestrian(x=0.0, y=0.0)
-    plain = _drawn(lambda screen: draw_pedestrians(screen, [player], 0.0, 0.0, font=NoText(), px_per_m=10.0,
-                                                   screen_w=200, screen_h=200))
-    player.name_card = True
-    carded = _drawn(lambda screen: draw_pedestrians(screen, [player], 0.0, 0.0, font=NoText(), px_per_m=10.0,
-                                                    screen_w=200, screen_h=200))
-    assert _count(carded, (255, 255, 255)) > _count(plain, (255, 255, 255))
 
 
 def test_from_accepting_the_panel_says_who_off_which_train_and_where():

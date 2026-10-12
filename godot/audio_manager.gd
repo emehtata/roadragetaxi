@@ -31,7 +31,7 @@ var _foot_at := Vector2.INF
 var _foot_distance := 0.0
 const FOOTSTEP_M := 0.8
 # godot-final-07: one voice (driver/passenger speech) and one station loudspeaker.
-const ANNOUNCEMENT_MAX_WAIT_MS := 20000  # station_announcer.py MAX_WAIT_S: a queued announcement older is dropped
+const ANNOUNCEMENT_MAX_WAIT_MS := 20000  # a queued announcement older is dropped (stale: the train is long gone)
 var package_root: String = preload("res://paths.gd").package_root()  # the repo's or the release's
 var speech_player := AudioStreamPlayer.new()
 var announcer := AudioStreamPlayer2D.new()

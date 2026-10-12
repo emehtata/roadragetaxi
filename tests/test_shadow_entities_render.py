@@ -11,14 +11,10 @@ __getattr__ prevents getattr()'s own default from ever kicking in.
 These tests exercise both failure modes directly so neither regresses.
 """
 
-import pygame
 import pytest
 
 from theroadragetrip.npc import NPCVehicleManager
 from theroadragetrip.osm import Way
-from theroadragetrip.render.common import world_to_screen
-from theroadragetrip.render.pedestrians import draw_pedestrians, draw_resident_popup, resident_at_screen_position
-from theroadragetrip.render.vehicles import draw_npc_cars
 from theroadragetrip import protocol
 
 
@@ -55,14 +51,6 @@ def _bridge_way():
     return Way(points_m=[(0.0, 40.0), (100.0, 60.0)], highway="primary", half_width_m=4.0, layer=1)
 
 
-@pytest.fixture(scope="module", autouse=True)
-def _pygame_ready():
-    pygame.init()
-    pygame.display.set_mode((320, 240))
-    yield
-    pygame.quit()
-
-
 def test_shadow_vehicle_survives_population_counts():
     manager = NPCVehicleManager.__new__(NPCVehicleManager)
     manager.vehicles = [_shadow_vehicle()]
@@ -82,38 +70,12 @@ def test_shadow_vehicle_length_and_width_reach_the_renderer():
     assert vehicle.width_m == 1.9
 
 
-def test_draw_npc_cars_does_not_crash_on_a_shadow_vehicle():
-    screen = pygame.display.get_surface()
-    draw_npc_cars(screen, [_shadow_vehicle()], camx=100.0, camy=100.0, px_per_m=9.0)
 
 
-def test_draw_pedestrians_does_not_crash_under_a_higher_layer_road():
-    # This is the exact reported crash: a pedestrian near a bridge-like
-    # higher-layer way used to blow up in _covered_by_higher_road.
-    screen = pygame.display.get_surface()
-    draw_pedestrians(
-        screen, [_shadow_pedestrian()], camx=50.0, camy=50.0,
-        ways=[_bridge_way()], show_debug=True,
-    )
 
 
-def test_draw_pedestrians_debug_mode_does_not_crash():
-    screen = pygame.display.get_surface()
-    draw_pedestrians(
-        screen, [_shadow_pedestrian()], camx=50.0, camy=50.0, show_debug=True, residents={},
-    )
 
 
-def test_resident_at_screen_position_and_popup_do_not_crash():
-    ped = _shadow_pedestrian()
-    residents = {7: object()}
-    click_pos = world_to_screen(ped.x, ped.y, 50.0, 50.0)
-    found = resident_at_screen_position([ped], residents, click_pos, camx=50.0, camy=50.0)
-    assert found == 7
-
-    screen = pygame.display.get_surface()
-    font = pygame.font.SysFont(None, 16)
-    draw_resident_popup(screen, font, resident=None, residents=residents, pedestrian=ped)
 
 
 def test_trip_group_direct_access_pattern_does_not_crash():

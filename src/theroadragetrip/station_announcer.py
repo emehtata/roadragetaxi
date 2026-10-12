@@ -3,16 +3,15 @@ assets/railway_announcements (manifest.json, see its README.md): when a
 train arrives at or leaves a station, the station's loudspeakers say e.g.
 "Hyvät matkustajat. InterCity viisikymmentäseitsemän Helsingistä saapuu
 raiteelle kolme." Heard from the station's platforms - the platform point
-nearest the listener, like loudspeakers along them - fading with distance
-like the other located sounds (audio.SPATIAL_RANGES_M).
+nearest the listener, like loudspeakers along them. The server sends each
+announcement as an event (StationAnnouncer.event); the Godot client queues
+and plays its clips (godot/audio_manager.gd).
 """
 from __future__ import annotations
 
 import json
 import logging
 import math
-import time
-from collections import deque
 from pathlib import Path
 from typing import List, Optional
 
@@ -22,7 +21,6 @@ logger = logging.getLogger(__name__)
 
 ASSET_DIR = Path(__file__).with_name("assets") / "railway_announcements"
 MAX_SPOKEN_NUMBER = 999  # the clip set covers 0-999 (manifest numbers)
-MAX_WAIT_S = 20.0  # a queued announcement older than this (real seconds) is dropped as stale
 STATION_PLATFORM_RADIUS_M = 150.0  # platforms this close to the train's stop belong to the station
 
 
@@ -147,13 +145,11 @@ class AnnouncementScript:
 
 
 class StationAnnouncer:
-    """Plays announcements clip by clip on the mixer's reserved
-    announcement channel (audio.ANNOUNCEMENT_CHANNEL): each asset is its own
-    cached Sound, the next one starts only when the channel has finished the
-    previous one, with a short connector pause between phrases. Whole
-    announcements queue (an arrival and its train's departure, two trains
-    at once); one still waiting after MAX_WAIT_S is dropped as stale.
-    update() runs every frame and never blocks."""
+    """Builds a station's announcement for a train event: its clip files in
+    playing order (a short connector pause between phrases), the sentence,
+    and where it is heard from (the station's platforms). The Godot client
+    plays it (godot/audio_manager.gd: one at a time, a waiting one older than
+    20 s dropped as stale)."""
 
     def __init__(self, asset_dir: Path = ASSET_DIR, platforms=()) -> None:
         self.asset_dir = asset_dir
@@ -163,10 +159,6 @@ class StationAnnouncer:
         self.script: Optional[AnnouncementScript] = None
         self._pause = None
         self._sentence_pause = None  # after "Hyvät matkustajat." - a sentence, not a phrase
-        self._clips = {}  # asset file -> pygame.mixer.Sound, loaded once
-        self._channel = None
-        self._queue = deque()  # waiting announcements: (queued at, clip files, source, log text)
-        self._playing = None  # the announcement on air: [remaining clip files, source]
         try:
             manifest = json.loads((asset_dir / "manifest.json").read_text(encoding="utf-8"))
             self.script = AnnouncementScript(manifest)
@@ -174,22 +166,6 @@ class StationAnnouncer:
             self._sentence_pause = self.script._file("connectors", "pause_medium") or self._pause
         except (OSError, ValueError) as exc:
             logger.info("Station announcements unavailable: %s", exc)
-
-    def _clip(self, file: str):
-        import pygame
-
-        if file not in self._clips:
-            self._clips[file] = pygame.mixer.Sound(str(self.asset_dir / file))
-        return self._clips[file]
-
-    def _announcement_channel(self):
-        if self._channel is None:
-            import pygame
-
-            from .audio import ANNOUNCEMENT_CHANNEL
-
-            self._channel = pygame.mixer.Channel(ANNOUNCEMENT_CHANNEL)
-        return self._channel
 
     def clips(self, phrases: List[List[str]]) -> List[str]:
         """The clip files in playing order: a connector pause between
@@ -245,62 +221,3 @@ class StationAnnouncer:
         at = self.heard_from(self.station_source(position), listener)
         return {"type": "station_announcement", "clips": self.clips(phrases), "at": [round(at[0], 2), round(at[1], 2)],
                 "text": self.script.sentence(phrases), "station": stop[2]}
-
-    def announce(self, audio, kind: str, train, stop, position) -> bool:
-        """A train event at a station (stop: the train's stop tuple,
-        position: where the train stops) - queue its announcement, from the
-        station's platforms, if anyone could hear it."""
-        if self.script is None or not getattr(audio, "enabled", False) or train.service is None or stop is None:
-            return False
-        source = self.station_source(position)
-        at = self.heard_from(source, getattr(audio, "listener", None))
-        if max(audio.levels("railway.announcement", 1.0, at=at)) <= 0.0:
-            return False  # too far from the station to hear
-        service = train.service
-        phrases = self.script.phrases(kind, service.train_type, service.number, stop[2], service.origin,
-                                      service.destination, stop[6] if len(stop) > 6 else "",
-                                      getattr(service, "category", ""))
-        if not phrases:
-            return False
-        self._queue.append((time.monotonic(), self.clips(phrases), source,
-                            f"{stop[2]}: {service.train_type} {service.number} ({kind}): "
-                            f"\"{self.script.sentence(phrases)}\""))
-        self.update(audio)
-        return True
-
-    def update(self, audio) -> None:
-        """Every frame: while a clip plays, line up the announcement's next
-        clip behind it (Channel.queue - it starts the instant the current
-        one ends, so "kaksisataa kaksikymmentä yksi" runs together); when the
-        channel is idle, start the next announcement still worth playing."""
-        channel = self._announcement_channel()
-        if channel.get_busy():
-            if channel.get_queue() is None and self._playing and self._playing[0]:
-                self._start_next(channel, audio, queue=True)
-            return
-        if not (self._playing and self._playing[0]):
-            self._playing = None
-            while self._queue:
-                queued_at, files, position, text = self._queue.popleft()
-                if time.monotonic() - queued_at <= MAX_WAIT_S:
-                    self._playing = [deque(files), position]
-                    logger.info("Station announcement at %s", text)
-                    break  # older ones: stale, the train is long gone
-            if self._playing is None:
-                return
-        self._start_next(channel, audio, queue=False)
-
-    def _start_next(self, channel, audio, queue: bool) -> None:
-        files, source = self._playing
-        try:
-            sound = self._clip(files.popleft())
-        except Exception as exc:  # pygame.error/OSError: a missing or broken clip is skipped, the rest still plays
-            logger.warning("Station announcement clip unavailable: %s", exc)
-            return
-        if queue:
-            channel.queue(sound)
-        else:
-            channel.play(sound)
-        # The platform point nearest the player now, at its distance and side now.
-        at = self.heard_from(source, getattr(audio, "listener", None))
-        channel.set_volume(*audio.levels("railway.announcement", 1.0, at=at))

@@ -77,7 +77,7 @@ godot-test:
 	$(GODOT) --headless --path godot --script res://tests/run_tests.gd
 
 audio-check:
-	SDL_AUDIODRIVER=dummy PYTHONPATH=src $(PYTHON) tools/validate_audio_assets.py
+	PYTHONPATH=src $(PYTHON) tools/validate_audio_assets.py
 
 audit-ai:
 	PYTHONPATH=src $(PYTHON) utils/autoplay_audit.py

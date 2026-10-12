@@ -4,13 +4,11 @@ from datetime import date
 from pathlib import Path
 from types import SimpleNamespace
 
-import pygame
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tools"))
 
 import import_train_compositions as importer  # noqa: E402
 from theroadragetrip.osm.models import Railway  # noqa: E402
-from theroadragetrip.render.vehicles import draw_trains  # noqa: E402
 from theroadragetrip.train_compositions import (  # noqa: E402
     GENERIC, LOCOMOTIVE_LENGTH_M, PROFILES, VEHICLE_GAP_M, TrainComposition, load_compositions, resolve, vehicle_profile,
 )
@@ -123,21 +121,6 @@ def test_offline_import_failure_keeps_the_learned_database(tmp_path, monkeypatch
     assert "no compositions fetched" in capsys.readouterr().err and path.read_bytes() == before
 
 
-def test_trains_of_any_length_are_drawn_vehicle_by_vehicle():
-    pygame.init()
-    route = TrainRoute([(0.0, 0.0), (1000.0, 0.0)])
-    for count in (3, 5, 12):
-        vehicles = ((19.6, "locomotive"),) + ((26.4, "standard"),) * (count - 2) + ((26.4, "restaurant"),)
-        train = Train(route, 750.0, 1, composition=TrainComposition(vehicles))
-        centres = [x for x, _, _ in train.cars()]
-        assert len(centres) == count and centres == sorted(centres, reverse=True)  # front first, in order
-        screen = pygame.Surface((1600, 80))  # 4 px/m around x = 600 m: 400..800 m
-        draw_trains(screen, SimpleNamespace(trains=[train], routes=[]), 600.0, 0.0, px_per_m=4.0, screen_w=1600, screen_h=80)
-        to_px = lambda x: round((x - 600.0) * 4 + 800)  # noqa: E731
-        restaurant = to_px(centres[-1])
-        assert screen.get_at((restaurant, 40))[:3] == PROFILES["restaurant"][1]  # its white stripe
-        assert screen.get_at((restaurant, 44))[:3] == PROFILES["restaurant"][0]  # on green
-        assert screen.get_at((to_px(centres[0]), 40))[:3] == PROFILES["locomotive"][0]
 
 
 def test_a_far_end_locomotive_is_recorded_as_is_but_drawn_at_the_front():

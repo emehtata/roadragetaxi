@@ -1,9 +1,7 @@
 import math
 
-import pygame
 
 from theroadragetrip.osm.models import Railway
-from theroadragetrip.render.vehicles import draw_trains
 from theroadragetrip.train_compositions import PROFILES
 
 TRAIN_LOCOMOTIVE_COLOR = PROFILES["locomotive"][0]
@@ -79,16 +77,3 @@ def test_trains_on_a_replaced_route_retire_at_their_turnaround():
     assert all(train.route is manager.routes[0] for train in manager.trains)
 
 
-def test_train_renders_through_the_camera_offset():
-    pygame.init()
-    manager = RailwayManager([rail([(0, 0), (2000, 0)])])
-    manager.update(0.0, 1.0)
-    manager.trains[:] = [manager.trains[0]]
-    manager.trains[0].distance_m = 1000.0
-    screen = pygame.Surface((200, 200))
-    draw_trains(screen, manager, camx=990.0, camy=0.0, px_per_m=1.0, screen_w=200, screen_h=200)
-    # Locomotive centre is 12 m behind the nose at x=1000 -> x=988 -> screen x=98.
-    assert screen.get_at((98, 100))[:3] == TRAIN_LOCOMOTIVE_COLOR
-    blank = pygame.Surface((200, 200))
-    draw_trains(blank, manager, camx=50_000.0, camy=0.0, px_per_m=1.0, screen_w=200, screen_h=200)
-    assert pygame.transform.average_color(blank)[:3] == (0, 0, 0)  # far off-screen: nothing drawn

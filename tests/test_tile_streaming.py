@@ -11,7 +11,6 @@ from theroadragetrip.tile_streaming import (
 from theroadragetrip.osm import AutoFetchManager, Way
 from theroadragetrip.osm import MapData
 from theroadragetrip.world_cache import WorldCacheManager
-from theroadragetrip.render import invalidate_static_caches
 from theroadragetrip.physics import SpatialWayGrid
 from concurrent.futures import Future
 import time
@@ -681,8 +680,6 @@ def test_integrated_streamed_road_reaches_spatial_grid():
     assert list(grid.ways_in_rect(1590.0, 90.0, 1710.0, 110.0)) == [road]
 
 
-def test_static_cache_invalidation_is_available_for_tile_changes():
-    invalidate_static_caches()
 
 
 def test_tile_merge_cost_does_not_scale_with_already_loaded_ways(monkeypatch):

@@ -31,19 +31,6 @@ def test_server_builds_and_ticks_with_no_client_connected(tmp_path, monkeypatch)
     assert server._tick == 30
 
 
-def test_server_never_opens_a_graphical_display(tmp_path, monkeypatch):
-    import pygame
-
-    # Patch set_mode itself (not pygame.display.get_surface(), which is
-    # shared global state another test module's own real display could
-    # leave set) - this is only ever true if the server code path never
-    # calls it, regardless of what else is running in the same process.
-    monkeypatch.setattr(pygame.display, "set_mode", lambda *a, **k: pytest.fail("server opened a display"))
-    server = _build_server(tmp_path, monkeypatch)
-    for _ in range(5):
-        server.tick(1.0 / 30.0)
-
-
 def test_game_time_advances(tmp_path, monkeypatch):
     server = _build_server(tmp_path, monkeypatch)
     start = server._game_time_seconds
@@ -267,24 +254,6 @@ def test_the_calendar_crosses_the_wire(tmp_path, monkeypatch):
     assert old["state"]["calendar"] is None
 
 
-def test_the_server_places_street_lights_as_pygame_does(tmp_path, monkeypatch):
-    """godot-15: the same placement render/roads.py runs per view, once over the map."""
-    from theroadragetrip.render import roads
-
-    server = _build_server(tmp_path, monkeypatch)
-    lights = server.world.street_light_points
-    assert lights, "the sample map has lit roads"
-    xs = [x for x, *_ in lights]; ys = [y for _, y, *_ in lights]
-    work = roads._snapshot_street_light_job("t", (min(xs) - 50, min(ys) - 50, max(xs) + 50, max(ys) + 50), server.world.ways,
-                                            None, server.world.buildings, None, server.world.street_lamps, server.world.street_lamp_grid,
-                                            server.world.parking_spaces)
-    while not roads._advance_street_light_prep(work):
-        pass
-    while not roads._advance_street_light_placement(work):
-        pass
-    assert sorted(work["lamps"]) == sorted(lights)
-    sent = [light for cid in server._chunks_index._chunks for light in server._chunks_index.message(cid)["street_lights"]]
-    assert len(sent) == len(lights)  # every light in exactly one chunk
 
 
 def test_the_season_weights_come_from_the_calendar(tmp_path, monkeypatch):
@@ -462,8 +431,6 @@ def test_road_rage_is_the_simulations_and_runs_once_per_press(tmp_path, monkeypa
     later = json.loads(json.dumps(wire["state"]))
     later["road_rage"] = None
     assert protocol.interpolate_state(wire["state"], later, 0.5)["road_rage"] is None  # discrete: the newest
-    main_source = Path(protocol.__file__).with_name("main").joinpath("__init__.py").read_text(encoding="utf-8")
-    assert "trigger_road_rage" not in main_source and "RAGE_SHOUT_COST" not in main_source  # Pygame only queues the press now
 
 
 def test_weather_audio_facts_cross_the_wire(tmp_path, monkeypatch):
@@ -581,3 +548,23 @@ def test_f12_debug_snapshot_is_written_by_the_server(tmp_path, monkeypatch):
     data = json.loads(path.read_text())
     assert data and isinstance(data, dict)
 
+
+
+def test_the_server_places_its_street_lights_with_the_placement_job(tmp_path, monkeypatch):
+    """godot-15: the same placement render/roads.py runs per view, once over the map."""
+    from theroadragetrip import street_lights as roads
+
+    server = _build_server(tmp_path, monkeypatch)
+    lights = server.world.street_light_points
+    assert lights, "the sample map has lit roads"
+    xs = [x for x, *_ in lights]; ys = [y for _, y, *_ in lights]
+    work = roads._snapshot_street_light_job("t", (min(xs) - 50, min(ys) - 50, max(xs) + 50, max(ys) + 50), server.world.ways,
+                                            None, server.world.buildings, None, server.world.street_lamps, server.world.street_lamp_grid,
+                                            server.world.parking_spaces)
+    while not roads._advance_street_light_prep(work):
+        pass
+    while not roads._advance_street_light_placement(work):
+        pass
+    assert sorted(work["lamps"]) == sorted(lights)
+    sent = [light for cid in server._chunks_index._chunks for light in server._chunks_index.message(cid)["street_lights"]]
+    assert len(sent) == len(lights)  # every light in exactly one chunk

@@ -8,7 +8,7 @@ def test_a_building_part_takes_its_colour_named_buildings_colour():
     from types import SimpleNamespace
 
     from theroadragetrip import static_world
-    from theroadragetrip.render.buildings import FINNISH_BUILDING_COLOR_NAMES
+    from theroadragetrip.building_style import FINNISH_BUILDING_COLOR_NAMES
 
     def building(points, name=None, building_type="yes", height=10.0):
         xs, ys = [p[0] for p in points], [p[1] for p in points]

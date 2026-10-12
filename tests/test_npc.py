@@ -4,10 +4,8 @@ import os
 from types import SimpleNamespace
 
 os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
-import pygame
 import pytest
 
-from theroadragetrip.render.vehicles import draw_npc_cars
 from theroadragetrip.npc import (
     CORNER_RADIUS_M,
     NPC_CAR_CAPACITY,
@@ -1497,213 +1495,22 @@ def test_reversing_refuses_to_back_into_a_pedestrian():
     assert vehicle.state == NPCState.WAITING
 
 
-def test_draw_npc_cars_renders_an_npc_vehicle_without_crashing():
-    """Regression: draw_npc_cars' debug overlay (F7) crashed on any NPC
-    without a `segment_idx` attribute - its steering-target-line fallback
-    getattr-guarded the *condition* ("segment_idx", 0) but then indexed
-    with the raw `npc.segment_idx` in the body, which npc.NPCVehicle (it
-    tracks route progress on the Driver, not the vehicle) doesn't have."""
-    pygame.init()
-    screen = pygame.display.set_mode((400, 300))
-    ways = _straight_chain()
-    tw = TrafficWorld(ways)
-    residents = ResidentManager()
-    _, driver, vehicle = spawn_npc(1, residents, tw, ways, (0.0, 0.0), (200.0, 0.0))
-    update_npc(vehicle, driver, 1.0 / 60.0, tw, residents)  # leaves SPAWNING, sets vehicle.way
-
-    draw_npc_cars(screen, [vehicle], vehicle.x, vehicle.y, ways=ways, show_debug=True, residents=residents)
 
 
-def test_draw_npc_debug_overlay_renders_without_crashing():
-    """NPC-002 section 22: stop-position/target-point debug geometry."""
-    from theroadragetrip.render.hud import draw_npc_debug_overlay
-
-    pygame.init()
-    screen = pygame.display.set_mode((400, 300))
-    ways = _straight_chain()
-    tw = TrafficWorld(ways)
-    residents = ResidentManager()
-    _, driver, vehicle = spawn_npc(1, residents, tw, ways, (0.0, 0.0), (200.0, 0.0))
-    update_npc(vehicle, driver, 1.0 / 60.0, tw, residents)
-    driver.decision.stop_position = (50.0, 0.0)  # exercise the stop-marker branch too
-
-    draw_npc_debug_overlay(screen, vehicle, driver, vehicle.x, vehicle.y)
 
 
-def test_draw_npc_debug_panel_shows_parking_target():
-    """NPC-more.md section 21: the F7 panel must surface which parking
-    space (if any) the NPC is actually headed for, not just its raw
-    destination coordinates."""
-    from theroadragetrip.render.hud import draw_npc_debug_panel
-
-    pygame.init()
-    screen = pygame.display.set_mode((400, 300))
-    font = pygame.font.SysFont(None, 16)
-    ways = _straight_chain()
-    tw = TrafficWorld(ways)
-    residents = ResidentManager()
-    _, driver, vehicle = spawn_npc(1, residents, tw, ways, (0.0, 0.0), (200.0, 0.0))
-
-    draw_npc_debug_panel(screen, vehicle, driver, font)  # no dedicated space - must not crash
-
-    vehicle.destination_parking_space_id = 42
-    draw_npc_debug_panel(screen, vehicle, driver, font)  # with one - must not crash either
 
 
-def test_draw_npc_debug_panel_shows_vehicle_plugin_id():
-    """NPC-003 v2 section 22: the F7 panel must surface which vehicle
-    plugin (car/van/truck/...) this NPC is - not just its raw vehicle_id."""
-    from theroadragetrip.render.hud import draw_npc_debug_panel
-
-    pygame.init()
-    screen = pygame.display.set_mode((400, 300))
-    font = pygame.font.SysFont(None, 16)
-    ways = _straight_chain()
-    tw = TrafficWorld(ways)
-    residents = ResidentManager()
-    _, driver, vehicle = spawn_npc(1, residents, tw, ways, (0.0, 0.0), (200.0, 0.0))
-    vehicle.vehicle_type = "motorcycle"
-
-    car_panel = pygame.Surface((360, 400))
-    draw_npc_debug_panel(car_panel, vehicle, driver, font)
-    text_pixels = pygame.image.tostring(car_panel, "RGB")
-    assert text_pixels  # sanity: renders without crashing
-
-    vehicle.vehicle_type = "van"
-    van_panel = pygame.Surface((360, 400))
-    draw_npc_debug_panel(van_panel, vehicle, driver, font)
-    assert pygame.image.tostring(van_panel, "RGB") != text_pixels
 
 
-def test_draw_npc_population_panel_shows_by_type_breakdown():
-    from theroadragetrip.render.hud import draw_npc_population_panel
-
-    pygame.init()
-    counts = {"total": 2, "parked": 2, "driving": 0, "reserved": 0, "household": 1, "autonomous": 1}
-
-    without_breakdown = pygame.Surface((300, 100))
-    draw_npc_population_panel(without_breakdown, counts, pygame.font.SysFont(None, 16), y=0)
-
-    with_breakdown = pygame.Surface((300, 100))
-    draw_npc_population_panel(
-        with_breakdown, counts, pygame.font.SysFont(None, 16), y=0, by_type={"car": 1, "van": 1},
-    )
-    assert pygame.image.tostring(with_breakdown, "RGB") != pygame.image.tostring(without_breakdown, "RGB")
 
 
-def test_draw_npc_debug_panel_surfaces_footprint_violation_reason():
-    """NPC-more.md section 21: a live footprint block (see npc.update_npc)
-    must be visible on the panel, not silently hidden behind whatever the
-    ordinary traffic-rule reason line already says."""
-    from theroadragetrip.render.hud import draw_npc_debug_panel
-
-    pygame.init()
-    screen = pygame.display.set_mode((400, 300))
-    font = pygame.font.SysFont(None, 16)
-    ways = _straight_chain()
-    tw = TrafficWorld(ways)
-    residents = ResidentManager()
-    _, driver, vehicle = spawn_npc(1, residents, tw, ways, (0.0, 0.0), (200.0, 0.0))
-    vehicle.debug_waiting_for = "footprint blocked (curb/building)"
-
-    panel_w = 360
-    before = pygame.Surface((panel_w, 450))
-    before.fill((0, 0, 0))
-    draw_npc_debug_panel(before, vehicle, driver, font)
-
-    vehicle.debug_waiting_for = ""
-    after = pygame.Surface((panel_w, 450))
-    after.fill((0, 0, 0))
-    draw_npc_debug_panel(after, vehicle, driver, font)
-    # The panel must be visibly different (one extra line) with a reason
-    # set vs. without one.
-    assert pygame.image.tostring(before, "RGB") != pygame.image.tostring(after, "RGB")
 
 
-def test_draw_npc_debug_panel_surfaces_recovery_and_accident_state():
-    """NPC-004 section 23: recovery_stage/driver_departed must show up on
-    the debug panel once either is non-default - no new debug subsystem,
-    just one more line on the existing F7 panel."""
-    from theroadragetrip.render.hud import draw_npc_debug_panel
-
-    pygame.init()
-    screen = pygame.display.set_mode((400, 300))
-    font = pygame.font.SysFont(None, 16)
-    ways = _straight_chain()
-    tw = TrafficWorld(ways)
-    residents = ResidentManager()
-    _, driver, vehicle = spawn_npc(1, residents, tw, ways, (0.0, 0.0), (200.0, 0.0))
-
-    panel_w = 360
-    normal = pygame.Surface((panel_w, 450))
-    normal.fill((0, 0, 0))
-    draw_npc_debug_panel(normal, vehicle, driver, font)
-
-    driver.recovery_stage = "STUCK"
-    vehicle.driver_departed = True
-    accident = pygame.Surface((panel_w, 450))
-    accident.fill((0, 0, 0))
-    draw_npc_debug_panel(accident, vehicle, driver, font)
-
-    assert pygame.image.tostring(normal, "RGB") != pygame.image.tostring(accident, "RGB")
 
 
-def test_draw_npc_cars_debug_fallback_still_works_without_a_travel_route():
-    """The segment_idx/direction fallback this bug lived in must still
-    work for whatever NPC kind actually relies on it (no travel_route,
-    but a `way` + `segment_idx` to walk)."""
-    pygame.init()
-    screen = pygame.display.set_mode((400, 300))
-    way = Way(points_m=[(0.0, 0.0), (50.0, 0.0), (100.0, 0.0)], highway="residential", half_width_m=4.5)
-    parked_like_npc = SimpleNamespace(
-        x=10.0, y=0.0, heading=0.0, speed=0.0, length_m=4.0, width_m=1.8, layer=0,
-        color=(150, 150, 150), way=way, segment_idx=0, direction=1, lod_level=0,
-        travel_route=None,
-    )
-    draw_npc_cars(screen, [parked_like_npc], 10.0, 0.0, ways=[way], show_debug=True)
 
 
-def test_draw_npc_cars_has_no_cap_and_returns_the_drawn_count():
-    """Regression (client-server-016.md section 3): MAX_VISIBLE_NPC_COUNT
-    used to silently stop drawing bodies after the first 17 in-viewport
-    NPCs, with no relation to how many actually fit on screen. Culling is
-    viewport-based only now - every in-viewport npc gets drawn, and the
-    return value (new - used for the F7 population panel's "visible"
-    counter) reports exactly how many that was."""
-    pygame.init()
-    screen = pygame.display.set_mode((400, 300))
-    way = Way(points_m=[(0.0, 0.0), (400.0, 0.0)], highway="residential", half_width_m=4.5)
-    npcs = [
-        SimpleNamespace(
-            x=float(i) * 5.0, y=0.0, heading=0.0, speed=0.0, length_m=4.0, width_m=1.8, layer=0,
-            color=(150, 150, 150), way=way, segment_idx=0, direction=1, lod_level=0, travel_route=None,
-        )
-        for i in range(25)
-    ]
-
-    drawn = draw_npc_cars(screen, npcs, 0.0, 0.0, ways=[way])
-
-    assert drawn == 25
-    """multi-passenger-car.md sections 2, 4, 5: group size never exceeds
-    capacity, and it's never auto-filled."""
-    ways = _straight_chain()
-    tw = TrafficWorld(ways)
-    residents = ResidentManager()
-
-    group_sizes = set()
-    for i in range(30):
-        spawned = spawn_npc(i, residents, tw, ways, (0.0, 0.0), (180.0, 0.0))
-        assert spawned is not None
-        _, driver, vehicle = spawned
-        assert vehicle.capacity == NPC_CAR_CAPACITY
-        assert vehicle.trip_group is not None
-        assert vehicle.trip_group.vehicle_id == vehicle.vehicle_id
-        assert 1 <= len(vehicle.trip_group.member_resident_ids) <= vehicle.capacity
-        assert vehicle.owner_id == vehicle.trip_group.member_resident_ids[0]
-        group_sizes.add(len(vehicle.trip_group.member_resident_ids))
-
-    # Never always full - across enough spawns, some variety shows up.
-    assert len(group_sizes) > 1
 
 
 def test_trip_group_all_aboard_reflects_boarded_membership():
@@ -1978,104 +1785,10 @@ def test_vehicle_passenger_ids_empty_without_a_trip_group():
     assert vehicle.passenger_ids == ()
 
 
-def test_draw_npc_debug_panel_shows_capacity_and_occupants():
-    """multi-passenger-car.md section 26: CAPACITY/OCCUPANTS/TRIP GROUP
-    must be visible for a vehicle with a trip group."""
-    from theroadragetrip.render.hud import draw_npc_debug_panel
-
-    pygame.init()
-    pygame.display.set_mode((400, 300))
-    font = pygame.font.SysFont(None, 16)
-    ways = _straight_chain()
-    tw = TrafficWorld(ways)
-    residents = ResidentManager()
-    spawned = spawn_npc(1, residents, tw, ways, (0.0, 0.0), (180.0, 0.0))
-    assert spawned is not None
-    _, driver, vehicle = spawned
-
-    panel_w = 360
-    with_group = pygame.Surface((panel_w, 400))
-    with_group.fill((0, 0, 0))
-    draw_npc_debug_panel(with_group, vehicle, driver, font)
-
-    vehicle.trip_group = None
-    without_group = pygame.Surface((panel_w, 400))
-    without_group.fill((0, 0, 0))
-    draw_npc_debug_panel(without_group, vehicle, driver, font)
-
-    assert pygame.image.tostring(with_group, "RGB") != pygame.image.tostring(without_group, "RGB")
 
 
-def test_draw_resident_popup_shows_trip_group_when_present():
-    """multi-passenger-car.md section 26's per-passenger debug info -
-    GROUP/STATE/DESTINATION - must show up on the resident popup once a
-    resident has a trip_group_id, and stay silent otherwise."""
-    from theroadragetrip.render.pedestrians import draw_resident_popup
-
-    pygame.init()
-    pygame.display.set_mode((400, 300))
-    font = pygame.font.SysFont(None, 16)
-    ways = _straight_chain()
-    tw = TrafficWorld(ways)
-    residents = ResidentManager()
-    spawned = spawn_npc(1, residents, tw, ways, (0.0, 0.0), (180.0, 0.0))
-    assert spawned is not None
-    _, _, vehicle = spawned
-    resident = residents.get(vehicle.owner_id)
-    assert resident.trip_group_id == vehicle.trip_group.group_id
-
-    # draw_resident_popup positions its (hardcoded 420x268) panel at
-    # screen_w - 420 - 24 - a surface exactly that size would place it
-    # partly off-screen to the left, so use a comfortably larger canvas.
-    screen_w, screen_h = 800, 600
-    with_group = pygame.Surface((screen_w, screen_h))
-    with_group.fill((0, 0, 0))
-    draw_resident_popup(with_group, font, resident, residents.residents, screen_w=screen_w, screen_h=screen_h)
-
-    resident.trip_group_id = None
-    without_group = pygame.Surface((screen_w, screen_h))
-    without_group.fill((0, 0, 0))
-    draw_resident_popup(without_group, font, resident, residents.residents, screen_w=screen_w, screen_h=screen_h)
-
-    assert pygame.image.tostring(with_group, "RGB") != pygame.image.tostring(without_group, "RGB")
 
 
-def test_draw_npc_debug_panel_lists_each_passenger_by_id():
-    """Reported: "F7 shows driver only - no passengers" - an aggregate
-    occupants=X/Y count doesn't visibly prove anyone but the driver
-    exists. Every other trip-group member must be individually listed."""
-    from theroadragetrip.render.hud import draw_npc_debug_panel
-
-    pygame.init()
-    pygame.display.set_mode((400, 300))
-    font = pygame.font.SysFont(None, 16)
-    ways = _straight_chain()
-    tw = TrafficWorld(ways)
-    residents = ResidentManager()
-    spawned = None
-    for attempt in range(20):
-        spawned = spawn_npc(attempt, residents, tw, ways, (0.0, 0.0), (180.0, 0.0))
-        assert spawned is not None
-        if len(spawned[2].trip_group.member_resident_ids) > 1:
-            break
-    _, driver, vehicle = spawned
-    assert len(vehicle.trip_group.member_resident_ids) > 1, "expected at least one multi-passenger spawn in 20 tries"
-
-    panel = pygame.Surface((360, 400))
-    panel.fill((0, 0, 0))
-    draw_npc_debug_panel(panel, vehicle, driver, font)
-
-    passenger_ids = [rid for rid in vehicle.trip_group.member_resident_ids if rid != vehicle.owner_id]
-    assert passenger_ids
-    # Rendering each id's own text must actually change the panel - check
-    # against a panel with no other passengers (single-member group).
-    solo_vehicle_group = vehicle.trip_group
-    vehicle.trip_group.member_resident_ids = [vehicle.owner_id]
-    solo_panel = pygame.Surface((360, 400))
-    solo_panel.fill((0, 0, 0))
-    draw_npc_debug_panel(solo_panel, vehicle, driver, font)
-
-    assert pygame.image.tostring(panel, "RGB") != pygame.image.tostring(solo_panel, "RGB")
 
 
 def test_vehicle_available_seats_reflects_current_occupancy():

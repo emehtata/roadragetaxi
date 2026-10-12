@@ -2,7 +2,6 @@
 streaming boundary (osm-stream-00.md)."""
 import inspect
 
-import theroadragetrip.main as main_module
 from theroadragetrip.osm import AutoFetchManager
 from theroadragetrip.osm import autofetch as autofetch_module
 from theroadragetrip.tile_streaming import TileCoord, active_tiles, lookahead_tiles
@@ -87,6 +86,3 @@ def test_soft_boundary_off_without_runtime_streaming():
     assert manager.streaming_speed_cap_mps(500.0, 500.0, 30.0, 0.0) is None
 
 
-def test_runtime_streaming_never_blocks_behind_a_loading_screen():
-    assert not hasattr(main_module, "_wait_for_active_tile_fetch")
-    assert "_wait_for_active_tile_fetch" not in inspect.getsource(main_module)
