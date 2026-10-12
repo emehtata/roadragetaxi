@@ -413,9 +413,11 @@ static func beam_polygons(c: Vector2, heading: float, width: float, length: floa
 	for side: float in [-1.0, 1.0]:
 		var side_v := r * side
 		var lamp := front + side_v * width * 0.35
-		# A car's beams lean right (the kerb side); a train's point straight ahead.
-		var tip := c + f * length + (side_v * width * 0.35 if straight else r * (3.0 if side < 0.0 else 2.25))
+		var tip := c + f * length + r * (3.0 if side < 0.0 else 2.25)  # a car's beams lean right (the kerb side)
 		var near := lamp + side_v * minf(4.5 * 0.08, width * 0.10)
+		if straight:  # a train's: straight ahead, each from just past the centre line outward - they overlap over the track
+			tip = c + f * length - side_v * 0.5
+			near = lamp - side_v * (width * 0.35 + 0.3)
 		var far_width := 4.5 * 1.7
 		polygons.append(PackedVector2Array([lamp, near, tip + side_v * far_width, tip]))
 		var cap := PackedVector2Array()
