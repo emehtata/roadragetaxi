@@ -135,9 +135,6 @@ make run-debug
 source .venv/bin/activate
 PYTHONPATH=src python -m theroadragetrip
 
-# Run offline with bundled sample data
-make run-sample
-
 # Switch between named presets (e.g. Oulu or Helsinki)
 python3 road_rage_trip.py --preset helsinki
 python3 road_rage_trip.py --preset oulu
