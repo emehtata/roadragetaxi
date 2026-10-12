@@ -37,9 +37,9 @@ var _recent_events: Array = []
 var _command_timer := 0.0
 var _interact_pending := false
 var _refuel_pending := false  # G: one press, sent once (the server buys once per press)
-var show_next_train := false  # J (main()'s show_next_train): the nearest station's board, local only
+var show_next_train := false  # J: the nearest station's board, local only
 var _road_rage_pending := false  # SPACE: one press, sent once; the simulation decides if there's rage to spend
-var speed_limiter := true  # V (render/hud.py "V = limiter"): a session toggle, reported in every command
+var speed_limiter := true  # V: a session toggle, reported in every command
 var red_light_assist := false  # B: likewise
 var lane_assist := false  # K: likewise
 var _respawn_pending := false
@@ -51,10 +51,10 @@ var _inspect_label: Label
 var _focus := {}  # {kind: pan|pedestrian|npc, id or position}; empty follows the player
 var _pan_button := 0
 var summary_shown := false  # the career city summary is up: the session is over, no more driving commands
-var _engine_on := false  # main(): the driver starts on foot, E starts the engine after getting in
+var _engine_on := false  # the driver starts on foot, E starts the engine after getting in
 var _entered_taxi := false  # the "Press F" hint until the driver first gets in
 var hud_layout = preload("res://hud_layout.gd").new()  # the movable panels, saved (U / F2 resets)
-var _start_sign: PanelContainer  # main()'s draw_game_start_overlay: city and forecast, any key starts
+var _start_sign: PanelContainer  # the start sign: city and forecast, any key starts
 var drive := DriveInput.new()  # the held driving keys (drive_input.gd)
 var _state_usec := 0.0  # handling one state (parse + buffer), smoothed
 var _interp_usec := 0.0  # sampling + blending one frame, smoothed
@@ -232,16 +232,15 @@ func _on_state(message: Dictionary) -> void:
 	_state_usec = lerpf(_state_usec, float(Time.get_ticks_usec() - started + sim.parse_usec), 0.1)
 
 
-## F12 (main/__init__.py): the window as screenshot_<ns>.png in Pygame's
-## folder (debug_tools._screenshot_directory), and the server writes the
-## debug JSON (_write_debug_snapshot) beside it.
+## F12: the window as screenshot_<ns>.png in the screenshots folder, and
+## the server writes the debug JSON beside it.
 func save_screenshot() -> String:
 	var path := screenshot_directory(OS.get_name(), OS.get_environment("USERPROFILE")).path_join(
 		"screenshot_%d.png" % int(Time.get_unix_time_from_system() * 1e9))
 	DirAccess.make_dir_recursive_absolute(path.get_base_dir())
 	var error := get_viewport().get_texture().get_image().save_png(path)
 	print("Screenshot " + (path if error == OK else "failed: %s" % error_string(error)))
-	sim.send_debug_snapshot(path.get_basename() + ".json")  # Pygame's debug JSON beside it, from the server
+	sim.send_debug_snapshot(path.get_basename() + ".json")  # the debug JSON beside it, from the server
 	return path
 
 
@@ -251,7 +250,7 @@ static func screenshot_directory(os_name: String, user_profile: String) -> Strin
 	return OS.get_environment("PWD").path_join("screenshots") if OS.has_environment("PWD") else "screenshots"
 
 
-## Mouse on a HUD panel: drag it (main()'s hud_dragging), kept on screen.
+## Mouse on a HUD panel: drag it, kept on screen.
 func _input(event: InputEvent) -> void:
 	drive.handle(event)
 	if event is InputEventMouseButton:
@@ -289,7 +288,7 @@ func _unhandled_input(event: InputEvent) -> void:
 			get_viewport().set_input_as_handled()
 			return
 	if _start_sign != null and event is InputEventKey and event.pressed and not event.echo:
-		if event.keycode != KEY_ESCAPE:  # main(): any key but Esc starts
+		if event.keycode != KEY_ESCAPE:  # any key but Esc starts
 			_start_sign.queue_free()
 			_start_sign = null
 		get_viewport().set_input_as_handled()
@@ -298,7 +297,7 @@ func _unhandled_input(event: InputEvent) -> void:
 		match event.keycode:
 			KEY_F12:
 				save_screenshot()
-			KEY_U, KEY_F2:  # main(): the HUD layout back to default
+			KEY_U, KEY_F2:  # the HUD layout back to default
 				hud_layout.reset()
 				instruments.queue_redraw()
 				hud._layout()
@@ -310,7 +309,7 @@ func _unhandled_input(event: InputEvent) -> void:
 				if not phone.is_open:
 					show_next_train = not show_next_train
 			KEY_SPACE:
-				if not phone.is_open and not summary_shown:  # main(): never while the phone is open
+				if not phone.is_open and not summary_shown:  # never while the phone is open
 					_road_rage_pending = true
 			KEY_V:
 				speed_limiter = not speed_limiter
@@ -544,8 +543,7 @@ func _present(state: Dictionary) -> void:
 		_update_debug(state)
 
 
-## The nearest moving train rumbles from where it is (Pygame mixes the
-## loudest intercity and commuter train as two layers; one is enough here).
+## The nearest moving train rumbles from where it is (one train is enough).
 func _train_loop(state: Dictionary) -> void:
 	if override_train_at != Vector2.INF:
 		audio.set_loop("train_running", 0.8, 1.0, override_train_at)
@@ -588,7 +586,7 @@ func show_summary(state: Dictionary) -> void:
 	hud.show_summary(Hud.summary_text(state, language))
 
 
-## audio.py spatial_levels' gain: full within `range[0]`, 1/distance
+## The distance gain: full within `range[0]`, 1/distance
 ## beyond, faded out over the last quarter of `range[1]`.
 static func heard(listener: Vector2, at: Vector2, range_m: Array) -> float:
 	var distance := listener.distance_to(at)
@@ -597,7 +595,7 @@ static func heard(listener: Vector2, at: Vector2, range_m: Array) -> float:
 	return range_m[0] / maxf(range_m[0], distance) * minf(1.0, (range_m[1] - distance) / (0.25 * range_m[1]))
 
 
-## main()'s _play_rail_sounds station crowd: of the stations with people
+## The station crowd: of the stations with people
 ## waiting, the one heard loudest; [volume min(1, waiting / 30), world position].
 static func station_ambience(railway, listener: Vector2, range_m: Array) -> Array:
 	var best := [0.0, 0.0, null]  # heard, volume, at
@@ -615,7 +613,7 @@ static func station_ambience(railway, listener: Vector2, range_m: Array) -> Arra
 	return [best[1], best[2]]
 
 
-## main()'s update_ambience weather layers from the server's state: rain
+## The weather ambience layers from the server's state: rain
 ## and slush 0.6, heavy rain 0.7 in a thunderstorm, wind by its gusting
 ## speed, wet tyres by wetness and speed (slush: its own variation). An older
 ## server without the wind or thunderstorm: those stay silent.
@@ -643,7 +641,7 @@ static func weather_loops(state: Dictionary) -> Dictionary:
 	}
 
 
-## main()'s start sign: the city, the 24-hour forecast (the source in
+## The start sign: the city, the 24-hour forecast (the source in
 ## brackets with historical weather) and "press any key".
 static func start_sign(world: Dictionary, language: String) -> PanelContainer:
 	var sign := PanelContainer.new()

@@ -38,4 +38,4 @@ static func server_command(args: Array) -> Array:
 	var python := root.path_join(".venv/Scripts/python.exe" if OS.get_name() == "Windows" else ".venv/bin/python")
 	if OS.get_name() == "Windows":  # no /usr/bin/env: the environment goes in through the command line instead
 		return ["cmd.exe", ["/c", "set", "PYTHONPATH=" + root.path_join("src"), "&&", python, "-m", "theroadragetrip.server"] + args]
-	return ["/usr/bin/env", ["PYGAME_HIDE_SUPPORT_PROMPT=1", "PYTHONPATH=" + root.path_join("src"), python, "-m", "theroadragetrip.server"] + args]
+	return ["/usr/bin/env", ["PYTHONPATH=" + root.path_join("src"), python, "-m", "theroadragetrip.server"] + args]

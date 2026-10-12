@@ -1,7 +1,6 @@
-## Screen-space navigation aids from render/navigation.py: the arrow at
+## Screen-space navigation aids: the arrow at
 ## the screen edge pointing to an off-screen pickup / drop-off with its
-## distance (draw_taxi_target), and the compass (draw_compass, C toggles,
-## off by default as in Pygame). The target itself comes from the
+## distance, and the compass (C toggles, off by default). The target itself comes from the
 ## simulation's state (EntityLayer.current_target); nothing is routed here.
 extends Control
 
@@ -10,7 +9,7 @@ const RS := preload("res://render_style.gd")
 const T := preload("res://i18n.gd")
 
 var show_compass := false
-var show_route := false  # N (render/navigation.py draw_navigation_route), off by default: drawn by EntityLayer
+var show_route := false  # N, off by default: drawn by EntityLayer
 var _font: Font
 var _target: Dictionary = {}
 var _target_screen := Vector2.ZERO  # target position on screen

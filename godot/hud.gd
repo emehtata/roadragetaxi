@@ -14,13 +14,13 @@ const T := preload("res://i18n.gd")
 @onready var _notice: Label = %Notice
 @onready var _hint: Label = %Hint
 
-var _meet := Label.new()  # render/menus.py draw_meet_panel
-var _subtitle := Label.new()  # render/hud.py comment_text: "Speaker: line" (godot-final-07)
+var _meet := Label.new()  # the meet & greet panel
+var _subtitle := Label.new()  # "Speaker: line" (godot-final-07)
 var _subtitle_until := 0  # real-time ms
-var _board := Label.new()  # render/hud.py draw_next_train (J)
-var _timetable_hint_shown := false  # main(): once a session, when the map first has timetabled stations
+var _board := Label.new()  # the next trains board (J)
+var _timetable_hint_shown := false  # once a session, when the map first has timetabled stations
 var _timetable_hint_until := 0
-var _summary := Label.new()  # render/menus.py draw_city_summary: covers everything once the career city is done
+var _summary := Label.new()  # the city summary: covers everything once the career city is done
 var _notice_style := StyleBoxFlat.new()
 var _fare_style := StyleBoxFlat.new()
 var layout = preload("res://hud_layout.gd").new(false)  # main.gd gives the shared, saved one
@@ -41,7 +41,7 @@ func _ready() -> void:
 	_meet.visible = false
 	add_child(_meet)
 	var summary_style := StyleBoxFlat.new()
-	summary_style.bg_color = Color8(18, 24, 32)  # Pygame fills the screen with this
+	summary_style.bg_color = Color8(18, 24, 32)
 	_summary.add_theme_stylebox_override("normal", summary_style)
 	_summary.add_theme_font_size_override("font_size", 24)
 	_summary.add_theme_color_override("font_color", Color8(205, 215, 225))
@@ -83,7 +83,7 @@ func _ready() -> void:
 	add_child(_summary)  # last child: above the HUD rows
 	_notice_style = _box(Color8(20, 30, 40, 235), Color8(255, 200, 50))
 	_notice.add_theme_stylebox_override("normal", _notice_style)
-	# render/hud.py's layout, no shared bar: the clock top right, the score
+	# No shared bar: the clock top right, the score
 	# box left of it, the weather under them, the fare banner top left
 	# under the trip meter (instruments.gd), notices low in the middle.
 	var bar: Control = _clock.get_parent().get_parent()
@@ -96,7 +96,7 @@ func _ready() -> void:
 		label.add_theme_constant_override("outline_size", 4)
 		label.add_theme_color_override("font_outline_color", Color8(20, 24, 28, 230))
 	bar.visible = false
-	_speed.visible = false  # the speedometer shows it (hud.py has no speed text)
+	_speed.visible = false  # the speedometer shows it (no speed text)
 	_clock.add_theme_color_override("font_color", Color8(255, 230, 120))
 	_money.add_theme_color_override("font_color", Color8(255, 230, 110))
 	var money_style := _box(Color8(20, 20, 20, 200), Color8(220, 180, 50))
@@ -138,10 +138,10 @@ func show_state(state: Dictionary, toggles := {}) -> void:
 	_fare.text = text["fare"]
 	_fare_style.border_color = text["fare_color"]
 	_fare.add_theme_color_override("font_color", text["fare_color"])
-	var start_hint: bool = text["notice"] == "" and text["start_hint"] != ""  # main(): draw_game_start_hint, blue
+	var start_hint: bool = text["notice"] == "" and text["start_hint"] != ""  # the start hint, blue
 	_notice.text = text["start_hint"] if start_hint else text["notice"]
 	_notice.visible = _notice.text != ""
-	# hud.py: a speed-camera hit is centred on screen with a red border, other notices at the top in amber.
+	# A speed-camera hit is centred on screen with a red border, other notices at the top in amber.
 	_notice_style.border_color = Color8(255, 70, 45) if text["notice_camera"] else (Color8(100, 190, 240) if start_hint else Color8(255, 200, 50))
 	_notice_style.bg_color = Color8(16, 35, 55, 235) if start_hint else Color8(20, 30, 40, 235)
 	_notice_mode = "camera" if text["notice_camera"] else ("start" if start_hint else "")
@@ -153,7 +153,7 @@ func show_state(state: Dictionary, toggles := {}) -> void:
 	_board.visible = board != ""
 	if _board.visible:
 		_board.reset_size()
-		_board.position = Vector2(size.x - 10.0 - _board.size.x, 116.0)  # draw_next_train: top right under the limit sign
+		_board.position = Vector2(size.x - 10.0 - _board.size.x, 116.0)  # top right under the limit sign
 	_layout_subtitle()
 	_subtitle.visible = Time.get_ticks_msec() < _subtitle_until
 	_map_sign.text = map_loading_text(str(state.get("map_loading", "")), Time.get_ticks_msec(), language, str(state.get("map_loading_detail", "")))
@@ -167,7 +167,7 @@ func show_state(state: Dictionary, toggles := {}) -> void:
 		_hint.text = T.text("train_hint", language, "Train timetables available. Press J.   ") + _hint.text
 
 
-## Where everything goes (render/hud.py draw_hud), after the texts changed:
+## Where everything goes, after the texts changed:
 ## nothing shares a row, so nothing can run into anything else.
 func _layout() -> void:
 	for label: Label in [_clock, _money, _weather, _notice, _hint]:
@@ -202,9 +202,9 @@ func _layout() -> void:
 		_map_sign.reset_size()
 		_map_sign.position = Vector2(_weather.position.x + _weather.size.x - _map_sign.size.x, _weather.position.y + _weather.size.y)
 	match _notice_mode:
-		"camera":  # hud.py: a speed-camera hit centred on screen, red
+		"camera":  # a speed-camera hit centred on screen, red
 			_notice.position = (size - _notice.size) / 2.0
-		"start":  # menus.py draw_game_start_hint: top middle, blue
+		"start":  # the start hint: top middle, blue
 			_notice.position = Vector2((size.x - _notice.size.x) / 2.0, 100.0)
 		_:  # the notification banner: low in the middle
 			_notice.position = Vector2((size.x - _notice.size.x) / 2.0, size.y - 45.0 - _notice.size.y / 2.0)
@@ -241,8 +241,8 @@ static func values(state: Dictionary, toggles := {}, language := "en") -> Dictio
 		var minutes := int(state["game_time_seconds"] / 60.0)
 		text["clock"] = "%02d:%02d" % [minutes / 60 % 24, minutes % 60]
 		var calendar = state.get("calendar")
-		if typeof(calendar) == TYPE_DICTIONARY:  # hud.py: the date first, " *" while time runs 1:1 (a fare)
-			var temperature = state.get("weather", {}).get("temperature_c")  # hud.py: "  +4.0 °C" after the time
+		if typeof(calendar) == TYPE_DICTIONARY:  # the date first, " *" while time runs 1:1 (a fare)
+			var temperature = state.get("weather", {}).get("temperature_c")  # "  +4.0 °C" after the time
 			text["clock"] = "%s %s%s%s" % [calendar.get("date", ""), text["clock"],
 				"  %+.1f °C" % temperature if typeof(temperature) in [TYPE_INT, TYPE_FLOAT] else "", " *" if calendar.get("time_scale", 60.0) == 1.0 else ""]
 	else:
@@ -252,7 +252,7 @@ static func values(state: Dictionary, toggles := {}, language := "en") -> Dictio
 	else:
 		text["weather"] = ""
 	var passenger = taxi.get("current_passenger")
-	# hud.py's banner colours: grey idle, yellow picking up, green with the passenger.
+	# Banner colours: grey idle, yellow picking up, green with the passenger.
 	text["fare_color"] = Color8(190, 200, 205)
 	if typeof(passenger) == TYPE_DICTIONARY:
 		text["fare_color"] = Color8(100, 240, 140) if taxi.get("state", "") == "DROPOFF" else Color8(255, 215, 60)
@@ -271,7 +271,7 @@ static func values(state: Dictionary, toggles := {}, language := "en") -> Dictio
 				text["fare"] = who
 	text["notice"] = str(taxi.get("notification_msg", "")) if taxi.get("notification_timer", 0.0) > 0.0 else ""
 	text["notice_camera"] = text["notice"] != "" and taxi.get("speed_camera_notice", false)
-	# main()'s start hints: get in (until the driver first does), then start the engine.
+	# The start hints: get in (until the driver first does), then start the engine.
 	text["start_hint"] = ""
 	if on_foot and not toggles.get("entered_taxi", true):
 		text["start_hint"] = T.text("hint_enter_taxi", language, "Press F to get into your taxi")
@@ -279,7 +279,7 @@ static func values(state: Dictionary, toggles := {}, language := "en") -> Dictio
 		text["start_hint"] = T.text("hint_start_engine", language, "Press E to start the engine")
 	var meet = state.get("meet")
 	text["meet"] = "\n".join(meet.get("lines", [])) if typeof(meet) == TYPE_DICTIONARY else ""
-	# hud.py's road line (Pygame shows it in the debug HUD; here the F3 readout).
+	# The road line, in the F3 readout.
 	var road = state.get("road")
 	if typeof(road) != TYPE_DICTIONARY:
 		text["road"] = ""
@@ -291,7 +291,7 @@ static func values(state: Dictionary, toggles := {}, language := "en") -> Dictio
 		text["hint"] = T.text("hint_foot", language, "F get in the taxi · WASD walk · P phone")
 	elif not player.get("engine_on", true):
 		text["hint"] = T.text("hint_engine", language, "E start the engine · F get out · P phone")
-	else:  # hud.py's long controls line is debug-only; F1 lists them all
+	else:  # no controls line while driving; F1 lists them all
 		text["hint"] = ""
 	return text
 
@@ -330,10 +330,10 @@ func _layout_subtitle() -> void:
 	_subtitle.custom_minimum_size = Vector2(size.x - 40.0 if too_wide else 0.0, 0.0)
 	_subtitle.size = Vector2.ZERO
 	_subtitle.reset_size()
-	_subtitle.position = Vector2((size.x - _subtitle.size.x) / 2.0, size.y - 82.0 - _subtitle.size.y / 2.0)  # hud.py: centred at height - 82
+	_subtitle.position = Vector2((size.x - _subtitle.size.x) / 2.0, size.y - 82.0 - _subtitle.size.y / 2.0)  # centred at height - 82
 
 
-## render/hud.py draw_next_train's board: the station, "Next trains:" and
+## The next trains board: the station, "Next trains:" and
 ## "Departing trains:" (time, track, train, where from / to), "" when there's nothing.
 static func next_train_text(railway, language := "en") -> String:
 	if not railway is Dictionary:
@@ -360,7 +360,7 @@ func show_summary(text: String) -> void:
 	_summary.visible = true
 
 
-## render/menus.py draw_city_summary's lines from state city_summary
+## The city summary's lines from state city_summary
 ## [city, score, fares, next_city, career_total_score]; a missing or
 ## malformed summary shows only that the city is done, never made-up values.
 static func summary_text(state: Dictionary, language := "en") -> String:
@@ -378,7 +378,7 @@ static func summary_text(state: Dictionary, language := "en") -> String:
 	return "\n".join(lines)
 
 
-## render/hud.py's mission bar while driving a fare: elapsed time, then the
+## The mission bar while driving a fare: elapsed time, then the
 ## meter, its distance and the passenger's happiness once the meter runs
 ## (the server sends those null before). Missing or malformed values are left out.
 static func fare_details(taxi: Dictionary, language := "en") -> String:

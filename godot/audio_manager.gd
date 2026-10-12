@@ -26,7 +26,7 @@ var _groups: Dictionary = {}  # catalog group id -> {"files": [absolute paths], 
 var _streams: Dictionary = {}  # path -> AudioStream (loaded once)
 var _loops: Dictionary = {}  # key -> AudioStreamPlayer
 var _bus_of_category: Dictionary = {}
-var _last_variation: Dictionary = {}  # group -> index last picked, so a random pick never repeats it back to back (as audio.py)
+var _last_variation: Dictionary = {}  # group -> index last picked, so a random pick never repeats it back to back
 var _foot_at := Vector2.INF
 var _foot_distance := 0.0
 const FOOTSTEP_M := 0.8
@@ -313,7 +313,7 @@ func _next_clip() -> void:
 			announcer.position = MapMath.point(origin, waiting[2].x, waiting[2].y)
 	while not _announcing.is_empty():
 		var stream := _stream(_announcing.pop_front())
-		if stream != null:  # a missing clip is skipped, the rest still plays (as Pygame)
+		if stream != null:  # a missing clip is skipped, the rest still plays
 			announcer.stream = stream
 			announcer.play()
 			played_groups["announcement_clips"] = played_groups.get("announcement_clips", 0) + 1

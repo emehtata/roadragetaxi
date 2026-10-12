@@ -4,11 +4,10 @@
 ## entity appearing, its colour, a train's cars, lamps) comes from the
 ## earlier one.
 ##
-## What is drawn, and how, follows Pygame's renderers (named per function)
-## at the same scale in metres. Draw order matches Pygame's: pedestrians,
+## Everything is drawn in metres. Draw order: pedestrians,
 ## the job target, the taxi, NPC vehicles, smoke, then trains on top.
 ## Entities outside the visible area (plus a margin) are skipped. Text and
-## a few minimum sizes are in screen pixels, as in Pygame.
+## a few minimum sizes are in screen pixels.
 extends Node2D
 
 const RS := preload("res://render_style.gd")
@@ -45,9 +44,9 @@ var language := "en"
 var _reflectors: Node2D  # made in _ready (an instance never in the tree leaks nothing)
 var underground := false  # the taxi below ground (state player.map_level): only it and the walker are shown
 var covered := func(_at: Vector2, _layer: int) -> bool: return false  # MapLayer.covered (headlights under a bridge)
-var _trains: Node2D  # trains, z 12: above the canopies and rail bridges (z 11), as Pygame draws them last
+var _trains: Node2D  # trains, z 12: above the canopies and rail bridges (z 11), drawn last
 var _trains_drawn := 0
-var _tracks: Node2D  # tyre tracks, z 8 (render/roads.py draw_tire_tracks, before roadworks and signs)
+var _tracks: Node2D  # tyre tracks, z 8 (before roadworks and signs)
 var _trails: Array = []  # [kind, [[position, heading, intensity, front], ...]]
 var _track_points := 0
 var _last_track = null  # where the last mark was laid (null: the trail is broken)
@@ -55,7 +54,7 @@ var _last_track_px := 0.0
 # Vehicle lamps: drawn unshaded (the night's ambient multiply leaves them
 # bright) and, as it gets dark, with an additive glow - tail lamps a red
 # halo, brake lamps a bigger, brighter one, the reversing lamp a white wash
-# behind the car (godot-lights-01 style; Pygame draws none of the glow).
+# behind the car (godot-lights-01 style).
 var light_level := 0.0  # Daylight.artificial (main.gd)
 var _lamps: Node2D
 var _glow: Node2D
@@ -82,7 +81,7 @@ const CAR_SHAPES := [
 ]
 const VAN_SHAPE := [0.78, 0.56, -0.96, -0.96, 0.84, "door"]  # a van: short nose, one long roof
 var taxi_sign_on := false  # the taxi being drawn has a fare on (its roof light lit)
-const TRACK_STYLES := {  # render/roads.py draw_tire_tracks: [faint, dark, width m]
+const TRACK_STYLES := {  # [faint, dark, width m]
 	"rubber": [Color8(110, 110, 110), Color8(28, 28, 28), 0.24], "dirt": [Color8(150, 138, 118), Color8(105, 68, 38), 0.75],
 	"sand": [Color8(222, 208, 170), Color8(178, 158, 114), 0.75], "snow": [Color8(214, 226, 232), Color8(142, 169, 181), 0.75],
 }
@@ -220,7 +219,7 @@ func update_frame(delta: float) -> void:
 
 ## The server says each tick whether the taxi marks the ground (state
 ## tire_mark: kind, intensity, front); the trail follows the drawn taxi,
-## a point every 0.5 m or 4 degrees (main()'s sampling), at most 4000
+## a point every 0.5 m or 4 degrees, at most 4000
 ## points (the oldest trails go, down to 3500).
 func _lay_track() -> void:
 	if not is_equal_approx(_last_track_px, px_per_m):
@@ -283,7 +282,7 @@ func _process(_delta: float) -> void:
 var _reflectors_drawn := false
 
 
-## render/pedestrians.py draw_pedestrian_reflectors: at deep night a bright
+## Reflectors: at deep night a bright
 ## point on everyone not lit - not in the taxi's beam cone, not within 10 m
 ## of a working street light.
 func _draw_reflectors() -> void:
@@ -311,7 +310,7 @@ func _draw_reflectors() -> void:
 			_reflectors.draw_circle(at, maxf(_px(1.0), 0.35), Color8(255, 255, 245))
 
 
-## In the taxi's headlight cone (render/pedestrians.py is_lit): ahead within
+## In the taxi's headlight cone: ahead within
 ## 15 m, sideways within 1.5 m + 0.35 per metre ahead.
 static func reflector_lit(at: Vector2, taxi: Vector2, heading: float) -> bool:
 	var delta := at - taxi
@@ -319,7 +318,7 @@ static func reflector_lit(at: Vector2, taxi: Vector2, heading: float) -> bool:
 	return ahead > 0.0 and ahead <= 15.0 and absf(delta.dot(_right(heading))) <= 1.5 + ahead * 0.35
 
 
-## render/vehicles.py draw_headlight_beams, in metres: two beams per vehicle
+## Headlight beams, in metres: two beams per vehicle
 ## with its engine on (the taxi first, then NPCs near the view, at most 80),
 ## each a quad from the lamp to 15 m ahead and a round cap; an NPC far from a
 ## street light (22 m) with nothing oncoming (45 m) has long beams (45 m).
@@ -336,7 +335,7 @@ func headlight_beams() -> Array:
 	var road: Dictionary = a.get("road", {}) if typeof(a.get("road")) == TYPE_DICTIONARY else {}
 	if player.get("engine_on", false):
 		var p := StateBuffer.blend(player, b.get("player", player), t, origin)
-		# Under a higher road (render/vehicles.py): no beams - unless on a bridge itself.
+		# Under a higher road: no beams - unless on a bridge itself.
 		if road.get("bridge", false) or not covered.call(Vector2(p.x, p.y), int(road.get("layer", 0))):
 			vehicles.append([Vector2(p.x, p.y), p.z, player.get("width_m", 1.8), false])
 	var later := _by_id(b.get("npcs", []))
@@ -362,14 +361,13 @@ func headlight_beams() -> Array:
 	return polygons
 
 
-## Automatic high beam, the taxi's as every NPC's (Pygame gives it to NPCs
-## only): 45 m on a dark road, dipped to 15 m within 22 m of a street
+## Automatic high beam, the taxi's as every NPC's: 45 m on a dark road, dipped to 15 m within 22 m of a street
 ## light or with a vehicle coming the other way.
 static func beam_length(near_street_light: bool, has_oncoming: bool) -> float:
 	return 15.0 if near_street_light or has_oncoming else 45.0
 
 
-## Another vehicle within 45 m ahead, heading the other way (Pygame's has_oncoming_vehicle).
+## Another vehicle within 45 m ahead, heading the other way.
 static func oncoming(vehicle: Array, vehicles: Array) -> bool:
 	var f := _forward(vehicle[1])
 	for other in vehicles:
@@ -382,7 +380,7 @@ static func oncoming(vehicle: Array, vehicles: Array) -> bool:
 	return false
 
 
-## One vehicle's two beams and caps (Pygame's quad and circle per side).
+## One vehicle's two beams and caps (a quad and a circle per side).
 static func beam_polygons(c: Vector2, heading: float, width: float, length: float) -> Array:
 	var f := _forward(heading)
 	var r := _right(heading)
@@ -402,7 +400,7 @@ static func beam_polygons(c: Vector2, heading: float, width: float, length: floa
 	return polygons
 
 
-## Pygame's draw_npc_cars draws neither police (their own renderer) nor
+## NPC vehicles drawn as vehicles: not police (their own look), not
 ## drivers on foot, nor the far level-of-detail band.
 static func drawn_as_vehicle(npc: Dictionary) -> bool:
 	return not npc.get("is_police", false) and not npc.get("is_on_foot", false) and npc.get("lod_level", 0) < 2
@@ -432,8 +430,7 @@ static func _right(heading: float) -> Vector2:
 	return Vector2(sin(heading), cos(heading))
 
 
-## Vehicle-local rectangle (Pygame's _vehicle_point convention: +long is
-## forward, +lat is the vehicle's right side), as a polygon.
+## Vehicle-local rectangle (+long is forward, +lat is the vehicle's right side), as a polygon.
 ## A quad across the car: `front_half` wide at `front`, `rear_half` at `rear`.
 static func _trapezoid(c: Vector2, f: Vector2, r: Vector2, front: float, rear: float, front_half: float, rear_half: float) -> PackedVector2Array:
 	return PackedVector2Array([c + f * front + r * front_half, c + f * front - r * front_half,
@@ -458,8 +455,7 @@ func _poly(points: PackedVector2Array, fill: Color, outline = null, width := -1.
 		draw_polyline(closed, outline, width)
 
 
-## A vehicle body by type (render/vehicles.py _draw_vehicle, _draw_bus,
-## _draw_truck; two-wheelers are sprites in Pygame, a body and rider here),
+## A vehicle body by type (two-wheelers a body and rider),
 ## then its lamps (_draw_vehicle_lights).
 ## A vehicle's light: the world's ambient plus the street light on it, the
 ## LED pool's colour - its colours are multiplied by this (drawn unshaded),
@@ -622,8 +618,8 @@ func _vehicle_body(c: Vector2, heading: float, length: float, width: float, colo
 				_lamp_polys.append([_rect(lamp, f, r, light_w * 0.6, -light_w * 0.6, maxf(_px(1.0), light_len * 0.45) * 0.5), RS.TURN_SIGNAL])
 
 
-## Four rising, fading puffs (render/vehicles.py crash smoke and exhaust;
-## sizes in Pygame's screen pixels). `behind` trails them out of the back.
+## Four rising, fading puffs (crash smoke and exhaust; sizes in screen
+## pixels). `behind` trails them out of the back.
 func _smoke(c: Vector2, heading: float, length: float, t: float, behind := false) -> void:
 	var f := _forward(heading)
 	var r := _right(heading)
@@ -646,7 +642,7 @@ func _ellipse(c: Vector2, rx: float, ry: float, color: Color) -> void:
 	draw_set_transform(Vector2.ZERO)
 
 
-## A pedestrian as render/pedestrians.py draw_pedestrians: shadow, legs
+## A pedestrian: shadow, legs
 ## stepping with animation_time, body, head facing the heading; fallen ones
 ## lie down, people going indoors are an outline; then any cursing bubble.
 func _pedestrian(c: Vector2, heading: float, ped: Dictionary, animation_time: float) -> void:
@@ -680,7 +676,7 @@ func _pedestrian(c: Vector2, heading: float, ped: Dictionary, animation_time: fl
 
 
 ## A text bubble whose bottom centre is at `anchor`, drawn in screen
-## pixels (constant size whatever the zoom), like Pygame's bubbles.
+## pixels (constant size whatever the zoom).
 func _bubble(anchor: Vector2, text: String, text_color: Color, border: Color, alpha := 1.0, font_size := 14, tail := false) -> void:
 	var size := _font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size)
 	var box := Rect2(Vector2(-size.x / 2.0 - 4.0, -size.y - 4.0 - (8.0 if tail else 0.0)), size + Vector2(8.0, 4.0))
@@ -693,7 +689,7 @@ func _bubble(anchor: Vector2, text: String, text_color: Color, border: Color, al
 	draw_set_transform(Vector2.ZERO)
 
 
-## A label with a dark background (Pygame's target and customer tags).
+## A label with a dark background (the target and customer tags).
 func _tag(anchor: Vector2, text: String, text_color: Color, border = null, font_size := 14) -> void:
 	var size := _font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size)
 	var box := Rect2(Vector2(-size.x / 2.0 - 4.0, -size.y / 2.0 - 2.0), size + Vector2(8.0, 4.0))
@@ -709,9 +705,8 @@ func _rgb(values: Array) -> Color:
 	return Color8(int(values[0]), int(values[1]), int(values[2]))
 
 
-## The job target and the waiting customer (render/navigation.py
-## draw_taxi_target); the off-screen arrow is screen UI (nav_overlay.gd).
-## render/navigation.py draw_navigation_route: the server's route (state
+## The job target and the waiting customer; the off-screen arrow is screen UI (nav_overlay.gd).
+## The navigation route: the server's route (state
 ## navigation.points) above the roads and pedestrians, under the target
 ## marker and the vehicles - dark edge, gold centre. Converted once per new route.
 ## Drawn on its own unshaded node, tinted half way from the night's
@@ -745,7 +740,7 @@ func route_for(state: Dictionary) -> PackedVector2Array:
 
 
 ## The server's active rage shout ([text, alpha]: full, fading over the last
-## 0.5 s as draw_car), or [] - nothing for absent, malformed or expired state.
+## 0.5 s), or [] - nothing for absent, malformed or expired state.
 static func shout_for(state: Dictionary) -> Array:
 	var shout = state.get("road_rage")
 	if not shout is Dictionary or typeof(shout.get("text")) != TYPE_STRING or shout["text"] == "" \
@@ -830,7 +825,7 @@ func _draw() -> void:
 		_pedestrian(c, p.z, ped, lerpf(ped.get("animation_time", 0.0), next.get("animation_time", 0.0), t))
 		count += 1
 	var later_npc_rows := _by_id(b.get("npcs", []))
-	for npc in a.get("npcs", []):  # NPC drivers out of their car: Pygame adds them to the pedestrians
+	for npc in a.get("npcs", []):  # NPC drivers out of their car are drawn as pedestrians
 		if underground or not npc.get("is_on_foot", false):
 			continue
 		var p := StateBuffer.blend(npc, later_npc_rows.get(npc["id"], npc), t, origin)
@@ -860,7 +855,7 @@ func _draw() -> void:
 	if smoke_timer > 0.0:
 		_smoke(taxi_at, taxi.z, taxi_length, 5.0 - smoke_timer)
 	var shout := shout_for(a)
-	if not shout.is_empty():  # render/vehicles.py draw_car: the rage shout above the taxi, before the NPCs
+	if not shout.is_empty():  # the rage shout above the taxi, before the NPCs
 		_bubble(taxi_at - Vector2(0.0, maxf(_px(22.0), 0.7 * taxi_length) + _px(6.0)), shout[0], RS.SHOUT, RS.SHOUT_BORDER, shout[1])
 	count += 1
 
@@ -896,7 +891,7 @@ func _draw() -> void:
 	preload("res://perf.gd").add("entities_draw", interp_usec)
 
 
-## Trains, last (render/vehicles.py draw_trains after the bridge rails),
+## Trains, last (after the bridge rails),
 ## from the same sample as everything else.
 func _draw_trains() -> void:
 	_trains_drawn = 0
@@ -920,7 +915,7 @@ func _draw_trains() -> void:
 
 
 ## This frame's lightning flash alpha (main.gd shows it above the night
-## tint, as Pygame draws lightning after it).
+## tint).
 func lightning_now() -> float:
 	return 0.0 if _frame.is_empty() else lightning_alpha(_frame["a"], _frame["b"], _frame["t"])
 
@@ -948,7 +943,7 @@ static func booked_arrow_at(a: Dictionary, b: Dictionary, t: float, later_peds: 
 	return MapMath.point(origin, arrow["x"], arrow["y"])
 
 
-## render/pedestrians.py draw_booked_passenger_arrow: a downward arrow over
+## The booked passenger's arrow: a downward arrow over
 ## the booked passenger, sized in screen pixels.
 func _booked_arrow(a: Dictionary, b: Dictionary, t: float, later_peds: Dictionary) -> void:
 	var at := booked_arrow_at(a, b, t, later_peds, origin)
@@ -961,7 +956,7 @@ func _booked_arrow(a: Dictionary, b: Dictionary, t: float, later_peds: Dictionar
 	_poly(arrow, RS.BOOKED_CUSTOMER, RS.OUTLINE, _px(2.0))
 
 
-## One train vehicle (render/vehicles.py draw_trains): body in its profile
+## One train vehicle: body in its profile
 ## colour, a white cab front on a locomotive, a white stripe along a
 ## restaurant car, a dark roof line.
 func _train_car(c: Vector2, heading: float, length: float, profile: String, node: CanvasItem = self) -> void:

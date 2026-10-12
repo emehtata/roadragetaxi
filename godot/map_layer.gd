@@ -228,7 +228,7 @@ func set_obstacles(fallen_trees: Array, knocked_posts: Array) -> void:
 		_knocked_posts.queue_redraw()
 
 
-## render/scenery.py: a post hit hard lies bent over the way the taxi went
+## A post hit hard lies bent over the way the taxi went
 ## (a street lamp 4 m, a bollard 0.9 m).
 func _draw_knocked_posts() -> void:
 	for post in knocked.values():
@@ -291,7 +291,7 @@ func canopies_moved(view: Rect2) -> void:
 
 
 ## The weather's road wetness 0..1 (state "weather.wetness"). Applied in
-## steps of 3/255 overlay alpha, as Pygame's wet-road cache does, so a slowly
+## steps of 3/255 overlay alpha, so a slowly
 ## drying road doesn't touch every chunk every tick.
 func set_wetness(value: float) -> bool:
 	var stepped := roundf(clampf(value, 0.0, 1.0) * 30.0) / 30.0
@@ -312,16 +312,15 @@ func remove_chunk(chunk_id: String) -> bool:
 
 
 func _draw_ground() -> void:
-	# Ground, under the chunks: snow cover with the winter weight. (Pygame's
-	# other seasonal palettes are tuned to its dark grass; on this lighter
-	# ground autumn turns brown, so only the snow is taken.)
+	# Ground, under the chunks: snow cover with the winter weight (on this
+	# light ground other seasonal palettes turned it brown, so only snow).
 	# godot-18: the viewport's clear colour, not a full-screen rectangle - one less layer to fill every frame.
 	RenderingServer.set_default_clear_color(Color(0.27, 0.33, 0.25).lerp(Color8(230, 236, 240), clampf(season[0], 0.0, 1.0)))
 
 
-## render/roads.py draw_level_ways and main()'s underground view: below
+## The underground view: below
 ## ground, a dark fill over the surface map and the current level's roads;
-## on the surface, the covered (level 0) roads Pygame draws there.
+## on the surface, the covered (level 0) roads.
 func _draw_underground() -> void:
 	if map_level != 0:
 		_underground.draw_rect(Rect2(-100000, -100000, 200000, 200000), Color8(34, 34, 38))
@@ -351,7 +350,7 @@ func set_flash(index) -> void:
 
 
 ## Whether `at` (layer coordinates) is under a road on a higher layer than
-## `layer` (render/common.py _covered_by_higher_road): headlights there
+## `layer`: headlights there
 ## are hidden by the bridge above.
 func covered(at: Vector2, layer: int) -> bool:
 	for chunk in _chunks.values():

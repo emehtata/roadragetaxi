@@ -142,7 +142,7 @@ func send_phone(action: String, item_id: String, request_id: int) -> bool:
 	return true
 
 
-## F12: the server writes Pygame's debug JSON (its world) at `path`.
+## F12: the server writes the debug JSON (its world) at `path`.
 func send_debug_snapshot(path: String) -> bool:
 	if not connected:
 		return false

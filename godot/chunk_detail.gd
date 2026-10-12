@@ -1,12 +1,11 @@
-## The rest of a chunk's static world (godot-16), drawn as Pygame's
-## renderers draw it, into the chunk's canvas items (map_chunk.gd creates
+## The rest of a chunk's static world (godot-16), drawn into the chunk's canvas items (map_chunk.gd creates
 ## the layers; this holds the drawing). Batched: one call per style where
 ## a chunk has many of a thing (multiline, triangle arrays), never a node
-## per object. Sizes in metres, with Pygame's minimum pixel sizes where it
-## has them (chunk._px). Everything here is drawing only.
+## per object. Sizes in metres, with minimum pixel sizes where
+## needed (chunk._px). Everything here is drawing only.
 extends RefCounted
 
-const RAIL_COLOR := Color8(150, 145, 135)  # render/roads.py
+const RAIL_COLOR := Color8(150, 145, 135)
 const TIE_COLOR := Color8(90, 65, 45)
 const BALLAST_COLOR := Color8(108, 100, 92)
 const GUARDRAIL_COLOR := Color8(196, 200, 204)
@@ -16,7 +15,7 @@ const TIE_SPACING := 2.0
 const BUMP_LENGTHS := {"table": 2.2, "bump": 0.6, "cushion": 0.4, "hump": 0.6}
 const B25 := preload("res://buildings_25d.gd")
 const B3 := preload("res://buildings_3d.gd")
-const OPEN_ROOF := Color8(138, 145, 148, 185)  # render/buildings.py
+const OPEN_ROOF := Color8(138, 145, 148, 185)
 const OPEN_ROOF_EDGE := Color8(65, 69, 71, 235)
 const OPEN_ROOF_POLE := Color8(105, 110, 112)
 
@@ -29,8 +28,7 @@ static func _valid(polygon: PackedVector2Array) -> bool:
 	return polygon.size() >= 3 and not Geometry2D.triangulate_polygon(polygon).is_empty()
 
 
-## render/scenery.py draw_scenery (fills; the speckle texture is not
-## drawn): each piece in its kind's colour, green kinds through the season.
+## Landuse fills: each piece in its kind's colour, green kinds through the season.
 static func draw_areas(chunk, node: Node2D, key: String) -> void:
 	for area in chunk._data.get(key, []):
 		var polygon: PackedVector2Array = chunk._points(area[2])
@@ -39,7 +37,7 @@ static func draw_areas(chunk, node: Node2D, key: String) -> void:
 			node.draw_colored_polygon(polygon, chunk.seasonal_color(color, chunk._season) if area[1] else color)
 
 
-## render/scenery.py draw_parking_spaces: asphalt bays with a light edge.
+## Parking spaces: asphalt bays with a light edge.
 static func draw_parking(chunk, node: Node2D) -> void:
 	var edges := PackedVector2Array()
 	for space in chunk._data.get("parking", []):
@@ -60,7 +58,7 @@ static func _width(chunk, metres: float, min_px: float) -> float:
 	return -1.0 if px < 1.5 else px / chunk._px_per_m
 
 
-## Ground track (render/roads.py draw_railways): ballast bed (zoomed in),
+## Ground track: ballast bed (zoomed in),
 ## two rails, a sleeper every 2 m - also the bridge tracks, on their deck.
 static func draw_tracks(chunk, node: Node2D, key: String) -> void:
 	var ballast := PackedVector2Array()
@@ -95,7 +93,7 @@ static func draw_tracks(chunk, node: Node2D, key: String) -> void:
 
 
 ## Rail bridges: the deck (ballast fill, guardrail edge) under the bridge
-## tracks, all above the vehicles (render/roads.py only_bridges pass).
+## tracks, all above the vehicles.
 static func draw_rail_bridges(chunk, node: Node2D) -> void:
 	for deck in chunk._data.get("rail_decks", []):
 		var polygon: PackedVector2Array = chunk._points(deck)
@@ -107,7 +105,7 @@ static func draw_rail_bridges(chunk, node: Node2D) -> void:
 	draw_tracks(chunk, node, "rail_bridges")
 
 
-## render/roads.py draw_ways' bridge guardrails: outer side edges only.
+## Bridge guardrails: outer side edges only.
 static func draw_guardrails(chunk, node: Node2D) -> void:
 	var lines := PackedVector2Array()
 	for r in chunk._data.get("guardrails", []):
@@ -116,7 +114,7 @@ static func draw_guardrails(chunk, node: Node2D) -> void:
 		node.draw_multiline(lines, GUARDRAIL_COLOR, maxf(chunk._px(2.0), 0.18))
 
 
-## render/buildings.py open roofs, under the vehicles: the canopy's shadow
+## Open roofs, under the vehicles: the canopy's shadow
 ## and its corner posts (the roof itself is drawn above them: draw_canopies).
 static func draw_canopy_supports(chunk, node: Node2D) -> void:
 	for canopy in chunk._data.get("canopies", []):
@@ -152,7 +150,7 @@ static func canopy_height(chunk, canopy) -> float:
 	return float(heights[index]) if index >= 0 and index < heights.size() else 6.0
 
 
-## The see-through canopy above the vehicles (draw_open_roof_overlays):
+## The see-through canopy above the vehicles:
 ## fuel pumps and the taxi stay visible under it.
 static func draw_canopies(chunk, node: Node2D) -> void:
 	for canopy in chunk._data.get("canopies", []):
@@ -172,7 +170,7 @@ static func draw_canopies(chunk, node: Node2D) -> void:
 			node.draw_polyline(ring, OPEN_ROOF_EDGE, maxf(chunk._px(1.0), 0.1))
 
 
-## Curbs, zebra crossings and speed bumps (render/roads.py).
+## Curbs, zebra crossings and speed bumps.
 static func draw_road_features(chunk, node: Node2D) -> void:
 	var curbs := PackedVector2Array()
 	for curb in chunk._data.get("curbs", []):
@@ -201,7 +199,7 @@ static func draw_road_features(chunk, node: Node2D) -> void:
 			node.draw_colored_polygon(bump, Color8(45, 42, 40))
 
 
-## Stop and yield signs and speed cameras, in pixels like Pygame's (scale
+## Stop and yield signs and speed cameras, in pixels (scale
 ## with the zoom between 0.7 and 1.5); the flashing camera's flash.
 static func draw_signs(chunk, node: Node2D, flash_index) -> void:
 	var font := ThemeDB.fallback_font
@@ -250,7 +248,7 @@ static func draw_signs(chunk, node: Node2D, flash_index) -> void:
 	node.draw_set_transform(Vector2.ZERO)
 
 
-## render/roads.py draw_bus_stops: the bay, a shelter, "BUS" along the road.
+## Bus stops: the bay, a shelter, "BUS" along the road.
 static func draw_bus_stops(chunk, node: Node2D) -> void:
 	var font := ThemeDB.fallback_font
 	for stop in chunk._data.get("bus_stops", []):
@@ -269,7 +267,7 @@ static func draw_bus_stops(chunk, node: Node2D) -> void:
 	node.draw_set_transform(Vector2.ZERO)
 
 
-## render/roads.py draw_ways' markings over one road: the centre line on a
+## Road markings over one road: the centre line on a
 ## road at least 6 px wide (dashed 8 m / 6 m, or solid), one-way chevrons
 ## every 40 m when zoomed in. Collected into `lines` [colour -> points]
 ## and `chevrons` for one batched call per road layer.

@@ -1,6 +1,5 @@
 ## godot-final-06: the falling weather, puddle ripples and taxi splashes -
-## render/weather.py's draw_rain, draw_puddles (ripples) and draw_splashes,
-## and weather.py's particle pool and splash rule.
+## with weather.py's particle pool and splash rule.
 ##
 ## Presentation only. The weather type, wetness, wind and the taxi come from
 ## the server's state; this owns:
@@ -27,7 +26,7 @@ const SLUSH_COLOR := Color8(218, 226, 232)
 const RIPPLE_CYCLE_S := 2.4
 const RIPPLE_DURATION_S := 1.0
 const RIPPLE_COLOR := Color8(190, 202, 218)
-const RIPPLE_MAX_ALPHA := 150.0 / 255.0  # Pygame 70, with 1 px rings: invisible in play
+const RIPPLE_MAX_ALPHA := 150.0 / 255.0  # 70 was invisible in play with 1 px rings
 const RING_WIDTH_PX := 2.0
 const SPLASH_LIFETIME_S := 0.5
 const SPLASH_MIN_SPEED_MPS := 1.0
@@ -70,7 +69,7 @@ func setup(sky: CanvasLayer, world: Node2D) -> void:
 	precipitation.set_anchors_preset(Control.PRESET_FULL_RECT)
 	precipitation.visible = false
 	precipitation.draw.connect(_draw_precipitation)
-	sky.add_child(precipitation)  # after the lightning flash: rain is drawn over it, as Pygame
+	sky.add_child(precipitation)  # after the lightning flash: rain is drawn over it
 	ripples = Node2D.new()
 	ripples.z_index = 5
 	ripples.visible = false
@@ -170,7 +169,7 @@ func _draw_precipitation() -> void:
 	Perf.add("weather_draw_precipitation", Time.get_ticks_usec() - started)
 
 
-## render/weather.py draw_puddles' ripple: each visible puddle, every 2.4 s,
+## A puddle's ripple: each visible puddle, every 2.4 s,
 ## a ring growing from 0.25 to 1.1 of its radius over 1 s, fading.
 static func ripple(spot: Dictionary, wetness: float, now: float) -> Array:
 	var strength := RS.puddle_strength(wetness, spot["reveal"])
@@ -231,7 +230,7 @@ func age_splashes(delta: float) -> void:
 	splashes = splashes.filter(func(s): return s[1] < SPLASH_LIFETIME_S)
 
 
-## render/weather.py draw_splashes: [radius m, alpha] of a splash ring.
+## [radius m, alpha] of a splash ring.
 static func splash_ring(splash: Array) -> Array:
 	var progress := minf(1.0, splash[1] / SPLASH_LIFETIME_S)
 	return [0.25 + progress * SPLASH_MAX_RADIUS_M * splash[2], SPLASH_MAX_ALPHA * (1.0 - progress) * (0.5 + 0.5 * splash[2])]

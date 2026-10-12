@@ -263,7 +263,7 @@ func test_rendering() -> void:
 	check(Entities.current_target({"taxi": {"state": "DROPOFF", "current_passenger": passenger}})["address"] == "B", "drop-off target with the customer aboard")
 	check(Entities.current_target({"taxi": {"state": "PICKUP", "current_passenger": null}}).is_empty(), "no passenger, no target")
 
-	# Turn signals blink as Pygame's elapsed % 0.9 < 0.45.
+	# Turn signals blink: elapsed % 0.9 < 0.45.
 	check(RS.signal_lit(0.1) and not RS.signal_lit(0.5) and RS.signal_lit(0.95), "turn signal blink phase")
 	var signal_car := Entities.new()
 	signal_car._tint = Color.WHITE
@@ -296,7 +296,7 @@ func test_rendering() -> void:
 	check(first.all(func(spot): return bounds.has_point(spot["at"])), "puddles only inside their chunk")
 	check(Chunk.puddle_spots(roads, Rect2(1000, 1000, 10, 10), Vector2.ZERO).is_empty(), "a road's puddle is drawn by one chunk only")
 
-	# Off-screen arrow on the screen edge, with Pygame's 130 px margin.
+	# Off-screen arrow on the screen edge, with a 130 px margin.
 	var screen := Vector2(1280, 720)
 	check(Nav.edge_point(0.0, screen) == Vector2(1280 - 130, 360), "target to the east: right edge")
 	check(Nav.edge_point(PI / 2.0, screen) == Vector2(640, 130), "target to the north: top edge")
@@ -310,14 +310,14 @@ func test_rendering() -> void:
 	check(Instruments.dial_point(center, 0.0, 10.0).x < 100.0 and Instruments.dial_point(center, 1.0, 10.0).x > 100.0
 		and is_equal_approx(Instruments.dial_point(center, 0.5, 10.0).y, 90.0), "fuel needle: E left, F right, half up")
 	var faces: Array = Instruments.load_rage_faces(preload("res://paths.gd").package_path(Instruments.RAGE_ATLAS))
-	check(faces.size() == 11 and faces[0].get_size().x <= 170.0, "11 rage faces cut from Pygame's atlas")
+	check(faces.size() == 11 and faces[0].get_size().x <= 170.0, "11 rage faces cut from the atlas")
 
-	# Pygame skips police, drivers on foot and the far LOD band in draw_npc_cars.
+	# Not drawn as vehicles: police, drivers on foot and the far LOD band.
 	var npc := {"id": 1, "vehicle_type": "car"}
 	check(Entities.drawn_as_vehicle(npc) and Entities.drawn_as_vehicle(npc.merged({"lod_level": 1})), "ordinary NPC vehicles are drawn")
 	check(not Entities.drawn_as_vehicle(npc.merged({"is_police": true})) and not Entities.drawn_as_vehicle(npc.merged({"is_on_foot": true}))
 		and not Entities.drawn_as_vehicle(npc.merged({"lod_level": 2})), "police, drivers on foot and the far LOD band are not")
-	check(Entities.is_reversing(-0.051) and not Entities.is_reversing(-0.05) and not Entities.is_reversing(1.0), "signed speed switches the reversing lamp at Pygame's threshold")
+	check(Entities.is_reversing(-0.051) and not Entities.is_reversing(-0.05) and not Entities.is_reversing(1.0), "signed speed switches the reversing lamp at its threshold")
 
 
 func _release(code: Key) -> InputEventKey:
@@ -457,7 +457,7 @@ func test_phone() -> void:
 	phone.open()
 	check(sounds.size() == 1, "opening an open phone plays nothing")
 	phone._unhandled_input(_key(KEY_P))
-	check(not phone.is_open and sounds == [["ui.phone_open", 0], ["ui.phone_open", 1]], "P closes it (Pygame's close variation)")
+	check(not phone.is_open and sounds == [["ui.phone_open", 0], ["ui.phone_open", 1]], "P closes it (the close variation)")
 	phone.open()
 	phone._unhandled_input(_key(KEY_ESCAPE))
 	check(not phone.is_open, "Esc closes it")
@@ -514,7 +514,7 @@ func test_phone() -> void:
 	requests.clear()
 	phone.show_phone({"busy": false, "items": [_offer("offer-8", "Ville"), _offer("offer-9", "Ulla")]})
 	phone._unhandled_input(_key(KEY_2))
-	check(requests.size() == 1 and requests[0][0] == "accept" and requests[0][1] == "offer-9", "2 accepts the second offer at once (Pygame)")
+	check(requests.size() == 1 and requests[0][0] == "accept" and requests[0][1] == "offer-9", "2 accepts the second offer at once")
 	phone.show_phone({"busy": false, "items": [_offer("offer-5", "Olli")]})
 	phone.accept_selected()
 	requests.clear()
@@ -620,7 +620,7 @@ func test_speech_and_stations() -> void:
 		for j in range(i + 1, boxes.size()):
 			apart = apart and not boxes[i].intersects(boxes[j])
 	check(apart and not boxes[3].intersects(Rect2(1280 - 79, 45, 62, 62)), "HUD: clock, score, weather and fare banner on screen, none overlapping, clear of the limit sign")
-	check(hud._fare_style.border_color == Color8(255, 215, 60), "HUD: the fare banner yellow while picking up (hud.py)")
+	check(hud._fare_style.border_color == Color8(255, 215, 60), "HUD: the fare banner yellow while picking up")
 	check(Hud.subtitle_text({"speaker": "passenger", "speaker_name": "Aino", "text": "Hei"}) == "Aino: Hei" and Hud.subtitle_text({"speaker": "driver", "text": "Mennään"}) == "Driver: Mennään", "the passenger's name, else the speaker")
 	check(Hud.subtitle_text({"speaker": "passenger", "text": ""}) == "" and Hud.subtitle_text({}) == "", "no text: no subtitle")
 	check(Hud.subtitle_text({"speaker": "driver", "text": "Mennään"}, "fi") == "Kuljettaja: Mennään", "the speaker in Finnish")
@@ -686,7 +686,7 @@ func test_speech_and_stations() -> void:
 	hl.offsets.clear()  # reset() without touching the saved file
 	check(hl.place("speedometer", dial, screen) == dial, "HUD layout: reset puts it back")
 	check(HudLayout.clamp_rect(Rect2(-50, -50, 100, 100), Vector2(1280, 720)).position == Vector2.ZERO, "HUD layout: clamped inside the screen")
-	check(FileAccess.get_file_as_string("res://main.gd").contains("KEY_U, KEY_F2:"), "HUD layout: U and F2 reset it (Pygame's keys)")
+	check(FileAccess.get_file_as_string("res://main.gd").contains("KEY_U, KEY_F2:"), "HUD layout: U and F2 reset it")
 	var Instruments := load("res://instruments.gd")
 	check(is_equal_approx(Instruments.speed_kmh(-5.0), 18.0) and Instruments.speed_kmh(100.0) == 210.0, "speedometer: |speed| in km/h, up to 210")
 	check(is_equal_approx(Instruments.speed_angle(0.0), deg_to_rad(135.0)) and is_equal_approx(Instruments.speed_angle(210.0), deg_to_rad(405.0)), "speedometer: 270 degrees from lower left")
@@ -718,7 +718,7 @@ func test_speech_and_stations() -> void:
 	var railway := {"nearest_station": "Oulu", "stations": [{"name": "Oulu", "x": 0.0, "y": 0.0, "waiting": 12}],
 		"arrivals": [{"time": "18:02", "train_type": "IC", "number": "28", "origin": "Rovaniemi", "track": "1"}],
 		"departures": [{"time": "18:08", "train_type": "IC", "number": "28", "destination": "Helsinki", "track": ""}]}
-	check(Hud.next_train_text(railway) == "Oulu\nNext trains:\n18:02 track 1  IC 28 Rovaniemi\nDeparting trains:\n18:08  IC 28 Helsinki", "the J board as draw_next_train")
+	check(Hud.next_train_text(railway) == "Oulu\nNext trains:\n18:02 track 1  IC 28 Rovaniemi\nDeparting trains:\n18:08  IC 28 Helsinki", "the J board")
 	var many := railway.duplicate(true)
 	for i in 8:
 		many["arrivals"].append(railway["arrivals"][0])
@@ -749,12 +749,12 @@ func test_speech_and_stations() -> void:
 	check(Main.station_ambience(stations, Vector2(160.0, 0.0), range_m)[1] == Vector2(40, 0), "A out of earshot (160 m): quiet B")
 	check(Main.station_ambience(stations, Vector2(1000.0, 0.0), range_m)[1] == null and Main.station_ambience(stations, Vector2(1000.0, 0.0), range_m)[0] == 0.0, "nobody in earshot: silent")
 	check(Main.station_ambience(null, Vector2.ZERO, range_m)[0] == 0.0 and Main.station_ambience({"stations": [{"x": "a"}]}, Vector2.ZERO, range_m)[0] == 0.0, "older or malformed state: silent")
-	check(is_equal_approx(Main.heard(Vector2.ZERO, Vector2(30, 0), range_m), 0.5) and Main.heard(Vector2.ZERO, Vector2(150, 0), range_m) == 0.0, "audio.py's distance gain")
+	check(is_equal_approx(Main.heard(Vector2.ZERO, Vector2(30, 0), range_m), 0.5) and Main.heard(Vector2.ZERO, Vector2(150, 0), range_m) == 0.0, "the distance gain")
 	var cfg: Dictionary = JSON.parse_string(FileAccess.get_file_as_string("res://audio/audio_events.json"))
 	check(cfg["loops"]["station_crowd"]["variation"] == 0 and cfg["loops"]["station_luggage"]["variation"] == 1 and cfg["loops"]["station_crowd"]["positional"], "crowd and luggage loops, placed")
 
 
-## godot-final-06: precipitation, ripples, splashes and weather audio (render/weather.py, weather.py, audio.py).
+## godot-final-06: precipitation, ripples, splashes and weather audio.
 func test_weather_presentation() -> void:
 	var W := preload("res://weather_layer.gd")
 	var wx: Node = W.new()
@@ -768,7 +768,7 @@ func test_weather_presentation() -> void:
 		wx.advance_particles(0.01)
 		var motion: Vector2 = W.MOTION[kind]
 		var moved := Vector2(wx.particles[0], wx.particles[1]) - before
-		check(moved.is_equal_approx(Vector2(0.05 * motion.y, 0.9 * motion.x) * factor * 0.01), "%s: Pygame's fall and drift in real seconds" % kind)
+		check(moved.is_equal_approx(Vector2(0.05 * motion.y, 0.9 * motion.x) * factor * 0.01), "%s: fall and drift in real seconds" % kind)
 	wx.kind = "snow"
 	for i in 2000:  # long runs and weather changes: the pool never grows, everything stays on screen
 		wx.advance_particles(0.05)
@@ -866,7 +866,7 @@ func test_weather_presentation() -> void:
 	fake.free()
 	faraway.free()
 
-	# Weather audio: main()'s update_ambience formulas.
+	# Weather audio: the ambience formulas.
 	var loops := Main.weather_loops({"weather": {"weather_type": "rain", "wetness": 0.5, "is_thunderstorm": true, "wind_vector_mps": [6.0, 8.0]}, "player": {"speed": 15.0}, "on_foot": false})
 	check(loops["rain"] == 0.6 and loops["rain_heavy"] == 0.7, "a thunderstorm: rain and heavy rain")
 	check(is_equal_approx(loops["wind"], 10.0 / 12.0 * 0.5) and loops["wind_strong"] == 0.0, "10 m/s wind: 0.42, no strong wind yet")
@@ -881,7 +881,7 @@ func test_weather_presentation() -> void:
 	var audio: Node = load("res://audio_manager.gd").new()
 	audio.load_config("res://audio/audio_events.json")
 	var spec: Dictionary = audio._config["loops"]
-	check(spec["rain"]["variation"] == 0 and spec["rain_heavy"]["variation"] == 1 and spec["wind_strong"]["variation"] == 1 and spec["wet_slush"]["variation"] == 1 and spec["wet_tires"]["variation"] == 0, "loop variations as audio.py")
+	check(spec["rain"]["variation"] == 0 and spec["rain_heavy"]["variation"] == 1 and spec["wind_strong"]["variation"] == 1 and spec["wet_slush"]["variation"] == 1 and spec["wet_tires"]["variation"] == 0, "loop variations")
 	check(spec.has("engine") and spec.has("city_day") and spec.has("train_running"), "the other loops are unchanged")
 	audio.free()
 
@@ -904,7 +904,7 @@ func test_road_rage() -> void:
 	main.phone.is_open = true
 	main._unhandled_input(_key_event(KEY_SPACE))
 	main.send({})
-	check(sim._last_command["road_rage"] == false, "not while the phone is open (main())")
+	check(sim._last_command["road_rage"] == false, "not while the phone is open")
 	main.phone.is_open = false
 	main._unhandled_input(_key_event(KEY_SPACE))
 	main._unhandled_input(_key_event(KEY_G))
@@ -924,20 +924,20 @@ func test_road_rage() -> void:
 	var source: String = (EntityLayer as Script).source_code
 	var draw := source.substr(source.find("func _draw() -> void:"))
 	var taxi_body := draw.find("_vehicle(taxi_at")
-	check(taxi_body < draw.find("shout_for(a)") and draw.find("shout_for(a)") < draw.find("drawn_as_vehicle(npc)"), "the shout after the taxi body, before the NPC vehicles (draw_car)")
+	check(taxi_body < draw.find("shout_for(a)") and draw.find("shout_for(a)") < draw.find("drawn_as_vehicle(npc)"), "the shout after the taxi body, before the NPC vehicles")
 	check(draw.find("_bubble(taxi_at") > 0 and source.find("draw_set_transform(anchor, 0.0, Vector2.ONE / px_per_m)") > 0, "drawn at the interpolated taxi, in constant screen pixels")
 	var audio: Node = load("res://audio_manager.gd").new()
 	audio.load_config("res://audio/audio_events.json")
 	var horn: Array = audio.resolve({"type": "sound", "group": "vehicle.horn"})
-	check(horn.size() == 1 and horn[0]["group"] == "vehicle.horn" and is_equal_approx(horn[0]["volume"], 0.45), "the horn event plays vehicle.horn at Pygame's 0.45")
+	check(horn.size() == 1 and horn[0]["group"] == "vehicle.horn" and is_equal_approx(horn[0]["volume"], 0.45), "the horn event plays vehicle.horn at 0.45")
 	audio.free()
 	check(FileAccess.get_file_as_string("res://main.gd").contains("Space   Road rage"), "F1 help names SPACE")
 
 
-## L cycles the labels as Pygame's label_mode: off (start), street names, everything.
+## L cycles the labels: off (start), street names, everything.
 func test_label_modes() -> void:
 	var labels: Control = Labels.new()
-	check(labels.mode == 0, "labels start off, as in Pygame")
+	check(labels.mode == 0, "labels start off")
 	var l := _key_event(KEY_L)
 	var seen := []
 	for i in 3:
@@ -963,13 +963,13 @@ func test_label_modes() -> void:
 	check(Labels.declutter(candidates, canvas, Vector2(1280, 720), font, 2).map(func(p): return p[1]) == ["Keskusta"], "mode 2: everything, by priority (one spot: the district wins)")
 	check(Labels.declutter(candidates, canvas, Vector2(1280, 720), font, 0).is_empty(), "mode 0: none")
 	var driving := {"on_foot": false, "player": {"engine_on": true}}
-	check(Hud.values(driving)["hint"] == "" and FileAccess.get_file_as_string("res://main.gd").contains("L   Labels"), "driving: no controls line (hud.py: debug only); F1 names L")
+	check(Hud.values(driving)["hint"] == "" and FileAccess.get_file_as_string("res://main.gd").contains("L   Labels"), "driving: no controls line; F1 names L")
 
 
 ## godot-final-04: the server's route, N to show it (C stays the compass).
 func test_navigation_route() -> void:
 	var nav: Control = load("res://nav_overlay.gd").new()
-	check(not nav.show_route and not nav.show_compass, "N and C start off, as in Pygame")
+	check(not nav.show_route and not nav.show_compass, "N and C start off")
 	var n := _key_event(KEY_N)
 	n.physical_keycode = KEY_N
 	nav._unhandled_input(n)
@@ -1104,7 +1104,7 @@ func test_controls_and_economy() -> void:
 	check(Hud.values({"taxi": {"total_score": -250.0}})["score"] == "-250", "negative score (JSON numbers arrive as floats)")
 	check(Hud.values({})["score"] == "–" and Hud.values({"taxi": {"total_score": null}})["score"] == "–", "a missing score is safe")
 
-	# The city summary (render/menus.py draw_city_summary).
+	# The city summary.
 	var next := Hud.summary_text({"should_stop": true, "city_summary": ["Oulu", 10500, 12, "Tampere", 21000]})
 	check(next == "City summary\n\nOulu\nScore: 10500\nFares completed: 12\nNext city: Tampere", "a next-city summary")
 	var done := Hud.summary_text({"should_stop": true, "city_summary": ["Helsinki", 10200.0, 9.0, null, 98765.0]})
@@ -1134,7 +1134,7 @@ func test_controls_and_economy() -> void:
 
 ## godot-11: the server's meet, road, speed-camera and lightning state.
 func test_meet_road_camera_lightning() -> void:
-	# Road and limit: the simulation's values, Pygame's wording.
+	# Road and limit: the simulation's values.
 	check(Hud.values({})["road"] == "" and Instruments.speed_limit({}) == 0, "no road field (older server): nothing shown")
 	check(Hud.values({"road": {"name": null, "speed_limit_kmh": null}})["road"] == "Road: Off-road", "off-road")
 	check(Hud.values({"road": {"name": "Isokatu", "speed_limit_kmh": 40}})["road"] == "Road: Isokatu [Limit: 40 km/h]", "named road with its limit")
@@ -1183,7 +1183,7 @@ func test_meet_road_camera_lightning() -> void:
 	var none := {"weather": {"lightning_intensity": 0.0}}
 	var strike := {"weather": {"lightning_intensity": 1.0}}
 	check(EntityLayer.lightning_alpha(none, none, 0.5) == 0.0 and EntityLayer.lightning_alpha({}, {}, 0.5) == 0.0, "no lightning, or an older server: no flash")
-	check(is_equal_approx(EntityLayer.lightning_alpha(strike, strike, 0.0), 145.0 / 255.0), "a strike flashes at Pygame's maximum alpha")
+	check(is_equal_approx(EntityLayer.lightning_alpha(strike, strike, 0.0), 145.0 / 255.0), "a strike flashes at the maximum alpha")
 	check(is_equal_approx(EntityLayer.lightning_alpha(strike, none, 0.5), 0.5 * 145.0 / 255.0), "the flash fades with the sent intensity")
 
 
@@ -1248,7 +1248,7 @@ func test_obstacles() -> void:
 	check(chunk._trees != null and chunk._px_layers.size() == 2 + 2, "trees and bollards share one canvas item, fences another")
 	check(MapChunk.obstacle_key(1010.0, 2020.0) == "1010.0,2020.0", "obstacles are named by position at 0.1 m, as the server rounds")
 
-	# Look, as render/scenery.py: palette by variation, pine crowns smaller.
+	# Look: palette by variation, pine crowns smaller.
 	var pine := MapChunk.tree_style("pine", 0.25)
 	check(pine["crown"] == Color8(88, 108, 42) and is_equal_approx(pine["radius"], 1.9 * (0.72 + 0.25 * 0.62)), "a pine's crown")
 	check(MapChunk.tree_style("birch", 0.8)["trunk"] == Color8(222, 218, 206) and is_equal_approx(MapChunk.tree_style("birch", 0.8)["radius"], 2.2 * (0.72 + 0.8 * 0.62)), "a birch's crown and white trunk")
@@ -1275,7 +1275,7 @@ func test_obstacles() -> void:
 	map.free()
 
 
-## godot-14: night is the server's darkness, drawn as Pygame's tint; the
+## godot-14: night is the server's darkness, drawn as a tint; the
 ## client keeps no clock of its own.
 func test_day_night() -> void:
 	# godot-lights-01: the light is a continuous function of the sun's altitude.
@@ -1357,10 +1357,10 @@ func test_static_world() -> void:
 	check(map.find_children("*", "CollisionObject2D", true, false).is_empty() and map.find_children("*", "CollisionShape2D", true, false).is_empty(),
 		"no collision on the client")
 
-	# Seasons: the server's weights, Pygame's palettes; unchanged weights redraw nothing.
+	# Seasons: the server's weights, the palettes; unchanged weights redraw nothing.
 	check(MapChunk.seasonal_color(Color8(34, 101, 35), [0.0, 0.0, 1.0, 0.0]) == Color8(34, 101, 35), "summer keeps the colour")
-	check(MapChunk.seasonal_color(Color8(34, 101, 35), [1.0, 0.0, 0.0, 0.0]) == Color8(221, 228, 221), "winter: Pygame's frosted palette")
-	check(MapChunk.seasonal_color(Color8(34, 101, 35), [0.0, 0.0, 0.0, 1.0]) == Color8(83, 116, 37), "autumn: Pygame's ochre palette")
+	check(MapChunk.seasonal_color(Color8(34, 101, 35), [1.0, 0.0, 0.0, 0.0]) == Color8(221, 228, 221), "winter: the frosted palette")
+	check(MapChunk.seasonal_color(Color8(34, 101, 35), [0.0, 0.0, 0.0, 1.0]) == Color8(83, 116, 37), "autumn: the ochre palette")
 	map.set_season([1.0, 0.0, 0.0, 0.0])
 	check(chunk._season == [1.0, 0.0, 0.0, 0.0] and not chunk.set_season([1.0, 0.0, 0.0, 0.0]), "the chunk takes the season once")
 
@@ -1371,7 +1371,7 @@ func test_static_world() -> void:
 	check(map._pool_group.get_child_count() == 1, "no duplicate pools after a revisit")
 	map.free()
 
-	# Headlight beams (render/vehicles.py): two quads and two caps per car, 15 m; long beams 45 m.
+	# Headlight beams: two quads and two caps per car, 15 m; long beams 45 m.
 	var beams := EntityLayer2.beam_polygons(Vector2.ZERO, 0.0, 1.8, 15.0)
 	check(beams.size() == 4 and is_equal_approx(beams[0][3].x, 15.0) and is_equal_approx(beams[0][3].y, 3.0), "a beam reaches 15 m ahead, its tip shifted right")
 	check(is_equal_approx(EntityLayer2.beam_polygons(Vector2.ZERO, 0.0, 1.8, 45.0)[2][3].x, 45.0), "long beams reach 45 m")
@@ -1430,7 +1430,7 @@ func test_rest_of_static_world() -> void:
 	check(map.find_children("*", "CollisionObject2D", true, false).is_empty(), "still no collision on the client")
 	check(chunk._season_layers.size() == 2 and chunk._signs != null, "landuse and islands follow the season; signs and cameras have their layer")
 
-	# Road markings (render/roads.py): the centre line where the road is 6 px wide or more; chevrons on one-way roads zoomed in.
+	# Road markings: the centre line where the road is 6 px wide or more; chevrons on one-way roads zoomed in.
 	var lines := {}
 	var chevrons := PackedVector2Array()
 	var road: Dictionary = chunk._data["roads"][0]
@@ -1460,7 +1460,7 @@ func test_rest_of_static_world() -> void:
 	check(map._pool_group.visible, "back up: the lights again")
 	check(chunk.set_flash(3) and chunk._flash == 3 and not chunk.set_flash(3), "the flashing camera redraws its chunk once")
 
-	# Labels (render/labels.py): priority, one per name, no overlaps, zoom gates, the HUD band left free.
+	# Labels: priority, one per name, no overlaps, zoom gates, the HUD band left free.
 	var canvas := Transform2D(0.0, Vector2(9, 9), 0.0, Vector2(640, 360))
 	var font := ThemeDB.fallback_font
 	var shown := Labels.declutter([[0, 0, "Isokatu", 4], [1, 0, "Keskusta", 0], [0, -20, "Torikatu", 4], [0, 20, "Torikatu", 4], [0, -35, "Ylhaalla", 4]],
@@ -1567,7 +1567,7 @@ func test_buildings_2_5d() -> void:
 	var north_door: Dictionary = B25.build([box], [[[92, 57, 48], 0, 10.0, [[10.0, 0.0]], [158, 105, 82], 3, 0]], Vector2.ZERO, view)
 	check(south_door["colors"].has(B25.DOOR) and not north_door["colors"].has(B25.DOOR), "a door on the south wall shows; one on the hidden north wall doesn't")
 
-	# Lit windows: Pygame's probabilities, by category; the glow is a separate list.
+	# Lit windows: the probabilities, by category; the glow is a separate list.
 	var lit := 0
 	var total := 0
 	for i in 60:

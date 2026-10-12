@@ -1,26 +1,25 @@
 ## One map chunk, drawn once into a few canvas items (one draw list each,
-## never a node per road), stacked by z like Pygame's draw order
-## (render/roads.py draw_ways by layer, then wet roads and puddles, then
-## railways, then buildings):
+## never a node per road), stacked by z (roads by layer, then wet roads
+## and puddles, then railways, then buildings):
 ##
 ##   z0  water (this node): another chunk's lake can't cover a bridge
 ##   z1  roads at ground level and below, lowest layer first
 ##   z2+ bridges: layer 1, 2, 3 (higher clamps to 3)
 ##   z5  wet-road darkening and sheen, puddles (weather; alpha follows wetness)
-##   z6  railways; trees, bollards, fuel pumps (Pygame draws trees and scenery
-##       objects before buildings); a felled tree lies down, a knocked bollard
+##   z6  railways; trees, bollards, fuel pumps (trees and scenery objects
+##       before buildings); a felled tree lies down, a knocked bollard
 ##       is drawn by MapLayer from the state instead
 ##   z7  buildings
 ##   z8  railings/walls/hedges, construction-site fences, roadworks,
 ##       taxi-stand signs; traffic-light posts (own node, redrawn
 ##       only when one of its lights changes phase - the phase is the server's)
-##   z11 fuel price boards: above the vehicles, as draw_fuel_station_signs
+##   z11 fuel price boards: above the vehicles
 ##   (z20 the night tint: night_layer.gd)
 ##   z6 street-light heads, behind buildings; the light pool is added onto the
-##       tinted scene at z6 (render/roads.py draw_street_lights);
+##       tinted scene at z6;
 ##       a broken lamp (a knocked street lamp) stays dark
 ##
-## The z8+ points are sized in screen pixels as Pygame's, so they redraw
+## The z8+ points are sized in screen pixels, so they redraw
 ## when the zoom changes (set_px_per_m), never per frame.
 ##
 ## Wet overlays are clipped to the chunk's bounds, since a road spanning
@@ -95,7 +94,7 @@ func setup(message: Dictionary, origin: Vector2) -> void:
 		if not _roads_by_z.has(z):
 			_roads_by_z[z] = []
 		_roads_by_z[z].append(road)
-	# z-1 landuse (under the water, as Pygame's draw_scenery comes before draw_waters)
+	# z-1 landuse (under the water)
 	if not message.get("landuse", []).is_empty():
 		_season_layers.append(_add_layer(-1, func(node: Node2D): Detail.draw_areas(self, node, "landuse")))
 	for z in _roads_by_z:
@@ -112,7 +111,7 @@ func setup(message: Dictionary, origin: Vector2) -> void:
 	if not message.get("bus_stops", []).is_empty():
 		_px_layers.append(_add_layer(5, func(node: Node2D): Detail.draw_bus_stops(self, node)))
 	_px_layers.append(_add_layer(6, func(node: Node2D): Detail.draw_tracks(self, node, "railways")))
-	if not message.get("traffic_islands", []).is_empty():  # above the roads and rails (render/scenery.py)
+	if not message.get("traffic_islands", []).is_empty():  # above the roads and rails
 		_season_layers.append(_add_layer(6, func(node: Node2D): Detail.draw_areas(self, node, "traffic_islands")))
 	var canopy_supports := _add_layer(7, _draw_canopy_supports)
 	_px_layers.append(canopy_supports)
@@ -237,7 +236,7 @@ func _add_layer(z: int, draw: Callable, node: Node2D = null) -> Node2D:
 	return node
 
 
-## Weather: overlays and puddles follow wetness 0..1 (render/weather.py).
+## Weather: overlays and puddles follow wetness 0..1.
 func set_wetness(wetness: float) -> void:
 	var previous := _wetness
 	_wetness = wetness
@@ -259,7 +258,7 @@ func set_wetness(wetness: float) -> void:
 
 
 ## Screen pixels per metre (the camera zoom): the point layers keep
-## Pygame's pixel sizes, so they redraw when it changes.
+## their pixel sizes, so they redraw when it changes.
 func set_px_per_m(value: float) -> void:
 	if is_equal_approx(value, _px_per_m):
 		return
@@ -430,7 +429,7 @@ func _buildings_ready(volumes: Dictionary) -> void:
 	if not _volumes["lit_indices"].is_empty() and _lit_windows == null:
 		_lit_windows = Node2D.new()
 		var add := CanvasItemMaterial.new()
-		add.blend_mode = CanvasItemMaterial.BLEND_MODE_ADD  # render/buildings.py: BLEND_RGB_ADD
+		add.blend_mode = CanvasItemMaterial.BLEND_MODE_ADD  # lit windows add light
 		_lit_windows.material = add
 		_lit_windows.visible = false
 		_add_layer(21, func(node: Node2D): _triangles(node, _volumes["lit_points"], _volumes["lit_indices"], B25.WINDOW_LIT), _lit_windows)
@@ -486,7 +485,7 @@ func _draw_volumes() -> void:
 	Perf.add("chunk_buildings_draw", Time.get_ticks_usec() - started)
 
 
-## Night windows (render/buildings.py draw_illuminated_windows): from
+## Night windows: from
 ## darkness 0.25, fading in to 165/255 by 0.5 - a modulate, never a redraw.
 func set_darkness(darkness: float) -> void:
 	_darkness = darkness
@@ -516,15 +515,14 @@ func set_flash(index) -> bool:
 	return true
 
 
-## Street lights shine at night only (darkness > 0.25, render/roads.py):
+## Street lights shine at night only (darkness > 0.25):
 ## shown or hidden, never redrawn for it.
 func set_lights_on(on: bool) -> void:
 	_heads.visible = on  # the pools: MapLayer shows or hides its group
 
 
 ## The season's weights (state calendar.season): water, trees and their
-## colours follow (render/scenery.py seasonal_vegetation_color, render/waters.py
-## ice). They change about once a game day, not with the clock.
+## colours follow (water freezes to ice). They change about once a game day, not with the clock.
 func set_season(weights: Array) -> bool:
 	if weights == _season or weights.size() != 4:
 		return false
@@ -537,8 +535,7 @@ func set_season(weights: Array) -> bool:
 	return true
 
 
-## render/scenery.py _season_palette_color and seasonal_vegetation_color:
-## a summer colour through the season's palettes, by weight.
+## A summer colour through the season's palettes, by weight.
 static func seasonal_color(summer: Color, weights: Array) -> Color:
 	var c := [summer.r8, summer.g8, summer.b8]
 	var winter := Color8(mini(245, 218 + c[0] / 10), mini(245, 218 + c[1] / 10), mini(245, 218 + c[2] / 10))
@@ -573,13 +570,13 @@ func _points(line) -> PackedVector2Array:
 
 
 func _draw() -> void:
-	# render/waters.py: water freezes with the winter weight.
+	# water freezes with the winter weight.
 	var water_color := Color(0.25, 0.45, 0.65).lerp(Color8(232, 240, 244), clampf(_season[0], 0.0, 1.0))
 	for water in _data.get("waters", []):
 		var polygon := _points(water)
 		if polygon.size() >= 3 and not Geometry2D.triangulate_polygon(polygon).is_empty():
 			draw_colored_polygon(polygon, water_color)
-	for line in _data.get("water_lines", []):  # render/waters.py: a stream or river line, 3 m wide
+	for line in _data.get("water_lines", []):  # a stream or river line, 3 m wide
 		var points := _points(line)
 		if points.size() >= 2:
 			draw_polyline(points, water_color, 3.0)
@@ -596,7 +593,7 @@ func _draw_roads(z: int, node: Node2D) -> void:
 			node.draw_polyline(points, Color(0.12, 0.12, 0.13), width + 0.6)  # bridge edge
 		node.draw_polyline(points, color, width)
 		Detail.road_markings(self, road, points, lines, chevrons)
-	for line_color in lines:  # render/roads.py: after this layer's roads, under the next layer's
+	for line_color in lines:  # after this layer's roads, under the next layer's
 		node.draw_multiline(lines[line_color], line_color, -1.0)
 	if not chevrons.is_empty():
 		node.draw_multiline(chevrons, Color8(200, 200, 200), _px(2.0))
@@ -630,15 +627,14 @@ func _draw_puddles(node: Node2D) -> void:
 			node.draw_colored_polygon(polygon, Color(RS.PUDDLE_COLOR, RS.PUDDLE_MAX_ALPHA * strength))
 
 
-const TREE_CROWNS := {  # render/scenery.py TREE_CROWN_PALETTES
+const TREE_CROWNS := {
 	"spruce": [Color8(14, 54, 20), Color8(18, 64, 24), Color8(24, 76, 30)],
 	"pine": [Color8(88, 108, 42), Color8(102, 122, 50), Color8(118, 136, 60)],
 	"birch": [Color8(25, 78, 29), Color8(34, 101, 35), Color8(48, 119, 42), Color8(63, 112, 34)],
 }
 
 
-## A tree's look from its kind and variation (render/scenery.py
-## _draw_trees_uncached): crown colour and radius in metres, trunk colour.
+## A tree's look from its kind and variation: crown colour and radius in metres, trunk colour.
 static func tree_style(kind: String, variation: float) -> Dictionary:
 	var palette: Array = TREE_CROWNS.get(kind, TREE_CROWNS["birch"])
 	var size := 0.72 + variation * 0.62
@@ -651,7 +647,7 @@ static func tree_style(kind: String, variation: float) -> Dictionary:
 		"radius": (1.9 if kind == "pine" else 2.2) * size, "trunk": trunk, "trunk_width": 0.7 * size}
 
 
-## render/scenery.py draw_trees: an irregular crown blob seeded by the
+## A tree: an irregular crown blob seeded by the
 ## tree's position (same shape every redraw); a felled tree lies 3.2 m
 ## along the way it was hit, trunk showing. Then the standing bollards.
 func _draw_trees(node: Node2D) -> void:
@@ -680,8 +676,7 @@ func _draw_trees(node: Node2D) -> void:
 		_draw_scenery_object(node, MapMath.point(_origin, obj[0], obj[1]), str(obj[2]), float(obj[3]))
 
 
-## render/scenery.py draw_scenery_objects' decorative kinds, in metres with
-## Pygame's minimum pixel sizes.
+## The decorative scenery objects, in metres with minimum pixel sizes.
 func _draw_scenery_object(node: Node2D, at: Vector2, kind: String, angle: float) -> void:
 	match kind:
 		"bench":  # 1.4 x 0.4 m, along the path it's beside
@@ -719,7 +714,7 @@ func _draw_scenery_object(node: Node2D, at: Vector2, kind: String, angle: float)
 			node.draw_line(at - Vector2(half, 0), at + Vector2(half, 0), Color8(100, 92, 80), maxf(_px(1.0), 0.15))
 
 
-## render/roads.py draw_railings: hedges and walls solid, fences and
+## Railings: hedges and walls solid, fences and
 ## railings dashed (0.8 m on, 0.4 m off).
 ## One draw call per style (a city has thousands of fences: a call per
 ## dash cost megabytes of draw commands).
@@ -743,7 +738,7 @@ func _draw_railings(node: Node2D) -> void:
 		node.draw_multiline(lines["fence"], Color8(150, 145, 130), -1.0 if 0.12 * _px_per_m < 1.5 else 0.12)
 
 
-## render/roads.py draw_street_lights: each light's pool, a 270-degree fan
+## Street lights: each light's pool, a 270-degree fan
 ## toward its road, added onto the tinted scene. godot-final-09: the fans
 ## go straight into one triangle array - one draw for the chunk - and simply
 ## add where they overlap, at a low alpha so a dense junction stays a warm
@@ -775,8 +770,8 @@ func _draw_light_pools(node: Node2D) -> void:
 ## The working lamps' pools as one triangle list: [points, indices, each
 ## pool's centre index]. A pool is a soft ellipse leaning toward its road
 ## (the lamp's direction): a centre, an inner ring and an outer ring that
-## fades to nothing - no straight fan edges (render/roads.py: a 270-degree
-## fan; this reads as light, not a wedge).
+## fades to nothing - no straight fan edges (it reads as light,
+## not a wedge).
 static func pool_fans(positions: PackedVector2Array, lights: Array, broken: PackedInt32Array) -> Array:
 	var points := PackedVector2Array()
 	var triangles := PackedInt32Array()
@@ -844,7 +839,7 @@ func _draw_lamp_heads(node: Node2D) -> void:
 	_triangles(node, points, triangles, Color8(215, 215, 200))
 
 
-## render/scenery.py draw_construction_fences: the site's outline as a
+## Construction fences: the site's outline as a
 ## dashed hazard fence (1.5 m dashes, 1 m gaps, continuous round the ring).
 func _draw_fences(node: Node2D) -> void:
 	for ring in _data["construction_fences"]:
@@ -873,7 +868,7 @@ static func dashes(points: PackedVector2Array, dash: float, gap: float) -> Array
 	return pieces
 
 
-## render/scenery.py draw_scenery_objects' "fuel" pumps: red pumps with a
+## "fuel" pumps: red pumps with a
 ## display, two side by side for an area station, along its angle.
 func _draw_fuel_pumps(node: Node2D) -> void:
 	for station in _data["fuel_stations"]:
@@ -890,7 +885,7 @@ func _draw_fuel_pumps(node: Node2D) -> void:
 				Vector2(maxf(_px(2.0), width - 2.0 * inset), maxf(_px(2.0), height / 4.0))), Color8(20, 30, 32))
 
 
-## render/scenery.py draw_fuel_station_signs: a pin over the pumps and a
+## Fuel station signs: a pin over the pumps and a
 ## board with the station's name and the simulation's price, in pixels.
 func _draw_fuel_boards(node: Node2D) -> void:
 	for station in _data["fuel_stations"]:
@@ -914,8 +909,8 @@ static func fuel_board_text(station: Dictionary) -> String:
 	return "%s  %.2f €/L" % [station.get("name", "FUEL"), station["price_cents"] / 100.0]
 
 
-## render/roads.py draw_roadworks (barriers at both ends, cones between)
-## and draw_taxi_stops (a yellow TAXI sign on a pole).
+## Roadworks (barriers at both ends, cones between) and taxi stands
+## (a yellow TAXI sign on a pole).
 func _draw_points(node: Node2D) -> void:
 	for work in _data.get("roadworks", []):
 		var start := MapMath.point(_origin, work["start"][0], work["start"][1])
@@ -948,12 +943,12 @@ static func lamps(phase: String) -> Array:
 	return [phase in ["red", "red+yellow", "all-red"], phase in ["yellow", "red+yellow"], phase == "green"]
 
 
-## render/roads.py draw_traffic_lights: a 7 x 18 px housing along the
+## Traffic lights: a 7 x 18 px housing along the
 ## traffic, red end toward the intersection, lamps by the server's phase.
 func _draw_traffic_lights(node: Node2D) -> void:
 	var colors := [[Color8(255, 30, 30), Color8(60, 10, 10)], [Color8(255, 210, 0), Color8(60, 50, 0)], [Color8(40, 240, 60), Color8(10, 50, 15)]]
 	for post in _data["traffic_lights"]:
-		# Pygame rotates the upright housing by degrees(angle) - 90 counter-clockwise on screen.
+		# The upright housing turns by degrees(angle) - 90 counter-clockwise on screen.
 		node.draw_set_transform(MapMath.point(_origin, post["x"], post["y"]), PI / 2.0 - float(post["angle"]), Vector2.ONE / _px_per_m)
 		node.draw_rect(Rect2(-3.5, -9, 7, 18), Color8(15, 15, 15))
 		node.draw_rect(Rect2(-3.5, -9, 7, 18), Color8(70, 70, 70), false, 1.0)
@@ -966,11 +961,10 @@ func _draw_traffic_lights(node: Node2D) -> void:
 	node.draw_set_transform(Vector2.ZERO)
 
 
-## Where this chunk's puddles are: like render/weather.py _puddle_for_way, a
-## 40 % chance per drivable road, one spot on one segment, offset sideways,
+## Where this chunk's puddles are: a 40 % chance per drivable road, one spot on one segment, offset sideways,
 ## a radius and the wetness that reveals it - seeded from the road's own
-## geometry so every chunk and every session agrees (Pygame seeds from OSM
-## ids, which chunks don't carry, so the spots differ from Pygame's). Only
+## geometry so every chunk and every session agrees (chunks carry no OSM
+## ids). Only
 ## spots inside `bounds` are kept: the road may be in other chunks too.
 static func puddle_spots(roads: Array, bounds: Rect2, origin: Vector2) -> Array:
 	var spots: Array = []
@@ -980,8 +974,8 @@ static func puddle_spots(roads: Array, bounds: Rect2, origin: Vector2) -> Array:
 		if not road.get("drivable", false) or points.size() < 2:
 			continue
 		rng.seed = hash(points)
-		# One chance per PUDDLE_STRETCH_M of road, not Pygame's one per way: a
-		# way can be a whole street, which left about one puddle a screen.
+		# One chance per PUDDLE_STRETCH_M of road, not one per way: a way can
+		# be a whole street, which left about one puddle a screen.
 		var lengths := PackedFloat32Array()
 		var total := 0.0
 		for i in points.size() - 1:
@@ -1008,7 +1002,7 @@ static func puddle_spots(roads: Array, bounds: Rect2, origin: Vector2) -> Array:
 			var shape: Array = []
 			for i in RS.PUDDLE_SHAPE_POINTS:
 				shape.append(1.0 + rng.randf_range(-RS.PUDDLE_SHAPE_JITTER, RS.PUDDLE_SHAPE_JITTER))
-			var phase := rng.randf()  # the ripple's place in its 2.4 s cycle (render/weather.py ripple_phase)
+			var phase := rng.randf()  # the ripple's place in its 2.4 s cycle
 			if bounds.size == Vector2.ZERO or bounds.has_point(at):
 				spots.append({"at": at, "radius": maxf(RS.PUDDLE_MIN_RADIUS_M, radius), "reveal": reveal, "shape": shape, "phase": phase})
 	return spots

@@ -216,7 +216,7 @@ func _main_menu() -> void:
 	(career if _settings.get_value("menu", "mode", "gig_driver") == "career" else gig).call_deferred("grab_focus")
 
 
-## Pygame's "Clear all map cache": asked first; then the server deletes
+## "Clear all map cache": asked first; then the server deletes
 ## the OSM downloads and the built worlds, and maps load fresh next time.
 func _confirm_clear_cache() -> void:
 	_clear()
@@ -258,7 +258,7 @@ func _city_menu() -> void:
 	drive.call_deferred("grab_focus")  # Enter: on to the start time (the remembered city)
 
 
-## Pygame's choose_start_datetime: year, month, day, hour and minute of the
+## The gig start picker: year, month, day, hour and minute of the
 ## gig's start, a calendar year back at most, no later than today.
 func _time_menu() -> void:
 	_start_time = clamp_start(Time.get_datetime_dict_from_system(), Time.get_date_dict_from_system())
@@ -300,8 +300,8 @@ func _time_menu() -> void:
 	start.call_deferred("grab_focus")  # Enter plays from now
 
 
-## A start time inside [the same day a year ago, today] (startup_screens.py
-## _clamp_start_datetime; 29 February a year back is the 28th), the day
+## A start time inside [the same day a year ago, today] (calendar.py
+## clamp_start_datetime; 29 February a year back is the 28th), the day
 ## within its month.
 static func clamp_start(value: Dictionary, today: Dictionary) -> Dictionary:
 	var out := {}
@@ -351,7 +351,7 @@ func _settings_menu() -> void:
 			_game.set_language(_language))
 	_body.add_child(language)
 	_focusables.append(language)
-	var historical := CheckButton.new()  # Pygame's settings: FMI weather for the city and game time
+	var historical := CheckButton.new()  # FMI weather for the city and game time
 	historical.text = _t("historical_weather", "FMI weather (observations and forecasts)")
 	historical.button_pressed = _settings.get_value("game", "historical_weather", false)
 	historical.toggled.connect(func(on: bool):

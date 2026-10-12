@@ -1,5 +1,4 @@
-## Dashboard instruments from the shown state, laid out and drawn as
-## Pygame's draw_hud (render/hud.py): the needle fuel gauge with its reserve
+## Dashboard instruments from the shown state: the needle fuel gauge with its reserve
 ## zone and econometer, the rage face and bar, the water countdown, and the
 ## trip / odometer readout. Presentation only - every value comes from the
 ## simulation. Redrawn only when a displayed value changes.
@@ -8,8 +7,8 @@ extends Control
 const T := preload("res://i18n.gd")
 
 const Paths := preload("res://paths.gd")
-const RAGE_ATLAS := "assets/ragefaceatlas.png"  # the same image Pygame uses, in the Python package
-const WATER_LIMIT_S := 10.0  # main(): water_time_remaining = 10 - water_elapsed
+const RAGE_ATLAS := "assets/ragefaceatlas.png"  # in the Python package
+const WATER_LIMIT_S := 10.0  # water_time_remaining = 10 - water_elapsed
 const RESERVE_L := 10.0
 const TEXT_OUTLINE := Color8(20, 24, 28, 230)
 const TEXT_OUTLINE_PX := 4
@@ -30,7 +29,7 @@ func _ready() -> void:
 	_faces = load_rage_faces(Paths.package_path(RAGE_ATLAS))
 
 
-## The 11 face frames, cropped from the atlas as hud.py _load_rage_face_frames.
+## The 11 face frames, cropped from the atlas.
 static func load_rage_faces(path: String) -> Array[Texture2D]:
 	var faces: Array[Texture2D] = []
 	var atlas := Image.load_from_file(path)
@@ -62,7 +61,7 @@ func show_state(state: Dictionary) -> void:
 		queue_redraw()
 
 
-## render/hud.py _draw_fuel_meter's station line: the pump in refuelling
+## The fuel meter's station line: the pump in refuelling
 ## range, priced by the server ("" without one, or with a malformed price).
 static func price_text(state: Dictionary, language := "en") -> String:
 	var taxi = state.get("taxi", {})
@@ -192,26 +191,26 @@ func _draw() -> void:
 		draw_rect(box, Color8(230, 120, 60), false, 2.0)
 		draw_string(_font, box.position + Vector2(12, text_size.y), text, HORIZONTAL_ALIGNMENT_LEFT, -1, 18, Color8(255, 210, 140))
 	var limit := speed_limit(_state)
-	if limit > 0:  # hud.py: the round limit sign under the clock
+	if limit > 0:  # the round limit sign under the clock
 		_draw_limit_sign(Vector2(size.x - 48.0, 76.0), 31.0, limit)
 	# A dark outline keeps the light text readable on snow and on grass alike (godot-16).
 	var trip := trip_text(player.get("trip_m", 0.0), player.get("odometer_m", 0.0), language)
-	# hud.py's meters box, top left.
+	# The meters box, top left.
 	var trip_size := _font.get_string_size(trip, HORIZONTAL_ALIGNMENT_LEFT, -1, 15)
 	var meters: Rect2 = layout.place("meters", Rect2(4, 4, trip_size.x + 16, 28), size)
 	draw_rect(meters, Color8(15, 20, 25, 210))
 	draw_string(_font, meters.position + Vector2(8, 14 + _font.get_ascent(15) / 2.0 - 2), trip, HORIZONTAL_ALIGNMENT_LEFT, -1, 15, Color8(255, 245, 190))
 
 
-## The dial's reading: |speed| in km/h up to the car's top speed (hud.py
-## clamps the same; reversing reads positive).
+## The dial's reading: |speed| in km/h up to the car's top speed
+## (reversing reads positive).
 static func speed_kmh(speed_mps: float) -> float:
 	return clampf(absf(speed_mps) * 3.6, 0.0, MAX_SPEED_KMH)
 
 
-## hud.py _draw_analog_speedometer: 0..210 km/h over 270 degrees from
+## The analog speedometer: 0..210 km/h over 270 degrees from
 ## lower left, ticks every 10 (labels every 20), the red needle, the
-## number and "km/h" below; then _draw_speedometer_indicators' chips.
+## number and "km/h" below; then the indicator chips.
 static func speed_angle(kmh: float) -> float:
 	return deg_to_rad(135.0 + kmh / MAX_SPEED_KMH * 270.0)
 

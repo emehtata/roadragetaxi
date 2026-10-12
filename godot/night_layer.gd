@@ -1,4 +1,4 @@
-## Headlights (render/vehicles.py draw_headlight_beams), godot-lights-01: the
+## Headlights, godot-lights-01: the
 ## world's darkness is now main.gd's CanvasModulate (Daylight.ambient_color,
 ## by solar altitude) - no tint polygon at all. This draws every vehicle's
 ## beams in one triangle batch on top: additive and unshaded (the ambient

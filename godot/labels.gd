@@ -1,6 +1,6 @@
-## Map labels (render/labels.py draw_labels), one screen-space overlay over
+## Map labels, one screen-space overlay over
 ## the world and under the HUD. The server sends each chunk's candidates
-## ([x, y, text, category]); this declutters per view as Pygame does: by
+## ([x, y, text, category]); this declutters per view: by
 ## priority (districts, waters, areas, buildings, roads), each name once,
 ## no overlaps, at most 35, buildings from 0.45 px/m and roads from
 ## 0.35 px/m. Redrawn when the view moves 16 px, the zoom or the loaded
@@ -18,7 +18,7 @@ const STYLES := [  # [text colour, background, border or null, font size] per ca
 const MIN_PX_PER_M := [0.0, 0.0, 0.0, 0.45, 0.35]
 
 const MODE_NAMES := ["OFF", "STREETS", "ALL"]
-var mode := 0  # L cycles main()'s label_mode: 0 none (Pygame's start), 1 street names, 2 everything
+var mode := 0  # L cycles: 0 none (the start), 1 street names, 2 everything
 var map_layer: Node2D  # MapLayer: the loaded chunks and their labels
 var _font: Font
 var _key := []  # what the last drawing was for: [view cell, zoom, chunks]
@@ -59,7 +59,7 @@ static func text_size(font: Font, text: String, font_size: int) -> Vector2:
 
 
 ## The labels to show for a view: [[screen position, text, category], ...]
-## in Pygame's order and rules. `candidates` are [x, y, text, category] in
+## by priority. `candidates` are [x, y, text, category] in
 ## layer coordinates.
 static func declutter(candidates: Array, canvas: Transform2D, screen: Vector2, font: Font, label_mode := 2) -> Array:
 	var px_per_m := canvas.x.x
@@ -70,7 +70,7 @@ static func declutter(candidates: Array, canvas: Transform2D, screen: Vector2, f
 	var rects: Array = []
 	var seen := {}
 	for category in 5:
-		if label_mode <= 0 or label_mode == 1 and category != 4:  # render/labels.py: mode 1 draws only road names
+		if label_mode <= 0 or label_mode == 1 and category != 4:  # mode 1 draws only road names
 			continue
 		if px_per_m < MIN_PX_PER_M[category]:
 			continue

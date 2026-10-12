@@ -274,9 +274,9 @@ static func _building(out: Dictionary, footprint: PackedVector2Array, style: Arr
 		_polygon(out, footprint, heights, roof_color)
 
 
-## render/buildings.py's window slots on a real wall: up to 3 a floor (2 on a
+## Window slots on a real wall: up to 3 a floor (2 on a
 ## house, every other floor), a storefront row on a commercial ground floor,
-## lit deterministically by Pygame's probabilities.
+## lit deterministically (LIT_PROBABILITY).
 static func _windows(out: Dictionary, a: Vector2, b: Vector2, normal: Vector2, height: float, floors: int, category: int, seed: float) -> void:
 	var length := a.distance_to(b)
 	if length < 12.0 / 9.0:

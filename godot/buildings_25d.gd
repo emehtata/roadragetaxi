@@ -12,14 +12,14 @@
 extends RefCounted
 
 const UP := Vector2(0.0, -1.0)  # fallback for a building exactly under the camera
-const BUILDING_HEIGHT_SCALE := 0.35  # metres of screen lift per metre of height (Pygame's ratio), no cap
+const BUILDING_HEIGHT_SCALE := 0.35  # metres of screen lift per metre of height, no cap
 const SHADOW := Color8(45, 42, 39, 110)
 const RIDGE := Color8(58, 55, 52)
 const WINDOW := Color8(58, 80, 94)
 const STOREFRONT := Color8(84, 106, 122)
 const DOOR := Color8(58, 48, 42)
-const WINDOW_LIT := Color8(232, 189, 108)  # render/buildings.py WINDOW_LIT_COLOR
-const LIT_PROBABILITY := [0.12, 0.08, 0.03]  # other / house / storefront (render/buildings.py)
+const WINDOW_LIT := Color8(232, 189, 108)
+const LIT_PROBABILITY := [0.12, 0.08, 0.03]  # other / house / storefront
 const CANOPY_POST := Color8(105, 110, 112)
 
 
@@ -51,9 +51,8 @@ static func visible_walls(footprint: PackedVector2Array, roof_offset := UP) -> P
 	return walls
 
 
-## A deterministic unit value per window (render/buildings.py
-## _pseudo_random_unit), seeded by the building's position - the same after
-## every reload (Pygame seeds by id(), which changes every run).
+## A deterministic unit value per window, seeded by the building's
+## position - the same after every reload.
 static func unit(seed: float) -> float:
 	var f := sin(seed * 12.9898) * 43758.5453
 	return f - floor(f)
@@ -133,7 +132,7 @@ static func _building(out: Dictionary, footprint: PackedVector2Array, style: Arr
 	out["stats"]["buildings"] += 1
 	out["stats"]["walls"] += walls.size()
 	walls.sort_custom(func(a, b): return (footprint[a] + footprint[(a + 1) % footprint.size()]).distance_squared_to(view_centre) > (footprint[b] + footprint[(b + 1) % footprint.size()]).distance_squared_to(view_centre))
-	var stories := mini(floors, maxi(1, int(depth * 9.0 / 3.0)))  # Pygame: at most a floor per 3 px of facade
+	var stories := mini(floors, maxi(1, int(depth * 9.0 / 3.0)))  # at most a floor per 3 px of facade
 	var seed_base := roundf(centre.x + origin.x) * 0.0001 + roundf(-centre.y + origin.y) * 0.00013
 	for i in walls:
 		var a := footprint[i]
@@ -150,10 +149,10 @@ static func _building(out: Dictionary, footprint: PackedVector2Array, style: Arr
 	out["hulls"].append(hull)
 
 
-## render/buildings.py _iter_building_window_slots on an extruded wall: up to 3
+## Window slots on an extruded wall: up to 3
 ## windows a floor (2 on a house, every other floor), centred along the
 ## wall, a storefront row on a commercial ground floor; lit at night by
-## Pygame's probabilities, deterministically.
+## LIT_PROBABILITY, deterministically.
 static func _windows(out: Dictionary, a: Vector2, b: Vector2, up: Vector2, stories: int, category: int, seed: float) -> void:
 	var length := a.distance_to(b)
 	if length < 12.0 / 9.0 or up.length() < 0.5:
@@ -180,7 +179,7 @@ static func _windows(out: Dictionary, a: Vector2, b: Vector2, up: Vector2, stori
 
 
 ## Doors at the OSM entrances, on the nearest wall if that wall is
-## visible (render/buildings.py does the same on its facades): one storey high.
+## visible: one storey high.
 static func _doors(out: Dictionary, footprint: PackedVector2Array, entrances: Array, walls: Array, up: Vector2, stories: int, origin: Vector2) -> void:
 	for entrance in entrances:
 		var at := MapMath.point(origin, entrance[0], entrance[1])
@@ -202,7 +201,7 @@ static func _doors(out: Dictionary, footprint: PackedVector2Array, entrances: Ar
 		_quad(out, foot - along * half, foot + along * half, foot + along * half + top, foot - along * half + top, DOOR)
 
 
-## render/buildings.py _draw_gabled_roof on the raised roof: two facets
+## A gabled roof, raised: two facets
 ## along the longest edge, one lighter, one darker, and the ridge.
 static func _gabled(out: Dictionary, roof: PackedVector2Array, color: Color) -> void:
 	var longest := 0

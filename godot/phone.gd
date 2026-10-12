@@ -12,7 +12,7 @@ extends PanelContainer
 const T := preload("res://i18n.gd")
 
 signal request(action: String, item_id: String, request_id: int)  # main sends it to the simulation
-signal sound(group: String, variation: int)  # main plays it (ui.phone_open: 0 opens, 1 closes, as Pygame)
+signal sound(group: String, variation: int)  # main plays it (ui.phone_open: 0 opens, 1 closes)
 
 const ACTIONS := {
 	"phone_toggle": [KEY_P],
@@ -288,7 +288,7 @@ func handle_result(result: Dictionary) -> void:
 		return  # not ours, or already resolved by the row disappearing
 	if result.get("ok", false):
 		if result.get("action") == "accept":
-			close()  # as the Pygame phone: the fare is on, back to driving
+			close()  # the fare is on, back to driving
 	else:
 		if language == "fi":
 			notice = "Pyyntö ei ole enää saatavilla." if result.get("reason") == "gone" else "Pyyntöön ei voitu vastata."
@@ -319,7 +319,7 @@ func _unhandled_input(event: InputEvent) -> void:
 		handled = false
 		for i in 3:
 			if event.is_action("phone_pick_%d" % (i + 1)):
-				select(i)  # Pygame: the number accepts that offer at once
+				select(i)  # the number accepts that offer at once
 				accept_selected()
 				handled = true
 	if handled:
