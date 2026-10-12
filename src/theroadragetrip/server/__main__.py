@@ -2,7 +2,7 @@ import logging
 import json
 
 from ..config import cities_from_config
-from ..main.cli import configure_logging
+from ..game_args import configure_logging
 from .cli import parse_server_args
 from . import run_server
 

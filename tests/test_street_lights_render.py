@@ -8,6 +8,7 @@ import pytest
 from theroadragetrip.osm import SceneryObject, Way
 from theroadragetrip.physics import SpatialWayGrid
 import theroadragetrip.render as render
+import theroadragetrip.street_lights as placement  # the lamp placement the drawing uses
 from theroadragetrip.render import draw_day_night_overlay, draw_street_lights, world_to_screen
 
 
@@ -297,7 +298,7 @@ def test_draw_street_lights_geometry_rebuild_is_scoped_to_visible_ways():
         spatial_grid = SpatialWayGrid(ways)
 
         call_count = 0
-        real_fn = roads_module._way_has_street_lighting
+        real_fn = placement._way_has_street_lighting
 
         def counting_fn(way):
             nonlocal call_count
@@ -308,7 +309,7 @@ def test_draw_street_lights_geometry_rebuild_is_scoped_to_visible_ways():
         screen.fill((180, 170, 140, 255))
         draw_day_night_overlay(screen, 0.0, 100, latitude=65.0, longitude=25.0)
 
-        roads_module._way_has_street_lighting = counting_fn
+        placement._way_has_street_lighting = counting_fn
         try:
             draw_street_lights(
                 screen, ways, camx=50.0, camy=0.0, game_time_seconds=0.0,
@@ -316,7 +317,7 @@ def test_draw_street_lights_geometry_rebuild_is_scoped_to_visible_ways():
                 daylight_surface=None, buildings=[], spatial_grid=spatial_grid,
             )
         finally:
-            roads_module._way_has_street_lighting = real_fn
+            placement._way_has_street_lighting = real_fn
 
         # Only the near road (and maybe a couple of near-boundary calls)
         # should ever reach this - nowhere close to visiting all 501 ways.
@@ -499,7 +500,7 @@ def test_draw_street_lights_building_lookup_is_scoped_when_a_spatial_grid_is_giv
         building_spatial_grid = SpatialWayGrid(buildings)
 
         seen_grids = []
-        real_fn = roads_module._point_is_near_building
+        real_fn = placement._point_is_near_building
 
         def counting_fn(point, buildings_arg, building_grid):
             seen_grids.append(building_grid)
@@ -509,7 +510,7 @@ def test_draw_street_lights_building_lookup_is_scoped_when_a_spatial_grid_is_giv
         screen.fill((180, 170, 140, 255))
         draw_day_night_overlay(screen, 0.0, 100, latitude=65.0, longitude=25.0)
 
-        roads_module._point_is_near_building = counting_fn
+        placement._point_is_near_building = counting_fn
         try:
             draw_street_lights(
                 screen, ways, camx=50.0, camy=0.0, game_time_seconds=0.0,
@@ -518,7 +519,7 @@ def test_draw_street_lights_building_lookup_is_scoped_when_a_spatial_grid_is_giv
                 building_spatial_grid=building_spatial_grid,
             )
         finally:
-            roads_module._point_is_near_building = real_fn
+            placement._point_is_near_building = real_fn
 
         assert seen_grids, "lit-segment classification never ran"
         # The building_grid actually built and used must contain the near
@@ -708,21 +709,21 @@ def test_v7_budgeted_grid_updates_ignore_raw_growth_and_match_full_result():
         raise AssertionError("street-light update did not finish")
 
     pygame.init()
-    old_budget = roads_module.STREET_LIGHT_CACHE_BUDGET_S
+    old_budget = placement.STREET_LIGHT_CACHE_BUDGET_S
     try:
         ways = [Way(points_m=[(0.0, float(y)), (100.0, float(y))],
                     highway="tertiary", half_width_m=4.0, lit="yes") for y in range(-80, 81, 10)]
         screen = pygame.Surface((400, 300), pygame.SRCALPHA)
         grid = SpatialWayGrid(ways[:4])
         reset()
-        roads_module.STREET_LIGHT_CACHE_BUDGET_S = 10.0
+        placement.STREET_LIGHT_CACHE_BUDGET_S = 10.0
         initial = finish(ways, grid)
         generation = roads_module._street_light_geometry_generation
         ways.append(Way(points_m=[(0.0, 90.0), (100.0, 90.0)], highway="tertiary", half_width_m=4.0, lit="yes"))
         assert finish(ways, grid) == initial
         assert roads_module._street_light_geometry_generation == generation
 
-        roads_module.STREET_LIGHT_CACHE_BUDGET_S = 0.0
+        placement.STREET_LIGHT_CACHE_BUDGET_S = 0.0
         grid.rebuild(ways[:10])
         draw_street_lights(screen, ways, 50.0, 0.0, 0.0, px_per_m=2.0,
                            screen_w=400, screen_h=300, spatial_grid=grid, buildings=[])
@@ -733,10 +734,10 @@ def test_v7_budgeted_grid_updates_ignore_raw_growth_and_match_full_result():
             incremental = finish(ways, grid)
 
         reset()
-        roads_module.STREET_LIGHT_CACHE_BUDGET_S = 10.0
+        placement.STREET_LIGHT_CACHE_BUDGET_S = 10.0
         assert incremental == finish(ways, grid)
     finally:
-        roads_module.STREET_LIGHT_CACHE_BUDGET_S = old_budget
+        placement.STREET_LIGHT_CACHE_BUDGET_S = old_budget
         pygame.quit()
 
 
@@ -748,7 +749,7 @@ def test_lamp_positions_survive_frames_of_a_budgeted_rebuild():
     from theroadragetrip.render import roads as roads_module
 
     pygame.init()
-    old_budget = roads_module.STREET_LIGHT_CACHE_BUDGET_S
+    old_budget = placement.STREET_LIGHT_CACHE_BUDGET_S
     try:
         ways = [Way(points_m=[(0.0, float(y)), (100.0, float(y))],
                     highway="tertiary", half_width_m=4.0, lit="yes") for y in range(-80, 81, 10)]
@@ -757,7 +758,7 @@ def test_lamp_positions_survive_frames_of_a_budgeted_rebuild():
         roads_module._street_light_frame_cache_key = None
         roads_module._street_light_geometry_cache_key = None
         roads_module._street_light_geometry_wip = None
-        roads_module.STREET_LIGHT_CACHE_BUDGET_S = 10.0
+        placement.STREET_LIGHT_CACHE_BUDGET_S = 10.0
         for _ in range(100):
             draw_street_lights(screen, ways, 50.0, 0.0, 0.0, px_per_m=2.0,
                                screen_w=400, screen_h=300, spatial_grid=grid, buildings=[])
@@ -768,7 +769,7 @@ def test_lamp_positions_survive_frames_of_a_budgeted_rebuild():
         lamps = list(render._street_light_frame_world_positions)
         assert lamps
 
-        roads_module.STREET_LIGHT_CACHE_BUDGET_S = 0.0  # the rebuild now takes many frames
+        placement.STREET_LIGHT_CACHE_BUDGET_S = 0.0  # the rebuild now takes many frames
         grid.rebuild(ways)
         for _ in range(3):
             draw_street_lights(screen, ways, 50.0, 0.0, 0.0, px_per_m=2.0,
@@ -776,7 +777,7 @@ def test_lamp_positions_survive_frames_of_a_budgeted_rebuild():
             assert roads_module._street_light_geometry_wip is not None
             assert render._street_light_frame_world_positions == lamps
     finally:
-        roads_module.STREET_LIGHT_CACHE_BUDGET_S = old_budget
+        placement.STREET_LIGHT_CACHE_BUDGET_S = old_budget
         pygame.quit()
 
 
@@ -829,13 +830,13 @@ def test_v8_budgeted_preparation_resumes_keeps_old_cache_and_snapshots_revisions
 
     def full():
         _v8_reset(roads_module)
-        roads_module.STREET_LIGHT_PREP_BUDGET_S = roads_module.STREET_LIGHT_CACHE_BUDGET_S = 10.0
+        placement.STREET_LIGHT_PREP_BUDGET_S = placement.STREET_LIGHT_CACHE_BUDGET_S = 10.0
         result = finish()
-        roads_module.STREET_LIGHT_PREP_BUDGET_S = roads_module.STREET_LIGHT_CACHE_BUDGET_S = 0.0
+        placement.STREET_LIGHT_PREP_BUDGET_S = placement.STREET_LIGHT_CACHE_BUDGET_S = 0.0
         return result
 
     pygame.init()
-    old_budgets = roads_module.STREET_LIGHT_PREP_BUDGET_S, roads_module.STREET_LIGHT_CACHE_BUDGET_S
+    old_budgets = placement.STREET_LIGHT_PREP_BUDGET_S, placement.STREET_LIGHT_CACHE_BUDGET_S
     try:
         committed = full()
         assert committed
@@ -878,7 +879,7 @@ def test_v8_budgeted_preparation_resumes_keeps_old_cache_and_snapshots_revisions
         assert frame(time_s=12 * 3600.0) is None and roads_module._street_light_geometry_cache_key is None
     finally:
         common_module._solar_position_cache.clear()
-        roads_module.STREET_LIGHT_PREP_BUDGET_S, roads_module.STREET_LIGHT_CACHE_BUDGET_S = old_budgets
+        placement.STREET_LIGHT_PREP_BUDGET_S, placement.STREET_LIGHT_CACHE_BUDGET_S = old_budgets
         pygame.quit()
 
 

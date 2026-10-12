@@ -2,13 +2,13 @@ import argparse
 from datetime import datetime
 
 from ..config import load_config, cities_from_config
-from ..main.cli import parse_args
+from ..game_args import parse_args
 
 DEFAULT_PORT = 8765
 
 
 def parse_server_args():
-    """Reuses main.cli.parse_args for every world-selection flag (bbox,
+    """Reuses game_args.parse_args for every world-selection flag (bbox,
     preset, use-sample, no-cache, ...) so the server and the Pygame client
     accept identical world arguments from one definition, adding the
     server-only --host/--port/--tick-rate onto the same parser."""

@@ -24,59 +24,22 @@ from ..performance import advance_chunked
 
 from ..geo import dist_point_to_segment, point_in_polygon
 from ..osm import OPEN_ROOF_BUILDING_TYPES, Building, ParkingSpace, Place
+from ..building_style import BUILDING_WALL_COLORS, BUILDING_ROOF_COLORS, FINNISH_BUILDING_COLOR_NAMES, COMMERCIAL_AMENITIES, COMMERCIAL_BUILDING_TYPES, _is_open_roof, _building_window_story_count, _building_colors_from_name, _building_is_commercial, HOUSE_BUILDING_TYPES, _building_is_house, _building_render_height, _building_is_house_by_tag, _uses_gabled_roof  # noqa: F401 - moved there (pygame-free)
+from ..building_style import SIGN_CATEGORY_BY_VENUE_TYPE, COMMERCIAL_VENUE_TYPES  # noqa: F401 - moved there (pygame-free)
+from ..parking import GENERATED_DRIVEWAY_MAX_LENGTH_M, GENERATED_HOUSE_PARKING_BAYS, _nearest_house_driveway, _house_parking_key, _add_house_parking_for_building, _existing_house_parking_keys, generate_detached_house_parking, generate_detached_house_parking_chunk  # noqa: F401 - moved there (pygame-free)
 
 
-BUILDING_WALL_COLORS = ((158, 105, 82), (174, 166, 143), (116, 131, 119), (139, 139, 137))
-BUILDING_ROOF_COLORS = ((92, 57, 48), (102, 96, 82), (66, 83, 69), (83, 86, 87))
 OPEN_ROOF_COLOR = (138, 145, 148, 185)
 OPEN_ROOF_EDGE_COLOR = (65, 69, 71, 235)
 OPEN_ROOF_POLE_COLOR = (105, 110, 112, 255)
-# A Finnish building name naming its own color (e.g. "Sininen talo",
-# "Punatalo", "Valkea Kartano") should render in that color rather than the
-# usual per-building pseudo-random wall/roof pick. Keyed by the color's
-# root/prefix so both the adjective ("sininen") and compound-name form
-# ("Sinikoti") match via substring search.
-FINNISH_BUILDING_COLOR_NAMES = {
-    "sininen": (70, 110, 160),
-    "sini": (70, 110, 160),
-    "punainen": (150, 60, 55),
-    "puna": (150, 60, 55),
-    "valkoinen": (215, 212, 200),
-    "valkea": (215, 212, 200),
-    "valko": (215, 212, 200),
-    "vihreä": (80, 120, 85),
-    "viher": (80, 120, 85),
-    "keltainen": (200, 175, 90),
-    "kelta": (200, 175, 90),
-    "musta": (55, 55, 58),
-    "harmaa": (140, 140, 138),
-    "ruskea": (120, 85, 60),
-    "oranssi": (195, 120, 60),
-    "vaaleanpunainen": (200, 140, 150),
-    "pinkki": (200, 140, 150),
-    "violetti": (110, 80, 130),
-    "purppura": (110, 80, 130),
-    "hopea": (170, 172, 175),
-    "kulta": (185, 155, 80),
-}
-COMMERCIAL_AMENITIES = {
-    "bar", "biergarten", "cafe", "fast_food", "food_court", "ice_cream",
-    "nightclub", "pub", "restaurant",
-}
-COMMERCIAL_BUILDING_TYPES = {"commercial", "retail", "shop"}
 ILLUMINATED_WINDOW_CACHE_PADDING_PX = 224
 _illuminated_window_cache = None
 _illuminated_window_job = None
 # Per-frame budget for extending the illuminated-window glow cache with
 # newly-indexed buildings (bin-loader-v6.md); dedicated, not TILE_MERGE_BUDGET_S.
 ILLUMINATED_WINDOW_CACHE_BUDGET_S = 0.004
-GENERATED_DRIVEWAY_MAX_LENGTH_M = 35.0
-GENERATED_HOUSE_PARKING_BAYS = 2
 
 
-def _is_open_roof(building: Building) -> bool:
-    """Return whether an OSM building footprint is a drive-through roof."""
-    return str(getattr(building, "building_type", "") or "").casefold() in OPEN_ROOF_BUILDING_TYPES
 
 
 def _draw_open_roof(screen, points, px_per_m: float) -> None:
@@ -180,32 +143,7 @@ SIGN_THEMES = {
     "automotive": ((54, 40, 20), (230, 150, 60), (245, 230, 205)),
     "retail": ((20, 34, 58), (130, 170, 220), (230, 238, 248)),
 }
-SIGN_CATEGORY_BY_VENUE_TYPE = {
-    "restaurant": "food", "fast_food": "food", "food_court": "food",
-    "cafe": "food", "ice_cream": "food", "bakery": "food",
-    "bar": "drink", "pub": "drink", "biergarten": "drink", "nightclub": "drink",
-    "supermarket": "grocery", "convenience": "grocery", "grocery": "grocery",
-    "greengrocer": "grocery", "butcher": "grocery", "deli": "grocery",
-    "pharmacy": "health", "doctors": "health", "dentist": "health",
-    "clinic": "health", "hospital": "health", "veterinary": "health",
-    "bank": "finance", "atm": "finance", "bureau_de_change": "finance",
-    "hotel": "lodging", "hostel": "lodging", "motel": "lodging", "guest_house": "lodging",
-    "hairdresser": "beauty", "beauty": "beauty", "spa": "beauty", "massage": "beauty",
-    "fuel": "automotive", "car_repair": "automotive", "car": "automotive", "car_wash": "automotive",
-    "clothes": "retail", "shoes": "retail", "electronics": "retail", "furniture": "retail",
-    "books": "retail", "gift": "retail", "department_store": "retail", "mall": "retail",
-    "kiosk": "retail", "florist": "retail", "jewelry": "retail", "toys": "retail",
-    "sports": "retail", "mobile_phone": "retail", "hardware": "retail", "variety_store": "retail",
-}
 
-# windows.md: _building_is_commercial used to only recognize
-# COMMERCIAL_AMENITIES' narrow food/drink list, missing every venue type
-# SIGN_CATEGORY_BY_VENUE_TYPE above already classifies as commercial
-# signage (supermarkets, pharmacies, banks, hotels, most retail shops) -
-# reusing that existing, already-curated mapping's keys instead of a
-# second, narrower one keeps the two in sync and covers the spec's own
-# examples directly.
-COMMERCIAL_VENUE_TYPES = frozenset(SIGN_CATEGORY_BY_VENUE_TYPE) | COMMERCIAL_AMENITIES
 
 
 def _building_sign_theme(venue_type) -> tuple:
@@ -374,88 +312,20 @@ def _building_sign_surface(pygame, font, text, sign_width, sign_depth, angle, fo
     return cached
 
 
-def _building_window_story_count(building: Building) -> int:
-    """Return the OSM floor count, or a height-based fallback."""
-    levels = getattr(building, "levels", None)
-    if levels is not None:
-        try:
-            return max(1, min(40, int(levels)))
-        except (TypeError, ValueError):
-            pass
-    height = _building_render_height(building)
-    return max(1, min(40, int(round(height / 3.0))))
 
 
-def _building_colors_from_name(name):
-    """Return (wall_color, roof_color) if `name` names a color in Finnish,
-    else None. The roof is a darkened tint of the same color, matching how
-    BUILDING_ROOF_COLORS pairs with BUILDING_WALL_COLORS."""
-    if not name:
-        return None
-    lowered = name.lower()
-    for word, wall_color in FINNISH_BUILDING_COLOR_NAMES.items():
-        if word in lowered:
-            roof_color = tuple(max(0, int(channel * 0.58)) for channel in wall_color)
-            return wall_color, roof_color
-    return None
 
 
-def _building_is_commercial(building: Building) -> bool:
-    """Return whether the building should render a storefront ground floor -
-    shops, supermarkets, restaurants, cafes, pharmacies, banks, hotels, and
-    other retail/commercial premises (windows.md section 1), via the
-    existing venue_type/associated_places OSM data - never a bare
-    building=* tag alone (a building=commercial with no actual venue still
-    isn't necessarily a storefront)."""
-    venue_type = str(getattr(building, "venue_type", "") or "").lower()
-    if venue_type in COMMERCIAL_VENUE_TYPES or venue_type in COMMERCIAL_BUILDING_TYPES:
-        return True
-    for place in getattr(building, "associated_places", ()):
-        place_type = str(getattr(place, "kind", "") or "").lower()
-        if place_type in COMMERCIAL_VENUE_TYPES or place_type in COMMERCIAL_BUILDING_TYPES:
-            return True
-    return False
 
 
-# windows.md section 3: detached/small-residential building=* values - these
-# get fewer, smaller windows than an apartment block or office of the same
-# height. Not exhaustive of every OSM house-ish tag, just the common ones.
-HOUSE_BUILDING_TYPES = {"house", "detached", "bungalow", "cabin", "semidetached_house", "farm"}
 
 
-def _building_is_house(building: Building) -> bool:
-    """Return whether `building` should get a small-house window treatment."""
-    building_type = str(getattr(building, "building_type", "") or "").lower()
-    if building_type in HOUSE_BUILDING_TYPES:
-        return True
-    if building_type:
-        return False
-    # No building=* tag at all: fall back to the same OSM-levels/height
-    # signal windows already use elsewhere - a short, 1-2 story building
-    # with no commercial venue reads as a detached house.
-    return _building_window_story_count(building) <= 2 and not _building_is_commercial(building)
 
 
-def _building_render_height(building: Building) -> float:
-    """Use a Finnish 1.5-storey fallback for untagged detached houses."""
-    if (
-        _building_is_house_by_tag(building)
-        and getattr(building, "levels", None) is None
-        and not getattr(building, "height_is_explicit", False)
-    ):
-        return 4.5
-    return max(3.0, float(getattr(building, "height_m", 8.0)))
 
 
-def _building_is_house_by_tag(building: Building) -> bool:
-    return str(getattr(building, "building_type", "") or "").lower() in HOUSE_BUILDING_TYPES
 
 
-def _uses_gabled_roof(building: Building) -> bool:
-    roof_shape = str(getattr(building, "roof_shape", "") or "").casefold()
-    if roof_shape:
-        return roof_shape in {"gabled", "gable", "pitched"}
-    return _building_is_house_by_tag(building)
 
 
 def _clip_polygon_to_roof_half(points, center, axis, keep_positive):
@@ -520,145 +390,16 @@ def _draw_gabled_roof(screen, roof, roof_color):
     pygame.draw.line(screen, (58, 55, 52), ridge_start, ridge_end, 2)
 
 
-def _nearest_house_driveway(building, ways, road_spatial_grid=None):
-    """Return a synthetic (house edge, road edge) driveway when OSM has none."""
-    if not _building_is_house_by_tag(building) or len(building.points_m) < 3:
-        return None
-    minx, miny, maxx, maxy = building.bbox
-    margin = GENERATED_DRIVEWAY_MAX_LENGTH_M
-    candidates = (
-        road_spatial_grid.ways_in_rect(minx - margin, miny - margin, maxx + margin, maxy + margin)
-        if road_spatial_grid is not None
-        else ways
-    )
-    candidates = [way for way in candidates if getattr(way, "is_drivable", True)]
-    # A mapped driveway wins; never paint a duplicate procedural one.
-    for way in candidates:
-        if getattr(way, "service", None) != "driveway":
-            continue
-        for point in way.points_m:
-            if minx - 4.0 <= point[0] <= maxx + 4.0 and miny - 4.0 <= point[1] <= maxy + 4.0:
-                return None
-
-    facade_points = list(getattr(building, "entrances", ()) or ())
-    facade_points.extend(
-        ((a[0] + b[0]) * 0.5, (a[1] + b[1]) * 0.5)
-        for a, b in zip(building.points_m, building.points_m[1:] + building.points_m[:1])
-    )
-    best = None
-    for way in candidates:
-        if getattr(way, "highway", "") in {"motorway", "motorway_link", "trunk", "trunk_link"}:
-            continue
-        for ax, ay in facade_points:
-            for (x1, y1), (x2, y2) in zip(way.points_m, way.points_m[1:]):
-                dx, dy = x2 - x1, y2 - y1
-                length_sq = dx * dx + dy * dy
-                if length_sq <= 1e-9:
-                    continue
-                t = max(0.0, min(1.0, ((ax - x1) * dx + (ay - y1) * dy) / length_sq))
-                centerline_point = (x1 + dx * t, y1 + dy * t)
-                to_house_x, to_house_y = ax - centerline_point[0], ay - centerline_point[1]
-                centerline_distance = math.hypot(to_house_x, to_house_y)
-                edge_offset = min(centerline_distance, max(0.0, getattr(way, "half_width_m", 0.0)))
-                if centerline_distance > 1e-9:
-                    road_point = (
-                        centerline_point[0] + to_house_x / centerline_distance * edge_offset,
-                        centerline_point[1] + to_house_y / centerline_distance * edge_offset,
-                    )
-                else:
-                    road_point = centerline_point
-                distance = math.hypot(road_point[0] - ax, road_point[1] - ay)
-                if distance <= GENERATED_DRIVEWAY_MAX_LENGTH_M and (best is None or distance < best[0]):
-                    best = (distance, (ax, ay), road_point)
-    return None if best is None else (best[1], best[2])
 
 
-def _house_parking_key(building):
-    bbox = getattr(building, "bbox", (0.0, 0.0, 0.0, 0.0))
-    return tuple(round(float(value), 2) for value in bbox)
 
 
-def _add_house_parking_for_building(building, ways, road_spatial_grid, parking_spaces, existing_keys) -> int:
-    """Add two reservable residential bays for one building's driveway
-    access, if it has one and doesn't already. Returns bays added (0 or
-    GENERATED_HOUSE_PARKING_BAYS). Shared by the synchronous
-    generate_detached_house_parking() and its chunked counterpart below."""
-    key = _house_parking_key(building)
-    if key in existing_keys:
-        return 0
-    access = _nearest_house_driveway(building, ways, road_spatial_grid)
-    if access is None:
-        return 0
-    house_edge, road_edge = access
-    dx, dy = road_edge[0] - house_edge[0], road_edge[1] - house_edge[1]
-    access_length = math.hypot(dx, dy)
-    if access_length < 5.5:
-        return 0
-    ux, uy = dx / access_length, dy / access_length
-    lateral_x, lateral_y = -uy, ux
-    bay_length, bay_width = 5.0, 2.5
-    center_distance = bay_length * 0.5 + 0.5
-    added = 0
-    for bay_index in range(GENERATED_HOUSE_PARKING_BAYS):
-        lateral_offset = (bay_index - (GENERATED_HOUSE_PARKING_BAYS - 1) * 0.5) * (bay_width + 0.3)
-        center_x = house_edge[0] + ux * center_distance + lateral_x * lateral_offset
-        center_y = house_edge[1] + uy * center_distance + lateral_y * lateral_offset
-        half_length, half_width = bay_length * 0.5, bay_width * 0.5
-        points = [
-            (center_x + ux * half_length + lateral_x * half_width, center_y + uy * half_length + lateral_y * half_width),
-            (center_x + ux * half_length - lateral_x * half_width, center_y + uy * half_length - lateral_y * half_width),
-            (center_x - ux * half_length - lateral_x * half_width, center_y - uy * half_length - lateral_y * half_width),
-            (center_x - ux * half_length + lateral_x * half_width, center_y - uy * half_length + lateral_y * half_width),
-        ]
-        xs, ys = [point[0] for point in points], [point[1] for point in points]
-        parking_spaces.append(ParkingSpace(
-            points_m=points,
-            bbox=(min(xs), min(ys), max(xs), max(ys)),
-            orientation=math.atan2(uy, ux),
-            source_building_key=key,
-            access_path=[house_edge, road_edge],
-        ))
-        added += 1
-    existing_keys.add(key)
-    return added
 
 
-def _existing_house_parking_keys(parking_spaces) -> set:
-    return {
-        getattr(space, "source_building_key", None)
-        for space in parking_spaces
-        if getattr(space, "source_building_key", None) is not None
-    }
 
 
-def generate_detached_house_parking(buildings, ways, parking_spaces, road_spatial_grid=None) -> int:
-    """Add two reservable residential bays to each generated house access."""
-    existing_keys = _existing_house_parking_keys(parking_spaces)
-    added = 0
-    for building in buildings:
-        added += _add_house_parking_for_building(building, ways, road_spatial_grid, parking_spaces, existing_keys)
-    return added
 
 
-def generate_detached_house_parking_chunk(
-    buildings, ways, parking_spaces, road_spatial_grid, index: int, budget_s: float,
-) -> Tuple[int, int]:
-    """Budgeted version of generate_detached_house_parking (bin-loader-
-    v3.md: measured up to ~1.9s in one frame against a dense real city
-    load, 2376 bays over 20k buildings). Processes buildings[index:] until
-    budget_s elapses. Returns (new_index, bays_added_this_call) -
-    new_index == len(buildings) once finished. The caller owns `index`
-    across calls; parking_spaces is mutated in place exactly like the
-    synchronous version, so a partially-processed building list is always
-    valid to query (just fewer bays exist yet, never wrong ones)."""
-    existing_keys = _existing_house_parking_keys(parking_spaces)
-    added = [0]
-
-    def _process(building) -> None:
-        added[0] += _add_house_parking_for_building(building, ways, road_spatial_grid, parking_spaces, existing_keys)
-
-    new_index = advance_chunked(buildings, index, budget_s, _process)
-    return new_index, added[0]
 
 
 def _draw_generated_driveways(screen, buildings, ways, road_spatial_grid, camx, camy, px_per_m, screen_w, screen_h):

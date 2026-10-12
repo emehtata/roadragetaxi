@@ -9,9 +9,9 @@ os.environ.setdefault("SDL_AUDIODRIVER", "dummy")
 
 import pytest
 
-from theroadragetrip.main import _load_world
-import theroadragetrip.main as main_module
-from theroadragetrip.main.cli import parse_args
+from theroadragetrip.world_loader import load_world
+import theroadragetrip.world_loader as main_module
+from theroadragetrip.game_args import parse_args
 from theroadragetrip.osm.bin_source import CityBinUnavailableError
 from theroadragetrip.osm.constants import DEFAULT_BBOX
 from theroadragetrip.osm.models import Way
@@ -36,14 +36,13 @@ def _load_sample_world(monkeypatch, tmp_path, city_name, extra_args=("--use-preb
     real_available = main_module.city_bin_available
     monkeypatch.setattr(main_module, "city_bin_available", lambda city: city.lower() == "oulu" or real_available(city))
     args = _build_args(monkeypatch, ["--use-sample", "--no-cache", *extra_args])
-    return _load_world(
+    return load_world(
         city_name, city_name, DEFAULT_BBOX, {city_name: (65.0121, 25.4651)},
-        screen=None, font=None, clock=_FakeClock(), args=args,
-        force_refresh=True, overpass_endpoints=[], bus_stops_enabled=False,
+        args=args, force_refresh=True, overpass_endpoints=[], bus_stops_enabled=False,
         roadworks_enabled=False, career=None,
         career_file=tmp_path / "career.json",
         gig_odometer_file=tmp_path / "gig.json",
-        language="en", headless=True,
+        language="en",
     )
 
 
@@ -60,7 +59,7 @@ def test_predefined_city_with_bin_loads_from_binary(monkeypatch, tmp_path, caplo
     ]
     monkeypatch.setattr(main_module, "load_city_ways", lambda city, bin_path=None: (fake_ways, 3, 4, 0.001))
 
-    with caplog.at_level(logging.INFO, logger="theroadragetrip.main"):
+    with caplog.at_level(logging.INFO, logger="theroadragetrip.world_loader"):
         world = _load_sample_world(monkeypatch, tmp_path, "oulu")
 
     bin_logs = [r.message for r in caplog.records if "Road network source: prebuilt binary" in r.message]
@@ -80,7 +79,7 @@ def test_broken_bin_falls_back_to_existing_osm_path(monkeypatch, tmp_path, caplo
         main_module, "load_city_ways",
         lambda city, bin_path=None: (_ for _ in ()).throw(CityBinUnavailableError("corrupt test binary")),
     )
-    with caplog.at_level(logging.INFO, logger="theroadragetrip.main"):
+    with caplog.at_level(logging.INFO, logger="theroadragetrip.world_loader"):
         world = _load_sample_world(monkeypatch, tmp_path, "oulu")
 
     warnings = [r.message for r in caplog.records if r.levelno == logging.WARNING]
@@ -91,7 +90,7 @@ def test_broken_bin_falls_back_to_existing_osm_path(monkeypatch, tmp_path, caplo
 
 
 def test_custom_city_without_bin_uses_existing_osm_path(monkeypatch, tmp_path, caplog):
-    with caplog.at_level(logging.INFO, logger="theroadragetrip.main"):
+    with caplog.at_level(logging.INFO, logger="theroadragetrip.world_loader"):
         world = _load_sample_world(monkeypatch, tmp_path, "MyCustomCity")
 
     fallback_logs = [r.message for r in caplog.records if "existing OSM/PBF fallback" in r.message]
@@ -107,7 +106,7 @@ def test_prebuilt_roads_are_off_by_default(monkeypatch, tmp_path, caplog):
         main_module, "load_city_ways",
         lambda *_a, **_k: pytest.fail("prebuilt road binary loaded although disabled"),
     )
-    with caplog.at_level(logging.INFO, logger="theroadragetrip.main"):
+    with caplog.at_level(logging.INFO, logger="theroadragetrip.world_loader"):
         world = _load_sample_world(monkeypatch, tmp_path, "oulu", extra_args=())
     assert any("prebuilt binary disabled" in r.message for r in caplog.records)
     assert any(way.is_drivable for way in world.traffic_mgr.ways)

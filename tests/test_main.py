@@ -43,8 +43,7 @@ def test_rage_unaffected_without_a_known_speed_limit():
 
 
 def test_osm_fetch_func_defaults_to_overpass(monkeypatch):
-    import theroadragetrip.main  # noqa: F401 - populates sys.modules["theroadragetrip.main"]
-    main_module = sys.modules["theroadragetrip.main"]
+    import theroadragetrip.world_loader as main_module  # the fetch function lives with the world loading
 
     calls = []
     monkeypatch.setattr(
@@ -61,8 +60,7 @@ def test_osm_fetch_func_defaults_to_overpass(monkeypatch):
 
 
 def test_osm_fetch_func_falls_back_to_overpass_when_pbf_unavailable(monkeypatch, tmp_path):
-    import theroadragetrip.main  # noqa: F401 - populates sys.modules["theroadragetrip.main"]
-    main_module = sys.modules["theroadragetrip.main"]
+    import theroadragetrip.world_loader as main_module  # the fetch function lives with the world loading
 
     monkeypatch.setattr(main_module, "local_pbf_available", lambda pbf_path: False)
     args = SimpleNamespace(osm_source="pbf", osm_pbf_path=str(tmp_path / "missing.osm.pbf"))
@@ -78,8 +76,7 @@ def test_osm_fetch_func_falls_back_to_overpass_when_pbf_unavailable(monkeypatch,
 
 
 def test_osm_fetch_func_uses_pbf_when_available(monkeypatch):
-    import theroadragetrip.main  # noqa: F401 - populates sys.modules["theroadragetrip.main"]
-    main_module = sys.modules["theroadragetrip.main"]
+    import theroadragetrip.world_loader as main_module  # the fetch function lives with the world loading
 
     monkeypatch.setattr(main_module, "local_pbf_available", lambda pbf_path: True)
     calls = []

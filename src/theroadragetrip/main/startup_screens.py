@@ -22,26 +22,14 @@ from ..render import (
     SCREEN_W,
     draw_city_editor,
 )
+from ..calendar import _one_calendar_year_ago, _clamp_start_datetime  # noqa: F401 - moved there (pygame-free)
 
 
 logger = logging.getLogger(__name__)
 
 
-def _one_calendar_year_ago(day: date) -> date:
-    """Return the same date last year, clamping leap day to February 28."""
-    try:
-        return day.replace(year=day.year - 1)
-    except ValueError:
-        return day.replace(year=day.year - 1, day=28)
 
 
-def _clamp_start_datetime(value: datetime, today: date) -> datetime:
-    earliest = _one_calendar_year_ago(today)
-    if value.date() < earliest:
-        return value.replace(year=earliest.year, month=earliest.month, day=earliest.day)
-    if value.date() > today:
-        return value.replace(year=today.year, month=today.month, day=today.day)
-    return value
 
 
 def _date_field_arrow_rects(field_rect: pygame.Rect) -> tuple[pygame.Rect, pygame.Rect]:

@@ -4,8 +4,8 @@ import os
 from typing import Optional
 
 
-from ..config import get_vehicle_distribution
-from ..osm import (
+from .config import get_vehicle_distribution
+from .osm import (
     BBOX_PRESETS,
 )
 

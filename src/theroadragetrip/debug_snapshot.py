@@ -8,9 +8,9 @@ from dataclasses import asdict
 from typing import List, Optional
 
 
-from .. import tile_streaming
-from ..geo import dist_point_to_segment, point_in_polygon
-from ..physics import (
+from . import tile_streaming
+from .geo import dist_point_to_segment, point_in_polygon
+from .physics import (
     Car,
 )
 

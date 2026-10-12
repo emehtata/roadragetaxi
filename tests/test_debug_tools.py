@@ -2,7 +2,7 @@
 import json
 import types
 
-from theroadragetrip.main.debug_tools import _write_debug_snapshot, find_feature_at
+from theroadragetrip.debug_snapshot import _write_debug_snapshot, find_feature_at
 from theroadragetrip.npc import spawn_npc
 from theroadragetrip.osm import Building, Curb, Way
 from theroadragetrip.physics import Car

@@ -15,10 +15,10 @@ from __future__ import annotations
 import logging
 import time
 
-from ..main import _level_structures
+from ..world_loader import level_structures as _level_structures
 from ..osm import TILE_MERGE_BUDGET_S, remove_trees_under_roads_steps
 from ..performance import MAP_SYNC_BUDGET_S
-from ..render import generate_detached_house_parking_chunk
+from ..parking import generate_detached_house_parking_chunk
 
 logger = logging.getLogger(__name__)
 

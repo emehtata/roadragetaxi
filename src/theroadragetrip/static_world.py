@@ -127,7 +127,7 @@ def building_style(building) -> list:
     building's (Finnish) name, else the per-building texture pick; the OSM
     entrances ([x, y] each); its floor count (OSM levels, else height / 3);
     category 1 house, 2 commercial, 0 other (the window rules)."""
-    from .render import buildings as rb
+    from . import building_style as rb
 
     named = rb._building_colors_from_name(getattr(building, "colour_name", None) or getattr(building, "name", None))
     if named is not None:
@@ -151,7 +151,7 @@ def inherit_part_colours(buildings) -> int:
     (`colour_name`): Valkealinnantalo's taller unnamed part otherwise
     covered its white roof with a palette brown. Returns how many."""
     from .geo import point_in_polygon
-    from .render import buildings as rb
+    from . import building_style as rb
 
     named = [b for b in buildings if len(b.points_m) >= 3 and rb._building_colors_from_name(getattr(b, "name", None))]
     count = 0
@@ -179,7 +179,7 @@ def building_owner(building):
 
 
 def is_open_roof(building) -> bool:
-    from .render.buildings import _is_open_roof
+    from .building_style import _is_open_roof
 
     return _is_open_roof(building)
 

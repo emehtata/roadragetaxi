@@ -2,10 +2,8 @@
 
 Owns the one authoritative `world`/`car`, runs `simulation.advance_simulation`
 at a fixed rate, and publishes a state snapshot to every connected client
-after each tick. Never opens a Pygame display - see
-docs/architecture/simulation-rendering.md for the full boundary writeup,
-including the one remaining (display-free) Pygame touchpoint here:
-`pygame.time.Clock` for tick pacing.
+after each tick, to the Godot client. No display and no pygame: it runs on
+a machine with no graphical environment.
 
 Live map expansion (auto-fetch as the car nears the loaded bbox's edge):
 server/map_sync.py streams and merges tiles, runs main()'s map sync in
@@ -29,7 +27,6 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Optional
 
-import pygame
 
 from .. import protocol
 from ..navigation_route import NavigationRoute
@@ -39,14 +36,14 @@ from ..protocol import LOCAL_PLAYER_ID
 from ..calendar import GameCalendar, darkness_for_sun_altitude, solar_altitude_and_events_on
 from ..career import career_path, gig_odometer_path, load_career
 from ..config import CONFIG_PATH, cities_from_config, default_city_configuration, get_overpass_endpoints
-from ..main import _choose_city, _load_world
-from ..render import SCREEN_H, SCREEN_W
+from ..world_loader import load_world, resolve_city
+from ..viewport import SCREEN_H, SCREEN_W
 from ..simulation import RAGE_SHOUT_DURATION_S, PlayerCommand, advance_simulation, apply_enter_exit_vehicle
 from ..physics import reset_trip, respawn_car
 from ..transport import Listener
 from ..weather import WeatherSystem, raining_last_hour, weather_type_for_observation
 from ..weather_history import WeatherHistory, precipitation_from_observation
-from ..main.startup_screens import _clamp_start_datetime
+from ..calendar import clamp_start_datetime as _clamp_start_datetime
 from ..osm import CACHE_DIR
 from ..climate import typical_temperature
 
@@ -191,23 +188,18 @@ class SimulationServer:
                 )
             else:
                 city_centers, bbox_presets = cities_from_config(config)
-                city_choice = _choose_city(
-                    None, "gig_driver", city_centers, bbox_presets, self.career_file, None,
-                    None, None, pygame.time.Clock(), config, self.language, args,
-                    args.force_refresh, False,
-                )
+                city_choice = resolve_city(args, city_centers, bbox_presets)
         self.chosen_city = city_choice.chosen_city
         self.bbox = city_choice.bbox  # the loaded box (the F12 debug JSON)
         self.camera_city_name = city_choice.camera_city_name
         self.cities_list = city_choice.cities_list
         self.career = city_choice.career
 
-        self.world = _load_world(
+        self.world = load_world(
             city_choice.chosen_city, city_choice.camera_city_name, city_choice.bbox,
-            city_choice.city_centers, None, None, pygame.time.Clock(), args,
-            city_choice.force_refresh, overpass_endpoints, bus_stops_enabled,
-            roadworks_enabled, city_choice.career, self.career_file, self.gig_odometer_file,
-            self.language, headless=True,
+            city_choice.city_centers, args, city_choice.force_refresh, overpass_endpoints,
+            bus_stops_enabled, roadworks_enabled, city_choice.career, self.career_file,
+            self.gig_odometer_file, self.language,
         )
         self.car = self.world.car
         # weather is per-session state main() constructs fresh alongside
@@ -456,8 +448,8 @@ class SimulationServer:
         """main()'s F12 JSON (debug_tools._write_debug_snapshot) for the
         client's screenshot, from the server's world; the client's view is
         the server's camera at its zoom."""
-        from ..main.debug_tools import _write_debug_snapshot
-        from ..render.common import get_viewport_bounds
+        from ..viewport import get_viewport_bounds
+        from ..debug_snapshot import _write_debug_snapshot
 
         w = self.world
         try:
@@ -729,7 +721,7 @@ def place_street_lights(world, outside=None) -> list:
     view region in frame-budgeted steps; here it runs to the end over the
     whole map (Oulu: ~21,500 lights, ~1.7 s at startup).
     [(x, y, road direction, pool radius m)]."""
-    from ..render import roads
+    from .. import street_lights as roads
 
     ways = world.ways
     if outside is not None:  # a map that grew: only ways reaching out of the old bounds

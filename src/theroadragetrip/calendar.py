@@ -115,3 +115,23 @@ def darkness_for_sun_altitude(altitude_deg: float) -> float:
     night 12 degrees below the horizon (astronomical-ish dusk), linear
     between - Pygame's night tint, street-light and ambience "twilight"."""
     return 1.0 - max(0.0, min(1.0, (altitude_deg + 12.0) / 18.0))
+
+
+def _one_calendar_year_ago(day: date) -> date:
+    """Return the same date last year, clamping leap day to February 28."""
+    try:
+        return day.replace(year=day.year - 1)
+    except ValueError:
+        return day.replace(year=day.year - 1, day=28)
+
+
+def clamp_start_datetime(value: datetime, today: date) -> datetime:
+    earliest = _one_calendar_year_ago(today)
+    if value.date() < earliest:
+        return value.replace(year=earliest.year, month=earliest.month, day=earliest.day)
+    if value.date() > today:
+        return value.replace(year=today.year, month=today.month, day=today.day)
+    return value
+
+
+_clamp_start_datetime = clamp_start_datetime  # its old name (main/startup_screens)
