@@ -137,9 +137,8 @@ def test_bridge_guardrail_ignores_segment_when_car_is_not_on_it():
 
 def test_no_false_guardrail_crash_on_the_seam_between_divided_bridge_lanes():
     """Regression: a divided highway bridge is often split into one Way per
-    direction. draw_ways already unions overlapping bridge lanes so no
-    guardrail is drawn between them (see bridge_polygons in
-    render/roads.py) - but the collision check used to know nothing about
+    direction. The map unions overlapping bridge lanes so no guardrail
+    is drawn between them (static_world.bridge_guardrails) - but the collision check used to know nothing about
     the neighboring lane, so a car near the shared inner seam (well inside
     the combined bridge deck, nowhere near a real rail) registered a crash."""
     northbound = Way(

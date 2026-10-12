@@ -1,19 +1,12 @@
 """client-server-02.md step 18: the server works without any client
 connected, with no graphical environment required."""
 
-import os
 import sys
 
 import pytest
 
-pytestmark = pytest.mark.skipif(
-    os.environ.get("SDL_VIDEODRIVER") not in (None, "dummy"),
-    reason="requires a headless-safe SDL driver",
-)
-
 
 def _build_server(tmp_path, monkeypatch, extra=()):
-    monkeypatch.setenv("SDL_VIDEODRIVER", "dummy")
     argv = ["prog", "--use-sample", "--no-menu", "--no-historical-weather", *extra]
     monkeypatch.setattr(sys, "argv", argv)
     from theroadragetrip.server.cli import parse_server_args
@@ -151,7 +144,7 @@ def test_train_state_omits_the_unused_label():
 
 
 def test_road_name_and_limit_follow_the_way_under_the_taxi(tmp_path, monkeypatch):
-    """godot-11: Pygame's HUD rules - the OSM name, else the highway type;
+    """godot-11: the HUD's road name - the OSM name, else the highway type;
     no road (and no limit) off-road."""
     from types import SimpleNamespace
 
@@ -270,8 +263,7 @@ def test_the_season_weights_come_from_the_calendar(tmp_path, monkeypatch):
 
 
 def test_tyre_marks_flash_and_level_in_the_state(tmp_path, monkeypatch):
-    """godot-16: per tick, the taxi's map level, its tyre mark (as main() decides
-    it) and the flashing speed camera."""
+    """godot-16: per tick, the taxi's map level, its tyre mark and the flashing speed camera."""
     server = _build_server(tmp_path, monkeypatch)
     assert _state(server)["player"]["map_level"] == 0 and _state(server)["tire_mark"] is None
     assert _state(server)["speed_camera_flash"] is None
@@ -286,7 +278,7 @@ def test_tyre_marks_flash_and_level_in_the_state(tmp_path, monkeypatch):
 
 def test_the_running_fare_crosses_the_wire(tmp_path, monkeypatch):
     """godot-final-03: the mission bar's live values, straight from TaxiManager.
-    The meter's three are null until the meter starts (Pygame shows them only then)."""
+    The meter's three are null until the meter starts."""
     import json
     from datetime import datetime
 
@@ -343,8 +335,7 @@ def test_the_pump_in_refuelling_range_sends_its_price(tmp_path, monkeypatch):
 
 def test_the_navigation_route_crosses_the_wire(tmp_path, monkeypatch):
     """godot-final-04: state.navigation.points - the server's cached route,
-    world metres, unchanged through encode/decode; discrete under interpolation."""
-    import json
+    world metres, unchanged through encode/decode."""
 
     from theroadragetrip import protocol
 
@@ -361,18 +352,11 @@ def test_the_navigation_route_crosses_the_wire(tmp_path, monkeypatch):
         navigation={"points": server.navigation.points})
     wire = protocol.decode(protocol.encode(message))
     assert wire["state"]["navigation"]["points"] == points  # a new client's first state carries the cached route
-    other = json.loads(json.dumps(wire["state"]))
-    other["navigation"] = {"points": [[0.0, 0.0], [9.0, 9.0]]}
-    blended = protocol.interpolate_state(wire["state"], other, 0.5)
-    assert blended["navigation"]["points"] == [[0.0, 0.0], [9.0, 9.0]]  # the newest route, never a blend
 
 
 def test_road_rage_is_the_simulations_and_runs_once_per_press(tmp_path, monkeypatch):
-    """godot-final-05: SPACE moved from Pygame's event loop into the shared
-    simulation - cost 0.25, the 0.45 horn, a shout for 5 s, the nearest
-    driver ahead provoked once; nothing below 0.25."""
-    import json
-    from pathlib import Path
+    """godot-final-05: SPACE is the simulation's - cost 0.25, the 0.45 horn,
+    a shout for 5 s, the nearest driver ahead provoked once; nothing below 0.25."""
 
     from theroadragetrip import protocol
     from theroadragetrip.simulation import RAGE_SHOUTS, PlayerCommand
@@ -398,7 +382,7 @@ def test_road_rage_is_the_simulations_and_runs_once_per_press(tmp_path, monkeypa
 
     server._rage_power = 0.25  # exactly the cost: accepted, down to zero
     server._pending_road_rages = 1
-    at = (server.car.x, server.car.y, server.car.heading, server.world.traffic_mgr.sim_time)  # as the tick starts (main(): the press before the step)
+    at = (server.car.x, server.car.y, server.car.heading, server.world.traffic_mgr.sim_time)  # as the tick starts (the press before the step)
     server.tick(1.0 / 30.0)
     assert server._rage_power == pytest.approx(0.0, abs=0.01)
     assert [e for e in sent[-1] if e.get("group") == "vehicle.horn"] == [{"type": "sound", "group": "vehicle.horn"}]
@@ -427,11 +411,6 @@ def test_road_rage_is_the_simulations_and_runs_once_per_press(tmp_path, monkeypa
     assert len(calls) == 3 and server._rage_power == pytest.approx(0.1, abs=0.01)
     assert sum(1 for events in sent[-3:] for e in events if e.get("group") == "vehicle.horn") == 2
 
-    wire = protocol.decode(protocol.encode({"type": "state", "version": protocol.PROTOCOL_VERSION, "state": state}))
-    later = json.loads(json.dumps(wire["state"]))
-    later["road_rage"] = None
-    assert protocol.interpolate_state(wire["state"], later, 0.5)["road_rage"] is None  # discrete: the newest
-
 
 def test_weather_audio_facts_cross_the_wire(tmp_path, monkeypatch):
     """godot-final-06: is_thunderstorm and the gust-adjusted wind vector,
@@ -439,7 +418,6 @@ def test_weather_audio_facts_cross_the_wire(tmp_path, monkeypatch):
     splashes, volumes or a made-up precipitation intensity)."""
     import json
 
-    from theroadragetrip import protocol
     from theroadragetrip.weather import WeatherType
 
     server = _build_server(tmp_path, monkeypatch)
@@ -460,7 +438,7 @@ def test_weather_audio_facts_cross_the_wire(tmp_path, monkeypatch):
 
 
 def test_historical_weather_drives_the_servers_weather_and_temperature(tmp_path, monkeypatch, caplog):
-    """main()'s historical weather on the server: the FMI hour replaces the
+    """Historical weather on the server: the FMI hour replaces the
     generated precipitation, its temperature reaches the state; off: generated
     weather and the climate's typical temperature."""
     from theroadragetrip.weather import WeatherType
@@ -496,7 +474,7 @@ def test_historical_weather_drives_the_servers_weather_and_temperature(tmp_path,
 
 
 def test_start_time_starts_the_calendar_clamped_to_a_year_back(tmp_path, monkeypatch):
-    """The gig start picker (Pygame's choose_start_datetime) via --start-time."""
+    """The gig start picker's time via --start-time."""
     from datetime import date, datetime, timedelta
 
     picked = (datetime.now() - timedelta(days=40)).replace(hour=7, minute=15, second=0, microsecond=0)
@@ -524,7 +502,7 @@ def test_npc_brake_lamps_when_slowing_or_standing_in_traffic():
 
 
 def test_the_world_message_carries_the_start_sign(tmp_path, monkeypatch):
-    """main()'s draw_game_start_overlay: the city and a 24-hour forecast,
+    """The start sign: the city and a 24-hour forecast,
     now and every 6 hours; the engine starts off (E after getting in)."""
     from theroadragetrip import protocol
 
@@ -551,7 +529,7 @@ def test_f12_debug_snapshot_is_written_by_the_server(tmp_path, monkeypatch):
 
 
 def test_the_server_places_its_street_lights_with_the_placement_job(tmp_path, monkeypatch):
-    """godot-15: the same placement render/roads.py runs per view, once over the map."""
+    """godot-15: street_lights.py's placement, run once over the map."""
     from theroadragetrip import street_lights as roads
 
     server = _build_server(tmp_path, monkeypatch)

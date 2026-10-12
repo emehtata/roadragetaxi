@@ -15,36 +15,29 @@ Message shapes crossing the boundary:
   `LOCAL_PLAYER_ID`, and a command without one means that player.
 - server -> client, once on connect: `{"type": "world", "version": 1, ...}`
   built by `build_world_message`: the map origin, chunk size and the
-  client's `player_id`. The Pygame client ignores it (it loads the map
-  itself).
+  client's `player_id`.
 - server -> client: `{"type": "chunk", ...}` / `{"type": "chunk_unload", ...}`
   (map_chunks.py): the static map around the player, streamed as it moves.
 - server -> client: `{"type": "state", "version": 1, "tick": N, "server_time": s, "state": {...}}`
-  built by `build_state_message` every tick, applied on the Pygame client
-  by `apply_server_state`. Dynamic gameplay state, plus the tick's
+  built by `build_state_message` every tick. Dynamic gameplay state, plus the tick's
   semantic `events` (sounds, train arrivals) for the client to present.
   `server_time` is simulation seconds since the server started - the
   timeline clients interpolate on.
 
-See docs/architecture/godot-client.md.
-
-This module must never import pygame, for the same reason simulation.py
-doesn't: it's shared, unmodified, by the headless server.
-"""
+See docs/architecture/godot-client.md."""
 
 from __future__ import annotations
 
 import json
 import math
 from dataclasses import asdict
-from typing import Any, Optional
+from typing import Optional
 
 from .fuel import fuel_station_price_cents, nearest_fuel_station
-from .geo import angle_diff
 from .localization import tr
 from .rail_bookings import PASSENGER_MET, PASSENGER_WAITING
 from .simulation import PlayerCommand
-from .taxi import TaxiPassenger, TaxiTarget
+from .taxi import TaxiPassenger
 
 PROTOCOL_VERSION = 1
 LOCAL_PLAYER_ID = "local_player"  # the only player until there is multiplayer
@@ -196,8 +189,7 @@ def _passenger_to_dict(passenger: Optional[TaxiPassenger]) -> Optional[dict]:
             "x": passenger.dropoff.x, "y": passenger.dropoff.y, "address": passenger.dropoff.address,
             "radius_m": passenger.dropoff.radius_m,
         },
-        # The waiting customer as Pygame draws them (render/navigation.py
-        # draw_taxi_target): where they stand or walk, until they board. A
+        # The waiting customer: where they stand or walk, until they board. A
         # rail booking's customer is a pedestrian of their own instead.
         "ped": [round(passenger.ped_x, 2), round(passenger.ped_y, 2), round(passenger.ped_heading, 3)],
         "is_walking_to_car": passenger.is_walking_to_car,
@@ -218,8 +210,7 @@ def _train_to_dict(train) -> dict:
 
 
 def _phone_to_dict(taxi_mgr, car) -> dict:
-    """The phone's rows, as the Pygame phone shows them (render/hud.py
-    draw_phone_offers): rail bookings first, then ride offers. Only values
+    """The phone's rows: rail bookings first, then ride offers. Only values
     the simulation has - an ordinary offer has no fare until the ride ends."""
     items = []
     for kind, item in taxi_mgr.phone_items():
@@ -252,8 +243,7 @@ TRAFFIC_LIGHT_PHASE_RADIUS_M = 600.0  # phases sent for posts this near the play
 
 
 def traffic_light_render_point(light) -> tuple:
-    """Where Pygame draws a light (render/roads.py _traffic_light_render_position):
-    shifted right of the lane by its render_offset_m."""
+    """Where a light is drawn: shifted right of the lane by its render_offset_m."""
     heading = light.direction_angle or 0.0
     offset = getattr(light, "render_offset_m", 0.0)
     return light.x + math.sin(heading) * offset, light.y - math.cos(heading) * offset
@@ -292,7 +282,7 @@ def _fallen_and_knocked(world, x: float, y: float) -> tuple:
 
 
 def _road_to_dict(current_way) -> dict:
-    """The road under the taxi as Pygame's HUD names it: the OSM name, else
+    """The road under the taxi as the HUD names it: the OSM name, else
     the highway type title-cased; None off-road. The limit is the
     simulation's own (None when unknown)."""
     if current_way is None:
@@ -303,7 +293,7 @@ def _road_to_dict(current_way) -> dict:
             "layer": getattr(current_way, "layer", 0), "bridge": bool(getattr(current_way, "is_bridge", False))}
 
 
-NEXT_TRAINS = 5  # main(): NEXT_TRAINS_SHOWN, the rows of the J board
+NEXT_TRAINS = 5  # the rows of the J board
 
 
 def railway_state(railway_mgr, x: float, y: float, now) -> dict:
@@ -343,13 +333,13 @@ def _finite_pair(vector) -> list:
 
 def _station_price_cents(world, car) -> Optional[int]:
     """Price at the nearest pump within refuelling range of the car - the
-    same lookup and price refuelling uses (simulation.py), as main() does."""
+    same lookup and price refuelling uses (simulation.py)."""
     station = nearest_fuel_station(getattr(world, "scenery_objects", ()), car.x, car.y)
     return fuel_station_price_cents(station) if station is not None else None
 
 
 def _meet_to_dict(taxi_mgr, player_pedestrian, language: str) -> Optional[dict]:
-    """The meet & greet in progress, as Pygame's main() shows it: the
+    """The meet & greet in progress: the
     panel's three lines (taxi_mgr.meet_prompt, localized here) and, while
     the passenger is out at the station, who the arrow points at."""
     meet = taxi_mgr.meet_prompt(player_pedestrian)
@@ -376,7 +366,7 @@ def build_world_message(center: tuple, chunk_size_m: float, player_id: str = LOC
                         city: str = "", forecast: Optional[list] = None) -> dict:
     """What a client learns once on connect: the map origin (it draws
     relative to it, for float32 precision), the chunk grid size, and which
-    player it controls; for main()'s start sign the city and the 24-hour
+    player it controls; for the start sign the city and the 24-hour
     forecast ([{time, temperature_c, weather, source}]). The map itself
     follows as "chunk" messages."""
     return {
@@ -395,7 +385,7 @@ def build_state_message(
     road_rage: Optional[dict] = None, railway: Optional[dict] = None, map_loading: str = "",
     map_loading_detail: str = "",
 ) -> dict:
-    """Everything the Pygame client needs to render one frame, and nothing
+    """Everything the client needs to render one frame, and nothing
     static (see module docstring). Called once per server tick."""
     weather = world.weather
     taxi_mgr = world.taxi_mgr
@@ -441,11 +431,11 @@ def build_state_message(
         "vomit_footprints": [list(point) for point in world.pedestrian_mgr.vomit_footprints],
         "trains": [_train_to_dict(t) for t in getattr(getattr(world, "railway_mgr", None), "trains", ())],
         "weather": {"weather_type": weather.weather_type.value, "wetness": weather.wetness,
-                    "lightning_intensity": weather.lightning_intensity,  # 1 at a strike, fading (render/weather.py)
-                    # For the client's weather audio (main()'s update_ambience): heavy rain, wind loops.
+                    "lightning_intensity": weather.lightning_intensity,  # 1 at a strike, fading
+                    # For the client's weather audio heavy rain, wind loops.
                     "is_thunderstorm": bool(weather.is_thunderstorm),
                     "wind_vector_mps": _finite_pair(weather.wind_vector_mps),
-                    # Historical weather (main()'s): FMI "observed"/"forecast", else "generated"; the HUD's temperature.
+                    # Historical weather: FMI "observed"/"forecast", else "generated"; the HUD's temperature.
                     "source": getattr(weather, "weather_source", "generated"),
                     "temperature_c": _finite(getattr(weather, "outside_temperature_c", None))},
         "road": _road_to_dict(current_way),
@@ -472,12 +462,12 @@ def build_state_message(
             "balance_cents": taxi_mgr.balance_cents,
             "notification_msg": taxi_mgr.notification_msg,
             "notification_timer": taxi_mgr.notification_timer,
-            # The notice is a speed-camera hit: Pygame centres it with a red border.
+            # The notice is a speed-camera hit: the client centres it with a red border.
             "speed_camera_notice": taxi_mgr.speed_camera_notice_timer > 0.0 and bool(taxi_mgr.speed_camera_notice_msg),
             "taxi_smoke_timer": taxi_mgr.taxi_smoke_timer,
             "current_passenger": _passenger_to_dict(taxi_mgr.current_passenger),
-            # The running fare (render/hud.py's mission bar). The meter's three are
-            # null until the meter starts, as Pygame shows them only then.
+            # The running fare (the HUD's mission bar). The meter's three are
+            # null until the meter starts.
             "elapsed_time": taxi_mgr.elapsed_time,
             "live_fare_cents": taxi_mgr.live_fare_cents if taxi_mgr.fare_started_at is not None else None,
             "fare_distance_m": taxi_mgr.fare_distance_m if taxi_mgr.fare_started_at is not None else None,
@@ -487,8 +477,7 @@ def build_state_message(
         },
         "phone": _phone_to_dict(taxi_mgr, car),
         # Career-mode session end (score threshold reached -> next city or
-        # completed). Not fully wired end-to-end this phase - see
-        # docs/architecture/archive/simulation-rendering.md's known limitations.
+        # completed). Not fully wired end-to-end yet.
         "should_stop": should_stop,
         "city_summary": list(city_summary) if city_summary is not None else None,
         # What happened this tick, for the client to present (sound, UI):
@@ -497,277 +486,3 @@ def build_state_message(
     }
     return {"type": "state", "version": PROTOCOL_VERSION, "tick": tick,
             "server_time": server_time, "state": state}
-
-
-def _lerp_angle(a: float, b: float, alpha: float) -> float:
-    """Shortest-path angle interpolation (radians) - a plain lerp would
-    spin the long way round whenever a heading crosses the +-pi seam."""
-    diff = angle_diff(b, a)
-    return a + diff * alpha
-
-
-def interpolate_state(prev: dict, curr: dict, alpha: float) -> dict:
-    """Visual-only blend between two received state snapshots (client-
-    server-02.md step 10). `alpha` is clamped to [0, 1] - this never
-    extrapolates past the newest authoritative snapshot, and it never
-    feeds back into anything the server treats as authoritative; it only
-    changes what gets rendered this frame."""
-    alpha = max(0.0, min(1.0, alpha))
-    # A shallow copy is enough: every key this function overwrites below
-    # (player/npcs/pedestrians) is fully replaced, never mutated in
-    # place, and every other key (weather/taxi/...) is only ever read by
-    # the caller, never mutated - a deepcopy here was pure waste, run
-    # once per render frame on a dict containing every NPC/pedestrian.
-    blended = dict(curr)
-
-    def blend_entity(prev_entity: Optional[dict], curr_entity: dict) -> dict:
-        if prev_entity is None:
-            return curr_entity
-        merged = dict(curr_entity)
-        merged["x"] = prev_entity["x"] + (curr_entity["x"] - prev_entity["x"]) * alpha
-        merged["y"] = prev_entity["y"] + (curr_entity["y"] - prev_entity["y"]) * alpha
-        merged["heading"] = _lerp_angle(prev_entity["heading"], curr_entity["heading"], alpha)
-        return merged
-
-    blended["player"] = blend_entity(prev.get("player"), curr["player"])
-
-    prev_npcs = {n["id"]: n for n in prev.get("npcs", [])}
-    blended["npcs"] = [blend_entity(prev_npcs.get(n["id"]), n) for n in curr["npcs"]]
-
-    prev_peds = {p["id"]: p for p in prev.get("pedestrians", [])}
-    blended["pedestrians"] = [blend_entity(prev_peds.get(p["id"]), p) for p in curr["pedestrians"]]
-
-    return blended
-
-
-def apply_server_state(world, car, state: dict, *, player_pedestrian) -> dict:
-    """Apply a received state dict onto local shadow objects. Never calls
-    `.update()`/AI methods on any manager - entities only ever change here,
-    driven entirely by the server's authoritative snapshot.
-
-    Returns the handful of scalars the caller doesn't already hold a
-    reference to: on_foot, game_time_seconds, camx, camy, should_stop,
-    city_summary.
-    """
-    player = state["player"]
-    car.x, car.y, car.heading, car.speed = player["x"], player["y"], player["heading"], player["speed"]
-    car.braking = player["braking"]
-    car.trip_m = player["trip_m"]
-    car.odometer_m = player["odometer_m"]
-    car.engine_on = player["engine_on"]
-    car.fuel_capacity_l = player.get("fuel_capacity_l", car.fuel_capacity_l)
-    car.fuel_l = player.get("fuel_l", car.fuel_l)
-    car.fuel_consumption_l_per_100km = player.get(
-        "fuel_consumption_l_per_100km", car.fuel_consumption_l_per_100km
-    )
-    car.idle_fuel_consumption_l_per_hour = player.get(
-        "idle_fuel_consumption_l_per_hour", car.idle_fuel_consumption_l_per_hour
-    )
-    car.curb_mass_kg = player.get("curb_mass_kg", car.curb_mass_kg)
-    car.driver_mass_kg = player.get("driver_mass_kg", car.driver_mass_kg)
-    car.passenger_mass_kg = player.get("passenger_mass_kg", car.passenger_mass_kg)
-
-    ped = state["player_pedestrian"]
-    player_pedestrian.x, player_pedestrian.y, player_pedestrian.heading = ped["x"], ped["y"], ped["heading"]
-
-    _reconcile_npcs(world.npc_manager.vehicles, state["npcs"])
-    _reconcile_pedestrians(world.pedestrian_mgr.pedestrians, state["pedestrians"])
-
-    world.traffic_mgr.sim_time = state["sim_time"]
-
-    weather = state["weather"]
-    world.weather.weather_type = type(world.weather.weather_type)(weather["weather_type"])
-    world.weather.wetness = weather["wetness"]
-
-    taxi = state["taxi"]
-    taxi_mgr = world.taxi_mgr
-    taxi_mgr.state = taxi["state"]
-    taxi_mgr.total_score = taxi["total_score"]
-    taxi_mgr.completed_fares = taxi["completed_fares"]
-    taxi_mgr.balance_cents = taxi.get("balance_cents", taxi_mgr.balance_cents)
-    taxi_mgr.notification_msg = taxi["notification_msg"]
-    taxi_mgr.notification_timer = taxi["notification_timer"]
-    taxi_mgr.taxi_smoke_timer = taxi["taxi_smoke_timer"]
-    taxi_mgr.current_passenger = _passenger_from_dict(taxi["current_passenger"])
-
-    return {
-        "on_foot": state["on_foot"],
-        "game_time_seconds": state["game_time_seconds"],
-        "camx": state["camx"],
-        "camy": state["camy"],
-        "rage_power": state["rage_power"],
-        "road_rage": state.get("road_rage"),
-        "water_elapsed": state["water_elapsed"],
-        "should_stop": state.get("should_stop", False),
-        "city_summary": state.get("city_summary"),
-    }
-
-
-def _passenger_from_dict(data: Optional[dict]) -> Optional[TaxiPassenger]:
-    if data is None:
-        return None
-    return TaxiPassenger(
-        name=data["name"],
-        gender=data["gender"],
-        weight_kg=data.get("weight_kg", 85.0),
-        is_drunk=data.get("is_drunk", False),
-        motion_sickness=data.get("motion_sickness", 0.0),
-        nausea_warning_timer=data["nausea_warning_timer"],
-        nausea_resolved=data["nausea_resolved"],
-        pickup=TaxiTarget(x=data["pickup"]["x"], y=data["pickup"]["y"], address=data["pickup"]["address"], radius_m=data["pickup"]["radius_m"]),
-        dropoff=TaxiTarget(x=data["dropoff"]["x"], y=data["dropoff"]["y"], address=data["dropoff"]["address"], radius_m=data["dropoff"]["radius_m"]),
-        ped_x=data.get("ped", (0.0, 0.0, 0.0))[0],
-        ped_y=data.get("ped", (0.0, 0.0, 0.0))[1],
-        ped_heading=data.get("ped", (0.0, 0.0, 0.0))[2],
-        is_walking_to_car=data.get("is_walking_to_car", False),
-        boarded=data.get("boarded", False),
-    )
-
-
-class ShadowVehicle:
-    """A client-side stand-in for an NPCVehicle it never runs AI on -
-    duck-typed to whatever render.vehicles.draw_npc_cars reads (that
-    renderer already treats NPCVehicle itself as a duck-typed interface,
-    see npc.NPCVehicle's own docstring)."""
-
-    def __init__(self, vehicle_id: int):
-        self.vehicle_id = vehicle_id
-        self.x = self.y = self.heading = self.speed = 0.0
-        self.color = (150, 155, 165)
-        self.vehicle_type = "car"
-        self.is_taxi = self.is_police = self.is_on_foot = self.fallen = False
-        self.layer = 0
-        self.lod_level = 0
-        self.turn_signal = ""
-        self.turn_signal_elapsed = 0.0
-        self.way = None
-        # Debug-only fields (F7's population panel etc.) this client has
-        # no real value for - it never runs NPC AI/ownership/parking
-        # logic, so these are fixed, correctly-typed placeholders rather
-        # than left unset (an AttributeError from a debug overlay used
-        # to crash the whole game - see NPC-004/client-server-02 history).
-        self.vehicle_kind = "traffic"
-        self.availability = "AVAILABLE"
-        self.state = "CRUISING"
-        self.owner_id = None
-        self.destination = None
-        self.destination_parking_space_id = None
-        self.trip_group = None
-        self.capacity = 1
-        self.available_seats = 0
-        self.debug_waiting_for = ""
-        self.crashed_timer = 0.0
-        self.parking_route = None
-        self.parking_route_index = 0
-        self.travel_route = None
-        self.segment_idx = 0
-        self.direction = 1
-        self.driver_departed = False
-        self.home_position = None
-        self.household_id = None
-        # draw_car/draw_npc_cars/draw_vehicle_lights/draw_taxi_smoke/
-        # draw_taxi_exhaust all read length_m/width_m off the vehicle
-        # object itself (getattr(npc, "length_m", 4.0)), not off a
-        # nested .car - both need the real synced value, or NPCs always
-        # render at the 4.0m/1.8m fallback size regardless of what the
-        # server actually sent.
-        self.length_m = 4.0
-        self.width_m = 1.8
-
-        class _CarShim:
-            length_m = 4.0
-            width_m = 1.8
-
-        self.car = _CarShim()
-
-    def apply(self, data: dict) -> None:
-        self.x, self.y, self.heading, self.speed = data["x"], data["y"], data["heading"], data["speed"]
-        self.color = tuple(data["color"])
-        self.vehicle_type = data["vehicle_type"]
-        self.is_taxi = data["is_taxi"]
-        self.is_police = data["is_police"]
-        self.is_on_foot = data["is_on_foot"]
-        self.fallen = data["fallen"]
-        self.layer = data["layer"]
-        self.lod_level = data["lod_level"]
-        self.turn_signal = data["turn_signal"]
-        self.turn_signal_elapsed = data["turn_signal_elapsed"]
-        self.state = data.get("state", self.state)
-        self.crashed_timer = data.get("crashed_timer", self.crashed_timer)
-        self.driver_departed = data.get("driver_departed", self.driver_departed)
-        self.debug_waiting_for = data.get("debug_waiting_for", self.debug_waiting_for)
-        self.length_m = data["length_m"]
-        self.width_m = data["width_m"]
-        self.car.length_m = data["length_m"]
-        self.car.width_m = data["width_m"]
-
-
-class ShadowPedestrian:
-    """A client-side stand-in for a Pedestrian it never runs AI on."""
-
-    def __init__(self, resident_id: int):
-        self.resident_id = resident_id
-        self.x = self.y = self.heading = 0.0
-        self.radius_m = 0.45
-        self.color = (200, 200, 200)
-        self.state = "walking"
-        self.animation_state = "walking"
-        self.animation_time = 0.0
-        self.curse_timer = 0.0
-        self.curse_text = "@#*!%"
-        self.mood = "normal"
-        self.is_cyclist = False
-        self.way = None
-        self.speed = 0.0
-        self.layer = 0
-        # Debug-only/secondary render fields this client has no real
-        # value for (it never runs pedestrian AI) - correctly-typed
-        # placeholders so debug overlays and the resident popup degrade
-        # gracefully instead of crashing on a missing attribute.
-        self.route = None
-        self.destination = None
-        self.crossing = None
-        self.is_player = False
-        self.blood_alcohol_promille = 0.0
-        self.linked_building_entrance = None
-        self.activity = None
-
-    def apply(self, data: dict) -> None:
-        self.x, self.y, self.heading = data["x"], data["y"], data["heading"]
-        self.radius_m = data["radius_m"]
-        self.color = tuple(data["color"])
-        self.state = data["state"]
-        self.animation_state = data["animation_state"]
-        self.animation_time = data["animation_time"]
-        self.curse_timer = data["curse_timer"]
-        self.curse_text = data["curse_text"]
-        self.mood = data["mood"]
-        self.is_cyclist = data["is_cyclist"]
-
-
-def _reconcile_npcs(vehicles: list, npc_states: list[dict]) -> None:
-    by_id = {npc.vehicle_id: npc for npc in vehicles if isinstance(npc, ShadowVehicle)}
-    seen = set()
-    for data in npc_states:
-        vid = data["id"]
-        seen.add(vid)
-        shadow = by_id.get(vid)
-        if shadow is None:
-            shadow = ShadowVehicle(vid)
-            vehicles.append(shadow)
-        shadow.apply(data)
-    vehicles[:] = [npc for npc in vehicles if not isinstance(npc, ShadowVehicle) or npc.vehicle_id in seen]
-
-
-def _reconcile_pedestrians(pedestrians: list, ped_states: list[dict]) -> None:
-    by_id = {p.resident_id: p for p in pedestrians if isinstance(p, ShadowPedestrian)}
-    seen = set()
-    for data in ped_states:
-        pid = data["id"]
-        seen.add(pid)
-        shadow = by_id.get(pid)
-        if shadow is None:
-            shadow = ShadowPedestrian(pid)
-            pedestrians.append(shadow)
-        shadow.apply(data)
-    pedestrians[:] = [p for p in pedestrians if not isinstance(p, ShadowPedestrian) or p.resident_id in seen]

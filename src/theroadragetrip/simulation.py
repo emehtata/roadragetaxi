@@ -1,17 +1,10 @@
-"""The per-tick gameplay simulation, kept independent of Pygame.
+"""The per-tick gameplay simulation the server runs.
 
-``advance_simulation`` is the extracted "update phase" of ``main()``'s
-gameplay loop (physics, collisions, camera follow, and the taxi/NPC/
-traffic/pedestrian manager updates). It is moved here verbatim from
-``main/__init__.py`` so it can be called without a display - by tests, by
-``--headless`` mode, and eventually by an alternate (non-Pygame) client or
-a server. See ``docs/architecture/archive/simulation-rendering.md``.
-
-This module must never import pygame, directly or indirectly. Player
-input crosses the boundary as a plain ``PlayerCommand``, not raw key
-state; the rendering/HUD phase and the map/tile-streaming pipeline stay
-in ``main()`` since they own genuinely Pygame- or client-only concerns
-(loading-screen event pumping, HUD dragging, debug overlays).
+``advance_simulation`` is one tick: physics, collisions, camera follow,
+and the taxi/NPC/traffic/pedestrian manager updates. Player input
+crosses the boundary as a plain ``PlayerCommand``, not raw key state;
+map streaming lives in server/map_sync.py. History:
+``docs/architecture/archive/simulation-rendering.md``.
 """
 
 from __future__ import annotations
@@ -46,6 +39,7 @@ from .physics import (
 )
 from .station_passengers import StationPassengerView, track_checker
 from .taxi import TaxiState
+from .viewport import get_viewport_bounds
 
 RAGE_DISTANCE_TO_FULL_M = 400.0
 RAGE_GAIN_SCALE = 1.0 / 3.0
@@ -59,8 +53,7 @@ RAGE_SHOUT_DURATION_S = 5.0
 @dataclass
 class PlayerCommand:
     """Everything the current frame's player input contributes to the
-    simulation tick - built from raw key state by ``main()`` (or a future
-    non-Pygame client) before crossing into ``advance_simulation``."""
+    simulation tick - built from the client's input by the server before crossing into ``advance_simulation``."""
 
     throttle: float = 0.0
     brake: float = 0.0
@@ -85,8 +78,8 @@ class PlayerCommand:
 
 @dataclass
 class SimulationFrameResult:
-    """The handful of scalars that change during a tick and that ``main()``
-    still needs afterward for rendering, HUD, or outer-loop control. Every
+    """The handful of scalars that change during a tick and that the
+    server still needs afterward. Every
     other effect of a tick (car/pedestrian/manager state) is mutated in
     place on the objects already passed in."""
 
@@ -122,8 +115,7 @@ def walk_blocked_by_walls(x: float, y: float, step_x: float, step_y: float, bloc
 def apply_enter_exit_vehicle(car, player_pedestrian, on_foot: bool, audio, taxi_mgr=None) -> bool:
     """The 'F' key's get-in/get-out-of-the-car action - authoritative
     gameplay logic (a distance check gates re-entry), so it belongs on
-    the simulation side of the boundary, not decided by a client. Moved
-    verbatim from main()'s event handler. On foot by a pre-booked rail
+    the simulation side of the boundary, not decided by a client. On foot by a pre-booked rail
     customer, F greets them instead (they stay a pedestrian and walk to
     the taxi). Returns the new on_foot value."""
     if on_foot and taxi_mgr is not None and taxi_mgr.greet_booked_passenger(player_pedestrian, car) is not None:
@@ -213,8 +205,7 @@ def advance_simulation(
     now=None,
 ) -> SimulationFrameResult:
     """Run one gameplay tick: physics, collisions, camera follow, and the
-    taxi/NPC/traffic/pedestrian manager updates. Extracted verbatim from
-    ``main()``'s inline update phase - see module docstring."""
+    taxi/NPC/traffic/pedestrian manager updates."""
 
     ways = world.ways
     spatial_grid = world.spatial_grid
@@ -286,7 +277,7 @@ def advance_simulation(
             audio.play_group("vehicle.engine_start" if car.engine_on else "vehicle.engine_stop")
 
     rage_shout = None
-    if command.road_rage and rage_power >= RAGE_SHOUT_COST:  # main()'s SPACE: horn, shout, the nearest driver ahead
+    if command.road_rage and rage_power >= RAGE_SHOUT_COST:  # SPACE: horn, shout, the nearest driver ahead
         audio.play_driver_line("rage", language)
         audio.play_group("vehicle.horn", 0.45)
         rage_power = max(0.0, rage_power - RAGE_SHOUT_COST)
@@ -538,7 +529,7 @@ def advance_simulation(
     camx += (target_camx - camx) * cam_lerp_factor
     camy += (target_camy - camy) * cam_lerp_factor
 
-    viewport_bounds = _viewport_bounds(camx, camy, px_per_m, screen_w, screen_h, margin_m=30.0)
+    viewport_bounds = get_viewport_bounds(camx, camy, px_per_m, screen_w, screen_h, margin_m=30.0)
 
     # Trains: timetable trains, their passengers and pre-bookings follow the
     # game clock (`now`, a datetime); presentation (drawing, train sounds,
@@ -732,11 +723,3 @@ def advance_simulation(
     )
 
 
-def _viewport_bounds(
-    camx: float, camy: float, px_per_m: float, screen_w: int, screen_h: int, margin_m: float,
-) -> tuple:
-    """Local copy of render.common.get_viewport_bounds's formula, kept here
-    so this module never imports the (Pygame-touching) render package."""
-    half_w_m = (screen_w / 2.0) / max(0.01, px_per_m) + margin_m
-    half_h_m = (screen_h / 2.0) / max(0.01, px_per_m) + margin_m
-    return (camx - half_w_m, camy - half_h_m, camx + half_w_m, camy + half_h_m)

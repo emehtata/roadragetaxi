@@ -204,11 +204,10 @@ def test_tile_streaming_loads_missing_tiles_in_background():
 
 def test_background_tile_fetch_reports_progress_message():
     """Regression: the loading screen shown while a background tile fetch
-    is in flight (main()'s _wait_for_active_tile_fetch) got stuck at 0%
+    is in flight got stuck at 0%
     with no detail the whole time - _background_tile_fetch never wired a
     progress_callback into fetch_func/build_func at all, so fetch_progress
-    only ever jumped straight from 0.0 to 1.0 and fetch_message (which the
-    loading screen now also shows - see render/menus.py) stayed empty."""
+    only ever jumped straight from 0.0 to 1.0 and fetch_message stayed empty."""
 
     class Transformer:
         def transform(self, x, y):
@@ -837,8 +836,8 @@ def test_returning_before_eviction_cancels_it():
 
 def test_quick_there_and_back_survives_eviction_even_over_memory_budget(monkeypatch):
     """Regression: a real, long play session routinely already sits over
-    tile_memory_budget_mb just from everything else loaded (pygame, the
-    rest of the process, a big already-streamed world) - so without a
+    tile_memory_budget_mb just from everything else loaded (the rest
+    of the process, a big already-streamed world) - so without a
     grace period, "should_evict" was true essentially always, and driving
     one tile over and immediately back (a common quick out-and-back move)
     evicted the tile just left before the player had any chance to

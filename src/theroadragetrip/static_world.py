@@ -1,5 +1,5 @@
-"""The rest of the static world for chunk streaming (godot-16): what Pygame
-draws from the map, prepared once at server start for clients that draw
+"""The rest of the static world for chunk streaming (godot-16): what the
+client draws from the map, prepared once at server start for clients that draw
 from chunks (the Godot client). Everything here is static and visual: no
 collision, no routing.
 
@@ -12,8 +12,8 @@ one twice and an unloaded chunk takes exactly its own features along:
   span kilometres, more than the loaded chunks around the player
 - bridge guardrail segments: their midpoint's chunk
 
-Styles (colours, roof colours, gabled roofs) come from the same functions
-Pygame's renderers use, computed here once instead of per frame.
+Styles (colours, roof colours, gabled roofs) come from building_style.py
+and map_style.py, computed here once.
 """
 
 from __future__ import annotations
@@ -25,9 +25,9 @@ from shapely.ops import unary_union
 
 from .geo import dist_point_to_segment
 
-GUARDRAIL_JOIN_M = 3.0  # render/roads.py draw_ways: close gaps between parallel bridge ways (~3 px at any zoom)
-RAIL_BRIDGE_JOIN_M = 1.5  # render/roads.py _RAILWAY_BRIDGE_JOIN_M
-RAIL_DECK_HALF_M = 2.6 / 2.0 + 0.4  # half a sleeper + the deck margin (render/roads.py)
+GUARDRAIL_JOIN_M = 3.0  # close gaps between parallel bridge ways (~3 px at any zoom)
+RAIL_BRIDGE_JOIN_M = 1.5  # close gaps between parallel bridge tracks
+RAIL_DECK_HALF_M = 2.6 / 2.0 + 0.4  # half a sleeper + the deck margin
 LABEL_DISTRICT, LABEL_WATER, LABEL_AREA, LABEL_BUILDING, LABEL_ROAD = range(5)
 
 
@@ -59,7 +59,7 @@ def clipped_pieces(points, size: float):
 
 
 def road_style(way) -> dict:
-    """The parts of render/roads.py draw_ways' look that aren't geometry:
+    """The parts of a road's look that aren't geometry:
     colour (road_color_for_way), centre line (dashed, or solid on a two-way
     road of 3+ lanes), one-way chevrons, bridge."""
     from .map_style import road_color_for_way
@@ -81,7 +81,7 @@ def road_style(way) -> dict:
 
 def _side_edges(polygons, centerlines, max_angle=math.radians(30)):
     """Boundary edges of the union running along a centreline (not the flat
-    ends): render/roads.py draw_ways' guardrails, in world metres."""
+    ends): the bridge guardrails, in world metres."""
     merged = unary_union([p.buffer(GUARDRAIL_JOIN_M) for p in polygons]).buffer(-GUARDRAIL_JOIN_M)
     edges = []
     for polygon in getattr(merged, "geoms", [merged]):
@@ -112,7 +112,7 @@ def bridge_guardrails(ways) -> list:
 
 def rail_bridge_decks(railways):
     """Deck polygons (union of the bridge tracks' sleeper width + margin)
-    for render/roads.py's rail bridges."""
+    for the rail bridges."""
     lines = [LineString(r.points_m) for r in railways if r.is_bridge and len(r.points_m) >= 2]
     if not lines:
         return []
@@ -123,7 +123,7 @@ def rail_bridge_decks(railways):
 
 def building_style(building) -> list:
     """[roof colour, gabled, height m, entrances, wall colour, floors,
-    category] as render/buildings.py picks them: colours named in the
+    category] as building_style.py picks them: colours named in the
     building's (Finnish) name, else the per-building texture pick; the OSM
     entrances ([x, y] each); its floor count (OSM levels, else height / 3);
     category 1 house, 2 commercial, 0 other (the window rules)."""
@@ -185,7 +185,7 @@ def is_open_roof(building) -> bool:
 
 
 def bus_stop_shapes(stop, ways):
-    """render/roads.py draw_bus_stops' bay, shelter and label from the
+    """A bus stop's bay, shelter and label from the
     nearest same-layer drivable road within 45 m; None without one."""
     nearest = None
     for way in ways:
@@ -217,10 +217,10 @@ def bus_stop_shapes(stop, ways):
 
 
 def labels(world) -> list:
-    """Label candidates as render/labels.py chooses them, by priority:
+    """Label candidates, by priority:
     districts, named waters, named areas, buildings (their places and
     their own name), roads. [x, y, text, category]; the client declutters
-    per view, as Pygame does."""
+    per view."""
     from .map_style import DISTRICT_PLACE_KINDS
 
     found = []

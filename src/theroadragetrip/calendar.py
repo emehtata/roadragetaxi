@@ -73,9 +73,7 @@ def solar_altitude_and_events_on(
     game_date: date, game_time_seconds: float, latitude: float, longitude: float,
 ) -> Tuple[float, float, float]:
     """(sun altitude in degrees, sunrise and sunset in local minutes) for a
-    date and time of day - the solar model render/common.py's
-    solar_altitude_and_events caches for Pygame, and the server sends
-    (godot-14). Sunrise/sunset: 0 and 1440 under the midnight sun, NaN in
+    date and time of day - the solar model the server sends (godot-14). Sunrise/sunset: 0 and 1440 under the midnight sun, NaN in
     the polar night."""
     day_of_year = game_date.timetuple().tm_yday
     declination = math.radians(23.45 * math.sin(math.radians(360.0 * (284.0 + day_of_year) / 365.0)))
@@ -113,7 +111,7 @@ def solar_altitude_and_events_on(
 def darkness_for_sun_altitude(altitude_deg: float) -> float:
     """0 in daylight, 1 at night: full day with the sun 6 degrees up, full
     night 12 degrees below the horizon (astronomical-ish dusk), linear
-    between - Pygame's night tint, street-light and ambience "twilight"."""
+    between - the night tint, street lights and ambience "twilight"."""
     return 1.0 - max(0.0, min(1.0, (altitude_deg + 12.0) / 18.0))
 
 
@@ -134,4 +132,3 @@ def clamp_start_datetime(value: datetime, today: date) -> datetime:
     return value
 
 
-_clamp_start_datetime = clamp_start_datetime  # its old name (main/startup_screens)

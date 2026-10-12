@@ -44,22 +44,12 @@ def find_feature_at(
     tolerance_m: float = 3.0,
 ) -> Optional[dict]:
     """RENDER-audit.md section 19: the nearest mapped OSM feature to
-    (x, y) - world coordinates, e.g. the mouse cursor via
-    render.screen_to_world - across the map's own already-loaded
+    (x, y) - world coordinates - across the map's own already-loaded
     feature lists, or None if nothing is within tolerance_m. A debug
     tool for diagnosing "is this feature parsed? rendered? drivable?"
     directly from the game instead of by reading code - only ever
-    called on a deliberate click (see main.py's feature-inspector
-    toggle), never per frame, so a plain linear scan across each
-    category is fine here, unlike anything in the actual render path.
-
-    Every category the game currently has a dedicated renderer for is
-    "rendered: yes" here by construction - if a category existed that
-    the renderer silently dropped, it wouldn't have a draw_* function to
-    even reach this call site with in the first place. That's exactly
-    the class of gap this tool exists to make easy to *find in the
-    first place* (nothing to click on == nothing found, not a
-    false "rendered: yes").
+    called on a deliberate request, never per frame, so a plain linear
+    scan across each category is fine here.
     """
     candidates = []  # (distance, info)
 
@@ -182,10 +172,8 @@ def find_feature_at(
 
 
 def _npc_snapshot(vehicle, driver=None) -> dict:
-    """Structured per-NPC state for debug snapshots - the JSON analogue of
-    the F7 debug overlay (render/hud.py's draw_npc_debug_panel), so an NPC's
-    driving/routing/parking state can be inspected from a screenshot's JSON
-    without needing that overlay enabled at capture time."""
+    """Structured per-NPC state for debug snapshots - so an NPC's
+    driving/routing/parking state can be inspected from a screenshot's JSON."""
     way = vehicle.way
     next_way = getattr(driver, "next_way", None) if driver is not None else None
     decision = getattr(driver, "decision", None)
@@ -360,7 +348,7 @@ def _write_debug_snapshot(
             "margin_m": args.fetch_margin,
             # The real live tile-streaming grid size (tile_streaming.
             # TILE_SIZE_M, set once at startup - see set_tile_size_m in
-            # main()), NOT args.fetch_tile_size: that CLI value only feeds
+            # world_loader), NOT args.fetch_tile_size: that CLI value only feeds
             # AutoFetchManager.start_if_needed(), a legacy margin-based
             # fetch path no longer called anywhere - reporting it here was
             # reporting a number that has nothing to do with the tiles

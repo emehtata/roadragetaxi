@@ -1,22 +1,14 @@
 """client-server-02.md step 19: a client/server integration test that
-exercises the real protocol and transport, with no Pygame client
-involved - just a bare transport.LineJSONConnection standing in for one.
+exercises the real protocol and transport - just a bare transport.LineJSONConnection standing in for one.
 """
 
-import os
 import sys
 import time
 
 import pytest
 
-pytestmark = pytest.mark.skipif(
-    os.environ.get("SDL_VIDEODRIVER") not in (None, "dummy"),
-    reason="requires a headless-safe SDL driver",
-)
-
 
 def _start_server(monkeypatch):
-    monkeypatch.setenv("SDL_VIDEODRIVER", "dummy")
     monkeypatch.setattr(sys, "argv", ["prog", "--use-sample", "--no-menu"])
     from theroadragetrip.server.cli import parse_server_args
     from theroadragetrip.server import run_server

@@ -512,8 +512,7 @@ def is_car_colliding_with_bridge_edge(car: Car, current_way=None, ways: Optional
     A divided bridge is often split into parallel carriageway Ways (e.g. one
     per direction); the boundary between them is an inner seam, not a real
     guardrail - the renderer already unions overlapping bridge lanes so no
-    rail is drawn between them (see draw_ways's bridge_polygons in
-    render/roads.py). A corner that crosses current_way's own edge but is
+    rail is drawn between them (static_world.py's guardrails). A corner that crosses current_way's own edge but is
     still within another bridge way's half-width is on that shared seam,
     not a real crash.
     """

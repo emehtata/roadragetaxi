@@ -14,7 +14,7 @@ def main() -> None:
     if args.list_cities:
         print(json.dumps(list(cities_from_config(config)[0]), ensure_ascii=False))
         return
-    if args.clear_cache:  # main()'s "Clear all map cache": [OSM files, world caches] removed
+    if args.clear_cache:  # [OSM files, world caches] removed
         from ..osm.cache import clear_osm_cache
         from ..world_cache import clear_world_cache
 

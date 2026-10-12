@@ -11,7 +11,6 @@ import math
 import os
 import random
 import sys
-import threading
 import time
 from types import SimpleNamespace
 
@@ -220,7 +219,7 @@ def load_world(
     parking_spaces = getattr(res, "parking_spaces", [])
     scenery_objects = getattr(res, "scenery_objects", [])
     # lights.md: explicit OSM lamp-pole positions (highway=street_lamp),
-    # when mapped, are the primary source draw_street_lights uses instead
+    # when mapped, are the primary source street-light placement uses instead
     # of its own lit=*-driven fixed-spacing synthesis - see osm/build.py's
     # _scenery_object_kind.
     street_lamps = [obj for obj in scenery_objects if obj.kind == "street_lamp"]

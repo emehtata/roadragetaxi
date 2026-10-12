@@ -106,7 +106,7 @@ def parse_args(config=None, city_names=None, parser: Optional[argparse.ArgumentP
     )
     # No CLI flag - [traffic] vehicle_distribution is a config-file-only
     # knob (a comma-separated "id:weight" list has no clean single-flag
-    # CLI shape); attached here so main/__init__.py's NPCVehicleManager
+    # CLI shape); attached here so the server's NPCVehicleManager
     # construction doesn't need config threaded through separately.
     p.set_defaults(vehicle_distribution=get_vehicle_distribution(config) if config else None)
 

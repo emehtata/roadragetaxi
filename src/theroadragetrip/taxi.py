@@ -719,12 +719,7 @@ class TaxiManager:
                     "shake": 0.55,
                     "leaves": 1.2,
                     "angle": player_car.heading,
-                    # World position, so render/scenery.py's draw_trees()
-                    # can tell whether this specific tree could even be
-                    # visible right now, instead of treating *any* effect
-                    # anywhere in the whole loaded map as a reason to
-                    # bypass the tree cache globally, forever (see its
-                    # docstring for why that mattered).
+                    # World position: the client finds the tree to shake.
                     "x": tree_x,
                     "y": tree_y,
                 }
@@ -944,8 +939,7 @@ class TaxiManager:
                 continue
             # The bump spans width_m across the road, centered on (x, y);
             # build that short perpendicular segment and test whether the
-            # car's movement this frame crossed it - same shape draw_speed_bumps()
-            # renders.
+            # car's movement this frame crossed it.
             angle = getattr(bump, "direction_angle", None) or 0.0
             half_w = getattr(bump, "width_m", 3.5) * 0.5
             perp_x, perp_y = -math.sin(angle), math.cos(angle)

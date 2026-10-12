@@ -6,7 +6,6 @@ render side's intensity-based darkening and teleport-safety concerns are
 covered by test_main_loop.py's broader smoke tests plus the dedicated
 checks below.
 """
-import os
 
 from theroadragetrip.physics import (
     SKIDMARK_FULL_SLIP_THRESHOLD,

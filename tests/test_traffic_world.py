@@ -8,8 +8,7 @@ def test_logical_intersections_survive_construction_and_sync():
     """Regression: TrafficWorld silently dropped logical_intersections -
     never accepted at construction, and sync_map_data's **_kwargs quietly
     swallowed it too - so traffic_mgr.logical_intersections stayed empty
-    for the whole game, and the debug HUD's stop-line overlay
-    (draw_logical_intersections) never had anything to draw."""
+    for the whole game."""
     road = Way([(0.0, 0.0), (100.0, 0.0)], "residential", 4.0)
     world = TrafficWorld([road], logical_intersections=["fake-intersection"])
     assert world.logical_intersections == ["fake-intersection"]

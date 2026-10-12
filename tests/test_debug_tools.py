@@ -135,10 +135,9 @@ def _write_minimal_snapshot(path, **overrides):
 
 
 def test_debug_snapshot_includes_npc_state(tmp_path):
-    """A screenshot's JSON should carry the same NPC driving/routing state
-    the F7 debug overlay shows on screen (draw_npc_debug_panel), so an NPC
-    bug (wrong destination, stuck state, ...) can be diagnosed from the
-    JSON alone without needing that overlay enabled at capture time."""
+    """A screenshot's JSON should carry the NPC driving/routing state,
+    so an NPC bug (wrong destination, stuck state, ...) can be diagnosed
+    from the JSON alone."""
     ways = [
         Way(points_m=[(i * 20.0, 0.0), ((i + 1) * 20.0, 0.0)], highway="residential", half_width_m=4.5)
         for i in range(10)

@@ -118,7 +118,7 @@ def test_irregular_five_way_junction_never_shows_conflicting_greens():
 
 
 def test_generated_signal_never_reaches_the_all_red_state():
-    """Regression: draw_traffic_lights doesn't light any lamp for an
+    """Regression: the client doesn't light any lamp for an
     "all-red" state (it isn't part of the normal cycle), so a non-zero
     all_red_duration made every generated light go fully dark for a beat
     every cycle - "no lights shown". Generated signal groups must never

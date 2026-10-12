@@ -486,8 +486,8 @@ def _continue_track(graph: RailGraph, previous: int, node: int, limit_m: float =
 
 
 class RailwayManager:
-    """Owns the train routes and trains; main() calls rebuild() when the
-    railways list changes and update() once per frame."""
+    """Owns the train routes and trains; the server calls rebuild() when the
+    railways list changes and update() once per tick."""
 
     def __init__(
         self,

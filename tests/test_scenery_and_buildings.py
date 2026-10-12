@@ -1,9 +1,5 @@
-import pytest
-import math
 import sys
-import time
 import types
-import os
 
 fake_pyproj = types.SimpleNamespace()
 
@@ -19,7 +15,6 @@ class FakeTransformer:
 fake_pyproj.Transformer = FakeTransformer
 sys.modules["pyproj"] = fake_pyproj
 
-os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
 
 from theroadragetrip.osm import build_ways, plant_trees
 from theroadragetrip.osm import Building, Place, Scenery, SceneryObject, Way, associate_places_with_buildings
@@ -680,9 +675,8 @@ def test_hard_tree_impact_knocks_tree_down_and_smokes_taxi():
     assert manager.tree_effects[(id(scenery), 0)]["angle"] == car.heading
     assert manager.tree_wait_timer == 5.0
     assert manager.taxi_smoke_timer == 5.0
-    # render/scenery.py's draw_trees() relies on this position to decide
-    # whether a fallen/shaking tree is anywhere near the current viewport
-    # (see its docstring) - it must match the actual tree, not the car.
+    # The client finds the shaking tree by this position: it must match
+    # the actual tree, not the car.
     assert manager.tree_effects[(id(scenery), 0)]["x"] == 0.0
     assert manager.tree_effects[(id(scenery), 0)]["y"] == 0.0
 

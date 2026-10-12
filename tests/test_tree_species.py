@@ -1,7 +1,6 @@
 """Tests for per-tree species classification and rendering: Finland's
 three dominant forest trees (spruce, pine, birch) instead of every tree
-being an identical shape - see osm/trees.py:classify_tree_kind and
-render/scenery.py:_draw_trees_uncached.
+being an identical shape - see osm/trees.py:classify_tree_kind.
 """
 
 from theroadragetrip.osm import Scenery, build_ways, classify_tree_kind, plant_trees

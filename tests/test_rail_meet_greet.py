@@ -378,7 +378,7 @@ def test_from_accepting_the_panel_says_who_off_which_train_and_where():
 
 def test_the_meet_crosses_the_wire_step_by_step():
     """godot-11: the Godot client draws the meet panel and the arrow from
-    protocol's `meet`, which follows meet_prompt as Pygame's main() does."""
+    protocol's `meet`, which follows meet_prompt."""
     from theroadragetrip import protocol
 
     bookings, train = booked_train("Aino Virtanen")

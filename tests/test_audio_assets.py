@@ -1,12 +1,10 @@
 """godot-03.md: the sound assets and every reference to them stay valid
 (tools/validate_audio_assets.py); Godot-side loading is in godot/tests."""
 import json
-import os
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tools"))
-os.environ.setdefault("SDL_AUDIODRIVER", "dummy")
 
 import validate_audio_assets as validator  # noqa: E402
 

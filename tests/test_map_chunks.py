@@ -58,7 +58,7 @@ def test_gameplay_points_are_each_in_exactly_one_chunk():
     assert here["fuel_stations"] == [{"x": 30.0, "y": 60.0, "angle": 0.5, "is_area": True, "name": "Neste",
                                       "price_cents": fuel_station_price_cents(world.scenery_objects[0])}]
     # Posts by list index (stable for the session, unlike the missing roadwork ids), at
-    # Pygame's render position; a non-renderable post is not sent.
+    # their render position (protocol.traffic_light_render_point); a non-renderable post is not sent.
     assert here["traffic_lights"] == [{"id": 0, "x": 102.0, "y": 50.0, "angle": round(math.pi / 2, 4)}]
     assert east["traffic_lights"] == [{"id": 1, "x": 600.0, "y": 50.0, "angle": 0.0}]
     # A roadwork crossing the chunk edge goes to its midpoint's chunk only.
@@ -175,10 +175,10 @@ def test_static_world_lists_in_the_chunks():
     assert len(here["rail_decks"]) == 1  # the bridge track's deck
     assert [l for l in here["labels"] if l[2] == "Hupisaaret"][0][3] == static_world.LABEL_AREA
     assert any(l[2] == "Sininen talo" and l[3] == static_world.LABEL_BUILDING for l in here["labels"])
-    assert [l[0] for l in here["landuse"]] == [[100, 145, 80], [170, 142, 96]]  # park, construction (render/scenery.py colours)
+    assert [l[0] for l in here["landuse"]] == [[100, 145, 80], [170, 142, 96]]  # park, construction (map_style.py colours)
 
 
-def test_road_style_follows_pygames_road_look():
+def test_road_style_follows_the_map_style():
     from theroadragetrip import static_world
     from theroadragetrip.map_style import road_color_for_way
 
@@ -201,7 +201,7 @@ def test_bridge_guardrails_run_along_the_outside_only():
 
 
 def test_bus_stop_shapes_follow_the_nearest_road():
-    """godot-16: render/roads.py draw_bus_stops' bay and shelter, computed once."""
+    """godot-16: a bus stop's bay and shelter, computed once."""
     from theroadragetrip import static_world
 
     road = SimpleNamespace(points_m=[(0.0, 0.0), (100.0, 0.0)], half_width_m=3.0, is_drivable=True, layer=0)
@@ -216,8 +216,8 @@ def test_bus_stop_shapes_follow_the_nearest_road():
 
 def test_garage_aisles_are_not_sent_as_surface_roads():
     """Bug: a map_level -1 garage aisle (kept in world.ways) was sent with
-    the surface roads, so Godot drew it over the street map. Pygame's
-    draw_ways takes only SURFACE_MAP_LEVELS; underground roads are
+    the surface roads, so Godot drew it over the street map. The surface
+    roads are only SURFACE_MAP_LEVELS; underground roads are
     level_roads, shown on their own level."""
     street = SimpleNamespace(points_m=[(0.0, 5.0), (100.0, 5.0)], half_width_m=4.0, highway="residential",
                              is_drivable=True, layer=0, map_level=0)
@@ -248,7 +248,7 @@ def test_garage_crossings_and_bumps_are_not_surface_markings():
 
 
 def test_a_river_line_is_a_line_not_a_filled_area():
-    """render/waters.py fills only closed water areas: Oulujoki's centre line
+    """Only closed water areas are filled: Oulujoki's centre line
     (waterway=river, open) sent as an area flooded the city."""
     from types import SimpleNamespace
 
@@ -265,7 +265,7 @@ def test_a_river_line_is_a_line_not_a_filled_area():
 def test_buildings_have_one_owner_and_their_facade_style():
     """godot-17: a building drawn as a volume belongs to one chunk (its
     centre's); its style carries the wall colour, floors and category the
-    facades and windows use (render/buildings.py's own picks)."""
+    facades and windows use (building_style.py's picks)."""
     from theroadragetrip.osm.models import Building
     from theroadragetrip import building_style as rb
     from theroadragetrip import static_world
@@ -278,6 +278,6 @@ def test_buildings_have_one_owner_and_their_facade_style():
     assert west["buildings"] == [] and len(east["buildings"]) == 1  # centre x = 505: east owns it, once
     roof, gabled, height, entrances, wall, floors, category = east["building_styles"][0]
     assert floors == 5 and category == 0 and wall in [list(c) for c in rb.BUILDING_WALL_COLORS]
-    assert rb.BUILDING_WALL_COLORS.index(tuple(wall)) == rb.BUILDING_ROOF_COLORS.index(tuple(roof))  # the pair Pygame uses
+    assert rb.BUILDING_WALL_COLORS.index(tuple(wall)) == rb.BUILDING_ROOF_COLORS.index(tuple(roof))  # a matching wall and roof pair
     assert east["canopies"] and east["canopy_heights"] == [static_world.building_style(canopy)[2]]
     assert static_world.building_style(Building([(0, 0), (9, 0), (9, 9)], building_type="house"))[6] == 1

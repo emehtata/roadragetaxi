@@ -6,10 +6,8 @@ so rain particles, wet-road tint, puddles and splashes all read one shared
 WeatherSystem instead of each tracking their own notion of "is it raining".
 
 Rain particle positions are stored as screen-fraction coordinates (0..1
-on each axis) rather than pixels, so this module never needs to import
-SCREEN_W/SCREEN_H from render/ (render/ imports from game-state modules
-like this one, not the other way around) - render/weather.py converts to
-pixels at draw time using whatever screen size it's actually given.
+on each axis) rather than pixels: the renderer converts to pixels at draw time
+using whatever screen size it has.
 """
 import copy
 import math
@@ -53,8 +51,7 @@ LIGHTNING_FLASH_DURATION_S = 0.22
 
 # Wetness dynamics, in game-seconds - matches the game clock's own hour/
 # minute units regardless of how fast time_scale is currently running it
-# (main()'s time_scale is 1x with a passenger, 60x without - see
-# main()'s game_time_seconds update). Rain wets faster than drying dries:
+# (time_scale is 1x with a passenger, 60x without). Rain wets faster than drying dries:
 # a road visibly darkens within minutes of rain starting but takes longer
 # to fully dry once it stops.
 RAIN_WETTING_DURATION_S = 10.0 * 60.0  # 0 -> 1 wetness over 10 game-minutes of rain
@@ -71,7 +68,7 @@ RAIN_SPEED_VARIATION = (0.75, 1.3)  # per-particle multiplier, assigned once at 
 
 # Splashes: visual only (WEATHER_RAIN.md #5 - vehicle physics are never
 # touched here), real-time lifetime like rain particles. Edge-triggered by
-# the caller (main() only spawns one when the car *enters* a puddle, not
+# the caller (it only spawns one when the car *enters* a puddle, not
 # every frame it spends inside one) so continuously driving through a
 # puddle doesn't flood the pool.
 SPLASH_LIFETIME_S = 0.5
@@ -160,8 +157,7 @@ class WeatherSystem:
         self._lightning_timer = self._rng.uniform(*LIGHTNING_INTERVAL_RANGE_S)
         # Each entry: [x_fraction, y_fraction, speed_factor]. Recycled in
         # place (wrap to a fresh random x/y when a streak falls off the
-        # bottom) rather than reallocated - render/weather.py maps these
-        # to actual screen pixels.
+        # bottom) rather than reallocated.
         self.rain_particles = [self._spawn_rain_particle() for _ in range(RAIN_PARTICLE_COUNT)]
         if not self._automatic:
             self._weather_timer = float("inf")
@@ -403,7 +399,7 @@ class WeatherSystem:
         generated weather for this hour; otherwise the generator runs,
         continuing from whatever was last observed.
 
-        `game_dt` is dt * time_scale - the same delta main() uses to
+        `game_dt` is dt * time_scale - the same delta the server uses to
         advance game_time_seconds - so drying/wetting tracks the game
         clock, not wall-clock time. `real_dt` is the plain per-frame dt:
         rain must fall at a consistent visual speed regardless of how

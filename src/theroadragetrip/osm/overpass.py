@@ -122,7 +122,7 @@ def fetch_osm_ways(
     south, west, north, east = bbox
     # landuse/leisure below are unfiltered by value, not a whitelist regex:
     # build_ways() (osm/build.py) classifies any landuse=*/leisure=* way as
-    # scenery regardless of its value, and render/scenery.py:SCENERY_COLORS
+    # scenery regardless of its value, and map_style.py:SCENERY_COLORS
     # already covers dozens of specific values (farmland, cemetery,
     # sports_centre, nature_reserve, ...) - a narrower whitelist here just
     # meant osm_source=overpass silently dropped everything outside it,

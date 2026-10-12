@@ -1,5 +1,4 @@
 """Tests for automated lane keeping assistance."""
-import math
 from types import SimpleNamespace
 from theroadragetrip.osm import Way
 from theroadragetrip.physics import Car, SpatialWayGrid, update_car_physics

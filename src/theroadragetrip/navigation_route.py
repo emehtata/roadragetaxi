@@ -1,7 +1,6 @@
 """The player's navigation route, owned by the server (godot-final-04).
 
-Pygame's main() plans the route itself (main/__init__.py: N, `navigation_route`).
-The server keeps the same lifecycle here, for every client:
+The route lifecycle, for every client:
 
 - **No route without a target.**
 - **When it replans:** for a new pickup/drop-off target, a new map level, a new
@@ -9,8 +8,7 @@ The server keeps the same lifecycle here, for every client:
   every segment.
 - **Surface routes** run as the resumable `plan_route_steps` job, a slice of at
   most `budget_s` per tick, so the 30 Hz tick never stalls on a long search.
-- **Off the surface,** `world.level_routes.plan` gives this level's leg (as
-  Pygame does).
+- **Off the surface,** `world.level_routes.plan` gives this level's leg.
 - **What is published:** only a finished route, compacted once with
   `simplify_polyline`, as the state's `navigation.points`.
 """
@@ -23,7 +21,7 @@ from typing import List, Optional, Sequence, Tuple
 from .geo import dist_point_to_segment
 from .map_level import SURFACE_LEVEL
 
-ROUTE_DEVIATION_M = 35.0  # main(): farther than this from every segment -> re-plan
+ROUTE_DEVIATION_M = 35.0  # farther than this from every segment -> re-plan
 ROUTE_TOLERANCE_M = 0.5  # simplify_polyline: no dropped point lies farther than this from the line
 ROUTE_BUDGET_S = 0.002  # route search per tick
 
@@ -84,7 +82,7 @@ class NavigationRoute:
 
     def _off_route(self, car) -> bool:
         if len(self.points) < 2:
-            return False  # no route (unreachable): main() doesn't retry either until something changes
+            return False  # no route (unreachable): no retry until something changes
         return min(
             dist_point_to_segment(car.x, car.y, a[0], a[1], b[0], b[1])
             for a, b in zip(self.points, self.points[1:])
@@ -99,7 +97,7 @@ class NavigationRoute:
             self._job_started = time.perf_counter()
             return
         # Off the surface: this level's graph, out through its connectors; the
-        # leg on this level (it re-plans on the next one). Synchronous, as main().
+        # leg on this level (it re-plans on the next one). Synchronous.
         self._job = None
         level_routes = getattr(world, "level_routes", None)
         route = level_routes.plan(world.traffic_mgr.route_graph(), (car.x, car.y), level, (target.x, target.y)) if level_routes else None

@@ -55,7 +55,7 @@ from .trees import (
 )
 
 # OSM tags -> SceneryObject.kind for small decorative point features (see
-# render/scenery.py:draw_scenery_objects() for how each kind is drawn).
+# godot/chunk_detail.gd for how each kind is drawn).
 # Deliberately narrow: only the statue-like historic/tourism subtypes count
 # as "statue" - a flat plaque or a bare stele isn't a 3D object worth its
 # own icon the way a statue/bust/sculpture is.
@@ -180,8 +180,8 @@ def _scenery_object_kind(tags: Dict[str, str]) -> Optional[str]:
         return amenity
     if tags.get("highway") == "street_lamp":
         # lights.md: explicit physical lamp-pole data, when mapped, is the
-        # primary source for street-light placement - render/roads.py's
-        # draw_street_lights prefers these real positions over its own
+        # primary source for street-light placement - street_lights.py
+        # prefers these real positions over its own
         # lit=*-driven fixed-spacing synthesis wherever they exist.
         return "street_lamp"
     if tags.get("historic") == "memorial" and tags.get("memorial") in _STATUE_MEMORIAL_TYPES:

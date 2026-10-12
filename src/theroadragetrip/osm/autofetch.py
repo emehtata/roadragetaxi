@@ -139,11 +139,10 @@ _WORLD_SECTIONS = (
 )
 
 # Per-frame wall-clock budget for the incremental tile-world merge
-# (bin-loader-v5.md). A dedicated constant, not MAP_SYNC_BUDGET_S or
-# render/roads.py's INCREMENTAL_REBUILD_BUDGET_S: the tile merge runs at a
+# (bin-loader-v5.md). A dedicated constant, not MAP_SYNC_BUDGET_S: the tile merge runs at a
 # different point in the frame (in the tile-streaming block, before the
-# map_sync_stage machine even starts), so stacking it on top of one of
-# those existing budgets would let two unrelated 4ms allowances land in the
+# map_sync_stage machine even starts), so stacking it on top of that
+# budget would let two unrelated 4ms allowances land in the
 # same frame without either budget accounting for the other. Same order of
 # magnitude as both by the same reasoning (small enough that even a worst-
 # case stack of several per-frame budgets stays well under a 60fps frame's
@@ -202,7 +201,7 @@ INACTIVE_TILE_EVICTION_BATCH = 6
 # Minimum time a tile must have sat inactive before it's even a candidate
 # for eviction - independent of memory pressure. A long real play session
 # routinely already sits over tile_memory_budget_mb just from everything
-# else loaded (pygame, the rest of the process, a big already-streamed
+# else loaded (the rest of the process, a big already-streamed
 # world), so without this floor a tile became eligible the instant it left
 # the active window: a player driving one tile over and immediately back
 # (a very common "quick look, then return" movement) evicted the tile they

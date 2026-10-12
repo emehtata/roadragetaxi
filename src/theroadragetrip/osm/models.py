@@ -108,7 +108,7 @@ class Building:
     # "office", "detached", "commercial", ...) - already present in every
     # building way/relation's own OSM tags, just never propagated before.
     # Used to tell a detached house apart from an apartment/office block
-    # for window density/size (render/buildings.py's _building_scale_category).
+    # for window density/size (building_style.py).
     building_type: Optional[str] = None
     roof_shape: Optional[str] = None
     height_is_explicit: bool = False
@@ -245,8 +245,7 @@ class Scenery:
     # kind at planting time, real OSM genus/species/leaf_type tags if
     # given, otherwise a deterministic per-position mix - never left
     # ambiguous for the renderer to guess at. Empty for a Scenery cached
-    # before this field existed; draw_trees() falls back to classifying
-    # on the fly from position in that case.
+    # before this field existed.
     tree_kinds: List[str] = field(default_factory=list)
     # Set by remove_trees_under_roads() once it has swept this scenery's
     # trees against the road network, so a later re-sync (a new tile
@@ -525,7 +524,7 @@ class SceneryObject:
     own behavior (unlike e.g. TrafficLight's signal timing) - they're all
     just a position, a kind to pick a small icon by, and an id for
     dedup/caching. See osm/build.py for the OSM tags -> kind mapping and
-    render/scenery.py:draw_scenery_objects() for how each kind is drawn.
+    godot/chunk_detail.gd for how each kind is drawn.
 
     direction_angle is set only for kinds placed beside a path/way (bench,
     waste_basket) - the position is snapped just past that way's edge, on

@@ -9,8 +9,7 @@ DEFAULT_PORT = 8765
 
 def parse_server_args():
     """Reuses game_args.parse_args for every world-selection flag (bbox,
-    preset, use-sample, no-cache, ...) so the server and the Pygame client
-    accept identical world arguments from one definition, adding the
+    preset, use-sample, no-cache, ...), adding the
     server-only --host/--port/--tick-rate onto the same parser."""
     config = load_config()
     city_centers, _bbox_presets = cities_from_config(config)
@@ -23,7 +22,7 @@ def parse_server_args():
     parser.add_argument("--language", choices=["en", "fi"], default=None)
     parser.add_argument("--list-cities", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument("--clear-cache", action="store_true",
-                        help="Delete all cached map data (OSM downloads and built worlds), as Pygame's menu, and exit")
+                        help="Delete all cached map data (OSM downloads and built worlds) and exit")
     parser.add_argument("--start-time", type=datetime.fromisoformat, default=None,
                         help="Gig game start, local YYYY-MM-DDTHH:MM, up to a year back (default: today 18:00)")
     parser.add_argument("--historical-weather", action=argparse.BooleanOptionalAction, default=None,

@@ -1,6 +1,4 @@
-import os
 
-os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
 from theroadragetrip.geo import compute_bbox
 from theroadragetrip.map_style import LEGACY_HIGHWAY_COLORS, road_color_for_way
 from theroadragetrip.osm import Way

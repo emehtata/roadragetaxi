@@ -1,6 +1,5 @@
 """Predictive tile lookahead, core-first request priority and the soft
 streaming boundary (osm-stream-00.md)."""
-import inspect
 
 from theroadragetrip.osm import AutoFetchManager
 from theroadragetrip.osm import autofetch as autofetch_module

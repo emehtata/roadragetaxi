@@ -1,11 +1,11 @@
-"""Live map expansion on the server (main()'s auto-fetch + map sync).
+"""Live map expansion on the server (auto-fetch + map sync).
 
 As the taxi nears the loaded map's edge the AutoFetchManager streams the
 neighbouring tiles in the background and merges them into the world's lists
 (budgeted per tick). Once a merge settles, the world's derived structures
-are brought up to date in main()'s order - grids, taxi, traffic and
-pedestrian graphs, level structures - each stage resumable and budgeted
-like Pygame's, so a tick never stalls for long. Then the street lights of
+are brought up to date in order - grids, taxi, traffic and
+pedestrian graphs, level structures - each stage resumable and budgeted,
+so a tick never stalls for long. Then the street lights of
 the new area are placed and the map chunks rebuilt; the server resends the
 chunks that changed.
 """
@@ -24,7 +24,7 @@ logger = logging.getLogger(__name__)
 
 
 def map_sync_steps(world):
-    """main()'s map_sync_stage 1..14 as one generator: each `yield` is a
+    """The map sync stages 1..14 as one generator: each `yield` is a
     point where the tick may stop (its budget spent) and resume later. The
     old structures keep serving until each stage's new one is complete."""
     w = world

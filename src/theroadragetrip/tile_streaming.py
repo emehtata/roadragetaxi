@@ -15,7 +15,7 @@ TILE_SIZE_M = 1000.0
 # 10x10km/100km^2 takes ~28s and ~530MB, while 25x25km already balloons to
 # ~80s/1GB and 30x30km (literal 10km tiles) would land in between those -
 # a real, noticeable stall on every tile transition instead of only the
-# initial load. Only used for osm_source=pbf (see main()) - Overpass
+# initial load. Only used for osm_source=pbf (see world_loader) - Overpass
 # fetches at this size would risk the query timing out or tripping a
 # public instance's response-size limits, and don't share the local
 # extract's "worth it once you're already scanning the whole file" appeal.

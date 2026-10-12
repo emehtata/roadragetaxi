@@ -522,7 +522,7 @@ class PedestrianManager:
         # advance_incremental_sync, bin-loader-v3.md) - None/"done" when
         # no rebuild is in progress.
         self._sync_stage: Optional[str] = None
-        # Optional FrameProfiler (main.py sets it) for nested stage timers.
+        # Optional profiler (record(name, ms)) for nested stage timers; None in the server.
         self.profiler = None
         self.sync_stats = {"jobs": 0, "frames": 0, "completed": 0, "routes": 0}
         self._sync_source_ways: Optional[List[Way]] = None
@@ -1032,9 +1032,7 @@ class PedestrianManager:
         # cell overlaps the way's bbox, the way cannot possibly cross a
         # building's interior.
         # A way whose bbox was never computed (the dataclass default)
-        # must not be treated as sitting at the world origin - same "bb
-        # and bb != (0,0,0,0)" convention render/roads.py's
-        # _start_road_rebuild already uses for the same reason.
+        # must not be treated as sitting at the world origin.
         cell_size = self._building_grid_cell_size
         bbox = way.bbox
         if bbox and bbox != (0.0, 0.0, 0.0, 0.0):

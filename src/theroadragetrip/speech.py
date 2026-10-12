@@ -1,12 +1,11 @@
-"""Driver and passenger speech selection (godot-final-07), pygame-free.
+"""Driver and passenger speech selection (godot-final-07).
 
 The chatter catalogs (assets/passenger_chatter.json, driver_chatter.json)
-and the rules that choose a line live here once. Pygame's AudioManager
-plays the chosen line on its comment channel; the server's EventAudio sends
-it to the clients as a "speech" event. A line is a recorded file
+and the rules that choose a line live here. The server's EventAudio sends
+the chosen line to the clients as a "speech" event. A line is a recorded file
 sounds/<speaker>_chatter/<g>_<language>_<hash>.wav, g "f" or "m".
 
-The rules (audio.py's, unchanged):
+The rules:
 - one line at a time: nothing while the last one still plays
 - a driver line at most once per situation every 3 s, requested language,
   else the Finnish recording (the subtitle keeps the requested text)
@@ -71,7 +70,7 @@ def gender_code(gender: str) -> str:
 
 class Speech:
     """Chooses lines. `available(speaker, key)` says whether a recording can
-    play (Pygame: a loaded Sound; the server: a file on disk); `rng` is the
+    play (a file on disk); `rng` is the
     random source (tests inject one)."""
 
     def __init__(self, available: Callable[[str, tuple], bool], rng=random,
@@ -109,7 +108,7 @@ class Speech:
 
     def passenger_tick(self, active: bool, gender: str, language: str, dt: float, speaker_name: Optional[str], busy: bool) -> Optional[dict]:
         """Occasional chatter while a passenger rides; the interval restarts
-        after every attempt (played or not), as audio.py's."""
+        after every attempt (played or not)."""
         if not active:
             self.interval = self.rng.uniform(self.min_interval, self.max_interval)
             return None
@@ -135,5 +134,5 @@ class Speech:
 
     @staticmethod
     def _line(speaker: str, key: tuple, entry: dict, language: str, speaker_name) -> dict:
-        # No text in `language`: the recording still plays, without a subtitle (as audio.py).
+        # No text in `language`: the recording still plays, without a subtitle.
         return {"speaker": speaker, "key": key, "text": str(entry.get(language, "") or ""), "speaker_name": speaker_name, "mood": entry.get("mood")}

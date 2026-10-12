@@ -14,7 +14,7 @@
       "one_shot": 1,
       "loop": 2
     },
-    "reason": "pygame.mixer (the game's audio stack) loads OGG; ~10x smaller than WAV in git."
+    "reason": "Godot loads OGG Vorbis; ~10x smaller than WAV in git."
   },
   "root": "src/theroadragetrip/assets/audio",
   "priorities": [
@@ -191,8 +191,7 @@
       "description": "Taxi engine cranking and starting.",
       "trigger": "E key turns engine on (command.engine_on).",
       "source": [
-        "src/theroadragetrip/main/__init__.py:1712",
-        "src/theroadragetrip/simulation.py:248"
+        "src/theroadragetrip/simulation.py:286"
       ],
       "priority": "required",
       "loop": false,
@@ -278,7 +277,7 @@
       "description": "Taxi engine switching off.",
       "trigger": "E key turns engine off.",
       "source": [
-        "src/theroadragetrip/main/__init__.py:1712"
+        "src/theroadragetrip/simulation.py:286"
       ],
       "priority": "strong_candidate",
       "loop": false,
@@ -985,7 +984,7 @@
       "description": "Taxi horn.",
       "trigger": "Space: rage shout plays carhorn_takes.",
       "source": [
-        "src/theroadragetrip/main/__init__.py:1718"
+        "src/theroadragetrip/simulation.py:291"
       ],
       "priority": "strong_candidate",
       "loop": false,
@@ -2518,7 +2517,7 @@
       "description": "Phone raised / put away.",
       "trigger": "P key toggles phone_open.",
       "source": [
-        "src/theroadragetrip/main/__init__.py:1685"
+        "godot/phone.gd"
       ],
       "priority": "strong_candidate",
       "loop": false,
@@ -2990,8 +2989,7 @@
       "description": "Menu cursor move and select.",
       "trigger": "Menu key handling (city, settings, pause menus).",
       "source": [
-        "src/theroadragetrip/main/menu_input.py",
-        "src/theroadragetrip/render/menus.py"
+        "not played yet: the Godot menus are silent"
       ],
       "priority": "optional",
       "loop": false,
@@ -3432,7 +3430,6 @@
       "description": "Thunder following a lightning flash.",
       "trigger": "weather.lightning_event_id changes (thunderstorm).",
       "source": [
-        "src/theroadragetrip/main/__init__.py:1491",
         "src/theroadragetrip/weather.py:126"
       ],
       "priority": "required",
@@ -3847,7 +3844,7 @@
       "description": "Quiet night city ambience.",
       "trigger": "Darkness from solar altitude (as street lights use) replaces the day bed.",
       "source": [
-        "src/theroadragetrip/render/roads.py:draw_street_lights (darkness)"
+        "godot/main.gd (city_night by darkness)"
       ],
       "priority": "optional",
       "loop": true,

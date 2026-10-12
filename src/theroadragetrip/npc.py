@@ -9,9 +9,8 @@ Layering (section 18 of that spec):
     -> traffic rule engine (traffic_rules.py) -> vehicle controller
     (physics.update_car_physics) -> NPCVehicle (physical + render state)
 
-No Pygame anywhere in this module - rendering lives entirely in
-render/vehicles.py's draw_npc_cars, which NPCVehicle is shaped to satisfy
-directly (that renderer already existed, unused, ahead of this feature).
+No rendering in this module: the server sends NPCVehicle's state
+(protocol.py) and the Godot client draws it (godot/entity_layer.gd).
 """
 from __future__ import annotations
 
@@ -946,7 +945,7 @@ def build_driving_path(
 class Driver:
     """Driving-specific state and decisions (NPC-001 section 4).
 
-    Owns the driving *decisions*; never touches Pygame or rendering.
+    Owns the driving *decisions*; never touches rendering.
     """
     resident_id: int
     vehicle_id: int
@@ -1054,12 +1053,8 @@ class NPCVehicle:
 
     All physical simulation state lives in `car` (physics.Car, driven by
     the same update_car_physics the player uses - no duplicated physics).
-    Everything else here is render/identity metadata physics.Car has no
+    Everything else here is display/identity metadata physics.Car has no
     business knowing about.
-
-    Shaped to satisfy render.vehicles.draw_npc_cars's existing duck-typed
-    NPC interface (x/y/heading/speed/... via the properties below) - that
-    renderer already shipped, unused, ahead of this feature.
     """
     vehicle_id: int
     car: Car
@@ -1149,10 +1144,8 @@ class NPCVehicle:
 
     @property
     def passenger_ids(self) -> Tuple[int, ...]:
-        """Trip-group members other than the driver (render/pedestrians.py's
-        draw_npc_popup already reads this attribute name, built ahead of
-        multi-passenger-car.md - "who's riding along" alongside the owner
-        it already shows separately)."""
+        """Trip-group members other than the driver (multi-passenger-car.md:
+        "who's riding along", alongside the owner)."""
         if self.trip_group is None:
             return ()
         return tuple(rid for rid in self.trip_group.member_resident_ids if rid != self.owner_id)
@@ -1974,7 +1967,7 @@ def update_npc(
     pedestrian_mgr: object = None,
 ) -> None:
     """Advance one NPC's driving decision and physics by one frame
-    (NPC-001 sections 5-10). Pure simulation, no Pygame.
+    (NPC-001 sections 5-10). Pure simulation.
 
     Performance (section 16): the route is never recalculated here (only
     once, in spawn_npc); the per-frame scan is the traffic-light lookup,
@@ -2010,7 +2003,7 @@ def update_npc(
         # multi-passenger-car.md sections 17-20: a genuinely stationary
         # parked vehicle has no driving decision left to make - no traffic
         # light lookup, no footprint check - just trip-group bookkeeping.
-        # main/__init__.py's per-frame NPC update checks trip_group.all_
+        # The caller's per-tick NPC update checks trip_group.all_
         # aboard immediately after this call and calls continue_npc_trip
         # (which needs destination/parking/curb/building lookups this
         # function otherwise has no reason to take as parameters) once
@@ -2663,8 +2656,7 @@ def _resting_heading(
     """A reasonable heading for a vehicle sitting at rest at (x, y) - the
     parking space's own long axis (_parking_space_axis - an explicit
     orientation tag if one resolved to a real angle, otherwise the space
-    polygon's own longest-edge axis, which is what render/scenery.py's
-    draw_parking_spaces actually draws the painted bay outline along), or
+    polygon's own longest-edge axis, which the painted bay outline is drawn along), or
     the nearest road's tangent when there's no space at all (a roadside/
     lot/yard point is rarely far from one), or 0.0. Cosmetic only - a
     resting vehicle's footprint is still validated at its actual heading
@@ -3096,9 +3088,7 @@ class NPCVehicleManager:
         # topping up afterwards.
         self._population_elapsed = NPC_POPULATION_TICK_S
         # Reused (not reimplemented) spatial index (physics.SpatialWayGrid
-        # already indexes anything with .bbox or .x/.y) - lights up
-        # render/vehicles.py's existing draw_npc_spatial_grid debug view,
-        # and is available for spawn-time overlap checks.
+        # already indexes anything with .bbox or .x/.y) - available for spawn-time overlap checks.
         self.spatial_grid = SpatialWayGrid(cell_size=100.0)
 
     def _default_vehicle_distribution(self) -> Dict[str, float]:
@@ -3147,12 +3137,10 @@ class NPCVehicleManager:
             "reserved": 0,
             "household": 0,
             "autonomous": 0,
-            # NPC-005: the *target*, not just the current count - the F7
-            # panel showing both side by side is what makes "roads full
-            # of parked cars" a visible, diagnosable number instead of a
-            # vibe. getattr-guarded: population_counts() must stay safe
-            # against a manager built via __new__ with only .vehicles set
-            # (test_shadow_entities_render.py's shadow-object pattern).
+            # NPC-005: the *target*, not just the current count, so "roads
+            # full of parked cars" is a diagnosable number. getattr-guarded:
+            # population_counts() must stay safe against a manager built via
+            # __new__ with only .vehicles set.
             "moving_target": getattr(self, "target_moving_count", 0),
             "road_rage": 0,
             "trip_start_attempts": getattr(self, "population_diagnostics", {}).get("trip_start_attempts", 0),
@@ -4092,8 +4080,8 @@ class NPCVehicleManager:
                 remaining -= 1
                 continue
             kept.append(vehicle)
-        # In place, not self.vehicles = kept: callers (main/__init__.py's
-        # npcs = npc_manager.vehicles, traffic_mgr.npcs) hold a reference
+        # In place, not self.vehicles = kept: callers (the simulation's
+        # npcs = npc_manager.vehicles) hold a reference
         # to this same list object and must keep seeing despawns/spawns
         # without re-fetching it every frame.
         self.vehicles[:] = kept

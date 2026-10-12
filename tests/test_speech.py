@@ -2,23 +2,12 @@
 announcement events, and state.railway."""
 
 import random
-import sys
 from datetime import datetime
 from types import SimpleNamespace
 
 from theroadragetrip import protocol, speech
 from theroadragetrip.server import EventAudio
 from theroadragetrip.station_announcer import StationAnnouncer
-
-
-def test_speech_helper_imports_no_pygame():
-    import importlib
-    import subprocess
-
-    out = subprocess.run([sys.executable, "-c", "import sys; import theroadragetrip.speech; print('pygame' in sys.modules)"],
-                         capture_output=True, text=True, env={"PYTHONPATH": "src", "PATH": ""})
-    assert out.stdout.strip() == "False", out.stderr
-    assert importlib.import_module("theroadragetrip.speech") is speech
 
 
 def test_driver_line_event_falls_back_to_the_finnish_recording_with_the_english_text():

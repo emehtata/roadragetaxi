@@ -33,7 +33,7 @@ def test_layer_and_map_level_stay_independent():
 
 def test_covered_level_zero_road_joins_the_surface_network():
     """level=0 is the surface (garage-05.md): a covered level=0 road is a
-    surface road, drawn by draw_ways, not kept in level_ways."""
+    surface road, not kept in level_ways."""
     world = build_ways([
         {"type": "node", "id": 1, "lat": 65.0, "lon": 25.0},
         {"type": "node", "id": 2, "lat": 65.001, "lon": 25.0},

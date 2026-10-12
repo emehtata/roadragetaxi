@@ -1,10 +1,8 @@
 """Tests for NPC-003: a real, persistent, configurable NPC vehicle
 population (theroadragetrip.npc.NPCVehicleManager)."""
 import math
-import os
 import random
 
-os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
 
 from theroadragetrip.npc import (
     Driver,

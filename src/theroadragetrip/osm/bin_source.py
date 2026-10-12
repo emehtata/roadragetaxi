@@ -4,7 +4,7 @@ tools/osm/build_finland_roads.py, benchmark_oulu.py, benchmark_cities.py).
 This is a fast, deterministic alternative to fetching+building road ways
 from Overpass/PBF (osm/overpass.py, osm/pbf_source.py) for the handful of
 cities that have a pre-generated binary. It supplies `Way` objects only
-(no buildings/water/scenery/etc.) - `main/__init__.py` uses this to
+(no buildings/water/scenery/etc.) - `world_loader.py` uses this to
 replace the *road* ways for a predefined city's world while buildings,
 water, scenery, etc. keep coming from the existing OSM fetch, unchanged.
 

@@ -1,7 +1,6 @@
 """godot-final-04: the server-owned navigation route (navigation_route.py),
 on a real TrafficWorld route graph."""
 
-import time
 from types import SimpleNamespace
 
 from theroadragetrip.geo import dist_point_to_segment

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "theroadragetrip"
-# 0.17.0alpha (Godot client + Python server, no Pygame), in PEP 440 form.
+# 0.17.0alpha (Godot client + Python server), in PEP 440 form.
 version = "0.17.0a0"
 description = "PoC top-down driving game using OSM data"
 readme = "README.md"

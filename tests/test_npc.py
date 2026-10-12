@@ -1,9 +1,7 @@
 """Tests for NPC-001: the first autonomous NPC car (theroadragetrip.npc)."""
 import math
-import os
 from types import SimpleNamespace
 
-os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
 import pytest
 
 from theroadragetrip.npc import (
@@ -1764,8 +1762,7 @@ def test_spawn_npc_group_size_never_exceeds_a_small_custom_capacity(monkeypatch)
 
 
 def test_vehicle_passenger_ids_excludes_the_driver():
-    """render/pedestrians.py's draw_npc_popup already reads this attribute
-    name (built ahead of multi-passenger-car.md) - it must report the
+    """passenger_ids (multi-passenger-car.md) must report the
     trip group's other members, not the driver already shown separately
     as the vehicle's owner."""
     ways = _straight_chain()

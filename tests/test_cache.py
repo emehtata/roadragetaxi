@@ -249,8 +249,8 @@ def test_fetch_query_requests_the_newly_rendered_point_and_barrier_kinds(monkeyp
 def test_fetch_query_requests_any_landuse_or_leisure_way(monkeypatch):
     """Regression: the query used to whitelist a handful of landuse/leisure
     values (forest|grass|park|meadow|...), but build_ways() (osm/build.py)
-    classifies *any* landuse=*/leisure=* way as scenery and render/scenery.
-    py:SCENERY_COLORS already has colors for dozens more (farmland,
+    classifies *any* landuse=*/leisure=* way as scenery and map_style.py:
+    SCENERY_COLORS already has colors for dozens more (farmland,
     cemetery, sports_centre, nature_reserve, ...) - the narrower query just
     meant osm_source=overpass silently dropped everything outside its
     whitelist, while osm_source=pbf (unfiltered osmium extract) kept it, so

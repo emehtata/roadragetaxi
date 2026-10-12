@@ -27,7 +27,7 @@ _KINDS = ("roads", "railways", "waters", "water_lines", "buildings", "taxi_stand
           "building_styles", "canopies", "rail_bridges", "rail_decks", "guardrails", "landuse", "traffic_islands",
           "parking", "curbs", "crossings", "speed_bumps", "signs", "speed_cameras", "bus_stops", "labels", "level_roads",
           "canopy_heights")
-# Decorative scenery_objects kinds (render/scenery.py draw_scenery_objects); bollards, fuel pumps
+# Decorative scenery_objects kinds; bollards, fuel pumps
 # and street lamps have their own lists.
 DECORATIVE_KINDS = ("bench", "waste_basket", "bicycle_parking", "statue", "picnic_table", "firepit", "fountain", "gate")
 
@@ -95,7 +95,7 @@ class ChunkIndex:
         self._chunks: dict[str, dict] = {}
         self._encoded: dict[str, bytes] = {}
         for way in world.ways:
-            # Surface roads only, as render/roads.py draw_ways: a garage aisle
+            # Surface roads only: a garage aisle
             # (map_level -1) stays in world.ways but is sent as a level road below.
             if len(way.points_m) >= 2 and getattr(way, "map_level", None) in SURFACE_MAP_LEVELS:
                 self._add("roads", way.points_m, {
@@ -104,10 +104,10 @@ class ChunkIndex:
                     **static_world.road_style(way),  # colour, centre line, one-way, bridge (godot-16)
                 })
         for rail in world.railways:
-            if len(rail.points_m) >= 2:  # a bridge track is drawn above the vehicles (render/roads.py)
+            if len(rail.points_m) >= 2:  # a bridge track is drawn above the vehicles
                 self._add("rail_bridges" if rail.is_bridge else "railways", rail.points_m, _line(rail.points_m))
         for water in world.waters:
-            # render/waters.py: only a closed water area is filled; a river or
+            # Only a closed water area is filled; a river or
             # stream line (Oulujoki's centre line) is drawn as a line, 3 m wide
             # - filled, it flooded the city.
             points = getattr(water, "points_m", ())
@@ -127,9 +127,9 @@ class ChunkIndex:
                 continue
             chunk["buildings"].append(_line(building.points_m))  # buildings and their styles in step
             chunk["building_styles"].append(static_world.building_style(building))
-        for stop in getattr(world, "taxi_stops", ()):  # render/roads.py draw_taxi_stops
+        for stop in getattr(world, "taxi_stops", ()):
             self._add("taxi_stands", ((stop.x, stop.y),), [round(stop.x, 1), round(stop.y, 1)])
-        for station in getattr(world, "scenery_objects", ()):  # draw_scenery_objects' pumps, draw_fuel_station_signs
+        for station in getattr(world, "scenery_objects", ()):  # fuel pumps and their price signs
             if station.kind == "fuel":
                 self._add("fuel_stations", ((station.x, station.y),), {
                     "x": round(station.x, 1), "y": round(station.y, 1), "angle": round(station.direction_angle or 0.0, 3),
@@ -155,17 +155,17 @@ class ChunkIndex:
             if str(getattr(scenery, "kind", "")).lower() == "construction" and len(scenery.points_m) >= 3:
                 self._add("construction_fences", scenery.points_m[:1], _line(scenery.points_m))  # its first corner's chunk
         for post in getattr(world, "scenery_objects", ()):
-            if post.kind == "bollard":  # street lamps are drawn with the street lights, not here (render/scenery.py)
+            if post.kind == "bollard":  # street lamps are drawn with the street lights, not here
                 self._add("bollards", ((post.x, post.y),), [round(post.x, 1), round(post.y, 1)])
         # Drawing only (godot-15): nothing collides with these.
-        for railing in getattr(world, "railings", ()):  # render/roads.py draw_railings; its first point's chunk
+        for railing in getattr(world, "railings", ()):  # its first point's chunk
             if len(railing.points_m) >= 2:
                 self._add("railings", railing.points_m[:1], [getattr(railing, "kind", "fence"), _line(railing.points_m)])
         for obj in getattr(world, "scenery_objects", ()):
             if obj.kind in DECORATIVE_KINDS:
                 self._add("scenery_objects", ((obj.x, obj.y),),
                           [round(obj.x, 1), round(obj.y, 1), obj.kind, round(obj.direction_angle or 0.0, 3)])
-        # Street lights as render/roads.py places them (explicit OSM lamps, then
+        # Street lights as street_lights.py places them (explicit OSM lamps, then
         # lit roads at fixed spacing): [x, y, the road's direction, pool radius].
         for lamp in getattr(world, "street_light_points", ()):
             x, y, direction, pool_radius = lamp[:4]
@@ -173,7 +173,7 @@ class ChunkIndex:
             self._add("street_lights", ((x, y),), [round(x, 1), round(y, 1), round(direction, 3), pool_radius]
                       + ([1] if len(lamp) > 4 and lamp[4] else []))
         self._add_static_world(world)
-        for work in getattr(world, "roadworks", ()):  # render/roads.py draw_roadworks; in the chunk of its midpoint
+        for work in getattr(world, "roadworks", ()):  # in the chunk of its midpoint
             middle = ((work.start[0] + work.end[0]) / 2.0, (work.start[1] + work.end[1]) / 2.0)
             self._add("roadworks", (middle,), {
                 "start": [round(work.start[0], 2), round(work.start[1], 2)], "end": [round(work.end[0], 2), round(work.end[1], 2)],
@@ -188,7 +188,7 @@ class ChunkIndex:
             self._chunk(cell)[kind].append(feature)
 
     def _add_static_world(self, world) -> None:
-        """godot-16: the rest of what Pygame draws from the map (static_world.py)."""
+        """godot-16: the rest of what the client draws from the map (static_world.py)."""
         from .map_style import SCENERY_COLORS, SPECKLE_SCENERY_KINDS
 
         for scenery in getattr(world, "sceneries", ()):

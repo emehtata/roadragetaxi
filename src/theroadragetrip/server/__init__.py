@@ -2,11 +2,11 @@
 
 Owns the one authoritative `world`/`car`, runs `simulation.advance_simulation`
 at a fixed rate, and publishes a state snapshot to every connected client
-after each tick, to the Godot client. No display and no pygame: it runs on
+after each tick, to the Godot client. No display: it runs on
 a machine with no graphical environment.
 
 Live map expansion (auto-fetch as the car nears the loaded bbox's edge):
-server/map_sync.py streams and merges tiles, runs main()'s map sync in
+server/map_sync.py streams and merges tiles, runs the map sync in
 budgeted steps, and the server resends the chunks that changed
 (--no-auto-fetch turns it off). The server runs the same
 `advance_simulation` tick as the old single-process game otherwise.
@@ -43,7 +43,7 @@ from ..physics import reset_trip, respawn_car
 from ..transport import Listener
 from ..weather import WeatherSystem, raining_last_hour, weather_type_for_observation
 from ..weather_history import WeatherHistory, precipitation_from_observation
-from ..calendar import clamp_start_datetime as _clamp_start_datetime
+from ..calendar import clamp_start_datetime
 from ..osm import CACHE_DIR
 from ..climate import typical_temperature
 
@@ -77,7 +77,7 @@ class EventAudio(NullAudio):
     def __init__(self, rng=None) -> None:
         self.events: list = []
         self._edges: dict = {}
-        # Speech (godot-final-07): speech.py chooses as Pygame does; a line
+        # Speech (godot-final-07): speech.py chooses the line; a line
         # is "busy" until its recording would have finished, on the
         # simulation clock (advance()).
         import random as _random
@@ -202,22 +202,21 @@ class SimulationServer:
             self.gig_odometer_file, self.language,
         )
         self.car = self.world.car
-        # weather is per-session state main() constructs fresh alongside
-        # `world` rather than something _load_world itself returns -
+        # weather is per-session state constructed fresh alongside
+        # `world` rather than something load_world itself returns -
         # attached onto `world` here so protocol.py's state builder (which
         # reads world.weather, matching how it reads every other manager)
         # doesn't need a separate parameter for it.
-        # The game's one calendar (godot-14), as main() keeps it: game time,
+        # The game's one calendar (godot-14): game time,
         # date and the weather's season follow from it. The server starts
-        # today at 18:00, as it always has; Pygame's career default is
-        # another date, chosen on its start screen.
-        start = getattr(args, "start_time", None)  # the gig start picker's (Pygame's choose_start_datetime), a year back at most
+        # today at 18:00 unless --start-time says otherwise.
+        start = getattr(args, "start_time", None)  # the gig start picker's, a year back at most
         if start is not None:
-            start = _clamp_start_datetime(start.replace(second=0, microsecond=0), date.today())
+            start = clamp_start_datetime(start.replace(second=0, microsecond=0), date.today())
         self.calendar = GameCalendar(start or datetime.combine(date.today(), datetime.min.time()) + timedelta(hours=18),
                                      latitude=getattr(self.world, "sun_latitude", 65.01))
         self.world.weather = WeatherSystem(season=self.calendar.season)
-        # Historical weather (main()'s, opt-in): FMI observations/forecast for
+        # Historical weather (opt-in): FMI observations/forecast for
         # this city and game time where known, generated weather otherwise.
         historical = getattr(args, "historical_weather", None)
         if historical is None:
@@ -289,7 +288,7 @@ class SimulationServer:
                                  lambda moment: typical_temperature(moment, self.calendar.latitude))
 
     def _forecast(self) -> list:
-        """main()'s start-screen forecast: now and every 6 h for 24 h - the
+        """The start-screen forecast: now and every 6 h for 24 h - the
         temperature (observed/forecast, else typical), the weather (FMI's
         precipitation where known, else the generator's prediction) and
         where it came from."""
@@ -331,7 +330,7 @@ class SimulationServer:
 
     def _tyre_mark(self, previous) -> Optional[dict]:
         """Whether the taxi lays a tyre mark this tick, and which, decided as
-        Pygame's main() decides it (SKIDMARK.md): rubber on a hard surface
+        SKIDMARK.md says: rubber on a hard surface
         when the tyres slip enough, a dirt (sand, snow) trail off-road on
         soft ground whenever moving. None when nothing is laid. The client
         keeps the trail."""
@@ -375,7 +374,7 @@ class SimulationServer:
             self.calendar.date, self.calendar.time_seconds,
             getattr(self.world, "sun_latitude", self.calendar.latitude), getattr(self.world, "sun_longitude", 25.47),
         )
-        look = self.calendar.seasonal_appearance  # continuous weights, as Pygame's renderers blend them
+        look = self.calendar.seasonal_appearance  # continuous weights, for the client to blend
         return {"date": self.calendar.date.isoformat(), "time_scale": self._time_scale,
                 "season": [round(w * 20.0) / 20.0 for w in (look.winter, look.spring, look.summer, look.autumn)],
                 "sun_altitude_deg": round(altitude, 2), "darkness": round(darkness_for_sun_altitude(altitude), 3)}
@@ -425,7 +424,7 @@ class SimulationServer:
                         self._pending_trip_resets += 1
                     if phone is not None:
                         self._phone_requests.append(phone)
-                    snapshot = message.get("debug_snapshot")  # F12 in the client: Pygame's screenshot JSON
+                    snapshot = message.get("debug_snapshot")  # F12 in the client: the screenshot's JSON
                     if isinstance(snapshot, str) and snapshot.endswith(".json"):
                         self._debug_snapshots.append(snapshot)
         with self._clients_lock:
@@ -445,7 +444,7 @@ class SimulationServer:
                 self._latest_command = PlayerCommand()
 
     def write_debug_snapshot(self, path: str) -> None:
-        """main()'s F12 JSON (debug_tools._write_debug_snapshot) for the
+        """The F12 JSON (debug_snapshot.py) for the
         client's screenshot, from the server's world; the client's view is
         the server's camera at its zoom."""
         from ..viewport import get_viewport_bounds
@@ -511,16 +510,16 @@ class SimulationServer:
         if reset_trip_meter:
             reset_trip(self.car)
 
-        # Game time runs 60x while there is no fare, 1:1 during one (main()).
+        # Game time runs 60x while there is no fare, 1:1 during one.
         time_scale = self._time_scale = 1.0 if self.world.taxi_mgr.has_active_job() else 60.0
         previous_date = self.calendar.date
         self.calendar.advance(dt * time_scale)
         if self.calendar.date != previous_date:
-            self.world.weather.season = self.calendar.season  # main()'s _sync_thermal_season
+            self.world.weather.season = self.calendar.season  # the thermal season follows the calendar
         observed = self._update_outside()
         self.world.weather.update(dt * time_scale, dt, outside_temperature_c=self.world.weather.outside_temperature_c,
                                   observed=observed)
-        if self.world.weather.lightning_event_id != self._lightning_event_id:  # a strike: thunder, once (as main())
+        if self.world.weather.lightning_event_id != self._lightning_event_id:  # a strike: thunder, once
             self.audio.play_group("weather.thunder", 0.8)
             self._lightning_event_id = self.world.weather.lightning_event_id
 
@@ -556,10 +555,10 @@ class SimulationServer:
             now=self.calendar.current,
         )
         self._tire_mark = self._tyre_mark(previous=(car_x, car_y))
-        for npc in self.world.npc_manager.vehicles:  # brake lamps (Pygame has none for NPCs)
+        for npc in self.world.npc_manager.vehicles:  # brake lamps
             npc.braking = npc_braking(npc, getattr(npc, "_last_speed", npc.speed), dt)
             npc._last_speed = npc.speed
-        if self._road_rage is not None:  # main(): the shout counts down in real time
+        if self._road_rage is not None:  # the shout counts down in real time
             timer = max(0.0, self._road_rage["timer"] - dt)
             self._road_rage = {"text": self._road_rage["text"], "timer": round(timer, 3)} if timer > 0.0 else None
         if result.rage_shout:
@@ -579,7 +578,7 @@ class SimulationServer:
         railway_mgr = getattr(self.world, "railway_mgr", None)
         if railway_mgr is not None:
             for kind, x, y, train, stop in railway_mgr.sound_events:
-                if stop is not None:  # main()'s _play_rail_sounds: the station's announcement, from its platform
+                if stop is not None:  # the station's announcement, from its platform
                     platform = stop[5] if len(stop) > 5 and stop[5] is not None else (x, y)
                     announcement = self.announcer.event(kind, train, stop, platform, (self.car.x, self.car.y))
                     if announcement is not None:
@@ -591,7 +590,7 @@ class SimulationServer:
             railway_mgr.sound_events.clear()
         if self._map_growth is not None:
             self._apply_map_growth()
-        if self._map_streamer is not None:  # main(): auto-fetch near the edge, then map sync
+        if self._map_streamer is not None:  # auto-fetch near the edge, then map sync
             self._map_streamer.tick(self.car.x, self.car.y, math.cos(self.car.heading) * self.car.speed,
                                     math.sin(self.car.heading) * self.car.speed)
         self._stream_map_chunks()
@@ -599,8 +598,7 @@ class SimulationServer:
         self._broadcast_state(should_stop=result.should_stop, city_summary=result.city_summary, events=events)
 
     def _apply_phone_request(self, request: dict) -> dict:
-        """Accept or reject a phone row by id through the taxi manager - the
-        same calls (and sounds) as the Pygame phone - and say how it went."""
+        """Accept or reject a phone row by id through the taxi manager - and say how it went."""
         taxi_mgr = self.world.taxi_mgr
         index = taxi_mgr.phone_item_index(request["item_id"])
         ok, reason = False, "gone"  # expired, taken or declined meanwhile
@@ -715,11 +713,9 @@ class SimulationServer:
 
 
 def place_street_lights(world, outside=None) -> list:
-    """Every street light of the map, placed once with Pygame's own
-    placement (render/roads.py: explicit OSM lamps first, then lit roads at
-    fixed spacing, clear of junctions and buildings) - Pygame runs it per
-    view region in frame-budgeted steps; here it runs to the end over the
-    whole map (Oulu: ~21,500 lights, ~1.7 s at startup).
+    """Every street light of the map, placed once (street_lights.py:
+    explicit OSM lamps first, then lit roads at fixed spacing, clear of
+    junctions and buildings), run to the end over the whole map (Oulu: ~21,500 lights, ~1.7 s at startup).
     [(x, y, road direction, pool radius m)]."""
     from .. import street_lights as roads
 
