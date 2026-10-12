@@ -622,6 +622,19 @@ def test_startup_does_not_claim_tiles_the_startup_world_never_reached():
         set_tile_size_m(original)
 
 
+def test_startup_only_claims_tiles_inside_the_fetched_area():
+    """Bug (Oulu, Kajaanintie east): ways and areas crossing the startup bbox
+    come whole, so the world's bounds reached 900 m past the fetched area
+    into the next tile; that tile was marked loaded, never fetched, and the
+    road ended there for good. Only tiles wholly inside the fetched area count."""
+    # Fetched 0..1300 m east; features stretch the bounds to 1900 m.
+    manager = AutoFetchManager([], (0.0, 0.0, 1900.0, 1000.0), transformer=None)
+    manager.initialize_player_tile(500.0, 500.0, fetched=(-1000.0, -1000.0, 1300.0, 2000.0))
+    assert TileCoord(0, 0) in manager.loaded_tiles
+    assert TileCoord(1, 0) not in manager.loaded_tiles  # only touched by the overhanging features
+    assert TileCoord(1, 0) in manager.active_tiles - manager.loaded_tiles - manager.pending_tiles
+
+
 def test_tile_map_revision_changes_when_streamed_map_changes():
     manager = AutoFetchManager([], (0.0, 0.0, 1000.0, 1000.0), transformer=None)
     assert manager.get_map_revision() == 0

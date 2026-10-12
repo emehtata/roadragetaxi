@@ -57,6 +57,11 @@ def _tile_intersects_bounds(tile: TileCoord, bounds: Tuple[float, float, float, 
     return not (tmaxx < bminx or tminx > bmaxx or tmaxy < bminy or tminy > bmaxy)
 
 
+def _tile_within(tile: TileCoord, area: Tuple[float, float, float, float]) -> bool:
+    tminx, tminy, tmaxx, tmaxy = tile_bbox(tile)
+    return area[0] <= tminx and area[1] <= tminy and tmaxx <= area[2] and tmaxy <= area[3]
+
+
 def _snap_projected_bbox(
     bbox: Tuple[float, float, float, float], tile_size_m: float
 ) -> Tuple[float, float, float, float]:
@@ -548,8 +553,10 @@ class AutoFetchManager:
             max(box[3] for box in boxes),
         ) if boxes else (0.0, 0.0, 0.0, 0.0)
 
-    def initialize_player_tile(self, x: float, y: float) -> TileCoord:
-        """Seed tile tracking from the already loaded startup world."""
+    def initialize_player_tile(self, x: float, y: float, fetched=None) -> TileCoord:
+        """Seed tile tracking from the already loaded startup world.
+        `fetched`: the metres rectangle the startup world was actually
+        extracted for - only tiles wholly inside it count as loaded."""
         current_tile = world_to_tile(x, y)
         with self.lock:
             self.player_tile = current_tile
@@ -568,9 +575,13 @@ class AutoFetchManager:
             # nominally inside the same oversized starting tile, so
             # start_tile_streaming() never sees anything "missing" and no
             # fetch is ever triggered - the road just runs out.
+            # The world's own bounds overstate that: ways and areas crossing
+            # the startup bbox come whole, reaching hundreds of metres past
+            # it. A tile just touched by them was marked loaded with most of
+            # its territory never extracted - a road ended there for good.
             self.loaded_tiles = {
                 tile for tile in self.active_tiles
-                if _tile_intersects_bounds(tile, self.bounds)
+                if (_tile_within(tile, fetched) if fetched is not None else _tile_intersects_bounds(tile, self.bounds))
             }
             self._unload_tiles(set(self._tile_objects) - self.active_tiles)
         return current_tile

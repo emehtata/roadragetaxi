@@ -81,6 +81,18 @@ def latlon_to_world_metres():
     return lambda lat, lon: transformer.transform(lon, lat)
 
 
+def fetched_area_metres(bbox):
+    """The metres rectangle a (south, west, north, east) bbox surely covers:
+    the rectangle inside its projected corners (EPSG:3067 turns the meridians,
+    so the corners don't line up). None without a bbox or pyproj."""
+    to_metres = latlon_to_world_metres()
+    if not bbox or to_metres is None:
+        return None
+    south, west, north, east = bbox
+    sw, nw, se, ne = to_metres(south, west), to_metres(north, west), to_metres(south, east), to_metres(north, east)
+    return (max(sw[0], nw[0]), max(sw[1], se[1]), min(se[0], ne[0]), min(nw[1], ne[1]))
+
+
 def load_world(
     chosen_city: str,
     camera_city_name: str,
@@ -430,7 +442,7 @@ def load_world(
         build_in_process=args.build_in_process,
         world_cache_manager=world_cache,
     )
-    auto_fetch_manager.initialize_player_tile(car.x, car.y)
+    auto_fetch_manager.initialize_player_tile(car.x, car.y, fetched_area_metres(bbox))
     auto_fetch_manager.soft_boundary_enabled = args.auto_fetch
     on_load_progress(1.0, "Ready")
     logger.info("Entering gameplay loop")
