@@ -34,6 +34,9 @@ const B25 := preload("res://buildings_25d.gd")
 const B3 := preload("res://buildings_3d.gd")
 const Perf := preload("res://perf.gd")
 const BRIDGE_Z_MAX := 3
+const SPRING_ICE_COLORS := [Color8(225, 236, 241), Color8(205, 224, 232), Color8(238, 243, 244)]
+const SPRING_ICE_EDGE := Color8(185, 207, 218)
+const SPRING_ICE_SPACING_M := 24.0
 
 var _data: Dictionary = {}
 var _origin := Vector2.ZERO
@@ -44,6 +47,7 @@ var _wet_darken := Node2D.new()
 var _wet_sheen := Node2D.new()
 var _puddles := Node2D.new()
 var _puddle_spots: Array = []  # [{"at", "radius", "reveal", "shape"}]
+var _water_ripple_spots: Array = []  # cached once; weather_layer animates their rings
 var _wetness := 0.0
 var _px_per_m := 9.0
 var _px_layers: Array[Node2D] = []  # point layers drawn in screen-pixel sizes
@@ -160,6 +164,7 @@ func setup(message: Dictionary, origin: Vector2) -> void:
 		_px_layers.append(_signs)
 	_puddle_spots = puddle_spots(message.get("roads", []), _bounds_rect, origin)  # from the raw coordinates
 	_compact()
+	_water_ripple_spots = water_ripple_spots(_data.get("waters", []), _origin)
 	_build_2_5d()
 	set_wetness(_wetness)
 
@@ -569,6 +574,45 @@ func _points(line) -> PackedVector2Array:
 	return points
 
 
+## Position-seeded plates keep their places when neighbouring chunks load or unload.
+static func spring_ice_floes(polygon: PackedVector2Array, origin: Vector2, chance := 0.34) -> Array:
+	if polygon.size() < 3:
+		return []
+	var world_rect := _rect(polygon)
+	world_rect.position = Vector2(origin.x + world_rect.position.x, origin.y - world_rect.end.y)
+	var floes: Array = []
+	var rng := RandomNumberGenerator.new()
+	for grid_y in range(floori(world_rect.position.y / SPRING_ICE_SPACING_M), ceili(world_rect.end.y / SPRING_ICE_SPACING_M)):
+		for grid_x in range(floori(world_rect.position.x / SPRING_ICE_SPACING_M), ceili(world_rect.end.x / SPRING_ICE_SPACING_M)):
+			rng.seed = hash(Vector2i(grid_x, grid_y))
+			if rng.randf() >= chance:
+				continue
+			var world := Vector2(grid_x + rng.randf_range(0.15, 0.85), grid_y + rng.randf_range(0.15, 0.85)) * SPRING_ICE_SPACING_M
+			var at := MapMath.point(origin, world.x, world.y)
+			if Geometry2D.is_point_in_polygon(at, polygon):
+				floes.append({"at": at, "rx": rng.randf_range(1.3, 3.2), "ry": rng.randf_range(0.7, 1.8),
+					"angle": rng.randf_range(0.0, TAU), "color": SPRING_ICE_COLORS[rng.randi_range(0, SPRING_ICE_COLORS.size() - 1)]})
+	return floes
+
+
+static func water_ripple_spots(waters: Array, origin: Vector2) -> Array:
+	var spots: Array = []
+	for water in waters:
+		for floe in spring_ice_floes(water, origin, 1.0):
+			spots.append({"at": floe["at"], "radius": floe["rx"], "reveal": 0.0, "phase": floe["angle"] / TAU})
+	return spots
+
+
+func _draw_ice_floe(floe: Dictionary) -> void:
+	var polygon := PackedVector2Array()
+	for i in 10:
+		var angle := TAU * i / 10.0
+		polygon.append(floe["at"] + Vector2(cos(angle) * floe["rx"], sin(angle) * floe["ry"]).rotated(floe["angle"]))
+	draw_colored_polygon(polygon, floe["color"])
+	polygon.append(polygon[0])
+	draw_polyline(polygon, SPRING_ICE_EDGE, 0.18)
+
+
 func _draw() -> void:
 	# water freezes with the winter weight.
 	var water_color := Color(0.25, 0.45, 0.65).lerp(Color8(232, 240, 244), clampf(_season[0], 0.0, 1.0))
@@ -576,6 +620,9 @@ func _draw() -> void:
 		var polygon := _points(water)
 		if polygon.size() >= 3 and not Geometry2D.triangulate_polygon(polygon).is_empty():
 			draw_colored_polygon(polygon, water_color)
+			if _season[1] > 0.05:
+				for floe in spring_ice_floes(polygon, _origin):
+					_draw_ice_floe(floe)
 	for line in _data.get("water_lines", []):  # a stream or river line, 3 m wide
 		var points := _points(line)
 		if points.size() >= 2:

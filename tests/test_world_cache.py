@@ -8,12 +8,18 @@ from theroadragetrip.world_cache import (
     BinaryWorldCacheWriter,
     InvalidWorldCache,
     WorldCacheManager,
+    default_world_cache_dir,
 )
 
 
 @pytest.fixture
 def sample_world():
     return build_ways(load_local_sample())
+
+
+def test_default_world_cache_uses_the_os_cache_root(monkeypatch):
+    monkeypatch.setattr("theroadragetrip.world_cache.default_cache_root", lambda: "/user-cache/RoadRageTrip")
+    assert default_world_cache_dir().as_posix() == "/user-cache/RoadRageTrip/world"
 
 
 def test_rwc_round_trip_preserves_game_data(tmp_path, sample_world):

@@ -106,6 +106,16 @@ def test_forecast_samples_temperature_without_advancing_live_weather():
     assert weather._outside_temperature_c is None
 
 
+def test_winter_forecast_continues_after_current_fmi_observation():
+    weather = WeatherSystem(season=Season.WINTER)
+    weather._follow_observation("", False)
+
+    forecast = weather.forecast([-5.0, -4.0, -3.0], interval_s=6.0 * 60.0 * 60.0)
+
+    assert len(forecast) == 3
+    assert weather._following_observation is True
+
+
 def test_toggle_rain_flips_clear_and_rain():
     weather = WeatherSystem()
     weather.toggle_rain()

@@ -421,7 +421,10 @@ class WeatherSystem:
                     # Observations ended (e.g. game time passed "now"): the
                     # generator takes over from the last observed state.
                     self._following_observation = False
-                    self._weather_timer = self._next_weather_duration()
+                    if self._season in (Season.AUTUMN, Season.WINTER):
+                        self._start_autumn_or_winter_period()
+                    else:
+                        self._weather_timer = self._next_weather_duration()
                 self._advance_automatic_weather(game_dt)
                 self._apply_precipitation_temperature()
             if self.weather_type in (WeatherType.RAIN, WeatherType.SLUSH):

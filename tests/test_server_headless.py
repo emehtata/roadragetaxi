@@ -510,6 +510,7 @@ def test_the_world_message_carries_the_start_sign(tmp_path, monkeypatch):
     forecast = server.start_forecast
     assert len(forecast) == 5 and forecast[0]["source"] == "generated"
     assert all(set(line) == {"time", "temperature_c", "weather", "source"} for line in forecast)
+    assert all(line["time"].endswith(":00") for line in forecast)
     assert forecast[0]["weather"] in ("clear", "rain", "slush", "snow", "thunderstorm")
     message = protocol.build_world_message((0.0, 0.0), 250.0, "p1", "Oulu", forecast)
     assert message["city"] == "Oulu" and message["forecast"] == forecast

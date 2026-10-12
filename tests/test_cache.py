@@ -566,3 +566,14 @@ def test_the_server_clears_the_map_cache_and_says_how_much(monkeypatch, capsys):
     monkeypatch.setattr(sys, "argv", ["prog", "--clear-cache", "--use-sample", "--no-menu"])
     server_main.main()
     assert json.loads(capsys.readouterr().out.strip().splitlines()[-1]) == [4, 2]
+
+
+def test_cache_root_is_platform_specific(monkeypatch):
+    import theroadragetrip.osm.cache as cache
+
+    monkeypatch.setattr(cache.sys, "platform", "win32")
+    monkeypatch.setenv("LOCALAPPDATA", r"C:\Users\Me\AppData\Local")
+    assert cache.default_cache_root() == r"C:\Users\Me\AppData\Local/RoadRageTrip"
+    monkeypatch.setattr(cache.sys, "platform", "linux")
+    monkeypatch.setenv("XDG_CACHE_HOME", "/var/tmp/my-cache")
+    assert cache.default_cache_root() == "/var/tmp/my-cache/RoadRageTrip"

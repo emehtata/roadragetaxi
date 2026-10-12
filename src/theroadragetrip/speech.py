@@ -3,7 +3,7 @@
 The chatter catalogs (assets/passenger_chatter.json, driver_chatter.json)
 and the rules that choose a line live here. The server's EventAudio sends
 the chosen line to the clients as a "speech" event. A line is a recorded file
-sounds/<speaker>_chatter/<g>_<language>_<hash>.wav, g "f" or "m".
+sounds/<speaker>_chatter/<g>_<language>_<hash>.ogg, g "f" or "m".
 
 The rules:
 - one line at a time: nothing while the last one still plays
@@ -19,7 +19,7 @@ from __future__ import annotations
 import json
 import logging
 import random
-import wave
+import struct
 from pathlib import Path
 from typing import Callable, Optional
 
@@ -49,19 +49,41 @@ def load_lines(speaker: str) -> list:
 
 
 def recorded_lines(speaker: str) -> dict:
-    """(g, language, hash) -> clip seconds, for the recordings on disk (WAV
-    headers only, no audio device)."""
+    """(g, language, hash) -> clip seconds, from OGG headers only."""
     found = {}
-    for path in SOUND_DIRS[speaker].glob("*.wav"):
+    for path in SOUND_DIRS[speaker].glob("*.ogg"):
         parts = path.stem.split("_", 2)
         if len(parts) != 3 or parts[0] not in ("f", "m") or parts[1] not in ("fi", "en"):
             continue
         try:
-            with wave.open(str(path)) as clip:
-                found[tuple(parts)] = clip.getnframes() / float(clip.getframerate() or 1)
-        except (OSError, wave.Error, EOFError):
+            found[tuple(parts)] = ogg_duration(path)
+        except (OSError, ValueError, struct.error):
             continue
     return found
+
+
+def ogg_duration(path: Path) -> float:
+    """Return Vorbis duration without decoding the audio."""
+    sample_rate = 0
+    last_sample = 0
+    with path.open("rb") as clip:
+        while header := clip.read(27):
+            if len(header) != 27 or header[:4] != b"OggS":
+                raise ValueError("invalid OGG page")
+            sizes = clip.read(header[26])
+            if len(sizes) != header[26]:
+                raise ValueError("truncated OGG page")
+            body = clip.read(sum(sizes))
+            if len(body) != sum(sizes):
+                raise ValueError("truncated OGG page")
+            if not sample_rate and body.startswith(b"\x01vorbis"):
+                sample_rate = struct.unpack_from("<I", body, 12)[0]
+            granule = struct.unpack_from("<Q", header, 6)[0]
+            if granule != 0xFFFFFFFFFFFFFFFF:
+                last_sample = max(last_sample, granule)
+    if not sample_rate:
+        raise ValueError("not Vorbis audio")
+    return last_sample / sample_rate
 
 
 def gender_code(gender: str) -> str:

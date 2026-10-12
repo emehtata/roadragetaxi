@@ -292,7 +292,8 @@ class SimulationServer:
         temperature (observed/forecast, else typical), the weather (FMI's
         precipitation where known, else the generator's prediction) and
         where it came from."""
-        moments = [self.calendar.current + timedelta(hours=offset) for offset in range(0, 25, 6)]
+        first_hour = self.calendar.current.replace(minute=0, second=0, microsecond=0)
+        moments = [first_hour + timedelta(hours=offset) for offset in range(0, 25, 6)]
         history = self.weather_history
         observed = [history.get(moment) if history is not None else None for moment in moments]
         temperatures = [o.temperature_c if o is not None and o.temperature_c is not None
@@ -316,13 +317,14 @@ class SimulationServer:
         temperature (observed, else the climate's typical), on the weather
         for the state; queues the next 48 h in the background (cheap)."""
         moment, weather = self.calendar.current, self.world.weather
+        fmi_moment = moment.replace(minute=0, second=0, microsecond=0)
         observed = None
         if self.weather_history is not None:
-            self.weather_history.request(moment, moment + timedelta(hours=48))
-            observed = self.weather_history.get(moment)
+            self.weather_history.request(fmi_moment, fmi_moment + timedelta(hours=48))
+            observed = self.weather_history.get(fmi_moment)
         source = observed.source if observed is not None else "generated"
         if source in ("observed", "forecast") and source != getattr(weather, "weather_source", None):
-            logger.info("FMI weather now %s: %s", f"{moment:%d.%m. %H:%M}", source)
+            logger.info("FMI weather now %s: %s", f"{fmi_moment:%d.%m. %H:%M}", source)
         weather.weather_source = source
         weather.outside_temperature_c = (observed.temperature_c if observed is not None and observed.temperature_c is not None
                                          else typical_temperature(moment, self.calendar.latitude))

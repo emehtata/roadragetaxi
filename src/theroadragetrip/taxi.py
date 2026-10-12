@@ -39,8 +39,18 @@ NIGHTLIFE_VENUE_TYPES = {
 MOTION_SICKNESS_THRESHOLD = 8.0
 POST_KINDS = ("bollard", "street_lamp")  # solid poles the taxi can hit
 POST_RADIUS_M = 0.15
+TREE_TRUNK_RADIUS_M = 0.4
 POST_KNOCK_DOWN_KMH = 50.0  # faster than this a post bends over instead of stopping the taxi
 GREET_RADIUS_M = 2.0  # how close the driver on foot must be to greet a booked rail customer
+
+
+def car_hits_tree_trunk(car: Car, tree_x: float, tree_y: float) -> bool:
+    """Whether the circular trunk touches the car's oriented body."""
+    dx, dy = tree_x - car.x, tree_y - car.y
+    cos_h, sin_h = math.cos(car.heading), math.sin(car.heading)
+    outside_x = max(0.0, abs(dx * cos_h + dy * sin_h) - car.length_m * 0.5)
+    outside_y = max(0.0, abs(-dx * sin_h + dy * cos_h) - car.width_m * 0.5)
+    return math.hypot(outside_x, outside_y) <= TREE_TRUNK_RADIUS_M
 
 @dataclass
 class TaxiTarget:
@@ -687,11 +697,11 @@ class TaxiManager:
         for key in expired:
             del self._crashed_tree_cooldowns[key]
 
-        radius = math.hypot(player_car.length_m, player_car.width_m) * 0.5 + 1.0
+        radius = math.hypot(player_car.length_m, player_car.width_m) * 0.5 + TREE_TRUNK_RADIUS_M
         for scenery_index, tree_index, tree_x, tree_y in self._nearby_collision_trees(
             sceneries, player_car.x, player_car.y, radius
         ):
-                if math.hypot(player_car.x - tree_x, player_car.y - tree_y) > radius:
+                if not car_hits_tree_trunk(player_car, tree_x, tree_y):
                     continue
                 if ways and is_point_on_road(tree_x, tree_y, ways=ways, car_roads_only=True):
                     continue
@@ -700,17 +710,6 @@ class TaxiManager:
                     restore_x, restore_y = previous_position
                 else:
                     restore_x, restore_y = player_car.x, player_car.y
-                away_x = restore_x - tree_x
-                away_y = restore_y - tree_y
-                away_distance = math.hypot(away_x, away_y)
-                if away_distance < radius:
-                    if away_distance < 1e-6:
-                        away_x = -math.cos(player_car.heading)
-                        away_y = -math.sin(player_car.heading)
-                        away_distance = 1.0
-                    safe_distance = radius + 0.2
-                    restore_x = tree_x + away_x / away_distance * safe_distance
-                    restore_y = tree_y + away_y / away_distance * safe_distance
                 player_car.x, player_car.y = restore_x, restore_y
                 impact_speed_kmh = abs(player_car.speed) * 3.6
                 player_car.speed = 0.0

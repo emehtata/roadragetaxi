@@ -10,6 +10,11 @@ from theroadragetrip.server import EventAudio
 from theroadragetrip.station_announcer import StationAnnouncer
 
 
+def test_chatter_ogg_duration_is_read_without_decoding():
+    recording = next(speech.SOUND_DIRS["driver"].glob("*.ogg"))
+    assert 0.1 < speech.ogg_duration(recording) < 30.0
+
+
 def test_driver_line_event_falls_back_to_the_finnish_recording_with_the_english_text():
     audio = EventAudio(rng=random.Random(4))
     audio.play_driver_line("pickup", "en")

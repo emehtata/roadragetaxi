@@ -566,15 +566,15 @@ func test_speech_and_stations() -> void:
 	var audio: Node = load("res://audio_manager.gd").new()
 	root.add_child(audio)
 	var dir := DirAccess.open(audio.package_root.path_join("sounds/driver_chatter"))
-	var wav := ""
+	var ogg := ""
 	for file in dir.get_files():
-		if file.ends_with(".wav"):
-			wav = file
+		if file.ends_with(".ogg"):
+			ogg = file
 			break
-	var parts := wav.get_basename().split("_")
+	var parts := ogg.get_basename().split("_")
 	var line := {"type": "speech", "speaker": "driver", "speaker_name": null, "gender": parts[0], "language": parts[1], "hash": parts[2],
 		"text": "Asiakas kyytiin.", "duration_s": 4.0}
-	check(audio.speech_file(line).ends_with("sounds/driver_chatter/" + wav), "a speech event names exactly one existing recording")
+	check(audio.speech_file(line).ends_with("sounds/driver_chatter/" + ogg), "a speech event names exactly one existing recording")
 	check(audio.speak(line) and audio.speech_player.playing and audio.speech_player.bus == "Game", "it plays on the one voice, the Game bus")
 	check(not audio.speak(line) and audio.played_groups["speech"] == 1, "never two lines at once")
 	for bad in [line.merged({"hash": "../../etc/passwd"}, true), line.merged({"speaker": "../x"}, true), line.merged({"gender": "x"}, true),
@@ -652,7 +652,8 @@ func test_speech_and_stations() -> void:
 	check(Hud.map_loading_text("fetching", 0, "en", "Fetching from https://overpass-api.de/api/interpreter (attempt 1/3)...").contains("https://overpass-api.de/api/interpreter"), "map loading sign: where it loads from while fetching")
 	check(Hud.map_loading_text("syncing", 0, "fi").contains("Ladataan karttaa") and Hud.map_loading_text("building", 0).left(1) != Hud.map_loading_text("building", 150).left(1), "map loading sign: Finnish, and the spinner turns")
 	check(EntityLayer.drawable(PackedVector2Array([Vector2(0, 0), Vector2(1, 0), Vector2(1, 1)])) and not EntityLayer.drawable(PackedVector2Array([Vector2(0, 0), Vector2(1, 0), Vector2(2, 0)]))
-		and not EntityLayer.drawable(PackedVector2Array([Vector2(0, 0), Vector2(NAN, 0), Vector2(1, 1)])), "a flat or NaN lamp polygon is skipped, not handed to the triangulator")
+		and not EntityLayer.drawable(PackedVector2Array([Vector2(0, 0), Vector2(NAN, 0), Vector2(1, 1)]))
+		and not EntityLayer.drawable(PackedVector2Array([Vector2(0, 0), Vector2(2, 0), Vector2(2, 1), Vector2(2, 1)])), "a flat, NaN or collapsed lamp polygon is skipped, not handed to the triangulator")
 	var night_blue := Color(0.2, 0.25, 0.4)
 	var route_night := EntityLayer.route_tint(night_blue)
 	check(EntityLayer.route_tint(Color.WHITE) == Color.WHITE and route_night.r > night_blue.r + 0.3 and route_night.r < 1.0, "the route at night: dimmer than by day, far clearer than the night around it")
@@ -703,6 +704,20 @@ func test_speech_and_stations() -> void:
 	check(minimap.load_svg_from_string(FileAccess.get_file_as_string("res://finland_minimap.svg")) == OK, "city map: bundled SVG decodes without ResourceLoader")
 	check(Startup.map_source_args("pbf", "") == ["--osm-source", "pbf"] and Startup.map_source_args("pbf", "/maps/fi.osm.pbf") == ["--osm-source", "pbf", "--osm-pbf-path", "/maps/fi.osm.pbf"], "map source: a local .osm.pbf, its path when set")
 	check(Startup.map_source_args("overpass", "x") == ["--osm-source", "overpass"] and Startup.map_source_args("", "") == [], "map source: Overpass, or the server's config")
+	check(Startup.FINLAND_PBF_URL == "https://download.geofabrik.de/europe/finland-latest.osm.pbf" and Startup.downloaded_pbf_path().ends_with("maps/finland-latest.osm.pbf"), "map source: Finland download uses the per-user data directory")
+	var pbf_modified := int(FileAccess.get_modified_time("res://finland_minimap.svg"))
+	check(not Startup.pbf_is_old("res://finland_minimap.svg", pbf_modified) and Startup.pbf_is_old("res://finland_minimap.svg", pbf_modified + Startup.PBF_MAX_AGE_S + 1), "map source: files over 30 days old are offered an update")
+	check(Startup.download_percent(25, 100) == 25.0 and Startup.download_percent(120, 100) == 100.0 and Startup.download_percent(1, 0) == 0.0, "map source: download progress is bounded and handles an unknown size")
+	var replace_target := "/tmp/rrt-pbf-replace-test"
+	var replace_partial := replace_target + ".part"
+	var old_file := FileAccess.open(replace_target, FileAccess.WRITE)
+	old_file.store_string("old")
+	old_file = null
+	var new_file := FileAccess.open(replace_partial, FileAccess.WRITE)
+	new_file.store_string("new")
+	new_file = null
+	check(Startup.replace_download(replace_partial, replace_target) and FileAccess.get_file_as_string(replace_target) == "new" and not FileAccess.file_exists(replace_target + ".old"), "map source: a completed update replaces the old file on Windows and Linux")
+	DirAccess.remove_absolute(replace_target)
 	var today := {"year": 2026, "month": 10, "day": 8}
 	check(Startup.clamp_start({"year": 2026, "month": 3, "day": 5, "hour": 7, "minute": 15}, today) == {"year": 2026, "month": 3, "day": 5, "hour": 7, "minute": 15}, "start time: a date in the last year stays")
 	check(Startup.clamp_start({"year": 2024, "month": 1, "day": 1, "hour": 7, "minute": 0}, today).year == 2025 and Startup.clamp_start({"year": 2024, "month": 1, "day": 1, "hour": 7, "minute": 0}, today).month == 10, "start time: a year back at most")
@@ -1367,6 +1382,12 @@ func test_static_world() -> void:
 	check(MapChunk.seasonal_color(Color8(34, 101, 35), [0.0, 0.0, 1.0, 0.0]) == Color8(34, 101, 35), "summer keeps the colour")
 	check(MapChunk.seasonal_color(Color8(34, 101, 35), [1.0, 0.0, 0.0, 0.0]) == Color8(221, 228, 221), "winter: the frosted palette")
 	check(MapChunk.seasonal_color(Color8(34, 101, 35), [0.0, 0.0, 0.0, 1.0]) == Color8(83, 116, 37), "autumn: the ochre palette")
+	var lake := PackedVector2Array([Vector2.ZERO, Vector2(500, 0), Vector2(500, 500), Vector2(0, 500)])
+	var floes := MapChunk.spring_ice_floes(lake, Vector2.ZERO)
+	check(not floes.is_empty() and floes == MapChunk.spring_ice_floes(lake, Vector2.ZERO), "spring ice floes are present and position-seeded")
+	check(floes.all(func(floe): return Geometry2D.is_point_in_polygon(floe["at"], lake)), "spring ice floes stay on water")
+	var water_ripples := MapChunk.water_ripple_spots([lake], Vector2.ZERO)
+	check(water_ripples.size() > floes.size() and water_ripples.all(func(spot): return spot["reveal"] == 0.0 and Geometry2D.is_point_in_polygon(spot["at"], lake)), "rain ripple spots densely cover water and stay inside it")
 	map.set_season([1.0, 0.0, 0.0, 0.0])
 	check(chunk._season == [1.0, 0.0, 0.0, 0.0] and not chunk.set_season([1.0, 0.0, 0.0, 0.0]), "the chunk takes the season once")
 

@@ -191,12 +191,13 @@ func _draw_ripples() -> void:
 	for chunk in map_layer._chunks.values():
 		if not chunk._bounds_rect.intersects(view):
 			continue
-		for spot in chunk._puddle_spots:
-			if not view.has_point(spot["at"]):
-				continue
-			var ring := ripple(spot, chunk._wetness, clock)
-			if not ring.is_empty():
-				_ring(spot["at"], ring[0], Color(RIPPLE_COLOR, ring[1]))
+		for spots in [chunk._puddle_spots, chunk._water_ripple_spots]:
+			for spot in spots:
+				if not view.has_point(spot["at"]):
+					continue
+				var ring := ripple(spot, chunk._wetness, clock)
+				if not ring.is_empty():
+					_ring(spot["at"], ring[0], Color(RIPPLE_COLOR, ring[1]))
 	if not _ripple_points.is_empty():
 		ripples.draw_multiline_colors(_ripple_points, _ripple_colors, RING_WIDTH_PX / map_layer.px_per_m)
 		draw_calls += 1

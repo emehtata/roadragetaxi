@@ -39,16 +39,19 @@ def map_sync_steps(world):
         index, _ = generate_detached_house_parking_chunk(w.buildings, w.ways, w.parking_spaces, w.spatial_grid,
                                                          index, MAP_SYNC_BUDGET_S)
         yield
-    w.building_grid.rebuild(w.buildings)
-    yield
-    w.scenery_grid.rebuild(w.sceneries)
+    for grid, items in ((w.building_grid, w.buildings), (w.scenery_grid, w.sceneries)):
+        grid.start_rebuild(items)
+        while not grid.advance_rebuild(MAP_SYNC_BUDGET_S):
+            yield
+        yield
     w.street_lamps[:] = [obj for obj in w.scenery_objects if obj.kind == "street_lamp"]
-    w.street_lamp_grid.rebuild(w.street_lamps)
-    yield
-    for grid, items in ((w.water_grid, w.waters), (w.crossing_grid, w.crossings), (w.curb_grid, w.curbs),
+    for grid, items in ((w.street_lamp_grid, w.street_lamps), (w.water_grid, w.waters),
+                        (w.crossing_grid, w.crossings), (w.curb_grid, w.curbs),
                         (w.railway_grid, w.railways), (w.railing_grid, w.railings),
                         (w.traffic_light_grid, w.traffic_lights)):
-        grid.rebuild(items)
+        grid.start_rebuild(items)
+        while not grid.advance_rebuild(MAP_SYNC_BUDGET_S):
+            yield
         yield
     if getattr(w, "railway_mgr", None) is not None:
         w.railway_mgr.rebuild(w.railways)

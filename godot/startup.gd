@@ -3,6 +3,8 @@
 extends Control
 
 const PORT := 8765
+const FINLAND_PBF_URL := "https://download.geofabrik.de/europe/finland-latest.osm.pbf"
+const PBF_MAX_AGE_S := 30 * 24 * 60 * 60
 const T := preload("res://i18n.gd")
 const Paths := preload("res://paths.gd")
 
@@ -378,6 +380,45 @@ static func map_source_args(source: String, pbf_path: String) -> Array:
 	return []
 
 
+static func downloaded_pbf_path() -> String:
+	return ProjectSettings.globalize_path("user://maps/finland-latest.osm.pbf")
+
+
+func _pbf_path() -> String:
+	var configured := str(_settings.get_value("map", "osm_pbf_path", "")).strip_edges()
+	if configured != "" and FileAccess.file_exists(configured):
+		return configured
+	var packaged := Paths.package_path("assets/osm/finland-latest.osm.pbf")
+	if configured == "" and FileAccess.file_exists(packaged):
+		return packaged
+	var downloaded := downloaded_pbf_path()
+	return downloaded if FileAccess.file_exists(downloaded) else ""
+
+
+static func pbf_is_old(path: String, now: int) -> bool:
+	var modified := FileAccess.get_modified_time(path)
+	return modified > 0 and now - modified > PBF_MAX_AGE_S
+
+
+static func replace_download(partial: String, target: String) -> bool:
+	var backup := target + ".old"
+	if FileAccess.file_exists(backup):
+		DirAccess.remove_absolute(backup)
+	if FileAccess.file_exists(target) and DirAccess.rename_absolute(target, backup) != OK:
+		return false
+	if DirAccess.rename_absolute(partial, target) == OK:
+		if FileAccess.file_exists(backup):
+			DirAccess.remove_absolute(backup)
+		return true
+	if FileAccess.file_exists(backup):
+		DirAccess.rename_absolute(backup, target)
+	return false
+
+
+static func download_percent(downloaded: int, total: int) -> float:
+	return clampf(float(downloaded) / float(total) * 100.0, 0.0, 100.0) if total > 0 else 0.0
+
+
 static func _days_in(year: int, month: int) -> int:
 	if month == 2:
 		return 29 if (year % 4 == 0 and year % 100 != 0) or year % 400 == 0 else 28
@@ -422,7 +463,7 @@ func _settings_menu() -> void:
 	_body.add_child(source)
 	_focusables.append(source)
 	var pbf_path := LineEdit.new()
-	pbf_path.placeholder_text = _t("pbf_default", "assets/osm/finland-latest.osm.pbf (default)")
+	pbf_path.placeholder_text = downloaded_pbf_path()
 	pbf_path.text = _settings.get_value("map", "osm_pbf_path", "")
 	pbf_path.visible = source.selected == 1
 	pbf_path.text_changed.connect(func(text: String):
@@ -434,6 +475,7 @@ func _settings_menu() -> void:
 		pbf_path.visible = index == 1)
 	_body.add_child(pbf_path)
 	_focusables.append(pbf_path)
+	_button(_t("manage_pbf", "Finland map"), _pbf_menu)
 	for item in [[_t("master_volume", "Master volume"), "Master"], [_t("game_volume", "Game volume"), "Game"], [_t("environment_volume", "Environment volume"), "Environment"], [_t("ui_volume", "UI volume"), "UI"]]:
 		var row := HBoxContainer.new()
 		var label := Label.new()
@@ -464,7 +506,15 @@ func _set_volume(bus: String, value: float) -> void:
 	_settings.save("user://settings.cfg")
 
 
-func _start(mode: String) -> void:
+func _start(mode: String, skip_pbf_offer := false) -> void:
+	if _settings.get_value("map", "osm_source", "") == "pbf" and not skip_pbf_offer:
+		var pbf := _pbf_path()
+		if pbf == "":
+			_offer_pbf_download(mode)
+			return
+		if pbf_is_old(pbf, int(Time.get_unix_time_from_system())):
+			_offer_pbf_update(mode)
+			return
 	_settings.set_value("menu", "mode", mode)  # the main menu's choice next time
 	_settings.save("user://settings.cfg")
 	_clear()
@@ -472,7 +522,7 @@ func _start(mode: String) -> void:
 	var args := ["--port", str(PORT), "--game-mode", mode, "--language", _language]
 	if mode == "gig_driver":
 		args.append_array(["--preset", _city, "--start-time", "%04d-%02d-%02dT%02d:%02d" % [_start_time["year"], _start_time["month"], _start_time["day"], _start_time["hour"], _start_time["minute"]]])
-	args.append_array(map_source_args(_settings.get_value("map", "osm_source", ""), _settings.get_value("map", "osm_pbf_path", "")))
+	args.append_array(map_source_args(_settings.get_value("map", "osm_source", ""), _pbf_path()))
 	if _settings.has_section_key("game", "historical_weather"):  # else the server's config decides
 		args.append("--historical-weather" if _settings.get_value("game", "historical_weather") else "--no-historical-weather")
 	if _settings.has_section_key("game", "train_timetable"):
@@ -494,6 +544,125 @@ func _start(mode: String) -> void:
 	_loading = true
 	for bus in ["Master", "Game", "Environment", "UI"]:
 		_set_volume(bus, _settings.get_value("audio", bus, 1.0))
+
+
+func _offer_pbf_download(mode: String) -> void:
+	_clear()
+	_title(_t("pbf_missing", "FINLAND MAP NOT FOUND"),
+		_t("pbf_download_offer", "Download the Finland OpenStreetMap file? The download is large and will be saved in your user data folder."))
+	_button(_t("download", "Download"), func(): _download_pbf(mode))
+	_button(_t("use_overpass", "Use Overpass instead"), func():
+		_settings.set_value("map", "osm_source", "overpass")
+		_settings.save("user://settings.cfg")
+		_start(mode))
+	_button(_t("cancel", "Cancel"), _main_menu)
+	_back_action = _main_menu
+	_focus_menu()
+
+
+func _offer_pbf_update(mode: String) -> void:
+	_clear()
+	_title(_t("pbf_old", "A NEWER FINLAND MAP IS AVAILABLE"),
+		_t("pbf_update_offer", "Your map file is over 30 days old. Download the latest version?"))
+	_button(_t("download_newer", "Download newer map"), func(): _download_pbf(mode, true))
+	_button(_t("use_existing", "Use existing map"), func(): _start(mode, true))
+	_button(_t("cancel", "Cancel"), _main_menu)
+	_back_action = _main_menu
+	_focus_menu()
+
+
+func _download_pbf(mode: String, allow_existing := false, settings_only := false) -> void:
+	_clear()
+	_title(_t("downloading_map", "DOWNLOADING FINLAND MAP"), _t("download_wait", "Please wait. Do not close the game."))
+	var progress := ProgressBar.new()
+	progress.custom_minimum_size = Vector2(420, 28)
+	progress.indeterminate = true
+	progress.show_percentage = true
+	_body.add_child(progress)
+	var progress_text := Label.new()
+	progress_text.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_body.add_child(progress_text)
+	var directory := downloaded_pbf_path().get_base_dir()
+	DirAccess.make_dir_recursive_absolute(directory)
+	var partial := downloaded_pbf_path() + ".part"
+	if FileAccess.file_exists(partial):
+		DirAccess.remove_absolute(partial)
+	var request := HTTPRequest.new()
+	request.download_file = partial
+	add_child(request)
+	var response: Array = []
+	request.request_completed.connect(func(result: int, response_code: int, headers: PackedStringArray, body: PackedByteArray):
+		response.assign([result, response_code, headers, body]))
+	var error := request.request(FINLAND_PBF_URL)
+	if error != OK:
+		request.queue_free()
+		_pbf_download_failed(mode, allow_existing, settings_only)
+		return
+	while response.is_empty():
+		var downloaded_bytes := request.get_downloaded_bytes()
+		var total_bytes := request.get_body_size()
+		progress.indeterminate = total_bytes <= 0
+		if total_bytes > 0:
+			progress.value = download_percent(downloaded_bytes, total_bytes)
+			progress_text.text = "%.1f / %.1f MiB" % [downloaded_bytes / 1048576.0, total_bytes / 1048576.0]
+		else:
+			progress_text.text = "%.1f MiB" % [downloaded_bytes / 1048576.0]
+		await get_tree().process_frame
+	request.queue_free()
+	var downloaded := FileAccess.open(partial, FileAccess.READ)
+	var valid_file := downloaded != null and downloaded.get_length() > 0
+	downloaded = null  # Windows cannot rename an open file.
+	if int(response[0]) == HTTPRequest.RESULT_SUCCESS and int(response[1]) == 200 \
+			and valid_file \
+			and replace_download(partial, downloaded_pbf_path()):
+		_settings.set_value("map", "osm_pbf_path", downloaded_pbf_path())
+		_settings.save("user://settings.cfg")
+		if settings_only:
+			_settings_menu()
+		else:
+			_start(mode)
+		return
+	DirAccess.remove_absolute(partial)
+	_pbf_download_failed(mode, allow_existing, settings_only)
+
+
+func _pbf_download_failed(mode: String, allow_existing: bool, settings_only: bool) -> void:
+	_clear()
+	_title(_t("download_failed", "DOWNLOAD FAILED"), _t("pbf_download_failed", "Could not download the Finland map file."))
+	_button(_t("retry", "Retry"), func(): _download_pbf(mode, allow_existing, settings_only))
+	if allow_existing:
+		_button(_t("use_existing", "Use existing map"), _settings_menu if settings_only else func(): _start(mode, true))
+	var back := _settings_menu if settings_only else _main_menu
+	_button(_t("cancel", "Cancel"), back)
+	_back_action = back
+	_focus_menu()
+
+
+func _confirm_delete_pbf() -> void:
+	_clear()
+	if not FileAccess.file_exists(downloaded_pbf_path()):
+		_title(_t("delete_pbf", "DELETE DOWNLOADED FINLAND MAP"), _t("pbf_not_found", "No downloaded map file was found."))
+		_button(_t("back", "Back"), _settings_menu)
+	else:
+		_title(_t("delete_pbf", "DELETE DOWNLOADED FINLAND MAP"), _t("confirm_delete_pbf", "Delete the downloaded Finland map file?"))
+		_button(_t("delete", "Delete"), func():
+			if DirAccess.remove_absolute(downloaded_pbf_path()) == OK:
+				_settings.set_value("map", "osm_pbf_path", "")
+				_settings.save("user://settings.cfg")
+			_settings_menu())
+		_button(_t("cancel", "Cancel"), _settings_menu)
+	_back_action = _settings_menu
+	_focus_menu()
+
+
+func _pbf_menu() -> void:
+	_clear()
+	_title(_t("manage_pbf", "FINLAND MAP"))
+	_button(_t("force_pbf_update", "Download latest Finland map"), func(): _download_pbf("", FileAccess.file_exists(downloaded_pbf_path()), true))
+	_button(_t("delete_pbf", "Delete downloaded Finland map"), _confirm_delete_pbf)
+	_button(_t("back", "Back"), _settings_menu)
+	_back_action = _settings_menu
+	_focus_menu()
 
 
 func _server_connected(up: bool) -> void:

@@ -78,6 +78,7 @@ var _phone_wait := 0.0  # --phone-wait S: after driving, wait up to S s for a re
 var events_presented := 0
 var _audiotest := false
 var _chunk_queue: Array = []  # chunk messages waiting for their frame
+var _chunk_unload_queue: Array[String] = []  # old meshes freed one per frame, like additions
 var _last_frame_usec := 0  # frame-time accounting (godot-18): real time between frames, not the smoothed delta
 var _bench := 0.0  # --bench SECONDS: drive-through measurement, then the report as JSON
 var _bench_left := 0.0
@@ -164,7 +165,7 @@ func _ready() -> void:
 	# One new chunk per frame (godot-16): a chunk's first drawing takes ~10-20 ms, and crossing into
 	# a new area brings a whole row of them at once.
 	sim.chunk_received.connect(func(message: Dictionary): _chunk_queue.append(message))
-	sim.chunk_unloaded.connect(_unload_chunk)
+	sim.chunk_unloaded.connect(_queue_chunk_unload)
 	sim.connection_changed.connect(_on_connection)
 	phone.sound.connect(func(group: String, variation: int): audio.handle_event({"type": "sound", "group": group, "variation": variation}))
 	phone.request.connect(func(action: String, item_id: String, request_id: int): sim.send_phone(action, item_id, request_id))
@@ -207,13 +208,14 @@ func _on_connection(up: bool) -> void:
 		audio.stop_voices()
 
 
-func _unload_chunk(chunk_id: String) -> void:
+func _queue_chunk_unload(chunk_id: String) -> void:
 	_chunk_queue = _chunk_queue.filter(func(m): return m["chunk_id"] != chunk_id)  # gone before it was ever drawn
-	map_layer.remove_chunk(chunk_id)
+	_chunk_unload_queue.append(chunk_id)
 
 
 func _on_world(world: Dictionary) -> void:
 	_chunk_queue.clear()  # a new world (reconnect): the old one's chunks are void
+	_chunk_unload_queue.clear()
 	var origin := Vector2(world["center"][0], world["center"][1])
 	map_layer.set_origin(origin)
 	entities.origin = origin
@@ -366,7 +368,10 @@ func _process(delta: float) -> void:
 	if _last_frame_usec > 0 and not entities.shown_state().is_empty() and (_bench <= 0.0 or _bench - _bench_left > 5.0):
 		Perf.frame((now_usec - _last_frame_usec) / 1000.0)  # --bench: after 5 s of warm-up (the first chunks)
 	_last_frame_usec = now_usec
-	if not _chunk_queue.is_empty():
+	if not _chunk_unload_queue.is_empty():
+		map_layer.remove_chunk(_chunk_unload_queue.pop_front())
+		Perf.add("chunk_unload", Time.get_ticks_usec() - now_usec)
+	elif not _chunk_queue.is_empty():
 		map_layer.add_chunk(_chunk_queue.pop_front())
 		Perf.add("chunk_add", Time.get_ticks_usec() - now_usec)
 	entities.update_frame(delta)  # first: the camera below and the drawing use this one sample

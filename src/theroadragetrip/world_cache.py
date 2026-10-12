@@ -14,9 +14,14 @@ from dataclasses import fields, is_dataclass
 from pathlib import Path
 from typing import Any, Callable, Mapping
 
+from .osm.cache import default_cache_root
 from .tile_streaming import TileCoord
 
 logger = logging.getLogger(__name__)
+
+
+def default_world_cache_dir() -> Path:
+    return Path(default_cache_root()) / "world"
 
 MAGIC = b"RWC\0"
 # Bump whenever a change to map-generation logic (not just this file's byte
@@ -359,7 +364,7 @@ class BinaryWorldCacheLoader:
 
 def clear_world_cache(cache_dir: str | os.PathLike[str] | None = None) -> int:
     """Delete all cached world files."""
-    target_dir = Path(cache_dir or (Path.home() / ".cache" / "RoadRageTrip" / "world"))
+    target_dir = Path(cache_dir or default_world_cache_dir())
     if not target_dir.is_dir():
         return 0
     removed = 0
@@ -382,7 +387,7 @@ class WorldCacheManager:
     def __init__(self, cache_dir: str | os.PathLike[str] | None = None,
                  fetch_func: Callable | None = None, build_func: Callable | None = None,
                  cache_ttl: float | None = None):
-        self.cache_dir = Path(cache_dir or (Path.home() / ".cache" / "RoadRageTrip" / "world"))
+        self.cache_dir = Path(cache_dir or default_world_cache_dir())
         self.fetch_func = fetch_func
         self.build_func = build_func
         self.cache_ttl = cache_ttl

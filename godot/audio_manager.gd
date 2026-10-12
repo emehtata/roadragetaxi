@@ -252,7 +252,7 @@ func loop_playing(key: String) -> bool:
 
 
 ## The recording of a server "speech" event, or "" for a malformed one: only
-## sounds/<driver|passenger>_chatter/<f|m>_<fi|en>_<hex hash>.wav, never a path from the wire.
+## sounds/<driver|passenger>_chatter/<f|m>_<fi|en>_<hex hash>.ogg, never a path from the wire.
 func speech_file(event: Dictionary) -> String:
 	var speaker = event.get("speaker")
 	var gender = event.get("gender")
@@ -261,7 +261,7 @@ func speech_file(event: Dictionary) -> String:
 	if not speaker in ["driver", "passenger"] or not gender in ["f", "m"] or not language in ["fi", "en"] \
 			or typeof(key) != TYPE_STRING or key.is_empty() or key.length() > 32 or not key.is_valid_hex_number():
 		return ""
-	return package_root.path_join("sounds/%s_chatter/%s_%s_%s.wav" % [speaker, gender, language, key])
+	return package_root.path_join("sounds/%s_chatter/%s_%s_%s.ogg" % [speaker, gender, language, key])
 
 
 ## Plays a "speech" event on the one voice; false (and silent) if it's
@@ -333,8 +333,6 @@ func _stream(path: String) -> AudioStream:
 		var stream: AudioStream = null
 		if path.ends_with(".ogg"):
 			stream = AudioStreamOggVorbis.load_from_file(path)
-		elif path.ends_with(".wav"):  # the chatter recordings (PCM WAV), decoded once
-			stream = AudioStreamWAV.load_from_file(path)
 		if stream == null:
 			push_warning("AudioManager: could not load %s" % path)
 		_streams[path] = stream

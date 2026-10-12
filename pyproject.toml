@@ -29,6 +29,6 @@ theroadragetrip = [
     "assets/**/*",  # recursive: audio/, railway_announcements/... (assets/* missed every subfolder)
     "img/*",
     "sounds/*",
-    "sounds/passenger_chatter/*.wav",
-    "sounds/driver_chatter/*.wav",
+    "sounds/passenger_chatter/*.ogg",
+    "sounds/driver_chatter/*.ogg",
 ]

@@ -180,7 +180,7 @@ The `[map] overpass_endpoints` setting contains a comma-separated list of Overpa
 
 The pause-menu **Comment audio** setting controls driver and passenger comment sounds. **Subtitles** displays the selected comment in a cinematic black subtitle bar at the bottom of the screen; audio and subtitles can be enabled independently.
 
-Passenger chatter plays only during an active ride to the destination. One entry is selected randomly every 5–20 seconds from `assets/passenger_chatter.json`; the matching pre-rendered WAV is selected from `sounds/passenger_chatter/` using the passenger's gender, language, and entry hash. Event chatter filters passenger lines by mood for nausea, water, pickup, dropoff, and collisions.
+Passenger chatter plays only during an active ride to the destination. One entry is selected randomly every 5–20 seconds from `assets/passenger_chatter.json`; the matching pre-rendered OGG is selected from `sounds/passenger_chatter/` using the passenger's gender, language, and entry hash. Event chatter filters passenger lines by mood for nausea, water, pickup, dropoff, and collisions.
 
 Driver chatter uses `assets/driver_chatter.json` and matching files in `sounds/driver_chatter/`. Lines are filtered by gameplay situation and include a short per-situation cooldown so repeated physics events do not spam audio.
 
@@ -269,6 +269,18 @@ The server's options (`python -m theroadragetrip.server --help`); the Godot clie
 | `--fetch-tile-size`| Base auto-fetch tile size in meters (default: `1000.0`) |
 | `--build-in-process` | Build auto-fetched map data outside the gameplay process |
 | `--pedestrian-count` | Target number of pedestrians (default: `20`) |
+
+When PBF map data is selected in the Godot settings and no usable file is present,
+the game offers to download Finland from Geofabrik. It stores the file in Godot's
+per-user data directory (`%APPDATA%\\Godot\\app_userdata\\Road Rage Trip (Godot client)\\maps`
+on Windows, normally `~/.local/share/godot/app_userdata/Road Rage Trip (Godot client)/maps`
+on Linux), never beside the installed executable. If the selected PBF is over
+30 days old, the game offers to download a newer copy or continue with the existing file.
+
+Runtime caches use `%LOCALAPPDATA%\\RoadRageTrip` on Windows and
+`${XDG_CACHE_HOME:-~/.cache}/RoadRageTrip` on Linux. OSM downloads and FMI
+weather history are under `osm_cache/`; built map worlds are under `world/`.
+Train timetables and compositions are bundled assets, not runtime caches.
 
 ---
 

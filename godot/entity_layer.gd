@@ -539,14 +539,21 @@ func _draw_cars() -> void:
 static func drawable(points: PackedVector2Array) -> bool:
 	if points.size() < 3:
 		return false
-	var area := 0.0
+	var winding := 0.0
 	for i in points.size():
 		var a := points[i]
 		var b := points[(i + 1) % points.size()]
-		if not (is_finite(a.x) and is_finite(a.y)):
+		var c := points[(i + 2) % points.size()]
+		if not (is_finite(a.x) and is_finite(a.y)) or a.distance_squared_to(b) <= 1e-8:
 			return false
-		area += a.x * b.y - b.x * a.y
-	return absf(area) > 1e-6
+		var cross := (b - a).cross(c - b)
+		if absf(cross) <= 1e-6:
+			return false
+		if winding == 0.0:
+			winding = signf(cross)
+		elif cross * winding < 0.0:
+			return false
+	return true
 
 
 func _lit(color: Color) -> Color:

@@ -35,7 +35,7 @@ def _fake_fmi(calls):
     return fetch
 
 
-def test_history_fetches_in_background_interpolates_and_caches(tmp_path):
+def test_history_fetches_in_background_uses_hour_beginning_and_caches(tmp_path):
     calls = []
     moment = datetime(2025, 1, 15, 2, 30)  # 00:30 UTC, between the fixture's hours
     history = WeatherHistory(*OULU, cache_path=tmp_path / "weather.db", fetch=_fake_fmi(calls))
@@ -43,7 +43,7 @@ def test_history_fetches_in_background_interpolates_and_caches(tmp_path):
     history.request(moment, moment)
     history.wait_idle(5.0)
     observed = history.get(moment)
-    assert observed is not None and abs(observed.temperature_c - (-3.0 + (-5.5 + 3.0) * 0.5)) < 1e-9
+    assert observed is not None and observed.temperature_c == -3.0
     assert observed.snow_depth_cm == 16.0 and len(calls) == 1
 
     # Next session: served from SQLite, FMI not asked again.
