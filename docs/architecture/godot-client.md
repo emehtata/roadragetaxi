@@ -1,8 +1,8 @@
 # Godot client
 
 Python stays the authoritative simulation. Godot (`godot/`) is a rendering,
-audio, UI and input client only (since 0.17.0alpha the only client: the
-Pygame client was removed). There is no BIN; the map comes from the existing OSM pipeline.
+audio, UI and input client only. There is no BIN; the map comes from the
+existing OSM pipeline.
 
 ## Architecture
 
@@ -35,12 +35,7 @@ Pygame client was removed). There is no BIN; the map comes from the existing OSM
                                               buses: Master > Game, Environment, UI
 ```
 
-Before the Godot client, Pygame's `main()` ran the Pygame window, input and the
-simulation in one loop. `simulation.advance_simulation()` had already been
-split out (see [simulation-rendering.md](archive/simulation-rendering.md)), and a
-headless server already broadcast states. Phase 1 moved trains into
-`advance_simulation`. Phase 2 added interpolation, audio, the HUD, map
-streaming and player identity.
+How the simulation was split from the first client: [simulation-rendering.md](archive/simulation-rendering.md).
 
 ## Responsibilities
 
@@ -192,7 +187,7 @@ Buses are created at start: Master > Game, Environment, UI.
 
 Event-to-sound mapping is data. `audio_events.json`:
 - maps `train_arrived` to brakes plus doors open, and `train_departed` to
-  doors closing plus horn, the same as Pygame's `_play_rail_sounds`
+  doors closing plus horn
 - passes every `sound` event straight through to the catalog group of
   that name
 - assigns catalog categories to buses
@@ -219,8 +214,7 @@ How sounds are chosen:
   (as `audio.py` does).
 - A loop plays a fixed variation, default the first. With
   `"variation": "alternate"` it picks a new one each time it (re)starts,
-  never the previous one. The day bed uses this, as Pygame does with
-  `set_loop(..., variation=None)`, so its two generated loops alternate
+  never the previous one. The day bed uses this, so its two generated loops alternate
   from one morning to the next.
 
 `make audio-check` (`tools/validate_audio_assets.py`) fails on:
@@ -267,8 +261,7 @@ simulation's own timer (10–60 s) and expire after 30–90 s. Bookings follow
 `rail_bookings.py`: PENDING, then ACCEPTED, then the train's progress, or
 DECLINED or MISSED.
 
-**State.** Each state carries `phone: {busy, items}`, built like Pygame's
-`draw_phone_offers` shows them:
+**State.** Each state carries `phone: {busy, items}`, built by `protocol._phone_to_dict`:
 - offers: `id` "offer-N" (a stable `TaxiOffer.offer_id`), name, pickup,
   dropoff, `pickup_distance_m`, `trip_distance_m`, `time_remaining_s`
 - bookings: `id` "booking-N", train, station, arrival, dropoff,
@@ -281,11 +274,11 @@ An ordinary offer has no fare until the taximeter runs, so the UI says
 request_id}`; `SimClient.send_phone` sends it on top of the current
 controls.
 - The server queues these like enter/exit actions and applies each one
-  once in the tick, using the same `accept_offer`/`reject_offer` as Pygame.
+  once in the tick, using `accept_offer`/`reject_offer`.
   A gone or non-pending item is refused.
 - It answers with a `{"type": "phone_result", action, item_id, request_id,
   ok, reason}` event. On success it also plays `ui.accept` or `ui.reject`
-  as a sound event, as Pygame does.
+  as a sound event.
 - Malformed requests are ignored. Requests go through the existing
   non-blocking queues, so they can't stall the tick.
 
@@ -304,20 +297,18 @@ visible, and the simulation does not pause, see below.
   pick a row, Enter accepts, X rejects. Buttons do the same.
 - No phone key is a driving, taxi or camera key, so driving keeps working
   with the phone open.
-- Opening plays `ui.phone_open` variation 0 and closing plays variation 1,
-  as in Pygame.
+- Opening plays `ui.phone_open` variation 0 and closing plays variation 1.
 
 **Updates.**
 - Rows are rebuilt only when the set of rows or their statuses change.
   Values (distances, time left) and the selection update in place.
 - A request disables answering that row until its `phone_result` arrives,
   or until the row disappears (expired or taken), which resolves it.
-- An accepted fare closes the phone, as in Pygame.
+- An accepted fare closes the phone.
 - On disconnect the rows and pending requests are cleared and actions are
   disabled. After reconnecting, the phone shows only what new states say.
 
-**Not paused:** the old Pygame client stopped the clock while its phone
-was open. The Godot client doesn't, because a shared server shouldn't
+**Not paused:** the clock runs while the phone is open, because a shared server shouldn't
 pause for one client's UI. Expiring offers therefore keep counting down.
 
 **Tests:**
@@ -505,20 +496,16 @@ Nobody has listened to it; these are measurements of the output.
 - **Coordinates:** placed sounds use the same map coordinates as drawing
   (`MapMath.point`, y flipped). The camera is the 2D listener.
 
-**Differences from the old Pygame audio**
-- Engine: Godot uses the idle loop pitched by speed; Pygame crossfades rev
-  layers.
-- Train rumble: Godot plays one loop for the nearest moving train; Pygame
-  plays the loudest intercity and commuter trains as two layers.
-- Distance: Godot uses its own attenuation curve up to the same "silent
-  beyond" ranges. Pygame uses inverse distance with a soft fade-out.
-- Door sound when getting in: getting in now plays `vehicle.door_open` in
-  both clients; it was `door_close` before godot-03. Passengers boarding
-  still get `door_close`.
+**Notes**
+- Engine: one idle loop, pitched by speed.
+- Train rumble: one loop for the nearest moving train.
+- Distance: Godot's own attenuation curve up to each group's "silent
+  beyond" range.
+- Door sound: getting in plays `vehicle.door_open`; passengers boarding
+  get `door_close`.
 - Measurements are not listening. Every check above is about levels,
   panning, timing and counts. The new sounds also passed a manual
   listening review (2026-10-03).
-- No station announcements or passenger speech yet; that is a later phase.
 
 ## Buildings: 2D map + lightweight 3D layer (godot-21, prototype)
 
@@ -552,9 +539,8 @@ godot-21 section.
 - **Menus:** Godot owns the first-run language choice and the keyboard/mouse
   main, city, settings and pause screens, and starts or stops the Python
   server for the selected career/gig session.
-- **Missing sounds:** no station announcements or passenger speech in
-  Godot. The pedestrian curse is generated and validated but wasn't
-  triggered in the scripted test.
+- **Untested sound:** the pedestrian curse is generated and validated but
+  isn't triggered in the scripted test.
 - **Native Windows** performance and audio were not measured.
 - **3D buildings** cost about 8.6 ms a frame on software GL: the 3D pass
   (about 4.3 ms, mostly meshes) plus the full-screen composite (about 4.3 ms).

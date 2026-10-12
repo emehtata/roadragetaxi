@@ -197,7 +197,7 @@ git push origin v0.17.0alpha
 
 GitHub Actions builds the Godot game and bundled Python server on Windows, installs the setup EXE in a temporary directory for a smoke test, then attaches `RoadRageTrip-windows-x64.zip` and `RoadRageTrip-Setup.exe` to the GitHub Release. Use the EXE installer for a normal Windows installation, or extract the zip and launch `RoadRageTrip.exe`; no Python installation is required.
 
-Recorded sounds (the CC0 police siren, and the TTS chatter voices) are stored in `src/theroadragetrip/sounds/`; attribution is in that directory's license file. Generated sound effects (Stable Audio Open) live in `src/theroadragetrip/assets/audio/`, catalogued in `audio_catalog.json`.
+Recorded sounds (the TTS chatter voices) are stored in `src/theroadragetrip/sounds/`. Generated sound effects (Stable Audio Open) live in `src/theroadragetrip/assets/audio/`, catalogued in `audio_catalog.json`.
 
 Map, timetable and weather data:
 
