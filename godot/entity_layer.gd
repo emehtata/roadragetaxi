@@ -382,7 +382,7 @@ static func train_beams(train: Dictionary, next: Dictionary, t: float, origin: V
 	var f := _forward(heading)
 	var nose := MapMath.point(origin, lerpf(car[0], to[0], t), lerpf(car[1], to[1], t)) + f * float(car[3]) / 2.0
 	var width: float = RS.TRAIN_WIDTH_M
-	return beam_polygons(nose - f * (1.0 + width * 0.55), heading, width, TRAIN_BEAM_M)
+	return beam_polygons(nose - f * (1.0 + width * 0.55), heading, width, TRAIN_BEAM_M, true)
 
 
 ## Automatic high beam, the taxi's as every NPC's: 45 m on a dark road, dipped to 15 m within 22 m of a street
@@ -405,7 +405,7 @@ static func oncoming(vehicle: Array, vehicles: Array) -> bool:
 
 
 ## One vehicle's two beams and caps (a quad and a circle per side).
-static func beam_polygons(c: Vector2, heading: float, width: float, length: float) -> Array:
+static func beam_polygons(c: Vector2, heading: float, width: float, length: float, straight := false) -> Array:
 	var f := _forward(heading)
 	var r := _right(heading)
 	var front := c + f * (1.0 + width * 0.55)
@@ -413,7 +413,8 @@ static func beam_polygons(c: Vector2, heading: float, width: float, length: floa
 	for side: float in [-1.0, 1.0]:
 		var side_v := r * side
 		var lamp := front + side_v * width * 0.35
-		var tip := c + f * length + r * (3.0 if side < 0.0 else 2.25)
+		# A car's beams lean right (the kerb side); a train's point straight ahead.
+		var tip := c + f * length + (side_v * width * 0.35 if straight else r * (3.0 if side < 0.0 else 2.25))
 		var near := lamp + side_v * minf(4.5 * 0.08, width * 0.10)
 		var far_width := 4.5 * 1.7
 		polygons.append(PackedVector2Array([lamp, near, tip + side_v * far_width, tip]))
