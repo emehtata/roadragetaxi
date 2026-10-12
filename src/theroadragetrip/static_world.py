@@ -62,7 +62,7 @@ def road_style(way) -> dict:
     """The parts of render/roads.py draw_ways' look that aren't geometry:
     colour (road_color_for_way), centre line (dashed, or solid on a two-way
     road of 3+ lanes), one-way chevrons, bridge."""
-    from .render.common import road_color_for_way
+    from .map_style import road_color_for_way
 
     style = {"color": _rgb(road_color_for_way(way))}
     if way.is_drivable:
@@ -221,7 +221,7 @@ def labels(world) -> list:
     districts, named waters, named areas, buildings (their places and
     their own name), roads. [x, y, text, category]; the client declutters
     per view, as Pygame does."""
-    from .render.labels import DISTRICT_PLACE_KINDS
+    from .map_style import DISTRICT_PLACE_KINDS
 
     found = []
     for place in getattr(world, "places", ()):

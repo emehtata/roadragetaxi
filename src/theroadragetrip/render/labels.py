@@ -14,11 +14,8 @@ from typing import List
 
 
 from ..osm import Building, Place, Scenery, Water, Way
+from ..map_style import DISTRICT_PLACE_KINDS
 
-
-DISTRICT_PLACE_KINDS = {
-    "suburb", "neighbourhood", "quarter", "village", "town", "city", "hamlet",
-}
 _label_surface_cache = {}
 
 

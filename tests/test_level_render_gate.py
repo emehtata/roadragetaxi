@@ -3,10 +3,10 @@ import pygame
 import pytest
 
 from theroadragetrip.map_level import level_view_ways, visible_on_level
+from theroadragetrip.map_style import road_color_for_way
 from theroadragetrip.osm import Way, build_ways
 from theroadragetrip.physics import SpatialWayGrid
 from theroadragetrip.render import draw_level_ways, draw_ways
-from theroadragetrip.render.common import road_color_for_way
 
 W, H, PX = 200, 200, 2.0
 ROAD = road_color_for_way(Way([(0.0, 0.0), (1.0, 0.0)], "service", 3.0))

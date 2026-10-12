@@ -26,9 +26,9 @@ import theroadragetrip.render as render_module
 from theroadragetrip.osm import build_ways, plant_trees
 from theroadragetrip.osm import Building, Place, Scenery, SceneryObject, Way, associate_places_with_buildings
 from theroadragetrip.geo import point_in_polygon
+from theroadragetrip.map_style import DISTRICT_PLACE_KINDS, SCENERY_COLORS
 from theroadragetrip.physics import Car
 from theroadragetrip.render import (
-    DISTRICT_PLACE_KINDS,
     MAX_BUILDING_DEPTH_PX,
     MAX_BUILDING_SIGN_FONT_SIZE,
     BUILDING_WALL_COLORS,
@@ -49,7 +49,6 @@ from theroadragetrip.render import (
     _visible_building_edges,
     _draw_buildings_uncached,
     CONSTRUCTION_FENCE_COLOR,
-    SCENERY_COLORS,
     draw_construction_fences,
     draw_grass_texture,
     draw_illuminated_windows,

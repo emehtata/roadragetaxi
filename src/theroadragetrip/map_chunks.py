@@ -189,7 +189,7 @@ class ChunkIndex:
 
     def _add_static_world(self, world) -> None:
         """godot-16: the rest of what Pygame draws from the map (static_world.py)."""
-        from .render.scenery import SCENERY_COLORS, _SPECKLE_SCENERY_KINDS
+        from .map_style import SCENERY_COLORS, SPECKLE_SCENERY_KINDS
 
         for scenery in getattr(world, "sceneries", ()):
             if len(scenery.points_m) < 3:
@@ -197,7 +197,7 @@ class ChunkIndex:
             kind = str(scenery.kind).lower()
             island = kind == "traffic_island" or getattr(scenery, "kerbed", False)  # redrawn above the roads
             color = SCENERY_COLORS.get(kind, (38, 105, 38))
-            seasonal = 1 if kind in _SPECKLE_SCENERY_KINDS or kind in ("residential", "recreation_ground") else 0
+            seasonal = 1 if kind in SPECKLE_SCENERY_KINDS or kind in ("residential", "recreation_ground") else 0
             for cell, ring in static_world.clipped_pieces(scenery.points_m, self.size):
                 self._chunk(cell)["landuse"].append([static_world._rgb(color), seasonal, ring])
                 if island:
@@ -236,7 +236,7 @@ class ChunkIndex:
         for label in static_world.labels(world):
             self._add("labels", ((label[0], label[1]),), label)
         from .map_level import explicit_levels
-        from .render.common import road_color_for_way
+        from .map_style import road_color_for_way
         for way in getattr(world, "level_ways", ()):
             if len(way.points_m) >= 2:
                 levels = sorted({way.map_level, *explicit_levels(way)})

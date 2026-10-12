@@ -180,7 +180,7 @@ def test_static_world_lists_in_the_chunks():
 
 def test_road_style_follows_pygames_road_look():
     from theroadragetrip import static_world
-    from theroadragetrip.render.common import road_color_for_way
+    from theroadragetrip.map_style import road_color_for_way
 
     two_way = SimpleNamespace(is_drivable=True, highway="primary", lanes=4, oneway=0, is_ice_road=False, surface="")
     oneway = SimpleNamespace(is_drivable=True, highway="residential", lanes=1, oneway=-1, is_ice_road=False, surface="", is_bridge=True)
