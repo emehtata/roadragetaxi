@@ -3889,7 +3889,7 @@
   "excluded": [
     {
       "id": "police.siren",
-      "reason": "police_car_siren-esp.wav is loaded (AudioManager.update_police_siren) but nothing triggers it: the game has no police vehicles or pursuits, only speed cameras."
+      "reason": "the game has no police vehicles or pursuits, only speed cameras."
     },
     {
       "id": "gameplay.police_stop / gameplay.red_light_violation",
