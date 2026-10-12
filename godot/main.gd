@@ -844,7 +844,7 @@ func _update_debug(state: Dictionary) -> void:
 	_perf_counters()
 	var f := Perf.summary()
 	debug_label.text = "\n".join([
-		"Road Rage Trip - Godot client 0.16.0g-alpha   player %s" % sim.player_id,
+		"Road Rage Trip - %s   player %s" % [ProjectSettings.get_setting("application/config/version"), sim.player_id],
 		"tick %d   %d fps   states %d   buffered %d   delay %d ms   underruns %d" % [_tick, Engine.get_frames_per_second(),
 			_states_received, entities.buffer.size(), entities.buffer.delay * 1000, entities.buffer.underruns],
 		"state %.2f ms   interpolate+draw %.2f ms   map chunks %d   drawn %d" % [_state_usec / 1000.0, _interp_usec / 1000.0,
