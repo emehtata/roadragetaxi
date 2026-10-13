@@ -69,29 +69,86 @@ def _underground_test(ways, surface_levels, on_m: float = 0.5):
     point lies on a garage way (map_level off the surface) and on no
     surface road - so a garage ramp's street mouth stays. Garage ways are
     few, so this is a scan of them first; surface roads only for a hit."""
-    levelled = [w.points_m for w in ways if getattr(w, "map_level", None) not in surface_levels and len(w.points_m) >= 2]
+    def boxed(points):  # (points, bbox): a far way is skipped by its box, not walked segment by segment
+        xs, ys = [p[0] for p in points], [p[1] for p in points]
+        return points, (min(xs) - on_m, min(ys) - on_m, max(xs) + on_m, max(ys) + on_m)
+
+    levelled = [boxed(w.points_m) for w in ways if getattr(w, "map_level", None) not in surface_levels and len(w.points_m) >= 2]
     surface = None
 
-    def near(points, x, y) -> bool:
-        return any(dist_point_to_segment(x, y, a[0], a[1], b[0], b[1]) <= on_m for a, b in zip(points, points[1:]))
+    def near(item, x, y) -> bool:
+        points, (minx, miny, maxx, maxy) = item
+        return (minx <= x <= maxx and miny <= y <= maxy
+                and any(dist_point_to_segment(x, y, a[0], a[1], b[0], b[1]) <= on_m for a, b in zip(points, points[1:])))
 
     def test(x: float, y: float) -> bool:
         nonlocal surface
-        if not any(near(points, x, y) for points in levelled):
+        if not any(near(item, x, y) for item in levelled):
             return False
         if surface is None:
-            surface = [w.points_m for w in ways if getattr(w, "map_level", None) in surface_levels and len(w.points_m) >= 2]
-        return not any(near(points, x, y) for points in surface)
+            surface = [boxed(w.points_m) for w in ways if getattr(w, "map_level", None) in surface_levels and len(w.points_m) >= 2]
+        return not any(near(item, x, y) for item in surface)
 
     return test
 
 
-class ChunkIndex:
-    """The world's static geometry bucketed by chunk, built once (the map
-    doesn't change during a session)."""
+# Region rebuilds (ChunkIndex.updated) also read objects this far outside
+# the rebuilt cells: bridge guardrails and rail decks are unions of
+# neighbouring bridges, a house's generated bays sit up to ~35 m from it.
+REGION_MARGIN_M = 100.0
+# The world lists a region rebuild filters by bbox. Everything else - the
+# traffic lights and speed cameras, whose chunk ids are their index in the
+# full list - is read from the world as is.
+_REGION_LISTS = ("ways", "railways", "waters", "buildings", "sceneries", "scenery_objects", "taxi_stops", "railings",
+                 "street_light_points", "parking_spaces", "curbs", "crossings", "speed_bumps", "stop_signs",
+                 "yield_signs", "bus_stops", "level_ways", "places")
 
-    def __init__(self, world, size: float = CHUNK_SIZE_M):
+
+def _item_rect(item) -> tuple[float, float, float, float] | None:
+    if isinstance(item, tuple):  # a street light point (x, y, ...)
+        return item[0], item[1], item[0], item[1]
+    bbox = getattr(item, "bbox", None)
+    if bbox and bbox != (0.0, 0.0, 0.0, 0.0):
+        return bbox
+    points = getattr(item, "points_m", None)
+    if points:
+        xs, ys = [p[0] for p in points], [p[1] for p in points]
+        return min(xs), min(ys), max(xs), max(ys)
+    if hasattr(item, "x") and hasattr(item, "y"):
+        return item.x, item.y, item.x, item.y
+    return None  # unknown extent: always kept
+
+
+class _RegionWorld:
+    """`world` with its _REGION_LISTS cut to the objects reaching `rect`."""
+
+    def __init__(self, world, rect) -> None:
+        self._world, self._rect, self._lists = world, rect, {}
+
+    def __getattr__(self, name):
+        if name not in _REGION_LISTS:
+            return getattr(self._world, name)
+        if name not in self._lists:
+            minx, miny, maxx, maxy = self._rect
+            kept = []
+            for item in getattr(self._world, name, ()):
+                r = _item_rect(item)
+                if r is None or (r[0] <= maxx and r[2] >= minx and r[1] <= maxy and r[3] >= miny):
+                    kept.append(item)
+            self._lists[name] = kept
+        return self._lists[name]
+
+
+class ChunkIndex:
+    """The world's static geometry bucketed by chunk, built once and then
+    updated region by region as the map grows (updated())."""
+
+    def __init__(self, world, size: float = CHUNK_SIZE_M, cells: set | None = None):
+        """`cells`: build only these chunks (a region rebuild; `world` is then
+        usually a _RegionWorld) - None: all of them."""
         self.size = size
+        self._cells = cells
+        self._outside = {kind: [] for kind in _KINDS}  # a region rebuild's features outside its cells, thrown away with it
         self._chunks: dict[str, dict] = {}
         self._encoded: dict[str, bytes] = {}
         for way in world.ways:
@@ -181,7 +238,35 @@ class ChunkIndex:
             })
 
     def _chunk(self, cell) -> dict:
-        return self._chunks.setdefault(chunk_id(*cell), {kind: [] for kind in _KINDS})
+        cid = chunk_id(*cell)
+        chunk = self._chunks.get(cid)
+        if chunk is None:
+            if self._cells is not None and cell not in self._cells:
+                return self._outside
+            chunk = self._chunks[cid] = {kind: [] for kind in _KINDS}
+        return chunk
+
+    @classmethod
+    def updated(cls, old: "ChunkIndex", world, region) -> tuple["ChunkIndex", set]:
+        """`old` with the chunks touching `region` (metres rect) rebuilt from
+        `world` - the same content a full rebuild gives there, at a fraction
+        of the cost - and the ids of the chunks whose content changed. The
+        other chunks (and their encoded bytes) are carried over."""
+        size = old.size
+        minx, miny, maxx, maxy = region
+        first, last = cell_of(minx, miny, size), cell_of(maxx, maxy, size)
+        cells = {(ix, iy) for ix in range(first[0], last[0] + 1) for iy in range(first[1], last[1] + 1)}
+        margin = REGION_MARGIN_M
+        rebuilt = cls(_RegionWorld(world, (first[0] * size - margin, first[1] * size - margin,
+                                           (last[0] + 1) * size + margin, (last[1] + 1) * size + margin)), size, cells)
+        index = cls.__new__(cls)
+        index.size, index._cells, index._outside = size, None, {}
+        ids = {chunk_id(*cell) for cell in cells}
+        index._chunks = {cid: chunk for cid, chunk in old._chunks.items() if cid not in ids}
+        index._chunks.update(rebuilt._chunks)
+        index._encoded = {cid: data for cid, data in old._encoded.items() if cid not in ids}
+        changed = {cid for cid in ids if old._chunks.get(cid) != index._chunks.get(cid)}
+        return index, changed
 
     def _add(self, kind: str, points, feature) -> None:
         for cell in {cell_of(x, y, self.size) for x, y in points}:

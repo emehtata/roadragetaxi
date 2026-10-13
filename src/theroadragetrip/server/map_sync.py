@@ -17,7 +17,7 @@ import time
 
 from ..world_loader import level_structures as _level_structures
 from ..osm import TILE_MERGE_BUDGET_S, remove_trees_under_roads_steps
-from ..performance import MAP_SYNC_BUDGET_S
+from ..performance import MAP_SYNC_BUDGET_S, MAP_SYNC_URGENT_BUDGET_S
 from ..parking import generate_detached_house_parking_chunk
 
 logger = logging.getLogger(__name__)
@@ -84,8 +84,9 @@ def map_sync_steps(world):
 
 class MapStreamer:
     """Per tick: merge streamed tiles, ask for more near the edge, and run
-    the map sync when a merge has settled. `on_synced(new_bounds)` is
-    called once a sync completes, with the area that grew."""
+    the map sync when a merge has settled. `on_synced(old_bounds,
+    new_bounds, dirty_rect)` is called once a sync completes: the bounds
+    before and after, and the area its merges changed (None: nothing)."""
 
     def __init__(self, world, on_synced) -> None:
         self.world = world
@@ -98,6 +99,7 @@ class MapStreamer:
         self._sync_revision = None
         self._sync_started = 0.0
         self._sync_ticks = 0
+        self._sync_dirty = None
         self.sync_stage_ms: dict[str, float] = {}  # busy time per stage of the running (or last) sync
         self.last_sync = None  # (wall s, busy ms, ticks) of the last completed sync
         self.hold = False  # the server rebuilds its chunks from the synced world: no merges meanwhile
@@ -123,11 +125,14 @@ class MapStreamer:
             return "merging"  # merged, the sync starts on the next tick
         return ""
 
-    def tick(self, x: float, y: float, vx: float, vy: float, budget_s: float = TILE_MERGE_BUDGET_S) -> None:
+    def tick(self, x: float, y: float, vx: float, vy: float, budget_s: float = TILE_MERGE_BUDGET_S,
+             urgent: bool = False) -> None:
+        """`urgent`: the map under the player is missing (MAP_SYNC_URGENT_BUDGET_S
+        for the merge and the sync instead of the 4 ms caps)."""
         manager = self.manager
         if self.hold:
             return
-        manager.integrate_completed_tiles(budget_s=budget_s)
+        manager.integrate_completed_tiles(budget_s=MAP_SYNC_URGENT_BUDGET_S if urgent else budget_s)
         if manager.start_tile_streaming(x, y, vx, vy):
             logger.info("Map streaming: tiles around (%.0f, %.0f), tile %s", x, y, manager.player_tile)
         if self._sync is None:
@@ -135,6 +140,7 @@ class MapStreamer:
             if not busy and manager.get_map_revision() != self._synced_revision:
                 self._sync_revision = manager.get_map_revision()
                 self._sync = map_sync_steps(self.world)
+                self._sync_dirty = manager.take_dirty_rect()  # what this sync's merges changed
                 self._sync_started = time.perf_counter()
                 self._sync_ticks = 0
                 self.sync_stage_ms = {}
@@ -142,7 +148,7 @@ class MapStreamer:
             return
         self._sync_ticks += 1
         started = time.perf_counter()
-        deadline = started + MAP_SYNC_BUDGET_S
+        deadline = started + (MAP_SYNC_URGENT_BUDGET_S if urgent else MAP_SYNC_BUDGET_S)
         for stage in self._sync:
             now = time.perf_counter()
             self.sync_stage_ms[stage] = self.sync_stage_ms.get(stage, 0.0) + (now - started) * 1000.0
@@ -159,4 +165,4 @@ class MapStreamer:
         old, new = self._synced_bounds, manager.get_bounds()
         self._synced_bounds = new
         logger.info("Map sync complete: revision %d, bounds %s -> %s", self._synced_revision, old, new)
-        self.on_synced(old, new)
+        self.on_synced(old, new, self._sync_dirty)

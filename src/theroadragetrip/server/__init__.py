@@ -30,7 +30,7 @@ from typing import Optional
 
 from .. import protocol
 from ..navigation_route import NavigationRoute
-from ..map_chunks import CHUNK_SIZE_M, ChunkIndex, cell_of, plan
+from ..map_chunks import CHUNK_SIZE_M, ChunkIndex, cell_of, chunk_id, plan
 from .map_sync import MapStreamer
 from ..protocol import LOCAL_PLAYER_ID
 from ..calendar import GameCalendar, darkness_for_sun_altitude, solar_altitude_and_events_on
@@ -150,6 +150,11 @@ def npc_braking(npc, last_speed: float, dt: float) -> bool:
     if abs(npc.speed) < 0.3:
         return True
     return dt > 0.0 and (abs(last_speed) - abs(npc.speed)) / dt > NPC_BRAKE_DECEL_MPS2
+
+# How far past the merged objects' extent the map sync's own edits reach
+# (a new road's generated house bays ~35 m, the trees it removes, its lamps).
+CHANGED_AREA_MARGIN_M = 50.0
+
 
 class SimulationServer:
     def __init__(self, args, config, city_choice=None):
@@ -281,7 +286,7 @@ class SimulationServer:
         self._chunks_index = ChunkIndex(self.world)
         self._client_chunks: dict = {}
         self._map_streamer = MapStreamer(self.world, self._map_grew) if self._auto_fetch else None
-        self._map_growth = None  # the background rebuild's result, swapped in by a tick
+        self._map_growth: list = []  # the background rebuild's results, swapped in by ticks in order
         self._server_time = 0.0
 
         self._listener: Optional[Listener] = None
@@ -603,14 +608,21 @@ class SimulationServer:
                     "train": f"{train.service.train_type} {train.service.number}" if train.service else None,
                 })
             railway_mgr.sound_events.clear()
-        if self._map_growth is not None:
+        if self._map_growth:
             self._apply_map_growth()
         if self._map_streamer is not None:  # auto-fetch near the edge, then map sync
             self._map_streamer.tick(self.car.x, self.car.y, math.cos(self.car.heading) * self.car.speed,
-                                    math.sin(self.car.heading) * self.car.speed)
+                                    math.sin(self.car.heading) * self.car.speed, urgent=not self.central_chunk_ready())
         self._stream_map_chunks()
         self.navigation.update(self.world, self.car, self._current_way)
         self._broadcast_state(should_stop=result.should_stop, city_summary=result.city_summary, events=events)
+
+    def central_chunk_ready(self) -> bool:
+        """Whether the map chunk under the player has roads - what the client
+        needs first; False right after a jump into an unloaded area."""
+        player = self.world.player_pedestrian if self._on_foot else self.car
+        chunk = self._chunks_index._chunks.get(chunk_id(*cell_of(player.x, player.y)))
+        return bool(chunk and chunk.get("roads"))
 
     def _home_pressed(self) -> None:
         """H: in a house yard, make it home (a new one asks first: H
@@ -661,46 +673,62 @@ class SimulationServer:
         return {"type": "phone_result", "action": request["action"], "item_id": request["item_id"],
                 "request_id": request["request_id"], "ok": ok, "reason": reason}
 
-    def _map_grew(self, old_bounds, new_bounds) -> None:
-        """A map sync finished: light the new roads and rebuild the chunks in
-        the background (seconds on a city; the streamer holds further merges
-        meanwhile, so the world stays as synced); _apply_map_growth swaps
-        them in on a later tick."""
+    def _map_grew(self, old_bounds, new_bounds, dirty=None) -> None:
+        """A map sync finished: light the new roads and rebuild the chunks the
+        merges changed (`dirty`, metres; ChunkIndex.updated - the rest are
+        kept) in the background, the streamer holding further merges
+        meanwhile so the world stays as synced; _apply_map_growth swaps them
+        in on a later tick. The chunks around the player come first, as their
+        own result (after a Home jump: the destination drawn seconds before
+        the rest of the area is rebuilt)."""
         def build():
             started = time.perf_counter()
             known = {(round(x, 1), round(y, 1)) for x, y, *_ in self.world.street_light_points}
             lights = list(self.world.street_light_points) + [
                 lamp for lamp in place_street_lights(self.world, outside=old_bounds)
                 if (round(lamp[0], 1), round(lamp[1], 1)) not in known]
+            lights_s = time.perf_counter() - started
             self.world.street_light_points, previous = lights, self.world.street_light_points
             try:
-                index = ChunkIndex(self.world)
+                index = self._chunks_index
+                if dirty is None:
+                    self._map_growth.append((lights, index, set(), old_bounds, new_bounds, 0.0, True))
+                    return
+                margin = CHANGED_AREA_MARGIN_M
+                area = (dirty[0] - margin, dirty[1] - margin, dirty[2] + margin, dirty[3] + margin)
+                ix, iy = cell_of(self.car.x, self.car.y)
+                near = (max(area[0], (ix - 1) * CHUNK_SIZE_M), max(area[1], (iy - 1) * CHUNK_SIZE_M),
+                        min(area[2], (ix + 2) * CHUNK_SIZE_M), min(area[3], (iy + 2) * CHUNK_SIZE_M))
+                if near[0] < near[2] and near[1] < near[3]:  # the player's 3x3 chunks changed: those first
+                    index, changed = ChunkIndex.updated(index, self.world, near)
+                    self._map_growth.append((lights, index, changed, old_bounds, new_bounds,
+                                             time.perf_counter() - started, False))
+                index, changed = ChunkIndex.updated(index, self.world, area)
             finally:
                 self.world.street_light_points = previous  # the tick's own until the swap
-            old_chunks = self._chunks_index._chunks  # compared here: seconds with big lakes in many chunks
-            changed = {cid for cid in set(old_chunks) | set(index._chunks) if old_chunks.get(cid) != index._chunks.get(cid)}
-            self._map_growth = (lights, index, changed, old_bounds, new_bounds, time.perf_counter() - started)
+            self._map_growth.append((lights, index, changed, old_bounds, new_bounds, time.perf_counter() - started, True))
+            logger.info("Map chunks rebuilt for %.0f x %.0f m (lights %.0f ms)", area[2] - area[0], area[3] - area[1],
+                        lights_s * 1000.0)
 
         self._map_streamer.hold = True
         threading.Thread(target=build, name="map-growth", daemon=True).start()
 
     def _apply_map_growth(self) -> None:
-        """Swap in the grown map's lamps and chunks; resend every chunk a
-        client has whose content changed (new roads across the old edge,
-        lamps, buildings...)."""
-        lights, index, changed, old_bounds, new_bounds, build_s = self._map_growth
-        self._map_growth = None
+        """Swap in the grown map's lamps and chunks (the next result of the
+        background rebuild); resend every chunk a client has whose content
+        changed (new roads across the old edge, lamps, buildings...)."""
+        lights, index, changed, old_bounds, new_bounds, build_s, final = self._map_growth.pop(0)
         self._chunks_index = index
         self.world.street_light_points = lights
-        self._map_streamer.hold = False
+        self._map_streamer.hold = not final
         with self._clients_lock:
             for connection, (loaded, _) in list(self._client_chunks.items()):
                 for cid in loaded & changed:
                     connection.send({"type": "chunk_unload", "version": protocol.PROTOCOL_VERSION, "chunk_id": cid})
                     connection.send(self._chunks_index.encoded(cid))
                 self._client_chunks[connection] = (loaded, None)  # replan: the new area may be in reach
-        logger.info("Map grew %s -> %s: %d chunks changed, built in %.0f ms", old_bounds, new_bounds, len(changed),
-                    build_s * 1000.0)
+        logger.info("Map grew %s -> %s: %d chunks changed%s, built in %.0f ms", old_bounds, new_bounds, len(changed),
+                    "" if final else " around the player", build_s * 1000.0)
 
     def _stream_map_chunks(self) -> None:
         """Each client gets the map chunks around the player it doesn't have

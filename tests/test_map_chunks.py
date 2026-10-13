@@ -281,3 +281,20 @@ def test_buildings_have_one_owner_and_their_facade_style():
     assert rb.BUILDING_WALL_COLORS.index(tuple(wall)) == rb.BUILDING_ROOF_COLORS.index(tuple(roof))  # a matching wall and roof pair
     assert east["canopies"] and east["canopy_heights"] == [static_world.building_style(canopy)[2]]
     assert static_world.building_style(Building([(0, 0), (9, 0), (9, 9)], building_type="house"))[6] == 1
+
+
+def test_a_region_update_matches_a_full_rebuild_and_keeps_the_other_chunks():
+    def road(x0, x1, y):
+        return SimpleNamespace(points_m=[(x0, y), (x1, y)], half_width_m=3.0, highway="primary", is_drivable=True,
+                               layer=0, bbox=(x0, y, x1, y))
+
+    old_roads = [road(0.0, 400.0, 10.0), road(3000.0, 3400.0, 10.0)]
+    new_road = road(3100.0, 3900.0, 260.0)  # merged later, in and next to the far chunks only
+    old = map_chunks.ChunkIndex(SimpleNamespace(ways=old_roads, railways=[], waters=[], buildings=[]))
+    old.encoded("0_0")
+    grown = SimpleNamespace(ways=old_roads + [new_road], railways=[], waters=[], buildings=[])
+    index, changed = map_chunks.ChunkIndex.updated(old, grown, new_road.bbox)
+
+    assert index._chunks == map_chunks.ChunkIndex(grown)._chunks
+    assert changed == {"6_0", "7_0"}  # the chunks the new road reaches
+    assert index._chunks["0_0"] is old._chunks["0_0"] and index._encoded["0_0"] is old._encoded["0_0"]  # untouched, kept

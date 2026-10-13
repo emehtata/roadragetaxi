@@ -62,13 +62,6 @@ def _rss_mb() -> dict:
     return {"rss_mb": round(values.get("VmRSS", 0.0)), "peak_rss_mb": round(values.get("VmHWM", 0.0))}
 
 
-def _central_ready(server) -> bool:
-    from theroadragetrip.map_chunks import cell_of, chunk_id
-
-    chunk = server._chunks_index._chunks.get(chunk_id(*cell_of(server.car.x, server.car.y)))
-    return bool(chunk and chunk.get("roads"))
-
-
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("--preset", default="Oulu")
@@ -154,9 +147,9 @@ def main(argv=None) -> int:
         if status != last_status:
             statuses.append((round(now, 2), status))
             last_status = status
-        if "central_s" not in marks and _central_ready(server):
+        if "central_s" not in marks and server.central_chunk_ready():
             marks["central_s"] = now
-        if "central_s" in marks and not status and server._map_growth is None:
+        if "central_s" in marks and not status and not server._map_growth:
             marks["settled_s"] = now
             break
     streamer = server._map_streamer

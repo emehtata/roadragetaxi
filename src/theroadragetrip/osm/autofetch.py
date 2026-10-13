@@ -348,6 +348,9 @@ class AutoFetchManager:
         # says it's worth it. Value is the time.monotonic() the tile went
         # inactive, for oldest-first eviction.
         self._inactive_tile_since: dict[TileCoord, float] = {}
+        # Union of the extents of objects merged in or unloaded since the
+        # last take_dirty_rect(): where the server's map chunks changed.
+        self.dirty_rect: Optional[tuple[float, float, float, float]] = None
         self.tile_memory_budget_mb = tile_memory_budget_mb
         self.last_process_memory_mb: Optional[float] = None
         # Off unless runtime streaming is on (main sets it from
@@ -604,6 +607,21 @@ class AutoFetchManager:
 
     @staticmethod
     def _item_tiles(item) -> set[TileCoord]:
+        rect = AutoFetchManager._item_rect(item)
+        if rect is None:
+            return set()
+        min_x, min_y, max_x, max_y = rect
+        first = world_to_tile(min_x, min_y)
+        last = world_to_tile(max_x, max_y)
+        return {
+            TileCoord(tile_x, tile_y)
+            for tile_x in range(first.x, last.x + 1)
+            for tile_y in range(first.y, last.y + 1)
+        }
+
+    @staticmethod
+    def _item_rect(item) -> Optional[tuple[float, float, float, float]]:
+        """An object's extent in metres, None when it has none."""
         bbox = getattr(item, "bbox", None)
         if bbox and bbox != (0.0, 0.0, 0.0, 0.0):
             min_x, min_y, max_x, max_y = bbox
@@ -624,18 +642,27 @@ class AutoFetchManager:
         else:
             points = getattr(item, "points_m", ())
             if not points:
-                return set()
+                return None
             min_x = min(point[0] for point in points)
             min_y = min(point[1] for point in points)
             max_x = max(point[0] for point in points)
             max_y = max(point[1] for point in points)
-        first = world_to_tile(min_x, min_y)
-        last = world_to_tile(max_x, max_y)
-        return {
-            TileCoord(tile_x, tile_y)
-            for tile_x in range(first.x, last.x + 1)
-            for tile_y in range(first.y, last.y + 1)
-        }
+        return min_x, min_y, max_x, max_y
+
+    def _mark_dirty(self, item) -> None:
+        """Grow dirty_rect by an object that entered or left the world."""
+        rect = self._item_rect(item)
+        if rect is None:
+            return
+        d = self.dirty_rect
+        self.dirty_rect = rect if d is None else (min(d[0], rect[0]), min(d[1], rect[1]), max(d[2], rect[2]), max(d[3], rect[3]))
+
+    def take_dirty_rect(self) -> Optional[tuple[float, float, float, float]]:
+        """The area changed by merges and unloads since the last call (the map
+        chunks to rebuild there), and start over. None: nothing changed."""
+        with self.lock:
+            rect, self.dirty_rect = self.dirty_rect, None
+            return rect
 
     def _background_tile_fetch(
         self,
@@ -867,6 +894,7 @@ class AutoFetchManager:
         owners.update(owned_tiles)
         if is_new_key:
             target.append(item)
+            self._mark_dirty(item)
 
     def _merge_world_bounds(self, world) -> None:
         world_bounds = getattr(world, "bounds", None)
@@ -929,6 +957,7 @@ class AutoFetchManager:
                         continue
                     owners_by_key.pop(key, None)
                     keys_to_remove.setdefault(section, set()).add(key)
+                    self._mark_dirty(objects[key])
             if tile_objects:
                 any_removed = True
                 self.map_revision += 1

@@ -26,6 +26,9 @@ class FakeManager:
     def integrate_completed_tiles(self, budget_s=None):
         self.integrated += 1
 
+    def take_dirty_rect(self):
+        return (0.0, 0.0, 100.0, 100.0)
+
     def start_tile_streaming(self, x, y, vx, vy):
         self.streamed += 1
         return False
@@ -42,7 +45,7 @@ def test_streamer_syncs_once_a_merge_settles_and_reports_the_growth(monkeypatch)
     monkeypatch.setattr(map_sync, "map_sync_steps", steps)
     manager = FakeManager()
     grown = []
-    streamer = map_sync.MapStreamer(SimpleNamespace(auto_fetch_manager=manager, ways=[]), lambda old, new: grown.append((old, new)))
+    streamer = map_sync.MapStreamer(SimpleNamespace(auto_fetch_manager=manager, ways=[]), lambda old, new, dirty: grown.append((old, new)))
     assert manager.soft_boundary_enabled
 
     streamer.tick(50, 50, 10, 0)
@@ -70,7 +73,7 @@ def test_the_status_tells_the_client_what_the_map_is_doing(monkeypatch):
     manager = FakeManager()
     manager.fetching = False
     manager.get_fetching = lambda: manager.fetching
-    streamer = map_sync.MapStreamer(SimpleNamespace(auto_fetch_manager=manager, ways=[]), lambda old, new: None)
+    streamer = map_sync.MapStreamer(SimpleNamespace(auto_fetch_manager=manager, ways=[]), lambda old, new, dirty: None)
     assert streamer.status() == ""
     manager.fetching = True
     assert streamer.status() == "fetching"

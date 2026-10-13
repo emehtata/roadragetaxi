@@ -8,6 +8,11 @@ import time
 # (bin-loader-v3.md): small enough that even a stacked worst case stays
 # well under a 30 Hz tick.
 MAP_SYNC_BUDGET_S = 0.004
+# While the map under the player isn't there yet (a Home jump into an
+# unloaded area) nothing on screen is worth the 4 ms cap: merge and sync
+# may use most of a 30 Hz tick (33 ms) instead. Measured: ~1 s of sync
+# work took 5-23 s of wall time at 4 ms per tick.
+MAP_SYNC_URGENT_BUDGET_S = 0.020
 
 
 def advance_chunked(items, index: int, budget_s: float, process_item) -> int:
