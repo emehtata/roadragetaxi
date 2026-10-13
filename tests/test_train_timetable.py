@@ -374,3 +374,13 @@ def test_refresh_if_stale_weekly_and_keeps_the_file_on_failure(tmp_path, monkeyp
     monkeypatch.setattr(importer, "download", _gtfs_zip)
     train_timetable.refresh_if_stale(None, path, now).join()
     assert load_timetable(path)["version"] == train_timetable.SUPPORTED_VERSION
+
+
+def test_a_train_on_parallel_routes_is_matched_once():
+    # Two lines into one station (Helsinki): both match the train; only one may run it.
+    stations = {"S": [0.0, 0.0, "South"], "M1": [0.06, 0.0, "Alpha"], "N": [0.2, 0.0, "North"]}
+    route = RailwayManager(NORTH_SOUTH_TRACK).routes[0]
+    calls_at_alpha = train([("S", 36000), ("M1", 36600), ("N", 38400)], number="24")
+    passing = train([("S", 40000), ("N", 41000)], number="25")
+    passes = match_timetable(timetable(calls_at_alpha, passing, stations=stations), [route, route], metres)
+    assert sorted(p.number for p in passes) == ["24", "25"]

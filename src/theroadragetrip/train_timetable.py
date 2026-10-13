@@ -252,6 +252,7 @@ def match_timetable(
         return on_route[index][code]
 
     for train, stops, path, cumulative, (minx, miny, maxx, maxy) in prepared:
+        candidates = []  # (distance from the route's middle, pass) for this train
         for index, (start, middle, end) in enumerate(ends):
             if not (minx - radius_m <= middle[0] <= maxx + radius_m and miny - radius_m <= middle[1] <= maxy + radius_m):
                 continue
@@ -283,7 +284,7 @@ def match_timetable(
             first, last = (min(local_calls), max(local_calls)) if local_calls else (segment + 1, segment)
             came_from = stops[first - 1][0] if first > 0 else None
             going_to = stops[last + 1][0] if last + 1 < len(stops) else None
-            passes.append(ScheduledPass(
+            candidates.append((distance, ScheduledPass(
                 train_type=train["type"], number=train["number"],
                 origin=train["origin"], destination=train["destination"], days=train["days"],
                 # When the train should be at its first stop here (so it
@@ -295,7 +296,17 @@ def match_timetable(
                 came_from=came_from, going_to=going_to,
                 calls=tuple(timetable["stations"][stop[2]][2] for stop in stops if stop[4]),
                 category=train.get("category", ""),
-            ))
+            )))
+        # One train, one train on the map: parallel routes (several lines
+        # into one station) all match it. The nearest route keeps it; another
+        # only if it calls at none of the same stations (a separate line).
+        kept: List[set] = []
+        for _, scheduled in sorted(candidates, key=lambda candidate: candidate[0]):
+            stations = {stop[2] for stop in scheduled.stops}
+            if any(stations & other or not (stations or other) for other in kept):
+                continue
+            kept.append(stations)
+            passes.append(scheduled)
     return passes
 
 
