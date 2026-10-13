@@ -175,7 +175,7 @@ func set_language(value: String) -> void:
 	language = value
 	if _title == null:
 		return
-	_title.text = "TaxiGo"
+	_title.text = "RageCab"
 	_accept.text = T.text("phone_accept", language)
 	_reject.text = T.text("phone_decline", language)
 	_close.text = T.text("phone_close", language)
