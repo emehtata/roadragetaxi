@@ -320,7 +320,9 @@ class SimulationServer:
                 thunder = seen_thunder and condition.value == "rain"
             source = seen.source if seen is not None else "generated"
             lines.append({"time": f"{moment:%d.%m. %H:%M}", "temperature_c": round(temperature, 1),
-                          "weather": "thunderstorm" if thunder else condition.value, "source": source})
+                          "weather": "thunderstorm" if thunder else condition.value, "source": source,
+                          "wind_speed_mps": seen.wind_speed_mps if seen is not None else None,
+                          "wind_from_deg": seen.wind_from_deg if seen is not None else None})
             if source in ("observed", "forecast"):
                 logger.info("FMI weather %s: %s", f"{moment:%d.%m. %H:%M}", source)
         return lines

@@ -455,7 +455,8 @@ def test_historical_weather_drives_the_servers_weather_and_temperature(tmp_path,
             pass
 
         def get(self, moment):
-            return HourlyWeather(temperature_c=-3.5, precipitation_mm=2.0, wawa=71)
+            return HourlyWeather(temperature_c=-3.5, precipitation_mm=2.0, wawa=71,
+                                 wind_speed_mps=6.5, wind_from_deg=225.0)
 
         def source_at(self, moment):
             return "observed"
@@ -465,12 +466,13 @@ def test_historical_weather_drives_the_servers_weather_and_temperature(tmp_path,
     with caplog.at_level(logging.INFO, logger="theroadragetrip.server"):
         server.tick(1.0 / 30.0)
         server.tick(1.0 / 30.0)
-        server._forecast()
+        forecast = server._forecast()
     assert sum("FMI weather now" in record.message for record in caplog.records) == 1
     assert any("FMI weather " in record.message for record in caplog.records)
     weather = _state(server)["weather"]
     assert weather["source"] == "observed" and weather["temperature_c"] == -3.5
     assert server.world.weather.weather_type == WeatherType.SNOW
+    assert forecast[0]["wind_speed_mps"] == 6.5 and forecast[0]["wind_from_deg"] == 225.0
 
 
 def test_start_time_starts_the_calendar_clamped_to_a_year_back(tmp_path, monkeypatch):
@@ -509,7 +511,8 @@ def test_the_world_message_carries_the_start_sign(tmp_path, monkeypatch):
     server = _build_server(tmp_path, monkeypatch)
     forecast = server.start_forecast
     assert len(forecast) == 5 and forecast[0]["source"] == "generated"
-    assert all(set(line) == {"time", "temperature_c", "weather", "source"} for line in forecast)
+    assert all(set(line) == {"time", "temperature_c", "weather", "source", "wind_speed_mps", "wind_from_deg"}
+               for line in forecast)
     assert all(line["time"].endswith(":00") for line in forecast)
     assert forecast[0]["weather"] in ("clear", "rain", "slush", "snow", "thunderstorm")
     message = protocol.build_world_message((0.0, 0.0), 250.0, "p1", "Oulu", forecast)

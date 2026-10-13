@@ -367,7 +367,7 @@ def build_world_message(center: tuple, chunk_size_m: float, player_id: str = LOC
     """What a client learns once on connect: the map origin (it draws
     relative to it, for float32 precision), the chunk grid size, and which
     player it controls; for the start sign the city and the 24-hour
-    forecast ([{time, temperature_c, weather, source}]). The map itself
+    forecast ([{time, temperature_c, weather, source, wind_speed_mps, wind_from_deg}]). The map itself
     follows as "chunk" messages."""
     return {
         "type": "world", "version": PROTOCOL_VERSION,
