@@ -176,9 +176,9 @@ func set_language(value: String) -> void:
 	if _title == null:
 		return
 	_title.text = "TaxiGo"
-	_accept.text = "Hyväksy ⏎" if language == "fi" else "Accept ⏎"
-	_reject.text = "Hylkää X" if language == "fi" else "Decline X"
-	_close.text = "Sulje P" if language == "fi" else "Close P"
+	_accept.text = T.text("phone_accept", language)
+	_reject.text = T.text("phone_decline", language)
+	_close.text = T.text("phone_close", language)
 	_refresh()
 
 
@@ -290,10 +290,7 @@ func handle_result(result: Dictionary) -> void:
 		if result.get("action") == "accept":
 			close()  # the fare is on, back to driving
 	else:
-		if language == "fi":
-			notice = "Pyyntö ei ole enää saatavilla." if result.get("reason") == "gone" else "Pyyntöön ei voitu vastata."
-		else:
-			notice = "That request is no longer available." if result.get("reason") == "gone" else "The request could not be answered."
+		notice = T.text("phone_gone" if result.get("reason") == "gone" else "phone_answer_failed", language)
 	_refresh()
 
 
@@ -430,16 +427,16 @@ func _fill_card(card: Button, index: int) -> void:
 ## and the distance badge already say).
 static func card_text(item: Dictionary, language := "en") -> String:
 	if item.get("kind") == "booking":  # the train is the badge; the status only once it isn't pending
-		var booking: Array = [("Ennakkotilaus · asemalta %s" if language == "fi" else "Pre-booked · from %s station") % item.get("pickup", "?"),
-			("Kohde  %s" if language == "fi" else "To  %s") % item.get("dropoff", "?"),
-			(("Ennakkotilauslisä +%.2f €" if language == "fi" else "Pre-booking fee +%.2f €") % (item["surcharge_cents"] / 100.0)) if item.has("surcharge_cents") else ""]
+		var booking: Array = [T.text("phone_prebooked_from", language) % item.get("pickup", "?"),
+			T.text("phone_to_short", language) % item.get("dropoff", "?"),
+			(T.text("phone_fee_short", language) % (item["surcharge_cents"] / 100.0)) if item.has("surcharge_cents") else ""]
 		if item.get("status", "") != "PENDING":
-			booking.append(("Tila: %s" if language == "fi" else "Status: %s") % str(item.get("status", "?")).to_lower().replace("_", " "))
+			booking.append(T.text("phone_status", language) % str(item.get("status", "?")).to_lower().replace("_", " "))
 		return "\n".join(booking.filter(func(line): return line != ""))
 	var lines: Array = []
-	lines.append(("Nouto  %s" if language == "fi" else "Pickup  %s") % item.get("pickup", "?"))
-	lines.append(("Kohde  %s" if language == "fi" else "To  %s") % item.get("dropoff", "?"))
-	lines.append(("Kyyti %s · hinta mittarin mukaan" if language == "fi" else "Trip %s · fare by the meter") % distance_text(item.get("trip_distance_m"), language))
+	lines.append(T.text("phone_pickup_short", language) % item.get("pickup", "?"))
+	lines.append(T.text("phone_to_short", language) % item.get("dropoff", "?"))
+	lines.append(T.text("phone_trip_meter", language) % distance_text(item.get("trip_distance_m"), language))
 	return "\n".join(lines)
 
 
@@ -447,29 +444,29 @@ static func card_text(item: Dictionary, language := "en") -> String:
 
 static func distance_text(metres, language := "en") -> String:
 	if metres == null:
-		return "ei saatavilla" if language == "fi" else "unavailable"
+		return T.text("phone_unavailable", language)
 	return "%d m" % metres if metres < 1000 else "%.2f km" % (metres / 1000.0)
 
 
 static func status_text(is_connected: bool, is_busy: bool, rows: Array, last_notice: String, language := "en") -> String:
 	if not is_connected:
-		return "Ei yhteyttä simulaatioon." if language == "fi" else "No connection to the simulation."
+		return T.text("phone_no_connection", language)
 	if last_notice != "":
 		return last_notice
 	if is_busy and rows.is_empty():
-		return "Aja nykyinen kyyti ensin loppuun." if language == "fi" else "Finish the current fare first."
+		return T.text("phone_finish_fare", language)
 	if rows.is_empty():
-		return "Ei kyytipyyntöjä juuri nyt." if language == "fi" else "No ride requests right now."
-	return "1–3 hyväksyy · ↑↓ valitse · X hylkää" if language == "fi" else "1–3 accept · ↑↓ choose · X decline"
+		return T.text("phone_no_requests", language)
+	return T.text("phone_keys", language)
 
 
 static func row_text(number: int, item: Dictionary, waiting: bool, language := "en") -> String:
-	var who: String = item.get("name", "") if item.get("name", "") != "" else ("Asiakas" if language == "fi" else "Customer")
+	var who: String = item.get("name", "") if item.get("name", "") != "" else T.text("phone_customer", language)
 	var head := "[%d] %s" % [number, who]
 	if item.get("kind") == "booking":
 		head = "[%d] %s" % [number, who]  # the card says it is pre-booked; the train is its badge
 	if waiting:
-		return head + (" – odotetaan vastausta…" if language == "fi" else " - waiting for answer...")
+		return head + T.text("phone_waiting", language)
 	if item.get("status", "") not in ANSWERABLE:
 		return head + " - " + str(item.get("status", "")).to_lower().replace("_", " ")
 	return head
@@ -478,15 +475,15 @@ static func row_text(number: int, item: Dictionary, waiting: bool, language := "
 static func details_text(item: Dictionary, language := "en") -> String:
 	var lines: Array = []
 	if item.get("kind") == "booking":
-		lines.append(("Nouto: %s, juna saapuu %s" if language == "fi" else "Pickup: %s station, train arrives %s") % [item.get("pickup", "?"), item.get("arrival", "?")])
-		lines.append(("Määränpää: %s" if language == "fi" else "To: %s") % item.get("dropoff", "?"))
-		lines.append((("Ennakkotilauslisä: +%.2f €" if language == "fi" else "Pre-booking fee: +%.2f €") % (item["surcharge_cents"] / 100.0)) if item.has("surcharge_cents") else ("Ennakkotilauslisä: ei saatavilla" if language == "fi" else "Pre-booking fee: unavailable"))
-		lines.append(("Tila: %s" if language == "fi" else "Status: %s") % str(item.get("status", "?")).to_lower().replace("_", " "))
+		lines.append(T.text("phone_booking_pickup", language) % [item.get("pickup", "?"), item.get("arrival", "?")])
+		lines.append(T.text("phone_to", language) % item.get("dropoff", "?"))
+		lines.append((T.text("phone_fee", language) % (item["surcharge_cents"] / 100.0)) if item.has("surcharge_cents") else T.text("phone_fee_unavailable", language))
+		lines.append(T.text("phone_status", language) % str(item.get("status", "?")).to_lower().replace("_", " "))
 	else:
-		lines.append(("Nouto: %s" if language == "fi" else "Pickup: %s") % item.get("pickup", "?"))
-		lines.append(("Määränpää: %s" if language == "fi" else "To: %s") % item.get("dropoff", "?"))
-		lines.append(("Asiakkaalle: %s · Kyyti: %s" if language == "fi" else "To the customer: %s · Trip: %s") % [distance_text(item.get("pickup_distance_m"), language), distance_text(item.get("trip_distance_m"), language)])
-		lines.append("Hinta selviää kyydin aikana (taksamittari)" if language == "fi" else "Fare: unavailable until the ride (taximeter)")
+		lines.append(T.text("phone_pickup", language) % item.get("pickup", "?"))
+		lines.append(T.text("phone_to", language) % item.get("dropoff", "?"))
+		lines.append(T.text("phone_distances", language) % [distance_text(item.get("pickup_distance_m"), language), distance_text(item.get("trip_distance_m"), language)])
+		lines.append(T.text("phone_fare_unknown", language))
 		if item.has("time_remaining_s"):
-			lines.append(("Pyyntö vanhenee %d sekunnissa" if language == "fi" else "Request expires in %d s") % ceili(item["time_remaining_s"]))
+			lines.append(T.text("phone_expires", language) % ceili(item["time_remaining_s"]))
 	return "\n".join(lines)

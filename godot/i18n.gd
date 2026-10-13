@@ -38,6 +38,7 @@ const FI := { "choose_start": "Valitse pelitapa", "career": "Ura",
 	"status": "Tila", "activity": "Puuhailee", "blood_alcohol": "Promillet", "type": "Tyyppi",
 	"speed": "Nopeus", "owner": "Omistaja", "occupants": "Henkilöt kyydissä",
 	"in_vehicle": "ajoneuvossa",
+	"fuel_station": "HUOLTOASEMA", "phone_accept": "Hyväksy ⏎", "phone_decline": "Hylkää X", "phone_close": "Sulje P", "phone_prebooked_from": "Ennakkotilaus · asemalta %s", "phone_to_short": "Kohde  %s", "phone_fee_short": "Ennakkotilauslisä +%.2f €", "phone_status": "Tila: %s", "phone_pickup_short": "Nouto  %s", "phone_trip_meter": "Kyyti %s · hinta mittarin mukaan", "phone_unavailable": "ei saatavilla", "phone_no_connection": "Ei yhteyttä simulaatioon.", "phone_finish_fare": "Aja nykyinen kyyti ensin loppuun.", "phone_no_requests": "Ei kyytipyyntöjä juuri nyt.", "phone_keys": "1–3 hyväksyy · ↑↓ valitse · X hylkää", "phone_customer": "Asiakas", "phone_waiting": " – odotetaan vastausta…", "phone_booking_pickup": "Nouto: %s, juna saapuu %s", "phone_to": "Määränpää: %s", "phone_fee": "Ennakkotilauslisä: +%.2f €", "phone_fee_unavailable": "Ennakkotilauslisä: ei saatavilla", "phone_pickup": "Nouto: %s", "phone_distances": "Asiakkaalle: %s · Kyyti: %s", "phone_fare_unknown": "Hinta selviää kyydin aikana (taksamittari)", "phone_expires": "Pyyntö vanhenee %d sekunnissa", "phone_gone": "Pyyntö ei ole enää saatavilla.", "phone_answer_failed": "Pyyntöön ei voitu vastata.",
 }
 
 const EN := {
@@ -77,6 +78,7 @@ const EN := {
 	"nausea": "I feel sick!", "back_to_taxi": "Back to taxi", "pan_view": "Panned view", "resident": "Resident", "npc_vehicle": "NPC vehicle",
 	"unknown": "Unknown", "born": "Born", "gender": "Gender", "status": "State", "activity": "Activity", "blood_alcohol": "Blood alcohol", "type": "Type",
 	"speed": "Speed", "owner": "Owner", "occupants": "Occupants", "in_vehicle": "in vehicle",
+	"fuel_station": "FUEL", "phone_accept": "Accept ⏎", "phone_decline": "Decline X", "phone_close": "Close P", "phone_prebooked_from": "Pre-booked · from %s station", "phone_to_short": "To  %s", "phone_fee_short": "Pre-booking fee +%.2f €", "phone_status": "Status: %s", "phone_pickup_short": "Pickup  %s", "phone_trip_meter": "Trip %s · fare by the meter", "phone_unavailable": "unavailable", "phone_no_connection": "No connection to the simulation.", "phone_finish_fare": "Finish the current fare first.", "phone_no_requests": "No ride requests right now.", "phone_keys": "1–3 accept · ↑↓ choose · X decline", "phone_customer": "Customer", "phone_waiting": " - waiting for answer...", "phone_booking_pickup": "Pickup: %s station, train arrives %s", "phone_to": "To: %s", "phone_fee": "Pre-booking fee: +%.2f €", "phone_fee_unavailable": "Pre-booking fee: unavailable", "phone_pickup": "Pickup: %s", "phone_distances": "To the customer: %s · Trip: %s", "phone_fare_unknown": "Fare: unavailable until the ride (taximeter)", "phone_expires": "Request expires in %d s", "phone_gone": "That request is no longer available.", "phone_answer_failed": "The request could not be answered.",
 }
 
 ## The text for `key` in `language` (fi or en); a key missing from FI

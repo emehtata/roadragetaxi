@@ -41,6 +41,7 @@ func _process(_delta: float) -> bool:  # first frame: the tree is live, so nodes
 	_ran = true
 	MapChunk.build_async = false  # check the buildings right after a chunk loads
 	MapChunk.buildings_3d = false  # the legacy 2D renderer's checks; test_buildings_3d switches it on
+	test_i18n()
 	test_interpolation()
 	test_audio()
 	test_hud()
@@ -62,6 +63,12 @@ func _process(_delta: float) -> bool:  # first frame: the tree is live, so nodes
 	print("%d checks, %d failed" % [_checks, _failures])
 	quit(1 if _failures > 0 else 0)
 	return false
+
+
+func test_i18n() -> void:
+	check(I18n.FI.keys().filter(func(k): return not I18n.EN.has(k)).is_empty(), "every Finnish text has English")
+	check(I18n.EN.keys().filter(func(k): return not I18n.FI.has(k)).is_empty(), "every English text has Finnish")
+	check(Phone.status_text(true, false, [], "", "fi") == "Ei kyytipyyntöjä juuri nyt.", "the phone reads the Finnish table")
 
 
 func test_interpolation() -> void:

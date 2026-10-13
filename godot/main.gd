@@ -186,6 +186,7 @@ func set_language(value: String) -> void:
 
 func _apply_language() -> void:
 	hud.language = language
+	MapChunk.language = language
 	phone.set_language(language)
 	instruments.language = language
 	nav_overlay.language = language

@@ -392,6 +392,7 @@ func _build_2_5d() -> void:
 
 
 static var build_async := true  # tests build in place
+static var language := "en"  # unnamed fuel stations' board (main._apply_language)
 static var buildings_3d := true  # godot-21 prototype; --buildings 2d: the godot-20 radial renderer
 var meshes_3d: Array = []  # buildings_3d.meshes, added to MapLayer's 3D building layer
 
@@ -953,7 +954,7 @@ func _draw_fuel_boards(node: Node2D) -> void:
 
 
 static func fuel_board_text(station: Dictionary) -> String:
-	return "%s  %.2f €/L" % [station.get("name", "FUEL"), station["price_cents"] / 100.0]
+	return "%s  %.2f €/L" % [station.get("name", I18n.text("fuel_station", language)), station["price_cents"] / 100.0]
 
 
 ## Roadworks (barriers at both ends, cones between) and taxi stands

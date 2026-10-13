@@ -17,7 +17,6 @@ const STYLES := [  # [text colour, background, border or null, font size] per ca
 ]
 const MIN_PX_PER_M := [0.0, 0.0, 0.0, 0.45, 0.35]
 
-const MODE_NAMES := ["OFF", "STREETS", "ALL"]
 var mode := 0  # L cycles: 0 none (the start), 1 street names, 2 everything
 var map_layer: Node2D  # MapLayer: the loaded chunks and their labels
 var _font: Font
