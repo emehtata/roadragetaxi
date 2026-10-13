@@ -102,7 +102,7 @@ func setup(message: Dictionary, origin: Vector2) -> void:
 	if not message.get("landuse", []).is_empty():
 		_season_layers.append(_add_layer(-1, func(node: Node2D): Detail.draw_areas(self, node, "landuse")))
 	for z in _roads_by_z:
-		_roads_by_z[z].sort_custom(func(p, q): return int(p.get("layer", 0)) < int(q.get("layer", 0)))
+		_roads_by_z[z].sort_custom(_drawn_before)
 		var layer_z: int = z
 		_px_layers.append(_add_layer(z, func(node: Node2D): _draw_roads(layer_z, node)))  # markings depend on zoom
 	_add_layer(5, _draw_wet, _wet_darken)
@@ -191,6 +191,15 @@ func _compact() -> void:
 ## touch, whole - a long road made each such chunk's layer kilometres wide,
 ## so the renderer counted it visible and batched all of it every frame.
 ## Each chunk keeps only its own share; neighbours meet at the border.
+## Road drawing order within a z: lower layers first, then narrower first - a
+## wider road is drawn over the driveways and side streets ending on its centre
+## line, so they stop at its edge.
+static func _drawn_before(p: Dictionary, q: Dictionary) -> bool:
+	var lp := int(p.get("layer", 0))
+	var lq := int(q.get("layer", 0))
+	return lp < lq or (lp == lq and float(p.get("half_width_m", 1.5)) < float(q.get("half_width_m", 1.5)))
+
+
 func _clip_to_bounds() -> void:
 	var roads: Array = []
 	for road in _data.get("roads", []):
@@ -206,6 +215,8 @@ func _clip_to_bounds() -> void:
 		var z := clampi(int(road.get("layer", 0)), 0, BRIDGE_Z_MAX) + 1
 		if _roads_by_z.has(z):
 			_roads_by_z[z].append(road)
+	for z in _roads_by_z:
+		_roads_by_z[z].sort_custom(_drawn_before)
 	for key in ["railways", "rail_bridges", "water_lines"]:
 		var pieces: Array = []
 		for line in _data.get(key, []):

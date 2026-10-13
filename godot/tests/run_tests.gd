@@ -1813,6 +1813,10 @@ func test_performance_paths() -> void:
 	var road: PackedVector2Array = chunk._data["roads"][0]["points"]
 	check(road.size() == 2 and is_equal_approx(road[1].x, 500.0) and chunk._roads_by_z[1].size() == 1, "a road leaving the chunk is cut at its border")
 	check(is_equal_approx(chunk._data["railways"][0][1].y, -500.0), "rails too")
+	map.add_chunk(JSON.parse_string(JSON.stringify({"chunk_id": "1_0", "bounds": [500, 0, 1000, 500], "roads": [
+		{"points": [[520, 100], [980, 100]], "half_width_m": 4.5, "drivable": true, "layer": 0},  # the street
+		{"points": [[700, 130], [700, 100]], "half_width_m": 3.5, "drivable": true, "layer": 0}]})))  # a driveway ending on its centre
+	check(map._chunks["1_0"]._roads_by_z[1].map(func(r): return r["half_width_m"]) == [3.5, 4.5], "narrower roads first: a driveway ends at the street's edge")
 	check(is_equal_approx(_area(chunk._data["waters"]), 100.0 * 100.0), "water: only the part inside")
 
 	# Dry: no wet overlays drawn; no lightning: no full-screen flash.
