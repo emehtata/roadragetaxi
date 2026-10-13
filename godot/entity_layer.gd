@@ -562,15 +562,20 @@ static func _paint(node: Node2D, shapes: Array) -> void:
 static func drawable(points: PackedVector2Array) -> bool:
 	if points.size() < 3:
 		return false
+	# Points are 32-bit floats kilometres from the origin (~0.5 mm steps at
+	# 5 km): a tiny lamp there that passes fixed limits still fails Godot's
+	# triangulation. The limits grow with the distance - 5 mm at 5 km.
+	var tolerance := maxf(1e-4, (absf(points[0].x) + absf(points[0].y)) * 1e-6)
+	var tolerance_sq := tolerance * tolerance
 	var winding := 0.0
 	for i in points.size():
 		var a := points[i]
 		var b := points[(i + 1) % points.size()]
 		var c := points[(i + 2) % points.size()]
-		if not (is_finite(a.x) and is_finite(a.y)) or a.distance_squared_to(b) <= 1e-8:
+		if not (is_finite(a.x) and is_finite(a.y)) or a.distance_squared_to(b) <= tolerance_sq:
 			return false
 		var cross := (b - a).cross(c - b)
-		if absf(cross) <= 1e-6:
+		if absf(cross) <= tolerance_sq:
 			return false
 		if winding == 0.0:
 			winding = signf(cross)
