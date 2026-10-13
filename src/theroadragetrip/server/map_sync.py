@@ -23,6 +23,9 @@ from ..parking import generate_detached_house_parking_chunk
 logger = logging.getLogger(__name__)
 
 
+CHUNK_INPUTS_READY = "chunk_inputs_ready"
+
+
 def map_sync_steps(world):
     """The map sync stages 1..14 as one generator: each `yield` is a
     point where the tick may stop (its budget spent) and resume later, and
@@ -55,6 +58,11 @@ def map_sync_steps(world):
         while not grid.advance_rebuild(MAP_SYNC_BUDGET_S):
             yield "small_grids"
         yield "small_grids"
+    # Everything the map chunks are built from is final now (trees under the
+    # new roads gone, house bays added, the street-lamp grid the lights are
+    # placed from): MapStreamer starts the chunk rebuild here, while the
+    # gameplay graphs below are still being brought up to date.
+    yield CHUNK_INPUTS_READY
     if getattr(w, "railway_mgr", None) is not None:
         w.railway_mgr.rebuild(w.railways)
     yield "railways"
@@ -85,8 +93,10 @@ def map_sync_steps(world):
 class MapStreamer:
     """Per tick: merge streamed tiles, ask for more near the edge, and run
     the map sync when a merge has settled. `on_synced(old_bounds,
-    new_bounds, dirty_rect)` is called once a sync completes: the bounds
-    before and after, and the area its merges changed (None: nothing)."""
+    new_bounds, dirty_rect)` is called once per sync, as soon as the chunk
+    inputs are synced (CHUNK_INPUTS_READY; the gameplay graphs follow): the
+    bounds before and after, and the area its merges changed (None:
+    nothing)."""
 
     def __init__(self, world, on_synced) -> None:
         self.world = world
@@ -103,6 +113,11 @@ class MapStreamer:
         self.sync_stage_ms: dict[str, float] = {}  # busy time per stage of the running (or last) sync
         self.last_sync = None  # (wall s, busy ms, ticks) of the last completed sync
         self.hold = False  # the server rebuilds its chunks from the synced world: no merges meanwhile
+
+    def _report_growth(self) -> None:
+        old, new = self._synced_bounds, self.manager.get_bounds()
+        self._synced_bounds = new
+        self.on_synced(old, new, self._sync_dirty)
 
     @property
     def syncing(self) -> bool:
@@ -130,11 +145,12 @@ class MapStreamer:
         """`urgent`: the map under the player is missing (MAP_SYNC_URGENT_BUDGET_S
         for the merge and the sync instead of the 4 ms caps)."""
         manager = self.manager
-        if self.hold:
+        if self.hold and self._sync is None:
             return
-        manager.integrate_completed_tiles(budget_s=MAP_SYNC_URGENT_BUDGET_S if urgent else budget_s)
-        if manager.start_tile_streaming(x, y, vx, vy):
-            logger.info("Map streaming: tiles around (%.0f, %.0f), tile %s", x, y, manager.player_tile)
+        if not self.hold:  # while the chunks are rebuilt the world stays as synced: no merges, no new fetches
+            manager.integrate_completed_tiles(budget_s=MAP_SYNC_URGENT_BUDGET_S if urgent else budget_s)
+            if manager.start_tile_streaming(x, y, vx, vy):
+                logger.info("Map streaming: tiles around (%.0f, %.0f), tile %s", x, y, manager.player_tile)
         if self._sync is None:
             busy = manager.get_tile_merge_metrics()["tile_merge_active"]
             if not busy and manager.get_map_revision() != self._synced_revision:
@@ -153,16 +169,18 @@ class MapStreamer:
             now = time.perf_counter()
             self.sync_stage_ms[stage] = self.sync_stage_ms.get(stage, 0.0) + (now - started) * 1000.0
             started = now
+            if stage == CHUNK_INPUTS_READY:
+                self._report_growth()
             if now >= deadline:
                 return
         self._sync = None
+        if CHUNK_INPUTS_READY not in self.sync_stage_ms:
+            self._report_growth()  # a sync without the marker still rebuilds the chunks, at its end
+        self.sync_stage_ms.pop(CHUNK_INPUTS_READY, None)
         busy_ms = sum(self.sync_stage_ms.values())
         self.last_sync = (time.perf_counter() - self._sync_started, busy_ms, self._sync_ticks)
         logger.info("Map sync stages: %.1f s wall, %.0f ms busy over %d ticks: %s", self.last_sync[0], busy_ms,
                     self._sync_ticks, ", ".join(f"{name} {ms:.0f}" for name, ms in
                                                 sorted(self.sync_stage_ms.items(), key=lambda item: -item[1])))
         self._synced_revision = self._sync_revision
-        old, new = self._synced_bounds, manager.get_bounds()
-        self._synced_bounds = new
-        logger.info("Map sync complete: revision %d, bounds %s -> %s", self._synced_revision, old, new)
-        self.on_synced(old, new, self._sync_dirty)
+        logger.info("Map sync complete: revision %d, bounds %s", self._synced_revision, self._synced_bounds)

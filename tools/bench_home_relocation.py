@@ -72,6 +72,7 @@ def main(argv=None) -> int:
     parser.add_argument("--prepare-s", type=float, default=0.0, help="tick this long after saving home, before H")
     parser.add_argument("--timeout-s", type=float, default=300.0)
     parser.add_argument("--json", type=Path, help="also write the result here")
+    parser.add_argument("--stall-ms", type=float, default=STALL_S * 1000.0, help="record the stack of ticks longer than this")
     args = parser.parse_args(argv)
 
     server_argv = ["--preset", args.preset, "--no-menu", "--game-mode", "gig_driver", "--log-level", "INFO"]
@@ -103,9 +104,9 @@ def main(argv=None) -> int:
 
         main_id, reported = threading.main_thread().ident, None
         while True:
-            time.sleep(0.05)
+            time.sleep(0.01)
             began = in_tick[0]
-            if began is not None and began != reported and time.perf_counter() - began > STALL_S:
+            if began is not None and began != reported and time.perf_counter() - began > args.stall_ms / 1000.0:
                 reported = began
                 frame = sys._current_frames().get(main_id)
                 stalls.append([round((time.perf_counter() - began) * 1000.0), traceback.format_stack(frame)[-8:]])

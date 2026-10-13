@@ -39,7 +39,9 @@ def test_streamer_syncs_once_a_merge_settles_and_reports_the_growth(monkeypatch)
 
     def steps(world):
         synced_steps.append("start")
-        yield
+        yield map_sync.CHUNK_INPUTS_READY  # the chunks are rebuilt from here; the graphs continue
+        assert grown  # reported before the sync ends
+        yield "traffic"
         synced_steps.append("end")
 
     monkeypatch.setattr(map_sync, "map_sync_steps", steps)
