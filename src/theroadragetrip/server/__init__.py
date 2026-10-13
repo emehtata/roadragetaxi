@@ -702,26 +702,30 @@ class SimulationServer:
         the rest of the area is rebuilt)."""
         def build():
             started = time.perf_counter()
-            known = {(round(x, 1), round(y, 1)) for x, y, *_ in self.world.street_light_points}
-            lights = list(self.world.street_light_points) + [
+            index, previous = self._chunks_index, self.world.street_light_points
+            if dirty is None:
+                self._map_growth.append((previous, index, set(), old_bounds, new_bounds, 0.0, True))
+                return
+            margin = CHANGED_AREA_MARGIN_M
+            area = (dirty[0] - margin, dirty[1] - margin, dirty[2] + margin, dirty[3] + margin)
+            ix, iy = cell_of(self.car.x, self.car.y)
+            near = (max(area[0], (ix - 1) * CHUNK_SIZE_M), max(area[1], (iy - 1) * CHUNK_SIZE_M),
+                    min(area[2], (ix + 2) * CHUNK_SIZE_M), min(area[3], (iy + 2) * CHUNK_SIZE_M))
+            if near[0] < near[2] and near[1] < near[3]:
+                # The player's 3x3 chunks changed: those first, with the street
+                # lights known so far (after a Home jump the destination is drawn
+                # a second or more sooner; its new lamps come with the next pass).
+                index, changed = ChunkIndex.updated(index, self.world, near)
+                self._map_growth.append((previous, index, changed, old_bounds, new_bounds,
+                                         time.perf_counter() - started, False))
+            lights_started = time.perf_counter()
+            known = {(round(x, 1), round(y, 1)) for x, y, *_ in previous}
+            lights = list(previous) + [
                 lamp for lamp in place_street_lights(self.world, outside=old_bounds)
                 if (round(lamp[0], 1), round(lamp[1], 1)) not in known]
-            lights_s = time.perf_counter() - started
-            self.world.street_light_points, previous = lights, self.world.street_light_points
+            lights_s = time.perf_counter() - lights_started
+            self.world.street_light_points = lights
             try:
-                index = self._chunks_index
-                if dirty is None:
-                    self._map_growth.append((lights, index, set(), old_bounds, new_bounds, 0.0, True))
-                    return
-                margin = CHANGED_AREA_MARGIN_M
-                area = (dirty[0] - margin, dirty[1] - margin, dirty[2] + margin, dirty[3] + margin)
-                ix, iy = cell_of(self.car.x, self.car.y)
-                near = (max(area[0], (ix - 1) * CHUNK_SIZE_M), max(area[1], (iy - 1) * CHUNK_SIZE_M),
-                        min(area[2], (ix + 2) * CHUNK_SIZE_M), min(area[3], (iy + 2) * CHUNK_SIZE_M))
-                if near[0] < near[2] and near[1] < near[3]:  # the player's 3x3 chunks changed: those first
-                    index, changed = ChunkIndex.updated(index, self.world, near)
-                    self._map_growth.append((lights, index, changed, old_bounds, new_bounds,
-                                             time.perf_counter() - started, False))
                 index, changed = ChunkIndex.updated(index, self.world, area)
             finally:
                 self.world.street_light_points = previous  # the tick's own until the swap
