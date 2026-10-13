@@ -5,6 +5,12 @@ LANGUAGE_NAMES = {"fi": "Suomi", "en": "English"}
 
 TRANSLATIONS = {
     "fi": {
+        "home_saved": "Koti tallennettu! H vie taksin aina kotiin.",
+        "home_confirm": "Tehdäänkö tästä pihasta uusi koti? Paina H uudelleen.",
+        "home_not_yard": "Aja omakotitalon pihaan ja valitse se kodiksi painamalla H.",
+        "home_stop": "Pysäytä taksi (S) ja paina H.",
+        "home_on_foot": "Nouse ensin taksiin (F).",
+        "home_arrived": "Kotona.",
         "select_language": "Valitse kieli",
         "language_hint": "Vasen/Oikea tai numeronäppäin, ENTER / SPACE vahvistaa",
         "select_city": "Valitse aloituskaupunki (3x3 km OSM-kartta)",
@@ -166,6 +172,12 @@ TRANSLATIONS = {
         "fare_complete_points": "Kyyti valmis! Hinta {amount}, tippi {tip}, +{earned} pistettä ({avg:.0f} km/h keskiarvo, {seconds:.1f} s)",
     },
     "en": {
+        "home_saved": "Home saved! H always takes the taxi home.",
+        "home_confirm": "Make this yard your new home? Press H again.",
+        "home_not_yard": "Drive into a house yard and press H to make it your home.",
+        "home_stop": "Stop the taxi (S), then press H.",
+        "home_on_foot": "Get into the taxi (F) first.",
+        "home_arrived": "Home.",
         "select_language": "Select language",
         "language_hint": "LEFT/RIGHT or number key, ENTER / SPACE confirms",
         "select_city": "Select starting city (3x3 km OSM map)",

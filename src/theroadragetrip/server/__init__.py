@@ -40,6 +40,8 @@ from ..world_loader import load_world, resolve_city
 from ..viewport import SCREEN_H, SCREEN_W
 from ..simulation import RAGE_SHOUT_DURATION_S, PlayerCommand, advance_simulation, apply_enter_exit_vehicle
 from ..physics import reset_trip, respawn_car
+from ..home import CONFIRM_S, at_house_yard, homes_path, is_same_home, load_home, save_home
+from ..localization import tr
 from ..transport import Listener
 from ..weather import WeatherSystem, raining_last_hour, weather_type_for_observation
 from ..weather_history import WeatherHistory, precipitation_from_observation
@@ -259,6 +261,10 @@ class SimulationServer:
         self._pending_refuels = 0  # edge-triggered too: one press buys fuel once, never again each tick
         self._pending_road_rages = 0  # SPACE presses, likewise
         self._pending_respawns = 0
+        self._pending_homes = 0
+        self.homes_file = homes_path(CONFIG_PATH)
+        self._home = load_home(self.homes_file, str(self.chosen_city or ""))  # kept between gigs, per city
+        self._home_confirm_s = 0.0  # a second H within this: the new yard becomes home
         self._pending_cancels = 0
         self._pending_trip_resets = 0
         self._road_rage = None  # the active shout: {"text", "timer"}
@@ -410,7 +416,7 @@ class SimulationServer:
                 command, interact = protocol.command_from_message(message)
                 phone = protocol.phone_request_from_message(message)
                 with self._command_lock:
-                    self._latest_command = replace(command, refuel=False, road_rage=False, respawn=False,
+                    self._latest_command = replace(command, refuel=False, road_rage=False, respawn=False, home=False,
                                                    cancel_ride=False, reset_trip=False)  # the held part only
                     if interact:
                         self._pending_interacts += 1
@@ -420,6 +426,8 @@ class SimulationServer:
                         self._pending_road_rages += 1
                     if command.respawn:
                         self._pending_respawns += 1
+                    if command.home:
+                        self._pending_homes += 1
                     if command.cancel_ride:
                         self._pending_cancels += 1
                     if command.reset_trip:
@@ -487,6 +495,8 @@ class SimulationServer:
                 self._pending_road_rages -= 1
                 command = replace(command, road_rage=True)
             respawn = self._pending_respawns > 0
+            home = self._pending_homes > 0
+            self._pending_homes -= int(home)
             cancel_ride = self._pending_cancels > 0
             reset_trip_meter = self._pending_trip_resets > 0
             self._pending_respawns -= int(respawn)
@@ -507,6 +517,9 @@ class SimulationServer:
             respawn_car(self.car, self.world.ways, waters=self.world.waters, taxi_stops=self.world.taxi_stops)
             self.world.taxi_mgr.handle_respawn(self.car.x, self.car.y)
             self._camx, self._camy = self.car.x, self.car.y
+        self._home_confirm_s = max(0.0, self._home_confirm_s - dt)
+        if home:
+            self._home_pressed()
         if cancel_ride:
             self.world.taxi_mgr.discard_mission(self.car.x, self.car.y)
         if reset_trip_meter:
@@ -598,6 +611,37 @@ class SimulationServer:
         self._stream_map_chunks()
         self.navigation.update(self.world, self.car, self._current_way)
         self._broadcast_state(should_stop=result.should_stop, city_summary=result.city_summary, events=events)
+
+    def _home_pressed(self) -> None:
+        """H: in a house yard, make it home (a new one asks first: H
+        again); anywhere else, the taxi respawns at home."""
+        from ..physics import get_current_road_at_car
+
+        car, w, language = self.car, self.world, self.language
+        if self._on_foot:
+            return self._notify(tr(language, "home_on_foot"))
+        way = get_current_road_at_car(car, ways=w.ways, spatial_grid=w.spatial_grid, car_roads_only=False)
+        in_yard = at_house_yard(car.x, car.y, way, w.parking_spaces, getattr(w, "building_grid", None))
+        if in_yard and not is_same_home(self._home, car.x, car.y):
+            if abs(car.speed) > 0.5:
+                return self._notify(tr(language, "home_stop"))
+            if self._home is not None and self._home_confirm_s <= 0.0:
+                self._home_confirm_s = CONFIRM_S
+                return self._notify(tr(language, "home_confirm"), CONFIRM_S)
+            self._home, self._home_confirm_s = (car.x, car.y, car.heading), 0.0
+            save_home(self.homes_file, str(self.chosen_city or ""), self._home)
+            return self._notify(tr(language, "home_saved"))
+        if self._home is None:
+            return self._notify(tr(language, "home_not_yard"))
+        respawn_car(car, w.ways, waters=w.waters, taxi_stops=w.taxi_stops)  # the usual respawn's resets (fuel, engine)
+        car.x, car.y, car.heading = self._home
+        car.speed, car.layer, car.map_level = 0.0, 0, 0
+        self._notify(tr(language, "home_arrived"))  # a lost fare's notice (handle_respawn) wins
+        w.taxi_mgr.handle_respawn(car.x, car.y)
+        self._camx, self._camy = car.x, car.y
+
+    def _notify(self, message: str, seconds: float = 3.0) -> None:
+        self.world.taxi_mgr.notification_msg, self.world.taxi_mgr.notification_timer = message, seconds
 
     def _apply_phone_request(self, request: dict) -> dict:
         """Accept or reject a phone row by id through the taxi manager - and say how it went."""

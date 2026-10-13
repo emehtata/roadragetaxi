@@ -72,6 +72,7 @@ class PlayerCommand:
     engine_on: Optional[bool] = None
     road_rage: bool = False  # SPACE: one press (the server counts presses like refuel)
     respawn: bool = False
+    home: bool = False  # H: choose this yard as home / respawn at home (one press)
     cancel_ride: bool = False
     reset_trip: bool = False
 

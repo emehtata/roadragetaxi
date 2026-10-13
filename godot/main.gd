@@ -43,6 +43,7 @@ var speed_limiter := true  # V: a session toggle, reported in every command
 var red_light_assist := false  # B: likewise
 var lane_assist := false  # K: likewise
 var _respawn_pending := false
+var _home_pending := false  # H: choose this yard as home / back home
 var _cancel_ride_pending := false
 var _reset_trip_pending := false
 var _help: PanelContainer
@@ -322,6 +323,8 @@ func _unhandled_input(event: InputEvent) -> void:
 				lane_assist = not lane_assist
 			KEY_R:
 				_respawn_pending = true
+			KEY_H:
+				_home_pending = true
 			KEY_X:
 				if not phone.is_open:
 					_cancel_ride_pending = true
@@ -685,11 +688,12 @@ static func start_sign(world: Dictionary, language: String) -> PanelContainer:
 ## presses (F, G) go out once, in the next command only.
 func send(controls: Dictionary) -> void:
 	var command := command_for(controls, _engine_on, _interact_pending, _refuel_pending, speed_limiter, red_light_assist,
-		_road_rage_pending, lane_assist, _respawn_pending, _cancel_ride_pending, _reset_trip_pending)
+		_road_rage_pending, lane_assist, _respawn_pending, _cancel_ride_pending, _reset_trip_pending, _home_pending)
 	_interact_pending = false
 	_refuel_pending = false
 	_road_rage_pending = false
 	_respawn_pending = false
+	_home_pending = false
 	_cancel_ride_pending = false
 	_reset_trip_pending = false
 	sim.send_command(command)
@@ -697,9 +701,9 @@ func send(controls: Dictionary) -> void:
 
 static func command_for(controls: Dictionary, engine_on: bool, interact: bool, refuel: bool,
 		limiter := true, assist := false, road_rage := false, lane := false, respawn := false,
-		cancel_ride := false, reset_trip := false) -> Dictionary:
+		cancel_ride := false, reset_trip := false, home := false) -> Dictionary:
 	var command := {"speed_limiter_enabled": limiter, "red_light_assist_enabled": assist, "refuel": refuel, "road_rage": road_rage,
-		"lane_assist_enabled": lane, "respawn": respawn, "cancel_ride": cancel_ride, "reset_trip": reset_trip,
+		"lane_assist_enabled": lane, "respawn": respawn, "home": home, "cancel_ride": cancel_ride, "reset_trip": reset_trip,
 		"engine_on": engine_on, "interact": interact}
 	command.merge(controls, true)
 	return command
