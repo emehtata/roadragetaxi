@@ -1058,9 +1058,12 @@ class TaxiManager:
         ways: List[Way],
         places: Optional[List[Place]] = None,
         buildings: Optional[List[Building]] = None,
+        connected: Optional[List[Way]] = None,
     ) -> None:
-        """Update road and place references when map expands dynamically."""
-        self.ways = connected_drivable_ways(ways, named=True)
+        """Update road and place references when map expands dynamically.
+        `connected`: connected_drivable_ways(ways, named=True) computed by the
+        caller already (map sync does it off the tick)."""
+        self.ways = connected if connected is not None else connected_drivable_ways(ways, named=True)
         if places is not None:
             self.places = places
         if buildings is not None:

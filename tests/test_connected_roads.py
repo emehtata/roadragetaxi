@@ -95,3 +95,17 @@ def test_center_respawn_varies_without_taxi_stops():
         positions.add((car.x, car.y))
 
     assert len(positions) > 1
+
+
+def test_taxi_roads_keep_a_far_home_network_but_not_fragments():
+    from theroadragetrip.physics import connected_drivable_ways
+
+    def road(x0, x1, y=0.0):
+        return Way(points_m=[(x0, y), (x1, y)], highway="residential", half_width_m=4.0, name="Tie")
+
+    city = [road(0.0, 1000.0), road(1000.0, 2000.0), road(2000.0, 4000.0)]  # 4 km: the start city
+    home = [road(12_000.0, 12_500.0), road(12_500.0, 13_000.0)]  # 1 km, 8 km away: not connected yet
+    stub = [road(20_000.0, 20_080.0)]  # 80 m: a fragment
+    kept = connected_drivable_ways(city + home + stub)
+    assert all(way in kept for way in city + home) and stub[0] not in kept
+    assert compute_largest_connected_road_component(city + home + stub) == city  # respawn: still the largest only

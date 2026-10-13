@@ -13,12 +13,14 @@ chunks that changed.
 from __future__ import annotations
 
 import logging
+import threading
 import time
 
 from ..world_loader import level_structures as _level_structures
 from ..osm import TILE_MERGE_BUDGET_S, remove_trees_under_roads_steps
 from ..performance import MAP_SYNC_BUDGET_S, MAP_SYNC_URGENT_BUDGET_S
 from ..parking import generate_detached_house_parking_chunk
+from ..physics import connected_drivable_ways
 
 logger = logging.getLogger(__name__)
 
@@ -68,7 +70,16 @@ def map_sync_steps(world):
     yield "railways"
     with w.auto_fetch_manager.lock:
         w.auto_fetch_manager._attempted_endpoints.clear()
-    w.taxi_mgr.sync_map_data(w.ways, places=w.places, buildings=w.buildings)
+    # The taxi's road network is a whole-map graph search (~0.1-0.5 s in one
+    # go): a worker thread, the tick yielding meanwhile, so no tick waits for it.
+    found = {}
+    ways = list(w.ways)
+    search = threading.Thread(target=lambda: found.setdefault("ways", connected_drivable_ways(ways, named=True)),
+                              name="taxi-roads", daemon=True)
+    search.start()
+    while search.is_alive():
+        yield "taxi"
+    w.taxi_mgr.sync_map_data(w.ways, places=w.places, buildings=w.buildings, connected=found.get("ways"))
     yield "taxi"
     w.traffic_mgr.start_map_sync(
         w.ways, traffic_lights=w.traffic_lights, stop_signs=w.stop_signs, crossings=w.crossings,

@@ -604,8 +604,16 @@ def pull_car_inside_bridge_edge(car: Car, current_way=None) -> None:
     car.y = nearest[1] + (car.y - nearest[1]) * scale
 
 
-def compute_largest_connected_road_component(ways: List) -> List:
-    """Find the largest connected component among drivable car roads."""
+# connected_drivable_ways keeps every road network at least this share of the
+# largest one's length: a Home in another part of the region is its own
+# network until the roads between are loaded, and must not lose its rides to
+# the start city's larger one; parking-lot stubs and other fragments stay out.
+MAJOR_COMPONENT_SHARE = 0.1
+
+
+def compute_largest_connected_road_component(ways: List, min_share: Optional[float] = None) -> List:
+    """Find the largest connected component among drivable car roads - or,
+    with min_share, every component at least that share of its length."""
     drivable = [w for w in ways if is_car_road(w) and len(w.points_m) >= 2]
     if not drivable:
         return ways
@@ -656,12 +664,16 @@ def compute_largest_connected_road_component(ways: List) -> List:
     def component_total_length(comp: List[int]) -> float:
         return sum(drivable[widx].total_length_m for widx in comp)
 
+    if min_share is not None:
+        lengths = [component_total_length(comp) for comp in components]
+        floor = max(lengths) * min_share
+        return [drivable[i] for comp, length in zip(components, lengths) if length >= floor for i in comp]
     largest_comp = max(components, key=component_total_length)
     return [drivable[i] for i in largest_comp]
 
 
 def connected_drivable_ways(ways: List, named: bool = False) -> List:
-    connected = compute_largest_connected_road_component(ways) if ways else []
+    connected = compute_largest_connected_road_component(ways, MAJOR_COMPONENT_SHARE) if ways else []
     candidates = [w for w in connected if is_car_road(w) and len(w.points_m) >= 2]
     if named:
         named_candidates = [w for w in candidates if getattr(w, "name", None)]

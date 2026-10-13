@@ -50,6 +50,16 @@ class _Counter(logging.Handler):
                 self.counts[name] += 1
 
 
+def _central_ready(server) -> bool:
+    """server.central_chunk_ready(); computed here for servers older than it (baseline runs)."""
+    if hasattr(server, "central_chunk_ready"):
+        return server.central_chunk_ready()
+    from theroadragetrip.map_chunks import cell_of, chunk_id
+
+    chunk = server._chunks_index._chunks.get(chunk_id(*cell_of(server.car.x, server.car.y)))
+    return bool(chunk and chunk.get("roads"))
+
+
 STALL_S = 0.5  # a tick this long is a stall: its stack is recorded
 
 
@@ -148,7 +158,7 @@ def main(argv=None) -> int:
         if status != last_status:
             statuses.append((round(now, 2), status))
             last_status = status
-        if "central_s" not in marks and server.central_chunk_ready():
+        if "central_s" not in marks and _central_ready(server):
             marks["central_s"] = now
         if "central_s" in marks and not status and not server._map_growth:
             marks["settled_s"] = now
@@ -163,8 +173,8 @@ def main(argv=None) -> int:
         "statuses": statuses,
         "tick_ms": {"max": round(ms[-1], 1), "p95": round(ms[int(len(ms) * 0.95)], 1),
                     "p99": round(ms[int(len(ms) * 0.99)], 1), "mean": round(statistics.fmean(ms), 2), "ticks": len(ms)},
-        "last_sync": streamer.last_sync if streamer else None,
-        "sync_stage_ms": {k: round(v) for k, v in (streamer.sync_stage_ms if streamer else {}).items()},
+        "last_sync": getattr(streamer, "last_sync", None),
+        "sync_stage_ms": {k: round(v) for k, v in getattr(streamer, "sync_stage_ms", {}).items()},
         "counts": {name: counter.counts[name] - counts_before[name] for name in counter.counts},
         **_rss_mb(),
         "stalls": stalls,
