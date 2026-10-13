@@ -87,6 +87,7 @@ only ever holds up its own sender.
 |---|---|---|
 | `_on_client_connect` (accept thread) | `world` | `send()`: reliable FIFO |
 | `_stream_map_chunks` (tick) | `chunk_unload`, then `chunk` (pre-encoded bytes, nearest first) | `send()`: reliable FIFO |
+| `_apply_map_growth` (tick) | `chunk` for each changed chunk the client has (nearest first, replaces its copy) | `send()`: reliable FIFO |
 | `_broadcast_state` (tick) | `state` | `send_state()`: the pending-state slot |
 
 - **Reliable FIFO.** World, chunks and unloads are delivered once each, in
@@ -325,9 +326,9 @@ pause for one client's UI. Expiring offers therefore keep counting down.
 ## Map streaming (`map_chunks.py`, `map_layer.gd`, `map_chunk.gd`)
 
 - `ChunkIndex` buckets the world's existing OSM objects (`ways`,
-  `railways`, `waters`, `buildings`) by 500 m cell. It is built and
-  JSON-encoded once at server startup, so sending a chunk is only queueing
-  its bytes. A feature belongs to every chunk where it
+  `railways`, `waters`, `buildings`) by 500 m cell. It is built at server
+  startup and each chunk JSON-encoded once, when first sent, so sending it
+  again is only queueing its bytes. A feature belongs to every chunk where it
   has a vertex.
 - Each tick, the server finds the player's cell. When it changed for a
   connection, `plan()` works out what that client needs:
@@ -338,8 +339,17 @@ pause for one client's UI. Expiring offers therefore keep counting down.
 - The server tracks which chunks each connection has, so nothing is sent
   twice. A reconnect starts from empty.
 - The client adds and removes chunks as told. Each chunk is its own
-  canvas item, drawn once, so the others never redraw. A duplicate chunk
-  is ignored.
+  canvas item, drawn once, so the others never redraw. A chunk message for
+  a chunk already drawn replaces it in the same frame (no hole).
+- `main.gd` draws queued chunks first, up to `CHUNK_BUDGET_USEC` (4 ms) a
+  frame - another one only if it fits by the last one's cost, always at
+  least one - and frees unloaded chunks only once nothing waits to be
+  drawn. The latest message for a chunk wins: a newer copy replaces a
+  queued one and cancels a pending unload.
+- When the map grows, the server rebuilds only the chunks the merged
+  objects changed (`ChunkIndex.updated`, from the streamer's dirty
+  rectangle), the player's 3×3 first, and resends the changed ones a
+  client has, nearest first, without an unload before each.
 - Water is drawn one z-level below roads and buildings, so another
   chunk's lake can't cover a bridge.
 - The client doesn't request chunks; Python decides, because it knows
