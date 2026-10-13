@@ -4,6 +4,7 @@ import math
 import os
 import shutil
 import sys
+import tempfile
 import time
 from typing import List, Optional, Tuple
 
@@ -196,12 +197,25 @@ def save_osm_cache(bbox: Tuple[float, float, float, float], elements: List[dict]
 
     os.makedirs(CACHE_DIR, exist_ok=True)
     path = _bbox_cache_path(bbox)
+    # Atomic: written beside it under a unique name, then renamed over it, so
+    # an interrupted save (or two threads saving one bbox) never leaves a
+    # truncated file that looks like a cache.
+    temporary = None
     try:
-        with open(path, "w", encoding="utf-8") as f:
+        fd, temporary = tempfile.mkstemp(prefix=os.path.basename(path) + ".", suffix=".tmp", dir=CACHE_DIR)
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
             json.dump({"version": CACHE_VERSION, "fetched_at": time.time(), "elements": elements}, f)
+        os.replace(temporary, path)
+        temporary = None
         logger.info("Saved OSM cache to %s", path)
     except Exception as e:
         logger.warning("Failed to save cache %s: %s", path, e)
+    finally:
+        if temporary is not None:
+            try:
+                os.unlink(temporary)
+            except OSError:
+                pass
 
 
 def clear_osm_cache() -> int:
