@@ -15,6 +15,7 @@ from theroadragetrip.npc import (
     has_active_driver,
     place_parked_npc,
     spawn_npc,
+    prioritize_transit_spawn_nodes,
     transit_spawn_focus,
 )
 from theroadragetrip.osm import Way
@@ -171,7 +172,15 @@ def test_transit_spawn_focus_leads_a_player_driving_200_kmh():
 
     focus = transit_spawn_focus(car.x, car.y, car, simulation_radius_m=400.0)
 
-    assert focus == (200.0 / 3.6 * npc_module.NPC_POPULATION_TICK_S, 0.0)
+    assert focus == (200.0 / 3.6 * npc_module.NPC_TRANSIT_PLAYER_LOOKAHEAD_S, 0.0)
+
+
+def test_transit_spawn_prefers_nodes_ahead_on_the_same_road_corridor():
+    nodes = [(150.0, 5.0, 0), (0.0, 150.0, 0), (-150.0, 0.0, 0), (180.0, -10.0, 0)]
+
+    ordered = prioritize_transit_spawn_nodes(nodes, [1, 2, 3, 0], 0.0, 0.0, heading=0.0)
+
+    assert ordered[:2] == [0, 3]
 
 
 def test_trip_start_attempts_boost_when_below_the_moving_traffic_target(monkeypatch):
@@ -334,8 +343,8 @@ def test_no_duplicate_vehicle_ids_after_several_population_ticks():
     assert len(ids) == len(set(ids))
 
 
-def test_despawn_removes_distant_cars_even_below_min_count():
-    """The minimum is refilled near the player, not preserved with stale cars behind them."""
+def test_despawn_does_not_drain_population_before_replacements_are_ready():
+    """Distant cars remain until an atomic transit replacement can take their place."""
     ways = _city_block_grid()
     manager = NPCVehicleManager(target_count=10, min_count=6, spawn_radius_m=_SPAWN_RADIUS_M, vehicle_distribution={"car": 1.0})
     traffic_world = TrafficWorld(ways)
@@ -349,8 +358,9 @@ def test_despawn_removes_distant_cars_even_below_min_count():
     for vehicle in manager.vehicles:
         vehicle.car.x, vehicle.car.y = px + 10_000.0, py + 10_000.0
     manager._run_population_tick(px, py, residents, traffic_world, ways, None, None, None, None, None, None, None)
-    assert old_ids.isdisjoint(vehicle.vehicle_id for vehicle in manager.vehicles)
-    assert len(manager.vehicles) < manager.min_count
+    remaining_old_ids = old_ids & {vehicle.vehicle_id for vehicle in manager.vehicles}
+    assert len(remaining_old_ids) >= manager.min_count
+    assert len(manager.vehicles) >= manager.min_count
 
 
 def test_despawn_never_removes_a_vehicle_currently_visible_in_the_viewport():
@@ -1532,6 +1542,40 @@ def test_route_job_rechecks_unreserved_destination_when_committing():
     assert manager.route_job_stats["discarded"] == 2
 
 
+def test_ready_transit_atomically_replaces_a_distant_parked_car_below_target():
+    manager = NPCVehicleManager(target_count=10, min_count=6)
+    residents = ResidentManager()
+    distant = place_parked_npc(1, (1000.0, 0.0), None)
+    transit = place_parked_npc(2, (-100.0, 0.0), None)
+    plan = ([PathPoint(-100.0, 0.0), PathPoint(100.0, 0.0)], (100.0, 0.0), None, True)
+    manager.vehicles.append(distant)
+    manager.rebuild_spatial_grid()
+
+    manager._finish_route_job(
+        {"kind": "transit", "vehicle": None, "members": None}, (transit, plan),
+        0.0, 0.0, residents, None,
+    )
+
+    assert manager.vehicles == [transit]
+    assert transit.vehicle_id in manager.drivers
+    assert manager.route_job_stats["ready"] == 1
+
+
+def test_ready_transit_is_discarded_after_player_has_driven_out_of_range():
+    manager = NPCVehicleManager(target_count=10, min_count=6, simulation_radius_m=400.0)
+    residents = ResidentManager()
+    transit = place_parked_npc(2, (0.0, 0.0), None)
+    plan = ([PathPoint(0.0, 0.0), PathPoint(100.0, 0.0)], (100.0, 0.0), None, True)
+
+    manager._finish_route_job(
+        {"kind": "transit", "vehicle": None, "members": None}, (transit, plan),
+        1000.0, 0.0, residents, None,
+    )
+
+    assert manager.vehicles == []
+    assert manager.route_job_stats["discarded"] == 1
+
+
 def test_waiting_car_retargets_when_another_car_owns_its_destination():
     ways = _city_block_grid()
     traffic_world = TrafficWorld(ways)
@@ -1617,6 +1661,8 @@ def test_traffic_follows_the_buildings_around_the_player():
     assert manager.target_moving_count == max(1, int(20 * manager.target_moving_fraction))
     manager.set_local_density(-20000.0, 0.0, grid)  # an empty forest road: one passing car at most
     assert manager.target_count == 1
+    manager.set_local_density(-20000.0, 0.0, grid, current_way=Way([(0, 0), (100, 0)], "primary", 4.0))
+    assert manager.target_count == 5  # a main road keeps passing traffic even without nearby buildings
 
 
 def test_a_car_parked_on_the_shoulder_finds_its_way_back():

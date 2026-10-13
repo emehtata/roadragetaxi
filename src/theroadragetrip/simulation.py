@@ -575,6 +575,7 @@ def advance_simulation(
             curbs=curbs, curb_grid=curb_grid, building_grid=building_grid,
             viewport_bounds=viewport_bounds,
             player_car=car, pedestrian_mgr=pedestrian_mgr,
+            current_way=current_way,
         )
     for x, y in npc_manager.accidents:
         audio.play_group("collision.vehicle", at=(x, y))
