@@ -539,7 +539,7 @@ class WorldCacheManager:
                 return covering_world
         if self.fetch_func is None or self.build_func is None or bbox is None:
             raise FileNotFoundError(f"no valid world cache for {area_id}")
-        logger.info("[WorldCache] Cache miss %s; downloading Overpass JSON", area_id)
+        logger.info("[WorldCache] Cache miss %s; loading OSM data from configured source", area_id)
         fetch_kwargs = {"force_refresh": True, **kwargs} if force_refresh else kwargs
         elements = self.fetch_func(bbox, **fetch_kwargs)
         world = self.build_func(elements)

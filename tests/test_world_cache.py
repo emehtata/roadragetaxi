@@ -190,6 +190,21 @@ def test_world_cache_manager_preload(tmp_path, sample_world):
     manager.close()
 
 
+def test_world_cache_miss_does_not_claim_configured_source_is_overpass(tmp_path, sample_world, caplog):
+    manager = WorldCacheManager(
+        tmp_path,
+        fetch_func=lambda bbox: [],
+        build_func=lambda elements: sample_world,
+    )
+
+    with caplog.at_level("INFO"):
+        manager.load_area("pbf-area", (1, 2, 3, 4))
+    manager.close()
+
+    assert "loading OSM data from configured source" in caplog.text
+    assert "downloading Overpass JSON" not in caplog.text
+
+
 def test_world_cache_manager_uses_covering_area_without_fetch(tmp_path, sample_world):
     calls = []
     sample_world.bounds = (0.0, 0.0, 100.0, 100.0)
