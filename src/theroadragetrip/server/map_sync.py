@@ -25,25 +25,27 @@ logger = logging.getLogger(__name__)
 
 def map_sync_steps(world):
     """The map sync stages 1..14 as one generator: each `yield` is a
-    point where the tick may stop (its budget spent) and resume later. The
-    old structures keep serving until each stage's new one is complete."""
+    point where the tick may stop (its budget spent) and resume later, and
+    names the stage the slice just before it belonged to (MapStreamer adds
+    up the time per stage). The old structures keep serving until each
+    stage's new one is complete."""
     w = world
     for _ in remove_trees_under_roads_steps(w.sceneries, w.ways):
-        yield
+        yield "trees_under_roads"
     w.taxi_mgr.invalidate_tree_collision_index()
     w.spatial_grid.start_rebuild(w.ways)
     while not w.spatial_grid.advance_rebuild(MAP_SYNC_BUDGET_S):
-        yield
+        yield "road_grid"
     index = 0
     while index < len(w.buildings):
         index, _ = generate_detached_house_parking_chunk(w.buildings, w.ways, w.parking_spaces, w.spatial_grid,
                                                          index, MAP_SYNC_BUDGET_S)
-        yield
-    for grid, items in ((w.building_grid, w.buildings), (w.scenery_grid, w.sceneries)):
+        yield "house_parking"
+    for name, grid, items in (("building_grid", w.building_grid, w.buildings), ("scenery_grid", w.scenery_grid, w.sceneries)):
         grid.start_rebuild(items)
         while not grid.advance_rebuild(MAP_SYNC_BUDGET_S):
-            yield
-        yield
+            yield name
+        yield name
     w.street_lamps[:] = [obj for obj in w.scenery_objects if obj.kind == "street_lamp"]
     for grid, items in ((w.street_lamp_grid, w.street_lamps), (w.water_grid, w.waters),
                         (w.crossing_grid, w.crossings), (w.curb_grid, w.curbs),
@@ -51,31 +53,33 @@ def map_sync_steps(world):
                         (w.traffic_light_grid, w.traffic_lights)):
         grid.start_rebuild(items)
         while not grid.advance_rebuild(MAP_SYNC_BUDGET_S):
-            yield
-        yield
+            yield "small_grids"
+        yield "small_grids"
     if getattr(w, "railway_mgr", None) is not None:
         w.railway_mgr.rebuild(w.railways)
+    yield "railways"
     with w.auto_fetch_manager.lock:
         w.auto_fetch_manager._attempted_endpoints.clear()
     w.taxi_mgr.sync_map_data(w.ways, places=w.places, buildings=w.buildings)
-    yield
+    yield "taxi"
     w.traffic_mgr.start_map_sync(
         w.ways, traffic_lights=w.traffic_lights, stop_signs=w.stop_signs, crossings=w.crossings,
         buildings=w.buildings, sceneries=w.sceneries, parking_spaces=w.parking_spaces,
         logical_intersections=w.logical_intersections,
     )
     while not w.traffic_mgr.advance_map_sync(MAP_SYNC_BUDGET_S):
-        yield
+        yield "traffic"
     w.pedestrian_mgr.start_incremental_sync(
         w.ways, traffic_lights=w.traffic_lights, logical_intersections=w.logical_intersections,
         venue_buildings=w.buildings, scenery_features=(w.scenery_objects, w.sceneries, w.bus_stops),
     )
     while not w.pedestrian_mgr.advance_incremental_sync(MAP_SYNC_BUDGET_S):
-        yield
+        yield "pedestrians"
     rebuilt = _level_structures(w.ways, w.level_ways, w.level_connectors)
     w.level_roads = rebuilt["level_roads"]
     w.level_transitions.topologies = rebuilt["level_transitions"].topologies
     w.level_routes = rebuilt["level_routes"]
+    yield "level_structures"
 
 
 class MapStreamer:
@@ -92,6 +96,10 @@ class MapStreamer:
         self._synced_bounds = self.manager.get_bounds()
         self._sync = None
         self._sync_revision = None
+        self._sync_started = 0.0
+        self._sync_ticks = 0
+        self.sync_stage_ms: dict[str, float] = {}  # busy time per stage of the running (or last) sync
+        self.last_sync = None  # (wall s, busy ms, ticks) of the last completed sync
         self.hold = False  # the server rebuilds its chunks from the synced world: no merges meanwhile
 
     @property
@@ -127,13 +135,26 @@ class MapStreamer:
             if not busy and manager.get_map_revision() != self._synced_revision:
                 self._sync_revision = manager.get_map_revision()
                 self._sync = map_sync_steps(self.world)
+                self._sync_started = time.perf_counter()
+                self._sync_ticks = 0
+                self.sync_stage_ms = {}
                 logger.info("Map sync started: revision %d, %d ways", self._sync_revision, len(self.world.ways))
             return
-        deadline = time.perf_counter() + MAP_SYNC_BUDGET_S
-        for _ in self._sync:
-            if time.perf_counter() >= deadline:
+        self._sync_ticks += 1
+        started = time.perf_counter()
+        deadline = started + MAP_SYNC_BUDGET_S
+        for stage in self._sync:
+            now = time.perf_counter()
+            self.sync_stage_ms[stage] = self.sync_stage_ms.get(stage, 0.0) + (now - started) * 1000.0
+            started = now
+            if now >= deadline:
                 return
         self._sync = None
+        busy_ms = sum(self.sync_stage_ms.values())
+        self.last_sync = (time.perf_counter() - self._sync_started, busy_ms, self._sync_ticks)
+        logger.info("Map sync stages: %.1f s wall, %.0f ms busy over %d ticks: %s", self.last_sync[0], busy_ms,
+                    self._sync_ticks, ", ".join(f"{name} {ms:.0f}" for name, ms in
+                                                sorted(self.sync_stage_ms.items(), key=lambda item: -item[1])))
         self._synced_revision = self._sync_revision
         old, new = self._synced_bounds, manager.get_bounds()
         self._synced_bounds = new
