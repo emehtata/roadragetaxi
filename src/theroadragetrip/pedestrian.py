@@ -9,7 +9,7 @@ from collections import deque
 from typing import Any, Callable, Deque, Dict, List, Optional, Set, Tuple
 
 from .osm import OPEN_ROOF_BUILDING_TYPES, BusStop, Crossing, LogicalIntersection, Scenery, SceneryObject, TrafficLight, Way
-from .geo import angle_diff, closest_point_and_dist_to_segment, compute_bbox, dist_point_to_segment, point_in_polygon
+from .geo import angle_diff, bbox_distance_sq, closest_point_and_dist_to_segment, compute_bbox, dist_point_to_segment, point_in_polygon
 from .npc import NPCState
 from .performance import advance_chunked
 from .physics import Car, is_car_road, is_pedestrian_way
@@ -1855,8 +1855,11 @@ class PedestrianManager:
         if not nearby_ways or not valid_ways:
             fallback_radius = max(r, 1000.0)
             fallback_radius_sq = fallback_radius * fallback_radius
+            # Only ways whose bbox reaches the radius: next to an empty
+            # area (a Home jump before its map has loaded) this sorted every
+            # way in the world on every spawn attempt - seconds per tick.
             nearest_ways = sorted(
-                self._spawn_ways,
+                (way for way in self._spawn_ways if bbox_distance_sq(way.bbox, near_x, near_y) <= fallback_radius_sq),
                 key=lambda way: min(
                     (point[0] - near_x) ** 2 + (point[1] - near_y) ** 2
                     for point in way.points_m

@@ -23,7 +23,7 @@ from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Set, Tuple
 
 from .activities import ActivityInstance, ActivityLocation
-from .geo import angle_diff, boxes_intersect, clamp, closest_point_and_dist_to_segment, point_in_polygon, segment_distance
+from .geo import angle_diff, bbox_distance_sq, boxes_intersect, clamp, closest_point_and_dist_to_segment, point_in_polygon, segment_distance
 from .osm import Curb, ParkingSpace, Way
 from .physics import GRAVITY_MPS2, Car, SpatialWayGrid, update_car_physics
 from .residents import Household, HouseholdManager, ResidentManager
@@ -2338,6 +2338,9 @@ NPC_DESTINATION_SEARCH_RADIUS_M = 400.0  # how far from the BFS-reached area to 
 NPC_BUILDING_YARD_CLEARANCE_M = 3.0  # how far outside the wall an NPC actually stops
 
 
+NPC_BUILDING_YARD_REACH_M = 10.0  # a building's yard point lies at most this far outside its bbox
+
+
 def _building_yard_point(building, from_x: float, from_y: float) -> Optional[Tuple[float, float]]:
     """The point where an NPC should actually stop for this building: its
     nearest entrance to (from_x, from_y), or - lacking one - the nearest
@@ -2632,7 +2635,10 @@ def _pick_npc_destination_candidates(
             ordered = lot_candidates
         else:
             building_candidates = []
+            reach_sq = (search_radius_m + NPC_BUILDING_YARD_REACH_M) ** 2
             for building in buildings or ():
+                if bbox_distance_sq(getattr(building, "bbox", None), x, y) > reach_sq:
+                    continue  # its yard can't be in range: skip the outline walk (a whole city of them, per pick)
                 point = _building_yard_point(building, x, y)
                 if point is None:
                     continue
