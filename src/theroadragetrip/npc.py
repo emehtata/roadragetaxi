@@ -262,6 +262,7 @@ NPC_TRIP_RETRY_MAX_TICKS = 4
 # spawn/visible area so it drives into view instead of popping into it.
 NPC_TRANSIT_SPAWN_MIN_DISTANCE_M = 110.0
 NPC_TRANSIT_SPAWN_MAX_DISTANCE_M = 220.0
+NPC_TRANSIT_PLAYER_LOOKAHEAD_S = NPC_POPULATION_TICK_S
 NPC_TRANSIT_SPAWN_NODE_TRIES = 6
 NPC_TRANSIT_TRIP_MIN_DISTANCE_M = 60.0
 NPC_TRANSIT_TRIP_MAX_DISTANCE_M = 220.0
@@ -287,6 +288,15 @@ NPC_MAX_ROUTE_JOBS = 8
 # Open road required around a spawn point so a new car is never dropped onto
 # (or right behind) existing traffic.
 NPC_TRANSIT_SPAWN_CLEARANCE_M = 30.0
+
+
+def transit_spawn_focus(player_x: float, player_y: float, player_car, simulation_radius_m: float) -> Tuple[float, float]:
+    """Lead fast players so newly planned traffic is not already behind them."""
+    if player_car is None:
+        return player_x, player_y
+    max_lead = max(0.0, simulation_radius_m - NPC_TRANSIT_SPAWN_MAX_DISTANCE_M - 10.0)
+    lead = max(-max_lead, min(max_lead, player_car.speed * NPC_TRANSIT_PLAYER_LOOKAHEAD_S))
+    return player_x + math.cos(player_car.heading) * lead, player_y + math.sin(player_car.heading) * lead
 # Default fraction of the vehicle population that should be actively
 # driving at any moment, independent of total population size (client-
 # server-016.md/NPC-005: moving traffic is a first-class target, not a
@@ -4020,6 +4030,7 @@ class NPCVehicleManager:
         curb_grid: Optional[SpatialWayGrid],
         building_grid: Optional[SpatialWayGrid],
         viewport_bounds: Optional[Tuple[float, float, float, float]] = None,
+        transit_focus: Optional[Tuple[float, float]] = None,
     ) -> None:
         population_tick_started = time.perf_counter()
         population_deadline = population_tick_started + NPC_TRIP_START_TICK_BUDGET_S
@@ -4252,6 +4263,7 @@ class NPCVehicleManager:
         ]
         self.population_diagnostics["vehicles_waiting_for_trips"] = len(idle_candidates)
         if below_moving_target:
+            transit_x, transit_y = transit_focus or (player_x, player_y)
             transit_spawns = sum(1 for job in self._route_jobs if job["kind"] == "transit")
             while (
                 trip_starts_this_tick < trip_start_attempt_cap
@@ -4269,7 +4281,7 @@ class NPCVehicleManager:
                     break
                 transit_spawns += 1
                 self._enqueue_route_job("transit", None, self._transit_spawn_steps(
-                    player_x, player_y, resident_manager, traffic_world, ways, spatial_grid,
+                    transit_x, transit_y, resident_manager, traffic_world, ways, spatial_grid,
                     parking_spaces, sceneries, buildings, curbs, curb_grid, building_grid,
                     viewport_bounds, list(claimed_points),
                 ), traffic_world)
@@ -4530,8 +4542,9 @@ class NPCVehicleManager:
         self._population_elapsed += dt
         if self._population_elapsed >= NPC_POPULATION_TICK_S:
             self._population_elapsed = 0.0
+            transit_focus = transit_spawn_focus(player_x, player_y, player_car, self.simulation_radius_m)
             self._run_population_tick(
                 player_x, player_y, resident_manager, traffic_world, ways, spatial_grid,
                 parking_spaces, sceneries, buildings, curbs, curb_grid, building_grid,
-                viewport_bounds=viewport_bounds,
+                viewport_bounds=viewport_bounds, transit_focus=transit_focus,
             )

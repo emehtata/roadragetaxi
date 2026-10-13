@@ -15,6 +15,7 @@ from theroadragetrip.npc import (
     has_active_driver,
     place_parked_npc,
     spawn_npc,
+    transit_spawn_focus,
 )
 from theroadragetrip.osm import Way
 from theroadragetrip.pedestrian import PedestrianManager
@@ -163,6 +164,14 @@ def test_population_tick_tops_up_gradually_not_in_one_tick():
     manager.update(NPC_POPULATION_TICK_S, px, py, residents, traffic_world, ways)
     assert 0 < len(manager.vehicles) <= NPC_POPULATION_SPAWN_LIMIT_PER_TICK + NPC_TRANSIT_SPAWNS_PER_TICK
     assert len(manager.vehicles) < manager.target_count
+
+
+def test_transit_spawn_focus_leads_a_player_driving_200_kmh():
+    car = Car(x=0.0, y=0.0, heading=0.0, speed=200.0 / 3.6)
+
+    focus = transit_spawn_focus(car.x, car.y, car, simulation_radius_m=400.0)
+
+    assert focus == (200.0 / 3.6 * npc_module.NPC_POPULATION_TICK_S, 0.0)
 
 
 def test_trip_start_attempts_boost_when_below_the_moving_traffic_target(monkeypatch):
