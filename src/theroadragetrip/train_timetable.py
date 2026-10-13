@@ -129,30 +129,39 @@ def load_timetable(path: Optional[Path] = None) -> Optional[dict]:
     return document
 
 
-def refresh_if_stale(document: Optional[dict], path: Path = USER_TIMETABLE_PATH,
-                     now: Optional[datetime] = None) -> Optional[threading.Thread]:
-    """Download a new timetable to `path` in the background when `document`
-    is over REFRESH_AFTER old (or missing); this run keeps `document`, the
-    next one loads the new file. A failed download or conversion never
-    touches the existing file (railway_import.write replaces it atomically)."""
+def refresh_in_background(downloaded_at: Optional[str], update: Callable[[], None], what: str,
+                          now: Optional[datetime] = None) -> Optional[threading.Thread]:
+    """Run `update` (download + atomic write) in a background thread when
+    `downloaded_at` (ISO UTC) is over REFRESH_AFTER old or missing. This run
+    keeps what it loaded; the next start reads the new file. A failure is
+    logged and leaves the existing file as it was."""
     try:
-        downloaded = datetime.fromisoformat(document["downloaded_at"].replace("Z", "+00:00"))
+        downloaded = datetime.fromisoformat(downloaded_at.replace("Z", "+00:00"))
         if (now or datetime.now(timezone.utc)) - downloaded < REFRESH_AFTER:
             return None
-    except (TypeError, KeyError, ValueError):
+    except (AttributeError, ValueError):
         pass  # no or unreadable timestamp: refresh
 
     def run() -> None:
-        from . import railway_import
         try:
-            railway_import.write(railway_import.convert(railway_import.download()), path)
-            logger.info("Railway timetable refreshed from Digitraffic: %s", path)
+            update()
+            logger.info("%s refreshed from Digitraffic", what)
         except Exception as exc:  # network, HTTP, bad feed, disk
-            logger.warning("Railway timetable refresh failed (%s); keeping the current one", exc)
+            logger.warning("%s refresh failed (%s); keeping the current one", what, exc)
 
-    thread = threading.Thread(target=run, name="timetable-refresh", daemon=True)
+    thread = threading.Thread(target=run, name=f"{what} refresh", daemon=True)
     thread.start()
     return thread
+
+
+def refresh_if_stale(document: Optional[dict], path: Path = USER_TIMETABLE_PATH,
+                     now: Optional[datetime] = None) -> Optional[threading.Thread]:
+    """A new timetable to `path` when `document` is a week old (refresh_in_background)."""
+    def update() -> None:
+        from . import railway_import
+        railway_import.write(railway_import.convert(railway_import.download()), path)
+
+    return refresh_in_background((document or {}).get("downloaded_at"), update, "Railway timetable", now)
 
 
 def service_time(service_day: date, seconds: int) -> datetime:

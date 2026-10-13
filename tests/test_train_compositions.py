@@ -5,9 +5,8 @@ from pathlib import Path
 from types import SimpleNamespace
 
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tools"))
 
-import import_train_compositions as importer  # noqa: E402
+from theroadragetrip import composition_import as importer  # noqa: E402
 from theroadragetrip.osm.models import Railway  # noqa: E402
 from theroadragetrip.train_compositions import (  # noqa: E402
     GENERIC, LOCOMOTIVE_LENGTH_M, PROFILES, VEHICLE_GAP_M, TrainComposition, load_compositions, resolve, vehicle_profile,
@@ -136,3 +135,22 @@ def test_a_far_end_locomotive_is_recorded_as_is_but_drawn_at_the_front():
     pulled = {"vehicles": [["locomotive", "Sr3", None, []], ["wagon", "Ein", 27.0, []]]}
     assert resolve({"latest": {"2": pulled}}, "IC", "2", None).types == ("Sr3", "Ein")  # already in front
 
+
+
+def test_refresh_if_stale_adds_to_a_copy_and_keeps_the_file_on_failure(tmp_path, monkeypatch):
+    from datetime import datetime, timezone
+    from theroadragetrip import train_compositions
+
+    path = tmp_path / "compositions.json.gz"
+    database = importer.load(path)
+    importer.merge(database, [digitraffic(21, "2026-09-25", [IC21])], "2026-10-10T06:00:00Z")
+    importer.write(database, path)
+    now = datetime(2026, 10, 13, tzinfo=timezone.utc)
+    assert train_compositions.refresh_if_stale(database, path, now) is None  # 3 days old
+    before = path.read_bytes()
+    monkeypatch.setattr(importer, "download", lambda day: [])  # nothing published
+    train_compositions.refresh_if_stale(database, path, datetime(2026, 10, 20, tzinfo=timezone.utc)).join()
+    assert path.read_bytes() == before
+    monkeypatch.setattr(importer, "download", lambda day: [digitraffic(8, day.isoformat(), [PENDOLINO], train_type="S")])
+    train_compositions.refresh_if_stale(database, path, datetime(2026, 10, 20, tzinfo=timezone.utc)).join()
+    assert set(load_compositions(path)["latest"]) == {"21", "8"}  # added to, not replaced

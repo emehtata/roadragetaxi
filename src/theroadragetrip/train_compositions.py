@@ -1,9 +1,9 @@
 """Real train compositions (trains phase 6): which vehicles a timetable
 train is made of, how long each is, and how each is drawn.
 
-assets/train_compositions.json.gz is learned offline by
-tools/import_train_compositions.py from Digitraffic (the game never
-downloads). A train's composition is resolved once, when it appears:
+assets/train_compositions.json.gz is learned by composition_import.py
+from Digitraffic; the game adds a week's news to a copy in the user cache
+weekly (refresh_if_stale), keeping the old one if that fails. A train's composition is resolved once, when it appears:
 
     1. exact:   observed for this departure date + train number
     2. history: the latest observed for this train number
@@ -20,13 +20,17 @@ import gzip
 import json
 import logging
 from dataclasses import dataclass, field
-from datetime import date
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Optional, Tuple
+
+from .osm.cache import default_cache_root
+from .train_timetable import refresh_in_background
 
 logger = logging.getLogger(__name__)
 
 DEFAULT_COMPOSITIONS_PATH = Path(__file__).with_name("assets") / "train_compositions.json.gz"
+USER_COMPOSITIONS_PATH = Path(default_cache_root()) / "train_compositions.json.gz"  # the weekly refreshed copy
 SUPPORTED_VERSION = 1
 VEHICLE_GAP_M = 1.0
 DEFAULT_WAGON_LENGTH_M = 24.0  # the old fixed wagon
@@ -103,7 +107,9 @@ def _from_record(record: dict, source: str) -> TrainComposition:
 
 
 def load_compositions(path: Optional[Path] = None) -> Optional[dict]:
-    path = Path(path) if path is not None else DEFAULT_COMPOSITIONS_PATH
+    if path is None:
+        path = USER_COMPOSITIONS_PATH if USER_COMPOSITIONS_PATH.exists() else DEFAULT_COMPOSITIONS_PATH
+    path = Path(path)
     try:
         with gzip.open(path, "rt", encoding="utf-8") as source:
             database = json.load(source)
@@ -128,3 +134,24 @@ def resolve(database: Optional[dict], train_type: str, number: str, day: Optiona
         if train_type in database.get("by_type", {}):
             return _from_record(database["by_type"][train_type], "type")
     return GENERIC
+
+
+def refresh_if_stale(database: Optional[dict], path: Path = USER_COMPOSITIONS_PATH,
+                     now=None):
+    """Today's and tomorrow's compositions merged into a copy of the
+    current database at `path` when the newest is a week old
+    (train_timetable.refresh_in_background). Nothing fetched: a failure."""
+    newest = max((entry.get("fetched_at", "") for entry in (database or {}).get("latest", {}).values()), default=None)
+    source = path if Path(path).exists() else DEFAULT_COMPOSITIONS_PATH
+
+    def update() -> None:
+        from . import composition_import as importer
+        copy = importer.load(source)
+        fetched_at = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        today = date.today()
+        if not sum(importer.merge(copy, importer.download(day), fetched_at) for day in (today, today + timedelta(days=1))):
+            raise RuntimeError("no compositions fetched")
+        importer.prune(copy, today)
+        importer.write(copy, path)
+
+    return refresh_in_background(newest or None, update, "Train compositions", now)

@@ -18,7 +18,7 @@ train_compositions.json.gz
   Source: Fintraffic / digitraffic.fi, license CC 4.0 BY
   https://www.digitraffic.fi/  -  https://creativecommons.org/licenses/by/4.0/
   Modified: long-distance train compositions condensed to vehicle type,
-  length and service flags by tools/import_train_compositions.py. Provided
+  length and service flags by theroadragetrip/composition_import.py (refreshed weekly). Provided
   as is, without warranty.
 
 finnish_first_names.json.gz, finnish_surnames.json.gz

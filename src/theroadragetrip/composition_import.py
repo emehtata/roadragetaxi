@@ -2,12 +2,13 @@
 """Learn real train compositions from Digitraffic into the game's local,
 offline composition database (theroadragetrip.train_compositions).
 
-    python tools/import_train_compositions.py [--date YYYY-MM-DD ...] [--from-json FILE] [OUTPUT]
+    PYTHONPATH=src python -m theroadragetrip.composition_import [--date YYYY-MM-DD ...] [--from-json FILE] [OUTPUT]
 
 Fetches https://rata.digitraffic.fi/api/v1/compositions/<date> (one
 request per date, all trains) for today and tomorrow unless dates are
 given. Compositions are published close to departure, so rerun it now and
-then: every run *adds* knowledge. The game never downloads anything.
+then: every run *adds* knowledge. The game does this weekly to its own
+copy (train_compositions.refresh_if_stale).
 
 Kept per long-distance train (the ones the game runs):
 - observations: exact "<date>|<number>" compositions, the last
@@ -29,7 +30,7 @@ from pathlib import Path
 from typing import Dict, List, Optional
 
 API = "https://rata.digitraffic.fi/api/v1/compositions/{date}"
-DEFAULT_OUTPUT = Path(__file__).resolve().parents[1] / "src" / "theroadragetrip" / "assets" / "train_compositions.json.gz"
+DEFAULT_OUTPUT = Path(__file__).with_name("assets") / "train_compositions.json.gz"
 FORMAT_VERSION = 1
 KEEP_OBSERVATION_DAYS = 14
 SERVICE_FLAGS = ("catering", "playground", "pet", "disabled", "luggage", "smoking", "video")
