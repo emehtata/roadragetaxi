@@ -487,7 +487,13 @@ class AutoFetchManager:
             if missing_core and previous_player_tile is not None and current_tile is not None:
                 delta_x = current_tile.x - previous_player_tile.x
                 delta_y = current_tile.y - previous_player_tile.y
-                if delta_x and not delta_y:
+                # Only a step into a neighbouring tile has a "new leading
+                # column": after a jump (a Home relocation) the whole 3x3 is
+                # new, and trimming it to two rows left a row for a second,
+                # separate extraction (another ~11 s against the PBF).
+                if abs(delta_x) + abs(delta_y) != 1:
+                    pass
+                elif delta_x and not delta_y:
                     # +sign(delta_x): the genuinely new leading column, not
                     # the trailing one - it was `-` here, which kept only
                     # already-loaded columns and silently skipped querying

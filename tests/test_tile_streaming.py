@@ -357,6 +357,33 @@ def test_cardinal_tile_transition_batches_two_by_three_region():
     assert cache.calls == [(-1000.0, 1000.0, 2000.0, 3000.0)]
 
 
+def test_a_jump_along_one_axis_requests_the_whole_new_window_at_once():
+    """A Home relocation 12 tiles south is not a one-tile step: trimming it
+    to the "leading" rows left a row for a second extraction."""
+    class Transformer:
+        def transform(self, x, y):
+            return x, y
+
+    class TileCache:
+        def __init__(self):
+            self.calls = []
+
+        def preload_region(self, bbox, **kwargs):
+            self.calls.append(bbox)
+            future = Future()
+            future.set_result(MapData([], [], [], [], [], (0.0, 0.0, 1.0, 1.0)))
+            return future
+
+    cache = TileCache()
+    manager = AutoFetchManager([], (0.0, 0.0, 1000.0, 1000.0), Transformer(), world_cache_manager=cache)
+    manager.initialize_player_tile(500.0, 500.0)
+    assert manager.start_tile_streaming(500.0, -11500.0)
+    deadline = time.time() + 2.0
+    while manager.is_fetching and time.time() < deadline:
+        time.sleep(0.01)
+    assert cache.calls == [(-13000.0, -1000.0, -10000.0, 2000.0)]  # the full 3x3 around tile (0, -12)
+
+
 def test_cardinal_tile_transition_requests_the_leading_not_trailing_edge():
     """Regression test for a sign bug: request_tiles picked the column the
     player was leaving instead of the one they were entering, so a straight
