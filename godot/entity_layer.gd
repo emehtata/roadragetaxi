@@ -59,6 +59,9 @@ var light_level := 0.0  # Daylight.artificial (main.gd)
 var _lamps: Node2D
 var _glow: Node2D
 var _lamp_polys: Array = []  # [points, colour] this frame
+var _cars_under: Node2D  # vehicles under a bridge: below the decks (z 2+), their shapes and lamps
+var _under_shapes: Array = []
+var _under_lamps: Array = []
 var glow_points := PackedVector2Array()
 var glow_colors := PackedColorArray()
 var glow_triangles := PackedInt32Array()
@@ -115,8 +118,17 @@ func _ready() -> void:
 	add_child(_route_node)  # before the vehicles' node: under them
 	_cars = Node2D.new()
 	_cars.material = preload("res://emissive.tres")  # lit by vehicle_light, not the ambient multiply
-	_cars.draw.connect(_draw_cars)
+	_cars.draw.connect(func(): _paint(_cars, _car_shapes))
 	add_child(_cars)
+	_cars_under = Node2D.new()
+	_cars_under.z_index = -9  # 10 - 9: z 1, the ground roads' level, under every bridge deck
+	_cars_under.material = preload("res://emissive.tres")
+	_cars_under.draw.connect(func():
+		_paint(_cars_under, _under_shapes)
+		for lamp in _under_lamps:
+			if drawable(lamp[0]):
+				_cars_under.draw_colored_polygon(lamp[0], lamp[1]))
+	add_child(_cars_under)
 	_lamps = Node2D.new()
 	_lamps.material = preload("res://emissive.tres")
 	_lamps.draw.connect(func():
@@ -510,27 +522,38 @@ static func lamp_glow(at: Vector2, glow: Array, level: float, points: PackedVect
 
 
 func _vehicle(c: Vector2, heading: float, length: float, width: float, color: Color, kind: String,
-		is_taxi: bool, engine_on: bool, braking: bool, reversing: bool, turn_signal: String, signal_elapsed: float, fallen := false) -> void:
+		is_taxi: bool, engine_on: bool, braking: bool, reversing: bool, turn_signal: String, signal_elapsed: float, fallen := false,
+		under := false) -> void:
 	_tint = vehicle_light(light_level * float(light_at.call(c)), ambient)  # lit by the street lights it stands under
+	var shapes := _car_shapes
+	var lamps := _lamp_polys
+	var level := light_level
+	if under:  # under a bridge: drawn below its deck, lamps and all; no halos (they'd shine through it)
+		_car_shapes = _under_shapes
+		_lamp_polys = _under_lamps
+		light_level = 0.0  # in the body only the halos read it
 	_vehicle_body(c, heading, length, width, color, kind, is_taxi, engine_on, braking, reversing, turn_signal, signal_elapsed, fallen)
+	_car_shapes = shapes
+	_lamp_polys = lamps
+	light_level = level
 	_tint = null
 
 
-func _draw_cars() -> void:
-	for shape in _car_shapes:
+static func _paint(node: Node2D, shapes: Array) -> void:
+	for shape in shapes:
 		match shape[0]:
 			"poly":
 				if not drawable(shape[1]):
 					continue
-				_cars.draw_colored_polygon(shape[1], shape[2])
+				node.draw_colored_polygon(shape[1], shape[2])
 				if shape[3] != null:
 					var closed: PackedVector2Array = shape[1].duplicate()
 					closed.append(shape[1][0])
-					_cars.draw_polyline(closed, shape[3], shape[4])
+					node.draw_polyline(closed, shape[3], shape[4])
 			"circle":
-				_cars.draw_circle(shape[1], shape[2], shape[3])
+				node.draw_circle(shape[1], shape[2], shape[3])
 			"line":
-				_cars.draw_line(shape[1], shape[2], shape[3], shape[4])
+				node.draw_line(shape[1], shape[2], shape[3], shape[4])
 
 
 ## A polygon Godot can triangulate: finite points, some area. A lamp or a
@@ -832,6 +855,8 @@ func _draw() -> void:
 	var count := 0
 	_lamp_polys.clear()
 	_car_shapes.clear()
+	_under_shapes.clear()
+	_under_lamps.clear()
 	glow_points.clear()
 	glow_colors.clear()
 	glow_triangles.clear()
@@ -879,11 +904,13 @@ func _draw() -> void:
 	var taxi := StateBuffer.blend(player, b.get("player", player), t, origin)
 	var taxi_at := Vector2(taxi.x, taxi.y)
 	var taxi_length: float = player.get("length_m", 4.4)
-	if player.get("engine_on", false):
+	var road: Dictionary = a.get("road", {}) if typeof(a.get("road")) == TYPE_DICTIONARY else {}
+	var taxi_under: bool = not road.get("bridge", false) and covered.call(taxi_at, int(road.get("layer", 0)))
+	if player.get("engine_on", false) and not taxi_under:
 		_smoke(taxi_at, taxi.z, taxi_length, _clock, true)  # exhaust
 	taxi_sign_on = a.get("taxi", {}).get("current_passenger") is Dictionary  # a fare on: the roof light lit
 	_vehicle(taxi_at, taxi.z, taxi_length, player.get("width_m", 1.8), RS.TAXI_BODY, "car", true,
-		player.get("engine_on", false), player.get("braking", false), is_reversing(player.get("speed", 0.0)), "", 0.0)
+		player.get("engine_on", false), player.get("braking", false), is_reversing(player.get("speed", 0.0)), "", 0.0, false, taxi_under)
 	taxi_sign_on = false  # NPC taxis: no fare of theirs is known, unlit
 	var smoke_timer: float = a.get("taxi", {}).get("taxi_smoke_timer", 0.0)
 	if smoke_timer > 0.0:
@@ -904,7 +931,8 @@ func _draw() -> void:
 		body_style = absi(hash(npc["id"]))  # its own body, every frame the same
 		_vehicle(c, p.z, npc["length_m"], npc["width_m"], _rgb(npc["color"]), npc.get("vehicle_type", "car"),
 			npc.get("is_taxi", false), npc.get("state", "") != "PARKED", npc.get("braking", false), is_reversing(npc.get("speed", 0.0)),
-			npc.get("turn_signal", ""), npc.get("turn_signal_elapsed", 0.0), npc.get("fallen", false))
+			npc.get("turn_signal", ""), npc.get("turn_signal_elapsed", 0.0), npc.get("fallen", false),
+			int(npc.get("layer", 0)) <= 0 and covered.call(c, int(npc.get("layer", 0))))
 		var crashed: float = npc.get("crashed_timer", 0.0)
 		if crashed > 0.0:
 			_smoke(c, p.z, npc["length_m"], crashed if is_finite(crashed) else _clock)
@@ -919,6 +947,7 @@ func _draw() -> void:
 
 	drawn_entities = count + _trains_drawn
 	_cars.queue_redraw()
+	_cars_under.queue_redraw()
 	_lamps.queue_redraw()  # this frame's lamps and halos, collected above
 	_glow.queue_redraw()
 	interp_usec = Time.get_ticks_usec() - started

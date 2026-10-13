@@ -642,6 +642,12 @@ func test_speech_and_stations() -> void:
 	check(glow_t.is_empty(), "lamp halos: none by day")
 	EntityLayer.lamp_glow(Vector2(5, 5), EntityLayer.BRAKE_GLOW, 1.0, glow_p, glow_c, glow_t)
 	check(glow_t.size() == 3 * EntityLayer.GLOW_STEPS and glow_c[0].r > 0.5 and glow_c[1] == Color(0, 0, 0, 1) and is_equal_approx(glow_p[1].distance_to(Vector2(5, 5)), EntityLayer.BRAKE_GLOW[1]), "lamp halos: red at the lamp, nothing at the reach")
+	var bridge_view: Node2D = EntityLayer.new()
+	bridge_view.light_level = 1.0
+	bridge_view._vehicle(Vector2.ZERO, 0.0, 4.4, 1.8, Color.YELLOW, "car", true, true, true, false, "", 0.0, false, true)
+	check(bridge_view._car_shapes.is_empty() and not bridge_view._under_shapes.is_empty() and not bridge_view._under_lamps.is_empty()
+		and bridge_view.glow_triangles.is_empty() and bridge_view.light_level == 1.0, "a vehicle under a bridge: below its deck, no halo through it")
+	bridge_view.free()
 	check(EntityLayer.BRAKE_GLOW[1] > EntityLayer.TAIL_GLOW[1] and EntityLayer.BRAKE_GLOW[0].r > EntityLayer.TAIL_GLOW[0].r and EntityLayer.REVERSE_GLOW[1] > EntityLayer.BRAKE_GLOW[1], "brake halos outshine tail lamps; reversing lights the ground behind")
 	check(FileAccess.get_file_as_string("res://entity_layer.gd").contains("npc.get(\"braking\", false)"), "NPCs' brake lamps from the server")
 	var on_foot_state := {"on_foot": true, "player": {"engine_on": false, "fuel_l": 30.0}, "taxi": {}}
