@@ -22,7 +22,7 @@ def test_a_feature_is_in_every_chunk_it_touches_and_negative_cells_work():
     world = SimpleNamespace(ways=[way], railways=[], waters=[], buildings=[])
     index = map_chunks.ChunkIndex(world, size=500.0)
     assert len(index.message("-1_0")["roads"]) == 1 and len(index.message("1_0")["roads"]) == 1
-    assert index.message("0_0")["roads"] == []  # no vertex there (see module docstring)
+    assert len(index.message("0_0")["roads"]) == 1  # the segment crosses it without a vertex there
     assert index.message("1_0")["bounds"] == [500.0, 0.0, 1000.0, 500.0]
 
 

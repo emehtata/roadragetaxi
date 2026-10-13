@@ -44,6 +44,23 @@ def cell_of(x: float, y: float, size: float = CHUNK_SIZE_M) -> tuple[int, int]:
     return math.floor(x / size), math.floor(y / size)
 
 
+def cells_touched_by_line(points, size: float = CHUNK_SIZE_M) -> set[tuple[int, int]]:
+    """Grid cells crossed by a polyline, including segments with no vertex in a cell."""
+    cells = {cell_of(x, y, size) for x, y in points}
+    for (ax, ay), (bx, by) in zip(points, points[1:]):
+        crossings = {0.0, 1.0}
+        for a, b in ((ax, bx), (ay, by)):
+            if a == b:
+                continue
+            for grid in range(math.floor(min(a, b) / size) + 1, math.ceil(max(a, b) / size)):
+                crossings.add((grid * size - a) / (b - a))
+        ordered = sorted(crossings)
+        for start, end in zip(ordered, ordered[1:]):
+            t = (start + end) * 0.5
+            cells.add(cell_of(ax + (bx - ax) * t, ay + (by - ay) * t, size))
+    return cells
+
+
 def plan(loaded: set, center: tuple[int, int], load_radius: int = LOAD_RADIUS,
          unload_radius: int = UNLOAD_RADIUS) -> tuple[list[str], list[str]]:
     """(chunk ids to send, chunk ids to drop) for a client with `loaded`
@@ -269,7 +286,7 @@ class ChunkIndex:
         return index, changed
 
     def _add(self, kind: str, points, feature) -> None:
-        for cell in {cell_of(x, y, self.size) for x, y in points}:
+        for cell in cells_touched_by_line(points, self.size):
             self._chunk(cell)[kind].append(feature)
 
     def _add_static_world(self, world) -> None:
