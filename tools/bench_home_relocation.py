@@ -118,11 +118,29 @@ def main(argv=None) -> int:
             began = in_tick[0]
             if began is not None and began != reported and time.perf_counter() - began > args.stall_ms / 1000.0:
                 reported = began
-                frame = sys._current_frames().get(main_id)
-                stalls.append([round((time.perf_counter() - began) * 1000.0), traceback.format_stack(frame)[-8:]])
+                frames = sys._current_frames()
+                others = {thread.name: traceback.format_stack(frames[thread.ident])[-3:]
+                          for thread in threading.enumerate()
+                          if thread.ident in frames and thread.ident not in (main_id, threading.get_ident())
+                          and not thread.name.startswith(("ThreadPoolExecutor", "world-"))
+                          or (thread.ident in frames and thread.name.startswith("world-")
+                              and "load_area" in "".join(traceback.format_stack(frames[thread.ident])))}
+                stalls.append([round((time.perf_counter() - began) * 1000.0),
+                               traceback.format_stack(frames.get(main_id))[-8:], others])
 
+    import gc
     import threading
     threading.Thread(target=watchdog, daemon=True).start()
+    gc_pauses: dict = {0: [], 1: [], 2: []}  # ms per collection, by generation
+    gc_started = [0.0]
+
+    def gc_timer(phase, info) -> None:
+        if phase == "start":
+            gc_started[0] = time.perf_counter()
+        else:
+            gc_pauses[info["generation"]].append((time.perf_counter() - gc_started[0]) * 1000.0)
+
+    gc.callbacks.append(gc_timer)
 
     def run(seconds: float, until=None) -> list:
         durations, deadline = [], time.perf_counter() + seconds
@@ -147,6 +165,8 @@ def main(argv=None) -> int:
     if args.prepare_s > 0.0:
         run(args.prepare_s)
 
+    for pauses in gc_pauses.values():
+        pauses.clear()
     pressed = time.perf_counter()
     server._home_pressed()
     marks = {"position_s": time.perf_counter() - pressed if (server.car.x, server.car.y) == home else None}
@@ -178,6 +198,8 @@ def main(argv=None) -> int:
         "counts": {name: counter.counts[name] - counts_before[name] for name in counter.counts},
         **_rss_mb(),
         "stalls": stalls,
+        "gc_ms": {f"gen{g}": {"count": len(p), "max": round(max(p), 1) if p else 0.0, "total": round(sum(p))}
+                  for g, p in gc_pauses.items()},
     }
     print(json.dumps(result, indent=2))
     if args.json:
