@@ -334,10 +334,8 @@ def test_no_duplicate_vehicle_ids_after_several_population_ticks():
     assert len(ids) == len(set(ids))
 
 
-def test_despawn_never_drops_population_below_min_count():
-    """Section 9's configured floor: despawning far, idle, parked
-    vehicles must never take the population under min_count even if more
-    than that are simultaneously idle and far away."""
+def test_despawn_removes_distant_cars_even_below_min_count():
+    """The minimum is refilled near the player, not preserved with stale cars behind them."""
     ways = _city_block_grid()
     manager = NPCVehicleManager(target_count=10, min_count=6, spawn_radius_m=_SPAWN_RADIUS_M, vehicle_distribution={"car": 1.0})
     traffic_world = TrafficWorld(ways)
@@ -345,12 +343,14 @@ def test_despawn_never_drops_population_below_min_count():
     px, py = _CENTER
     manager.populate_initial(px, py, residents, ways)
     assert len(manager.vehicles) == 10
+    old_ids = {vehicle.vehicle_id for vehicle in manager.vehicles}
     # Move every vehicle far outside despawn_radius_m without moving the
     # player - simulates the player having driven away.
     for vehicle in manager.vehicles:
         vehicle.car.x, vehicle.car.y = px + 10_000.0, py + 10_000.0
     manager._run_population_tick(px, py, residents, traffic_world, ways, None, None, None, None, None, None, None)
-    assert len(manager.vehicles) >= manager.min_count
+    assert old_ids.isdisjoint(vehicle.vehicle_id for vehicle in manager.vehicles)
+    assert len(manager.vehicles) < manager.min_count
 
 
 def test_despawn_never_removes_a_vehicle_currently_visible_in_the_viewport():

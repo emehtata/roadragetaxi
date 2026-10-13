@@ -4045,7 +4045,6 @@ class NPCVehicleManager:
         # "cars spawn/despawn in viewport").
         despawn_radius_sq = self.despawn_radius_m * self.despawn_radius_m
         kept = []
-        remaining = len(self.vehicles)
         for vehicle in self.vehicles:
             far = (vehicle.x - player_x) ** 2 + (vehicle.y - player_y) ** 2 > despawn_radius_sq
             # NPC-004 section 18: a CRASHED vehicle is also despawn-eligible
@@ -4073,7 +4072,7 @@ class NPCVehicleManager:
                 and vehicle.state not in (NPCState.PARKED, NPCState.CRASHED)
                 and self.drivers.get(vehicle.vehicle_id) is not None
             )
-            if far_moving and not visible and remaining > self.min_count:
+            if far_moving and not visible:
                 if vehicle.trip_group is not None:
                     for resident_id in vehicle.trip_group.member_resident_ids:
                         member = resident_manager.get(resident_id)
@@ -4084,17 +4083,16 @@ class NPCVehicleManager:
                     vehicle.trip_group = None
                 release_npc_parking_reservation(vehicle)
                 self.drivers.pop(vehicle.vehicle_id, None)
-                remaining -= 1
+                self._trip_start_failures.pop(vehicle.vehicle_id, None)
+                self._trip_retry_after_tick.pop(vehicle.vehicle_id, None)
                 continue
-            # Never below min_count (section 9's configurable population
-            # floor), even if more vehicles than that are simultaneously
-            # eligible - despawning is a nice-to-have cleanup, not worth
-            # briefly starving the population under its configured floor.
-            if idle_parked and not visible and far and remaining > self.min_count:
+            # A configured minimum is a refill target, not a reason to keep
+            # useless cars behind a moving player and block nearby replacements.
+            if idle_parked and not visible and far:
                 release_npc_parking_reservation(vehicle)
                 self.drivers.pop(vehicle.vehicle_id, None)
                 self._trip_start_failures.pop(vehicle.vehicle_id, None)
-                remaining -= 1
+                self._trip_retry_after_tick.pop(vehicle.vehicle_id, None)
                 continue
             kept.append(vehicle)
         # In place, not self.vehicles = kept: callers (the simulation's
