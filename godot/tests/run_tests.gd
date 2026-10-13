@@ -42,6 +42,7 @@ func _process(_delta: float) -> bool:  # first frame: the tree is live, so nodes
 	MapChunk.build_async = false  # check the buildings right after a chunk loads
 	MapChunk.buildings_3d = false  # the legacy 2D renderer's checks; test_buildings_3d switches it on
 	test_i18n()
+	test_chunk_queue()
 	test_interpolation()
 	test_audio()
 	test_hud()
@@ -63,6 +64,18 @@ func _process(_delta: float) -> bool:  # first frame: the tree is live, so nodes
 	print("%d checks, %d failed" % [_checks, _failures])
 	quit(1 if _failures > 0 else 0)
 	return false
+
+
+func test_chunk_queue() -> void:
+	var main = Main.new()
+	main._queue_chunk({"chunk_id": "1_1", "v": 1})
+	main._queue_chunk({"chunk_id": "2_2", "v": 1})
+	main._chunk_unload_queue.append("3_3")
+	main._queue_chunk({"chunk_id": "1_1", "v": 2})  # the server resent a changed chunk
+	main._queue_chunk({"chunk_id": "3_3", "v": 1})  # back in reach before its unload ran
+	check(main._chunk_queue.map(func(m): return [m["chunk_id"], m["v"]]) == [["1_1", 2], ["2_2", 1], ["3_3", 1]]
+		and main._chunk_unload_queue.is_empty(), "chunk queue: the latest message for a chunk wins, in its place")
+	main.free()
 
 
 func test_i18n() -> void:

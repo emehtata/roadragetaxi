@@ -740,10 +740,17 @@ class SimulationServer:
         self._chunks_index = index
         self.world.street_light_points = lights
         self._map_streamer.hold = not final
+        player = self.world.player_pedestrian if self._on_foot else self.car
+        px, py = cell_of(player.x, player.y)
+
+        def distance(cid: str) -> int:
+            ix, iy = (int(part) for part in cid.split("_"))
+            return max(abs(ix - px), abs(iy - py))
+
         with self._clients_lock:
             for connection, (loaded, _) in list(self._client_chunks.items()):
-                for cid in loaded & changed:
-                    connection.send({"type": "chunk_unload", "version": protocol.PROTOCOL_VERSION, "chunk_id": cid})
+                # Nearest first; a resent chunk replaces the client's copy as it is drawn (no unload, no hole).
+                for cid in sorted(loaded & changed, key=distance):
                     connection.send(self._chunks_index.encoded(cid))
                 self._client_chunks[connection] = (loaded, None)  # replan: the new area may be in reach
         logger.info("Map grew %s -> %s: %d chunks changed%s, built in %.0f ms", old_bounds, new_bounds, len(changed),

@@ -78,8 +78,17 @@ var _phone_check := {}  # selftest: what the phone saw and how an accept went
 var _phone_wait := 0.0  # --phone-wait S: after driving, wait up to S s for a real offer and accept it
 var events_presented := 0
 var _audiotest := false
-var _chunk_queue: Array = []  # chunk messages waiting for their frame
-var _chunk_unload_queue: Array[String] = []  # old meshes freed one per frame, like additions
+var _chunk_queue: Array = []  # chunk messages waiting for their frame, nearest first (as the server sends them)
+var _chunk_unload_queue: Array[String] = []  # old meshes freed once no chunk is waiting to be drawn
+## Per frame: chunks are added until this much time has gone (at least one;
+## a chunk with buildings takes ~10-20 ms, an empty one far less), then
+## unloads the same way once nothing waits to be drawn - after a Home jump the
+## destination is drawn first and the old area's chunks are freed afterwards.
+const CHUNK_BUDGET_USEC := 4000
+const CHUNK_SIZE_M := 500.0  # map_chunks.CHUNK_SIZE_M: chunk "ix_iy" covers [ix, ix + 1) x [iy, iy + 1) of these
+const JUMP_M := 500.0  # the player moving this far between two states is a jump (Home, respawn)
+var _last_player_at = null  # Vector2 metres, the last state's
+var _jumped_usec := 0  # when the last jump was seen, until the chunk under the player is drawn
 var _last_frame_usec := 0  # frame-time accounting (godot-18): real time between frames, not the smoothed delta
 var _bench := 0.0  # --bench SECONDS: drive-through measurement, then the report as JSON
 var _bench_left := 0.0
@@ -165,7 +174,7 @@ func _ready() -> void:
 	sim.state_received.connect(_on_state)
 	# One new chunk per frame (godot-16): a chunk's first drawing takes ~10-20 ms, and crossing into
 	# a new area brings a whole row of them at once.
-	sim.chunk_received.connect(func(message: Dictionary): _chunk_queue.append(message))
+	sim.chunk_received.connect(_queue_chunk)
 	sim.chunk_unloaded.connect(_queue_chunk_unload)
 	sim.connection_changed.connect(_on_connection)
 	phone.sound.connect(func(group: String, variation: int): audio.handle_event({"type": "sound", "group": group, "variation": variation}))
@@ -208,6 +217,58 @@ func _on_connection(up: bool) -> void:
 		map_layer.clear()
 		audio.stop_loops()
 		audio.stop_voices()
+
+
+func _process_chunk_queues(started_usec: int) -> void:
+	# Another one only if it fits by the last one's cost: a 3 ms frame doesn't start a 20 ms chunk.
+	var at := started_usec
+	var last := 0
+	while not _chunk_queue.is_empty() and (at == started_usec or at - started_usec + last <= CHUNK_BUDGET_USEC):
+		var message: Dictionary = _chunk_queue.pop_front()
+		map_layer.remove_chunk(message["chunk_id"])  # a changed chunk: swapped in the same frame, no hole
+		map_layer.add_chunk(message)
+		var now := Time.get_ticks_usec()
+		last = now - at
+		Perf.add("chunk_add", last)
+		at = now
+	if not _chunk_queue.is_empty():
+		return  # unloads wait: drawing what the player needs comes first
+	while not _chunk_unload_queue.is_empty() and (at == started_usec or at - started_usec + last <= CHUNK_BUDGET_USEC):
+		map_layer.remove_chunk(_chunk_unload_queue.pop_front())
+		var now := Time.get_ticks_usec()
+		last = now - at
+		Perf.add("chunk_unload", last)
+		at = now
+
+
+## After a jump (Home, respawn): how long until the chunk under the player
+## is drawn with its roads - "relocation_visible" in --bench and F3.
+func _time_relocation(state: Dictionary, now_usec: int) -> void:
+	if not state.has("player"):
+		return
+	var at := Vector2(state["player"]["x"], state["player"]["y"])
+	if _last_player_at != null and at.distance_to(_last_player_at) > JUMP_M:
+		_jumped_usec = now_usec
+	_last_player_at = at
+	if _jumped_usec == 0:
+		return
+	var chunk = map_layer._chunks.get("%d_%d" % [floori(at.x / CHUNK_SIZE_M), floori(at.y / CHUNK_SIZE_M)])
+	if chunk != null and not chunk._data.get("roads", []).is_empty():
+		Perf.add("relocation_visible", now_usec - _jumped_usec)
+		print("relocation: the map under the player drawn %.0f ms after the jump" % ((now_usec - _jumped_usec) / 1000.0))
+		_jumped_usec = 0
+
+
+## The latest message for a chunk wins: a newer copy (the server resends a
+## changed chunk) replaces a queued one and cancels a pending unload of it.
+func _queue_chunk(message: Dictionary) -> void:
+	var chunk_id: String = message["chunk_id"]
+	_chunk_unload_queue.erase(chunk_id)
+	for i in _chunk_queue.size():
+		if _chunk_queue[i]["chunk_id"] == chunk_id:
+			_chunk_queue[i] = message
+			return
+	_chunk_queue.append(message)
 
 
 func _queue_chunk_unload(chunk_id: String) -> void:
@@ -372,14 +433,10 @@ func _process(delta: float) -> void:
 	if _last_frame_usec > 0 and not entities.shown_state().is_empty() and (_bench <= 0.0 or _bench - _bench_left > 5.0):
 		Perf.frame((now_usec - _last_frame_usec) / 1000.0)  # --bench: after 5 s of warm-up (the first chunks)
 	_last_frame_usec = now_usec
-	if not _chunk_unload_queue.is_empty():
-		map_layer.remove_chunk(_chunk_unload_queue.pop_front())
-		Perf.add("chunk_unload", Time.get_ticks_usec() - now_usec)
-	elif not _chunk_queue.is_empty():
-		map_layer.add_chunk(_chunk_queue.pop_front())
-		Perf.add("chunk_add", Time.get_ticks_usec() - now_usec)
+	_process_chunk_queues(now_usec)
 	entities.update_frame(delta)  # first: the camera below and the drawing use this one sample
 	var state: Dictionary = entities.shown_state()
+	_time_relocation(state, now_usec)
 	_interp_usec = lerpf(_interp_usec, float(entities.interp_usec), 0.1)
 	if _selftest:
 		_run_selftest(delta, state)
