@@ -528,6 +528,23 @@ class AutoFetchManager:
         ).start()
         return True
 
+    def prepare_window(self, x: float, y: float):
+        """Warm the cache for the 3x3 tile window a jump to (x, y) would
+        request (start_tile_streaming asks for exactly this region after a
+        jump), in the background; nothing is merged. Returns the future, or
+        None: no cache to warm, the window already loaded, or already cached."""
+        if self.world_cache_manager is None or not hasattr(self.world_cache_manager, "prepare_region"):
+            return None
+        core = tuple(sorted(active_tiles(world_to_tile(x, y))))
+        with self.lock:
+            if set(core) <= self.loaded_tiles:
+                return None
+        bbox = _meters_bbox_to_latlon(self.transformer, *self._tiles_bbox(core))
+        future = self.world_cache_manager.prepare_region(bbox)
+        if future is not None:
+            logger.info("Preparing the map around (%.0f, %.0f) in the background: tiles %s..%s", x, y, core[0], core[-1])
+        return future
+
     def start_initial_tile_streaming(self) -> bool:
         """Fetch missing tiles for the initial active 3x3 region once."""
         with self.lock:

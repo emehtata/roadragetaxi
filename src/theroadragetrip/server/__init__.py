@@ -270,6 +270,8 @@ class SimulationServer:
         self.homes_file = homes_path(CONFIG_PATH)
         self._home = load_home(self.homes_file, str(self.chosen_city or ""))  # kept between gigs, per city
         self._home_confirm_s = 0.0  # a second H within this: the new yard becomes home
+        self._prepared_home = None  # the home whose map was last handed to the background preparation
+        self._home_preparation = None  # its future (cancelled if home moves before it starts)
         self._pending_cancels = 0
         self._pending_trip_resets = 0
         self._road_rage = None  # the active shout: {"text", "timer"}
@@ -613,9 +615,26 @@ class SimulationServer:
         if self._map_streamer is not None:  # auto-fetch near the edge, then map sync
             self._map_streamer.tick(self.car.x, self.car.y, math.cos(self.car.heading) * self.car.speed,
                                     math.sin(self.car.heading) * self.car.speed, urgent=not self.central_chunk_ready())
+        self._prepare_home_map()
         self._stream_map_chunks()
         self.navigation.update(self.world, self.car, self._current_way)
         self._broadcast_state(should_stop=result.should_stop, city_summary=result.city_summary, events=events)
+
+    def _prepare_home_map(self) -> None:
+        """Once per home, while the map is idle: warm the cache for the area
+        an H jump will load (AutoFetchManager.prepare_window). Optional - a
+        failure only means the jump loads it then."""
+        streamer = self._map_streamer
+        if streamer is None or self._home is None or self._prepared_home == self._home[:2] or streamer.status():
+            return
+        if self._home_preparation is not None:
+            self._home_preparation.cancel()  # an older home's, not started yet: no longer wanted
+        self._prepared_home = self._home[:2]
+        try:
+            self._home_preparation = streamer.manager.prepare_window(*self._home[:2])
+        except Exception:
+            logger.exception("Home map preparation failed to start")
+            self._home_preparation = None
 
     def central_chunk_ready(self) -> bool:
         """Whether the map chunk under the player has roads - what the client

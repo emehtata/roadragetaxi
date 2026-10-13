@@ -394,6 +394,11 @@ class WorldCacheManager:
         self.writer = BinaryWorldCacheWriter()
         self.loader = BinaryWorldCacheLoader()
         self._executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="world-cache")
+        # Background preparation (prepare_region) has its own worker: a
+        # foreground streaming request never waits behind a ~10 s extraction
+        # for a place the player may never go. One at a time, never for an
+        # area already in flight (shared _futures).
+        self._prepare_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="world-prepare")
         self._futures: dict[str, Future] = {}
         self._lock = threading.Lock()
 
@@ -423,6 +428,33 @@ class WorldCacheManager:
     def preload_region(self, bbox, **kwargs) -> Future:
         """Load one combined streaming region instead of one request per tile."""
         return self.preload(self.area_id(bbox), bbox, allow_covering=False, **kwargs)
+
+    def is_fresh(self, area_id: str) -> bool:
+        """A cache file for area_id exists and is within the TTL (not validated:
+        a broken one is rebuilt when it is loaded)."""
+        try:
+            modified = self.path_for(area_id).stat().st_mtime
+        except OSError:
+            return False
+        return self.cache_ttl is None or time.time() - modified <= self.cache_ttl
+
+    def prepare_region(self, bbox) -> Future | None:
+        """Make sure the cache holds `bbox`'s streaming region, in the
+        background, without keeping the world it builds: None when a fresh
+        file is already there. A streaming request for the same region while
+        this runs gets the same future (preload), so the area is built once."""
+        area_id = self.area_id(bbox)
+        if self.is_fresh(area_id):
+            return None
+        future = self.preload(area_id, bbox, allow_covering=False, executor=self._prepare_executor)
+
+        def forget(done: Future) -> None:  # the result isn't kept here: a prepared world is cache, not memory
+            with self._lock:
+                if self._futures.get(area_id) is done:
+                    del self._futures[area_id]
+
+        future.add_done_callback(forget)
+        return future
 
     def clear(self) -> int:
         """Delete all cached world files managed by this instance."""
@@ -515,11 +547,11 @@ class WorldCacheManager:
         logger.info("[WorldCache] Cache created %s in %.1f ms", path, (time.perf_counter() - started) * 1000.0)
         return world
 
-    def preload(self, area_id: str, bbox=None, **kwargs) -> Future:
+    def preload(self, area_id: str, bbox=None, executor=None, **kwargs) -> Future:
         with self._lock:
             future = self._futures.get(area_id)
             if future is None or future.done():
-                future = self._executor.submit(self.load_area, area_id, bbox, **kwargs)
+                future = (executor or self._executor).submit(self.load_area, area_id, bbox, **kwargs)
                 self._futures[area_id] = future
             return future
 
@@ -531,3 +563,4 @@ class WorldCacheManager:
 
     def close(self) -> None:
         self._executor.shutdown(wait=False, cancel_futures=True)
+        self._prepare_executor.shutdown(wait=False, cancel_futures=True)
