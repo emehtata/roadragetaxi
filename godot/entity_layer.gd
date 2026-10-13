@@ -125,16 +125,11 @@ func _ready() -> void:
 	_cars_under.material = preload("res://emissive.tres")
 	_cars_under.draw.connect(func():
 		_paint(_cars_under, _under_shapes)
-		for lamp in _under_lamps:
-			if drawable(lamp[0]):
-				_cars_under.draw_colored_polygon(lamp[0], lamp[1]))
+		_paint_lamps(_cars_under, _under_lamps))
 	add_child(_cars_under)
 	_lamps = Node2D.new()
 	_lamps.material = preload("res://emissive.tres")
-	_lamps.draw.connect(func():
-		for lamp in _lamp_polys:
-			if drawable(lamp[0]):
-				_lamps.draw_colored_polygon(lamp[0], lamp[1]))
+	_lamps.draw.connect(func(): _paint_lamps(_lamps, _lamp_polys))
 	add_child(_lamps)
 
 
@@ -554,6 +549,28 @@ static func _paint(node: Node2D, shapes: Array) -> void:
 				node.draw_circle(shape[1], shape[2], shape[3])
 			"line":
 				node.draw_line(shape[1], shape[2], shape[3], shape[4])
+
+
+## Lamps are quads already: submit their two triangles directly, avoiding
+## Godot's polygon triangulator for sub-pixel shapes far from the origin.
+static func lamp_mesh(lamps: Array) -> Array:
+	var points := PackedVector2Array()
+	var colors := PackedColorArray()
+	var triangles := PackedInt32Array()
+	for lamp in lamps:
+		if lamp[0].size() != 4 or not drawable(lamp[0]):
+			continue
+		var base := points.size()
+		points.append_array(lamp[0])
+		colors.append_array(PackedColorArray([lamp[1], lamp[1], lamp[1], lamp[1]]))
+		triangles.append_array(PackedInt32Array([base, base + 1, base + 2, base, base + 2, base + 3]))
+	return [points, colors, triangles]
+
+
+static func _paint_lamps(node: Node2D, lamps: Array) -> void:
+	var mesh := lamp_mesh(lamps)
+	if not mesh[2].is_empty():
+		RenderingServer.canvas_item_add_triangle_array(node.get_canvas_item(), mesh[2], mesh[0], mesh[1])
 
 
 ## A polygon Godot can triangulate: finite points, some area. A lamp or a

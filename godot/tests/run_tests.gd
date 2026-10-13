@@ -681,6 +681,8 @@ func test_speech_and_stations() -> void:
 	check(EntityLayer.drawable(PackedVector2Array([Vector2(0, 0), Vector2(1, 0), Vector2(1, 1)])) and not EntityLayer.drawable(PackedVector2Array([Vector2(0, 0), Vector2(1, 0), Vector2(2, 0)]))
 		and not EntityLayer.drawable(PackedVector2Array([Vector2(0, 0), Vector2(NAN, 0), Vector2(1, 1)]))
 		and not EntityLayer.drawable(PackedVector2Array([Vector2(0, 0), Vector2(2, 0), Vector2(2, 1), Vector2(2, 1)])), "a flat, NaN or collapsed lamp polygon is skipped, not handed to the triangulator")
+	var lamp_mesh := EntityLayer.lamp_mesh([[PackedVector2Array([Vector2(0, 0), Vector2(1, 0), Vector2(1, 1), Vector2(0, 1)]), Color.RED]])
+	check(lamp_mesh[0].size() == 4 and lamp_mesh[1].size() == 4 and lamp_mesh[2] == PackedInt32Array([0, 1, 2, 0, 2, 3]), "lamp quads are submitted as triangles without polygon triangulation")
 	var far := Vector2(4000, -3000)  # 5 km from the origin: 32-bit floats step ~0.5 mm here
 	check(not EntityLayer.drawable(PackedVector2Array([far, far + Vector2(0.001, 0), far + Vector2(0.001, 0.001), far + Vector2(0, 0.001)]))
 		and EntityLayer.drawable(PackedVector2Array([far, far + Vector2(0.1, 0), far + Vector2(0.1, 0.1), far + Vector2(0, 0.1)])),
