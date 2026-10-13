@@ -808,7 +808,7 @@ func _target(state: Dictionary) -> void:
 		draw_arc(at, radius, 0.0, TAU, 48, main_color, _px(2.0))
 		draw_circle(at, _px(7.0), main_color)
 		draw_arc(at, _px(7.0), 0.0, TAU, 24, RS.OUTLINE, _px(2.0))
-		_tag(at - Vector2(0, radius + _px(14.0)), "[%s] %s" % [T.text("pickup", language, "Pickup") if target["is_pickup"] else T.text("destination", language, "Destination"), target.get("address", "")],
+		_tag(at - Vector2(0, radius + _px(14.0)), "[%s] %s" % [T.text("pickup", language) if target["is_pickup"] else T.text("destination", language), target.get("address", "")],
 			Color.WHITE, main_color)
 	var passenger: Dictionary = state["taxi"]["current_passenger"]
 	if target["is_pickup"] and not passenger.get("boarded", false) and not passenger.get("rail_booking", false) and passenger.has("ped"):
@@ -913,7 +913,7 @@ func _draw() -> void:
 	if a.get("taxi", {}).get("current_passenger") is Dictionary:
 		var passenger: Dictionary = a["taxi"]["current_passenger"]
 		if a["taxi"].get("state") == "DROPOFF" and passenger.get("nausea_warning_timer", 0.0) > 0.0:
-			_bubble(taxi_at - Vector2(0, maxf(_px(34.0), 2.5)), T.text("nausea", language, "I feel sick!"), RS.NAUSEA_TEXT, RS.NAUSEA_TEXT, 1.0, 16, true)
+			_bubble(taxi_at - Vector2(0, maxf(_px(34.0), 2.5)), T.text("nausea", language), RS.NAUSEA_TEXT, RS.NAUSEA_TEXT, 1.0, 16, true)
 
 	_booked_arrow(a, b, t, later_peds)
 

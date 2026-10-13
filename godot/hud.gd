@@ -130,8 +130,8 @@ static func _box(fill: Color, border: Color) -> StyleBoxFlat:
 
 func show_state(state: Dictionary, toggles := {}) -> void:
 	var text := values(state, toggles, language)
-	_money.text = "%s: %s  |  %s: %d  |  %s" % [T.text("score", language, "Score"), text["score"],
-		T.text("fares", language, "Fares"), int(state.get("taxi", {}).get("completed_fares", 0)), text["money"]]
+	_money.text = "%s: %s  |  %s: %d  |  %s" % [T.text("score", language), text["score"],
+		T.text("fares", language), int(state.get("taxi", {}).get("completed_fares", 0)), text["money"]]
 	_speed.text = text["speed"]
 	_clock.text = text["clock"]
 	_weather.text = text["weather"]
@@ -164,7 +164,7 @@ func show_state(state: Dictionary, toggles := {}) -> void:
 		_timetable_hint_shown = true  # the client's own hint: it never overwrites the server's notices
 		_timetable_hint_until = Time.get_ticks_msec() + 6000
 	if Time.get_ticks_msec() < _timetable_hint_until and _hint.text != "":
-		_hint.text = T.text("train_hint", language, "Train timetables available. Press J.   ") + _hint.text
+		_hint.text = T.text("train_hint", language) + _hint.text
 
 
 ## Where everything goes, after the texts changed:
@@ -217,13 +217,13 @@ static func map_loading_text(stage: String, now_ms: int, language := "en", detai
 		return ""
 	var spinner: String = ["◐", "◓", "◑", "◒"][int(now_ms / 150) % 4]
 	var what: String = {
-		"fetching": T.text("map_fetching", language, "downloading the area ahead"),
-		"merging": T.text("map_merging", language, "adding it to the map"),
-		"syncing": T.text("map_syncing", language, "preparing roads and traffic"),
-		"building": T.text("map_building", language, "drawing the new area"),
+		"fetching": T.text("map_fetching", language),
+		"merging": T.text("map_merging", language),
+		"syncing": T.text("map_syncing", language),
+		"building": T.text("map_building", language),
 	}.get(stage, stage)
 	# The fetcher's own line names where it loads from (an Overpass URL, the .pbf file).
-	return "%s %s %s" % [spinner, T.text("map_loading", language, "Loading map…"), what] + ("\n" + detail if detail != "" else "")
+	return "%s %s %s" % [spinner, T.text("map_loading", language), what] + ("\n" + detail if detail != "" else "")
 
 
 ## Display text for one state. Every field is optional: a missing one shows
@@ -236,7 +236,7 @@ static func values(state: Dictionary, toggles := {}, language := "en") -> Dictio
 	var text := {}
 	text["money"] = "%.2f €" % (taxi["balance_cents"] / 100.0) if taxi.has("balance_cents") else "– €"
 	text["score"] = str(int(taxi["total_score"])) if typeof(taxi.get("total_score")) in [TYPE_INT, TYPE_FLOAT] else "–"
-	text["speed"] = T.text("on_foot", language, "on foot") if on_foot else ("%d km/h" % roundi(absf(player.get("speed", 0.0)) * 3.6))
+	text["speed"] = T.text("on_foot", language) if on_foot else ("%d km/h" % roundi(absf(player.get("speed", 0.0)) * 3.6))
 	if state.has("game_time_seconds"):
 		var minutes := int(state["game_time_seconds"] / 60.0)
 		text["clock"] = "%02d:%02d" % [minutes / 60 % 24, minutes % 60]
@@ -248,7 +248,7 @@ static func values(state: Dictionary, toggles := {}, language := "en") -> Dictio
 	else:
 		text["clock"] = "--:--"
 	if weather.has("weather_type"):
-		text["weather"] = T.text("road_wet", language, "%s, road %d%% wet") % [T.weather(str(weather["weather_type"]), language), roundi(weather.get("wetness", 0.0) * 100)]
+		text["weather"] = T.text("road_wet", language) % [T.weather(str(weather["weather_type"]), language), roundi(weather.get("wetness", 0.0) * 100)]
 	else:
 		text["weather"] = ""
 	var passenger = taxi.get("current_passenger")
@@ -257,16 +257,16 @@ static func values(state: Dictionary, toggles := {}, language := "en") -> Dictio
 	if typeof(passenger) == TYPE_DICTIONARY:
 		text["fare_color"] = Color8(100, 240, 140) if taxi.get("state", "") == "DROPOFF" else Color8(255, 215, 60)
 	if passenger == null or typeof(passenger) != TYPE_DICTIONARY:
-		text["fare"] = T.text("no_fare", language, "No fare - %d done") % taxi.get("completed_fares", 0)
+		text["fare"] = T.text("no_fare", language) % taxi.get("completed_fares", 0)
 	else:
-		var who: String = passenger.get("name", T.text("passenger", language, "Passenger"))
+		var who: String = passenger.get("name", T.text("passenger", language))
 		match taxi.get("state", ""):
 			"PICKUP":
-				text["fare"] = T.text("pick_up", language, "Pick up %s at %s") % [who, passenger.get("pickup", {}).get("address", "?")]
+				text["fare"] = T.text("pick_up", language) % [who, passenger.get("pickup", {}).get("address", "?")]
 			"WALKING":
-				text["fare"] = T.text("walking_taxi", language, "%s is walking to the taxi") % who
+				text["fare"] = T.text("walking_taxi", language) % who
 			"DROPOFF":
-				text["fare"] = T.text("drive_to", language, "Drive %s to %s") % [who, passenger.get("dropoff", {}).get("address", "?")] + fare_details(taxi, language)
+				text["fare"] = T.text("drive_to", language) % [who, passenger.get("dropoff", {}).get("address", "?")] + fare_details(taxi, language)
 			_:
 				text["fare"] = who
 	text["notice"] = str(taxi.get("notification_msg", "")) if taxi.get("notification_timer", 0.0) > 0.0 else ""
@@ -274,9 +274,9 @@ static func values(state: Dictionary, toggles := {}, language := "en") -> Dictio
 	# The start hints: get in (until the driver first does), then start the engine.
 	text["start_hint"] = ""
 	if on_foot and not toggles.get("entered_taxi", true):
-		text["start_hint"] = T.text("hint_enter_taxi", language, "Press F to get into your taxi")
+		text["start_hint"] = T.text("hint_enter_taxi", language)
 	elif not on_foot and not player.get("engine_on", true) and player.get("fuel_l", 0.0) > 0.0:
-		text["start_hint"] = T.text("hint_start_engine", language, "Press E to start the engine")
+		text["start_hint"] = T.text("hint_start_engine", language)
 	var meet = state.get("meet")
 	text["meet"] = "\n".join(meet.get("lines", [])) if typeof(meet) == TYPE_DICTIONARY else ""
 	# The road line, in the F3 readout.
@@ -284,13 +284,13 @@ static func values(state: Dictionary, toggles := {}, language := "en") -> Dictio
 	if typeof(road) != TYPE_DICTIONARY:
 		text["road"] = ""
 	else:
-		text["road"] = "%s: %s" % [T.text("road", language, "Road"), road["name"] if road.get("name") else T.text("off_road", language, "Off-road")]
+		text["road"] = "%s: %s" % [T.text("road", language), road["name"] if road.get("name") else T.text("off_road", language)]
 		if road.get("speed_limit_kmh") != null:
-			text["road"] += " [%s: %d km/h]" % [T.text("limit", language, "Limit"), int(road["speed_limit_kmh"])]
+			text["road"] += " [%s: %d km/h]" % [T.text("limit", language), int(road["speed_limit_kmh"])]
 	if on_foot:
-		text["hint"] = T.text("hint_foot", language, "F get in the taxi · WASD walk · P phone")
+		text["hint"] = T.text("hint_foot", language)
 	elif not player.get("engine_on", true):
-		text["hint"] = T.text("hint_engine", language, "E start the engine · F get out · P phone")
+		text["hint"] = T.text("hint_engine", language)
 	else:  # no controls line while driving; F1 lists them all
 		text["hint"] = ""
 	return text
@@ -314,7 +314,7 @@ static func subtitle_text(event: Dictionary, language := "en") -> String:
 	if typeof(text) != TYPE_STRING or text == "":
 		return ""
 	var name = event.get("speaker_name")
-	var speaker: String = name if typeof(name) == TYPE_STRING and name != "" else (T.text("passenger", language, "Passenger") if event.get("speaker") == "passenger" else T.text("driver", language, "Driver"))
+	var speaker: String = name if typeof(name) == TYPE_STRING and name != "" else (T.text("passenger", language) if event.get("speaker") == "passenger" else T.text("driver", language))
 	return "%s: %s" % [speaker, text]
 
 
@@ -339,7 +339,7 @@ static func next_train_text(railway, language := "en") -> String:
 	if not railway is Dictionary:
 		return ""
 	var lines := []
-	for section in [["arrivals", T.text("next_trains", language, "Next trains"), "origin"], ["departures", T.text("departing_trains", language, "Departing trains"), "destination"]]:
+	for section in [["arrivals", T.text("next_trains", language), "origin"], ["departures", T.text("departing_trains", language), "destination"]]:
 		var rows = railway.get(section[0])
 		if not rows is Array or rows.is_empty():
 			continue
@@ -348,7 +348,7 @@ static func next_train_text(railway, language := "en") -> String:
 			if not row is Dictionary:
 				continue
 			var track := str(row.get("track", ""))
-			lines.append("%s%s  %s %s %s" % [str(row.get("time", "--:--")), (" " + T.text("track", language, "track") + " " + track) if track != "" else "",
+			lines.append("%s%s  %s %s %s" % [str(row.get("time", "--:--")), (" " + T.text("track", language) + " " + track) if track != "" else "",
 				str(row.get("train_type", "")), str(row.get("number", "")), str(row.get(section[2], ""))])
 	if lines.is_empty():
 		return ""
@@ -367,14 +367,14 @@ static func summary_text(state: Dictionary, language := "en") -> String:
 	var summary = state.get("city_summary")
 	if typeof(summary) != TYPE_ARRAY or summary.size() < 5 or typeof(summary[0]) != TYPE_STRING \
 			or not typeof(summary[1]) in [TYPE_INT, TYPE_FLOAT] or not typeof(summary[2]) in [TYPE_INT, TYPE_FLOAT]:
-		return "%s\n\n%s" % [T.text("city_summary", language, "City summary"), T.text("city_complete", language, "This city is complete.")]
-	var lines := [T.text("city_summary", language, "City summary"), "", summary[0], "%s: %d" % [T.text("score", language, "Score"), int(summary[1])], T.text("fares_completed", language, "Fares completed: %d") % int(summary[2])]
+		return "%s\n\n%s" % [T.text("city_summary", language), T.text("city_complete", language)]
+	var lines := [T.text("city_summary", language), "", summary[0], "%s: %d" % [T.text("score", language), int(summary[1])], T.text("fares_completed", language) % int(summary[2])]
 	if typeof(summary[3]) == TYPE_STRING and summary[3] != "":
-		lines.append(T.text("next_city", language, "Next city: %s") % summary[3])
+		lines.append(T.text("next_city", language) % summary[3])
 	else:
-		lines.append(T.text("career_complete", language, "Career complete! Helsinki conquered."))
+		lines.append(T.text("career_complete", language))
 		if typeof(summary[4]) in [TYPE_INT, TYPE_FLOAT]:
-			lines.append(T.text("career_score", language, "Total career score: %d") % int(summary[4]))
+			lines.append(T.text("career_score", language) % int(summary[4]))
 	return "\n".join(lines)
 
 
@@ -387,9 +387,9 @@ static func fare_details(taxi: Dictionary, language := "en") -> String:
 	if numeric.call("elapsed_time"):
 		parts.append("%.0f s" % taxi["elapsed_time"])
 	if numeric.call("live_fare_cents"):
-		parts.append(T.text("meter", language, "meter %.2f €") % (int(taxi["live_fare_cents"]) / 100.0))
+		parts.append(T.text("meter", language) % (int(taxi["live_fare_cents"]) / 100.0))
 	if numeric.call("fare_distance_m"):
 		parts.append("%.2f km" % (taxi["fare_distance_m"] / 1000.0))
 	if numeric.call("passenger_happiness"):
-		parts.append(T.text("happiness", language, "happiness %d%%") % roundi(taxi["passenger_happiness"]))
+		parts.append(T.text("happiness", language) % roundi(taxi["passenger_happiness"]))
 	return "" if parts.is_empty() else " · " + " · ".join(parts)

@@ -194,7 +194,7 @@ func _apply_language() -> void:
 		_help.queue_free()
 		_build_help()
 	if _inspect_panel != null:
-		_inspect_panel.get_node("Rows/Back").text = T.text("back_to_taxi", language, "Back to taxi")
+		_inspect_panel.get_node("Rows/Back").text = T.text("back_to_taxi", language)
 
 
 func _on_connection(up: bool) -> void:
@@ -452,7 +452,7 @@ func _present(state: Dictionary) -> void:
 			return  # the session is over: the summary stays, even when the server goes away
 		hud.visible = false
 		debug_label.visible = true
-		debug_label.text = T.text("waiting", language, "Waiting for the simulation at %s:%d …") % [sim.host, sim.port]
+		debug_label.text = T.text("waiting", language) % [sim.host, sim.port]
 		return
 	if not hud.visible:  # the simulation is here: the HUD replaces the waiting text (F3 brings the readout back)
 		hud.visible = true
@@ -660,13 +660,13 @@ static func start_sign(world: Dictionary, language: String) -> PanelContainer:
 	var lines := VBoxContainer.new()
 	lines.add_theme_constant_override("separation", 6)
 	sign.add_child(lines)
-	var rows := [[str(world.get("city", "")).to_upper(), 46, Color.WHITE], [T.text("weather_forecast_24h", language, "Weather forecast for the next 24 hours"), 20, Color8(180, 220, 255)]]
+	var rows := [[str(world.get("city", "")).to_upper(), 46, Color.WHITE], [T.text("weather_forecast_24h", language), 20, Color8(180, 220, 255)]]
 	for line in world.get("forecast", []):
 		if line is Dictionary:
 			var source := str(line.get("source", "generated"))
 			rows.append(["%s   %+.0f °C   %s%s" % [line.get("time", ""), float(line.get("temperature_c", 0.0)), T.weather(str(line.get("weather", "")), language),
-				"" if source == "generated" else "   (%s)" % T.text("weather_source_" + source, language, source)], 20, Color.WHITE])
-	rows.append([T.text("press_any_key_start", language, "Press any key to start"), 24, Color.WHITE])
+				"" if source == "generated" else "   (%s)" % T.text("weather_source_" + source, language)], 20, Color.WHITE])
+	rows.append([T.text("press_any_key_start", language), 24, Color.WHITE])
 	for row in rows:
 		var label := Label.new()
 		label.text = row[0]
@@ -714,7 +714,7 @@ func _build_help() -> void:
 	var text := Label.new()
 	text.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	text.add_theme_font_size_override("font_size", 18)
-	text.text = T.text("controls_help", language, "CONTROLS\n\nWASD / arrows   Drive or walk       Shift   Sprint\nF   Enter / exit taxi               E   Engine\nP   Phone                            1–3 / Enter / X   Phone actions\nSpace   Road rage                   G   Refuel\nR   Respawn taxi                    X   Cancel fare\nT   Reset trip meter                K   Lane assist\nV   Speed limiter                   B   Red-light assist\nN   Navigation                      C   Compass\nJ   Train board                     L   Labels\n+ / - / Wheel   Zoom                Esc   Pause\nCtrl+drag / Middle-drag   Pan        Click NPC   Inspect\nF1   Close help                     F3   Diagnostics\nMouse   Drag HUD panels             U   Reset HUD layout\nF12   Screenshot")
+	text.text = T.text("controls_help", language)
 	_help.add_child(text)
 
 
@@ -736,7 +736,7 @@ func _build_inspector() -> void:
 	_inspect_panel.add_child(rows)
 	var back := Button.new()
 	back.name = "Back"
-	back.text = T.text("back_to_taxi", language, "Back to taxi")
+	back.text = T.text("back_to_taxi", language)
 	back.pressed.connect(_clear_focus)
 	rows.add_child(back)
 	_inspect_label = Label.new()
@@ -755,7 +755,7 @@ func _refresh_inspector(state: Dictionary) -> void:
 	if _focus.is_empty() or _inspect_panel == null:
 		return
 	if _focus.get("kind") == "pan":
-		_inspect_label.text = T.text("pan_view", language, "Panned view")
+		_inspect_label.text = T.text("pan_view", language)
 		return
 	var key := "pedestrians" if _focus["kind"] == "pedestrian" else "npcs"
 	for row in state.get(key, []):
@@ -766,22 +766,22 @@ func _refresh_inspector(state: Dictionary) -> void:
 		for npc in state.get("npcs", []):
 			for person in npc.get("occupants", []):
 				if person.get("id") == _focus["id"]:
-					_inspect_label.text = _character_text("pedestrian", {"id": _focus["id"], "resident": person, "state": T.text("in_vehicle", language, "in vehicle")})
+					_inspect_label.text = _character_text("pedestrian", {"id": _focus["id"], "resident": person, "state": T.text("in_vehicle", language)})
 					return
 
 
 func _character_text(kind: String, row: Dictionary) -> String:
-	var unknown := T.text("unknown", language, "Unknown")
+	var unknown := T.text("unknown", language)
 	if kind == "pedestrian":
 		var resident: Dictionary = row.get("resident") if row.get("resident") is Dictionary else {}
 		return "\n".join([
-			"%s #%s" % [T.text("resident", language, "Resident"), row.get("id", "?")],
+			"%s #%s" % [T.text("resident", language), row.get("id", "?")],
 			str(resident.get("name", unknown)),
-			"%s: %s" % [T.text("born", language, "Born"), resident.get("birth_date", unknown)],
-			"%s: %s" % [T.text("gender", language, "Gender"), resident.get("gender", unknown) if resident.get("gender") != null else unknown],
-			"%s: %s" % [T.text("status", language, "State"), row.get("state", unknown)],
-			"%s: %s" % [T.text("activity", language, "Activity"), str(row.get("activity", "")).replace("_", " ") if row.get("activity", "") != "" else unknown],
-			"%s: %.2f ‰" % [T.text("blood_alcohol", language, "Blood alcohol"), float(row.get("blood_alcohol_promille", 0.0))],
+			"%s: %s" % [T.text("born", language), resident.get("birth_date", unknown)],
+			"%s: %s" % [T.text("gender", language), resident.get("gender", unknown) if resident.get("gender") != null else unknown],
+			"%s: %s" % [T.text("status", language), row.get("state", unknown)],
+			"%s: %s" % [T.text("activity", language), str(row.get("activity", "")).replace("_", " ") if row.get("activity", "") != "" else unknown],
+			"%s: %.2f ‰" % [T.text("blood_alcohol", language), float(row.get("blood_alcohol_promille", 0.0))],
 		])
 	var owner: Dictionary = row.get("owner") if row.get("owner") is Dictionary else {}
 	var occupants := PackedStringArray()
@@ -789,12 +789,12 @@ func _character_text(kind: String, row: Dictionary) -> String:
 		if person is Dictionary:
 			occupants.append(person.get("name", unknown))
 	return "\n".join([
-		"%s #%s" % [T.text("npc_vehicle", language, "NPC vehicle"), row.get("id", "?")],
-		"%s: %s" % [T.text("type", language, "Type"), row.get("vehicle_type", unknown)],
-		"%s: %s" % [T.text("status", language, "State"), row.get("state", unknown)],
-		"%s: %.0f km/h" % [T.text("speed", language, "Speed"), absf(float(row.get("speed", 0.0))) * 3.6],
-		"%s: %s" % [T.text("owner", language, "Owner"), owner.get("name", unknown)],
-		"%s: %s" % [T.text("occupants", language, "Occupants"), ", ".join(occupants) if not occupants.is_empty() else unknown],
+		"%s #%s" % [T.text("npc_vehicle", language), row.get("id", "?")],
+		"%s: %s" % [T.text("type", language), row.get("vehicle_type", unknown)],
+		"%s: %s" % [T.text("status", language), row.get("state", unknown)],
+		"%s: %.0f km/h" % [T.text("speed", language), absf(float(row.get("speed", 0.0))) * 3.6],
+		"%s: %s" % [T.text("owner", language), owner.get("name", unknown)],
+		"%s: %s" % [T.text("occupants", language), ", ".join(occupants) if not occupants.is_empty() else unknown],
 	])
 
 

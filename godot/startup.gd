@@ -26,8 +26,8 @@ var _start_time := {}  # the gig start (year, month, day, hour, minute): now, ea
 var _back: CanvasLayer  # the backdrop and logo: hidden while the game runs
 
 
-func _t(key: String, english: String) -> String:
-	return T.text(key, _language, english)
+func _t(key: String) -> String:
+	return T.text(key, _language)
 
 
 func _ready() -> void:
@@ -188,9 +188,9 @@ func _choose_language(language: String) -> void:
 ## interval). Both on by default; Continue saves them.
 func _online_menu() -> void:
 	_clear()
-	_title(_t("real_data", "REAL-WORLD DATA"), _t("real_data_detail", "The game can use real data for the city and time you play in."))
-	var choices := {"historical_weather": [_t("historical_weather", "FMI weather (observations and forecasts)"), true],
-		"train_timetable": [_t("realtime_trains", "Real train timetables (Digitraffic)"), true]}
+	_title(_t("real_data"), _t("real_data_detail"))
+	var choices := {"historical_weather": [_t("historical_weather"), true],
+		"train_timetable": [_t("realtime_trains"), true]}
 	for key in choices:
 		var check := CheckButton.new()
 		check.text = choices[key][0]
@@ -199,7 +199,7 @@ func _online_menu() -> void:
 		check.toggled.connect(func(on: bool): _settings.set_value("game", key, on))
 		_body.add_child(check)
 		_focusables.append(check)
-	var go := _button(_t("continue", "Continue"), func():
+	var go := _button(_t("continue"), func():
 		_settings.save("user://settings.cfg")
 		_main_menu())
 	_back_action = Callable()
@@ -210,12 +210,12 @@ func _online_menu() -> void:
 func _main_menu() -> void:
 	get_tree().paused = false
 	_clear()
-	_title("ROAD RAGE TRIP", _t("choose_start", "Choose how to start"))
-	var career := _button(_t("career", "Career"), func(): _start("career"))
-	var gig := _button(_t("gig_driver", "Gig driver"), _city_menu)
-	_button(_t("settings", "Settings"), _settings_menu)
-	_button(_t("clear_cache", "Clear all map cache"), _confirm_clear_cache)
-	_button(_t("quit", "Quit"), get_tree().quit)
+	_title("ROAD RAGE TRIP", _t("choose_start"))
+	var career := _button(_t("career"), func(): _start("career"))
+	var gig := _button(_t("gig_driver"), _city_menu)
+	_button(_t("settings"), _settings_menu)
+	_button(_t("clear_cache"), _confirm_clear_cache)
+	_button(_t("quit"), get_tree().quit)
 	_focus_menu()
 	# Enter: the mode played last time (gig driving the first time).
 	(career if _settings.get_value("menu", "mode", "gig_driver") == "career" else gig).call_deferred("grab_focus")
@@ -225,17 +225,17 @@ func _main_menu() -> void:
 ## the OSM downloads and the built worlds, and maps load fresh next time.
 func _confirm_clear_cache() -> void:
 	_clear()
-	_title(_t("clear_cache", "Clear all map cache").to_upper(), _t("confirm_clear_cache", "Clear the map cache? Maps will be downloaded again."))
-	var no := _button(_t("cancel", "Cancel"), _main_menu)
-	_button(_t("clear", "Clear"), func():
+	_title(_t("clear_cache").to_upper(), _t("confirm_clear_cache"))
+	var no := _button(_t("cancel"), _main_menu)
+	_button(_t("clear"), func():
 		_clear()
-		_title(_t("clearing", "Clearing…"))
+		_title(_t("clearing"))
 		await get_tree().process_frame
 		var removed := _server_query("--clear-cache")
 		_clear()
-		_title(_t("clear_cache", "Clear all map cache").to_upper(),
-			_t("cache_cleared_done", "Map cache cleared.") if removed.size() == 2 else _t("cache_clear_failed", "Could not clear the map cache."))
-		_button(_t("back", "Back"), _main_menu)
+		_title(_t("clear_cache").to_upper(),
+			_t("cache_cleared_done") if removed.size() == 2 else _t("cache_clear_failed"))
+		_button(_t("back"), _main_menu)
 		_back_action = _main_menu
 		_focus_menu())
 	_back_action = _main_menu
@@ -245,7 +245,7 @@ func _confirm_clear_cache() -> void:
 
 func _city_menu() -> void:
 	_clear()
-	_title(_t("choose_city", "CHOOSE CITY"), _t("gig_driver", "Gig driver"))
+	_title(_t("choose_city"), _t("gig_driver"))
 	var choices := OptionButton.new()
 	for city in _cities:
 		choices.add_item(str(city))
@@ -293,8 +293,8 @@ func _city_menu() -> void:
 	_body.add_child(map)
 	_body.add_child(choices)
 	_focusables.append(choices)
-	var drive := _button(_t("drive", "Drive"), _time_menu)
-	_button(_t("back", "Back"), _main_menu)
+	var drive := _button(_t("drive"), _time_menu)
+	_button(_t("back"), _main_menu)
 	_back_action = _main_menu
 	_focus_menu()
 	drive.call_deferred("grab_focus")  # Enter: on to the start time (the remembered city)
@@ -313,9 +313,9 @@ static func city_map_position(latitude: float, longitude: float, size: Vector2) 
 func _time_menu() -> void:
 	_start_time = clamp_start(Time.get_datetime_dict_from_system(), Time.get_date_dict_from_system())
 	_clear()
-	_title(_t("start_time", "START TIME"), _city)
-	var fields := [["year", _t("year", "Year")], ["month", _t("month", "Month")], ["day", _t("day", "Day")],
-		["hour", _t("hour", "Hour")], ["minute", _t("minute", "Minute")]]
+	_title(_t("start_time"), _city)
+	var fields := [["year", _t("year")], ["month", _t("month")], ["day", _t("day")],
+		["hour", _t("hour")], ["minute", _t("minute")]]
 	var spins := {}
 	for field in fields:
 		var row := HBoxContainer.new()
@@ -340,11 +340,11 @@ func _time_menu() -> void:
 			_start_time = clamp_start(_start_time, Time.get_date_dict_from_system())
 			show.call())
 	show.call()
-	_button(_t("now", "Now"), func():
+	_button(_t("now"), func():
 		_start_time = clamp_start(Time.get_datetime_dict_from_system(), Time.get_date_dict_from_system())
 		show.call())
-	var start := _button(_t("start", "Start"), func(): _start("gig_driver"))
-	_button(_t("back", "Back"), _city_menu)
+	var start := _button(_t("start"), func(): _start("gig_driver"))
+	_button(_t("back"), _city_menu)
 	_back_action = _city_menu
 	_focus_menu()
 	start.call_deferred("grab_focus")  # Enter plays from now
@@ -427,7 +427,7 @@ static func _days_in(year: int, month: int) -> int:
 
 func _settings_menu() -> void:
 	_clear()
-	_title(_t("settings", "SETTINGS").to_upper())
+	_title(_t("settings").to_upper())
 	var language := OptionButton.new()
 	language.add_item("English")
 	language.add_item("Suomi")
@@ -441,7 +441,7 @@ func _settings_menu() -> void:
 	_body.add_child(language)
 	_focusables.append(language)
 	var historical := CheckButton.new()  # FMI weather for the city and game time
-	historical.text = _t("historical_weather", "FMI weather (observations and forecasts)")
+	historical.text = _t("historical_weather")
 	historical.button_pressed = _settings.get_value("game", "historical_weather", false)
 	historical.toggled.connect(func(on: bool):
 		_settings.set_value("game", "historical_weather", on)
@@ -449,7 +449,7 @@ func _settings_menu() -> void:
 	_body.add_child(historical)
 	_focusables.append(historical)
 	var timetable := CheckButton.new()  # the real Digitraffic timetable, else trains at a fixed interval
-	timetable.text = _t("realtime_trains", "Real train timetables (Digitraffic)")
+	timetable.text = _t("realtime_trains")
 	timetable.button_pressed = _settings.get_value("game", "train_timetable", true)
 	timetable.toggled.connect(func(on: bool):
 		_settings.set_value("game", "train_timetable", on)
@@ -457,8 +457,8 @@ func _settings_menu() -> void:
 	_body.add_child(timetable)
 	_focusables.append(timetable)
 	var source := OptionButton.new()  # --osm-source: the map from Overpass, or a local .osm.pbf via osmium
-	source.add_item(_t("map_overpass", "Map data: Overpass (online)"))
-	source.add_item(_t("map_pbf", "Map data: local .osm.pbf file"))
+	source.add_item(_t("map_overpass"))
+	source.add_item(_t("map_pbf"))
 	source.selected = 1 if _settings.get_value("map", "osm_source", "overpass") == "pbf" else 0
 	_body.add_child(source)
 	_focusables.append(source)
@@ -475,8 +475,8 @@ func _settings_menu() -> void:
 		pbf_path.visible = index == 1)
 	_body.add_child(pbf_path)
 	_focusables.append(pbf_path)
-	_button(_t("manage_pbf", "Finland map"), _pbf_menu)
-	for item in [[_t("master_volume", "Master volume"), "Master"], [_t("game_volume", "Game volume"), "Game"], [_t("environment_volume", "Environment volume"), "Environment"], [_t("ui_volume", "UI volume"), "UI"]]:
+	_button(_t("manage_pbf"), _pbf_menu)
+	for item in [[_t("master_volume"), "Master"], [_t("game_volume"), "Game"], [_t("environment_volume"), "Environment"], [_t("ui_volume"), "UI"]]:
 		var row := HBoxContainer.new()
 		var label := Label.new()
 		label.text = item[0]
@@ -493,7 +493,7 @@ func _settings_menu() -> void:
 		_body.add_child(row)
 		_focusables.append(slider)
 	var back := _pause_menu if _game != null else _main_menu
-	_button(_t("back", "Back"), back)
+	_button(_t("back"), back)
 	_back_action = back
 	_focus_menu()
 
@@ -518,7 +518,7 @@ func _start(mode: String, skip_pbf_offer := false) -> void:
 	_settings.set_value("menu", "mode", mode)  # the main menu's choice next time
 	_settings.save("user://settings.cfg")
 	_clear()
-	_title(_t("loading", "LOADING"), _t("starting", "Starting the simulation…"))
+	_title(_t("loading"), _t("starting"))
 	var args := ["--port", str(PORT), "--game-mode", mode, "--language", _language]
 	if mode == "gig_driver":
 		args.append_array(["--preset", _city, "--start-time", "%04d-%02d-%02dT%02d:%02d" % [_start_time["year"], _start_time["month"], _start_time["day"], _start_time["hour"], _start_time["minute"]]])
@@ -531,8 +531,8 @@ func _start(mode: String, skip_pbf_offer := false) -> void:
 	var command := Paths.server_command(args)  # the repo's .venv, or the release's bundled server
 	_server_pid = OS.create_process(command[0], command[1])
 	if _server_pid <= 0:
-		_title(_t("start_failed", "START FAILED"), _t("start_failed_detail", "Could not launch the Python simulation"))
-		_button(_t("back", "Back"), _main_menu)
+		_title(_t("start_failed"), _t("start_failed_detail"))
+		_button(_t("back"), _main_menu)
 		_back_action = _main_menu
 		_focus_menu()
 		return
@@ -548,32 +548,32 @@ func _start(mode: String, skip_pbf_offer := false) -> void:
 
 func _offer_pbf_download(mode: String) -> void:
 	_clear()
-	_title(_t("pbf_missing", "FINLAND MAP NOT FOUND"),
-		_t("pbf_download_offer", "Download the Finland OpenStreetMap file? The download is large and will be saved in your user data folder."))
-	_button(_t("download", "Download"), func(): _download_pbf(mode))
-	_button(_t("use_overpass", "Use Overpass instead"), func():
+	_title(_t("pbf_missing"),
+		_t("pbf_download_offer"))
+	_button(_t("download"), func(): _download_pbf(mode))
+	_button(_t("use_overpass"), func():
 		_settings.set_value("map", "osm_source", "overpass")
 		_settings.save("user://settings.cfg")
 		_start(mode))
-	_button(_t("cancel", "Cancel"), _main_menu)
+	_button(_t("cancel"), _main_menu)
 	_back_action = _main_menu
 	_focus_menu()
 
 
 func _offer_pbf_update(mode: String) -> void:
 	_clear()
-	_title(_t("pbf_old", "A NEWER FINLAND MAP IS AVAILABLE"),
-		_t("pbf_update_offer", "Your map file is over 30 days old. Download the latest version?"))
-	_button(_t("download_newer", "Download newer map"), func(): _download_pbf(mode, true))
-	_button(_t("use_existing", "Use existing map"), func(): _start(mode, true))
-	_button(_t("cancel", "Cancel"), _main_menu)
+	_title(_t("pbf_old"),
+		_t("pbf_update_offer"))
+	_button(_t("download_newer"), func(): _download_pbf(mode, true))
+	_button(_t("use_existing"), func(): _start(mode, true))
+	_button(_t("cancel"), _main_menu)
 	_back_action = _main_menu
 	_focus_menu()
 
 
 func _download_pbf(mode: String, allow_existing := false, settings_only := false) -> void:
 	_clear()
-	_title(_t("downloading_map", "DOWNLOADING FINLAND MAP"), _t("download_wait", "Please wait. Do not close the game."))
+	_title(_t("downloading_map"), _t("download_wait"))
 	var progress := ProgressBar.new()
 	progress.custom_minimum_size = Vector2(420, 28)
 	progress.indeterminate = true
@@ -628,12 +628,12 @@ func _download_pbf(mode: String, allow_existing := false, settings_only := false
 
 func _pbf_download_failed(mode: String, allow_existing: bool, settings_only: bool) -> void:
 	_clear()
-	_title(_t("download_failed", "DOWNLOAD FAILED"), _t("pbf_download_failed", "Could not download the Finland map file."))
-	_button(_t("retry", "Retry"), func(): _download_pbf(mode, allow_existing, settings_only))
+	_title(_t("download_failed"), _t("pbf_download_failed"))
+	_button(_t("retry"), func(): _download_pbf(mode, allow_existing, settings_only))
 	if allow_existing:
-		_button(_t("use_existing", "Use existing map"), _settings_menu if settings_only else func(): _start(mode, true))
+		_button(_t("use_existing"), _settings_menu if settings_only else func(): _start(mode, true))
 	var back := _settings_menu if settings_only else _main_menu
-	_button(_t("cancel", "Cancel"), back)
+	_button(_t("cancel"), back)
 	_back_action = back
 	_focus_menu()
 
@@ -641,26 +641,26 @@ func _pbf_download_failed(mode: String, allow_existing: bool, settings_only: boo
 func _confirm_delete_pbf() -> void:
 	_clear()
 	if not FileAccess.file_exists(downloaded_pbf_path()):
-		_title(_t("delete_pbf", "DELETE DOWNLOADED FINLAND MAP"), _t("pbf_not_found", "No downloaded map file was found."))
-		_button(_t("back", "Back"), _settings_menu)
+		_title(_t("delete_pbf").to_upper(), _t("pbf_not_found"))
+		_button(_t("back"), _settings_menu)
 	else:
-		_title(_t("delete_pbf", "DELETE DOWNLOADED FINLAND MAP"), _t("confirm_delete_pbf", "Delete the downloaded Finland map file?"))
-		_button(_t("delete", "Delete"), func():
+		_title(_t("delete_pbf").to_upper(), _t("confirm_delete_pbf"))
+		_button(_t("delete"), func():
 			if DirAccess.remove_absolute(downloaded_pbf_path()) == OK:
 				_settings.set_value("map", "osm_pbf_path", "")
 				_settings.save("user://settings.cfg")
 			_settings_menu())
-		_button(_t("cancel", "Cancel"), _settings_menu)
+		_button(_t("cancel"), _settings_menu)
 	_back_action = _settings_menu
 	_focus_menu()
 
 
 func _pbf_menu() -> void:
 	_clear()
-	_title(_t("manage_pbf", "FINLAND MAP"))
-	_button(_t("force_pbf_update", "Download latest Finland map"), func(): _download_pbf("", FileAccess.file_exists(downloaded_pbf_path()), true))
-	_button(_t("delete_pbf", "Delete downloaded Finland map"), _confirm_delete_pbf)
-	_button(_t("back", "Back"), _settings_menu)
+	_title(_t("manage_pbf").to_upper())
+	_button(_t("force_pbf_update"), func(): _download_pbf("", FileAccess.file_exists(downloaded_pbf_path()), true))
+	_button(_t("delete_pbf"), _confirm_delete_pbf)
+	_button(_t("back"), _settings_menu)
 	_back_action = _settings_menu
 	_focus_menu()
 
@@ -680,11 +680,11 @@ func _pause_menu() -> void:
 	_panel.visible = true
 	_back.visible = false
 	_clear()
-	_title(_t("paused", "PAUSED"))
-	_button(_t("resume", "Resume"), _resume)
-	_button(_t("settings", "Settings"), _settings_menu)
-	_button(_t("main_menu", "Main menu"), _stop_game)
-	_button(_t("quit", "Quit"), get_tree().quit)
+	_title(_t("paused"))
+	_button(_t("resume"), _resume)
+	_button(_t("settings"), _settings_menu)
+	_button(_t("main_menu"), _stop_game)
+	_button(_t("quit"), get_tree().quit)
 	_back_action = _resume
 	_focus_menu()
 

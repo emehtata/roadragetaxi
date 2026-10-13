@@ -542,7 +542,7 @@ func test_commands_carry_the_player_id() -> void:
 	var refuel := Main.command_for({"throttle": 0.0}, true, false, true)
 	check(refuel["refuel"] == true and refuel["interact"] == false and refuel["throttle"] == 0.0, "a G press sends refuel")
 	check(Main.command_for({}, true, false, false)["refuel"] == false, "no press, no refuel")
-	check(FileAccess.get_file_as_string("res://main.gd").contains("G   Refuel"), "F1 help names G")
+	check(FileAccess.get_file_as_string("res://i18n.gd").contains("G   Refuel"), "F1 help names G")
 	test_controls_and_economy()
 	test_taxi_information()
 	test_navigation_route()
@@ -761,7 +761,7 @@ func test_speech_and_stations() -> void:
 	main._unhandled_input(_key_event(KEY_J))
 	check(main.show_next_train, "not while the phone is open")
 	main.free()
-	check(FileAccess.get_file_as_string("res://main.gd").contains("J   Train board"), "F1 help names J")
+	check(FileAccess.get_file_as_string("res://i18n.gd").contains("J   Train board"), "F1 help names J")
 
 	var range_m := [15.0, 150.0]
 	var stations := {"stations": [{"name": "A", "x": 0.0, "y": 0.0, "waiting": 30}, {"name": "B", "x": 40.0, "y": 0.0, "waiting": 6}, {"name": "C", "x": 5.0, "y": 0.0, "waiting": 0}]}
@@ -952,7 +952,7 @@ func test_road_rage() -> void:
 	var horn: Array = audio.resolve({"type": "sound", "group": "vehicle.horn"})
 	check(horn.size() == 1 and horn[0]["group"] == "vehicle.horn" and is_equal_approx(horn[0]["volume"], 0.45), "the horn event plays vehicle.horn at 0.45")
 	audio.free()
-	check(FileAccess.get_file_as_string("res://main.gd").contains("Space   Road rage"), "F1 help names SPACE")
+	check(FileAccess.get_file_as_string("res://i18n.gd").contains("Space   Road rage"), "F1 help names SPACE")
 
 
 ## L cycles the labels: off (start), street names, everything.
@@ -984,7 +984,7 @@ func test_label_modes() -> void:
 	check(Labels.declutter(candidates, canvas, Vector2(1280, 720), font, 2).map(func(p): return p[1]) == ["Keskusta"], "mode 2: everything, by priority (one spot: the district wins)")
 	check(Labels.declutter(candidates, canvas, Vector2(1280, 720), font, 0).is_empty(), "mode 0: none")
 	var driving := {"on_foot": false, "player": {"engine_on": true}}
-	check(Hud.values(driving)["hint"] == "" and FileAccess.get_file_as_string("res://main.gd").contains("L   Labels"), "driving: no controls line; F1 names L")
+	check(Hud.values(driving)["hint"] == "" and FileAccess.get_file_as_string("res://i18n.gd").contains("L   Labels"), "driving: no controls line; F1 names L")
 
 
 ## godot-final-04: the server's route, N to show it (C stays the compass).
@@ -1008,7 +1008,7 @@ func test_navigation_route() -> void:
 	check(not nav.show_route, "N again hides it")
 	nav.free()
 	var driving := {"on_foot": false, "player": {"engine_on": true}}
-	check(FileAccess.get_file_as_string("res://main.gd").contains("N   Navigation"), "F1 help names N")
+	check(FileAccess.get_file_as_string("res://i18n.gd").contains("N   Navigation"), "F1 help names N")
 
 	var origin := Vector2(100.0, 200.0)
 	check(EntityLayer.route_points([[100.0, 200.0], [130.0, 160.0]], origin) == PackedVector2Array([Vector2(0, 0), Vector2(30, 40)]), "world metres through the map origin (y flipped)")
@@ -1116,7 +1116,7 @@ func test_controls_and_economy() -> void:
 	main.send({})
 	check(sim._last_command["speed_limiter_enabled"] == true, "V again: the limiter back on")
 	var driving := {"on_foot": false, "player": {"engine_on": true}}
-	check(FileAccess.get_file_as_string("res://main.gd").contains("V   Speed limiter") and FileAccess.get_file_as_string("res://main.gd").contains("B   Red-light assist"), "F1 help names V and B")
+	check(FileAccess.get_file_as_string("res://i18n.gd").contains("V   Speed limiter") and FileAccess.get_file_as_string("res://i18n.gd").contains("B   Red-light assist"), "F1 help names V and B")
 	check(Hud.values({"on_foot": true})["hint"] != "" and Hud.values({"on_foot": false, "player": {"engine_on": false}})["hint"] != "", "the short hints on foot and with the engine off stay")
 
 	# Score: the server's number, whatever its sign; a missing one is a placeholder.

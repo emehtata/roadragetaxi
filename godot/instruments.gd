@@ -68,7 +68,7 @@ static func price_text(state: Dictionary, language := "en") -> String:
 	var cents = taxi.get("fuel_station_price_cents") if typeof(taxi) == TYPE_DICTIONARY else null
 	if not typeof(cents) in [TYPE_INT, TYPE_FLOAT] or cents < 0:
 		return ""
-	return T.text("refuel_price", language, "G: REFUEL  %.2f €/L") % (int(cents) / 100.0)
+	return T.text("refuel_price", language) % (int(cents) / 100.0)
 
 
 ## Finnish speed limit sign C32, as Wikimedia's Finland_road_sign_C32-*.svg
@@ -166,7 +166,7 @@ static func speed_limit(state: Dictionary) -> int:
 
 static func trip_text(trip_m: float, odometer_m: float, language := "en") -> String:
 	var trip := "%d m" % roundi(trip_m) if trip_m < 1000.0 else "%.2f km" % (trip_m / 1000.0)
-	return "%s: %s · %s: %.1f km" % [T.text("trip", language, "Trip"), trip, T.text("odometer", language, "Odometer"), odometer_m / 1000.0]
+	return "%s: %s · %s: %.1f km" % [T.text("trip", language), trip, T.text("odometer", language), odometer_m / 1000.0]
 
 
 ## Needle angle (radians, screen y down) for a fuel fraction: E at the left, F at the right.
@@ -184,7 +184,7 @@ func _draw() -> void:
 	_draw_rage(Vector2(size.x - 190, size.y - 246), _state.get("rage_power", 0.0))
 	var water: float = _state.get("water_elapsed", 0.0)
 	if water > 0.0:
-		var text := T.text("in_water", language, "In water: %.1f s") % (WATER_LIMIT_S - water)
+		var text := T.text("in_water", language) % (WATER_LIMIT_S - water)
 		var text_size := _font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, 18)
 		var box := Rect2(Vector2(size.x / 2.0 - text_size.x / 2.0 - 12.0, 78.0 - text_size.y / 2.0 - 5.0), text_size + Vector2(24, 10))
 		draw_rect(box, Color8(35, 25, 15, 225))
@@ -285,14 +285,14 @@ func _draw_fuel(at: Vector2, player: Dictionary) -> void:
 	var economy := "%.1f l/100 km" % player.get("fuel_consumption_l_per_100km", 0.0) if absf(player.get("speed", 0.0)) > 0.5 \
 		else "%.1f l/h" % player.get("idle_fuel_consumption_l_per_hour", 0.0)
 	draw_string(_font, at + Vector2(74, 22), economy, HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Color8(205, 215, 220))
-	draw_string(_font, at + Vector2(74, 40), T.text("fuel", language, "FUEL"), HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Color8(205, 215, 220))
+	draw_string(_font, at + Vector2(74, 40), T.text("fuel", language), HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Color8(205, 215, 220))
 	var price := price_text(_state, language)
 	if price != "":
 		draw_string(_font, at + Vector2(74, 62), price, HORIZONTAL_ALIGNMENT_LEFT, 150, 14, Color8(255, 215, 90))
 
 
 func _draw_rage(at: Vector2, rage: float) -> void:
-	var text := T.text("rage", language, "Rage: %d%%") % roundi(rage * 100.0)
+	var text := T.text("rage", language) % roundi(rage * 100.0)
 	var text_size := _font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, 16)
 	var face: Texture2D = _faces[mini(10, maxi(0, int(clampf(rage, 0.0, 1.0) * 10.0)))] if _faces.size() == 11 else null
 	var face_size := face.get_size() if face != null else Vector2.ZERO

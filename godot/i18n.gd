@@ -1,9 +1,8 @@
 class_name I18n
 extends RefCounted
-
-const FI := {
-	"choose_language": "VALITSE KIELI", "choose_start": "Valitse pelitapa", "career": "Ura",
-	"gig_driver": "Keikkakuski", "settings": "Asetukset", "meter": "mittari %.2f €", "happiness": "tyytyväisyys %d%%", "real_data": "TODELLINEN DATA", "real_data_detail": "Peli voi käyttää todellista dataa kaupungista ja ajasta, jossa pelaat.", "realtime_weather": "Reaaliaikainen sää (FMI)", "realtime_trains": "Todelliset junien aikataulut (Digitraffic)", "continue": "Jatka", "map_loading": "Ladataan karttaa…", "map_fetching": "haetaan edessä olevaa aluetta", "map_merging": "liitetään karttaan", "map_syncing": "valmistellaan teitä ja liikennettä", "map_building": "piirretään uutta aluetta", "clear_cache": "Tyhjennä välimuisti kokonaan", "confirm_clear_cache": "Tyhjennetäänkö karttavälimuisti? Kartat ladataan uudelleen.", "cache_cleared_done": "Karttavälimuisti tyhjennetty.", "cache_clear_failed": "Karttavälimuistia ei voitu tyhjentää.", "cancel": "Peruuta", "clear": "Tyhjennä", "clearing": "Tyhjennetään…", "fares": "Kyydit", "map_overpass": "Karttadata: Overpass (verkko)", "map_pbf": "Karttadata: paikallinen .osm.pbf-tiedosto", "hint_enter_taxi": "Painamalla F pääset sisään taksiisi", "hint_start_engine": "Käynnistä moottori painamalla E", "weather_forecast_24h": "Arvioitu sää seuraavalle 24 tunnille", "press_any_key_start": "Paina mitä tahansa aloittaaksesi", "weather_source_observed": "havainto", "weather_source_forecast": "ennuste", "start_time": "ALOITUSAIKA", "year": "Vuosi", "month": "Kuukausi", "day": "Päivä", "hour": "Tunti", "minute": "Minuutti", "now": "Nyt", "start": "Aloita", "historical_weather": "FMI-sää (havainnot ja ennusteet)", "quit": "Lopeta peli",
+## UI text by key: Finnish and English.
+const FI := { "choose_start": "Valitse pelitapa", "career": "Ura",
+	"gig_driver": "Keikkakuski", "settings": "Asetukset", "meter": "mittari %.2f €", "happiness": "tyytyväisyys %d%%", "real_data": "TODELLINEN DATA", "real_data_detail": "Peli voi käyttää todellista dataa kaupungista ja ajasta, jossa pelaat.", "realtime_trains": "Todelliset junien aikataulut (Digitraffic)", "continue": "Jatka", "map_loading": "Ladataan karttaa…", "map_fetching": "haetaan edessä olevaa aluetta", "map_merging": "liitetään karttaan", "map_syncing": "valmistellaan teitä ja liikennettä", "map_building": "piirretään uutta aluetta", "clear_cache": "Tyhjennä välimuisti kokonaan", "confirm_clear_cache": "Tyhjennetäänkö karttavälimuisti? Kartat ladataan uudelleen.", "cache_cleared_done": "Karttavälimuisti tyhjennetty.", "cache_clear_failed": "Karttavälimuistia ei voitu tyhjentää.", "cancel": "Peruuta", "delete": "Poista", "clear": "Tyhjennä", "clearing": "Tyhjennetään…", "fares": "Kyydit", "map_overpass": "Karttadata: Overpass (verkko)", "map_pbf": "Karttadata: paikallinen .osm.pbf-tiedosto", "hint_enter_taxi": "Painamalla F pääset sisään taksiisi", "hint_start_engine": "Käynnistä moottori painamalla E", "weather_forecast_24h": "Arvioitu sää seuraavalle 24 tunnille", "press_any_key_start": "Paina mitä tahansa aloittaaksesi", "weather_source_observed": "havainto", "weather_source_forecast": "ennuste", "start_time": "ALOITUSAIKA", "year": "Vuosi", "month": "Kuukausi", "day": "Päivä", "hour": "Tunti", "minute": "Minuutti", "now": "Nyt", "start": "Aloita", "historical_weather": "FMI-sää (havainnot ja ennusteet)", "quit": "Lopeta peli",
 	"choose_city": "VALITSE KAUPUNKI", "drive": "Aloita", "back": "Takaisin",
 	"pbf_missing": "SUOMEN KARTTAA EI LÖYDY", "pbf_download_offer": "Ladataanko Suomen OpenStreetMap-tiedosto? Lataus on suuri ja tallennetaan käyttäjäkohtaiseen kansioon.",
 	"download": "Lataa", "use_overpass": "Käytä Overpassia", "downloading_map": "LADATAAN SUOMEN KARTTAA",
@@ -11,7 +10,7 @@ const FI := {
 	"pbf_download_failed": "Suomen karttatiedostoa ei voitu ladata.", "retry": "Yritä uudelleen",
 	"pbf_old": "SUOMEN KARTASTA ON UUSI VERSIO", "pbf_update_offer": "Karttatiedosto on yli 30 päivää vanha. Ladataanko uusin versio?",
 	"download_newer": "Lataa uudempi kartta", "use_existing": "Käytä nykyistä karttaa",
-	"manage_pbf": "Suomen kartta", "force_pbf_update": "Lataa uusin Suomen kartta", "delete_pbf": "Poista ladattu Suomen kartta",
+	"manage_pbf": "Suomen kartta >", "force_pbf_update": "Lataa uusin Suomen kartta", "delete_pbf": "Poista ladattu Suomen kartta",
 	"pbf_not_found": "Ladattua karttatiedostoa ei löytynyt.", "confirm_delete_pbf": "Poistetaanko ladattu Suomen karttatiedosto?",
 	"master_volume": "Kokonaisäänenvoimakkuus", "game_volume": "Peliäänet",
 	"environment_volume": "Ympäristöäänet", "ui_volume": "Käyttöliittymän äänet",
@@ -22,13 +21,11 @@ const FI := {
 	"weather_slush": "Räntää", "weather_snow": "Lumisadetta", "weather_thunderstorm": "Ukkosta",
 	"no_fare": "Ei kyytiä – %d ajettu", "passenger": "Asiakas", "pick_up": "Nouda %s paikasta %s",
 	"walking_taxi": "%s kävelee taksille", "drive_to": "Vie %s osoitteeseen %s", "road": "Tie",
-	"off_road": "Maastossa", "limit": "Rajoitus", "on": "PÄÄLLÄ", "off": "POIS",
-	"streets": "KADUT", "all": "KAIKKI", "hint_foot": "F taksiin · WASD kävele · P puhelin",
+	"off_road": "Maastossa", "limit": "Rajoitus", "hint_foot": "F taksiin · WASD kävele · P puhelin",
 	"hint_engine": "E käynnistä moottori · F ulos · P puhelin",
-	"hint_drive": "WASD aja · SPACE rattiraivo · F ulos · E moottori · G tankkaa · K kaista-avustin %s · V rajoitin %s · B valoavustin %s · N navigointi %s · L nimet %s · J junat · P puhelin · C kompassi · F1 ohje · +/- zoom",
 	"controls_help": "OHJAIMET\n\nWASD / nuolet   Aja tai kävele      Shift   Juokse\nF   Mene taksiin / poistu           E   Moottori\nP   Puhelin                          1–3 / Enter / X   Puhelimen valinnat\nSpace   Rattiraivo                   G   Tankkaa\nR   Palauta taksi                   X   Peru kyyti\nT   Nollaa matkamittari             K   Kaista-avustin\nV   Nopeusrajoitin                  B   Valoavustin\nN   Navigointi                      C   Kompassi\nJ   Junataulu                       L   Nimet\n+ / - / rulla   Zoom                Esc   Tauko\nCtrl+veto / keskinappi   Siirrä      NPC-klikkaus   Tiedot\nF1   Sulje ohje                     F3   Diagnostiikka\nHiiri   Siirrä mittareita            U   Palauta asettelu\nF12   Kuvakaappaus",
 	"train_hint": "Juna-aikataulut saatavilla. Paina J.   ", "next_trains": "Saapuvat junat",
-	"departing_trains": "Lähtevät junat", "track": "raide", "driver": "Kuljettaja", "passenger_speaker": "Matkustaja",
+	"departing_trains": "Lähtevät junat", "track": "raide", "driver": "Kuljettaja",
 	"city_summary": "Kaupungin yhteenveto", "city_complete": "Tämä kaupunki on suoritettu.",
 	"fares_completed": "Ajetut keikat: %d", "next_city": "Seuraava kaupunki: %s",
 	"career_complete": "Ura suoritettu! Helsinki on valloitettu.", "career_score": "Uran kokonaispisteet: %d",
@@ -43,8 +40,49 @@ const FI := {
 	"in_vehicle": "ajoneuvossa",
 }
 
-static func text(key: String, language: String, fallback: String) -> String:
-	return FI.get(key, fallback) if language == "fi" else fallback
+const EN := {
+	"choose_start": "Choose how to start", "career": "Career", "gig_driver": "Gig driver", "settings": "Settings", "meter": "meter %.2f €",
+	"happiness": "happiness %d%%", "real_data": "REAL-WORLD DATA", "real_data_detail": "The game can use real data for the city and time you play in.",
+	"realtime_trains": "Real train timetables (Digitraffic)", "continue": "Continue", "map_loading": "Loading map…",
+	"map_fetching": "downloading the area ahead", "map_merging": "adding it to the map", "map_syncing": "preparing roads and traffic",
+	"map_building": "drawing the new area", "clear_cache": "Clear all map cache",
+	"confirm_clear_cache": "Clear the map cache? Maps will be downloaded again.", "cache_cleared_done": "Map cache cleared.",
+	"cache_clear_failed": "Could not clear the map cache.", "cancel": "Cancel", "delete": "Delete", "clear": "Clear", "clearing": "Clearing…",
+	"fares": "Fares", "map_overpass": "Map data: Overpass (online)", "map_pbf": "Map data: local .osm.pbf file",
+	"hint_enter_taxi": "Press F to get into your taxi", "hint_start_engine": "Press E to start the engine",
+	"weather_forecast_24h": "Weather forecast for the next 24 hours", "press_any_key_start": "Press any key to start",
+	"weather_source_observed": "observed", "weather_source_forecast": "forecast", "start_time": "START TIME", "year": "Year", "month": "Month",
+	"day": "Day", "hour": "Hour", "minute": "Minute", "now": "Now", "start": "Start", "historical_weather": "FMI weather (observations and forecasts)",
+	"quit": "Quit", "choose_city": "CHOOSE CITY", "drive": "Drive", "back": "Back", "pbf_missing": "FINLAND MAP NOT FOUND",
+	"pbf_download_offer": "Download the Finland OpenStreetMap file? The download is large and will be saved in your user data folder.",
+	"download": "Download", "use_overpass": "Use Overpass instead", "downloading_map": "DOWNLOADING FINLAND MAP",
+	"download_wait": "Please wait. Do not close the game.", "download_failed": "DOWNLOAD FAILED",
+	"pbf_download_failed": "Could not download the Finland map file.", "retry": "Retry", "pbf_old": "A NEWER FINLAND MAP IS AVAILABLE",
+	"pbf_update_offer": "Your map file is over 30 days old. Download the latest version?", "download_newer": "Download newer map",
+	"use_existing": "Use existing map", "manage_pbf": "Finland map", "force_pbf_update": "Download latest Finland map",
+	"delete_pbf": "Delete downloaded Finland map", "pbf_not_found": "No downloaded map file was found.",
+	"confirm_delete_pbf": "Delete the downloaded Finland map file?", "master_volume": "Master volume", "game_volume": "Game volume",
+	"environment_volume": "Environment volume", "ui_volume": "UI volume", "loading": "LOADING", "starting": "Starting the simulation…",
+	"start_failed": "START FAILED", "start_failed_detail": "Could not launch the Python simulation", "paused": "PAUSED", "resume": "Resume",
+	"main_menu": "Main menu", "score": "Score", "on_foot": "on foot", "road_wet": "%s, road %d%% wet", "weather_clear": "Clear", "weather_rain": "Rain",
+	"weather_slush": "Slush", "weather_snow": "Snow", "weather_thunderstorm": "Thunderstorm", "no_fare": "No fare - %d done", "passenger": "Passenger",
+	"pick_up": "Pick up %s at %s", "walking_taxi": "%s is walking to the taxi", "drive_to": "Drive %s to %s", "road": "Road", "off_road": "Off-road",
+	"limit": "Limit", "hint_foot": "F get in the taxi · WASD walk · P phone", "hint_engine": "E start the engine · F get out · P phone",
+	"controls_help": "CONTROLS\n\nWASD / arrows   Drive or walk       Shift   Sprint\nF   Enter / exit taxi               E   Engine\nP   Phone                            1–3 / Enter / X   Phone actions\nSpace   Road rage                   G   Refuel\nR   Respawn taxi                    X   Cancel fare\nT   Reset trip meter                K   Lane assist\nV   Speed limiter                   B   Red-light assist\nN   Navigation                      C   Compass\nJ   Train board                     L   Labels\n+ / - / Wheel   Zoom                Esc   Pause\nCtrl+drag / Middle-drag   Pan        Click NPC   Inspect\nF1   Close help                     F3   Diagnostics\nMouse   Drag HUD panels             U   Reset HUD layout\nF12   Screenshot",
+	"train_hint": "Train timetables available. Press J.   ", "next_trains": "Next trains", "departing_trains": "Departing trains", "track": "track",
+	"driver": "Driver", "city_summary": "City summary", "city_complete": "This city is complete.", "fares_completed": "Fares completed: %d",
+	"next_city": "Next city: %s", "career_complete": "Career complete! Helsinki conquered.", "career_score": "Total career score: %d",
+	"waiting": "Waiting for the simulation at %s:%d …", "trip": "Trip", "odometer": "Odometer", "in_water": "In water: %.1f s", "fuel": "FUEL",
+	"refuel_price": "G: REFUEL  %.2f €/L", "rage": "Rage: %d%%", "pickup": "PICKUP", "dropoff": "DROPOFF", "destination": "Destination",
+	"nausea": "I feel sick!", "back_to_taxi": "Back to taxi", "pan_view": "Panned view", "resident": "Resident", "npc_vehicle": "NPC vehicle",
+	"unknown": "Unknown", "born": "Born", "gender": "Gender", "status": "State", "activity": "Activity", "blood_alcohol": "Blood alcohol", "type": "Type",
+	"speed": "Speed", "owner": "Owner", "occupants": "Occupants", "in_vehicle": "in vehicle",
+}
+
+## The text for `key` in `language` (fi or en); a key missing from FI
+## shows in English, one missing from both shows as the key.
+static func text(key: String, language: String) -> String:
+	return FI.get(key, EN.get(key, key)) if language == "fi" else EN.get(key, key)
 
 static func weather(value: String, language: String) -> String:
-	return text("weather_" + value, language, value.capitalize())
+	return text("weather_" + value, language) if EN.has("weather_" + value) else value.capitalize()

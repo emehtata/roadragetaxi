@@ -73,7 +73,7 @@ func _draw() -> void:
 		var arrow := PackedVector2Array([tip, left, right])
 		draw_colored_polygon(arrow, color)
 		draw_polyline(PackedVector2Array([tip, left, right, tip]), RS.OUTLINE, 1.0)
-		var text := "%s %s" % [T.text("pickup", language, "PICKUP") if _target["is_pickup"] else T.text("dropoff", language, "DROPOFF"), distance_text(delta.length())]
+		var text := "%s %s" % [T.text("pickup", language) if _target["is_pickup"] else T.text("dropoff", language), distance_text(delta.length())]
 		var text_size := _font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, 14)
 		var label_y := at.y + 18.0 if at.y < size.y - 40.0 else at.y - 18.0
 		var box := Rect2(Vector2(at.x - text_size.x / 2.0 - 3.0, label_y - text_size.y / 2.0 - 2.0), text_size + Vector2(6, 4))
