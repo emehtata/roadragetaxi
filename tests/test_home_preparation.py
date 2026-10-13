@@ -105,3 +105,49 @@ def test_an_interrupted_osm_cache_save_leaves_no_file(tmp_path, monkeypatch):
     monkeypatch.setattr(cache.json, "dump", dump)
     cache.save_osm_cache((65.0, 25.4, 65.03, 25.47), [{"type": "node"}])
     assert cache.load_osm_cache((65.0, 25.4, 65.03, 25.47)) == [{"type": "node"}]
+
+
+def test_a_moved_home_cancels_the_old_preparation_and_prepares_the_new_one_once():
+    from types import SimpleNamespace
+
+    from theroadragetrip.server import SimulationServer
+
+    prepared = []
+
+    def prepare_window(x, y):
+        prepared.append((x, y))
+        return Future()
+
+    streamer = SimpleNamespace(status=lambda: "", manager=SimpleNamespace(prepare_window=prepare_window))
+    server = SimpleNamespace(_map_streamer=streamer, _home=(100.0, 200.0, 0.0), _prepared_home=None, _home_preparation=None)
+    SimulationServer._prepare_home_map(server)
+    SimulationServer._prepare_home_map(server)  # every tick: still once
+    first = server._home_preparation
+    server._home = (900.0, 200.0, 0.0)  # the player chose a new home
+    SimulationServer._prepare_home_map(server)
+    assert prepared == [(100.0, 200.0), (900.0, 200.0)] and first.cancelled()
+
+
+def test_changed_chunks_are_resent_nearest_the_player_first():
+    from types import SimpleNamespace
+
+    from theroadragetrip.server import SimulationServer
+
+    class Connection:
+        def __init__(self):
+            self.sent = []
+
+        def send(self, data):
+            self.sent.append(data)
+
+    connection = Connection()
+    index = SimpleNamespace(encoded=lambda cid: cid)
+    server = SimpleNamespace(
+        _map_growth=[([], index, {"9_0", "1_0", "4_0"}, None, None, 0.0, True)], _chunks_index=None,
+        world=SimpleNamespace(street_light_points=[]), _map_streamer=SimpleNamespace(hold=True), _on_foot=False,
+        car=SimpleNamespace(x=250.0, y=250.0), _clients_lock=threading.Lock(),
+        _client_chunks={connection: ({"9_0", "1_0", "4_0", "2_0"}, (0, 0))},
+    )
+    SimulationServer._apply_map_growth(server)
+    assert connection.sent == ["1_0", "4_0", "9_0"]  # no unload messages: the client swaps each in place
+    assert server._map_streamer.hold is False and server._client_chunks[connection] == ({"9_0", "1_0", "4_0", "2_0"}, None)
