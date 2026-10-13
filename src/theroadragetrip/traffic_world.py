@@ -22,6 +22,9 @@ from .residents import ResidentManager
 # since this only needs to bound "how many cells to scan to find a
 # handful of nearby graph nodes", not represent individual roads.
 _ROUTE_NODE_GRID_CELL_M = 200.0
+# Transit spawning and route snapping search nearby graph nodes. Long OSM
+# segments otherwise leave main roads with no usable node for hundreds of metres.
+ROUTE_MAX_EDGE_LENGTH_M = 100.0
 # plan_route joins start/target to any of several nearby graph nodes with a
 # straight off-road "connector". Priced at plain distance, a connector from
 # a node well before a corner beat driving the corner itself (e.g. 60 m +
@@ -152,7 +155,21 @@ class RouteGraphBuild:
         if not self.include(way) or len(way.points_m) < 2:
             return
         layer = getattr(way, "layer", 0)
-        point_ids = [self._node_id(point, layer) for point in way.points_m]
+        point_ids = []
+        for segment_index, (start, end) in enumerate(zip(way.points_m, way.points_m[1:])):
+            if segment_index == 0:
+                point_ids.append(self._node_id(start, layer))
+            distance = math.hypot(end[0] - start[0], end[1] - start[1])
+            steps = max(1, math.ceil(distance / ROUTE_MAX_EDGE_LENGTH_M))
+            for step in range(1, steps + 1):
+                if step == steps:
+                    point_ids.append(self._node_id(end, layer))
+                else:
+                    ratio = step / steps
+                    point_ids.append(self._layer_node_id((
+                        start[0] + (end[0] - start[0]) * ratio,
+                        start[1] + (end[1] - start[1]) * ratio,
+                    ), layer))
         oneway = getattr(way, "oneway", 0)
         nodes, edges = self.nodes, self.edges
         for first, second in zip(point_ids, point_ids[1:]):
