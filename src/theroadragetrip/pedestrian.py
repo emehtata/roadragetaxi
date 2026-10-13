@@ -499,6 +499,10 @@ class PedestrianManager:
 
         self.ped_ways: List[Way] = []
         self._spawn_ways: List[Way] = []
+        # ((cell, list)): spawn_pedestrian found no way within reach in that
+        # 1 km cell of this _spawn_ways list (a Home jump before its map has
+        # loaded) - not searched again until either changes.
+        self._no_spawn_ways_at = None
         # id(way) for way in self.ped_ways, kept up to date wherever
         # ped_ways is (re)built - spawn_pedestrian() used to recompute this
         # set from scratch on every single spawn *attempt* (not just
@@ -1855,6 +1859,10 @@ class PedestrianManager:
         if not nearby_ways or not valid_ways:
             fallback_radius = max(r, 1000.0)
             fallback_radius_sq = fallback_radius * fallback_radius
+            empty_at = (int(near_x // fallback_radius), int(near_y // fallback_radius))
+            skip = self._no_spawn_ways_at
+            if skip is not None and skip[0] == empty_at and skip[1] is self._spawn_ways:  # same list: map unchanged
+                return None  # searched already: nothing within reach here until the map changes or the player moves
             # Only ways whose bbox reaches the radius: next to an empty
             # area (a Home jump before its map has loaded) this sorted every
             # way in the world on every spawn attempt - seconds per tick.
@@ -1873,6 +1881,7 @@ class PedestrianManager:
                 ) <= fallback_radius_sq
             ][:30]
             if not valid_ways:
+                self._no_spawn_ways_at = (empty_at, self._spawn_ways)
                 return None
 
         # self._ped_way_ids is exactly {id(way) for way in self.ped_ways},
