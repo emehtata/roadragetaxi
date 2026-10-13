@@ -56,3 +56,16 @@ def test_camera_placement_is_reproducible_and_ignores_taxi_stops():
     assert with_stops == first
     assert first
     assert all(camera.y < 0.0 and math.isclose(camera.y, -5.0, abs_tol=1e-9) for camera in first)
+
+
+def test_cameras_are_only_placed_on_main_roads():
+    main_road = road(name="Main road")
+    main_road.osm_id = 1
+    parking_aisle = Way(
+        [(0.0, 20.0), (1000.0, 20.0)], "service", 3.0,
+        name="Parking aisle", osm_id=2, service="parking_aisle",
+    )
+
+    cameras = place_speed_cameras([parking_aisle, main_road], (0.0, 0.0, 1000.0, 1000.0), seed=1)
+
+    assert cameras and all(camera.way_id == main_road.osm_id for camera in cameras)

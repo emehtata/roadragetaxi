@@ -12,6 +12,8 @@ from .physics import connected_drivable_ways
 
 logger = logging.getLogger(__name__)
 
+SPEED_CAMERA_HIGHWAYS = {"motorway", "trunk", "primary", "secondary", "tertiary"}
+
 
 @dataclass(frozen=True)
 class SpeedCamera:
@@ -38,7 +40,10 @@ def place_speed_cameras(
     seed: Optional[int] = None,
 ) -> List[SpeedCamera]:
     """Place directional cameras across the connected road network."""
-    candidates = [way for way in ways if way.is_drivable and len(way.points_m) >= 2]
+    candidates = [
+        way for way in ways
+        if way.is_drivable and way.highway in SPEED_CAMERA_HIGHWAYS and len(way.points_m) >= 2
+    ]
     if not candidates:
         return []
     target_count = camera_count(ways, city_name)
