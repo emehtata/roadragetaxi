@@ -3,12 +3,10 @@ import io
 import json
 import sys
 import zipfile
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tools"))
-
-import import_railway_timetable as importer  # noqa: E402
+from theroadragetrip import railway_import as importer  # noqa: E402
 from theroadragetrip.osm.models import Railway  # noqa: E402
 from theroadragetrip.train_timetable import TimetableClock, load_timetable, match_timetable, service_time  # noqa: E402
 from theroadragetrip.trains import MAX_ACTIVE_TRAINS, RailwayManager  # noqa: E402
@@ -361,3 +359,18 @@ def test_train_reaches_its_station_at_the_scheduled_game_time_at_60x():
     assert arrived_at is not None
     assert abs((arrived_at - datetime(2026, 9, 28, 10, 0)).total_seconds()) < 3 * 60
     assert manager.trains[0].distance_m > 0.0  # it came from the south end's side, not mid-platform
+
+
+def test_refresh_if_stale_weekly_and_keeps_the_file_on_failure(tmp_path, monkeypatch):
+    from theroadragetrip import train_timetable
+
+    now = datetime(2026, 10, 13, 12, tzinfo=timezone.utc)
+    assert train_timetable.refresh_if_stale({"downloaded_at": "2026-10-07T12:00:00Z"}, tmp_path / "t.gz", now) is None
+    path = tmp_path / "t.gz"
+    path.write_bytes(b"old")
+    monkeypatch.setattr(importer, "download", lambda: (_ for _ in ()).throw(OSError("offline")))
+    train_timetable.refresh_if_stale({"downloaded_at": "2026-10-05T12:00:00Z"}, path, now).join()
+    assert path.read_bytes() == b"old"
+    monkeypatch.setattr(importer, "download", _gtfs_zip)
+    train_timetable.refresh_if_stale(None, path, now).join()
+    assert load_timetable(path)["version"] == train_timetable.SUPPORTED_VERSION

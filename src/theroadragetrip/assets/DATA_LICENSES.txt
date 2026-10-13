@@ -11,7 +11,7 @@ railway_timetable.json.gz
   Source: Fintraffic / digitraffic.fi, license CC 4.0 BY
   https://www.digitraffic.fi/  -  https://creativecommons.org/licenses/by/4.0/
   Modified: converted from the passenger-train GTFS feed to a compact
-  one-week timetable by tools/import_railway_timetable.py. Provided as is,
+  one-week timetable by theroadragetrip/railway_import.py (refreshed weekly). Provided as is,
   without warranty.
 
 train_compositions.json.gz

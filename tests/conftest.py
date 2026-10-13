@@ -25,3 +25,12 @@ def _reset_overpass_endpoint_cooldowns():
     _overpass._endpoint_cooldown_until.clear()
     _overpass._endpoint_last_contact.clear()
     yield
+
+
+@pytest.fixture(autouse=True)
+def _no_timetable_refresh(monkeypatch, tmp_path):
+    """Tests use the bundled timetable and never download a new one."""
+    from theroadragetrip import train_timetable, world_loader
+
+    monkeypatch.setattr(train_timetable, "USER_TIMETABLE_PATH", tmp_path / "no-user-timetable.json.gz")
+    monkeypatch.setattr(world_loader, "refresh_if_stale", lambda document: None)

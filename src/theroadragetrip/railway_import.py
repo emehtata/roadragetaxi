@@ -2,15 +2,15 @@
 """Import Finland's passenger-train timetable (Digitraffic GTFS) into the
 compact weekly timetable the game reads (theroadragetrip.train_timetable).
 
-    python tools/import_railway_timetable.py [--zip gtfs-passenger.zip] [OUTPUT]
+    PYTHONPATH=src python -m theroadragetrip.railway_import [--zip gtfs-passenger.zip] [OUTPUT]
 
 Stations are matched to OSM railway stations from the committed
 assets/places.json (station code, else nearest within 1 km) so trains stop
 at the mapped station. Downloads
 https://rata.digitraffic.fi/api/v1/trains/gtfs-passenger.zip
-(~6 MB) unless --zip is given. Run it whenever a newer timetable is
-wanted; the game itself never downloads anything and plays offline. If the
-download fails, the existing file is left untouched and the error printed.
+(~6 MB) unless --zip is given. The game refreshes its own copy weekly
+(train_timetable.refresh_if_stale); run this to update the bundled one. If
+the download fails, the existing file is left untouched and the error printed.
 
 Weekly model: one reference Monday-Sunday week inside the feed is taken,
 and every trip running on some day of it becomes one entry with a 7-day
@@ -36,9 +36,9 @@ from pathlib import Path
 from typing import Dict, Iterable, List, Optional, Tuple
 
 GTFS_URL = "https://rata.digitraffic.fi/api/v1/trains/gtfs-passenger.zip"
-DEFAULT_OUTPUT = Path(__file__).resolve().parents[1] / "src" / "theroadragetrip" / "assets" / "railway_timetable.json.gz"
+DEFAULT_OUTPUT = Path(__file__).with_name("assets") / "railway_timetable.json.gz"
 FORMAT_VERSION = 4  # 4: platform (track) code per call + platform positions
-PLACES_PATH = Path(__file__).resolve().parents[1] / "src" / "theroadragetrip" / "assets" / "places.json"
+PLACES_PATH = Path(__file__).with_name("assets") / "places.json"
 # GTFS -> OSM station match: same station code within CODE_MATCH_M, else the
 # nearest OSM railway station within NEAR_MATCH_M (coordinates differ by
 # tens of metres between the datasets).
