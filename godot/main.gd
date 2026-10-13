@@ -727,7 +727,7 @@ static func start_sign(world: Dictionary, language: String) -> PanelContainer:
 			var source := str(line.get("source", "generated"))
 			var wind := ""
 			if line.get("wind_speed_mps") != null and line.get("wind_from_deg") != null:
-				wind = "   %.1f m/s %.0f°" % [float(line.wind_speed_mps), float(line.wind_from_deg)]
+				wind = "   %.1f m/s %s %.0f°" % [float(line.wind_speed_mps), wind_arrow(float(line.wind_from_deg)), float(line.wind_from_deg)]
 			rows.append(["%s   %+.0f °C   %s%s%s" % [line.get("time", ""), float(line.get("temperature_c", 0.0)), T.weather(str(line.get("weather", "")), language), wind,
 				"" if source == "generated" else "   (%s)" % T.text("weather_source_" + source, language)], 20, Color.WHITE])
 	rows.append([T.text("press_any_key_start", language), 24, Color.WHITE])
@@ -742,6 +742,12 @@ static func start_sign(world: Dictionary, language: String) -> PanelContainer:
 	sign.grow_horizontal = Control.GROW_DIRECTION_BOTH
 	sign.grow_vertical = Control.GROW_DIRECTION_BOTH
 	return sign
+
+
+## FMI reports where wind comes from; the arrow points where it blows.
+static func wind_arrow(wind_from_deg: float) -> String:
+	var arrows := ["↑", "↗", "→", "↘", "↓", "↙", "←", "↖"]
+	return arrows[int(round(fposmod(wind_from_deg + 180.0, 360.0) / 45.0)) % arrows.size()]
 
 
 ## One command to the simulation (it validates and applies it). The
