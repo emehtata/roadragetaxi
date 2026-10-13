@@ -79,6 +79,9 @@ def road_style(way) -> dict:
     return style
 
 
+_OWN_CENTERLINE_M = 50.0  # a bridge outline's own centrelines lie within its bounds; margin for safety
+
+
 def _side_edges(polygons, centerlines, max_angle=math.radians(30)):
     """Boundary edges of the union running along a centreline (not the flat
     ends): the bridge guardrails, in world metres."""
@@ -88,10 +91,16 @@ def _side_edges(polygons, centerlines, max_angle=math.radians(30)):
         if polygon.is_empty or polygon.geom_type != "Polygon":
             continue
         ring = list(polygon.exterior.coords)
+        # Only this bridge's own centrelines can be nearest to its edges (a
+        # closer one would have joined it): not every bridge on the map per edge.
+        minx, miny, maxx, maxy = polygon.bounds
+        own = [s for s in centerlines if min(s[0][0], s[1][0]) <= maxx + _OWN_CENTERLINE_M
+               and max(s[0][0], s[1][0]) >= minx - _OWN_CENTERLINE_M and min(s[0][1], s[1][1]) <= maxy + _OWN_CENTERLINE_M
+               and max(s[0][1], s[1][1]) >= miny - _OWN_CENTERLINE_M] or centerlines
         for a, b in zip(ring, ring[1:]):
             angle = math.atan2(b[1] - a[1], b[0] - a[0])
             mid = ((a[0] + b[0]) / 2.0, (a[1] + b[1]) / 2.0)
-            best = min(centerlines, key=lambda s: dist_point_to_segment(mid[0], mid[1], s[0][0], s[0][1], s[1][0], s[1][1]))
+            best = min(own, key=lambda s: dist_point_to_segment(mid[0], mid[1], s[0][0], s[0][1], s[1][0], s[1][1]))
             seg_angle = math.atan2(best[1][1] - best[0][1], best[1][0] - best[0][0])
             if abs((angle - seg_angle + math.pi / 2.0) % math.pi - math.pi / 2.0) < max_angle:
                 edges.append((a, b))
