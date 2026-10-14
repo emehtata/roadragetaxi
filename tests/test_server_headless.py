@@ -262,6 +262,21 @@ def test_the_season_weights_come_from_the_calendar(tmp_path, monkeypatch):
     assert summer == [round(w * 20.0) / 20.0 for w in (look.winter, look.spring, look.summer, look.autumn)]
 
 
+def test_measured_snow_depth_decides_the_snow_cover(tmp_path, monkeypatch):
+    from datetime import datetime
+    from types import SimpleNamespace
+
+    server = _build_server(tmp_path, monkeypatch)
+    server.calendar.current = datetime(2026, 1, 15, 12, 0)
+    depth = {"cm": 0.0}
+    server.weather_history = SimpleNamespace(get=lambda moment: SimpleNamespace(snow_depth_cm=depth["cm"]))
+    assert server.calendar_state()["season"][0] == 0.0  # a snowless January: bare ground
+    depth["cm"] = 30.0
+    assert server.calendar_state()["season"][0] == 1.0
+    server.calendar.current = datetime(2026, 10, 10, 12, 0)  # early snow in October
+    assert server.calendar_state()["season"][0] == 1.0
+
+
 def test_tyre_marks_flash_and_level_in_the_state(tmp_path, monkeypatch):
     """godot-16: per tick, the taxi's map level, its tyre mark and the flashing speed camera."""
     server = _build_server(tmp_path, monkeypatch)

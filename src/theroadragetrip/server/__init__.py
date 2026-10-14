@@ -48,7 +48,7 @@ from ..weather import WeatherSystem, raining_last_hour, weather_type_for_observa
 from ..weather_history import WeatherHistory, precipitation_from_observation
 from ..calendar import clamp_start_datetime
 from ..osm import CACHE_DIR
-from ..climate import typical_temperature
+from ..climate import appearance_with_snow_depth, typical_temperature
 
 logger = logging.getLogger(__name__)
 
@@ -397,6 +397,9 @@ class SimulationServer:
             finnish_utc_offset_hours(self.calendar.current),
         )
         look = self.calendar.seasonal_appearance  # continuous weights, for the client to blend
+        observed = self.weather_history.get(self.calendar.current) if self.weather_history is not None else None
+        if observed is not None and observed.snow_depth_cm is not None:  # FMI's measured snow, over the date's guess
+            look = appearance_with_snow_depth(look, observed.snow_depth_cm)
         return {"date": self.calendar.date.isoformat(), "time_scale": self._time_scale,
                 "season": [round(w * 20.0) / 20.0 for w in (look.winter, look.spring, look.summer, look.autumn)],
                 "sun_altitude_deg": round(altitude, 2), "darkness": round(darkness_for_sun_altitude(altitude), 3)}
