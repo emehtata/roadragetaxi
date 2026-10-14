@@ -1665,6 +1665,8 @@ def update_car_physics(
     """
     entry_x, entry_y, entry_heading = car.x, car.y, car.heading
     entry_speed = car.speed
+    if not car.engine_on:
+        throttle = 0.0
     # The gear change: having come to a stop against the travel direction,
     # the car waits GEAR_CHANGE_S at zero before it moves the other way
     # (car.gear_hold_dir: +1 forward is held, -1 reverse is held).
@@ -1710,7 +1712,7 @@ def update_car_physics(
         if entry_speed < 0.0 <= car.speed:  # stopped from reverse: the forward gear takes a moment
             car.speed = 0.0
             gear_hold, gear_hold_dir = GEAR_CHANGE_S, 1
-    elif brake > 0:
+    elif brake > 0 and (car.speed > 0.0 or car.engine_on):
         using_longitudinal_tire_grip = True
         braking_driven = True
         if car.speed > 0.0:
