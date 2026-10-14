@@ -11,6 +11,7 @@ class FakeManager:
     def __init__(self):
         self.revision, self.bounds, self.busy = 1, (0.0, 0.0, 100.0, 100.0), False
         self.loaded_tiles = set()
+        self.fetching = False
         self.integrated = self.streamed = 0
         self.lock = threading.Lock()
         self.soft_boundary_enabled = False
@@ -23,6 +24,9 @@ class FakeManager:
 
     def get_tile_merge_metrics(self):
         return {"tile_merge_active": self.busy}
+
+    def get_fetching(self):
+        return self.fetching
 
     def integrate_completed_tiles(self, budget_s=None):
         self.integrated += 1
@@ -92,3 +96,31 @@ def test_the_status_tells_the_client_what_the_map_is_doing(monkeypatch):
     assert streamer.status() == "building"
     streamer.hold = False
     assert streamer.status() == ""
+
+
+def test_a_settled_merge_waits_briefly_for_a_fetch_in_flight(monkeypatch):
+    """The lookahead tile is requested as soon as the core window is in:
+    one whole-world sync for both, not one each."""
+    monkeypatch.setattr(map_sync, "map_sync_steps", lambda world: iter([None]))
+
+    def merged_while_fetching():
+        manager = FakeManager()
+        streamer = map_sync.MapStreamer(SimpleNamespace(auto_fetch_manager=manager, ways=[]), lambda old, new, dirty: None)
+        manager.revision, manager.fetching = 2, True
+        return manager, streamer
+
+    manager, streamer = merged_while_fetching()
+    streamer.tick(0, 0, 0, 0)
+    assert not streamer.syncing
+    manager.fetching = False  # loaded (and merged): now one sync
+    streamer.tick(0, 0, 0, 0)
+    assert streamer.syncing
+
+    _, streamer = merged_while_fetching()
+    streamer.tick(0, 0, 0, 0, urgent=True)
+    assert streamer.syncing  # the map under the player is missing: no waiting
+
+    monkeypatch.setattr(map_sync, "SYNC_WAIT_FOR_FETCH_S", 0.0)
+    _, streamer = merged_while_fetching()
+    streamer.tick(0, 0, 0, 0)
+    assert streamer.syncing  # waited long enough: a slow fetch gets its own sync

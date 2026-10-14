@@ -26,6 +26,10 @@ logger = logging.getLogger(__name__)
 
 
 CHUNK_INPUTS_READY = "chunk_inputs_ready"
+# A settled merge waits up to this long for a tile fetch still in flight (the
+# lookahead tile, requested as soon as the core window is in), so one sync
+# covers both: each is a whole-world rebuild, 1-2 s of work over 7-12 s of ticks.
+SYNC_WAIT_FOR_FETCH_S = 3.0
 
 
 def map_sync_steps(world):
@@ -120,6 +124,7 @@ class MapStreamer:
         self._sync = None
         self._sync_revision = None
         self._sync_started = 0.0
+        self._merged_since = None  # when an unsynced merge settled (SYNC_WAIT_FOR_FETCH_S)
         self._sync_ticks = 0
         self._sync_dirty = None
         self.sync_tiles: set = set()  # the tiles loaded when the running (or last) sync started: what it covers
@@ -167,6 +172,11 @@ class MapStreamer:
         if self._sync is None:
             busy = manager.get_tile_merge_metrics()["tile_merge_active"]
             if not busy and manager.get_map_revision() != self._synced_revision:
+                if self._merged_since is None:
+                    self._merged_since = time.perf_counter()
+                if not urgent and manager.get_fetching() and time.perf_counter() - self._merged_since < SYNC_WAIT_FOR_FETCH_S:
+                    return
+                self._merged_since = None
                 self._sync_revision = manager.get_map_revision()
                 self._sync = map_sync_steps(self.world)
                 self._sync_dirty = manager.take_dirty_rect()  # what this sync's merges changed
