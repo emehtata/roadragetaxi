@@ -4,6 +4,8 @@ A top-down 2D driving game proof-of-concept (PoC) - a Godot client and a Python 
 
 For traffic development, agents must read the [Finnish NPC traffic-law guide](docs/finnish-npc-traffic-law.md), including its legal references, current implementation gaps and acceptance scenarios.
 
+The [weather and traffic performance analysis](.github/performance-analysis/weather-traffic-2026-10-14.md) records current benchmarks and a proposed optimization plan; its optimizations are not yet implemented.
+
 ## Miksi rattiraivo?
 
 Koska muut kuskit ovat idiootteja ja ajavat miten sattuu. Vähemmästäkin hermostuu, kun joutuu pujottelemaan hidastelijoiden, törttöilijöiden ja arvaamattomien liikkujien seassa. The Road Rage Trip tekee tästä tutusta liikennekaaoksesta pelin ytimen: asiakkaat pitää kuljettaa perille, vaikka muun liikenteen sähläys nostaisi verenpaineen kattoon.

@@ -4,6 +4,14 @@ This folder contains technical deep-dives into rendering performance, bottleneck
 
 ## Contents
 
+### [weather-traffic-2026-10-14.md](./weather-traffic-2026-10-14.md)
+
+**Status**: Analysis and optimization plan only; no runtime changes
+
+**Date**: 2026-10-14
+
+**Focus**: Rendered day/night/rain/slush/snow matrix, ploughed roads, tyre-track stress and driving jitter; confirms global snow redraw hitches, eager sidewalk-aware parking scans, repeated track rebuilds and steady building-render cost. Includes raw measurements and diagnostic reproduction harnesses; software-renderer limitations are explicit.
+
 ### [map-loading-02.md](./map-loading-02.md)
 
 **Status**: Implemented; cold tile loads remain

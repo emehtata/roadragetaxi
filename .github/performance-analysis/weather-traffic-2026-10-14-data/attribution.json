@@ -1,0 +1,1151 @@
+[
+  {
+    "case": "day_clear_hide_none_tracks_0",
+    "repeat": 0,
+    "client": {
+      "counters": {
+        "buildings": 2713,
+        "chunks": 49,
+        "chunks_queued": 0,
+        "diagnostic_track_points": 0,
+        "draw_calls": 1850.0,
+        "lit": 15859,
+        "static_memory_mib": 102.618364334106,
+        "walls": 23859,
+        "windows": 135930
+      },
+      "frames": {
+        "avg_fps": 41.2357563528492,
+        "avg_ms": 24.2507980560154,
+        "frames": 411,
+        "low_01pct_fps": 35.3319442388103,
+        "low_1pct_fps": 35.6801982702058,
+        "over_33ms": 0,
+        "over_66ms": 0,
+        "p50_ms": 24.1580009460449,
+        "p95_ms": 26.1809997558594,
+        "p99_ms": 27.5890007019043,
+        "worst_ms": 28.30299949646
+      },
+      "sections": {
+        "entities_draw": {
+          "avg_ms": 4.17925853658537,
+          "count": 410,
+          "max_ms": 5.739,
+          "total_ms": 1713.496
+        },
+        "frame_setup_cpu": {
+          "avg_ms": 0.307413625304136,
+          "count": 411,
+          "max_ms": 0.696,
+          "total_ms": 126.347
+        },
+        "main_process": {
+          "avg_ms": 0.606946472019465,
+          "count": 411,
+          "max_ms": 1.248,
+          "total_ms": 249.455
+        },
+        "night_beams": {
+          "avg_ms": 0.00457664233576642,
+          "count": 411,
+          "max_ms": 0.059,
+          "total_ms": 1.881
+        },
+        "parse_state": {
+          "avg_ms": 0.913425675675676,
+          "count": 296,
+          "max_ms": 1.442,
+          "total_ms": 270.374
+        },
+        "present": {
+          "avg_ms": 0.531676399026764,
+          "count": 411,
+          "max_ms": 1.089,
+          "total_ms": 218.519
+        },
+        "render_3d_cpu": {
+          "avg_ms": 3.52090510948905,
+          "count": 411,
+          "max_ms": 5.138,
+          "total_ms": 1447.092
+        },
+        "render_3d_gpu": {
+          "avg_ms": 4.45507055961071,
+          "count": 411,
+          "max_ms": 6.105,
+          "total_ms": 1831.034
+        },
+        "render_cpu": {
+          "avg_ms": 10.2011362530414,
+          "count": 411,
+          "max_ms": 13.451,
+          "total_ms": 4192.667
+        },
+        "render_gpu": {
+          "avg_ms": 10.1364306569343,
+          "count": 411,
+          "max_ms": 12.972,
+          "total_ms": 4166.073
+        },
+        "weather": {
+          "avg_ms": 0.0129756690997567,
+          "count": 411,
+          "max_ms": 0.047,
+          "total_ms": 5.333
+        }
+      }
+    },
+    "tick_ms": {
+      "avg": 2.3225908652160516,
+      "p95": 2.441377000650391,
+      "p99": 2.8364819881971925,
+      "max": 209.69531999435276
+    },
+    "npcs": {
+      "total": 25,
+      "parked": 6,
+      "driving": 19,
+      "reserved": 0,
+      "household": 1,
+      "autonomous": 24,
+      "moving_target": 20,
+      "road_rage": 0,
+      "trip_start_attempts": 42,
+      "successful_trip_starts": 23,
+      "route_failures": 4,
+      "waiting_for_trips": 1
+    },
+    "exit": 0,
+    "plowed_cells": 0,
+    "actual_weather": "clear",
+    "temperature_c": 18.0,
+    "road_snow_cm": 0.0
+  },
+  {
+    "case": "day_clear_hide_buildings3d_tracks_0",
+    "repeat": 0,
+    "client": {
+      "counters": {
+        "buildings": 2713,
+        "chunks": 49,
+        "chunks_queued": 0,
+        "diagnostic_track_points": 0,
+        "draw_calls": 1831.0,
+        "lit": 15859,
+        "static_memory_mib": 102.002673149109,
+        "walls": 23859,
+        "windows": 135930
+      },
+      "frames": {
+        "avg_fps": 51.7874933847501,
+        "avg_ms": 19.3096814431739,
+        "frames": 518,
+        "low_01pct_fps": 36.7282486627298,
+        "low_1pct_fps": 39.0399308032476,
+        "over_33ms": 0,
+        "over_66ms": 0,
+        "p50_ms": 19.2910003662109,
+        "p95_ms": 20.8490009307861,
+        "p99_ms": 23.7700004577637,
+        "worst_ms": 27.2269992828369
+      },
+      "sections": {
+        "entities_draw": {
+          "avg_ms": 4.2100502901354,
+          "count": 517,
+          "max_ms": 7.075,
+          "total_ms": 2176.596
+        },
+        "frame_setup_cpu": {
+          "avg_ms": 0.0237857142857143,
+          "count": 518,
+          "max_ms": 0.237,
+          "total_ms": 12.321
+        },
+        "main_process": {
+          "avg_ms": 0.619492277992278,
+          "count": 518,
+          "max_ms": 1.163,
+          "total_ms": 320.897
+        },
+        "night_beams": {
+          "avg_ms": 0.00451737451737452,
+          "count": 518,
+          "max_ms": 0.015,
+          "total_ms": 2.34
+        },
+        "parse_state": {
+          "avg_ms": 0.936562289562289,
+          "count": 297,
+          "max_ms": 1.651,
+          "total_ms": 278.159
+        },
+        "present": {
+          "avg_ms": 0.537777992277992,
+          "count": 518,
+          "max_ms": 1.043,
+          "total_ms": 278.569
+        },
+        "render_3d_cpu": {
+          "avg_ms": 0.0,
+          "count": 518,
+          "max_ms": 0.0,
+          "total_ms": 0.0
+        },
+        "render_3d_gpu": {
+          "avg_ms": 0.0,
+          "count": 518,
+          "max_ms": 0.0,
+          "total_ms": 0.0
+        },
+        "render_cpu": {
+          "avg_ms": 9.46493822393822,
+          "count": 518,
+          "max_ms": 14.795,
+          "total_ms": 4902.838
+        },
+        "render_gpu": {
+          "avg_ms": 9.85875289575289,
+          "count": 518,
+          "max_ms": 15.333,
+          "total_ms": 5106.834
+        },
+        "weather": {
+          "avg_ms": 0.0142857142857143,
+          "count": 518,
+          "max_ms": 0.343,
+          "total_ms": 7.4
+        }
+      }
+    },
+    "tick_ms": {
+      "avg": 1.9032080246082235,
+      "p95": 2.4011539935600013,
+      "p99": 2.7151410176884383,
+      "max": 4.140166012803093
+    },
+    "npcs": {
+      "total": 25,
+      "parked": 6,
+      "driving": 19,
+      "reserved": 0,
+      "household": 1,
+      "autonomous": 24,
+      "moving_target": 20,
+      "road_rage": 0,
+      "trip_start_attempts": 42,
+      "successful_trip_starts": 23,
+      "route_failures": 4,
+      "waiting_for_trips": 1
+    },
+    "exit": 0,
+    "plowed_cells": 0,
+    "actual_weather": "clear",
+    "temperature_c": 18.0,
+    "road_snow_cm": 0.0
+  },
+  {
+    "case": "night_clear_hide_none_tracks_0",
+    "repeat": 0,
+    "client": {
+      "counters": {
+        "buildings": 2713,
+        "chunks": 49,
+        "chunks_queued": 0,
+        "diagnostic_track_points": 0,
+        "draw_calls": 1840.0,
+        "lit": 15859,
+        "static_memory_mib": 102.426641464233,
+        "walls": 23859,
+        "windows": 135930
+      },
+      "frames": {
+        "avg_fps": 35.5517277925591,
+        "avg_ms": 28.1280281463366,
+        "frames": 356,
+        "low_01pct_fps": 30.7134757858858,
+        "low_1pct_fps": 31.3368299997932,
+        "over_33ms": 0,
+        "over_66ms": 0,
+        "p50_ms": 28.0,
+        "p95_ms": 30.1299991607666,
+        "p99_ms": 31.5470008850098,
+        "worst_ms": 32.5589981079102
+      },
+      "sections": {
+        "entities_draw": {
+          "avg_ms": 4.19653521126761,
+          "count": 355,
+          "max_ms": 5.42,
+          "total_ms": 1489.77
+        },
+        "frame_setup_cpu": {
+          "avg_ms": 0.323087078651685,
+          "count": 356,
+          "max_ms": 0.86,
+          "total_ms": 115.019
+        },
+        "main_process": {
+          "avg_ms": 1.43380337078652,
+          "count": 356,
+          "max_ms": 2.059,
+          "total_ms": 510.434
+        },
+        "night_beams": {
+          "avg_ms": 0.841702247191011,
+          "count": 356,
+          "max_ms": 1.373,
+          "total_ms": 299.646
+        },
+        "parse_state": {
+          "avg_ms": 0.890279461279461,
+          "count": 297,
+          "max_ms": 1.34,
+          "total_ms": 264.413
+        },
+        "present": {
+          "avg_ms": 1.35827808988764,
+          "count": 356,
+          "max_ms": 1.978,
+          "total_ms": 483.547
+        },
+        "render_3d_cpu": {
+          "avg_ms": 3.94847191011236,
+          "count": 356,
+          "max_ms": 5.565,
+          "total_ms": 1405.656
+        },
+        "render_3d_gpu": {
+          "avg_ms": 4.84787921348315,
+          "count": 356,
+          "max_ms": 6.568,
+          "total_ms": 1725.845
+        },
+        "render_cpu": {
+          "avg_ms": 12.0982640449438,
+          "count": 356,
+          "max_ms": 15.845,
+          "total_ms": 4306.982
+        },
+        "render_gpu": {
+          "avg_ms": 12.0805702247191,
+          "count": 356,
+          "max_ms": 15.597,
+          "total_ms": 4300.683
+        },
+        "weather": {
+          "avg_ms": 0.0124213483146067,
+          "count": 356,
+          "max_ms": 0.048,
+          "total_ms": 4.422
+        }
+      }
+    },
+    "tick_ms": {
+      "avg": 1.883598989995851,
+      "p95": 2.3906479764264077,
+      "p99": 2.6222419983241707,
+      "max": 3.881383017869666
+    },
+    "npcs": {
+      "total": 25,
+      "parked": 6,
+      "driving": 19,
+      "reserved": 0,
+      "household": 1,
+      "autonomous": 24,
+      "moving_target": 20,
+      "road_rage": 0,
+      "trip_start_attempts": 42,
+      "successful_trip_starts": 23,
+      "route_failures": 4,
+      "waiting_for_trips": 1
+    },
+    "exit": 0,
+    "plowed_cells": 0,
+    "actual_weather": "clear",
+    "temperature_c": -10.0,
+    "road_snow_cm": 0.0
+  },
+  {
+    "case": "night_clear_hide_pools_tracks_0",
+    "repeat": 0,
+    "client": {
+      "counters": {
+        "buildings": 2713,
+        "chunks": 49,
+        "chunks_queued": 0,
+        "diagnostic_track_points": 0,
+        "draw_calls": 1839.0,
+        "lit": 15859,
+        "static_memory_mib": 102.657238960266,
+        "walls": 23859,
+        "windows": 135930
+      },
+      "frames": {
+        "avg_fps": 37.6307291089984,
+        "avg_ms": 26.5740266977946,
+        "frames": 375,
+        "low_01pct_fps": 29.8187029141781,
+        "low_1pct_fps": 30.0598194351377,
+        "over_33ms": 2,
+        "over_66ms": 0,
+        "p50_ms": 26.326000213623,
+        "p95_ms": 29.5930004119873,
+        "p99_ms": 32.4449996948242,
+        "worst_ms": 33.5359992980957
+      },
+      "sections": {
+        "entities_draw": {
+          "avg_ms": 4.18375401069519,
+          "count": 374,
+          "max_ms": 6.17,
+          "total_ms": 1564.724
+        },
+        "frame_setup_cpu": {
+          "avg_ms": 0.325984,
+          "count": 375,
+          "max_ms": 0.735,
+          "total_ms": 122.244
+        },
+        "main_process": {
+          "avg_ms": 1.479304,
+          "count": 375,
+          "max_ms": 2.648,
+          "total_ms": 554.739
+        },
+        "night_beams": {
+          "avg_ms": 0.859208,
+          "count": 375,
+          "max_ms": 1.397,
+          "total_ms": 322.203
+        },
+        "parse_state": {
+          "avg_ms": 0.944715254237288,
+          "count": 295,
+          "max_ms": 1.575,
+          "total_ms": 278.691
+        },
+        "present": {
+          "avg_ms": 1.40149333333333,
+          "count": 375,
+          "max_ms": 2.515,
+          "total_ms": 525.56
+        },
+        "render_3d_cpu": {
+          "avg_ms": 3.91857866666667,
+          "count": 375,
+          "max_ms": 6.44,
+          "total_ms": 1469.467
+        },
+        "render_3d_gpu": {
+          "avg_ms": 4.85514933333333,
+          "count": 375,
+          "max_ms": 7.366,
+          "total_ms": 1820.681
+        },
+        "render_cpu": {
+          "avg_ms": 10.4180746666667,
+          "count": 375,
+          "max_ms": 14.593,
+          "total_ms": 3906.778
+        },
+        "render_gpu": {
+          "avg_ms": 10.397272,
+          "count": 375,
+          "max_ms": 14.489,
+          "total_ms": 3898.977
+        },
+        "weather": {
+          "avg_ms": 0.0133973333333333,
+          "count": 375,
+          "max_ms": 0.047,
+          "total_ms": 5.024
+        }
+      }
+    },
+    "tick_ms": {
+      "avg": 1.976955260821948,
+      "p95": 2.5568279961589724,
+      "p99": 3.010326996445656,
+      "max": 7.026707986369729
+    },
+    "npcs": {
+      "total": 25,
+      "parked": 6,
+      "driving": 19,
+      "reserved": 0,
+      "household": 1,
+      "autonomous": 24,
+      "moving_target": 20,
+      "road_rage": 0,
+      "trip_start_attempts": 42,
+      "successful_trip_starts": 23,
+      "route_failures": 4,
+      "waiting_for_trips": 1
+    },
+    "exit": 0,
+    "plowed_cells": 0,
+    "actual_weather": "clear",
+    "temperature_c": -10.0,
+    "road_snow_cm": 0.0
+  },
+  {
+    "case": "night_clear_hide_buildings3d_tracks_0",
+    "repeat": 0,
+    "client": {
+      "counters": {
+        "buildings": 2713,
+        "chunks": 49,
+        "chunks_queued": 0,
+        "diagnostic_track_points": 0,
+        "draw_calls": 1837.0,
+        "lit": 15859,
+        "static_memory_mib": 101.970148086548,
+        "walls": 23859,
+        "windows": 135930
+      },
+      "frames": {
+        "avg_fps": 43.4627273649315,
+        "avg_ms": 23.008220160773,
+        "frames": 436,
+        "low_01pct_fps": 36.2529007133196,
+        "low_1pct_fps": 37.8640872758661,
+        "over_33ms": 0,
+        "over_66ms": 0,
+        "p50_ms": 23.0200004577637,
+        "p95_ms": 24.5049991607666,
+        "p99_ms": 25.386999130249,
+        "worst_ms": 27.5839996337891
+      },
+      "sections": {
+        "entities_draw": {
+          "avg_ms": 4.47425517241379,
+          "count": 435,
+          "max_ms": 7.271,
+          "total_ms": 1946.301
+        },
+        "frame_setup_cpu": {
+          "avg_ms": 0.0249678899082569,
+          "count": 436,
+          "max_ms": 0.174,
+          "total_ms": 10.886
+        },
+        "main_process": {
+          "avg_ms": 1.47899541284404,
+          "count": 436,
+          "max_ms": 2.144,
+          "total_ms": 644.842
+        },
+        "night_beams": {
+          "avg_ms": 0.860564220183486,
+          "count": 436,
+          "max_ms": 1.264,
+          "total_ms": 375.206
+        },
+        "parse_state": {
+          "avg_ms": 0.940864864864865,
+          "count": 296,
+          "max_ms": 2.132,
+          "total_ms": 278.496
+        },
+        "present": {
+          "avg_ms": 1.39526376146789,
+          "count": 436,
+          "max_ms": 2.06,
+          "total_ms": 608.335
+        },
+        "render_3d_cpu": {
+          "avg_ms": 0.0,
+          "count": 436,
+          "max_ms": 0.0,
+          "total_ms": 0.0
+        },
+        "render_3d_gpu": {
+          "avg_ms": 0.0,
+          "count": 436,
+          "max_ms": 0.0,
+          "total_ms": 0.0
+        },
+        "render_cpu": {
+          "avg_ms": 11.3429931192661,
+          "count": 436,
+          "max_ms": 13.522,
+          "total_ms": 4945.545
+        },
+        "render_gpu": {
+          "avg_ms": 11.7285940366972,
+          "count": 436,
+          "max_ms": 13.843,
+          "total_ms": 5113.667
+        },
+        "weather": {
+          "avg_ms": 0.0133371559633028,
+          "count": 436,
+          "max_ms": 0.149,
+          "total_ms": 5.815
+        }
+      }
+    },
+    "tick_ms": {
+      "avg": 1.9453276131666464,
+      "p95": 2.4823109852150083,
+      "p99": 3.1006890058051795,
+      "max": 3.749055991647765
+    },
+    "npcs": {
+      "total": 25,
+      "parked": 6,
+      "driving": 19,
+      "reserved": 0,
+      "household": 1,
+      "autonomous": 24,
+      "moving_target": 20,
+      "road_rage": 0,
+      "trip_start_attempts": 42,
+      "successful_trip_starts": 23,
+      "route_failures": 4,
+      "waiting_for_trips": 1
+    },
+    "exit": 0,
+    "plowed_cells": 0,
+    "actual_weather": "clear",
+    "temperature_c": -10.0,
+    "road_snow_cm": 0.0
+  },
+  {
+    "case": "dusk_rain_hide_precipitation,ripples_tracks_0",
+    "repeat": 0,
+    "client": {
+      "counters": {
+        "buildings": 2713,
+        "chunks": 49,
+        "chunks_queued": 0,
+        "diagnostic_track_points": 0,
+        "draw_calls": 3182.0,
+        "lit": 15859,
+        "static_memory_mib": 106.761345863342,
+        "walls": 23859,
+        "windows": 135930
+      },
+      "frames": {
+        "avg_fps": 30.6456681994409,
+        "avg_ms": 32.6310391893574,
+        "frames": 306,
+        "low_01pct_fps": 24.0419281012963,
+        "low_1pct_fps": 25.0681009219037,
+        "over_33ms": 55,
+        "over_66ms": 0,
+        "p50_ms": 32.4169998168945,
+        "p95_ms": 34.7760009765625,
+        "p99_ms": 37.1599998474121,
+        "worst_ms": 41.5940017700195
+      },
+      "sections": {
+        "entities_draw": {
+          "avg_ms": 4.20941639344262,
+          "count": 305,
+          "max_ms": 5.896,
+          "total_ms": 1283.872
+        },
+        "frame_setup_cpu": {
+          "avg_ms": 0.314209150326797,
+          "count": 306,
+          "max_ms": 0.884,
+          "total_ms": 96.148
+        },
+        "main_process": {
+          "avg_ms": 1.54414379084967,
+          "count": 306,
+          "max_ms": 2.627,
+          "total_ms": 472.508
+        },
+        "night_beams": {
+          "avg_ms": 0.882833333333333,
+          "count": 306,
+          "max_ms": 1.777,
+          "total_ms": 270.147
+        },
+        "parse_state": {
+          "avg_ms": 0.912647457627119,
+          "count": 295,
+          "max_ms": 1.392,
+          "total_ms": 269.231
+        },
+        "present": {
+          "avg_ms": 1.46648692810458,
+          "count": 306,
+          "max_ms": 2.554,
+          "total_ms": 448.745
+        },
+        "render_3d_cpu": {
+          "avg_ms": 4.53772222222222,
+          "count": 306,
+          "max_ms": 5.797,
+          "total_ms": 1388.543
+        },
+        "render_3d_gpu": {
+          "avg_ms": 4.94772222222222,
+          "count": 306,
+          "max_ms": 6.038,
+          "total_ms": 1514.003
+        },
+        "render_cpu": {
+          "avg_ms": 16.5630947712418,
+          "count": 306,
+          "max_ms": 21.222,
+          "total_ms": 5068.307
+        },
+        "render_gpu": {
+          "avg_ms": 16.6879411764706,
+          "count": 306,
+          "max_ms": 21.617,
+          "total_ms": 5106.51
+        },
+        "weather": {
+          "avg_ms": 0.0623725490196078,
+          "count": 306,
+          "max_ms": 0.12,
+          "total_ms": 19.086
+        }
+      }
+    },
+    "tick_ms": {
+      "avg": 2.0624416488568453,
+      "p95": 2.6197159895673394,
+      "p99": 3.099221008596942,
+      "max": 7.512696000048891
+    },
+    "npcs": {
+      "total": 25,
+      "parked": 6,
+      "driving": 19,
+      "reserved": 0,
+      "household": 1,
+      "autonomous": 24,
+      "moving_target": 20,
+      "road_rage": 0,
+      "trip_start_attempts": 42,
+      "successful_trip_starts": 23,
+      "route_failures": 4,
+      "waiting_for_trips": 1
+    },
+    "exit": 0,
+    "plowed_cells": 0,
+    "actual_weather": "rain",
+    "temperature_c": 8.0,
+    "road_snow_cm": 0.0
+  },
+  {
+    "case": "day_snow_plowed_hide_none_tracks_0",
+    "repeat": 0,
+    "client": {
+      "counters": {
+        "buildings": 2713,
+        "chunks": 49,
+        "chunks_queued": 0,
+        "diagnostic_track_points": 0,
+        "draw_calls": 2282.0,
+        "lit": 15859,
+        "static_memory_mib": 106.639970779419,
+        "walls": 23859,
+        "windows": 135930
+      },
+      "frames": {
+        "avg_fps": 24.7769202926983,
+        "avg_ms": 40.3601411388766,
+        "frames": 248,
+        "low_01pct_fps": 6.93620744526766,
+        "low_1pct_fps": 7.1151840444256,
+        "over_33ms": 248,
+        "over_66ms": 10,
+        "p50_ms": 35.9080009460449,
+        "p95_ms": 42.701000213623,
+        "p99_ms": 133.406997680664,
+        "worst_ms": 144.171005249023
+      },
+      "sections": {
+        "diagnostic_roads_draw": {
+          "avg_ms": 1.2136265625,
+          "count": 640,
+          "max_ms": 11.572,
+          "total_ms": 776.721
+        },
+        "entities_draw": {
+          "avg_ms": 4.24679352226721,
+          "count": 247,
+          "max_ms": 5.27,
+          "total_ms": 1048.958
+        },
+        "frame_setup_cpu": {
+          "avg_ms": 0.354568548387097,
+          "count": 248,
+          "max_ms": 1.897,
+          "total_ms": 87.933
+        },
+        "main_process": {
+          "avg_ms": 1.96063306451613,
+          "count": 248,
+          "max_ms": 9.506,
+          "total_ms": 486.237
+        },
+        "night_beams": {
+          "avg_ms": 0.922237903225806,
+          "count": 248,
+          "max_ms": 1.819,
+          "total_ms": 228.715
+        },
+        "parse_state": {
+          "avg_ms": 1.24864745762712,
+          "count": 295,
+          "max_ms": 2.03,
+          "total_ms": 368.351
+        },
+        "present": {
+          "avg_ms": 1.88427419354839,
+          "count": 248,
+          "max_ms": 9.43,
+          "total_ms": 467.3
+        },
+        "render_3d_cpu": {
+          "avg_ms": 4.4311814516129,
+          "count": 248,
+          "max_ms": 5.743,
+          "total_ms": 1098.933
+        },
+        "render_3d_gpu": {
+          "avg_ms": 4.84060483870968,
+          "count": 248,
+          "max_ms": 6.747,
+          "total_ms": 1200.47
+        },
+        "render_cpu": {
+          "avg_ms": 18.8653709677419,
+          "count": 248,
+          "max_ms": 25.475,
+          "total_ms": 4678.612
+        },
+        "render_gpu": {
+          "avg_ms": 18.9985201612903,
+          "count": 248,
+          "max_ms": 24.461,
+          "total_ms": 4711.633
+        },
+        "tracks_draw": {
+          "avg_ms": 0.00102777777777778,
+          "count": 36,
+          "max_ms": 0.002,
+          "total_ms": 0.037
+        },
+        "weather": {
+          "avg_ms": 0.0594233870967742,
+          "count": 248,
+          "max_ms": 0.094,
+          "total_ms": 14.737
+        },
+        "weather_draw_precipitation": {
+          "avg_ms": 0.103093117408907,
+          "count": 247,
+          "max_ms": 0.533,
+          "total_ms": 25.464
+        }
+      }
+    },
+    "tick_ms": {
+      "avg": 2.4534981446956157,
+      "p95": 3.2238379935733974,
+      "p99": 4.295376013033092,
+      "max": 5.616023991024122
+    },
+    "npcs": {
+      "total": 25,
+      "parked": 6,
+      "driving": 19,
+      "reserved": 0,
+      "household": 1,
+      "autonomous": 24,
+      "moving_target": 20,
+      "road_rage": 0,
+      "trip_start_attempts": 42,
+      "successful_trip_starts": 23,
+      "route_failures": 4,
+      "waiting_for_trips": 1
+    },
+    "exit": 0,
+    "plowed_cells": 561,
+    "actual_weather": "snow",
+    "temperature_c": -10.0,
+    "road_snow_cm": 4.626666666666621
+  },
+  {
+    "case": "day_snow_hide_none_tracks_4000",
+    "repeat": 0,
+    "client": {
+      "counters": {
+        "buildings": 2713,
+        "chunks": 49,
+        "chunks_queued": 0,
+        "diagnostic_track_points": 4000,
+        "draw_calls": 2272.0,
+        "lit": 15859,
+        "static_memory_mib": 107.737246513367,
+        "walls": 23859,
+        "windows": 135930
+      },
+      "frames": {
+        "avg_fps": 15.4779362179811,
+        "avg_ms": 64.6080967072518,
+        "frames": 155,
+        "low_01pct_fps": 5.79391055898117,
+        "low_1pct_fps": 5.79391055898117,
+        "over_33ms": 155,
+        "over_66ms": 41,
+        "p50_ms": 54.9150009155273,
+        "p95_ms": 137.686996459961,
+        "p99_ms": 158.552001953125,
+        "worst_ms": 172.595001220703
+      },
+      "sections": {
+        "diagnostic_roads_draw": {
+          "avg_ms": 1.163621875,
+          "count": 640,
+          "max_ms": 10.856,
+          "total_ms": 744.718
+        },
+        "entities_draw": {
+          "avg_ms": 4.22123225806452,
+          "count": 155,
+          "max_ms": 6.38,
+          "total_ms": 654.291
+        },
+        "frame_setup_cpu": {
+          "avg_ms": 0.343826923076923,
+          "count": 156,
+          "max_ms": 0.803,
+          "total_ms": 53.637
+        },
+        "main_process": {
+          "avg_ms": 1.61978846153846,
+          "count": 156,
+          "max_ms": 2.419,
+          "total_ms": 252.687
+        },
+        "night_beams": {
+          "avg_ms": 0.93775641025641,
+          "count": 156,
+          "max_ms": 1.484,
+          "total_ms": 146.29
+        },
+        "parse_state": {
+          "avg_ms": 1.0486813559322,
+          "count": 295,
+          "max_ms": 1.686,
+          "total_ms": 309.361
+        },
+        "present": {
+          "avg_ms": 1.53735897435897,
+          "count": 156,
+          "max_ms": 2.295,
+          "total_ms": 239.828
+        },
+        "render_3d_cpu": {
+          "avg_ms": 4.37873076923077,
+          "count": 156,
+          "max_ms": 6.362,
+          "total_ms": 683.082
+        },
+        "render_3d_gpu": {
+          "avg_ms": 4.81248717948718,
+          "count": 156,
+          "max_ms": 6.482,
+          "total_ms": 750.748
+        },
+        "render_cpu": {
+          "avg_ms": 35.4866858974359,
+          "count": 156,
+          "max_ms": 52.141,
+          "total_ms": 5535.923
+        },
+        "render_gpu": {
+          "avg_ms": 35.5655961538462,
+          "count": 156,
+          "max_ms": 52.624,
+          "total_ms": 5548.233
+        },
+        "tracks_draw": {
+          "avg_ms": 22.0426857142857,
+          "count": 35,
+          "max_ms": 31.229,
+          "total_ms": 771.494
+        },
+        "weather": {
+          "avg_ms": 0.0576794871794872,
+          "count": 156,
+          "max_ms": 0.084,
+          "total_ms": 8.998
+        },
+        "weather_draw_precipitation": {
+          "avg_ms": 0.103948387096774,
+          "count": 155,
+          "max_ms": 0.186,
+          "total_ms": 16.112
+        }
+      }
+    },
+    "tick_ms": {
+      "avg": 2.042561227456697,
+      "p95": 2.688687003683299,
+      "p99": 3.143976005958393,
+      "max": 3.4467140212655067
+    },
+    "npcs": {
+      "total": 25,
+      "parked": 6,
+      "driving": 19,
+      "reserved": 0,
+      "household": 1,
+      "autonomous": 24,
+      "moving_target": 20,
+      "road_rage": 0,
+      "trip_start_attempts": 42,
+      "successful_trip_starts": 23,
+      "route_failures": 4,
+      "waiting_for_trips": 1
+    },
+    "exit": 0,
+    "plowed_cells": 1,
+    "actual_weather": "snow",
+    "temperature_c": -10.0,
+    "road_snow_cm": 4.613333333333289
+  },
+  {
+    "case": "day_snow_stopped_hide_none_tracks_4000",
+    "repeat": 0,
+    "client": {
+      "counters": {
+        "buildings": 2713,
+        "chunks": 49,
+        "chunks_queued": 0,
+        "diagnostic_track_points": 4000,
+        "draw_calls": 2270.0,
+        "lit": 15859,
+        "static_memory_mib": 110.088938713074,
+        "walls": 23859,
+        "windows": 135930
+      },
+      "frames": {
+        "avg_fps": 19.3558765592778,
+        "avg_ms": 51.6638963333683,
+        "frames": 193,
+        "low_01pct_fps": 15.7008049848906,
+        "low_1pct_fps": 15.7008049848906,
+        "over_33ms": 193,
+        "over_66ms": 0,
+        "p50_ms": 49.9529991149902,
+        "p95_ms": 58.9599990844727,
+        "p99_ms": 61.8199996948242,
+        "worst_ms": 63.6910018920898
+      },
+      "sections": {
+        "entities_draw": {
+          "avg_ms": 4.165890625,
+          "count": 192,
+          "max_ms": 5.677,
+          "total_ms": 799.851
+        },
+        "frame_setup_cpu": {
+          "avg_ms": 0.343331606217617,
+          "count": 193,
+          "max_ms": 0.735,
+          "total_ms": 66.263
+        },
+        "main_process": {
+          "avg_ms": 1.54852849740933,
+          "count": 193,
+          "max_ms": 1.977,
+          "total_ms": 298.866
+        },
+        "night_beams": {
+          "avg_ms": 0.911341968911917,
+          "count": 193,
+          "max_ms": 1.319,
+          "total_ms": 175.889
+        },
+        "parse_state": {
+          "avg_ms": 1.01546101694915,
+          "count": 295,
+          "max_ms": 1.526,
+          "total_ms": 299.561
+        },
+        "present": {
+          "avg_ms": 1.47061658031088,
+          "count": 193,
+          "max_ms": 1.903,
+          "total_ms": 283.829
+        },
+        "render_3d_cpu": {
+          "avg_ms": 4.51756994818653,
+          "count": 193,
+          "max_ms": 6.896,
+          "total_ms": 871.891
+        },
+        "render_3d_gpu": {
+          "avg_ms": 5.41069430051813,
+          "count": 193,
+          "max_ms": 7.795,
+          "total_ms": 1044.264
+        },
+        "render_cpu": {
+          "avg_ms": 32.097518134715,
+          "count": 193,
+          "max_ms": 42.75,
+          "total_ms": 6194.821
+        },
+        "render_gpu": {
+          "avg_ms": 33.7112849740933,
+          "count": 193,
+          "max_ms": 43.083,
+          "total_ms": 6506.278
+        },
+        "tracks_draw": {
+          "avg_ms": 20.659,
+          "count": 1,
+          "max_ms": 20.659,
+          "total_ms": 20.659
+        },
+        "weather": {
+          "avg_ms": 0.0128082901554404,
+          "count": 193,
+          "max_ms": 0.041,
+          "total_ms": 2.472
+        }
+      }
+    },
+    "tick_ms": {
+      "avg": 2.4044801030260667,
+      "p95": 3.0727209814358503,
+      "p99": 3.5398149921093136,
+      "max": 3.6893880169373006
+    },
+    "npcs": {
+      "total": 25,
+      "parked": 6,
+      "driving": 19,
+      "reserved": 0,
+      "household": 1,
+      "autonomous": 24,
+      "moving_target": 20,
+      "road_rage": 0,
+      "trip_start_attempts": 42,
+      "successful_trip_starts": 23,
+      "route_failures": 4,
+      "waiting_for_trips": 1
+    },
+    "exit": 0,
+    "plowed_cells": 561,
+    "actual_weather": "clear",
+    "temperature_c": -10.0,
+    "road_snow_cm": 3.0
+  }
+]
