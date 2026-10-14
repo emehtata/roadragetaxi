@@ -117,6 +117,9 @@ def main(argv=None) -> int:
     parser.add_argument("--heading", type=float, default=0.0, help="radians, 0 east, 1.5708 north")
     parser.add_argument("--sample-ms", type=float, default=0.0, help="record the stack of ticks running longer than this")
     parser.add_argument("--json", type=Path, help="also write the result here (and the server log beside it)")
+    parser.add_argument("--port", type=int, default=0,
+                        help="listen here, for a Godot client to attach too (godot --headless --path godot -- "
+                             "--skip-menu --port N --bench S); default: any free port")
     parser.add_argument("--client", nargs=2, help=argparse.SUPPRESS)
     args = parser.parse_args(argv)
     if args.client:
@@ -137,7 +140,7 @@ def main(argv=None) -> int:
     if streamer is None:
         parser.error("the map must grow: auto-fetch is off for this city")
     server._on_foot, server._home = False, None  # in the taxi; no Home preparation in the background
-    server.start("127.0.0.1", 0)
+    server.start("127.0.0.1", args.port)
 
     current = [None]  # the running tick's record
 
