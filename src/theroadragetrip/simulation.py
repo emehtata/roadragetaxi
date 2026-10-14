@@ -417,9 +417,7 @@ def advance_simulation(
         elif water_elapsed > 0.0:
             water_elapsed += dt
         if water_elapsed > 0.0:
-            car.speed = 0.0
-            taxi_mgr.notification_msg = f"{tr(language, 'water_sinking')}: {max(0.0, SINK_S - water_elapsed):.1f} s"
-            taxi_mgr.notification_timer = 0.2
+            car.speed = 0.0  # the HUD counts down from water_elapsed
             if water_elapsed >= SINK_S:
                 respawn_car(car, ways, waters=waters, taxi_stops=taxi_stops)
                 taxi_mgr.handle_respawn(car.x, car.y)

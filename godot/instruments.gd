@@ -8,7 +8,7 @@ const T := preload("res://i18n.gd")
 
 const Paths := preload("res://paths.gd")
 const RAGE_ATLAS := "assets/ragefaceatlas.png"  # in the Python package
-const WATER_LIMIT_S := 10.0  # water_time_remaining = 10 - water_elapsed
+const WATER_LIMIT_S := 5.0  # the server's SINK_S: water_elapsed counts the sinking
 const RESERVE_L := 10.0
 const TEXT_OUTLINE := Color8(20, 24, 28, 230)
 const TEXT_OUTLINE_PX := 4
