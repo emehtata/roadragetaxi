@@ -49,7 +49,7 @@ var clock_text := ""  # the game clock in the status bar (main.gd)
 const BATTERY_DRAIN_PER_HOUR := 8.0  # % per game hour: a full phone lasts a working day
 const BATTERY_CHARGER_AT := 20.0  # % left when it goes on the charger
 const BATTERY_CHARGE_PER_HOUR := 80.0  # % per game hour: 20% to full in about an hour
-var battery := 82.0
+var battery := randf_range(BATTERY_CHARGER_AT + 1.0, 100.0)  # each game: a phone as it happens to be
 var charging := false
 var _battery_label: Label
 var _battery_icon: Control
