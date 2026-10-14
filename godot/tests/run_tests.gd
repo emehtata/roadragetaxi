@@ -305,6 +305,11 @@ func test_map_chunks() -> void:
 	check(snowy._road_snow == 3.0 and snowy._plowed_cells.get(Vector2i(0, 0)) == 3.0, "new chunks inherit snow and already ploughed sections")
 	map.set_road_snow(4.0, [[0, 0, 3.0]])
 	check(snowy._road_snow - snowy._plowed_cells[Vector2i(0, 0)] == 1.0, "new snowfall covers ploughed roads again")
+	map.set_road_snow(4.0, [], false)
+	map.add_chunk({"chunk_id": "clean"})
+	check(map._chunks["clean"].snow_baseline == 4.0 and snowy.snow_baseline == 0.0, "after snow stops, new areas start clean while existing roads retain snow")
+	map.replace_chunk({"chunk_id": "clean"})
+	check(map._chunks["clean"].snow_baseline == 4.0, "refreshing a clean area preserves its snow baseline")
 	map.free()
 
 

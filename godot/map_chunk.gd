@@ -50,6 +50,7 @@ var _puddle_spots: Array = []  # [{"at", "radius", "reveal", "shape"}]
 var _water_ripple_spots: Array = []  # cached once; weather_layer animates their rings
 var _wetness := 0.0
 var _road_snow := 0.0
+var snow_baseline := 0.0
 var _plowed_cells: Dictionary = {}
 var _road_layers: Array[Node2D] = []
 var _px_per_m := 9.0
@@ -722,7 +723,7 @@ func _draw_roads(z: int, node: Node2D) -> void:
 		if z > 1:
 			node.draw_polyline(points, Color(0.12, 0.12, 0.13), width + 0.6)  # bridge edge
 		var snowy: bool = _road_snow > 0.0 and road.get("drivable", false) and int(road.get("layer", 0)) >= 0
-		node.draw_polyline(points, color.lerp(Color8(230, 236, 240), clampf(_road_snow / 3.0, 0.0, 1.0)) if snowy and _plowed_cells.is_empty() else color, width)
+		node.draw_polyline(points, color.lerp(Color8(230, 236, 240), clampf((_road_snow - snow_baseline) / 3.0, 0.0, 1.0)) if snowy and _plowed_cells.is_empty() else color, width)
 		if snowy and not _plowed_cells.is_empty():
 			var snow_lines := {}
 			for i in range(points.size() - 1):
@@ -734,7 +735,7 @@ func _draw_roads(z: int, node: Node2D) -> void:
 					var b := start.lerp(end, float(j + 1) / steps)
 					var world := _origin + Vector2((a.x + b.x) * 0.5, -(a.y + b.y) * 0.5)
 					var cell := Vector2i(floori(world.x / 10.0), floori(world.y / 10.0))
-					var cover := clampf((_road_snow - float(_plowed_cells.get(cell, 0.0))) / 3.0, 0.0, 1.0)
+					var cover := clampf((_road_snow - maxf(snow_baseline, float(_plowed_cells.get(cell, 0.0)))) / 3.0, 0.0, 1.0)
 					if not snow_lines.has(cover):
 						snow_lines[cover] = PackedVector2Array()
 					snow_lines[cover].append(a)
