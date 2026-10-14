@@ -246,7 +246,7 @@ def advance_simulation(
         else:
             player_pedestrian.speed = min(0.0, player_pedestrian.speed + FRICTION * dt)
 
-        if abs(player_pedestrian.speed) > 0.05 and abs(steer_input) > 0.01:
+        if abs(steer_input) > 0.01:  # a person turns on the spot too, unlike a car
             steer_effective = STEER_RATE / (1.0 + abs(player_pedestrian.speed) * STEER_SPEED_FACTOR)
             player_pedestrian.heading += (
                 steer_input * steer_effective * dt * (1.0 if player_pedestrian.speed >= 0.0 else -1.0)

@@ -197,6 +197,18 @@ def test_traffic_light_phases_name_posts_in_the_chunks(tmp_path, monkeypatch):
     assert set(phases.values()) <= {"green", "yellow", "red", "red+yellow", "all-red"}
 
 
+def test_the_driver_on_foot_turns_on_the_spot(tmp_path, monkeypatch):
+    from theroadragetrip.simulation import PlayerCommand
+
+    server = _build_server(tmp_path, monkeypatch)
+    walker = server.world.player_pedestrian  # on foot at the start
+    start = (walker.x, walker.y, walker.heading)
+    server._latest_command = PlayerCommand(turn=1.0)
+    for _ in range(10):
+        server.tick(1.0 / 30.0)
+    assert walker.heading != start[2] and (walker.x, walker.y) == start[:2]
+
+
 def test_the_calendar_is_the_one_clock_and_carries_the_sun(tmp_path, monkeypatch):
     """godot-14: the server's GameCalendar drives game time, the date and the
     sun the client draws night from."""
