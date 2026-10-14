@@ -441,6 +441,11 @@ def load_world(
         build_func=build_ways,
         build_in_process=args.build_in_process,
         world_cache_manager=world_cache,
+        # The cooldown between tile fetches spares public Overpass servers. A local
+        # extract has none to spare: the lookahead tile follows the core window at
+        # once, and one map sync covers both (map_sync.SYNC_WAIT_FOR_FETCH_S).
+        cooldown_s=0.0 if getattr(args, "osm_source", "overpass") == "pbf"
+        and local_pbf_available(getattr(args, "osm_pbf_path", None)) else 5.0,
     )
     auto_fetch_manager.initialize_player_tile(car.x, car.y, fetched_area_metres(bbox))
     auto_fetch_manager.soft_boundary_enabled = args.auto_fetch
