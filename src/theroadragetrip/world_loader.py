@@ -6,6 +6,7 @@ callback, never a screen."""
 from __future__ import annotations
 
 import concurrent.futures
+import functools
 import logging
 import math
 import os
@@ -168,6 +169,12 @@ def load_world(
             time.sleep(1.0 / 30.0)
         res, elements_count = load_future.result()
         load_executor.shutdown(wait=True)
+        if args.build_in_process:
+            # Startup reports detailed build progress in-process. Streaming
+            # cache misses use a worker after that, so they cannot stall ticks.
+            world_cache.enable_process_build(functools.partial(
+                build_ways, include_bus_stops=bus_stops_enabled,
+            ))
         crossings = getattr(res, "crossings", [])
         stop_signs = getattr(res, "stop_signs", [])
         yield_signs = getattr(res, "yield_signs", [])

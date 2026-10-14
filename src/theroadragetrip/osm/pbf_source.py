@@ -54,6 +54,9 @@ DEFAULT_FINLAND_PBF_PATH = Path(__file__).resolve().parent.parent / "assets" / "
 # reason to accept the extra risk of an incomplete water body or building
 # outline for a marginal speed difference.
 EXTRACT_STRATEGY = "smart"
+# A large covering JSON cache is slower to parse and rebuild than extracting
+# one tile from the indexed PBF. Small covering caches are still worth reusing.
+COVERING_CACHE_MAX_RATIO = 4.0
 
 
 def local_pbf_available(pbf_path: Optional[Path] = None) -> bool:
@@ -84,7 +87,7 @@ def fetch_osm_ways_from_pbf(
         progress_callback(0.1, "Checking cache...")
     force_refresh = force_refresh or os.getenv("OVERPASS_FORCE_REFRESH", "0").lower() in ("1", "true", "yes")
     if not force_refresh:
-        cached = load_osm_cache(bbox)
+        cached = load_osm_cache(bbox, max_cover_ratio=COVERING_CACHE_MAX_RATIO)
         if cached is not None:
             logger.info("Loaded OSM data from local cache")
             if progress_callback:

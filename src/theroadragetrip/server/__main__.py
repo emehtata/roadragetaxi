@@ -1,5 +1,6 @@
 import logging
 import json
+import multiprocessing
 
 from ..config import cities_from_config
 from ..game_args import configure_logging
@@ -11,6 +12,7 @@ logger = logging.getLogger(__name__)
 
 
 def main() -> None:
+    multiprocessing.freeze_support()
     tune_interpreter()
     args, config = parse_server_args()
     if args.list_cities:

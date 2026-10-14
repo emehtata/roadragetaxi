@@ -325,18 +325,29 @@ boxes 3–5 ms, puddle spots ~2 ms, point conversion and clipping 6–11 ms).
    dense chunk, drawn later in the same frame): a dense chunk gets its own
    frame, light ones still share one.
 
+9. **Cold tile builds leave the server process.** A small PBF tile no longer
+   parses a covering JSON cache over four times its area; the indexed PBF is
+   cheaper in that case. After startup, `WorldCacheManager` builds cache misses
+   in a spawned worker process and writes the RWC there, then the loader thread
+   reads the finished binary. `--build-in-process` therefore applies when the
+   binary world cache is enabled too (it previously applied only to the legacy
+   auto-fetch path). A 30 s first visit in Rovaniemi loaded five uncached PBF
+   regions with no tick over 100 ms, no full GC, one 0.1 s state gap and one
+   sub-frame replay freeze. Broken workers have a tested thread fallback, and
+   the server initializes multiprocessing support for frozen Windows builds.
+
 Tests: pytest 1363 → 1371 passed (2 skipped throughout), Godot 649 → 657
 checks; every change but the cooldown (`93fd53b`, a constructor argument) has a
 test beside it.
 
 ## Remaining
 
-- **Cold tile loads.** The loader thread still holds the GIL for up to ~0.2 s
-  at a time. An RWC miss falls back to a covering OSM-cache file, which here was
-  the 115 k-element start region, parsed and rebuilt whole for a one-tile
-  request; young collections reach 70–83 ms while it builds. Building tiles in a
-  worker process (and reading only the requested area from a covering cache)
-  would take this off the tick.
+- **Cold tile extraction.** `osmium` runs outside Python and map construction
+  now runs in a worker process, but parsing its XML result and saving the small
+  JSON bbox cache still happen on the loader thread. The short cold validation
+  measured 0.9 ms mean GIL wait on affected ticks and a 92 ms worst tick; moving
+  that conversion into the worker would require combining fetch and build
+  rather than passing the element dictionaries between them.
 - **A dense chunk's first draw**, 6–13 ms headless (more with the renderer),
   still runs on the main thread, one dense chunk a frame.
 - **Young collections** of up to 25–33 ms, the price of the thresholds.

@@ -103,7 +103,10 @@ def _legacy_bbox_cache_path(path: str) -> str:
 def load_osm_cache(
     bbox: Tuple[float, float, float, float],
     point: Optional[Tuple[float, float]] = None,
+    max_cover_ratio: Optional[float] = None,
 ) -> Optional[List[dict]]:
+    """The cached elements for `bbox`: its own file, or one covering it (or
+    `point`) - one covering more than max_cover_ratio times its area is skipped."""
     from . import CACHE_DIR  # re-read each call so tests can monkeypatch theroadragetrip.osm.CACHE_DIR
 
     requested_south, requested_west, requested_north, requested_east = bbox
@@ -141,6 +144,12 @@ def load_osm_cache(
                         continue
                 elif not covers_request:
                     continue
+                if max_cover_ratio is not None and path != paths[0]:
+                    ratio = (north - south) * (east - west) / max(
+                        1e-12, (requested_north - requested_south) * (requested_east - requested_west))
+                    if ratio > max_cover_ratio:
+                        logger.info("Cache skip %s: %.0fx the requested area", os.path.basename(path), ratio)
+                        continue
                 logger.info(
                     "Cache candidate %s: point=%s request_covered=%s",
                     os.path.basename(path), covers_point, covers_request,

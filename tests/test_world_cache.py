@@ -178,6 +178,47 @@ def test_world_cache_manager_hit_avoids_fetch(tmp_path, sample_world):
     assert calls == []
 
 
+def test_world_cache_can_build_a_miss_in_a_worker_process(tmp_path):
+    elements = load_local_sample()
+    manager = WorldCacheManager(
+        tmp_path,
+        fetch_func=lambda bbox: elements,
+        build_func=build_ways,
+    )
+    manager.enable_process_build(build_ways)
+
+    loaded = manager.load_area("worker-area", (1, 2, 3, 4), allow_covering=False)
+    manager.close()
+
+    assert loaded.ways
+    assert manager.path_for("worker-area").exists()
+
+
+def test_world_cache_falls_back_when_the_worker_process_breaks(tmp_path, sample_world):
+    from concurrent.futures.process import BrokenProcessPool
+
+    class BrokenExecutor:
+        def submit(self, *args):
+            raise BrokenProcessPool("worker stopped")
+
+        def shutdown(self, **kwargs):
+            pass
+
+    manager = WorldCacheManager(
+        tmp_path,
+        fetch_func=lambda bbox: [],
+        build_func=lambda elements: sample_world,
+    )
+    manager._build_executor = BrokenExecutor()
+    manager._process_build_func = build_ways
+
+    loaded = manager.load_area("fallback-area", (1, 2, 3, 4), allow_covering=False)
+    manager.close()
+
+    assert loaded is sample_world
+    assert manager.path_for("fallback-area").exists()
+
+
 def test_world_cache_manager_preload(tmp_path, sample_world):
     manager = WorldCacheManager(
         tmp_path,

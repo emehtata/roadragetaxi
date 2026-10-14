@@ -34,6 +34,17 @@ def test_cache_loads_covering_bbox(tmp_path, monkeypatch):
     assert load_osm_cache((64.8, 25.35, 65.0, 25.45)) is None
 
 
+def test_cache_can_skip_a_covering_file_much_larger_than_the_request(tmp_path, monkeypatch):
+    import theroadragetrip.osm as osm
+
+    monkeypatch.setattr(osm, "CACHE_DIR", str(tmp_path))
+    sample = [{"type": "node", "id": 1}]
+    save_osm_cache((64.0, 24.0, 66.0, 26.0), sample)
+
+    assert load_osm_cache((64.9, 25.4, 65.0, 25.5), max_cover_ratio=4.0) is None
+    assert load_osm_cache((64.9, 25.4, 65.0, 25.5)) == sample
+
+
 def test_cache_migrates_legacy_pjson_filename(tmp_path, monkeypatch):
     import json
     import theroadragetrip.osm as osm
