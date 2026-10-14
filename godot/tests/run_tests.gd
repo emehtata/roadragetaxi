@@ -28,6 +28,21 @@ func check(ok: bool, what: String) -> void:
 		printerr("FAIL: ", what)
 
 
+## A script that fails to parse only aborts the test using it, silently:
+## every script must compile.
+func test_scripts_compile() -> void:
+	var folders := ["res://"]
+	while not folders.is_empty():
+		var folder: String = folders.pop_back()
+		for sub in DirAccess.get_directories_at(folder):
+			if not sub.begins_with("."):
+				folders.append(folder.path_join(sub))
+		for file in DirAccess.get_files_at(folder):
+			if file.ends_with(".gd"):
+				var script := load(folder.path_join(file)) as GDScript
+				check(script != null and script.can_instantiate(), "%s compiles" % folder.path_join(file))
+
+
 func _state(x: float, heading: float = 0.0, events: Array = []) -> Dictionary:
 	return {"player": {"x": x, "y": 0.0, "heading": heading}, "npcs": [], "events": events}
 
@@ -41,6 +56,7 @@ func _process(_delta: float) -> bool:  # first frame: the tree is live, so nodes
 	_ran = true
 	MapChunk.build_async = false  # check the buildings right after a chunk loads
 	MapChunk.buildings_3d = false  # the legacy 2D renderer's checks; test_buildings_3d switches it on
+	test_scripts_compile()
 	test_i18n()
 	test_chunk_queue()
 	test_interpolation()
