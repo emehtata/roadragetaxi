@@ -2516,13 +2516,17 @@ def _parking_area_containing(point: Optional[Tuple[float, float]], sceneries: Op
     time (infrequent, never per-frame), not as a per-frame lookup."""
     if point is None or not sceneries:
         return None
+    x, y = point
     for scenery in sceneries:
         if getattr(scenery, "kind", None) != "parking":
             continue
         points = getattr(scenery, "points_m", None)
         if not points or len(points) < 3:
             continue
-        if point_in_polygon(point[0], point[1], points):
+        bbox = getattr(scenery, "bbox", None)  # every lot of the map is a candidate: most are far away
+        if bbox and bbox != (0.0, 0.0, 0.0, 0.0) and not (bbox[0] <= x <= bbox[2] and bbox[1] <= y <= bbox[3]):
+            continue
+        if point_in_polygon(x, y, points):
             return scenery
     return None
 

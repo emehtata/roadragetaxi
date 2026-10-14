@@ -1907,3 +1907,20 @@ def test_trigger_road_rage_skips_crashed_behind_too_far_and_too_lateral_vehicles
     assert manager.trigger_road_rage(0.0, 0.0, 0.0, sim_time=10.0) == placed[5][1].vehicle_id
     assert all(placed[v][0].road_rage_until_sim_time is None for v in (1, 2, 3, 4))
     assert placed[5][0].road_rage_until_sim_time == 10.0 + NPC_ROAD_RAGE_REACTION_DURATION_S
+
+
+def test_the_parking_area_under_a_car_is_found_without_testing_far_lots(monkeypatch):
+    from theroadragetrip import npc
+    from theroadragetrip.osm import Scenery
+
+    def lot(x):
+        points = [(x, 0.0), (x + 50.0, 0.0), (x + 50.0, 40.0), (x, 40.0)]
+        return Scenery(points_m=points, kind="parking", bbox=(x, 0.0, x + 50.0, 40.0))
+
+    lots = [lot(1000.0 * i) for i in range(20)]
+    tested = []
+    real = npc.point_in_polygon
+    monkeypatch.setattr(npc, "point_in_polygon", lambda x, y, polygon: tested.append(polygon) or real(x, y, polygon))
+    assert npc._parking_area_containing((5020.0, 20.0), lots) is lots[5]
+    assert npc._parking_area_containing((5020.0, 60.0), lots) is None
+    assert len(tested) == 1  # only the lot whose box holds the point
