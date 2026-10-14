@@ -770,8 +770,9 @@ def respawn_car(
 
     if start_point is not None:
         best = None
-        main_network = compute_largest_connected_road_component(ways)
-        for way in [w for w in main_network if not getattr(w, "is_ice_road", False)] or ways:
+        # any car road, not only the main network: that joins roads at their
+        # ends only, so a side street off a road's middle would not count
+        for way in [w for w in ways if is_car_road(w) and not getattr(w, "is_ice_road", False)] or ways:
             for p1, p2 in zip(way.points_m, way.points_m[1:]):
                 x, y, _, distance = closest_point_and_dist_to_segment(*start_point, p1[0], p1[1], p2[0], p2[1])
                 if (best is None or distance < best[0]) and not (waters and is_point_in_water(x, y, waters)):

@@ -240,3 +240,12 @@ def test_a_map_pin_starts_the_car_on_the_nearest_road_point():
     stops = [SimpleNamespace(x=50.0, y=500.0)]  # a taxi stop elsewhere does not win over the pin
     respawn_car(car, [near, far], near_center=True, bounds=(0.0, 0.0, 100.0, 500.0), taxi_stops=stops, start_point=(37.0, 8.0))
     assert abs(car.x - 37.0) < 0.01 and abs(car.y) < 3.0
+
+
+def test_a_map_pin_reaches_a_side_street_joining_a_road_midway():
+    main = Way(points_m=[(0.0, 0.0), (100.0, 0.0), (200.0, 0.0)], highway="secondary", half_width_m=4.0, name="Main")
+    main2 = Way(points_m=[(200.0, 0.0), (300.0, 0.0)], highway="secondary", half_width_m=4.0, name="Main 2")
+    side = Way(points_m=[(100.0, 0.0), (100.0, 60.0)], highway="residential", half_width_m=3.0, name="Side")  # joins mid-way
+    car = Car(x=0.0, y=0.0, heading=0.0, speed=0.0)
+    respawn_car(car, [main, main2, side], near_center=True, bounds=(0.0, 0.0, 300.0, 60.0), start_point=(104.0, 50.0))
+    assert abs(car.y - 50.0) < 0.01 and abs(car.x - 100.0) < 3.0
