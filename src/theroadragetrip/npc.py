@@ -568,6 +568,7 @@ def _align_approach_to_parking_orientation(
     route_points: List[Tuple[float, float]],
     parking_space,
     approach_distance_m: float = NPC_PARKING_APPROACH_DISTANCE_M,
+    orientation: Optional[float] = None,
 ) -> List[Tuple[float, float]]:
     """Insert one waypoint just before the destination so the vehicle's
     final heading approaches along the parking space's own orientation
@@ -577,11 +578,11 @@ def _align_approach_to_parking_orientation(
     Picks whichever of the axis's two directions is closer to the
     route's own natural final approach heading, so this never forces an
     unnecessary U-turn just to face "the other way" along the same line.
-    A no-op (returns route_points unchanged) when there's no parking
-    space, no usable geometry to derive an axis from, or the route is too
-    short to have a "final approach" at all.
+    An explicit orientation also aligns roadside parking. Without an
+    axis, or with fewer than two route points, leaves the route unchanged.
     """
-    orientation = _parking_space_axis(parking_space) if parking_space is not None else None
+    if parking_space is not None:
+        orientation = _parking_space_axis(parking_space)
     if orientation is None or len(route_points) < 2:
         return route_points
     destination = route_points[-1]
@@ -930,6 +931,7 @@ def build_driving_path(
     vehicle_width_m: float = NPC_VEHICLE_WIDTH_M,
     corner_radius_m: float = CORNER_RADIUS_M,
     skip_final_lane_offset: bool = False,
+    aligned_parking_approach: bool = False,
 ) -> List[PathPoint]:
     """Turn a raw centerline route (TrafficWorld.plan_route's output) into
     a lane-correct, corner-smoothed path for an NPC to follow.
@@ -938,6 +940,9 @@ def build_driving_path(
     multi-stage pipeline object yet), but route planning (the caller),
     lane offsetting, and corner rounding remain distinct, independently
     testable steps - see build_driving_path's own helpers.
+
+    aligned_parking_approach preserves the penultimate parking waypoint
+    so lane offsets cannot rotate the deliberately aligned final leg.
 
     skip_final_lane_offset, when set, reaches the very last point exactly
     as given instead of nudging it sideways by lane-offset math meant for
@@ -1000,7 +1005,7 @@ def build_driving_path(
     for i, (x, y) in enumerate(route_points):
         seg = min(i, n - 2)
         bias = _upcoming_maneuver(i)
-        if i == n - 1 and skip_final_lane_offset:
+        if (i == n - 1 and skip_final_lane_offset) or (i == n - 2 and aligned_parking_approach):
             lx, ly = x, y
         else:
             lx, ly = _lane_offset_point(segment_way[seg], x, y, segment_heading[seg], vehicle_width_m, maneuver=bias)
@@ -1366,7 +1371,14 @@ def _plan_and_validate_npc_route_steps(
     # unchanged) without one. Done before validation so the inserted
     # approach point is itself checked like any other route point.
     final_segment_count = 1
-    aligned_route = _align_approach_to_parking_orientation(deduped_route, parking_space)
+    roadside_orientation = None
+    if parking_space is None and destination_is_off_road:
+        shoulder = _roadside_parking_point(*destination, ways, spatial_grid)
+        if shoulder is not None and math.hypot(shoulder[0] - destination[0], shoulder[1] - destination[1]) < 0.1:
+            roadside_orientation = _resting_heading(*destination, None, ways, spatial_grid)
+    aligned_route = _align_approach_to_parking_orientation(
+        deduped_route, parking_space, orientation=roadside_orientation,
+    )
     if len(aligned_route) > len(deduped_route):
         deduped_route = _dedupe_points(aligned_route)
         final_segment_count = 2
@@ -1391,6 +1403,7 @@ def _plan_and_validate_npc_route_steps(
 
     path = build_driving_path(
         deduped_route, ways, spatial_grid=spatial_grid, skip_final_lane_offset=destination_is_off_road,
+        aligned_parking_approach=final_segment_count == 2,
     )
     yield
     if len(path) < 2:
@@ -2536,6 +2549,7 @@ def _parking_space_fits_vehicle(
 _LOW_TRAFFIC_HIGHWAY_TYPES = {"residential", "living_street", "service", "unclassified", "track"}
 ROADSIDE_PARKING_MAX_ROAD_DISTANCE_M = 5.0
 ROADSIDE_SHOULDER_MARGIN_M = 0.5
+ROADSIDE_JUNCTION_CLEARANCE_M = 10.0
 
 
 def _roadside_parking_point(
@@ -2549,7 +2563,8 @@ def _roadside_parking_point(
     building makes it inaccessible. Only used when better parking fails."""
     if ways is None:
         return None
-    way, distance = _way_at_point(spatial_grid, ways, x, y)
+    nearby_ways = list(spatial_grid.ways_in_rect(x - 20.0, y - 20.0, x + 20.0, y + 20.0)) if spatial_grid is not None else ways
+    way, distance = _way_at_point(None, [w for w in nearby_ways if getattr(w, "is_drivable", True)], x, y)
     # A point on the shoulder itself (a car parked there, its home) is
     # beyond the carriageway: reach that far too, or it never finds its
     # way back to the road.
@@ -2567,8 +2582,12 @@ def _roadside_parking_point(
         key=lambda segment: closest_point_and_dist_to_segment(x, y, *segment[0], *segment[1])[3],
     )
     _, _, t, _ = closest_point_and_dist_to_segment(x, y, ax, ay, bx, by)
-    # Leave room to turn onto the shoulder without parking in a junction.
-    t = max(0.25, min(0.75, t))
+    # Short map segments cannot fit a parking spot clear of both ends.
+    segment_length = math.hypot(bx - ax, by - ay)
+    if segment_length < 2.0 * ROADSIDE_JUNCTION_CLEARANCE_M:
+        return None
+    margin = ROADSIDE_JUNCTION_CLEARANCE_M / segment_length
+    t = max(margin, min(1.0 - margin, t))
     cx, cy = ax + (bx - ax) * t, ay + (by - ay) * t
     heading = math.atan2(by - ay, bx - ax)
     offset = way.half_width_m + NPC_VEHICLE_WIDTH_M * 0.5 + ROADSIDE_SHOULDER_MARGIN_M
@@ -2801,7 +2820,8 @@ def _resting_heading(
     axis = _parking_space_axis(parking_space)
     if axis is not None:
         return axis
-    way, distance = _way_at_point(spatial_grid, ways or [], x, y)
+    nearby_ways = list(spatial_grid.ways_in_rect(x - 20.0, y - 20.0, x + 20.0, y + 20.0)) if spatial_grid is not None else ways or []
+    way, distance = _way_at_point(None, [w for w in nearby_ways if getattr(w, "is_drivable", True)], x, y)
     if way is not None and distance < 20.0 and len(way.points_m) >= 2:
         closest_segment = min(
             zip(way.points_m, way.points_m[1:]),

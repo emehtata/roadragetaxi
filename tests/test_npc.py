@@ -685,6 +685,26 @@ def test_roadside_parking_point_only_on_a_quiet_drivable_way():
     assert _roadside_parking_point(50.0, 500.0, [quiet], None) is None
 
 
+def test_roadside_parking_keeps_ten_metres_clear_of_segment_ends():
+    road = Way(points_m=[(0.0, 0.0), (100.0, 0.0)], highway="residential", half_width_m=4.5)
+    assert _roadside_parking_point(0.0, 0.0, [road], None)[0] == pytest.approx(10.0)
+    assert _roadside_parking_point(100.0, 0.0, [road], None)[0] == pytest.approx(90.0)
+    short = Way(points_m=[(0.0, 0.0), (15.0, 0.0)], highway="residential", half_width_m=4.5)
+    assert _roadside_parking_point(7.5, 0.0, [short], None) is None
+
+
+def test_roadside_parking_and_heading_work_outside_the_indexed_carriageway():
+    from theroadragetrip.physics import SpatialWayGrid
+
+    road = Way(points_m=[(0.0, 0.0), (0.0, 100.0)], highway="residential", half_width_m=4.5)
+    grid = SpatialWayGrid()
+    grid.rebuild([road])
+    shoulder = _roadside_parking_point(0.0, 50.0, [road], grid)
+    assert shoulder == pytest.approx((5.9, 50.0))
+    assert _roadside_parking_point(*shoulder, [road], grid) == pytest.approx(shoulder)
+    assert _resting_heading(*shoulder, None, [road], grid) == pytest.approx(math.pi / 2.0)
+
+
 def test_pick_npc_destination_candidates_tries_the_next_nearest_space_first():
     """NPC-more.md section 3: "prefer a slightly farther valid parking
     space over a nearby invalid or dangerous location" - the nearest
@@ -962,9 +982,10 @@ def test_spawn_deterministic_npc_falls_back_to_roadside_parking_on_a_quiet_stree
     result = spawn_deterministic_npc(residents, tw, ways)
     assert result is not None
     _, driver, vehicle = result
-    assert vehicle.destination[0] == pytest.approx(395.0)  # clear of the endpoint junction
+    assert vehicle.destination[0] == pytest.approx(390.0)  # ten metres clear of the endpoint junction
     assert vehicle.destination[1] < -ways[-1].half_width_m  # beyond the carriageway, not blocking its lane
     assert driver.path[-1].y == pytest.approx(vehicle.destination[1])
+    assert driver.path[-2].y == pytest.approx(driver.path[-1].y)
 
 
 def test_route_crosses_curbs_rejects_a_path_clipping_a_mapped_curb():
