@@ -830,10 +830,9 @@ func _draw_trees(node: Node2D) -> void:
 func _draw_scenery_object(node: Node2D, at: Vector2, kind: String, angle: float) -> void:
 	match kind:
 		"bench":  # 1.4 x 0.4 m, along the path it's beside
-			var along := Vector2(cos(angle), -sin(angle))
-			var across := Vector2(-along.y, along.x)
-			node.draw_colored_polygon(PackedVector2Array([at - along * 0.7 - across * 0.2, at + along * 0.7 - across * 0.2,
-				at + along * 0.7 + across * 0.2, at - along * 0.7 + across * 0.2]), Color8(120, 82, 45))
+			node.draw_set_transform(at, -angle)
+			node.draw_rect(Rect2(-0.7, -0.2, 1.4, 0.4), Color8(120, 82, 45))
+			node.draw_set_transform(Vector2.ZERO)
 		"waste_basket":
 			var size := maxf(_px(2.0), 0.6)
 			node.draw_rect(Rect2(at - Vector2(size, size) / 2.0, Vector2(size, size)), Color8(58, 66, 56))
