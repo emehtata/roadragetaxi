@@ -99,6 +99,15 @@ def _all_messages(connection):
     return connection.try_recv_all()
 
 
+def _until_state(connection, timeout=5.0):
+    """The messages up to the next state: the server writes everything queued before it first."""
+    messages, deadline = [], time.monotonic() + timeout
+    while not any(m["type"] == "state" for m in messages) and time.monotonic() < deadline:
+        time.sleep(0.01)
+        messages += connection.try_recv_all()
+    return messages
+
+
 def test_a_new_client_first_gets_the_map_then_states_with_trains_and_events(monkeypatch):
     """What the Godot client relies on: a world header (origin, its
     player_id), the map chunks around the player, then per-tick states
@@ -114,7 +123,7 @@ def test_a_new_client_first_gets_the_map_then_states_with_trains_and_events(monk
     assert messages[0]["chunk_size_m"] == map_chunks.CHUNK_SIZE_M
 
     server.tick(1.0 / 30.0)
-    messages = _all_messages(connection)
+    messages = _until_state(connection)
     chunks = [m for m in messages if m["type"] == "chunk"]
     assert len(chunks) == (2 * map_chunks.LOAD_RADIUS + 1) ** 2
     assert messages[-1]["type"] == "state"  # the map arrives before the state that needs it
@@ -126,13 +135,14 @@ def test_a_new_client_first_gets_the_map_then_states_with_trains_and_events(monk
     connection.send(protocol.build_command_message(PlayerCommand(), interact=True, seq=1))  # get in
     time.sleep(0.05)
     server.tick(1.0 / 30.0)
-    state = _all_messages(connection)[-1]
+    state = _until_state(connection)[-1]
     assert state["type"] == "state" and isinstance(state["state"]["trains"], list)
     # getting in opens the door, once (godot-03.md: the Stable Audio door-open sound)
     assert [e for e in state["state"]["events"] if e.get("group", "").startswith("vehicle.door")] == [
         {"type": "sound", "group": "vehicle.door_open"}]
     server.tick(1.0 / 30.0)
-    assert _all_messages(connection)[-1]["state"]["events"] == []  # each event is sent once
+    events = _until_state(connection)[-1]["state"]["events"]  # traffic may bump the taxi meanwhile
+    assert not [e for e in events if e.get("group", "").startswith("vehicle.door")]  # each event is sent once
     connection.close()
 
 
