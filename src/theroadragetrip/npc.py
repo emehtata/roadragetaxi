@@ -1408,6 +1408,9 @@ def _plan_and_validate_npc_route_steps(
     yield
     if len(path) < 2:
         return None
+    final_heading = math.atan2(path[-1].y - path[-2].y, path[-1].x - path[-2].x)
+    if _parking_overlaps_walkway(path[-1].x, path[-1].y, final_heading, ways, spatial_grid):
+        return None
     path_points = [(p.x, p.y) for p in path]
     skip_leading_m = NPC_PARKING_ACCESS_TOLERANCE_M if origin_is_off_road else 0.0
     driveway_skip_m = (
@@ -2802,7 +2805,9 @@ def _pick_npc_destination_candidates(
         if roadside is not None and _point_is_clear_of_vehicles(roadside, other_vehicle_positions):
             ordered = [(0.0, roadside, None)]
 
-    return [(point, space) for _, point, space in ordered[:limit]]
+    return [(point, space) for _, point, space in ordered
+            if not _parking_overlaps_walkway(*point, _resting_heading(*point, space, ways, spatial_grid),
+                                             ways, spatial_grid)][:limit]
 
 
 def _resting_heading(
@@ -2841,6 +2846,28 @@ def _resting_heading(
     return 0.0
 
 
+def _parking_overlaps_walkway(x, y, heading, ways, spatial_grid=None,
+                             length_m=NPC_VEHICLE_LENGTH_M, width_m=NPC_VEHICLE_WIDTH_M):
+    """Parking must leave the whole mapped pedestrian corridor unobstructed."""
+    radius = math.hypot(length_m, width_m) * 0.5 + 10.0
+    nearby = list(spatial_grid.ways_in_rect(x - radius, y - radius, x + radius, y + radius)) if spatial_grid is not None else ways or []
+    road, _ = _way_at_point(None, [w for w in nearby if getattr(w, "is_drivable", True)
+                                  and w.highway not in ("footway", "pedestrian", "path", "steps", "cycleway")], x, y)
+    layer = getattr(road, "layer", 0)
+    for way in nearby:
+        if way.highway not in ("footway", "pedestrian", "path", "steps", "cycleway") or way.layer != layer:
+            continue
+        for a, b in zip(way.points_m, way.points_m[1:]):
+            segment_length = math.hypot(b[0] - a[0], b[1] - a[1])
+            if segment_length > 0.0 and boxes_intersect(
+                x, y, heading, length_m, width_m,
+                (a[0] + b[0]) * 0.5, (a[1] + b[1]) * 0.5,
+                math.atan2(b[1] - a[1], b[0] - a[0]), segment_length, 2.0 * way.half_width_m,
+            ):
+                return True
+    return False
+
+
 def place_parked_npc(
     vehicle_id: int,
     point: Tuple[float, float],
@@ -2873,6 +2900,8 @@ def place_parked_npc(
     definition = vehicle_definition(vehicle_type)
     length_m, width_m = definition.length_m, definition.width_m
     heading = _resting_heading(point[0], point[1], parking_space, ways, spatial_grid)
+    if _parking_overlaps_walkway(*point, heading, ways, spatial_grid, length_m, width_m):
+        return None
     if not is_vehicle_pose_valid(
         point[0], point[1], heading, curbs=curbs, buildings=buildings,
         curb_grid=curb_grid, building_grid=building_grid,
