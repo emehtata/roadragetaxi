@@ -736,6 +736,8 @@ static func start_sign(world: Dictionary, language: String) -> PanelContainer:
 			var wind := ""
 			if line.get("wind_speed_mps") != null and line.get("wind_from_deg") != null:
 				wind = "   %.1f m/s %s %.0f°" % [float(line.wind_speed_mps), wind_arrow(float(line.wind_from_deg)), float(line.wind_from_deg)]
+			if line.get("snow_depth_cm") != null:
+				wind += "   " + T.text("snow_depth", language) % float(line.snow_depth_cm)
 			rows.append(["%s   %+.0f °C   %s%s%s" % [line.get("time", ""), float(line.get("temperature_c", 0.0)), T.weather(str(line.get("weather", "")), language), wind,
 				"" if source == "generated" else "   (%s)" % T.text("weather_source_" + source, language)], 20, Color.WHITE])
 	rows.append([T.text("press_any_key_start", language), 24, Color.WHITE])
