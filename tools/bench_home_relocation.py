@@ -89,9 +89,11 @@ def main(argv=None) -> int:
     if args.osm_source:
         server_argv += ["--osm-source", args.osm_source]
     sys.argv = ["bench"] + server_argv
+    from theroadragetrip.performance import tune_interpreter
     from theroadragetrip.server import SimulationServer
     from theroadragetrip.server.cli import parse_server_args
 
+    tune_interpreter()  # as server/__main__.py
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
     counter = _Counter()
     logging.getLogger().addHandler(counter)
