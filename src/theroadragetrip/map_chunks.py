@@ -281,8 +281,9 @@ class ChunkIndex:
         ids = {chunk_id(*cell) for cell in cells}
         index._chunks = {cid: chunk for cid, chunk in old._chunks.items() if cid not in ids}
         index._chunks.update(rebuilt._chunks)
-        index._encoded = {cid: data for cid, data in old._encoded.items() if cid not in ids}
         changed = {cid for cid in ids if old._chunks.get(cid) != index._chunks.get(cid)}
+        # list(): the tick may be encoding into `old` meanwhile (a pass already swapped in).
+        index._encoded = {cid: data for cid, data in list(old._encoded.items()) if cid not in changed}
         return index, changed
 
     def _add(self, kind: str, points, feature) -> None:

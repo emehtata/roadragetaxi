@@ -298,3 +298,18 @@ def test_a_region_update_matches_a_full_rebuild_and_keeps_the_other_chunks():
     assert index._chunks == map_chunks.ChunkIndex(grown)._chunks
     assert changed == {"6_0", "7_0"}  # the chunks the new road reaches
     assert index._chunks["0_0"] is old._chunks["0_0"] and index._encoded["0_0"] is old._encoded["0_0"]  # untouched, kept
+
+
+def test_a_region_update_keeps_the_encoding_of_a_rebuilt_chunk_that_did_not_change():
+    def road(x0, x1, y):
+        return SimpleNamespace(points_m=[(x0, y), (x1, y)], half_width_m=3.0, highway="primary", is_drivable=True,
+                               layer=0, bbox=(x0, y, x1, y))
+
+    old_roads = [road(3000.0, 3400.0, 10.0)]
+    old = map_chunks.ChunkIndex(SimpleNamespace(ways=old_roads, railways=[], waters=[], buildings=[]))
+    old.encoded("5_0")
+    old.encoded("6_0")
+    grown = SimpleNamespace(ways=old_roads + [road(3100.0, 3900.0, 260.0)], railways=[], waters=[], buildings=[])
+    index, changed = map_chunks.ChunkIndex.updated(old, grown, (2600.0, 0.0, 3900.0, 300.0))  # 5_0 .. 7_0 rebuilt
+    assert changed == {"6_0", "7_0"}
+    assert index._encoded == {"5_0": old._encoded["5_0"]}  # the unchanged one isn't encoded again

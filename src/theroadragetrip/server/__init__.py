@@ -30,7 +30,7 @@ from typing import Optional
 
 from .. import protocol
 from ..navigation_route import NavigationRoute
-from ..map_chunks import CHUNK_SIZE_M, ChunkIndex, cell_of, chunk_id, plan
+from ..map_chunks import CHUNK_SIZE_M, LOAD_RADIUS, ChunkIndex, cell_of, chunk_id, plan
 from ..tile_streaming import world_to_tile
 from .map_sync import MapStreamer
 from ..protocol import LOCAL_PLAYER_ID
@@ -719,11 +719,21 @@ class SimulationServer:
             ix, iy = cell_of(self.car.x, self.car.y)
             near = (max(area[0], (ix - 1) * CHUNK_SIZE_M), max(area[1], (iy - 1) * CHUNK_SIZE_M),
                     min(area[2], (ix + 2) * CHUNK_SIZE_M), min(area[3], (iy + 2) * CHUNK_SIZE_M))
+
+            def encode_in_reach(index, changed):
+                # What the next ticks send (resends, the new tiles' chunks) is encoded
+                # here rather than in a tick: 2-20 ms a chunk.
+                for cid in changed:
+                    cx, cy = (int(part) for part in cid.split("_"))
+                    if max(abs(cx - ix), abs(cy - iy)) <= LOAD_RADIUS:
+                        index.encoded(cid)
+
             if near[0] < near[2] and near[1] < near[3]:
                 # The player's 3x3 chunks changed: those first, with the street
                 # lights known so far (after a Home jump the destination is drawn
                 # a second or more sooner; its new lamps come with the next pass).
                 index, changed = ChunkIndex.updated(index, self.world, near)
+                encode_in_reach(index, changed)
                 self._map_growth.append((previous, index, changed, old_bounds, new_bounds,
                                          time.perf_counter() - started, False, covered))
             lights_started = time.perf_counter()
@@ -737,6 +747,7 @@ class SimulationServer:
                 index, changed = ChunkIndex.updated(index, self.world, area)
             finally:
                 self.world.street_light_points = previous  # the tick's own until the swap
+            encode_in_reach(index, changed)
             self._map_growth.append((lights, index, changed, old_bounds, new_bounds, time.perf_counter() - started, True,
                                      covered))
             logger.info("Map chunks rebuilt for %.0f x %.0f m (lights %.0f ms)", area[2] - area[0], area[3] - area[1],
