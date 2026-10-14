@@ -1613,6 +1613,15 @@ func test_rest_of_static_world() -> void:
 	entities._frame = {"a": gap, "b": gap, "t": 0.0}
 	entities._lay_track()
 	check(entities._last_track == null, "no mark: the trail breaks")
+	var before: int = entities._track_points
+	var snowing := {"player": {"x": 0.0, "y": 0.0, "heading": 0.0}, "on_foot": true, "weather": {"weather_type": "snow"}}
+	entities._frame = {"a": snowing, "b": snowing, "t": 0.0}
+	entities._snowfall += entities.TRACK_SNOW_COVER_S * 0.5
+	check(is_equal_approx(entities._snow_cover(entities._trails[0][1][0]), 0.5) and entities._track_points == before,
+		"snowing: the tracks fade under fresh snow")
+	entities._snowfall += entities.TRACK_SNOW_COVER_S
+	entities._bury_tracks()
+	check(entities._track_points == 0 and entities._trails.is_empty(), "snowed over: they're gone")
 	entities.free()
 
 	# Snow: the trip text is outlined (readable on white).
