@@ -5,7 +5,7 @@ GODOT ?= $(HOME)/tools/godot/Godot_v$(GODOT_VERSION)-stable_linux.x86_64
 PORT ?= 8765
 PRESET ?= Oulu
 
-.PHONY: help venv install run run-debug run-pbf index-pbf run-server fetch-godot run-godot run-godot-all godot-selftest godot-test audio-check test compile check clean
+.PHONY: help venv install run run-debug run-pbf index-pbf run-server fetch-godot run-godot run-godot-all godot-selftest godot-test audio-check test compile check clean stop
 
 help:
 	@printf '%s\n' \
@@ -24,7 +24,8 @@ help:
 		'test                   Run the test suite' \
 		'compile                Compile-check Python sources' \
 		'check                  Run tests, compile-check, and diff-check' \
-		'clean                  Remove generated Python/test cache files'
+		'clean                  Remove generated Python/test cache files' \
+		'stop                   Kill every game instance: Godot clients, servers and their map-build workers'
 
 venv:
 	python3 -m venv .venv
@@ -89,3 +90,8 @@ check: test compile
 
 clean:
 	find . -type d \( -name '__pycache__' -o -name '.pytest_cache' \) -prune -exec rm -rf {} +
+
+stop:
+	-pkill -f -- '--path [g]odot'
+	-pkill -f -- '-m [t]heroadragetrip\.server'
+	-pkill -f -- '$(CURDIR)/\.venv/bin/python -c [f]rom multiprocessing'
