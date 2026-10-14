@@ -172,6 +172,7 @@ class TaxiManager:
     ):
         # Filter to the largest connected road network to avoid isolated trapped roads
         self.ways = connected_drivable_ways(ways)
+        self._ways_grid = None  # (the self.ways list it indexes, SpatialWayGrid, id(way) -> position): _ways_near
         self.places = places or []
         self.buildings = buildings or []
         self.taxi_stops = taxi_stops or []
@@ -1102,18 +1103,34 @@ class TaxiManager:
             return best_name
         return None
 
+    def _ways_near(self, x: float, y: float, reach: float) -> List[Way]:
+        """self.ways that may come within `reach` of (x, y), in self.ways
+        order - a nearest-road search over them ends on the same road as one
+        over every way, ties included. The index is built on first use after
+        the ways change (map sync)."""
+        if self._ways_grid is None or self._ways_grid[0] is not self.ways:
+            self._ways_grid = (self.ways, SpatialWayGrid(self.ways, cell_size=250.0),
+                               {id(way): index for index, way in enumerate(self.ways)})
+        _, grid, order = self._ways_grid
+        return sorted(grid.ways_in_rect(x - reach, y - reach, x + reach, y + reach), key=lambda way: order[id(way)])
+
     def passenger_waiting_position(self, target: TaxiTarget) -> Tuple[float, float, float]:
         """Place a phone passenger at the right edge of the nearest road."""
-        nearest = None
-        nearest_distance = float("inf")
-        for way in self.ways:
-            for start, end in zip(way.points_m, way.points_m[1:]):
-                px, py, _, distance = closest_point_and_dist_to_segment(
-                    target.x, target.y, start[0], start[1], end[0], end[1]
-                )
-                if distance < nearest_distance:
-                    nearest = (way, start, end, px, py)
-                    nearest_distance = distance
+        reach = 250.0
+        while True:  # the nearest road found within `reach` is the nearest of all
+            nearest = None
+            nearest_distance = float("inf")
+            for way in self._ways_near(target.x, target.y, reach):
+                for start, end in zip(way.points_m, way.points_m[1:]):
+                    px, py, _, distance = closest_point_and_dist_to_segment(
+                        target.x, target.y, start[0], start[1], end[0], end[1]
+                    )
+                    if distance < nearest_distance:
+                        nearest = (way, start, end, px, py)
+                        nearest_distance = distance
+            if nearest_distance <= reach or reach > 1e6:
+                break
+            reach *= 4.0
         if nearest is None:
             return target.x, target.y, 0.0
 
@@ -1230,17 +1247,19 @@ class TaxiManager:
                 center_y = building.y
                 anchors = [(center_x, center_y)]
             anchors.append((center_x, center_y))
+            # A road point within max_road_distance of an anchor is within `reach` of the
+            # centre: only those roads are scanned, and a building that can't meet the
+            # distance limits is skipped before any.
+            reach = max_road_distance + max(math.hypot(ax - center_x, ay - center_y) for ax, ay in anchors)
             if ref_x is not None and ref_y is not None:
-                # The road point found lies within max_road_distance of an anchor: a building that
-                # can't meet the distance limits is skipped before the scan over every road.
-                reach = max_road_distance + max(math.hypot(ax - center_x, ay - center_y) for ax, ay in anchors)
                 centre_distance = math.hypot(center_x - ref_x, center_y - ref_y)
                 if centre_distance + reach < min_dist or centre_distance - reach > max_dist:
                     continue
             nearest: Optional[Tuple[float, float, str, float]] = None
+            nearby = self._ways_near(center_x, center_y, reach)
 
             for anchor_x, anchor_y in anchors:
-                for way in self.ways:
+                for way in nearby:
                     if len(way.points_m) < 2 or not is_car_road(way):
                         continue
                     for start, end in zip(way.points_m, way.points_m[1:]):
