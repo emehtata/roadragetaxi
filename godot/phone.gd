@@ -46,6 +46,14 @@ var _title: Label
 var _close: Button
 var _clock: Label
 var clock_text := ""  # the game clock in the status bar (main.gd)
+const BATTERY_DRAIN_PER_HOUR := 8.0  # % per game hour: a full phone lasts a working day
+const BATTERY_CHARGER_AT := 20.0  # % left when it goes on the charger
+const BATTERY_CHARGE_PER_HOUR := 80.0  # % per game hour: 20% to full in about an hour
+var battery := 82.0
+var charging := false
+var _battery_label: Label
+var _battery_icon: Control
+var _last_game_seconds := -1.0
 var _expiry_max := {}  # item id -> the longest time left seen (the card's countdown bar)
 
 
@@ -97,7 +105,14 @@ func _ready() -> void:
 	var spacer := Control.new()
 	spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	bar.add_child(spacer)
-	bar.add_child(_label(13, Color8(235, 238, 242), "▂▄▆█ 5G   82% ▮"))
+	bar.add_child(_label(13, Color8(235, 238, 242), "▂▄▆█ 5G"))
+	_battery_label = _label(13, Color8(235, 238, 242))
+	bar.add_child(_battery_label)
+	_battery_icon = Control.new()
+	_battery_icon.custom_minimum_size = Vector2(26, 14)
+	_battery_icon.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	_battery_icon.draw.connect(_draw_battery)
+	bar.add_child(_battery_icon)
 	# The app's header.
 	var header := PanelContainer.new()
 	var header_style := StyleBoxFlat.new()
@@ -180,6 +195,44 @@ func set_language(value: String) -> void:
 	_reject.text = T.text("phone_decline", language)
 	_close.text = T.text("phone_close", language)
 	_refresh()
+
+
+## The battery runs on game time (`game_seconds`: since local midnight, from
+## the state): it drains, goes on the charger at 20% and charges to full.
+func set_game_seconds(game_seconds: float) -> void:
+	var dt := game_seconds - _last_game_seconds
+	if dt < 0.0:
+		dt += 86400.0  # past midnight
+	if _last_game_seconds >= 0.0 and dt < 3600.0:  # a bigger jump: a new game or a restart, not time passing
+		var next := battery_step(battery, charging, dt)
+		battery = next[0]
+		charging = next[1]
+	_last_game_seconds = game_seconds
+	if _battery_label != null:
+		_battery_label.text = "  %d%%" % roundi(battery)
+		_battery_icon.queue_redraw()
+
+
+static func battery_step(level: float, on_charger: bool, game_dt: float) -> Array:
+	if on_charger:
+		level = minf(100.0, level + BATTERY_CHARGE_PER_HOUR * game_dt / 3600.0)
+		return [level, level < 100.0]
+	level = maxf(0.0, level - BATTERY_DRAIN_PER_HOUR * game_dt / 3600.0)
+	return [level, level <= BATTERY_CHARGER_AT]
+
+
+func _draw_battery() -> void:
+	var s := _battery_icon.size
+	var body := Rect2(1, 2, s.x - 5, s.y - 4)
+	var ink := Color8(235, 238, 242)
+	_battery_icon.draw_rect(body, ink, false, 1.5)
+	_battery_icon.draw_rect(Rect2(body.end.x, body.position.y + body.size.y * 0.3, 2, body.size.y * 0.4), ink)  # the tip
+	var fill := Color8(90, 210, 110) if charging else (Color8(235, 80, 70) if battery <= BATTERY_CHARGER_AT else ink)
+	_battery_icon.draw_rect(Rect2(body.position + Vector2(2, 2), Vector2((body.size.x - 4) * battery / 100.0, body.size.y - 4)), fill)
+	if charging:  # the charger's bolt across it
+		var c := body.get_center()
+		_battery_icon.draw_colored_polygon(PackedVector2Array([c + Vector2(1, -6), c + Vector2(-4, 1), c + Vector2(0, 1),
+			c + Vector2(-1, 6), c + Vector2(4, -1), c + Vector2(0, -1)]), Color8(255, 220, 40))
 
 
 func open() -> void:

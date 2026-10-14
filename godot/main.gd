@@ -605,6 +605,8 @@ func _present(state: Dictionary) -> void:
 	labels.update_view(get_viewport().get_canvas_transform(), map_layer.chunk_count(), level != 0)
 	map_layer.set_obstacles(state.get("fallen_trees", []), state.get("knocked_posts", []))
 	phone.clock_text = hud._clock.text.get_slice(" ", 1) if hud._clock.text.contains(" ") else hud._clock.text
+	if state.has("game_time_seconds"):
+		phone.set_game_seconds(float(state["game_time_seconds"]))
 	phone.show_phone(state.get("phone", {}))
 	_refresh_inspector(state)
 	var target: Dictionary = entities.current_target(state)
