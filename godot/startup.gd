@@ -596,7 +596,7 @@ func _start(mode: String, skip_pbf_offer := false) -> void:
 	_settings.save("user://settings.cfg")
 	_clear()
 	_title(_t("loading"), _t("starting"))
-	var args := ["--port", str(PORT), "--game-mode", mode, "--language", _language]
+	var args := ["--port", str(PORT), "--game-mode", mode, "--language", _language, "--parent-pid", str(OS.get_process_id())]
 	if mode == "gig_driver":
 		args.append_array(["--preset", _city, "--start-time", "%04d-%02d-%02dT%02d:%02d" % [_start_time["year"], _start_time["month"], _start_time["day"], _start_time["hour"], _start_time["minute"]]])
 		if _start_point != Vector2.INF:

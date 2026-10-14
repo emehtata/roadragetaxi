@@ -16,6 +16,7 @@ from dataclasses import fields, is_dataclass
 from pathlib import Path
 from typing import Any, Callable, Mapping
 
+from .parent_watch import exit_with_parent
 from .osm.cache import default_cache_root
 from .tile_streaming import TileCoord
 
@@ -419,6 +420,7 @@ class WorldCacheManager:
         if self._build_executor is None:
             self._build_executor = concurrent.futures.ProcessPoolExecutor(
                 max_workers=1, mp_context=multiprocessing.get_context("spawn"),
+                initializer=exit_with_parent, initargs=(os.getpid(),),  # no orphan if the server is killed
             )
 
     @staticmethod

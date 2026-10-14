@@ -5,6 +5,7 @@ import multiprocessing
 from ..config import cities_from_config
 from ..game_args import configure_logging
 from ..performance import tune_interpreter
+from ..parent_watch import exit_with_parent
 from .cli import parse_server_args
 from . import run_server
 
@@ -38,6 +39,8 @@ def main() -> None:
         homes_path(CONFIG_PATH).unlink(missing_ok=True)
         print("[]")
         return
+    if args.parent_pid:
+        exit_with_parent(args.parent_pid)
     configure_logging(args.log_level, file_logging=config.getboolean("game", "file_logging", fallback=False))
     server = run_server(args, config)
     logger.info(

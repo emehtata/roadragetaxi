@@ -2,11 +2,13 @@ import concurrent.futures
 import logging
 import math
 import multiprocessing
+import os
 import threading
 import time
 from typing import List, Optional, Set, Tuple
 
 
+from ..parent_watch import exit_with_parent
 from ..performance import advance_chunked
 from ..tile_streaming import TileCoord, active_tiles, lookahead_tiles, tile_bbox, tile_changes, world_to_tile
 
@@ -1324,7 +1326,8 @@ class AutoFetchManager:
                     try:
                         if self._build_executor is None:
                             self._build_executor = concurrent.futures.ProcessPoolExecutor(
-                                max_workers=1, mp_context=context
+                                max_workers=1, mp_context=context,
+                                initializer=exit_with_parent, initargs=(os.getpid(),),  # no orphan if the server is killed
                             )
                         res = self._build_executor.submit(self.build_func, elems).result()
                     except (concurrent.futures.process.BrokenProcessPool, OSError) as exc:
