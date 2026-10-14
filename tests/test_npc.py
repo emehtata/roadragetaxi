@@ -1941,3 +1941,45 @@ def test_the_parking_area_under_a_car_is_found_without_testing_far_lots(monkeypa
     assert npc._parking_area_containing((5020.0, 20.0), lots) is lots[5]
     assert npc._parking_area_containing((5020.0, 60.0), lots) is None
     assert len(tested) == 1  # only the lot whose box holds the point
+
+
+def _wreck_ahead(x, y, heading=0.0):
+    return SimpleNamespace(x=x, y=y, heading=heading, speed=0.0, length_m=4.3, width_m=1.8, state=NPCState.CRASHED)
+
+
+def test_update_npc_drives_around_a_wreck_when_the_oncoming_lane_is_clear():
+    ways = _straight_chain(count=20)
+    tw = TrafficWorld(ways)
+    residents = ResidentManager()
+    _, driver, vehicle = spawn_npc(1, residents, tw, ways, (0.0, 0.0), (200.0, 0.0))
+    wreck = _wreck_ahead(vehicle.car.x + 40.0, vehicle.car.y)
+    for _ in range(60 * 30):
+        update_npc(vehicle, driver, 1.0 / 60.0, tw, residents, nearby_obstacles=[wreck])
+        assert math.hypot(vehicle.car.x - wreck.x, vehicle.car.y - wreck.y) > 2.0  # never through it
+        if vehicle.car.x > wreck.x + 12.0:
+            break
+    assert vehicle.car.x > wreck.x + 12.0
+    assert driver.passing is None  # back in its own lane once past
+
+
+def test_update_npc_waits_behind_a_wreck_while_traffic_comes_the_other_way():
+    ways = _straight_chain(count=20)
+    tw = TrafficWorld(ways)
+    residents = ResidentManager()
+    _, driver, vehicle = spawn_npc(1, residents, tw, ways, (0.0, 0.0), (200.0, 0.0))
+    wreck = _wreck_ahead(vehicle.car.x + 20.0, vehicle.car.y)
+    oncoming = SimpleNamespace(x=vehicle.car.x + 45.0, y=vehicle.car.y + 3.0, speed=0.0, length_m=4.3)
+    for _ in range(60 * 10):
+        update_npc(vehicle, driver, 1.0 / 60.0, tw, residents, nearby_obstacles=[wreck, oncoming])
+    assert driver.passing is None and vehicle.car.x < wreck.x
+
+
+def test_update_npc_does_not_try_to_pass_a_wreck_lying_across_the_road():
+    ways = _straight_chain(count=20)
+    tw = TrafficWorld(ways)
+    residents = ResidentManager()
+    _, driver, vehicle = spawn_npc(1, residents, tw, ways, (0.0, 0.0), (200.0, 0.0))
+    wreck = _wreck_ahead(vehicle.car.x + 20.0, vehicle.car.y + 1.0, heading=math.pi / 2)
+    for _ in range(60 * 10):
+        update_npc(vehicle, driver, 1.0 / 60.0, tw, residents, nearby_obstacles=[wreck])
+    assert driver.passing is None and vehicle.car.x < wreck.x

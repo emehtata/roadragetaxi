@@ -133,6 +133,12 @@ NPC_AVOIDANCE_DETECTION_DISTANCE_M = 30.0
 NPC_AVOIDANCE_LATERAL_LIMIT_M = 2.5
 NPC_AVOIDANCE_DECEL_MPS2 = 3.0  # comfortable following-distance braking rate, same order as corner/arrival braking
 NPC_AVOIDANCE_MIN_GAP_M = 2.0  # bumper-to-bumper gap kept from a stopped vehicle ahead
+# Driving around a car that will not move (a wreck, a parked car in the lane):
+NPC_PASS_WAIT_S = 3.0  # stopped behind it this long first
+NPC_PASS_START_GAP_M = 6.0  # ...and this close to it (bumper to bumper)
+NPC_PASS_ONCOMING_CHECK_M = 60.0  # the oncoming lane must be empty this far ahead
+NPC_PASS_CLEARANCE_M = 2.0  # back in lane once this far past it
+NPC_PASS_SPEED_MPS = 6.0
 
 # NPC-005: Road Rage. Wider than NPC_AVOIDANCE_*'s own strict single-lane
 # cone (a horn should plausibly affect a car slightly off to the side,
@@ -409,6 +415,38 @@ def _lane_offset_point(
     else:
         lane_offset = cruise_offset
     return x + math.sin(heading) * lane_offset, y - math.cos(heading) * lane_offset
+
+
+def _is_stalled(obstacle) -> bool:
+    """A vehicle that will not move on its own: worth driving around."""
+    return getattr(obstacle, "state", None) in (NPCState.CRASHED, NPCState.PARKED)
+
+
+def _pass_offset_m(way: Optional[Way], vehicle_width_m: float) -> float:
+    """From the right-hand lane to the mirrored oncoming one (_lane_offset_point's cruise offset, twice)."""
+    half_width = max(0.0, getattr(way, "half_width_m", 4.0))
+    return 2.0 * min(max(1.2, half_width * 0.45), max(0.0, half_width - vehicle_width_m * 0.5))
+
+
+def _oncoming_lane_clear(x: float, y: float, heading: float, offset_m: float, width_m: float, obstacles, skip) -> bool:
+    """Nothing in the lane `offset_m` to the left, from just behind to
+    NPC_PASS_ONCOMING_CHECK_M ahead - `skip` (the stalled car) included,
+    should it lie across the road."""
+    hx, hy = math.cos(heading), math.sin(heading)
+    turn = getattr(skip, "heading", heading) - heading
+    reach = ((skip.y - y) * hx - (skip.x - x) * hy
+             + abs(math.sin(turn)) * getattr(skip, "length_m", NPC_VEHICLE_LENGTH_M) * 0.5
+             + abs(math.cos(turn)) * getattr(skip, "width_m", NPC_VEHICLE_WIDTH_M) * 0.5)
+    if reach > offset_m - width_m * 0.5 - 0.3:
+        return False
+    for obstacle in obstacles:
+        if obstacle is skip:
+            continue
+        dx, dy = obstacle.x - x, obstacle.y - y
+        along, left = dx * hx + dy * hy, dy * hx - dx * hy
+        if -3.0 < along < NPC_PASS_ONCOMING_CHECK_M and offset_m * 0.5 < left < offset_m * 1.5 + 1.0:
+            return False
+    return True
 
 
 def _road_rage_yield_target(
@@ -1028,6 +1066,8 @@ class Driver:
     lookahead_distance_m: float = 0.0
     steering_input: float = 0.0
     destination_is_off_road: bool = False
+    passing: Optional[object] = None  # the stalled vehicle being driven around in the oncoming lane
+    pass_wait_s: float = 0.0
 
     @property
     def next_maneuver(self) -> str:
@@ -2173,9 +2213,22 @@ def update_npc(
     # brake for it (reproduced: a vehicle rear-ended a parked car right
     # after a turn, having never detected it at all mid-turn).
     avoidance_heading = math.atan2(target.y - vehicle.car.y, target.x - vehicle.car.x)
+    pass_offset = _pass_offset_m(driver.current_way, vehicle.width_m)
+    passing = driver.passing
+    if passing is not None:
+        hx, hy = math.cos(avoidance_heading), math.sin(avoidance_heading)
+        passed = (passing.x - vehicle.car.x) * hx + (passing.y - vehicle.car.y) * hy < -(
+            vehicle.length_m * 0.5 + getattr(passing, "length_m", NPC_VEHICLE_LENGTH_M) * 0.5 + NPC_PASS_CLEARANCE_M)
+        towed = manager is not None and not any(v is passing for v in getattr(manager, "vehicles", ()))
+        if passed or towed or not _is_stalled(passing):
+            driver.passing = passing = None
+        else:  # steer for the oncoming lane until past it
+            target = PathPoint(target.x - hy * pass_offset, target.y + hx * pass_offset,
+                               target.way, target.is_turn, target.maneuver, target.lane_bias)
+            driver.target_speed_mps = min(driver.target_speed_mps, NPC_PASS_SPEED_MPS)
     avoidance_blocked = False
     lead = nearest_vehicle_ahead(
-        vehicle.car.x, vehicle.car.y, avoidance_heading, nearby_obstacles or (),
+        vehicle.car.x, vehicle.car.y, avoidance_heading, [o for o in nearby_obstacles or () if o is not passing],
         self_id=id(vehicle),
         detection_distance_m=NPC_AVOIDANCE_DETECTION_DISTANCE_M,
         lateral_limit_m=NPC_AVOIDANCE_LATERAL_LIMIT_M,
@@ -2190,6 +2243,17 @@ def update_npc(
         )
         driver.target_speed_mps = min(driver.target_speed_mps, avoidance_cap)
         avoidance_blocked = following_gap <= 0.1 and lead_speed_mps < 0.5
+    if (passing is None and lead is not None and _is_stalled(lead[1]) and abs(vehicle.car.speed) < 0.5
+            and following_gap < NPC_PASS_START_GAP_M):
+        driver.pass_wait_s += dt
+        if driver.pass_wait_s >= NPC_PASS_WAIT_S:
+            oncoming = list(nearby_obstacles or ())
+            if manager is not None:
+                oncoming += manager.nearby_vehicles_at(vehicle.car.x, vehicle.car.y, NPC_PASS_ONCOMING_CHECK_M)
+            if _oncoming_lane_clear(vehicle.car.x, vehicle.car.y, avoidance_heading, pass_offset, vehicle.width_m, oncoming, lead[1]):
+                driver.passing, driver.pass_wait_s = lead[1], 0.0
+    else:
+        driver.pass_wait_s = 0.0
 
     # NPC-005: Road Rage. A timed clamp, not a state change - the vehicle
     # keeps obeying every other rule above it (traffic lights, corners,
