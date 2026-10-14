@@ -42,3 +42,22 @@ def test_clear_winter_still_uses_slippery_road_grip_value():
     winter = WeatherSystem(season=Season.WINTER)
     assert summer.road_grip_wetness == 0.0
     assert winter.road_grip_wetness == 1.0
+
+
+def test_the_clock_follows_finnish_summer_time():
+    from theroadragetrip.calendar import finnish_utc_offset_hours, solar_altitude_and_events_on
+    assert finnish_utc_offset_hours(datetime(2026, 1, 15, 12)) == 2.0
+    assert finnish_utc_offset_hours(datetime(2026, 7, 15, 12)) == 3.0
+    spring = GameCalendar(datetime(2026, 3, 29, 2, 59, 30))  # last Sunday of March
+    spring.advance(60)
+    assert spring.current == datetime(2026, 3, 29, 4, 0, 30)  # 03:00 never comes
+    autumn = GameCalendar(datetime(2026, 10, 25, 3, 59, 30))  # last Sunday of October
+    autumn.advance(60)
+    assert autumn.current == datetime(2026, 10, 25, 3, 0, 30) and autumn.current.fold == 1
+    assert finnish_utc_offset_hours(autumn.current) == 2.0
+    autumn.advance(3600)
+    assert autumn.current == datetime(2026, 10, 25, 4, 0, 30)
+    # the sun: winter's 12:00 is an hour later in solar time than summer time would make it
+    _, winter_rise, _ = solar_altitude_and_events_on(datetime(2026, 12, 1).date(), 43200, 65.0, 25.5)
+    _, summer_clock_rise, _ = solar_altitude_and_events_on(datetime(2026, 12, 1).date(), 43200, 65.0, 25.5, 3.0)
+    assert abs((summer_clock_rise - winter_rise) - 60.0) < 0.01

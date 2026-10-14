@@ -5,7 +5,7 @@ import math
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from enum import Enum
-from typing import Tuple
+from typing import Optional, Tuple
 
 
 class Season(str, Enum):
@@ -63,18 +63,52 @@ class GameCalendar:
         return seasonal_appearance_for_date(self.date, self.latitude)
 
     def advance(self, game_seconds: float) -> None:
-        self.current += timedelta(seconds=game_seconds)
+        """On Finnish local time: the clock skips 03:00-04:00 in spring
+        and runs it twice in autumn (the second time with fold=1)."""
+        self.current = finnish_local_time(finnish_utc(self.current) + timedelta(seconds=game_seconds))
 
 
-FINLAND_SUMMER_TIME_OFFSET = 3.0  # hours: the game clock is Finnish summer time all year
+def _last_sunday(year: int, month: int) -> date:
+    last = date(year, month + 1, 1) - timedelta(days=1)
+    return last - timedelta(days=(last.weekday() + 1) % 7)
+
+
+def _summer_time_utc(year: int) -> Tuple[datetime, datetime]:
+    """Finnish summer time, as naive UTC: from the last Sunday of March to the
+    last Sunday of October, both at 04:00 summer time (01:00 UTC)."""
+    one_utc = datetime.min.time().replace(hour=1)
+    return datetime.combine(_last_sunday(year, 3), one_utc), datetime.combine(_last_sunday(year, 10), one_utc)
+
+
+def finnish_utc_offset_hours(local: datetime) -> float:
+    """3 in summer time, 2 otherwise. The repeated autumn hour (03:00-04:00)
+    is summer time unless fold=1; the skipped spring hour counts as winter."""
+    start, end = _summer_time_utc(local.year)
+    if start + timedelta(hours=3) <= local < end + timedelta(hours=3):
+        return 2.0 if local.fold and local >= end + timedelta(hours=2) else 3.0
+    return 2.0
+
+
+def finnish_utc(local: datetime) -> datetime:
+    return local.replace(fold=0) - timedelta(hours=finnish_utc_offset_hours(local))
+
+
+def finnish_local_time(utc: datetime) -> datetime:
+    start, end = _summer_time_utc(utc.year)
+    if start <= utc < end:
+        return utc + timedelta(hours=3)
+    local = utc + timedelta(hours=2)
+    return local.replace(fold=1) if end <= utc < end + timedelta(hours=1) else local
 
 
 def solar_altitude_and_events_on(
-    game_date: date, game_time_seconds: float, latitude: float, longitude: float,
+    game_date: date, game_time_seconds: float, latitude: float, longitude: float, utc_offset_hours: Optional[float] = None,
 ) -> Tuple[float, float, float]:
     """(sun altitude in degrees, sunrise and sunset in local minutes) for a
     date and time of day - the solar model the server sends (godot-14). Sunrise/sunset: 0 and 1440 under the midnight sun, NaN in
     the polar night."""
+    if utc_offset_hours is None:  # the day's offset at noon
+        utc_offset_hours = finnish_utc_offset_hours(datetime.combine(game_date, datetime.min.time().replace(hour=12)))
     day_of_year = game_date.timetuple().tm_yday
     declination = math.radians(23.45 * math.sin(math.radians(360.0 * (284.0 + day_of_year) / 365.0)))
     latitude_radians = math.radians(latitude)
@@ -86,7 +120,7 @@ def solar_altitude_and_events_on(
         - 0.014615 * math.cos(2.0 * gamma)
         - 0.040849 * math.sin(2.0 * gamma)
     )
-    solar_minutes = game_time_seconds / 60.0 + equation_of_time + 4.0 * longitude - 60.0 * FINLAND_SUMMER_TIME_OFFSET
+    solar_minutes = game_time_seconds / 60.0 + equation_of_time + 4.0 * longitude - 60.0 * utc_offset_hours
     hour_angle = math.radians(solar_minutes / 4.0 - 180.0)
     altitude = math.degrees(math.asin(
         math.sin(latitude_radians) * math.sin(declination)
@@ -101,7 +135,7 @@ def solar_altitude_and_events_on(
     elif sunrise_cosine >= 1.0:
         sunrise_minutes = sunset_minutes = float("nan")
     else:
-        solar_noon = 720.0 - 4.0 * longitude - equation_of_time + 60.0 * FINLAND_SUMMER_TIME_OFFSET
+        solar_noon = 720.0 - 4.0 * longitude - equation_of_time + 60.0 * utc_offset_hours
         hour_angle_minutes = 4.0 * math.degrees(math.acos(sunrise_cosine))
         sunrise_minutes = solar_noon - hour_angle_minutes
         sunset_minutes = solar_noon + hour_angle_minutes

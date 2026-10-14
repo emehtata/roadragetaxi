@@ -34,7 +34,7 @@ from ..map_chunks import CHUNK_SIZE_M, LOAD_RADIUS, ChunkIndex, cell_of, chunk_i
 from ..tile_streaming import world_to_tile
 from .map_sync import MapStreamer
 from ..protocol import LOCAL_PLAYER_ID
-from ..calendar import GameCalendar, darkness_for_sun_altitude, solar_altitude_and_events_on
+from ..calendar import GameCalendar, darkness_for_sun_altitude, finnish_utc_offset_hours, solar_altitude_and_events_on
 from ..career import career_path, gig_odometer_path, load_career
 from ..config import CONFIG_PATH, cities_from_config, default_city_configuration, get_overpass_endpoints
 from ..world_loader import load_world, resolve_city
@@ -394,6 +394,7 @@ class SimulationServer:
         altitude, _, _ = solar_altitude_and_events_on(
             self.calendar.date, self.calendar.time_seconds,
             getattr(self.world, "sun_latitude", self.calendar.latitude), getattr(self.world, "sun_longitude", 25.47),
+            finnish_utc_offset_hours(self.calendar.current),
         )
         look = self.calendar.seasonal_appearance  # continuous weights, for the client to blend
         return {"date": self.calendar.date.isoformat(), "time_scale": self._time_scale,
