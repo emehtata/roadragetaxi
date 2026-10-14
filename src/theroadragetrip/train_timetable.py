@@ -21,11 +21,7 @@ from datetime import date, datetime, time, timedelta, timezone
 from pathlib import Path
 from typing import Callable, Dict, List, Optional, Sequence, Tuple
 
-try:
-    from zoneinfo import ZoneInfo
-    FINLAND = ZoneInfo("Europe/Helsinki")
-except Exception:  # pragma: no cover - tzdata missing: DST handling degrades to EET
-    FINLAND = timezone(timedelta(hours=2))
+from .calendar import FINLAND_TZ as FINLAND  # the system time-zone database, else the Finnish rule
 
 logger = logging.getLogger(__name__)
 

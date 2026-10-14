@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone, tzinfo
 from enum import Enum
 from typing import Optional, Tuple
 
@@ -80,25 +80,52 @@ def _summer_time_utc(year: int) -> Tuple[datetime, datetime]:
     return datetime.combine(_last_sunday(year, 3), one_utc), datetime.combine(_last_sunday(year, 10), one_utc)
 
 
+class FinnishRuleTime(tzinfo):
+    """Finnish time without a time-zone database: UTC+2, and UTC+3 in
+    summer time. The repeated autumn hour (03:00-04:00) is summer time
+    unless fold=1; the skipped spring hour counts as winter."""
+
+    def utcoffset(self, dt: Optional[datetime]) -> timedelta:
+        if dt is None:
+            return timedelta(hours=2)
+        local = dt.replace(tzinfo=None)
+        start, end = _summer_time_utc(local.year)
+        if start + timedelta(hours=3) <= local < end + timedelta(hours=3):
+            return timedelta(hours=2 if dt.fold and local >= end + timedelta(hours=2) else 3)
+        return timedelta(hours=2)
+
+    def dst(self, dt: Optional[datetime]) -> timedelta:
+        return self.utcoffset(dt) - timedelta(hours=2)
+
+    def tzname(self, dt: Optional[datetime]) -> str:
+        return "EEST" if self.dst(dt) else "EET"
+
+    def fromutc(self, dt: datetime) -> datetime:
+        utc = dt.replace(tzinfo=None)
+        start, end = _summer_time_utc(utc.year)
+        if start <= utc < end:
+            return (utc + timedelta(hours=3)).replace(tzinfo=self)
+        return (utc + timedelta(hours=2)).replace(tzinfo=self, fold=int(end <= utc < end + timedelta(hours=1)))
+
+
+try:  # the system's time-zone database, else the rule above
+    from zoneinfo import ZoneInfo
+    FINLAND_TZ: tzinfo = ZoneInfo("Europe/Helsinki")
+except Exception:  # tzdata missing (e.g. bare Windows)
+    FINLAND_TZ = FinnishRuleTime()
+
+
 def finnish_utc_offset_hours(local: datetime) -> float:
-    """3 in summer time, 2 otherwise. The repeated autumn hour (03:00-04:00)
-    is summer time unless fold=1; the skipped spring hour counts as winter."""
-    start, end = _summer_time_utc(local.year)
-    if start + timedelta(hours=3) <= local < end + timedelta(hours=3):
-        return 2.0 if local.fold and local >= end + timedelta(hours=2) else 3.0
-    return 2.0
+    """3 in summer time, 2 otherwise, for a naive Finnish local time."""
+    return local.replace(tzinfo=FINLAND_TZ).utcoffset().total_seconds() / 3600.0
 
 
 def finnish_utc(local: datetime) -> datetime:
-    return local.replace(fold=0) - timedelta(hours=finnish_utc_offset_hours(local))
+    return local.replace(tzinfo=FINLAND_TZ).astimezone(timezone.utc).replace(tzinfo=None)
 
 
 def finnish_local_time(utc: datetime) -> datetime:
-    start, end = _summer_time_utc(utc.year)
-    if start <= utc < end:
-        return utc + timedelta(hours=3)
-    local = utc + timedelta(hours=2)
-    return local.replace(fold=1) if end <= utc < end + timedelta(hours=1) else local
+    return utc.replace(tzinfo=timezone.utc).astimezone(FINLAND_TZ).replace(tzinfo=None)
 
 
 def solar_altitude_and_events_on(

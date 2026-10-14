@@ -26,11 +26,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Callable, Dict, List, Optional, Tuple
 
-try:
-    from zoneinfo import ZoneInfo
-    GAME_TIMEZONE = ZoneInfo("Europe/Helsinki")
-except Exception:  # pragma: no cover - tzdata missing (e.g. bare Windows)
-    GAME_TIMEZONE = timezone(timedelta(hours=2))
+from .calendar import FINLAND_TZ as GAME_TIMEZONE  # the system time-zone database, else the Finnish rule
 
 logger = logging.getLogger(__name__)
 

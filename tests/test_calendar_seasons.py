@@ -44,7 +44,11 @@ def test_clear_winter_still_uses_slippery_road_grip_value():
     assert winter.road_grip_wetness == 1.0
 
 
-def test_the_clock_follows_finnish_summer_time():
+@pytest.mark.parametrize("rule_only", [False, True])
+def test_the_clock_follows_finnish_summer_time(monkeypatch, rule_only):
+    import theroadragetrip.calendar as calendar_module
+    if rule_only:  # no time-zone database
+        monkeypatch.setattr(calendar_module, "FINLAND_TZ", calendar_module.FinnishRuleTime())
     from theroadragetrip.calendar import finnish_utc_offset_hours, solar_altitude_and_events_on
     assert finnish_utc_offset_hours(datetime(2026, 1, 15, 12)) == 2.0
     assert finnish_utc_offset_hours(datetime(2026, 7, 15, 12)) == 3.0
@@ -61,3 +65,16 @@ def test_the_clock_follows_finnish_summer_time():
     _, winter_rise, _ = solar_altitude_and_events_on(datetime(2026, 12, 1).date(), 43200, 65.0, 25.5)
     _, summer_clock_rise, _ = solar_altitude_and_events_on(datetime(2026, 12, 1).date(), 43200, 65.0, 25.5, 3.0)
     assert abs((summer_clock_rise - winter_rise) - 60.0) < 0.01
+
+
+def test_the_finnish_rule_matches_the_time_zone_database():
+    from datetime import timedelta, timezone
+    from zoneinfo import ZoneInfo
+    from theroadragetrip.calendar import FinnishRuleTime
+    rule, database = FinnishRuleTime(), ZoneInfo("Europe/Helsinki")
+    moment = datetime(2025, 1, 1, tzinfo=timezone.utc)
+    while moment.year < 2027:
+        by_rule, by_database = moment.astimezone(rule), moment.astimezone(database)
+        assert by_rule.replace(tzinfo=None) == by_database.replace(tzinfo=None) and by_rule.fold == by_database.fold
+        assert by_rule.utcoffset() == by_database.utcoffset()
+        moment += timedelta(minutes=30)
