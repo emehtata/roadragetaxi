@@ -706,6 +706,9 @@ func test_speech_and_stations() -> void:
 	for label in sign.get_child(0).get_children():
 		sign_text += label.text + "\n"
 	check(sign_text == "SYSMÄ\nWeather forecast for the next 24 hours\n08.10. 18:00   +8 °C   Clear   6.5 m/s ↗ 225°   snow 2 cm   (observed)\nPress any key to start\n", "start sign: city, forecast with wind, snow depth and its source, the prompt")
+	var snowless := Main.start_sign({"city": "Sysmä", "forecast": [{"time": "08.10. 18:00", "temperature_c": 8.4, "weather": "clear", "source": "observed", "snow_depth_cm": 0.0}]}, "en")
+	check(not (snowless.get_child(0).get_child(2) as Label).text.contains("snow"), "start sign: no snow depth shown when there is no snow")
+	snowless.free()
 	check(Main.wind_arrow(0.0) == "↓" and Main.wind_arrow(90.0) == "←" and Main.wind_arrow(225.0) == "↗", "wind arrow points downwind from FMI's from-bearing")
 	sign.free()
 	check(Hud.map_loading_text("", 0) == "" and Hud.map_loading_text("fetching", 0).contains("Loading map…") and Hud.map_loading_text("fetching", 0).contains("downloading"), "map loading sign: shown while the map grows, gone when settled")
