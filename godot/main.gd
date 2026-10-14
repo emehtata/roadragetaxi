@@ -224,9 +224,7 @@ func _process_chunk_queues(started_usec: int) -> void:
 	var at := started_usec
 	var last := 0
 	while not _chunk_queue.is_empty() and (at == started_usec or at - started_usec + last <= CHUNK_BUDGET_USEC):
-		var message: Dictionary = _chunk_queue.pop_front()
-		map_layer.remove_chunk(message["chunk_id"])  # a changed chunk: swapped in the same frame, no hole
-		map_layer.add_chunk(message)
+		map_layer.replace_chunk(_chunk_queue.pop_front())
 		var now := Time.get_ticks_usec()
 		last = now - at
 		Perf.add("chunk_add", last)

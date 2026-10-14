@@ -67,6 +67,7 @@ var _season := [0.0, 0.0, 1.0, 0.0]  # [winter, spring, summer, autumn] (state c
 var _season_layers: Array[Node2D] = []  # landuse and islands: their green kinds follow the season
 var _signs: Node2D = null  # signs and speed cameras, if any
 var _flash = null  # the flashing speed camera's id (state speed_camera_flash)
+var stale_buildings: Array = []  # the replaced chunk's building nodes, shown until ours are built (keep_until_built)
 
 
 func _notification(what: int) -> void:
@@ -402,6 +403,22 @@ func _build_2_5d() -> void:
 	_building_task = WorkerThreadPool.add_task(func(): _buildings_ready.call_deferred(_build_timed(buildings, styles, origin, view)))
 
 
+## The buildings of the chunk this one replaces (a resend after the map
+## grew) stay until this chunk's own are built on the worker, so they don't
+## blink; with nothing to build, they go at once.
+func keep_until_built(nodes: Array) -> void:
+	stale_buildings.append_array(nodes)
+	if _building_task < 0:
+		drop_stale_buildings()
+
+
+func drop_stale_buildings() -> void:
+	for node in stale_buildings:
+		if is_instance_valid(node):
+			node.free()
+	stale_buildings = []
+
+
 static var build_async := true  # tests build in place
 static var language := "en"  # unnamed fuel stations' board (main._apply_language)
 static var buildings_3d := true  # godot-21 prototype; --buildings 2d: the godot-20 radial renderer
@@ -424,6 +441,7 @@ func _meshes_ready(arrays: Dictionary) -> void:
 	_volumes = {"stats": arrays["stats"]}  # the vertices live in the meshes
 	if is_inside_tree():
 		get_parent().add_building_meshes(self)
+	drop_stale_buildings()
 var _building_task := -1
 
 
@@ -443,6 +461,7 @@ func _buildings_ready(volumes: Dictionary) -> void:
 	_built_view = volumes.get("view_centre", _building_view)
 	Perf.add("chunk_buildings_build", volumes.get("build_usec", 0))
 	building_node.queue_redraw()
+	drop_stale_buildings()
 	if not _volumes["lit_indices"].is_empty() and _lit_windows == null:
 		_lit_windows = Node2D.new()
 		var add := CanvasItemMaterial.new()

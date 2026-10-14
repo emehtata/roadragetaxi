@@ -148,6 +148,7 @@ func _free_chunk(chunk: Node) -> void:
 	for node in chunk.meshes_3d:
 		node.free()
 	chunk.meshes_3d = []
+	chunk.drop_stale_buildings()
 	if _pool_group != null and chunk._pools.get_parent() == _pool_group:
 		_pool_group.remove_child(chunk._pools)
 		chunk._pools.free()  # out of the tree already; the chunk's own cleanup then skips it
@@ -301,6 +302,24 @@ func set_wetness(value: float) -> bool:
 	for chunk in _chunks.values():
 		chunk.set_wetness(wetness)
 	return true
+
+
+## A chunk the server resent (changed) swapped in for the drawn one in the
+## same frame, so there is no hole; its old buildings stay until the new
+## chunk's are built (MapChunk.keep_until_built). A new chunk is just added.
+func replace_chunk(message: Dictionary) -> void:
+	var old = _chunks.get(message["chunk_id"])
+	var keep: Array = []
+	if old != null:
+		keep = old.stale_buildings + old.meshes_3d
+		old.stale_buildings = []
+		old.meshes_3d = []
+		if old.building_node != null and old.building_node.get_parent() == _buildings:
+			keep.append(old.building_node)
+			old.building_node = null
+		remove_chunk(message["chunk_id"])
+	add_chunk(message)
+	_chunks[message["chunk_id"]].keep_until_built(keep)
 
 
 func remove_chunk(chunk_id: String) -> bool:

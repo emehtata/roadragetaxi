@@ -60,6 +60,7 @@ func _process(_delta: float) -> bool:  # first frame: the tree is live, so nodes
 	test_rest_of_static_world()
 	test_buildings_2_5d()
 	test_buildings_3d()
+	test_resent_chunk_buildings()
 	test_performance_paths()
 	print("%d checks, %d failed" % [_checks, _failures])
 	quit(1 if _failures > 0 else 0)
@@ -1777,6 +1778,42 @@ func test_buildings_3d() -> void:
 	map.buildings_3d.set_light(0.0, Color.WHITE)
 	map.clear()
 	check(map.buildings_3d.instance_count() == 0, "a chunk's meshes go with it")
+	map.free()
+	MapChunk.buildings_3d = false
+
+
+func test_resent_chunk_buildings() -> void:
+	MapChunk.buildings_3d = true
+	var style := [[92, 57, 48], 0, 10.0, [], [158, 105, 82], 3, 0]
+	var message := func(buildings: Array) -> Dictionary:
+		return JSON.parse_string(JSON.stringify({"chunk_id": "0_0", "bounds": [0, 0, 100, 100], "buildings": buildings,
+			"building_styles": buildings.map(func(_b): return style)}))
+	var house := [[0, 0], [20, 0], [20, 10], [0, 10]]
+	var map := MapLayer.new()
+	root.add_child(map)
+	map.replace_chunk(message.call([house]))  # built in place (tests)
+	var old: Array = map._chunks["0_0"].meshes_3d.duplicate()
+	MapChunk.build_async = true
+	map.replace_chunk(message.call([house, [[40, 0], [60, 0], [60, 10], [40, 10]]]))  # the server resent it, changed
+	var chunk = map._chunks["0_0"]
+	check(not old.is_empty() and old.all(func(n): return is_instance_valid(n) and n.get_parent() != null) and chunk.meshes_3d.is_empty(),
+		"a resent chunk's old buildings stay while its new ones are built")
+	while not WorkerThreadPool.is_task_completed(chunk._building_task):
+		OS.delay_msec(1)
+	chunk._meshes_ready(MapChunk._build_3d_timed(chunk._data["buildings"], chunk._data["building_styles"], chunk._origin))
+	check(old.all(func(n): return not is_instance_valid(n)) and not chunk.meshes_3d.is_empty()
+		and chunk.meshes_3d.all(func(n): return n.get_parent() != null), "then they give way to the new ones")
+	var kept: Array = chunk.meshes_3d.duplicate()
+	map.replace_chunk(message.call([]))
+	check(kept.all(func(n): return not is_instance_valid(n)), "resent without buildings: the old ones go at once")
+	MapChunk.build_async = false
+	map.replace_chunk(message.call([house]))
+	kept = map._chunks["0_0"].meshes_3d.duplicate()
+	MapChunk.build_async = true
+	map.replace_chunk(message.call([house]))
+	map.remove_chunk("0_0")
+	check(kept.all(func(n): return not is_instance_valid(n)), "unloaded before its new buildings are built: the old ones go too")
+	MapChunk.build_async = false
 	map.free()
 	MapChunk.buildings_3d = false
 
