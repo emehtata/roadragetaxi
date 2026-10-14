@@ -6,8 +6,19 @@ this report) unless noted.
 
 ## Summary
 
-While the taxi drives into new map, the Godot client's picture freezes for
-0.1–0.6 s at a time, then jumps or runs in slow motion for a moment. On the
+**Outcome** (details in [Fixes and results](#fixes-and-results)). On the same
+warm route after the fixes: no full garbage collection, worst tick 65–80 ms
+instead of 505–536 ms, no state gap over 100 ms, the picture frozen 0–1 times
+(under 0.05 s) instead of 24–31 times (4.6–7.7 s), no clock snaps instead of
+10–13, and 0.8–1.0 % of frames at the wrong speed instead of 5.5–7.1 %. Chunk
+resends fell from 41–52 to 5–6 per drive, and a tile step runs one whole-world
+sync instead of two. A first drive into uncached tiles still freezes 12–15
+times (1.8–2.1 s, no snaps) because of the tile loader, and the Godot client's
+own worst frames didn't improve; both are in [Remaining](#remaining).
+
+**The problem, as measured before the fixes.** While the taxi drives into new
+map, the Godot client's picture freezes for 0.1–0.6 s at a time, then jumps or
+runs in slow motion for a moment. On the
 warm-cache benchmark route (Oulu, 72 km/h, 3.6 km east, 180 s) that is 24–31
 freezes (4.6–7.7 s frozen in total), 10–13 clock snaps and 5.5–7.1 % of frames
 drawn at the wrong speed, with a client that never drops a frame of its own.
@@ -71,8 +82,9 @@ committed (same hooks and replay, measured from 12 s after start instead of
 after the start settled), on routes whose tiles weren't cached yet.
 
 Godot's own frame cost is not in these numbers, because the test client never
-drops a frame. The client section below is from the code and the costs recorded
-in earlier reports.
+drops a frame. The client was measured separately, headless, attached to the
+same drive (`--port`; see [Fixes and results](#fixes-and-results)); a headless
+run measures the GDScript side of chunk handling and drawing, not the renderer.
 
 ## Baseline
 
@@ -212,27 +224,124 @@ That is about 22 s from crossing into the tile to settled, for about 5 s of CPU.
 - Chunk size is 52–55 KiB on average, up to 188–380 KiB. Encoding takes
   1.8–2 ms on average, 10–19 ms at most.
 
-## Fix plan
+## Fixes and results
 
-In this order, each measured with the tool before the next:
+Measured with the tool on the warm route, two runs per row; each row adds a
+change to the ones above. Until the taxi road index, a row's worst tick depends
+on when phone offers happened to be generated during the drive.
 
-1. Restore the GC thresholds and switch interval in the server process.
-2. Send a chunk only once its tile is in the chunk index, so it isn't sent
-   half-built and then resent.
-3. Godot: keep the old chunk's building meshes until the replacement's are
-   ready.
-4. `passenger_waiting_position` once per offer.
-5. Encode resent chunks on the rebuild thread instead of in the tick.
-6. `trains.rebuild` in budgeted steps.
-7. One whole-world sync per tile step.
+| Change | Full GCs | Worst tick | Ticks >100 ms | Chunk msgs / resends | State gaps >100 ms | Picture frozen | Snaps | Wrong speed |
+|---|---|---|---|---|---|---|---|---|
+| Baseline (`df4bcbb`) | 10–14 | 505–536 ms | 12 | 90–101 / 41–52 | 19–28 | 24–31×, 4.6–7.7 s | 10–13 | 5.5–7.1 % |
+| + GC tuning restored (`7b41253`) | 0 | 119–303 ms | 1–2 | 86–97 / 37–41 | 3 | 3–4×, 0.1–0.4 s | 0–1 | 2.5–3.4 % |
+| + chunks wait for their tile (`457de5d`) | 0 | 115–292 ms | 1–4 | 55–56 / 7–8 | 4–6 | 4–16×, 0.1–1.4 s | 0–1 | 3.2–5.4 % |
+| + taxi range pre-filter (`38afda5`) | 0 | 141–150 ms | 1 | 44–55 / 6–7 | 2–3 | 4–6×, 0.2–0.3 s | 0 | 3.2 % |
+| + encoding off the tick, railways in slices (`6890523`, `2664780`) | 0 | 69–77 ms | 0 | 46 / 6 | 0–1 | 0–2×, ≤0.1 s | 0 | 1.6–3.4 % |
+| + taxi road index (`f93bac3`) | 0 | 52–57 ms | 0 | 44–55 / 6–7 | 0 | 0 | 0 | 0.6–0.9 % |
+| + no fetch cooldown for the local extract (`93fd53b`) | 0 | 58–67 ms | 0 | 43–54 / 5–6 | 0 | 0 | 0 | 1.1–1.4 % |
+| + sync settle (`dd996a1`), final | 0 | 65–80 ms | 0 | 45–54 / 5–6 | 0 | 0–1×, <0.05 s | 0 | 0.8–1.0 % |
 
-Left for later, because they are larger: tile loading and chunk rebuilds out of
-the server's GIL (a worker process), an incremental pedestrian sync, indexed
-taxi scans, and a server/client clock that survives a stall.
+What each change does:
 
-## Results
+1. **GC tuning restored** (`7b41253`). `performance.tune_interpreter()` sets the
+   thresholds and switch interval; `server/__main__.py` calls it before the
+   world loads, and both benchmarks do the same (`896dbc7`). Full collections
+   per drive: 10–14 → 0. Young-generation passes are bigger instead: up to
+   25–33 ms, 20–39 of them over 10 ms per drive. The cyclic garbage left at the
+   end of a drive was 9–95 objects, so nothing piles up.
+2. **A chunk waits for its tile** (`457de5d`). Beyond the player's own 3 × 3, a
+   chunk is sent once the chunk index has been rebuilt with its tile (the tiles
+   loaded when that sync started); the player's own 3 × 3 still goes at once,
+   so a Home jump's destination is drawn as it arrives. Resends 37–41 → 7–8.
+3. **Buildings don't blink on a resend** (`eda9c84`, Godot). The replaced
+   chunk's building meshes stay until the new chunk's are built. Unit-tested; a
+   headless client can't show the blink itself.
+4. **Taxi offers** (`38afda5`, `f93bac3`). A building that can't meet the
+   distance limits is skipped before any road scan, and the nearest-road searches
+   use a `SpatialWayGrid` of the taxi roads, with the same results as the full
+   scan (tested against it). `generate_offers` on Oulu: median 30 → 6 ms, worst
+   136 → 16 ms.
+5. **Work out of the tick** (`6890523`, `2664780`). The railway timetable is
+   matched 20 trains per sync slice (on Oulu the same 69 passes, in 22 slices of
+   at most 3.4 ms). The rebuild thread encodes the chunks the next ticks will
+   send, and `ChunkIndex.updated` keeps the bytes of rebuilt chunks that didn't
+   change: chunk encoding inside slow ticks went from 64–102 ms per drive to
+   1–2 ms. The same commit closes a race in which the final rebuild pass read a
+   byte cache the tick could be writing into; that would have killed the rebuild
+   thread with merges on hold, so the map would have stopped growing.
+6. **One whole-world sync per tile step** (`29c6c5d`, `93fd53b`, `dd996a1`). A
+   settled merge waits 1 s, and longer while a fetch is in flight (at most 3 s;
+   never while the map under the player is missing). On its own this changed
+   nothing (`29c6c5d`): the 5 s fetch cooldown, there to spare public Overpass
+   servers, kept the lookahead tile's fetch from starting until the core
+   window's sync had begun. The local extract now has no cooldown (`93fd53b`).
+   Syncs per drive 10–11 → 6, and the map is busy 28–32 % of the drive instead
+   of 38–44 %. The 1 s settle (`dd996a1`) is for a lookahead tile that enters the
+   window just after the merge, seen once; in the final runs the count stayed 6.
+7. **NPC destination search** (`1f8292a`, after the measured rounds). A parking
+   lot's polygon is tested only when its bounding box holds the point; the scan
+   over every lot gave 30–90 ms ticks.
 
-Added as the fixes land.
+`58fd0e4` fixes a flaky test the work ran into: the client/server integration
+test read the socket for a fixed 50 ms and sometimes got 18 of the 49 chunks.
+
+**Cold cache.** Before (east and north, first visit): 36–49 freezes
+(7.2–9.1 s), 14–16 snaps, worst tick 583–598 ms. After (south and southeast,
+first visit, 7–8 tiles extracted): 12–15 freezes (1.8–2.1 s), no snaps, worst
+tick 96–226 ms, worst state gap 249–259 ms. What is left is the tile loader
+(see Remaining).
+
+**Home jump** (`tools/bench_home_relocation.py`, at `dd996a1`). A 12 km jump to a
+cached destination: the chunk under the player is ready after 0.96 s
+(map-loading-01 measured 1.1–1.5 s) and the map has settled after 5.2 s.
+
+**Godot client.** Headless at 60 fps, attached to the same drive, two runs each.
+With it attached the server sent the test client more chunk messages, varying
+between runs for a reason not found (160–162 at the baseline, 43–110 after);
+resends were 41–43 and 5–6.
+
+| Godot, 180 s drive | Baseline | After |
+|---|---|---|
+| Chunk adds on the main thread | 202–208, 934–953 ms in total | 78–112, 547–730 ms |
+| Average / worst add | 4.6 / 21.5–28.6 ms | 6.5–7.0 / 23–26 ms |
+| Building meshes built on workers | 165–171, 2.9–3.0 s | 78–112, 1.8–2.5 s |
+| Frames over 33 ms | 9–11 | 12–18 |
+| Worst frame | 68–69 ms | 50–90 ms |
+| Picture frozen (state replay) | 21–25×, 5.7–6.6 s; 11–13 snaps | 0 |
+
+The client does 22–43 % less chunk work on its main thread, but its worst
+frames didn't improve: chunks now arrive once and complete, so the average add
+is heavier, and a dense chunk is one long frame either way. On the five densest
+Oulu chunks (255–378 KiB), `setup()` takes 15–21 ms on the main thread, of
+which drivable-road boxes 3–5 ms, puddle spots ~2 ms and point conversion with
+clipping 6–11 ms; the first draw adds 6–13 ms in the same frame (headless,
+outside the 4 ms chunk budget).
+
+Tests: pytest 1363 → 1371 passed (2 skipped throughout), Godot 649 → 653
+checks; every change but the cooldown (`93fd53b`, a constructor argument) has a
+test beside it.
+
+## Remaining
+
+- **Client chunk cost.** The 11–19 ms of data work in a dense chunk's `setup()`
+  can run on the worker that already parses the chunk; the first draw stays.
+- **Cold tile loads.** The loader thread still holds the GIL for up to ~0.2 s
+  at a time. An RWC miss falls back to a covering OSM-cache file, which here was
+  the 115 k-element start region, parsed and rebuilt whole for a one-tile
+  request; young collections reach 70–83 ms while it builds. Building tiles in a
+  worker process (and reading only the requested area from a covering cache)
+  would take this off the tick.
+- **Young collections** of up to 25–33 ms, the price of the thresholds.
+- **GIL sharing.** Ticks still wait 5–10 ms longer while the chunk rebuild or a
+  tile load runs.
+- **Whole-world syncs.** One per tile step now, still 0.7–1.5 s of CPU each
+  (the pedestrian network most), and growing with the map: tiles unload only
+  above 768 MB RSS.
+- **Clock coupling.** States are stamped when a Godot frame drains them, and
+  server time never catches up after a stall. Both matter little while stalls
+  stay short.
+- **Other gameplay spikes** in the stack samples: pedestrian spawning and
+  routing, and resident creation, 20–50 ms of CPU now and then.
 
 ## Reproduce
 
@@ -242,4 +351,11 @@ PYTHONPATH=src .venv/bin/python tools/bench_map_jitter.py --preset Oulu --osm-so
 # Cold: a direction whose tiles aren't cached yet (--heading 1.5708 is north), or remove
 # the route's files from ~/.cache/RoadRageTrip/world and osm_cache first.
 # --sample-ms 45 records the stack of every tick that runs longer than 45 ms.
+
+# Godot attached to the same drive: start it first, it retries until the server is up.
+godot --headless --max-fps 60 --path godot -- --skip-menu --port 8799 --bench 180 &
+PYTHONPATH=src .venv/bin/python tools/bench_map_jitter.py --preset Oulu --osm-source pbf --port 8799 --json out.json
+
+# Home jump (map-loading-01's benchmark)
+PYTHONPATH=src .venv/bin/python tools/bench_home_relocation.py --preset Oulu --osm-source pbf --dest 428491 7198561
 ```
