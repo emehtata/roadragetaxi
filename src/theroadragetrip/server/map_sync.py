@@ -66,7 +66,8 @@ def map_sync_steps(world):
     # gameplay graphs below are still being brought up to date.
     yield CHUNK_INPUTS_READY
     if getattr(w, "railway_mgr", None) is not None:
-        w.railway_mgr.rebuild(w.railways)
+        for _ in w.railway_mgr.rebuild_steps(w.railways):
+            yield "railways"
     yield "railways"
     with w.auto_fetch_manager.lock:
         w.auto_fetch_manager._attempted_endpoints.clear()

@@ -141,6 +141,20 @@ def test_many_scheduled_trains_stay_capped():
     assert len(manager.trains) == MAX_ACTIVE_TRAINS
 
 
+def test_a_sliced_rebuild_matches_the_whole_timetable_and_commits_at_its_end():
+    from theroadragetrip.trains import MATCH_SLICE_TRAINS
+
+    many = timetable(*[train([("S", 36000 + i * 60), ("N", 37000 + i * 60)], number=str(i)) for i in range(2 * MATCH_SLICE_TRAINS + 5)])
+    whole = RailwayManager(NORTH_SOUTH_TRACK, many, metres)
+    sliced = RailwayManager([], many, metres)
+    steps = sliced.rebuild_steps(NORTH_SOUTH_TRACK)
+    next(steps)
+    assert sliced.routes == []  # the old network serves while slicing
+    assert sum(1 for _ in steps) >= 3 and len(sliced.routes) == 1
+    assert sliced.clock.passes == whole.clock.passes and len(whole.clock.passes) == 2 * MATCH_SLICE_TRAINS + 5
+    assert [station[:2] for station in sliced.stations] == [station[:2] for station in whole.stations]
+
+
 def test_clock_counts_todays_trains_and_ignores_a_first_call_backlog():
     passes = match_timetable(timetable(train([("S", 36000), ("N", 37000)], days=0b0011111)), [
         RailwayManager(NORTH_SOUTH_TRACK).routes[0]

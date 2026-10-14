@@ -228,12 +228,15 @@ def match_timetable(
     radius_m: float = MATCH_RADIUS_M,
     prepared: Optional[list] = None,
     has_track: Optional[Callable[[Tuple[float, float]], bool]] = None,
+    on_route: Optional[List[Dict[str, Optional[float]]]] = None,
 ) -> List[ScheduledPass]:
     """Every timetable train that passes near a route, with its entry end
     and its time there. Runs once per route rebuild, never per frame.
     has_track(point): whether any track of the map is near a station - it
     may be a stop even off the network's longest line (e.g. a terminus
-    beside a yard)."""
+    beside a yard). Each train is matched on its own, so `prepared` may be
+    split across calls; on_route (per route: station code -> distance
+    along it) then carries the station projections from call to call."""
     if prepared is None:
         prepared = prepare_timetable(timetable, to_metres)
     ends = []
@@ -241,7 +244,8 @@ def match_timetable(
         mx, my, _ = route.point_at(route.length / 2)
         ends.append((route.points[0], (mx, my), route.points[-1]))
     passes = []
-    on_route: List[Dict[str, Optional[float]]] = [{} for _ in routes]  # code -> distance along route
+    if on_route is None:
+        on_route = [{} for _ in routes]
 
     def station_along(index: int, code: str, point) -> Optional[float]:
         if code not in on_route[index]:

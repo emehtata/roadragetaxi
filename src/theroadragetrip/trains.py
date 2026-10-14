@@ -14,7 +14,7 @@ import logging
 import math
 from dataclasses import dataclass, field, replace
 from datetime import datetime, timedelta
-from typing import Callable, Dict, List, Optional, Sequence, Tuple
+from typing import Callable, Dict, Iterator, List, Optional, Sequence, Tuple
 
 from .train_compositions import GENERIC, MAX_TRAIN_LENGTH_M, TrainComposition, resolve
 from .train_passengers import PassengerFlow
@@ -24,6 +24,9 @@ from .train_timetable import ScheduledPass, StationCall, TimetableClock, match_t
 logger = logging.getLogger(__name__)
 
 TRAIN_ENABLED = True
+# Timetable trains matched per map-sync slice (RailwayManager.rebuild_steps):
+# ~1-3 ms on a city map; the whole match took 30-50 ms in one tick.
+MATCH_SLICE_TRAINS = 20
 TRAIN_SPAWN_INTERVAL_S = 30.0 * 60.0  # game seconds between spawns, per route and direction
 TRAIN_SPEED_MPS = 22.0  # ~80 km/h, constant
 # Trains move in real time while the game clock runs up to 60x, so a busy
@@ -529,25 +532,41 @@ class RailwayManager:
         self.rebuild(railways)
 
     def rebuild(self, railways: Sequence) -> None:
+        for _ in self.rebuild_steps(railways):
+            pass
+
+    def rebuild_steps(self, railways: Sequence) -> Iterator[None]:
+        """rebuild() in slices, MATCH_SLICE_TRAINS timetable trains each
+        (the map sync yields between them). The new network is built aside
+        and committed by the last slice; the old one serves meanwhile."""
         if not TRAIN_ENABLED:
             return
-        self.graph = build_rail_graph(railways)
-        self.routes = build_train_routes(railways, graph=self.graph)
+        graph = build_rail_graph(railways)
+        routes = build_train_routes(railways, graph=graph)
+        timed = self.timetable is not None and self.to_metres is not None
+        if timed:
+            passes, on_route = [], [{} for _ in routes]
+            for start in range(0, len(self._prepared), MATCH_SLICE_TRAINS):
+                yield
+                passes += match_timetable(
+                    self.timetable, routes, prepared=self._prepared[start:start + MATCH_SLICE_TRAINS],
+                    has_track=lambda point: bool(graph.nodes_near(point, STATION_TRACK_RADIUS_M)), on_route=on_route,
+                )
+            yield
+            calls = station_calls(self.timetable, self._prepared, routes)
+        self.graph, self.routes = graph, routes
         self._paths = {}
         self._track_ends = [node for node, links in self.graph.edges.items() if len(links) == 1]
-        if self.timetable is not None and self.to_metres is not None:
+        if timed:
             previous_clock = self.clock
-            self.clock = TimetableClock(match_timetable(
-                self.timetable, self.routes, prepared=self._prepared,
-                has_track=lambda point: bool(self.graph.nodes_near(point, STATION_TRACK_RADIUS_M)),
-            ))
+            self.clock = TimetableClock(passes)
             if previous_clock is not None:
                 # More track streamed in: carry on from the old clock (no
                 # second game-start placement, no re-spawned trains).
                 self.clock.continue_from(previous_clock)
             self.stations = [
                 (name, point, TimetableClock(arrivals), TimetableClock(departures))
-                for name, point, arrivals, departures in station_calls(self.timetable, self._prepared, self.routes)
+                for name, point, arrivals, departures in calls
             ]
             self.associate_taxi_stands()
             self._spawn_timers = {}
