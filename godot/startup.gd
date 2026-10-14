@@ -386,7 +386,9 @@ static func city_map_position(latitude: float, longitude: float, size: Vector2) 
 ## The gig start picker: year, month, day, hour and minute of the
 ## gig's start, a calendar year back at most, no later than today.
 func _time_menu() -> void:
-	_start_time = clamp_start(Time.get_datetime_dict_from_system(), Time.get_date_dict_from_system())
+	var resume: Dictionary = _settings.get_value("gig", "left_at", {})  # where the last gig ended, unless Now was picked
+	var from_now: bool = _settings.get_value("gig", "start_now", true) or resume.is_empty()
+	_start_time = clamp_start(Time.get_datetime_dict_from_system() if from_now else resume, Time.get_date_dict_from_system())
 	_clear()
 	_title(_t("start_time"), _city)
 	var fields := [["year", _t("year")], ["month", _t("month")], ["day", _t("day")],
@@ -413,10 +415,12 @@ func _time_menu() -> void:
 		spins[key].value_changed.connect(func(value: float):
 			_start_time[key] = int(value)
 			_start_time = clamp_start(_start_time, Time.get_date_dict_from_system())
+			_settings.set_value("gig", "start_now", false)
 			show.call())
 	show.call()
 	_button(_t("now"), func():
 		_start_time = clamp_start(Time.get_datetime_dict_from_system(), Time.get_date_dict_from_system())
+		_settings.set_value("gig", "start_now", true)
 		show.call())
 	var start := _button(_t("start"), func(): _start("gig_driver"))
 	_button(_t("back"), _city_menu)
@@ -773,7 +777,24 @@ func _resume() -> void:
 	get_tree().paused = false
 
 
+## The gig's game date and time, so the next gig starts where this one left off.
+func _remember_game_time() -> void:
+	if not is_instance_valid(_game) or _settings.get_value("menu", "mode", "") != "gig_driver":
+		return
+	var state: Dictionary = _game.entities.shown_state()
+	var calendar = state.get("calendar")
+	if typeof(calendar) != TYPE_DICTIONARY or not state.has("game_time_seconds"):
+		return
+	var date := str(calendar.get("date", "")).split("-")
+	var minutes := int(state["game_time_seconds"] / 60.0)
+	if date.size() == 3:
+		_settings.set_value("gig", "left_at", {"year": int(date[0]), "month": int(date[1]), "day": int(date[2]),
+			"hour": minutes / 60 % 24, "minute": minutes % 60})
+		_settings.save("user://settings.cfg")
+
+
 func _stop_game() -> void:
+	_remember_game_time()
 	_loading = false
 	get_tree().paused = false
 	if _game != null:
@@ -818,4 +839,5 @@ func _stop_server() -> void:
 
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_WM_CLOSE_REQUEST or what == NOTIFICATION_PREDELETE:
+		_remember_game_time()
 		_stop_server()
