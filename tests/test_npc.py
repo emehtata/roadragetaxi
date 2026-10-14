@@ -13,6 +13,7 @@ from theroadragetrip.npc import (
     PathPoint,
     TripGroup,
     _lane_offset_point,
+    _road_rage_yield_target,
     NPC_ARRIVAL_RADIUS_M,
     NPC_BUILDING_YARD_CLEARANCE_M,
     NPC_FOOTPRINT_VIOLATION_CRAWL_MPS,
@@ -1363,16 +1364,32 @@ def test_update_npc_yields_while_road_raged_then_resumes():
     vehicle.car.speed = 10.0
     driver.road_rage_until_sim_time = tw.sim_time + NPC_ROAD_RAGE_REACTION_DURATION_S
 
-    update_npc(vehicle, driver, 1.0 / 60.0, tw, residents)
+    start_y = vehicle.car.y
+    for _ in range(120):
+        update_npc(vehicle, driver, 1.0 / 60.0, tw, residents)
+        tw.advance_time(1.0 / 60.0)
 
     assert driver.target_speed_mps <= NPC_ROAD_RAGE_YIELD_SPEED_MPS
     assert vehicle.debug_waiting_for == "yielding to road rage"
     assert vehicle.state != NPCState.CRASHED  # still a normal, simulated, existing vehicle
+    assert vehicle.car.y < start_y - 0.2  # visibly pulls toward the right edge
+    assert vehicle.turn_signal == "right"
 
     tw.advance_time(NPC_ROAD_RAGE_REACTION_DURATION_S + 1.0)
     update_npc(vehicle, driver, 1.0 / 60.0, tw, residents)
 
     assert driver.road_rage_until_sim_time is None
+
+
+def test_road_rage_yield_target_stays_inside_the_road_and_skips_turns():
+    road = Way([(0.0, 0.0), (100.0, 0.0)], "residential", 4.0)
+    target = PathPoint(20.0, -1.8, way=road)
+
+    shifted = _road_rage_yield_target(target, 0.0, road, 1.8)
+
+    assert shifted == pytest.approx((20.0, -2.6))
+    turning = PathPoint(20.0, -1.8, way=road, is_turn=True, maneuver="right", lane_bias="right")
+    assert _road_rage_yield_target(turning, 0.0, road, 1.8) == (turning.x, turning.y)
 
 
 def test_update_npc_stuck_detection_triggers_recovery_after_timeout():

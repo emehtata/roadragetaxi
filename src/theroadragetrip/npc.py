@@ -145,6 +145,7 @@ NPC_ROAD_RAGE_DETECTION_DISTANCE_M = 40.0
 NPC_ROAD_RAGE_LATERAL_LIMIT_M = 6.0
 NPC_ROAD_RAGE_REACTION_DURATION_S = 8.0
 NPC_ROAD_RAGE_YIELD_SPEED_MPS = 1.5  # a slow, visible crawl - not a hard stop (see update_npc's own footprint-crawl precedent for why never 0)
+NPC_ROAD_RAGE_EDGE_MARGIN_M = 0.5
 
 # NPC-004 section 3/8: stuck detection. Checked on the same throttled-cache
 # cadence as the footprint check (NPC_FOOTPRINT_CHECK_INTERVAL_S) rather
@@ -407,6 +408,19 @@ def _lane_offset_point(
     else:
         lane_offset = cruise_offset
     return x + math.sin(heading) * lane_offset, y - math.cos(heading) * lane_offset
+
+
+def _road_rage_yield_target(
+    target: PathPoint, heading: float, way: Optional[Way], vehicle_width_m: float,
+) -> Tuple[float, float]:
+    """Move a straight-road steering target toward the safe right edge."""
+    if way is None or target.is_turn or target.lane_bias is not None:
+        return target.x, target.y
+    half_width = max(0.0, getattr(way, "half_width_m", 0.0))
+    edge_offset = max(0.0, half_width - vehicle_width_m * 0.5 - NPC_ROAD_RAGE_EDGE_MARGIN_M)
+    lane_x, lane_y = _lane_offset_point(way, 0.0, 0.0, heading, vehicle_width_m)
+    extra = max(0.0, edge_offset - math.hypot(lane_x, lane_y))
+    return target.x + math.sin(heading) * extra, target.y - math.cos(heading) * extra
 
 
 def _round_corner(
@@ -2181,11 +2195,14 @@ def update_npc(
     # the vehicle ahead of *it*) at a reduced ceiling, exactly like the
     # footprint-violation crawl below already does for a different
     # reason, so it can never fight those into an unsafe combination.
+    road_rage_active = False
     if driver.road_rage_until_sim_time is not None:
         if traffic_world.sim_time >= driver.road_rage_until_sim_time:
             driver.road_rage_until_sim_time = None
         else:
+            road_rage_active = True
             driver.target_speed_mps = min(driver.target_speed_mps, NPC_ROAD_RAGE_YIELD_SPEED_MPS)
+            _set_turn_signal(vehicle, "right", dt)
 
     if at_destination and footprint_clear:
         driver.target_speed_mps = 0.0
@@ -2312,7 +2329,12 @@ def update_npc(
     if at_destination and footprint_clear:
         steer_left = steer_right = 0.0
     else:
-        desired_heading = math.atan2(target.y - vehicle.car.y, target.x - vehicle.car.x)
+        target_x, target_y = target.x, target.y
+        if road_rage_active:
+            target_x, target_y = _road_rage_yield_target(
+                target, avoidance_heading, driver.current_way, vehicle.width_m,
+            )
+        desired_heading = math.atan2(target_y - vehicle.car.y, target_x - vehicle.car.x)
         heading_error = angle_diff(desired_heading, vehicle.car.heading)
         requested_steer = clamp(heading_error / math.radians(STEER_FULL_ANGLE_DEG), -1.0, 1.0)
         # A first-order steering actuator avoids alternating full-lock input
@@ -3216,9 +3238,10 @@ class NPCVehicleManager:
         ahead (nearest_vehicle_ahead's same forward-cone projection
         NPC-004's own following-distance avoidance already uses, just
         wider - see the NPC_ROAD_RAGE_* constants' comment). That driver
-        yields (update_npc clamps its speed while road_rage_until_sim_time
-        is in the future); any queue that forms behind it is the existing
-        avoidance logic reacting to *that* vehicle slowing down, not
+        yields (update_npc slows it and steers it toward the safe right edge
+        while road_rage_until_sim_time is in the future); any queue that
+        forms behind it is the existing avoidance logic reacting to *that*
+        vehicle slowing down, not
         anything scripted here - this function only ever touches the one
         vehicle it finds, never a whole area.
 
