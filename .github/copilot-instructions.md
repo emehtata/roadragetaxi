@@ -27,6 +27,7 @@ High-level architecture / data flow
 - `road_rage_server.py`: entry point of the bundled server (PyInstaller, Windows release).
 
 Important implementation details for an AI agent
+- For NPC traffic, routing, parking, pedestrians or road maintenance, read `docs/finnish-npc-traffic-law.md` before editing; follow its legal references, exceptions, game policies and acceptance scenarios.
 - BBOX order is (south, west, north, east) lat/lon. Presets stored in `BBOX_PRESETS` and `CITY_CENTERS`.
 - Coordinate systems: OSM and BBOX values use geographic degrees in `(lat, lon)` order; BBOX remains `(south, west, north, east)`. `pyproj` with `always_xy=True` expects `(lon, lat)` and returns EPSG:3067 metric `(x, y)`. Internal geometry, spatial grids, physics, and rendering use `(x, y)` meters; convert back to lat/lon only at OSM/API boundaries. Never pass `(lat, lon)` directly to the transformer or mix degree values with meter geometry.
 - World is north-up: world `x` east, world `y` north. Godot's y points down: convert with `MapMath.point` (y flipped), never by hand.

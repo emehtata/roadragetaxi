@@ -2,6 +2,8 @@
 
 A top-down 2D driving game proof-of-concept (PoC) - a Godot client and a Python simulation server - that proceduralizes environment creation using real-world OpenStreetMap (OSM) data from Finland.
 
+For traffic development, agents must read the [Finnish NPC traffic-law guide](docs/finnish-npc-traffic-law.md), including its legal references, current implementation gaps and acceptance scenarios.
+
 ## Miksi rattiraivo?
 
 Koska muut kuskit ovat idiootteja ja ajavat miten sattuu. Vähemmästäkin hermostuu, kun joutuu pujottelemaan hidastelijoiden, törttöilijöiden ja arvaamattomien liikkujien seassa. The Road Rage Trip tekee tästä tutusta liikennekaaoksesta pelin ytimen: asiakkaat pitää kuljettaa perille, vaikka muun liikenteen sähläys nostaisi verenpaineen kattoon.
