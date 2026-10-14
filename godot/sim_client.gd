@@ -27,7 +27,9 @@ var _seq := 0
 var _last_command: Dictionary = {}
 var _parsing := {}  # chunk_id -> worker task parsing it (godot-18: a big chunk took up to ~18 ms on the main thread)
 var _cancelled := {}  # chunk ids unloaded while still being parsed
+var _origin := Vector2.ZERO  # the world message's centre: the worker prepares each chunk for it (MapChunk.prepare)
 const CHUNK_PREFIX := "{\"type\":\"chunk\","  # protocol.encode: compact JSON, "type" first
+const MapChunk := preload("res://map_chunk.gd")
 
 
 func _process(delta: float) -> void:
@@ -61,9 +63,12 @@ func _parse_chunk(line: String) -> void:
 	var at := line.find("\"chunk_id\":\"") + 12
 	var chunk_id := line.substr(at, line.find("\"", at) - at)
 	_cancelled.erase(chunk_id)
+	var origin := _origin
 	_parsing[chunk_id] = WorkerThreadPool.add_task(func():
 		var started := Time.get_ticks_usec()
 		var message = JSON.parse_string(line)
+		if typeof(message) == TYPE_DICTIONARY:
+			MapChunk.prepare(message, origin)
 		_chunk_parsed.call_deferred(chunk_id, message, Time.get_ticks_usec() - started))
 
 
@@ -103,6 +108,7 @@ func _drain_lines() -> void:
 			continue
 		match message.get("type"):
 			"world":
+				_origin = Vector2(message["center"][0], message["center"][1])
 				world_received.emit(message)
 			"state":
 				state_received.emit(message)

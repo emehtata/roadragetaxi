@@ -85,6 +85,9 @@ var _chunk_unload_queue: Array[String] = []  # old meshes freed once no chunk is
 ## unloads the same way once nothing waits to be drawn - after a Home jump the
 ## destination is drawn first and the old area's chunks are freed afterwards.
 const CHUNK_BUDGET_USEC := 4000
+## A chunk's first draw runs later in the frame it is added in: ~1 us a point of
+## its geometry (headless; a dense city chunk is ~10k points).
+const DRAW_USEC_PER_POINT := 1.0
 const CHUNK_SIZE_M := 500.0  # map_chunks.CHUNK_SIZE_M: chunk "ix_iy" covers [ix, ix + 1) x [iy, iy + 1) of these
 const JUMP_M := 500.0  # the player moving this far between two states is a jump (Home, respawn)
 var _last_player_at = null  # Vector2 metres, the last state's
@@ -220,22 +223,29 @@ func _on_connection(up: bool) -> void:
 
 
 func _process_chunk_queues(started_usec: int) -> void:
-	# Another one only if it fits by the last one's cost: a 3 ms frame doesn't start a 20 ms chunk.
+	# Another one only if it fits too: a 3 ms frame doesn't start a 20 ms chunk. A chunk costs
+	# its add (cheap: the worker prepared it) and its first draw, later in this frame, by its points.
 	var at := started_usec
+	var spent := 0
 	var last := 0
-	while not _chunk_queue.is_empty() and (at == started_usec or at - started_usec + last <= CHUNK_BUDGET_USEC):
+	while not _chunk_queue.is_empty():
+		var draw := int(_chunk_queue[0].get("prepared", {}).get("points", 0) * DRAW_USEC_PER_POINT)
+		if spent > 0 and spent + last + draw > CHUNK_BUDGET_USEC:
+			break
 		map_layer.replace_chunk(_chunk_queue.pop_front())
 		var now := Time.get_ticks_usec()
 		last = now - at
 		Perf.add("chunk_add", last)
+		spent += last + draw
 		at = now
 	if not _chunk_queue.is_empty():
 		return  # unloads wait: drawing what the player needs comes first
-	while not _chunk_unload_queue.is_empty() and (at == started_usec or at - started_usec + last <= CHUNK_BUDGET_USEC):
+	while not _chunk_unload_queue.is_empty() and (spent == 0 or spent + last <= CHUNK_BUDGET_USEC):
 		map_layer.remove_chunk(_chunk_unload_queue.pop_front())
 		var now := Time.get_ticks_usec()
 		last = now - at
 		Perf.add("chunk_unload", last)
+		spent += last
 		at = now
 
 

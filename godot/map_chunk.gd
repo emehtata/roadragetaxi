@@ -80,30 +80,21 @@ func _notification(what: int) -> void:
 
 
 func setup(message: Dictionary, origin: Vector2) -> void:
+	if message.get("prepared", {}).get("origin") != origin:
+		prepare(message, origin)
+	var prepared: Dictionary = message["prepared"]
+	message.erase("prepared")
 	_data = message
 	_origin = origin
-	var bounds: Array = message.get("bounds", [])
-	if bounds.size() == 4:
-		var a := MapMath.point(origin, bounds[0], bounds[1])
-		var b := MapMath.point(origin, bounds[2], bounds[3])
-		_bounds_rect = Rect2(Vector2(minf(a.x, b.x), minf(a.y, b.y)), (b - a).abs())
-		_bounds = PackedVector2Array([_bounds_rect.position, Vector2(_bounds_rect.end.x, _bounds_rect.position.y),
-			_bounds_rect.end, Vector2(_bounds_rect.position.x, _bounds_rect.end.y)])
-	for road in message.get("roads", []):
-		if road.get("drivable", false) and road["points"].size() >= 2:
-			var box := Rect2(MapMath.point(origin, road["points"][0][0], road["points"][0][1]), Vector2.ZERO)
-			for point in road["points"]:
-				box = box.expand(MapMath.point(origin, point[0], point[1]))
-			drivable_roads.append([box, "%s,%s" % [road["points"][0][0], road["points"][0][1]]])
-		var z := clampi(int(road.get("layer", 0)), 0, BRIDGE_Z_MAX) + 1
-		if not _roads_by_z.has(z):
-			_roads_by_z[z] = []
-		_roads_by_z[z].append(road)
+	_bounds_rect = prepared["bounds_rect"]
+	_bounds = prepared["bounds"]
+	drivable_roads = prepared["drivable_roads"]
+	_roads_by_z = prepared["roads_by_z"]
+	street_lights = prepared["street_lights"]
 	# z-1 landuse (under the water)
 	if not message.get("landuse", []).is_empty():
 		_season_layers.append(_add_layer(-1, func(node: Node2D): Detail.draw_areas(self, node, "landuse")))
 	for z in _roads_by_z:
-		_roads_by_z[z].sort_custom(_drawn_before)
 		var layer_z: int = z
 		_px_layers.append(_add_layer(z, func(node: Node2D): _draw_roads(layer_z, node)))  # markings depend on zoom
 	_add_layer(5, _draw_wet, _wet_darken)
@@ -133,8 +124,6 @@ func setup(message: Dictionary, origin: Vector2) -> void:
 	if not message.get("railings", []).is_empty():
 		_px_layers.append(_add_layer(8, _draw_railings))
 	if not message.get("street_lights", []).is_empty():
-		for light in message["street_lights"]:
-			street_lights.append(MapMath.point(origin, light[0], light[1]))
 		var add := CanvasItemMaterial.new()
 		add.blend_mode = CanvasItemMaterial.BLEND_MODE_ADD
 		add.light_mode = CanvasItemMaterial.LIGHT_MODE_UNSHADED  # light, not lit: the ambient multiply leaves it be
@@ -163,29 +152,71 @@ func setup(message: Dictionary, origin: Vector2) -> void:
 	if not message.get("signs", []).is_empty() or not message.get("speed_cameras", []).is_empty():
 		_signs = _add_layer(8, func(node: Node2D): Detail.draw_signs(self, node, _flash))
 		_px_layers.append(_signs)
-	_puddle_spots = puddle_spots(message.get("roads", []), _bounds_rect, origin)  # from the raw coordinates
-	_compact()
-	_water_ripple_spots = water_ripple_spots(_data.get("waters", []), _origin)
+	_puddle_spots = prepared["puddle_spots"]
+	_water_ripple_spots = prepared["water_ripple_spots"]
 	_build_2_5d()
 	set_wetness(_wetness)
+
+
+## setup()'s data part, nodes aside, kept in message["prepared"]: pure, so the
+## worker that parses a chunk runs it (SimClient) - 10-20 ms of a dense chunk's
+## setup, off the main thread. setup() runs it for a message not prepared for
+## its origin.
+static func prepare(message: Dictionary, origin: Vector2) -> void:
+	var bounds_rect := Rect2()
+	var bounds := PackedVector2Array()
+	var corners: Array = message.get("bounds", [])
+	if corners.size() == 4:
+		var a := MapMath.point(origin, corners[0], corners[1])
+		var b := MapMath.point(origin, corners[2], corners[3])
+		bounds_rect = Rect2(Vector2(minf(a.x, b.x), minf(a.y, b.y)), (b - a).abs())
+		bounds = PackedVector2Array([bounds_rect.position, Vector2(bounds_rect.end.x, bounds_rect.position.y),
+			bounds_rect.end, Vector2(bounds_rect.position.x, bounds_rect.end.y)])
+	var drivable: Array = []
+	var roads_by_z := {}
+	for road in message.get("roads", []):
+		if road.get("drivable", false) and road["points"].size() >= 2:
+			var box := Rect2(MapMath.point(origin, road["points"][0][0], road["points"][0][1]), Vector2.ZERO)
+			for point in road["points"]:
+				box = box.expand(MapMath.point(origin, point[0], point[1]))
+			drivable.append([box, "%s,%s" % [road["points"][0][0], road["points"][0][1]]])
+		var z := clampi(int(road.get("layer", 0)), 0, BRIDGE_Z_MAX) + 1
+		if not roads_by_z.has(z):
+			roads_by_z[z] = []
+		roads_by_z[z].append(road)
+	var puddles := puddle_spots(message.get("roads", []), bounds_rect, origin)  # from the raw coordinates
+	var points := _compact(message, origin)
+	if not bounds.is_empty():
+		_clip_to_bounds(message, bounds, bounds_rect, roads_by_z)
+	for z in roads_by_z:
+		roads_by_z[z].sort_custom(_drawn_before)
+	var lights := PackedVector2Array()
+	for light in message.get("street_lights", []):
+		lights.append(MapMath.point(origin, light[0], light[1]))
+	message["prepared"] = {"origin": origin, "bounds_rect": bounds_rect, "bounds": bounds, "drivable_roads": drivable,
+		"roads_by_z": roads_by_z, "street_lights": lights, "puddle_spots": puddles,
+		"water_ripple_spots": water_ripple_spots(message.get("waters", []), origin), "points": points}
 
 
 ## Every polyline and polygon kept as a PackedVector2Array in layer
 ## coordinates instead of the parsed JSON (an Array of 2-number Arrays per
 ## point, ~10x the memory): one conversion at load, and the drawing uses
 ## them directly (godot-16: the chunk data alone had grown by ~20 MiB).
-func _compact() -> void:
-	for road in _data.get("roads", []):
-		road["points"] = _points(road["points"])
+static func _compact(data: Dictionary, origin: Vector2) -> int:
+	var count := 0  # the points converted: what the chunk's first draw costs grows with
+	for road in data.get("roads", []):
+		road["points"] = _to_points(road["points"], origin)
+		count += road["points"].size()
 	for key in ["waters", "water_lines", "buildings", "parking", "curbs", "construction_fences", "railways", "rail_bridges", "rail_decks", "canopies"]:
-		var lines: Array = _data.get(key, [])
+		var lines: Array = data.get(key, [])
 		for i in lines.size():
-			lines[i] = _points(lines[i])
+			lines[i] = _to_points(lines[i], origin)
+			count += lines[i].size()
 	for key_index in [["railings", 1], ["landuse", 2], ["traffic_islands", 2], ["level_roads", 1]]:
-		for entry in _data.get(key_index[0], []):
-			entry[key_index[1]] = _points(entry[key_index[1]])
-	if not _bounds.is_empty():
-		_clip_to_bounds()
+		for entry in data.get(key_index[0], []):
+			entry[key_index[1]] = _to_points(entry[key_index[1]], origin)
+			count += entry[key_index[1]].size()
+	return count
 
 
 ## godot-18: roads, water and railway tracks are in every chunk they
@@ -201,39 +232,37 @@ static func _drawn_before(p: Dictionary, q: Dictionary) -> bool:
 	return lp < lq or (lp == lq and float(p.get("half_width_m", 1.5)) < float(q.get("half_width_m", 1.5)))
 
 
-func _clip_to_bounds() -> void:
+static func _clip_to_bounds(data: Dictionary, bounds: PackedVector2Array, bounds_rect: Rect2, roads_by_z: Dictionary) -> void:
 	var roads: Array = []
-	for road in _data.get("roads", []):
-		for piece in Geometry2D.intersect_polyline_with_polygon(road["points"], _bounds):
+	for road in data.get("roads", []):
+		for piece in Geometry2D.intersect_polyline_with_polygon(road["points"], bounds):
 			if piece.size() >= 2:
 				var part: Dictionary = road.duplicate()
 				part["points"] = piece
 				roads.append(part)
-	_data["roads"] = roads
-	for z in _roads_by_z:  # the layers' lists, refilled in place
-		_roads_by_z[z].clear()
+	data["roads"] = roads
+	for z in roads_by_z:  # the layers' lists, refilled in place
+		roads_by_z[z].clear()
 	for road in roads:
 		var z := clampi(int(road.get("layer", 0)), 0, BRIDGE_Z_MAX) + 1
-		if _roads_by_z.has(z):
-			_roads_by_z[z].append(road)
-	for z in _roads_by_z:
-		_roads_by_z[z].sort_custom(_drawn_before)
+		if roads_by_z.has(z):
+			roads_by_z[z].append(road)
 	for key in ["railways", "rail_bridges", "water_lines"]:
 		var pieces: Array = []
-		for line in _data.get(key, []):
-			for piece in Geometry2D.intersect_polyline_with_polygon(line, _bounds):
+		for line in data.get(key, []):
+			for piece in Geometry2D.intersect_polyline_with_polygon(line, bounds):
 				if piece.size() >= 2:
 					pieces.append(piece)
-		_data[key] = pieces
+		data[key] = pieces
 	var waters: Array = []
-	for water in _data.get("waters", []):
+	for water in data.get("waters", []):
 		# Clip first: a big lake (Sysmä) has thousands of points and is in
 		# every chunk it touches - triangulating it whole took seconds a chunk.
-		if water.size() >= 3 and _rect(water).intersects(_bounds_rect, true):
-			for piece in Geometry2D.intersect_polygons(water, _bounds):
+		if water.size() >= 3 and _rect(water).intersects(bounds_rect, true):
+			for piece in Geometry2D.intersect_polygons(water, bounds):
 				if not Geometry2D.triangulate_polygon(piece).is_empty():
 					waters.append(piece)
-	_data["waters"] = waters
+	data["waters"] = waters
 
 
 static func _rect(points: PackedVector2Array) -> Rect2:
@@ -597,11 +626,15 @@ func _px(pixels: float) -> float:
 
 
 func _points(line) -> PackedVector2Array:
+	return _to_points(line, _origin)
+
+
+static func _to_points(line, origin: Vector2) -> PackedVector2Array:
 	if typeof(line) == TYPE_PACKED_VECTOR2_ARRAY:  # already converted (_compact)
 		return line
 	var points := PackedVector2Array()
 	for point in line:
-		points.append(MapMath.point(_origin, point[0], point[1]))
+		points.append(MapMath.point(origin, point[0], point[1]))
 	return points
 
 

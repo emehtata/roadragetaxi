@@ -78,6 +78,22 @@ func test_chunk_queue() -> void:
 		and main._chunk_unload_queue.is_empty(), "chunk queue: the latest message for a chunk wins, in its place")
 	main.free()
 
+	# Adding a prepared chunk is cheap; its first draw, by its points, decides how many fit a frame.
+	main = Main.new()
+	var map := MapLayer.new()
+	main.map_layer = map
+	for i in 4:
+		var message := {"chunk_id": "%d_0" % i, "bounds": [500 * i, 0, 500 * (i + 1), 500]}
+		MapChunk.prepare(message, Vector2.ZERO)
+		message["prepared"]["points"] = 2500 if i < 2 else 10  # two dense chunks, then two light ones
+		main._chunk_queue.append(message)
+	main._process_chunk_queues(Time.get_ticks_usec())
+	check(map.chunk_count() == 1, "a dense chunk's first draw takes its frame's budget: the next dense one waits")
+	main._process_chunk_queues(Time.get_ticks_usec())
+	check(map.chunk_count() == 4, "light ones still share a frame")
+	map.free()
+	main.free()
+
 
 func test_i18n() -> void:
 	check(I18n.FI.keys().filter(func(k): return not I18n.EN.has(k)).is_empty(), "every Finnish text has English")
@@ -1905,7 +1921,28 @@ func test_performance_paths() -> void:
 	sim._chunk_parsed("3_4", JSON.parse_string('{"type":"chunk","version":1,"chunk_id":"3_4"}'), 10)
 	sim._chunk_parsed("5_6", JSON.parse_string('{"type":"chunk","version":1,"chunk_id":"5_6"}'), 10)
 	check(got == ["3_4"], "parsed chunks arrive; one unloaded while parsing doesn't (%s)" % [got])
+	sim._buffer = '{"type":"world","version":1,"center":[1000.0,2000.0]}\n'.to_utf8_buffer()
+	sim._drain_lines()
+	check(sim._origin == Vector2(1000.0, 2000.0), "the worker prepares chunks for the world's origin")
 	sim.free()
+
+	# A chunk prepared on the parsing worker sets up exactly as one prepared in place.
+	var raw := JSON.stringify({"chunk_id": "2_4", "bounds": [1000, 2000, 1500, 2500],
+		"roads": [{"points": [[1010, 2010], [1600, 2010]], "half_width_m": 4.0, "drivable": true, "layer": 0},
+			{"points": [[1100, 2100], [1100, 2200]], "half_width_m": 2.0, "drivable": true, "layer": 1}],
+		"waters": [[[1200, 2200], [1300, 2200], [1300, 2300], [1200, 2300]]], "street_lights": [[1050, 2050, 0.0, 14.0]],
+		"landuse": [[[50, 120, 50], 0, [[1000, 2000], [1100, 2000], [1100, 2100]]]]})
+	var in_place = MapChunk.new()
+	in_place.setup(JSON.parse_string(raw), Vector2(1000.0, 2000.0))
+	var prepared: Dictionary = JSON.parse_string(raw)
+	MapChunk.prepare(prepared, Vector2(1000.0, 2000.0))
+	var ahead = MapChunk.new()
+	ahead.setup(prepared, Vector2(1000.0, 2000.0))
+	check(ahead._data == in_place._data and ahead._roads_by_z == in_place._roads_by_z and ahead.drivable_roads == in_place.drivable_roads
+		and ahead._puddle_spots == in_place._puddle_spots and ahead.street_lights == in_place.street_lights and ahead._bounds == in_place._bounds
+		and not ahead._data.has("prepared") and ahead._roads_by_z[1][0]["points"].size() == 2, "prepared ahead on the worker, set up the same")
+	in_place.free()
+	ahead.free()
 
 	# The frame report: percentiles, lows and long frames from the recorded frame times.
 	var times := PackedFloat32Array()
