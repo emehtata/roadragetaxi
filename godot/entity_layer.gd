@@ -84,6 +84,7 @@ const CAR_SHAPES := [
 ]
 const VAN_SHAPE := [0.78, 0.56, -0.96, -0.96, 0.84, "door"]  # a van: short nose, one long roof
 var taxi_sign_on := false  # the taxi being drawn has a fare on (its roof light lit)
+var ploughing := false  # snowing: tractors carry a plough blade and a flashing beacon
 const TRACK_STYLES := {  # [faint, dark, width m]
 	"rubber": [Color8(110, 110, 110), Color8(28, 28, 28), 0.24], "dirt": [Color8(150, 138, 118), Color8(105, 68, 38), 0.75],
 	"sand": [Color8(222, 208, 170), Color8(178, 158, 114), 0.75], "snow": [Color8(214, 226, 232), Color8(142, 169, 181), 0.75],
@@ -638,6 +639,15 @@ func _vehicle_body(c: Vector2, heading: float, length: float, width: float, colo
 			_poly(_rect(c, f, r, -hl * 0.05, -hl * 0.95, hw * 0.58), color, RS.OUTLINE)
 			_poly(_rect(c, f, r, -hl * 0.15, -hl * 0.85, hw * 0.48), RS.WINDSHIELD)
 			_poly(_rect(c, f, r, -hl * 0.30, -hl * 0.72, hw * 0.40), color.darkened(0.12))
+			if ploughing:  # an angled blade ahead, wider than the tractor, and the amber beacon on the cab
+				_poly(PackedVector2Array([c + f * hl * 1.30 + r * hw * 1.2, c + f * hl * 1.16 + r * hw * 1.2,
+					c + f * hl * 1.02 - r * hw * 1.2, c + f * hl * 1.16 - r * hw * 1.2]), Color8(240, 150, 20), RS.OUTLINE)
+				_car_shapes.append(["line", c + f * hl * 1.02, c + f * hl * 0.9, _lit(Color8(60, 60, 60)), maxf(_px(1.0), hw * 0.12)])
+				var beacon := _rect(c - f * hl * 0.5, f, r, hl * 0.08, -hl * 0.08, hw * 0.12)
+				if fmod(_clock, 0.8) < 0.4:
+					_lamp_polys.append([beacon, RS.TURN_SIGNAL])  # unshaded: it shines at night
+				else:
+					_poly(beacon, RS.TURN_SIGNAL.darkened(0.5))
 		"truck":
 			_poly(_rect(c, f, r, hl * 0.18, -hl, hw), color, RS.OUTLINE)
 			_poly(_rect(c, f, r, hl * 0.08, -hl * 0.86, hw * 0.78), color.lightened(28.0 / 255.0))
@@ -952,6 +962,7 @@ func _draw() -> void:
 	count += 1
 
 	var later_npcs := _by_id(b.get("npcs", []))
+	ploughing = str(a.get("weather", {}).get("weather_type", "")) == "snow"
 	for npc in a.get("npcs", []):
 		if underground or not drawn_as_vehicle(npc):
 			continue

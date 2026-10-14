@@ -159,6 +159,7 @@ NPC_ROAD_RAGE_EDGE_MARGIN_M = 0.5
 # correctness requirement.
 NPC_STUCK_CHECK_INTERVAL_S = 1.0
 NPC_STUCK_MIN_PROGRESS_M = 2.0  # real displacement expected per check interval when actually driving
+NPC_SNOW_TRACTOR_FACTOR = 8.0  # while it snows, tractors (ploughs) are this much more likely to spawn
 NPC_CRASH_CLEAR_S = 60.0  # a wreck is towed away after this long, even in view: it blocks the road
 NPC_STUCK_TIMEOUT_S = 8.0  # accumulated stuck time before recovery triggers
 
@@ -3204,6 +3205,7 @@ class NPCVehicleManager:
         # always wins - include_experimental only gates the *default*
         # distribution (e.g. motorcycle, off unless [experimental]
         # enable_two_wheelers is set - see _default_vehicle_distribution).
+        self.snowy = False  # set by the simulation from the weather: more tractors out ploughing
         self.vehicle_distribution = (
             vehicle_distribution if vehicle_distribution is not None else self._default_vehicle_distribution()
         )
@@ -3230,7 +3232,8 @@ class NPCVehicleManager:
         weight is zero (e.g. an all-zero override) so population fill
         never silently stalls."""
         ids = [vehicle_id for vehicle_id, weight in self.vehicle_distribution.items() if weight > 0.0]
-        weights = [self.vehicle_distribution[vehicle_id] for vehicle_id in ids]
+        weights = [self.vehicle_distribution[vehicle_id] * (NPC_SNOW_TRACTOR_FACTOR if self.snowy and vehicle_id == "tractor" else 1.0)
+                   for vehicle_id in ids]
         if not ids:
             return "car"
         return random.choices(ids, weights=weights, k=1)[0]

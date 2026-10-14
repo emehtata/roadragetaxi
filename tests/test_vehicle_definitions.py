@@ -17,3 +17,15 @@ def test_builtin_vehicle_definitions_cover_traffic_capabilities():
 
 def test_unknown_vehicle_uses_car_definition():
     assert vehicle_definition("unknown") is VEHICLE_DEFINITIONS["car"]
+
+
+def test_snow_brings_out_more_tractors():
+    import random
+    from theroadragetrip.npc import NPCVehicleManager
+
+    manager = NPCVehicleManager(target_count=0)
+    random.seed(1)
+    clear = sum(manager._pick_vehicle_type() == "tractor" for _ in range(4000))
+    manager.snowy = True
+    snowing = sum(manager._pick_vehicle_type() == "tractor" for _ in range(4000))
+    assert clear < 160 and snowing > 400  # ~2% vs ~14% of traffic

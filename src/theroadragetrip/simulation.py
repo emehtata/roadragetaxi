@@ -568,6 +568,7 @@ def advance_simulation(
         audio.play_group("passenger.vomit")
         loud_event = True
     with frame_profiler.section("npc"):
+        npc_manager.snowy = weather.weather_type.value == "snow"
         npc_manager.update(
             dt, car.x, car.y, residents, traffic_mgr, ways,
             spatial_grid=spatial_grid, parking_spaces=parking_spaces,
