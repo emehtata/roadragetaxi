@@ -12,9 +12,10 @@ instead of 505–536 ms, no state gap over 100 ms, the picture frozen 0–1 time
 (under 0.05 s) instead of 24–31 times (4.6–7.7 s), no clock snaps instead of
 10–13, and 0.8–1.0 % of frames at the wrong speed instead of 5.5–7.1 %. Chunk
 resends fell from 41–52 to 5–6 per drive, and a tile step runs one whole-world
-sync instead of two. A first drive into uncached tiles still freezes 12–15
-times (1.8–2.1 s, no snaps) because of the tile loader, and the Godot client's
-own worst frames didn't improve; both are in [Remaining](#remaining).
+sync instead of two. The Godot client (headless) drops 3–4 frames over 33 ms in
+the drive instead of 9–11, worst frame 42–48 ms instead of 68–69. A first drive
+into uncached tiles still freezes 12–15 times (1.8–2.1 s, no snaps) because of
+the tile loader; that is first in [Remaining](#remaining).
 
 **The problem, as measured before the fixes.** While the taxi drives into new
 map, the Godot client's picture freezes for 0.1–0.6 s at a time, then jumps or
@@ -297,40 +298,47 @@ cached destination: the chunk under the player is ready after 0.96 s
 
 **Godot client.** Headless at 60 fps, attached to the same drive, two runs each.
 With it attached the server sent the test client more chunk messages, varying
-between runs for a reason not found (160–162 at the baseline, 43–110 after);
-resends were 41–43 and 5–6.
+between runs for a reason not found (160–162 at the baseline, 43–112 after);
+resends were 41–43 and 5–6. "Server fixes" is `dd996a1`; "client prepares
+chunks" adds `d6d4d93`.
 
-| Godot, 180 s drive | Baseline | After |
-|---|---|---|
-| Chunk adds on the main thread | 202–208, 934–953 ms in total | 78–112, 547–730 ms |
-| Average / worst add | 4.6 / 21.5–28.6 ms | 6.5–7.0 / 23–26 ms |
-| Building meshes built on workers | 165–171, 2.9–3.0 s | 78–112, 1.8–2.5 s |
-| Frames over 33 ms | 9–11 | 12–18 |
-| Worst frame | 68–69 ms | 50–90 ms |
-| Picture frozen (state replay) | 21–25×, 5.7–6.6 s; 11–13 snaps | 0 |
+| Godot, 180 s drive | Baseline | Server fixes | + client prepares chunks |
+|---|---|---|---|
+| Frames over 33 ms / over 66 ms | 9–11 / 1 | 12–18 / 0–1 | 3–4 / 0 |
+| Worst frame | 68–69 ms | 50–90 ms | 42–48 ms |
+| 1 % low | 41–43 fps | 42–44 fps | 51–52 fps |
+| Chunk adds on the main thread | 202–208, 934–953 ms in total | 78–112, 547–730 ms | 78–80, 51–52 ms |
+| Worst add | 21.5–28.6 ms | 23–26 ms | 1.5–1.6 ms |
+| Parse (+ prepare) on workers | 447–487 ms | 266–451 ms | 711–745 ms |
+| Picture frozen (state replay) | 21–25×, 5.7–6.6 s; 11–13 snaps | 0 | 0 |
 
-The client does 22–43 % less chunk work on its main thread, but its worst
-frames didn't improve: chunks now arrive once and complete, so the average add
-is heavier, and a dense chunk is one long frame either way. On the five densest
-Oulu chunks (255–378 KiB), `setup()` takes 15–21 ms on the main thread, of
-which drivable-road boxes 3–5 ms, puddle spots ~2 ms and point conversion with
-clipping 6–11 ms; the first draw adds 6–13 ms in the same frame (headless,
-outside the 4 ms chunk budget).
+The server fixes alone took 22–43 % off the client's main-thread chunk work
+but not its worst frames: a chunk arrived once and complete, and a dense one
+(255–378 KiB) spent 15–21 ms in `setup()`, 11–19 ms of it data work (road
+boxes 3–5 ms, puddle spots ~2 ms, point conversion and clipping 6–11 ms).
 
-Tests: pytest 1363 → 1371 passed (2 skipped throughout), Godot 649 → 653
+8. **Chunks prepared on the worker** (`d6d4d93`, Godot). `MapChunk.prepare()`
+   does that data work in the task that parses the chunk, for the world's
+   origin; `setup()` only creates the nodes (0.3–0.4 ms for the densest Oulu
+   chunks). The per-frame chunk budget timed only the add, so it now also
+   counts the chunk's first draw, about 1 µs per point (6–13 ms headless for a
+   dense chunk, drawn later in the same frame): a dense chunk gets its own
+   frame, light ones still share one.
+
+Tests: pytest 1363 → 1371 passed (2 skipped throughout), Godot 649 → 657
 checks; every change but the cooldown (`93fd53b`, a constructor argument) has a
 test beside it.
 
 ## Remaining
 
-- **Client chunk cost.** The 11–19 ms of data work in a dense chunk's `setup()`
-  can run on the worker that already parses the chunk; the first draw stays.
 - **Cold tile loads.** The loader thread still holds the GIL for up to ~0.2 s
   at a time. An RWC miss falls back to a covering OSM-cache file, which here was
   the 115 k-element start region, parsed and rebuilt whole for a one-tile
   request; young collections reach 70–83 ms while it builds. Building tiles in a
   worker process (and reading only the requested area from a covering cache)
   would take this off the tick.
+- **A dense chunk's first draw**, 6–13 ms headless (more with the renderer),
+  still runs on the main thread, one dense chunk a frame.
 - **Young collections** of up to 25–33 ms, the price of the thresholds.
 - **GIL sharing.** Ticks still wait 5–10 ms longer while the chunk rebuild or a
   tile load runs.

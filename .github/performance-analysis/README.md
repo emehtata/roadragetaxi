@@ -6,7 +6,7 @@ This folder contains technical deep-dives into rendering performance, bottleneck
 
 ### [map-loading-02.md](./map-loading-02.md)
 
-**Status**: Implemented; the client's chunk cost and cold tile loads remain
+**Status**: Implemented; cold tile loads remain
 **Date**: 2026-10-14
 **Focus**: Stalls and UI jitter while the map grows: the GC tuning lost with the Pygame client (full collections up to ~0.6 s), GIL sharing with background map work, chunk resends, two syncs per tile step; warm-route freezes 24–31 → 0–1, clock snaps 10–13 → 0; `tools/bench_map_jitter.py`
 
