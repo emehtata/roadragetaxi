@@ -5,6 +5,7 @@ import random
 
 
 from theroadragetrip.npc import (
+    NPC_CRASH_CLEAR_S,
     Driver,
     NPCAvailability,
     NPCState,
@@ -980,6 +981,20 @@ def test_trigger_vehicle_accident_stops_the_vehicle_and_ejects_the_driver():
     assert pedestrian.mood == "annoyed"
     assert pedestrian.activity is not None
     assert pedestrian.activity.plugin_id == "phone_usage"
+
+
+def test_a_wreck_is_cleared_after_a_while_even_next_to_the_player():
+    residents = ResidentManager()
+    manager = NPCVehicleManager(target_count=0, min_count=5)
+    vehicle, _ = _driving_vehicle(residents, 5.0, 0.0)
+    manager.vehicles.append(vehicle)
+    manager._trigger_vehicle_accident(vehicle, residents, None, sim_time=100.0)
+    viewport = (-100.0, -100.0, 100.0, 100.0)
+    manager._run_population_tick(0.0, 0.0, residents, TrafficWorld([]), [], None, None, None, None, None, None, None, viewport_bounds=viewport)
+    assert vehicle in manager.vehicles  # a fresh wreck stays a while
+    vehicle.crashed_timer = NPC_CRASH_CLEAR_S
+    manager._run_population_tick(0.0, 0.0, residents, TrafficWorld([]), [], None, None, None, None, None, None, None, viewport_bounds=viewport)
+    assert vehicle not in manager.vehicles
 
 
 def test_trigger_vehicle_accident_never_retriggers():

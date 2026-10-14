@@ -153,6 +153,7 @@ NPC_ROAD_RAGE_EDGE_MARGIN_M = 0.5
 # correctness requirement.
 NPC_STUCK_CHECK_INTERVAL_S = 1.0
 NPC_STUCK_MIN_PROGRESS_M = 2.0  # real displacement expected per check interval when actually driving
+NPC_CRASH_CLEAR_S = 60.0  # a wreck is towed away after this long, even in view: it blocks the road
 NPC_STUCK_TIMEOUT_S = 8.0  # accumulated stuck time before recovery triggers
 
 # NPC-004 section 6/7: reverse recovery. A short, straight, controlled
@@ -4153,6 +4154,11 @@ class NPCVehicleManager:
                 self.drivers.pop(vehicle.vehicle_id, None)
                 self._trip_start_failures.pop(vehicle.vehicle_id, None)
                 self._trip_retry_after_tick.pop(vehicle.vehicle_id, None)
+                remaining -= 1
+                continue
+            if vehicle.state == NPCState.CRASHED and vehicle.crashed_timer >= NPC_CRASH_CLEAR_S:
+                release_npc_parking_reservation(vehicle)
+                self.drivers.pop(vehicle.vehicle_id, None)
                 remaining -= 1
                 continue
             if idle_parked and not visible and far and remaining > self.min_count:
