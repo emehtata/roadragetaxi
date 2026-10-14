@@ -962,7 +962,7 @@ func _draw() -> void:
 	count += 1
 
 	var later_npcs := _by_id(b.get("npcs", []))
-	ploughing = str(a.get("weather", {}).get("weather_type", "")) == "snow"
+	ploughing = str(a.get("weather", {}).get("weather_type", "")) == "snow" or float(a.get("weather", {}).get("road_snow", 0.0)) > 0.1
 	for npc in a.get("npcs", []):
 		if underground or not drawn_as_vehicle(npc):
 			continue

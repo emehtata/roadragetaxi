@@ -568,7 +568,9 @@ def advance_simulation(
         audio.play_group("passenger.vomit")
         loud_event = True
     with frame_profiler.section("npc"):
-        npc_manager.snowy = weather.weather_type.value == "snow"
+        npc_manager.snowy = weather.weather_type.value == "snow" or weather.road_snow > 0.1
+        plough_positions = {v.vehicle_id: (v.x, v.y) for v in npc_manager.vehicles
+                            if v.vehicle_type == "tractor" and v.vehicle_id in npc_manager.drivers}
         npc_manager.update(
             dt, car.x, car.y, residents, traffic_mgr, ways,
             spatial_grid=spatial_grid, parking_spaces=parking_spaces,
@@ -578,6 +580,12 @@ def advance_simulation(
             player_car=car, pedestrian_mgr=pedestrian_mgr,
             current_way=current_way,
         )
+        if npc_manager.snowy:
+            for vehicle in npc_manager.vehicles:
+                start = plough_positions.get(vehicle.vehicle_id)
+                if (start is not None and abs(vehicle.car.speed) > 0.1
+                        and vehicle.way is not None and vehicle.car.map_level == SURFACE_LEVEL):
+                    weather.plow_road(start, (vehicle.x, vehicle.y))
     for x, y in npc_manager.accidents:
         audio.play_group("collision.vehicle", at=(x, y))
     npc_manager.accidents.clear()

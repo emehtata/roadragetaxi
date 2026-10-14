@@ -125,6 +125,18 @@ def test_populate_initial_reports_progress_gradually():
     assert fractions[-1] == 1.0
 
 
+def test_snow_dispatches_a_tractor_if_the_population_has_no_working_plough():
+    manager = NPCVehicleManager(target_count=5, vehicle_distribution={"car": 1.0, "tractor": 0.01})
+    manager.snowy = True
+    assert manager._pick_vehicle_type() == "tractor"
+    wreck = place_parked_npc(1, (0.0, 0.0), None, vehicle_type="tractor")
+    wreck.state = NPCState.CRASHED
+    manager.vehicles.append(wreck)
+    assert manager._pick_vehicle_type() == "tractor"
+    manager.vehicle_distribution = {"car": 1.0}
+    assert manager._pick_vehicle_type() == "car"
+
+
 def test_populate_initial_respects_a_car_only_distribution_override():
     """NPC-003 v2 section 14: vehicle_distribution is an explicit override,
     not just a default-mix detail - pinning it to one plugin id must

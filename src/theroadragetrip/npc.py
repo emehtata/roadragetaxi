@@ -3251,6 +3251,9 @@ class NPCVehicleManager:
         weight (NPC-003 v2 section 14) - falls back to "car" if every
         weight is zero (e.g. an all-zero override) so population fill
         never silently stalls."""
+        if (self.snowy and self.vehicle_distribution.get("tractor", 0.0) > 0.0
+                and not any(v.vehicle_type == "tractor" and v.state != NPCState.CRASHED for v in self.vehicles)):
+            return "tractor"
         ids = [vehicle_id for vehicle_id, weight in self.vehicle_distribution.items() if weight > 0.0]
         weights = [self.vehicle_distribution[vehicle_id] * (NPC_SNOW_TRACTOR_FACTOR if self.snowy and vehicle_id == "tractor" else 1.0)
                    for vehicle_id in ids]

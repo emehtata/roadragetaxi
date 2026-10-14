@@ -593,6 +593,7 @@ func _present(state: Dictionary) -> void:
 	instruments.chips = [lane_assist, speed_limiter, nav_overlay.show_route]  # K, V, N under the speedometer
 	instruments.show_state(state)
 	map_layer.set_wetness(state.get("weather", {}).get("wetness", 0.0) if override_wetness < 0.0 else override_wetness)
+	map_layer.set_road_snow(float(state.get("weather", {}).get("road_snow", 0.0)), state.get("weather", {}).get("plowed_cells", []))
 	map_layer.set_px_per_m(camera.zoom.x)  # after the camera is placed; only reads its zoom
 	map_layer.set_building_view(camera.position)
 	map_layer.set_traffic_lights(state.get("traffic_lights", {}))

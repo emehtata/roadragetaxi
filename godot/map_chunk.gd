@@ -49,6 +49,9 @@ var _puddles := Node2D.new()
 var _puddle_spots: Array = []  # [{"at", "radius", "reveal", "shape"}]
 var _water_ripple_spots: Array = []  # cached once; weather_layer animates their rings
 var _wetness := 0.0
+var _road_snow := 0.0
+var _plowed_cells: Dictionary = {}
+var _road_layers: Array[Node2D] = []
 var _px_per_m := 9.0
 var _px_layers: Array[Node2D] = []  # point layers drawn in screen-pixel sizes
 var _canopy_layers: Array[Node2D] = []
@@ -97,6 +100,7 @@ func setup(message: Dictionary, origin: Vector2) -> void:
 	for z in _roads_by_z:
 		var layer_z: int = z
 		_px_layers.append(_add_layer(z, func(node: Node2D): _draw_roads(layer_z, node)))  # markings depend on zoom
+		_road_layers.append(_px_layers[-1])
 	_add_layer(5, _draw_wet, _wet_darken)
 	_add_layer(5, _draw_wet, _wet_sheen)
 	_add_layer(5, _draw_puddles, _puddles)
@@ -693,6 +697,21 @@ func _draw() -> void:
 			draw_polyline(points, water_color, 3.0)
 
 
+func set_road_snow(depth: float, cells: Array) -> void:
+	var stepped := roundf(depth * 10.0) / 10.0
+	var local_cells := {}
+	for cell in cells:
+		var at := MapMath.point(_origin, float(cell[0]) * 10.0 + 5.0, float(cell[1]) * 10.0 + 5.0)
+		if _bounds_rect.grow(10.0).has_point(at):
+			local_cells[Vector2i(int(cell[0]), int(cell[1]))] = roundf(float(cell[2]) * 10.0) / 10.0
+	if stepped == _road_snow and local_cells == _plowed_cells:
+		return
+	_road_snow = stepped
+	_plowed_cells = local_cells
+	for node in _road_layers:
+		node.queue_redraw()
+
+
 func _draw_roads(z: int, node: Node2D) -> void:
 	var lines := {}  # centre-line colour -> segments (one call each)
 	var chevrons := PackedVector2Array()
@@ -702,7 +721,26 @@ func _draw_roads(z: int, node: Node2D) -> void:
 		var points := _points(road["points"])
 		if z > 1:
 			node.draw_polyline(points, Color(0.12, 0.12, 0.13), width + 0.6)  # bridge edge
-		node.draw_polyline(points, color, width)
+		var snowy: bool = _road_snow > 0.0 and road.get("drivable", false) and int(road.get("layer", 0)) >= 0
+		node.draw_polyline(points, color.lerp(Color8(230, 236, 240), clampf(_road_snow / 3.0, 0.0, 1.0)) if snowy and _plowed_cells.is_empty() else color, width)
+		if snowy and not _plowed_cells.is_empty():
+			var snow_lines := {}
+			for i in range(points.size() - 1):
+				var start: Vector2 = points[i]
+				var end: Vector2 = points[i + 1]
+				var steps := maxi(1, ceili(start.distance_to(end) / 2.0))
+				for j in range(steps):
+					var a := start.lerp(end, float(j) / steps)
+					var b := start.lerp(end, float(j + 1) / steps)
+					var world := _origin + Vector2((a.x + b.x) * 0.5, -(a.y + b.y) * 0.5)
+					var cell := Vector2i(floori(world.x / 10.0), floori(world.y / 10.0))
+					var cover := clampf((_road_snow - float(_plowed_cells.get(cell, 0.0))) / 3.0, 0.0, 1.0)
+					if not snow_lines.has(cover):
+						snow_lines[cover] = PackedVector2Array()
+					snow_lines[cover].append(a)
+					snow_lines[cover].append(b)
+			for cover in snow_lines:
+				node.draw_multiline(snow_lines[cover], color.lerp(Color8(230, 236, 240), cover), width)
 		Detail.road_markings(self, road, points, lines, chevrons)
 	for line_color in lines:  # after this layer's roads, under the next layer's
 		node.draw_multiline(lines[line_color], line_color, -1.0)

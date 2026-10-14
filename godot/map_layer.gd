@@ -9,6 +9,8 @@ const MapChunk := preload("res://map_chunk.gd")
 const Buildings3D := preload("res://buildings_3d.gd")
 
 var origin := Vector2.ZERO
+var road_snow := 0.0
+var plowed_cells: Array = []
 var wetness := 0.0  # road wetness as last applied (bucketed, see set_wetness)
 var px_per_m := 9.0  # the camera zoom, for the chunks' pixel-sized points
 var phases: Dictionary = {}  # traffic-light phases as last applied (state "traffic_lights")
@@ -173,6 +175,7 @@ func add_chunk(message: Dictionary) -> bool:
 	chunk._building_view = building_view_centre
 	chunk.setup(message, origin)
 	chunk.set_wetness(wetness)
+	chunk.set_road_snow(road_snow, plowed_cells)
 	chunk.set_px_per_m(px_per_m)
 	chunk.set_phases(phases)
 	chunk.set_obstacles(fallen, knocked)
@@ -302,6 +305,15 @@ func set_wetness(value: float) -> bool:
 	for chunk in _chunks.values():
 		chunk.set_wetness(wetness)
 	return true
+
+
+func set_road_snow(depth: float, cells: Array) -> void:
+	if depth == road_snow and cells == plowed_cells:
+		return
+	road_snow = depth
+	plowed_cells = cells
+	for chunk in _chunks.values():
+		chunk.set_road_snow(depth, cells)
 
 
 ## A chunk the server resent (changed) swapped in for the drawn one in the

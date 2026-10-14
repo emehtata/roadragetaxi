@@ -57,6 +57,32 @@ def test_npc_and_pedestrian_population_advance(tmp_path, monkeypatch):
     assert isinstance(server.world.pedestrian_mgr.pedestrians, list)
 
 
+def test_moving_tractor_clears_road_snow_and_reports_it_to_client(tmp_path, monkeypatch):
+    from theroadragetrip.npc import place_parked_npc
+    from theroadragetrip.weather import WeatherType
+
+    server = _build_server(tmp_path, monkeypatch)
+    weather = server.world.weather
+    weather._automatic = False
+    weather.weather_type = WeatherType.CLEAR
+    weather.road_snow = 3.0
+    tractor = place_parked_npc(999, (server.car.x, server.car.y), None, vehicle_type="tractor")
+    tractor.way = server.world.ways[0]
+    tractor.car.speed = 1.0
+    manager = server.world.npc_manager
+    manager.vehicles[:] = [tractor]
+    manager.drivers[tractor.vehicle_id] = object()
+    monkeypatch.setattr(manager, "update", lambda *args, **kwargs: None)
+
+    server.tick(1.0 / 30.0)
+
+    assert manager.snowy  # ploughs stay active after the snowfall stops
+    assert weather.plowed_cells
+    wire = _state(server)["weather"]
+    assert wire["road_snow"] == 3.0
+    assert wire["plowed_cells"][0][2] == 3.0
+
+
 def test_player_commands_reach_the_simulation(tmp_path, monkeypatch):
     from theroadragetrip import protocol, transport
     from theroadragetrip.simulation import PlayerCommand
@@ -457,7 +483,7 @@ def test_weather_audio_facts_cross_the_wire(tmp_path, monkeypatch):
     assert state["is_thunderstorm"] is True
     assert state["wind_vector_mps"] == [round(v, 3) for v in weather.wind_vector_mps]
     assert set(state) == {"weather_type", "wetness", "lightning_intensity", "is_thunderstorm", "wind_vector_mps",
-                          "source", "temperature_c"}
+                          "source", "temperature_c", "road_snow", "plowed_cells"}
     for vector in ((0.0, 0.0), (3.25, -7.5), (-12.0, 4.0), (float("nan"), float("inf"))):
         monkeypatch.setattr(type(weather), "wind_vector_mps", property(lambda self, v=vector: v))  # restored after the test
         wire = json.loads(json.dumps(_state(server)["weather"]))["wind_vector_mps"]

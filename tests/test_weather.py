@@ -40,6 +40,29 @@ def test_weather_reports_time_left_in_current_period():
     assert weather.seconds_until_weather_change is None
 
 
+def test_snow_accumulates_plows_clear_only_passed_cells_and_snow_returns():
+    weather = WeatherSystem(WeatherType.SNOW, Season.WINTER)
+    weather.update(1800.0, 0.0, outside_temperature_c=-5.0)
+    assert weather.road_snow == pytest.approx(3.0)
+    weather.plow_road((1.0, 1.0), (31.0, 1.0))
+    assert set(weather.plowed_cells) == {(0, 0), (1, 0), (2, 0), (3, 0)}
+    assert weather.road_snow - weather.plowed_cells[(1, 0)] == 0.0
+    weather.update(600.0, 0.0, outside_temperature_c=-5.0)
+    assert weather.road_snow - weather.plowed_cells[(1, 0)] == pytest.approx(1.0)
+
+
+def test_road_snow_persists_in_cold_and_melts_above_freezing():
+    weather = WeatherSystem(WeatherType.SNOW, Season.WINTER)
+    weather.update(1800.0, 0.0, outside_temperature_c=-5.0)
+    weather.plow_road((0.0, 0.0), (1.0, 0.0))
+    weather.weather_type = WeatherType.CLEAR
+    weather.update(1800.0, 0.0, outside_temperature_c=-5.0)
+    assert weather.road_snow == pytest.approx(3.0)
+    weather.update(5400.0, 0.0, outside_temperature_c=5.0)
+    assert weather.road_snow == 0.0
+    assert not weather.plowed_cells
+
+
 def test_starts_clear_and_dry():
     weather = WeatherSystem()
     assert weather.weather_type == WeatherType.CLEAR

@@ -156,6 +156,8 @@ class WeatherSystem:
         self.weather_type = weather_type or WeatherType.CLEAR
         self._following_observation = False
         self.wetness = 0.0  # 0.0 dry .. 1.0 fully wet; independent of weather_type -
+        self.road_snow = 0.0  # centimetres; fully white at three centimetres
+        self.plowed_cells = {}  # 10 m road cells -> snow level when last cleared
         # CLEAR does not imply dry, e.g. right after rain stops (see #9).
         self._rng = random.Random()
         self.is_thunderstorm = False
@@ -392,6 +394,20 @@ class WeatherSystem:
         else:
             self.is_thunderstorm = False
 
+    def plow_road(self, start, end) -> None:
+        if self.road_snow <= 0.0:
+            return
+        distance = math.hypot(end[0] - start[0], end[1] - start[1])
+        steps = max(1, math.ceil(distance / 2.0))
+        for step in range(steps + 1):
+            t = step / steps
+            cell = (math.floor((start[0] + (end[0] - start[0]) * t) / 10.0),
+                    math.floor((start[1] + (end[1] - start[1]) * t) / 10.0))
+            self.plowed_cells[cell] = self.road_snow
+        # Keep streaming trips from retaining an unlimited history of cleared roads.
+        while len(self.plowed_cells) > 4096:
+            del self.plowed_cells[next(iter(self.plowed_cells))]
+
     def update(
         self,
         game_dt: float,
@@ -434,6 +450,14 @@ class WeatherSystem:
                         self._weather_timer = self._next_weather_duration()
                 self._advance_automatic_weather(game_dt)
                 self._apply_precipitation_temperature()
+            if self.weather_type == WeatherType.SNOW:
+                self.road_snow += game_dt / 600.0
+            elif self._outside_temperature_c is not None and self._outside_temperature_c > 0.0:
+                self.road_snow = max(0.0, self.road_snow - game_dt / 1800.0)
+                for cell, cleared_at in self.plowed_cells.items():
+                    self.plowed_cells[cell] = min(cleared_at, self.road_snow)
+            if self.road_snow == 0.0:
+                self.plowed_cells.clear()
             if self.weather_type in (WeatherType.RAIN, WeatherType.SLUSH):
                 self.wetness = min(1.0, self.wetness + game_dt / RAIN_WETTING_DURATION_S)
             elif self.road_ice_fraction > 0.0:

@@ -431,6 +431,9 @@ def build_state_message(
         "vomit_footprints": [list(point) for point in world.pedestrian_mgr.vomit_footprints],
         "trains": [_train_to_dict(t) for t in getattr(getattr(world, "railway_mgr", None), "trains", ())],
         "weather": {"weather_type": weather.weather_type.value, "wetness": weather.wetness,
+                    "road_snow": round(weather.road_snow, 1),
+                    "plowed_cells": [[x, y, round(depth, 1)] for (x, y), depth in weather.plowed_cells.items()
+                                     if abs(x * 10.0 - car.x) < 600.0 and abs(y * 10.0 - car.y) < 600.0],
                     "lightning_intensity": weather.lightning_intensity,  # 1 at a strike, fading
                     # For the client's weather audio heavy rain, wind loops.
                     "is_thunderstorm": bool(weather.is_thunderstorm),

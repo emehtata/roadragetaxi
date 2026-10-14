@@ -299,6 +299,12 @@ func test_map_chunks() -> void:
 	check(map.add_chunk({"chunk_id": "1_3"}) and map.chunk_count() == 2, "a new area's chunk is added")
 	check(map.remove_chunk("1_2") and not map.has_chunk("1_2") and map.chunk_count() == 1, "a distant chunk is removed")
 	check(not map.remove_chunk("9_9"), "removing an unknown chunk is harmless")
+	map.set_road_snow(3.0, [[0, 0, 3.0]])
+	map.add_chunk({"chunk_id": "snow", "bounds": [0, 0, 100, 100], "roads": [{"points": [[0, 5], [100, 5]], "half_width_m": 3.0, "drivable": true}]})
+	var snowy = map._chunks["snow"]
+	check(snowy._road_snow == 3.0 and snowy._plowed_cells.get(Vector2i(0, 0)) == 3.0, "new chunks inherit snow and already ploughed sections")
+	map.set_road_snow(4.0, [[0, 0, 3.0]])
+	check(snowy._road_snow - snowy._plowed_cells[Vector2i(0, 0)] == 1.0, "new snowfall covers ploughed roads again")
 	map.free()
 
 
