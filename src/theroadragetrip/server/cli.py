@@ -24,6 +24,7 @@ def parse_server_args():
     parser.add_argument("--list-city-locations", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument("--clear-cache", action="store_true",
                         help="Delete all cached map data (OSM downloads and built worlds) and exit")
+    parser.add_argument("--reset-home", action="store_true", help="Forget the driver's home in every city and exit")
     parser.add_argument("--start-time", type=datetime.fromisoformat, default=None,
                         help="Gig game start, local YYYY-MM-DDTHH:MM, up to a year back (default: today 18:00)")
     parser.add_argument("--historical-weather", action=argparse.BooleanOptionalAction, default=None,

@@ -31,6 +31,13 @@ def main() -> None:
 
         print(json.dumps([clear_osm_cache(), clear_world_cache()]))
         return
+    if args.reset_home:
+        from ..config import CONFIG_PATH
+        from ..home import homes_path
+
+        homes_path(CONFIG_PATH).unlink(missing_ok=True)
+        print("[]")
+        return
     configure_logging(args.log_level, file_logging=config.getboolean("game", "file_logging", fallback=False))
     server = run_server(args, config)
     logger.info(

@@ -243,6 +243,19 @@ func _confirm_clear_cache() -> void:
 	no.call_deferred("grab_focus")  # Enter does not delete anything
 
 
+## "Reset taxi home": asked first; then every city's home is forgotten.
+func _confirm_reset_home() -> void:
+	_clear()
+	_title(_t("reset_home").to_upper(), _t("confirm_reset_home"))
+	var no := _button(_t("cancel"), _settings_menu)
+	_button(_t("delete"), func():
+		_server_query("--reset-home")
+		_settings_menu())
+	_back_action = _settings_menu
+	_focus_menu()
+	no.call_deferred("grab_focus")  # Enter does not delete anything
+
+
 func _city_menu() -> void:
 	_clear()
 	_title(_t("choose_city"), _t("gig_driver"))
@@ -476,6 +489,8 @@ func _settings_menu() -> void:
 	_body.add_child(pbf_path)
 	_focusables.append(pbf_path)
 	_button(_t("manage_pbf"), _pbf_menu)
+	if _game == null:  # a running server keeps its home in memory
+		_button(_t("reset_home"), _confirm_reset_home)
 	for item in [[_t("master_volume"), "Master"], [_t("game_volume"), "Game"], [_t("environment_volume"), "Environment"], [_t("ui_volume"), "UI"]]:
 		var row := HBoxContainer.new()
 		var label := Label.new()
