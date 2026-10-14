@@ -247,6 +247,7 @@ def main(argv=None) -> int:
 
     t0, t1 = ticks[0]["start"], ticks[-1]["end"]
     full = [c for c in collections if c[1] == 2 and t0 <= c[0] <= t1]
+    young = [c[2] for c in collections if c[1] < 2 and t0 <= c[0] <= t1]
     slow = [t for t in ticks if t["wall"] > interval * 1000.0]
     phases = {}
     for t in slow:
@@ -293,6 +294,8 @@ def main(argv=None) -> int:
         "full_gc": {"count": len(full), "max_ms": round(max((c[2] for c in full), default=0.0)),
                     "total_ms": round(sum(c[2] for c in full)), "by_thread": sorted({c[3].split(" (")[0] for c in full}),
                     "tracked_objects_at_end": tracked, "frozen_at_end": frozen, "cyclic_garbage_at_end": garbage},
+        "young_gc": {"count": len(young), "max_ms": round(max(young, default=0.0), 1), "total_ms": round(sum(young)),
+                     "over_10ms": sum(ms > 10 for ms in young)},
         "chunks": {"sent": sent, "resent": resent, "mb": round(size / 1e6, 1)},
         "client": {"states": len(states), "gap_p99_ms": pct(gaps, .99), "gap_max_ms": round(max(gaps, default=0.0)),
                    "gaps_over_100ms": sum(g > 100 for g in gaps), **replay(states)},
