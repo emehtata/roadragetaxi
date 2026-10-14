@@ -4,6 +4,12 @@ This folder contains technical deep-dives into rendering performance, bottleneck
 
 ## Contents
 
+### [map-loading-02.md](./map-loading-02.md)
+
+**Status**: Analysis done; fixes in progress
+**Date**: 2026-10-14
+**Focus**: Stalls and UI jitter while the map grows: the GC tuning lost with the Pygame client (full collections up to ~0.6 s), GIL sharing with background map work, chunk resends; `tools/bench_map_jitter.py`
+
 ### [bin-loader-v6-illuminated-windows.md](./bin-loader-v6-illuminated-windows.md)
 
 **Status**: Implemented; corrects V4 attribution
