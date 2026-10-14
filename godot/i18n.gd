@@ -3,7 +3,7 @@ extends RefCounted
 ## UI text by key: Finnish and English.
 const FI := { "choose_start": "Valitse pelitapa", "career": "Ura",
 	"gig_driver": "Keikkakuski", "settings": "Asetukset", "meter": "mittari %.2f €", "happiness": "tyytyväisyys %d%%", "real_data": "TODELLINEN DATA", "real_data_detail": "Peli voi käyttää todellista dataa kaupungista ja ajasta, jossa pelaat.", "realtime_trains": "Todelliset junien aikataulut (Digitraffic)", "continue": "Jatka", "map_loading": "Ladataan karttaa…", "map_fetching": "haetaan edessä olevaa aluetta", "map_merging": "liitetään karttaan", "map_syncing": "valmistellaan teitä ja liikennettä", "map_building": "piirretään uutta aluetta", "clear_cache": "Tyhjennä välimuisti kokonaan", "reset_home": "Poista taksin koti", "confirm_reset_home": "Poistetaanko taksikuskin koti kaikista kaupungeista?", "confirm_clear_cache": "Tyhjennetäänkö karttavälimuisti? Kartat ladataan uudelleen.", "cache_cleared_done": "Karttavälimuisti tyhjennetty.", "cache_clear_failed": "Karttavälimuistia ei voitu tyhjentää.", "cancel": "Peruuta", "delete": "Poista", "clear": "Tyhjennä", "clearing": "Tyhjennetään…", "fares": "Kyydit", "map_overpass": "Karttadata: Overpass (verkko)", "map_pbf": "Karttadata: paikallinen .osm.pbf-tiedosto", "hint_enter_taxi": "Painamalla F pääset sisään taksiisi", "hint_start_engine": "Käynnistä moottori painamalla E", "weather_forecast_24h": "Arvioitu sää seuraavalle 24 tunnille", "press_any_key_start": "Paina mitä tahansa aloittaaksesi", "weather_source_observed": "havainto", "weather_source_forecast": "ennuste", "start_time": "ALOITUSAIKA", "year": "Vuosi", "month": "Kuukausi", "day": "Päivä", "hour": "Tunti", "minute": "Minuutti", "now": "Nyt", "start": "Aloita", "historical_weather": "FMI-sää (havainnot ja ennusteet)", "quit": "Lopeta peli",
-	"choose_city": "VALITSE KAUPUNKI", "drive": "Aloita", "back": "Takaisin",
+	"choose_city": "VALITSE KAUPUNKI", "drive": "Aloita", "custom_map_point": "Oma karttapiste >", "map_point_help": "Napsauta aloituspaikka. Vedä tai nuolinäppäimet: siirrä, rulla tai +/-: zoomaa, välilyönti: keskikohta.", "back": "Takaisin",
 	"pbf_missing": "SUOMEN KARTTAA EI LÖYDY", "pbf_download_offer": "Ladataanko Suomen OpenStreetMap-tiedosto? Lataus on suuri ja tallennetaan käyttäjäkohtaiseen kansioon.",
 	"download": "Lataa", "use_overpass": "Käytä Overpassia", "downloading_map": "LADATAAN SUOMEN KARTTAA",
 	"download_wait": "Odota. Älä sulje peliä.", "download_failed": "LATAUS EPÄONNISTUI",
@@ -55,7 +55,8 @@ const EN := {
 	"weather_forecast_24h": "Weather forecast for the next 24 hours", "press_any_key_start": "Press any key to start",
 	"weather_source_observed": "observed", "weather_source_forecast": "forecast", "start_time": "START TIME", "year": "Year", "month": "Month",
 	"day": "Day", "hour": "Hour", "minute": "Minute", "now": "Now", "start": "Start", "historical_weather": "FMI weather (observations and forecasts)",
-	"quit": "Quit", "choose_city": "CHOOSE CITY", "drive": "Drive", "back": "Back", "pbf_missing": "FINLAND MAP NOT FOUND",
+	"quit": "Quit", "choose_city": "CHOOSE CITY", "drive": "Drive", "custom_map_point": "Custom map point >",
+	"map_point_help": "Click your starting point. Drag or arrows: pan, wheel or +/-: zoom, Space: the centre.", "back": "Back", "pbf_missing": "FINLAND MAP NOT FOUND",
 	"pbf_download_offer": "Download the Finland OpenStreetMap file? The download is large and will be saved in your user data folder.",
 	"download": "Download", "use_overpass": "Use Overpass instead", "downloading_map": "DOWNLOADING FINLAND MAP",
 	"download_wait": "Please wait. Do not close the game.", "download_failed": "DOWNLOAD FAILED",

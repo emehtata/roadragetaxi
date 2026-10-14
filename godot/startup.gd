@@ -7,6 +7,7 @@ const FINLAND_PBF_URL := "https://download.geofabrik.de/europe/finland-latest.os
 const PBF_MAX_AGE_S := 30 * 24 * 60 * 60
 const T := preload("res://i18n.gd")
 const Paths := preload("res://paths.gd")
+const MapBrowser := preload("res://map_browser.gd")
 
 var _server_pid := -1
 var _game: Node
@@ -15,6 +16,7 @@ var _body: VBoxContainer
 var _cities: Array = []
 var _city_locations: Array = []
 var _city := "Oulu"
+var _start_point := Vector2.INF  # a custom gig start (latitude, longitude); INF: the city's centre
 var _language := "en"
 var _settings := ConfigFile.new()
 var _server_extra: Array[String] = []
@@ -265,6 +267,7 @@ func _city_menu() -> void:
 	choices.selected = maxi(0, _cities.find(_city))
 	var select_city := func(index: int):
 		_city = str(_cities[index])
+		_start_point = Vector2.INF
 		choices.select(index)
 		_settings.set_value("gig", "city", _city)
 		_settings.save("user://settings.cfg")
@@ -306,11 +309,70 @@ func _city_menu() -> void:
 	_body.add_child(map)
 	_body.add_child(choices)
 	_focusables.append(choices)
-	var drive := _button(_t("drive"), _time_menu)
+	var drive := _button(_t("drive"), func():
+		_start_point = Vector2.INF
+		_time_menu())
+	_button(_t("custom_map_point"), _map_point_menu)
 	_button(_t("back"), _main_menu)
 	_back_action = _main_menu
 	_focus_menu()
 	drive.call_deferred("grab_focus")  # Enter: on to the start time (the remembered city)
+
+
+## "Custom map point >": a map browser; the gig starts on the road
+## nearest the pin, with the nearest city's settings (weather, traffic).
+func _map_point_menu() -> void:
+	_clear()
+	_title(_t("custom_map_point").trim_suffix(" >").to_upper(), _t("map_point_help"))
+	var browser := MapBrowser.new()
+	var saved := Vector2(_settings.get_value("gig", "point_latitude", INF), _settings.get_value("gig", "point_longitude", INF))
+	if saved.x != INF:
+		browser.pin = saved
+		browser.show_point(saved.x, saved.y)
+	else:
+		var location: Dictionary = _city_locations[maxi(0, _cities.find(_city))]
+		browser.show_point(float(location["latitude"]), float(location["longitude"]))
+	_body.add_child(browser)
+	_focusables.append(browser)
+	var place := Label.new()
+	place.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_body.add_child(place)
+	var drive := _button(_t("drive"), func():
+		_start_point = browser.pin
+		_city = nearest_city(_city_locations, browser.pin.x, browser.pin.y)
+		_time_menu())
+	var show_pin := func():
+		drive.disabled = browser.pin == Vector2.INF
+		if not drive.disabled:
+			place.text = "%.5f, %.5f  (%s)" % [browser.pin.x, browser.pin.y, nearest_city(_city_locations, browser.pin.x, browser.pin.y)]
+	show_pin.call()
+	browser.picked.connect(func(latitude: float, longitude: float):
+		_settings.set_value("gig", "point_latitude", latitude)
+		_settings.set_value("gig", "point_longitude", longitude)
+		_settings.save("user://settings.cfg")
+		show_pin.call())
+	_button(_t("back"), _city_menu)
+	_back_action = _city_menu
+	_focus_menu()
+
+
+static func nearest_city(locations: Array, latitude: float, longitude: float) -> String:
+	var best := ""
+	var best_d := INF
+	for location in locations:
+		var d := Vector2(float(location["latitude"]) - latitude,
+			(float(location["longitude"]) - longitude) * cos(deg_to_rad(latitude))).length_squared()
+		if d < best_d:
+			best_d = d
+			best = str(location["name"])
+	return best
+
+
+## The gig's --bbox around a custom start: 3 km square, like the city presets.
+static func point_bbox(latitude: float, longitude: float) -> String:
+	var dlat := 1.5 / 111.0
+	var dlon := dlat / maxf(0.1, cos(deg_to_rad(latitude)))
+	return "%.6f,%.6f,%.6f,%.6f" % [latitude - dlat, longitude - dlon, latitude + dlat, longitude + dlon]
 
 
 static func city_map_position(latitude: float, longitude: float, size: Vector2) -> Vector2:
@@ -537,6 +599,8 @@ func _start(mode: String, skip_pbf_offer := false) -> void:
 	var args := ["--port", str(PORT), "--game-mode", mode, "--language", _language]
 	if mode == "gig_driver":
 		args.append_array(["--preset", _city, "--start-time", "%04d-%02d-%02dT%02d:%02d" % [_start_time["year"], _start_time["month"], _start_time["day"], _start_time["hour"], _start_time["minute"]]])
+		if _start_point != Vector2.INF:
+			args.append_array(["--bbox", point_bbox(_start_point.x, _start_point.y)])
 	args.append_array(map_source_args(_settings.get_value("map", "osm_source", ""), _pbf_path()))
 	if _settings.has_section_key("game", "historical_weather"):  # else the server's config decides
 		args.append("--historical-weather" if _settings.get_value("game", "historical_weather") else "--no-historical-weather")
