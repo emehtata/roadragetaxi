@@ -1,7 +1,26 @@
 """Budgeted, resumable work: a tick never stalls on one long rebuild."""
 from __future__ import annotations
 
+import gc
+import sys
 import time
+
+
+# The map is ~1M long-lived, acyclic tracked objects: a full collection at the
+# default thresholds takes 0.3-0.6 s holding the GIL - every thread stops, the
+# tick too - and frees nothing (reference counting frees unloaded tiles). These
+# keep young passes small and push full passes out to ~100M allocations
+# (bin-loader-v10.md).
+GC_THRESHOLDS = (10000, 10, 1000)
+# A background map load or chunk rebuild hands the GIL back to the tick after
+# 0.5 ms instead of the default 5 ms (osm-stream-00).
+SWITCH_INTERVAL_S = 0.0005
+
+
+def tune_interpreter() -> None:
+    """The simulation server process's settings, before the world loads."""
+    gc.set_threshold(*GC_THRESHOLDS)
+    sys.setswitchinterval(SWITCH_INTERVAL_S)
 
 
 # Per-tick wall-clock budget for one map-sync stage's chunked rebuild

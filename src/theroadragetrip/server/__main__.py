@@ -3,6 +3,7 @@ import json
 
 from ..config import cities_from_config
 from ..game_args import configure_logging
+from ..performance import tune_interpreter
 from .cli import parse_server_args
 from . import run_server
 
@@ -10,6 +11,7 @@ logger = logging.getLogger(__name__)
 
 
 def main() -> None:
+    tune_interpreter()
     args, config = parse_server_args()
     if args.list_cities:
         print(json.dumps(list(cities_from_config(config)[0]), ensure_ascii=False))

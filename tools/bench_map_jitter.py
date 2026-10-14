@@ -127,8 +127,10 @@ def main(argv=None) -> int:
     sys.argv = ["bench", "--preset", args.preset, "--no-menu", "--game-mode", "gig_driver", "--no-historical-weather"] + (
         ["--osm-source", args.osm_source] if args.osm_source else [])
     import theroadragetrip.server as server_module
+    from theroadragetrip.performance import tune_interpreter
     from theroadragetrip.server.cli import parse_server_args
 
+    tune_interpreter()  # as server/__main__.py
     server_args, config = parse_server_args()
     server = server_module.SimulationServer(server_args, config)
     streamer = server._map_streamer
