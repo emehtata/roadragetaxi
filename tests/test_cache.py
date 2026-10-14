@@ -588,3 +588,15 @@ def test_cache_root_is_platform_specific(monkeypatch):
     monkeypatch.setattr(cache.sys, "platform", "linux")
     monkeypatch.setenv("XDG_CACHE_HOME", "/var/tmp/my-cache")
     assert cache.default_cache_root() == "/var/tmp/my-cache/RoadRageTrip"
+
+
+def test_cache_skips_a_much_bigger_covering_file_when_asked(tmp_path, monkeypatch):
+    import theroadragetrip.osm as osm
+
+    monkeypatch.setattr(osm, "CACHE_DIR", str(tmp_path))
+    sample = [{"type": "node", "id": 1}]
+    save_osm_cache((64.9, 25.3, 65.1, 25.5), sample)
+    small = (64.95, 25.35, 65.0, 25.40)  # the file is 16x its area
+    assert load_osm_cache(small) == sample
+    assert load_osm_cache(small, max_cover_ratio=4.0) is None
+    assert load_osm_cache((64.9, 25.3, 65.0, 25.45), max_cover_ratio=4.0) == sample  # 2.7x
