@@ -91,6 +91,10 @@ def test_present_weather_codes_map_to_game_weather():
     assert weather_type_for_observation("precipitation", -4.0) == WeatherType.SNOW
     assert weather_type_for_observation("precipitation", 3.0) == WeatherType.SLUSH
     assert weather_type_for_observation("precipitation", 12.0) == WeatherType.RAIN
+    # a sensor's "drizzle" at -7 C (Kittilä, 14.12.2025) is fine snow; near 0 C it is trusted
+    assert weather_type_for_observation("rain", -7.1) == WeatherType.SNOW
+    assert weather_type_for_observation("rain", 0.5) == WeatherType.RAIN
+    assert weather_type_for_observation("snow", 7.0) == WeatherType.SLUSH
 
 
 def test_weather_follows_observations_then_generator_continues_from_them():

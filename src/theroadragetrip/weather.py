@@ -27,6 +27,9 @@ class WeatherType(str, Enum):
 
 SNOW_MAX_TEMPERATURE_C = 1.0
 SLUSH_MAX_TEMPERATURE_C = 5.0
+# A station's present-weather sensor misreads fine snow as drizzle in the
+# cold: reported rain this cold falls as snow (and reported snow this warm as slush).
+OBSERVED_RAIN_MIN_TEMPERATURE_C = -2.0
 
 
 # Automatic weather durations in game-seconds. Autumn and winter use
@@ -95,6 +98,10 @@ def weather_type_for_observation(kind: str, temperature_c: Optional[float]) -> W
     if kind == "":
         return WeatherType.CLEAR
     if kind != "precipitation":
+        if temperature_c is not None and kind in ("rain", "slush") and temperature_c <= OBSERVED_RAIN_MIN_TEMPERATURE_C:
+            return WeatherType.SNOW
+        if temperature_c is not None and kind == "snow" and temperature_c >= SLUSH_MAX_TEMPERATURE_C:
+            return WeatherType.SLUSH
         return WeatherType(kind)
     if temperature_c is None or temperature_c <= SNOW_MAX_TEMPERATURE_C:
         return WeatherType.SNOW
