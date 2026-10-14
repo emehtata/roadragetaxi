@@ -200,6 +200,7 @@ def main(argv=None) -> int:
             if move is not None:
                 move()
             rec = current[0] = {"began": time.perf_counter(), "start": time.monotonic(), "phases": {}}
+            rec["late"] = (rec["start"] - next_tick) * 1000.0  # woke late: the GIL held elsewhere, or the OS
             cpu = time.thread_time()
             server.tick(interval)
             current[0] = None
@@ -274,6 +275,8 @@ def main(argv=None) -> int:
         waits.setdefault(",".join(t["background"]) or "-", []).append(t["wall"] - t["cpu"])
     states = [r for r in rows if r[0] == "state" and t0 <= r[1] <= t1 + 1.0]
     gaps = [(b[1] - a[1]) * 1000.0 for a, b in zip(states, states[1:])]
+    worst_gaps = sorted(((b[1] - a[1], a[1]) for a, b in zip(states, states[1:])), reverse=True)[:5]
+    late = [t["late"] for t in ticks]
     have = {r[3] for r in rows if r[0] == "chunk" and r[1] < t0}
     sent = resent = size = 0
     for r in rows:
@@ -287,7 +290,9 @@ def main(argv=None) -> int:
     result = {
         "preset": args.preset, "osm_source": server_args.osm_source, "drive_s": args.drive_s, "speed_mps": args.speed,
         "heading": args.heading, "distance_m": round(moved[0]),
-        "ticks": tick_stats(ticks), "map_idle": tick_stats([t for t in ticks if not t["busy"]]),
+        "ticks": tick_stats(ticks), "tick_start_late_ms": {"p99": pct(late, .99), "max": round(max(late, default=0.0)),
+                                                         "over_20ms": sum(ms > 20 for ms in late)},
+        "map_idle": tick_stats([t for t in ticks if not t["busy"]]),
         "map_busy": tick_stats([t for t in ticks if t["busy"]]),
         "busy_pct": round(100.0 * sum(t["busy"] for t in ticks) / len(ticks), 1),
         "waiting_ms_per_tick": {k: {"mean": round(sum(v) / len(v), 1), "p95": pct(v, .95), "ticks": len(v)} for k, v in waits.items()},
@@ -301,7 +306,8 @@ def main(argv=None) -> int:
                      "over_10ms": sum(ms > 10 for ms in young)},
         "chunks": {"sent": sent, "resent": resent, "mb": round(size / 1e6, 1)},
         "client": {"states": len(states), "gap_p99_ms": pct(gaps, .99), "gap_max_ms": round(max(gaps, default=0.0)),
-                   "gaps_over_100ms": sum(g > 100 for g in gaps), **replay(states)},
+                   "gaps_over_100ms": sum(g > 100 for g in gaps), **replay(states),
+                   "worst_gaps": [{"t_s": round(at - t0, 1), "ms": round(gap * 1000.0)} for gap, at in worst_gaps]},
         "worst_ticks": [{"t_s": round(t["start"] - t0, 1), "wall_ms": round(t["wall"]), "cpu_ms": round(t["cpu"]),
                          "phases": {k: round(v[0]) for k, v in sorted(t["phases"].items(), key=lambda kv: -kv[1][0])[:3]},
                          "full_gc": overlapping(t), **({"stack": t["stack"]} if "stack" in t else {})}
