@@ -629,6 +629,15 @@ func _vehicle_body(c: Vector2, heading: float, length: float, width: float, colo
 			for hatch: float in [hl * 0.55, -hl * 0.62]:
 				_poly(_rect(c, f, r, hatch + hl * 0.07, hatch - hl * 0.07, hw * 0.30), detail, Color8(30, 30, 30))
 			_poly(_rect(c, f, r, hl * 0.05, -hl * 0.26, hw * 0.28), detail, Color8(30, 30, 30))
+		"tractor":  # big rear wheels, small front ones, a narrow bonnet, the cab over the rear axle
+			var tyre := Color8(25, 25, 25)
+			for side: float in [1.0, -1.0]:
+				_poly(_rect(c + r * hw * 0.80 * side, f, r, -hl * 0.20, -hl * 0.90, hw * 0.20), tyre)
+				_poly(_rect(c + r * hw * 0.62 * side, f, r, hl * 0.90, hl * 0.50, hw * 0.13), tyre)
+			_poly(_rect(c, f, r, hl, -hl * 0.10, hw * 0.36), color, RS.OUTLINE)
+			_poly(_rect(c, f, r, -hl * 0.05, -hl * 0.95, hw * 0.58), color, RS.OUTLINE)
+			_poly(_rect(c, f, r, -hl * 0.15, -hl * 0.85, hw * 0.48), RS.WINDSHIELD)
+			_poly(_rect(c, f, r, -hl * 0.30, -hl * 0.72, hw * 0.40), color.darkened(0.12))
 		"truck":
 			_poly(_rect(c, f, r, hl * 0.18, -hl, hw), color, RS.OUTLINE)
 			_poly(_rect(c, f, r, hl * 0.08, -hl * 0.86, hw * 0.78), color.lightened(28.0 / 255.0))
