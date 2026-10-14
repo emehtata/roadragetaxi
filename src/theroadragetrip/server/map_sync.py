@@ -121,6 +121,7 @@ class MapStreamer:
         self._sync_started = 0.0
         self._sync_ticks = 0
         self._sync_dirty = None
+        self.sync_tiles: set = set()  # the tiles loaded when the running (or last) sync started: what it covers
         self.sync_stage_ms: dict[str, float] = {}  # busy time per stage of the running (or last) sync
         self.last_sync = None  # (wall s, busy ms, ticks) of the last completed sync
         self.hold = False  # the server rebuilds its chunks from the synced world: no merges meanwhile
@@ -168,6 +169,7 @@ class MapStreamer:
                 self._sync_revision = manager.get_map_revision()
                 self._sync = map_sync_steps(self.world)
                 self._sync_dirty = manager.take_dirty_rect()  # what this sync's merges changed
+                self.sync_tiles = set(manager.loaded_tiles)  # a tile merged from here on waits for the next sync
                 self._sync_started = time.perf_counter()
                 self._sync_ticks = 0
                 self.sync_stage_ms = {}

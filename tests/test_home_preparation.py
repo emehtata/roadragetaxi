@@ -143,11 +143,40 @@ def test_changed_chunks_are_resent_nearest_the_player_first():
     connection = Connection()
     index = SimpleNamespace(encoded=lambda cid: cid)
     server = SimpleNamespace(
-        _map_growth=[([], index, {"9_0", "1_0", "4_0"}, None, None, 0.0, True)], _chunks_index=None,
+        _map_growth=[([], index, {"9_0", "1_0", "4_0"}, None, None, 0.0, True, {"tile"})], _chunks_index=None,
         world=SimpleNamespace(street_light_points=[]), _map_streamer=SimpleNamespace(hold=True), _on_foot=False,
-        car=SimpleNamespace(x=250.0, y=250.0), _clients_lock=threading.Lock(),
+        car=SimpleNamespace(x=250.0, y=250.0), _clients_lock=threading.Lock(), _indexed_tiles=set(),
         _client_chunks={connection: ({"9_0", "1_0", "4_0", "2_0"}, (0, 0))},
     )
     SimulationServer._apply_map_growth(server)
     assert connection.sent == ["1_0", "4_0", "9_0"]  # no unload messages: the client swaps each in place
     assert server._map_streamer.hold is False and server._client_chunks[connection] == ({"9_0", "1_0", "4_0", "2_0"}, None)
+    assert server._indexed_tiles == {"tile"}  # the final pass: its tiles' chunks can be sent now
+
+
+def test_chunks_beyond_the_players_own_wait_until_the_index_has_their_tile():
+    from types import SimpleNamespace
+
+    from theroadragetrip.server import SimulationServer
+    from theroadragetrip.tile_streaming import TileCoord
+
+    sent = []
+
+    class Connection:
+        def send(self, data):
+            sent.append(data)
+
+    connection = Connection()
+    server = SimpleNamespace(
+        _clients_lock=threading.Lock(), _clients=[connection], _client_chunks={connection: (set(), None)},
+        _on_foot=False, car=SimpleNamespace(x=250.0, y=250.0), _chunks_index=SimpleNamespace(encoded=lambda cid: cid),
+        _indexed_tiles={TileCoord(0, 0), TileCoord(1, 0)},
+    )
+    SimulationServer._stream_map_chunks(server)
+    own = {f"{x}_{y}" for x in (-1, 0, 1) for y in (-1, 0, 1)}  # the player's own 3x3, whatever is indexed
+    assert set(sent) == own | {"2_0", "3_0", "2_1", "3_1"}  # beyond it, only tile (1, 0)'s chunks
+    sent.clear()
+    server._indexed_tiles.add(TileCoord(0, 1))
+    server._client_chunks[connection] = (server._client_chunks[connection][0], None)  # a growth replans
+    SimulationServer._stream_map_chunks(server)
+    assert set(sent) == {"0_2", "1_2", "0_3", "1_3"}

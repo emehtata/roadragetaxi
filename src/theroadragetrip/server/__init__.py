@@ -31,6 +31,7 @@ from typing import Optional
 from .. import protocol
 from ..navigation_route import NavigationRoute
 from ..map_chunks import CHUNK_SIZE_M, ChunkIndex, cell_of, chunk_id, plan
+from ..tile_streaming import world_to_tile
 from .map_sync import MapStreamer
 from ..protocol import LOCAL_PLAYER_ID
 from ..calendar import GameCalendar, darkness_for_sun_altitude, solar_altitude_and_events_on
@@ -288,6 +289,9 @@ class SimulationServer:
         self._chunks_index = ChunkIndex(self.world)
         self._client_chunks: dict = {}
         self._map_streamer = MapStreamer(self.world, self._map_grew) if self._auto_fetch else None
+        # The tiles the chunk index was built with (None: the map never grows). A chunk
+        # beyond them would reach the client half-built and be resent when its tile merges.
+        self._indexed_tiles = set(self._map_streamer.manager.loaded_tiles) if self._map_streamer is not None else None
         self._map_growth: list = []  # the background rebuild's results, swapped in by ticks in order
         self._server_time = 0.0
 
@@ -702,11 +706,13 @@ class SimulationServer:
         in on a later tick. The chunks around the player come first, as their
         own result (after a Home jump: the destination drawn seconds before
         the rest of the area is rebuilt)."""
+        covered = set(self._map_streamer.sync_tiles)
+
         def build():
             started = time.perf_counter()
             index, previous = self._chunks_index, self.world.street_light_points
             if dirty is None:
-                self._map_growth.append((previous, index, set(), old_bounds, new_bounds, 0.0, True))
+                self._map_growth.append((previous, index, set(), old_bounds, new_bounds, 0.0, True, covered))
                 return
             margin = CHANGED_AREA_MARGIN_M
             area = (dirty[0] - margin, dirty[1] - margin, dirty[2] + margin, dirty[3] + margin)
@@ -719,7 +725,7 @@ class SimulationServer:
                 # a second or more sooner; its new lamps come with the next pass).
                 index, changed = ChunkIndex.updated(index, self.world, near)
                 self._map_growth.append((previous, index, changed, old_bounds, new_bounds,
-                                         time.perf_counter() - started, False))
+                                         time.perf_counter() - started, False, covered))
             lights_started = time.perf_counter()
             known = {(round(x, 1), round(y, 1)) for x, y, *_ in previous}
             lights = list(previous) + [
@@ -731,7 +737,8 @@ class SimulationServer:
                 index, changed = ChunkIndex.updated(index, self.world, area)
             finally:
                 self.world.street_light_points = previous  # the tick's own until the swap
-            self._map_growth.append((lights, index, changed, old_bounds, new_bounds, time.perf_counter() - started, True))
+            self._map_growth.append((lights, index, changed, old_bounds, new_bounds, time.perf_counter() - started, True,
+                                     covered))
             logger.info("Map chunks rebuilt for %.0f x %.0f m (lights %.0f ms)", area[2] - area[0], area[3] - area[1],
                         lights_s * 1000.0)
 
@@ -742,10 +749,12 @@ class SimulationServer:
         """Swap in the grown map's lamps and chunks (the next result of the
         background rebuild); resend every chunk a client has whose content
         changed (new roads across the old edge, lamps, buildings...)."""
-        lights, index, changed, old_bounds, new_bounds, build_s, final = self._map_growth.pop(0)
+        lights, index, changed, old_bounds, new_bounds, build_s, final, covered = self._map_growth.pop(0)
         self._chunks_index = index
         self.world.street_light_points = lights
         self._map_streamer.hold = not final
+        if final and self._indexed_tiles is not None:
+            self._indexed_tiles = covered
         player = self.world.player_pedestrian if self._on_foot else self.car
         px, py = cell_of(player.x, player.y)
 
@@ -764,14 +773,18 @@ class SimulationServer:
 
     def _stream_map_chunks(self) -> None:
         """Each client gets the map chunks around the player it doesn't have
-        yet and is told to drop far ones - replanned only when the player
-        enters another chunk."""
+        yet and is told to drop far ones - replanned when the player enters
+        another chunk and after every map growth. Beyond the player's own 3x3
+        a chunk waits until the chunk index has its tile (_indexed_tiles);
+        the player's own are sent at once (after a Home jump the destination
+        is drawn as it arrives)."""
         with self._clients_lock:
             clients = list(self._clients)
         if not clients:
             return
         player = self.world.player_pedestrian if self._on_foot else self.car
         cell = cell_of(player.x, player.y)
+        indexed = self._indexed_tiles
         for connection in clients:
             loaded, planned_for = self._client_chunks.get(connection, (set(), None))
             if planned_for == cell:
@@ -781,6 +794,10 @@ class SimulationServer:
                 connection.send({"type": "chunk_unload", "version": protocol.PROTOCOL_VERSION, "chunk_id": cid})
                 loaded.discard(cid)
             for cid in to_load:
+                ix, iy = (int(part) for part in cid.split("_"))
+                if indexed is not None and max(abs(ix - cell[0]), abs(iy - cell[1])) > 1 \
+                        and world_to_tile((ix + 0.5) * CHUNK_SIZE_M, (iy + 0.5) * CHUNK_SIZE_M) not in indexed:
+                    continue
                 connection.send(self._chunks_index.encoded(cid))
                 loaded.add(cid)
             self._client_chunks[connection] = (loaded, cell)

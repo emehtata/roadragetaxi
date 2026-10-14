@@ -10,6 +10,7 @@ from theroadragetrip.server import map_sync
 class FakeManager:
     def __init__(self):
         self.revision, self.bounds, self.busy = 1, (0.0, 0.0, 100.0, 100.0), False
+        self.loaded_tiles = set()
         self.integrated = self.streamed = 0
         self.lock = threading.Lock()
         self.soft_boundary_enabled = False
@@ -55,12 +56,13 @@ def test_streamer_syncs_once_a_merge_settles_and_reports_the_growth(monkeypatch)
     manager.revision, manager.bounds, manager.busy = 2, (0.0, 0.0, 200.0, 100.0), True
     streamer.tick(50, 50, 10, 0)
     assert not streamer.syncing  # still merging: wait
-    manager.busy = False
+    manager.busy, manager.loaded_tiles = False, {"a", "b"}
     streamer.tick(50, 50, 10, 0)
     assert streamer.syncing and synced_steps == []  # started: the stages run from the next tick
+    manager.loaded_tiles = {"a", "b", "c"}  # merged after the start: the next sync's
     for _ in range(3):
         streamer.tick(50, 50, 10, 0)
-    assert synced_steps == ["start", "end"] and not streamer.syncing
+    assert synced_steps == ["start", "end"] and not streamer.syncing and streamer.sync_tiles == {"a", "b"}
     assert grown == [((0.0, 0.0, 100.0, 100.0), (0.0, 0.0, 200.0, 100.0))]
 
     streamer.hold = True  # the server is rebuilding its chunks
