@@ -717,8 +717,10 @@ def respawn_car(
     waters: Optional[List] = None,
     taxi_stops: Optional[List] = None,
     near_edge: bool = False,
+    start_point: Optional[Tuple[float, float]] = None,
 ) -> None:
-    """Place the car on a main connected drivable land road, avoiding isolated road segments."""
+    """Place the car on a main connected drivable land road, avoiding isolated road segments.
+    start_point: exactly on the road point nearest it (a map pin)."""
     if not ways:
         return
     if car.fuel_l <= 0.0:
@@ -761,6 +763,21 @@ def respawn_car(
             x = start[0] + (end[0] - start[0]) * progress
             y = start[1] + (end[1] - start[1]) * progress
             heading = math.atan2(end[1] - start[1], end[0] - start[0])
+            _place_car_on_right_lane(car, way, x, y, heading)
+            car.speed = 0.0
+            car.layer = getattr(way, "layer", 0)
+            return
+
+    if start_point is not None:
+        best = None
+        main_network = compute_largest_connected_road_component(ways)
+        for way in [w for w in main_network if not getattr(w, "is_ice_road", False)] or ways:
+            for p1, p2 in zip(way.points_m, way.points_m[1:]):
+                x, y, _, distance = closest_point_and_dist_to_segment(*start_point, p1[0], p1[1], p2[0], p2[1])
+                if (best is None or distance < best[0]) and not (waters and is_point_in_water(x, y, waters)):
+                    best = (distance, way, x, y, math.atan2(p2[1] - p1[1], p2[0] - p1[0]))
+        if best is not None:
+            _, way, x, y, heading = best
             _place_car_on_right_lane(car, way, x, y, heading)
             car.speed = 0.0
             car.layer = getattr(way, "layer", 0)

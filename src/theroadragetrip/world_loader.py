@@ -288,7 +288,9 @@ def load_world(
     # Spawn car on a road near center (avoiding water)
     car = Car(x=(minx + maxx) / 2, y=(miny + maxy) / 2, heading=0.0, speed=0.0)
     if ways:
-        respawn_car(car, ways, near_center=True, bounds=bounds, waters=waters, taxi_stops=taxi_stops)
+        to_metres = latlon_to_world_metres() if getattr(args, "bbox", None) else None
+        pin = to_metres((bbox[0] + bbox[2]) / 2.0, (bbox[1] + bbox[3]) / 2.0) if to_metres else None  # a map pick's centre
+        respawn_car(car, ways, near_center=True, bounds=bounds, waters=waters, taxi_stops=taxi_stops, start_point=pin)
         car.engine_on = False  # the driver starts on foot; E starts it after getting in
     career_total_distance_m = None
     if career is not None:
