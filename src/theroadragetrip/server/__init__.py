@@ -368,6 +368,9 @@ class SimulationServer:
         on_surface = getattr(car, "map_level", SURFACE_LEVEL) == SURFACE_LEVEL
         surface_way = get_current_road_at_car(car, ways=world.ways, spatial_grid=world.spatial_grid, car_roads_only=False) \
             if on_surface else None
+        snow = world.weather.road_snow_at(car.x, car.y) if surface_way is not None else 0.0
+        if snow >= 0.1 and abs(car.speed) > 0.1:
+            return {"kind": "snow", "intensity": round(min(1.0, snow / 3.0), 2), "front": True}
         ground = (
             off_road_ground_kind(car.x, car.y, scenery_grid=world.scenery_grid)
             if on_surface and surface_way is None

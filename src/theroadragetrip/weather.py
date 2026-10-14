@@ -394,6 +394,10 @@ class WeatherSystem:
         else:
             self.is_thunderstorm = False
 
+    def road_snow_at(self, x: float, y: float) -> float:
+        cell = (math.floor(x / 10.0), math.floor(y / 10.0))
+        return max(0.0, self.road_snow - self.plowed_cells.get(cell, 0.0))
+
     def plow_road(self, start, end) -> None:
         if self.road_snow <= 0.0:
             return

@@ -329,6 +329,25 @@ def test_tyre_marks_flash_and_level_in_the_state(tmp_path, monkeypatch):
     assert server._tyre_mark(previous=(server.car.x, server.car.y)) is None  # not moving: nothing laid
 
 
+def test_normal_driving_leaves_tracks_on_snowy_roads_but_not_plowed_roads(tmp_path, monkeypatch):
+    server = _build_server(tmp_path, monkeypatch)
+    server._on_foot = False
+    road = server.world.ways[0]
+    server.car.x, server.car.y = road.points_m[0]
+    server.car.speed = 2.0
+    server.car.skid_amount = 0.0
+    weather = server.world.weather
+    weather.road_snow = 3.0
+    previous = (server.car.x - 1.0, server.car.y)
+    assert server._tyre_mark(previous) == {"kind": "snow", "intensity": 1.0, "front": True}
+    assert server._tyre_mark((server.car.x, server.car.y)) is None
+    weather.plow_road((server.car.x, server.car.y), (server.car.x, server.car.y))
+    assert server._tyre_mark(previous) is None
+    server.car.map_level = -1
+    weather.plowed_cells.clear()
+    assert server._tyre_mark(previous) is None
+
+
 def test_the_running_fare_crosses_the_wire(tmp_path, monkeypatch):
     """godot-final-03: the mission bar's live values, straight from TaxiManager.
     The meter's three are null until the meter starts."""
