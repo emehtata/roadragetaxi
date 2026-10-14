@@ -86,6 +86,14 @@ KERB_ROAD_CROSSING_MARGIN_M = 1.0  # extra gap beyond the road's half width
 _KERB_CROSSING_GRID_CELL_M = 50.0
 
 
+def _water_kind(tags: dict) -> Optional[str]:
+    """A river's area (natural=water + water=river, or the old
+    waterway=riverbank) is "river": its ice is not safe to drive on."""
+    if tags.get("water") in ("river", "canal", "stream", "rapids") or tags.get("waterway") == "riverbank":
+        return "river"
+    return None
+
+
 def _segment_intersection_t(a, b, p, q) -> Optional[float]:
     """Parameter t along a->b where it crosses p->q, or None."""
     denom = (b[0] - a[0]) * (q[1] - p[1]) - (b[1] - a[1]) * (q[0] - p[0])
@@ -775,7 +783,7 @@ def build_ways(
         if not pts or len(pts) < 2:
             continue
         is_poly = pts[0] == pts[-1]
-        kind = tags.get("natural") or tags.get("waterway") or tags.get("landuse") or "water"
+        kind = _water_kind(tags) or tags.get("natural") or tags.get("waterway") or tags.get("landuse") or "water"
         name = tags.get("name")
         try:
             layer = int(float(str(tags.get("layer", 0)).strip()))
@@ -1178,7 +1186,7 @@ def build_ways(
                     **_level_metadata(tags),
                 ))
             elif tags.get("natural") in ("water", "bay", "strait") or tags.get("landuse") == "reservoir":
-                kind = tags.get("natural") or tags.get("landuse") or "water"
+                kind = _water_kind(tags) or tags.get("natural") or tags.get("landuse") or "water"
                 try:
                     layer = int(float(str(tags.get("layer", 0)).strip()))
                 except (TypeError, ValueError):

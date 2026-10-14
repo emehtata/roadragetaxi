@@ -209,3 +209,24 @@ def test_sand_and_beach_are_their_own_ground_kind():
     assert physics.off_road_ground_kind(200.0, 200.0, sceneries=[park, beach]) == "soft"
     assert physics.off_road_ground_kind(50.0, 50.0, sceneries=[park, beach, plaza]) == "hard"
     assert not physics.is_point_on_soft_ground(10.0, 10.0, sceneries=[beach])
+
+
+def test_ice_holds_on_lakes_in_winter_but_river_ice_may_break():
+    square = [(-10.0, -10.0), (10.0, -10.0), (10.0, 10.0), (-10.0, 10.0), (-10.0, -10.0)]
+    lake = Water(points_m=square, kind="water", is_polygon=True)
+    river = Water(points_m=square, kind="river", is_polygon=True)
+    car = Car(x=0.0, y=0.0, heading=0.0, speed=0.0)
+    assert physics.water_sinks_car(car, [lake], None, 6, 0.1)  # open water: under at once
+    assert physics.water_sinks_car(car, [lake], None, None, 0.1)
+    assert not physics.water_sinks_car(car, [lake], None, 1, 0.1, rng=lambda: 0.0)  # lake ice holds
+    assert physics.water_sinks_car(car, [river], None, 2, 0.1, rng=lambda: 0.0)  # river ice breaks...
+    assert not physics.water_sinks_car(car, [river], None, 2, 0.1, rng=lambda: 0.99)  # ...sometimes
+    car.x = 9.5  # one wheel in the water: nothing happens
+    assert not physics.water_sinks_car(car, [lake], None, 6, 0.1)
+
+
+def test_river_areas_are_built_as_river():
+    from theroadragetrip.osm.build import _water_kind
+    assert _water_kind({"natural": "water", "water": "river"}) == "river"
+    assert _water_kind({"waterway": "riverbank"}) == "river"
+    assert _water_kind({"natural": "water", "water": "lake"}) is None

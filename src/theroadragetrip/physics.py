@@ -506,6 +506,23 @@ def is_car_fully_in_water(car: Car, waters: List, current_way=None) -> bool:
     )
 
 
+ICE_MONTHS = (1, 2)  # lakes and sea carry a car; rivers (current) stay treacherous
+RIVER_KINDS = frozenset({"river", "stream", "canal", "drain", "ditch", "brook", "rapids"})
+RIVER_ICE_BREAK_PER_S = 0.3  # the chance per second on river ice that it gives way
+SINK_S = 5.0  # sinking, then a respawn
+
+
+def water_sinks_car(car: Car, waters: List, current_way, month: Optional[int], dt: float, rng=random.random) -> bool:
+    """Whether the car goes under this tick: fully in open water, or on river
+    ice that breaks. Lake and sea ice hold in January-February."""
+    if not is_car_fully_in_water(car, waters, current_way=current_way):
+        return False
+    if month not in ICE_MONTHS:
+        return True
+    rivers = [w for w in waters if w.kind in RIVER_KINDS]
+    return is_point_in_water(car.x, car.y, rivers) and rng() < 1.0 - math.exp(-RIVER_ICE_BREAK_PER_S * dt)
+
+
 def is_car_colliding_with_bridge_edge(car: Car, current_way=None, ways: Optional[List] = None) -> bool:
     """Return whether a car corner has reached the outer edge of its bridge road.
 

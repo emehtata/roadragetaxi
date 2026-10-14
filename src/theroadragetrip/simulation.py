@@ -32,10 +32,11 @@ from .physics import (
     STEER_SPEED_FACTOR,
     get_current_road_at_car,
     is_car_colliding_with_bridge_edge,
-    is_car_fully_in_water,
+    SINK_S,
     pull_car_inside_bridge_edge,
     respawn_car,
     update_car_physics,
+    water_sinks_car,
 )
 from .station_passengers import StationPassengerView, track_checker
 from .taxi import TaxiState
@@ -257,7 +258,7 @@ def advance_simulation(
         )
 
     audio.player_position = (car.x, car.y)  # where the taxi's own sounds come from
-    immobilized = taxi_mgr.tree_wait_timer > 0.0
+    immobilized = taxi_mgr.tree_wait_timer > 0.0 or water_elapsed > 0.0  # sinking: no driving out
     score_at_start = taxi_mgr.total_score
     loud_event = False  # a crash/camera/vomit sound already tells of this tick's lost points
     car.driver_mass_kg = 0.0 if on_foot else 90.0
@@ -408,22 +409,23 @@ def advance_simulation(
             current_way = get_current_road_at_car(
                 car, ways=drive_ways, spatial_grid=drive_grid, car_roads_only=True,
             )
-        in_water = on_surface and not entered_roadwork and is_car_fully_in_water(car, waters, current_way=current_way)
-        audio.on_rise("water", in_water, "vehicle.water_splash")
-        if in_water:
-            water_elapsed = min(10.0, water_elapsed + dt)
-            taxi_mgr.notification_msg = (
-                f"{tr(language, 'water_timer')}: {max(0.0, 10.0 - water_elapsed):.1f} s"
-            )
+        # water_elapsed: seconds the taxi has been sinking (0: afloat or on ice)
+        if water_elapsed == 0.0 and on_surface and not entered_roadwork and water_sinks_car(
+                car, waters, current_way, now.month if now is not None else None, dt):
+            water_elapsed = dt
+            audio.play_group("vehicle.water_splash")
+        elif water_elapsed > 0.0:
+            water_elapsed += dt
+        if water_elapsed > 0.0:
+            car.speed = 0.0
+            taxi_mgr.notification_msg = f"{tr(language, 'water_sinking')}: {max(0.0, SINK_S - water_elapsed):.1f} s"
             taxi_mgr.notification_timer = 0.2
-            if water_elapsed >= 10.0:
+            if water_elapsed >= SINK_S:
                 respawn_car(car, ways, waters=waters, taxi_stops=taxi_stops)
                 taxi_mgr.handle_respawn(car.x, car.y)
                 taxi_mgr.notification_msg = tr(language, "water_driving")
                 taxi_mgr.notification_timer = 1.5
                 water_elapsed = 0.0
-        else:
-            water_elapsed = 0.0
     if immobilized:
         car.speed = 0.0
     movement_distance = math.hypot(car.x - previous_position[0], car.y - previous_position[1])

@@ -71,7 +71,8 @@ MAGIC = b"RWC\0"
 # 22: level_connectors section (amenity=parking_entrance, garage-07.md).
 # 23: underground roads with an explicit multi-level level=* are kept
 # (garage-09.md).
-FORMAT_VERSION = 23
+# 24: river areas (water=river, waterway=riverbank) have kind "river".
+FORMAT_VERSION = 24
 COORDINATE_SYSTEM = "EPSG:3067"
 _HEADER = struct.Struct("<4sHHQQ32s12s")
 _DIRECTORY = struct.Struct("<8sQQI")
