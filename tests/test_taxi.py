@@ -266,6 +266,23 @@ def test_taxi_venue_target_accepts_named_amenity_place():
     assert target.way_name == "Pihakatu"
 
 
+def test_a_building_out_of_range_is_skipped_before_the_road_scan(monkeypatch):
+    import theroadragetrip.taxi as taxi_module
+
+    road = Way(points_m=[(float(x), 0.0) for x in range(0, 10001, 500)], highway="residential", half_width_m=4.5, name="Pitkätie")
+
+    def house(x, name):
+        return Building(points_m=[(x, 30.0), (x + 20.0, 30.0), (x + 20.0, 50.0), (x, 50.0)], name=name)
+
+    taxi_mgr = TaxiManager(ways=[road], buildings=[house(5000.0 + 200.0 * i, f"Kaukana {i}") for i in range(20)]
+                           + [house(600.0, "Lähellä")])
+    scans = []
+    monkeypatch.setattr(taxi_module, "is_car_road", lambda way, real=taxi_module.is_car_road: scans.append(way) or real(way))
+    target = taxi_mgr.pick_random_building_point(ref_x=0.0, ref_y=0.0, min_dist=150.0, max_dist=1200.0)
+    assert target is not None and target.address == "Lähellä"
+    assert len(scans) == 5  # the one road, from the near house's four corners and centre - the far ones never
+
+
 def test_taxi_mission_lifecycle():
     way1 = Way(
         points_m=[(0.0, 0.0), (100.0, 0.0)],

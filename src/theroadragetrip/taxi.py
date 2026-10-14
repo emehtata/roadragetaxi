@@ -1230,6 +1230,13 @@ class TaxiManager:
                 center_y = building.y
                 anchors = [(center_x, center_y)]
             anchors.append((center_x, center_y))
+            if ref_x is not None and ref_y is not None:
+                # The road point found lies within max_road_distance of an anchor: a building that
+                # can't meet the distance limits is skipped before the scan over every road.
+                reach = max_road_distance + max(math.hypot(ax - center_x, ay - center_y) for ax, ay in anchors)
+                centre_distance = math.hypot(center_x - ref_x, center_y - ref_y)
+                if centre_distance + reach < min_dist or centre_distance - reach > max_dist:
+                    continue
             nearest: Optional[Tuple[float, float, str, float]] = None
 
             for anchor_x, anchor_y in anchors:
@@ -1427,6 +1434,7 @@ class TaxiManager:
 
         passenger_name, passenger_gender, resident_id, passenger_weight_kg = self._new_passenger_identity()
         nausea_delay = self.nausea_delay_for_pickup(pickup_target)
+        ped_x, ped_y, ped_heading = self.passenger_waiting_position(pickup_target)
         self.current_passenger = TaxiPassenger(
             name=passenger_name,
             pickup=pickup_target,
@@ -1434,9 +1442,9 @@ class TaxiManager:
             gender=passenger_gender,
             resident_id=resident_id,
             weight_kg=passenger_weight_kg,
-            ped_x=self.passenger_waiting_position(pickup_target)[0],
-            ped_y=self.passenger_waiting_position(pickup_target)[1],
-            ped_heading=self.passenger_waiting_position(pickup_target)[2],
+            ped_x=ped_x,
+            ped_y=ped_y,
+            ped_heading=ped_heading,
             ped_speed=2.2,
             is_walking_to_car=False,
             boarded=False,
@@ -1571,6 +1579,7 @@ class TaxiManager:
                 continue
             passenger_name, passenger_gender, resident_id, passenger_weight_kg = self._new_passenger_identity()
             nausea_delay = self.nausea_delay_for_pickup(pickup)
+            ped_x, ped_y, ped_heading = self.passenger_waiting_position(pickup)
             passenger = TaxiPassenger(
                 name=passenger_name,
                 pickup=pickup,
@@ -1578,9 +1587,9 @@ class TaxiManager:
                 gender=passenger_gender,
                 resident_id=resident_id,
                 weight_kg=passenger_weight_kg,
-                ped_x=self.passenger_waiting_position(pickup)[0],
-                ped_y=self.passenger_waiting_position(pickup)[1],
-                ped_heading=self.passenger_waiting_position(pickup)[2],
+                ped_x=ped_x,
+                ped_y=ped_y,
+                ped_heading=ped_heading,
                 ped_speed=2.2,
                 is_drunk=math.isfinite(nausea_delay),
                 nausea_delay=nausea_delay,
