@@ -50,6 +50,7 @@ def test_streamer_syncs_once_a_merge_settles_and_reports_the_growth(monkeypatch)
         synced_steps.append("end")
 
     monkeypatch.setattr(map_sync, "map_sync_steps", steps)
+    monkeypatch.setattr(map_sync, "SYNC_SETTLE_S", 0.0)
     manager = FakeManager()
     grown = []
     streamer = map_sync.MapStreamer(SimpleNamespace(auto_fetch_manager=manager, ways=[]), lambda old, new, dirty: grown.append((old, new)))
@@ -78,6 +79,7 @@ def test_streamer_syncs_once_a_merge_settles_and_reports_the_growth(monkeypatch)
 def test_the_status_tells_the_client_what_the_map_is_doing(monkeypatch):
     """For the loading sign: fetching, merging, syncing, building, then ""."""
     monkeypatch.setattr(map_sync, "map_sync_steps", lambda world: iter([None]))
+    monkeypatch.setattr(map_sync, "SYNC_SETTLE_S", 0.0)
     manager = FakeManager()
     manager.fetching = False
     manager.get_fetching = lambda: manager.fetching
@@ -99,28 +101,34 @@ def test_the_status_tells_the_client_what_the_map_is_doing(monkeypatch):
 
 
 def test_a_settled_merge_waits_briefly_for_a_fetch_in_flight(monkeypatch):
-    """The lookahead tile is requested as soon as the core window is in:
-    one whole-world sync for both, not one each."""
+    """The lookahead tile is requested right after the core window, or a
+    moment later: one whole-world sync for both, not one each."""
     monkeypatch.setattr(map_sync, "map_sync_steps", lambda world: iter([None]))
+    monkeypatch.setattr(map_sync, "SYNC_SETTLE_S", 0.0)
 
-    def merged_while_fetching():
+    def merged(fetching=True):
         manager = FakeManager()
         streamer = map_sync.MapStreamer(SimpleNamespace(auto_fetch_manager=manager, ways=[]), lambda old, new, dirty: None)
-        manager.revision, manager.fetching = 2, True
+        manager.revision, manager.fetching = 2, fetching
         return manager, streamer
 
-    manager, streamer = merged_while_fetching()
+    manager, streamer = merged()
     streamer.tick(0, 0, 0, 0)
     assert not streamer.syncing
     manager.fetching = False  # loaded (and merged): now one sync
     streamer.tick(0, 0, 0, 0)
     assert streamer.syncing
 
-    _, streamer = merged_while_fetching()
+    _, streamer = merged()
     streamer.tick(0, 0, 0, 0, urgent=True)
     assert streamer.syncing  # the map under the player is missing: no waiting
 
+    monkeypatch.setattr(map_sync, "SYNC_SETTLE_S", 60.0)
+    _, streamer = merged(fetching=False)
+    streamer.tick(0, 0, 0, 0)
+    assert not streamer.syncing  # settling: the lookahead may still be asked for
+
     monkeypatch.setattr(map_sync, "SYNC_WAIT_FOR_FETCH_S", 0.0)
-    _, streamer = merged_while_fetching()
+    _, streamer = merged()
     streamer.tick(0, 0, 0, 0)
     assert streamer.syncing  # waited long enough: a slow fetch gets its own sync

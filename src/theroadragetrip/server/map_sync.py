@@ -26,9 +26,12 @@ logger = logging.getLogger(__name__)
 
 
 CHUNK_INPUTS_READY = "chunk_inputs_ready"
-# A settled merge waits up to this long for a tile fetch still in flight (the
-# lookahead tile, requested as soon as the core window is in), so one sync
-# covers both: each is a whole-world rebuild, 1-2 s of work over 7-12 s of ticks.
+# A settled merge waits SYNC_SETTLE_S, and while a tile fetch is in flight up
+# to SYNC_WAIT_FOR_FETCH_S, before its sync starts: the lookahead tile is
+# requested right after the core window or a moment later, as the car moves,
+# and one sync then covers both - each is a whole-world rebuild, 1-2 s of work
+# over 7-12 s of ticks.
+SYNC_SETTLE_S = 1.0
 SYNC_WAIT_FOR_FETCH_S = 3.0
 
 
@@ -174,7 +177,8 @@ class MapStreamer:
             if not busy and manager.get_map_revision() != self._synced_revision:
                 if self._merged_since is None:
                     self._merged_since = time.perf_counter()
-                if not urgent and manager.get_fetching() and time.perf_counter() - self._merged_since < SYNC_WAIT_FOR_FETCH_S:
+                waited = time.perf_counter() - self._merged_since
+                if not urgent and waited < SYNC_WAIT_FOR_FETCH_S and (waited < SYNC_SETTLE_S or manager.get_fetching()):
                     return
                 self._merged_since = None
                 self._sync_revision = manager.get_map_revision()
