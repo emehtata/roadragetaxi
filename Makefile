@@ -94,4 +94,4 @@ clean:
 stop:
 	-pkill -f -- '--path [g]odot'
 	-pkill -f -- '-m [t]heroadragetrip\.server'
-	-pkill -f -- '$(CURDIR)/\.venv/bin/python -c [f]rom multiprocessing'
+	-pkill -f -- '$(CURDIR)/\.venv/bin/python -c [f]rom multiprocessing\.spawn'  # not the resource tracker: it cleans up after the rest
