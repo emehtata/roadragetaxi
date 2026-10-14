@@ -177,9 +177,15 @@ class ChunkIndex:
                     "drivable": bool(way.is_drivable), "layer": way.layer,
                     **static_world.road_style(way),  # colour, centre line, one-way, bridge (godot-16)
                 })
+        bridge_parts = static_world.rail_bridge_parts(world.railways, world.ways)
         for rail in world.railways:
             if len(rail.points_m) >= 2:  # a bridge track is drawn above the vehicles
                 self._add("rail_bridges" if rail.is_bridge else "railways", rail.points_m, _line(rail.points_m))
+        explicit_bridge_count = sum(rail.is_bridge and len(rail.points_m) >= 2 for rail in world.railways)
+        for part in bridge_parts[explicit_bridge_count:]:
+            # Explicit bridge tracks were added whole above; these are the
+            # inferred short spans over a mapped below-grade road.
+            self._add("rail_bridges", part.coords, _line(part.coords))
         for water in world.waters:
             # Only a closed water area is filled; a river or
             # stream line (Oulujoki's centre line) is drawn as a line, 3 m wide
@@ -246,7 +252,7 @@ class ChunkIndex:
             # A fifth 1: a parking pole lighting all round (street lamps lean toward their road).
             self._add("street_lights", ((x, y),), [round(x, 1), round(y, 1), round(direction, 3), pool_radius]
                       + ([1] if len(lamp) > 4 and lamp[4] else []))
-        self._add_static_world(world)
+        self._add_static_world(world, bridge_parts)
         for work in getattr(world, "roadworks", ()):  # in the chunk of its midpoint
             middle = ((work.start[0] + work.end[0]) / 2.0, (work.start[1] + work.end[1]) / 2.0)
             self._add("roadworks", (middle,), {
@@ -290,7 +296,7 @@ class ChunkIndex:
         for cell in cells_touched_by_line(points, self.size):
             self._chunk(cell)[kind].append(feature)
 
-    def _add_static_world(self, world) -> None:
+    def _add_static_world(self, world, bridge_parts) -> None:
         """godot-16: the rest of what the client draws from the map (static_world.py)."""
         from .map_style import SCENERY_COLORS, SPECKLE_SCENERY_KINDS
 
@@ -305,7 +311,7 @@ class ChunkIndex:
                 self._chunk(cell)["landuse"].append([static_world._rgb(color), seasonal, ring])
                 if island:
                     self._chunk(cell)["traffic_islands"].append([static_world._rgb(color), seasonal, ring])
-        for deck in static_world.rail_bridge_decks(world.railways):
+        for deck in static_world.rail_bridge_decks(world.railways, bridge_parts=bridge_parts):
             for cell, ring in static_world.clipped_pieces(deck, self.size):
                 self._chunk(cell)["rail_decks"].append(ring)
         for a, b in static_world.bridge_guardrails(world.ways):

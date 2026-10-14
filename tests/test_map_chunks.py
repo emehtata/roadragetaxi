@@ -1,6 +1,8 @@
 import math
 from types import SimpleNamespace
 
+import pytest
+
 from theroadragetrip import map_chunks
 
 
@@ -198,6 +200,28 @@ def test_bridge_guardrails_run_along_the_outside_only():
     rails = static_world.bridge_guardrails([left, right])
     ys = sorted({round(y, 1) for a, b in rails for _, y in (a, b)})
     assert ys == [-3.0, 9.5]  # the two outer edges, nothing between the carriageways, no end caps
+
+
+def test_parallel_tracks_form_one_bridge_over_a_below_grade_road():
+    from shapely.geometry import Polygon
+    from theroadragetrip import static_world
+    from theroadragetrip.osm.models import Railway, Way
+
+    road = Way([(50.0, -10.0), (50.0, 30.0)], "primary", 4.0, is_tunnel=True, layer=-1)
+    tracks = [Railway([(0.0, y), (100.0, y)]) for y in (10.0, 17.0)]
+    parts = static_world.rail_bridge_parts(tracks, [road])
+    decks = static_world.rail_bridge_decks(tracks, [road])
+
+    assert len(parts) == 2
+    assert len(decks) == 1
+    assert Polygon(decks[0]).bounds == pytest.approx((43.0, 8.3, 57.0, 18.7))
+
+    world = _obstacle_world()
+    world.ways = [road]
+    world.railways = tracks
+    chunk = map_chunks.ChunkIndex(world, size=500.0).message("0_0")
+    assert len(chunk["rail_bridges"]) == 2
+    assert len(chunk["rail_decks"]) == 1
 
 
 def test_bus_stop_shapes_follow_the_nearest_road():

@@ -26,8 +26,9 @@ from shapely.ops import unary_union
 from .geo import dist_point_to_segment
 
 GUARDRAIL_JOIN_M = 3.0  # close gaps between parallel bridge ways (~3 px at any zoom)
-RAIL_BRIDGE_JOIN_M = 1.5  # close gaps between parallel bridge tracks
+RAIL_BRIDGE_JOIN_M = 2.5  # one platform across ordinary parallel-track spacing
 RAIL_DECK_HALF_M = 2.6 / 2.0 + 0.4  # half a sleeper + the deck margin
+RAIL_UNDERPASS_MARGIN_M = 3.0  # deck/abutment beyond each side of the road cutting
 LABEL_DISTRICT, LABEL_WATER, LABEL_AREA, LABEL_BUILDING, LABEL_ROAD = range(5)
 
 
@@ -119,10 +120,33 @@ def bridge_guardrails(ways) -> list:
     return _side_edges(polygons, centerlines) if polygons else []
 
 
-def rail_bridge_decks(railways):
+def rail_bridge_parts(railways, ways=()):
+    """Track lines above vehicles, including untagged track over an underpass."""
+    parts = [LineString(r.points_m) for r in railways if r.is_bridge and len(r.points_m) >= 2]
+    underpasses = [
+        LineString(w.points_m).buffer(max(0.5, w.half_width_m) + RAIL_UNDERPASS_MARGIN_M)
+        for w in ways
+        if len(w.points_m) >= 2 and getattr(w, "is_drivable", True)
+        and (getattr(w, "is_tunnel", False) or getattr(w, "layer", 0) < 0)
+    ]
+    if not underpasses:
+        return parts
+    covered = unary_union(underpasses)
+    for railway in railways:
+        if railway.is_bridge or len(railway.points_m) < 2:
+            continue
+        intersection = LineString(railway.points_m).intersection(covered)
+        if intersection.geom_type == "LineString" and not intersection.is_empty:
+            parts.append(intersection)
+        else:
+            parts.extend(line for line in getattr(intersection, "geoms", ()) if line.geom_type == "LineString" and not line.is_empty)
+    return parts
+
+
+def rail_bridge_decks(railways, ways=(), bridge_parts=None):
     """Deck polygons (union of the bridge tracks' sleeper width + margin)
     for the rail bridges."""
-    lines = [LineString(r.points_m) for r in railways if r.is_bridge and len(r.points_m) >= 2]
+    lines = bridge_parts if bridge_parts is not None else rail_bridge_parts(railways, ways)
     if not lines:
         return []
     decks = unary_union([l.buffer(RAIL_DECK_HALF_M, cap_style="flat", join_style="mitre").buffer(RAIL_BRIDGE_JOIN_M)
