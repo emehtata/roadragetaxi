@@ -1576,6 +1576,27 @@ def test_ready_transit_atomically_replaces_a_distant_parked_car_below_target():
     assert manager.route_job_stats["ready"] == 1
 
 
+def test_ready_transit_rechecks_live_spawn_positions_between_job_commits():
+    manager = NPCVehicleManager(target_count=10)
+    residents = ResidentManager()
+    plan = ([PathPoint(-100.0, 0.0), PathPoint(100.0, 0.0)], (100.0, 0.0), None, True)
+    first = place_parked_npc(1, (-100.0, 0.0), None)
+    duplicate = place_parked_npc(2, (-100.0, 0.0), None)
+
+    manager._finish_route_job(
+        {"kind": "transit", "vehicle": None, "members": None}, (first, plan),
+        0.0, 0.0, residents, None,
+    )
+    manager._finish_route_job(
+        {"kind": "transit", "vehicle": None, "members": None}, (duplicate, plan),
+        0.0, 0.0, residents, None,
+    )
+
+    assert manager.vehicles == [first]
+    assert manager.route_job_stats["ready"] == 1
+    assert manager.route_job_stats["discarded"] == 1
+
+
 def test_ready_transit_is_discarded_after_player_has_driven_out_of_range():
     manager = NPCVehicleManager(target_count=10, min_count=6, simulation_radius_m=400.0)
     residents = ResidentManager()

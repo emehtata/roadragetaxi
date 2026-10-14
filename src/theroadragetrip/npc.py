@@ -3988,7 +3988,10 @@ class NPCVehicleManager:
                 or (viewport_bounds is not None and _point_in_viewport(
                     vehicle.x, vehicle.y, viewport_bounds, margin_m=NPC_PARKING_ACCESS_TOLERANCE_M,
                 ))
-                or any(True for _ in self.nearby_vehicles_at(vehicle.x, vehicle.y, NPC_TRANSIT_SPAWN_CLEARANCE_M))
+                or not _point_is_clear_of_vehicles(
+                    (vehicle.x, vehicle.y), [(other.x, other.y) for other in self.vehicles],
+                    NPC_TRANSIT_SPAWN_CLEARANCE_M,
+                )
                 or (result[1][2] is None and not _point_is_clear_of_vehicles(
                     result[1][1], [pos for _, pos in claimed_points]
                 ))
