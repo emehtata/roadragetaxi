@@ -27,7 +27,7 @@ from .geo import angle_diff, bbox_distance_sq, boxes_intersect, clamp, closest_p
 from .osm import Curb, ParkingSpace, Way
 from .physics import GRAVITY_MPS2, Car, SpatialWayGrid, update_car_physics
 from .residents import Household, HouseholdManager, ResidentManager
-from .traffic_rules import TrafficAction, TrafficDecision, decide_traffic_action, nearest_vehicle_ahead
+from .traffic_rules import TrafficAction, TrafficDecision, decide_traffic_action, nearest_vehicle_ahead, crossing_yield_decision
 from .traffic_world import _ROUTE_NODE_GRID_CELL_M, RouteSteps, TrafficWorld, run_route_steps
 from .vehicles.base import VEHICLE_DEFINITIONS, vehicle_definition
 
@@ -2165,6 +2165,15 @@ def update_npc(
         vehicle.car.x, vehicle.car.y, vehicle.car.heading, nearby_lights, traffic_world.sim_time,
         speed_limit_mps=speed_limit_mps,
     )
+    crossing_decision = None
+    if decision.light is None:
+        crossing_decision = crossing_yield_decision(
+            vehicle, nearby_obstacles or (),
+            signs=[*getattr(traffic_world, "stop_signs", ()), *getattr(traffic_world, "yield_signs", ())],
+            speed_limit_mps=speed_limit_mps,
+        )
+        if crossing_decision is not None and crossing_decision.target_speed_mps <= decision.target_speed_mps:
+            decision = crossing_decision
     driver.decision = decision
     driver.target_speed_mps = decision.target_speed_mps
     # NPC-003 v2 section 4: a vehicle plugin's own max speed (e.g. a bus/
@@ -2316,7 +2325,7 @@ def update_npc(
     # kicked into REVERSING mid-parking).
     waiting_for_light = decision.light is not None and decision.action != TrafficAction.PROCEED
     finishing_approach = approaching_final_waypoint or vehicle.state in (NPCState.PARKING, NPCState.ARRIVING)
-    if waiting_for_light or ((at_destination or finishing_approach) and footprint_clear) or driver.recovery_stage != "NORMAL":
+    if waiting_for_light or crossing_decision is not None or ((at_destination or finishing_approach) and footprint_clear) or driver.recovery_stage != "NORMAL":
         driver.stuck_timer_s = 0.0
         driver.stuck_check_position = None
         driver.stuck_check_elapsed_s = 0.0
@@ -4665,7 +4674,7 @@ class NPCVehicleManager:
             # avoidance inside update_npc); a generator can only be
             # iterated once, so the second consumer would otherwise
             # silently see nothing at all whenever player_car is None.
-            nearby_obstacles = list(self.nearby_vehicles_at(vehicle.x, vehicle.y, NPC_AVOIDANCE_DETECTION_DISTANCE_M))
+            nearby_obstacles = list(self.nearby_vehicles_at(vehicle.x, vehicle.y, 65.0))
             if player_car is not None:
                 nearby_obstacles.append(player_car)
             update_npc(

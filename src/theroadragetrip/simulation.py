@@ -568,6 +568,8 @@ def advance_simulation(
         audio.play_group("passenger.vomit")
         loud_event = True
     with frame_profiler.section("npc"):
+        traffic_mgr.stop_signs = getattr(world, "stop_signs", ())
+        traffic_mgr.yield_signs = getattr(world, "yield_signs", ())
         npc_manager.snowy = weather.weather_type.value == "snow" or weather.road_snow > 0.1
         plough_positions = {v.vehicle_id: (v.x, v.y) for v in npc_manager.vehicles
                             if v.vehicle_type == "tractor" and v.vehicle_id in npc_manager.drivers}

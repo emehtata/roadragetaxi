@@ -113,6 +113,63 @@ def nearest_vehicle_ahead(
     return nearest
 
 
+def crossing_yield_decision(vehicle, obstacles, *, signs=(), speed_limit_mps=None):
+    """Brake before conflicting traffic from the right at an unsignalled crossing."""
+    def signed(car):
+        fx, fy = math.cos(car.heading), math.sin(car.heading)
+        for sign in signs:
+            dx, dy = sign.x - car.x, sign.y - car.y
+            direction = getattr(sign, "direction_angle", None)
+            if (getattr(sign, "layer", 0) == getattr(getattr(car, "way", None), "layer", 0)
+                    and -8.0 < dx * fx + dy * fy < 35.0
+                    and abs(dx * fy - dy * fx) < 4.0
+                    and (direction is None or abs(angle_diff(direction, car.heading)) < math.pi / 4.0)):
+                return True
+        return False
+
+    fx, fy = math.cos(vehicle.heading), math.sin(vehicle.heading)
+    own_way = getattr(vehicle, "way", None)
+    own_signed = signed(vehicle)
+    nearest = None
+    for other in obstacles:
+        state = getattr(other, "state", None)
+        if (other is vehicle or not hasattr(other, "heading")
+                or getattr(state, "value", state) in ("PARKED", "CRASHED")):
+            continue
+        other_way = getattr(other, "way", None)
+        if getattr(own_way, "layer", 0) != getattr(other_way, "layer", 0):
+            continue
+        dx, dy = other.x - vehicle.x, other.y - vehicle.y
+        gx, gy = math.cos(other.heading), math.sin(other.heading)
+        cross = fx * gy - fy * gx
+        if abs(cross) < 0.5:  # same lane or opposing traffic is not a crossing approach
+            continue
+        distance = (dx * gy - dy * gx) / cross
+        other_distance = (dx * fy - dy * fx) / cross
+        if not (0.0 < distance < 45.0 and -2.0 < other_distance < 45.0):
+            continue
+        other_signed = signed(other)
+        own_priority = getattr(own_way, "priority_road", False) and not own_signed
+        other_priority = getattr(other_way, "priority_road", False) and not other_signed
+        right = dx * fy - dy * fx > 0.0
+        if (own_priority and not other_priority) or (other_signed and not own_signed):
+            continue
+        if not ((own_signed and not other_signed) or (other_priority and not own_priority) or right):
+            continue
+        # A distant vehicle won't enter the intersection while we cross it.
+        if other_distance / max(1.0, abs(getattr(other, "speed", 0.0))) > distance / max(2.0, abs(vehicle.speed)) + 4.0:
+            continue
+        buffer = getattr(other_way, "half_width_m", 3.5) + vehicle.length_m * 0.5 + 2.0
+        gap = max(0.0, distance - buffer)
+        cap = 0.0 if gap < 0.1 else math.sqrt(2.0 * 3.0 * gap)
+        if nearest is None or cap < nearest.target_speed_mps:
+            nearest = TrafficDecision(TrafficAction.STOP if gap < 0.1 else TrafficAction.SLOW,
+                                      cap if speed_limit_mps is None else min(cap, speed_limit_mps),
+                                      (vehicle.x + fx * gap, vehicle.y + fy * gap),
+                                      "yielding to crossing traffic" if own_signed or other_priority else "yielding to traffic from right")
+    return nearest
+
+
 def decide_traffic_action(
     x: float,
     y: float,
