@@ -96,7 +96,7 @@ class Speech:
     random source (tests inject one)."""
 
     def __init__(self, available: Callable[[str, tuple], bool], rng=random,
-                 min_interval: float = 5.0, max_interval: float = 20.0) -> None:
+                 min_interval: float = 45.0, max_interval: float = 120.0) -> None:
         self.available = available
         self.rng = rng
         self.lines = {"passenger": load_lines("passenger"), "driver": load_lines("driver")}

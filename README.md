@@ -153,8 +153,8 @@ comments_enabled = true
 subtitles_enabled = true
 
 [speech]
-min_interval = 5.0
-max_interval = 20.0
+min_interval = 45.0
+max_interval = 120.0
 
 [experimental]
 enable_two_wheelers = false
