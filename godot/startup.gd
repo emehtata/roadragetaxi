@@ -344,7 +344,7 @@ func _map_point_menu() -> void:
 	var show_pin := func():
 		drive.disabled = browser.pin == Vector2.INF
 		if not drive.disabled:
-			place.text = "%.5f, %.5f  (%s)" % [browser.pin.x, browser.pin.y, nearest_city(_city_locations, browser.pin.x, browser.pin.y)]
+			place.text = "%.5f, %.5f  (%s)" % [browser.pin.x, browser.pin.y, _t("map_point_settings") % nearest_city(_city_locations, browser.pin.x, browser.pin.y)]
 	show_pin.call()
 	browser.picked.connect(func(latitude: float, longitude: float):
 		_settings.set_value("gig", "point_latitude", latitude)
